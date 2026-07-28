@@ -97,6 +97,11 @@ Full design detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Repository map
 
 ```text
+sparkcache/           SparkCache: persistent NVMe context cache
+                      (vLLM KV-Connector-V1 + DCP, any interconnect;
+                      15-24x restore, not LMCache). Self-contained
+                      package, liftable without the transport ->
+                      sparkcache/README.md
 spark_transport/
   src/, include/      transport core -> libspark_transport_capi.so: verbs endpoints,
                       TP4 two-matching schedule, GPU doorbells, DCP query/combine,
@@ -104,9 +109,9 @@ spark_transport/
   app/                RDMA and collective probe binaries (transport, TP2/TP4,
                       graph replay, DCP, vocabulary)
   integrations/vllm/  the fail-closed runtime overlay: SHA-256-attested
-                      monkey-patch adapters, flight recorder, shadow validation;
-                      SparkCache persistent NVMe context cache (KV-Connector-V1,
-                      DCP4-sharded, 15-24x restore, not LMCache) -> SPARKCACHE.md
+                      monkey-patch adapters, flight recorder, shadow validation
+                      (SparkCache deploys beside these modules; it is
+                      packaged at sparkcache/)
   experiments/
     nccl_switchless_ring/   NCCL 2.29.7/2.30.7 patches + model-down four-rank
                             collective probes (run these before any model work)
