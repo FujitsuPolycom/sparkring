@@ -1,0 +1,27 @@
+# Session/planning artifacts — never publish
+.remember/
+APPROACH.md
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Native builds
+build/
+build-local/
+*.so
+*.o
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+
+# Model weights and large artifacts
+*.safetensors
+*.gguf
+models/
+
+# Local machine configuration
+.claude/
+*.local.json

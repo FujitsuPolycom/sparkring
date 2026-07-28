@@ -1,0 +1,130 @@
+# SparkRing — Measured Results
+
+This document is the definitive record of SparkRing's measured performance. Every number here is a real measurement pulled from a dated deliverable, carries its full configuration label, and passed the verification gate stated on its row. Nothing in this document is a projection, an extrapolation, or a comparison against systems we did not measure ourselves.
+
+If a number you have seen quoted about SparkRing does not appear here with a matching label, treat it as unofficial.
+
+**A note on source citations.** The dated deliverables cited throughout this document — `deliverables/*.md`, `deliverables/evidence/*`, plus `CURRENT_STATUS.md`, `HANDOFF.md`, and `PUBLIC_RELEASE.md` — live in the maintainer's private evidence archive (paths below are archive-relative, not in this repository). They are retained here as the evidence trail behind each claim. Only `README.md` and the `spark_transport/` documents cited below are files in this repository; section 6 lists which is which.
+
+---
+
+## 1. Shared configuration
+
+Unless a row says otherwise, every end-to-end serving result below was measured on this configuration:
+
+- **Topology:** 4x NVIDIA DGX Spark in a **switchless, directly cabled ring**. Each ring edge is one direct ConnectX-7 200 Gbit/s link. There is no Ethernet switch on the data path, and NCCL Socket is not on the data path in the switchless-IB rows.
+- **Checkpoint:** `aidendle94/GLM-5.2-MXFP4-Experts-GPTQ` — 382 GiB, loaded via the safetensors loader.
+- **KV cache:** `nvfp4_ds_mla` with the per-token scale ABI, on all rows dated 2026-07-27 or later.
+
+Where a row deviates (different DCP degree, eager vs. CUDA-graph execution, fallback transport), the deviation is stated in the row's claim label.
+
+---
+
+## 2. End-to-end serving results
+
+These are end-to-end serving measurements: a real model, real requests, tokens delivered to a client. Each claim label states topology, parallelism config, execution mode, workload, concurrency, statistic, and the gate the run had to pass.
+
+| # | Result | Full claim label | Source |
+|---|---|---|---|
+| 1 | **834 / 884 / 854 tok/s uncached prefill at 8K / 16K / 32K** | 4x Spark switchless ring; MXFP4-Experts-GPTQ; TP4/DCP4 (ag_rs), adaptive MTP2/4 window 32, FULL_AND_PIECEWISE CUDA graphs; custom SparkRing hot paths + checksum-pinned patched NCCL 2.30.7 NET/IB fallback; C1, one request at a time; end-to-end serving; **single-sample "integrated one-sample scout" per context, not prefix-cache-hit** (TTFT 9.828 / 18.359 / 37.844 s); gate: zero request errors, live graph census + 32-token live request gate passed, no NET/Socket data path | `deliverables/glm52-dcp4-switchless-result-20260727.md` ("C1 prefill and decode"); `CURRENT_STATUS.md`; `HANDOFF.md` |
+| 2 | **63.60 tok/s aggregate sustained decode at C8** (7.95 tok/s per user; 3.51x C1; still rising at the configured C8 cap) | 4x Spark; MXFP4-Experts-GPTQ; TP4/**DCP1**, adaptive MTP2/4, Q40 capture plan (FULL+PIECEWISE), max sequences 8; fully **shared-prefix** 8K contexts; controlled **15-second sustained-decode cells**; aggregate (per-user also reported); end-to-end serving; single cell per concurrency; gate: zero errors/queueing at every C1–C8 step, 5,464 custom all-reduce + 24 custom vocabulary graph captures, **zero stock captures**, no Q1–Q40 stock fallback in decode | `deliverables/glm52-concurrency-fast-path-20260727.md` ("Passed C8 candidate"); `README.md` "Current result"; evidence: `deliverables/evidence/glm52-c8-baseline-20260727.json` |
+| 3 | **20.83 / 19.28 / 21.43 tok/s p50 decode at 8K / 16K / 32K — sealed custom/custom CUDA-graph C1 cell (v40, 2026-07-28)** | 4x Spark; MXFP4-Experts-GPTQ; TP4/**DCP4**, adaptive MTP2/4 window 32, Q40 FULL_AND_PIECEWISE with the full custom DCP trio captured (1,272 query + 1,272 combine nodes/rank; only 360 stock `dcp_owner_topk_all_gather` nodes/rank, capture-unsupported by design); C1 single stream; 30 s sustained decode per context; per-user = aggregate; end-to-end serving; statistic p50 (inter-token p50 48.0 / 51.9 / 46.7 ms, TTFT p50 0.75 / 0.89 / 0.94 s); gate: sealed cell `custom-dcp-cell-20260728T023220Z`, cell-validation passed, zero JIT events, frozen transport counters, zero target-family stock fallback | `deliverables/dcp4-v40-window-result-20260728.md`; `README.md` "CUDA-graph checkpoint" |
+| 4 | **27.246 median / 29.295 max tok/s, five-run coding-peak** | 4x Spark; MXFP4-Experts-GPTQ; TP4/DCP1 ("MIDWAY GOOD" checkpoint: adaptive MTP2/4 window 32, capture sizes 1/3/5, max seqs 3, NCCL Socket fallback in this config); C1; coding-peak prompts, 5 sequential runs, 30-second windows, max_tokens 2000; per-user = aggregate; end-to-end serving; statistic: median / mean 27.615 / max / min 26.690 over 5 runs; gate: all 5 completed, 0/5 CJK output; benchmark JSON SHA-256 pinned | `deliverables/glm52-midway-good-checkpoint-20260727.md` ("Five sequential coding-peak runs"); cross-referenced in `deliverables/glm52-dcp2-switchless-result-20260727.md` |
+| 5 | **43.0 and 42.6 aggregate tok/s structured-code C2 peaks** | 4x Spark; MXFP4-Experts-GPTQ; TP4/DCP1, adaptive MTP2/4, Q10 C2 candidate (capture sizes 1–10); C2, two simultaneous real "write me a webpage" prompts via OpenWebUI; aggregate; end-to-end serving; statistic: two separate **ten-second server-side log windows** (not a controlled bench cell); gate: the 43.0 window had mean acceptance length 4.30 and 82.5% draft acceptance; explicitly labeled a workload-dependent peak, **not** the C2 baseline | `deliverables/glm52-concurrency-fast-path-20260727.md` ("Passed C2 candidate"); `README.md` "Current result" table |
+| 6 | **Historical eager single-stream: 20.83 tok/s pinned / 19.88 tok/s novel-code median, with 708.1 tok/s uncached 32K prefill** | 4x Spark; MXFP4-Experts-GPTQ; TP4/DCP1, fixed-K4 MTP with B12X remap, **eager** (pre-graph) execution; exact-32K pinned context, C1; per-user = aggregate; end-to-end serving; statistics: 20.832311 median periodic pinned gate (G0d-c), 20.694064 median with proposal-scoped reuse (G0d-e — the README's "20.7 pinned"), 19.880764 median over **five runs** on the novel-code suffix (G0d-f); 708.081532 tok/s uncached 32K prefill (G0d-e); gate: coherent output + bounded numerical envelope; 100% P0–P3 acceptance on the pinned gate (pinned context makes MTP acceptance unusually easy — see caveats) | `deliverables/goal-ledger.md` rows G0d-c/e/f; `README.md` "Current result" |
+| 7 | **375,040 KV tokens (4x the DCP1 pool) with 56.70 tok/s aggregate C8 decode** | 4x Spark; MXFP4-Experts-GPTQ; TP4/**DCP4** switchless (same config as row 1); KV allocation 3.0 GB/rank `nvfp4_ds_mla`; C8, fully **shared-prefix** 8K contexts, ~30-second cells; aggregate (7.09 tok/s per user); end-to-end serving; single cell; gate: zero errors/queueing, all-rings NET/IB, capacity 5.72x a full 65,536-token context, ~4.05 GiB limiting-rank MemAvailable after graph capture | `deliverables/glm52-dcp4-switchless-result-20260727.md`; `CURRENT_STATUS.md` |
+
+### What each row means
+
+1. The highest prefill throughput documented in this repository. DCP4 beat DCP1 prefill at every context length (+2.2% to +5.6%) while quadrupling KV capacity. This is an internal comparison only — this repository makes no claims about systems outside it.
+2. The flagship aggregate number: 3.51x single-stream scaling on a fully verified zero-stock-capture custom-transport graph path, with throughput still rising at the configured concurrency cap of 8.
+3. The newest sealed result (2026-07-28): the first time the full custom DCP query+combine trio ran inside FULL CUDA graphs. At 32K it lands roughly 12% above the earlier 19.14 tok/s stock-trio DCP4 measurement — **that comparison is indicative, not a sealed A/B** (the stock control was not rerun, and adaptive-MTP acceptance variance is real).
+4. The best honest realistic-workload single-stream numbers in the repository: a real coding workload sustained ~27 tok/s median on four consumer-class desk units.
+5. Proof the repaired C2 path can exceed 40 aggregate tok/s when MTP4 stays coherent — but it is a 10-second server-window observation on one workload, and must always be quoted with that label.
+6. The historical single-stream mechanics checkpoint that the CUDA-graph work is measured against. The 708 tok/s prefill is a genuine uncached 32K prefill gate.
+7. The capacity story: 4x the KV pool at a 4.4% single-stream 32K decode cost versus DCP1 (19.14 vs. 20.02 tok/s) — the repository's strongest capacity-vs-speed trade result.
+
+---
+
+## 3. Transport microbenchmarks
+
+These are **transport-level** measurements: no model in the loop unless a row says otherwise. They establish the latency floor and correctness backbone that the serving results above are built on. Do not quote them as serving numbers.
+
+| # | Result | Full claim label | Source |
+|---|---|---|---|
+| T1 | **4.752 us p50 / 5.536 us p99 RDMA RC write** (host memory); **4.528 us p50** GPU-produced `cudaHostAllocMapped` | 2 Sparks, one direct CX-7 200G link; 16 KB payload, 10,000 iterations; transport-only (write + local CQ completion; GPU produce/verify outside the timed loop for the host row); statistic p50/p99; gate: byte-correct | `spark_transport/README.md` "Results" tables |
+| T2 | **20.67 us p50 / 20.99 us p99 GPU-visible closed-loop round trip, 16 KB** | 2 Sparks, direct CX-7 link; persistent GPU doorbell loop (host command → sender GPU produces → ordered RC payload+sequence writes → receiver GPU consumes with vectorized 1,024-thread verification → RC ack → sender observes); 10,000 iterations; transport-only; p50/p99; gate: all correct. Payload sweep 4 KB→64 KB: 19.62→26.91 us p50, 70,000 iterations all correct | `spark_transport/README.md` "Persistent GPU doorbell results" |
+| T3 | **20.27 us p50 TP2 BF16 exchange + fused add of one 6,144-wide GLM hidden vector (12 KB)**; 16 KB one-million-iteration burn **22.544 us p50, zero mismatches** | 2 Sparks, direct CX-7 link; synthetic collective primitive (publish, RDMA-write, fused local+remote BF16 add, validate, ack); transport-only; p50/p99; gate: every result validated, 0 mismatched iterations in the 1M burn | `spark_transport/README.md` "TP2 BF16 exchange and fused add" |
+| T4 | **1.91–1.94 us host graph submit, 39.06 us device time per call** (1,000 replays); 100 replays: 1.95–2.01 us / 39.14–39.15 us; 10,000 replays: 35.15 us host burst average incl. CUDA backpressure, 39.15 us device | 4 Sparks, direct-cable ring; device-published 64-slot mapped command ring, Q1 all-reduce CUDA-graph replay, graph submission and transport progress on separate CPUs (10/11); transport-only standalone gate; statistic: range over runs; gate: pass — identical staged-executable SHA-256 on all ranks, exact published/consumed/completed sequences, zero overflow/mismatch; Q1 slightly faster than the ~42 us eager path | `README.md` "CUDA-graph checkpoint" table; `spark_transport/GRAPH_NATIVE_TP4_Q1.md` |
+| T5 | **159.20 us per collective, DCP query+combine 14-bucket graph probe** | 4 Sparks, direct-cable ring; model-down (no model loaded) v40 probe; 2,856 sequences; transport-only **mixed-bucket average — not a single-shape latency**; gate: 4/4 ranks pass, zero query byte mismatches, combine within numerical envelope | `deliverables/dcp4-v40-window-result-20260728.md` "Model-down probes" |
+| T6 | **Native DCP primitives standalone: query all-gather 110.370 us @Q5 (byte exact); fused latent-512 online-softmax combine ~86.9 us @Q1 / 330.1 us @Q5 (bounded vs FP32 and stock); token-major vocabulary all-gather 399.442 us @Q5 (byte exact)** | 4 Sparks, direct-cable ring; fixed-K4 native probe set Q1–Q5; transport-only representative standalone times; gate: query and vocabulary passed byte-exact live shadow at Q1/Q3/Q5; combine live shadow Q5 had zero tolerance/non-finite failures, max output error 0.00012207, max LSE error 9.53674e-7 | `README.md` "Native direct-cable primitives" |
+| T7 | **DCP4 eager collective probe p50 (rank 0): TP all-reduce `[1,6144]` BF16 55.74 us; query all-gather Q1 47.52 us / Q40 206.46 us; output reduce-scatter Q1 40.45 us** | 4 Sparks, direct-cable ring; pre-model four-rank communicator over the switchless patched NCCL-IB / custom stack; isolated primitives, explicitly **not an end-to-end critical-path sum**; statistic p50; gate: every eager and graph case passed value validation | `deliverables/glm52-dcp4-switchless-result-20260727.md` "Four-rank DCP4 collective probe" |
+
+### What each transport row means
+
+- **T1:** Sub-5-us one-way RDMA writes over a bare direct cable — the floor the whole stack is built on, with GPU-mapped memory costing essentially nothing extra.
+- **T2:** The full GPU-to-GPU visible loop (produce, ship, consume, ack) in ~21 us at 16 KB. This is the "RDMA RTT ~20.67 us" number, and it includes GPU-side verification, not just NIC completion.
+- **T3:** A real fused collective primitive — exchange+add of an actual GLM hidden vector — at the same ~20 us scale, validated for one million iterations without a single mismatch.
+- **T4:** ~1.9 us host-side cost to fire a captured four-rank collective — the mechanism that makes CUDA-graph decode viable — with byte-audited rank-synchronous replay through 10,000 calls.
+- **T5:** The v40 promotion evidence that the custom DCP query+combine graphs are fast and byte-correct before any model touches them. It is a mixed-bucket average; do not quote it as a single-op latency.
+- **T6:** Each custom primitive individually validated byte-exact or within a stated numerical envelope — the correctness backbone behind every "zero stock capture" serving claim above.
+- **T7:** The per-op price list for the DCP4 attention path on the fallback stack; useful context for why the custom-trio promotion (row 3 above) matters.
+
+---
+
+## 4. Methodology: the claim discipline
+
+The numbers above are only as good as the rules used to produce and report them. Those rules are part of the result, so they are stated here in full.
+
+**Every number carries a full label.** A performance claim in this repository is not a bare number — it names the topology, the checkpoint, the parallelism configuration (TP/DCP degree), the execution mode (eager vs. CUDA-graph, custom vs. fallback transport), the workload and concurrency, the statistic (p50, median-of-N, single sample, log-window observation), and the gate the run had to pass. A number quoted without its label is considered misquoted.
+
+**Sealed cells.** The strongest results come from sealed benchmark cells (e.g. `custom-dcp-cell-20260728T023220Z`): a cell is configured, run, and validated as a unit, with cell-validation checks (zero JIT events, frozen transport counters, zero target-family stock fallback) that must pass before the number is recorded. Machine-readable evidence JSONs are stored alongside the prose deliverables in the evidence archive, and benchmark artifacts are SHA-256 pinned where noted.
+
+**Fail-closed transport validation.** Custom transport paths are never trusted by construction — they are validated fail-closed. Collectives run under live shadow comparison against reference implementations (byte-exact for data-movement collectives; bounded numerical envelope with recorded max error for arithmetic collectives), graph captures are audited by census (counting custom vs. stock nodes per rank), and executables are checked for identical SHA-256 across ranks. A serving row's "zero stock captures" gate means the capture census confirmed it, not that it was assumed.
+
+**Measured vs. indicative labeling.** Only same-cell, same-config measurements are reported as sealed comparisons. Where two numbers come from different cells or configurations, any comparison between them is labeled *indicative* (see the v40-vs-stock-trio caveat below). Cross-configuration percentage deltas with mismatched cell durations are labeled *directional*.
+
+**No projections, no external comparisons.** This document contains measured results only. Excluded by policy: capacity projections (e.g. larger per-rank KV allocations not yet run), planned-topology arithmetic, throughput goals, latency targets not yet achieved, rejected candidate configurations, and cache-hit observations that the repository itself excludes from headline reporting (e.g. an 8,005 tok/s cached-prefix observation, which is a prefix-cache artifact and not a prefill result). The repository makes internal comparisons only (e.g. "+3.0% vs DCP1 16K") and claims nothing relative to systems it has not measured.
+
+---
+
+## 5. Honest caveats
+
+Read these before quoting anything above. They are part of the claims, not footnotes to them.
+
+- **Concurrency rows are shared-prefix baselines.** The C1–C8 results (rows 2 and 7) use fully shared-prefix contexts. They are concurrency scaling baselines — *not* a unique-context capacity result, not a prefill result, and not a finite-request completion result.
+- **Cross-DCP concurrency deltas are directional.** The DCP1 C8 cells were 15-second windows while the DCP4 C8 cells were ~30-second windows, so percentage comparisons between them (e.g. 63.60 vs. 56.70 aggregate) are directional, not sealed same-protocol comparisons.
+- **The v40 32K "+12% vs. stock trio" is indicative, not a sealed A/B.** The stock-trio control was not rerun alongside the v40 cell, and adaptive-MTP acceptance variance is real. The 20.83/19.28/21.43 numbers themselves are sealed; the *improvement percentage* is not.
+- **Prefill scouts are single-sample.** The 834/884/854 tok/s prefill figures (row 1) are single-sample integrated one-sample scouts per context length — genuine uncached prefill (not prefix-cache-hit), but one sample each, not a distribution.
+- **The 43 tok/s C2 figure is a workload peak, not a baseline.** It comes from two ten-second server-side log windows on one structured-code workload, not a controlled benchmark cell. The C2 baseline is lower.
+- **Pinned-context MTP acceptance is unusually easy.** The 100% P0–P3 acceptance on the historical pinned gate (row 6) is a property of the pinned-context setup; the novel-code median (19.88 tok/s) is the honest workload estimate for that checkpoint.
+- **C8 was a configured cap, not a saturation point.** Aggregate throughput was still rising at C8 in row 2; the scaling curve beyond C8 is unmeasured.
+- **T5 is a mixed-bucket average.** The 159.20 us DCP graph-probe figure averages 14 bucket shapes; it is not the latency of any single collective shape.
+- **Transport rows are not serving rows.** T1–T7 have no model in the loop (T5 explicitly model-down) and are floors/price-lists, not end-to-end results. T7 in particular is a set of isolated primitive timings, not a critical-path sum.
+
+---
+
+## 6. Provenance
+
+Primary sources in this repository:
+
+- `README.md` — current-result and CUDA-graph checkpoint tables
+- `spark_transport/README.md` and `spark_transport/GRAPH_NATIVE_TP4_Q1.md`
+
+Primary sources in the maintainer's private evidence archive (archive-relative paths — see the note in the introduction):
+
+- `CURRENT_STATUS.md`
+- `HANDOFF.md`
+- `PUBLIC_RELEASE.md` — the claim-discipline checklist this document follows
+- `deliverables/glm52-dcp4-switchless-result-20260727.md`
+- `deliverables/glm52-concurrency-fast-path-20260727.md`
+- `deliverables/glm52-midway-good-checkpoint-20260727.md`
+- `deliverables/dcp4-v40-window-result-20260728.md`
+- `deliverables/dcp4-sequence67-resolution-20260727.md`
+- `deliverables/goal-ledger.md`
+
+Machine-readable evidence, in the archive:
+
+- `deliverables/evidence/glm52-c8-baseline-20260727.json`
+- `deliverables/evidence/glm52-dcp4-switchless-baseline-20260727.json`
+- `deliverables/evidence/dcp4-custom-dcp-performance/custom-dcp-cell-20260728T023220Z/`

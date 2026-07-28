@@ -1,0 +1,85 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+
+namespace spark_transport {
+
+struct Tp4AllreduceOptions {
+  std::uint32_t rank{4};
+  std::string peer0;
+  std::string peer1;
+  std::string device0{"rocep1s0f0"};
+  std::string device1{"rocep1s0f1"};
+  std::uint8_t gid0{3};
+  std::uint8_t gid1{3};
+  std::uint16_t control_port0{9470};
+  std::uint16_t control_port1{9471};
+  std::size_t payload_bytes{12288};
+  // When both are set, graph-only deployment pins the calling/submission
+  // thread exclusively to graph_submit_cpu and pins the persistent verbs
+  // progress thread exclusively to graph_progress_cpu. They must be distinct.
+  std::optional<std::uint32_t> graph_submit_cpu;
+  std::optional<std::uint32_t> graph_progress_cpu;
+};
+
+struct Tp4GraphReplayStatus {
+  std::uint64_t captured_nodes{};
+  std::uint64_t published_sequence{};
+  std::uint64_t consumed_sequence{};
+  std::uint64_t completed_sequence{};
+  std::uint64_t overflow_sequence{};
+  bool capture_configured{};
+  bool polling_enabled{};
+  bool host_native_atomics_supported{};
+  bool submit_affinity_verified{};
+  bool progress_affinity_verified{};
+  int graph_submit_cpu{-1};
+  int graph_progress_cpu{-1};
+};
+
+class Tp4AllreduceSession {
+ public:
+  Tp4AllreduceSession(const Tp4AllreduceSession&) = delete;
+  Tp4AllreduceSession& operator=(const Tp4AllreduceSession&) = delete;
+
+  explicit Tp4AllreduceSession(Tp4AllreduceOptions options);
+  ~Tp4AllreduceSession();
+
+  // Enqueues a stream-ordered reduction and returns before it completes.
+  // Later work on the same stream observes the completed output. One session
+  // accepts submissions from exactly one stable CUDA stream. Destruction
+  // drains submitted collectives and synchronizes that stream. Submission is
+  // bounded by SPARK_TP4_MAX_INFLIGHT (default 64) to prevent the caller from
+  // saturating CUDA's launch queue.
+  void all_reduce(const void* input, void* output, void* cuda_stream);
+
+  // Adds a Q1 BF16 [1, 6144] all-reduce to an active CUDA stream capture.
+  // The captured graph is tied to these stable input/output addresses and
+  // must be replayed on the same stream. This session must outlive every
+  // graph replay. Replay sequences are device-published through mapped host
+  // memory and require host-native GPU atomics. This may be called repeatedly
+  // on the same active capture stream to define the many Q1 nodes in one or
+  // more graphs, but always before any eager submission or graph replay.
+  void capture_q1_all_reduce(const void* input, void* output,
+                             void* cuda_stream);
+
+  // Adds one exact contiguous BF16 [q, 6144] all-reduce to an active CUDA
+  // stream capture. q must be in [1, 512] and the session capacity must be at
+  // least q rows. The Q512 maximum-capacity session has a 6 MiB payload
+  // arena and can serve decode plus bounded-prefill graph nodes while
+  // preserving one ordered sequence.
+  void capture_all_reduce(const void* input, void* output, std::uint32_t q,
+                          void* cuda_stream);
+
+  Tp4GraphReplayStatus graph_replay_status() const noexcept;
+
+ private:
+  class Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+}  // namespace spark_transport

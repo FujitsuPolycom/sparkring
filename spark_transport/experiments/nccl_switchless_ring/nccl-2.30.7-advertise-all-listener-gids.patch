@@ -1,0 +1,42 @@
+diff --git a/src/transport/net_ib/connect.cc b/src/transport/net_ib/connect.cc
+index e2c8ecb..afa2745 100644
+--- a/src/transport/net_ib/connect.cc
++++ b/src/transport/net_ib/connect.cc
+@@ -605,20 +605,25 @@ ncclResult_t ncclIbListen(void* ctx, int dev, void* opaqueHandle, void** listenC
+   NCCLCHECKGOTO(ncclSocketListen(&comm->sock), ret, fail);
+   NCCLCHECKGOTO(ncclSocketGetAddr(&comm->sock, &handle->connectAddr), ret, fail);
+ 
+-  // Embed GIDs of all PFs in the handle so the connector can find a local NIC
+-  // on the same subnet as any of our ports.
++  // Embed GIDs from every eligible local RoCE device in the handle so the
++  // connector can find the physical cable shared with this peer. Iterating
++  // only the topology-selected device defeats subnet-aware routing when
++  // NCCL_IB_MERGE_NICS=0: the listener advertises the wrong cable and neither
++  // endpoint has enough information to recover.
+   if (ncclParamIbSubnetAwareRouting() && dev < ncclNMergedIbDevs) {
+-    struct ncclIbMergedDev* mDev = ncclIbMergedDevs + dev;
+     int gidSlot = 0;
+-    for (int i = 0; i < mDev->vProps.ndevs && gidSlot < 2; i++) {
+-      int ibDevN = mDev->vProps.devs[i];
+-      ncclIbDev* ibDev = ncclIbDevs + ibDevN;
+-      if (ibDev->portAttr.link_layer != IBV_LINK_LAYER_ETHERNET) continue;
+-      int gidIndex;
+-      NCCLCHECKGOTO(ncclIbGetGidIndex(ibDev->context, ibDev->portNum, &ibDev->portAttr, &gidIndex), ret, fail);
+-      NCCLCHECKGOTO(wrap_ibv_query_gid(ibDev->context, ibDev->portNum, gidIndex, &handle->listenGids[gidSlot]), ret,
+-                    fail);
+-      gidSlot++;
++    for (int devIdx = 0; devIdx < ncclNMergedIbDevs && gidSlot < 2; devIdx++) {
++      struct ncclIbMergedDev* mDev = ncclIbMergedDevs + devIdx;
++      for (int i = 0; i < mDev->vProps.ndevs && gidSlot < 2; i++) {
++        int ibDevN = mDev->vProps.devs[i];
++        ncclIbDev* ibDev = ncclIbDevs + ibDevN;
++        if (ibDev->portAttr.link_layer != IBV_LINK_LAYER_ETHERNET) continue;
++        int gidIndex;
++        NCCLCHECKGOTO(ncclIbGetGidIndex(ibDev->context, ibDev->portNum, &ibDev->portAttr, &gidIndex), ret, fail);
++        NCCLCHECKGOTO(wrap_ibv_query_gid(ibDev->context, ibDev->portNum, gidIndex, &handle->listenGids[gidSlot]), ret,
++                      fail);
++        gidSlot++;
++      }
+     }
+   }
+ 

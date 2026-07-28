@@ -1,0 +1,26 @@
+diff --git a/src/transport/generic.cc b/src/transport/generic.cc
+index a0acfc7..91bcf82 100644
+--- a/src/transport/generic.cc
++++ b/src/transport/generic.cc
+@@ -48,6 +48,10 @@ fail:
+ 
+ ncclResult_t ncclTransportTreeConnect(struct ncclComm* comm) {
+   ncclResult_t ret = ncclSuccess;
++  if (getenv("NCCL_SKIP_TREE_CONNECT")) {
++    INFO(NCCL_INIT, "SWITCHLESS: skipping ncclTransportTreeConnect");
++    return ncclSuccess;
++  }
+   if (comm && comm->nRanks > 1) {
+     // Connect Trees
+     for (int c = 0; c < comm->nChannels; c++) {
+@@ -68,6 +72,10 @@ fail:
+ 
+ ncclResult_t ncclTransportPatConnect(struct ncclComm* comm) {
+   ncclResult_t ret = ncclSuccess;
++  if (getenv("NCCL_SKIP_TREE_CONNECT")) {
++    INFO(NCCL_INIT, "SWITCHLESS: skipping ncclTransportPatConnect");
++    return ncclSuccess;
++  }
+   if (comm && comm->nRanks > 1) {
+     for (int mask = 1; mask < comm->nRanks; mask <<= 1) {
+       int prevPeer = (comm->rank + mask) % comm->nRanks;

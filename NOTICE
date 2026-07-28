@@ -1,0 +1,12 @@
+SparkRing
+Copyright 2026 SparkRing contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes portions of NVIDIA NCCL
+(Copyright (c) 2015-2026 NVIDIA CORPORATION & AFFILIATES. All rights
+reserved.), licensed under the Apache License, Version 2.0, contained in the
+patch files under spark_transport/experiments/nccl_switchless_ring/.
+
+For all third-party attributions and related obligations, see
+THIRD_PARTY_NOTICES.md.
