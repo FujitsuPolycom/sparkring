@@ -10,6 +10,21 @@ device-published command rings, a CUDA-graph-capturable two-matching ring
 all-reduce, DCP4 decode context parallelism, and adaptive MTP speculative
 decoding. Every number below was measured end-to-end on the real hardware.
 
+## What is SIRCL?
+
+**SIRCL** is our internal codename for the **S**witchless
+**I**nference **R**DMA **C**ollective **L**ayer inside SparkRing. It is the
+low-level direct-cable runtime:
+persistent RDMA sessions, registered mapped-host arenas, sequence and
+acknowledgement protocol, GPU copy/reduction operations, bounded asynchronous
+submission, and CUDA-graph-replayable command rings.
+
+SparkRing is the complete inference stack built around that layer. SparkCache
+is separate: it persists rank-local KV state to NVMe and does not define the
+live collective transport. See [docs/SIRCL.md](docs/SIRCL.md) for the exact
+boundary, implemented surfaces, fallback contract, and generic-backend
+direction.
+
 ## Headline results
 
 | Measured result | Configuration (compressed; full claim labels in [docs/RESULTS.md](docs/RESULTS.md)) |
@@ -119,6 +134,7 @@ spark_transport/
   scripts/, tests/    per-edge cable qualification, CTest suite
 APPROACH.md           phased bring-up rationale
 docs/                 RESULTS.md, ARCHITECTURE.md, SETUP.md
+                      SIRCL.md (transport-layer definition and boundary)
 ```
 
 ## Getting started

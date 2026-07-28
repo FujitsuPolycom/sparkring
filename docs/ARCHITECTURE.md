@@ -99,7 +99,13 @@ one.
 
 ---
 
-## 3. Transport core (`spark_transport/`)
+## 3. SIRCL transport core (`spark_transport/`)
+
+SIRCL is the **Switchless Inference RDMA Collective Layer** inside SparkRing,
+not a separate service or an NCCL fork. SparkRing is the full inference stack;
+SIRCL is the direct-cable collective runtime described in this section. See
+[`SIRCL.md`](SIRCL.md) for its public boundary and current-versus-planned
+surface.
 
 The core abstractions (`spark_transport/README.md`):
 

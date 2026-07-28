@@ -253,7 +253,7 @@ Report:
 ```text
 MoE kernel total
 attention/other calibrated GPU work
-exposed SIRCL time (not sum of standalone calls)
+exposed SparkRing custom-transport time (not sum of standalone calls)
 host/launch gaps
 whole CUDA-event round time
 ```
