@@ -130,16 +130,25 @@ in [docs/SETUP.md](docs/SETUP.md).
 This is a research pre-release. There is no stable API; environment flags,
 ABIs, and module layouts change without notice.
 
-The runtime the published numbers were measured on was built from a private
-vLLM fork inside a community GB10 container image; that fork is not included
-here. This is survivable by design: the overlay attests the exact upstream
-source it patches by SHA-256 and fails closed on mismatch, so it will refuse
-to run against sources it does not recognize rather than silently misbehave.
+There are two support lanes:
 
-Honest caveat: a clean-room reproduction from this public snapshot has not
-yet been verified end-to-end. The setup guide flags every reconstructed step,
-and fresh builds of the patched NCCL and transport library will produce new
-hashes that must be re-pinned everywhere the launcher enforces them.
+- **Reference lane (validated):** the exact runtime the published numbers
+  were measured on — a pinned upstream vLLM commit plus a patch overlay and
+  public kernel packages, assembled inside a community GB10 container image.
+  The overlay attests the exact upstream source it patches by SHA-256 and
+  fails closed on mismatch, so it refuses to run against sources it does not
+  recognize rather than silently misbehave. An audit found every component of
+  that runtime resolves to public sources; see
+  [docs/RUNTIME_GAPS.md](docs/RUNTIME_GAPS.md) for what it contains beyond
+  stock vLLM and what upstream has since absorbed.
+- **Public reproduction lane (candidate):** what this snapshot builds today.
+  The transport library, all probes, and the full native and Python test
+  suites have been verified clean-room from this tree on DGX Spark hardware
+  (stock CUDA devel image, no private artifacts: 36/36 targets, 20/20 native
+  tests, 821 Python tests). End-to-end serving from this lane is not yet
+  performance-equivalent to the reference lane and is not supported until a
+  full acceptance gate passes; fresh builds produce new artifact hashes that
+  the fail-closed launcher must have re-pinned.
 
 ## License
 

@@ -520,6 +520,8 @@ docker run --rm --gpus all \
 
 Products: the shared library `libspark_transport_capi.so` (verbs endpoints, TP4 two-matching schedule, DCP query/combine, vocab all-gather, graph command ring) and the probe executables: `spark_transport_probe` (used in Stage 3.4), `spark_tp2_probe`, `spark_tp4_probe`, `spark_tp4_tensor_probe`, `spark_tp4_graph_q1_probe`, `spark_tp4_vocab_graph_probe`, `spark_tp4_dcp_graph_probe`, `spark_tp4_dcp_sequence67_probe`, and others. The CTest suite (statistics, wire-protocol, topology, layout, C-API tests) must pass.
 
+To run the Python test suite from the repository root (`python -m pytest spark_transport -q`), install `pytest`, `numpy`, and `torch` first — a CPU-only torch wheel suffices; none of these ship in the stock CUDA devel image. **[DOCUMENTED: verified during the 2026-07-27 clean-room build — 20/20 native tests and 821 Python tests passed from this tree in `nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04` on DGX Spark hardware.]** `librdmacm-dev` is not required; `cmake` and `libibverbs-dev` are sufficient.
+
 ### 7.2 Staging contract **[DOCUMENTED: private archive scripts/run-glm52-graph-window.ps1 `$artifacts`]**
 
 Stage identical, versioned copies of every artifact on **all four nodes** and record every SHA-256; the orchestrator verifies hash and executability per rank before any mutation. The production layout (your version suffixes and hashes will differ — that is expected and enforced):

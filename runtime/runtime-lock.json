@@ -1,0 +1,76 @@
+{
+  "schema": "sparkring-runtime-lock/v1",
+  "runtime_id": "glm52-gb10-rc1",
+  "comment": "Single source of truth for build-runtime.sh. Every field here is a hard pin; fields marked 'pending' are stamped by the builder on first successful build and must not be hand-edited afterward.",
+  "base_image": {
+    "builder": {
+      "repository": "nvcr.io/nvidia/cuda",
+      "tag": "13.0.1-devel-ubuntu24.04",
+      "digest": "pending-first-build"
+    },
+    "runtime": {
+      "repository": "nvcr.io/nvidia/cuda",
+      "tag": "13.0.1-runtime-ubuntu24.04",
+      "digest": "pending-first-build"
+    }
+  },
+  "toolchain": {
+    "cuda_version": "13.2",
+    "torch_version": "2.12.0+cu132",
+    "torch_index_url": "https://download.pytorch.org/whl/cu132",
+    "python_version": "3.12.3",
+    "target_platform": "linux/arm64",
+    "compiler": {
+      "cuda_architectures": "121"
+    }
+  },
+  "vllm": {
+    "repository": "https://github.com/vllm-project/vllm",
+    "commit": "fcc614141e5e9ab18cb304c476f7feed2a9552e3",
+    "version_lineage": "0.11.2.dev279"
+  },
+  "sparkinfer": {
+    "repository": "https://github.com/local-inference-lab/sparkinfer",
+    "commit": "284a2eae83754ee1abd31c37b9ca66b68e20b8a8"
+  },
+  "flashinfer": {
+    "repository": "https://github.com/flashinfer-ai/flashinfer",
+    "commit": "25dd814e03791e370f96c3148242f0dc8de504ac",
+    "wheels": {
+      "flashinfer-python": "0.6.13+cu132",
+      "flashinfer_jit_cache": "0.6.13+cu132"
+    },
+    "wheel_index": "https://flashinfer.ai/whl/cu132"
+  },
+  "deep_gemm": {
+    "version": "2.5.0+2073ddb",
+    "commit_short": "2073ddb",
+    "commit_full": "resolve-pending",
+    "note": "Short commit taken from installed dist-info; full SHA must be resolved against upstream history before this pin is considered final."
+  },
+  "nccl": {
+    "repository": "https://github.com/NVIDIA/nccl",
+    "tag": "v2.30.7-1",
+    "patches": [
+      {
+        "path": "spark_transport/experiments/nccl_switchless_ring/nccl-2.30.7-skip-tree-pat.patch",
+        "sha256": "097656d07a5774919f0d51558b51ec05de8168c0097ed6cb7764c33230ba6eb2"
+      },
+      {
+        "path": "spark_transport/experiments/nccl_switchless_ring/nccl-2.30.7-advertise-all-listener-gids.patch",
+        "sha256": "dccfce86d14c15c39f0e0a742863960205a3d9823c464b31a7f7389354844178"
+      }
+    ]
+  },
+  "sparkring": {
+    "commit": "stamped-by-builder-from-git"
+  },
+  "model": {
+    "repository": "aidendle94/GLM-5.2-MXFP4-Experts-GPTQ",
+    "revision": "pending",
+    "config_sha256": "ffd30e72ab8bb7e8ad560f2aaab03cc595f3106f0acf793ef96eedaf90f66d69",
+    "note": "revision is pinned to an immutable HF commit hash at build time; config.json of the pinned revision must hash to config_sha256."
+  },
+  "overlays": [],
+  "overlays_comment": "The production runtime carries a vLLM patch overlay (61 modified + 12 new files, ~12.9k lines) that is NOT yet shippable pending provenance cleanup. runtime/patches/vllm/ ships empty with a README gate note; when the overlay clears review, its patch files are listed here with per-file sha256 pins."
+}
