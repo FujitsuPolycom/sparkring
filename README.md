@@ -104,7 +104,9 @@ spark_transport/
   app/                RDMA and collective probe binaries (transport, TP2/TP4,
                       graph replay, DCP, vocabulary)
   integrations/vllm/  the fail-closed runtime overlay: SHA-256-attested
-                      monkey-patch adapters, flight recorder, shadow validation
+                      monkey-patch adapters, flight recorder, shadow validation;
+                      SparkCache persistent NVMe context cache (KV-Connector-V1,
+                      DCP4-sharded, 15-24x restore, not LMCache) -> SPARKCACHE.md
   experiments/
     nccl_switchless_ring/   NCCL 2.29.7/2.30.7 patches + model-down four-rank
                             collective probes (run these before any model work)
