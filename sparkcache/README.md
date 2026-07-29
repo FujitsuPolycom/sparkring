@@ -26,7 +26,7 @@ LMCache uses — with a design specific to DCP-sharded serving.
 - **Any interconnect — or none.** No RDMA, no switch topology, no network
   assumptions: the cache does zero cross-node traffic by construction.
 
-## The one idea
+## The Concept
 
 DCP already splits every context across ranks: rank *r* holds the KV for
 token positions where `position % N == r`. SparkCache simply writes each
