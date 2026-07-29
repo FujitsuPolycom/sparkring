@@ -410,6 +410,13 @@ validated checkpoint this reported 4.28 GiB and 465,663 logical tokens, enough
 for `max_model_len: 458752`. Do not reduce it to 4,000,000,000 bytes while
 keeping that maximum context length.
 
+The template also enables both halves of adaptive MTP:
+`SPARK_ADAPTIVE_MTP_CONTROL=1` selects and resets the per-request K2/K4 policy,
+`SPARK_GLM52_MTP_INDEX_REUSE=1` installs the checkpoint-required proposer that
+true adaptation wraps, and `VLLM_SPARK_TRUE_ADAPTIVE_DRAFT=1` makes the worker
+execute only the selected number of proposal steps. Without the last flag, K2
+still pays for four draft steps and merely discards tokens three and four.
+
 Then run one short request:
 
 ```bash

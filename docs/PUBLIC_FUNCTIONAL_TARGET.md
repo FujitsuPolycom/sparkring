@@ -130,7 +130,7 @@ with them (see TBD-8).
 | Decode context parallel | `--decode-context-parallel-size 4 --dcp-comm-backend ag_rs` (DCP=4) |
 | Ranks | 4; rank 0 hosts the API, ranks 1–3 run `--headless` |
 | Distributed | `--nnodes 4 --node-rank <RANK> --master-addr <rank0-management-ip> --master-port <port>`, `--distributed-executor-backend mp` |
-| Supported MTP mode | **adaptive MTP 2/4, window 32** — `num_speculative_tokens: 4`, `adaptive_speculative_tokens_window: 32`, `method: mtp`, adaptive depths `2,4` (`VLLM_SPARK_MTP_MODE_ID=adaptive-mtp2-4-window32`). Fixed-K MTP and MTP-off are **not** part of this matrix. See TBD-9 for the determinism consequence. |
+| Supported MTP mode | **adaptive MTP 2/4, window 32 with true selected-depth drafting** — `num_speculative_tokens: 4`, `adaptive_speculative_tokens_window: 32`, `method: mtp`, adaptive depths `2,4`, `SPARK_ADAPTIVE_MTP_CONTROL=1`, `SPARK_GLM52_MTP_INDEX_REUSE=1`, and `VLLM_SPARK_TRUE_ADAPTIVE_DRAFT=1` (`VLLM_SPARK_MTP_MODE_ID=adaptive-mtp2-4-window32`). A K2 decision must execute only two draft steps, not compute K4 and truncate it. Fixed-K MTP and MTP-off are **not** part of this matrix. See TBD-9 for the determinism consequence. |
 | Max context | `--max-model-len 458752` |
 | Batching | `--max-num-batched-tokens 4096`, `--max-num-seqs 8` (Q40 ABI cap: max query rows = seqs x (K+1) = 40) |
 | KV cache | `--kv-cache-dtype nvfp4_ds_mla`, `--kv-cache-memory-bytes 4600000000` (4.6 GB/rank), per-token scale mode |

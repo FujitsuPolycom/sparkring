@@ -120,7 +120,9 @@ measurement, but that comparison spans separate windows and is indicative,
 not a sealed A/B.
 
 **Adaptive MTP.** The checkpoint's MTP draft head proposes 2 or 4 tokens per
-round, switching depth on a 32-round acceptance window. In the best observed
+round, switching depth on a 32-round acceptance window. The public launch
+enables true selected-depth drafting, so a K2 decision executes only two draft
+steps rather than computing four and discarding the unused suffix. In the best observed
 structured-code window (a 10-second server-side peak of 43.0 aggregate tok/s
 at C2), mean acceptance length was 4.30 with 82.5% draft acceptance.
 

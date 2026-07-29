@@ -30,6 +30,9 @@ def test_example_produces_four_safe_start_actions():
         assert site.runtime.container_image in action.argv
         assert "SPARKRING_IMAGE_DIGEST=" + site.runtime.container_image_digest in action.argv
         assert "B12X_MLA_SPARSE" in action.argv
+        assert "SPARK_ADAPTIVE_MTP_CONTROL=1" in action.argv
+        assert "SPARK_GLM52_MTP_INDEX_REUSE=1" in action.argv
+        assert "VLLM_SPARK_TRUE_ADAPTIVE_DRAFT=1" in action.argv
         assert (
             f"{site.paths.jit_cache_dir}:/cache/jit"
             in action.argv
