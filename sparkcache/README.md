@@ -16,6 +16,11 @@ LMCache uses — with a design specific to DCP-sharded serving.
 ## Dependency surface
 
 - **vLLM V1** with the KV-Connector-V1 interface (`KVConnectorBase_V1`)
+- The public compatibility target is
+  `vllm-project/vllm@fcc614141e5e9ab18cb304c476f7feed2a9552e3`
+  plus the two fail-closed patches in
+  [`../runtime/patches/vllm`](../runtime/patches/vllm). They provide
+  asynchronous-load rollback and the connector-specific safe VMM exemption.
 - **Decode context parallelism** (`--decode-context-parallel-size N`)
 - A local filesystem path per rank (NVMe strongly recommended)
 - **Any interconnect — or none.** No RDMA, no switch topology, no network
@@ -40,15 +45,21 @@ one drive.
 - Content-addressed chunks, per-record SHA-256, identity pinning
   model/quant/TP/DCP/shard-rank/chunk geometry. An entry can only restore
   into the exact configuration that wrote it.
-- **Quorum admission:** each rank reports the digests it has *verified* it
-  can serve; the scheduler offers a restore only when every rank confirms.
-  A rank whose integrity sweep finds damage stops confirming, so a
-  corrupted entry is silently withdrawn and the request re-prefills.
-- **Integrity sweep** at worker startup and after every store verifies
-  each held entry off the request path.
+- **Manifest-last publication:** immutable chunks are fsynced and published
+  before the fsynced manifest becomes visible. A digest enters quorum only
+  after that commit completes.
+- **Metadata-only startup discovery:** workers validate manifest identity,
+  descriptor geometry, and referenced chunk existence/size without reading
+  every cached payload at startup.
+- **Quorum admission:** each rank reports structurally compatible digests;
+  the scheduler offers a restore only when every rank confirms.
+- **Restore is the payload-integrity boundary:** every selected chunk is
+  read and SHA-256 verified before restored state is released.
 - On a load failure the request finishes cleanly (no wrong output ever
   served) and the entry self-heals: invalidated, corrupt chunks purged,
   next identical request re-prefills and republishes.
+- `sweep_integrity()` remains an explicit payload-reading diagnostic. It
+  is not run after every store or during normal startup.
 - No physical-slot coordinates, block tables, CUDA pointers, or transport
   sequence numbers are ever persisted — only logical, portable records.
 
@@ -56,9 +67,13 @@ one drive.
 
 | File | Role |
 |---|---|
-| `spark_context_cache_connector.py` | the KV-Connector-V1 connector (store, restore, quorum, sweep) |
+| `spark_context_cache_connector.py` | KV-Connector-V1 async store/restore, discovery, quorum, and diagnostics |
 | `spark_context_cache_codec.py` | pure DCP shard math + record packing (no vllm/torch imports) |
 | `spark_context_cache_store.py` | fail-closed loader shim for the storage engine |
+| `spark_context_cache_native_placement.py` | attested native-placement adapter and parked-request state machine |
+| `spark_context_cache_native_restore.py` | bounded parallel read/hash plus native placement orchestration |
+| `spark_cache_native.py` | strict dependency-free ctypes ABI binding |
+| `native/` | reproducible C++/CUDA native-placement source, CMake build, and ABI tests |
 | `persistent_context_cache/cache_manifest.py` | content-addressed manifest engine |
 | `test_spark_context_cache_connector.py` | GPU-free connector suite (vLLM stubbed, CPU torch) |
 | `persistent_context_cache/test_cache_manifest.py` | storage-engine suite |
@@ -66,8 +81,16 @@ one drive.
 Run the tests from this directory:
 
 ```bash
-python -m pytest test_spark_context_cache_connector.py persistent_context_cache/test_cache_manifest.py -q
+python -m pytest \
+  test_spark_context_cache_connector.py \
+  persistent_context_cache/test_cache_manifest.py \
+  test_spark_context_cache_native_placement.py \
+  test_spark_context_cache_native_restore.py \
+  native/tests/test_ctypes_binding.py \
+  native/tests/test_layout_contract.py -q
 ```
+
+The current public package passes **99 GPU-free tests**.
 
 ## Enabling
 
@@ -76,6 +99,13 @@ names `spark_context_cache_connector` (the module must be importable, e.g.
 this directory on `PYTHONPATH`). Rank-local store root defaults to
 `/cache/context` (`SPARK_CONTEXT_CACHE_ROOT`). Without the flag, serving
 is byte-identical to a no-cache runtime.
+
+Native direct placement is opt-in. Build `native/`, then set
+`SPARK_CONTEXT_CACHE_NATIVE_RESTORE=1`,
+`SPARK_CONTEXT_CACHE_NATIVE_LIBRARY` to the resulting shared library, and
+`SPARK_CONTEXT_CACHE_NATIVE_LIBRARY_SHA256` to its SHA-256. The connector
+fails closed on an absent library, hash mismatch, unsupported tensor
+layout, or ABI mismatch.
 
 ## Adopting on your (switched or switchless) cluster
 
@@ -104,24 +134,62 @@ or any particular interconnect.
 - Concurrency stress: 16 mixed requests, zero failures, cached ~10x faster
   than novel prefills
 
+## Feature status
+
+| State | Capability |
+|---|---|
+| **Published here** | DCP-rank-local NVMe shards with zero cache network traffic |
+| **Published here** | Target CKV, sparse-indexer state, and MTP draft-KV records |
+| **Published here** | Content-addressed immutable chunks and manifest-last durable publication |
+| **Published here** | Per-record SHA-256 plus model/quantization/TP/DCP/rank/geometry identity pinning |
+| **Published here** | All-rank quorum admission, corruption withdrawal, clean miss/re-prefill, and self-healing invalidation |
+| **Published here** | Portable logical records: no CUDA pointers, physical slots, block tables, or transport sequence numbers on disk |
+| **Published + live v47** | Asynchronous restore: only the restoring request parks while background load and verification run |
+| **Published + live v47** | Optional checksum-attested native direct placement with bounded parallel reads/hashing |
+| **Published + live v47 candidate** | Ownership-safe snapshot followed by asynchronous pack/hash/write/manifest commit |
+| **Published v48-next; not deployed** | Metadata-only startup discovery; payload hashing moves to the restore integrity boundary |
+| **Planned** | Prefix-aware partial restore, chunk reuse when conversations grow, background-I/O preemption, and a leased/staged snapshot path |
+
 ## Known limits
 
-- The restore currently runs synchronously on the worker's main thread
-  (multi-second for very large contexts). If your runtime enforces tight
-  deadlines on in-flight async collectives, size them to cover your
-  worst-case restore, or the stall can be misread as a hang. An
-  asynchronous restore (request parks while a background thread loads and
-  verifies; main-thread cost drops to sub-millisecond) is implemented and
-  in validation, not yet landed here.
-- An adversarially-timed on-disk corruption landing between an integrity
-  sweep and the next request costs one failed request before the entry
-  retires and re-prefills (no wrong output is served). Closing that
-  same-request window needs pre-admission re-verification; the runtime's
-  own `recompute` fallback proved unsound under DCP + async scheduling on
-  this deployment and is not used.
+- This directory now contains **v48-next source**. The active four-Spark
+  deployment remains the checksum-pinned v47 bundle; metadata-only startup
+  discovery is the only core connector change beyond that live bundle.
+- The live reference runtime is
+  `0.11.2.dev279+eldritch.final.fcc6141.b12x284a2ea.fi25dd814.cu132.20260626`.
+  It contains a larger sparse-MLA/GB10 overlay that is not published here.
+  The two public SparkCache patches reproduce their required semantics against
+  official upstream at the pinned commit; byte-identical reproduction of the
+  complete reference runtime is not claimed.
+- A live 393K-token v47 store moved packing, hashing, NVMe writes, and
+  manifest publication into the background, but the mandatory
+  ownership-safe GPU-to-CPU snapshot still took **3.63-4.16 seconds per
+  rank**. Background commit took **11.23-15.55 seconds**.
+- That live commit-overlap probe served an unrelated decode correctly, but
+  missed the strict interference budget: TTFT regressed by 1.30 s and
+  post-first-token decode duration by 1.78 s. There was no full engine
+  freeze and no completion-time integrity sweep, but activity-aware I/O
+  preemption is still needed.
+- A separate no-reload, carrier-first 32K probe isolated the foreground
+  snapshot itself. The four-rank snapshot union was **1.164 s**; an unrelated
+  1,023-total-token decode emitted both before and after it, zero requests
+  waited, and API health remained 200. Its maximum inter-event gap during the
+  snapshot (6.238 s) did not exceed the simultaneous-prefill gap immediately
+  beforehand (6.874 s). Because no stream event landed inside the 1.164-second
+  window, this resolves no *additional* snapshot stall above prefill
+  interference; it does not claim a literally pause-free snapshot.
+- Metadata-only discovery intentionally does not read same-size payload
+  corruption at startup. Restore detects it before releasing state,
+  withdraws the entry, and cleanly re-prefills.
+- Matching remains exact full-prefix/full-span. Longest-stored-prefix
+  restore for a grown conversation is designed but not integrated.
+- The cache has no integrated capacity policy, TTL/LRU, or orphan-chunk
+  collector yet.
 
 ## Status
 
 Research pre-release, same caveats as the rest of SparkRing: no stable
-API, flags and layouts may change without notice. Licensed Apache-2.0 with
-the repository.
+API, flags and layouts may change without notice. The Python/native source
+and GPU-free tests are reproducible here; v48-next still needs a sealed
+four-node live gate before replacing v47. Licensed Apache-2.0 with the
+repository.

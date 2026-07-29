@@ -13,6 +13,13 @@ This is the complete, in-order bring-up: cabling, OS prerequisites, fabric netwo
 > This public snapshot does **not** include the launch/orchestration layer. The root `scripts/` orchestrator (`run-glm52-graph-window.ps1` and friends), the serving entrypoint `serve-glm52-trace.sh` (which applies the in-container vLLM source patches), and `glm52_load_format_preflight.py` all live in the maintainer's private archive, because they are coupled to a private vLLM fork build (Section 0.1).
 >
 > Concretely: **Stages 1-4, 6, and 7 are fully executable from this tree. Stages 5, 8, and 9 document the deployed system for transparency** and require either the maintainer's artifacts or your own adaptation to your vLLM build. Those stages are kept — marked, not deleted — so the full deployed procedure stays on record. Any path in this guide marked *(private archive, not in this snapshot)* is not in this repository.
+>
+> **SparkCache exception:** the complete current Python implementation, native
+> placement source, GPU-free tests, and its two independently written
+> upstream-vLLM compatibility patches are published under `sparkcache/` and
+> `runtime/patches/vllm/`. Those patches apply fail-closed to the official
+> pinned vLLM commit. This narrows the private-runtime gap for SparkCache; it
+> does not publish the broader GLM/SM121 serving overlay or orchestration.
 
 ### 0.1 What was actually deployed (honesty statement)
 

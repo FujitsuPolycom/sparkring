@@ -90,13 +90,9 @@ class CacheIdentity:
                 "boundary_hidden_policy must be 'persisted' or 'live_forward'"
             )
         if self.draft_kv_policy not in ("separate", "colocated_target"):
-            raise ValueError(
-                "draft_kv_policy must be 'separate' or 'colocated_target'"
-            )
+            raise ValueError("draft_kv_policy must be 'separate' or 'colocated_target'")
         if not -1 <= self.dcp_shard_rank < self.dcp_degree:
-            raise ValueError(
-                "dcp_shard_rank must be -1 or in [0, dcp_degree)"
-            )
+            raise ValueError("dcp_shard_rank must be -1 or in [0, dcp_degree)")
 
     @property
     def required_records(self) -> frozenset["StateRecord"]:
@@ -161,9 +157,7 @@ def _require_complete_chunk(
     missing = required - chunk.records.keys()
     if missing:
         names = ", ".join(sorted(item.value for item in missing))
-        raise IncompleteEntry(
-            f"incomplete speculative cache chunk: missing {names}"
-        )
+        raise IncompleteEntry(f"incomplete speculative cache chunk: missing {names}")
 
 
 def _required_records_for_identity_wire(
@@ -197,7 +191,7 @@ def _canonical_json(value: Any) -> bytes:
     ).encode("ascii")
 
 
-def _sha256(value: bytes) -> str:
+def _sha256(value: bytes | bytearray | memoryview) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
@@ -237,12 +231,14 @@ def _validate_digest(value: str, field: str) -> None:
 
 
 def _encode_chunk(chunk: ContextChunk) -> bytes:
-    payload = bytearray()
     records: list[dict[str, Any]] = []
+    ordered_records: list[bytes] = []
+    payload_bytes = 0
     for kind in sorted(chunk.records, key=lambda item: item.value):
         value = chunk.records[kind]
-        offset = len(payload)
-        payload.extend(value)
+        offset = payload_bytes
+        payload_bytes += len(value)
+        ordered_records.append(value)
         records.append(
             {
                 "kind": kind.value,
@@ -259,7 +255,12 @@ def _encode_chunk(chunk: ContextChunk) -> bytes:
             "records": records,
         }
     )
-    return _CHUNK_PREFIX.pack(_CHUNK_MAGIC, FORMAT_ABI, len(header)) + header + payload
+    # bytes.join calculates the final size once and copies every component
+    # directly into that allocation. The v1 encoder first copied records into
+    # a payload bytearray and then copied that payload during concatenation.
+    # Offsets/header/checksums remain byte-identical.
+    prefix = _CHUNK_PREFIX.pack(_CHUNK_MAGIC, FORMAT_ABI, len(header))
+    return b"".join((prefix, header, *ordered_records))
 
 
 def _strict_keys(value: Mapping[str, Any], expected: set[str], label: str) -> None:
@@ -271,7 +272,11 @@ def _strict_keys(value: Mapping[str, Any], expected: set[str], label: str) -> No
         )
 
 
-def _decode_chunk(encoded: bytes) -> ContextChunk:
+def _decode_chunk(
+    encoded: bytes,
+    *,
+    verify_record_checksums: bool = True,
+) -> ContextChunk:
     if len(encoded) < _CHUNK_PREFIX.size:
         raise CacheFormatError("truncated chunk prefix")
     magic, abi, header_length = _CHUNK_PREFIX.unpack_from(encoded)
@@ -291,11 +296,12 @@ def _decode_chunk(encoded: bytes) -> ContextChunk:
         {"format_abi", "logical_start", "logical_end", "records"},
         "chunk header",
     )
-    if header["format_abi"] != FORMAT_ABI or not isinstance(
-        header["records"], list
-    ):
+    if header["format_abi"] != FORMAT_ABI or not isinstance(header["records"], list):
         raise CacheFormatError("unsupported chunk header")
-    raw_payload = encoded[header_end:]
+    # Keep the encoded chunk as the backing store while descriptors are
+    # validated. Each record is copied exactly once into its immutable bytes
+    # snapshot instead of first copying the whole payload and then slicing it.
+    raw_payload = memoryview(encoded)[header_end:]
     records: dict[StateRecord, bytes] = {}
     expected_offset = 0
     for item in header["records"]:
@@ -308,17 +314,14 @@ def _decode_chunk(encoded: bytes) -> ContextChunk:
             length = int(item["length"])
         except (ValueError, TypeError) as error:
             raise CacheFormatError("invalid record descriptor") from error
-        if (
-            kind in records
-            or offset < 0
-            or length < 0
-            or offset != expected_offset
-        ):
+        if kind in records or offset < 0 or length < 0 or offset != expected_offset:
             raise CacheFormatError("duplicate or invalid record descriptor")
         value = raw_payload[offset : offset + length]
-        if len(value) != length or _sha256(value) != item["sha256"]:
+        if len(value) != length or (
+            verify_record_checksums and _sha256(value) != item["sha256"]
+        ):
             raise CacheFormatError("record payload checksum mismatch")
-        records[kind] = bytes(value)
+        records[kind] = value.tobytes()
         expected_offset += length
     if expected_offset != len(raw_payload):
         raise CacheFormatError("chunk payload contains unclaimed bytes")
@@ -338,15 +341,8 @@ class ManifestStore:
     def __init__(self, root: Path | str) -> None:
         self.root = Path(root)
 
-    def _manifest_path(
-        self, identity: CacheIdentity, context_digest: str
-    ) -> Path:
-        return (
-            self.root
-            / "manifests"
-            / identity.storage_key
-            / f"{context_digest}.json"
-        )
+    def _manifest_path(self, identity: CacheIdentity, context_digest: str) -> Path:
+        return self.root / "manifests" / identity.storage_key / f"{context_digest}.json"
 
     def commit(
         self,
@@ -366,10 +362,7 @@ class ManifestStore:
             token_count = chunk.logical_end - chunk.logical_start
             if token_count > identity.chunk_tokens:
                 raise ValueError("chunk exceeds identity chunk_tokens")
-            if (
-                chunk_index != len(chunks) - 1
-                and token_count != identity.chunk_tokens
-            ):
+            if chunk_index != len(chunks) - 1 and token_count != identity.chunk_tokens:
                 raise ValueError("only the final context chunk may be partial")
             _require_complete_chunk(chunk, identity.required_records)
             encoded = _encode_chunk(chunk)
@@ -407,11 +400,14 @@ class ManifestStore:
         context_digest: str,
         *,
         verify_chunks: bool = True,
+        verify_chunk_metadata: bool = False,
     ) -> LookupResult:
         """With verify_chunks=False only the manifest itself is validated
-        (existence, identity, descriptor structure); chunk payloads are not
-        read. Restore always re-reads and re-hashes every chunk, so a
-        probe-mode hit can still degrade to a clean miss at restore."""
+        (existence, identity, descriptor structure). Setting
+        verify_chunk_metadata also requires each referenced chunk file to
+        exist at its declared size, but still does not read payload bytes.
+        Restore always re-reads and re-hashes every chunk, so a probe-mode hit
+        can still degrade to a clean miss at restore."""
         try:
             _validate_digest(context_digest, "context_digest")
             encoded = self._manifest_path(identity, context_digest).read_bytes()
@@ -429,17 +425,24 @@ class ManifestStore:
                 },
                 "manifest",
             )
+            expected_identity = identity.to_wire()
             if (
-                manifest["format_abi"] != FORMAT_ABI
-                or manifest["identity"] != identity.to_wire()
+                type(manifest["format_abi"]) is not int
+                or manifest["format_abi"] != FORMAT_ABI
+                or manifest["identity"] != expected_identity
+                or _canonical_json(manifest["identity"])
+                != _canonical_json(expected_identity)
                 or manifest["context_digest"] != context_digest
             ):
                 return LookupResult(False, "incompatible")
             chunks = manifest["chunks"]
             if not isinstance(chunks, list) or not chunks:
                 raise CacheFormatError("manifest has no chunks")
+            committed_tokens = manifest["committed_tokens"]
+            if type(committed_tokens) is not int or committed_tokens <= 0:
+                raise CacheFormatError("committed_tokens must be a positive integer")
             expected_start = 0
-            for descriptor in chunks:
+            for chunk_index, descriptor in enumerate(chunks):
                 if not isinstance(descriptor, dict):
                     raise CacheFormatError("chunk descriptor is not an object")
                 _strict_keys(
@@ -454,38 +457,59 @@ class ManifestStore:
                 )
                 digest = descriptor["sha256"]
                 _validate_digest(digest, "chunk sha256")
+                encoded_bytes = descriptor["bytes"]
+                logical_start = descriptor["logical_start"]
+                logical_end = descriptor["logical_end"]
+                if type(encoded_bytes) is not int or encoded_bytes <= 0:
+                    raise CacheFormatError("chunk bytes must be a positive integer")
                 if (
-                    descriptor["logical_start"] != expected_start
-                    or descriptor["logical_end"] <= expected_start
+                    type(logical_start) is not int
+                    or type(logical_end) is not int
+                    or logical_start != expected_start
+                    or logical_end <= expected_start
+                ):
+                    raise CacheFormatError("non-contiguous logical chunk range")
+                token_count = logical_end - logical_start
+                if token_count > identity.chunk_tokens or (
+                    chunk_index != len(chunks) - 1
+                    and token_count != identity.chunk_tokens
                 ):
                     raise CacheFormatError(
-                        "non-contiguous logical chunk range"
+                        "chunk range disagrees with identity geometry"
                     )
                 if verify_chunks:
                     encoded_chunk = (
                         self.root / "chunks" / f"{digest}.spcc"
                     ).read_bytes()
                     if (
-                        len(encoded_chunk) != descriptor["bytes"]
+                        len(encoded_chunk) != encoded_bytes
                         or _sha256(encoded_chunk) != digest
                     ):
                         raise CacheFormatError("chunk checksum mismatch")
-                    chunk = _decode_chunk(encoded_chunk)
+                    # The descriptor digest authenticates the complete encoded
+                    # chunk: prefix, header (including record digests and
+                    # offsets), and every payload byte. Re-hashing each record
+                    # after that whole-chunk match is a redundant full-data
+                    # pass. Standalone _decode_chunk callers remain strict by
+                    # default.
+                    chunk = _decode_chunk(encoded_chunk, verify_record_checksums=False)
                     try:
-                        _require_complete_chunk(
-                            chunk, identity.required_records
-                        )
+                        _require_complete_chunk(chunk, identity.required_records)
                     except IncompleteEntry as error:
                         raise CacheFormatError(str(error)) from error
                     if (
-                        chunk.logical_start != descriptor["logical_start"]
-                        or chunk.logical_end != descriptor["logical_end"]
+                        chunk.logical_start != logical_start
+                        or chunk.logical_end != logical_end
                     ):
+                        raise CacheFormatError("chunk range disagrees with descriptor")
+                elif verify_chunk_metadata:
+                    chunk_path = self.root / "chunks" / f"{digest}.spcc"
+                    if chunk_path.stat().st_size != encoded_bytes:
                         raise CacheFormatError(
-                            "chunk range disagrees with descriptor"
+                            "chunk file size disagrees with descriptor"
                         )
-                expected_start = descriptor["logical_end"]
-            if expected_start != manifest["committed_tokens"]:
+                expected_start = logical_end
+            if expected_start != committed_tokens:
                 raise CacheFormatError("committed token count mismatch")
             return LookupResult(
                 True,
@@ -499,7 +523,11 @@ class ManifestStore:
             return LookupResult(False, "corrupt")
 
     def invalidate(
-        self, identity: CacheIdentity, context_digest: str
+        self,
+        identity: CacheIdentity,
+        context_digest: str,
+        *,
+        verify_chunk_payloads: bool = True,
     ) -> bool:
         """Remove a manifest so a damaged entry can be republished.
 
@@ -509,6 +537,11 @@ class ManifestStore:
         make every future publish of that content raise CommitConflict,
         and the entry could never repair itself. Chunks that still verify
         are left in place - they are valid, shared, and reusable.
+
+        Metadata-only callers may set verify_chunk_payloads=False. That mode
+        removes only the manifest: an unverified descriptor is never
+        sufficient authority to delete a content-addressed chunk that may be
+        shared by another healthy manifest.
         """
         manifest_path = self._manifest_path(identity, context_digest)
         try:
@@ -530,6 +563,8 @@ class ManifestStore:
             if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
                 continue
             chunk_path = self.root / "chunks" / f"{digest}.spcc"
+            if not verify_chunk_payloads:
+                continue
             try:
                 healthy = _sha256(chunk_path.read_bytes()) == digest
             except OSError:
@@ -545,9 +580,7 @@ class ManifestStore:
         except (OSError, ValueError):
             return False
 
-    def restore(
-        self, lookup: LookupResult
-    ) -> tuple[ContextChunk, ...] | None:
+    def restore(self, lookup: LookupResult) -> tuple[ContextChunk, ...] | None:
         if not lookup.is_hit or lookup._manifest is None:
             raise ValueError("cannot restore a cache miss")
         required = _required_records_for_identity_wire(
@@ -564,16 +597,18 @@ class ManifestStore:
             )
             digest = descriptor["sha256"]
             _validate_digest(digest, "chunk sha256")
-            encoded = (
-                self.root / "chunks" / f"{digest}.spcc"
-            ).read_bytes()
-            if (
-                len(encoded) != descriptor["bytes"]
-                or _sha256(encoded) != digest
-            ):
+            encoded = (self.root / "chunks" / f"{digest}.spcc").read_bytes()
+            if len(encoded) != descriptor["bytes"] or _sha256(encoded) != digest:
                 raise CacheFormatError("chunk checksum mismatch")
-            chunk = _decode_chunk(encoded)
+            # The outer descriptor digest above already covers the complete
+            # encoded chunk. Avoid hashing the same payload a second time.
+            chunk = _decode_chunk(encoded, verify_record_checksums=False)
             _require_complete_chunk(chunk, required)
+            if (
+                chunk.logical_start != descriptor["logical_start"]
+                or chunk.logical_end != descriptor["logical_end"]
+            ):
+                raise CacheFormatError("chunk range disagrees with descriptor")
             return chunk
 
         try:

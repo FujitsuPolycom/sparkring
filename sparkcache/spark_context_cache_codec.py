@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import hashlib
 import struct
+import sys
+from array import array
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
@@ -29,6 +31,23 @@ _POSITION_STRUCT = struct.Struct("<I")
 class CodecError(ValueError):
     """Deterministic packing/unpacking failure. Callers convert this to a
     fail-closed cache miss; it must never crash a serving process."""
+
+
+def _pack_u32(values: Sequence[int], label: str) -> bytes:
+    """Pack unsigned 32-bit integers in the frozen little-endian ABI.
+
+    ``array`` performs the conversion in C, avoiding one Python ``bytes``
+    allocation per token/position on large contexts.
+    """
+    try:
+        packed = array("I", values)
+    except (OverflowError, TypeError, ValueError) as error:
+        raise CodecError(f"{label} must contain unsigned 32-bit integers") from error
+    if packed.itemsize != _POSITION_STRUCT.size:
+        raise CodecError("platform unsigned-int width does not match cache ABI")
+    if sys.byteorder != "little":
+        packed.byteswap()
+    return packed.tobytes()
 
 
 def owned_positions(
@@ -57,8 +76,7 @@ def local_slots_for_positions(
         ordinal = p // dcp_degree
         if ordinal >= capacity:
             raise CodecError(
-                f"position {p} ordinal {ordinal} exceeds allocated"
-                f" capacity {capacity}"
+                f"position {p} ordinal {ordinal} exceeds allocated capacity {capacity}"
             )
         block = block_ids[ordinal // block_size]
         slots.append(block * block_size + ordinal % block_size)
@@ -69,10 +87,11 @@ def context_digest(token_ids: Sequence[int], identity_salt: str) -> str:
     """Content digest for a block-aligned prompt span. The identity salt
     binds the digest to the cache identity so distinct configurations can
     never alias to the same key even inside one store root."""
-    payload = identity_salt.encode("ascii") + b"\x00"
-    payload += b"".join(int(t).to_bytes(4, "little", signed=False)
-                        for t in token_ids)
-    return hashlib.sha256(payload).hexdigest()
+    digest = hashlib.sha256()
+    digest.update(identity_salt.encode("ascii"))
+    digest.update(b"\x00")
+    digest.update(_pack_u32(token_ids, "token_ids"))
+    return digest.hexdigest()
 
 
 def chunk_count(span_tokens: int) -> int:
@@ -121,14 +140,11 @@ def build_layer_plans(
     )
     kinds = {plan.record_kind for plan in plans}
     missing = (
-        {"target_ckv", "sparse_indexer", "mtp_draft_kv"}
-        - kinds
-        - set(allow_missing)
+        {"target_ckv", "sparse_indexer", "mtp_draft_kv"} - kinds - set(allow_missing)
     )
     if missing:
         raise CodecError(
-            "no registered cache layer for record kinds: "
-            + ", ".join(sorted(missing))
+            "no registered cache layer for record kinds: " + ", ".join(sorted(missing))
         )
     return plans
 
@@ -136,16 +152,19 @@ def build_layer_plans(
 def pack_positions(positions: Sequence[int]) -> bytes:
     if not positions:
         raise CodecError("a chunk shard must own at least one position")
-    return b"".join(_POSITION_STRUCT.pack(p) for p in positions)
+    return _pack_u32(positions, "positions")
 
 
 def unpack_positions(payload: bytes) -> tuple[int, ...]:
     if not payload or len(payload) % _POSITION_STRUCT.size:
         raise CodecError("malformed positions payload")
-    return tuple(
-        _POSITION_STRUCT.unpack_from(payload, offset)[0]
-        for offset in range(0, len(payload), _POSITION_STRUCT.size)
-    )
+    unpacked = array("I")
+    unpacked.frombytes(payload)
+    if unpacked.itemsize != _POSITION_STRUCT.size:
+        raise CodecError("platform unsigned-int width does not match cache ABI")
+    if sys.byteorder != "little":
+        unpacked.byteswap()
+    return tuple(unpacked)
 
 
 def pack_record(
@@ -169,8 +188,7 @@ def pack_record(
         expected = plan.bytes_per_token * rows
         if len(payload) != expected:
             raise CodecError(
-                f"layer {plan.name} rows are {len(payload)} bytes,"
-                f" expected {expected}"
+                f"layer {plan.name} rows are {len(payload)} bytes, expected {expected}"
             )
         parts.append(payload)
     if not parts:
@@ -193,10 +211,8 @@ def unpack_record(
             continue
         size = plan.bytes_per_token * rows
         if offset + size > len(payload):
-            raise CodecError(
-                f"record {record_kind} truncated at layer {plan.name}"
-            )
-        out[plan.name] = payload[offset:offset + size]
+            raise CodecError(f"record {record_kind} truncated at layer {plan.name}")
+        out[plan.name] = payload[offset : offset + size]
         offset += size
     if not out:
         raise CodecError(f"no layers contribute to {record_kind}")

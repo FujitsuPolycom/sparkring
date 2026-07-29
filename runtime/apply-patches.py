@@ -15,8 +15,7 @@ For every patch, in sorted order per component:
 
 Any mismatch, missing file, missing preimages.json entry, or git-apply
 failure aborts the whole build with a non-zero exit. A component directory
-with no *.patch files (e.g. the gated runtime/patches/vllm/) is a verified
-no-op. Stdlib only.
+with no *.patch files is a verified no-op. Stdlib only.
 """
 
 from __future__ import annotations
@@ -66,20 +65,26 @@ def apply_component(comp_dir: str, site_packages: str, log_fh) -> int:
         target_rel = entry.get("target_path")
         expected_pre = entry.get("preimage_sha256")
         if not target_rel or not expected_pre:
-            fatal(f"preimages.json entry for {patch_name!r} needs "
-                  "'target_path' and 'preimage_sha256'")
+            fatal(
+                f"preimages.json entry for {patch_name!r} needs "
+                "'target_path' and 'preimage_sha256'"
+            )
         target = os.path.join(site_packages, target_rel)
         if not os.path.isfile(target):
             fatal(f"{patch_name}: target missing: {target}")
         actual_pre = sha256_file(target)
         if actual_pre != expected_pre:
-            fatal(f"{patch_name}: preimage mismatch for {target_rel}: "
-                  f"{actual_pre} != expected {expected_pre}")
+            fatal(
+                f"{patch_name}: preimage mismatch for {target_rel}: "
+                f"{actual_pre} != expected {expected_pre}"
+            )
 
         patch_path = os.path.join(comp_dir, patch_name)
         proc = subprocess.run(
             ["git", "apply", "--whitespace=nowarn", os.path.abspath(patch_path)],
-            cwd=site_packages, capture_output=True, text=True,
+            cwd=site_packages,
+            capture_output=True,
+            text=True,
         )
         if proc.returncode != 0:
             fatal(f"{patch_name}: git apply failed:\n{proc.stderr.strip()}")
@@ -98,14 +103,26 @@ def apply_component(comp_dir: str, site_packages: str, log_fh) -> int:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--patches-root", required=True,
-                        help="root dir containing per-component patch dirs")
-    parser.add_argument("--site-packages", required=True,
-                        help="installed tree that patch target paths are relative to")
-    parser.add_argument("--log", default="/var/log/sparkring/patch-apply.jsonl",
-                        help="JSONL log of applied patches")
-    parser.add_argument("--fail-closed", action="store_true",
-                        help="accepted for explicitness; this tool is always fail-closed")
+    parser.add_argument(
+        "--patches-root",
+        required=True,
+        help="root dir containing per-component patch dirs",
+    )
+    parser.add_argument(
+        "--site-packages",
+        required=True,
+        help="installed tree that patch target paths are relative to",
+    )
+    parser.add_argument(
+        "--log",
+        default="/var/log/sparkring/patch-apply.jsonl",
+        help="JSONL log of applied patches",
+    )
+    parser.add_argument(
+        "--fail-closed",
+        action="store_true",
+        help="accepted for explicitness; this tool is always fail-closed",
+    )
     args = parser.parse_args(argv)
 
     if not os.path.isdir(args.patches_root):

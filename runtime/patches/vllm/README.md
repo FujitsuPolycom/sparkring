@@ -1,14 +1,26 @@
-# vLLM patch overlay — intentionally empty (provenance gate)
+# vLLM patch overlay
 
-This directory ships **empty on purpose**. The production reference-lane
-runtime carries a vLLM patch overlay (61 modified + 12 new files, ~12.9k
-lines) that is **withheld pending provenance review**. Until that review
-clears, no `*.patch` files or `preimages.json` are published here, and the
-build's `apply-patches.py` step is a verified no-op for this component.
+This directory publishes the two independently written vLLM compatibility
+patches required by SparkCache:
 
-When the overlay clears review, its patch files land here with per-file
-sha256 pins recorded in `runtime/runtime-lock.json` (`overlays`) and a
-`preimages.json` covering every patch.
+- `010-sparkcache-async-rollback.patch` resets speculative-output placeholder
+  state when an asynchronous KV restore fails and the request is rescheduled.
+- `020-sparkcache-vmm-exemption.patch` permits SparkCache with PyTorch
+  expandable segments because this connector does not register KV-cache GPU
+  memory with an external device.
 
-See `docs/RUNTIME_GAPS.md` and `runtime/README.md` for the full gap
-accounting.
+Both patches are pinned fail-closed to official
+`vllm-project/vllm@fcc614141e5e9ab18cb304c476f7feed2a9552e3`.
+`preimages.json` records the exact upstream file hashes. The public runtime
+builder verifies each preimage before applying a patch and refuses fuzz or an
+unexpected source tree.
+
+The patches were also exercised in the four-Spark reference runtime, whose
+larger private/community-derived overlay changes the surrounding file hashes.
+The public patches therefore reproduce the two SparkCache semantics against
+official upstream; they do not claim that the complete reference runtime is
+byte-identical to a public build.
+
+The remaining reference vLLM overlay (sparse-MLA/GB10, low-bit KV formats,
+DSpark integration, and related runtime work) remains withheld pending
+provenance cleanup. See `docs/RUNTIME_GAPS.md` and `runtime/README.md`.

@@ -71,6 +71,15 @@
     "config_sha256": "ffd30e72ab8bb7e8ad560f2aaab03cc595f3106f0acf793ef96eedaf90f66d69",
     "note": "revision is pinned to an immutable HF commit hash at build time; config.json of the pinned revision must hash to config_sha256."
   },
-  "overlays": [],
-  "overlays_comment": "The production runtime carries a vLLM patch overlay (61 modified + 12 new files, ~12.9k lines) that is NOT yet shippable pending provenance cleanup. runtime/patches/vllm/ ships empty with a README gate note; when the overlay clears review, its patch files are listed here with per-file sha256 pins."
+  "overlays": [
+    {
+      "path": "runtime/patches/vllm/010-sparkcache-async-rollback.patch",
+      "sha256": "7a57689cc02e9d55ae9ace14f49e8031dbffa308a84f77590b6b6aa5144ad29d"
+    },
+    {
+      "path": "runtime/patches/vllm/020-sparkcache-vmm-exemption.patch",
+      "sha256": "5a16f21bdca2a2c2ab24bcca87efca015888a92a93857214b582e9838d61054c"
+    }
+  ],
+  "overlays_comment": "Only the two independently written SparkCache compatibility patches are public and pinned here. The production runtime's remaining vLLM overlay (61 modified + 12 new files, ~12.9k lines) is not yet shippable pending provenance cleanup."
 }

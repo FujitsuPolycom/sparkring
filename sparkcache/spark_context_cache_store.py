@@ -3,7 +3,7 @@
 The engine is single-sourced at
 ``spark_transport/experiments/persistent_context_cache/cache_manifest.py``.
 This shim resolves it relative to this file so the same import works from
-the repository tree and from a staged deployment bundle (both preserve the
+the repository tree and from a staged v41 bundle (both preserve the
 ``spark_transport/`` layout). Import failure is a hard error: a build that
 stages the connector without its storage engine must not come up.
 """
@@ -19,10 +19,7 @@ _CANDIDATES = (
     # Staged bundle layout: engine package beside the flat overlay modules.
     _HERE.parent / "persistent_context_cache" / "cache_manifest.py",
     # Repository layout.
-    _HERE.parents[2]
-    / "experiments"
-    / "persistent_context_cache"
-    / "cache_manifest.py",
+    _HERE.parents[2] / "experiments" / "persistent_context_cache" / "cache_manifest.py",
 )
 _ENGINE = next((path for path in _CANDIDATES if path.is_file()), None)
 
@@ -32,9 +29,7 @@ if _ENGINE is None:
         + ", ".join(str(path) for path in _CANDIDATES)
     )
 
-_spec = importlib.util.spec_from_file_location(
-    "spark_context_cache_engine", _ENGINE
-)
+_spec = importlib.util.spec_from_file_location("spark_context_cache_engine", _ENGINE)
 assert _spec is not None and _spec.loader is not None
 _module = importlib.util.module_from_spec(_spec)
 sys.modules.setdefault("spark_context_cache_engine", _module)

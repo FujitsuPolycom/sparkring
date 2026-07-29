@@ -15,7 +15,8 @@ divergence from upstream is a reviewable, hash-verified patch. See
 
 - **Public lane (this directory):** everything needed to rebuild the *public
   ancestry* of the runtime — pinned upstream commits, the frozen pip set, the
-  in-repo NCCL patch series, `spark_transport`. Anyone can run it.
+  in-repo NCCL patch series, `spark_transport`, and the two independently
+  written SparkCache compatibility patches. Anyone can run it.
 - **Reference lane:** the maintainer's vLLM patch overlay (61 modified + 12
   new files, ~12.9k lines) that reproduces the exact production behavior
   (SM121 sparse-MLA backend, low-bit MLA KV record formats, etc.). It is
@@ -23,10 +24,11 @@ divergence from upstream is a reviewable, hash-verified patch. See
   (~0.8k unattributed lines must be attributed or rewritten first —
   `docs/RUNTIME_GAPS.md`, "Action items").
 
-Consequently `runtime/patches/vllm/` **ships empty** (gate note in its
-README). A public-lane build today yields stock upstream vLLM at the pinned
-commit — correct ancestry, but the reference behavior still requires the
-maintainer patch series.
+Consequently `runtime/patches/vllm/` contains only the two SparkCache patches.
+They apply fail-closed to official upstream vLLM at the pinned commit and do
+not reproduce the full reference overlay. A public-lane build therefore has
+SparkCache's scheduler rollback and safe VMM exemption, while the reference
+model-serving behavior still requires the maintainer patch series.
 
 ## Pins (authoritative table)
 
@@ -82,8 +84,10 @@ write it back into the lock. **It never auto-mutates the lock.**
 
 ## Status
 
-- `patches/vllm/` — **empty, gated** on provenance review of the private
-  overlay. Reference-lane behavior still requires the maintainer patch series.
+- `patches/vllm/` — two independently written SparkCache compatibility
+  patches are published and preimage-pinned. The larger private/community
+  overlay remains gated on provenance review; reference-lane model behavior
+  still requires that maintainer patch series.
 - Base image digests, model HF revision, DeepGEMM full SHA, built-image
   digest — **placeholders (`pending`)** until pinned at first successful build.
 - `runtime-lock.json`, `apply-patches.py`, `generate-manifest.py`,
