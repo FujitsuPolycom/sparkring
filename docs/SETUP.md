@@ -188,6 +188,29 @@ sudo shutdown now
 >
 > Expected: `ibdev2netdev` lists `rocep1s0f0 ... enp1s0f0np0 (Up)` and `rocep1s0f1 ... enp1s0f1np1 (Up)`; both `Speed:` lines read exactly `200000Mb/s`. If a link is down or slower, see Troubleshooting T1.
 
+### 1.5 Bootstrap management, then reserve the 10GbE diagonals
+
+You may temporarily use a direct 10GbE link to bootstrap SSH, copy keys, or
+repair management networking. Before serving, move ordinary management onto a
+separate Wi-Fi 7, USB Ethernet, wired-LAN, or Tailscale interface:
+
+1. configure the permanent management interface and address;
+2. prove passwordless SSH and reboot recovery through that address;
+3. set each rank's `management.interface`, `management.address`, and
+   `ssh_target` in `scripts/config/site.yaml`;
+4. run preflight and confirm `NCCL_SOCKET_IFNAME` and `GLOO_SOCKET_IFNAME`
+   resolve to that management interface;
+5. remove any default route, DNS, or ordinary management workload from the
+   10GbE diagonal.
+
+The two diagonal links may remain configured as isolated point-to-point
+subnets for future SparkCache replication, control-sideband, or experimental
+collective work. They are not part of the reference serving fabric and must
+not be added to `NCCL_IB_HCA`, `SPARK_TP4_DEVICE0/1`, or the four-edge 200GbE
+ring topology. Experimental use should be feature-gated and fail open: if a
+diagonal is absent or slow, inference must continue on the qualified 200GbE
+ring.
+
 ---
 
 ## Stage 2 — OS / driver / CUDA prerequisites (per node)
@@ -215,12 +238,46 @@ All steps **[DOCUMENTED: private archive new-node-provisioning.md §§1-4 and fa
 
 4. **SSH mesh.**
 
+   Fill in `scripts/config/site.yaml`, then use the repository's verifier:
+
    ```bash
-   ssh-keygen -t ed25519
-   ssh-copy-id <userM>@<MGMT_IP_M>   # run from each node/host, once per peer  [INFERRED: standard procedure]
+   python scripts/verify_ssh_mesh.py \
+     --site scripts/config/site.yaml \
+     --scope fanout
    ```
 
-   Exchange public keys bidirectionally among all four nodes **and** with the control host that will run the orchestrator (Stage 8). Verify passwordless `ssh <userN>@<MGMT_IP_N>` from everywhere that needs it.
+   The verifier first checks key-based SSH from the control host to all four
+   management addresses. It then checks the direct-cable no-registry image
+   fanout directions:
+
+   ```text
+   rank0 -> rank1
+   rank0 -> rank3
+   rank1 -> rank2
+   rank3 -> rank2   # optional fallback path
+   ```
+
+   A failed path is classified as host-key, authorization, name-resolution,
+   or network reachability. Once control-host management SSH works, the tool
+   can repair the rank-to-rank public-key and host-key relationships:
+
+   ```bash
+   python scripts/verify_ssh_mesh.py \
+     --site scripts/config/site.yaml \
+     --scope all-adjacent \
+     --fix
+   ```
+
+   Repair is deliberately narrow: generate a source Ed25519 key if absent,
+   append only its public key at the destination, obtain the destination host
+   public key through authenticated management SSH, install it for the direct
+   address, and re-run the `BatchMode=yes` probe. Private keys and passwords
+   are never read or transferred. A broken management path is reported but
+   not auto-trusted; fix that connection manually and rerun the tool.
+
+   Do not create or distribute a multi-gigabyte image archive until the
+   required fanout reports all paths ready. Management-host access does not
+   imply that one Spark can SSH directly to its fabric neighbor.
 
 5. **System packages.**
 

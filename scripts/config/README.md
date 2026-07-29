@@ -25,12 +25,20 @@ $EDITOR scripts/config/site.yaml
 # 1. Does the file describe a coherent cluster at all?  (offline, instant)
 python scripts/sparkring_site.py scripts/config/site.yaml
 
-# 2. Does the cluster actually match it?  (read-only, one ssh per rank)
+# 2. Are management SSH and direct-cable image fanout ready? (read-only)
+python scripts/verify_ssh_mesh.py --site scripts/config/site.yaml
+
+# Optional: repair direct-cable public-key/host-key relationships, then verify
+python scripts/verify_ssh_mesh.py \
+  --site scripts/config/site.yaml --scope all-adjacent --fix
+
+# 3. Does the cluster actually match it?  (read-only, one ssh per rank)
 python scripts/preflight.py --site scripts/config/site.yaml
 ```
 
-Step 1 needs nothing but Python and PyYAML. Step 2 needs key-based ssh to all
-four ranks and never mutates anything on them.
+Step 1 needs nothing but Python and PyYAML. Steps 2 and 3 need key-based SSH
+to all four management addresses. The verifier is read-only unless `--fix` is
+explicitly supplied; preflight never mutates anything on the ranks.
 
 Keep your own `site.yaml` out of version control — it describes your real
 addressing. The repository already ignores the canonical local path
@@ -74,6 +82,9 @@ gate is not a supported workaround.
 * For preflight only: an `ssh` client on the machine you run it from, and
   key-based (`BatchMode`) auth to each rank. Preflight will never prompt for a
   password.
+* `verify_ssh_mesh.py --fix` also needs ordinary unprivileged write access to
+  `~/.ssh` on each rank. It never requests sudo, handles a password, or copies
+  a private key.
 
 ## What the validator enforces
 

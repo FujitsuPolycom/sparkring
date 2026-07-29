@@ -44,6 +44,12 @@ You need:
 Use management networking for SSH and bootstrap. Never put management traffic
 on the four point-to-point RoCE subnets.
 
+A 10GbE diagonal may be used temporarily during initial setup. Once Wi-Fi 7,
+USB Ethernet, wired LAN, or Tailscale management has been proven across a
+reboot, move SSH/bootstrap there and reserve the isolated 10GbE diagonals for
+future cache or inference-sideband experiments. They are not part of the
+public serving topology.
+
 The physical ring is:
 
 ```text
@@ -134,6 +140,37 @@ docker image inspect "$IMAGE" --format '{{.Id}}'
 ```
 
 ## 4. Put that exact image on ranks 1-3
+
+Before creating the archive, verify the control-host connections and every
+direct-cable SSH direction used by the fanout:
+
+```bash
+python scripts/verify_ssh_mesh.py \
+  --site scripts/config/site.yaml \
+  --scope fanout
+```
+
+The report names the exact failed direction and distinguishes an unknown host
+key, missing public-key authorization, and an unreachable link. To repair
+direct-neighbour trust and authorization through the already-working
+management connections, run:
+
+```bash
+python scripts/verify_ssh_mesh.py \
+  --site scripts/config/site.yaml \
+  --scope all-adjacent \
+  --fix
+```
+
+`--fix` may create an Ed25519 key on a source rank, but its private key never
+leaves that rank. It transfers only the public key. It obtains the
+destination's host public key through the authenticated management connection
+instead of blindly trusting `ssh-keyscan`. It cannot and will not repair a
+broken management connection; establish that trust manually first.
+
+Do not begin the archive transfer until the fanout report passes. Passwordless
+access from the control host is a separate relationship from passwordless
+rank-to-rank access over a direct cable.
 
 The simplest no-registry method is one image archive. On rank 0:
 
