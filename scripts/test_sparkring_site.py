@@ -64,6 +64,12 @@ def test_example_loads_and_validates():
     assert site.source == str(EXAMPLE_PATH)
 
 
+def test_digest_pinned_image_may_have_no_loose_host_artifacts(document):
+    document["artifacts"] = []
+    site = parse_site_yaml(yaml.safe_dump(document), source="<faststart>")
+    assert site.artifacts == ()
+
+
 def test_example_has_four_ranks_ids_zero_to_three():
     site = load_site(EXAMPLE_PATH)
     assert [rank.id for rank in site.ranks] == [0, 1, 2, 3]
@@ -752,11 +758,6 @@ CASES: list[tuple[str, object, str, str]] = [
         "paths.min_free_bytes.jit_cache", "out of range",
     ),
     # --- artifacts --------------------------------------------------------
-    (
-        "artifacts-empty",
-        lambda d: d.__setitem__("artifacts", []),
-        "artifacts", "at least one pinned artifact",
-    ),
     (
         "artifacts-duplicate-path",
         lambda d: d["artifacts"][1].__setitem__(

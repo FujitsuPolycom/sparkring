@@ -1299,12 +1299,11 @@ def _validate_paths(raw: Any) -> Paths:
 
 def _validate_artifacts(raw: Any) -> tuple[Artifact, ...]:
     entries = _sequence(raw, "artifacts")
-    if not entries:
-        raise SiteConfigError(
-            "artifacts",
-            "at least one pinned artifact is required; preflight has nothing "
-            "to attest otherwise",
-        )
+    # Digest-pinned images may bake every native dependency into the image and
+    # verify it from runtime-manifest.json before vLLM starts. In that lane the
+    # image digest is the host-side artifact contract, so an empty loose-file
+    # list is valid. Host-mounted deployments should still enumerate every
+    # mounted binary here.
     artifacts: list[Artifact] = []
     seen_paths: dict[str, int] = {}
     seen_names: dict[str, int] = {}

@@ -35,11 +35,11 @@ run; do not interpret the published measurements below as fresh-clone results.
 
 | Goal | Minimum environment | Current status | Start here |
 |---|---|---|---|
-| Read, lint, or run Python contracts | Python 3.12, CPU | **Offline-validated:** 1,570 passed, 5 skipped from a clean tracked checkout | [Offline quickstart](#offline-quickstart) |
+| Read, lint, or run Python contracts | Python 3.12, CPU | **Offline-validated:** 1,596 passed, 5 skipped from a clean tracked checkout | [Offline quickstart](#offline-contributor-quickstart) |
 | Describe and inspect a four-Spark site | Python 3.10; SSH only for live preflight | Site schema validated; preflight is **read-only by construction** | [Site configuration](scripts/config/README.md) |
 | Build native code or qualify cables | One Spark to build; two per cable; four for collective probes | Public source and clean-room probe evidence exist; hardware gates are manual | [Four-Spark transport bring-up](#four-spark-transport-bring-up) |
 | Reproduce the headline serving numbers | Four Sparks plus the reference runtime | **Source available, reproduction pending:** 71 recovered vLLM changes are published and fail-closed; no clean rebuild/live acceptance result yet | [Runtime gaps](docs/RUNTIME_GAPS.md) |
-| Try the public end-to-end serving lane | Four Sparks | **Candidate:** image, recovered reference overlay, entrypoint and four-rank launcher are offline-validated; ARM64 build and live acceptance remain | [Public-functional target](docs/PUBLIC_FUNCTIONAL_TARGET.md) |
+| Try the public end-to-end serving lane | Four Sparks | **Candidate:** pinned public base, thin builder, recovered overlay, entrypoint and four-rank launcher are offline-validated; fresh ARM64 build and live acceptance remain | [Four-Spark quickstart](docs/QUICKSTART.md) |
 | Study or port SparkCache | CPU for contracts; vLLM/DCP deployment for live use | Source published; live results were measured on the reference lane, not an accepted public runtime | [SparkCache](sparkcache/README.md) |
 
 Machine-readable component status is in
@@ -164,7 +164,42 @@ docs/                 results, architecture, public-lane contract, setup
                       reconstruction, runtime gaps, and machine-readable status
 ```
 
-## Offline quickstart
+## Fastest four-Spark path
+
+You do **not** need to rebuild the complete ARM64 vLLM/CUDA stack just to try
+SparkRing. The faststart lane uses the exact public GB10 image lineage from the
+reference deployment, applies the recovered SparkRing changes fail-closed,
+builds only patched NCCL plus the small native transport, and downloads the
+pinned public checkpoint:
+
+```bash
+git clone https://github.com/FujitsuPolycom/sparkring.git
+cd sparkring
+
+OUTPUT_IMAGE=sparkring/glm52-faststart:trial \
+  ./runtime/build-faststart.sh
+
+./scripts/download-glm52.sh \
+  /srv/models/GLM-5.2-MXFP4-Experts-GPTQ
+```
+
+The base is pinned by immutable ARM64 manifest digest:
+
+```text
+aidendle94/sparkrun-vllm-ds4-gb10@sha256:93824a946f1f0ad0867132a2c3809e0e7d8bec6ab38e7d0ef9fc3046e11bc8c7
+```
+
+Those are only the first two commands. Cabling, image/model fanout, exact
+configuration fields, read-only preflight, eager first launch, logs, API test,
+and the graph-enabled follow-up are all written out in the
+**[four-Spark quickstart](docs/QUICKSTART.md)**.
+
+The faststart path is a candidate awaiting a fresh-pull four-Spark acceptance
+run. Its exact-source preimage gate is intentional: if the public base has
+drifted or does not match the recovered source lineage, the build stops before
+native compilation rather than producing a subtly wrong runtime.
+
+## Offline contributor quickstart
 
 **Safety: OFFLINE.** These commands do not contact a cluster or require a GPU.
 
@@ -219,8 +254,12 @@ Its `--execute` mode starts and stops the serving stack and is therefore
 
 1. Cable the ring cage-matched (four DAC cables), one dedicated /24 per link, MTU 9000, RoCEv2 GID index 3.
 2. Qualify every edge with the complete invocation in [the cable qualification guide](spark_transport/CABLE_QUALIFICATION.md#200g-roce-cable). The command requires both fabric IPs and both RDMA device names in addition to SSH targets and interfaces.
-3. Build the patched NCCL 2.30.7 and `libspark_transport_capi.so` for sm_121; record your own SHA-256s (the launcher pins them).
-4. Download the checkpoint on one node, rsync it to the other three over the 200 G fabric.
+3. Run `runtime/build-faststart.sh` on one Spark. It applies the recovered
+   Python layer, builds patched NCCL 2.30.7 and
+   `libspark_transport_capi.so` for sm_121, then bakes and hashes them in one
+   image.
+4. Run `scripts/download-glm52.sh` on one node, then rsync the pinned
+   checkpoint to the other three over the 200 G fabric.
 5. Run the public read-only preflight and model-down probes. Copy the sanitized
    launch template, inspect `sparkring_launcher.py ... plan`, and use the
    acceptance gate for the eventual controlled model-down deployment. The
@@ -237,22 +276,19 @@ deployment reconstruction and the subset runnable from this tree are in
 This is a research pre-release. There is no stable API; environment flags,
 ABIs, and module layouts change without notice.
 
-There are two lanes:
+There are two build lanes:
 
-- **Reference lane (live-validated, not publicly runnable):** the exact runtime the published numbers
-  were measured on — a pinned upstream vLLM commit plus a patch overlay and
-  public kernel packages, assembled inside a community GB10 container image.
-  The overlay attests the exact upstream source it patches by SHA-256 and
-  fails closed on mismatch, so it refuses to run against sources it does not
-  recognize rather than silently misbehave. An audit found every component of
-  that runtime resolves to public sources; see
-  [docs/RUNTIME_GAPS.md](docs/RUNTIME_GAPS.md) for what it contains beyond
-  stock vLLM and what upstream has since absorbed.
-- **Public-functional lane (candidate):** what this snapshot builds today.
+- **Faststart/reference-lineage lane (candidate):** the exact public ARM64
+  community base used by the measured deployment plus the now-published,
+  preimage-attested recovered overlay, patched NCCL, and SparkRing transport.
+  It avoids the multi-hour vLLM/kernel rebuild. All inputs are public; a clean
+  fresh-pull four-Spark acceptance is still pending.
+- **Full source-reproducible lane (candidate):** what
+  `runtime/build-runtime.sh` builds from pinned upstream source.
   The transport library, all probes, and the full native and Python test
   suites have been verified clean-room from this tree on DGX Spark hardware
   (stock CUDA devel image, no private artifacts: 36/36 targets and 20/20 native
-  tests). The complete current GPU-free Python contract suite is 1,570 passed
+  tests). The complete current GPU-free Python contract suite is 1,596 passed
   with 5 skipped. End-to-end serving from this lane is not yet
   performance-equivalent to the reference lane and is not supported until a
   full acceptance gate passes; fresh builds produce new artifact hashes that

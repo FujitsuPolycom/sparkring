@@ -12,6 +12,7 @@ configuration. It is the contract the acceptance gate
 > guessed.
 
 Companion documents: [README.md](../README.md) (two-lane framing),
+[QUICKSTART.md](QUICKSTART.md) (fast public trial),
 [SETUP.md](SETUP.md) (bring-up procedure), [RESULTS.md](RESULTS.md) (how
 measured claims are labelled and gated), [RUNTIME_GAPS.md](RUNTIME_GAPS.md)
 (what the public runtime does and does not contain),
@@ -89,7 +90,7 @@ proven by stage `fabric_transport_qualification`, which delegates to
 | FlashInfer | `flashinfer-ai/flashinfer` @ **`25dd814e03791e370f96c3148242f0dc8de504ac`**; wheels `flashinfer-python 0.6.13+cu132`, `flashinfer_jit_cache 0.6.13+cu132` | lock → `flashinfer` |
 | DeepGEMM | **2.5.0+2073ddb** from commit **`2073ddb2814892014c33ef4cd1c7d4c148baf1fe`** | lock → `deep_gemm` |
 | Full pip set | `runtime/pip-freeze.txt` — no resolver drift permitted | `runtime/README.md` acceptance gate 5 |
-| vLLM overlay | Only the two published SparkCache compatibility patches in `runtime/patches/vllm/`, preimage-pinned in the lock. The reference lane's 61-modified/12-new-file overlay is **not** part of this lane. | `runtime/README.md`; RUNTIME_GAPS.md |
+| vLLM overlay | The recovered reference delta under `runtime/patches/00-reference-vllm/` (59 safe modified files + 12 additions), followed by the two independently written SparkCache compatibility patches under `runtime/patches/vllm/`. All 73 operations are preimage-pinned and fail closed. | `runtime/README.md`; `runtime/patches/00-reference-vllm/README.md` |
 | Image identity | The built serving image, referenced by its post-push registry digest. The launcher must inject that digest as `SPARKRING_IMAGE_DIGEST`; a missing or skipped digest check is an acceptance failure. | `runtime/README.md` verify flow; `scripts/acceptance_gate.py` |
 
 **Non-pinned images and arbitrary vLLM versions are rejected**, not tolerated

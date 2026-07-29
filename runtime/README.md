@@ -13,6 +13,26 @@ base images and source repositories are content-addressed, and every
 divergence from upstream is a reviewable, hash-verified patch. See
 `docs/RUNTIME_GAPS.md` for the audit this design answers.
 
+## Faststart versus full rebuild
+
+Most users should begin with:
+
+```bash
+OUTPUT_IMAGE=sparkring/glm52-faststart:trial ./runtime/build-faststart.sh
+```
+
+`Containerfile.faststart` starts from the exact public ARM64 community image
+recorded in `faststart-lock.json`. It applies the same recovered patch series
+with the same fail-closed preimage checks, builds patched NCCL and SparkRing's
+native transport, emits the same kind of installed-source/native-library
+manifest, and stops. It does not rebuild vLLM, Torch, FlashInfer, SparkInfer,
+DeepGEMM, or the GB10 kernel stack.
+
+`Containerfile` plus `build-runtime.sh` remains the full source-reproducible
+lane. Use it when auditing provenance or rebasing the stack, not as a
+prerequisite for a first trial. The operator procedure is
+[`docs/QUICKSTART.md`](../docs/QUICKSTART.md).
+
 ## The two-lane model
 
 - **Public lane (this directory):** everything needed to rebuild the *public

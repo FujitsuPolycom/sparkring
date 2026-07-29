@@ -163,10 +163,10 @@ torch, on a machine with no GPU and no fabric.
 | Suite | Command | Needs | Measured |
 |---|---|---|---|
 | `spark_transport` Python | `python -m pytest spark_transport -q` | CPU only | 821 passed, 4 skipped |
-| `sparkcache` Python | `python -m pytest sparkcache -q` | CPU only | 387 passed, 1 skipped |
-| `runtime` Python | `python -m pytest runtime -q` | CPU only | 39 passed |
+| `sparkcache` Python | `python -m pytest sparkcache -q` | CPU only | 407 passed, 1 skipped |
+| `runtime` Python | `python -m pytest runtime -q` | CPU only | 56 passed |
 | Public tooling | `python -m pytest scripts -q` | CPU only | 312 passed |
-| **All four (what CI runs)** | `python -m pytest spark_transport sparkcache runtime scripts -q` | CPU only | **1570 passed, 5 skipped** |
+| **All four (what CI runs)** | `python -m pytest spark_transport sparkcache runtime scripts -q` | CPU only | **1596 passed, 5 skipped** |
 | SparkCache native, host half | `cmake -S sparkcache/native ... -DSPARK_CACHE_PLACEMENT_ENABLE_CUDA=OFF` + `ctest` | CPU only, C++17 compiler | runs in CI |
 | SparkCache native, CUDA half | default `cmake -S sparkcache/native` + `ctest` | 1 GPU + CUDA toolkit | **manual gate** |
 | `spark_transport` CTest | `cmake -S spark_transport ...` + `ctest` | CUDA toolkit + `libibverbs` to configure at all; GPU for the CUDA cases | **manual gate** |

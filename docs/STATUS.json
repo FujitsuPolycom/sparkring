@@ -27,7 +27,7 @@
       "maturity": "offline-validated",
       "command": "python -m pytest spark_transport sparkcache runtime scripts -q",
       "last_observed": {
-        "passed": 1570,
+        "passed": 1596,
         "skipped": 5
       }
     },
@@ -53,6 +53,13 @@
       "maturity": "candidate",
       "accepted": false,
       "entrypoint": "runtime/README.md"
+    },
+    "faststart_builder": {
+      "maturity": "candidate",
+      "accepted": false,
+      "base_image_pinned_by_arm64_manifest": true,
+      "avoids_full_vllm_kernel_rebuild": true,
+      "entrypoint": "docs/QUICKSTART.md"
     },
     "public_launcher": {
       "maturity": "offline-validated",

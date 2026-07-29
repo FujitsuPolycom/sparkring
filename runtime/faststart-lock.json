@@ -1,0 +1,22 @@
+{
+  "schema": "sparkring-faststart-lock/v1",
+  "status": "candidate-awaiting-fresh-four-spark-acceptance",
+  "base_image": {
+    "repository": "aidendle94/sparkrun-vllm-ds4-gb10",
+    "tag_for_humans": "production-hybrid-1.3",
+    "manifest_digest": "sha256:93824a946f1f0ad0867132a2c3809e0e7d8bec6ab38e7d0ef9fc3046e11bc8c7",
+    "config_digest": "sha256:9468d2f71748d20fcc132dd18136ccd9c185bc585c11b980582c9e1ee1233317",
+    "platform": "linux/arm64"
+  },
+  "model": {
+    "repository": "aidendle94/GLM-5.2-MXFP4-Experts-GPTQ",
+    "revision": "46537e0e16fcd156627800139b41b9c497fc7ee2",
+    "config_sha256": "ffd30e72ab8bb7e8ad560f2aaab03cc595f3106f0acf793ef96eedaf90f66d69"
+  },
+  "notes": [
+    "The immutable manifest digest, not the mutable tag, is used by the builder.",
+    "This lane reuses the community image's ARM64/SM121 vLLM and kernel foundation.",
+    "SparkRing's recovered vLLM delta is still applied fail-closed by exact preimage SHA-256.",
+    "The full source-reproducible lane remains runtime/Containerfile."
+  ]
+}

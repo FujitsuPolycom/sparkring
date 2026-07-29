@@ -2,13 +2,12 @@
 
 **GLM-5.2 on 4x NVIDIA DGX Spark (GB10), tensor-parallel 4, switchless direct-cable 200GbE RoCE ring.**
 
-This is a reconstruction of the complete reference deployment, plus the
-publicly runnable subset: cabling, OS prerequisites, fabric network, patched
-NCCL, model download, native transport build/probes, and an offline-validated
-public image/launcher candidate. It is **not** a
-fresh-clone end-to-end public serving recipe; the launch/runtime gaps are
-called out below. Follow any runnable stages **in order** because later stages
-hard-depend on earlier ones.
+This is the detailed reconstruction of the complete reference deployment:
+cabling, OS prerequisites, fabric network, patched NCCL, model download,
+native transport, runtime overlay, launcher, and acceptance gates. For the
+short copy/paste route, start with the
+**[four-Spark quickstart](QUICKSTART.md)**. This longer guide explains every
+layer and the historical evidence behind it.
 
 ---
 
@@ -17,29 +16,33 @@ hard-depend on earlier ones.
 > **Snapshot scope — what this tree can and cannot execute.**
 >
 > The historical reference orchestrator (`run-glm52-graph-window.ps1` and
-> friends) remains in the maintainer archive. This snapshot now includes the
+> friends) remains in the maintainer archive. This snapshot includes the
 > recovered GLM-5.2 runtime delta, public image entrypoint, manifested overlay
-> builder, and dry-run-first four-rank launcher. They are offline-validated but
-> have not completed an ARM64 build and live acceptance cycle.
+> builder, dry-run-first four-rank launcher, and a thin faststart builder based
+> on the exact public ARM64 community image. They are offline-validated but the
+> fresh-pull faststart image has not completed a four-Spark acceptance cycle.
 >
-> Concretely: **Stages 1-4, 6, and 7 are fully executable from this tree.** Stages 5, 8, and 9 primarily document the measured reference deployment, but now link to the distinct public candidate where available. The public candidate is not an accepted substitute for the reference lane.
+> Concretely: the quickstart is the current public candidate. The stages below
+> remain the deeper reference, including historical loose-artifact procedures.
+> A successful build is not yet an acceptance result.
 >
 > **SparkCache exception:** the complete current Python implementation, native
 > placement source, GPU-free tests, and its two independently written
 > upstream-vLLM compatibility patches are published under `sparkcache/` and
-> `runtime/patches/vllm/`. Those patches apply fail-closed to the official
-> pinned vLLM commit. This narrows the private-runtime gap for SparkCache; it
-> does not publish the broader GLM/SM121 serving overlay or orchestration.
+> `runtime/patches/vllm/`. The broader recovered GLM/SM121 delta is now
+> published under `runtime/patches/00-reference-vllm/`; the two SparkCache
+> patches apply after it. All 73 operations are preimage-pinned and fail
+> closed.
 
 ### 0.1 What was actually deployed (honesty statement)
 
-1. **The deployed runtime was a private vLLM fork build, not stock vLLM.** The vLLM inside the production container identifies itself as:
+1. **The deployed runtime was a community vLLM fork build, not stock vLLM.** The vLLM inside the production container identifies itself as:
 
    ```
    0.11.2.dev279+eldritch.final.fcc6141.b12x284a2ea.fi25dd814.cu132.20260626
    ```
 
-   That version string is pinned verbatim by the SparkRing overlay's fail-closed installers (`spark_transport/experiments/adaptive_mtp_controller/runtime_installer.py`, `spark_transport/experiments/q2r_phase_timing/live_installer.py`, and siblings). A sibling image in the same family measured `0.21.1rc1.dev339+g1967a5627bc3`. Neither is an upstream release. The fork's source and commit history are **not** part of this repository.
+   That version string is pinned verbatim by the SparkRing overlay's fail-closed installers (`spark_transport/experiments/adaptive_mtp_controller/runtime_installer.py`, `spark_transport/experiments/q2r_phase_timing/live_installer.py`, and siblings). A sibling image in the same family measured `0.21.1rc1.dev339+g1967a5627bc3`. Neither is an upstream release. The original fork's commit history is not part of this repository, but the recovered file-level GLM-5.2 delta needed by SparkRing is published as hash-pinned patches and additions.
 
 2. **The overlay pins upstream interfaces by SHA-256 and fails closed.** SparkRing does not vendor vLLM; it patches and wraps whatever vLLM is installed in the container. To protect itself, every adapter checks the exact vLLM version string and the SHA-256 of each upstream source region it touches (e.g. `vllm.v1.engine.core`, the scheduler modules, `sample_tokens`), and **refuses to install on any mismatch**. Practical consequence for you: if you run a stock upstream vLLM, the overlay will (correctly) refuse to load until you either obtain the same fork lineage or port the pinned interfaces and re-pin the hashes yourself.
 
@@ -92,8 +95,8 @@ Substitute these everywhere they appear. **No real hostnames, usernames, IPs, or
 | `<SUBNET_01>` `<SUBNET_12>` `<SUBNET_23>` `<SUBNET_30>` | Four **distinct** /24 subnet prefixes, one per cable (see Stage 1.3). Must stay distinct /24s — the patched NCCL matches peers by /24. | `10.10.1` / `10.10.2` / `10.10.3` / `10.10.4` |
 | `<CAGE0_IP_n>` / `<CAGE1_IP_n>` | Node *n*'s fabric IP on its cage-0 link / cage-1 link (derived from the subnet table in Stage 1.3) | `10.10.1.10` |
 | `<PEER0_IP_n>` / `<PEER1_IP_n>` | The **neighbor's** fabric IP reachable from node *n* via cage 0 / cage 1 | `10.10.1.11` |
-| `<BASE_IMAGE>` | The community-built GB10 "sparkrun" vLLM Docker image for DGX Spark, `production-hybrid-1.3` lineage (related to the `eugr/spark-vllm-docker` project per `THIRD_PARTY_NOTICES.md`). Ask the maintainer for the exact public tag. | `<registry-account>/sparkrun-vllm-...:production-hybrid-1.3` |
-| `<SERVING_IMAGE>` | Your locally derived serving image: `<BASE_IMAGE>` + pinned `instanttensor==0.1.9` wheel (Stage 5.2) | `glm52-serving:local` |
+| `<BASE_IMAGE>` | Exact public ARM64 community image used by the faststart lane. Use the immutable manifest digest, never the mutable tag. | `aidendle94/sparkrun-vllm-ds4-gb10@sha256:93824a946f1f0ad0867132a2c3809e0e7d8bec6ab38e7d0ef9fc3046e11bc8c7` |
+| `<SERVING_IMAGE>` | Your locally derived image: `<BASE_IMAGE>` + fail-closed recovered overlay + patched NCCL + SparkRing native transport. | `sparkring/glm52-faststart:trial` |
 | `<MODEL_REPO>` | The GLM-5.2 MXFP4-experts GPTQ hybrid checkpoint (~382 GiB), public on Hugging Face: **`aidendle94/GLM-5.2-MXFP4-Experts-GPTQ`**. Identity check: its `config.json` SHA-256 is `ffd30e72ab8bb7e8ad560f2aaab03cc595f3106f0acf793ef96eedaf90f66d69`. | `aidendle94/GLM-5.2-MXFP4-Experts-GPTQ` |
 | `<MODEL_DIR_n>` | Node *n*'s local model directory | `/home/<usern>/.cache/huggingface/glm52-hybrid` |
 | `<JIT_CACHE_n>` | Node *n*'s JIT/compile cache directory | `/home/<usern>/glm-jit-cache` |
@@ -441,14 +444,19 @@ docker run --rm --gpus all -v "$PWD:/src" -w /src \
 
 ## Stage 5 — Container image and the SparkRing overlay
 
-> **Reference scope:** the subsections below document the measured private-fork image. The separate public candidate is built with `runtime/build-runtime.sh`; it bakes in the allowlisted public overlay and `runtime/public-entrypoint.sh`, then fails closed if the required GLM capability surface is absent. Building it does not establish that it can serve this checkpoint.
+> **Current recommendation:** use `runtime/build-faststart.sh`, documented
+> step-by-step in [QUICKSTART.md](QUICKSTART.md). It starts from the exact
+> public base below, applies the recovered delta fail-closed, builds the two
+> native components, and bakes the entrypoint and runtime manifest. The
+> subsections below retain the historical loose-overlay construction for
+> forensic detail. `runtime/build-runtime.sh` is the slower full-source lane.
 
 ### 5.1 Base image **[DOCUMENTED: private archive new-node-provisioning.md §4, scripts/download-model.sh, and phase2-nccl-ring-findings.md]**
 
 On every node:
 
 ```bash
-docker pull <BASE_IMAGE>
+docker pull aidendle94/sparkrun-vllm-ds4-gb10@sha256:93824a946f1f0ad0867132a2c3809e0e7d8bec6ab38e7d0ef9fc3046e11bc8c7
 ```
 
 Known contents of the base image:
@@ -948,7 +956,7 @@ These are the steps this guide reconstructs from configuration rather than docum
 | 1 | Control-host stack (Windows + PowerShell 5.1 + OpenSSH + Python 3) | Inferred from private archive `scripts/*.ps1` conventions |
 | 2 | Dockerfile for the derived serving image (Stage 5.2) | Reconstructed; only the base-config/derived-config/added-layer/wheel hashes are documented |
 | 3 | Exact `docker run` wrapper for the in-container transport build (Stage 7.1) | Reconstructed from the documented `/src`,`/build` CMake paths |
-| 4 | The vLLM fork's source/commit | **Not available.** The version string and the overlay's per-module SHA-256 pins are documented; the fork itself is not in this repository |
+| 4 | The original vLLM fork's source history | **Not available as a fork repository.** The pinned upstream commit, recovered 59-file/12-addition GLM-5.2 delta, two subsequent SparkCache patches, per-file preimages, and provenance manifest are public under `runtime/patches/`. |
 | 5 | `SPARK_TP4_PEER0/1` semantics (Stage 8.4) | The env-var override path is documented in code and is mandatory in the public source because its defaults are non-routable placeholders. The historical reference launcher used its own private site mapping; the public explicit-override path has not completed end-to-end acceptance. |
 
 Resolved since the first reconstruction (no longer inferred): the deployed vLLM fork **version string** is pinned verbatim in `spark_transport/experiments/adaptive_mtp_controller/runtime_installer.py` and `spark_transport/experiments/q2r_phase_timing/live_installer.py` (Section 0.1); the derived-image identity hashes are documented in `deliverables/glm52-instanttensor-mmap-acceptance-gate.md`.

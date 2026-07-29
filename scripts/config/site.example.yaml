@@ -358,6 +358,10 @@ paths:
 # every node and fails if a single byte differs, which is how you catch "rank 2
 # is still running last week's build".
 #
+# Faststart exception: replace the entire list with `artifacts: []`. The
+# digest-pinned faststart image verifies its baked native libraries from its
+# in-image runtime manifest before vLLM starts.
+#
 # Derive: `sha256sum <path>` on a node you trust, then paste the hash here.
 # Set `executable: true` for anything that must carry the +x bit.
 # -----------------------------------------------------------------------------
