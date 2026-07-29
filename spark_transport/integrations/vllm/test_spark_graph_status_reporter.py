@@ -177,6 +177,10 @@ class GraphStatusReporterTest(unittest.TestCase):
             while not path.exists() and time.monotonic() < deadline:
                 time.sleep(0.01)
             self.assertTrue(path.exists())
+            # The reporter owns this path. Stop and join it before the
+            # TemporaryDirectory removes that path; class tearDown runs
+            # after the context manager and is therefore too late on Linux.
+            spark_graph_status_reporter.stop_status_reporter()
 
     def test_collects_replay_timing_only_when_enabled(self) -> None:
         timing = types.ModuleType("spark_cudagraph_replay_timing")
