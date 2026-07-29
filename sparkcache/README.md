@@ -76,22 +76,28 @@ one drive.
 | `spark_cache_native.py` | strict dependency-free ctypes ABI binding |
 | `native/` | reproducible C++/CUDA native-placement source, CMake build, and ABI tests |
 | `persistent_context_cache/cache_manifest.py` | content-addressed manifest engine |
+| `streaming/` | bounded write-behind prefill journal, native gather ring, block leases, idle progress worker, and preemption contract |
+| `replication/` | bounded transactional buddy-replication protocol for optional 10 GbE diagonals |
+| `runtime_patches/` | fail-closed attestation for the pinned vLLM delayed-free seam |
+| `../docs/SPARKCACHE_STREAMING_SNAPSHOTS.md` | streaming-snapshot design, gates, and rollout plan |
 | `test_spark_context_cache_connector.py` | GPU-free connector suite (vLLM stubbed, CPU torch) |
 | `persistent_context_cache/test_cache_manifest.py` | storage-engine suite |
 
-Run the tests from this directory:
+Run the tests from the repository root:
 
 ```bash
 python -m pytest \
-  test_spark_context_cache_connector.py \
-  persistent_context_cache/test_cache_manifest.py \
-  test_spark_context_cache_native_placement.py \
-  test_spark_context_cache_native_restore.py \
-  native/tests/test_ctypes_binding.py \
-  native/tests/test_layout_contract.py -q
+  sparkcache/test_spark_context_cache_connector.py \
+  sparkcache/persistent_context_cache/test_cache_manifest.py \
+  sparkcache/test_spark_context_cache_native_placement.py \
+  sparkcache/test_spark_context_cache_native_restore.py \
+  sparkcache/native/tests/test_ctypes_binding.py \
+  sparkcache/native/tests/test_layout_contract.py -q
 ```
 
-The current public package passes **106 GPU-free tests**.
+The command above is the focused storage/restore gate. The complete current
+SparkCache suite (`python -m pytest sparkcache -q`) passed **407 tests with
+1 skipped** on the GPU-free development host on 2026-07-29.
 
 ## Enabling
 
@@ -176,6 +182,62 @@ or any particular interconnect.
 - Concurrency stress: 16 mixed requests, zero failures, cached ~10x faster
   than novel prefills
 
+## Streaming write-behind status (v50/v51)
+
+The current streaming path journals each completed 256-token region during
+prefill. Sixteen chunks form one bounded gather batch. A two-slot mapped-host
+ring gathers target CKV and sparse-indexer/MTP-colocated records, short block
+leases prevent allocator reuse until the CUDA fence completes, and a
+transactional writer publishes immutable objects before the manifest-last
+visibility edge. Ring or writer pressure aborts only the optional cache
+transaction; it must not delay inference.
+
+A four-Spark v50 probe exposed one missing lifecycle edge. A 32,769-token
+request (`max_tokens=1`) wrote all 128 rank-local chunk objects, but after the
+model stopped producing work there were no more worker callbacks to call
+`poll()`. No rank published a manifest while the system sat idle. A later
+four-token request supplied the next callback and all four ranks committed
+immediately, reporting final tails of **278.753-278.769 seconds**. This was
+not a disk-throughput result: progress itself was incorrectly coupled to a
+subsequent inference request.
+
+The v51 candidate adds an event-armed worker progress thread. It:
+
+- sleeps indefinitely with zero polls when no asynchronous work exists;
+- wakes after a submitted offer and advances the complete adapter poll path
+  while an inflight batch or committed/aborted terminal handoff remains;
+- establishes the rank's CUDA device once in the progress thread;
+- serializes foreground and background adapter state through one reentrant
+  lock, including lost-wake clear/recheck;
+- drains manifest publication, digest advertisement, terminal status, and
+  optional timing without requiring another request; and
+- stops in two phases before runtime/writer destruction.
+
+Expected writer failures remain fail-open for serving and abort only cache
+publication. Escaped CUDA/native ownership failures remain sticky and fatal
+because silently continuing could allow a leased KV block to be reused.
+
+**v51 live no-nudge validation passed on 2026-07-29.** One 32,769-token
+completion with `max_tokens=1` (request
+`cmpl-a691915a48161692-0-a89689cb`) published digest
+`e298d60abc4d5f01f317a14e095c39231298618f0f573e3aa2da741423bc7dee`
+without a follow-up inference request. All four ranks produced 128 chunks,
+one manifest, one committed terminal record, and one timing record; payload
+SHA verification was clean. Final tails were 1514.582, 1508.082, 1517.160,
+and 1526.855 ms for ranks 0-3. The dominant fence took 1283.9-1287.9 ms,
+the writer about 208-223 ms, and manifest publication about 12-18 ms. Every
+rank ended with zero active contexts, leases, and tickets; background
+progress remained alive with `error=null`.
+
+The first workstation gate report falsely timed out because its clock was
+about 0.44 seconds ahead of rank 0. Its subsecond Docker `--since` boundary
+therefore excluded the request POST and worker records. Corrected observer
+evidence is sealed in
+`deliverables/evidence/sparkcache-v51-no-nudge-verified.json` in the private
+validation tree (SHA-256
+`0f8433ccae345956a0ee109448b6c6d79c172d798c6453be95088bca4e612005`);
+the false timeout was an observer-window error, not a runtime failure.
+
 ## Feature status
 
 | State | Capability |
@@ -189,14 +251,19 @@ or any particular interconnect.
 | **Published + live v47** | Asynchronous restore: only the restoring request parks while background load and verification run |
 | **Published + live v47** | Optional checksum-attested native direct placement with bounded parallel reads/hashing |
 | **Published + live v47 candidate** | Ownership-safe snapshot followed by asynchronous pack/hash/write/manifest commit |
-| **Published v48-next; not deployed** | Metadata-only startup discovery; payload hashing moves to the restore integrity boundary |
-| **Planned** | Prefix-aware partial restore, chunk reuse when conversations grow, background-I/O preemption, and a leased/staged snapshot path |
+| **Current source + live v50 evidence** | Metadata-only discovery plus transactional 256-token streaming journal, bounded block leases, and checksum-pinned two-slot mapped-host gather ring |
+| **Current source + live v51 no-nudge pass** | Event-armed idle progress worker that completes ring/writer/manifest/terminal work without a later inference callback |
+| **Implemented offline; carrier pending** | Transactional, credit-bounded buddy replication suitable for the two diagonal 10 GbE links |
+| **Planned** | Prefix-aware partial restore and chunk reuse when conversations grow |
 
 ## Known limits
 
-- This directory now contains **v48-next source**. The active four-Spark
-  deployment remains the checksum-pinned v47 bundle; metadata-only startup
-  discovery is the only core connector change beyond that live bundle.
+- This directory contains the **v51 streaming candidate source**. v50 proved
+  the live gather/journal path but also proved that final publication could
+  stall indefinitely when inference became idle. The v51 progress-worker fix
+  has passed both offline tests and the four-Spark no-nudge validation. The
+  remaining promotion work concerns restore equivalence, interference, and
+  performance rather than idle publication progress.
 - The live reference runtime is
   `0.11.2.dev279+eldritch.final.fcc6141.b12x284a2ea.fi25dd814.cu132.20260626`.
   It contains a larger sparse-MLA/GB10 overlay that is not published here.
@@ -230,8 +297,9 @@ or any particular interconnect.
 
 ## Status
 
-Research pre-release, same caveats as the rest of SparkRing: no stable
-API, flags and layouts may change without notice. The Python/native source
-and GPU-free tests are reproducible here; v48-next still needs a sealed
-four-node live gate before replacing v47. Licensed Apache-2.0 with the
+Research pre-release, same caveats as the rest of SparkRing: no stable API,
+flags and layouts may change without notice. The Python/native source and
+GPU-free tests are reproducible here. v51 has published a fresh four-rank
+manifest after a one-token completion with no second inference request,
+passing its decisive idle-progress gate. Licensed Apache-2.0 with the
 repository.

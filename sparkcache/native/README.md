@@ -1,8 +1,15 @@
 # Native SparkCache placement prototype
 
-Status: CPU/layout, CUDA 13 SM121 compile, standalone mapped-direct, ctypes
-ABI, and checksum-attested four-rank v47 integration gates passed. The
-published v48-next connector has not yet replaced the live v47 bundle.
+The incremental store-side companion is documented in
+[`SNAPSHOT_RING_PROTOTYPE.md`](SNAPSHOT_RING_PROTOTYPE.md). It uses a separate
+fail-open ABI and shared library so experimental snapshot publication cannot
+weaken or invalidate this fail-closed restore-placement path.
+
+Restore-placement status: CPU/layout, CUDA 13 SM121 compile, standalone
+mapped-direct, ctypes ABI, and checksum-attested four-rank v47 integration
+gates passed. The separate snapshot-ring CUDA gate remains pending as
+documented in `SNAPSHOT_RING_PROTOTYPE.md`. The published v48-next connector
+has not yet replaced the live v47 bundle.
 
 This directory attacks the dominant remaining cost in a large SparkCache
 restore. It is deliberately standalone and does not modify the production

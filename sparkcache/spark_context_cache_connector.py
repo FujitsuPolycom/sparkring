@@ -35,7 +35,7 @@ import time
 from pathlib import Path
 from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import torch
 
@@ -70,6 +70,11 @@ from spark_context_cache_store import (
     ManifestStore,
     StateRecord,
 )
+from sparkcache.streaming.feature_gate import (
+    ENVIRONMENT_KEY as _STREAMING_SNAPSHOTS_ENV,
+    EXTRA_CONFIG_KEY as _STREAMING_SNAPSHOTS_CONFIG,
+    is_enabled as _streaming_snapshots_enabled,
+)
 
 if TYPE_CHECKING:
     from vllm.forward_context import ForwardContext
@@ -85,6 +90,37 @@ _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 _NATIVE_ARENA_BYTES = frozenset(
     {64 * 1024 * 1024, 128 * 1024 * 1024, 256 * 1024 * 1024}
 )
+
+# The runtime is deliberately supplied by the embedding process instead of
+# importing (or constructing) the experimental native implementation here.
+# A scheduler and each worker have distinct ownership, so factories are keyed
+# by connector role.  Installing a factory is an explicit deployment action;
+# setting the feature flag without one remains a startup error.
+_STREAMING_RUNTIME_FACTORIES: dict[
+    KVConnectorRole, Callable[["SparkContextCacheConnector"], Any]
+] = {}
+
+
+def configure_streaming_snapshot_runtime(
+    role: KVConnectorRole,
+    factory: Callable[["SparkContextCacheConnector"], Any] | None,
+) -> None:
+    """Install or remove the explicitly injected streaming runtime factory.
+
+    This is a narrow integration seam for an attested embedding runtime.  It
+    does not create, import, or otherwise enable a native runtime by itself.
+    ``factory`` receives the connector after its basic vLLM configuration is
+    available and must return a role-appropriate adapter.
+    """
+
+    if not isinstance(role, KVConnectorRole):
+        raise TypeError("streaming runtime role must be a KVConnectorRole")
+    if factory is None:
+        _STREAMING_RUNTIME_FACTORIES.pop(role, None)
+        return
+    if not callable(factory):
+        raise TypeError("streaming runtime factory must be callable")
+    _STREAMING_RUNTIME_FACTORIES[role] = factory
 
 
 def _load_native_components() -> SimpleNamespace:
@@ -108,6 +144,36 @@ class _ReqPlan:
     span_tokens: int
     block_ids: tuple[int, ...]
     is_store: bool
+
+
+@dataclass(frozen=True)
+class _StreamingSnapshotOffer:
+    """Scheduler promise that becomes a worker completion after forward.
+
+    ``completed_tokens`` is intentionally only a scheduler-side watermark.
+    The worker must not hand it to the streaming runtime until
+    :meth:`wait_for_save`, which vLLM calls after the corresponding forward.
+    ``block_ids`` is the complete table known for that watermark, not merely
+    the blocks allocated by the current cached-request step.
+    """
+
+    request_id: str
+    digest: str
+    span_tokens: int
+    completed_tokens: int
+    block_ids: tuple[int, ...]
+
+    @property
+    def span(self) -> int:
+        return self.span_tokens
+
+    @property
+    def promised_completed_tokens(self) -> int:
+        return self.completed_tokens
+
+    @property
+    def full_block_table(self) -> tuple[int, ...]:
+        return self.block_ids
 
 
 @dataclass(frozen=True)
@@ -183,6 +249,16 @@ class _SnapshotChunks(Sequence[ContextChunk]):
 @dataclass
 class SparkCacheConnectorMetadata(KVConnectorMetadata):
     plans: list[_ReqPlan] = field(default_factory=list)
+    streaming_snapshot_offers: list[_StreamingSnapshotOffer] = field(
+        default_factory=list
+    )
+    preempted_request_ids: tuple[str, ...] = ()
+
+    # Keep the transport field descriptive while making inspection by an
+    # embedding runtime pleasantly direct.
+    @property
+    def offers(self) -> list[_StreamingSnapshotOffer]:
+        return self.streaming_snapshot_offers
 
 
 @dataclass
@@ -200,21 +276,50 @@ class SparkCacheStats(KVConnectorStats):
     def aggregate(self, other: "KVConnectorStats") -> "KVConnectorStats":
         mine = list(self.data.get("reports", []))
         theirs = list(getattr(other, "data", {}).get("reports", []))
-        merged: dict[int, list[str]] = {}
+        merged: dict[int, dict[str, Any]] = {}
         for report in mine + theirs:
             if isinstance(report, dict) and isinstance(report.get("rank"), int):
-                merged[report["rank"]] = list(report.get("held", []))
+                normalized: dict[str, Any] = {
+                    "rank": report["rank"],
+                    "held": list(report.get("held", [])),
+                }
+                streaming = report.get("streaming")
+                if isinstance(streaming, dict):
+                    normalized["streaming"] = dict(streaming)
+                merged[report["rank"]] = normalized
         self.data = {
-            "reports": [{"rank": rank, "held": merged[rank]} for rank in sorted(merged)]
+            "reports": [merged[rank] for rank in sorted(merged)]
         }
         return self
 
     def reduce(self) -> dict[str, int | float]:
         reports = self.data.get("reports", [])
-        return {
+        reduced: dict[str, int | float] = {
             "spark_cache_ranks_reporting": len(reports),
             "spark_cache_digests_held": sum(len(r.get("held", [])) for r in reports),
         }
+        streaming = [
+            report.get("streaming")
+            for report in reports
+            if isinstance(report.get("streaming"), dict)
+        ]
+        if streaming:
+            reduced.update(
+                spark_cache_streaming_ranks_reporting=len(streaming),
+                spark_cache_streaming_active_contexts=sum(
+                    int(status.get("active_contexts", 0))
+                    for status in streaming
+                ),
+                spark_cache_streaming_active_leases=sum(
+                    int(status.get("active_leases", 0))
+                    for status in streaming
+                ),
+                spark_cache_streaming_active_tickets=sum(
+                    int(status.get("active_tickets", 0))
+                    for status in streaming
+                ),
+            )
+        return reduced
 
     def is_empty(self) -> bool:
         return not self.data.get("reports")
@@ -222,6 +327,10 @@ class SparkCacheStats(KVConnectorStats):
 
 class SparkContextCacheConnector(KVConnectorBase_V1):
     """Store/restore each rank's DCP shard on rank-local NVMe."""
+
+    configure_streaming_snapshot_runtime = staticmethod(
+        configure_streaming_snapshot_runtime
+    )
 
     def __init__(
         self,
@@ -264,6 +373,33 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             "spark_cache_restore",
             os.environ.get("SPARK_CONTEXT_CACHE_RESTORE", "1"),
         ) in (1, "1", True, "true")
+        try:
+            self._streaming_snapshots_enabled = _streaming_snapshots_enabled(
+                extra(
+                    _STREAMING_SNAPSHOTS_CONFIG,
+                    os.environ.get(_STREAMING_SNAPSHOTS_ENV, "0"),
+                )
+            )
+        except ValueError as error:
+            raise RuntimeError(f"spark-context-cache: {error}") from error
+        self._streaming_runtime: Any = None
+        if self._streaming_snapshots_enabled:
+            # An explicit opt-in never falls back to end-of-prefill snapshots.
+            # Preserve an explicitly injected test/deployment adapter. When
+            # none exists, import the builtin factory only on this opt-in
+            # path; default-off scheduler and worker processes never import
+            # factory/native-ring modules.
+            if role not in _STREAMING_RUNTIME_FACTORIES:
+                from sparkcache.streaming.factory import (
+                    make_production_runtime_factory,
+                )
+
+                _STREAMING_RUNTIME_FACTORIES[role] = (
+                    make_production_runtime_factory(role.name)
+                )
+            # Resolve the adapter before native import/allocation so a
+            # partially configured deployment fails closed at startup.
+            self._install_streaming_runtime(role)
         self._native_restore_enabled = extra(
             "spark_cache_native_restore",
             os.environ.get("SPARK_CONTEXT_CACHE_NATIVE_RESTORE", "0"),
@@ -450,6 +586,8 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             "store_committed": 0,
             "store_failed": 0,
             "store_skipped_busy": 0,
+            "store_skipped_present": 0,
+            "store_skipped_quorum": 0,
             "restore_hit": 0,
             "restore_miss_absent": 0,
             "restore_miss_corrupt": 0,
@@ -470,6 +608,53 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             self._load_thread_limit,
         )
 
+    def _install_streaming_runtime(self, role: KVConnectorRole) -> None:
+        """Resolve the opt-in runtime without importing a native backend."""
+
+        factory = _STREAMING_RUNTIME_FACTORIES.get(role)
+        if factory is None:
+            raise RuntimeError(
+                "spark-context-cache: streaming snapshots requested but no "
+                f"runtime is installed for {role.name.lower()} role"
+            )
+        try:
+            runtime = factory(self)
+        except Exception as error:
+            raise RuntimeError(
+                "spark-context-cache: streaming runtime installation failed closed"
+            ) from error
+        if runtime is None:
+            raise RuntimeError(
+                "spark-context-cache: streaming runtime installation failed closed"
+            )
+        if role is KVConnectorRole.SCHEDULER:
+            required = (
+                "observe_metadata",
+                "request_finished",
+                "take_finished",
+                "shutdown",
+            )
+        else:
+            required = (
+                "bind_kv_caches",
+                "offer_completed",
+                "poll",
+                "handle_preemptions",
+                "request_finished",
+                "take_finished",
+                "shutdown",
+            )
+        missing = [
+            name for name in required if not callable(getattr(runtime, name, None))
+        ]
+        if missing:
+            raise RuntimeError(
+                "spark-context-cache: streaming "
+                f"{role.name.lower()} runtime is incomplete: "
+                + ", ".join(missing)
+            )
+        self._streaming_runtime = runtime
+
     # ------------------------------------------------------------------
     # identity helpers
     # ------------------------------------------------------------------
@@ -484,6 +669,12 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
     def _aligned_span(self, prompt_len: int) -> int:
         span = (prompt_len - 1) // self._block_size * self._block_size
         return span // CHUNK_TOKENS * CHUNK_TOKENS
+
+    def _has_full_quorum(self, digest: str) -> bool:
+        """Return whether every DCP rank already offers this cache entry."""
+
+        confirmed = self._quorum.get(digest, ())
+        return all(rank in confirmed for rank in range(self._dcp_degree))
 
     # ------------------------------------------------------------------
     # scheduler side
@@ -508,8 +699,7 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
         # every worker at load time, and any worker failure degrades to a
         # rank-synchronous recompute, so hashing ~200 MB here would only
         # add scheduler latency without adding safety.
-        confirmed = self._quorum.get(digest, set())
-        if len(confirmed) < self._dcp_degree:
+        if not self._has_full_quorum(digest):
             # Not every rank can offer a compatible manifest (or none has
             # reported yet). Treat as a plain miss: the request re-prefills
             # and republishes, which is also how a corrupted entry retires.
@@ -556,10 +746,39 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             tuple(blocks.get_block_ids()[0]),
         )
 
+    @staticmethod
+    def _append_streaming_snapshot_offer(
+        meta: SparkCacheConnectorMetadata,
+        *,
+        request_id: str,
+        digest: str,
+        span: int,
+        promised_completed_tokens: int,
+        block_ids: Sequence[int],
+    ) -> None:
+        """Record a scheduler promise without claiming forward completed it."""
+
+        completed_tokens = min(span, promised_completed_tokens)
+        if completed_tokens <= 0:
+            return
+        meta.streaming_snapshot_offers.append(
+            _StreamingSnapshotOffer(
+                request_id=request_id,
+                digest=digest,
+                span_tokens=span,
+                completed_tokens=completed_tokens,
+                block_ids=tuple(block_ids),
+            )
+        )
+
     def build_connector_meta(
         self, scheduler_output: "SchedulerOutput"
     ) -> KVConnectorMetadata:
-        meta = SparkCacheConnectorMetadata()
+        meta = SparkCacheConnectorMetadata(
+            preempted_request_ids=tuple(
+                sorted(getattr(scheduler_output, "preempted_req_ids", None) or ())
+            )
+        )
         for request_id, (digest, span, block_ids) in self._pending_async_loads.items():
             self._admitted[request_id] = digest
             while len(self._admitted) > 8:
@@ -583,8 +802,30 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
                     # so only verified restores take this fast exit.
                     self._admitted.pop(req_id, None)
                     continue
+                if self._has_full_quorum(digest):
+                    self.counters["store_skipped_quorum"] += 1
+                    continue
                 already = new_req.num_computed_tokens + scheduled
-                if already >= span:
+                if self._streaming_snapshots_enabled:
+                    self._append_streaming_snapshot_offer(
+                        meta,
+                        request_id=req_id,
+                        digest=digest,
+                        span=span,
+                        promised_completed_tokens=already,
+                        block_ids=block_ids,
+                    )
+                    if already < span:
+                        # CachedRequestData.new_block_ids only carries the
+                        # current append. Keep the complete table required by
+                        # each following offer, including after resume.
+                        self._store_progress[req_id] = (
+                            digest,
+                            span,
+                            already,
+                            list(block_ids),
+                        )
+                elif already >= span:
                     meta.plans.append(_ReqPlan(req_id, digest, span, block_ids, True))
                 else:
                     # Chunked prefill: CachedRequestData.new_block_ids only
@@ -610,16 +851,51 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             done = cached.num_computed_tokens[index] + (
                 scheduler_output.num_scheduled_tokens.get(req_id, 0)
             )
-            if done >= span:
+            if self._streaming_snapshots_enabled:
+                if done >= span:
+                    del self._store_progress[req_id]
+                    if self._has_full_quorum(digest):
+                        self.counters["store_skipped_quorum"] += 1
+                        continue
+                else:
+                    self._store_progress[req_id] = (digest, span, done, blocks)
+                self._append_streaming_snapshot_offer(
+                    meta,
+                    request_id=req_id,
+                    digest=digest,
+                    span=span,
+                    promised_completed_tokens=done,
+                    block_ids=blocks,
+                )
+            elif done >= span:
                 del self._store_progress[req_id]
+                if self._has_full_quorum(digest):
+                    self.counters["store_skipped_quorum"] += 1
+                    continue
                 meta.plans.append(_ReqPlan(req_id, digest, span, tuple(blocks), True))
             else:
                 self._store_progress[req_id] = (digest, span, done, blocks)
+        runtime = self._streaming_runtime
+        if runtime is not None and self._role is KVConnectorRole.SCHEDULER:
+            # request_finished() runs on the scheduler side. Give its adapter
+            # the exact offers sent to workers so it delays block reuse only
+            # for requests whose final gather may still be in flight.
+            runtime.observe_metadata(meta)
         return meta
 
     # ------------------------------------------------------------------
     # worker side
     # ------------------------------------------------------------------
+
+    def handle_preemptions(
+        self, kv_connector_metadata: KVConnectorMetadata
+    ) -> None:
+        runtime = self._streaming_runtime
+        if runtime is not None:
+            # vLLM calls this before it may overwrite preempted blocks.
+            # This must remain synchronous: the runtime drains armed CUDA
+            # fences or raises without releasing blocks of unknown status.
+            runtime.handle_preemptions(kv_connector_metadata)
 
     def register_kv_caches(self, kv_caches: dict[str, torch.Tensor]) -> None:
         self._layer_tensors = dict(kv_caches)
@@ -668,6 +944,15 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
         )
         if self._native_restore_enabled and self._role is KVConnectorRole.WORKER:
             self._configure_native_restore()
+        if self._streaming_snapshots_enabled and self._role is KVConnectorRole.WORKER:
+            runtime = self._streaming_runtime
+            if runtime is None:
+                raise RuntimeError(
+                    "spark-context-cache: streaming worker runtime vanished"
+                )
+            # The adapter closes over this connector. Bind only after the
+            # complete tensor inventory and canonical layer plans exist.
+            runtime.bind_kv_caches()
         if self._restore_enabled:
             self.discover_manifests()
 
@@ -1097,21 +1382,43 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
                 digest[:12],
             )
 
+    def request_finished(
+        self,
+        request: "Request",
+        block_ids: list[int],
+    ) -> tuple[bool, dict[str, Any] | None]:
+        runtime = self._streaming_runtime
+        if runtime is None:
+            return False, None
+        delay_free = bool(
+            runtime.request_finished(request.request_id, tuple(block_ids))
+        )
+        return delay_free, None
+
     def get_finished(
         self, finished_req_ids: set[str]
     ) -> tuple[set[str] | None, set[str] | None]:
+        finished_sending: set[str] = set()
+        runtime = self._streaming_runtime
+        if runtime is not None:
+            finished_sending.update(runtime.take_finished(finished_req_ids))
         with self._load_cv:
-            if not self._finished_load_reqs:
-                return None, None
-            done = set(self._finished_load_reqs)
+            finished_recving = set(self._finished_load_reqs)
             self._finished_load_reqs.clear()
-        return None, done
+        return finished_sending or None, finished_recving or None
 
     def wait_for_pending_loads(self, timeout: float | None = None) -> bool:
         with self._load_cv:
             return self._load_cv.wait_for(lambda: not self._inflight_load_reqs, timeout)
 
     def shutdown(self):
+        runtime = self._streaming_runtime
+        if runtime is not None:
+            # Drain/cancel snapshot leases before any native cache or staging
+            # resource can be destroyed. A failure remains fatal and prevents
+            # unsafe teardown.
+            runtime.shutdown()
+            self._streaming_runtime = None
         with self._store_cv:
             self._store_accepting = False
         store_idle = self.wait_for_pending_stores(timeout=5.0)
@@ -1168,6 +1475,36 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
 
     def wait_for_save(self) -> None:
         metadata = self._get_connector_metadata()
+        if self._streaming_snapshots_enabled:
+            # Scheduler offers are promises for the step vLLM has just
+            # forwarded.  Convert them to completed watermarks only here;
+            # doing it in build_connector_meta would let a writer read KV
+            # rows before the producer stream has populated them.
+            if self._role is KVConnectorRole.WORKER:
+                runtime = self._streaming_runtime
+                if runtime is None:
+                    raise RuntimeError(
+                        "spark-context-cache: streaming worker runtime vanished"
+                    )
+                if isinstance(metadata, SparkCacheConnectorMetadata):
+                    offers = metadata.streaming_snapshot_offers
+                    if offers:
+                        producer_stream = int(
+                            torch.cuda.current_stream().cuda_stream
+                        )
+                    for offer in offers:
+                        runtime.offer_completed(
+                            offer,
+                            producer_stream=producer_stream,
+                        )
+                # Poll even for an empty metadata object so background
+                # completion, backpressure, and failure state advance on
+                # every post-forward callback.
+                runtime.poll()
+            # Never invoke the legacy CPU snapshot/ManifestStore path under
+            # this flag: an incomplete injected runtime must fail closed, not
+            # silently publish a synchronous end-of-prefill entry.
+            return
         if not isinstance(metadata, SparkCacheConnectorMetadata):
             return
         for plan in metadata.plans:
@@ -1177,6 +1514,14 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             # At most one snapshot may be queued or committing per rank; a
             # busy store is a cache miss opportunity, never a serving stall.
             with self._store_cv:
+                if plan.digest in self._held:
+                    self.counters["store_skipped_present"] += 1
+                    logger.info(
+                        "spark-context-cache: store skipped; entry already"
+                        " present digest=%s",
+                        plan.digest[:12],
+                    )
+                    continue
                 if not self._store_accepting or self._store_inflight:
                     self.counters["store_skipped_busy"] += 1
                     logger.warning(
@@ -1348,7 +1693,11 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
                 continue
             rank = report.get("rank")
             held = report.get("held")
-            if not isinstance(rank, int) or not isinstance(held, list):
+            if (
+                type(rank) is not int
+                or not 0 <= rank < self._dcp_degree
+                or not isinstance(held, list)
+            ):
                 continue
             held_set = {d for d in held if isinstance(d, str)}
             for digest in held_set:
@@ -1398,14 +1747,17 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             return None
         with self._load_lock:
             held = sorted(self._held)
+        report: dict[str, Any] = {
+            "rank": self._worker_rank(),
+            "held": held,
+        }
+        runtime = self._streaming_runtime
+        status = getattr(runtime, "status", None)
+        if self._streaming_snapshots_enabled and callable(status):
+            report["streaming"] = status()
         return SparkCacheStats(
             data={
-                "reports": [
-                    {
-                        "rank": self._worker_rank(),
-                        "held": held,
-                    }
-                ]
+                "reports": [report]
             }
         )
 

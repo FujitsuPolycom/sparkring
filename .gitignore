@@ -25,3 +25,59 @@ models/
 # Local machine configuration
 .claude/
 *.local.json
+
+# Private run evidence and machine-local orchestration output
+deliverables/
+evidence/
+**/evidence/
+*.stderr.log
+*.stdout.log
+**/preflight*.json
+results/
+bench-results/
+run-results/
+tmp/
+scratch/
+scratchpad/
+sparkcache/experiments/live_streaming_gate/
+sparkcache/native/experiments/snapshot_matrix/run_standalone_matrix.ps1
+
+# Private release-audit working papers
+docs/RELEASE_SAFETY.md
+docs/PUBLIC_ARTIFACT_INVENTORY.md
+
+# Site configuration and credentials
+*.site.json
+*.site.yaml
+*.site.yml
+*.cluster.json
+*.cluster.yaml
+*.cluster.yml
+*.local.*
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+.ssh/
+secrets/
+
+# Editor and native build noise
+.vscode/
+.idea/
+*.swp
+*~
+Thumbs.db
+desktop.ini
+.DS_Store
+*.a
+*.dll
+*.dylib
+*.exe
+*.obj
+*.pdb
+compile_commands.json
+CMakeCache.txt
+CMakeFiles/

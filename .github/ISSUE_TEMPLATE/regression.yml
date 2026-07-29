@@ -1,0 +1,127 @@
+name: Regression
+description: Something that used to work (or used to be faster) no longer does.
+title: "[regression] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A regression report needs a **before** and an **after** that differ in
+        as few things as possible. If the two measurements come from different
+        windows, different configurations, or different hardware, say so —
+        that is still a useful report, but it is an observation rather than a
+        sealed A/B, and it will be labelled that way.
+
+        **Public repository — redact IPs, hostnames, accounts, and absolute
+        host paths from everything you paste or attach.**
+
+  - type: checkboxes
+    id: sanitized
+    attributes:
+      label: Sanitization
+      options:
+        - label: I have redacted IPs, hostnames, accounts, and absolute host paths.
+          required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of regression
+      options:
+        - "Correctness — wrong output, failed byte audit, failed integrity check"
+        - "Crash / hang / fail-closed refusal that did not happen before"
+        - "Performance — throughput or latency got worse"
+        - "Build — something that used to compile no longer does"
+        - "Test — an offline suite that used to pass now fails"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: lane
+    attributes:
+      label: Which lane is this in?
+      description: >-
+        See the two-lane model in README.md and CONTRIBUTING.md. Public
+        reproduction lane = what this tree builds today. Reference lane = the
+        pinned runtime the published numbers were measured on.
+      options:
+        - "Public reproduction lane (this tree)"
+        - "Reference lane (pinned runtime)"
+        - "Offline / CPU-only (no serving involved)"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: good
+    attributes:
+      label: Last known-good commit or tag
+      placeholder: "e.g. 4926f1a  or  v0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: bad
+    attributes:
+      label: First known-bad commit or tag
+      placeholder: "e.g. 7840ce5  — bisected? say so"
+    validations:
+      required: true
+
+  - type: textarea
+    id: before
+    attributes:
+      label: Before
+      description: >-
+        The exact command, and its output or measurement. For a performance
+        regression give the number, the units, the concurrency, the context
+        length, and the window length — a bare tok/s figure is not comparable
+        to anything.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: after
+    attributes:
+      label: After
+      description: The same command on the bad commit, and its output or measurement.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: held_constant
+    attributes:
+      label: What was held constant between the two runs
+      description: >-
+        Be specific. Same hardware? Same container image digest? Same NCCL
+        binary hash? Same model checkpoint? Same environment variables? Same
+        KV pool size? Anything you could not hold constant, list here.
+      value: |
+        - Hardware:
+        - Container image / digest:
+        - NCCL binary hash:
+        - Model checkpoint hash:
+        - Environment / flags:
+        - Anything NOT held constant:
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence bundle
+      description: >-
+        Attach the machine-readable evidence, not a screenshot: gate JSON,
+        preflight JSON, runtime attestation, transport counters, graph
+        census, and the raw per-cell results for both the good and the bad
+        run. Redact site identity first. If you only have console output, say
+        so — the report is still accepted, just weaker.
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else

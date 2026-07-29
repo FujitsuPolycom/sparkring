@@ -1,0 +1,187 @@
+# Site configuration
+
+Everything the public SparkRing tooling knows about *your* cluster lives in one
+file: `scripts/config/site.yaml`. It describes a single four-node ring — the
+ranks, the four 200GbE cables that join them, the control-channel rendezvous
+addresses, the pinned runtime and artifacts, and the paths each rank must have.
+
+`site.example.yaml` in this directory is a complete, schema-valid template with
+every field commented. It contains **no real values**: every address comes from
+an IANA-reserved documentation or benchmarking range, and every hash is an
+obvious placeholder.
+
+## Quick start
+
+```bash
+cp scripts/config/site.example.yaml scripts/config/site.yaml
+$EDITOR scripts/config/site.yaml
+
+# 1. Does the file describe a coherent cluster at all?  (offline, instant)
+python scripts/sparkring_site.py scripts/config/site.yaml
+
+# 2. Does the cluster actually match it?  (read-only, one ssh per rank)
+python scripts/preflight.py --site scripts/config/site.yaml
+```
+
+Step 1 needs nothing but Python and PyYAML. Step 2 needs key-based ssh to all
+four ranks and never mutates anything on them.
+
+Keep your own `site.yaml` out of version control (add
+`scripts/config/site.yaml` to your `.gitignore`) — it describes your real
+addressing, and only `site.example.yaml` belongs in the repo.
+
+## Requirements
+
+* Python 3.10+
+* PyYAML (`python -m pip install PyYAML`) — the only third-party dependency.
+  If it is missing, both tools say so plainly instead of raising an ImportError.
+* For preflight only: an `ssh` client on the machine you run it from, and
+  key-based (`BatchMode`) auth to each rank. Preflight will never prompt for a
+  password.
+
+## What the validator enforces
+
+`sparkring_site.py` is fail-closed. It stops at the first problem and names the
+exact field (`ranks[2].ring_ports[0].address: ...`). Beyond type and range
+checking it enforces the structure of the ring:
+
+* exactly four ranks with ids 0–3, unique ssh targets
+* exactly four edges, each with its own distinct, non-overlapping `/24`
+* every edge is claimed by exactly two ring ports, one per declared endpoint
+* the edge set forms **one closed cycle through all four ranks** — two disjoint
+  pairs, a star, or a triangle with a spare cable are all rejected
+* both addresses on an edge live inside that edge's subnet, are usable hosts
+  (not the network or broadcast address), and differ from each other
+* no address is used twice anywhere, and no management address sits inside a
+  ring subnet
+* each rank's two ring ports use distinct interfaces, distinct RDMA
+  device/port pairs, and neither is the management interface
+* each rank's two control-channel peers are exactly its two ring neighbours,
+  and a peer address that belongs to a *different* rank's management interface
+  is rejected — that is the shape a stale peer table takes
+* every sha256 is exactly 64 lowercase hex; the image digest is
+  `sha256:<64 hex>`; the model revision is an immutable 40-hex commit
+* MTU, link speed, TP/DCP, context length, KV bytes and port numbers are in
+  sane ranges, and TP must be divisible by DCP
+
+Interface names, device names, remote paths and image references are also
+restricted to a safe character set. Preflight interpolates those values into
+remote shell commands, so this is what keeps an edited config from becoming
+command injection.
+
+## Deriving the non-obvious values
+
+Run these on each node. The template repeats them inline next to the fields.
+
+| Value | How to find it |
+| --- | --- |
+| interface names | `ip -br link`, or `ls /sys/class/net` |
+| netdev ↔ RDMA device | `ls -l /sys/class/infiniband/*/device/net/`, `rdma link show`, or `ibdev2netdev` |
+| `rdma_port` | `ls /sys/class/infiniband/<device>/ports/` — usually just `1` |
+| `roce_gid_index` | dump `gids/<i>` and `gid_attrs/types/<i>` for i in 0..15; pick the index whose type is `RoCE v2` and whose GID is the IPv4-mapped form of that port's address |
+| MTU | `cat /sys/class/net/<if>/mtu` — must agree on all eight ring ports and end to end |
+| link speed | `cat /sys/class/net/<if>/speed` (200000 for 200GbE) |
+| management interface | `ip -o -4 addr \| grep <management-ip>` — the interface that *really* holds it |
+| per-edge subnets | any four unused, mutually distinct `/24`s, one per physical cable; they never need to route |
+| image digest | `docker image inspect <ref> --format '{{.Id}}'`, or a registry digest from `--format '{{json .RepoDigests}}'` |
+| artifact hashes | `sha256sum <path>` on a node you trust |
+
+### IPv4-mapped GIDs
+
+The RoCEv2 GID for an IPv4 address is the address in the low 32 bits of an
+IPv4-mapped IPv6 address:
+
+```
+192.0.2.10  ->  0000:0000:0000:0000:0000:ffff:c000:020a
+                                            ^^^^ ^^^^  c0.00.02.0a
+```
+
+Preflight recomputes this from your configured ring address and compares it
+byte-for-byte against `gids/<roce_gid_index>`, so a GID table that shifted
+after a driver upgrade — or an index that is actually RoCEv1 or link-local —
+fails immediately instead of degrading traffic silently.
+
+## Preflight check ids
+
+Every check has a stable id, safe to alert on. `python scripts/preflight.py
+--list-checks` prints the same table.
+
+| Check id | Meaning |
+| --- | --- |
+| `SSH.REACHABLE` | rank answers over ssh with BatchMode (key auth, no prompt) |
+| `MGMT.ADDRESS_PRESENT` | the configured management address is held by some interface |
+| `MGMT.INTERFACE_MATCH` | it is held by exactly the configured management interface |
+| `RING.LINK_UP` | ring interface exists and its operstate is up |
+| `RING.MTU` | ring interface MTU equals `topology.mtu` |
+| `RING.LINK_SPEED` | ring interface negotiated `topology.link_speed_mbps` |
+| `RING.ADDRESS` | ring interface holds exactly the configured address, nothing else |
+| `RING.RDMA_PORT_ACTIVE` | backing RDMA device exists and its port state is ACTIVE |
+| `RING.RDMA_LINK_LAYER` | that RDMA port's link layer is Ethernet (RoCE, not InfiniBand) |
+| `RING.ROCE_GID` | GID at the configured index is the RoCEv2 IPv4-mapped ring address |
+| `RING.JUMBO_PING` | don't-fragment ping fills the MTU across the edge to the far end |
+| `PEER.CONTROL_CHANNEL` | control-channel rendezvous peer answers ICMP from this rank |
+| `ARTIFACT.PRESENT` | pinned artifact exists on this rank |
+| `ARTIFACT.SHA256` | pinned artifact hashes to the configured sha256 |
+| `ARTIFACT.EXECUTABLE` | pinned artifact marked executable carries the +x bit |
+| `PORT.FREE` | a port required to be free has no listener |
+| `DISK.PATH_PRESENT` | cache/JIT directory exists on this rank |
+| `DISK.FREE` | cache/JIT directory has at least the configured free space |
+| `IMAGE.PRESENT` | the configured container image exists in the local image store |
+| `IMAGE.DIGEST` | that image matches the configured digest (image ID or RepoDigest) |
+
+Preflight exits non-zero if any check fails, prints a per-rank table, and
+writes a machine-readable evidence document (schema
+`sparkring-preflight/v1`) to `--json` or to `paths.evidence_dir`.
+
+### Read-only, by construction
+
+Preflight opens one ssh session per rank and runs a single probe script built
+from `sysfs` reads, `ip`/`ss`/`df` queries, `sha256sum`, `ping`, and
+`docker image inspect`. It never starts, stops, pulls or removes a container,
+never touches interfaces or routes, and writes nothing on the nodes. Every
+command is passed through an in-process guard before it can reach ssh, so a
+future edit that introduces a mutating command fails locally rather than
+quietly on a serving cluster.
+
+Inspect exactly what would run, without contacting anything:
+
+```bash
+python scripts/preflight.py --site scripts/config/site.yaml --print-plan
+```
+
+### A note on `required_free_ports`
+
+`preflight.required_free_ports` is for pre-launch validation. If you are
+checking a cluster that is *already serving*, set it to `[]` — the API and
+rendezvous ports are legitimately bound in that case and `PORT.FREE` would
+fail by design.
+
+## Placeholder warnings
+
+Both tools warn (without failing) when the config still looks like the shipped
+example: addresses from reserved documentation ranges, or hashes made of a
+single repeated hex digit. Pass `--strict-placeholders` to turn those warnings
+into a non-zero exit — useful in CI so a half-filled `site.yaml` cannot ship.
+
+## Secrets
+
+There are none in this file, and none belong in it. It carries addresses,
+device names, paths and hashes. Authentication is your ssh key material and
+your container registry credentials, both of which stay outside the repo.
+
+## Scope
+
+These are scaffolding tools: a schema, a fail-closed validator, and a
+read-only checker. They tell you whether your cluster matches what you
+declared. They do not launch, tune, or benchmark anything, and passing
+preflight is a precondition for a healthy run, not a guarantee of one.
+
+## Tests
+
+```bash
+python -m pytest scripts/test_sparkring_site.py scripts/test_preflight.py -q
+```
+
+GPU-free and offline: the malformed-config table, the ring-topology validator,
+the GID vectors and the whole preflight pipeline run against synthetic probe
+transcripts and a fake runner. No cluster or network is involved.

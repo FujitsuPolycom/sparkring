@@ -339,6 +339,24 @@ _LAYERS = {
 
 
 class NativeRestoreSelectionTests(unittest.TestCase):
+    def test_streaming_snapshot_feature_is_disabled_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            connector = _make_connector(Path(directory), 0)
+
+        self.assertFalse(connector._streaming_snapshots_enabled)
+        self.assertIsNone(connector._streaming_runtime)
+
+    def test_streaming_snapshot_opt_in_fails_before_native_side_effects(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                RuntimeError, "runtime installation failed closed"
+            ):
+                _make_connector(
+                    Path(directory),
+                    0,
+                    extra_config={"spark_cache_streaming_snapshots": "1"},
+                )
+
     def test_native_restore_is_disabled_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             connector = _make_connector(Path(directory), 0)
@@ -837,6 +855,7 @@ class SchedulerChunkedPrefillTests(unittest.TestCase):
             )
             meta1 = connector.build_connector_meta(step1)
             self.assertEqual(meta1.plans, [])
+            self.assertEqual(meta1.offers, [])
             step2 = types.SimpleNamespace(
                 scheduled_new_reqs=[],
                 num_scheduled_tokens={"req-c": 512},
@@ -853,7 +872,80 @@ class SchedulerChunkedPrefillTests(unittest.TestCase):
             self.assertTrue(plan.is_store)
             self.assertEqual(plan.span_tokens, 1024)
             self.assertEqual(plan.block_ids, (10, 11, 12, 13))
+            self.assertEqual(meta2.offers, [])
             self.assertEqual(connector._store_progress, {})
+
+    def test_full_quorum_suppresses_store_before_progress_is_created(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            connector = _make_connector(Path(directory), 0, block_size=64)
+            token_ids = list(range(1100))
+            digest = connector._digest(token_ids, 1024)
+            connector._quorum[digest] = {0, 1, 2, 3}
+            step = types.SimpleNamespace(
+                scheduled_new_reqs=[
+                    types.SimpleNamespace(
+                        req_id="already-cached",
+                        prompt_token_ids=token_ids,
+                        num_computed_tokens=0,
+                        block_ids=([10, 11],),
+                    )
+                ],
+                num_scheduled_tokens={"already-cached": 512},
+                scheduled_cached_reqs=types.SimpleNamespace(
+                    req_ids=[],
+                    resumed_req_ids=set(),
+                    num_computed_tokens=[],
+                    new_block_ids=[],
+                ),
+            )
+
+            metadata = connector.build_connector_meta(step)
+
+            self.assertEqual(metadata.plans, [])
+            self.assertEqual(connector._store_progress, {})
+            self.assertEqual(connector.counters["store_skipped_quorum"], 1)
+
+    def test_quorum_arriving_during_prefill_retires_pending_store(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            connector = _make_connector(Path(directory), 0, block_size=64)
+            token_ids = list(range(1100))
+            digest = connector._digest(token_ids, 1024)
+            first = types.SimpleNamespace(
+                scheduled_new_reqs=[
+                    types.SimpleNamespace(
+                        req_id="becomes-cached",
+                        prompt_token_ids=token_ids,
+                        num_computed_tokens=0,
+                        block_ids=([10, 11],),
+                    )
+                ],
+                num_scheduled_tokens={"becomes-cached": 512},
+                scheduled_cached_reqs=types.SimpleNamespace(
+                    req_ids=[],
+                    resumed_req_ids=set(),
+                    num_computed_tokens=[],
+                    new_block_ids=[],
+                ),
+            )
+            self.assertEqual(connector.build_connector_meta(first).plans, [])
+            self.assertIn("becomes-cached", connector._store_progress)
+            connector._quorum[digest] = {0, 1, 2, 3}
+            second = types.SimpleNamespace(
+                scheduled_new_reqs=[],
+                num_scheduled_tokens={"becomes-cached": 512},
+                scheduled_cached_reqs=types.SimpleNamespace(
+                    req_ids=["becomes-cached"],
+                    resumed_req_ids=set(),
+                    num_computed_tokens=[512],
+                    new_block_ids=[([12, 13],)],
+                ),
+            )
+
+            metadata = connector.build_connector_meta(second)
+
+            self.assertEqual(metadata.plans, [])
+            self.assertEqual(connector._store_progress, {})
+            self.assertEqual(connector.counters["store_skipped_quorum"], 1)
 
 
 class StartupDiscoveryTests(unittest.TestCase):
@@ -1239,6 +1331,50 @@ class AsyncStoreTests(unittest.TestCase):
                     rtol=0,
                     atol=0,
                 )
+
+    def test_present_digest_skips_snapshot_and_preserves_immutable_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            connector = _make_connector(Path(directory), 0, 64)
+            pool = _make_pools(8, 64)
+            connector.register_kv_caches(pool)
+            plan = _ReqPlan(
+                "store-once",
+                "7" * 64,
+                1024,
+                (3, 0, 5, 1),
+                True,
+            )
+            connector.bind_connector_metadata(
+                SparkCacheConnectorMetadata(plans=[plan])
+            )
+            connector.wait_for_save()
+            self.assertTrue(connector.wait_for_pending_stores(timeout=5))
+            self.assertIn(plan.digest, connector._held)
+
+            for tensor in pool.values():
+                tensor.zero_()
+            connector.bind_connector_metadata(
+                SparkCacheConnectorMetadata(
+                    plans=[dataclasses.replace(plan, request_id="duplicate")]
+                )
+            )
+            with mock.patch.object(
+                connector,
+                "_snapshot_store",
+                wraps=connector._snapshot_store,
+            ) as snapshot:
+                connector.wait_for_save()
+
+            snapshot.assert_not_called()
+            self.assertEqual(connector.counters["store_committed"], 1)
+            self.assertEqual(connector.counters["store_skipped_present"], 1)
+            self.assertEqual(connector.counters["store_failed"], 0)
+            self.assertTrue(
+                connector._store.lookup(
+                    connector._identity(0),
+                    plan.digest,
+                ).is_hit
+            )
 
     def test_busy_saver_rejects_before_taking_another_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -2105,6 +2241,50 @@ class QuorumStatsAggregationTests(unittest.TestCase):
             c.update_connector_output(merged)
             self.assertEqual(c._quorum[digest], {0, 1, 2, 3})
 
+    def test_duplicate_or_out_of_range_rank_reports_cannot_form_quorum(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            c = _make_connector(Path(directory) / "r0", 0, 64)
+            digest = "e" * 64
+
+            duplicates = types.SimpleNamespace(
+                kv_connector_stats=types.SimpleNamespace(
+                    data={
+                        "reports": [
+                            {"rank": 0, "held": [digest]},
+                            {"rank": 0, "held": [digest]},
+                            {"rank": 0, "held": [digest]},
+                            {"rank": 0, "held": [digest]},
+                        ]
+                    }
+                )
+            )
+            c._absorb_quorum(duplicates)
+            self.assertEqual(c._quorum[digest], {0})
+            self.assertFalse(c._has_full_quorum(digest))
+
+            fabricated = types.SimpleNamespace(
+                kv_connector_stats=types.SimpleNamespace(
+                    data={
+                        "reports": [
+                            {"rank": -1, "held": [digest]},
+                            {"rank": 4, "held": [digest]},
+                            {"rank": 5, "held": [digest]},
+                            {"rank": 6, "held": [digest]},
+                        ]
+                    }
+                )
+            )
+            c._absorb_quorum(fabricated)
+            self.assertEqual(c._quorum[digest], {0})
+            self.assertFalse(c._has_full_quorum(digest))
+
+            # Defense in depth for restored/legacy in-memory state: cardinality
+            # alone is never proof that ranks 0..DCP-1 all confirmed.
+            c._quorum[digest] = {-1, 4, 5, 6}
+            self.assertFalse(c._has_full_quorum(digest))
+
 
 class StatsPicklabilityTests(unittest.TestCase):
     """Stats objects cross the worker->engine shared-memory queue, which
@@ -2123,6 +2303,555 @@ class StatsPicklabilityTests(unittest.TestCase):
 
     def test_stats_class_is_module_level(self) -> None:
         self.assertNotIn("<locals>", connector_module.SparkCacheStats.__qualname__)
+
+
+class _FakeStreamingRuntime:
+    def __init__(
+        self,
+        *,
+        delay_free: bool = False,
+        finished_sending: set[str] | None = None,
+        events: list[str] | None = None,
+    ) -> None:
+        self.delay_free = delay_free
+        self.finished_sending = set(finished_sending or ())
+        self.events = events if events is not None else []
+        self.preemption_metadata = None
+        self.finished_request = None
+        self.finished_blocks = None
+        self.finished_filter = None
+        self.completed_offers = []
+        self.producer_streams = []
+        self.poll_count = 0
+        self.observed_metadata = []
+        self.bind_count = 0
+
+    def observe_metadata(self, metadata) -> None:
+        self.observed_metadata.append(metadata)
+
+    def bind_kv_caches(self) -> None:
+        self.bind_count += 1
+
+    def offer_completed(self, offer, *, producer_stream: int) -> None:
+        self.completed_offers.append(offer)
+        self.producer_streams.append(producer_stream)
+
+    def poll(self) -> None:
+        self.poll_count += 1
+
+    def handle_preemptions(self, metadata) -> None:
+        self.preemption_metadata = metadata
+        self.events.append("streaming-preemptions-drained")
+
+    def request_finished(
+        self, request_id: str, block_ids: tuple[int, ...]
+    ) -> bool:
+        self.finished_request = request_id
+        self.finished_blocks = block_ids
+        return self.delay_free
+
+    def take_finished(self, finished_request_ids: set[str]) -> set[str]:
+        self.finished_filter = set(finished_request_ids)
+        return self.finished_sending & finished_request_ids
+
+    def shutdown(self) -> None:
+        self.events.append("streaming-shutdown")
+
+
+class StreamingLifecycleScaffoldingTests(unittest.TestCase):
+    def test_metadata_carries_sorted_preempted_request_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            connector = _make_connector(Path(directory), 0)
+            output = _empty_scheduler_output()
+            output.preempted_req_ids = {"request-z", "request-a"}
+
+            metadata = connector.build_connector_meta(output)
+
+        self.assertEqual(
+            metadata.preempted_request_ids,
+            ("request-a", "request-z"),
+        )
+
+    def test_default_none_preserves_connector_lifecycle_behavior(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            connector = _make_connector(Path(directory), 0)
+            metadata = SparkCacheConnectorMetadata()
+
+            connector.handle_preemptions(metadata)
+            self.assertEqual(
+                connector.request_finished(
+                    types.SimpleNamespace(request_id="finished"),
+                    [1, 2],
+                ),
+                (False, None),
+            )
+            self.assertEqual(connector.get_finished({"finished"}), (None, None))
+
+    def test_preemption_and_delayed_free_delegate_synchronously(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            connector = _make_connector(Path(directory), 0)
+            runtime = _FakeStreamingRuntime(delay_free=True)
+            connector._streaming_runtime = runtime
+            metadata = SparkCacheConnectorMetadata(
+                preempted_request_ids=("preempted",)
+            )
+
+            connector.handle_preemptions(metadata)
+            delayed = connector.request_finished(
+                types.SimpleNamespace(request_id="finished"),
+                [9, 3, 7],
+            )
+
+        self.assertIs(runtime.preemption_metadata, metadata)
+        self.assertEqual(runtime.events, ["streaming-preemptions-drained"])
+        self.assertEqual(runtime.finished_request, "finished")
+        self.assertEqual(runtime.finished_blocks, (9, 3, 7))
+        self.assertEqual(delayed, (True, None))
+
+    def test_get_finished_merges_send_and_restore_completions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            connector = _make_connector(Path(directory), 0)
+            runtime = _FakeStreamingRuntime(
+                finished_sending={"stream-done", "not-in-filter"}
+            )
+            connector._streaming_runtime = runtime
+            connector._finished_load_reqs.add("restore-done")
+
+            result = connector.get_finished({"stream-done"})
+
+        self.assertEqual(result, ({"stream-done"}, {"restore-done"}))
+        self.assertEqual(runtime.finished_filter, {"stream-done"})
+        self.assertEqual(connector.get_finished(set()), (None, None))
+
+    def test_shutdown_drains_streaming_before_native_close(self) -> None:
+        events: list[str] = []
+        with tempfile.TemporaryDirectory() as directory:
+            connector = _make_connector(Path(directory), 0)
+            connector._streaming_runtime = _FakeStreamingRuntime(events=events)
+            native = mock.Mock()
+            native.close.side_effect = lambda: events.append("native-close")
+            connector._native_adapter = native
+
+            connector.shutdown()
+
+        self.assertEqual(events, ["streaming-shutdown", "native-close"])
+        self.assertIsNone(connector._streaming_runtime)
+        self.assertIsNone(connector._native_adapter)
+
+
+class StreamingSnapshotConnectorSeamTests(unittest.TestCase):
+    def setUp(self) -> None:
+        connector_module.configure_streaming_snapshot_runtime(
+            KVConnectorRole.SCHEDULER, None
+        )
+        connector_module.configure_streaming_snapshot_runtime(
+            KVConnectorRole.WORKER, None
+        )
+        self.addCleanup(
+            connector_module.configure_streaming_snapshot_runtime,
+            KVConnectorRole.SCHEDULER,
+            None,
+        )
+        self.addCleanup(
+            connector_module.configure_streaming_snapshot_runtime,
+            KVConnectorRole.WORKER,
+            None,
+        )
+
+    def _scheduler(self, root: Path) -> SparkContextCacheConnector:
+        runtime = _FakeStreamingRuntime()
+        connector_module.configure_streaming_snapshot_runtime(
+            KVConnectorRole.SCHEDULER, lambda connector: runtime
+        )
+        connector = _make_connector(
+            root,
+            0,
+            block_size=64,
+            role=KVConnectorRole.SCHEDULER,
+            extra_config={"spark_cache_streaming_snapshots": "1"},
+        )
+        connector._test_streaming_runtime = runtime
+        return connector
+
+    def test_chunked_new_and_cached_steps_emit_promised_full_table_offers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            connector = self._scheduler(Path(directory))
+            tokens = list(range(1100))
+            first = types.SimpleNamespace(
+                scheduled_new_reqs=[
+                    types.SimpleNamespace(
+                        req_id="streamed",
+                        prompt_token_ids=tokens,
+                        num_computed_tokens=0,
+                        block_ids=([10, 11],),
+                    )
+                ],
+                num_scheduled_tokens={"streamed": 512},
+                scheduled_cached_reqs=types.SimpleNamespace(
+                    req_ids=[],
+                    resumed_req_ids=set(),
+                    num_computed_tokens=[],
+                    new_block_ids=[],
+                ),
+            )
+            first_meta = connector.build_connector_meta(first)
+            second = types.SimpleNamespace(
+                scheduled_new_reqs=[],
+                num_scheduled_tokens={"streamed": 512},
+                scheduled_cached_reqs=types.SimpleNamespace(
+                    req_ids=["streamed"],
+                    resumed_req_ids=set(),
+                    num_computed_tokens=[512],
+                    new_block_ids=[([12, 13],)],
+                ),
+            )
+            second_meta = connector.build_connector_meta(second)
+
+        self.assertEqual(first_meta.plans, [])
+        self.assertEqual(len(first_meta.offers), 1)
+        self.assertEqual(first_meta.offers[0].completed_tokens, 512)
+        self.assertEqual(first_meta.offers[0].block_ids, (10, 11))
+        self.assertEqual(second_meta.plans, [])
+        self.assertEqual(len(second_meta.offers), 1)
+        self.assertEqual(second_meta.offers[0].completed_tokens, 1024)
+        self.assertEqual(second_meta.offers[0].block_ids, (10, 11, 12, 13))
+        self.assertEqual(connector._store_progress, {})
+        self.assertEqual(
+            connector._test_streaming_runtime.observed_metadata,
+            [first_meta, second_meta],
+        )
+
+    def test_resumed_and_final_tail_offers_never_fall_back_to_store_plans(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            connector = self._scheduler(Path(directory))
+            tokens = list(range(1100))
+            start = types.SimpleNamespace(
+                scheduled_new_reqs=[
+                    types.SimpleNamespace(
+                        req_id="resumed",
+                        prompt_token_ids=tokens,
+                        num_computed_tokens=0,
+                        block_ids=([10, 11],),
+                    )
+                ],
+                num_scheduled_tokens={"resumed": 512},
+                scheduled_cached_reqs=types.SimpleNamespace(
+                    req_ids=[],
+                    resumed_req_ids=set(),
+                    num_computed_tokens=[],
+                    new_block_ids=[],
+                ),
+            )
+            connector.build_connector_meta(start)
+            resumed = types.SimpleNamespace(
+                scheduled_new_reqs=[],
+                preempted_req_ids={"resumed"},
+                num_scheduled_tokens={"resumed": 512},
+                scheduled_cached_reqs=types.SimpleNamespace(
+                    req_ids=["resumed"],
+                    resumed_req_ids={"resumed"},
+                    num_computed_tokens=[512],
+                    new_block_ids=[([20, 21, 22, 23],)],
+                ),
+            )
+            resumed_meta = connector.build_connector_meta(resumed)
+            tail = types.SimpleNamespace(
+                scheduled_new_reqs=[
+                    types.SimpleNamespace(
+                        req_id="tail",
+                        prompt_token_ids=tokens,
+                        num_computed_tokens=0,
+                        block_ids=([30, 31, 32, 33],),
+                    )
+                ],
+                num_scheduled_tokens={"tail": 1100},
+                scheduled_cached_reqs=types.SimpleNamespace(
+                    req_ids=[],
+                    resumed_req_ids=set(),
+                    num_computed_tokens=[],
+                    new_block_ids=[],
+                ),
+            )
+            tail_meta = connector.build_connector_meta(tail)
+
+        self.assertEqual(resumed_meta.plans, [])
+        self.assertEqual(resumed_meta.preempted_request_ids, ("resumed",))
+        self.assertEqual(resumed_meta.offers[0].block_ids, (20, 21, 22, 23))
+        self.assertEqual(resumed_meta.offers[0].completed_tokens, 1024)
+        self.assertEqual(tail_meta.plans, [])
+        self.assertEqual(tail_meta.offers[0].completed_tokens, 1024)
+        self.assertEqual(tail_meta.offers[0].block_ids, (30, 31, 32, 33))
+
+    def test_worker_converts_offers_after_forward_and_polls_without_sync_store(self) -> None:
+        runtime = _FakeStreamingRuntime()
+        connector_module.configure_streaming_snapshot_runtime(
+            KVConnectorRole.WORKER, lambda connector: runtime
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            connector = _make_connector(
+                Path(directory),
+                0,
+                extra_config={"spark_cache_streaming_snapshots": "1"},
+            )
+            offer = connector_module._StreamingSnapshotOffer(
+                "after-forward", "a" * 64, 1024, 512, (3, 0)
+            )
+            connector.bind_connector_metadata(
+                SparkCacheConnectorMetadata(
+                    plans=[_ReqPlan("legacy", "b" * 64, 1024, (3, 0, 5, 1), True)],
+                    streaming_snapshot_offers=[offer],
+                )
+            )
+            with mock.patch.object(connector, "_snapshot_store") as snapshot:
+                with mock.patch.object(
+                    torch.cuda,
+                    "current_stream",
+                    return_value=types.SimpleNamespace(cuda_stream=0xABC),
+                ):
+                    connector.wait_for_save()
+
+        self.assertEqual(runtime.completed_offers, [offer])
+        self.assertEqual(runtime.producer_streams, [0xABC])
+        self.assertEqual(runtime.poll_count, 1)
+        snapshot.assert_not_called()
+
+    def test_worker_polls_empty_post_forward_callbacks(self) -> None:
+        runtime = _FakeStreamingRuntime()
+        connector_module.configure_streaming_snapshot_runtime(
+            KVConnectorRole.WORKER, lambda connector: runtime
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            connector = _make_connector(
+                Path(directory),
+                0,
+                extra_config={"spark_cache_streaming_snapshots": "1"},
+            )
+            connector.bind_connector_metadata(SparkCacheConnectorMetadata())
+            connector.wait_for_save()
+
+        self.assertEqual(runtime.completed_offers, [])
+        self.assertEqual(runtime.poll_count, 1)
+
+    def test_tiny_unoffered_request_is_not_reported_as_async_send_finished(
+        self,
+    ) -> None:
+        """Mirror vLLM's scheduler/worker finish exchange for a tiny prompt.
+
+        A request with no aligned snapshot span produces no streaming offer.
+        The scheduler therefore frees it synchronously.  Worker ``get_finished``
+        must not echo that ordinary finished ID back as an asynchronous send
+        completion: vLLM's scheduler rightfully requires every reported send
+        completion to still exist in its delayed-free request table.
+        """
+
+        from sparkcache.streaming.block_lease import (
+            BlockLeaseRegistry,
+            LeaseCapacity,
+        )
+        from sparkcache.streaming.factory import (
+            SchedulerStreamingSnapshotAdapter,
+            WorkerStreamingSnapshotAdapter,
+        )
+
+        worker_adapter: WorkerStreamingSnapshotAdapter | None = None
+
+        def make_scheduler_runtime(connector):
+            return SchedulerStreamingSnapshotAdapter(connector)
+
+        def make_worker_runtime(connector):
+            nonlocal worker_adapter
+            worker_adapter = WorkerStreamingSnapshotAdapter(
+                connector,
+                settings=types.SimpleNamespace(),
+            )
+            # Finish reporting itself is GPU-free.  Keep the real adapter and
+            # lease registry, while replacing unrelated native-ring progress.
+            worker_adapter._bound = True
+            worker_adapter._runtime = object()
+            worker_adapter._leases = BlockLeaseRegistry(
+                LeaseCapacity(max_active_leases=2, max_leased_blocks=16)
+            )
+            worker_adapter.poll = lambda: 0
+            return worker_adapter
+
+        connector_module.configure_streaming_snapshot_runtime(
+            KVConnectorRole.SCHEDULER,
+            make_scheduler_runtime,
+        )
+        connector_module.configure_streaming_snapshot_runtime(
+            KVConnectorRole.WORKER,
+            make_worker_runtime,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scheduler = _make_connector(
+                root / "scheduler",
+                0,
+                role=KVConnectorRole.SCHEDULER,
+                extra_config={"spark_cache_streaming_snapshots": "1"},
+            )
+            worker = _make_connector(
+                root / "worker",
+                0,
+                role=KVConnectorRole.WORKER,
+                extra_config={"spark_cache_streaming_snapshots": "1"},
+            )
+            output = types.SimpleNamespace(
+                scheduled_new_reqs=[
+                    types.SimpleNamespace(
+                        req_id="tiny",
+                        prompt_token_ids=list(range(32)),
+                        num_computed_tokens=0,
+                        block_ids=([10],),
+                    )
+                ],
+                num_scheduled_tokens={"tiny": 32},
+                scheduled_cached_reqs=types.SimpleNamespace(
+                    req_ids=[],
+                    resumed_req_ids=set(),
+                    num_computed_tokens=[],
+                    new_block_ids=[],
+                ),
+            )
+            metadata = scheduler.build_connector_meta(output)
+            self.assertEqual(metadata.streaming_snapshot_offers, [])
+
+            worker.bind_connector_metadata(metadata)
+            worker.wait_for_save()
+
+            scheduler_requests = {"tiny": object()}
+            delayed, _ = scheduler.request_finished(
+                types.SimpleNamespace(request_id="tiny"),
+                [10],
+            )
+            self.assertFalse(delayed)
+            scheduler_requests.pop("tiny")
+
+            finished_sending, _ = worker.get_finished({"tiny"})
+            for request_id in finished_sending or ():
+                # Exact ownership assertion in vLLM
+                # Scheduler._update_from_kv_xfer_finished().
+                self.assertIn(request_id, scheduler_requests)
+
+        self.assertIsNotNone(worker_adapter)
+
+
+class StreamingSnapshotProductionBoundaryTests(unittest.TestCase):
+    def test_connector_runtime_publisher_commit_becomes_visible_only_after_poll(
+        self,
+    ) -> None:
+        from sparkcache.streaming.factory import (
+            ProductionStreamingSettings,
+            WorkerStreamingSnapshotAdapter,
+        )
+        from sparkcache.streaming.native_ring import NativeSnapshotRing
+        from sparkcache.streaming.test_factory import _glm_inventory_connector
+        from sparkcache.streaming.test_publisher import FakeGlmRingBackend
+
+        with tempfile.TemporaryDirectory() as directory:
+            connector = _make_connector(
+                Path(directory),
+                0,
+                block_size=64,
+                extra_config={
+                    "spark_cache_draft_policy": "colocated_target",
+                    "spark_cache_draft_checkpoint_sha256": "1" * 64,
+                },
+            )
+            inventory = _glm_inventory_connector()
+            connector._plans = inventory._plans
+            connector._layer_tensors = inventory._layer_tensors
+            connector._rows_view = inventory._rows_view
+            backends: list[FakeGlmRingBackend] = []
+            append_started = threading.Event()
+            allow_append = threading.Event()
+            begin_context = connector._store.begin_context
+
+            class BlockingTransaction:
+                def __init__(self, transaction):
+                    self._transaction = transaction
+
+                def append_chunk(self, chunk):
+                    append_started.set()
+                    if not allow_append.wait(5):
+                        raise TimeoutError("test append remained blocked")
+                    return self._transaction.append_chunk(chunk)
+
+                def commit_manifest(self):
+                    return self._transaction.commit_manifest()
+
+                def abort(self):
+                    return self._transaction.abort()
+
+            connector._store.begin_context = lambda **kwargs: BlockingTransaction(
+                begin_context(**kwargs)
+            )
+
+            def build_ring(config, **_kwargs):
+                backend = FakeGlmRingBackend()
+                backends.append(backend)
+                return NativeSnapshotRing(config, backend=backend)
+
+            adapter = WorkerStreamingSnapshotAdapter(
+                connector,
+                settings=ProductionStreamingSettings(
+                    native_library_path=Path("/opt/spark/lib/libspcc_snapshot.so"),
+                    native_library_sha256="a" * 64,
+                ),
+                ring_builder=build_ring,
+            )
+            adapter.bind_kv_caches()
+            connector._streaming_snapshots_enabled = True
+            connector._streaming_runtime = adapter
+            digest = "9" * 64
+            offer = connector_module._StreamingSnapshotOffer(
+                request_id="production-boundary",
+                digest=digest,
+                span_tokens=256,
+                completed_tokens=256,
+                block_ids=(10,),
+            )
+            identity = connector._identity(0)
+
+            self.assertNotIn(digest, connector._held)
+            self.assertFalse(connector._store.lookup(identity, digest).is_hit)
+            connector.bind_connector_metadata(
+                SparkCacheConnectorMetadata(
+                    streaming_snapshot_offers=[offer],
+                )
+            )
+            with mock.patch.object(
+                torch.cuda,
+                "current_stream",
+                return_value=types.SimpleNamespace(cuda_stream=0xABC),
+            ):
+                connector.wait_for_save()
+
+            self.assertTrue(append_started.wait(5))
+            self.assertNotIn(digest, connector._held)
+            self.assertFalse(connector._store.lookup(identity, digest).is_hit)
+            allow_append.set()
+            deadline = time.monotonic() + 5
+            while digest not in connector._held and time.monotonic() < deadline:
+                connector.bind_connector_metadata(SparkCacheConnectorMetadata())
+                connector.wait_for_save()
+                time.sleep(0.001)
+
+            self.assertEqual(len(backends), 1)
+            self.assertIn(digest, connector._held)
+            self.assertTrue(connector._store.lookup(identity, digest).is_hit)
+            stats = connector.get_kv_connector_stats()
+            self.assertIsNotNone(stats)
+            self.assertEqual(stats.data["reports"][0]["held"], [digest])
+            streaming = stats.data["reports"][0]["streaming"]
+            self.assertTrue(streaming["bound"])
+            self.assertEqual(streaming["arena_mode"], "mapped_host")
+            self.assertEqual(streaming["ring_depth"], 2)
+            self.assertEqual(streaming["slot_bytes"], 64 * 1024 * 1024)
+            self.assertEqual(adapter.status()["active_leases"], 0)
+            self.assertEqual(adapter.status()["active_tickets"], 0)
+            connector.shutdown()
 
 
 if __name__ == "__main__":

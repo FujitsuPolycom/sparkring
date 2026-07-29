@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import dataclasses
+import gc
 import hashlib
 import json
 import tempfile
+import threading
 import unittest
+import weakref
 from pathlib import Path
 from unittest import mock
 
@@ -46,6 +49,357 @@ def _chunk(start: int = 0, end: int = 256) -> ContextChunk:
 
 
 class ManifestStoreTests(unittest.TestCase):
+    def test_streaming_macro_batch_uses_one_chunk_directory_barrier(self) -> None:
+        context_digest = hashlib.sha256(b"streamed-macro-batch").hexdigest()
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            chunk_directory = root / "chunks"
+            chunk_directory.mkdir()
+            store = ManifestStore(root)
+            transaction = store.begin_context(
+                identity=_identity(),
+                context_digest=context_digest,
+                span_tokens=768,
+            )
+            barriers: list[Path] = []
+
+            with mock.patch.object(
+                cache_manifest,
+                "_fsync_directory",
+                side_effect=lambda path: barriers.append(Path(path)),
+            ):
+                receipts = transaction.append_chunks(
+                    (
+                        _chunk(0, 256),
+                        _chunk(256, 512),
+                        _chunk(512, 768),
+                    )
+                )
+
+            self.assertEqual(len(receipts), 3)
+            self.assertEqual(barriers, [chunk_directory])
+
+            transaction.commit_manifest()
+            lookup = store.lookup(_identity(), context_digest)
+            self.assertTrue(lookup.is_hit, lookup.reason)
+            self.assertEqual(
+                store.restore(lookup),
+                (
+                    _chunk(0, 256),
+                    _chunk(256, 512),
+                    _chunk(512, 768),
+                ),
+            )
+
+    def test_streaming_macro_batch_retry_is_idempotent(self) -> None:
+        context_digest = hashlib.sha256(b"macro-batch-retry").hexdigest()
+        chunks = (_chunk(0, 256), _chunk(256, 512), _chunk(512, 768))
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = ManifestStore(root)
+            transaction = store.begin_context(
+                identity=_identity(),
+                context_digest=context_digest,
+                span_tokens=768,
+            )
+
+            first = transaction.append_chunks(chunks)
+            second = transaction.append_chunks(chunks)
+            self.assertEqual(second, first)
+
+            transaction.commit_manifest()
+            self.assertEqual(transaction.append_chunks(chunks), first)
+            self.assertEqual(len(tuple((root / "chunks").glob("*.spcc"))), 3)
+            lookup = store.lookup(_identity(), context_digest)
+            self.assertTrue(lookup.is_hit, lookup.reason)
+            self.assertEqual(store.restore(lookup), chunks)
+
+    def test_streaming_macro_batch_conflict_fails_before_partial_append(self) -> None:
+        context_digest = hashlib.sha256(b"macro-batch-conflict").hexdigest()
+        first = _chunk(0, 256)
+        second = _chunk(256, 512)
+        replacement_records = dict(second.records)
+        replacement_records[StateRecord.TARGET_CKV] = b"different-target"
+        conflicting_second = ContextChunk(256, 512, replacement_records)
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = ManifestStore(directory)
+            transaction = store.begin_context(
+                identity=_identity(),
+                context_digest=context_digest,
+                span_tokens=512,
+            )
+            transaction.append_chunks((first, second))
+
+            with self.assertRaisesRegex(CommitConflict, "logical range"):
+                transaction.append_chunks((first, conflicting_second))
+
+            transaction.commit_manifest()
+            lookup = store.lookup(_identity(), context_digest)
+            self.assertTrue(lookup.is_hit, lookup.reason)
+            self.assertEqual(store.restore(lookup), (first, second))
+
+    def test_streaming_transaction_keeps_partial_publication_invisible(self) -> None:
+        context_digest = hashlib.sha256(b"partial-stream").hexdigest()
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = ManifestStore(root)
+            transaction = store.begin(
+                identity=_identity(),
+                context_digest=context_digest,
+            )
+            transaction.append_chunk(_chunk())
+
+            self.assertEqual(len(tuple((root / "chunks").glob("*.spcc"))), 1)
+            self.assertFalse(store.lookup(_identity(), context_digest).is_hit)
+
+            transaction.abort()
+            self.assertFalse(store.lookup(_identity(), context_digest).is_hit)
+
+    def test_streaming_transaction_commits_without_retaining_chunk_payloads(
+        self,
+    ) -> None:
+        context_digest = hashlib.sha256(b"streamed-two-chunks").hexdigest()
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = ManifestStore(directory)
+            transaction = store.begin_context(
+                identity=_identity(),
+                context_digest=context_digest,
+            )
+            first = _chunk(0, 256)
+            first_reference = weakref.ref(first)
+            first_receipt = transaction.append_chunk(first)
+            del first
+            gc.collect()
+
+            self.assertIsNone(first_reference())
+            self.assertEqual(first_receipt.logical_start, 0)
+            self.assertEqual(first_receipt.logical_end, 256)
+
+            transaction.append_chunk(_chunk(256, 384))
+            receipt = transaction.commit_manifest()
+            self.assertEqual(receipt.committed_tokens, 384)
+
+            lookup = store.lookup(_identity(), context_digest)
+            self.assertTrue(lookup.is_hit, lookup.reason)
+            self.assertEqual(
+                [(chunk.logical_start, chunk.logical_end) for chunk in store.restore(lookup)],
+                [(0, 256), (256, 384)],
+            )
+
+    def test_streaming_duplicate_publication_is_idempotent(self) -> None:
+        context_digest = hashlib.sha256(b"idempotent-stream").hexdigest()
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = ManifestStore(directory)
+            receipts = []
+            for _ in range(2):
+                transaction = store.begin_context(
+                    identity=_identity(),
+                    context_digest=context_digest,
+                )
+                transaction.append_chunk(_chunk())
+                receipts.append(transaction.commit_manifest())
+
+            self.assertEqual(receipts[0], receipts[1])
+            self.assertEqual(
+                len(tuple((Path(directory) / "chunks").glob("*.spcc"))),
+                1,
+            )
+            self.assertEqual(
+                len(tuple((Path(directory) / "manifests").rglob("*.json"))),
+                1,
+            )
+
+    def test_streaming_concurrent_identical_append_is_serialized_and_idempotent(
+        self,
+    ) -> None:
+        context_digest = hashlib.sha256(b"concurrent-identical-append").hexdigest()
+        entered_publish = threading.Event()
+        release_publish = threading.Event()
+        second_started = threading.Event()
+        original_publish = cache_manifest._publish_immutable_batch
+        chunk_publish_calls = 0
+        receipts = []
+        errors = []
+
+        def blocking_publish(objects: tuple[tuple[Path, bytes], ...]) -> None:
+            nonlocal chunk_publish_calls
+            if objects:
+                chunk_publish_calls += 1
+                entered_publish.set()
+                if not release_publish.wait(timeout=5):
+                    raise TimeoutError("test did not release chunk publication")
+            original_publish(objects)
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = ManifestStore(directory)
+            transaction = store.begin_context(
+                identity=_identity(),
+                context_digest=context_digest,
+                span_tokens=256,
+            )
+
+            def append(*, announce: bool = False) -> None:
+                if announce:
+                    second_started.set()
+                try:
+                    receipts.append(transaction.append_chunk(_chunk()))
+                except BaseException as error:  # pragma: no cover - assertion data
+                    errors.append(error)
+
+            with mock.patch.object(
+                cache_manifest,
+                "_publish_immutable_batch",
+                blocking_publish,
+            ):
+                first = threading.Thread(target=append)
+                second = threading.Thread(
+                    target=append,
+                    kwargs={"announce": True},
+                )
+                first.start()
+                self.assertTrue(entered_publish.wait(timeout=5))
+                second.start()
+                self.assertTrue(second_started.wait(timeout=5))
+                release_publish.set()
+                first.join(timeout=5)
+                second.join(timeout=5)
+
+            self.assertFalse(first.is_alive())
+            self.assertFalse(second.is_alive())
+            self.assertEqual(errors, [])
+            self.assertEqual(len(receipts), 2)
+            self.assertEqual(receipts[0], receipts[1])
+            self.assertEqual(chunk_publish_calls, 1)
+
+            committed = transaction.commit_manifest()
+            self.assertEqual(transaction.commit_manifest(), committed)
+            self.assertEqual(transaction.append_chunk(_chunk()), receipts[0])
+            lookup = store.lookup(_identity(), context_digest)
+            self.assertTrue(lookup.is_hit, lookup.reason)
+            self.assertEqual(store.restore(lookup), (_chunk(),))
+
+    def test_streaming_conflicting_retry_for_same_range_fails_closed(self) -> None:
+        context_digest = hashlib.sha256(b"conflicting-range-retry").hexdigest()
+        replacement_records = dict(_chunk().records)
+        replacement_records[StateRecord.TARGET_CKV] = b"different-target"
+        replacement = ContextChunk(0, 256, replacement_records)
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = ManifestStore(directory)
+            transaction = store.begin_context(
+                identity=_identity(),
+                context_digest=context_digest,
+                span_tokens=256,
+            )
+            transaction.append_chunk(_chunk())
+            with self.assertRaisesRegex(
+                CommitConflict,
+                "logical range",
+            ):
+                transaction.append_chunk(replacement)
+
+            transaction.commit_manifest()
+            lookup = store.lookup(_identity(), context_digest)
+            self.assertTrue(lookup.is_hit, lookup.reason)
+            self.assertEqual(store.restore(lookup), (_chunk(),))
+
+    def test_streaming_conflict_cannot_replace_committed_manifest(self) -> None:
+        context_digest = hashlib.sha256(b"conflicting-stream").hexdigest()
+        replacement_records = dict(_chunk().records)
+        replacement_records[StateRecord.TARGET_CKV] = b"different-target"
+        replacement = ContextChunk(
+            logical_start=0,
+            logical_end=256,
+            records=replacement_records,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = ManifestStore(directory)
+            original = store.begin_context(
+                identity=_identity(),
+                context_digest=context_digest,
+            )
+            original.append_chunk(_chunk())
+            original_receipt = original.commit_manifest()
+
+            conflict = store.begin_context(
+                identity=_identity(),
+                context_digest=context_digest,
+            )
+            conflict.append_chunk(replacement)
+            with self.assertRaises(CommitConflict):
+                conflict.commit_manifest()
+            conflict.abort()
+
+            lookup = store.lookup(_identity(), context_digest)
+            self.assertTrue(lookup.is_hit, lookup.reason)
+            self.assertEqual(lookup.manifest_digest, original_receipt.manifest_digest)
+            self.assertEqual(store.restore(lookup), (_chunk(),))
+
+    def test_streaming_transaction_rejects_invalid_lifecycle_and_geometry(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = ManifestStore(directory)
+
+            empty = store.begin_context(
+                identity=_identity(),
+                context_digest="a" * 64,
+            )
+            with self.assertRaisesRegex(ValueError, "at least one context chunk"):
+                empty.commit_manifest()
+            empty.abort()
+            with self.assertRaisesRegex(RuntimeError, "aborted"):
+                empty.append_chunk(_chunk())
+
+            partial = store.begin_context(
+                identity=_identity(),
+                context_digest="b" * 64,
+            )
+            partial.append_chunk(_chunk(0, 128))
+            with self.assertRaisesRegex(
+                ValueError,
+                "only the final context chunk may be partial",
+            ):
+                partial.append_chunk(_chunk(128, 256))
+            partial.abort()
+
+            committed = store.begin_context(
+                identity=_identity(),
+                context_digest="c" * 64,
+            )
+            committed.append_chunk(_chunk())
+            committed_receipt = committed.commit_manifest()
+            self.assertEqual(committed.commit_manifest(), committed_receipt)
+            with self.assertRaisesRegex(RuntimeError, "committed"):
+                committed.abort()
+
+    def test_declared_span_prevents_partial_manifest_visibility(self) -> None:
+        context_digest = hashlib.sha256(b"declared-span").hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            store = ManifestStore(directory)
+            transaction = store.begin_context(
+                identity=_identity(),
+                context_digest=context_digest,
+                span_tokens=512,
+            )
+            transaction.append_chunk(_chunk(0, 256))
+
+            with self.assertRaisesRegex(IncompleteEntry, "declared context span"):
+                transaction.commit_manifest()
+            self.assertFalse(store.lookup(_identity(), context_digest).is_hit)
+
+            transaction.append_chunk(_chunk(256, 512))
+            receipt = transaction.commit_manifest()
+            self.assertEqual(receipt.committed_tokens, 512)
+            self.assertTrue(store.lookup(_identity(), context_digest).is_hit)
+
     def test_checkpoint_identity_requires_content_digests(self) -> None:
         for field, value in (
             ("target_checkpoint", "mutable/model/path"),

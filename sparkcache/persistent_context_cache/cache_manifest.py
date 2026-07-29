@@ -12,6 +12,7 @@ import json
 import os
 import re
 import struct
+import threading
 import uuid
 from dataclasses import dataclass
 from enum import Enum
@@ -177,6 +178,14 @@ class CommitReceipt:
 
 
 @dataclass(frozen=True)
+class ChunkReceipt:
+    chunk_digest: str
+    encoded_bytes: int
+    logical_start: int
+    logical_end: int
+
+
+@dataclass(frozen=True)
 class LookupResult:
     is_hit: bool
     reason: str
@@ -268,6 +277,67 @@ def _publish_immutable(path: Path, payload: bytes) -> None:
         # changes. Manifest publication does not return success until this
         # barrier completes.
         _fsync_directory(path.parent)
+
+
+def _publish_immutable_batch(
+    objects: Sequence[tuple[Path, bytes]],
+) -> None:
+    """Durably publish one directory-local immutable-object macro-batch.
+
+    Every object's data reaches stable storage before any descriptor can be
+    appended to a transaction. File-data barriers run concurrently; all hard
+    links and temporary-name removals share one final directory barrier.
+    """
+
+    if not objects:
+        return
+    parent = objects[0][0].parent
+    if any(path.parent != parent for path, _payload in objects):
+        raise ValueError("immutable macro-batch must share one directory")
+    _ensure_durable_directory(parent)
+    staged = [
+        (
+            path,
+            payload,
+            path.with_name(f".{path.name}.writing-{uuid.uuid4().hex}"),
+        )
+        for path, payload in objects
+    ]
+
+    def stage(item: tuple[Path, bytes, Path]) -> None:
+        _path, payload, temporary = item
+        with temporary.open("xb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+
+    try:
+        worker_count = min(8, len(staged))
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+            tuple(pool.map(stage, staged))
+        for path, payload, temporary in staged:
+            try:
+                os.link(temporary, path)
+            except FileExistsError:
+                try:
+                    existing = path.read_bytes()
+                except OSError as error:
+                    raise CommitConflict(
+                        f"cannot verify existing immutable object {path}"
+                    ) from error
+                if existing != payload:
+                    raise CommitConflict(
+                        f"different immutable object already committed at {path}"
+                    )
+    finally:
+        for _path, _payload, temporary in staged:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+        # Chunk contents were each fsynced above. This one metadata barrier
+        # makes every successful hard link and temporary unlink durable.
+        _fsync_directory(parent)
 
 
 def _validate_digest(value: str, field: str) -> None:
@@ -380,6 +450,188 @@ def _decode_chunk(
         raise CacheFormatError(str(error)) from error
 
 
+class ManifestTransaction:
+    """Incrementally publish chunks, then expose them with one final manifest.
+
+    Appended chunks are durable, immutable content-addressed objects. The
+    transaction retains only their small descriptors, never the chunk payloads.
+    Until ``commit_manifest`` publishes the manifest, lookup cannot observe the
+    transaction. Aborting (or crashing) may leave unreferenced chunks, which
+    are harmless and can be reclaimed by a later orphan collector.
+    """
+
+    def __init__(
+        self,
+        *,
+        store: "ManifestStore",
+        identity: CacheIdentity,
+        context_digest: str,
+        span_tokens: int | None = None,
+    ) -> None:
+        _validate_digest(context_digest, "context_digest")
+        if span_tokens is not None and span_tokens <= 0:
+            raise ValueError("span_tokens must be positive")
+        self._store = store
+        self._identity = identity
+        self._context_digest = context_digest
+        self._span_tokens = span_tokens
+        self._descriptors: list[dict[str, Any]] = []
+        self._expected_start = 0
+        self._state = "open"
+        self._receipt: CommitReceipt | None = None
+        self._lock = threading.RLock()
+
+    def _require_open(self) -> None:
+        if self._state != "open":
+            raise RuntimeError(f"context transaction is {self._state}")
+
+    def append_chunk(self, chunk: ContextChunk) -> ChunkReceipt:
+        """Durably append one chunk without retaining its payload in memory."""
+
+        return self.append_chunks((chunk,))[0]
+
+    def append_chunks(
+        self,
+        chunks: Sequence[ContextChunk],
+    ) -> tuple[ChunkReceipt, ...]:
+        """Durably append one contiguous macro-batch with one metadata barrier."""
+
+        with self._lock:
+            if self._state == "aborted":
+                self._require_open()
+            if not chunks:
+                raise ValueError("at least one context chunk is required")
+
+            descriptors_by_range = {
+                (descriptor["logical_start"], descriptor["logical_end"]): descriptor
+                for descriptor in self._descriptors
+            }
+            pending_descriptors: list[dict[str, Any]] = []
+            pending_objects: list[tuple[Path, bytes]] = []
+            receipts: list[ChunkReceipt] = []
+            expected_start = self._expected_start
+            previous = self._descriptors[-1] if self._descriptors else None
+
+            for chunk in chunks:
+                token_count = chunk.logical_end - chunk.logical_start
+                if token_count > self._identity.chunk_tokens:
+                    raise ValueError("chunk exceeds identity chunk_tokens")
+                if (
+                    self._span_tokens is not None
+                    and chunk.logical_end > self._span_tokens
+                ):
+                    raise ValueError("chunk exceeds the declared context span")
+                _require_complete_chunk(chunk, self._identity.required_records)
+
+                encoded = _encode_chunk(chunk)
+                chunk_digest = _sha256(encoded)
+                receipt = ChunkReceipt(
+                    chunk_digest=chunk_digest,
+                    encoded_bytes=len(encoded),
+                    logical_start=chunk.logical_start,
+                    logical_end=chunk.logical_end,
+                )
+                receipts.append(receipt)
+                logical_range = (chunk.logical_start, chunk.logical_end)
+                existing = descriptors_by_range.get(logical_range)
+                if existing is not None:
+                    if (
+                        existing["sha256"] != chunk_digest
+                        or existing["bytes"] != len(encoded)
+                    ):
+                        raise CommitConflict(
+                            "different immutable chunk already appended for "
+                            f"logical range [{chunk.logical_start},"
+                            f"{chunk.logical_end})"
+                        )
+                    continue
+
+                self._require_open()
+                if chunk.logical_start != expected_start:
+                    raise ValueError(
+                        "chunk logical ranges must be contiguous from zero"
+                    )
+                if previous is not None:
+                    previous_tokens = (
+                        previous["logical_end"] - previous["logical_start"]
+                    )
+                    if previous_tokens != self._identity.chunk_tokens:
+                        raise ValueError("only the final context chunk may be partial")
+
+                descriptor = {
+                    "sha256": chunk_digest,
+                    "bytes": len(encoded),
+                    "logical_start": chunk.logical_start,
+                    "logical_end": chunk.logical_end,
+                }
+                descriptors_by_range[logical_range] = descriptor
+                pending_descriptors.append(descriptor)
+                pending_objects.append(
+                    (
+                        self._store.root / "chunks" / f"{chunk_digest}.spcc",
+                        encoded,
+                    )
+                )
+                expected_start = chunk.logical_end
+                previous = descriptor
+
+            _publish_immutable_batch(pending_objects)
+            self._descriptors.extend(pending_descriptors)
+            self._expected_start = expected_start
+            return tuple(receipts)
+
+    def commit_manifest(self) -> CommitReceipt:
+        """Publish the visibility point after every referenced chunk is durable."""
+
+        with self._lock:
+            if self._state == "committed":
+                assert self._receipt is not None
+                return self._receipt
+            self._require_open()
+            if not self._descriptors:
+                raise ValueError("at least one context chunk is required")
+            if (
+                self._span_tokens is not None
+                and self._expected_start != self._span_tokens
+            ):
+                raise IncompleteEntry(
+                    "streaming transaction does not cover the declared context span"
+                )
+            manifest = {
+                "format_abi": FORMAT_ABI,
+                "identity": self._identity.to_wire(),
+                "context_digest": self._context_digest,
+                "committed_tokens": self._expected_start,
+                "chunks": list(self._descriptors),
+            }
+            encoded_manifest = _canonical_json(manifest)
+            receipt = CommitReceipt(
+                manifest_digest=_sha256(encoded_manifest),
+                committed_tokens=self._expected_start,
+            )
+            _publish_immutable(
+                self._store._manifest_path(
+                    self._identity,
+                    self._context_digest,
+                ),
+                encoded_manifest,
+            )
+            self._receipt = receipt
+            self._state = "committed"
+            return receipt
+
+    def abort(self) -> None:
+        """Make the transaction terminal without publishing a manifest."""
+
+        with self._lock:
+            if self._state == "committed":
+                raise RuntimeError("context transaction is committed")
+            if self._state == "aborted":
+                return
+            self._state = "aborted"
+            self._descriptors.clear()
+
+
 class ManifestStore:
     """Atomic local-NVMe manifest publisher and fail-closed reader."""
 
@@ -389,6 +641,37 @@ class ManifestStore:
     def _manifest_path(self, identity: CacheIdentity, context_digest: str) -> Path:
         return self.root / "manifests" / identity.storage_key / f"{context_digest}.json"
 
+    def begin(
+        self,
+        *,
+        identity: CacheIdentity,
+        context_digest: str,
+        span_tokens: int | None = None,
+    ) -> ManifestTransaction:
+        """Begin an invisible, incrementally written context transaction."""
+
+        return ManifestTransaction(
+            store=self,
+            identity=identity,
+            context_digest=context_digest,
+            span_tokens=span_tokens,
+        )
+
+    def begin_context(
+        self,
+        *,
+        identity: CacheIdentity,
+        context_digest: str,
+        span_tokens: int | None = None,
+    ) -> ManifestTransaction:
+        """Named alias for callers that manage more than one transaction type."""
+
+        return self.begin(
+            identity=identity,
+            context_digest=context_digest,
+            span_tokens=span_tokens,
+        )
+
     def commit(
         self,
         *,
@@ -396,48 +679,17 @@ class ManifestStore:
         context_digest: str,
         chunks: Sequence[ContextChunk],
     ) -> CommitReceipt:
-        _validate_digest(context_digest, "context_digest")
-        if not chunks:
-            raise ValueError("at least one context chunk is required")
-        expected_start = 0
-        descriptors: list[dict[str, Any]] = []
-        for chunk_index, chunk in enumerate(chunks):
-            if chunk.logical_start != expected_start:
-                raise ValueError("chunk logical ranges must be contiguous from zero")
-            token_count = chunk.logical_end - chunk.logical_start
-            if token_count > identity.chunk_tokens:
-                raise ValueError("chunk exceeds identity chunk_tokens")
-            if chunk_index != len(chunks) - 1 and token_count != identity.chunk_tokens:
-                raise ValueError("only the final context chunk may be partial")
-            _require_complete_chunk(chunk, identity.required_records)
-            encoded = _encode_chunk(chunk)
-            chunk_digest = _sha256(encoded)
-            chunk_path = self.root / "chunks" / f"{chunk_digest}.spcc"
-            _publish_immutable(chunk_path, encoded)
-            descriptors.append(
-                {
-                    "sha256": chunk_digest,
-                    "bytes": len(encoded),
-                    "logical_start": chunk.logical_start,
-                    "logical_end": chunk.logical_end,
-                }
-            )
-            expected_start = chunk.logical_end
-        manifest = {
-            "format_abi": FORMAT_ABI,
-            "identity": identity.to_wire(),
-            "context_digest": context_digest,
-            "committed_tokens": expected_start,
-            "chunks": descriptors,
-        }
-        encoded_manifest = _canonical_json(manifest)
-        manifest_digest = _sha256(encoded_manifest)
-        _publish_immutable(
-            self._manifest_path(identity, context_digest), encoded_manifest
+        transaction = self.begin(
+            identity=identity,
+            context_digest=context_digest,
         )
-        return CommitReceipt(
-            manifest_digest=manifest_digest, committed_tokens=expected_start
-        )
+        try:
+            for chunk in chunks:
+                transaction.append_chunk(chunk)
+            return transaction.commit_manifest()
+        except BaseException:
+            transaction.abort()
+            raise
 
     def lookup(
         self,

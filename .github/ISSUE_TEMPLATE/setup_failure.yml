@@ -1,0 +1,155 @@
+name: Setup / bring-up failure
+description: A documented bring-up step (docs/SETUP.md, cable qualification, runtime build) did not work.
+title: "[setup] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying to bring SparkRing up — bring-up reports are one of
+        the most useful things you can send, including the ones that end in
+        "this cannot work on my hardware".
+
+        **Before you paste anything: this is a public repository.**
+        Redact site identity from every log, JSON, and command you attach:
+
+        * IP addresses -> use RFC 5737 documentation ranges
+          (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`)
+        * hostnames, SSH accounts, and domain names -> `<NODE0>`, `<USER>`
+        * absolute host paths -> repo-relative paths or `<PATH>`
+        * never paste keys, tokens, or anything from an `ssh` config
+
+        Interface names such as the ConnectX-7 / RoCE device names are fine —
+        they are the same on every DGX Spark and identify the hardware model,
+        not your cluster.
+
+  - type: checkboxes
+    id: sanitized
+    attributes:
+      label: Sanitization
+      options:
+        - label: I have redacted IPs, hostnames, accounts, and absolute host paths from everything below.
+          required: true
+
+  - type: input
+    id: release
+    attributes:
+      label: Exact release tag or commit
+      description: >-
+        The tag, or `git rev-parse HEAD` of the tree you were building from.
+        "latest main" is not specific enough — SparkRing has no stable API and
+        module layouts change without notice.
+      placeholder: "v0.1.0  — or —  7840ce5f..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Which bring-up stage failed?
+      description: Stage numbering follows docs/SETUP.md.
+      options:
+        - "Stage 1 — Hardware cabling / cage matching"
+        - "Stage 2 — OS, driver, CUDA prerequisites"
+        - "Stage 3 — Fabric network configuration (netplan, MTU, RoCE/GID)"
+        - "Stage 3.4 — Per-edge cable qualification (qualify_direct_cable.py)"
+        - "Stage 4 — Patched switchless NCCL build / install"
+        - "Stage 5 — Container image and the SparkRing overlay"
+        - "Stage 6 — Model download and placement"
+        - "Stage 7 — Build libspark_transport_capi.so and the probes"
+        - "Stage 8 — Launch"
+        - "Stage 9 — Verification (probe gates, attestation, live gate)"
+        - "runtime/ — reproducible runtime builder (build-runtime.sh)"
+        - "sparkcache/ — persistent context cache"
+        - "Offline / CPU-only work (pytest, sparkcache native layout tests)"
+        - "Other / not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware
+      description: >-
+        Node count and model, NIC model and firmware, cable type and length,
+        and the topology you cabled. If you are NOT on four DGX Sparks in a
+        4-cycle, say so explicitly — that is useful information, not a
+        disqualifier.
+      value: |
+        - Nodes:            (e.g. 4x NVIDIA DGX Spark / GB10)
+        - NIC + firmware:   (e.g. ConnectX-7, fw ...)
+        - Cables:           (DAC/AOC, length, cage-matched? y/n)
+        - Topology:         (e.g. ring 0-1-2-3-0, four direct links, no switch)
+        - Storage:          (NVMe model, only if the issue touches SparkCache)
+    validations:
+      required: true
+
+  - type: textarea
+    id: software
+    attributes:
+      label: OS, driver, CUDA, and runtime versions
+      description: Exact versions, not "latest".
+      value: |
+        - OS / kernel:       (e.g. Ubuntu 24.04, 6.x.y)
+        - NVIDIA driver:
+        - CUDA toolkit:
+        - Container engine:  (docker / podman + version)
+        - Base image:        (name + digest if you have it)
+        - Python:
+        - NCCL:              (stock or patched; version + patch series)
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: The exact command you ran
+      description: Copy it verbatim, then redact. Include the working directory.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: What happened
+      description: >-
+        The actual error output. Include the whole failing block, not just the
+        last line — SparkRing fails closed in a lot of places and the reason is
+        usually a few lines above the exit.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and which doc said so
+      description: >-
+        Quote the doc line or gate you were following (for example
+        "docs/SETUP.md Stage 3.4 says exit 0 means the cable is qualified").
+        If the docs are ambiguous, say that — a docs bug is a valid outcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: preflight
+    attributes:
+      label: Preflight / qualification JSON
+      description: >-
+        **Attach the machine-readable output if the failing stage produced
+        one** — drag the file into this box rather than pasting a screenshot.
+        Cable qualification (`spark_transport/scripts/qualify_direct_cable.py
+        --output ...`) emits one versioned JSON document; the orchestrator
+        preflight emits `preflight.json`. Redact IPs and hostnames in the JSON
+        before attaching. If no JSON exists for your stage, write "n/a".
+        The fields reviewers look at first are `cable_qualified`,
+        `latency_target_met`, `model_path_ready`, `failure_domain`, and
+        `counter_deltas`.
+      render: json
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you already tried
+      description: Anything you ruled out. Saves a round trip.

@@ -1,0 +1,116 @@
+name: Feature proposal
+description: Propose new functionality, a new transport shape, or a new measurement.
+title: "[proposal] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        SparkRing is pre-release research with no stable API. Proposals are
+        welcome, but the ones that get built are the ones that state **what
+        would be measured** and **what result would falsify the idea**.
+
+        Please open a proposal before a large pull request. It is much cheaper
+        to disagree about scope in an issue than in a 3,000-line diff.
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: >-
+        What problem does this solve, and for whom? What is currently
+        impossible, wrong, slow, or unmeasurable? Concrete beats abstract:
+        "a 32K context costs N seconds to re-prefill after a restart" is a
+        motivation; "better caching" is not.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: lane
+    attributes:
+      label: Which lane does this target?
+      description: >-
+        See CONTRIBUTING.md, "The two-lane claim policy". This determines what
+        evidence the change needs before it can be merged, and what may be
+        claimed about it afterwards.
+      options:
+        - "Public-functional — must work from this tree, on hardware anyone can buy"
+        - "Reference-performance — targets the pinned reference runtime and its numbers"
+        - "Docs only — no code, no measurement"
+        - "Developer experience / CI / tooling — no serving impact"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area?
+      options:
+        - "spark_transport — collectives, sessions, command ring, C ABI"
+        - "spark_transport/integrations/vllm — the fail-closed runtime overlay"
+        - "sparkcache — persistent NVMe context cache"
+        - "runtime — reproducible runtime builder, patches, pins"
+        - "scripts — gates, stress, matrices"
+        - "docs"
+        - "CI / repository tooling"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: >-
+        What you would build. Include the shape of the interface if there is
+        one. If it adds a transport shape, state the dtype, the element count,
+        the byte size, the rank count, and whether it must be CUDA-graph
+        capturable. If it touches the vLLM overlay, state which upstream
+        symbols it patches.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence_plan
+    attributes:
+      label: Evidence plan
+      description: >-
+        How would you show this works, and how would you show it is worth
+        keeping? Name the specific gates and artifacts, not "run benchmarks".
+      value: |
+        - Offline tests I would add:
+        - Hardware gate(s) it must pass:
+        - Measurement + units + configuration label:
+        - Baseline it is compared against:
+        - What result would tell us this is NOT worth doing:
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: >-
+        Including "do nothing". If an upstream project already does this, say
+        so and explain why an in-repo implementation is still warranted.
+
+  - type: textarea
+    id: provenance
+    attributes:
+      label: Provenance
+      description: >-
+        Is any part of this derived from another project's code or design? If
+        yes, name the project, the license, and the specific files or ideas.
+        SparkRing requires attribution in THIRD_PARTY_NOTICES.md for anything
+        copied or adapted; it is much easier to agree on that now than at
+        review time. Write "original work" if it is.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: intent
+    attributes:
+      label: Are you offering to implement this?
+      options:
+        - label: I am willing to implement it myself.
+        - label: I have (or can get) the hardware needed to gate it.

@@ -1,0 +1,452 @@
+# SparkRing public CI.
+#
+# WHAT THIS WORKFLOW PROVES
+#   Everything here runs on a stock `ubuntu-latest` GitHub-hosted runner with
+#   no GPU, no CUDA toolkit, no RDMA fabric, no DGX Spark, and no secrets.
+#   It is therefore a *hygiene and contract* gate, not a correctness gate for
+#   the parts of SparkRing that only exist on hardware.
+#
+# WHAT THIS WORKFLOW EXPLICITLY DOES **NOT** PROVE  (manual gates — see
+# CONTRIBUTING.md "Test suites and where they run"):
+#   * The `spark_transport` native library and its 20-executable CTest suite.
+#     `spark_transport/CMakeLists.txt` hard-requires `CUDAToolkit` and
+#     `libibverbs`; it cannot even be configured on a GPU-free runner.
+#     -> MANUAL GATE: reviewer or contributor runs it on a DGX Spark.
+#   * The CUDA half of `sparkcache/native` (`spark_cache_placement`,
+#     `spark_cache_snapshot`, the `.cu` probes). Built only when nvcc exists.
+#     -> MANUAL GATE.
+#   * Any four-Spark / four-rank behaviour, any NCCL patch, any cable
+#     qualification, any serving or performance number.
+#     -> MANUAL GATE, evidence-bundle only.
+#   A green run of this workflow must never be described as "the native build
+#   passed" or "the transport is verified".
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # There is no dev requirements file in this repo, on purpose: the runtime
+  # pin set (runtime/pip-freeze.txt) is an aarch64/CUDA-13.2 serving freeze
+  # and is NOT installable on a CI runner. CI therefore installs the minimal
+  # explicit set below. Keep this list and CONTRIBUTING.md in sync.
+  PYTHON_VERSION: "3.12"
+  RUFF_VERSION: "0.15.17"
+  PYTEST_VERSION: "8.4.2"
+  TORCH_VERSION: "2.11.0" # CPU wheel; the version the suites were verified on
+  NUMPY_VERSION: "2.4.4"
+
+jobs:
+  # --------------------------------------------------------------------
+  lint:
+    name: lint (ruff check, repo-wide; formatting NOT enforced)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install ruff (pinned)
+        run: python -m pip install --disable-pip-version-check "ruff==${RUFF_VERSION}"
+
+      # Rule set is passed on the command line because the repo intentionally
+      # has no pyproject.toml / ruff.toml. E,F,W minus E501 is the largest set
+      # the existing tree passes clean today; widening it (I, B, UP) or adding
+      # E501 would fail on pre-existing code and is a maintainer decision, not
+      # something CI should force.
+      - name: ruff check
+        run: ruff check --select E,F,W --ignore E501 --output-format=github .
+
+      # `ruff format --check` is deliberately NOT run: 96 of the 146 Python
+      # files in the tree would be reformatted. Enforcing it would mean
+      # reformatting the repo, which is out of scope for a CI change. See the
+      # "good first issues" list in CONTRIBUTING.md.
+      - name: Formatting status (informational only, never fails the build)
+        continue-on-error: true
+        run: |
+          echo "ruff format is NOT a gate in this repo. Current status:"
+          ruff format --check . || true
+
+  # --------------------------------------------------------------------
+  offline-tests:
+    name: tests (offline pytest — no GPU, no cluster, no secrets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: |
+            pip-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
+
+      - name: Install the minimal explicit test dependency set
+        run: |
+          python -m pip install --disable-pip-version-check \
+            "pytest==${PYTEST_VERSION}" "numpy==${NUMPY_VERSION}"
+          # CPU-only torch. The suites use torch purely for CPU tensor
+          # construction/comparison; nothing here touches a device.
+          python -m pip install --disable-pip-version-check \
+            --index-url https://download.pytorch.org/whl/cpu \
+            "torch==${TORCH_VERSION}"
+
+      # Only these three trees are run. Each was executed offline on a
+      # GPU-free machine and observed green before being added here.
+      #
+      #   spark_transport/  — transport adapters, vLLM overlay contracts,
+      #                       experiments. Tests that need real hardware
+      #                       self-skip with an explicit reason
+      #                       (vLLM-only-in-container, four-rank TP4 env,
+      #                       private-archive deliverable).
+      #   sparkcache/       — connector, manifest, codec, native ctypes/layout
+      #                       contract tests (pure-Python header/ABI parsing;
+      #                       they read the .h/.cu sources, they do not link
+      #                       or run CUDA).
+      #   runtime/          — runtime-lock and verify-runtime tests.
+      #
+      # NOT run here, and why:
+      #   scripts/          — contains no test_*.py at all (context_cache_*.py
+      #                       are live-cluster drivers).
+      #   spark_transport CTest / sparkcache CUDA targets — see the header
+      #                       comment; they are manual gates.
+      - name: pytest (offline suites only)
+        run: python -m pytest spark_transport sparkcache runtime -q -rs
+
+  # --------------------------------------------------------------------
+  native-cpu-contract:
+    name: native (sparkcache CPU layout/CTest — CUDA half NOT built)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # sparkcache/native/CMakeLists.txt is the only native tree in this repo
+      # that can be configured without CUDA: its CUDA targets sit behind
+      # SPARK_CACHE_PLACEMENT_ENABLE_CUDA + check_language(CUDA), while the
+      # host-side layout/parser libraries and their CTest cases are plain C++17
+      # compiled with -Wall -Wextra -Wpedantic -Werror.
+      #
+      # This job therefore proves exactly one thing: the host-side
+      # layout/parser sources compile warning-clean and their layout contract
+      # assertions hold. It does NOT compile a single line of CUDA and says
+      # nothing about spark_transport.
+      - name: Configure (CUDA explicitly disabled)
+        run: |
+          cmake -S sparkcache/native -B "${RUNNER_TEMP}/sparkcache-native" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSPARK_CACHE_PLACEMENT_ENABLE_CUDA=OFF
+
+      - name: Build host-side targets
+        run: cmake --build "${RUNNER_TEMP}/sparkcache-native" --parallel
+
+      - name: CTest (host-side cases only)
+        run: ctest --test-dir "${RUNNER_TEMP}/sparkcache-native" --output-on-failure
+
+  # --------------------------------------------------------------------
+  docs-links:
+    name: docs (Markdown repo-relative links + anchors, offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # Deliberately offline: only repo-relative links and same-file/other-file
+      # heading anchors are resolved. http(s) targets are NOT fetched, so CI
+      # never goes red because a third-party site is down or rate-limits the
+      # runner. External-link rot is a manual review item.
+      - name: Check repo-relative Markdown links
+        run: |
+          cat > "${RUNNER_TEMP}/mdlinkcheck.py" <<'PYEOF'
+          from __future__ import annotations
+
+          import re
+          import subprocess
+          import sys
+          import unicodedata
+          from pathlib import Path
+
+          LINK = re.compile(
+              r"(?<!\\)\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\s*\)"
+          )
+          FENCE = re.compile(r"^\s*(```|~~~)")
+          HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$")
+          SKIP = re.compile(r"^(https?:|mailto:|ftp:|tel:|data:|#!)", re.IGNORECASE)
+
+
+          def tracked_markdown(root: Path) -> list[Path]:
+              out = subprocess.run(
+                  ["git", "ls-files", "-z", "*.md"],
+                  cwd=root, check=True, capture_output=True, text=True,
+              ).stdout
+              return [root / p for p in out.split("\0") if p]
+
+
+          def slug(text: str) -> str:
+              text = re.sub(r"`([^`]*)`", r"\1", text)
+              text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
+              text = re.sub(r"[*_~]", "", text)
+              text = unicodedata.normalize("NFKD", text).lower()
+              text = re.sub(r"[^\w\- ]+", "", text)
+              return text.strip().replace(" ", "-")
+
+
+          def anchors(path: Path) -> set[str]:
+              found: set[str] = set()
+              fenced = False
+              for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                  if FENCE.match(line):
+                      fenced = not fenced
+                      continue
+                  if fenced:
+                      continue
+                  match = HEADING.match(line)
+                  if match:
+                      found.add(slug(match.group(1)))
+                  for raw in re.findall(r'<a\s+[^>]*name="([^"]+)"', line):
+                      found.add(raw.lower())
+                  for raw in re.findall(r'<a\s+[^>]*id="([^"]+)"', line):
+                      found.add(raw.lower())
+              return found
+
+
+          def body_links(path: Path) -> list[tuple[int, str]]:
+              out: list[tuple[int, str]] = []
+              fenced = False
+              text = path.read_text(encoding="utf-8", errors="replace")
+              for number, line in enumerate(text.splitlines(), start=1):
+                  if FENCE.match(line):
+                      fenced = not fenced
+                      continue
+                  if fenced:
+                      continue
+                  line = re.sub(r"`[^`]*`", "", line)
+                  for target in LINK.findall(line):
+                      out.append((number, target))
+              return out
+
+
+          def main() -> int:
+              root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd()
+              files = tracked_markdown(root)
+              cache: dict[Path, set[str]] = {}
+              failures: list[str] = []
+              checked = 0
+
+              for md in files:
+                  for number, target in body_links(md):
+                      if SKIP.match(target):
+                          continue
+                      checked += 1
+                      fragment = ""
+                      if "#" in target:
+                          target, fragment = target.split("#", 1)
+                      dest = md if target == "" else (md.parent / target).resolve()
+                      if not dest.exists():
+                          failures.append(
+                              f"{md.relative_to(root).as_posix()}:{number}: "
+                              f"missing target {target!r}"
+                          )
+                          continue
+                      if fragment and dest.suffix.lower() == ".md":
+                          if dest not in cache:
+                              cache[dest] = anchors(dest)
+                          if fragment.lower() not in cache[dest]:
+                              failures.append(
+                                  f"{md.relative_to(root).as_posix()}:{number}: "
+                                  f"missing anchor #{fragment} in "
+                                  f"{dest.relative_to(root).as_posix()}"
+                              )
+
+              print(
+                  f"checked {checked} repo-relative links "
+                  f"across {len(files)} tracked Markdown files"
+              )
+              for line in failures:
+                  print(f"::error::{line}")
+              if failures:
+                  print(f"{len(failures)} broken relative link(s)")
+                  return 1
+              print("all repo-relative Markdown links and anchors resolve")
+              return 0
+
+
+          if __name__ == "__main__":
+              raise SystemExit(main())
+          PYEOF
+          python "${RUNNER_TEMP}/mdlinkcheck.py" "${GITHUB_WORKSPACE}"
+
+  # --------------------------------------------------------------------
+  # TIER 1 — BLOCKING. Site identity and credential shapes.
+  #
+  # sparkring is a PUBLIC repository. This job is the automated backstop for
+  # the public-repo boundary. It is a backstop, not a substitute for review:
+  # it only knows the shapes listed below.
+  #
+  # Every pattern here was measured against the tracked tree and is currently
+  # at ZERO hits, so this gate is green on `main` today. That is deliberate —
+  # a gate that is red by default trains people to ignore it. Any future hit
+  # is therefore a real regression, not pre-existing debt.
+  #
+  # Matching is case-insensitive over TRACKED files only (`git grep`), so
+  # untracked local scratch is ignored by construction.
+  release-safety:
+    name: release-safety (BLOCKING — site identity + credential shapes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan tracked files for blocking identifier shapes
+        run: |
+          set -uo pipefail
+
+          # Excluded by path because these files must quote the blocklist in
+          # order to do their job. Both are manual-review artifacts.
+          EXCLUDES=(
+            ':(exclude).github/workflows/ci.yml'
+            ':(exclude)docs/RELEASE_SAFETY.md'
+          )
+          echo "Excluded from this scan (they document the blocklist itself):"
+          printf '  %s\n' "${EXCLUDES[@]#:(exclude)}"
+          echo
+
+          PATTERNS=(
+            # --- RFC1918 site addressing -------------------------------
+            # Bare 10.0.0.0/8 is NOT blocking: docs/SETUP.md uses 10.x
+            # values as illustrative examples in its placeholder-definition
+            # table. Those are covered by the advisory job instead.
+            '192\.168\.[0-9]{1,3}\.[0-9]{1,3}'
+            '(^|[^0-9.])172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3}'
+
+            # --- ssh / scp account forms -------------------------------
+            '[A-Za-z0-9_.-]+@(192\.168\.|10\.[0-9]|172\.(1[6-9]|2[0-9]|3[01])\.)'
+
+            # --- private repo / host paths -----------------------------
+            'Documents[\\/]sparkring'
+            '/hybridmodel'
+
+            # --- credential shapes -------------------------------------
+            '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+            'ssh-(rsa|ed25519|dss) AAAA'
+            '(pass(word|wd)|secret|api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|bearer)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9/+_.-]{12,}'
+            'AWS_SECRET_ACCESS_KEY|GITHUB_TOKEN[[:space:]]*[:=]|xox[baprs]-|gh[pousr]_[A-Za-z0-9]{20,}'
+          )
+
+          status=0
+          for pattern in "${PATTERNS[@]}"; do
+            hits="$(git grep -n -I -E -i -e "$pattern" -- "${EXCLUDES[@]}" || true)"
+            if [ -n "$hits" ]; then
+              status=1
+              echo "::group::BLOCKING pattern matched: ${pattern}"
+              printf '%s\n' "$hits"
+              echo "::endgroup::"
+              while IFS= read -r hit; do
+                file="${hit%%:*}"
+                rest="${hit#*:}"
+                line="${rest%%:*}"
+                echo "::error file=${file},line=${line}::private identifier or credential shape in tracked content"
+              done <<< "$hits"
+            fi
+          done
+
+          if [ "$status" -ne 0 ]; then
+            echo
+            echo "This repository is public. Replace real site identity with"
+            echo "documentation placeholders before committing:"
+            echo "  * IP addresses -> RFC 5737 (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24)"
+            echo "  * accounts / hostnames -> <PLACEHOLDER> tokens"
+            echo "  * host filesystem paths -> repo-relative paths"
+            echo "  * credentials -> never commit; rotate anything that leaked"
+            exit 1
+          fi
+
+          echo "release-safety: clean — no blocking identifier shapes in tracked files"
+
+  # --------------------------------------------------------------------
+  # TIER 2 — ADVISORY, never blocking.
+  #
+  # These are deterministic Linux predictable-interface names derived from the
+  # GB10 PCI topology. EVERY DGX Spark produces the same names, so they
+  # identify the hardware model — which this repository openly targets — not
+  # this particular cluster. They are documentation-legitimate and appear
+  # throughout the existing setup and qualification docs on purpose.
+  #
+  # This job exists to prompt authors of NEW code to prefer a configurable
+  # placeholder over a hardcoded interface name. It is NOT policing the
+  # existing docs, and it must never gate a merge.
+  hardware-identifiers:
+    name: hardware-identifiers (ADVISORY — never blocks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report hardware-shaped identifiers (informational)
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+
+          EXCLUDES=(
+            ':(exclude).github/workflows/ci.yml'
+            ':(exclude)docs/RELEASE_SAFETY.md'
+          )
+
+          PATTERNS=(
+            'wlP9s9'                 # management NIC name on the reference nodes
+            'enp1s0f[01]np[01]'      # ConnectX-7 fabric ports
+            'rocep1s0f[01]'          # RoCE device names for those ports
+            'enP2p1s0f[01]'          # alternate GB10 enumeration
+            'enx[0-9a-f]{12}'        # MAC-derived interface name
+            # Bare RFC1918 10.0.0.0/8 lives here rather than in the blocking
+            # tier: today it only appears as example values in the
+            # placeholder-definition table of docs/SETUP.md.
+            '(^|[^0-9.=])10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}'
+          )
+
+          total=0
+          for pattern in "${PATTERNS[@]}"; do
+            hits="$(git grep -n -I -E -i -e "$pattern" -- "${EXCLUDES[@]}" || true)"
+            if [ -n "$hits" ]; then
+              count="$(printf '%s\n' "$hits" | wc -l | tr -d ' ')"
+              total=$((total + count))
+              echo "::group::advisory: ${pattern} (${count} line(s))"
+              printf '%s\n' "$hits" | head -40
+              echo "::endgroup::"
+            fi
+          done
+
+          echo
+          if [ "$total" -eq 0 ]; then
+            echo "hardware-identifiers: none present."
+          else
+            echo "hardware-identifiers: ${total} advisory line(s)."
+            echo "These are GB10 predictable-interface names, not cluster secrets."
+            echo "No action is required for existing documentation. If YOUR change"
+            echo "added one, consider a CLI flag or environment variable instead of"
+            echo "a hardcoded name, so other operators can run the same code."
+          fi
+          echo "This job is advisory and never blocks a merge."
