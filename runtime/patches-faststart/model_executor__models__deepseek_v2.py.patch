@@ -1,0 +1,14 @@
+--- a/vllm/model_executor/models/deepseek_v2.py
++++ b/vllm/model_executor/models/deepseek_v2.py
+@@ -676,5 +676,11 @@
+         self.quant_block_size = 128  # TODO: get from config
+         self.topk_indices_buffer = topk_indices_buffer
+         self.topk_scores_buffer = topk_scores_buffer
++        # Advertise the post-remap slot coordinate system to B12X_MLA_SPARSE.
++        # DCP1 maps logical paged-indexer output through the local block table;
++        # DCP>1 converts DCP-local logical candidates to global logical ids.
++        self.output_physical_slots = (
++            vllm_config.parallel_config.decode_context_parallel_size == 1
++        )
+ 
+         # NOTE: (zyongye) we use fp8 naive cache,

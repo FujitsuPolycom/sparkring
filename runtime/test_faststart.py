@@ -41,6 +41,9 @@ def test_faststart_container_applies_overlay_before_native_build():
     )
     assert "FROM ${BASE_DEVEL_IMAGE} AS native-build" in text
     assert "runtime/patches" in text
+    assert "runtime/patches-faststart" in text
+    assert "--compatible-base" in text
+    assert "--supplemental-root /build/patches-faststart" in text
     assert "runtime-manifest.json" in text
     assert 'ENTRYPOINT ["/opt/sparkring/public-entrypoint.sh"]' in text
 

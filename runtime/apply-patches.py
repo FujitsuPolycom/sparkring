@@ -50,7 +50,12 @@ def fatal(msg: str) -> None:
     sys.exit(1)
 
 
-def install_additions(comp_dir: str, site_packages: str, log_fh) -> int:
+def install_additions(
+    comp_dir: str,
+    site_packages: str,
+    log_fh,
+    compatible_base: bool = False,
+) -> int:
     additions_path = os.path.join(comp_dir, "additions.json")
     if not os.path.isfile(additions_path):
         return 0
@@ -88,6 +93,21 @@ def install_additions(comp_dir: str, site_packages: str, log_fh) -> int:
         if os.path.commonpath((target, site_root)) != site_root:
             fatal(f"addition target escapes site-packages: {target_rel}")
         if os.path.exists(target):
+            if (
+                compatible_base
+                and os.path.isfile(target)
+                and sha256_file(target) == expected_sha
+            ):
+                record = {
+                    "addition": source_rel,
+                    "target": target_rel,
+                    "sha256": expected_sha,
+                    "action": "inherited",
+                }
+                log_fh.write(json.dumps(record, sort_keys=True) + "\n")
+                print(f"apply-patches: inherited {source_rel} -> {target_rel}")
+                installed += 1
+                continue
             fatal(f"addition refuses to overwrite existing path: {target_rel}")
         os.makedirs(os.path.dirname(target), exist_ok=True)
         shutil.copyfile(source, target)
@@ -102,10 +122,22 @@ def install_additions(comp_dir: str, site_packages: str, log_fh) -> int:
     return installed
 
 
-def apply_component(comp_dir: str, site_packages: str, log_fh) -> int:
+def apply_component(
+    comp_dir: str,
+    site_packages: str,
+    log_fh,
+    *,
+    compatible_base: bool = False,
+    supplemental_root: str | None = None,
+) -> int:
     patches = sorted(f for f in os.listdir(comp_dir) if f.endswith(".patch"))
     if not patches:
-        additions = install_additions(comp_dir, site_packages, log_fh)
+        additions = install_additions(
+            comp_dir,
+            site_packages,
+            log_fh,
+            compatible_base=compatible_base,
+        )
         if not additions:
             print(f"apply-patches: {comp_dir}: no patches (verified no-op)")
         return additions
@@ -131,15 +163,72 @@ def apply_component(comp_dir: str, site_packages: str, log_fh) -> int:
         if not os.path.isfile(target):
             fatal(f"{patch_name}: target missing: {target}")
         actual_pre = sha256_file(target)
-        if actual_pre != expected_pre:
-            fatal(
-                f"{patch_name}: preimage mismatch for {target_rel}: "
-                f"{actual_pre} != expected {expected_pre}"
-            )
-
         patch_path = os.path.join(comp_dir, patch_name)
+        action = "applied"
+        selected_patch = patch_path
+        if actual_pre != expected_pre:
+            if not compatible_base:
+                fatal(
+                    f"{patch_name}: preimage mismatch for {target_rel}: "
+                    f"{actual_pre} != expected {expected_pre}"
+                )
+            reverse = subprocess.run(
+                ["git", "apply", "--reverse", "--check", os.path.abspath(patch_path)],
+                cwd=site_packages,
+                capture_output=True,
+                text=True,
+            )
+            if reverse.returncode == 0:
+                record = {
+                    "patch": patch_name,
+                    "target": target_rel,
+                    "preimage_sha256": actual_pre,
+                    "postimage_sha256": actual_pre,
+                    "action": "inherited",
+                }
+                log_fh.write(json.dumps(record, sort_keys=True) + "\n")
+                print(f"apply-patches: inherited {patch_name} -> {target_rel}")
+                applied += 1
+                continue
+            forward = subprocess.run(
+                ["git", "apply", "--check", os.path.abspath(patch_path)],
+                cwd=site_packages,
+                capture_output=True,
+                text=True,
+            )
+            if forward.returncode == 0:
+                action = "rebased"
+            else:
+                if supplemental_root is None:
+                    fatal(
+                        f"{patch_name}: incompatible base and no supplemental patch"
+                    )
+                supplemental_preimages_path = os.path.join(
+                    supplemental_root, "preimages.json"
+                )
+                if not os.path.isfile(supplemental_preimages_path):
+                    fatal("supplemental patch root has no preimages.json")
+                with open(
+                    supplemental_preimages_path, "r", encoding="utf-8"
+                ) as supplemental_fh:
+                    supplemental_preimages = json.load(supplemental_fh)
+                supplemental = supplemental_preimages.get(patch_name)
+                if not isinstance(supplemental, dict):
+                    fatal(f"{patch_name}: no supplemental patch for incompatible base")
+                if supplemental.get("target_path") != target_rel:
+                    fatal(f"{patch_name}: supplemental target mismatch")
+                if supplemental.get("preimage_sha256") != actual_pre:
+                    fatal(
+                        f"{patch_name}: supplemental preimage mismatch for "
+                        f"{target_rel}: {actual_pre}"
+                    )
+                selected_patch = os.path.join(supplemental_root, patch_name)
+                if not os.path.isfile(selected_patch):
+                    fatal(f"{patch_name}: supplemental patch file missing")
+                action = "supplemental"
+
         proc = subprocess.run(
-            ["git", "apply", "--whitespace=nowarn", os.path.abspath(patch_path)],
+            ["git", "apply", "--whitespace=nowarn", os.path.abspath(selected_patch)],
             cwd=site_packages,
             capture_output=True,
             text=True,
@@ -152,11 +241,17 @@ def apply_component(comp_dir: str, site_packages: str, log_fh) -> int:
             "target": target_rel,
             "preimage_sha256": expected_pre,
             "postimage_sha256": sha256_file(target),
+            "action": action,
         }
         log_fh.write(json.dumps(record, sort_keys=True) + "\n")
         print(f"apply-patches: applied {patch_name} -> {target_rel}")
         applied += 1
-    return applied + install_additions(comp_dir, site_packages, log_fh)
+    return applied + install_additions(
+        comp_dir,
+        site_packages,
+        log_fh,
+        compatible_base=compatible_base,
+    )
 
 
 def main(argv=None) -> int:
@@ -181,6 +276,18 @@ def main(argv=None) -> int:
         action="store_true",
         help="accepted for explicitness; this tool is always fail-closed",
     )
+    parser.add_argument(
+        "--compatible-base",
+        action="store_true",
+        help=(
+            "accept an immutable compatible base when each operation is "
+            "provably inherited, cleanly rebased, or exactly supplemented"
+        ),
+    )
+    parser.add_argument(
+        "--supplemental-root",
+        help="exact supplemental patches for compatible-base conflicts",
+    )
     args = parser.parse_args(argv)
 
     if not os.path.isdir(args.patches_root):
@@ -194,7 +301,13 @@ def main(argv=None) -> int:
         for comp in sorted(os.listdir(args.patches_root)):
             comp_dir = os.path.join(args.patches_root, comp)
             if os.path.isdir(comp_dir):
-                total += apply_component(comp_dir, args.site_packages, log_fh)
+                total += apply_component(
+                    comp_dir,
+                    args.site_packages,
+                    log_fh,
+                    compatible_base=args.compatible_base,
+                    supplemental_root=args.supplemental_root,
+                )
     print(f"apply-patches: done, {total} patch(es) applied")
     return 0
 

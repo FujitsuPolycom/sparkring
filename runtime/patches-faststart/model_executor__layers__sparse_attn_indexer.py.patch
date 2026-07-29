@@ -1,0 +1,115 @@
+--- a/vllm/model_executor/layers/sparse_attn_indexer.py
++++ b/vllm/model_executor/layers/sparse_attn_indexer.py
+@@ -1162,4 +1162,70 @@ def _convert_b12x_dcp_local_topk_to_global(
+     )
+ 
+ 
++@triton.jit
++def _b12x_dcp1_logical_to_physical_kernel(
++    token_indices_ptr,
++    block_table_ptr,
++    rows,
++    width,
++    table_width,
++    ti_stride0,
++    ti_stride1,
++    bt_stride0,
++    bt_stride1,
++    PAGE_SIZE: tl.constexpr,
++    BLOCK_N: tl.constexpr,
++):
++    row = tl.program_id(0)
++    tile = tl.program_id(1)
++    offs = tile * BLOCK_N + tl.arange(0, BLOCK_N)
++    lane = offs < width
++    ptrs = token_indices_ptr + row * ti_stride0 + offs * ti_stride1
++    logical = tl.load(ptrs, mask=lane, other=-1)
++    page = logical // PAGE_SIZE
++    valid = lane & (logical >= 0) & (page >= 0) & (page < table_width)
++    physical_page = tl.load(
++        block_table_ptr + row * bt_stride0 + page * bt_stride1,
++        mask=valid,
++        other=-1,
++    )
++    physical = physical_page * PAGE_SIZE + logical % PAGE_SIZE
++    tl.store(ptrs, tl.where(valid & (physical_page >= 0), physical, -1), mask=lane)
++
++
++def _b12x_dcp1_logical_to_physical(
++    token_indices: torch.Tensor,
++    block_table: torch.Tensor,
++) -> None:
++    """Map logical paged-indexer ids to this rank's physical cache slots."""
++    if token_indices.numel() == 0:
++        return
++    if token_indices.dtype != torch.int32 or block_table.dtype != torch.int32:
++        raise TypeError("B12X DCP1 top-k remap requires int32 tensors")
++    if token_indices.ndim != 2 or block_table.ndim != 2:
++        raise ValueError("B12X DCP1 top-k remap requires rank-2 tensors")
++    if token_indices.shape[0] != block_table.shape[0]:
++        raise ValueError(
++            "B12X DCP1 top-k rows must match block-table rows: "
++            f"{token_indices.shape[0]} != {block_table.shape[0]}"
++        )
++    rows, width = token_indices.shape
++    block_n = 256
++    _b12x_dcp1_logical_to_physical_kernel[
++        (rows, triton.cdiv(width, block_n))
++    ](
++        token_indices,
++        block_table,
++        rows,
++        width,
++        block_table.shape[1],
++        token_indices.stride(0),
++        token_indices.stride(1),
++        block_table.stride(0),
++        block_table.stride(1),
++        PAGE_SIZE=_B12X_PAGED_INDEX_PAGE_SIZE,
++        BLOCK_N=block_n,
++    )
++
++
+ def _prewarm_b12x_paged_indexer_prefill(
+@@ -2255,6 +2320,17 @@
+                         _topk_indices_full, _n_chunk, _shard, _off, _sp_end, _tp,
+                         num_shards=_sp_shards, stride=_sp_stride,
+                     )
++                if dcp_world_size == 1:
++                    physical_rows = (
++                        _topk_indices_full if _sp_active else topk_indices
++                    )
++                    physical_block_table = chunk.block_table[
++                        :1, :active_page_width
++                    ].expand(int(physical_rows.shape[0]), active_page_width)
++                    _b12x_dcp1_logical_to_physical(
++                        physical_rows,
++                        physical_block_table,
++                    )
+                 continue
+ 
+             k_quant = k_quant_full[: chunk.total_seq_lens]
+@@ -2437,6 +2513,11 @@
+                     dcp_rank=dcp_rank,
+                     cp_kv_cache_interleave_size=cp_kv_cache_interleave_size,
+                 )
++            if dcp_world_size == 1:
++                _b12x_dcp1_logical_to_physical(
++                    topk_indices,
++                    b12x_block_table[:num_decode_tokens],
++                )
+             return topk_indices_buffer
+ 
+         schedule_metadata = decode_metadata.schedule_metadata
+@@ -2890,4 +2971,11 @@
+         self.skip_k_cache_insert = skip_k_cache_insert
+         self.use_fp4_cache = use_fp4_cache
+         self.use_b12x_sparse_indexer = use_b12x_sparse_indexer()
++        from vllm.config import get_current_vllm_config
++
++        self.output_physical_slots = (
++            get_current_vllm_config()
++            .parallel_config.decode_context_parallel_size
++            == 1
++        )
+         if self.use_b12x_sparse_indexer:

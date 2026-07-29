@@ -31,6 +31,7 @@ RUN test "$(uname -m)" = "aarch64" \
        fi
 
 COPY runtime/patches /build/patches
+COPY runtime/patches-faststart /build/patches-faststart
 COPY runtime/apply-patches.py /build/apply-patches.py
 RUN install -d -m 0755 /var/log/sparkring \
     && /opt/venv/bin/python /build/apply-patches.py \
@@ -38,6 +39,8 @@ RUN install -d -m 0755 /var/log/sparkring \
          --site-packages "$(/opt/venv/bin/python -c \
            'import sysconfig; print(sysconfig.get_paths()["purelib"])')" \
          --log /var/log/sparkring/patch-apply.jsonl \
+         --compatible-base \
+         --supplemental-root /build/patches-faststart \
          --fail-closed
 
 COPY spark_transport /build/spark_transport
