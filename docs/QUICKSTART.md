@@ -1,7 +1,6 @@
 # Four-Spark quickstart
 
-This is the shortest honest path from four stock DGX Sparks to a first
-switchless GLM-5.2 API:
+This is the shortest path to four stock DGX Sparks running GLM-5.2, switchless: 
 
 ```text
 pull the pinned public ARM64 base
