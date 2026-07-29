@@ -207,8 +207,8 @@ def _make_connector(
     values = {
         "spark_cache_root": str(root),
         "spark_cache_min_span_tokens": "256",
-        "spark_cache_target_id": "test-target",
-        "spark_cache_draft_id": "test-draft",
+        "spark_cache_target_checkpoint_sha256": "1" * 64,
+        "spark_cache_draft_checkpoint_sha256": "2" * 64,
         "spark_cache_draft_policy": "separate",
     }
     values.update(extra_config or {})
@@ -231,6 +231,68 @@ def _make_connector(
     if override_worker_rank:
         connector._worker_rank = lambda: rank  # type: ignore[method-assign]
     return connector
+
+
+class CheckpointIdentityTests(unittest.TestCase):
+    def test_mutable_target_identity_is_rejected_at_startup(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "target checkpoint identity must be a 64-character lowercase SHA-256",
+            ):
+                _make_connector(
+                    Path(directory),
+                    0,
+                    extra_config={
+                        "spark_cache_target_checkpoint_sha256": "local/model/path"
+                    },
+                )
+
+    def test_separate_draft_requires_its_own_immutable_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "separate draft checkpoint identity must be a 64-character"
+                " lowercase SHA-256",
+            ):
+                _make_connector(
+                    Path(directory),
+                    0,
+                    extra_config={"spark_cache_draft_checkpoint_sha256": ""},
+                )
+
+    def test_colocated_draft_derives_target_checkpoint_identity(self) -> None:
+        target_digest = "a" * 64
+        with tempfile.TemporaryDirectory() as directory:
+            connector = _make_connector(
+                Path(directory),
+                0,
+                extra_config={
+                    "spark_cache_target_checkpoint_sha256": target_digest,
+                    "spark_cache_draft_checkpoint_sha256": "",
+                    "spark_cache_draft_policy": "colocated_target",
+                },
+            )
+
+        self.assertEqual(connector._identity_base["target_checkpoint"], target_digest)
+        self.assertEqual(connector._identity_base["draft_checkpoint"], target_digest)
+
+    def test_replacing_checkpoint_identity_changes_cache_namespace(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            first = _make_connector(
+                Path(directory),
+                0,
+                extra_config={"spark_cache_target_checkpoint_sha256": "a" * 64},
+            )
+            replacement = _make_connector(
+                Path(directory),
+                0,
+                extra_config={"spark_cache_target_checkpoint_sha256": "b" * 64},
+            )
+
+        self.assertNotEqual(
+            first._identity(0).storage_key, replacement._identity(0).storage_key
+        )
 
 
 class _FakeCudaTensor:

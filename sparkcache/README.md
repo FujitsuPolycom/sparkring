@@ -45,9 +45,10 @@ one drive.
 - Content-addressed chunks, per-record SHA-256, identity pinning
   model/quant/TP/DCP/shard-rank/chunk geometry. An entry can only restore
   into the exact configuration that wrote it.
-- **Manifest-last publication:** immutable chunks are fsynced and published
-  before the fsynced manifest becomes visible. A digest enters quorum only
-  after that commit completes.
+- **Manifest-last publication:** immutable chunks are file-fsynced, linked,
+  and directory-fsynced before the manifest is file-fsynced, linked, and
+  directory-fsynced. Newly created directory entries are persisted too. A
+  digest enters quorum only after every durability barrier completes.
 - **Metadata-only startup discovery:** workers validate manifest identity,
   descriptor geometry, and referenced chunk existence/size without reading
   every cached payload at startup.
@@ -90,15 +91,54 @@ python -m pytest \
   native/tests/test_layout_contract.py -q
 ```
 
-The current public package passes **99 GPU-free tests**.
+The current public package passes **106 GPU-free tests**.
 
 ## Enabling
 
-Set `SPARK_CONTEXT_CACHE_ENABLE=1` and pass a `--kv-transfer-config` that
-names `spark_context_cache_connector` (the module must be importable, e.g.
-this directory on `PYTHONPATH`). Rank-local store root defaults to
-`/cache/context` (`SPARK_CONTEXT_CACHE_ROOT`). Without the flag, serving
-is byte-identical to a no-cache runtime.
+The `--kv-transfer-config` below is the enable switch. The public connector
+does **not** consume a second `SPARK_CONTEXT_CACHE_ENABLE` flag: omit the
+complete `--kv-transfer-config` argument to disable SparkCache. The module
+must be importable (for example, put this directory on `PYTHONPATH`).
+
+The pinned vLLM factory also requires
+`--disable-hybrid-kv-cache-manager`, because this connector deliberately
+does not advertise HMA support:
+
+```bash
+vllm serve /models/glm-5.2 \
+  --disable-hybrid-kv-cache-manager \
+  --kv-transfer-config '{
+    "kv_connector": "SparkContextCacheConnector",
+    "kv_role": "kv_both",
+    "kv_connector_module_path": "spark_context_cache_connector",
+    "kv_load_failure_policy": "recompute",
+    "kv_connector_extra_config": {
+      "spark_cache_root": "/cache/context",
+      "spark_cache_target_checkpoint_sha256": "<64 lowercase hex characters>",
+      "spark_cache_draft_policy": "colocated_target",
+      "spark_cache_store": true,
+      "spark_cache_restore": true
+    }
+  }'
+```
+
+The target digest is mandatory and must identify the actual immutable
+checkpoint contents (for example, hash an artifact manifest that pins every
+weight shard). Mutable paths and tags such as `latest` are rejected.
+Replacing weights in place requires a new digest and therefore selects a new
+cache namespace.
+
+For a separately loaded drafter, set
+`"spark_cache_draft_policy": "separate"` and provide
+`"spark_cache_draft_checkpoint_sha256": "<64 lowercase hex characters>"`.
+For `colocated_target`, omit the draft digest: it is derived from the target
+digest, and a conflicting value is rejected.
+
+The rank-local store root defaults to `/cache/context`
+(`SPARK_CONTEXT_CACHE_ROOT`). `spark_cache_store=false` and
+`spark_cache_restore=false` independently suppress publication and lookup,
+but the connector remains instantiated while `--kv-transfer-config` is
+present.
 
 Native direct placement is opt-in. Build `native/`, then set
 `SPARK_CONTEXT_CACHE_NATIVE_RESTORE=1`,
@@ -112,17 +152,19 @@ layout, or ABI mismatch.
 The mechanism is general; three things are currently tuned to SparkRing's
 GLM-5.2 deployment and are the porting surface:
 
-1. **Identity strings** (`quantization_layout`, `rope_layout`, checkpoint
-   ids): set these to describe *your* model/KV layout. They exist so an
-   entry can never restore into a mismatched configuration — pick values
-   that change whenever your KV bytes would.
+1. **Immutable checkpoint digests and layout identities**
+   (`spark_cache_target_checkpoint_sha256`, optional separate-draft digest,
+   `quantization_layout`, and `rope_layout`): checkpoint fields accept only
+   lowercase SHA-256 values. Set them from an immutable artifact manifest,
+   and change layout identities whenever equal token IDs would produce
+   different persistent KV bytes.
 2. **Layer classification** (`spark_context_cache_codec.classify_layer`):
    maps vLLM cache-layer names to record kinds (target KV, sparse-indexer
    state, speculative-draft KV). For a vanilla attention model this
    collapses to a single record kind; extend it if your model registers
    extra cache layers.
-3. **Serve wiring**: how your launcher passes `--kv-transfer-config` and
-   the env flags.
+3. **Serve wiring**: how your launcher passes the exact
+   `--kv-transfer-config` and `--disable-hybrid-kv-cache-manager` arguments.
 
 Nothing in the store/restore path assumes the SparkRing transport, RDMA,
 or any particular interconnect.

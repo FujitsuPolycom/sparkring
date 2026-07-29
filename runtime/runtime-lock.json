@@ -79,7 +79,11 @@
     {
       "path": "runtime/patches/vllm/020-sparkcache-vmm-exemption.patch",
       "sha256": "5a16f21bdca2a2c2ab24bcca87efca015888a92a93857214b582e9838d61054c"
+    },
+    {
+      "path": "runtime/patches/vllm/preimages.json",
+      "sha256": "65ed07b081b8d0432d5b8b182aecd9b03305854b0655f532170e51bc10d720e7"
     }
   ],
-  "overlays_comment": "Only the two independently written SparkCache compatibility patches are public and pinned here. The production runtime's remaining vLLM overlay (61 modified + 12 new files, ~12.9k lines) is not yet shippable pending provenance cleanup."
+  "overlays_comment": "Only the two independently written SparkCache compatibility patches are public. Both patch payloads and their security-sensitive preimages.json manifest are pinned here. The production runtime's remaining vLLM overlay (61 modified + 12 new files, ~12.9k lines) is not yet shippable pending provenance cleanup."
 }

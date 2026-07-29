@@ -21,8 +21,8 @@ from cache_manifest import (
 
 def _identity() -> CacheIdentity:
     return CacheIdentity(
-        target_checkpoint="target-sha256",
-        draft_checkpoint="draft-sha256",
+        target_checkpoint="1" * 64,
+        draft_checkpoint="2" * 64,
         quantization_layout="nvfp4-ds-mla-v1",
         rope_layout="glm52-bf16-rope-v1",
         tp_degree=4,
@@ -46,6 +46,103 @@ def _chunk(start: int = 0, end: int = 256) -> ContextChunk:
 
 
 class ManifestStoreTests(unittest.TestCase):
+    def test_checkpoint_identity_requires_content_digests(self) -> None:
+        for field, value in (
+            ("target_checkpoint", "mutable/model/path"),
+            ("draft_checkpoint", "latest"),
+            ("target_checkpoint", "A" * 64),
+            ("draft_checkpoint", None),
+        ):
+            with self.subTest(field=field, value=value):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    f"{field} must be a 64-character lowercase SHA-256",
+                ):
+                    dataclasses.replace(_identity(), **{field: value})
+
+    def test_successful_commit_durably_publishes_chunks_before_manifest(
+        self,
+    ) -> None:
+        events: list[tuple[str, Path]] = []
+        original_link = cache_manifest.os.link
+
+        def recording_link(source: Path, destination: Path) -> None:
+            original_link(source, destination)
+            events.append(("link", Path(destination)))
+
+        def recording_directory_fsync(path: Path) -> None:
+            events.append(("fsync-directory", Path(path)))
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = ManifestStore(root)
+            with (
+                mock.patch.object(cache_manifest.os, "link", recording_link),
+                mock.patch.object(
+                    cache_manifest,
+                    "_fsync_directory",
+                    recording_directory_fsync,
+                ),
+            ):
+                store.commit(
+                    identity=_identity(),
+                    context_digest="0" * 64,
+                    chunks=(_chunk(),),
+                )
+
+        chunk_link = next(
+            index
+            for index, event in enumerate(events)
+            if event[0] == "link" and event[1].suffix == ".spcc"
+        )
+        manifest_link = next(
+            index
+            for index, event in enumerate(events)
+            if event[0] == "link" and event[1].suffix == ".json"
+        )
+        chunk_fsync = next(
+            index
+            for index, event in enumerate(events)
+            if index > chunk_link
+            and event == ("fsync-directory", events[chunk_link][1].parent)
+        )
+        manifest_fsync = next(
+            index
+            for index, event in enumerate(events)
+            if index > manifest_link
+            and event == ("fsync-directory", events[manifest_link][1].parent)
+        )
+        self.assertLess(chunk_link, chunk_fsync)
+        self.assertLess(chunk_fsync, manifest_link)
+        self.assertLess(manifest_link, manifest_fsync)
+
+    def test_manifest_directory_fsync_failure_fails_the_commit(self) -> None:
+        identity = _identity()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "chunks").mkdir()
+            manifest_directory = root / "manifests" / identity.storage_key
+            manifest_directory.mkdir(parents=True)
+            store = ManifestStore(root)
+
+            def fail_manifest_barrier(path: Path) -> None:
+                if Path(path) == manifest_directory:
+                    raise OSError("simulated directory fsync failure")
+
+            with (
+                mock.patch.object(
+                    cache_manifest,
+                    "_fsync_directory",
+                    fail_manifest_barrier,
+                ),
+                self.assertRaisesRegex(OSError, "directory fsync failure"),
+            ):
+                store.commit(
+                    identity=identity,
+                    context_digest="0" * 64,
+                    chunks=(_chunk(),),
+                )
+
     def test_complete_entry_round_trips_byte_exactly(self) -> None:
         context_digest = hashlib.sha256(b"tokens-0-through-255").hexdigest()
         expected = _chunk()

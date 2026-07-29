@@ -14,6 +14,134 @@ ENGINE="${CONTAINER_ENGINE:-docker}"
 [ -f "${LOCK}" ] || { echo "FATAL: missing lock file: ${LOCK}" >&2; exit 1; }
 command -v python3 >/dev/null || { echo "FATAL: python3 required to parse the lock" >&2; exit 1; }
 
+# Verify every file consumed by either patch pipeline before Docker sees the
+# build context. In particular, runtime/patches/**/preimages.json is itself
+# security-sensitive input: changing a recorded upstream preimage must require
+# an explicit lock update, just like changing the patch that follows it.
+python3 - "${LOCK}" "${REPO_ROOT}" <<'EOF'
+import hashlib
+import json
+import pathlib
+import re
+import sys
+
+lock_path = pathlib.Path(sys.argv[1])
+repo_root = pathlib.Path(sys.argv[2]).resolve()
+
+
+def fatal(message):
+    raise SystemExit(f"FATAL: {message}")
+
+
+try:
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as exc:
+    fatal(f"cannot read runtime lock: {exc}")
+
+
+def pinned_files(section, label):
+    if not isinstance(section, list) or not section:
+        fatal(f"{label} must be a non-empty list")
+    seen = set()
+    resolved = {}
+    for index, entry in enumerate(section):
+        if not isinstance(entry, dict):
+            fatal(f"{label}[{index}] must be an object")
+        rel = entry.get("path")
+        expected = entry.get("sha256")
+        if not isinstance(rel, str) or not rel:
+            fatal(f"{label}[{index}].path must be a non-empty string")
+        if rel in seen:
+            fatal(f"{label} contains duplicate path: {rel}")
+        seen.add(rel)
+        if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected):
+            fatal(f"{label}[{index}].sha256 must be 64 lowercase hex characters")
+
+        candidate = pathlib.Path(rel)
+        if candidate.is_absolute():
+            fatal(f"{label} path must be repository-relative: {rel}")
+        try:
+            path = (repo_root / candidate).resolve(strict=True)
+            path.relative_to(repo_root)
+        except (OSError, ValueError):
+            fatal(f"{label} path is missing or escapes the repository: {rel}")
+        if not path.is_file():
+            fatal(f"{label} path is not a regular file: {rel}")
+
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        if actual != expected:
+            fatal(f"{label} sha256 mismatch for {rel}: {actual} != expected {expected}")
+        resolved[path] = rel
+    return resolved
+
+
+try:
+    overlay_section = lock["overlays"]
+    nccl_section = lock["nccl"]["patches"]
+except (KeyError, TypeError) as exc:
+    fatal(f"lock key missing: {exc}")
+
+locked_overlays = pinned_files(overlay_section, "overlays")
+locked_nccl = pinned_files(nccl_section, "nccl.patches")
+
+# These are the exact two source paths in Containerfile's explicit COPY.
+# Equality makes the lock and the Docker build mutually binding: retargeting
+# either side requires a reviewed change to both.
+expected_nccl = {
+    (
+        repo_root
+        / "spark_transport/experiments/nccl_switchless_ring/"
+        "nccl-2.30.7-skip-tree-pat.patch"
+    ).resolve(),
+    (
+        repo_root
+        / "spark_transport/experiments/nccl_switchless_ring/"
+        "nccl-2.30.7-advertise-all-listener-gids.patch"
+    ).resolve(),
+}
+if set(locked_nccl) != expected_nccl:
+    locked = sorted(str(path.relative_to(repo_root)) for path in locked_nccl)
+    expected = sorted(str(path.relative_to(repo_root)) for path in expected_nccl)
+    fatal(
+        "nccl.patches paths do not match Containerfile COPY inputs: "
+        f"locked={locked}; expected={expected}"
+    )
+
+# Match apply-patches.py exactly: direct *.patch files in each direct component
+# directory, plus the preimages.json required whenever that component has a
+# patch. This rejects an unlocked patch dropped into the build context and a
+# locked-but-unused overlay entry with equal force.
+patches_root = repo_root / "runtime" / "patches"
+if not patches_root.is_dir():
+    fatal(f"patches root missing: {patches_root}")
+actual_inputs = set()
+for component in sorted(p for p in patches_root.iterdir() if p.is_dir()):
+    patches = sorted(component.glob("*.patch"))
+    if not patches:
+        continue
+    actual_inputs.update(path.resolve() for path in patches)
+    preimages = component / "preimages.json"
+    if not preimages.is_file():
+        fatal(f"{component.relative_to(repo_root)} has patches but no preimages.json")
+    actual_inputs.add(preimages.resolve())
+
+locked_inputs = set(locked_overlays)
+if actual_inputs != locked_inputs:
+    unlocked = sorted(str(p.relative_to(repo_root)) for p in actual_inputs - locked_inputs)
+    unused = sorted(str(p.relative_to(repo_root)) for p in locked_inputs - actual_inputs)
+    details = []
+    if unlocked:
+        details.append(f"unlocked patch input(s): {', '.join(unlocked)}")
+    if unused:
+        details.append(f"locked overlay(s) not consumed: {', '.join(unused)}")
+    fatal("; ".join(details))
+
+print(
+    f"verified {len(locked_overlays)} overlay input pin(s) and "
+    f"{len(nccl_section)} NCCL patch pin(s)"
+)
+EOF
+
 # Fail-closed lock accessor: any missing key aborts.
 lk() {
   python3 - "$LOCK" "$1" <<'EOF'
@@ -31,6 +159,15 @@ EOF
 }
 
 RUNTIME_ID="$(lk runtime_id)"
+
+if [ "${1:-}" = "--verify-lock-only" ]; then
+  [ "$#" -eq 1 ] || { echo "FATAL: --verify-lock-only accepts no other arguments" >&2; exit 1; }
+  echo "runtime lock and patch inputs verified for ${RUNTIME_ID}"
+  exit 0
+elif [ "$#" -ne 0 ]; then
+  echo "FATAL: unknown argument: $1" >&2
+  exit 1
+fi
 
 # Base image: prefer the pinned digest; fall back to tag only while the
 # digest field is still "pending-first-build" (first successful build pins it).

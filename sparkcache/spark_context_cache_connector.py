@@ -327,24 +327,53 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
                 raise RuntimeError(
                     "spark-context-cache: native restore IO workers must be in [1, 32]"
                 )
-        target_id = extra(
-            "spark_cache_target_id",
-            os.environ.get(
-                "SPARK_CONTEXT_CACHE_TARGET_ID",
-                vllm_config.model_config.model,
-            ),
-        )
-        draft_id = extra(
-            "spark_cache_draft_id",
-            os.environ.get("SPARK_CONTEXT_CACHE_DRAFT_ID", "mtp-draft"),
-        )
         draft_policy = extra(
             "spark_cache_draft_policy",
             os.environ.get("SPARK_CONTEXT_CACHE_DRAFT_POLICY", "colocated_target"),
         )
+        target_id = str(
+            extra(
+                "spark_cache_target_checkpoint_sha256",
+                os.environ.get(
+                    "SPARK_CONTEXT_CACHE_TARGET_CHECKPOINT_SHA256",
+                    "",
+                ),
+            )
+            or ""
+        )
+        if _SHA256_RE.fullmatch(target_id) is None:
+            raise RuntimeError(
+                "spark-context-cache: target checkpoint identity must be a"
+                " 64-character lowercase SHA-256; set"
+                " spark_cache_target_checkpoint_sha256"
+            )
+        draft_id = str(
+            extra(
+                "spark_cache_draft_checkpoint_sha256",
+                os.environ.get(
+                    "SPARK_CONTEXT_CACHE_DRAFT_CHECKPOINT_SHA256",
+                    "",
+                ),
+            )
+            or ""
+        )
+        if str(draft_policy) == "colocated_target":
+            if draft_id and draft_id != target_id:
+                raise RuntimeError(
+                    "spark-context-cache: colocated_target draft state must"
+                    " use the target checkpoint identity; omit"
+                    " spark_cache_draft_checkpoint_sha256"
+                )
+            draft_id = target_id
+        elif _SHA256_RE.fullmatch(draft_id) is None:
+            raise RuntimeError(
+                "spark-context-cache: separate draft checkpoint identity must"
+                " be a 64-character lowercase SHA-256; set"
+                " spark_cache_draft_checkpoint_sha256"
+            )
         self._identity_base = dict(
-            target_checkpoint=str(target_id),
-            draft_checkpoint=str(draft_id),
+            target_checkpoint=target_id,
+            draft_checkpoint=draft_id,
             quantization_layout="nvfp4_ds_mla-per-token-v1",
             rope_layout="glm52-rope-v1",
             tp_degree=parallel.tensor_parallel_size,

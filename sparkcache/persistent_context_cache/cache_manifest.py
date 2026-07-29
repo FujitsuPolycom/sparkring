@@ -74,12 +74,11 @@ class CacheIdentity:
     draft_kv_policy: str = "separate"
 
     def __post_init__(self) -> None:
-        for field in (
-            "target_checkpoint",
-            "draft_checkpoint",
-            "quantization_layout",
-            "rope_layout",
-        ):
+        for field in ("target_checkpoint", "draft_checkpoint"):
+            value = getattr(self, field)
+            if not isinstance(value, str) or _DIGEST.fullmatch(value) is None:
+                raise ValueError(f"{field} must be a 64-character lowercase SHA-256")
+        for field in ("quantization_layout", "rope_layout"):
             if not getattr(self, field):
                 raise ValueError(f"{field} must be non-empty")
         for field in ("tp_degree", "dcp_degree", "chunk_tokens"):
@@ -195,10 +194,52 @@ def _sha256(value: bytes | bytearray | memoryview) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def _publish_immutable(path: Path, payload: bytes) -> None:
-    """Publish complete bytes once without an overwrite race."""
+def _fsync_directory(path: Path) -> None:
+    """Persist directory-entry changes on POSIX filesystems.
 
-    path.parent.mkdir(parents=True, exist_ok=True)
+    Windows does not expose a portable directory ``fsync`` through Python.
+    SparkCache's deployment target is Linux; skipping here keeps the
+    model-free test suite portable without weakening the Linux contract.
+    """
+
+    if os.name == "nt":
+        return
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    descriptor = os.open(path, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _ensure_durable_directory(path: Path) -> None:
+    """Create missing path components and persist each parent entry."""
+
+    missing: list[Path] = []
+    cursor = path
+    while not cursor.exists():
+        missing.append(cursor)
+        parent = cursor.parent
+        if parent == cursor:
+            raise OSError(f"cannot find an existing ancestor for {path}")
+        cursor = parent
+    if not cursor.is_dir():
+        raise NotADirectoryError(cursor)
+    for directory in reversed(missing):
+        try:
+            directory.mkdir()
+        except FileExistsError:
+            if not directory.is_dir():
+                raise
+        else:
+            _fsync_directory(directory)
+            _fsync_directory(directory.parent)
+
+
+def _publish_immutable(path: Path, payload: bytes) -> None:
+    """Durably publish complete bytes once without an overwrite race."""
+
+    _ensure_durable_directory(path.parent)
     temporary = path.with_name(f".{path.name}.writing-{uuid.uuid4().hex}")
     try:
         with temporary.open("xb") as stream:
@@ -223,6 +264,10 @@ def _publish_immutable(path: Path, payload: bytes) -> None:
             temporary.unlink()
         except FileNotFoundError:
             pass
+        # One directory fsync after link+temporary-unlink durably records both
+        # changes. Manifest publication does not return success until this
+        # barrier completes.
+        _fsync_directory(path.parent)
 
 
 def _validate_digest(value: str, field: str) -> None:

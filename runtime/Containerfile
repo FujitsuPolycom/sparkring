@@ -139,13 +139,13 @@ RUN pip install --no-cache-dir \
 # Fail-closed patch overlay (runtime/patches/**).
 #
 # apply-patches.py verifies, for EVERY patch, the sha256 of the exact
-# preimage file inside the installed tree BEFORE applying, refuses fuzz
-# and offsets, and aborts the whole build on any mismatch. Philosophy and
+# preimage file inside the installed tree BEFORE applying, uses git apply
+# without fuzz, and aborts the whole build on any mismatch. Philosophy and
 # manifest schema follow spark_transport/experiments/fail_closed_mod_overlay/.
 #
-# runtime/patches/vllm/ currently ships EMPTY (provenance gate — see
-# runtime/patches/vllm/README.md); the step is a verified no-op until the
-# maintainer patch series lands.
+# runtime/patches/vllm/ currently ships the two independently written,
+# preimage-pinned SparkCache compatibility patches. The larger reference
+# overlay remains withheld pending provenance cleanup; see its README.
 # ---------------------------------------------------------------------------
 COPY runtime/patches /build/patches
 COPY runtime/apply-patches.py /build/apply-patches.py
