@@ -133,6 +133,7 @@ with them (see TBD-8).
 | KV cache | `--kv-cache-dtype nvfp4_ds_mla`, `--kv-cache-memory-bytes 4600000000` (4.6 GB/rank), per-token scale mode |
 | Attention backend | `--attention-backend B12X_MLA_SPARSE` |
 | Memory | `--gpu-memory-utilization 0.88` |
+| FlashInfer startup | `--no-enable-flashinfer-autotune`; the generic 4096-token full-model tuner is not rank-safe with multi-node DCP. The Spark/B12X-specific prewarm remains enabled. |
 | Graphs | `cudagraph_mode: FULL_AND_PIECEWISE` with the pinned capture-size list. **First bring-up should run eager** (`--enforce-eager`) before graphs are enabled; an eager run is a valid *bring-up* step but is **not** an acceptance run — the matrix is the graph configuration. |
 | Prefix caching | enabled |
 | API | OpenAI-compatible server on rank 0; served model name and port are site choices recorded in the site config |

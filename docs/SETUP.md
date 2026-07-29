@@ -873,7 +873,7 @@ vllm serve /hybridmodel \
   --hf-overrides '{"index_topk_pattern":"FFFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSS"}' \
   --kv-cache-dtype nvfp4_ds_mla --kv-cache-memory-bytes 4600000000 \
   --max-model-len 458752 --max-num-batched-tokens 4096 --max-num-seqs 8 \
-  --gpu-memory-utilization 0.88 \
+  --gpu-memory-utilization 0.88 --no-enable-flashinfer-autotune \
   --distributed-timeout-seconds 3600 --cpu-distributed-timeout-seconds 3600 \
   --distributed-executor-backend mp \
   --nnodes 4 --node-rank <RANK> --master-addr <HEAD_MGMT_IP> --master-port 29501 \

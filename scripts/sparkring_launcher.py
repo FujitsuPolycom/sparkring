@@ -266,7 +266,7 @@ def start_actions(site: SiteConfig, config: LaunchConfig) -> list[RemoteAction]:
             "--volume",
             f"{config.model_host_path}:{site.runtime.model_path}:ro",
             "--volume",
-            f"{site.paths.jit_cache_dir}:{site.paths.jit_cache_dir}",
+            f"{site.paths.jit_cache_dir}:/cache/jit",
             "--volume",
             f"{site.paths.context_cache_dir}:{site.paths.context_cache_dir}",
         ]

@@ -30,6 +30,11 @@ def test_example_produces_four_safe_start_actions():
         assert site.runtime.container_image in action.argv
         assert "SPARKRING_IMAGE_DIGEST=" + site.runtime.container_image_digest in action.argv
         assert "B12X_MLA_SPARSE" in action.argv
+        assert (
+            f"{site.paths.jit_cache_dir}:/cache/jit"
+            in action.argv
+        )
+        assert "--no-enable-flashinfer-autotune" in action.argv
 
 
 def test_plan_is_connection_free(monkeypatch, capsys):

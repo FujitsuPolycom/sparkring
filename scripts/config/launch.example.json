@@ -44,6 +44,7 @@
     "--enable-prefix-caching",
     "--gpu-memory-utilization",
     "0.88",
+    "--no-enable-flashinfer-autotune",
     "--enforce-eager",
     "--load-format",
     "safetensors",
