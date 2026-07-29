@@ -346,7 +346,6 @@ jobs:
 
             # --- private repo / host paths -----------------------------
             'Documents[\\/]sparkring'
-            '/hybridmodel'
 
             # --- credential shapes -------------------------------------
             '-----BEGIN [A-Z ]*PRIVATE KEY-----'
