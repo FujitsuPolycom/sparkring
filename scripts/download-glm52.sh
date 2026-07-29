@@ -43,6 +43,22 @@ if [[ "${actual}" != "${CONFIG_SHA256}" ]]; then
   exit 1
 fi
 
+# The pinned checkpoint's root index names model-mtp.safetensors, while the
+# repository stores that same file under mtp-draft/. Normalize the layout with
+# a zero-copy symlink so structural preflight and ordinary safetensors tooling
+# both see a complete root weight map.
+if [[ ! -e "${OUTPUT_DIR}/model-mtp.safetensors" ]]; then
+  draft_mtp="${OUTPUT_DIR}/mtp-draft/model-mtp.safetensors"
+  if [[ ! -s "${draft_mtp}" ]]; then
+    echo "FATAL: root index references model-mtp.safetensors but ${draft_mtp} is missing" >&2
+    exit 1
+  fi
+  ln -s "mtp-draft/model-mtp.safetensors" \
+    "${OUTPUT_DIR}/model-mtp.safetensors"
+fi
+[[ -s "${OUTPUT_DIR}/model-mtp.safetensors" ]] ||
+  { echo "FATAL: model-mtp.safetensors is missing or empty" >&2; exit 1; }
+
 cat > "${OUTPUT_DIR}/.sparkring-model.txt" <<EOF
 repository=${MODEL_REPO}
 revision=${MODEL_REVISION}

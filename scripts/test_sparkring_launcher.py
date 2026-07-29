@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -105,7 +106,7 @@ def test_start_failure_requests_all_rank_rollback(monkeypatch, capsys):
             return {
                 action.rank: {
                     "exit_code": 1 if action.rank == 2 else 0,
-                    "stdout": "",
+                    "stdout": "" if action.rank == 2 else "a" * 64 + "\n",
                     "stderr": "",
                 }
                 for action in actions
@@ -132,3 +133,34 @@ def test_start_failure_requests_all_rank_rollback(monkeypatch, capsys):
     assert [action.rank for action in calls[1]] == [0, 1, 3]
     assert all(action.argv[:2] == ("sh", "-c") for action in calls[1])
     assert result["rollback_results"] is not None
+
+
+def test_run_remote_quotes_entire_shell_payload(monkeypatch):
+    action = launcher.RemoteAction(
+        rank=0,
+        ssh_target="operator@node0",
+        argv=("docker", "run", "--detach", "image:tag"),
+    )
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured["argv"] = argv
+        return subprocess.CompletedProcess(argv, 0, "a" * 64 + "\n", "")
+
+    monkeypatch.setattr(launcher.subprocess, "run", fake_run)
+    launcher.run_remote(action, timeout=10)
+    assert captured["argv"][-1] == (
+        "sh -lc 'docker run --detach image:tag'"
+    )
+    assert captured["argv"][-2] == "operator@node0"
+
+
+def test_start_rejects_docker_help_false_positive():
+    assert not launcher.action_succeeded(
+        "start",
+        {"exit_code": 0, "stdout": "", "stderr": "Usage: docker"},
+    )
+    assert launcher.action_succeeded(
+        "start",
+        {"exit_code": 0, "stdout": "a" * 64 + "\n", "stderr": ""},
+    )

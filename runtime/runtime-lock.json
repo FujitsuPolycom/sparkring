@@ -388,11 +388,11 @@
     },
     {
       "path": "runtime/public-capability-gate.py",
-      "sha256": "8843ff4e6a8115f2eedd539d0b08499f014cb5f9a3449ef3d6a9f0f61be69b5b"
+      "sha256": "e67577cca408de51fd196d43caddb02ff47f6d56b88bf2743001dc6bb27f6da0"
     },
     {
       "path": "runtime/public-headless-abi-gate.py",
-      "sha256": "ea77a5f47b6fbf846d814a1223e808aaf2d0cc5acff29c821d8ef1550064b1cc"
+      "sha256": "6d9b14149061b879f58dcd70840a206e36b67f3b53cde20199738f53d0d94168"
     },
     {
       "path": "runtime/public-entrypoint.sh",

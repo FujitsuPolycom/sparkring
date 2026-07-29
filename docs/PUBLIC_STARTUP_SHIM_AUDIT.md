@@ -1,7 +1,11 @@
 # Public multi-node startup shim audit
 
-Date: 2026-07-29  
+Date: 2026-07-29
+
 Upstream inspected: `vllm-project/vllm@fcc614141e5e9ab18cb304c476f7feed2a9552e3`
+
+Executable hash target: the post-overlay files installed by the pinned
+SparkRing faststart image, not the unmodified upstream checkout.
 
 ## Outcome
 
@@ -35,8 +39,10 @@ Pinned `vllm/entrypoints/cli/serve.py::run_headless` constructs
 profiling and broadcasts the resulting worker calls to every rank.
 
 The executable gate pins both that branch and the complementary queue
-ownership in `multiproc_executor.py`.  Source drift fails startup with exit 78
-instead of installing a compatibility guess.
+ownership in `multiproc_executor.py`. The pinned hashes are taken after the
+public overlay is applied because that overlay also modifies these files.
+Source drift fails startup with exit 78 instead of installing a compatibility
+guess.
 
 ## Empty KV configuration
 

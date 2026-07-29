@@ -19,10 +19,10 @@ from pathlib import Path
 
 EXPECTED_SHA256 = {
     "entrypoints/cli/serve.py": (
-        "7e7a2441e9344e7cf65dcb70587b98772b9a0130478bc8b93761f2d6abbb5869"
+        "f89771fe192e7ef262a7600244c918de4cedc426fdeebab8e8c69cfba49694d2"
     ),
     "v1/executor/multiproc_executor.py": (
-        "9daa0e0750e1cb23ce5f6c56dbdff0331fd26a445d2fe552895bec7a846838b0"
+        "80bde58c8336427848f87df053d756dafc88e5df6ef80df661ecf6f85d8de7e2"
     ),
 }
 

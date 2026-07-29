@@ -42,6 +42,8 @@
     "--kv-cache-dtype",
     "nvfp4_ds_mla",
     "--enable-prefix-caching",
+    "--gpu-memory-utilization",
+    "0.88",
     "--enforce-eager",
     "--load-format",
     "safetensors",

@@ -354,16 +354,19 @@ def simple_actions(
 
 
 def run_remote(action: RemoteAction, timeout: int) -> subprocess.CompletedProcess[str]:
+    # OpenSSH concatenates arguments following the target into one remote shell
+    # command. Passing ``sh``, ``-lc`` and the payload as separate local argv
+    # entries therefore turns ``sh -lc docker run ...`` into a shell whose
+    # command is only ``docker`` and whose remaining words are positional
+    # parameters. Quote the complete remote invocation as one argument.
+    remote_command = shlex.join(("sh", "-lc", action.shell_command))
     return subprocess.run(
         [
             "ssh",
             "-o",
             "BatchMode=yes",
             action.ssh_target,
-            "--",
-            "sh",
-            "-lc",
-            action.shell_command,
+            remote_command,
         ],
         capture_output=True,
         text=True,
@@ -395,6 +398,17 @@ def execute(actions: list[RemoteAction], timeout: int) -> dict[int, dict]:
                     "stderr": exc.stderr or "remote command timed out",
                 }
     return results
+
+
+def action_succeeded(command: str, result: dict) -> bool:
+    if result["exit_code"] != 0:
+        return False
+    if command == "start":
+        # ``docker run --detach`` must print the created container id. Docker
+        # help also exits zero, so exit status alone is not a sufficient gate.
+        lines = [line.strip() for line in result["stdout"].splitlines()]
+        return any(re.fullmatch(r"[0-9a-f]{12,64}", line) for line in lines)
+    return True
 
 
 def plan_document(command: str, actions: list[RemoteAction]) -> dict:
@@ -443,10 +457,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("plan never executes; omit --execute")
 
     results = execute(actions, config.startup_timeout_seconds)
-    failed = [rank for rank, result in results.items() if result["exit_code"] != 0]
+    failed = [
+        rank for rank, result in results.items()
+        if not action_succeeded(args.command, result)
+    ]
     if args.command == "start" and failed:
         started = {
-            rank for rank, result in results.items() if result["exit_code"] == 0
+            rank for rank, result in results.items()
+            if action_succeeded(args.command, result)
         }
         rollback = [
             action

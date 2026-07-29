@@ -15,12 +15,13 @@ PINNED_VLLM = Path(
 )
 
 
-def test_exact_pinned_vllm_headless_abi_passes_when_clone_is_available() -> None:
+def test_unmodified_upstream_is_not_the_post_overlay_target() -> None:
     if not PINNED_VLLM.is_dir():
         return
     report = MODULE.audit(PINNED_VLLM)
-    assert report["ok"] is True
-    assert report["failures"] == []
+    assert report["ok"] is False
+    assert all("source hash mismatch" in failure
+               for failure in report["failures"])
 
 
 def test_source_mutation_fails_closed(tmp_path: Path) -> None:

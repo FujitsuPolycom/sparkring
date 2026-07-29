@@ -223,6 +223,11 @@ pins Hugging Face commit
 `46537e0e16fcd156627800139b41b9c497fc7ee2`, and refuses a `config.json`
 whose SHA-256 is not
 `ffd30e72ab8bb7e8ad560f2aaab03cc595f3106f0acf793ef96eedaf90f66d69`.
+It also creates a zero-copy root `model-mtp.safetensors` symlink to the
+checkpoint's `mtp-draft/model-mtp.safetensors`. The pinned root weight index
+references that filename, but the Hugging Face repository stores it in the
+draft subdirectory; the public model preflight intentionally rejects the
+dangling layout.
 
 If Hugging Face requires authentication in your environment, export
 `HF_TOKEN` before running it. The script passes the token through the

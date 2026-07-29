@@ -46,7 +46,7 @@ def source_token_presence(root: Path, tokens: tuple[str, ...]) -> dict[str, bool
 def evaluate(vllm_command: str) -> dict:
     root = vllm_root()
     result = subprocess.run(
-        [vllm_command, "serve", "--help"],
+        [vllm_command, "serve", "--help=all"],
         check=False,
         capture_output=True,
         text=True,
@@ -64,7 +64,9 @@ def evaluate(vllm_command: str) -> dict:
         if not present
     )
     if result.returncode != 0:
-        failures.append(f"`{vllm_command} serve --help` exited {result.returncode}")
+        failures.append(
+            f"`{vllm_command} serve --help=all` exited {result.returncode}"
+        )
     return {
         "schema": "sparkring-public-capability-gate/v1",
         "passed": not failures,

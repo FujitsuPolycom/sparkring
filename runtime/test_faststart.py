@@ -66,6 +66,7 @@ def test_download_script_uses_same_pinned_base_and_model():
     assert f'MODEL_REPO="{LOCK["model"]["repository"]}"' in text
     assert f'MODEL_REVISION="{LOCK["model"]["revision"]}"' in text
     assert f'CONFIG_SHA256="{LOCK["model"]["config_sha256"]}"' in text
+    assert 'ln -s "mtp-draft/model-mtp.safetensors"' in text
 
 
 def test_quickstart_names_every_major_gate():
