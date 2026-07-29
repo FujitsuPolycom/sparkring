@@ -66,7 +66,10 @@ model-serving behavior still requires the maintainer patch series.
    contracts, no arbitrary script execution, fail-closed validation, target
    tree never mutated on mismatch). Finally it builds `spark_transport` and
    requires the complete CTest suite to pass.
-4. **Stage 3** assembles the runtime image and runs `generate-manifest.py`,
+4. The builder emits an allowlisted 30-file public Python overlay bundle with
+   a per-file SHA-256 manifest. The bundle specification, builder, capability
+   gate, and entrypoint are themselves hash-pinned by `runtime-lock.json`.
+5. **Stage 3** assembles the runtime image and runs `generate-manifest.py`,
    which emits an immutable `runtime-manifest.json` (all pins, wheel hashes,
    `.so` hashes, applied-patch hashes, model identity pin) into the image.
 
@@ -98,6 +101,12 @@ the image that creates it; retain it as launch/evidence metadata.
   patches are published and preimage-pinned. The larger private/community
   overlay remains gated on provenance review; reference-lane model behavior
   still requires that maintainer patch series.
+- `public-entrypoint.sh` and the bundled public overlay are offline-validated.
+  Startup checks the model config hash, complete sharded-safetensors layout,
+  MTP draft layout, runtime manifest, external image-digest binding, and
+  required GLM capability surface before `vllm serve`. The pinned
+  public ancestry is expected to fail the capability check today because the
+  SM121 sparse-MLA and packed low-bit MLA KV deltas remain absent.
 - Base-image ARM64 manifests, model revision, DeepGEMM source and NCCL source
   are immutable pins. The output image gets a registry digest only after push;
   the launcher must inject it for image-identity verification.

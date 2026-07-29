@@ -4,7 +4,8 @@
 
 This is a reconstruction of the complete reference deployment, plus the
 publicly runnable subset: cabling, OS prerequisites, fabric network, patched
-NCCL, model download, and native transport build/probes. It is **not** a
+NCCL, model download, native transport build/probes, and an offline-validated
+public image/launcher candidate. It is **not** a
 fresh-clone end-to-end public serving recipe; the launch/runtime gaps are
 called out below. Follow any runnable stages **in order** because later stages
 hard-depend on earlier ones.
@@ -15,9 +16,9 @@ hard-depend on earlier ones.
 
 > **Snapshot scope — what this tree can and cannot execute.**
 >
-> This public snapshot does **not** include the launch/orchestration layer. The root `scripts/` orchestrator (`run-glm52-graph-window.ps1` and friends), the serving entrypoint `serve-glm52-trace.sh` (which applies the in-container vLLM source patches), and `glm52_load_format_preflight.py` all live in the maintainer's private archive, because they are coupled to a private vLLM fork build (Section 0.1).
+> The historical reference orchestrator (`run-glm52-graph-window.ps1` and friends), reference serving entrypoint, and load-format preflight remain in the maintainer's private archive. This snapshot now includes a separate clean-room public image entrypoint, manifested overlay-bundle builder, and dry-run-first four-rank launcher. They are offline-validated but have not completed a live acceptance cycle, and the public capability gate is expected to refuse GLM-5.2 startup until the missing SM121 sparse-MLA/low-bit-KV delta lands.
 >
-> Concretely: **Stages 1-4, 6, and 7 are fully executable from this tree. Stages 5, 8, and 9 document the deployed system for transparency** and require either the maintainer's artifacts or your own adaptation to your vLLM build. Those stages are kept — marked, not deleted — so the full deployed procedure stays on record. Any path in this guide marked *(private archive, not in this snapshot)* is not in this repository.
+> Concretely: **Stages 1-4, 6, and 7 are fully executable from this tree.** Stages 5, 8, and 9 primarily document the measured reference deployment, but now link to the distinct public candidate where available. The public candidate is not an accepted substitute for the reference lane.
 >
 > **SparkCache exception:** the complete current Python implementation, native
 > placement source, GPU-free tests, and its two independently written
@@ -63,9 +64,10 @@ Safety classes used by this repository:
 |---|---|
 | Local validation, source inspection, and local builds | **OFFLINE** |
 | `scripts/preflight.py --print-plan` | **OFFLINE** |
+| `scripts/sparkring_launcher.py ... plan` | **OFFLINE** |
 | `scripts/preflight.py` against a filled site config | **READ-ONLY REMOTE** |
 | Stages 1-4 and 6-7 | **MUTATES HOST** — power, packages, networking, large downloads, builds, or staged files |
-| Reference stages 5, 8, and 9 | **STOPS SERVING** and unavailable without an independently supplied runtime/launcher |
+| Public launcher/acceptance `--execute`, and reference stages 8-9 | **STOPS SERVING** |
 
 Do not let an automation agent run **MUTATES HOST** or **STOPS SERVING**
 commands without explicit authorization for the named machines and action.
@@ -435,7 +437,7 @@ docker run --rm --gpus all -v "$PWD:/src" -w /src \
 
 ## Stage 5 — Container image and the SparkRing overlay
 
-> **Snapshot scope (see Section 0):** this stage documents the deployed system for transparency. The base image contains the **private vLLM fork build** (Section 0.1), and the launch-time overlay mechanism in Stage 5.3 depends on the serve entrypoint `serve-glm52-trace.sh` and `glm52_load_format_preflight.py` — both private archive, not in this snapshot. Executing Stage 5 requires either the maintainer's artifacts or your own adaptation to your vLLM build.
+> **Reference scope:** the subsections below document the measured private-fork image. The separate public candidate is built with `runtime/build-runtime.sh`; it bakes in the allowlisted public overlay and `runtime/public-entrypoint.sh`, then fails closed if the required GLM capability surface is absent. Building it does not establish that it can serve this checkpoint.
 
 ### 5.1 Base image **[DOCUMENTED: private archive new-node-provisioning.md §4, scripts/download-model.sh, and phase2-nccl-ring-findings.md]**
 
@@ -593,7 +595,18 @@ Stage identical, versioned copies of every artifact on **all four nodes** and re
 
 ## Stage 8 — Launch
 
-> **Snapshot scope (see Section 0):** every launch-layer file this stage documents — the orchestrator `scripts/run-glm52-graph-window.ps1` and its siblings, the per-rank launcher `scripts/launch-glm52-trace-4node.sh`, the serve entrypoint `serve-glm52-trace.sh` (which applies the in-container vLLM source patches), and `glm52_load_format_preflight.py` — is **private archive, not in this snapshot**, because it is coupled to the private vLLM fork build. Stages 8 and 9 document the deployed launch and verification procedure for transparency; executing them requires the maintainer's artifacts or your own equivalents adapted to your vLLM build.
+> **Reference scope:** the PowerShell workflow below remains private-archive history. The public candidate uses `scripts/sparkring_launcher.py` with `scripts/config/site.yaml` and `scripts/config/launch.json`, plus the public acceptance gate. Generate and review its offline plan first. Do not execute it against a serving cluster; today its capability gate is expected to stop before model load on the unresolved public runtime gap.
+
+Public-candidate planning is entirely offline:
+
+```bash
+cp scripts/config/site.example.yaml scripts/config/site.yaml
+cp scripts/config/launch.example.json scripts/config/launch.json
+# Fill both files, then:
+python scripts/sparkring_launcher.py \
+  --site scripts/config/site.yaml \
+  --launch-config scripts/config/launch.json plan
+```
 
 ### 8.1 The orchestrator (recommended path) **[DOCUMENTED: private archive scripts/run-glm52-graph-window.ps1 and scripts/start-glm52-graph-window-detached.ps1]**
 

@@ -68,7 +68,7 @@ expected_object_keys = {
     "": {
         "schema", "runtime_id", "comment", "base_image", "toolchain", "vllm",
         "sparkinfer", "flashinfer", "deep_gemm", "nccl", "model", "overlays",
-        "overlays_comment",
+        "public_runtime_inputs", "overlays_comment",
     },
     "base_image": {"builder", "runtime"},
     "base_image.builder": {"repository", "digest"},
@@ -184,11 +184,38 @@ def pinned_files(section, label):
 try:
     overlay_section = lock["overlays"]
     nccl_section = lock["nccl"]["patches"]
+    public_runtime_section = lock["public_runtime_inputs"]
 except (KeyError, TypeError) as exc:
     fatal(f"lock key missing: {exc}")
 
 locked_overlays = pinned_files(overlay_section, "overlays")
 locked_nccl = pinned_files(nccl_section, "nccl.patches")
+locked_public_runtime = pinned_files(
+    public_runtime_section, "public_runtime_inputs"
+)
+
+expected_public_runtime = {
+    (repo_root / path).resolve()
+    for path in (
+        "runtime/public-overlay-files.json",
+        "runtime/build-public-overlay.py",
+        "runtime/public-capability-gate.py",
+        "runtime/public-entrypoint.sh",
+        "runtime/public-model-preflight.py",
+        "runtime/verify-runtime.py",
+    )
+}
+if set(locked_public_runtime) != expected_public_runtime:
+    locked = sorted(
+        str(path.relative_to(repo_root)) for path in locked_public_runtime
+    )
+    expected = sorted(
+        str(path.relative_to(repo_root)) for path in expected_public_runtime
+    )
+    fatal(
+        "public_runtime_inputs do not match Containerfile inputs: "
+        f"locked={locked}; expected={expected}"
+    )
 
 # These are the exact two source paths in Containerfile's explicit COPY.
 # Equality makes the lock and the Docker build mutually binding: retargeting
@@ -244,7 +271,8 @@ if actual_inputs != locked_inputs:
 
 print(
     f"verified {len(locked_overlays)} overlay input pin(s) and "
-    f"{len(nccl_section)} NCCL patch pin(s)"
+    f"{len(nccl_section)} NCCL patch pin(s), plus "
+    f"{len(locked_public_runtime)} public runtime input(s)"
 )
 EOF
 

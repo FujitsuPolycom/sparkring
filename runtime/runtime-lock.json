@@ -81,5 +81,31 @@
       "sha256": "65ed07b081b8d0432d5b8b182aecd9b03305854b0655f532170e51bc10d720e7"
     }
   ],
+  "public_runtime_inputs": [
+    {
+      "path": "runtime/public-overlay-files.json",
+      "sha256": "3a85c4ac6abb0a292bce61276b4b602c1f420c676c44193537b9d0de9ff94386"
+    },
+    {
+      "path": "runtime/build-public-overlay.py",
+      "sha256": "0f3c261839287879fb42b573635cc0159cee4fbe3302afd7731ef8ef8a844e42"
+    },
+    {
+      "path": "runtime/public-capability-gate.py",
+      "sha256": "8843ff4e6a8115f2eedd539d0b08499f014cb5f9a3449ef3d6a9f0f61be69b5b"
+    },
+    {
+      "path": "runtime/public-entrypoint.sh",
+      "sha256": "ed2c0d29c975b8cf3dd2f283b7b315fae24abbdba5bea8c8e1cabe0a61c2e612"
+    },
+    {
+      "path": "runtime/public-model-preflight.py",
+      "sha256": "3310fa3215dfcaf498b39a520e746d98b52e06b075fda1fbf879d8c28036ac1e"
+    },
+    {
+      "path": "runtime/verify-runtime.py",
+      "sha256": "6a5f7909c624098ccc62aebf18cb3084c79bb48095773c99eb3d90bafa58e5e4"
+    }
+  ],
   "overlays_comment": "Only the two independently written SparkCache compatibility patches are public. Both patch payloads and their security-sensitive preimages.json manifest are pinned here. The production runtime's remaining vLLM overlay (61 modified + 12 new files, ~12.9k lines) is not yet shippable pending provenance cleanup."
 }

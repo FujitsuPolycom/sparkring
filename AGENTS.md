@@ -26,6 +26,7 @@ Do not silently choose the more convenient value.
 | Subject | Canonical source |
 |---|---|
 | Public-lane definition and open blockers | `docs/PUBLIC_FUNCTIONAL_TARGET.md` |
+| Public headless-startup ABI audit | `docs/PUBLIC_STARTUP_SHIM_AUDIT.md` |
 | Runtime input pins | `runtime/runtime-lock.json` |
 | Site-config schema | `scripts/sparkring_site.py` |
 | Acceptance behavior and exit codes | `scripts/acceptance_gate.py` |
@@ -43,7 +44,7 @@ sets.
 | `spark_transport/` | Native transport, probes, vLLM adapters, and experiments |
 | `sparkcache/` | Persistent DCP-sharded context cache |
 | `runtime/` | Candidate public runtime builder, lock, and published patches |
-| `scripts/` | Site schema, read-only preflight, acceptance gate, and evidence tooling |
+| `scripts/` | Site schema, read-only preflight, dry-run-first launcher, acceptance gate, and evidence tooling |
 | `scripts/config/` | Sanitized templates; real local configs must remain untracked |
 | `docs/` | Architecture, measured results, lane contract, setup reconstruction, and gaps |
 | `.github/` | CPU-only CI, contribution forms, and public-release safety checks |
@@ -96,15 +97,17 @@ mode at a production-serving cluster.
 4. Run preflight with `--print-plan`.
 5. Only then run the read-only remote preflight.
 
-The canonical local files `scripts/config/site.yaml` and
-`scripts/config/gate.json` are ignored by Git. Do not commit site addresses,
+The canonical local files `scripts/config/site.yaml`,
+`scripts/config/launch.json`, and `scripts/config/gate.json` are ignored by
+Git. Do not commit site addresses,
 SSH targets, local paths, registry identities, or credentials.
 
 ### Public acceptance work
 
 Start with `docs/PUBLIC_FUNCTIONAL_TARGET.md` and
-`scripts/config/gate.example.json`. Dry-run validates the current lock, filled
-site identity, and local launcher contract without executing them. Any reported
+`scripts/config/{launch,gate}.example.json`. The public launcher is dry-run by
+default; inspect its `plan` output first. Dry-run validates the current lock,
+filled site identity, and local launcher contract without executing them. Any reported
 blocker is not a check to bypass, and a successful plan is not acceptance.
 
 ### Native or cluster work

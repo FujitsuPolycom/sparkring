@@ -36,6 +36,35 @@ Keep your own `site.yaml` out of version control — it describes your real
 addressing. The repository already ignores the canonical local path
 `scripts/config/site.yaml`; only `site.example.yaml` belongs in the repo.
 
+## Public launcher
+
+Copy the launch profile beside the site configuration:
+
+```bash
+cp scripts/config/launch.example.json scripts/config/launch.json
+$EDITOR scripts/config/launch.json
+
+# OFFLINE: prints four exact remote docker commands; no SSH connection.
+python scripts/sparkring_launcher.py \
+  --site scripts/config/site.yaml \
+  --launch-config scripts/config/launch.json plan
+```
+
+The profile owns host-local launch details and additional vLLM flags.
+Topology, ranks, image digest, model identity, TP/DCP sizing, ports and cache
+budgets come from `site.yaml`; the launcher refuses model identity drift from
+`runtime/runtime-lock.json`. It derives per-rank neighbors, RDMA devices,
+GID indices, management interfaces, `--node-rank`, and `--headless`
+automatically. `start`, `stop`, and `verify-rollback` remain dry-run unless
+`--execute` is supplied. A partial start triggers best-effort removal only for
+containers whose `docker run` succeeded; removal additionally requires the
+launcher-managed label, so a same-named foreign container is never deleted.
+
+The current public image contains an executable capability gate. With the
+published upstream pin it is expected to refuse GLM-5.2 startup until
+`B12X_MLA_SPARSE` and `nvfp4_ds_mla` are genuinely present. Bypassing that
+gate is not a supported workaround.
+
 ## Requirements
 
 * Python 3.10+
@@ -209,17 +238,18 @@ acceptance result.
 The gate's `runtime.model_identity` paths are not labels copied from the site
 file. During execution it independently reads the repository and immutable
 revision sidecars and hashes the deployed `config.json` on **every** rank. The
-documented `/hybridmodel` defaults expect:
+public entrypoint defaults expect:
 
 ```text
-/hybridmodel/config.json
-/hybridmodel/.sparkring-model-repository
-/hybridmodel/.sparkring-model-revision
+/models/your-model/config.json
+/run/sparkring/model-identity/repository
+/run/sparkring/model-identity/revision
 ```
 
-Create those sidecars when placing the pinned model, as shown in
-`docs/SETUP.md` Stage 6. Missing files, a hash mismatch, or one rank carrying a
-different revision is a functional failure.
+The entrypoint creates the two sidecars only after hashing `config.json`,
+passing the public capability gate, and verifying the runtime manifest.
+Missing files, a hash mismatch, or one rank carrying a different revision is a
+functional failure.
 
 `--execute` is **STOPS SERVING**: it runs your configured start and stop
 commands. It requires an explicit confirmation token and must never target a
@@ -228,7 +258,8 @@ production-serving cluster.
 ## Tests
 
 ```bash
-python -m pytest scripts/test_sparkring_site.py scripts/test_preflight.py -q
+python -m pytest scripts/test_sparkring_site.py scripts/test_preflight.py \
+  scripts/test_sparkring_launcher.py -q
 ```
 
 GPU-free and offline: the malformed-config table, the ring-topology validator,

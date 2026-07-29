@@ -207,6 +207,12 @@ RUN python3 /build/apply-patches.py \
 
 # spark_transport (probes + libspark_transport_capi.so), sm_121.
 COPY spark_transport /build/spark_transport
+COPY runtime/public-overlay-files.json /build/public-overlay-files.json
+COPY runtime/build-public-overlay.py /build/build-public-overlay.py
+RUN python3 /build/build-public-overlay.py \
+        --repo /build \
+        --spec /build/public-overlay-files.json \
+        --output /out/public-overlay
 RUN cmake -S /build/spark_transport -B /build/spark_transport_build \
         -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCH}" \
     && cmake --build /build/spark_transport_build --parallel "${MAX_JOBS}" \
@@ -238,6 +244,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=vllm-build /opt/venv /opt/venv
 COPY --from=vllm-build /out/spark_transport /opt/sparkring/spark_transport
+COPY --from=vllm-build /out/public-overlay /opt/spark-vllm
 COPY --from=nccl-build /out/nccl /opt/sparkring/nccl
 COPY --from=vllm-build /var/log/sparkring /var/log/sparkring
 ENV PATH=/opt/venv/bin:$PATH \
@@ -248,10 +255,14 @@ ENV PATH=/opt/venv/bin:$PATH \
 # hashes, model identity pin. generate-manifest.py fails the build if any
 # component it expects is absent or hash-inconsistent.
 COPY runtime/generate-manifest.py /opt/sparkring/generate-manifest.py
+COPY runtime/verify-runtime.py /opt/sparkring/verify-runtime.py
+COPY runtime/public-capability-gate.py /opt/sparkring/public-capability-gate.py
+COPY runtime/public-model-preflight.py /opt/sparkring/public-model-preflight.py
+COPY runtime/public-entrypoint.sh /opt/sparkring/public-entrypoint.sh
 COPY runtime/runtime-lock.json /opt/sparkring/runtime-lock.json
 RUN set -e; \
     args="--lock /opt/sparkring/runtime-lock.json --runtime-id ${RUNTIME_ID}"; \
-    args="$args --tree venv=/opt/venv --with-packages"; \
+    args="$args --tree venv=/opt/venv --tree public-overlay=/opt/spark-vllm --with-packages"; \
     for f in /opt/sparkring/nccl/libnccl.so.* /opt/sparkring/spark_transport/*; do \
         case "$f" in *SHA256SUMS) continue;; esac; \
         [ -f "$f" ] && args="$args --native-lib $f"; \
@@ -259,8 +270,9 @@ RUN set -e; \
     if [ -f /var/log/sparkring/patch-apply.jsonl ]; then \
         args="$args --patch-log /var/log/sparkring/patch-apply.jsonl"; \
     fi; \
-    python3 /opt/sparkring/generate-manifest.py $args \
+    python3 /opt/sparkring/generate-manifest.py $args --image-digest external \
         --output /opt/sparkring/runtime-manifest.json \
+    && chmod 0555 /opt/sparkring/public-entrypoint.sh \
     && chmod 0444 /opt/sparkring/runtime-manifest.json
 
 LABEL org.sparkring.runtime_id=${RUNTIME_ID} \
@@ -272,4 +284,4 @@ LABEL org.sparkring.runtime_id=${RUNTIME_ID} \
       org.sparkring.model_revision=${MODEL_REVISION} \
       org.sparkring.model_config_sha256=${MODEL_CONFIG_SHA256}
 
-ENTRYPOINT ["/opt/venv/bin/vllm"]
+ENTRYPOINT ["/opt/sparkring/public-entrypoint.sh"]

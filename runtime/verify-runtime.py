@@ -25,12 +25,11 @@ checks are executed so --json reports the full picture):
                                                provenance metadata only).
   3. native_libs          - sha256 of each listed native library file.
   4. image_digest         - compared against SPARKRING_IMAGE_DIGEST injected
-                            by the launcher. A container cannot always see its
-                            own image digest, so when the env var is absent
-                            this check SKIPS WITH A LOUD WARNING instead of
-                            failing; when present, mismatch is a hard failure.
-                            A manifest digest of "pending" (pre-first-build
-                            lock state) also skips with a warning.
+                            by the launcher. A manifest value of "external"
+                            requires a syntactically valid injected registry
+                            digest; host-side preflight binds that value to the
+                            inspected image. Missing values skip loudly, while
+                            a concrete manifest mismatch is a hard failure.
   5. runtime_id           - --expect-runtime-id compares against the
                             manifest's runtime_id (cross-rank identity).
                             --emit-attestation prints a single JSON line
@@ -46,6 +45,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 
 MANIFEST_ENV = "SPARKRING_RUNTIME_MANIFEST"
@@ -247,6 +247,19 @@ def check_image_digest(manifest: dict, env: dict) -> CheckResult:
             f"WARNING: {IMAGE_DIGEST_ENV} not injected by launcher; a container "
             "cannot always discover its own image digest, so this check is "
             "SKIPPED - image identity NOT verified",
+        )
+    if expected == "external":
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", observed):
+            return CheckResult(
+                name,
+                "fail",
+                f"{IMAGE_DIGEST_ENV} is not a lowercase sha256 registry digest",
+            )
+        return CheckResult(
+            name,
+            "pass",
+            "launcher supplied a syntactically valid external image digest; "
+            "host-side preflight must bind it to the inspected container image",
         )
     if observed != expected:
         return CheckResult(

@@ -39,6 +39,13 @@ def _copy_fixture(tmp_path: Path) -> Path:
         runtime / "prepare-public-requirements.py",
     )
     shutil.copy2(RUNTIME / "pip-freeze.txt", runtime / "pip-freeze.txt")
+    for entry in json.loads((runtime / "runtime-lock.json").read_text())[
+        "public_runtime_inputs"
+    ]:
+        source = REPO / entry["path"]
+        target = root / entry["path"]
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
     for entry in json.loads((runtime / "runtime-lock.json").read_text())["nccl"][
         "patches"
     ]:
@@ -201,6 +208,17 @@ def test_modified_preimages_manifest_fails_before_build(tmp_path):
 
     assert result.returncode != 0
     assert "overlays sha256 mismatch" in result.stderr
+
+
+def test_modified_public_entrypoint_fails_before_build(tmp_path):
+    root = _copy_fixture(tmp_path)
+    entrypoint = root / "runtime/public-entrypoint.sh"
+    entrypoint.write_bytes(entrypoint.read_bytes() + b"\n# tampered\n")
+
+    result = _run(root)
+
+    assert result.returncode != 0
+    assert "public_runtime_inputs sha256 mismatch" in result.stderr
 
 
 def test_unlocked_extra_patch_fails_before_build(tmp_path):

@@ -15,7 +15,9 @@
       "definition": "docs/PUBLIC_FUNCTIONAL_TARGET.md",
       "blockers": [
         "the published runtime does not include the complete GLM-5.2 sparse-MLA and low-bit-KV serving delta",
-        "no public launcher/staging recipe has completed the acceptance gate"
+        "the public patch set does not yet include the multi-node follower and empty-KV startup-correctness shims; docs/PUBLIC_STARTUP_SHIM_AUDIT.md records why an empty-return guard is unsafe",
+        "the public sharded-safetensors and MTP-draft preflight is offline-validated but has not yet passed on the pinned checkpoint on a Spark",
+        "the offline-validated public launcher and runtime have not completed a live four-Spark acceptance cycle"
       ]
     }
   },
@@ -24,7 +26,7 @@
       "maturity": "offline-validated",
       "command": "python -m pytest spark_transport sparkcache runtime scripts -q",
       "last_observed": {
-        "passed": 1543,
+        "passed": 1563,
         "skipped": 5
       }
     },
@@ -50,6 +52,12 @@
       "maturity": "candidate",
       "accepted": false,
       "entrypoint": "runtime/README.md"
+    },
+    "public_launcher": {
+      "maturity": "offline-validated",
+      "mutating_commands_default_to_dry_run": true,
+      "live_four_rank_acceptance": false,
+      "entrypoint": "scripts/sparkring_launcher.py"
     }
   }
 }

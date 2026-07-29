@@ -10,9 +10,9 @@
     "expect_runtime_id": null,
     "exec_prefix": ["docker", "exec", "<YOUR_CONTAINER_NAME>"],
     "model_identity": {
-      "config_path": "/hybridmodel/config.json",
-      "repository_path": "/hybridmodel/.sparkring-model-repository",
-      "revision_path": "/hybridmodel/.sparkring-model-revision",
+      "config_path": "/models/your-model/config.json",
+      "repository_path": "/run/sparkring/model-identity/repository",
+      "revision_path": "/run/sparkring/model-identity/revision",
       "in_container": true
     }
   },
@@ -26,9 +26,36 @@
     }
   },
   "launch": {
-    "start_command": ["<YOUR_START_COMMAND>"],
-    "stop_command": ["<YOUR_STOP_COMMAND>"],
-    "rollback_verify_command": [],
+    "start_command": [
+      "python",
+      "scripts/sparkring_launcher.py",
+      "--site",
+      "scripts/config/site.yaml",
+      "--launch-config",
+      "scripts/config/launch.json",
+      "--execute",
+      "start"
+    ],
+    "stop_command": [
+      "python",
+      "scripts/sparkring_launcher.py",
+      "--site",
+      "scripts/config/site.yaml",
+      "--launch-config",
+      "scripts/config/launch.json",
+      "--execute",
+      "stop"
+    ],
+    "rollback_verify_command": [
+      "python",
+      "scripts/sparkring_launcher.py",
+      "--site",
+      "scripts/config/site.yaml",
+      "--launch-config",
+      "scripts/config/launch.json",
+      "--execute",
+      "verify-rollback"
+    ],
     "rank_status_command": [],
     "ready_timeout_seconds": 3600,
     "stop_timeout_seconds": 900

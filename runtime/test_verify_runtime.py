@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -172,6 +173,51 @@ def test_image_digest_mismatch_fails(runtime_fixture, monkeypatch, capsys):
     out = json.loads(capsys.readouterr().out)
     assert rc == 2
     check = {c["name"]: c for c in out["checks"]}["image_digest"]
+    assert check["status"] == "fail"
+
+
+def test_external_image_digest_requires_launcher_binding(
+    runtime_fixture, monkeypatch, capsys
+):
+    manifest = runtime_fixture["manifest"]
+    manifest["image"]["digest"] = "external"
+    manifest["self_hash"] = vr.manifest_self_hash(manifest)
+    Path(runtime_fixture["manifest_path"]).write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+
+    rc = _run(
+        runtime_fixture,
+        "--json",
+        env_digest="sha256:" + "ab" * 32,
+        monkeypatch=monkeypatch,
+    )
+    out = json.loads(capsys.readouterr().out)
+    check = {c["name"]: c for c in out["checks"]}["image_digest"]
+    assert rc == 0
+    assert check["status"] == "pass"
+    assert "host-side preflight" in check["detail"]
+
+
+def test_external_image_digest_rejects_malformed_binding(
+    runtime_fixture, monkeypatch, capsys
+):
+    manifest = runtime_fixture["manifest"]
+    manifest["image"]["digest"] = "external"
+    manifest["self_hash"] = vr.manifest_self_hash(manifest)
+    Path(runtime_fixture["manifest_path"]).write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+
+    rc = _run(
+        runtime_fixture,
+        "--json",
+        env_digest="sha256:not-a-digest",
+        monkeypatch=monkeypatch,
+    )
+    out = json.loads(capsys.readouterr().out)
+    check = {c["name"]: c for c in out["checks"]}["image_digest"]
+    assert rc == 2
     assert check["status"] == "fail"
 
 

@@ -34,11 +34,11 @@ interpret the published measurements below as fresh-clone results.
 
 | Goal | Minimum environment | Current status | Start here |
 |---|---|---|---|
-| Read, lint, or run Python contracts | Python 3.12, CPU | **Offline-validated:** 1,543 passed, 5 skipped from a clean tracked checkout | [Offline quickstart](#offline-quickstart) |
+| Read, lint, or run Python contracts | Python 3.12, CPU | **Offline-validated:** 1,563 passed, 5 skipped from a clean tracked checkout | [Offline quickstart](#offline-quickstart) |
 | Describe and inspect a four-Spark site | Python 3.10; SSH only for live preflight | Site schema validated; preflight is **read-only by construction** | [Site configuration](scripts/config/README.md) |
 | Build native code or qualify cables | One Spark to build; two per cable; four for collective probes | Public source and clean-room probe evidence exist; hardware gates are manual | [Four-Spark transport bring-up](#four-spark-transport-bring-up) |
-| Reproduce the headline serving numbers | Four Sparks plus the reference runtime | **Unavailable from this checkout:** the reference overlay and launcher are not public | [Runtime gaps](docs/RUNTIME_GAPS.md) |
-| Try the public end-to-end serving lane | Four Sparks | **Candidate, currently blocked:** no public image has passed acceptance or yet demonstrated the required full GLM-5.2 serving surface | [Public-functional target](docs/PUBLIC_FUNCTIONAL_TARGET.md) |
+| Reproduce the headline serving numbers | Four Sparks plus the reference runtime | **Unavailable from this checkout:** the measured reference overlay remains private | [Runtime gaps](docs/RUNTIME_GAPS.md) |
+| Try the public end-to-end serving lane | Four Sparks | **Candidate:** the image, overlay bundle, entrypoint and four-rank launcher are offline-validated; the capability gate is expected to refuse startup until the missing public SM121 sparse-MLA/low-bit-KV delta lands | [Public-functional target](docs/PUBLIC_FUNCTIONAL_TARGET.md) |
 | Study or port SparkCache | CPU for contracts; vLLM/DCP deployment for live use | Source published; live results were measured on the reference lane, not an accepted public runtime | [SparkCache](sparkcache/README.md) |
 
 Machine-readable component status is in
@@ -156,9 +156,9 @@ spark_transport/
     ...                     adaptive MTP controller, MoE round-floor, phase timing
   scripts/, tests/    per-edge cable qualification, CTest suite
 runtime/              candidate public runtime builder, lock, and public patches
-scripts/              site schema, read-only preflight, acceptance gate,
-                      evidence collection, and cluster-facing cache tools
-scripts/config/       sanitized site and acceptance-gate templates
+scripts/              site schema, read-only preflight, fail-closed four-rank
+                      launcher, acceptance gate, evidence collection, and tools
+scripts/config/       sanitized site, launch, and acceptance-gate templates
 docs/                 results, architecture, public-lane contract, setup
                       reconstruction, runtime gaps, and machine-readable status
 ```
@@ -183,14 +183,33 @@ configuration but is guarded against remote mutation.
 ```bash
 python scripts/sparkring_site.py scripts/config/site.example.yaml
 python scripts/preflight.py --site scripts/config/site.example.yaml --print-plan
+python scripts/sparkring_launcher.py \
+  --site scripts/config/site.example.yaml \
+  --launch-config scripts/config/launch.example.json plan
 
 # After copying the example to the gitignored scripts/config/site.yaml,
 # replacing every placeholder, and reviewing the printed plan:
 python scripts/preflight.py --site scripts/config/site.yaml
 ```
 
-The acceptance gate is dry-run by default. It validates the current runtime
-lock, your site identity, and your launcher commands, and reports any remaining
+For an actual cluster, start by copying only the two templates:
+
+```bash
+cp scripts/config/site.example.yaml scripts/config/site.yaml
+cp scripts/config/launch.example.json scripts/config/launch.json
+```
+
+Edit the hosts, interfaces, addresses, artifact hashes, image digest and model
+path in those two files, then use them with the same commands above. Planning
+is connection-free and starting is still a dry run unless `start --execute`
+is explicitly used. The validators identify the exact field needing attention;
+users do not manually reproduce checksum, topology, model-layout, or capability
+checks.
+
+The launcher and acceptance gate are dry-run by default. The launcher emits
+the exact per-rank `docker run` commands but makes no SSH connection unless
+`--execute` is explicitly supplied. The acceptance gate validates the current
+runtime lock, your site identity, and launcher commands, and reports any remaining
 blocker without executing them. A successful plan is not an acceptance result.
 Its `--execute` mode starts and stops the serving stack and is therefore
 **STOPS SERVING**; never aim it at a production-serving cluster.
@@ -201,9 +220,11 @@ Its `--execute` mode starts and stops the serving stack and is therefore
 2. Qualify every edge with the complete invocation in [the cable qualification guide](spark_transport/CABLE_QUALIFICATION.md#200g-roce-cable). The command requires both fabric IPs and both RDMA device names in addition to SSH targets and interfaces.
 3. Build the patched NCCL 2.30.7 and `libspark_transport_capi.so` for sm_121; record your own SHA-256s (the launcher pins them).
 4. Download the checkpoint on one node, rsync it to the other three over the 200 G fabric.
-5. Run the public read-only preflight and model-down probes. The reference
-   orchestrator and serving launcher described later in the setup guide are
-   private and are not runnable from this checkout.
+5. Run the public read-only preflight and model-down probes. Copy the sanitized
+   launch template, inspect `sparkring_launcher.py ... plan`, and use the
+   acceptance gate for the eventual controlled model-down deployment. The
+   historical reference orchestrator remains private; the clean-room public
+   launcher does not depend on it.
 
 **Safety:** cabling, host setup, network configuration, artifact staging, and
 container lifecycle are **MUTATES HOST** operations. The full reference
@@ -230,7 +251,7 @@ There are two lanes:
   The transport library, all probes, and the full native and Python test
   suites have been verified clean-room from this tree on DGX Spark hardware
   (stock CUDA devel image, no private artifacts: 36/36 targets and 20/20 native
-  tests). The complete current GPU-free Python contract suite is 1,543 passed
+  tests). The complete current GPU-free Python contract suite is 1,563 passed
   with 5 skipped. End-to-end serving from this lane is not yet
   performance-equivalent to the reference lane and is not supported until a
   full acceptance gate passes; fresh builds produce new artifact hashes that
