@@ -70,8 +70,9 @@ def hash_tree(root: str) -> dict[str, str]:
 def load_patch_log(path: str) -> dict[str, dict]:
     """Parse apply-patches.py's JSONL log into the verifier's patched_files map.
 
-    Each line: {"patch": ..., "target": ..., "preimage_sha256": ...,
-                "postimage_sha256": ...}.
+    Patch lines contain ``preimage_sha256`` and ``postimage_sha256``.
+    Addition lines contain ``sha256`` and may be newly installed or inherited
+    from an attested compatible base.
     Returns {target: {"preimage": ..., "postimage": ...}}.
     """
     files: dict[str, dict] = {}
@@ -84,9 +85,14 @@ def load_patch_log(path: str) -> dict[str, dict]:
                 rec = json.loads(line)
             except json.JSONDecodeError as exc:
                 raise ValueError(f"{path}:{lineno}: invalid JSON ({exc})") from exc
+            postimage = rec.get("postimage_sha256", rec.get("sha256"))
+            if not isinstance(postimage, str):
+                raise ValueError(
+                    f"{path}:{lineno}: audit row has no postimage hash"
+                )
             files[rec["target"]] = {
                 "preimage": rec.get("preimage_sha256"),
-                "postimage": rec["postimage_sha256"],
+                "postimage": postimage,
             }
     return files
 
