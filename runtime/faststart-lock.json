@@ -1,6 +1,6 @@
 {
   "schema": "sparkring-faststart-lock/v1",
-  "status": "candidate-awaiting-fresh-four-spark-acceptance",
+  "status": "one-spark-native-build-passed-awaiting-four-spark-acceptance",
   "base_image": {
     "repository": "aidendle94/sparkrun-vllm-ds4-gb10",
     "tag_for_humans": "production-hybrid-1.3",
