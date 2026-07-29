@@ -1,0 +1,3 @@
+*.sh text eol=lf
+*.patch text eol=lf
+runtime/** text eol=lf

@@ -25,6 +25,26 @@ live collective transport. See [docs/SIRCL.md](docs/SIRCL.md) for the exact
 boundary, implemented surfaces, fallback contract, and generic-backend
 direction.
 
+## Start here: choose the capability you want
+
+The measured system and the code this checkout can run are not the same lane.
+As of 2026-07-29, **no end-to-end public-functional acceptance result exists**.
+The public runtime is still missing required GLM-5.2 serving work; do not
+interpret the published measurements below as fresh-clone results.
+
+| Goal | Minimum environment | Current status | Start here |
+|---|---|---|---|
+| Read, lint, or run Python contracts | Python 3.12, CPU | **Offline-validated:** 1,543 passed, 5 skipped from a clean tracked checkout | [Offline quickstart](#offline-quickstart) |
+| Describe and inspect a four-Spark site | Python 3.10; SSH only for live preflight | Site schema validated; preflight is **read-only by construction** | [Site configuration](scripts/config/README.md) |
+| Build native code or qualify cables | One Spark to build; two per cable; four for collective probes | Public source and clean-room probe evidence exist; hardware gates are manual | [Four-Spark transport bring-up](#four-spark-transport-bring-up) |
+| Reproduce the headline serving numbers | Four Sparks plus the reference runtime | **Unavailable from this checkout:** the reference overlay and launcher are not public | [Runtime gaps](docs/RUNTIME_GAPS.md) |
+| Try the public end-to-end serving lane | Four Sparks | **Candidate, currently blocked:** no public image has passed acceptance or yet demonstrated the required full GLM-5.2 serving surface | [Public-functional target](docs/PUBLIC_FUNCTIONAL_TARGET.md) |
+| Study or port SparkCache | CPU for contracts; vLLM/DCP deployment for live use | Source published; live results were measured on the reference lane, not an accepted public runtime | [SparkCache](sparkcache/README.md) |
+
+Machine-readable component status is in
+[`docs/STATUS.json`](docs/STATUS.json). Coding agents should begin with
+[`AGENTS.md`](AGENTS.md).
+
 ## Headline results
 
 | Measured result | Configuration (compressed; full claim labels in [docs/RESULTS.md](docs/RESULTS.md)) |
@@ -112,9 +132,12 @@ Full design detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Repository map
 
 ```text
+AGENTS.md             zero-context agent map, safety boundaries, task recipes
+requirements-dev.txt  pinned GPU-free development and CI dependencies
 sparkcache/           SparkCache: persistent NVMe context cache
-                      (vLLM KV-Connector-V1 + DCP, any interconnect;
-                      15-24x restore, not LMCache). Self-contained
+                      (vLLM KV-Connector-V1 + DCP; topology-independent
+                      design, 15-24x restore measured on the reference lane;
+                      not LMCache). Self-contained
                       package, liftable without the transport ->
                       sparkcache/README.md
 spark_transport/
@@ -132,30 +155,69 @@ spark_transport/
                             collective probes (run these before any model work)
     ...                     adaptive MTP controller, MoE round-floor, phase timing
   scripts/, tests/    per-edge cable qualification, CTest suite
-APPROACH.md           phased bring-up rationale
-docs/                 RESULTS.md, ARCHITECTURE.md, SETUP.md
-                      SIRCL.md (transport-layer definition and boundary)
+runtime/              candidate public runtime builder, lock, and public patches
+scripts/              site schema, read-only preflight, acceptance gate,
+                      evidence collection, and cluster-facing cache tools
+scripts/config/       sanitized site and acceptance-gate templates
+docs/                 results, architecture, public-lane contract, setup
+                      reconstruction, runtime gaps, and machine-readable status
 ```
 
-## Getting started
+## Offline quickstart
+
+**Safety: OFFLINE.** These commands do not contact a cluster or require a GPU.
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.11.0"
+python -m pytest spark_transport sparkcache runtime scripts -q
+ruff check --select E,F,W --ignore E501 .
+```
+
+## Site configuration and safe inspection
+
+**Safety: OFFLINE, then READ-ONLY REMOTE.** The first two commands only parse
+the sanitized example. The last command contacts the four hosts in your local
+configuration but is guarded against remote mutation.
+
+```bash
+python scripts/sparkring_site.py scripts/config/site.example.yaml
+python scripts/preflight.py --site scripts/config/site.example.yaml --print-plan
+
+# After copying the example to the gitignored scripts/config/site.yaml,
+# replacing every placeholder, and reviewing the printed plan:
+python scripts/preflight.py --site scripts/config/site.yaml
+```
+
+The acceptance gate is dry-run by default. It validates the current runtime
+lock, your site identity, and your launcher commands, and reports any remaining
+blocker without executing them. A successful plan is not an acceptance result.
+Its `--execute` mode starts and stops the serving stack and is therefore
+**STOPS SERVING**; never aim it at a production-serving cluster.
+
+## Four-Spark transport bring-up
 
 1. Cable the ring cage-matched (four DAC cables), one dedicated /24 per link, MTU 9000, RoCEv2 GID index 3.
-2. Qualify every edge with `spark_transport/scripts/qualify_direct_cable.py`: exactly 200 Gb/s on both ports, verified 12 KB and 16 KB RC writes in both directions, default 20 us p99 target ([spark_transport/CABLE_QUALIFICATION.md](spark_transport/CABLE_QUALIFICATION.md)).
+2. Qualify every edge with the complete invocation in [the cable qualification guide](spark_transport/CABLE_QUALIFICATION.md#200g-roce-cable). The command requires both fabric IPs and both RDMA device names in addition to SSH targets and interfaces.
 3. Build the patched NCCL 2.30.7 and `libspark_transport_capi.so` for sm_121; record your own SHA-256s (the launcher pins them).
 4. Download the checkpoint on one node, rsync it to the other three over the 200 G fabric.
-5. Run the orchestrator preflight, then execute; it verifies artifacts, runs model-down probe gates, attests the runtime, and fails closed.
+5. Run the public read-only preflight and model-down probes. The reference
+   orchestrator and serving launcher described later in the setup guide are
+   private and are not runnable from this checkout.
 
-The full bring-up sequence, environment reference, and verification gates are
-in [docs/SETUP.md](docs/SETUP.md).
+**Safety:** cabling, host setup, network configuration, artifact staging, and
+container lifecycle are **MUTATES HOST** operations. The full reference
+deployment reconstruction and the subset runnable from this tree are in
+[docs/SETUP.md](docs/SETUP.md).
 
 ## Status
 
 This is a research pre-release. There is no stable API; environment flags,
 ABIs, and module layouts change without notice.
 
-There are two support lanes:
+There are two lanes:
 
-- **Reference lane (validated):** the exact runtime the published numbers
+- **Reference lane (live-validated, not publicly runnable):** the exact runtime the published numbers
   were measured on — a pinned upstream vLLM commit plus a patch overlay and
   public kernel packages, assembled inside a community GB10 container image.
   The overlay attests the exact upstream source it patches by SHA-256 and
@@ -164,11 +226,12 @@ There are two support lanes:
   that runtime resolves to public sources; see
   [docs/RUNTIME_GAPS.md](docs/RUNTIME_GAPS.md) for what it contains beyond
   stock vLLM and what upstream has since absorbed.
-- **Public reproduction lane (candidate):** what this snapshot builds today.
+- **Public-functional lane (candidate):** what this snapshot builds today.
   The transport library, all probes, and the full native and Python test
   suites have been verified clean-room from this tree on DGX Spark hardware
-  (stock CUDA devel image, no private artifacts: 36/36 targets, 20/20 native
-  tests, 821 Python tests). End-to-end serving from this lane is not yet
+  (stock CUDA devel image, no private artifacts: 36/36 targets and 20/20 native
+  tests). The complete current GPU-free Python contract suite is 1,543 passed
+  with 5 skipped. End-to-end serving from this lane is not yet
   performance-equivalent to the reference lane and is not supported until a
   full acceptance gate passes; fresh builds produce new artifact hashes that
   the fail-closed launcher must have re-pinned.

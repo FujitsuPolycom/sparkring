@@ -1,7 +1,7 @@
 # SparkRing — Public-Functional Lane: supported matrix and acceptance definition
 
-This document defines **one** supported configuration for the public
-reproduction lane, and defines exactly what "it works" means for that
+This document defines **one** supported configuration for the
+public-functional lane, and defines exactly what "it works" means for that
 configuration. It is the contract the acceptance gate
 (`scripts/acceptance_gate.py`) enforces.
 
@@ -77,20 +77,20 @@ proven by stage `fabric_transport_qualification`, which delegates to
 | NVIDIA driver | **580.x** (reference cluster 580.173.02). Minimum supported floor: **TBD-5**. | SETUP.md Stage 2.2 |
 | Host CUDA | **13.0** | SETUP.md Stage 2.2 |
 | Host system NCCL | >= **2.30.4** (the patched build is what actually runs; this is the packaging floor) | SETUP.md Stage 2 verify block |
-| Serving NCCL | Built from `NVIDIA/nccl` tag **`v2.30.7-1`** plus both in-repo patches, each pinned by SHA-256 in the lock | `runtime/runtime-lock.json` → `nccl` |
+| Serving NCCL | Built from `NVIDIA/nccl` commit **`73cf112295c33aee2b895f329f592f2a9b4b0f97`** (the `v2.30.7-1` release commit) plus both in-repo patches, each pinned by SHA-256 in the lock | `runtime/runtime-lock.json` → `nccl` |
 | Container runtime | Docker CE with `nvidia-container-toolkit`, or podman (`CONTAINER_ENGINE=podman`). Minimum versions: **TBD-7**. | SETUP.md Stage 2.6; `runtime/README.md` |
-| Base images | `nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04` (builder) and `:13.0.1-runtime-ubuntu24.04` (runtime). Digests: **TBD-2** (`pending-first-build`). | `runtime/runtime-lock.json` → `base_image` |
+| Base images | ARM64 manifests resolved from `nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04` and `:13.0.1-runtime-ubuntu24.04`, pinned by digest in the lock | `runtime/runtime-lock.json` → `base_image` |
 | Container CUDA / toolchain | CUDA **13.2**, `CMAKE_CUDA_ARCHITECTURES=121`, `linux/arm64` | `runtime/runtime-lock.json` → `toolchain` |
 | Python (in the image) | **3.12.3** | `runtime/runtime-lock.json` → `toolchain.python_version` |
-| Python (gate host, for `scripts/*.py`) | **>= 3.10**, stdlib only; no GPU, no cluster access needed for `--dry-run` | this repo |
+| Python (gate host, for `scripts/*.py`) | **>= 3.10** plus PyYAML for the documented YAML site file; no GPU or cluster access needed for `--dry-run` | `requirements-dev.txt`; this repo |
 | torch | **2.12.0+cu132** from `https://download.pytorch.org/whl/cu132` | lock → `toolchain` |
 | vLLM | `vllm-project/vllm` @ **`fcc614141e5e9ab18cb304c476f7feed2a9552e3`** (0.11.2.dev279 lineage) | lock → `vllm` |
 | sparkinfer (B12X) | `local-inference-lab/sparkinfer` @ **`284a2eae83754ee1abd31c37b9ca66b68e20b8a8`** | lock → `sparkinfer` |
 | FlashInfer | `flashinfer-ai/flashinfer` @ **`25dd814e03791e370f96c3148242f0dc8de504ac`**; wheels `flashinfer-python 0.6.13+cu132`, `flashinfer_jit_cache 0.6.13+cu132` | lock → `flashinfer` |
-| DeepGEMM | **2.5.0+2073ddb**; full commit SHA **TBD-3** (`resolve-pending`) | lock → `deep_gemm` |
+| DeepGEMM | **2.5.0+2073ddb** from commit **`2073ddb2814892014c33ef4cd1c7d4c148baf1fe`** | lock → `deep_gemm` |
 | Full pip set | `runtime/pip-freeze.txt` — no resolver drift permitted | `runtime/README.md` acceptance gate 5 |
 | vLLM overlay | Only the two published SparkCache compatibility patches in `runtime/patches/vllm/`, preimage-pinned in the lock. The reference lane's 61-modified/12-new-file overlay is **not** part of this lane. | `runtime/README.md`; RUNTIME_GAPS.md |
-| Image identity | The built serving image, referenced by digest. Digest pin: **TBD-4**. | `runtime/README.md` verify flow |
+| Image identity | The built serving image, referenced by its post-push registry digest. The launcher must inject that digest as `SPARKRING_IMAGE_DIGEST`; a missing or skipped digest check is an acceptance failure. | `runtime/README.md` verify flow; `scripts/acceptance_gate.py` |
 
 **Non-pinned images and arbitrary vLLM versions are rejected**, not tolerated
 (§3). The runtime manifest inside the image, plus `runtime/verify-runtime.py`,
@@ -102,7 +102,7 @@ re-implementing it.
 | Requirement | Value |
 |---|---|
 | Repository | **`aidendle94/GLM-5.2-MXFP4-Experts-GPTQ`** (`runtime/runtime-lock.json` → `model.repository`) |
-| Revision | An **immutable Hugging Face commit hash** (40 hex characters), recorded in `model.revision`. Currently **`pending`** — **TBD-1**, and this blocks acceptance outright. |
+| Revision | **`46537e0e16fcd156627800139b41b9c497fc7ee2`**, an immutable Hugging Face commit recorded in `model.revision` |
 | Identity check | `config.json` of the pinned revision must hash to `ffd30e72ab8bb7e8ad560f2aaab03cc595f3106f0acf793ef96eedaf90f66d69` (`model.config_sha256`) |
 | Size | ~382 GiB, present on all four nodes |
 | Load format | `safetensors` |
@@ -481,10 +481,7 @@ yet, with the workstream that owns closing it.
 
 | Id | Open value | Why it matters | Owner |
 |---|---|---|---|
-| TBD-1 | `model.revision` in `runtime/runtime-lock.json` is `pending`, not an immutable HF commit hash | **Blocks acceptance outright** — the gate's model-identity check refuses a non-immutable revision, so stage 1 cannot pass today | runtime lock / build maintainer |
-| TBD-2 | Base image digests (`base_image.builder.digest`, `base_image.runtime.digest`) are `pending-first-build` | Without digests the "no non-pinned images" rule in §3 is unenforceable at the base layer | runtime builder |
-| TBD-3 | DeepGEMM full commit SHA is `resolve-pending` (only `2073ddb` short SHA known) | Incomplete provenance for one pinned kernel package | runtime builder |
-| TBD-4 | Built serving image digest — `runtime/README.md`'s verify flow compares against `images.built.digest`, which the current lock does not contain | `verify-runtime.py`'s `image_digest` check skips with a warning until this exists; image identity is then unverified | runtime builder |
+| TBD-4 | The registry digest of each newly built public runtime image | An image cannot contain its own final registry digest. The build operator must push it, record the digest in launch/evidence metadata, and inject it as `SPARKRING_IMAGE_DIGEST`; the acceptance gate now fails rather than accepting an identity skip. | runtime build/release operator |
 | TBD-5 | Minimum supported NVIDIA driver version (reference cluster: 580.173.02; requirement stated only as "580.x") | Users cannot tell whether their driver is in-matrix | hardware / bring-up |
 | TBD-6 | Minimum supported host kernel version (reference cluster: NVIDIA kernel 6.17) | Same | hardware / bring-up |
 | TBD-7 | Minimum Docker CE / podman / `nvidia-container-toolkit` versions | Same; also affects whether the podman path is actually supported or merely believed to work | bring-up |
@@ -495,7 +492,9 @@ yet, with the workstream that owns closing it.
 | TBD-13 | The site schema pins `serving.mtp_tokens` but not the adaptive depth window; the matrix's `adaptive_speculative_tokens_window: 32` is therefore documented here but not machine-checked | An adaptive-MTP window other than 32 would pass the gate while being off-matrix | site-config workstream + acceptance gate owner |
 | TBD-14 | The site schema has no field for the attention backend or KV cache dtype, so §2.4's `B12X_MLA_SPARSE` / `nvfp4_ds_mla` rows are documented but not machine-checked (they are also gated on TBD-8) | Two matrix rows are honour-system until either the site schema carries them or the gate reads them back from the running engine | site-config workstream + acceptance gate owner |
 
-Closed: the earlier "reconcile site-config key names" item is resolved —
+Closed: TBD-1 (immutable model revision), TBD-2 (ARM64 base-image digests), and
+TBD-3 (DeepGEMM full commit) are pinned in `runtime/runtime-lock.json`. The
+earlier "reconcile site-config key names" item is also resolved:
 `scripts/sparkring_site.py` landed and the gate consumes its normalised schema
 directly (§7), with gate-specific settings moved into the gate config.
 

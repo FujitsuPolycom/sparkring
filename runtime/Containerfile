@@ -20,19 +20,25 @@
 ARG BASE_DEVEL_IMAGE
 ARG BASE_RUNTIME_IMAGE
 ARG CUDA_ARCH
+ARG PYTHON_VERSION
+ARG TORCH_CUDA_VERSION
 ARG TORCH_SPEC
 ARG TORCH_INDEX_URL
 ARG VLLM_REPO
 ARG VLLM_COMMIT
 ARG SPARKINFER_REPO
 ARG SPARKINFER_COMMIT
+ARG FLASHINFER_REPO
 ARG FLASHINFER_COMMIT
-ARG FLASHINFER_PYTHON_SPEC
+ARG FLASHINFER_PYTHON_VERSION
 ARG FLASHINFER_JIT_CACHE_SPEC
+ARG FLASHINFER_JIT_CACHE_SHA256
 ARG FLASHINFER_WHEEL_INDEX
-ARG DEEPGEMM_SPEC
+ARG DEEPGEMM_REPO
+ARG DEEPGEMM_COMMIT
+ARG DEEPGEMM_VERSION
 ARG NCCL_REPO
-ARG NCCL_TAG
+ARG NCCL_COMMIT
 ARG MODEL_REPO_ID
 ARG MODEL_REVISION
 ARG MODEL_CONFIG_SHA256
@@ -44,18 +50,21 @@ ARG MAX_JOBS=8
 # ===========================================================================
 FROM ${BASE_DEVEL_IMAGE} AS nccl-build
 ARG NCCL_REPO
-ARG NCCL_TAG
+ARG NCCL_COMMIT
 ARG CUDA_ARCH
 ARG MAX_JOBS
 
-RUN test -n "${NCCL_REPO}" && test -n "${NCCL_TAG}" && test -n "${CUDA_ARCH}"
+RUN test -n "${NCCL_REPO}" && test -n "${NCCL_COMMIT}" && test -n "${CUDA_ARCH}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git build-essential devscripts debhelper fakeroot \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
-RUN git clone --branch "${NCCL_TAG}" --depth 1 "${NCCL_REPO}" nccl
+RUN git clone "${NCCL_REPO}" nccl \
+    && cd nccl \
+    && git checkout "${NCCL_COMMIT}" \
+    && test "$(git rev-parse HEAD)" = "${NCCL_COMMIT}"
 
 # Patch series from the in-repo switchless-ring experiment
 # (spark_transport/experiments/nccl_switchless_ring/):
@@ -86,20 +95,27 @@ RUN cd nccl \
 # ===========================================================================
 FROM ${BASE_DEVEL_IMAGE} AS vllm-build
 ARG CUDA_ARCH
+ARG PYTHON_VERSION
+ARG TORCH_CUDA_VERSION
 ARG TORCH_SPEC
 ARG TORCH_INDEX_URL
 ARG VLLM_REPO
 ARG VLLM_COMMIT
 ARG SPARKINFER_REPO
 ARG SPARKINFER_COMMIT
-ARG FLASHINFER_PYTHON_SPEC
+ARG FLASHINFER_REPO
+ARG FLASHINFER_COMMIT
+ARG FLASHINFER_PYTHON_VERSION
 ARG FLASHINFER_JIT_CACHE_SPEC
+ARG FLASHINFER_JIT_CACHE_SHA256
 ARG FLASHINFER_WHEEL_INDEX
-ARG DEEPGEMM_SPEC
+ARG DEEPGEMM_REPO
+ARG DEEPGEMM_COMMIT
+ARG DEEPGEMM_VERSION
 ARG MAX_JOBS
 
 RUN test -n "${VLLM_COMMIT}" && test -n "${TORCH_SPEC}" && test -n "${CUDA_ARCH}" \
-    && test -n "${SPARKINFER_COMMIT}" && test -n "${FLASHINFER_PYTHON_SPEC}"
+    && test -n "${SPARKINFER_COMMIT}" && test -n "${FLASHINFER_PYTHON_VERSION}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git build-essential cmake ninja-build ccache \
@@ -108,11 +124,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN python3 -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
+RUN test "$(python3 -c 'import platform; print(platform.python_version())')" = \
+        "${PYTHON_VERSION}"
 
-# Pinned torch first (own index), then the frozen package set.
+# Pinned torch first (own index), then the publicly fetchable portion of the
+# audited freeze. Reviewed file:// entries are installed from pinned inputs
+# later in this stage.
 COPY runtime/pip-freeze.txt /build/pip-freeze.txt
+COPY runtime/prepare-public-requirements.py /build/prepare-public-requirements.py
 RUN pip install --no-cache-dir "${TORCH_SPEC}" --index-url "${TORCH_INDEX_URL}" \
-    && pip install --no-cache-dir -r /build/pip-freeze.txt
+    && test "$(python3 -c 'import torch; print(torch.version.cuda)')" = \
+         "${TORCH_CUDA_VERSION}" \
+    && python3 /build/prepare-public-requirements.py \
+         --freeze /build/pip-freeze.txt \
+         --output /build/public-requirements.txt \
+    && pip install --no-cache-dir \
+         --extra-index-url "${TORCH_INDEX_URL}" \
+         -r /build/public-requirements.txt
 
 # vLLM from the pinned public commit, source build for sm_121 only.
 # NOTE: this is the multi-hour step (see header).
@@ -127,13 +155,35 @@ ENV TORCH_CUDA_ARCH_LIST="12.1" \
 RUN cd vllm \
     && MAX_JOBS="${MAX_JOBS}" pip install --no-cache-dir --no-build-isolation -v .
 
-# Pinned kernel/companion packages.
+# Pinned kernel/companion packages. Source commits determine the installed
+# b12x, FlashInfer-Python and DeepGEMM trees.
 RUN pip install --no-cache-dir \
         "git+${SPARKINFER_REPO}@${SPARKINFER_COMMIT}" \
-    && pip install --no-cache-dir \
-        "${FLASHINFER_PYTHON_SPEC}" "${FLASHINFER_JIT_CACHE_SPEC}" \
-        --extra-index-url "${FLASHINFER_WHEEL_INDEX}" \
-    && pip install --no-cache-dir "${DEEPGEMM_SPEC}"
+    && git clone "${FLASHINFER_REPO}" /build/flashinfer \
+    && cd /build/flashinfer \
+    && git checkout "${FLASHINFER_COMMIT}" \
+    && test "$(git rev-parse HEAD)" = "${FLASHINFER_COMMIT}" \
+    && git submodule update --init --recursive \
+    && FLASHINFER_LOCAL_VERSION=cu132 pip install --no-cache-dir . \
+    && test "$(python3 -c 'from importlib.metadata import version; print(version("flashinfer-python"))')" = \
+         "${FLASHINFER_PYTHON_VERSION}" \
+    && printf '%s --hash=sha256:%s\n' \
+         "${FLASHINFER_JIT_CACHE_SPEC}" "${FLASHINFER_JIT_CACHE_SHA256}" \
+         > /build/flashinfer-jit-cache.requirements.txt \
+    && pip install --no-cache-dir --no-deps --require-hashes \
+         --extra-index-url "${FLASHINFER_WHEEL_INDEX}" \
+         -r /build/flashinfer-jit-cache.requirements.txt \
+    && git clone "${DEEPGEMM_REPO}" /build/deepgemm \
+    && cd /build/deepgemm \
+    && git checkout "${DEEPGEMM_COMMIT}" \
+    && test "$(git rev-parse HEAD)" = "${DEEPGEMM_COMMIT}" \
+    && git submodule update --init --recursive \
+    && pip install --no-cache-dir . \
+    && test "$(python3 -c 'from importlib.metadata import version; print(version("deep-gemm"))')" = \
+         "${DEEPGEMM_VERSION}"
+
+COPY runtime/verify-frozen-packages.py /build/verify-frozen-packages.py
+RUN python3 /build/verify-frozen-packages.py --freeze /build/pip-freeze.txt
 
 # ---------------------------------------------------------------------------
 # Fail-closed patch overlay (runtime/patches/**).
@@ -160,6 +210,7 @@ COPY spark_transport /build/spark_transport
 RUN cmake -S /build/spark_transport -B /build/spark_transport_build \
         -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCH}" \
     && cmake --build /build/spark_transport_build --parallel "${MAX_JOBS}" \
+    && ctest --test-dir /build/spark_transport_build --output-on-failure \
     && mkdir -p /out/spark_transport \
     && find /build/spark_transport_build -maxdepth 1 \
          \( -name 'libspark_transport_capi*.so' -o -name 'spark_tp4_*probe*' -o -name 'spark_transport_probe' \) \
@@ -174,7 +225,7 @@ ARG RUNTIME_ID
 ARG VLLM_COMMIT
 ARG SPARKINFER_COMMIT
 ARG FLASHINFER_COMMIT
-ARG NCCL_TAG
+ARG NCCL_COMMIT
 ARG MODEL_REPO_ID
 ARG MODEL_REVISION
 ARG MODEL_CONFIG_SHA256
@@ -216,7 +267,7 @@ LABEL org.sparkring.runtime_id=${RUNTIME_ID} \
       org.sparkring.vllm_commit=${VLLM_COMMIT} \
       org.sparkring.sparkinfer_commit=${SPARKINFER_COMMIT} \
       org.sparkring.flashinfer_commit=${FLASHINFER_COMMIT} \
-      org.sparkring.nccl_tag=${NCCL_TAG} \
+      org.sparkring.nccl_commit=${NCCL_COMMIT} \
       org.sparkring.model_repo=${MODEL_REPO_ID} \
       org.sparkring.model_revision=${MODEL_REVISION} \
       org.sparkring.model_config_sha256=${MODEL_CONFIG_SHA256}

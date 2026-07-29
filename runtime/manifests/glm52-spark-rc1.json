@@ -57,9 +57,10 @@
     },
     {
       "name": "deep_gemm",
+      "repository": "https://github.com/deepseek-ai/DeepGEMM",
       "version": "2.5.0+2073ddb",
       "commit_short": "2073ddb",
-      "commit_full": "resolve-pending",
+      "commit_full": "2073ddb2814892014c33ef4cd1c7d4c148baf1fe",
       "verification": {
         "mode": "tree",
         "root": "",
@@ -70,6 +71,7 @@
       "name": "nccl",
       "repository": "https://github.com/NVIDIA/nccl",
       "tag": "v2.30.7-1",
+      "commit": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
       "patches": [
         {
           "name": "nccl-2.30.7-skip-tree-pat.patch",
@@ -89,7 +91,7 @@
     {
       "name": "model",
       "repository": "aidendle94/GLM-5.2-MXFP4-Experts-GPTQ",
-      "revision": "pending",
+      "revision": "46537e0e16fcd156627800139b41b9c497fc7ee2",
       "config_sha256": "ffd30e72ab8bb7e8ad560f2aaab03cc595f3106f0acf793ef96eedaf90f66d69",
       "verification": {
         "mode": "tree",
@@ -122,5 +124,5 @@
     "pip_freeze_sha256": "a334d431705f3882e88701988ae487e6585b8ff1715c9416da1bf606e5796f36",
     "source": "runtime/pip-freeze.txt (from the freeze capture)"
   },
-  "self_hash": "212e9e1b255de441a0dd4032d08bc2b1f6bda49aa3d7f594a1756e92a4ca20f8"
+  "self_hash": "811952b66d3a6c17be48c3a3e722e705f85c5c1686bd136e5fa23c3e22621139"
 }

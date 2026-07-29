@@ -56,7 +56,13 @@ Configuration comes from two files:
         "verify_script": "/opt/sparkring/verify-runtime.py",
         "manifest_path": "/opt/sparkring/runtime-manifest.json",
         "expect_runtime_id": null,
-        "exec_prefix": ["docker", "exec", "<your-container>"]
+        "exec_prefix": ["docker", "exec", "<your-container>"],
+        "model_identity": {
+          "config_path": "/hybridmodel/config.json",
+          "repository_path": "/hybridmodel/.sparkring-model-repository",
+          "revision_path": "/hybridmodel/.sparkring-model-revision",
+          "in_container": true
+        }
       },
       "fabric": {
         "qualifier": "spark_transport/scripts/qualify_direct_cable.py",
@@ -165,6 +171,7 @@ DEFAULT_BENCH_MAX_TOKENS = 128
 
 _IMMUTABLE_REVISION = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+_REMOTE_PATH = re.compile(r"^/[A-Za-z0-9._/+@:-]*[A-Za-z0-9._+@:-]$")
 
 DEFAULT_GATE_CONFIG: dict = {
     "schema": GATE_CONFIG_SCHEMA,
@@ -176,6 +183,12 @@ DEFAULT_GATE_CONFIG: dict = {
         "expect_runtime_id": None,
         "exec_prefix": [],
         "timeout_seconds": 600,
+        "model_identity": {
+            "config_path": None,
+            "repository_path": None,
+            "revision_path": None,
+            "in_container": True,
+        },
     },
     "fabric": {
         "qualifier": "spark_transport/scripts/qualify_direct_cable.py",
@@ -813,7 +826,7 @@ def check_model_pin(lock: dict, site: dict | None = None) -> tuple[bool, str, di
                 "immutable 40-hex commit hash. Mutable references (branch "
                 "names, tags, 'latest', 'pending', empty) are rejected: pin the "
                 "revision in the runtime lock before running acceptance "
-                f"({TARGET_DOC} TBD-1)."
+                f"({TARGET_DOC} section 2.2)."
             ),
             details,
         )
@@ -965,6 +978,22 @@ def _validate_gate_config(gate: dict, problems: list[str]) -> None:
     for key in ("runtime.verify_script", "runtime.manifest_path"):
         if not dig(gate, key, ""):
             problems.append(f"gate config: {key} is required")
+    for key in (
+        "runtime.model_identity.config_path",
+        "runtime.model_identity.repository_path",
+        "runtime.model_identity.revision_path",
+    ):
+        value = dig(gate, key, None)
+        if not isinstance(value, str) or not _REMOTE_PATH.fullmatch(value):
+            problems.append(
+                f"gate config: {key} must be an explicit, shell-safe absolute "
+                "path on every rank"
+            )
+    in_container = dig(gate, "runtime.model_identity.in_container", True)
+    if not isinstance(in_container, bool):
+        problems.append(
+            "gate config: runtime.model_identity.in_container must be true or false"
+        )
     cells = dig(gate, "performance.cells", []) or []
     concurrencies = {c.get("concurrency") for c in cells if isinstance(c, dict)}
     missing = [c for c in REQUIRED_CONCURRENCIES if c not in concurrencies]
@@ -1145,8 +1174,171 @@ def _preflight_path(ctx: GateContext) -> Path | None:
     return Path(configured) if configured else None
 
 
+def _model_identity_argv(
+    ctx: GateContext, rank: dict, field: str
+) -> list[str]:
+    in_container = bool(
+        dig(ctx.gate, "runtime.model_identity.in_container", True)
+    )
+    path = str(dig(ctx.gate, f"runtime.model_identity.{field}_path"))
+    command = ["sha256sum", "--", path] if field == "config" else ["cat", "--", path]
+    return ctx.rank_argv(rank, command, in_container=in_container)
+
+
+def _load_required_preflight(ctx: GateContext) -> tuple[dict, str]:
+    path = _preflight_path(ctx)
+    if path is None:
+        raise StageFailure(
+            "preflight evidence is required for public acceptance; run "
+            "scripts/preflight.py and supply its successful JSON with --preflight"
+        )
+    if not path.is_file():
+        raise StageFailure(f"preflight evidence not found: {path}")
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+        raise StageFailure(f"preflight evidence {path} is unreadable: {exc}") from exc
+
+    problems: list[str] = []
+    if document.get("schema") != PREFLIGHT_SCHEMA:
+        problems.append(
+            f"schema {document.get('schema')!r} != expected {PREFLIGHT_SCHEMA!r}"
+        )
+    if document.get("read_only") is not True:
+        problems.append("read_only is not true")
+    if document.get("passed") is not True:
+        problems.append(
+            f"passed is not true (failed checks: {document.get('failed_check_ids')})"
+        )
+    totals = document.get("totals")
+    if not isinstance(totals, dict):
+        problems.append("totals is missing")
+    else:
+        checks = totals.get("checks")
+        failed = totals.get("failed")
+        if not isinstance(checks, int) or isinstance(checks, bool) or checks <= 0:
+            problems.append("totals.checks must be a positive integer")
+        if failed != 0:
+            problems.append(f"totals.failed is {failed!r}, expected 0")
+    rank_entries = document.get("ranks")
+    observed_ranks = (
+        {
+            entry.get("rank")
+            for entry in rank_entries
+            if isinstance(entry, dict)
+        }
+        if isinstance(rank_entries, list)
+        else set()
+    )
+    expected_ranks = set(range(REQUIRED_RANKS))
+    if observed_ranks != expected_ranks:
+        problems.append(
+            f"rank evidence is {sorted(observed_ranks, key=str)}, "
+            f"expected {sorted(expected_ranks)}"
+        )
+    if document.get("placeholder_warnings"):
+        problems.append("placeholder_warnings is not empty")
+    if problems:
+        raise StageFailure(
+            "preflight evidence is not an admissible successful full-cluster "
+            "run: " + "; ".join(problems)
+        )
+
+    summary = {
+        "schema": document.get("schema"),
+        "generated_at": document.get("generated_at"),
+        "read_only": document.get("read_only"),
+        "passed": document.get("passed"),
+        "totals": totals,
+        "failed_check_ids": document.get("failed_check_ids"),
+        "failed_ranks": document.get("failed_ranks"),
+        "ranks": sorted(observed_ranks),
+    }
+    return summary, str(path)
+
+
+def _single_identity_line(result: CommandResult, label: str) -> str:
+    if result.exit_code != 0:
+        raise ValueError(
+            f"{label} command exited {result.exit_code}: "
+            f"{result.stderr.strip()[:300]}"
+        )
+    lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if len(lines) != 1:
+        raise ValueError(f"{label} command must emit exactly one non-empty line")
+    return lines[0]
+
+
+def _attest_deployed_model(
+    ctx: GateContext, expected: dict, artifacts: list[str]
+) -> dict[str, dict]:
+    observed: dict[str, dict] = {}
+    failures: list[str] = []
+    timeout = float(dig(ctx.gate, "runtime.timeout_seconds", 600))
+    for rank in ctx.ranks():
+        number = int(rank["id"])
+        rank_observed: dict[str, str] = {}
+        for identity_field in ("repository", "revision", "config"):
+            result = ctx.executor.run(
+                _model_identity_argv(ctx, rank, identity_field), timeout=timeout
+            )
+            artifacts.append(
+                ctx.capture_command(
+                    f"rank{number}-model-{identity_field}.txt", result
+                )
+            )
+            try:
+                value = _single_identity_line(
+                    result, f"rank {number} model {identity_field}"
+                )
+                if identity_field == "config":
+                    value = value.split()[0].lower()
+                    if not _SHA256_HEX.fullmatch(value):
+                        raise ValueError(
+                            f"rank {number} model config command did not emit "
+                            "a sha256sum-compatible digest"
+                        )
+                rank_observed[identity_field] = value
+            except ValueError as exc:
+                failures.append(str(exc))
+        observed[str(number)] = rank_observed
+        comparisons = {
+            "repository": expected["repository"],
+            "revision": expected["revision"].lower(),
+            "config": expected["config_sha256"].lower(),
+        }
+        labels = {
+            "repository": "repository",
+            "revision": "revision",
+            "config": "config sha256",
+        }
+        for identity_field, wanted in comparisons.items():
+            actual = rank_observed.get(identity_field)
+            if actual is not None and actual != wanted:
+                failures.append(
+                    f"rank {number} deployed model {labels[identity_field]} "
+                    f"{actual!r} != lock {wanted!r}"
+                )
+    if failures:
+        raise StageFailure(
+            "deployed model identity verification failed: " + " | ".join(failures),
+            details={"model_identity": observed, "failures": failures},
+            artifacts=artifacts,
+        )
+    return observed
+
+
 def plan_runtime_attestation(ctx: GateContext) -> list[dict]:
+    preflight = _preflight_path(ctx)
     actions = [
+        {
+            "kind": "local-check",
+            "what": "require successful full-cluster scripts/preflight.py evidence",
+            "path": str(preflight) if preflight else None,
+            "on_missing": "functional failure before any remote command",
+        }
+    ]
+    actions += [
         {
             "kind": "command",
             "what": f"attest runtime on rank {rank['id']}",
@@ -1154,15 +1346,20 @@ def plan_runtime_attestation(ctx: GateContext) -> list[dict]:
         }
         for rank in ctx.ranks()
     ]
-    preflight = _preflight_path(ctx)
-    actions.append(
-        {
-            "kind": "local-check",
-            "what": "read preflight evidence (scripts/preflight.py)",
-            "path": str(preflight) if preflight else None,
-            "on_missing": "record a note; artifact hashes are then unverified",
-        }
-    )
+    for rank in ctx.ranks():
+        for identity_field in ("repository", "revision", "config"):
+            actions.append(
+                {
+                    "kind": "command",
+                    "what": (
+                        "verify deployed model "
+                        f"{identity_field} on rank {rank['id']}"
+                    ),
+                    "argv": _model_identity_argv(
+                        ctx, rank, identity_field
+                    ),
+                }
+            )
     actions.append(
         {
             "kind": "local-check",
@@ -1185,6 +1382,9 @@ def run_runtime_attestation(ctx: GateContext) -> StageOutcome:
     attestations: dict[str, dict] = {}
     failures: list[str] = []
     timeout = float(dig(ctx.gate, "runtime.timeout_seconds", 600))
+
+    preflight_summary, preflight_source = _load_required_preflight(ctx)
+    artifacts.append(ctx.artifact_json("preflight-summary.json", preflight_summary))
 
     for rank in ctx.ranks():
         number = int(rank["id"])
@@ -1218,6 +1418,21 @@ def run_runtime_attestation(ctx: GateContext) -> StageOutcome:
             )
             continue
         attestations[str(number)] = attestation
+        image_checks = [
+            check
+            for check in checks.get("checks", [])
+            if check.get("name") == "image_digest"
+        ]
+        if len(image_checks) != 1 or image_checks[0].get("status") != "pass":
+            detail = (
+                image_checks[0].get("detail")
+                if image_checks
+                else "image_digest check missing"
+            )
+            failures.append(
+                f"rank {number}: image identity was not verified ({detail}); "
+                "public acceptance requires a passing digest check"
+            )
         for check in checks.get("checks", []):
             if check.get("status") == "skip":
                 ctx.notes.append(
@@ -1243,46 +1458,10 @@ def run_runtime_attestation(ctx: GateContext) -> StageOutcome:
             artifacts=artifacts,
         )
 
-    preflight_summary: dict | None = None
-    preflight_path = _preflight_path(ctx)
-    if preflight_path is None:
-        ctx.notes.append(
-            "no preflight evidence supplied (--preflight): cross-rank artifact "
-            "hashes, free space, ports and GID mapping were not independently "
-            "verified; run scripts/preflight.py first"
-        )
-    else:
-        if not preflight_path.is_file():
-            raise StageFailure(
-                f"preflight evidence not found: {preflight_path}",
-                artifacts=artifacts,
-            )
-        try:
-            preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
-            raise StageFailure(
-                f"preflight evidence {preflight_path} is unreadable: {exc}",
-                artifacts=artifacts,
-            ) from exc
-        preflight_summary = {
-            "schema": preflight.get("schema"),
-            "passed": preflight.get("passed"),
-            "failed_check_ids": preflight.get("failed_check_ids"),
-            "failed_ranks": preflight.get("failed_ranks"),
-        }
-        artifacts.append(ctx.artifact_json("preflight-summary.json", preflight_summary))
-        if preflight.get("passed") is not True:
-            raise StageFailure(
-                "preflight evidence does not report a pass "
-                f"(failed checks: {preflight.get('failed_check_ids')}); fix the "
-                "cluster before running acceptance",
-                details={"preflight": preflight_summary},
-                artifacts=artifacts,
-            )
-
     ok, message, model_details = check_model_pin(ctx.lock, ctx.site)
     if not ok:
         raise StageFailure(message, details={"model": model_details}, artifacts=artifacts)
+    deployed_model = _attest_deployed_model(ctx, model_details, artifacts)
 
     artifacts.append(
         ctx.artifact_json(
@@ -1290,7 +1469,9 @@ def run_runtime_attestation(ctx: GateContext) -> StageOutcome:
             {
                 "attestations": attestations,
                 "model": model_details,
+                "deployed_model": deployed_model,
                 "preflight": preflight_summary,
+                "preflight_source": preflight_source,
             },
         )
     )
@@ -1305,6 +1486,7 @@ def run_runtime_attestation(ctx: GateContext) -> StageOutcome:
             "runtime_id": runtime_id,
             "manifest_self_hash": next(iter(self_hashes)),
             "model": model_details,
+            "deployed_model": deployed_model,
             "preflight": preflight_summary,
         },
         artifacts=artifacts,
@@ -1410,11 +1592,34 @@ def run_fabric_transport(ctx: GateContext) -> StageOutcome:
 
     probe_timeout = float(dig(ctx.gate, "fabric.model_down_probe.timeout_seconds", 1800))
     targets = _probe_targets(ctx)
+    probe_results: dict[int, CommandResult] = {}
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=max(1, len(targets)),
+        thread_name_prefix="sparkring-model-down-probe",
+    ) as pool:
+        pending = {
+            int(rank["id"]): pool.submit(
+                ctx.executor.run,
+                _model_down_probe_argv(ctx, rank),
+                probe_timeout,
+            )
+            for rank in targets
+        }
+        for number, future in pending.items():
+            try:
+                probe_results[number] = future.result()
+            except Exception as exc:  # defensive: injected/site executors may raise
+                probe_results[number] = CommandResult(
+                    argv=_model_down_probe_argv(ctx, ctx.rank(number)),
+                    exit_code=127,
+                    stdout="",
+                    stderr=f"probe executor raised: {exc}",
+                    duration_seconds=0.0,
+                )
+
     for rank in targets:
         number = int(rank["id"])
-        result = ctx.executor.run(
-            _model_down_probe_argv(ctx, rank), timeout=probe_timeout
-        )
+        result = probe_results[number]
         artifacts.append(ctx.capture_command(f"rank{number}-model-down-probe.json", result))
         if result.exit_code != 0:
             failures.append(

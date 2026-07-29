@@ -1,21 +1,19 @@
 {
   "schema": "sparkring-runtime-lock/v1",
   "runtime_id": "glm52-gb10-rc1",
-  "comment": "Single source of truth for build-runtime.sh. Every field here is a hard pin; fields marked 'pending' are stamped by the builder on first successful build and must not be hand-edited afterward.",
+  "comment": "Single source of truth for build-runtime.sh. Every non-comment field is consumed by the builder; unknown, empty, mutable, or unresolved identity fields are rejected before the container engine runs.",
   "base_image": {
     "builder": {
       "repository": "nvcr.io/nvidia/cuda",
-      "tag": "13.0.1-devel-ubuntu24.04",
-      "digest": "pending-first-build"
+      "digest": "sha256:5c36750138dc1447a17dafbb397674f167d3b44ce18d9160d769df114577b35d"
     },
     "runtime": {
       "repository": "nvcr.io/nvidia/cuda",
-      "tag": "13.0.1-runtime-ubuntu24.04",
-      "digest": "pending-first-build"
+      "digest": "sha256:36050649ad1acc5d3de2c26620191c25850fb12a5771b6c22996033003d952e4"
     }
   },
   "toolchain": {
-    "cuda_version": "13.2",
+    "torch_cuda_version": "13.2",
     "torch_version": "2.12.0+cu132",
     "torch_index_url": "https://download.pytorch.org/whl/cu132",
     "python_version": "3.12.3",
@@ -26,8 +24,7 @@
   },
   "vllm": {
     "repository": "https://github.com/vllm-project/vllm",
-    "commit": "fcc614141e5e9ab18cb304c476f7feed2a9552e3",
-    "version_lineage": "0.11.2.dev279"
+    "commit": "fcc614141e5e9ab18cb304c476f7feed2a9552e3"
   },
   "sparkinfer": {
     "repository": "https://github.com/local-inference-lab/sparkinfer",
@@ -40,17 +37,19 @@
       "flashinfer-python": "0.6.13+cu132",
       "flashinfer_jit_cache": "0.6.13+cu132"
     },
+    "wheel_sha256": {
+      "flashinfer_jit_cache": "9fadcd8de0247a3451cbe79a3b158c7f6869f8d039d8bc8fd5ecd0a0dc980a19"
+    },
     "wheel_index": "https://flashinfer.ai/whl/cu132"
   },
   "deep_gemm": {
+    "repository": "https://github.com/deepseek-ai/DeepGEMM",
     "version": "2.5.0+2073ddb",
-    "commit_short": "2073ddb",
-    "commit_full": "resolve-pending",
-    "note": "Short commit taken from installed dist-info; full SHA must be resolved against upstream history before this pin is considered final."
+    "commit_full": "2073ddb2814892014c33ef4cd1c7d4c148baf1fe"
   },
   "nccl": {
     "repository": "https://github.com/NVIDIA/nccl",
-    "tag": "v2.30.7-1",
+    "commit": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
     "patches": [
       {
         "path": "spark_transport/experiments/nccl_switchless_ring/nccl-2.30.7-skip-tree-pat.patch",
@@ -62,12 +61,9 @@
       }
     ]
   },
-  "sparkring": {
-    "commit": "stamped-by-builder-from-git"
-  },
   "model": {
     "repository": "aidendle94/GLM-5.2-MXFP4-Experts-GPTQ",
-    "revision": "pending",
+    "revision": "46537e0e16fcd156627800139b41b9c497fc7ee2",
     "config_sha256": "ffd30e72ab8bb7e8ad560f2aaab03cc595f3106f0acf793ef96eedaf90f66d69",
     "note": "revision is pinned to an immutable HF commit hash at build time; config.json of the pinned revision must hash to config_sha256."
   },

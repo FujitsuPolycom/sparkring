@@ -21,7 +21,7 @@ which claims each level of access earns you.
 
 - Match the existing style of the surrounding code.
 - All tests must be green:
-  - Python: `python -m pytest spark_transport sparkcache runtime` from the repo root.
+  - Python: `python -m pytest spark_transport sparkcache runtime scripts` from the repo root.
   - C++/CUDA: the CMake (CTest) suite, run in-container.
 - No copied code without provenance: any code copied or adapted from another project must carry a provenance note and a corresponding license entry in `THIRD_PARTY_NOTICES.md`.
 - Contributions are accepted under the project license, Apache-2.0 (see `LICENSE`).
@@ -74,18 +74,18 @@ The suites stub vLLM and use CPU tensors, and the tests that genuinely need
 hardware skip themselves with a stated reason.
 
 ```bash
-# There is no dev requirements file in this repo (see "Good first issues").
-# Install exactly this set — it is what CI installs, and the versions the
-# suites were verified against:
-python -m pip install "pytest==8.4.2" "numpy==2.4.4"
+# Install the pinned GPU-free development and CI dependencies:
+python -m pip install -r requirements-dev.txt
+
+# Torch is separate so CPU-only contributors do not accidentally install a
+# CUDA wheel. The tests use it only for CPU tensor construction/comparison.
 python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.11.0"
-python -m pip install "ruff==0.15.17"
 
 # Do NOT install runtime/pip-freeze.txt. That is an aarch64 / CUDA-13.2
 # serving freeze for the container, not a development environment.
 
 # The full offline suite:
-python -m pytest spark_transport sparkcache runtime -q
+python -m pytest spark_transport sparkcache runtime scripts -q
 
 # Lint (the exact rule selection CI uses):
 ruff check --select E,F,W --ignore E501 .
@@ -163,21 +163,22 @@ torch, on a machine with no GPU and no fabric.
 | Suite | Command | Needs | Measured |
 |---|---|---|---|
 | `spark_transport` Python | `python -m pytest spark_transport -q` | CPU only | 821 passed, 4 skipped |
-| `sparkcache` Python | `python -m pytest sparkcache -q` | CPU only | 407 passed, 1 skipped |
-| `runtime` Python | `python -m pytest runtime -q` | CPU only | 15 passed |
-| **All three (what CI runs)** | `python -m pytest spark_transport sparkcache runtime -q` | CPU only | **1243 passed, 5 skipped** |
+| `sparkcache` Python | `python -m pytest sparkcache -q` | CPU only | 387 passed, 1 skipped |
+| `runtime` Python | `python -m pytest runtime -q` | CPU only | 29 passed |
+| Public tooling | `python -m pytest scripts -q` | CPU only | 306 passed |
+| **All four (what CI runs)** | `python -m pytest spark_transport sparkcache runtime scripts -q` | CPU only | **1543 passed, 5 skipped** |
 | SparkCache native, host half | `cmake -S sparkcache/native ... -DSPARK_CACHE_PLACEMENT_ENABLE_CUDA=OFF` + `ctest` | CPU only, C++17 compiler | runs in CI |
 | SparkCache native, CUDA half | default `cmake -S sparkcache/native` + `ctest` | 1 GPU + CUDA toolkit | **manual gate** |
 | `spark_transport` CTest | `cmake -S spark_transport ...` + `ctest` | CUDA toolkit + `libibverbs` to configure at all; GPU for the CUDA cases | **manual gate** |
 | Pair transport probe | `spark_transport_probe --server` / `--client` | 2 Sparks + 1 cable | **manual gate** |
 | Per-edge cable qualification | `qualify_direct_cable.py` | 2 nodes over SSH + the cable | **manual gate** |
 | Four-rank collective probes | `experiments/nccl_switchless_ring/probe_dcp4_collectives.py` | 4 Sparks, ring cabled, patched NCCL | **manual gate** |
-| Serving / performance windows | orchestrator preflight then execute | 4 Sparks + the reference runtime | **manual gate** |
+| Public acceptance dry-run | `python scripts/acceptance_gate.py --site ... --gate-config ...` | CPU only; complete local configuration | **dry-run by default** |
+| Serving / performance windows | acceptance `--execute` or the private reference orchestrator | 4 Sparks + a complete runtime and launcher | **manual gate; stops serving** |
 
-The four skips in the offline run are self-declared and expected: vLLM is only
-importable inside the runtime container (2 tests), one test needs a launched
-four-rank TP4 environment, and one references a deliverable that lives in the
-maintainer's private archive.
+The five skips in the combined offline run are self-declared and expected:
+four are in the transport tree (vLLM/container, four-rank, or private-evidence
+requirements) and one is in SparkCache.
 
 **Nothing in the "manual gate" rows runs in CI.** A green CI run never means
 the native build passed or the transport was verified.
@@ -260,7 +261,7 @@ SparkRing has two support lanes, described in `README.md` and
 `runtime/README.md`. The distinction is not bureaucratic — the published
 numbers were measured on one of them and not the other.
 
-| | Reference lane | Public reproduction lane |
+| | Reference lane | Public-functional lane |
 |---|---|---|
 | What it is | the exact pinned runtime the published numbers were measured on | what this tree builds today |
 | Status | validated | candidate |
@@ -339,7 +340,7 @@ from forks therefore get the full check set.
 | Job | What it proves |
 |---|---|
 | `lint` | `ruff check --select E,F,W --ignore E501` is clean repo-wide. Formatting is reported but **not** enforced. |
-| `offline-tests` | The three CPU-only pytest trees pass. |
+| `offline-tests` | The four CPU-only pytest trees pass and the sanitized site/preflight/acceptance examples produce an offline dry-run plan. |
 | `native-cpu-contract` | SparkCache's host-side layout/parser sources compile warning-clean under `-Werror` and their CTest cases pass. **No CUDA is compiled.** |
 | `docs-links` | Every repo-relative Markdown link and heading anchor resolves. External URLs are not fetched. |
 | `release-safety` | No tier-1 identifier or credential shape in tracked files. Blocking. |
@@ -355,35 +356,27 @@ as more than it is.
 Derived from gaps actually observed in this tree, roughly easiest first. None
 of them need hardware.
 
-1. **`deliverables/` is not in `.gitignore`.** It holds run capture and
-   evidence. `.gitignore` covers `.remember/` and build output but not this,
-   so a stray `git add -A` could publish a run. Add it (and a general
-   `evidence/` rule). *Docs/config, no code.*
-2. **No `.editorconfig`.** Add one matching the existing style.
-3. **No dev dependency manifest.** The pytest/numpy/torch/ruff versions are
-   hardcoded in `.github/workflows/ci.yml` and duplicated in this file. Add a
-   `requirements-dev.txt` (or a pyproject dependency group), have CI install
-   from it, and replace the duplication here with a pointer.
-4. **No ruff configuration file.** The rule selection lives on the CI command
+1. **No `.editorconfig`.** Add one matching the existing style.
+2. **No ruff configuration file.** The rule selection lives on the CI command
    line, so local `ruff check` does not match CI. Add a `ruff.toml` or a
    `[tool.ruff]` section encoding `select = ["E", "F", "W"]`,
    `ignore = ["E501"]`.
-5. **Move the Markdown link checker out of the workflow.** It is currently
+3. **Move the Markdown link checker out of the workflow.** It is currently
    inlined in `.github/workflows/ci.yml` as a heredoc, so contributors cannot
    run it locally. Extract it to `scripts/` and have CI call it.
-6. **External links are never checked.** Add a scheduled, non-blocking job
+4. **External links are never checked.** Add a scheduled, non-blocking job
    that checks `http(s)` targets in Markdown, kept out of the merge path so
    third-party downtime cannot block a PR.
-7. **Decide a line-length policy.** 28 `E501` violations exist at ruff's
+5. **Decide a line-length policy.** 28 `E501` violations exist at ruff's
    default 88 columns. Pick a limit, record it in the ruff config, and either
    fix the 28 or document the exemption.
-8. **Decide a formatting policy.** `ruff format --check .` would reformat 96 of
+6. **Decide a formatting policy.** `ruff format --check .` would reformat 96 of
    the 146 Python files. Either adopt formatting in one mechanical,
    review-free commit, or configure ruff to match the existing style. Do not
    do it piecemeal inside unrelated pull requests.
-9. **Import ordering is unenforced.** 95 files fail
-   `ruff check --select I`. Worth doing in the same mechanical commit as 8.
-10. **Let CI cover part of the transport suite.**
+7. **Import ordering is unenforced.** 95 files fail
+   `ruff check --select I`. Worth doing in the same mechanical commit as 6.
+8. **Let CI cover part of the transport suite.**
     `spark_transport/CMakeLists.txt` declares `LANGUAGES CXX CUDA` and requires
     `CUDAToolkit` and `libibverbs` to configure at all — so a GPU-free runner
     cannot even reach the host-only tests. Five of its test executables were
@@ -393,10 +386,11 @@ of them need hardware.
     `tp4_indexer_graph_test`. Add a `SPARK_TRANSPORT_ENABLE_CUDA` option that
     mirrors `SPARK_CACHE_PLACEMENT_ENABLE_CUDA` in `sparkcache/native`, so
     those five can run in CI. *Highest value on this list.*
-11. **Repo labels are only the GitHub defaults.** The issue forms would route
+9. **Repo labels are only the GitHub defaults.** The issue forms would route
     better with `hardware-result`, `regression`, `lane:public-functional`, and
     `lane:reference-performance`. *Maintainer task — needs repo settings.*
-12. **`runtime/runtime-lock.json` still has placeholders.** Base image digests,
-    the DeepGEMM full SHA, the model HF revision, and the built-image digest
-    are `pending`. They can only be filled by someone who completes a build —
-    a good task for anyone who gets the runtime builder to finish.
+10. **Produce the first accepted public-runtime evidence bundle.** Resolving
+    source pins is necessary but does not prove that the image builds, serves
+    the supported matrix, or passes the seven-stage acceptance gate. Record the
+    first clean build/attestation result without borrowing reference-lane
+    performance numbers.

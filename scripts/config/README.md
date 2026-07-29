@@ -6,11 +6,17 @@ ranks, the four 200GbE cables that join them, the control-channel rendezvous
 addresses, the pinned runtime and artifacts, and the paths each rank must have.
 
 `site.example.yaml` in this directory is a complete, schema-valid template with
-every field commented. It contains **no real values**: every address comes from
-an IANA-reserved documentation or benchmarking range, and every hash is an
-obvious placeholder.
+every field commented. Its topology and serving shape match the supported
+public-functional matrix, but it contains **no runnable site or runtime
+identity**: every address comes from an IANA-reserved documentation or
+benchmarking range, while local artifact hashes and image identity are obvious
+placeholders. The public model repository and revision are real matrix pins.
 
 ## Quick start
+
+**Safety: OFFLINE** for the copy, edit, and validator. The preflight command is
+**READ-ONLY REMOTE**: it opens one guarded SSH session per configured rank and
+does not mutate them.
 
 ```bash
 cp scripts/config/site.example.yaml scripts/config/site.yaml
@@ -26,14 +32,15 @@ python scripts/preflight.py --site scripts/config/site.yaml
 Step 1 needs nothing but Python and PyYAML. Step 2 needs key-based ssh to all
 four ranks and never mutates anything on them.
 
-Keep your own `site.yaml` out of version control (add
-`scripts/config/site.yaml` to your `.gitignore`) — it describes your real
-addressing, and only `site.example.yaml` belongs in the repo.
+Keep your own `site.yaml` out of version control — it describes your real
+addressing. The repository already ignores the canonical local path
+`scripts/config/site.yaml`; only `site.example.yaml` belongs in the repo.
 
 ## Requirements
 
 * Python 3.10+
-* PyYAML (`python -m pip install PyYAML`) — the only third-party dependency.
+* PyYAML (`python -m pip install -r requirements-dev.txt`) — the only
+  third-party dependency for these two tools.
   If it is missing, both tools say so plainly instead of raising an ImportError.
 * For preflight only: an `ssh` client on the machine you run it from, and
   key-based (`BatchMode`) auth to each rank. Preflight will never prompt for a
@@ -175,6 +182,48 @@ These are scaffolding tools: a schema, a fail-closed validator, and a
 read-only checker. They tell you whether your cluster matches what you
 declared. They do not launch, tune, or benchmark anything, and passing
 preflight is a precondition for a healthy run, not a guarantee of one.
+
+## Acceptance-gate configuration
+
+`gate.example.json` is the companion template for
+`scripts/acceptance_gate.py`. Copy it to the Git-ignored canonical local path
+and replace every angle-bracket command:
+
+```bash
+cp scripts/config/gate.example.json scripts/config/gate.json
+$EDITOR scripts/config/gate.json
+
+# OFFLINE: dry-run is the default and executes no command or connection.
+python scripts/acceptance_gate.py \
+  --site scripts/config/site.yaml \
+  --gate-config scripts/config/gate.json
+```
+
+The site example now carries the supported matrix values and pinned public
+model repository/revision, so the gate should not report serving-shape drift
+after you fill it. Dry-run also validates the current runtime lock and your
+launcher contract. Treat every reported blocker as real; do not weaken the
+checks to make the example pass. A successful dry-run plan is still not an
+acceptance result.
+
+The gate's `runtime.model_identity` paths are not labels copied from the site
+file. During execution it independently reads the repository and immutable
+revision sidecars and hashes the deployed `config.json` on **every** rank. The
+documented `/hybridmodel` defaults expect:
+
+```text
+/hybridmodel/config.json
+/hybridmodel/.sparkring-model-repository
+/hybridmodel/.sparkring-model-revision
+```
+
+Create those sidecars when placing the pinned model, as shown in
+`docs/SETUP.md` Stage 6. Missing files, a hash mismatch, or one rank carrying a
+different revision is a functional failure.
+
+`--execute` is **STOPS SERVING**: it runs your configured start and stop
+commands. It requires an explicit confirmation token and must never target a
+production-serving cluster.
 
 ## Tests
 

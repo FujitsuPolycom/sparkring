@@ -47,6 +47,9 @@ docs/RELEASE_SAFETY.md
 docs/PUBLIC_ARTIFACT_INVENTORY.md
 
 # Site configuration and credentials
+# Canonical local copies created by scripts/config/README.md.
+scripts/config/site.yaml
+scripts/config/gate.json
 *.site.json
 *.site.yaml
 *.site.yml

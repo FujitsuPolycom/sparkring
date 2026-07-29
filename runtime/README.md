@@ -1,13 +1,15 @@
 # SparkRing runtime builder
 
-A **source-pinned, reproducible builder** for the SparkRing serving runtime:
+A **fail-closed, content-addressed builder** for the public SparkRing runtime
+ancestry:
 patched switchless NCCL + vLLM built from a pinned public commit + the pinned
 kernel stack (sparkinfer, FlashInfer, DeepGEMM, torch) + `spark_transport`,
 assembled into one aarch64 container image targeting sm_121 (NVIDIA GB10 /
 DGX Spark, CUDA 13.2, Python 3.12).
 
 This replaces the historical "frozen image + post-install edits" runtime with
-a build where **every input is pinned in `runtime-lock.json`** and every
+a build where every lock field is either consumed by the build or rejected,
+base images and source repositories are content-addressed, and every
 divergence from upstream is a reviewable, hash-verified patch. See
 `docs/RUNTIME_GAPS.md` for the audit this design answers.
 
@@ -36,30 +38,34 @@ model-serving behavior still requires the maintainer patch series.
 |---|---|
 | vLLM | `vllm-project/vllm` @ `fcc614141e5e9ab18cb304c476f7feed2a9552e3` (0.11.2.dev279 lineage) |
 | B12X kernels | `local-inference-lab/sparkinfer` @ `284a2eae83754ee1abd31c37b9ca66b68e20b8a8` |
-| FlashInfer | `flashinfer-ai/flashinfer` @ `25dd814e03791e370f96c3148242f0dc8de504ac`; wheels `flashinfer-python 0.6.13+cu132`, `flashinfer_jit_cache 0.6.13+cu132` |
-| DeepGEMM | `2.5.0+2073ddb` (full SHA: resolve-pending) |
-| NCCL | `NVIDIA/nccl` tag `v2.30.7-1` + `spark_transport/experiments/nccl_switchless_ring/` patch series (skip-tree-pat, advertise-all-listener-gids) |
+| FlashInfer | `flashinfer-ai/flashinfer` @ `25dd814e03791e370f96c3148242f0dc8de504ac`; `flashinfer-python 0.6.13+cu132` is built from that tree and the `flashinfer_jit_cache 0.6.13+cu132` wheel is SHA-256-pinned |
+| DeepGEMM | `deepseek-ai/DeepGEMM` @ `2073ddb2814892014c33ef4cd1c7d4c148baf1fe`; installed version must report `2.5.0+2073ddb` |
+| NCCL | `NVIDIA/nccl` @ `73cf112295c33aee2b895f329f592f2a9b4b0f97` (the `v2.30.7-1` release commit) + the two hash-pinned switchless patches |
 | Torch / Python / CUDA / arch | `2.12.0+cu132` / `3.12.3` / `13.2` / `sm_121` |
-| Model | `aidendle94/GLM-5.2-MXFP4-Experts-GPTQ`; `config.json` sha256 `ffd30e72ab8bb7e8ad560f2aaab03cc595f3106f0acf793ef96eedaf90f66d69`; immutable HF revision pinned at build time (currently `PENDING`) |
-| Base images | `nvcr.io/nvidia/cuda:13.0.1-devel-ubuntu24.04` (builder) + matching runtime image; digests `pending` until pinned at first successful build |
-| Full pip set | `runtime/pip-freeze.txt` (200 packages, from the audited frozen runtime) |
+| Model | `aidendle94/GLM-5.2-MXFP4-Experts-GPTQ` @ `46537e0e16fcd156627800139b41b9c497fc7ee2`; `config.json` sha256 `ffd30e72ab8bb7e8ad560f2aaab03cc595f3106f0acf793ef96eedaf90f66d69` |
+| Base images | ARM64 manifests `sha256:5c3675...b35d` (devel) and `sha256:360506...52e4` (runtime), resolved from the CUDA 13.0.1 Ubuntu 24.04 tags |
+| Python environment | `runtime/pip-freeze.txt`; exact versions are verified after source installs. Six private-machine `file://` origins are closed explicitly; disabled reference-only InstantTensor is intentionally omitted. |
 
 ## How the build works
 
-1. `build-runtime.sh` parses `runtime-lock.json` and passes every pin as a
-   `--build-arg` — nothing version-shaped is hardcoded in the `Containerfile`.
-2. **Stage 1** builds patched NCCL from the pinned tag; each patch is
+1. `build-runtime.sh` validates a closed lock schema, rejects unknown
+   decorative fields and unresolved identities, then passes every consumed pin
+   into the `Containerfile`.
+2. **Stage 1** builds patched NCCL from the pinned commit; each patch is
    `git apply --check`ed first and any preimage mismatch aborts.
 3. **Stage 2** builds vLLM from the pinned commit for sm_121 only
    (`TORCH_CUDA_ARCH_LIST` / `CMAKE_CUDA_ARCHITECTURES`) — honestly, this is
    a **multi-hour compile** (~1.5-3 h native aarch64; do not attempt emulated) —
-   installs the pinned torch/flashinfer/sparkinfer/deep_gemm set, then runs
+   closes the audited freeze over public inputs, initializes pinned source
+   submodules recursively, installs the pinned
+   torch/FlashInfer/SparkInfer/DeepGEMM set, verifies final versions, then runs
    the **fail-closed patch apply** (`apply-patches.py`): for every patch the
    sha256 of the exact preimage file is verified *before* applying, no fuzz,
    abort on any mismatch. Philosophy inherited from
    `spark_transport/experiments/fail_closed_mod_overlay/` (exact hash
    contracts, no arbitrary script execution, fail-closed validation, target
-   tree never mutated on mismatch). Finally it builds `spark_transport`.
+   tree never mutated on mismatch). Finally it builds `spark_transport` and
+   requires the complete CTest suite to pass.
 4. **Stage 3** assembles the runtime image and runs `generate-manifest.py`,
    which emits an immutable `runtime-manifest.json` (all pins, wheel hashes,
    `.so` hashes, applied-patch hashes, model identity pin) into the image.
@@ -68,19 +74,23 @@ model-serving behavior still requires the maintainer patch series.
 ./runtime/build-runtime.sh          # docker; CONTAINER_ENGINE=podman also works
 ```
 
-The script prints the resulting image digest and the exact manual steps to
-write it back into the lock. **It never auto-mutates the lock.**
+The script prints the resulting local image ID and, after a push, any registry
+digest reported by the engine. The output-image digest cannot be embedded in
+the image that creates it; retain it as launch/evidence metadata.
 
 ## Verify flow
 
 1. Rebuild from the lock on a clean machine (`build-runtime.sh`).
 2. Read `/opt/sparkring/runtime-manifest.json` out of the image and diff it
    against the expected manifest for that `runtime_id`.
-3. Cross-check `pip freeze` inside the image against `runtime/pip-freeze.txt`.
+3. Confirm the in-build frozen-package verifier passed; optionally rerun
+   `verify-frozen-packages.py` inside the image.
 4. `sha256sum` the NCCL and `spark_transport` artifacts against the
    manifest's recorded hashes; confirm the model identity pin
    (`config.json` sha256) before serving (SETUP.md Stage 6).
-5. Compare the image digest against `images.built.digest` in the lock.
+5. Record the pushed image digest in launch/evidence metadata and inject it as
+   `SPARKRING_IMAGE_DIGEST`; the in-image manifest cannot self-contain its own
+   final registry digest.
 
 ## Status
 
@@ -88,8 +98,9 @@ write it back into the lock. **It never auto-mutates the lock.**
   patches are published and preimage-pinned. The larger private/community
   overlay remains gated on provenance review; reference-lane model behavior
   still requires that maintainer patch series.
-- Base image digests, model HF revision, DeepGEMM full SHA, built-image
-  digest — **placeholders (`pending`)** until pinned at first successful build.
+- Base-image ARM64 manifests, model revision, DeepGEMM source and NCCL source
+  are immutable pins. The output image gets a registry digest only after push;
+  the launcher must inject it for image-identity verification.
 - `runtime-lock.json`, `apply-patches.py`, `generate-manifest.py`,
   `pip-freeze.txt` are companion files owned by other workstreams; this
   directory's Containerfile/build script consume their documented interfaces.
@@ -98,15 +109,16 @@ write it back into the lock. **It never auto-mutates the lock.**
 
 A runtime build is accepted only when all pass, in order:
 
-1. `runtime-lock.json` parses and every required pin key is present and
-   non-empty (fail-closed accessor in `build-runtime.sh`).
-2. Base devel/runtime images resolve; digests pinned (or explicitly flagged
-   `pending` on first build only).
-3. NCCL patch series applies with `git apply --check` clean — zero fuzz,
-   zero offsets — and the patched library builds for sm_121.
+1. `runtime-lock.json` matches the consumed schema; unknown, missing, empty or
+   unresolved immutable values fail before the container engine runs.
+2. Base devel/runtime images resolve only by pinned ARM64 manifest digest.
+3. NCCL checkout matches its commit and patches apply with
+   `git apply --check` clean — zero fuzz, zero offsets — before the patched
+   library builds for sm_121.
 4. vLLM source checkout matches the pinned commit exactly
    (`git rev-parse HEAD` == lock) before compilation starts.
-5. Installed python set matches `pip-freeze.txt` (no resolver drift).
+5. The public closure has no machine-local URL and final exact package versions
+   match `pip-freeze.txt` (no resolver drift).
 6. Patch overlay preimage verification: every `runtime/patches/**` entry's
    target-file sha256 matches its declared preimage before apply; any
    mismatch aborts the build.
@@ -118,5 +130,5 @@ A runtime build is accepted only when all pass, in order:
 10. Post-build verify flow (above) passes on at least one clean rebuild —
     manifest diff empty against the expected manifest for the `runtime_id`.
 11. Model identity gate: pinned HF revision resolves and its `config.json`
-    sha256 equals the lock value before the image is admitted to serving
-    (then the image digest is written back into the lock by hand).
+    sha256 equals the lock value before the image is admitted to serving; the
+    pushed output-image digest is retained in launch/evidence metadata.

@@ -38,6 +38,105 @@ try:
 except (OSError, json.JSONDecodeError) as exc:
     fatal(f"cannot read runtime lock: {exc}")
 
+supported_schema = "sparkring-runtime-lock/v1"
+if lock.get("schema") != supported_schema:
+    fatal(
+        f"unsupported runtime lock schema: {lock.get('schema')!r}; "
+        f"expected {supported_schema!r}"
+    )
+
+
+def immutable_commit(path):
+    cur = lock
+    for part in path.split("."):
+        cur = cur.get(part) if isinstance(cur, dict) else None
+    if not isinstance(cur, str) or not re.fullmatch(r"[0-9a-f]{40}", cur):
+        fatal(f"{path} must be an immutable 40-hex commit; got {cur!r}")
+
+
+for commit_path in (
+    "model.revision",
+    "vllm.commit",
+    "sparkinfer.commit",
+    "flashinfer.commit",
+    "deep_gemm.commit_full",
+    "nccl.commit",
+):
+    immutable_commit(commit_path)
+
+expected_object_keys = {
+    "": {
+        "schema", "runtime_id", "comment", "base_image", "toolchain", "vllm",
+        "sparkinfer", "flashinfer", "deep_gemm", "nccl", "model", "overlays",
+        "overlays_comment",
+    },
+    "base_image": {"builder", "runtime"},
+    "base_image.builder": {"repository", "digest"},
+    "base_image.runtime": {"repository", "digest"},
+    "toolchain": {
+        "torch_cuda_version", "torch_version", "torch_index_url",
+        "python_version", "target_platform", "compiler",
+    },
+    "toolchain.compiler": {"cuda_architectures"},
+    "vllm": {"repository", "commit"},
+    "sparkinfer": {"repository", "commit"},
+    "flashinfer": {
+        "repository", "commit", "wheels", "wheel_sha256", "wheel_index",
+    },
+    "flashinfer.wheels": {"flashinfer-python", "flashinfer_jit_cache"},
+    "flashinfer.wheel_sha256": {"flashinfer_jit_cache"},
+    "deep_gemm": {"repository", "version", "commit_full"},
+    "nccl": {"repository", "commit", "patches"},
+    "model": {"repository", "revision", "config_sha256", "note"},
+}
+
+for dotted, expected in expected_object_keys.items():
+    node = lock
+    if dotted:
+        for part in dotted.split("."):
+            node = node.get(part) if isinstance(node, dict) else None
+    if not isinstance(node, dict):
+        fatal(f"lock field {dotted or '<root>'} must be an object")
+    unknown = sorted(set(node) - expected)
+    if unknown:
+        prefix = f"{dotted}." if dotted else ""
+        fatal(f"unconsumed lock field: {prefix}{unknown[0]}")
+    missing = sorted(expected - set(node))
+    if missing:
+        prefix = f"{dotted}." if dotted else ""
+        fatal(f"lock key missing: {prefix}{missing[0]}")
+
+def require_nonempty_strings(node, path=""):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            child = f"{path}.{key}" if path else key
+            require_nonempty_strings(value, child)
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            require_nonempty_strings(value, f"{path}[{index}]")
+    elif not isinstance(node, str) or not node:
+        fatal(f"{path} must be a non-empty string")
+
+
+require_nonempty_strings(lock)
+
+jit_wheel_sha256 = lock["flashinfer"]["wheel_sha256"]["flashinfer_jit_cache"]
+if not re.fullmatch(r"[0-9a-f]{64}", jit_wheel_sha256):
+    fatal(
+        "flashinfer JIT wheel sha256 must be 64 lowercase hex; "
+        f"got {jit_wheel_sha256!r}"
+    )
+
+for image_role in ("builder", "runtime"):
+    digest = lock.get("base_image", {}).get(image_role, {}).get("digest")
+    if not isinstance(digest, str) or not re.fullmatch(
+        r"sha256:[0-9a-f]{64}", digest
+    ):
+        fatal(
+            f"base_image.{image_role}.digest must be sha256:<64 hex>; "
+            f"got {digest!r}"
+        )
+
 
 def pinned_files(section, label):
     if not isinstance(section, list) or not section:
@@ -47,6 +146,13 @@ def pinned_files(section, label):
     for index, entry in enumerate(section):
         if not isinstance(entry, dict):
             fatal(f"{label}[{index}] must be an object")
+        expected_keys = {"path", "sha256"}
+        unknown = sorted(set(entry) - expected_keys)
+        if unknown:
+            fatal(f"unconsumed lock field: {label}[{index}].{unknown[0]}")
+        missing = sorted(expected_keys - set(entry))
+        if missing:
+            fatal(f"lock key missing: {label}[{index}].{missing[0]}")
         rel = entry.get("path")
         expected = entry.get("sha256")
         if not isinstance(rel, str) or not rel:
@@ -158,6 +264,12 @@ print(cur)
 EOF
 }
 
+REQUIREMENTS_CHECK="$(mktemp)"
+trap 'rm -f "${REQUIREMENTS_CHECK}"' EXIT
+python3 "${REPO_ROOT}/runtime/prepare-public-requirements.py" \
+  --freeze "${REPO_ROOT}/runtime/pip-freeze.txt" \
+  --output "${REQUIREMENTS_CHECK}"
+
 RUNTIME_ID="$(lk runtime_id)"
 
 if [ "${1:-}" = "--verify-lock-only" ]; then
@@ -169,19 +281,12 @@ elif [ "$#" -ne 0 ]; then
   exit 1
 fi
 
-# Base image: prefer the pinned digest; fall back to tag only while the
-# digest field is still "pending-first-build" (first successful build pins it).
+# Base images are content-addressed; placeholders are rejected above.
 base_ref() {  # $1 = lock section under base_image (builder|runtime)
-  local repo tag digest
+  local repo digest
   repo="$(lk "base_image.$1.repository")"
-  tag="$(lk "base_image.$1.tag")"
   digest="$(lk "base_image.$1.digest")"
-  if [ "${digest}" = "pending-first-build" ]; then
-    echo "WARN: base_image.$1.digest is 'pending-first-build' — building from tag ${repo}:${tag}; pin the digest after this build." >&2
-    echo "${repo}:${tag}"
-  else
-    echo "${repo}@${digest}"
-  fi
+  echo "${repo}@${digest}"
 }
 
 BASE_DEVEL_IMAGE="$(base_ref builder)"
@@ -190,7 +295,7 @@ BASE_RUNTIME_IMAGE="$(base_ref runtime)"
 TORCH_VERSION="$(lk toolchain.torch_version)"
 FLASHINFER_PY_VER="$(lk 'flashinfer.wheels.flashinfer-python')"
 FLASHINFER_JIT_VER="$(lk flashinfer.wheels.flashinfer_jit_cache)"
-DEEPGEMM_VERSION="$(lk deep_gemm.version)"
+FLASHINFER_JIT_SHA="$(lk flashinfer.wheel_sha256.flashinfer_jit_cache)"
 
 IMAGE_TAG="sparkring-runtime:${RUNTIME_ID}"
 
@@ -204,25 +309,31 @@ echo "   NOTE: expect a multi-hour vLLM compile (see Containerfile header)."
 echo
 
 "${ENGINE}" build \
-  --platform linux/arm64 \
+  --platform "$(lk toolchain.target_platform)" \
   -f "${REPO_ROOT}/runtime/Containerfile" \
   -t "${IMAGE_TAG}" \
   --build-arg BASE_DEVEL_IMAGE="${BASE_DEVEL_IMAGE}" \
   --build-arg BASE_RUNTIME_IMAGE="${BASE_RUNTIME_IMAGE}" \
   --build-arg CUDA_ARCH="$(lk toolchain.compiler.cuda_architectures)" \
+  --build-arg PYTHON_VERSION="$(lk toolchain.python_version)" \
+  --build-arg TORCH_CUDA_VERSION="$(lk toolchain.torch_cuda_version)" \
   --build-arg TORCH_SPEC="torch==${TORCH_VERSION}" \
   --build-arg TORCH_INDEX_URL="$(lk toolchain.torch_index_url)" \
   --build-arg VLLM_REPO="$(lk vllm.repository)" \
   --build-arg VLLM_COMMIT="$(lk vllm.commit)" \
   --build-arg SPARKINFER_REPO="$(lk sparkinfer.repository)" \
   --build-arg SPARKINFER_COMMIT="$(lk sparkinfer.commit)" \
+  --build-arg FLASHINFER_REPO="$(lk flashinfer.repository)" \
   --build-arg FLASHINFER_COMMIT="$(lk flashinfer.commit)" \
-  --build-arg FLASHINFER_PYTHON_SPEC="flashinfer-python==${FLASHINFER_PY_VER}" \
+  --build-arg FLASHINFER_PYTHON_VERSION="${FLASHINFER_PY_VER}" \
   --build-arg FLASHINFER_JIT_CACHE_SPEC="flashinfer_jit_cache==${FLASHINFER_JIT_VER}" \
+  --build-arg FLASHINFER_JIT_CACHE_SHA256="${FLASHINFER_JIT_SHA}" \
   --build-arg FLASHINFER_WHEEL_INDEX="$(lk flashinfer.wheel_index)" \
-  --build-arg DEEPGEMM_SPEC="deep_gemm==${DEEPGEMM_VERSION}" \
+  --build-arg DEEPGEMM_REPO="$(lk deep_gemm.repository)" \
+  --build-arg DEEPGEMM_COMMIT="$(lk deep_gemm.commit_full)" \
+  --build-arg DEEPGEMM_VERSION="$(lk deep_gemm.version)" \
   --build-arg NCCL_REPO="$(lk nccl.repository)" \
-  --build-arg NCCL_TAG="$(lk nccl.tag)" \
+  --build-arg NCCL_COMMIT="$(lk nccl.commit)" \
   --build-arg MODEL_REPO_ID="$(lk model.repository)" \
   --build-arg MODEL_REVISION="$(lk model.revision)" \
   --build-arg MODEL_CONFIG_SHA256="$(lk model.config_sha256)" \
@@ -245,7 +356,5 @@ fi
 echo
 echo "NEXT (manual — this script never edits the lock):"
 echo "  1. Push the image, capture its sha256 registry digest."
-echo "  2. Record it in the runtime manifest (image.digest) for this build."
-echo "  3. If base_image.builder.digest / base_image.runtime.digest were"
-echo "     'pending-first-build', resolve them (docker buildx imagetools inspect <ref>)"
-echo "     and pin them now so the next build is digest-locked."
+echo "  2. Record it with the launch/evidence metadata for this build."
+echo "  3. Inject that value as SPARKRING_IMAGE_DIGEST at verification time."

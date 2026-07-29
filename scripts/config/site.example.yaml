@@ -2,11 +2,12 @@
 # SparkRing site configuration - EXAMPLE / TEMPLATE
 # =============================================================================
 #
-# Copy this file to scripts/config/site.yaml and replace EVERY value with the
-# ones that describe your own four-node cluster.  Nothing in this file is a
-# working value: it exists so that `python scripts/sparkring_site.py` and
-# `python scripts/preflight.py` have a complete, schema-valid example to
-# validate against.
+# Copy this file to scripts/config/site.yaml and replace every site-specific
+# placeholder with values from your own four-node cluster. The serving-shape
+# values deliberately match docs/PUBLIC_FUNCTIONAL_TARGET.md; keep those if you
+# intend to run that lane. The file is not runnable as shipped: it exists so
+# that `python scripts/sparkring_site.py` and `python scripts/preflight.py`
+# have a complete, schema-valid example to validate against.
 #
 # Validate your copy before you use it:
 #
@@ -276,14 +277,14 @@ runtime:
   # Absolute path to the weights *inside the container*.
   model_path: /models/your-model
 
-  # Upstream repository the weights came from (informational; recorded in
-  # evidence so a run can be traced back to a source).
-  model_repo: your-org/your-model
+  # The public-functional matrix pins this checkpoint repository. The
+  # acceptance gate refuses a different repository.
+  model_repo: aidendle94/GLM-5.2-MXFP4-Experts-GPTQ
 
   # Immutable revision of that repository: a 40-hex commit sha, never a branch
   # or tag name.  Derive: `git -C <clone> rev-parse HEAD`, or read the commit
   # sha from your model host's revision metadata.
-  model_revision: "0000000000000000000000000000000000000000"
+  model_revision: "46537e0e16fcd156627800139b41b9c497fc7ee2"
 
   # sha256 of the checkpoint artifact you treat as authoritative (for example
   # the safetensors index or your own manifest file). Every rank is expected to
@@ -307,15 +308,15 @@ serving:
   # Multi-token-prediction mode: off | static | adaptive
   mtp_mode: adaptive
 
-  # Speculative tokens per step. Must be 0 when mtp_mode is "off".
-  mtp_tokens: 2
+  # Maximum speculative tokens per step. The supported adaptive public matrix
+  # uses depths 2/4 and records the maximum here as 4.
+  mtp_tokens: 4
 
-  # Maximum context length the engine will admit.
-  max_model_len: 131072
+  # Maximum context length required by the public-functional matrix.
+  max_model_len: 458752
 
-  # KV cache budget per rank, in bytes. Derive from your per-GPU memory budget
-  # minus weights and activation headroom. 68719476736 = 64 GiB.
-  kv_cache_bytes_per_rank: 68719476736
+  # KV cache budget per rank, in bytes, for the public-functional matrix.
+  kv_cache_bytes_per_rank: 4000000000
 
   # Maximum concurrent sequences.
   max_num_seqs: 8

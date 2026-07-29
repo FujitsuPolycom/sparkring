@@ -48,7 +48,11 @@ class FakeCluster:
         *,
         verify_exit: int = 0,
         verify_ok: bool = True,
+        image_check_status: str = "pass",
         runtime_ids: dict | None = None,
+        model_repositories: dict | None = None,
+        model_revisions: dict | None = None,
+        model_config_sha256s: dict | None = None,
         qualifier_status: str = "qualified",
         qualifier_exit: int = 0,
         probe_exit: int = 0,
@@ -70,7 +74,11 @@ class FakeCluster:
     ) -> None:
         self.verify_exit = verify_exit
         self.verify_ok = verify_ok
+        self.image_check_status = image_check_status
         self.runtime_ids = runtime_ids or {}
+        self.model_repositories = model_repositories or {}
+        self.model_revisions = model_revisions or {}
+        self.model_config_sha256s = model_config_sha256s or {}
         self.qualifier_status = qualifier_status
         self.qualifier_exit = qualifier_exit
         self.probe_exit = probe_exit
@@ -115,8 +123,12 @@ class FakeCluster:
                     {"name": "native_libs", "status": "pass", "detail": "2 verified"},
                     {
                         "name": "image_digest",
-                        "status": "skip",
-                        "detail": "WARNING: digest pending",
+                        "status": self.image_check_status,
+                        "detail": (
+                            "image digest verified"
+                            if self.image_check_status == "pass"
+                            else "WARNING: digest pending"
+                        ),
                     },
                 ],
             }
@@ -127,6 +139,17 @@ class FakeCluster:
                 + json.dumps(attestation, sort_keys=True, separators=(",", ":"))
             )
             return self._result(argv, self.verify_exit, stdout)
+
+        rank = self._rank_of(argv)
+        if argv[-1].endswith("/config.json") and "sha256sum" in argv:
+            digest = self.model_config_sha256s.get(rank, CHECKPOINT_SHA)
+            return self._result(argv, 0, f"{digest}  {argv[-1]}\n")
+        if argv[-1].endswith("/.sparkring-model-repository") and "cat" in argv:
+            repository = self.model_repositories.get(rank, MODEL_REPO)
+            return self._result(argv, 0, repository + "\n")
+        if argv[-1].endswith("/.sparkring-model-revision") and "cat" in argv:
+            revision = self.model_revisions.get(rank, MODEL_REVISION)
+            return self._result(argv, 0, revision + "\n")
 
         if "qualify_direct_cable.py" in joined:
             return self._result(
@@ -367,6 +390,12 @@ def gate_document(tmp_path: Path, **overrides) -> dict:
             "verify_script": "/opt/sparkring/verify-runtime.py",
             "manifest_path": "/opt/sparkring/runtime-manifest.json",
             "exec_prefix": ["docker", "exec", "sparkring"],
+            "model_identity": {
+                "config_path": f"{MODEL_PATH}/config.json",
+                "repository_path": f"{MODEL_PATH}/.sparkring-model-repository",
+                "revision_path": f"{MODEL_PATH}/.sparkring-model-revision",
+                "in_container": True,
+            },
         },
         "fabric": {
             "model_down_probe": {
@@ -425,17 +454,50 @@ def write_expected(tmp_path: Path, token_ids=None, **param_overrides) -> Path:
     return path
 
 
+def write_preflight(tmp_path: Path, *, passed: bool = True) -> Path:
+    failed_check_ids = [] if passed else ["ring.mtu"]
+    failed_ranks = [] if passed else [2]
+    document = {
+        "schema": gate.PREFLIGHT_SCHEMA,
+        "generated_at": "2026-07-29T12:00:00Z",
+        "read_only": True,
+        "passed": passed,
+        "site": {
+            "name": "example-four-node-ring",
+            "schema_version": 1,
+            "source": str(tmp_path / "site.yaml"),
+        },
+        "totals": {
+            "checks": 80,
+            "passed": 80 if passed else 79,
+            "failed": 0 if passed else 1,
+        },
+        "failed_check_ids": failed_check_ids,
+        "failed_ranks": failed_ranks,
+        "placeholder_warnings": [],
+        "known_check_ids": ["ring.mtu"],
+        "ranks": [{"rank": rank, "checks": []} for rank in range(4)],
+    }
+    path = tmp_path / "preflight.json"
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    return path
+
+
 def execute(
     tmp_path: Path,
     cluster: FakeCluster,
     *,
     site: dict | None = None,
     extra_argv: list[str] | None = None,
+    include_preflight: bool = True,
     **gate_overrides,
 ) -> tuple[int, dict]:
     site_path = write_site(tmp_path, site)
     gate_path = write_gate_config(tmp_path, **gate_overrides)
     bundle_parent = tmp_path / "evidence"
+    additions = list(extra_argv or [])
+    if include_preflight and "--preflight" not in additions:
+        additions.extend(["--preflight", str(write_preflight(tmp_path))])
     argv = [
         "--site",
         str(site_path),
@@ -450,7 +512,7 @@ def execute(
         str(bundle_parent),
         "--run-id",
         "test-run",
-    ] + (extra_argv or [])
+    ] + additions
     code = gate.main(argv, executor=cluster, http=cluster)
     result_path = bundle_parent / "test-run" / "result.json"
     result = (
@@ -608,6 +670,41 @@ def test_mismatched_runtime_ids_across_ranks_fail(tmp_path):
     assert "same frozen runtime" in stage["message"]
 
 
+def test_image_identity_skip_is_a_hard_failure(tmp_path):
+    cluster = FakeCluster(image_check_status="skip")
+    code, result = execute(tmp_path, cluster)
+    assert code == gate.EXIT_FUNCTIONAL_FAIL
+    stage = result["stages"][0]
+    assert stage["status"] == gate.STATUS_FAIL
+    assert "image identity" in stage["message"]
+    assert not any("qualify_direct_cable.py" in " ".join(a) for a in cluster.commands)
+
+
+@pytest.mark.parametrize(
+    "cluster,needle",
+    [
+        (
+            FakeCluster(model_repositories={2: "other-org/other-model"}),
+            "repository",
+        ),
+        (
+            FakeCluster(model_revisions={1: "f" * 40}),
+            "revision",
+        ),
+        (
+            FakeCluster(model_config_sha256s={3: "e" * 64}),
+            "config sha256",
+        ),
+    ],
+)
+def test_deployed_model_identity_must_match_on_every_rank(tmp_path, cluster, needle):
+    code, result = execute(tmp_path, cluster)
+    assert code == gate.EXIT_FUNCTIONAL_FAIL
+    stage = result["stages"][0]
+    assert stage["status"] == gate.STATUS_FAIL
+    assert needle in stage["message"].lower()
+
+
 def test_model_down_probe_failure_blocks_startup(tmp_path):
     cluster = FakeCluster(probe_exit=1)
     code, result = execute(tmp_path, cluster)
@@ -616,19 +713,49 @@ def test_model_down_probe_failure_blocks_startup(tmp_path):
     assert not any("--start" in argv for argv in cluster.commands)
 
 
-def test_failed_preflight_evidence_blocks_the_run(tmp_path):
-    preflight = tmp_path / "preflight.json"
-    preflight.write_text(
-        json.dumps(
-            {
-                "schema": gate.PREFLIGHT_SCHEMA,
-                "passed": False,
-                "failed_check_ids": ["ring.mtu"],
-                "failed_ranks": [2],
-            }
-        ),
-        encoding="utf-8",
+def test_per_rank_model_down_probes_start_as_one_concurrent_cohort(tmp_path):
+    class CohortCluster(FakeCluster):
+        def __init__(self):
+            super().__init__()
+            self.probe_ranks: set[int] = set()
+            self.all_started = threading.Event()
+
+        def run(self, argv, timeout=None):  # noqa: ANN001 - protocol shape
+            argv = list(argv)
+            if "model-down-probe" not in " ".join(argv):
+                return super().run(argv, timeout)
+            rank = self._rank_of(argv)
+            with self._lock:
+                self.commands.append(argv)
+                self.probe_ranks.add(rank)
+                if len(self.probe_ranks) == 4:
+                    self.all_started.set()
+            if not self.all_started.wait(timeout=2):
+                return self._result(argv, 1, "cohort did not start together")
+            return self._result(argv, 0, "probe ok")
+
+    cluster = CohortCluster()
+    code, result = execute(
+        tmp_path,
+        cluster,
+        acceptance={"expected_generation_path": str(write_expected(tmp_path))},
     )
+    assert code in (gate.EXIT_OK, gate.EXIT_PERFORMANCE_NOT_IN_BAND)
+    assert stage_status(result)["fabric_transport_qualification"] == gate.STATUS_PASS
+    assert cluster.probe_ranks == {0, 1, 2, 3}
+
+
+def test_missing_preflight_evidence_blocks_before_remote_commands(tmp_path):
+    cluster = FakeCluster()
+    code, result = execute(tmp_path, cluster, include_preflight=False)
+    assert code == gate.EXIT_FUNCTIONAL_FAIL
+    assert stage_status(result)["runtime_attestation"] == gate.STATUS_FAIL
+    assert "preflight evidence is required" in result["stages"][0]["message"]
+    assert cluster.commands == []
+
+
+def test_failed_preflight_evidence_blocks_the_run(tmp_path):
+    preflight = write_preflight(tmp_path, passed=False)
     code, result = execute(
         tmp_path, FakeCluster(), extra_argv=["--preflight", str(preflight)]
     )
@@ -637,18 +764,7 @@ def test_failed_preflight_evidence_blocks_the_run(tmp_path):
 
 
 def test_passing_preflight_evidence_is_recorded(tmp_path):
-    preflight = tmp_path / "preflight.json"
-    preflight.write_text(
-        json.dumps(
-            {
-                "schema": gate.PREFLIGHT_SCHEMA,
-                "passed": True,
-                "failed_check_ids": [],
-                "failed_ranks": [],
-            }
-        ),
-        encoding="utf-8",
-    )
+    preflight = write_preflight(tmp_path)
     _, result = execute(
         tmp_path,
         FakeCluster(),

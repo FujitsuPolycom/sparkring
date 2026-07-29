@@ -2,7 +2,12 @@
 
 **GLM-5.2 on 4x NVIDIA DGX Spark (GB10), tensor-parallel 4, switchless direct-cable 200GbE RoCE ring.**
 
-This is the complete, in-order bring-up: cabling, OS prerequisites, fabric network, patched NCCL, container, model download, native transport build, launch, and verification. Follow the stages **in order** — later stages hard-depend on earlier ones and the stack is deliberately fail-closed at every step.
+This is a reconstruction of the complete reference deployment, plus the
+publicly runnable subset: cabling, OS prerequisites, fabric network, patched
+NCCL, model download, and native transport build/probes. It is **not** a
+fresh-clone end-to-end public serving recipe; the launch/runtime gaps are
+called out below. Follow any runnable stages **in order** because later stages
+hard-depend on earlier ones.
 
 ---
 
@@ -52,6 +57,19 @@ An early revision of the cluster's provisioning notes contained a local account 
 - Every command is copy-paste ready **after** you substitute your values for the `<angle-bracket>` placeholders defined in Section 1.
 - Fresh builds of the patched NCCL and the transport library produce **new SHA-256 hashes**. The launcher and orchestrator pin artifact hashes and refuse to run on mismatch — this is by design. Whenever you build an artifact, record its hash and substitute it everywhere this guide says to.
 
+Safety classes used by this repository:
+
+| Stages / command | Safety class |
+|---|---|
+| Local validation, source inspection, and local builds | **OFFLINE** |
+| `scripts/preflight.py --print-plan` | **OFFLINE** |
+| `scripts/preflight.py` against a filled site config | **READ-ONLY REMOTE** |
+| Stages 1-4 and 6-7 | **MUTATES HOST** — power, packages, networking, large downloads, builds, or staged files |
+| Reference stages 5, 8, and 9 | **STOPS SERVING** and unavailable without an independently supplied runtime/launcher |
+
+Do not let an automation agent run **MUTATES HOST** or **STOPS SERVING**
+commands without explicit authorization for the named machines and action.
+
 ---
 
 ## 1. Placeholders
@@ -92,7 +110,7 @@ Ring adjacency reference (used throughout):
 
 ## Stage 1 — Hardware cabling
 
-### 1.1 What each node has **[DOCUMENTED: private archive new-node-provisioning.md §5; APPROACH.md]**
+### 1.1 What each node has **[DOCUMENTED: private archive new-node-provisioning.md §5; private archive APPROACH.md]**
 
 Each DGX Spark (GB10) has one dual-cage ConnectX-7 complex:
 
@@ -101,7 +119,11 @@ Each DGX Spark (GB10) has one dual-cage ConnectX-7 complex:
 
 Each 200G cage is internally a *pair* of 100G MACs on PCIe 5.0 x4. Alias interfaces named `enP2*` also appear — **never assign addresses to them** (they cause duplicate-subnet errors).
 
-Parts: **four QSFP28 200GbE DAC cables** total. (Two 10GbE diagonal cables appear in the repo as an optional diagnostics experiment only — they are not part of the serving fabric.)
+Parts: **four QSFP28 200GbE DAC cables** total. The public cable qualifier can
+also test a direct 10GbE link, and SparkCache documents a proposed diagonal
+replication carrier, but the reference cluster's diagonal topology/recovery
+tooling remains private. The 10GbE diagonals are not part of the serving
+fabric or the public-functional matrix.
 
 ### 1.2 Cable plan — the 4-cycle **[DOCUMENTED: private archive deliverables/fabric-inventory.md; spark_transport/README.md]**
 
@@ -296,7 +318,7 @@ Use **GID index 3 (IPv4 RoCEv2)** bound to the netdev, everywhere a GID index is
 
 The production switchless path requires **no** IP forwarding, rp_filter, or iptables changes. There is an optional legacy "routed-QSFP NCCL Socket bootstrap" (a diagnostic fallback, not the production transport) that needs `net.ipv4.ip_forward=1`, `rp_filter=2` on both fabric NICs, and one tagged FORWARD rule per rank; it is managed reboot-recoverably by `scripts/routed_qsfp_nccl_bootstrap.py` (private archive, not in this snapshot). Skip it unless you are debugging.
 
-### 3.4 Per-edge cable qualification — before ANY model work **[DOCUMENTED: spark_transport/CABLE_QUALIFICATION.md; private archive new-node-provisioning.md §8; APPROACH.md Phase 1]**
+### 3.4 Per-edge cable qualification — before ANY model work **[DOCUMENTED: spark_transport/CABLE_QUALIFICATION.md; private archive new-node-provisioning.md §8; private archive APPROACH.md Phase 1]**
 
 You will need the `spark_transport_probe` binary from Stage 7. It is fine (and normal) to jump ahead, build only the probes, and come back — cable qualification must pass before NCCL or model work begins.
 
@@ -323,12 +345,17 @@ Per edge (all four cables):
      --tier roce200 \
      --left  <userA>@<MGMT_IP_A> --left-interface  enp1s0f0np0 \
      --right <userB>@<MGMT_IP_B> --right-interface enp1s0f0np0 \
+     --left-ip <CAGE0_IP_A> --right-ip <CAGE0_IP_B> \
+     --left-rdma-device rocep1s0f0 --right-rdma-device rocep1s0f0 \
      --gid-index 3 --expected-mtu 9000 \
      --probe-binary /tmp/spark_transport_probe \
-     --iterations 10000 --strict-latency
+     --iterations 10000 --strict-latency \
+     --output results/cable-A-B.json
    ```
 
-   (Substitute the correct interface per the link's round — f0 links use `enp1s0f0np0`, f1 links use `enp1s0f1np1`.)
+   (Substitute the correct IP, interface, and RDMA device per the link's round:
+   f0 links use the cage-0 IP, `enp1s0f0np0`, and `rocep1s0f0`; f1 links use
+   the cage-1 IP, `enp1s0f1np1`, and `rocep1s0f1`.)
 
    Gates enforced: exactly 200,000 Mb/s on both ports; expected IP and route; active RDMA ports; GID 3 = RoCE v2; bidirectional verified RC writes at 12,288 and 16,384 bytes; zero new PHY/CRC error counters; p99 latency <= 20 us.
 
@@ -468,7 +495,7 @@ No image rebuild carries SparkRing code. Two mechanisms, applied per rank at lau
 
 **[DOCUMENTED: private archive new-node-provisioning.md §7, scripts/download-model.sh, and scripts/download_model.py; spark_transport/README.md "GLM checkpoint precision"]**
 
-Checkpoint: `<MODEL_REPO>` = **`aidendle94/GLM-5.2-MXFP4-Experts-GPTQ`**, public on Hugging Face, ~**382 GiB**. Declared precision: BF16 model/output dtype, MXFP4 routed experts, FP8 attention + shared expert, runtime NVFP4 MLA KV cache. Verify identity with the `config.json` SHA-256 pin below.
+Checkpoint: `<MODEL_REPO>` = **`aidendle94/GLM-5.2-MXFP4-Experts-GPTQ`** at immutable revision `<MODEL_REVISION>` = **`46537e0e16fcd156627800139b41b9c497fc7ee2`**, public on Hugging Face, ~**382 GiB**. Declared precision: BF16 model/output dtype, MXFP4 routed experts, FP8 attention + shared expert, runtime NVFP4 MLA KV cache. Verify identity with both the revision and `config.json` SHA-256 pins below.
 
 1. Create the directories on every node:
 
@@ -481,9 +508,9 @@ Checkpoint: `<MODEL_REPO>` = **`aidendle94/GLM-5.2-MXFP4-Experts-GPTQ`**, public
    ```bash
    docker run --rm -v /home/<usern>/.cache/huggingface:/root/.cache/huggingface \
      --entrypoint bash <BASE_IMAGE> \
-     -c "python3 -c \"from huggingface_hub import snapshot_download; \
-         print(snapshot_download('<MODEL_REPO>', \
-         local_dir='/root/.cache/huggingface/glm52-hybrid'))\""
+      -c "python3 -c \"from huggingface_hub import snapshot_download; \
+          print(snapshot_download('<MODEL_REPO>', revision='<MODEL_REVISION>', \
+          local_dir='/root/.cache/huggingface/glm52-hybrid'))\""
    ```
 
 3. **rsync the tree to the other three nodes over the QSFP fabric** (the reference cluster measured roughly 6 seconds per 150 GB at 200G) rather than re-downloading:
@@ -494,17 +521,27 @@ Checkpoint: `<MODEL_REPO>` = **`aidendle94/GLM-5.2-MXFP4-Experts-GPTQ`**, public
 
    **Diagonal-node gap:** node0 has fabric adjacency to ranks 1 and 3 only (Stage 1.2), so there is no direct fabric path from node0 to rank 2. Either copy to rank 2 over the management network (`rsync` to `<MGMT_IP_2>` — slower, but one hop), or relay in two fabric hops (node0 -> node1 over link 0-1, then node1 -> node2 over link 1-2).
 
-4. Placement contract: every rank bind-mounts its local copy read-only at `/hybridmodel`; the MTP draft model is the checkpoint's `mtp-draft/` subdirectory (referenced as `/hybridmodel/mtp-draft` in the speculative config).
+4. On every rank, write the immutable identity sidecars consumed by the public
+   acceptance gate:
+
+   ```bash
+   printf '%s\n' '<MODEL_REPO>' > <MODEL_DIR_n>/.sparkring-model-repository
+   printf '%s\n' '<MODEL_REVISION>' > <MODEL_DIR_n>/.sparkring-model-revision
+   ```
+
+5. Placement contract: every rank bind-mounts its local copy read-only at `/hybridmodel`; the MTP draft model is the checkpoint's `mtp-draft/` subdirectory (referenced as `/hybridmodel/mtp-draft` in the speculative config). With that mount, `scripts/config/gate.example.json` verifies `/hybridmodel/config.json` plus both sidecars independently on every rank.
 
 > **Verify before continuing (per node)**
 >
 > ```bash
 > du -sh <MODEL_DIR_n>
 > sha256sum <MODEL_DIR_n>/config.json
+> cat <MODEL_DIR_n>/.sparkring-model-repository
+> cat <MODEL_DIR_n>/.sparkring-model-revision
 > ls <MODEL_DIR_n>/mtp-draft/
 > ```
 >
-> Expected: ~382 GiB; `config.json` SHA-256 exactly `ffd30e72ab8bb7e8ad560f2aaab03cc595f3106f0acf793ef96eedaf90f66d69` and **identical on all four nodes**; `mtp-draft/` exists and is non-empty.
+> Expected: ~382 GiB; `config.json` SHA-256 exactly `ffd30e72ab8bb7e8ad560f2aaab03cc595f3106f0acf793ef96eedaf90f66d69` and **identical on all four nodes**; the sidecars print the repository and 40-hex revision above; `mtp-draft/` exists and is non-empty.
 
 ---
 
@@ -577,7 +614,7 @@ Every mutation requires the exact confirmation string `STOP-GLM52-TRACE-ON-ALL-F
 
 preflight -> `docker stop glm52-trace` on all ranks -> **offline probe gates** (vocab stream-switch, mixed-Q all-reduce graph, DCP graph probe when custom DCP, vocab MTP4+MTP5 probes — all run model-down against the staged binaries and image) -> **model-down memory gate** (`MemAvailable >= 116,000,000 KiB` per rank) -> rename the old container as backup -> launch all four ranks in parallel over SSH (`env RANK=<n> ... bash /tmp/launch-...sh`) -> **runtime attestation** -> **live gate** (Stage 9). The API base is `http://<HEAD_MGMT_IP>:8210`.
 
-**First bring-up recommendation [DOCUMENTED: APPROACH.md phases; private archive serve script defaults]:** run eager mode first — set `VLLM_SPARK_ENABLE_CUDAGRAPH=0`, which makes the serve script pass `--enforce-eager` — and only enable CUDA graphs after eager serving is verified end-to-end. Likewise, run NCCL Socket-mode two-rank sanity tests before any four-rank switchless attempt. Be aware that eager bring-up changes the expected-environment attestation set (Stage 9.2) relative to what is documented here, and the orchestrator invocation shown above assumes graph mode — an eager window needs correspondingly adjusted attestation expectations.
+**First bring-up recommendation [DOCUMENTED: private archive APPROACH.md phases; private archive serve script defaults]:** run eager mode first — set `VLLM_SPARK_ENABLE_CUDAGRAPH=0`, which makes the serve script pass `--enforce-eager` — and only enable CUDA graphs after eager serving is verified end-to-end. Likewise, run NCCL Socket-mode two-rank sanity tests before any four-rank switchless attempt. Be aware that eager bring-up changes the expected-environment attestation set (Stage 9.2) relative to what is documented here, and the orchestrator invocation shown above assumes graph mode — an eager window needs correspondingly adjusted attestation expectations.
 
 ### 8.2 Per-rank container invocation **[DOCUMENTED: private archive scripts/launch-glm52-trace-4node.sh]**
 
@@ -709,7 +746,11 @@ SPARK_TP4_DCP_COLLECTIVE_AUDIT=1        # whenever DCP > 1
 
 Note for reproducers: the README's sealed C1 single-stream decode headline (20.83 / 19.28 / 21.43 tok/s at 8K/16K/32K) was produced with the custom DCP trio **enabled** — the env vars shown commented-out above for RC1 — so that custom-DCP arm, not the RC1 configuration, is the one that produced the flagship number.
 
-**Transport peer addressing — you MUST set this.** The integration backends read per-rank peer IPs from `SPARK_TP4_PEER0` / `SPARK_TP4_PEER1`, with defaults taken from a table **hard-coded with the original cluster's fabric IPs** (`_DEFAULT_PEERS` in `spark_transport/integrations/vllm/spark_tp4_backend.py` and its siblings). The production launcher left the env vars unset and rode the baked-in defaults — on your fabric those defaults are wrong. Set explicitly on each rank:
+**Transport peer addressing — you MUST set this.** The integration backends
+read per-rank peer IPs from `SPARK_TP4_PEER0` / `SPARK_TP4_PEER1`. Their
+`_DEFAULT_PEERS` tables intentionally contain non-routable RFC 5737
+documentation placeholders, not the reference cluster's addresses. They
+cannot work on a live fabric. Set the overrides explicitly on every rank:
 
 ```bash
 SPARK_TP4_PEER0=<PEER0_IP_n>    # neighbor IP reachable via SPARK_TP4_DEVICE0
@@ -810,7 +851,7 @@ In `docker logs glm52-trace` on each rank:
 2. The live gate then issues a real request against `--base-url http://<HEAD_MGMT_IP>:8210` and requires the census counters to ADVANCE identically on all ranks (`published == consumed == completed`, zero overflow). For custom-DCP arms, `validate_glm52_dcp_graph_live.py` (private archive, not in this snapshot) must prove a before/after replay delta per collective family.
 3. Post-gate sanity: the API stays healthy, and a sustained-decode benchmark cell (e.g. `llm-decode-bench`, concurrency 1 at 8K/16K/32K, 30 s active decode) should land near the published RC1 tables: **~19-21 tok/s** single-stream decode, **~856-873 tok/s** prefill.
 
-### 9.6 Ongoing gates **[DOCUMENTED: APPROACH.md "Quality and Stability Gates"]**
+### 9.6 Ongoing gates **[DOCUMENTED: private archive APPROACH.md "Quality and Stability Gates"]**
 
 Repeated health checks plus clean stop/start; fixed smoke outputs; no NCCL/RDMA error-counter growth; no unbounded memory growth; per-edge requalification (Stage 3.4) after ANY physical change.
 
@@ -891,13 +932,13 @@ These are the steps this guide reconstructs from configuration rather than docum
 | 2 | Dockerfile for the derived serving image (Stage 5.2) | Reconstructed; only the base-config/derived-config/added-layer/wheel hashes are documented |
 | 3 | Exact `docker run` wrapper for the in-container transport build (Stage 7.1) | Reconstructed from the documented `/src`,`/build` CMake paths |
 | 4 | The vLLM fork's source/commit | **Not available.** The version string and the overlay's per-module SHA-256 pins are documented; the fork itself is not in this repository |
-| 5 | `SPARK_TP4_PEER0/1` semantics (Stage 8.4) | The env-var override path is documented in code; the *production* run relied on a hard-coded default table of the original cluster's fabric IPs, so the explicit-override procedure here has not been exercised end-to-end |
+| 5 | `SPARK_TP4_PEER0/1` semantics (Stage 8.4) | The env-var override path is documented in code and is mandatory in the public source because its defaults are non-routable placeholders. The historical reference launcher used its own private site mapping; the public explicit-override path has not completed end-to-end acceptance. |
 
 Resolved since the first reconstruction (no longer inferred): the deployed vLLM fork **version string** is pinned verbatim in `spark_transport/experiments/adaptive_mtp_controller/runtime_installer.py` and `spark_transport/experiments/q2r_phase_timing/live_installer.py` (Section 0.1); the derived-image identity hashes are documented in `deliverables/glm52-instanttensor-mmap-acceptance-gate.md`.
 
 ## Appendix C — Source documents
 
-The private working repository ("private archive") this guide was reconstructed from (paths relative to its root). Of the files below, only the `spark_transport/` paths, `APPROACH.md`, and `THIRD_PARTY_NOTICES.md` ship in this snapshot; everything else — including the `scripts/` orchestration layer, `serve-glm52-trace.sh`, the deliverable reports, and the private archive's own `README.md`/`CURRENT_STATUS.md`/`HANDOFF.md` — is private archive only:
+The private working repository ("private archive") this guide was reconstructed from (paths relative to its root). The public snapshot now includes `spark_transport/`, `THIRD_PARTY_NOTICES.md`, and a clean-room `scripts/` orchestration layer. The historical scripts named below, `APPROACH.md`, `serve-glm52-trace.sh`, the deliverable reports, and the private archive's own `README.md`/`CURRENT_STATUS.md`/`HANDOFF.md` remain private-archive-only:
 
 - `README.md`, `APPROACH.md`, `HANDOFF.md`, `CURRENT_STATUS.md`, `THIRD_PARTY_NOTICES.md`
 - `new-node-provisioning.md` (provisioning; credential-bearing early history — nothing reproduced from old revisions)

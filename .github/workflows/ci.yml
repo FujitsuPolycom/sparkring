@@ -35,15 +35,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # There is no dev requirements file in this repo, on purpose: the runtime
-  # pin set (runtime/pip-freeze.txt) is an aarch64/CUDA-13.2 serving freeze
-  # and is NOT installable on a CI runner. CI therefore installs the minimal
-  # explicit set below. Keep this list and CONTRIBUTING.md in sync.
+  # requirements-dev.txt owns the GPU-free dependency pins. The runtime pin
+  # set (runtime/pip-freeze.txt) is an aarch64/CUDA-13.2 serving freeze and is
+  # NOT installable on a CI runner. Torch is installed separately from its CPU
+  # wheel index below.
   PYTHON_VERSION: "3.12"
-  RUFF_VERSION: "0.15.17"
-  PYTEST_VERSION: "8.4.2"
   TORCH_VERSION: "2.11.0" # CPU wheel; the version the suites were verified on
-  NUMPY_VERSION: "2.4.4"
 
 jobs:
   # --------------------------------------------------------------------
@@ -58,8 +55,8 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install ruff (pinned)
-        run: python -m pip install --disable-pip-version-check "ruff==${RUFF_VERSION}"
+      - name: Install GPU-free development tools (pinned)
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
 
       # Rule set is passed on the command line because the repo intentionally
       # has no pyproject.toml / ruff.toml. E,F,W minus E501 is the largest set
@@ -95,21 +92,20 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: pip-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          key: pip-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('requirements-dev.txt', '.github/workflows/ci.yml') }}
           restore-keys: |
             pip-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
 
       - name: Install the minimal explicit test dependency set
         run: |
-          python -m pip install --disable-pip-version-check \
-            "pytest==${PYTEST_VERSION}" "numpy==${NUMPY_VERSION}"
+          python -m pip install --disable-pip-version-check -r requirements-dev.txt
           # CPU-only torch. The suites use torch purely for CPU tensor
           # construction/comparison; nothing here touches a device.
           python -m pip install --disable-pip-version-check \
             --index-url https://download.pytorch.org/whl/cpu \
             "torch==${TORCH_VERSION}"
 
-      # Only these three trees are run. Each was executed offline on a
+      # Only these four trees are run. Each was executed offline on a
       # GPU-free machine and observed green before being added here.
       #
       #   spark_transport/  — transport adapters, vLLM overlay contracts,
@@ -122,14 +118,23 @@ jobs:
       #                       they read the .h/.cu sources, they do not link
       #                       or run CUDA).
       #   runtime/          — runtime-lock and verify-runtime tests.
+      #   scripts/          — site schema, read-only preflight, acceptance
+      #                       gate, and evidence-bundle contract tests.
       #
       # NOT run here, and why:
-      #   scripts/          — contains no test_*.py at all (context_cache_*.py
-      #                       are live-cluster drivers).
       #   spark_transport CTest / sparkcache CUDA targets — see the header
       #                       comment; they are manual gates.
       - name: pytest (offline suites only)
-        run: python -m pytest spark_transport sparkcache runtime -q -rs
+        run: python -m pytest spark_transport sparkcache runtime scripts -q -rs
+
+      - name: Validate public configuration examples (offline dry-run)
+        run: |
+          python scripts/sparkring_site.py scripts/config/site.example.yaml >/dev/null
+          python scripts/preflight.py \
+            --site scripts/config/site.example.yaml --print-plan >/dev/null
+          python scripts/acceptance_gate.py \
+            --site scripts/config/site.example.yaml \
+            --gate-config scripts/config/gate.example.json >/dev/null
 
   # --------------------------------------------------------------------
   native-cpu-contract:
