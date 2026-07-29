@@ -19,8 +19,9 @@ layer and the historical evidence behind it.
 > friends) remains in the maintainer archive. This snapshot includes the
 > recovered GLM-5.2 runtime delta, public image entrypoint, manifested overlay
 > builder, dry-run-first four-rank launcher, and a thin faststart builder based
-> on the exact public ARM64 community image. They are offline-validated but the
-> fresh-pull faststart image has not completed a four-Spark acceptance cycle.
+> on the exact public ARM64 community image. A native build and partial
+> four-rank bring-up passed through full model/MTP load, B12X prewarm, and KV
+> allocation; complete API/request acceptance remains.
 >
 > Concretely: the quickstart is the current public candidate. The stages below
 > remain the deeper reference, including historical loose-artifact procedures.
@@ -519,13 +520,13 @@ docker pull aidendle94/sparkrun-vllm-ds4-gb10@sha256:93824a946f1f0ad0867132a2c38
 Known contents of the base image:
 
 - Python 3.12 venv at `/opt/venv`; vLLM installed at `/opt/venv/lib/python3.12/site-packages/vllm`, served via `/opt/venv/bin/vllm`.
-- The **private B12X-patched vLLM fork** described in Section 0.1: it exposes `--attention-backend B12X_MLA_SPARSE`, B12X MoE (`VLLM_USE_B12X_MOE`), the B12X sparse indexer, the `nvfp4_ds_mla` KV dtype, `--decode-context-parallel-size` / `--dcp-comm-backend ag_rs`, MTP speculative config, and the `glm45`/`glm47` parsers. The in-container `vllm.__version__` must match the string in Section 0.1 or the overlay will refuse to install.
+- The community B12X-patched vLLM lineage described in Section 0.1: it exposes `--attention-backend B12X_MLA_SPARSE`, B12X MoE (`VLLM_USE_B12X_MOE`), the B12X sparse indexer, the `nvfp4_ds_mla` KV dtype, `--decode-context-parallel-size` / `--dcp-comm-backend ag_rs`, MTP speculative config, and the `glm45`/`glm47` parsers. SparkRing publishes the recovered delta it applies and checks exact source preimages; a mismatch stops the build.
 - NCCL **2.30.4** and a broken v9 "mesh" NCCL plugin at `/tmp/nccl-mesh-plugin/libnccl-net.so` (API-incompatible; unused — Stage 4's library replaces NCCL via `LD_PRELOAD`).
 - `huggingface_hub` (used for the model download in Stage 6).
 
-### 5.2 Derived serving image **[image identities DOCUMENTED: private archive deliverables/glm52-instanttensor-mmap-acceptance-gate.md and glm52-instanttensor-loader-optin.md; construction INFERRED — unverified, reconstructed from configuration]**
+### 5.2 Historical derived serving image **[image identities DOCUMENTED: private archive deliverables/glm52-instanttensor-mmap-acceptance-gate.md and glm52-instanttensor-loader-optin.md; construction INFERRED — unverified, reconstructed from configuration]**
 
-The production image is the base image plus **one layer** adding the pinned ARM64 `instanttensor==0.1.9` wheel (wheel SHA-256 `3c59b24f1f636932bc74b819a16fdd3bbf9f9b2d038d97ff97279d8592f823f4`). The repository pins the resulting image identity (base-config SHA-256 `bb3e87c5b74aaca6214cdee5161b1eab789e8ce73944fd165d550a2339ac90ff`, derived-config `4e60945927c3d435b06819fd75c9e1340f06da89b224b90fa26c861d7bb0cde7`, added layer `16b0523fdb79c209ee004ec7407107a041a3045331866ce3e12ad16cfbff22c7`) **but does not contain the Dockerfile**. The reconstruction:
+The historical production image was the base image plus **one layer** adding the pinned ARM64 `instanttensor==0.1.9` wheel (wheel SHA-256 `3c59b24f1f636932bc74b819a16fdd3bbf9f9b2d038d97ff97279d8592f823f4`). The repository pins the resulting image identity (base-config SHA-256 `bb3e87c5b74aaca6214cdee5161b1eab789e8ce73944fd165d550a2339ac90ff`, derived-config `4e60945927c3d435b06819fd75c9e1340f06da89b224b90fa26c861d7bb0cde7`, added layer `16b0523fdb79c209ee004ec7407107a041a3045331866ce3e12ad16cfbff22c7`) **but does not contain the Dockerfile**. The reconstruction:
 
 ```dockerfile
 # Dockerfile.serving  [INFERRED — unverified, reconstructed from configuration]
@@ -540,13 +541,19 @@ sha256sum instanttensor-0.1.9-*.whl   # must be 3c59b24f...f823f4
 docker build -f Dockerfile.serving -t <SERVING_IMAGE> .
 ```
 
-Build or load `<SERVING_IMAGE>` on **all four nodes**. Note: per the acceptance-gate deliverable, whole-image IDs may legitimately differ across nodes (timestamp-only dummy layers in the pre-existing base images); what must match are the derived runtime configuration and added-layer hashes, the wheel hash, and the runtime preflight — do not gate on image-ID equality across nodes.
+For this historical lane, whole-image IDs could legitimately differ across
+nodes because of timestamp-only dummy layers; its gate compared the derived
+runtime configuration, added-layer hashes, wheel hash, and runtime preflight.
+The current public faststart lane is stricter: distribute one built archive and
+require the same image ID on all four ranks, as described in the quickstart.
 
 **Important:** the default and only correctness-proven load format is **safetensors**. InstantTensor direct-AIO loading is *disabled* after an MTP-acceptance-collapse failure — the wheel is opt-in machinery only. Leave `VLLM_SPARK_LOAD_FORMAT=safetensors`. **[DOCUMENTED: private archive README.md "Loader checkpoint" and CURRENT_STATUS.md]**
 
-### 5.3 How SparkRing code enters the container **[DOCUMENTED: private archive scripts/launch-glm52-trace-4node.sh and serve-glm52-trace.sh; spark_transport/integrations/vllm/README.md]**
+### 5.3 Historical loose-overlay injection **[DOCUMENTED: private archive scripts/launch-glm52-trace-4node.sh and serve-glm52-trace.sh; spark_transport/integrations/vllm/README.md]**
 
-No image rebuild carries SparkRing code. Two mechanisms, applied per rank at launch:
+The historical lane injected SparkRing at launch through two mechanisms. The
+public faststart lane instead bakes the recovered overlay, native libraries,
+entrypoint, and runtime manifest into the derived image:
 
 1. **Read-only bind mounts:** the SHA-256-manifested source bundle (`<TRACE_SOURCE>`, contents = `spark_transport/integrations/vllm/*.py` plus experiment packages) mounts at `/opt/spark-vllm:ro`; the serve script at `/opt/spark/serve-glm52-trace.sh:ro`; a load-format preflight at `/opt/spark/glm52_load_format_preflight.py:ro`; the transport library at `/opt/spark-transport/libspark_transport_capi.so:ro`; the patched NCCL at `/opt/sparkring/libnccl-switchless.so.2:ro`.
 2. **In-place source patching at container start:** the serve script's embedded `replace_once` Python patches the *installed* vLLM before anything imports it — multiproc-executor follower `collective_rpc` fix; `kv_cache_utils` empty-config guard; the B12X DCP1 logical-to-physical top-k remap (Triton kernel injected into `sparse_attn_indexer.py` + `deepseek_v2.py`); the shared-capture-stream patch (`parallel_state.py` + `cudagraph_utils.py`, gated by `VLLM_SPARK_SHARED_CAPTURE_STREAM=1`); capture-size synthesis in `config/compilation.py`; and the FULL-graph whole-request dispatch guard in `cudagraph_dispatcher.py`. **Patches are idempotent and refuse unexpected source** (this is where the pinned-interface fail-closed behavior from Section 0.1 bites stock-vLLM users). Then `PYTHONPATH=/opt/spark-vllm` puts the bundle's `sitecustomize.py` first, which installs the SparkRing adapters (custom all-reduce, generic all-gather, vocabulary all-gather, DCP query/combine, flight recorder, graph status reporter) according to the `VLLM_SPARK_*` env flags, before `exec vllm serve`.
@@ -643,7 +650,7 @@ Stage identical, versioned copies of every artifact on **all four nodes** and re
 
 - `/tmp/libspark_transport_capi-<yourver>.so` — record `<TRANSPORT_SO_SHA256>`
 - `/tmp/spark_tp4_vocab_graph_probe-<yourver>`, `/tmp/spark_tp4_graph_q1_probe-<yourver>`, `/tmp/spark_tp4_dcp_graph_probe-<yourver>` (the DCP probe only for the custom-DCP arm)
-- `/tmp/serve-glm52-<yourver>.sh` (the serve entrypoint, `serve-glm52-trace.sh` lineage), `/tmp/launch-glm52-<yourver>.sh` (the per-rank launcher, `scripts/launch-glm52-trace-4node.sh` lineage), `/tmp/glm52_load_format_preflight-<yourver>.py` — all three source scripts are private archive, not in this snapshot (see Section 0 snapshot scope); only the launch/serve stage needs them
+- Historical loose-artifact deployments used `/tmp/serve-glm52-<yourver>.sh`, `/tmp/launch-glm52-<yourver>.sh`, and `/tmp/glm52_load_format_preflight-<yourver>.py`. The public lane replaces them with `runtime/public-entrypoint.sh`, `scripts/sparkring_launcher.py`, and `runtime/public-model-preflight.py`; outside users do not need the archived scripts.
 - the source bundle `<TRACE_SOURCE>` with its sibling `manifest.sha256` (per-file SHA-256 plus a manifest hash, verified on every rank and locally)
 - `/tmp/libnccl-spark-switchless-2.30.7-gidfix.so` (Stage 4)
 
@@ -664,7 +671,7 @@ Stage identical, versioned copies of every artifact on **all four nodes** and re
 
 ## Stage 8 — Launch
 
-> **Reference scope:** the PowerShell workflow below remains private-archive history. The public candidate uses `scripts/sparkring_launcher.py` with `scripts/config/site.yaml` and `scripts/config/launch.json`, plus the public acceptance gate. Generate and review its offline plan first. Do not execute it against a serving cluster; today its capability gate is expected to stop before model load on the unresolved public runtime gap.
+> **Reference scope:** the PowerShell workflow below remains private-archive history. The public candidate uses `scripts/sparkring_launcher.py` with `scripts/config/site.yaml` and `scripts/config/launch.json`, plus the public acceptance gate. Generate and review its offline plan first. Do not execute it against a serving cluster. Its native capability gates now pass; complete API/request acceptance remains pending.
 
 Public-candidate planning is entirely offline:
 
@@ -925,7 +932,7 @@ In `docker logs glm52-trace` on each rank:
 - serve entrypoint: one `patched <file>` line per source patch, then `starting traced GLM-5.2 rank=<N>; trace=... mtp_tokens=4 ... dcp_size=4 ...`;
 - NCCL: `NCCL ... 2.30.7+cuda13.x`, `NET/IB`, `Connected all rings` on every rank; **zero** `NET/Socket` data-path lines;
 - graph capture completion: **26/26 PIECEWISE and 16/16 FULL** captures (the RC1 DCP4 contract);
-- model + MTP draft load completed on all four ranks; engine-reported KV pool of **500,224 logical tokens** (4 GB/rank, per-token scale; the earlier 3 GB/rank DCP4 config reported 375,040).
+- model + MTP draft load completed on all four ranks. Historical reference window: **500,224 logical tokens** at its 4 GB/rank setting. Current public faststart candidate: `4600000000` bytes/rank, reporting 4.28 GiB and **465,663 logical tokens**, enough for `max_model_len=458752`.
 
 ### 9.5 Graph-capture census and live request gate **[DOCUMENTED: private archive scripts/validate_glm52_graph_live.py and run-glm52-graph-window.ps1 `Invoke-LiveGate`]**
 

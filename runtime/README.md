@@ -42,8 +42,9 @@ prerequisite for a first trial. The operator procedure is
 - **Recovered reference lane:** the measured vLLM overlay (59 safe modified + 12
   new files, ~12.9k lines) that reproduces the exact production behavior
   (SM121 sparse-MLA backend, low-bit MLA KV record formats, etc.). It is
-  published under `patches/00-reference-vllm/` and hash-pinned. It awaits an
-  ARM64 image build and live four-Spark acceptance.
+  published under `patches/00-reference-vllm/` and hash-pinned. Its native ARM64
+  faststart build and partial four-Spark bring-up passed; API/request acceptance
+  remains.
 
 `runtime/patches/vllm/` contains the two SparkCache patches applied after it.
 They apply fail-closed after the recovered overlay against the pinned vLLM
@@ -124,7 +125,8 @@ the image that creates it; retain it as launch/evidence metadata.
   `collective_rpc` assertion: rank 0 owns EngineCore and RPC; ranks 1-3 only
   host worker subscribers. The pinned
   recovered SM121 sparse-MLA and packed low-bit MLA KV capability surface is
-  now present; a clean ARM64 build is the next gate.
+  now present and passed its native capability gate. The next gate is a
+  corrected four-rank startup through API readiness and a deterministic request.
 - Base-image ARM64 manifests, model revision, DeepGEMM source and NCCL source
   are immutable pins. The output image gets a registry digest only after push;
   the launcher must inject it for image-identity verification.

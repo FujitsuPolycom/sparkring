@@ -25,8 +25,10 @@ The mutable `production-hybrid-1.3` tag is recorded for humans, but none of
 the commands below use it.
 
 > Status: the source, patch contracts, launcher, and GPU-free tests are public
-> and validated. This exact fresh-pull faststart image still awaits its first
-> four-Spark acceptance run. A patch preimage mismatch is therefore a useful
+> and validated. A native ARM64 build and four-rank bring-up have passed through
+> identical image distribution, 116/116 preflight checks, full model/MTP load,
+> B12X prewarm, and KV allocation. The corrected image still awaits API/request
+> acceptance. A patch preimage mismatch is therefore a useful
 > result: report it; do not bypass the check.
 
 ## 1. Prerequisites
@@ -390,12 +392,23 @@ ssh <rank0-management-ssh-target> \
   'docker logs --follow --tail 200 glm52-sparkring-public-r0 2>&1'
 ```
 
-The first load can take several minutes. The API is ready only after this
+The first load can take roughly ten minutes for weights, followed by kernel
+prewarm and KV allocation. The API is ready only after this
 returns a model:
 
 ```bash
 curl http://<rank0-management-ip>:8000/v1/models
 ```
+
+If logs stop at `Autotuning process starts` during a distributed launch, stop
+the run instead of waiting for the NCCL watchdog. The current launch template
+must include `--no-enable-flashinfer-autotune`; SparkRing retains the bounded
+B12X prewarm but disables the unsafe generic full-model FlashInfer tuner.
+
+The public template reserves `4600000000` bytes per rank for KV cache. On the
+validated checkpoint this reported 4.28 GiB and 465,663 logical tokens, enough
+for `max_model_len: 458752`. Do not reduce it to 4,000,000,000 bytes while
+keeping that maximum context length.
 
 Then run one short request:
 

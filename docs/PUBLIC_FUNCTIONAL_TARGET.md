@@ -7,7 +7,10 @@ configuration. It is the contract the acceptance gate
 
 > **Status: definition only. The gate defined here has never been run.**
 > No public-lane acceptance result exists. Nothing in this document asserts
-> that the public lane passes, or has passed, any stage. Every open value is
+> complete acceptance. A 2026-07-29 native build and partial four-rank bring-up
+> passed image distribution, preflight, capability gates, distributed
+> initialization, complete model/MTP loading, B12X prewarm, and KV allocation;
+> API/request acceptance remains. Every open value is
 > listed in [§8 Open TBDs](#8-open-tbds-with-owners) with an owner, not
 > guessed.
 
@@ -487,12 +490,12 @@ yet, with the workstream that owns closing it.
 | TBD-5 | Minimum supported NVIDIA driver version (reference cluster: 580.173.02; requirement stated only as "580.x") | Users cannot tell whether their driver is in-matrix | hardware / bring-up |
 | TBD-6 | Minimum supported host kernel version (reference cluster: NVIDIA kernel 6.17) | Same | hardware / bring-up |
 | TBD-7 | Minimum Docker CE / podman / `nvidia-container-toolkit` versions | Same; also affects whether the podman path is actually supported or merely believed to work | bring-up |
-| TBD-8 | **Source closed; live gate open.** The recovered overlay now supplies `B12X_MLA_SPARSE` and `nvfp4_ds_mla` in the public builder. It still needs an ARM64 build and four-Spark functional acceptance. | Build, attest and execute the matrix before reporting a public-functional result | runtime build / acceptance workstream |
+| TBD-8 | **Native capability gate closed; serving gate open.** The recovered overlay supplies `B12X_MLA_SPARSE` and `nvfp4_ds_mla`; both passed in the native ARM64 image and partial four-rank bring-up. API/request acceptance remains. | Execute the corrected matrix before reporting a public-functional result | runtime build / acceptance workstream |
 | TBD-9 | Whether the pinned adaptive-MTP 2/4 configuration produces **bitwise-identical token ids** across runs. `scripts/context_cache_gate.py` already records that two consecutive restores of a byte-verified entry produced different phrasings, i.e. observed run-to-run nondeterminism in a speculative-decode configuration | Decides whether stage 5's exact-token-id criterion is achievable as specified, or whether the matrix must pin an MTP-off determinism configuration for that stage only | acceptance gate owner |
 | TBD-10 | The public-lane performance tolerance band. None exists, and reference-lane numbers must not be used (§4.3) | Until a band is committed, `performance_verdict` is permanently `BASELINE-RECORDED` | acceptance gate owner, after N public-lane runs |
 | TBD-11 | Availability and exact response shape of the `/tokenize` endpoint in the pinned vLLM build (the gate uses it to recover output token ids) | If absent, stage 5 fails with an actionable message rather than falling back to hashing text — the fallback is deliberately not implemented | acceptance gate owner |
 | TBD-13 | The site schema pins `serving.mtp_tokens` but not the adaptive depth window; the matrix's `adaptive_speculative_tokens_window: 32` is therefore documented here but not machine-checked | An adaptive-MTP window other than 32 would pass the gate while being off-matrix | site-config workstream + acceptance gate owner |
-| TBD-14 | The site schema has no field for the attention backend or KV cache dtype, so §2.4's `B12X_MLA_SPARSE` / `nvfp4_ds_mla` rows are documented but not machine-checked (they are also gated on TBD-8) | Two matrix rows are honour-system until either the site schema carries them or the gate reads them back from the running engine | site-config workstream + acceptance gate owner |
+| TBD-14 | The site schema has no field for the attention backend or KV cache dtype, so §2.4's `B12X_MLA_SPARSE` / `nvfp4_ds_mla` rows are not yet machine-checked by the acceptance gate, despite passing the runtime startup capability gate | Two matrix rows still need end-to-end readback or schema enforcement | site-config workstream + acceptance gate owner |
 
 Closed: TBD-1 (immutable model revision), TBD-2 (ARM64 base-image digests), and
 TBD-3 (DeepGEMM full commit) are pinned in `runtime/runtime-lock.json`. The

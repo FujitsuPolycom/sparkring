@@ -109,5 +109,6 @@ where it has not, our overlay remains ahead.
   upstream work; the SM121/GB10 sparse-MLA backend and the low-bit MLA KV
   record formats are the durable deltas to carry or upstream.
 - **Action items**: continue improving attribution for the small support-edit
-  tail, build the pinned ARM64 image, and run four-Spark acceptance; track the
+  tail, rerun the corrected pinned ARM64 image through four-Spark API/request
+  acceptance, and track the
   open SM121 PRs upstream as the retirement path for the largest patch.

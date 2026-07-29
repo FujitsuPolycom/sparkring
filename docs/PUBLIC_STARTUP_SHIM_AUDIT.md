@@ -64,9 +64,11 @@ means the launch topology or an upstream ABI has drifted.
 
 ## Reopen condition
 
-The offline ABI contract is now closed. Live acceptance still must prove one
-leader plus three headless followers complete KV profiling,
-`initialize_from_config`, compilation, and a deterministic request.
+The offline ABI contract is closed. A 2026-07-29 partial four-rank bring-up
+proved one leader plus three headless followers through distributed
+initialization, full model/MTP loading, B12X prewarm, and KV allocation without
+entering follower `collective_rpc`. Live acceptance still must prove the
+corrected startup reaches API readiness and serves a deterministic request.
 
 If that acceptance run ever reaches follower `collective_rpc`, stop and capture
 the call sequence. Do not replace the assertion with an empty return to make

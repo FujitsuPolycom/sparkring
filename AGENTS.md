@@ -6,14 +6,18 @@ contributors. Read it before changing or running anything in this repository.
 ## Current truth
 
 - The **reference lane** produced the measurements in `README.md` and
-  `docs/RESULTS.md`. It depends on a maintainer-held runtime overlay and launch
-  layer. The recovered 71-file reference-runtime delta is published under
-  `runtime/patches/00-reference-vllm/`; live clean-build acceptance is pending.
+  `docs/RESULTS.md`. The recovered 71-file reference-runtime delta is published
+  under `runtime/patches/00-reference-vllm/`; the exact historical launch
+  artifacts and evidence harness remain maintainer-held, and public-lane
+  reproduction of those measurements is pending.
 - The **public-functional lane** is a candidate. Its offline tests, site
   validator, read-only preflight, transport sources, probes, and acceptance
-  harness are public. It has no end-to-end acceptance result.
+  harness are public. A native ARM64 build and partial four-rank bring-up passed
+  through complete model/MTP load, B12X prewarm, and KV allocation. It has no
+  end-to-end API/request acceptance result.
 - The public runtime is not currently an accepted complete GLM-5.2 serving
-  runtime. Pin state and missing sparse-MLA/low-bit-KV runtime work are tracked in
+  runtime. The sparse-MLA and low-bit-KV capability gates now pass; the remaining
+  corrected startup and serving acceptance work is tracked in
   `docs/PUBLIC_FUNCTIONAL_TARGET.md` and `docs/RUNTIME_GAPS.md`.
 - Never describe a reference-lane number as a result from this checkout.
 

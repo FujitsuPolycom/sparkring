@@ -40,7 +40,36 @@ distributed image digest.
 
 ## What this does and does not prove
 
-This proves that a clean public checkout can build the ARM64 faststart image
-on a DGX Spark. It does not yet prove four-rank distribution, preflight,
-model startup, or inference acceptance from this newly built image. Those
-remain the next release gate.
+At the time of this one-Spark result, it proved that a clean public checkout
+could build the ARM64 faststart image but did not yet prove four-rank
+distribution, preflight, model startup, or inference acceptance. The next
+section records the later four-rank progress.
+
+## 2026-07-29: partial four-Spark bring-up passed
+
+The native candidate was distributed to all four ranks with one identical
+image ID:
+
+```text
+sparkring/glm52-faststart:public-gates-v1
+sha256:b261c42a80c57435c0cfe5ae9f00a83b93bb2db29e5b35c70060922c14f069b2
+```
+
+The run passed:
+
+- 12/12 directed SSH-management edges;
+- 116/116 clean public preflight checks;
+- all public entrypoint and GLM capability gates;
+- distributed NCCL initialization;
+- all 79 model shards plus both MTP shards on every rank;
+- 100.3 GiB model memory per rank;
+- 34/34 bounded B12X prewarm cases with zero failures;
+- a 4.28 GiB KV allocation per rank, reporting 465,663 logical tokens.
+
+The first attempt did **not** reach API acceptance. After KV allocation, the
+generic full-model FlashInfer 4096-token autotuner entered a rank-asymmetric
+collective and triggered the NCCL watchdog. SparkRing commit `b8f8a5b` disables
+that unsafe distributed tuner with `--no-enable-flashinfer-autotune`, while
+retaining the bounded B12X prewarm, and fixes the launcher JIT-cache mount.
+The corrected four-rank run is pending; this is partial bring-up evidence, not
+an accepted public serving result.

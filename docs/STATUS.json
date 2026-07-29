@@ -7,7 +7,7 @@
       "publicly_runnable": false,
       "public_source_complete": true,
       "evidence": "docs/RESULTS.md",
-      "reason": "The recovered measured-runtime source is published, but a clean public ARM64 rebuild has not yet completed a four-Spark acceptance run."
+      "reason": "The recovered measured-runtime source is published. A clean public ARM64 build and partial four-rank bring-up passed, but API/request acceptance has not."
     },
     "public-functional": {
       "maturity": "candidate",
@@ -15,10 +15,9 @@
       "acceptance_result_exists": false,
       "definition": "docs/PUBLIC_FUNCTIONAL_TARGET.md",
       "blockers": [
-        "the recovered sparse-MLA, low-bit-KV, hybrid-MXFP4 and adaptive-MTP delta is published but has not yet completed an ARM64 image build",
-        "the pinned multi-node headless ABI is offline-attested, but leader-owned KV startup and three follower worker subscriptions still require live four-Spark validation",
-        "the public sharded-safetensors and MTP-draft preflight is offline-validated but has not yet passed on the pinned checkpoint on a Spark",
-        "the offline-validated public launcher and runtime have not completed a live four-Spark acceptance cycle"
+        "the corrected four-rank launch with the unsafe generic FlashInfer autotuner disabled has not yet reached API readiness",
+        "the deterministic request and public acceptance matrix have not passed",
+        "the public lane has no accepted CUDA-graph or reference-performance result"
       ]
     }
   },
@@ -27,7 +26,7 @@
       "maturity": "offline-validated",
       "command": "python -m pytest spark_transport sparkcache runtime scripts -q",
       "last_observed": {
-        "passed": 1596,
+        "passed": 1612,
         "skipped": 5
       }
     },
@@ -52,6 +51,7 @@
     "runtime_builder": {
       "maturity": "candidate",
       "accepted": false,
+      "native_arm64_build_passed": true,
       "entrypoint": "runtime/README.md"
     },
     "faststart_builder": {
@@ -59,17 +59,22 @@
       "accepted": false,
       "base_image_pinned_by_arm64_manifest": true,
       "avoids_full_vllm_kernel_rebuild": true,
+      "native_arm64_build_passed": true,
+      "identical_four_rank_distribution_passed": true,
+      "live_model_load_and_kv_allocation_passed": true,
+      "api_request_acceptance_passed": false,
       "entrypoint": "docs/QUICKSTART.md"
     },
     "public_launcher": {
-      "maturity": "offline-validated",
+      "maturity": "partially-live-validated",
       "mutating_commands_default_to_dry_run": true,
       "live_four_rank_acceptance": false,
       "entrypoint": "scripts/sparkring_launcher.py"
     },
     "headless_startup_abi": {
-      "maturity": "offline-validated",
+      "maturity": "partially-live-validated",
       "patch_required": false,
+      "live_four_rank_startup_through_kv_allocation": true,
       "live_four_rank_acceptance": false,
       "entrypoint": "runtime/public-headless-abi-gate.py"
     }

@@ -30,16 +30,19 @@ direction.
 The measured system and the code this checkout can run are not the same lane.
 As of 2026-07-29, **no end-to-end public-functional acceptance result exists**.
 The recovered GLM-5.2 reference overlay is now published and wired into the
-builder, but it has not yet completed an ARM64 build and four-Spark acceptance
-run; do not interpret the published measurements below as fresh-clone results.
+builder. A native ARM64 build, identical four-rank distribution, all public
+startup gates, distributed initialization, complete model/MTP loading, B12X
+prewarm, and KV allocation have passed. The corrected build has not yet served
+and validated an API request, so do not interpret the published measurements
+below as fresh-clone results.
 
 | Goal | Minimum environment | Current status | Start here |
 |---|---|---|---|
-| Read, lint, or run Python contracts | Python 3.12, CPU | **Offline-validated:** 1,596 passed, 5 skipped from a clean tracked checkout | [Offline quickstart](#offline-contributor-quickstart) |
+| Read, lint, or run Python contracts | Python 3.12, CPU | **Offline-validated:** 1,612 passed, 5 skipped from a clean tracked checkout | [Offline quickstart](#offline-contributor-quickstart) |
 | Describe and inspect a four-Spark site | Python 3.10; SSH only for live preflight | Site schema validated; preflight is **read-only by construction** | [Site configuration](scripts/config/README.md) |
 | Build native code or qualify cables | One Spark to build; two per cable; four for collective probes | Public source and clean-room probe evidence exist; hardware gates are manual | [Four-Spark transport bring-up](#four-spark-transport-bring-up) |
-| Reproduce the headline serving numbers | Four Sparks plus the reference runtime | **Source available, reproduction pending:** 71 recovered vLLM changes are published and fail-closed; no clean rebuild/live acceptance result yet | [Runtime gaps](docs/RUNTIME_GAPS.md) |
-| Try the public end-to-end serving lane | Four Sparks | **Candidate:** pinned public base, thin builder, recovered overlay, entrypoint and four-rank launcher are offline-validated; fresh ARM64 build and live acceptance remain | [Four-Spark quickstart](docs/QUICKSTART.md) |
+| Reproduce the headline serving numbers | Four Sparks plus the reference runtime | **Source available, reproduction pending:** 71 recovered vLLM changes are published and fail-closed; native build and partial four-rank bring-up passed, but no public-lane serving acceptance exists yet | [Runtime gaps](docs/RUNTIME_GAPS.md) |
+| Try the public end-to-end serving lane | Four Sparks | **Candidate:** native build, identical four-rank distribution, preflight, model load, B12X prewarm, and KV allocation passed; corrected API/request acceptance remains | [Four-Spark quickstart](docs/QUICKSTART.md) |
 | Study or port SparkCache | CPU for contracts; vLLM/DCP deployment for live use | Source published; live results were measured on the reference lane, not an accepted public runtime | [SparkCache](sparkcache/README.md) |
 
 Machine-readable component status is in
@@ -194,8 +197,8 @@ configuration fields, read-only preflight, eager first launch, logs, API test,
 and the graph-enabled follow-up are all written out in the
 **[four-Spark quickstart](docs/QUICKSTART.md)**.
 
-The faststart path is a candidate awaiting a fresh-pull four-Spark acceptance
-run. Its exact-source preimage gate is intentional: if the public base has
+The faststart path is a candidate awaiting a complete fresh-pull four-Spark
+serving acceptance run. Its exact-source preimage gate is intentional: if the public base has
 drifted or does not match the recovered source lineage, the build stops before
 native compilation rather than producing a subtly wrong runtime.
 
@@ -288,7 +291,7 @@ There are two build lanes:
   The transport library, all probes, and the full native and Python test
   suites have been verified clean-room from this tree on DGX Spark hardware
   (stock CUDA devel image, no private artifacts: 36/36 targets and 20/20 native
-  tests). The complete current GPU-free Python contract suite is 1,596 passed
+  tests). The complete current GPU-free Python contract suite is 1,612 passed
   with 5 skipped. End-to-end serving from this lane is not yet
   performance-equivalent to the reference lane and is not supported until a
   full acceptance gate passes; fresh builds produce new artifact hashes that

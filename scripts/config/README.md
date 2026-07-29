@@ -69,9 +69,10 @@ containers whose `docker run` succeeded; removal additionally requires the
 launcher-managed label, so a same-named foreign container is never deleted.
 
 The current public image contains an executable capability gate. With the
-published upstream pin it is expected to refuse GLM-5.2 startup until
-`B12X_MLA_SPARSE` and `nvfp4_ds_mla` are genuinely present. Bypassing that
-gate is not a supported workaround.
+published recovered overlay, the gate has passed natively on DGX Spark for
+`B12X_MLA_SPARSE` and `nvfp4_ds_mla`. It still fails closed if either capability
+is absent or the installed sources drift. Bypassing that gate is not a
+supported workaround.
 
 ## Requirements
 
