@@ -16,7 +16,11 @@ hard-depend on earlier ones.
 
 > **Snapshot scope — what this tree can and cannot execute.**
 >
-> The historical reference orchestrator (`run-glm52-graph-window.ps1` and friends), reference serving entrypoint, and load-format preflight remain in the maintainer's private archive. This snapshot now includes a separate clean-room public image entrypoint, manifested overlay-bundle builder, and dry-run-first four-rank launcher. They are offline-validated but have not completed a live acceptance cycle, and the public capability gate is expected to refuse GLM-5.2 startup until the missing SM121 sparse-MLA/low-bit-KV delta lands.
+> The historical reference orchestrator (`run-glm52-graph-window.ps1` and
+> friends) remains in the maintainer archive. This snapshot now includes the
+> recovered GLM-5.2 runtime delta, public image entrypoint, manifested overlay
+> builder, and dry-run-first four-rank launcher. They are offline-validated but
+> have not completed an ARM64 build and live acceptance cycle.
 >
 > Concretely: **Stages 1-4, 6, and 7 are fully executable from this tree.** Stages 5, 8, and 9 primarily document the measured reference deployment, but now link to the distinct public candidate where available. The public candidate is not an accepted substitute for the reference lane.
 >

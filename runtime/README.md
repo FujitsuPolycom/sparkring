@@ -19,18 +19,15 @@ divergence from upstream is a reviewable, hash-verified patch. See
   ancestry* of the runtime — pinned upstream commits, the frozen pip set, the
   in-repo NCCL patch series, `spark_transport`, and the two independently
   written SparkCache compatibility patches. Anyone can run it.
-- **Reference lane:** the maintainer's vLLM patch overlay (61 modified + 12
+- **Recovered reference lane:** the measured vLLM overlay (59 safe modified + 12
   new files, ~12.9k lines) that reproduces the exact production behavior
   (SM121 sparse-MLA backend, low-bit MLA KV record formats, etc.). It is
-  captured privately and is **not yet shippable** pending provenance cleanup
-  (~0.8k unattributed lines must be attributed or rewritten first —
-  `docs/RUNTIME_GAPS.md`, "Action items").
+  published under `patches/00-reference-vllm/` and hash-pinned. It awaits an
+  ARM64 image build and live four-Spark acceptance.
 
-Consequently `runtime/patches/vllm/` contains only the two SparkCache patches.
-They apply fail-closed to official upstream vLLM at the pinned commit and do
-not reproduce the full reference overlay. A public-lane build therefore has
-SparkCache's scheduler rollback and safe VMM exemption, while the reference
-model-serving behavior still requires the maintainer patch series.
+`runtime/patches/vllm/` contains the two SparkCache patches applied after it.
+They apply fail-closed after the recovered overlay against the pinned vLLM
+commit. Together the ordered series performs 73 verified operations.
 
 ## Pins (authoritative table)
 
@@ -68,7 +65,7 @@ model-serving behavior still requires the maintainer patch series.
    requires the complete CTest suite to pass.
 4. The builder emits an allowlisted 30-file public Python overlay bundle with
    a per-file SHA-256 manifest. The bundle specification, builder, capability
-   gate, and entrypoint are themselves hash-pinned by `runtime-lock.json`.
+   gates, and entrypoint are themselves hash-pinned by `runtime-lock.json`.
 5. **Stage 3** assembles the runtime image and runs `generate-manifest.py`,
    which emits an immutable `runtime-manifest.json` (all pins, wheel hashes,
    `.so` hashes, applied-patch hashes, model identity pin) into the image.
@@ -97,16 +94,17 @@ the image that creates it; retain it as launch/evidence metadata.
 
 ## Status
 
-- `patches/vllm/` — two independently written SparkCache compatibility
-  patches are published and preimage-pinned. The larger private/community
-  overlay remains gated on provenance review; reference-lane model behavior
-  still requires that maintainer patch series.
+- `patches/00-reference-vllm/` publishes the recovered 71-operation GLM-5.2
+  delta; `patches/vllm/` adds two independently written SparkCache patches.
 - `public-entrypoint.sh` and the bundled public overlay are offline-validated.
   Startup checks the model config hash, complete sharded-safetensors layout,
-  MTP draft layout, runtime manifest, external image-digest binding, and
-  required GLM capability surface before `vllm serve`. The pinned
-  public ancestry is expected to fail the capability check today because the
-  SM121 sparse-MLA and packed low-bit MLA KV deltas remain absent.
+  MTP draft layout, runtime manifest, external image-digest binding, pinned
+  leader/follower headless ABI, and required GLM capability surface before
+  `vllm serve`. The headless gate deliberately preserves upstream's follower
+  `collective_rpc` assertion: rank 0 owns EngineCore and RPC; ranks 1-3 only
+  host worker subscribers. The pinned
+  recovered SM121 sparse-MLA and packed low-bit MLA KV capability surface is
+  now present; a clean ARM64 build is the next gate.
 - Base-image ARM64 manifests, model revision, DeepGEMM source and NCCL source
   are immutable pins. The output image gets a registry digest only after push;
   the launcher must inject it for image-identity verification.

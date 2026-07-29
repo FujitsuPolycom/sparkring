@@ -110,12 +110,16 @@ def test_containerfile_installs_attested_overlay_and_entrypoint():
     assert "--tree public-overlay=/opt/spark-vllm" in text
     assert "--image-digest external" in text
     assert "COPY --from=vllm-build /out/public-overlay /opt/spark-vllm" in text
+    assert "COPY runtime/public-headless-abi-gate.py" in text
     assert 'ENTRYPOINT ["/opt/sparkring/public-entrypoint.sh"]' in text
 
 
 def test_entrypoint_attests_before_capability_probe_can_import_vllm():
     text = (RUNTIME / "public-entrypoint.sh").read_text(encoding="utf-8")
     assert text.index("verify-runtime.py") < text.index("public-capability-gate.py")
+    assert text.index("public-headless-abi-gate.py") < text.index(
+        "public-capability-gate.py"
+    )
 
 
 if __name__ == "__main__":

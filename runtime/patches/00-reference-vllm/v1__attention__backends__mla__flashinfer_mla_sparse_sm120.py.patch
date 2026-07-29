@@ -1,0 +1,11 @@
+--- upstream/vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py
++++ installed/vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py
+@@ -128,7 +128,7 @@
+             ),
+         )
+ 
+-        output = q.new_empty(
++        output = q.new_zeros(
+             (num_actual_toks, self.num_heads, self.kv_lora_rank),
+             dtype=q.dtype,
+         )

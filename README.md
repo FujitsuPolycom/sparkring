@@ -29,16 +29,17 @@ direction.
 
 The measured system and the code this checkout can run are not the same lane.
 As of 2026-07-29, **no end-to-end public-functional acceptance result exists**.
-The public runtime is still missing required GLM-5.2 serving work; do not
-interpret the published measurements below as fresh-clone results.
+The recovered GLM-5.2 reference overlay is now published and wired into the
+builder, but it has not yet completed an ARM64 build and four-Spark acceptance
+run; do not interpret the published measurements below as fresh-clone results.
 
 | Goal | Minimum environment | Current status | Start here |
 |---|---|---|---|
-| Read, lint, or run Python contracts | Python 3.12, CPU | **Offline-validated:** 1,563 passed, 5 skipped from a clean tracked checkout | [Offline quickstart](#offline-quickstart) |
+| Read, lint, or run Python contracts | Python 3.12, CPU | **Offline-validated:** 1,570 passed, 5 skipped from a clean tracked checkout | [Offline quickstart](#offline-quickstart) |
 | Describe and inspect a four-Spark site | Python 3.10; SSH only for live preflight | Site schema validated; preflight is **read-only by construction** | [Site configuration](scripts/config/README.md) |
 | Build native code or qualify cables | One Spark to build; two per cable; four for collective probes | Public source and clean-room probe evidence exist; hardware gates are manual | [Four-Spark transport bring-up](#four-spark-transport-bring-up) |
-| Reproduce the headline serving numbers | Four Sparks plus the reference runtime | **Unavailable from this checkout:** the measured reference overlay remains private | [Runtime gaps](docs/RUNTIME_GAPS.md) |
-| Try the public end-to-end serving lane | Four Sparks | **Candidate:** the image, overlay bundle, entrypoint and four-rank launcher are offline-validated; the capability gate is expected to refuse startup until the missing public SM121 sparse-MLA/low-bit-KV delta lands | [Public-functional target](docs/PUBLIC_FUNCTIONAL_TARGET.md) |
+| Reproduce the headline serving numbers | Four Sparks plus the reference runtime | **Source available, reproduction pending:** 71 recovered vLLM changes are published and fail-closed; no clean rebuild/live acceptance result yet | [Runtime gaps](docs/RUNTIME_GAPS.md) |
+| Try the public end-to-end serving lane | Four Sparks | **Candidate:** image, recovered reference overlay, entrypoint and four-rank launcher are offline-validated; ARM64 build and live acceptance remain | [Public-functional target](docs/PUBLIC_FUNCTIONAL_TARGET.md) |
 | Study or port SparkCache | CPU for contracts; vLLM/DCP deployment for live use | Source published; live results were measured on the reference lane, not an accepted public runtime | [SparkCache](sparkcache/README.md) |
 
 Machine-readable component status is in
@@ -171,7 +172,7 @@ docs/                 results, architecture, public-lane contract, setup
 python -m pip install -r requirements-dev.txt
 python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.11.0"
 python -m pytest spark_transport sparkcache runtime scripts -q
-ruff check --select E,F,W --ignore E501 .
+ruff check --select E,F,W --ignore E501 --exclude runtime/patches .
 ```
 
 ## Site configuration and safe inspection
@@ -251,7 +252,7 @@ There are two lanes:
   The transport library, all probes, and the full native and Python test
   suites have been verified clean-room from this tree on DGX Spark hardware
   (stock CUDA devel image, no private artifacts: 36/36 targets and 20/20 native
-  tests). The complete current GPU-free Python contract suite is 1,563 passed
+  tests). The complete current GPU-free Python contract suite is 1,570 passed
   with 5 skipped. End-to-end serving from this lane is not yet
   performance-equivalent to the reference lane and is not supported until a
   full acceptance gate passes; fresh builds produce new artifact hashes that

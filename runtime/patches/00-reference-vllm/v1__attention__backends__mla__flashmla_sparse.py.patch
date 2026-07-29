@@ -1,0 +1,28 @@
+--- upstream/vllm/v1/attention/backends/mla/flashmla_sparse.py
++++ installed/vllm/v1/attention/backends/mla/flashmla_sparse.py
+@@ -356,7 +356,24 @@
+             # rows even under DCP. C128A top-k metadata must use the same split
+             # so B12X gets indexed cache pointers and indexed top-k metadata
+             # together.
+-            self.deepseek_v4_decode_threshold = 1 + num_speculative_tokens
++            # Match sparse_swa's decode/prefill split: under the upstream
++            # (PR#46995) DSpark impl the decode bucket admits query lens up to
++            # 1 + 2 * num_speculative_tokens (parallel drafting), and all
++            # builders must agree on the split.
++            import os as _os
++
++            _spec_mult = (
++                2
++                if (
++                    speculative_config is not None
++                    and speculative_config.parallel_drafting
++                    and _os.environ.get("VLLM_DSPARK_IMPL", "fork") == "upstream"
++                )
++                else 1
++            )
++            self.deepseek_v4_decode_threshold = (
++                1 + _spec_mult * num_speculative_tokens
++            )
+             # Pre-allocate compressed slot mapping buffer for CUDA graph
+             # address stability when compress_ratio > 1.
+             if self.compress_ratio > 1:

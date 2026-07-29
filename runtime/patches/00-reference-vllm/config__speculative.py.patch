@@ -1,0 +1,204 @@
+--- upstream/vllm/config/speculative.py
++++ installed/vllm/config/speculative.py
+@@ -149,8 +149,14 @@
+ ]
+ NgramGPUTypes = Literal["ngram_gpu"]
+ DFlashModelTypes = Literal["dflash"]
++DSparkModelTypes = Literal["dspark"]
+ EagleModelTypes = Literal[
+-    "eagle", "eagle3", "extract_hidden_states", MTPModelTypes, DFlashModelTypes
++    "eagle",
++    "eagle3",
++    "extract_hidden_states",
++    MTPModelTypes,
++    DFlashModelTypes,
++    DSparkModelTypes,
+ ]
+ SpeculativeMethod = Literal[
+     "ngram",
+@@ -265,6 +271,12 @@
+     inclusive batch-size range.
+     """
+ 
++    adaptive_speculative_tokens_window: int | None = Field(default=None, ge=1)
++    """Number of speculative verification steps to average before adapting the
++    batch-wide speculative-token count from accepted draft lengths. ``None``
++    disables acceptance-length adaptation. ``num_speculative_tokens`` is the
++    initial value and upper bound."""
++
+     # params generated in the post-init stage
+     draft_model_config: SkipValidation[ModelConfig] = None  # type: ignore
+     """The configuration of the draft model initialized internal."""
+@@ -388,6 +400,7 @@
+             "eagle3",
+             "extract_hidden_states",
+             "dflash",
++            "dspark",
+         )
+         factors.append(uses_aux_hidden_states)
+ 
+@@ -406,6 +419,12 @@
+                     layer_ids = [
+                         i + 1 for i in dflash_config.get("target_layer_ids", [])
+                     ]
++            if not layer_ids:
++                layer_ids = getattr(
++                    self.draft_model_config.hf_config,
++                    "dspark_target_layer_ids",
++                    None,
++                )
+             if layer_ids is not None:
+                 # Convert to tuple to make it hashable
+                 factors.append(tuple(layer_ids))
+@@ -457,9 +476,7 @@
+                                     if not _quant_config_targets_prefix(
+                                         quant_config, module_prefix
+                                     ):
+-                                        _extend_unique(
+-                                            ignored, [f"{module_prefix}*"]
+-                                        )
++                                        _extend_unique(ignored, [f"{module_prefix}*"])
+                             else:
+                                 if _quant_config_targets_prefix(quant_config, prefix):
+                                     continue
+@@ -762,6 +779,15 @@
+                 self.model = self.target_model_config.model
+                 # Align the quantization of draft model for cases such as
+                 # --quantization fp8 with a bf16 checkpoint.
++                if not self.quantization:
++                    self.quantization = self.target_model_config.quantization
++            elif self.method == "dspark":
++                if self.target_model_config is None:
++                    raise ValueError("target_model_config must be present for dspark")
++                # DeepSeek V4 DSpark ships the draft module inside the target
++                # checkpoint under the mtp.* namespace. It is not the serial MTP
++                # architecture, so it is routed to its own speculator below.
++                self.model = self.target_model_config.model
+                 if not self.quantization:
+                     self.quantization = self.target_model_config.quantization
+             elif self.method in ("ngram", "[ngram]"):
+@@ -788,6 +814,27 @@
+         if self.method in ("ngram", "[ngram]"):
+             self.method = "ngram"
+ 
++        if self.adaptive_speculative_tokens_window is not None:
++            unsupported_methods = {
++                "ngram",
++                "ngram_gpu",
++                "suffix",
++                "custom_class",
++            }
++            if self.method in unsupported_methods:
++                raise ValueError(
++                    "adaptive_speculative_tokens_window is only supported with "
++                    "model-backed speculative decoding methods."
++                )
++            if (
++                self.target_model_config is not None
++                and self.target_model_config.is_diffusion
++            ):
++                raise ValueError(
++                    "adaptive_speculative_tokens_window is not supported with "
++                    "diffusion models."
++                )
++
+         if self.method in ("ngram", "ngram_gpu"):
+             # Set default values if not provided
+             if self.prompt_lookup_min is None and self.prompt_lookup_max is None:
+@@ -891,7 +938,7 @@
+                 )
+ 
+                 # Automatically detect the method
+-                if self.method in ("eagle", "eagle3", "dflash"):
++                if self.method in ("eagle", "eagle3", "dflash", "dspark"):
+                     pass
+                 # examples:
+                 # yuhuili/EAGLE-LLaMA3-Instruct-8B
+@@ -903,6 +950,8 @@
+                     self.method = "eagle3"
+                 elif "dflash" in self.draft_model_config.model.lower():
+                     self.method = "dflash"
++                elif "dspark" in self.draft_model_config.model.lower():
++                    self.method = "dspark"
+                 elif self.draft_model_config.hf_config.model_type == "medusa":
+                     self.method = "medusa"
+                 elif self.draft_model_config.hf_config.model_type == "mlp_speculator":
+@@ -951,6 +1000,26 @@
+ 
+                 if self.method == "dflash":
+                     self.parallel_drafting = True
++                elif self.method == "dspark":
++                    self.parallel_drafting = True
++                    block_size = getattr(
++                        self.draft_model_config.hf_config,
++                        "dspark_block_size",
++                        None,
++                    )
++                    if self.num_speculative_tokens is None and block_size:
++                        self.num_speculative_tokens = int(block_size)
++                    if os.environ.get("VLLM_DSPARK_IMPL", "fork") == "upstream":
++                        # PR#46995 impl loads the draft through the model
++                        # registry; the fork impl builds its model directly
++                        # and never reads the draft architectures.
++                        self.draft_model_config.hf_config.model_type = (
++                            "deepseek_v4"
++                        )
++                        self.draft_model_config.hf_config.architectures = [
++                            "DSparkDraftModel"
++                        ]
++                        self.update_arch_()
+ 
+                 if self.num_speculative_tokens is not None and hasattr(
+                     self.draft_model_config.hf_config, "num_lookahead_tokens"
+@@ -1239,6 +1308,15 @@
+ 
+         if self.draft_model_config:
+             self._maybe_apply_virtual_tp_to_draft()
++            if (
++                self.method == "dspark"
++                and self.draft_parallel_config is not None
++                and self.draft_parallel_config.pipeline_parallel_size > 1
++            ):
++                # The DSpark draft is never pipelined: it runs whole on the
++                # target's LAST PP stage (which owns lm_head + the aux
++                # capture layers; the loader rebuilds embed_tokens there).
++                self.draft_parallel_config.pipeline_parallel_size = 1
+             self.draft_model_config.verify_with_parallel_config(
+                 self.draft_parallel_config
+             )
+@@ -1296,17 +1374,33 @@
+         )
+ 
+     def use_eagle(self) -> bool:
+-        return self.method in ("eagle", "eagle3", "mtp", "dflash")
++        return self.method in ("eagle", "eagle3", "mtp", "dflash", "dspark")
+ 
+     def requires_eagle_cache_drop(self) -> bool:
+         """Whether prefix cache hits must drop one block for hidden states."""
+-        return self.use_eagle() and not self.use_dflash()
++        return self.use_eagle() and not (self.use_dflash() or self.use_dspark())
+ 
+     def use_dflash(self) -> bool:
+         return self.method == "dflash"
+ 
++    def use_dspark(self) -> bool:
++        return self.method == "dspark"
++
+     def uses_dynamic_speculative_decoding(self) -> bool:
++        # NOTE: acceptance-length adaptation is deliberately NOT folded into
++        # this method. config/vllm.py gates two things on it: an override of
++        # cudagraph_mode to PIECEWISE and the "dynamic speculative decoding"
++        # entry of the V2-model-runner unsupported-features list. The
++        # acceptance-length controller instead relies on per-depth FULL
++        # uniform-decode graphs (see v1/worker/gpu/cudagraph_utils.py) and
++        # runs on the V2 model runner, so it must not trip either gate.
+         return self.num_speculative_tokens_per_batch_size is not None
++
++    def uses_batch_size_dynamic_speculative_decoding(self) -> bool:
++        return self.num_speculative_tokens_per_batch_size is not None
++
++    def uses_acceptance_length_adaptation(self) -> bool:
++        return self.adaptive_speculative_tokens_window is not None
+ 
+     def uses_draft_model(self) -> bool:
+         return self.method == "draft_model"

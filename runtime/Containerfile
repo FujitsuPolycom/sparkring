@@ -257,6 +257,7 @@ ENV PATH=/opt/venv/bin:$PATH \
 COPY runtime/generate-manifest.py /opt/sparkring/generate-manifest.py
 COPY runtime/verify-runtime.py /opt/sparkring/verify-runtime.py
 COPY runtime/public-capability-gate.py /opt/sparkring/public-capability-gate.py
+COPY runtime/public-headless-abi-gate.py /opt/sparkring/public-headless-abi-gate.py
 COPY runtime/public-model-preflight.py /opt/sparkring/public-model-preflight.py
 COPY runtime/public-entrypoint.sh /opt/sparkring/public-entrypoint.sh
 COPY runtime/runtime-lock.json /opt/sparkring/runtime-lock.json

@@ -15,7 +15,10 @@ For every patch, in sorted order per component:
 
 Any mismatch, missing file, missing preimages.json entry, or git-apply
 failure aborts the whole build with a non-zero exit. A component directory
-with no *.patch files is a verified no-op. Stdlib only.
+may also contain an ``additions.json`` mapping source files under its
+``added/`` directory to new paths under ``--site-packages``. Additions are
+content-addressed, may not overwrite an existing file, and are installed only
+after every patch in that component succeeds. Stdlib only.
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -46,11 +50,65 @@ def fatal(msg: str) -> None:
     sys.exit(1)
 
 
+def install_additions(comp_dir: str, site_packages: str, log_fh) -> int:
+    additions_path = os.path.join(comp_dir, "additions.json")
+    if not os.path.isfile(additions_path):
+        return 0
+    with open(additions_path, "r", encoding="utf-8") as f:
+        additions = json.load(f)
+    if not isinstance(additions, dict):
+        fatal(f"{additions_path} must contain a JSON object")
+
+    installed = 0
+    site_root = os.path.realpath(site_packages)
+    for source_rel, entry in sorted(additions.items()):
+        if not isinstance(entry, dict):
+            fatal(f"additions.json entry for {source_rel!r} must be an object")
+        target_rel = entry.get("target_path")
+        expected_sha = entry.get("sha256")
+        if not isinstance(target_rel, str) or not isinstance(expected_sha, str):
+            fatal(
+                f"additions.json entry for {source_rel!r} needs "
+                "'target_path' and 'sha256'"
+            )
+        source = os.path.realpath(os.path.join(comp_dir, "added", source_rel))
+        added_root = os.path.realpath(os.path.join(comp_dir, "added"))
+        if os.path.commonpath((source, added_root)) != added_root:
+            fatal(f"addition source escapes added directory: {source_rel}")
+        if not os.path.isfile(source):
+            fatal(f"addition source missing: {source_rel}")
+        actual_sha = sha256_file(source)
+        if actual_sha != expected_sha:
+            fatal(
+                f"addition hash mismatch for {source_rel}: "
+                f"{actual_sha} != expected {expected_sha}"
+            )
+
+        target = os.path.realpath(os.path.join(site_packages, target_rel))
+        if os.path.commonpath((target, site_root)) != site_root:
+            fatal(f"addition target escapes site-packages: {target_rel}")
+        if os.path.exists(target):
+            fatal(f"addition refuses to overwrite existing path: {target_rel}")
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        shutil.copyfile(source, target)
+        record = {
+            "addition": source_rel,
+            "target": target_rel,
+            "sha256": expected_sha,
+        }
+        log_fh.write(json.dumps(record, sort_keys=True) + "\n")
+        print(f"apply-patches: added {source_rel} -> {target_rel}")
+        installed += 1
+    return installed
+
+
 def apply_component(comp_dir: str, site_packages: str, log_fh) -> int:
     patches = sorted(f for f in os.listdir(comp_dir) if f.endswith(".patch"))
     if not patches:
-        print(f"apply-patches: {comp_dir}: no patches (verified no-op)")
-        return 0
+        additions = install_additions(comp_dir, site_packages, log_fh)
+        if not additions:
+            print(f"apply-patches: {comp_dir}: no patches (verified no-op)")
+        return additions
     preimages_path = os.path.join(comp_dir, "preimages.json")
     if not os.path.isfile(preimages_path):
         fatal(f"{comp_dir} has patches but no preimages.json")
@@ -98,7 +156,7 @@ def apply_component(comp_dir: str, site_packages: str, log_fh) -> int:
         log_fh.write(json.dumps(record, sort_keys=True) + "\n")
         print(f"apply-patches: applied {patch_name} -> {target_rel}")
         applied += 1
-    return applied
+    return applied + install_additions(comp_dir, site_packages, log_fh)
 
 
 def main(argv=None) -> int:

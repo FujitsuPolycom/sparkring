@@ -5,9 +5,11 @@ Upstream inspected: `vllm-project/vllm@fcc614141e5e9ab18cb304c476f7feed2a9552e3`
 
 ## Outcome
 
-The two startup shims described by the historical artifact inventory are not
-safe to recreate as assertion guards alone. No patch was published from this
-audit.
+The historical follower shim is unnecessary when pinned vLLM is launched
+through its intended multi-node headless path.  No assertion guard is
+published.  Instead, `runtime/public-headless-abi-gate.py` attests the two
+upstream source files that define this contract and verifies the control-flow
+invariants before vLLM starts.
 
 ## Follower `collective_rpc`
 
@@ -25,18 +27,16 @@ correct follower RPC. Returning an empty result is specifically unsafe for
 callers that aggregate worker values; it previously surfaced as a downstream
 `min()` failure in the reference development history.
 
-A public fix needs an explicit executor-to-local-worker request channel (or an
-upstream-supported forwarding API), plus response ownership and timeout
-semantics. It must not inject a follower-originated request into the leader's
-world-wide scheduler broadcast stream.
+More importantly, a correctly launched follower never needs such a local RPC.
+Pinned `vllm/entrypoints/cli/serve.py::run_headless` constructs
+`MultiprocExecutor(..., monitor_workers=False)`, blocks in
+`start_worker_monitor(inline=True)`, and returns before
+`CoreEngineProcManager` can be constructed.  The leader EngineCore owns KV
+profiling and broadcasts the resulting worker calls to every rank.
 
-Required tests before a patch is admissible:
-
-1. one leader plus three headless followers, one local worker per node;
-2. follower-originated RPC returning one result per intended local worker;
-3. `unique_reply_rank`, non-blocking futures, timeout and worker-error paths;
-4. no duplicate execution on remote ranks;
-5. startup KV profiling and `initialize_from_config` complete on all ranks.
+The executable gate pins both that branch and the complementary queue
+ownership in `multiproc_executor.py`.  Source drift fails startup with exit 78
+instead of installing a compatibility guess.
 
 ## Empty KV configuration
 
@@ -51,20 +51,17 @@ capacity from the scheduler configuration. A fabricated empty
 `KVCacheConfig` could let startup continue with semantically wrong allocator
 state.
 
-This must be resolved together with the follower RPC ownership above: capture
-the real per-node `kv_cache_specs` and `available_memory` cardinalities in a
-headless four-node startup, then define which executor owns the global
-scheduler config and which followers only initialize local tensors.
+These hazards are unreachable on a correctly launched follower: only the
+leader constructs EngineCore and generates the global scheduler
+configuration. They remain useful diagnostics because encountering either one
+means the launch topology or an upstream ABI has drifted.
 
 ## Reopen condition
 
-Implement these patches only after either:
+The offline ABI contract is now closed. Live acceptance still must prove one
+leader plus three headless followers complete KV profiling,
+`initialize_from_config`, compilation, and a deterministic request.
 
-- upstream vLLM publishes a supported headless multiprocess forwarding path;
-  or
-- a model-down four-node probe captures the exact follower call sequence and a
-  local request/response channel can be tested independently.
-
-Until then the public entrypoint's capability gate and the repository status
-must continue to report startup correctness as unresolved. Do not replace the
-assertion with an empty return to make startup appear to progress.
+If that acceptance run ever reaches follower `collective_rpc`, stop and capture
+the call sequence. Do not replace the assertion with an empty return to make
+startup appear to progress.

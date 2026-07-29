@@ -1,0 +1,119 @@
+--- upstream/vllm/v1/attention/backend.py
++++ installed/vllm/v1/attention/backend.py
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ 
++import os
+ from abc import ABC, abstractmethod
+ from dataclasses import dataclass, field, replace
+ from enum import Enum
+@@ -27,6 +28,20 @@
+     from vllm.v1.kv_cache_interface import AttentionSpec, KVQuantMode
+ 
+ from vllm.v1.kv_cache_interface import get_kv_quant_mode
++
++# nvfp4_ds_mla per-token NoPE global scale (task #52 Phase-1 precision): the
++# b12x writer stores fp32 s_tok at record bytes [356, 360) and the b12x
++# readers fold it into the group-scale dequant. Same env the b12x package
++# gates its reader kernels on; per-token records and legacy records are
++# mutually unreadable, so the flag must be process-lifetime constant.
++# Mutually exclusive with VLLM_NVFP4_MLA_SCALES_FILE (enforced at MLA layer
++# init in model_executor/layers/mla.py).
++_NVFP4_MLA_PER_TOKEN_SCALE_ENV = "VLLM_NVFP4_MLA_PER_TOKEN_SCALE"
++
++
++def _nvfp4_per_token_scale_enabled() -> bool:
++    raw = os.environ.get(_NVFP4_MLA_PER_TOKEN_SCALE_ENV)
++    return raw is not None and raw.strip().lower() in {"1", "true", "on", "yes"}
+ 
+ 
+ class AttentionType(str, Enum):
+@@ -1216,6 +1231,43 @@
+     ) -> None:
+         if kv_cache.numel() == 0:
+             return
++        if kv_cache_dtype == "nvfp4_ds_mla":
++            # kingdom(nvfp4_ds_mla): the in-tree C++ concat_and_cache_mla
++            # predates the 368 B nvfp4 record (cache_kernels.cu TORCH_CHECK
++            # rejects it); write through the b12x 0.30 CuTe-DSL cache op.
++            # k_scale is unused by design: the record's group scales carry
++            # all magnitude (implicit global scale 1.0).
++            # Version-adaptive import: upstream >= fb62805 renamed the writer
++            # (compact FP8-RoPE record); b12x-hybrid keeps the old name.
++            try:
++                from b12x.attention.mla.kv_cache import (
++                    concat_and_cache_nvfp4_mla_fp8_rope as _nvfp4_mla_writer,
++                )
++            except ImportError:
++                from b12x.attention.mla.kv_cache import (
++                    concat_and_cache_nvfp4_mla as _nvfp4_mla_writer,
++                )
++
++            if _nvfp4_per_token_scale_enabled():
++                # Explicit kwarg so a writer that predates the per-token
++                # record fails LOUDLY (TypeError) instead of silently writing
++                # legacy records that the per-token readers would dequant
++                # through s_tok == 0.
++                _nvfp4_mla_writer(
++                    kv_c_normed,
++                    k_pe.squeeze(1),
++                    kv_cache.view(torch.uint8),
++                    slot_mapping.flatten(),
++                    per_token_scale=True,
++                )
++            else:
++                _nvfp4_mla_writer(
++                    kv_c_normed,
++                    k_pe.squeeze(1),
++                    kv_cache.view(torch.uint8),
++                    slot_mapping.flatten(),
++                )
++            return
+         from vllm import _custom_ops as ops
+ 
+         ops.concat_and_cache_mla(
+@@ -1296,6 +1348,43 @@
+     ) -> None:
+         if kv_cache.numel() == 0:
+             return
++        if kv_cache_dtype == "nvfp4_ds_mla":
++            # kingdom(nvfp4_ds_mla): the in-tree C++ concat_and_cache_mla
++            # predates the 368 B nvfp4 record (cache_kernels.cu TORCH_CHECK
++            # rejects it); write through the b12x 0.30 CuTe-DSL cache op.
++            # k_scale is unused by design: the record's group scales carry
++            # all magnitude (implicit global scale 1.0).
++            # Version-adaptive import: upstream >= fb62805 renamed the writer
++            # (compact FP8-RoPE record); b12x-hybrid keeps the old name.
++            try:
++                from b12x.attention.mla.kv_cache import (
++                    concat_and_cache_nvfp4_mla_fp8_rope as _nvfp4_mla_writer,
++                )
++            except ImportError:
++                from b12x.attention.mla.kv_cache import (
++                    concat_and_cache_nvfp4_mla as _nvfp4_mla_writer,
++                )
++
++            if _nvfp4_per_token_scale_enabled():
++                # Explicit kwarg so a writer that predates the per-token
++                # record fails LOUDLY (TypeError) instead of silently writing
++                # legacy records that the per-token readers would dequant
++                # through s_tok == 0.
++                _nvfp4_mla_writer(
++                    kv_c_normed,
++                    k_pe.squeeze(1),
++                    kv_cache.view(torch.uint8),
++                    slot_mapping.flatten(),
++                    per_token_scale=True,
++                )
++            else:
++                _nvfp4_mla_writer(
++                    kv_c_normed,
++                    k_pe.squeeze(1),
++                    kv_cache.view(torch.uint8),
++                    slot_mapping.flatten(),
++                )
++            return
+         from vllm import _custom_ops as ops
+ 
+         ops.concat_and_cache_mla(

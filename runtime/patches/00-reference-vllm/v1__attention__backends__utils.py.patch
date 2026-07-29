@@ -1,0 +1,33 @@
+--- upstream/vllm/v1/attention/backends/utils.py
++++ installed/vllm/v1/attention/backends/utils.py
+@@ -856,6 +856,9 @@
+     return nums_dict, batch_ptr, token_chunk_offset_ptr
+ 
+ 
++_DCP_RANK_OFFSETS_CACHE: dict = {}
++
++
+ def get_dcp_local_seq_lens(
+     seq_lens: torch.Tensor,
+     dcp_size: int = 1,
+@@ -874,9 +877,17 @@
+             .repeat(num_requests, 1)
+         )
+     else:
+-        rank_offsets = torch.tensor(
+-            [[dcp_rank]], dtype=torch.int32, device=seq_lens.device
+-        )
++        # Cache the constant [[dcp_rank]] tensor: building it fresh issues a
++        # pageable H2D copy that synchronizes with the stream every call —
++        # inside the MTP draft loop that stall destroys async run-ahead.
++        # [dsy v1.4 port]
++        cache_key = (seq_lens.device, dcp_rank)
++        rank_offsets = _DCP_RANK_OFFSETS_CACHE.get(cache_key)
++        if rank_offsets is None:
++            rank_offsets = torch.tensor(
++                [[dcp_rank]], dtype=torch.int32, device=seq_lens.device
++            )
++            _DCP_RANK_OFFSETS_CACHE[cache_key] = rank_offsets
+     seq_lens_tiled = (
+         seq_lens.to(torch.int32).unsqueeze(-1).repeat(1, rank_offsets.shape[1])
+     )

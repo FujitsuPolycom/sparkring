@@ -1,0 +1,103 @@
+--- upstream/vllm/model_executor/layers/vocab_parallel_embedding.py
++++ installed/vllm/model_executor/layers/vocab_parallel_embedding.py
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ 
++import os
+ from collections.abc import Sequence
+ from dataclasses import dataclass
+ 
+@@ -27,8 +28,11 @@
+ from vllm.model_executor.layers.utils import dispatch_unquantized_gemm
+ from vllm.model_executor.parameter import BasevLLMParameter
+ from vllm.model_executor.utils import set_weight_attrs
++from vllm.logger import init_logger
+ from vllm.model_executor.virtual_tp import get_virtual_tp_vocab_padding_size
+ from vllm.platforms import current_platform
++
++logger = init_logger(__name__)
+ 
+ DEFAULT_VOCAB_PADDING_SIZE = 64
+ 
+@@ -65,12 +69,80 @@
+ 
+             dispatch_cpu_unquantized_gemm(layer, remove_weight=False)
+ 
++        # --- fp8 lm_head overlay (07-21): env-gated W8A16 logits GEMM -------
++        # VLLM_FP8_LM_HEAD=1 quantizes the (vocab-sharded) lm_head weight to
++        # fp8-E4M3 with per-output-channel fp32 scales, ONCE at load time, and
++        # frees the bf16 copy. Applies only to ParallelLMHead (the logits
++        # GEMM); input embeddings (VocabParallelEmbedding lookups) are never
++        # touched, so a tied-embedding model would keep its bf16 lookup table.
++        # Default OFF => this method and apply() behave exactly like stock.
++        self._maybe_quantize_fp8_lm_head(layer)
++
++    @staticmethod
++    def _maybe_quantize_fp8_lm_head(layer: torch.nn.Module) -> None:
++        if os.environ.get("VLLM_FP8_LM_HEAD", "0") != "1":
++            return
++        if getattr(layer, "fp8_lm_head_active", False):
++            return  # idempotent (tie_weights / repeated processing)
++        if not isinstance(layer, ParallelLMHead):
++            return
++        weight = getattr(layer, "weight", None)
++        if weight is None or weight.dtype not in (torch.bfloat16, torch.float16):
++            return
++        if not weight.is_cuda:
++            logger.warning_once(
++                "VLLM_FP8_LM_HEAD=1 ignored: lm_head weight is not on CUDA."
++            )
++            return
++        if envs.VLLM_BATCH_INVARIANT:
++            logger.warning_once(
++                "VLLM_FP8_LM_HEAD=1 ignored: VLLM_BATCH_INVARIANT is set and "
++                "takes precedence."
++            )
++            return
++
++        from vllm.model_executor.layers.fp8_lm_head import (
++            quantize_weight_fp8_per_channel,
++            w8a16_fp8_matmul,
++        )
++
++        qweight, scale = quantize_weight_fp8_per_channel(weight.data)
++        # Free the bf16 parameter. NOTE: with the weight param gone and the
++        # fp8 tensors kept out of state_dict (persistent=False), a
++        # SAVE_SHARDED snapshot taken while VLLM_FP8_LM_HEAD=1 would be
++        # missing lm_head.weight -- do not save sharded states with the flag
++        # on.
++        del layer._parameters["weight"]
++        layer.register_buffer("fp8_weight", qweight, persistent=False)
++        layer.register_buffer("fp8_weight_scale", scale, persistent=False)
++        # Cached uint8 alias (shares storage) so the hot path does no view().
++        layer._fp8_weight_u8 = qweight.view(torch.uint8)
++        layer._fp8_matmul = w8a16_fp8_matmul
++        layer.fp8_lm_head_active = True
++        n, k = qweight.shape
++        logger.info_once(
++            "VLLM_FP8_LM_HEAD=1: lm_head quantized to fp8-E4M3 W8A16 "
++            "(shard %dx%d, per-channel scales, freed %.0f MiB bf16).",
++            n,
++            k,
++            n * k * 2 / (1 << 20),
++        )
++        # ---------------------------------------------------------------------
++
+     def apply(
+         self,
+         layer: torch.nn.Module,
+         x: torch.Tensor,
+         bias: torch.Tensor | None = None,
+     ) -> torch.Tensor:
++        # fp8 lm_head overlay: set only when VLLM_FP8_LM_HEAD=1 quantized this
++        # layer at load time; plain-attr check, capture-safe (no data-
++        # dependent branching -- resolved at Python level per launch).
++        fp8_matmul = getattr(layer, "_fp8_matmul", None)
++        if fp8_matmul is not None:
++            return fp8_matmul(
++                x, layer._fp8_weight_u8, layer.fp8_weight_scale, bias
++            )
+         if envs.VLLM_BATCH_INVARIANT and current_platform.is_cuda_alike():
+             return linear_batch_invariant(x, layer.weight, bias)
+         return dispatch_unquantized_gemm()(layer, x, layer.weight, bias)

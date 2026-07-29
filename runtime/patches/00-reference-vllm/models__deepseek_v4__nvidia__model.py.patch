@@ -1,0 +1,161 @@
+--- upstream/vllm/models/deepseek_v4/nvidia/model.py
++++ installed/vllm/models/deepseek_v4/nvidia/model.py
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++import os
+ import typing
+ from collections.abc import Callable, Iterable, MutableSequence, Sequence
+ from itertools import islice
+@@ -52,7 +53,12 @@
+     VocabParallelEmbedding,
+ )
+ from vllm.model_executor.model_loader.weight_utils import default_weight_loader
+-from vllm.model_executor.models.interfaces import MixtureOfExperts, SupportsPP
++from vllm.model_executor.models.interfaces import (
++    EagleModelMixin,
++    MixtureOfExperts,
++    SupportsEagle3,
++    SupportsPP,
++)
+ from vllm.model_executor.models.utils import (
+     AutoWeightsLoader,
+     PPMissingLayer,
+@@ -78,6 +84,7 @@
+ from vllm.v1.worker.workspace import current_workspace_manager
+ 
+ logger = init_logger(__name__)
++
+ 
+ def _get_virtual_tp_axis_padded_size(config, axis_name: str, default: int) -> int:
+     plan = getattr(config, VIRTUAL_TP_PLAN_ATTR, None)
+@@ -1482,6 +1489,12 @@
+             )
+         else:
+             self._mtp_hidden_buffer = None
++        self.aux_hidden_state_layers: tuple[int, ...] = ()
++        self.aux_hidden_state_capture_mode: str | None = None
++
++    def set_dspark_aux_hidden_state_layers(self, layers: tuple[int, ...]) -> None:
++        self.aux_hidden_state_layers = layers
++        self.aux_hidden_state_capture_mode = "dspark_post_layer_mean"
+ 
+     def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
+         return self.embed_tokens(input_ids)
+@@ -1512,7 +1525,7 @@
+         positions: torch.Tensor,
+         intermediate_tensors: IntermediateTensors | None,
+         inputs_embeds: torch.Tensor | None = None,
+-    ) -> torch.Tensor | IntermediateTensors:
++    ) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]] | IntermediateTensors:
+         if get_pp_group().is_first_rank:
+             if inputs_embeds is not None:
+                 hidden_states = inputs_embeds
+@@ -1526,8 +1539,13 @@
+         if self.use_mega_moe:
+             input_ids = input_ids.to(torch.int64)
+ 
++        aux_hidden_states: list[torch.Tensor] = []
+         residual, post_mix, res_mix = None, None, None
+-        for layer in islice(self.layers, self.start_layer, self.end_layer):
++        layer = None
++        for idx, layer in enumerate(
++            islice(self.layers, self.start_layer, self.end_layer),
++            start=self.start_layer,
++        ):
+             hidden_states, residual, post_mix, res_mix = layer(
+                 hidden_states,
+                 positions,
+@@ -1536,6 +1554,63 @@
+                 res_mix,
+                 residual,
+             )
++            if idx in self.aux_hidden_state_layers:
++                if self.aux_hidden_state_capture_mode == "dspark_post_layer_mean":
++                    if hidden_states.dim() == 3:
++                        aux_hidden_states.append(hidden_states.mean(dim=1))
++                    else:
++                        assert residual is not None
++                        assert post_mix is not None
++                        assert res_mix is not None
++                        use_dspark_reference_hc = (
++                            os.getenv("VLLM_DSPARK_REFERENCE_HC") == "1"
++                        )
++                        if use_dspark_reference_hc:
++                            tokens, hc_mult, _ = residual.shape
++                            post_ref = post_mix
++                            if post_ref.ndim == 2 and post_ref.shape == (
++                                hc_mult,
++                                tokens,
++                            ):
++                                post_ref = post_ref.t().contiguous()
++                            comb_ref = res_mix
++                            if comb_ref.ndim == 3 and comb_ref.shape == (
++                                hc_mult,
++                                hc_mult,
++                                tokens,
++                            ):
++                                comb_ref = comb_ref.permute(2, 0, 1).contiguous()
++                            use_dspark_reference_hc = post_ref.shape == (
++                                tokens,
++                                hc_mult,
++                            ) and comb_ref.shape == (tokens, hc_mult, hc_mult)
++                        if use_dspark_reference_hc:
++                            aux_hc_states = (
++                                post_ref.unsqueeze(-1) * hidden_states.unsqueeze(-2)
++                                + torch.sum(
++                                    comb_ref.unsqueeze(-1) * residual.unsqueeze(-2),
++                                    dim=2,
++                                )
++                            ).type_as(hidden_states)
++                        elif layer._should_run_b12x_mhc(int(hidden_states.shape[0])):
++                            from b12x.integration.residual import b12x_mhc_post
++
++                            aux_hc_states = b12x_mhc_post(
++                                hidden_states,
++                                residual,
++                                post_mix,
++                                res_mix,
++                            )
++                        else:
++                            aux_hc_states = mhc_post_tilelang(
++                                hidden_states,
++                                residual,
++                                post_mix,
++                                res_mix,
++                            )
++                        aux_hidden_states.append(aux_hc_states.mean(dim=1))
++                else:
++                    aux_hidden_states.append(hidden_states.flatten(1))
+         if layer is not None:
+             assert residual is not None
+             assert post_mix is not None
+@@ -1570,6 +1645,8 @@
+             self.hc_eps,
+         )
+         hidden_states = self.norm(hidden_states)
++        if aux_hidden_states:
++            return hidden_states, aux_hidden_states
+         return hidden_states
+ 
+     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
+@@ -1805,7 +1882,9 @@
+             moe.experts.update_expert_map()
+ 
+ 
+-class DeepseekV4ForCausalLM(nn.Module, SupportsPP, DeepseekV4MixtureOfExperts):
++class DeepseekV4ForCausalLM(
++    nn.Module, SupportsPP, SupportsEagle3, DeepseekV4MixtureOfExperts
++):
+     model_cls = DeepseekV4Model
+ 
+     # Default mapper assumes the original FP4-expert checkpoint layout.
+@@ -1877,7 +1956,7 @@
+         positions: torch.Tensor,
+         intermediate_tensors: IntermediateTensors | None = None,
+         inputs_embeds: torch.Tensor | None = None,
+-    ) -> torch.Tensor | IntermediateTensors:
++    ) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]] | IntermediateTensors:
+         hidden_states = self.model(
+             input_ids, positions, intermediate_tensors, inputs_embeds
+         )

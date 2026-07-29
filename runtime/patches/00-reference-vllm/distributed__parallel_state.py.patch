@@ -1,0 +1,90 @@
+--- upstream/vllm/distributed/parallel_state.py
++++ installed/vllm/distributed/parallel_state.py
+@@ -25,7 +25,9 @@
+ 
+ import contextlib
+ import gc
++import os
+ import pickle
++import threading
+ import weakref
+ from collections import namedtuple
+ from collections.abc import Callable
+@@ -1407,6 +1409,13 @@
+     return _PCP
+ 
+ 
++_SPARK_SHARED_CAPTURE_STREAMS: dict[
++    tuple[int, int], torch.cuda.Stream
++] = {}
++_SPARK_ACTIVE_CAPTURE_STREAMS: set[tuple[int, int]] = set()
++_SPARK_CAPTURE_STREAM_LOCK = threading.Lock()
++
++
+ @contextmanager
+ def graph_capture(device: torch.device):
+     """
+@@ -1414,17 +1423,53 @@
+     is capturing the CUDA graph. Its main purpose is to ensure that some
+     operations will be run after the graph is captured, before the graph
+     is replayed. It returns a `GraphCaptureContext` object which contains the
+-    necessary data for the graph capture. Currently, it only contains the
+-    stream that the graph capture is running on. This stream is set to the
+-    current CUDA stream when the context manager is entered and reset to the
+-    default stream when the context manager is exited. This is to ensure that
+-    the graph capture is running on a separate stream from the default stream,
+-    in order to explicitly distinguish the kernels to capture
+-    from other kernels possibly launched on background in the default stream.
++    necessary data for the graph capture.
++
++    SPARK: graph-native TP4 owns one ordered staging-buffer/session domain.
++    When explicitly enabled, retain one strong-reference capture stream per
++    process/device and reject overlapping capture on that stream.
+     """
+-    context = GraphCaptureContext(torch.cuda.Stream(device=device))
+-    with get_tp_group().graph_capture(context), get_pp_group().graph_capture(context):
+-        yield context
++    shared = os.getenv("VLLM_SPARK_SHARED_CAPTURE_STREAM", "0") == "1"
++    canonical_device = torch.device(device)
++    device_index = canonical_device.index
++    if device_index is None:
++        device_index = torch.cuda.current_device()
++    key = (os.getpid(), int(device_index))
++    if shared:
++        with _SPARK_CAPTURE_STREAM_LOCK:
++            if key in _SPARK_ACTIVE_CAPTURE_STREAMS:
++                raise RuntimeError(
++                    "overlapping Spark shared CUDA graph capture is unsupported"
++                )
++            _SPARK_ACTIVE_CAPTURE_STREAMS.add(key)
++            try:
++                stream = _SPARK_SHARED_CAPTURE_STREAMS.get(key)
++                if stream is None:
++                    stream = torch.cuda.Stream(device=canonical_device)
++                    _SPARK_SHARED_CAPTURE_STREAMS[key] = stream
++            except BaseException:
++                _SPARK_ACTIVE_CAPTURE_STREAMS.discard(key)
++                raise
++    else:
++        stream = torch.cuda.Stream(device=canonical_device)
++
++    try:
++        context = GraphCaptureContext(stream)
++        maybe_dcp_capture = (
++            get_dcp_group().graph_capture(context)
++            if _DCP is not None and get_dcp_group().world_size > 1
++            else nullcontext()
++        )
++        with (
++            get_tp_group().graph_capture(context),
++            get_pp_group().graph_capture(context),
++            maybe_dcp_capture,
++        ):
++            yield context
++    finally:
++        if shared:
++            with _SPARK_CAPTURE_STREAM_LOCK:
++                _SPARK_ACTIVE_CAPTURE_STREAMS.discard(key)
+ 
+ 
+ logger = init_logger(__name__)

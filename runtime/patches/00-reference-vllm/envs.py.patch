@@ -1,0 +1,15 @@
+--- upstream/vllm/envs.py
++++ installed/vllm/envs.py
+@@ -1029,6 +1029,12 @@
+     # Use b12x for FP4 MoE experts.
+     # This is opt-in while the b12x subsystems are brought over one at a time.
+     "VLLM_USE_B12X_MOE": lambda: bool(int(os.getenv("VLLM_USE_B12X_MOE", "0"))),
++    # --- davidsyoung nvfp4/DCP overlay env vars (added for head66 graft) ---
++    "VLLM_USE_B12X_DCP_A2A": lambda: bool(int(os.getenv("VLLM_USE_B12X_DCP_A2A", "0"))),
++    "VLLM_DCP_A2A_MAX_TOKENS": lambda: int(os.getenv("VLLM_DCP_A2A_MAX_TOKENS", "0")),
++    "VLLM_DCP_A2A_LARGE_BACKEND": lambda: os.getenv("VLLM_DCP_A2A_LARGE_BACKEND", "ag_rs"),
++    "VLLM_DCP_PROJECT_BEFORE_MERGE": lambda: bool(int(os.getenv("VLLM_DCP_PROJECT_BEFORE_MERGE", "1"))),
++    "VLLM_DCP_PROJECT_BEFORE_MERGE_MIN_PREFILL_TOKENS": lambda: int(os.getenv("VLLM_DCP_PROJECT_BEFORE_MERGE_MIN_PREFILL_TOKENS", "1024")),
+     # Use b12x for MiniMax M3's block-sparse MSA attention.
+     # This is opt-in while page-128 MSA support is integrated.
+     "VLLM_USE_B12X_MINIMAX_M3_MSA": lambda: bool(

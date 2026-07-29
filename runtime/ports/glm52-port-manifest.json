@@ -1,0 +1,198 @@
+{
+  "schema": "sparkring-glm52-port-manifest/v1",
+  "audited_against": {
+    "vllm_repository": "https://github.com/vllm-project/vllm",
+    "vllm_commit": "fcc614141e5e9ab18cb304c476f7feed2a9552e3",
+    "reference_runtime_version": "0.11.2.dev279+eldritch.final.fcc6141.b12x284a2ea.fi25dd814.cu132.20260626"
+  },
+  "sources": {
+    "cosmic_glm52": {
+      "repository": "https://github.com/CosmicRaisins/glm-5.2-gb10",
+      "commit": "600848707ce93fe42fedbc9dd4429116696e425d",
+      "license": "Apache-2.0",
+      "license_evidence": "LICENSE",
+      "status": "public-pinned"
+    },
+    "davidsyoung_glm52": {
+      "repository": "https://github.com/davidsyoung/vllm-glm52",
+      "commit": "cfe43b0348f405739728f98faf3115a82b16d6b7",
+      "license": "Apache-2.0-lineage",
+      "license_evidence": "README.md Build and source lineage plus SPDX headers in copied vLLM files; no root LICENSE was present at the audited commit",
+      "status": "public-pinned-license-note"
+    },
+    "sparkinfer": {
+      "repository": "https://github.com/local-inference-lab/sparkinfer",
+      "commit": "284a2eae83754ee1abd31c37b9ca66b68e20b8a8",
+      "license": "not-declared-at-root",
+      "license_evidence": "No root LICENSE was present at the audited commit; retain per-file notices and seek clarification",
+      "status": "public-pinned-license-note"
+    }
+  },
+  "capabilities": [
+    {
+      "id": "sm121-sparse-mla",
+      "priority": 1,
+      "status": "source-located-port-required",
+      "public_sources": [
+        {
+          "source": "cosmic_glm52",
+          "path": "kernels/sm12x_sparse_mla_attn.py",
+          "sha256": "afc9bd0d639badc9e980f33a9460c13cc69b6a04675ea0abcd74158e14416d57",
+          "relationship": "public SM12x implementation to port, not a byte-identical reference-runtime file"
+        },
+        {
+          "source": "cosmic_glm52",
+          "path": "kernels/sparse_mla_kernels.py",
+          "sha256": "9c62db44468c6a01c5789417e534c676cd73074861cfe0f311b817ff09a38c71",
+          "relationship": "public integration helper to port"
+        },
+        {
+          "source": "davidsyoung_glm52",
+          "path": "overlays/vllm/v1/attention/backends/mla/b12x_mla_sparse.py",
+          "sha256": "7148f3f8d6a25e8409f199863ce5dbf7c296e861c5762a6b667cd8393ef0e8b0",
+          "relationship": "closest public B12X backend ancestry"
+        }
+      ],
+      "reference_delta_targets": [
+        "vllm/v1/attention/backends/mla/b12x_mla_sparse.py",
+        "vllm/v1/attention/backend.py",
+        "vllm/v1/attention/backends/registry.py",
+        "vllm/model_executor/layers/sparse_attn_indexer.py",
+        "vllm/model_executor/layers/attention/mla_attention.py",
+        "vllm/model_executor/layers/mla.py",
+        "vllm/v1/attention/ops/dcp_alltoall.py"
+      ],
+      "acceptance": [
+        "B12X_MLA_SPARSE registers on SM121",
+        "eager prefill and decode pass at Q1 before CUDA graph capture",
+        "DCP1 and DCP4 produce byte-identical top-k indices and bounded BF16 output error against the reference lane"
+      ]
+    },
+    {
+      "id": "packed-low-bit-mla-kv",
+      "priority": 2,
+      "status": "captured-delta-port-required",
+      "public_sources": [
+        {
+          "source": "davidsyoung_glm52",
+          "path": "overlays/vllm/model_executor/layers/attention/mla_attention.py",
+          "sha256": "66c5b729b78af7e33c8058a2b0d81a5e84e94420341930c7d9c9cc6f9f1eae11",
+          "relationship": "public partial ancestry; captured reference delta adds later packed-record work"
+        },
+        {
+          "source": "davidsyoung_glm52",
+          "path": "overlays/vllm/v1/attention/ops/common.py",
+          "sha256": "5918083e881753ac7a4f1f7851a45c326d8b1ef457514e4b71eb026b570ae30f",
+          "relationship": "public DCP combine ancestry; not the complete KV dtype implementation"
+        }
+      ],
+      "reference_delta_targets": [
+        "vllm/config/cache.py",
+        "vllm/utils/torch_utils.py",
+        "vllm/v1/kv_cache_interface.py",
+        "vllm/model_executor/layers/mla.py",
+        "vllm/model_executor/layers/attention/mla_attention.py",
+        "vllm/v1/attention/backends/mla/b12x_mla_sparse.py",
+        "vllm/envs.py"
+      ],
+      "required_abi": [
+        "nvfp4_ds_mla cache dtype",
+        "nf3_ds_mla and nf3bf16_ds_mla compatibility identifiers",
+        "uint8 packed storage",
+        "per-token scale selected by VLLM_NVFP4_MLA_PER_TOKEN_SCALE=1",
+        "outer-scale calibration propagated per layer"
+      ],
+      "acceptance": [
+        "cache allocation byte count matches the reference record layout",
+        "pack/unpack vectors match a float32 oracle",
+        "393K-context restore and live decode preserve scale metadata",
+        "DCP4 owner and gathered rows decode identically"
+      ]
+    },
+    {
+      "id": "hybrid-mxfp4-checkpoint",
+      "priority": 3,
+      "status": "captured-small-apache2-port",
+      "public_sources": [
+        {
+          "source": "davidsyoung_glm52",
+          "path": "overlays/hybrid_loader.py",
+          "sha256": "02640f92ce620143a58923d8e86261cbc87de258bada215ba56fcc68a5f2aa37",
+          "relationship": "related public hybrid-loader design, not the reference hybrid_mxfp4_ct implementation"
+        }
+      ],
+      "reference_delta_targets": [
+        "vllm/model_executor/layers/quantization/hybrid_mxfp4_ct.py",
+        "vllm/model_executor/layers/quantization/__init__.py",
+        "vllm/model_executor/model_loader/base_loader.py",
+        "vllm/model_executor/model_loader/weight_utils.py"
+      ],
+      "required_abi": [
+        "quant_method=hybrid_mxfp4_ct",
+        "Mxfp4Config for RoutedExperts",
+        "CompressedTensorsConfig for all non-routed-expert layers",
+        "model index remains authoritative when loading stitched shards"
+      ],
+      "acceptance": [
+        "all checkpoint tensors are consumed exactly once",
+        "routed experts select the MXFP4 method and other layers select compressed-tensors",
+        "four ranks load without a missing or unexpected tensor"
+      ]
+    },
+    {
+      "id": "adaptive-mtp",
+      "priority": 4,
+      "status": "public-source-available-plus-sparkring-control-surface",
+      "public_sources": [
+        {
+          "source": "cosmic_glm52",
+          "path": "adaptive-mtp/overlay/vllm/v1/spec_decode/dynamic/acceptance_length.py",
+          "sha256": "bb44c6536d43605a16ceaa1276412f7222ce46b4fd5ae9c3ac915ee9798029e1",
+          "relationship": "public controller implementation"
+        },
+        {
+          "source": "cosmic_glm52",
+          "path": "patches/adaptive-mtp-vllm-hooks.patch",
+          "sha256": "26c87262d54d0b535e16880e2ef3a5937afa7949036774a54d5440c3e80d2bfc",
+          "relationship": "public hooks pinned to a different vLLM preimage; rebase required"
+        }
+      ],
+      "reference_delta_targets": [
+        "vllm/v1/spec_decode/dynamic/acceptance_length.py",
+        "vllm/config/speculative.py",
+        "vllm/v1/core/sched/scheduler.py",
+        "vllm/v1/worker/gpu/model_runner.py",
+        "vllm/v1/worker/gpu/cudagraph_utils.py"
+      ],
+      "already_public_in_sparkring": [
+        "spark_transport/experiments/adaptive_mtp_controller",
+        "spark_transport/integrations/vllm/sitecustomize.py",
+        "spark_transport/integrations/vllm/spark_decode_payload_contract.py"
+      ],
+      "acceptance": [
+        "fixed K2 and K4 work independently",
+        "adaptive depths 2,4 and window 32 are reported by the runtime",
+        "controller reset is request-scoped and cannot poison the next prompt",
+        "captured query widths cover concurrency 1 through 8 without stock fallback"
+      ]
+    }
+  ],
+  "excluded_from_fast_port": [
+    {
+      "area": "DFlash and Qwen draft architectures",
+      "reason": "Not needed by the pinned GLM-5.2 MTP-draft checkpoint"
+    },
+    {
+      "area": "pipeline-parallel speculative-decode fixes",
+      "reason": "The public acceptance matrix is TP4, not PP"
+    },
+    {
+      "area": "InstantTensor loader modifications",
+      "reason": "The first accepted public lane uses sharded safetensors"
+    },
+    {
+      "area": "FP8 lm_head",
+      "reason": "Optional optimization, not required for functional parity"
+    }
+  ]
+}

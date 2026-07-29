@@ -1,0 +1,16 @@
+--- upstream/vllm/models/deepseek_v4/nvidia/flashinfer_sparse.py
++++ installed/vllm/models/deepseek_v4/nvidia/flashinfer_sparse.py
+@@ -745,6 +745,13 @@
+         extra_cache = self._as_sparse_cache(kv_cache) if kv_cache is not None else None
+         if extra_cache is not None and extra_sparse_indices is None:
+             raise RuntimeError(
++                f"[dspark-debug] layer={getattr(self, 'prefix', '?')} "
++                f"compress_ratio={self.compress_ratio} swa_only={swa_only} "
++                f"num_decodes={num_decodes} num_decode_tokens={num_decode_tokens} "
++                f"attn_metadata={type(attn_metadata).__name__ if attn_metadata is not None else None} "
++                f"c128a_g={getattr(attn_metadata, 'c128a_global_decode_topk_indices', 'MISSING') is not None} "
++                f"c128a_l={getattr(attn_metadata, 'c128a_decode_topk_lens', 'MISSING') is not None} "
++                f"topk_buf={self.topk_indices_buffer is not None} "
+                 "Compressed sparse MLA decode requires compressed sparse indices."
+             )
+         flashinfer_trtllm_batch_decode_sparse_mla_dsv4(

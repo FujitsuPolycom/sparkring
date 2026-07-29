@@ -200,6 +200,7 @@ expected_public_runtime = {
         "runtime/public-overlay-files.json",
         "runtime/build-public-overlay.py",
         "runtime/public-capability-gate.py",
+        "runtime/public-headless-abi-gate.py",
         "runtime/public-entrypoint.sh",
         "runtime/public-model-preflight.py",
         "runtime/verify-runtime.py",
@@ -241,22 +242,42 @@ if set(locked_nccl) != expected_nccl:
     )
 
 # Match apply-patches.py exactly: direct *.patch files in each direct component
-# directory, plus the preimages.json required whenever that component has a
-# patch. This rejects an unlocked patch dropped into the build context and a
-# locked-but-unused overlay entry with equal force.
+# directory, preimages.json, and every content-addressed addition declared by
+# additions.json. Provenance is also locked so the published attribution
+# record cannot drift independently from the recovered payload.
 patches_root = repo_root / "runtime" / "patches"
 if not patches_root.is_dir():
     fatal(f"patches root missing: {patches_root}")
 actual_inputs = set()
 for component in sorted(p for p in patches_root.iterdir() if p.is_dir()):
     patches = sorted(component.glob("*.patch"))
-    if not patches:
-        continue
-    actual_inputs.update(path.resolve() for path in patches)
-    preimages = component / "preimages.json"
-    if not preimages.is_file():
-        fatal(f"{component.relative_to(repo_root)} has patches but no preimages.json")
-    actual_inputs.add(preimages.resolve())
+    if patches:
+        actual_inputs.update(path.resolve() for path in patches)
+        preimages = component / "preimages.json"
+        if not preimages.is_file():
+            fatal(f"{component.relative_to(repo_root)} has patches but no preimages.json")
+        actual_inputs.add(preimages.resolve())
+    additions = component / "additions.json"
+    if additions.is_file():
+        actual_inputs.add(additions.resolve())
+        try:
+            additions_data = json.loads(additions.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            fatal(f"invalid {additions.relative_to(repo_root)}: {exc}")
+        if not isinstance(additions_data, dict):
+            fatal(f"{additions.relative_to(repo_root)} must contain an object")
+        for source_rel in additions_data:
+            source = (component / "added" / source_rel).resolve()
+            try:
+                source.relative_to((component / "added").resolve())
+            except ValueError:
+                fatal(f"addition source escapes component: {source_rel}")
+            if not source.is_file():
+                fatal(f"addition source missing: {source.relative_to(repo_root)}")
+            actual_inputs.add(source)
+    provenance = component / "provenance.json"
+    if provenance.is_file():
+        actual_inputs.add(provenance.resolve())
 
 locked_inputs = set(locked_overlays)
 if actual_inputs != locked_inputs:

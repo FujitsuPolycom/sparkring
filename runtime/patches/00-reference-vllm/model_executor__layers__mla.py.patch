@@ -1,0 +1,428 @@
+--- upstream/vllm/model_executor/layers/mla.py
++++ installed/vllm/model_executor/layers/mla.py
+@@ -1,6 +1,11 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++import json
++import math
++import os
++import re
+ from dataclasses import dataclass
++from functools import cache
+ 
+ import torch
+ 
+@@ -8,6 +13,149 @@
+ from vllm.model_executor.custom_op import PluggableLayer
+ from vllm.model_executor.layers.attention import MLAAttention
+ from vllm.model_executor.layers.quantization import QuantizationConfig
++
++# ── NVFP4 MLA per-layer outer-scale calibration (koush 4959a3f half (a),
++# WRAPPER-SYMMETRIC variant) ────────────────────────────────────────────────
++#
++# The b12x-hybrid nvfp4_ds_mla record is SELF-DESCRIBING: the writer
++# (b12x-hybrid attention/mla/kv_cache.py) quantizes each group of 16 latent
++# dims with scale byte = e4m3(group_amax / 6) at an implicit global scale of
++# 1.0, and the readers (decode_math s1/s6 via _nvfp4_pair_bfloat2) dequantize
++# fp4 * e4m3-group-scale with NO outer scale.  Feeding the writer x/s_l
++# therefore makes every reader hand attention x/s_l — koush's tree restored
++# s_l inside the CuTe kernels (companion PR to lukealonso/b12x, `latent_scale`
++# runtime scalar); our kernels have no such parameter.
++#
++# Instead we compensate ALGEBRAICALLY at this wrapper, which needs no kernel
++# or backend change and is exact by bilinearity:
++#
++#   cache/latent side:  kv_cache <- x / s_l          (both K-nope and V lanes)
++#   query side:         q_nope   <- q_nope * s_l
++#   output side:        attn_out <- attn_out * s_l
++#
++#   logits = (s_l * q_nope) @ W_UK @ (x / s_l) + q_pe @ k_pe   = exact
++#   output = s_l * [ softmax(exact logits) @ W_UV @ (x / s_l) ] = exact
++#
++# Every latent consumer inside mla_attn is covered: the paged-cache writer
++# (do_kv_cache_update + the VLLM_B12X_KV_STREAM variant), the DCP CKV-gather
++# current-chunk append (set_ckv_current_chunk_kv receives this same tensor;
++# gathered history moves as raw 368 B records, byte-level), and the decode
++# quota path all see the SAME uniformly scaled tensor; q_nope reaches logits
++# only through the linear W_UK_T bmm; attn_out passes only through
++# scalar-exact LSE merges (incl. the sigmoid(lse - sink) fold) and the linear
++# W_UV projection before returning here.  The RoPE lane (k_pe / q_pe) is a
++# disjoint tensor and stays bit-for-bit untouched.
++#
++# The quality win: with the implicit global scale fixed at 1.0, layers whose
++# latent groups have small amax push the e4m3 scale byte into its subnormal
++# floor (poor relative precision; below ~2^-10 the byte rounds to zero and the
++# writer zeroes the whole group).  Dividing by the calibrated
++# s_l ~ amax_layer/(6*448) repositions group scales near the top of the e4m3
++# range.  KV records written under a given s_l are only ever read under the
++# same s_l (loaded once at init, constant for the process lifetime).
++#
++# DO NOT combine this wrapper-symmetric scheme with a koush-style kernel-side
++# latent_scale restore: the two would double-apply s_l.
++#
++# Gate: VLLM_NVFP4_MLA_SCALES_FILE (unset -> scale 1.0 -> all three branches
++# below are constant-false under Dynamo -> byte-identical behavior).
++_NVFP4_MLA_SCALES_ENV = "VLLM_NVFP4_MLA_SCALES_FILE"
++_NVFP4_MLA_SCALES_FORMAT = "nvfp4_ds_mla_outer_scale_v1"
++_NVFP4_MLA_NUM_LAYERS = 78
++_NVFP4_MLA_LATENT_DIM = 512
++_NVFP4_MLA_SCALE_DENOMINATOR = 6.0 * 448.0
++_NVFP4_MLA_LAYER_RE = re.compile(r"(?:^|\.)layers\.(\d+)(?:\.|$)")
++
++# Calibration CAPTURE (Part A of the same feature): when
++# VLLM_NVFP4_MLA_CALIB_DIR is set, each MLA layer dumps row-subsampled copies
++# of its PRISTINE compressed latent (kv_c_normed, the exact writer input) for
++# the offline scale fit (glm-dcp2/tools/nvfp4-mla-calibrate.py).  Calibration
++# runs must be eager (use the -eager launcher) and must NOT set the scales
++# file (enforced below).  Unset -> zero code on the forward path.
++_NVFP4_MLA_CALIB_DIR_ENV = "VLLM_NVFP4_MLA_CALIB_DIR"
++_NVFP4_MLA_CALIB_DIR = os.getenv(_NVFP4_MLA_CALIB_DIR_ENV, "").strip()
++
++# Per-token NoPE global scale (task #52 Phase-1 precision): the b12x writer
++# stores fp32 s_tok = max(token_amax/2688, 1e-12) at record bytes [356, 360)
++# and the b12x readers fold it into the group-scale dequant — the principled,
++# self-describing replacement for this wrapper's STATIC per-layer outer-scale
++# scheme. The two are MUTUALLY EXCLUSIVE: combining them would double-apply a
++# latent rescale (the static path pre-divides the latent AND compensates on
++# the q/output side, while the per-token records already carry their own
++# magnitude). Enforced below at layer init.
++_NVFP4_MLA_PER_TOKEN_SCALE_ENV = "VLLM_NVFP4_MLA_PER_TOKEN_SCALE"
++
++
++def _nvfp4_per_token_scale_enabled() -> bool:
++    raw = os.getenv(_NVFP4_MLA_PER_TOKEN_SCALE_ENV)
++    return raw is not None and raw.strip().lower() in {"1", "true", "on", "yes"}
++
++try:
++    _dynamo_disable = torch.compiler.disable
++except AttributeError:  # pragma: no cover - older torch
++
++    def _dynamo_disable(fn):
++        return fn
++
++
++@cache
++def _load_nvfp4_mla_outer_scales(path: str) -> tuple[float, ...]:
++    """Load and validate the calibrated, zero-based per-layer outer scales.
++
++    Schema (koush 4959a3f-compatible; extra keys are ignored):
++      {"format": "nvfp4_ds_mla_outer_scale_v1", "num_layers": 78,
++       "latent_dim": 512, "denominator": 2688.0, "scales": [78 floats]}
++    """
++    with open(path, encoding="utf-8") as handle:
++        payload = json.load(handle)
++    if not isinstance(payload, dict):
++        raise ValueError(f"{_NVFP4_MLA_SCALES_ENV} must contain a JSON object")
++    if payload.get("format") != _NVFP4_MLA_SCALES_FORMAT:
++        raise ValueError(
++            f"{_NVFP4_MLA_SCALES_ENV} has unsupported format "
++            f"{payload.get('format')!r}"
++        )
++    if type(payload.get("num_layers")) is not int or (
++        payload["num_layers"] != _NVFP4_MLA_NUM_LAYERS
++    ):
++        raise ValueError(
++            f"{_NVFP4_MLA_SCALES_ENV} must declare "
++            f"num_layers={_NVFP4_MLA_NUM_LAYERS}"
++        )
++    if type(payload.get("latent_dim")) is not int or (
++        payload["latent_dim"] != _NVFP4_MLA_LATENT_DIM
++    ):
++        raise ValueError(
++            f"{_NVFP4_MLA_SCALES_ENV} must declare "
++            f"latent_dim={_NVFP4_MLA_LATENT_DIM}"
++        )
++    denominator = payload.get("denominator")
++    if isinstance(denominator, bool) or not isinstance(
++        denominator, (int, float)
++    ) or not math.isclose(
++        float(denominator), _NVFP4_MLA_SCALE_DENOMINATOR, rel_tol=0.0, abs_tol=0.0
++    ):
++        raise ValueError(
++            f"{_NVFP4_MLA_SCALES_ENV} must declare "
++            f"denominator={_NVFP4_MLA_SCALE_DENOMINATOR}"
++        )
++    raw_scales = payload.get("scales")
++    if not isinstance(raw_scales, list):
++        raise ValueError(f"{_NVFP4_MLA_SCALES_ENV} must contain a scales list")
++    if any(
++        isinstance(value, bool) or not isinstance(value, (int, float))
++        for value in raw_scales
++    ):
++        raise ValueError(f"{_NVFP4_MLA_SCALES_ENV} scales must be JSON numbers")
++    scales = tuple(float(value) for value in raw_scales)
++    if len(scales) != _NVFP4_MLA_NUM_LAYERS or any(
++        not math.isfinite(value) or value <= 0.0 for value in scales
++    ):
++        raise ValueError(
++            f"{_NVFP4_MLA_SCALES_ENV} must contain exactly "
++            f"{_NVFP4_MLA_NUM_LAYERS} finite positive scales"
++        )
++    return scales
+ 
+ 
+ @dataclass
+@@ -88,6 +236,16 @@
+         self.indexer_rope_emb = mla_modules.indexer_rotary_emb
+         self.is_sparse = mla_modules.is_sparse
+ 
++        # VLLM_B12X_INDEXER_STREAM: issue the indexer custom op BEFORE
++        # q_b_proj so the op body (which hops to a dedicated CUDA stream for
++        # eager prefill) overlaps the q_b_proj GEMM + rope on the main
++        # stream. This is a pure custom-op reorder in forward() — no stream
++        # code in this file — so it stays fullgraph-safe. Read once at init:
++        # Dynamo guards on a constant bool. Default off -> pristine order.
++        self._indexer_before_q = os.getenv(
++            "VLLM_B12X_INDEXER_STREAM", ""
++        ).strip().lower() not in ("", "0", "false", "no", "off")
++
+         # Whether to skip top-k token selection computation in this layer.
+         # When True, the indexer will not be called, and the layer will reuse
+         # the topk_tokens buffer written by a previous layer in the same pass.
+@@ -115,7 +273,150 @@
+             topk_indices_buffer=mla_modules.topk_indices_buffer,
+         )
+ 
++        # NVFP4 MLA outer-scale calibration (see module header).  Loaded once
++        # at init; a host python float so Dynamo specializes it as a constant
++        # (default 1.0 -> the three forward() branches are dead code and the
++        # compiled graph is identical to the pristine one).
++        self._nvfp4_mla_outer_scale = 1.0
++        scale_file = os.getenv(_NVFP4_MLA_SCALES_ENV, "").strip()
++        if scale_file and _NVFP4_MLA_CALIB_DIR:
++            raise ValueError(
++                f"{_NVFP4_MLA_SCALES_ENV} and {_NVFP4_MLA_CALIB_DIR_ENV} are "
++                "mutually exclusive: calibration capture must record the "
++                "PRISTINE latent, not a rescaled one"
++            )
++        if scale_file and _nvfp4_per_token_scale_enabled():
++            # Per-token mode leaves the outer scale at 1.0: no kv_a_layernorm
++            # gamma fold, no q_nope pre-multiply, no attn_out post-multiply —
++            # the record's own s_tok carries all magnitude. Running both would
++            # double-apply a latent rescale.
++            raise ValueError(
++                f"{_NVFP4_MLA_SCALES_ENV} and {_NVFP4_MLA_PER_TOKEN_SCALE_ENV} "
++                "are mutually exclusive: the per-token NoPE global scale "
++                "replaces the static per-layer outer-scale scheme"
++            )
++        if scale_file and (
++            self.mla_attn.kv_cache_dtype == "nvfp4_ds_mla"
++            and self.mla_attn.attn_backend.get_name() == "B12X_MLA_SPARSE"
++        ):
++            match = _NVFP4_MLA_LAYER_RE.search(prefix)
++            if match is None:
++                raise ValueError(
++                    f"Cannot derive decoder layer index from MLA prefix {prefix!r}"
++                )
++            layer_idx = int(match.group(1))
++            # Layers 0..77 are the calibrated main decoder stack.  Higher
++            # indices (the MTP / draft layer 78 under speculative decode) are
++            # NOT in the calibration set and keep s_l=1.0 (identity, i.e.
++            # exactly today's behavior for that layer) rather than raising.
++            if 0 <= layer_idx < _NVFP4_MLA_NUM_LAYERS:
++                self._nvfp4_mla_outer_scale = _load_nvfp4_mla_outer_scales(
++                    scale_file
++                )[layer_idx]
++
++        # Calibration capture state (None unless VLLM_NVFP4_MLA_CALIB_DIR is
++        # set, so the forward() check is a constant-None attribute guard).
++        self._nvfp4_calib = None
++        if _NVFP4_MLA_CALIB_DIR:
++            calib_match = _NVFP4_MLA_LAYER_RE.search(prefix)
++            if calib_match is not None:
++                self._nvfp4_calib = {
++                    "dir": _NVFP4_MLA_CALIB_DIR,
++                    "layer": int(calib_match.group(1)),
++                    "calls": 0,
++                    "saved": 0,
++                    "stride": max(
++                        1, int(os.getenv("VLLM_NVFP4_MLA_CALIB_STRIDE", "4"))
++                    ),
++                    "max_rows": max(
++                        1,
++                        int(os.getenv("VLLM_NVFP4_MLA_CALIB_MAX_ROWS", "1024")),
++                    ),
++                    "max_files": max(
++                        1,
++                        int(os.getenv("VLLM_NVFP4_MLA_CALIB_MAX_FILES", "32")),
++                    ),
++                }
++
+         self.prefix = prefix
++
++        # Hybrid weight-fold (07-19): the latent /s_l compensation folds into the
++        # UNQUANTIZED bf16 kv_a_layernorm gamma at load time (kv_c_normed feeds
++        # only the cache latent, so this is exact and zero runtime cost). Applied
++        # in mla_attn.process_weights_after_loading, which runs in the loader's
++        # SECOND pass -- after o_proj's fp8 weight_scale post-processing -- so
++        # nothing clobbers it. The q_nope*s_l stays a runtime op (q_b_proj fp8
++        # blocks straddle the 192-nope/64-rope split, so it can't fold cleanly)
++        # and attn_out*s_l becomes an in-place mul (zero-alloc). See OPT-LOG.
++        if self._nvfp4_mla_outer_scale != 1.0:
++            self.mla_attn._nvfp4_fold_kv_a_layernorm = self.kv_a_layernorm
++            self.mla_attn._nvfp4_fold_scale = self._nvfp4_mla_outer_scale
++            # q_nope*s_l as a ZERO-ALLOC in-place op: a per-dim scale vector
++            # ([s_l]*nope + [1]*rope, shape [qk_head_dim]) broadcast-multiplied
++            # into q in place. Replaces the torch.cat (which allocated a full q
++            # per forward -> ~q-sized GPU/host transient on long-ctx prefill that
++            # OOM'd n4 host + head GPU under load, 07-19). register_buffer so it
++            # rides to the GPU with the module; persistent=False (not a weight).
++            sv = torch.ones(self.qk_head_dim, dtype=torch.bfloat16)
++            sv[: self.qk_nope_head_dim] = self._nvfp4_mla_outer_scale
++            self.register_buffer("_nvfp4_q_scale_vec", sv, persistent=False)
++
++    @_dynamo_disable
++    def _nvfp4_calib_save(self, kv_c_normed: torch.Tensor) -> None:
++        """Dump a row-subsampled copy of the pristine latent for offline
++        calibration (eager-only runs; never on the production path)."""
++        state = self._nvfp4_calib
++        if state is None:
++            return
++        state["calls"] += 1
++        if state["saved"] >= state["max_files"]:
++            return
++        if (state["calls"] - 1) % state["stride"] != 0:
++            return
++        try:
++            rows = kv_c_normed[: state["max_rows"]].detach().to(
++                "cpu", copy=True
++            )
++            layer_dir = os.path.join(
++                state["dir"], f"layer{state['layer']:02d}"
++            )
++            os.makedirs(layer_dir, exist_ok=True)
++            file_name = os.path.join(
++                layer_dir, f"pid{os.getpid()}_{state['saved']:04d}.pt"
++            )
++            torch.save({"layer": state["layer"], "rows": rows}, file_name)
++            state["saved"] += 1
++        except Exception:
++            # Capture must never take down serving; disable on first failure.
++            self._nvfp4_calib = None
++
++    @_dynamo_disable
++    def _nvfp4_calib_save_rope(self, k_pe: torch.Tensor) -> None:
++        """Dump post-rotation RoPE key rows for an offline rope-precision A/B
++        (E4M3 vs E2M1). Eager-only; shares the latent capture's cadence."""
++        state = self._nvfp4_calib
++        if state is None:
++            return
++        saved = state.get("saved_rope", 0)
++        if saved >= state["max_files"]:
++            return
++        if (state["calls"] - 1) % state["stride"] != 0:
++            return
++        try:
++            rope = (
++                k_pe.reshape(-1, k_pe.shape[-1])[: state["max_rows"]]
++                .detach()
++                .to("cpu", copy=True)
++            )
++            layer_dir = os.path.join(state["dir"], f"layer{state['layer']:02d}")
++            os.makedirs(layer_dir, exist_ok=True)
++            file_name = os.path.join(
++                layer_dir, f"rope_pid{os.getpid()}_{saved:04d}.pt"
++            )
++            torch.save({"layer": state["layer"], "rope": rope}, file_name)
++            state["saved_rope"] = saved + 1
++        except Exception:
++            pass
+ 
+     def forward(
+         self,
+@@ -143,6 +444,16 @@
+                 dim=-1,
+             )
+             q_c = self.q_a_layernorm(q_c)
++            if (
++                self._indexer_before_q
++                and self.indexer
++                and self.is_sparse
++                and not self.skip_topk
++            ):
++                # Reordered indexer call (see __init__). The indexer only
++                # needs hidden_states/q_c/positions, so hoisting it above
++                # q_b_proj and rope is semantics-preserving.
++                self.indexer(hidden_states, q_c, positions, self.indexer_rope_emb)
+             q = self.q_b_proj(q_c)[0]
+         else:
+             assert self.kv_a_proj_with_mqa is not None, (
+@@ -157,6 +468,20 @@
+         kv_c, k_pe = kv_lora.split([self.kv_lora_rank, self.qk_rope_head_dim], dim=-1)
+         kv_c_normed = self.kv_a_layernorm(kv_c)
+ 
++        if self._nvfp4_calib is not None:
++            # Calibration capture of the PRISTINE latent (eager runs only).
++            self._nvfp4_calib_save(kv_c_normed)
++
++        # Outer-scale calibration, latent side: only the 512-D compressed
++        # latent is normalized before the cache writer; k_pe is a separate
++        # 64-D tensor and remains bit-for-bit unscaled.  The matching q_nope
++        # and attn_out compensations below make this exact (module header).
++        # Latent /s_l is FOLDED into kv_a_layernorm.weight at load time (see
++        # __init__ + mla_attn.process_weights_after_loading), so kv_c_normed
++        # already carries the /s_l. No runtime division -> one fewer op and no
++        # extra allocation on the cache path. (07-19 hybrid fold)
++        kv_c_for_cache = kv_c_normed
++
+         q = q.view(-1, self.num_heads, self.qk_head_dim)
+         # Add head dim of 1 to k_pe
+         k_pe = k_pe.unsqueeze(1)
+@@ -166,17 +491,55 @@
+                 positions, q[..., self.qk_nope_head_dim :], k_pe
+             )
+ 
+-        if self.indexer and self.is_sparse and not self.skip_topk:
++        if self._nvfp4_calib is not None:
++            # post-rotation k_pe == the exact value the fp8-rope writer quantizes
++            self._nvfp4_calib_save_rope(k_pe)
++
++        if (
++            self.indexer
++            and self.is_sparse
++            and not self.skip_topk
++            and not (self._indexer_before_q and self.q_lora_rank is not None)
++        ):
++            # Pristine call site; skipped only when the reordered call above
++            # already ran (q_lora path with VLLM_B12X_INDEXER_STREAM set).
+             self.indexer(hidden_states, q_c, positions, self.indexer_rope_emb)
+ 
+         if llama_4_scaling is not None:
+             q *= llama_4_scaling
+ 
++        if self._nvfp4_mla_outer_scale != 1.0:
++            # Outer-scale compensation, query side: q_nope reaches the logits
++            # only through the linear W_UK_T bmm inside mla_attn, so
++            # pre-multiplying by s_l exactly cancels the 1/s_l carried by
++            # every cached latent: (s_l q) @ W_UK @ (x/s_l) == q @ W_UK @ x.
++            # The RoPE slice q[..., nope:] is deliberately untouched.
++            #
++            # ZERO-ALLOC in-place broadcast-mul by the per-dim scale vector
++            # ([s_l]*nope + [1]*rope): scales q_nope by s_l and leaves q_rope at
++            # x1. A WHOLE-TENSOR mul_ (not the slice __setitem__ that tripped the
++            # inductor "wrong number of dimensions" assertion, nor the cat that
++            # allocated a full q and OOM'd under long-ctx load) -- functionalizes
++            # cleanly and adds no transient. (07-19 q-cat elimination)
++            q.mul_(self._nvfp4_q_scale_vec)
++
+         attn_out = self.mla_attn(
+             q,
+-            kv_c_normed,
++            kv_c_for_cache,
+             k_pe,
+             output_shape=(hidden_states.shape[0], self.num_heads * self.v_head_dim),
+         )
+ 
++        if self._nvfp4_mla_outer_scale != 1.0:
++            # Outer-scale compensation, value side: every V contribution is
++            # linear in the cached latent (softmax weights are exact after the
++            # q-side fix; DCP LSE merges and the sink fold are scalar-exact;
++            # W_UV is linear), so attn_out arrives uniformly scaled by 1/s_l.
++            #
++            # IN-PLACE mul_ (07-19 hybrid): attn_out is a fresh whole tensor from
++            # mla_attn (not a view/input alias), so this functionalizes cleanly
++            # under torch.compile and allocates nothing -- removing the ~q-sized
++            # transient that the out-of-place `* s` added at the warmup peak.
++            attn_out.mul_(self._nvfp4_mla_outer_scale)
++
+         return self.o_proj(attn_out)[0]

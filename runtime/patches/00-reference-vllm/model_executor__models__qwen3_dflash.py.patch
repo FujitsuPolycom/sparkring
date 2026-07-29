@@ -1,0 +1,67 @@
+--- upstream/vllm/model_executor/models/qwen3_dflash.py
++++ installed/vllm/model_executor/models/qwen3_dflash.py
+@@ -41,6 +41,7 @@
+ from vllm.v1.kv_cache_interface import (
+     FullAttentionSpec,
+     KVCacheSpec,
++    SlidingWindowSpec,
+     get_kv_quant_mode,
+ )
+ 
+@@ -97,30 +98,32 @@
+ class DFlashAttention(Attention):
+     """Attention with DFlash-specific KV allocation semantics.
+ 
+-    The compute path keeps the layer's configured sliding window. The KV cache
+-    spec is widened to full attention because DFlash writes every context KV
+-    before drafting and cannot evict old context blocks from draft layers.
++    The draft KV cache is replicated across DCP ranks because DFlash draft
++    attention cannot reduce sharded KV. For SWA drafts we keep the cache
++    window-bounded so replicated DCP does not allocate a full-context draft KV.
+     """
+ 
+     def get_kv_cache_spec(self, vllm_config: VllmConfig) -> KVCacheSpec | None:
+-        # The draft attends over the full context with a backend that cannot
+-        # reduce across DCP ranks; replicate the draft cache on every rank.
++        # The draft attends locally over a replicated cache. DCP ranks therefore
++        # need the same draft KV, but sliding-window layers must stay windowed
++        # instead of being widened to full-context storage.
+         dcp_replicated = (
+             vllm_config.parallel_config.decode_context_parallel_size > 1
+         )
+         if self.sliding_window is not None:
+-            # Build the full spec directly instead of converting the parent's
++            # Build the spec directly instead of converting the parent's
+             # SlidingWindowSpec: Attention.get_kv_cache_spec asserts against
+             # MLA *target* models for sliding-window layers, which would
+-            # reject DFlash drafts beside MLA targets (e.g. Kimi K2.6) even
++            # reject DFlash drafts beside MLA targets (e.g. Kimi K2.7) even
+             # though the draft layer itself is not MLA.
+             assert self.attn_type == AttentionType.DECODER
+-            return FullAttentionSpec(
++            return SlidingWindowSpec(
+                 block_size=vllm_config.cache_config.block_size,
+                 num_kv_heads=self.num_kv_heads,
+                 head_size=self.head_size,
+                 head_size_v=self.head_size_v,
+                 dtype=self.kv_cache_torch_dtype,
++                sliding_window=self.sliding_window,
+                 kv_quant_mode=get_kv_quant_mode(self.kv_cache_dtype),
+                 dcp_replicated=dcp_replicated,
+             )
+@@ -258,9 +261,12 @@
+         self.layer_type = layer_type
+         set_default_rope_theta(config, default_theta=1000000)
+         attn_type = AttentionType.DECODER
+-        sliding_window = (
+-            config.sliding_window if layer_type == "sliding_attention" else None
+-        )
++        # Use one uniform sliding-window KV group for every draft layer. The
++        # target model verifies drafted tokens, so windowing the draft's lone
++        # full-attention layer can only affect acceptance, not correctness.
++        sliding_window = getattr(config, "sliding_window", None)
++        if sliding_window is None and layer_type == "sliding_attention":
++            sliding_window = config.sliding_window
+         dflash_config = getattr(config, "dflash_config", None) or {}
+         attention_sink_bias = bool(dflash_config.get("attention_sink_bias", False))
+ 

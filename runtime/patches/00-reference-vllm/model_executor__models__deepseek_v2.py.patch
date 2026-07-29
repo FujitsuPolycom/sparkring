@@ -1,0 +1,85 @@
+--- upstream/vllm/model_executor/models/deepseek_v2.py
++++ installed/vllm/model_executor/models/deepseek_v2.py
+@@ -73,6 +73,7 @@
+ from vllm.model_executor.layers.rotary_embedding import get_rope
+ from vllm.model_executor.layers.sparse_attn_indexer import (
+     SparseAttnIndexer,
++    fused_indexer_q_rope_quant,
+     use_b12x_sparse_indexer,
+ )
+ from vllm.model_executor.layers.vocab_parallel_embedding import (
+@@ -675,6 +676,12 @@
+         self.quant_block_size = 128  # TODO: get from config
+         self.topk_indices_buffer = topk_indices_buffer
+         self.topk_scores_buffer = topk_scores_buffer
++        # Advertise the post-remap slot coordinate system to B12X_MLA_SPARSE.
++        # DCP1 maps logical paged-indexer output through the local block table;
++        # DCP>1 converts DCP-local logical candidates to global logical ids.
++        self.output_physical_slots = (
++            vllm_config.parallel_config.decode_context_parallel_size == 1
++        )
+ 
+         # NOTE: (zyongye) we use fp8 naive cache,
+         #       where we store value in fp8 and scale in fp32
+@@ -703,6 +710,13 @@
+         )
+ 
+         self.is_inplace_rope = is_inplace_rope
++        self.use_fused_indexer_q = (
++            current_platform.is_cuda()
++            and self.quant_block_size == self.head_dim
++            and self.head_dim == 128
++            and self.rope_dim == 64
++            and self.scale_fmt is not None
++        )
+ 
+     def forward(
+         self,
+@@ -737,6 +751,35 @@
+             rotary_emb(
+                 positions, q[..., : self.rope_dim], k[..., : self.rope_dim].unsqueeze(1)
+             )
++        elif self.use_fused_indexer_q and q.dtype == torch.bfloat16:
++            # fused wk + weights_proj: one GEMM, then split
++            if kw is None:
++                kw, _ = self.wk_weights_proj(hidden_states)
++            k = kw[:, : self.head_dim]
++            weights = kw[:, self.head_dim :]
++
++            k = self.k_norm(k)
++            k_pe, k_nope = torch.split(
++                k, [self.rope_dim, self.head_dim - self.rope_dim], dim=-1
++            )
++
++            q_fp8, weights = fused_indexer_q_rope_quant(
++                positions,
++                q,
++                rotary_emb.cos_sin_cache,
++                weights,
++                self.softmax_scale,
++                self.n_head**-0.5,
++                rotary_emb.is_neox_style,
++            )
++
++            # rotate only the MQA K
++            q_dummy = torch.empty_like(k_pe.unsqueeze(1))
++            _, k_pe = rotary_emb(positions, q_dummy, k_pe.unsqueeze(1))
++            k_pe = k_pe.reshape(-1, 1, self.rope_dim)
++            k = torch.cat([k_pe.squeeze(-2), k_nope], dim=-1)
++
++            return self.indexer_op(hidden_states, q_fp8, k, weights)
+         else:
+             q_pe, q_nope = torch.split(
+                 q, [self.rope_dim, self.head_dim - self.rope_dim], dim=-1
+@@ -849,7 +892,10 @@
+     if "indexer.wk." not in name or "wk_weights" in name:
+         return False  # Weight is not an isolated WK weight for the indexer, ignore.
+     is_weight = name.endswith(".weight") and tensor.dtype == torch.float8_e4m3fn
+-    is_scale_inv = "weight_scale_inv" in name
++    is_scale_inv = "weight_scale_inv" in name or (
++        name.endswith(".weight_scale")
++        and tensor.dtype in (torch.float32, torch.float16, torch.bfloat16)
++    )  # compressed-tensors block-fp8 indexer scale (RedHat NVFP4-FP8)
+     is_mxfp8_scale = name.endswith(".weight_scale") and tensor.dtype == torch.uint8
+     if not is_weight and not is_scale_inv and not is_mxfp8_scale:
+         return False  # WK is not in a fused FP8/MXFP8 format, ignore.

@@ -7,7 +7,8 @@ contributors. Read it before changing or running anything in this repository.
 
 - The **reference lane** produced the measurements in `README.md` and
   `docs/RESULTS.md`. It depends on a maintainer-held runtime overlay and launch
-  layer that are not published here.
+  layer. The recovered 71-file reference-runtime delta is published under
+  `runtime/patches/00-reference-vllm/`; live clean-build acceptance is pending.
 - The **public-functional lane** is a candidate. Its offline tests, site
   validator, read-only preflight, transport sources, probes, and acceptance
   harness are public. It has no end-to-end acceptance result.

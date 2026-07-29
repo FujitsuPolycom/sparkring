@@ -1,10 +1,10 @@
 {
   "010-sparkcache-async-rollback.patch": {
     "target_path": "vllm/v1/core/sched/scheduler.py",
-    "preimage_sha256": "6108b941a539fd3ee046d8e4b38c79d4a275cb18ececb5efba5361af4ded28d5"
+    "preimage_sha256": "ecef7b350e9c244e450862abf0c217687a1cf26ab3647c7a05f6e5325adf6369"
   },
   "020-sparkcache-vmm-exemption.patch": {
     "target_path": "vllm/config/vllm.py",
-    "preimage_sha256": "5f394799fa97acc4c3ee823c24018115eea168fc67f529e6ba44c03c4697d5ec"
+    "preimage_sha256": "491a4598f3ed0a6e0be07b4e8ab07db0abbcdc2e90144c781f2897b91c3fe50d"
   }
 }

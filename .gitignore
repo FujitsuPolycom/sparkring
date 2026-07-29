@@ -21,6 +21,10 @@ build-local/
 *.safetensors
 *.gguf
 models/
+!runtime/patches/00-reference-vllm/added/model_executor/models/
+!runtime/patches/00-reference-vllm/added/model_executor/models/**
+!runtime/patches/00-reference-vllm/added/models/
+!runtime/patches/00-reference-vllm/added/models/**
 
 # Local machine configuration
 .claude/

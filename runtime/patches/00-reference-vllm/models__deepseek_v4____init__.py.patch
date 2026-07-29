@@ -1,0 +1,32 @@
+--- upstream/vllm/models/deepseek_v4/__init__.py
++++ installed/vllm/models/deepseek_v4/__init__.py
+@@ -17,14 +17,29 @@
+ if current_platform.is_rocm():
+     from .amd.model import DeepseekV4ForCausalLM
+     from .amd.mtp import DeepSeekV4MTP
++
++    # DSpark is NVIDIA-only for now.
++    DSparkDeepseekV4ForCausalLM = None  # type: ignore[assignment]
+ elif current_platform.is_xpu():
+     from .xpu.model import DeepseekV4ForCausalLM  # type: ignore[assignment]
+     from .xpu.mtp import DeepSeekV4MTP  # type: ignore[assignment]
++
++    DSparkDeepseekV4ForCausalLM = None  # type: ignore[assignment]
+ else:
++    # Upstream-PR#46995 DSpark draft model (used only when
++    # VLLM_DSPARK_IMPL=upstream). Import is guarded so a failure here can
++    # never break the default fork implementation or plain target serving.
++    try:
++        from .nvidia.dspark_v2 import (  # type: ignore[assignment]
++            DSparkDeepseekV4ForCausalLM,
++        )
++    except Exception:  # noqa: BLE001
++        DSparkDeepseekV4ForCausalLM = None  # type: ignore[assignment]
+     from .nvidia.model import DeepseekV4ForCausalLM  # type: ignore[assignment]
+     from .nvidia.mtp import DeepSeekV4MTP  # type: ignore[assignment]
+ 
+ __all__ = [
++    "DSparkDeepseekV4ForCausalLM",
+     "DeepSeekV4MTP",
+     "DeepseekV4FP8Config",
+     "DeepseekV4ForCausalLM",

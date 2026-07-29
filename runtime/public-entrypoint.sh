@@ -41,6 +41,7 @@ actual="$(sha256sum -- "${config}" | awk '{print $1}')"
   --manifest /opt/sparkring/runtime-manifest.json
 /opt/venv/bin/python /opt/sparkring/public-model-preflight.py \
   --model-path "${SPARKRING_MODEL_PATH}"
+/opt/venv/bin/python /opt/sparkring/public-headless-abi-gate.py
 /opt/venv/bin/python /opt/sparkring/public-capability-gate.py
 
 identity_dir=/run/sparkring/model-identity

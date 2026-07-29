@@ -1,0 +1,184 @@
+--- upstream/vllm/v1/core/sched/scheduler.py
++++ installed/vllm/v1/core/sched/scheduler.py
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ import itertools
++import os
+ import time
+ from collections import defaultdict, deque
+ from collections.abc import Iterable
+@@ -57,6 +58,9 @@
+ from vllm.v1.metrics.stats import PrefixCacheStats, SchedulerStats
+ from vllm.v1.outputs import DraftTokenIds, KVConnectorOutput, ModelRunnerOutput
+ from vllm.v1.request import Request, RequestStatus, StreamingUpdate
++from vllm.v1.spec_decode.dynamic.acceptance_length import (
++    AcceptanceLengthController,
++)
+ from vllm.v1.spec_decode.dynamic.utils import build_dynamic_sd_schedule_lookup
+ from vllm.v1.spec_decode.metrics import SpecDecodingStats
+ from vllm.v1.structured_output import StructuredOutputManager
+@@ -231,12 +235,51 @@
+         self.num_spec_tokens = vllm_config.num_speculative_tokens
+         self.num_lookahead_tokens = 0
+         self.dynamic_sd_lookup: list[int] | None = None
++        self.acceptance_length_controller: AcceptanceLengthController | None = None
+         if speculative_config is not None:
+             if speculative_config.num_speculative_tokens_per_batch_size:
+                 self.dynamic_sd_lookup = build_dynamic_sd_schedule_lookup(
+                     speculative_config.num_speculative_tokens_per_batch_size,
+                     vllm_max_batch_size=self.scheduler_config.max_num_seqs,
+                     vllm_num_speculative_tokens=self.num_spec_tokens,
++                )
++            # getattr: stay inert (and importable) if this scheduler overlay is
++            # mounted without the matching config/speculative.py overlay that
++            # declares adaptive_speculative_tokens_window.
++            observation_window = getattr(
++                speculative_config, "adaptive_speculative_tokens_window", None
++            )
++            if observation_window is not None:
++                self.acceptance_length_controller = AcceptanceLengthController(
++                    max_num_spec_tokens=self.num_spec_tokens,
++                    observation_window=observation_window,
++                )
++                # Depth-ladder floor-snap points (R1, PLAN-adaptation-
++                # streamsep.md Item 3). The cudagraph manager only captures
++                # uniform-decode FULL graphs for the ladder depths in
++                # VLLM_ADAPTIVE_SPEC_DEPTHS (default "2,4") plus the full
++                # depth, instead of every depth in [1..K] (capture-peak
++                # memory). The controller keeps reasoning in [1, K]; its K is
++                # snapped onto the ladder at the consumption site below. Keep
++                # the parse in sync with _parse_adaptive_spec_depth_ladder in
++                # vllm/v1/worker/gpu/cudagraph_utils.py (defensive: malformed
++                # env falls back to the default instead of aborting boot).
++                raw_ladder = os.getenv("VLLM_ADAPTIVE_SPEC_DEPTHS", "2,4")
++                try:
++                    ladder = sorted(
++                        {int(tok) for tok in raw_ladder.split(",") if tok.strip()}
++                    )
++                except ValueError:
++                    logger.warning(
++                        "VLLM_ADAPTIVE_SPEC_DEPTHS=%r is not a comma-separated "
++                        "list of ints; falling back to '2,4'.",
++                        raw_ladder,
++                    )
++                    ladder = [2, 4]
++                # Full depth is always captured, hence always snappable-to.
++                self.adaptive_spec_snap_points = sorted(
++                    {d for d in ladder if 1 <= d <= self.num_spec_tokens}
++                    | {self.num_spec_tokens}
+                 )
+             if speculative_config.use_eagle():
+                 self.use_eagle = True
+@@ -251,6 +294,11 @@
+                 # decoding instead of standard next-token sampling, so it has a query
+                 # for the last sampled token plus queries for each draft token.
+                 self.num_lookahead_tokens = self.num_spec_tokens + 1
++            if speculative_config.use_dspark():
++                # DSpark drafts a block of num_spec_tokens query tokens in which the
++                # anchor itself is the first prediction position (no separate bonus
++                # query), so it needs exactly num_spec_tokens lookahead slots.
++                self.num_lookahead_tokens = self.num_spec_tokens
+ 
+         # Create the KV cache manager.
+         if hash_block_size is None:
+@@ -1056,11 +1104,46 @@
+         )
+ 
+         # Dynamic speculative decoding: compute optimal K
+-        num_spec_tokens_to_schedule = self.num_spec_tokens
++        if self.acceptance_length_controller is not None:
++            num_spec_tokens_to_schedule = (
++                self.acceptance_length_controller.num_spec_tokens
++            )
++            # Floor-snap the controller's K onto the captured depth ladder
++            # (VLLM_ADAPTIVE_SPEC_DEPTHS + full K; see __init__). Semantics:
++            # - K between ladder points: snap DOWN to the largest ladder
++            #   value <= K. Scheduling fewer tokens than requested preserves
++            #   the compute saving and lands exactly on a captured
++            #   uniform-decode FULL graph (dispatch requires an EXACT
++            #   uniform_token_count match, so off-ladder depths would miss
++            #   the FULL-graph path entirely).
++            # - K below min(ladder): keep K UNSNAPPED. Snapping UP to
++            #   min(ladder) would verify draft tokens the controller does
++            #   not want for zero gain. The unsnapped batch misses the
++            #   uniform FULL graphs and dispatches to the PIECEWISE/eager
++            #   route, padded to the same rounded capture size — comparable
++            #   executed token budget, while the scheduled token count (and
++            #   therefore rejection bookkeeping) stays at the controller's
++            #   choice. The controller only sits below min(ladder=2) when
++            #   mean acceptance < 0.5 (target = floor(mean + 1.5)), a
++            #   regime where spec overhead, not graph mode, dominates.
++            # - K == full depth (controller max) is itself a snap point, so
++            #   the cap at max is automatic.
++            snapped = max(
++                (d for d in self.adaptive_spec_snap_points
++                 if d <= num_spec_tokens_to_schedule),
++                default=num_spec_tokens_to_schedule,
++            )
++            num_spec_tokens_to_schedule = snapped
++        else:
++            num_spec_tokens_to_schedule = self.num_spec_tokens
+         if self.dynamic_sd_lookup is not None and len(num_scheduled_tokens) > 0:
+-            num_spec_tokens_to_schedule = self.dynamic_sd_lookup[
+-                len(num_scheduled_tokens)
+-            ]
++            # NOTE: when acceptance_length_controller is None this is identical
++            # to the stock assignment: dense-lookup entries are clamped to
++            # <= self.num_spec_tokens at build time, so the min() is a no-op.
++            num_spec_tokens_to_schedule = min(
++                num_spec_tokens_to_schedule,
++                self.dynamic_sd_lookup[len(num_scheduled_tokens)],
++            )
+ 
+         scheduler_output = SchedulerOutput(
+             scheduled_new_reqs=new_reqs_data,
+@@ -1530,6 +1613,9 @@
+         # to avoid expensive operations inside the loop.
+         stopped_running_reqs: set[Request] = set()
+         stopped_preempted_reqs: set[Request] = set()
++        adaptive_num_drafts = 0
++        adaptive_num_draft_tokens = 0
++        adaptive_num_accepted_tokens = 0
+         for req_id, num_tokens_scheduled in num_scheduled_tokens.items():
+             assert num_tokens_scheduled > 0
+             if failed_kv_load_req_ids and req_id in failed_kv_load_req_ids:
+@@ -1561,6 +1647,10 @@
+                 num_sampled = self.num_sampled_tokens_per_step
+                 num_accepted = max(len(generated_token_ids) - num_sampled, 0)
+                 num_rejected = num_draft_tokens - num_accepted
++                if self.acceptance_length_controller is not None:
++                    adaptive_num_drafts += 1
++                    adaptive_num_draft_tokens += num_draft_tokens
++                    adaptive_num_accepted_tokens += num_accepted
+                 # num_computed_tokens represents the number of tokens
+                 # processed in the current step, considering scheduled
+                 # tokens and rejections. If some tokens are rejected,
+@@ -1714,6 +1804,27 @@
+                 # Invariant: EngineCore returns no partial prefill outputs.
+                 assert not prompt_logprobs_tensors
+ 
++        if self.acceptance_length_controller is not None:
++            update = self.acceptance_length_controller.observe_batch(
++                num_drafts=adaptive_num_drafts,
++                num_draft_tokens=adaptive_num_draft_tokens,
++                num_accepted_tokens=adaptive_num_accepted_tokens,
++            )
++            if (
++                update is not None
++                and update.previous_num_spec_tokens != update.num_spec_tokens
++            ):
++                logger.debug(
++                    "Adaptive speculative depth changed from %d to %d "
++                    "(mean accepted drafts: %.2f, mean attempted drafts: %.2f, "
++                    "window: %d steps).",
++                    update.previous_num_spec_tokens,
++                    update.num_spec_tokens,
++                    update.mean_num_accepted_tokens,
++                    update.mean_num_draft_tokens,
++                    self.acceptance_length_controller.observation_window,
++                )
++
+         # Remove the stopped requests from the running and waiting queues.
+         if stopped_running_reqs:
+             self.running = remove_all(self.running, stopped_running_reqs)

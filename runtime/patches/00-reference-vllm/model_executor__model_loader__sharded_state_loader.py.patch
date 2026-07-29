@@ -1,0 +1,25 @@
+--- upstream/vllm/model_executor/model_loader/sharded_state_loader.py
++++ installed/vllm/model_executor/model_loader/sharded_state_loader.py
+@@ -167,13 +167,17 @@
+         if self.load_config.load_format == "runai_streamer_sharded":
+             yield from runai_safetensors_weights_iterator(paths, True)
+         else:
+-            from safetensors.torch import safe_open
++            from safetensors.torch import load
+ 
+             for path in paths:
+-                with safe_open(path, framework="pt") as f:
+-                    for key in f.keys():  # noqa: SIM118
+-                        tensor = f.get_tensor(key)
+-                        yield key, tensor
++                # Eager whole-file read (overlay 07-20): the stock per-tensor
++                # mmap get_tensor path page-faults at ~120 MB/s on GB10 unified
++                # memory (~119K tensors). A sequential read + in-RAM deserialize
++                # runs at disk speed. One part file (~4 GiB) transient at a
++                # time, well within load-phase headroom.
++                with open(path, "rb") as fh:
++                    state = load(fh.read())
++                yield from state.items()
+ 
+     @staticmethod
+     def save_model(

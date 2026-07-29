@@ -1,5 +1,11 @@
 # Runtime Gaps: our frozen vLLM runtime vs public upstream
 
+> **Recovery update — 2026-07-29:** the safe measured-runtime delta is now
+> published under `runtime/patches/00-reference-vllm/`: 59 modified files and
+> 12 additions, all fail-closed and byte-matched to the freeze after newline
+> normalization. Two unsafe empty-return startup shims were excluded. The
+> remaining gap is build/live validation, not missing source.
+
 Audited 2026-07-27 against the frozen production runtime and current
 upstream sources. Companion to the Status section of the README.
 
@@ -50,7 +56,7 @@ metadata (`2.5.0+2073ddb`) and resolves publicly as well.
 Everything that differs from upstream vLLM is a **post-install patch overlay**:
 roughly 13k lines across 73 Python files, applied to the installed tree between
 2026-06-29 and 2026-07-27. The full set is now captured as per-file unified
-diffs (kept privately) and falls into four groups:
+diffs (now published as the 71 safe recovered operations) and falls into four groups:
 
 - **B12X/sparse-attention integration (~9.3k lines)** — wires vLLM's sparse-MLA
   path (DeepSeek-V3.2/V4, GLM-5.x family) to the public B12X/sparkinfer kernel
@@ -102,6 +108,6 @@ where it has not, our overlay remains ahead.
   (GLM-5.2 enablement, DSpark, DCP, generic NVFP4 KV) is superseded by merged
   upstream work; the SM121/GB10 sparse-MLA backend and the low-bit MLA KV
   record formats are the durable deltas to carry or upstream.
-- **Action items**: attribute or rewrite the ~0.8k unattributed support
-  lines before any public release of the overlay; track the open SM121 PRs
-  upstream as the retirement path for our largest patch.
+- **Action items**: continue improving attribution for the small support-edit
+  tail, build the pinned ARM64 image, and run four-Spark acceptance; track the
+  open SM121 PRs upstream as the retirement path for the largest patch.

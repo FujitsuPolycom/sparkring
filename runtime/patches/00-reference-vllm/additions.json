@@ -1,0 +1,50 @@
+{
+    "model_executor/layers/fp8_lm_head.py":  {
+                                                 "target_path":  "vllm/model_executor/layers/fp8_lm_head.py",
+                                                 "sha256":  "60bd796c71398079c3ca5826e2c3dc7bec50b84b7e938b262999a64e6dc9fbb3"
+                                             },
+    "model_executor/layers/quantization/hybrid_mxfp4_ct.py":  {
+                                                                  "target_path":  "vllm/model_executor/layers/quantization/hybrid_mxfp4_ct.py",
+                                                                  "sha256":  "de7d091da9a01c9cb1677f54d602f78a3dc1c6df887546a60f5f8d4343a9a086"
+                                                              },
+    "model_executor/models/qwen3_dspark.py":  {
+                                                  "target_path":  "vllm/model_executor/models/qwen3_dspark.py",
+                                                  "sha256":  "246044cbabd4a4e8309189e982a9b1013f76895b260c56f164ea9fc6be5d4ce0"
+                                              },
+    "models/deepseek_v4/nvidia/dspark.py":  {
+                                                "target_path":  "vllm/models/deepseek_v4/nvidia/dspark.py",
+                                                "sha256":  "acf2894ed9bb667357a0913a95499df44a9b38cc1c1464ebe11357dc4f098d3b"
+                                            },
+    "models/deepseek_v4/nvidia/dspark_v2.py":  {
+                                                   "target_path":  "vllm/models/deepseek_v4/nvidia/dspark_v2.py",
+                                                   "sha256":  "c3a83b0b683da7281c8c87a7c6cce28ad4934aaf2004e04876215595566953d7"
+                                               },
+    "models/deepseek_v4/nvidia/ops/dspark_sparse_attn_tilelang.py":  {
+                                                                         "target_path":  "vllm/models/deepseek_v4/nvidia/ops/dspark_sparse_attn_tilelang.py",
+                                                                         "sha256":  "2fcf000b3c64f53c2237d1a23098c650fc182e0af1b622458b30ac1b51c054dd"
+                                                                     },
+    "v1/spec_decode/dynamic/acceptance_length.py":  {
+                                                        "target_path":  "vllm/v1/spec_decode/dynamic/acceptance_length.py",
+                                                        "sha256":  "bbc5176e48827fee1412a7ce95ecd8ef7a57c60ad8b7c66e16447ae3cb133a0e"
+                                                    },
+    "v1/worker/gpu/spec_decode/dspark/__init__.py":  {
+                                                         "target_path":  "vllm/v1/worker/gpu/spec_decode/dspark/__init__.py",
+                                                         "sha256":  "e3c55cbb0d7a8bd47df6f3378835644645f5d3bc89b45793b5d5a02d013e5c58"
+                                                     },
+    "v1/worker/gpu/spec_decode/dspark/speculator.py":  {
+                                                           "target_path":  "vllm/v1/worker/gpu/spec_decode/dspark/speculator.py",
+                                                           "sha256":  "c7f9022bd1fd95073313468a5971a1acbf34bfe9318e811dad6aedcb7e75d350"
+                                                       },
+    "v1/worker/gpu/spec_decode/dspark/speculator_v2.py":  {
+                                                              "target_path":  "vllm/v1/worker/gpu/spec_decode/dspark/speculator_v2.py",
+                                                              "sha256":  "e96de3fe04d9ec82363ea3fa751bfc8bf01a838344e3fb8749bd98a3a43ca554"
+                                                          },
+    "v1/worker/gpu/spec_decode/dspark/utils.py":  {
+                                                      "target_path":  "vllm/v1/worker/gpu/spec_decode/dspark/utils.py",
+                                                      "sha256":  "f2ab74e8ece0913f14a157d31b80b92aadb7fabf73f0eb51e3057fb2a972a223"
+                                                  },
+    "v1/worker/gpu/spec_decode/dspark/utils_v2.py":  {
+                                                         "target_path":  "vllm/v1/worker/gpu/spec_decode/dspark/utils_v2.py",
+                                                         "sha256":  "67ceb12b594dad2e603fe841cfd7039904f9af1e336b78a912f80425497d202c"
+                                                     }
+}

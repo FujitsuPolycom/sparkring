@@ -1,0 +1,40 @@
+--- upstream/vllm/model_executor/model_loader/base_loader.py
++++ installed/vllm/model_executor/model_loader/base_loader.py
+@@ -63,6 +63,37 @@
+             logger.debug("Loading weights on %s ...", load_device)
+             self.load_weights(model, model_config)
+ 
++            # Overlay (07-19): one-shot sharded-state save of PRE-processed
++            # weights. Must run BEFORE process_weights_after_loading — the b12x
++            # mxfp4 prepare replaces params non-idempotently, the MLA scales
++            # fold mutates kv_a_layernorm in place, and CT schemes repack;
++            # saving post-processed tensors + the loader's unconditional
++            # re-processing would corrupt all three. Per-model subdir keeps the
++            # MTP drafter's save separate from the target's. Dormant unless
++            # VLLM_SAVE_SHARDED_STATE_PATH is set.
++            import os as _os
++            _save_root = _os.environ.get("VLLM_SAVE_SHARDED_STATE_PATH")
++            if _save_root and self.load_config.load_format != "sharded_state":
++                from vllm.model_executor.model_loader.sharded_state_loader import (  # noqa: E501
++                    ShardedStateLoader,
++                )
++                _sub = _os.path.join(
++                    _save_root,
++                    _os.path.basename(model_config.model.rstrip("/")),
++                )
++                _os.makedirs(_sub, exist_ok=True)
++                logger.info("Saving sharded state to %s ...", _sub)
++                ShardedStateLoader.save_model(
++                    model,
++                    _sub,
++                    max_size=int(
++                        _os.environ.get(
++                            "VLLM_SAVE_SHARDED_STATE_MAX_SIZE", str(4 << 30)
++                        )
++                    ),
++                )
++                logger.info("Sharded state saved to %s", _sub)
++
+             # Log peak GPU memory after loading weights. This is needed
+             # to have test coverage on peak memory for online quantization.
+             if current_platform.is_cuda_alike():

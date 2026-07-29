@@ -1,0 +1,237 @@
+--- upstream/vllm/v1/worker/gpu/cudagraph_utils.py
++++ installed/vllm/v1/worker/gpu/cudagraph_utils.py
+@@ -32,6 +32,7 @@
+ from vllm.model_executor.offloader.base import get_offloader
+ from vllm.platforms import current_platform
+ from vllm.sequence import IntermediateTensors
++from vllm.utils.math_utils import round_up
+ from vllm.v1.kv_cache_interface import KVCacheConfig
+ from vllm.v1.worker.gpu.attn_utils import build_slot_mappings_by_layer
+ from vllm.v1.worker.gpu.block_table import BlockTables
+@@ -41,6 +42,53 @@
+ from vllm.v1.worker.utils import AttentionGroup
+ 
+ logger = init_logger(__name__)
++
++# Default depth ladder for acceptance-length adaptation (see
++# _parse_adaptive_spec_depth_ladder). Chosen by the R0 descriptor dry-run
++# (glm-dcp2/tools/adaptive-descriptor-dryrun.py): "2,4" adds a single
++# uniform-decode FULL graph over stock vs +4 for the full [1..K] ladder,
++# which exceeded capture-peak memory margins (earlyoom at graph capture).
++_ADAPTIVE_SPEC_DEPTHS_DEFAULT = "2,4"
++
++
++def _parse_adaptive_spec_depth_ladder(num_speculative_tokens: int) -> list[int]:
++    """Selectable speculative depths (K values) for acceptance-length
++    adaptation, from env VLLM_ADAPTIVE_SPEC_DEPTHS (comma-separated ints,
++    default "2,4").
++
++    Defensive parsing: a malformed value falls back to the default rather
++    than aborting engine boot; depths outside [1, num_speculative_tokens]
++    are dropped (the full depth is appended separately by the caller). Keep
++    in sync with the floor-snap ladder parse in
++    vllm/v1/core/sched/scheduler.py.
++    """
++    raw = os.getenv("VLLM_ADAPTIVE_SPEC_DEPTHS", _ADAPTIVE_SPEC_DEPTHS_DEFAULT)
++    try:
++        depths = sorted(
++            {int(tok) for tok in raw.split(",") if tok.strip()}
++        )
++    except ValueError:
++        logger.warning(
++            "VLLM_ADAPTIVE_SPEC_DEPTHS=%r is not a comma-separated list of "
++            "ints; falling back to %r.",
++            raw,
++            _ADAPTIVE_SPEC_DEPTHS_DEFAULT,
++        )
++        depths = sorted(
++            {int(tok) for tok in _ADAPTIVE_SPEC_DEPTHS_DEFAULT.split(",")}
++        )
++    valid = [d for d in depths if 1 <= d <= num_speculative_tokens]
++    if valid != depths:
++        logger.warning(
++            "VLLM_ADAPTIVE_SPEC_DEPTHS=%r: dropped out-of-range depths "
++            "(valid range [1, %d]); using %s.",
++            raw,
++            num_speculative_tokens,
++            valid,
++        )
++    # An empty ladder is legal here: the caller always appends the full
++    # decode_query_len, which degenerates to stock single-length capture.
++    return valid
+ 
+ 
+ class AttentionState(NamedTuple):
+@@ -196,6 +244,57 @@
+         decode_mode = self.cudagraph_mode.decode_mode()
+         mixed_mode = self.cudagraph_mode.mixed_mode()
+         separate_decode_routine = self.cudagraph_mode.separate_routine()
++        max_cg_capture_size = self.compilation_config.max_cudagraph_capture_size
++
++        # Acceptance-length adaptation (adaptive_speculative_tokens_window)
++        # selects any speculative depth in [1, K] at runtime; block drafters
++        # always draft the full block, the controller caps only verification
++        # depth. A reduced depth must verify fewer tokens, so capture a
++        # uniform-decode graph for every selectable depth instead of replaying
++        # padded max-depth graphs.
++        # getattr: stay inert (stock single-length capture) if this overlay is
++        # mounted without the matching config/speculative.py overlay that
++        # declares the field, or if the feature is not enabled.
++        speculative_config = self.vllm_config.speculative_config
++        adaptive_spec_window = (
++            getattr(speculative_config, "adaptive_speculative_tokens_window", None)
++            if speculative_config is not None
++            else None
++        )
++        if (
++            adaptive_spec_window is not None
++            and self.decode_query_len > 1
++        ):
++            # decode_query_len = num_speculative_steps
++            #   + num_new_sampled_tokens_per_step. Recover
++            # num_new_sampled_tokens_per_step from the values the manager
++            # already has. Only the VERIFY manager (query_len > 1) expands
++            # depths — the manager is also instantiated for the draft /
++            # plain-decode runner with decode_query_len == 1, where this
++            # arithmetic goes negative and must stay stock.
++            num_new_sampled_tokens_per_step = (
++                self.decode_query_len - self.vllm_config.num_speculative_tokens
++            )
++            # Depth-ladder slimming (R1, PLAN-adaptation-streamsep.md Item 3):
++            # capturing every depth in [1..K] quadrupled the uniform-decode
++            # FULL-graph count and blew the capture-peak memory margin.
++            # Instead, capture only the env-selected ladder depths (default
++            # "2,4"); the scheduler floor-snaps the controller's K onto the
++            # same ladder so every adapted batch at or above the ladder
++            # floor hits a captured graph (below the floor it takes the
++            # piecewise/eager route, see the scheduler overlay).
++            depth_ladder = _parse_adaptive_spec_depth_ladder(
++                self.vllm_config.num_speculative_tokens
++            )
++            decode_query_lens = [
++                q
++                for n in depth_ladder
++                if (q := n + num_new_sampled_tokens_per_step) >= 1
++            ]
++            if self.decode_query_len not in decode_query_lens:
++                decode_query_lens.append(self.decode_query_len)
++        else:
++            decode_query_lens = [self.decode_query_len]
+ 
+         descs_by_token_lora: dict[tuple[int, int], list[BatchExecutionDescriptor]] = (
+             defaultdict(list)
+@@ -208,10 +307,12 @@
+             # Capture uniform decode specfifc graphs if required
+             #  (i.e. separate decode routine)
+             if (
+-                separate_decode_routine
++                not (adaptive_spec_window is not None and self.decode_query_len > 1)
++                and separate_decode_routine
+                 and decode_mode
+                 and self.decode_query_len <= num_tokens <= max_decode_tokens
+             ):
++                # Stock path: a single uniform-decode query length.
+                 desc = BatchExecutionDescriptor(
+                     cg_mode=decode_mode,
+                     num_tokens=num_tokens,
+@@ -221,6 +322,41 @@
+                 )
+                 descs_by_mode[decode_mode].append(desc)
+                 descs_by_token_lora[(num_tokens, num_active_loras)].append(desc)
++            elif (
++                adaptive_spec_window is not None
++                and self.decode_query_len > 1
++                and separate_decode_routine
++                and decode_mode
++            ):
++                # Adaptive path: one uniform-decode graph per selectable depth.
++                for decode_query_len in decode_query_lens:
++                    rounded_num_tokens = round_up(num_tokens, decode_query_len)
++                    rounded_num_reqs = rounded_num_tokens // decode_query_len
++
++                    if (
++                        rounded_num_tokens > max_decode_tokens
++                        or (
++                            max_cg_capture_size is not None
++                            and rounded_num_tokens > max_cg_capture_size
++                        )
++                        or rounded_num_reqs > self.max_num_reqs
++                    ):
++                        continue
++
++                    desc = BatchExecutionDescriptor(
++                        cg_mode=decode_mode,
++                        num_tokens=rounded_num_tokens,
++                        num_reqs=rounded_num_reqs,
++                        uniform_token_count=decode_query_len,
++                        num_active_loras=num_active_loras,
++                    )
++
++                    # avoid duplicate graphs
++                    if desc not in descs_by_mode[decode_mode]:
++                        descs_by_mode[decode_mode].append(desc)
++                        descs_by_token_lora[
++                            (rounded_num_tokens, num_active_loras)
++                        ].append(desc)
+ 
+             if mixed_mode:
+                 # for PIECEWISE graphs there is no limit on requests when replaying
+@@ -239,6 +375,32 @@
+                 )
+                 descs_by_mode[mixed_mode].append(desc)
+                 descs_by_token_lora[(num_tokens, num_active_loras)].append(desc)
++
++        # Guarantee the small-request grid for every selectable decode query
++        # length, independent of the configured capture-size list: a missing
++        # (depth, num_reqs) point would otherwise pad requests or fall off
++        # the FULL-graph path. Only active with acceptance-length adaptation.
++        if adaptive_spec_window is not None and separate_decode_routine and decode_mode:
++            for decode_query_len, num_reqs in product(
++                decode_query_lens, range(1, min(self.max_num_reqs, 32) + 1)
++            ):
++                num_tokens = decode_query_len * num_reqs
++                if num_tokens > max_decode_tokens or (
++                    max_cg_capture_size is not None
++                    and num_tokens > max_cg_capture_size
++                ):
++                    continue
++                for num_active_loras in self.lora_capture_cases:
++                    desc = BatchExecutionDescriptor(
++                        cg_mode=decode_mode,
++                        num_tokens=num_tokens,
++                        num_reqs=num_reqs,
++                        uniform_token_count=decode_query_len,
++                        num_active_loras=num_active_loras,
++                    )
++                    if desc not in descs_by_mode[decode_mode]:
++                        descs_by_mode[decode_mode].append(desc)
++                        descs_by_token_lora[(num_tokens, num_active_loras)].append(desc)
+ 
+         if not descs_by_token_lora:
+             return
+@@ -328,9 +490,24 @@
+                         # Sync offloader's copy stream before capture.
+                         # Ensure any pre-capture prefetches from offloader are complete.
+                         get_offloader().sync_prev_onload()
++                        if (
++                            os.getenv(
++                                "VLLM_SPARK_SHARED_CAPTURE_STREAM", "0"
++                            )
++                            == "1"
++                        ):
++                            full_graph_context = torch.cuda.graph(
++                                graph,
++                                self.pool,
++                                stream=torch.cuda.current_stream(self.device),
++                            )
++                        else:
++                            full_graph_context = torch.cuda.graph(
++                                graph, self.pool
++                            )
+                         with guard_b12x_kernel_resolution(
+                             "vLLM full CUDA graph capture after B12X warmup"
+-                        ), torch.cuda.graph(graph, self.pool):
++                        ), full_graph_context:
+                             forward_fn(CUDAGraphMode.NONE)
+                             # Join offloader's copy stream after forward to avoid
+                             # unjoined stream error. The last layer's start_prefetch

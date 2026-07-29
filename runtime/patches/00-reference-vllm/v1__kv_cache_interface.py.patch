@@ -1,0 +1,61 @@
+--- upstream/vllm/v1/kv_cache_interface.py
++++ installed/vllm/v1/kv_cache_interface.py
+@@ -63,7 +63,7 @@
+         return KVQuantMode.INT8_PER_TOKEN_HEAD
+     if kv_cache_dtype == "fp8_per_token_head":
+         return KVQuantMode.FP8_PER_TOKEN_HEAD
+-    if kv_cache_dtype == "nvfp4":
++    if kv_cache_dtype in ("nvfp4", "nvfp4_ds_mla"):
+         return KVQuantMode.NVFP4
+     if isinstance(kv_cache_dtype, str) and kv_cache_dtype.startswith("fp8"):
+         return KVQuantMode.FP8_PER_TENSOR
+@@ -395,6 +395,16 @@
+ 
+     @property
+     def real_page_size_bytes(self) -> int:
++        # Low-bit DS-MLA packed records (davidsyoung b12x): fixed per-token
++        # byte width, block_size tokens per page. Bytes must match the b12x
++        # kernel's kv_gmem_stride for the ScaleFormat.
++        _DS_MLA_RECORD = {
++            "nvfp4_ds_mla": 368,
++            "nf3_ds_mla": 304,
++            "nf3bf16_ds_mla": 368,
++        }
++        if self.cache_dtype_str in _DS_MLA_RECORD:
++            return self.block_size * _DS_MLA_RECORD[self.cache_dtype_str]
+         if self.cache_dtype_str == "fp8_ds_mla":
+             if self.model_version == "deepseek_v4":
+                 # DeepseekV4: 448B NoPE + 128B RoPE + 8B fp8 scale = 584B per token.
+@@ -498,6 +508,10 @@
+ class SlidingWindowSpec(AttentionSpec):
+     sliding_window: int
+     head_size_v: int = None  # type: ignore[assignment]
++    # Replicate this window-bounded KV group on every DCP rank instead of
++    # sharding by token position. Used by DFlash drafts: the target verifies
++    # every token, while draft attention cannot reduce sharded KV across DCP.
++    dcp_replicated: bool = False
+ 
+     def __post_init__(self):
+         if self.head_size_v is None:
+@@ -546,9 +560,10 @@
+         return cdiv(num_tokens, self.block_size) + 1
+ 
+     def max_memory_usage_bytes(self, vllm_config: VllmConfig) -> int:
+-        assert vllm_config.parallel_config.decode_context_parallel_size == 1, (
+-            "DCP not support sliding window."
+-        )
++        assert (
++            vllm_config.parallel_config.decode_context_parallel_size == 1
++            or self.dcp_replicated
++        ), "DCP only supports sliding-window KV when it is dcp_replicated."
+         max_model_len = vllm_config.model_config.max_model_len
+         max_num_batched_tokens = vllm_config.scheduler_config.max_num_batched_tokens
+         max_blocks = self.max_admission_blocks_per_request(
+@@ -562,6 +577,7 @@
+         return all(
+             isinstance(spec, SlidingWindowSpec)
+             and spec.sliding_window == self.sliding_window
++            and spec.dcp_replicated == self.dcp_replicated
+             for spec in kv_cache_specs.values()
+         )
+ 

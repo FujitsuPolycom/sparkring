@@ -64,7 +64,7 @@ jobs:
       # E501 would fail on pre-existing code and is a maintainer decision, not
       # something CI should force.
       - name: ruff check
-        run: ruff check --select E,F,W --ignore E501 --output-format=github .
+        run: ruff check --select E,F,W --ignore E501 --exclude runtime/patches --output-format=github .
 
       # `ruff format --check` is deliberately NOT run: 96 of the 146 Python
       # files in the tree would be reformatted. Enforcing it would mean

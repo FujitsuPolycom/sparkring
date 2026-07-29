@@ -1,0 +1,18 @@
+--- upstream/vllm/model_executor/layers/fused_moe/runner/shared_experts.py
++++ installed/vllm/model_executor/layers/fused_moe/runner/shared_experts.py
+@@ -137,7 +137,14 @@
+         # Run shared experts in parallel on a separate stream.
+         with torch.cuda.stream(self._stream):
+             output = self._layer(shared_experts_input)
+-        current_stream().wait_stream(self._stream)
++        consumer_stream = current_stream()
++        consumer_stream.wait_stream(self._stream)
++
++        # The output allocation belongs to the aux stream, but the routed and
++        # shared expert outputs are combined on the consumer stream. The wait
++        # orders producer before consumer; record_stream keeps the allocation
++        # alive until the consumer has finished using it. [koush 8f6ddb0]
++        output.record_stream(consumer_stream)
+ 
+         return output
+ 

@@ -1,0 +1,27 @@
+--- upstream/vllm/config/compilation.py
++++ installed/vllm/config/compilation.py
+@@ -1517,8 +1517,22 @@
+                 f" or cudagraph_capture_sizes ({self.cudagraph_capture_sizes})"
+             )
+ 
+-        self.max_cudagraph_capture_size = rounded_sizes[-1]
+-        self.cudagraph_capture_sizes = rounded_sizes
++        # SPARK: retain mixed-batch padding buckets while adding every
++        # exact uniform speculative width needed by FULL decode graphs.
++        exact_uniform_sizes = {
++            multiple_of * num_reqs
++            for num_reqs in range(1, 33)
++            if multiple_of * num_reqs <= min(self.max_cudagraph_capture_size, 40)
++        }
++        preserved_sizes = {
++            int(size)
++            for size in self.cudagraph_capture_sizes
++            if int(size) <= self.max_cudagraph_capture_size
++        }
++        self.cudagraph_capture_sizes = sorted(
++            preserved_sizes | exact_uniform_sizes
++        )
++        self.max_cudagraph_capture_size = self.cudagraph_capture_sizes[-1]
+ 
+     def get_compile_ranges(self) -> list[Range]:
+         """Get the compile ranges for the compilation config."""

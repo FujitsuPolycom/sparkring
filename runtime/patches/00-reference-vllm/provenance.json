@@ -1,0 +1,679 @@
+{
+    "schema":  "sparkring-reference-overlay-provenance/v1",
+    "upstream":  {
+                     "repository":  "https://github.com/vllm-project/vllm",
+                     "commit":  "fcc614141e5e9ab18cb304c476f7feed2a9552e3"
+                 },
+    "recovered_from":  {
+                           "artifact":  "vllm-installed.tgz",
+                           "sha256":  "d23e8269a00bca32d23e51163b46cd464164edc5504ab404936f2c984c3ee4d4"
+                       },
+    "counts":  {
+                   "modified":  59,
+                   "added":  12,
+                   "files":  71
+               },
+    "classification_note":  "Best-effort marker classification. spark means DSpark/Spark-related code, not necessarily SparkRing authorship; b12x means sparkinfer/B12X integration; unknown is retained for reproducibility and review.",
+    "excluded_unsafe":  [
+                            {
+                                "path":  "v1/executor/multiproc_executor.py",
+                                "reason":  "historical follower return-empty shim violates headless ABI; see docs/PUBLIC_STARTUP_SHIM_AUDIT.md"
+                            },
+                            {
+                                "path":  "v1/core/kv_cache_utils.py",
+                                "reason":  "historical empty-KV guard masks the same topology error; see docs/PUBLIC_STARTUP_SHIM_AUDIT.md"
+                            }
+                        ],
+    "entries":  [
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "config/cache.py",
+                        "changed_lines":  3,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "config/compilation.py",
+                        "changed_lines":  18,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "config/speculative.py",
+                        "changed_lines":  108,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "config/vllm.py",
+                        "changed_lines":  24,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "distributed/parallel_state.py",
+                        "changed_lines":  65,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "engine/arg_utils.py",
+                        "changed_lines":  5,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "envs.py",
+                        "changed_lines":  6,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "model_executor/layers/attention/mla_attention.py",
+                        "changed_lines":  660,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "model_executor/layers/fused_moe/runner/shared_experts.py",
+                        "changed_lines":  9,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "model_executor/layers/mla.py",
+                        "changed_lines":  367,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "model_executor/layers/quantization/__init__.py",
+                        "changed_lines":  3,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "model_executor/layers/sparse_attn_indexer.py",
+                        "changed_lines":  1158,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "model_executor/layers/vocab_parallel_embedding.py",
+                        "changed_lines":  72,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "model_executor/model_loader/base_loader.py",
+                        "changed_lines":  31,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "model_executor/model_loader/sharded_state_loader.py",
+                        "changed_lines":  14,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "model_executor/model_loader/weight_utils.py",
+                        "changed_lines":  41,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "model_executor/models/deepseek_v2.py",
+                        "changed_lines":  48,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "model_executor/models/qwen3_dflash.py",
+                        "changed_lines":  28,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "model_executor/models/registry.py",
+                        "changed_lines":  2,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "model_executor/warmup/deepseek_v4_mhc_warmup.py",
+                        "changed_lines":  21,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "model_executor/warmup/flashinfer_sparse_mla_warmup.py",
+                        "changed_lines":  26,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "model_executor/warmup/kernel_warmup.py",
+                        "changed_lines":  11,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "models/deepseek_v4/__init__.py",
+                        "changed_lines":  15,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "models/deepseek_v4/attention.py",
+                        "changed_lines":  108,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "models/deepseek_v4/common/rope.py",
+                        "changed_lines":  4,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "models/deepseek_v4/nvidia/flashinfer_sparse.py",
+                        "changed_lines":  7,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "models/deepseek_v4/nvidia/model.py",
+                        "changed_lines":  89,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x",
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "models/deepseek_v4/sparse_mla.py",
+                        "changed_lines":  27,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "utils/torch_utils.py",
+                        "changed_lines":  3,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/attention/backend.py",
+                        "changed_lines":  89,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/attention/backends/mla/b12x_mla_sparse.py",
+                        "changed_lines":  3640,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py",
+                        "changed_lines":  2,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/attention/backends/mla/flashmla_sparse.py",
+                        "changed_lines":  19,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/attention/backends/mla/indexer.py",
+                        "changed_lines":  16,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/attention/backends/mla/sparse_swa.py",
+                        "changed_lines":  218,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark",
+                                        "flashinfer"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/attention/backends/utils.py",
+                        "changed_lines":  17,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/attention/ops/common.py",
+                        "changed_lines":  100,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/attention/ops/dcp_alltoall.py",
+                        "changed_lines":  440,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/core/kv_cache_coordinator.py",
+                        "changed_lines":  96,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/core/kv_cache_manager.py",
+                        "changed_lines":  14,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/core/sched/scheduler.py",
+                        "changed_lines":  119,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/core/single_type_kv_cache_manager.py",
+                        "changed_lines":  13,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/cudagraph_dispatcher.py",
+                        "changed_lines":  7,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/kv_cache_interface.py",
+                        "changed_lines":  24,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/sample/ops/topk_topp_sampler.py",
+                        "changed_lines":  5,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/spec_decode/dflash.py",
+                        "changed_lines":  6,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/spec_decode/utils.py",
+                        "changed_lines":  7,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/worker/gpu/block_table.py",
+                        "changed_lines":  22,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/worker/gpu/cudagraph_utils.py",
+                        "changed_lines":  181,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/worker/gpu/model_runner.py",
+                        "changed_lines":  142,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/worker/gpu/pp_utils.py",
+                        "changed_lines":  58,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/worker/gpu/sample/gumbel.py",
+                        "changed_lines":  5,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/worker/gpu/spec_decode/__init__.py",
+                        "changed_lines":  18,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/worker/gpu/spec_decode/autoregressive/speculator.py",
+                        "changed_lines":  15,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/worker/gpu/spec_decode/dflash/speculator.py",
+                        "changed_lines":  167,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/worker/gpu/spec_decode/eagle/utils.py",
+                        "changed_lines":  7,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/worker/gpu/spec_decode/utils.py",
+                        "changed_lines":  12,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/worker/gpu/warmup.py",
+                        "changed_lines":  30,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "MODIFIED",
+                        "path":  "v1/worker/gpu_worker.py",
+                        "changed_lines":  62,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x"
+                                    ]
+                    },
+                    {
+                        "kind":  "FORK-ONLY",
+                        "path":  "model_executor/layers/fp8_lm_head.py",
+                        "changed_lines":  266,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark",
+                                        "deepgemm"
+                                    ]
+                    },
+                    {
+                        "kind":  "FORK-ONLY",
+                        "path":  "model_executor/layers/quantization/hybrid_mxfp4_ct.py",
+                        "changed_lines":  86,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x"
+                                    ]
+                    },
+                    {
+                        "kind":  "FORK-ONLY",
+                        "path":  "model_executor/models/qwen3_dspark.py",
+                        "changed_lines":  153,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "FORK-ONLY",
+                        "path":  "models/deepseek_v4/nvidia/dspark.py",
+                        "changed_lines":  2495,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x",
+                                        "spark",
+                                        "deepgemm"
+                                    ]
+                    },
+                    {
+                        "kind":  "FORK-ONLY",
+                        "path":  "models/deepseek_v4/nvidia/dspark_v2.py",
+                        "changed_lines":  629,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark",
+                                        "flashinfer",
+                                        "deepgemm"
+                                    ]
+                    },
+                    {
+                        "kind":  "FORK-ONLY",
+                        "path":  "models/deepseek_v4/nvidia/ops/dspark_sparse_attn_tilelang.py",
+                        "changed_lines":  240,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "FORK-ONLY",
+                        "path":  "v1/spec_decode/dynamic/acceptance_length.py",
+                        "changed_lines":  98,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "FORK-ONLY",
+                        "path":  "v1/worker/gpu/spec_decode/dspark/__init__.py",
+                        "changed_lines":  2,
+                        "classification":  "unknown",
+                        "markers":  [
+
+                                    ]
+                    },
+                    {
+                        "kind":  "FORK-ONLY",
+                        "path":  "v1/worker/gpu/spec_decode/dspark/speculator.py",
+                        "changed_lines":  656,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark",
+                                        "flashinfer"
+                                    ]
+                    },
+                    {
+                        "kind":  "FORK-ONLY",
+                        "path":  "v1/worker/gpu/spec_decode/dspark/speculator_v2.py",
+                        "changed_lines":  133,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "FORK-ONLY",
+                        "path":  "v1/worker/gpu/spec_decode/dspark/utils.py",
+                        "changed_lines":  173,
+                        "classification":  "spark",
+                        "markers":  [
+                                        "spark"
+                                    ]
+                    },
+                    {
+                        "kind":  "FORK-ONLY",
+                        "path":  "v1/worker/gpu/spec_decode/dspark/utils_v2.py",
+                        "changed_lines":  91,
+                        "classification":  "b12x",
+                        "markers":  [
+                                        "b12x",
+                                        "spark",
+                                        "flashinfer",
+                                        "deepgemm"
+                                    ]
+                    }
+                ]
+}

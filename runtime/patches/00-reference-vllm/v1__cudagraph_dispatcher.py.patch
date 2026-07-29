@@ -1,0 +1,16 @@
+--- upstream/vllm/v1/cudagraph_dispatcher.py
++++ installed/vllm/v1/cudagraph_dispatcher.py
+@@ -218,7 +218,12 @@
+             cudagraph_capture_sizes_for_decode = [
+                 x
+                 for x in self.compilation_config.cudagraph_capture_sizes
+-                if x <= max_num_tokens and x >= uniform_decode_query_len
++                if (
++                    x <= min(max_num_tokens, 40)
++                    and x >= uniform_decode_query_len
++                    # SPARK: FULL speculative graphs require whole requests.
++                    and x % uniform_decode_query_len == 0
++                )
+             ]
+             for bs, num_active_loras in product(
+                 cudagraph_capture_sizes_for_decode, lora_cases

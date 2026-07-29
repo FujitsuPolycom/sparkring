@@ -1,0 +1,263 @@
+--- upstream/vllm/v1/attention/backends/mla/sparse_swa.py
++++ installed/vllm/v1/attention/backends/mla/sparse_swa.py
+@@ -304,16 +304,32 @@
+         )
+ 
+         # Handle MTP: adjust decode_threshold like the indexer does
++        spec_config = self.vllm_config.speculative_config
+         self.num_speculative_tokens = (
+-            self.vllm_config.speculative_config.num_speculative_tokens
+-            if self.vllm_config.speculative_config
+-            else 0
+-        )
+-        # With MTP, decode can have query_len up to 1 + num_speculative_tokens.
+-        # Must match the threshold used by the indexer and flashmla_sparse so
+-        # that all backends agree on the decode/prefill split.
++            spec_config.num_speculative_tokens if spec_config else 0
++        )
++        # Decode can have query_len up to
++        #   1 + (2 if parallel drafting else 1) * num_speculative_tokens.
++        # This MUST match the flashmla_sparse / indexer threshold so that
++        # all backends agree on the decode/prefill split.
++        # The 2x applies only to the upstream (PR#46995) DSpark impl, whose
++        # draft query block flows through this backend. The fork impl keeps
++        # its private draft path, and the fork's other backends
++        # (flashmla_sparse, indexer) use the un-doubled threshold — doubling
++        # here alone would desync the split for query lens in (thr, 2*thr].
++        import os
++
++        spec_mult = (
++            2
++            if (
++                spec_config is not None
++                and spec_config.parallel_drafting
++                and os.environ.get("VLLM_DSPARK_IMPL", "fork") == "upstream"
++            )
++            else 1
++        )
+         self.decode_threshold = (
+-            self.reorder_batch_threshold + self.num_speculative_tokens
++            self.reorder_batch_threshold + spec_mult * self.num_speculative_tokens
+         )
+         self._skip_tile_scheduler_platform = (
+             current_platform.is_rocm()
+@@ -389,6 +405,29 @@
+             dtype=torch.bool,
+             device=self.device,
+         )
++
++        # DSpark draft: the block is non-causal (every query attends to the
++        # trailing window of context PLUS all query tokens, including future ones),
++        # so its per-token index list is wider than `window_size`. Upstream pads
++        # to a multiple of 128, but our flashinfer pin only instantiates the
++        # sparse_mla_sm120 decode-dsv4 kernel for topk in {128, 512, 1024}
++        # (_DECODE_DSV4_DISPATCH); any other width (e.g. 256) falls through to
++        # the >64-token paged kernel and ICHECK-fails on a decode-sized batch.
++        # Round up to the next instantiated width — the kernel masks by the
++        # per-token topk_length (decode_swa_lens), so the padding is cheap.
++        self.is_dspark = spec_config is not None and spec_config.use_dspark()
++        if self.is_dspark:
++            needed = self.window_size + self.num_speculative_tokens
++            for cand in (128, 512, 1024):
++                if needed <= cand:
++                    self.noncausal_index_width = cand
++                    break
++            else:
++                self.noncausal_index_width = cdiv(needed, 128) * 128
++        else:
++            self.noncausal_index_width = 0
++        self.decode_swa_indices_noncausal: torch.Tensor | None = None
++        self._max_tokens = max_tokens
+ 
+     def build(
+         self,
+@@ -446,9 +485,44 @@
+         else:
+             is_valid_token.copy_(slot_mapping >= 0)
+ 
++        non_causal = not common_attn_metadata.causal
++        decode_swa_indices = self.decode_swa_indices
+         if num_decode_tokens > 0:
+             self.decode_swa_lens[num_decode_tokens:] = 0
+-            if self.dcp_world_size > 1:
++            if non_causal:
++                assert self.is_dspark, (
++                    "Non-causal DeepseekV4 SWA is only supported for the DSpark "
++                    "speculation mode, but causal=False was set without DSpark."
++                )
++                assert self.dcp_world_size == 1, (
++                    "Non-causal DSpark SWA indices are not supported with DCP."
++                )
++                if self.decode_swa_indices_noncausal is None:
++                    self.decode_swa_indices_noncausal = torch.zeros(
++                        self._max_tokens,
++                        1,
++                        self.noncausal_index_width,
++                        dtype=torch.int32,
++                        device=self.device,
++                    )
++                decode_swa_indices = self.decode_swa_indices_noncausal
++                _compute_dspark_noncausal_swa_indices_kernel[(num_decode_tokens,)](
++                    decode_swa_indices,
++                    decode_swa_indices.stride(0),
++                    self.decode_swa_lens,
++                    self.window_size,
++                    self.noncausal_index_width,
++                    query_start_loc,
++                    seq_lens,
++                    token_to_req_indices,
++                    is_valid_token,
++                    block_table,
++                    block_table.stride(0),
++                    self.block_size,
++                    token_offset=0,
++                    TRITON_BLOCK_SIZE=1024,
++                )
++            elif self.dcp_world_size > 1:
+                 _compute_dcp_swa_indices_and_lens_kernel[(num_decode_tokens,)](
+                     self.decode_swa_indices,
+                     self.decode_swa_indices.stride(0),
+@@ -550,7 +624,7 @@
+             slot_mapping=slot_mapping,
+             is_valid_token=is_valid_token,
+             token_to_req_indices=token_to_req_indices,
+-            decode_swa_indices=self.decode_swa_indices[:num_decode_tokens],
++            decode_swa_indices=decode_swa_indices[:num_decode_tokens],
+             decode_swa_lens=self.decode_swa_lens[:num_decode_tokens],
+             prefill_swa_indices=(
+                 self.prefill_swa_indices[:num_prefill_tokens]
+@@ -683,6 +757,64 @@
+     gather_len = query_len + tl.minimum(prefix_len, window_size - 1)
+ 
+     tl.store(prefill_gather_lens_ptr + offset, gather_len, mask=mask)
++
++
++def warmup_deepseek_v4_prefill_metadata_kernel(
++    device: torch.device,
++    *,
++    max_num_prefills: int,
++    window_size: int,
++) -> int:
++    """Precompile the Triton prefill metadata kernel used by DSv4 SWA.
++
++    Mixed sparse-MLA warmup can miss the pure-prefill first-request shape on a
++    fresh Triton cache. Warm both pure prefill and mixed decode+prefill cases
++    across the small power-of-two BLOCK_SIZE specializations used by the
++    metadata builder.
++    """
++    if not torch.cuda.is_available():
++        return 0
++
++    max_num_prefills = max(1, int(max_num_prefills))
++    cases: set[int] = {1, max_num_prefills}
++    block_size = 1
++    while block_size < max_num_prefills:
++        block_size *= 2
++        cases.add(min(block_size, max_num_prefills))
++
++    launches = 0
++    for num_prefills in sorted(cases):
++        for num_decodes in (0, 1):
++            query_lens = torch.tensor(
++                [1] * num_decodes + [16] * num_prefills,
++                dtype=torch.int32,
++                device=device,
++            )
++            seq_lens = query_lens.clone()
++            query_start_loc = torch.empty(
++                query_lens.numel() + 1,
++                dtype=torch.int32,
++                device=device,
++            )
++            query_start_loc[0].zero_()
++            torch.cumsum(query_lens, dim=0, out=query_start_loc[1:])
++            prefill_gather_lens = torch.empty(
++                num_prefills,
++                dtype=torch.int32,
++                device=device,
++            )
++            _compute_prefill_metadata_kernel[(1,)](
++                prefill_gather_lens,
++                seq_lens,
++                query_start_loc,
++                num_prefills,
++                num_decodes,
++                window_size,
++                BLOCK_SIZE=triton.next_power_of_2(num_prefills),
++            )
++            launches += 1
++    torch.cuda.synchronize(device)
++    return launches
+ 
+ 
+ @triton.jit(do_not_specialize=["token_offset"])
+@@ -817,3 +949,69 @@
+         count += tl.sum(valid.to(tl.int32), axis=0)
+ 
+     tl.store(swa_lens_ptr + pid, count)
++
++
++# TODO(ben): unify this kernel to reduce duplication
++@triton.jit(do_not_specialize=["token_offset"])
++def _compute_dspark_noncausal_swa_indices_kernel(
++    swa_indices_ptr,
++    swa_indices_stride,
++    swa_lens_ptr,
++    window_size,
++    index_width,
++    query_start_loc_ptr,
++    seq_lens_ptr,
++    token_to_req_indices_ptr,
++    is_valid_token_ptr,
++    block_table_ptr,
++    block_table_stride,
++    block_size,
++    token_offset,
++    TRITON_BLOCK_SIZE: tl.constexpr,
++):
++    """Non-causal per-token indices for the DSpark draft block.
++
++    Here, we populate the topk indices with the trailing window of context tokens,
++    plus all query tokens (including future ones).
++    """
++    pid = tl.program_id(0)
++    token_idx = pid + token_offset
++    is_valid = tl.load(is_valid_token_ptr + token_idx)
++    if not is_valid:
++        tl.store(swa_lens_ptr + pid, 0)
++        return
++
++    req_idx = tl.load(token_to_req_indices_ptr + token_idx)
++
++    query_start = tl.load(query_start_loc_ptr + req_idx)
++    query_end = tl.load(query_start_loc_ptr + req_idx + 1)
++    query_len = query_end - query_start
++
++    seq_len = tl.load(seq_lens_ptr + req_idx)
++    prefix_len = seq_len - query_len
++
++    # Block-anchored window (shared by every token in the block) + full block.
++    start_pos = tl.maximum(prefix_len - window_size, 0)
++    end_pos = seq_len
++
++    swa_len = end_pos - start_pos
++    tl.store(swa_lens_ptr + pid, swa_len)
++
++    for i in range(0, index_width, TRITON_BLOCK_SIZE):
++        offset = i + tl.arange(0, TRITON_BLOCK_SIZE)
++
++        pos_offset = start_pos + offset
++        block_indices = pos_offset // block_size
++        block_numbers = tl.load(
++            block_table_ptr + req_idx * block_table_stride + block_indices,
++            mask=pos_offset < end_pos,
++        )
++        block_offsets = pos_offset % block_size
++        slot_ids = block_numbers * block_size + block_offsets
++
++        slot_ids = tl.where(offset < swa_len, slot_ids, -1)
++        tl.store(
++            swa_indices_ptr + pid * swa_indices_stride + offset,
++            slot_ids,
++            mask=offset < index_width,
++        )
