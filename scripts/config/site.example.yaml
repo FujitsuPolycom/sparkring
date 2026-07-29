@@ -316,7 +316,7 @@ serving:
   max_model_len: 458752
 
   # KV cache budget per rank, in bytes, for the public-functional matrix.
-  kv_cache_bytes_per_rank: 4000000000
+  kv_cache_bytes_per_rank: 4600000000
 
   # Maximum concurrent sequences.
   max_num_seqs: 8

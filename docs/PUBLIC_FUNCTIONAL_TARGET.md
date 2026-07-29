@@ -130,16 +130,16 @@ with them (see TBD-8).
 | Supported MTP mode | **adaptive MTP 2/4, window 32** — `num_speculative_tokens: 4`, `adaptive_speculative_tokens_window: 32`, `method: mtp`, adaptive depths `2,4` (`VLLM_SPARK_MTP_MODE_ID=adaptive-mtp2-4-window32`). Fixed-K MTP and MTP-off are **not** part of this matrix. See TBD-9 for the determinism consequence. |
 | Max context | `--max-model-len 458752` |
 | Batching | `--max-num-batched-tokens 4096`, `--max-num-seqs 8` (Q40 ABI cap: max query rows = seqs x (K+1) = 40) |
-| KV cache | `--kv-cache-dtype nvfp4_ds_mla`, `--kv-cache-memory-bytes 4000000000` (4 GB/rank), per-token scale mode |
+| KV cache | `--kv-cache-dtype nvfp4_ds_mla`, `--kv-cache-memory-bytes 4600000000` (4.6 GB/rank), per-token scale mode |
 | Attention backend | `--attention-backend B12X_MLA_SPARSE` |
-| Memory | `--gpu-memory-utilization 0.89` |
+| Memory | `--gpu-memory-utilization 0.88` |
 | Graphs | `cudagraph_mode: FULL_AND_PIECEWISE` with the pinned capture-size list. **First bring-up should run eager** (`--enforce-eager`) before graphs are enabled; an eager run is a valid *bring-up* step but is **not** an acceptance run — the matrix is the graph configuration. |
 | Prefix caching | enabled |
 | API | OpenAI-compatible server on rank 0; served model name and port are site choices recorded in the site config |
 
 **What is machine-checked.** The gate enforces TP=4, DCP=4, `mtp_mode:
 adaptive`, `mtp_tokens: 4`, `max_model_len: 458752`,
-`kv_cache_bytes_per_rank: 4000000000` and `max_num_seqs: 8` against the site
+`kv_cache_bytes_per_rank: 4600000000` and `max_num_seqs: 8` against the site
 config, and refuses any other value with the expected one in the message. The
 MTP window (32), the attention backend and the KV dtype have no field in the
 site schema, so they are documented requirements the gate cannot yet verify —

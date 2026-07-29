@@ -794,7 +794,7 @@ Sizing and CUDA graphs:
 ```bash
 VLLM_SPARK_DCP_SIZE=4
 VLLM_SPARK_MAX_MODEL_LEN=458752
-VLLM_SPARK_KV_CACHE_MEMORY_BYTES=4000000000
+VLLM_SPARK_KV_CACHE_MEMORY_BYTES=4600000000
 VLLM_SPARK_MAX_NUM_BATCHED_TOKENS=4096
 VLLM_SPARK_MAX_NUM_SEQS=8
 VLLM_SPARK_MAX_QUERY_ROWS=40            # = seqs * (K+1); ABI cap Q40
@@ -871,9 +871,9 @@ vllm serve /hybridmodel \
   --decode-context-parallel-size 4 --dcp-comm-backend ag_rs \
   --attention-backend B12X_MLA_SPARSE \
   --hf-overrides '{"index_topk_pattern":"FFFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSS"}' \
-  --kv-cache-dtype nvfp4_ds_mla --kv-cache-memory-bytes 4000000000 \
+  --kv-cache-dtype nvfp4_ds_mla --kv-cache-memory-bytes 4600000000 \
   --max-model-len 458752 --max-num-batched-tokens 4096 --max-num-seqs 8 \
-  --gpu-memory-utilization 0.89 \
+  --gpu-memory-utilization 0.88 \
   --distributed-timeout-seconds 3600 --cpu-distributed-timeout-seconds 3600 \
   --distributed-executor-backend mp \
   --nnodes 4 --node-rank <RANK> --master-addr <HEAD_MGMT_IP> --master-port 29501 \

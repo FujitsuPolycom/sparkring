@@ -344,7 +344,7 @@ def site_document(**overrides) -> dict:
             "mtp_mode": "adaptive",
             "mtp_tokens": 4,
             "max_model_len": 458752,
-            "kv_cache_bytes_per_rank": 4000000000,
+            "kv_cache_bytes_per_rank": 4600000000,
             "max_num_seqs": 8,
             "master_rank": 0,
             "api_port": 8210,
