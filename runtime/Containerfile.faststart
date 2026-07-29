@@ -67,7 +67,7 @@ RUN test -n "${NCCL_REPO}" \
     && test "$(uname -m)" = "aarch64"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        git build-essential cmake ninja-build libibverbs-dev \
+        git build-essential cmake ninja-build libibverbs-dev python3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
