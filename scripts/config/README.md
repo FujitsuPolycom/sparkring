@@ -42,8 +42,9 @@ python scripts/verify_ssh_mesh.py \
 python scripts/verify_ssh_mesh.py \
   --site scripts/config/site.yaml --scope image-fanout --fix
 
-# 4. Does the cluster actually match it?  (read-only, one ssh per rank)
-python scripts/preflight.py --site scripts/config/site.yaml
+# 4. Does the live ring/RDMA fabric match it before model work? (read-only)
+python scripts/preflight.py \
+  --site scripts/config/site.yaml --scope fabric
 ```
 
 Step 1 needs nothing but Python and PyYAML. The remaining steps need key-based
@@ -54,6 +55,11 @@ opposite rank. Archive bytes never use management addresses. The verifier is
 read-only unless `--fix` is explicitly supplied; preflight never mutates
 anything on the ranks. Use `--scope all-adjacent` only for the optional audit
 of every direct-ring direction.
+
+The early preflight `fabric` scope intentionally excludes final image,
+artifact, disk-path, and service-port gates. The bootstrap runs it before
+downloading the model or building an image, then runs the default full scope
+against the generated resolved site.
 
 Keep your own `site.yaml` out of version control — it describes your real
 addressing. The repository already ignores the canonical local path

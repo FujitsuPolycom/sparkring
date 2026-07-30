@@ -21,12 +21,13 @@ fail() {
 
 [ "${SPARKRING_KV_PROFILE}" = "${VLLM_SPARK_KV_PROFILE}" ] ||
   fail "image KV profile ${SPARKRING_KV_PROFILE} does not match launch profile ${VLLM_SPARK_KV_PROFILE}"
+verify_nvfp4_abi=0
 case "${SPARKRING_KV_PROFILE}" in
   fp8) ;;
   nvfp4-rope8)
     [ -f /opt/sparkring/verify-nf3-nvfp4-rope8.py ] ||
       fail "NVFP4/FP8-RoPE ABI verifier is missing"
-    /opt/venv/bin/python /opt/sparkring/verify-nf3-nvfp4-rope8.py
+    verify_nvfp4_abi=1
     ;;
   *) fail "unsupported SparkRing KV profile: ${SPARKRING_KV_PROFILE}" ;;
 esac
@@ -61,6 +62,9 @@ actual="$(sha256sum -- "${config}" | awk '{print $1}')"
 if [ -f /opt/sparkring/nf3-bootstrap-input-receipt.json ]; then
   /opt/venv/bin/python /opt/sparkring/verify-nf3-bootstrap.py \
     --receipt /opt/sparkring/nf3-bootstrap-input-receipt.json
+fi
+if [ "${verify_nvfp4_abi}" -eq 1 ]; then
+  /opt/venv/bin/python /opt/sparkring/verify-nf3-nvfp4-rope8.py
 fi
 /opt/venv/bin/python /opt/sparkring/public-model-preflight.py \
   --model-path "${SPARKRING_MODEL_PATH}" \

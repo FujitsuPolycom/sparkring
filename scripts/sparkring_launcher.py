@@ -46,6 +46,23 @@ _ALLOWED_PLACEHOLDERS = {
     "rank",
     "world_size",
 }
+_SITE_DERIVED_ENVIRONMENT = {
+    "GLOO_SOCKET_IFNAME",
+    "MASTER_ADDR",
+    "MASTER_PORT",
+    "NCCL_IB_GID_INDEX",
+    "NCCL_IB_HCA",
+    "NCCL_IB_SUBNET_PREFIX_LEN",
+    "NCCL_SOCKET_IFNAME",
+    "RANK",
+    "SPARK_TP4_DEVICE0",
+    "SPARK_TP4_DEVICE1",
+    "SPARK_TP4_GID0",
+    "SPARK_TP4_GID1",
+    "SPARK_TP4_PEER0",
+    "SPARK_TP4_PEER1",
+    "WORLD_SIZE",
+}
 
 
 class LaunchConfigError(ValueError):
@@ -151,6 +168,12 @@ def load_launch(path: Path) -> LaunchConfig:
                 )
             _validate_placeholders(value, f"environment.{key}")
         checked_env[key] = value
+    derived_override = sorted(set(checked_env) & _SITE_DERIVED_ENVIRONMENT)
+    if derived_override:
+        raise LaunchConfigError(
+            f"{path}: environment {derived_override[0]} is derived from "
+            "the validated site and cannot be overridden"
+        )
     extra = raw["extra_vllm_args"]
     if not isinstance(extra, list) or not all(
         isinstance(value, str) and value and "\x00" not in value and "\n" not in value
@@ -217,11 +240,18 @@ def container_name(config: LaunchConfig, rank: int) -> str:
 def _base_environment(site: SiteConfig, rank_id: int) -> dict[str, str]:
     context = _context(site, rank_id)
     rank = site.rank(rank_id)
+    if context["peer0_gid"] != context["peer1_gid"]:
+        raise LaunchConfigError(
+            f"rank {rank_id} uses different RoCE GID indices on its two "
+            "ring ports; NCCL_IB_GID_INDEX is rank-global"
+        )
     model_recipe = _model_recipe(site)
     draft_recipe = model_recipe["mtp_draft"]
     return {
         "GLOO_SOCKET_IFNAME": rank.management.interface,
+        "NCCL_IB_GID_INDEX": context["peer0_gid"],
         "NCCL_IB_HCA": f"{context['peer0_device']},{context['peer1_device']}",
+        "NCCL_IB_SUBNET_PREFIX_LEN": "24",
         "NCCL_SOCKET_IFNAME": rank.management.interface,
         "RANK": context["rank"],
         "WORLD_SIZE": context["world_size"],
@@ -396,8 +426,17 @@ def _validate_pinned_model_launch(
         "HYBRID_KEPT": "b12x_nf3",
         "HYBRID_NF3": "b12x_nf3",
         "HYBRID_TIER": "both",
+        "NCCL_ALGO": "Ring",
+        "NCCL_CROSS_NIC": "1",
+        "NCCL_CUMEM_ENABLE": "0",
+        "NCCL_IB_DISABLE": "0",
+        "NCCL_IB_MERGE_NICS": "0",
+        "NCCL_IB_SUBNET_AWARE_ROUTING": "1",
         "NCCL_MAX_NCHANNELS": "4",
         "NCCL_MIN_NCHANNELS": "4",
+        "NCCL_NET": "IB",
+        "NCCL_NET_PLUGIN": "none",
+        "NCCL_SKIP_TREE_CONNECT": "1",
         "SPARK_ADAPTIVE_MTP_CONTROL": "1",
         "SPARK_CONTEXT_CACHE_ENABLE": "0",
         "SPARK_GLM52_MTP_INDEX_REUSE": "1",

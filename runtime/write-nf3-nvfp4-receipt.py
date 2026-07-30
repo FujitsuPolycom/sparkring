@@ -25,6 +25,7 @@ def build_receipt(
     mla_image_id: str,
     source_commit: str,
     verifier_report: Path,
+    installed_receipt: Path,
 ) -> dict[str, object]:
     for label, value in (
         ("final image ID", image_id),
@@ -45,6 +46,13 @@ def build_receipt(
         raise ValueError("unexpected NVFP4 verifier-report schema")
     if verifier.get("passed") is not True:
         raise ValueError("NVFP4 verifier report did not pass")
+    installed = json.loads(installed_receipt.read_text(encoding="utf-8"))
+    if installed.get("schema") != "sparkring-nf3-bootstrap-input/v1":
+        raise ValueError("unexpected final installed-file receipt schema")
+    if installed.get("profile") != "nvfp4-rope8":
+        raise ValueError("final installed-file receipt has wrong profile")
+    if not isinstance(installed.get("files"), dict) or not installed["files"]:
+        raise ValueError("final installed-file receipt has no inventory")
 
     return {
         "schema": "sparkring-nf3-nvfp4-runtime-receipt/v1",
@@ -61,6 +69,11 @@ def build_receipt(
             "sha256": _sha256(verifier_report),
             "passed": True,
         },
+        "installed_file_receipt": {
+            "schema": installed["schema"],
+            "profile": installed["profile"],
+            "sha256": _sha256(installed_receipt),
+        },
     }
 
 
@@ -72,6 +85,7 @@ def main() -> int:
     parser.add_argument("--mla-image-id", required=True)
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--verifier-report", required=True, type=Path)
+    parser.add_argument("--installed-receipt", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
 
@@ -82,6 +96,7 @@ def main() -> int:
         mla_image_id=args.mla_image_id,
         source_commit=args.source_commit,
         verifier_report=args.verifier_report,
+        installed_receipt=args.installed_receipt,
     )
     rendered = json.dumps(receipt, indent=2, sort_keys=True) + "\n"
     args.output.parent.mkdir(parents=True, exist_ok=True)

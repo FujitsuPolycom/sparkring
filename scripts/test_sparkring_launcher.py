@@ -124,6 +124,33 @@ def test_transport_slots_follow_native_xor_round_schedule():
         assert _environment_value(action, "SPARK_TP4_DEVICE1") == ports[
             round1_peer
         ].rdma_device
+        assert _environment_value(action, "NCCL_IB_GID_INDEX") == str(
+            ports[round0_peer].roce_gid_index
+        )
+        assert _environment_value(action, "NCCL_IB_SUBNET_PREFIX_LEN") == "24"
+
+
+def test_launch_refuses_site_derived_transport_override(tmp_path):
+    def override_gid(document):
+        document["environment"]["NCCL_IB_GID_INDEX"] = "7"
+
+    with pytest.raises(
+        launcher.LaunchConfigError,
+        match="NCCL_IB_GID_INDEX is derived from the validated site",
+    ):
+        _launch_config_with(tmp_path, override_gid)
+
+
+def test_pinned_launch_refuses_socket_payload_fallback(tmp_path):
+    def select_socket(document):
+        document["environment"]["NCCL_NET"] = "Socket"
+
+    config = _launch_config_with(tmp_path, select_socket)
+    with pytest.raises(
+        launcher.LaunchConfigError,
+        match="requires NCCL_NET=IB",
+    ):
+        launcher.start_actions(load_site(SITE), config)
 
 
 def test_example_uses_validated_nf3_fp8_kv_contract():

@@ -149,6 +149,19 @@ def ssh_image_fanout_verification_command(site_path: Path) -> list[str]:
     ]
 
 
+def early_fabric_preflight_command(site_path: Path) -> list[str]:
+    """Return the image-independent ring/RDMA gate run before model work."""
+    return [
+        sys.executable,
+        str(ROOT / "scripts/preflight.py"),
+        "--site",
+        str(site_path),
+        "--scope",
+        "fabric",
+        "--no-evidence",
+    ]
+
+
 def direct_image_fanout(site: SiteConfig) -> tuple[tuple[Hop, Hop], Hop]:
     """Return rank0's parallel first wave and the one relay hop."""
     hops = image_fanout_hops(site)
@@ -683,6 +696,11 @@ def main(argv: list[str] | None = None) -> int:
     print("==> Verifying exact direct-ring SSH image fanout tree")
     run(
         ssh_image_fanout_verification_command(args.site),
+        cwd=ROOT,
+    )
+    print("==> Verifying live 200GbE/RDMA fabric before model work")
+    run(
+        early_fabric_preflight_command(args.site),
         cwd=ROOT,
     )
 

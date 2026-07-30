@@ -109,6 +109,24 @@ def healthy_transcript(site, rank) -> str:
     return "\n".join(healthy_lines(site, rank)) + "\n"
 
 
+def healthy_fabric_transcript(site, rank) -> str:
+    allowed = (
+        preflight.PROBE_SENTINEL,
+        "IPROW ",
+        "IF ",
+        "RDMA_STATE ",
+        "RDMA_LINK ",
+        "GID ",
+        "GID_TYPE ",
+        "PING ",
+        "PEER ",
+    )
+    return "\n".join(
+        line for line in healthy_lines(site, rank)
+        if line == allowed[0] or line.startswith(allowed[1:])
+    ) + "\n"
+
+
 class FakeRunner:
     """Stand-in for ssh.  Refuses anything the read-only guard rejects."""
 
@@ -213,6 +231,21 @@ def test_generated_probe_script_never_mentions_mutating_docker_verbs(site):
         for verb in ("docker start", "docker stop", "docker run",
                      "docker rm", "docker exec", "docker pull"):
             assert verb not in script
+
+
+def test_fabric_probe_omits_unresolved_deployment_surfaces(site):
+    script = build_probe_script(site, site.rank(0), scope="fabric")
+    assert "RDMA_STATE" in script
+    assert "GID_TYPE" in script
+    assert "PING " in script
+    assert "PEER " in script
+    for deployment_probe in (
+        "sha256sum",
+        "ss -ltnH",
+        "DFPATH",
+        "docker image inspect",
+    ):
+        assert deployment_probe not in script
 
 
 def test_runner_protocol_rejects_a_mutating_command():
@@ -681,6 +714,42 @@ def test_run_preflight_covers_every_rank(site):
     assert exit_code_for(results) == 0
 
 
+def test_fabric_scope_emits_only_connectivity_and_ring_checks(site):
+    runner = FakeRunner({
+        rank.ssh_target: CommandResult(
+            ok=True,
+            stdout=healthy_fabric_transcript(site, rank),
+        )
+        for rank in site.ranks
+    })
+    results = run_preflight(site, runner, scope="fabric")
+    assert results
+    assert {
+        result.check_id.partition(".")[0] for result in results
+    } == {"SSH", "MGMT", "RING", "PEER"}
+    assert exit_code_for(results) == 0
+
+
+def test_fabric_scope_fails_closed_on_wrong_rocev2_gid(site):
+    responses = {}
+    for rank in site.ranks:
+        transcript = healthy_fabric_transcript(site, rank)
+        if rank.id == 2:
+            expected = ipv4_mapped_gid(rank.ring_ports[0].address)
+            transcript = transcript.replace(expected, "0000:0000:0000:0000")
+        responses[rank.ssh_target] = CommandResult(
+            ok=True,
+            stdout=transcript,
+        )
+    results = run_preflight(site, FakeRunner(responses), scope="fabric")
+    assert exit_code_for(results) == 1
+    failed = [result for result in results if not result.passed]
+    assert any(
+        result.rank == 2 and result.check_id == "RING.ROCE_GID"
+        for result in failed
+    )
+
+
 def test_run_preflight_can_be_limited_to_selected_ranks(site):
     results = run_preflight(site, healthy_runner(site), ranks=[1, 3])
     assert {result.rank for result in results} == {1, 3}
@@ -879,6 +948,28 @@ def test_cli_runs_offline_against_a_fake_runner(site, tmp_path,
     payload = json.loads(evidence_path.read_text(encoding="utf-8"))
     assert payload["passed"] is True
     assert payload["totals"]["failed"] == 0
+
+
+def test_cli_fabric_scope_omits_deployment_probes(
+    site, monkeypatch, capsys
+):
+    runner = healthy_runner(site)
+    monkeypatch.setattr(
+        preflight, "SshRunner", lambda *args, **kwargs: runner
+    )
+    assert preflight.main([
+        "--site", str(EXAMPLE_PATH),
+        "--scope", "fabric",
+        "--no-evidence",
+    ]) == 0
+    assert "scope=fabric" in capsys.readouterr().out
+    assert len(runner.commands) == 4
+    for _target, command in runner.commands:
+        assert "RDMA_STATE" in command
+        assert "docker image inspect" not in command
+        assert "sha256sum" not in command
+        assert "df -Pk" not in command
+        assert "ss -ltnH" not in command
 
 
 def test_cli_strict_placeholders_fails_even_when_checks_pass(

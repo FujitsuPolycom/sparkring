@@ -102,6 +102,17 @@ def test_bootstrap_verifies_exact_direct_ring_image_tree_scope():
     ]
 
 
+def test_bootstrap_runs_early_fabric_preflight_without_deployment_gates():
+    command = bootstrap_nf3.early_fabric_preflight_command(SITE)
+    assert command[-5:] == [
+        "--site",
+        str(SITE),
+        "--scope",
+        "fabric",
+        "--no-evidence",
+    ]
+
+
 def test_nf3_contract_pins_exact_target_and_mtp_draft():
     recipe = bootstrap_nf3.load_nf3_contract()
     model = recipe["model"]

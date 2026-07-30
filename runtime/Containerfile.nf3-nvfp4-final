@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1
+#
+# Final immutable attestation layer. The candidate has already composed the
+# NF3 and MLA files; this layer replaces the parent receipt with an inventory
+# generated from that exact installed tree and pins its digest in image config.
+
+ARG CANDIDATE_IMAGE
+FROM ${CANDIDATE_IMAGE}
+
+ARG FINAL_RECEIPT_SHA256
+
+USER root
+
+RUN test -n "${FINAL_RECEIPT_SHA256}"
+
+COPY final-installed-receipt.json /opt/sparkring/nf3-bootstrap-input-receipt.json
+
+ENV SPARKRING_NF3_INPUT_RECEIPT_SHA256=${FINAL_RECEIPT_SHA256}
+
+RUN /opt/venv/bin/python /opt/sparkring/verify-nf3-bootstrap.py \
+      --receipt /opt/sparkring/nf3-bootstrap-input-receipt.json \
+      --expected-receipt-sha256 "${FINAL_RECEIPT_SHA256}" \
+      --output /opt/sparkring/nf3-bootstrap-verification.json
+
+LABEL org.sparkring.input_receipt_sha256="${FINAL_RECEIPT_SHA256}" \
+      org.sparkring.final_installed_receipt_sha256="${FINAL_RECEIPT_SHA256}"

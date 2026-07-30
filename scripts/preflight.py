@@ -29,6 +29,7 @@ anywhere is the local evidence JSON.
 Usage::
 
     python scripts/preflight.py --site scripts/config/site.yaml
+    python scripts/preflight.py --site scripts/config/site.yaml --scope fabric
     python scripts/preflight.py --site scripts/config/site.yaml --json out.json
     python scripts/preflight.py --site scripts/config/site.yaml --print-plan
     python scripts/preflight.py --list-checks
@@ -63,6 +64,7 @@ from sparkring_site import (  # noqa: E402  (local import after sys.path fix)
 
 EVIDENCE_SCHEMA = "sparkring-preflight/v1"
 PROBE_SENTINEL = "SPARKRING-PREFLIGHT-READY"
+PREFLIGHT_SCOPES = ("full", "fabric")
 
 # --------------------------------------------------------------------------
 # Stable check ids.  These are contract: they appear in evidence JSON and are
@@ -304,13 +306,26 @@ def _shell_quote(value: str) -> str:
     return f"'{value}'"
 
 
-def build_probe_script(site: SiteConfig, rank: Rank) -> str:
+def _validate_scope(scope: str) -> None:
+    if scope not in PREFLIGHT_SCOPES:
+        raise ValueError(
+            f"unsupported preflight scope {scope!r}; "
+            f"expected one of {PREFLIGHT_SCOPES}"
+        )
+
+
+def build_probe_script(
+    site: SiteConfig,
+    rank: Rank,
+    scope: str = "full",
+) -> str:
     """Build the single read-only shell script executed on ``rank``.
 
     Output is a stream of ``KEY field field ...`` records, parsed by
     :func:`parse_probe_output`.  Every value is guarded so that a missing sysfs
     file becomes the literal ``-`` rather than a shifted field.
     """
+    _validate_scope(scope)
     lines: list[str] = [
         "set -u",
         # v <path>: print the file's contents, or '-' if absent/empty.
@@ -360,40 +375,43 @@ def build_probe_script(site: SiteConfig, rank: Rank) -> str:
             f'then echo "PEER {index} ok"; else echo "PEER {index} fail"; fi'
         )
 
-    for index, artifact in enumerate(site.artifacts):
-        quoted = _shell_quote(artifact.path)
+    if scope == "full":
+        for index, artifact in enumerate(site.artifacts):
+            quoted = _shell_quote(artifact.path)
+            lines.append(
+                f"_h=$(sha256sum -- {quoted} 2>/dev/null | cut -d' ' -f1); "
+                "[ -n \"$_h\" ] || _h='-'"
+            )
+            lines.append(f"_p=absent; [ -f {quoted} ] && _p=present")
+            lines.append(f"_x=noexec; [ -x {quoted} ] && _x=exec")
+            lines.append(f'echo "ART {index} $_h $_p $_x"')
+
+        if site.preflight.required_free_ports:
+            lines.append("ss -ltnH 2>/dev/null | sed 's/^/SSROW /'")
+
+        for index, (_label, path, _minimum) in enumerate(
+            site.paths.remote_space_targets()
+        ):
+            quoted = _shell_quote(path)
+            lines.append(f"_d=no; [ -d {quoted} ] && _d=yes")
+            lines.append(f'echo "DIR {index} $_d"')
+            lines.append(f'echo "DFPATH {index}"')
+            lines.append(
+                f"df -Pk {quoted} 2>/dev/null | sed 's/^/DFROW /'"
+            )
+
+        image = _shell_quote(site.runtime.container_image)
         lines.append(
-            f"_h=$(sha256sum -- {quoted} 2>/dev/null | cut -d' ' -f1); "
-            "[ -n \"$_h\" ] || _h='-'"
+            f"_iid=$(docker image inspect {image} "
+            "--format '{{.Id}}' 2>/dev/null); [ -n \"$_iid\" ] || _iid='-'"
         )
-        lines.append(f"_p=absent; [ -f {quoted} ] && _p=present")
-        lines.append(f"_x=noexec; [ -x {quoted} ] && _x=exec")
-        lines.append(f'echo "ART {index} $_h $_p $_x"')
-
-    if site.preflight.required_free_ports:
-        lines.append("ss -ltnH 2>/dev/null | sed 's/^/SSROW /'")
-
-    for index, (_label, path, _minimum) in enumerate(
-        site.paths.remote_space_targets()
-    ):
-        quoted = _shell_quote(path)
-        lines.append(f"_d=no; [ -d {quoted} ] && _d=yes")
-        lines.append(f'echo "DIR {index} $_d"')
-        lines.append(f'echo "DFPATH {index}"')
-        lines.append(f"df -Pk {quoted} 2>/dev/null | sed 's/^/DFROW /'")
-
-    image = _shell_quote(site.runtime.container_image)
-    lines.append(
-        f"_iid=$(docker image inspect {image} "
-        "--format '{{.Id}}' 2>/dev/null); [ -n \"$_iid\" ] || _iid='-'"
-    )
-    lines.append('echo "IMAGE_ID $_iid"')
-    lines.append(
-        f"_rd=$(docker image inspect {image} "
-        "--format '{{join .RepoDigests \",\"}}' 2>/dev/null); "
-        "[ -n \"$_rd\" ] || _rd='-'"
-    )
-    lines.append('echo "IMAGE_REPODIGESTS $_rd"')
+        lines.append('echo "IMAGE_ID $_iid"')
+        lines.append(
+            f"_rd=$(docker image inspect {image} "
+            "--format '{{join .RepoDigests \",\"}}' 2>/dev/null); "
+            "[ -n \"$_rd\" ] || _rd='-'"
+        )
+        lines.append('echo "IMAGE_REPODIGESTS $_rd"')
 
     script = "\n".join(lines) + "\n"
     assert_read_only(script)
@@ -522,9 +540,14 @@ def _normalise_digest(value: str) -> str:
     return value.rsplit("@", 1)[-1].strip()
 
 
-def evaluate_rank(site: SiteConfig, rank: Rank,
-                  state: ProbeState) -> list[CheckResult]:
+def evaluate_rank(
+    site: SiteConfig,
+    rank: Rank,
+    state: ProbeState,
+    scope: str = "full",
+) -> list[CheckResult]:
     """Turn one rank's probe state into check results.  Pure: no I/O."""
+    _validate_scope(scope)
     results: list[CheckResult] = []
 
     def record(check_id: str, subject: str, passed: bool, detail: str) -> None:
@@ -566,6 +589,9 @@ def evaluate_rank(site: SiteConfig, rank: Rank,
             f"icmp reachability {outcome} (control-channel rendezvous for "
             f"the native TP/vocab/DCP sessions)",
         )
+
+    if scope == "fabric":
+        return results
 
     for index, artifact in enumerate(site.artifacts):
         observed = state.artifacts.get(index, {})
@@ -715,10 +741,15 @@ def unreachable_results(rank: Rank, detail: str) -> list[CheckResult]:
     ]
 
 
-def check_rank(site: SiteConfig, rank: Rank, runner: Runner
-               ) -> list[CheckResult]:
+def check_rank(
+    site: SiteConfig,
+    rank: Rank,
+    runner: Runner,
+    scope: str = "full",
+) -> list[CheckResult]:
     """Probe one rank and evaluate it.  Never mutates remote state."""
-    script = build_probe_script(site, rank)
+    _validate_scope(scope)
+    script = build_probe_script(site, rank, scope=scope)
     outcome = runner.run(rank.ssh_target, script)
     state = parse_probe_output(outcome.stdout)
     if not state.ready:
@@ -727,13 +758,15 @@ def check_rank(site: SiteConfig, rank: Rank, runner: Runner
             if outcome.ok else "rank unreachable over ssh"
         )
         return unreachable_results(rank, detail)
-    return evaluate_rank(site, rank, state)
+    return evaluate_rank(site, rank, state, scope=scope)
 
 
 def run_preflight(site: SiteConfig, runner: Runner,
                   ranks: Sequence[int] | None = None,
-                  max_workers: int = 4) -> list[CheckResult]:
+                  max_workers: int = 4,
+                  scope: str = "full") -> list[CheckResult]:
     """Probe every selected rank in parallel and return all check results."""
+    _validate_scope(scope)
     selected = [
         rank for rank in site.ranks
         if ranks is None or rank.id in set(ranks)
@@ -744,7 +777,10 @@ def run_preflight(site: SiteConfig, runner: Runner,
         max_workers=max(1, min(max_workers, len(selected)))
     ) as pool:
         batches = list(
-            pool.map(lambda rank: check_rank(site, rank, runner), selected)
+            pool.map(
+                lambda rank: check_rank(site, rank, runner, scope=scope),
+                selected,
+            )
         )
     results: list[CheckResult] = []
     for batch in batches:
@@ -790,8 +826,10 @@ def exit_code_for(results: Sequence[CheckResult]) -> int:
 
 def build_evidence(site: SiteConfig, results: Sequence[CheckResult],
                    generated_at: str | None = None,
-                   warnings: Sequence[str] | None = None) -> dict:
+                   warnings: Sequence[str] | None = None,
+                   scope: str = "full") -> dict:
     """The machine-readable evidence document written alongside the table."""
+    _validate_scope(scope)
     summary = summarise(results)
     if warnings is None:
         warnings = site.placeholder_warnings()
@@ -804,6 +842,7 @@ def build_evidence(site: SiteConfig, results: Sequence[CheckResult],
             "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
         ),
         "read_only": True,
+        "scope": scope,
         "passed": summary.ok,
         "site": {
             "name": site.name,
@@ -834,8 +873,10 @@ def build_evidence(site: SiteConfig, results: Sequence[CheckResult],
 
 
 def render_text(site: SiteConfig, results: Sequence[CheckResult],
-                warnings: Sequence[str] | None = None) -> str:
+                warnings: Sequence[str] | None = None,
+                scope: str = "full") -> str:
     """Human-readable pass/fail table."""
+    _validate_scope(scope)
     if warnings is None:
         warnings = site.placeholder_warnings()
     by_rank: dict[int, list[CheckResult]] = {}
@@ -843,7 +884,7 @@ def render_text(site: SiteConfig, results: Sequence[CheckResult],
         by_rank.setdefault(result.rank, []).append(result)
 
     lines = [
-        f"SparkRing preflight (read-only) - site {site.name!r} "
+        f"SparkRing preflight (read-only, scope={scope}) - site {site.name!r} "
         f"from {site.source or '<in-memory>'}",
     ]
     for rank in site.ranks:
@@ -918,6 +959,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="only check this rank; repeatable",
     )
     parser.add_argument(
+        "--scope",
+        choices=PREFLIGHT_SCOPES,
+        default="full",
+        help=(
+            "full deployment preflight (default), or early fabric-only "
+            "SSH/management/ring/RDMA/peer checks that do not require a "
+            "built image or installed artifacts"
+        ),
+    )
+    parser.add_argument(
         "--print-plan", action="store_true",
         help="print the read-only probe script for each rank and exit "
              "without contacting anything",
@@ -957,16 +1008,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.rank is not None and rank.id not in set(args.rank):
                 continue
             print(f"# ---- rank {rank.id} ({rank.ssh_target}) ----")
-            print(build_probe_script(site, rank))
+            print(build_probe_script(site, rank, scope=args.scope))
         return 0
 
     runner = SshRunner(timeout_seconds=site.preflight.ssh_timeout_seconds)
-    results = run_preflight(site, runner, ranks=args.rank)
+    results = run_preflight(
+        site,
+        runner,
+        ranks=args.rank,
+        scope=args.scope,
+    )
     warnings = site.placeholder_warnings()
-    print(render_text(site, results, warnings))
+    print(render_text(site, results, warnings, scope=args.scope))
 
     if not args.no_evidence:
-        evidence = build_evidence(site, results, warnings=warnings)
+        evidence = build_evidence(
+            site,
+            results,
+            warnings=warnings,
+            scope=args.scope,
+        )
         target = Path(args.json) if args.json else default_evidence_path(site)
         try:
             if target.parent and str(target.parent):

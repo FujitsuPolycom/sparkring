@@ -37,6 +37,8 @@ COPY --from=mla_source \
 
 COPY verify-nf3-nvfp4-rope8.py \
   /opt/sparkring/verify-nf3-nvfp4-rope8.py
+COPY write-nf3-installed-receipt.py \
+  /opt/sparkring/write-nf3-installed-receipt.py
 
 RUN /opt/venv/bin/python /opt/sparkring/verify-nf3-nvfp4-rope8.py \
       --output /opt/sparkring/nf3-nvfp4-rope8-verification.json

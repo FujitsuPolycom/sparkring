@@ -160,17 +160,27 @@ rank 0 and copy `site.yaml` over the management network. If this trusted
 checkout is already on rank 0, no copy is needed. Run every command below from
 that exact rank-0 checkout; `bootstrap_nf3.py execute` refuses to run elsewhere.
 
-Inspect the complete read-only machine/RDMA probe:
+Inspect, then run, the early read-only fabric/RDMA gate:
 
 ```bash
 python scripts/preflight.py \
   --site scripts/config/site.yaml \
+  --scope fabric \
   --print-plan
+
+python scripts/preflight.py \
+  --site scripts/config/site.yaml \
+  --scope fabric
 ```
 
-The unresolved input site does not yet have the final image ID. The bootstrap
-runs the full preflight after it builds the image and writes the resolved site.
-Do not require an executing preflight against the unresolved input file.
+The `fabric` scope checks SSH, management identity, link state/speed, MTU,
+exact ring addresses, RDMA port/link layer, RoCEv2 GIDs, jumbo DF paths, and
+configured peer reachability. It deliberately omits image, artifact, cache
+directory, disk, and final-port gates, so it is valid before the final image
+exists. The bootstrap repeats this fail-closed gate before any model download
+or image build, then runs the full preflight after it writes the resolved site.
+Do not require the default full scope to pass against the unresolved input
+file.
 
 ## 4. Inspect the bootstrap plan
 

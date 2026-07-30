@@ -6,6 +6,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 ENGINE="${CONTAINER_ENGINE:-docker}"
 CACHE_ROOT="${SPARKRING_BOOTSTRAP_CACHE:-${HOME}/.cache/sparkring/nf3-bootstrap}"
 OUTPUT_IMAGE="${OUTPUT_IMAGE:-sparkring/glm52-nf3-nvfp4-rope8:local}"
+CANDIDATE_IMAGE="${OUTPUT_IMAGE}-candidate"
 
 fatal() {
   printf 'FATAL: %s\n' "$*" >&2
@@ -33,6 +34,8 @@ write_final_receipt() {
   local receipt_dir="${CACHE_ROOT}/receipts"
   local verifier_report="${receipt_dir}/nf3-nvfp4-rope8-verification.json"
   local verifier_temporary="${verifier_report}.tmp"
+  local installed_receipt="${receipt_dir}/nf3-nvfp4-rope8-installed.json"
+  local installed_temporary="${installed_receipt}.tmp"
   local receipt="${receipt_dir}/nf3-nvfp4-rope8-runtime.json"
   mkdir -p -- "${receipt_dir}"
   "${ENGINE}" run --rm --entrypoint /bin/cat \
@@ -40,6 +43,11 @@ write_final_receipt() {
     /opt/sparkring/nf3-nvfp4-rope8-verification.json \
     > "${verifier_temporary}"
   mv -- "${verifier_temporary}" "${verifier_report}"
+  "${ENGINE}" run --rm --entrypoint /bin/cat \
+    "${OUTPUT_IMAGE}" \
+    /opt/sparkring/nf3-bootstrap-input-receipt.json \
+    > "${installed_temporary}"
+  mv -- "${installed_temporary}" "${installed_receipt}"
   python3 "${ROOT}/runtime/write-nf3-nvfp4-receipt.py" \
     --image "${OUTPUT_IMAGE}" \
     --image-id "${final_image_id}" \
@@ -47,6 +55,7 @@ write_final_receipt() {
     --mla-image-id "${MLA_IMAGE_ID}" \
     --source-commit "${SOURCE_COMMIT}" \
     --verifier-report "${verifier_report}" \
+    --installed-receipt "${installed_receipt}" \
     --output "${receipt}"
 }
 
@@ -57,6 +66,10 @@ if "${ENGINE}" image inspect "${OUTPUT_IMAGE}" >/dev/null 2>&1; then
     "nvfp4-rope8 ${NF3_IMAGE_ID} ${MLA_IMAGE_ID} ${SOURCE_COMMIT}" ]] &&
     "${ENGINE}" run --rm --entrypoint /opt/venv/bin/python \
       "${OUTPUT_IMAGE}" /opt/sparkring/verify-nf3-nvfp4-rope8.py \
+      >/dev/null &&
+    "${ENGINE}" run --rm --entrypoint /opt/venv/bin/python \
+      "${OUTPUT_IMAGE}" /opt/sparkring/verify-nf3-bootstrap.py \
+      --receipt /opt/sparkring/nf3-bootstrap-input-receipt.json \
       >/dev/null; then
     EXISTING_IMAGE_ID="$(
       "${ENGINE}" image inspect "${OUTPUT_IMAGE}" --format '{{.Id}}'
@@ -84,14 +97,18 @@ cleanup() {
 trap cleanup EXIT
 
 cp -- "${ROOT}/runtime/Containerfile.nf3-nvfp4-rope8" \
-  "${CONTEXT}/Containerfile"
+  "${CONTEXT}/Containerfile.candidate"
+cp -- "${ROOT}/runtime/Containerfile.nf3-nvfp4-final" \
+  "${CONTEXT}/Containerfile.final"
 cp -- "${ROOT}/runtime/verify-nf3-nvfp4-rope8.py" \
   "${CONTEXT}/verify-nf3-nvfp4-rope8.py"
+cp -- "${ROOT}/runtime/write-nf3-installed-receipt.py" \
+  "${CONTEXT}/write-nf3-installed-receipt.py"
 
 "${ENGINE}" build \
   --platform linux/arm64 \
-  --file "${CONTEXT}/Containerfile" \
-  --tag "${OUTPUT_IMAGE}" \
+  --file "${CONTEXT}/Containerfile.candidate" \
+  --tag "${CANDIDATE_IMAGE}" \
   --build-arg "NF3_IMAGE=${NF3_IMAGE}" \
   --build-arg "MLA_IMAGE=${FASTSTART_IMAGE}" \
   --build-arg "NF3_IMAGE_ID=${NF3_IMAGE_ID}" \
@@ -100,7 +117,36 @@ cp -- "${ROOT}/runtime/verify-nf3-nvfp4-rope8.py" \
   "${CONTEXT}"
 
 "${ENGINE}" run --rm --entrypoint /opt/venv/bin/python \
+  "${CANDIDATE_IMAGE}" /opt/sparkring/verify-nf3-nvfp4-rope8.py \
+  >/dev/null
+
+FINAL_RECEIPT="${CONTEXT}/final-installed-receipt.json"
+FINAL_RECEIPT_TMP="${FINAL_RECEIPT}.tmp"
+"${ENGINE}" run --rm --entrypoint /opt/venv/bin/python \
+  "${CANDIDATE_IMAGE}" /opt/sparkring/write-nf3-installed-receipt.py \
+  --parent-receipt /opt/sparkring/nf3-bootstrap-input-receipt.json \
+  --profile nvfp4-rope8 \
+  > "${FINAL_RECEIPT_TMP}"
+python3 -m json.tool "${FINAL_RECEIPT_TMP}" >/dev/null
+mv -- "${FINAL_RECEIPT_TMP}" "${FINAL_RECEIPT}"
+FINAL_RECEIPT_SHA256="$(
+  sha256sum "${FINAL_RECEIPT}" | awk '{print $1}'
+)"
+
+"${ENGINE}" build \
+  --platform linux/arm64 \
+  --file "${CONTEXT}/Containerfile.final" \
+  --tag "${OUTPUT_IMAGE}" \
+  --build-arg "CANDIDATE_IMAGE=${CANDIDATE_IMAGE}" \
+  --build-arg "FINAL_RECEIPT_SHA256=${FINAL_RECEIPT_SHA256}" \
+  "${CONTEXT}"
+
+"${ENGINE}" run --rm --entrypoint /opt/venv/bin/python \
   "${OUTPUT_IMAGE}" /opt/sparkring/verify-nf3-nvfp4-rope8.py \
+  >/dev/null
+"${ENGINE}" run --rm --entrypoint /opt/venv/bin/python \
+  "${OUTPUT_IMAGE}" /opt/sparkring/verify-nf3-bootstrap.py \
+  --receipt /opt/sparkring/nf3-bootstrap-input-receipt.json \
   >/dev/null
 
 FINAL_IMAGE_ID="$(

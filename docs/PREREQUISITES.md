@@ -296,21 +296,29 @@ there:
 
 ```bash
 
-# 3. Show the read-only remote probe before contacting ranks.
+# 3. Show and run the image-independent fabric/RDMA gate.
 python scripts/preflight.py \
   --site scripts/config/site.yaml \
+  --scope fabric \
   --print-plan
 
-# 4. Read-only model/bootstrap plan.
+python scripts/preflight.py \
+  --site scripts/config/site.yaml \
+  --scope fabric
+
+# 4. Read-only model/bootstrap plan after the live fabric gate passes.
 python scripts/bootstrap_nf3.py plan \
   --site scripts/config/site.yaml \
   --profile nvfp4-rope8
 ```
 
-The full executing preflight needs the exact image ID and generated artifact
-identity, which do not exist before the first build. Therefore, do not require
-`python scripts/preflight.py --site scripts/config/site.yaml` to pass against
-the unresolved input site.
+The `fabric` scope is fail-closed for SSH, management identity, ring
+link/speed/MTU/address, RDMA state/link layer, RoCEv2 GID, jumbo DF path, and
+peer reachability. It omits image, artifact, disk-path, and final-port checks.
+The default full scope needs the exact image ID and generated artifact identity,
+which do not exist before the first build; do not require it to pass against
+the unresolved input site. The bootstrap repeats `--scope fabric` before any
+model download or image build.
 
 After steps 1-4 pass, the safest first mutation is preparation without launch:
 
