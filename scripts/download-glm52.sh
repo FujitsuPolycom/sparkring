@@ -17,6 +17,7 @@ DRAFT_REVISION="46537e0e16fcd156627800139b41b9c497fc7ee2"
 DRAFT_CONFIG_SHA256="47e27afcefcd8439cb5dcbdc9d3e11ab5069d6d8395029058141ffb56c50d9ff"
 DRAFT_INDEX_SHA256="de6d6bdead79ebd556d3bbbbf56ea537b00b4fdaf3e92927ac1463328037ee1d"
 DRAFT_WEIGHT_SHA256="0ade0e3da08e7e6c7b1f20e4c4e8d5d3b26b81103cea22f2ead9909c7d3d0732"
+DRAFT_INPUTSCALES_SHA256="b324090fb2ae84803015c454e6161b7da802b1fb6a16b89e8fa79f3f9767762f"
 
 MODEL_DIR="${1:-/srv/models/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid}"
 DRAFT_DIR="${2:-/srv/models/GLM-5.2-NF3-MTP-Draft}"
@@ -27,7 +28,7 @@ fatal() {
   exit 1
 }
 
-for command_name in "${ENGINE}" sha256sum python3; do
+for command_name in "${ENGINE}" python3; do
   command -v "${command_name}" >/dev/null ||
     fatal "${command_name} is required"
 done
@@ -39,33 +40,39 @@ mkdir -p "${MODEL_DIR}" "${DRAFT_DIR}"
 MODEL_DIR="$(cd "${MODEL_DIR}" && pwd)"
 DRAFT_DIR="$(cd "${DRAFT_DIR}" && pwd)"
 
-already_complete() {
-  [[ -f "${MODEL_DIR}/.sparkring-model.txt" ]] || return 1
-  [[ -f "${DRAFT_DIR}/.sparkring-model.txt" ]] || return 1
-  printf '%s  %s\n' \
-    "${MODEL_CONFIG_SHA256}" "${MODEL_DIR}/config.json" \
-    "${MODEL_INDEX_SHA256}" "${MODEL_DIR}/model.safetensors.index.json" \
-    "${DRAFT_CONFIG_SHA256}" "${DRAFT_DIR}/config.json" \
-    "${DRAFT_INDEX_SHA256}" "${DRAFT_DIR}/model.safetensors.index.json" \
-    "${DRAFT_WEIGHT_SHA256}" "${DRAFT_DIR}/model-mtp.safetensors" |
-    sha256sum --check --status - || return 1
-  python3 - "${MODEL_DIR}/model.safetensors.index.json" "${MODEL_DIR}" \
-    "${MODEL_SHARDS}" <<'PY'
-import json, pathlib, sys
-index = json.load(open(sys.argv[1], encoding="utf-8"))
-root = pathlib.Path(sys.argv[2])
-names = set(index["weight_map"].values())
-if len(names) != int(sys.argv[3]):
-    raise SystemExit(1)
-if any(not (root / name).is_file() or (root / name).stat().st_size <= 0 for name in names):
-    raise SystemExit(1)
-PY
-}
+verify_command=(
+  python3 "$(dirname "${BASH_SOURCE[0]}")/verify_glm52_download.py"
+  --model-dir "${MODEL_DIR}"
+  --draft-dir "${DRAFT_DIR}"
+  --model-repository "${MODEL_REPO}"
+  --model-revision "${MODEL_REVISION}"
+  --model-config-sha256 "${MODEL_CONFIG_SHA256}"
+  --model-index-sha256 "${MODEL_INDEX_SHA256}"
+  --model-shards "${MODEL_SHARDS}"
+  --draft-repository "${DRAFT_REPO}"
+  --draft-revision "${DRAFT_REVISION}"
+  --draft-config-sha256 "${DRAFT_CONFIG_SHA256}"
+  --draft-index-sha256 "${DRAFT_INDEX_SHA256}"
+  --draft-weight-sha256 "${DRAFT_WEIGHT_SHA256}"
+  --draft-inputscales-sha256 "${DRAFT_INPUTSCALES_SHA256}"
+)
 
-if already_complete; then
-  echo "PASS: pinned NF3 target and MTP draft already complete; download skipped"
-  exit 0
-fi
+set +e
+"${verify_command[@]}" --adopt
+verification_status=$?
+set -e
+case "${verification_status}" in
+  0)
+    echo "PASS: pinned NF3 target and MTP draft already complete; download skipped"
+    exit 0
+    ;;
+  10)
+    echo "Pinned payload is incomplete and unmarked; resuming download."
+    ;;
+  *)
+    fatal "existing model payload failed pinned identity verification; refusing to overwrite it"
+    ;;
+esac
 
 model_current="$(du -sb "${MODEL_DIR}" | awk '{print $1}')"
 draft_current="$(du -sb "${DRAFT_DIR}" | awk '{print $1}')"
@@ -118,50 +125,7 @@ echo "Downloading the pinned MTP draft (not the historical target weights)"
   "${BASE_IMAGE}" \
   -c 'from huggingface_hub import snapshot_download; from pathlib import Path; import shutil, tempfile; root=Path(snapshot_download(repo_id="aidendle94/GLM-5.2-MXFP4-Experts-GPTQ", revision="46537e0e16fcd156627800139b41b9c497fc7ee2", allow_patterns=["mtp-draft/*"], local_dir=tempfile.mkdtemp(prefix="sparkring-draft-"))); src=root/"mtp-draft"; dst=Path("/draft"); [shutil.copy2(p, dst/p.name) for p in src.iterdir() if p.is_file()]'
 
-check_sha256() {
-  local path="$1"
-  local expected="$2"
-  [[ -s "${path}" ]] || fatal "missing or empty: ${path}"
-  local actual
-  actual="$(sha256sum "${path}" | awk '{print $1}')"
-  [[ "${actual}" == "${expected}" ]] ||
-    fatal "hash mismatch for ${path}; expected ${expected}, got ${actual}"
-}
-
-check_sha256 "${MODEL_DIR}/config.json" "${MODEL_CONFIG_SHA256}"
-check_sha256 "${MODEL_DIR}/model.safetensors.index.json" "${MODEL_INDEX_SHA256}"
-check_sha256 "${DRAFT_DIR}/config.json" "${DRAFT_CONFIG_SHA256}"
-check_sha256 "${DRAFT_DIR}/model.safetensors.index.json" "${DRAFT_INDEX_SHA256}"
-check_sha256 "${DRAFT_DIR}/model-mtp.safetensors" "${DRAFT_WEIGHT_SHA256}"
-
-observed_shards="$(
-  python3 - "${MODEL_DIR}/model.safetensors.index.json" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-document = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-print(len(set(document["weight_map"].values())))
-PY
-)"
-[[ "${observed_shards}" == "${MODEL_SHARDS}" ]] ||
-  fatal "expected ${MODEL_SHARDS} target shards, index names ${observed_shards}"
-
-cat > "${MODEL_DIR}/.sparkring-model.txt" <<EOF
-repository=${MODEL_REPO}
-revision=${MODEL_REVISION}
-config_sha256=${MODEL_CONFIG_SHA256}
-index_sha256=${MODEL_INDEX_SHA256}
-shards=${MODEL_SHARDS}
-EOF
-
-cat > "${DRAFT_DIR}/.sparkring-model.txt" <<EOF
-repository=${DRAFT_REPO}
-revision=${DRAFT_REVISION}
-subdirectory=mtp-draft
-config_sha256=${DRAFT_CONFIG_SHA256}
-index_sha256=${DRAFT_INDEX_SHA256}
-weight_sha256=${DRAFT_WEIGHT_SHA256}
-EOF
+"${verify_command[@]}" --adopt ||
+  fatal "download completed but pinned payload verification failed"
 
 echo "PASS: NF3 target and MTP draft downloaded and verified"

@@ -95,7 +95,12 @@ def _validate(recipe: dict[str, Any]) -> None:
     if draft["repository"] != "aidendle94/GLM-5.2-MXFP4-Experts-GPTQ":
         raise RecipeError("model.mtp_draft repository drifted")
     _require_commit(draft["revision"], "model.mtp_draft.revision")
-    for field in ("config_sha256", "index_sha256", "weight_sha256"):
+    for field in (
+        "config_sha256",
+        "index_sha256",
+        "weight_sha256",
+        "inputscales_sha256",
+    ):
         _require_sha256(draft[field], f"model.mtp_draft.{field}")
 
     runtime = recipe["runtime"]

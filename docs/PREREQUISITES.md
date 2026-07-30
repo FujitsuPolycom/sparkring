@@ -269,19 +269,30 @@ python scripts/preflight.py \
   --site scripts/config/site.yaml \
   --print-plan
 
-# 4. Read-only live hardware, RDMA, storage, port, and identity checks.
-python scripts/preflight.py \
-  --site scripts/config/site.yaml
-
-# 5. Read-only model/bootstrap plan.
+# 4. Read-only model/bootstrap plan.
 python scripts/bootstrap_nf3.py plan \
   --site scripts/config/site.yaml \
   --profile nvfp4-rope8
 ```
 
-Do not run bootstrap `execute` until steps 1-5 pass. Execute mode downloads
-large artifacts, builds/distributes an image, and starts containers on all
-four ranks.
+The full executing preflight needs the exact image ID and generated artifact
+identity, which do not exist before the first build. Therefore, do not require
+`python scripts/preflight.py --site scripts/config/site.yaml` to pass against
+the unresolved input site.
+
+After steps 1-4 pass, the safest first mutation is preparation without launch:
+
+```bash
+python scripts/bootstrap_nf3.py execute \
+  --site scripts/config/site.yaml \
+  --profile nvfp4-rope8 \
+  --no-launch \
+  --confirmation BOOTSTRAP-NF3-ALL-FOUR
+```
+
+This downloads/verifies the model, builds and fans out the exact image, writes
+`.sparkring/bootstrap/site.yaml`, and runs the full read-only preflight against
+that resolved site. It does not start the model.
 
 ## Ready-to-bootstrap checklist
 
@@ -297,8 +308,10 @@ four ranks.
 - [ ] Model, Docker, bootstrap-cache, and archive space are sufficient.
 - [ ] `sparkring_site.py` passes.
 - [ ] `verify_ssh_mesh.py` passes.
-- [ ] `preflight.py` passes.
+- [ ] The offline preflight plan has been reviewed.
 - [ ] The NVFP4/FP8-RoPE bootstrap plan is reviewed.
+- [ ] `bootstrap_nf3.py execute --no-launch` passes, including its resolved
+      full preflight.
 
 Once every box is true, continue with
 [the four-Spark NF3 quickstart](QUICKSTART.md#5-build-verify-distribute-and-launch).

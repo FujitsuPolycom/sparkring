@@ -62,6 +62,16 @@ def test_final_image_must_be_digest_pinned():
         recipe_module._validate(recipe)
 
 
+def test_mtp_inputscales_are_identity_pinned():
+    recipe = _recipe()
+    recipe["model"]["mtp_draft"]["inputscales_sha256"] = "not-a-hash"
+    with pytest.raises(
+        recipe_module.RecipeError,
+        match=r"model\.mtp_draft\.inputscales_sha256",
+    ):
+        recipe_module._validate(recipe)
+
+
 def test_aiden_cannot_become_a_second_public_recipe():
     recipe = copy.deepcopy(_recipe())
     recipe["recipe_id"] = "glm52-mxfp4-gptq"

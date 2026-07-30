@@ -81,21 +81,69 @@ def test_execute_requires_confirmation_before_mutation():
     assert bootstrap_nf3.CONFIRMATION in result.stderr
 
 
-def test_generated_site_receives_exact_local_image(tmp_path):
-    destination = tmp_path / "site.yaml"
+def test_nf3_contract_pins_exact_target_and_mtp_draft():
+    recipe = bootstrap_nf3.load_nf3_contract()
+    model = recipe["model"]
+    draft = model["mtp_draft"]
+    assert model["repository"] == (
+        "madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid"
+    )
+    assert model["revision"] == "66f3623dd8fefb5ca8046706912d5d31c8d196af"
+    assert model["index_sha256"] == (
+        "6eb773222d932418dd0530c63aca498f86ef424da2a4526ccba76b59726da234"
+    )
+    assert draft["repository"] == "aidendle94/GLM-5.2-MXFP4-Experts-GPTQ"
+    assert draft["revision"] == "46537e0e16fcd156627800139b41b9c497fc7ee2"
+    assert draft["weight_sha256"] == (
+        "0ade0e3da08e7e6c7b1f20e4c4e8d5d3b26b81103cea22f2ead9909c7d3d0732"
+    )
+
+
+def test_generated_site_replaces_stale_identity_and_kv_contract(tmp_path):
+    stale = yaml.safe_load(SITE.read_text(encoding="utf-8"))
+    stale["runtime"].update(
+        {
+            "model_path": "/models/old-checkpoint",
+            "model_repo": "old-owner/old-checkpoint",
+            "model_revision": "0" * 40,
+            "checkpoint_sha256": "f" * 64,
+        }
+    )
+    stale["serving"]["kv_cache_bytes_per_rank"] = 3_000_000_000
+    source = tmp_path / "stale-site.yaml"
+    source.write_text(yaml.safe_dump(stale), encoding="utf-8")
+
+    recipe = json.loads(
+        bootstrap_nf3.RECIPE_PATH.read_text(encoding="utf-8")
+    )
+    model = recipe["model"]
+    serving = recipe["serving"]
     digest = "sha256:" + "a" * 64
-    bootstrap_nf3.write_generated_site(
-        SITE,
-        destination,
-        "sparkring/glm52-nf3:test",
-        digest,
-    )
-    document = yaml.safe_load(destination.read_text(encoding="utf-8"))
-    assert document["runtime"]["container_image"] == "sparkring/glm52-nf3:test"
-    assert document["runtime"]["container_image_digest"] == digest
-    assert document["runtime"]["model_path"].endswith(
-        "GLM-5.2-MXFP8-NVFP4-NF3-Hybrid"
-    )
+
+    for profile in bootstrap_nf3.PROFILES:
+        destination = tmp_path / f"site-{profile}.yaml"
+        bootstrap_nf3.write_generated_site(
+            source,
+            destination,
+            f"sparkring/glm52-nf3:{profile}",
+            digest,
+            profile,
+        )
+        document = yaml.safe_load(destination.read_text(encoding="utf-8"))
+        runtime = document["runtime"]
+        assert runtime["container_image"] == (
+            f"sparkring/glm52-nf3:{profile}"
+        )
+        assert runtime["container_image_digest"] == digest
+        assert runtime["model_path"] == f"/models/{model['install_subdir']}"
+        assert runtime["model_repo"] == model["repository"]
+        assert runtime["model_revision"] == model["revision"]
+        assert runtime["checkpoint_sha256"] == model["index_sha256"]
+        assert serving["kv_cache_bytes_per_rank"] == 7_000_000_000
+        assert (
+            document["serving"]["kv_cache_bytes_per_rank"]
+            == serving["kv_cache_bytes_per_rank"]
+        )
 
 
 def test_generated_nvfp4_rope8_launch_is_an_exact_profile(tmp_path):
@@ -132,3 +180,27 @@ def test_generated_fp8_launch_removes_nvfp4_only_controls(tmp_path):
     generated = json.loads(destination.read_text(encoding="utf-8"))
     assert generated["environment"]["VLLM_SPARK_KV_PROFILE"] == "fp8"
     assert "VLLM_NVFP4_MLA_PER_TOKEN_SCALE" not in generated["environment"]
+
+
+def test_image_transfer_capacity_covers_archive_import_and_headroom():
+    archive_bytes = 24 * 1024**3
+    required = bootstrap_nf3.required_image_transfer_bytes(archive_bytes)
+    assert required == (
+        2 * archive_bytes + bootstrap_nf3.IMAGE_TRANSFER_HEADROOM_BYTES
+    )
+    command = bootstrap_nf3.image_transfer_capacity_command(archive_bytes)
+    assert "docker info --format '{{.DockerRootDir}}'" in command
+    assert "df -PB1 /var/tmp" in command
+    assert 'df -PB1 "$docker_root"' in command
+    assert f' -lt {required} ' in command
+    assert "IMAGE_TRANSFER_CAPACITY_OK" in command
+
+
+def test_image_transfer_capacity_rejects_invalid_archive_sizes():
+    for invalid in (0, -1, 1.5, "100"):
+        try:
+            bootstrap_nf3.required_image_transfer_bytes(invalid)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"accepted invalid archive size {invalid!r}")

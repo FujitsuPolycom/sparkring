@@ -129,19 +129,17 @@ python scripts/verify_ssh_mesh.py \
   --fix
 ```
 
-Run the complete read-only machine/RDMA check:
+Inspect the complete read-only machine/RDMA probe:
 
 ```bash
 python scripts/preflight.py \
   --site scripts/config/site.yaml \
   --print-plan
-
-python scripts/preflight.py \
-  --site scripts/config/site.yaml
 ```
 
-Do not execute the model bootstrap until the site validator, SSH verifier, and
-preflight all pass.
+The unresolved input site does not yet have the final image ID. The bootstrap
+runs the full preflight after it builds the image and writes the resolved site.
+Do not require an executing preflight against the unresolved input file.
 
 ## 4. Inspect the bootstrap plan
 
@@ -176,6 +174,28 @@ python scripts/bootstrap_nf3.py execute \
   --site scripts/config/site.yaml \
   --profile nvfp4-rope8 \
   --confirmation BOOTSTRAP-NF3-ALL-FOUR
+```
+
+For a first deployment, add `--no-launch` to prepare, verify, distribute, and
+run the resolved full preflight without starting containers. Review:
+
+```bash
+cat .sparkring/bootstrap/site.yaml
+cat .sparkring/bootstrap/launch.nvfp4-rope8.json
+
+python scripts/sparkring_launcher.py \
+  --site .sparkring/bootstrap/site.yaml \
+  --launch-config .sparkring/bootstrap/launch.nvfp4-rope8.json \
+  plan
+```
+
+Then start that exact generated profile:
+
+```bash
+python scripts/sparkring_launcher.py \
+  --site .sparkring/bootstrap/site.yaml \
+  --launch-config .sparkring/bootstrap/launch.nvfp4-rope8.json \
+  --execute start
 ```
 
 The script:
@@ -244,9 +264,13 @@ Run the gate only on a disposable/idle deployment:
 ```bash
 python scripts/acceptance_gate.py \
   --site .sparkring/bootstrap/site.yaml \
-  --launch-config scripts/config/launch.example.json \
+  --launch-config .sparkring/bootstrap/launch.nvfp4-rope8.json \
   --gate-config scripts/config/gate.example.json
 ```
+
+For the default FP8 profile, substitute
+`.sparkring/bootstrap/launch.fp8.json`. Never gate the NVFP4 image with the
+FP8 example launch file.
 
 ## Troubleshooting
 

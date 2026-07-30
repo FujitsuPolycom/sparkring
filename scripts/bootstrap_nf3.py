@@ -25,6 +25,8 @@ from sparkring_site import load_site
 ROOT = Path(__file__).resolve().parents[1]
 CONFIRMATION = "BOOTSTRAP-NF3-ALL-FOUR"
 PUBLIC_REPOSITORY = "https://github.com/FujitsuPolycom/sparkring.git"
+IMAGE_TRANSFER_HEADROOM_BYTES = 5 * 1024**3
+RECIPE_PATH = ROOT / "recipes/glm52-nf3-hybrid.json"
 PROFILES = {
     "fp8": {
         "image_prefix": "sparkring/glm52-nf3",
@@ -39,6 +41,17 @@ PROFILES = {
         ),
     },
 }
+
+
+def load_nf3_contract() -> dict[str, object]:
+    """Load the canonical target, draft, and serving pins for this bootstrap."""
+
+    document = json.loads(RECIPE_PATH.read_text(encoding="utf-8"))
+    if document.get("schema") != "sparkring-recipe/v1":
+        raise RuntimeError("NF3 recipe schema is not sparkring-recipe/v1")
+    if document.get("recipe_id") != "glm52-nf3-hybrid":
+        raise RuntimeError("NF3 recipe id is not glm52-nf3-hybrid")
+    return document
 
 
 def run(
@@ -146,17 +159,78 @@ def image_id(image: str) -> str:
     return result.stdout.strip()
 
 
+def required_image_transfer_bytes(archive_bytes: int) -> int:
+    """Return conservative free space for an archive plus Docker import.
+
+    Followers temporarily hold both the docker-save archive and imported image
+    layers. Requiring two archive widths plus fixed headroom is conservative
+    when /var/tmp and Docker share a filesystem, and harmless when they do not.
+    """
+
+    if not isinstance(archive_bytes, int) or archive_bytes <= 0:
+        raise ValueError("image archive size must be a positive integer")
+    return archive_bytes * 2 + IMAGE_TRANSFER_HEADROOM_BYTES
+
+
+def image_transfer_capacity_command(archive_bytes: int) -> str:
+    required = required_image_transfer_bytes(archive_bytes)
+    return "\n".join(
+        (
+            "set -euo pipefail",
+            "docker_root=$(docker info --format '{{.DockerRootDir}}')",
+            "test -n \"$docker_root\"",
+            "test -d /var/tmp",
+            "test -d \"$docker_root\"",
+            "tmp_free=$(df -PB1 /var/tmp | awk 'NR==2 {print $4}')",
+            "docker_free=$(df -PB1 \"$docker_root\" | awk 'NR==2 {print $4}')",
+            "case \"$tmp_free:$docker_free\" in "
+            "*[!0-9:]*|:*) echo 'unable to measure follower free space' >&2; "
+            "exit 4;; esac",
+            (
+                f"if [ \"$tmp_free\" -lt {required} ]; then "
+                "echo \"insufficient /var/tmp space: "
+                f"need {required}, have $tmp_free\" >&2; exit 4; fi"
+            ),
+            (
+                f"if [ \"$docker_free\" -lt {required} ]; then "
+                "echo \"insufficient Docker-root space: "
+                f"need {required}, have $docker_free\" >&2; exit 4; fi"
+            ),
+            (
+                "printf 'IMAGE_TRANSFER_CAPACITY_OK "
+                f"required={required} tmp_free=%s docker_free=%s\\n' "
+                "\"$tmp_free\" \"$docker_free\""
+            ),
+        )
+    )
+
+
 def write_generated_site(
     source: Path,
     destination: Path,
     image: str,
     digest: str,
+    profile: str,
 ) -> None:
+    if profile not in PROFILES:
+        raise ValueError(f"unknown KV profile: {profile}")
+    recipe = load_nf3_contract()
+    model = recipe["model"]
+    serving_contract = recipe["serving"]
+    if profile not in serving_contract["kv_profiles"]:
+        raise RuntimeError(f"NF3 recipe does not define KV profile {profile}")
+
     document = yaml.safe_load(source.read_text(encoding="utf-8"))
     runtime = document["runtime"]
     runtime["container_image"] = image
     runtime["container_image_digest"] = digest
-    runtime["model_path"] = "/models/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid"
+    runtime["model_path"] = f"/models/{model['install_subdir']}"
+    runtime["model_repo"] = model["repository"]
+    runtime["model_revision"] = model["revision"]
+    runtime["checkpoint_sha256"] = model["index_sha256"]
+    document["serving"]["kv_cache_bytes_per_rank"] = serving_contract[
+        "kv_cache_bytes_per_rank"
+    ]
     document["artifacts"] = []
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(
@@ -364,8 +438,14 @@ def main(argv: list[str] | None = None) -> int:
         archive_marker.write_text(expected_id + "\n", encoding="utf-8")
 
     print("==> Fanning exact image to ranks 1-3")
+    archive_bytes = archive.stat().st_size
     for rank in followers:
         remote_archive = f"/var/tmp/{archive.name}"
+        print(f"rank {rank.id}: checking archive/import capacity")
+        remote(
+            rank.ssh_target,
+            image_transfer_capacity_command(archive_bytes),
+        )
         run(
             [
                 "scp",
@@ -385,7 +465,13 @@ def main(argv: list[str] | None = None) -> int:
         remote(rank.ssh_target, command)
         print(f"rank {rank.id}: image {expected_id} verified")
 
-    write_generated_site(args.site, args.generated_site, image, expected_id)
+    write_generated_site(
+        args.site,
+        args.generated_site,
+        image,
+        expected_id,
+        args.profile,
+    )
     generated_launch = (
         args.generated_site.parent / f"launch.{args.profile}.json"
     )

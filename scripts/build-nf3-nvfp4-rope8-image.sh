@@ -13,6 +13,7 @@ fatal() {
 }
 
 command -v git >/dev/null || fatal "git is required"
+command -v python3 >/dev/null || fatal "python3 is required"
 command -v "${ENGINE}" >/dev/null || fatal "${ENGINE} is required"
 [[ "$(uname -m)" == "aarch64" ]] ||
   fatal "the NF3 image must be built natively on an ARM64 DGX Spark"
@@ -27,6 +28,28 @@ OUTPUT_IMAGE="${NF3_IMAGE}" bash "${ROOT}/scripts/build-nf3-image.sh"
 NF3_IMAGE_ID="$("${ENGINE}" image inspect "${NF3_IMAGE}" --format '{{.Id}}')"
 MLA_IMAGE_ID="$("${ENGINE}" image inspect "${FASTSTART_IMAGE}" --format '{{.Id}}')"
 
+write_final_receipt() {
+  local final_image_id="$1"
+  local receipt_dir="${CACHE_ROOT}/receipts"
+  local verifier_report="${receipt_dir}/nf3-nvfp4-rope8-verification.json"
+  local verifier_temporary="${verifier_report}.tmp"
+  local receipt="${receipt_dir}/nf3-nvfp4-rope8-runtime.json"
+  mkdir -p -- "${receipt_dir}"
+  "${ENGINE}" run --rm --entrypoint /bin/cat \
+    "${OUTPUT_IMAGE}" \
+    /opt/sparkring/nf3-nvfp4-rope8-verification.json \
+    > "${verifier_temporary}"
+  mv -- "${verifier_temporary}" "${verifier_report}"
+  python3 "${ROOT}/runtime/write-nf3-nvfp4-receipt.py" \
+    --image "${OUTPUT_IMAGE}" \
+    --image-id "${final_image_id}" \
+    --nf3-image-id "${NF3_IMAGE_ID}" \
+    --mla-image-id "${MLA_IMAGE_ID}" \
+    --source-commit "${SOURCE_COMMIT}" \
+    --verifier-report "${verifier_report}" \
+    --output "${receipt}"
+}
+
 if "${ENGINE}" image inspect "${OUTPUT_IMAGE}" >/dev/null 2>&1; then
   labels="$("${ENGINE}" image inspect "${OUTPUT_IMAGE}" --format \
     '{{index .Config.Labels "org.sparkring.kv_profile"}} {{index .Config.Labels "org.sparkring.parent.nf3_image_id"}} {{index .Config.Labels "org.sparkring.parent.mla_image_id"}} {{index .Config.Labels "org.sparkring.source_commit"}}')"
@@ -35,9 +58,13 @@ if "${ENGINE}" image inspect "${OUTPUT_IMAGE}" >/dev/null 2>&1; then
     "${ENGINE}" run --rm --entrypoint /opt/venv/bin/python \
       "${OUTPUT_IMAGE}" /opt/sparkring/verify-nf3-nvfp4-rope8.py \
       >/dev/null; then
+    EXISTING_IMAGE_ID="$(
+      "${ENGINE}" image inspect "${OUTPUT_IMAGE}" --format '{{.Id}}'
+    )"
+    write_final_receipt "${EXISTING_IMAGE_ID}"
     printf 'PASS: exact NVFP4/FP8-RoPE compatibility image exists; build skipped\n'
     printf 'IMAGE=%s\nIMAGE_ID=%s\n' "${OUTPUT_IMAGE}" \
-      "$("${ENGINE}" image inspect "${OUTPUT_IMAGE}" --format '{{.Id}}')"
+      "${EXISTING_IMAGE_ID}"
     exit 0
   fi
 fi
@@ -76,6 +103,11 @@ cp -- "${ROOT}/runtime/verify-nf3-nvfp4-rope8.py" \
   "${OUTPUT_IMAGE}" /opt/sparkring/verify-nf3-nvfp4-rope8.py \
   >/dev/null
 
+FINAL_IMAGE_ID="$(
+  "${ENGINE}" image inspect "${OUTPUT_IMAGE}" --format '{{.Id}}'
+)"
+write_final_receipt "${FINAL_IMAGE_ID}"
+
 printf 'PASS: NF3 NVFP4/FP8-RoPE image built and ABI verified\n'
 printf 'IMAGE=%s\nIMAGE_ID=%s\n' "${OUTPUT_IMAGE}" \
-  "$("${ENGINE}" image inspect "${OUTPUT_IMAGE}" --format '{{.Id}}')"
+  "${FINAL_IMAGE_ID}"

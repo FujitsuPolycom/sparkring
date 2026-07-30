@@ -84,8 +84,9 @@ resolved failures, superseded configurations, and pending acceptance work.
 
 ## What SparkRing provides
 
-- A model-agnostic direct-cable transport core.
-- Two- and four-rank collective schedules.
+- A GLM/vLLM-oriented direct-cable transport implementation, with reusable
+  low-level transport primitives.
+- Two- and four-rank collective schedules used by the current GLM/vLLM paths.
 - Registered mapped-host RDMA arenas.
 - GPU doorbells and device-published command rings.
 - CUDA-graph-compatible asynchronous submission.

@@ -74,7 +74,18 @@ def test_download_script_uses_pinned_base_and_nf3_recipe():
     assert f'MODEL_INDEX_SHA256="{model["index_sha256"]}"' in text
     assert f'DRAFT_REPO="{draft["repository"]}"' in text
     assert f'DRAFT_REVISION="{draft["revision"]}"' in text
+    assert (
+        f'DRAFT_INPUTSCALES_SHA256="{draft["inputscales_sha256"]}"'
+        in text
+    )
     assert 'allow_patterns=["mtp-draft/*"]' in text
+
+
+def test_download_script_can_adopt_verified_existing_payload():
+    text = (ROOT / "scripts/download-glm52.sh").read_text(encoding="utf-8")
+    assert "verify_glm52_download.py" in text
+    assert '"${verify_command[@]}" --adopt' in text
+    assert "verification_status" in text
 
 
 def test_download_container_overrides_inherited_offline_and_root_cache_settings():

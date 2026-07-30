@@ -23,7 +23,8 @@
       "subdirectory": "mtp-draft",
       "config_sha256": "47e27afcefcd8439cb5dcbdc9d3e11ab5069d6d8395029058141ffb56c50d9ff",
       "index_sha256": "de6d6bdead79ebd556d3bbbbf56ea537b00b4fdaf3e92927ac1463328037ee1d",
-      "weight_sha256": "0ade0e3da08e7e6c7b1f20e4c4e8d5d3b26b81103cea22f2ead9909c7d3d0732"
+      "weight_sha256": "0ade0e3da08e7e6c7b1f20e4c4e8d5d3b26b81103cea22f2ead9909c7d3d0732",
+      "inputscales_sha256": "b324090fb2ae84803015c454e6161b7da802b1fb6a16b89e8fa79f3f9767762f"
     }
   },
   "runtime": {
