@@ -52,7 +52,7 @@ Configuration comes from two files:
       "schema": "sparkring-acceptance-gate-config/v1",
       "ssh":     {"command": ["ssh", "-o", "BatchMode=yes"]},
       "runtime": {
-        "lock_path": "runtime/runtime-lock.json",
+        "lock_path": "recipes/glm52-nf3-hybrid.json",
         "verify_script": "/opt/sparkring/verify-runtime.py",
         "manifest_path": "/opt/sparkring/runtime-manifest.json",
         "expect_runtime_id": null,
@@ -131,7 +131,7 @@ REQUIRED_DCP = 4
 REQUIRED_MTP_MODE = "adaptive"
 REQUIRED_MTP_TOKENS = 4
 REQUIRED_MAX_MODEL_LEN = 458752
-REQUIRED_KV_BYTES_PER_RANK = 4_600_000_000
+REQUIRED_KV_BYTES_PER_RANK = 7_000_000_000
 REQUIRED_MAX_NUM_SEQS = 8
 REQUIRED_CONCURRENCIES = (1, 8)
 
@@ -177,7 +177,7 @@ DEFAULT_GATE_CONFIG: dict = {
     "schema": GATE_CONFIG_SCHEMA,
     "ssh": {"command": ["ssh", "-o", "BatchMode=yes"]},
     "runtime": {
-        "lock_path": "runtime/runtime-lock.json",
+        "lock_path": "recipes/glm52-nf3-hybrid.json",
         "verify_script": "/opt/sparkring/verify-runtime.py",
         "manifest_path": "/opt/sparkring/runtime-manifest.json",
         "expect_runtime_id": None,

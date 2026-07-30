@@ -4,7 +4,7 @@
     "command": ["ssh", "-o", "BatchMode=yes"]
   },
   "runtime": {
-    "lock_path": "runtime/runtime-lock.json",
+    "lock_path": "recipes/glm52-nf3-hybrid.json",
     "verify_script": "/opt/sparkring/verify-runtime.py",
     "manifest_path": "/opt/sparkring/runtime-manifest.json",
     "expect_runtime_id": null,

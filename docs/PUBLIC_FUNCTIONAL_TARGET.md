@@ -112,9 +112,9 @@ re-implementing it.
 
 | Requirement | Value |
 |---|---|
-| Repository | **`aidendle94/GLM-5.2-MXFP4-Experts-GPTQ`** (`runtime/runtime-lock.json` → `model.repository`) |
-| Revision | **`46537e0e16fcd156627800139b41b9c497fc7ee2`**, an immutable Hugging Face commit recorded in `model.revision` |
-| Identity check | `config.json` of the pinned revision must hash to `ffd30e72ab8bb7e8ad560f2aaab03cc595f3106f0acf793ef96eedaf90f66d69` (`model.config_sha256`) |
+| Repository | **`madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid`** (`recipes/glm52-nf3-hybrid.json` → `model.repository`) |
+| Revision | **`66f3623dd8fefb5ca8046706912d5d31c8d196af`**, an immutable Hugging Face commit recorded in `model.revision` |
+| Identity check | `config.json` of the pinned revision must hash to `254974797e9f455716a30ab5505ba68272181b20b58a3693e54f94fb8056f3ef` (`model.config_sha256`) |
 | Size | ~382 GiB, present on all four nodes |
 | Load format | `safetensors` |
 
@@ -140,7 +140,7 @@ with them (see TBD-8).
 | Supported MTP mode | **adaptive MTP 2/4, window 32 with true selected-depth drafting** — `num_speculative_tokens: 4`, `adaptive_speculative_tokens_window: 32`, `method: mtp`, adaptive depths `2,4`, `SPARK_ADAPTIVE_MTP_CONTROL=1`, `SPARK_GLM52_MTP_INDEX_REUSE=1`, and `VLLM_SPARK_TRUE_ADAPTIVE_DRAFT=1` (`VLLM_SPARK_MTP_MODE_ID=adaptive-mtp2-4-window32`). A K2 decision must execute only two draft steps, not compute K4 and truncate it. Fixed-K MTP and MTP-off are **not** part of this matrix. See TBD-9 for the determinism consequence. |
 | Max context | `--max-model-len 458752` |
 | Batching | `--max-num-batched-tokens 4096`, `--max-num-seqs 8` (Q40 ABI cap: max query rows = seqs x (K+1) = 40) |
-| KV cache | `--kv-cache-dtype nvfp4_ds_mla`, `--kv-cache-memory-bytes 4600000000` (4.6 GB/rank), per-token scale mode |
+| KV cache | `--kv-cache-dtype fp8`, `--kv-cache-memory-bytes 7000000000` (7.0 GB/rank) |
 | Attention backend | `--attention-backend B12X_MLA_SPARSE` |
 | Memory | `--gpu-memory-utilization 0.88` |
 | FlashInfer startup | `--no-enable-flashinfer-autotune`; the generic 4096-token full-model tuner is not rank-safe with multi-node DCP. The Spark/B12X-specific prewarm remains enabled. |
@@ -150,7 +150,7 @@ with them (see TBD-8).
 
 **What is machine-checked.** The gate enforces TP=4, DCP=4, `mtp_mode:
 adaptive`, `mtp_tokens: 4`, `max_model_len: 458752`,
-`kv_cache_bytes_per_rank: 4600000000` and `max_num_seqs: 8` against the site
+`kv_cache_bytes_per_rank: 7000000000` and `max_num_seqs: 8` against the site
 config, and refuses any other value with the expected one in the message. The
 MTP window (32), the attention backend and the KV dtype have no field in the
 site schema, so they are documented requirements the gate cannot yet verify —
