@@ -313,7 +313,7 @@ serving:
   mtp_tokens: 4
 
   # Maximum context length required by the public-functional matrix.
-  max_model_len: 458752
+  max_model_len: 262144
 
   # Validated NF3 KV budget per rank. This reported 511,488 logical tokens.
   kv_cache_bytes_per_rank: 7000000000

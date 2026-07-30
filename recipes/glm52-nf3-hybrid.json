@@ -45,7 +45,7 @@
     "tensor_parallel_size": 4,
     "decode_context_parallel_size": 4,
     "mtp_policy": "adaptive-2-4-window32",
-    "max_model_len": 458752,
+    "max_model_len": 262144,
     "default_kv_profile": "fp8",
     "kv_cache_dtype": "fp8",
     "kv_cache_bytes_per_rank": 7000000000,

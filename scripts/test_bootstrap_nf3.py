@@ -197,6 +197,7 @@ def test_generated_nvfp4_rope8_launch_is_an_exact_profile(tmp_path):
     )
     assert document["environment"]["VLLM_NVFP4_MLA_PER_TOKEN_SCALE"] == "1"
     assert document["environment"]["VLLM_SPARK_KV_SCALE_MODE"] == "per-token"
+    assert "--no-enable-flashinfer-autotune" not in document["extra_vllm_args"]
 
 
 def test_generated_fp8_launch_removes_nvfp4_only_controls(tmp_path):

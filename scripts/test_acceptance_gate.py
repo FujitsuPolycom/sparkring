@@ -343,7 +343,7 @@ def site_document(**overrides) -> dict:
             "decode_context_parallel_size": 4,
             "mtp_mode": "adaptive",
             "mtp_tokens": 4,
-            "max_model_len": 458752,
+            "max_model_len": 262144,
             "kv_cache_bytes_per_rank": 7000000000,
             "max_num_seqs": 8,
             "master_rank": 0,
@@ -1316,7 +1316,7 @@ def test_secret_shaped_keys_are_dropped_and_site_id_pseudonymised(tmp_path):
     # Non-identifying matrix facts must survive so the report is still useful.
     assert redacted["topology"]["mtu"] == 9000
     assert redacted["serving"]["tensor_parallel_size"] == 4
-    assert redacted["serving"]["max_model_len"] == 458752
+    assert redacted["serving"]["max_model_len"] == 262144
 
 
 def test_self_check_refuses_to_write_an_unredacted_bundle():

@@ -399,6 +399,11 @@ def _validate_pinned_model_launch(
         "--compilation-config": '{"pass_config":{"fuse_allreduce_rms":true}}',
         "--kernel-config": '{"enable_flashinfer_autotune":false}',
     }
+    if "--no-enable-flashinfer-autotune" in config.extra_vllm_args:
+        raise LaunchConfigError(
+            "pinned NF3 launch configures FlashInfer autotune only through "
+            "--kernel-config; the duplicate CLI flag is rejected by vLLM"
+        )
     for option, expected in graph_options.items():
         if _option_values(config.extra_vllm_args, option) != [expected]:
             raise LaunchConfigError(

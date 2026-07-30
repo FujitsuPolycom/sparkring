@@ -138,18 +138,18 @@ with them (see TBD-8).
 | Ranks | 4; rank 0 hosts the API, ranks 1–3 run `--headless` |
 | Distributed | `--nnodes 4 --node-rank <RANK> --master-addr <rank0-management-ip> --master-port <port>`, `--distributed-executor-backend mp` |
 | Supported MTP mode | **adaptive MTP 2/4, window 32 with true selected-depth drafting** — `num_speculative_tokens: 4`, `adaptive_speculative_tokens_window: 32`, `method: mtp`, adaptive depths `2,4`, `SPARK_ADAPTIVE_MTP_CONTROL=1`, `SPARK_GLM52_MTP_INDEX_REUSE=1`, and `VLLM_SPARK_TRUE_ADAPTIVE_DRAFT=1` (`VLLM_SPARK_MTP_MODE_ID=adaptive-mtp2-4-window32`). A K2 decision must execute only two draft steps, not compute K4 and truncate it. Fixed-K MTP and MTP-off are **not** part of this matrix. See TBD-9 for the determinism consequence. |
-| Max context | `--max-model-len 458752` |
+| Max context | `--max-model-len 262144` |
 | Batching | `--max-num-batched-tokens 4096`, `--max-num-seqs 8` (Q40 ABI cap: max query rows = seqs x (K+1) = 40) |
 | KV cache | `--kv-cache-dtype fp8`, `--kv-cache-memory-bytes 7000000000` (7.0 GB/rank) |
 | Attention backend | `--attention-backend B12X_MLA_SPARSE` |
 | Memory | `--gpu-memory-utilization 0.88` |
-| FlashInfer startup | `--no-enable-flashinfer-autotune`; the generic 4096-token full-model tuner is not rank-safe with multi-node DCP. The Spark/B12X-specific prewarm remains enabled. |
+| FlashInfer startup | `--kernel-config '{"enable_flashinfer_autotune":false}'`; the generic 4096-token full-model tuner is not rank-safe with multi-node DCP. The Spark/B12X-specific prewarm remains enabled. |
 | Graphs | The current NF3 C8 contract uses the pinned Q1-Q40 CUDA-graph buckets, single compile range, and fused all-reduce/RMS pass. The launcher rejects eager drift. The earlier wrong-output report belongs to a superseded Aiden configuration and remains in [TESTING_HISTORY.md](TESTING_HISTORY.md). |
 | Prefix caching | enabled |
 | API | OpenAI-compatible server on rank 0; served model name and port are site choices recorded in the site config |
 
 **What is machine-checked.** The gate enforces TP=4, DCP=4, `mtp_mode:
-adaptive`, `mtp_tokens: 4`, `max_model_len: 458752`,
+adaptive`, `mtp_tokens: 4`, `max_model_len: 262144`,
 `kv_cache_bytes_per_rank: 7000000000` and `max_num_seqs: 8` against the site
 config, and refuses any other value with the expected one in the message. The
 MTP window (32), the attention backend and the KV dtype have no field in the

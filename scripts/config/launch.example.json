@@ -87,7 +87,6 @@
     "--enable-prefix-caching",
     "--gpu-memory-utilization",
     "0.89",
-    "--no-enable-flashinfer-autotune",
     "--max-cudagraph-capture-size",
     "40",
     "--compilation-config",

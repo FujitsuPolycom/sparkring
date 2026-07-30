@@ -69,7 +69,8 @@ The run passed:
 The first attempt did **not** reach API acceptance. After KV allocation, the
 generic full-model FlashInfer 4096-token autotuner entered a rank-asymmetric
 collective and triggered the NCCL watchdog. SparkRing commit `b8f8a5b` disables
-that unsafe distributed tuner with `--no-enable-flashinfer-autotune`, while
+that unsafe distributed tuner through
+`--kernel-config '{"enable_flashinfer_autotune":false}'`, while
 retaining the bounded B12X prewarm, and fixes the launcher JIT-cache mount.
 The corrected four-rank run is pending; this is partial bring-up evidence, not
 an accepted public serving result.

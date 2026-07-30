@@ -206,6 +206,7 @@ def test_nvfp4_rope8_profile_refuses_missing_per_token_scale(tmp_path):
 def test_example_uses_live_nf3_c8_graph_contract():
     config = launcher.load_launch(LAUNCH)
     assert "--enforce-eager" not in config.extra_vllm_args
+    assert "--no-enable-flashinfer-autotune" not in config.extra_vllm_args
     assert (
         _option_value(config.extra_vllm_args, "--max-cudagraph-capture-size")
         == "40"
@@ -213,6 +214,22 @@ def test_example_uses_live_nf3_c8_graph_contract():
     assert config.environment["VLLM_SPARK_ENABLE_CUDAGRAPH"] == "1"
     assert config.environment["VLLM_SPARK_NF3_SINGLE_COMPILE_RANGE"] == "1"
     assert config.environment["VLLM_SPARK_MAX_QUERY_ROWS"] == "40"
+
+
+def test_pinned_nf3_launch_refuses_duplicate_flashinfer_autotune_control(
+    tmp_path,
+):
+    config = _launch_config_with(
+        tmp_path,
+        lambda document: document["extra_vllm_args"].append(
+            "--no-enable-flashinfer-autotune"
+        ),
+    )
+    with pytest.raises(
+        launcher.LaunchConfigError,
+        match="duplicate CLI flag is rejected by vLLM",
+    ):
+        launcher.start_actions(load_site(SITE), config)
 
 
 def test_pinned_nf3_launch_refuses_query_capacity_drift(tmp_path):
@@ -355,7 +372,8 @@ def test_example_produces_four_safe_start_actions():
             f"{config.mtp_draft_host_path}:/mtp-draft:ro"
             in action.argv
         )
-        assert "--no-enable-flashinfer-autotune" in action.argv
+        assert "--no-enable-flashinfer-autotune" not in action.argv
+        assert action.argv.count("--kernel-config") == 1
 
 
 def test_example_mounts_nf3_target_and_separate_mtp_draft():
