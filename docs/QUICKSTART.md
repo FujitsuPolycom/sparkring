@@ -270,11 +270,27 @@ The default container name is `glm52-sparkring-nf3-r0`:
 docker logs --follow --tail 200 glm52-sparkring-nf3-r0
 ```
 
+During model loading, the progress bar is emitted by rank 0. Seeing rank 0
+advance while ranks 1-3 are quiet is normal; the follower workers still load
+and participate. Press `Ctrl+C` to stop following the log. This does not stop
+the container or model.
+
 From another machine, use your rank-0 SSH target:
 
 ```powershell
 ssh operator@RANK0-MANAGEMENT-IP `
   "docker logs --follow --tail 200 glm52-sparkring-nf3-r0 2>&1"
+```
+
+To inspect a follower, use that follower's SSH target and matching suffix
+(`r1`, `r2`, or `r3`). To check all four container states and restart counts
+in one command from rank 0:
+
+```bash
+python scripts/sparkring_launcher.py \
+  --site .sparkring/bootstrap/site.yaml \
+  --launch-config .sparkring/bootstrap/launch.nvfp4-rope8.json \
+  --execute status
 ```
 
 Health and model identity:
@@ -294,7 +310,7 @@ The current configuration must report:
 | maximum sequences | 8 |
 | maximum query rows | 40 |
 | maximum batch tokens | 4096 |
-| model length | 458,752 |
+| model length | 262,144 |
 | KV | selected profile, 7,000,000,000 bytes/rank |
 | NF3 workspace reserve | 805,306,368 bytes/rank |
 | SparkCache | disabled |

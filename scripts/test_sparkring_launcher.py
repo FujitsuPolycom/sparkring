@@ -212,6 +212,12 @@ def test_example_uses_live_nf3_c8_graph_contract():
         == "40"
     )
     assert config.environment["VLLM_SPARK_ENABLE_CUDAGRAPH"] == "1"
+    assert config.environment["VLLM_SPARK_TP4_GRAPH_Q1"] == "1"
+    assert config.environment["SPARK_TP4_GRAPH_SUBMIT_CPU"] == "10"
+    assert config.environment["SPARK_TP4_GRAPH_PROGRESS_CPU"] == "11"
+    assert config.environment["SPARK_TP4_GRAPH_VOCAB_PROGRESS_CPU"] == "12"
+    assert config.environment["SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT0"] == "10110"
+    assert config.environment["SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT1"] == "10111"
     assert config.environment["VLLM_SPARK_NF3_SINGLE_COMPILE_RANGE"] == "1"
     assert config.environment["VLLM_SPARK_MAX_QUERY_ROWS"] == "40"
 
@@ -242,6 +248,22 @@ def test_pinned_nf3_launch_refuses_query_capacity_drift(tmp_path):
     with pytest.raises(
         launcher.LaunchConfigError,
         match="VLLM_SPARK_MAX_QUERY_ROWS=40",
+    ):
+        launcher.start_actions(load_site(SITE), config)
+
+
+def test_pinned_nf3_launch_refuses_disabled_graph_vocabulary_transport(
+    tmp_path,
+):
+    config = _launch_config_with(
+        tmp_path,
+        lambda document: document["environment"].update(
+            {"VLLM_SPARK_TP4_GRAPH_Q1": "0"}
+        ),
+    )
+    with pytest.raises(
+        launcher.LaunchConfigError,
+        match="requires VLLM_SPARK_TP4_GRAPH_Q1=1",
     ):
         launcher.start_actions(load_site(SITE), config)
 

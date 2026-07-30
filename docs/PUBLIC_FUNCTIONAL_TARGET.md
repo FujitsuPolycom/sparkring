@@ -144,7 +144,7 @@ with them (see TBD-8).
 | Attention backend | `--attention-backend B12X_MLA_SPARSE` |
 | Memory | `--gpu-memory-utilization 0.88` |
 | FlashInfer startup | `--kernel-config '{"enable_flashinfer_autotune":false}'`; the generic 4096-token full-model tuner is not rank-safe with multi-node DCP. The Spark/B12X-specific prewarm remains enabled. |
-| Graphs | The current NF3 C8 contract uses the pinned Q1-Q40 CUDA-graph buckets, single compile range, and fused all-reduce/RMS pass. The launcher rejects eager drift. The earlier wrong-output report belongs to a superseded Aiden configuration and remains in [TESTING_HISTORY.md](TESTING_HISTORY.md). |
+| Graphs | The current NF3 C8 contract uses the pinned Q1-Q40 CUDA-graph buckets, single compile range, fused all-reduce/RMS pass, and the dedicated graph vocabulary session (`VLLM_SPARK_TP4_GRAPH_Q1=1`, ports `10110/10111`, submit/progress CPUs `10/11/12`). The launcher rejects eager or NCCL-in-capture drift. The earlier wrong-output report belongs to a superseded Aiden configuration and remains in [TESTING_HISTORY.md](TESTING_HISTORY.md). |
 | Prefix caching | enabled |
 | API | OpenAI-compatible server on rank 0; served model name and port are site choices recorded in the site config |
 
