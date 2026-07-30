@@ -123,10 +123,13 @@ cp -- "${ROOT}/runtime/write-nf3-installed-receipt.py" \
 FINAL_RECEIPT="${CONTEXT}/final-installed-receipt.json"
 FINAL_RECEIPT_TMP="${FINAL_RECEIPT}.tmp"
 "${ENGINE}" run --rm --entrypoint /opt/venv/bin/python \
+  --user "$(id -u):$(id -g)" \
+  --volume "${CONTEXT}:/receipt-output" \
   "${CANDIDATE_IMAGE}" /opt/sparkring/write-nf3-installed-receipt.py \
   --parent-receipt /opt/sparkring/nf3-bootstrap-input-receipt.json \
   --profile nvfp4-rope8 \
-  > "${FINAL_RECEIPT_TMP}"
+  --output /receipt-output/final-installed-receipt.json.tmp \
+  >/dev/null
 python3 -m json.tool "${FINAL_RECEIPT_TMP}" >/dev/null
 mv -- "${FINAL_RECEIPT_TMP}" "${FINAL_RECEIPT}"
 FINAL_RECEIPT_SHA256="$(

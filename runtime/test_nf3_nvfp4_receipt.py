@@ -232,6 +232,8 @@ def test_builder_generates_receipt_from_candidate_then_builds_final_layer():
     assert 'CANDIDATE_IMAGE="${OUTPUT_IMAGE}-candidate"' in text
     assert "write-nf3-installed-receipt.py" in text
     assert "--parent-receipt" in text
+    assert "--output /receipt-output/final-installed-receipt.json.tmp" in text
+    assert '> "${FINAL_RECEIPT_TMP}"' not in text
     assert "FINAL_RECEIPT_SHA256=" in text
     assert "Containerfile.nf3-nvfp4-final" in text
     assert '--build-arg "FINAL_RECEIPT_SHA256=' in text
