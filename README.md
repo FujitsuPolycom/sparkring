@@ -35,14 +35,12 @@ environment flags, source attestations, and integration ABIs can change.
 | KV allocation | 7,000,000,000 bytes/rank |
 | CUDA workspace reserve | 805,306,368 bytes/rank |
 
-These short sanity cells confirm the current live configuration. They do not
-replace the complete context-by-concurrency benchmark matrix.
+These short sanity cells confirm the current live configuration.
 
 ### Validated GPTQ RC1 serving baseline
 
 The table below is one coherent 20-cell benchmark on a usable TP4/DCP4
-configuration. It does not mix DCP1 peaks, historical coding prompts, or
-transport-only probes into the serving baseline.
+configuration.
 
 | Context | Cold prefill | C1 decode | C2 aggregate | C4 aggregate | C8 aggregate |
 |---:|---:|---:|---:|---:|---:|
