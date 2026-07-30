@@ -72,5 +72,6 @@ collective and triggered the NCCL watchdog. SparkRing commit `b8f8a5b` disables
 that unsafe distributed tuner through
 `--kernel-config '{"enable_flashinfer_autotune":false}'`, while
 retaining the bounded B12X prewarm, and fixes the launcher JIT-cache mount.
-The corrected four-rank run is pending; this is partial bring-up evidence, not
-an accepted public serving result.
+That historical candidate stopped at this point. The later clean-checkout NF3
+NVFP4+FP8-RoPE bootstrap completed the full four-rank serving gate; see
+[NF3_NVFP4_PUBLIC_VALIDATION.md](NF3_NVFP4_PUBLIC_VALIDATION.md).

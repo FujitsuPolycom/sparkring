@@ -71,6 +71,10 @@ def _validate(recipe: dict[str, Any]) -> None:
         raise RecipeError("the public deployment surface admits only NF3")
     if recipe["default"] is not True:
         raise RecipeError("the NF3 recipe must be the sole default")
+    if recipe["maturity"] != "public-clean-checkout-live-validated":
+        raise RecipeError(
+            "the NF3 recipe maturity must match the accepted public live gate"
+        )
 
     hardware = recipe["hardware"]
     if hardware != {
@@ -157,12 +161,12 @@ def _validate(recipe: dict[str, Any]) -> None:
             "reported_kv_tokens": 511488,
         },
         "nvfp4-rope8": {
-            "maturity": "offline-validated",
+            "maturity": "public-clean-checkout-live-validated",
             "kv_cache_dtype": "nvfp4_ds_mla",
             "scale_mode": "per-token",
             "reported_kv_tokens": 875520,
             "equivalent_live_startup_api_healthy": True,
-            "public_bootstrap_live_validated": False,
+            "public_bootstrap_live_validated": True,
         },
     }
     if serving.get("kv_profiles") != expected_profiles:

@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-recipe/v1",
   "recipe_id": "glm52-nf3-hybrid",
-  "maturity": "public-source-bootstrap-ready",
+  "maturity": "public-clean-checkout-live-validated",
   "default": true,
   "hardware": {
     "platform": "linux/arm64",
@@ -57,12 +57,12 @@
         "reported_kv_tokens": 511488
       },
       "nvfp4-rope8": {
-        "maturity": "offline-validated",
+        "maturity": "public-clean-checkout-live-validated",
         "kv_cache_dtype": "nvfp4_ds_mla",
         "scale_mode": "per-token",
         "reported_kv_tokens": 875520,
         "equivalent_live_startup_api_healthy": true,
-        "public_bootstrap_live_validated": false
+        "public_bootstrap_live_validated": true
       }
     },
     "max_num_batched_tokens": 4096,

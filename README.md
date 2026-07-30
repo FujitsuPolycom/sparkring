@@ -24,7 +24,7 @@ at immutable revision
 | Parallelism | TP4/DCP4, adaptive MTP2/4 | Validated |
 | Transport | Four 200 Gb/s direct links, cycle `0-1-2-3-0` | Validated |
 | API | OpenAI-compatible vLLM endpoint | Validated |
-| Public bootstrap | Pinned ARM64 base + thin local NF3 image | Ready for external trial |
+| Public bootstrap | Pinned ARM64 base + thin local NF3 image | Clean-checkout four-Spark run validated |
 
 The former Aiden MXFP4/GPTQ reference is preserved in
 [the historical lane document](docs/history/AIDEN_MXFP4_GPTQ.md). It is not a
@@ -47,12 +47,14 @@ Two KV layouts are available for the same NF3 checkpoint and launch:
 | Bootstrap profile | KV capacity observed | Status |
 |---|---:|---|
 | `fp8` (default) | 511,488 tokens | public bootstrap profile |
-| `nvfp4-rope8` | **875,520 tokens** | equivalent live profile healthy; public bootstrap live gate pending |
+| `nvfp4-rope8` | **875,520 tokens** | clean-checkout public bootstrap validated |
 
 The optional profile stores the compressed latent KV in NVFP4 with per-token
 scaling while retaining FP8 RoPE data. It changes neither the model download
-nor the TP4/DCP4/MTP/C8/Q40 serving policy. Its public build/launch path is
-offline-validated; the capacity is from the equivalent API-healthy live run.
+nor the TP4/DCP4/MTP/C8/Q40 serving policy. Its public clean-checkout bootstrap
+has now built, attested, distributed, launched, captured every configured CUDA
+graph, and served a deterministic API request on four Sparks. See the
+[validation receipt](docs/NF3_NVFP4_PUBLIC_VALIDATION.md).
 
 | Measurement | Result |
 |---|---:|

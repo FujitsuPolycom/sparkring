@@ -17,14 +17,14 @@ SparkCache disabled
 | Profile | Status | KV format | Reported capacity |
 |---|---|---|---:|
 | `fp8` | conservative default | FP8 | 511,488 tokens |
-| `nvfp4-rope8` | equivalent live profile is API-healthy; public bootstrap live gate pending | NVFP4 latent + FP8 RoPE, per-token scale | 875,520 tokens |
+| `nvfp4-rope8` | clean-checkout public bootstrap live-validated | NVFP4 latent + FP8 RoPE, per-token scale | 875,520 tokens |
 
 Both profiles use the same target checkpoint, MTP draft, topology, 7 GB/rank
 KV allocation, and launch policy. Selecting the second profile does not
 download the model again. It builds only a thin compatibility layer that keeps
 the pinned NF3 expert kernels while restoring the packed-MLA reader. The
-875,520-token result is from the equivalent running profile; do not describe
-the new public build path as live-validated until its own four-rank gate passes.
+875,520-token result and the complete public bootstrap are recorded in the
+[four-Spark validation receipt](NF3_NVFP4_PUBLIC_VALIDATION.md).
 
 The former Aiden MXFP4/GPTQ lane is historical and lives in
 [history/AIDEN_MXFP4_GPTQ.md](history/AIDEN_MXFP4_GPTQ.md).
@@ -299,6 +299,11 @@ Health and model identity:
 curl -fsS http://RANK0-MANAGEMENT-IP:8000/health
 curl -fsS http://RANK0-MANAGEMENT-IP:8000/v1/models
 ```
+
+`/v1/models` should report `glm-5.2-nf3-hybrid`. A complete deterministic
+request, expected response properties, exact image identity checks, and
+post-request health checks are in
+[NF3_NVFP4_PUBLIC_VALIDATION.md](NF3_NVFP4_PUBLIC_VALIDATION.md).
 
 The current configuration must report:
 

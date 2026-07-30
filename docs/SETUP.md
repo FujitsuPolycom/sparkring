@@ -682,7 +682,7 @@ Stage identical, versioned copies of every artifact on **all four nodes** and re
 
 ## Stage 8 — Launch
 
-> **Reference scope:** the PowerShell workflow below remains private-archive history. The public candidate uses `scripts/sparkring_launcher.py` with `scripts/config/site.yaml` and `scripts/config/launch.json`, plus the public acceptance gate. Generate and review its offline plan first. Do not execute it against a serving cluster. Its native capability gates now pass; complete API/request acceptance remains pending.
+> **Reference scope:** the PowerShell workflow below remains private-archive history. The accepted public path uses `scripts/bootstrap_nf3.py` to produce a resolved site and launch profile, then `scripts/sparkring_launcher.py` for lifecycle control. Generate and review its offline plan first. The clean-checkout NVFP4+FP8-RoPE API/request gate is recorded in [NF3_NVFP4_PUBLIC_VALIDATION.md](NF3_NVFP4_PUBLIC_VALIDATION.md).
 
 Public-candidate planning is entirely offline:
 

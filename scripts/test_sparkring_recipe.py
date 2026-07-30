@@ -26,6 +26,7 @@ def test_single_nf3_recipe_is_valid_and_local_build_ready():
     recipe = _recipe()
     recipe_module._validate(recipe)
     assert recipe["recipe_id"] == "glm52-nf3-hybrid"
+    assert recipe["maturity"] == "public-clean-checkout-live-validated"
     assert recipe["runtime"]["final_image"] is None
     assert recipe["publication"]["zero_build_ready"] is False
     assert recipe["publication"]["local_build_ready"] is True
@@ -33,6 +34,16 @@ def test_single_nf3_recipe_is_valid_and_local_build_ready():
     assert recipe["serving"]["kv_profiles"]["nvfp4-rope8"][
         "reported_kv_tokens"
     ] == 875520
+    assert recipe["serving"]["kv_profiles"]["nvfp4-rope8"][
+        "public_bootstrap_live_validated"
+    ] is True
+
+
+def test_recipe_cannot_regress_clean_checkout_live_maturity():
+    recipe = _recipe()
+    recipe["maturity"] = "public-source-bootstrap-ready"
+    with pytest.raises(recipe_module.RecipeError, match="accepted public live gate"):
+        recipe_module._validate(recipe)
 
 
 def test_plan_is_offline_deterministic_and_names_bootstrap(capsys):

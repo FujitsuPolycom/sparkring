@@ -4,19 +4,18 @@
   "lanes": {
     "reference": {
       "maturity": "live-validated",
-      "publicly_runnable": false,
+      "publicly_runnable": true,
       "public_source_complete": true,
-      "evidence": "README.md",
-      "reason": "The NF3 target passed local four-Spark serving and overlap sanity gates; the public source bootstrap now reproduces its pinned ARM64-derived runtime inputs."
+      "evidence": "docs/NF3_NVFP4_PUBLIC_VALIDATION.md",
+      "reason": "The NF3 NVFP4+FP8-RoPE target passed a clean-checkout public bootstrap, four-rank CUDA-graph startup, API correctness, and post-request health gate."
     },
     "public-functional": {
-      "maturity": "source-bootstrap-ready",
-      "end_to_end_runnable": false,
-      "acceptance_result_exists": false,
+      "maturity": "clean-checkout-live-validated",
+      "end_to_end_runnable": true,
+      "acceptance_result_exists": true,
       "definition": "recipes/glm52-nf3-hybrid.json",
-      "blockers": [
-        "obtain an independent clean-checkout four-Spark reproduction report"
-      ]
+      "evidence": "docs/NF3_NVFP4_PUBLIC_VALIDATION.md",
+      "blockers": []
     }
   },
   "components": {
@@ -24,7 +23,7 @@
       "maturity": "offline-validated",
       "command": "python -m pytest spark_transport sparkcache runtime scripts -q",
       "last_observed": {
-        "passed": 1707,
+        "passed": 1760,
         "skipped": 5
       }
     },
@@ -53,26 +52,26 @@
       "entrypoint": "runtime/README.md"
     },
     "faststart_builder": {
-      "maturity": "candidate",
-      "accepted": false,
+      "maturity": "live-validated",
+      "accepted": true,
       "base_image_pinned_by_arm64_manifest": true,
       "avoids_full_vllm_kernel_rebuild": true,
       "native_arm64_build_passed": true,
       "identical_four_rank_distribution_passed": true,
       "live_model_load_and_kv_allocation_passed": true,
       "external_manual_eager_request_reported": true,
-      "api_request_acceptance_passed": false,
+      "api_request_acceptance_passed": true,
       "entrypoint": "docs/QUICKSTART.md"
     },
     "public_launcher": {
-      "maturity": "partially-live-validated",
+      "maturity": "live-validated",
       "mutating_commands_default_to_dry_run": true,
       "external_manual_eager_request_reported": true,
-      "live_four_rank_acceptance": false,
+      "live_four_rank_acceptance": true,
       "entrypoint": "scripts/sparkring_launcher.py"
     },
     "nf3_recipe": {
-      "maturity": "public-source-bootstrap-ready",
+      "maturity": "public-clean-checkout-live-validated",
       "sole_current_target": true,
       "model": "madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid",
       "zero_build_ready": false,
@@ -80,10 +79,10 @@
       "entrypoint": "recipes/glm52-nf3-hybrid.json"
     },
     "headless_startup_abi": {
-      "maturity": "partially-live-validated",
+      "maturity": "live-validated",
       "patch_required": false,
       "live_four_rank_startup_through_kv_allocation": true,
-      "live_four_rank_acceptance": false,
+      "live_four_rank_acceptance": true,
       "entrypoint": "runtime/public-headless-abi-gate.py"
     }
   }
