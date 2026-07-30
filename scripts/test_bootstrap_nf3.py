@@ -81,6 +81,16 @@ def test_execute_requires_confirmation_before_mutation():
     assert bootstrap_nf3.CONFIRMATION in result.stderr
 
 
+def test_bootstrap_verifies_rank0_management_fanout_scope():
+    command = bootstrap_nf3.ssh_bootstrap_verification_command(SITE)
+    assert command[-4:] == [
+        "--site",
+        str(SITE),
+        "--scope",
+        "bootstrap",
+    ]
+
+
 def test_nf3_contract_pins_exact_target_and_mtp_draft():
     recipe = bootstrap_nf3.load_nf3_contract()
     model = recipe["model"]

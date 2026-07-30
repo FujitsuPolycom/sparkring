@@ -105,6 +105,18 @@ def remote(target: str, command: str) -> None:
     )
 
 
+def ssh_bootstrap_verification_command(site_path: Path) -> list[str]:
+    """Return the verifier invocation matching this bootstrap's fanout path."""
+    return [
+        sys.executable,
+        str(ROOT / "scripts/verify_ssh_mesh.py"),
+        "--site",
+        str(site_path),
+        "--scope",
+        "bootstrap",
+    ]
+
+
 def checkout_command(commit: str, remote_root: str) -> str:
     repository = f"{remote_root}/{commit}"
     return "\n".join(
@@ -371,16 +383,9 @@ def main(argv: list[str] | None = None) -> int:
         ],
         cwd=ROOT,
     )
-    print("==> Verifying key-based SSH fanout")
+    print("==> Verifying rank 0 management SSH to every follower")
     run(
-        [
-            sys.executable,
-            str(ROOT / "scripts/verify_ssh_mesh.py"),
-            "--site",
-            str(args.site),
-            "--scope",
-            "fanout",
-        ],
+        ssh_bootstrap_verification_command(args.site),
         cwd=ROOT,
     )
 

@@ -25,20 +25,26 @@ $EDITOR scripts/config/site.yaml
 # 1. Does the file describe a coherent cluster at all?  (offline, instant)
 python scripts/sparkring_site.py scripts/config/site.yaml
 
-# 2. Are management SSH and direct-cable image fanout ready? (read-only)
-python scripts/verify_ssh_mesh.py --site scripts/config/site.yaml
-
-# Optional: repair direct-cable public-key/host-key relationships, then verify
+# 2. Can the controller reach every rank and rank 0 reach every follower over
+#    the management network used by bootstrap_nf3.py? (read-only)
 python scripts/verify_ssh_mesh.py \
-  --site scripts/config/site.yaml --scope all-adjacent --fix
+  --site scripts/config/site.yaml --scope bootstrap
+
+# Optional: repair missing bootstrap public-key/host-key relationships
+python scripts/verify_ssh_mesh.py \
+  --site scripts/config/site.yaml --scope bootstrap --fix
 
 # 3. Does the cluster actually match it?  (read-only, one ssh per rank)
 python scripts/preflight.py --site scripts/config/site.yaml
 ```
 
 Step 1 needs nothing but Python and PyYAML. Steps 2 and 3 need key-based SSH
-to all four management addresses. The verifier is read-only unless `--fix` is
-explicitly supplied; preflight never mutates anything on the ranks.
+to all four management addresses. The bootstrap scope additionally checks
+rank 0 -> ranks 1-3 through their configured management `ssh_target` values,
+which is the path used for public image and command fanout. The verifier is
+read-only unless `--fix` is explicitly supplied; preflight never mutates
+anything on the ranks. Use `--scope all-adjacent` only for the optional
+direct-ring SSH relay audit.
 
 Keep your own `site.yaml` out of version control — it describes your real
 addressing. The repository already ignores the canonical local path

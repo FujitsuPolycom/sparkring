@@ -93,9 +93,10 @@ The exact commands and IPv4-to-GID example are embedded beside every field in
 [`scripts/config/README.md`](../scripts/config/README.md#deriving-the-non-obvious-values).
 Do not infer cable neighbors from cage labels; probe them.
 
-## 3. Clone and fill the discovered site facts
+## 3. Establish SSH from a trusted operator checkout
 
-Run the bootstrap on rank 0:
+First clone on a trusted operator/controller that already has authenticated
+management SSH to all four ranks:
 
 ```bash
 git clone https://github.com/FujitsuPolycom/sparkring.git
@@ -117,17 +118,34 @@ python scripts/sparkring_site.py scripts/config/site.yaml
 Check/fix key-based SSH before a long download:
 
 ```bash
-# Read-only: report missing management and fanout paths.
+# Read-only: check the exact controller/rank-0 management paths used by
+# bootstrap_nf3.py.
 python scripts/verify_ssh_mesh.py \
   --site scripts/config/site.yaml \
-  --scope all-adjacent
+  --scope bootstrap
 
-# Mutating: install only the missing public-key edges after operator approval.
+# Mutating: install only missing public-key trust/authorization after approval.
 python scripts/verify_ssh_mesh.py \
   --site scripts/config/site.yaml \
-  --scope all-adjacent \
+  --scope bootstrap \
   --fix
 ```
+
+The bootstrap scope requires the controller to reach all four management SSH
+targets and rank 0 to reach ranks 1-3 through those same management targets.
+It deliberately does not substitute direct-ring addresses. Use
+`--scope all-adjacent` only when validating the optional direct-ring SSH relay
+paths as a separate diagnostic.
+
+`--fix` must run from that trusted controller. Running it on rank 0 is also
+valid, but only when rank 0 already has authenticated management SSH to all
+four configured targets. The tool cannot bootstrap its own controller access.
+
+After the bootstrap scope passes, put the **same commit** and the completed
+untracked `site.yaml` on rank 0. For example, clone/checkout that commit on
+rank 0 and copy `site.yaml` over the management network. If this trusted
+checkout is already on rank 0, no copy is needed. Run every command below from
+that exact rank-0 checkout; `bootstrap_nf3.py execute` refuses to run elsewhere.
 
 Inspect the complete read-only machine/RDMA probe:
 

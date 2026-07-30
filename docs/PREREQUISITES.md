@@ -106,7 +106,7 @@ After filling the management targets in `site.yaml`, check them:
 ```bash
 python scripts/verify_ssh_mesh.py \
   --site scripts/config/site.yaml \
-  --scope all-adjacent
+  --scope bootstrap
 ```
 
 With explicit operator approval, the verifier can install missing public-key
@@ -115,12 +115,24 @@ edges:
 ```bash
 python scripts/verify_ssh_mesh.py \
   --site scripts/config/site.yaml \
-  --scope all-adjacent \
+  --scope bootstrap \
   --fix
 ```
 
 `--fix` distributes public keys only. It does not discover passwords, bypass
 authentication, or repair an unreachable management network.
+
+The `bootstrap` scope matches the public NF3 bootstrap exactly: the controller
+must reach every rank's management `ssh_target`, and rank 0 must reach ranks
+1-3 through those same management targets for image and command fanout. It
+does not rely on direct-ring SSH. Use `--scope all-adjacent` only to audit the
+optional direct-ring relay paths.
+
+Run `--fix` from a trusted operator/controller that already has authenticated
+management SSH to all four ranks. Rank 0 can be that controller only if it
+already has the same access. After this scope passes, copy the untracked
+`site.yaml` to an exact checkout of the same commit on rank 0; the model
+bootstrap itself runs there.
 
 ## 200 GbE and RoCE
 
@@ -246,7 +258,7 @@ The commands are also embedded beside each field in
 
 ## Required validation sequence
 
-From a clean SparkRing checkout on rank 0:
+From a clean SparkRing checkout on a trusted operator/controller:
 
 ```bash
 cp scripts/config/site.example.yaml scripts/config/site.yaml
@@ -262,7 +274,15 @@ python scripts/sparkring_site.py scripts/config/site.yaml
 # 2. Read-only SSH-path validation.
 python scripts/verify_ssh_mesh.py \
   --site scripts/config/site.yaml \
-  --scope all-adjacent
+  --scope bootstrap
+```
+
+If repair is required, run the same command with `--fix` here. The controller
+must already authenticate to all four ranks. After the SSH scope passes, put
+the exact same commit and this untracked `site.yaml` on rank 0, then continue
+there:
+
+```bash
 
 # 3. Show the read-only remote probe before contacting ranks.
 python scripts/preflight.py \

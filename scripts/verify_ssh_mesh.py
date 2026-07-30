@@ -3,8 +3,9 @@
 
 Read-only by default.  ``--fix`` may create an Ed25519 user key on a source
 rank, append only its public key to the destination's ``authorized_keys``, and
-enrol the destination host key for the direct-cable address.  Existing private
-keys never leave their source rank and passwords are never accepted.
+enrol the destination host key for the address used by the selected scope.
+Existing private keys never leave their source rank and passwords are never
+accepted.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ class Hop:
     destination_rank: int
     destination_address: str
     edge: str
+    kind: str = "direct"
 
 
 @dataclass
@@ -84,6 +86,26 @@ def all_adjacent_hops(site: SiteConfig) -> list[Hop]:
         left, right = edge.endpoints
         pairs.extend(((left, right), (right, left)))
     return [_hop(site, source, destination) for source, destination in pairs]
+
+
+def bootstrap_hops(site: SiteConfig) -> list[Hop]:
+    """Return rank0-to-follower hops used by ``bootstrap_nf3.py``.
+
+    The public bootstrap runs natively on physical rank 0 and sends images and
+    remote commands directly from there to every follower. These hops
+    therefore use each follower's management ``ssh_target`` host, not the
+    direct-ring addresses used by the optional no-registry relay tree.
+    """
+    # bootstrap_nf3.py is intentionally executed on physical rank 0 and fans
+    # from there, independently of the API/master-rank setting.
+    master = 0
+    hops: list[Hop] = []
+    for rank in sorted(site.ranks, key=lambda item: item.id):
+        if rank.id == master:
+            continue
+        _, host = split_ssh_target(rank.ssh_target)
+        hops.append(Hop(master, rank.id, host, "management", "bootstrap"))
+    return hops
 
 
 def _hop(site: SiteConfig, source: int, destination: int) -> Hop:
@@ -157,10 +179,10 @@ def _probe_hop(ssh: Ssh, site: SiteConfig, hop: Hop) -> Result:
     )
     completed = ssh.run(source.ssh_target, nested)
     if completed.returncode == 0:
-        return Result("direct", hop.source_rank, hop.destination_rank,
+        return Result(hop.kind, hop.source_rank, hop.destination_rank,
                       destination, hop.edge, "ok", "BatchMode SSH succeeded")
     status, detail = classify_failure(completed.stderr, completed.returncode)
-    return Result("direct", hop.source_rank, hop.destination_rank,
+    return Result(hop.kind, hop.source_rank, hop.destination_rank,
                   destination, hop.edge, status, detail)
 
 
@@ -239,7 +261,10 @@ def _repair_hop(ssh: Ssh, site: SiteConfig, hop: Hop) -> tuple[bool, str]:
         return False, "could not enrol authenticated destination host key: " + (
             install_host_result.stderr.strip() or "remote command failed"
         )
-    return True, "installed source public key and authenticated direct-link host key"
+    return True, (
+        "installed source public key and authenticated "
+        f"{hop.edge} host key"
+    )
 
 
 def verify(site: SiteConfig, scope: str, fix: bool,
@@ -250,7 +275,14 @@ def verify(site: SiteConfig, scope: str, fix: bool,
         for rank in sorted(site.ranks, key=lambda item: item.id)
     ]
     management_ok = {result.destination_rank: result.ok for result in results}
-    hops = fanout_hops(site) if scope == "fanout" else all_adjacent_hops(site)
+    if scope == "bootstrap":
+        hops = bootstrap_hops(site)
+    elif scope == "fanout":
+        hops = fanout_hops(site)
+    elif scope == "all-adjacent":
+        hops = all_adjacent_hops(site)
+    else:
+        raise ValueError(f"unsupported SSH verification scope: {scope!r}")
     for hop in hops:
         result = _probe_hop(runner, site, hop)
         if fix and not result.ok:
@@ -277,6 +309,11 @@ def _format_result(result: Result) -> str:
     repaired = " repaired" if result.repaired else ""
     if result.kind == "management":
         path = f"controller -> rank{result.destination_rank}"
+    elif result.kind == "bootstrap":
+        path = (
+            f"rank{result.source_rank} -> rank{result.destination_rank} "
+            f"(management, {result.destination})"
+        )
     else:
         path = (
             f"rank{result.source_rank} -> rank{result.destination_rank} "
@@ -289,11 +326,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--site", required=True, type=Path,
                         help="validated SparkRing site.yaml")
-    parser.add_argument("--scope", choices=("fanout", "all-adjacent"),
-                        default="fanout",
-                        help="verify image fanout tree (default) or all 8 directions")
+    parser.add_argument(
+        "--scope",
+        choices=("bootstrap", "fanout", "all-adjacent"),
+        default="bootstrap",
+        help=(
+            "verify rank0-to-all-follower management paths used by the public "
+            "bootstrap (default), the direct-ring relay tree, or all 8 "
+            "direct-ring directions"
+        ),
+    )
     parser.add_argument("--fix", action="store_true",
-                        help="repair direct-link SSH keys/trust, then reverify")
+                        help="repair selected SSH keys/trust, then reverify")
     parser.add_argument("--json", action="store_true",
                         help="emit machine-readable results")
     args = parser.parse_args(argv)
