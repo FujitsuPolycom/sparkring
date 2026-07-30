@@ -35,9 +35,11 @@ were created from the later public checkout.
 ## Bootstrap and distribution
 
 The bootstrap reused complete checkpoint files already present on the Sparks;
-it did not redownload them. It validated the immutable model and draft
-identities, built the thin derived image on rank 0, and used only direct
-200 Gb/s ring edges for the 20+ GB image archive:
+it did not redownload them. All four ranks reported `pinned NF3 target and MTP
+draft already complete; download skipped`. It validated the immutable model
+and draft identities, passed all **116/116** pre-launch hardware/image/model
+checks, built the thin derived image on rank 0, and used only direct 200 Gb/s
+ring edges for the 20+ GB image archive:
 
 ```text
 rank 0 -> rank 1
