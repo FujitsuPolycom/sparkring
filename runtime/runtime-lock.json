@@ -396,7 +396,7 @@
     },
     {
       "path": "runtime/public-entrypoint.sh",
-      "sha256": "46ec30e78b0f67f83da582bd889794dd2e4ab8e15b9ec2519de605815d401c16"
+      "sha256": "f8a2c574a01ea751cd513cfac90d443df3db07f4085a3c9b4b625ffdbd0762e3"
     },
     {
       "path": "runtime/public-model-preflight.py",

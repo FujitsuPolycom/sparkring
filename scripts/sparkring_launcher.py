@@ -309,11 +309,50 @@ def _validate_pinned_model_launch(
             "index_topk_pattern"
         )
 
-    kv_dtypes = _option_values(config.extra_vllm_args, "--kv-cache-dtype")
-    if kv_dtypes != ["fp8"]:
+    kv_profile = config.environment.get("VLLM_SPARK_KV_PROFILE")
+    kv_contracts = {
+        "fp8": {
+            "dtype": "fp8",
+            "environment": {},
+            "forbidden": (
+                "VLLM_SPARK_KV_CACHE_DTYPE",
+                "VLLM_NVFP4_MLA_PER_TOKEN_SCALE",
+                "VLLM_SPARK_KV_SCALE_MODE",
+            ),
+        },
+        "nvfp4-rope8": {
+            "dtype": "nvfp4_ds_mla",
+            "environment": {
+                "VLLM_SPARK_KV_CACHE_DTYPE": "nvfp4_ds_mla",
+                "VLLM_NVFP4_MLA_PER_TOKEN_SCALE": "1",
+                "VLLM_SPARK_KV_SCALE_MODE": "per-token",
+            },
+            "forbidden": (),
+        },
+    }
+    if kv_profile not in kv_contracts:
         raise LaunchConfigError(
-            "pinned NF3 launch requires exactly one --kv-cache-dtype fp8"
+            "pinned NF3 launch requires VLLM_SPARK_KV_PROFILE=fp8 or "
+            "nvfp4-rope8"
         )
+    kv_contract = kv_contracts[kv_profile]
+    kv_dtypes = _option_values(config.extra_vllm_args, "--kv-cache-dtype")
+    if kv_dtypes != [kv_contract["dtype"]]:
+        raise LaunchConfigError(
+            "pinned NF3 launch profile "
+            f"{kv_profile} requires exactly one --kv-cache-dtype "
+            f"{kv_contract['dtype']}"
+        )
+    for name, expected in kv_contract["environment"].items():
+        if config.environment.get(name) != expected:
+            raise LaunchConfigError(
+                f"pinned NF3 {kv_profile} launch requires {name}={expected}"
+            )
+    for name in kv_contract["forbidden"]:
+        if name in config.environment:
+            raise LaunchConfigError(
+                f"pinned NF3 fp8 launch forbids {name}"
+            )
     load_formats = _option_values(config.extra_vllm_args, "--load-format")
     if load_formats != ["fastsafetensors"]:
         raise LaunchConfigError(

@@ -16,6 +16,20 @@ fail() {
 : "${SPARKRING_DRAFT_CONFIG_SHA256:?SPARKRING_DRAFT_CONFIG_SHA256 is required}"
 : "${SPARKRING_DRAFT_INDEX_SHA256:?SPARKRING_DRAFT_INDEX_SHA256 is required}"
 : "${SPARKRING_DRAFT_WEIGHT_SHA256:?SPARKRING_DRAFT_WEIGHT_SHA256 is required}"
+: "${SPARKRING_KV_PROFILE:?SPARKRING_KV_PROFILE is required}"
+: "${VLLM_SPARK_KV_PROFILE:?VLLM_SPARK_KV_PROFILE is required}"
+
+[ "${SPARKRING_KV_PROFILE}" = "${VLLM_SPARK_KV_PROFILE}" ] ||
+  fail "image KV profile ${SPARKRING_KV_PROFILE} does not match launch profile ${VLLM_SPARK_KV_PROFILE}"
+case "${SPARKRING_KV_PROFILE}" in
+  fp8) ;;
+  nvfp4-rope8)
+    [ -f /opt/sparkring/verify-nf3-nvfp4-rope8.py ] ||
+      fail "NVFP4/FP8-RoPE ABI verifier is missing"
+    /opt/venv/bin/python /opt/sparkring/verify-nf3-nvfp4-rope8.py
+    ;;
+  *) fail "unsupported SparkRing KV profile: ${SPARKRING_KV_PROFILE}" ;;
+esac
 
 case "${SPARKRING_MODEL_REVISION}" in
   *[!0-9a-f]*|"") fail "model revision must be lowercase hex" ;;

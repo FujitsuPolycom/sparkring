@@ -1,6 +1,6 @@
 # Four-Spark NF3 quickstart
 
-This is the sole current deployment:
+This is the sole current model deployment, with two KV-storage profiles:
 
 ```text
 madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid
@@ -8,6 +8,18 @@ TP4 / DCP4 / adaptive MTP2-4 / C8 / Q40
 four directly cabled DGX Sparks
 SparkCache disabled
 ```
+
+| Profile | Status | KV format | Reported capacity |
+|---|---|---|---:|
+| `fp8` | conservative default | FP8 | 511,488 tokens |
+| `nvfp4-rope8` | equivalent live profile is API-healthy; public bootstrap live gate pending | NVFP4 latent + FP8 RoPE, per-token scale | 875,520 tokens |
+
+Both profiles use the same target checkpoint, MTP draft, topology, 7 GB/rank
+KV allocation, and launch policy. Selecting the second profile does not
+download the model again. It builds only a thin compatibility layer that keeps
+the pinned NF3 expert kernels while restoring the packed-MLA reader. The
+875,520-token result is from the equivalent running profile; do not describe
+the new public build path as live-validated until its own four-rank gate passes.
 
 The former Aiden MXFP4/GPTQ lane is historical and lives in
 [history/AIDEN_MXFP4_GPTQ.md](history/AIDEN_MXFP4_GPTQ.md).
@@ -78,11 +90,28 @@ python scripts/bootstrap_nf3.py plan \
 Plan mode performs no remote mutation. It names the exact commit, model paths,
 four SSH targets, image tag, and ordered operations.
 
+To inspect the larger-capacity alternative instead:
+
+```bash
+python scripts/bootstrap_nf3.py plan \
+  --site scripts/config/site.yaml \
+  --profile nvfp4-rope8
+```
+
 ## 4. Build, verify, distribute, and launch
 
 ```bash
 python scripts/bootstrap_nf3.py execute \
   --site scripts/config/site.yaml \
+  --confirmation BOOTSTRAP-NF3-ALL-FOUR
+```
+
+For the live NVFP4-latent/FP8-RoPE alternative:
+
+```bash
+python scripts/bootstrap_nf3.py execute \
+  --site scripts/config/site.yaml \
+  --profile nvfp4-rope8 \
   --confirmation BOOTSTRAP-NF3-ALL-FOUR
 ```
 
@@ -94,7 +123,9 @@ The script:
 3. fetches exact B12X and DGX-Spark port commits;
 4. pulls/checks the pinned public ARM64 base;
 5. builds SparkRing faststart without rebuilding Torch/vLLM/FlashInfer;
-6. builds the small NF3 adapter layer and verifies its full input receipt;
+6. builds the small NF3 adapter layer and verifies its full input receipt; for
+   `nvfp4-rope8`, it adds and ABI-checks one thin packed-MLA compatibility
+   layer;
 7. saves that image once and loads the identical image ID on ranks 1-3;
 8. writes `.sparkring/bootstrap/site.yaml`;
 9. runs the read-only hardware/image/model preflight;
@@ -140,7 +171,7 @@ The current configuration must report:
 | maximum query rows | 40 |
 | maximum batch tokens | 4096 |
 | model length | 458,752 |
-| KV | FP8, 7,000,000,000 bytes/rank |
+| KV | selected profile, 7,000,000,000 bytes/rank |
 | NF3 workspace reserve | 805,306,368 bytes/rank |
 | SparkCache | disabled |
 | execution | CUDA graphs through Q40 |
@@ -168,6 +199,9 @@ python scripts/acceptance_gate.py \
   resumes partial files and SparkRing re-hashes completion.
 - image already present: exact receipt/image-ID matches are reused; conflicting
   identities fail rather than being silently overwritten.
+- NVFP4 profile rejected: do not add only `--kv-cache-dtype`; select
+  `--profile nvfp4-rope8` so the image ABI and all per-token scale controls
+  change together.
 
 Resolved experiments and earlier bring-up failures are kept in
 [TESTING_HISTORY.md](TESTING_HISTORY.md), not in this deployment path.

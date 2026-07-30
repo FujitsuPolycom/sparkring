@@ -25,6 +25,20 @@ from sparkring_site import load_site
 ROOT = Path(__file__).resolve().parents[1]
 CONFIRMATION = "BOOTSTRAP-NF3-ALL-FOUR"
 PUBLIC_REPOSITORY = "https://github.com/FujitsuPolycom/sparkring.git"
+PROFILES = {
+    "fp8": {
+        "image_prefix": "sparkring/glm52-nf3",
+        "build_script": "scripts/build-nf3-image.sh",
+        "build_step": "build faststart plus thin NF3 image once on rank0",
+    },
+    "nvfp4-rope8": {
+        "image_prefix": "sparkring/glm52-nf3-nvfp4-rope8",
+        "build_script": "scripts/build-nf3-nvfp4-rope8-image.sh",
+        "build_step": (
+            "build the thin NVFP4-latent/FP8-RoPE compatibility layer"
+        ),
+    },
+}
 
 
 def run(
@@ -151,6 +165,43 @@ def write_generated_site(
     )
 
 
+def write_generated_launch(
+    source: Path,
+    destination: Path,
+    profile: str,
+) -> None:
+    if profile not in PROFILES:
+        raise ValueError(f"unknown KV profile: {profile}")
+    document = json.loads(source.read_text(encoding="utf-8"))
+    environment = document["environment"]
+    arguments = document["extra_vllm_args"]
+    dtype_index = arguments.index("--kv-cache-dtype") + 1
+    environment["VLLM_SPARK_KV_PROFILE"] = profile
+    environment["VLLM_SPARK_RUNTIME_ID"] = f"glm52-nf3-{profile}"
+    for name in (
+        "VLLM_SPARK_KV_CACHE_DTYPE",
+        "VLLM_NVFP4_MLA_PER_TOKEN_SCALE",
+        "VLLM_SPARK_KV_SCALE_MODE",
+    ):
+        environment.pop(name, None)
+    if profile == "fp8":
+        arguments[dtype_index] = "fp8"
+    else:
+        arguments[dtype_index] = "nvfp4_ds_mla"
+        environment.update(
+            {
+                "VLLM_SPARK_KV_CACHE_DTYPE": "nvfp4_ds_mla",
+                "VLLM_NVFP4_MLA_PER_TOKEN_SCALE": "1",
+                "VLLM_SPARK_KV_SCALE_MODE": "per-token",
+            }
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(document, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("action", choices=("plan", "execute"))
@@ -159,6 +210,12 @@ def main(argv: list[str] | None = None) -> int:
         "--launch-config",
         type=Path,
         default=ROOT / "scripts/config/launch.example.json",
+    )
+    parser.add_argument(
+        "--profile",
+        choices=tuple(PROFILES),
+        default="fp8",
+        help="KV storage profile; fp8 is the conservative default",
     )
     parser.add_argument(
         "--generated-site",
@@ -179,13 +236,15 @@ def main(argv: list[str] | None = None) -> int:
 
     site = load_site(args.site)
     launch = json.loads(args.launch_config.read_text(encoding="utf-8"))
+    profile = PROFILES[args.profile]
     commit = git_value("rev-parse", "HEAD")
     dirty = git_value("status", "--porcelain")
-    image = f"sparkring/glm52-nf3:{commit[:12]}"
+    image = f"{profile['image_prefix']}:{commit[:12]}"
     model_path = launch["model_host_path"]
     draft_path = launch["mtp_draft_host_path"]
     plan = {
         "schema": "sparkring-nf3-bootstrap-plan/v1",
+        "profile": args.profile,
         "runs_on": "rank0",
         "source_commit": commit,
         "image": image,
@@ -198,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
         "steps": [
             "verify clean pinned checkout and SSH/cable preflight",
             "resume and hash-verify target plus MTP draft on all four ranks",
-            "build faststart plus thin NF3 image once on rank0",
+            profile["build_step"],
             "save and fan out the exact image ID to ranks 1-3",
             "write ignored generated site config and rerun preflight",
             "launch all four ranks with the pinned C8/Q40 profile",
@@ -285,7 +344,7 @@ def main(argv: list[str] | None = None) -> int:
     environment = dict(os.environ)
     environment["OUTPUT_IMAGE"] = image
     run(
-        ["bash", str(ROOT / "scripts/build-nf3-image.sh")],
+        ["bash", str(ROOT / profile["build_script"])],
         cwd=ROOT,
         env=environment,
     )
@@ -327,7 +386,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"rank {rank.id}: image {expected_id} verified")
 
     write_generated_site(args.site, args.generated_site, image, expected_id)
+    generated_launch = (
+        args.generated_site.parent / f"launch.{args.profile}.json"
+    )
+    write_generated_launch(
+        args.launch_config,
+        generated_launch,
+        args.profile,
+    )
     print(f"==> Generated site: {args.generated_site}")
+    print(f"==> Generated launch: {generated_launch}")
     run(
         [
             sys.executable,
@@ -343,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
         "--site",
         str(args.generated_site),
         "--launch-config",
-        str(args.launch_config),
+        str(generated_launch),
     ]
     run([*launcher, "plan"], cwd=ROOT)
     if args.no_launch:

@@ -138,12 +138,30 @@ def _validate(recipe: dict[str, Any]) -> None:
         "max_query_rows": 40,
         "workspace_reserve_bytes": 805306368,
         "startup_profile_max_tokens": 2,
+        "default_kv_profile": "fp8",
     }
     for key, expected in required_serving.items():
         if serving.get(key) != expected:
             raise RecipeError(
                 f"serving.{key} must be {expected!r}; got {serving.get(key)!r}"
             )
+    expected_profiles = {
+        "fp8": {
+            "maturity": "public-source-bootstrap-ready",
+            "kv_cache_dtype": "fp8",
+            "reported_kv_tokens": 511488,
+        },
+        "nvfp4-rope8": {
+            "maturity": "offline-validated",
+            "kv_cache_dtype": "nvfp4_ds_mla",
+            "scale_mode": "per-token",
+            "reported_kv_tokens": 875520,
+            "equivalent_live_startup_api_healthy": True,
+            "public_bootstrap_live_validated": False,
+        },
+    }
+    if serving.get("kv_profiles") != expected_profiles:
+        raise RecipeError("serving.kv_profiles drifted from pinned contracts")
 
 
 def _canonical_digest(recipe: dict[str, Any]) -> str:

@@ -37,6 +37,18 @@ environment flags, source attestations, and integration ABIs can change.
 
 ### NF3-hybrid
 
+Two KV layouts are available for the same NF3 checkpoint and launch:
+
+| Bootstrap profile | KV capacity observed | Status |
+|---|---:|---|
+| `fp8` (default) | 511,488 tokens | public bootstrap profile |
+| `nvfp4-rope8` | **875,520 tokens** | equivalent live profile healthy; public bootstrap live gate pending |
+
+The optional profile stores the compressed latent KV in NVFP4 with per-token
+scaling while retaining FP8 RoPE data. It changes neither the model download
+nor the TP4/DCP4/MTP/C8/Q40 serving policy. Its public build/launch path is
+offline-validated; the capacity is from the equivalent API-healthy live run.
+
 | Measurement | Result |
 |---|---:|
 | C1 warm coding reference | **22 tok/s** |
@@ -163,6 +175,9 @@ python scripts/bootstrap_nf3.py execute \
   --site scripts/config/site.yaml \
   --confirmation BOOTSTRAP-NF3-ALL-FOUR
 ```
+
+Add `--profile nvfp4-rope8` to select the larger-capacity live candidate. The
+same command reuses complete model/draft downloads and cached NF3 layers.
 
 The bootstrap is resumable and fail-closed. It reuses complete model files and
 existing exact images, otherwise it pulls the pinned public ARM64 base,

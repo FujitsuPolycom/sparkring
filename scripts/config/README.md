@@ -59,6 +59,19 @@ python scripts/sparkring_launcher.py \
 ```
 
 The profile owns the two host-local model paths and the NF3 vLLM contract.
+
+`launch.example.json` is the conservative `fp8` source profile. Do not edit
+individual KV flags to obtain the larger-capacity layout. Use:
+
+```bash
+python scripts/bootstrap_nf3.py execute \
+  --site scripts/config/site.yaml \
+  --profile nvfp4-rope8 \
+  --confirmation BOOTSTRAP-NF3-ALL-FOUR
+```
+
+The bootstrap writes an ignored generated launch file containing the complete
+NVFP4-latent/FP8-RoPE contract and selects its matching derived image.
 Topology, ranks, image digest, model identity, TP/DCP sizing, ports and cache
 budgets come from `site.yaml`; the launcher refuses model identity drift from
 `recipes/glm52-nf3-hybrid.json`. It derives per-rank neighbors, RDMA devices,

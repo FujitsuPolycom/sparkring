@@ -129,7 +129,51 @@ def test_transport_slots_follow_native_xor_round_schedule():
 def test_example_uses_validated_nf3_fp8_kv_contract():
     config = launcher.load_launch(LAUNCH)
     assert _option_value(config.extra_vllm_args, "--kv-cache-dtype") == "fp8"
+    assert config.environment["VLLM_SPARK_KV_PROFILE"] == "fp8"
     assert "VLLM_NVFP4_MLA_PER_TOKEN_SCALE" not in config.environment
+
+
+def test_generated_nvfp4_rope8_profile_is_accepted(tmp_path):
+    document = json.loads(LAUNCH.read_text(encoding="utf-8"))
+    index = document["extra_vllm_args"].index("--kv-cache-dtype")
+    document["extra_vllm_args"][index + 1] = "nvfp4_ds_mla"
+    document["environment"].update(
+        {
+            "VLLM_SPARK_KV_PROFILE": "nvfp4-rope8",
+            "VLLM_SPARK_KV_CACHE_DTYPE": "nvfp4_ds_mla",
+            "VLLM_NVFP4_MLA_PER_TOKEN_SCALE": "1",
+            "VLLM_SPARK_KV_SCALE_MODE": "per-token",
+        }
+    )
+    path = tmp_path / "launch.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    config = launcher.load_launch(path)
+
+    assert len(launcher.start_actions(load_site(SITE), config)) == 4
+
+
+def test_nvfp4_rope8_profile_refuses_missing_per_token_scale(tmp_path):
+    document = json.loads(LAUNCH.read_text(encoding="utf-8"))
+    index = document["extra_vllm_args"].index("--kv-cache-dtype")
+    document["extra_vllm_args"][index + 1] = "nvfp4_ds_mla"
+    document["environment"].update(
+        {
+            "VLLM_SPARK_KV_PROFILE": "nvfp4-rope8",
+            "VLLM_SPARK_KV_CACHE_DTYPE": "nvfp4_ds_mla",
+            "VLLM_SPARK_KV_SCALE_MODE": "per-token",
+        }
+    )
+    path = tmp_path / "launch.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(
+        launcher.LaunchConfigError,
+        match="VLLM_NVFP4_MLA_PER_TOKEN_SCALE=1",
+    ):
+        launcher.start_actions(
+            load_site(SITE),
+            launcher.load_launch(path),
+        )
 
 
 def test_example_uses_live_nf3_c8_graph_contract():

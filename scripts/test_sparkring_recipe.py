@@ -29,6 +29,10 @@ def test_single_nf3_recipe_is_valid_and_local_build_ready():
     assert recipe["runtime"]["final_image"] is None
     assert recipe["publication"]["zero_build_ready"] is False
     assert recipe["publication"]["local_build_ready"] is True
+    assert recipe["serving"]["default_kv_profile"] == "fp8"
+    assert recipe["serving"]["kv_profiles"]["nvfp4-rope8"][
+        "reported_kv_tokens"
+    ] == 875520
 
 
 def test_plan_is_offline_deterministic_and_names_bootstrap(capsys):

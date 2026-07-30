@@ -96,6 +96,47 @@ def test_quickstart_names_every_major_gate():
         "sparkring_site.py",
         "acceptance_gate.py",
         "CUDA graphs through Q40",
+        "--profile nvfp4-rope8",
         "/v1/models",
     ):
         assert required in text
+
+
+def test_nvfp4_rope8_layer_preserves_nf3_and_restores_only_mla():
+    containerfile = (
+        RUNTIME / "Containerfile.nf3-nvfp4-rope8"
+    ).read_text(encoding="utf-8")
+    assert "FROM ${MLA_IMAGE} AS mla_source" in containerfile
+    assert "FROM ${NF3_IMAGE}" in containerfile
+    assert 'rm -rf "${SITE_PACKAGES}/b12x/attention/mla"' in containerfile
+    assert "b12x/integration/mla.py" in containerfile
+    assert "b12x/integration/sparse_mla_scratch.py" in containerfile
+    assert "rm -rf \"${SITE_PACKAGES}/b12x\"" not in containerfile
+    assert "verify-nf3-nvfp4-rope8.py" in containerfile
+    assert 'org.sparkring.kv_profile="nvfp4-rope8"' in containerfile
+
+
+def test_nvfp4_rope8_builder_reuses_pinned_nf3_and_faststart_layers():
+    text = (
+        ROOT / "scripts/build-nf3-nvfp4-rope8-image.sh"
+    ).read_text(encoding="utf-8")
+    assert 'bash "${ROOT}/scripts/build-nf3-image.sh"' in text
+    assert "NF3_IMAGE_ID=" in text
+    assert "MLA_IMAGE_ID=" in text
+    assert "verify-nf3-nvfp4-rope8.py" in text
+    assert "--platform linux/arm64" in text
+
+
+def test_entrypoint_refuses_image_and_launch_kv_profile_mismatch():
+    entrypoint = (RUNTIME / "public-entrypoint.sh").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        '[ "${SPARKRING_KV_PROFILE}" = "${VLLM_SPARK_KV_PROFILE}" ]'
+        in entrypoint
+    )
+    assert "verify-nf3-nvfp4-rope8.py" in entrypoint
+    nf3 = (RUNTIME / "Containerfile.nf3-bootstrap").read_text(
+        encoding="utf-8"
+    )
+    assert "SPARKRING_KV_PROFILE=fp8" in nf3
