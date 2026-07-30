@@ -222,6 +222,62 @@ def test_example_uses_live_nf3_c8_graph_contract():
     assert config.environment["VLLM_SPARK_MAX_QUERY_ROWS"] == "40"
 
 
+def test_example_carries_forward_last_good_performance_environment():
+    config = launcher.load_launch(LAUNCH)
+    expected = {
+        "B12X_NSA_CONTIGUOUS_PREFILL_BLOCK_K": "auto",
+        "NCCL_IGNORE_CPU_AFFINITY": "1",
+        "NCCL_PROTO": None,
+        "SPARK_TP4_ALLGATHER_ENABLE_CKV": "0",
+        "SPARK_TP4_ALLGATHER_SHADOW_COLLECTIVES": "8",
+        "SPARK_TP4_ALLGATHER_SHADOW_PROMOTE": "0",
+        "SPARK_TP4_GRAPH_CONTROL_PORT0": "9970",
+        "SPARK_TP4_GRAPH_CONTROL_PORT1": "9971",
+        "SPARK_TP4_GRAPH_INDEXER_CONTROL_PORT0": "9462",
+        "SPARK_TP4_GRAPH_INDEXER_CONTROL_PORT1": "9463",
+        "SPARK_TP4_GRAPH_INDEXER_PROGRESS_CPU": "14",
+        "SPARK_TP4_MAX_INFLIGHT": "64",
+        "SPARK_TP4_PERSISTENT_OUTPUT_SLOTS": "0",
+        "SPARK_TP4_VOCAB_CONTROL_PORT0": "9990",
+        "SPARK_TP4_VOCAB_CONTROL_PORT1": "9991",
+        "SPARK_TP4_VOCAB_SHADOW_COLLECTIVES": "8",
+        "SPARK_TP4_VOCAB_SHADOW_PROMOTE": "0",
+        "VLLM_B12X_MLA_CKV_GATHER": "1",
+        "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS": "458752",
+        "VLLM_B12X_MLA_DECODE_GATHER_V2": "0",
+        "VLLM_B12X_MLA_DECODE_SPARSE_GATHER": "0",
+        "VLLM_ENGINE_READY_TIMEOUT_S": "3600",
+        "VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS": "1800",
+        "VLLM_SPARK_DCP_SIZE": "4",
+        "VLLM_SPARK_ENABLE_PROFILER": "0",
+        "VLLM_SPARK_KV_CACHE_MEMORY_BYTES": "7000000000",
+        "VLLM_SPARK_LOAD_FORMAT": "fastsafetensors",
+        "VLLM_SPARK_MAX_MODEL_LEN": "262144",
+        "VLLM_SPARK_MAX_NUM_BATCHED_TOKENS": "4096",
+        "VLLM_SPARK_MAX_NUM_SEQS": "8",
+        "VLLM_SPARK_MTP_DRAFT_SAFETENSORS": "0",
+        "VLLM_SPARK_NCCL_TRANSPORT_MODE": "switchless_ib",
+        "VLLM_SPARK_PREFILL_PIECEWISE_CAPTURE_SIZES": "",
+        "VLLM_SPARK_TP4_ALLGATHER_POLICY": "spark-custom",
+        "VLLM_SPARK_TP4_INDEXER_GRAPH_CUSTOM": "0",
+        "VLLM_SPARK_TP4_PREFILL_Q512": "0",
+    }
+    assert {
+        name: config.environment.get(name)
+        for name in expected
+    } == expected
+
+
+def test_last_good_nccl_protocol_selection_is_explicitly_unset():
+    config = launcher.load_launch(LAUNCH)
+    for action in launcher.start_actions(load_site(SITE), config):
+        assert not any(value.startswith("NCCL_PROTO=") for value in action.argv)
+        assert any(
+            action.argv[index:index + 2] == ("--env", "NCCL_PROTO")
+            for index in range(len(action.argv) - 1)
+        )
+
+
 def test_pinned_nf3_launch_refuses_duplicate_flashinfer_autotune_control(
     tmp_path,
 ):
