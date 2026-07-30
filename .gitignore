@@ -58,6 +58,7 @@ docs/PUBLIC_ARTIFACT_INVENTORY.md
 # Site configuration and credentials
 # Canonical local copies created by scripts/config/README.md.
 scripts/config/site.yaml
+.sparkring/
 scripts/config/gate.json
 scripts/config/launch.json
 *.site.json

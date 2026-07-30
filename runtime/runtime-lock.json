@@ -380,7 +380,7 @@
   "public_runtime_inputs": [
     {
       "path": "runtime/public-overlay-files.json",
-      "sha256": "3a85c4ac6abb0a292bce61276b4b602c1f420c676c44193537b9d0de9ff94386"
+      "sha256": "2a79a0790a40742a04bdfedb56e95a00369e22eab73c50ab7ccf2be1873f424f"
     },
     {
       "path": "runtime/build-public-overlay.py",
@@ -388,7 +388,7 @@
     },
     {
       "path": "runtime/public-capability-gate.py",
-      "sha256": "9d928cb30d8e9e9a02bc58eef9957a7831fbfc46cc1af6710edcc079f2765b5c"
+      "sha256": "7f683288ffdac5fd02ab7f1a41b2e68a21501c710df88d271a942b225bc2a8a5"
     },
     {
       "path": "runtime/public-headless-abi-gate.py",
@@ -396,11 +396,11 @@
     },
     {
       "path": "runtime/public-entrypoint.sh",
-      "sha256": "3b664d8d13a72f404cc04782b1d0b6a7a6d776350d4ff8d521557463ca36d5c1"
+      "sha256": "46ec30e78b0f67f83da582bd889794dd2e4ab8e15b9ec2519de605815d401c16"
     },
     {
       "path": "runtime/public-model-preflight.py",
-      "sha256": "3310fa3215dfcaf498b39a520e746d98b52e06b075fda1fbf879d8c28036ac1e"
+      "sha256": "d1823d098de7944220ad04061b7c3b8808a2a7765c8b0b75d947465c1b451e55"
     },
     {
       "path": "runtime/verify-runtime.py",

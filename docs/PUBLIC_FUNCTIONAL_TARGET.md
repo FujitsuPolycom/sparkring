@@ -144,7 +144,7 @@ with them (see TBD-8).
 | Attention backend | `--attention-backend B12X_MLA_SPARSE` |
 | Memory | `--gpu-memory-utilization 0.88` |
 | FlashInfer startup | `--no-enable-flashinfer-autotune`; the generic 4096-token full-model tuner is not rank-safe with multi-node DCP. The Spark/B12X-specific prewarm remains enabled. |
-| Graphs | `cudagraph_mode: FULL_AND_PIECEWISE` with the pinned capture-size list is the eventual acceptance target. The currently supported public serving path is eager (`--enforce-eager`); graph mode has an external wrong-output report and must pass [CUDAGRAPH_CORRECTNESS_GATE.md](CUDAGRAPH_CORRECTNESS_GATE.md) before it can satisfy this matrix. |
+| Graphs | The current NF3 C8 contract uses the pinned Q1-Q40 CUDA-graph buckets, single compile range, and fused all-reduce/RMS pass. The launcher rejects eager drift. The earlier wrong-output report belongs to a superseded Aiden configuration and remains in [TESTING_HISTORY.md](TESTING_HISTORY.md). |
 | Prefix caching | enabled |
 | API | OpenAI-compatible server on rank 0; served model name and port are site choices recorded in the site config |
 

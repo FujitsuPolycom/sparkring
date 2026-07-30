@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-recipe/v1",
   "recipe_id": "glm52-nf3-hybrid",
-  "maturity": "validated-local-publication-pending",
+  "maturity": "public-source-bootstrap-ready",
   "default": true,
   "hardware": {
     "platform": "linux/arm64",
@@ -34,7 +34,10 @@
     "b12x_repository": "https://github.com/MadeBy561/b12x.git",
     "b12x_commit": "33b0655e289927092f99f0df380907cc4eb38c1d",
     "spark_port_repository": "https://github.com/tonyd2wild/GLM-5.2-NF3-Hybrid-4x-DGX-Spark-800kctx.git",
-    "spark_port_commit": "3d3e3af92b58988a73b6266980806d3de4005ddd"
+    "spark_port_commit": "3d3e3af92b58988a73b6266980806d3de4005ddd",
+    "bootstrap_script": "scripts/bootstrap_nf3.py",
+    "build_script": "scripts/build-nf3-image.sh",
+    "build_containerfile": "runtime/Containerfile.nf3-bootstrap"
   },
   "serving": {
     "served_model_name": "glm-5.2-nf3-hybrid",
@@ -53,7 +56,8 @@
   },
   "publication": {
     "zero_build_ready": false,
-    "blocker": "Publish the validated ARM64/SM121 derived image at an immutable OCI manifest digest, then replace runtime.final_image and rerun the release ladder.",
+    "local_build_ready": true,
+    "blocker": null,
     "historical_lane": "docs/history/AIDEN_MXFP4_GPTQ.md"
   }
 }

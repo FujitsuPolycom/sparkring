@@ -10,6 +10,8 @@
     "spark_transport/integrations/vllm/spark_dynamic_payload_planner_prototype.py",
     "spark_transport/integrations/vllm/spark_glm52_mtp_index_reuse.py",
     "spark_transport/integrations/vllm/spark_graph_status_reporter.py",
+    "spark_transport/integrations/vllm/spark_nf3_startup_profile_cap.py",
+    "spark_transport/integrations/vllm/spark_nf3_workspace_reserve.py",
     "spark_transport/integrations/vllm/spark_persistent_output_ring.py",
     "spark_transport/integrations/vllm/spark_q2r_probe_bridge.py",
     "spark_transport/integrations/vllm/spark_shape_trace.py",

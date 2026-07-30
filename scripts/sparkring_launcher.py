@@ -217,6 +217,8 @@ def container_name(config: LaunchConfig, rank: int) -> str:
 def _base_environment(site: SiteConfig, rank_id: int) -> dict[str, str]:
     context = _context(site, rank_id)
     rank = site.rank(rank_id)
+    model_recipe = _model_recipe(site)
+    draft_recipe = model_recipe["mtp_draft"]
     return {
         "GLOO_SOCKET_IFNAME": rank.management.interface,
         "NCCL_IB_HCA": f"{context['peer0_device']},{context['peer1_device']}",
@@ -226,10 +228,15 @@ def _base_environment(site: SiteConfig, rank_id: int) -> dict[str, str]:
         "MASTER_ADDR": context["master_addr"],
         "MASTER_PORT": context["master_port"],
         "SPARKRING_IMAGE_DIGEST": site.runtime.container_image_digest,
-        "SPARKRING_MODEL_CONFIG_SHA256": _model_config_sha(site),
+        "SPARKRING_DRAFT_CONFIG_SHA256": str(draft_recipe["config_sha256"]),
+        "SPARKRING_DRAFT_INDEX_SHA256": str(draft_recipe["index_sha256"]),
+        "SPARKRING_DRAFT_WEIGHT_SHA256": str(draft_recipe["weight_sha256"]),
+        "SPARKRING_MODEL_CONFIG_SHA256": str(model_recipe["config_sha256"]),
+        "SPARKRING_MODEL_INDEX_SHA256": str(model_recipe["index_sha256"]),
         "SPARKRING_MODEL_PATH": site.runtime.model_path,
         "SPARKRING_MODEL_REPOSITORY": site.runtime.model_repo,
         "SPARKRING_MODEL_REVISION": site.runtime.model_revision,
+        "SPARKRING_MTP_DRAFT_PATH": "/mtp-draft",
         "SPARKRING_RUNTIME_MANIFEST": "/opt/sparkring/runtime-manifest.json",
         "SPARK_TP4_DEVICE0": context["peer0_device"],
         "SPARK_TP4_DEVICE1": context["peer1_device"],
@@ -240,7 +247,7 @@ def _base_environment(site: SiteConfig, rank_id: int) -> dict[str, str]:
     }
 
 
-def _model_config_sha(site: SiteConfig) -> str:
+def _model_recipe(site: SiteConfig) -> dict:
     # The deployment recipe owns target-model identity. The runtime lock may
     # still describe the ARM64 base image from which the derived NF3 image was
     # built, so using it here would incorrectly couple the target checkpoint
@@ -260,7 +267,11 @@ def _model_config_sha(site: SiteConfig) -> str:
         raise LaunchConfigError(
             "site model identity differs from recipes/glm52-nf3-hybrid.json"
         )
-    return str(model["config_sha256"])
+    return model
+
+
+def _model_config_sha(site: SiteConfig) -> str:
+    return str(_model_recipe(site)["config_sha256"])
 
 
 def _option_values(arguments: tuple[str, ...], option: str) -> list[str]:
@@ -310,20 +321,72 @@ def _validate_pinned_model_launch(
             "--load-format fastsafetensors"
         )
 
-    if config.extra_vllm_args.count("--enforce-eager") != 1:
+    if "--enforce-eager" in config.extra_vllm_args:
         raise LaunchConfigError(
-            "the public NF3 first-launch contract requires --enforce-eager"
+            "the pinned NF3 C8 contract uses CUDA graphs, not --enforce-eager"
         )
+    graph_options = {
+        "--max-cudagraph-capture-size": "40",
+        "--compilation-config": '{"pass_config":{"fuse_allreduce_rms":true}}',
+        "--kernel-config": '{"enable_flashinfer_autotune":false}',
+    }
+    for option, expected in graph_options.items():
+        if _option_values(config.extra_vllm_args, option) != [expected]:
+            raise LaunchConfigError(
+                f"pinned NF3 C8 launch requires exactly one {option} {expected}"
+            )
+    pinned_options = {
+        "--attention-backend": "B12X_MLA_SPARSE",
+        "--dcp-comm-backend": "ag_rs",
+        "--max-num-batched-tokens": "4096",
+        "--speculative-config": (
+            '{"model":"{draft_path}","method":"mtp",'
+            '"num_speculative_tokens":4,'
+            '"draft_attention_backend":"B12X_MLA_SPARSE",'
+            '"adaptive_speculative_tokens_window":32}'
+        ),
+    }
+    for option, expected in pinned_options.items():
+        if _option_values(config.extra_vllm_args, option) != [expected]:
+            raise LaunchConfigError(
+                f"pinned NF3 C8 launch requires exactly one {option} {expected}"
+            )
 
     expected_environment = {
         "FASTSAFETENSORS_UNIFIED_MEM": "0",
+        "HYBRID_KEPT": "b12x_nf3",
+        "HYBRID_NF3": "b12x_nf3",
+        "HYBRID_TIER": "both",
+        "NCCL_MAX_NCHANNELS": "4",
+        "NCCL_MIN_NCHANNELS": "4",
+        "SPARK_ADAPTIVE_MTP_CONTROL": "1",
         "SPARK_CONTEXT_CACHE_ENABLE": "0",
+        "SPARK_GLM52_MTP_INDEX_REUSE": "1",
         "SPARK_TP4_ALLGATHER_BASE_PORT": "10200",
+        "VLLM_ADAPTIVE_SPEC_DEPTHS": "2,4",
         "VLLM_FASTSAFETENSORS_QUEUE_SIZE": "-1",
+        "VLLM_SPARK_ENABLE_CUDAGRAPH": "1",
+        "VLLM_SPARK_SHARED_CAPTURE_STREAM": "1",
+        "VLLM_SPARK_MAX_CUDAGRAPH_CAPTURE_SIZE": "40",
+        "VLLM_SPARK_COMPILATION_PROFILE": "reference-fuse-allreduce-rms-q40",
+        "VLLM_SPARK_DECODE_CAPTURE_SIZES": (
+            "1,2,3,4,5,6,8,10,12,15,16,20,24,25,30,32,35,40"
+        ),
+        "VLLM_SPARK_FULL_DECODE_CAPTURE_SIZES": (
+            "5,10,15,20,25,30,35,40"
+        ),
+        "VLLM_SPARK_GRAPH_CAPTURE_SIZES": (
+            "1,2,3,4,5,6,8,10,12,15,16,20,24,25,30,32,35,40"
+        ),
+        "VLLM_SPARK_MTP_ADAPTIVE_WINDOW": "32",
+        "VLLM_SPARK_MTP_MODE_ID": "adaptive-mtp2-4-window32",
+        "VLLM_SPARK_MTP_TOKENS": "4",
         "VLLM_SPARK_MAX_QUERY_ROWS": "40",
-        "VLLM_SPARK_NF3_SINGLE_COMPILE_RANGE": "0",
+        "VLLM_SPARK_NF3_PROFILE": "reference-four-spark-adaptive-2-4-c8",
+        "VLLM_SPARK_NF3_SINGLE_COMPILE_RANGE": "1",
         "VLLM_SPARK_NF3_STARTUP_PROFILE_MAX_TOKENS": "2",
         "VLLM_SPARK_NF3_WORKSPACE_RESERVE_BYTES": "805306368",
+        "VLLM_SPARK_TRUE_ADAPTIVE_DRAFT": "1",
     }
     for name, expected in expected_environment.items():
         if config.environment.get(name) != expected:

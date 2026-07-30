@@ -132,6 +132,18 @@ def test_example_uses_validated_nf3_fp8_kv_contract():
     assert "VLLM_NVFP4_MLA_PER_TOKEN_SCALE" not in config.environment
 
 
+def test_example_uses_live_nf3_c8_graph_contract():
+    config = launcher.load_launch(LAUNCH)
+    assert "--enforce-eager" not in config.extra_vllm_args
+    assert (
+        _option_value(config.extra_vllm_args, "--max-cudagraph-capture-size")
+        == "40"
+    )
+    assert config.environment["VLLM_SPARK_ENABLE_CUDAGRAPH"] == "1"
+    assert config.environment["VLLM_SPARK_NF3_SINGLE_COMPILE_RANGE"] == "1"
+    assert config.environment["VLLM_SPARK_MAX_QUERY_ROWS"] == "40"
+
+
 def test_pinned_nf3_launch_refuses_query_capacity_drift(tmp_path):
     config = _launch_config_with(
         tmp_path,
@@ -259,6 +271,7 @@ def test_example_produces_four_safe_start_actions():
         assert "WORLD_SIZE=4" in action.argv
         assert site.runtime.container_image in action.argv
         assert "SPARKRING_IMAGE_DIGEST=" + site.runtime.container_image_digest in action.argv
+        assert "SPARKRING_MTP_DRAFT_PATH=/mtp-draft" in action.argv
         assert "B12X_MLA_SPARSE" in action.argv
         assert "SPARK_ADAPTIVE_MTP_CONTROL=1" in action.argv
         assert "SPARK_GLM52_MTP_INDEX_REUSE=1" in action.argv

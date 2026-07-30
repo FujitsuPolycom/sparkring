@@ -10,15 +10,11 @@ contributors. Read it before changing or running anything in this repository.
   under `runtime/patches/00-reference-vllm/`; the exact historical launch
   artifacts and evidence harness remain maintainer-held, and public-lane
   reproduction of those measurements is pending.
-- The **public-functional lane** is a candidate. Its offline tests, site
-  validator, read-only preflight, transport sources, probes, and acceptance
-  harness are public. A native ARM64 build and partial four-rank bring-up passed
-  through complete model/MTP load, B12X prewarm, and KV allocation. It has no
-  end-to-end API/request acceptance result.
-- The public runtime is not currently an accepted complete GLM-5.2 serving
-  runtime. The sparse-MLA and low-bit-KV capability gates now pass; the remaining
-  corrected startup and serving acceptance work is tracked in
-  `docs/PUBLIC_FUNCTIONAL_TARGET.md` and `docs/RUNTIME_GAPS.md`.
+- The **public-functional lane** now has a source bootstrap for the validated
+  NF3 target. It builds one receipt-gated ARM64 image on rank 0, distributes
+  that exact image ID, and launches the C8/Q40 graph profile. A clean-checkout
+  external reproduction is still requested; do not equate bootstrap readiness
+  with independent reproduction.
 - Never describe a reference-lane number as a result from this checkout.
 
 Machine-readable status is in `docs/STATUS.json`.
@@ -109,7 +105,7 @@ SSH targets, local paths, registry identities, or credentials.
 
 ### Public acceptance work
 
-Start with `docs/PUBLIC_FUNCTIONAL_TARGET.md` and
+Start with `docs/QUICKSTART.md`, then
 `scripts/config/{launch,gate}.example.json`. The public launcher is dry-run by
 default; inspect its `plan` output first. Dry-run validates the current lock,
 filled site identity, and local launcher contract without executing them. Any reported

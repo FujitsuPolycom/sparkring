@@ -18,7 +18,7 @@ def test_gate_rejects_runtime_without_configured_parser_flags(
     tmp_path: Path, monkeypatch
 ) -> None:
     (tmp_path / "capabilities.py").write_text(
-        "B12X_MLA_SPARSE = 'nvfp4_ds_mla'\nglm47 = True\n",
+        "B12X_MLA_SPARSE = True\nglm47 = True\n",
         encoding="utf-8",
     )
     help_text = " ".join(

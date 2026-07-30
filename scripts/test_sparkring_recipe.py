@@ -22,26 +22,26 @@ def _recipe() -> dict:
     )
 
 
-def test_single_nf3_recipe_is_valid_and_publication_blocked():
+def test_single_nf3_recipe_is_valid_and_local_build_ready():
     recipe = _recipe()
     recipe_module._validate(recipe)
     assert recipe["recipe_id"] == "glm52-nf3-hybrid"
     assert recipe["runtime"]["final_image"] is None
     assert recipe["publication"]["zero_build_ready"] is False
+    assert recipe["publication"]["local_build_ready"] is True
 
 
-def test_plan_is_offline_deterministic_and_names_exact_blocker(capsys):
+def test_plan_is_offline_deterministic_and_names_bootstrap(capsys):
     recipe, path = recipe_module._load("glm52-nf3-hybrid")
     first = recipe_module._canonical_digest(recipe)
     second = recipe_module._canonical_digest(
         json.loads(json.dumps(recipe, sort_keys=False))
     )
     assert first == second
-    assert recipe_module._plan(recipe, path, False) == 3
+    assert recipe_module._plan(recipe, path, False) == 0
     output = capsys.readouterr().out
-    assert "BLOCKED: runtime.final_image" in output
-    assert "ARM64 NF3 image" in output
-    assert "AMD64" in output
+    assert "built locally from pinned public inputs" in output
+    assert "bootstrap_nf3.py" in output
 
 
 def test_zero_build_cannot_be_claimed_without_final_image():

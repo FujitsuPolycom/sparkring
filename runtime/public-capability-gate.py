@@ -19,7 +19,7 @@ REQUIRED_CLI_FLAGS = (
     "--speculative-config",
     "--tool-call-parser",
 )
-REQUIRED_SOURCE_TOKENS = ("B12X_MLA_SPARSE", "nvfp4_ds_mla", "glm47")
+REQUIRED_SOURCE_TOKENS = ("B12X_MLA_SPARSE", "glm47")
 
 
 def vllm_root() -> Path:

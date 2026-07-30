@@ -27,7 +27,7 @@ _EXPECTED_FILE_SHA256 = {
         "bbc5176e48827fee1412a7ce95ecd8ef7a57c60ad8b7c66e16447ae3cb133a0e"
     ),
     "vllm.v1.core.sched.scheduler": (
-        "0887b3a649774e2189bbbc66f10761550a64f2666219c42ffad86fa69975a52e"
+        "a66b04fa9aaa59ca1c647c7ea3db8b5a3c683577aae9cb553781b825eb298e77"
     ),
     "vllm.v1.core.sched.async_scheduler": (
         "da6343d7e7c394a1738cf72905cbecc208003ffa461ccb441268333a3eb9f884"

@@ -24,7 +24,7 @@ at immutable revision
 | Parallelism | TP4/DCP4, adaptive MTP2/4 | Validated |
 | Transport | Four 200 Gb/s direct links, cycle `0-1-2-3-0` | Validated |
 | API | OpenAI-compatible vLLM endpoint | Validated |
-| Public no-build image | ARM64/SM121 SparkRing NF3 runtime | Publication by immutable digest pending |
+| Public bootstrap | Pinned ARM64 base + thin local NF3 image | Ready for external trial |
 
 The former Aiden MXFP4/GPTQ reference is preserved in
 [the historical lane document](docs/history/AIDEN_MXFP4_GPTQ.md). It is not a
@@ -39,7 +39,7 @@ environment flags, source attestations, and integration ABIs can change.
 
 | Measurement | Result |
 |---|---:|
-| C1 warm coding sanity | **20.93 tok/s** |
+| C1 warm coding reference | **22 tok/s** |
 | C2 warm coding sanity | **33.38 tok/s aggregate** |
 | Reported KV capacity | **511,488 tokens** |
 | KV dtype | FP8 |
@@ -147,23 +147,33 @@ and discarding the longer suffix.
 
 ## Quickstart
 
-The current quickstart is being collapsed to one NF3 recipe and one
-digest-pinned ARM64 image:
+Clone once on rank 0, fill in only your hosts/interfaces/paths, inspect the
+plan, then execute:
 
 ```bash
 git clone https://github.com/FujitsuPolycom/sparkring.git
 cd sparkring
-python scripts/sparkring_recipe.py --recipe glm52-nf3-hybrid plan
+cp scripts/config/site.example.yaml scripts/config/site.yaml
+$EDITOR scripts/config/site.yaml
+
+python scripts/bootstrap_nf3.py plan \
+  --site scripts/config/site.yaml
+
+python scripts/bootstrap_nf3.py execute \
+  --site scripts/config/site.yaml \
+  --confirmation BOOTSTRAP-NF3-ALL-FOUR
 ```
 
-The command will become the complete no-build entry point when the validated
-ARM64/SM121 NF3 image is published. Until that immutable image digest is in
-the recipe, it fails closed instead of silently compiling or selecting an
-AMD64 image.
+The bootstrap is resumable and fail-closed. It reuses complete model files and
+existing exact images, otherwise it pulls the pinned public ARM64 base,
+downloads and verifies the NF3 target plus MTP draft on all four ranks, fetches
+the exact B12X and Spark-port commits, builds one thin derived image, fans that
+exact image ID to the other ranks, verifies the generated receipt, runs
+preflight, and launches the validated C8/Q40 profile with SparkCache disabled.
+It does not rebuild Torch, vLLM, FlashInfer, or the base kernel stack.
 
-See the [four-Spark quickstart](docs/QUICKSTART.md) for the current publication
-status and the source-build recovery path. CUDA graphs remain subject to
-[the CUDA-graph correctness gate](docs/CUDAGRAPH_CORRECTNESS_GATE.md).
+See the [four-Spark quickstart](docs/QUICKSTART.md) for cabling, site fields,
+tail commands, and acceptance checks.
 
 ## Offline contributor quickstart
 

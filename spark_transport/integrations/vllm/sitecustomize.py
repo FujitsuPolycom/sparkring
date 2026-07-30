@@ -70,6 +70,102 @@ def _install_true_adaptive_draft() -> None:
             "true adaptive drafting returned without owning runtime hooks"
         )
 
+
+def _install_nf3_startup_profile_cap() -> None:
+    from spark_nf3_startup_profile_cap import (
+        install,
+        startup_profile_cap_snapshot,
+    )
+
+    install()
+    snapshot = startup_profile_cap_snapshot()
+    if not snapshot["installed"]:
+        raise RuntimeError(
+            "NF3 startup-profile cap returned without owning profile_run"
+        )
+    raw_runner_kind = os.getenv("VLLM_USE_V2_MODEL_RUNNER")
+    if raw_runner_kind not in {"0", "1"}:
+        raise RuntimeError(
+            "NF3 startup-profile cap requires explicit "
+            "VLLM_USE_V2_MODEL_RUNNER=0 or 1"
+        )
+    expected_runner_kind = "v2" if raw_runner_kind == "1" else "v1"
+    if snapshot["runner_kind"] != expected_runner_kind:
+        raise RuntimeError(
+            "NF3 startup-profile cap selected the wrong runner: "
+            f"expected={expected_runner_kind}, "
+            f"actual={snapshot['runner_kind']}"
+        )
+    expected_v1_owned = expected_runner_kind == "v1"
+    expected_v2_owned = expected_runner_kind == "v2"
+    if (
+        snapshot["v1_runner_owned"] is not expected_v1_owned
+        or snapshot["v2_runner_owned"] is not expected_v2_owned
+    ):
+        raise RuntimeError(
+            "NF3 startup-profile cap runner ownership is invalid: "
+            f"{snapshot}"
+        )
+    if not snapshot["memory_ownership_guard_installed"]:
+        raise RuntimeError(
+            "NF3 startup-profile cap returned without owning "
+            "Worker.determine_available_memory"
+        )
+    if os.getenv("VLLM_SPARK_NF3_SINGLE_COMPILE_RANGE") == "1":
+        if not snapshot["compile_warmup_installed"]:
+            raise RuntimeError(
+                "NF3 single-range contract returned without owning "
+                "Worker._compile_or_warm_up_model_impl"
+            )
+
+
+def _install_nf3_workspace_reserve() -> None:
+    from spark_nf3_workspace_reserve import (
+        install,
+        workspace_reserve_snapshot,
+    )
+
+    install()
+    snapshot = workspace_reserve_snapshot()
+    expected_profile = os.getenv("VLLM_SPARK_NF3_PROFILE")
+    raw_reserve = os.getenv(
+        "VLLM_SPARK_NF3_WORKSPACE_RESERVE_BYTES"
+    )
+    expected_reserve = int(raw_reserve) if raw_reserve else None
+    if (
+        not snapshot["installed"]
+        or not snapshot["owned"]
+        or snapshot["profile"] != expected_profile
+        or snapshot["reserve_bytes"] != expected_reserve
+    ):
+        raise RuntimeError(
+            "NF3 workspace reserve returned without owning the exact "
+            f"model_runner lock binding: {snapshot}"
+        )
+
+
+if os.getenv("VLLM_SPARK_NF3_STARTUP_PROFILE_MAX_TOKENS"):
+    _install_required(
+        "NF3 startup-profile cap",
+        _install_nf3_startup_profile_cap,
+    )
+
+
+_NF3_REFERENCE_PROFILES = {
+    "reference-four-spark",
+    "reference-four-spark-adaptive-2-4",
+    "reference-four-spark-adaptive-2-4-c8",
+}
+if (
+    os.getenv("VLLM_SPARK_NF3_PROFILE") in _NF3_REFERENCE_PROFILES
+    or os.getenv("VLLM_SPARK_NF3_WORKSPACE_RESERVE_BYTES")
+):
+    _install_required(
+        "NF3 workspace reserve",
+        _install_nf3_workspace_reserve,
+    )
+
+
 if os.getenv("SPARK_ADAPTIVE_MTP_CONTROL") == "1":
     _install_required("adaptive-MTP controller", _install_adaptive_controller)
 

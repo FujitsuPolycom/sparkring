@@ -8,6 +8,9 @@ MODEL_REVISION="66f3623dd8fefb5ca8046706912d5d31c8d196af"
 MODEL_CONFIG_SHA256="254974797e9f455716a30ab5505ba68272181b20b58a3693e54f94fb8056f3ef"
 MODEL_INDEX_SHA256="6eb773222d932418dd0530c63aca498f86ef424da2a4526ccba76b59726da234"
 MODEL_SHARDS="184"
+MODEL_MINIMUM_BYTES=366000000000
+DRAFT_MINIMUM_BYTES=5000000000
+COMPLETION_HEADROOM_BYTES=80000000000
 
 DRAFT_REPO="aidendle94/GLM-5.2-MXFP4-Experts-GPTQ"
 DRAFT_REVISION="46537e0e16fcd156627800139b41b9c497fc7ee2"
@@ -36,9 +39,54 @@ mkdir -p "${MODEL_DIR}" "${DRAFT_DIR}"
 MODEL_DIR="$(cd "${MODEL_DIR}" && pwd)"
 DRAFT_DIR="$(cd "${DRAFT_DIR}" && pwd)"
 
-free_kib="$(df -Pk "${MODEL_DIR}" | awk 'NR==2 {print $4}')"
-if [[ "${free_kib}" =~ ^[0-9]+$ ]] && (( free_kib < 390000000 )); then
-  echo "WARNING: less than about 400 GB is free on the model filesystem." >&2
+already_complete() {
+  [[ -f "${MODEL_DIR}/.sparkring-model.txt" ]] || return 1
+  [[ -f "${DRAFT_DIR}/.sparkring-model.txt" ]] || return 1
+  printf '%s  %s\n' \
+    "${MODEL_CONFIG_SHA256}" "${MODEL_DIR}/config.json" \
+    "${MODEL_INDEX_SHA256}" "${MODEL_DIR}/model.safetensors.index.json" \
+    "${DRAFT_CONFIG_SHA256}" "${DRAFT_DIR}/config.json" \
+    "${DRAFT_INDEX_SHA256}" "${DRAFT_DIR}/model.safetensors.index.json" \
+    "${DRAFT_WEIGHT_SHA256}" "${DRAFT_DIR}/model-mtp.safetensors" |
+    sha256sum --check --status - || return 1
+  python3 - "${MODEL_DIR}/model.safetensors.index.json" "${MODEL_DIR}" \
+    "${MODEL_SHARDS}" <<'PY'
+import json, pathlib, sys
+index = json.load(open(sys.argv[1], encoding="utf-8"))
+root = pathlib.Path(sys.argv[2])
+names = set(index["weight_map"].values())
+if len(names) != int(sys.argv[3]):
+    raise SystemExit(1)
+if any(not (root / name).is_file() or (root / name).stat().st_size <= 0 for name in names):
+    raise SystemExit(1)
+PY
+}
+
+if already_complete; then
+  echo "PASS: pinned NF3 target and MTP draft already complete; download skipped"
+  exit 0
+fi
+
+model_current="$(du -sb "${MODEL_DIR}" | awk '{print $1}')"
+draft_current="$(du -sb "${DRAFT_DIR}" | awk '{print $1}')"
+model_free="$(df -PB1 "${MODEL_DIR}" | awk 'NR==2 {print $4}')"
+draft_free="$(df -PB1 "${DRAFT_DIR}" | awk 'NR==2 {print $4}')"
+model_device="$(df -P "${MODEL_DIR}" | awk 'NR==2 {print $1}')"
+draft_device="$(df -P "${DRAFT_DIR}" | awk 'NR==2 {print $1}')"
+if [[ "${model_device}" == "${draft_device}" ]]; then
+  available=$((model_free + model_current + draft_current))
+  required=$((MODEL_MINIMUM_BYTES + DRAFT_MINIMUM_BYTES + COMPLETION_HEADROOM_BYTES))
+  (( available >= required )) || fatal \
+    "insufficient model filesystem capacity: completion needs ${required} bytes including headroom; free plus reusable partial bytes is ${available}"
+else
+  model_available=$((model_free + model_current))
+  model_required=$((MODEL_MINIMUM_BYTES + COMPLETION_HEADROOM_BYTES))
+  (( model_available >= model_required )) || fatal \
+    "insufficient target-model capacity: need ${model_required} bytes including headroom; free plus reusable partial bytes is ${model_available}"
+  draft_available=$((draft_free + draft_current))
+  draft_required=$((DRAFT_MINIMUM_BYTES + 2000000000))
+  (( draft_available >= draft_required )) || fatal \
+    "insufficient MTP-draft capacity: need ${draft_required} bytes; free plus reusable partial bytes is ${draft_available}"
 fi
 
 echo "Pulling the pinned ARM64 download environment..."

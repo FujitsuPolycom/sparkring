@@ -90,13 +90,12 @@ def test_download_container_overrides_inherited_offline_and_root_cache_settings(
 def test_quickstart_names_every_major_gate():
     text = (ROOT / "docs/QUICKSTART.md").read_text(encoding="utf-8")
     for required in (
-        "download-glm52.sh",
-        "rsync",
-        "sparkring_recipe.py",
+        "bootstrap_nf3.py",
+        "builds the small NF3 adapter layer",
+        "verify_ssh_mesh.py",
         "sparkring_site.py",
-        "preflight.py",
-        "sparkring_launcher.py",
-        "--enforce-eager",
+        "acceptance_gate.py",
+        "CUDA graphs through Q40",
         "/v1/models",
     ):
         assert required in text

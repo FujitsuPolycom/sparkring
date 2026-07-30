@@ -5,20 +5,17 @@
     "reference": {
       "maturity": "live-validated",
       "publicly_runnable": false,
-      "public_source_complete": false,
+      "public_source_complete": true,
       "evidence": "README.md",
-      "reason": "The NF3 target has passed local four-Spark serving and overlap sanity gates. The exact derived ARM64/SM121 image and the remaining NF3 integration source still require public release."
+      "reason": "The NF3 target passed local four-Spark serving and overlap sanity gates; the public source bootstrap now reproduces its pinned ARM64-derived runtime inputs."
     },
     "public-functional": {
-      "maturity": "candidate",
+      "maturity": "source-bootstrap-ready",
       "end_to_end_runnable": false,
       "acceptance_result_exists": false,
       "definition": "recipes/glm52-nf3-hybrid.json",
       "blockers": [
-        "publish the validated ARM64/SM121 NF3 image at an immutable OCI digest",
-        "publish and attest the remaining NF3 runtime integration source",
-        "run the single-recipe path from a clean checkout on four Sparks",
-        "keep eager as the public default until the changing-input CUDA-graph semantic canary passes"
+        "obtain an independent clean-checkout four-Spark reproduction report"
       ]
     }
   },
@@ -27,7 +24,7 @@
       "maturity": "offline-validated",
       "command": "python -m pytest spark_transport sparkcache runtime scripts -q",
       "last_observed": {
-        "passed": 1612,
+        "passed": 1707,
         "skipped": 5
       }
     },
@@ -75,10 +72,11 @@
       "entrypoint": "scripts/sparkring_launcher.py"
     },
     "nf3_recipe": {
-      "maturity": "local-live-validated-publication-pending",
+      "maturity": "public-source-bootstrap-ready",
       "sole_current_target": true,
       "model": "madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid",
       "zero_build_ready": false,
+      "local_build_ready": true,
       "entrypoint": "recipes/glm52-nf3-hybrid.json"
     },
     "headless_startup_abi": {

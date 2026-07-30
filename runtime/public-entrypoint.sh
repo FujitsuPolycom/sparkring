@@ -11,6 +11,11 @@ fail() {
 : "${SPARKRING_MODEL_REVISION:?SPARKRING_MODEL_REVISION is required}"
 : "${SPARKRING_MODEL_CONFIG_SHA256:?SPARKRING_MODEL_CONFIG_SHA256 is required}"
 : "${SPARKRING_IMAGE_DIGEST:?SPARKRING_IMAGE_DIGEST is required}"
+: "${SPARKRING_MTP_DRAFT_PATH:?SPARKRING_MTP_DRAFT_PATH is required}"
+: "${SPARKRING_MODEL_INDEX_SHA256:?SPARKRING_MODEL_INDEX_SHA256 is required}"
+: "${SPARKRING_DRAFT_CONFIG_SHA256:?SPARKRING_DRAFT_CONFIG_SHA256 is required}"
+: "${SPARKRING_DRAFT_INDEX_SHA256:?SPARKRING_DRAFT_INDEX_SHA256 is required}"
+: "${SPARKRING_DRAFT_WEIGHT_SHA256:?SPARKRING_DRAFT_WEIGHT_SHA256 is required}"
 
 case "${SPARKRING_MODEL_REVISION}" in
   *[!0-9a-f]*|"") fail "model revision must be lowercase hex" ;;
@@ -39,8 +44,17 @@ actual="$(sha256sum -- "${config}" | awk '{print $1}')"
 
 /opt/venv/bin/python /opt/sparkring/verify-runtime.py \
   --manifest /opt/sparkring/runtime-manifest.json
+if [ -f /opt/sparkring/nf3-bootstrap-input-receipt.json ]; then
+  /opt/venv/bin/python /opt/sparkring/verify-nf3-bootstrap.py \
+    --receipt /opt/sparkring/nf3-bootstrap-input-receipt.json
+fi
 /opt/venv/bin/python /opt/sparkring/public-model-preflight.py \
-  --model-path "${SPARKRING_MODEL_PATH}"
+  --model-path "${SPARKRING_MODEL_PATH}" \
+  --draft-path "${SPARKRING_MTP_DRAFT_PATH}" \
+  --index-sha256 "${SPARKRING_MODEL_INDEX_SHA256}" \
+  --draft-config-sha256 "${SPARKRING_DRAFT_CONFIG_SHA256}" \
+  --draft-index-sha256 "${SPARKRING_DRAFT_INDEX_SHA256}" \
+  --draft-weight-sha256 "${SPARKRING_DRAFT_WEIGHT_SHA256}"
 /opt/venv/bin/python /opt/sparkring/public-headless-abi-gate.py
 /opt/venv/bin/python /opt/sparkring/public-capability-gate.py
 

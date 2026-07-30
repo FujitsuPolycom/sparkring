@@ -112,6 +112,7 @@ def _validate(recipe: dict[str, Any]) -> None:
 
     final_image = runtime["final_image"]
     ready = recipe["publication"]["zero_build_ready"]
+    local_build_ready = recipe["publication"].get("local_build_ready")
     if final_image is None:
         if ready is not False:
             raise RecipeError("zero_build_ready cannot be true without final_image")
@@ -119,6 +120,12 @@ def _validate(recipe: dict[str, Any]) -> None:
         raise RecipeError("runtime.final_image must be an immutable OCI digest")
     elif ready is not True:
         raise RecipeError("published final_image requires zero_build_ready=true")
+    if local_build_ready is not True:
+        raise RecipeError("NF3 source bootstrap must remain local_build_ready")
+    for field in ("bootstrap_script", "build_script", "build_containerfile"):
+        source_path = runtime.get(field)
+        if not isinstance(source_path, str) or not (ROOT / source_path).is_file():
+            raise RecipeError(f"runtime.{field} must name a published file")
 
     serving = recipe["serving"]
     required_serving = {
@@ -159,7 +166,8 @@ def _plan(recipe: dict[str, Any], path: Path, as_json: bool) -> int:
         "platform": recipe["hardware"]["platform"],
         "final_image": final_image,
         "zero_build_ready": recipe["publication"]["zero_build_ready"],
-        "blocker": None if final_image else recipe["publication"]["blocker"],
+        "local_build_ready": recipe["publication"]["local_build_ready"],
+        "blocker": recipe["publication"]["blocker"],
     }
     if as_json:
         print(json.dumps(result, indent=2, sort_keys=True))
@@ -172,12 +180,12 @@ def _plan(recipe: dict[str, Any], path: Path, as_json: bool) -> int:
             print(f"IMAGE: {final_image}")
             print("NEXT: configure scripts/config/site.yaml and run preflight")
         else:
-            print(f'BLOCKED: runtime.final_image — {result["blocker"]}')
+            print("IMAGE: built locally from pinned public inputs")
             print(
-                "NEXT: publish the validated ARM64 NF3 image by OCI digest; "
-                "do not substitute the community AMD64 image"
+                "NEXT: python scripts/bootstrap_nf3.py plan "
+                "--site scripts/config/site.yaml"
             )
-    return 0 if final_image else 3
+    return 0
 
 
 def _list(as_json: bool) -> int:
@@ -196,7 +204,7 @@ def _list(as_json: bool) -> int:
         print(json.dumps(rows, indent=2, sort_keys=True))
     else:
         for row in rows:
-            state = "ready" if row["zero_build_ready"] else "publication-blocked"
+            state = "ready" if row["zero_build_ready"] else "local-build-ready"
             print(f'{row["recipe_id"]}\t{state}\t{row["maturity"]}')
     return 0
 

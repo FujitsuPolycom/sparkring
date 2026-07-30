@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 
@@ -71,3 +72,51 @@ def test_missing_draft_fails(tmp_path):
     (root / "mtp-draft").rmdir()
     with pytest.raises(preflight.ModelPreflightError, match="draft config"):
         preflight.inspect_model(root, "mtp-draft")
+
+
+def test_external_draft_path_passes(tmp_path):
+    root = model_fixture(tmp_path)
+    draft = root / "mtp-draft"
+    report = preflight.inspect_model(
+        root,
+        draft_path=draft,
+    )
+    assert report["draft_path"] == str(draft.resolve())
+
+
+def test_external_draft_path_must_exist(tmp_path):
+    root = model_fixture(tmp_path)
+    with pytest.raises(preflight.ModelPreflightError, match="draft root"):
+        preflight.inspect_model(
+            root,
+            draft_path=tmp_path / "absent-draft",
+        )
+
+
+def test_pinned_index_and_draft_hashes_are_verified(tmp_path):
+    root = model_fixture(tmp_path)
+    draft = root / "mtp-draft"
+    draft_index = draft / "model.safetensors.index.json"
+    draft_weight = draft / "model-mtp.safetensors"
+    draft_index.write_text('{"weight_map":{}}', encoding="utf-8")
+    draft_weight.write_bytes(b"mtp")
+
+    def digest(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    report = preflight.inspect_model(
+        root,
+        draft_path=draft,
+        index_sha256=digest(root / "model.safetensors.index.json"),
+        draft_config_sha256=digest(draft / "config.json"),
+        draft_index_sha256=digest(draft_index),
+        draft_weight_sha256=digest(draft_weight),
+    )
+    assert report["passed"] is True
+
+    with pytest.raises(preflight.ModelPreflightError, match="sha256 mismatch"):
+        preflight.inspect_model(
+            root,
+            draft_path=draft,
+            index_sha256="0" * 64,
+        )

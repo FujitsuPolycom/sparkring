@@ -71,7 +71,7 @@ after API startup.
 
 | Cell | Result |
 |---|---:|
-| C1 coding sanity | 20.93 tok/s |
+| C1 coding sanity (earlier run) | 20.93 tok/s |
 | C2 coding sanity | 33.38 tok/s aggregate |
 
 These are short warm sanity runs, not a replacement for the complete
