@@ -249,19 +249,25 @@ All steps **[DOCUMENTED: private archive new-node-provisioning.md §§1-4 and fa
    ```bash
    python scripts/verify_ssh_mesh.py \
      --site scripts/config/site.yaml \
-     --scope fanout
+     --scope image-fanout
    ```
 
    The verifier first checks key-based SSH from the control host to all four
    management addresses. It then checks the direct-cable no-registry image
-   fanout directions:
+   image-archive fanout directions:
 
    ```text
    rank0 -> rank1
    rank0 -> rank3
    rank1 -> rank2
-   rank3 -> rank2   # optional fallback path
    ```
+
+   The first two archive transfers run in parallel. The last hop starts only
+   after its relay has an identity-verified archive. Management SSH
+   orchestrates the transfer and validates Docker image IDs; all archive bytes
+   stay on these direct 200 GbE addresses. The redundant `rank3 -> rank2`
+   direction remains available under `--scope fanout` for diagnostics, but is
+   not part of the deterministic bootstrap tree.
 
    A failed path is classified as host-key, authorization, name-resolution,
    or network reachability. Once control-host management SSH works, the tool

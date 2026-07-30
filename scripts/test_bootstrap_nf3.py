@@ -10,6 +10,7 @@ from pathlib import Path
 import yaml
 
 import bootstrap_nf3
+from sparkring_site import load_site
 
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "scripts/config/site.example.yaml"
@@ -88,6 +89,16 @@ def test_bootstrap_verifies_rank0_management_fanout_scope():
         str(SITE),
         "--scope",
         "bootstrap",
+    ]
+
+
+def test_bootstrap_verifies_exact_direct_ring_image_tree_scope():
+    command = bootstrap_nf3.ssh_image_fanout_verification_command(SITE)
+    assert command[-4:] == [
+        "--site",
+        str(SITE),
+        "--scope",
+        "image-fanout",
     ]
 
 
@@ -214,3 +225,205 @@ def test_image_transfer_capacity_rejects_invalid_archive_sizes():
             pass
         else:
             raise AssertionError(f"accepted invalid archive size {invalid!r}")
+
+
+def test_direct_image_fanout_targets_only_ring_addresses():
+    site = load_site(SITE)
+    first_wave, relay = bootstrap_nf3.direct_image_fanout(site)
+    assert [
+        (
+            hop.source_rank,
+            hop.destination_rank,
+            bootstrap_nf3.direct_ssh_target(site, hop),
+        )
+        for hop in first_wave
+    ] == [
+        (0, 1, "operator@192.0.2.11"),
+        (0, 3, "operator@198.18.0.13"),
+    ]
+    assert (
+        relay.source_rank,
+        relay.destination_rank,
+        bootstrap_nf3.direct_ssh_target(site, relay),
+    ) == (1, 2, "operator@198.51.100.12")
+
+
+def test_remote_archive_path_is_bound_to_exact_image_id():
+    expected_id = "sha256:" + "a" * 64
+    assert bootstrap_nf3.remote_archive_path(expected_id) == (
+        "/var/tmp/sparkring-image-" + "a" * 64 + ".tar"
+    )
+    for invalid in ("", "sha256:abc", "b" * 64, "sha256:" + "z" * 64):
+        try:
+            bootstrap_nf3.remote_archive_path(invalid)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"accepted invalid image ID {invalid!r}")
+
+
+def test_load_command_verifies_exact_id_before_exact_temp_cleanup():
+    expected_id = "sha256:" + "a" * 64
+    archive = bootstrap_nf3.remote_archive_path(expected_id)
+    command = bootstrap_nf3.load_archive_command(
+        "sparkring/glm52-nf3:test",
+        expected_id,
+        archive,
+        keep_archive=False,
+    )
+    assert f"docker load --input {archive}" in command
+    assert f'test "$observed" = {expected_id}' in command
+    assert f"rm -f -- {archive}" in command
+    assert "rm -rf" not in command
+    assert command.index(f'test "$observed" = {expected_id}') < (
+        command.index(f"rm -f -- {archive}")
+    )
+
+    retained = bootstrap_nf3.load_archive_command(
+        "sparkring/glm52-nf3:test",
+        expected_id,
+        archive,
+        keep_archive=True,
+    )
+    assert "rm -f" not in retained
+
+
+def test_fanout_uses_direct_payload_hops_skips_exact_rank_and_attests_all(
+    tmp_path,
+    monkeypatch,
+):
+    site = load_site(SITE)
+    image = "sparkring/glm52-nf3:test"
+    expected_id = "sha256:" + "a" * 64
+    archive = tmp_path / "image.tar"
+    archive.write_bytes(b"archive")
+    by_target = {rank.ssh_target: rank.id for rank in site.ranks}
+    ids = {1: "", 2: "", 3: expected_id}
+    events: list[tuple[str, object]] = []
+
+    def fake_image_id(target, inspected_image):
+        assert inspected_image == image
+        return ids[by_target[target]]
+
+    def fake_remote(target, command):
+        rank_id = by_target[target]
+        events.append(("remote", (rank_id, command)))
+        if "docker load --input" in command:
+            ids[rank_id] = expected_id
+
+    def fake_run(argv, **kwargs):
+        events.append(("run", tuple(argv)))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(bootstrap_nf3, "remote_image_id", fake_image_id)
+    monkeypatch.setattr(bootstrap_nf3, "remote", fake_remote)
+    monkeypatch.setattr(bootstrap_nf3, "run", fake_run)
+
+    bootstrap_nf3.fanout_image_archive(
+        site,
+        image,
+        expected_id,
+        archive,
+    )
+
+    local_scps = [
+        value for kind, value in events
+        if kind == "run" and value[0] == "scp"
+    ]
+    assert len(local_scps) == 1
+    assert local_scps[0][-1].startswith("operator@192.0.2.11:")
+    assert all("198.18.1." not in arg for arg in local_scps[0])
+
+    relay_commands = [
+        command for kind, value in events
+        if kind == "remote"
+        for rank_id, command in [value]
+        if rank_id == 1 and command.startswith("scp ")
+    ]
+    assert len(relay_commands) == 1
+    assert "operator@198.51.100.12:" in relay_commands[0]
+    assert "198.18.1.12" not in relay_commands[0]
+
+    rank3_commands = [
+        command for kind, value in events
+        if kind == "remote"
+        for rank_id, command in [value]
+        if rank_id == 3
+    ]
+    assert rank3_commands == []
+    assert ids == {1: expected_id, 2: expected_id, 3: expected_id}
+
+    first_payload = next(
+        index for index, event in enumerate(events)
+        if (
+            event[0] == "run"
+            and event[1][0] == "scp"
+        )
+    )
+    capacity_events = [
+        index for index, event in enumerate(events)
+        if (
+            event[0] == "remote"
+            and "IMAGE_TRANSFER_CAPACITY_OK" in event[1][1]
+        )
+    ]
+    assert len(capacity_events) == 2
+    assert max(capacity_events) < first_payload
+
+
+def test_exact_relay_stages_archive_when_opposite_rank_is_missing(
+    tmp_path,
+    monkeypatch,
+):
+    site = load_site(SITE)
+    image = "sparkring/glm52-nf3:test"
+    expected_id = "sha256:" + "b" * 64
+    archive = tmp_path / "image.tar"
+    archive.write_bytes(b"archive")
+    by_target = {rank.ssh_target: rank.id for rank in site.ranks}
+    ids = {1: expected_id, 2: "", 3: expected_id}
+    events: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(
+        bootstrap_nf3,
+        "remote_image_id",
+        lambda target, _: ids[by_target[target]],
+    )
+
+    def fake_remote(target, command):
+        rank_id = by_target[target]
+        events.append(("remote", (rank_id, command)))
+        if "docker load --input" in command:
+            ids[rank_id] = expected_id
+
+    def fake_run(argv, **kwargs):
+        events.append(("run", tuple(argv)))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(bootstrap_nf3, "remote", fake_remote)
+    monkeypatch.setattr(bootstrap_nf3, "run", fake_run)
+
+    bootstrap_nf3.fanout_image_archive(
+        site,
+        image,
+        expected_id,
+        archive,
+    )
+
+    assert not any(
+        kind == "run" and value[0] == "scp"
+        for kind, value in events
+    )
+    rank1_commands = [
+        command for kind, value in events
+        if kind == "remote"
+        for rank_id, command in [value]
+        if rank_id == 1
+    ]
+    assert any("docker save --output" in command for command in rank1_commands)
+    assert any(
+        command.startswith("scp ")
+        and "operator@198.51.100.12:" in command
+        for command in rank1_commands
+    )
+    assert ids[2] == expected_id

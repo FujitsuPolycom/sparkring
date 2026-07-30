@@ -129,14 +129,26 @@ python scripts/verify_ssh_mesh.py \
   --site scripts/config/site.yaml \
   --scope bootstrap \
   --fix
+
+# Read-only: check the exact three direct-ring archive payload hops.
+python scripts/verify_ssh_mesh.py \
+  --site scripts/config/site.yaml \
+  --scope image-fanout
+
+# Mutating: install only missing direct-hop key trust after approval.
+python scripts/verify_ssh_mesh.py \
+  --site scripts/config/site.yaml \
+  --scope image-fanout \
+  --fix
 ```
 
-The bootstrap scope requires the controller to reach all four management SSH
-targets and rank 0 to reach its own configured management target plus ranks
-1-3 through those same management targets. The self-edge matters because the
-bootstrap reruns this verifier locally on rank 0. It deliberately does not
-substitute direct-ring addresses. Use `--scope all-adjacent` only when
-validating the optional direct-ring SSH relay paths as a separate diagnostic.
+The bootstrap executes both scopes. `bootstrap` requires controller and rank-0
+management access for orchestration. `image-fanout` requires the exact bulk
+archive tree: rank0 sends to both ring neighbors in parallel, then the
+lower-ID neighbor relays to the opposite rank. Management addresses carry
+commands and status only; the 20+ GB archive never crosses management Wi-Fi,
+LAN, USB Ethernet, or Tailscale. Use `--scope all-adjacent` only to validate
+every optional direct-ring direction.
 
 `--fix` must run from that trusted controller. Running it on rank 0 is also
 valid, but only when rank 0 already has authenticated management SSH to all

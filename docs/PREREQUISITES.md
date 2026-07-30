@@ -86,9 +86,10 @@ Do not continue until a CUDA container can see the GPU on every rank.
 
 ## Management and SSH
 
-The management network carries SSH, downloads, image distribution, process
-launch, rendezvous/bootstrap traffic, and the API. It must not depend on the
-four 200 GbE inference links.
+The management network carries SSH orchestration, Internet downloads, process
+launch, rendezvous/bootstrap traffic, and the API. Multi-gigabyte image
+archives do **not** cross management: the public bootstrap moves them over the
+direct 200 GbE ring tree.
 
 Required:
 
@@ -107,6 +108,10 @@ After filling the management targets in `site.yaml`, check them:
 python scripts/verify_ssh_mesh.py \
   --site scripts/config/site.yaml \
   --scope bootstrap
+
+python scripts/verify_ssh_mesh.py \
+  --site scripts/config/site.yaml \
+  --scope image-fanout
 ```
 
 With explicit operator approval, the verifier can install missing public-key
@@ -117,17 +122,23 @@ python scripts/verify_ssh_mesh.py \
   --site scripts/config/site.yaml \
   --scope bootstrap \
   --fix
+
+python scripts/verify_ssh_mesh.py \
+  --site scripts/config/site.yaml \
+  --scope image-fanout \
+  --fix
 ```
 
 `--fix` distributes public keys only. It does not discover passwords, bypass
 authentication, or repair an unreachable management network.
 
-The `bootstrap` scope matches the public NF3 bootstrap exactly: the controller
-must reach every rank's management `ssh_target`, and rank 0 must reach its own
-configured management target plus ranks 1-3 through those same targets. The
-self-edge ensures the verifier still succeeds when the bootstrap reruns it
-locally on rank 0. It does not rely on direct-ring SSH. Use
-`--scope all-adjacent` only to audit the optional direct-ring relay paths.
+The bootstrap checks both scopes. `bootstrap` covers orchestration: the
+controller must reach every management `ssh_target`, and rank 0 must reach its
+own configured management target plus ranks 1-3. `image-fanout` covers the
+exact bulk-data tree: rank 0 sends to both direct neighbors in parallel, then
+the lower-ID neighbor relays to the opposite rank. Management SSH starts and
+attests these operations, but archive bytes travel only on direct-ring
+addresses. Use `--scope all-adjacent` only to audit every optional direction.
 
 Run `--fix` from a trusted operator/controller that already has authenticated
 management SSH to all four ranks. Rank 0 can be that controller only if it

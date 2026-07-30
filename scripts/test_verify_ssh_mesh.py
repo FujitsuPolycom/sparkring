@@ -13,6 +13,7 @@ from verify_ssh_mesh import (
     bootstrap_hops,
     classify_failure,
     fanout_hops,
+    image_fanout_hops,
     split_ssh_target,
     verify,
 )
@@ -32,6 +33,23 @@ def test_fanout_is_redundant_four_hop_tree():
     hops = fanout_hops(example_site())
     assert [(hop.source_rank, hop.destination_rank) for hop in hops] == [
         (0, 1), (0, 3), (1, 2), (3, 2),
+    ]
+
+
+def test_image_fanout_is_deterministic_three_hop_direct_ring_tree():
+    hops = image_fanout_hops(example_site())
+    assert [
+        (
+            hop.source_rank,
+            hop.destination_rank,
+            hop.destination_address,
+            hop.edge,
+        )
+        for hop in hops
+    ] == [
+        (0, 1, "192.0.2.11", "r0-r1"),
+        (0, 3, "198.18.0.13", "r3-r0"),
+        (1, 2, "198.51.100.12", "r1-r2"),
     ]
 
 
@@ -96,6 +114,17 @@ def test_verify_reports_exact_failed_direction():
     assert failed[0].source_rank == 0
     assert failed[0].destination_rank == 1
     assert failed[0].status == "authorization"
+
+
+def test_image_fanout_scope_checks_only_the_three_archive_payload_hops():
+    ok = subprocess.CompletedProcess([], 0, "", "")
+    fake = FakeSsh([ok, ok, ok, ok, ok, ok, ok])
+    results = verify(example_site(), "image-fanout", False, fake)
+    direct = [result for result in results if result.kind == "direct"]
+    assert [
+        (result.source_rank, result.destination_rank)
+        for result in direct
+    ] == [(0, 1), (0, 3), (1, 2)]
 
 
 def test_bootstrap_uses_management_ssh_targets_not_ring_addresses():

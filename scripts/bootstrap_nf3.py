@@ -12,6 +12,7 @@ import argparse
 import concurrent.futures
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -20,7 +21,8 @@ from pathlib import Path
 
 import yaml
 
-from sparkring_site import load_site
+from sparkring_site import SiteConfig, load_site
+from verify_ssh_mesh import Hop, image_fanout_hops, split_ssh_target
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIRMATION = "BOOTSTRAP-NF3-ALL-FOUR"
@@ -105,6 +107,24 @@ def remote(target: str, command: str) -> None:
     )
 
 
+def remote_output(target: str, command: str) -> str:
+    result = run(
+        [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=15",
+            "-o",
+            "StrictHostKeyChecking=yes",
+            target,
+            command,
+        ],
+        capture=True,
+    )
+    return result.stdout.strip()
+
+
 def ssh_bootstrap_verification_command(site_path: Path) -> list[str]:
     """Return the verifier invocation matching this bootstrap's fanout path."""
     return [
@@ -115,6 +135,275 @@ def ssh_bootstrap_verification_command(site_path: Path) -> list[str]:
         "--scope",
         "bootstrap",
     ]
+
+
+def ssh_image_fanout_verification_command(site_path: Path) -> list[str]:
+    """Return the verifier invocation for direct-ring archive payload hops."""
+    return [
+        sys.executable,
+        str(ROOT / "scripts/verify_ssh_mesh.py"),
+        "--site",
+        str(site_path),
+        "--scope",
+        "image-fanout",
+    ]
+
+
+def direct_image_fanout(site: SiteConfig) -> tuple[tuple[Hop, Hop], Hop]:
+    """Return rank0's parallel first wave and the one relay hop."""
+    hops = image_fanout_hops(site)
+    if (
+        len(hops) != 3
+        or any(hop.source_rank != 0 for hop in hops[:2])
+        or hops[2].source_rank != hops[0].destination_rank
+    ):
+        raise ValueError("unexpected direct-ring image fanout topology")
+    return (hops[0], hops[1]), hops[2]
+
+
+def direct_ssh_target(site: SiteConfig, hop: Hop) -> str:
+    """Use the destination rank's SSH user at its direct-ring address."""
+    user, _ = split_ssh_target(site.rank(hop.destination_rank).ssh_target)
+    return f"{user}@{hop.destination_address}"
+
+
+def remote_archive_path(expected_id: str) -> str:
+    """Return an identity-bound, exact temporary archive path."""
+    match = re.fullmatch(r"sha256:([0-9a-f]{64})", expected_id)
+    if match is None:
+        raise ValueError(f"invalid Docker image ID: {expected_id!r}")
+    return f"/var/tmp/sparkring-image-{match.group(1)}.tar"
+
+
+def load_archive_command(
+    image: str,
+    expected_id: str,
+    archive: str,
+    *,
+    keep_archive: bool,
+) -> str:
+    """Load one archive, attest its image ID, then optionally remove only it."""
+    lines = [
+        "set -euo pipefail",
+        f"test -f {shlex.quote(archive)}",
+        f"docker load --input {shlex.quote(archive)}",
+        (
+            f"observed=$(docker image inspect {shlex.quote(image)} "
+            "--format '{{.Id}}')"
+        ),
+        f"test \"$observed\" = {shlex.quote(expected_id)}",
+    ]
+    if not keep_archive:
+        lines.append(f"rm -f -- {shlex.quote(archive)}")
+    return "\n".join(lines)
+
+
+def remote_image_id(target: str, image: str) -> str:
+    command = (
+        f"docker image inspect {shlex.quote(image)} "
+        "--format '{{.Id}}' 2>/dev/null || true"
+    )
+    return remote_output(target, command)
+
+
+def direct_scp_argv(source: str, destination: str) -> list[str]:
+    return [
+        "scp",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=15",
+        "-o",
+        "StrictHostKeyChecking=yes",
+        source,
+        destination,
+    ]
+
+
+def stage_relay_archive_command(
+    image: str,
+    expected_id: str,
+    archive: str,
+) -> str:
+    """Create an exact archive on a relay that already has the exact image."""
+    partial_prefix = archive + ".partial"
+    return "\n".join(
+        (
+            "set -euo pipefail",
+            (
+                f"observed=$(docker image inspect {shlex.quote(image)} "
+                "--format '{{.Id}}')"
+            ),
+            f"test \"$observed\" = {shlex.quote(expected_id)}",
+            f"partial={shlex.quote(partial_prefix)}.$$",
+            "trap 'rm -f -- \"$partial\"' EXIT",
+            f"docker save --output \"$partial\" {shlex.quote(image)}",
+            f"mv -f -- \"$partial\" {shlex.quote(archive)}",
+            "trap - EXIT",
+        )
+    )
+
+
+def relay_scp_command(
+    archive: str,
+    destination: str,
+) -> str:
+    return shlex.join(
+        direct_scp_argv(archive, f"{destination}:{archive}")
+    )
+
+
+def fanout_image_archive(
+    site: SiteConfig,
+    image: str,
+    expected_id: str,
+    archive: Path,
+) -> None:
+    """Fan one exact Docker archive over only the direct-ring data plane.
+
+    Management SSH orchestrates commands and observes image IDs. Archive bytes
+    travel only over the three direct-ring SSH hops returned by
+    :func:`direct_image_fanout`.
+    """
+    remote_archive = remote_archive_path(expected_id)
+    if not archive.is_file() or archive.stat().st_size <= 0:
+        raise RuntimeError(f"image archive is missing or empty: {archive}")
+    archive_bytes = archive.stat().st_size
+    first_wave, relay_hop = direct_image_fanout(site)
+    followers = [rank for rank in site.ranks if rank.id != 0]
+
+    observed: dict[int, str] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {
+            rank.id: pool.submit(remote_image_id, rank.ssh_target, image)
+            for rank in followers
+        }
+        for rank_id, future in futures.items():
+            observed[rank_id] = future.result()
+
+    missing = {
+        rank_id for rank_id, value in observed.items()
+        if value != expected_id
+    }
+    for rank in followers:
+        if rank.id not in missing:
+            print(f"rank {rank.id}: exact image already present; transfer skipped")
+
+    relay_rank = relay_hop.source_rank
+    opposite_rank = relay_hop.destination_rank
+    # A relay that already owns the image still needs temporary archive space
+    # when the opposite rank is missing; it will docker-save an exact archive.
+    capacity_ids = set(missing)
+    if opposite_rank in missing:
+        capacity_ids.add(relay_rank)
+
+    print("==> Checking all destination/relay capacities before image transfer")
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=max(1, len(capacity_ids))
+    ) as pool:
+        futures = {
+            rank_id: pool.submit(
+                remote,
+                site.rank(rank_id).ssh_target,
+                image_transfer_capacity_command(archive_bytes),
+            )
+            for rank_id in sorted(capacity_ids)
+        }
+        for rank_id, future in futures.items():
+            future.result()
+            print(f"rank {rank_id}: archive/import capacity verified")
+
+    def deliver_first_wave(hop: Hop) -> None:
+        destination_rank = hop.destination_rank
+        if destination_rank not in missing:
+            return
+        destination = direct_ssh_target(site, hop)
+        run(
+            direct_scp_argv(
+                str(archive),
+                f"{destination}:{remote_archive}",
+            )
+        )
+        keep = (
+            destination_rank == relay_rank
+            and opposite_rank in missing
+        )
+        remote(
+            site.rank(destination_rank).ssh_target,
+            load_archive_command(
+                image,
+                expected_id,
+                remote_archive,
+                keep_archive=keep,
+            ),
+        )
+        print(
+            f"rank {destination_rank}: image {expected_id} verified "
+            f"over direct edge {hop.edge}"
+        )
+
+    print("==> Sending rank0 archive to both direct neighbours in parallel")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(deliver_first_wave, hop) for hop in first_wave]
+        for future in futures:
+            future.result()
+
+    if opposite_rank in missing:
+        relay_rank_config = site.rank(relay_rank)
+        if relay_rank not in missing:
+            print(
+                f"rank {relay_rank}: staging relay archive from its exact image"
+            )
+            remote(
+                relay_rank_config.ssh_target,
+                stage_relay_archive_command(
+                    image,
+                    expected_id,
+                    remote_archive,
+                ),
+            )
+        destination = direct_ssh_target(site, relay_hop)
+        print(
+            f"rank {relay_rank}: relaying archive to rank {opposite_rank} "
+            f"over direct edge {relay_hop.edge}"
+        )
+        remote(
+            relay_rank_config.ssh_target,
+            relay_scp_command(remote_archive, destination),
+        )
+        remote(
+            site.rank(opposite_rank).ssh_target,
+            load_archive_command(
+                image,
+                expected_id,
+                remote_archive,
+                keep_archive=False,
+            ),
+        )
+        # Remove only the identity-bound relay archive, and only after the
+        # opposite rank has loaded and attested the expected image ID.
+        remote(
+            relay_rank_config.ssh_target,
+            f"rm -f -- {shlex.quote(remote_archive)}",
+        )
+        print(f"rank {opposite_rank}: image {expected_id} verified")
+
+    final_ids: dict[int, str] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {
+            rank.id: pool.submit(remote_image_id, rank.ssh_target, image)
+            for rank in followers
+        }
+        for rank_id, future in futures.items():
+            final_ids[rank_id] = future.result()
+    wrong = {
+        rank_id: value for rank_id, value in final_ids.items()
+        if value != expected_id
+    }
+    if wrong:
+        raise RuntimeError(
+            f"direct-ring image fanout final identity mismatch: {wrong}"
+        )
 
 
 def checkout_command(commit: str, remote_root: str) -> str:
@@ -344,7 +633,10 @@ def main(argv: list[str] | None = None) -> int:
             "verify clean pinned checkout and SSH/cable preflight",
             "resume and hash-verify target plus MTP draft on all four ranks",
             profile["build_step"],
-            "save and fan out the exact image ID to ranks 1-3",
+            (
+                "save and fan out the exact image ID over the direct ring "
+                "(rank0 to both neighbors in parallel, then one relay)"
+            ),
             "write ignored generated site config and rerun preflight",
             "launch all four ranks with the pinned C8/Q40 profile",
         ],
@@ -386,6 +678,11 @@ def main(argv: list[str] | None = None) -> int:
     print("==> Verifying rank 0 management SSH to itself and every follower")
     run(
         ssh_bootstrap_verification_command(args.site),
+        cwd=ROOT,
+    )
+    print("==> Verifying exact direct-ring SSH image fanout tree")
+    run(
+        ssh_image_fanout_verification_command(args.site),
         cwd=ROOT,
     )
 
@@ -442,33 +739,8 @@ def main(argv: list[str] | None = None) -> int:
         run(["docker", "save", "--output", str(archive), image])
         archive_marker.write_text(expected_id + "\n", encoding="utf-8")
 
-    print("==> Fanning exact image to ranks 1-3")
-    archive_bytes = archive.stat().st_size
-    for rank in followers:
-        remote_archive = f"/var/tmp/{archive.name}"
-        print(f"rank {rank.id}: checking archive/import capacity")
-        remote(
-            rank.ssh_target,
-            image_transfer_capacity_command(archive_bytes),
-        )
-        run(
-            [
-                "scp",
-                "-o",
-                "BatchMode=yes",
-                str(archive),
-                f"{rank.ssh_target}:{remote_archive}",
-            ]
-        )
-        command = (
-            f"set -euo pipefail; docker load --input {shlex.quote(remote_archive)}; "
-            f"observed=$(docker image inspect {shlex.quote(image)} "
-            "--format '{{.Id}}'); "
-            f"test \"$observed\" = {shlex.quote(expected_id)}; "
-            f"rm -f -- {shlex.quote(remote_archive)}"
-        )
-        remote(rank.ssh_target, command)
-        print(f"rank {rank.id}: image {expected_id} verified")
+    print("==> Fanning exact image over the direct 200GbE ring")
+    fanout_image_archive(site, image, expected_id, archive)
 
     write_generated_site(
         args.site,

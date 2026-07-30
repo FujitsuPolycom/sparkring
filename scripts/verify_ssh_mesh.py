@@ -80,6 +80,34 @@ def fanout_hops(site: SiteConfig) -> list[Hop]:
     return [_hop(site, source, destination) for source, destination in pairs]
 
 
+def image_fanout_hops(site: SiteConfig) -> list[Hop]:
+    """Return the exact three-hop tree used for image archive payloads.
+
+    Rank 0 sends to both direct neighbours.  The lower-ID neighbour then
+    relays to the one opposite rank.  Every payload hop stays on a configured
+    direct-ring edge; management addresses are used only to orchestrate it.
+    """
+    master = 0
+    neighbours = sorted(site.rank(master).neighbour_ranks)
+    remaining = sorted(
+        rank.id for rank in site.ranks
+        if rank.id != master and rank.id not in neighbours
+    )
+    if len(neighbours) != 2 or len(remaining) != 1:
+        raise ValueError(
+            "image fanout derivation requires rank0, two neighbours, "
+            "and one opposite rank"
+        )
+    opposite = remaining[0]
+    relay = neighbours[0]
+    pairs = [
+        (master, neighbours[0]),
+        (master, neighbours[1]),
+        (relay, opposite),
+    ]
+    return [_hop(site, source, destination) for source, destination in pairs]
+
+
 def all_adjacent_hops(site: SiteConfig) -> list[Hop]:
     pairs: list[tuple[int, int]] = []
     for edge in site.topology.edges:
@@ -277,6 +305,8 @@ def verify(site: SiteConfig, scope: str, fix: bool,
     management_ok = {result.destination_rank: result.ok for result in results}
     if scope == "bootstrap":
         hops = bootstrap_hops(site)
+    elif scope == "image-fanout":
+        hops = image_fanout_hops(site)
     elif scope == "fanout":
         hops = fanout_hops(site)
     elif scope == "all-adjacent":
@@ -328,12 +358,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="validated SparkRing site.yaml")
     parser.add_argument(
         "--scope",
-        choices=("bootstrap", "fanout", "all-adjacent"),
+        choices=("bootstrap", "image-fanout", "fanout", "all-adjacent"),
         default="bootstrap",
         help=(
             "verify rank0-to-all-follower management paths used by the public "
-            "bootstrap, including rank0 self-trust (default), the direct-ring "
-            "relay tree, or all 8 "
+            "bootstrap, including rank0 self-trust (default), the exact "
+            "three-hop image fanout tree, the redundant direct-ring relay "
+            "tree, or all 8 "
             "direct-ring directions"
         ),
     )
