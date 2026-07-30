@@ -38,19 +38,42 @@ environment flags, source attestations, and integration ABIs can change.
 These short sanity cells confirm the current live configuration. They do not
 replace the complete context-by-concurrency benchmark matrix.
 
-### Published reference measurements
+### Validated GPTQ RC1 serving baseline
 
-| Measurement | Result |
-|---|---:|
-| Uncached prefill at 8K / 16K / 32K | **834 / 884 / 854 tok/s** |
-| Shared-prefix sustained decode at C8 | **63.60 tok/s aggregate** |
-| DCP4 C1 decode at 8K / 16K / 32K | **20.83 / 19.28 / 21.43 tok/s** |
-| Five-run sequential coding median | **27.2 tok/s** |
-| GPU-produced 16 KB RC write | **4.53 us p50** |
-| Graph-replayed four-rank all-reduce | **about 39 us device time/call** |
+The table below is one coherent 20-cell benchmark on a usable TP4/DCP4
+configuration. It does not mix DCP1 peaks, historical coding prompts, or
+transport-only probes into the serving baseline.
 
-Concurrency results are aggregate throughput. Shared-prefix measurements are
-not unique-context capacity measurements.
+| Context | Cold prefill | C1 decode | C2 aggregate | C4 aggregate | C8 aggregate |
+|---:|---:|---:|---:|---:|---:|
+| 8K | **844 tok/s** | **20.3** | **27.1** | **40.5** | **49.2** |
+| 16K | **876 tok/s** | **19.0** | **26.4** | **37.9** | **53.3** |
+| 32K | **830 tok/s** | **20.3** | **27.6** | **38.6** | **51.9** |
+| 64K | **832 tok/s** | **20.3** | **27.0** | **39.4** | **50.9** |
+| 128K | **796 tok/s** | **19.7** | **26.3** | **37.2** | **47.7** |
+
+Configuration: `aidendle94/GLM-5.2-MXFP4-Experts-GPTQ`, TP4/DCP4 `ag_rs`,
+adaptive MTP2/4 window 32 with true selected-depth drafting,
+`nvfp4_ds_mla` per-token KV, 4 GB KV/rank, 458,752-token request ceiling,
+4,096 max batched tokens, 8 max sequences, and `FULL_AND_PIECEWISE` CUDA
+graphs.
+
+Method: `llm-inference-bench` v0.4.31, 30-second sustained-decode cells,
+fully shared contexts, and client-observed standalone cold prefill. All 20
+decode cells completed with zero errors, queueing, underfill, capacity limits,
+or warmup timeouts. Concurrency values are aggregate throughput, not per-user
+throughput; shared-context measurements are not unique-context capacity tests.
+
+The later SparkCache v47 deployment retained the same main model, parallelism,
+memory, batch, graph, and fabric geometry, but the matrix above predates the
+cache overlay and v47 recorded true selected-depth drafting as disabled. Exact
+benchmark identity and sanitized evidence are in the
+[runtime profile](https://github.com/FujitsuPolycom/inference-runtime-profiles/tree/master/profiles/glm52-sparkring-sparkcache-4x-spark).
+
+Transport-only results, historical DCP1 peaks, workload-specific coding
+measurements, and superseded configurations remain documented separately in
+[docs/RESULTS.md](docs/RESULTS.md) and
+[docs/TESTING_HISTORY.md](docs/TESTING_HISTORY.md).
 
 See [docs/RESULTS.md](docs/RESULTS.md) for configurations, methodology,
 evidence, and claim boundaries.
