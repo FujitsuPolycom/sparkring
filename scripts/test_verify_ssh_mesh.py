@@ -41,7 +41,7 @@ def test_all_adjacent_has_eight_directed_hops():
     assert len({(hop.source_rank, hop.destination_rank) for hop in hops}) == 8
 
 
-def test_bootstrap_checks_rank0_to_every_follower_management_target():
+def test_bootstrap_checks_rank0_to_self_and_every_follower_management_target():
     hops = bootstrap_hops(example_site())
     assert [
         (
@@ -52,6 +52,7 @@ def test_bootstrap_checks_rank0_to_every_follower_management_target():
         )
         for hop in hops
     ] == [
+        (0, 0, "198.18.1.10", "management"),
         (0, 1, "198.18.1.11", "management"),
         (0, 2, "198.18.1.12", "management"),
         (0, 3, "198.18.1.13", "management"),
@@ -98,9 +99,10 @@ def test_verify_reports_exact_failed_direction():
 
 
 def test_bootstrap_uses_management_ssh_targets_not_ring_addresses():
-    # Four controller-management probes pass. rank0 -> rank1 fails; the
-    # remaining two bootstrap edges pass.
+    # Four controller-management probes and the rank0 self-probe pass.
+    # rank0 -> rank1 fails; the remaining two follower edges pass.
     responses = [subprocess.CompletedProcess([], 0, "", "") for _ in range(4)]
+    responses.append(subprocess.CompletedProcess([], 0, "", ""))
     responses.append(subprocess.CompletedProcess(
         [], 255, "", "Permission denied (publickey)."
     ))
@@ -110,9 +112,10 @@ def test_bootstrap_uses_management_ssh_targets_not_ring_addresses():
         command for target, command in fake.calls
         if target == "operator@198.18.1.10" and command != "true"
     ]
-    assert len(nested_commands) == 3
-    assert "operator@198.18.1.11" in nested_commands[0]
-    assert "192.0.2.11" not in nested_commands[0]
+    assert len(nested_commands) == 4
+    assert "operator@198.18.1.10" in nested_commands[0]
+    assert "operator@198.18.1.11" in nested_commands[1]
+    assert "192.0.2.11" not in nested_commands[1]
     failed = [result for result in results if not result.ok]
     assert [(result.source_rank, result.destination_rank) for result in failed] == [
         (0, 1),
@@ -126,7 +129,7 @@ def test_bootstrap_fix_requires_controller_management_to_destination():
     )
     # Controller -> rank2 is unhealthy. The matching rank0 -> rank2 failure
     # must be reported, not "repaired" through an unauthenticated controller.
-    fake = FakeSsh([ok, ok, denied, ok, ok, denied, ok])
+    fake = FakeSsh([ok, ok, denied, ok, ok, ok, denied, ok])
     results = verify(example_site(), "bootstrap", True, fake)
     rank2_hop = next(
         result for result in results
@@ -135,7 +138,7 @@ def test_bootstrap_fix_requires_controller_management_to_destination():
     assert not rank2_hop.ok
     assert not rank2_hop.repaired
     assert "repair refused: management SSH is not healthy" in rank2_hop.detail
-    assert len(fake.calls) == 7
+    assert len(fake.calls) == 8
 
 
 def test_fix_moves_only_public_material_and_reverifies():
@@ -166,7 +169,7 @@ def test_fix_moves_only_public_material_and_reverifies():
     assert "cat \"$HOME/.ssh/id_ed25519\"" not in commands
 
 
-def test_bootstrap_fix_enrols_management_target_and_reverifies():
+def test_bootstrap_fix_enrols_rank0_self_management_and_reverifies():
     def ok(stdout=""):
         return subprocess.CompletedProcess([], 0, stdout, "")
 
@@ -184,5 +187,5 @@ def test_bootstrap_fix_enrols_management_target_and_reverifies():
     assert all(result.ok for result in results)
     assert any(result.repaired for result in results)
     commands = "\n".join(command for _, command in fake.calls)
-    assert "198.18.1.11" in commands
+    assert "198.18.1.10" in commands
     assert "192.0.2.11" not in commands

@@ -123,10 +123,11 @@ python scripts/verify_ssh_mesh.py \
 authentication, or repair an unreachable management network.
 
 The `bootstrap` scope matches the public NF3 bootstrap exactly: the controller
-must reach every rank's management `ssh_target`, and rank 0 must reach ranks
-1-3 through those same management targets for image and command fanout. It
-does not rely on direct-ring SSH. Use `--scope all-adjacent` only to audit the
-optional direct-ring relay paths.
+must reach every rank's management `ssh_target`, and rank 0 must reach its own
+configured management target plus ranks 1-3 through those same targets. The
+self-edge ensures the verifier still succeeds when the bootstrap reruns it
+locally on rank 0. It does not rely on direct-ring SSH. Use
+`--scope all-adjacent` only to audit the optional direct-ring relay paths.
 
 Run `--fix` from a trusted operator/controller that already has authenticated
 management SSH to all four ranks. Rank 0 can be that controller only if it

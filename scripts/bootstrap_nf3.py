@@ -383,7 +383,7 @@ def main(argv: list[str] | None = None) -> int:
         ],
         cwd=ROOT,
     )
-    print("==> Verifying rank 0 management SSH to every follower")
+    print("==> Verifying rank 0 management SSH to itself and every follower")
     run(
         ssh_bootstrap_verification_command(args.site),
         cwd=ROOT,

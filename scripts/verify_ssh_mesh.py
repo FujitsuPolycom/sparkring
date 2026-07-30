@@ -89,20 +89,20 @@ def all_adjacent_hops(site: SiteConfig) -> list[Hop]:
 
 
 def bootstrap_hops(site: SiteConfig) -> list[Hop]:
-    """Return rank0-to-follower hops used by ``bootstrap_nf3.py``.
+    """Return rank0 management hops required by ``bootstrap_nf3.py``.
 
     The public bootstrap runs natively on physical rank 0 and sends images and
-    remote commands directly from there to every follower. These hops
-    therefore use each follower's management ``ssh_target`` host, not the
-    direct-ring addresses used by the optional no-registry relay tree.
+    remote commands directly from there to every follower. It also invokes
+    this verifier locally, so rank 0 must trust its own configured management
+    identity. These hops therefore use every rank's management ``ssh_target``
+    host, not direct-ring addresses used by the optional no-registry relay
+    tree.
     """
     # bootstrap_nf3.py is intentionally executed on physical rank 0 and fans
     # from there, independently of the API/master-rank setting.
     master = 0
     hops: list[Hop] = []
     for rank in sorted(site.ranks, key=lambda item: item.id):
-        if rank.id == master:
-            continue
         _, host = split_ssh_target(rank.ssh_target)
         hops.append(Hop(master, rank.id, host, "management", "bootstrap"))
     return hops
@@ -332,7 +332,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="bootstrap",
         help=(
             "verify rank0-to-all-follower management paths used by the public "
-            "bootstrap (default), the direct-ring relay tree, or all 8 "
+            "bootstrap, including rank0 self-trust (default), the direct-ring "
+            "relay tree, or all 8 "
             "direct-ring directions"
         ),
     )
