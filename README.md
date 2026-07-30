@@ -10,6 +10,31 @@ device-published command rings, a CUDA-graph-capturable two-matching ring
 all-reduce, DCP4 decode context parallelism, and adaptive MTP speculative
 decoding. Every number below was measured end-to-end on the real hardware.
 
+> [!IMPORTANT]
+> **Active development update — 2026-07-30**
+>
+> SparkRing is currently testing a new GLM-5.2 NF3-hybrid serving lane on the
+> four-Spark switchless ring. The live candidate is running TP4/DCP4,
+> adaptive MTP2/4, CUDA graphs, Q4096 scheduling, and a 7 GB/rank KV
+> allocation. Its current measured state is:
+>
+> - **20.93 tok/s C1** and **33.38 tok/s aggregate C2** in warm coding
+>   sanity runs;
+> - **511,488 tokens** of reported KV capacity;
+> - a previously fatal full-Q4096 overlap gate now passing: an
+>   **18,562-token prefill** completed alongside a live **512-token decode**,
+>   both with HTTP 200;
+> - all four ranks completed model load, CUDA graph capture, and a
+>   pointer-stable **768 MiB workspace reservation**, with zero subsequent
+>   workspace or fatal errors.
+>
+> This is a live experimental milestone, **not yet the default reproducible
+> recipe on `main`**. The checkpoint profile, launch tooling, fail-closed
+> workspace fix, evidence, and documentation are being consolidated now.
+> Expect substantial repository changes. Early testers and implementation
+> feedback are welcome, but pin a commit and treat the current quickstart as
+> the released reference path until this notice is updated.
+
 ## What is SIRCL?
 
 **SIRCL** is our internal codename for the **S**witchless
