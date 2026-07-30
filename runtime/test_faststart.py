@@ -93,13 +93,35 @@ def test_quickstart_names_every_major_gate():
         "bootstrap_nf3.py",
         "builds the small NF3 adapter layer",
         "verify_ssh_mesh.py",
+        "--scope all-adjacent",
+        "--fix",
         "sparkring_site.py",
         "acceptance_gate.py",
         "CUDA graphs through Q40",
+        "operator or bot",
+        "Management: SSH, downloads, launch, API",
         "--profile nvfp4-rope8",
         "/v1/models",
     ):
         assert required in text
+
+
+def test_readme_and_quickstart_link_exhaustive_prerequisites():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    quickstart = (ROOT / "docs/QUICKSTART.md").read_text(encoding="utf-8")
+    prerequisites = (ROOT / "docs/PREREQUISITES.md").read_text(
+        encoding="utf-8"
+    )
+    assert "docs/PREREQUISITES.md" in readme
+    assert "PREREQUISITES.md" in quickstart
+    for required in (
+        "What the operator must provide",
+        "What the bot can discover",
+        "Required validation sequence",
+        "Ready-to-bootstrap checklist",
+        "NVFP4/FP8-RoPE",
+    ):
+        assert required in prerequisites
 
 
 def test_nvfp4_rope8_layer_preserves_nf3_and_restores_only_mla():

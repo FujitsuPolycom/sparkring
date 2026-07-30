@@ -33,6 +33,11 @@ second supported deployment target.
 The project is a research pre-release. Pin a commit when deploying because
 environment flags, source attestations, and integration ABIs can change.
 
+Before downloading the model or building an image, complete the
+**[exhaustive prerequisites checklist](docs/PREREQUISITES.md)**. It separates
+facts the operator must supply from hardware/network details a bot can discover
+and provides the exact validation sequence.
+
 ## Measured results
 
 ### NF3-hybrid
@@ -99,13 +104,22 @@ features remain above the transport layer.
 ### Four-link topology
 
 ```text
-            200 Gb/s
-       S0 --------- S1
-       |             |
-200 Gb/s             200 Gb/s
-       |             |
-       S3 --------- S2
-            200 Gb/s
+                 operator or bot
+                       |
+          Wi-Fi / LAN / USB / Tailscale
+             |      |      |      |
+             S0     S1     S2     S3
+
+                   200 Gb/s
+              S0 ========== S1
+              ||             ||
+     200 Gb/s ||             || 200 Gb/s
+              ||             ||
+              S3 ========== S2
+                   200 Gb/s
+
+       Management: SSH, downloads, launch, API
+       200 GbE ring: RDMA inference traffic only
 ```
 
 A four-cycle decomposes into two perfect matchings:
@@ -188,7 +202,8 @@ preflight, and launches the validated C8/Q40 profile with SparkCache disabled.
 It does not rebuild Torch, vLLM, FlashInfer, or the base kernel stack.
 
 See the [four-Spark quickstart](docs/QUICKSTART.md) for cabling, site fields,
-tail commands, and acceptance checks.
+tail commands, and acceptance checks. Start with
+[PREREQUISITES.md](docs/PREREQUISITES.md) on a new cluster.
 
 ## Offline contributor quickstart
 

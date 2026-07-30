@@ -1,5 +1,10 @@
 # Four-Spark NF3 quickstart
 
+New deployment? Complete
+[the exhaustive prerequisites checklist](PREREQUISITES.md) first. It is the
+source of truth for hardware, Docker/NVIDIA runtime, management SSH, storage,
+200 GbE/RoCE setup, discovery commands, and the operator-versus-bot boundary.
+
 This is the sole current model deployment, with two KV-storage profiles:
 
 ```text
@@ -26,16 +31,26 @@ The former Aiden MXFP4/GPTQ lane is historical and lives in
 
 ## 1. Cable and manage the four Sparks
 
-You need four 200 Gb/s DACs in one closed cycle:
+Use a separate management network for SSH and four 200 Gb/s DACs in one
+closed inference cycle:
 
 ```text
-            200 Gb/s
-       S0 --------- S1
-       |             |
-200 Gb/s             200 Gb/s
-       |             |
-       S3 --------- S2
-            200 Gb/s
+                 operator or bot
+                       |
+          Wi-Fi / LAN / USB / Tailscale
+             |      |      |      |
+             S0     S1     S2     S3
+
+                   200 Gb/s
+              S0 ========== S1
+              ||             ||
+     200 Gb/s ||             || 200 Gb/s
+              ||             ||
+              S3 ========== S2
+                   200 Gb/s
+
+       Management: SSH, downloads, launch, API
+       200 GbE ring: RDMA inference traffic only
 ```
 
 Use Wi-Fi, USB Ethernet, LAN, or Tailscale for management SSH. Keep the four
@@ -51,7 +66,34 @@ direct 200 Gb/s subnets dedicated to the inference fabric. Every Spark needs:
 Use [SETUP.md](SETUP.md#stage-1--hardware-cabling) for netplan, MTU 9000,
 RoCEv2 GIDs, and cable qualification.
 
-## 2. Clone and fill your site facts
+## 2. Give the bot the facts it cannot discover
+
+The operator must provide:
+
+- one reachable management SSH target per Spark, including usernames;
+- working credentials or public-key authorization;
+- which physical machine should be rank 0;
+- permission before changing networking, installing packages, or stopping a
+  serving container.
+
+The bot can discover the remaining machine-local facts through SSH:
+
+| Fact | Read-only discovery |
+|---|---|
+| management address/interface | `ip -o -4 addr show` and `ip route` |
+| 200 GbE interfaces and state | `ip -br link`; `cat /sys/class/net/*/speed` |
+| netdev-to-RDMA mapping | `rdma link show`; `ls -l /sys/class/infiniband/*/device/net/` |
+| RDMA port | `ls /sys/class/infiniband/<device>/ports/` |
+| RoCEv2 GID index | inspect `gids/<i>` and `gid_attrs/types/<i>` |
+| actual cable neighbors | assign temporary unique test IPs and use interface-bound pings |
+| storage paths/free space | `df -h`; `docker info --format '{{.DockerRootDir}}'` |
+
+The exact commands and IPv4-to-GID example are embedded beside every field in
+[`site.example.yaml`](../scripts/config/site.example.yaml) and summarized in
+[`scripts/config/README.md`](../scripts/config/README.md#deriving-the-non-obvious-values).
+Do not infer cable neighbors from cage labels; probe them.
+
+## 3. Clone and fill the discovered site facts
 
 Run the bootstrap on rank 0:
 
@@ -75,12 +117,33 @@ python scripts/sparkring_site.py scripts/config/site.yaml
 Check/fix key-based SSH before a long download:
 
 ```bash
+# Read-only: report missing management and fanout paths.
 python scripts/verify_ssh_mesh.py \
   --site scripts/config/site.yaml \
   --scope all-adjacent
+
+# Mutating: install only the missing public-key edges after operator approval.
+python scripts/verify_ssh_mesh.py \
+  --site scripts/config/site.yaml \
+  --scope all-adjacent \
+  --fix
 ```
 
-## 3. Inspect the bootstrap plan
+Run the complete read-only machine/RDMA check:
+
+```bash
+python scripts/preflight.py \
+  --site scripts/config/site.yaml \
+  --print-plan
+
+python scripts/preflight.py \
+  --site scripts/config/site.yaml
+```
+
+Do not execute the model bootstrap until the site validator, SSH verifier, and
+preflight all pass.
+
+## 4. Inspect the bootstrap plan
 
 ```bash
 python scripts/bootstrap_nf3.py plan \
@@ -98,7 +161,7 @@ python scripts/bootstrap_nf3.py plan \
   --profile nvfp4-rope8
 ```
 
-## 4. Build, verify, distribute, and launch
+## 5. Build, verify, distribute, and launch
 
 ```bash
 python scripts/bootstrap_nf3.py execute \
@@ -138,7 +201,7 @@ still deterministic at the input boundary: the ARM64 base, model, draft,
 B12X, Spark port, SparkRing source, overlay files, NCCL, and transport are
 recorded or hashed. A mismatch fails before serving.
 
-## 5. Tail and smoke-test
+## 6. Tail and smoke-test
 
 The default container name is `glm52-sparkring-nf3-r0`:
 
