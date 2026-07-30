@@ -58,15 +58,21 @@ python scripts/sparkring_launcher.py \
   --launch-config scripts/config/launch.json plan
 ```
 
-The profile owns host-local launch details and additional vLLM flags.
+The profile owns the two host-local model paths and the NF3 vLLM contract.
 Topology, ranks, image digest, model identity, TP/DCP sizing, ports and cache
 budgets come from `site.yaml`; the launcher refuses model identity drift from
-`runtime/runtime-lock.json`. It derives per-rank neighbors, RDMA devices,
+`recipes/glm52-nf3-hybrid.json`. It derives per-rank neighbors, RDMA devices,
 GID indices, management interfaces, `--node-rank`, and `--headless`
 automatically. `start`, `stop`, and `verify-rollback` remain dry-run unless
 `--execute` is supplied. A partial start triggers best-effort removal only for
 containers whose `docker run` succeeded; removal additionally requires the
 launcher-managed label, so a same-named foreign container is never deleted.
+
+Environment values are strings except for an explicit JSON `null`, which the
+launcher renders as Docker `--env NAME` without `=value`. The checked-in GLM
+profile uses this to remove the base image's incompatible
+`VLLM_PREFIX_CACHE_RETENTION_INTERVAL`; changing it to an empty string does not
+have the same semantics and is rejected.
 
 The current public image contains an executable capability gate. With the
 published recovered overlay, the gate has passed natively on DGX Spark for

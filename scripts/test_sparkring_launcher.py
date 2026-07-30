@@ -14,6 +14,236 @@ from sparkring_site import load_site
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "scripts/config/site.example.yaml"
 LAUNCH = ROOT / "scripts/config/launch.example.json"
+GLM52_INDEX_TOPK_PATTERN = (
+    "FFFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSS"
+    "FSSSFSSSFSSS"
+)
+
+
+def _option_value(arguments: tuple[str, ...], option: str) -> str:
+    index = arguments.index(option)
+    return arguments[index + 1]
+
+
+def _environment_value(action: launcher.RemoteAction, name: str) -> str:
+    prefix = f"{name}="
+    return next(value.removeprefix(prefix) for value in action.argv if value.startswith(prefix))
+
+
+def _launch_config_with(
+    tmp_path: Path,
+    mutate,
+) -> launcher.LaunchConfig:
+    document = json.loads(LAUNCH.read_text(encoding="utf-8"))
+    mutate(document)
+    path = tmp_path / "launch.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return launcher.load_launch(path)
+
+
+def test_example_passes_checkpoint_indexer_layout_to_vllm():
+    site = load_site(SITE)
+    config = launcher.load_launch(LAUNCH)
+
+    for action in launcher.start_actions(site, config):
+        overrides = json.loads(_option_value(action.argv, "--hf-overrides"))
+        assert overrides == {"index_topk_pattern": GLM52_INDEX_TOPK_PATTERN}
+        assert len(overrides["index_topk_pattern"]) == 78
+        assert overrides["index_topk_pattern"].count("F") == 21
+        assert overrides["index_topk_pattern"].count("S") == 57
+
+
+def test_pinned_checkpoint_refuses_missing_indexer_layout(tmp_path):
+    def remove_hf_overrides(document):
+        index = document["extra_vllm_args"].index("--hf-overrides")
+        del document["extra_vllm_args"][index:index + 2]
+
+    config = _launch_config_with(tmp_path, remove_hf_overrides)
+
+    with pytest.raises(
+        launcher.LaunchConfigError,
+        match="requires exactly one --hf-overrides",
+    ):
+        launcher.start_actions(load_site(SITE), config)
+
+
+def test_pinned_checkpoint_refuses_wrong_indexer_layout(tmp_path):
+    def rotate_indexer_pattern(document):
+        index = document["extra_vllm_args"].index("--hf-overrides")
+        document["extra_vllm_args"][index + 1] = json.dumps(
+            {
+                "index_topk_pattern": (
+                    GLM52_INDEX_TOPK_PATTERN[1:] + GLM52_INDEX_TOPK_PATTERN[0]
+                )
+            }
+        )
+
+    config = _launch_config_with(tmp_path, rotate_indexer_pattern)
+
+    with pytest.raises(
+        launcher.LaunchConfigError,
+        match="requires its exact 78-layer index_topk_pattern",
+    ):
+        launcher.start_actions(load_site(SITE), config)
+
+
+def test_pinned_nf3_launch_refuses_historical_nvfp4_kv(tmp_path):
+    def select_nvfp4(document):
+        index = document["extra_vllm_args"].index("--kv-cache-dtype")
+        document["extra_vllm_args"][index + 1] = "nvfp4_ds_mla"
+        document["environment"]["VLLM_NVFP4_MLA_PER_TOKEN_SCALE"] = "1"
+
+    config = _launch_config_with(tmp_path, select_nvfp4)
+    with pytest.raises(
+        launcher.LaunchConfigError,
+        match="requires exactly one --kv-cache-dtype fp8",
+    ):
+        launcher.start_actions(load_site(SITE), config)
+
+
+def test_transport_slots_follow_native_xor_round_schedule():
+    site = load_site(SITE)
+    config = launcher.load_launch(LAUNCH)
+
+    for action in launcher.start_actions(site, config):
+        rank = site.rank(action.rank)
+        ports = {port.peer_rank: port for port in rank.ring_ports}
+        control_peers = {peer.rank: peer for peer in rank.transport_peers}
+        round0_peer = action.rank ^ 1
+        round1_peer = action.rank ^ 3
+
+        assert _environment_value(action, "SPARK_TP4_PEER0") == str(
+            control_peers[round0_peer].address
+        )
+        assert _environment_value(action, "SPARK_TP4_PEER1") == str(
+            control_peers[round1_peer].address
+        )
+        assert _environment_value(action, "SPARK_TP4_DEVICE0") == ports[
+            round0_peer
+        ].rdma_device
+        assert _environment_value(action, "SPARK_TP4_DEVICE1") == ports[
+            round1_peer
+        ].rdma_device
+
+
+def test_example_uses_validated_nf3_fp8_kv_contract():
+    config = launcher.load_launch(LAUNCH)
+    assert _option_value(config.extra_vllm_args, "--kv-cache-dtype") == "fp8"
+    assert "VLLM_NVFP4_MLA_PER_TOKEN_SCALE" not in config.environment
+
+
+def test_pinned_nf3_launch_refuses_query_capacity_drift(tmp_path):
+    config = _launch_config_with(
+        tmp_path,
+        lambda document: document["environment"].update(
+            {"VLLM_SPARK_MAX_QUERY_ROWS": "32"}
+        ),
+    )
+    with pytest.raises(
+        launcher.LaunchConfigError,
+        match="VLLM_SPARK_MAX_QUERY_ROWS=40",
+    ):
+        launcher.start_actions(load_site(SITE), config)
+
+
+def test_example_explicitly_unsets_incompatible_prefix_retention_variable():
+    site = load_site(SITE)
+    config = launcher.load_launch(LAUNCH)
+
+    for action in launcher.start_actions(site, config):
+        bare_unsets = [
+            index
+            for index, value in enumerate(action.argv[:-1])
+            if value == "--env"
+            and action.argv[index + 1] == "VLLM_PREFIX_CACHE_RETENTION_INTERVAL"
+        ]
+        assert len(bare_unsets) == 1
+        assert not any(
+            value.startswith("VLLM_PREFIX_CACHE_RETENTION_INTERVAL=")
+            for value in action.argv
+        )
+
+
+def test_launch_rejects_present_prefix_retention_variable(tmp_path):
+    document = json.loads(LAUNCH.read_text(encoding="utf-8"))
+    document["environment"]["VLLM_PREFIX_CACHE_RETENTION_INTERVAL"] = "4096"
+    path = tmp_path / "launch.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(
+        launcher.LaunchConfigError,
+        match="VLLM_PREFIX_CACHE_RETENTION_INTERVAL must be null",
+    ):
+        launcher.start_actions(load_site(SITE), launcher.load_launch(path))
+
+
+def test_example_enables_glm_tool_and_reasoning_parsers():
+    site = load_site(SITE)
+    config = launcher.load_launch(LAUNCH)
+
+    for action in launcher.start_actions(site, config):
+        assert "--enable-auto-tool-choice" in action.argv
+        assert _option_value(action.argv, "--reasoning-parser") == "glm45"
+        assert _option_value(action.argv, "--tool-call-parser") == "glm47"
+
+
+def test_pinned_launch_refuses_missing_auto_tool_choice(tmp_path):
+    config = _launch_config_with(
+        tmp_path,
+        lambda document: document["extra_vllm_args"].remove(
+            "--enable-auto-tool-choice"
+        ),
+    )
+
+    with pytest.raises(
+        launcher.LaunchConfigError,
+        match="requires exactly one --enable-auto-tool-choice",
+    ):
+        launcher.start_actions(load_site(SITE), config)
+
+
+@pytest.mark.parametrize(
+    ("option", "expected", "wrong"),
+    (
+        ("--reasoning-parser", "glm45", "glm47"),
+        ("--tool-call-parser", "glm47", "glm45"),
+    ),
+)
+def test_pinned_launch_refuses_wrong_glm_parser(
+    tmp_path, option, expected, wrong
+):
+    def replace_parser(document):
+        index = document["extra_vllm_args"].index(option)
+        document["extra_vllm_args"][index + 1] = wrong
+
+    config = _launch_config_with(tmp_path, replace_parser)
+
+    with pytest.raises(
+        launcher.LaunchConfigError,
+        match=rf"requires exactly one {option} {expected}",
+    ):
+        launcher.start_actions(load_site(SITE), config)
+
+
+@pytest.mark.parametrize(
+    ("option", "expected"),
+    (
+        ("--reasoning-parser", "glm45"),
+        ("--tool-call-parser", "glm47"),
+    ),
+)
+def test_pinned_launch_refuses_missing_glm_parser(tmp_path, option, expected):
+    def remove_parser(document):
+        index = document["extra_vllm_args"].index(option)
+        del document["extra_vllm_args"][index:index + 2]
+
+    config = _launch_config_with(tmp_path, remove_parser)
+
+    with pytest.raises(
+        launcher.LaunchConfigError,
+        match=rf"requires exactly one {option} {expected}",
+    ):
+        launcher.start_actions(load_site(SITE), config)
 
 
 def test_example_produces_four_safe_start_actions():
@@ -37,7 +267,40 @@ def test_example_produces_four_safe_start_actions():
             f"{site.paths.jit_cache_dir}:/cache/jit"
             in action.argv
         )
+        assert (
+            f"{config.mtp_draft_host_path}:/mtp-draft:ro"
+            in action.argv
+        )
         assert "--no-enable-flashinfer-autotune" in action.argv
+
+
+def test_example_mounts_nf3_target_and_separate_mtp_draft():
+    site = load_site(SITE)
+    config = launcher.load_launch(LAUNCH)
+
+    assert "NF3-Hybrid" in config.model_host_path
+    assert config.mtp_draft_host_path != config.model_host_path
+    for action in launcher.start_actions(site, config):
+        assert (
+            f"{config.model_host_path}:{site.runtime.model_path}:ro"
+            in action.argv
+        )
+        assert f"{config.mtp_draft_host_path}:/mtp-draft:ro" in action.argv
+        speculative = json.loads(
+            _option_value(action.argv, "--speculative-config")
+        )
+        assert speculative["model"] == "/mtp-draft"
+
+
+def test_launch_rejects_target_and_draft_at_same_host_path(tmp_path):
+    def share_path(document):
+        document["mtp_draft_host_path"] = document["model_host_path"]
+
+    with pytest.raises(
+        launcher.LaunchConfigError,
+        match="target and MTP draft host paths must be distinct",
+    ):
+        _launch_config_with(tmp_path, share_path)
 
 
 def test_plan_is_connection_free(monkeypatch, capsys):
@@ -92,9 +355,9 @@ def test_unknown_placeholder_fails_closed(tmp_path):
         launcher.load_launch(path)
 
 
-def test_site_model_must_match_runtime_lock(tmp_path):
+def test_site_model_must_match_nf3_recipe(tmp_path):
     text = SITE.read_text(encoding="utf-8").replace(
-        "aidendle94/GLM-5.2-MXFP4-Experts-GPTQ",
+        "madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid",
         "someone/other-model",
     )
     path = tmp_path / "site.yaml"

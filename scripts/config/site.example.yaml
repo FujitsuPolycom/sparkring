@@ -3,9 +3,9 @@
 # =============================================================================
 #
 # Copy this file to scripts/config/site.yaml and replace every site-specific
-# placeholder with values from your own four-node cluster. The serving-shape
-# values deliberately match docs/PUBLIC_FUNCTIONAL_TARGET.md; keep those if you
-# intend to run that lane. The file is not runnable as shipped: it exists so
+# placeholder with values from your own four-node cluster. The model and
+# serving-shape values match the single NF3 recipe; keep them unchanged. The
+# file is not runnable as shipped: it exists so
 # that `python scripts/sparkring_site.py` and `python scripts/preflight.py`
 # have a complete, schema-valid example to validate against.
 #
@@ -277,20 +277,20 @@ runtime:
   # Absolute path to the weights *inside the container*.
   model_path: /models/your-model
 
-  # The public-functional matrix pins this checkpoint repository. The
-  # acceptance gate refuses a different repository.
-  model_repo: aidendle94/GLM-5.2-MXFP4-Experts-GPTQ
+  # SparkRing has one current deployment model. The acceptance gate refuses
+  # a different repository; the former Aiden/GPTQ lane is historical only.
+  model_repo: madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid
 
   # Immutable revision of that repository: a 40-hex commit sha, never a branch
   # or tag name.  Derive: `git -C <clone> rev-parse HEAD`, or read the commit
   # sha from your model host's revision metadata.
-  model_revision: "46537e0e16fcd156627800139b41b9c497fc7ee2"
+  model_revision: "66f3623dd8fefb5ca8046706912d5d31c8d196af"
 
   # sha256 of the checkpoint artifact you treat as authoritative (for example
   # the safetensors index or your own manifest file). Every rank is expected to
   # resolve to this same value.
   # Derive: `sha256sum <checkpoint-manifest>`
-  checkpoint_sha256: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+  checkpoint_sha256: 6eb773222d932418dd0530c63aca498f86ef424da2a4526ccba76b59726da234
 
 # -----------------------------------------------------------------------------
 # serving: the engine shape. These are recorded in evidence and cross-checked
@@ -315,8 +315,8 @@ serving:
   # Maximum context length required by the public-functional matrix.
   max_model_len: 458752
 
-  # KV cache budget per rank, in bytes, for the public-functional matrix.
-  kv_cache_bytes_per_rank: 4600000000
+  # Validated NF3 KV budget per rank. This reported 511,488 logical tokens.
+  kv_cache_bytes_per_rank: 7000000000
 
   # Maximum concurrent sequences.
   max_num_seqs: 8

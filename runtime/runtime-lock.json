@@ -388,7 +388,7 @@
     },
     {
       "path": "runtime/public-capability-gate.py",
-      "sha256": "e67577cca408de51fd196d43caddb02ff47f6d56b88bf2743001dc6bb27f6da0"
+      "sha256": "9d928cb30d8e9e9a02bc58eef9957a7831fbfc46cc1af6710edcc079f2765b5c"
     },
     {
       "path": "runtime/public-headless-abi-gate.py",

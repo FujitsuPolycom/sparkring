@@ -1,23 +1,24 @@
 {
   "schema": "sparkring-repository-status/v1",
-  "last_reviewed": "2026-07-29",
+  "last_reviewed": "2026-07-30",
   "lanes": {
     "reference": {
       "maturity": "live-validated",
       "publicly_runnable": false,
-      "public_source_complete": true,
-      "evidence": "docs/RESULTS.md",
-      "reason": "The recovered measured-runtime source is published. A clean public ARM64 build and partial four-rank bring-up passed, but API/request acceptance has not."
+      "public_source_complete": false,
+      "evidence": "README.md",
+      "reason": "The NF3 target has passed local four-Spark serving and overlap sanity gates. The exact derived ARM64/SM121 image and the remaining NF3 integration source still require public release."
     },
     "public-functional": {
       "maturity": "candidate",
       "end_to_end_runnable": false,
       "acceptance_result_exists": false,
-      "definition": "docs/PUBLIC_FUNCTIONAL_TARGET.md",
+      "definition": "recipes/glm52-nf3-hybrid.json",
       "blockers": [
-        "the corrected four-rank launch with the unsafe generic FlashInfer autotuner disabled has not yet reached API readiness",
-        "the deterministic request and public acceptance matrix have not passed",
-        "the public lane has no accepted CUDA-graph or reference-performance result"
+        "publish the validated ARM64/SM121 NF3 image at an immutable OCI digest",
+        "publish and attest the remaining NF3 runtime integration source",
+        "run the single-recipe path from a clean checkout on four Sparks",
+        "keep eager as the public default until the changing-input CUDA-graph semantic canary passes"
       ]
     }
   },
@@ -62,14 +63,23 @@
       "native_arm64_build_passed": true,
       "identical_four_rank_distribution_passed": true,
       "live_model_load_and_kv_allocation_passed": true,
+      "external_manual_eager_request_reported": true,
       "api_request_acceptance_passed": false,
       "entrypoint": "docs/QUICKSTART.md"
     },
     "public_launcher": {
       "maturity": "partially-live-validated",
       "mutating_commands_default_to_dry_run": true,
+      "external_manual_eager_request_reported": true,
       "live_four_rank_acceptance": false,
       "entrypoint": "scripts/sparkring_launcher.py"
+    },
+    "nf3_recipe": {
+      "maturity": "local-live-validated-publication-pending",
+      "sole_current_target": true,
+      "model": "madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid",
+      "zero_build_ready": false,
+      "entrypoint": "recipes/glm52-nf3-hybrid.json"
     },
     "headless_startup_abi": {
       "maturity": "partially-live-validated",

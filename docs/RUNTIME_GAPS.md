@@ -112,3 +112,18 @@ where it has not, our overlay remains ahead.
   tail, rerun the corrected pinned ARM64 image through four-Spark API/request
   acceptance, and track the
   open SM121 PRs upstream as the retirement path for the largest patch.
+
+## CUDA-graph correctness remains a live gate
+
+The published patch set contains CUDA-graph integration code, but source
+availability and successful capture are not proof of correct replay. The
+public lane has no accepted end-to-end CUDA-graph result. In particular, its
+graph-native TP/vocabulary path has standalone transport probes but not an
+accepted four-rank vLLM changing-input replay result.
+
+An external reproduction has now reported a deterministic wrong-output
+symptom in graph mode while eager mode remained correct. The focused status,
+ranked isolation sequence, required evidence, and GPU-free artifact comparator
+are documented in
+[CUDAGRAPH_CORRECTNESS_GATE.md](CUDAGRAPH_CORRECTNESS_GATE.md). Until that gate
+passes, `--enforce-eager` remains the supported public serving mode.

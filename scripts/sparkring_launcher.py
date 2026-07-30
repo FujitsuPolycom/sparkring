@@ -21,12 +21,17 @@ from typing import Sequence
 from sparkring_site import SiteConfig, SiteConfigError, load_site
 
 SCHEMA = "sparkring-public-launch/v1"
+_GLM52_INDEX_TOPK_PATTERN = (
+    "FFFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSSFSSS"
+    "FSSSFSSSFSSS"
+)
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
 _ABS = re.compile(r"^/[A-Za-z0-9._/+@:-]*[A-Za-z0-9._+@:-]$")
 _ENV = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 _PLACEHOLDER = re.compile(r"{([a-z0-9_]+)}")
 _ALLOWED_PLACEHOLDERS = {
     "api_port",
+    "draft_path",
     "master_addr",
     "master_port",
     "model_path",
@@ -52,9 +57,10 @@ class LaunchConfig:
     engine: str
     container_name: str
     model_host_path: str
+    mtp_draft_host_path: str
     shm_size: str
     startup_timeout_seconds: int
-    environment: dict[str, str]
+    environment: dict[str, str | None]
     extra_vllm_args: tuple[str, ...]
 
 
@@ -92,6 +98,7 @@ def load_launch(path: Path) -> LaunchConfig:
             "engine",
             "container_name",
             "model_host_path",
+            "mtp_draft_host_path",
             "shm_size",
             "startup_timeout_seconds",
             "environment",
@@ -110,6 +117,18 @@ def load_launch(path: Path) -> LaunchConfig:
     model_host_path = raw["model_host_path"]
     if not isinstance(model_host_path, str) or not _ABS.fullmatch(model_host_path):
         raise LaunchConfigError(f"{path}: model_host_path must be shell-safe absolute")
+    mtp_draft_host_path = raw["mtp_draft_host_path"]
+    if (
+        not isinstance(mtp_draft_host_path, str)
+        or not _ABS.fullmatch(mtp_draft_host_path)
+    ):
+        raise LaunchConfigError(
+            f"{path}: mtp_draft_host_path must be shell-safe absolute"
+        )
+    if mtp_draft_host_path == model_host_path:
+        raise LaunchConfigError(
+            f"{path}: target and MTP draft host paths must be distinct"
+        )
     shm_size = raw["shm_size"]
     if not isinstance(shm_size, str) or not re.fullmatch(r"[1-9][0-9]*[gGmM]", shm_size):
         raise LaunchConfigError(f"{path}: shm_size must look like 16g")
@@ -121,13 +140,16 @@ def load_launch(path: Path) -> LaunchConfig:
     environment = raw["environment"]
     if not isinstance(environment, dict):
         raise LaunchConfigError(f"{path}: environment must be an object")
-    checked_env: dict[str, str] = {}
+    checked_env: dict[str, str | None] = {}
     for key, value in environment.items():
         if not isinstance(key, str) or not _ENV.fullmatch(key):
             raise LaunchConfigError(f"{path}: invalid environment key {key!r}")
-        if not isinstance(value, str) or "\x00" in value or "\n" in value:
-            raise LaunchConfigError(f"{path}: environment {key} must be one line")
-        _validate_placeholders(value, f"environment.{key}")
+        if value is not None:
+            if not isinstance(value, str) or "\x00" in value or "\n" in value:
+                raise LaunchConfigError(
+                    f"{path}: environment {key} must be one line or null"
+                )
+            _validate_placeholders(value, f"environment.{key}")
         checked_env[key] = value
     extra = raw["extra_vllm_args"]
     if not isinstance(extra, list) or not all(
@@ -141,6 +163,7 @@ def load_launch(path: Path) -> LaunchConfig:
         engine=engine,
         container_name=name,
         model_host_path=model_host_path,
+        mtp_draft_host_path=mtp_draft_host_path,
         shm_size=shm_size,
         startup_timeout_seconds=timeout,
         environment=checked_env,
@@ -157,11 +180,16 @@ def _validate_placeholders(value: str, where: str) -> None:
 
 def _context(site: SiteConfig, rank_id: int) -> dict[str, str]:
     rank = site.rank(rank_id)
-    peers = sorted(rank.transport_peers, key=lambda peer: peer.rank)
+    peers_by_rank = {peer.rank: peer for peer in rank.transport_peers}
+    # Native TP4 consumes peer slots in recursive-doubling round order:
+    # round 0 is rank^1 and round 1 is rank^3. Sorting by rank silently
+    # reverses both slots on ranks 2 and 3.
+    peers = [peers_by_rank[rank_id ^ 1], peers_by_rank[rank_id ^ 3]]
     ports = {port.peer_rank: port for port in rank.ring_ports}
     master = site.rank(site.serving.master_rank)
     return {
         "api_port": str(site.serving.api_port),
+        "draft_path": "/mtp-draft",
         "master_addr": str(master.management.address),
         "master_port": str(site.serving.master_port),
         "model_path": site.runtime.model_path,
@@ -213,31 +241,137 @@ def _base_environment(site: SiteConfig, rank_id: int) -> dict[str, str]:
 
 
 def _model_config_sha(site: SiteConfig) -> str:
-    # The immutable runtime lock owns config.json identity. checkpoint_sha256
-    # may name a safetensors index and is deliberately not substituted here.
-    lock = json.loads(
-        (Path(__file__).resolve().parents[1] / "runtime/runtime-lock.json").read_text(
-            encoding="utf-8"
-        )
+    # The deployment recipe owns target-model identity. The runtime lock may
+    # still describe the ARM64 base image from which the derived NF3 image was
+    # built, so using it here would incorrectly couple the target checkpoint
+    # to that base image's historical model.
+    recipe = json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / "recipes/glm52-nf3-hybrid.json"
+        ).read_text(encoding="utf-8")
     )
-    model = lock["model"]
+    model = recipe["model"]
     if (
-        model["repository"] != site.runtime.model_repo
+        recipe["recipe_id"] != "glm52-nf3-hybrid"
+        or model["repository"] != site.runtime.model_repo
         or model["revision"] != site.runtime.model_revision
     ):
         raise LaunchConfigError(
-            "site model identity differs from runtime/runtime-lock.json"
+            "site model identity differs from recipes/glm52-nf3-hybrid.json"
         )
     return str(model["config_sha256"])
 
 
+def _option_values(arguments: tuple[str, ...], option: str) -> list[str]:
+    return [
+        arguments[index + 1]
+        for index, value in enumerate(arguments[:-1])
+        if value == option
+    ]
+
+
+def _validate_pinned_model_launch(
+    site: SiteConfig,
+    config: LaunchConfig,
+) -> None:
+    # Establish that this site names the exact checkpoint pinned by the
+    # deployment recipe before enforcing its checkpoint-specific contract.
+    _model_config_sha(site)
+
+    overrides = _option_values(config.extra_vllm_args, "--hf-overrides")
+    if len(overrides) != 1:
+        raise LaunchConfigError(
+            "pinned GLM-5.2 checkpoint requires exactly one --hf-overrides"
+        )
+    try:
+        override_document = json.loads(overrides[0])
+    except json.JSONDecodeError as exc:
+        raise LaunchConfigError(
+            "pinned GLM-5.2 checkpoint has invalid --hf-overrides JSON"
+        ) from exc
+    if override_document != {
+        "index_topk_pattern": _GLM52_INDEX_TOPK_PATTERN
+    }:
+        raise LaunchConfigError(
+            "pinned GLM-5.2 checkpoint requires its exact 78-layer "
+            "index_topk_pattern"
+        )
+
+    kv_dtypes = _option_values(config.extra_vllm_args, "--kv-cache-dtype")
+    if kv_dtypes != ["fp8"]:
+        raise LaunchConfigError(
+            "pinned NF3 launch requires exactly one --kv-cache-dtype fp8"
+        )
+    load_formats = _option_values(config.extra_vllm_args, "--load-format")
+    if load_formats != ["fastsafetensors"]:
+        raise LaunchConfigError(
+            "pinned NF3 launch requires exactly one "
+            "--load-format fastsafetensors"
+        )
+
+    if config.extra_vllm_args.count("--enforce-eager") != 1:
+        raise LaunchConfigError(
+            "the public NF3 first-launch contract requires --enforce-eager"
+        )
+
+    expected_environment = {
+        "FASTSAFETENSORS_UNIFIED_MEM": "0",
+        "SPARK_CONTEXT_CACHE_ENABLE": "0",
+        "SPARK_TP4_ALLGATHER_BASE_PORT": "10200",
+        "VLLM_FASTSAFETENSORS_QUEUE_SIZE": "-1",
+        "VLLM_SPARK_MAX_QUERY_ROWS": "40",
+        "VLLM_SPARK_NF3_SINGLE_COMPILE_RANGE": "0",
+        "VLLM_SPARK_NF3_STARTUP_PROFILE_MAX_TOKENS": "2",
+        "VLLM_SPARK_NF3_WORKSPACE_RESERVE_BYTES": "805306368",
+    }
+    for name, expected in expected_environment.items():
+        if config.environment.get(name) != expected:
+            raise LaunchConfigError(
+                f"pinned NF3 launch requires {name}={expected}"
+            )
+    if site.serving.max_num_seqs != 8:
+        raise LaunchConfigError(
+            "pinned NF3 first-launch contract requires max_num_seqs=8"
+        )
+
+    if (
+        "VLLM_PREFIX_CACHE_RETENTION_INTERVAL" not in config.environment
+        or config.environment["VLLM_PREFIX_CACHE_RETENTION_INTERVAL"] is not None
+    ):
+        raise LaunchConfigError(
+            "VLLM_PREFIX_CACHE_RETENTION_INTERVAL must be null so the pinned "
+            "GLM-5.2 launch removes the incompatible base-image value"
+        )
+
+    if config.extra_vllm_args.count("--enable-auto-tool-choice") != 1:
+        raise LaunchConfigError(
+            "pinned GLM-5.2 launch requires exactly one "
+            "--enable-auto-tool-choice"
+        )
+
+    parser_contract = {
+        "--reasoning-parser": "glm45",
+        "--tool-call-parser": "glm47",
+    }
+    for option, expected in parser_contract.items():
+        if _option_values(config.extra_vllm_args, option) != [expected]:
+            raise LaunchConfigError(
+                f"pinned NF3 launch requires exactly one {option} {expected}"
+            )
+
+
 def start_actions(site: SiteConfig, config: LaunchConfig) -> list[RemoteAction]:
+    _validate_pinned_model_launch(site, config)
     actions: list[RemoteAction] = []
     for rank in site.ranks:
         context = _context(site, rank.id)
-        environment = _base_environment(site, rank.id)
+        environment: dict[str, str | None] = _base_environment(site, rank.id)
         environment.update(
-            {key: _expand(value, context) for key, value in config.environment.items()}
+            {
+                key: None if value is None else _expand(value, context)
+                for key, value in config.environment.items()
+            }
         )
         argv = [
             config.engine,
@@ -266,12 +400,14 @@ def start_actions(site: SiteConfig, config: LaunchConfig) -> list[RemoteAction]:
             "--volume",
             f"{config.model_host_path}:{site.runtime.model_path}:ro",
             "--volume",
+            f"{config.mtp_draft_host_path}:/mtp-draft:ro",
+            "--volume",
             f"{site.paths.jit_cache_dir}:/cache/jit",
             "--volume",
             f"{site.paths.context_cache_dir}:{site.paths.context_cache_dir}",
         ]
         for key, value in sorted(environment.items()):
-            argv.extend(("--env", f"{key}={value}"))
+            argv.extend(("--env", key if value is None else f"{key}={value}"))
         argv.extend(
             (
                 site.runtime.container_image,

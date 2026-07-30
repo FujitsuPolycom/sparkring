@@ -1,6 +1,13 @@
 # SparkRing — Public-Functional Lane: supported matrix and acceptance definition
 
-This document defines **one** supported configuration for the
+> **Historical:** this matrix targets the former Aiden MXFP4/GPTQ lane. It is
+> retained because its fail-closed acceptance rules and evidence remain
+> useful. It is not the current deployment quickstart. SparkRing now has one
+> current target: the NF3 hybrid in
+> [QUICKSTART.md](QUICKSTART.md) and
+> [`recipes/glm52-nf3-hybrid.json`](../recipes/glm52-nf3-hybrid.json).
+
+This document defines **one** supported configuration for the historical
 public-functional lane, and defines exactly what "it works" means for that
 configuration. It is the contract the acceptance gate
 (`scripts/acceptance_gate.py`) enforces.
@@ -137,7 +144,7 @@ with them (see TBD-8).
 | Attention backend | `--attention-backend B12X_MLA_SPARSE` |
 | Memory | `--gpu-memory-utilization 0.88` |
 | FlashInfer startup | `--no-enable-flashinfer-autotune`; the generic 4096-token full-model tuner is not rank-safe with multi-node DCP. The Spark/B12X-specific prewarm remains enabled. |
-| Graphs | `cudagraph_mode: FULL_AND_PIECEWISE` with the pinned capture-size list. **First bring-up should run eager** (`--enforce-eager`) before graphs are enabled; an eager run is a valid *bring-up* step but is **not** an acceptance run — the matrix is the graph configuration. |
+| Graphs | `cudagraph_mode: FULL_AND_PIECEWISE` with the pinned capture-size list is the eventual acceptance target. The currently supported public serving path is eager (`--enforce-eager`); graph mode has an external wrong-output report and must pass [CUDAGRAPH_CORRECTNESS_GATE.md](CUDAGRAPH_CORRECTNESS_GATE.md) before it can satisfy this matrix. |
 | Prefix caching | enabled |
 | API | OpenAI-compatible server on rank 0; served model name and port are site choices recorded in the site config |
 

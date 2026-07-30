@@ -2,6 +2,11 @@
 
 **GLM-5.2 on 4x NVIDIA DGX Spark (GB10), tensor-parallel 4, switchless direct-cable 200GbE RoCE ring.**
 
+> **Use [QUICKSTART.md](QUICKSTART.md) for a new installation.** SparkRing now
+> has one current target: the madeby561 NF3 hybrid. Model-specific Aiden/GPTQ
+> commands below are retained as historical reconstruction material, not as a
+> second supported setup path.
+
 This is the detailed reconstruction of the complete reference deployment:
 cabling, OS prerequisites, fabric network, patched NCCL, model download,
 native transport, runtime overlay, launcher, and acceptance gates. For the
@@ -889,6 +894,11 @@ vllm serve /hybridmodel \
   --compilation-config '{"cudagraph_mode":"FULL_AND_PIECEWISE","custom_ops":["all"],"cudagraph_capture_sizes":[1,2,3,4,5,6,8,10,12,15,16,20,24,25,30,32,35,40]}' \
   --headless        # ranks 1-3 ONLY — rank 0 omits this; it hosts the API and is --master-addr
 ```
+
+The historical reference command used the `glm45` reasoning alias. In the
+pinned public base, `glm45` and `glm47` both resolve to the same GLM-4.7 MoE
+reasoning implementation; the public launch template uses `glm47` consistently
+for both reasoning and tool parsing and also enables automatic tool choice.
 
 Per-rank differences: `RANK` / `--node-rank` 0..3; `--headless` on ranks 1-3; per-rank `<MODEL_DIR_n>` / `<JIT_CACHE_n>` mount sources; per-rank graph-status file `/cache/jit/spark-graph-status-rank<N>.json`; per-rank `SPARK_Q2R_IMAGE_FINGERPRINT` (image IDs may differ across nodes; config and layer hashes must match).
 

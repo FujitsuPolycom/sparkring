@@ -1,5 +1,10 @@
 # SparkRing — Measured Results
 
+> The detailed matrix below is the historical Aiden MXFP4/GPTQ evidence set.
+> The current NF3 target has a smaller accepted sanity set in
+> [README.md](../README.md). Results are not interchangeable between the two
+> checkpoints.
+
 This document is the definitive record of SparkRing's measured performance. Every number here is a real measurement pulled from a dated deliverable, carries its full configuration label, and passed the verification gate stated on its row. Nothing in this document is a projection, an extrapolation, or a comparison against systems we did not measure ourselves.
 
 If a number you have seen quoted about SparkRing does not appear here with a matching label, treat it as unofficial.

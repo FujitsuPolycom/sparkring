@@ -11,62 +11,48 @@ SparkRing combines a ring-safe NCCL build, custom RDMA collectives,
 CUDA-graph-replayable command rings, a fail-closed vLLM overlay, DCP4, and
 adaptive MTP speculative decoding.
 
-## Current configurations
+## Current deployment
 
-| Lane | Configuration | Status |
+SparkRing has one current model target:
+[`madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid`](https://huggingface.co/madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid)
+at immutable revision
+`66f3623dd8fefb5ca8046706912d5d31c8d196af`.
+
+| Item | Configuration | Status |
 |---|---|---|
-| Documented reference | `aidendle94/GLM-5.2-MXFP4-Experts-GPTQ`, TP4/DCP4 | Published in the public quickstart |
-| Active development | GLM-5.2 MXFP8/NVFP4/NF3 hybrid, TP4/DCP4 | Live candidate; public profile integration in progress |
-| Transport | Four 200 Gb/s direct links, cycle `0-1-2-3-0` | Validated on four Sparks |
-| API | OpenAI-compatible vLLM endpoint | Validated on the reference and NF3 lanes |
+| Model | MXFP8/NVFP4/NF3 hybrid | Validated on four DGX Sparks |
+| Parallelism | TP4/DCP4, adaptive MTP2/4 | Validated |
+| Transport | Four 200 Gb/s direct links, cycle `0-1-2-3-0` | Validated |
+| API | OpenAI-compatible vLLM endpoint | Validated |
+| Public no-build image | ARM64/SM121 SparkRing NF3 runtime | Publication by immutable digest pending |
+
+The former Aiden MXFP4/GPTQ reference is preserved in
+[the historical lane document](docs/history/AIDEN_MXFP4_GPTQ.md). It is not a
+second supported deployment target.
 
 The project is a research pre-release. Pin a commit when deploying because
 environment flags, source attestations, and integration ABIs can change.
 
 ## Measured results
 
-### Active NF3-hybrid candidate
+### NF3-hybrid
 
 | Measurement | Result |
 |---|---:|
 | C1 warm coding sanity | **20.93 tok/s** |
 | C2 warm coding sanity | **33.38 tok/s aggregate** |
 | Reported KV capacity | **511,488 tokens** |
+| KV dtype | FP8 |
 | KV allocation | 7,000,000,000 bytes/rank |
 | CUDA workspace reserve | 805,306,368 bytes/rank |
 
-These short sanity cells confirm the current live configuration.
+The live NF3 gate also completed all CUDA captures, served a 512-token decode
+while an 18,562-token prefill was active, and returned both requests with
+post-test health intact. These are stability and sanity measurements, not a
+complete performance matrix.
 
-### Validated GPTQ RC1 serving baseline
-
-The table below is one coherent 20-cell benchmark on a usable TP4/DCP4
-configuration.
-
-| Context | Cold prefill | C1 decode | C2 aggregate | C4 aggregate | C8 aggregate |
-|---:|---:|---:|---:|---:|---:|
-| 8K | **844 tok/s** | **20.3** | **27.1** | **40.5** | **49.2** |
-| 16K | **876 tok/s** | **19.0** | **26.4** | **37.9** | **53.3** |
-| 32K | **830 tok/s** | **20.3** | **27.6** | **38.6** | **51.9** |
-| 64K | **832 tok/s** | **20.3** | **27.0** | **39.4** | **50.9** |
-| 128K | **796 tok/s** | **19.7** | **26.3** | **37.2** | **47.7** |
-
-Configuration: `aidendle94/GLM-5.2-MXFP4-Experts-GPTQ`, TP4/DCP4 `ag_rs`,
-adaptive MTP2/4 window 32 with true selected-depth drafting,
-`nvfp4_ds_mla` per-token KV, 4 GB KV/rank, 458,752-token request ceiling,
-4,096 max batched tokens, 8 max sequences, and `FULL_AND_PIECEWISE` CUDA
-graphs.
-
-Method: `llm-inference-bench` v0.4.31, 30-second sustained-decode cells,
-fully shared contexts, and client-observed standalone cold prefill. All 20
-decode cells completed with zero errors, queueing, underfill, capacity limits,
-or warmup timeouts. Concurrency values are aggregate throughput, not per-user
-throughput; shared-context measurements are not unique-context capacity tests.
-
-The later SparkCache v47 deployment retained the same main model, parallelism,
-memory, batch, graph, and fabric geometry, but the matrix above predates the
-cache overlay and v47 recorded true selected-depth drafting as disabled. Exact
-benchmark identity and sanitized evidence are in the
-[runtime profile](https://github.com/FujitsuPolycom/inference-runtime-profiles/tree/master/profiles/glm52-sparkring-sparkcache-4x-spark).
+The older coherent GPTQ matrix and its exact configuration are retained on
+[the historical Aiden lane](docs/history/AIDEN_MXFP4_GPTQ.md).
 
 Transport-only results, historical DCP1 peaks, workload-specific coding
 measurements, and superseded configurations remain documented separately in
@@ -161,28 +147,23 @@ and discarding the longer suffix.
 
 ## Quickstart
 
-The fastest public path builds a thin image on the pinned ARM64 GB10 base:
+The current quickstart is being collapsed to one NF3 recipe and one
+digest-pinned ARM64 image:
 
 ```bash
 git clone https://github.com/FujitsuPolycom/sparkring.git
 cd sparkring
-
-OUTPUT_IMAGE=sparkring/glm52-faststart:trial \
-  ./runtime/build-faststart.sh
-
-./scripts/download-glm52.sh \
-  /srv/models/GLM-5.2-MXFP4-Experts-GPTQ
+python scripts/sparkring_recipe.py --recipe glm52-nf3-hybrid plan
 ```
 
-The base image is pinned by ARM64 manifest digest:
+The command will become the complete no-build entry point when the validated
+ARM64/SM121 NF3 image is published. Until that immutable image digest is in
+the recipe, it fails closed instead of silently compiling or selecting an
+AMD64 image.
 
-```text
-aidendle94/sparkrun-vllm-ds4-gb10@sha256:93824a946f1f0ad0867132a2c3809e0e7d8bec6ab38e7d0ef9fc3046e11bc8c7
-```
-
-Continue with the
-[four-Spark quickstart](docs/QUICKSTART.md) for cabling, image and model
-fanout, configuration, preflight, launch, logs, and API validation.
+See the [four-Spark quickstart](docs/QUICKSTART.md) for the current publication
+status and the source-build recovery path. CUDA graphs remain subject to
+[the CUDA-graph correctness gate](docs/CUDAGRAPH_CORRECTNESS_GATE.md).
 
 ## Offline contributor quickstart
 

@@ -83,6 +83,51 @@ The live candidate was staged from the active development tree. Its profile,
 workspace adapter, launch plumbing, and evidence still require consolidation
 into the public quickstart before it becomes the default `main` recipe.
 
+## 2026-07-30: first independent manual public-lane bring-up
+
+An external operator reported completing a four-Spark TP4/DCP4 eager-mode
+bring-up of the pinned `GLM-5.2-MXFP4-Experts-GPTQ` profile. This is valuable
+independent evidence, but it is not yet a clean-checkout acceptance result:
+six setup defects required manual correction.
+
+The report identified:
+
+1. `launch.example.json` omitted the checkpoint's 78-layer
+   `index_topk_pattern`. Without it, 57 layers attempted sparse-indexer work
+   without corresponding indexer weights. The expected startup check is 57
+   `skip sparse MLA indexer computation` messages per rank.
+2. The public launcher sorted transport peers numerically, while the native
+   TP4 schedule assigns slot 0 to `rank ^ 1` and slot 1 to `rank ^ 3`. The two
+   orders differ on ranks 2 and 3 and can make both endpoints choose the same
+   control-channel role.
+3. The example omitted `VLLM_NVFP4_MLA_PER_TOKEN_SCALE=1`, leaving the packed
+   low-bit KV path on the legacy scale contract.
+4. The inherited image environment included
+   `VLLM_PREFIX_CACHE_RETENTION_INTERVAL`; the pinned GLM-5.2 runtime rejects
+   that variable for this KV-group layout, so the public launch must remove it
+   rather than assign it another value.
+5. `download-glm52.sh` inherited a root-owned Hugging Face home and the image's
+   offline-mode setting while running as the invoking non-root user.
+6. The example omitted automatic tool choice and the GLM reasoning/tool
+   parser arguments.
+
+After those manual corrections, the operator reported clean eager-mode
+generation at a 13K context and an **18.3 tok/s median** over 500-token code
+completions. They also reported mean acceptance improving from 3.14 to 4.17
+tokens and target-step time falling from 354 ms to 260 ms after correcting the
+indexer configuration. These are externally reported diagnostic measurements,
+not repository acceptance evidence or a controlled attribution of every gain
+to one variable.
+
+CUDA graphs did **not** pass the external correctness check. With the documented
+graph environment, both DCP4 and a DCP1 arm returned the single token `lock` for
+the 13K prompt instead of a valid completion. Eager mode remained correct.
+DCP1 removes DCP attention collectives but retains TP4 all-reduce, vocabulary,
+target, and draft graph paths, so it does not isolate the cause to workspace or
+clear the native transport. Until the failure is reproduced, minimized, and
+cleared by [CUDAGRAPH_CORRECTNESS_GATE.md](CUDAGRAPH_CORRECTNESS_GATE.md), the
+public quickstart's graph path is not accepted.
+
 ## 2026-07-29: public faststart validation
 
 The public ARM64 faststart builder completed a native one-Spark build. The

@@ -13,10 +13,13 @@ REQUIRED_CLI_FLAGS = (
     "--attention-backend",
     "--decode-context-parallel-size",
     "--dcp-comm-backend",
+    "--enable-auto-tool-choice",
     "--kv-cache-dtype",
+    "--reasoning-parser",
     "--speculative-config",
+    "--tool-call-parser",
 )
-REQUIRED_SOURCE_TOKENS = ("B12X_MLA_SPARSE", "nvfp4_ds_mla")
+REQUIRED_SOURCE_TOKENS = ("B12X_MLA_SPARSE", "nvfp4_ds_mla", "glm47")
 
 
 def vllm_root() -> Path:

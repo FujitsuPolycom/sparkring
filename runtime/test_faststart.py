@@ -58,25 +58,41 @@ def test_faststart_builder_uses_digest_not_human_tag():
     assert "--platform linux/arm64" in text
 
 
-def test_download_script_uses_same_pinned_base_and_model():
+def test_download_script_uses_pinned_base_and_nf3_recipe():
     text = (ROOT / "scripts/download-glm52.sh").read_text(encoding="utf-8")
     base = LOCK["base_image"]
     expected_base = f'{base["repository"]}@{base["manifest_digest"]}'
+    recipe = json.loads(
+        (ROOT / "recipes/glm52-nf3-hybrid.json").read_text(encoding="utf-8")
+    )
+    model = recipe["model"]
+    draft = model["mtp_draft"]
     assert f'BASE_IMAGE="{expected_base}"' in text
-    assert f'MODEL_REPO="{LOCK["model"]["repository"]}"' in text
-    assert f'MODEL_REVISION="{LOCK["model"]["revision"]}"' in text
-    assert f'CONFIG_SHA256="{LOCK["model"]["config_sha256"]}"' in text
-    assert 'ln -s "mtp-draft/model-mtp.safetensors"' in text
+    assert f'MODEL_REPO="{model["repository"]}"' in text
+    assert f'MODEL_REVISION="{model["revision"]}"' in text
+    assert f'MODEL_CONFIG_SHA256="{model["config_sha256"]}"' in text
+    assert f'MODEL_INDEX_SHA256="{model["index_sha256"]}"' in text
+    assert f'DRAFT_REPO="{draft["repository"]}"' in text
+    assert f'DRAFT_REVISION="{draft["revision"]}"' in text
+    assert 'allow_patterns=["mtp-draft/*"]' in text
+
+
+def test_download_container_overrides_inherited_offline_and_root_cache_settings():
+    text = (ROOT / "scripts/download-glm52.sh").read_text(encoding="utf-8")
+    assert '--env "HOME=/tmp"' in text
+    assert '--env "HF_HOME=/tmp/sparkring-huggingface"' in text
+    assert '--env "HF_HUB_OFFLINE=0"' in text
+    assert text.index('--env "HF_HOME=/tmp/sparkring-huggingface"') < text.index(
+        '"${ENGINE}" "${common_run[@]}"'
+    )
 
 
 def test_quickstart_names_every_major_gate():
     text = (ROOT / "docs/QUICKSTART.md").read_text(encoding="utf-8")
     for required in (
-        "build-faststart.sh",
         "download-glm52.sh",
-        "docker save",
-        "docker load",
         "rsync",
+        "sparkring_recipe.py",
         "sparkring_site.py",
         "preflight.py",
         "sparkring_launcher.py",
