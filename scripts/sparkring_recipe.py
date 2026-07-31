@@ -204,7 +204,12 @@ def _validate_exl3(recipe: dict[str, Any]) -> None:
     if model.get("repository") != "willfalco/GLM-5.2-EXL3-TR3-3.25bpw":
         raise RecipeError("model.repository is not the validated EXL3 checkpoint")
     _require_commit(model.get("revision"), "model.revision")
-    for field in ("config_sha256", "index_sha256", "tier_bitmap_sha256"):
+    for field in (
+        "config_sha256",
+        "index_sha256",
+        "tier_bitmap_sha256",
+        "manifest_sha256",
+    ):
         _require_sha256(model.get(field), f"model.{field}")
     if model.get("shard_count") != 81:
         raise RecipeError("model.shard_count must remain 81")
@@ -234,8 +239,21 @@ def _validate_exl3(recipe: dict[str, Any]) -> None:
 
     _validate_publication(recipe)
     publication = recipe["publication"]
-    if publication.get("local_build_ready") is not False:
-        raise RecipeError("EXL3 cannot claim public local-build readiness yet")
+    if publication.get("local_build_ready") is not True:
+        raise RecipeError("EXL3 source bootstrap must remain local_build_ready")
+    required_runtime_files = {
+        "bootstrap_script": "scripts/bootstrap_exl3.py",
+        "download_script": "scripts/download_exl3.py",
+        "launcher": "scripts/sparkring_exl3_launcher.py",
+        "pins": "runtime/exl3/pins.json",
+        "build_script": "runtime/exl3/build-image.sh",
+        "build_containerfile": "runtime/exl3/Containerfile",
+    }
+    for field, expected in required_runtime_files.items():
+        if runtime.get(field) != expected or not (ROOT / expected).is_file():
+            raise RecipeError(
+                f"EXL3 runtime.{field} must name the published {expected}"
+            )
     if not publication.get("blocker"):
         raise RecipeError("EXL3 must state its public-bootstrap blocker")
     evidence = publication.get("evidence")

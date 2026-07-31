@@ -15,6 +15,7 @@
     "config_sha256": "d83e2d8d96b6f36e94d896a05a104200d6674673daa02f788de710c1c0f94ba4",
     "index_sha256": "f5dcd976a64ca70808dd4d8bd3ad07e9610c8ca6c30e3a6ed77ddefdac4c1d21",
     "tier_bitmap_sha256": "a287ffe816de5998fbc35a56a1ec05f69eb71087d5bbdfe631242c6b296b2a3d",
+    "manifest_sha256": "db01ba5885fbb39370746e78e7bcb4205ea4e639b20f8950b71f94038f9f992e",
     "shard_count": 81,
     "weight_bytes": 339069245936,
     "repository_bytes": 339171568527,
@@ -23,6 +24,12 @@
   "runtime": {
     "base_recipe": "glm52-nf3-hybrid",
     "final_image": null,
+    "bootstrap_script": "scripts/bootstrap_exl3.py",
+    "download_script": "scripts/download_exl3.py",
+    "launcher": "scripts/sparkring_exl3_launcher.py",
+    "pins": "runtime/exl3/pins.json",
+    "build_script": "runtime/exl3/build-image.sh",
+    "build_containerfile": "runtime/exl3/Containerfile",
     "validated_local_image_id": "sha256:314d75abdcbd65433fa9e4a744caf8fa31bdc108e9292df65603a6fe823766ad",
     "sources": {
       "sparkinfer": {
@@ -219,8 +226,8 @@
   },
   "publication": {
     "zero_build_ready": false,
-    "local_build_ready": false,
-    "blocker": "Publish and receipt-gate the ARM64 EXL3 source composition and derived-image builder, then repeat the clean-checkout four-Spark gate.",
+    "local_build_ready": true,
+    "blocker": "Run the public bootstrap from a clean checkout on four DGX Sparks and complete the startup, correctness, C1/C2/C8, and post-run health gate.",
     "evidence": "docs/EXL3_RECIPE.md"
   }
 }

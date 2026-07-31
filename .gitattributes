@@ -1,3 +1,4 @@
 *.sh text eol=lf
 *.patch text eol=lf
 runtime/** text eol=lf
+runtime/exl3/patches/*.patch whitespace=-trailing-space

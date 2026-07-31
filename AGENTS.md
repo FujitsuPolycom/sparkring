@@ -15,6 +15,10 @@ contributors. Read it before changing or running anything in this repository.
   that exact image ID, and launches the C8/Q40 graph profile. A clean-checkout
   external reproduction is still requested; do not equate bootstrap readiness
   with independent reproduction.
+- The non-default **EXL3 lane** has an offline-validated, receipt-gated public
+  source bootstrap under `runtime/exl3/` and `scripts/bootstrap_exl3.py`. Its
+  serving configuration is live-validated, but the new public bootstrap still
+  needs its clean-checkout four-Spark acceptance run.
 - Never describe a reference-lane number as a result from this checkout.
 
 Machine-readable status is in `docs/STATUS.json`.

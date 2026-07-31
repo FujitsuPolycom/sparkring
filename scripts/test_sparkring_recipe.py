@@ -98,14 +98,16 @@ def test_aiden_cannot_become_a_second_public_recipe():
         recipe_module._validate(recipe)
 
 
-def test_exl3_recipe_records_exact_live_contract_without_overclaiming():
+def test_exl3_recipe_records_exact_live_and_public_build_contract():
     recipe = _exl3_recipe()
     recipe_module._validate(recipe)
     assert recipe["recipe_id"] == "glm52-exl3-tr3-3.25bpw"
     assert recipe["maturity"] == "live-validated"
     assert recipe["default"] is False
     assert recipe["publication"]["zero_build_ready"] is False
-    assert recipe["publication"]["local_build_ready"] is False
+    assert recipe["publication"]["local_build_ready"] is True
+    assert recipe["runtime"]["bootstrap_script"] == "scripts/bootstrap_exl3.py"
+    assert recipe["runtime"]["build_script"] == "runtime/exl3/build-image.sh"
     assert recipe["serving"]["mtp_policy"] == "fixed-3"
     assert recipe["serving"]["max_model_len"] == 1048576
     assert recipe["serving"]["kv_cache_bytes_per_rank"] == 9000000000
@@ -114,20 +116,34 @@ def test_exl3_recipe_records_exact_live_contract_without_overclaiming():
     assert recipe["serving"]["max_query_rows"] == 32
 
 
-def test_exl3_plan_is_offline_and_reports_publication_blocker(capsys):
+def test_exl3_plan_is_offline_and_reports_local_bootstrap(capsys):
     recipe, path = recipe_module._load("glm52-exl3-tr3-3.25bpw")
     assert recipe_module._plan(recipe, path, False) == 0
     output = capsys.readouterr().out
-    assert "no public reproducible image yet" in output
-    assert "Publish and receipt-gate" in output
-    assert "bootstrap_nf3.py" not in output
+    assert "built locally from pinned public inputs" in output
+    assert "bootstrap_exl3.py plan" in output
 
 
-def test_exl3_cannot_claim_public_build_readiness_without_builder():
+def test_exl3_cannot_drop_public_build_readiness_with_published_builder():
     recipe = _exl3_recipe()
-    recipe["publication"]["local_build_ready"] = True
-    with pytest.raises(recipe_module.RecipeError, match="cannot claim"):
+    recipe["publication"]["local_build_ready"] = False
+    with pytest.raises(recipe_module.RecipeError, match="must remain"):
         recipe_module._validate(recipe)
+
+
+def test_exl3_builder_paths_are_fail_closed():
+    for field in (
+        "bootstrap_script",
+        "download_script",
+        "launcher",
+        "pins",
+        "build_script",
+        "build_containerfile",
+    ):
+        recipe = _exl3_recipe()
+        recipe["runtime"][field] = "missing"
+        with pytest.raises(recipe_module.RecipeError, match=field):
+            recipe_module._validate(recipe)
 
 
 def test_exl3_q32_c8_contract_is_fail_closed():

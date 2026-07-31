@@ -41,9 +41,10 @@ recipe now records the maintainer's live EXL3 configuration. Its exact model
 hashes, source pins, environment, vLLM arguments, Q32/C8 graph contract, and
 1M/9-GB KV profile are in
 [`recipes/glm52-exl3-tr3-3.25bpw.json`](recipes/glm52-exl3-tr3-3.25bpw.json).
-The configuration is live-validated, but its public derived-image bootstrap is
-not complete; see [the EXL3 recipe status](docs/EXL3_RECIPE.md). NF3 therefore
-remains the default reproducible quickstart.
+The configuration is live-validated. Its public, receipt-gated source bootstrap
+is now offline-validated; the remaining gate is a clean-checkout four-Spark
+run. See [the EXL3 recipe and bootstrap](docs/EXL3_RECIPE.md). NF3 remains the
+default, fully live-validated quickstart.
 
 The former Aiden MXFP4/GPTQ reference is preserved in
 [the historical lane document](docs/history/AIDEN_MXFP4_GPTQ.md). It is not a
@@ -101,7 +102,7 @@ The older coherent GPTQ matrix and its exact configuration are retained on
 | Batch/graph contract | C8, Q32, 4,096 batched tokens |
 | Context/KV | 1,048,576 model limit; 9 GB/rank; 1,125,632 reported tokens |
 | KV representation | NVFP4 latent plus FP8 RoPE |
-| Public maturity | live configuration recorded; reproducible builder pending |
+| Public maturity | live configuration; public source bootstrap offline-validated |
 
 Inspect either recipe without contacting the cluster:
 
@@ -244,6 +245,20 @@ It does not rebuild Torch, vLLM, FlashInfer, or the base kernel stack.
 See the [four-Spark quickstart](docs/QUICKSTART.md) for cabling, site fields,
 tail commands, and acceptance checks. Start with
 [PREREQUISITES.md](docs/PREREQUISITES.md) on a new cluster.
+
+To prepare the non-default EXL3 profile instead, reuse the same completed
+`site.yaml` and run its independent plan:
+
+```bash
+python scripts/bootstrap_exl3.py plan \
+  --site scripts/config/site.yaml
+```
+
+The EXL3 bootstrap adopts or resumes the pinned 81-shard model, reconstructs
+the exact public ExLlamaV3 and SparkInfer trees, builds one ARM64 derived image
+on rank 0, and fans model/image bytes over the 200 GbE ring. Its execute path is
+documented in [EXL3_RECIPE.md](docs/EXL3_RECIPE.md); it remains a candidate
+until the clean-checkout four-Spark gate is recorded.
 
 ## Offline contributor quickstart
 

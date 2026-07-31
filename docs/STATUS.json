@@ -83,8 +83,9 @@
       "default": false,
       "model": "willfalco/GLM-5.2-EXL3-TR3-3.25bpw",
       "zero_build_ready": false,
-      "local_build_ready": false,
-      "public_bootstrap_pending": true,
+      "local_build_ready": true,
+      "public_bootstrap_maturity": "offline-validated",
+      "clean_checkout_four_spark_gate_pending": true,
       "entrypoint": "recipes/glm52-exl3-tr3-3.25bpw.json",
       "evidence": "docs/EXL3_RECIPE.md"
     },

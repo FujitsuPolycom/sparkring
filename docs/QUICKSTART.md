@@ -5,7 +5,8 @@ New deployment? Complete
 source of truth for hardware, Docker/NVIDIA runtime, management SSH, storage,
 200 GbE/RoCE setup, discovery commands, and the operator-versus-bot boundary.
 
-This is the sole current model deployment, with two KV-storage profiles:
+This is the default and fully public-live-validated model deployment, with two
+KV-storage profiles:
 
 ```text
 madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid
@@ -28,6 +29,11 @@ the pinned NF3 expert kernels while restoring the packed-MLA reader. The
 
 The former Aiden MXFP4/GPTQ lane is historical and lives in
 [history/AIDEN_MXFP4_GPTQ.md](history/AIDEN_MXFP4_GPTQ.md).
+
+The non-default EXL3/Trellis profile now has a separate source bootstrap. Reuse
+this page for cabling, site discovery, SSH, and fabric preflight, then follow
+[EXL3_RECIPE.md](EXL3_RECIPE.md). Its public bootstrap is offline-validated and
+awaiting a clean-checkout four-Spark gate; it does not change the NF3 default.
 
 ## 1. Cable and manage the four Sparks
 
