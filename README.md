@@ -1,16 +1,24 @@
 # SparkRing
 
-SparkRing is a low-latency collective and inference-runtime stack for
-switchless NVIDIA DGX Spark clusters.
+SparkRing is a low-latency collective transport and inference runtime for switchless GB1X (NVIDIA DGX Spark) clusters.
 
-It serves GLM-5.2 across four directly cabled Sparks using four ConnectX-7
-200 Gb/s links in a ring. No Ethernet or InfiniBand switch is required for
-the inference fabric.
+Today it runs GLM-5.2 across four directly connected DGX Sparks. Four 200 Gb/s ConnectX-7 links form a physical ring, 
+with no external Ethernet or InfiniBand switch in the inference fabric.
 
-SparkRing combines a ring-safe NCCL build, custom RDMA collectives,
-CUDA-graph-replayable command rings, a fail-closed vLLM overlay, DCP4, and
-adaptive MTP speculative decoding.
+The stack combines SIRCL custom RDMA collectives, CUDA-graph-replayable command rings, a source-attested and fail-closed vLLM overlay, 
+DCP4, support for fixed and adaptive MTP speculative decoding, and a patched ring-safe NCCL fallback for communication not yet handled by the custom path.
 
+The long-term goal is a model-agnostic runtime for efficient, switchless multi-node inference on DGX Spark.
+
+## Acknowledgements
+
+SparkRing would not exist without the months of research, profiling, kernel development, runtime patching, model conversion, and operational testing shared by the RTX 6000 Pro inference community.
+
+It builds heavily on work from the contributors behind B12X, SparkInfer, vLLM, the GLM model and quantization ecosystem, and the broader NVIDIA inference community. 
+
+SparkRing’s contribution is to adapt, integrate, and extend those foundations for low-latency inference across switchless DGX Spark clusters.
+
+Detailed project and contributor credits are maintained in the acknowledgements and provenance documentation.
 ## Current deployment
 
 SparkRing has one current model target:
