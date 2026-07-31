@@ -1,6 +1,6 @@
 {
   "schema": "sparkring-repository-status/v1",
-  "last_reviewed": "2026-07-30",
+  "last_reviewed": "2026-07-31",
   "lanes": {
     "reference": {
       "maturity": "live-validated",
@@ -23,7 +23,7 @@
       "maturity": "offline-validated",
       "command": "python -m pytest spark_transport sparkcache runtime scripts -q",
       "last_observed": {
-        "passed": 1760,
+        "passed": 1771,
         "skipped": 5
       }
     },
@@ -72,11 +72,21 @@
     },
     "nf3_recipe": {
       "maturity": "public-clean-checkout-live-validated",
-      "sole_current_target": true,
+      "default_public_functional_target": true,
       "model": "madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid",
       "zero_build_ready": false,
       "local_build_ready": true,
       "entrypoint": "recipes/glm52-nf3-hybrid.json"
+    },
+    "exl3_recipe": {
+      "maturity": "live-validated",
+      "default": false,
+      "model": "willfalco/GLM-5.2-EXL3-TR3-3.25bpw",
+      "zero_build_ready": false,
+      "local_build_ready": false,
+      "public_bootstrap_pending": true,
+      "entrypoint": "recipes/glm52-exl3-tr3-3.25bpw.json",
+      "evidence": "docs/EXL3_RECIPE.md"
     },
     "headless_startup_abi": {
       "maturity": "live-validated",

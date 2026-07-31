@@ -22,7 +22,7 @@ SparkRing’s contribution is to adapt, integrate, and extend those foundations 
 Detailed project and contributor credits are maintained in the acknowledgements and provenance documentation.
 ## Current deployment
 
-SparkRing has one current model target:
+SparkRing's default public-functional target is:
 [`madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid`](https://huggingface.co/madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid)
 at immutable revision
 `66f3623dd8fefb5ca8046706912d5d31c8d196af`.
@@ -34,6 +34,16 @@ at immutable revision
 | Transport | Four 200 Gb/s direct links, cycle `0-1-2-3-0` | Validated |
 | API | OpenAI-compatible vLLM endpoint | Validated |
 | Public bootstrap | Pinned ARM64 base + thin local NF3 image | Clean-checkout four-Spark run validated |
+
+A second, non-default
+[`willfalco/GLM-5.2-EXL3-TR3-3.25bpw`](https://huggingface.co/willfalco/GLM-5.2-EXL3-TR3-3.25bpw)
+recipe now records the maintainer's live EXL3 configuration. Its exact model
+hashes, source pins, environment, vLLM arguments, Q32/C8 graph contract, and
+1M/9-GB KV profile are in
+[`recipes/glm52-exl3-tr3-3.25bpw.json`](recipes/glm52-exl3-tr3-3.25bpw.json).
+The configuration is live-validated, but its public derived-image bootstrap is
+not complete; see [the EXL3 recipe status](docs/EXL3_RECIPE.md). NF3 therefore
+remains the default reproducible quickstart.
 
 The former Aiden MXFP4/GPTQ reference is preserved in
 [the historical lane document](docs/history/AIDEN_MXFP4_GPTQ.md). It is not a
@@ -81,6 +91,24 @@ complete performance matrix.
 
 The older coherent GPTQ matrix and its exact configuration are retained on
 [the historical Aiden lane](docs/history/AIDEN_MXFP4_GPTQ.md).
+
+### EXL3 3.25-bpw candidate
+
+| Item | Current live recipe |
+|---|---|
+| Model | `willfalco/GLM-5.2-EXL3-TR3-3.25bpw@d7d79c2...` |
+| Parallelism | TP4 / DCP4, fixed MTP3 |
+| Batch/graph contract | C8, Q32, 4,096 batched tokens |
+| Context/KV | 1,048,576 model limit; 9 GB/rank; 1,125,632 reported tokens |
+| KV representation | NVFP4 latent plus FP8 RoPE |
+| Public maturity | live configuration recorded; reproducible builder pending |
+
+Inspect either recipe without contacting the cluster:
+
+```bash
+python scripts/sparkring_recipe.py list
+python scripts/sparkring_recipe.py plan --recipe glm52-exl3-tr3-3.25bpw
+```
 
 Transport-only results, historical DCP1 peaks, workload-specific coding
 measurements, and superseded configurations remain documented separately in
