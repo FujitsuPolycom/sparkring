@@ -1,0 +1,71 @@
+{
+  "schema": "sparkring-live-config-variant/v1",
+  "snapshot_id": "glm52-nf3-live-dcp2-20260801",
+  "captured_at": "2026-08-01",
+  "lane": "public-functional",
+  "maturity": "live-validated",
+  "hardware": "4x NVIDIA DGX Spark / GB10, direct-cable cycle",
+  "base_snapshot": "glm52-nf3-live-1m-20260731",
+  "base_document": "../NF3_LIVE_CONFIGURATION_20260731.md",
+  "unchanged_identity": {
+    "target_repository": "madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid",
+    "target_revision": "66f3623dd8fefb5ca8046706912d5d31c8d196af",
+    "served_model_name": "GLM-5.2-NF3",
+    "local_image_id_all_ranks": "sha256:ab6bddba38aac663e2427f139aec20e022eced3716d7e204e1e881742f9da11d"
+  },
+  "changes": {
+    "vllm_argv": {
+      "--decode-context-parallel-size": {
+        "from": 4,
+        "to": 2
+      },
+      "--max-model-len": {
+        "from": 1048576,
+        "to": 524288
+      }
+    },
+    "environment": {
+      "VLLM_SPARK_DCP_SIZE": {
+        "from": "4",
+        "to": "2"
+      },
+      "VLLM_SPARK_MAX_MODEL_LEN": {
+        "from": "1048576",
+        "to": "524288"
+      },
+      "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS": {
+        "from": "1048576",
+        "to": "524288"
+      },
+      "VLLM_PREFIX_CACHE_RETENTION_INTERVAL": {
+        "from": "",
+        "to": null,
+        "mechanism": "removed at process entry before vLLM import"
+      }
+    }
+  },
+  "unchanged_capacity_controls": {
+    "kv_cache_memory_bytes_per_rank": 9000000000,
+    "max_num_seqs": 8,
+    "max_num_batched_tokens": 4096,
+    "kv_cache_dtype": "nvfp4_ds_mla"
+  },
+  "observed": {
+    "decode_context_parallel_size": 2,
+    "dcp_rank_map_by_tp_rank": [
+      0,
+      1,
+      0,
+      1
+    ],
+    "max_model_len": 524288,
+    "kv_cache_tokens": 562816,
+    "maximum_full_length_concurrency": 1.07,
+    "kv_reservation_gib_per_rank": 8.38,
+    "piecewise_capture_buckets_completed": 15,
+    "full_capture_buckets_completed": 16,
+    "api_health_http": 200,
+    "correctness_response": "DCP2_OK",
+    "performance_claim": null
+  }
+}

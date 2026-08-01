@@ -37,7 +37,7 @@ commit happens to be checked out later.
 | prefix caching | enabled |
 | SparkCache | **disabled** (`SPARK_CONTEXT_CACHE_ENABLE=0`) |
 | load format | `fastsafetensors` |
-| async scheduling | disabled in the effective engine configuration |
+| async scheduling | enabled (confirmed by both API-process and worker startup logs) |
 | API | rank 0, port `8000`, OpenAI-compatible |
 | reasoning / tool parsers | `glm47 / glm47` |
 

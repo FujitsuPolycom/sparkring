@@ -181,7 +181,7 @@
     "prefix_caching": true,
     "sparkcache": false,
     "load_format": "fastsafetensors",
-    "async_scheduling": false,
+    "async_scheduling": true,
     "enforce_eager": false,
     "compilation_mode": "VLLM_COMPILE",
     "cudagraph_mode": "FULL_AND_PIECEWISE",
