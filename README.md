@@ -35,6 +35,14 @@ at immutable revision
 | API | OpenAI-compatible vLLM endpoint | Validated |
 | Public bootstrap | Pinned ARM64 base + thin local NF3 image | Clean-checkout four-Spark run validated |
 
+The maintainer's later one-million-token NF3 operator profile is captured
+separately in the
+[live configuration audit](docs/NF3_LIVE_CONFIGURATION_20260731.md). It records
+the effective command, environment, rank-local transport order, immutable
+runtime hashes, 9 GB/rank NVFP4+FP8-RoPE KV allocation, and reported 1,125,632
+token capacity. It is a live-observed configuration snapshot, not a replacement
+for the smaller accepted public-bootstrap defaults above.
+
 A second, non-default
 [`willfalco/GLM-5.2-EXL3-TR3-3.25bpw`](https://huggingface.co/willfalco/GLM-5.2-EXL3-TR3-3.25bpw)
 recipe now records the maintainer's live EXL3 configuration. Its exact model
