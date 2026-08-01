@@ -9,9 +9,10 @@ exact clone of the live NF3 configuration in
 apart from the enumerated DCP/capacity changes below and removal of one invalid
 inherited environment value before vLLM starts.
 
-The machine-readable delta is
+The machine-readable delta and observed benchmark evidence are
 [`docs/configurations/glm52-nf3-live-dcp2-20260801.json`](configurations/glm52-nf3-live-dcp2-20260801.json).
-This is a configuration and correctness result, not a performance benchmark.
+This is a dated configuration snapshot, not the repository's reference
+profile.
 
 ## Exact changes from the DCP4 snapshot
 
@@ -60,11 +61,33 @@ initialization. The accepted launch removes the variable with
 `env -u VLLM_PREFIX_CACHE_RETENTION_INTERVAL` before importing vLLM. The
 original DCP4 containers were retained, stopped, as a rollback path.
 
+## Operator benchmark snapshot
+
+After the accepted DCP2 startup, the operator ran the normal decode benchmark
+against `GLM-5.2-NF3` and supplied the following rendered result. These are
+the actual measured values from that run, preserved here as a known snapshot.
+
+| Measurement | Context / concurrency | Result |
+|---|---|---:|
+| uncached prefill | 8,192 tokens | **630 tok/s** (13.02 s TTFT) |
+| uncached prefill | 16,255 tokens | **652 tok/s** (24.92 s TTFT) |
+| uncached prefill | 64,512 tokens | **654 tok/s** (98.69 s TTFT) |
+| uncached prefill | 128,886 tokens | **644 tok/s** (200.16 s TTFT) |
+| aggregate decode | 16K, C1 | **19.0 tok/s** |
+| aggregate decode | 16K, C2 | **29.9 tok/s** |
+| aggregate decode | 16K, C4 | **44.5 tok/s** |
+| aggregate decode | 16K, C8 | **57.7 tok/s** |
+| sequential coding peak | C1, three runs | **23.0 tok/s median**, 23.2 mean, 24.4 max, 0 CJK runs |
+
+The benchmark screenshot does not include the complete command line, prompt
+corpus, temperatures, or warmup policy. The figures are therefore an
+operator-measured **DCP2 snapshot**, useful for comparison and regression
+tracking but not a generalized published claim.
+
 ## Evidence boundary
 
 A direct API request completed correctly. Its ten-second server window showed
 healthy speculative acceptance, but that window is deliberately not reported
-as decode performance. A compact external harness run was stopped after its
-full-stream completion policy made it unsuitable as a quick smoke test. DCP2
-throughput therefore remains to be measured with a bounded, declared benchmark
-matrix before any speed comparison with DCP4 is published.
+as decode performance. The benchmark snapshot above is the only performance
+evidence recorded for this variant; a future fully declared matrix should be
+used before making a DCP2-versus-DCP4 generalized claim.

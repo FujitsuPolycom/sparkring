@@ -66,6 +66,48 @@
     "full_capture_buckets_completed": 16,
     "api_health_http": 200,
     "correctness_response": "DCP2_OK",
-    "performance_claim": null
+    "operator_benchmark_snapshot": {
+      "source": "operator-supplied rendered benchmark result",
+      "configuration_association": "same accepted DCP2 live variant",
+      "limitations": "Command line, prompt corpus, temperature, and warmup policy were not preserved in the rendered result.",
+      "uncached_prefill": [
+        {
+          "tokens": 8192,
+          "ttft_seconds": 13.02,
+          "tokens_per_second": 630
+        },
+        {
+          "tokens": 16255,
+          "ttft_seconds": 24.92,
+          "tokens_per_second": 652
+        },
+        {
+          "tokens": 64512,
+          "ttft_seconds": 98.69,
+          "tokens_per_second": 654
+        },
+        {
+          "tokens": 128886,
+          "ttft_seconds": 200.16,
+          "tokens_per_second": 644
+        }
+      ],
+      "aggregate_decode": {
+        "context_tokens": 16384,
+        "tokens_per_second_by_concurrency": {
+          "1": 19.0,
+          "2": 29.9,
+          "4": 44.5,
+          "8": 57.7
+        }
+      },
+      "coding_peak_c1": {
+        "runs": 3,
+        "median_tokens_per_second": 23.0,
+        "mean_tokens_per_second": 23.2,
+        "max_tokens_per_second": 24.4,
+        "cjk_runs": 0
+      }
+    }
   }
 }
