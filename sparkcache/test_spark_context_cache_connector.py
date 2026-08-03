@@ -2805,6 +2805,9 @@ class StreamingSnapshotProductionBoundaryTests(unittest.TestCase):
                     native_library_sha256="a" * 64,
                 ),
                 ring_builder=build_ring,
+                # This is a fake-backend production-boundary test. Never let
+                # an available/occupied host GPU turn it into a CUDA test.
+                progress_thread_initializer=lambda _device: None,
             )
             adapter.bind_kv_caches()
             connector._streaming_snapshots_enabled = True
