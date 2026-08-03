@@ -8,7 +8,7 @@
   "campaign_maturity": "candidate",
   "evidence_origin": "external_operator_run",
   "hardware": "4x NVIDIA DGX Spark / GB10, direct-cable 200-Gb/s cycle",
-  "evidence_scope": "Matched opening B0, M1, M3, Q8, closing B0, and adaptive MTP2/3 streaming benchmarks; a completed fresh-salt, clean-restart B0/adaptive three-window C8 pair plus an earlier B0 variance artifact; a valid standard llm_decode_bench v0.4.31 B0 run; and an AS cold-start gate observed in the live operator console. The first old-salt adaptive C8 repeat attempt timed out without a benchmark artifact and remains an operational caveat, not a performance result. This is a completed public-functional-lane performance campaign, not a reference-lane result, public-bootstrap acceptance, a clean-checkout receipt, a release correctness pass, or a shared-H release. B0 remains the default and M3 remains a C2/C4 Pareto alternative. The stock 128-token deterministic gate fails on a narrow token-124 divergence.",
+  "evidence_scope": "Matched opening B0, M1, M3, Q8, closing B0, and adaptive MTP2/3 streaming benchmarks; four all-valid standard-harness quick 16K matrices for opening/closing B0, M3, and adaptive; a completed fresh-salt, clean-restart B0/adaptive three-window C8 pair plus earlier B0 variance and incomplete adaptive-repeat artifacts; a valid standard llm_decode_bench v0.4.31 B0 run and its invalid-timeout predecessor; and an AS cold-start gate observed in the live operator console. The incomplete old-salt adaptive repeat has two valid windows and one invalid window and is not a paired performance result. This is a completed public-functional-lane performance campaign, not a reference-lane result, public-bootstrap acceptance, a clean-checkout receipt, a release correctness pass, or a shared-H release. B0 remains the default and M3 remains a C2/C4 Pareto alternative only within the custom matched harness. The stock 128-token deterministic gate fails on a narrow token-124 divergence.",
   "sanitization": "Management addresses, SSH identities, hostnames, NIC assignments, host paths, filled profiles, dry-run plans, and raw logs are omitted. Public immutable identities, artifact hashes, sanitized settings, and result summaries are retained.",
   "repository_state": {
     "head": "2f367c8c66f6b4fb54fed9dadf85250906ea40ce",
@@ -88,6 +88,12 @@
     {"logical_name": "M1 fixed-MTP1 benchmark JSON", "sha256": "e4272aa4efe4e0c377bd1326aa404458b1dd92f985ef50866d7c1d0647c73669", "committed": false},
     {"logical_name": "ADR8 clean-restart B0 repeated-C8 benchmark JSON", "sha256": "271f626f5500d8d1189e14665b6627ee2959884c4156151f14669a1ad86c7971", "committed": false},
     {"logical_name": "B0 llm_decode_bench v0.4.31 benchmark JSON", "sha256": "f02b659f798ce2b2a2afb8103008e85ea5185d49bb1c341d583ddf9a13abd69d", "committed": false},
+    {"logical_name": "initial B0 llm_decode_bench v0.4.31 timeout JSON", "sha256": "d3025f37e8fdd2060184ba4c3b85012f5547c9d7c6e304f0a8b442d550b0d8e2", "committed": false},
+    {"logical_name": "opening B0 standard quick 16K JSON", "sha256": "09de1306cd765560701f837ff93c6f724c506ea0d4ade9da441c1df1aab85e34", "committed": false},
+    {"logical_name": "M3 standard quick 16K JSON", "sha256": "373ded09e49bb706b36244b7bc67eb1e1d08774d08f94cad835f060545e055fd", "committed": false},
+    {"logical_name": "adaptive standard quick 16K JSON", "sha256": "c17a4703821fb0b4fc06cada1731c6489e9d6f9f6fecca995f9b75cdf4bb2aad", "committed": false},
+    {"logical_name": "closing B0 standard quick 16K JSON", "sha256": "74a5188e36892196c6629df8f21f2d60113875ccd982704ff269b3c3fa778f5a", "committed": false},
+    {"logical_name": "incomplete old-salt adaptive repeated-C8 JSON", "sha256": "9cf2f5f6c30fb6c19bbc506e003864e9db9052fbb80d4ab198dda3510777022e", "committed": false},
     {"logical_name": "original streaming benchmark harness used by completed arms", "sha256": "12bb68c2ebb033a144f3b9da7415e15917f8aeadd9c5e27f19d607c4384bc133", "committed": false, "current_file_has_same_hash": false},
     {"logical_name": "current extended streaming/decode-repeat benchmark harness", "sha256": "b276f7f1a54afe4732b204c0b14f0ab1600a8d3cbde718f6ecfec186d6ee67e9", "committed": false, "used_by_completed_evidence": ["R8", "AD", "ADR8 adaptive half", "ADR8 B0 half", "M1"]},
     {"logical_name": "A/B arm launcher", "sha256": "89318a90dae5df92a208bb18f779799287c3cbdc727e3dc4cd2bc13dea6b9d34", "committed": false},
@@ -176,7 +182,8 @@
       ],
       "diagnosis_boundary": "Cold first-use JIT likely contaminated C2, but this is a diagnosis, not proof. No matched streaming matrix was run, so AS has no comparable prefill or sustained-decode result and is not promotable.",
       "stopped_cleanly": true,
-      "rollback_status_at_capture": "original fixed-MTP2 baseline restarting; post-rollback verification pending"
+      "rollback_status_at_capture": "original fixed-MTP2 baseline restarting; post-rollback verification pending",
+      "later_resolution": "The subsequent closing B0 arm completed with healthy APIs before and after, resolving the at-capture rollback uncertainty."
     },
     {
       "arm_id": "Q8",
@@ -308,7 +315,7 @@
       "fairness_criterion": "minimum lane token count must be at least 80 percent of that window's median lane token count",
       "fairness_windows_passed": 0,
       "fairness_windows_failed": 3,
-      "interpretation": "Aggregate C8 is strong at a 73.04 tok/s median, but the 16.20 tok/s range and every window's minimum-lane fairness failure show high window, prompt, and lane sensitivity. Repeat 0 had three lanes below the proposed threshold. A fresh-salt, clean-restart B0/adaptive pair is required before attributing an adaptive C8 effect."
+      "interpretation": "Aggregate C8 is strong at a 73.04 tok/s median, but the 16.20 tok/s range and every window's minimum-lane fairness failure show high window, prompt, and lane sensitivity. Repeat 0 had three lanes below the proposed threshold. The later fresh-salt, clean-restart B0/adaptive pair completed and did not show a robust adaptive median gain."
     },
     {
       "arm_id": "ADR8",
@@ -316,7 +323,21 @@
       "parent_arm": "AD",
       "status": "paired_repeat_complete_adaptive_not_promoted",
       "required_harness_sha256": "b276f7f1a54afe4732b204c0b14f0ab1600a8d3cbde718f6ecfec186d6ee67e9",
-      "prior_attempt": {"run_salt": "b0-c8-closing-20260802-a", "outcome": "timeout", "benchmark_artifact_written": false, "performance_result": null},
+      "prior_attempt": {
+        "run_salt": "b0-c8-closing-20260802-a",
+        "outcome": "incomplete_after_operator_reported_timeout",
+        "benchmark_artifact_written": true,
+        "artifact_sha256": "9cf2f5f6c30fb6c19bbc506e003864e9db9052fbb80d4ab198dda3510777022e",
+        "valid_windows": [
+          {"repeat": 0, "aggregate_tokens_per_second": 58.84, "total_completion_tokens": 1471, "per_request_tokens": [65, 260, 260, 247, 65, 67, 247, 260], "lane_median_tokens": 247, "minimum_lane_tokens": 65, "fairness_threshold_tokens": 197.6, "lanes_below_threshold": 3, "fairness_pass": false},
+          {"repeat": 1, "aggregate_tokens_per_second": 74.08, "total_completion_tokens": 1852, "per_request_tokens": [260, 260, 259, 251, 259, 241, 254, 68], "lane_median_tokens": 256.5, "minimum_lane_tokens": 68, "fairness_threshold_tokens": 205.2, "lanes_below_threshold": 1, "fairness_pass": false}
+        ],
+        "invalid_window": {"repeat": 2, "aggregate_tokens_per_second": null, "reason": "no continuous usage stats inside the measurement window for four lanes", "per_request_tokens": [0, 0, 0, 0, 0, 0, 0, 0]},
+        "partial_window_aligned_adaptive_minus_b0_tokens_per_second": [-2.64, 1.04],
+        "paired_summary_valid": false,
+        "performance_result": null,
+        "boundary": "Two window cells are individually valid, but the missing third window prevents a complete paired median, mean, range, or promotion comparison."
+      },
       "run_salt": "exl3-c8-pair-b-20260802",
       "run_salt_policy": "Both clean-restart halves used exl3-c8-pair-b-20260802 unchanged and are prompt-matched by the repeat harness.",
       "required_configuration": {"concurrency": 8, "repeat_count": 3, "window_seconds": 25, "coordinated_warmup_seconds": 3, "max_output_tokens": 4096},
@@ -353,7 +374,7 @@
           "observed_selected_depths": [3],
           "interpretation": "6768 draft tokens equals exactly three tokens for each of 2256 rounds. The controller never selected depth 2 and behaved as depth 3 throughout this clean repeat observation."
         },
-        "interpretation": "The adaptive half is valid but highly unstable: one balanced 83.04 tok/s window passed fairness, while two 58.76/60.48 tok/s windows failed with four and three lanes below threshold. Its 60.48 tok/s median and 24.28 tok/s range cannot produce a causal paired delta until the same-salt B0 half completes."
+        "interpretation": "The adaptive half is valid but highly unstable: one balanced 83.04 tok/s window passed fairness, while two 58.76/60.48 tok/s windows failed with four and three lanes below threshold. The same-salt B0 half later completed; the paired result below shows no robust adaptive median gain."
       },
       "b0_control_half": {
         "status": "complete",
@@ -541,7 +562,7 @@
         "observed_selected_depths": [3],
         "interpretation": "5064 draft tokens equals exactly three tokens for each of 1688 rounds. The controller never selected depth 2 and behaved as depth 3 throughout this observation."
       },
-      "disposition": "Not promoted. The configuration is live-validated and its matched cells are valid, but adaptive selection did not vary, C8 regressed about seven percent against the baseline bracket, prefill promotion is caveated by a measured-phase Triton JIT warning, and the paired repeated-C8 evidence is still pending."
+      "disposition": "Not promoted. The configuration is live-validated and its matched cells are valid, but adaptive selection did not vary, C8 regressed about seven percent against the baseline bracket, prefill promotion is caveated by a measured-phase Triton JIT warning, and the completed paired repeat showed no robust adaptive median gain."
     },
     {"arm_id": "CX", "label": "combined selected settings", "status": "pending_individual_arms", "result": null},
     {
@@ -583,12 +604,53 @@
       {"concurrency": 8, "aggregate_tokens_per_second": 62.063395921628626, "effective_concurrency": 8, "errors": 0, "warmup_timed_out": false}
     ],
     "run_summary": {"duration_seconds": 808.141, "duration_human": "13m28s", "hardware_samples": 326, "gpu_count": 4, "gpu_power_total_average_w": 280.42, "gpu_power_total_maximum_w": 322.58, "all_cells_valid": true},
+    "initial_default_timeout_attempt": {
+      "artifact_sha256": "d3025f37e8fdd2060184ba4c3b85012f5547c9d7c6e304f0a8b442d550b0d8e2",
+      "configured_timeout_override_seconds": 0,
+      "effective_16k_default_timeout_seconds": 60,
+      "prefill": [
+        {"requested_context_tokens": 16384, "observed_prompt_tokens": 16252, "ttft_seconds": 29.297, "tokens_per_second": 555},
+        {"requested_context_tokens": 32768, "observed_prompt_tokens": 32321, "ttft_seconds": 59.296, "tokens_per_second": 545},
+        {"requested_context_tokens": 65536, "observed_prompt_tokens": 64513, "ttft_seconds": 120.375, "tokens_per_second": 536}
+      ],
+      "valid_decode": {"concurrency": 1, "aggregate_tokens_per_second": 16.620609555899467, "effective_concurrency": 1, "errors": 0},
+      "invalid_decode": [
+        {"concurrency": 2, "effective_concurrency": 2, "errors": 0, "warmup_timed_out": true, "reason": "readiness timeout despite reaching concurrency; invalid by harness policy"},
+        {"concurrency": 4, "effective_concurrency": 3, "errors": 0, "warmup_timed_out": true, "reason": "underfilled readiness timeout"},
+        {"concurrency": 8, "effective_concurrency": 3, "errors": 0, "warmup_timed_out": true, "reason": "underfilled readiness timeout"}
+      ],
+      "invalid_partial_rates_retained": false,
+      "resolution": "rerun with --cell-warmup-timeout-seconds 300"
+    },
     "timeout_boundary": {"original_cell_warmup_timeout_seconds": 60, "original_invalid_concurrencies": [2, 4, 8], "cause": "readiness/admission timeout", "request_errors": 0, "performance_values_retained": false, "resolution": "rerun with --cell-warmup-timeout-seconds 300"},
     "evidence_boundary": "This is a standard-harness public-functional-lane live result. It is not a reference-lane result, public-bootstrap acceptance, or a correctness pass. Raw diagnostics contain private site identities and are not committed."
   },
+  "standard_quick_decode_comparison": {
+    "status": "complete_all_cells_valid",
+    "lane": "public-functional",
+    "maturity": "live-validated external evidence",
+    "harness": {"name": "llm_decode_bench.py", "version": "0.4.31", "sha256": "8de7c32c0abae3c664226fb9c1c197d0752c0a0f3f5a87b3357326f1407f9c07"},
+    "configuration": {"decode_mode": "duration", "context_tokens": 16384, "concurrencies": [1, 2, 4, 8], "duration_per_cell_seconds": 25, "decode_warmup_seconds": 3, "cell_warmup_timeout_seconds": 300, "max_output_tokens": 2048, "temperature": 0, "ignore_eos": true, "unique_context_percent": 100, "dcp_size": 4, "kv_budget_tokens": 1125632, "skip_prefill": true},
+    "arms": [
+      {"arm_id": "B0Q", "configuration_arm": "B0", "label": "opening fixed-MTP2", "artifact_sha256": "09de1306cd765560701f837ff93c6f724c506ea0d4ade9da441c1df1aab85e34", "aggregate_tokens_per_second": {"C1": 18.445745448652186, "C2": 26.388833018164448, "C4": 43.15038109445158, "C8": 61.90916770601414}, "all_cells_valid": true},
+      {"arm_id": "M3Q", "configuration_arm": "M3", "label": "fixed-MTP3", "artifact_sha256": "373ded09e49bb706b36244b7bc67eb1e1d08774d08f94cad835f060545e055fd", "aggregate_tokens_per_second": {"C1": 17.92964824120603, "C2": 27.509263734516015, "C4": 41.00794478770403, "C8": 58.32251784565177}, "all_cells_valid": true},
+      {"arm_id": "ADQ", "configuration_arm": "AD", "label": "adaptive MTP2/3", "artifact_sha256": "c17a4703821fb0b4fc06cada1731c6489e9d6f9f6fecca995f9b75cdf4bb2aad", "aggregate_tokens_per_second": {"C1": 14.793969849246231, "C2": 29.043807071821234, "C4": 41.75399000477838, "C8": 58.168717616516716}, "all_cells_valid": true},
+      {"arm_id": "BRQ", "configuration_arm": "BR", "label": "closing fixed-MTP2", "artifact_sha256": "74a5188e36892196c6629df8f21f2d60113875ccd982704ff269b3c3fa778f5a", "aggregate_tokens_per_second": {"C1": 17.46165244900815, "C2": 28.355160398980296, "C4": 43.40480308932841, "C8": 61.4316668003668}, "all_cells_valid": true}
+    ],
+    "baseline_bracket": {
+      "midpoint_tokens_per_second": {"C1": 17.953698948830166, "C2": 27.37199670857237, "C4": 43.27759209189, "C8": 61.670417253190465},
+      "opening_to_closing_drift_percent": {"C1": -5.33506765765297, "C2": 7.45136164021483, "C4": 0.58961702868841, "C8": -0.77129272342157}
+    },
+    "delta_percent_vs_bracket_midpoint": {
+      "M3": {"C1": -0.13395962410131, "C2": 0.5014870760256, "C4": -5.24439367922065, "C8": -5.42869589124678},
+      "AD": {"C1": -17.59932094544683, "C2": 6.10773989580848, "C4": -3.52053340647188, "C8": -5.6780865002054}
+    },
+    "interpretation": "The standard quick matrices do not reproduce the custom matched harness's M3 C2/C4 gains. Against the quick B0 bracket midpoint, M3 is effectively flat at C1/C2 and slower at C4/C8; adaptive improves C2 but regresses C1/C4/C8. B0 remains the default. M3's Pareto label is restricted to the custom matched harness and measured workload.",
+    "evidence_boundary": "These four artifacts use the standard harness with skip-prefill and different prompts/order from the custom campaign matrices. Their deltas must not be merged with custom-harness cells. Raw diagnostics contain private site identities and are not committed."
+  },
   "validity_notes": {
     "prefill": "B0, M1, M3, Q8, BR, and AD use nine matched true-streaming TTFT cells with identical prompt hashes. B0/M3/Q8/BR use the original harness hash; M1/AD use the current extended harness hash. Means are descriptive for three repeats per size. AD had one measured-phase Triton JIT warning, and M1 had three warnings in its final 16K cell, so their prefill promotion claims remain caveated.",
-    "decode": "B0, M1, M3, Q8, BR, and AD use one 25-second sample per concurrency; M1/AD use the current extended harness while the earlier four use the original bytes. M1 regresses decisively at every concurrency, so no repeat is required. R8 and both ADR8 halves use the current decode-repeat mode for three C8 windows. The prompt-matched ADR8 pair has adaptive/B0 medians of 60.48/61.04 tok/s (-0.92 percent) and means of 67.43/66.16 tok/s (+1.91 percent). Both combined lane sets fail fairness, so there is no robust adaptive gain. The first old-salt adaptive attempt timed out without an artifact and remains non-performance evidence.",
+    "decode": "B0, M1, M3, Q8, BR, and AD use one 25-second sample per concurrency; M1/AD use the current extended harness while the earlier four use the original bytes. M1 regresses decisively at every concurrency, so no repeat is required. R8 and both ADR8 halves use the current decode-repeat mode for three C8 windows. The prompt-matched ADR8 pair has adaptive/B0 medians of 60.48/61.04 tok/s (-0.92 percent) and means of 67.43/66.16 tok/s (+1.91 percent). Both combined lane sets fail fairness, so there is no robust adaptive gain. The earlier old-salt adaptive artifact has two valid windows and one invalid window; it cannot support a paired summary.",
     "AS": "AS console numbers are a failed readiness gate, not matched campaign benchmark data. Missing durable JSON is a material evidence limitation.",
     "Q8": "Q8 uses the same prompt hashes and harness as B0/M3. Its first 16K sample is retained in all means; fixed order and one decode sample per concurrency limit attribution."
   },
@@ -610,7 +672,7 @@
   "final_disposition": {
     "performance_campaign_complete": true,
     "default_arm": "B0",
-    "pareto_alternative": "M3 for measured C2/C4 workloads only",
+    "pareto_alternative": "M3 for the custom matched-harness C2/C4 workload only; not reproduced by the standard quick matrix",
     "not_promoted": ["M1", "Q8", "AS", "AD"],
     "release_correctness_gate_open": true,
     "deterministic_128_token_gate_passed": false,

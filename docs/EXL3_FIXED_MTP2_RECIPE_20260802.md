@@ -257,6 +257,17 @@ configuration is not correctness-accepted.
 
 ## Standard `llm_decode_bench` results
 
+### Initial default-timeout attempt
+
+The first v0.4.31 attempt used the harness's default 60-second 16K readiness
+deadline. Its uncommitted artifact SHA-256 was
+`d3025f37e8fdd2060184ba4c3b85012f5547c9d7c6e304f0a8b442d550b0d8e2`.
+Prefill scouts measured 555/545/536 tok/s at 16K/32K/64K, and C1 was valid at
+16.62 tok/s. C2, C4, and C8 exceeded the readiness deadline with zero request
+errors; C4 and C8 were also underfilled. Their partial rates are invalid and
+must not be quoted. This attempt established the need for the explicit
+300-second cell-warmup timeout used below.
+
 ### Earlier all-valid 16K run with prefill scouts
 
 An earlier `llm_decode_bench.py` v0.4.31 run used the same fixed-MTP2/Q4096
@@ -348,8 +359,9 @@ This result is a **public-functional-lane, external-evidence, live-validated**
 measurement on four Sparks. It is not a reference result, clean-checkout public
 acceptance, normalized energy evidence, or a correctness release gate.
 
-The broader matched MTP and Q4096/Q8192 campaign, including the earlier
-standard run, is documented separately in
+The broader matched MTP and Q4096/Q8192 campaign, including the initial
+default-timeout attempt, earlier standard run, and standard quick B0/M3/adaptive
+comparison, is documented separately in
 [`EXL3_AB_CAMPAIGN_20260802.md`](EXL3_AB_CAMPAIGN_20260802.md). Its custom
 harness numbers use different prompts and are not interchangeable with either
 standard matrix.

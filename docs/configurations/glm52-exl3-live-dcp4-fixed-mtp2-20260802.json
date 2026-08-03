@@ -7,7 +7,7 @@
   "configuration_status": "candidate",
   "evidence_origin": "external_operator_run",
   "hardware": "4x NVIDIA DGX Spark / GB10, direct-cable 200-Gb/s cycle",
-  "evidence_scope": "External live validation of an operator-local fixed-MTP2 overlay on the receipt-gated ARM64 EXL3 runtime. Evidence includes four-rank model and image attestation, startup logs, graph capture, live API checks, a historical bounded canary/performance gate, a later failing 128-token deterministic audit, one non-streaming full-request wall-time smoke, two standard llm_decode_bench runs including a 16K-128K decode matrix, and post-run health. This is not public-bootstrap acceptance, not a reference-lane result, not a clean-checkout receipt, not correctness acceptance, and not a shared-H release.",
+  "evidence_scope": "External live validation of an operator-local fixed-MTP2 overlay on the receipt-gated ARM64 EXL3 runtime. Evidence includes four-rank model and image attestation, startup logs, graph capture, live API checks, a historical bounded canary/performance gate, a later failing 128-token deterministic audit, one non-streaming full-request wall-time smoke, an initial invalid-timeout llm_decode_bench attempt, one all-valid standard 16K run, one completed but partly readiness-limited 16K-128K matrix, and post-run health. This is not public-bootstrap acceptance, not a reference-lane result, not a clean-checkout receipt, not correctness acceptance, and not a shared-H release.",
   "sanitization": "Management addresses, SSH identities, hostnames, NIC assignments, host paths, filled site configuration, and raw logs are omitted. Public model pins, local image identity, settings, and sanitized measurements are retained.",
   "acceptance": {
     "public_bootstrap_accepted": false,
@@ -167,6 +167,21 @@
     "tool_version": "0.4.31",
     "artifact_sha256": "f02b659f798ce2b2a2afb8103008e85ea5185d49bb1c341d583ddf9a13abd69d",
     "artifact_committed": false,
+    "initial_default_timeout_attempt": {
+      "artifact_sha256": "d3025f37e8fdd2060184ba4c3b85012f5547c9d7c6e304f0a8b442d550b0d8e2",
+      "artifact_committed": false,
+      "configured_timeout_override_seconds": 0,
+      "effective_16k_default_timeout_seconds": 60,
+      "prefill_tokens_per_second": {"16K": 555, "32K": 545, "64K": 536},
+      "valid_decode": {"concurrency": 1, "aggregate_tokens_per_second": 16.620609555899467, "effective_concurrency": 1, "errors": 0},
+      "invalid_decode": [
+        {"concurrency": 2, "effective_concurrency": 2, "errors": 0, "warmup_timed_out": true},
+        {"concurrency": 4, "effective_concurrency": 3, "errors": 0, "warmup_timed_out": true, "underfilled": true},
+        {"concurrency": 8, "effective_concurrency": 3, "errors": 0, "warmup_timed_out": true, "underfilled": true}
+      ],
+      "invalid_partial_rates_retained": false,
+      "resolution": "Rerun with --cell-warmup-timeout-seconds 300."
+    },
     "configuration": {"decode_mode": "duration", "context_tokens": 16384, "concurrency_levels": [1, 2, 4, 8], "duration_per_cell_seconds": 25, "decode_warmup_seconds": 3, "cell_warmup_timeout_seconds": 300, "max_output_tokens": 2048, "temperature": 0, "ignore_eos": true, "unique_context_percent": 100, "dcp_size": 4, "kv_budget_tokens": 1125632},
     "prefill": [
       {"requested_context_tokens": 16384, "observed_prompt_tokens": 16249, "ttft_seconds": 28.969, "tokens_per_second": 561, "method": "integrated_scout"},

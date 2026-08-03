@@ -16,7 +16,7 @@ and the canonical fixed-MTP3 source recipe remains
 This is a **public-functional-lane, external-evidence, live-validated
 configuration campaign candidate**. The performance campaign is complete: B0
 remains the default, while M3 remains a Pareto alternative for the measured
-C2/C4 workload only. It is not a reference-lane result, not
+C2/C4 workload in the custom matched harness only. It is not a reference-lane result, not
 public-bootstrap acceptance, not a clean-checkout receipt, and not a result
 from the proposed `shared_h_v1` format. The running model uses legacy
 `per_expert_v1`. The campaign used ignored operator-local profiles, plans, and
@@ -99,6 +99,12 @@ full-matrix artifacts.
 | M1 fixed-MTP1 benchmark JSON | `e4272aa4efe4e0c377bd1326aa404458b1dd92f985ef50866d7c1d0647c73669` |
 | ADR8 clean-restart B0 repeated-C8 benchmark JSON | `271f626f5500d8d1189e14665b6627ee2959884c4156151f14669a1ad86c7971` |
 | B0 `llm_decode_bench` v0.4.31 benchmark JSON | `f02b659f798ce2b2a2afb8103008e85ea5185d49bb1c341d583ddf9a13abd69d` |
+| initial B0 `llm_decode_bench` default-timeout JSON | `d3025f37e8fdd2060184ba4c3b85012f5547c9d7c6e304f0a8b442d550b0d8e2` |
+| opening B0 standard quick 16K JSON | `09de1306cd765560701f837ff93c6f724c506ea0d4ade9da441c1df1aab85e34` |
+| M3 standard quick 16K JSON | `373ded09e49bb706b36244b7bc67eb1e1d08774d08f94cad835f060545e055fd` |
+| adaptive standard quick 16K JSON | `c17a4703821fb0b4fc06cada1731c6489e9d6f9f6fecca995f9b75cdf4bb2aad` |
+| closing B0 standard quick 16K JSON | `74a5188e36892196c6629df8f21f2d60113875ccd982704ff269b3c3fa778f5a` |
+| incomplete old-salt adaptive repeated-C8 JSON | `9cf2f5f6c30fb6c19bbc506e003864e9db9052fbb80d4ab198dda3510777022e` |
 | original full-matrix harness used by B0/M3/Q8/closing B0 | `12bb68c2ebb033a144f3b9da7415e15917f8aeadd9c5e27f19d607c4384bc133` |
 | current extended streaming/decode-repeat harness, used by R8, AD, M1, and both ADR8 halves | `b276f7f1a54afe4732b204c0b14f0ab1600a8d3cbde718f6ecfec186d6ee67e9` |
 | A/B arm launcher, current after later local arm additions | `89318a90dae5df92a208bb18f779799287c3cbdc727e3dc4cd2bc13dea6b9d34` |
@@ -185,8 +191,8 @@ C1, so neither the raw opening-only -4.15% nor the midpoint value is a stable
 C1 effect.
 
 M3 did not meet the promotion rule: prefill regressed and C8 improved by less
-than 5%. It remains a **Pareto alternative** for the measured C2/C4 workload,
-where the gain survives the baseline bracket. That is not a general MTP3
+than 5%. It remains a **Pareto alternative** for the measured C2/C4 workload
+in the custom matched harness, where the gain survives the baseline bracket. That is not a general MTP3
 advantage and does not promote M3 to the baseline.
 
 A supplemental live metrics reading recorded 89.43% draft-token acceptance,
@@ -226,7 +232,8 @@ No durable AS gate JSON was written. The values and warnings above are
 operator-recorded live-console evidence only, which is a material evidence
 limitation. AS was stopped cleanly. At the time this draft was written, the
 exact original fixed-MTP2 baseline was restarting; post-rollback verification
-was still pending.
+was still pending. The later closing B0 arm completed with healthy APIs before
+and after, resolving that at-capture rollback uncertainty.
 
 ## Q8: 8,192 maximum batched tokens
 
@@ -361,9 +368,14 @@ three-second decode warmup, `max_tokens=2048`, `temperature=0`,
 
 The run required `--cell-warmup-timeout-seconds 300`. An earlier attempt with
 the original 60-second timeout invalidated C2, C4, and C8 while waiting for
-readiness/admission; it recorded no request errors. Those invalid cells are not
-throughput results and are not retained. With the 300-second timeout, every
-requested concurrency reached effective concurrency and all cells were valid.
+readiness/admission; it recorded no request errors. Its artifact SHA-256 is
+`d3025f37e8fdd2060184ba4c3b85012f5547c9d7c6e304f0a8b442d550b0d8e2`.
+That attempt's prefill scouts were 555/545/536 tok/s at 16K/32K/64K, and its
+only valid decode cell was C1 at 16.62 tok/s. C2 reached two running requests
+but still exceeded the readiness deadline; C4 and C8 were also underfilled.
+Their partial rates are not throughput results and are not retained. With the
+300-second timeout, every requested concurrency reached effective concurrency
+and all cells were valid.
 
 ### Standard-harness prefill
 
@@ -392,6 +404,35 @@ live-validated**. It is not a reference-lane result, public-bootstrap
 acceptance, or a correctness pass. The raw artifact remains uncommitted because
 its diagnostics contain private workstation and cluster identities; only the
 sanitized results and artifact hash are published here.
+
+## Standard quick 16K arm comparison
+
+Four later `llm_decode_bench.py` v0.4.31 quick matrices used the same standard
+decode settings: fully unique 16K contexts, C1/C2/C4/C8, 25-second windows,
+three-second warmup, `max_tokens=2048`, temperature zero, `ignore_eos=true`,
+the 300-second readiness timeout, and no prefill phase. Every cell reached its
+requested concurrency with zero request errors.
+
+| Arm | C1 | C2 | C4 | C8 | Artifact SHA-256 |
+|---|---:|---:|---:|---:|---|
+| opening B0, fixed MTP2 | **18.45** | **26.39** | **43.15** | **61.91** | `09de1306cd765560701f837ff93c6f724c506ea0d4ade9da441c1df1aab85e34` |
+| M3, fixed MTP3 | **17.93** | **27.51** | **41.01** | **58.32** | `373ded09e49bb706b36244b7bc67eb1e1d08774d08f94cad835f060545e055fd` |
+| AD, adaptive MTP2/3 | **14.79** | **29.04** | **41.75** | **58.17** | `c17a4703821fb0b4fc06cada1731c6489e9d6f9f6fecca995f9b75cdf4bb2aad` |
+| closing B0, fixed MTP2 | **17.46** | **28.36** | **43.40** | **61.43** | `74a5188e36892196c6629df8f21f2d60113875ccd982704ff269b3c3fa778f5a` |
+
+Opening-to-closing B0 drift was -5.34% at C1, +7.45% at C2, +0.59% at
+C4, and -0.77% at C8. Against the B0 midpoint, M3 was -0.13%/+0.50%/-5.24%/
+-5.43% at C1/C2/C4/C8. Adaptive was -17.60%/+6.11%/-3.52%/-5.68%.
+
+These standard quick matrices do **not** reproduce the custom matched harness's
+M3 C2/C4 gains: M3 is effectively flat at C1/C2 and slower at C4/C8, while
+adaptive improves C2 but regresses the other three cells. B0 remains the
+default. M3's Pareto label is restricted to the custom matched harness and its
+measured workload; it is not a standard-harness C2/C4 claim.
+
+These artifacts used different prompts and ordering from the custom campaign
+matrices. Their values and deltas must not be pooled with custom-harness cells.
+Raw diagnostics remain uncommitted because they contain private site identity.
 
 ## Runtime correctness caveat
 
@@ -489,8 +530,9 @@ demonstrate a benefit from adaptive depth selection.
 
 AD is **not promoted**: adaptive selection did not vary, C8 regressed about 7%
 against the bracket, prefill promotion is JIT-caveated, and a controlled
-repeated-C8 pair remains outstanding. It remains useful evidence for the
-measured C2/C4 tradeoff, not a general adaptive-MTP win.
+repeated-C8 pair later showed no robust adaptive median gain. It remains useful
+evidence for the measured custom-harness C2/C4 tradeoff, not a general
+adaptive-MTP win.
 
 ## M1: fixed-MTP1 synchronous
 
@@ -561,7 +603,7 @@ decisive enough that no M1 repeat is required for this campaign disposition.
 
 ## R8: repeated C8 windows
 
-**Completed B0 repeat; a fresh paired experiment is pending.** The decode-only
+**Completed B0 repeat; the later fresh-salt pair is also complete.** The decode-only
 artifact uses schema `sparkring-exl3-ab-decode-repeat/v1`, timestamp
 2026-08-02 16:46:28 UTC, seed `20260802`, and fresh run salt
 `b0-c8-closing-20260802-a`. The decode-repeat harness hash is
@@ -585,14 +627,32 @@ median is near opening B0's 74.52 tok/s and closing B0's 73.80 tok/s, yet the
 wide repeat range prevents treating a single C8 window as stable. C8 remains
 highly window-, prompt-, and lane-sensitive.
 
+### Incomplete old-salt adaptive attempt
+
+The first adaptive attempt with the same `b0-c8-closing-20260802-a` salt was
+reported as timing out, but a benchmark artifact was subsequently recovered.
+It contains two valid windows and one invalid window, not a complete pair.
+
+| Repeat | Aggregate tok/s | Per-lane tokens | Fairness |
+|---:|---:|---|---|
+| 0 | **58.84** | 65 / 260 / 260 / 247 / 65 / 67 / 247 / 260 | fail; 3 lanes below 197.6 |
+| 1 | **74.08** | 260 / 260 / 259 / 251 / 259 / 241 / 254 / 68 | fail; 1 lane below 205.2 |
+| 2 | invalid | 0 / 0 / 0 / 0 / 0 / 0 / 0 / 0 | no continuous usage stats for four lanes |
+
+The artifact SHA-256 is
+`9cf2f5f6c30fb6c19bbc506e003864e9db9052fbb80d4ab198dda3510777022e`.
+The two valid aligned AD-minus-B0 window deltas are -2.64 and +1.04 tok/s.
+Because repeat 2 is invalid, no three-window median, mean, range, or promotion
+delta is reported from this attempt. The later fresh-salt pair below is the
+complete paired result.
+
 ## Fresh-salt paired C8 result
 
 ### AD-R8: fresh-salt, clean-restart paired C8
 
-**Pair complete; AD not promoted.** The first attempt to run
-AD with the existing `b0-c8-closing-20260802-a` salt timed out and wrote no
-benchmark artifact. It is an operational observation, not a zero-throughput or
-invalid performance cell, and no provisional values are retained.
+**Pair complete; AD not promoted.** This replacement pair followed the
+incomplete old-salt attempt above. It used a fresh salt and clean restart for
+each side; the incomplete attempt is not pooled into this result.
 
 The replacement AD service then started cleanly with zero prefix-cache queries
 and hits before the benchmark. Its artifact uses salt
@@ -668,7 +728,8 @@ The same salt and clean restarts make this a matched configuration pair for
 these measured prompts, but they do not establish a general controller effect.
 AD again generated exactly three drafts per round and never selected depth 2.
 AD is not promoted. Fixed-MTP2 B0 remains the campaign default, while M3
-remains only a Pareto alternative for measured C2/C4 workloads. The older R8
+remains only a Pareto alternative for measured C2/C4 workloads in the custom
+matched harness. The older R8
 artifact remains useful variance evidence but is not part of this matched pair.
 
 ## Optional follow-ups
@@ -714,11 +775,12 @@ checks before it becomes an alternative recipe.
 **Performance campaign complete.** The opening and closing controls bracketed
 ordinary drift, and the fresh-salt C8 pair completed with durable artifacts.
 B0 remains the default. M3 remains a measured Pareto alternative for C2/C4
-workloads only; its prefill regression and negligible C8 change prevent general
-promotion. M1, Q8, AS, and AD are not promoted.
+workloads in the custom matched harness only; the standard quick matrix did not
+reproduce that gain. Its prefill regression and negligible custom-harness C8
+change prevent general promotion. M1, Q8, AS, and AD are not promoted.
 
-The first old-salt adaptive repeat timeout remains an operational caveat, not a
-performance result. The stock 128-token deterministic gate fails at token 124,
+The incomplete old-salt adaptive repeat remains bounded to its two valid
+windows and one invalid window; it is not a paired summary. The stock 128-token deterministic gate fails at token 124,
 so the release-quality correctness gate remains open. Therefore this
 disposition is a completed **public-functional-lane external performance campaign**, not
 public-bootstrap acceptance, a release correctness pass, or a reference-lane
