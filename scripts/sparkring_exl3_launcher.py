@@ -559,6 +559,13 @@ def simple_actions(
 
 
 def execute(actions: list[RemoteAction], timeout: int) -> dict[int, dict]:
+    def output_text(value: str | bytes | None, fallback: str = "") -> str:
+        if value is None:
+            return fallback
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        return value
+
     def one(action: RemoteAction):
         remote = shlex.join(("sh", "-lc", action.shell_command))
         return subprocess.run(
@@ -583,8 +590,8 @@ def execute(actions: list[RemoteAction], timeout: int) -> dict[int, dict]:
             except subprocess.TimeoutExpired as exc:
                 results[rank] = {
                     "exit_code": 124,
-                    "stdout": exc.stdout or "",
-                    "stderr": exc.stderr or "remote command timed out",
+                    "stdout": output_text(exc.stdout),
+                    "stderr": output_text(exc.stderr, "remote command timed out"),
                 }
     return results
 

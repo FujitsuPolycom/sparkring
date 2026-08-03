@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -153,3 +154,59 @@ def test_start_failure_triggers_scoped_rollback(tmp_path, monkeypatch, capsys):
     assert all("docker rm --force" in command for command in calls[-1])
     payload = json.loads(capsys.readouterr().out)
     assert "rollback" in payload
+
+
+def test_start_engine_phase_allows_full_model_verification(
+    tmp_path, monkeypatch, capsys
+):
+    site_path, profile_path = generated(tmp_path)
+    timeouts = []
+
+    def fake_execute(actions, timeout):
+        timeouts.append(timeout)
+        return {
+            action.rank: {"exit_code": 0, "stdout": "", "stderr": ""}
+            for action in actions
+        }
+
+    monkeypatch.setattr(exl3, "execute", fake_execute)
+    assert (
+        lmcache.main(
+            [
+                "--site",
+                str(site_path),
+                "--profile",
+                str(profile_path),
+                "--execute",
+                "--confirmation",
+                lmcache.CONFIRMATION,
+                "start",
+            ]
+        )
+        == 0
+    )
+    profile = exl3.load_profile(profile_path)
+    assert timeouts == [
+        180,
+        150,
+        profile.startup_timeout_seconds + 60,
+        profile.startup_timeout_seconds + 60,
+    ]
+    json.loads(capsys.readouterr().out)
+
+
+def test_remote_timeout_output_is_json_serializable(monkeypatch):
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(
+            cmd=args[0], timeout=kwargs["timeout"], output=b"partial stdout"
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    action = exl3.RemoteAction(0, "rank0", ("true",))
+    result = exl3.execute([action], timeout=1)
+    assert result[0] == {
+        "exit_code": 124,
+        "stdout": "partial stdout",
+        "stderr": "remote command timed out",
+    }
+    json.dumps(result)

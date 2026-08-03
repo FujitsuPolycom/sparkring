@@ -298,7 +298,10 @@ def main(argv: list[str] | None = None) -> int:
     for name, timeout in (
         ("start_servers", 180),
         ("server_health", 150),
-        ("start_engines", 180),
+        # Each start action first hashes the complete 339-GB model view.  That
+        # fail-closed gate is intentionally repeated on every rank and can take
+        # several minutes even when the files are already local.
+        ("start_engines", profile.startup_timeout_seconds + 60),
         ("ready", profile.startup_timeout_seconds + 60),
     ):
         results[name] = run_phase(phases[name], execute=True, timeout=timeout)
