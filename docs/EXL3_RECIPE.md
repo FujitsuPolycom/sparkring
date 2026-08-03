@@ -3,8 +3,8 @@
 Status: **live-validated configuration; public source bootstrap
 offline-validated; clean-checkout four-Spark gate pending**
 
-This recipe records the exact long-context EXL3 serving configuration currently
-used on the maintainer's four directly cabled DGX Sparks:
+This recipe defines the current public EXL3 serving contract for four directly
+cabled DGX Sparks:
 
 [`willfalco/GLM-5.2-EXL3-TR3-3.25bpw`](https://huggingface.co/willfalco/GLM-5.2-EXL3-TR3-3.25bpw)
 at revision `d7d79c2d14599dfce7a5d12b85f7ad73f40e623d`.
@@ -22,29 +22,33 @@ indices, and paths remain in the ignored site configuration.
 | Hardware | 4x DGX Spark, direct 200-Gb/s cycle |
 | Parallelism | TP4 / DCP4, `ag_rs` |
 | Quantization | EXL3/Trellis 3.25 bpw; K3x192 and K4x64 expert tiers |
-| MTP | fixed MTP3 |
-| Batching | 8 sequences, 4,096 batched tokens, Q32 graph ceiling |
-| Maximum model length | 1,048,576 tokens |
-| KV allocation | 9,000,000,000 bytes per rank |
-| Reported KV capacity | 1,125,632 tokens |
+| MTP | fixed MTP2 |
+| Batching | 8 sequences (C8), 4,096 batched tokens, Q32 graph ceiling |
+| Maximum model length | 524,288 tokens |
+| KV allocation | 4,500,000,000 bytes per rank |
+| Reported KV capacity | 562,688 tokens |
 | KV representation | NVFP4 latent plus FP8 RoPE, per-token scale |
 | Attention | `B12X_MLA_SPARSE`, CKV gather, exact global top-k |
 | CUDA graphs | full and piecewise through Q32 |
 | Prefix cache | enabled |
 | SparkCache | disabled |
+| LMCache | CS512; one local MP server per rank, 512-token chunks, lazy 1-GiB L1 |
 | Served name | `glm-5.2-exl3-tr3-3.25bpw` |
 
-The 1M/9-GB settings are the current capacity profile. The earlier conservative
-live gate used the same image and execution contract with a 262,144-token model
-limit and 7,000,000,000 KV bytes per rank.
+The Q4096/C8/Q32 relationship is part of the fail-closed contract: the engine
+accepts at most 4,096 batched tokens, eight sequences, and 32 query rows. The
+LMCache launcher starts one host-local server for each rank, verifies server
+health, and only then starts the four distributed vLLM engines.
 
-An external operator run also exercised the unchanged legacy checkpoint at
-TP4/DCP4 with fixed MTP2. Its exact delta, bounded gate, evidence limitations,
-and machine-readable configuration are recorded in the
-[DCP4 fixed-MTP2 alternative recipe](EXL3_FIXED_MTP2_RECIPE_20260802.md). It is
-a live-validated configuration candidate, not public-bootstrap acceptance or a
-reference-lane result. Its later stock 128-token deterministic gate fails at a
-narrow token-124 branch, so it is not correctness-accepted.
+The fixed-MTP2 engine profile and the later LMCache CS512 campaign were first
+validated as external operator configurations. Their exact deltas, bounded
+gates, and evidence limitations are recorded in the
+[DCP4 fixed-MTP2 recipe](EXL3_FIXED_MTP2_RECIPE_20260802.md) and
+[LMCache campaign](EXL3_LMCACHE_CAMPAIGN_20260803.md). Publishing the same
+settings in the executable recipe does not turn those external runs into a
+clean-checkout public-bootstrap result. The current clean-checkout four-Spark
+live gate remains pending, and the external 128-token repeat remains a failed
+correctness gate.
 
 ## Inspect the recipe offline
 
@@ -54,8 +58,8 @@ python scripts/sparkring_recipe.py plan \
 ```
 
 This verifies the immutable model metadata, source pins, topology assumptions,
-Q32/C8 relationship, fixed-MTP3 policy, packed-KV settings, and required explicit
-unsets. It does not contact or alter any Spark.
+Q4096/C8/Q32 relationship, fixed-MTP2 policy, packed-KV settings, LMCache CS512
+contract, and required explicit unsets. It does not contact or alter any Spark.
 
 ## Build and launch from public sources
 
@@ -84,11 +88,12 @@ It performs these receipt-gated operations:
 2. verifies the 200 GbE/RDMA fabric before downloading or building;
 3. builds or reuses the exact NF3 NVFP4/FP8-RoPE base layer;
 4. adopts or resumes the pinned 81-shard model on rank 0, with a capacity gate
-   and full per-shard verification against the pinned Hugging Face manifest;
+   and verification of every execution input against the pinned Hugging Face
+   manifest;
 5. copies model bytes to both neighbors in parallel, then relays to the opposite
    rank over direct 200 GbE addresses using resumable `rsync`;
-6. reconstructs the exact public ExLlamaV3 and SparkInfer Git trees from pinned
-   base commits plus hash-checked patches;
+6. reconstructs the exact public ExLlamaV3, SparkInfer, and LMCache Git trees
+   from pinned base commits plus hash-checked patches;
 7. builds and verifies one derived ARM64 image on rank 0, then fans that exact
    image ID over the same direct-ring tree; and
 8. writes ignored resolved files under `.sparkring/bootstrap-exl3/` and runs
@@ -100,7 +105,7 @@ Review the generated contract:
 cat .sparkring/bootstrap-exl3/site.yaml
 cat .sparkring/bootstrap-exl3/launch.json
 
-python scripts/sparkring_exl3_launcher.py \
+python scripts/sparkring_exl3_lmcache_launcher.py \
   --site .sparkring/bootstrap-exl3/site.yaml \
   --profile .sparkring/bootstrap-exl3/launch.json \
   plan
@@ -109,25 +114,39 @@ python scripts/sparkring_exl3_launcher.py \
 Then start exactly that profile:
 
 ```bash
-python scripts/sparkring_exl3_launcher.py \
+python scripts/sparkring_exl3_lmcache_launcher.py \
   --site .sparkring/bootstrap-exl3/site.yaml \
   --profile .sparkring/bootstrap-exl3/launch.json \
-  --execute start
+  --execute \
+  --confirmation START-EXL3-LMCACHE-CS512-ALL-FOUR \
+  start
 ```
 
 Both the model download and derived-image build are resumable: exact existing
 payloads are verified and skipped. Partial Hugging Face and `rsync` transfers
-resume in place. First-time adoption hashes all 81 weight shards, so it can
-take several minutes without consuming GPU time. Mutable source heads,
-incomplete or same-size-corrupted shard sets, wrong metadata, unattested source
-trees, mismatched base-image IDs, and dirty build contexts fail closed.
+resume in place. First-time adoption hashes all 88 execution inputs: 81 weight
+shards and seven runtime metadata files. It can take several minutes without
+consuming GPU time. Mutable source heads, incomplete or same-size-corrupted
+shard sets, wrong metadata, unattested source trees, mismatched base-image IDs,
+and dirty build contexts fail closed.
+
+The pinned revision has one upstream publication inconsistency: the served
+`README.md` bytes disagree with the README digest recorded in that revision's
+`MANIFEST.sha256`. The README is not a model execution input. The downloader
+therefore verifies the manifest identity, downloads and hashes all 88 runtime
+inputs, and deliberately excludes nine manifested release-only sidecars from
+content verification. This exception does not include weights, configuration,
+tokenizer files, the chat template, generation settings, the tier bitmap, or
+the safetensors index. Unmanifested non-cache files are still rejected.
 
 ## Evidence boundary
 
-The configuration and its derived image completed four-rank startup, CUDA-graph
-capture, API correctness, deterministic output, and sustained C1/C2/C8 serving
-on the maintainer cluster. The current recipe therefore has `live-validated`
-maturity.
+The fixed-MTP2 engine settings and LMCache CS512 topology have external
+four-Spark live evidence covering startup, CUDA-graph capture, API operation,
+bounded prefill, and C1/C2/C8 serving. A short deterministic check passed, but
+the later 128-token repeat diverged at token 124. The recipe therefore retains
+`live-validated` maturity without claiming correctness or public-bootstrap
+acceptance.
 
 The public source composition, full vLLM EXL3 overlay, derived-image builder,
 model verifier, 200 GbE fanout, and dry-run-first launcher are now published and
@@ -149,8 +168,9 @@ the derived image and repeating the four-rank gate. Until that passes:
    gates using the commands below.
 5. Record the public-path receipt and promote the bootstrap from candidate.
 
-After the launcher reports that all four containers are running and the API is
-ready, first re-attest the deployed bytes:
+After the launcher reports that all four LMCache servers and all four engines
+are running and the API is ready, first re-attest the deployed bytes and check
+both halves of the profile:
 
 ```bash
 python scripts/sparkring_exl3_launcher.py \
@@ -163,10 +183,11 @@ python scripts/sparkring_exl3_launcher.py \
   --profile .sparkring/bootstrap-exl3/launch.json \
   --execute verify-model
 
-python scripts/sparkring_exl3_launcher.py \
+python scripts/sparkring_exl3_lmcache_launcher.py \
   --site .sparkring/bootstrap-exl3/site.yaml \
   --profile .sparkring/bootstrap-exl3/launch.json \
-  --execute status
+  --execute \
+  status
 ```
 
 Then run the bounded API gate. The initial public-path regression floors are

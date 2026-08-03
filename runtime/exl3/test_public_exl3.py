@@ -38,6 +38,7 @@ def test_source_patches_and_runtime_overlays_are_receipt_pinned():
         assert len(record["base_commit"]) == 40
         assert len(record["tree"]) == 40
     for relative, record in PINS["spark_runtime_overlay_files"].items():
+        assert _sha256(ROOT / record["source"]) == record["preimage"]
         assert _sha256(HERE / "runtime-overlay" / relative) == record["postimage"]
 
 

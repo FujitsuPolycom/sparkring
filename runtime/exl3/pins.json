@@ -122,17 +122,17 @@
   "spark_runtime_overlay_files": {
     "spark_glm52_mtp_index_reuse.py": {
       "source": "spark_transport/integrations/vllm/spark_glm52_mtp_index_reuse.py",
-      "preimage": "6fe57bcd6ee83b21b3ad07c56e099a968610857e7015df2fcd880857cd7bcc7c",
+      "preimage": "3bd519b2d4c25860b5288ce640907748122b5b61e9053cd64db96f1bc0fa69a8",
       "postimage": "5b4aa84c2b7606f23b4630859bbad31d009d2a2f62d48c4a863b5e6a0b5a8823"
     },
     "spark_true_adaptive_draft.py": {
       "source": "spark_transport/integrations/vllm/spark_true_adaptive_draft.py",
-      "preimage": "7d8332b5c398391b6bc740c92ae975c4e88fb88e01ba32602459726a232215f5",
+      "preimage": "57428eb85364e85875a1ee3c500483b22c660d2367962703c02532e220edfb02",
       "postimage": "49e450675caa56e66c1ca546b93767f4b7f945b6e426e819b72215419577b4ca"
     },
     "q2r_phase_timing/live_installer.py": {
       "source": "spark_transport/experiments/q2r_phase_timing/live_installer.py",
-      "preimage": "937b0554d54e9cdfdfd8c9f2d2649f9440d32b4edff66195e69ade9bd7831f2c",
+      "preimage": "787427a4d12932925d1094312d6f431550c35e3fc226d6905001f1d0e00e8046",
       "postimage": "e53bc4207bfccc3b53ed7f5d2c6f6a1883baa6ad9f6d6ef5c602552f719308a9"
     }
   }
