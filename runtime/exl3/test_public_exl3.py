@@ -94,6 +94,12 @@ def test_runtime_manifest_receipts_distribution_tools_outside_site_packages():
     assert "installed distribution file escapes venv" in composer
 
 
+def test_runtime_verifier_uses_composed_lmcache_writer_contract():
+    verifier = (HERE / "verify_exl3_runtime.py").read_text(encoding="utf-8")
+    assert "strategy.is_kv_writer" in verifier
+    assert "strategy.is_writer" not in verifier
+
+
 def test_generated_context_verifier_rejects_byte_drift(tmp_path):
     payload = tmp_path / "payload.bin"
     payload.write_bytes(b"exact")

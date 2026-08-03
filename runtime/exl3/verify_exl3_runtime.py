@@ -116,7 +116,10 @@ def verify_imports(pins: dict) -> None:
             strategy.kv_readers_per_object == 1,
             "LMCache shard-local reader drift",
         )
-        require(strategy.is_writer, "LMCache shard-local rank must be a writer")
+        require(
+            strategy.is_kv_writer,
+            "LMCache shard-local rank must be a KV writer",
+        )
 
 
 def verify_gpu() -> None:
