@@ -13,6 +13,22 @@ from typing import Callable
 
 ProgressCallback = Callable[[int, int], None]
 
+# Files vLLM/Transformers may consume while loading or serving this checkpoint.
+# Weight files are added from model.safetensors.index.json.  Release notes,
+# compose examples, licenses, and calibration provenance remain covered by the
+# pinned MANIFEST.sha256 identity but are deliberately not runtime inputs.
+RUNTIME_METADATA_FILES = frozenset(
+    {
+        "chat_template.jinja",
+        "config.json",
+        "generation_config.json",
+        "model.safetensors.index.json",
+        "tier_bitmap.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+    }
+)
+
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -57,6 +73,18 @@ def manifest_target(root: Path, name: str) -> Path:
     return target
 
 
+def runtime_manifest_entries(manifest: dict[str, str]) -> dict[str, str]:
+    """Select the receipt-owned files that can affect model execution."""
+    missing = sorted(RUNTIME_METADATA_FILES - set(manifest))
+    if missing:
+        raise RuntimeError(f"runtime model file is missing from manifest: {missing[0]}")
+    return {
+        name: digest
+        for name, digest in manifest.items()
+        if name in RUNTIME_METADATA_FILES or name.endswith(".safetensors")
+    }
+
+
 def verify_model(
     path: Path,
     model: dict,
@@ -90,7 +118,8 @@ def verify_model(
         raise RuntimeError(f"model shard is missing: {missing[0]}")
 
     manifest = manifest_entries(path / "MANIFEST.sha256")
-    missing_hashes = [name for name in shards if name not in manifest]
+    runtime_manifest = runtime_manifest_entries(manifest)
+    missing_hashes = [name for name in shards if name not in runtime_manifest]
     if missing_hashes:
         raise RuntimeError(
             f"model shard hash is missing from manifest: {missing_hashes[0]}"
@@ -107,7 +136,7 @@ def verify_model(
         raise RuntimeError(f"unmanifested model files: {unmanifested}")
     shard_names = set(shards)
     verified_shards = 0
-    for name, expected in manifest.items():
+    for name, expected in runtime_manifest.items():
         target = manifest_target(path, name)
         if not target.is_file():
             raise RuntimeError(f"model manifest file is missing: {name}")
@@ -133,6 +162,8 @@ def verify_model(
         "repository": model["repository"],
         "revision": model["revision"],
         "shard_count": len(shards),
+        "runtime_file_count": len(runtime_manifest),
+        "ignored_release_file_count": len(manifest) - len(runtime_manifest),
         "weight_bytes": weight_bytes,
         "status": "pass",
     }

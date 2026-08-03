@@ -29,19 +29,29 @@ def _fixture(path: Path) -> dict:
     tier = b'{"tiers":[3,4]}'
     index_bytes = json.dumps(index).encode()
     manifest = (
+        f"{_sha(b'chat')}  chat_template.jinja\n"
         f"{_sha(config)}  config.json\n"
+        f"{_sha(b'generation')}  generation_config.json\n"
         f"{_sha(index_bytes)}  model.safetensors.index.json\n"
         f"{_sha(shard_a)}  model-00001-of-00002.safetensors\n"
         f"{_sha(shard_b)}  model-00002-of-00002.safetensors\n"
         f"{_sha(tier)}  tier_bitmap.json\n"
         f"{_sha(tokenizer)}  tokenizer.json\n"
+        f"{_sha(b'tokenizer-config')}  tokenizer_config.json\n"
+        f"{_sha(b'readme-old')}  README.md\n"
     ).encode()
     path.mkdir()
     (path / "config.json").write_bytes(config)
+    (path / "chat_template.jinja").write_bytes(b"chat")
+    (path / "generation_config.json").write_bytes(b"generation")
     (path / "model.safetensors.index.json").write_bytes(index_bytes)
     (path / "tier_bitmap.json").write_bytes(tier)
     (path / "MANIFEST.sha256").write_bytes(manifest)
     (path / "tokenizer.json").write_bytes(tokenizer)
+    (path / "tokenizer_config.json").write_bytes(b"tokenizer-config")
+    # The upstream release currently serves a README whose bytes disagree
+    # with its own immutable-revision manifest. It is not a runtime input.
+    (path / "README.md").write_bytes(b"readme-new")
     (path / "model-00001-of-00002.safetensors").write_bytes(shard_a)
     (path / "model-00002-of-00002.safetensors").write_bytes(shard_b)
     return {
@@ -82,12 +92,20 @@ def test_verifier_rejects_same_size_shard_corruption(tmp_path):
         download_exl3.verify(model_path, model)
 
 
-def test_verifier_rejects_corruption_in_any_manifest_entry(tmp_path):
+def test_verifier_rejects_corruption_in_any_runtime_manifest_entry(tmp_path):
     model_path = tmp_path / "model"
     model = _fixture(model_path)
     (model_path / "tokenizer.json").write_bytes(b'{"model":{"type":"BAD"}}')
     with pytest.raises(RuntimeError, match="model file hash mismatch for tokenizer.json"):
         download_exl3.verify(model_path, model)
+
+
+def test_verifier_ignores_manifested_non_runtime_release_drift(tmp_path):
+    model_path = tmp_path / "model"
+    model = _fixture(model_path)
+    report = download_exl3.verify(model_path, model)
+    assert report["runtime_file_count"] == 9
+    assert report["ignored_release_file_count"] == 1
 
 
 def test_verifier_rejects_unmanifested_runtime_files_but_ignores_download_cache(tmp_path):
@@ -138,12 +156,15 @@ def test_download_fetches_only_manifest_owned_files(tmp_path):
     )
     assert calls[0]["allow_patterns"] == ["MANIFEST.sha256"]
     assert calls[1]["allow_patterns"] == [
+        "chat_template.jinja",
         "config.json",
+        "generation_config.json",
         "model-00001-of-00002.safetensors",
         "model-00002-of-00002.safetensors",
         "model.safetensors.index.json",
         "tier_bitmap.json",
         "tokenizer.json",
+        "tokenizer_config.json",
     ]
     assert calls[1]["force_download"] is True
     assert "patch_exl3_mixk.py" not in calls[1]["allow_patterns"]

@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "runtime/exl3"))
 
 from model_manifest import (  # noqa: E402
     manifest_entries,
+    runtime_manifest_entries,
     sha256,
     stderr_progress,
     verify_model,
@@ -82,7 +83,7 @@ def download_manifested_snapshot(path: Path, model: dict, snapshot_download) -> 
             "MANIFEST.sha256 hash mismatch: expected "
             f"{model['manifest_sha256']}, got {observed}"
         )
-    owned = manifest_entries(manifest_path)
+    owned = runtime_manifest_entries(manifest_entries(manifest_path))
     needed = []
     for name, expected in sorted(owned.items()):
         target = path.joinpath(*name.split("/"))
