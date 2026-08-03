@@ -176,3 +176,10 @@ def test_download_repairs_only_missing_or_mismatched_owned_files(tmp_path):
         "model-00002-of-00002.safetensors",
         "tokenizer.json",
     ]
+    quarantined = list(
+        (destination / ".cache" / "sparkring-replaced").rglob(
+            "tokenizer.json.replaced-*"
+        )
+    )
+    assert len(quarantined) == 1
+    assert quarantined[0].read_bytes() == b"stale"

@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import sys
+import uuid
 from pathlib import Path
 
 
@@ -47,6 +48,19 @@ def require_capacity(path: Path, model: dict) -> None:
         raise RuntimeError(f"insufficient model disk space: need {required}, have {free}")
 
 
+def quarantine_file(path: Path, root: Path) -> None:
+    relative = path.relative_to(root)
+    destination = (
+        root
+        / ".cache"
+        / "sparkring-replaced"
+        / relative.parent
+        / f"{relative.name}.replaced-{uuid.uuid4().hex}"
+    )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(path, destination)
+
+
 def download_manifested_snapshot(path: Path, model: dict, snapshot_download) -> None:
     """Download only receipt-owned bytes, never arbitrary repository sidecars."""
     common = {
@@ -55,8 +69,13 @@ def download_manifested_snapshot(path: Path, model: dict, snapshot_download) -> 
         "local_dir": path,
         "token": os.environ.get("HF_TOKEN"),
     }
-    snapshot_download(**common, allow_patterns=["MANIFEST.sha256"])
     manifest_path = path / "MANIFEST.sha256"
+    if (
+        manifest_path.is_file()
+        and sha256(manifest_path) != model["manifest_sha256"]
+    ):
+        quarantine_file(manifest_path, path)
+    snapshot_download(**common, allow_patterns=["MANIFEST.sha256"])
     observed = sha256(manifest_path)
     if observed != model["manifest_sha256"]:
         raise RuntimeError(
@@ -67,7 +86,9 @@ def download_manifested_snapshot(path: Path, model: dict, snapshot_download) -> 
     needed = []
     for name, expected in sorted(owned.items()):
         target = path.joinpath(*name.split("/"))
-        if not target.is_file() or sha256(target) != expected:
+        if target.is_file() and sha256(target) != expected:
+            quarantine_file(target, path)
+        if not target.is_file():
             needed.append(name)
     if needed:
         snapshot_download(
