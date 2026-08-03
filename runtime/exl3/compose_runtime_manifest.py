@@ -12,6 +12,7 @@ from pathlib import Path
 BASE_MANIFEST = Path("/opt/sparkring/runtime-manifest.json")
 PREFIX = Path("/opt/sparkring-exl3")
 SITE_PACKAGES = Path("/opt/venv/lib/python3.12/site-packages")
+VENV_ROOT = Path("/opt/venv")
 SPARK_RUNTIME_ROOT = Path("/opt/spark-vllm")
 OUTPUT = PREFIX / "runtime-manifest.json"
 
@@ -39,8 +40,11 @@ def package_files(root: Path) -> dict[str, str]:
     }
 
 
-def distribution_files(distribution_names: tuple[str, ...]) -> dict[str, str]:
+def distribution_files(
+    distribution_names: tuple[str, ...],
+) -> tuple[dict[str, str], dict[str, str]]:
     files: dict[str, str] = {}
+    venv_files: dict[str, str] = {}
     for name in distribution_names:
         distribution = importlib.metadata.distribution(name)
         if distribution.files is None:
@@ -53,13 +57,20 @@ def distribution_files(distribution_names: tuple[str, ...]) -> dict[str, str]:
                 receipt_name = installed.resolve().relative_to(
                     SITE_PACKAGES.resolve()
                 ).as_posix()
-            except ValueError as exc:
-                raise RuntimeError(
-                    f"installed distribution file escapes site-packages: "
-                    f"{name}: {installed}"
-                ) from exc
-            files[receipt_name] = sha256(installed)
-    return files
+            except ValueError:
+                try:
+                    receipt_name = installed.resolve().relative_to(
+                        VENV_ROOT.resolve()
+                    ).as_posix()
+                except ValueError as exc:
+                    raise RuntimeError(
+                        f"installed distribution file escapes venv: "
+                        f"{name}: {installed}"
+                    ) from exc
+                venv_files[receipt_name] = sha256(installed)
+            else:
+                files[receipt_name] = sha256(installed)
+    return files, venv_files
 
 
 def compose_spark_runtime_overlay(manifest: dict, pins: dict) -> None:
@@ -180,7 +191,8 @@ def main() -> int:
                 f"installed distribution version mismatch for {name}: "
                 f"{observed_version} != {record['version']}"
             )
-    package_map.update(distribution_files(tuple(cutlass_distributions)))
+    cutlass_files, venv_tools = distribution_files(tuple(cutlass_distributions))
+    package_map.update(cutlass_files)
     lmcache_distributions = (
         "lmcache",
         "aiofile",
@@ -197,7 +209,9 @@ def main() -> int:
             "installed LMCache version mismatch: "
             f"{observed_lmcache_version} != {pins['lmcache']['version']}"
         )
-    package_map.update(distribution_files(lmcache_distributions))
+    lmcache_files, lmcache_venv_tools = distribution_files(lmcache_distributions)
+    package_map.update(lmcache_files)
+    venv_tools.update(lmcache_venv_tools)
     extensions = sorted(SITE_PACKAGES.glob("exllamav3_ext*.so"))
     if len(extensions) != 1:
         raise RuntimeError(
@@ -215,6 +229,17 @@ def main() -> int:
             },
         }
     )
+    if venv_tools:
+        manifest["components"].append(
+            {
+                "name": "public-exl3-venv-tools",
+                "verification": {
+                    "mode": "tree",
+                    "root": str(VENV_ROOT),
+                    "files": venv_tools,
+                },
+            }
+        )
     manifest["native_libs"].append(
         {"path": str(extension), "sha256": sha256(extension)}
     )

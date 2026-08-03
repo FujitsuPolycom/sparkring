@@ -87,6 +87,13 @@ def test_entrypoint_clears_explicit_unsets_and_runs_full_model_verifier():
     assert "verify_exl3_model.py" in entrypoint
 
 
+def test_runtime_manifest_receipts_distribution_tools_outside_site_packages():
+    composer = (HERE / "compose_runtime_manifest.py").read_text(encoding="utf-8")
+    assert 'VENV_ROOT = Path("/opt/venv")' in composer
+    assert '"public-exl3-venv-tools"' in composer
+    assert "installed distribution file escapes venv" in composer
+
+
 def test_generated_context_verifier_rejects_byte_drift(tmp_path):
     payload = tmp_path / "payload.bin"
     payload.write_bytes(b"exact")
