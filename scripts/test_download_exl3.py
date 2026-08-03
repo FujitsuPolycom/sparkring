@@ -138,7 +138,6 @@ def test_download_fetches_only_manifest_owned_files(tmp_path):
     )
     assert calls[0]["allow_patterns"] == ["MANIFEST.sha256"]
     assert calls[1]["allow_patterns"] == [
-        "MANIFEST.sha256",
         "config.json",
         "model-00001-of-00002.safetensors",
         "model-00002-of-00002.safetensors",
@@ -146,4 +145,34 @@ def test_download_fetches_only_manifest_owned_files(tmp_path):
         "tier_bitmap.json",
         "tokenizer.json",
     ]
+    assert calls[1]["force_download"] is True
     assert "patch_exl3_mixk.py" not in calls[1]["allow_patterns"]
+
+
+def test_download_repairs_only_missing_or_mismatched_owned_files(tmp_path):
+    source = tmp_path / "source"
+    model = _fixture(source)
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    for item in source.iterdir():
+        if item.is_file():
+            (destination / item.name).write_bytes(item.read_bytes())
+    (destination / "README.extra").write_bytes(b"not owned")
+    (destination / "tokenizer.json").write_bytes(b"stale")
+    (destination / "model-00002-of-00002.safetensors").unlink()
+    calls = []
+
+    def fake_snapshot_download(**kwargs):
+        calls.append(kwargs)
+        for name in kwargs["allow_patterns"]:
+            source_file = source / name
+            if source_file.is_file():
+                (destination / name).write_bytes(source_file.read_bytes())
+
+    download_exl3.download_manifested_snapshot(
+        destination, model, fake_snapshot_download
+    )
+    assert calls[1]["allow_patterns"] == [
+        "model-00002-of-00002.safetensors",
+        "tokenizer.json",
+    ]

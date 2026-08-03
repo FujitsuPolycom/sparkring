@@ -63,11 +63,18 @@ def download_manifested_snapshot(path: Path, model: dict, snapshot_download) -> 
             "MANIFEST.sha256 hash mismatch: expected "
             f"{model['manifest_sha256']}, got {observed}"
         )
-    owned = sorted(manifest_entries(manifest_path))
-    snapshot_download(
-        **common,
-        allow_patterns=["MANIFEST.sha256", *owned],
-    )
+    owned = manifest_entries(manifest_path)
+    needed = []
+    for name, expected in sorted(owned.items()):
+        target = path.joinpath(*name.split("/"))
+        if not target.is_file() or sha256(target) != expected:
+            needed.append(name)
+    if needed:
+        snapshot_download(
+            **common,
+            allow_patterns=needed,
+            force_download=True,
+        )
 
 
 def download(path: Path, model: dict) -> None:
