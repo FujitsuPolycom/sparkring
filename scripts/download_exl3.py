@@ -16,7 +16,12 @@ RECIPE = ROOT / "recipes/glm52-exl3-tr3-3.25bpw.json"
 HEADROOM_BYTES = 16 * 1024**3
 sys.path.insert(0, str(ROOT / "runtime/exl3"))
 
-from model_manifest import stderr_progress, verify_model  # noqa: E402
+from model_manifest import (  # noqa: E402
+    manifest_entries,
+    sha256,
+    stderr_progress,
+    verify_model,
+)
 
 
 def contract() -> dict:
@@ -42,6 +47,29 @@ def require_capacity(path: Path, model: dict) -> None:
         raise RuntimeError(f"insufficient model disk space: need {required}, have {free}")
 
 
+def download_manifested_snapshot(path: Path, model: dict, snapshot_download) -> None:
+    """Download only receipt-owned bytes, never arbitrary repository sidecars."""
+    common = {
+        "repo_id": model["repository"],
+        "revision": model["revision"],
+        "local_dir": path,
+        "token": os.environ.get("HF_TOKEN"),
+    }
+    snapshot_download(**common, allow_patterns=["MANIFEST.sha256"])
+    manifest_path = path / "MANIFEST.sha256"
+    observed = sha256(manifest_path)
+    if observed != model["manifest_sha256"]:
+        raise RuntimeError(
+            "MANIFEST.sha256 hash mismatch: expected "
+            f"{model['manifest_sha256']}, got {observed}"
+        )
+    owned = sorted(manifest_entries(manifest_path))
+    snapshot_download(
+        **common,
+        allow_patterns=["MANIFEST.sha256", *owned],
+    )
+
+
 def download(path: Path, model: dict) -> None:
     try:
         report = verify(path, model)
@@ -59,12 +87,7 @@ def download(path: Path, model: dict) -> None:
     except ImportError as exc:
         raise RuntimeError("huggingface_hub is required; install it in the rank-0 Python environment") from exc
     path.mkdir(parents=True, exist_ok=True)
-    snapshot_download(
-        repo_id=model["repository"],
-        revision=model["revision"],
-        local_dir=path,
-        token=os.environ.get("HF_TOKEN"),
-    )
+    download_manifested_snapshot(path, model, snapshot_download)
     print(json.dumps(verify(path, model), sort_keys=True))
 
 

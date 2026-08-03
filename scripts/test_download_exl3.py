@@ -117,3 +117,33 @@ def test_capacity_prices_only_missing_bytes_plus_headroom(tmp_path, monkeypatch)
         download_exl3.require_capacity(model_path, model)
     Usage.free += 1
     download_exl3.require_capacity(model_path, model)
+
+
+def test_download_fetches_only_manifest_owned_files(tmp_path):
+    source = tmp_path / "source"
+    model = _fixture(source)
+    destination = tmp_path / "destination"
+    calls = []
+
+    def fake_snapshot_download(**kwargs):
+        calls.append(kwargs)
+        destination.mkdir(exist_ok=True)
+        for name in kwargs["allow_patterns"]:
+            source_file = source / name
+            if source_file.is_file():
+                (destination / name).write_bytes(source_file.read_bytes())
+
+    download_exl3.download_manifested_snapshot(
+        destination, model, fake_snapshot_download
+    )
+    assert calls[0]["allow_patterns"] == ["MANIFEST.sha256"]
+    assert calls[1]["allow_patterns"] == [
+        "MANIFEST.sha256",
+        "config.json",
+        "model-00001-of-00002.safetensors",
+        "model-00002-of-00002.safetensors",
+        "model.safetensors.index.json",
+        "tier_bitmap.json",
+        "tokenizer.json",
+    ]
+    assert "patch_exl3_mixk.py" not in calls[1]["allow_patterns"]
