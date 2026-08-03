@@ -308,7 +308,11 @@ python scripts/preflight.py \
   --site scripts/config/site.yaml \
   --scope fabric
 
-# 4. Read-only model/bootstrap plan after the live fabric gate passes.
+# 4a. Main advertised EXL3+LMCache plan.
+python scripts/bootstrap_exl3.py plan \
+  --site scripts/config/site.yaml
+
+# 4b. Or inspect the accepted deterministic NF3 alternative.
 python scripts/bootstrap_nf3.py plan \
   --site scripts/config/site.yaml \
   --profile nvfp4-rope8
@@ -322,7 +326,17 @@ which do not exist before the first build; do not require it to pass against
 the unresolved input site. The bootstrap repeats `--scope fabric` before any
 model download or image build.
 
-After steps 1-4 pass, the safest first mutation is preparation without launch:
+After steps 1-4 pass, the safest first mutation is preparation without launch.
+For the main advertised EXL3+LMCache configuration:
+
+```bash
+python scripts/bootstrap_exl3.py execute \
+  --site scripts/config/site.yaml \
+  --no-launch \
+  --confirmation BOOTSTRAP-EXL3-ALL-FOUR
+```
+
+For the accepted deterministic NF3 alternative:
 
 ```bash
 python scripts/bootstrap_nf3.py execute \
@@ -332,9 +346,9 @@ python scripts/bootstrap_nf3.py execute \
   --confirmation BOOTSTRAP-NF3-ALL-FOUR
 ```
 
-This downloads/verifies the model, builds and fans out the exact image, writes
-`.sparkring/bootstrap/site.yaml`, and runs the full read-only preflight against
-that resolved site. It does not start the model.
+Each command downloads/verifies its model, builds and fans out one exact image,
+writes an ignored resolved site/profile under `.sparkring/`, and runs full
+read-only preflight against that resolved contract. Neither starts the model.
 
 ## Ready-to-bootstrap checklist
 
@@ -351,9 +365,12 @@ that resolved site. It does not start the model.
 - [ ] `sparkring_site.py` passes.
 - [ ] `verify_ssh_mesh.py` passes.
 - [ ] The offline preflight plan has been reviewed.
-- [ ] The NVFP4/FP8-RoPE bootstrap plan is reviewed.
-- [ ] `bootstrap_nf3.py execute --no-launch` passes, including its resolved
-      full preflight.
+- [ ] The selected EXL3 or NF3 NVFP4/FP8-RoPE bootstrap plan is reviewed.
+- [ ] The selected bootstrap's `execute --no-launch` passes, including its
+      resolved full preflight.
 
-Once every box is true, continue with
-[the four-Spark NF3 quickstart](QUICKSTART.md#5-build-verify-distribute-and-launch).
+Once every box is true, continue with the
+[EXL3 + LMCache quickstart](EXL3_QUICKSTART.md) for the main advertised
+configuration, or the
+[four-Spark NF3 quickstart](QUICKSTART.md#5-build-verify-distribute-and-launch)
+for the accepted deterministic alternative.

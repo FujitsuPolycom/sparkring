@@ -2,16 +2,17 @@
 
 **GLM-5.2 on 4x NVIDIA DGX Spark (GB10), tensor-parallel 4, switchless direct-cable 200GbE RoCE ring.**
 
-> **Use [QUICKSTART.md](QUICKSTART.md) for a new installation.** SparkRing now
-> has one current target: the madeby561 NF3 hybrid. Model-specific Aiden/GPTQ
-> commands below are retained as historical reconstruction material, not as a
-> second supported setup path.
+> **Use [EXL3_QUICKSTART.md](EXL3_QUICKSTART.md) for the main advertised and
+> currently running installation.** The madeby561 NF3 hybrid remains the
+> accepted deterministic alternative in [QUICKSTART.md](QUICKSTART.md).
+> Model-specific Aiden/GPTQ commands below are retained as historical
+> reconstruction material, not as a supported setup path.
 
 This is the detailed reconstruction of the complete reference deployment:
 cabling, OS prerequisites, fabric network, patched NCCL, model download,
 native transport, runtime overlay, launcher, and acceptance gates. For the
 short copy/paste route, start with the
-**[four-Spark quickstart](QUICKSTART.md)**. This longer guide explains every
+**[EXL3 + LMCache quickstart](EXL3_QUICKSTART.md)**. This longer guide explains every
 layer and the historical evidence behind it.
 
 ---
@@ -26,9 +27,12 @@ layer and the historical evidence behind it.
 > builder, dry-run-first four-rank launcher, and a thin faststart builder based
 > on the exact public ARM64 community image. A native build and partial
 > four-rank bring-up passed through full model/MTP load, B12X prewarm, and KV
-> allocation; complete API/request acceptance remains.
+> allocation. Separately, the public EXL3+LMCache bootstrap has completed a
+> clean-checkout four-Spark bounded startup/graph/API gate; see
+> [EXL3_RECIPE.md](EXL3_RECIPE.md). That result does not relabel the historical
+> stages below as accepted.
 >
-> Concretely: the quickstart is the current public candidate. The stages below
+> Concretely: the EXL3 quickstart is the current advertised public path. The stages below
 > remain the deeper reference, including historical loose-artifact procedures.
 > A successful build is not yet an acceptance result.
 >

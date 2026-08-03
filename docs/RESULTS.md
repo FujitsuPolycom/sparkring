@@ -1,9 +1,53 @@
 # SparkRing — Measured Results
 
 > The detailed matrix below is the historical Aiden MXFP4/GPTQ evidence set.
-> The current NF3 target has a smaller accepted sanity set in
-> [README.md](../README.md). Results are not interchangeable between the two
-> checkpoints.
+> NF3 has a smaller accepted sanity set in [README.md](../README.md).
+> EXL3+LMCache CS512 is the main advertised and currently running
+> public-functional configuration and has the bounded clean-checkout gate below.
+> Results are not interchangeable between checkpoints or evidence origins.
+
+## Current EXL3+LMCache public-path gate
+
+On 2026-08-03, a clean checkout built the EXL3 derived image from source commit
+`19523482c29860024c3a3cf51e793e8436e1c441`; launcher correction `cc9cc1e`
+deployed it to four directly cabled DGX Sparks. Exact image
+`sha256:20c4099f2e7e3dd3c8ab64f7d7930bde4f372df1895aa3ffa593252ca04ae96f`
+was identical on all ranks. Post-stop preflight passed 116/116 checks, four
+engines and four LMCache CS512 servers started with zero restarts, model load
+was 84.43 GiB/rank, and 16/16 piecewise plus 12/12 full graphs captured.
+
+Five consecutive bounded `exl3_live_gate.py` runs passed all configured
+C1/C2/C8 regression floors and post-run health checks. Their ten fixed-seed
+128-token completions were identical, with SHA-256
+`a310b67d304b36f5dea88cbbcb18ba7be640001cc463590fe4e8cbb31042131c`.
+Those bounded live-gate throughput samples varied and are not promoted as a
+performance matrix; the standard matrix below is a separate run. This is
+clean-checkout public-functional-lane bounded live
+evidence, not reference-lane evidence, blanket correctness, persistence,
+release promotion, or complete public-functional acceptance. See
+[EXL3_RECIPE.md](EXL3_RECIPE.md).
+
+The same clean-image deployment then completed the standard sustained-decode
+16K matrix with `llm_decode_bench.py` v0.4.31: 25-second duration cells,
+2,048-token maximum, temperature 0, duration-mode `ignore_eos`, 100% unique
+contexts, DCP4, exact 562,688-token KV budget, three-second decode warmup,
+prefill skipped, and a 300-second cell-warmup timeout.
+
+| 16K concurrency | Aggregate tok/s | Effective concurrency | Errors |
+|---:|---:|---:|---:|
+| C1 | **18.33** | 1/1 | 0 |
+| C2 | **27.61** | 2/2 | 0 |
+| C4 | **45.11** | 4/4 | 0 |
+| C8 | **59.40** | 8/8 | 0 |
+
+The metric is `aggregate_tps/openai_continuous_usage`. Relative to the earlier
+external CS512 quick matrix, the clean-image cells changed by -0.71%, -5.28%,
++3.96%, and -2.47% at C1/C2/C4/C8 respectively. This is a cross-run drift
+comparison, not a sealed A/B. The first attempt used the harness's automatic
+60-second readiness allowance: C1 was valid at 18.2 tok/s, while C2/C4/C8 were
+correctly suppressed after warmup timeout. Those suppressions were readiness
+timeouts, not KV-capacity failures. Unique 16K validation for this profile
+therefore requires `--cell-warmup-timeout-seconds 300`.
 
 This document is the definitive record of SparkRing's measured performance. Every number here is a real measurement pulled from a dated deliverable, carries its full configuration label, and passed the verification gate stated on its row. Nothing in this document is a projection, an extrapolation, or a comparison against systems we did not measure ourselves.
 

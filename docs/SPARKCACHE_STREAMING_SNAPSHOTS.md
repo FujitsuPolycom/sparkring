@@ -1,5 +1,12 @@
 # SparkCache streaming snapshots
 
+> **Scope note (2026-08-03):** This document records the SparkCache v50/v51
+> development and live-validation campaign. It does not describe the current
+> EXL3 3.25 bpw + LMCache CS512 serving configuration; that configuration has
+> SparkCache disabled. SparkCache and LMCache are distinct KV-Connector-V1
+> implementations. The repository's TP4/DCP2 SparkCache integration is
+> offline-validated and has not been promoted to the current service.
+
 Status: v50 live pipeline characterized; v51 idle-progress fix implemented
 and **v51 LIVE NO-NUDGE VALIDATION PASSED**
 Target: remove the multi-second end-of-prefill snapshot without weakening
@@ -75,7 +82,7 @@ optional cache transaction. Escaped CUDA/native ownership errors become
 sticky fatal state: continuing after an ambiguous fence could permit vLLM to
 reuse a physical KV block still being read.
 
-Offline gates completed on 2026-07-29:
+Offline gates recorded by the v51 campaign on 2026-07-29:
 
 - 132 streaming tests passed;
 - 76 connector tests passed;
@@ -84,6 +91,11 @@ Offline gates completed on 2026-07-29:
 - idle no-spin, foreground/background serialization, exact-once terminal
   handling, writer-failure fail-open behavior, CUDA-init sticky failure, and
   two-phase shutdown are explicitly covered.
+
+The later exact repository gate at commit `cc9cc1e` passed **423 tests with
+1 skipped** using `python -m pytest sparkcache -q` on the GPU-free development
+host on 2026-08-03. This updates the source-test count only; it does not
+relabel or extend the dated four-Spark evidence below.
 
 ## v51 live no-nudge result
 

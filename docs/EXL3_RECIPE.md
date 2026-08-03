@@ -1,7 +1,8 @@
 # GLM-5.2 EXL3 3.25-bpw recipe
 
-Status: **live-validated configuration; public source bootstrap
-offline-validated; clean-checkout four-Spark gate pending**
+Status: **main advertised and currently running public-functional
+configuration; clean-checkout four-Spark live-validated; not the accepted
+deterministic default**
 
 This recipe defines the current public EXL3 serving contract for four directly
 cabled DGX Sparks:
@@ -45,10 +46,11 @@ validated as external operator configurations. Their exact deltas, bounded
 gates, and evidence limitations are recorded in the
 [DCP4 fixed-MTP2 recipe](EXL3_FIXED_MTP2_RECIPE_20260802.md) and
 [LMCache campaign](EXL3_LMCACHE_CAMPAIGN_20260803.md). Publishing the same
-settings in the executable recipe does not turn those external runs into a
-clean-checkout public-bootstrap result. The current clean-checkout four-Spark
-live gate remains pending, and the external 128-token repeat remains a failed
-correctness gate.
+settings in the executable recipe does not relabel those earlier external runs.
+A later clean-checkout deployment of the public bootstrap has its own bounded
+receipt below. In that exact deployment, the repeated 128-token gate passed;
+the earlier external token-124 divergence remains part of the external
+campaign record.
 
 ## Inspect the recipe offline
 
@@ -139,34 +141,39 @@ content verification. This exception does not include weights, configuration,
 tokenizer files, the chat template, generation settings, the tier bitmap, or
 the safetensors index. Unmanifested non-cache files are still rejected.
 
-## Evidence boundary
-
-The fixed-MTP2 engine settings and LMCache CS512 topology have external
-four-Spark live evidence covering startup, CUDA-graph capture, API operation,
-bounded prefill, and C1/C2/C8 serving. A short deterministic check passed, but
-the later 128-token repeat diverged at token 124. The recipe therefore retains
-`live-validated` maturity without claiming correctness or public-bootstrap
-acceptance.
+## Clean-checkout four-Spark receipt
 
 The public source composition, full vLLM EXL3 overlay, derived-image builder,
-model verifier, 200 GbE fanout, and dry-run-first launcher are now published and
-offline-validated. The remaining acceptance step is a clean checkout building
-the derived image and repeating the four-rank gate. Until that passes:
+model verifier, 200 GbE fanout, and dry-run-first launcher were exercised from
+a clean checkout on four directly cabled DGX Sparks. The image source was
+commit `19523482c29860024c3a3cf51e793e8436e1c441`; launcher correction
+`cc9cc1e` was then used for deployment.
 
-- NF3 remains the default public-functional recipe and quickstart.
-- The EXL3 bootstrap is a candidate, not a claim of independent one-command
-  reproduction.
-- Do not substitute mutable model tags, source heads, image tags, or arbitrary
-  EXL3 wheels and call the result this recipe.
+| Gate | Observed result |
+|---|---|
+| Exact image fanout | `sha256:20c4099f2e7e3dd3c8ab64f7d7930bde4f372df1895aa3ffa593252ca04ae96f` on all four ranks |
+| Post-stop preflight | 116/116 passed |
+| Processes | four engines + four LMCache CS512 servers; zero restarts |
+| Model/API | 524,288 maximum model length; 562,688 reported KV tokens |
+| Model load | 84.43 GiB/rank |
+| CUDA graphs | 16/16 piecewise and 12/12 full captures |
+| Repeated live gate | five consecutive C1/C2/C8 gate runs passed every floor |
+| Fixed-seed output | ten identical 128-token completions; SHA-256 `a310b67d304b36f5dea88cbbcb18ba7be640001cc463590fe4e8cbb31042131c` |
+| Standard sustained decode | unique 16K C1/C2/C4/C8: 18.33 / 27.61 / 45.11 / 59.40 aggregate tok/s; exact requested concurrency; zero errors |
+| Offline suite | local: 2,046 passed, 13 skipped; clean host: 2,035 passed, 4 skipped, 113 subtests |
 
-## Next publication gate
+This makes EXL3+LMCache CS512 the main advertised and currently running
+public-functional configuration. The evidence is intentionally bounded: it
+does not prove blanket model correctness, LMCache persistence, arbitrary-host
+reproducibility, release promotion, or the complete public-functional
+acceptance matrix. NF3 therefore remains the accepted deterministic executable
+default and supported alternative. SparkCache is a separate implementation
+and is disabled in this profile.
 
-1. Run the public bootstrap from a clean checkout on rank 0.
-2. Confirm the 81-shard adoption/download and direct-ring fanout receipts.
-3. Confirm the derived image ID on all four ranks.
-4. Complete four-rank startup, correctness, C1/C2/C8, and post-run health
-   gates using the commands below.
-5. Record the public-path receipt and promote the bootstrap from candidate.
+Do not substitute mutable model tags, source heads, image tags, or arbitrary
+EXL3 wheels and call the result this recipe.
+
+## Reproduce the bounded live gate
 
 After the launcher reports that all four LMCache servers and all four engines
 are running and the API is ready, first re-attest the deployed bytes and check
@@ -212,3 +219,12 @@ matrix. A successful clean-checkout run must retain its generated site/profile,
 image IDs, bootstrap output, live-gate JSON, and four-rank logs as the
 publication receipt. These are candidate regression floors, not reference-lane
 performance claims.
+
+For a standard sustained-decode check, use `llm_decode_bench.py` v0.4.31 with
+16K context, concurrency 1/2/4/8, 25-second cells, 2,048 maximum tokens,
+temperature 0, 100% unique contexts, DCP4, KV budget 562688, three-second decode
+warmup, and prefill skipped. Set the cell-warmup timeout to 300 seconds. The
+default automatic 60-second readiness allowance was insufficient on the clean
+deployment and suppressed C2/C4/C8 even though KV capacity was not exhausted.
+Only quote cells whose effective concurrency equals the request and whose
+error count is zero.

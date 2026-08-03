@@ -5,20 +5,22 @@ contributors. Read it before changing or running anything in this repository.
 
 ## Current truth
 
-- The **reference lane** produced the measurements in `README.md` and
-  `docs/RESULTS.md`. The recovered 71-file reference-runtime delta is published
+- The **reference lane** produced the historical measurements retained in
+  `README.md` and `docs/RESULTS.md`; current public-functional results are
+  labelled separately. The recovered 71-file reference-runtime delta is published
   under `runtime/patches/00-reference-vllm/`; the exact historical launch
   artifacts and evidence harness remain maintainer-held, and public-lane
   reproduction of those measurements is pending.
-- The **public-functional lane** now has a source bootstrap for the validated
-  NF3 target. It builds one receipt-gated ARM64 image on rank 0, distributes
-  that exact image ID, and launches the C8/Q40 graph profile. A clean-checkout
-  external reproduction is still requested; do not equate bootstrap readiness
-  with independent reproduction.
-- The non-default **EXL3 lane** has an offline-validated, receipt-gated public
-  source bootstrap under `runtime/exl3/` and `scripts/bootstrap_exl3.py`. Its
-  serving configuration is live-validated, but the new public bootstrap still
-  needs its clean-checkout four-Spark acceptance run.
+- The **main advertised and currently running public-functional configuration**
+  is EXL3 3.25-bpw plus LMCache CS512. Its receipt-gated public bootstrap built
+  one ARM64 image from a clean checkout, distributed the identical image ID to
+  four directly cabled Sparks, and passed startup, graph, API, repeated
+  fixed-seed 128-token, bounded C1/C2/C8, and post-run health gates. This is
+  clean-checkout live validation, not blanket correctness, persistence,
+  release promotion, or full public-functional acceptance.
+- NF3 remains the accepted deterministic public-functional default and a
+  supported alternative. Do not change executable default flags merely because
+  EXL3 is the main advertised operator configuration.
 - Never describe a reference-lane number as a result from this checkout.
 
 Machine-readable status is in `docs/STATUS.json`.

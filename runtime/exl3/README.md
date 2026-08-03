@@ -37,5 +37,10 @@ python scripts/bootstrap_exl3.py plan \
 ```
 
 See [`docs/EXL3_RECIPE.md`](../../docs/EXL3_RECIPE.md) for the full preparation,
-review, and LMCache launch sequence. The source bootstrap is offline-validated;
-its current clean-checkout four-Spark live gate remains pending.
+review, and LMCache launch sequence. The source bootstrap is clean-checkout
+live-validated on four directly cabled DGX Sparks. The identical deployed image
+ID was
+`sha256:20c4099f2e7e3dd3c8ab64f7d7930bde4f372df1895aa3ffa593252ca04ae96f`.
+This validates the bounded bootstrap/startup/API gate; it does not establish
+blanket correctness, NVMe persistence, release promotion, or full
+public-functional acceptance.

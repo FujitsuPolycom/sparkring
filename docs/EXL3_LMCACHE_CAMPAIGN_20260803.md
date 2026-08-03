@@ -26,7 +26,7 @@ fixed-seed 128-token reruns produced different hashes, so release correctness
 is failed/open. This is not durable-backend persistence, public-bootstrap
 acceptance, a clean-checkout result, or a reference-lane result.
 
-The final chunk-size tuning arm, CS512, changes only LMCache `chunk_size` from
+Within that external campaign, the final chunk-size tuning arm, CS512, changes only LMCache `chunk_size` from
 256 to 512 and otherwise retains the C0-best engine configuration. It is the
 campaign's performance-promoted live arm. Release and public acceptance remain
 blocked by the inherited token-124 nondeterministic correctness gate and by
@@ -41,6 +41,50 @@ boundaries are retained in the companion
 
 LMCache is not the repository's `sparkcache/` implementation. Evidence and
 maturity claims for the two systems are separate.
+
+## Later clean-checkout public-path receipt
+
+The external campaign evidence below retains its original labels, failures,
+and boundaries. It was not retroactively converted into clean-checkout
+evidence. A later, separate public-path run built the executable CS512 recipe
+from a clean checkout using image-source commit
+`19523482c29860024c3a3cf51e793e8436e1c441` and launcher correction `cc9cc1e`.
+
+Exact image
+`sha256:20c4099f2e7e3dd3c8ab64f7d7930bde4f372df1895aa3ffa593252ca04ae96f`
+was identical on four directly cabled DGX Sparks. Post-stop preflight passed
+116/116 checks. Four engines and four LMCache CS512 servers started with zero
+restarts; the engine reported a 524,288-token model limit and 562,688 KV-token
+capacity, loaded 84.43 GiB/rank, and completed 16/16 piecewise plus 12/12 full
+graph captures. Five consecutive bounded gates passed their C1/C2/C8 floors.
+Ten fixed-seed 128-token completions were identical, with SHA-256
+`a310b67d304b36f5dea88cbbcb18ba7be640001cc463590fe4e8cbb31042131c`.
+
+This later receipt promotes CS512 as SparkRing's main advertised and currently
+running public-functional configuration. It does not erase the external
+campaign's token-124 divergence, establish blanket correctness or LMCache
+persistence, promote a release, or complete public-functional acceptance.
+SparkCache remained disabled and is not LMCache.
+
+The clean-image deployment also completed a standard unique-context 16K
+sustained-decode matrix with `llm_decode_bench.py` v0.4.31. The run used
+25-second cells, a 2,048-token maximum, temperature 0, duration-mode
+`ignore_eos`, 100% unique contexts, DCP4, exact KV budget 562688, three-second
+decode warmup, skipped prefill, and a 300-second cell-warmup timeout.
+
+| Concurrency | Clean-image aggregate tok/s | Prior external CS512 | Relative change |
+|---:|---:|---:|---:|
+| C1 | 18.3262 | 18.4576 | -0.71% |
+| C2 | 27.6119 | 29.1496 | -5.28% |
+| C4 | 45.1071 | 43.3878 | +3.96% |
+| C8 | 59.4000 | 60.9055 | -2.47% |
+
+Every clean-image cell reached exact effective concurrency 1/2/4/8 and had
+zero errors. The comparison is cross-run and directional, not a sealed A/B.
+An initial automatic-60-second-readiness attempt produced valid C1 at 18.2
+tok/s but suppressed C2/C4/C8 after warmup timeout. That was a readiness-limit
+artifact, not KV exhaustion; the 300-second cell-warmup timeout is part of the
+reproduction procedure.
 
 ## Campaign state
 
@@ -62,7 +106,7 @@ maturity claims for the two systems are separate.
 | durable persistence or storage-tier offload | not demonstrated |
 | C0-best promotion | not promoted; full matrix completed with capacity-limited cells |
 | final live arm | CS512, performance-promoted relative to C0-best |
-| release/public acceptance | blocked: correctness gate and identical-image requirement fail |
+| external-campaign release/public acceptance | blocked in this evidence set: correctness gate and identical-image requirement fail |
 
 The C0 claim is limited to the observed live lifecycle. It does not establish a
 default recipe, performance superiority, NVMe durability, server-restart

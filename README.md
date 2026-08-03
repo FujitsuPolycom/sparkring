@@ -22,18 +22,35 @@ SparkRing’s contribution is to adapt, integrate, and extend those foundations 
 Detailed project and contributor credits are maintained in the acknowledgements and provenance documentation.
 ## Current deployment
 
-SparkRing's default public-functional target is:
-[`madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid`](https://huggingface.co/madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid)
+SparkRing's main advertised and currently running public-functional
+configuration is
+[`willfalco/GLM-5.2-EXL3-TR3-3.25bpw`](https://huggingface.co/willfalco/GLM-5.2-EXL3-TR3-3.25bpw)
 at immutable revision
-`66f3623dd8fefb5ca8046706912d5d31c8d196af`.
+`d7d79c2d14599dfce7a5d12b85f7ad73f40e623d`, with LMCache CS512.
 
 | Item | Configuration | Status |
 |---|---|---|
-| Model | MXFP8/NVFP4/NF3 hybrid | Validated on four DGX Sparks |
-| Parallelism | TP4/DCP4, adaptive MTP2/4 | Validated |
+| Model | EXL3/Trellis 3.25 bpw, legacy `per_expert_v1` | Clean-checkout live-validated on four DGX Sparks |
+| Parallelism | TP4/DCP4, fixed MTP2 | Validated |
 | Transport | Four 200 Gb/s direct links, cycle `0-1-2-3-0` | Validated |
 | API | OpenAI-compatible vLLM endpoint | Validated |
-| Public bootstrap | Pinned ARM64 base + thin local NF3 image | Clean-checkout four-Spark run validated |
+| Cache | native prefix cache + one LMCache CS512 server/rank; SparkCache disabled | Bounded live validation |
+| Public bootstrap | Receipt-gated EXL3 derived image | Clean-checkout identical-image four-Spark run validated |
+
+The exact image ID
+`sha256:20c4099f2e7e3dd3c8ab64f7d7930bde4f372df1895aa3ffa593252ca04ae96f`
+was deployed identically on all four ranks. The run passed 116/116 post-stop
+preflight checks, started four engines and four LMCache servers with zero
+restarts, captured 16/16 piecewise and 12/12 full graphs, and served a
+524,288-token model limit with 562,688 reported KV tokens. Five consecutive
+bounded gates passed; ten fixed-seed 128-token completions were byte-identical.
+See the [EXL3 quickstart](docs/EXL3_QUICKSTART.md) and
+[evidence-scoped recipe](docs/EXL3_RECIPE.md).
+
+This promotes EXL3+LMCache as the advertised operator configuration, not as a
+blanket correctness or release-acceptance claim. NF3 remains the accepted
+deterministic executable default and supported alternative; its quickstart is
+[here](docs/QUICKSTART.md).
 
 The maintainer's later one-million-token NF3 operator profile is captured
 separately in the
@@ -52,16 +69,9 @@ capacity-limited C8 cells that must not be quoted as valid throughput. It is a
 public-functional, live-validated operator snapshot, not a reference-lane or
 current-checkout result.
 
-A second, non-default
-[`willfalco/GLM-5.2-EXL3-TR3-3.25bpw`](https://huggingface.co/willfalco/GLM-5.2-EXL3-TR3-3.25bpw)
-recipe now records the maintainer's live EXL3 configuration. Its exact model
-hashes, source pins, environment, vLLM arguments, Q32/C8 graph contract, and
-1M/9-GB KV profile are in
+The exact EXL3 model hashes, source pins, environment, vLLM arguments, and
+Q4096/C8/Q32 contract are in
 [`recipes/glm52-exl3-tr3-3.25bpw.json`](recipes/glm52-exl3-tr3-3.25bpw.json).
-The configuration is live-validated. Its public, receipt-gated source bootstrap
-is now offline-validated; the remaining gate is a clean-checkout four-Spark
-run. See [the EXL3 recipe and bootstrap](docs/EXL3_RECIPE.md). NF3 remains the
-default, fully live-validated quickstart.
 
 The [fixed-MTP2 EXL3 alternative](docs/EXL3_FIXED_MTP2_RECIPE_20260802.md)
 records the exact four-Spark operator overlay and its duration-based
@@ -116,16 +126,17 @@ complete performance matrix.
 The older coherent GPTQ matrix and its exact configuration are retained on
 [the historical Aiden lane](docs/history/AIDEN_MXFP4_GPTQ.md).
 
-### EXL3 3.25-bpw candidate
+### EXL3 3.25-bpw + LMCache CS512
 
 | Item | Current live recipe |
 |---|---|
 | Model | `willfalco/GLM-5.2-EXL3-TR3-3.25bpw@d7d79c2...` |
-| Parallelism | TP4 / DCP4, fixed MTP3 |
+| Parallelism | TP4 / DCP4, fixed MTP2 |
 | Batch/graph contract | C8, Q32, 4,096 batched tokens |
-| Context/KV | 1,048,576 model limit; 9 GB/rank; 1,125,632 reported tokens |
+| Context/KV | 524,288 model limit; 4.5 GB/rank; 562,688 reported tokens |
 | KV representation | NVFP4 latent plus FP8 RoPE |
-| Public maturity | live configuration; public source bootstrap offline-validated |
+| Cache | native prefix cache + LMCache CS512; SparkCache disabled |
+| Public maturity | clean-checkout live-validated; main advertised/current-running configuration |
 
 Inspect either recipe without contacting the cluster:
 
@@ -246,42 +257,27 @@ cd sparkring
 cp scripts/config/site.example.yaml scripts/config/site.yaml
 $EDITOR scripts/config/site.yaml
 
-python scripts/bootstrap_nf3.py plan \
-  --site scripts/config/site.yaml
-
-python scripts/bootstrap_nf3.py execute \
-  --site scripts/config/site.yaml \
-  --confirmation BOOTSTRAP-NF3-ALL-FOUR
-```
-
-Add `--profile nvfp4-rope8` to select the larger-capacity live candidate. The
-same command reuses complete model/draft downloads and cached NF3 layers.
-
-The bootstrap is resumable and fail-closed. It reuses complete model files and
-existing exact images, otherwise it pulls the pinned public ARM64 base,
-downloads and verifies the NF3 target plus MTP draft on all four ranks, fetches
-the exact B12X and Spark-port commits, builds one thin derived image, fans that
-exact image ID to the other ranks, verifies the generated receipt, runs
-preflight, and launches the validated C8/Q40 profile with SparkCache disabled.
-It does not rebuild Torch, vLLM, FlashInfer, or the base kernel stack.
-
-See the [four-Spark quickstart](docs/QUICKSTART.md) for cabling, site fields,
-tail commands, and acceptance checks. Start with
-[PREREQUISITES.md](docs/PREREQUISITES.md) on a new cluster.
-
-To prepare the non-default EXL3 profile instead, reuse the same completed
-`site.yaml` and run its independent plan:
-
-```bash
 python scripts/bootstrap_exl3.py plan \
   --site scripts/config/site.yaml
+
+python scripts/bootstrap_exl3.py execute \
+  --site scripts/config/site.yaml \
+  --no-launch \
+  --confirmation BOOTSTRAP-EXL3-ALL-FOUR
 ```
 
-The EXL3 bootstrap adopts or resumes the pinned 81-shard model, reconstructs
-the exact public ExLlamaV3 and SparkInfer trees, builds one ARM64 derived image
-on rank 0, and fans model/image bytes over the 200 GbE ring. Its execute path is
-documented in [EXL3_RECIPE.md](docs/EXL3_RECIPE.md); it remains a candidate
-until the clean-checkout four-Spark gate is recorded.
+The bootstrap is resumable and fail-closed. It reuses complete model files and
+existing exact images, adopts or resumes the pinned 81-shard model,
+reconstructs the pinned ExLlamaV3, SparkInfer, and LMCache trees, builds one
+ARM64 derived image on rank 0, and fans model/image bytes over the 200 GbE
+ring. `--no-launch` leaves the generated contract ready for review before a
+serving cutover.
+
+See [EXL3_QUICKSTART.md](docs/EXL3_QUICKSTART.md) for cabling, site fields,
+review, launch, tail, and bounded gate commands. Start with
+[PREREQUISITES.md](docs/PREREQUISITES.md) on a new cluster. NF3 remains the
+accepted deterministic executable default and is available through the
+[NF3 quickstart](docs/QUICKSTART.md).
 
 ## Offline contributor quickstart
 

@@ -1,16 +1,25 @@
 # SparkCache DCP2 dry-run launch plan — TEMPLATE
 
+> **Historical operator snapshot:** The container names, active-service
+> description, image identity, mounts, and blocker states below were recorded
+> for the 2026-08-01 NF3 deployment. They are not assertions about the current
+> cluster. As of the 2026-08-03 operator snapshot, the current EXL3 3.25 bpw
+> service uses LMCache CS512 and has SparkCache disabled. This NF3 TP4/DCP2
+> SparkCache path remains offline-validated only; rerun discovery and every
+> attestation before using this template.
+
 **Date:** 2026-08-01
 **Lane:** public-functional
 **Target:** stopped NF3 TP4/DCP2 candidate containers
-**Active service:** TP4/DCP4 fixed-MTP2 (not DCP2)
+**Active service at snapshot time:** TP4/DCP4 fixed-MTP2 (not DCP2)
 **Status:** OFFLINE preparation — no host mutation, no serving interruption
 
 ## Purpose
 
 This document is a **plan template** defining the configuration changes
 needed to enable SparkCache on the stopped NF3 DCP2 candidate
-containers. The active live service is currently TP4/DCP4, not DCP2.
+containers. At the dated snapshot, the active live service was TP4/DCP4,
+not DCP2.
 Four stopped DCP2 containers exist as the intended candidate for a
 future cutover. Nothing here starts, stops, replaces, rebuilds, copies
 into, or alters a Spark host or container. It is OFFLINE work under

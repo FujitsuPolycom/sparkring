@@ -2,10 +2,11 @@
 
 > **Historical:** this matrix targets the former Aiden MXFP4/GPTQ lane. It is
 > retained because its fail-closed acceptance rules and evidence remain
-> useful. It is not the current deployment quickstart. SparkRing now has one
-> current target: the NF3 hybrid in
-> [QUICKSTART.md](QUICKSTART.md) and
-> [`recipes/glm52-nf3-hybrid.json`](../recipes/glm52-nf3-hybrid.json).
+> useful. It is not the current deployment quickstart. EXL3+LMCache CS512 is
+> the main advertised and currently running public-functional configuration;
+> see [EXL3_QUICKSTART.md](EXL3_QUICKSTART.md). NF3 remains the accepted
+> deterministic executable default and supported alternative in
+> [QUICKSTART.md](QUICKSTART.md). The historical matrix below is unchanged.
 
 This document defines **one** supported configuration for the historical
 public-functional lane, and defines exactly what "it works" means for that
@@ -22,7 +23,8 @@ configuration. It is the contract the acceptance gate
 > guessed.
 
 Companion documents: [README.md](../README.md) (two-lane framing),
-[QUICKSTART.md](QUICKSTART.md) (fast public trial),
+[EXL3_QUICKSTART.md](EXL3_QUICKSTART.md) (current advertised deployment),
+[QUICKSTART.md](QUICKSTART.md) (accepted NF3 alternative),
 [SETUP.md](SETUP.md) (bring-up procedure), [RESULTS.md](RESULTS.md) (how
 measured claims are labelled and gated), [RUNTIME_GAPS.md](RUNTIME_GAPS.md)
 (what the public runtime does and does not contain),

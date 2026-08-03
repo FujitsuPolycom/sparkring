@@ -80,6 +80,10 @@ python scripts/sparkring_launcher.py \
 ```
 
 The profile owns the two host-local model paths and the NF3 vLLM contract.
+This generic launcher remains the accepted NF3 executable path. The main
+advertised EXL3+LMCache CS512 configuration uses the same site schema but its
+own bootstrap and launcher; see
+[`docs/EXL3_QUICKSTART.md`](../../docs/EXL3_QUICKSTART.md).
 
 `launch.example.json` is the conservative `fp8` source profile. Do not edit
 individual KV flags to obtain the larger-capacity layout. Use:
@@ -290,7 +294,7 @@ acceptance result.
 The gate's `runtime.model_identity` paths are not labels copied from the site
 file. During execution it independently reads the repository and immutable
 revision sidecars and hashes the deployed `config.json` on **every** rank. The
-public entrypoint defaults expect:
+accepted NF3 entrypoint defaults expect:
 
 ```text
 /models/your-model/config.json

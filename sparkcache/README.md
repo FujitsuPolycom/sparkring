@@ -13,6 +13,20 @@ on ordinary switched clusters**.
 of vLLM's KV-Connector-V1 interface — the same standard plug-in point
 LMCache uses — with a design specific to DCP-sharded serving.
 
+## Relationship to the current serving configuration
+
+As of the 2026-08-03 operator snapshot, the four-Spark EXL3 3.25 bpw
+configuration uses **LMCache CS512**, not SparkCache. SparkCache is disabled
+in that configuration: its `--kv-transfer-config` is absent and no SparkCache
+connector is loaded. Similar names do not imply that LMCache data or results
+validate this implementation.
+
+The SparkCache TP4/DCP2 integration published here remains
+**offline-validated**. Its NF3 cutover artifacts are a bounded experimental
+path, not the current service, the EXL3 + LMCache CS512 path, or the public
+default. The dated DCP2 plan and runbook preserve the operator snapshot for
+which they were written and must be re-attested before any future live use.
+
 ## Dependency surface
 
 - **vLLM V1** with the KV-Connector-V1 interface (`KVConnectorBase_V1`)
@@ -95,9 +109,11 @@ python -m pytest \
   sparkcache/native/tests/test_layout_contract.py -q
 ```
 
-The command above is the focused storage/restore gate. The complete current
-SparkCache suite (`python -m pytest sparkcache -q`) passed **423 tests with
-1 skipped** on the GPU-free development host on 2026-08-03.
+The command above is the focused storage/restore gate. At repository commit
+`cc9cc1e`, the complete SparkCache suite
+(`python -m pytest sparkcache -q`) passed **423 tests with 1 skipped** on the
+GPU-free development host on 2026-08-03. This is offline source evidence, not
+a four-Spark deployment result.
 
 ## TP4/DCP2 candidate wiring
 
@@ -201,14 +217,14 @@ GLM-5.2 deployment and are the porting surface:
 Nothing in the store/restore path assumes the SparkRing transport, RDMA,
 or any particular interconnect.
 
-## Measured (2026-07-28, live, four DGX Sparks, DCP4)
+## Historical measurement (2026-07-28, live, four DGX Sparks, DCP4)
 
 - Store (fresh prefill): 32.9 s, committed on all four ranks
 - Restore after full restart: 2.11 s cold, 1.34-1.42 s warm (15-24x)
 - Concurrency stress: 16 mixed requests, zero failures, cached ~10x faster
   than novel prefills
 
-## Streaming write-behind status (v50/v51)
+## Historical streaming write-behind validation (v50/v51)
 
 The current streaming path journals each completed 256-token region during
 prefill. Sixteen chunks form one bounded gather batch. A two-slot mapped-host

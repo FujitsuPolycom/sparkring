@@ -1,5 +1,13 @@
 # SparkCache DCP2 live validation runbook
 
+> **Historical operator snapshot:** The container names, active-service
+> description, image identity, mounts, and blocker states below were recorded
+> for the 2026-08-01 NF3 deployment. They are not assertions about the current
+> cluster. As of the 2026-08-03 operator snapshot, the current EXL3 3.25 bpw
+> service uses LMCache CS512 and has SparkCache disabled. This NF3 TP4/DCP2
+> SparkCache path remains offline-validated only. Rediscover the live topology,
+> regenerate the plan, and re-attest every identity before executing it.
+
 **Date:** 2026-08-01
 **Lane:** public-functional
 **Prerequisite:** `docs/SPARKCACHE_DCP2_DRY_RUN_PLAN.md` reviewed,
@@ -12,8 +20,9 @@ authorization obtained
 ## Purpose
 
 Step-by-step procedure to validate SparkCache on the stopped NF3
-TP4/DCP2 candidate containers. The active live service is
-TP4/DCP4 fixed-MTP2 (`glm52-sparkring-nf3-dcp4-fixedk2-r{rank}`).
+TP4/DCP2 candidate containers. At the dated snapshot, the active live service
+was TP4/DCP4 fixed-MTP2
+(`glm52-sparkring-nf3-dcp4-fixedk2-r{rank}`).
 Four stopped DCP2 containers exist as the intended candidate. This
 runbook assumes the DCP2 variant will be started (via
 `scripts/live_dcp2_cutover.py`) and SparkCache is currently disabled

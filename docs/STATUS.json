@@ -14,6 +14,7 @@
       "end_to_end_runnable": true,
       "acceptance_result_exists": true,
       "definition": "recipes/glm52-nf3-hybrid.json",
+      "main_advertised_running_configuration": "recipes/glm52-exl3-tr3-3.25bpw.json",
       "evidence": "docs/NF3_NVFP4_PUBLIC_VALIDATION.md",
       "blockers": []
     }
@@ -23,8 +24,11 @@
       "maturity": "offline-validated",
       "command": "python -m pytest spark_transport sparkcache runtime scripts -q",
       "last_observed": {
-        "passed": 1771,
-        "skipped": 5
+        "passed": 2046,
+        "skipped": 13,
+        "clean_host_passed": 2035,
+        "clean_host_skipped": 4,
+        "clean_host_subtests": 113
       }
     },
     "site_validator_and_preflight": {
@@ -79,13 +83,50 @@
       "entrypoint": "recipes/glm52-nf3-hybrid.json"
     },
     "exl3_recipe": {
-      "maturity": "live-validated",
+      "maturity": "clean-checkout-live-validated",
       "default": false,
+      "main_advertised_running_configuration": true,
       "model": "willfalco/GLM-5.2-EXL3-TR3-3.25bpw",
       "zero_build_ready": false,
       "local_build_ready": true,
-      "public_bootstrap_maturity": "offline-validated",
-      "clean_checkout_four_spark_gate_pending": true,
+      "public_bootstrap_maturity": "clean-checkout-live-validated",
+      "clean_checkout_four_spark_gate_pending": false,
+      "clean_checkout_receipt": {
+        "image_source_commit": "19523482c29860024c3a3cf51e793e8436e1c441",
+        "launcher_fix_commit": "cc9cc1e",
+        "image_id": "sha256:20c4099f2e7e3dd3c8ab64f7d7930bde4f372df1895aa3ffa593252ca04ae96f",
+        "identical_image_ranks": 4,
+        "preflight_passed": 116,
+        "preflight_total": 116,
+        "engines_running": 4,
+        "lmcache_servers_running": 4,
+        "restart_count_each": 0,
+        "piecewise_graphs_captured": 16,
+        "full_graphs_captured": 12,
+        "repeat_gate_runs_passed": 5,
+        "identical_fixed_seed_128_completions": 10,
+        "completion_sha256": "a310b67d304b36f5dea88cbbcb18ba7be640001cc463590fe4e8cbb31042131c",
+        "standard_decode_matrix": {
+          "harness": "llm_decode_bench.py v0.4.31",
+          "context": "16K",
+          "duration_seconds": 25,
+          "unique_context_percent": 100,
+          "cell_warmup_timeout_seconds": 300,
+          "aggregate_tps": {
+            "c1": 18.32618197856071,
+            "c2": 27.61191039155876,
+            "c4": 45.10706423856835,
+            "c8": 59.4
+          },
+          "exact_effective_concurrency": true,
+          "errors": 0,
+          "evidence_scope": "clean-checkout-public-functional-live-validation"
+        },
+        "sparkcache_enabled": false,
+        "correctness_accepted": false,
+        "release_promoted": false,
+        "public_functional_acceptance_complete": false
+      },
       "entrypoint": "recipes/glm52-exl3-tr3-3.25bpw.json",
       "evidence": "docs/EXL3_RECIPE.md",
       "fixed_mtp2_alternative": {

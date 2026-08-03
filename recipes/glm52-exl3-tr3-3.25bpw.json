@@ -30,7 +30,7 @@
     "pins": "runtime/exl3/pins.json",
     "build_script": "runtime/exl3/build-image.sh",
     "build_containerfile": "runtime/exl3/Containerfile",
-    "validated_local_image_id": "sha256:314d75abdcbd65433fa9e4a744caf8fa31bdc108e9292df65603a6fe823766ad",
+    "validated_local_image_id": "sha256:20c4099f2e7e3dd3c8ab64f7d7930bde4f372df1895aa3ffa593252ca04ae96f",
     "sources": {
       "sparkinfer": {
         "repository": "https://github.com/local-inference-lab/sparkinfer.git",
@@ -253,7 +253,12 @@
   "publication": {
     "zero_build_ready": false,
     "local_build_ready": true,
-    "blocker": "Run the public bootstrap from a clean checkout on four DGX Sparks and complete the startup, correctness, C1/C2/C8, and post-run health gate.",
+    "status": "clean-checkout-live-validated-main-advertised-not-accepted-default",
+    "image_source_commit": "19523482c29860024c3a3cf51e793e8436e1c441",
+    "launcher_fix_commit": "cc9cc1e",
+    "identical_four_rank_image": true,
+    "bounded_repeat_128_passed": true,
+    "blocker": "Complete broader correctness, persistence, resource, rollback, and release gates before claiming full public-functional acceptance or release promotion.",
     "evidence": "docs/EXL3_RECIPE.md"
   }
 }
