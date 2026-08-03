@@ -1,0 +1,542 @@
+{
+  "schema": "sparkring-exl3-lmcache-campaign/v1",
+  "campaign_id": "glm52-exl3-lmcache-campaign-20260803",
+  "captured_at": "2026-08-03",
+  "lane": "public-functional",
+  "maturity": "live-validated",
+  "configuration_status": "cs512_performance_promoted_live_release_public_acceptance_blocked",
+  "evidence_origin": "external_operator_run",
+  "evidence_scope": "The LMCache-disabled fixed-MTP2 B0 control is live-validated. Full-envelope L0 hit CUDA OOM during KV-cache registration and was rejected before API readiness; exact-label rollback succeeded. Reduced-envelope C0 proved the four-server lifecycle. C0-best completed its full matrix but was not performance-promoted. Final arm CS512 changes only LMCache chunk_size from 256 to 512, improves matched prefill at every measured context, keeps repeated C8 median within 0.71 percent of C0-best, is performance-promoted relative to C0-best, and remains live. This is public-functional external-live evidence, not release or public acceptance, clean-checkout validation, or a reference-lane result. Acceptance is blocked by the inherited token-124 nondeterministic correctness gate and non-identical per-host image IDs.",
+  "sanitization": "Management addresses, SSH identities, hostnames, container names, host and cache paths, filled launch definitions, raw logs, and credentials are omitted. Public hashes, settings, and sanitized measurements are retained.",
+  "base_recipe": {
+    "documentation": "../EXL3_FIXED_MTP2_RECIPE_20260802.md",
+    "machine_readable_evidence": "glm52-exl3-live-dcp4-fixed-mtp2-20260802.json",
+    "target_repository": "willfalco/GLM-5.2-EXL3-TR3-3.25bpw",
+    "target_revision": "d7d79c2d14599dfce7a5d12b85f7ad73f40e623d",
+    "model_config_sha256": "d83e2d8d96b6f36e94d896a05a104200d6674673daa02f788de710c1c0f94ba4",
+    "rotation_layout": "per_expert_v1",
+    "shared_h_v1": false
+  },
+  "baseline_b0": {
+    "status": "complete",
+    "lmcache_installed": false,
+    "lmcache_active": false,
+    "native_prefix_caching": true,
+    "sparkcache": false,
+    "effective_serving": {
+      "tensor_parallel_size": 4,
+      "pipeline_parallel_size": 1,
+      "data_parallel_size": 1,
+      "decode_context_parallel_size": 4,
+      "mtp_policy": "fixed-mtp2",
+      "engine_num_spec_tokens": 2,
+      "dcp_comm_backend": "ag_rs",
+      "attention_backend": "B12X_MLA_SPARSE",
+      "max_model_len": 1048576,
+      "kv_cache_dtype": "nvfp4_ds_mla",
+      "kv_cache_memory_bytes_per_rank": 9000000000,
+      "kv_cache_tokens_reported": 1125632,
+      "max_num_batched_tokens": 4096,
+      "max_num_seqs": 8,
+      "max_cudagraph_capture_size": 32,
+      "chunked_prefill": true,
+      "async_scheduling": false
+    },
+    "artifacts": {
+      "standard_quick_16k": {
+        "sha256": "89c43fea02c7c42cede9e13108faa9ef5ebbfec42c4e452d19490ee247f2126c",
+        "harness": "llm_decode_bench.py 0.4.31",
+        "harness_sha256": "8de7c32c0abae3c664226fb9c1c197d0752c0a0f3f5a87b3357326f1407f9c07",
+        "all_cells_valid": true,
+        "aggregate_tokens_per_second": {
+          "C1": 18.142496695873145,
+          "C2": 28.042264272288815,
+          "C4": 43.96797940374046,
+          "C8": 61.31129122858293
+        },
+        "effective_concurrency": {"C1": 1, "C2": 2, "C4": 4, "C8": 8},
+        "errors": {"C1": 0, "C2": 0, "C4": 0, "C8": 0}
+      },
+      "custom_prefill_decode": {
+        "sha256": "71b496fda5658dc6275623f7c1b6da274c4c744b621cf5b76c8373ebb6df55c3",
+        "cold_prefill": [
+          {"nominal_target_tokens": 16384, "observed_prompt_tokens_range": [19472, 19478], "repeats": 3, "median_ttft_seconds": 34.86718150007073, "median_tokens_per_second": 558.6341987510659},
+          {"nominal_target_tokens": 32768, "observed_prompt_tokens_range": [38933, 38935], "repeats": 3, "median_ttft_seconds": 71.14681740000378, "median_tokens_per_second": 547.2205422922815},
+          {"nominal_target_tokens": 65536, "observed_prompt_tokens_range": [77848, 77848], "repeats": 3, "median_ttft_seconds": 144.45938090002164, "median_tokens_per_second": 538.8919675204585}
+        ],
+        "custom_decode_aggregate_tokens_per_second": {"C1": 23.16, "C2": 37.44, "C4": 54.52, "C8": 74.6},
+        "boundary": "Separate custom harness; do not directly compare with the standard quick matrix."
+      },
+      "native_prefix_probe": {
+        "sha256": "1b6911a7ddccc55cd041103c7b75a7bea387df3330b4672ce22d8795d5f0b2b6",
+        "cold_ttft_seconds": 34.99133540003095,
+        "warm_ttft_seconds": [1.2557090000482276, 1.0524851001100615, 0.800364299910143],
+        "warm_median_ttft_seconds": 1.0524851001100615,
+        "changed_prefix_ttft_seconds": 35.42019590002019,
+        "warm_speedup_vs_cold": 33.246395028653424,
+        "boundary": "In-process vLLM native prefix-cache evidence only; LMCache was absent."
+      },
+      "bounded_live_gate_128": {
+        "sha256": "49d34f1391add9dc2eeb3882b30a98389c0ce395b73cacb40ed000b1ffbc57f5",
+        "status": "pass_one_rerun",
+        "deterministic_output_sha256": "2c8990cf56d9841c10a98f686e5c8eaf07b8ae18d05e00e0dda47e216f89f59f",
+        "aggregate_tokens_per_second": {"C1": 21.524094929527436, "C2": 28.022026106052405, "C8": 66.23375362483263},
+        "correctness_accepted": false,
+        "boundary": "One passing rerun does not supersede the earlier reproducible token-124 branch."
+      }
+    }
+  },
+  "candidate_provenance": {
+    "r20_reported_source": {
+      "repository": "https://github.com/local-inference-lab/LMCache.git",
+      "base_ref": "release/v0.5.2-glm52-dcp-base",
+      "base_commit": "9cebd405d0caf4bebe01d694b5a8bf4e3e354314",
+      "integration_tree": "a5aa59cc8edca462a3f4c198d17fd2b9c1a7ffaa",
+      "package_version": "0.5.2+glm52dcp.4",
+      "patch_sha256": "34a0b73b2603ce2fb8c6d9383551871e23981ff2c0b837c000961c38afe73337",
+      "integration_lock_sha256": "85e45dc2afcc2532995731a015504e6f943a22fed4b9b7b37bd0d3321cca6582",
+      "boundary": "Reported by public r20 OCI config labels. The AMD64/sm120 r20 image was not run on ARM64 Sparks."
+    },
+    "dcp4_topology_candidate": {
+      "topology_patch_sha256": "4342ee03050e55a466a8016cfd23a5dee5f8ab2bebb152e3ec791575784a0813",
+      "focused_test_result": {"passed": 22, "scope": "isolated topology and compatibility tests"},
+      "wheel": "lmcache-0.5.2+glm52dcp4.1-cp312-cp312-linux_aarch64.whl",
+      "wheel_sha256": "9e032f6d50e2c44cd05a0d61b78f9d75423e62e2ecac9ddc8e4c738857824fd6",
+      "cupy_version": "13.6.0",
+      "cupy_wheel_sha256": "a3bb49fb023757bfaf0b82c5a1740739a2108ea46d944d699bcff92963c7b87f",
+      "fastrlock_version": "0.8.3",
+      "fastrlock_wheel_sha256": "85a49a1f1e020097d087e1963e42cea6f307897d5ebe2cb6daf4af47ffdd3eed",
+      "derived_arm64_image_id": "sha256:211efa7ca520b5b30b391d4ef433153dd297f3421c7c3a52202142c0612a26e3",
+      "one_spark_prerequisites": [
+        "CuPy ExternalStream",
+        "CuPy-to-Torch DLPack",
+        "LMCache CUDA IPC export",
+        "cross-process CUDA IPC import",
+        "one local lmcache_driven MP server"
+      ],
+      "observability_limitation": "Prometheus OpenTelemetry exporter absent during bounded smoke."
+    }
+  },
+  "live_arm_state": {
+    "shared_topology": {
+      "servers": 4,
+      "server_placement": "one local LMCache MP server per Spark/GPU",
+      "topology": "TP4/DCP4/PP1/DP1",
+      "routing": "rank N routes to local server N",
+      "server_local_object_contract": {
+        "kv_world_size": 1,
+        "kv_worker_id": 0,
+        "kv_tp_size": 1,
+        "kv_readers_per_object": 1
+      },
+      "scheduler_hit_policy": "Query all four ordered servers and use minimum consensus hit length; any missing, shorter, corrupt, schema-mismatched, or failed shard forces recomputation."
+    },
+    "L0": {
+      "status": "rejected_before_api_readiness",
+      "max_model_len": 1048576,
+      "kv_cache_memory_bytes_per_rank": 9000000000,
+      "lmcache_l1_bytes_per_rank": 1073741824,
+      "lmcache_l1_allocation": "eager",
+      "observed": [
+        "four local LMCache servers started",
+        "all four workers initialized LMCache C-operations and pointers",
+        "REGISTER_KV_CACHE hit CUDA OOM",
+        "servers remained unregistered and empty",
+        "exact-label rollback succeeded"
+      ],
+      "api_ready": false,
+      "cache_lifecycle_validated": false,
+      "performance_evidence": false,
+      "live_validated": false
+    },
+    "C0": {
+      "status": "lifecycle_live_validated_performance_not_promoted",
+      "max_model_len": 524288,
+      "kv_cache_memory_bytes_per_rank": 4500000000,
+      "lmcache_l1_bytes_per_rank": 1073741824,
+      "lmcache_l1_allocation": "lazy_starting_at_zero",
+      "gpu_memory_utilization_after_npc_off_restart": 0.8,
+      "gpu_memory_utilization_scope": "Admission only; explicit 4500000000-byte KV allocation unchanged.",
+      "unchanged": [
+        "TP4/DCP4/PP1/DP1",
+        "fixed MTP2",
+        "4096 maximum batched tokens",
+        "8 maximum sequences",
+        "Q32 graph ceiling"
+      ],
+      "observed": [
+        "API readiness",
+        "one registered world-size-one context on each of four local servers",
+        "bounded deterministic 32-token gate passed",
+        "symmetric store on all four servers",
+        "server-resident prefix reused after engine replacement with native prefix caching disabled"
+      ],
+      "registration_per_server": {
+        "contexts": 1,
+        "world_size": 1,
+        "layers": 101,
+        "blocks": 2198,
+        "bytes_per_token": 7994
+      },
+      "reported_kv_capacity_tokens": 562688,
+      "deterministic_gate": {
+        "max_output_tokens": 32,
+        "status": "pass",
+        "correctness_accepted": false
+      },
+      "first_store_per_server": {
+        "objects": 152,
+        "bytes": 311296000,
+        "symmetric_across_four_servers": true
+      },
+      "after_fresh_salt_probe_per_server": {
+        "objects": 304,
+        "bytes": 622592000,
+        "symmetric_across_four_servers": true
+      },
+      "api_ready": true,
+      "cache_lifecycle_validated": true,
+      "performance_evidence": true,
+      "performance_promoted": false,
+      "further_performance_evaluation_pending": true,
+      "live_validated_scope": "bounded LMCache lifecycle"
+    },
+    "CS512": {
+      "status": "performance_promoted_live_release_public_acceptance_blocked",
+      "parent_arm": "C0-best",
+      "sole_delta": {
+        "lmcache_chunk_size": {"from": 256, "to": 512}
+      },
+      "unchanged": "All C0-best engine settings, topology, model, KV allocation, graph contract, and native prefix-cache policy.",
+      "lmcache_l1_bytes_per_rank": 1073741824,
+      "lmcache_l1_allocation": "lazy",
+      "first_cutover_attempt": {
+        "status": "automatic_rollback_due_to_immediate_http_readiness_probe_race",
+        "runtime_failure_observed": false,
+        "benchmark_result_exists": false,
+        "helper_correction_wait_before_http_seconds": 30
+      },
+      "second_cutover": {
+        "status": "success",
+        "engines_running": 4,
+        "engine_restart_count_each": 0,
+        "servers_healthy": 4
+      },
+      "server_state_each": {
+        "chunk_size": 512,
+        "tracked_contexts": 1,
+        "objects": 193,
+        "bytes": 790528000,
+        "pending_store": 0,
+        "inflight_store": 0,
+        "pending_prefetch": 0,
+        "inflight_prefetch": 0,
+        "l1_bytes": 1073741824,
+        "l1_allocation": "lazy"
+      },
+      "performance_promoted_relative_to": "C0-best",
+      "live": true,
+      "release_accepted": false,
+      "publicly_accepted": false,
+      "acceptance_blockers": [
+        "inherited token-124 nondeterministic correctness gate",
+        "non-identical per-host image IDs"
+      ]
+    },
+    "not_yet_observed": [
+      "one-shard missing, corrupt, timeout, and schema-mismatch recomputation",
+      "eviction and release lifecycle under sustained traffic",
+      "durable-backend persistence or LMCache-server restart recovery",
+      "storage-tier offload accounting",
+      "release and public acceptance"
+    ],
+    "c0_artifacts": {
+      "initial_prefix_probe": {
+        "sha256": "67c87379d55746d0e25d8b1eccefd64b9e143c532399e011d84ccb9849a94763",
+        "cold_ttft_seconds": 35.49052349990234,
+        "first_store_objects_per_server": 152,
+        "first_store_bytes_per_server": 311296000
+      },
+      "npc_off_engine_restart_replay": {
+        "sha256": "4777bc367c72daf684005dbd95f3ab0036f71af6abf143409521c80f402fc446",
+        "same_prefix_replay_ttft_seconds": 2.4892474999651313,
+        "prior_cold_ttft_seconds": 35.49052349990234,
+        "engine_destroyed_before_replay": true,
+        "lmcache_servers_remained_running": true,
+        "native_prefix_caching": false,
+        "boundary": "Server-resident reuse across engine replacement, not durable-backend or LMCache-server-restart persistence."
+      },
+      "npc_off_fresh_salt": {
+        "sha256": "269974780bf5516dc814a0265cd3873a4e01f38fd985eaf1e106ac731e45bddb",
+        "cold_ttft_seconds": 37.61491710005794,
+        "changed_prefix_ttft_seconds": 38.158079700078815,
+        "warm_ttft_seconds": [1.5433703999733552, 10.118299499968998, 1.1110145000275224],
+        "warm_median_ttft_seconds": 1.5433703999733552,
+        "warm_speedup_vs_cold": 24.37193113247949,
+        "native_prefix_caching": false,
+        "objects_per_server_after_probe": 304,
+        "bytes_per_server_after_probe": 622592000,
+        "four_server_state_symmetric": true
+      },
+      "npc_off_standard_quick_16k": {
+        "sha256": "7fe6dba1bd7b98a3dc1bb80c994c9db3b6d296e2a85febb8cd9125826aac7003",
+        "harness": "llm_decode_bench.py 0.4.31",
+        "all_cells_valid": true,
+        "shared_context_percent": 100,
+        "unique_context_percent": 0,
+        "aggregate_tokens_per_second": {
+          "C1": 16.742953505207023,
+          "C2": 28.2,
+          "C4": 44.14825488323382,
+          "C8": 66.65325824621605
+        },
+        "c8_minimum_lane_fraction_of_median": 0.747,
+        "fairness_passed": false,
+        "boundary": "All aggregate cells valid, but fully shared prompts are not a cold unique-prompt match to B0 and C8 fairness failed."
+      },
+      "npc_off_c8_three_repeats": {
+        "sha256": "4c7d7a9dbd1898ef54131b33580dd84e34172cf590880a4c82ce16dfb33faaf9",
+        "aggregate_tokens_per_second": [66.24, 73.6, 70.44],
+        "median_aggregate_tokens_per_second": 70.44,
+        "minimum_lane_fraction_of_median": [1.0, 0.781, 0.333],
+        "all_aggregate_windows_valid": true,
+        "fairness_passed": false
+      },
+      "c0_best": {
+        "configuration": {
+          "native_prefix_caching": true,
+          "gpu_memory_utilization": 0.8,
+          "gpu_memory_utilization_scope": "Admission only; explicit 4500000000-byte KV allocation unchanged."
+        },
+        "standard_quick_16k": {
+          "sha256": "343cff7616ae0442ccab19bc259cb4a58a65eb30542401d497a0d0a507c519d1",
+          "all_cells_valid": true,
+          "shared_context_percent": 100,
+          "unique_context_percent": 0,
+          "aggregate_tokens_per_second": {
+            "C1": 17.12,
+            "C2": 28.90452261306533,
+            "C4": 42.29244262898756,
+            "C8": 64.28226196235367
+          },
+          "boundary": "Fully shared prompts; not a matched cold/no-reuse baseline comparison."
+        },
+        "c8_repeats": [
+          {"sha256": "7ebe401e36b9129af40fcd1d17529fe2c50de0538f14c5fac6fe8e33dac3660e", "aggregate_tokens_per_second": 61.27441151693823, "minimum_lane_fraction_of_median": 0.9426751592356688},
+          {"sha256": "13989d93644ee0c915bf0e033dbe6718c054172a2bc65e307f93bd43c374dfe8", "aggregate_tokens_per_second": 61.471131454369186, "minimum_lane_fraction_of_median": 0.922077922077922},
+          {"sha256": "9448601f5f62db6bd26753ceb8816312d630412f0c7f50c4a452ef655a413184", "aggregate_tokens_per_second": 60.18090452261306, "minimum_lane_fraction_of_median": 0.9559471365638766}
+        ],
+        "c8_fairness_passed": true,
+        "fresh_prefix_probe": {
+          "sha256": "31f3f21ee2e00a6128cd2898ca685c6b4f7888b971427b04bed6177f368e83c0",
+          "cold_ttft_seconds": 37.96407270000782,
+          "changed_prefix_ttft_seconds": 37.2442824000027,
+          "warm_median_ttft_seconds": 0.558506999979727,
+          "warm_speedup_vs_cold": 67.9742110687706,
+          "attribution": "combined native-prefix-cache plus LMCache warm-path benefit; not LMCache-only"
+        },
+        "repeat_correctness_128": {
+          "status": "fail_fixed_seed_hash_mismatch",
+          "attempted_runs": 2,
+          "planned_runs": 3,
+          "runs": [
+            {"artifact_sha256": "0d213edf0d128406b8016e90fcdc653bc093f5d31a8e29cdb470f00419d20a71", "output_sha256": "de47ae1598231248ecccf12239920226d5000b3680f3ab052ae3e5766b2ce2ad", "individual_gate_status": "pass"},
+            {"artifact_sha256": "3a1112570af053481c9ad18cd657322a0f12de49dd6f5ba020fad71c8f6e441e", "output_sha256": "a241f436e57991a8f242dd2bfa374f833622f44b6688cee22c992a7cfa24deb9", "individual_gate_status": "pass"}
+          ],
+          "release_correctness_passed": false,
+          "boundary": "Individual throughput gates passed, but the within-gate fixed-seed repeat comparison failed."
+        },
+        "full_matrix": {
+          "sha256": "3b74e3b55bf349564fdb7c13fd39c3a23ba285b4ccb22674058d2893b6a3e510",
+          "harness": "llm_decode_bench.py 0.4.31",
+          "temperature": 0,
+          "unique_context_percent": 100,
+          "shared_context_percent": 0,
+          "kv_budget_tokens": 562688,
+          "cell_warmup_timeout_seconds": 1200,
+          "prefill": [
+            {"requested_context_tokens": 8192, "observed_prompt_tokens": 8199, "ttft_seconds": 16.953, "client_tokens_per_second": 484, "prometheus_tokens_per_second": null},
+            {"requested_context_tokens": 16384, "observed_prompt_tokens": 16254, "ttft_seconds": 31.937, "client_tokens_per_second": 509, "prometheus_tokens_per_second": 510},
+            {"requested_context_tokens": 32768, "observed_prompt_tokens": 32347, "ttft_seconds": 63.359, "client_tokens_per_second": 511, "prometheus_tokens_per_second": 511},
+            {"requested_context_tokens": 65536, "observed_prompt_tokens": 64536, "ttft_seconds": 128.234, "client_tokens_per_second": 503, "prometheus_tokens_per_second": 504},
+            {"requested_context_tokens": 131072, "observed_prompt_tokens": 128911, "ttft_seconds": 261.297, "client_tokens_per_second": 493, "prometheus_tokens_per_second": 494}
+          ],
+          "valid_decode": {
+            "16384": {"C1": 16.804020100502512, "C2": 27.640512635150007, "C4": 41.715180471342514, "C8": 58.96},
+            "32768": {"C1": 16.401331354991974, "C2": 26.95753485201403, "C4": 41.72, "C8": 57.34119818633075},
+            "65536": {"C1": 12.278308321954436, "C2": 27.19372021301957, "C4": 39.66756333559808},
+            "131072": {"C1": 17.2, "C2": 29.57226546823666}
+          },
+          "invalid_decode": [
+            {
+              "context_tokens": 65536,
+              "concurrency": 8,
+              "raw_partial_aggregate_tokens_per_second": 43.40305711989567,
+              "errors": 4,
+              "effective_concurrency": 4,
+              "warmup_duration_seconds": 1200.172,
+              "running_at_timeout": 4,
+              "requested_concurrency": 8,
+              "capacity_limited": true,
+              "publishable_throughput": false
+            },
+            {
+              "context_tokens": 131072,
+              "concurrency": 4,
+              "raw_partial_aggregate_tokens_per_second": 29.478361173999566,
+              "errors": 1,
+              "effective_concurrency": 2.7,
+              "warmup_duration_seconds": 1200.437,
+              "running_at_timeout": 3,
+              "requested_concurrency": 4,
+              "capacity_limited": true,
+              "publishable_throughput": false
+            }
+          ],
+          "suppressed_decode": [
+            {
+              "context_tokens": 131072,
+              "concurrency": 8,
+              "reason": "suppressed after capacity-limited C4 failure",
+              "raw_value_exists": false
+            }
+          ],
+          "valid_decode_cells": 13,
+          "invalid_capacity_limited_cells": 2,
+          "suppressed_cells": 1,
+          "execution_complete": true,
+          "performance_promoted": false,
+          "evidence_scope": "Public-functional-lane external live evidence. Invalid raw partial rates are diagnostics only and must not be quoted as throughput."
+        },
+        "performance_promoted": false,
+        "full_matrix_complete": true
+      }
+    },
+    "c512_artifacts": {
+      "prefill_c1": {
+        "sha256": "c711fc60d34115e23cb32b7986494e18ec95c0a4943efc7fe94ef9fe7d74bb5a",
+        "prefill_comparison": [
+          {"context_tokens": 8192, "c0_tokens_per_second": 484, "cs512_tokens_per_second": 544, "delta_percent": 12.4, "c0_ttft_seconds": 16.953, "cs512_ttft_seconds": 15.063, "cs512_prompt_tokens": 8199},
+          {"context_tokens": 16384, "c0_tokens_per_second": 509, "cs512_tokens_per_second": 553, "delta_percent": 8.64, "c0_ttft_seconds": 31.937, "cs512_ttft_seconds": 29.391, "cs512_prompt_tokens": 16257},
+          {"context_tokens": 32768, "c0_tokens_per_second": 511, "cs512_tokens_per_second": 540, "delta_percent": 5.68, "c0_ttft_seconds": 63.359, "cs512_ttft_seconds": 59.859, "cs512_prompt_tokens": 32349},
+          {"context_tokens": 65536, "c0_tokens_per_second": 503, "cs512_tokens_per_second": 519, "delta_percent": 3.18, "c0_ttft_seconds": 128.234, "cs512_ttft_seconds": 124.359, "cs512_prompt_tokens": 64536},
+          {"context_tokens": 131072, "c0_tokens_per_second": 493, "cs512_tokens_per_second": 510, "delta_percent": 3.45, "c0_ttft_seconds": 261.297, "cs512_ttft_seconds": 252.859, "cs512_prompt_tokens": 128904}
+        ],
+        "cs512_c1_tokens_per_second": {
+          "16384": 18.971382829708425,
+          "32768": 17.8,
+          "65536": 18.73123874325642,
+          "131072": 15.44926956174568
+        }
+      },
+      "quick_16k": {
+        "sha256": "2bd3f7300b9bf9ae936de5ffd6f69fe14739c4a441de2d8ec9fc370170c4fc8d",
+        "all_cells_valid": true,
+        "cs512_aggregate_tokens_per_second": {"C1": 18.457587673612494, "C2": 29.14960250546834, "C4": 43.38776817153442, "C8": 60.90554819024333},
+        "c0_best_aggregate_tokens_per_second": {"C1": 17.12, "C2": 28.90452261306533, "C4": 42.29244262898756, "C8": 64.28226196235367}
+      },
+      "c8_repeats": [
+        {"sha256": "d57bf0e6349d4fdec904568ba29ed7d6a9193ff3fda3d7639755b243d8882184", "aggregate_tokens_per_second": 60.8744439546847, "effective_concurrency": 8, "errors": 0, "warmup_timed_out": false, "capacity_limited": false},
+        {"sha256": "5dead9d3b1fc8b57468b69ee78f12c7b70fe0fcc8512720f555341133c77f509", "aggregate_tokens_per_second": 60.64526562612872, "effective_concurrency": 8, "errors": 0, "warmup_timed_out": false, "capacity_limited": false},
+        {"sha256": "a495e09190769446569c331cdbbfb5447c1a0a22c3f1ce4bf522fc21f5b0296b", "aggregate_tokens_per_second": 60.84, "effective_concurrency": 8, "errors": 0, "warmup_timed_out": false, "capacity_limited": false}
+      ],
+      "c8_repeat_comparison": {
+        "cs512_median_tokens_per_second": 60.84,
+        "c0_best_median_tokens_per_second": 61.27441151693823,
+        "delta_percent": -0.71
+      },
+      "fresh_prefix_probe": {
+        "sha256": "32d47f68c0ee4ed5144e952d9f03b0e3813cac84cd64f19e91f380be503bc07e",
+        "cold_ttft_seconds": 41.89939619996585,
+        "changed_prefix_ttft_seconds": 43.19687220000196,
+        "warm_median_ttft_seconds": 0.9310862000565976,
+        "warm_speedup_vs_cold": 45.000555477483104,
+        "attribution": "combined native-prefix-cache plus LMCache warm-path benefit; not LMCache-only"
+      },
+      "performance_promoted_relative_to_c0_best": true
+    }
+  },
+  "cache_semantics": {
+    "native_prefix_cache_warm_hit": "KV reuse retained by the running vLLM engine under --enable-prefix-caching.",
+    "lmcache_hit": "Reuse proven by LMCache connector/server evidence for every required DCP shard.",
+    "lmcache_offload": "Measured KV-byte movement from the engine-managed cache into a configured CPU-memory or NVMe tier.",
+    "lmcache_persistence": "A hit after original engine/container state is gone, from a durable named backend with matching namespace and schema.",
+    "cold_prefill": "Unique or fresh-salt prompt with no reusable prefix.",
+    "warm_hit_boundary": "Avoided compute, not increased unique-prompt model prefill throughput.",
+    "sparkcache_relation": "LMCache and SparkCache are separate implementations; evidence is not interchangeable."
+  },
+  "arms": [
+    {"id": "B0-close", "delta": "repeat unchanged LMCache-disabled control", "status": "pending"},
+    {"id": "L0", "delta": "four local LMCache servers with patched DCP4 topology at the full B0 envelope and eager 1-GiB L1", "status": "rejected_before_api_readiness_cuda_oom"},
+    {"id": "NPC-off", "delta": "disable native prefix cache after a viable LMCache capacity arm", "status": "bounded_live_attribution_complete"},
+    {"id": "L1", "delta": "bounded LMCache DRAM tuning", "status": "future"},
+    {"id": "L2", "delta": "bounded NVMe backend", "status": "future"},
+    {"id": "C0", "delta": "524288 model envelope, 4500000000 KV bytes/rank, and lazy 1-GiB L1 starting at zero", "status": "lifecycle_live_validated_performance_not_promoted"},
+    {"id": "P32", "delta": "qualified mixed K3/K4 block-32 prefill route", "status": "blocked_no_go_corrected_offline_audit_only"},
+    {"id": "CKV0-CKV1", "delta": "CKV gather prefetch depth 0 versus 1", "status": "blocked_no_go_corrected_offline_audit_only"},
+    {"id": "Q6144", "delta": "max batched tokens 4096 to 6144", "status": "deferred"},
+    {"id": "BEST", "delta": "C0 with native prefix caching and LMCache enabled", "status": "bounded_live_measured_not_promoted"},
+    {"id": "CS512", "parent": "BEST", "delta": "LMCache chunk_size 256 to 512 only", "status": "performance_promoted_live_release_public_acceptance_blocked"}
+  ],
+  "offline_future_arm_audit": {
+    "maturity": "offline-validated source audit only",
+    "public_source_validated": false,
+    "first_pass_design_retracted": true,
+    "P32": {
+      "status": "blocked_no_go",
+      "blockers": [
+        "requires coordinated vLLM and SparkInfer source upgrade rather than an isolated block-size override",
+        "SparkInfer ABI and correctness work remains unresolved",
+        "current runtime API lacks the qualified mixed-prefill policy infrastructure"
+      ]
+    },
+    "CKV": {
+      "status": "blocked_no_go",
+      "blockers": [
+        "exact inherited base-file preimages unavailable to the offline audit",
+        "source chain not fully resolved",
+        "SM121 correctness unproven"
+      ]
+    },
+    "boundary": "No live validation, implementation readiness, acceptance, or public-source validation is claimed for P32 or CKV."
+  },
+  "promotion_gates": {
+    "api_ready": true,
+    "c0_reported_kv_capacity_at_least_500k": true,
+    "connector_active_all_required_ranks": true,
+    "all_shard_hit_proven": true,
+    "changed_prefix_negative_control_passed": true,
+    "missing_corrupt_timeout_schema_negative_controls_passed": false,
+    "zero_silent_corruption": false,
+    "bounded_resources": false,
+    "cold_path_regression_within_approximately_3_percent": false,
+    "standard_decode_regression_within_approximately_3_percent": false,
+    "c8_ready": true,
+    "c8_fair": true,
+    "engine_restart_server_resident_reuse_proven": true,
+    "persistence_proven": false,
+    "repeat_release_correctness_passed": false,
+    "full_matrix_complete": true,
+    "full_matrix_valid_decode_cells": 13,
+    "full_matrix_invalid_capacity_limited_cells": 2,
+    "full_matrix_suppressed_cells": 1,
+    "cs512_prefill_improved_all_measured_contexts": true,
+    "cs512_c8_repeat_median_delta_percent": -0.71,
+    "performance_promoted": true,
+    "performance_promoted_arm": "CS512",
+    "performance_promotion_scope": "relative to C0-best in this external live campaign",
+    "release_promoted": false,
+    "publicly_accepted": false,
+    "identical_per_host_image_ids": false,
+    "acceptance_blockers": [
+      "inherited token-124 nondeterministic correctness gate",
+      "non-identical per-host image IDs"
+    ]
+  },
+  "excluded_evidence": {
+    "overlapping_or_partial_benchmarks": "invalid and omitted",
+    "disposable_tp1_smokes": "not evidence for TP4/DCP4",
+    "native_prefix_warm_hit_as_lmcache": "prohibited",
+    "warm_hit_as_cold_prefill_throughput": "prohibited"
+  }
+}

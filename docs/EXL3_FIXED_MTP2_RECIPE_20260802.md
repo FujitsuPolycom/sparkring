@@ -29,6 +29,21 @@ duration-based benchmark JSON, and post-run health checks.
 The sanitized machine-readable companion is
 [`docs/configurations/glm52-exl3-live-dcp4-fixed-mtp2-20260802.json`](configurations/glm52-exl3-live-dcp4-fixed-mtp2-20260802.json).
 
+This unchanged LMCache-disabled configuration also supplies the B0 control for
+the
+[`EXL3 LMCache campaign`](EXL3_LMCACHE_CAMPAIGN_20260803.md). That campaign's
+B0 native prefix-cache measurements are not LMCache results, and the subsequent
+LMCache work remains a separate candidate. Its full-envelope L0 arm was
+rejected on a pre-readiness CUDA OOM; reduced-envelope C0 subsequently passed
+bounded four-server lifecycle gates. C0-best's warm result combines native
+prefix caching with LMCache, while its NPC-off arm supplies separate LMCache
+attribution. The final CS512 tuning arm changes only LMCache `chunk_size` from
+256 to 512 and is performance-promoted relative to C0-best; all base engine
+settings here remain unchanged. CS512 is live external evidence, not durably
+persistent, correctness-accepted, reference-lane, or publicly accepted. Its
+acceptance blockers are the inherited token-124 nondeterministic correctness
+gate and non-identical per-host image IDs.
+
 ## Effective configuration
 
 | Setting | Effective value |
