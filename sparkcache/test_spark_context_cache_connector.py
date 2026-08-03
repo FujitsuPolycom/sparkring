@@ -47,11 +47,15 @@ def _install_vllm_stubs() -> None:
     logger_mod.init_logger = lambda name: _Logger()
     distributed = types.ModuleType("vllm.distributed")
 
+    # Mutable global so tests can set the physical TP rank per connector.
+    _TP_RANK = [0]
+
     class _Group:
         rank_in_group = 0
         world_size = 4
 
     distributed.get_dcp_group = lambda: _Group
+    distributed.get_tensor_model_parallel_rank = lambda: _TP_RANK[0]
     kv_transfer = types.ModuleType("vllm.distributed.kv_transfer")
     kv_connector = types.ModuleType("vllm.distributed.kv_transfer.kv_connector")
     v1 = types.ModuleType("vllm.distributed.kv_transfer.kv_connector.v1")
@@ -229,7 +233,8 @@ def _make_connector(
         kv_cache_config=None,
     )
     if override_worker_rank:
-        connector._worker_rank = lambda: rank  # type: ignore[method-assign]
+        connector._worker_rank = lambda r=rank: r  # type: ignore[method-assign]
+        connector._physical_rank = lambda r=rank: r  # type: ignore[method-assign]
     return connector
 
 
@@ -2854,5 +2859,643 @@ class StreamingSnapshotProductionBoundaryTests(unittest.TestCase):
             connector.shutdown()
 
 
+
+class DCP2RoundTripTests(unittest.TestCase):
+    """SparkCache DCP2 offline validation.
+
+    The deployed NF3 variant runs TP4/DCP2 (dcp_rank_map [0,1,0,1]).
+    These tests exercise the codec and connector's DCP2 code paths:
+    interleave math, two-rank quorum, byte-exact store/restore on
+    independent per-rank stores, and identity namespace separation
+    from DCP4.
+
+    BLOCKED: Live DCP2 acceptance requires resolving the TP/DCP
+    identity gap (see test_dcp2_tp_ranks_sharing_dcp_rank_have_identical_storage_key)
+    and read-only remote attestation of checkpoint identity, quant/rope
+    layouts, and vLLM patch semantics.  These tests prove offline code
+    paths only; they do NOT prove DCP2 is safe for live serving.
+    """
+
+    SPAN = 1024
+    BLOCK_SIZE = 64
+
+    def test_dcp2_owned_positions_cover_all_tokens(self) -> None:
+        """DCP2 interleave: rank 0 owns even positions, rank 1 owns odd."""
+        self.assertEqual(codec.owned_positions(8, 2, 0), (0, 2, 4, 6))
+        self.assertEqual(codec.owned_positions(8, 2, 1), (1, 3, 5, 7))
+        union: set[int] = set()
+        for rank in range(2):
+            union.update(codec.owned_positions(1024, 2, rank))
+        self.assertEqual(union, set(range(1024)))
+        # DCP2 has 128 local ordinals per 256-token chunk (vs 64 at DCP4)
+        self.assertEqual(
+            codec.local_slots_for_positions(
+                codec.owned_positions(256, 2, 0),
+                (0,),
+                256,
+                2,
+            ),
+            tuple(range(128)),
+        )
+
+    def test_dcp2_identity_namespace_differs_from_dcp4(self) -> None:
+        """A cache entry written under DCP4 must never restore under DCP2."""
+        with tempfile.TemporaryDirectory() as directory:
+            dcp4_connector = _make_connector(
+                Path(directory) / "dcp4",
+                0,
+                self.BLOCK_SIZE,
+                extra_config={
+                    "spark_cache_target_checkpoint_sha256": "a" * 64,
+                    "spark_cache_draft_checkpoint_sha256": "b" * 64,
+                    "spark_cache_draft_policy": "separate",
+                },
+            )
+            # Override DCP degree to 2 for a second connector
+            dcp2_values = {
+                "spark_cache_root": str(Path(directory) / "dcp2"),
+                "spark_cache_min_span_tokens": "256",
+                "spark_cache_target_checkpoint_sha256": "a" * 64,
+                "spark_cache_draft_checkpoint_sha256": "b" * 64,
+                "spark_cache_draft_policy": "separate",
+            }
+            dcp2_kv_transfer = types.SimpleNamespace(
+                get_from_extra_config=lambda key, default=None: dcp2_values.get(
+                    key, default
+                )
+            )
+            dcp2_vllm_config = types.SimpleNamespace(
+                kv_transfer_config=dcp2_kv_transfer,
+                cache_config=types.SimpleNamespace(block_size=self.BLOCK_SIZE),
+                parallel_config=types.SimpleNamespace(
+                    tensor_parallel_size=4, decode_context_parallel_size=2
+                ),
+                model_config=types.SimpleNamespace(model="test-target"),
+            )
+            dcp2_connector = SparkContextCacheConnector(
+                vllm_config=dcp2_vllm_config,
+                role=KVConnectorRole.WORKER,
+                kv_cache_config=None,
+            )
+            dcp2_connector._worker_rank = lambda: 0  # type: ignore[method-assign]
+
+        self.assertNotEqual(
+            dcp4_connector._identity(0).storage_key,
+            dcp2_connector._identity(0).storage_key,
+        )
+        self.assertEqual(dcp4_connector._dcp_degree, 4)
+        self.assertEqual(dcp2_connector._dcp_degree, 2)
+
+    def _make_dcp2_connector(
+        self,
+        directory: str,
+        tp_rank: int,
+        block_size: int = 64,
+        extra_config: dict[str, object] | None = None,
+    ) -> SparkContextCacheConnector:
+        """Build a DCP2 connector with the TP-rank-to-DCP-rank map [0,1,0,1].
+
+        In the deployed NF3 DCP2 variant, get_dcp_group().rank_in_group
+        returns the DCP rank (0 or 1), not the TP rank (0-3).  We
+        override _worker_rank to return the DCP rank so the store and
+        restore paths use the correct shard identity.
+
+        Each connector gets its own root directory (rank{tp_rank}) so
+        stores are independent.  This does NOT model the case where
+        two TP ranks share a single NVMe store — see
+        test_dcp2_tp_ranks_sharing_dcp_rank_have_identical_storage_key.
+        """
+        dcp_rank_map = [0, 1, 0, 1]
+        dcp_rank = dcp_rank_map[tp_rank]
+        root = Path(directory) / f"rank{tp_rank}"
+        values = {
+            "spark_cache_root": str(root),
+            "spark_cache_min_span_tokens": "256",
+            "spark_cache_target_checkpoint_sha256": "1" * 64,
+            "spark_cache_draft_checkpoint_sha256": "2" * 64,
+            "spark_cache_draft_policy": "separate",
+        }
+        values.update(extra_config or {})
+        kv_transfer_config = types.SimpleNamespace(
+            get_from_extra_config=lambda key, default=None: values.get(
+                key, default
+            )
+        )
+        vllm_config = types.SimpleNamespace(
+            kv_transfer_config=kv_transfer_config,
+            cache_config=types.SimpleNamespace(block_size=block_size),
+            parallel_config=types.SimpleNamespace(
+                tensor_parallel_size=4,
+                decode_context_parallel_size=2,
+            ),
+            model_config=types.SimpleNamespace(model="test-target"),
+        )
+        connector = SparkContextCacheConnector(
+            vllm_config=vllm_config,
+            role=KVConnectorRole.WORKER,
+            kv_cache_config=None,
+        )
+        connector._worker_rank = lambda r=dcp_rank: r  # type: ignore[method-assign]
+        connector._physical_rank = lambda r=tp_rank: r  # type: ignore[method-assign]
+        return connector
+
+    def test_dcp2_physical_and_dcp_local_rank_mapping(self) -> None:
+        """TP4/DCP2: four physical TP ranks 0..3 map to DCP-local 0,1,0,1."""
+        dcp_rank_map = [0, 1, 0, 1]
+        with tempfile.TemporaryDirectory() as directory:
+            connectors = [
+                self._make_dcp2_connector(directory, tp, self.BLOCK_SIZE)
+                for tp in range(4)
+            ]
+        for tp_rank, connector in enumerate(connectors):
+            self.assertEqual(
+                connector._physical_rank(), tp_rank,
+                f"physical rank mismatch for tp_rank={tp_rank}",
+            )
+            self.assertEqual(
+                connector._worker_rank(), dcp_rank_map[tp_rank],
+                f"DCP-local rank mismatch for tp_rank={tp_rank}",
+            )
+
+    def test_dcp2_storage_keys_differ_for_tp_ranks_sharing_dcp_rank(self) -> None:
+        """Under TP4/DCP2, TP ranks 0 and 2 share DCP rank 0 but must
+        have distinct persistent storage keys because CacheIdentity now
+        includes tp_shard_rank.
+
+        This was the primary blocker (B1).  The tp_shard_rank field
+        ensures each physical worker gets its own storage namespace,
+        preventing cross-restore of complementary TP shards.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            tp0 = self._make_dcp2_connector(directory, 0, self.BLOCK_SIZE)
+            tp2 = self._make_dcp2_connector(directory, 2, self.BLOCK_SIZE)
+            tp1 = self._make_dcp2_connector(directory, 1, self.BLOCK_SIZE)
+            tp3 = self._make_dcp2_connector(directory, 3, self.BLOCK_SIZE)
+
+        # Both TP0 and TP2 map to DCP rank 0.
+        self.assertEqual(tp0._worker_rank(), 0)
+        self.assertEqual(tp2._worker_rank(), 0)
+        # But their physical ranks differ.
+        self.assertEqual(tp0._physical_rank(), 0)
+        self.assertEqual(tp2._physical_rank(), 2)
+        # And their storage keys differ.
+        id0 = tp0._identity(tp0._worker_rank())
+        id2 = tp2._identity(tp2._worker_rank())
+        self.assertNotEqual(
+            id0.storage_key,
+            id2.storage_key,
+            "TP0 and TP2 must have distinct storage keys under DCP2.",
+        )
+        self.assertEqual(id0.tp_shard_rank, 0)
+        self.assertEqual(id2.tp_shard_rank, 2)
+        self.assertEqual(id0.dcp_shard_rank, 0)
+        self.assertEqual(id2.dcp_shard_rank, 0)
+        # TP1 and TP3 also differ.
+        id1 = tp1._identity(tp1._worker_rank())
+        id3 = tp3._identity(tp3._worker_rank())
+        self.assertNotEqual(id1.storage_key, id3.storage_key)
+        # All four are distinct.
+        keys = {id0.storage_key, id1.storage_key, id2.storage_key, id3.storage_key}
+        self.assertEqual(len(keys), 4, "all four physical workers must have distinct storage keys")
+
+    def test_dcp2_reports_from_tp0_and_tp2_not_deduplicated(self) -> None:
+        """Worker reports from TP0 (physical 0) and TP2 (physical 2)
+        must not be deduplicated despite both having DCP-local rank 0.
+
+        The scheduler's quorum set must contain both physical ranks.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            scheduler = self._make_dcp2_scheduler(directory)
+            digest = "e" * 64
+            # TP0 reports (physical rank 0)
+            scheduler.update_connector_output(
+                self._make_report(0, [digest]))
+            # TP2 reports (physical rank 2)
+            scheduler.update_connector_output(
+                self._make_report(2, [digest]))
+            self.assertEqual(scheduler._quorum[digest], {0, 2})
+
+    def test_dcp2_quorum_requires_all_four_physical_workers(self) -> None:
+        """Quorum at DCP2 requires all four physical TP workers (0..3),
+        not just the two DCP-local ranks."""
+        with tempfile.TemporaryDirectory() as directory:
+            scheduler = self._make_dcp2_scheduler(directory)
+            digest = "e" * 64
+            # Only physical 0 reports -> no quorum
+            scheduler.update_connector_output(self._make_report(0, [digest]))
+            self.assertFalse(scheduler._has_full_quorum(digest))
+            # Physical 1 reports -> still no quorum
+            scheduler.update_connector_output(self._make_report(1, [digest]))
+            self.assertFalse(scheduler._has_full_quorum(digest))
+            # Physical 2 reports -> still no quorum
+            scheduler.update_connector_output(self._make_report(2, [digest]))
+            self.assertFalse(scheduler._has_full_quorum(digest))
+            # Physical 3 reports -> quorum
+            scheduler.update_connector_output(self._make_report(3, [digest]))
+            self.assertTrue(scheduler._has_full_quorum(digest))
+
+    def test_dcp2_withdrawing_one_physical_worker_removes_quorum(self) -> None:
+        """Withdrawing any one physical worker removes admission even if
+        its paired DCP-local rank remains represented.
+
+        Under TP4/DCP2, TP0 and TP2 share DCP rank 0.  If TP2 withdraws
+        (holds=[]), quorum must break even though TP0 (same DCP rank 0)
+        still holds the digest.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            scheduler = self._make_dcp2_scheduler(directory)
+            digest = "e" * 64
+            for tp_rank in range(4):
+                scheduler.update_connector_output(
+                    self._make_report(tp_rank, [digest]))
+            self.assertTrue(scheduler._has_full_quorum(digest))
+            # TP2 (physical rank 2) withdraws
+            scheduler.update_connector_output(
+                self._make_report(2, []))
+            self.assertFalse(scheduler._has_full_quorum(digest))
+            # TP0 (physical rank 0, same DCP rank 0) still holds it
+            self.assertIn(0, scheduler._quorum[digest])
+            # But TP2 is gone
+            self.assertNotIn(2, scheduler._quorum[digest])
+
+    def test_dcp2_token_ownership_remains_based_on_dcp_rank(self) -> None:
+        """DCP-local token position ownership must still use the DCP
+        rank, not the physical TP rank.  This is the separation of
+        concerns: identity uses physical rank, slicing uses DCP rank."""
+        # DCP rank 0 owns even positions, DCP rank 1 owns odd positions
+        self.assertEqual(codec.owned_positions(8, 2, 0), (0, 2, 4, 6))
+        self.assertEqual(codec.owned_positions(8, 2, 1), (1, 3, 5, 7))
+        # TP2 has physical rank 2 but DCP rank 0, so it owns even positions
+        with tempfile.TemporaryDirectory() as directory:
+            tp2 = self._make_dcp2_connector(directory, 2, self.BLOCK_SIZE)
+            self.assertEqual(tp2._physical_rank(), 2)
+            self.assertEqual(tp2._worker_rank(), 0)
+            positions = codec.owned_positions(
+                self.SPAN, 2, tp2._worker_rank())
+            self.assertEqual(positions[0], 0)  # even
+            self.assertEqual(positions[1], 2)  # even
+
+    def test_dcp2_malformed_physical_rank_report_fails_closed(self) -> None:
+        """Reports with out-of-range physical ranks (negative, >= tp_degree)
+        must be rejected by _absorb_quorum and not affect the quorum set."""
+        with tempfile.TemporaryDirectory() as directory:
+            scheduler = self._make_dcp2_scheduler(directory)
+            digest = "e" * 64
+            # Negative rank
+            scheduler.update_connector_output(self._make_report(-1, [digest]))
+            # Rank >= tp_degree (4)
+            scheduler.update_connector_output(self._make_report(4, [digest]))
+            scheduler.update_connector_output(self._make_report(99, [digest]))
+            # Non-integer rank
+            scheduler.update_connector_output(
+                types.SimpleNamespace(
+                    invalid_block_ids=set(),
+                    kv_connector_stats=types.SimpleNamespace(
+                        data={"spark_context_cache": {"rank": "x", "held": [digest]}}
+                    ),
+                )
+            )
+            self.assertNotIn(digest, scheduler._quorum)
+            self.assertFalse(scheduler._has_full_quorum(digest))
+
+    def test_dcp2_independent_store_restore_is_byte_exact(self) -> None:
+        """Full store/restore cycle with DCP2, using independent per-TP-rank
+        store roots.
+
+        This test proves the codec's DCP2 interleave math and the
+        connector's store/restore path are byte-exact when each physical
+        TP rank has its own NVMe store directory.
+
+        DCP2 halves the interleave stride, so span 1024 produces 512
+        local ordinals per DCP rank (vs 256 at DCP4).  The pool and
+        block table must be doubled accordingly: 8 blocks of 64.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            pools: list[dict[str, torch.Tensor]] = []
+            originals: list[dict[str, torch.Tensor]] = []
+            connectors = []
+            dcp_rank_map = [0, 1, 0, 1]
+            block_ids = (3, 0, 5, 1, 7, 2, 4, 6)  # 8 blocks for 512 slots
+            for tp_rank in range(4):
+                connector = self._make_dcp2_connector(
+                    directory, tp_rank, self.BLOCK_SIZE
+                )
+                pool = _make_pools(8, self.BLOCK_SIZE)
+                connector.register_kv_caches(pool)
+                connectors.append(connector)
+                pools.append(pool)
+                originals.append({k: v.clone() for k, v in pool.items()})
+
+            plan = _ReqPlan(
+                request_id="req-dcp2",
+                digest="d" * 64,
+                span_tokens=self.SPAN,
+                block_ids=block_ids,
+                is_store=True,
+            )
+            store_meta = SparkCacheConnectorMetadata(plans=[plan])
+            for connector in connectors:
+                connector.bind_connector_metadata(store_meta)
+                connector.wait_for_save()
+                _drain_store(connector)
+                self.assertEqual(connector.counters["store_committed"], 1)
+
+            load_plan = dataclasses.replace(plan, is_store=False)
+            load_meta = SparkCacheConnectorMetadata(plans=[load_plan])
+            for tp_rank, connector in enumerate(connectors):
+                for tensor in pools[tp_rank].values():
+                    tensor.zero_()
+                connector.bind_connector_metadata(load_meta)
+                connector.start_load_kv(None)
+                self.assertEqual(_drain(connector), {"req-dcp2"})
+                self.assertEqual(connector.counters["load_verified"], 1)
+                self.assertEqual(connector.get_block_ids_with_load_errors(), set())
+
+            # Verify byte-exact restoration at the DCP2-owned slots.
+            for tp_rank in range(4):
+                dcp_rank = dcp_rank_map[tp_rank]
+                slots = codec.local_slots_for_positions(
+                    codec.owned_positions(self.SPAN, 2, dcp_rank),
+                    block_ids,
+                    self.BLOCK_SIZE,
+                    2,
+                )
+                slot_tensor = torch.tensor(slots, dtype=torch.long)
+                for name in _LAYERS:
+                    restored = pools[tp_rank][name].reshape(-1, _LAYERS[name])
+                    original = originals[tp_rank][name].reshape(-1, _LAYERS[name])
+                    torch.testing.assert_close(
+                        restored[slot_tensor],
+                        original[slot_tensor],
+                        rtol=0,
+                        atol=0,
+                    )
+                    untouched = torch.ones(restored.shape[0], dtype=torch.bool)
+                    untouched[slot_tensor] = False
+                    self.assertTrue(
+                        (restored[untouched] == 0).all(),
+                        "load wrote outside the restored slots",
+                    )
+
+    def _make_dcp2_scheduler(self, directory: str) -> SparkContextCacheConnector:
+        """Build a scheduler-side connector for DCP2 quorum tests."""
+        sched_values = {
+            "spark_cache_root": str(Path(directory) / "sched"),
+            "spark_cache_min_span_tokens": "256",
+            "spark_cache_target_checkpoint_sha256": "3" * 64,
+            "spark_cache_draft_checkpoint_sha256": "4" * 64,
+            "spark_cache_draft_policy": "separate",
+        }
+        sched_kv = types.SimpleNamespace(
+            get_from_extra_config=lambda key, default=None: sched_values.get(
+                key, default
+            )
+        )
+        sched_vllm = types.SimpleNamespace(
+            kv_transfer_config=sched_kv,
+            cache_config=types.SimpleNamespace(block_size=64),
+            parallel_config=types.SimpleNamespace(
+                tensor_parallel_size=4, decode_context_parallel_size=2
+            ),
+            model_config=types.SimpleNamespace(model="test-target"),
+        )
+        return SparkContextCacheConnector(
+            vllm_config=sched_vllm,
+            role=KVConnectorRole.SCHEDULER,
+            kv_cache_config=None,
+        )
+
+    @staticmethod
+    def _make_report(physical_rank: int, held: list[str]) -> types.SimpleNamespace:
+        """Build a connector_output with a single worker report."""
+        return types.SimpleNamespace(
+            invalid_block_ids=set(),
+            kv_connector_stats=types.SimpleNamespace(
+                data={
+                    "spark_context_cache": {
+                        "rank": physical_rank,
+                        "held": held,
+                    }
+                }
+            ),
+        )
+
+
+
+    def test_dcp2_identity_pins_dcp_degree_2(self) -> None:
+        """The identity base must record dcp_degree=2 for the DCP2 variant.
+
+        PENDING READ-ONLY REMOTE ATTESTATION: The quantization_layout
+        and rope_layout strings are hard-coded in the connector and are
+        provisionally consistent with the NF3 recipe docs, but have not
+        been attested against the deployed image's actual KV config.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            values = {
+                "spark_cache_root": str(Path(directory)),
+                "spark_cache_min_span_tokens": "256",
+                "spark_cache_target_checkpoint_sha256": "5" * 64,
+                "spark_cache_draft_checkpoint_sha256": "6" * 64,
+                "spark_cache_draft_policy": "separate",
+            }
+            kv_transfer_config = types.SimpleNamespace(
+                get_from_extra_config=lambda key, default=None: values.get(
+                    key, default
+                )
+            )
+            vllm_config = types.SimpleNamespace(
+                kv_transfer_config=kv_transfer_config,
+                cache_config=types.SimpleNamespace(block_size=64),
+                parallel_config=types.SimpleNamespace(
+                    tensor_parallel_size=4, decode_context_parallel_size=2
+                ),
+                model_config=types.SimpleNamespace(model="test-target"),
+            )
+            connector = SparkContextCacheConnector(
+                vllm_config=vllm_config,
+                role=KVConnectorRole.WORKER,
+                kv_cache_config=None,
+            )
+
+        self.assertEqual(connector._identity_base["dcp_degree"], 2)
+        self.assertEqual(connector._identity_base["tp_degree"], 4)
+        # PENDING READ-ONLY REMOTE ATTESTATION: these layouts match the
+        # recipe docs but have not been verified against the deployed image.
+        self.assertEqual(
+            connector._identity_base["quantization_layout"],
+            "nvfp4_ds_mla-per-token-v1",
+        )
+        self.assertEqual(
+            connector._identity_base["rope_layout"], "glm52-rope-v1"
+        )
+
+    def test_dcp2_checkpoint_identity_must_be_canonical_manifest(self) -> None:
+        """The checkpoint identity must be a 64-character SHA-256, but a
+        hard-coded hash computed from a subset of recipe pins is NOT a
+        valid checkpoint identity.
+
+        The connector correctly rejects non-SHA-256 strings (tested in
+        CheckpointIdentityTests).  This test confirms that placeholder
+        identities are accepted by the connector's format check but
+        must be replaced by canonical manifest output before live use.
+
+        A canonical manifest generator must hash every deployed weight
+        shard and cache-affecting artifact, not just revision/config/index.
+        The previous hand-computed hashes (4ae049... / 15202f...)
+        only covered revision|config|index (and a few draft pins),
+        omitting the target's 184 weight shards.  They have been
+        removed and must NOT be used.
+        """
+        # Placeholder identities — format-valid but NOT attested.
+        # The operator must replace these with canonical manifest output.
+        placeholder_target = "a" * 64
+        placeholder_draft = "b" * 64
+        with tempfile.TemporaryDirectory() as directory:
+            connector = _make_connector(
+                Path(directory),
+                0,
+                extra_config={
+                    "spark_cache_target_checkpoint_sha256": placeholder_target,
+                    "spark_cache_draft_checkpoint_sha256": placeholder_draft,
+                    "spark_cache_draft_policy": "separate",
+                },
+            )
+
+        self.assertEqual(
+            connector._identity_base["target_checkpoint"], placeholder_target
+        )
+        self.assertEqual(
+            connector._identity_base["draft_checkpoint"], placeholder_draft
+        )
+        self.assertEqual(
+            connector._identity_base["draft_kv_policy"], "separate"
+        )
+
+
+
+class DCP4CompatibilityTests(unittest.TestCase):
+    """Verify that the tp_shard_rank extension is compatible with DCP4.
+
+    Under DCP4, tp_degree==dcp_degree==4, so physical TP rank equals
+    DCP rank.  The tp_shard_rank field is set to the physical TP rank,
+    which equals the DCP rank.  This means DCP4 entries get a new
+    storage_key (because to_wire() now includes tp_shard_rank).  Old
+    entries written without tp_shard_rank will miss, causing a clean
+    re-prefill — the fail-closed path.  This is intentional: entries
+    written under the old schema did not distinguish physical workers
+    and must NOT be silently reinterpreted.
+    """
+
+    def test_dcp4_physical_rank_equals_dcp_rank(self) -> None:
+        """Under DCP4, physical TP rank == DCP rank for all four ranks."""
+        with tempfile.TemporaryDirectory() as directory:
+            for rank in range(4):
+                connector = _make_connector(Path(directory), rank, 64)
+                self.assertEqual(connector._physical_rank(), rank)
+                self.assertEqual(connector._worker_rank(), rank)
+
+    def test_dcp4_storage_keys_are_distinct_per_rank(self) -> None:
+        """Under DCP4, all four ranks have distinct storage keys."""
+        with tempfile.TemporaryDirectory() as directory:
+            keys = set()
+            for rank in range(4):
+                connector = _make_connector(Path(directory), rank, 64)
+                identity = connector._identity(rank)
+                keys.add(identity.storage_key)
+                self.assertEqual(identity.tp_shard_rank, rank)
+                self.assertEqual(identity.dcp_shard_rank, rank)
+        self.assertEqual(len(keys), 4)
+
+    def test_dcp4_quorum_still_requires_all_four_physical_workers(self) -> None:
+        """DCP4 quorum requires all four physical TP workers (0..3).
+
+        This is unchanged from the old behavior (which required all 4
+        DCP ranks) because under DCP4 physical rank == DCP rank.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            c = _make_connector(Path(directory) / "r0", 0, 64)
+            digest = "c" * 64
+            for rank in (0, 1, 2):
+                c.update_connector_output(
+                    types.SimpleNamespace(
+                        invalid_block_ids=set(),
+                        kv_connector_stats=types.SimpleNamespace(
+                            data={
+                                "spark_context_cache": {
+                                    "rank": rank, "held": [digest]
+                                }
+                            }
+                        ),
+                    )
+                )
+            self.assertFalse(c._has_full_quorum(digest))
+            c.update_connector_output(
+                types.SimpleNamespace(
+                    invalid_block_ids=set(),
+                    kv_connector_stats=types.SimpleNamespace(
+                        data={
+                            "spark_context_cache": {
+                                "rank": 3, "held": [digest]
+                            }
+                        }
+                    ),
+                )
+            )
+            self.assertTrue(c._has_full_quorum(digest))
+
+    def test_dcp4_legacy_entries_without_tp_shard_rank_miss(self) -> None:
+        """Old entries written before the tp_shard_rank extension had
+        to_wire() dicts that lacked the key entirely.  Their storage_key
+        (SHA-256 of canonical JSON of the old wire dict) differs from
+        any new identity that includes a concrete tp_shard_rank.
+
+        This test constructs the explicit pre-extension wire dictionary
+        (without the tp_shard_rank key) and proves its storage key
+        differs from the new concrete identity.  The fail-closed claim
+        is precise: old entries miss because the key set changed, not
+        merely because the tp_shard_rank value differs.
+        """
+        import hashlib
+
+        def _canonical_json(value: object) -> bytes:
+            import json
+            return json.dumps(
+                value, sort_keys=True, separators=(",", ":"),
+                ensure_ascii=True,
+            ).encode("ascii")
+
+        with tempfile.TemporaryDirectory() as directory:
+            connector = _make_connector(Path(directory), 0, 64)
+            new_identity = connector._identity(0)
+
+            # Explicit pre-extension wire dict — no tp_shard_rank key.
+            old_wire = {
+                "target_checkpoint": "1" * 64,
+                "draft_checkpoint": "2" * 64,
+                "quantization_layout": "nvfp4_ds_mla-per-token-v1",
+                "rope_layout": "glm52-rope-v1",
+                "tp_degree": 4,
+                "dcp_degree": 4,
+                "chunk_tokens": 256,
+                "dcp_shard_rank": 0,
+                "boundary_hidden_policy": "live_forward",
+                "draft_kv_policy": "separate",
+            }
+            old_storage_key = hashlib.sha256(
+                _canonical_json(old_wire)
+            ).hexdigest()
+
+            # New identity's wire dict includes tp_shard_rank=0.
+            new_wire = new_identity.to_wire()
+            self.assertIn("tp_shard_rank", new_wire)
+            self.assertNotIn("tp_shard_rank", old_wire)
+
+            self.assertNotEqual(
+                old_storage_key,
+                new_identity.storage_key,
+                "Old entries (wire dict without tp_shard_rank key) must"
+                " have a different storage_key from new identities —"
+                " fail-closed compatibility.",
+            )
 if __name__ == "__main__":
     unittest.main()

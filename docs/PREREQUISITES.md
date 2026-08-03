@@ -65,7 +65,7 @@ Every rank needs:
 - NVIDIA Container Toolkit configured for Docker;
 - permission for the deployment account to run Docker noninteractively;
 - `git`, Python 3, `bash`, `ssh`, `scp`, `curl`, `tar`, and standard GNU/Linux
-  utilities;
+  utilities, including `rsync` and `sha256sum` on **all four ranks**;
 - Python's `yaml` module (`python3 -c 'import yaml'` must succeed);
 - working DNS, system time synchronization, and internet access during
   download/build.
@@ -80,6 +80,8 @@ docker run --rm --gpus all \
   nvcr.io/nvidia/cuda:13.0.2-base-ubuntu24.04 \
   nvidia-smi
 python3 -c 'import yaml; print(yaml.__version__)'
+rsync --version
+sha256sum --version
 ```
 
 Do not continue until a CUDA container can see the GPU on every rank.

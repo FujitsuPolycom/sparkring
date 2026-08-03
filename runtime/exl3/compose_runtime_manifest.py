@@ -39,6 +39,29 @@ def package_files(root: Path) -> dict[str, str]:
     }
 
 
+def distribution_files(distribution_names: tuple[str, ...]) -> dict[str, str]:
+    files: dict[str, str] = {}
+    for name in distribution_names:
+        distribution = importlib.metadata.distribution(name)
+        if distribution.files is None:
+            raise RuntimeError(f"installed distribution has no file inventory: {name}")
+        for relative in distribution.files:
+            installed = Path(distribution.locate_file(relative))
+            if not installed.is_file():
+                continue
+            try:
+                receipt_name = installed.resolve().relative_to(
+                    SITE_PACKAGES.resolve()
+                ).as_posix()
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"installed distribution file escapes site-packages: "
+                    f"{name}: {installed}"
+                ) from exc
+            files[receipt_name] = sha256(installed)
+    return files
+
+
 def compose_spark_runtime_overlay(manifest: dict, pins: dict) -> None:
     private_component_name = "public-exl3-runtime-overlay"
     if any(
@@ -149,6 +172,32 @@ def main() -> int:
         if not root.is_dir():
             raise RuntimeError(f"installed package directory is missing: {root}")
         package_map.update(package_files(root))
+    cutlass_distributions = pins["cutlass_python_lock"]["distributions"]
+    for name, record in cutlass_distributions.items():
+        observed_version = importlib.metadata.version(name)
+        if observed_version != record["version"]:
+            raise RuntimeError(
+                f"installed distribution version mismatch for {name}: "
+                f"{observed_version} != {record['version']}"
+            )
+    package_map.update(distribution_files(tuple(cutlass_distributions)))
+    lmcache_distributions = (
+        "lmcache",
+        "aiofile",
+        "aiofiles",
+        "blake3",
+        "caio",
+        "cupy-cuda13x",
+        "fastrlock",
+        "sortedcontainers",
+    )
+    observed_lmcache_version = importlib.metadata.version("lmcache")
+    if observed_lmcache_version != pins["lmcache"]["version"]:
+        raise RuntimeError(
+            "installed LMCache version mismatch: "
+            f"{observed_lmcache_version} != {pins['lmcache']['version']}"
+        )
+    package_map.update(distribution_files(lmcache_distributions))
     extensions = sorted(SITE_PACKAGES.glob("exllamav3_ext*.so"))
     if len(extensions) != 1:
         raise RuntimeError(
@@ -173,10 +222,15 @@ def main() -> int:
     manifest["packages"].update(
         {
             "exllamav3": importlib.metadata.version("exllamav3"),
-            "nvidia-cutlass-dsl": importlib.metadata.version(
-                "nvidia-cutlass-dsl"
-            ),
             "sparkinfer": importlib.metadata.version("sparkinfer"),
+            **{
+                name: record["version"]
+                for name, record in cutlass_distributions.items()
+            },
+            **{
+                name: importlib.metadata.version(name)
+                for name in lmcache_distributions
+            },
         }
     )
     manifest["runtime_id"] = pins["profile_id"]
@@ -188,10 +242,24 @@ def main() -> int:
         "tier_bitmap_sha256": pins["model"]["tier_bitmap_sha256"],
         "manifest_sha256": pins["model"]["manifest_sha256"],
     }
+    manifest["lock"]["lmcache"] = {
+        "repository": pins["lmcache"]["repository"],
+        "base_commit": pins["lmcache"]["base_commit"],
+        "integration_heads": pins["lmcache"]["integration_heads"],
+        "integration_tree": pins["lmcache"]["integration_tree"],
+        "topology_patch_sha256": pins["lmcache"]["topology_patch_sha256"],
+        "composed_tree": pins["lmcache"]["composed_tree"],
+        "version": pins["lmcache"]["version"],
+        "topology": pins["lmcache"]["topology"],
+    }
     manifest["lock"]["status"] = "public-exl3-bootstrap-candidate"
     manifest["lock"]["notes"].append(
         "Public EXL3 bootstrap candidate: inherited receipt-gated NF3/SparkRing "
         "bytes plus hash-pinned SM121 SparkInfer/ExLlamaV3 source composition."
+    )
+    manifest["lock"]["notes"].append(
+        "LMCache is source-composed from exact PR heads, tree-gated, and "
+        "patched for one local server per TP4/DCP4 shard."
     )
     manifest["self_hash"] = hashlib.sha256(
         canonical_manifest_bytes(manifest)

@@ -61,11 +61,12 @@ def verify_sources(pins: dict) -> None:
         )
 
 
-def verify_imports() -> None:
-    require(
-        importlib.metadata.version("nvidia-cutlass-dsl") == "4.6.0",
-        "CUTLASS DSL is not exactly 4.6.0",
-    )
+def verify_imports(pins: dict) -> None:
+    for name, record in pins["cutlass_python_lock"]["distributions"].items():
+        require(
+            importlib.metadata.version(name) == record["version"],
+            f"{name} is not exactly {record['version']}",
+        )
     importlib.import_module("sparkinfer.moe.fused_moe")
     mixed = importlib.import_module(
         "sparkinfer.moe._shared.kernels.w4a16.mixed_trellis"
@@ -83,6 +84,39 @@ def verify_imports() -> None:
         "vllm.model_executor.layers.quantization.exl3"
     )
     require(hasattr(exl3, "Exl3Config"), "vLLM EXL3 config is unavailable")
+    require(
+        importlib.metadata.version("lmcache") == pins["lmcache"]["version"],
+        f"lmcache is not exactly {pins['lmcache']['version']}",
+    )
+    importlib.import_module("cupy")
+    connector = importlib.import_module(
+        "lmcache.integration.vllm.lmcache_mp_connector"
+    )
+    adapter = importlib.import_module(
+        "lmcache.integration.vllm.vllm_multi_process_adapter"
+    )
+    require(
+        hasattr(connector, "local_server_url_for_worker"),
+        "LMCache local-server rank routing helper is unavailable",
+    )
+    for rank in range(4):
+        strategy = adapter.ParallelStrategy(
+            use_mla=True,
+            vllm_world_size=4,
+            vllm_worker_id=rank,
+            tp_size=4,
+            pp_size=1,
+            n_servers=4,
+            dcp_size=4,
+        )
+        require(strategy.kv_world_size == 1, "LMCache shard-local world drift")
+        require(strategy.kv_worker_id == 0, "LMCache shard-local worker drift")
+        require(strategy.kv_tp_size == 1, "LMCache shard-local TP drift")
+        require(
+            strategy.kv_readers_per_object == 1,
+            "LMCache shard-local reader drift",
+        )
+        require(strategy.is_writer, "LMCache shard-local rank must be a writer")
 
 
 def verify_gpu() -> None:
@@ -102,7 +136,7 @@ def main() -> int:
         "wrong EXL3 pin schema",
     )
     verify_sources(pins)
-    verify_imports()
+    verify_imports(pins)
     if args.phase == "gpu":
         verify_gpu()
     print(

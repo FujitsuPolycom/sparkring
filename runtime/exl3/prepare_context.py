@@ -92,6 +92,61 @@ def materialize_source(source_root: Path, name: str, record: dict[str, str]) -> 
     return repo, tree
 
 
+def materialize_lmcache(source_root: Path, record: dict) -> tuple[Path, str]:
+    """Compose the exact reviewed LMCache PR heads and local-server patch."""
+    repo = source_root / f"lmcache-{record['composed_tree'][:12]}"
+    fresh = clone_if_missing(repo, record["repository"])
+    if not fresh:
+        head_tree = str(run_git(repo, "rev-parse", "HEAD^{tree}")).strip()
+        index_tree = str(run_git(repo, "write-tree")).strip()
+        unstaged = str(run_git(repo, "diff", "--name-only")).strip()
+        untracked = str(
+            run_git(repo, "ls-files", "--others", "--exclude-standard")
+        ).strip()
+        if (
+            head_tree == record["integration_tree"]
+            and index_tree == record["composed_tree"]
+            and not unstaged
+            and not untracked
+        ):
+            return repo, index_tree
+        raise RuntimeError(
+            f"LMCache source cache has an unexpected tree or status: {repo}; "
+            "remove only this cache directory and retry"
+        )
+
+    commits = [record["base_commit"], *record["integration_heads"]]
+    for commit in commits:
+        run_git(repo, "fetch", "--force", "origin", commit)
+    run_git(repo, "checkout", "--detach", record["base_commit"])
+    run_git(repo, "config", "user.email", "agent@sparkring.local")
+    run_git(repo, "config", "user.name", "SparkRing Agent")
+    for commit in record["integration_heads"]:
+        run_git(repo, "merge", "--no-edit", "--no-ff", commit)
+    integration_tree = str(run_git(repo, "rev-parse", "HEAD^{tree}")).strip()
+    if integration_tree != record["integration_tree"]:
+        raise RuntimeError(
+            "LMCache integration tree mismatch: expected "
+            f"{record['integration_tree']}, got {integration_tree}"
+        )
+
+    patch_path = HERE / record["topology_patch"]
+    verify_file(
+        patch_path,
+        record["topology_patch_sha256"],
+        "LMCache four-local-server topology patch",
+    )
+    run_git(repo, "apply", "--index", "--whitespace=nowarn", str(patch_path))
+    run_git(repo, "diff", "--cached", "--check")
+    composed_tree = str(run_git(repo, "write-tree")).strip()
+    if composed_tree != record["composed_tree"]:
+        raise RuntimeError(
+            "LMCache composed tree mismatch: expected "
+            f"{record['composed_tree']}, got {composed_tree}"
+        )
+    return repo, composed_tree
+
+
 def archive_tree(repo: Path, tree: str, destination: Path) -> None:
     archive = run_git(repo, "archive", "--format=tar", tree, binary=True)
     assert isinstance(archive, bytes)
@@ -139,6 +194,16 @@ def main() -> int:
     pins = json.loads((HERE / "pins.json").read_text(encoding="utf-8"))
     if pins.get("schema") != "sparkring-public-exl3-pins/v1":
         raise RuntimeError("wrong public EXL3 pins schema")
+    verify_file(
+        HERE / "cutlass-requirements.txt",
+        pins["cutlass_python_lock"]["requirements_sha256"],
+        "CUTLASS Python wheel lock",
+    )
+    verify_file(
+        HERE / "lmcache-requirements.txt",
+        pins["lmcache"]["requirements_sha256"],
+        "LMCache runtime wheel lock",
+    )
     verify_overlay(pins)
     verify_runtime_overlay(pins)
     output = args.output.resolve()
@@ -149,6 +214,9 @@ def main() -> int:
     for name in ("sparkinfer", "exllamav3"):
         repo, tree = materialize_source(args.source_root.resolve(), name, pins["sources"][name])
         materialized[name] = (repo, tree)
+    materialized["lmcache"] = materialize_lmcache(
+        args.source_root.resolve(), pins["lmcache"]
+    )
 
     output.mkdir(parents=True)
     (output / "sources").mkdir()
@@ -159,7 +227,11 @@ def main() -> int:
     shutil.copytree(HERE / "runtime-overlay", output / "runtime-overlay", ignore=ignored)
     for name in (
         "Containerfile",
+        "cutlass-requirements.txt",
+        "lmcache-requirements.txt",
         "pins.json",
+        "model_manifest.py",
+        "verify_exl3_model.py",
         "verify_exl3_runtime.py",
         "compose_runtime_manifest.py",
         "patch_sparse_profile_capacity.py",

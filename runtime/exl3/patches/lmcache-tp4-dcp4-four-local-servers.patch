@@ -1,0 +1,118 @@
+diff --git a/lmcache/integration/vllm/lmcache_mp_connector.py b/lmcache/integration/vllm/lmcache_mp_connector.py
+index 21af374..14309d3 100644
+--- a/lmcache/integration/vllm/lmcache_mp_connector.py
++++ b/lmcache/integration/vllm/lmcache_mp_connector.py
+@@ -200,6 +200,14 @@ def build_parallel_strategy_from_vllm_config(
+     )
+ 
+ 
++def local_server_url_for_worker(
++    server_urls: list[str], parallel_strategy: ParallelStrategy
++) -> str:
++    """Return the node-local server URL for a worker's contiguous rank block."""
++    ranks_per_server = parallel_strategy.vllm_world_size // len(server_urls)
++    return server_urls[parallel_strategy.vllm_worker_id // ranks_per_server]
++
++
+ class LMCacheMPRequestState(enum.Enum):
+     """
+     State machine:
+@@ -700,10 +708,9 @@ class LMCacheMPConnector(KVConnectorBase_V1, SupportsHMA):
+             # Global ranks are assigned to nodes in contiguous blocks:
+             #   node 0 → ranks [0, ranks_per_node),
+             #   node 1 → [ranks_per_node, 2 * ranks_per_node), ...
+-            ranks_per_node = parallel_strategy.vllm_world_size // n_servers
+-            local_server_url = server_urls[
+-                parallel_strategy.vllm_worker_id // ranks_per_node
+-            ]
++            local_server_url = local_server_url_for_worker(
++                server_urls, parallel_strategy
++            )
+             self.worker_adapter = LMCacheMPWorkerAdapter(
+                 server_url=local_server_url,
+                 context=zmq_context,
+diff --git a/lmcache/integration/vllm/vllm_multi_process_adapter.py b/lmcache/integration/vllm/vllm_multi_process_adapter.py
+index dd5aa0e..e284eb0 100644
+--- a/lmcache/integration/vllm/vllm_multi_process_adapter.py
++++ b/lmcache/integration/vllm/vllm_multi_process_adapter.py
+@@ -336,11 +336,32 @@ class ParallelStrategy:
+                     "LMCache MLA+DCP currently requires pp_size=1; "
+                     f"got pp_size={self.pp_size}"
+                 )
+-            if self.n_servers != 1:
++            if self.n_servers not in (1, self.dcp_size):
+                 raise ValueError(
+-                    "LMCache MLA+DCP currently requires one LMCache server; "
+-                    f"got n_servers={self.n_servers}"
++                    "LMCache MLA+DCP requires one central server or exactly "
++                    "one server per DCP shard; "
++                    f"got n_servers={self.n_servers}, dcp_size={self.dcp_size}"
+                 )
++            if self.n_servers > 1 and (
++                self.tp_size != self.dcp_size
++                or self.vllm_world_size != self.tp_size
++            ):
++                raise ValueError(
++                    "LMCache multi-server MLA+DCP currently requires the "
++                    "non-replicated TP=DCP=n_servers, PP1 geometry; "
++                    f"got world_size={self.vllm_world_size}, "
++                    f"tp_size={self.tp_size}, dcp_size={self.dcp_size}, "
++                    f"n_servers={self.n_servers}"
++                )
++
++    @property
++    def is_shard_local_mla_dcp(self) -> bool:
++        """Whether each DCP shard is stored by its own local server."""
++        return (
++            self.use_mla
++            and self.dcp_size > 1
++            and self.n_servers == self.dcp_size
++        )
+ 
+     @property
+     def kv_world_size(self) -> int:
+@@ -348,6 +369,8 @@ class ParallelStrategy:
+         on the LMCache server storage."""
+         if self.use_mla:
+             if self.dcp_size > 1:
++                if self.is_shard_local_mla_dcp:
++                    return 1
+                 # DCP shards KV across ranks inside TP. The remaining
+                 # TP / DCP ranks hold query-parallel replicas of those shards.
+                 return self.dcp_size
+@@ -364,6 +387,8 @@ class ParallelStrategy:
+         in ``[0, kv_world_size)``."""
+         if self.use_mla:
+             if self.dcp_size > 1:
++                if self.is_shard_local_mla_dcp:
++                    return 0
+                 return self.vllm_worker_id % self.dcp_size
+             return self.vllm_worker_id // self.tp_size
+         return self.vllm_worker_id % (self.vllm_world_size // self.n_servers)
+@@ -372,6 +397,8 @@ class ParallelStrategy:
+     def kv_tp_size(self) -> int:
+         """Tensor-parallel size as seen from a single LMCache server."""
+         if self.use_mla and self.dcp_size > 1:
++            if self.is_shard_local_mla_dcp:
++                return 1
+             return self.tp_size // self.dcp_size
+         return self.tp_size // self.n_servers
+ 
+@@ -383,6 +410,8 @@ class ParallelStrategy:
+         DCP, ``dcp_size`` distinct sequence shards each have ``tp/dcp`` such
+         readers. Non-MLA workers own distinct KV objects.
+         """
++        if self.is_shard_local_mla_dcp:
++            return 1
+         return self.kv_tp_size if self.use_mla else 1
+ 
+     @property
+@@ -391,6 +420,8 @@ class ParallelStrategy:
+         if not self.use_mla:
+             return True
+         if self.dcp_size > 1:
++            if self.is_shard_local_mla_dcp:
++                return True
+             return self.vllm_worker_id < self.dcp_size
+         # MLA: only first rank per node is a writer.
+         return self.vllm_worker_id % (self.tp_size // self.n_servers) == 0

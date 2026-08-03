@@ -65,7 +65,7 @@ def write_generated_site(source: Path, destination: Path, image: str, digest: st
             "tensor_parallel_size": 4,
             "decode_context_parallel_size": 4,
             "mtp_mode": "static",
-            "mtp_tokens": 3,
+            "mtp_tokens": 2,
             "max_model_len": serving["max_model_len"],
             "kv_cache_bytes_per_rank": serving["kv_cache_bytes_per_rank"],
             "max_num_seqs": serving["max_num_seqs"],
@@ -82,9 +82,9 @@ def write_generated_profile(destination: Path, image: str, digest: str, model_pa
     serving = recipe["serving"]
     document = {
         "schema": "sparkring-public-exl3-launch/v1",
-        "profile_id": "glm52-exl3-tr3-3.25bpw-native-1m",
+        "profile_id": "glm52-exl3-tr3-3.25bpw-lmcache-cs512",
         "engine": "docker",
-        "container_name": "glm52-sparkring-exl3",
+        "container_name": "glm52-sparkring-exl3-lmcache-cs512",
         "image": image,
         "image_id": digest,
         "model_host_path": model_path,
@@ -136,6 +136,21 @@ def rsync_command(source: str, destination: str) -> list[str]:
         "rsync", "--archive", "--partial", "--inplace", "--human-readable",
         "--info=progress2", "--protect-args", f"{source.rstrip('/')}/", destination,
     ]
+
+
+def remote_bootstrap_dependencies_command() -> str:
+    """Fail before expensive work when a follower cannot receive/verify payloads."""
+    return "\n".join(
+        (
+            "set -euo pipefail",
+            "for program in docker git python3 rsync sha256sum; do",
+            "  command -v \"$program\" >/dev/null || { echo \"missing required program: $program\" >&2; exit 5; }",
+            "done",
+            "docker version >/dev/null",
+            "python3 -c 'import yaml'",
+            "printf 'EXL3_BOOTSTRAP_DEPENDENCIES_OK\\n'",
+        )
+    )
 
 
 def local_uid_gid() -> tuple[int, int]:
@@ -231,14 +246,19 @@ def main(argv: list[str] | None = None) -> int:
         "model_path": args.model_host_path,
         "base_image": base_image,
         "image": image,
+        "launch_after_prepare": not args.no_launch,
         "steps": [
             "verify SSH mesh and direct 200GbE/RDMA fabric",
             "build or reuse the receipt-gated public NF3 base on rank 0",
             "adopt or resume the exact 81-shard model on rank 0",
             "fan model bytes over the direct 200GbE ring",
-            "reconstruct exact EXL3 source trees and build one derived ARM64 image",
+            "reconstruct exact EXL3 and LMCache source trees and build one derived ARM64 image",
             "fan the exact image ID over the direct 200GbE ring",
-            "generate ignored site/profile files, verify, and launch four ranks",
+            (
+                "generate ignored site/profile files, verify, and launch four ranks"
+                if not args.no_launch
+                else "generate ignored site/profile files and verify without launching"
+            ),
         ],
     }
     print(json.dumps(plan, indent=2))
@@ -257,8 +277,19 @@ def main(argv: list[str] | None = None) -> int:
     run(ssh_bootstrap_verification_command(args.site), cwd=ROOT)
     run(ssh_image_fanout_verification_command(args.site), cwd=ROOT)
     run(early_fabric_preflight_command(args.site), cwd=ROOT)
-    remote_repository = f"{args.remote_root}/{commit}"
     followers = [rank for rank in site.ranks if rank.id != 0]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        dependency_checks = [
+            pool.submit(
+                remote,
+                rank.ssh_target,
+                remote_bootstrap_dependencies_command(),
+            )
+            for rank in followers
+        ]
+        for dependency_check in dependency_checks:
+            dependency_check.result()
+    remote_repository = f"{args.remote_root}/{commit}"
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
         checkouts = [pool.submit(remote, rank.ssh_target, checkout_command(commit, args.remote_root)) for rank in followers]
         for checkout in checkouts:
@@ -294,11 +325,20 @@ def main(argv: list[str] | None = None) -> int:
 
     write_generated_site(args.site, args.generated_site, image, expected_id)
     write_generated_profile(args.generated_profile, image, expected_id, args.model_host_path, str(site.paths.jit_cache_dir))
-    launcher = [sys.executable, str(ROOT / "scripts/sparkring_exl3_launcher.py"), "--site", str(args.generated_site), "--profile", str(args.generated_profile)]
+    launcher = [sys.executable, str(ROOT / "scripts/sparkring_exl3_lmcache_launcher.py"), "--site", str(args.generated_site), "--profile", str(args.generated_profile)]
     run([*launcher, "plan"], cwd=ROOT)
     run([sys.executable, str(ROOT / "scripts/preflight.py"), "--site", str(args.generated_site)], cwd=ROOT)
     if not args.no_launch:
-        run([*launcher, "--execute", "start"], cwd=ROOT)
+        run(
+            [
+                *launcher,
+                "--execute",
+                "--confirmation",
+                "START-EXL3-LMCACHE-CS512-ALL-FOUR",
+                "start",
+            ],
+            cwd=ROOT,
+        )
     print(f"PASS: EXL3 bootstrap complete; image={image} image_id={expected_id}")
     return 0
 

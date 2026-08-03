@@ -58,12 +58,32 @@ def test_builder_is_arm64_receipt_gated_and_reuses_exact_images():
     for required in (
         "ARG BASE_IMAGE",
         "FROM ${BASE_IMAGE}",
+        "--require-hashes",
+        "cutlass-requirements.txt",
         "COPY overlay/vllm/",
         "COPY runtime-overlay/",
         "verify_exl3_runtime.py",
         'ENTRYPOINT ["/opt/sparkring-exl3/entrypoint.sh"]',
     ):
         assert required in containerfile
+
+
+def test_cutlass_wheels_and_installed_distribution_files_are_receipt_pinned():
+    requirements_path = HERE / "cutlass-requirements.txt"
+    requirements = requirements_path.read_text(encoding="utf-8")
+    lock = PINS["cutlass_python_lock"]
+    assert _sha256(requirements_path) == lock["requirements_sha256"]
+    for name, record in lock["distributions"].items():
+        assert f"{name}=={record['version']}" in requirements
+        assert f"--hash=sha256:{record['wheel_sha256']}" in requirements
+    composer = (HERE / "compose_runtime_manifest.py").read_text(encoding="utf-8")
+    assert "distribution_files(tuple(cutlass_distributions))" in composer
+
+
+def test_entrypoint_clears_explicit_unsets_and_runs_full_model_verifier():
+    entrypoint = (HERE / "entrypoint.sh").read_text(encoding="utf-8")
+    assert 'unset "${name}"' in entrypoint
+    assert "verify_exl3_model.py" in entrypoint
 
 
 def test_generated_context_verifier_rejects_byte_drift(tmp_path):

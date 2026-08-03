@@ -108,12 +108,19 @@ def test_exl3_recipe_records_exact_live_and_public_build_contract():
     assert recipe["publication"]["local_build_ready"] is True
     assert recipe["runtime"]["bootstrap_script"] == "scripts/bootstrap_exl3.py"
     assert recipe["runtime"]["build_script"] == "runtime/exl3/build-image.sh"
-    assert recipe["serving"]["mtp_policy"] == "fixed-3"
-    assert recipe["serving"]["max_model_len"] == 1048576
-    assert recipe["serving"]["kv_cache_bytes_per_rank"] == 9000000000
-    assert recipe["serving"]["reported_kv_tokens"] == 1125632
+    assert recipe["runtime"]["launcher"] == (
+        "scripts/sparkring_exl3_lmcache_launcher.py"
+    )
+    assert recipe["runtime"]["lmcache"]["composed_tree"] == (
+        "7dddbfde874d123e5b5785e6e56b4b7baf4baa82"
+    )
+    assert recipe["serving"]["mtp_policy"] == "fixed-2"
+    assert recipe["serving"]["max_model_len"] == 524288
+    assert recipe["serving"]["kv_cache_bytes_per_rank"] == 4500000000
+    assert recipe["serving"]["reported_kv_tokens"] == 562688
     assert recipe["serving"]["max_num_seqs"] == 8
     assert recipe["serving"]["max_query_rows"] == 32
+    assert recipe["serving"]["lmcache"]["chunk_size"] == 512
 
 
 def test_exl3_plan_is_offline_and_reports_local_bootstrap(capsys):

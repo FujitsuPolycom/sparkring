@@ -38,6 +38,34 @@ def test_plan_is_read_only_and_names_exact_sources():
     assert plan["model"].startswith("willfalco/GLM-5.2-EXL3-TR3-3.25bpw@")
     assert plan["image"].startswith("sparkring/glm52-exl3-tr3-3.25bpw:")
     assert "direct 200GbE ring" in " ".join(plan["steps"])
+    assert plan["launch_after_prepare"] is True
+
+
+def test_no_launch_plan_describes_preparation_without_launch():
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/bootstrap_exl3.py"),
+            "plan",
+            "--site",
+            str(SITE),
+            "--no-launch",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    plan = json.loads(result.stdout)
+    assert plan["launch_after_prepare"] is False
+    assert "without launching" in plan["steps"][-1]
+
+
+def test_remote_bootstrap_dependencies_include_rsync_and_verifier_tools():
+    command = bootstrap_exl3.remote_bootstrap_dependencies_command()
+    for program in ("docker", "git", "python3", "rsync", "sha256sum"):
+        assert program in command
+    assert "import yaml" in command
 
 
 def test_execute_requires_explicit_four_rank_confirmation():
@@ -78,12 +106,16 @@ def test_generated_files_encode_the_exact_live_profile(tmp_path):
     site = yaml.safe_load(site_path.read_text(encoding="utf-8"))
     profile = json.loads(profile_path.read_text(encoding="utf-8"))
     assert site["serving"]["max_num_seqs"] == 8
-    assert site["serving"]["max_model_len"] == 1_048_576
-    assert site["serving"]["kv_cache_bytes_per_rank"] == 9_000_000_000
+    assert site["serving"]["max_model_len"] == 524_288
+    assert site["serving"]["kv_cache_bytes_per_rank"] == 4_500_000_000
     assert profile["image_id"] == image_id
     assert profile["model_shard_count"] == 81
     assert profile["environment"]["VLLM_EXL3_TRELLIS_MAX_M"] == "32"
     assert profile["environment"]["SPARK_CONTEXT_CACHE_ENABLE"] == "0"
+    assert profile["environment"]["VLLM_SPARK_MTP_MODE_ID"] == "fixed-mtp2"
+    assert profile["profile_id"] == (
+        "glm52-exl3-tr3-3.25bpw-lmcache-cs512"
+    )
     loaded = sparkring_exl3_launcher.load_profile(profile_path)
     assert len(sparkring_exl3_launcher.start_actions(load_site(site_path), loaded)) == 4
     assert sparkring_exl3_launcher.main(
@@ -113,7 +145,7 @@ def test_launcher_refuses_execute_plan(tmp_path):
     assert error.value.code == 2
 
 
-def test_native_1m_profile_rejects_any_unpublished_environment_drift(tmp_path):
+def test_cs512_profile_rejects_any_unpublished_environment_drift(tmp_path):
     profile_path = tmp_path / "launch.json"
     image_id = "sha256:" + "a" * 64
     bootstrap_exl3.write_generated_profile(
@@ -126,7 +158,7 @@ def test_native_1m_profile_rejects_any_unpublished_environment_drift(tmp_path):
         sparkring_exl3_launcher.load_profile(profile_path)
 
 
-def test_start_actions_verify_model_hashes_and_shard_bytes(tmp_path):
+def test_start_actions_run_the_full_pinned_model_manifest_verifier(tmp_path):
     site_path = tmp_path / "site.yaml"
     profile_path = tmp_path / "launch.json"
     image_id = "sha256:" + "a" * 64
@@ -139,9 +171,25 @@ def test_start_actions_verify_model_hashes_and_shard_bytes(tmp_path):
     )
     for action in actions:
         command = action.shell_command
-        assert "sha256sum" in command
-        assert "tier_bitmap.json" in command
-        assert "339069245936" in command
+        assert "/opt/sparkring-exl3/verify_exl3_model.py" in command
+        assert image_id in command
+
+
+def test_start_actions_clear_recipe_unsets_instead_of_importing_host_values(tmp_path):
+    site_path = tmp_path / "site.yaml"
+    profile_path = tmp_path / "launch.json"
+    image_id = "sha256:" + "a" * 64
+    bootstrap_exl3.write_generated_site(SITE, site_path, "image:test", image_id)
+    bootstrap_exl3.write_generated_profile(
+        profile_path, "image:test", image_id, "/srv/models/exl3", "/srv/jit"
+    )
+    actions = sparkring_exl3_launcher.start_actions(
+        load_site(site_path), sparkring_exl3_launcher.load_profile(profile_path)
+    )
+    for action in actions:
+        command = action.shell_command
+        assert "SPARKRING_EXPLICITLY_UNSET=" in command
+        assert "--env HYBRID_NF3 " not in command
 
 
 def test_model_fanout_uses_two_direct_neighbors_then_one_relay():

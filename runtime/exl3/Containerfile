@@ -9,13 +9,19 @@ ARG CONTEXT_MANIFEST_SHA256
 ARG SPARKINFER_COMMIT
 ARG EXLLAMAV3_COMMIT
 ARG VLLM_PORT_COMMIT
+ARG LMCACHE_INTEGRATION_TREE
+ARG LMCACHE_COMPOSED_TREE
+ARG LMCACHE_TOPOLOGY_PATCH_SHA256
 
 LABEL org.sparkring.exl3-profile="${PROFILE_ID}" \
       org.sparkring.parent.image-id="${BASE_IMAGE_ID}" \
       org.sparkring.exl3.context-manifest-sha256="${CONTEXT_MANIFEST_SHA256}" \
       org.sparkring.sparkinfer-commit="${SPARKINFER_COMMIT}" \
       org.sparkring.exllamav3-commit="${EXLLAMAV3_COMMIT}" \
-      org.sparkring.vllm-port-commit="${VLLM_PORT_COMMIT}"
+      org.sparkring.vllm-port-commit="${VLLM_PORT_COMMIT}" \
+      org.sparkring.lmcache-integration-tree="${LMCACHE_INTEGRATION_TREE}" \
+      org.sparkring.lmcache-composed-tree="${LMCACHE_COMPOSED_TREE}" \
+      org.sparkring.lmcache-topology-patch-sha256="${LMCACHE_TOPOLOGY_PATCH_SHA256}"
 
 ENV CUDA_HOME=/usr/local/cuda \
     CUDACXX=/usr/local/cuda/bin/nvcc \
@@ -23,12 +29,13 @@ ENV CUDA_HOME=/usr/local/cuda \
     TORCH_CUDA_ARCH_LIST=12.1a \
     MAX_JOBS=1
 
-RUN /opt/venv/bin/python -m pip install --no-cache-dir --upgrade \
-      "nvidia-cutlass-dsl==4.6.0" \
-      "nvidia-cutlass-dsl-libs-base==4.6.0" \
-      "nvidia-cutlass-dsl-libs-core==4.6.0" \
-      "nvidia-cutlass-dsl-libs-cu12==4.6.0" \
-      "nvidia-cutlass-dsl-libs-cu13==4.6.0"
+COPY cutlass-requirements.txt /opt/sparkring-exl3/cutlass-requirements.txt
+RUN /opt/venv/bin/python -m pip install --no-cache-dir --upgrade --no-deps \
+      --require-hashes -r /opt/sparkring-exl3/cutlass-requirements.txt
+
+COPY lmcache-requirements.txt /opt/sparkring-exl3/lmcache-requirements.txt
+RUN /opt/venv/bin/python -m pip install --no-cache-dir --upgrade --no-deps \
+      --require-hashes -r /opt/sparkring-exl3/lmcache-requirements.txt
 
 COPY sources/sparkinfer/ /opt/sparkring-exl3/sources/sparkinfer/
 RUN /opt/venv/bin/python -m pip install --no-cache-dir --no-deps \
@@ -38,6 +45,11 @@ COPY sources/exllamav3/ /opt/sparkring-exl3/sources/exllamav3/
 RUN /opt/venv/bin/python -m pip install --no-cache-dir --no-deps \
       --no-build-isolation /opt/sparkring-exl3/sources/exllamav3
 
+COPY sources/lmcache/ /opt/sparkring-exl3/sources/lmcache/
+RUN SETUPTOOLS_SCM_PRETEND_VERSION=0.5.2+glm52dcp4.1 \
+    /opt/venv/bin/python -m pip install --no-cache-dir --no-deps \
+      --no-build-isolation /opt/sparkring-exl3/sources/lmcache
+
 COPY overlay/vllm/ /opt/venv/lib/python3.12/site-packages/vllm/
 COPY patch_sparse_profile_capacity.py /opt/sparkring-exl3/
 RUN /opt/venv/bin/python \
@@ -45,8 +57,8 @@ RUN /opt/venv/bin/python \
 
 COPY runtime-overlay/ /opt/spark-vllm/
 
-COPY pins.json context-manifest.json verify_exl3_runtime.py \
-     compose_runtime_manifest.py entrypoint.sh \
+COPY pins.json context-manifest.json model_manifest.py verify_exl3_model.py \
+     verify_exl3_runtime.py compose_runtime_manifest.py entrypoint.sh \
      /opt/sparkring-exl3/
 
 RUN chmod 0755 /opt/sparkring-exl3/entrypoint.sh

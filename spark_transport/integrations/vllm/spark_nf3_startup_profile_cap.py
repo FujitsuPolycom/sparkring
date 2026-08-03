@@ -40,6 +40,7 @@ _PATCH_MARKER = "_spark_nf3_startup_profile_cap"
 _WORKER_PATCH_MARKER = "_spark_nf3_compile_warmup_cap"
 _MEMORY_GUARD_PATCH_MARKER = "_spark_nf3_profile_ownership_guard"
 _REFERENCE_RUNTIME_MAX_TOKENS = 4096
+_ALLOWED_RUNTIME_MAX_TOKENS = frozenset({3072, 4096})
 _ALLOWED_GRAPH_MAX_TOKENS = frozenset({32, 40})
 _EXPECTED_VERSION = (
     "0.11.2.dev279+eldritch.final.fcc6141.b12x284a2ea."
@@ -133,10 +134,10 @@ def _validate_single_compile_range_contract(
             "1, which removes the symbolic Q argument from the compiled "
             "artifact ABI. Use profile tokens >=2 for the Q1-Q4096 range."
         )
-    if runtime_max != _REFERENCE_RUNTIME_MAX_TOKENS:
+    if runtime_max not in _ALLOWED_RUNTIME_MAX_TOKENS:
         raise RuntimeError(
-            "NF3 single-range contract requires runtime max tokens "
-            f"{_REFERENCE_RUNTIME_MAX_TOKENS}, got {runtime_max}"
+            "NF3 single-range contract requires runtime max tokens in "
+            f"{sorted(_ALLOWED_RUNTIME_MAX_TOKENS)}, got {runtime_max}"
         )
     scheduler_max = int(runner.scheduler_config.max_num_batched_tokens)
     if scheduler_max != runtime_max:
@@ -516,20 +517,21 @@ def _install_on_worker_class(worker_cls: type[Any], cap: int) -> bool:
                 if runtime_scheduled_raw is None
                 else int(runtime_scheduled_raw)
             )
-            if runtime_batched != _REFERENCE_RUNTIME_MAX_TOKENS:
+            if runtime_batched not in _ALLOWED_RUNTIME_MAX_TOKENS:
                 raise RuntimeError(
                     "NF3 compile-warmup cap requires runtime "
-                    f"max_num_batched_tokens={_REFERENCE_RUNTIME_MAX_TOKENS}, "
+                    "max_num_batched_tokens in "
+                    f"{sorted(_ALLOWED_RUNTIME_MAX_TOKENS)}, "
                     f"got {runtime_batched}"
                 )
             if (
                 runtime_scheduled is not None
-                and runtime_scheduled != _REFERENCE_RUNTIME_MAX_TOKENS
+                and runtime_scheduled != runtime_batched
             ):
                 raise RuntimeError(
                     "NF3 compile-warmup cap requires runtime "
                     "max_num_scheduled_tokens to be None or "
-                    f"{_REFERENCE_RUNTIME_MAX_TOKENS}, got "
+                    f"match max_num_batched_tokens={runtime_batched}, got "
                     f"{runtime_scheduled}"
                 )
 

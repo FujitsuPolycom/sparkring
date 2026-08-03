@@ -18,6 +18,7 @@ def _sha(payload: bytes) -> str:
 def _fixture(path: Path) -> dict:
     shard_a = b"aaa"
     shard_b = b"bbbb"
+    tokenizer = b'{"model":{"type":"BPE"}}'
     index = {
         "weight_map": {
             "layer.0": "model-00001-of-00002.safetensors",
@@ -28,14 +29,19 @@ def _fixture(path: Path) -> dict:
     tier = b'{"tiers":[3,4]}'
     index_bytes = json.dumps(index).encode()
     manifest = (
+        f"{_sha(config)}  config.json\n"
+        f"{_sha(index_bytes)}  model.safetensors.index.json\n"
         f"{_sha(shard_a)}  model-00001-of-00002.safetensors\n"
         f"{_sha(shard_b)}  model-00002-of-00002.safetensors\n"
+        f"{_sha(tier)}  tier_bitmap.json\n"
+        f"{_sha(tokenizer)}  tokenizer.json\n"
     ).encode()
     path.mkdir()
     (path / "config.json").write_bytes(config)
     (path / "model.safetensors.index.json").write_bytes(index_bytes)
     (path / "tier_bitmap.json").write_bytes(tier)
     (path / "MANIFEST.sha256").write_bytes(manifest)
+    (path / "tokenizer.json").write_bytes(tokenizer)
     (path / "model-00001-of-00002.safetensors").write_bytes(shard_a)
     (path / "model-00002-of-00002.safetensors").write_bytes(shard_b)
     return {
@@ -73,6 +79,27 @@ def test_verifier_rejects_same_size_shard_corruption(tmp_path):
     model = _fixture(model_path)
     (model_path / "model-00001-of-00002.safetensors").write_bytes(b"bbb")
     with pytest.raises(RuntimeError, match="model shard hash mismatch"):
+        download_exl3.verify(model_path, model)
+
+
+def test_verifier_rejects_corruption_in_any_manifest_entry(tmp_path):
+    model_path = tmp_path / "model"
+    model = _fixture(model_path)
+    (model_path / "tokenizer.json").write_bytes(b'{"model":{"type":"BAD"}}')
+    with pytest.raises(RuntimeError, match="model file hash mismatch for tokenizer.json"):
+        download_exl3.verify(model_path, model)
+
+
+def test_verifier_rejects_unmanifested_runtime_files_but_ignores_download_cache(tmp_path):
+    model_path = tmp_path / "model"
+    model = _fixture(model_path)
+    cache_file = model_path / ".cache" / "huggingface" / "download.lock"
+    cache_file.parent.mkdir(parents=True)
+    cache_file.write_bytes(b"cache")
+    assert download_exl3.verify(model_path, model)["status"] == "pass"
+
+    (model_path / "unmanifested.json").write_bytes(b"{}")
+    with pytest.raises(RuntimeError, match="unmanifested model files: .*unmanifested.json"):
         download_exl3.verify(model_path, model)
 
 

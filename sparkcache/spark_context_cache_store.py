@@ -1,11 +1,11 @@
 """Fail-closed loader for the persistent context-cache storage engine.
 
 The engine is single-sourced at
-``spark_transport/experiments/persistent_context_cache/cache_manifest.py``.
+``sparkcache/persistent_context_cache/cache_manifest.py``.
 This shim resolves it relative to this file so the same import works from
-the repository tree and from a staged v41 bundle (both preserve the
-``spark_transport/`` layout). Import failure is a hard error: a build that
-stages the connector without its storage engine must not come up.
+the repository tree and from a staged bundle. Import failure is a hard
+error: a build that stages the connector without its storage engine must
+not come up.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve()
 _CANDIDATES = (
-    # Staged bundle layout: engine package beside the flat overlay modules.
+    # Staged bundle layout (canonical): engine beneath the sparkcache package.
     _HERE.parent / "persistent_context_cache" / "cache_manifest.py",
     # Repository layout.
     _HERE.parents[2] / "experiments" / "persistent_context_cache" / "cache_manifest.py",

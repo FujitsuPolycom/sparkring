@@ -179,6 +179,63 @@ def test_generated_nvfp4_rope8_profile_is_accepted(tmp_path):
     assert len(launcher.start_actions(load_site(SITE), config)) == 4
 
 
+def test_nf3_nvfp4_1m_candidate_contract_is_accepted(tmp_path):
+    site_text = SITE.read_text(encoding="utf-8")
+    site_text = site_text.replace("max_model_len: 262144", "max_model_len: 1048576")
+    site_text = site_text.replace(
+        "kv_cache_bytes_per_rank: 7000000000",
+        "kv_cache_bytes_per_rank: 9000000000",
+    )
+    site_path = tmp_path / "site.yaml"
+    site_path.write_text(site_text, encoding="utf-8")
+
+    document = json.loads(LAUNCH.read_text(encoding="utf-8"))
+    arguments = document["extra_vllm_args"]
+    replacements = {
+        "--kv-cache-dtype": "nvfp4_ds_mla",
+        "--max-num-batched-tokens": "3072",
+        "--reasoning-parser": "glm47",
+        "--served-model-name": "GLM-5.2-NF3",
+    }
+    for option, value in replacements.items():
+        arguments[arguments.index(option) + 1] = value
+    document["environment"].update(
+        {
+            "HYBRID_B12X_MAX_TOKENS": "3072",
+            "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS": "1048576",
+            "VLLM_NVFP4_MLA_PER_TOKEN_SCALE": "1",
+            "VLLM_SPARK_KV_CACHE_DTYPE": "nvfp4_ds_mla",
+            "VLLM_SPARK_KV_CACHE_MEMORY_BYTES": "9000000000",
+            "VLLM_SPARK_KV_PROFILE": "nvfp4-rope8",
+            "VLLM_SPARK_KV_SCALE_MODE": "per-token",
+            "VLLM_SPARK_MAX_MODEL_LEN": "1048576",
+            "VLLM_SPARK_MAX_NUM_BATCHED_TOKENS": "3072",
+            "VLLM_SPARK_NF3_PROFILE": "reference-four-spark-adaptive-2-4-c8",
+            "VLLM_SPARK_RUNTIME_ID": (
+                "glm52-nf3-nvfp4-rope8-1m-candidate"
+            ),
+        }
+    )
+    launch_path = tmp_path / "launch.json"
+    launch_path.write_text(json.dumps(document), encoding="utf-8")
+
+    actions = launcher.start_actions(
+        load_site(site_path), launcher.load_launch(launch_path)
+    )
+    assert len(actions) == 4
+    for action in actions:
+        assert _option_value(action.argv, "--max-model-len") == "1048576"
+        assert _option_value(action.argv, "--kv-cache-memory-bytes") == "9000000000"
+        assert _option_value(action.argv, "--max-num-batched-tokens") == "3072"
+        assert _option_value(action.argv, "--served-model-name") == "GLM-5.2-NF3"
+        assert _option_value(action.argv, "--reasoning-parser") == "glm47"
+        assert (
+            "/var/tmp/sparkring-nf3-1m/spark_nf3_startup_profile_cap.py:"
+            "/opt/spark-vllm/spark_nf3_startup_profile_cap.py:ro"
+        ) in action.argv
+        assert _option_value(action.argv, "--entrypoint") == "/opt/venv/bin/vllm"
+
+
 def test_nvfp4_rope8_profile_refuses_missing_per_token_scale(tmp_path):
     document = json.loads(LAUNCH.read_text(encoding="utf-8"))
     index = document["extra_vllm_args"].index("--kv-cache-dtype")

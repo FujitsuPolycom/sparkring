@@ -6,6 +6,16 @@ fail() {
   exit 78
 }
 
+if [[ -n "${SPARKRING_EXPLICITLY_UNSET:-}" ]]; then
+  IFS=',' read -r -a unset_names <<<"${SPARKRING_EXPLICITLY_UNSET}"
+  for name in "${unset_names[@]}"; do
+    [[ "${name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] ||
+      fail "invalid explicitly-unset environment name: ${name}"
+    unset "${name}"
+  done
+  unset SPARKRING_EXPLICITLY_UNSET
+fi
+
 : "${SPARKRING_MODEL_PATH:?SPARKRING_MODEL_PATH is required}"
 : "${SPARKRING_MODEL_REPOSITORY:?SPARKRING_MODEL_REPOSITORY is required}"
 : "${SPARKRING_MODEL_REVISION:?SPARKRING_MODEL_REVISION is required}"
@@ -26,19 +36,8 @@ expected_revision=$(/opt/venv/bin/python -S -c \
 [[ "${SPARKRING_MODEL_REVISION}" == "${expected_revision}" ]] ||
   fail "model revision is not the pinned EXL3 revision"
 
-for pair in \
-  "config.json:${SPARKRING_MODEL_CONFIG_SHA256}" \
-  "model.safetensors.index.json:${SPARKRING_MODEL_INDEX_SHA256}" \
-  "tier_bitmap.json:${SPARKRING_MODEL_TIER_BITMAP_SHA256}"
-do
-  name=${pair%%:*}
-  expected=${pair#*:}
-  path="${SPARKRING_MODEL_PATH}/${name}"
-  [[ -f "${path}" ]] || fail "model metadata is missing: ${path}"
-  observed=$(sha256sum -- "${path}" | awk '{print $1}')
-  [[ "${observed}" == "${expected}" ]] ||
-    fail "${name} sha256 mismatch: expected ${expected}, got ${observed}"
-done
+/opt/venv/bin/python /opt/sparkring-exl3/verify_exl3_model.py \
+  --model-path "${SPARKRING_MODEL_PATH}"
 
 /opt/venv/bin/python /opt/sparkring/verify-runtime.py \
   --manifest "${manifest}" \

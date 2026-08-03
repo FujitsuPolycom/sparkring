@@ -345,6 +345,7 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
         )
         self._block_size = vllm_config.cache_config.block_size
         parallel = vllm_config.parallel_config
+        self._tp_degree = max(1, getattr(parallel, "tensor_parallel_size", 1))
         self._dcp_degree = max(1, getattr(parallel, "decode_context_parallel_size", 1))
         extra = self._kv_transfer_config.get_from_extra_config
         self._root = extra(
@@ -659,8 +660,28 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
     # identity helpers
     # ------------------------------------------------------------------
 
-    def _identity(self, shard_rank: int) -> CacheIdentity:
-        return CacheIdentity(dcp_shard_rank=shard_rank, **self._identity_base)
+    def _identity(
+        self, shard_rank: int, tp_shard_rank: int | None = None
+    ) -> CacheIdentity:
+        """Build a CacheIdentity for the given DCP shard rank.
+
+        tp_shard_rank defaults to the scheduler's shard rank (0) when
+        None and the connector is on the scheduler side, or to the
+        worker's physical TP rank when on the worker side.  This
+        ensures persistent storage keys distinguish physical workers
+        that share a DCP-local rank (e.g. TP0 and TP2 under DCP2).
+        """
+        if tp_shard_rank is None:
+            tp_shard_rank = (
+                self._shard_rank
+                if self._role is KVConnectorRole.SCHEDULER
+                else self._physical_rank()
+            )
+        return CacheIdentity(
+            dcp_shard_rank=shard_rank,
+            tp_shard_rank=tp_shard_rank,
+            **self._identity_base,
+        )
 
     def _digest(self, token_ids: list[int], span: int) -> str:
         salt = self._identity(0).storage_key
@@ -671,10 +692,17 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
         return span // CHUNK_TOKENS * CHUNK_TOKENS
 
     def _has_full_quorum(self, digest: str) -> bool:
-        """Return whether every DCP rank already offers this cache entry."""
+        """Return whether every physical TP worker already offers this cache entry.
+
+        Quorum requires all physical TP workers in range(tp_degree),
+        not just DCP-local ranks.  Under TP4/DCP2, this means all four
+        physical workers (TP0..TP3) must confirm, preventing a single
+        DCP group from falsely satisfying quorum while the other
+        physical workers lack data.
+        """
 
         confirmed = self._quorum.get(digest, ())
-        return all(rank in confirmed for rank in range(self._dcp_degree))
+        return all(rank in confirmed for rank in range(self._tp_degree))
 
     # ------------------------------------------------------------------
     # scheduler side
@@ -1167,6 +1195,23 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             self.counters.get("sweep_invalidated", 0) + invalidated
         )
         return {"checked": checked, "invalidated": invalidated}
+
+    def _physical_rank(self) -> int:
+        """Return this worker's physical tensor-parallel rank.
+
+        This is unique across all TP ranks (0..tp_degree-1), unlike
+        _worker_rank() which returns the DCP-local rank (0..dcp_degree-1).
+        Under TP4/DCP2, TP0 and TP2 both have DCP-local rank 0 but
+        physical ranks 0 and 2 respectively.
+
+        Used for quorum admission/withdrawal and persistent namespace
+        identity (tp_shard_rank).  Token-position ownership and DCP
+        slicing still use _worker_rank() (DCP-local rank).
+        """
+        from vllm.distributed import get_tensor_model_parallel_rank
+
+        return int(get_tensor_model_parallel_rank())
+
 
     def _worker_rank(self) -> int:
         from vllm.distributed import get_dcp_group
@@ -1695,7 +1740,7 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             held = report.get("held")
             if (
                 type(rank) is not int
-                or not 0 <= rank < self._dcp_degree
+                or not 0 <= rank < self._tp_degree
                 or not isinstance(held, list)
             ):
                 continue
@@ -1739,16 +1784,21 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
         """Report this rank's manifest-offered digests to the scheduler.
 
         This is the admission quorum's transport: the scheduler will only
-        offer a restore that every rank has confirmed. Load-time corruption
-        withdraws the failing rank's offer and publishes invalid blocks so
-        the request cleanly re-prefills instead of exposing restored state.
+        offer a restore that every physical TP worker has confirmed.
+        Load-time corruption withdraws the failing worker's offer and
+        publishes invalid blocks so the request cleanly re-prefills
+        instead of exposing restored state.
+
+        The report uses the physical TP rank (unique across all workers),
+        not the DCP-local rank, so TP0 and TP2 are not deduplicated
+        despite sharing DCP-local rank 0 under TP4/DCP2.
         """
         if self._role is not KVConnectorRole.WORKER:
             return None
         with self._load_lock:
             held = sorted(self._held)
         report: dict[str, Any] = {
-            "rank": self._worker_rank(),
+            "rank": self._physical_rank(),
             "held": held,
         }
         runtime = self._streaming_runtime

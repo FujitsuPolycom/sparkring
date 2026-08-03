@@ -96,8 +96,34 @@ python -m pytest \
 ```
 
 The command above is the focused storage/restore gate. The complete current
-SparkCache suite (`python -m pytest sparkcache -q`) passed **407 tests with
-1 skipped** on the GPU-free development host on 2026-07-29.
+SparkCache suite (`python -m pytest sparkcache -q`) passed **423 tests with
+1 skipped** on the GPU-free development host on 2026-08-03.
+
+## TP4/DCP2 candidate wiring
+
+The current source also contains the offline-validated identity and quorum
+work required by a TP4/DCP2 deployment. Under DCP2, two physical TP workers
+share each DCP-local shard rank. Persistent identities therefore include both
+the DCP-local rank and the physical TP rank, and restore admission requires
+confirmation from all four physical TP workers. Legacy manifests without the
+physical-rank field miss safely; they are never reinterpreted.
+
+The associated operator tooling is deliberately separate from the current
+EXL3 + LMCache deployment:
+
+- [`checkpoint_manifest_generator.py`](../scripts/checkpoint_manifest_generator.py)
+  creates the immutable checkpoint identity required by the connector;
+- [`connector_bundle_manifest.py`](../scripts/connector_bundle_manifest.py)
+  attests the exact staged connector source;
+- [`sparkcache_config_generator.py`](../scripts/sparkcache_config_generator.py)
+  produces and verifies the bounded NF3 TP4/DCP2/524K argument delta; and
+- [`live_dcp2_cutover.py`](../scripts/live_dcp2_cutover.py) is a confirmation-
+  gated, exact-label-guarded operator cutover with rollback.
+
+See the [dry-run plan](../docs/SPARKCACHE_DCP2_DRY_RUN_PLAN.md) and
+[live runbook](../docs/SPARKCACHE_DCP2_LIVE_RUNBOOK.md). This TP4/DCP2 path is
+**offline-validated only**; it is not the LMCache CS512 serving path and has
+not been promoted into the public default.
 
 ## Enabling
 

@@ -1,0 +1,14 @@
+nvidia-cutlass-dsl==4.6.0 \
+    --hash=sha256:e3e0e4d8df20d82c8401fa013f4d82021f41daa5fca3d24b55d4a677f2308ca8
+nvidia-cutlass-dsl-libs-base==4.6.0 \
+    --hash=sha256:6412572899b1c6d182e516b20f2b0a21874ec88d25234e6040fb2a4381de7a1a
+nvidia-cutlass-dsl-libs-core==4.6.0 \
+    --hash=sha256:f9ea6d313a03cb11fa177da32e8747ad0cac51358850810f36aa6c4736192c27
+nvidia-cutlass-dsl-libs-cu12==4.6.0 \
+    --hash=sha256:87f132ccc30946949868989f3b1b1adaa714ccdf5c636e5379b54909cc29576c
+nvidia-cutlass-dsl-libs-cu13==4.6.0 \
+    --hash=sha256:8c47899a5778dba4f30de76cce5e22bb5dc2a5bde4979ee1196ec9c6468e80e1
+nvidia-cuda-nvdisasm==13.3.73 \
+    --hash=sha256:dd4751884f9016b9b6dbf007abdeb5681d0a2edc731dd3d2fda9d6d878e88f73
+protobuf==6.33.6 \
+    --hash=sha256:e2afbae9b8e1825e3529f88d514754e094278bb95eadc0e199751cdd9a2e82a2

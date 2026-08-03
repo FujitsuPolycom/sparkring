@@ -63,6 +63,12 @@ _SITE_DERIVED_ENVIRONMENT = {
     "SPARK_TP4_PEER1",
     "WORLD_SIZE",
 }
+_NF3_1M_STARTUP_CAP_HOST_PATH = (
+    "/var/tmp/sparkring-nf3-1m/spark_nf3_startup_profile_cap.py"
+)
+_NF3_1M_STARTUP_CAP_CONTAINER_PATH = (
+    "/opt/spark-vllm/spark_nf3_startup_profile_cap.py"
+)
 
 
 class LaunchConfigError(ValueError):
@@ -339,6 +345,10 @@ def _validate_pinned_model_launch(
             "index_topk_pattern"
         )
 
+    candidate_1m = (
+        config.environment.get("VLLM_SPARK_RUNTIME_ID")
+        == "glm52-nf3-nvfp4-rope8-1m-candidate"
+    )
     kv_profile = config.environment.get("VLLM_SPARK_KV_PROFILE")
     kv_contracts = {
         "fp8": {
@@ -364,6 +374,10 @@ def _validate_pinned_model_launch(
         raise LaunchConfigError(
             "pinned NF3 launch requires VLLM_SPARK_KV_PROFILE=fp8 or "
             "nvfp4-rope8"
+        )
+    if candidate_1m and kv_profile != "nvfp4-rope8":
+        raise LaunchConfigError(
+            "NF3 1M candidate requires VLLM_SPARK_KV_PROFILE=nvfp4-rope8"
         )
     kv_contract = kv_contracts[kv_profile]
     kv_dtypes = _option_values(config.extra_vllm_args, "--kv-cache-dtype")
@@ -409,10 +423,11 @@ def _validate_pinned_model_launch(
             raise LaunchConfigError(
                 f"pinned NF3 C8 launch requires exactly one {option} {expected}"
             )
+    max_batched_tokens = "3072" if candidate_1m else "4096"
     pinned_options = {
         "--attention-backend": "B12X_MLA_SPARSE",
         "--dcp-comm-backend": "ag_rs",
-        "--max-num-batched-tokens": "4096",
+        "--max-num-batched-tokens": max_batched_tokens,
         "--speculative-config": (
             '{"model":"{draft_path}","method":"mtp",'
             '"num_speculative_tokens":4,'
@@ -478,7 +493,9 @@ def _validate_pinned_model_launch(
         "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
         "VLLM_ADAPTIVE_SPEC_DEPTHS": "2,4",
         "VLLM_B12X_MLA_CKV_GATHER": "1",
-        "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS": "458752",
+        "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS": (
+            "1048576" if candidate_1m else "458752"
+        ),
         "VLLM_B12X_MLA_DECODE_GATHER_V2": "0",
         "VLLM_B12X_MLA_DECODE_SPARSE_GATHER": "0",
         "VLLM_CPP_AR_1STAGE_NCCL_CUTOFF": "56KB",
@@ -523,10 +540,12 @@ def _validate_pinned_model_launch(
         ),
         "VLLM_SPARK_DCP_SIZE": "4",
         "VLLM_SPARK_ENABLE_PROFILER": "0",
-        "VLLM_SPARK_KV_CACHE_MEMORY_BYTES": "7000000000",
+        "VLLM_SPARK_KV_CACHE_MEMORY_BYTES": (
+            "9000000000" if candidate_1m else "7000000000"
+        ),
         "VLLM_SPARK_LOAD_FORMAT": "fastsafetensors",
-        "VLLM_SPARK_MAX_MODEL_LEN": "262144",
-        "VLLM_SPARK_MAX_NUM_BATCHED_TOKENS": "4096",
+        "VLLM_SPARK_MAX_MODEL_LEN": "1048576" if candidate_1m else "262144",
+        "VLLM_SPARK_MAX_NUM_BATCHED_TOKENS": max_batched_tokens,
         "VLLM_SPARK_MAX_NUM_SEQS": "8",
         "VLLM_SPARK_MTP_ADAPTIVE_WINDOW": "32",
         "VLLM_SPARK_MTP_MODE_ID": "adaptive-mtp2-4-window32",
@@ -548,6 +567,21 @@ def _validate_pinned_model_launch(
         "VLLM_USE_FLASHINFER_SAMPLER": "1",
         "VLLM_USE_MEGA_AOT_ARTIFACT": "0",
     }
+    if candidate_1m:
+        expected_environment.update(
+            {
+                "HYBRID_B12X_MAX_TOKENS": "3072",
+                "VLLM_SPARK_RUNTIME_ID": "glm52-nf3-nvfp4-rope8-1m-candidate",
+            }
+        )
+        if site.serving.max_model_len != 1_048_576:
+            raise LaunchConfigError(
+                "NF3 1M candidate requires site max_model_len=1048576"
+            )
+        if site.serving.kv_cache_bytes_per_rank != 9_000_000_000:
+            raise LaunchConfigError(
+                "NF3 1M candidate requires site kv_cache_bytes_per_rank=9000000000"
+            )
     for name, expected in expected_environment.items():
         if config.environment.get(name) != expected:
             raise LaunchConfigError(
@@ -574,7 +608,7 @@ def _validate_pinned_model_launch(
         )
 
     parser_contract = {
-        "--reasoning-parser": "glm45",
+        "--reasoning-parser": "glm47" if candidate_1m else "glm45",
         "--tool-call-parser": "glm47",
     }
     for option, expected in parser_contract.items():
@@ -595,6 +629,10 @@ def start_actions(site: SiteConfig, config: LaunchConfig) -> list[RemoteAction]:
                 key: None if value is None else _expand(value, context)
                 for key, value in config.environment.items()
             }
+        )
+        candidate_1m = (
+            config.environment.get("VLLM_SPARK_RUNTIME_ID")
+            == "glm52-nf3-nvfp4-rope8-1m-candidate"
         )
         argv = [
             config.engine,
@@ -629,6 +667,16 @@ def start_actions(site: SiteConfig, config: LaunchConfig) -> list[RemoteAction]:
             "--volume",
             f"{site.paths.context_cache_dir}:{site.paths.context_cache_dir}",
         ]
+        if candidate_1m:
+            argv.extend(
+                (
+                    "--volume",
+                    f"{_NF3_1M_STARTUP_CAP_HOST_PATH}:"
+                    f"{_NF3_1M_STARTUP_CAP_CONTAINER_PATH}:ro",
+                    "--entrypoint",
+                    "/opt/venv/bin/vllm",
+                )
+            )
         for key, value in sorted(environment.items()):
             argv.extend(("--env", key if value is None else f"{key}={value}"))
         argv.extend(

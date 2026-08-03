@@ -183,6 +183,20 @@ def test_cap_changes_only_profile_width_and_restores_runtime() -> None:
     }
 
 
+def test_single_range_contract_accepts_approved_q3072_runtime() -> None:
+    runner = FakeRunner(
+        runtime_max=3072,
+        scheduler_max=3072,
+        compilation_config=FakeCompilationConfig(endpoints=[3072]),
+    )
+
+    profile_cap._validate_single_compile_range_contract(
+        runner,
+        runtime_max=3072,
+        profile_max=2,
+    )
+
+
 def test_profile_cap_log_identifies_selected_runner_kind(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -335,6 +349,16 @@ def test_compile_warmup_cap_bounds_hidden_kernel_budget_and_restores() -> None:
     assert snapshot["compile_warmup_calls"] == 1
     assert snapshot["last_worker_runtime_batched_tokens"] == 4096
     assert snapshot["last_worker_runtime_scheduled_tokens"] == 4096
+
+
+def test_compile_warmup_cap_accepts_and_restores_q3072_runtime() -> None:
+    assert profile_cap._install_on_worker_class(FakeWorker, 32)
+    worker = FakeWorker(runtime_batched=3072, runtime_scheduled=3072)
+
+    assert worker._compile_or_warm_up_model_impl() == "warmed"
+    assert worker.observations == [(32, 32)]
+    assert worker.scheduler_config.max_num_batched_tokens == 3072
+    assert worker.scheduler_config.max_num_scheduled_tokens == 3072
 
 
 def test_compile_warmup_cap_restores_none_scheduled_budget() -> None:

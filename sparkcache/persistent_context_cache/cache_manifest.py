@@ -63,6 +63,20 @@ class CacheIdentity:
     # DCP shard ownership: entries written by one rank must never restore
     # into another. -1 means "not sharded" (DCP1 whole-context entries).
     dcp_shard_rank: int = -1
+    # Physical TP worker identity: unique across all TP ranks.  Under
+    # TP4/DCP2, two physical workers (e.g. TP0 and TP2) can share the
+    # same dcp_shard_rank (both DCP rank 0).  Without tp_shard_rank
+    # they would share the same storage_key and could cross-restore
+    # complementary TP shards.  -1 means "not set" (legacy/DCP1).
+    #
+    # Compatibility: this field was added in a schema extension.  Old
+    # entries written without it have to_wire() dicts that lack the
+    # key, so their storage_keys differ from any new identity that
+    # includes a concrete tp_shard_rank.  This is intentional:
+    # entries written under the old schema did not distinguish
+    # physical workers and must NOT be silently reinterpreted.  They
+    # simply miss, causing a clean re-prefill — the fail-closed path.
+    tp_shard_rank: int = -1
     # "persisted": every chunk carries a boundary_hidden record (original
     # tracer contract). "live_forward": boundary hidden state is not
     # persisted; the first post-restore forward regenerates it.
@@ -93,6 +107,8 @@ class CacheIdentity:
             raise ValueError("draft_kv_policy must be 'separate' or 'colocated_target'")
         if not -1 <= self.dcp_shard_rank < self.dcp_degree:
             raise ValueError("dcp_shard_rank must be -1 or in [0, dcp_degree)")
+        if not -1 <= self.tp_shard_rank < self.tp_degree:
+            raise ValueError("tp_shard_rank must be -1 or in [0, tp_degree)")
 
     @property
     def required_records(self) -> frozenset["StateRecord"]:
@@ -113,6 +129,7 @@ class CacheIdentity:
             "dcp_degree": self.dcp_degree,
             "chunk_tokens": self.chunk_tokens,
             "dcp_shard_rank": self.dcp_shard_rank,
+            "tp_shard_rank": self.tp_shard_rank,
             "boundary_hidden_policy": self.boundary_hidden_policy,
             "draft_kv_policy": self.draft_kv_policy,
         }

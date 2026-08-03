@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import shutil
@@ -15,14 +14,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RECIPE = ROOT / "recipes/glm52-exl3-tr3-3.25bpw.json"
 HEADROOM_BYTES = 16 * 1024**3
+sys.path.insert(0, str(ROOT / "runtime/exl3"))
 
-
-def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(8 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+from model_manifest import stderr_progress, verify_model  # noqa: E402
 
 
 def contract() -> dict:
@@ -32,64 +26,8 @@ def contract() -> dict:
     return recipe["model"]
 
 
-def manifest_entries(path: Path) -> dict[str, str]:
-    entries = {}
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        fields = line.split(maxsplit=1)
-        if len(fields) != 2 or len(fields[0]) != 64:
-            raise RuntimeError(f"invalid MANIFEST.sha256 line {number}")
-        digest, name = fields
-        name = name.strip().removeprefix("./")
-        if name in entries:
-            raise RuntimeError(f"duplicate MANIFEST.sha256 entry: {name}")
-        entries[name] = digest
-    return entries
-
-
 def verify(path: Path, model: dict) -> dict:
-    metadata = {
-        "config.json": model["config_sha256"],
-        "model.safetensors.index.json": model["index_sha256"],
-        "tier_bitmap.json": model["tier_bitmap_sha256"],
-        "MANIFEST.sha256": model["manifest_sha256"],
-    }
-    for name, expected in metadata.items():
-        target = path / name
-        if not target.is_file():
-            raise RuntimeError(f"model metadata is missing: {target}")
-        observed = sha256(target)
-        if observed != expected:
-            raise RuntimeError(f"{name} hash mismatch: expected {expected}, got {observed}")
-    index = json.loads((path / "model.safetensors.index.json").read_text(encoding="utf-8"))
-    shards = sorted(set(index.get("weight_map", {}).values()))
-    if len(shards) != model["shard_count"]:
-        raise RuntimeError(f"expected {model['shard_count']} shards, got {len(shards)}")
-    missing = [name for name in shards if not (path / name).is_file()]
-    if missing:
-        raise RuntimeError(f"model shard is missing: {missing[0]}")
-    manifest = manifest_entries(path / "MANIFEST.sha256")
-    missing_hashes = [name for name in shards if name not in manifest]
-    if missing_hashes:
-        raise RuntimeError(f"model shard hash is missing from manifest: {missing_hashes[0]}")
-    for index, name in enumerate(shards, 1):
-        observed = sha256(path / name)
-        if observed != manifest[name]:
-            raise RuntimeError(
-                f"model shard hash mismatch for {name}: expected {manifest[name]}, got {observed}"
-            )
-        if index % 8 == 0 or index == len(shards):
-            print(f"verified EXL3 shards: {index}/{len(shards)}", file=sys.stderr)
-    weight_bytes = sum((path / name).stat().st_size for name in shards)
-    if weight_bytes != model["weight_bytes"]:
-        raise RuntimeError(f"model weight bytes mismatch: expected {model['weight_bytes']}, got {weight_bytes}")
-    return {
-        "schema": "sparkring-exl3-model-verification/v1",
-        "repository": model["repository"],
-        "revision": model["revision"],
-        "shard_count": len(shards),
-        "weight_bytes": weight_bytes,
-        "status": "pass",
-    }
+    return verify_model(path, model, progress=stderr_progress)
 
 
 def require_capacity(path: Path, model: dict) -> None:

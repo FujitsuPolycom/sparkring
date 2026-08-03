@@ -236,6 +236,23 @@ def _validate_exl3(recipe: dict[str, Any]) -> None:
             raise RecipeError(f"runtime.sources.{name} must be an object")
         _require_commit(source.get("commit"), f"runtime.sources.{name}.commit")
         _require_commit(source.get("tree"), f"runtime.sources.{name}.tree")
+    lmcache_runtime = runtime.get("lmcache")
+    if not isinstance(lmcache_runtime, dict):
+        raise RecipeError("runtime.lmcache must pin the public LMCache source")
+    if lmcache_runtime.get("repository") != (
+        "https://github.com/local-inference-lab/LMCache.git"
+    ):
+        raise RecipeError("runtime.lmcache.repository drifted")
+    for field in ("base_commit", "integration_tree", "composed_tree"):
+        _require_commit(
+            lmcache_runtime.get(field), f"runtime.lmcache.{field}"
+        )
+    if lmcache_runtime.get("version") != "0.5.2+glm52dcp4.1":
+        raise RecipeError("runtime.lmcache.version drifted")
+    if lmcache_runtime.get("topology") != (
+        "tp4-dcp4-pp1-four-local-servers"
+    ):
+        raise RecipeError("runtime.lmcache.topology drifted")
 
     _validate_publication(recipe)
     publication = recipe["publication"]
@@ -244,7 +261,7 @@ def _validate_exl3(recipe: dict[str, Any]) -> None:
     required_runtime_files = {
         "bootstrap_script": "scripts/bootstrap_exl3.py",
         "download_script": "scripts/download_exl3.py",
-        "launcher": "scripts/sparkring_exl3_launcher.py",
+        "launcher": "scripts/sparkring_exl3_lmcache_launcher.py",
         "pins": "runtime/exl3/pins.json",
         "build_script": "runtime/exl3/build-image.sh",
         "build_containerfile": "runtime/exl3/Containerfile",
@@ -266,11 +283,11 @@ def _validate_exl3(recipe: dict[str, Any]) -> None:
         "tensor_parallel_size": 4,
         "decode_context_parallel_size": 4,
         "dcp_backend": "ag_rs",
-        "mtp_policy": "fixed-3",
-        "max_model_len": 1048576,
+        "mtp_policy": "fixed-2",
+        "max_model_len": 524288,
         "kv_cache_dtype": "nvfp4_ds_mla",
-        "kv_cache_bytes_per_rank": 9000000000,
-        "reported_kv_tokens": 1125632,
+        "kv_cache_bytes_per_rank": 4500000000,
+        "reported_kv_tokens": 562688,
         "max_num_batched_tokens": 4096,
         "max_num_seqs": 8,
         "max_query_rows": 32,
@@ -289,20 +306,20 @@ def _validate_exl3(recipe: dict[str, Any]) -> None:
         "SPARK_ADAPTIVE_MTP_CONTROL": "0",
         "SPARK_GLM52_MTP_INDEX_REUSE": "0",
         "VLLM_B12X_MLA_CKV_GATHER": "1",
-        "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS": "1048576",
+        "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS": "524288",
         "VLLM_DCP_GLOBAL_TOPK": "1",
         "VLLM_DCP_SHARD_DRAFT": "1",
         "VLLM_EXL3_PREFILL_TRELLIS": "1",
         "VLLM_EXL3_TRELLIS_MIN_M": "1",
         "VLLM_EXL3_TRELLIS_MAX_M": "32",
         "VLLM_NVFP4_MLA_PER_TOKEN_SCALE": "1",
-        "VLLM_SPARK_KV_CACHE_MEMORY_BYTES": "9000000000",
-        "VLLM_SPARK_MAX_MODEL_LEN": "1048576",
+        "VLLM_SPARK_KV_CACHE_MEMORY_BYTES": "4500000000",
+        "VLLM_SPARK_MAX_MODEL_LEN": "524288",
         "VLLM_SPARK_MAX_NUM_BATCHED_TOKENS": "4096",
         "VLLM_SPARK_MAX_NUM_SEQS": "8",
         "VLLM_SPARK_MAX_QUERY_ROWS": "32",
-        "VLLM_SPARK_MTP_MODE_ID": "fixed-mtp3",
-        "VLLM_SPARK_MTP_TOKENS": "3",
+        "VLLM_SPARK_MTP_MODE_ID": "fixed-mtp2",
+        "VLLM_SPARK_MTP_TOKENS": "2",
         "VLLM_SPARK_TP4_MODE": "custom",
     }
     for key, expected in required_environment.items():
@@ -340,6 +357,27 @@ def _validate_exl3(recipe: dict[str, Any]) -> None:
             raise RecipeError(f"serving.vllm_args requires {option} {expected}")
     if "--enforce-eager" in args:
         raise RecipeError("EXL3 recipe requires CUDA graphs")
+    lmcache = serving.get("lmcache")
+    expected_lmcache = {
+        "connector": "LMCacheMPConnector",
+        "connector_module": "lmcache.integration.vllm.lmcache_mp_connector",
+        "server_topology": "one-local-server-per-rank",
+        "server_port": 6556,
+        "http_port": 18081,
+        "chunk_size": 512,
+        "parent_chunk_size": 256,
+        "l1_size_gb": 1,
+        "l1_init_size_gb": 0,
+        "l1_lazy": True,
+        "max_gpu_workers": 1,
+        "max_cpu_workers": 2,
+        "transfer_mode": "lmcache_driven",
+        "mq_timeout_seconds": 10,
+        "heartbeat_interval_seconds": 10,
+        "load_failure_policy": "recompute",
+    }
+    if lmcache != expected_lmcache:
+        raise RecipeError("serving.lmcache drifted from the CS512 contract")
 
 
 def _canonical_digest(recipe: dict[str, Any]) -> str:

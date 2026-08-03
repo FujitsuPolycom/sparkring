@@ -28,7 +28,10 @@ HEX64 = re.compile(r"[0-9a-f]{64}")
 NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*")
 STANDARD_PROFILE_ID = "glm52-exl3-tr3-3.25bpw"
 HUGE_CONTEXT_PROFILE_ID = "glm52-exl3-tr3-3.25bpw-native-1m"
-PROFILE_IDS = frozenset((STANDARD_PROFILE_ID, HUGE_CONTEXT_PROFILE_ID))
+LMCACHE_CS512_PROFILE_ID = "glm52-exl3-tr3-3.25bpw-lmcache-cs512"
+PROFILE_IDS = frozenset(
+    (STANDARD_PROFILE_ID, HUGE_CONTEXT_PROFILE_ID, LMCACHE_CS512_PROFILE_ID)
+)
 RECIPE_PATH = ROOT / "recipes/glm52-exl3-tr3-3.25bpw.json"
 DEFAULT_MAX_NUM_BATCHED_TOKENS = 4096
 EXPERIMENT_MAX_NUM_BATCHED_TOKENS = frozenset((2048, 3072, 4096))
@@ -180,7 +183,7 @@ def _validate_contract(document: dict) -> None:
     if document["model_repository"] != "willfalco/GLM-5.2-EXL3-TR3-3.25bpw":
         raise ProfileError("wrong EXL3 model repository")
     environment = document["environment"]
-    if document["profile_id"] == HUGE_CONTEXT_PROFILE_ID:
+    if document["profile_id"] == LMCACHE_CS512_PROFILE_ID:
         recipe = json.loads(RECIPE_PATH.read_text(encoding="utf-8"))
         expected_environment = recipe["serving"]["environment"]
         if environment != expected_environment:
@@ -192,12 +195,12 @@ def _validate_contract(document: dict) -> None:
                 if environment[name] != expected_environment[name]
             )
             raise ProfileError(
-                "native-1m EXL3 environment differs from the published recipe: "
+                "published EXL3 environment differs from the recipe: "
                 f"missing={missing}, extra={extra}, changed={changed}"
             )
         if document["extra_vllm_args"] != recipe["serving"]["vllm_args"]:
             raise ProfileError(
-                "native-1m EXL3 vLLM arguments differ from the published recipe"
+                "published EXL3 vLLM arguments differ from the recipe"
             )
     context_profile = environment.get("SPARKRING_EXL3_CONTEXT_PROFILE")
     if document["profile_id"] == STANDARD_PROFILE_ID:
@@ -210,17 +213,31 @@ def _validate_contract(document: dict) -> None:
             "VLLM_SPARK_KV_CACHE_MEMORY_BYTES": "7000000000",
             "VLLM_SPARK_MAX_MODEL_LEN": "262144",
         }
-    elif context_profile == "native-1m-kv9gb":
+    elif (
+        document["profile_id"] == HUGE_CONTEXT_PROFILE_ID
+        and context_profile == "native-1m-kv9gb"
+    ):
         context_expected = {
             "SPARKRING_EXL3_CONTEXT_PROFILE": "native-1m-kv9gb",
             "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS": "1048576",
             "VLLM_SPARK_KV_CACHE_MEMORY_BYTES": "9000000000",
             "VLLM_SPARK_MAX_MODEL_LEN": "1048576",
         }
+    elif (
+        document["profile_id"] == LMCACHE_CS512_PROFILE_ID
+        and context_profile == "native-512k-kv4.5gb-lmcache-c512"
+    ):
+        context_expected = {
+            "SPARKRING_EXL3_CONTEXT_PROFILE": (
+                "native-512k-kv4.5gb-lmcache-c512"
+            ),
+            "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS": "524288",
+            "VLLM_SPARK_KV_CACHE_MEMORY_BYTES": "4500000000",
+            "VLLM_SPARK_MAX_MODEL_LEN": "524288",
+        }
     else:
         raise ProfileError(
-            "native-1m public EXL3 profile requires "
-            "SPARKRING_EXL3_CONTEXT_PROFILE=native-1m-kv9gb"
+            "public EXL3 context profile does not match its profile id"
         )
     common_expected = {
         "SPARK_CONTEXT_CACHE_ENABLE": "0",
@@ -232,7 +249,6 @@ def _validate_contract(document: dict) -> None:
         "VLLM_SPARK_MAX_NUM_BATCHED_TOKENS": "4096",
         "VLLM_SPARK_MAX_NUM_SEQS": "8",
         "VLLM_SPARK_MAX_QUERY_ROWS": "32",
-        "VLLM_SPARK_MTP_TOKENS": "3",
         "VLLM_SPARK_NCCL_TRANSPORT_MODE": "switchless_ib",
         **context_expected,
     }
@@ -241,17 +257,19 @@ def _validate_contract(document: dict) -> None:
             raise ProfileError(f"public EXL3 contract requires {name}={value}")
 
     mode = environment.get("VLLM_SPARK_MTP_MODE_ID")
-    if mode == "fixed-mtp3":
+    if mode in ("fixed-mtp2", "fixed-mtp3"):
+        tokens = 2 if mode == "fixed-mtp2" else 3
         mode_expected = {
             "SPARK_ADAPTIVE_MTP_CONTROL": "0",
             "SPARK_GLM52_MTP_INDEX_REUSE": "0",
             "VLLM_ADAPTIVE_SPEC_DEPTHS": None,
             "VLLM_SPARK_MTP_ADAPTIVE_WINDOW": "0",
             "VLLM_SPARK_TRUE_ADAPTIVE_DRAFT": "0",
+            "VLLM_SPARK_MTP_TOKENS": str(tokens),
         }
         expected_spec = {
             "method": "mtp",
-            "num_speculative_tokens": 3,
+            "num_speculative_tokens": tokens,
             "moe_backend": "triton",
             "draft_sample_method": "greedy",
         }
@@ -276,7 +294,7 @@ def _validate_contract(document: dict) -> None:
         }
     else:
         raise ProfileError(
-            "public EXL3 contract requires fixed-mtp3 or "
+            "public EXL3 contract requires fixed-mtp2, fixed-mtp3, or "
             "adaptive-mtp2-3-window32"
         )
     for name, value in mode_expected.items():
@@ -386,31 +404,20 @@ def container_name(profile: Profile, rank: int) -> str:
 
 
 def model_verification_script(profile: Profile) -> str:
-    checks = [
-        ("config.json", profile.model_config_sha256),
-        ("model.safetensors.index.json", profile.model_index_sha256),
-        ("tier_bitmap.json", profile.model_tier_bitmap_sha256),
-        ("MANIFEST.sha256", profile.model_manifest_sha256),
-    ]
-    metadata_checks = " && ".join(
-        f"test \"$(sha256sum -- "
-        f"{shlex.quote(profile.model_host_path + '/' + name)} "
-        f"| awk '{{print $1}}')\" = {expected}"
-        for name, expected in checks
-    )
-    shard_check = (
-        "import json,os,sys;"
-        "p=sys.argv[1];"
-        "i=json.load(open(os.path.join(p,'model.safetensors.index.json')));"
-        "s=set(i['weight_map'].values());"
-        f"assert len(s)=={profile.model_shard_count};"
-        "assert all(os.path.isfile(os.path.join(p,f)) for f in s);"
-        f"assert sum(os.path.getsize(os.path.join(p,f)) for f in s)"
-        f"=={profile.model_weight_bytes}"
-    )
-    return (
-        f"{metadata_checks} && python3 -c {shlex.quote(shard_check)} "
-        f"{shlex.quote(profile.model_host_path)}"
+    return shlex.join(
+        (
+            profile.engine,
+            "run",
+            "--rm",
+            "--volume",
+            f"{profile.model_host_path}:{profile.model_container_path}:ro",
+            "--entrypoint",
+            "/opt/venv/bin/python",
+            profile.image_id,
+            "/opt/sparkring-exl3/verify_exl3_model.py",
+            "--model-path",
+            profile.model_container_path,
+        )
     )
 
 
@@ -437,6 +444,13 @@ def start_actions(
         environment["VLLM_SPARK_MAX_NUM_BATCHED_TOKENS"] = str(
             effective_batch_tokens
         )
+        explicitly_unset = sorted(
+            name for name, value in environment.items() if value is None
+        )
+        environment = {
+            name: value for name, value in environment.items() if value is not None
+        }
+        environment["SPARKRING_EXPLICITLY_UNSET"] = ",".join(explicitly_unset)
         command = [
             profile.engine,
             "run",
@@ -465,7 +479,7 @@ def start_actions(
             f"{profile.model_host_path}:{profile.model_container_path}:ro",
             "--volume",
             f"{profile.jit_cache_host_path}:/cache/jit",
-            profile.image,
+            profile.image_id,
             "serve",
             profile.model_container_path,
             "--tensor-parallel-size",
@@ -493,8 +507,8 @@ def start_actions(
         ]
         env_args: list[str] = []
         for name, value in sorted(environment.items()):
-            env_args.extend(("--env", name if value is None else f"{name}={value}"))
-        image_index = command.index(profile.image)
+            env_args.extend(("--env", f"{name}={value}"))
+        image_index = command.index(profile.image_id)
         command[image_index:image_index] = env_args
         command.extend(effective_extra_vllm_args)
         if rank.id != site.serving.master_rank:

@@ -7,6 +7,43 @@
     "profile": "nvfp4-rope8",
     "vllm_version_base_commit": "fcc614141e5e9ab18cb304c476f7feed2a9552e3"
   },
+  "cutlass_python_lock": {
+    "requirements_sha256": "7ab5b5389173b278cd3d2699edb06cab9aea0d405b42784ad56b1380700043fb",
+    "distributions": {
+      "nvidia-cutlass-dsl": {"version": "4.6.0", "wheel_sha256": "e3e0e4d8df20d82c8401fa013f4d82021f41daa5fca3d24b55d4a677f2308ca8"},
+      "nvidia-cutlass-dsl-libs-base": {"version": "4.6.0", "wheel_sha256": "6412572899b1c6d182e516b20f2b0a21874ec88d25234e6040fb2a4381de7a1a"},
+      "nvidia-cutlass-dsl-libs-core": {"version": "4.6.0", "wheel_sha256": "f9ea6d313a03cb11fa177da32e8747ad0cac51358850810f36aa6c4736192c27"},
+      "nvidia-cutlass-dsl-libs-cu12": {"version": "4.6.0", "wheel_sha256": "87f132ccc30946949868989f3b1b1adaa714ccdf5c636e5379b54909cc29576c"},
+      "nvidia-cutlass-dsl-libs-cu13": {"version": "4.6.0", "wheel_sha256": "8c47899a5778dba4f30de76cce5e22bb5dc2a5bde4979ee1196ec9c6468e80e1"},
+      "nvidia-cuda-nvdisasm": {"version": "13.3.73", "wheel_sha256": "dd4751884f9016b9b6dbf007abdeb5681d0a2edc731dd3d2fda9d6d878e88f73"},
+      "protobuf": {"version": "6.33.6", "wheel_sha256": "e2afbae9b8e1825e3529f88d514754e094278bb95eadc0e199751cdd9a2e82a2"}
+    }
+  },
+  "lmcache": {
+    "repository": "https://github.com/local-inference-lab/LMCache.git",
+    "base_commit": "9cebd405d0caf4bebe01d694b5a8bf4e3e354314",
+    "integration_heads": [
+      "7b7583aef55e98ba05a6c199e71601d78552e794",
+      "31c4175d2134518e5b43fe8f4a7d072df6043a13",
+      "c3b73de74d855f6263deea8b6c6c4dde87e6e5b9",
+      "59186798bb5859b7add7bcac81dff9f2fd4037ab",
+      "2cee5a2c1ef7e80028e94b1bc4bfbfc02e2c2a8d",
+      "baf1345106ebe568a116a35fdcee36bfec73da57",
+      "d4dce69bf90362953cf9ac9a86cccc186b3219dc",
+      "502b3c60f2e61625d6e32a31d0d725eedc620792",
+      "7892d42a6996df855fe743edb271fa154503bef8",
+      "e6c2708fe8ae8a96d3c66e83bf4b548c734fbb13",
+      "f9639e2094f70955a1145bfd7219b6fdd39ee143"
+    ],
+    "integration_tree": "a5aa59cc8edca462a3f4c198d17fd2b9c1a7ffaa",
+    "topology_patch": "patches/lmcache-tp4-dcp4-four-local-servers.patch",
+    "topology_patch_sha256": "6eb5d3c15cd67a62dca5714fabc4d9c12c7175dfb9ab3e971dc6bc280f0aa533",
+    "composed_tree": "7dddbfde874d123e5b5785e6e56b4b7baf4baa82",
+    "version": "0.5.2+glm52dcp4.1",
+    "requirements_sha256": "36169d8ef7445059309ecab7a47b63079cb05d11e6090feee966fd7a83b5df9d",
+    "validated_arm64_wheel_sha256": "9e032f6d50e2c44cd05a0d61b78f9d75423e62e2ecac9ddc8e4c738857824fd6",
+    "topology": "tp4-dcp4-pp1-four-local-servers"
+  },
   "model": {
     "repository": "willfalco/GLM-5.2-EXL3-TR3-3.25bpw",
     "revision": "d7d79c2d14599dfce7a5d12b85f7ad73f40e623d",

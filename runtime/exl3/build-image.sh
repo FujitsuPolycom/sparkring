@@ -54,6 +54,9 @@ fi
   --build-arg "SPARKINFER_COMMIT=018de520e40f6bf9bd0b11c5da5517ef3364a985" \
   --build-arg "EXLLAMAV3_COMMIT=d21d9b3182e746199093b77b49a708635c1d1b5d" \
   --build-arg "VLLM_PORT_COMMIT=668275901b55230f4a70841a9aac1c0be22ef8d3" \
+  --build-arg "LMCACHE_INTEGRATION_TREE=a5aa59cc8edca462a3f4c198d17fd2b9c1a7ffaa" \
+  --build-arg "LMCACHE_COMPOSED_TREE=7dddbfde874d123e5b5785e6e56b4b7baf4baa82" \
+  --build-arg "LMCACHE_TOPOLOGY_PATCH_SHA256=6eb5d3c15cd67a62dca5714fabc4d9c12c7175dfb9ab3e971dc6bc280f0aa533" \
   --tag "${image_tag}" \
   "${context}"
 
