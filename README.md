@@ -43,6 +43,15 @@ runtime hashes, 9 GB/rank NVFP4+FP8-RoPE KV allocation, and reported 1,125,632
 token capacity. It is a live-observed configuration snapshot, not a replacement
 for the smaller accepted public-bootstrap defaults above.
 
+The dated
+[DCP4 fixed-MTP2 live recipe](docs/NF3_FIXED_MTP2_RECIPE_20260801.md) records a
+later operator variant and its recovered benchmark artifact: the effective
+four-rank process state, exact delta from the full audit, sanitized rerun
+command, 732-779 prefill tok/s, up to 60.4 aggregate decode tok/s, and the
+capacity-limited C8 cells that must not be quoted as valid throughput. It is a
+public-functional, live-validated operator snapshot, not a reference-lane or
+current-checkout result.
+
 A second, non-default
 [`willfalco/GLM-5.2-EXL3-TR3-3.25bpw`](https://huggingface.co/willfalco/GLM-5.2-EXL3-TR3-3.25bpw)
 recipe now records the maintainer's live EXL3 configuration. Its exact model
@@ -53,6 +62,12 @@ The configuration is live-validated. Its public, receipt-gated source bootstrap
 is now offline-validated; the remaining gate is a clean-checkout four-Spark
 run. See [the EXL3 recipe and bootstrap](docs/EXL3_RECIPE.md). NF3 remains the
 default, fully live-validated quickstart.
+
+The [fixed-MTP2 EXL3 alternative](docs/EXL3_FIXED_MTP2_RECIPE_20260802.md)
+records the exact four-Spark operator overlay and its duration-based
+16K-128K/C1-C8 matrix. It is live-validated external evidence, not
+clean-checkout public acceptance, correctness acceptance, or a reference-lane
+result.
 
 The former Aiden MXFP4/GPTQ reference is preserved in
 [the historical lane document](docs/history/AIDEN_MXFP4_GPTQ.md). It is not a

@@ -1,0 +1,621 @@
+{
+  "schema": "sparkring-exl3-ab-campaign/v1",
+  "campaign_id": "glm52-exl3-ab-campaign-20260802",
+  "status": "complete",
+  "date": "2026-08-02",
+  "lane": "public-functional",
+  "maturity": "live-validated",
+  "campaign_maturity": "candidate",
+  "evidence_origin": "external_operator_run",
+  "hardware": "4x NVIDIA DGX Spark / GB10, direct-cable 200-Gb/s cycle",
+  "evidence_scope": "Matched opening B0, M1, M3, Q8, closing B0, and adaptive MTP2/3 streaming benchmarks; a completed fresh-salt, clean-restart B0/adaptive three-window C8 pair plus an earlier B0 variance artifact; a valid standard llm_decode_bench v0.4.31 B0 run; and an AS cold-start gate observed in the live operator console. The first old-salt adaptive C8 repeat attempt timed out without a benchmark artifact and remains an operational caveat, not a performance result. This is a completed public-functional-lane performance campaign, not a reference-lane result, public-bootstrap acceptance, a clean-checkout receipt, a release correctness pass, or a shared-H release. B0 remains the default and M3 remains a C2/C4 Pareto alternative. The stock 128-token deterministic gate fails on a narrow token-124 divergence.",
+  "sanitization": "Management addresses, SSH identities, hostnames, NIC assignments, host paths, filled profiles, dry-run plans, and raw logs are omitted. Public immutable identities, artifact hashes, sanitized settings, and result summaries are retained.",
+  "repository_state": {
+    "head": "2f367c8c66f6b4fb54fed9dadf85250906ea40ce",
+    "clean_checkout": false,
+    "tracked_launcher_used_without_overlay": false
+  },
+  "identity": {
+    "model_repository": "willfalco/GLM-5.2-EXL3-TR3-3.25bpw",
+    "model_revision": "d7d79c2d14599dfce7a5d12b85f7ad73f40e623d",
+    "model_config_sha256": "d83e2d8d96b6f36e94d896a05a104200d6674673daa02f788de710c1c0f94ba4",
+    "model_index_sha256": "f5dcd976a64ca70808dd4d8bd3ad07e9610c8ca6c30e3a6ed77ddefdac4c1d21",
+    "tier_bitmap_sha256": "a287ffe816de5998fbc35a56a1ec05f69eb71087d5bbdfe631242c6b296b2a3d",
+    "served_model_name": "glm-5.2-exl3-tr3-3.25bpw",
+    "local_image_id_all_ranks": "sha256:314d75abdcbd65433fa9e4a744caf8fa31bdc108e9292df65603a6fe823766ad",
+    "platform": "linux/arm64",
+    "cuda_arch": "sm_121",
+    "rotation_layout": "per_expert_v1",
+    "shared_h_v1": false
+  },
+  "sealed_invariants": {
+    "tensor_parallel_size": 4,
+    "pipeline_parallel_size": 1,
+    "data_parallel_size": 1,
+    "decode_context_parallel_size": 4,
+    "dcp_comm_backend": "ag_rs",
+    "attention_backend": "B12X_MLA_SPARSE",
+    "max_model_len": 1048576,
+    "kv_cache_dtype": "nvfp4_ds_mla",
+    "kv_cache_memory_bytes_per_rank": 9000000000,
+    "reported_kv_tokens": 1125632,
+    "max_num_seqs": 8,
+    "max_num_batched_tokens": 4096,
+    "cudagraph_mode": "FULL_AND_PIECEWISE",
+    "max_cudagraph_capture_size": 32,
+    "prefix_caching": true,
+    "chunked_prefill": true,
+    "load_format": "safetensors"
+  },
+  "matched_harness": {
+    "schema": "sparkring-exl3-ab-streaming-benchmark/v1",
+    "original_sha256": "12bb68c2ebb033a144f3b9da7415e15917f8aeadd9c5e27f19d607c4384bc133",
+    "completed_arms_using_original_hash": ["B0", "M3", "Q8", "BR"],
+    "current_decode_repeat_harness_sha256": "b276f7f1a54afe4732b204c0b14f0ab1600a8d3cbde718f6ecfec186d6ee67e9",
+    "current_decode_repeat_harness_boundary": "The current file adds the decode-only repeat mode used by R8 and both ADR8 halves, and was also used in full-matrix mode by AD and M1. It was not the harness bytes used by B0, M3, Q8, or BR and is not retroactively assigned to those artifacts.",
+    "seed": 20260802,
+    "prefill": {
+      "streaming": true,
+      "ttft_definition": "request body send to first nonempty SSE text",
+      "target_sizes": [16384, 32768, 65536],
+      "repeats_per_size": 3,
+      "max_output_tokens": 1,
+      "ignore_eos": true,
+      "nonce_policy": "deterministic unique nonce per cell, identical across arms",
+      "rate_definition": "server-reported prompt_tokens divided by streaming TTFT"
+    },
+    "decode": {
+      "streaming": true,
+      "context_target_tokens": 16384,
+      "concurrencies": [1, 2, 4, 8],
+      "window_seconds": 25,
+      "coordinated_warmup_seconds": 3,
+      "max_output_tokens": 4096,
+      "ignore_eos": true,
+      "token_source": "continuous streaming usage deltas inside the coordinated window",
+      "samples_per_concurrency_per_arm": 1
+    },
+    "request_timeout_seconds": 3600
+  },
+  "artifacts": [
+    {"logical_name": "B0 benchmark JSON", "sha256": "f41abbc02d3c6eb5c7d478bb385d962185f1f79c5c86edabd0dd84fa9d89e9cb", "committed": false},
+    {"logical_name": "M3 benchmark JSON", "sha256": "5eb887ee14fd6e59a590910e27d96ebb5d897c64b5082d14a96080c98f935092", "committed": false},
+    {"logical_name": "Q8 benchmark JSON", "sha256": "76727e2386b4909f09d3af744891402e8e6e8e0483709679ef9277b15de43174", "committed": false},
+    {"logical_name": "closing B0 benchmark JSON", "sha256": "f9743c013f849edf6ba112361a03f05bfbcc2258703b0dbbb25938e4b77e6aa0", "committed": false},
+    {"logical_name": "B0 repeated-C8 benchmark JSON", "sha256": "2b2ab86e4b8e11698082837856dc142b8fc5a9b9d5e65d7a78aa9955f271e4e7", "committed": false},
+    {"logical_name": "AD adaptive MTP2/3 benchmark JSON", "sha256": "658c4803922bef0a78266778e86c3af861d48c6ef1ffcdc593ab48145ee095d3", "committed": false},
+    {"logical_name": "ADR8 clean-restart adaptive repeated-C8 benchmark JSON", "sha256": "1c613a671315ce7f9bbbd2e367a7c1a6cee40e07718eb47bc7a4f0a6bba82ac0", "committed": false},
+    {"logical_name": "M1 fixed-MTP1 benchmark JSON", "sha256": "e4272aa4efe4e0c377bd1326aa404458b1dd92f985ef50866d7c1d0647c73669", "committed": false},
+    {"logical_name": "ADR8 clean-restart B0 repeated-C8 benchmark JSON", "sha256": "271f626f5500d8d1189e14665b6627ee2959884c4156151f14669a1ad86c7971", "committed": false},
+    {"logical_name": "B0 llm_decode_bench v0.4.31 benchmark JSON", "sha256": "f02b659f798ce2b2a2afb8103008e85ea5185d49bb1c341d583ddf9a13abd69d", "committed": false},
+    {"logical_name": "original streaming benchmark harness used by completed arms", "sha256": "12bb68c2ebb033a144f3b9da7415e15917f8aeadd9c5e27f19d607c4384bc133", "committed": false, "current_file_has_same_hash": false},
+    {"logical_name": "current extended streaming/decode-repeat benchmark harness", "sha256": "b276f7f1a54afe4732b204c0b14f0ab1600a8d3cbde718f6ecfec186d6ee67e9", "committed": false, "used_by_completed_evidence": ["R8", "AD", "ADR8 adaptive half", "ADR8 B0 half", "M1"]},
+    {"logical_name": "A/B arm launcher", "sha256": "89318a90dae5df92a208bb18f779799287c3cbdc727e3dc4cd2bc13dea6b9d34", "committed": false},
+    {"logical_name": "B0 profile", "sha256": "7dc65df82f0bc165104bffa5c786b8aaf4ba5f9ee3c3b77c3afb33c007870bbd", "committed": false},
+    {"logical_name": "M3 profile", "sha256": "5874988de835a78712af83492e01bc5a30041ae7465d3938d8034a65f1fc41c3", "committed": false},
+    {"logical_name": "AS profile", "sha256": "a441d87f95a172cd3153ece132099e8d0bcfd0c215c025b47493b0892690ecc8", "committed": false},
+    {"logical_name": "Q8 profile", "sha256": "5a31fe6d55d5ac24bf084f0ea5f254641ea8ebb21f0626118f3ebb6c64908765", "committed": false},
+    {"logical_name": "Q8 executed plan", "sha256": "b5c2ccbb3fad23ba662418ded500015e2c4854fd636b49207f320563bd484c8e", "committed": false},
+    {"logical_name": "independent B0/M3 review", "sha256": "8173299634beafd659eb85146a4e5fc15912ddf83099bb57fc4ba689d47f7873", "committed": false}
+  ],
+  "arms": [
+    {
+      "arm_id": "B0",
+      "label": "fixed-MTP2 synchronous baseline",
+      "status": "matched_benchmark_complete",
+      "benchmark_timestamp_utc": "2026-08-02T13:15:03Z",
+      "configuration": {"mtp_policy": "fixed-mtp2", "num_spec_tokens": 2, "async_scheduling": false, "max_num_batched_tokens": 4096},
+      "health_before": "pass",
+      "health_after": "pass",
+      "invalid_prefill_cells": 0,
+      "invalid_decode_cells": 0,
+      "prefill_mean_tokens_per_second": [
+        {"target_tokens": 16384, "mean": 552.287165091098},
+        {"target_tokens": 32768, "mean": 541.246899333191},
+        {"target_tokens": 65536, "mean": 533.390927794523}
+      ],
+      "prefill_overall_unweighted_mean_tokens_per_second": 542.308330739604,
+      "decode": [
+        {"concurrency": 1, "aggregate_tokens_per_second": 23.16, "total_completion_tokens": 579},
+        {"concurrency": 2, "aggregate_tokens_per_second": 37.44, "total_completion_tokens": 936},
+        {"concurrency": 4, "aggregate_tokens_per_second": 54.36, "total_completion_tokens": 1359},
+        {"concurrency": 8, "aggregate_tokens_per_second": 74.52, "total_completion_tokens": 1863, "per_request_tokens": [253, 253, 255, 225, 255, 255, 112, 255]}
+      ]
+    },
+    {
+      "arm_id": "M3",
+      "label": "fixed-MTP3 synchronous",
+      "parent_arm": "B0",
+      "status": "matched_benchmark_complete_not_promoted",
+      "benchmark_timestamp_utc": "2026-08-02T14:06:58Z",
+      "intended_delta": {"mtp_policy": {"from": "fixed-mtp2", "to": "fixed-mtp3"}, "num_spec_tokens": {"from": 2, "to": 3}},
+      "health_before": "pass",
+      "health_after": "pass",
+      "invalid_prefill_cells": 0,
+      "invalid_decode_cells": 0,
+      "prefill_mean_tokens_per_second": [
+        {"target_tokens": 16384, "mean": 536.98206645403, "delta_percent_vs_b0": -2.77122113358247},
+        {"target_tokens": 32768, "mean": 524.67460650175, "delta_percent_vs_b0": -3.06187302908489},
+        {"target_tokens": 65536, "mean": 508.593160323735, "delta_percent_vs_b0": -4.64907934848497}
+      ],
+      "prefill_overall_unweighted_mean_tokens_per_second": 523.416611093172,
+      "prefill_overall_delta_percent_vs_b0": -3.48357540823088,
+      "bracket_comparison": {
+        "prefill_delta_percent_vs_opening_closing_midpoint": -4.11335403389072,
+        "decode_delta_percent_vs_opening_closing_midpoint": {"C1": 1.36986301369863, "C2": 9.49061662198391, "C4": 10.24605214836577, "C8": 1.67206040992449},
+        "interpretation": "C2/C4 gains survive the baseline bracket, prefill remains a regression, C8 remains below the 5 percent target, and C1 lies inside the noisy opening/closing bracket."
+      },
+      "decode": [
+        {"concurrency": 1, "aggregate_tokens_per_second": 22.2, "delta_percent_vs_b0": -4.14507772020725, "total_completion_tokens": 555},
+        {"concurrency": 2, "aggregate_tokens_per_second": 40.84, "delta_percent_vs_b0": 9.08119658119659, "total_completion_tokens": 1021},
+        {"concurrency": 4, "aggregate_tokens_per_second": 60.04, "delta_percent_vs_b0": 10.4488594554819, "total_completion_tokens": 1501},
+        {"concurrency": 8, "aggregate_tokens_per_second": 75.4, "delta_percent_vs_b0": 1.18089103596351, "total_completion_tokens": 1885, "per_request_tokens": [252, 264, 261, 241, 264, 261, 79, 263]}
+      ],
+      "disposition": "Pareto alternative only: C2/C4 improved beyond bracket drift, but prefill regressed and C8 did not meet the predeclared 5 percent target. The raw opening-only C1 regression is not stable after bracketing."
+    },
+    {
+      "arm_id": "AS",
+      "label": "fixed-MTP2 asynchronous scheduling",
+      "parent_arm": "B0",
+      "status": "failed_cold_start_gate",
+      "intended_delta": {"async_scheduling": {"from": false, "to": true}},
+      "startup_observed": {"async_scheduling": true, "num_spec_tokens": 2, "next_n": 3, "model_and_kv_unchanged": true, "all_graph_captures_completed": true},
+      "deterministic_canary": "pass",
+      "bounded_gate": {
+        "artifact_attested": false,
+        "evidence_source": "operator-recorded live console; no durable JSON was written",
+        "C1_tokens_per_second": 22.43096,
+        "C2_tokens_per_second": 16.53733,
+        "C2_floor_tokens_per_second": 24.0,
+        "C8_tokens_per_second": 41.6318,
+        "status": "fail"
+      },
+      "cold_start_observations": [
+        {"log_clock": "14:30:24", "event": "first-use Triton JIT warning for _map_global_topk_to_gathered_ckv_kernel"},
+        {"log_clock": "14:30:46", "event": "first-use Triton JIT warning for _pack_topk_routes_post_prefix_kernel"}
+      ],
+      "diagnosis_boundary": "Cold first-use JIT likely contaminated C2, but this is a diagnosis, not proof. No matched streaming matrix was run, so AS has no comparable prefill or sustained-decode result and is not promotable.",
+      "stopped_cleanly": true,
+      "rollback_status_at_capture": "original fixed-MTP2 baseline restarting; post-rollback verification pending"
+    },
+    {
+      "arm_id": "Q8",
+      "label": "8,192 maximum batched tokens",
+      "parent_arm": "B0",
+      "status": "matched_benchmark_complete_not_promoted",
+      "benchmark_timestamp_utc": "2026-08-02T15:45:21Z",
+      "intended_delta": {"max_num_batched_tokens": {"from": 4096, "to": 8192}},
+      "configuration": {"mtp_policy": "fixed-mtp2", "num_spec_tokens": 2, "async_scheduling": false, "max_num_batched_tokens": 8192},
+      "startup_observed": {
+        "evidence_source": "operator-recorded live startup and measured-cell logs; raw logs not committed",
+        "compile_range_endpoints": [8192],
+        "mixed_buffer_allocation_mib": 1939.8,
+        "rank_arena_allocation_mib": 2584.3,
+        "kv_cache_tokens": 1125632,
+        "all_graph_families_completed": true,
+        "measured_cell_jit_warnings": 0,
+        "measured_cell_errors": 0,
+        "measured_cell_graph_fallbacks": 0
+      },
+      "health_before": "pass",
+      "health_after": "pass",
+      "invalid_prefill_cells": 0,
+      "invalid_decode_cells": 0,
+      "prefill_repeats": [
+        {"label": "prefill-16384-r0", "target_tokens": 16384, "prompt_tokens": 19478, "ttft_seconds": 43.376946799922734, "tokens_per_second": 449.0403644554046, "delta_percent_vs_b0_matched_prompt": -17.67247573990077},
+        {"label": "prefill-16384-r1", "target_tokens": 16384, "prompt_tokens": 19472, "ttft_seconds": 34.65485339995939, "tokens_per_second": 561.8837793156792, "delta_percent_vs_b0_matched_prompt": 1.45349799707874},
+        {"label": "prefill-16384-r2", "target_tokens": 16384, "prompt_tokens": 19477, "ttft_seconds": 35.83297129999846, "tokens_per_second": 543.549677667976, "delta_percent_vs_b0_matched_prompt": -2.51909307880956},
+        {"label": "prefill-32768-r0", "target_tokens": 32768, "prompt_tokens": 38933, "ttft_seconds": 71.88174049998634, "tokens_per_second": 541.6257276075195, "delta_percent_vs_b0_matched_prompt": 0.16087214815485},
+        {"label": "prefill-32768-r1", "target_tokens": 32768, "prompt_tokens": 38935, "ttft_seconds": 71.107865100028, "tokens_per_second": 547.5484314601462, "delta_percent_vs_b0_matched_prompt": 2.07734094938263},
+        {"label": "prefill-32768-r2", "target_tokens": 32768, "prompt_tokens": 38933, "ttft_seconds": 70.64861879998352, "tokens_per_second": 551.0794218104244, "delta_percent_vs_b0_matched_prompt": 0.82329974715448},
+        {"label": "prefill-65536-r0", "target_tokens": 65536, "prompt_tokens": 77848, "ttft_seconds": 144.50492650002707, "tokens_per_second": 538.7221175465282, "delta_percent_vs_b0_matched_prompt": 1.96686055546635},
+        {"label": "prefill-65536-r1", "target_tokens": 65536, "prompt_tokens": 77848, "ttft_seconds": 145.26776269997936, "tokens_per_second": 535.8931572504425, "delta_percent_vs_b0_matched_prompt": -0.08144745798105},
+        {"label": "prefill-65536-r2", "target_tokens": 65536, "prompt_tokens": 77848, "ttft_seconds": 145.53683339990675, "tokens_per_second": 534.9023898719091, "delta_percent_vs_b0_matched_prompt": -0.11387557089615}
+      ],
+      "prefill_summary": [
+        {"target_tokens": 16384, "mean_tokens_per_second": 518.157940479687, "median_tokens_per_second": 543.549677667976, "mean_delta_percent_vs_b0": -6.17961574496879},
+        {"target_tokens": 32768, "mean_tokens_per_second": 546.75119362603, "median_tokens_per_second": 547.5484314601462, "mean_delta_percent_vs_b0": 1.01696551049433},
+        {"target_tokens": 65536, "mean_tokens_per_second": 536.50588822296, "median_tokens_per_second": 535.8931572504425, "mean_delta_percent_vs_b0": 0.58399201525921}
+      ],
+      "prefill_overall_unweighted_mean_tokens_per_second": 533.805007442892,
+      "prefill_overall_delta_percent_vs_b0": -1.56798684709768,
+      "bracket_comparison": {
+        "prefill_delta_percent_vs_opening_closing_midpoint": -2.21026486585525,
+        "prefill_size_delta_percent_vs_opening_closing_midpoint": {"16384": -6.36121298288285, "32768": 0.10530008315439, "65536": -0.29184684856131},
+        "decode_delta_percent_vs_opening_closing_midpoint": {"C1": 1.36986301369863, "C2": -9.91957104557641, "C4": -5.61880279103929, "C8": -1.07874865156419},
+        "interpretation": "The apparent opening-only 32K/64K prefill gains collapse to near zero against the bracket midpoint. C2/C4 regress materially, C8 remains slightly negative, and C1 lies inside the noisy baseline bracket."
+      },
+      "first_prefill_sample_caveat": "The first measured 16K sample was 449.04 tok/s, 17.67 percent below its matched B0 prompt and far below the other two Q8 16K repeats. No JIT warning, error, or graph fallback was observed in the measured cells. Fixed ordering prevents attributing the outlier to Q8 or discarding it post hoc.",
+      "decode": [
+        {"concurrency": 1, "aggregate_tokens_per_second": 22.2, "delta_percent_vs_b0": -4.14507772020725, "total_completion_tokens": 555, "per_request_tokens": [555]},
+        {"concurrency": 2, "aggregate_tokens_per_second": 33.6, "delta_percent_vs_b0": -10.25641025641026, "total_completion_tokens": 840, "per_request_tokens": [420, 420]},
+        {"concurrency": 4, "aggregate_tokens_per_second": 51.4, "delta_percent_vs_b0": -5.44518027961737, "total_completion_tokens": 1285, "per_request_tokens": [351, 348, 235, 351]},
+        {"concurrency": 8, "aggregate_tokens_per_second": 73.36, "delta_percent_vs_b0": -1.55662909286098, "total_completion_tokens": 1834, "per_request_tokens": [258, 249, 258, 187, 258, 258, 108, 258]}
+      ],
+      "mtp_acceptance": {
+        "artifact_attested": false,
+        "evidence_source": "operator-recorded live metrics snapshot",
+        "drafts": 2447,
+        "draft_tokens": 4894,
+        "accepted_tokens": 4143,
+        "accepted_positions": [2198, 1945],
+        "draft_token_acceptance_percent": 84.6546791990192,
+        "accepted_tokens_per_draft": 1.69309358398038
+      },
+      "disposition": "Not promoted. Against the bracket midpoint, 32K and 64K prefill are effectively flat, the retained 16K outlier makes overall prefill slower, C2/C4 regress materially, and C8 remains slightly negative. Raw opening-only comparisons are retained separately."
+    },
+    {
+      "arm_id": "BR",
+      "label": "closing fixed-MTP2 baseline",
+      "parent_arm": "B0",
+      "status": "matched_benchmark_complete",
+      "benchmark_timestamp_utc": "2026-08-02T16:30:01Z",
+      "configuration": {"mtp_policy": "fixed-mtp2", "num_spec_tokens": 2, "async_scheduling": false, "max_num_batched_tokens": 4096},
+      "health_before": "pass",
+      "health_after": "pass",
+      "invalid_prefill_cells": 0,
+      "invalid_decode_cells": 0,
+      "measured_cell_log_evidence_source": "operator-observed live logs; raw logs not committed",
+      "measured_cell_jit_warnings": 0,
+      "measured_cell_errors": 0,
+      "measured_cell_graph_fallbacks": 0,
+      "prefill_repeats": [
+        {"label": "prefill-16384-r0", "prompt_tokens": 19478, "ttft_seconds": 35.244610699941404, "tokens_per_second": 552.6518696951413},
+        {"label": "prefill-16384-r1", "prompt_tokens": 19472, "ttft_seconds": 35.20533629995771, "tokens_per_second": 553.0979688446661},
+        {"label": "prefill-16384-r2", "prompt_tokens": 19477, "ttft_seconds": 34.93393640010618, "tokens_per_second": 557.5380849419764},
+        {"label": "prefill-32768-r0", "prompt_tokens": 38933, "ttft_seconds": 71.21344319998752, "tokens_per_second": 546.7085742598501},
+        {"label": "prefill-32768-r1", "prompt_tokens": 38935, "ttft_seconds": 71.47699730005115, "tokens_per_second": 544.7206999554826},
+        {"label": "prefill-32768-r2", "prompt_tokens": 38933, "ttft_seconds": 69.2898009000346, "tokens_per_second": 561.8864464074475},
+        {"label": "prefill-65536-r0", "prompt_tokens": 77848, "ttft_seconds": 142.61685310001485, "tokens_per_second": 545.8541421146523},
+        {"label": "prefill-65536-r1", "prompt_tokens": 77848, "ttft_seconds": 143.0906939000124, "tokens_per_second": 544.0465615073326},
+        {"label": "prefill-65536-r2", "prompt_tokens": 77848, "ttft_seconds": 144.5956806000322, "tokens_per_second": 538.3839937469243}
+      ],
+      "prefill_mean_tokens_per_second": [
+        {"target_tokens": 16384, "mean": 554.429307827261, "drift_percent_vs_opening_b0": 0.38786755723537},
+        {"target_tokens": 32768, "mean": 551.105240207593, "drift_percent_vs_opening_b0": 1.82141290537596},
+        {"target_tokens": 65536, "mean": 542.761565789636, "drift_percent_vs_opening_b0": 1.75680490739865}
+      ],
+      "prefill_overall_unweighted_mean_tokens_per_second": 549.432037941497,
+      "prefill_overall_drift_percent_vs_opening_b0": 1.31358985250654,
+      "decode": [
+        {"concurrency": 1, "aggregate_tokens_per_second": 20.64, "drift_percent_vs_opening_b0": -10.88082901554404, "total_completion_tokens": 516, "per_request_tokens": [516]},
+        {"concurrency": 2, "aggregate_tokens_per_second": 37.16, "drift_percent_vs_opening_b0": -0.74786324786325, "total_completion_tokens": 929, "per_request_tokens": [465, 464]},
+        {"concurrency": 4, "aggregate_tokens_per_second": 54.56, "drift_percent_vs_opening_b0": 0.36791758646063, "total_completion_tokens": 1364, "per_request_tokens": [342, 340, 340, 342]},
+        {"concurrency": 8, "aggregate_tokens_per_second": 73.8, "drift_percent_vs_opening_b0": -0.96618357487923, "total_completion_tokens": 1845, "per_request_tokens": [255, 249, 255, 216, 255, 255, 105, 255]}
+      ],
+      "interpretation": "Prefill, C2, C4, and C8 remained within about two percent of opening B0. C1 drifted -10.9 percent and is noisy. The C8 slow-lane imbalance persisted: 105 tokens versus a 255-token median."
+    },
+    {
+      "arm_id": "R8",
+      "label": "B0 repeated C8 decode windows",
+      "parent_arm": "BR",
+      "status": "matched_repeat_complete",
+      "schema": "sparkring-exl3-ab-decode-repeat/v1",
+      "benchmark_timestamp_utc": "2026-08-02T16:46:28Z",
+      "harness_sha256": "b276f7f1a54afe4732b204c0b14f0ab1600a8d3cbde718f6ecfec186d6ee67e9",
+      "run_salt": "b0-c8-closing-20260802-a",
+      "seed": 20260802,
+      "configuration": {"mtp_policy": "fixed-mtp2", "num_spec_tokens": 2, "async_scheduling": false, "concurrency": 8, "repeat_count": 3, "window_seconds": 25, "coordinated_warmup_seconds": 3, "max_output_tokens": 4096},
+      "health_before": "pass",
+      "health_after": "pass",
+      "invalid_decode_cells": 0,
+      "windows": [
+        {"repeat": 0, "aggregate_tokens_per_second": 61.48, "total_completion_tokens": 1537, "per_request_tokens": [85, 255, 253, 255, 85, 94, 255, 255], "lane_median_tokens": 254, "minimum_lane_tokens": 85, "fairness_threshold_tokens": 203.2, "lanes_below_threshold": 3, "fairness_pass": false, "lane_errors": 0},
+        {"repeat": 1, "aggregate_tokens_per_second": 73.04, "total_completion_tokens": 1826, "per_request_tokens": [252, 252, 252, 252, 252, 227, 252, 87], "lane_median_tokens": 252, "minimum_lane_tokens": 87, "fairness_threshold_tokens": 201.6, "lanes_below_threshold": 1, "fairness_pass": false, "lane_errors": 0},
+        {"repeat": 2, "aggregate_tokens_per_second": 77.68, "total_completion_tokens": 1942, "per_request_tokens": [261, 261, 261, 261, 261, 261, 261, 115], "lane_median_tokens": 261, "minimum_lane_tokens": 115, "fairness_threshold_tokens": 208.8, "lanes_below_threshold": 1, "fairness_pass": false, "lane_errors": 0}
+      ],
+      "aggregate_tokens_per_second_summary": {"median": 73.04, "mean": 70.73333333333333, "range": 16.2},
+      "fairness_criterion": "minimum lane token count must be at least 80 percent of that window's median lane token count",
+      "fairness_windows_passed": 0,
+      "fairness_windows_failed": 3,
+      "interpretation": "Aggregate C8 is strong at a 73.04 tok/s median, but the 16.20 tok/s range and every window's minimum-lane fairness failure show high window, prompt, and lane sensitivity. Repeat 0 had three lanes below the proposed threshold. A fresh-salt, clean-restart B0/adaptive pair is required before attributing an adaptive C8 effect."
+    },
+    {
+      "arm_id": "ADR8",
+      "label": "fresh-salt clean-restart B0/adaptive paired repeated C8 windows",
+      "parent_arm": "AD",
+      "status": "paired_repeat_complete_adaptive_not_promoted",
+      "required_harness_sha256": "b276f7f1a54afe4732b204c0b14f0ab1600a8d3cbde718f6ecfec186d6ee67e9",
+      "prior_attempt": {"run_salt": "b0-c8-closing-20260802-a", "outcome": "timeout", "benchmark_artifact_written": false, "performance_result": null},
+      "run_salt": "exl3-c8-pair-b-20260802",
+      "run_salt_policy": "Both clean-restart halves used exl3-c8-pair-b-20260802 unchanged and are prompt-matched by the repeat harness.",
+      "required_configuration": {"concurrency": 8, "repeat_count": 3, "window_seconds": 25, "coordinated_warmup_seconds": 3, "max_output_tokens": 4096},
+      "adaptive_half": {
+        "schema": "sparkring-exl3-ab-decode-repeat/v1",
+        "benchmark_timestamp_utc": "2026-08-02T18:24:12Z",
+        "artifact_sha256": "1c613a671315ce7f9bbbd2e367a7c1a6cee40e07718eb47bc7a4f0a6bba82ac0",
+        "seed": 20260802,
+        "clean_restart": true,
+        "prefix_cache_before_run": {"queries": 0, "hits": 0, "evidence_source": "operator-recorded live metrics before benchmark"},
+        "health_before": "pass",
+        "health_after": "pass",
+        "invalid_decode_cells": 0,
+        "windows": [
+          {"repeat": 0, "aggregate_tokens_per_second": 83.04, "total_completion_tokens": 2076, "per_request_tokens": [259, 255, 262, 251, 259, 264, 262, 264], "lane_median_tokens": 260.5, "minimum_lane_tokens": 251, "fairness_threshold_tokens": 208.4, "lanes_below_threshold": 0, "fairness_pass": true, "lane_errors": 0},
+          {"repeat": 1, "aggregate_tokens_per_second": 58.76, "total_completion_tokens": 1469, "per_request_tokens": [90, 81, 282, 76, 284, 270, 111, 275], "lane_median_tokens": 190.5, "minimum_lane_tokens": 76, "fairness_threshold_tokens": 152.4, "lanes_below_threshold": 4, "fairness_pass": false, "lane_errors": 0},
+          {"repeat": 2, "aggregate_tokens_per_second": 60.48, "total_completion_tokens": 1512, "per_request_tokens": [259, 268, 92, 266, 208, 67, 268, 84], "lane_median_tokens": 233.5, "minimum_lane_tokens": 67, "fairness_threshold_tokens": 186.8, "lanes_below_threshold": 3, "fairness_pass": false, "lane_errors": 0}
+        ],
+        "aggregate_tokens_per_second_summary": {"median": 60.48, "mean": 67.42666666666666, "range": 24.28},
+        "fairness_criterion": "minimum lane token count must be at least 80 percent of that window's median lane token count",
+        "fairness_windows_passed": 1,
+        "fairness_windows_failed": 2,
+        "combined_lane_fairness": {"lane_count": 24, "lane_median_tokens": 259, "minimum_lane_tokens": 67, "fairness_threshold_tokens": 207.2, "lanes_below_threshold": 7, "fairness_pass": false},
+        "final_adaptive_counters": {
+          "artifact_attested": false,
+          "evidence_source": "operator-recorded final live metrics counters",
+          "rounds": 2256,
+          "draft_tokens": 6768,
+          "accepted_tokens": 4651,
+          "accepted_positions": [1678, 1543, 1430],
+          "draft_tokens_per_round": 3,
+          "draft_token_acceptance_percent": 68.72044917257683,
+          "accepted_tokens_per_round": 2.0616134751773,
+          "observed_selected_depths": [3],
+          "interpretation": "6768 draft tokens equals exactly three tokens for each of 2256 rounds. The controller never selected depth 2 and behaved as depth 3 throughout this clean repeat observation."
+        },
+        "interpretation": "The adaptive half is valid but highly unstable: one balanced 83.04 tok/s window passed fairness, while two 58.76/60.48 tok/s windows failed with four and three lanes below threshold. Its 60.48 tok/s median and 24.28 tok/s range cannot produce a causal paired delta until the same-salt B0 half completes."
+      },
+      "b0_control_half": {
+        "status": "complete",
+        "schema": "sparkring-exl3-ab-decode-repeat/v1",
+        "benchmark_timestamp_utc": "2026-08-02T19:49:10Z",
+        "artifact_sha256": "271f626f5500d8d1189e14665b6627ee2959884c4156151f14669a1ad86c7971",
+        "seed": 20260802,
+        "clean_restart": true,
+        "startup_observed": {"evidence_source": "operator-recorded live startup logs and metrics; raw logs not committed", "all_ranks_exact_image": true, "num_spec_tokens": 2, "next_n": 3, "prefix_cache_before_run": {"queries": 0, "hits": 0}},
+        "health_before": "pass",
+        "health_after": "pass",
+        "invalid_decode_cells": 0,
+        "windows": [
+          {"repeat": 0, "aggregate_tokens_per_second": 76.88, "total_completion_tokens": 1922, "per_request_tokens": [252, 252, 158, 252, 252, 252, 252, 252], "lane_median_tokens": 252, "minimum_lane_tokens": 158, "fairness_threshold_tokens": 201.6, "lanes_below_threshold": 1, "fairness_pass": false, "lane_errors": 0},
+          {"repeat": 1, "aggregate_tokens_per_second": 61.04, "total_completion_tokens": 1526, "per_request_tokens": [124, 104, 273, 99, 273, 266, 114, 273], "lane_median_tokens": 195, "minimum_lane_tokens": 99, "fairness_threshold_tokens": 156, "lanes_below_threshold": 4, "fairness_pass": false, "lane_errors": 0},
+          {"repeat": 2, "aggregate_tokens_per_second": 60.56, "total_completion_tokens": 1514, "per_request_tokens": [249, 249, 132, 249, 202, 100, 249, 84], "lane_median_tokens": 225.5, "minimum_lane_tokens": 84, "fairness_threshold_tokens": 180.4, "lanes_below_threshold": 3, "fairness_pass": false, "lane_errors": 0}
+        ],
+        "aggregate_tokens_per_second_summary": {"median": 61.04, "mean": 66.16, "range": 16.32},
+        "fairness_criterion": "minimum lane token count must be at least 80 percent of that window's median lane token count",
+        "fairness_windows_passed": 0,
+        "fairness_windows_failed": 3,
+        "combined_lane_fairness": {"lane_count": 24, "lane_median_tokens": 249, "minimum_lane_tokens": 84, "fairness_threshold_tokens": 199.2, "lanes_below_threshold": 8, "fairness_pass": false},
+        "final_mtp_counters": {"artifact_attested": false, "evidence_source": "operator-recorded final live metrics counters", "rounds": 2736, "draft_tokens": 5472, "accepted_tokens": 3736, "accepted_positions": [1980, 1756], "draft_tokens_per_round": 2, "draft_token_acceptance_percent": 68.27485380116958, "accepted_tokens_per_round": 1.36549707602339}
+      },
+      "paired_delta": {
+        "window_aligned_adaptive_minus_b0_tokens_per_second": [6.16, -2.28, -0.08],
+        "median": {"adaptive_tokens_per_second": 60.48, "b0_tokens_per_second": 61.04, "delta_tokens_per_second": -0.56, "delta_percent": -0.91743119266056},
+        "mean": {"adaptive_tokens_per_second": 67.42666666666666, "b0_tokens_per_second": 66.16, "delta_tokens_per_second": 1.26666666666667, "delta_percent": 1.91455058444177},
+        "range": {"adaptive_tokens_per_second": 24.28, "b0_tokens_per_second": 16.32, "adaptive_minus_b0_tokens_per_second": 7.96},
+        "fairness": {"adaptive_windows_passed": 1, "b0_windows_passed": 0, "adaptive_combined_lanes_below_threshold": 7, "b0_combined_lanes_below_threshold": 8, "adaptive_combined_pass": false, "b0_combined_pass": false},
+        "math_correction": "The raw B0 windows have median 61.04 tok/s. The supplied 60.56 value is repeat 2, not the median; therefore the raw-derived paired median delta is -0.56 tok/s (-0.92 percent), while repeat 2 alone differs by -0.08 tok/s.",
+        "disposition": "No robust adaptive median gain. The small positive mean is driven by adaptive repeat 0, while both arms show prompt-sensitive lane collapse and fail combined fairness. AD is not promoted; fixed-MTP2 B0 remains the default, and fixed-MTP3 M3 remains only a C2/C4 Pareto alternative."
+      }
+    },
+    {
+      "arm_id": "M1",
+      "label": "fixed-MTP1 synchronous",
+      "parent_arm": "B0",
+      "status": "matched_benchmark_complete_not_promoted",
+      "benchmark_timestamp_utc": "2026-08-02T19:11:31Z",
+      "harness_sha256": "b276f7f1a54afe4732b204c0b14f0ab1600a8d3cbde718f6ecfec186d6ee67e9",
+      "intended_delta": {"mtp_policy": {"from": "fixed-mtp2", "to": "fixed-mtp1"}, "num_spec_tokens": {"from": 2, "to": 1}},
+      "configuration": {"mtp_policy": "fixed-mtp1", "num_spec_tokens": 1, "async_scheduling": false, "max_num_batched_tokens": 4096, "adaptive_control": false, "mtp_index_reuse": false},
+      "startup_observed": {
+        "evidence_source": "operator-recorded live startup logs and metrics; raw logs not committed",
+        "all_ranks_exact_image": true,
+        "rank_restarts": 0,
+        "rank_oom_events": 0,
+        "num_spec_tokens": 1,
+        "next_n": 2,
+        "kv_cache_tokens": 1125632,
+        "all_graph_families_completed": true,
+        "async_scheduling": false,
+        "max_num_batched_tokens": 4096,
+        "adaptive_control": false,
+        "mtp_index_reuse": false,
+        "exl3_buffers_mib": 979.7,
+        "graph_capture_seconds": 92,
+        "graph_capture_memory_delta_gib": -4.33
+      },
+      "health_before": "pass",
+      "health_after": "pass",
+      "invalid_prefill_cells": 0,
+      "invalid_decode_cells": 0,
+      "prefill_repeats": [
+        {"label": "prefill-16384-r0", "target_tokens": 16384, "prompt_tokens": 19478, "ttft_seconds": 34.78609549999237, "tokens_per_second": 559.9363688288694},
+        {"label": "prefill-16384-r1", "target_tokens": 16384, "prompt_tokens": 19472, "ttft_seconds": 35.57616309996229, "tokens_per_second": 547.3327729380868},
+        {"label": "prefill-16384-r2", "target_tokens": 16384, "prompt_tokens": 19477, "ttft_seconds": 34.890367200016044, "tokens_per_second": 558.2343082932944},
+        {"label": "prefill-32768-r0", "target_tokens": 32768, "prompt_tokens": 38933, "ttft_seconds": 70.36968829995021, "tokens_per_second": 553.2637836059243},
+        {"label": "prefill-32768-r1", "target_tokens": 32768, "prompt_tokens": 38935, "ttft_seconds": 70.14460539992433, "tokens_per_second": 555.0676317589207},
+        {"label": "prefill-32768-r2", "target_tokens": 32768, "prompt_tokens": 38933, "ttft_seconds": 69.80617370002437, "tokens_per_second": 557.7300392842819},
+        {"label": "prefill-65536-r0", "target_tokens": 65536, "prompt_tokens": 77848, "ttft_seconds": 142.65792800008785, "tokens_per_second": 545.6969766163438},
+        {"label": "prefill-65536-r1", "target_tokens": 65536, "prompt_tokens": 77848, "ttft_seconds": 144.53597600001376, "tokens_per_second": 538.6063882115591},
+        {"label": "prefill-65536-r2", "target_tokens": 65536, "prompt_tokens": 77848, "ttft_seconds": 145.5857313000597, "tokens_per_second": 534.7227321306045}
+      ],
+      "prefill_mean_tokens_per_second": [
+        {"target_tokens": 16384, "mean": 555.1678166867501, "delta_percent_vs_b0": 0.52158583029482},
+        {"target_tokens": 32768, "mean": 555.3538182163757, "delta_percent_vs_b0": 2.60637407818209},
+        {"target_tokens": 65536, "mean": 539.6753656528358, "delta_percent_vs_b0": 1.17820486454425}
+      ],
+      "prefill_overall_unweighted_mean_tokens_per_second": 550.0656668519872,
+      "prefill_overall_delta_percent_vs_b0": 1.43042908852307,
+      "measured_phase_observations": [
+        {"log_clock": "18:49:32-18:49:33", "cell": "prefill-16384-r2", "event": "Triton JIT warnings", "kernels": ["_w4a16_route_count_kernel", "_pack_topk_routes_post_prefix_kernel", "_pack_topk_routes_sort_kernel"], "evidence_source": "operator-recorded live log; raw log not committed"}
+      ],
+      "prefill_promotion_caveat": "Three Triton JIT warnings occurred in the final measured 16K cell. All prefill cells remain valid and retained, but promotion based on the small apparent prefill gain is caveated.",
+      "decode": [
+        {"concurrency": 1, "aggregate_tokens_per_second": 17.36, "delta_percent_vs_b0": -25.04317789291883, "total_completion_tokens": 434, "per_request_tokens": [434]},
+        {"concurrency": 2, "aggregate_tokens_per_second": 28.8, "delta_percent_vs_b0": -23.07692307692307, "total_completion_tokens": 720, "per_request_tokens": [360, 360]},
+        {"concurrency": 4, "aggregate_tokens_per_second": 43.08, "delta_percent_vs_b0": -20.7505518763797, "total_completion_tokens": 1077, "per_request_tokens": [282, 282, 231, 282]},
+        {"concurrency": 8, "aggregate_tokens_per_second": 65.6, "delta_percent_vs_b0": -11.9699409554482, "total_completion_tokens": 1640, "per_request_tokens": [216, 216, 216, 216, 216, 216, 128, 216]}
+      ],
+      "bracket_comparison": {
+        "prefill_delta_percent_vs_opening_closing_midpoint": 0.76858612757997,
+        "prefill_size_delta_percent_vs_opening_closing_midpoint": {"16384": 0.32701785359692, "32768": 1.68036443812742, "65536": 0.29719187016524},
+        "decode_delta_percent_vs_opening_closing_midpoint": {"C1": -20.73059360730593, "C2": -22.7882037533512, "C4": -20.8960705104664, "C8": -11.54261057173679},
+        "interpretation": "The small prefill gain is caveated by measured-cell JIT warnings. Decode regresses decisively at every concurrency, including against the opening/closing baseline midpoint."
+      },
+      "mtp_acceptance": {
+        "artifact_attested": false,
+        "evidence_source": "operator-recorded final live metrics counters",
+        "rounds": 2390,
+        "draft_tokens": 2390,
+        "accepted_tokens": 2194,
+        "accepted_positions": [2194],
+        "draft_tokens_per_round": 1,
+        "draft_token_acceptance_percent": 91.79916317991632,
+        "accepted_tokens_per_round": 0.91799163179916
+      },
+      "repeat_required": false,
+      "disposition": "Not promoted. Decode regresses by about 12 to 25 percent versus opening B0 and by about 12 to 23 percent versus the baseline midpoint at every concurrency. That decisive result does not require a repeat; the small apparent prefill gain is separately JIT-caveated."
+    },
+    {
+      "arm_id": "AD",
+      "label": "adaptive MTP2/3",
+      "parent_arm": "B0",
+      "status": "matched_benchmark_complete_not_promoted",
+      "benchmark_timestamp_utc": "2026-08-02T17:35:40Z",
+      "harness_sha256": "b276f7f1a54afe4732b204c0b14f0ab1600a8d3cbde718f6ecfec186d6ee67e9",
+      "attested_runtime_supported_ladders": [[2, 3], [2, 4]],
+      "unsupported_ladder": [1, 2],
+      "boundary": "Adaptive MTP1/2 is not supported by the attested runtime and must not be represented as an executable arm.",
+      "configuration": {"mtp_policy": "adaptive-mtp2-3-window32", "adaptive_depths": [2, 3], "adaptive_window": 32, "num_spec_tokens": 3, "true_adaptive_draft": true, "mtp_index_reuse": true, "async_scheduling": false, "max_num_batched_tokens": 4096},
+      "startup_observed": {
+        "evidence_source": "operator-recorded live startup logs and metrics; raw logs not committed",
+        "adaptive_maximum": 3,
+        "adaptive_depths": [2, 3],
+        "adaptive_window": 32,
+        "num_spec_tokens": 3,
+        "next_n": 4,
+        "mtp_index_reuse_activated": true,
+        "kv_cache_tokens": 1125632,
+        "all_graph_families_completed": true,
+        "all_ranks_exact_image": true,
+        "rank_restarts": 0,
+        "rank_oom_events": 0
+      },
+      "health_before": "pass",
+      "health_after": "pass",
+      "invalid_prefill_cells": 0,
+      "invalid_decode_cells": 0,
+      "prefill_repeats": [
+        {"label": "prefill-16384-r0", "target_tokens": 16384, "prompt_tokens": 19478, "ttft_seconds": 35.654020600020885, "tokens_per_second": 546.3058491638553},
+        {"label": "prefill-16384-r1", "target_tokens": 16384, "prompt_tokens": 19472, "ttft_seconds": 36.319438399979845, "tokens_per_second": 536.1316379828936},
+        {"label": "prefill-16384-r2", "target_tokens": 16384, "prompt_tokens": 19477, "ttft_seconds": 35.389118299935944, "tokens_per_second": 550.3669188626056},
+        {"label": "prefill-32768-r0", "target_tokens": 32768, "prompt_tokens": 38933, "ttft_seconds": 71.85603370005265, "tokens_per_second": 541.8194965020937},
+        {"label": "prefill-32768-r1", "target_tokens": 32768, "prompt_tokens": 38935, "ttft_seconds": 72.47544599999674, "tokens_per_second": 537.2164249944975},
+        {"label": "prefill-32768-r2", "target_tokens": 32768, "prompt_tokens": 38933, "ttft_seconds": 70.85986129997764, "tokens_per_second": 549.43658208956},
+        {"label": "prefill-65536-r0", "target_tokens": 65536, "prompt_tokens": 77848, "ttft_seconds": 145.0657345999498, "tokens_per_second": 536.639477369916},
+        {"label": "prefill-65536-r1", "target_tokens": 65536, "prompt_tokens": 77848, "ttft_seconds": 146.1946982999798, "tokens_per_second": 532.4953702511301},
+        {"label": "prefill-65536-r2", "target_tokens": 65536, "prompt_tokens": 77848, "ttft_seconds": 147.7089104000479, "tokens_per_second": 527.0365869544371}
+      ],
+      "prefill_mean_tokens_per_second": [
+        {"target_tokens": 16384, "mean": 544.2681353364516, "delta_percent_vs_b0": -1.45196742953889},
+        {"target_tokens": 32768, "mean": 542.8241678620504, "delta_percent_vs_b0": 0.29141386875429},
+        {"target_tokens": 65536, "mean": 532.0571448584944, "delta_percent_vs_b0": -0.25005729691421}
+      ],
+      "prefill_overall_unweighted_mean_tokens_per_second": 539.7164826856655,
+      "prefill_overall_delta_percent_vs_b0": -0.47792886574392,
+      "measured_phase_observations": [
+        {"log_clock": "17:13:16", "event": "Triton JIT warning for _pack_topk_routes_post_prefix_kernel", "evidence_source": "operator-recorded live log; raw log not committed"}
+      ],
+      "prefill_promotion_caveat": "A measured-phase Triton JIT warning occurred, so the otherwise valid prefill cells remain caveated for promotion; the evidence does not identify which cell or quantify contamination.",
+      "decode": [
+        {"concurrency": 1, "aggregate_tokens_per_second": 25.84, "delta_percent_vs_b0": 11.57167530224525, "total_completion_tokens": 646, "per_request_tokens": [646]},
+        {"concurrency": 2, "aggregate_tokens_per_second": 40.68, "delta_percent_vs_b0": 8.65384615384617, "total_completion_tokens": 1017, "per_request_tokens": [509, 508]},
+        {"concurrency": 4, "aggregate_tokens_per_second": 61.36, "delta_percent_vs_b0": 12.87711552612214, "total_completion_tokens": 1534, "per_request_tokens": [386, 372, 384, 392]},
+        {"concurrency": 8, "aggregate_tokens_per_second": 68.72, "delta_percent_vs_b0": -7.78314546430489, "total_completion_tokens": 1718, "per_request_tokens": [263, 124, 272, 168, 272, 272, 89, 258]}
+      ],
+      "bracket_comparison": {
+        "prefill_delta_percent_vs_opening_closing_midpoint": -1.12731961396997,
+        "prefill_size_delta_percent_vs_opening_closing_midpoint": {"16384": -1.642715428055, "32768": -0.61370354613864, "65536": -1.11863364522592},
+        "decode_delta_percent_vs_opening_closing_midpoint": {"C1": 17.99086757990869, "C2": 9.06166219839142, "C4": 12.66984943077487, "C8": -7.33549083063646},
+        "interpretation": "C2/C4 gains survive the baseline bracket, C8 regresses materially, C1 exceeds both controls but remains a one-sample noisy cell, and prefill is slightly lower with a measured-phase JIT caveat."
+      },
+      "adaptive_counters": {
+        "artifact_attested": false,
+        "evidence_source": "operator-recorded final live metrics counters",
+        "rounds": 1688,
+        "draft_tokens": 5064,
+        "accepted_tokens": 4319,
+        "accepted_positions": [1578, 1428, 1313],
+        "draft_token_acceptance_percent": 85.28830963665087,
+        "accepted_tokens_per_round": 2.55864928909953,
+        "observed_selected_depths": [3],
+        "interpretation": "5064 draft tokens equals exactly three tokens for each of 1688 rounds. The controller never selected depth 2 and behaved as depth 3 throughout this observation."
+      },
+      "disposition": "Not promoted. The configuration is live-validated and its matched cells are valid, but adaptive selection did not vary, C8 regressed about seven percent against the baseline bracket, prefill promotion is caveated by a measured-phase Triton JIT warning, and the paired repeated-C8 evidence is still pending."
+    },
+    {"arm_id": "CX", "label": "combined selected settings", "status": "pending_individual_arms", "result": null},
+    {
+      "arm_id": "P512",
+      "label": "512K context and reduced KV capacity profile",
+      "parent_arm": "final_selected_1m_arm",
+      "status": "proposed_not_run",
+      "proposed_configuration": {"max_model_len": 524288, "kv_cache_memory_bytes_per_rank": 4500000000, "projected_kv_tokens": 562816},
+      "projection_basis": "Linear half-scale projection from 9,000,000,000 bytes/rank and 1,125,632 reported tokens.",
+      "capacity_claim": "The projection covers approximately one 524,288-token request with the same 1.07x ratio. It is not a live measurement.",
+      "performance_boundary": "Capacity reduction alone is not claimed to speed kernels. Approximately 4.5 GB decimal (4.19 GiB) per rank would be reclaimed for larger batch, concurrency, or graph headroom, which must be tested in separate controlled arms."
+    }
+  ],
+  "baseline_bracket": {
+    "opening_arm": "B0",
+    "closing_arm": "BR",
+    "prefill_drift_percent": {"16384": 0.38786755723537, "32768": 1.82141290537596, "65536": 1.75680490739865, "overall_unweighted": 1.31358985250654},
+    "decode_drift_percent": {"C1": -10.88082901554404, "C2": -0.74786324786325, "C4": 0.36791758646063, "C8": -0.96618357487923},
+    "decode_midpoint_tokens_per_second": {"C1": 21.9, "C2": 37.3, "C4": 54.46, "C8": 74.16},
+    "interpretation": "Prefill and C2/C4/C8 held within about two percent; C1 is noisy. The closing C8 slow lane produced 105 tokens versus a 255-token median, confirming persistent lane imbalance."
+  },
+  "standard_llm_decode_bench": {
+    "arm": "B0",
+    "status": "complete_all_cells_valid",
+    "lane": "public-functional",
+    "maturity": "live-validated external evidence",
+    "artifact_sha256": "f02b659f798ce2b2a2afb8103008e85ea5185d49bb1c341d583ddf9a13abd69d",
+    "harness": {"name": "llm_decode_bench.py", "version": "0.4.31"},
+    "configuration": {"decode_mode": "duration", "context_tokens": 16384, "concurrencies": [1, 2, 4, 8], "duration_per_cell_seconds": 25, "decode_warmup_seconds": 3, "cell_warmup_timeout_seconds": 300, "max_output_tokens": 2048, "temperature": 0, "ignore_eos": true, "unique_context_percent": 100, "dcp_size": 4, "kv_budget_tokens": 1125632},
+    "prefill": [
+      {"requested_context_tokens": 16384, "observed_prompt_tokens": 16249, "ttft_seconds": 28.969, "tokens_per_second": 561, "method": "integrated_scout"},
+      {"requested_context_tokens": 32768, "observed_prompt_tokens": 32321, "ttft_seconds": 58.75, "tokens_per_second": 550, "method": "scout_only"},
+      {"requested_context_tokens": 65536, "observed_prompt_tokens": 64513, "ttft_seconds": 119.016, "tokens_per_second": 542, "method": "scout_only"}
+    ],
+    "sustained_decode": [
+      {"concurrency": 1, "aggregate_tokens_per_second": 15.920118699099788, "effective_concurrency": 1, "errors": 0, "warmup_timed_out": false},
+      {"concurrency": 2, "aggregate_tokens_per_second": 28.88, "effective_concurrency": 2, "errors": 0, "warmup_timed_out": false},
+      {"concurrency": 4, "aggregate_tokens_per_second": 43.12, "effective_concurrency": 4, "errors": 0, "warmup_timed_out": false},
+      {"concurrency": 8, "aggregate_tokens_per_second": 62.063395921628626, "effective_concurrency": 8, "errors": 0, "warmup_timed_out": false}
+    ],
+    "run_summary": {"duration_seconds": 808.141, "duration_human": "13m28s", "hardware_samples": 326, "gpu_count": 4, "gpu_power_total_average_w": 280.42, "gpu_power_total_maximum_w": 322.58, "all_cells_valid": true},
+    "timeout_boundary": {"original_cell_warmup_timeout_seconds": 60, "original_invalid_concurrencies": [2, 4, 8], "cause": "readiness/admission timeout", "request_errors": 0, "performance_values_retained": false, "resolution": "rerun with --cell-warmup-timeout-seconds 300"},
+    "evidence_boundary": "This is a standard-harness public-functional-lane live result. It is not a reference-lane result, public-bootstrap acceptance, or a correctness pass. Raw diagnostics contain private site identities and are not committed."
+  },
+  "validity_notes": {
+    "prefill": "B0, M1, M3, Q8, BR, and AD use nine matched true-streaming TTFT cells with identical prompt hashes. B0/M3/Q8/BR use the original harness hash; M1/AD use the current extended harness hash. Means are descriptive for three repeats per size. AD had one measured-phase Triton JIT warning, and M1 had three warnings in its final 16K cell, so their prefill promotion claims remain caveated.",
+    "decode": "B0, M1, M3, Q8, BR, and AD use one 25-second sample per concurrency; M1/AD use the current extended harness while the earlier four use the original bytes. M1 regresses decisively at every concurrency, so no repeat is required. R8 and both ADR8 halves use the current decode-repeat mode for three C8 windows. The prompt-matched ADR8 pair has adaptive/B0 medians of 60.48/61.04 tok/s (-0.92 percent) and means of 67.43/66.16 tok/s (+1.91 percent). Both combined lane sets fail fairness, so there is no robust adaptive gain. The first old-salt adaptive attempt timed out without an artifact and remains non-performance evidence.",
+    "AS": "AS console numbers are a failed readiness gate, not matched campaign benchmark data. Missing durable JSON is a material evidence limitation.",
+    "Q8": "Q8 uses the same prompt hashes and harness as B0/M3. Its first 16K sample is retained in all means; fixed order and one decode sample per concurrency limit attribution."
+  },
+  "runtime_correctness_caveat": {
+    "observation": "Repeated requests using the same fixed seed produced different greedy outputs on freshly restored B0 and on Q8. The final stock 128-token B0 gate reproduced a narrow divergence.",
+    "evidence_source": "operator-recorded live canary, stock gate, localization, and logprob audit observations; raw logs not committed",
+    "affected_arms": ["B0", "Q8"],
+    "stock_gate": {"script": "scripts/exl3_live_gate.py", "max_tokens": 128, "status": "fail", "outputs_compared": 2, "first_divergent_token_index": 124},
+    "six_run_localization": {"runs": 6, "distinct_output_hashes": 2, "hash_frequency_split": [4, 2], "first_divergent_token_index": 124},
+    "token_124_logprob_sample": {"runs": 10, "token_counts": {" if": 5, " in": 5}, "exact_top_logprob_ties_observed": true, "non_tie_top_logprob_margin_range": [0.125, 0.25]},
+    "bounded_120_token_gate": {"status": "pass", "max_tokens": 120, "deterministic_output_sha256": "6ebd2106f275ecccceeb8ecb01d538c404727eab9df009f2a4815dee246e2849", "artifact_sha256": "a38441afbee2c22bfe362dc8924cc96aa53530d9a7c48a44b5468ca463021038", "artifact_committed": false, "aggregate_tokens_per_second": {"C1": 21.30988601802934, "C2": 30.645750239286894, "C8": 44.13838068717283}, "thresholds": {"C1": 15.0, "C2": 24.0, "C8": 35.0}, "interpretation": "Bounds the observed repeatability failure before token index 124; does not replace or waive the failing 128-token release gate."},
+    "deterministic_repeatability_proven": false,
+    "deterministic_128_token_gate_passed": false,
+    "cross_arm_equivalence_proven": false,
+    "corruption_indicated": false,
+    "release_correctness_gate_passed": false,
+    "boundary": "This is a narrow repeatability failure at token index 124 near a tied or low-margin choice, not evidence of checkpoint corruption. The stock 128-token deterministic gate is not passing, so neither performance validity nor B0 default status may be described as release correctness acceptance."
+  },
+  "final_disposition": {
+    "performance_campaign_complete": true,
+    "default_arm": "B0",
+    "pareto_alternative": "M3 for measured C2/C4 workloads only",
+    "not_promoted": ["M1", "Q8", "AS", "AD"],
+    "release_correctness_gate_open": true,
+    "deterministic_128_token_gate_passed": false,
+    "boundary": "B0 remains the public-functional configuration default for this completed external campaign. This is not public-bootstrap acceptance or a release correctness pass."
+  },
+  "remaining_required_arms": [],
+  "optional_followups": ["CX", "P512"]
+}

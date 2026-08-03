@@ -87,7 +87,20 @@
       "public_bootstrap_maturity": "offline-validated",
       "clean_checkout_four_spark_gate_pending": true,
       "entrypoint": "recipes/glm52-exl3-tr3-3.25bpw.json",
-      "evidence": "docs/EXL3_RECIPE.md"
+      "evidence": "docs/EXL3_RECIPE.md",
+      "fixed_mtp2_alternative": {
+        "maturity": "live-validated",
+        "configuration_status": "candidate",
+        "evidence_origin": "external_operator_run",
+        "duration_matrix_execution_complete": true,
+        "duration_matrix_valid_cells": 10,
+        "duration_matrix_invalid_readiness_cells": 6,
+        "deterministic_128_token_gate_passed": false,
+        "correctness_accepted": false,
+        "clean_checkout_public_acceptance": false,
+        "evidence": "docs/EXL3_FIXED_MTP2_RECIPE_20260802.md",
+        "machine_readable_evidence": "docs/configurations/glm52-exl3-live-dcp4-fixed-mtp2-20260802.json"
+      }
     },
     "headless_startup_abi": {
       "maturity": "live-validated",

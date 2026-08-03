@@ -1,0 +1,246 @@
+{
+  "schema": "sparkring-live-config-variant/v1",
+  "snapshot_id": "glm52-exl3-live-dcp4-fixed-mtp2-20260802",
+  "captured_at": "2026-08-02",
+  "lane": "public-functional",
+  "maturity": "live-validated",
+  "configuration_status": "candidate",
+  "evidence_origin": "external_operator_run",
+  "hardware": "4x NVIDIA DGX Spark / GB10, direct-cable 200-Gb/s cycle",
+  "evidence_scope": "External live validation of an operator-local fixed-MTP2 overlay on the receipt-gated ARM64 EXL3 runtime. Evidence includes four-rank model and image attestation, startup logs, graph capture, live API checks, a historical bounded canary/performance gate, a later failing 128-token deterministic audit, one non-streaming full-request wall-time smoke, two standard llm_decode_bench runs including a 16K-128K decode matrix, and post-run health. This is not public-bootstrap acceptance, not a reference-lane result, not a clean-checkout receipt, not correctness acceptance, and not a shared-H release.",
+  "sanitization": "Management addresses, SSH identities, hostnames, NIC assignments, host paths, filled site configuration, and raw logs are omitted. Public model pins, local image identity, settings, and sanitized measurements are retained.",
+  "acceptance": {
+    "public_bootstrap_accepted": false,
+    "reference_lane_result": false,
+    "clean_checkout_result": false,
+    "correctness_accepted": false,
+    "tracked_launcher_used_without_overlay": false,
+    "remaining_gate": "Represent fixed-MTP2 in a reviewed tracked profile and launcher contract, then repeat the clean-checkout four-Spark bootstrap and live gates."
+  },
+  "base_recipe": {
+    "id": "glm52-exl3-tr3-3.25bpw",
+    "path": "../../recipes/glm52-exl3-tr3-3.25bpw.json",
+    "sha256_recorded_by_trial": "38685e40969aaf6a77c67bc425533ce514996889db87709786a81232435ca555",
+    "sha256_kind": "planner canonical JSON semantic hash, not raw file bytes",
+    "canonical_mtp_policy": "fixed-mtp3"
+  },
+  "identity": {
+    "target_repository": "willfalco/GLM-5.2-EXL3-TR3-3.25bpw",
+    "target_revision": "d7d79c2d14599dfce7a5d12b85f7ad73f40e623d",
+    "model_config_sha256": "d83e2d8d96b6f36e94d896a05a104200d6674673daa02f788de710c1c0f94ba4",
+    "model_index_sha256": "f5dcd976a64ca70808dd4d8bd3ad07e9610c8ca6c30e3a6ed77ddefdac4c1d21",
+    "tier_bitmap_sha256": "a287ffe816de5998fbc35a56a1ec05f69eb71087d5bbdfe631242c6b296b2a3d",
+    "model_manifest_sha256": "db01ba5885fbb39370746e78e7bcb4205ea4e639b20f8950b71f94038f9f992e",
+    "model_shards": 81,
+    "served_model_name": "glm-5.2-exl3-tr3-3.25bpw",
+    "local_image_id_all_ranks": "sha256:314d75abdcbd65433fa9e4a744caf8fa31bdc108e9292df65603a6fe823766ad",
+    "registry_digest": null,
+    "platform": "linux/arm64",
+    "cuda_arch": "sm_121",
+    "rotation_layout": "per_expert_v1",
+    "rotation_layout_source": "rotation_layout absent from config.json",
+    "shared_h_v1": false,
+    "expert_tiers": [[3, 192], [4, 64]],
+    "moe_layers_observed": 75
+  },
+  "changes_from_canonical_recipe": {
+    "vllm_argv": {
+      "--speculative-config.num_speculative_tokens": {"from": 3, "to": 2}
+    },
+    "environment": {
+      "VLLM_SPARK_MTP_MODE_ID": {"from": "fixed-mtp3", "to": "fixed-mtp2"},
+      "VLLM_SPARK_MTP_TOKENS": {"from": "3", "to": "2"}
+    },
+    "unchanged_disabled_controls": {
+      "SPARK_ADAPTIVE_MTP_CONTROL": "0",
+      "SPARK_GLM52_MTP_INDEX_REUSE": "0",
+      "VLLM_SPARK_MTP_ADAPTIVE_WINDOW": "0",
+      "VLLM_SPARK_TRUE_ADAPTIVE_DRAFT": "0"
+    }
+  },
+  "effective_serving": {
+    "tensor_parallel_size": 4,
+    "pipeline_parallel_size": 1,
+    "data_parallel_size": 1,
+    "decode_context_parallel_size": 4,
+    "dcp_comm_backend": "ag_rs",
+    "attention_backend": "B12X_MLA_SPARSE",
+    "mtp_policy": "fixed-mtp2",
+    "engine_num_spec_tokens": 2,
+    "max_model_len": 1048576,
+    "max_num_seqs": 8,
+    "max_num_batched_tokens": 4096,
+    "kv_cache_dtype": "nvfp4_ds_mla",
+    "kv_cache_memory_bytes_per_rank": 9000000000,
+    "kv_cache_tokens_reported": 1125632,
+    "max_query_rows": 32,
+    "prefix_caching": true,
+    "chunked_prefill": true,
+    "async_scheduling": false,
+    "sparkcache": false,
+    "load_format": "safetensors",
+    "cudagraph_mode": "FULL_AND_PIECEWISE",
+    "max_cudagraph_capture_size": 32,
+    "full_cudagraph_capture_sizes": [4, 8, 12, 16, 20, 24, 28, 32]
+  },
+  "older_image_compatibility": {
+    "image_predates_current_public_explicit_unset_handling": true,
+    "variables_removed_before_vllm_import": [
+      "VLLM_ADAPTIVE_SPEC_DEPTHS",
+      "VLLM_PREFIX_CACHE_RETENTION_INTERVAL"
+    ],
+    "unset_mechanism": "Docker entrypoint overridden with /usr/bin/env and one -u argument per SPARKRING_EXPLICITLY_UNSET name before invoking the image's original entrypoint.",
+    "empty_string_is_not_unset": true,
+    "observed_failure_without_unset": "The image-inherited VLLM_PREFIX_CACHE_RETENTION_INTERVAL=4096 was rejected because this model has no sliding-window or Mamba KV-cache group; an empty override also failed integer parsing.",
+    "current_verifier_path_present": false,
+    "model_attestation_mechanism": "Checkpoint hashes were attested separately before cutover and the older image entrypoint retained its own hash checks."
+  },
+  "observed_startup": {
+    "model_load_gib_per_rank": 84.47,
+    "model_load_seconds": 833.16,
+    "kv_reservation_gib_per_rank": 8.38,
+    "maximum_full_length_concurrency": 1.07,
+    "decode_piecewise_capture_buckets_completed": 16,
+    "decode_full_capture_buckets_completed": 12,
+    "prefill_piecewise_capture_buckets_completed": 16,
+    "prefill_full_capture_buckets_completed": 12,
+    "graph_capture_seconds": 56,
+    "api_health_http": 200,
+    "api_max_model_len": 1048576,
+    "containers_running_after_gate": 4,
+    "container_restarts_after_gate": 0,
+    "allreduce_rms_fusion": {
+      "requested": true,
+      "activated": false,
+      "evidence": "Runtime warning: FlashInfer allreduce fusion is not supported for world size 4 or max size is not provided; AllReduce fusion pass is disabled."
+    }
+  },
+  "bounded_live_gate": {
+    "tool": "scripts/exl3_live_gate.py",
+    "mode": "one short sample per concurrency after correctness warmup",
+    "max_output_tokens_per_request": 128,
+    "temperature": 0.0,
+    "seed": 20260731,
+    "ignore_eos": false,
+    "sustained_benchmark": false,
+    "deterministic_canary": {
+      "status": "pass_after_warmup",
+      "identical_outputs": 3,
+      "completion_tokens": 128,
+      "output_sha256": "a241f436e57991a8f242dd2bfa374f833622f44b6688cee22c992a7cfa24deb9"
+    },
+    "cells": [
+      {"concurrency": 1, "completion_tokens": 128, "possible_completion_tokens": 128, "elapsed_seconds": 5.959249440027634, "aggregate_tokens_per_second": 21.479215006547275, "samples": 1},
+      {"concurrency": 2, "completion_tokens": 226, "possible_completion_tokens": 256, "elapsed_seconds": 7.742687532998389, "aggregate_tokens_per_second": 29.188831272967636, "samples": 1},
+      {"concurrency": 8, "completion_tokens": 944, "possible_completion_tokens": 1024, "elapsed_seconds": 24.695916379016126, "aggregate_tokens_per_second": 38.224943165182864, "samples": 1, "measurement_boundary": "One short gate sample with EOS allowed; 944 of 1024 possible completion tokens. Not sustained decode throughput."}
+    ],
+    "thresholds_tokens_per_second": {"C1": 15.0, "C2": 24.0, "C8": 35.0},
+    "status": "historical_pass_superseded_by_later_128_token_failure"
+  },
+  "later_correctness_audit": {
+    "script": "scripts/exl3_live_gate.py",
+    "max_output_tokens": 128,
+    "status": "fail",
+    "outputs_compared": 2,
+    "first_divergent_token_index": 124,
+    "six_run_localization": {"runs": 6, "distinct_output_hashes": 2, "hash_frequency_split": [4, 2], "first_divergent_token_index": 124},
+    "token_124_logprob_sample": {"runs": 10, "token_counts": {" if": 5, " in": 5}, "exact_top_logprob_ties_observed": true, "non_tie_top_logprob_margin_range": [0.125, 0.25]},
+    "bounded_120_token_gate": {"status": "pass", "deterministic_output_sha256": "6ebd2106f275ecccceeb8ecb01d538c404727eab9df009f2a4815dee246e2849", "artifact_sha256": "a38441afbee2c22bfe362dc8924cc96aa53530d9a7c48a44b5468ca463021038", "artifact_committed": false},
+    "deterministic_128_token_gate_passed": false,
+    "correctness_accepted": false,
+    "interpretation": "The earlier three-identical-output canary remains historical evidence only. The later stock 128-token gate reproduced a narrow token-124 divergence and supersedes any release-correctness inference from that canary."
+  },
+  "nonstreaming_full_request_smoke": {
+    "unique_nonce_used": true,
+    "prompt_tokens": 20802,
+    "completion_tokens": 16,
+    "max_completion_tokens": 16,
+    "finish_reason": "length",
+    "full_request_wall_seconds": 48.042,
+    "prompt_tokens_divided_by_full_request_wall_seconds": 433.0,
+    "streaming": false,
+    "ttft_measured": false,
+    "measurement_boundary": "The request was non-streaming. The 48.042 seconds include generation of the 16-token completion and are full request wall time, not TTFT. The derived 433.0 prompt-token/s value is a smoke-test ratio, not a streaming prefill benchmark."
+  },
+  "standard_llm_decode_bench_16k": {
+    "tool": "llm_decode_bench.py",
+    "tool_version": "0.4.31",
+    "artifact_sha256": "f02b659f798ce2b2a2afb8103008e85ea5185d49bb1c341d583ddf9a13abd69d",
+    "artifact_committed": false,
+    "configuration": {"decode_mode": "duration", "context_tokens": 16384, "concurrency_levels": [1, 2, 4, 8], "duration_per_cell_seconds": 25, "decode_warmup_seconds": 3, "cell_warmup_timeout_seconds": 300, "max_output_tokens": 2048, "temperature": 0, "ignore_eos": true, "unique_context_percent": 100, "dcp_size": 4, "kv_budget_tokens": 1125632},
+    "prefill": [
+      {"requested_context_tokens": 16384, "observed_prompt_tokens": 16249, "ttft_seconds": 28.969, "tokens_per_second": 561, "method": "integrated_scout"},
+      {"requested_context_tokens": 32768, "observed_prompt_tokens": 32321, "ttft_seconds": 58.75, "tokens_per_second": 550, "method": "scout_only"},
+      {"requested_context_tokens": 65536, "observed_prompt_tokens": 64513, "ttft_seconds": 119.016, "tokens_per_second": 542, "method": "scout_only"}
+    ],
+    "sustained_decode": [
+      {"concurrency": 1, "aggregate_tokens_per_second": 15.920118699099788, "effective_concurrency": 1, "errors": 0, "valid": true},
+      {"concurrency": 2, "aggregate_tokens_per_second": 28.88, "effective_concurrency": 2, "errors": 0, "valid": true},
+      {"concurrency": 4, "aggregate_tokens_per_second": 43.12, "effective_concurrency": 4, "errors": 0, "valid": true},
+      {"concurrency": 8, "aggregate_tokens_per_second": 62.063395921628626, "effective_concurrency": 8, "errors": 0, "valid": true}
+    ],
+    "run_summary": {"duration_seconds": 808.141, "all_cells_valid": true},
+    "evidence_boundary": "This earlier standard run includes streaming prefill scouts and an all-valid 16K decode row. It is distinct from the later skip-prefill 16K-128K extension."
+  },
+  "duration_decode_matrix": {
+    "tool": "llm_decode_bench.py",
+    "tool_version": "0.4.31",
+    "tool_sha256": "8de7c32c0abae3c664226fb9c1c197d0752c0a0f3f5a87b3357326f1407f9c07",
+    "artifact_sha256": "9d524c68ec61c1a71613bfc4dde29a04dd73d54bf89252873e9df448ee95eb55",
+    "artifact_committed": false,
+    "artifact_omission_reason": "Raw startup diagnostics contain private endpoint and workstation details.",
+    "duration_seconds": 4202.984,
+    "duration_per_cell_seconds": 25.0,
+    "decode_warmup_seconds": 3.0,
+    "cell_warmup_timeout_seconds": 300.0,
+    "max_output_tokens": 2048,
+    "temperature": 0.0,
+    "ignore_eos": true,
+    "aggregate_source": "openai_continuous_usage",
+    "unique_context_percent": 100.0,
+    "context_sharing_mode": "fully_unique_per_stream",
+    "requested_context_tokens": [16384, 32768, 65536, 131072],
+    "calibrated_prompt_tokens_approximate": [16383, 32767, 65535, 131071],
+    "concurrency_levels": [1, 2, 4, 8],
+    "dcp_size": 4,
+    "kv_budget_tokens": 1125632,
+    "standalone_prefill": false,
+    "burst_e2e": false,
+    "valid_cells": 10,
+    "invalid_readiness_cells": 6,
+    "cells": [
+      {"context_tokens": 16384, "concurrency": 1, "aggregate_tokens_per_second": 16.250702190822047, "effective_concurrency": 1, "errors": 0, "valid": true},
+      {"context_tokens": 16384, "concurrency": 2, "aggregate_tokens_per_second": 29.200902207209534, "effective_concurrency": 2, "errors": 0, "valid": true},
+      {"context_tokens": 16384, "concurrency": 4, "aggregate_tokens_per_second": 43.523648919807144, "effective_concurrency": 4, "errors": 0, "valid": true},
+      {"context_tokens": 16384, "concurrency": 8, "aggregate_tokens_per_second": 61.260680315891065, "effective_concurrency": 8, "errors": 0, "valid": true},
+      {"context_tokens": 32768, "concurrency": 1, "aggregate_tokens_per_second": 18.136586148769297, "effective_concurrency": 1, "errors": 0, "valid": true},
+      {"context_tokens": 32768, "concurrency": 2, "aggregate_tokens_per_second": 26.60602157458178, "effective_concurrency": 2, "errors": 0, "valid": true},
+      {"context_tokens": 32768, "concurrency": 4, "aggregate_tokens_per_second": 40.6066928817578, "effective_concurrency": 4, "errors": 0, "valid": true},
+      {"context_tokens": 32768, "concurrency": 8, "aggregate_tokens_per_second": null, "raw_partial_tokens_per_second": 1.934065934065934, "effective_concurrency": 6, "errors": 0, "valid": false, "warmup_timed_out": true, "timeout_reason": "running_reqs=6/8"},
+      {"context_tokens": 65536, "concurrency": 1, "aggregate_tokens_per_second": 17.59307498097866, "effective_concurrency": 1, "errors": 0, "valid": true},
+      {"context_tokens": 65536, "concurrency": 2, "aggregate_tokens_per_second": 25.656468320808823, "effective_concurrency": 2, "errors": 0, "valid": true},
+      {"context_tokens": 65536, "concurrency": 4, "aggregate_tokens_per_second": null, "raw_partial_tokens_per_second": 1.0012933372304031, "effective_concurrency": 3, "errors": 0, "valid": false, "warmup_timed_out": true, "timeout_reason": "running_reqs=3/4"},
+      {"context_tokens": 65536, "concurrency": 8, "aggregate_tokens_per_second": null, "raw_partial_tokens_per_second": 0.39534372940893814, "effective_concurrency": 2, "errors": 0, "valid": false, "warmup_timed_out": true, "timeout_reason": "running_reqs=2/8"},
+      {"context_tokens": 131072, "concurrency": 1, "aggregate_tokens_per_second": 15.329811079056903, "effective_concurrency": 1, "errors": 0, "valid": true},
+      {"context_tokens": 131072, "concurrency": 2, "aggregate_tokens_per_second": null, "raw_partial_tokens_per_second": 0.0, "effective_concurrency": 1, "errors": 0, "valid": false, "warmup_timed_out": true, "timeout_reason": "running_reqs=1/2"},
+      {"context_tokens": 131072, "concurrency": 4, "aggregate_tokens_per_second": null, "raw_partial_tokens_per_second": 0.4134889276864247, "effective_concurrency": 2, "errors": 0, "valid": false, "warmup_timed_out": true, "timeout_reason": "running_reqs=2/4"},
+      {"context_tokens": 131072, "concurrency": 8, "aggregate_tokens_per_second": null, "raw_partial_tokens_per_second": 0.0, "effective_concurrency": 1, "errors": 0, "valid": false, "warmup_timed_out": true, "timeout_reason": "running_reqs=1/8"}
+    ],
+    "invalid_cell_policy": "Partial rates from readiness-timed-out or underfilled cells are diagnostic only and must not be quoted as requested-concurrency throughput.",
+    "interpretation": "The valid surface extends through 32K/C4 and 64K/C2. The 32K/C8 timeout occurred well below the KV token budget, so unique-prompt prefill and admission latency, not KV capacity alone, is the immediate concurrency limit."
+  },
+  "post_run": {
+    "api_health_http": 200,
+    "ranks_running": 4,
+    "restarts": 0,
+    "gpu_temperature_range_c": [57, 63],
+    "trial_left_serving": true
+  },
+  "not_measured": [
+    "standalone_streaming_prefill_in_the_16k_128k_matrix",
+    "burst_e2e_decode_in_the_16k_128k_matrix",
+    "fixed_mtp2_vs_fixed_mtp3_controlled_comparison",
+    "normalized_energy",
+    "public_clean_checkout_acceptance"
+  ]
+}

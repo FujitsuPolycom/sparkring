@@ -38,6 +38,14 @@ The 1M/9-GB settings are the current capacity profile. The earlier conservative
 live gate used the same image and execution contract with a 262,144-token model
 limit and 7,000,000,000 KV bytes per rank.
 
+An external operator run also exercised the unchanged legacy checkpoint at
+TP4/DCP4 with fixed MTP2. Its exact delta, bounded gate, evidence limitations,
+and machine-readable configuration are recorded in the
+[DCP4 fixed-MTP2 alternative recipe](EXL3_FIXED_MTP2_RECIPE_20260802.md). It is
+a live-validated configuration candidate, not public-bootstrap acceptance or a
+reference-lane result. Its later stock 128-token deterministic gate fails at a
+narrow token-124 branch, so it is not correctness-accepted.
+
 ## Inspect the recipe offline
 
 ```bash
@@ -74,11 +82,11 @@ It performs these receipt-gated operations:
 
 1. verifies management SSH and the exact three-hop direct-ring fanout tree;
 2. verifies the 200 GbE/RDMA fabric before downloading or building;
-3. adopts or resumes the pinned 81-shard model on rank 0, with a capacity gate
+3. builds or reuses the exact NF3 NVFP4/FP8-RoPE base layer;
+4. adopts or resumes the pinned 81-shard model on rank 0, with a capacity gate
    and full per-shard verification against the pinned Hugging Face manifest;
-4. copies model bytes to both neighbors in parallel, then relays to the opposite
+5. copies model bytes to both neighbors in parallel, then relays to the opposite
    rank over direct 200 GbE addresses using resumable `rsync`;
-5. builds or reuses the exact NF3 NVFP4/FP8-RoPE base layer;
 6. reconstructs the exact public ExLlamaV3 and SparkInfer Git trees from pinned
    base commits plus hash-checked patches;
 7. builds and verifies one derived ARM64 image on rank 0, then fans that exact
@@ -138,5 +146,48 @@ the derived image and repeating the four-rank gate. Until that passes:
 2. Confirm the 81-shard adoption/download and direct-ring fanout receipts.
 3. Confirm the derived image ID on all four ranks.
 4. Complete four-rank startup, correctness, C1/C2/C8, and post-run health
-   gates.
+   gates using the commands below.
 5. Record the public-path receipt and promote the bootstrap from candidate.
+
+After the launcher reports that all four containers are running and the API is
+ready, first re-attest the deployed bytes:
+
+```bash
+python scripts/sparkring_exl3_launcher.py \
+  --site .sparkring/bootstrap-exl3/site.yaml \
+  --profile .sparkring/bootstrap-exl3/launch.json \
+  --execute verify-image
+
+python scripts/sparkring_exl3_launcher.py \
+  --site .sparkring/bootstrap-exl3/site.yaml \
+  --profile .sparkring/bootstrap-exl3/launch.json \
+  --execute verify-model
+
+python scripts/sparkring_exl3_launcher.py \
+  --site .sparkring/bootstrap-exl3/site.yaml \
+  --profile .sparkring/bootstrap-exl3/launch.json \
+  --execute status
+```
+
+Then run the bounded API gate. The initial public-path regression floors are
+deliberately below the short maintainer sanity measurements; they detect a
+broken path rather than claim a final performance band:
+
+```bash
+python scripts/exl3_live_gate.py \
+  --base-url http://<rank-0-management-address>:8000 \
+  --model glm-5.2-exl3-tr3-3.25bpw \
+  --max-tokens 128 \
+  --timeout-seconds 1800 \
+  --min-c1-tps 15 \
+  --min-c2-tps 24 \
+  --min-c8-tps 35 \
+  | tee .sparkring/bootstrap-exl3/live-gate.json
+```
+
+This requires two byte-identical greedy fixed-seed outputs, measures C1/C2/C8,
+enforces the stated floors, and checks `/health` both before and after the
+matrix. A successful clean-checkout run must retain its generated site/profile,
+image IDs, bootstrap output, live-gate JSON, and four-rank logs as the
+publication receipt. These are candidate regression floors, not reference-lane
+performance claims.
