@@ -4,7 +4,7 @@
   "lane": "public-functional",
   "maturity": "live-validated",
   "hardware": "four directly cabled NVIDIA DGX Sparks",
-  "evidence_scope": "canonical launcher restart/status plus bounded short gate; interrupted standard-matrix attempt; not generic bundle execution or acceptance",
+  "evidence_scope": "canonical launcher restart/status plus bounded short gates; clean post-reboot preflight and canonical restore; invalid sustained attempts with reproducible rank-1 host/fabric loss; not generic bundle execution, a sustained replacement matrix, or acceptance",
   "model": {
     "repository": "willfalco/GLM-5.2-EXL3-TR3-3.25bpw",
     "revision": "d7d79c2d14599dfce7a5d12b85f7ad73f40e623d"
@@ -25,7 +25,7 @@
     "piecewise_graphs_captured": 16,
     "full_graphs_captured": 12
   },
-  "bounded_gate": {
+  "pre_reboot_bounded_gate": {
     "harness": "scripts/exl3_live_gate.py",
     "max_tokens": 128,
     "temperature": 0,
@@ -59,6 +59,59 @@
     "status": "pass",
     "claim_scope": "short finite-request deployment gate; not sustained 16K decode"
   },
+  "post_reboot_campaign": {
+    "preflight": {
+      "passed": 116,
+      "total": 116,
+      "mode": "read-only"
+    },
+    "canonical_lifecycle": {
+      "restart_stack_passed": true,
+      "all_rank_health_passed": true,
+      "engines_running": 4,
+      "lmcache_servers_running": 4
+    },
+    "determinism": {
+      "cold_gate_last_token_divergence": true,
+      "following_matching_repetitions": 3,
+      "broader_correctness_passed": false
+    },
+    "warmed_bounded_gate": {
+      "harness": "scripts/exl3_live_gate.py",
+      "max_tokens": 128,
+      "temperature": 0,
+      "seed": 20260731,
+      "cells": [
+        {
+          "concurrency": 1,
+          "aggregate_tokens_per_second": 21.9374,
+          "floor": 15.0
+        },
+        {
+          "concurrency": 2,
+          "aggregate_tokens_per_second": 30.2472,
+          "floor": 24.0
+        },
+        {
+          "concurrency": 8,
+          "aggregate_tokens_per_second": 69.3897,
+          "floor": 35.0
+        }
+      ],
+      "status": "pass",
+      "claim_scope": "warmed short finite-request deployment gate after three matching repetitions; not sustained 16K decode and not broader deterministic correctness"
+    },
+    "isolated_sustained_c8_attempt": {
+      "valid": false,
+      "throughput_claimed": false,
+      "effective_concurrency_accepted": false,
+      "failure": "rank-1 host/fabric loss under load",
+      "rank_1_management_reachable": false,
+      "rank_1_neighbor_facing_production_links_with_carrier": 0,
+      "other_ranks_alive": [0, 2, 3],
+      "root_cause_established": false
+    }
+  },
   "lmcache_observation": {
     "servers_healthy": 4,
     "chunk_size": 512,
@@ -81,7 +134,19 @@
     },
     "replacement_matrix_complete": false,
     "suppressed_cells": [2, 4, 8],
-    "reason": "readiness timeout followed by loss of one rank before corrected retry"
+    "reason": "initial readiness timeout; after reboot and clean canonical restore, isolated C8 retry reproduced rank-1 host/fabric loss under load",
+    "post_reboot_isolated_c8_valid": false,
+    "post_reboot_isolated_c8_throughput_claimed": false
+  },
+  "lower_memory_experiment": {
+    "profile": "kv4gb-480k-l1-0.5gb",
+    "kv_cache_memory_bytes_per_rank": 4000000000,
+    "max_model_length": 491520,
+    "lmcache_l1_gib_per_rank": 0.5,
+    "prepared": true,
+    "live_tested": false,
+    "canonical_default": false,
+    "performance_claim_exists": false
   },
   "runtime_bundle": {
     "canonical_bridge_plan_sha256": "8a6acc811d3b5b850b88e12031c42235af91122eca1c26b2ecb528879144dec0",

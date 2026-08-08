@@ -158,13 +158,16 @@
           "harness": "scripts/exl3_live_gate.py",
           "max_tokens": 128,
           "temperature": 0,
-          "fixed_seed_repeat_passed": true,
+          "cold_fixed_seed_repeat_passed": false,
+          "cold_last_token_divergence": true,
+          "following_matching_repetitions": 3,
+          "warmed_gate_passed": true,
           "aggregate_tps": {
-            "c1": 22.141433665799916,
-            "c2": 30.913364910958673,
-            "c8": 74.85579622875947
+            "c1": 21.9374,
+            "c2": 30.2472,
+            "c8": 69.3897
           },
-          "evidence_scope": "short finite-request deployment gate; not sustained decode or the standard 16K matrix"
+          "evidence_scope": "warmed short finite-request deployment gate; not sustained decode, the standard 16K matrix, or broader deterministic correctness"
         },
         "lmcache": {
           "servers_healthy": 4,
@@ -177,7 +180,15 @@
           "valid_diagnostic_cells": 1,
           "replacement_matrix_cells": 0,
           "first_attempt": "readiness-timeout",
-          "retry": "interrupted-by-one-rank-hard-loss"
+          "post_reboot_isolated_c8_valid": false,
+          "retry": "reproduced-rank-1-host-fabric-loss-under-load",
+          "throughput_claimed_from_retry": false
+        },
+        "lower_memory_experiment": {
+          "profile": "kv4gb-480k-l1-0.5gb",
+          "prepared": true,
+          "live_tested": false,
+          "canonical_default": false
         },
         "acceptance": false,
         "evidence": "docs/GENERIC_RUNTIME_LIVE_EXERCISE_20260808.md",

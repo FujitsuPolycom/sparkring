@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from acceptance_gate import SubprocessExecutor, UrllibHttpClient
+import sparkring_exl3_lmcache_launcher as lmcache_launcher
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,6 +47,11 @@ def launcher_argv(args: argparse.Namespace, command: str) -> list[str]:
         args.profile,
         "--execute",
     ]
+    if args.experimental_memory_profile is not None:
+        argv += [
+            "--experimental-memory-profile",
+            args.experimental_memory_profile,
+        ]
     if command in ("restart-engines", "restart-stack"):
         argv += ["--confirmation", LAUNCHER_CONFIRMATION]
     return argv + [command]
@@ -290,6 +296,7 @@ def execute_gate(args: argparse.Namespace, executor: Any, http: Any) -> dict[str
         "status": "pass" if not failures else "fail",
         "probe_id": args.probe_id,
         "model": args.model,
+        "experimental_memory_profile": args.experimental_memory_profile,
         "prompt_sha256": hashlib.sha256(
             probe_prompt(args).encode("utf-8")
         ).hexdigest(),
@@ -323,6 +330,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-engine-restart-ratio", type=float, default=0.75)
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--confirmation", default="")
+    parser.add_argument(
+        "--experimental-memory-profile",
+        choices=tuple(lmcache_launcher.EXPERIMENTAL_MEMORY_PROFILES),
+        default=None,
+        help="pass a named non-canonical memory preset through every launcher phase",
+    )
     parser.add_argument("command", choices=("plan", "run"))
     return parser
 
@@ -345,6 +358,7 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
         "mutates_remote": True,
         "execute_requested": args.execute,
         "probe_id": args.probe_id,
+        "experimental_memory_profile": args.experimental_memory_profile,
         "prompt_sha256": hashlib.sha256(
             probe_prompt(args).encode("utf-8")
         ).hexdigest(),

@@ -4,8 +4,10 @@
 > **Canonical EXL3+LMCache deployment evidence:** live-validated, bounded |
 > **Generic bundle execution:** not performed; the canonical bridge is
 > intentionally plan-only | **Hardware:** four directly cabled NVIDIA DGX
-> Sparks | **Exercise status:** interrupted after the bounded API gate by loss
-> of rank 1; rollback, restore, and the corrected sustained matrix remain open
+> Sparks | **Exercise status:** the canonical stack was restored cleanly after
+> an operator-coordinated reboot, but an isolated sustained C8 attempt
+> reproduced rank-1 host/fabric loss; that cell is invalid and the corrected
+> sustained matrix, cache-boundary gate, rollback, and restore remain open
 
 This record separates two things that are easy to conflate:
 
@@ -68,7 +70,12 @@ direct 200-Gb/s MTU-9000 links, active Ethernet-mode RDMA, RoCE v2 GID 3,
 8,972-byte jumbo pings, peer control, free serving/rendezvous ports, cache
 paths and free space, and the identical exact image ID on every rank.
 
-The canonical `restart-stack` lifecycle then completed successfully:
+The canonical `restart-stack` lifecycle then completed successfully. A later
+operator-coordinated reboot recovered all four hosts after the first rank-1
+loss. The complete read-only preflight was rerun from a clean post-reboot
+state and again passed all 116/116 checks. The same exact canonical stack then
+completed another successful `restart-stack`, with all four engines and all
+four LMCache servers healthy. Across the successful canonical lifecycle:
 
 - four LMCache servers passed health before engine start;
 - all 81 EXL3 shards passed the outer and in-container verifier on every rank;
@@ -82,8 +89,8 @@ The canonical `restart-stack` lifecycle then completed successfully:
 - a repeated fixed-seed request returned byte-identical reasoning and exact
   content `SPARKRING LIVE OK`.
 
-The repository's bounded `exl3_live_gate.py` then passed with deterministic
-128-token output and no threshold failures:
+Before the reboot, the repository's bounded `exl3_live_gate.py` passed with
+deterministic 128-token output and no threshold failures:
 
 | Cell | Aggregate completion tok/s | Published floor |
 |---:|---:|---:|
@@ -95,6 +102,21 @@ These are short deployment-gate samples, not the sustained 16K performance
 matrix. They must not be substituted for the sustained 16K table in
 `docs/RESULTS.md`.
 
+The first cold deterministic gate after the reboot had a last-token
+divergence. Three immediately following fixed-input repetitions matched one
+another, and the warmed bounded gate then passed every configured floor:
+
+| Cell | Aggregate completion tok/s | Published floor |
+|---:|---:|---:|
+| C1 | 21.9374 | 15 |
+| C2 | 30.2472 | 24 |
+| C8 | 69.3897 | 35 |
+
+The matching warmed repetitions are useful deployment evidence, but they do
+not erase the cold last-token divergence or satisfy the broader deterministic
+correctness gate. These remain short finite-request samples, not sustained
+16K decode rates.
+
 ## LMCache observation
 
 After the workload, all four LMCache servers independently reported the same
@@ -105,7 +127,7 @@ groups. This proves population and consistent server geometry during this
 exercise. It does not by itself prove reuse across an engine restart or
 persistence across a server restart.
 
-## Invalid sustained-matrix attempt and failure boundary
+## Invalid sustained-matrix attempts and failure boundary
 
 The first `llm_decode_bench.py` v0.4.31 attempt used one 16K context row,
 C1/C2/C4/C8, 25-second duration windows, 2,048 maximum tokens, temperature
@@ -131,20 +153,39 @@ negative evidence that the API health endpoint alone is insufficient for a
 multi-rank readiness claim. The exercise stopped rather than publishing
 partial rates or treating the shallow health response as cluster health.
 
+After the operator-coordinated reboot, clean preflight, canonical restart, and
+warmed bounded gate, the corrected campaign began with an isolated sustained
+C8 cell. Under that load, rank 1 again became unreachable on its management
+interface and both neighbor-facing production links lost carrier. Ranks 0, 2,
+and 3 remained alive. The C8 benchmark cell is invalid: it did not complete a
+healthy eight-stream measurement and no throughput is claimed from it. This
+independent reproduction narrows the failure boundary to rank 1 or its
+host/fabric path under load; it does not by itself establish a root cause.
+
+The lower-memory experimental profile
+`kv4gb-480k-l1-0.5gb` has been prepared for a controlled follow-up. It reduces
+the per-rank KV allocation to 4.0 GB, caps model length at 491,520 tokens, and
+uses a 0.5-GiB LMCache L1. It has not been launched on the cluster, so it has
+no live stability, capacity, or performance result and is not the canonical
+default.
+
 ## Remaining gates
 
 This exercise does not close any of the following:
 
-1. recover rank 1 and repeat the full read-only preflight;
-2. restore an idle canonical stack while preserving exact identities;
+1. diagnose or otherwise resolve the reproducible rank-1 host/fabric loss;
+2. recover rank 1, repeat the full read-only preflight, and restore an idle
+   exact-identity stack;
 3. run independent fully unique 16K C8/C4/C2/C1 cells with explicit readiness
    allowance and reject any underfilled cell;
-4. demonstrate LMCache reuse across an engine-only restart with cache servers
+4. live-test the named lower-memory profile against the canonical control;
+5. demonstrate LMCache reuse across an engine-only restart with cache servers
    preserved;
-5. execute canonical rollback, verify rollback, and restore the best stack;
-6. finish the broader correctness and release-promotion gates in
+6. execute canonical rollback, verify rollback, and restore the best stack;
+7. finish the broader correctness and release-promotion gates in
    [EXL3_ACCEPTANCE_RUNBOOK.md](EXL3_ACCEPTANCE_RUNBOOK.md).
 
 Until those items are complete, the repository's existing Aug. 3 clean-image
 matrix remains the current sustained performance evidence. This interrupted
-exercise adds lifecycle, cache-population, and failure-detection evidence only.
+exercise adds lifecycle, cache-population, warm bounded-gate, and reproducible
+failure-detection evidence only.

@@ -124,6 +124,116 @@ def test_plan_is_dry_run_and_records_every_phase(tmp_path, capsys):
     assert all(len(actions) == 4 for actions in document["phases"].values())
 
 
+def test_experimental_memory_profile_is_explicit_and_consistent(tmp_path):
+    site_path, profile_path = generated(tmp_path)
+    site = load_site(site_path)
+    profile = exl3.load_profile(profile_path)
+    experiment_id = "kv4gb-480k-l1-0.5gb"
+    effective_label = lmcache.experiment_label(experiment_id)
+
+    phases = lmcache.build_phases(
+        site, profile, experiment_id=experiment_id
+    )
+    for action in phases["start_servers"]:
+        command = action.shell_command
+        assert "--l1-size-gb 0.5" in command
+        assert f"org.sparkring.exl3-profile={effective_label}" in command
+        assert f"org.sparkring.experiment={experiment_id}" in command
+        assert "--chunk-size 512" in command
+    for action in phases["start_engines"]:
+        command = action.shell_command
+        assert "--kv-cache-memory-bytes 4000000000" in command
+        assert "--max-model-len 491520" in command
+        assert "VLLM_SPARK_KV_CACHE_MEMORY_BYTES=4000000000" in command
+        assert "VLLM_SPARK_MAX_MODEL_LEN=491520" in command
+        assert "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS=491520" in command
+        assert f"org.sparkring.exl3-profile={effective_label}" in command
+        assert f"org.sparkring.experiment={experiment_id}" in command
+    for phase in (
+        "server_health",
+        "ready",
+        "remove_engines",
+        "remove_servers",
+        "rollback",
+    ):
+        assert all(
+            effective_label in action.shell_command
+            for action in phases[phase]
+        )
+
+
+def test_experimental_plan_is_truthfully_noncanonical(tmp_path, capsys):
+    site_path, profile_path = generated(tmp_path)
+    experiment_id = "kv4gb-480k-l1-0.5gb"
+    assert (
+        lmcache.main(
+            [
+                "--site",
+                str(site_path),
+                "--profile",
+                str(profile_path),
+                "--experimental-memory-profile",
+                experiment_id,
+                "plan",
+            ]
+        )
+        == 0
+    )
+    document = json.loads(capsys.readouterr().out)
+    assert document["profile_id"] == lmcache.PROFILE_ID
+    assert document["experiment"] == {
+        "evidence_scope": "experimental",
+        "canonical_configuration": False,
+        "experiment_id": experiment_id,
+        "base_profile_attestation": {
+            "profile_id": lmcache.PROFILE_ID,
+            "image_id": IMAGE_ID,
+        },
+        "effective_profile_label": lmcache.experiment_label(experiment_id),
+        "baseline": {
+            "kv_cache_memory_bytes": 4_500_000_000,
+            "max_model_len": 524_288,
+            "lmcache_l1_size_gb": 1,
+        },
+        "effective": {
+            "kv_cache_memory_bytes": 4_000_000_000,
+            "max_model_len": 491_520,
+            "lmcache_l1_size_gb": 0.5,
+        },
+    }
+
+
+def test_unknown_programmatic_experiment_fails_closed(tmp_path):
+    site_path, profile_path = generated(tmp_path)
+    site = load_site(site_path)
+    profile = exl3.load_profile(profile_path)
+    with pytest.raises(exl3.ProfileError, match="unknown experimental memory profile"):
+        lmcache.build_phases(site, profile, experiment_id="unreviewed")
+
+
+def test_default_plan_remains_canonical(tmp_path, capsys):
+    site_path, profile_path = generated(tmp_path)
+    assert (
+        lmcache.main(
+            [
+                "--site",
+                str(site_path),
+                "--profile",
+                str(profile_path),
+                "plan",
+            ]
+        )
+        == 0
+    )
+    document = json.loads(capsys.readouterr().out)
+    assert "experiment" not in document
+    commands = json.dumps(document["phases"])
+    assert "--l1-size-gb 1" in commands
+    assert "--kv-cache-memory-bytes 4500000000" in commands
+    assert "--max-model-len 524288" in commands
+    assert "org.sparkring.experiment" not in commands
+
+
 @pytest.mark.parametrize(
     "command", ("start", "restart-engines", "restart-stack", "rollback")
 )

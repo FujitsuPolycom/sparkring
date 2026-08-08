@@ -22,14 +22,38 @@ from sparkring_site import SiteConfigError, load_site  # noqa: E402
 PROFILE_ID = exl3.LMCACHE_CS512_PROFILE_ID
 SERVER_PREFIX = "glm52-sparkring-lmcache-cs512-server"
 CONFIRMATION = "START-EXL3-LMCACHE-CS512-ALL-FOUR"
+EXPERIMENTAL_MEMORY_PROFILES = {
+    "kv4gb-480k-l1-0.5gb": {
+        "kv_cache_memory_bytes": "4000000000",
+        "max_model_len": "491520",
+        "lmcache_l1_size_gb": 0.5,
+    }
+}
 
 
-def recipe_lmcache() -> dict:
+def recipe_lmcache(experiment: dict | None = None) -> dict:
     recipe = json.loads(exl3.RECIPE_PATH.read_text(encoding="utf-8"))
-    config = recipe["serving"].get("lmcache")
+    config = copy.deepcopy(recipe["serving"].get("lmcache"))
     if not isinstance(config, dict):
         raise exl3.ProfileError("published EXL3 recipe has no LMCache contract")
+    if experiment is not None:
+        config["l1_size_gb"] = experiment["lmcache_l1_size_gb"]
     return config
+
+
+def experiment_label(experiment_id: str | None) -> str:
+    return PROFILE_ID if experiment_id is None else f"{PROFILE_ID}-exp-{experiment_id}"
+
+
+def selected_experiment(experiment_id: str | None) -> dict | None:
+    if experiment_id is None:
+        return None
+    try:
+        return EXPERIMENTAL_MEMORY_PROFILES[experiment_id]
+    except KeyError as exc:
+        raise exl3.ProfileError(
+            f"unknown experimental memory profile {experiment_id!r}"
+        ) from exc
 
 
 def server_name(rank: int) -> str:
@@ -40,8 +64,15 @@ def shell_action(rank, script: str) -> exl3.RemoteAction:
     return exl3.RemoteAction(rank.id, rank.ssh_target, ("sh", "-lc", script))
 
 
-def server_start_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]:
-    config = recipe_lmcache()
+def server_start_actions(
+    site,
+    profile: exl3.Profile,
+    *,
+    experiment_id: str | None = None,
+) -> list[exl3.RemoteAction]:
+    experiment = selected_experiment(experiment_id)
+    config = recipe_lmcache(experiment)
+    effective_label = experiment_label(experiment_id)
     actions = []
     for rank in site.ranks:
         name = server_name(rank.id)
@@ -54,7 +85,7 @@ def server_start_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]
             "--label",
             "org.sparkring.managed=true",
             "--label",
-            f"org.sparkring.exl3-profile={PROFILE_ID}",
+            f"org.sparkring.exl3-profile={effective_label}",
             "--label",
             "org.sparkring.component=lmcache-server",
             "--privileged",
@@ -103,6 +134,12 @@ def server_start_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]
             str(config["http_port"]),
             "--disable-observability",
         ]
+        if experiment_id is not None:
+            privileged_index = command.index("--privileged")
+            command[privileged_index:privileged_index] = [
+                "--label",
+                f"org.sparkring.experiment={experiment_id}",
+            ]
         guard = (
             f"test \"$({profile.engine} image inspect --format '{{{{.Id}}}}' "
             f"{shlex.quote(profile.image)})\" = {shlex.quote(profile.image_id)}"
@@ -114,15 +151,19 @@ def server_start_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]
     return actions
 
 
-def server_health_actions(site) -> list[exl3.RemoteAction]:
-    config = recipe_lmcache()
+def server_health_actions(
+    site, *, experiment_id: str | None = None,
+) -> list[exl3.RemoteAction]:
+    experiment = selected_experiment(experiment_id)
+    config = recipe_lmcache(experiment)
+    effective_label = experiment_label(experiment_id)
     actions = []
     for rank in site.ranks:
         name = server_name(rank.id)
         script = (
             f"test \"$({{ docker inspect -f '{{{{index .Config.Labels "
             f"\"org.sparkring.exl3-profile\"}}}}' {shlex.quote(name)}; }})\" "
-            f"= {shlex.quote(PROFILE_ID)}"
+            f"= {shlex.quote(effective_label)}"
             f" && for i in $(seq 1 60); do "
             f"test \"$(docker inspect -f '{{{{.State.Running}}}}' "
             f"{shlex.quote(name)} 2>/dev/null)\" = true"
@@ -141,13 +182,36 @@ def server_health_actions(site) -> list[exl3.RemoteAction]:
     return actions
 
 
-def engine_start_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]:
-    config = recipe_lmcache()
+def engine_start_actions(
+    site,
+    profile: exl3.Profile,
+    *,
+    experiment_id: str | None = None,
+) -> list[exl3.RemoteAction]:
+    experiment = selected_experiment(experiment_id)
+    config = recipe_lmcache(experiment)
+    effective_label = experiment_label(experiment_id)
     document = copy.deepcopy(profile.document)
     document["environment"]["LMCACHE_DISABLE_BANNER"] = "1"
     document["environment"]["PYTORCH_CUDA_ALLOC_CONF"] = (
         "expandable_segments:False"
     )
+    if experiment is not None:
+        document["environment"].update(
+            {
+                "SPARKRING_EXPERIMENT_ID": experiment_id,
+                "SPARKRING_EXL3_CONTEXT_PROFILE": (
+                    f"experimental-{experiment_id}"
+                ),
+                "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS": experiment[
+                    "max_model_len"
+                ],
+                "VLLM_SPARK_KV_CACHE_MEMORY_BYTES": experiment[
+                    "kv_cache_memory_bytes"
+                ],
+                "VLLM_SPARK_MAX_MODEL_LEN": experiment["max_model_len"],
+            }
+        )
     urls = [
         f"tcp://{rank.management.address}:{config['server_port']}"
         for rank in site.ranks
@@ -180,6 +244,17 @@ def engine_start_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]
             f"{marker}--privileged --label org.sparkring.component=engine ",
             1,
         )
+        if experiment_id is not None:
+            command = command.replace(
+                f"org.sparkring.exl3-profile={PROFILE_ID}",
+                f"org.sparkring.exl3-profile={effective_label}",
+                1,
+            )
+            command = command.replace(
+                marker,
+                f"{marker}--label org.sparkring.experiment={experiment_id} ",
+                1,
+            )
         privileged.append(
             exl3.RemoteAction(
                 action.rank, action.ssh_target, ("sh", "-lc", command)
@@ -188,7 +263,13 @@ def engine_start_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]
     return privileged
 
 
-def ready_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]:
+def ready_actions(
+    site,
+    profile: exl3.Profile,
+    *,
+    experiment_id: str | None = None,
+) -> list[exl3.RemoteAction]:
+    effective_label = experiment_label(experiment_id)
     actions = []
     for rank in site.ranks:
         name = exl3.container_name(profile, rank.id)
@@ -201,7 +282,7 @@ def ready_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]:
         script = (
             f"test \"$(docker inspect -f '{{{{index .Config.Labels "
             f"\"org.sparkring.exl3-profile\"}}}}' {shlex.quote(name)})\" "
-            f"= {shlex.quote(PROFILE_ID)}"
+            f"= {shlex.quote(effective_label)}"
             f" && for i in $(seq 1 720); do "
             f"test \"$(docker inspect -f '{{{{.State.Running}}}}' "
             f"{shlex.quote(name)} 2>/dev/null)\" = true"
@@ -220,7 +301,13 @@ def ready_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]:
     return actions
 
 
-def rollback_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]:
+def rollback_actions(
+    site,
+    profile: exl3.Profile,
+    *,
+    experiment_id: str | None = None,
+) -> list[exl3.RemoteAction]:
+    effective_label = experiment_label(experiment_id)
     actions = []
     for rank in site.ranks:
         names = (exl3.container_name(profile, rank.id), server_name(rank.id))
@@ -231,7 +318,7 @@ def rollback_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]:
             '"org.sparkring.exl3-profile"}}\' "$name" '
             "2>/dev/null || true); "
             f"test -z \"$profile\" || test \"$profile\" = "
-            f"{shlex.quote(PROFILE_ID)} || exit 73; "
+            f"{shlex.quote(effective_label)} || exit 73; "
             "test -z \"$profile\" || docker rm --force \"$name\"; done"
         )
         actions.append(shell_action(rank, script))
@@ -243,10 +330,12 @@ def remove_component_actions(
     profile: exl3.Profile,
     *,
     component: str,
+    experiment_id: str | None = None,
 ) -> list[exl3.RemoteAction]:
     if component not in ("engine", "lmcache-server"):
         raise exl3.ProfileError(f"unsupported removal component {component!r}")
     actions = []
+    effective_label = experiment_label(experiment_id)
     for rank in site.ranks:
         name = (
             exl3.container_name(profile, rank.id)
@@ -258,7 +347,7 @@ def remove_component_actions(
             'profile=$(docker inspect -f \'{{index .Config.Labels '
             '"org.sparkring.exl3-profile"}}\' "$name" '
             "2>/dev/null || true); "
-            f'test -z "$profile" || test "$profile" = {shlex.quote(PROFILE_ID)} '
+            f'test -z "$profile" || test "$profile" = {shlex.quote(effective_label)} '
             "|| exit 73; "
             'component=$(docker inspect -f \'{{index .Config.Labels '
             '"org.sparkring.component"}}\' "$name" '
@@ -307,24 +396,39 @@ def failed(result: dict) -> bool:
     )
 
 
-def build_phases(site, profile: exl3.Profile) -> dict[str, list[exl3.RemoteAction]]:
+def build_phases(
+    site,
+    profile: exl3.Profile,
+    *,
+    experiment_id: str | None = None,
+) -> dict[str, list[exl3.RemoteAction]]:
     """Build all 8 canonical phase action sets.
 
     Exported so the bundle bridge and canonical main() share the same
     phase construction logic — no duplication.
     """
     return {
-        "start_servers": server_start_actions(site, profile),
-        "server_health": server_health_actions(site),
-        "start_engines": engine_start_actions(site, profile),
-        "ready": ready_actions(site, profile),
+        "start_servers": server_start_actions(
+            site, profile, experiment_id=experiment_id,
+        ),
+        "server_health": server_health_actions(
+            site, experiment_id=experiment_id,
+        ),
+        "start_engines": engine_start_actions(
+            site, profile, experiment_id=experiment_id,
+        ),
+        "ready": ready_actions(
+            site, profile, experiment_id=experiment_id,
+        ),
         "remove_engines": remove_component_actions(
-            site, profile, component="engine",
+            site, profile, component="engine", experiment_id=experiment_id,
         ),
         "remove_servers": remove_component_actions(
-            site, profile, component="lmcache-server",
+            site, profile, component="lmcache-server", experiment_id=experiment_id,
         ),
-        "rollback": rollback_actions(site, profile),
+        "rollback": rollback_actions(
+            site, profile, experiment_id=experiment_id,
+        ),
         "verify_rollback": rollback_verify_actions(site, profile),
     }
 
@@ -390,6 +494,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--confirmation", default="")
     parser.add_argument(
+        "--experimental-memory-profile",
+        choices=tuple(EXPERIMENTAL_MEMORY_PROFILES),
+        default=None,
+        help=(
+            "run a named non-canonical memory experiment; the published "
+            "recipe and generated profile remain unchanged"
+        ),
+    )
+    parser.add_argument(
         "command",
         choices=(
             "plan",
@@ -407,7 +520,9 @@ def main(argv: list[str] | None = None) -> int:
         profile = exl3.load_profile(Path(args.profile))
         if profile.profile_id != PROFILE_ID:
             raise exl3.ProfileError(f"LMCache launcher requires {PROFILE_ID}")
-        phases = build_phases(site, profile)
+        phases = build_phases(
+            site, profile, experiment_id=args.experimental_memory_profile,
+        )
     except (OSError, KeyError, json.JSONDecodeError, SiteConfigError, exl3.ProfileError) as exc:
         parser.error(str(exc))
 
@@ -419,6 +534,40 @@ def main(argv: list[str] | None = None) -> int:
         in ("start", "restart-engines", "restart-stack", "rollback"),
         "phases": {name: render(actions) for name, actions in phases.items()},
     }
+    if args.experimental_memory_profile is not None:
+        experiment = EXPERIMENTAL_MEMORY_PROFILES[
+            args.experimental_memory_profile
+        ]
+        canonical_environment = profile.document["environment"]
+        canonical_lmcache = recipe_lmcache()
+        plan["experiment"] = {
+            "evidence_scope": "experimental",
+            "canonical_configuration": False,
+            "experiment_id": args.experimental_memory_profile,
+            "base_profile_attestation": {
+                "profile_id": profile.profile_id,
+                "image_id": profile.image_id,
+            },
+            "effective_profile_label": experiment_label(
+                args.experimental_memory_profile
+            ),
+            "baseline": {
+                "kv_cache_memory_bytes": int(
+                    canonical_environment["VLLM_SPARK_KV_CACHE_MEMORY_BYTES"]
+                ),
+                "max_model_len": int(
+                    canonical_environment["VLLM_SPARK_MAX_MODEL_LEN"]
+                ),
+                "lmcache_l1_size_gb": canonical_lmcache["l1_size_gb"],
+            },
+            "effective": {
+                "kv_cache_memory_bytes": int(
+                    experiment["kv_cache_memory_bytes"]
+                ),
+                "max_model_len": int(experiment["max_model_len"]),
+                "lmcache_l1_size_gb": experiment["lmcache_l1_size_gb"],
+            },
+        }
     if args.command == "plan" or not args.execute:
         print(json.dumps(plan, indent=2))
         return 0

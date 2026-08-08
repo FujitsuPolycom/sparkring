@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import acceptance_gate
 import exl3_cache_acceptance as cache
@@ -105,6 +106,50 @@ def test_run_without_execute_remains_a_dry_run(capsys):
     refusing = acceptance_gate.RefusingExecutor()
     assert cache.main(argv(), executor=refusing, http=refusing) == 0
     assert json.loads(capsys.readouterr().out)["execute_requested"] is False
+
+
+def test_experimental_memory_profile_is_forwarded_to_every_launcher_phase(
+    capsys,
+):
+    refusing = acceptance_gate.RefusingExecutor()
+    experiment_id = "kv4gb-480k-l1-0.5gb"
+    arguments = argv("plan")[:-1] + [
+        "--experimental-memory-profile",
+        experiment_id,
+        "plan",
+    ]
+    assert cache.main(arguments, executor=refusing, http=refusing) == 0
+    document = json.loads(capsys.readouterr().out)
+    assert document["experimental_memory_profile"] == experiment_id
+    for command in document["commands"].values():
+        option = command.index("--experimental-memory-profile")
+        assert command[option + 1] == experiment_id
+
+
+def test_experimental_memory_profile_is_not_sent_to_completion_api():
+    args = cache.build_parser().parse_args(
+        argv("run")[:-1]
+        + [
+            "--experimental-memory-profile",
+            "kv4gb-480k-l1-0.5gb",
+            "run",
+        ]
+    )
+
+    class Http:
+        def stream_completion(self, url, payload, *, timeout):
+            assert "experimental_memory_profile" not in payload
+            return SimpleNamespace(
+                error=None,
+                ttft_seconds=1.0,
+                total_seconds=2.0,
+                tokens=1,
+                token_count_source="usage",
+                text="ok",
+            )
+
+    result = cache.sample(args, Http(), "probe")
+    assert result["label"] == "probe"
 
 
 def test_execute_requires_exact_confirmation(capsys):

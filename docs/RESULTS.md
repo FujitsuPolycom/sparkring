@@ -59,19 +59,29 @@ prompt; it is not a 16K sustained-decode benchmark.
 
 | Gate cell | Aggregate completion tok/s | Published floor |
 |---:|---:|---:|
-| C1 | **22.14** | 15 |
-| C2 | **30.91** | 24 |
-| C8 | **74.86** | 35 |
+| C1 | **21.9374** | 15 |
+| C2 | **30.2472** | 24 |
+| C8 | **69.3897** | 35 |
 
-The two deterministic pre-check completions were byte-identical. After
-traffic, all four LMCache servers were healthy and each held 197 L1 objects
-using 806,912,000 bytes; that is population evidence, not cache-hit,
-restart-reuse, persistence, or speedup attribution.
+The first cold deterministic gate after an operator-coordinated reboot had a
+last-token divergence. Three following repetitions matched one another and
+the warmed gate produced the table above. The warmed match is bounded
+deployment evidence; it does not erase the cold divergence or pass the broader
+correctness gate. Earlier in the exercise, after traffic, all four LMCache
+servers were healthy and each held 197 L1 objects using 806,912,000 bytes;
+that is population evidence, not cache-hit, restart-reuse, persistence, or
+speedup attribution.
 
 A subsequent standard 16K attempt used the harness's automatic readiness
 policy and produced no publishable replacement matrix: only C1 reached
 readiness, C2/C4/C8 were suppressed, and a corrected retry was prevented by
-hard loss of one rank. The valid Aug. 3 matrix above remains authoritative.
+hard loss of one rank. After reboot, a clean 116/116 preflight and successful
+canonical restart restored all-rank health, but an isolated sustained C8 retry
+reproduced rank-1 management loss and loss of carrier on both of its
+neighbor-facing production links while ranks 0, 2, and 3 stayed alive. That
+cell is invalid and has no claimed throughput. The lower-memory experimental
+profile was prepared but had not been live-tested. The valid Aug. 3 matrix
+above remains authoritative.
 See the fully scoped
 [supervised composition exercise](GENERIC_RUNTIME_LIVE_EXERCISE_20260808.md)
 and its
