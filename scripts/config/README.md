@@ -129,6 +129,31 @@ published recovered overlay, the gate has passed natively on DGX Spark for
 is absent or the installed sources drift. Bypassing that gate is not a
 supported workaround.
 
+## Generic runtime contributor profiles
+
+The generic runtime's hardware-free authoring files are:
+
+- `native-profile.template.json`: minimal native-profile template. Its obvious
+  placeholders intentionally make `validate` exit `1` with
+  `template/unresolved` until the required image and identity pins are filled.
+- `contributor-example.json`: filled, sanitized structural example used by the
+  conformance tests. Its documentation-only identities are not live evidence.
+- `generic.example.json`: older feature-rich placeholder example retained for
+  backward-compatible plan examples; it is also unresolved, not deployable.
+- `fixtures/snapshot-*.json`: deterministic semantic projections for the
+  native generic, EXL3 bridge, and NF3 bridge plans.
+
+Run the focused offline workflow with:
+
+```bash
+python scripts/sparkring_generic_launcher.py \
+  --profile scripts/config/contributor-example.json validate
+python -m pytest scripts/test_runtime_conformance.py -q
+```
+
+See [`docs/GENERIC_RUNTIME.md`](../../docs/GENERIC_RUNTIME.md) for resolved
+plan validation, explanation, semantic diff, and exit-code details.
+
 ## Requirements
 
 * Python 3.10+

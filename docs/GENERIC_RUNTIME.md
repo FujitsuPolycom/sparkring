@@ -132,6 +132,38 @@ profile declares a `confirmation` token, mutating commands require
 `--confirmation <token>`. The `--max-num-batched-tokens` flag applies
 only to EXL3 bridge `plan`/`start` and accepts 2048, 3072, or 4096.
 
+### Offline conformance commands
+
+The same launcher provides a hardware-free contributor workflow:
+
+```bash
+# Structural validation only. An untouched template exits 1 as unresolved.
+python scripts/sparkring_generic_launcher.py \
+  --profile scripts/config/contributor-example.json validate
+
+# Resolve a sanitized site and exercise the canonical plan builder, without SSH.
+python scripts/sparkring_generic_launcher.py \
+  --site scripts/config/site.example.yaml \
+  --profile scripts/config/contributor-example.json validate
+
+# Explain schema ownership, identity scope, hooks, safety classes, and topology.
+python scripts/sparkring_generic_launcher.py \
+  --site scripts/config/site.example.yaml \
+  --profile scripts/config/contributor-example.json explain
+
+# Compare profiles only, or independently resolve each profile/site pair.
+python scripts/sparkring_generic_launcher.py \
+  --profile-a a.json --profile-b b.json diff
+python scripts/sparkring_generic_launcher.py \
+  --site-a site-a.yaml --site-b site-b.yaml \
+  --profile-a a.json --profile-b b.json diff
+```
+
+`validate`, `explain`, and `diff` are always offline and reject `--execute`.
+For `diff`, exit `0` means identical, `1` means different, and `2` means
+invalid input. These commands describe configuration structure only; they do
+not claim model correctness, live validation, or public acceptance.
+
 ## Profile format
 
 A generic profile is a JSON file with schema
@@ -167,7 +199,11 @@ A generic profile is a JSON file with schema
 }
 ```
 
-See `scripts/config/generic.example.json` for a complete sanitized template.
+Use `scripts/config/native-profile.template.json` as the minimal authoring
+template and `scripts/config/contributor-example.json` as a filled,
+structurally valid sanitized example. `scripts/config/generic.example.json`
+remains the feature-rich placeholder example used by older generic-runtime
+documentation and tests; validation reports it as unresolved.
 
 ### Boundaries
 
@@ -232,8 +268,10 @@ This is the minimal example for a contributor adding a new model family.
 
 ### 1. Write a profile
 
-Copy `scripts/config/generic.example.json` and fill in your model's
-identity, environment, and vLLM args. Set `model_family` to a short
+Copy `scripts/config/native-profile.template.json` and fill in your model's
+identity, image pins, environment, and vLLM args. Compare against
+`scripts/config/contributor-example.json` if you want a filled example. Set
+`model_family` to a short
 identifier for your family (e.g. `"my-family"`).
 
 ### 2. Write a focused test
@@ -247,7 +285,7 @@ from sparkring_site import load_site
 
 def test_myfamily_profile_validates(tmp_path):
     doc = json.loads(
-        Path("scripts/config/generic.example.json").read_text()
+        Path("scripts/config/native-profile.template.json").read_text()
     )
     doc.update({"profile_id": "my-model", "model_family": "my-family", ...})
     path = tmp_path / "myfamily.json"

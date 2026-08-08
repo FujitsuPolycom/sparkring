@@ -204,36 +204,12 @@ def _validate_placeholders(value: str, where: str) -> None:
         raise LaunchConfigError(f"{where}: unknown placeholder {{{unknown[0]}}}")
 
 
-def _context(site: SiteConfig, rank_id: int) -> dict[str, str]:
-    rank = site.rank(rank_id)
-    peers_by_rank = {peer.rank: peer for peer in rank.transport_peers}
-    # Native TP4 consumes peer slots in recursive-doubling round order:
-    # round 0 is rank^1 and round 1 is rank^3. Sorting by rank silently
-    # reverses both slots on ranks 2 and 3.
-    peers = [peers_by_rank[rank_id ^ 1], peers_by_rank[rank_id ^ 3]]
-    ports = {port.peer_rank: port for port in rank.ring_ports}
-    master = site.rank(site.serving.master_rank)
-    return {
-        "api_port": str(site.serving.api_port),
-        "draft_path": "/mtp-draft",
-        "master_addr": str(master.management.address),
-        "master_port": str(site.serving.master_port),
-        "model_path": site.runtime.model_path,
-        "peer0_addr": str(peers[0].address),
-        "peer0_device": ports[peers[0].rank].rdma_device,
-        "peer0_gid": str(ports[peers[0].rank].roce_gid_index),
-        "peer0_rank": str(peers[0].rank),
-        "peer1_addr": str(peers[1].address),
-        "peer1_device": ports[peers[1].rank].rdma_device,
-        "peer1_gid": str(ports[peers[1].rank].roce_gid_index),
-        "peer1_rank": str(peers[1].rank),
-        "rank": str(rank_id),
-        "world_size": str(len(site.ranks)),
-    }
-
-
-def _expand(value: str, context: dict[str, str]) -> str:
-    return _PLACEHOLDER.sub(lambda match: context[match.group(1)], value)
+# Per-rank transport context derivation (XOR peer/site context) is shared
+# from sparkring_runtime (F8 extraction). The shared site_context is
+# byte-identical to the original NF3 _context. This compatibility wrapper
+# preserves the internal call site name and any external test references.
+_context = runtime.site_context
+_expand = runtime.expand
 
 
 def container_name(config: LaunchConfig, rank: int) -> str:

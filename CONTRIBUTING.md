@@ -255,6 +255,80 @@ rather than a screenshot; reviewers read `cable_qualified`,
 Results from topologies other than the four-node ring are welcome and useful,
 including "this does not work on my hardware".
 
+### A runtime profile (vLLM-style model)
+
+The generic runtime launcher (`scripts/sparkring_generic_launcher.py`) accepts
+any profile that conforms to the `sparkring-runtime-profile/v1` schema. You
+can add a compatible vLLM-style model without four Sparks or a GPU.
+
+1. Copy `scripts/config/native-profile.template.json` and fill in your
+   model's image, identity pins, and vLLM arguments.
+2. Validate structurally (no site needed):
+
+   ```bash
+   python scripts/sparkring_generic_launcher.py --profile your-profile.json validate
+   ```
+
+3. Validate with plan-build (catches profile/site incompatibilities):
+
+   ```bash
+   python scripts/sparkring_generic_launcher.py \
+     --site scripts/config/site.example.yaml \
+     --profile your-profile.json validate
+   ```
+
+4. Inspect the profile structure:
+
+   ```bash
+   python scripts/sparkring_generic_launcher.py \
+     --site scripts/config/site.example.yaml \
+     --profile your-profile.json explain
+   ```
+
+5. Generate an offline plan:
+
+   ```bash
+   python scripts/sparkring_generic_launcher.py \
+     --site scripts/config/site.example.yaml \
+     --profile your-profile.json plan
+   ```
+
+6. Compare two profiles or plans:
+
+   ```bash
+   # Profile-only (no site)
+   python scripts/sparkring_generic_launcher.py \
+     --profile-a a.json --profile-b b.json diff
+
+   # Plan-level (with site: topology, per-rank actions, identity, labels, mounts)
+   python scripts/sparkring_generic_launcher.py \
+     --site scripts/config/site.example.yaml \
+     --profile-a a.json --profile-b b.json diff
+
+   # Plan-level with independent sites (compare same profile across sites)
+   python scripts/sparkring_generic_launcher.py \
+     --site-a site-a.yaml --site-b site-b.yaml \
+     --profile-a a.json --profile-b b.json diff
+   ```
+
+   Exit codes: `0` = identical, `1` = different, `2` = invalid input.
+
+7. Run the conformance test suite:
+
+   ```bash
+   python -m pytest scripts/test_runtime_conformance.py -q
+   ```
+
+A generic profile is outside the current EXL3 and accepted NF3 configurations
+until it is named and gated. The `validate` and `explain` commands never claim
+model correctness or live acceptance. The `diff` command never normalizes away
+image IDs, model identity, topology, labels, mounts, hooks, or command
+changes.
+
+Conformance fixtures live in `scripts/config/fixtures/` and assert
+semantically important plan fields for generic, EXL3 bridge, and NF3 bridge
+behavior.
+
 ## The two-lane claim policy
 
 SparkRing has two support lanes, described in `README.md` and
