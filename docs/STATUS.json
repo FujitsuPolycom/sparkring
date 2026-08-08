@@ -146,6 +146,43 @@
         "release_promoted": false,
         "public_functional_acceptance_complete": false
       },
+      "live_revalidation_20260808": {
+        "maturity": "live-validated",
+        "lane": "public-functional",
+        "hardware": "four directly cabled DGX Sparks",
+        "canonical_launcher_restart_passed": true,
+        "canonical_status_passed": true,
+        "preflight_passed": 116,
+        "preflight_total": 116,
+        "bounded_gate": {
+          "harness": "scripts/exl3_live_gate.py",
+          "max_tokens": 128,
+          "temperature": 0,
+          "fixed_seed_repeat_passed": true,
+          "aggregate_tps": {
+            "c1": 22.141433665799916,
+            "c2": 30.913364910958673,
+            "c8": 74.85579622875947
+          },
+          "evidence_scope": "short finite-request deployment gate; not sustained decode or the standard 16K matrix"
+        },
+        "lmcache": {
+          "servers_healthy": 4,
+          "objects_per_server": 197,
+          "bytes_per_server": 806912000,
+          "claim_scope": "population only; no reuse, persistence, or speedup attribution"
+        },
+        "standard_matrix": {
+          "complete": false,
+          "valid_diagnostic_cells": 1,
+          "replacement_matrix_cells": 0,
+          "first_attempt": "readiness-timeout",
+          "retry": "interrupted-by-one-rank-hard-loss"
+        },
+        "acceptance": false,
+        "evidence": "docs/GENERIC_RUNTIME_LIVE_EXERCISE_20260808.md",
+        "machine_readable_evidence": "docs/configurations/glm52-exl3-lmcache-live-revalidation-20260808.json"
+      },
       "entrypoint": "recipes/glm52-exl3-tr3-3.25bpw.json",
       "evidence": "docs/EXL3_RECIPE.md",
       "fixed_mtp2_alternative": {
@@ -257,6 +294,9 @@
       "structured_container_validation": "rejects shell entrypoints (14 entries), rejects .. in mount paths, rejects absolute/UNC/placeholder/symlink-escape source paths",
       "native_execution": "invocation-local rollback ledger keyed by (service_id, rank); five-label ownership guard (managed, profile, bundle, service, source-profile); daemon probe + exact-name enumeration; exception exit code 125 with error_type",
       "exl3_lmcache_bridge": "plan-only (execution_supported: false); delegates via build_phases() and lifecycle_sequence() exported from canonical launcher, consumed by both canonical main() and bridge",
+      "exl3_lmcache_bridge_execution_supported": false,
+      "canonical_exl3_lmcache_live_execution_20260808": "canonical launcher only; does not validate bundle execution",
+      "canonical_bridge_plan_sha256_20260808": "8a6acc811d3b5b850b88e12031c42235af91122eca1c26b2ecb528879144dec0",
       "nf3_bundle_source": "removed; NF3 remains an accepted alternative through its existing dedicated launcher (scripts/sparkring_launcher.py) and generic dispatcher (scripts/sparkring_generic_launcher.py), not as a bundle runtime-profile source — the bundle parser intentionally rejects NF3's non-native profile schema",
       "behavioral_tests": "fake-engine matrix executes generated sh -c guards against simulated docker (daemon unavailable, absent, present foreign, present owned, rm failure); requires a POSIX shell (Git for Windows sh or native sh); skipped when none is found; validated on Windows with Git for Windows sh; symlink-escape test skipped on platforms that cannot create symlinks",
       "live_validation": false,

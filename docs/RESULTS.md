@@ -49,6 +49,34 @@ correctly suppressed after warmup timeout. Those suppressions were readiness
 timeouts, not KV-capacity failures. Unique 16K validation for this profile
 therefore requires `--cell-warmup-timeout-seconds 300`.
 
+### 2026-08-08 bounded canonical-stack revalidation
+
+The same exact model and four-rank image identity later passed a fresh 116/116
+preflight, canonical EXL3+LMCache restart/status cycle, graph capture, and the
+short `scripts/exl3_live_gate.py` deployment gate. That gate uses 128-token
+finite requests, temperature zero, a fixed seed, and a short default coding
+prompt; it is not a 16K sustained-decode benchmark.
+
+| Gate cell | Aggregate completion tok/s | Published floor |
+|---:|---:|---:|
+| C1 | **22.14** | 15 |
+| C2 | **30.91** | 24 |
+| C8 | **74.86** | 35 |
+
+The two deterministic pre-check completions were byte-identical. After
+traffic, all four LMCache servers were healthy and each held 197 L1 objects
+using 806,912,000 bytes; that is population evidence, not cache-hit,
+restart-reuse, persistence, or speedup attribution.
+
+A subsequent standard 16K attempt used the harness's automatic readiness
+policy and produced no publishable replacement matrix: only C1 reached
+readiness, C2/C4/C8 were suppressed, and a corrected retry was prevented by
+hard loss of one rank. The valid Aug. 3 matrix above remains authoritative.
+See the fully scoped
+[supervised composition exercise](GENERIC_RUNTIME_LIVE_EXERCISE_20260808.md)
+and its
+[sanitized machine-readable summary](configurations/glm52-exl3-lmcache-live-revalidation-20260808.json).
+
 This document is the definitive record of SparkRing's measured performance. Every number here is a real measurement pulled from a dated deliverable, carries its full configuration label, and passed the verification gate stated on its row. Nothing in this document is a projection, an extrapolation, or a comparison against systems we did not measure ourselves.
 
 If a number you have seen quoted about SparkRing does not appear here with a matching label, treat it as unofficial.

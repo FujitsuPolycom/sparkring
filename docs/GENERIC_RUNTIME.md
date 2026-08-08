@@ -381,6 +381,12 @@ existing launchers:
 > canonical launcher. NF3 remains the accepted alternative model/runtime,
 > but the bundle layer no longer has a dedicated NF3 bridge source kind.
 
+The [2026-08-08 supervised composition exercise](GENERIC_RUNTIME_LIVE_EXERCISE_20260808.md)
+records a live canonical EXL3+LMCache restart and bounded gate alongside an
+interrupted sustained-matrix attempt. It is deliberately not described as
+live native-bundle validation: the EXL3+LMCache bridge remained plan-only, and
+rank loss prevented the rollback/restore sequence from completing.
+
 The bundle layer (`scripts/sparkring_bundle.py`,
 `scripts/sparkring_bundle_launcher.py`) extends the generic runtime to
 represent a static multi-service deployment: one serving/model service plus

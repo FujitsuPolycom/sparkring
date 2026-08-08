@@ -1,0 +1,92 @@
+{
+  "schema": "sparkring-exl3-lmcache-live-revalidation/v1",
+  "date": "2026-08-08",
+  "lane": "public-functional",
+  "maturity": "live-validated",
+  "hardware": "four directly cabled NVIDIA DGX Sparks",
+  "evidence_scope": "canonical launcher restart/status plus bounded short gate; interrupted standard-matrix attempt; not generic bundle execution or acceptance",
+  "model": {
+    "repository": "willfalco/GLM-5.2-EXL3-TR3-3.25bpw",
+    "revision": "d7d79c2d14599dfce7a5d12b85f7ad73f40e623d"
+  },
+  "image_id": "sha256:20c4099f2e7e3dd3c8ab64f7d7930bde4f372df1895aa3ffa593252ca04ae96f",
+  "identical_image_ranks": 4,
+  "preflight": {
+    "passed": 116,
+    "total": 116
+  },
+  "canonical_lifecycle": {
+    "restart_stack_passed": true,
+    "status_passed": true,
+    "engines_running": 4,
+    "lmcache_servers_running": 4,
+    "restart_count_each": 0,
+    "oom_each": false,
+    "piecewise_graphs_captured": 16,
+    "full_graphs_captured": 12
+  },
+  "bounded_gate": {
+    "harness": "scripts/exl3_live_gate.py",
+    "max_tokens": 128,
+    "temperature": 0,
+    "top_p": 1.0,
+    "seed": 20260731,
+    "deterministic_repeat_passed": true,
+    "deterministic_output_sha256": "491fbf97a8ad72687757059023552290307f41362cc0af56012d239cc2f3393d",
+    "cells": [
+      {
+        "concurrency": 1,
+        "completion_tokens": 128,
+        "elapsed_seconds": 5.781016800086945,
+        "aggregate_tokens_per_second": 22.141433665799916,
+        "floor": 15.0
+      },
+      {
+        "concurrency": 2,
+        "completion_tokens": 226,
+        "elapsed_seconds": 7.310753800207749,
+        "aggregate_tokens_per_second": 30.913364910958673,
+        "floor": 24.0
+      },
+      {
+        "concurrency": 8,
+        "completion_tokens": 1024,
+        "elapsed_seconds": 13.679635400185362,
+        "aggregate_tokens_per_second": 74.85579622875947,
+        "floor": 35.0
+      }
+    ],
+    "status": "pass",
+    "claim_scope": "short finite-request deployment gate; not sustained 16K decode"
+  },
+  "lmcache_observation": {
+    "servers_healthy": 4,
+    "chunk_size": 512,
+    "objects_per_server": 197,
+    "bytes_per_server": 806912000,
+    "registered_gpu_contexts_per_server": 1,
+    "claim_scope": "population and consistent geometry only; no hit, restart-reuse, persistence, or speedup attribution"
+  },
+  "standard_matrix_attempt": {
+    "harness": "llm_decode_bench.py v0.4.31",
+    "harness_sha256": "8de7c32c0abae3c664226fb9c1c197d0752c0a0f3f5a87b3357326f1407f9c07",
+    "context": "16K",
+    "duration_seconds": 25,
+    "max_tokens": 2048,
+    "temperature": 0,
+    "unique_context_percent": 100,
+    "kv_budget": 562688,
+    "valid_diagnostic_cells": {
+      "c1_aggregate_tokens_per_second": 15.369836695522924
+    },
+    "replacement_matrix_complete": false,
+    "suppressed_cells": [2, 4, 8],
+    "reason": "readiness timeout followed by loss of one rank before corrected retry"
+  },
+  "runtime_bundle": {
+    "canonical_bridge_plan_sha256": "8a6acc811d3b5b850b88e12031c42235af91122eca1c26b2ecb528879144dec0",
+    "execution_supported": false,
+    "live_execution_path": "canonical EXL3+LMCache launcher only"
+  },
+  "acceptance": false
+}
