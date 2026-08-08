@@ -60,6 +60,7 @@ class FakeCluster:
         stop_exit: int = 0,
         rollback_exit: int = 0,
         status_exit: int = 0,
+        extension_exit: int = 0,
         health_status: int = 200,
         models_status: int = 200,
         served_models: list[str] | None = None,
@@ -86,6 +87,7 @@ class FakeCluster:
         self.stop_exit = stop_exit
         self.rollback_exit = rollback_exit
         self.status_exit = status_exit
+        self.extension_exit = extension_exit
         self.health_status = health_status
         self.models_status = models_status
         self.served_models = (
@@ -166,6 +168,8 @@ class FakeCluster:
             return self._result(argv, self.rollback_exit, "rollback ok")
         if "--rank-status" in argv:
             return self._result(argv, self.status_exit, "running")
+        if "profile-extension" in argv:
+            return self._result(argv, self.extension_exit, "extension result")
         return self._result(argv, 0, "")
 
     @staticmethod
@@ -545,9 +549,10 @@ def test_stage_ids_and_order_are_stable():
         "api_liveness",
         "deterministic_generation",
         "performance_matrix",
+        "profile_extensions",
         "shutdown_rollback",
     ]
-    assert [stage.order for stage in gate.STAGES] == [1, 2, 3, 4, 5, 6, 7]
+    assert [stage.order for stage in gate.STAGES] == [1, 2, 3, 4, 5, 6, 7, 8]
     assert "performance_matrix" not in gate.FUNCTIONAL_STAGE_IDS
 
 
@@ -639,6 +644,7 @@ def test_aborts_at_first_failure_and_skips_the_rest(tmp_path):
         "api_liveness",
         "deterministic_generation",
         "performance_matrix",
+        "profile_extensions",
         "shutdown_rollback",
     ):
         assert statuses[stage_id] == gate.STATUS_SKIPPED
@@ -650,6 +656,121 @@ def test_aborts_at_first_failure_and_skips_the_rest(tmp_path):
     assert result["performance_verdict"] == gate.PERFORMANCE_NOT_MEASURED
     assert code == gate.EXIT_FUNCTIONAL_FAIL
     assert not any("--start" in argv for argv in cluster.commands)
+
+
+def test_failure_after_startup_still_runs_guaranteed_cleanup(tmp_path):
+    cluster = FakeCluster(health_status=503)
+    code, result = execute(
+        tmp_path,
+        cluster,
+        acceptance={"expected_generation_path": str(write_expected(tmp_path))},
+    )
+    statuses = stage_status(result)
+    assert statuses["api_liveness"] == gate.STATUS_FAIL
+    assert statuses["shutdown_rollback"] == gate.STATUS_PASS
+    assert cluster.stopped is True
+    assert code == gate.EXIT_FUNCTIONAL_FAIL
+
+
+def test_profile_extension_failure_is_functional_and_still_cleans_up(tmp_path):
+    cluster = FakeCluster(extension_exit=9)
+    code, result = execute(
+        tmp_path,
+        cluster,
+        acceptance={"expected_generation_path": str(write_expected(tmp_path))},
+        performance={
+            "band": {
+                "C1": {"ttft_seconds_p50": {"max": 100.0}},
+                "C8": {"per_stream_tokens_per_second_p50": {"min": 0.0}},
+            }
+        },
+        extensions={
+            "pre_shutdown": [
+                {
+                    "id": "cache-boundary",
+                    "command": ["profile-extension"],
+                    "timeout_seconds": 60,
+                    "mutates_remote": True,
+                }
+            ]
+        },
+    )
+    statuses = stage_status(result)
+    assert statuses["profile_extensions"] == gate.STATUS_FAIL
+    assert statuses["shutdown_rollback"] == gate.STATUS_PASS
+    assert cluster.stopped is True
+    assert code == gate.EXIT_FUNCTIONAL_FAIL
+
+
+def test_profile_extension_baseline_exit_is_not_misreported_as_failure(tmp_path):
+    class BaselineExtension(FakeCluster):
+        def run(self, argv, timeout=None):
+            if "profile-extension" in argv:
+                return self._result(
+                    list(argv),
+                    gate.EXIT_BASELINE_RECORDED,
+                    json.dumps({"status": "baseline-recorded"}),
+                )
+            return super().run(argv, timeout=timeout)
+
+    cluster = BaselineExtension()
+    code, result = execute(
+        tmp_path,
+        cluster,
+        acceptance={"expected_generation_path": str(write_expected(tmp_path))},
+        performance={
+            "band": {
+                "C1": {"ttft_seconds_p50": {"max": 100.0}},
+                "C8": {"per_stream_tokens_per_second_p50": {"min": 0.0}},
+            }
+        },
+        extensions={
+            "pre_shutdown": [
+                {
+                    "id": "correctness-baseline",
+                    "command": ["profile-extension"],
+                    "timeout_seconds": 60,
+                    "mutates_remote": False,
+                }
+            ]
+        },
+    )
+    assert code == gate.EXIT_BASELINE_RECORDED
+    assert stage_status(result)["profile_extensions"] == gate.STATUS_BASELINE_RECORDED
+    assert stage_status(result)["shutdown_rollback"] == gate.STATUS_PASS
+    assert result["functional_verdict"] == gate.FUNCTIONAL_BASELINE_RECORDED
+
+
+def test_required_extension_json_status_fails_closed_on_malformed_stdout(tmp_path):
+    cluster = FakeCluster()
+    code, result = execute(
+        tmp_path,
+        cluster,
+        acceptance={"expected_generation_path": str(write_expected(tmp_path))},
+        performance={
+            "band": {
+                "C1": {"ttft_seconds_p50": {"max": 100.0}},
+                "C8": {"per_stream_tokens_per_second_p50": {"min": 0.0}},
+            }
+        },
+        extensions={
+            "pre_shutdown": [
+                {
+                    "id": "strict-report",
+                    "command": ["profile-extension"],
+                    "timeout_seconds": 60,
+                    "mutates_remote": False,
+                    "require_json_status": True,
+                }
+            ]
+        },
+    )
+    assert code == gate.EXIT_FUNCTIONAL_FAIL
+    extension = next(
+        item for item in result["stages"] if item["id"] == "profile_extensions"
+    )
+    assert "emitted no JSON status report" in extension["message"]
+    assert cluster.stopped is True
 
 
 def test_first_stage_failure_never_starts_anything(tmp_path):
@@ -797,6 +918,40 @@ def test_performance_miss_is_not_a_functional_failure(tmp_path):
     assert code != gate.EXIT_FUNCTIONAL_FAIL
 
 
+def test_final_resource_status_failure_is_captured_before_cleanup(tmp_path):
+    class LateStatusFailure(FakeCluster):
+        def __init__(self):
+            super().__init__()
+            self.status_calls = 0
+
+        def run(self, argv, timeout=None):
+            if "--rank-status" in argv:
+                self.status_calls += 1
+                if self.status_calls > 4:
+                    return self._result(list(argv), 9, "", "late OOM marker")
+            return super().run(argv, timeout=timeout)
+
+    cluster = LateStatusFailure()
+    code, result = execute(
+        tmp_path,
+        cluster,
+        acceptance={"expected_generation_path": str(write_expected(tmp_path))},
+        performance={
+            "band": {
+                "C1": {"aggregate_tokens_per_second": {"min": 0.0}},
+                "C8": {"aggregate_tokens_per_second": {"min": 0.0}},
+            }
+        },
+    )
+    assert code == gate.EXIT_FUNCTIONAL_FAIL
+    assert stage_status(result)["shutdown_rollback"] == gate.STATUS_FAIL
+    assert cluster.stopped is True
+    shutdown = next(
+        item for item in result["stages"] if item["id"] == "shutdown_rollback"
+    )
+    assert "final rank_status_command exited 9" in shutdown["message"]
+
+
 def test_missing_band_records_a_candidate_instead_of_asserting(tmp_path):
     code, result = execute(
         tmp_path,
@@ -831,6 +986,51 @@ def test_benchmark_request_errors_are_a_hard_failure(tmp_path):
     )
     assert stage_status(result)["performance_matrix"] == gate.STATUS_FAIL
     assert code == gate.EXIT_FUNCTIONAL_FAIL
+
+
+def test_performance_cell_repetitions_are_sustained_and_short_streams_fail(tmp_path):
+    performance = {
+        "cells": [
+            {
+                "concurrency": 1,
+                "max_tokens": 128,
+                "repetitions": 3,
+                "minimum_tokens": 64,
+                "ignore_eos": True,
+            },
+            {
+                "concurrency": 8,
+                "max_tokens": 128,
+                "repetitions": 2,
+                "minimum_tokens": 64,
+                "ignore_eos": True,
+            },
+        ],
+        "band": {
+            "C1": {"aggregate_tokens_per_second": {"min": 0.0}},
+            "C8": {"aggregate_tokens_per_second": {"min": 0.0}},
+        },
+    }
+    code, result = execute(
+        tmp_path,
+        FakeCluster(stream_tokens=8),
+        acceptance={"expected_generation_path": str(write_expected(tmp_path))},
+        performance=performance,
+    )
+    assert code == gate.EXIT_FUNCTIONAL_FAIL
+    stage = next(
+        item for item in result["stages"] if item["id"] == "performance_matrix"
+    )
+    assert "fewer than 64 tokens" in stage["message"]
+    cells = json.loads(
+        (
+            tmp_path
+            / "evidence/test-run/stages/06-performance_matrix/cells.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert len(cells["C1"]["streams"]) == 3
+    assert len(cells["C8"]["streams"]) == 16
+    assert cells["C8"]["ignore_eos"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -947,6 +1147,8 @@ def test_dry_run_is_the_default_and_mutates_nothing(tmp_path, capsys):
     plan = json.loads(capsys.readouterr().out)
     assert plan["schema"] == gate.PLAN_SCHEMA
     assert plan["mode"] == "dry-run"
+    assert plan["mutates_remote"] is True
+    assert plan["safety_class"] == "STOPS SERVING"
     assert [entry["id"] for entry in plan["stages"]] == [
         stage.id for stage in gate.STAGES
     ]
@@ -954,6 +1156,12 @@ def test_dry_run_is_the_default_and_mutates_nothing(tmp_path, capsys):
     joined = json.dumps(plan)
     assert "qualify_direct_cable.py" in joined
     assert "verify-runtime.py" in joined
+    startup = next(item for item in plan["stages"] if item["id"] == "rank_startup")
+    shutdown = next(
+        item for item in plan["stages"] if item["id"] == "shutdown_rollback"
+    )
+    assert startup["actions"][0]["mutates_remote"] is True
+    assert any(action.get("mutates_remote") is True for action in shutdown["actions"])
 
 
 def test_dry_run_never_touches_the_executor_or_http(tmp_path):
@@ -975,12 +1183,90 @@ def test_dry_run_never_touches_the_executor_or_http(tmp_path):
     assert cluster.requests == []
 
 
+def test_gate_placeholders_are_visible_in_plan_and_refused_in_execute(
+    tmp_path, capsys
+):
+    gate_path = write_gate_config(
+        tmp_path,
+        fabric={
+            "model_down_probe": {
+                "command": ["<YOUR_MODEL_DOWN_PROBE>"],
+                "per_rank": True,
+            }
+        },
+    )
+    common = [
+        "--site",
+        str(write_site(tmp_path)),
+        "--gate-config",
+        str(gate_path),
+        "--repo-root",
+        str(tmp_path),
+    ]
+    assert gate.main(common) == gate.EXIT_OK
+    plan = json.loads(capsys.readouterr().out)
+    assert any(
+        "<YOUR_MODEL_DOWN_PROBE>" in item
+        for item in plan["placeholder_warnings"]
+    )
+
+    assert (
+        gate.main(
+            common
+            + [
+                "--preflight",
+                str(write_preflight(tmp_path)),
+                "--execute",
+                "--confirm",
+                gate.CONFIRM_TOKEN,
+            ],
+            executor=FakeCluster(),
+            http=FakeCluster(),
+        )
+        == gate.EXIT_CONFIG_ERROR
+    )
+    assert "unresolved <YOUR_MODEL_DOWN_PROBE>" in capsys.readouterr().err
+
+
 def test_refusing_executor_raises_rather_than_running():
     refusing = gate.RefusingExecutor()
     with pytest.raises(RuntimeError):
         refusing.run(["echo", "hi"])
     with pytest.raises(RuntimeError):
         refusing.get_json("http://example.test/health")
+
+
+def test_stream_client_prefers_continuous_usage_token_count(monkeypatch):
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def __iter__(self):
+            events = [
+                {"choices": [{"text": "hello"}]},
+                {
+                    "choices": [{"text": " world"}],
+                    "usage": {"completion_tokens": 7},
+                },
+            ]
+            for event in events:
+                yield f"data: {json.dumps(event)}\n".encode()
+            yield b"data: [DONE]\n"
+
+    monkeypatch.setattr(
+        gate.urllib.request,
+        "urlopen",
+        lambda *args, **kwargs: Response(),
+    )
+    sample = gate.UrllibHttpClient().stream_completion(
+        "http://rank0.test/v1/completions", {"model": "test"}
+    )
+    assert sample.tokens == 7
+    assert sample.token_count_source == "usage.completion_tokens"
+    assert sample.text == "hello world"
 
 
 def test_execute_requires_the_confirmation_token(tmp_path):
@@ -1158,7 +1444,123 @@ def test_gate_config_requires_the_c1_and_c8_cells(tmp_path):
         write_gate_config(tmp_path, performance={"cells": [{"concurrency": 1}]})
     )
     problems = gate.validate_configuration(site, config, lock)
-    assert any("C1 and C8" in problem for problem in problems)
+    assert any("matrix.required_concurrencies" in problem for problem in problems)
+
+
+def test_public_exl3_gate_template_matches_recipe_and_full_concurrency_matrix(
+    tmp_path,
+):
+    root = Path(__file__).resolve().parents[1]
+    recipe = json.loads(
+        (root / "recipes/glm52-exl3-tr3-3.25bpw.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    document = site_document()
+    document["runtime"].update(
+        {
+            "model_repo": recipe["model"]["repository"],
+            "model_revision": recipe["model"]["revision"],
+        }
+    )
+    document["serving"].update(
+        {
+            "mtp_mode": "static",
+            "mtp_tokens": 2,
+            "max_model_len": 524288,
+            "kv_cache_bytes_per_rank": 4500000000,
+        }
+    )
+    site = normalised_site(tmp_path, document)
+    profile, _ = gate.load_gate_config(
+        root / "scripts/config/gate.exl3.example.json"
+    )
+    assert gate.validate_configuration(site, profile, recipe) == []
+    assert profile["matrix"]["required_concurrencies"] == [1, 2, 4, 8]
+    assert all(
+        cell["repetitions"] == 3 and cell["ignore_eos"] is True
+        for cell in profile["performance"]["cells"]
+    )
+    assert [item["id"] for item in profile["extensions"]["pre_shutdown"]] == [
+        "broader-correctness",
+        "lmcache-boundaries",
+    ]
+    assert all(
+        item["require_json_status"] is True
+        for item in profile["extensions"]["pre_shutdown"]
+    )
+    status_command = " ".join(profile["launch"]["rank_status_command"])
+    assert "docker stats --no-stream" in status_command
+    assert "nvidia-smi --query-gpu=" in status_command
+    assert ".RestartCount" in status_command
+    assert ".State.OOMKilled" in status_command
+
+
+def test_recipe_specific_matrix_can_select_fixed_mtp_and_c1248(tmp_path):
+    site = normalised_site(tmp_path)
+    site["serving"].update(
+        {
+            "mtp_mode": "static",
+            "mtp_tokens": 2,
+            "max_model_len": 524288,
+            "kv_cache_bytes_per_rank": 4500000000,
+        }
+    )
+    lock = json.loads(write_lock(tmp_path).read_text(encoding="utf-8"))
+    config, _ = gate.load_gate_config(
+        write_gate_config(
+            tmp_path,
+            matrix={
+                "serving": {
+                    "tensor_parallel_size": 4,
+                    "decode_context_parallel_size": 4,
+                    "mtp_mode": "static",
+                    "mtp_tokens": 2,
+                    "max_model_len": 524288,
+                    "kv_cache_bytes_per_rank": 4500000000,
+                    "max_num_seqs": 8,
+                },
+                "required_concurrencies": [1, 2, 4, 8],
+            },
+            performance={
+                "cells": [
+                    {"concurrency": value, "max_tokens": 32}
+                    for value in (1, 2, 4, 8)
+                ]
+            },
+        )
+    )
+    assert gate.validate_configuration(site, config, lock) == []
+
+
+def test_delegated_attestation_commands_replace_nf3_specific_identity_reads(
+    tmp_path,
+):
+    cluster = FakeCluster()
+    expected = write_expected(tmp_path)
+    code, result = execute(
+        tmp_path,
+        cluster,
+        runtime={
+            "attestation_commands": [
+                ["exl3-launcher", "verify-image"],
+                ["exl3-launcher", "verify-model"],
+            ]
+        },
+        acceptance={"expected_generation_path": str(expected)},
+        performance={
+            "band": {
+                "C1": {"ttft_seconds_p50": {"max": 100.0}},
+                "C8": {"per_stream_tokens_per_second_p50": {"min": 0.0}},
+            }
+        },
+    )
+    assert code == gate.EXIT_OK
+    joined = [" ".join(command) for command in cluster.commands]
+    assert any("exl3-launcher verify-image" in command for command in joined)
+    assert any("exl3-launcher verify-model" in command for command in joined)
+    assert not any("verify-runtime.py" in command for command in joined)
+    assert result["stages"][0]["details"]["delegated_commands"] == 2
 
 
 # ---------------------------------------------------------------------------

@@ -169,6 +169,12 @@ acceptance matrix. NF3 remains an accepted deterministic alternative.
 SparkCache is a separate implementation
 and is disabled in this profile.
 
+The offline-validated candidate workflow for closing those blockers is the
+[EXL3 + LMCache acceptance runbook](EXL3_ACCEPTANCE_RUNBOOK.md). Its published
+plan does not itself close a blocker: broader correctness, restart-boundary
+behavior, resources, rollback, and performance still require a reviewed live
+bundle from the immutable profile.
+
 Do not substitute mutable model tags, source heads, image tags, or arbitrary
 EXL3 wheels and call the result this recipe.
 

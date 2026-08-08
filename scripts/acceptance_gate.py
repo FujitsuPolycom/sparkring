@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """SparkRing public-functional acceptance gate.
 
-Deterministic, ordered, fail-closed. Runs the seven stages defined in
-``docs/PUBLIC_FUNCTIONAL_TARGET.md`` against ONE supported matrix, aborts at
-the first functional failure, and emits a single evidence bundle with a
-top-level ``result.json``.
+Deterministic, ordered, fail-closed. Runs the eight ordered stages defined in
+``docs/PUBLIC_FUNCTIONAL_TARGET.md`` against the matrix declared by the gate
+profile, aborts at the first functional failure, and emits a single evidence
+bundle with a top-level ``result.json``. The accepted NF3 matrix remains the
+default; a profile may declare a different, immutable candidate matrix such as
+the default EXL3+LMCache configuration.
 
 The gate proves things by delegating to the tools that already exist in this
 repository -- ``runtime/verify-runtime.py`` for runtime and artifact
@@ -33,7 +35,8 @@ no connections, nothing started or stopped. ``--execute`` requires an explicit
 confirmation token.
 
 NEVER point this gate at a cluster that is serving production traffic: stages
-3 and 7 start and stop the serving stack.
+3 and 8 start and stop the serving stack. After a stage-3 start attempt, stage
+8 is still attempted when any intervening stage fails.
 
 Configuration comes from two files:
 
@@ -112,7 +115,7 @@ EXPECTED_SCHEMA = "sparkring-acceptance-expected-generation/v1"
 GATE_CONFIG_SCHEMA = "sparkring-acceptance-gate-config/v1"
 SITE_SCHEMA = "sparkring-site/v1"
 PREFLIGHT_SCHEMA = "sparkring-preflight/v1"
-GATE_VERSION = "1"
+GATE_VERSION = "2"
 
 CONFIRM_TOKEN = "RUN-PUBLIC-ACCEPTANCE-GATE"
 TARGET_DOC = "docs/PUBLIC_FUNCTIONAL_TARGET.md"
@@ -172,6 +175,7 @@ DEFAULT_BENCH_MAX_TOKENS = 128
 _IMMUTABLE_REVISION = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 _REMOTE_PATH = re.compile(r"^/[A-Za-z0-9._/+@:-]*[A-Za-z0-9._+@:-]$")
+_ANGLE_PLACEHOLDER = re.compile(r"<[A-Z][A-Z0-9_-]*>")
 
 DEFAULT_GATE_CONFIG: dict = {
     "schema": GATE_CONFIG_SCHEMA,
@@ -182,6 +186,7 @@ DEFAULT_GATE_CONFIG: dict = {
         "manifest_path": "/opt/sparkring/runtime-manifest.json",
         "expect_runtime_id": None,
         "exec_prefix": [],
+        "attestation_commands": [],
         "timeout_seconds": 600,
         "model_identity": {
             "config_path": None,
@@ -224,6 +229,19 @@ DEFAULT_GATE_CONFIG: dict = {
         "band": None,
     },
     "preflight": {"result_path": None},
+    "extensions": {"pre_shutdown": []},
+    "matrix": {
+        "serving": {
+            "tensor_parallel_size": REQUIRED_TP,
+            "decode_context_parallel_size": REQUIRED_DCP,
+            "mtp_mode": REQUIRED_MTP_MODE,
+            "mtp_tokens": REQUIRED_MTP_TOKENS,
+            "max_model_len": REQUIRED_MAX_MODEL_LEN,
+            "kv_cache_bytes_per_rank": REQUIRED_KV_BYTES_PER_RANK,
+            "max_num_seqs": REQUIRED_MAX_NUM_SEQS,
+        },
+        "required_concurrencies": list(REQUIRED_CONCURRENCIES),
+    },
 }
 
 
@@ -336,6 +354,7 @@ class StreamSample:
     tokens: int
     text: str
     error: str | None = None
+    token_count_source: str = "stream-events"
 
 
 class SubprocessExecutor:
@@ -403,7 +422,8 @@ class UrllibHttpClient:
         started = time.monotonic()
         first_at: float | None = None
         chunks: list[str] = []
-        tokens = 0
+        stream_events = 0
+        usage_tokens: int | None = None
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 for raw in response:
@@ -417,6 +437,11 @@ class UrllibHttpClient:
                         event = json.loads(payload_text)
                     except json.JSONDecodeError:
                         continue
+                    usage = event.get("usage")
+                    if isinstance(usage, dict) and isinstance(
+                        usage.get("completion_tokens"), int
+                    ):
+                        usage_tokens = int(usage["completion_tokens"])
                     choices = event.get("choices") or [{}]
                     text = choices[0].get("text") or ""
                     if not text:
@@ -424,22 +449,32 @@ class UrllibHttpClient:
                     if text:
                         if first_at is None:
                             first_at = time.monotonic()
-                        tokens += 1
+                        stream_events += 1
                         chunks.append(text)
         except (urllib.error.URLError, OSError, TimeoutError) as exc:
             return StreamSample(
                 ttft_seconds=None,
                 total_seconds=time.monotonic() - started,
-                tokens=tokens,
+                tokens=usage_tokens if usage_tokens is not None else stream_events,
                 text="".join(chunks),
                 error=str(exc),
+                token_count_source=(
+                    "usage.completion_tokens"
+                    if usage_tokens is not None
+                    else "stream-events"
+                ),
             )
         finished = time.monotonic()
         return StreamSample(
             ttft_seconds=None if first_at is None else first_at - started,
             total_seconds=finished - started,
-            tokens=tokens,
+            tokens=usage_tokens if usage_tokens is not None else stream_events,
             text="".join(chunks),
+            token_count_source=(
+                "usage.completion_tokens"
+                if usage_tokens is not None
+                else "stream-events"
+            ),
         )
 
     def _send(self, request: Any, timeout: float) -> tuple[int, Any]:
@@ -596,7 +631,17 @@ class GateContext:
             prefix = prefix + as_argv(
                 dig(self.gate, "runtime.exec_prefix", []), "runtime.exec_prefix"
             )
-        return prefix + list(argv)
+        replacements = {
+            "{rank}": str(rank["id"]),
+            "{ssh_target}": str(rank["ssh_target"]),
+        }
+        expanded = []
+        for token in prefix + list(argv):
+            value = str(token)
+            for marker, replacement in replacements.items():
+                value = value.replace(marker, replacement)
+            expanded.append(value)
+        return expanded
 
     def edge_endpoints(self, edge: dict) -> tuple[dict, dict]:
         """Return (left, right) endpoint descriptors for one cable edge."""
@@ -774,6 +819,21 @@ def load_gate_config(path: Path | None) -> tuple[dict, str]:
     return deep_merge(DEFAULT_GATE_CONFIG, overlay), sha256_hex(raw)
 
 
+def gate_placeholder_warnings(document: Any, path: str = "gate") -> list[str]:
+    """Find shipped placeholders while still allowing useful dry-run plans."""
+    warnings: list[str] = []
+    if isinstance(document, dict):
+        for key, value in document.items():
+            warnings.extend(gate_placeholder_warnings(value, f"{path}.{key}"))
+    elif isinstance(document, list):
+        for index, value in enumerate(document):
+            warnings.extend(gate_placeholder_warnings(value, f"{path}[{index}]"))
+    elif isinstance(document, str):
+        for item in sorted(set(_ANGLE_PLACEHOLDER.findall(document))):
+            warnings.append(f"{path} contains unresolved {item}")
+    return warnings
+
+
 def load_runtime_lock(path: Path) -> dict:
     if not path.is_file():
         raise GateConfigError(
@@ -927,20 +987,15 @@ def _validate_topology(site: dict, problems: list[str]) -> None:
         )
 
 
-def _validate_serving(site: dict, problems: list[str]) -> None:
+def _validate_serving(site: dict, gate: dict, problems: list[str]) -> None:
     serving = site.get("serving")
     if not isinstance(serving, dict):
         problems.append("site config: 'serving' block is required")
         return
-    expectations = {
-        "tensor_parallel_size": REQUIRED_TP,
-        "decode_context_parallel_size": REQUIRED_DCP,
-        "mtp_mode": REQUIRED_MTP_MODE,
-        "mtp_tokens": REQUIRED_MTP_TOKENS,
-        "max_model_len": REQUIRED_MAX_MODEL_LEN,
-        "kv_cache_bytes_per_rank": REQUIRED_KV_BYTES_PER_RANK,
-        "max_num_seqs": REQUIRED_MAX_NUM_SEQS,
-    }
+    expectations = dig(gate, "matrix.serving", {})
+    if not isinstance(expectations, dict) or not expectations:
+        problems.append("gate config: matrix.serving must be a non-empty object")
+        return
     for key, expected in expectations.items():
         if serving.get(key) != expected:
             problems.append(
@@ -975,20 +1030,31 @@ def _validate_gate_config(gate: dict, problems: list[str]) -> None:
             "gate config: fabric.qualifier must point at "
             "spark_transport/scripts/qualify_direct_cable.py"
         )
-    for key in ("runtime.verify_script", "runtime.manifest_path"):
-        if not dig(gate, key, ""):
-            problems.append(f"gate config: {key} is required")
-    for key in (
-        "runtime.model_identity.config_path",
-        "runtime.model_identity.repository_path",
-        "runtime.model_identity.revision_path",
-    ):
-        value = dig(gate, key, None)
-        if not isinstance(value, str) or not _REMOTE_PATH.fullmatch(value):
+    delegated_attestation = dig(gate, "runtime.attestation_commands", []) or []
+    if delegated_attestation:
+        if not isinstance(delegated_attestation, list) or any(
+            not isinstance(command, list) or not command
+            for command in delegated_attestation
+        ):
             problems.append(
-                f"gate config: {key} must be an explicit, shell-safe absolute "
-                "path on every rank"
+                "gate config: runtime.attestation_commands must be a list of "
+                "non-empty argv lists"
             )
+    else:
+        for key in ("runtime.verify_script", "runtime.manifest_path"):
+            if not dig(gate, key, ""):
+                problems.append(f"gate config: {key} is required")
+        for key in (
+            "runtime.model_identity.config_path",
+            "runtime.model_identity.repository_path",
+            "runtime.model_identity.revision_path",
+        ):
+            value = dig(gate, key, None)
+            if not isinstance(value, str) or not _REMOTE_PATH.fullmatch(value):
+                problems.append(
+                    f"gate config: {key} must be an explicit, shell-safe absolute "
+                    "path on every rank"
+                )
     in_container = dig(gate, "runtime.model_identity.in_container", True)
     if not isinstance(in_container, bool):
         problems.append(
@@ -996,12 +1062,80 @@ def _validate_gate_config(gate: dict, problems: list[str]) -> None:
         )
     cells = dig(gate, "performance.cells", []) or []
     concurrencies = {c.get("concurrency") for c in cells if isinstance(c, dict)}
-    missing = [c for c in REQUIRED_CONCURRENCIES if c not in concurrencies]
+    for index, cell in enumerate(cells):
+        prefix = f"gate config: performance.cells[{index}]"
+        if not isinstance(cell, dict):
+            problems.append(f"{prefix} must be an object")
+            continue
+        for cell_field in ("concurrency", "max_tokens", "repetitions"):
+            if cell_field in cell and (
+                not isinstance(cell[cell_field], int) or cell[cell_field] <= 0
+            ):
+                problems.append(
+                    f"{prefix}.{cell_field} must be a positive integer"
+                )
+        minimum = cell.get("minimum_tokens")
+        if minimum is not None and (
+            not isinstance(minimum, int)
+            or minimum <= 0
+            or minimum > cell.get("max_tokens", DEFAULT_BENCH_MAX_TOKENS)
+        ):
+            problems.append(
+                f"{prefix}.minimum_tokens must be positive and no greater "
+                "than max_tokens"
+            )
+        if "ignore_eos" in cell and not isinstance(cell["ignore_eos"], bool):
+            problems.append(f"{prefix}.ignore_eos must be true or false")
+    required = dig(gate, "matrix.required_concurrencies", [])
+    if (
+        not isinstance(required, list)
+        or not required
+        or any(not isinstance(value, int) or value <= 0 for value in required)
+    ):
+        problems.append(
+            "gate config: matrix.required_concurrencies must be a non-empty "
+            "list of positive integers"
+        )
+        required = []
+    missing = [c for c in required if c not in concurrencies]
     if missing:
         problems.append(
-            "gate config: performance.cells must include the C1 and C8 matrix "
-            f"cells; missing concurrency {missing}"
+            "gate config: performance.cells must include every concurrency in "
+            f"matrix.required_concurrencies; missing {missing}"
         )
+    extensions = dig(gate, "extensions.pre_shutdown", []) or []
+    if not isinstance(extensions, list):
+        problems.append("gate config: extensions.pre_shutdown must be a list")
+    else:
+        seen: set[str] = set()
+        for index, extension in enumerate(extensions):
+            prefix = f"gate config: extensions.pre_shutdown[{index}]"
+            if not isinstance(extension, dict):
+                problems.append(f"{prefix} must be an object")
+                continue
+            identifier = extension.get("id")
+            if not isinstance(identifier, str) or not re.fullmatch(
+                r"[a-z0-9]+(?:-[a-z0-9]+)*", identifier
+            ):
+                problems.append(f"{prefix}.id must be a lowercase kebab-case id")
+            elif identifier in seen:
+                problems.append(f"{prefix}.id duplicates {identifier!r}")
+            else:
+                seen.add(identifier)
+            command = extension.get("command")
+            if not isinstance(command, list) or not command:
+                problems.append(f"{prefix}.command must be a non-empty argv list")
+            timeout = extension.get("timeout_seconds", 3600)
+            if not isinstance(timeout, (int, float)) or timeout <= 0:
+                problems.append(f"{prefix}.timeout_seconds must be positive")
+            mutates = extension.get("mutates_remote", False)
+            if not isinstance(mutates, bool):
+                problems.append(f"{prefix}.mutates_remote must be true or false")
+            require_json = extension.get("require_json_status", False)
+            if not isinstance(require_json, bool):
+                problems.append(
+                    f"{prefix}.require_json_status must be true or false"
+                )
 
 
 def validate_configuration(site: dict, gate: dict, lock: dict) -> list[str]:
@@ -1032,7 +1166,7 @@ def validate_configuration(site: dict, gate: dict, lock: dict) -> list[str]:
                 )
 
     _validate_topology(site, problems)
-    _validate_serving(site, problems)
+    _validate_serving(site, gate, problems)
     _validate_gate_config(gate, problems)
 
     ok, message, _ = check_model_pin(lock, site if isinstance(ranks, list) else None)
@@ -1338,6 +1472,27 @@ def plan_runtime_attestation(ctx: GateContext) -> list[dict]:
             "on_missing": "functional failure before any remote command",
         }
     ]
+    delegated = dig(ctx.gate, "runtime.attestation_commands", []) or []
+    if delegated:
+        actions += [
+            {
+                "kind": "command",
+                "what": f"run delegated all-rank attestation {index}",
+                "argv": as_argv(
+                    command, f"runtime.attestation_commands[{index}]"
+                ),
+            }
+            for index, command in enumerate(delegated, start=1)
+        ]
+        actions.append(
+            {
+                "kind": "local-check",
+                "what": "model identity pin (immutable revision, config sha256, "
+                "site/lock agreement)",
+                "source": str(dig(ctx.gate, "runtime.lock_path")),
+            }
+        )
+        return actions
     actions += [
         {
             "kind": "command",
@@ -1385,6 +1540,60 @@ def run_runtime_attestation(ctx: GateContext) -> StageOutcome:
 
     preflight_summary, preflight_source = _load_required_preflight(ctx)
     artifacts.append(ctx.artifact_json("preflight-summary.json", preflight_summary))
+
+    delegated = dig(ctx.gate, "runtime.attestation_commands", []) or []
+    if delegated:
+        for index, command in enumerate(delegated, start=1):
+            result = ctx.executor.run(
+                as_argv(command, f"runtime.attestation_commands[{index}]"),
+                timeout=timeout,
+            )
+            artifacts.append(
+                ctx.capture_command(f"delegated-attestation-{index}.json", result)
+            )
+            if result.exit_code != 0:
+                failures.append(
+                    f"delegated attestation {index} exited {result.exit_code}"
+                    + (
+                        f" stderr={result.stderr.strip()[:400]}"
+                        if result.stderr
+                        else ""
+                    )
+                )
+        ok, message, model_details = check_model_pin(ctx.lock, ctx.site)
+        if not ok:
+            failures.append(message)
+        if failures:
+            raise StageFailure(
+                "delegated runtime/model attestation failed: "
+                + " | ".join(failures),
+                details={"failures": failures, "model": model_details},
+                artifacts=artifacts,
+            )
+        artifacts.append(
+            ctx.artifact_json(
+                "attestation-summary.json",
+                {
+                    "delegated_commands": len(delegated),
+                    "model": model_details,
+                    "preflight": preflight_summary,
+                    "preflight_source": preflight_source,
+                },
+            )
+        )
+        return StageOutcome(
+            status=STATUS_PASS,
+            message=(
+                f"{len(delegated)} delegated all-rank attestation commands "
+                f"passed; {message}"
+            ),
+            details={
+                "delegated_commands": len(delegated),
+                "model": model_details,
+                "preflight": preflight_summary,
+            },
+            artifacts=artifacts,
+        )
 
     for rank in ctx.ranks():
         number = int(rank["id"])
@@ -1658,6 +1867,7 @@ def plan_rank_startup(ctx: GateContext) -> list[dict]:
             "argv": as_argv(
                 dig(ctx.gate, "launch.start_command"), "launch.start_command"
             ),
+            "mutates_remote": True,
         }
     ]
     status_command = dig(ctx.gate, "launch.rank_status_command", []) or []
@@ -2068,7 +2278,7 @@ def run_deterministic_generation(ctx: GateContext) -> StageOutcome:
 
 
 # ---------------------------------------------------------------------------
-# Stage 6 - C1/C8 performance matrix (reported, never merged into functional)
+# Stage 6 - profile performance matrix (reported, never merged into functional)
 # ---------------------------------------------------------------------------
 
 
@@ -2078,7 +2288,7 @@ def performance_cells(ctx: GateContext) -> list[dict]:
         return [dict(cell) for cell in configured]
     return [
         {"concurrency": c, "max_tokens": DEFAULT_BENCH_MAX_TOKENS}
-        for c in REQUIRED_CONCURRENCIES
+        for c in dig(ctx.gate, "matrix.required_concurrencies", REQUIRED_CONCURRENCIES)
     ]
 
 
@@ -2094,6 +2304,8 @@ def plan_performance_matrix(ctx: GateContext) -> list[dict]:
             ),
             "url": f"{base}/v1/completions",
             "max_tokens": cell.get("max_tokens", DEFAULT_BENCH_MAX_TOKENS),
+            "repetitions": cell.get("repetitions", 1),
+            "ignore_eos": cell.get("ignore_eos", False),
         }
         for cell in performance_cells(ctx)
     ]
@@ -2116,6 +2328,8 @@ def _run_cell(ctx: GateContext, cell: dict) -> dict:
     base = ctx.primary_api_base()
     concurrency = max(1, int(cell["concurrency"]))
     max_tokens = int(cell.get("max_tokens", DEFAULT_BENCH_MAX_TOKENS))
+    repetitions = int(cell.get("repetitions", 1))
+    minimum_tokens = int(cell.get("minimum_tokens", 1))
     prompt = str(cell.get("prompt") or DEFAULT_PROMPT)
     payload = {
         "model": served_model_name(ctx),
@@ -2124,18 +2338,34 @@ def _run_cell(ctx: GateContext, cell: dict) -> dict:
         "temperature": 0.0,
         "top_p": 1.0,
         "seed": int(cell.get("seed", DEFAULT_SEED)),
+        "ignore_eos": bool(cell.get("ignore_eos", False)),
+        "stream_options": {
+            "include_usage": True,
+            "continuous_usage_stats": True,
+        },
     }
     url = f"{base}/v1/completions"
     started = time.monotonic()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
-        futures = [
-            pool.submit(ctx.http.stream_completion, url, dict(payload), 1800.0)
-            for _ in range(concurrency)
-        ]
-        samples = [future.result() for future in futures]
+    indexed_samples = []
+    for repetition in range(repetitions):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
+            futures = [
+                pool.submit(ctx.http.stream_completion, url, dict(payload), 1800.0)
+                for _ in range(concurrency)
+            ]
+            indexed_samples.extend(
+                (repetition, stream, future.result())
+                for stream, future in enumerate(futures)
+            )
     wall = time.monotonic() - started
+    samples = [sample for _, _, sample in indexed_samples]
 
     errors = [s.error for s in samples if s.error]
+    short_streams = [
+        {"repetition": repetition, "stream": stream, "tokens": sample.tokens}
+        for repetition, stream, sample in indexed_samples
+        if not sample.error and sample.tokens < minimum_tokens
+    ]
     tokens_total = sum(s.tokens for s in samples)
     ttfts = [s.ttft_seconds for s in samples if s.ttft_seconds is not None]
     per_stream = [
@@ -2145,16 +2375,23 @@ def _run_cell(ctx: GateContext, cell: dict) -> dict:
         "cell": f"C{concurrency}",
         "concurrency": concurrency,
         "max_tokens": max_tokens,
+        "repetitions": repetitions,
+        "minimum_tokens": minimum_tokens,
+        "ignore_eos": payload["ignore_eos"],
         "streams": [
             {
+                "repetition": repetition,
+                "stream": stream,
                 "ttft_seconds": s.ttft_seconds,
                 "total_seconds": s.total_seconds,
                 "tokens": s.tokens,
+                "token_count_source": s.token_count_source,
                 "error": s.error,
             }
-            for s in samples
+            for repetition, stream, s in indexed_samples
         ],
         "errors": errors,
+        "short_streams": short_streams,
         "tokens_total": tokens_total,
         "cell_wall_seconds": wall,
         "aggregate_tokens_per_second": (tokens_total / wall) if wall > 0 else None,
@@ -2176,6 +2413,11 @@ def run_performance_matrix(ctx: GateContext) -> StageOutcome:
         artifacts.append(ctx.artifact_json(f"cell-{label}.json", raw))
         if raw["errors"]:
             request_errors.append(f"{label}: {len(raw['errors'])} stream error(s)")
+        if raw["short_streams"]:
+            request_errors.append(
+                f"{label}: {len(raw['short_streams'])} stream(s) returned fewer "
+                f"than {raw['minimum_tokens']} tokens"
+            )
 
     artifacts.append(ctx.artifact_json("cells.json", observed))
 
@@ -2207,7 +2449,7 @@ def run_performance_matrix(ctx: GateContext) -> StageOutcome:
         return StageOutcome(
             status=STATUS_BASELINE_RECORDED,
             message=(
-                "no performance band is configured, so the observed C1/C8 "
+                "no performance band is configured, so the observed profile "
                 "numbers were recorded as a CANDIDATE band. No public-lane band "
                 f"exists yet ({TARGET_DOC} TBD-10) and reference-lane numbers "
                 "must never be used as one."
@@ -2240,18 +2482,157 @@ def run_performance_matrix(ctx: GateContext) -> StageOutcome:
 
 
 # ---------------------------------------------------------------------------
-# Stage 7 - shutdown / rollback verification
+# Stage 7 - optional profile-specific acceptance extensions
+# ---------------------------------------------------------------------------
+
+
+def profile_extensions(ctx: GateContext) -> list[dict]:
+    configured = dig(ctx.gate, "extensions.pre_shutdown", []) or []
+    return list(configured) if isinstance(configured, list) else []
+
+
+def plan_profile_extensions(ctx: GateContext) -> list[dict]:
+    actions = []
+    for index, extension in enumerate(profile_extensions(ctx)):
+        actions.append(
+            {
+                "kind": "command",
+                "what": extension.get("title") or extension["id"],
+                "id": extension["id"],
+                "argv": as_argv(
+                    extension["command"],
+                    f"extensions.pre_shutdown[{index}].command",
+                ),
+                "timeout_seconds": extension.get("timeout_seconds", 3600),
+                "mutates_remote": extension.get("mutates_remote", False),
+                "require_json_status": extension.get(
+                    "require_json_status", False
+                ),
+            }
+        )
+    return actions or [
+        {
+            "kind": "local-check",
+            "what": "no profile-specific acceptance extensions configured",
+            "mutates_remote": False,
+        }
+    ]
+
+
+def run_profile_extensions(ctx: GateContext) -> StageOutcome:
+    configured = profile_extensions(ctx)
+    if not configured:
+        return StageOutcome(
+            status=STATUS_PASS,
+            message="no profile-specific acceptance extensions configured",
+            details={"extensions": []},
+        )
+    artifacts: list[str] = []
+    observed: list[dict] = []
+    failures: list[str] = []
+    baselines: list[str] = []
+    for index, extension in enumerate(configured):
+        identifier = extension["id"]
+        result = ctx.executor.run(
+            as_argv(
+                extension["command"],
+                f"extensions.pre_shutdown[{index}].command",
+            ),
+            timeout=float(extension.get("timeout_seconds", 3600)),
+        )
+        artifacts.append(
+            ctx.capture_command(f"extension-{identifier}.json", result)
+        )
+        parsed = None
+        try:
+            candidate = json.loads(result.stdout)
+            if isinstance(candidate, dict):
+                parsed = candidate
+        except json.JSONDecodeError:
+            parsed = None
+        entry = {
+            "id": identifier,
+            "exit_code": result.exit_code,
+            "mutates_remote": extension.get("mutates_remote", False),
+            "require_json_status": extension.get("require_json_status", False),
+            "report": parsed,
+        }
+        observed.append(entry)
+        if extension.get("require_json_status", False) and parsed is None:
+            failures.append(f"{identifier} emitted no JSON status report")
+        elif (
+            result.exit_code == EXIT_BASELINE_RECORDED
+            and parsed is not None
+            and parsed.get("status") == "baseline-recorded"
+        ):
+            baselines.append(identifier)
+        elif result.exit_code != 0:
+            failures.append(f"{identifier} exited {result.exit_code}")
+        elif parsed is not None and parsed.get("status") not in (None, "pass"):
+            failures.append(
+                f"{identifier} reported status={parsed.get('status')!r}"
+            )
+    if failures:
+        raise StageFailure(
+            "profile-specific acceptance extension failed: "
+            + " | ".join(failures),
+            details={"extensions": observed, "failures": failures},
+            artifacts=artifacts,
+        )
+    if baselines:
+        return StageOutcome(
+            status=STATUS_BASELINE_RECORDED,
+            message=(
+                "profile-specific baseline recorded for review: "
+                + ", ".join(baselines)
+                + "; this is not a pass"
+            ),
+            details={"extensions": observed, "baselines": baselines},
+            artifacts=artifacts,
+        )
+    return StageOutcome(
+        status=STATUS_PASS,
+        message=f"{len(observed)} profile-specific acceptance extension(s) passed",
+        details={"extensions": observed},
+        artifacts=artifacts,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Stage 8 - shutdown / rollback verification
 # ---------------------------------------------------------------------------
 
 
 def plan_shutdown_rollback(ctx: GateContext) -> list[dict]:
-    actions = [
+    actions: list[dict] = []
+    status_command = dig(ctx.gate, "launch.rank_status_command", []) or []
+    if status_command:
+        for rank in ctx.ranks():
+            actions.append(
+                {
+                    "kind": "command",
+                    "what": (
+                        f"capture final restart/OOM/resource status on rank "
+                        f"{rank['id']} before stop"
+                    ),
+                    "argv": ctx.rank_argv(
+                        rank,
+                        as_argv(
+                            status_command,
+                            "launch.rank_status_command",
+                        ),
+                    ),
+                    "mutates_remote": False,
+                }
+            )
+    actions.append(
         {
             "kind": "command",
             "what": "stop all four ranks (site launcher)",
             "argv": as_argv(dig(ctx.gate, "launch.stop_command"), "launch.stop_command"),
+            "mutates_remote": True,
         }
-    ]
+    )
     for rank_id, base in sorted(ctx.api_bases().items()):
         actions.append(
             {
@@ -2276,6 +2657,26 @@ def run_shutdown_rollback(ctx: GateContext) -> StageOutcome:
     artifacts: list[str] = []
     failures: list[str] = []
     timeout = float(dig(ctx.gate, "launch.stop_timeout_seconds", 900))
+
+    status_command = dig(ctx.gate, "launch.rank_status_command", []) or []
+    if status_command:
+        for rank in ctx.ranks():
+            number = int(rank["id"])
+            status = ctx.executor.run(
+                ctx.rank_argv(
+                    rank,
+                    as_argv(status_command, "launch.rank_status_command"),
+                ),
+                timeout=timeout,
+            )
+            artifacts.append(
+                ctx.capture_command(f"rank{number}-pre-stop-status.json", status)
+            )
+            if status.exit_code != 0:
+                failures.append(
+                    f"rank {number} final rank_status_command exited "
+                    f"{status.exit_code}"
+                )
 
     stop = ctx.executor.run(
         as_argv(dig(ctx.gate, "launch.stop_command"), "launch.stop_command"),
@@ -2395,7 +2796,7 @@ STAGES: tuple[Stage, ...] = (
     Stage(
         id="performance_matrix",
         order=6,
-        title="C1/C8 performance matrix",
+        title="Profile performance matrix",
         purpose=(
             "measured throughput and TTFT reported against the documented "
             "tolerance band; never merged into the functional verdict"
@@ -2404,8 +2805,19 @@ STAGES: tuple[Stage, ...] = (
         run=run_performance_matrix,
     ),
     Stage(
-        id="shutdown_rollback",
+        id="profile_extensions",
         order=7,
+        title="Profile-specific acceptance extensions",
+        purpose=(
+            "optional model/runtime-specific gates run after the common API "
+            "and performance checks and before guaranteed cleanup"
+        ),
+        plan=plan_profile_extensions,
+        run=run_profile_extensions,
+    ),
+    Stage(
+        id="shutdown_rollback",
+        order=8,
         title="Shutdown and rollback verification",
         purpose="the stack stops cleanly and rollback is verified",
         plan=plan_shutdown_rollback,
@@ -2513,6 +2925,8 @@ def build_plan(ctx: GateContext) -> dict:
         "gate_version": GATE_VERSION,
         "generated_at": utc_now_iso(),
         "mode": "dry-run" if ctx.args.dry_run else "execute",
+        "mutates_remote": True,
+        "safety_class": "STOPS SERVING",
         "target_document": TARGET_DOC,
         "environment_fingerprint": environment_fingerprint(ctx),
         "placeholder_warnings": list(ctx.placeholder_warnings),
@@ -2587,15 +3001,23 @@ def compute_verdicts(stage_results: Sequence[StageResult]) -> tuple[str, str, in
 def execute_stages(ctx: GateContext) -> list[StageResult]:
     results: list[StageResult] = []
     aborted_after: str | None = None
+    stack_start_attempted = False
 
     for stage in STAGES:
-        if aborted_after is not None:
+        cleanup_after_failure = (
+            aborted_after is not None
+            and stack_start_attempted
+            and stage.id == "shutdown_rollback"
+        )
+        if aborted_after is not None and not cleanup_after_failure:
             results.append(_skipped(stage, f"aborted-after: {aborted_after}", utc_now_iso()))
             continue
         ctx.stage_order = stage.order
         ctx.stage_id = stage.id
         started_at = utc_now_iso()
         started = time.monotonic()
+        if stage.id == "rank_startup":
+            stack_start_attempted = True
         try:
             outcome = stage.run(ctx)
             status, message = outcome.status, outcome.message
@@ -2673,6 +3095,7 @@ def run_gate(args: argparse.Namespace, executor: Any = None, http: Any = None) -
     gate_config, gate_sha = load_gate_config(
         Path(args.gate_config) if args.gate_config else None
     )
+    placeholder_warnings.extend(gate_placeholder_warnings(gate_config))
 
     lock_path = Path(str(dig(gate_config, "runtime.lock_path")))
     if not lock_path.is_absolute():
@@ -2712,7 +3135,7 @@ def run_gate(args: argparse.Namespace, executor: Any = None, http: Any = None) -
             print(text)
         if placeholder_warnings:
             print(
-                "acceptance-gate: WARNING: the site config still contains "
+                "acceptance-gate: WARNING: the site or gate config contains "
                 f"{len(placeholder_warnings)} example placeholder(s); --execute "
                 "will refuse until they are replaced.",
                 file=sys.stderr,
@@ -2734,8 +3157,8 @@ def run_gate(args: argparse.Namespace, executor: Any = None, http: Any = None) -
         )
     if placeholder_warnings:
         raise GateConfigError(
-            "the site config still contains example placeholders, so it does "
-            "not describe a real cluster:\n  - "
+            "the site or gate config still contains example placeholders, so "
+            "it does not describe an executable acceptance plan:\n  - "
             + "\n  - ".join(placeholder_warnings[:10])
             + ("\n  - ..." if len(placeholder_warnings) > 10 else "")
         )

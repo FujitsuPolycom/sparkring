@@ -282,8 +282,12 @@ preflight is a precondition for a healthy run, not a guarantee of one.
 ## Acceptance-gate configuration
 
 `gate.example.json` is the companion template for
-`scripts/acceptance_gate.py`. Copy it to the Git-ignored canonical local path
-and replace every angle-bracket command:
+`scripts/acceptance_gate.py` and retains the accepted NF3 matrix defaults.
+`gate.exl3.example.json` selects the current EXL3+LMCache CS512 candidate and
+adds its correctness and cache-boundary extensions. Follow
+[`docs/EXL3_ACCEPTANCE_RUNBOOK.md`](../../docs/EXL3_ACCEPTANCE_RUNBOOK.md) for
+that profile. Copy the relevant template to a Git-ignored local path and
+replace every angle-bracket command:
 
 ```bash
 cp scripts/config/gate.example.json scripts/config/gate.json
@@ -321,6 +325,11 @@ functional failure.
 `--execute` is **STOPS SERVING**: it runs your configured start and stop
 commands. It requires an explicit confirmation token and must never target a
 production-serving cluster.
+
+The EXL3 correctness case template is
+`exl3-correctness.example.json`. Null expected hashes are intentional: a first
+live run records a candidate and exits 4. Acceptance requires review and an
+exact rerun against populated token-ID hashes.
 
 ## Tests
 

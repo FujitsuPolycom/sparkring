@@ -6,8 +6,8 @@
       "maturity": "live-validated",
       "publicly_runnable": true,
       "public_source_complete": true,
-      "evidence": "docs/NF3_NVFP4_PUBLIC_VALIDATION.md",
-      "reason": "The NF3 NVFP4+FP8-RoPE target passed a clean-checkout public bootstrap, four-rank CUDA-graph startup, API correctness, and post-request health gate."
+      "evidence": "docs/RESULTS.md",
+      "reason": "Historical reference-lane measurements and their retained evidence labels are documented separately from public-functional validation."
     },
     "public-functional": {
       "maturity": "live-validated",
@@ -19,7 +19,7 @@
       "evidence": "docs/EXL3_RECIPE.md",
       "blockers": [
         "broader correctness gate",
-        "LMCache persistence and server-restart recovery",
+        "live LMCache engine-restart reuse and server-restart boundary gate",
         "resource and rollback acceptance gates",
         "release promotion"
       ]
@@ -30,7 +30,7 @@
       "maturity": "offline-validated",
       "command": "python -m pytest spark_transport sparkcache runtime scripts -q",
       "last_observed": {
-        "passed": 2046,
+        "passed": 2083,
         "skipped": 13,
         "clean_host_passed": 2035,
         "clean_host_skipped": 4,
@@ -80,6 +80,17 @@
       "external_manual_eager_request_reported": true,
       "live_four_rank_bounded_gate": true,
       "entrypoint": "scripts/sparkring_exl3_lmcache_launcher.py"
+    },
+    "exl3_acceptance_workflow": {
+      "maturity": "offline-validated",
+      "accepted": false,
+      "dry_run_first": true,
+      "fail_closed_cleanup_after_start_attempt": true,
+      "required_concurrencies": [1, 2, 4, 8],
+      "broader_correctness_live_passed": false,
+      "lmcache_restart_boundaries_live_passed": false,
+      "full_live_bundle_exists": false,
+      "entrypoint": "docs/EXL3_ACCEPTANCE_RUNBOOK.md"
     },
     "nf3_recipe": {
       "maturity": "accepted",

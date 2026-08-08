@@ -119,6 +119,13 @@ Read [EXL3_QUICKSTART.md](EXL3_QUICKSTART.md) for model/image re-attestation,
 log-tail commands, the standard 16K benchmark, readiness-timeout
 troubleshooting, and the complete validated receipt.
 
+The bounded gate is the normal deployment check. Maintainers preparing a
+public acceptance result should continue with the dry-run-first
+[EXL3 + LMCache acceptance runbook](EXL3_ACCEPTANCE_RUNBOOK.md). That workflow
+adds broader token-ID correctness, repeated C1/C2/C4/C8 cells, cache restart
+boundaries, resource/OOM monitoring, and exact-label rollback. It interrupts
+serving only in explicitly confirmed execute mode.
+
 ## NF3 alternative
 
 NF3 remains published and supported; it has not been removed or overwritten.

@@ -113,7 +113,8 @@ SSH targets, local paths, registry identities, or credentials.
 Start with `docs/QUICKSTART.md` for the default EXL3+LMCache deployment. Its
 bootstrap generates ignored resolved site/profile files and its launcher is
 dry-run by default; inspect the `plan` output before execution. The bounded
-EXL3 gate is `scripts/exl3_live_gate.py`. For the accepted NF3 alternative,
+EXL3 gate is `scripts/exl3_live_gate.py`; the candidate full workflow is
+`docs/EXL3_ACCEPTANCE_RUNBOOK.md`. For the accepted NF3 alternative,
 start with `docs/NF3_QUICKSTART.md` and
 `scripts/config/{launch,gate}.example.json`. Any reported blocker is not a
 check to bypass, and a successful plan is not acceptance.

@@ -127,6 +127,12 @@ def server_health_actions(site) -> list[exl3.RemoteAction]:
             f"{shlex.quote(name)} 2>/dev/null)\" = true"
             f" && curl -fsS http://127.0.0.1:{config['http_port']}/healthcheck "
             f">/dev/null && break; sleep 2; done"
+            f" && test \"$(docker inspect -f '{{{{.RestartCount}}}}' "
+            f"{shlex.quote(name)})\" = 0"
+            f" && test \"$(docker inspect -f '{{{{.State.OOMKilled}}}}' "
+            f"{shlex.quote(name)})\" = false"
+            f" && ! docker logs {shlex.quote(name)} 2>&1 | "
+            "grep -E 'CUDA out of memory|OutOfMemoryError|OOMKilled'"
             f" && curl -fsS http://127.0.0.1:{config['http_port']}/healthcheck"
             f" && curl -fsS http://127.0.0.1:{config['http_port']}/status"
         )
@@ -168,7 +174,11 @@ def engine_start_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]
         marker = f"{profile.engine} run --detach "
         if marker not in command:
             raise exl3.ProfileError("cannot locate engine privilege insertion point")
-        command = command.replace(marker, f"{marker}--privileged ", 1)
+        command = command.replace(
+            marker,
+            f"{marker}--privileged --label org.sparkring.component=engine ",
+            1,
+        )
         privileged.append(
             exl3.RemoteAction(
                 action.rank, action.ssh_target, ("sh", "-lc", command)
@@ -196,7 +206,14 @@ def ready_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]:
             f"{shlex.quote(name)} 2>/dev/null)\" = true"
             f" && {readiness} && break; sleep 5; done"
             f" && test \"$(docker inspect -f '{{{{.State.Running}}}}' "
-            f"{shlex.quote(name)})\" = true && {readiness}"
+            f"{shlex.quote(name)})\" = true"
+            f" && test \"$(docker inspect -f '{{{{.RestartCount}}}}' "
+            f"{shlex.quote(name)})\" = 0"
+            f" && test \"$(docker inspect -f '{{{{.State.OOMKilled}}}}' "
+            f"{shlex.quote(name)})\" = false"
+            f" && ! docker logs {shlex.quote(name)} 2>&1 | "
+            "grep -E 'CUDA out of memory|OutOfMemoryError|OOMKilled'"
+            f" && {readiness}"
         )
         actions.append(shell_action(rank, script))
     return actions
@@ -216,6 +233,51 @@ def rollback_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]:
             f"{shlex.quote(PROFILE_ID)} || exit 73; "
             "test -z \"$profile\" || docker rm --force \"$name\"; done"
         )
+        actions.append(shell_action(rank, script))
+    return actions
+
+
+def remove_component_actions(
+    site,
+    profile: exl3.Profile,
+    *,
+    component: str,
+) -> list[exl3.RemoteAction]:
+    if component not in ("engine", "lmcache-server"):
+        raise exl3.ProfileError(f"unsupported removal component {component!r}")
+    actions = []
+    for rank in site.ranks:
+        name = (
+            exl3.container_name(profile, rank.id)
+            if component == "engine"
+            else server_name(rank.id)
+        )
+        script = (
+            f"name={shlex.quote(name)}; "
+            'profile=$(docker inspect -f \'{{index .Config.Labels '
+            '"org.sparkring.exl3-profile"}}\' "$name" '
+            "2>/dev/null || true); "
+            f'test -z "$profile" || test "$profile" = {shlex.quote(PROFILE_ID)} '
+            "|| exit 73; "
+            'component=$(docker inspect -f \'{{index .Config.Labels '
+            '"org.sparkring.component"}}\' "$name" '
+            "2>/dev/null || true); "
+            f'test -z "$profile" || test -z "$component" || '
+            f'test "$component" = {shlex.quote(component)} || exit 74; '
+            'test -z "$profile" || docker rm --force "$name"'
+        )
+        actions.append(shell_action(rank, script))
+    return actions
+
+
+def rollback_verify_actions(site, profile: exl3.Profile) -> list[exl3.RemoteAction]:
+    actions = []
+    for rank in site.ranks:
+        names = (exl3.container_name(profile, rank.id), server_name(rank.id))
+        filters = " ".join(
+            f"--filter name=^/{shlex.quote(name)}$" for name in names
+        )
+        script = f'test -z "$(docker ps -aq {filters})"'
         actions.append(shell_action(rank, script))
     return actions
 
@@ -250,7 +312,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--profile", required=True)
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--confirmation", default="")
-    parser.add_argument("command", choices=("plan", "start", "status", "rollback"))
+    parser.add_argument(
+        "command",
+        choices=(
+            "plan",
+            "start",
+            "status",
+            "restart-engines",
+            "restart-stack",
+            "rollback",
+            "verify-rollback",
+        ),
+    )
     args = parser.parse_args(argv)
     try:
         site = load_site(args.site)
@@ -262,7 +335,14 @@ def main(argv: list[str] | None = None) -> int:
             "server_health": server_health_actions(site),
             "start_engines": engine_start_actions(site, profile),
             "ready": ready_actions(site, profile),
+            "remove_engines": remove_component_actions(
+                site, profile, component="engine"
+            ),
+            "remove_servers": remove_component_actions(
+                site, profile, component="lmcache-server"
+            ),
             "rollback": rollback_actions(site, profile),
+            "verify_rollback": rollback_verify_actions(site, profile),
         }
     except (OSError, KeyError, json.JSONDecodeError, SiteConfigError, exl3.ProfileError) as exc:
         parser.error(str(exc))
@@ -271,13 +351,19 @@ def main(argv: list[str] | None = None) -> int:
         "schema": "sparkring-public-exl3-lmcache-plan/v1",
         "profile_id": PROFILE_ID,
         "image_id": profile.image_id,
-        "mutates_remote": args.command in ("start", "rollback"),
+        "mutates_remote": args.command
+        in ("start", "restart-engines", "restart-stack", "rollback"),
         "phases": {name: render(actions) for name, actions in phases.items()},
     }
     if args.command == "plan" or not args.execute:
         print(json.dumps(plan, indent=2))
         return 0
-    if args.command in ("start", "rollback") and args.confirmation != CONFIRMATION:
+    if args.command in (
+        "start",
+        "restart-engines",
+        "restart-stack",
+        "rollback",
+    ) and args.confirmation != CONFIRMATION:
         parser.error(f"execute requires --confirmation {CONFIRMATION}")
 
     if args.command == "status":
@@ -294,16 +380,44 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result, indent=2))
         return 1 if failed(result) else 0
 
+    if args.command == "verify-rollback":
+        result = run_phase(
+            phases["verify_rollback"], execute=True, timeout=30
+        )
+        print(json.dumps(result, indent=2))
+        return 1 if failed(result) else 0
+
+    if args.command == "restart-engines":
+        sequence = (
+            ("server_health", 150),
+            ("remove_engines", 180),
+            ("start_engines", profile.startup_timeout_seconds + 60),
+            ("ready", profile.startup_timeout_seconds + 60),
+            ("server_health", 150),
+        )
+    elif args.command == "restart-stack":
+        sequence = (
+            ("remove_engines", 180),
+            ("remove_servers", 180),
+            ("start_servers", 180),
+            ("server_health", 150),
+            ("start_engines", profile.startup_timeout_seconds + 60),
+            ("ready", profile.startup_timeout_seconds + 60),
+            ("server_health", 150),
+        )
+    else:
+        sequence = (
+            ("start_servers", 180),
+            ("server_health", 150),
+            # Each start action first hashes the complete 339-GB model view.
+            # That fail-closed gate is intentionally repeated on every rank
+            # and can take several minutes even when files are already local.
+            ("start_engines", profile.startup_timeout_seconds + 60),
+            ("ready", profile.startup_timeout_seconds + 60),
+        )
+
     results = {}
-    for name, timeout in (
-        ("start_servers", 180),
-        ("server_health", 150),
-        # Each start action first hashes the complete 339-GB model view.  That
-        # fail-closed gate is intentionally repeated on every rank and can take
-        # several minutes even when the files are already local.
-        ("start_engines", profile.startup_timeout_seconds + 60),
-        ("ready", profile.startup_timeout_seconds + 60),
-    ):
+    for name, timeout in sequence:
         results[name] = run_phase(phases[name], execute=True, timeout=timeout)
         if failed(results[name]):
             results["rollback"] = run_phase(

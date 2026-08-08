@@ -1,26 +1,19 @@
 # SparkRing — Public-Functional Lane: supported matrix and acceptance definition
 
-> **Historical:** this matrix targets the former Aiden MXFP4/GPTQ lane. It is
-> retained because its fail-closed acceptance rules and evidence remain
-> useful. It is not the current deployment quickstart. EXL3+LMCache CS512 is
-> the default, main advertised, and currently running public-functional
-> configuration; see [QUICKSTART.md](QUICKSTART.md). NF3 remains an accepted
-> deterministic alternative in [NF3_QUICKSTART.md](NF3_QUICKSTART.md). The
-> historical matrix below is unchanged.
+> **Configuration status:** the matrix in §2 is the accepted NF3
+> public-functional matrix retained as the deterministic alternative. Its
+> clean-checkout evidence is in
+> [NF3_NVFP4_PUBLIC_VALIDATION.md](NF3_NVFP4_PUBLIC_VALIDATION.md). EXL3 plus
+> LMCache CS512 is the default, main advertised, currently running
+> configuration, but remains `live-validated`, not accepted; see
+> [QUICKSTART.md](QUICKSTART.md) and the candidate
+> [EXL3 acceptance runbook](EXL3_ACCEPTANCE_RUNBOOK.md).
 
-This document defines **one** supported configuration for the historical
-public-functional lane, and defines exactly what "it works" means for that
-configuration. It is the contract the acceptance gate
-(`scripts/acceptance_gate.py`) enforces.
-
-> **Status: definition only. The gate defined here has never been run.**
-> No public-lane acceptance result exists. Nothing in this document asserts
-> complete acceptance. A 2026-07-29 native build and partial four-rank bring-up
-> passed image distribution, preflight, capability gates, distributed
-> initialization, complete model/MTP loading, B12X prewarm, and KV allocation;
-> API/request acceptance remains. Every open value is
-> listed in [§8 Open TBDs](#8-open-tbds-with-owners) with an owner, not
-> guessed.
+This document defines the accepted NF3 matrix and the common fail-closed
+acceptance semantics. `scripts/acceptance_gate.py` preserves that matrix as
+its default. A named gate profile may declare a different immutable candidate
+matrix; results and evidence never transfer between profiles. The EXL3 profile
+is `scripts/config/gate.exl3.example.json`.
 
 Companion documents: [README.md](../README.md) (two-lane framing),
 [QUICKSTART.md](QUICKSTART.md) (default EXL3 deployment),
@@ -34,7 +27,8 @@ measured claims are labelled and gated), [RUNTIME_GAPS.md](RUNTIME_GAPS.md)
 
 ## 1. What the public-functional lane promises
 
-The public-functional lane promises exactly one thing:
+For a named, versioned matrix, the public-functional lane promises exactly one
+thing:
 
 > On the supported matrix in §2, a runtime built from `runtime/` and pinned by
 > `runtime/runtime-lock.json` starts on all four ranks, attests, and answers
@@ -44,10 +38,9 @@ It promises **nothing about speed**. Functional acceptance is a binary result.
 Performance is a separate, measured, banded result reported alongside it and
 never merged into it (§4).
 
-The lane is deliberately narrow. One matrix means one thing can be proven, one
-set of artifacts has to be produced, and a bug report is comparable to every
-other bug report. If your configuration is not the matrix below, you are not in
-this lane — see §3, which exists so you can self-select out quickly.
+The lane is deliberately narrow. One result covers one matrix, one immutable
+artifact set, and one evidence bundle. If your configuration is neither the
+NF3 matrix below nor a published candidate profile, it is outside this lane.
 
 ---
 
@@ -289,8 +282,9 @@ Each stage emits a stable id, a status, timing, and captured artifacts.
 | 3 | `rank_startup` | All four ranks start under the site's launcher and reach a running state within the configured timeout. | the site's `launch.start_command` (the gate never implements launching) |
 | 4 | `api_liveness` | `/health` returns 200 and `/v1/models` lists the pinned served model, on every rank that serves the API; every non-serving rank is explicitly declared headless. | HTTP |
 | 5 | `deterministic_generation` | A fixed prompt, `temperature=0`, fixed seed, fixed `max_tokens`, produces token ids whose SHA-256 matches the committed expected-value file. | HTTP (`/v1/completions` then `/tokenize`) |
-| 6 | `performance_matrix` | A C1 and a C8 cell, raw JSON out, compared against the documented band. | HTTP |
-| 7 | `shutdown_rollback` | The stack stops cleanly, the API stops answering, and the site's rollback verification succeeds. | the site's `launch.stop_command` / `rollback_verify_command` |
+| 6 | `performance_matrix` | Every concurrency required by the selected profile, raw JSON out, compared against that profile's documented band. | HTTP |
+| 7 | `profile_extensions` | Optional profile-specific gates such as broader correctness and cache restart-boundary attribution pass before shutdown. | the ordered `extensions.pre_shutdown` commands |
+| 8 | `shutdown_rollback` | The stack stops cleanly, the API stops answering, and the site's rollback verification succeeds. | the site's `launch.stop_command` / `rollback_verify_command` |
 
 Stage statuses: `PASS`, `FAIL`, `BASELINE-RECORDED` (stage 5, and stage 6 when
 no band is configured), `PERFORMANCE-OUT-OF-BAND` (stage 6 only), `SKIPPED`
@@ -298,8 +292,9 @@ no band is configured), `PERFORMANCE-OUT-OF-BAND` (stage 6 only), `SKIPPED`
 
 Abort semantics:
 
-- `FAIL` aborts immediately; every later stage is `SKIPPED` with
-  `aborted-after: <stage id>`.
+- `FAIL` aborts ordinary later work. If stage 3 attempted startup, stage 8 is
+  still run so cleanup and exact rollback verification are captured; other
+  stages are `SKIPPED` with `aborted-after: <stage id>`.
 - `BASELINE-RECORDED` does **not** abort (later stages still produce evidence)
   but it does prevent `functional_verdict: PASS`.
 - `PERFORMANCE-OUT-OF-BAND` does **not** abort and does **not** affect the
@@ -344,15 +339,15 @@ python scripts/acceptance_gate.py \
 A dry run creates no bundle directory, writes no files (unless you pass
 `--plan-out`), opens no connections, and starts and stops nothing. It validates
 the matrix constraints (four ranks, a four-edge 4-cycle with every rank of
-degree 2, one distinct /24 per cable, MTU 9000, 200 GbE, TP=4/DCP=4, adaptive
-MTP 2/4, the pinned context and KV settings, an immutable model revision, and
+degree 2, one distinct /24 per cable, MTU 9000, 200 GbE, the selected profile's
+serving values and required concurrencies, an immutable model revision, and
 site/lock agreement on the checkpoint) and prints the exact commands and
 endpoints each stage would use.
 
 `--execute` additionally refuses when the site config still contains the
 shipped example's placeholders (`sparkring_site.placeholder_warnings()`) — a
 half-filled template does not describe a real cluster. **Never point this gate
-at a cluster that is serving production traffic** — stages 3 and 7 start and
+at a cluster that is serving production traffic** — stages 3 and 8 start and
 stop the stack.
 
 ### 5.2 Evidence bundle
@@ -374,8 +369,9 @@ stop the stack.
     03-rank_startup/              launcher stdout/stderr, per-rank status
     04-api_liveness/              /health and /v1/models responses per rank
     05-deterministic_generation/  request params, completion, token ids, sha256
-    06-performance_matrix/        raw C1 and C8 cell JSON
-    07-shutdown_rollback/         stop output, post-stop health probes
+    06-performance_matrix/        raw profile cell JSON
+    07-profile_extensions/        profile-specific command reports
+    08-shutdown_rollback/         stop output, post-stop health probes
 ```
 
 `result.json` carries a schema version, the per-stage array (id, order, title,
@@ -458,8 +454,9 @@ script's module docstring. Keys:
 ```text
 ssh.command                          argv prefix for remote execution
 runtime.{lock_path, verify_script, manifest_path, expect_runtime_id,
-         exec_prefix}                exec_prefix runs verify-runtime.py inside
-                                     the container, e.g. ["docker","exec",...]
+         exec_prefix, attestation_commands}
+                                     attestation_commands may delegate complete
+                                     all-rank image/model verification
 fabric.{qualifier, probe_binary, iterations,
         model_down_probe.{command, per_rank}}
 launch.{start_command, stop_command, rollback_verify_command,
@@ -469,7 +466,11 @@ api.{scheme, rank_bases}             rank_bases overrides the derived
                                      rank serves an API
 acceptance.{expected_generation_path, served_model_name, prompt, seed,
             max_tokens}
-performance.{cells[], band}
+performance.{cells[], band}          cells may set repetitions, minimum_tokens,
+                                     and ignore_eos
+extensions.pre_shutdown[]            ordered profile-specific acceptance tools;
+                                     require_json_status may enforce a report
+matrix.{serving, required_concurrencies}
 preflight.result_path
 ```
 

@@ -144,6 +144,12 @@ python scripts/sparkring_recipe.py list
 python scripts/sparkring_recipe.py plan
 ```
 
+For maintainers advancing EXL3 from bounded live validation toward full
+public-functional acceptance, use the dry-run-first
+[EXL3 + LMCache acceptance runbook](docs/EXL3_ACCEPTANCE_RUNBOOK.md). The
+workflow is published and offline-validated; its remaining live gates are not
+yet an acceptance claim.
+
 Transport-only results, historical DCP1 peaks, workload-specific coding
 measurements, and superseded configurations remain documented separately in
 [docs/RESULTS.md](docs/RESULTS.md) and
