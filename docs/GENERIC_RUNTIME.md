@@ -371,3 +371,201 @@ existing launchers:
 - **Schema-aware rollback**: EXL3 bridge uses exit-status-only (no
   rollback); NF3 bridge and generic profiles use `action_succeeded` with
   partial-start rollback (only containers whose `docker run` succeeded).
+
+## Multi-service runtime bundles
+
+> **Lane:** public-functional tooling | **Maturity:** offline-validated
+> (focused tests) | **Hardware/evidence:** CPU-only checkout tests, no
+> cluster contacted | **Note:** Arbitrary bundles are not accepted or
+> current configurations. EXL3+LMCache remains the current/default
+> canonical launcher. NF3 remains the accepted alternative model/runtime,
+> but the bundle layer no longer has a dedicated NF3 bridge source kind.
+
+The bundle layer (`scripts/sparkring_bundle.py`,
+`scripts/sparkring_bundle_launcher.py`) extends the generic runtime to
+represent a static multi-service deployment: one serving/model service plus
+zero or more cache/sidecar services with deterministic dependency ordering,
+structured readiness probes, reverse-order rollback, and semantic offline
+validation/explanation/diff/planning.
+
+### Bundle schema
+
+A bundle is a JSON file with schema `sparkring-runtime-bundle/v1`:
+
+```json
+{
+  "schema": "sparkring-runtime-bundle/v1",
+  "bundle_id": "example-engine-cache",
+  "confirmation": "START-example-engine-cache",
+  "services": [
+    {
+      "service_id": "cache",
+      "role": "cache",
+      "depends_on": [],
+      "source": {
+        "kind": "structured-container",
+        "path": "cache-sidecar.json"
+      },
+      "readiness": {"kind": "container-running"}
+    },
+    {
+      "service_id": "engine",
+      "role": "serving",
+      "depends_on": ["cache"],
+      "source": {"kind": "runtime-profile", "path": "engine.json"},
+      "readiness": {
+        "kind": "http-get", "rank_scope": "rank0",
+        "port": "site-api", "path": "/health"
+      }
+    }
+  ]
+}
+```
+
+Key constraints:
+
+- Exactly one `serving` role; zero or more `cache`/`sidecar` roles.
+- Maximum 16 services. Service ids are lowercase, unique, and match
+  `^[a-z][a-z0-9-]{0,62}$`.
+- `depends_on` is a list of service ids; cycles, self-edges, unknown
+  services, and duplicate entries are rejected. `depends_on` is stored as
+  a `frozenset` — equivalent permutations produce byte-identical plans.
+- Source `kind` is a closed enum:
+  - `runtime-profile` — serving role only; loads a native generic profile via
+    `generic.load_profile`.
+  - `structured-container` — cache/sidecar role only; runs a declared
+    argv directly (no vLLM serve/TP/DCP flags). Rejects shell entrypoints
+    (sh, bash, ash, zsh, dash, fish, csh, tcsh, pwsh, powershell, cmd) and
+    `..` in mount paths.
+  - `canonical-exl3-lmcache-cs512` — plan-only bridge to the canonical
+    EXL3+LMCache launcher.
+- Readiness is a closed typed enum: `container-running` (docker inspect) or
+  `http-get` (curl to loopback, bounded port/path/rank-scope). No
+  caller-supplied argv, shell, host, scheme, query, headers, or body.
+- Referenced `runtime-profile` sources must not contain `health_check`,
+  `attestation_hook`, or `entrypoint` — these would turn the bundle
+  into a code-execution schema.
+- `source.path` values resolve relative to the bundle file directory.
+
+### Structured containers
+
+A `structured-container` source runs a declared argv directly — no vLLM
+`serve` subcommand, no TP/DCP flags, no entrypoint override. The container
+definition file has schema `sparkring-structured-container/v1`:
+
+```json
+{
+  "schema": "sparkring-structured-container/v1",
+  "image": "registry.example/org/example-cache-sidecar:0.0.0-REPLACE",
+  "image_id": "sha256:<64-hex>",
+  "container_name": "sparkring-example-sidecar",
+  "argv": ["/opt/bin/cache-server", "--port", "6379"],
+  "port": 6379,
+  "environment": {"CACHE_SIZE": "512"},
+  "volumes": [],
+  "privileged": false,
+  "shm_size": null,
+  "startup_timeout_seconds": 300
+}
+```
+
+Shell entrypoints are rejected case-insensitively (sh, bash, ash, zsh, dash,
+fish, csh, tcsh, pwsh, pwsh.exe, powershell, powershell.exe, cmd, cmd.exe).
+Mount paths containing `..` are rejected. The
+`privileged` flag should be `false` unless a demonstrated need is
+documented. See `scripts/config/example-cache-sidecar.json` for a template
+example.
+
+### Graph ordering
+
+Start order is topological (Kahn's algorithm with lexical min-heap
+tie-breaking). Stop and rollback use exact reverse topological order.
+A one-service bundle degenerates to a single start/readiness/stop item
+with no special branch. Reordering equivalent input services does not
+change the plan.
+
+### Ownership labels
+
+Native bundle start actions set five ownership labels:
+
+- `org.sparkring.managed=true`
+- `org.sparkring.profile=<profile_id or image_id>`
+- `org.sparkring.bundle=<bundle_id>`
+- `org.sparkring.service=<service_id>`
+- `org.sparkring.source-profile=<profile_id>`
+
+Native stop/rollback actions use a daemon probe (`docker info`) followed by
+exact-name enumeration (`docker ps -a --filter name=^/<name>$`). Empty
+output means the container is absent (exit 0). An exact name match triggers
+label inspection: all five labels must match before removal (exit 73 on
+mismatch, exit 74 on daemon/inspect failure). An unexpected name in the
+listing means unknown state (exit 74). A foreign or mislabeled same-named
+container is never removed.
+
+### Invocation-local rollback ledger
+
+On start or readiness failure, rollback removes only `(service_id, rank)`
+entries whose start action succeeded during the current invocation, in
+reverse dependency order. A dependency that pre-existed, a rank whose
+start failed, or a service whose phase began but never succeeded is never
+rolled back.
+
+### EXL3+LMCache bridge
+
+The `canonical-exl3-lmcache-cs512` source kind delegates to
+`sparkring_exl3_lmcache_launcher` via its exported `build_phases()` and
+`lifecycle_sequence()` functions. The canonical launcher's `main()` also
+consumes these functions, so the bridge and canonical launcher share the
+same code path — the bridge is not comparing a helper to itself. The bridge
+is **plan-only** (`execution_supported: false`): canonical rollback is
+whole-stack rather than invocation-ledgered, and canonical labels do not
+carry the bundle/service/source-profile ownership tuple. Use the canonical
+launcher for execution. A successful offline bridge plan is not new live
+validation or acceptance.
+
+### Offline conformance commands
+
+```bash
+# Structural validation (without site) or plan-build validation (with site).
+python scripts/sparkring_bundle_launcher.py \
+  --bundle scripts/config/bundle-native-single.json validate
+python scripts/sparkring_bundle_launcher.py \
+  --bundle scripts/config/bundle-native-single.json \
+  --site scripts/config/site.example.yaml validate
+
+# Explain ordering, safety, probes, labels, and limits.
+python scripts/sparkring_bundle_launcher.py \
+  --bundle scripts/config/bundle-native-single.json explain
+
+# Compare two bundles (exit 0=same, 1=different, 2=invalid).
+python scripts/sparkring_bundle_launcher.py \
+  --bundle-a a.json --bundle-b b.json diff
+
+# Full ordered phase plan.
+python scripts/sparkring_bundle_launcher.py \
+  --bundle scripts/config/bundle-native-single.json \
+  --site scripts/config/site.example.yaml plan
+```
+
+`plan`, `validate`, `explain`, and `diff` are always offline. `start`,
+`stop`, and `rollback` require `--execute` and, if the bundle declares
+a confirmation token, `--confirmation <token>`. The EXL3+LMCache
+bridge rejects `--execute` with a plan-only diagnostic.
+
+### Bundle safety classes
+
+|Operation|Safety class|
+|---|---|
+|`plan`, `validate`, `explain`, `diff`|OFFLINE|
+|`status`, `verify-rollback`|READ-ONLY REMOTE|
+|`start`|MUTATES HOST|
+|`stop`, `rollback`|MUTATES HOST, STOPS SERVING|
+
+### Contributor kit
+
+- `scripts/config/bundle.template.json` — minimal sanitized template (structured-container sidecar + runtime-profile serving).
+- `scripts/config/bundle-native-single.json` — filled native single-service example.
+- `scripts/config/bundle-engine-cache.json` — native engine+cache example with structured-container sidecar.
+- `scripts/config/bundle-exl3-lmcache-bridge.json` — EXL3+LMCache bridge example (plan-only).
+- `scripts/config/example-cache-sidecar.json` — structured-container sidecar template example.
+- `scripts/rehearse_runtime_bundle_archive.py` — OFFLINE archive rehearsal; poisons remote executors, validates tracked examples, builds EXL3 bridge plan. Supervisor creates the commit/archive and invokes for exact-commit evidence.

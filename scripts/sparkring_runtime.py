@@ -130,7 +130,14 @@ PROFILE_LABEL = "org.sparkring.profile"
 MANAGED_LABEL = "org.sparkring.managed"
 
 # Labels that the runtime sets internally — a profile must not override.
-RESERVED_LABELS = frozenset({MANAGED_LABEL, PROFILE_LABEL})
+# Bundle ownership labels are also reserved against profile overrides.
+BUNDLE_LABEL = "org.sparkring.bundle"
+SERVICE_LABEL = "org.sparkring.service"
+SOURCE_PROFILE_LABEL = "org.sparkring.source-profile"
+RESERVED_LABELS = frozenset({
+    MANAGED_LABEL, PROFILE_LABEL, BUNDLE_LABEL, SERVICE_LABEL,
+    SOURCE_PROFILE_LABEL,
+})
 
 # vLLM options that are site-owned (derived from site.serving at
 # action-build time).  A generic profile may not duplicate these in
@@ -172,6 +179,24 @@ class RemoteAction:
     def shell_command(self) -> str:
         return shlex.join(self.argv)
 
+
+
+# ---------------------------------------------------------------------------
+# Ownership — bundle identity labels for native start/stop guards
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Ownership:
+    """Exact identity labels for bundle-managed containers.
+
+    When passed to ``start_actions``/``stop_actions``, adds four
+    labels and stop guards so a foreign same-named container is
+    never removed.
+    """
+    bundle_id: str
+    service_id: str
+    profile_id: str
 
 # ---------------------------------------------------------------------------
 # RuntimeProfile — the generic contract
@@ -653,13 +678,21 @@ def _image_verify_prefix(profile: RuntimeProfile) -> str:
 # ---------------------------------------------------------------------------
 
 
-def start_actions(site: Any, profile: RuntimeProfile) -> list[RemoteAction]:
+def start_actions(
+    site: Any, profile: RuntimeProfile, *,
+    ownership: "Ownership | None" = None,
+) -> list[RemoteAction]:
     """Build per-rank container start actions for a generic profile.
 
     Each action first verifies the exact image digest (fail-closed on
     identity drift).  If ``attestation_hook`` is set, it runs as
     ``docker run --rm <image> <hook>`` after image verification and
     before the main ``docker run`` (also fail-closed).
+
+    If ``ownership`` is provided (by the bundle launcher), four
+    exact identity labels are added: ``org.sparkring.managed``,
+    ``org.sparkring.bundle``, ``org.sparkring.service``, and
+    ``org.sparkring.source-profile``.
     """
     actions: list[RemoteAction] = []
     for rank in site.ranks:
@@ -691,6 +724,12 @@ def start_actions(site: Any, profile: RuntimeProfile) -> list[RemoteAction]:
             "--label",
             f"{PROFILE_LABEL}={profile.profile_id}",
         ]
+        if ownership:
+            command.extend(("--label", f"{BUNDLE_LABEL}={ownership.bundle_id}"))
+            command.extend(("--label", f"{SERVICE_LABEL}={ownership.service_id}"))
+            command.extend((
+                "--label", f"{SOURCE_PROFILE_LABEL}={ownership.profile_id}",
+            ))
         if profile.extra_labels:
             for label_key, label_value in profile.extra_labels.items():
                 command.extend(("--label", f"{label_key}={label_value}"))
@@ -774,26 +813,70 @@ def start_actions(site: Any, profile: RuntimeProfile) -> list[RemoteAction]:
     return actions
 
 
-def stop_actions(site: Any, profile: RuntimeProfile) -> list[RemoteAction]:
+def stop_actions(
+    site: Any, profile: RuntimeProfile, *,
+    ownership: "Ownership | None" = None,
+) -> list[RemoteAction]:
     """Build profile-label-guarded container removal actions.
 
     A foreign container with the same name but a different
     ``org.sparkring.profile`` label is not removed (exit 73).
+
+    If ``ownership`` is provided, all four ownership labels must
+    match exactly before removal. A container missing any label
+    or with a wrong value fails closed (exit 73).
     """
     actions: list[RemoteAction] = []
     for rank in site.ranks:
         name = container_name(profile, rank.id)
-        script = (
-            f"managed=$({profile.engine} inspect --format "
-            f"'{{{{index .Config.Labels \"{MANAGED_LABEL}\"}}}}' "
-            f"{shlex.quote(name)} 2>/dev/null) || exit 0; "
-            f'[ "$managed" = true ] || exit 73; '
-            f'pid=$({profile.engine} inspect --format '
-            f"'{{{{index .Config.Labels \"{PROFILE_LABEL}\"}}}}' "
-            f"{shlex.quote(name)} 2>/dev/null) || exit 73; "
-            f'[ "$pid" = {shlex.quote(profile.profile_id)} ] || exit 73; '
-            f"exec {profile.engine} rm --force {shlex.quote(name)}"
-        )
+        if ownership:
+            script = (
+                # Item 1 (fb4): daemon probe, then exact-name enumeration
+                f"{profile.engine} info >/dev/null 2>&1 || exit 74; "
+                f"listing=$({profile.engine} ps -a --filter name=^/{shlex.quote(name)}$ "
+                f"--format '{{{{.Names}}}}' 2>&1) || exit 74; "
+                f'if [ -z "$listing" ]; then exit 0; fi; '
+                f'if [ "$listing" != "{shlex.quote(name)}" ]; then exit 74; fi; '
+                f'managed=$({profile.engine} inspect --format '
+                f"'{{{{index .Config.Labels \"{MANAGED_LABEL}\"}}}}' "
+                f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
+                f'[ "$managed" = true ] || exit 73; '
+                f'pid=$({profile.engine} inspect --format '
+                f"'{{{{index .Config.Labels \"{PROFILE_LABEL}\"}}}}' "
+                f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
+                f'[ "$pid" = {shlex.quote(profile.profile_id)} ] || exit 73; '
+                f'bid=$({profile.engine} inspect --format '
+                f"'{{{{index .Config.Labels \"{BUNDLE_LABEL}\"}}}}' "
+                f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
+                f'[ "$bid" = {shlex.quote(ownership.bundle_id)} ] || exit 73; '
+                f'sid=$({profile.engine} inspect --format '
+                f"'{{{{index .Config.Labels \"{SERVICE_LABEL}\"}}}}' "
+                f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
+                f'[ "$sid" = {shlex.quote(ownership.service_id)} ] || exit 73; '
+                f'src=$({profile.engine} inspect --format '
+                f"'{{{{index .Config.Labels \"{SOURCE_PROFILE_LABEL}\"}}}}' "
+                f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
+                f'[ "$src" = {shlex.quote(ownership.profile_id)} ] || exit 73; '
+                f"exec {profile.engine} rm --force {shlex.quote(name)}"
+            )
+        else:
+            script = (
+                # Item 1 (fb4): daemon probe, then exact-name enumeration
+                f"{profile.engine} info >/dev/null 2>&1 || exit 74; "
+                f"listing=$({profile.engine} ps -a --filter name=^/{shlex.quote(name)}$ "
+                f"--format '{{{{.Names}}}}' 2>&1) || exit 74; "
+                f'if [ -z "$listing" ]; then exit 0; fi; '
+                f'if [ "$listing" != "{shlex.quote(name)}" ]; then exit 74; fi; '
+                f'managed=$({profile.engine} inspect --format '
+                f"'{{{{index .Config.Labels \"{MANAGED_LABEL}\"}}}}' "
+                f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
+                f'[ "$managed" = true ] || exit 73; '
+                f'pid=$({profile.engine} inspect --format '
+                f"'{{{{index .Config.Labels \"{PROFILE_LABEL}\"}}}}' "
+                f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
+                f'[ "$pid" = {shlex.quote(profile.profile_id)} ] || exit 73; '
+                f"exec {profile.engine} rm --force {shlex.quote(name)}"
+            )
         actions.append(
             RemoteAction(rank.id, rank.ssh_target, ("sh", "-c", script))
         )
@@ -938,6 +1021,14 @@ def execute(actions: list[RemoteAction], timeout: int) -> dict[int, dict]:
                     "exit_code": 124,
                     "stdout": _output_text(exc.stdout),
                     "stderr": _output_text(exc.stderr, "remote command timed out"),
+                }
+            except Exception as exc:
+                # Item 5 (fb4): reserved infrastructure code 125 + error_type
+                results[rank] = {
+                    "exit_code": 125,
+                    "stdout": "",
+                    "stderr": f"executor exception: {type(exc).__name__}: {exc}",
+                    "error_type": type(exc).__name__,
                 }
     return results
 

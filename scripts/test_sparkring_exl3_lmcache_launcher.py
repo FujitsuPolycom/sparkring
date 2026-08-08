@@ -143,6 +143,49 @@ def test_mutation_requires_exact_confirmation(tmp_path, command):
     assert error.value.code == 2
 
 
+@pytest.mark.parametrize(
+    ("command", "expected_on_failure"),
+    (
+        ("status", "continue"),
+        ("rollback", "return-failure"),
+        ("verify-rollback", "return-failure"),
+    ),
+)
+def test_main_consumes_lifecycle_oracle_for_special_commands(
+    tmp_path, monkeypatch, capsys, command, expected_on_failure
+):
+    site_path, profile_path = generated(tmp_path)
+    original_sequence = lmcache.lifecycle_sequence
+    observed = []
+
+    def recording_sequence(requested_command, profile):
+        observed.append(requested_command)
+        sequence = original_sequence(requested_command, profile)
+        assert {step["on_failure"] for step in sequence} == {
+            expected_on_failure
+        }
+        return sequence
+
+    monkeypatch.setattr(lmcache, "lifecycle_sequence", recording_sequence)
+    monkeypatch.setattr(
+        exl3,
+        "execute",
+        lambda actions, timeout: {
+            action.rank: {"exit_code": 0, "stdout": "", "stderr": ""}
+            for action in actions
+        },
+    )
+    argv = [
+        "--site", str(site_path), "--profile", str(profile_path), "--execute",
+    ]
+    if command == "rollback":
+        argv.extend(["--confirmation", lmcache.CONFIRMATION])
+    argv.append(command)
+    assert lmcache.main(argv) == 0
+    assert observed == [command]
+    assert json.loads(capsys.readouterr().out)
+
+
 def test_component_removal_and_rollback_verification_are_exactly_scoped(tmp_path):
     site_path, profile_path = generated(tmp_path)
     site = load_site(site_path)

@@ -1,0 +1,38 @@
+{
+  "schema": "sparkring-runtime-bundle/v1",
+  "bundle_id": "engine-cache-sidecar",
+  "confirmation": "START-engine-cache",
+  "services": [
+    {
+      "service_id": "example-cache-sidecar",
+      "role": "cache",
+      "source": {
+        "kind": "structured-container",
+        "path": "example-cache-sidecar.json"
+      },
+      "readiness": {
+        "kind": "http-get",
+        "port": 6556,
+        "path": "/v1/health",
+        "timeout_seconds": 30,
+        "interval_seconds": 5
+      }
+    },
+    {
+      "service_id": "engine",
+      "role": "serving",
+      "depends_on": ["example-cache-sidecar"],
+      "source": {
+        "kind": "runtime-profile",
+        "path": "contributor-example.json"
+      },
+      "readiness": {
+        "kind": "http-get",
+        "port": "site-api",
+        "path": "/health",
+        "timeout_seconds": 30,
+        "interval_seconds": 5
+      }
+    }
+  ]
+}

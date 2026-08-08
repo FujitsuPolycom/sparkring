@@ -9,6 +9,7 @@ import json
 import shlex
 import sys
 from pathlib import Path
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -306,6 +307,82 @@ def failed(result: dict) -> bool:
     )
 
 
+def build_phases(site, profile: exl3.Profile) -> dict[str, list[exl3.RemoteAction]]:
+    """Build all 8 canonical phase action sets.
+
+    Exported so the bundle bridge and canonical main() share the same
+    phase construction logic — no duplication.
+    """
+    return {
+        "start_servers": server_start_actions(site, profile),
+        "server_health": server_health_actions(site),
+        "start_engines": engine_start_actions(site, profile),
+        "ready": ready_actions(site, profile),
+        "remove_engines": remove_component_actions(
+            site, profile, component="engine",
+        ),
+        "remove_servers": remove_component_actions(
+            site, profile, component="lmcache-server",
+        ),
+        "rollback": rollback_actions(site, profile),
+        "verify_rollback": rollback_verify_actions(site, profile),
+    }
+
+
+def lifecycle_sequence(
+    command: str, profile: exl3.Profile,
+) -> list[dict[str, Any]]:
+    """Return the canonical lifecycle phase sequence for a command.
+
+    Exported so the bundle bridge and canonical main() share the same
+    sequence oracle.  Includes explicit ``on_failure`` and ``timeout``
+    for each phase.
+    """
+    if command == "restart-engines":
+        raw = (
+            ("server_health", 150),
+            ("remove_engines", 180),
+            ("start_engines", profile.startup_timeout_seconds + 60),
+            ("ready", profile.startup_timeout_seconds + 60),
+            ("server_health", 150),
+        )
+    elif command == "restart-stack":
+        raw = (
+            ("remove_engines", 180),
+            ("remove_servers", 180),
+            ("start_servers", 180),
+            ("server_health", 150),
+            ("start_engines", profile.startup_timeout_seconds + 60),
+            ("ready", profile.startup_timeout_seconds + 60),
+            ("server_health", 150),
+        )
+    elif command == "rollback":
+        raw = (("rollback", 180),)
+    elif command == "verify-rollback":
+        raw = (("verify_rollback", 30),)
+    elif command == "status":
+        raw = (
+            ("server_health", 150),
+            ("ready", 30),
+        )
+    else:  # start
+        raw = (
+            ("start_servers", 180),
+            ("server_health", 150),
+            ("start_engines", profile.startup_timeout_seconds + 60),
+            ("ready", profile.startup_timeout_seconds + 60),
+        )
+    if command in ("start", "restart-engines", "restart-stack"):
+        on_failure = "rollback"
+    elif command == "status":
+        on_failure = "continue"
+    else:
+        on_failure = "return-failure"
+    return [
+        {"phase": name, "timeout": timeout, "on_failure": on_failure}
+        for name, timeout in raw
+    ]
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--site", required=True)
@@ -330,20 +407,7 @@ def main(argv: list[str] | None = None) -> int:
         profile = exl3.load_profile(Path(args.profile))
         if profile.profile_id != PROFILE_ID:
             raise exl3.ProfileError(f"LMCache launcher requires {PROFILE_ID}")
-        phases = {
-            "start_servers": server_start_actions(site, profile),
-            "server_health": server_health_actions(site),
-            "start_engines": engine_start_actions(site, profile),
-            "ready": ready_actions(site, profile),
-            "remove_engines": remove_component_actions(
-                site, profile, component="engine"
-            ),
-            "remove_servers": remove_component_actions(
-                site, profile, component="lmcache-server"
-            ),
-            "rollback": rollback_actions(site, profile),
-            "verify_rollback": rollback_verify_actions(site, profile),
-        }
+        phases = build_phases(site, profile)
     except (OSError, KeyError, json.JSONDecodeError, SiteConfigError, exl3.ProfileError) as exc:
         parser.error(str(exc))
 
@@ -366,67 +430,29 @@ def main(argv: list[str] | None = None) -> int:
     ) and args.confirmation != CONFIRMATION:
         parser.error(f"execute requires --confirmation {CONFIRMATION}")
 
-    if args.command == "status":
-        results = {
-            "server_health": run_phase(
-                phases["server_health"], execute=True, timeout=150
-            ),
-            "ready": run_phase(phases["ready"], execute=True, timeout=30),
-        }
-        print(json.dumps(results, indent=2))
-        return 1 if any(failed(result) for result in results.values()) else 0
-    if args.command == "rollback":
-        result = run_phase(phases["rollback"], execute=True, timeout=180)
-        print(json.dumps(result, indent=2))
-        return 1 if failed(result) else 0
-
-    if args.command == "verify-rollback":
-        result = run_phase(
-            phases["verify_rollback"], execute=True, timeout=30
-        )
-        print(json.dumps(result, indent=2))
-        return 1 if failed(result) else 0
-
-    if args.command == "restart-engines":
-        sequence = (
-            ("server_health", 150),
-            ("remove_engines", 180),
-            ("start_engines", profile.startup_timeout_seconds + 60),
-            ("ready", profile.startup_timeout_seconds + 60),
-            ("server_health", 150),
-        )
-    elif args.command == "restart-stack":
-        sequence = (
-            ("remove_engines", 180),
-            ("remove_servers", 180),
-            ("start_servers", 180),
-            ("server_health", 150),
-            ("start_engines", profile.startup_timeout_seconds + 60),
-            ("ready", profile.startup_timeout_seconds + 60),
-            ("server_health", 150),
-        )
-    else:
-        sequence = (
-            ("start_servers", 180),
-            ("server_health", 150),
-            # Each start action first hashes the complete 339-GB model view.
-            # That fail-closed gate is intentionally repeated on every rank
-            # and can take several minutes even when files are already local.
-            ("start_engines", profile.startup_timeout_seconds + 60),
-            ("ready", profile.startup_timeout_seconds + 60),
-        )
-
+    # Consume the same lifecycle oracle exported to the bundle bridge for
+    # every executable command, including read-only status/verification and
+    # rollback itself.
+    seq = lifecycle_sequence(args.command, profile)
     results = {}
-    for name, timeout in sequence:
+    any_failed = False
+    for step in seq:
+        name = step["phase"]
+        timeout = step["timeout"]
         results[name] = run_phase(phases[name], execute=True, timeout=timeout)
         if failed(results[name]):
-            results["rollback"] = run_phase(
-                phases["rollback"], execute=True, timeout=180
-            )
-            print(json.dumps(results, indent=2))
-            return 1
+            any_failed = True
+            if step["on_failure"] == "rollback":
+                results["rollback"] = run_phase(
+                    phases["rollback"], execute=True, timeout=180
+                )
+                print(json.dumps(results, indent=2))
+                return 1
+            if step["on_failure"] == "return-failure":
+                print(json.dumps(results, indent=2))
+                return 1
     print(json.dumps(results, indent=2))
-    return 0
+    return 1 if any_failed else 0
 
 
 if __name__ == "__main__":
