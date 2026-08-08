@@ -15,7 +15,7 @@ This page preserves the original public SparkRing reference lane:
 
 It is retained for historical reproduction and comparison. It is no longer
 the default deployment target. The current deployment lane is the
-madeby561 NF3 hybrid documented in [the quickstart](../QUICKSTART.md).
+madeby561 NF3 hybrid documented in [the NF3 quickstart](../NF3_QUICKSTART.md).
 
 ## Coherent reference matrix
 

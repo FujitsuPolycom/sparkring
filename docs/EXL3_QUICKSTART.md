@@ -1,6 +1,6 @@
 # Four-Spark EXL3 + LMCache quickstart
 
-This is SparkRing's main advertised and currently running public-functional
+This is SparkRing's default, main advertised, and currently running public-functional
 configuration on four directly cabled DGX Sparks. It serves
 `willfalco/GLM-5.2-EXL3-TR3-3.25bpw` at immutable revision
 `d7d79c2d14599dfce7a5d12b85f7ad73f40e623d` with TP4/DCP4, fixed MTP2,
@@ -9,8 +9,8 @@ caching, and one LMCache CS512 server per rank. SparkCache is a separate
 implementation and is disabled in this profile.
 
 The public path was built from a clean checkout and live-validated on four
-directly cabled Sparks. NF3 remains the accepted deterministic executable
-default and is documented in [QUICKSTART.md](QUICKSTART.md). The EXL3 result is
+directly cabled Sparks. NF3 remains an accepted deterministic alternative
+documented in [NF3_QUICKSTART.md](NF3_QUICKSTART.md). The EXL3 result is
 bounded live validation, not blanket correctness, LMCache persistence, release
 promotion, or complete public-functional acceptance.
 
@@ -35,8 +35,7 @@ storage path before proceeding.
 ## 2. Inspect the immutable recipe
 
 ```bash
-python scripts/sparkring_recipe.py plan \
-  --recipe glm52-exl3-tr3-3.25bpw
+python scripts/sparkring_recipe.py plan
 
 python scripts/bootstrap_exl3.py plan \
   --site scripts/config/site.yaml
@@ -44,8 +43,8 @@ python scripts/bootstrap_exl3.py plan \
 
 Both commands are offline. Confirm the immutable model revision, fixed-MTP2
 policy, TP4/DCP4 topology, Q4096/C8/Q32 limits, packed-KV profile, and LMCache
-CS512 topology. The recipe deliberately retains `default: false`; advertised
-operator status is not the same as accepted deterministic default status.
+CS512 topology. The recipe declares `default: true`; NF3 remains explicitly
+selectable by recipe ID.
 
 ## 3. Build, verify, and distribute without launching
 

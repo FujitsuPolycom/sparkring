@@ -1,8 +1,8 @@
 {
   "schema": "sparkring-recipe/v1",
   "recipe_id": "glm52-nf3-hybrid",
-  "maturity": "public-clean-checkout-live-validated",
-  "default": true,
+  "maturity": "accepted",
+  "default": false,
   "hardware": {
     "platform": "linux/arm64",
     "cuda_arch": "sm_121",
@@ -57,7 +57,7 @@
         "reported_kv_tokens": 511488
       },
       "nvfp4-rope8": {
-        "maturity": "public-clean-checkout-live-validated",
+        "maturity": "accepted",
         "kv_cache_dtype": "nvfp4_ds_mla",
         "scale_mode": "per-token",
         "reported_kv_tokens": 875520,

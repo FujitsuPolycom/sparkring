@@ -1,6 +1,6 @@
 {
   "schema": "sparkring-repository-status/v1",
-  "last_reviewed": "2026-08-03",
+  "last_reviewed": "2026-08-07",
   "lanes": {
     "reference": {
       "maturity": "live-validated",
@@ -10,13 +10,19 @@
       "reason": "The NF3 NVFP4+FP8-RoPE target passed a clean-checkout public bootstrap, four-rank CUDA-graph startup, API correctness, and post-request health gate."
     },
     "public-functional": {
-      "maturity": "clean-checkout-live-validated",
+      "maturity": "live-validated",
       "end_to_end_runnable": true,
-      "acceptance_result_exists": true,
-      "definition": "recipes/glm52-nf3-hybrid.json",
-      "main_advertised_running_configuration": "recipes/glm52-exl3-tr3-3.25bpw.json",
-      "evidence": "docs/NF3_NVFP4_PUBLIC_VALIDATION.md",
-      "blockers": []
+      "acceptance_result_exists": false,
+      "definition": "recipes/glm52-exl3-tr3-3.25bpw.json",
+      "default_configuration": "recipes/glm52-exl3-tr3-3.25bpw.json",
+      "accepted_alternative": "recipes/glm52-nf3-hybrid.json",
+      "evidence": "docs/EXL3_RECIPE.md",
+      "blockers": [
+        "broader correctness gate",
+        "LMCache persistence and server-restart recovery",
+        "resource and rollback acceptance gates",
+        "release promotion"
+      ]
     }
   },
   "components": {
@@ -65,31 +71,33 @@
       "live_model_load_and_kv_allocation_passed": true,
       "external_manual_eager_request_reported": true,
       "api_request_acceptance_passed": true,
-      "entrypoint": "docs/QUICKSTART.md"
+      "entrypoint": "docs/NF3_QUICKSTART.md"
     },
     "public_launcher": {
       "maturity": "live-validated",
+      "accepted": false,
       "mutating_commands_default_to_dry_run": true,
       "external_manual_eager_request_reported": true,
-      "live_four_rank_acceptance": true,
-      "entrypoint": "scripts/sparkring_launcher.py"
+      "live_four_rank_bounded_gate": true,
+      "entrypoint": "scripts/sparkring_exl3_lmcache_launcher.py"
     },
     "nf3_recipe": {
-      "maturity": "public-clean-checkout-live-validated",
-      "default_public_functional_target": true,
+      "maturity": "accepted",
+      "default_public_functional_target": false,
+      "supported_alternative": true,
       "model": "madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid",
       "zero_build_ready": false,
       "local_build_ready": true,
       "entrypoint": "recipes/glm52-nf3-hybrid.json"
     },
     "exl3_recipe": {
-      "maturity": "clean-checkout-live-validated",
-      "default": false,
+      "maturity": "live-validated",
+      "default": true,
       "main_advertised_running_configuration": true,
       "model": "willfalco/GLM-5.2-EXL3-TR3-3.25bpw",
       "zero_build_ready": false,
       "local_build_ready": true,
-      "public_bootstrap_maturity": "clean-checkout-live-validated",
+      "public_bootstrap_maturity": "live-validated",
       "clean_checkout_four_spark_gate_pending": false,
       "clean_checkout_receipt": {
         "image_source_commit": "19523482c29860024c3a3cf51e793e8436e1c441",

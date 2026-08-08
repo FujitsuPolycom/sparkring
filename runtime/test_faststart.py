@@ -99,7 +99,7 @@ def test_download_container_overrides_inherited_offline_and_root_cache_settings(
 
 
 def test_quickstart_names_every_major_gate():
-    text = (ROOT / "docs/QUICKSTART.md").read_text(encoding="utf-8")
+    text = (ROOT / "docs/NF3_QUICKSTART.md").read_text(encoding="utf-8")
     for required in (
         "bootstrap_nf3.py",
         "builds the small NF3 adapter layer",
@@ -133,6 +133,16 @@ def test_readme_and_quickstart_link_exhaustive_prerequisites():
         "NVFP4/FP8-RoPE",
     ):
         assert required in prerequisites
+
+
+def test_default_quickstart_selects_exl3_and_preserves_nf3_alternative():
+    quickstart = (ROOT / "docs/QUICKSTART.md").read_text(encoding="utf-8")
+    nf3 = (ROOT / "docs/NF3_QUICKSTART.md").read_text(encoding="utf-8")
+    assert "python scripts/sparkring_recipe.py plan" in quickstart
+    assert "bootstrap_exl3.py" in quickstart
+    assert "sparkring_exl3_lmcache_launcher.py" in quickstart
+    assert "NF3_QUICKSTART.md" in quickstart
+    assert "bootstrap_nf3.py" in nf3
 
 
 def test_nvfp4_rope8_layer_preserves_nf3_and_restores_only_mla():

@@ -14,8 +14,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 RECIPES = ROOT / "recipes"
-DEFAULT_RECIPE = "glm52-nf3-hybrid"
+NF3_RECIPE = "glm52-nf3-hybrid"
 EXL3_RECIPE = "glm52-exl3-tr3-3.25bpw"
+DEFAULT_RECIPE = EXL3_RECIPE
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 OCI_DIGEST_RE = re.compile(r"^.+@sha256:[0-9a-f]{64}$")
 
@@ -68,7 +69,7 @@ def _require_commit(value: object, field: str) -> None:
 def _validate(recipe: dict[str, Any]) -> None:
     if recipe["schema"] != "sparkring-recipe/v1":
         raise RecipeError("schema must be sparkring-recipe/v1")
-    if recipe["recipe_id"] == DEFAULT_RECIPE:
+    if recipe["recipe_id"] == NF3_RECIPE:
         _validate_nf3(recipe)
     elif recipe["recipe_id"] == EXL3_RECIPE:
         _validate_exl3(recipe)
@@ -101,9 +102,9 @@ def _validate_publication(recipe: dict[str, Any]) -> None:
 
 
 def _validate_nf3(recipe: dict[str, Any]) -> None:
-    if recipe["default"] is not True:
-        raise RecipeError("the NF3 recipe must remain the default")
-    if recipe["maturity"] != "public-clean-checkout-live-validated":
+    if recipe["default"] is not False:
+        raise RecipeError("the NF3 recipe must remain a non-default alternative")
+    if recipe["maturity"] != "accepted":
         raise RecipeError(
             "the NF3 recipe maturity must match the accepted public live gate"
         )
@@ -177,7 +178,7 @@ def _validate_nf3(recipe: dict[str, Any]) -> None:
             "reported_kv_tokens": 511488,
         },
         "nvfp4-rope8": {
-            "maturity": "public-clean-checkout-live-validated",
+            "maturity": "accepted",
             "kv_cache_dtype": "nvfp4_ds_mla",
             "scale_mode": "per-token",
             "reported_kv_tokens": 875520,
@@ -194,8 +195,8 @@ def _option_values(args: list[object], option: str) -> list[object]:
 
 
 def _validate_exl3(recipe: dict[str, Any]) -> None:
-    if recipe["default"] is not False:
-        raise RecipeError("the EXL3 recipe is experimental and cannot be default")
+    if recipe["default"] is not True:
+        raise RecipeError("the validated EXL3 recipe must remain the default")
     if recipe["maturity"] != "live-validated":
         raise RecipeError("the EXL3 recipe maturity must remain live-validated")
     _validate_hardware(recipe)
@@ -217,7 +218,7 @@ def _validate_exl3(recipe: dict[str, Any]) -> None:
         raise RecipeError("model.expected_tiers must remain K3x192 plus K4x64")
 
     runtime = recipe["runtime"]
-    if runtime.get("base_recipe") != DEFAULT_RECIPE:
+    if runtime.get("base_recipe") != NF3_RECIPE:
         raise RecipeError("EXL3 must derive from the validated NF3 base recipe")
     local_id = runtime.get("validated_local_image_id")
     if not isinstance(local_id, str) or not re.fullmatch(

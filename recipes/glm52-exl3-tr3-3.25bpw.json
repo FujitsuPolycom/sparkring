@@ -2,7 +2,7 @@
   "schema": "sparkring-recipe/v1",
   "recipe_id": "glm52-exl3-tr3-3.25bpw",
   "maturity": "live-validated",
-  "default": false,
+  "default": true,
   "hardware": {
     "platform": "linux/arm64",
     "cuda_arch": "sm_121",
@@ -253,7 +253,7 @@
   "publication": {
     "zero_build_ready": false,
     "local_build_ready": true,
-    "status": "clean-checkout-live-validated-main-advertised-not-accepted-default",
+    "status": "clean-checkout-live-validated-default-not-accepted",
     "image_source_commit": "19523482c29860024c3a3cf51e793e8436e1c441",
     "launcher_fix_commit": "cc9cc1e",
     "identical_four_rank_image": true,

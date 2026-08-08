@@ -9,7 +9,7 @@ every configured CUDA-graph capture, and served a correct OpenAI-compatible
 chat completion.
 
 This is the acceptance receipt for the commands in
-[QUICKSTART.md](QUICKSTART.md). It is deliberately a configuration and
+[NF3_QUICKSTART.md](NF3_QUICKSTART.md). It is deliberately a configuration and
 correctness gate, not a performance claim.
 
 ## Immutable inputs
@@ -140,7 +140,7 @@ therefore use at least 768 tokens when the reasoning parser is enabled.
 
 ## Reproduce the gate
 
-Follow [QUICKSTART.md](QUICKSTART.md), selecting:
+Follow [NF3_QUICKSTART.md](NF3_QUICKSTART.md), selecting:
 
 ```bash
 python scripts/bootstrap_nf3.py execute \

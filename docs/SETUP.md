@@ -4,7 +4,7 @@
 
 > **Use [EXL3_QUICKSTART.md](EXL3_QUICKSTART.md) for the main advertised and
 > currently running installation.** The madeby561 NF3 hybrid remains the
-> accepted deterministic alternative in [QUICKSTART.md](QUICKSTART.md).
+> accepted deterministic alternative in [NF3_QUICKSTART.md](NF3_QUICKSTART.md).
 > Model-specific Aiden/GPTQ commands below are retained as historical
 > reconstruction material, not as a supported setup path.
 
@@ -518,7 +518,7 @@ docker run --rm --gpus all -v "$PWD:/src" -w /src \
 ## Stage 5 — Container image and the SparkRing overlay
 
 > **Current recommendation:** use `runtime/build-faststart.sh`, documented
-> step-by-step in [QUICKSTART.md](QUICKSTART.md). It starts from the exact
+> step-by-step in [NF3_QUICKSTART.md](NF3_QUICKSTART.md). It starts from the exact
 > public base below, applies the recovered delta fail-closed, builds the two
 > native components, and bakes the entrypoint and runtime manifest. The
 > subsections below retain the historical loose-overlay construction for

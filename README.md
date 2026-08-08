@@ -22,7 +22,7 @@ SparkRing’s contribution is to adapt, integrate, and extend those foundations 
 Detailed project and contributor credits are maintained in the acknowledgements and provenance documentation.
 ## Current deployment
 
-SparkRing's main advertised and currently running public-functional
+SparkRing's default, main advertised, and currently running public-functional
 configuration is
 [`willfalco/GLM-5.2-EXL3-TR3-3.25bpw`](https://huggingface.co/willfalco/GLM-5.2-EXL3-TR3-3.25bpw)
 at immutable revision
@@ -47,10 +47,9 @@ bounded gates passed; ten fixed-seed 128-token completions were byte-identical.
 See the [EXL3 quickstart](docs/EXL3_QUICKSTART.md) and
 [evidence-scoped recipe](docs/EXL3_RECIPE.md).
 
-This promotes EXL3+LMCache as the advertised operator configuration, not as a
-blanket correctness or release-acceptance claim. NF3 remains the accepted
-deterministic executable default and supported alternative; its quickstart is
-[here](docs/QUICKSTART.md).
+This makes EXL3+LMCache the public default, not a blanket correctness or
+release-acceptance claim. NF3 remains an accepted deterministic alternative;
+its quickstart is [here](docs/NF3_QUICKSTART.md).
 
 The maintainer's later one-million-token NF3 operator profile is captured
 separately in the
@@ -142,7 +141,7 @@ Inspect either recipe without contacting the cluster:
 
 ```bash
 python scripts/sparkring_recipe.py list
-python scripts/sparkring_recipe.py plan --recipe glm52-exl3-tr3-3.25bpw
+python scripts/sparkring_recipe.py plan
 ```
 
 Transport-only results, historical DCP1 peaks, workload-specific coding
@@ -273,11 +272,12 @@ ARM64 derived image on rank 0, and fans model/image bytes over the 200 GbE
 ring. `--no-launch` leaves the generated contract ready for review before a
 serving cutover.
 
-See [EXL3_QUICKSTART.md](docs/EXL3_QUICKSTART.md) for cabling, site fields,
+See [QUICKSTART.md](docs/QUICKSTART.md) for the shortest setup path and
+[EXL3_QUICKSTART.md](docs/EXL3_QUICKSTART.md) for the full receipt, cabling, site fields,
 review, launch, tail, and bounded gate commands. Start with
-[PREREQUISITES.md](docs/PREREQUISITES.md) on a new cluster. NF3 remains the
-accepted deterministic executable default and is available through the
-[NF3 quickstart](docs/QUICKSTART.md).
+[PREREQUISITES.md](docs/PREREQUISITES.md) on a new cluster. NF3 remains an
+accepted deterministic alternative through the
+[NF3 quickstart](docs/NF3_QUICKSTART.md).
 
 ## Offline contributor quickstart
 
@@ -294,27 +294,27 @@ ruff check --select E,F,W --ignore E501 --exclude runtime/patches .
 
 ## Site configuration
 
-Create local configuration from the sanitized templates:
+Create local site configuration from the sanitized template:
 
 ```bash
 cp scripts/config/site.example.yaml scripts/config/site.yaml
-cp scripts/config/launch.example.json scripts/config/launch.json
 ```
 
 Set hosts, interfaces, fabric addresses, hashes, image digest, and model path.
-Then run the read-only preflight:
+Then follow the default [EXL3 quickstart](docs/QUICKSTART.md), which generates
+the exact ignored EXL3 launch profile. The checked-in `launch.example.json`
+and `gate.example.json` belong to the accepted NF3 alternative; they are not
+EXL3 templates.
+
+Run the read-only site preflight:
 
 ```bash
 python scripts/sparkring_site.py scripts/config/site.yaml
 python scripts/preflight.py --site scripts/config/site.yaml
-python scripts/sparkring_launcher.py \
-  --site scripts/config/site.yaml \
-  --launch-config scripts/config/launch.json \
-  plan
 ```
 
-Planning is connection-free. Preflight is read-only. Starting containers
-requires an explicit `start --execute`.
+Recipe and launcher planning are connection-free. Preflight is read-only.
+Starting containers requires an explicit `--execute` operation.
 
 See [scripts/config/README.md](scripts/config/README.md) and
 [docs/SETUP.md](docs/SETUP.md).
@@ -343,7 +343,7 @@ scripts/config/        sanitized site and launch templates
 spark_transport/       SIRCL transport, probes, tests, and vLLM adapters
 sparkcache/            persistent NVMe context cache
 docs/ARCHITECTURE.md   transport and runtime design
-docs/QUICKSTART.md     complete four-Spark bring-up
+docs/QUICKSTART.md     default EXL3 four-Spark bring-up
 docs/RESULTS.md        measured results and claim boundaries
 docs/TESTING_HISTORY.md experiment and regression chronology
 docs/STATUS.json       machine-readable component status

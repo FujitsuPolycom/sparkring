@@ -1,8 +1,7 @@
 # GLM-5.2 EXL3 3.25-bpw recipe
 
-Status: **main advertised and currently running public-functional
-configuration; clean-checkout four-Spark live-validated; not the accepted
-deterministic default**
+Status: **default, main advertised, and currently running public-functional
+configuration; clean-checkout four-Spark live-validated; not fully accepted**
 
 This recipe defines the current public EXL3 serving contract for four directly
 cabled DGX Sparks:
@@ -162,12 +161,12 @@ commit `19523482c29860024c3a3cf51e793e8436e1c441`; launcher correction
 | Standard sustained decode | unique 16K C1/C2/C4/C8: 18.33 / 27.61 / 45.11 / 59.40 aggregate tok/s; exact requested concurrency; zero errors |
 | Offline suite | local: 2,046 passed, 13 skipped; clean host: 2,035 passed, 4 skipped, 113 subtests |
 
-This makes EXL3+LMCache CS512 the main advertised and currently running
+This makes EXL3+LMCache CS512 the default, main advertised, and currently running
 public-functional configuration. The evidence is intentionally bounded: it
 does not prove blanket model correctness, LMCache persistence, arbitrary-host
 reproducibility, release promotion, or the complete public-functional
-acceptance matrix. NF3 therefore remains the accepted deterministic executable
-default and supported alternative. SparkCache is a separate implementation
+acceptance matrix. NF3 remains an accepted deterministic alternative.
+SparkCache is a separate implementation
 and is disabled in this profile.
 
 Do not substitute mutable model tags, source heads, image tags, or arbitrary

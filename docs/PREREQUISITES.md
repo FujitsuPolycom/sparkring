@@ -372,5 +372,5 @@ read-only preflight against that resolved contract. Neither starts the model.
 Once every box is true, continue with the
 [EXL3 + LMCache quickstart](EXL3_QUICKSTART.md) for the main advertised
 configuration, or the
-[four-Spark NF3 quickstart](QUICKSTART.md#5-build-verify-distribute-and-launch)
+[four-Spark NF3 quickstart](NF3_QUICKSTART.md#5-build-verify-distribute-and-launch)
 for the accepted deterministic alternative.

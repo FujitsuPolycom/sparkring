@@ -11,16 +11,15 @@ contributors. Read it before changing or running anything in this repository.
   under `runtime/patches/00-reference-vllm/`; the exact historical launch
   artifacts and evidence harness remain maintainer-held, and public-lane
   reproduction of those measurements is pending.
-- The **main advertised and currently running public-functional configuration**
+- The **default, main advertised, and currently running public-functional configuration**
   is EXL3 3.25-bpw plus LMCache CS512. Its receipt-gated public bootstrap built
   one ARM64 image from a clean checkout, distributed the identical image ID to
   four directly cabled Sparks, and passed startup, graph, API, repeated
   fixed-seed 128-token, bounded C1/C2/C8, and post-run health gates. This is
   clean-checkout live validation, not blanket correctness, persistence,
   release promotion, or full public-functional acceptance.
-- NF3 remains the accepted deterministic public-functional default and a
-  supported alternative. Do not change executable default flags merely because
-  EXL3 is the main advertised operator configuration.
+- NF3 remains an accepted deterministic public-functional alternative. Its
+  recipe, bootstrap, and quickstart remain published and explicitly selectable.
 - Never describe a reference-lane number as a result from this checkout.
 
 Machine-readable status is in `docs/STATUS.json`.
@@ -111,11 +110,13 @@ SSH targets, local paths, registry identities, or credentials.
 
 ### Public acceptance work
 
-Start with `docs/QUICKSTART.md`, then
-`scripts/config/{launch,gate}.example.json`. The public launcher is dry-run by
-default; inspect its `plan` output first. Dry-run validates the current lock,
-filled site identity, and local launcher contract without executing them. Any reported
-blocker is not a check to bypass, and a successful plan is not acceptance.
+Start with `docs/QUICKSTART.md` for the default EXL3+LMCache deployment. Its
+bootstrap generates ignored resolved site/profile files and its launcher is
+dry-run by default; inspect the `plan` output before execution. The bounded
+EXL3 gate is `scripts/exl3_live_gate.py`. For the accepted NF3 alternative,
+start with `docs/NF3_QUICKSTART.md` and
+`scripts/config/{launch,gate}.example.json`. Any reported blocker is not a
+check to bypass, and a successful plan is not acceptance.
 
 ### Native or cluster work
 

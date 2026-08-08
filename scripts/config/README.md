@@ -65,7 +65,20 @@ Keep your own `site.yaml` out of version control — it describes your real
 addressing. The repository already ignores the canonical local path
 `scripts/config/site.yaml`; only `site.example.yaml` belongs in the repo.
 
-## Public launcher
+## Default EXL3 launcher
+
+The public default consumes this shared site schema, then generates its exact
+ignored launch contract during bootstrap:
+
+```bash
+python scripts/bootstrap_exl3.py plan \
+  --site scripts/config/site.yaml
+```
+
+Continue with [`docs/QUICKSTART.md`](../../docs/QUICKSTART.md). Do not hand-edit
+an NF3 example launch file into an EXL3 profile.
+
+## NF3 alternative launcher
 
 Copy the launch profile beside the site configuration:
 
@@ -80,10 +93,8 @@ python scripts/sparkring_launcher.py \
 ```
 
 The profile owns the two host-local model paths and the NF3 vLLM contract.
-This generic launcher remains the accepted NF3 executable path. The main
-advertised EXL3+LMCache CS512 configuration uses the same site schema but its
-own bootstrap and launcher; see
-[`docs/EXL3_QUICKSTART.md`](../../docs/EXL3_QUICKSTART.md).
+This generic launcher remains the accepted NF3 executable path. See
+[`docs/NF3_QUICKSTART.md`](../../docs/NF3_QUICKSTART.md).
 
 `launch.example.json` is the conservative `fp8` source profile. Do not edit
 individual KV flags to obtain the larger-capacity layout. Use:
@@ -294,7 +305,7 @@ acceptance result.
 The gate's `runtime.model_identity` paths are not labels copied from the site
 file. During execution it independently reads the repository and immutable
 revision sidecars and hashes the deployed `config.json` on **every** rank. The
-accepted NF3 entrypoint defaults expect:
+accepted NF3 entrypoint expects:
 
 ```text
 /models/your-model/config.json

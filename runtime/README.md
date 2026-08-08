@@ -30,7 +30,8 @@ DeepGEMM, or the GB10 kernel stack.
 
 `Containerfile` plus `build-runtime.sh` remains the full source-reproducible
 lane. Use it when auditing provenance or rebasing the stack, not as a
-prerequisite for a first trial. The operator procedure is
+prerequisite for the NF3 alternative. Its operator procedure is
+[`docs/NF3_QUICKSTART.md`](../docs/NF3_QUICKSTART.md). The default EXL3 path is
 [`docs/QUICKSTART.md`](../docs/QUICKSTART.md).
 
 ## The two-lane model

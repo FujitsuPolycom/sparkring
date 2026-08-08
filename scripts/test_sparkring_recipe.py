@@ -30,11 +30,12 @@ def _exl3_recipe() -> dict:
     )
 
 
-def test_nf3_recipe_is_valid_default_and_local_build_ready():
+def test_nf3_recipe_is_valid_alternative_and_local_build_ready():
     recipe = _recipe()
     recipe_module._validate(recipe)
     assert recipe["recipe_id"] == "glm52-nf3-hybrid"
-    assert recipe["maturity"] == "public-clean-checkout-live-validated"
+    assert recipe["default"] is False
+    assert recipe["maturity"] == "accepted"
     assert recipe["runtime"]["final_image"] is None
     assert recipe["publication"]["zero_build_ready"] is False
     assert recipe["publication"]["local_build_ready"] is True
@@ -103,7 +104,7 @@ def test_exl3_recipe_records_exact_live_and_public_build_contract():
     recipe_module._validate(recipe)
     assert recipe["recipe_id"] == "glm52-exl3-tr3-3.25bpw"
     assert recipe["maturity"] == "live-validated"
-    assert recipe["default"] is False
+    assert recipe["default"] is True
     assert recipe["publication"]["zero_build_ready"] is False
     assert recipe["publication"]["local_build_ready"] is True
     assert recipe["runtime"]["bootstrap_script"] == "scripts/bootstrap_exl3.py"
@@ -172,14 +173,34 @@ def test_recipe_id_with_path_or_empty_segments_is_rejected(recipe_id):
         recipe_module._load(recipe_id)
 
 
-def test_nf3_remains_the_only_default_recipe():
+def test_exl3_is_the_only_default_recipe():
     recipes = [
         recipe_module._load(path.stem)[0]
         for path in sorted((ROOT / "recipes").glob("*.json"))
     ]
     assert [recipe["recipe_id"] for recipe in recipes if recipe["default"]] == [
-        "glm52-nf3-hybrid"
+        "glm52-exl3-tr3-3.25bpw"
     ]
+
+
+def test_no_argument_plan_selects_exl3(capsys):
+    assert recipe_module.main(["plan"]) == 0
+    output = capsys.readouterr().out
+    assert "RECIPE: glm52-exl3-tr3-3.25bpw" in output
+    assert "bootstrap_exl3.py plan" in output
+
+
+def test_repository_status_agrees_with_recipe_default():
+    status = json.loads((ROOT / "docs/STATUS.json").read_text(encoding="utf-8"))
+    lane = status["lanes"]["public-functional"]
+    assert lane["definition"] == "recipes/glm52-exl3-tr3-3.25bpw.json"
+    assert lane["default_configuration"] == lane["definition"]
+    assert lane["accepted_alternative"] == "recipes/glm52-nf3-hybrid.json"
+    assert status["components"]["exl3_recipe"]["default"] is True
+    assert (
+        status["components"]["nf3_recipe"]["default_public_functional_target"]
+        is False
+    )
 
 
 def test_required_nf3_safety_controls_are_fail_closed():
