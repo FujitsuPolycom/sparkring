@@ -1,6 +1,6 @@
 {
   "schema": "sparkring-repository-status/v1",
-  "last_reviewed": "2026-08-07",
+  "last_reviewed": "2026-08-08",
   "lanes": {
     "reference": {
       "maturity": "live-validated",
@@ -221,6 +221,25 @@
       "live_four_rank_startup_through_kv_allocation": true,
       "live_four_rank_acceptance": true,
       "entrypoint": "runtime/public-headless-abi-gate.py"
+    },
+    "generic_runtime": {
+      "maturity": "offline-validated",
+      "lane": "public-functional",
+      "lane_scope": "tooling only; a native generic profile is outside the accepted/current matrix until named and gated",
+      "validation_hardware": "CPU-only Windows workspace; no Spark contacted",
+      "target_hardware": "four-Spark GPU/RDMA cluster",
+      "orchestration_maturity": "offline-validated (focused tests)",
+      "exl3_bridge": "offline-validated (golden-equivalence tests)",
+      "nf3_bridge": "offline-validated (golden-equivalence tests)",
+      "shared_primitives": "sparkring_runtime.py (RemoteAction, execute, run_remote, action_succeeded consumed by sparkring_launcher.py)",
+      "lmcache_composition_boundary": "scripts/sparkring_exl3_lmcache_launcher.py",
+      "execution_semantics": "schema-aware: EXL3=exit-status-only, NF3/generic=action_succeeded+rollback",
+      "attestation_support": "native starts verify the image; NF3 declares the site image; an optional fail-closed hook is configuration evidence, not an independent correctness claim",
+      "live_validation": false,
+      "acceptance": false,
+      "plugin_registry": false,
+      "entrypoint": "scripts/sparkring_generic_launcher.py",
+      "documentation": "docs/GENERIC_RUNTIME.md"
     }
   }
 }

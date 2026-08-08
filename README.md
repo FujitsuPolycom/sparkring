@@ -353,6 +353,7 @@ docs/QUICKSTART.md     default EXL3 four-Spark bring-up
 docs/RESULTS.md        measured results and claim boundaries
 docs/TESTING_HISTORY.md experiment and regression chronology
 docs/STATUS.json       machine-readable component status
+docs/GENERIC_RUNTIME.md  generic profile-driven runtime launcher (offline-validated)
 ```
 
 Coding agents should begin with [AGENTS.md](AGENTS.md).

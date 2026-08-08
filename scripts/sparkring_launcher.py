@@ -5,20 +5,24 @@ Dry-run planning is the default. Remote mutation requires both a mutating
 subcommand and ``--execute``.
 """
 
+
 from __future__ import annotations
 
 import argparse
-import concurrent.futures
 import json
 import re
 import shlex
-import subprocess
+import subprocess  # noqa: F401 — kept for test monkeypatch compatibility
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
-from sparkring_site import SiteConfig, SiteConfigError, load_site
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import sparkring_runtime as runtime  # noqa: E402
+from sparkring_site import SiteConfig, SiteConfigError, load_site  # noqa: E402
 
 SCHEMA = "sparkring-public-launch/v1"
 _GLM52_INDEX_TOPK_PATTERN = (
@@ -87,15 +91,8 @@ class LaunchConfig:
     extra_vllm_args: tuple[str, ...]
 
 
-@dataclass(frozen=True)
-class RemoteAction:
-    rank: int
-    ssh_target: str
-    argv: tuple[str, ...]
-
-    @property
-    def shell_command(self) -> str:
-        return shlex.join(self.argv)
+# RemoteAction is shared from sparkring_runtime (F8 extraction).
+RemoteAction = runtime.RemoteAction
 
 
 def _exact_keys(value: dict, expected: set[str], where: str) -> None:
@@ -760,62 +757,13 @@ def simple_actions(
     return actions
 
 
-def run_remote(action: RemoteAction, timeout: int) -> subprocess.CompletedProcess[str]:
-    # OpenSSH concatenates arguments following the target into one remote shell
-    # command. Passing ``sh``, ``-lc`` and the payload as separate local argv
-    # entries therefore turns ``sh -lc docker run ...`` into a shell whose
-    # command is only ``docker`` and whose remaining words are positional
-    # parameters. Quote the complete remote invocation as one argument.
-    remote_command = shlex.join(("sh", "-lc", action.shell_command))
-    return subprocess.run(
-        [
-            "ssh",
-            "-o",
-            "BatchMode=yes",
-            action.ssh_target,
-            remote_command,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
-
-
-def execute(actions: list[RemoteAction], timeout: int) -> dict[int, dict]:
-    results: dict[int, dict] = {}
-    if not actions:
-        return results
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(actions)) as pool:
-        pending = {
-            action.rank: pool.submit(run_remote, action, timeout) for action in actions
-        }
-        for rank, future in pending.items():
-            try:
-                result = future.result()
-                results[rank] = {
-                    "exit_code": result.returncode,
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
-                }
-            except subprocess.TimeoutExpired as exc:
-                results[rank] = {
-                    "exit_code": 124,
-                    "stdout": exc.stdout or "",
-                    "stderr": exc.stderr or "remote command timed out",
-                }
-    return results
-
-
-def action_succeeded(command: str, result: dict) -> bool:
-    if result["exit_code"] != 0:
-        return False
-    if command == "start":
-        # ``docker run --detach`` must print the created container id. Docker
-        # help also exits zero, so exit status alone is not a sufficient gate.
-        lines = [line.strip() for line in result["stdout"].splitlines()]
-        return any(re.fullmatch(r"[0-9a-f]{12,64}", line) for line in lines)
-    return True
+# run_remote, execute, and action_succeeded are shared from
+# sparkring_runtime (F8 extraction).  The shared implementations are
+# byte-identical to the originals; compatibility re-exports keep
+# existing callers and tests working.
+run_remote = runtime.run_remote
+execute = runtime.execute
+action_succeeded = runtime.action_succeeded
 
 
 def plan_document(command: str, actions: list[RemoteAction]) -> dict:

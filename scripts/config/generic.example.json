@@ -1,0 +1,43 @@
+{
+  "schema": "sparkring-runtime-profile/v1",
+  "profile_id": "example-generic-runtime",
+  "model_family": "example",
+  "engine": "docker",
+  "container_name": "sparkring-generic-example",
+  "image": "registry.example/your-org/your-runtime:0.0.0-REPLACE",
+  "image_id": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "model_host_path": "/srv/models/your-model",
+  "model_container_path": "/models/your-model",
+  "shm_size": "16g",
+  "startup_timeout_seconds": 3600,
+  "environment": {
+    "VLLM_SPARK_MAX_NUM_BATCHED_TOKENS": "4096",
+    "VLLM_SPARK_MAX_NUM_SEQS": "8",
+    "SPARK_CONTEXT_CACHE_ENABLE": "0"
+  },
+  "extra_vllm_args": [
+    "--quantization", "example",
+    "--attention-backend", "B12X_MLA_SPARSE",
+    "--kv-cache-dtype", "fp8",
+    "--max-cudagraph-capture-size", "32",
+    "--enable-prefix-caching",
+    "--enable-chunked-prefill",
+    "--enable-auto-tool-choice",
+    "--load-format", "safetensors",
+    "--served-model-name", "your-model",
+    "--host", "0.0.0.0",
+    "--max-num-batched-tokens", "4096"
+  ],
+  "extra_volumes": [],
+  "extra_labels": {},
+  "privileged": false,
+  "entrypoint": null,
+  "confirmation": null,
+  "identity": {
+    "model_repository": "your-org/your-model",
+    "model_revision": "0000000000000000000000000000000000000000",
+    "model_config_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "attestation_hook": null,
+  "health_check": null
+}
