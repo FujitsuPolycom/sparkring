@@ -2242,3 +2242,737 @@ def test_structured_container_rejects_wrong_schema(tmp_path):
     with pytest.raises(bundle_mod.BundleError) as exc:
         bundle_mod.load_bundle(path)
     assert "schema" in str(exc.value).lower()
+
+
+# ---------------------------------------------------------------------------
+# Rank-scope feature: per-service rank constraint for structured containers
+# ---------------------------------------------------------------------------
+
+
+def _scoped_bundle(tmp_path, ranks=None, **kw):
+    """Create a bundle with a scoped cache sidecar + all-rank serving engine."""
+    sc_path = _write_structured(tmp_path, "cache", _structured_doc())
+    profile = _write_profile(tmp_path, "engine", _generic_doc())
+    cache_svc = _structured_service(
+        "cache", "cache", sc_path,
+        readiness={"kind": "container-running"},
+    )
+    if ranks is not None:
+        cache_svc["ranks"] = ranks
+    engine_svc = _native_service("engine", "serving", profile, depends_on=["cache"])
+    doc = _bundle_doc([cache_svc, engine_svc], **kw)
+    return _write_bundle(tmp_path, doc)
+
+
+def test_ranks_accepted_for_structured_container(tmp_path):
+    """A structured-container cache service with valid ranks must parse."""
+    path = _scoped_bundle(tmp_path, ranks=[0, 1])
+    bundle = bundle_mod.load_bundle(path)
+    cache_svc = [s for s in bundle.services if s.service_id == "cache"][0]
+    assert cache_svc.ranks == frozenset({0, 1})
+    engine_svc = [s for s in bundle.services if s.service_id == "engine"][0]
+    assert engine_svc.ranks is None  # serving always all-ranks
+
+
+def test_ranks_none_default_all_ranks(tmp_path):
+    """No ranks field means all site ranks (backward compatible)."""
+    path = _scoped_bundle(tmp_path)
+    bundle = bundle_mod.load_bundle(path)
+    cache_svc = [s for s in bundle.services if s.service_id == "cache"][0]
+    assert cache_svc.ranks is None
+
+
+@pytest.mark.parametrize("bad_ranks,expected_fragment", [
+    ([], "non-empty"),
+    ([0, 0], "duplicate"),
+    ([-1], "invalid"),
+    ([0, -3], "invalid"),
+    (["0"], "invalid"),
+    ([0, 1, "2"], "invalid"),
+    ([True], "invalid"),
+])
+def test_ranks_invalid_values_rejected(tmp_path, bad_ranks, expected_fragment):
+    """Invalid rank lists must be rejected during structural validation."""
+    path = _scoped_bundle(tmp_path, ranks=bad_ranks)
+    with pytest.raises(bundle_mod.BundleError) as exc:
+        bundle_mod.load_bundle(path)
+    assert expected_fragment in str(exc.value).lower()
+
+
+def test_ranks_rejected_for_runtime_profile(tmp_path):
+    """ranks field must be rejected for runtime-profile serving services."""
+    profile = _write_profile(tmp_path, "engine", _generic_doc())
+    engine_svc = _native_service("engine", "serving", profile, ranks=[0])
+    doc = _bundle_doc([engine_svc])
+    path = _write_bundle(tmp_path, doc)
+    with pytest.raises(bundle_mod.BundleError) as exc:
+        bundle_mod.load_bundle(path)
+    assert "ranks" in str(exc.value).lower()
+    assert "runtime-profile" in str(exc.value).lower() or "structured" in str(exc.value).lower()
+
+
+def test_ranks_rejected_for_structured_serving(tmp_path):
+    """A structured container cannot bypass all-rank serving semantics."""
+    structured = _write_structured(tmp_path, "engine", _structured_doc())
+    engine_svc = _structured_service(
+        "engine", "serving", structured, ranks=[0],
+    )
+    path = _write_bundle(tmp_path, _bundle_doc([engine_svc]))
+    with pytest.raises(bundle_mod.BundleError) as exc:
+        bundle_mod.load_bundle(path)
+    assert "serving" in str(exc.value).lower()
+    assert "structured-container" in str(exc.value).lower()
+
+
+def test_ranks_rejected_for_canonical_bridge(tmp_path):
+    """ranks field must be rejected for canonical-exl3-lmcache-cs512 services."""
+    profile = _write_profile(tmp_path, "bridge", _generic_doc())
+    cache_svc = _bridge_service("cache", "cache", profile, ranks=[0])
+    engine_svc = _bridge_service("engine", "serving", profile, depends_on=["cache"])
+    doc = _bundle_doc([cache_svc, engine_svc], confirmation=None)
+    path = _write_bundle(tmp_path, doc)
+    with pytest.raises(bundle_mod.BundleError) as exc:
+        bundle_mod.load_bundle(path)
+    assert "ranks" in str(exc.value).lower()
+
+
+def test_ranks_unknown_id_rejected_at_plan(tmp_path):
+    """Ranks referencing non-existent site IDs must fail at plan time."""
+    path = _scoped_bundle(tmp_path, ranks=[0, 99])
+    bundle = bundle_mod.load_bundle(path)  # structural validation passes
+    site = load_site(SITE)
+    with pytest.raises(bundle_mod.BundleError) as exc:
+        bundle_mod.bundle_plan(bundle, site)
+    assert "99" in str(exc.value)
+    assert "not found" in str(exc.value).lower()
+
+
+def test_ranks_filters_start_actions(tmp_path):
+    """Scoped cache service start actions must only target scoped ranks."""
+    path = _scoped_bundle(tmp_path, ranks=[0])
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(SITE)
+    plan = bundle_mod.bundle_plan(bundle, site)
+    # Find the cache start phase
+    cache_start = [
+        p for p in plan["phases"]
+        if p["phase"] == "start" and p["service_id"] == "cache"
+    ][0]
+    start_ranks = {a["rank"] for a in cache_start["actions"]}
+    assert start_ranks == {0}
+    # Engine should still target all 4 ranks
+    engine_start = [
+        p for p in plan["phases"]
+        if p["phase"] == "start" and p["service_id"] == "engine"
+    ][0]
+    engine_ranks = {a["rank"] for a in engine_start["actions"]}
+    assert engine_ranks == {0, 1, 2, 3}
+
+
+def test_ranks_filters_stop_and_verify_rollback(tmp_path):
+    """Scoped service stop/verify-rollback must only target scoped ranks."""
+    path = _scoped_bundle(tmp_path, ranks=[1])
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(SITE)
+    plan = bundle_mod.bundle_plan(bundle, site)
+    for phase_name in ("stop", "rollback", "verify_rollback"):
+        phase = [
+            p for p in plan["phases"]
+            if p["phase"] == phase_name and p["service_id"] == "cache"
+        ][0]
+        phase_ranks = {a["rank"] for a in phase["actions"]}
+        assert phase_ranks == {1}, f"{phase_name} ranks: {phase_ranks}"
+
+
+def test_ranks_filters_readiness(tmp_path):
+    """Scoped service readiness must only target scoped ranks."""
+    path = _scoped_bundle(tmp_path, ranks=[2])
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(SITE)
+    plan = bundle_mod.bundle_plan(bundle, site)
+    ready = [
+        p for p in plan["phases"]
+        if p["phase"] == "readiness" and p["service_id"] == "cache"
+    ]
+    assert len(ready) == 1
+    ready_ranks = {a["rank"] for a in ready[0]["actions"]}
+    assert ready_ranks == {2}
+
+
+def test_ranks_exposed_in_plan(tmp_path):
+    """Plan must expose expected ranks per service."""
+    path = _scoped_bundle(tmp_path, ranks=[0, 1])
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(SITE)
+    plan = bundle_mod.bundle_plan(bundle, site)
+    cache_entry = [s for s in plan["services"] if s["service_id"] == "cache"][0]
+    assert cache_entry["ranks"] == [0, 1]
+    engine_entry = [s for s in plan["services"] if s["service_id"] == "engine"][0]
+    assert engine_entry["ranks"] == [0, 1, 2, 3]
+
+
+def test_ranks_exposed_in_explain(tmp_path):
+    """Explain must expose ranks for scoped services."""
+    path = _scoped_bundle(tmp_path, ranks=[0])
+    bundle = bundle_mod.load_bundle(path)
+    explain = bundle_mod.bundle_explain(bundle)
+    cache_entry = [s for s in explain["services"] if s["service_id"] == "cache"][0]
+    assert cache_entry["ranks"] == [0]
+    engine_entry = [s for s in explain["services"] if s["service_id"] == "engine"][0]
+    assert engine_entry["ranks"] is None
+
+
+def test_ranks_collision_only_on_overlapping_ranks(tmp_path):
+    """Collision check should only check ranks where both services run."""
+    # Cache on ranks 0,1 with same container_name prefix as another service
+    # on ranks 2,3 — no collision because ranks don't overlap.
+    sc1 = _write_structured(tmp_path, "c1", _structured_doc(container_name="sparkring-shared"))
+    sc2 = _write_structured(tmp_path, "c2", _structured_doc(container_name="sparkring-shared"))
+    profile = _write_profile(tmp_path, "engine", _generic_doc())
+    doc = _bundle_doc([
+        _structured_service("cache-a", "cache", sc1, ranks=[0, 1],
+                            readiness={"kind": "container-running"}),
+        _structured_service("cache-b", "cache", sc2, ranks=[2, 3],
+                            readiness={"kind": "container-running"}),
+        _native_service("engine", "serving", profile, depends_on=["cache-a", "cache-b"]),
+    ])
+    path = _write_bundle(tmp_path, doc)
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(SITE)
+    # Should not raise — same name on non-overlapping ranks
+    bundle_mod.check_container_name_collisions(bundle, site)
+
+
+def test_ranks_collision_detected_on_overlapping_ranks(tmp_path):
+    """Collision check must detect same name on overlapping ranks."""
+    sc1 = _write_structured(tmp_path, "c1", _structured_doc(container_name="sparkring-shared"))
+    sc2 = _write_structured(tmp_path, "c2", _structured_doc(container_name="sparkring-shared"))
+    profile = _write_profile(tmp_path, "engine", _generic_doc())
+    doc = _bundle_doc([
+        _structured_service("cache-a", "cache", sc1, ranks=[0, 1],
+                            readiness={"kind": "container-running"}),
+        _structured_service("cache-b", "cache", sc2, ranks=[1, 2],
+                            readiness={"kind": "container-running"}),
+        _native_service("engine", "serving", profile, depends_on=["cache-a", "cache-b"]),
+    ])
+    path = _write_bundle(tmp_path, doc)
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(SITE)
+    with pytest.raises(bundle_mod.BundleError) as exc:
+        bundle_mod.check_container_name_collisions(bundle, site)
+    assert "collision" in str(exc.value).lower()
+
+
+def test_ranks_deterministic_ordering_byte_identical(tmp_path):
+    """Equivalent rank orderings must produce byte-identical plans."""
+    sc_path = _write_structured(tmp_path, "cache", _structured_doc())
+    profile = _write_profile(tmp_path, "engine", _generic_doc())
+    doc_a = _bundle_doc([
+        _structured_service("cache", "cache", sc_path, ranks=[2, 0, 1],
+                            readiness={"kind": "container-running"}),
+        _native_service("engine", "serving", profile, depends_on=["cache"]),
+    ])
+    doc_b = _bundle_doc([
+        _structured_service("cache", "cache", sc_path, ranks=[0, 1, 2],
+                            readiness={"kind": "container-running"}),
+        _native_service("engine", "serving", profile, depends_on=["cache"]),
+    ])
+    path_a = _write_bundle(tmp_path, doc_a, "a.json")
+    path_b = _write_bundle(tmp_path, doc_b, "b.json")
+    site = load_site(SITE)
+    plan_a = bundle_mod.bundle_plan(bundle_mod.load_bundle(path_a), site)
+    plan_b = bundle_mod.bundle_plan(bundle_mod.load_bundle(path_b), site)
+    assert plan_a == plan_b
+    assert plan_a["plan_identity"] == plan_b["plan_identity"]
+
+
+def test_ranks_projection_includes_ranks(tmp_path):
+    """Service projection for diff must include ranks for scoped services."""
+    path = _scoped_bundle(tmp_path, ranks=[0, 2])
+    bundle = bundle_mod.load_bundle(path)
+    proj = bundle_mod.bundle_projection(bundle)
+    cache_proj = proj["services"]["cache"]
+    assert cache_proj["ranks"] == [0, 2]
+
+
+def test_ranks_diff_detects_different_scopes(tmp_path):
+    """Diff must detect different rank scopes."""
+    sc_path = _write_structured(tmp_path, "cache", _structured_doc())
+    profile = _write_profile(tmp_path, "engine", _generic_doc())
+    doc_a = _bundle_doc([
+        _structured_service("cache", "cache", sc_path, ranks=[0],
+                            readiness={"kind": "container-running"}),
+        _native_service("engine", "serving", profile, depends_on=["cache"]),
+    ])
+    doc_b = _bundle_doc([
+        _structured_service("cache", "cache", sc_path, ranks=[1],
+                            readiness={"kind": "container-running"}),
+        _native_service("engine", "serving", profile, depends_on=["cache"]),
+    ])
+    path_a = _write_bundle(tmp_path, doc_a, "a.json")
+    path_b = _write_bundle(tmp_path, doc_b, "b.json")
+    diffs = bundle_mod.recursive_diff(
+        bundle_mod.bundle_projection(bundle_mod.load_bundle(path_a)),
+        bundle_mod.bundle_projection(bundle_mod.load_bundle(path_b)),
+    )
+    assert any("ranks" in d.get("field", "") for d in diffs)
+
+
+def test_ranks_execute_start_filters_actions(tmp_path, monkeypatch):
+    """execute_native_start must only start on scoped ranks."""
+    path = _scoped_bundle(tmp_path, ranks=[0])
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(SITE)
+    _poison_remote(monkeypatch)
+    # Poison execute to capture which ranks are attempted
+    captured_ranks: dict[str, list[int]] = {}
+    orig_execute = runtime.execute
+
+    def fake_execute(actions, timeout):
+        if actions:
+            command = actions[0].shell_command
+            key = "cache" if "sparkring-cache" in command else "engine"
+            captured_ranks.setdefault(key, []).extend(
+                sorted(a.rank for a in actions)
+            )
+        return {a.rank: {"exit_code": 0,
+                         "stdout": "a" * 12, "stderr": ""}
+                for a in actions}
+
+    monkeypatch.setattr(runtime, "execute", fake_execute)
+    try:
+        bundle_mod.execute_native_start(
+            bundle, site, confirmation="START-test",
+        )
+    finally:
+        monkeypatch.setattr(runtime, "execute", orig_execute)
+    assert sorted(set(captured_ranks["cache"])) == [0]
+    assert sorted(set(captured_ranks["engine"])) == [0, 1, 2, 3]
+
+
+def test_ranks_execute_status_filters_actions(tmp_path, monkeypatch):
+    """execute_native_status must only check scoped ranks for scoped service."""
+    path = _scoped_bundle(tmp_path, ranks=[1])
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(SITE)
+    _poison_remote(monkeypatch)
+    captured_ranks: dict[str, list[int]] = {}
+    orig_execute = runtime.execute
+
+    def fake_execute(actions, timeout):
+        ranks = sorted(a.rank for a in actions)
+        # Tag by service by looking at the command
+        key = "cache" if any("sparkring-cache" in a.shell_command for a in actions) else "engine"
+        captured_ranks.setdefault(key, []).extend(ranks)
+        return {a.rank: {"exit_code": 0, "stdout": "", "stderr": ""}
+                for a in actions}
+
+    monkeypatch.setattr(runtime, "execute", fake_execute)
+    try:
+        bundle_mod.execute_native_status(bundle, site)
+    finally:
+        monkeypatch.setattr(runtime, "execute", orig_execute)
+    assert captured_ranks.get("cache") == [1]
+    assert sorted(set(captured_ranks.get("engine", []))) == [0, 1, 2, 3]
+
+
+def test_ranks_execute_verify_rollback_filters(tmp_path, monkeypatch):
+    """execute_native_verify_rollback must only check scoped ranks."""
+    path = _scoped_bundle(tmp_path, ranks=[1])
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(SITE)
+    _poison_remote(monkeypatch)
+    captured_ranks: dict[str, list[int]] = {}
+    orig_execute = runtime.execute
+
+    def fake_execute(actions, timeout):
+        ranks = sorted(a.rank for a in actions)
+        key = "cache" if any("sparkring-cache" in a.shell_command for a in actions) else "engine"
+        captured_ranks.setdefault(key, []).extend(ranks)
+        return {a.rank: {"exit_code": 0, "stdout": "", "stderr": ""}
+                for a in actions}
+
+    monkeypatch.setattr(runtime, "execute", fake_execute)
+    try:
+        bundle_mod.execute_native_verify_rollback(bundle, site)
+    finally:
+        monkeypatch.setattr(runtime, "execute", orig_execute)
+    assert captured_ranks.get("cache") == [1]
+    assert sorted(set(captured_ranks.get("engine", []))) == [0, 1, 2, 3]
+
+
+def test_ranks_unknown_id_rejected_at_execute_start(tmp_path, monkeypatch):
+    """execute_native_start must reject unknown rank IDs."""
+    path = _scoped_bundle(tmp_path, ranks=[0, 99])
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(SITE)
+    _poison_remote(monkeypatch)
+    with pytest.raises(bundle_mod.BundleError) as exc:
+        bundle_mod.execute_native_start(
+            bundle, site, confirmation="START-test",
+        )
+    assert "99" in str(exc.value)
+
+
+def test_ranks_unknown_id_rejected_at_execute_status(tmp_path, monkeypatch):
+    """execute_native_status must reject unknown rank IDs."""
+    path = _scoped_bundle(tmp_path, ranks=[0, 99])
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(SITE)
+    _poison_remote(monkeypatch)
+    with pytest.raises(bundle_mod.BundleError) as exc:
+        bundle_mod.execute_native_status(bundle, site)
+    assert "99" in str(exc.value)
+
+
+def test_ranks_unknown_id_rejected_at_execute_verify_rollback(tmp_path, monkeypatch):
+    """execute_native_verify_rollback must reject unknown rank IDs."""
+    path = _scoped_bundle(tmp_path, ranks=[0, 99])
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(SITE)
+    _poison_remote(monkeypatch)
+    with pytest.raises(bundle_mod.BundleError) as exc:
+        bundle_mod.execute_native_verify_rollback(bundle, site)
+    assert "99" in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    "command,extra_args",
+    [
+        ("start", ["--execute", "--confirmation", "START-test"]),
+        ("stop", ["--execute", "--confirmation", "START-test"]),
+        ("rollback", ["--execute", "--confirmation", "START-test"]),
+        ("status", ["--execute"]),
+        ("verify-rollback", ["--execute"]),
+    ],
+)
+def test_ranks_unknown_id_rejected_by_executed_cli(
+    tmp_path, monkeypatch, command, extra_args,
+):
+    """Every executed lifecycle command rejects unknown ranks pre-SSH."""
+    import sparkring_bundle_launcher as launcher
+
+    path = _scoped_bundle(tmp_path, ranks=[0, 99])
+    remote_calls = []
+
+    def fail_if_called(*args, **kwargs):
+        remote_calls.append((args, kwargs))
+        raise AssertionError("remote executor reached")
+
+    monkeypatch.setattr(runtime, "execute", fail_if_called)
+    with pytest.raises(SystemExit) as exc:
+        launcher.main([
+            "--bundle", str(path), "--site", str(SITE), command,
+            *extra_args,
+        ])
+    assert exc.value.code == 2
+    assert remote_calls == []
+
+
+def test_scoped_rank0_readiness_requires_rank0_at_plan(tmp_path):
+    """A rank0 probe cannot silently disappear from a non-rank0 scope."""
+    path = _scoped_bundle(tmp_path, ranks=[2])
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["services"][0]["readiness"] = {
+        "kind": "container-running",
+        "rank_scope": "rank0",
+    }
+    path = _write_bundle(tmp_path, document)
+    bundle = bundle_mod.load_bundle(path)
+    with pytest.raises(bundle_mod.BundleError) as exc:
+        bundle_mod.bundle_plan(bundle, load_site(SITE))
+    assert "rank_scope 'rank0' requires rank 0" in str(exc.value)
+
+
+def test_scoped_rank0_readiness_rejected_before_execute(tmp_path, monkeypatch):
+    """Invalid scoped readiness fails before any remote start action."""
+    path = _scoped_bundle(tmp_path, ranks=[2])
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["services"][0]["readiness"] = {
+        "kind": "container-running",
+        "rank_scope": "rank0",
+    }
+    path = _write_bundle(tmp_path, document)
+    bundle = bundle_mod.load_bundle(path)
+    _poison_remote(monkeypatch)
+    with pytest.raises(bundle_mod.BundleError) as exc:
+        bundle_mod.execute_native_start(
+            bundle, load_site(SITE), confirmation="START-test",
+        )
+    assert "rank_scope 'rank0' requires rank 0" in str(exc.value)
+
+
+def test_ranks_rollback_only_removes_ledgered_scoped_ranks(tmp_path, monkeypatch):
+    """Invocation-local rollback must only remove started scoped ranks."""
+    path = _scoped_bundle(tmp_path, ranks=[0, 1])
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(SITE)
+    _poison_remote(monkeypatch)
+    rollback_ranks: list[int] = []
+    orig_execute = runtime.execute
+
+    def fake_execute(actions, timeout):
+        ranks = sorted(a.rank for a in actions)
+        rollback_ranks.extend(ranks)
+        return {a.rank: {"exit_code": 0, "stdout": "", "stderr": ""}
+                for a in actions}
+
+    monkeypatch.setattr(runtime, "execute", fake_execute)
+    try:
+        # Simulate a start where cache succeeds on rank 0 only, then
+        # engine fails — rollback should remove cache from rank 0 only.
+        call_count = [0]
+
+        def fake_execute_staged(actions, timeout):
+            call_count[0] += 1
+            ranks = sorted(a.rank for a in actions)
+            if call_count[0] == 1:
+                # Cache start: succeed on rank 0, fail on rank 1
+                return {a.rank: {"exit_code": 0 if a.rank == 0 else 1,
+                                 "stdout": "a" * 12 if a.rank == 0 else "",
+                                 "stderr": "" if a.rank == 0 else "fail"}
+                        for a in actions}
+            # Subsequent calls (engine start, rollback) — track rollback
+            if "rm --force" in " ".join(a.shell_command for a in actions):
+                rollback_ranks.extend(ranks)
+            return {a.rank: {"exit_code": 0, "stdout": "a" * 12,
+                             "stderr": ""}
+                    for a in actions}
+
+        monkeypatch.setattr(runtime, "execute", fake_execute_staged)
+        result = bundle_mod.execute_native_start(
+            bundle, site, confirmation="START-test",
+        )
+    finally:
+        monkeypatch.setattr(runtime, "execute", orig_execute)
+    # Rollback should have been attempted
+    assert result.get("rollback") is not None
+    # Cache rollback should only target rank 0 (the only one that started)
+    assert rollback_ranks == [0]
+
+
+# ---------------------------------------------------------------------------
+# Supervisor checkpoint 2: direct-argv / --entrypoint contract
+# ---------------------------------------------------------------------------
+
+def test_structured_start_emits_entrypoint_flag(tmp_path):
+    """docker run must include --entrypoint <argv[0]> before the image."""
+    sc_path = _write_structured(tmp_path, "cache", _structured_doc())
+    profile = _write_profile(tmp_path, "engine", _generic_doc())
+    doc = _bundle_doc([
+        _structured_service("cache", "cache", sc_path),
+        _native_service("engine", "serving", profile, depends_on=["cache"]),
+    ])
+    path = _write_bundle(tmp_path, doc)
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(_site(tmp_path))
+    actions = bundle_mod._native_start_actions(site, bundle.services[0], bundle)
+    cmd = actions[0].shell_command
+    assert "--entrypoint /opt/bin/cache-server" in cmd
+    # argv[0] must NOT appear after the image (it's the entrypoint, not a CMD arg)
+    # Find image_id position; everything after it is CMD args = argv[1:]
+    image_id = "sha256:" + "b" * 64
+    # image_id appears in both the guard and docker run; use last occurrence
+    idx = cmd.rindex(image_id)
+    after_image = cmd[idx + len(image_id):]
+    assert "/opt/bin/cache-server" not in after_image
+    # argv[1:] must appear after the image
+    assert "--port" in after_image
+    assert "6556" in after_image
+
+
+def test_structured_start_entrypoint_overrides_image_entrypoint(tmp_path):
+    """An inherited image ENTRYPOINT cannot override the declared executable.
+
+    Docker's --entrypoint flag always takes precedence over the image's
+    built-in ENTRYPOINT.  Verify the command shape puts argv[0] as
+    --entrypoint so no image entrypoint can intercept it.
+    """
+    sc_path = _write_structured(tmp_path, "cache", _structured_doc(
+        argv=["/opt/venv/bin/lmcache", "server",
+              "--port", "6556", "--kv-Role", "LMCacheWorker"],
+    ))
+    profile = _write_profile(tmp_path, "engine", _generic_doc())
+    doc = _bundle_doc([
+        _structured_service("cache", "cache", sc_path),
+        _native_service("engine", "serving", profile, depends_on=["cache"]),
+    ])
+    path = _write_bundle(tmp_path, doc)
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(_site(tmp_path))
+    actions = bundle_mod._native_start_actions(site, bundle.services[0], bundle)
+    cmd = actions[0].shell_command
+    assert "--entrypoint /opt/venv/bin/lmcache" in cmd
+    image_id = "sha256:" + "b" * 64
+    idx = cmd.rindex(image_id)
+    after_image = cmd[idx + len(image_id):]
+    # Only argv[1:] should follow the image
+    assert "server" in after_image
+    assert "--port" in after_image
+    assert "6556" in after_image
+    assert "--kv-Role" in after_image
+    assert "LMCacheWorker" in after_image
+    # argv[0] must not be duplicated after the image
+    assert "/opt/venv/bin/lmcache" not in after_image
+
+
+def test_structured_start_zero_argument_executable(tmp_path):
+    """A zero-argument executable (argv has only argv[0]) must work."""
+    sc_path = _write_structured(tmp_path, "cache", _structured_doc(
+        argv=["/opt/bin/standalone-cache"],
+    ))
+    profile = _write_profile(tmp_path, "engine", _generic_doc())
+    doc = _bundle_doc([
+        _structured_service("cache", "cache", sc_path),
+        _native_service("engine", "serving", profile, depends_on=["cache"]),
+    ])
+    path = _write_bundle(tmp_path, doc)
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(_site(tmp_path))
+    actions = bundle_mod._native_start_actions(site, bundle.services[0], bundle)
+    cmd = actions[0].shell_command
+    assert "--entrypoint /opt/bin/standalone-cache" in cmd
+    image_id = "sha256:" + "b" * 64
+    # The docker run command itself ends at the image with no trailing args
+    # Nothing should follow the image when argv has only one element
+    # (the guard "test ... && exec ..." is before the docker run)
+    # The docker run command itself ends at the image with no trailing args
+    docker_part = cmd[cmd.index("docker run"):]
+    # Split on image_id — everything after image in the docker command
+    docker_after = docker_part[docker_part.index(image_id) + len(image_id):]
+    # Should be empty or just the closing quote of exec
+    assert "--port" not in docker_after
+    assert "6556" not in docker_after
+
+
+def test_structured_start_arguments_are_exact_tokens(tmp_path):
+    """Arguments must remain exact tokens — no shell interpolation."""
+    sc_path = _write_structured(tmp_path, "cache", _structured_doc(
+        argv=["/opt/bin/cache-server", "--port", "6556",
+              "--extra", "value with spaces", "--flag"],
+    ))
+    profile = _write_profile(tmp_path, "engine", _generic_doc())
+    doc = _bundle_doc([
+        _structured_service("cache", "cache", sc_path),
+        _native_service("engine", "serving", profile, depends_on=["cache"]),
+    ])
+    path = _write_bundle(tmp_path, doc)
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(_site(tmp_path))
+    actions = bundle_mod._native_start_actions(site, bundle.services[0], bundle)
+    cmd = actions[0].shell_command
+    # shlex.join preserves tokens with spaces via quoting
+    assert "--entrypoint /opt/bin/cache-server" in cmd
+    # The value-with-spaces must be quoted, not split
+    assert "value with spaces" in cmd  # shlex.join quotes it but content present
+    image_id = "sha256:" + "b" * 64
+    # The digest occurs in both the identity guard and docker run.  Inspect
+    # arguments after the final occurrence, which is the actual image token.
+    idx = cmd.rindex(image_id)
+    after_image = cmd[idx + len(image_id):]
+    assert "--port" in after_image
+    assert "6556" in after_image
+    assert "--extra" in after_image
+    assert "--flag" in after_image
+
+
+def test_structured_shell_entrypoint_still_rejected(tmp_path):
+    """Shell entrypoints must remain rejected under the entrypoint contract."""
+    for shell in ["/bin/sh", "/bin/bash", "sh", "bash", "/usr/bin/zsh",
+                  "pwsh", "powershell", "cmd", "/bin/ash", "/bin/dash"]:
+        sc_path = _write_structured(tmp_path, f"cache-{shell.replace('/', '_')}",
+                                    _structured_doc(argv=[shell, "-c", "true"]))
+        doc = _bundle_doc([_structured_service("cache", "cache", sc_path)])
+        path = _write_bundle(tmp_path, doc)
+        with pytest.raises(bundle_mod.BundleError) as exc:
+            bundle_mod.load_bundle(path)
+        assert "shell entrypoint" in str(exc.value).lower()
+
+
+def test_structured_start_plan_stable_with_entrypoint(tmp_path):
+    """Plan output must be deterministic and stable with the --entrypoint fix."""
+    sc_path = _write_structured(tmp_path, "cache", _structured_doc())
+    profile = _write_profile(tmp_path, "engine", _generic_doc())
+    doc = _bundle_doc([
+        _structured_service("cache", "cache", sc_path),
+        _native_service("engine", "serving", profile, depends_on=["cache"]),
+    ])
+    path = _write_bundle(tmp_path, doc)
+    site = _site(tmp_path)
+    rc1, out1, _ = _run_cli(path, site, "plan")
+    assert rc1 == 0
+    rc2, out2, _ = _run_cli(path, site, "plan")
+    assert rc2 == 0
+    assert out1 == out2, "plan output must be byte-identical across runs"
+    # Plan must show --entrypoint in the action command
+    assert "--entrypoint" in out1
+    assert "/opt/bin/cache-server" in out1
+
+
+# ---------------------------------------------------------------------------
+# Supervisor checkpoint 2B: naming and representability correction
+# ---------------------------------------------------------------------------
+
+def test_structured_no_doubled_rank_suffix(tmp_path):
+    """container_name base must not end in -rN; builder appends -r{rank}."""
+    sc_path = _write_structured(tmp_path, "cache", _structured_doc(
+        container_name="sparkring-bundle-lmcache-cs512",
+    ))
+    profile = _write_profile(tmp_path, "engine", _generic_doc())
+    doc = _bundle_doc([
+        _structured_service("cache", "cache", sc_path, ranks=[1]),
+        _native_service("engine", "serving", profile, depends_on=["cache"]),
+    ])
+    path = _write_bundle(tmp_path, doc)
+    bundle = bundle_mod.load_bundle(path)
+    site = load_site(_site(tmp_path))
+    actions = bundle_mod._native_start_actions(site, bundle.services[0], bundle)
+    cmd = actions[0].shell_command
+    # The effective name must be base-r1, NOT base-r1-r1
+    assert "sparkring-bundle-lmcache-cs512-r1" in cmd
+    assert "sparkring-bundle-lmcache-cs512-r1-r1" not in cmd
+
+
+def test_disjoint_ranks_same_container_name_no_collision(tmp_path):
+    """Same unsuffixed container_name with disjoint rank scopes must not collide."""
+    # All four cache services share the same container_name base but target
+    # different ranks, so the effective names (base-r0, base-r1, ...) are unique.
+    services = []
+    for rank in range(4):
+        sc_path = _write_structured(tmp_path, f"cache-r{rank}", _structured_doc(
+            container_name="sparkring-bundle-lmcache-cs512",
+        ))
+        services.append(_structured_service(
+            f"lmcache-r{rank}", "cache", sc_path, ranks=[rank],
+        ))
+    profile = _write_profile(tmp_path, "engine", _generic_doc())
+    services.append(_native_service(
+        "engine", "serving", profile,
+        depends_on=[f"lmcache-r{r}" for r in range(4)],
+    ))
+    doc = _bundle_doc(services)
+    path = _write_bundle(tmp_path, doc)
+    # Must load without collision error
+    bundle_mod.load_bundle(path)
+    # Plan must succeed and produce 4 cache + 4 engine = 8 start actions
+    rc, out, err = _run_cli(path, _site(tmp_path), "plan")
+    assert rc == 0, err
+    plan = json.loads(out)
+    # Collect all start-phase actions across all phases entries
+    all_actions = []
+    for phase in plan["phases"]:
+        if phase["phase"] == "start":
+            all_actions.extend(phase["actions"])
+    cache_names = set()
+    for a in all_actions:
+        for token in a["remote_command"].split():
+            if "sparkring-bundle-lmcache-cs512-r" in token:
+                cache_names.add(token)
+    # Each rank produces a unique effective name
+    assert len(cache_names) == 4
+    assert cache_names == {
+        "sparkring-bundle-lmcache-cs512-r0",
+        "sparkring-bundle-lmcache-cs512-r1",
+        "sparkring-bundle-lmcache-cs512-r2",
+        "sparkring-bundle-lmcache-cs512-r3",
+    }

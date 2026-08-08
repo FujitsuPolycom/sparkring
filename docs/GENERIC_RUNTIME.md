@@ -402,6 +402,7 @@ A bundle is a JSON file with schema `sparkring-runtime-bundle/v1`:
       "service_id": "cache",
       "role": "cache",
       "depends_on": [],
+      "ranks": [0, 1],
       "source": {
         "kind": "structured-container",
         "path": "cache-sidecar.json"
@@ -427,6 +428,12 @@ Key constraints:
 - Exactly one `serving` role; zero or more `cache`/`sidecar` roles.
 - Maximum 16 services. Service ids are lowercase, unique, and match
   `^[a-z][a-z0-9-]{0,62}$`.
+- Optional `ranks` is a non-empty, duplicate-free list of non-negative site
+  rank ids. It is accepted only for `structured-container` cache/sidecar
+  services; omitting it targets every site rank. Unknown ids fail closed when
+  a site-aware plan or execution is built. Runtime-profile serving and
+  canonical bridge services always target the complete site because their
+  TP/DCP and lifecycle contracts are whole-stack.
 - `depends_on` is a list of service ids; cycles, self-edges, unknown
   services, and duplicate entries are rejected. `depends_on` is stored as
   a `frozenset` — equivalent permutations produce byte-identical plans.
@@ -450,8 +457,11 @@ Key constraints:
 ### Structured containers
 
 A `structured-container` source runs a declared argv directly — no vLLM
-`serve` subcommand, no TP/DCP flags, no entrypoint override. The container
-definition file has schema `sparkring-structured-container/v1`:
+`serve` subcommand and no TP/DCP flags. `argv[0]` is emitted as Docker's
+explicit `--entrypoint`; only `argv[1:]` follows the image as arguments. This
+prevents an image's inherited ENTRYPOINT from intercepting the declared
+executable. The container definition file has schema
+`sparkring-structured-container/v1`:
 
 ```json
 {
@@ -475,6 +485,13 @@ Mount paths containing `..` are rejected. The
 `privileged` flag should be `false` unless a demonstrated need is
 documented. See `scripts/config/example-cache-sidecar.json` for a template
 example.
+
+Rank scoping belongs to the bundle service, not this container document. It
+applies consistently to plan, start, readiness, status, stop, invocation-local
+rollback, and verify-rollback. Container-name collision checks compare only
+ranks on which two services actually overlap. A service using readiness
+`rank_scope: rank0` must include rank 0 in its `ranks`; otherwise site-aware
+validation fails instead of silently producing no readiness action.
 
 ### Graph ordering
 
@@ -522,6 +539,19 @@ whole-stack rather than invocation-ledgered, and canonical labels do not
 carry the bundle/service/source-profile ownership tuple. Use the canonical
 launcher for execution. A successful offline bridge plan is not new live
 validation or acceptance.
+
+This boundary is intentional and currently necessary. A static generic
+runtime profile cannot truthfully reproduce the canonical EXL3 action set:
+the receipt-gated image entrypoint requires runtime-owned `SPARKRING_*`
+identity variables, while the LMCache connector argument contains server URLs
+derived from the resolved site at action-build time. The canonical launcher
+also owns its exact allocator, privilege, entrypoint, and rollback contract.
+Allowing a profile to inject those runtime-owned values would weaken the
+generic schema's safety boundary. Therefore the bridge remains useful for
+deterministic plan inspection and parity, but only the canonical EXL3+LMCache
+launcher is executable. Rank-scoped structured containers and direct-entrypoint
+execution are generic offline-validated capabilities; they do not constitute
+live EXL3 composition validation.
 
 ### Offline conformance commands
 

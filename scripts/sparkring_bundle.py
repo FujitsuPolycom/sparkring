@@ -23,7 +23,8 @@ Safety:
 * The EXL3+LMCache bridge is plan-only (``execution_supported: false``).
 * Source paths are confined to the resolved bundle directory.
 * Shell entrypoints (sh/bash/pwsh/cmd) are rejected for structured
-  containers.
+  containers; ``argv[0]`` is emitted as Docker ``--entrypoint`` so
+  the image's inherited ENTRYPOINT cannot override it.
 """
 
 from __future__ import annotations
@@ -121,7 +122,9 @@ class StructuredContainer:
     """A bounded structured container definition for cache/sidecar roles.
 
     Unlike ``runtime-profile`` (which appends vLLM ``serve`` flags),
-    a structured container runs the declared ``argv`` directly.
+    a structured container runs ``argv[0]`` as the direct executable via
+    Docker's ``--entrypoint`` flag, passing ``argv[1:]`` as arguments.
+    The image's inherited ENTRYPOINT is never used.
     """
     image: str
     image_id: str
@@ -146,6 +149,10 @@ class BundleService:
     profile: runtime.RuntimeProfile | None  # None for structured/bridge
     structured: StructuredContainer | None  # None for runtime-profile/bridge
     readiness: ReadinessProbe | None = None
+    # Optional per-rank constraint: None = all site ranks (backward
+    # compatible); a frozenset limits start/stop/status/readiness/
+    # verify-rollback to the listed rank IDs only.
+    ranks: frozenset[int] | None = None
     document: dict[str, Any] = field(default_factory=dict)
 
 
@@ -549,7 +556,7 @@ def parse_bundle(
             raise BundleError(f"{where}.services[{index}]: must be an object")
 
         svc_required = {"service_id", "role", "source"}
-        svc_optional = {"depends_on", "readiness"}
+        svc_optional = {"depends_on", "readiness", "ranks"}
         svc_unknown = sorted(set(svc_doc) - svc_required - svc_optional)
         if svc_unknown:
             raise BundleError(
@@ -605,6 +612,34 @@ def parse_bundle(
                 seen_deps.add(dep)
             depends_on = frozenset(raw_deps)
 
+        # Optional per-rank constraint: None = all site ranks.
+        # Permitted only for structured-container cache/sidecar services.
+        svc_ranks: frozenset[int] | None = None
+        if "ranks" in svc_doc:
+            raw_ranks = svc_doc["ranks"]
+            if not isinstance(raw_ranks, list):
+                raise BundleError(
+                    f"{where}.services[{index}].ranks: must be a list"
+                )
+            if not raw_ranks:
+                raise BundleError(
+                    f"{where}.services[{index}].ranks: must be non-empty"
+                )
+            seen_ranks: set[int] = set()
+            for r in raw_ranks:
+                if not isinstance(r, int) or isinstance(r, bool) or r < 0:
+                    raise BundleError(
+                        f"{where}.services[{index}].ranks: "
+                        f"invalid rank id {r!r}"
+                    )
+                if r in seen_ranks:
+                    raise BundleError(
+                        f"{where}.services[{index}].ranks: "
+                        f"duplicate rank id {r}"
+                    )
+                seen_ranks.add(r)
+            svc_ranks = frozenset(raw_ranks)
+
         readiness = _validate_readiness(
             svc_doc.get("readiness"),
             f"{where}.services[{index}].readiness",
@@ -641,6 +676,19 @@ def parse_bundle(
             src_path, effective_dir,
             f"{where}.services[{index}].source.path",
         )
+
+        # Rank scoping is only safe for structured-container cache/sidecar
+        # services.  runtime-profile serving must always target all site
+        # ranks because its generated --nnodes, TP, and DCP contract
+        # still describes the whole site.  Canonical bridge services are
+        # plan-only and delegate to the canonical launcher which has no
+        # rank-scope concept.
+        if svc_ranks is not None and src_kind != SOURCE_STRUCTURED_CONTAINER:
+            raise BundleError(
+                f"{where}.services[{index}]: 'ranks' is only permitted "
+                f"for structured-container cache/sidecar services; "
+                f"source kind {src_kind!r} must target all site ranks"
+            )
 
         profile: runtime.RuntimeProfile | None = None
         structured: StructuredContainer | None = None
@@ -697,6 +745,7 @@ def parse_bundle(
             service_id=svc_id, role=role, depends_on=depends_on,
             source_kind=src_kind, source_path=src_path,
             profile=profile, structured=structured, readiness=readiness,
+            ranks=svc_ranks,
             document=svc_doc,
         ))
 
@@ -812,6 +861,49 @@ def reverse_order(
 
 
 # ---------------------------------------------------------------------------
+# Per-rank expansion constraint
+# ---------------------------------------------------------------------------
+
+
+def _service_ranks(svc: BundleService, site: Any) -> frozenset[int]:
+    """Return the effective rank set for a service.
+
+    If the service declares ``ranks``, only those rank IDs that exist
+    in the site are returned.  Otherwise all site rank IDs are returned
+    (backward-compatible default).
+    """
+    site_ranks = {r.id for r in site.ranks}
+    if svc.ranks is None:
+        return frozenset(site_ranks)
+    return frozenset(svc.ranks) & site_ranks
+
+
+def _validate_service_ranks(
+    bundle: RuntimeBundle, site: Any,
+) -> None:
+    """Fail-closed validation that all declared rank IDs exist in the site."""
+    site_ranks = {r.id for r in site.ranks}
+    for svc in bundle.services:
+        if svc.ranks is None:
+            continue
+        unknown = sorted(svc.ranks - site_ranks)
+        if unknown:
+            raise BundleError(
+                f"service {svc.service_id!r}: rank(s) {unknown} not "
+                f"found in site (available: {sorted(site_ranks)})"
+            )
+        if (
+            svc.readiness is not None
+            and svc.readiness.rank_scope == READINESS_RANK_SCOPE_RANK0
+            and 0 not in svc.ranks
+        ):
+            raise BundleError(
+                f"service {svc.service_id!r}: readiness rank_scope "
+                "'rank0' requires rank 0 in the service's ranks"
+            )
+
+
+# ---------------------------------------------------------------------------
 # Container name collision detection
 # ---------------------------------------------------------------------------
 
@@ -822,8 +914,8 @@ def check_container_name_collisions(
     """Reject per-rank container name collisions across services."""
     names: dict[str, str] = {}
     for svc in bundle.services:
-        for rank in site.ranks:
-            name = _container_name(svc, rank.id)
+        for rank_id in sorted(_service_ranks(svc, site)):
+            name = _container_name(svc, rank_id)
             if name in names and names[name] != svc.service_id:
                 raise BundleError(
                     f"container name collision: {name!r} used by "
@@ -914,7 +1006,10 @@ def _readiness_actions(
         else svc.structured.image_id if svc.structured else ""
     )
 
+    effective_ranks = _service_ranks(svc, site)
     for rank in sorted(site.ranks, key=lambda r: r.id):
+        if rank.id not in effective_ranks:
+            continue
         if probe.rank_scope == READINESS_RANK_SCOPE_RANK0 and rank.id != 0:
             continue
         name = _container_name(svc, rank.id)
@@ -990,7 +1085,11 @@ def _native_start_actions(
         actions = runtime.start_actions(
             site, svc.profile, ownership=_ownership_for(bundle, svc),
         )
-        return sorted(actions, key=lambda a: a.rank)
+        effective = _service_ranks(svc, site)
+        return sorted(
+            (a for a in actions if a.rank in effective),
+            key=lambda a: a.rank,
+        )
     if svc.structured is not None:
         return _structured_start_actions(
             site, svc, bundle,
@@ -1009,7 +1108,10 @@ def _structured_start_actions(
     sc = svc.structured
     ownership = _ownership_for(bundle, svc)
     actions: list[runtime.RemoteAction] = []
+    effective_ranks = _service_ranks(svc, site)
     for rank in sorted(site.ranks, key=lambda r: r.id):
+        if rank.id not in effective_ranks:
+            continue
         name = f"{sc.container_name}-r{rank.id}"
         command: list[str] = [
             "docker", "run", "--detach", "--name", name,
@@ -1029,8 +1131,9 @@ def _structured_start_actions(
             command.extend(("--volume", f"{host_path}:{container_path}:{mode}"))
         for env_key in sorted(sc.environment):
             command.extend(("--env", f"{env_key}={sc.environment[env_key]}"))
+        command.extend(["--entrypoint", sc.argv[0]])
         command.append(sc.image_id)
-        command.extend(sc.argv)
+        command.extend(sc.argv[1:])
 
         # Image verify guard (fail-closed on identity drift)
         guard = (
@@ -1063,7 +1166,10 @@ def _native_stop_actions(
         svc.profile.profile_id if svc.profile
         else svc.structured.image_id if svc.structured else ""
     )
+    effective_ranks = _service_ranks(svc, site)
     for rank in sorted(site.ranks, key=lambda r: r.id):
+        if rank.id not in effective_ranks:
+            continue
         name = _container_name(svc, rank.id)
         script = (
             # Daemon probe
@@ -1097,7 +1203,10 @@ def _native_status_actions(
         svc.profile.profile_id if svc.profile
         else svc.structured.image_id if svc.structured else ""
     )
+    effective_ranks = _service_ranks(svc, site)
     for rank in sorted(site.ranks, key=lambda r: r.id):
+        if rank.id not in effective_ranks:
+            continue
         name = _container_name(svc, rank.id)
         script = (
             f"{engine} info >/dev/null 2>&1 || exit {EXIT_DAEMON_ERROR}; "
@@ -1131,7 +1240,10 @@ def _native_verify_rollback_actions(
         svc.profile.profile_id if svc.profile
         else svc.structured.image_id if svc.structured else ""
     )
+    effective_ranks = _service_ranks(svc, site)
     for rank in sorted(site.ranks, key=lambda r: r.id):
+        if rank.id not in effective_ranks:
+            continue
         name = _container_name(svc, rank.id)
         script = (
             # Daemon probe
@@ -1241,6 +1353,7 @@ def bundle_plan(
 
     ordered = topological_order(bundle.services)
     reversed_ = reverse_order(bundle.services)
+    _validate_service_ranks(bundle, site)
     check_container_name_collisions(bundle, site)
 
     # Item 13: complete plan phases
@@ -1372,6 +1485,10 @@ def bundle_plan(
                         else None
                     ),
                 },
+                "ranks": (
+                    sorted(svc.ranks) if svc.ranks is not None
+                    else sorted({r.id for r in site.ranks})
+                ),
             }
             for svc in ordered
         ],
@@ -1545,6 +1662,8 @@ def _service_projection(svc: BundleService) -> dict[str, Any]:
             "timeout_seconds": svc.readiness.timeout_seconds,
             "interval_seconds": svc.readiness.interval_seconds,
         }
+    if svc.ranks is not None:
+        proj["ranks"] = sorted(svc.ranks)
     return proj
 
 
@@ -1698,6 +1817,10 @@ def bundle_explain(bundle: RuntimeBundle, site: Any = None) -> dict[str, Any]:
                     }
                     if svc.readiness else None
                 ),
+                "ranks": (
+                    sorted(svc.ranks) if svc.ranks is not None
+                    else None
+                ),
             }
             for svc in ordered
         ],
@@ -1762,6 +1885,7 @@ def execute_native_start(
 
     ordered = topological_order(bundle.services)
     reversed_ = reverse_order(bundle.services)
+    _validate_service_ranks(bundle, site)
     check_container_name_collisions(bundle, site)
 
     ledger: set[tuple[str, int]] = set()
@@ -1932,6 +2056,7 @@ def execute_native_status(
 ) -> dict[str, Any]:
     """Execute native status checks.  Item 7: aggregate, nonzero on failure."""
     ordered = topological_order(bundle.services)
+    _validate_service_ranks(bundle, site)
     results: dict[str, Any] = {"phases": []}
     any_failed = False
     for svc in ordered:
@@ -1964,6 +2089,7 @@ def execute_native_verify_rollback(
     a nonzero observation as proven absent.
     """
     reversed_ = reverse_order(bundle.services)
+    _validate_service_ranks(bundle, site)
     results: dict[str, Any] = {"phases": []}
     any_present = False
     any_unknown = False
