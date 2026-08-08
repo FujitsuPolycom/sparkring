@@ -1,0 +1,5 @@
+# The recovered reference-runtime snapshot is preserved source evidence. Keep
+# its two known upstream style findings visible here instead of rewriting it.
+[lint.per-file-ignores]
+"runtime/patches/00-reference-vllm/added/v1/worker/gpu/spec_decode/dspark/speculator.py" = ["E731"]
+"runtime/patches/00-reference-vllm/added/v1/worker/gpu/spec_decode/dspark/utils.py" = ["F401"]
