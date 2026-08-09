@@ -48,21 +48,26 @@ four verdicts:
 - **clean**: no concerning signatures.
 - **bounded_rm_retry**: a kernel RM `NV_ERR_NO_MEMORY` event at the
   evidenced callsite (`_memdescAllocInternal @ mem_desc.c:1359`) occurred
-  during the EXL3 mixed-Trellis materialization window, every event
-  timestamp falls inside that window, the container stayed running
-  (`Running = true`, `RestartCount = 0`, `OOMKilled = false`), no
-  fatal signatures are present, and the event count is within an explicit
-  operator-supplied accepted delta bound (`--rm-event-bound`).
+  during the EXL3 per-layer mixed-Trellis materialization window (first
+  `model.layers.<n>` line through last `model.layers.<n>` line), every
+  event timestamp falls inside that window, a per-rank post-materialization
+  success milestone (`Graph capturing finished`, `Kernel JIT monitor
+  activated`, or rank-0 API readiness) was reached after the window,
+  cluster/API readiness was supplied as a separate fact (`--cluster-ready`),
+  the container stayed running, no fatal signatures are present, and the
+  window event count is within an explicit operator-supplied bound
+  (`--rm-event-bound`).
 - **fatal**: generic `CUDA out of memory`, `torch.OutOfMemoryError`,
   `OOMKilled`, Xid, unexpected restart, SSH loss, fabric/RoCE carrier
   loss, or driver init failure. These are never downgraded regardless of
   later progress.
 - **indeterminate**: a kernel RM event is present but cross-evidence
-  cannot be truthfully correlated — missing/malformed timestamps,
-  event outside the materialization window, no readiness after the window,
-  operator-supplied bound absent, or timezone inconsistency.
-  Indeterminate uses fatal exit policy — the classifier must not silently
-  downgrade unknown NVIDIA errors.
+  cannot be truthfully correlated — missing/malformed timestamps, event
+  outside the per-layer materialization window, no post-materialization
+  success milestone, readiness before window end, year supplied without
+  timezone, operator-supplied bound absent, or cluster readiness not
+  supplied. Indeterminate uses fatal exit policy — the classifier must
+  not silently downgrade unknown NVIDIA errors.
 
 Generic `CUDA out of memory` is **fatal by default**. No repository
 evidence authorizes calling a bare CUDA OOM recoverable merely because
@@ -70,24 +75,39 @@ later progress exists. Only the evidenced kernel RM signature at the
 specific callsite can qualify for `bounded_rm_retry`, and only with
 full cross-evidence including real timestamp comparison.
 
-**The classifier never establishes a safe bound itself.** The operator
-must supply `--rm-event-bound`; if absent and RM events are present,
-the verdict is `indeterminate` (fail closed). Observed successful starts
-have shown deltas of 14/18/36/26 events across ranks — the bound is
-operator-supplied, not hardcoded.
-
-**Timestamp parsing.** The classifier parses kernel ISO timestamps
-(`2026-08-09T00:16:52.113635-05:00`) and vLLM log prefixes
-(`(Worker...) INFO 08-09 05:24:32 [...]`). vLLM timestamps lack year
-and timezone; supply `--engine-log-year` and `--engine-log-tz` for
-those logs. If year or timezone cannot be inferred, the verdict is
+**Per-layer materialization window.** The window is strictly from the
+first `EXL3 mixed Trellis model.layers.<n>` timestamp through the last
+`model.layers.<n>` timestamp, using real normalized datetimes. Lines
+like `mixed Trellis runtime planned` do NOT extend the window. Every
+kernel RM event timestamp must fall inside this window. Events outside
+the window, missing timestamps, or inconsistent timezones produce
 `indeterminate`.
 
-**Materialization window.** The window is derived from the first
-mixed-Trellis materialization line through the last readiness line,
-using real normalized datetimes. Every kernel RM event timestamp must
-fall inside this window. Events outside the window, missing timestamps,
-or inconsistent timezones produce `indeterminate`.
+**Post-materialization success.** A per-rank milestone must be reached
+after the window end: `Graph capturing finished`, `Kernel JIT monitor
+activated`, or rank-0 API readiness (`Engine is ready`/`API server
+started`). Headless ranks (1-3) do not emit rank-0 API strings, so
+graph-finished or JIT-monitor milestones are used instead. LMCache
+server readiness alone does NOT qualify a rank as bounded.
+
+**Cluster readiness.** `--cluster-ready` is a separate operator-supplied
+fact that the cluster/API is serving. It is required independently of
+the per-rank milestone; both must be satisfied for `bounded_rm_retry`.
+
+**Window event count.** `window_event_count` is the count of RM events
+in the supplied kernel-log slice — it is NOT a delta (subtraction).
+Operators must capture a bounded kernel window; the report includes the
+kernel-log hash for provenance. The accepted count bound is
+operator-supplied via `--rm-event-bound`; if absent, the verdict is
+`indeterminate` (fail closed).
+
+**Timestamp parsing.** Kernel ISO timestamps
+(`2026-08-09T00:16:52.113635-05:00`) and vLLM log prefixes
+(`(Worker...) INFO 08-09 05:24:32 [...]`) are parsed and normalized
+to UTC. vLLM timestamps lack year and timezone; supply
+`--engine-log-year` and `--engine-log-tz`. If year is supplied without
+timezone, the classifier fails closed to `indeterminate` rather than
+crashing.
 
 ```bash
 python scripts/sparkring_startup_evidence.py \
@@ -97,16 +117,18 @@ python scripts/sparkring_startup_evidence.py \
   --engine-log engine-r3.log --kernel-log kernel-r3.log \
   --rm-event-bound 50 \
   --engine-log-year 2026 --engine-log-tz=-05:00 \
+  --cluster-ready \
   classify
 ```
 
 This tool classifies supplied evidence and never establishes a safe
-bound itself. It remains offline-validated until run on sanitized
-captured evidence. NVIDIA errors are **never** globally ignored. Each
-signature is classified individually with provenance (line number,
-pattern label, SHA-256). The `bounded_rm_retry` classification is
-evidence-scoped to the legacy EXL3 materialization callsite and does
-not prove all RM errors safe.
+bound itself. `window_event_count` is a count, not a delta. It
+remains offline-validated until run on sanitized captured evidence.
+NVIDIA errors are **never** globally ignored. Each signature is
+classified individually with provenance (line number, pattern label,
+SHA-256). The `bounded_rm_retry` classification is evidence-scoped to
+the legacy EXL3 materialization callsite and does not prove all RM
+errors safe.
 
 ## Headless Wi-Fi management
 

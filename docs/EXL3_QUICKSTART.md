@@ -236,17 +236,24 @@ python scripts/sparkring_startup_evidence.py \
   --engine-log engine-r3.log --kernel-log kernel-r3.log \
   --rm-event-bound 50 \
   --engine-log-year 2026 --engine-log-tz=-05:00 \
+  --cluster-ready \
   classify
 ```
 
 The `--rm-event-bound` is operator-supplied; the classifier never
-establishes a safe bound itself. If absent and RM events are present,
-the verdict is indeterminate (fail closed). vLLM logs require
-`--engine-log-year` and `--engine-log-tz` for timestamp parsing.
+establishes a safe bound itself. `--cluster-ready` is a separate
+operator fact that the cluster is serving; both are required for
+`bounded_rm_retry`. The per-layer materialization window is from first
+`model.layers.<n>` through last `model.layers.<n>`; a per-rank
+post-materialization milestone (`Graph capturing finished`, `Kernel JIT
+monitor activated`, or rank-0 API readiness) must follow. LMCache
+server readiness alone does not qualify. `window_event_count` is a
+count, not a delta. vLLM logs require `--engine-log-year` and
+`--engine-log-tz` (year without tz → indeterminate, no crash).
 Generic `CUDA out of memory` is fatal by default. Only kernel RM
 `NV_ERR_NO_MEMORY` at `_memdescAllocInternal @ mem_desc.c:1359` during
-the EXL3 materialization window can be `bounded_rm_retry`, with full
-cross-evidence including real timestamp comparison. NVIDIA errors are
+the per-layer window can be `bounded_rm_retry`, with full cross-evidence
+including real UTC-normalized timestamp comparison. NVIDIA errors are
 never globally ignored; each signature is classified individually with
 provenance (line number, pattern label, SHA-256). The
 `bounded_rm_retry` classification is evidence-scoped to the legacy EXL3
