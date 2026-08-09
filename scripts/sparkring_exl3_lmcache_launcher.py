@@ -526,6 +526,7 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, KeyError, json.JSONDecodeError, SiteConfigError, exl3.ProfileError) as exc:
         parser.error(str(exc))
 
+    seq = lifecycle_sequence(args.command, profile)
     plan = {
         "schema": "sparkring-public-exl3-lmcache-plan/v1",
         "profile_id": PROFILE_ID,
@@ -533,6 +534,50 @@ def main(argv: list[str] | None = None) -> int:
         "mutates_remote": args.command
         in ("start", "restart-engines", "restart-stack", "rollback"),
         "phases": {name: render(actions) for name, actions in phases.items()},
+        "lifecycle": seq,
+        "rank_completeness": {
+            "required_ranks": len(site.ranks),
+            "rank_ids": sorted(rank.id for rank in site.ranks),
+            "all_phases_have_all_ranks": all(
+                len(actions) == len(site.ranks)
+                for actions in phases.values()
+            ),
+        },
+        "ownership_guards": {
+            "profile_label": "org.sparkring.exl3-profile",
+            "component_label": "org.sparkring.component",
+            "managed_label": "org.sparkring.managed",
+            "rollback_exit_73": (
+                "foreign container with same name but different profile "
+                "label is not removed (exit 73)"
+            ),
+            "rollback_exit_74": (
+                "component label mismatch on targeted removal (exit 74)"
+            ),
+        },
+        "readiness_scope": {
+            "checks": [
+                "container State.Running = true",
+                "RestartCount = 0",
+                "State.OOMKilled = false",
+                "no CUDA out of memory|OutOfMemoryError|OOMKilled in logs",
+                "rank 0: /health HTTP 200 and /v1/models lists served model",
+                "ranks 1-3: container running (headless, no API)",
+                "LMCache server: /healthcheck and /status endpoints responding",
+            ],
+            "does_not_verify": [
+                "model output correctness or determinism",
+                "fabric qualification or transport probe",
+                "performance or throughput",
+                "LMCache cache hit ratio or persistence",
+                "graph capture completeness",
+            ],
+            "timeout_seconds": profile.startup_timeout_seconds + 60,
+        },
+        "plan_disclaimer": (
+            "A successful plan is not acceptance; it describes what the "
+            "launcher would do, not what the deployment achieves"
+        ),
     }
     if args.experimental_memory_profile is not None:
         experiment = EXPERIMENTAL_MEMORY_PROFILES[
@@ -579,10 +624,8 @@ def main(argv: list[str] | None = None) -> int:
     ) and args.confirmation != CONFIRMATION:
         parser.error(f"execute requires --confirmation {CONFIRMATION}")
 
-    # Consume the same lifecycle oracle exported to the bundle bridge for
-    # every executable command, including read-only status/verification and
-    # rollback itself.
-    seq = lifecycle_sequence(args.command, profile)
+    # Reuse the lifecycle sequence already computed for the plan document
+    # so the bundle bridge and execution path share one oracle call.
     results = {}
     any_failed = False
     for step in seq:

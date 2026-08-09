@@ -123,6 +123,64 @@ def test_plan_is_dry_run_and_records_every_phase(tmp_path, capsys):
     }
     assert all(len(actions) == 4 for actions in document["phases"].values())
 
+def test_plan_discloses_lifecycle_sequence(tmp_path, capsys):
+    site_path, profile_path = generated(tmp_path)
+    lmcache.main(
+        ["--site", str(site_path), "--profile", str(profile_path), "plan"]
+    )
+    document = json.loads(capsys.readouterr().out)
+    seq = document["lifecycle"]
+    assert isinstance(seq, list)
+    assert all("phase" in step and "timeout" in step for step in seq)
+    assert all("on_failure" in step for step in seq)
+
+
+def test_plan_discloses_rank_completeness(tmp_path, capsys):
+    site_path, profile_path = generated(tmp_path)
+    lmcache.main(
+        ["--site", str(site_path), "--profile", str(profile_path), "plan"]
+    )
+    document = json.loads(capsys.readouterr().out)
+    rc = document["rank_completeness"]
+    assert rc["required_ranks"] == 4
+    assert rc["rank_ids"] == [0, 1, 2, 3]
+    assert rc["all_phases_have_all_ranks"] is True
+
+
+def test_plan_discloses_ownership_guards(tmp_path, capsys):
+    site_path, profile_path = generated(tmp_path)
+    lmcache.main(
+        ["--site", str(site_path), "--profile", str(profile_path), "plan"]
+    )
+    document = json.loads(capsys.readouterr().out)
+    guards = document["ownership_guards"]
+    assert "org.sparkring.exl3-profile" in guards["profile_label"]
+    assert "exit 73" in guards["rollback_exit_73"]
+    assert "exit 74" in guards["rollback_exit_74"]
+
+
+def test_plan_discloses_readiness_scope_truthfully(tmp_path, capsys):
+    site_path, profile_path = generated(tmp_path)
+    lmcache.main(
+        ["--site", str(site_path), "--profile", str(profile_path), "plan"]
+    )
+    document = json.loads(capsys.readouterr().out)
+    scope = document["readiness_scope"]
+    assert "checks" in scope
+    assert "does_not_verify" in scope
+    assert any("determinism" in item for item in scope["does_not_verify"])
+    assert any("fabric" in item for item in scope["does_not_verify"])
+    assert "timeout_seconds" in scope
+
+
+def test_plan_has_disclaimer(tmp_path, capsys):
+    site_path, profile_path = generated(tmp_path)
+    lmcache.main(
+        ["--site", str(site_path), "--profile", str(profile_path), "plan"]
+    )
+    document = json.loads(capsys.readouterr().out)
+    assert "not acceptance" in document["plan_disclaimer"]
+
 
 def test_experimental_memory_profile_is_explicit_and_consistent(tmp_path):
     site_path, profile_path = generated(tmp_path)
