@@ -9,9 +9,9 @@ automates the mechanical checks below.
 
 This checklist applies to **sustained-decode 16K matrix** evidence
 produced by `llm_decode_bench.py` v0.4.31 with 25-second duration
-cells, 2,048-token maximum, temperature 0, 100% unique contexts,
-DCP4, exact KV budget, three-second decode warmup, prefill skipped,
-and 300-second cell-warmup timeout.
+cells, 1,024-token maximum, temperature 0, 0% unique / 100% shared
+contexts, DCP4, 562,688-token auto-detected KV budget, zero-second
+decode warmup, prefill skipped, and 600-second cell-warmup timeout.
 
 **Never mix bounded 128-token gate figures with sustained 25-second
 matrix figures.** The comparison tool classifies each document as
@@ -41,15 +41,15 @@ exactly between the two documents:
 | Concurrencies list | C1/C2/C4/C8 vs C1/C2/C8 changes the comparison |
 | Duration per cell (seconds) | 25s vs 15s changes sustained measurement |
 | Decode warmup (seconds) | Affects first-cell stability |
-| Max output tokens | 2048 vs 128 changes the measurement window |
+| Max output tokens | 1024 vs 128 changes the measurement window |
 | Temperature | 0 (greedy) vs >0 changes output and throughput |
-| Unique context percent | 100% unique vs shared changes cache behavior |
-| Shared context percent | 0% vs 100% changes cache behavior |
+| Unique context percent | 0% unique vs 100% changes cache behavior |
+| Shared context percent | 100% shared vs 0% changes cache behavior |
 | DCP size | DCP4 vs DCP1 changes the collective path |
-| KV budget (tokens) | Different budgets change capacity and admission |
+| KV budget (tokens) | 562,688 auto-detected vs manual changes capacity |
 | ignore_eos | True vs False changes when streams end |
 | skip_prefill | True vs False changes whether prefill is measured |
-| Cell warmup timeout (seconds) | 300 vs 60 changes readiness-limited suppression |
+| Cell warmup timeout (seconds) | 600 vs 300 vs 60 changes readiness-limited suppression |
 
 If any setting differs, the comparison reports `settings_mismatch` and
 **no delta is claimed**. This is fail-closed.

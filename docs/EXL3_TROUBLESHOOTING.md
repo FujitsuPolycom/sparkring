@@ -264,7 +264,7 @@ python scripts/compare_benchmark_evidence.py \
 ```
 
 The tool refuses to compare bounded 128-token gate figures against
-sustained 25-second matrix figures, verifies 15 workload settings
+sustained 25-second matrix figures, verifies 14 workload settings
 match exactly, and exits non-zero on settings mismatch or invalid
 cells. See the
 [evidence-comparison checklist](EVIDENCE_COMPARISON_CHECKLIST.md) for
