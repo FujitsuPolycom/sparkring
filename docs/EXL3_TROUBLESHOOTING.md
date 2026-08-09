@@ -140,9 +140,9 @@ python scripts/exl3_cache_geometry_gate.py verify
 ```
 
 This checks chunk_size=512, parent_chunk_size=256, lazy L1, LRU eviction,
-lmcache_driven transfer mode, one-local-server-per-rank topology, and
-APC isolation (SPARK_CONTEXT_CACHE_ENABLE=0). It also declares the
-boundary token counts (511/512/513/1024/1025), DCP minimum-hit consensus,
+SparkCache isolation (SPARK_CONTEXT_CACHE_ENABLE=0, APC enabled), and
+declares the boundary token counts (511/512/513/1024/1025), DCP
+minimum-hit consensus,
 and capacity/eviction metrics that the live gate must collect.
 
 A plan for the full geometry + timing suite:

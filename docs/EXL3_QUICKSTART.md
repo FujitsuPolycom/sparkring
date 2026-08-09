@@ -213,7 +213,7 @@ python scripts/exl3_cache_geometry_gate.py plan
 ```
 
 The first command checks chunk_size=512, parent_chunk_size=256, lazy L1, LRU
-eviction, APC isolation, and declares the boundary token counts and capacity
+eviction, SparkCache isolation (disabled, APC enabled), and declares the boundary token counts and capacity
 metrics the live gate must collect. The second discloses the C1/C2/C4/C8
 and 16K/64K cold/warm timing cells that require a live cluster.
 

@@ -3,7 +3,8 @@
 
 Extends the cache acceptance runbook with offline-verifiable configuration
 checks for the LMCache CS512 block-256 geometry, token-count boundaries,
-DCP minimum-hit consensus, APC isolation, namespace isolation, and
+DCP minimum-hit consensus, SparkCache isolation (disabled) with APC
+(native prefix cache) enabled, namespace isolation, and
 capacity/eviction metric declarations.  A companion plan mode discloses
 the C1/C2/C4/C8 and 16K/64K cold/warm timing cells that require a live
 cluster.
@@ -60,12 +61,17 @@ BOUNDARY_TOKEN_COUNTS = [511, 512, 513, 1024, 1025]
 # hit after a warm probe. The minimum is 1, not 0 — a rank with zero hits
 # after a warm probe has a cache miss consensus failure.
 DCP_MINIMUM_HIT_PER_RANK = 1
+# SparkCache isolation: SPARK_CONTEXT_CACHE_ENABLE=0 disables SparkCache
+# (the separate sparkcache/ implementation) so it does not interfere
+# with LMCache attribution. This is NOT APC isolation — APC (vLLM's
+# native prefix cache via --enable-prefix-caching) is enabled in this
+# profile and is distinct from SparkCache.
+SPARKCACHE_DISABLE_ENV = "SPARK_CONTEXT_CACHE_ENABLE"
+SPARKCACHE_DISABLED_VALUE = "0"
 
-# APC (adaptive prefix cache) isolation: the profile must explicitly disable
-# SparkCache (SPARK_CONTEXT_CACHE_ENABLE=0) to ensure APC isolation from
-# the LMCache layer.
-APC_ISOLATION_ENV = "SPARK_CONTEXT_CACHE_ENABLE"
-APC_ISOLATION_REQUIRED_VALUE = "0"
+# APC (native prefix cache) is enabled via --enable-prefix-caching in
+# the vLLM argument vector. This is distinct from SparkCache.
+APC_ENABLE_FLAG = "--enable-prefix-caching"
 
 # Namespace isolation: the probe ID must be unique per acceptance run to
 # prevent cache namespace collision across runs.
@@ -198,19 +204,40 @@ def verify_geometry(recipe: dict[str, Any]) -> dict[str, Any]:
         "failures": failures,
     }
 
+def verify_cache_isolation(recipe: dict[str, Any]) -> dict[str, Any]:
+    """Verify SparkCache is disabled and APC (native prefix cache) is enabled.
 
-def verify_apc_isolation(recipe: dict[str, Any]) -> dict[str, Any]:
-    """Verify APC (SparkCache) is disabled to isolate from LMCache."""
+    These are distinct mechanisms:
+    - SparkCache (SPARK_CONTEXT_CACHE_ENABLE) is the separate sparkcache/
+      implementation; it must be disabled (=0) to avoid interfering with
+      LMCache attribution.
+    - APC (vLLM --enable-prefix-caching) is the native prefix cache; it
+      is enabled in this profile and is a different layer from SparkCache.
+    """
     env = recipe.get("serving", {}).get("environment", {})
-    value = env.get(APC_ISOLATION_ENV)
+    vllm_args = recipe.get("serving", {}).get("vllm_args", [])
+    sparkcache_value = env.get(SPARKCACHE_DISABLE_ENV)
+    apc_enabled = APC_ENABLE_FLAG in vllm_args
+    sparkcache_passed = sparkcache_value == SPARKCACHE_DISABLED_VALUE
+    apc_passed = apc_enabled is True
     return {
-        "check": "apc_isolation",
-        "expected": APC_ISOLATION_REQUIRED_VALUE,
-        "observed": value,
-        "passed": value == APC_ISOLATION_REQUIRED_VALUE,
+        "check": "cache_isolation",
+        "sparkcache_disabled": {
+            "expected": SPARKCACHE_DISABLED_VALUE,
+            "observed": sparkcache_value,
+            "passed": sparkcache_passed,
+        },
+        "apc_native_prefix_cache": {
+            "expected": "enabled",
+            "observed": "enabled" if apc_enabled else "absent",
+            "passed": apc_passed,
+        },
+        "passed": sparkcache_passed and apc_passed,
         "note": (
-            "SPARK_CONTEXT_CACHE_ENABLE=0 ensures native prefix cache "
-            "(SparkCache/APC) does not interfere with LMCache attribution"
+            "SPARK_CONTEXT_CACHE_ENABLE=0 disables SparkCache (the "
+            "separate sparkcache/ implementation), not APC. APC (vLLM "
+            "native prefix cache via --enable-prefix-caching) is enabled "
+            "and is a distinct layer from SparkCache."
         ),
     }
 
@@ -272,13 +299,14 @@ def verify_capacity_metrics() -> dict[str, Any]:
 def verify_all(recipe: dict[str, Any]) -> dict[str, Any]:
     """Run all offline-verifiable geometry and configuration checks."""
     geometry = verify_geometry(recipe)
-    apc = verify_apc_isolation(recipe)
+    cache_isolation = verify_cache_isolation(recipe)
     namespace = verify_namespace_isolation()
     boundaries = verify_boundary_plan()
     dcp = verify_dcp_consensus()
     capacity = verify_capacity_metrics()
 
-    all_checks = [geometry, apc, namespace, boundaries, dcp, capacity]
+    all_checks = [geometry, cache_isolation, namespace, boundaries, dcp, capacity]
+
     all_passed = all(c.get("passed", False) for c in all_checks)
 
     return {

@@ -89,18 +89,46 @@ def test_verify_geometry_fails_on_wrong_topology():
     assert result["passed"] is False
 
 
-def test_verify_apc_isolation_passes():
+def test_cache_isolation_passes_on_published_recipe():
     recipe = load_recipe()
-    result = gate.verify_apc_isolation(recipe)
+    result = gate.verify_cache_isolation(recipe)
     assert result["passed"] is True
-    assert result["observed"] == "0"
+    assert result["sparkcache_disabled"]["observed"] == "0"
+    assert result["apc_native_prefix_cache"]["observed"] == "enabled"
 
 
-def test_verify_apc_isolation_fails_when_sparkcache_enabled():
+def test_cache_isolation_fails_when_sparkcache_enabled():
     recipe = load_recipe()
     recipe["serving"]["environment"]["SPARK_CONTEXT_CACHE_ENABLE"] = "1"
-    result = gate.verify_apc_isolation(recipe)
+    result = gate.verify_cache_isolation(recipe)
     assert result["passed"] is False
+    assert result["sparkcache_disabled"]["passed"] is False
+
+
+def test_cache_isolation_fails_when_apc_disabled():
+    recipe = load_recipe()
+    args = recipe["serving"]["vllm_args"]
+    args.remove("--enable-prefix-caching")
+    result = gate.verify_cache_isolation(recipe)
+    assert result["passed"] is False
+    assert result["apc_native_prefix_cache"]["passed"] is False
+    assert result["apc_native_prefix_cache"]["observed"] == "absent"
+
+
+def test_cache_isolation_check_name_does_not_say_apc_isolation():
+    """The check name must not falsely call this 'apc_isolation'."""
+    recipe = load_recipe()
+    result = gate.verify_cache_isolation(recipe)
+    assert result["check"] == "cache_isolation"
+    assert result["check"] != "apc_isolation"
+
+
+def test_cache_isolation_note_distinguishes_sparkcache_from_apc():
+    """The note must explicitly state SparkCache and APC are distinct."""
+    recipe = load_recipe()
+    result = gate.verify_cache_isolation(recipe)
+    assert "SparkCache" in result["note"]
+    assert "distinct" in result["note"]
 
 
 def test_verify_namespace_isolation():
