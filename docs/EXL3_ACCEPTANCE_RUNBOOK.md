@@ -352,7 +352,8 @@ python -m pytest \
   scripts/test_exl3_cache_acceptance.py \
   scripts/test_exl3_cache_geometry_gate.py \
   scripts/test_sparkring_exl3_lmcache_launcher.py \
-  scripts/test_sparkring_startup_evidence.py -q
+  scripts/test_sparkring_startup_evidence.py \
+  scripts/test_compare_benchmark_evidence.py -q
 
 ruff check --select E,F,W --ignore E501 \
   scripts/acceptance_gate.py \
@@ -360,7 +361,8 @@ ruff check --select E,F,W --ignore E501 \
   scripts/exl3_cache_acceptance.py \
   scripts/exl3_cache_geometry_gate.py \
   scripts/sparkring_exl3_lmcache_launcher.py \
-  scripts/sparkring_startup_evidence.py
+  scripts/sparkring_startup_evidence.py \
+  scripts/compare_benchmark_evidence.py
 ```
 
 Also verify the LMCache CS512 geometry and startup evidence classifier:

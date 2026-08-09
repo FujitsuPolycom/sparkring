@@ -249,6 +249,38 @@ timeout is not proof of KV exhaustion. To resolve:
 A valid result requires exact effective concurrency and zero request
 errors. Do not quote suppressed or partially populated measurements.
 
+## Comparing cache-off vs cache-on benchmark evidence
+
+When comparing sustained 16K C1/C2/C4/C8 benchmark JSON between a
+cache-off baseline and a cache-on candidate, use the offline
+evidence-comparison tool to verify workload settings match before
+claiming any delta:
+
+```bash
+python scripts/compare_benchmark_evidence.py \
+    --baseline evidence/cache-off-16k.json \
+    --candidate evidence/cache-on-16k.json \
+    --strict
+```
+
+The tool refuses to compare bounded 128-token gate figures against
+sustained 25-second matrix figures, verifies 15 workload settings
+match exactly, and exits non-zero on settings mismatch or invalid
+cells. See the
+[evidence-comparison checklist](EVIDENCE_COMPARISON_CHECKLIST.md) for
+the full pre-comparison requirements and claim labels. Never mix
+evidence between cache layers (native APC, LMCache, SparkCache)
+without specifying which were enabled or disabled.
+
+## LMCache throughput regression investigation
+
+Ranked hypotheses for LMCache throughput regression and EXL3 prefill
+limits from code and configuration analysis are in
+[LMCACHE_REGRESSION_INVESTIGATION.md](LMCACHE_REGRESSION_INVESTIGATION.md).
+Each hypothesis has a proposed one-variable-at-a-time experiment.
+No live experiments were run; all hypotheses require live evidence to
+confirm or reject.
+
 ## Prohibited claims
 
 - Do not describe EXL3+LMCache as "accepted" — it is live-validated,
