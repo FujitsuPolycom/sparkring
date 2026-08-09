@@ -39,13 +39,13 @@ Mitigation:
 - If page-cache pressure causes a host OOM, the LMCache server or engine
   container may be killed. Check `docker inspect` for `OOMKilled` and
   use the startup evidence classifier to distinguish this from a
-  recoverable RM allocation retry.
+  recoverable OOM.
 
-## Bounded RM allocation retries versus fatal signals
+## Recoverable OOM versus fatal signals
 
-The PyTorch expandable-segments allocator (`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`)
-can log `CUDA out of memory` during KV-cache allocation and then retry
-with a smaller pool. This is a **recoverable** condition if:
+The EXL3 profile sets `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False`.
+A `CUDA out of memory` line during startup is classified as **recoverable**
+if:
 
 - the container stays running;
 - a subsequent progress line appears (e.g. `KV cache allocated`,

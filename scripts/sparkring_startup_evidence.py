@@ -4,11 +4,13 @@
 Parses engine and LMCache-server container logs and Docker state to classify
 startup evidence into three categories:
 
-- **recoverable**: bounded legacy mixed-Trellis RM allocation retries where
-  the container stayed running and eventually reached readiness.  The
-  ``CUDA out of memory`` string can appear in this context because the
-  PyTorch expandable-segments allocator retries with a smaller pool; the
-  retry succeeds and startup continues.
+- **recoverable**: a ``CUDA out of memory`` line appears during startup but
+  the container stayed running and a progress or readiness line appears
+  after the OOM line, indicating the allocator recovered.  The EXL3 profile
+  sets ``PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False``; the
+  recoverable classification is based solely on container liveness plus
+  observed progress after the OOM, not on any invented allocator-internal
+  retry signature.
 - **fatal**: Xid GPU errors, OOM-killed containers, unexpected restarts, SSH
   connection failures, or fabric/RoCE initialisation failures.  These are
   never ignored.
@@ -33,11 +35,11 @@ Usage::
         --engine-log engine-r0.log classify
 
 The script intentionally does **not** globally ignore ``CUDA out of memory``.
-Instead, it distinguishes a recoverable retry (the allocator retries and
-startup continues) from a fatal OOM (the container died or the process
-exited).  The distinction is based on whether the container is still running
-and whether a subsequent readiness or model-load line appears after the OOM
-message.
+Instead, it distinguishes a recoverable OOM (the container stayed running
+and a progress or readiness line appears after the OOM) from a fatal OOM
+(the container died or the process exited).  No invented allocator-internal
+retry signature is used; the classification is based solely on container
+liveness and observed progress after the OOM message.
 """
 
 from __future__ import annotations
@@ -109,24 +111,6 @@ _DRIVER_FAIL = re.compile(
     re.IGNORECASE,
 )
 
-# Recoverable: PyTorch RM allocation retry (expandable segments)
-# The allocator logs "CUDA out of memory" then retries with a smaller pool.
-# This is the bounded legacy mixed-Trellis RM allocation retry.
-_RM_RETRY = re.compile(
-    r"CUDA out of memory.*(?:retry|expandable|segment|attempting|"
-    r"free|reserved|allocated)\d*|"
-    r"PYTORCH_CUDA_ALLOC_CONF.*retry|"
-    r"expandable_segments:True.*retry",
-    re.IGNORECASE,
-)
-
-# Recoverable: allocator printed OOM but then continued
-_ALLOC_CONTINUE = re.compile(
-    r"CUDA out of memory.*(?:Trying|Allocating|Retrying|Reserving|"
-    r"after\s+freeing)",
-    re.IGNORECASE,
-)
-
 # Neutral: lines indicating successful progress after a potential OOM
 _PROGRESS = re.compile(
     r"Model loaded|"
@@ -159,10 +143,9 @@ ALL_FATAL_PATTERNS = [
     ("driver_failure", _DRIVER_FAIL),
 ]
 
-RECOVERABLE_PATTERNS = [
-    ("rm_allocation_retry", _RM_RETRY),
-    ("alloc_retry_continue", _ALLOC_CONTINUE),
-]
+# No invented recoverable signature patterns. The only recoverable signal
+# is a bare "CUDA out of memory" line followed by a progress line while
+# the container is still running (see classify_log below).
 
 
 class ConfigError(ValueError):
@@ -199,16 +182,7 @@ def classify_log(text: str, *, container_running: bool = True) -> dict[str, Any]
                     "line_number": index,
                     "line": line.strip()[:500],
                 })
-        for label, pattern in RECOVERABLE_PATTERNS:
-            if pattern.search(line):
-                recoverable_hits.append({
-                    "pattern": label,
-                    "line_number": index,
-                    "line": line.strip()[:500],
-                })
-        # Track ALL lines mentioning "CUDA out of memory" for progress
-        # detection — including RM retry lines that already matched
-        # recoverable patterns.
+        # Track ALL lines mentioning OOM for progress detection.
         if "CUDA out of memory" in line.upper() or "out of memory" in line.lower():
             oom_line_numbers.append(index)
         if _PROGRESS.search(line) or _LMCACHE_READY.search(line):
@@ -353,11 +327,13 @@ def aggregate_report(rank_reports: list[dict[str, Any]]) -> dict[str, Any]:
             "does not contact or mutate the cluster"
         ),
         "classification_note": (
-            "Bounded RM allocation retries (CUDA out of memory followed by "
-            "progress) are classified recoverable when the container stayed "
+            "A CUDA out of memory line followed by a progress or readiness "
+            "line is classified recoverable when the container stayed "
             "running. Xid, OOMKilled, unexpected restarts, SSH failures, "
             "fabric failures, and bare OOM without subsequent progress are "
-            "fatal. NVIDIA errors are never globally ignored."
+            "fatal. NVIDIA errors are never globally ignored. No invented "
+            "allocator-internal retry signature is used; the EXL3 profile "
+            "sets expandable_segments:False."
         ),
     }
 

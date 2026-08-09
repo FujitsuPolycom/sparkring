@@ -23,11 +23,10 @@ CLEAN_ENGINE = """\
 [INFO] Engine is ready
 """
 
-RM_RETRY_ENGINE = """\
+OOM_WITH_PROGRESS = """\
 [INFO] Starting vLLM engine...
 [INFO] Loading model from /models/glm52
-[WARN] CUDA out of memory. Attempting to free reserved blocks.
-[WARN] PYTORCH_CUDA_ALLOC_CONF expandable_segments:True retry
+[ERROR] CUDA out of memory. Tried to allocate 2.00 GiB.
 [INFO] KV cache allocated: 562688 tokens
 [INFO] Engine is ready
 """
@@ -83,13 +82,14 @@ def test_clean_log_classifies_clean():
     assert result["recoverable_signatures"] == []
 
 
-def test_rm_retry_with_progress_classifies_recoverable():
-    result = evidence.classify_log(RM_RETRY_ENGINE, container_running=True)
+def test_oom_with_progress_classifies_recoverable():
+    """A CUDA OOM line followed by a progress line while the container
+    is running must classify as recoverable — no invented signature."""
+    result = evidence.classify_log(OOM_WITH_PROGRESS, container_running=True)
     assert result["verdict"] == "recoverable"
     assert len(result["recoverable_signatures"]) >= 1
     assert result["fatal_signatures"] == []
     assert result["progress_after_oom"] is True
-
 
 def test_bare_oom_no_progress_classifies_fatal():
     result = evidence.classify_log(BARE_OOM_NO_PROGRESS, container_running=True)
@@ -196,7 +196,7 @@ def test_cli_missing_file_config_error(tmp_path):
 def test_rank_aggregation_worst_verdict():
     report = evidence.classify_rank(
         0,
-        engine_log=RM_RETRY_ENGINE,
+        engine_log=OOM_WITH_PROGRESS,
         server_log=SERVER_OOM,
         engine_running=True,
         server_running=True,
@@ -219,7 +219,7 @@ def test_aggregate_report_fatal_wins():
     ranks = [
         evidence.classify_rank(0, engine_log=CLEAN_ENGINE),
         evidence.classify_rank(1, engine_log=XID_FATAL),
-        evidence.classify_rank(2, engine_log=RM_RETRY_ENGINE),
+        evidence.classify_rank(2, engine_log=OOM_WITH_PROGRESS),
         evidence.classify_rank(3, engine_log=CLEAN_ENGINE),
     ]
     report = evidence.aggregate_report(ranks)
@@ -242,7 +242,7 @@ def test_aggregate_report_all_clean():
 
 def test_aggregate_report_recoverable():
     ranks = [
-        evidence.classify_rank(r, engine_log=RM_RETRY_ENGINE)
+        evidence.classify_rank(r, engine_log=OOM_WITH_PROGRESS)
         for r in range(4)
     ]
     report = evidence.aggregate_report(ranks)
@@ -289,7 +289,7 @@ def test_cli_requires_at_least_one_log(capsys):
 def test_cli_multi_rank(tmp_path, capsys):
     logs = []
     for rank, content in enumerate(
-        [CLEAN_ENGINE, RM_RETRY_ENGINE, XID_FATAL, CLEAN_ENGINE]
+        [CLEAN_ENGINE, OOM_WITH_PROGRESS, XID_FATAL, CLEAN_ENGINE]
     ):
         path = tmp_path / f"engine-r{rank}.log"
         path.write_text(content, encoding="utf-8")
@@ -336,21 +336,59 @@ def test_cli_engine_dead_promotes_oom_to_fatal(tmp_path, capsys):
 
 def test_nvidia_errors_not_globally_ignored():
     """The classifier must not ignore all NVIDIA errors; it must
-    distinguish recoverable RM retries from fatal Xid/OOM/driver errors."""
-    # A log with only RM retry patterns should be recoverable
-    retry_only = (
-        "CUDA out of memory. Attempting to free reserved blocks.\n"
+    distinguish a recoverable OOM (with progress) from fatal Xid/driver errors."""
+    # A bare OOM followed by progress is recoverable
+    oom_progress = (
+        "CUDA out of memory. Tried to allocate 2.00 GiB.\n"
         "KV cache allocated: 562688 tokens\n"
         "Engine is ready\n"
     )
-    result = evidence.classify_log(retry_only, container_running=True)
+    result = evidence.classify_log(oom_progress, container_running=True)
     assert result["verdict"] == "recoverable"
 
-    # A log with Xid should be fatal even if an RM retry also appears
+    # A log with Xid should be fatal even if progress also appears
     mixed = (
-        "CUDA out of memory. Attempting to free reserved blocks.\n"
+        "CUDA out of memory. Tried to allocate 2.00 GiB.\n"
         "NVRM: Xid 43\n"
         "KV cache allocated\n"
     )
     result = evidence.classify_log(mixed, container_running=True)
     assert result["verdict"] == "fatal"
+
+
+def test_no_invented_recoverable_patterns():
+    """No invented allocator-internal retry signatures must exist.
+    The classifier must not use patterns like expandable_segments:True
+    or 'Trying' that don't match real PyTorch/vLLM log output."""
+    # The EXL3 profile sets expandable_segments:False, so a pattern
+    # matching expandable_segments:True can never fire on real logs.
+    assert not hasattr(evidence, "_RM_RETRY")
+    assert not hasattr(evidence, "_ALLOC_CONTINUE")
+    assert not hasattr(evidence, "RECOVERABLE_PATTERNS")
+
+
+def test_recoverable_uses_oom_plus_progress_only():
+    """The only recoverable signal is: OOM line + progress line + container alive.
+    No invented signature pattern should be matched."""
+    log = (
+        "CUDA out of memory. Tried to allocate 2.00 GiB.\n"
+        "Model loaded successfully\n"
+    )
+    result = evidence.classify_log(log, container_running=True)
+    assert result["verdict"] == "recoverable"
+    sigs = result["recoverable_signatures"]
+    assert len(sigs) == 1
+    assert sigs[0]["pattern"] == "bare_oom_with_progress"
+
+
+def test_real_pytorch_oom_format_classified():
+    """Real PyTorch OOM format: 'CUDA out of memory. Tried to allocate
+    X GiB. The device has Y GiB free...' must be detected as OOM."""
+    log = (
+        "CUDA out of memory. Tried to allocate 2.00 GiB. "
+        "The device has 0.50 GiB free in total.\n"
+        "Model loaded successfully\n"
+    )
+    result = evidence.classify_log(log, container_running=True)
+    assert result["verdict"] == "recoverable"
+    assert result["progress_after_oom"] is True
