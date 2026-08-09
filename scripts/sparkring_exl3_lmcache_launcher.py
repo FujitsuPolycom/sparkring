@@ -383,6 +383,24 @@ def lifecycle_sequence(
         for name, timeout in raw
     ]
 
+
+def rank_completeness(phases: dict[str, list[exl3.RemoteAction]], site) -> dict:
+    """Describe whether every lifecycle phase targets every configured rank."""
+    required = sorted(rank.id for rank in site.ranks)
+    phase_rank_ids = {
+        name: sorted(action.rank for action in actions)
+        for name, actions in phases.items()
+    }
+    return {
+        "required_ranks": len(required),
+        "rank_ids": required,
+        "phase_rank_ids": phase_rank_ids,
+        "all_phases_have_all_ranks": all(
+            rank_ids == required for rank_ids in phase_rank_ids.values()
+        ),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--site", required=True)
@@ -411,6 +429,7 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, KeyError, json.JSONDecodeError, SiteConfigError, exl3.ProfileError) as exc:
         parser.error(str(exc))
 
+    seq = lifecycle_sequence(args.command, profile)
     plan = {
         "schema": "sparkring-public-exl3-lmcache-plan/v1",
         "profile_id": PROFILE_ID,
@@ -418,6 +437,43 @@ def main(argv: list[str] | None = None) -> int:
         "mutates_remote": args.command
         in ("start", "restart-engines", "restart-stack", "rollback"),
         "phases": {name: render(actions) for name, actions in phases.items()},
+        "lifecycle": seq,
+        "rank_completeness": rank_completeness(phases, site),
+        "ownership_guards": {
+            "profile_label": "org.sparkring.exl3-profile",
+            "component_label": "org.sparkring.component",
+            "managed_label": "org.sparkring.managed",
+            "rollback_exit_73": (
+                "foreign container with same name but different profile "
+                "label is not removed (exit 73)"
+            ),
+            "rollback_exit_74": (
+                "component label mismatch on targeted removal (exit 74)"
+            ),
+        },
+        "readiness_scope": {
+            "checks": [
+                "container State.Running = true",
+                "RestartCount = 0",
+                "State.OOMKilled = false",
+                "no CUDA out of memory|OutOfMemoryError|OOMKilled in logs",
+                "rank 0: /health and /v1/models return HTTP success",
+                "nonzero ranks: container running (headless, no API)",
+                "LMCache server: /healthcheck and /status endpoints responding",
+            ],
+            "does_not_verify": [
+                "model output correctness or determinism",
+                "fabric qualification or transport probe",
+                "performance or throughput",
+                "LMCache cache hit ratio or persistence",
+                "graph capture completeness",
+            ],
+            "engine_timeout_seconds": profile.startup_timeout_seconds + 60,
+        },
+        "plan_disclaimer": (
+            "A successful plan is not acceptance; it describes what the "
+            "launcher would do, not what the deployment achieves"
+        ),
     }
     if args.command == "plan" or not args.execute:
         print(json.dumps(plan, indent=2))
@@ -430,10 +486,8 @@ def main(argv: list[str] | None = None) -> int:
     ) and args.confirmation != CONFIRMATION:
         parser.error(f"execute requires --confirmation {CONFIRMATION}")
 
-    # Consume the same lifecycle oracle exported to the bundle bridge for
-    # every executable command, including read-only status/verification and
-    # rollback itself.
-    seq = lifecycle_sequence(args.command, profile)
+    # Reuse the lifecycle sequence already computed for the plan document
+    # so the bundle bridge and execution path share one oracle call.
     results = {}
     any_failed = False
     for step in seq:
