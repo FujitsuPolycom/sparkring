@@ -373,6 +373,7 @@ def _validate_exl3(recipe: dict[str, Any]) -> None:
         "max_gpu_workers": 1,
         "max_cpu_workers": 2,
         "transfer_mode": "lmcache_driven",
+        "eviction_policy": "LRU",
         "mq_timeout_seconds": 10,
         "heartbeat_interval_seconds": 10,
         "load_failure_policy": "recompute",
