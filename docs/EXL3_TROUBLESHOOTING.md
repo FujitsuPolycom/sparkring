@@ -38,40 +38,48 @@ Mitigation:
   model load or graph capture;
 - If page-cache pressure causes a host OOM, the LMCache server or engine
   container may be killed. Check `docker inspect` for `OOMKilled` and
-  use the startup evidence classifier to distinguish this from a
-  recoverable OOM.
+  use the startup evidence classifier to classify the evidence.
 
-## Recoverable OOM versus fatal signals
+## Startup evidence verdicts
 
-The EXL3 profile sets `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False`.
-A `CUDA out of memory` line during startup is classified as **recoverable**
-if:
+The startup evidence classifier (`sparkring_startup_evidence.py`) produces
+four verdicts:
 
-- the container stays running;
-- a subsequent progress line appears (e.g. `KV cache allocated`,
-  `Engine is ready`);
-- `docker inspect` shows `RestartCount = 0` and `OOMKilled = false`.
+- **clean**: no concerning signatures.
+- **bounded_rm_retry**: a kernel RM `NV_ERR_NO_MEMORY` event at the
+  evidenced callsite (`_memdescAllocInternal @ mem_desc.c:1359`) occurred
+  during EXL3 mixed-Trellis materialization, with full cross-evidence:
+  container running, `RestartCount = 0`, `OOMKilled = false`, no fatal
+  signatures, event count within the conservative bound, subsequent layer
+  progress, eventual readiness, and correlatable timestamps.
+- **fatal**: generic `CUDA out of memory`, `torch.OutOfMemoryError`,
+  `OOMKilled`, Xid, unexpected restart, SSH loss, fabric/RoCE carrier
+  loss, or driver init failure. These are never downgraded.
+- **indeterminate**: a kernel RM event is present but cross-evidence
+  cannot be truthfully correlated (missing/malformed timestamps, no
+  materialization context, no subsequent readiness). Indeterminate uses
+  fatal exit policy — the classifier must not silently downgrade unknown
+  NVIDIA errors.
 
-It is a **fatal** condition if:
-
-- the container was OOM-killed (`State.OOMKilled = true`);
-- the container restarted (`RestartCount > 0`);
-- an Xid GPU error appears in the logs;
-- SSH connection to the rank failed during startup;
-- NCCL/RoCE/fabric bootstrap failed;
-- no progress line appears after the OOM message.
-
-The startup evidence classifier distinguishes these automatically:
+Generic `CUDA out of memory` is **fatal by default**. No repository
+evidence authorizes calling a bare CUDA OOM recoverable merely because
+later progress exists. Only the evidenced kernel RM signature at the
+specific callsite can qualify for `bounded_rm_retry`, and only with
+full cross-evidence.
 
 ```bash
 python scripts/sparkring_startup_evidence.py \
-  --engine-log engine-r0.log --engine-log engine-r1.log \
-  --engine-log engine-r2.log --engine-log engine-r3.log \
+  --engine-log engine-r0.log --kernel-log kernel-r0.log \
+  --engine-log engine-r1.log --kernel-log kernel-r1.log \
+  --engine-log engine-r2.log --kernel-log kernel-r2.log \
+  --engine-log engine-r3.log --kernel-log kernel-r3.log \
   classify
 ```
 
 NVIDIA errors are **never** globally ignored. Each signature is classified
-individually with provenance (line number, pattern label, SHA-256).
+individually with provenance (line number, pattern label, SHA-256). The
+`bounded_rm_retry` classification is evidence-scoped to the legacy EXL3
+materialization callsite and does not prove all RM errors safe.
 
 ## Headless Wi-Fi management
 

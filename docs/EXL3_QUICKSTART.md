@@ -224,15 +224,23 @@ cluster.
 
 ## Startup evidence classification
 
-After capturing engine and LMCache server logs, classify startup evidence
-to distinguish bounded RM allocation retries from fatal failures:
+After capturing engine, kernel, and LMCache server logs, classify startup
+evidence into four verdicts: clean, bounded_rm_retry, fatal, and
+indeterminate:
 
 ```bash
 python scripts/sparkring_startup_evidence.py \
-  --engine-log engine-r0.log --engine-log engine-r1.log \
-  --engine-log engine-r2.log --engine-log engine-r3.log \
+  --engine-log engine-r0.log --kernel-log kernel-r0.log \
+  --engine-log engine-r1.log --kernel-log kernel-r1.log \
+  --engine-log engine-r2.log --kernel-log kernel-r2.log \
+  --engine-log engine-r3.log --kernel-log kernel-r3.log \
   classify
 ```
 
+Generic `CUDA out of memory` is fatal by default. Only kernel RM
+`NV_ERR_NO_MEMORY` at `_memdescAllocInternal @ mem_desc.c:1359` during
+EXL3 materialization can be `bounded_rm_retry`, with full cross-evidence.
 NVIDIA errors are never globally ignored; each signature is classified
-individually with provenance (line number, pattern label, SHA-256).
+individually with provenance (line number, pattern label, SHA-256). The
+`bounded_rm_retry` classification is evidence-scoped to the legacy EXL3
+materialization callsite and does not prove all RM errors safe.
