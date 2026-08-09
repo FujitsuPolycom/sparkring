@@ -199,7 +199,14 @@ def require_ratio(
     maximum: float,
     failures: list[str],
 ) -> None:
-    ratio = samples[numerator]["ttft_seconds"] / samples[denominator]["ttft_seconds"]
+    denom_ttft = samples[denominator]["ttft_seconds"]
+    if denom_ttft == 0:
+        failures.append(
+            f"{denominator} TTFT is zero; cannot compute ratio vs {numerator}"
+        )
+        samples[numerator][f"ratio_vs_{denominator}"] = None
+        return
+    ratio = samples[numerator]["ttft_seconds"] / denom_ttft
     samples[numerator][f"ratio_vs_{denominator}"] = ratio
     if ratio > maximum:
         failures.append(

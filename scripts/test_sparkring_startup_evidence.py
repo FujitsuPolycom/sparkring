@@ -544,6 +544,7 @@ def test_malformed_timestamp_indeterminate():
         cluster_ready=True,
     )
     assert result["verdict"] == "indeterminate"
+    assert result["all_events_have_timestamps"] is False
 
 
 def test_year_without_tz_no_crash_indeterminate():
@@ -559,6 +560,33 @@ def test_year_without_tz_no_crash_indeterminate():
     )
     assert result["verdict"] == "indeterminate"
     assert result["year_without_tz"] is True
+
+# Engine log with a materialization line that has a malformed vLLM timestamp
+# (month 13, day 45). The regex matches but datetime() raises ValueError.
+# The classifier must catch it and set timestamp_parse_error=True, producing
+# indeterminate — not silently drop the timestamp and proceed.
+ENGINE_MALFORMED_VLLM_TS_MAT = """\
+(Worker pid=1234) INFO 13-45 05:20:15 EXL3 mixed Trellis model.layers.0.mlp.experts
+(Worker pid=1234) INFO 08-09 05:20:25 EXL3 mixed Trellis model.layers.1.mlp.experts
+(Worker pid=1234) INFO 08-09 05:20:35 Graph capturing finished
+"""
+
+
+def test_malformed_vllm_ts_on_mat_line_indeterminate():
+    """A malformed vLLM timestamp on a materialization line must set
+    timestamp_parse_error and produce indeterminate, not silently drop
+    the timestamp."""
+    from datetime import timezone, timedelta
+    result = evidence.classify_log(
+        ENGINE_MALFORMED_VLLM_TS_MAT,
+        container_running=True,
+        kernel_log=KERNEL_RM_IN_WINDOW,
+        rm_event_bound=10,
+        engine_log_year=2026,
+        engine_log_tz=timezone(-timedelta(hours=5)),
+        cluster_ready=True,
+    )
+    assert result["verdict"] == "indeterminate"
 
 
 def test_cross_midnight_window():
@@ -768,10 +796,16 @@ def test_parse_vllm_timestamp_worker_tp_prefix():
     assert dt.year == 2026
 
 
-def test_parse_vllm_malformed_none():
-    assert evidence._parse_vllm_timestamp(
-        "INFO 99-99 99:99:99", year=2026,
-    ) is None
+def test_parse_vllm_malformed_raises():
+    """Malformed vLLM timestamps that match the regex but have invalid
+    date/time values must raise ValueError (caller catches and flags
+    timestamp_parse_error for indeterminate verdict), not silently
+    return None."""
+    with pytest.raises(ValueError):
+        evidence._parse_vllm_timestamp(
+            "INFO 99-99 99:99:99", year=2026,
+            tz=timezone.utc,
+        )
 
 
 # ---------------------------------------------------------------------------

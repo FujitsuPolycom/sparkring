@@ -232,3 +232,23 @@ def test_launcher_restart_failure_is_reported(capsys):
     )
     report = json.loads(capsys.readouterr().out)
     assert "restart-engines exited 1" in report["failures"][0]
+
+
+def test_zero_ttft_denominator_is_a_failure_not_a_crash(capsys):
+    """A zero cold TTFT must produce a functional failure, not a
+    ZeroDivisionError crash."""
+    executor = FakeExecutor()
+    # cold TTFT = 0.0 → division by zero in require_ratio
+    http = FakeHttp(ttfts=(0.0, 0.2, 0.3, 1.1, 0.2))
+    arguments = argv()[:-1] + [
+        "--execute",
+        "--confirmation",
+        cache.CONFIRMATION,
+        "run",
+    ]
+    assert (
+        cache.main(arguments, executor=executor, http=http)
+        == cache.EXIT_FUNCTIONAL_FAIL
+    )
+    report = json.loads(capsys.readouterr().out)
+    assert any("zero" in f for f in report["failures"])

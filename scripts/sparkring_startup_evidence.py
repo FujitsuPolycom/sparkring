@@ -263,21 +263,29 @@ def _to_utc(dt: datetime) -> datetime:
 
 
 def _parse_kernel_timestamp(line: str) -> datetime | None:
-    """Extract and parse a kernel ISO timestamp, normalized to UTC."""
+    """Extract and parse a kernel ISO timestamp, normalized to UTC.
+
+    Returns None when no ISO timestamp pattern is found.
+    Raises ValueError when a timestamp pattern is found but cannot be
+    parsed (malformed date/time values).  The caller must catch this
+    and set ``timestamp_parse_error = True`` so the verdict is
+    indeterminate rather than silently dropping the line.
+    """
     match = _KERNEL_TS.search(line)
     if not match:
         return None
     raw = match.group(1)
+    dt: datetime | None = None
     try:
         try:
             dt = datetime.fromisoformat(raw)
         except ValueError:
             if raw.endswith("Z"):
                 dt = datetime.fromisoformat(raw[:-1] + "+00:00")
-            else:
-                return None
     except (ValueError, TypeError):
-        return None
+        dt = None
+    if dt is None:
+        raise ValueError(f"unparseable kernel timestamp: {raw!r}")
     if dt.tzinfo is None:
         # Kernel ISO without timezone — assume UTC
         dt = dt.replace(tzinfo=timezone.utc)
@@ -292,8 +300,13 @@ def _parse_vllm_timestamp(
 ) -> datetime | None:
     """Extract and parse a vLLM log-prefix timestamp.
 
-    Returns None if year is not supplied.
+    Returns None if the vLLM timestamp regex does not match (no timestamp
+    on the line) or if year is not supplied.
     Returns None if tz is not supplied (to avoid naive/aware TypeError).
+    Raises ValueError when the regex matches but the date/time values are
+    invalid (e.g. month 13).  The caller must catch this and set
+    ``timestamp_parse_error = True`` so the verdict is indeterminate
+    rather than silently dropping a malformed materialization-line timestamp.
     """
     match = _VLLM_TS.search(line)
     if not match:
@@ -311,10 +324,9 @@ def _parse_vllm_timestamp(
     microsecond = 0
     if frac_str:
         microsecond = int(frac_str[:6].ljust(6, "0"))
-    try:
-        dt = datetime(year, month, day, hour, minute, second, microsecond)
-    except ValueError:
-        return None
+    # datetime() raises ValueError for invalid month/day/hour/etc.
+    # Let it propagate so the caller can flag timestamp_parse_error.
+    dt = datetime(year, month, day, hour, minute, second, microsecond)
     dt = dt.replace(tzinfo=tz)
     return _to_utc(dt)
 
@@ -328,8 +340,11 @@ def _parse_engine_timestamp(
     """Parse a timestamp from an engine log line, normalized to UTC.
 
     Tries kernel ISO format first, then vLLM prefix format.
-    Returns None if a vLLM timestamp is found but year/tz are missing
-    (fail closed to indeterminate at the caller).
+    Returns None if neither regex matches (no timestamp on the line).
+    Raises ValueError if a timestamp pattern is found but cannot be parsed
+    (malformed date/time values).  The caller must catch this and set
+    ``timestamp_parse_error = True`` so the verdict is indeterminate
+    rather than silently dropping the line.
     """
     dt = _parse_kernel_timestamp(line)
     if dt is not None:
@@ -505,7 +520,10 @@ def classify_log(
 
         for hit in raw_rm_hits:
             kline = kernel_lines[hit["line_number"] - 1]
-            kts = _parse_kernel_timestamp(kline)
+            try:
+                kts = _parse_kernel_timestamp(kline)
+            except (ValueError, TypeError):
+                kts = None
             hit["timestamp"] = kts.isoformat() if kts else None
             rm_events.append(hit)
 
