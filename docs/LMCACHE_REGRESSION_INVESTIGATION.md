@@ -162,6 +162,8 @@ SETUP.md document this), so it cannot be changed independently.
 because `--no-async-scheduling` is required for the custom TP4
 transport. Marking as low confidence because it is a fixed constraint,
 not a tunable. Documented as context for why connector overhead
+matters more in this profile.
+
 ### P1: `VLLM_EXL3_PREFILL_CHUNK` does not affect the mixed-bitrate forward path (SCOPED AWAY — not applicable to this model)
 
 **Evidence**: The current EXL3 checkpoint (GLM-5.2 EXL3 TR3 3.25-bpw)
@@ -242,12 +244,13 @@ differentiator between the two lanes. The decode path uses
 **Proposed experiment**: This is not a differentiating variable
 between EXL3 and NF3. Populating
 `VLLM_SPARK_PREFILL_PIECEWISE_CAPTURE_SIZES` with sizes like
-"128,256,512" would violate the max padding 32 constraint
-(`TRELLIS_MAX_M=32`) unless the bucket contract validates them
-against the Trellis window. Any experiment must first verify that
-proposed sizes pass the bucket contract validation in
-`spark_cudagraph_bucket_contract.py` before attempting live
-capture.
+"128,256,512" would be constrained by the graph-bucket contract limit
+`MAX_OBSERVED_PREFILL_PADDING_ROWS=32`
+(`spark_cudagraph_bucket_contract.py:25`), NOT by
+`VLLM_EXL3_TRELLIS_MAX_M=32` (the Trellis routing window,
+`exl3.py:1990`). These are distinct contracts that share the value 32.
+Any experiment must first verify that proposed sizes pass the bucket
+contract validation before attempting live capture.
 
 ### P4: `--max-num-batched-tokens 4096` limits prefill admission (LOW-MEDIUM confidence)
 

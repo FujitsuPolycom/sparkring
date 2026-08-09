@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -95,10 +96,13 @@ def _make_result(
     }
 
 
+_OMIT = object()  # sentinel to skip auto summary_table generation
+
+
 def _make_doc(
     meta: dict | None = None,
     results: list[dict] | None = None,
-    summary_table: dict | None = None,
+    summary_table: Any = None,
 ) -> dict:
     if meta is None:
         meta = _make_meta()
@@ -117,10 +121,12 @@ def _make_doc(
                 summary[ctx] = {}
             summary[ctx][str(r["concurrency"])] = r["aggregate_tps"]
         summary_table = summary
+    elif summary_table is _OMIT:
+        pass  # no summary_table key in output
     return {
         "metadata": meta,
         "results": results,
-        "summary_table": summary_table,
+        **({"summary_table": summary_table} if summary_table is not _OMIT else {}),
     }
 
 
@@ -579,10 +585,27 @@ def test_coverage_missing_concurrency():
     assert "missing" in result["reason"].lower()
 
 
-def test_coverage_extra_concurrency():
-    """Extra concurrency beyond C1/C2/C4/C8 fails."""
+def test_coverage_extra_concurrency_metadata():
+    """Extra concurrency in metadata concurrency_levels fails at metadata check."""
     doc = _make_doc(
         meta=_make_meta(concurrency_levels=[1, 2, 4, 8, 16]),
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+            _make_result(16, 80.0),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "concurrency_levels" in result["reason"]
+
+
+def test_coverage_extra_concurrency_results_only():
+    """Extra concurrency in results (metadata correct) fails at results check."""
+    doc = _make_doc(
+        meta=_make_meta(concurrency_levels=[8, 4, 2, 1]),
         results=[
             _make_result(8, 64.56),
             _make_result(4, 45.13),
@@ -887,3 +910,554 @@ def test_cli_no_metadata(tmp_path, capsys):
 
 def test_schema():
     assert cmp.SCHEMA == "sparkring-benchmark-comparison/v3"
+
+# ---------------------------------------------------------------------------
+# Review-3 blocker tests: adversarial mutations
+# ---------------------------------------------------------------------------
+
+
+# --- Blocker 1: concurrency_levels set/order contract ---
+
+
+def test_blocker1_metadata_concurrencies_subset_fails():
+    """Metadata concurrency_levels [1,2] with four result cells must fail closed."""
+    doc = _make_doc(
+        meta=_make_meta(concurrency_levels=[1, 2]),
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "concurrency_levels" in result["reason"]
+
+
+def test_blocker1_metadata_concurrencies_superset_fails():
+    """Metadata concurrency_levels with extra entries fails closed."""
+    doc = _make_doc(
+        meta=_make_meta(concurrency_levels=[8, 4, 2, 1, 16]),
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "concurrency_levels" in result["reason"]
+
+
+def test_blocker1_metadata_concurrencies_wrong_order_passes():
+    """Metadata concurrency_levels [1,2,4,8] still passes (set comparison, order irrelevant)."""
+    doc = _make_doc(
+        meta=_make_meta(concurrency_levels=[1, 2, 4, 8]),
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is True
+
+
+def test_blocker1_results_metadata_concurrencies_mismatch_fails():
+    """Metadata says [8,4,2,1] but results only have C1/C2 — fail closed."""
+    doc = _make_doc(
+        meta=_make_meta(concurrency_levels=[8, 4, 2, 1]),
+        results=[
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "missing" in result["reason"].lower()
+
+
+# --- Blocker 2: context_tokens present and exactly 16384 ---
+
+
+def test_blocker2_missing_context_tokens_fails():
+    """Result missing context_tokens must fail closed, not default."""
+    doc = _make_doc(
+        summary_table=_OMIT,
+        results=[
+            {"concurrency": 8, "benchmark_mode": "duration",
+             "measurement_seconds": 24.9, "aggregate_tps": 64.56,
+             "num_errors": 0, "effective_concurrency": 8,
+             "underfilled": False, "warmup_timed_out": False,
+             "capacity_limited": False},
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "context_tokens" in result["reason"]
+
+
+
+def test_blocker2_wrong_context_tokens_fails():
+    """Result with context_tokens != 16384 fails closed."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56, context_tokens=8192),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "context_tokens" in result["reason"]
+
+
+def test_blocker2_all_context_tokens_correct_passes():
+    """All results with context_tokens=16384 passes."""
+    result = cmp.validate_context_coverage(SUSTAINED_BASELINE)
+    assert result["valid"] is True
+
+
+# --- Blocker 3: summary_table agrees with results within tolerance ---
+
+
+def test_blocker3_summary_disagrees_with_results_fails():
+    """Summary table value that disagrees with results beyond tolerance fails."""
+    doc = {
+        "metadata": _make_meta(),
+        "results": [
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+        "summary_table": {
+            "16384": {"8": 999.0, "4": 45.13, "2": 29.29, "1": 15.89},
+        },
+    }
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "disagrees" in result["reason"].lower()
+
+
+def test_blocker3_summary_within_tolerance_passes():
+    """Summary table values within tolerance of results pass."""
+    doc = {
+        "metadata": _make_meta(),
+        "results": [
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+        "summary_table": {
+            "16384": {"8": 64.560000001, "4": 45.13, "2": 29.29, "1": 15.89},
+        },
+    }
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is True
+
+
+def test_blocker3_summary_non_numeric_value_fails():
+    """Summary table with non-numeric value fails."""
+    doc = {
+        "metadata": _make_meta(),
+        "results": [
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+        "summary_table": {
+            "16384": {"8": "not_a_number", "4": 45.13, "2": 29.29, "1": 15.89},
+        },
+    }
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "not finite numeric" in result["reason"].lower()
+
+
+def test_blocker3_summary_missing_concurrency_fails():
+    """Summary table missing a concurrency that results have fails."""
+    doc = {
+        "metadata": _make_meta(),
+        "results": [
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+        "summary_table": {
+            "16384": {"8": 64.56, "4": 45.13, "2": 29.29},
+        },
+    }
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+
+
+def test_blocker3_summary_no_override_of_results():
+    """Summary table never silently overrides results — extract_throughput prefers results."""
+    doc = {
+        "metadata": _make_meta(),
+        "results": [
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+        "summary_table": {
+            "16384": {"8": 999.0, "4": 45.13, "2": 29.29, "1": 15.89},
+        },
+    }
+    tps = cmp.extract_throughput(doc)
+    assert tps["C8"] == 64.56  # results value, not summary
+
+
+def test_blocker3_summary_absent_passes():
+    """If summary_table is absent, coverage validation still passes."""
+    doc = {
+        "metadata": _make_meta(),
+        "results": [
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    }
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is True
+
+
+# --- Blocker 4: finite numeric aggregate_tps required ---
+
+
+def test_blocker4_missing_aggregate_tps_fails():
+    """Missing aggregate_tps fails validity."""
+    doc = _make_doc(
+        summary_table=_OMIT,
+        results=[
+            {"concurrency": 8, "context_tokens": 16384, "benchmark_mode": "duration",
+             "measurement_seconds": 24.9,
+             "num_errors": 0, "effective_concurrency": 8,
+             "underfilled": False, "warmup_timed_out": False,
+             "capacity_limited": False},
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert ("C8", "aggregate_tps") in v["missing_fields"]
+
+
+def test_blocker4_nan_aggregate_tps_fails():
+    """NaN aggregate_tps fails validity."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, float("nan")),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert any(f[0] == "C8" and f[1] == "aggregate_tps" for f in v["invalid_fields"])
+
+
+def test_blocker4_inf_aggregate_tps_fails():
+    """Infinity aggregate_tps fails validity."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, float("inf")),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert any(f[0] == "C8" and f[1] == "aggregate_tps" for f in v["invalid_fields"])
+
+
+def test_blocker4_boolean_aggregate_tps_fails():
+    """Boolean aggregate_tps fails validity (bool is not a valid number)."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, True),  # type: ignore
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert any(f[0] == "C8" and f[1] == "aggregate_tps" for f in v["invalid_fields"])
+
+
+def test_blocker4_negative_aggregate_tps_fails():
+    """Negative aggregate_tps fails validity."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, -10.0),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert any(f[0] == "C8" and f[1] == "aggregate_tps" for f in v["invalid_fields"])
+
+
+def test_blocker4_zero_aggregate_tps_fails():
+    """Zero aggregate_tps fails validity."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 0.0),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert any(f[0] == "C8" and f[1] == "aggregate_tps" for f in v["invalid_fields"])
+
+
+def test_blocker4_zero_tps_no_deltas_normal_mode():
+    """Zero throughput in one doc → invalid_cells, no deltas, even in normal mode."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 0.0),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.compare_documents(SUSTAINED_BASELINE, doc)
+    assert result["status"] == "invalid_cells"
+    assert len(result["throughput"]["cells"]) == 0
+
+
+def test_blocker4_zero_tps_no_deltas_strict_mode(tmp_path, capsys):
+    """Zero throughput fails in strict mode too."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 0.0),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    base = tmp_path / "base.json"
+    cand = tmp_path / "cand.json"
+    base.write_text(json.dumps(SUSTAINED_BASELINE))
+    cand.write_text(json.dumps(doc))
+    rc = cmp.main(["--baseline", str(base), "--candidate", str(cand), "--strict"])
+    assert rc == cmp.EXIT_INVALID
+
+
+# --- Blocker 5: strict type checks ---
+
+
+def test_blocker5_num_errors_bool_fails():
+    """num_errors as bool (True) fails — bool is not a valid int."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56, num_errors=True),  # type: ignore
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert any(f[0] == "C8" and f[1] == "num_errors" for f in v["invalid_fields"])
+
+
+def test_blocker5_num_errors_nonzero_fails():
+    """num_errors=1 fails validity."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56, num_errors=1),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert any(f[0] == "C8" and f[1] == "num_errors" for f in v["invalid_fields"])
+
+
+def test_blocker5_effective_concurrency_bool_fails():
+    """effective_concurrency as bool fails — bool is not a valid int."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56, effective_concurrency=True),  # type: ignore
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert any(f[0] == "C8" and f[1] == "effective_concurrency" for f in v["invalid_fields"])
+
+
+def test_blocker5_effective_concurrency_mismatch_fails():
+    """effective_concurrency != requested concurrency fails."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56, effective_concurrency=3),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert any(f[0] == "C8" and f[1] == "effective_concurrency" for f in v["invalid_fields"])
+
+
+def test_blocker5_measurement_seconds_zero_fails():
+    """measurement_seconds=0 fails (must be > 0)."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56, measurement_seconds=0.0),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert any(f[0] == "C8" and f[1] == "measurement_seconds" for f in v["invalid_fields"])
+
+
+def test_blocker5_measurement_seconds_negative_fails():
+    """measurement_seconds < 0 fails."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56, measurement_seconds=-1.0),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert any(f[0] == "C8" and f[1] == "measurement_seconds" for f in v["invalid_fields"])
+
+
+def test_blocker5_measurement_seconds_nan_fails():
+    """NaN measurement_seconds fails."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56, measurement_seconds=float("nan")),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert any(f[0] == "C8" and f[1] == "measurement_seconds" for f in v["invalid_fields"])
+
+
+def test_blocker5_underfilled_not_bool_fails():
+    """underfilled as non-bool (e.g. int 0) fails."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56),  # can't pass non-bool via fixture, use raw dict
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    doc["results"][0]["underfilled"] = 0  # int, not bool
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert any(f[0] == "C8" and f[1] == "underfilled" for f in v["invalid_fields"])
+
+
+def test_blocker5_warmup_timed_out_not_bool_fails():
+    """warmup_timed_out as non-bool fails."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    doc["results"][0]["warmup_timed_out"] = 1  # int, not bool
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert any(f[0] == "C8" and f[1] == "warmup_timed_out" for f in v["invalid_fields"])
+
+
+def test_blocker5_capacity_limited_not_bool_fails():
+    """capacity_limited as non-bool fails."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    doc["results"][0]["capacity_limited"] = 0  # int, not bool
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert any(f[0] == "C8" and f[1] == "capacity_limited" for f in v["invalid_fields"])
+
+
+def test_blocker5_underfilled_true_fails():
+    """underfilled=True fails validity."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56, underfilled=True),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+
+
+def test_blocker5_all_flags_false_valid():
+    """All boolean flags false, all int fields correct → valid."""
+    v = cmp.extract_validity(SUSTAINED_BASELINE)
+    assert v["all_cells_valid"] is True
+    assert len(v["invalid_fields"]) == 0
+
+
+# --- Blocker 6: doc fixes verified by reading ---
+
+
+def test_blocker6_regression_doc_no_trellis_conflation():
+    """P3 proposed experiment references MAX_OBSERVED_PREFILL_PADDING_ROWS, not TRELLIS_MAX_M."""
+    content = Path(ROOT / "docs" / "LMCACHE_REGRESSION_INVESTIGATION.md").read_text()
+    # The P3 section should reference MAX_OBSERVED_PREFILL_PADDING_ROWS
+    assert "MAX_OBSERVED_PREFILL_PADDING_ROWS" in content
+    # The stale conflation should be gone: no attribution of padding constraint to TRELLIS_MAX_M
+    p3_section = content[content.index("### P3:"):content.index("### P4:")]
+    assert "TRELLIS_MAX_M" not in p3_section or "NOT by" in p3_section
+
+
+def test_blocker6_regression_doc_line_164_complete():
+    """The incomplete sentence around connector overhead is now complete."""
+    content = Path(ROOT / "docs" / "LMCACHE_REGRESSION_INVESTIGATION.md").read_text()
+    # The sentence about connector overhead should be complete now
+    assert "matters more in this profile" in content

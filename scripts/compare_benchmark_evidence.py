@@ -29,20 +29,28 @@ contact the cluster, run benchmarks, or mutate anything.
 
 1. Both documents must be ``sustained_matrix``.  Two ``bounded_gate``
    or two ``indeterminate`` documents must NOT compare.
-2. Each document must have exactly one 16K context and exactly C1/C2/C4/C8
-   result coverage consistent with ``metadata.concurrency_levels``.
-   Absent, duplicated, or unexpected/multi-context results fail closed.
+2. ``metadata.concurrency_levels`` must exactly match ``[8, 4, 2, 1]``
+   as a set.  Each document must have exactly one 16K context and exactly
+   C1/C2/C4/C8 result coverage consistent with metadata.  Absent,
+   duplicated, or unexpected/multi-context results fail closed.
 3. Missing ``num_errors``, ``effective_concurrency``, ``underfilled``,
    ``warmup_timed_out``, ``capacity_limited``, ``benchmark_mode``,
-   ``measurement_seconds``, or ``max_tokens`` is indeterminate/invalid,
-   never default-zero/true.
+   ``measurement_seconds``, or ``aggregate_tps`` is indeterminate/invalid,
+   never default-zero/true.  ``aggregate_tps`` must be finite, numeric,
+   positive, and not bool.  ``num_errors`` must be int (not bool) and 0.
+   ``effective_concurrency`` must be int (not bool) and equal requested.
+   ``measurement_seconds`` must be finite and > 0.  Boolean flags must
+   be actual booleans and false.
 4. No numeric deltas are computed or emitted until document type,
    complete settings, validity, and exact cell coverage all pass.
 5. Classification requires ``metadata.decode_mode == "duration"`` and
    each result ``benchmark_mode == "duration"``, and requires both
    ``duration_per_test`` and ``max_tokens`` (no inference from one).
 6. Multi-context documents and any mismatch between metadata context
-   list, result contexts, and summary table are rejected.
+   list, result contexts, and summary table are rejected.  If
+   ``summary_table`` is present, its values must agree with results
+   ``aggregate_tps`` within a tiny float tolerance.  Results are
+   canonical after consistency validation.
 
 ## Usage::
 
@@ -60,6 +68,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any, Sequence
@@ -73,6 +82,12 @@ EXIT_INVALID = 4
 # Required concurrency cells for a valid 16K matrix comparison.
 REQUIRED_CONCURRENCIES = [1, 2, 4, 8]
 REQUIRED_CONTEXT = 16384
+REQUIRED_CONCURRENCY_LEVELS = [8, 4, 2, 1]
+
+# Tolerance for summary_table vs results aggregate_tps agreement.
+# Accounts for float serialization round-trip; values are tok/s
+# measured to full double precision so 1e-9 relative is generous.
+SUMMARY_TOLERANCE_RELATIVE = 1e-9
 
 # Settings that must match exactly before any delta is claimed.
 MATCHED_SETTINGS: list[tuple[str, str]] = [
@@ -92,18 +107,6 @@ MATCHED_SETTINGS: list[tuple[str, str]] = [
     ("cell_warmup_timeout_seconds", "cell_warmup_timeout_seconds"),
 ]
 
-# Validity fields that must be present in each result cell.
-# Each is (field_name, expected_type, invalid_if_missing).
-VALIDITY_FIELDS: list[tuple[str, tuple[type, ...]]] = [
-    ("num_errors", (int,)),
-    ("effective_concurrency", (int,)),
-    ("underfilled", (bool,)),
-    ("warmup_timed_out", (bool,)),
-    ("capacity_limited", (bool,)),
-    ("benchmark_mode", (str,)),
-    ("measurement_seconds", (int, float)),
-]
-
 
 class ConfigError(ValueError):
     """The operator supplied an invalid argument."""
@@ -114,16 +117,31 @@ class EvidenceError(ValueError):
 
 
 # ---------------------------------------------------------------------------
+# Type-check helpers
+# ---------------------------------------------------------------------------
+
+
+def _is_int_not_bool(val: Any) -> bool:
+    """True if val is an int but not a bool (bool is a subclass of int)."""
+    return isinstance(val, int) and not isinstance(val, bool)
+
+
+def _is_finite_number(val: Any) -> bool:
+    """True if val is a finite int or float but not a bool."""
+    if isinstance(val, bool):
+        return False
+    if isinstance(val, (int, float)):
+        return math.isfinite(float(val))
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Metadata extraction
 # ---------------------------------------------------------------------------
 
 
 def _get_metadata(doc: dict[str, Any]) -> dict[str, Any]:
-    """Return the ``metadata`` object from a raw benchmark document.
-
-    Raises EvidenceError if the document has no metadata or metadata is
-    not a dict — this is fail-closed.
-    """
+    """Return the ``metadata`` object from a raw benchmark document."""
     meta = doc.get("metadata")
     if not isinstance(meta, dict):
         raise EvidenceError(
@@ -178,7 +196,9 @@ def classify_document_type(doc: dict[str, Any]) -> str:
     # Require both duration and max_tokens — no inference from one
     if max_tokens is None or duration is None:
         return "indeterminate"
-    if not isinstance(max_tokens, (int, float)) or not isinstance(duration, (int, float)):
+    if not isinstance(max_tokens, (int, float)) or isinstance(max_tokens, bool):
+        return "indeterminate"
+    if not isinstance(duration, (int, float)) or isinstance(duration, bool):
         return "indeterminate"
 
     # If either suggests bounded, classify as bounded_gate
@@ -215,9 +235,11 @@ def validate_context_coverage(doc: dict[str, Any]) -> dict[str, Any]:
     """Validate that a document has exactly one context and exact cell coverage.
 
     Checks:
+    - metadata.concurrency_levels exactly matches REQUIRED_CONCURRENCY_LEVELS as a set
     - metadata.context_lengths has exactly one entry == REQUIRED_CONTEXT
-    - every result has context_tokens == REQUIRED_CONTEXT
+    - every result has context_tokens present and == REQUIRED_CONTEXT (missing fails)
     - summary_table has exactly one key == str(REQUIRED_CONTEXT)
+    - if summary_table present, its values agree with results aggregate_tps within tolerance
     - no mismatch between metadata, results, and summary_table
     - exactly the REQUIRED_CONCURRENCIES are present, no duplicates, no extras
     """
@@ -225,6 +247,13 @@ def validate_context_coverage(doc: dict[str, Any]) -> dict[str, Any]:
         meta = _get_metadata(doc)
     except EvidenceError:
         return {"valid": False, "reason": "no metadata"}
+
+    # Check concurrency_levels against required set
+    conc_levels = meta.get("concurrency_levels")
+    if not isinstance(conc_levels, list):
+        return {"valid": False, "reason": f"concurrency_levels must be a list, got {type(conc_levels).__name__}"}
+    if set(conc_levels) != set(REQUIRED_CONCURRENCY_LEVELS):
+        return {"valid": False, "reason": f"concurrency_levels {conc_levels} does not match required {REQUIRED_CONCURRENCY_LEVELS} as a set"}
 
     # Check context_lengths
     ctx_lengths = meta.get("context_lengths")
@@ -239,17 +268,27 @@ def validate_context_coverage(doc: dict[str, Any]) -> dict[str, Any]:
         return {"valid": False, "reason": "no results"}
 
     seen_concurrencies: set[int] = set()
+    results_tps: dict[str, float] = {}
     for cell in results:
         if not isinstance(cell, dict):
             return {"valid": False, "reason": "non-dict result entry"}
+        # context_tokens must be present and exactly REQUIRED_CONTEXT
         ctx = cell.get("context_tokens")
-        if ctx is not None and ctx != REQUIRED_CONTEXT:
-            return {"valid": False, "reason": f"result context_tokens={ctx} != {REQUIRED_CONTEXT} (multi-context rejected)"}
+        if ctx is None:
+            return {"valid": False, "reason": "result missing context_tokens (must be present)"}
+        if ctx != REQUIRED_CONTEXT:
+            return {"valid": False, "reason": f"result context_tokens={ctx} != {REQUIRED_CONTEXT}"}
         conc = cell.get("concurrency")
         if conc is not None:
             if conc in seen_concurrencies:
                 return {"valid": False, "reason": f"duplicate concurrency C{conc}"}
             seen_concurrencies.add(conc)
+            # Collect ALL numeric tps for summary comparison — validity
+            # (sign/finiteness/positivity) is checked separately by
+            # extract_validity, not by coverage.
+            agg = cell.get("aggregate_tps")
+            if _is_finite_number(agg):
+                results_tps[f"C{int(conc)}"] = float(agg)
 
     # Check exact coverage
     expected = set(REQUIRED_CONCURRENCIES)
@@ -263,21 +302,38 @@ def validate_context_coverage(doc: dict[str, Any]) -> dict[str, Any]:
             parts.append(f"unexpected {[f'C{c}' for c in sorted(extra)]}")
         return {"valid": False, "reason": "; ".join(parts)}
 
-    # Check summary_table consistency
+    # Check summary_table consistency — if present, all four numeric values
+    # must be present, finite, and agree with results aggregate_tps within
+    # tolerance.  Summary never silently overrides results.
     summary = doc.get("summary_table")
-    if isinstance(summary, dict):
+    if isinstance(summary, dict) and summary:
         ctx_keys = set(summary.keys())
         expected_ctx_key = str(REQUIRED_CONTEXT)
         if len(ctx_keys) > 1:
             return {"valid": False, "reason": f"summary_table has multiple context keys: {sorted(ctx_keys)}"}
         if expected_ctx_key not in ctx_keys:
             return {"valid": False, "reason": f"summary_table missing key '{expected_ctx_key}'"}
-        summary_concs = set()
-        for k in summary[expected_ctx_key]:
+        conc_map = summary[expected_ctx_key]
+        if not isinstance(conc_map, dict):
+            return {"valid": False, "reason": "summary_table context entry is not a dict"}
+        summary_concs: set[int] = set()
+        for k, v in conc_map.items():
             try:
-                summary_concs.add(int(k))
+                conc_int = int(k)
             except (ValueError, TypeError):
-                pass
+                return {"valid": False, "reason": f"summary_table has non-integer concurrency key '{k}'"}
+            summary_concs.add(conc_int)
+            nk = f"C{conc_int}"
+            if nk not in results_tps:
+                # Result tps was non-finite/missing — skip summary check
+                # for this entry; extract_validity will flag it as invalid.
+                continue
+            if not _is_finite_number(v):
+                return {"valid": False, "reason": f"summary_table {nk} value is not finite numeric, got {type(v).__name__}"}
+            summary_val = float(v)
+            results_val = results_tps[nk]
+            if abs(summary_val - results_val) > abs(results_val) * SUMMARY_TOLERANCE_RELATIVE:
+                return {"valid": False, "reason": f"summary_table {nk}={summary_val} disagrees with results {nk}={results_val} beyond tolerance"}
         if summary_concs != expected:
             missing = expected - summary_concs
             extra = summary_concs - expected
@@ -293,36 +349,21 @@ def validate_context_coverage(doc: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Throughput extraction
+# Throughput extraction (results are canonical)
 # ---------------------------------------------------------------------------
 
 
 def extract_throughput(doc: dict[str, Any]) -> dict[str, float]:
-    """Extract aggregate throughput per concurrency from a raw benchmark document.
+    """Extract aggregate throughput per concurrency from results[].
 
-    Reads ``summary_table`` first (authoritative), then falls back to
-    scanning ``results[]`` for ``aggregate_tps`` per concurrency.
+    Results are canonical.  Summary table is validated for consistency
+    in ``validate_context_coverage`` but never silently overrides results.
     Only returns cells for the REQUIRED_CONCURRENCIES.
     """
     tps: dict[str, float] = {}
     required_labels = {f"C{c}" for c in REQUIRED_CONCURRENCIES}
 
-    # summary_table: {context_tokens: {concurrency: aggregate_tps}}
-    summary = doc.get("summary_table")
-    if isinstance(summary, dict):
-        for _ctx_key, conc_map in summary.items():
-            if not isinstance(conc_map, dict):
-                continue
-            for k, v in conc_map.items():
-                try:
-                    nk = f"C{int(k)}"
-                    val = float(v)
-                except (ValueError, TypeError):
-                    continue
-                if nk in required_labels and nk not in tps:
-                    tps[nk] = val
-
-    # Fallback: scan results[] for aggregate_tps
+    # Scan results[] for aggregate_tps (canonical source)
     results = doc.get("results")
     if isinstance(results, list):
         for cell in results:
@@ -339,6 +380,21 @@ def extract_throughput(doc: dict[str, Any]) -> dict[str, float]:
                 if nk in required_labels and nk not in tps:
                     tps[nk] = val
 
+    # Fallback: summary_table (only if results didn't provide a value)
+    summary = doc.get("summary_table")
+    if isinstance(summary, dict):
+        for _ctx_key, conc_map in summary.items():
+            if not isinstance(conc_map, dict):
+                continue
+            for k, v in conc_map.items():
+                try:
+                    nk = f"C{int(k)}"
+                    val = float(v)
+                except (ValueError, TypeError):
+                    continue
+                if nk in required_labels and nk not in tps:
+                    tps[nk] = val
+
     return tps
 
 
@@ -350,16 +406,19 @@ def extract_throughput(doc: dict[str, Any]) -> dict[str, float]:
 def extract_validity(doc: dict[str, Any]) -> dict[str, Any]:
     """Extract per-cell validity information from a raw benchmark document.
 
-    Every validity field must be present.  Missing fields make the cell
-    indeterminate — never default-zero/true.
+    Every validity field must be present and correctly typed:
+    - ``num_errors``: int (not bool), exactly 0
+    - ``effective_concurrency``: int (not bool), exactly requested
+    - ``underfilled``: actual bool, must be false
+    - ``warmup_timed_out``: actual bool, must be false
+    - ``capacity_limited``: actual bool, must be false
+    - ``benchmark_mode``: str, must be "duration"
+    - ``measurement_seconds``: finite number, must be > 0
+    - ``aggregate_tps``: finite number, must be > 0 (not bool, not NaN/inf, not zero/negative)
 
-    Returns:
-    - ``cells``: per-concurrency dict with all validity fields.
-    - ``all_cells_valid``: True only if every required cell is present and valid.
-    - ``zero_cells``: True if no result cells found at all.
-    - ``missing_fields``: list of (concurrency, field) for missing fields.
+    Missing or wrong-typed fields make the cell invalid, never default.
     """
-    info: dict[str, Any] = {"cells": {}, "missing_fields": []}
+    info: dict[str, Any] = {"cells": {}, "missing_fields": [], "invalid_fields": []}
     results = doc.get("results")
     if not isinstance(results, list) or len(results) == 0:
         info["zero_cells"] = True
@@ -384,34 +443,105 @@ def extract_validity(doc: dict[str, Any]) -> dict[str, Any]:
         }
         cell_valid = True
 
-        for field_name, expected_types in VALIDITY_FIELDS:
-            val = cell.get(field_name)
-            cell_info[field_name] = val
-            if val is None:
-                info["missing_fields"].append((nk, field_name))
-                cell_valid = False
-            elif not isinstance(val, expected_types):
-                info["missing_fields"].append((nk, field_name))
-                cell_valid = False
+        # --- num_errors: int (not bool), exactly 0 ---
+        val = cell.get("num_errors")
+        cell_info["num_errors"] = val
+        if val is None:
+            info["missing_fields"].append((nk, "num_errors"))
+            cell_valid = False
+        elif not _is_int_not_bool(val):
+            info["invalid_fields"].append((nk, "num_errors", f"expected int, got {type(val).__name__}"))
+            cell_valid = False
+        elif val != 0:
+            info["invalid_fields"].append((nk, "num_errors", f"expected 0, got {val}"))
+            cell_valid = False
 
-        # Check semantic validity: num_errors == 0, effective == requested,
-        # not underfilled, not warmup_timed_out, not capacity_limited,
-        # benchmark_mode == "duration"
-        if cell_info.get("num_errors") is not None:
-            if cell_info["num_errors"] > 0:
-                cell_valid = False
-        if cell_info.get("effective_concurrency") is not None:
-            if cell_info["effective_concurrency"] != conc:
-                cell_valid = False
-        if cell_info.get("underfilled") is True:
+        # --- effective_concurrency: int (not bool), == requested ---
+        val = cell.get("effective_concurrency")
+        cell_info["effective_concurrency"] = val
+        if val is None:
+            info["missing_fields"].append((nk, "effective_concurrency"))
             cell_valid = False
-        if cell_info.get("warmup_timed_out") is True:
+        elif not _is_int_not_bool(val):
+            info["invalid_fields"].append((nk, "effective_concurrency", f"expected int, got {type(val).__name__}"))
             cell_valid = False
-        if cell_info.get("capacity_limited") is True:
+        elif val != conc:
+            info["invalid_fields"].append((nk, "effective_concurrency", f"expected {conc}, got {val}"))
             cell_valid = False
-        if cell_info.get("benchmark_mode") is not None:
-            if cell_info["benchmark_mode"] != "duration":
-                cell_valid = False
+
+        # --- measurement_seconds: finite number, > 0 ---
+        val = cell.get("measurement_seconds")
+        cell_info["measurement_seconds"] = val
+        if val is None:
+            info["missing_fields"].append((nk, "measurement_seconds"))
+            cell_valid = False
+        elif not _is_finite_number(val):
+            info["invalid_fields"].append((nk, "measurement_seconds", f"expected finite number, got {type(val).__name__}"))
+            cell_valid = False
+        elif float(val) <= 0:
+            info["invalid_fields"].append((nk, "measurement_seconds", f"expected > 0, got {val}"))
+            cell_valid = False
+
+        # --- underfilled: actual bool, must be false ---
+        val = cell.get("underfilled")
+        cell_info["underfilled"] = val
+        if val is None:
+            info["missing_fields"].append((nk, "underfilled"))
+            cell_valid = False
+        elif not isinstance(val, bool):
+            info["invalid_fields"].append((nk, "underfilled", f"expected bool, got {type(val).__name__}"))
+            cell_valid = False
+        elif val is True:
+            cell_valid = False
+
+        # --- warmup_timed_out: actual bool, must be false ---
+        val = cell.get("warmup_timed_out")
+        cell_info["warmup_timed_out"] = val
+        if val is None:
+            info["missing_fields"].append((nk, "warmup_timed_out"))
+            cell_valid = False
+        elif not isinstance(val, bool):
+            info["invalid_fields"].append((nk, "warmup_timed_out", f"expected bool, got {type(val).__name__}"))
+            cell_valid = False
+        elif val is True:
+            cell_valid = False
+
+        # --- capacity_limited: actual bool, must be false ---
+        val = cell.get("capacity_limited")
+        cell_info["capacity_limited"] = val
+        if val is None:
+            info["missing_fields"].append((nk, "capacity_limited"))
+            cell_valid = False
+        elif not isinstance(val, bool):
+            info["invalid_fields"].append((nk, "capacity_limited", f"expected bool, got {type(val).__name__}"))
+            cell_valid = False
+        elif val is True:
+            cell_valid = False
+
+        # --- benchmark_mode: str, must be "duration" ---
+        val = cell.get("benchmark_mode")
+        cell_info["benchmark_mode"] = val
+        if val is None:
+            info["missing_fields"].append((nk, "benchmark_mode"))
+            cell_valid = False
+        elif not isinstance(val, str):
+            info["invalid_fields"].append((nk, "benchmark_mode", f"expected str, got {type(val).__name__}"))
+            cell_valid = False
+        elif val != "duration":
+            cell_valid = False
+
+        # --- aggregate_tps: finite number, > 0, not bool ---
+        val = cell.get("aggregate_tps")
+        cell_info["aggregate_tps"] = val
+        if val is None:
+            info["missing_fields"].append((nk, "aggregate_tps"))
+            cell_valid = False
+        elif not _is_finite_number(val):
+            info["invalid_fields"].append((nk, "aggregate_tps", f"expected finite number, got {type(val).__name__}"))
+            cell_valid = False
+        elif float(val) <= 0:
+            info["invalid_fields"].append((nk, "aggregate_tps", f"expected > 0, got {val}"))
+            cell_valid = False
 
         cell_info["valid"] = cell_valid
         info["cells"][nk] = cell_info
@@ -600,8 +730,9 @@ def compare_documents(
             "validity, and exact C1/C2/C4/C8 cell coverage all pass. "
             "Bounded 128-token gate figures are never compared against "
             "sustained 25-second matrix figures. This tool is scoped to "
-            "one 16K context and C1/C2/C4/C8 cells. This tool does not "
-            "contact the cluster or run benchmarks."
+            "one 16K context and C1/C2/C4/C8 cells. Results are canonical; "
+            "summary_table is validated for consistency but never overrides "
+            "results. This tool does not contact the cluster or run benchmarks."
         ),
         "claim_note": (
             "A 'compared' status with delta_percent values is a valid "
