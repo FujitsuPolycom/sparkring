@@ -214,8 +214,9 @@ def classify_log(text: str, *, container_running: bool = True) -> dict[str, Any]
         if _PROGRESS.search(line) or _LMCACHE_READY.search(line):
             progress_line_numbers.append(index)
 
-    # Determine if bare OOM messages are recoverable: a progress line
-    # appears after the OOM, and the container is still running.
+    # Per-OOM progress check: each OOM line is classified independently.
+    # A late OOM with no subsequent progress is fatal even if an
+    # earlier OOM had progress after it.
     progress_after_oom = any(
         any(prog > oom for prog in progress_line_numbers)
         for oom in oom_line_numbers
@@ -231,16 +232,20 @@ def classify_log(text: str, *, container_running: bool = True) -> dict[str, Any]
             })
         oom_line_numbers = []
 
-    # Bare OOM with progress after it and container running = recoverable
+    # Classify each bare OOM independently: is there a progress line
+    # after THIS specific OOM? If yes and container is running, it's
+    # recoverable; if no, it's fatal (conservative).
     for oom in oom_line_numbers:
-        if progress_after_oom:
+        has_progress_after = any(
+            prog > oom for prog in progress_line_numbers
+        )
+        if has_progress_after:
             recoverable_hits.append({
                 "pattern": "bare_oom_with_progress",
                 "line_number": oom,
                 "line": lines[oom - 1].strip()[:500] if oom <= len(lines) else "",
             })
         else:
-            # Bare OOM without progress: treat as fatal (conservative)
             fatal_hits.append({
                 "pattern": "bare_oom_no_progress",
                 "line_number": oom,

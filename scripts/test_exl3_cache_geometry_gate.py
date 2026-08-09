@@ -64,6 +64,17 @@ def test_verify_geometry_fails_on_wrong_eviction_policy():
     assert result["passed"] is False
 
 
+def test_verify_geometry_fails_on_missing_eviction_policy():
+    recipe = load_recipe()
+    del recipe["serving"]["lmcache"]["eviction_policy"]
+    result = gate.verify_geometry(recipe)
+    assert result["passed"] is False
+    assert any(
+        c["check"] == "eviction_policy_is_lru" and not c["passed"]
+        for c in result["checks"]
+    )
+
+
 def test_verify_geometry_fails_on_wrong_transfer_mode():
     recipe = load_recipe()
     recipe["serving"]["lmcache"]["transfer_mode"] = "pytorch"

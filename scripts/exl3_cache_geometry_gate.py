@@ -167,7 +167,7 @@ def verify_geometry(recipe: dict[str, Any]) -> dict[str, Any]:
         "passed": l1_lazy is True,
     })
 
-    eviction = lmcache.get("eviction_policy", "LRU")
+    eviction = lmcache.get("eviction_policy")
     checks.append({
         "check": "eviction_policy_is_lru",
         "expected": "LRU",

@@ -142,6 +142,44 @@ def test_fabric_failure_classifies_fatal():
     )
 
 
+DRIVER_FAILURE = """\
+[INFO] Starting vLLM engine...
+[ERROR] all CUDA-capable devices are busy or unavailable
+[ERROR] no CUDA-capable device detected
+"""
+
+
+def test_driver_failure_classifies_fatal():
+    result = evidence.classify_log(DRIVER_FAILURE, container_running=True)
+    assert result["verdict"] == "fatal"
+    assert any(
+        s["pattern"] == "driver_failure" for s in result["fatal_signatures"]
+    )
+
+
+MULTI_OOM_LATE_FATAL = """\
+[INFO] Starting vLLM engine...
+[WARN] CUDA out of memory. Attempting to free reserved blocks.
+[INFO] KV cache allocated: 562688 tokens
+[INFO] Engine is ready
+[ERROR] CUDA out of memory
+"""
+
+
+def test_multi_oom_late_fatal_without_progress():
+    """An OOM after the last progress line must be fatal, even if
+    an earlier OOM had progress after it."""
+    result = evidence.classify_log(MULTI_OOM_LATE_FATAL, container_running=True)
+    assert result["verdict"] == "fatal"
+    # The early OOM (line 2) should be recoverable
+    recov = [s for s in result["recoverable_signatures"] if s["line_number"] == 2]
+    assert len(recov) >= 1
+    # The late OOM (line 5) should be fatal — no progress after it
+    fatal = [s for s in result["fatal_signatures"] if s["line_number"] == 5]
+    assert len(fatal) >= 1
+    assert fatal[0]["pattern"] == "bare_oom_no_progress"
+
+
 def test_unexpected_restart_classifies_fatal():
     result = evidence.classify_log(RESTART_FATAL, container_running=True)
     assert result["verdict"] == "fatal"
