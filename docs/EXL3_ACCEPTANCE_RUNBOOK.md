@@ -350,13 +350,29 @@ python -m pytest \
   scripts/test_acceptance_gate.py \
   scripts/test_exl3_correctness_gate.py \
   scripts/test_exl3_cache_acceptance.py \
-  scripts/test_sparkring_exl3_lmcache_launcher.py -q
+  scripts/test_exl3_cache_geometry_gate.py \
+  scripts/test_sparkring_exl3_lmcache_launcher.py \
+  scripts/test_sparkring_startup_evidence.py -q
 
 ruff check --select E,F,W --ignore E501 \
   scripts/acceptance_gate.py \
   scripts/exl3_correctness_gate.py \
   scripts/exl3_cache_acceptance.py \
-  scripts/sparkring_exl3_lmcache_launcher.py
+  scripts/exl3_cache_geometry_gate.py \
+  scripts/sparkring_exl3_lmcache_launcher.py \
+  scripts/sparkring_startup_evidence.py
+```
+
+Also verify the LMCache CS512 geometry and startup evidence classifier:
+
+```bash
+python scripts/exl3_cache_geometry_gate.py verify
+python scripts/sparkring_startup_evidence.py --help
 ```
 
 The full repository validation remains the command in [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+For long double 315.78-GiB verification, page-cache pressure, bounded RM
+allocation retries versus fatal signals, headless Wi-Fi, rollback, and
+PowerShell log tailing, see
+[EXL3_TROUBLESHOOTING.md](EXL3_TROUBLESHOOTING.md).

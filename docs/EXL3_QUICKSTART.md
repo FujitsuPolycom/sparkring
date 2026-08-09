@@ -195,3 +195,39 @@ not reference-lane measurements.
 
 For the full source, model-manifest, launcher, and evidence boundaries, see
 [EXL3_RECIPE.md](EXL3_RECIPE.md).
+
+## Troubleshooting
+
+For long double 315.78-GiB verification, page-cache pressure, bounded RM
+allocation retries versus fatal signals, headless Wi-Fi, rollback failures,
+PowerShell log tailing, and LMCache CS512 geometry verification, see
+[EXL3_TROUBLESHOOTING.md](EXL3_TROUBLESHOOTING.md).
+
+## Offline geometry verification
+
+Before a live acceptance run, verify the LMCache CS512 block-256 geometry:
+
+```bash
+python scripts/exl3_cache_geometry_gate.py verify
+python scripts/exl3_cache_geometry_gate.py plan
+```
+
+The first command checks chunk_size=512, parent_chunk_size=256, lazy L1, LRU
+eviction, APC isolation, and declares the boundary token counts and capacity
+metrics the live gate must collect. The second discloses the C1/C2/C4/C8
+and 16K/64K cold/warm timing cells that require a live cluster.
+
+## Startup evidence classification
+
+After capturing engine and LMCache server logs, classify startup evidence
+to distinguish bounded RM allocation retries from fatal failures:
+
+```bash
+python scripts/sparkring_startup_evidence.py \
+  --engine-log engine-r0.log --engine-log engine-r1.log \
+  --engine-log engine-r2.log --engine-log engine-r3.log \
+  classify
+```
+
+NVIDIA errors are never globally ignored; each signature is classified
+individually with provenance (line number, pattern label, SHA-256).
