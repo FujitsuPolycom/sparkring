@@ -614,6 +614,7 @@ def classify_log(
         "engine_timestamp_count": len(engine_timestamps),
         "year_without_tz": year_without_tz,
         "line_count": len(lines),
+        "timestamp_parse_error": timestamp_parse_error,
         "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
         "kernel_sha256": kernel_sha256,
     }
@@ -717,6 +718,12 @@ def aggregate_report(rank_reports: list[dict[str, Any]]) -> dict[str, Any]:
         ),
         "fatal_signature_count": fatal_count,
         "rm_event_rank_count": rm_event_count,
+        "ranks_with_timestamp_parse_error": sorted(
+            r["rank"]
+            for r in rank_reports
+            for component in ("engine", "server")
+            if r.get(component) and r[component].get("timestamp_parse_error")
+        ),
         "ranks": rank_reports,
         "evidence_scope": (
             "Diagnostic log classification from captured evidence; "

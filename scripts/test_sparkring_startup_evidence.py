@@ -587,6 +587,7 @@ def test_malformed_vllm_ts_on_mat_line_indeterminate():
         cluster_ready=True,
     )
     assert result["verdict"] == "indeterminate"
+    assert result["timestamp_parse_error"] is True
 
 
 def test_cross_midnight_window():
@@ -880,6 +881,31 @@ def test_aggregate_report_indeterminate_dominates():
     report = evidence.aggregate_report(ranks)
     assert report["verdict"] == "indeterminate"
     assert report["ranks_indeterminate"] == [1]
+
+
+def test_aggregate_report_exposes_timestamp_parse_error():
+    """The aggregate report must expose which ranks had timestamp_parse_error."""
+    from datetime import timezone, timedelta
+    ranks = [
+        evidence.classify_rank(0, engine_log=CLEAN_ENGINE),
+        evidence.classify_rank(
+            1,
+            engine_log=ENGINE_MALFORMED_VLLM_TS_MAT,
+            kernel_log=KERNEL_RM_IN_WINDOW,
+            rm_event_bound=10,
+            engine_log_year=2026,
+            engine_log_tz=timezone(-timedelta(hours=5)),
+            cluster_ready=True,
+        ),
+        evidence.classify_rank(2, engine_log=CLEAN_ENGINE),
+    ]
+    report = evidence.aggregate_report(ranks)
+    assert report["verdict"] == "indeterminate"
+    assert 1 in report["ranks_with_timestamp_parse_error"]
+    assert 0 not in report["ranks_with_timestamp_parse_error"]
+    # The per-rank engine component must also expose the flag
+    rank1 = next(r for r in report["ranks"] if r["rank"] == 1)
+    assert rank1["engine"]["timestamp_parse_error"] is True
 
 
 def test_aggregate_report_fatal_beats_indeterminate():

@@ -14,12 +14,16 @@ from the evidence already in the repository:
    -0.71% C8 median regression. The campaign's NPC-off arm showed
    C8 fairness failures (lane collapse to 33-78% of median).
 
-2. **EXL3 prefill limits**: prefill is capped at
+2. **EXL3 prefill limits**: prefill batch capacity is capped at
    `--max-num-batched-tokens 4096` with
-   `VLLM_EXL3_PREFILL_CHUNK=128` and `VLLM_EXL3_PREFILL_BLOCK_M=64`.
-   The Q6144 arm (4096 → 6144 batched tokens) was deferred. The
-   NF3 lane enables `VLLM_SPARK_TP4_PREFILL_Q512=1` (Q512 prefill
-   opt-in) but the EXL3 recipe sets it to `0`.
+   `VLLM_EXL3_PREFILL_BLOCK_M=64` for the Trellis prefill plan.
+   `VLLM_EXL3_PREFILL_CHUNK=128` only controls the eager parity
+   fallback path (m < `VLLM_EXL3_TRELLIS_MIN_M=1`); the full
+   Trellis prefill plan handles m > `TRELLIS_MAX_M=32` up to the
+   4096-token batch capacity. The Q6144 arm (4096 → 6144 batched
+   tokens) was deferred. The NF3 lane sets
+   `VLLM_SPARK_TP4_PREFILL_Q512=1` (transport/allreduce query
+   capacity opt-in) but the EXL3 recipe sets it to `0`.
 
 ## Three cache layers — must not be conflated
 
@@ -158,84 +162,102 @@ SETUP.md document this), so it cannot be changed independently.
 because `--no-async-scheduling` is required for the custom TP4
 transport. Marking as low confidence because it is a fixed constraint,
 not a tunable. Documented as context for why connector overhead
-matters more in this profile.
+### P1: `VLLM_EXL3_PREFILL_CHUNK=128` only caps the eager parity fallback, not the main prefill path (MEDIUM confidence, downgraded from HIGH)
 
-## EXL3 prefill limit hypotheses (ranked by evidence)
+**Evidence**: From `runtime/exl3/overlay/vllm/model_executor/layers/quantization/exl3.py`:
+`prefill_plan_enabled = prefill_trellis and max_batched_tokens > max_trellis_m`
+(line 2005). When `prefill_plan_enabled` is true (which it is: `prefill_trellis=1`
+and `max_batched_tokens=4096 > max_trellis_m=32`), the full Trellis
+`prefill_plan` runs for all batches with m > `max_trellis_m=32`, planned
+with `max_batched_tokens=4096` capacity and `prefill_block_m=64`.
+`PREFILL_CHUNK=128` only sets `parity_rows = min(chunk, max_batched_tokens)`
+(line 2007), which governs the eager parity fallback path for
+m < `min_trellis_m=1` — a narrow window that is rarely hit in
+practice since `min_trellis_m=1` means the Trellis plan handles
+m >= 1.
 
-### P1: `VLLM_EXL3_PREFILL_CHUNK=128` caps prefill throughput (HIGH confidence)
+**Mechanism [INFERENCE]**: The eager parity path (m < min_trellis_m) is
+almost never reached because `min_trellis_m=1`. The Trellis prefill
+plan handles all m >= 1 up to 4096 with block_m=64. Therefore
+`PREFILL_CHUNK=128` has minimal effect on prefill throughput for the
+common case. The prefill plan's block_m=64 and max_batched_tokens=4096
+are the real determinants of prefill batch capacity.
 
-**Evidence**: The recipe sets `VLLM_EXL3_PREFILL_CHUNK=128` and
-`VLLM_EXL3_PREFILL_BLOCK_M=64`. The prefill chunk size determines
-how many tokens are processed in one forward pass during chunked
-prefill. With `--max-num-batched-tokens 4096`, the engine can
-batch up to 4096 tokens, but the EXL3 prefill chunk limits each
-sub-chunk to 128 tokens. This means a 16K prompt requires
-16384/128 = 128 sub-chunks, each with its own kernel launch and
-attention computation overhead.
-
-**Mechanism**: The EXL3 Trellis quantization path processes tokens
-in blocks of `PREFILL_BLOCK_M=64` within chunks of
-`PREFILL_CHUNK=128`. The Trellis block size `VLLM_EXL3_TRELLIS_BLOCK_M=8`
-with `TRELLIS_MAX_M=32` further constrains the expert routing
-block structure. These small block sizes are required for the EXL3
-3.25-bpw Trellis format's correctness, but they limit prefill
-parallelism on the GB10 GPU.
-
-The NF3 lane uses `VLLM_SPARK_TP4_PREFILL_Q512=1` (Q512 prefill
-opt-in) which enables larger prefill graph capture sizes. The EXL3
-recipe sets this to `0`, disabling the Q512 prefill path. This is
-likely because the EXL3 Trellis path has not been validated with
-Q512 prefill graphs.
+The NF3 comparison is not about prefill graph capture.
+`VLLM_SPARK_TP4_PREFILL_Q512` controls the native TP4 all-reduce
+session's maximum query row capacity
+(`_maximum_allreduce_query_rows` in `spark_tp4_backend.py:146-151`)
+and graph arena bytes (`_graph_capacity_bytes`, line 154-157), not
+CUDA graph bucket creation for prefill.
 
 **Proposed experiment**: Run a single C1 16K prefill with
 `VLLM_EXL3_PREFILL_CHUNK=256` versus `128`. Same image, same run
-session. One variable: prefill chunk. Measure TTFT. If TTFT improves
-without output divergence, the chunk size is a prefill bottleneck.
+session. One variable: prefill chunk. Measure TTFT. If TTFT is
+unchanged (as the code suggests), the chunk size is not a prefill
+bottleneck. If it changes, investigate whether the parity path was
+hit unexpectedly.
 
-### P2: `VLLM_SPARK_TP4_PREFILL_Q512=0` disables prefill graph capture (MEDIUM confidence)
+### P2: `VLLM_SPARK_TP4_PREFILL_Q512=0` limits transport/allreduce query capacity (LOW confidence, downgraded from MEDIUM)
 
-**Evidence**: The NF3 lane sets `VLLM_SPARK_TP4_PREFILL_Q512=1`,
-which enables CUDA graph capture for prefill at Q512 sizes
-(48,72,144,224,288,352,432,512). The EXL3 recipe sets this to `0`,
-meaning prefill runs in eager mode (no CUDA graph replay for prefill).
-Eager prefill has higher per-step launch overhead.
+**Evidence**: From `spark_transport/integrations/vllm/spark_tp4_backend.py`:
+`_prefill_q512_enabled()` (line 137-143) controls
+`_maximum_allreduce_query_rows()` (line 146-151) and
+`_graph_capacity_bytes()` (line 154-157). When enabled, the native
+contiguous BF16 TP all-reduce session admits PIECEWISE widths through
+Q512 with a larger arena. This is a **transport/allreduce** capacity
+setting, NOT a CUDA graph bucket creation setting for prefill. The
+README confirms: "the native contiguous BF16 TP all-reduce session may
+admit those PIECEWISE widths through Q512 when its arena was created
+with matching capacity. Query, vocabulary, and DCP collectives remain
+bounded at Q40."
 
-**Mechanism**: Without Q512 prefill graphs, every prefill sub-chunk
-incurs full kernel launch overhead. For a 16K prompt with 128-token
-chunks, that is 128 eager kernel launches. With Q512 graphs, larger
-prefill batches could be captured and replayed, reducing launch
-overhead. However, the EXL3 Trellis path may not be compatible
-with Q512 graph capture because the Trellis block structure
-(BLOCK_M=8, MAX_M=32) may not have stable tensor shapes across
-graph replay.
+The claim that Q512 "enables CUDA graph capture for prefill at Q512
+sizes (48,72,144,224,288,352,432,512)" was **unsupported** —
+those are PIECEWISE capture bucket sizes governed by
+`VLLM_SPARK_PREFILL_PIECEWISE_CAPTURE_SIZES`, not by Q512.
+
+**Mechanism [INFERENCE]**: With Q512=0, the all-reduce session's query
+capacity is limited to `MAX_QUERY_ROWS` (Q40-bounded). This affects
+the transport layer's ability to handle larger all-reduce payloads
+during prefill, but does not directly control whether prefill CUDA
+graphs are captured. The EXL3 recipe's prefill performance may be
+limited by transport query capacity if prefill all-reduces exceed
+Q40, but this is a transport bottleneck, not a graph-capture
+bottleneck.
 
 **Proposed experiment**: Attempt `VLLM_SPARK_TP4_PREFILL_Q512=1`
-with the current EXL3 recipe and observe whether graph capture
-succeeds. If it captures, run a C1 16K prefill and compare TTFT.
-If it fails to capture, document the failure mode — this confirms
-the Q512 path is incompatible with the EXL3 Trellis prefill
-block structure.
+with the current EXL3 recipe and observe whether the transport session
+initializes and whether prefill all-reduces are admitted. If it
+initializes, run a C1 16K prefill and compare TTFT. If it fails to
+initialize, document the failure mode.
 
-### P3: `VLLM_SPARK_PREFILL_PIECEWISE_CAPTURE_SIZES=""` disables piecewise prefill graphs (MEDIUM confidence)
+### P3: `VLLM_SPARK_PREFILL_PIECEWISE_CAPTURE_SIZES=""` — empty in both EXL3 and NF3 (LOW confidence, downgraded from MEDIUM)
 
-**Evidence**: The recipe sets
-`VLLM_SPARK_PREFILL_PIECEWISE_CAPTURE_SIZES=""` (empty string),
-which means no piecewise prefill graph capture sizes are configured.
-The NF3 lane and the reference lane use non-empty piecewise capture
-sizes for prefill. Piecewise graphs capture the prefill attention
-computation in segments, reducing per-segment launch overhead.
+**Evidence**: The EXL3 recipe sets
+`VLLM_SPARK_PREFILL_PIECEWISE_CAPTURE_SIZES=""` (empty string).
+The NF3 lane also sets `VLLM_SPARK_PREFILL_PIECEWISE_CAPTURE_SIZES=""`
+(see `docs/configurations/glm52-nf3-live-1m-20260731.json` line 375).
+The previous claim that "the NF3 lane and the reference lane use
+non-empty piecewise capture sizes for prefill" was **false** — both
+lanes use an empty string. Piecewise capture sizes are a graph-bucket
+contract setting (see `spark_cudagraph_bucket_contract.py:17-18`),
+not a prefill-specific setting.
 
-**Mechanism**: Without piecewise prefill graphs, each prefill sub-chunk
-runs eagerly. The decode path has full CUDA graph capture
-(`VLLM_SPARK_DECODE_CAPTURE_SIZES` is non-empty with 16 sizes),
-but prefill does not. This asymmetry means decode benefits from graph
-replay but prefill does not, making prefill the throughput bottleneck.
+**Mechanism [INFERENCE]**: With an empty piecewise capture list, no
+piecewise prefill graphs are captured. However, since NF3 also uses
+an empty list and NF3 is accepted, this setting is not a
+differentiator between the two lanes. The decode path uses
+`VLLM_SPARK_GRAPH_CAPTURE_SIZES` (non-empty) for CUDA graph capture.
 
-**Proposed experiment**: Populate
-`VLLM_SPARK_PREFILL_PIECEWISE_CAPTURE_SIZES` with sizes compatible
-with `PREFILL_CHUNK=128` (e.g. "128,256,512"). Same image, same run
-session. One variable: piecewise capture sizes. Measure C1 16K TTFT.
-If graph capture fails, document the failure mode.
+**Proposed experiment**: This is not a differentiating variable
+between EXL3 and NF3. Populating
+`VLLM_SPARK_PREFILL_PIECEWISE_CAPTURE_SIZES` with sizes like
+"128,256,512" would violate the max padding 32 constraint
+(`TRELLIS_MAX_M=32`) unless the bucket contract validates them
+against the Trellis window. Any experiment must first verify that
+proposed sizes pass the bucket contract validation in
+`spark_cudagraph_bucket_contract.py` before attempting live
+capture.
 
 ### P4: `--max-num-batched-tokens 4096` limits prefill admission (LOW-MEDIUM confidence)
 
@@ -265,9 +287,10 @@ All experiments must follow the evidence-comparison checklist
 1. One variable at a time; all other settings identical
 2. Same image digest, same model revision, same hardware
 3. Same run session (alternating order if possible)
-4. Standard 16K sustained matrix: 25s cells, 2048 max tokens, temp 0,
-   100% unique contexts, DCP4, KV budget 562688, 3s decode warmup,
-   skip prefill, 300s cell-warmup timeout
+4. Standard 16K sustained matrix: 25s cells, 1024 max tokens, temp 0,
+   0% unique / 100% shared contexts, DCP4, KV budget 562688
+   (auto-detected), 0s decode warmup, skip prefill, 600s cell-warmup
+   timeout
 5. Require exact effective concurrency and zero errors
 6. Report deltas with claim labels, not bare numbers
 7. Never compare bounded 128-token gate figures with sustained matrix
@@ -284,3 +307,15 @@ All experiments must follow the evidence-comparison checklist
   and is not a tunable variable.
 - SparkCache is disabled and is not implicated in any LMCache
   regression hypothesis.
+- `VLLM_EXL3_PREFILL_CHUNK` only controls the eager parity fallback
+  path (m < min_trellis_m), not the main Trellis prefill plan. The
+  full prefill plan handles m > max_trellis_m up to max_batched_tokens.
+- `VLLM_SPARK_TP4_PREFILL_Q512` controls transport/allreduce query
+  capacity, not CUDA graph bucket creation for prefill.
+- `VLLM_SPARK_PREFILL_PIECEWISE_CAPTURE_SIZES` is empty in both EXL3
+  and NF3; it is not a differentiating variable between the two lanes.
+- Proposed piecewise capture sizes must not violate the max padding 32
+  constraint (`TRELLIS_MAX_M=32`) and must pass the bucket contract
+  validation before live capture is attempted.
+- Hypotheses labeled `[INFERENCE]` are derived from code reading, not
+  from live measurement. They require live evidence to confirm or reject.
