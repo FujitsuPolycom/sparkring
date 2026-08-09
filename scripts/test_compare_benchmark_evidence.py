@@ -616,7 +616,7 @@ def test_coverage_extra_concurrency_results_only():
     )
     result = cmp.validate_context_coverage(doc)
     assert result["valid"] is False
-    assert "unexpected" in result["reason"].lower()
+    assert "not one of" in result["reason"].lower()
 
 
 def test_coverage_duplicate_concurrency():
@@ -1461,3 +1461,234 @@ def test_blocker6_regression_doc_line_164_complete():
     content = Path(ROOT / "docs" / "LMCACHE_REGRESSION_INVESTIGATION.md").read_text()
     # The sentence about connector overhead should be complete now
     assert "matters more in this profile" in content
+
+# ---------------------------------------------------------------------------
+# Review-4: concurrency validated before set conversion — no exceptions
+# ---------------------------------------------------------------------------
+
+
+def test_review4_metadata_bool_true_concurrency_fails():
+    """metadata.concurrency_levels=[True,2,4,8] must fail (bool not int)."""
+    doc = _make_doc(
+        meta=_make_meta(concurrency_levels=[True, 2, 4, 8]),
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "not integer-not-bool" in result["reason"]
+
+
+def test_review4_result_bool_true_concurrency_fails():
+    """Result concurrency=True must fail (bool not int)."""
+    doc = _make_doc(
+        summary_table=_OMIT,
+        results=[
+            {"concurrency": True, "context_tokens": 16384, "benchmark_mode": "duration",
+             "measurement_seconds": 24.9, "aggregate_tps": 15.89,
+             "num_errors": 0, "effective_concurrency": 1,
+             "underfilled": False, "warmup_timed_out": False,
+             "capacity_limited": False},
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "not integer-not-bool" in result["reason"]
+
+
+def test_review4_metadata_duplicate_fails():
+    """metadata.concurrency_levels=[8,4,1,1] must fail (duplicate, 4 items)."""
+    doc = _make_doc(
+        meta=_make_meta(concurrency_levels=[8, 4, 1, 1]),
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "duplicate" in result["reason"].lower()
+
+
+def test_review4_metadata_object_concurrency_fails():
+    """metadata.concurrency_levels=[8,4,2,{}] must fail (unhashable, not exception)."""
+    doc = _make_doc(
+        meta=_make_meta(concurrency_levels=[8, 4, 2, {}]),
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "not integer-not-bool" in result["reason"]
+
+
+def test_review4_result_object_concurrency_fails():
+    """Result concurrency={} must fail (unhashable, not exception)."""
+    doc = _make_doc(
+        summary_table=_OMIT,
+        results=[
+            {"concurrency": {}, "context_tokens": 16384, "benchmark_mode": "duration",
+             "measurement_seconds": 24.9, "aggregate_tps": 64.56,
+             "num_errors": 0, "effective_concurrency": 8,
+             "underfilled": False, "warmup_timed_out": False,
+             "capacity_limited": False},
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "not integer-not-bool" in result["reason"]
+
+
+def test_review4_metadata_float_concurrency_fails():
+    """metadata.concurrency_levels=[8.0,4,2,1] must fail (float not int)."""
+    doc = _make_doc(
+        meta=_make_meta(concurrency_levels=[8.0, 4, 2, 1]),
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "not integer-not-bool" in result["reason"]
+
+
+def test_review4_metadata_string_concurrency_fails():
+    """metadata.concurrency_levels=['8','4','2','1'] must fail (string not int)."""
+    doc = _make_doc(
+        meta=_make_meta(concurrency_levels=["8", "4", "2", "1"]),
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "not integer-not-bool" in result["reason"]
+
+
+def test_review4_metadata_null_concurrency_fails():
+    """metadata.concurrency_levels=[8,4,2,None] must fail (null not int)."""
+    doc = _make_doc(
+        meta=_make_meta(concurrency_levels=[8, 4, 2, None]),
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "not integer-not-bool" in result["reason"]
+
+
+def test_review4_result_missing_concurrency_fails():
+    """Result missing concurrency key must fail closed."""
+    doc = _make_doc(
+        summary_table=_OMIT,
+        results=[
+            {"context_tokens": 16384, "benchmark_mode": "duration",
+             "measurement_seconds": 24.9, "aggregate_tps": 64.56,
+             "num_errors": 0, "effective_concurrency": 8,
+             "underfilled": False, "warmup_timed_out": False,
+             "capacity_limited": False},
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "missing concurrency" in result["reason"].lower()
+
+
+def test_review4_metadata_wrong_count_fails():
+    """metadata.concurrency_levels=[8,4,2] (3 items) must fail."""
+    doc = _make_doc(
+        meta=_make_meta(concurrency_levels=[8, 4, 2]),
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "exactly 4" in result["reason"]
+
+
+def test_review4_result_duplicate_concurrency_fails():
+    """Duplicate result concurrency must fail before building sets."""
+    doc = _make_doc(
+        summary_table=_OMIT,
+        results=[
+            _make_result(8, 64.56),
+            _make_result(8, 60.0),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "duplicate" in result["reason"].lower()
+
+
+def test_review4_bool_concurrency_no_exception_in_compare():
+    """Full compare_documents with bool concurrency must not raise."""
+    doc = _make_doc(
+        meta=_make_meta(concurrency_levels=[True, 2, 4, 8]),
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.compare_documents(SUSTAINED_BASELINE, doc)
+    assert result["status"] != "compared"
+    assert len(result["throughput"]["cells"]) == 0
+
+
+def test_review4_object_concurrency_no_exception_in_compare():
+    """Full compare_documents with object concurrency must not raise."""
+    doc = _make_doc(
+        meta=_make_meta(concurrency_levels=[8, 4, 2, {}]),
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.compare_documents(SUSTAINED_BASELINE, doc)
+    assert result["status"] != "compared"
+    assert len(result["throughput"]["cells"]) == 0
+
+
+def test_review4_valid_concurrencies_still_pass():
+    """Normal valid document still passes after stricter validation."""
+    result = cmp.validate_context_coverage(SUSTAINED_BASELINE)
+    assert result["valid"] is True

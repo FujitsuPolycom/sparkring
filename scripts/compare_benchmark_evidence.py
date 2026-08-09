@@ -248,12 +248,28 @@ def validate_context_coverage(doc: dict[str, Any]) -> dict[str, Any]:
     except EvidenceError:
         return {"valid": False, "reason": "no metadata"}
 
-    # Check concurrency_levels against required set
+    # Validate concurrency_levels item-by-item before any set conversion.
+    # bool (True/False) is a subclass of int in Python, so set([True,2,4,8])
+    # silently equals {1,2,4,8} — we must reject bool explicitly.
+    # Unhashable types (dict, list) would crash set() — reject first.
     conc_levels = meta.get("concurrency_levels")
     if not isinstance(conc_levels, list):
         return {"valid": False, "reason": f"concurrency_levels must be a list, got {type(conc_levels).__name__}"}
-    if set(conc_levels) != set(REQUIRED_CONCURRENCY_LEVELS):
-        return {"valid": False, "reason": f"concurrency_levels {conc_levels} does not match required {REQUIRED_CONCURRENCY_LEVELS} as a set"}
+    if len(conc_levels) != 4:
+        return {"valid": False, "reason": f"concurrency_levels must have exactly 4 items, got {len(conc_levels)}: {conc_levels}"}
+    allowed = {1, 2, 4, 8}
+    seen_meta_concs: set[int] = set()
+    for item in conc_levels:
+        if not _is_int_not_bool(item):
+            return {"valid": False, "reason": f"concurrency_levels item {item!r} is not integer-not-bool (got {type(item).__name__})"}
+        if item not in allowed:
+            return {"valid": False, "reason": f"concurrency_levels item {item} is not one of {sorted(allowed)}"}
+        if item in seen_meta_concs:
+            return {"valid": False, "reason": f"concurrency_levels has duplicate value {item}"}
+        seen_meta_concs.add(item)
+    # Now safe to compare as a set — all items validated as int-not-bool
+    if seen_meta_concs != allowed:
+        return {"valid": False, "reason": f"concurrency_levels {conc_levels} does not match required {sorted(allowed)} as a set"}
 
     # Check context_lengths
     ctx_lengths = meta.get("context_lengths")
@@ -262,7 +278,7 @@ def validate_context_coverage(doc: dict[str, Any]) -> dict[str, Any]:
     if ctx_lengths[0] != REQUIRED_CONTEXT:
         return {"valid": False, "reason": f"context_lengths[0]={ctx_lengths[0]} != {REQUIRED_CONTEXT}"}
 
-    # Check results
+    # Check results — validate each concurrency before building maps/sets
     results = doc.get("results")
     if not isinstance(results, list) or len(results) == 0:
         return {"valid": False, "reason": "no results"}
@@ -278,17 +294,24 @@ def validate_context_coverage(doc: dict[str, Any]) -> dict[str, Any]:
             return {"valid": False, "reason": "result missing context_tokens (must be present)"}
         if ctx != REQUIRED_CONTEXT:
             return {"valid": False, "reason": f"result context_tokens={ctx} != {REQUIRED_CONTEXT}"}
+        # concurrency must be present, integer-not-bool, one of allowed,
+        # and unique — validated BEFORE any set membership test
         conc = cell.get("concurrency")
-        if conc is not None:
-            if conc in seen_concurrencies:
-                return {"valid": False, "reason": f"duplicate concurrency C{conc}"}
-            seen_concurrencies.add(conc)
-            # Collect ALL numeric tps for summary comparison — validity
-            # (sign/finiteness/positivity) is checked separately by
-            # extract_validity, not by coverage.
-            agg = cell.get("aggregate_tps")
-            if _is_finite_number(agg):
-                results_tps[f"C{int(conc)}"] = float(agg)
+        if conc is None:
+            return {"valid": False, "reason": "result missing concurrency (must be present)"}
+        if not _is_int_not_bool(conc):
+            return {"valid": False, "reason": f"result concurrency {conc!r} is not integer-not-bool (got {type(conc).__name__})"}
+        if conc not in allowed:
+            return {"valid": False, "reason": f"result concurrency {conc} is not one of {sorted(allowed)}"}
+        if conc in seen_concurrencies:
+            return {"valid": False, "reason": f"duplicate concurrency C{conc}"}
+        seen_concurrencies.add(conc)
+        # Collect ALL numeric tps for summary comparison — validity
+        # (sign/finiteness/positivity) is checked separately by
+        # extract_validity, not by coverage.
+        agg = cell.get("aggregate_tps")
+        if _is_finite_number(agg):
+            results_tps[f"C{int(conc)}"] = float(agg)
 
     # Check exact coverage
     expected = set(REQUIRED_CONCURRENCIES)
@@ -372,6 +395,8 @@ def extract_throughput(doc: dict[str, Any]) -> dict[str, float]:
             conc = cell.get("concurrency")
             agg = cell.get("aggregate_tps")
             if conc is not None and agg is not None:
+                if not _is_int_not_bool(conc):
+                    continue
                 try:
                     nk = f"C{int(conc)}"
                     val = float(agg)
@@ -433,10 +458,11 @@ def extract_validity(doc: dict[str, Any]) -> dict[str, Any]:
         conc = cell.get("concurrency")
         if conc is None:
             continue
-        try:
-            nk = f"C{int(conc)}"
-        except (ValueError, TypeError):
+        if not _is_int_not_bool(conc):
+            # Bool or non-int concurrency — skip cell; coverage will
+            # reject it with a structured failure.
             continue
+        nk = f"C{int(conc)}"
 
         cell_info: dict[str, Any] = {
             "requested_concurrency": conc,
