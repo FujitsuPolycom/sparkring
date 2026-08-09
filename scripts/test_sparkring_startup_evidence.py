@@ -908,6 +908,28 @@ def test_aggregate_report_exposes_timestamp_parse_error():
     assert rank1["engine"]["timestamp_parse_error"] is True
 
 
+def test_aggregate_report_timestamp_parse_error_deduplicated():
+    """If both engine and server components have timestamp_parse_error,
+    the rank must appear only once in ranks_with_timestamp_parse_error."""
+    from datetime import timezone, timedelta
+    # Create a rank where both engine and server logs have malformed timestamps
+    ranks = [
+        evidence.classify_rank(
+            0,
+            engine_log=ENGINE_MALFORMED_VLLM_TS_MAT,
+            server_log=ENGINE_MALFORMED_VLLM_TS_MAT,
+            kernel_log=KERNEL_RM_IN_WINDOW,
+            rm_event_bound=10,
+            engine_log_year=2026,
+            engine_log_tz=timezone(-timedelta(hours=5)),
+            cluster_ready=True,
+        ),
+    ]
+    report = evidence.aggregate_report(ranks)
+    # Rank 0 should appear exactly once, not twice
+    assert report["ranks_with_timestamp_parse_error"].count(0) == 1
+
+
 def test_aggregate_report_fatal_beats_indeterminate():
     ranks = [
         evidence.classify_rank(0, engine_log=CLEAN_ENGINE),

@@ -14,14 +14,14 @@ from the evidence already in the repository:
    -0.71% C8 median regression. The campaign's NPC-off arm showed
    C8 fairness failures (lane collapse to 33-78% of median).
 
-2. **EXL3 prefill limits**: prefill batch capacity is capped at
-   `--max-num-batched-tokens 4096` with
-   `VLLM_EXL3_PREFILL_BLOCK_M=64` for the Trellis prefill plan.
-   `VLLM_EXL3_PREFILL_CHUNK=128` only controls the eager parity
-   fallback path (m < `VLLM_EXL3_TRELLIS_MIN_M=1`); the full
-   Trellis prefill plan handles m > `TRELLIS_MAX_M=32` up to the
-   4096-token batch capacity. The Q6144 arm (4096 → 6144 batched
-   tokens) was deferred. The NF3 lane sets
+2. **EXL3 prefill limits**: The current EXL3 checkpoint has 75
+   mixed-bitrate MoE layers. The mixed-bitrate forward path
+   (`_apply_mixed_rank_sliced`) uses `VLLM_EXL3_TRELLIS_MAX_M` and
+   `max_batched_tokens` to plan decode/prefill states; it does NOT
+   use `VLLM_EXL3_PREFILL_CHUNK` or `VLLM_EXL3_PREFILL_BLOCK_M`.
+   Prefill batch capacity is capped at
+   `--max-num-batched-tokens 4096`. The Q6144 arm (4096 → 6144
+   batched tokens) was deferred. The NF3 lane sets
    `VLLM_SPARK_TP4_PREFILL_Q512=1` (transport/allreduce query
    capacity opt-in) but the EXL3 recipe sets it to `0`.
 
@@ -162,40 +162,30 @@ SETUP.md document this), so it cannot be changed independently.
 because `--no-async-scheduling` is required for the custom TP4
 transport. Marking as low confidence because it is a fixed constraint,
 not a tunable. Documented as context for why connector overhead
-### P1: `VLLM_EXL3_PREFILL_CHUNK=128` only caps the eager parity fallback, not the main prefill path (MEDIUM confidence, downgraded from HIGH)
+### P1: `VLLM_EXL3_PREFILL_CHUNK` does not affect the mixed-bitrate forward path (SCOPED AWAY — not applicable to this model)
 
-**Evidence**: From `runtime/exl3/overlay/vllm/model_executor/layers/quantization/exl3.py`:
-`prefill_plan_enabled = prefill_trellis and max_batched_tokens > max_trellis_m`
-(line 2005). When `prefill_plan_enabled` is true (which it is: `prefill_trellis=1`
-and `max_batched_tokens=4096 > max_trellis_m=32`), the full Trellis
-`prefill_plan` runs for all batches with m > `max_trellis_m=32`, planned
-with `max_batched_tokens=4096` capacity and `prefill_block_m=64`.
-`PREFILL_CHUNK=128` only sets `parity_rows = min(chunk, max_batched_tokens)`
-(line 2007), which governs the eager parity fallback path for
-m < `min_trellis_m=1` — a narrow window that is rarely hit in
-practice since `min_trellis_m=1` means the Trellis plan handles
-m >= 1.
+**Evidence**: The current EXL3 checkpoint (GLM-5.2 EXL3 TR3 3.25-bpw)
+has 75 mixed-bitrate MoE layers (192 K3 plus 64 K4 experts per layer).
+From `exl3.py:2207-2208`, `_apply_rank_sliced` dispatches to
+`_apply_mixed_rank_sliced` when `layer.exl3_mixed_bitrate` is True.
+The mixed-bitrate runtime (`_mixed_rank_sliced_runtime`, line 1828)
+plans a decode state with `max_decode_m = VLLM_EXL3_TRELLIS_MAX_M`
+and a prefill state with `max_batched_tokens`. It does NOT reference
+`VLLM_EXL3_PREFILL_CHUNK` or `VLLM_EXL3_PREFILL_BLOCK_M` at all.
 
-**Mechanism [INFERENCE]**: The eager parity path (m < min_trellis_m) is
-almost never reached because `min_trellis_m=1`. The Trellis prefill
-plan handles all m >= 1 up to 4096 with block_m=64. Therefore
-`PREFILL_CHUNK=128` has minimal effect on prefill throughput for the
-common case. The prefill plan's block_m=64 and max_batched_tokens=4096
-are the real determinants of prefill batch capacity.
+The rank-sliced runtime (`_rank_sliced_runtime`, line 1969) does
+use `PREFILL_CHUNK` and `PREFILL_BLOCK_M`, but only for the eager
+parity fallback path (m < `min_trellis_m`). Since all 75 MoE layers
+are mixed-bitrate, the rank-sliced path is not the active forward
+path for this model.
 
-The NF3 comparison is not about prefill graph capture.
-`VLLM_SPARK_TP4_PREFILL_Q512` controls the native TP4 all-reduce
-session's maximum query row capacity
-(`_maximum_allreduce_query_rows` in `spark_tp4_backend.py:146-151`)
-and graph arena bytes (`_graph_capacity_bytes`, line 154-157), not
-CUDA graph bucket creation for prefill.
-
-**Proposed experiment**: Run a single C1 16K prefill with
-`VLLM_EXL3_PREFILL_CHUNK=256` versus `128`. Same image, same run
-session. One variable: prefill chunk. Measure TTFT. If TTFT is
-unchanged (as the code suggests), the chunk size is not a prefill
-bottleneck. If it changes, investigate whether the parity path was
-hit unexpectedly.
+**Conclusion**: `VLLM_EXL3_PREFILL_CHUNK` and
+`VLLM_EXL3_PREFILL_BLOCK_M` are irrelevant to the current model's
+forward path. The proposed experiment to vary `PREFILL_CHUNK` is
+withdrawn — it cannot affect prefill throughput on this checkpoint.
+A hypothetical non-mixed-bitrate EXL3 checkpoint would use the
+rank-sliced path, where `PREFILL_CHUNK` governs only the narrow
+parity fallback window (m < `min_trellis_m=1`).
 
 ### P2: `VLLM_SPARK_TP4_PREFILL_Q512=0` limits transport/allreduce query capacity (LOW confidence, downgraded from MEDIUM)
 
@@ -307,15 +297,21 @@ All experiments must follow the evidence-comparison checklist
   and is not a tunable variable.
 - SparkCache is disabled and is not implicated in any LMCache
   regression hypothesis.
-- `VLLM_EXL3_PREFILL_CHUNK` only controls the eager parity fallback
-  path (m < min_trellis_m), not the main Trellis prefill plan. The
-  full prefill plan handles m > max_trellis_m up to max_batched_tokens.
+- `VLLM_EXL3_PREFILL_CHUNK` and `VLLM_EXL3_PREFILL_BLOCK_M` do not
+  affect the mixed-bitrate forward path used by this checkpoint's 75
+  mixed-bitrate MoE layers. They only affect the rank-sliced parity
+  fallback, which is not the active path.
 - `VLLM_SPARK_TP4_PREFILL_Q512` controls transport/allreduce query
   capacity, not CUDA graph bucket creation for prefill.
 - `VLLM_SPARK_PREFILL_PIECEWISE_CAPTURE_SIZES` is empty in both EXL3
   and NF3; it is not a differentiating variable between the two lanes.
-- Proposed piecewise capture sizes must not violate the max padding 32
-  constraint (`TRELLIS_MAX_M=32`) and must pass the bucket contract
-  validation before live capture is attempted.
+- `MAX_OBSERVED_PREFILL_PADDING_ROWS=32` (in
+  `spark_cudagraph_bucket_contract.py:25`) is a graph-bucket contract
+  limit on observed prefill padding rows. `VLLM_EXL3_TRELLIS_MAX_M=32`
+  (in `exl3.py:1990`) is the Trellis expert-routing window upper bound.
+  They are distinct contracts that happen to share the value 32. Proposed
+  piecewise capture sizes must pass the bucket contract validation
+  (`MAX_OBSERVED_PREFILL_PADDING_ROWS`) before live capture is attempted;
+  this is separate from the Trellis routing window (`TRELLIS_MAX_M`).
 - Hypotheses labeled `[INFERENCE]` are derived from code reading, not
   from live measurement. They require live evidence to confirm or reject.
