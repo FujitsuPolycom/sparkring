@@ -87,6 +87,66 @@ See the fully scoped
 and its
 [sanitized machine-readable summary](configurations/glm52-exl3-lmcache-live-revalidation-20260808.json).
 
+### 2026-08-09 LMCache restart-boundary and sustained-decode evidence
+
+On four directly cabled DGX Sparks, the public-functional EXL3 3.25-bpw plus
+LMCache CS512 configuration passed the live cache lifecycle boundaries. A cold
+probe had 104.500 s TTFT. Its immediate warm repeat had 0.750 s TTFT
+(0.007177 of cold). After restarting only the four engines, while preserving
+the LMCache servers, TTFT was 5.625 s (0.053828 of cold). Restarting the
+LMCache servers emptied every rank, and the next probe was cold again at
+98.438 s TTFT; its immediate warm repeat was 0.781 s (0.007934 of that cold
+probe).
+
+The four cache snapshots were symmetric. The warm population and the
+post-engine-restart population each had 209 objects and 856,064,000 bytes per
+rank. The LMCache-server restart reduced all ranks to zero objects and zero
+bytes. Final repopulation produced 100 objects and 409,600,000 bytes per rank.
+Every snapshot reported one registered GPU context per rank and zero read or
+write locks. This proves server-resident reuse across an engine restart and
+volatile L1 reset across an LMCache-server restart; it does not prove NVMe
+durability.
+
+The cache harness as a whole reported `fail` solely because fixed-seed output
+text diverged across phases. The cold and both restart-cold samples shared
+SHA-256 `ebdb4bf8a96c4cf03b2841717e1d313c05b589b1427392c51496afbb721389d0`,
+while the two warm samples had different hashes. Therefore the restart
+boundary is live-passed, but broader correctness and overall public-functional
+acceptance remain false.
+
+The final clean-server startup was separately classified from captured engine,
+LMCache-server, and kernel logs by `sparkring_startup_evidence.py` schema v4.
+All four ranks were `clean`: the bounded materialization windows contained zero
+RM allocation-retry events and zero fatal signatures, timestamps parsed without
+ambiguity, and post-materialization plus cluster-readiness milestones were
+present. All eight containers remained at zero restarts and zero OOM kills, both
+production links were up on every Spark, and `/health` returned HTTP 200. The
+private classification report has SHA-256
+`8207c72683248abbac2fafd234c3eb410a16156eb4c73d345cbbf875297fead2`.
+
+Matched sustained 16K measurements were also collected with
+`llm_decode_bench.py` v0.4.31. Every cell used a 25-second measured window,
+1,024 maximum output tokens, temperature zero, duration-mode `ignore_eos`,
+100% shared contexts, DCP4, the automatically discovered 562,688-token KV
+budget, no decode warmup, and skipped prefill. Every listed cell reached its
+requested effective concurrency with zero errors. The harness calibrated
+16,229 actual input tokens for the cache-off run and 16,227 for both cache-on
+runs; the methodology is matched, but the generated prompts are not proven
+byte-identical, so this is not a sealed A/B.
+
+| Configuration / repetition | C1 tok/s | C2 tok/s | C4 tok/s | C8 tok/s |
+|---|---:|---:|---:|---:|
+| LMCache off | **18.0455** | **27.8648** | **44.0546** | **64.6804** |
+| LMCache CS512, run 1 | **15.8896** | **29.2914** | **45.1346** | **64.5615** |
+| LMCache CS512, run 2 | **19.2762** | **29.5132** | **44.3970** | **57.4907** |
+
+The two LMCache repetitions show meaningful run variance, most visibly at C1
+and C8. They are candidate comparison repetitions, not enough evidence to
+attribute either a speedup or regression to LMCache. These sustained figures
+must not be mixed with the repository's bounded 128-token deployment-gate
+numbers. Exact hashes and sanitized evidence are in the
+[2026-08-09 machine-readable summary](configurations/glm52-exl3-lmcache-post-firmware-20260809.json).
+
 This document is the definitive record of SparkRing's measured performance. Every number here is a real measurement pulled from a dated deliverable, carries its full configuration label, and passed the verification gate stated on its row. Nothing in this document is a projection, an extrapolation, or a comparison against systems we did not measure ourselves.
 
 If a number you have seen quoted about SparkRing does not appear here with a matching label, treat it as unofficial.

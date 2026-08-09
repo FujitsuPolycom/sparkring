@@ -1,6 +1,6 @@
 {
   "schema": "sparkring-repository-status/v1",
-  "last_reviewed": "2026-08-08",
+  "last_reviewed": "2026-08-09",
   "lanes": {
     "reference": {
       "maturity": "live-validated",
@@ -19,7 +19,6 @@
       "evidence": "docs/EXL3_RECIPE.md",
       "blockers": [
         "broader correctness gate",
-        "live LMCache engine-restart reuse and server-restart boundary gate",
         "resource and rollback acceptance gates",
         "release promotion"
       ]
@@ -82,13 +81,13 @@
       "entrypoint": "scripts/sparkring_exl3_lmcache_launcher.py"
     },
     "exl3_acceptance_workflow": {
-      "maturity": "offline-validated",
+      "maturity": "live-validated",
       "accepted": false,
       "dry_run_first": true,
       "fail_closed_cleanup_after_start_attempt": true,
       "required_concurrencies": [1, 2, 4, 8],
       "broader_correctness_live_passed": false,
-      "lmcache_restart_boundaries_live_passed": false,
+      "lmcache_restart_boundaries_live_passed": true,
       "full_live_bundle_exists": false,
       "entrypoint": "docs/EXL3_ACCEPTANCE_RUNBOOK.md"
     },
@@ -193,6 +192,67 @@
         "acceptance": false,
         "evidence": "docs/GENERIC_RUNTIME_LIVE_EXERCISE_20260808.md",
         "machine_readable_evidence": "docs/configurations/glm52-exl3-lmcache-live-revalidation-20260808.json"
+      },
+      "post_firmware_revalidation_20260809": {
+        "maturity": "live-validated",
+        "lane": "public-functional",
+        "hardware": "four directly cabled DGX Sparks",
+        "lmcache_restart_boundaries_live_passed": true,
+        "cache_acceptance_harness_status": "fail",
+        "cache_acceptance_failure": "fixed-seed probe output changed across cache/restart phases",
+        "broader_correctness_live_passed": false,
+        "overall_acceptance": false,
+        "final_startup_evidence": {
+          "classifier_schema": "sparkring-startup-evidence/v4",
+          "verdict": "clean",
+          "clean_ranks": [0, 1, 2, 3],
+          "rm_event_rank_count": 0,
+          "fatal_signature_count": 0,
+          "timestamp_parse_error_ranks": [],
+          "containers_restart_count_each": 0,
+          "containers_oom_killed_each": false,
+          "production_links_up_each": 2,
+          "api_health_http": 200,
+          "private_report_sha256": "8207c72683248abbac2fafd234c3eb410a16156eb4c73d345cbbf875297fead2"
+        },
+        "restart_boundary_scope": "server-resident reuse across engine restart and volatile L1 reset across LMCache-server restart; not NVMe durability",
+        "cache_geometry": {
+          "chunk_size": 512,
+          "ranks_symmetric": true,
+          "registered_gpu_contexts_each": 1,
+          "read_locks_each": 0,
+          "write_locks_each": 0,
+          "after_warm_and_engine_restart": {
+            "objects_each": 209,
+            "bytes_each": 856064000
+          },
+          "after_server_restart": {
+            "objects_each": 0,
+            "bytes_each": 0
+          },
+          "final": {
+            "objects_each": 100,
+            "bytes_each": 409600000
+          }
+        },
+        "matched_sustained_16k": {
+          "harness": "llm_decode_bench.py v0.4.31",
+          "duration_seconds": 25,
+          "max_tokens": 1024,
+          "temperature": 0,
+          "shared_context_percent": 100,
+          "dcp_size": 4,
+          "kv_budget": 562688,
+          "prefill": "skipped",
+          "all_cells_valid": true,
+          "interpretation": "two candidate LMCache repetitions show run variance; no LMCache speedup or regression attribution",
+          "aggregate_tps": {
+            "lmcache_off": {"c1": 18.04547459604118, "c2": 27.864771541039985, "c4": 44.05462773873411, "c8": 64.68040741016517},
+            "lmcache_run_1": {"c1": 15.889575475470446, "c2": 29.291389134074304, "c4": 45.134558912376775, "c8": 64.56148808790452},
+            "lmcache_run_2": {"c1": 19.276239329956116, "c2": 29.5131927178435, "c4": 44.39703751401468, "c8": 57.49065927429457}
+          }
+        },
+        "machine_readable_evidence": "docs/configurations/glm52-exl3-lmcache-post-firmware-20260809.json"
       },
       "entrypoint": "recipes/glm52-exl3-tr3-3.25bpw.json",
       "evidence": "docs/EXL3_RECIPE.md",

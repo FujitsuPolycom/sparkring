@@ -1,0 +1,136 @@
+{
+  "schema": "sparkring-exl3-lmcache-post-firmware-evidence/v1",
+  "date": "2026-08-09",
+  "lane": "public-functional",
+  "maturity": "live-validated",
+  "hardware": "four directly cabled NVIDIA DGX Sparks",
+  "configuration": {
+    "model": "willfalco/GLM-5.2-EXL3-TR3-3.25bpw",
+    "model_revision": "d7d79c2d14599dfce7a5d12b85f7ad73f40e623d",
+    "image_id": "sha256:20c4099f2e7e3dd3c8ab64f7d7930bde4f372df1895aa3ffa593252ca04ae96f",
+    "topology": "TP4/DCP4",
+    "mtp_mode": "fixed-mtp2",
+    "max_model_len": 524288,
+    "max_num_seqs": 8,
+    "max_num_batched_tokens": 4096,
+    "kv_cache_memory_bytes_per_rank": 4500000000,
+    "lmcache_chunk_size": 512,
+    "lmcache_l1_gib_per_rank": 1,
+    "kv_budget_tokens": 562688
+  },
+  "host_stack": {
+    "kernel": "6.17.0-1029-nvidia",
+    "nvidia_driver": "580.173.02",
+    "fwupd": "2.0.20",
+    "embedded_controller": "0x03000508",
+    "soc_firmware": "0x02009b0b",
+    "usb_pd": "0x00000516",
+    "connectx_7_firmware": "28.45.4028"
+  },
+  "final_startup_evidence": {
+    "classifier_schema": "sparkring-startup-evidence/v4",
+    "verdict": "clean",
+    "clean_ranks": [0, 1, 2, 3],
+    "rm_event_rank_count": 0,
+    "fatal_signature_count": 0,
+    "timestamp_parse_error_ranks": [],
+    "engine_restart_count_each": 0,
+    "lmcache_server_restart_count_each": 0,
+    "engine_oom_killed_each": false,
+    "lmcache_server_oom_killed_each": false,
+    "production_links_up_each": 2,
+    "api_health_http": 200,
+    "private_report_sha256": "8207c72683248abbac2fafd234c3eb410a16156eb4c73d345cbbf875297fead2"
+  },
+  "cache_restart_boundary_gate": {
+    "harness": "scripts/exl3_cache_acceptance.py",
+    "status": "fail",
+    "restart_boundaries_live_passed": true,
+    "sole_failure": "fixed-seed probe output changed across cache/restart phases",
+    "broader_correctness_passed": false,
+    "evidence_scope": "LMCache server-resident reuse across engine restart and volatile L1 reset across LMCache-server restart; not NVMe durability",
+    "samples": {
+      "cold": {
+        "ttft_seconds": 104.5,
+        "text_sha256": "ebdb4bf8a96c4cf03b2841717e1d313c05b589b1427392c51496afbb721389d0"
+      },
+      "warm": {
+        "ttft_seconds": 0.75,
+        "ratio_vs_cold": 0.007177033492822967,
+        "text_sha256": "50cbcb97e1a5c0b6c890505af39acf760557c6efd2bda4dd59ca39c6544e430d"
+      },
+      "after_engine_restart": {
+        "ttft_seconds": 5.625,
+        "ratio_vs_cold": 0.05382775119617225,
+        "text_sha256": "ebdb4bf8a96c4cf03b2841717e1d313c05b589b1427392c51496afbb721389d0"
+      },
+      "after_server_restart_cold": {
+        "ttft_seconds": 98.43800000008196,
+        "text_sha256": "ebdb4bf8a96c4cf03b2841717e1d313c05b589b1427392c51496afbb721389d0"
+      },
+      "after_server_restart_warm": {
+        "ttft_seconds": 0.7810000001918525,
+        "ratio_vs_after_server_restart_cold": 0.007933927956594021,
+        "text_sha256": "b353b22fd79279463b6d792e4abfd583960229b2d6704057f0b981e3b5aca43f"
+      }
+    },
+    "cache_snapshots": {
+      "after_warm": {"objects_each": 209, "bytes_each": 856064000},
+      "after_engine_restart": {"objects_each": 209, "bytes_each": 856064000},
+      "after_server_restart": {"objects_each": 0, "bytes_each": 0},
+      "final": {"objects_each": 100, "bytes_each": 409600000},
+      "ranks_symmetric": true,
+      "registered_gpu_contexts_each": 1,
+      "read_locks_each": 0,
+      "write_locks_each": 0
+    },
+    "private_raw_evidence_sha256": "3e457275c801e0b6b3b1514f1c9a1558cf11913372aec07142f0e899aeb1b14b"
+  },
+  "matched_sustained_decode": {
+    "harness": "llm_decode_bench.py v0.4.31",
+    "harness_sha256": "8de7c32c0abae3c664226fb9c1c197d0752c0a0f3f5a87b3357326f1407f9c07",
+    "context": "16K",
+    "duration_seconds": 25,
+    "max_tokens": 1024,
+    "temperature": 0,
+    "ignore_eos": true,
+    "shared_context_percent": 100,
+    "unique_context_percent": 0,
+    "dcp_size": 4,
+    "kv_budget": 562688,
+    "decode_warmup_seconds": 0,
+    "prefill": "skipped",
+    "cells": [
+      {
+        "configuration": "lmcache-off",
+        "private_raw_evidence_sha256": "651a99260cedab0f29cdd61a2042cbe3dee7499039c391cb3d2336abc917a46c",
+        "aggregate_tps": {"c1": 18.04547459604118, "c2": 27.864771541039985, "c4": 44.05462773873411, "c8": 64.68040741016517},
+        "all_cells_valid": true,
+        "actual_input_tokens": 16229,
+        "errors": 0
+      },
+      {
+        "configuration": "lmcache-cs512-run-1",
+        "private_raw_evidence_sha256": "ed865c315d49c08ab1a23069a8cc48461e5c51e3fbb6d23841bd6d9a2ab6db18",
+        "aggregate_tps": {"c1": 15.889575475470446, "c2": 29.291389134074304, "c4": 45.134558912376775, "c8": 64.56148808790452},
+        "all_cells_valid": true,
+        "actual_input_tokens": 16227,
+        "errors": 0
+      },
+      {
+        "configuration": "lmcache-cs512-run-2",
+        "private_raw_evidence_sha256": "fd641ced7a83243ff1a58ae6e8806a959c744a645f08ccd52412d54f167e352d",
+        "aggregate_tps": {"c1": 19.276239329956116, "c2": 29.5131927178435, "c4": 44.39703751401468, "c8": 57.49065927429457},
+        "all_cells_valid": true,
+        "actual_input_tokens": 16227,
+        "errors": 0
+      }
+    ],
+    "interpretation": "The workload settings match, but the cache-off run calibrated 16229 actual input tokens and the cache-on runs calibrated 16227; prompts are not proven byte-identical. The two candidate LMCache repetitions show run variance. They do not establish an LMCache speedup or regression and are not interchangeable with bounded 128-token deployment gates."
+  },
+  "acceptance": {
+    "restart_boundaries": true,
+    "broader_correctness": false,
+    "overall_public_functional": false
+  }
+}
