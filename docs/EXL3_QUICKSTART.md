@@ -234,13 +234,22 @@ python scripts/sparkring_startup_evidence.py \
   --engine-log engine-r1.log --kernel-log kernel-r1.log \
   --engine-log engine-r2.log --kernel-log kernel-r2.log \
   --engine-log engine-r3.log --kernel-log kernel-r3.log \
+  --rm-event-bound 50 \
+  --engine-log-year 2026 --engine-log-tz=-05:00 \
   classify
 ```
 
+The `--rm-event-bound` is operator-supplied; the classifier never
+establishes a safe bound itself. If absent and RM events are present,
+the verdict is indeterminate (fail closed). vLLM logs require
+`--engine-log-year` and `--engine-log-tz` for timestamp parsing.
 Generic `CUDA out of memory` is fatal by default. Only kernel RM
 `NV_ERR_NO_MEMORY` at `_memdescAllocInternal @ mem_desc.c:1359` during
-EXL3 materialization can be `bounded_rm_retry`, with full cross-evidence.
-NVIDIA errors are never globally ignored; each signature is classified
-individually with provenance (line number, pattern label, SHA-256). The
+the EXL3 materialization window can be `bounded_rm_retry`, with full
+cross-evidence including real timestamp comparison. NVIDIA errors are
+never globally ignored; each signature is classified individually with
+provenance (line number, pattern label, SHA-256). The
 `bounded_rm_retry` classification is evidence-scoped to the legacy EXL3
-materialization callsite and does not prove all RM errors safe.
+materialization callsite and does not prove all RM errors safe. This tool
+classifies supplied evidence and never establishes a safe bound itself.
+It remains offline-validated until run on sanitized captured evidence.

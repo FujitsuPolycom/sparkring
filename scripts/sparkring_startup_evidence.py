@@ -7,23 +7,40 @@ Docker state to classify startup evidence into four verdicts:
 - **clean**: no concerning signatures.
 - **bounded_rm_retry**: a kernel RM ``NV_ERR_NO_MEMORY`` event at the
   evidenced callsite (``_memdescAllocInternal @ mem_desc.c:1359``) occurred
-  during explicit EXL3 mixed-Trellis materialization, the container stayed
-  running (``Running = true``, ``RestartCount = 0``, ``OOMKilled = false``),
-  subsequent layer progress and eventual readiness were observed, no fatal
-  signatures (Xid, OOM-kill, restart, SSH loss, fabric loss) are present,
-  and the event count is within an explicit conservative bound.  This
-  classification is evidence-scoped to the legacy EXL3 materialization
-  callsite and does not prove all RM errors safe.
+  during the EXL3 mixed-Trellis materialization window (from first
+  materialization line through last layer/readiness), every event timestamp
+  falls inside that window, the container stayed running (``Running = true``,
+  ``RestartCount = 0``, ``OOMKilled = false``), no fatal signatures are
+  present, and the event count is within an explicit operator-supplied
+  accepted delta bound.  This classification is evidence-scoped to the
+  legacy EXL3 materialization callsite and does not prove all RM errors safe.
 - **fatal**: Xid GPU errors, ``torch.OutOfMemoryError``, generic CUDA OOM,
   OOM-killed containers, unexpected restarts, SSH connection failures,
   fabric/RoCE carrier loss, or driver init failures.  These are never
-  downgraded.
+  downgraded regardless of later progress.
 - **indeterminate**: a kernel RM event is observed but cross-evidence
   cannot be truthfully correlated — e.g. timestamps are missing or
-  malformed, layer materialization context is absent, or no subsequent
-  readiness was observed.  Indeterminate is treated as fatal-policy
-  (exit code ``EXIT_FATAL``) because the classifier must not silently
-  downgrade unknown NVIDIA errors.
+  malformed, the event falls outside the materialization window, no
+  readiness occurs after the window, the operator-supplied accepted delta
+  bound is absent, or timezones are inconsistent.  Indeterminate is
+  treated as fatal-policy (exit code ``EXIT_FATAL``) because the
+  classifier must not silently downgrade unknown NVIDIA errors.
+
+**Accepted delta bound is operator-supplied.** The classifier never
+establishes a safe bound itself.  The operator must supply
+``--rm-event-bound`` (or ``rm_event_bound=`` in the API); if absent and
+RM events are present, the verdict is ``indeterminate`` (fail closed).
+
+**Timestamp parsing.** The classifier parses two real log formats:
+
+1. Kernel ISO timestamps: ``2026-08-09T00:16:52.113635-05:00`` (with
+   optional timezone offset).
+2. vLLM log prefixes: ``(Worker pid=1234) INFO 08-09 05:24:32.123456``
+   (month-day time, year and timezone must be supplied via
+   ``--engine-log-year`` and ``--engine-log-tz``).
+
+If year or timezone cannot be inferred unambiguously, the verdict is
+``indeterminate``.
 
 The classifier is **purely diagnostic**: it reads evidence that has already
 been captured (log files, ``docker inspect`` JSON) and returns a structured
@@ -31,26 +48,9 @@ JSON report.  It does not contact the cluster, start or stop anything, or
 modify any host.  It is OFFLINE when given local files and READ-ONLY REMOTE
 when given SSH targets.
 
-Usage::
-
-    # Offline: classify from captured engine + kernel logs
-    python scripts/sparkring_startup_evidence.py \\
-        --engine-log engine-r0.log --kernel-log kernel-r0.log \\
-        --engine-log engine-r1.log --kernel-log kernel-r1.log \\
-        classify
-
-    # Offline: engine + server + kernel
-    python scripts/sparkring_startup_evidence.py \\
-        --engine-log engine-r0.log --server-log server-r0.log \\
-        --kernel-log kernel-r0.log classify
-
-The script intentionally does **not** globally ignore NVIDIA errors.
-Generic ``CUDA out of memory``, ``torch.OutOfMemoryError``, and
-``OOMKilled`` are fatal by default.  Only the evidenced kernel RM
-``NV_ERR_NO_MEMORY`` callsite can be classified ``bounded_rm_retry``, and
-only with full cross-evidence.  If timestamps cannot be correlated
-truthfully from supplied files, the verdict is ``indeterminate`` (fatal
-policy), not ``bounded_rm_retry``.
+**This tool classifies supplied evidence and never establishes a safe
+bound itself.** It remains offline-validated until run on sanitized
+captured evidence.
 """
 
 from __future__ import annotations
@@ -60,10 +60,11 @@ import hashlib
 import json
 import re
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
-SCHEMA = "sparkring-startup-evidence/v2"
+SCHEMA = "sparkring-startup-evidence/v3"
 
 # Exit codes
 EXIT_OK = 0
@@ -165,6 +166,15 @@ _PROGRESS = re.compile(
     re.IGNORECASE,
 )
 
+# Readiness-specific progress (subset of _PROGRESS)
+_READINESS = re.compile(
+    r"Engine is ready|"
+    r"API server started|"
+    r"Uvicorn running|"
+    r"Listening on",
+    re.IGNORECASE,
+)
+
 # Neutral: LMCache server ready
 _LMCACHE_READY = re.compile(
     r"LMCache.*server.*started|"
@@ -173,8 +183,7 @@ _LMCACHE_READY = re.compile(
     re.IGNORECASE,
 )
 
-# EXL3 mixed-Trellis materialization context — the layer preparation
-# phase where the evidenced RM events were observed.
+# EXL3 mixed-Trellis materialization context
 _MATERIALIZE = re.compile(
     r"mixed.?Trellis|"
     r"materiali[sz]ation|"
@@ -184,15 +193,21 @@ _MATERIALIZE = re.compile(
     re.IGNORECASE,
 )
 
-# Timestamp patterns for temporal correlation
-_TIMESTAMP = re.compile(
-    r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2})|"
-    r"^\[(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2})\]|"
-    r"^(\d{2}:\d{2}:\d{2}\.\d+)\s"
+# Timestamp patterns
+
+# Kernel ISO: 2026-08-09T00:16:52.113635-05:00 or 2026-08-09T00:16:52Z
+_KERNEL_TS = re.compile(
+    r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?"
+    r"(?:[+-]\d{2}:\d{2}|Z))"
 )
 
-# Conservative bound on RM event count
-RM_EVENT_BOUND = 3
+# vLLM prefix: (Worker pid=1234) INFO 08-09 05:24:32.123456
+# Captures month-day and time; year and timezone must be supplied.
+_VLLM_TS = re.compile(
+    r"(?:\(Worker\s+pid=\d+\)\s+)?"
+    r"(?:INFO|WARNING|ERROR)\s+"
+    r"(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?"
+)
 
 ALL_FATAL_PATTERNS = [
     ("xid", _XID),
@@ -210,16 +225,92 @@ class ConfigError(ValueError):
 
 
 # ---------------------------------------------------------------------------
-# Log parsing helpers
+# Timestamp parsing
 # ---------------------------------------------------------------------------
 
 
-def _extract_timestamp(line: str) -> str | None:
-    """Extract a timestamp from a log line, if present."""
-    match = _TIMESTAMP.match(line)
-    if match:
-        return match.group(1) or match.group(2) or match.group(3)
+def _parse_kernel_timestamp(line: str) -> datetime | None:
+    """Extract and parse a kernel ISO timestamp from a log line.
+
+    Handles formats like:
+    - 2026-08-09T00:16:52.113635-05:00
+    - 2026-08-09T00:16:52Z
+    - 2026-08-09T00:16:52
+    """
+    match = _KERNEL_TS.search(line)
+    if not match:
+        return None
+    raw = match.group(1)
+    try:
+        # Python's fromisoformat handles offset and fractional seconds
+        # in 3.11+. For older versions, fall back to manual parsing.
+        try:
+            return datetime.fromisoformat(raw)
+        except ValueError:
+            pass
+        # Try with Z replaced by +00:00
+        if raw.endswith("Z"):
+            return datetime.fromisoformat(raw[:-1] + "+00:00")
+    except (ValueError, TypeError):
+        pass
     return None
+
+
+def _parse_vllm_timestamp(
+    line: str,
+    *,
+    year: int | None = None,
+    tz: timezone | None = None,
+) -> datetime | None:
+    """Extract and parse a vLLM log-prefix timestamp.
+
+    vLLM format: ``INFO 08-09 05:24:32.123456``
+    The month-day and time are in the log; year and timezone must be supplied.
+    Returns None if year is not supplied.
+    """
+    match = _VLLM_TS.search(line)
+    if not match:
+        return None
+    if year is None:
+        return None
+    month = int(match.group(1))
+    day = int(match.group(2))
+    hour = int(match.group(3))
+    minute = int(match.group(4))
+    second = int(match.group(5))
+    frac_str = match.group(6)
+    microsecond = 0
+    if frac_str:
+        # Pad/truncate to 6 digits
+        microsecond = int(frac_str[:6].ljust(6, "0"))
+    try:
+        dt = datetime(year, month, day, hour, minute, second, microsecond)
+    except ValueError:
+        return None
+    if tz is not None:
+        dt = dt.replace(tzinfo=tz)
+    return dt
+
+
+def _parse_engine_timestamp(
+    line: str,
+    *,
+    year: int | None = None,
+    tz: timezone | None = None,
+) -> datetime | None:
+    """Parse a timestamp from an engine log line.
+
+    Tries kernel ISO format first, then vLLM prefix format.
+    """
+    dt = _parse_kernel_timestamp(line)
+    if dt is not None:
+        return dt
+    return _parse_vllm_timestamp(line, year=year, tz=tz)
+
+
+# ---------------------------------------------------------------------------
+# Log scanning helpers
+# ---------------------------------------------------------------------------
 
 
 def _scan_signatures(
@@ -235,7 +326,6 @@ def _scan_signatures(
                     "pattern": label,
                     "line_number": index,
                     "line": line.strip()[:500],
-                    "timestamp": _extract_timestamp(line),
                 })
     return hits
 
@@ -245,6 +335,14 @@ def _scan_progress(lines: list[str]) -> list[int]:
     return [
         i for i, line in enumerate(lines, start=1)
         if _PROGRESS.search(line) or _LMCACHE_READY.search(line)
+    ]
+
+
+def _scan_readiness(lines: list[str]) -> list[int]:
+    """Return line numbers of readiness-specific lines."""
+    return [
+        i for i, line in enumerate(lines, start=1)
+        if _READINESS.search(line) or _LMCACHE_READY.search(line)
     ]
 
 
@@ -266,43 +364,75 @@ def classify_log(
     *,
     container_running: bool = True,
     kernel_log: str | None = None,
+    rm_event_bound: int | None = None,
+    engine_log_year: int | None = None,
+    engine_log_tz: timezone | None = None,
 ) -> dict[str, Any]:
     """Classify a single container log, optionally with a kernel log.
 
-    Returns a structured dict with:
+    Parameters:
+    - ``container_running``: whether the container was running when
+      evidence was captured.
+    - ``kernel_log``: captured kernel/dmesg log text.
+    - ``rm_event_bound``: operator-supplied accepted delta bound for RM
+      event count. If None and RM events are present, verdict is
+      indeterminate (fail closed).
+    - ``engine_log_year``: year for vLLM log timestamps (which lack year).
+    - ``engine_log_tz``: timezone for vLLM log timestamps.
 
-    - ``verdict``: ``clean``, ``bounded_rm_retry``, ``fatal``, or
-      ``indeterminate``
-    - ``fatal_signatures``: list of hit dicts
-    - ``rm_events``: list of kernel RM event hit dicts (if kernel_log given)
-    - ``progress_lines``: line numbers of progress/readiness
-    - ``materialization_lines``: line numbers of EXL3 materialization
-    - ``rm_event_count``: number of RM events (0 if no kernel log)
-    - ``rm_event_within_bound``: whether count <= RM_EVENT_BOUND
-    - ``has_readiness``: whether a readiness line was found
-    - ``timestamps_correlatable``: whether timestamps could be extracted
-    - ``line_count``: total lines parsed
-    - ``sha256``: hash of the engine log for provenance
-    - ``kernel_sha256``: hash of the kernel log (if provided)
+    Returns a structured dict with verdict, signatures, event counts,
+    materialization window, and provenance hashes.
     """
     lines = text.splitlines()
     fatal_hits = _scan_signatures(lines, ALL_FATAL_PATTERNS)
     progress_line_numbers = _scan_progress(lines)
-    materialization_lines = _scan_materialization(lines)
-    has_readiness = any(
-        "Engine is ready" in lines[i - 1]
-        or "API server started" in lines[i - 1]
-        or "Uvicorn running" in lines[i - 1]
-        or "Listening on" in lines[i - 1]
-        for i in progress_line_numbers
-        if i <= len(lines)
-    )
+    readiness_line_numbers = _scan_readiness(lines)
+    materialization_line_numbers = _scan_materialization(lines)
+
+    # Parse engine log timestamps
+    engine_timestamps: list[tuple[int, datetime]] = []
+    for i, line in enumerate(lines, start=1):
+        dt = _parse_engine_timestamp(
+            line, year=engine_log_year, tz=engine_log_tz
+        )
+        if dt is not None:
+            engine_timestamps.append((i, dt))
+
+    # Derive materialization window from real timestamps
+    materialization_window: tuple[datetime, datetime] | None = None
+    window_first: datetime | None = None
+    window_last: datetime | None = None
+    has_readiness = bool(readiness_line_numbers)
+
+    if materialization_line_numbers and engine_timestamps:
+        # Window: from first materialization line's timestamp through
+        # last readiness line's timestamp (or last progress if no readiness)
+        mat_ts = [
+            dt for ln, dt in engine_timestamps
+            if ln >= materialization_line_numbers[0]
+        ]
+        if mat_ts:
+            window_first = min(mat_ts)
+            # End of window: last readiness timestamp, or last progress
+            end_candidates = readiness_line_numbers or progress_line_numbers
+            if end_candidates:
+                end_ts = [
+                    dt for ln, dt in engine_timestamps
+                    if ln >= end_candidates[-1]
+                ]
+                if end_ts:
+                    window_last = max(end_ts)
+            if window_last is None and engine_timestamps:
+                window_last = max(dt for _, dt in engine_timestamps)
+            if window_first is not None and window_last is not None:
+                materialization_window = (window_first, window_last)
 
     # Kernel RM event detection
     rm_events: list[dict[str, Any]] = []
     rm_event_count = 0
-    rm_event_within_bound = True
-    timestamps_correlatable = True
+    rm_event_within_bound: bool | None = None
+    all_events_in_window = True
+    all_events_have_timestamps = True
     kernel_sha256: str | None = None
 
     if kernel_log is not None:
@@ -310,29 +440,41 @@ def classify_log(
         kernel_sha256 = hashlib.sha256(
             kernel_log.encode("utf-8")
         ).hexdigest()
-        rm_events = _scan_signatures(kernel_lines, [(
+        raw_rm_hits = _scan_signatures(kernel_lines, [(
             "nv_err_no_memory_memdesc_alloc", _RM_KERNEL_EVENT,
         )])
-        rm_event_count = len(rm_events)
-        rm_event_within_bound = rm_event_count <= RM_EVENT_BOUND
 
-        # Timestamp correlation: check if kernel events and engine log
-        # have extractable timestamps
-        kernel_ts = [
-            _extract_timestamp(line)
-            for line in kernel_lines
-            if _RM_KERNEL_EVENT.search(line)
-        ]
-        engine_ts = [
-            _extract_timestamp(line)
-            for line in lines
-        ]
-        if rm_events and (
-            any(ts is None for ts in kernel_ts)
-            or any(ts is None for ts in engine_ts if ts is not None)
-            or not engine_ts
-        ):
-            timestamps_correlatable = False
+        for hit in raw_rm_hits:
+            kline = kernel_lines[hit["line_number"] - 1]
+            kts = _parse_kernel_timestamp(kline)
+            hit["timestamp"] = kts.isoformat() if kts else None
+            rm_events.append(hit)
+
+        rm_event_count = len(rm_events)
+
+        # Check operator-supplied bound
+        if rm_event_count > 0:
+            if rm_event_bound is None:
+                rm_event_within_bound = None  # fail closed
+            else:
+                rm_event_within_bound = rm_event_count <= rm_event_bound
+
+            # Check all events have timestamps
+            all_events_have_timestamps = all(
+                e["timestamp"] is not None for e in rm_events
+            )
+
+            # Check all events fall inside materialization window
+            if all_events_have_timestamps and materialization_window:
+                win_start, win_end = materialization_window
+                for e in rm_events:
+                    edt = datetime.fromisoformat(e["timestamp"])
+                    if edt < win_start or edt > win_end:
+                        all_events_in_window = False
+                        break
+            elif rm_events:
+                # Can't verify window containment
+                all_events_in_window = False
 
     # Determine verdict
     if fatal_hits:
@@ -343,36 +485,45 @@ def classify_log(
         # RM events present — apply cross-evidence protocol
         if not container_running:
             verdict = "fatal"
-        elif not rm_event_within_bound:
+        elif rm_event_bound is None:
+            # No operator-supplied bound → fail closed
+            verdict = "indeterminate"
+        elif rm_event_within_bound is False:
+            # Over bound → fatal
             verdict = "fatal"
-        elif not materialization_lines:
-            # RM event outside materialization context
+        elif not materialization_window:
+            # Can't derive materialization window
+            verdict = "indeterminate"
+        elif not all_events_have_timestamps:
+            # Missing kernel event timestamps
+            verdict = "indeterminate"
+        elif not all_events_in_window:
+            # Events outside window
             verdict = "indeterminate"
         elif not has_readiness:
-            # No eventual readiness after RM event
-            verdict = "indeterminate"
-        elif not timestamps_correlatable:
+            # No readiness after window
             verdict = "indeterminate"
         else:
-            # Check progress after each RM event
-            # Use engine log line numbers as proxy for temporal ordering
-            # when kernel timestamps can't be mapped to engine lines
-            has_progress_after_all_rm = bool(progress_line_numbers)
-            if has_progress_after_all_rm:
-                verdict = "bounded_rm_retry"
-            else:
-                verdict = "indeterminate"
+            verdict = "bounded_rm_retry"
 
     return {
         "verdict": verdict,
         "fatal_signatures": fatal_hits,
         "rm_events": rm_events,
         "rm_event_count": rm_event_count,
+        "rm_event_bound": rm_event_bound,
         "rm_event_within_bound": rm_event_within_bound,
-        "progress_lines": progress_line_numbers,
-        "materialization_lines": materialization_lines,
+        "all_events_have_timestamps": all_events_have_timestamps,
+        "all_events_in_window": all_events_in_window,
+        "materialization_window": (
+            [window_first.isoformat(), window_last.isoformat()]
+            if window_first and window_last
+            else None
+        ),
         "has_readiness": has_readiness,
-        "timestamps_correlatable": timestamps_correlatable,
+        "progress_lines": progress_line_numbers,
+        "materialization_lines": materialization_line_numbers,
+        "engine_timestamp_count": len(engine_timestamps),
         "line_count": len(lines),
         "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
         "kernel_sha256": kernel_sha256,
@@ -387,11 +538,14 @@ def classify_rank(
     engine_running: bool = True,
     server_running: bool = True,
     kernel_log: str | None = None,
+    rm_event_bound: int | None = None,
+    engine_log_year: int | None = None,
+    engine_log_tz: timezone | None = None,
 ) -> dict[str, Any]:
     """Classify startup evidence for one rank.
 
-    Each of engine_log and server_log is optional. The overall rank verdict
-    is the worst of the two (fatal > indeterminate > bounded_rm_retry > clean).
+    The overall rank verdict is the worst of engine and server
+    (fatal > indeterminate > bounded_rm_retry > clean).
     """
     engine_result = None
     server_result = None
@@ -400,6 +554,9 @@ def classify_rank(
             engine_log,
             container_running=engine_running,
             kernel_log=kernel_log,
+            rm_event_bound=rm_event_bound,
+            engine_log_year=engine_log_year,
+            engine_log_tz=engine_log_tz,
         )
     if server_log is not None:
         server_result = classify_log(
@@ -428,7 +585,10 @@ def _worst_verdict(verdicts: list[str]) -> str:
 
 
 def aggregate_report(rank_reports: list[dict[str, Any]]) -> dict[str, Any]:
-    """Aggregate per-rank evidence into a single report."""
+    """Aggregate per-rank evidence into a single report.
+
+    One indeterminate or fatal rank dominates the overall verdict.
+    """
     verdicts = [r["verdict"] for r in rank_reports]
     overall = _worst_verdict(verdicts)
 
@@ -469,22 +629,28 @@ def aggregate_report(rank_reports: list[dict[str, Any]]) -> dict[str, Any]:
         "ranks": rank_reports,
         "evidence_scope": (
             "Diagnostic log classification from captured evidence; "
-            "does not contact or mutate the cluster"
+            "does not contact or mutate the cluster. This tool classifies "
+            "supplied evidence and never establishes a safe bound itself."
         ),
         "classification_note": (
             "Generic CUDA out of memory, torch.OutOfMemoryError, OOMKilled, "
             "Xid, unexpected restarts, SSH failures, fabric carrier loss, "
             "and driver failures are fatal. Only kernel RM "
             "NV_ERR_NO_MEMORY at _memdescAllocInternal @ mem_desc.c:1359 "
-            "during EXL3 mixed-Trellis materialization can be classified "
+            "during the EXL3 materialization window can be classified "
             "bounded_rm_retry, and only with full cross-evidence: container "
             "running, RestartCount=0, OOMKilled=false, no fatal signatures, "
-            f"event count <= {RM_EVENT_BOUND}, layer progress, eventual "
-            "readiness, and correlatable timestamps. If timestamps cannot be "
-            "correlated, the verdict is indeterminate (fatal policy). "
+            "event count within operator-supplied bound, every event "
+            "timestamp inside the materialization window, and eventual "
+            "readiness. If the operator-supplied bound is absent, "
+            "timestamps are missing/malformed, or events fall outside "
+            "the window, the verdict is indeterminate (fatal policy). "
             "This is evidence-scoped to the legacy EXL3 materialization "
             "callsite and does not prove all RM errors safe. NVIDIA errors "
-            "are never globally ignored."
+            "are never globally ignored. This tool classifies supplied "
+            "evidence and never establishes a safe bound itself. It "
+            "remains offline-validated until run on sanitized captured "
+            "evidence."
         ),
     }
 
@@ -494,8 +660,25 @@ def aggregate_report(rank_reports: list[dict[str, Any]]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _parse_tz(arg: str) -> timezone:
+    """Parse a timezone argument like 'UTC' or '-05:00' or '+05:30'."""
+    if arg.upper() == "UTC":
+        return timezone.utc
+    # Parse ±HH:MM
+    match = re.match(r"^([+-])(\d{2}):(\d{2})$", arg)
+    if match:
+        sign = 1 if match.group(1) == "+" else -1
+        hours = int(match.group(2))
+        minutes = int(match.group(3))
+        return timezone(sign * timedelta(hours=hours, minutes=minutes))
+    raise ConfigError(f"invalid timezone: {arg}")
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument(
         "--engine-log",
         action="append",
@@ -525,6 +708,35 @@ def build_parser() -> argparse.ArgumentParser:
             "path to a captured kernel/dmesg log; repeat once per rank. "
             "Only NV_ERR_NO_MEMORY at _memdescAllocInternal @ mem_desc.c:1359 "
             "is matched for bounded_rm_retry classification."
+        ),
+    )
+    parser.add_argument(
+        "--rm-event-bound",
+        type=int,
+        default=None,
+        help=(
+            "operator-supplied accepted delta bound for RM event count. "
+            "Required for bounded_rm_retry verdict; if absent and RM "
+            "events are present, verdict is indeterminate (fail closed). "
+            "This tool never establishes a safe bound itself."
+        ),
+    )
+    parser.add_argument(
+        "--engine-log-year",
+        type=int,
+        default=None,
+        help=(
+            "year for vLLM log timestamps (which lack year). "
+            "Required for vLLM timestamp parsing."
+        ),
+    )
+    parser.add_argument(
+        "--engine-log-tz",
+        type=str,
+        default=None,
+        help=(
+            "timezone for vLLM log timestamps, e.g. 'UTC' or '-05:00'. "
+            "Required for vLLM timestamp parsing."
         ),
     )
     parser.add_argument(
@@ -562,6 +774,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if max_ranks == 0:
         parser.error("no logs provided")
+
+    engine_log_tz: timezone | None = None
+    if args.engine_log_tz is not None:
+        try:
+            engine_log_tz = _parse_tz(args.engine_log_tz)
+        except ConfigError as exc:
+            print(f"sparkring-startup-evidence: {exc}", file=sys.stderr)
+            return EXIT_CONFIG_ERROR
 
     rank_reports: list[dict[str, Any]] = []
     for rank in range(max_ranks):
@@ -610,6 +830,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 engine_running=engine_running,
                 server_running=server_running,
                 kernel_log=kernel_log,
+                rm_event_bound=args.rm_event_bound,
+                engine_log_year=args.engine_log_year,
+                engine_log_tz=engine_log_tz,
             )
         )
 

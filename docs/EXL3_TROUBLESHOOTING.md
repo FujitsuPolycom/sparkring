@@ -48,24 +48,46 @@ four verdicts:
 - **clean**: no concerning signatures.
 - **bounded_rm_retry**: a kernel RM `NV_ERR_NO_MEMORY` event at the
   evidenced callsite (`_memdescAllocInternal @ mem_desc.c:1359`) occurred
-  during EXL3 mixed-Trellis materialization, with full cross-evidence:
-  container running, `RestartCount = 0`, `OOMKilled = false`, no fatal
-  signatures, event count within the conservative bound, subsequent layer
-  progress, eventual readiness, and correlatable timestamps.
+  during the EXL3 mixed-Trellis materialization window, every event
+  timestamp falls inside that window, the container stayed running
+  (`Running = true`, `RestartCount = 0`, `OOMKilled = false`), no
+  fatal signatures are present, and the event count is within an explicit
+  operator-supplied accepted delta bound (`--rm-event-bound`).
 - **fatal**: generic `CUDA out of memory`, `torch.OutOfMemoryError`,
   `OOMKilled`, Xid, unexpected restart, SSH loss, fabric/RoCE carrier
-  loss, or driver init failure. These are never downgraded.
+  loss, or driver init failure. These are never downgraded regardless of
+  later progress.
 - **indeterminate**: a kernel RM event is present but cross-evidence
-  cannot be truthfully correlated (missing/malformed timestamps, no
-  materialization context, no subsequent readiness). Indeterminate uses
-  fatal exit policy — the classifier must not silently downgrade unknown
-  NVIDIA errors.
+  cannot be truthfully correlated — missing/malformed timestamps,
+  event outside the materialization window, no readiness after the window,
+  operator-supplied bound absent, or timezone inconsistency.
+  Indeterminate uses fatal exit policy — the classifier must not silently
+  downgrade unknown NVIDIA errors.
 
 Generic `CUDA out of memory` is **fatal by default**. No repository
 evidence authorizes calling a bare CUDA OOM recoverable merely because
 later progress exists. Only the evidenced kernel RM signature at the
 specific callsite can qualify for `bounded_rm_retry`, and only with
-full cross-evidence.
+full cross-evidence including real timestamp comparison.
+
+**The classifier never establishes a safe bound itself.** The operator
+must supply `--rm-event-bound`; if absent and RM events are present,
+the verdict is `indeterminate` (fail closed). Observed successful starts
+have shown deltas of 14/18/36/26 events across ranks — the bound is
+operator-supplied, not hardcoded.
+
+**Timestamp parsing.** The classifier parses kernel ISO timestamps
+(`2026-08-09T00:16:52.113635-05:00`) and vLLM log prefixes
+(`(Worker...) INFO 08-09 05:24:32 [...]`). vLLM timestamps lack year
+and timezone; supply `--engine-log-year` and `--engine-log-tz` for
+those logs. If year or timezone cannot be inferred, the verdict is
+`indeterminate`.
+
+**Materialization window.** The window is derived from the first
+mixed-Trellis materialization line through the last readiness line,
+using real normalized datetimes. Every kernel RM event timestamp must
+fall inside this window. Events outside the window, missing timestamps,
+or inconsistent timezones produce `indeterminate`.
 
 ```bash
 python scripts/sparkring_startup_evidence.py \
@@ -73,13 +95,18 @@ python scripts/sparkring_startup_evidence.py \
   --engine-log engine-r1.log --kernel-log kernel-r1.log \
   --engine-log engine-r2.log --kernel-log kernel-r2.log \
   --engine-log engine-r3.log --kernel-log kernel-r3.log \
+  --rm-event-bound 50 \
+  --engine-log-year 2026 --engine-log-tz=-05:00 \
   classify
 ```
 
-NVIDIA errors are **never** globally ignored. Each signature is classified
-individually with provenance (line number, pattern label, SHA-256). The
-`bounded_rm_retry` classification is evidence-scoped to the legacy EXL3
-materialization callsite and does not prove all RM errors safe.
+This tool classifies supplied evidence and never establishes a safe
+bound itself. It remains offline-validated until run on sanitized
+captured evidence. NVIDIA errors are **never** globally ignored. Each
+signature is classified individually with provenance (line number,
+pattern label, SHA-256). The `bounded_rm_retry` classification is
+evidence-scoped to the legacy EXL3 materialization callsite and does
+not prove all RM errors safe.
 
 ## Headless Wi-Fi management
 
