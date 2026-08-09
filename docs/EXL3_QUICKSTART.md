@@ -212,10 +212,15 @@ python scripts/exl3_cache_geometry_gate.py verify
 python scripts/exl3_cache_geometry_gate.py plan
 ```
 
-The first command checks chunk_size=512, parent_chunk_size=256, lazy L1, LRU
-eviction, SparkCache isolation (disabled, APC enabled), and declares the boundary token counts and capacity
-metrics the live gate must collect. The second discloses the C1/C2/C4/C8
-and 16K/64K cold/warm timing cells that require a live cluster.
+The first command verifies configuration facts from the recipe: chunk_size=512,
+parent_chunk_size=256, lazy L1, LRU eviction, one-server-per-rank topology,
+SparkCache disabled (SPARK_CONTEXT_CACHE_ENABLE=0), and APC enabled
+(--enable-prefix-caching). It also lists planned live gates that require a
+cluster: boundary token counts (511/512/513/1024/1025), DCP consensus
+evidence (object counts + TTFT ratios, not hit counters), and capacity
+metrics from /status (eviction_count is unavailable). The second discloses
+the C1/C2/C4/C8 and 16K/64K cold/warm timing cells that require a live
+cluster.
 
 ## Startup evidence classification
 

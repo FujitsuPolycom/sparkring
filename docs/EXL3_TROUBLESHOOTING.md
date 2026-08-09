@@ -139,11 +139,18 @@ geometry offline:
 python scripts/exl3_cache_geometry_gate.py verify
 ```
 
-This checks chunk_size=512, parent_chunk_size=256, lazy L1, LRU eviction,
-SparkCache isolation (SPARK_CONTEXT_CACHE_ENABLE=0, APC enabled), and
-declares the boundary token counts (511/512/513/1024/1025), DCP
-minimum-hit consensus,
-and capacity/eviction metrics that the live gate must collect.
+The `verify` command reports two categories:
+
+- **Verified checks** (configuration facts read from the recipe):
+  chunk_size=512, parent_chunk_size=256, lazy L1, LRU eviction,
+  one-server-per-rank topology, SparkCache disabled
+  (SPARK_CONTEXT_CACHE_ENABLE=0), and APC enabled
+  (--enable-prefix-caching). These have `passed` verdicts.
+- **Planned live gates** (require a live cluster, never `passed`):
+  boundary token counts (511/512/513/1024/1025), DCP consensus
+  evidence (object counts > 0 on all ranks plus TTFT ratio warm < cold;
+  /status does not expose per-rank hit counters), and capacity metrics
+  from /status (eviction_count is not exposed by the current schema).
 
 A plan for the full geometry + timing suite:
 
@@ -154,6 +161,23 @@ python scripts/exl3_cache_geometry_gate.py plan
 This discloses the C1/C2/C4/C8 and 16K/64K cold/warm timing cells that
 require a live cluster, delegated to `exl3_cache_acceptance.py` and the
 acceptance gate's performance matrix.
+
+## Native APC and engine restart
+
+The EXL3 profile enables vLLM's native prefix cache (APC) via
+`--enable-prefix-caching` while disabling SparkCache
+(SPARK_CONTEXT_CACHE_ENABLE=0). These are distinct cache layers:
+
+- **SparkCache** (`sparkcache/`) is disabled to avoid interfering with
+  LMCache attribution.
+- **APC** (vLLM `--enable-prefix-caching`) is enabled and operates
+  in-engine. It is not cleared by LMCache server restart.
+
+To clear native APC while retaining LMCache objects, the live procedure
+must restart engines (which clears in-engine APC state) while keeping
+LMCache servers alive. The live cache acceptance gate's engine-only
+restart phase exercises this boundary. Do not assume an LMCache server
+restart alone clears APC — it does not.
 
 ## Readiness timeout is not KV exhaustion
 

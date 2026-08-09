@@ -2,22 +2,29 @@
 """Dry-run-first LMCache CS512 geometry and boundary verification gate.
 
 Extends the cache acceptance runbook with offline-verifiable configuration
-checks for the LMCache CS512 block-256 geometry, token-count boundaries,
-DCP minimum-hit consensus, SparkCache isolation (disabled) with APC
-(native prefix cache) enabled, namespace isolation, and
-capacity/eviction metric declarations.  A companion plan mode discloses
-the C1/C2/C4/C8 and 16K/64K cold/warm timing cells that require a live
-cluster.
+checks for the LMCache CS512 block-256 geometry and cache-layer isolation.
+A companion plan mode discloses the live gates (boundary token counts,
+object/TTFT evidence, C1/C2/C4/C8 and 16K/64K timing cells) that require
+a live cluster.
 
 This gate is OFFLINE: it reads the recipe and launch profile to verify
-geometry and boundary declarations.  It does not contact the cluster.
-The live timing and boundary probes are delegated to
-``exl3_cache_acceptance.py`` and the acceptance gate's performance
-matrix.
+geometry and configuration.  It does not contact the cluster.  The live
+timing and boundary probes are delegated to ``exl3_cache_acceptance.py``
+and the acceptance gate's performance matrix.
+
+**Verified vs planned.** The ``verify`` command reports two categories:
+
+- ``verified_checks``: configuration facts read from the recipe that are
+  actually checked offline (geometry, SparkCache disabled, APC enabled).
+  These have ``passed: true/false``.
+- ``planned_live_gates``: requirements that must be satisfied live but
+  cannot be checked offline (boundary token counts, object/TTFT evidence
+  after warm probe, cold/warm timing).  These have ``status: "planned"``
+  and never report ``passed: true``.
 
 Usage::
 
-    # Offline: verify geometry and boundaries from the recipe
+    # Offline: verify geometry and configuration from the recipe
     python scripts/exl3_cache_geometry_gate.py verify
 
     # Offline: produce a plan for the full geometry + timing suite
@@ -57,10 +64,6 @@ REQUIRED_PARENT_CHUNK_SIZE = 256
 # These are derived from the chunk geometry, not arbitrary.
 BOUNDARY_TOKEN_COUNTS = [511, 512, 513, 1024, 1025]
 
-# DCP minimum-hit consensus: all four ranks must report at least one cache
-# hit after a warm probe. The minimum is 1, not 0 — a rank with zero hits
-# after a warm probe has a cache miss consensus failure.
-DCP_MINIMUM_HIT_PER_RANK = 1
 # SparkCache isolation: SPARK_CONTEXT_CACHE_ENABLE=0 disables SparkCache
 # (the separate sparkcache/ implementation) so it does not interfere
 # with LMCache attribution. This is NOT APC isolation — APC (vLLM's
@@ -81,15 +84,46 @@ NAMESPACE_ISOLATION_NOTE = (
     "not the current run's cold/warm attribution"
 )
 
-# Capacity/eviction metrics that the live gate should collect.
-CAPACITY_METRICS = [
+# Metrics actually available from the LMCache /status endpoint.
+# The /status l1_manager object exposes these fields. This is the
+# observed schema, confirmed by exl3_cache_acceptance.py's
+# parse_launcher_status, not an aspirational list.
+STATUS_AVAILABLE_METRICS = [
+    "is_healthy",
     "total_object_count",
     "memory_used_bytes",
     "write_locked_count",
     "read_locked_count",
     "temporary_count",
+    "registered_gpu_ids",
+]
+
+# Metrics NOT available from /status. eviction_count is not exposed by the
+# current LMCache server /status schema. Do not claim it can be collected.
+STATUS_UNAVAILABLE_METRICS = [
     "eviction_count",
 ]
+
+# DCP consensus evidence: the /status endpoint does NOT expose per-rank
+# cache-hit counters. DCP minimum-hit consensus cannot be read from
+# /status. The truthful evidence path is:
+# 1. Object counts (total_object_count > 0 on all ranks after warm probe)
+#    proves objects were stored, not that they were hit.
+# 2. TTFT ratio (warm < cold) from the live cache acceptance gate
+#    provides timing evidence of cache reuse, not a hit counter.
+# 3. Connector hit-length logs (if present in the serving image) may
+#    provide per-request hit attribution; this is not guaranteed.
+DCP_CONSENSUS_EVIDENCE_PATH = [
+    "total_object_count > 0 on all four ranks after warm probe (from /status)",
+    "TTFT ratio warm < cold (from exl3_cache_acceptance.py timing samples)",
+    "connector hit-length logs if present in the serving image (not guaranteed)",
+]
+DCP_CONSENSUS_LIMITATION = (
+    "The LMCache /status endpoint does not expose per-rank cache-hit "
+    "counters. DCP minimum-hit consensus cannot be read from /status. "
+    "Object counts prove objects were stored, not that they were hit. "
+    "TTFT ratios provide timing evidence of reuse, not a hit counter."
+)
 
 # Cold/warm timing cells: C1/C2/C4/C8 at standard and 16K/64K contexts.
 # These require a live cluster and are disclosed in the plan only.
@@ -131,6 +165,11 @@ def load_recipe(path: Path) -> dict[str, Any]:
     if not isinstance(document, dict):
         raise ConfigError("recipe root must be an object")
     return document
+
+
+# ---------------------------------------------------------------------------
+# Verified checks — configuration facts read from the recipe
+# ---------------------------------------------------------------------------
 
 
 def verify_geometry(recipe: dict[str, Any]) -> dict[str, Any]:
@@ -199,10 +238,13 @@ def verify_geometry(recipe: dict[str, Any]) -> dict[str, Any]:
 
     failures = [c for c in checks if not c["passed"]]
     return {
+        "category": "verified",
+        "check": "geometry",
         "checks": checks,
         "passed": not failures,
         "failures": failures,
     }
+
 
 def verify_cache_isolation(recipe: dict[str, Any]) -> dict[str, Any]:
     """Verify SparkCache is disabled and APC (native prefix cache) is enabled.
@@ -213,6 +255,11 @@ def verify_cache_isolation(recipe: dict[str, Any]) -> dict[str, Any]:
       LMCache attribution.
     - APC (vLLM --enable-prefix-caching) is the native prefix cache; it
       is enabled in this profile and is a different layer from SparkCache.
+
+    Native APC remains active during an engine-only restart (LMCache servers
+    preserved). To clear native APC while retaining LMCache objects, the
+    live procedure must restart engines (clearing APC) while keeping LMCache
+    servers alive, or use another proven isolation method.
     """
     env = recipe.get("serving", {}).get("environment", {})
     vllm_args = recipe.get("serving", {}).get("vllm_args", [])
@@ -221,6 +268,7 @@ def verify_cache_isolation(recipe: dict[str, Any]) -> dict[str, Any]:
     sparkcache_passed = sparkcache_value == SPARKCACHE_DISABLED_VALUE
     apc_passed = apc_enabled is True
     return {
+        "category": "verified",
         "check": "cache_isolation",
         "sparkcache_disabled": {
             "expected": SPARKCACHE_DISABLED_VALUE,
@@ -239,14 +287,27 @@ def verify_cache_isolation(recipe: dict[str, Any]) -> dict[str, Any]:
             "native prefix cache via --enable-prefix-caching) is enabled "
             "and is a distinct layer from SparkCache."
         ),
+        "native_apc_clearing_procedure": (
+            "Native APC persists in-engine and is not cleared by LMCache "
+            "server restart. To clear APC while retaining LMCache objects, "
+            "restart engines (which clears APC state) while keeping LMCache "
+            "servers alive. The live cache acceptance gate's engine-only "
+            "restart phase exercises this boundary."
+        ),
     }
 
 
-def verify_namespace_isolation() -> dict[str, Any]:
-    """Disclose namespace isolation requirements."""
+# ---------------------------------------------------------------------------
+# Planned live gates — requirements that cannot be checked offline
+# ---------------------------------------------------------------------------
+
+
+def plan_namespace_isolation() -> dict[str, Any]:
+    """Disclose namespace isolation requirements for live runs."""
     return {
+        "category": "planned_live",
         "check": "namespace_isolation",
-        "passed": True,  # structural: the requirement is documented
+        "status": "planned",
         "note": NAMESPACE_ISOLATION_NOTE,
         "requirement": (
             "Each acceptance run must use a unique probe ID; "
@@ -255,11 +316,12 @@ def verify_namespace_isolation() -> dict[str, Any]:
     }
 
 
-def verify_boundary_plan() -> dict[str, Any]:
+def plan_boundary_tests() -> dict[str, Any]:
     """Disclose the boundary token counts that the live gate must test."""
     return {
+        "category": "planned_live",
         "check": "boundary_token_counts",
-        "passed": True,  # structural: the boundaries are declared
+        "status": "planned",
         "boundaries": BOUNDARY_TOKEN_COUNTS,
         "note": (
             "The live gate must test token counts at 511 (below chunk), "
@@ -269,53 +331,76 @@ def verify_boundary_plan() -> dict[str, Any]:
     }
 
 
-def verify_dcp_consensus() -> dict[str, Any]:
-    """Disclose DCP minimum-hit consensus requirements."""
+def plan_dcp_consensus() -> dict[str, Any]:
+    """Disclose DCP consensus evidence requirements for live runs.
+
+    The /status endpoint does NOT expose per-rank cache-hit counters.
+    Object counts and TTFT ratios are the truthful evidence path.
+    """
     return {
-        "check": "dcp_minimum_hit_consensus",
-        "passed": True,  # structural: the requirement is documented
-        "minimum_hit_per_rank": DCP_MINIMUM_HIT_PER_RANK,
+        "category": "planned_live",
+        "check": "dcp_consensus_evidence",
+        "status": "planned",
+        "evidence_path": DCP_CONSENSUS_EVIDENCE_PATH,
+        "limitation": DCP_CONSENSUS_LIMITATION,
+    }
+
+
+def plan_capacity_metrics() -> dict[str, Any]:
+    """Disclose the capacity metrics available from /status.
+
+    Only the fields actually present in the /status schema are listed as
+    available. eviction_count is explicitly marked unavailable.
+    """
+    return {
+        "category": "planned_live",
+        "check": "capacity_metrics",
+        "status": "planned",
+        "available_from_status": STATUS_AVAILABLE_METRICS,
+        "unavailable_from_status": STATUS_UNAVAILABLE_METRICS,
         "note": (
-            "After a warm probe, all four ranks must report at least "
-            f"{DCP_MINIMUM_HIT_PER_RANK} cache hit; a rank with zero hits "
-            "has a DCP cache consensus failure"
+            "The live gate collects available metrics from every rank's "
+            "LMCache /status endpoint after each probe phase. "
+            "eviction_count is not exposed by the current /status schema "
+            "and cannot be claimed as collectible."
         ),
     }
 
 
-def verify_capacity_metrics() -> dict[str, Any]:
-    """Disclose the capacity/eviction metrics the live gate must collect."""
-    return {
-        "check": "capacity_eviction_metrics",
-        "passed": True,  # structural: the metrics are declared
-        "required_metrics": CAPACITY_METRICS,
-        "note": (
-            "The live gate must collect these metrics from every rank's "
-            "LMCache /status endpoint after each probe phase"
-        ),
-    }
+# ---------------------------------------------------------------------------
+# Aggregation
+# ---------------------------------------------------------------------------
 
 
 def verify_all(recipe: dict[str, Any]) -> dict[str, Any]:
-    """Run all offline-verifiable geometry and configuration checks."""
-    geometry = verify_geometry(recipe)
-    cache_isolation = verify_cache_isolation(recipe)
-    namespace = verify_namespace_isolation()
-    boundaries = verify_boundary_plan()
-    dcp = verify_dcp_consensus()
-    capacity = verify_capacity_metrics()
+    """Run all offline-verifiable checks and list planned live gates.
 
-    all_checks = [geometry, cache_isolation, namespace, boundaries, dcp, capacity]
+    Returns a report with two sections:
+    - ``verified_checks``: configuration facts with ``passed`` verdicts
+    - ``planned_live_gates``: future live requirements with ``status: planned``
+    """
+    verified = [
+        verify_geometry(recipe),
+        verify_cache_isolation(recipe),
+    ]
+    planned = [
+        plan_namespace_isolation(),
+        plan_boundary_tests(),
+        plan_dcp_consensus(),
+        plan_capacity_metrics(),
+    ]
 
-    all_passed = all(c.get("passed", False) for c in all_checks)
+    all_verified_passed = all(c.get("passed", False) for c in verified)
 
     return {
         "schema": SCHEMA,
-        "verdict": "pass" if all_passed else "fail",
-        "checks": all_checks,
+        "verdict": "pass" if all_verified_passed else "fail",
+        "verified_checks": verified,
+        "planned_live_gates": planned,
         "evidence_scope": (
-            "Offline geometry and configuration verification from the recipe; "
-            "does not contact the cluster or verify live cache behavior"
+            "Offline configuration verification from the recipe only. "
+            "Verified checks are configuration facts; planned live gates "
+            "require a live cluster and are not passed by this offline gate."
         ),
         "recipe_sha256": hashlib.sha256(
             json.dumps(recipe, sort_keys=True).encode("utf-8")
@@ -328,7 +413,8 @@ def build_plan(recipe: dict[str, Any]) -> dict[str, Any]:
     verify_report = verify_all(recipe)
     return {
         "schema": PLAN_SCHEMA,
-        "offline_checks": verify_report,
+        "verified_checks": verify_report["verified_checks"],
+        "planned_live_gates": verify_report["planned_live_gates"],
         "live_timing_cells": TIMING_CELLS,
         "live_timing_note": (
             "C1/C2/C4/C8 at standard and 16K/64K contexts require a live "
@@ -341,8 +427,9 @@ def build_plan(recipe: dict[str, Any]) -> dict[str, Any]:
             "must execute them"
         ),
         "dcp_live_note": (
-            "DCP minimum-hit consensus requires reading all four ranks' "
-            "LMCache /status after a warm probe; this is a live check"
+            "DCP consensus requires live evidence: object counts > 0 on "
+            "all ranks plus TTFT ratio warm < cold; /status does not "
+            "expose per-rank hit counters"
         ),
         "evidence_scope": (
             "Offline plan only; no cluster contact, no cache reads, "
