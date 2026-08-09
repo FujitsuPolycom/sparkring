@@ -783,12 +783,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Offline conformance commands: validate checks structure and, with "
             "--site, canonical plan construction; explain reports ownership, "
             "identity, hooks, safety, and topology; diff exits 0 for identical, "
-            "1 for different, and 2 for invalid input."
+            "1 for different, and 2 for invalid input.\n\n"
+            "Safety classes (AGENTS.md): plan=OFFLINE, start/stop/health="
+            "MUTATES HOST + STOPS SERVING, status/verify-image/"
+            "verify-rollback=READ-ONLY REMOTE, validate/explain/diff=OFFLINE."
         ),
     )
-    parser.add_argument("--site", required=False)
-    parser.add_argument("--profile", required=False)
-    parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--site", required=False, help="path to site YAML")
+    parser.add_argument(
+        "--profile", required=False,
+        help="path to runtime profile JSON (generic, EXL3, or NF3)",
+    )
+    parser.add_argument(
+        "--execute", action="store_true",
+        help="execute the command on the cluster (default: dry-run/plan only)",
+    )
     parser.add_argument(
         "--confirmation",
         default="",
@@ -832,6 +841,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             "plan", "start", "stop", "status",
             "verify-image", "verify-rollback", "health",
             "validate", "explain", "diff",
+        ),
+        help=(
+            "plan: offline deterministic plan; start/stop: mutate hosts; "
+            "status: read-only container inspect; "
+            "verify-image/verify-rollback: read-only attestation; "
+            "health: in-container health check (may mutate); "
+            "validate: offline profile/site conformance; "
+            "explain: offline ownership/identity/hooks/safety/topology; "
+            "diff: offline semantic comparison (0=same, 1=different, 2=invalid)"
         ),
     )
     args = parser.parse_args(argv)
