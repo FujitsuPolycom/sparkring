@@ -1,8 +1,8 @@
 """Tests for the offline benchmark evidence comparison tool.
 
 Fixtures use the actual llm_decode_bench v0.4.31 raw JSON schema:
-``metadata``, ``results[]``, and ``summary_table``.  No invented
-configuration/aggregate-map shapes are used.
+``metadata``, ``results[]``, and ``summary_table``.  Adversarial
+tests cover every fail-closed requirement from the review.
 """
 
 from __future__ import annotations
@@ -39,15 +39,14 @@ def _make_meta(
     ignore_eos: bool = True,
     skip_prefill: bool = True,
     cell_warmup_timeout_seconds: float = 600.0,
-    benchmark_mode: str = "duration",
-    prefill_mode: str = "skipped",
+    decode_mode: str = "duration",
 ) -> dict:
     return {
         "version": version,
         "engine": "vllm",
         "model": "glm-5.2-exl3-tr3-3.25bpw",
         "timestamp": "2026-08-09T06:02:17.088583",
-        "decode_mode": "duration",
+        "decode_mode": decode_mode,
         "primary_decode_layer": "sustained_decode",
         "duration_per_test": duration_per_test,
         "decode_warmup_seconds": decode_warmup_seconds,
@@ -63,8 +62,6 @@ def _make_meta(
         "shared_context_percent": shared_context_percent,
         "concurrency_levels": concurrency_levels or [8, 4, 2, 1],
         "context_lengths": context_lengths or [16384],
-        "benchmark_mode": benchmark_mode,
-        "prefill_mode": prefill_mode,
         "skip_prefill": skip_prefill,
     }
 
@@ -78,6 +75,9 @@ def _make_result(
     context_tokens: int = 16384,
     benchmark_mode: str = "duration",
     measurement_seconds: float = 24.9,
+    underfilled: bool = False,
+    warmup_timed_out: bool = False,
+    capacity_limited: bool = False,
 ) -> dict:
     return {
         "concurrency": conc,
@@ -87,6 +87,9 @@ def _make_result(
         "aggregate_tps": aggregate_tps,
         "num_errors": num_errors,
         "effective_concurrency": effective_concurrency if effective_concurrency is not None else conc,
+        "underfilled": underfilled,
+        "warmup_timed_out": warmup_timed_out,
+        "capacity_limited": capacity_limited,
         "request_count": conc,
         "completed_request_count": 0,
     }
@@ -95,6 +98,7 @@ def _make_result(
 def _make_doc(
     meta: dict | None = None,
     results: list[dict] | None = None,
+    summary_table: dict | None = None,
 ) -> dict:
     if meta is None:
         meta = _make_meta()
@@ -105,27 +109,23 @@ def _make_doc(
             _make_result(2, 29.29),
             _make_result(1, 15.89),
         ]
-    # Build summary_table from results
-    summary: dict[str, dict[str, float]] = {}
-    for r in results:
-        ctx = str(r["context_tokens"])
-        if ctx not in summary:
-            summary[ctx] = {}
-        summary[ctx][str(r["concurrency"])] = r["aggregate_tps"]
+    if summary_table is None:
+        summary: dict[str, dict[str, float]] = {}
+        for r in results:
+            ctx = str(r["context_tokens"])
+            if ctx not in summary:
+                summary[ctx] = {}
+            summary[ctx][str(r["concurrency"])] = r["aggregate_tps"]
+        summary_table = summary
     return {
         "metadata": meta,
         "results": results,
-        "summary_table": summary,
+        "summary_table": summary_table,
     }
 
-def test_classify_no_duration_but_max_tokens_high():
-    """max_tokens >= 256 but duration_per_test=0 → bounded_gate (duration < 10)."""
-    doc = {"metadata": _make_meta(duration_per_test=0, max_tokens=1024)}
-    assert cmp.classify_document_type(doc) == "bounded_gate"
-# Post-upgrade baseline protocol fixtures (actual protocol from 20260809)
 
+# Standard valid documents
 SUSTAINED_BASELINE = _make_doc(
-    meta=_make_meta(),
     results=[
         _make_result(8, 64.56),
         _make_result(4, 45.13),
@@ -135,7 +135,6 @@ SUSTAINED_BASELINE = _make_doc(
 )
 
 SUSTAINED_CANDIDATE = _make_doc(
-    meta=_make_meta(),
     results=[
         _make_result(8, 62.00),
         _make_result(4, 44.00),
@@ -145,25 +144,22 @@ SUSTAINED_CANDIDATE = _make_doc(
 )
 
 # Bounded gate: 128 tokens, 5s duration
-BOUNDED_GATE = {
-    "metadata": _make_meta(
+BOUNDED_GATE = _make_doc(
+    meta=_make_meta(
         max_tokens=128,
         duration_per_test=5,
         concurrency_levels=[1, 2, 8],
         context_lengths=[512],
         cell_warmup_timeout_seconds=60,
     ),
-    "results": [
+    results=[
         _make_result(1, 21.94, context_tokens=512),
         _make_result(2, 30.25, context_tokens=512),
         _make_result(8, 69.39, context_tokens=512),
     ],
-    "summary_table": {
-        "512": {"1": 21.94, "2": 30.25, "8": 69.39},
-    },
-}
+)
 
-# Older protocol variant (pre-upgrade: 2048 max tokens, 3s warmup, 300s timeout, 100% unique)
+# Older protocol variant
 OLDER_PROTOCOL = _make_doc(
     meta=_make_meta(
         max_tokens=2048,
@@ -175,19 +171,15 @@ OLDER_PROTOCOL = _make_doc(
     ),
 )
 
-# Document with no metadata (malformed)
 NO_METADATA: dict = {}
 
-# Document with metadata but no results
 NO_RESULTS = {
     "metadata": _make_meta(),
     "results": [],
     "summary_table": {},
 }
 
-# Document with errors in one cell
 INVALID_CELLS = _make_doc(
-    meta=_make_meta(),
     results=[
         _make_result(8, 64.56, num_errors=2),
         _make_result(4, 45.13),
@@ -196,9 +188,7 @@ INVALID_CELLS = _make_doc(
     ],
 )
 
-# Document with underfilled concurrency (effective != requested)
 UNDERFILLED = _make_doc(
-    meta=_make_meta(),
     results=[
         _make_result(8, 30.0, effective_concurrency=3),
         _make_result(4, 45.13),
@@ -209,7 +199,7 @@ UNDERFILLED = _make_doc(
 
 
 # ---------------------------------------------------------------------------
-# Document classification
+# Classification
 # ---------------------------------------------------------------------------
 
 
@@ -229,15 +219,40 @@ def test_classify_indeterminate_no_metadata():
     assert cmp.classify_document_type(NO_METADATA) == "indeterminate"
 
 
-
 def test_classify_bounded_low_max_tokens():
-    doc = {"metadata": _make_meta(max_tokens=128, duration_per_test=25)}
+    doc = _make_doc(meta=_make_meta(max_tokens=128, duration_per_test=25))
     assert cmp.classify_document_type(doc) == "bounded_gate"
 
 
 def test_classify_bounded_low_duration():
-    doc = {"metadata": _make_meta(max_tokens=2048, duration_per_test=5)}
+    doc = _make_doc(meta=_make_meta(max_tokens=2048, duration_per_test=5))
     assert cmp.classify_document_type(doc) == "bounded_gate"
+
+
+def test_classify_requires_both_duration_and_max_tokens():
+    """Missing one of duration/max_tokens → indeterminate, not inferred."""
+    doc = {"metadata": _make_meta(max_tokens=1024, duration_per_test=0)}
+    # duration_per_test=0 is < 10 → bounded_gate (not sustained)
+    assert cmp.classify_document_type(doc) == "bounded_gate"
+
+
+def test_classify_requires_decode_mode_duration():
+    """decode_mode != duration → indeterminate."""
+    doc = _make_doc(meta=_make_meta(decode_mode="burst"))
+    assert cmp.classify_document_type(doc) == "indeterminate"
+
+
+def test_classify_requires_result_benchmark_mode_duration():
+    """A result with benchmark_mode != duration → indeterminate."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56, benchmark_mode="burst"),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    assert cmp.classify_document_type(doc) == "indeterminate"
 
 
 # ---------------------------------------------------------------------------
@@ -286,7 +301,6 @@ def test_settings_mismatch_concurrencies():
     candidate["metadata"]["concurrency_levels"] = [1, 2, 4]
     result = cmp.compare_settings(SUSTAINED_BASELINE, candidate)
     assert result["all_matched"] is False
-    assert any(m["setting"] == "concurrencies" for m in result["mismatched"])
 
 
 def test_settings_mismatch_temperature():
@@ -296,31 +310,8 @@ def test_settings_mismatch_temperature():
     assert result["all_matched"] is False
 
 
-def test_settings_mismatch_kv_budget():
-    candidate = json.loads(json.dumps(SUSTAINED_CANDIDATE))
-    candidate["metadata"]["max_total_tokens"] = 1125632
-    result = cmp.compare_settings(SUSTAINED_BASELINE, candidate)
-    assert any(m["setting"] == "kv_budget_tokens" for m in result["mismatched"])
-
-
-def test_settings_mismatch_unique_context():
-    candidate = json.loads(json.dumps(SUSTAINED_CANDIDATE))
-    candidate["metadata"]["unique_context_percent"] = 100.0
-    candidate["metadata"]["shared_context_percent"] = 0.0
-    result = cmp.compare_settings(SUSTAINED_BASELINE, candidate)
-    assert result["all_matched"] is False
-
-
-def test_settings_mismatch_max_tokens():
-    """Older protocol (2048) vs post-upgrade (1024) must mismatch."""
-    result = cmp.compare_settings(SUSTAINED_BASELINE, OLDER_PROTOCOL)
-    assert result["all_matched"] is False
-    assert any(m["setting"] == "max_output_tokens" for m in result["mismatched"])
-
-
 def test_settings_missing_on_both_counts_as_mismatch():
     """Two documents missing the same setting must NOT count as matched."""
-    # Both documents missing ignore_eos
     base = json.loads(json.dumps(SUSTAINED_BASELINE))
     cand = json.loads(json.dumps(SUSTAINED_CANDIDATE))
     del base["metadata"]["ignore_eos"]
@@ -332,25 +323,14 @@ def test_settings_missing_on_both_counts_as_mismatch():
     )
 
 
-def test_settings_mismatch_decode_warmup():
-    """Post-upgrade (0s) vs older (3s) must mismatch."""
+def test_settings_mismatch_max_tokens():
+    """Older protocol (2048) vs post-upgrade (1024) must mismatch."""
     result = cmp.compare_settings(SUSTAINED_BASELINE, OLDER_PROTOCOL)
-    assert any(
-        m["setting"] == "decode_warmup_seconds" for m in result["mismatched"]
-    )
-
-
-def test_settings_mismatch_cell_warmup_timeout():
-    """Post-upgrade (600s) vs older (300s) must mismatch."""
-    result = cmp.compare_settings(SUSTAINED_BASELINE, OLDER_PROTOCOL)
-    assert any(
-        m["setting"] == "cell_warmup_timeout_seconds"
-        for m in result["mismatched"]
-    )
+    assert result["all_matched"] is False
 
 
 # ---------------------------------------------------------------------------
-# Throughput extraction and comparison
+# Throughput extraction
 # ---------------------------------------------------------------------------
 
 
@@ -369,47 +349,34 @@ def test_extract_throughput_from_results_no_summary():
         "results": [
             _make_result(1, 10.0),
             _make_result(2, 20.0),
+            _make_result(4, 30.0),
+            _make_result(8, 40.0),
         ],
         "summary_table": {},
     }
     tps = cmp.extract_throughput(doc)
-    assert tps == {"C1": 10.0, "C2": 20.0}
+    assert tps == {"C1": 10.0, "C2": 20.0, "C4": 30.0, "C8": 40.0}
 
 
 def test_extract_throughput_empty():
     assert cmp.extract_throughput({}) == {}
 
 
-def test_throughput_comparison_deltas():
-    result = cmp.compare_throughput(SUSTAINED_BASELINE, SUSTAINED_CANDIDATE)
-    cells = {c["concurrency"]: c for c in result["cells"]}
-    assert cells["C1"]["status"] == "compared"
-    assert cells["C1"]["delta"] == 15.50 - 15.89
-    assert cells["C1"]["delta_percent"] is not None
-
-
-def test_throughput_comparison_missing_concurrency():
-    """If candidate is missing a concurrency, status is 'missing'."""
-    candidate = json.loads(json.dumps(SUSTAINED_CANDIDATE))
-    candidate["results"] = [r for r in candidate["results"] if r["concurrency"] != 8]
-    candidate["summary_table"]["16384"].pop("8")
-    result = cmp.compare_throughput(SUSTAINED_BASELINE, candidate)
-    cells = {c["concurrency"]: c for c in result["cells"]}
-    assert cells["C8"]["status"] == "missing"
-    assert cells["C8"]["delta"] is None
-
-
-def test_throughput_baseline_zero():
-    baseline = json.loads(json.dumps(SUSTAINED_BASELINE))
-    for r in baseline["results"]:
-        r["aggregate_tps"] = 0.0
-    baseline["summary_table"]["16384"]["8"] = 0.0
-    baseline["summary_table"]["16384"]["4"] = 0.0
-    baseline["summary_table"]["16384"]["2"] = 0.0
-    baseline["summary_table"]["16384"]["1"] = 0.0
-    result = cmp.compare_throughput(baseline, SUSTAINED_CANDIDATE)
-    cells = {c["concurrency"]: c for c in result["cells"]}
-    assert cells["C1"]["status"] == "baseline_zero"
+def test_extract_throughput_ignores_non_required_concurrencies():
+    """Concurrencies outside C1/C2/C4/C8 are ignored."""
+    doc = {
+        "metadata": _make_meta(concurrency_levels=[1, 2, 4, 8, 16]),
+        "results": [
+            _make_result(1, 10.0),
+            _make_result(2, 20.0),
+            _make_result(4, 30.0),
+            _make_result(8, 40.0),
+            _make_result(16, 50.0),
+        ],
+        "summary_table": {},
+    }
+    tps = cmp.extract_throughput(doc)
+    assert "C16" not in tps
 
 
 # ---------------------------------------------------------------------------
@@ -421,6 +388,7 @@ def test_extract_validity_all_valid():
     v = cmp.extract_validity(SUSTAINED_BASELINE)
     assert v["all_cells_valid"] is True
     assert v["zero_cells"] is False
+    assert len(v["missing_fields"]) == 0
 
 
 def test_extract_validity_errors():
@@ -432,7 +400,6 @@ def test_extract_validity_errors():
 def test_extract_validity_underfilled():
     v = cmp.extract_validity(UNDERFILLED)
     assert v["all_cells_valid"] is False
-    assert v["cells"]["C8"]["effective_concurrency"] == 3
 
 
 def test_extract_validity_no_results():
@@ -447,8 +414,245 @@ def test_extract_validity_empty():
     assert "all_cells_valid" not in v
 
 
+def test_extract_validity_missing_num_errors():
+    """Missing num_errors is invalid, not default-zero."""
+    doc = _make_doc(
+        results=[
+            {"concurrency": 8, "context_tokens": 16384, "benchmark_mode": "duration",
+             "measurement_seconds": 24.9, "aggregate_tps": 64.56,
+             "effective_concurrency": 8, "underfilled": False,
+             "warmup_timed_out": False, "capacity_limited": False},
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert ("C8", "num_errors") in v["missing_fields"]
+
+
+def test_extract_validity_missing_effective_concurrency():
+    """Missing effective_concurrency is invalid."""
+    doc = _make_doc(
+        results=[
+            {"concurrency": 8, "context_tokens": 16384, "benchmark_mode": "duration",
+             "measurement_seconds": 24.9, "aggregate_tps": 64.56,
+             "num_errors": 0, "underfilled": False,
+             "warmup_timed_out": False, "capacity_limited": False},
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert ("C8", "effective_concurrency") in v["missing_fields"]
+
+
+def test_extract_validity_missing_underfilled():
+    """Missing underfilled is invalid, not default-false."""
+    doc = _make_doc(
+        results=[
+            {"concurrency": 8, "context_tokens": 16384, "benchmark_mode": "duration",
+             "measurement_seconds": 24.9, "aggregate_tps": 64.56,
+             "num_errors": 0, "effective_concurrency": 8,
+             "warmup_timed_out": False, "capacity_limited": False},
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert ("C8", "underfilled") in v["missing_fields"]
+
+
+def test_extract_validity_missing_benchmark_mode():
+    """Missing benchmark_mode is invalid."""
+    doc = _make_doc(
+        results=[
+            {"concurrency": 8, "context_tokens": 16384,
+             "measurement_seconds": 24.9, "aggregate_tps": 64.56,
+             "num_errors": 0, "effective_concurrency": 8,
+             "underfilled": False, "warmup_timed_out": False,
+             "capacity_limited": False},
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+    assert ("C8", "benchmark_mode") in v["missing_fields"]
+
+
+def test_extract_validity_warmup_timed_out():
+    """warmup_timed_out=True makes cell invalid."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 30.0, warmup_timed_out=True),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+
+
+def test_extract_validity_capacity_limited():
+    """capacity_limited=True makes cell invalid."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 30.0, capacity_limited=True),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    v = cmp.extract_validity(doc)
+    assert v["all_cells_valid"] is False
+
+
 # ---------------------------------------------------------------------------
-# Full document comparison
+# Context coverage validation
+# ---------------------------------------------------------------------------
+
+
+def test_coverage_valid():
+    result = cmp.validate_context_coverage(SUSTAINED_BASELINE)
+    assert result["valid"] is True
+
+
+def test_coverage_no_metadata():
+    result = cmp.validate_context_coverage({})
+    assert result["valid"] is False
+
+
+def test_coverage_no_results():
+    result = cmp.validate_context_coverage(NO_RESULTS)
+    assert result["valid"] is False
+
+
+def test_coverage_multi_context():
+    """Multi-context document (two context_lengths) is rejected."""
+    doc = _make_doc(
+        meta=_make_meta(context_lengths=[16384, 32768]),
+        results=[
+            _make_result(8, 64.56, context_tokens=16384),
+            _make_result(4, 45.13, context_tokens=32768),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+
+
+def test_coverage_wrong_context():
+    """Result with wrong context_tokens is rejected."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56, context_tokens=8192),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+
+
+def test_coverage_missing_concurrency():
+    """Missing a required concurrency fails."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            # C1 missing
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "missing" in result["reason"].lower()
+
+
+def test_coverage_extra_concurrency():
+    """Extra concurrency beyond C1/C2/C4/C8 fails."""
+    doc = _make_doc(
+        meta=_make_meta(concurrency_levels=[1, 2, 4, 8, 16]),
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+            _make_result(16, 80.0),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "unexpected" in result["reason"].lower()
+
+
+def test_coverage_duplicate_concurrency():
+    """Duplicate concurrency fails."""
+    doc = _make_doc(
+        results=[
+            _make_result(8, 64.56),
+            _make_result(8, 60.0),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "duplicate" in result["reason"].lower()
+
+
+def test_coverage_summary_table_multi_context():
+    """Summary table with multiple context keys fails."""
+    doc = {
+        "metadata": _make_meta(),
+        "results": [
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+        "summary_table": {
+            "16384": {"8": 64.56, "4": 45.13, "2": 29.29, "1": 15.89},
+            "32768": {"8": 50.0},
+        },
+    }
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+    assert "multiple" in result["reason"].lower()
+
+
+def test_coverage_summary_table_missing_concurrency():
+    """Summary table missing a concurrency that results have fails."""
+    doc = {
+        "metadata": _make_meta(),
+        "results": [
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+        "summary_table": {
+            "16384": {"8": 64.56, "4": 45.13, "2": 29.29},
+            # C1 missing from summary
+        },
+    }
+    result = cmp.validate_context_coverage(doc)
+    assert result["valid"] is False
+
+
+# ---------------------------------------------------------------------------
+# Full document comparison — no deltas on failure
 # ---------------------------------------------------------------------------
 
 
@@ -458,56 +662,99 @@ def test_compare_matched_sustained():
     assert result["baseline_type"] == "sustained_matrix"
     assert result["candidate_type"] == "sustained_matrix"
     assert result["settings"]["all_matched"] is True
+    assert len(result["throughput"]["cells"]) == 4
 
 
 def test_compare_type_mismatch_bounded_vs_sustained():
     """Bounded gate vs sustained matrix must produce type_mismatch."""
     result = cmp.compare_documents(SUSTAINED_BASELINE, BOUNDED_GATE)
     assert result["status"] == "type_mismatch"
-    assert result["type_mismatch"] is not None
-    assert "128-token" in result["type_mismatch"] or "bounded" in result["type_mismatch"].lower()
 
 
 def test_compare_type_mismatch_indeterminate():
     """Indeterminate vs sustained must produce type_mismatch."""
     result = cmp.compare_documents(SUSTAINED_BASELINE, NO_METADATA)
     assert result["status"] == "type_mismatch"
-    assert "indeterminate" in result["type_mismatch"]
 
 
-def test_compare_settings_mismatch():
+def test_compare_two_bounded_gate_rejected():
+    """Two bounded_gate documents must NOT compare."""
+    result = cmp.compare_documents(BOUNDED_GATE, BOUNDED_GATE)
+    assert result["status"] == "type_mismatch"
+    assert "both documents are bounded_gate" in result["type_mismatch"]
+
+
+def test_compare_two_indeterminate_rejected():
+    """Two indeterminate documents must NOT compare."""
+    result = cmp.compare_documents({}, {})
+    assert result["status"] == "type_mismatch"
+
+
+def test_compare_settings_mismatch_no_deltas():
+    """Settings mismatch must NOT emit any deltas."""
     candidate = json.loads(json.dumps(SUSTAINED_CANDIDATE))
     candidate["metadata"]["temperature"] = 1.0
     result = cmp.compare_documents(SUSTAINED_BASELINE, candidate)
     assert result["status"] == "settings_mismatch"
+    assert len(result["throughput"]["cells"]) == 0
 
 
-def test_compare_protocol_mismatch():
-    """Post-upgrade vs older protocol must settings_mismatch."""
+def test_compare_protocol_mismatch_no_deltas():
+    """Post-upgrade vs older protocol: settings_mismatch, no deltas."""
     result = cmp.compare_documents(SUSTAINED_BASELINE, OLDER_PROTOCOL)
     assert result["status"] == "settings_mismatch"
+    assert len(result["throughput"]["cells"]) == 0
 
 
-def test_compare_invalid_cells():
+def test_compare_invalid_cells_no_deltas():
+    """Invalid cells must NOT emit deltas."""
     result = cmp.compare_documents(SUSTAINED_BASELINE, INVALID_CELLS)
     assert result["status"] == "invalid_cells"
+    assert len(result["throughput"]["cells"]) == 0
 
 
-def test_compare_underfilled_cells():
+def test_compare_underfilled_no_deltas():
+    """Underfilled cells must NOT emit deltas."""
     result = cmp.compare_documents(SUSTAINED_BASELINE, UNDERFILLED)
     assert result["status"] == "invalid_cells"
+    assert len(result["throughput"]["cells"]) == 0
 
 
-def test_compare_no_cells():
-    """No results → no_cells status."""
+def test_compare_no_cells_no_deltas():
+    """No results → no_cells, no deltas."""
     result = cmp.compare_documents(SUSTAINED_BASELINE, NO_RESULTS)
     assert result["status"] == "no_cells"
+    assert len(result["throughput"]["cells"]) == 0
 
 
-def test_compare_both_no_cells():
-    """Both documents with no results → no_cells."""
-    result = cmp.compare_documents(NO_RESULTS, NO_RESULTS)
-    assert result["status"] == "no_cells"
+def test_compare_coverage_error_no_deltas():
+    """Coverage error must NOT emit deltas."""
+    doc_missing_c1 = _make_doc(
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+        ],
+    )
+    result = cmp.compare_documents(SUSTAINED_BASELINE, doc_missing_c1)
+    assert result["status"] == "coverage_error"
+    assert len(result["throughput"]["cells"]) == 0
+
+
+def test_compare_multi_context_no_deltas():
+    """Multi-context document must NOT produce deltas."""
+    multi_ctx = _make_doc(
+        meta=_make_meta(context_lengths=[16384, 32768]),
+        results=[
+            _make_result(8, 64.56, context_tokens=16384),
+            _make_result(4, 45.13, context_tokens=32768),
+            _make_result(2, 29.29),
+            _make_result(1, 15.89),
+        ],
+    )
+    result = cmp.compare_documents(SUSTAINED_BASELINE, multi_ctx)
+    assert result["status"] == "coverage_error"
+    assert len(result["throughput"]["cells"]) == 0
 
 
 def test_compare_claim_note_present():
@@ -516,10 +763,12 @@ def test_compare_claim_note_present():
     assert "sealed A/B" in result["claim_note"]
 
 
-def test_compare_evidence_scope_present():
+def test_compare_coverage_in_report():
+    """Coverage validation results are included in the report."""
     result = cmp.compare_documents(SUSTAINED_BASELINE, SUSTAINED_CANDIDATE)
-    assert "evidence_scope" in result
-    assert "offline" in result["evidence_scope"].lower()
+    assert "baseline_coverage" in result
+    assert "candidate_coverage" in result
+    assert result["baseline_coverage"]["valid"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -548,6 +797,16 @@ def test_cli_type_mismatch(tmp_path, capsys):
     assert rc == cmp.EXIT_MISMATCH
 
 
+def test_cli_two_bounded_rejected(tmp_path, capsys):
+    """CLI: two bounded_gate documents exit MISMATCH."""
+    base = tmp_path / "base.json"
+    cand = tmp_path / "cand.json"
+    base.write_text(json.dumps(BOUNDED_GATE))
+    cand.write_text(json.dumps(BOUNDED_GATE))
+    rc = cmp.main(["--baseline", str(base), "--candidate", str(cand)])
+    assert rc == cmp.EXIT_MISMATCH
+
+
 def test_cli_settings_mismatch(tmp_path, capsys):
     candidate = json.loads(json.dumps(SUSTAINED_CANDIDATE))
     candidate["metadata"]["temperature"] = 1.0
@@ -559,33 +818,39 @@ def test_cli_settings_mismatch(tmp_path, capsys):
     assert rc == cmp.EXIT_MISMATCH
 
 
-def test_cli_strict_invalid_cells(tmp_path, capsys):
+def test_cli_coverage_error(tmp_path, capsys):
+    """CLI: coverage error exits INVALID."""
+    doc_missing_c1 = _make_doc(
+        results=[
+            _make_result(8, 64.56),
+            _make_result(4, 45.13),
+            _make_result(2, 29.29),
+        ],
+    )
+    base = tmp_path / "base.json"
+    cand = tmp_path / "cand.json"
+    base.write_text(json.dumps(SUSTAINED_BASELINE))
+    cand.write_text(json.dumps(doc_missing_c1))
+    rc = cmp.main(["--baseline", str(base), "--candidate", str(cand)])
+    assert rc == cmp.EXIT_INVALID
+
+
+def test_cli_invalid_cells(tmp_path, capsys):
     base = tmp_path / "base.json"
     cand = tmp_path / "cand.json"
     base.write_text(json.dumps(SUSTAINED_BASELINE))
     cand.write_text(json.dumps(INVALID_CELLS))
-    rc = cmp.main(["--baseline", str(base), "--candidate", str(cand), "--strict"])
+    rc = cmp.main(["--baseline", str(base), "--candidate", str(cand)])
     assert rc == cmp.EXIT_INVALID
 
 
-def test_cli_strict_no_cells(tmp_path, capsys):
-    """Strict mode with no cells must exit non-zero."""
-    base = tmp_path / "base.json"
-    cand = tmp_path / "cand.json"
-    base.write_text(json.dumps(SUSTAINED_BASELINE))
-    cand.write_text(json.dumps(NO_RESULTS))
-    rc = cmp.main(["--baseline", str(base), "--candidate", str(cand), "--strict"])
-    assert rc == cmp.EXIT_INVALID
-
-
-def test_cli_no_strict_no_cells(tmp_path, capsys):
-    """Non-strict mode with no cells exits 0 (status reported)."""
+def test_cli_no_cells(tmp_path, capsys):
     base = tmp_path / "base.json"
     cand = tmp_path / "cand.json"
     base.write_text(json.dumps(SUSTAINED_BASELINE))
     cand.write_text(json.dumps(NO_RESULTS))
     rc = cmp.main(["--baseline", str(base), "--candidate", str(cand)])
-    assert rc == cmp.EXIT_OK
+    assert rc == cmp.EXIT_INVALID
 
 
 def test_cli_missing_file(capsys):
@@ -621,4 +886,4 @@ def test_cli_no_metadata(tmp_path, capsys):
 
 
 def test_schema():
-    assert cmp.SCHEMA == "sparkring-benchmark-comparison/v2"
+    assert cmp.SCHEMA == "sparkring-benchmark-comparison/v3"

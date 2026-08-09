@@ -23,11 +23,14 @@ comparisons.
 Before claiming any delta between a cache-off baseline and a cache-on
 candidate:
 
-### 1. Document type must match
+### 1. Both documents must be sustained_matrix
 
 Both documents must be classified `sustained_matrix` by the tool.
-A `bounded_gate` document (max_tokens < 256 or duration < 10s) cannot
-be compared against a `sustained_matrix` document.
+Two `bounded_gate` documents, two `indeterminate` documents, or
+any mixed pair cannot be compared. Classification requires
+`metadata.decode_mode == "duration"`, each result
+`benchmark_mode == "duration"`, both `duration_per_test >= 10` and
+`max_tokens >= 256` present (no inference from one alone).
 
 ### 2. Workload settings must be identical
 
@@ -51,19 +54,32 @@ exactly between the two documents:
 | skip_prefill | True vs False changes whether prefill is measured |
 | Cell warmup timeout (seconds) | 600 vs 300 vs 60 changes readiness-limited suppression |
 
-If any setting differs, the comparison reports `settings_mismatch` and
-**no delta is claimed**. This is fail-closed.
+### 3. Cell validity and coverage must be confirmed
 
-### 3. Cell validity must be confirmed
+Each document must have exactly one 16K context and exactly
+C1/C2/C4/C8 result coverage consistent with
+`metadata.concurrency_levels`. No missing, duplicated, or
+unexpected cells. No multi-context documents. No mismatch between
+metadata, results, and summary_table.
 
-Each cell must have:
-- exact effective concurrency (requested = observed)
-- zero request errors
-- `all_cells_valid: true` in the document
+Each result cell must have all validity fields present:
+- `num_errors` == 0 (missing is invalid, not zero)
+- `effective_concurrency` == requested concurrency (missing is invalid)
+- `underfilled` == false (missing is invalid)
+- `warmup_timed_out` == false (missing is invalid)
+- `capacity_limited` == false (missing is invalid)
+- `benchmark_mode` == `"duration"` (missing is invalid)
+- `measurement_seconds` present and numeric (missing is invalid)
 
-The `--strict` flag enforces this at exit time.
+Missing fields are indeterminate/invalid, never default-zero/true.
 
-### 4. The only variable that changed is cache state
+### 4. No deltas until all checks pass
+
+No numeric deltas are computed or emitted until document type,
+complete settings, validity, and exact cell coverage all pass. A
+mismatch report contains no claimed deltas.
+
+### 5. The only variable that changed is cache state
 
 The comparison is valid only if the **sole difference** between the
 two runs is the cache variable (cache-off vs cache-on). This means:
@@ -141,9 +157,7 @@ python scripts/compare_benchmark_evidence.py \
 
 Exit codes:
 
-| Code | Meaning |
-|---:|---|
 | 0 | Compared successfully, all cells valid |
 | 2 | Type mismatch or settings mismatch — no delta claimed |
 | 3 | Configuration error (missing file, invalid JSON) |
-| 4 | Invalid cells or missing throughput (strict mode only) |
+| 4 | Coverage error, invalid cells, or no cells — no delta claimed |

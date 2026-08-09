@@ -263,10 +263,12 @@ python scripts/compare_benchmark_evidence.py \
     --strict
 ```
 
-The tool refuses to compare bounded 128-token gate figures against
-sustained 25-second matrix figures, verifies 14 workload settings
-match exactly, and exits non-zero on settings mismatch or invalid
-cells. See the
+The tool requires both documents to be ``sustained_matrix``, verifies
+14 workload settings match exactly, validates exact C1/C2/C4/C8 cell
+coverage at 16K, checks all validity fields (no missing fields default
+to zero/true), and exits non-zero on any mismatch, coverage error,
+or invalid cells. No numeric deltas are emitted until all checks
+pass. See the
 [evidence-comparison checklist](EVIDENCE_COMPARISON_CHECKLIST.md) for
 the full pre-comparison requirements and claim labels. Never mix
 evidence between cache layers (native APC, LMCache, SparkCache)
