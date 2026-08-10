@@ -1,6 +1,7 @@
 # SparkRing
 
-SparkRing is a low-latency collective transport and inference runtime for switchless GB1X (NVIDIA DGX Spark) clusters.
+SparkRing is a qualification-driven four-Spark distribution and operational
+contract for switchless GB1X (NVIDIA DGX Spark) clusters.
 
 Today it runs GLM-5.2 across four directly connected DGX Sparks. Four 200 Gb/s ConnectX-7 links form a physical ring, 
 with no external Ethernet or InfiniBand switch in the inference fabric.
@@ -8,7 +9,10 @@ with no external Ethernet or InfiniBand switch in the inference fabric.
 The stack combines SIRCL custom RDMA collectives, CUDA-graph-replayable command rings, a source-attested and fail-closed vLLM overlay, 
 DCP4, support for fixed and adaptive MTP speculative decoding, and a patched ring-safe NCCL fallback for communication not yet handled by the custom path.
 
-The long-term goal is a model-agnostic runtime for efficient, switchless multi-node inference on DGX Spark.
+The distribution integrates pinned vLLM/SparkInfer runtime inputs, transport
+and cache extensions, topology-aware launch and rollback, attestation, and
+evidence gates. Generic engine semantics belong upstream; SparkRing qualifies
+exact combinations on the four-direct-cable appliance topology.
 
 ## Acknowledgements
 
@@ -46,6 +50,12 @@ restarts, captured 16/16 piecewise and 12/12 full graphs, and served a
 bounded gates passed; ten fixed-seed 128-token completions were byte-identical.
 See the [EXL3 quickstart](docs/EXL3_QUICKSTART.md) and
 [evidence-scoped recipe](docs/EXL3_RECIPE.md).
+
+That result is scoped to those bounded requests. A later MTP0/APC-off/LMCache-off
+[teacher-forced diagnostic](docs/EXL3_TEACHER_FORCED_ATTRIBUTION_20260810.md)
+observed same-context returned top-1 nondeterminism, so broader correctness
+remains open. The canonical fixed-MTP2, native-prefix-cache, LMCache-CS512
+stack was restored after the diagnostic.
 
 This makes EXL3+LMCache the public default, not a blanket correctness or
 release-acceptance claim. NF3 remains an accepted deterministic alternative;
@@ -228,16 +238,20 @@ It owns persistent RDMA sessions, mapped-host arenas, sequencing,
 acknowledgements, GPU copy and reduction operations, bounded submission, and
 CUDA-graph-replayable command rings.
 
-SparkRing is the complete inference stack around SIRCL. SparkCache is a
-separate persistent-context component.
+SIRCL is a candidate independent transport differentiator whose same-binary
+value still requires controlled A/B evidence. SparkCache is a separate,
+currently unpromoted persistent-context component. SparkRing composes and
+qualifies these extensions with pinned upstream runtime inputs.
 
 See [docs/SIRCL.md](docs/SIRCL.md) and
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ### Fail-closed vLLM integration
 
-SparkRing applies a thin overlay through `PYTHONPATH`. Each adapter verifies
-the exact source SHA-256 and ABI it expects before installation.
+SparkRing's pinned public builders apply a recovered runtime delta plus narrow
+adapter patches. Runtime adapters verify the exact source SHA-256 and ABI they
+expect before installation; the operation-level provenance and intended
+retirement paths are inventoried separately.
 
 A source mismatch stops startup. The orchestrator also attests native
 libraries, mounts, launch arguments, and rank topology.

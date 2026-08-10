@@ -1,0 +1,39 @@
+{
+  "schema": "sparkring-exl3-correctness-cases/v1",
+  "cache_metric_probe_case_ids": [
+    "cache-long-prefix-json",
+    "cache-long-prefix-recall"
+  ],
+  "cases": [
+    {
+      "id": "cache-long-prefix-json",
+      "prompt_generator": {
+        "kind": "repeated-prefix-v1",
+        "fragment": "SparkRing deterministic cache boundary evidence contains alpha beta gamma delta epsilon zeta eta theta and remains identical in every record.\n",
+        "repetitions": 64,
+        "suffix": "Task: Return only valid JSON with keys first and last, setting first to alpha and last to theta."
+      },
+      "cache_attribution": true,
+      "minimum_prompt_tokens": 1024,
+      "seed": 20260809,
+      "max_tokens": 48,
+      "ignore_eos": true,
+      "expected_token_ids_sha256": null
+    },
+    {
+      "id": "cache-long-prefix-recall",
+      "prompt_generator": {
+        "kind": "repeated-prefix-v1",
+        "fragment": "SparkRing deterministic cache boundary evidence contains alpha beta gamma delta epsilon zeta eta theta and remains identical in every record.\n",
+        "repetitions": 64,
+        "suffix": "Task: In exactly one sentence, name the first and last Greek labels in the repeated evidence."
+      },
+      "cache_attribution": true,
+      "minimum_prompt_tokens": 1024,
+      "seed": 20260809,
+      "max_tokens": 48,
+      "ignore_eos": true,
+      "expected_token_ids_sha256": null
+    }
+  ]
+}

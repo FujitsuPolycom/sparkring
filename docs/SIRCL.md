@@ -5,10 +5,10 @@
 
 The names describe different boundaries:
 
-- **SIRCL** is the low-level direct-cable collective runtime.
-- **SparkRing** is the complete inference stack: SIRCL, topology and launch
-  tooling, fail-closed runtime adapters, model-specific optimizations,
-  validation, and fallback paths.
+- **SIRCL** is the low-level direct-cable collective extension.
+- **SparkRing** is the qualification-driven four-Spark distribution and
+  operational contract: topology and launch tooling, pinned upstream runtime
+  inputs, extensions, fail-closed adapters, validation, and rollback paths.
 - **SparkCache** is the independent persistent-context subsystem. It stores
   rank-local KV state on NVMe and does not define the live collective
   transport.

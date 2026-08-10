@@ -1,0 +1,423 @@
+{
+  "autoregressive_discovery": {
+    "earliest_divergence_generated_index": 112,
+    "focus_candidate_count": 2,
+    "focus_generated_index": 112,
+    "repetitions": 20,
+    "token_sequence_multiplicities": [
+      15,
+      2,
+      1,
+      1,
+      1
+    ],
+    "unique_token_sequence_count": 5
+  },
+  "case_id": "code-stable-unique",
+  "config_sha256": "9b0b3b38732787800a926eb88d1da2c6cac8c71549fded6b28f859515ec0e7e8",
+  "diagnostic": {
+    "conclusion": "same-context top-1 nondeterminism was observed with MTP disabled, native APC disabled, and LMCache detached; cache reuse was not required for this observation",
+    "non_conclusion": "this diagnostic does not identify the responsible kernel, graph, attention path, or collective",
+    "raw_report_classification": "autoregressive-divergence-without-teacher-forced-top1-flip",
+    "raw_report_classifier_was_stale": true,
+    "recomputed_classification": "cache-not-required-top1-nondeterminism-observed"
+  },
+  "evidence_scope": "diagnostic observation; not acceptance",
+  "hardware": "four directly cabled DGX Sparks",
+  "lane": "public-functional",
+  "limitations": {
+    "acceptance_claimed": false,
+    "full_vocabulary_kld_available": false,
+    "raw_logits_returned": false,
+    "reported_symmetric_kl_scope": "truncated returned common support, renormalized; not full-vocabulary KLD",
+    "teacher_forcing_removes_context_drift_only": true
+  },
+  "maturity": "live-validated",
+  "model": "glm-5.2-exl3-tr3-3.25bpw",
+  "privacy": {
+    "outputs_omitted": true,
+    "prompt_omitted": true,
+    "raw_report_publishable": false,
+    "site_and_runtime_instance_identifiers_omitted": true,
+    "token_ids_omitted": true
+  },
+  "private_raw_artifact_sha256": "51613c0e1260e1adfafa3bc925e9921aac36e3e518fa1a7c53efa9a1a087de2b",
+  "public_source_pins": {
+    "evidence_scope": "declared-canonical-pins-bound-to-receipt-model-not-live-binary-introspection",
+    "exllamav3_commit": "d21d9b3182e746199093b77b49a708635c1d1b5d",
+    "image_id": "sha256:20c4099f2e7e3dd3c8ab64f7d7930bde4f372df1895aa3ffa593252ca04ae96f",
+    "model_repository": "willfalco/GLM-5.2-EXL3-TR3-3.25bpw",
+    "model_revision": "d7d79c2d14599dfce7a5d12b85f7ad73f40e623d",
+    "pins_file_sha256": "f462110e39488fcd2d600938f9303b17e7f08c9e742a00373a79e0dca82edf91",
+    "sparkinfer_commit": "018de520e40f6bf9bd0b11c5da5517ef3364a985",
+    "vllm_commit": "668275901b55230f4a70841a9aac1c0be22ef8d3"
+  },
+  "request_contract": {
+    "discovery_max_tokens": 128,
+    "discovery_repetitions": 20,
+    "logprobs_mode": "raw_logprobs",
+    "returned_logprob_width": 20,
+    "teacher_forced_repetitions_per_position": 20
+  },
+  "runtime_arm": {
+    "dcp_size": 4,
+    "id": "a-mtp0-apc0-lmcache0",
+    "live_arm_receipt_sha256": "ad65cbdbf296a947c087cf2f73b86fad20379db80c88c10de9c56f0ab15e2e88",
+    "lmcache_attached": false,
+    "mtp_tokens": 0,
+    "native_prefix_caching_enabled": false,
+    "rank_count": 4,
+    "runtime_re_attested_immediately_before_requests": true
+  },
+  "schema": "sparkring-exl3-teacher-forced-margin-public-receipt/v1",
+  "source_schema": "sparkring-exl3-teacher-forced-margin-report/v1",
+  "status": "completed",
+  "teacher_forced": {
+    "generated_index_maximum": 120,
+    "generated_index_minimum": 104,
+    "positions": [
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-and-returned-values-stable",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 104,
+        "max_abs_common_token_value_delta": 0.0,
+        "maximum_conditional_common_support_symmetric_kl": 0.0,
+        "minimum_pairwise_topk_jaccard": 1.0,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 0.25,
+          "median": 0.25,
+          "minimum": 0.25
+        }
+      },
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-and-returned-values-stable",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 105,
+        "max_abs_common_token_value_delta": 0.0,
+        "maximum_conditional_common_support_symmetric_kl": 0.0,
+        "minimum_pairwise_topk_jaccard": 1.0,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 1.5000000596046448,
+          "median": 1.5000000596046448,
+          "minimum": 1.5000000596046448
+        }
+      },
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-and-returned-values-stable",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 106,
+        "max_abs_common_token_value_delta": 0.0,
+        "maximum_conditional_common_support_symmetric_kl": 0.0,
+        "minimum_pairwise_topk_jaccard": 1.0,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 0.25,
+          "median": 0.25,
+          "minimum": 0.25
+        }
+      },
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-and-returned-values-stable",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 107,
+        "max_abs_common_token_value_delta": 0.0,
+        "maximum_conditional_common_support_symmetric_kl": 0.0,
+        "minimum_pairwise_topk_jaccard": 1.0,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 6.125000006519258,
+          "median": 6.125000006519258,
+          "minimum": 6.125000006519258
+        }
+      },
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-stable-returned-values-vary",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 108,
+        "max_abs_common_token_value_delta": 0.4139242172241211,
+        "maximum_conditional_common_support_symmetric_kl": 0.0064552886817431845,
+        "minimum_pairwise_topk_jaccard": 0.9047619047619048,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 0.75,
+          "median": 0.625,
+          "minimum": 0.5
+        }
+      },
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-stable-returned-values-vary",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 109,
+        "max_abs_common_token_value_delta": 0.5132431983947754,
+        "maximum_conditional_common_support_symmetric_kl": 0.012715667510406765,
+        "minimum_pairwise_topk_jaccard": 1.0,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 0.25,
+          "median": 0.125,
+          "minimum": 0.0
+        }
+      },
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-stable-returned-values-vary",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 110,
+        "max_abs_common_token_value_delta": 0.9758224487304688,
+        "maximum_conditional_common_support_symmetric_kl": 0.007265872173938325,
+        "minimum_pairwise_topk_jaccard": 0.9047619047619048,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 2.3750000596046448,
+          "median": 2.249999962747097,
+          "minimum": 1.9999998807907104
+        }
+      },
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-stable-returned-values-vary",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 111,
+        "max_abs_common_token_value_delta": 1.389091968536377,
+        "maximum_conditional_common_support_symmetric_kl": 0.0062621955304693454,
+        "minimum_pairwise_topk_jaccard": 0.9047619047619048,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 1.3750000596046448,
+          "median": 1.2500000447034836,
+          "minimum": 1.1250000596046448
+        }
+      },
+      {
+        "candidate_margin_observation_count": 20,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-stable-returned-values-vary",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 112,
+        "max_abs_common_token_value_delta": 0.4009113311767578,
+        "maximum_conditional_common_support_symmetric_kl": 0.018199014962608603,
+        "minimum_pairwise_topk_jaccard": 0.8181818181818182,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 0.625,
+          "median": 0.375,
+          "minimum": 0.25
+        }
+      },
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-stable-returned-values-vary",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 113,
+        "max_abs_common_token_value_delta": 0.6052408218383789,
+        "maximum_conditional_common_support_symmetric_kl": 0.01912077555693369,
+        "minimum_pairwise_topk_jaccard": 0.9047619047619048,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 0.7500000596046448,
+          "median": 0.6249999701976776,
+          "minimum": 0.4999999403953552
+        }
+      },
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-stable-returned-values-vary",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 114,
+        "max_abs_common_token_value_delta": 1.0845823287963867,
+        "maximum_conditional_common_support_symmetric_kl": 0.05159297303554211,
+        "minimum_pairwise_topk_jaccard": 0.6666666666666666,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 2.1250001043081284,
+          "median": 1.8124999776482582,
+          "minimum": 1.2499999701976776
+        }
+      },
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-stable-returned-values-vary",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 115,
+        "max_abs_common_token_value_delta": 0.8694972991943359,
+        "maximum_conditional_common_support_symmetric_kl": 0.025512766130405304,
+        "minimum_pairwise_topk_jaccard": 0.8181818181818182,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 1.1250000596046448,
+          "median": 0.9375,
+          "minimum": 0.6249999701976776
+        }
+      },
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "same-context-top1-nondeterminism",
+        "distinct_top1_count": 2,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 116,
+        "max_abs_common_token_value_delta": 0.685389518737793,
+        "maximum_conditional_common_support_symmetric_kl": 0.01429496136140846,
+        "minimum_pairwise_topk_jaccard": 0.8181818181818182,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          19,
+          1
+        ],
+        "top1_top2_margin": {
+          "maximum": 0.125,
+          "median": 0.0625,
+          "minimum": 0.0
+        }
+      },
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-stable-returned-values-vary",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 117,
+        "max_abs_common_token_value_delta": 0.8237981796264648,
+        "maximum_conditional_common_support_symmetric_kl": 0.03414563320981272,
+        "minimum_pairwise_topk_jaccard": 0.7391304347826086,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 1.75,
+          "median": 1.6249998807907104,
+          "minimum": 1.2499999403953552
+        }
+      },
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-stable-returned-values-vary",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 118,
+        "max_abs_common_token_value_delta": 1.4954047203063965,
+        "maximum_conditional_common_support_symmetric_kl": 0.05767261498241835,
+        "minimum_pairwise_topk_jaccard": 0.7391304347826086,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 1.0000000596046448,
+          "median": 0.7500000298023224,
+          "minimum": 0.4999999403953552
+        }
+      },
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-stable-returned-values-vary",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 119,
+        "max_abs_common_token_value_delta": 1.1026172637939453,
+        "maximum_conditional_common_support_symmetric_kl": 0.005357196533441641,
+        "minimum_pairwise_topk_jaccard": 0.8181818181818182,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 3.875000074505806,
+          "median": 3.6250000707805157,
+          "minimum": 3.375000037252903
+        }
+      },
+      {
+        "candidate_margin_observation_count": 0,
+        "candidate_margin_sign_changes": false,
+        "classification": "teacher-forced-top1-stable-returned-values-vary",
+        "distinct_top1_count": 1,
+        "distribution_metric_scope": "truncated-returned-common-support-renormalized-not-full-vocabulary-kld",
+        "generated_index": 120,
+        "max_abs_common_token_value_delta": 1.3118610382080078,
+        "maximum_conditional_common_support_symmetric_kl": 0.00048003286702674773,
+        "minimum_pairwise_topk_jaccard": 0.9047619047619048,
+        "observation_count": 20,
+        "top1_multiplicities": [
+          20
+        ],
+        "top1_top2_margin": {
+          "maximum": 6.875000093947165,
+          "median": 6.624999915482476,
+          "minimum": 6.12500019534491
+        }
+      }
+    ],
+    "positions_probed": 17
+  }
+}

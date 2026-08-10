@@ -45,13 +45,13 @@ def test_verify_geometry_fails_on_wrong_chunk_size():
     )
 
 
-def test_verify_geometry_fails_on_wrong_parent_chunk_size():
+def test_verify_geometry_fails_on_wrong_predecessor_chunk_size():
     recipe = load_recipe()
-    recipe["serving"]["lmcache"]["parent_chunk_size"] = 512
+    recipe["serving"]["lmcache"]["predecessor_chunk_size"] = 512
     result = gate.verify_geometry(recipe)
     assert result["passed"] is False
     assert any(
-        c["check"] == "parent_chunk_size_is_256" and not c["passed"]
+        c["check"] == "predecessor_chunk_size_is_256" and not c["passed"]
         for c in result["checks"]
     )
 
@@ -173,7 +173,9 @@ def test_plan_boundary_tests_is_planned():
     assert result["category"] == "planned_live"
     assert result["status"] == "planned"
     assert "passed" not in result
-    assert result["boundaries"] == [511, 512, 513, 1024, 1025]
+    assert result["boundaries"] == [255, 256, 257, 511, 512, 513, 1024, 1025]
+    assert "required_live_geometry" in result
+    assert "excludes the final prompt token" in result["note"]
 
 
 def test_plan_dcp_consensus_is_planned():

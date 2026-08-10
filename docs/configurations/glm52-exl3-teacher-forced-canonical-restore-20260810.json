@@ -1,0 +1,245 @@
+{
+  "arm": "a-mtp0-apc0-lmcache0",
+  "automatic_rollback_attempted": false,
+  "automatic_rollback_exceptions": [],
+  "automatic_rollback_outcomes": [],
+  "canonical_profile_id": "glm52-exl3-tr3-3.25bpw-lmcache-cs512",
+  "command": "rollback",
+  "from_arm": null,
+  "functional_settings": {
+    "cache_boundary_geometry": {
+      "expected_dcp_size": 4,
+      "expected_engine_block_rows_per_dcp_rank": 64,
+      "expected_global_apc_alignment_tokens": 256,
+      "expected_lmcache_chunk_tokens_global": 512,
+      "recipe_predecessor_chunk_size_is_geometry_evidence": false,
+      "runtime_attestation_required": true
+    },
+    "lmcache_connector": false,
+    "mtp_tokens": 0,
+    "native_prefix_cache": false
+  },
+  "original_exception": null,
+  "phase_outcomes": [
+    {
+      "all_ranks_zero": true,
+      "executor_result_status": "rank-results",
+      "phase": "canonical_engine_exclusive_after_restore",
+      "ranks": [
+        {
+          "exit_code": 0,
+          "rank": 0
+        },
+        {
+          "exit_code": 0,
+          "rank": 1
+        },
+        {
+          "exit_code": 0,
+          "rank": 2
+        },
+        {
+          "exit_code": 0,
+          "rank": 3
+        }
+      ]
+    },
+    {
+      "all_ranks_zero": true,
+      "executor_result_status": "rank-results",
+      "phase": "canonical_ready",
+      "ranks": [
+        {
+          "exit_code": 0,
+          "rank": 0
+        },
+        {
+          "exit_code": 0,
+          "rank": 1
+        },
+        {
+          "exit_code": 0,
+          "rank": 2
+        },
+        {
+          "exit_code": 0,
+          "rank": 3
+        }
+      ]
+    },
+    {
+      "all_ranks_zero": true,
+      "executor_result_status": "rank-results",
+      "phase": "remove_diagnostic",
+      "ranks": [
+        {
+          "exit_code": 0,
+          "rank": 0
+        },
+        {
+          "exit_code": 0,
+          "rank": 1
+        },
+        {
+          "exit_code": 0,
+          "rank": 2
+        },
+        {
+          "exit_code": 0,
+          "rank": 3
+        }
+      ]
+    },
+    {
+      "all_ranks_zero": true,
+      "executor_result_status": "rank-results",
+      "phase": "rollback_remove_canonical_engines",
+      "ranks": [
+        {
+          "exit_code": 0,
+          "rank": 0
+        },
+        {
+          "exit_code": 0,
+          "rank": 1
+        },
+        {
+          "exit_code": 0,
+          "rank": 2
+        },
+        {
+          "exit_code": 0,
+          "rank": 3
+        }
+      ]
+    },
+    {
+      "all_ranks_zero": true,
+      "executor_result_status": "rank-results",
+      "phase": "rollback_reset_lmcache_remove_servers",
+      "ranks": [
+        {
+          "exit_code": 0,
+          "rank": 0
+        },
+        {
+          "exit_code": 0,
+          "rank": 1
+        },
+        {
+          "exit_code": 0,
+          "rank": 2
+        },
+        {
+          "exit_code": 0,
+          "rank": 3
+        }
+      ]
+    },
+    {
+      "all_ranks_zero": true,
+      "executor_result_status": "rank-results",
+      "phase": "rollback_reset_lmcache_server_health",
+      "ranks": [
+        {
+          "exit_code": 0,
+          "rank": 0
+        },
+        {
+          "exit_code": 0,
+          "rank": 1
+        },
+        {
+          "exit_code": 0,
+          "rank": 2
+        },
+        {
+          "exit_code": 0,
+          "rank": 3
+        }
+      ]
+    },
+    {
+      "all_ranks_zero": true,
+      "executor_result_status": "rank-results",
+      "phase": "rollback_reset_lmcache_start_servers",
+      "ranks": [
+        {
+          "exit_code": 0,
+          "rank": 0
+        },
+        {
+          "exit_code": 0,
+          "rank": 1
+        },
+        {
+          "exit_code": 0,
+          "rank": 2
+        },
+        {
+          "exit_code": 0,
+          "rank": 3
+        }
+      ]
+    },
+    {
+      "all_ranks_zero": true,
+      "executor_result_status": "rank-results",
+      "phase": "server_health",
+      "ranks": [
+        {
+          "exit_code": 0,
+          "rank": 0
+        },
+        {
+          "exit_code": 0,
+          "rank": 1
+        },
+        {
+          "exit_code": 0,
+          "rank": 2
+        },
+        {
+          "exit_code": 0,
+          "rank": 3
+        }
+      ]
+    },
+    {
+      "all_ranks_zero": true,
+      "executor_result_status": "rank-results",
+      "phase": "start_canonical",
+      "ranks": [
+        {
+          "exit_code": 0,
+          "rank": 0
+        },
+        {
+          "exit_code": 0,
+          "rank": 1
+        },
+        {
+          "exit_code": 0,
+          "rank": 2
+        },
+        {
+          "exit_code": 0,
+          "rank": 3
+        }
+      ]
+    }
+  ],
+  "private_raw_artifact_sha256": "31006c184801772bca1ad7133ba1379c1b8d2df9a92e7489445990b0784f74f1",
+  "raw_functional_settings_contract": "current-cache-geometry",
+  "schema": "sparkring-exl3-attribution-launch-receipt/v1",
+  "scope": "Exit-code and transaction receipt only; remote execution details and exception text are intentionally omitted.",
+  "startup_memory_hygiene": {
+    "boundaries": [],
+    "inner_model_verification": "unchanged-image-entrypoint",
+    "outer_verified_entrypoint_sha256": null,
+    "post_verification_host_page_cache_reclaim": false,
+    "preflight_before_engine_removal": false,
+    "requires_passwordless_sudo": false,
+    "safety_class": "no-additional-mutation"
+  }
+}

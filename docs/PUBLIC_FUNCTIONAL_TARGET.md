@@ -95,7 +95,7 @@ proven by stage `fabric_transport_qualification`, which delegates to
 | FlashInfer | `flashinfer-ai/flashinfer` @ **`25dd814e03791e370f96c3148242f0dc8de504ac`**; wheels `flashinfer-python 0.6.13+cu132`, `flashinfer_jit_cache 0.6.13+cu132` | lock → `flashinfer` |
 | DeepGEMM | **2.5.0+2073ddb** from commit **`2073ddb2814892014c33ef4cd1c7d4c148baf1fe`** | lock → `deep_gemm` |
 | Full pip set | `runtime/pip-freeze.txt` — no resolver drift permitted | `runtime/README.md` acceptance gate 5 |
-| vLLM overlay | The recovered reference delta under `runtime/patches/00-reference-vllm/` (59 safe modified files + 12 additions), followed by the two independently written SparkCache compatibility patches under `runtime/patches/vllm/`. All 73 operations are preimage-pinned and fail closed. | `runtime/README.md`; `runtime/patches/00-reference-vllm/README.md` |
+| vLLM overlay | The recovered reference delta under `runtime/patches/00-reference-vllm/` (59 preimage-pinned modifications + 12 content-addressed, non-overwriting additions), followed by two independently written, preimage-pinned SparkCache compatibility modifications under `runtime/patches/vllm/`. All 73 ordered operations fail closed. | `runtime/README.md`; `runtime/patches/00-reference-vllm/README.md` |
 | Image identity | The built serving image, referenced by its post-push registry digest. The launcher must inject that digest as `SPARKRING_IMAGE_DIGEST`; a missing or skipped digest check is an acceptance failure. | `runtime/README.md` verify flow; `scripts/acceptance_gate.py` |
 
 **Non-pinned images and arbitrary vLLM versions are rejected**, not tolerated
@@ -124,7 +124,7 @@ against one is not reportable.
 The target serving configuration, as recorded in SETUP.md Stage 8.4/8.5 for the
 attested reference window. In this lane these are **requirements of the
 matrix**, not a claim that the public lane reproduces reference-lane behaviour
-with them (see TBD-8).
+with them.
 
 | Setting | Required value |
 |---|---|
@@ -152,14 +152,12 @@ site schema, so they are documented requirements the gate cannot yet verify —
 TBD-13 and TBD-14.
 
 `--attention-backend B12X_MLA_SPARSE` and `--kv-cache-dtype nvfp4_ds_mla` are
-the single largest open question for this lane: RUNTIME_GAPS.md records the
-SM121/GB10 sparse-MLA backend and the packed low-bit MLA KV record formats as
-**not merged upstream** and supplied by the reference-lane overlay, which this
-lane does not ship. Whether a public-lane image can satisfy this row at all is
-**TBD-8**. Until TBD-8 is resolved, any substitution (a different backend or KV
-dtype) must be written into this document *before* a result is reported against
-it — a result measured on an undocumented substitution is not a result for this
-matrix.
+not upstream vLLM capabilities at the pinned commit. They are supplied by the
+published recovered overlay and were exercised by the accepted NF3
+public-functional configuration. That establishes this exact locked
+composition, not an upstream capability or a transferable result. Any
+substitution (a different backend or KV dtype) must be written into this
+document *before* a result is reported against it.
 
 ---
 
@@ -189,10 +187,10 @@ spend a week finding out.
   `runtime_id` and the same manifest self-hash.
 - **Performance parity with the reference lane.** This is the important one.
   The public lane is *not* claimed to be as fast as the reference lane, and no
-  target in this document is a throughput target. The reference lane runs an
-  overlay this lane does not ship (RUNTIME_GAPS.md). Expect a different
-  performance profile, and expect it to be reported as its own measured band
-  (§4), not as a pass/fail against reference-lane numbers.
+  target in this document is a throughput target. Publishing recovered overlay
+  operations does not reproduce the maintainer-held reference launch artifacts
+  or transfer their evidence. Expect a separately measured public profile,
+  reported as its own band (§4), not as a pass/fail against reference numbers.
 
 ---
 
@@ -255,8 +253,8 @@ tell the two apart.
 Every number in [RESULTS.md](RESULTS.md) — 834/884/854 tok/s prefill, 63.60
 tok/s C8 aggregate, 20.83/19.28/21.43 tok/s C1 decode, 27.2 tok/s coding
 median, the 500,224-token KV pool, every transport row — was measured on the
-**reference lane**, with an overlay this lane does not ship, and carries a full
-configuration label naming that lane. Quoting any of them as a public-lane
+**reference lane**, under its historical runtime and launch identity, and
+carries a full configuration label naming that lane. Quoting any of them as a public-lane
 figure is a mislabelled claim under the claim discipline in RESULTS.md §4, and
 seeding the public-lane tolerance band from them would bake the mislabel into
 the gate.
@@ -416,7 +414,7 @@ to anything public (§6).
    `BASELINE-RECORDED` (no public-lane band exists)." Never collapse them into
    one word, and never quote a RESULTS.md number as your own (§4.3).
 5. **Include the matrix delta.** If anything differed from §2 — a substituted
-   attention backend under TBD-8, an eager bring-up rather than graph mode, a
+   attention backend, an eager bring-up rather than graph mode, a
    different driver — say so at the top. A result on a different matrix is
    still useful; a result on a different matrix presented as this matrix is
    not.
@@ -500,7 +498,6 @@ yet, with the workstream that owns closing it.
 | TBD-5 | Minimum supported NVIDIA driver version (reference cluster: 580.173.02; requirement stated only as "580.x") | Users cannot tell whether their driver is in-matrix | hardware / bring-up |
 | TBD-6 | Minimum supported host kernel version (reference cluster: NVIDIA kernel 6.17) | Same | hardware / bring-up |
 | TBD-7 | Minimum Docker CE / podman / `nvidia-container-toolkit` versions | Same; also affects whether the podman path is actually supported or merely believed to work | bring-up |
-| TBD-8 | **Native capability gate closed; serving gate open.** The recovered overlay supplies `B12X_MLA_SPARSE` and `nvfp4_ds_mla`; both passed in the native ARM64 image and partial four-rank bring-up. API/request acceptance remains. | Execute the corrected matrix before reporting a public-functional result | runtime build / acceptance workstream |
 | TBD-9 | Whether the pinned adaptive-MTP 2/4 configuration produces **bitwise-identical token ids** across runs. `scripts/context_cache_gate.py` already records that two consecutive restores of a byte-verified entry produced different phrasings, i.e. observed run-to-run nondeterminism in a speculative-decode configuration | Decides whether stage 5's exact-token-id criterion is achievable as specified, or whether the matrix must pin an MTP-off determinism configuration for that stage only | acceptance gate owner |
 | TBD-10 | The public-lane performance tolerance band. None exists, and reference-lane numbers must not be used (§4.3) | Until a band is committed, `performance_verdict` is permanently `BASELINE-RECORDED` | acceptance gate owner, after N public-lane runs |
 | TBD-11 | Availability and exact response shape of the `/tokenize` endpoint in the pinned vLLM build (the gate uses it to recover output token ids) | If absent, stage 5 fails with an actionable message rather than falling back to hashing text — the fallback is deliberately not implemented | acceptance gate owner |
@@ -508,7 +505,9 @@ yet, with the workstream that owns closing it.
 | TBD-14 | The site schema has no field for the attention backend or KV cache dtype, so §2.4's `B12X_MLA_SPARSE` / `nvfp4_ds_mla` rows are not yet machine-checked by the acceptance gate, despite passing the runtime startup capability gate | Two matrix rows still need end-to-end readback or schema enforcement | site-config workstream + acceptance gate owner |
 
 Closed: TBD-1 (immutable model revision), TBD-2 (ARM64 base-image digests), and
-TBD-3 (DeepGEMM full commit) are pinned in `runtime/runtime-lock.json`. The
+TBD-3 (DeepGEMM full commit) are pinned in `runtime/runtime-lock.json`. TBD-8
+closed when the published overlay supplied the two capabilities and the NF3
+public-functional configuration passed its accepted serving gate. The
 earlier "reconcile site-config key names" item is also resolved:
 `scripts/sparkring_site.py` landed and the gate consumes its normalised schema
 directly (§7), with gate-specific settings moved into the gate config.

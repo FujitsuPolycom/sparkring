@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Dry-run-first LMCache CS512 geometry and boundary verification gate.
+"""Dry-run-first LMCache CS512 configuration and boundary verification gate.
 
 Extends the cache acceptance runbook with offline-verifiable configuration
-checks for the LMCache CS512 block-256 geometry and cache-layer isolation.
+checks the LMCache CS512 recipe and cache-layer isolation. Physical/APC
+geometry is a live-attested property and is never inferred from tuning-arm
+provenance.
 A companion plan mode discloses the live gates (boundary token counts,
 object/TTFT evidence, C1/C2/C4/C8 and 16K/64K timing cells) that require
 a live cluster.
@@ -54,15 +56,18 @@ EXIT_CONFIG_ERROR = 3
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RECIPE = ROOT / "recipes/glm52-exl3-tr3-3.25bpw.json"
 
-# Block-256 is the parent chunk size for this recipe's CS512 configuration.
-# The chunk size is 512, the parent chunk size is 256.
+# CS512 was selected against a predecessor whose LMCache chunk size was 256.
+# This is provenance only. It is not vLLM's physical block size or proof of
+# native APC alignment.
 REQUIRED_CHUNK_SIZE = 512
-REQUIRED_PARENT_CHUNK_SIZE = 256
+REQUIRED_PREDECESSOR_CHUNK_SIZE = 256
 
 # Boundary token counts to verify: the cache must handle sequences that
-# span exactly, just below, and just above the chunk/parent boundaries.
-# These are derived from the chunk geometry, not arbitrary.
-BOUNDARY_TOKEN_COUNTS = [511, 512, 513, 1024, 1025]
+# span exactly, just below, and just above the live-attested DCP-global APC
+# alignment and LMCache chunk boundaries. A reusable prefix excludes the final
+# prompt token, hence 256 prompt tokens do not yet supply a full 256-token APC
+# unit; 257 do.
+BOUNDARY_TOKEN_COUNTS = [255, 256, 257, 511, 512, 513, 1024, 1025]
 
 # SparkCache isolation: SPARK_CONTEXT_CACHE_ENABLE=0 disables SparkCache
 # (the separate sparkcache/ implementation) so it does not interfere
@@ -173,11 +178,11 @@ def load_recipe(path: Path) -> dict[str, Any]:
 
 
 def verify_geometry(recipe: dict[str, Any]) -> dict[str, Any]:
-    """Verify the LMCache CS512 block-256 geometry from the recipe.
+    """Verify CS512 configuration and predecessor provenance from the recipe.
 
     Checks:
     - chunk_size == 512 (CS512)
-    - parent_chunk_size == 256 (block-256)
+    - predecessor_chunk_size == 256 (historical tuning-arm provenance only)
     - L1 is lazy (lazy allocation, not eager)
     - eviction policy is LRU
     - transfer mode is lmcache_driven
@@ -196,12 +201,13 @@ def verify_geometry(recipe: dict[str, Any]) -> dict[str, Any]:
         "passed": chunk_size == REQUIRED_CHUNK_SIZE,
     })
 
-    parent_chunk_size = lmcache.get("parent_chunk_size")
+    predecessor_chunk_size = lmcache.get("predecessor_chunk_size")
     checks.append({
-        "check": "parent_chunk_size_is_256",
-        "expected": REQUIRED_PARENT_CHUNK_SIZE,
-        "observed": parent_chunk_size,
-        "passed": parent_chunk_size == REQUIRED_PARENT_CHUNK_SIZE,
+        "check": "predecessor_chunk_size_is_256",
+        "scope": "historical-tuning-arm-provenance-not-runtime-geometry",
+        "expected": REQUIRED_PREDECESSOR_CHUNK_SIZE,
+        "observed": predecessor_chunk_size,
+        "passed": predecessor_chunk_size == REQUIRED_PREDECESSOR_CHUNK_SIZE,
     })
 
     l1_lazy = lmcache.get("l1_lazy")
@@ -323,10 +329,23 @@ def plan_boundary_tests() -> dict[str, Any]:
         "check": "boundary_token_counts",
         "status": "planned",
         "boundaries": BOUNDARY_TOKEN_COUNTS,
+        "required_live_geometry": {
+            "engine_block_rows_per_dcp_rank": "from vllm:cache_config_info",
+            "dcp_size": "from exact live argv/config attestation",
+            "kv_group_global_tokens_per_manager_block": (
+                "engine block rows multiplied by each KV group's DCP shard count"
+            ),
+            "native_apc_hit_alignment_tokens_global": (
+                "LCM of all KV-group global manager-block spans"
+            ),
+            "lmcache_chunk_tokens_global": "from all four LMCache servers",
+        },
         "note": (
-            "The live gate must test token counts at 511 (below chunk), "
-            "512 (exact chunk), 513 (above chunk), 1024 (exact 2x chunk), "
-            "and 1025 (above 2x chunk) to verify chunk-boundary handling"
+            "The live gate must first attest physical, DCP-global APC, and "
+            "LMCache chunk geometry. It then tests 255/256/257 around one "
+            "global APC unit and 511/512/513/1024/1025 around LMCache chunks. "
+            "Because reusable prefix length excludes the final prompt token, "
+            "257 prompt tokens are required for one reusable 256-token APC unit."
         ),
     }
 
@@ -422,7 +441,8 @@ def build_plan(recipe: dict[str, Any]) -> dict[str, Any]:
             "the acceptance gate's performance matrix"
         ),
         "boundary_live_note": (
-            "Boundary token counts (511/512/513/1024/1025) require live "
+            "Physical/DCP-global geometry and boundary token counts "
+            "(255/256/257/511/512/513/1024/1025) require live "
             "API requests; the offline gate declares them, the live gate "
             "must execute them"
         ),

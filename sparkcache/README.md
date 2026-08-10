@@ -66,8 +66,15 @@ one drive.
 - **Metadata-only startup discovery:** workers validate manifest identity,
   descriptor geometry, and referenced chunk existence/size without reading
   every cached payload at startup.
-- **Quorum admission:** each rank reports structurally compatible digests;
-  the scheduler offers a restore only when every rank confirms.
+- **Quorum admission:** in steady state, each rank reports structurally
+  compatible digests and the scheduler offers a restore only when every rank
+  confirms. The current-source, offline-only scheduler-restart repair has one
+  narrow exception: before the first worker-stat round, rank 0 may reserve one
+  structurally valid startup manifest for one request. Repeated lookup of that
+  request is idempotent; concrete admission waits for block allocation; every
+  worker still verifies its own payload; and any rank miss/corruption publishes
+  the same invalid block IDs for rank-synchronous recompute. It is counted as a
+  restore hit only after all workers finish without an aggregated load error.
 - **Restore is the payload-integrity boundary:** every selected chunk is
   read and SHA-256 verified before restored state is released.
 - On a load failure the request finishes cleanly (no wrong output ever
@@ -288,7 +295,8 @@ the false timeout was an observer-window error, not a runtime failure.
 | **Published here** | Target CKV, sparse-indexer state, and MTP draft-KV records |
 | **Published here** | Content-addressed immutable chunks and manifest-last durable publication |
 | **Published here** | Per-record SHA-256 plus model/quantization/TP/DCP/rank/geometry identity pinning |
-| **Published here** | All-rank quorum admission, corruption withdrawal, clean miss/re-prefill, and self-healing invalidation |
+| **Published here** | All-rank steady-state quorum admission, corruption withdrawal, clean miss/re-prefill, and self-healing invalidation |
+| **Current source; offline-tested only** | One-shot scheduler-restart provisional admission that remains idempotent until allocation and succeeds only after all-worker verified completion |
 | **Published here** | Portable logical records: no CUDA pointers, physical slots, block tables, or transport sequence numbers on disk |
 | **Published + live v47** | Asynchronous restore: only the restoring request parks while background load and verification run |
 | **Published + live v47** | Optional checksum-attested native direct placement with bounded parallel reads/hashing |
@@ -331,7 +339,10 @@ the false timeout was an observer-window error, not a runtime failure.
   interference; it does not claim a literally pause-free snapshot.
 - Metadata-only discovery intentionally does not read same-size payload
   corruption at startup. Restore detects it before releasing state,
-  withdraws the entry, and cleanly re-prefills.
+  withdraws the entry, and cleanly re-prefills. Because rank-0 scheduler and
+  worker connectors do not share in-memory state, store admission revalidates
+  any `_held` digest against its durable manifest. Scheduler retirement can
+  therefore not leave a stale worker offer that suppresses republish.
 - Matching remains exact full-prefix/full-span. Longest-stored-prefix
   restore for a grown conversation is designed but not integrated.
 - The cache has no integrated capacity policy, TTL/LRU, or orphan-chunk

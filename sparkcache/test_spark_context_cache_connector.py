@@ -627,7 +627,16 @@ class NativeRestoreSelectionTests(unittest.TestCase):
                 )
             )
 
-            self.assertFalse(connector._load_one(plan))
+            with mock.patch.object(connector_module.logger, "warning") as warning:
+                self.assertFalse(connector._load_one(plan))
+            event = "\n".join(
+                call.args[0] % call.args[1:]
+                for call in warning.call_args_list
+                if call.args
+            )
+            self.assertIn("event=worker_invalidated", event)
+            self.assertIn(f"rank=0 digest={plan.digest}", event)
+            self.assertIn("request_id=native-failure", event)
 
             self.assertNotIn(plan.digest, connector._held)
             self.assertFalse(
@@ -954,6 +963,481 @@ class SchedulerChunkedPrefillTests(unittest.TestCase):
 
 
 class StartupDiscoveryTests(unittest.TestCase):
+    def test_scheduler_provisionally_admits_rank0_startup_manifest_once(self) -> None:
+        """A restart hit must not require an unrelated execute-model nudge.
+
+        Rank 0's local manifest is evidence for only rank 0, never full
+        quorum.  It may seed one provisional all-worker restore attempt; the
+        ordinary worker error aggregation remains the fail-closed boundary.
+        """
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "rank0"
+            tokens = list(range(1100))
+            writer = _make_connector(root, 0, 64)
+            writer.register_kv_caches(_make_pools(8, 64))
+            digest = writer._digest(tokens, 1024)
+            writer._store_one(_ReqPlan("seed", digest, 1024, (3, 0, 5, 1), True))
+
+            scheduler = _make_connector(
+                root,
+                0,
+                64,
+                role=KVConnectorRole.SCHEDULER,
+                override_worker_rank=False,
+            )
+            request = types.SimpleNamespace(
+                request_id="first-after-restart",
+                prompt_token_ids=tokens,
+            )
+
+            self.assertFalse(scheduler._has_full_quorum(digest))
+            self.assertEqual(
+                scheduler.get_num_new_matched_tokens(request, 0),
+                (1024, True),
+            )
+            self.assertFalse(scheduler._has_full_quorum(digest))
+            self.assertEqual(scheduler.counters["startup_provisional_admitted"], 0)
+
+            # vLLM may query the same request repeatedly while searching for
+            # capacity. The result must remain stable and must not consume the
+            # one-shot candidate before concrete block allocation.
+            self.assertEqual(
+                scheduler.get_num_new_matched_tokens(request, 0),
+                (1024, True),
+            )
+            self.assertEqual(scheduler.counters["startup_provisional_admitted"], 0)
+
+            # Provisional evidence is deliberately one-shot.  Until actual
+            # worker reports establish quorum, a concurrent/repeated request
+            # must miss rather than treating rank 0 as four ranks.
+            repeated = types.SimpleNamespace(
+                request_id="second-before-stats",
+                prompt_token_ids=tokens,
+            )
+            self.assertEqual(
+                scheduler.get_num_new_matched_tokens(repeated, 0),
+                (0, False),
+            )
+
+            blocks = types.SimpleNamespace(get_block_ids=lambda: ([3, 0, 5, 1],))
+            scheduler.update_state_after_alloc(request, blocks, 1024)
+            self.assertEqual(scheduler.counters["startup_provisional_admitted"], 1)
+            self.assertNotIn(digest, scheduler._startup_provisional_candidates)
+            self.assertEqual(scheduler._startup_provisional_reservations, {})
+
+    def test_aborted_query_releases_reservation_without_consuming_candidate(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "rank0"
+            tokens = list(range(1100))
+            writer = _make_connector(root, 0, 64)
+            writer.register_kv_caches(_make_pools(8, 64))
+            digest = writer._digest(tokens, 1024)
+            writer._store_one(_ReqPlan("seed", digest, 1024, (3, 0, 5, 1), True))
+            scheduler = _make_connector(
+                root,
+                0,
+                64,
+                role=KVConnectorRole.SCHEDULER,
+                override_worker_rank=False,
+            )
+            first = types.SimpleNamespace(
+                request_id="aborted-before-allocation",
+                prompt_token_ids=tokens,
+            )
+
+            self.assertEqual(
+                scheduler.get_num_new_matched_tokens(first, 0), (1024, True)
+            )
+            self.assertEqual(
+                scheduler._startup_provisional_reservations[digest],
+                first.request_id,
+            )
+            scheduler.request_finished(first, [])
+
+            second = types.SimpleNamespace(
+                request_id="replacement",
+                prompt_token_ids=tokens,
+            )
+            self.assertEqual(
+                scheduler.get_num_new_matched_tokens(second, 0), (1024, True)
+            )
+            self.assertEqual(scheduler.counters["startup_provisional_admitted"], 0)
+            self.assertIn(digest, scheduler._startup_provisional_candidates)
+
+    def test_successful_provisional_load_is_confirmed_only_after_all_workers_finish(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            tokens = list(range(1100))
+            writers = [
+                _make_connector(base / f"rank{rank}", rank, 64)
+                for rank in range(4)
+            ]
+            for writer in writers:
+                writer.register_kv_caches(_make_pools(8, 64))
+            digest = writers[0]._digest(tokens, 1024)
+            plan = _ReqPlan("seed", digest, 1024, (3, 0, 5, 1), True)
+            for writer in writers:
+                writer._store_one(plan)
+
+            workers = [
+                _make_connector(base / f"rank{rank}", rank, 64)
+                for rank in range(4)
+            ]
+            for worker in workers:
+                worker.register_kv_caches(_make_pools(8, 64))
+            scheduler = _make_connector(
+                base / "rank0",
+                0,
+                64,
+                role=KVConnectorRole.SCHEDULER,
+                override_worker_rank=False,
+            )
+            request = types.SimpleNamespace(
+                request_id="first-after-restart",
+                prompt_token_ids=tokens,
+            )
+            self.assertEqual(
+                scheduler.get_num_new_matched_tokens(request, 0), (1024, True)
+            )
+            blocks = types.SimpleNamespace(get_block_ids=lambda: ([3, 0, 5, 1],))
+            scheduler.update_state_after_alloc(request, blocks, 1024)
+            scheduler_output = types.SimpleNamespace(
+                preempted_req_ids=set(),
+                scheduled_new_reqs=[],
+                num_scheduled_tokens={},
+                scheduled_cached_reqs=types.SimpleNamespace(
+                    req_ids=[],
+                    resumed_req_ids=set(),
+                    num_computed_tokens=[],
+                    new_block_ids=[],
+                ),
+            )
+            metadata = scheduler.build_connector_meta(scheduler_output)
+            stats = None
+            for worker in workers:
+                worker.bind_connector_metadata(metadata)
+                worker.start_load_kv(None)
+                self.assertEqual(_drain(worker), {request.request_id})
+                self.assertEqual(worker.get_block_ids_with_load_errors(), set())
+                report = worker.get_kv_connector_stats()
+                stats = report if stats is None else stats.aggregate(report)
+
+            self.assertEqual(scheduler.counters["startup_provisional_confirmed"], 0)
+            scheduler.update_connector_output(
+                types.SimpleNamespace(
+                    invalid_block_ids=set(),
+                    finished_recving={request.request_id},
+                    kv_connector_stats=stats,
+                )
+            )
+            self.assertEqual(scheduler.counters["startup_provisional_confirmed"], 1)
+            self.assertEqual(scheduler.counters["restore_hit"], 1)
+            self.assertEqual(
+                scheduler._admitted[request.request_id].kind,
+                "confirmed-after-provisional",
+            )
+
+    def test_worker_withdrawal_cancels_startup_provisional_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "rank0"
+            tokens = list(range(1100))
+            writer = _make_connector(root, 0, 64)
+            writer.register_kv_caches(_make_pools(8, 64))
+            digest = writer._digest(tokens, 1024)
+            writer._store_one(_ReqPlan("seed", digest, 1024, (3, 0, 5, 1), True))
+            scheduler = _make_connector(
+                root,
+                0,
+                64,
+                role=KVConnectorRole.SCHEDULER,
+                override_worker_rank=False,
+            )
+
+            # A real report from any worker that omits the digest is stronger
+            # evidence than rank 0's local startup candidate.
+            scheduler.update_connector_output(
+                types.SimpleNamespace(
+                    kv_connector_stats=types.SimpleNamespace(
+                        data={"reports": [{"rank": 2, "held": []}]}
+                    )
+                )
+            )
+            request = types.SimpleNamespace(
+                request_id="known-incomplete",
+                prompt_token_ids=tokens,
+            )
+            self.assertEqual(
+                scheduler.get_num_new_matched_tokens(request, 0),
+                (0, False),
+            )
+            self.assertFalse(scheduler._has_full_quorum(digest))
+            self.assertEqual(scheduler.counters["startup_provisional_withdrawn"], 1)
+
+    def test_worker_withdrawal_after_query_clears_idempotent_reservation(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "rank0"
+            tokens = list(range(1100))
+            writer = _make_connector(root, 0, 64)
+            writer.register_kv_caches(_make_pools(8, 64))
+            digest = writer._digest(tokens, 1024)
+            writer._store_one(_ReqPlan("seed", digest, 1024, (3, 0, 5, 1), True))
+            scheduler = _make_connector(
+                root,
+                0,
+                64,
+                role=KVConnectorRole.SCHEDULER,
+                override_worker_rank=False,
+            )
+            request = types.SimpleNamespace(
+                request_id="withdrawn-before-allocation",
+                prompt_token_ids=tokens,
+            )
+            self.assertEqual(
+                scheduler.get_num_new_matched_tokens(request, 0), (1024, True)
+            )
+            scheduler.update_connector_output(
+                types.SimpleNamespace(
+                    invalid_block_ids=set(),
+                    kv_connector_stats=types.SimpleNamespace(
+                        data={"reports": [{"rank": 2, "held": []}]}
+                    ),
+                )
+            )
+
+            self.assertEqual(
+                scheduler.get_num_new_matched_tokens(request, 0), (0, False)
+            )
+            self.assertNotIn(request.request_id, scheduler._need_load)
+            self.assertEqual(scheduler._startup_provisional_reservations, {})
+            self.assertEqual(scheduler.counters["startup_provisional_withdrawn"], 1)
+
+    def test_all_worker_reports_promote_candidate_to_confirmed_quorum(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "rank0"
+            tokens = list(range(1100))
+            writer = _make_connector(root, 0, 64)
+            writer.register_kv_caches(_make_pools(8, 64))
+            digest = writer._digest(tokens, 1024)
+            writer._store_one(_ReqPlan("seed", digest, 1024, (3, 0, 5, 1), True))
+            scheduler = _make_connector(
+                root,
+                0,
+                64,
+                role=KVConnectorRole.SCHEDULER,
+                override_worker_rank=False,
+            )
+
+            scheduler.update_connector_output(
+                types.SimpleNamespace(
+                    kv_connector_stats=types.SimpleNamespace(
+                        data={
+                            "reports": [
+                                {"rank": rank, "held": [digest]}
+                                for rank in range(4)
+                            ]
+                        }
+                    )
+                )
+            )
+
+            self.assertTrue(scheduler._has_full_quorum(digest))
+            self.assertNotIn(digest, scheduler._startup_provisional_candidates)
+            self.assertEqual(scheduler.counters["startup_provisional_promoted"], 1)
+            self.assertEqual(scheduler.counters["startup_provisional_confirmed"], 0)
+            request = types.SimpleNamespace(
+                request_id="confirmed-after-stats",
+                prompt_token_ids=tokens,
+            )
+            self.assertEqual(
+                scheduler.get_num_new_matched_tokens(request, 0),
+                (1024, True),
+            )
+            self.assertEqual(scheduler.counters["startup_provisional_admitted"], 0)
+
+    def test_provisional_restore_failure_publishes_rank_synchronous_recompute(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            tokens = list(range(1100))
+            workers = [
+                _make_connector(base / f"rank{rank}", rank, 64)
+                for rank in range(4)
+            ]
+            for worker in workers:
+                worker.register_kv_caches(_make_pools(8, 64))
+            digest = workers[0]._digest(tokens, 1024)
+            store_plan = _ReqPlan("seed", digest, 1024, (3, 0, 5, 1), True)
+            workers[0]._store_one(store_plan)
+
+            scheduler = _make_connector(
+                base / "rank0",
+                0,
+                64,
+                role=KVConnectorRole.SCHEDULER,
+                override_worker_rank=False,
+            )
+            request = types.SimpleNamespace(
+                request_id="provisional",
+                prompt_token_ids=tokens,
+            )
+            self.assertEqual(
+                scheduler.get_num_new_matched_tokens(request, 0),
+                (1024, True),
+            )
+            blocks = types.SimpleNamespace(get_block_ids=lambda: ([3, 0, 5, 1],))
+            scheduler.update_state_after_alloc(request, blocks, 1024)
+            scheduler_output = types.SimpleNamespace(
+                preempted_req_ids=set(),
+                scheduled_new_reqs=[],
+                num_scheduled_tokens={},
+                scheduled_cached_reqs=types.SimpleNamespace(
+                    req_ids=[],
+                    resumed_req_ids=set(),
+                    num_computed_tokens=[],
+                    new_block_ids=[],
+                ),
+            )
+            metadata = scheduler.build_connector_meta(scheduler_output)
+            self.assertEqual(len(metadata.plans), 1)
+
+            rank_errors = []
+            for worker in workers:
+                worker.bind_connector_metadata(metadata)
+                worker.start_load_kv(None)
+                self.assertEqual(_drain(worker), {"provisional"})
+                rank_errors.append(worker.get_block_ids_with_load_errors())
+
+            self.assertEqual(rank_errors[0], set())
+            self.assertEqual(
+                rank_errors[1:],
+                [set(store_plan.block_ids)] * 3,
+            )
+            aggregated_errors = set().union(*rank_errors)
+            scheduler.update_connector_output(
+                types.SimpleNamespace(invalid_block_ids=aggregated_errors)
+            )
+            self.assertFalse(
+                scheduler._store.lookup(scheduler._identity(0), digest).is_hit
+            )
+            self.assertNotIn("provisional", scheduler._admitted)
+            self.assertEqual(scheduler.counters["startup_provisional_withdrawn"], 1)
+
+    def test_same_size_corruption_withdraws_provisional_and_allows_republish(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            tokens = list(range(1100))
+            writers = [
+                _make_connector(base / f"rank{rank}", rank, 64)
+                for rank in range(4)
+            ]
+            for writer in writers:
+                writer.register_kv_caches(_make_pools(8, 64))
+            digest = writers[0]._digest(tokens, 1024)
+            seed = _ReqPlan("seed", digest, 1024, (3, 0, 5, 1), True)
+            for writer in writers:
+                writer._store_one(seed)
+
+            corrupt_chunk = next((base / "rank2" / "chunks").glob("*.spcc"))
+            corrupted = bytearray(corrupt_chunk.read_bytes())
+            corrupted[len(corrupted) // 2] ^= 0x40
+            original_size = len(corrupted)
+            corrupt_chunk.write_bytes(bytes(corrupted))
+            self.assertEqual(corrupt_chunk.stat().st_size, original_size)
+
+            workers = [
+                _make_connector(base / f"rank{rank}", rank, 64)
+                for rank in range(4)
+            ]
+            for worker in workers:
+                worker.register_kv_caches(_make_pools(8, 64))
+            self.assertIn(digest, workers[2]._held)
+            scheduler = _make_connector(
+                base / "rank0",
+                0,
+                64,
+                role=KVConnectorRole.SCHEDULER,
+                override_worker_rank=False,
+            )
+            request = types.SimpleNamespace(
+                request_id="corrupt-provisional",
+                prompt_token_ids=tokens,
+            )
+            self.assertEqual(
+                scheduler.get_num_new_matched_tokens(request, 0), (1024, True)
+            )
+            blocks = types.SimpleNamespace(get_block_ids=lambda: ([3, 0, 5, 1],))
+            scheduler.update_state_after_alloc(request, blocks, 1024)
+            scheduler_output = types.SimpleNamespace(
+                preempted_req_ids=set(),
+                scheduled_new_reqs=[],
+                num_scheduled_tokens={},
+                scheduled_cached_reqs=types.SimpleNamespace(
+                    req_ids=[],
+                    resumed_req_ids=set(),
+                    num_computed_tokens=[],
+                    new_block_ids=[],
+                ),
+            )
+            metadata = scheduler.build_connector_meta(scheduler_output)
+            stats = None
+            rank_errors = []
+            for worker in workers:
+                worker.bind_connector_metadata(metadata)
+                worker.start_load_kv(None)
+                self.assertEqual(_drain(worker), {request.request_id})
+                rank_errors.append(worker.get_block_ids_with_load_errors())
+                report = worker.get_kv_connector_stats()
+                stats = report if stats is None else stats.aggregate(report)
+
+            self.assertEqual(rank_errors[2], set(seed.block_ids))
+            self.assertEqual(rank_errors[0], set())
+            self.assertEqual(rank_errors[1], set())
+            self.assertEqual(rank_errors[3], set())
+            aggregated_errors = set().union(*rank_errors)
+            scheduler.update_connector_output(
+                types.SimpleNamespace(
+                    invalid_block_ids=aggregated_errors,
+                    finished_recving={request.request_id},
+                    kv_connector_stats=stats,
+                )
+            )
+            self.assertEqual(scheduler.counters["startup_provisional_confirmed"], 0)
+            self.assertEqual(scheduler.counters["startup_provisional_withdrawn"], 1)
+            self.assertNotIn(request.request_id, scheduler._admitted)
+            self.assertFalse(
+                scheduler._store.lookup(scheduler._identity(0), digest).is_hit
+            )
+            retry = types.SimpleNamespace(
+                request_id="clean-recompute",
+                prompt_token_ids=tokens,
+            )
+            self.assertEqual(
+                scheduler.get_num_new_matched_tokens(retry, 0), (0, False)
+            )
+
+            # Model the completed clean prefill publishing the same entry back
+            # to every rank. The corrupt rank and the retired scheduler rank
+            # must be able to replace their invalidated manifests.
+            republish = dataclasses.replace(seed, request_id=retry.request_id)
+            store_metadata = SparkCacheConnectorMetadata(plans=[republish])
+            for worker in workers:
+                worker.bind_connector_metadata(store_metadata)
+                worker.wait_for_save()
+                _drain_store(worker)
+                self.assertTrue(
+                    worker._store.lookup(worker._identity(worker._worker_rank()), digest).is_hit
+                )
+
     def test_startup_discovers_manifest_without_restoring_chunk_payloads(
         self,
     ) -> None:
@@ -1672,6 +2156,51 @@ class AsyncStoreTests(unittest.TestCase):
 
 
 class SchedulerRetirementTests(unittest.TestCase):
+    def test_separate_scheduler_retirement_does_not_leave_worker_held_stale(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "rank0"
+            worker = _make_connector(root, 0, 64)
+            scheduler = _make_connector(
+                root,
+                0,
+                64,
+                role=KVConnectorRole.SCHEDULER,
+                override_worker_rank=False,
+            )
+            worker.register_kv_caches(_make_pools(8, 64))
+            digest = "a" * 64
+            seed = _ReqPlan("seed", digest, 1024, (3, 0, 5, 1), True)
+            worker.bind_connector_metadata(SparkCacheConnectorMetadata(plans=[seed]))
+            worker.wait_for_save()
+            _drain_store(worker)
+            self.assertIn(digest, worker._held)
+
+            # The scheduler and worker do not share Python state.  Retirement
+            # removes the common durable manifest but cannot directly mutate
+            # the worker connector's stale `_held` offer.
+            scheduler._admitted["failed-load"] = connector_module._RestoreAdmission(
+                digest, "confirmed"
+            )
+            scheduler.update_connector_output(
+                types.SimpleNamespace(invalid_block_ids={3, 0})
+            )
+            identity = worker._identity(0)
+            self.assertFalse(worker._store.lookup(identity, digest).is_hit)
+            self.assertIn(digest, worker._held)
+
+            # The failed request re-prefills.  Store admission must revalidate
+            # durable state and republish instead of skipping on stale `_held`.
+            retry = dataclasses.replace(seed, request_id="failed-load")
+            worker.bind_connector_metadata(SparkCacheConnectorMetadata(plans=[retry]))
+            worker.wait_for_save()
+            _drain_store(worker)
+            self.assertTrue(worker._store.lookup(identity, digest).is_hit)
+            self.assertIn(digest, worker._held)
+            self.assertEqual(worker.counters["store_revalidated_absent"], 1)
+            self.assertEqual(worker.counters["store_skipped_present"], 0)
+
     def test_load_errors_retire_the_admitted_entry(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "rank0"
@@ -1686,12 +2215,23 @@ class SchedulerRetirementTests(unittest.TestCase):
             identity = connector._identity(0)
             self.assertTrue(connector._store.lookup(identity, digest).is_hit)
 
-            connector._admitted["req-r"] = digest
+            connector._admitted["req-r"] = connector_module._RestoreAdmission(
+                digest, "confirmed"
+            )
             # the runtime finishes the failed request first; the digest must
             # still be retired when the callback arrives afterwards
-            connector.update_connector_output(
-                types.SimpleNamespace(invalid_block_ids={3, 0})
+            with mock.patch.object(connector_module.logger, "warning") as warning:
+                connector.update_connector_output(
+                    types.SimpleNamespace(invalid_block_ids={3, 0})
+                )
+            event = "\n".join(
+                call.args[0] % call.args[1:]
+                for call in warning.call_args_list
+                if call.args
             )
+            self.assertIn("event=scheduler_retired", event)
+            self.assertIn(f"rank=0 digest={digest}", event)
+            self.assertIn("request_id=req-r", event)
             # entry retired so the next request is a clean miss
             self.assertFalse(connector._store.lookup(identity, digest).is_hit)
             self.assertEqual(connector._admitted, {})
@@ -1711,7 +2251,9 @@ class SchedulerRetirementTests(unittest.TestCase):
             )
             connector.wait_for_save()
             _drain_store(connector)
-            connector._admitted["req-k"] = digest
+            connector._admitted["req-k"] = connector_module._RestoreAdmission(
+                digest, "confirmed"
+            )
             connector.update_connector_output(
                 types.SimpleNamespace(invalid_block_ids=set())
             )

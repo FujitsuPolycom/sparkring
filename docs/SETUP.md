@@ -41,8 +41,9 @@ layer and the historical evidence behind it.
 > upstream-vLLM compatibility patches are published under `sparkcache/` and
 > `runtime/patches/vllm/`. The broader recovered GLM/SM121 delta is now
 > published under `runtime/patches/00-reference-vllm/`; the two SparkCache
-> patches apply after it. All 73 operations are preimage-pinned and fail
-> closed.
+> patches apply after it. The 61 modifications are preimage-pinned; the 12
+> additions are content-addressed and non-overwriting. All 73 ordered
+> operations fail closed.
 
 ### 0.1 What was actually deployed (honesty statement)
 

@@ -130,16 +130,119 @@ may remove `performance.band` to record a candidate band; that produces exit
 ## 3. Establish reviewed correctness baselines
 
 The example correctness cases intentionally contain `null` expected hashes.
-This makes a first live run record observations and exit 4:
+Every request probe now requires a public-safe live-arm receipt emitted only
+after the attribution launcher attests the exact container name, ownership
+labels, profile, arm, image, generated command, and explicitly generated
+environment on all four ranks. On a fresh evidence path, activate and attest
+the arm first (this stops the canonical engines and is **STOPS SERVING**):
+
+```bash
+python scripts/exl3_attribution_launcher.py \
+  --site .sparkring/bootstrap-exl3/site.yaml \
+  --profile .sparkring/bootstrap-exl3/launch.json \
+  --arm d-mtp2-apc1-lmcache1 \
+  --execute \
+  --confirmation RUN-EXL3-ATTRIBUTION-ALL-FOUR \
+  --output .sparkring/acceptance/exl3-attribution-launch-private.json \
+  --live-arm-receipt-output .sparkring/acceptance/exl3-live-arm-receipt.json \
+  activate
+```
+
+The raw launcher report is private because it contains SSH targets and remote
+commands. The live-arm receipt is closed and public-safe. Both output paths use
+exclusive creation; use new paths for a later run rather than overwriting
+evidence. The first correctness run then records observations and exits 4:
 
 ```bash
 python scripts/exl3_correctness_gate.py \
   --config .sparkring/acceptance/exl3-correctness.json \
+  --site .sparkring/bootstrap-exl3/site.yaml \
   --base-url http://<rank-0-management-address>:8000 \
   --model glm-5.2-exl3-tr3-3.25bpw \
+  --attribution-arm d-mtp2-apc1-lmcache1 \
+  --activation-receipt .sparkring/acceptance/exl3-live-arm-receipt.json \
+  --profile .sparkring/bootstrap-exl3/launch.json \
   --repetitions 3 \
   --execute run \
   > .sparkring/acceptance/correctness-candidate.json
+```
+
+The correctness plan and raw report are private: the plan exposes reviewed SSH
+targets and the report records the exact contacted API origin. Before its first
+HTTP request, the gate uses the site file for a **READ-ONLY REMOTE** four-rank
+re-attestation of the receipt's runtime-unique Docker container IDs and
+`StartedAt` values. A replaced or restarted engine, rank mismatch, or SSH
+failure aborts with zero HTTP requests. Only the closed output of
+`scripts/exl3_attribution_compare.py` is the publishable sanitized comparison.
+
+`--attribution-arm` is also a cache-safety boundary. The gate derives a
+layout-specific `cache_salt` from the locked DCP, KV, chunk, context, and MTP
+contract and includes it in every completion request. Use the arm that is
+actually running; the gate fails closed without one. MTP0 and MTP2 evidence
+must never share the unsalted LMCache namespace. Until LMCache supplies a live
+layout receipt, the attribution launcher recreates all four LMCache server
+processes before every cache-attached activation, transition, or restart-arm,
+including same-layout and same-arm changes, and before canonical rollback.
+The correctness and cache-metric probes reject a missing, stale, wrong-arm, or
+profile/image/model/KV-mismatched receipt before making any HTTP request.
+
+The published cache-correctness configuration contains two distinct prompts.
+Capture one metric probe for each case; a probe for one suffix cannot be reused
+for the other. Both commands below are **READ-ONLY REMOTE** but fill transient
+serving caches, and each re-attests all four runtime-unique container identities
+before its first HTTP request:
+
+```bash
+python scripts/exl3_cache_metric_probe.py \
+  --site .sparkring/bootstrap-exl3/site.yaml \
+  --profile .sparkring/bootstrap-exl3/launch.json \
+  --activation-receipt .sparkring/acceptance/exl3-live-arm-receipt.json \
+  --base-url http://<rank-0-management-address>:8000 \
+  --model glm-5.2-exl3-tr3-3.25bpw \
+  --attribution-arm d-mtp2-apc1-lmcache1 \
+  --run-label cache-long-prefix-json \
+  --output .sparkring/acceptance/cache-long-prefix-json-metric.json \
+  --prompt-fragment 'SparkRing deterministic cache boundary evidence contains alpha beta gamma delta epsilon zeta eta theta and remains identical in every record.
+' \
+  --prompt-repetitions 64 \
+  --prompt-suffix 'Task: Return only valid JSON with keys first and last, setting first to alpha and last to theta.' \
+  --execute
+
+python scripts/exl3_cache_metric_probe.py \
+  --site .sparkring/bootstrap-exl3/site.yaml \
+  --profile .sparkring/bootstrap-exl3/launch.json \
+  --activation-receipt .sparkring/acceptance/exl3-live-arm-receipt.json \
+  --base-url http://<rank-0-management-address>:8000 \
+  --model glm-5.2-exl3-tr3-3.25bpw \
+  --attribution-arm d-mtp2-apc1-lmcache1 \
+  --run-label cache-long-prefix-recall \
+  --output .sparkring/acceptance/cache-long-prefix-recall-metric.json \
+  --prompt-fragment 'SparkRing deterministic cache boundary evidence contains alpha beta gamma delta epsilon zeta eta theta and remains identical in every record.
+' \
+  --prompt-repetitions 64 \
+  --prompt-suffix 'Task: In exactly one sentence, name the first and last Greek labels in the repeated evidence.' \
+  --execute
+```
+
+Bind the probes explicitly by case ID. Missing, extra, duplicate, unknown, and
+non-cache-case mappings fail before HTTP; prompt text is checked locally, then
+token IDs and token count are checked against the live tokenizer before any
+completion request:
+
+```bash
+python scripts/exl3_correctness_gate.py \
+  --config scripts/config/exl3-correctness-cache.example.json \
+  --site .sparkring/bootstrap-exl3/site.yaml \
+  --base-url http://<rank-0-management-address>:8000 \
+  --model glm-5.2-exl3-tr3-3.25bpw \
+  --attribution-arm d-mtp2-apc1-lmcache1 \
+  --activation-receipt .sparkring/acceptance/exl3-live-arm-receipt.json \
+  --profile .sparkring/bootstrap-exl3/launch.json \
+  --cache-metric-probe cache-long-prefix-json=.sparkring/acceptance/cache-long-prefix-json-metric.json \
+  --cache-metric-probe cache-long-prefix-recall=.sparkring/acceptance/cache-long-prefix-recall-metric.json \
+  --repetitions 3 \
+  --execute run \
+  > .sparkring/acceptance/cache-correctness-candidate.json
 ```
 
 For every case:
@@ -349,6 +452,12 @@ These require no Sparks, no model weights, and no network:
 python -m pytest \
   scripts/test_acceptance_gate.py \
   scripts/test_exl3_correctness_gate.py \
+  scripts/test_exl3_attribution_launcher.py \
+  scripts/test_exl3_attribution_compare.py \
+  scripts/test_exl3_attribution_reduce.py \
+  scripts/test_exl3_teacher_forced_margin_probe.py \
+  scripts/test_exl3_teacher_forced_margin_reduce.py \
+  scripts/test_exl3_cache_metric_probe.py \
   scripts/test_exl3_cache_acceptance.py \
   scripts/test_exl3_cache_geometry_gate.py \
   scripts/test_sparkring_exl3_lmcache_launcher.py \
@@ -358,6 +467,13 @@ python -m pytest \
 ruff check --select E,F,W --ignore E501 \
   scripts/acceptance_gate.py \
   scripts/exl3_correctness_gate.py \
+  scripts/exl3_attribution_cache_contract.py \
+  scripts/exl3_attribution_launcher.py \
+  scripts/exl3_attribution_compare.py \
+  scripts/exl3_attribution_reduce.py \
+  scripts/exl3_teacher_forced_margin_probe.py \
+  scripts/exl3_teacher_forced_margin_reduce.py \
+  scripts/exl3_cache_metric_probe.py \
   scripts/exl3_cache_acceptance.py \
   scripts/exl3_cache_geometry_gate.py \
   scripts/sparkring_exl3_lmcache_launcher.py \

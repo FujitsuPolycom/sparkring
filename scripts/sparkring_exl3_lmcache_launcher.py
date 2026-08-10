@@ -152,8 +152,10 @@ def server_start_actions(
 
 
 def server_health_actions(
-    site, *, experiment_id: str | None = None,
+    site, *, experiment_id: str | None = None, engine: str = "docker",
 ) -> list[exl3.RemoteAction]:
+    if engine not in ("docker", "podman"):
+        raise exl3.ProfileError("engine must be docker or podman")
     experiment = selected_experiment(experiment_id)
     config = recipe_lmcache(experiment)
     effective_label = experiment_label(experiment_id)
@@ -161,19 +163,19 @@ def server_health_actions(
     for rank in site.ranks:
         name = server_name(rank.id)
         script = (
-            f"test \"$({{ docker inspect -f '{{{{index .Config.Labels "
+            f"test \"$({{ {engine} inspect -f '{{{{index .Config.Labels "
             f"\"org.sparkring.exl3-profile\"}}}}' {shlex.quote(name)}; }})\" "
             f"= {shlex.quote(effective_label)}"
             f" && for i in $(seq 1 60); do "
-            f"test \"$(docker inspect -f '{{{{.State.Running}}}}' "
+            f"test \"$({engine} inspect -f '{{{{.State.Running}}}}' "
             f"{shlex.quote(name)} 2>/dev/null)\" = true"
             f" && curl -fsS http://127.0.0.1:{config['http_port']}/healthcheck "
             f">/dev/null && break; sleep 2; done"
-            f" && test \"$(docker inspect -f '{{{{.RestartCount}}}}' "
+            f" && test \"$({engine} inspect -f '{{{{.RestartCount}}}}' "
             f"{shlex.quote(name)})\" = 0"
-            f" && test \"$(docker inspect -f '{{{{.State.OOMKilled}}}}' "
+            f" && test \"$({engine} inspect -f '{{{{.State.OOMKilled}}}}' "
             f"{shlex.quote(name)})\" = false"
-            f" && ! docker logs {shlex.quote(name)} 2>&1 | "
+            f" && ! {engine} logs {shlex.quote(name)} 2>&1 | "
             "grep -E 'CUDA out of memory|OutOfMemoryError|OOMKilled'"
             f" && curl -fsS http://127.0.0.1:{config['http_port']}/healthcheck"
             f" && curl -fsS http://127.0.0.1:{config['http_port']}/status"
@@ -270,6 +272,7 @@ def ready_actions(
     experiment_id: str | None = None,
 ) -> list[exl3.RemoteAction]:
     effective_label = experiment_label(experiment_id)
+    engine = profile.engine
     actions = []
     for rank in site.ranks:
         name = exl3.container_name(profile, rank.id)
@@ -280,20 +283,20 @@ def ready_actions(
             else "true"
         )
         script = (
-            f"test \"$(docker inspect -f '{{{{index .Config.Labels "
+            f"test \"$({engine} inspect -f '{{{{index .Config.Labels "
             f"\"org.sparkring.exl3-profile\"}}}}' {shlex.quote(name)})\" "
             f"= {shlex.quote(effective_label)}"
             f" && for i in $(seq 1 720); do "
-            f"test \"$(docker inspect -f '{{{{.State.Running}}}}' "
+            f"test \"$({engine} inspect -f '{{{{.State.Running}}}}' "
             f"{shlex.quote(name)} 2>/dev/null)\" = true"
             f" && {readiness} && break; sleep 5; done"
-            f" && test \"$(docker inspect -f '{{{{.State.Running}}}}' "
+            f" && test \"$({engine} inspect -f '{{{{.State.Running}}}}' "
             f"{shlex.quote(name)})\" = true"
-            f" && test \"$(docker inspect -f '{{{{.RestartCount}}}}' "
+            f" && test \"$({engine} inspect -f '{{{{.RestartCount}}}}' "
             f"{shlex.quote(name)})\" = 0"
-            f" && test \"$(docker inspect -f '{{{{.State.OOMKilled}}}}' "
+            f" && test \"$({engine} inspect -f '{{{{.State.OOMKilled}}}}' "
             f"{shlex.quote(name)})\" = false"
-            f" && ! docker logs {shlex.quote(name)} 2>&1 | "
+            f" && ! {engine} logs {shlex.quote(name)} 2>&1 | "
             "grep -E 'CUDA out of memory|OutOfMemoryError|OOMKilled'"
             f" && {readiness}"
         )
@@ -336,6 +339,7 @@ def remove_component_actions(
         raise exl3.ProfileError(f"unsupported removal component {component!r}")
     actions = []
     effective_label = experiment_label(experiment_id)
+    engine = profile.engine
     for rank in site.ranks:
         name = (
             exl3.container_name(profile, rank.id)
@@ -344,17 +348,17 @@ def remove_component_actions(
         )
         script = (
             f"name={shlex.quote(name)}; "
-            'profile=$(docker inspect -f \'{{index .Config.Labels '
+            f'profile=$({engine} inspect -f \'{{{{index .Config.Labels '
             '"org.sparkring.exl3-profile"}}\' "$name" '
             "2>/dev/null || true); "
             f'test -z "$profile" || test "$profile" = {shlex.quote(effective_label)} '
             "|| exit 73; "
-            'component=$(docker inspect -f \'{{index .Config.Labels '
+            f'component=$({engine} inspect -f \'{{{{index .Config.Labels '
             '"org.sparkring.component"}}\' "$name" '
             "2>/dev/null || true); "
             f'test -z "$profile" || test -z "$component" || '
             f'test "$component" = {shlex.quote(component)} || exit 74; '
-            'test -z "$profile" || docker rm --force "$name"'
+            f'test -z "$profile" || {engine} rm --force "$name"'
         )
         actions.append(shell_action(rank, script))
     return actions

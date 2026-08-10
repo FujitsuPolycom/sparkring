@@ -366,7 +366,7 @@ def _validate_exl3(recipe: dict[str, Any]) -> None:
         "server_port": 6556,
         "http_port": 18081,
         "chunk_size": 512,
-        "parent_chunk_size": 256,
+        "predecessor_chunk_size": 256,
         "l1_size_gb": 1,
         "l1_init_size_gb": 0,
         "l1_lazy": True,

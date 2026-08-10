@@ -1,6 +1,6 @@
 {
   "schema": "sparkring-repository-status/v1",
-  "last_reviewed": "2026-08-09",
+  "last_reviewed": "2026-08-10",
   "lanes": {
     "reference": {
       "maturity": "live-validated",
@@ -200,6 +200,8 @@
         "lmcache_restart_boundaries_live_passed": true,
         "cache_acceptance_harness_status": "fail",
         "cache_acceptance_failure": "fixed-seed probe output changed across cache/restart phases",
+        "cache_causality_attributed": false,
+        "later_cache_not_required_evidence": "The 2026-08-10 MTP0/APC-off/LMCache-off teacher-forced diagnostic observed same-context returned top-1 nondeterminism; cache reuse is not a necessary condition for divergence.",
         "broader_correctness_live_passed": false,
         "overall_acceptance": false,
         "final_startup_evidence": {
@@ -254,6 +256,58 @@
         },
         "machine_readable_evidence": "docs/configurations/glm52-exl3-lmcache-post-firmware-20260809.json"
       },
+      "teacher_forced_attribution_20260810": {
+        "maturity": "live-validated",
+        "evidence_scope": "diagnostic observation; not acceptance",
+        "lane": "public-functional",
+        "hardware": "four directly cabled DGX Sparks",
+        "model": "willfalco/GLM-5.2-EXL3-TR3-3.25bpw@d7d79c2d14599dfce7a5d12b85f7ad73f40e623d",
+        "topology": "TP4/DCP4",
+        "diagnostic_arm": {
+          "id": "a-mtp0-apc0-lmcache0",
+          "mtp_tokens": 0,
+          "native_prefix_caching_enabled": false,
+          "lmcache_attached": false,
+          "four_rank_runtime_re_attested_immediately_before_requests": true
+        },
+        "discovery_repetitions": 20,
+        "unique_completion_sequences": 5,
+        "sequence_multiplicities": [15, 2, 1, 1, 1],
+        "earliest_autoregressive_divergence_generated_index_zero_based": 112,
+        "teacher_forced_repetitions_per_position": 20,
+        "same_context_top1_flip_observed": true,
+        "top1_multiplicities_at_generated_index_116": [19, 1],
+        "generated_index_116_metrics": {
+          "top1_top2_margin_minimum": 0.0,
+          "top1_top2_margin_median": 0.0625,
+          "top1_top2_margin_maximum": 0.125,
+          "maximum_absolute_common_token_value_delta": 0.685389518737793,
+          "minimum_pairwise_topk_jaccard": 0.8181818181818182,
+          "maximum_conditional_common_support_symmetric_kl": 0.01429496136140846,
+          "symmetric_kl_scope": "truncated returned common support, renormalized; not full-vocabulary KLD"
+        },
+        "diagnostic_classification": "cache-not-required-top1-nondeterminism-observed",
+        "full_vocabulary_logits_available": false,
+        "full_vocabulary_kld_available": false,
+        "causal_subsystem_attributed": false,
+        "broader_correctness_live_passed": false,
+        "acceptance": false,
+        "canonical_restore": {
+          "passed": true,
+          "mtp_tokens": 2,
+          "native_prefix_caching_enabled": true,
+          "lmcache_attached": true,
+          "lmcache_chunk_tokens": 512,
+          "sparkcache_attached": false,
+          "current_advertised_configuration_restored": true,
+          "phase_rank_actions": 36,
+          "all_phase_rank_exit_codes_zero": true,
+          "private_raw_artifact_sha256": "31006c184801772bca1ad7133ba1379c1b8d2df9a92e7489445990b0784f74f1",
+          "machine_readable_evidence": "docs/configurations/glm52-exl3-teacher-forced-canonical-restore-20260810.json"
+        },
+        "evidence": "docs/EXL3_TEACHER_FORCED_ATTRIBUTION_20260810.md",
+        "machine_readable_evidence": "docs/configurations/glm52-exl3-teacher-forced-attribution-20260810.json"
+      },
       "entrypoint": "recipes/glm52-exl3-tr3-3.25bpw.json",
       "evidence": "docs/EXL3_RECIPE.md",
       "fixed_mtp2_alternative": {
@@ -301,7 +355,7 @@
         "full_matrix_artifact_sha256": "3b74e3b55bf349564fdb7c13fd39c3a23ba285b4ccb22674058d2893b6a3e510",
         "current_live_arm": "CS512",
         "cs512_chunk_size": 512,
-        "cs512_parent_chunk_size": 256,
+        "cs512_predecessor_chunk_size": 256,
         "cs512_engines_running": 4,
         "cs512_engine_restart_count_each": 0,
         "cs512_servers_healthy": 4,

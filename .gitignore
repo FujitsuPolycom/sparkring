@@ -32,7 +32,8 @@ runtime/patches/00-reference-vllm/added/model_executor/models/**/*.pyc
 runtime/patches/00-reference-vllm/added/models/**/*.pyc
 
 # Local machine configuration
-.claude/
+.codex/
+.codex-remote-attachments/
 *.local.json
 
 # Private run evidence and machine-local orchestration output

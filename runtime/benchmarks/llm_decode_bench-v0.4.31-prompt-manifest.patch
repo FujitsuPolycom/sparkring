@@ -1,0 +1,205 @@
+diff --git a/llm_decode_bench.py b/llm_decode_bench.py
+index 21abc57..95b830d 100644
+--- a/llm_decode_bench.py
++++ b/llm_decode_bench.py
+@@ -9341,6 +9341,8 @@ async def run_one_cell(
+     cell_warmup_timeout_seconds: Optional[float] = None,
+     temperature: Optional[float] = None,
+     reasoning_effort: Optional[str] = None,
++    prompt_manifest_session=None,
++    prompt_manifest_phase: str = "decode-measured",
+ ) -> CellResult:
+     unique_context_percent = max(
+         0.0, min(100.0, float(getattr(state, "unique_context_percent", 0.0)))
+@@ -9447,6 +9449,17 @@ async def run_one_cell(
+         scout_payload["stream_options"] = {"include_usage": True}
+         if ignore_eos:
+             scout_payload["ignore_eos"] = True
++        if prompt_manifest_session is not None:
++            scout_payload = prompt_manifest_session.resolve_call(
++                {
++                    "phase": prompt_manifest_phase,
++                    "request_kind": "prefix-scout",
++                    "context_tokens": context_tokens,
++                    "concurrency": 1,
++                    "benchmark_mode": "request-count",
++                },
++                [scout_payload],
++            )[0]
+         should_record_prefill = (
+             context_tokens in state.prefill_contexts
+             and context_tokens not in state.prefill_results
+@@ -9659,6 +9672,18 @@ async def run_one_cell(
+             state.prefill_status = old_prefill_status
+         live.update(build_display(state))
+ 
++    if prompt_manifest_session is not None:
++        stream_payloads = prompt_manifest_session.resolve_call(
++            {
++                "phase": prompt_manifest_phase,
++                "request_kind": "decode-stream-template",
++                "context_tokens": context_tokens,
++                "concurrency": concurrency,
++                "benchmark_mode": "request-count" if request_count > 0 else "duration",
++            },
++            stream_payloads,
++        )
++
+     metrics_interval = 1.0
+ 
+     if request_count > 0:
+@@ -13095,6 +13120,47 @@ async def run_benchmark(args):
+     context_cache = {}
+     context_actual_tokens = {}
+     run_id = ''.join(random.choices(string.ascii_lowercase, k=12))
++    prompt_manifest_session = None
++    prompt_manifest_path = args.prompt_manifest_out or args.prompt_manifest_in
++    if prompt_manifest_path:
++        try:
++            from llm_decode_prompt_manifest import PromptManifestSession
++        except ImportError as error:
++            raise RuntimeError(
++                "prompt-manifest mode requires SparkRing/scripts on PYTHONPATH "
++                "so llm_decode_prompt_manifest.py can be imported"
++            ) from error
++        prompt_manifest_workload = {
++            "harness": {"name": "llm_decode_bench.py", "version": VERSION},
++            "model": args.model,
++            "contexts": context_lengths,
++            "concurrencies": concurrency_levels,
++            "duration_seconds": args.duration,
++            "max_tokens": args.max_tokens,
++            "temperature": args.temperature,
++            "reasoning_effort": args.reasoning_effort,
++            "ignore_eos": not args.respect_eos,
++            "unique_context_percent": args.unique_context_percent,
++            "decode_warmup_seconds": args.decode_warmup_seconds,
++            "cell_warmup_timeout_seconds": args.cell_warmup_timeout_seconds,
++            "dcp_size": args.dcp_size,
++            "token_targeting": args.token_targeting,
++        }
++        if args.prompt_manifest_out:
++            prompt_manifest_session = PromptManifestSession.export(
++                args.prompt_manifest_out, prompt_manifest_workload
++            )
++            remember_startup("exact request manifest export enabled (preparation run)")
++        else:
++            prompt_manifest_session = PromptManifestSession.import_(
++                args.prompt_manifest_in, prompt_manifest_workload
++            )
++            # Exact request messages come from the manifest. Avoid an unsealed,
++            # random calibration request and provide only structural placeholder
++            # contexts for the ordinary payload builder's non-prompt checks.
++            max_ctx = 0
++            run_id = "sealed-replay"
++            remember_startup("exact request manifest replay enabled; calibration bypassed")
+     if max_ctx > 0:
+         console.print(f"[bold]Calibrating padding text (run={run_id}, up to {format_context(max_ctx)})...[/bold]")
+         remember_startup(f"calibrating padding text run={run_id} up_to={format_context(max_ctx)}")
+@@ -13284,6 +13350,9 @@ async def run_benchmark(args):
+                 est_tokens = int(len(text) / calibrated_cpt)
+                 console.print(f"  {format_context(ctx)}: {len(text):,} chars (~{est_tokens:,} tokens)")
+                 remember_startup(f"context {format_context(ctx)}: {len(text):,} chars (~{est_tokens:,} tokens)")
++    if args.prompt_manifest_in:
++        for ctx in all_ctx_sizes:
++            context_cache[ctx] = generate_padding_text(ctx)
+     context_cache[0] = ""
+     console.print("[green]Done.[/green]\n")
+     remember_startup("startup preparation done")
+@@ -14039,6 +14108,8 @@ async def run_benchmark(args):
+                         cell_warmup_timeout_seconds=args.cell_warmup_timeout_seconds,
+                         temperature=args.temperature,
+                         reasoning_effort=args.reasoning_effort,
++                        prompt_manifest_session=prompt_manifest_session,
++                        prompt_manifest_phase="decode-warmup",
+                     )
+                 finally:
+                     state.prefill_contexts = saved_prefill_contexts
+@@ -14112,6 +14183,8 @@ async def run_benchmark(args):
+                             cell_warmup_timeout_seconds=args.cell_warmup_timeout_seconds,
+                             temperature=args.temperature,
+                             reasoning_effort=args.reasoning_effort,
++                            prompt_manifest_session=prompt_manifest_session,
++                            prompt_manifest_phase="decode-measured",
+                         )
+                         if result.aggregate_tps == -2:
+                             state.results[(ctx, conc)] = -2
+@@ -14191,6 +14264,8 @@ async def run_benchmark(args):
+                             cell_warmup_timeout_seconds=args.cell_warmup_timeout_seconds,
+                             temperature=args.temperature,
+                             reasoning_effort=args.reasoning_effort,
++                            prompt_manifest_session=prompt_manifest_session,
++                            prompt_manifest_phase="burst-measured",
+                         )
+                         result.benchmark_mode = "burst-e2e"
+                         if result.aggregate_tps == -2:
+@@ -14215,6 +14290,8 @@ async def run_benchmark(args):
+ 
+     setattr(args, "event_log", list(state.events))
+     setattr(args, "hardware_run_summary", summarize_hardware_history(state.hw_history))
++    if prompt_manifest_session is not None:
++        setattr(args, "prompt_manifest_summary", prompt_manifest_session.finish())
+     return all_results, burst_results, state.prefill_results, engine
+ 
+ 
+@@ -14858,11 +14935,13 @@ def save_results(results: list, args, filepath: str, prefill_results: dict = Non
+             "shared_context_percent": 100.0 - getattr(args, "unique_context_percent", 0.0),
++            "token_targeting": getattr(args, "token_targeting", "estimate"),
+             "context_sharing_mode": (
+                 "fully_shared"
+                 if getattr(args, "unique_context_percent", 0.0) == 0
+                 else "fully_unique_per_stream"
+                 if getattr(args, "unique_context_percent", 0.0) == 100
+                 else "shared_prefix_unique_tail"
+             ),
++            "prompt_manifest": getattr(args, "prompt_manifest_summary", None),
+             "startup_diagnostics_available": bool(getattr(args, "startup_diagnostics", {})),
+             "nvidia_p2p_override_effective": bool(
+                 getattr(args, "nvidia_p2p_override", {}).get("effective", False)
+@@ -15648,6 +15727,24 @@ def parse_args():
+         "--output", default="benchmark_results.json",
+         help="Output JSON file path (default: benchmark_results.json)"
+     )
++    prompt_manifest_group = parser.add_mutually_exclusive_group()
++    prompt_manifest_group.add_argument(
++        "--prompt-manifest-out", default="",
++        help=(
++            "Exclusively create a SparkRing exact-request prompt manifest while "
++            "running a sealed 16K/C8 preparation run. The resulting run is a "
++            "preparation artifact; use --prompt-manifest-in for every measured "
++            "A/B/B/A arm. Requires llm_decode_prompt_manifest.py on PYTHONPATH."
++        ),
++    )
++    prompt_manifest_group.add_argument(
++        "--prompt-manifest-in", default="",
++        help=(
++            "Replay and verify every exact request template from a complete "
++            "SparkRing prompt manifest. Random prompt calibration is bypassed. "
++            "Requires llm_decode_prompt_manifest.py on PYTHONPATH."
++        ),
++    )
+     parser.add_argument(
+         "--model", default="Qwen3.5",
+         help="Model name for API requests (default: Qwen3.5)"
+@@ -15693,6 +15790,21 @@ def parse_args():
+              "Useful for prefill/PCIe communication sweeps. Implies --standalone-prefill."
+     )
+     args = parser.parse_args()
++    if args.prompt_manifest_out or args.prompt_manifest_in:
++        sealed_contexts = [parse_token_value(value) for value in args.contexts.split(",")]
++        sealed_concurrency = [int(value) for value in args.concurrency.split(",")]
++        if sealed_contexts != [16384] or sealed_concurrency != [8]:
++            parser.error("prompt manifests require exactly --contexts 16k --concurrency 8")
++        if not args.skip_prefill:
++            parser.error("prompt manifests require --skip-prefill")
++        if args.request_count != 0 or args.run_burst or args.coding_peak:
++            parser.error(
++                "prompt manifests support only sustained decode without burst or coding-peak"
++            )
++        if args.duration != 25 or args.max_tokens < 256:
++            parser.error(
++                "prompt manifests require --duration 25 and max-tokens >= 256"
++            )
+     if args.prefill_only:
+         if args.skip_prefill:
+             parser.error("--prefill-only cannot be combined with --skip-prefill")

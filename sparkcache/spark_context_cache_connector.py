@@ -325,6 +325,14 @@ class SparkCacheStats(KVConnectorStats):
         return not self.data.get("reports")
 
 
+@dataclass(frozen=True)
+class _RestoreAdmission:
+    """Scheduler-side record for one concrete external-load attempt."""
+
+    digest: str
+    kind: str
+
+
 class SparkContextCacheConnector(KVConnectorBase_V1):
     """Store/restore each rank's DCP shard on rank-local NVMe."""
 
@@ -570,18 +578,33 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
         self._native_execute_restore: Any = None
         self._native_required_record_mask = 0
         # Scheduler state.
-        self._need_load: dict[str, tuple[str, int]] = {}
+        self._need_load: dict[str, tuple[str, int, str]] = {}
         # Async loads are parked after block allocation, so they do not
         # appear in the next SchedulerOutput. Carry their allocated blocks
         # across that boundary explicitly.
-        self._pending_async_loads: dict[str, tuple[str, int, tuple[int, ...]]] = {}
+        self._pending_async_loads: dict[
+            str, tuple[str, int, tuple[int, ...], str]
+        ] = {}
         # Digests this scheduler has admitted a restore for, so a reported
         # load failure on ANY rank can retire the entry cluster-wide.
-        self._admitted: dict[str, str] = {}
+        self._admitted: dict[str, _RestoreAdmission] = {}
         # Quorum map: digest -> ranks that can offer a compatible manifest.
         # A restore is only offered at full quorum; every participating worker
         # then verifies its chunk bytes before writing private request blocks.
         self._quorum: dict[str, set[int]] = {}
+        # A scheduler restart precedes the first execute_model result that
+        # carries worker stats.  Rank 0's local manifest is explicitly *not*
+        # quorum, but it can seed one provisional all-worker restore attempt.
+        # Every worker still performs its normal verified load; any miss or
+        # corruption publishes the same request block ids for rank-synchronous
+        # recompute.  Candidates are one-shot and real worker withdrawals
+        # always override them.
+        self._startup_provisional_candidates: set[str] = set()
+        # A lookup may be repeated while the scheduler searches for capacity.
+        # Reserve by request id so repeated queries are idempotent while a
+        # second request cannot consume the same one-shot startup offer.
+        # Concrete admission happens only after block allocation.
+        self._startup_provisional_reservations: dict[str, str] = {}
         self._store_progress: dict[str, tuple[str, int, int, list[int]]] = {}
         self.counters: dict[str, int] = {
             "store_committed": 0,
@@ -595,7 +618,14 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             "restore_miss_incompatible": 0,
             "load_verified": 0,
             "load_failed": 0,
+            "startup_provisional_discovered": 0,
+            "startup_provisional_admitted": 0,
+            "startup_provisional_confirmed": 0,
+            "startup_provisional_promoted": 0,
+            "startup_provisional_withdrawn": 0,
         }
+        if self._restore_enabled and role is KVConnectorRole.SCHEDULER:
+            self._discover_scheduler_startup_candidates()
         logger.info(
             "spark-context-cache: role=%s root=%s dcp=%d store=%s restore=%s"
             " native_restore=%s max_span=%d load_threads=%d",
@@ -704,6 +734,45 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
         confirmed = self._quorum.get(digest, ())
         return all(rank in confirmed for rank in range(self._tp_degree))
 
+    def _restore_admission_state(
+        self, digest: str, request_id: str
+    ) -> str | None:
+        """Return confirmed/provisional admission without conflating them.
+
+        A startup-provisional candidate proves only that rank 0 has a
+        structurally compatible manifest.  Consuming it once causes the same
+        load plan to be broadcast to every worker.  The existing aggregated
+        invalid-block path is then the rank-synchronous fail-closed boundary.
+        """
+
+        if self._has_full_quorum(digest):
+            return "confirmed"
+        if digest not in self._startup_provisional_candidates:
+            return None
+        owner = self._startup_provisional_reservations.get(digest)
+        if owner is not None and owner != request_id:
+            return None
+        return "startup-provisional"
+
+    def _release_startup_provisional_reservation(
+        self, request_id: str, digest: str | None = None
+    ) -> None:
+        """Release a query-only reservation without consuming its candidate."""
+
+        for candidate, owner in list(self._startup_provisional_reservations.items()):
+            if owner == request_id and (digest is None or candidate == digest):
+                self._startup_provisional_reservations.pop(candidate, None)
+
+    def _withdraw_startup_provisional(self, digest: str) -> bool:
+        """Retire rank-0 startup evidence and any unallocated reservation."""
+
+        present = digest in self._startup_provisional_candidates
+        self._startup_provisional_candidates.discard(digest)
+        self._startup_provisional_reservations.pop(digest, None)
+        if present:
+            self.counters["startup_provisional_withdrawn"] += 1
+        return present
+
     # ------------------------------------------------------------------
     # scheduler side
     # ------------------------------------------------------------------
@@ -727,10 +796,16 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
         # every worker at load time, and any worker failure degrades to a
         # rank-synchronous recompute, so hashing ~200 MB here would only
         # add scheduler latency without adding safety.
-        if not self._has_full_quorum(digest):
+        admission = self._restore_admission_state(digest, request.request_id)
+        if admission is None:
             # Not every rank can offer a compatible manifest (or none has
             # reported yet). Treat as a plain miss: the request re-prefills
             # and republishes, which is also how a corrupted entry retires.
+            previous = self._need_load.pop(request.request_id, None)
+            if previous is not None and previous[2] == "startup-provisional":
+                self._release_startup_provisional_reservation(
+                    request.request_id, previous[0]
+                )
             self.counters["quorum_incomplete"] = (
                 self.counters.get("quorum_incomplete", 0) + 1
             )
@@ -739,19 +814,37 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             self._identity(self._shard_rank), digest, verify_chunks=False
         )
         if not lookup.is_hit:
+            # Rank 0's evidence disappeared after startup discovery. Retire
+            # the one-shot candidate without calling it an admission.
+            self._withdraw_startup_provisional(digest)
             self.counters[f"restore_miss_{lookup.reason}"] = (
                 self.counters.get(f"restore_miss_{lookup.reason}", 0) + 1
             )
+            self._need_load.pop(request.request_id, None)
             return 0, False
-        self.counters["restore_hit"] += 1
+        if admission == "startup-provisional":
+            self._startup_provisional_reservations.setdefault(
+                digest, request.request_id
+            )
+        else:
+            self.counters["restore_hit"] += 1
         logger.info(
-            "spark-context-cache: scheduler hit digest=%s span=%d (async)",
+            "spark-context-cache: scheduler offer digest=%s span=%d"
+            " admission=%s (async)",
             digest[:12],
             span,
+            admission,
         )
-        self._need_load[request.request_id] = (digest, span)
+        self._need_load[request.request_id] = (digest, span, admission)
         while len(self._need_load) > 64:
-            self._need_load.pop(next(iter(self._need_load)))
+            oldest_request_id = next(iter(self._need_load))
+            oldest_digest, _, oldest_admission = self._need_load.pop(
+                oldest_request_id
+            )
+            if oldest_admission == "startup-provisional":
+                self._release_startup_provisional_reservation(
+                    oldest_request_id, oldest_digest
+                )
         return span - num_computed_tokens, True
 
     def update_state_after_alloc(
@@ -762,16 +855,34 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
     ) -> None:
         request_id = request.request_id
         if num_external_tokens <= 0:
-            self._need_load.pop(request_id, None)
+            entry = self._need_load.pop(request_id, None)
+            if entry is not None and entry[2] == "startup-provisional":
+                self._release_startup_provisional_reservation(
+                    request_id, entry[0]
+                )
             return
         entry = self._need_load.pop(request_id, None)
         if entry is None:
             return
-        digest, span = entry
+        digest, span, admission = entry
+        if admission == "startup-provisional":
+            # This is the first concrete point at which vLLM has allocated the
+            # destination blocks and committed to an external async load.
+            self._startup_provisional_candidates.discard(digest)
+            self._release_startup_provisional_reservation(request_id, digest)
+            self.counters["startup_provisional_admitted"] += 1
+            logger.info(
+                "spark-context-cache-event/v1"
+                " event=startup_provisional_admitted rank=0 digest=%s"
+                " request_id=%s",
+                digest,
+                request_id,
+            )
         self._pending_async_loads[request_id] = (
             digest,
             span,
             tuple(blocks.get_block_ids()[0]),
+            admission,
         )
 
     @staticmethod
@@ -807,8 +918,13 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
                 sorted(getattr(scheduler_output, "preempted_req_ids", None) or ())
             )
         )
-        for request_id, (digest, span, block_ids) in self._pending_async_loads.items():
-            self._admitted[request_id] = digest
+        for request_id, (
+            digest,
+            span,
+            block_ids,
+            admission,
+        ) in self._pending_async_loads.items():
+            self._admitted[request_id] = _RestoreAdmission(digest, admission)
             while len(self._admitted) > 8:
                 self._admitted.pop(next(iter(self._admitted)))
             meta.plans.append(
@@ -824,7 +940,8 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             span = self._aligned_span(len(token_ids))
             if self._store_enabled and self._min_span <= span <= self._max_span:
                 digest = self._digest(token_ids, span)
-                if self._admitted.get(req_id) == digest:
+                admitted = self._admitted.get(req_id)
+                if admitted is not None and admitted.digest == digest:
                     # The restored entry already exists on every rank. A
                     # failed load retires this admission before recompute,
                     # so only verified restores take this fast exit.
@@ -1069,6 +1186,75 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             max_chunks_per_slab,
         )
 
+    def _scan_manifest_offers(
+        self,
+        identity: CacheIdentity,
+    ) -> tuple[int, int, set[str]]:
+        """Return metadata-valid offers for one concrete rank identity."""
+
+        checked = rejected = 0
+        discovered: set[str] = set()
+        root = Path(self._root) / "manifests" / identity.storage_key
+        if not root.is_dir():
+            return checked, rejected, discovered
+        for manifest_path in root.glob("*.json"):
+            digest = manifest_path.stem
+            checked += 1
+            lookup = self._store.lookup(
+                identity,
+                digest,
+                verify_chunks=False,
+                verify_chunk_metadata=True,
+            )
+            if lookup.is_hit:
+                discovered.add(digest)
+                continue
+            rejected += 1
+            # A rejected manifest is not an authority for deleting
+            # content-addressed chunks. Its descriptors may be corrupt,
+            # malicious, or name chunks shared by a healthy manifest.
+            removed = self._store.invalidate(
+                identity,
+                digest,
+                verify_chunk_payloads=False,
+            )
+            if not removed:
+                try:
+                    manifest_path.unlink()
+                except OSError:
+                    pass
+        return checked, rejected, discovered
+
+    def _discover_scheduler_startup_candidates(self) -> dict[str, int]:
+        """Discover rank-0 evidence without claiming cross-rank quorum."""
+
+        checked = rejected = 0
+        discovered: set[str] = set()
+        try:
+            checked, rejected, discovered = self._scan_manifest_offers(
+                self._identity(self._shard_rank)
+            )
+        except (OSError, ValueError, RuntimeError) as error:
+            logger.warning(
+                "spark-context-cache: scheduler startup discovery aborted: %s",
+                error,
+            )
+        self._startup_provisional_candidates = discovered
+        self.counters["startup_provisional_discovered"] += len(discovered)
+        if checked:
+            logger.info(
+                "spark-context-cache: scheduler startup discovery checked=%d"
+                " provisional=%d rejected=%d",
+                checked,
+                len(discovered),
+                rejected,
+            )
+        return {
+            "checked": checked,
+            "provisional": len(discovered),
+            "rejected": rejected,
+        }
+
     def discover_manifests(self) -> dict[str, int]:
         """Offer structurally valid manifests without reading chunk payloads.
 
@@ -1089,35 +1275,7 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             try:
                 rank = self._worker_rank()
                 identity = self._identity(rank)
-                root = Path(self._root) / "manifests" / identity.storage_key
-                if root.is_dir():
-                    for manifest_path in root.glob("*.json"):
-                        digest = manifest_path.stem
-                        checked += 1
-                        lookup = self._store.lookup(
-                            identity,
-                            digest,
-                            verify_chunks=False,
-                            verify_chunk_metadata=True,
-                        )
-                        if lookup.is_hit:
-                            discovered.add(digest)
-                        else:
-                            rejected += 1
-                            # A rejected manifest is not an authority for
-                            # deleting content-addressed chunks. Its
-                            # descriptors may be corrupt, malicious, or name
-                            # chunks shared by a healthy manifest.
-                            removed = self._store.invalidate(
-                                identity,
-                                digest,
-                                verify_chunk_payloads=False,
-                            )
-                            if not removed:
-                                try:
-                                    manifest_path.unlink()
-                                except OSError:
-                                    pass
+                checked, rejected, discovered = self._scan_manifest_offers(identity)
             except (OSError, ValueError, RuntimeError) as error:
                 logger.warning(
                     "spark-context-cache: manifest discovery aborted: %s",
@@ -1307,7 +1465,7 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
                     plan.digest[:12],
                 )
                 if lookup.reason == "corrupt":
-                    self._invalidate_after_failure(plan.digest)
+                    self._invalidate_after_failure(plan.digest, plan.request_id)
                 return False
             if self._native_restore_enabled:
                 if (
@@ -1348,7 +1506,7 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
                         "spark-context-cache: native load failed closed: %s",
                         error,
                     )
-                    self._invalidate_after_failure(plan.digest)
+                    self._invalidate_after_failure(plan.digest, plan.request_id)
                     return False
                 self.counters["native_load_verified"] = (
                     self.counters.get("native_load_verified", 0) + 1
@@ -1370,7 +1528,7 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
                 return True
             chunks = self._store.restore(lookup)
             if chunks is None or len(chunks) != chunk_count(plan.span_tokens):
-                self._invalidate_after_failure(plan.digest)
+                self._invalidate_after_failure(plan.digest, plan.request_id)
                 return False
             positions = owned_positions(plan.span_tokens, self._dcp_degree, rank)
             slots = local_slots_for_positions(
@@ -1410,10 +1568,10 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             return True
         except (CodecError, KeyError, RuntimeError, ValueError) as error:
             logger.warning("spark-context-cache: load failed fail-closed: %s", error)
-            self._invalidate_after_failure(plan.digest)
+            self._invalidate_after_failure(plan.digest, plan.request_id)
             return False
 
-    def _invalidate_after_failure(self, digest: str) -> None:
+    def _invalidate_after_failure(self, digest: str, request_id: str) -> None:
         """Self-heal: drop this rank's damaged entry so the next store can
         republish it. The current request already fell back to recompute."""
         with self._load_lock:
@@ -1423,8 +1581,11 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             with self._load_lock:
                 self.counters["invalidated"] = self.counters.get("invalidated", 0) + 1
             logger.warning(
-                "spark-context-cache: invalidated damaged entry %s",
-                digest[:12],
+                "spark-context-cache-event/v1 event=worker_invalidated"
+                " rank=%d digest=%s request_id=%s",
+                self._worker_rank(),
+                digest,
+                request_id,
             )
 
     def request_finished(
@@ -1432,6 +1593,12 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
         request: "Request",
         block_ids: list[int],
     ) -> tuple[bool, dict[str, Any] | None]:
+        if self._role is KVConnectorRole.SCHEDULER:
+            entry = self._need_load.pop(request.request_id, None)
+            if entry is not None and entry[2] == "startup-provisional":
+                self._release_startup_provisional_reservation(
+                    request.request_id, entry[0]
+                )
         runtime = self._streaming_runtime
         if runtime is None:
             return False, None
@@ -1560,13 +1727,35 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
             # busy store is a cache miss opportunity, never a serving stall.
             with self._store_cv:
                 if plan.digest in self._held:
-                    self.counters["store_skipped_present"] += 1
-                    logger.info(
-                        "spark-context-cache: store skipped; entry already"
-                        " present digest=%s",
-                        plan.digest[:12],
+                    # Scheduler and worker connectors are separate instances
+                    # in rank 0.  A failed restore can therefore make the
+                    # scheduler retire the shared durable manifest while the
+                    # worker still has a stale in-memory offer.  Do not let
+                    # that stale offer suppress the clean recompute which is
+                    # responsible for republishing the entry.
+                    lookup = self._store.lookup(
+                        self._identity(self._worker_rank()),
+                        plan.digest,
+                        verify_chunks=False,
                     )
-                    continue
+                    if lookup.is_hit:
+                        self.counters["store_skipped_present"] += 1
+                        logger.info(
+                            "spark-context-cache: store skipped; entry already"
+                            " present digest=%s",
+                            plan.digest[:12],
+                        )
+                        continue
+                    self._held.discard(plan.digest)
+                    self.counters["store_revalidated_absent"] = (
+                        self.counters.get("store_revalidated_absent", 0) + 1
+                    )
+                    logger.warning(
+                        "spark-context-cache: withdrew stale held entry before"
+                        " recompute store digest=%s reason=%s",
+                        plan.digest[:12],
+                        lookup.reason,
+                    )
                 if not self._store_accepting or self._store_inflight:
                     self.counters["store_skipped_busy"] += 1
                     logger.warning(
@@ -1667,6 +1856,13 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
                     receipt.manifest_digest[:12],
                     1e3 * (time.perf_counter() - commit_started),
                 )
+                logger.info(
+                    "spark-context-cache-event/v1 event=store_committed"
+                    " rank=%d digest=%s request_id=%s",
+                    snapshot.rank,
+                    snapshot.plan.digest,
+                    snapshot.plan.request_id,
+                )
             except Exception as error:  # noqa: BLE001 - never kill serving
                 self._finish_store(
                     snapshot.plan.digest,
@@ -1753,28 +1949,72 @@ class SparkContextCacheConnector(KVConnectorBase_V1):
                     ranks.discard(rank)
                     if not ranks:
                         self._quorum.pop(digest, None)
+            # A concrete worker withdrawal outranks rank 0's provisional
+            # startup evidence.  Conversely, all four concrete reports
+            # promote the digest to ordinary confirmed quorum.
+            withdrawn = self._startup_provisional_candidates - held_set
+            if withdrawn:
+                for digest in withdrawn:
+                    self._withdraw_startup_provisional(digest)
+            confirmed = {
+                digest
+                for digest in self._startup_provisional_candidates
+                if self._has_full_quorum(digest)
+            }
+            if confirmed:
+                self._startup_provisional_candidates.difference_update(confirmed)
+                for digest in confirmed:
+                    self._startup_provisional_reservations.pop(digest, None)
+                self.counters["startup_provisional_promoted"] += len(confirmed)
 
     def update_connector_output(self, connector_output: Any) -> None:
         self._absorb_quorum(connector_output)
         invalid = getattr(connector_output, "invalid_block_ids", None)
-        if not invalid or not self._admitted:
+        if invalid and self._admitted:
+            # Async failure output reaches this callback before the parked
+            # request is rescheduled, so retire the admission before its clean
+            # recompute can republish the entry. Conservatively retire every
+            # in-flight admission because vLLM exposes aggregated block ids,
+            # not a request-to-error mapping.
+            for request_id, admission in list(self._admitted.items()):
+                digest = admission.digest
+                if admission.kind == "startup-provisional":
+                    self.counters["startup_provisional_withdrawn"] += 1
+                if self._store.invalidate(self._identity(self._shard_rank), digest):
+                    self.counters["scheduler_retired"] = (
+                        self.counters.get("scheduler_retired", 0) + 1
+                    )
+                    logger.warning(
+                        "spark-context-cache-event/v1 event=scheduler_retired"
+                        " rank=0 digest=%s request_id=%s admission=%s",
+                        digest,
+                        request_id,
+                        admission.kind,
+                    )
+                self._quorum.pop(digest, None)
+                self._admitted.pop(request_id, None)
             return
-        # Async failure output reaches this callback before the parked
-        # request is rescheduled, so retire the admission before its clean
-        # recompute can republish the entry.
-        for request_id, digest in list(self._admitted.items()):
-            if self._store.invalidate(self._identity(self._shard_rank), digest):
-                self.counters["scheduler_retired"] = (
-                    self.counters.get("scheduler_retired", 0) + 1
-                )
-                logger.warning(
-                    "spark-context-cache: retired entry %s after a rank"
-                    " reported load errors (request %s)",
-                    digest[:12],
-                    request_id,
-                )
-            self._quorum.pop(digest, None)
-            self._admitted.pop(request_id, None)
+
+        finished = set(getattr(connector_output, "finished_recving", None) or ())
+        for request_id in finished:
+            admission = self._admitted.get(request_id)
+            if admission is None or admission.kind != "startup-provisional":
+                continue
+            # vLLM emits a request id here only after every worker reports its
+            # async receive finished. With no aggregated invalid block ids,
+            # this proves that the provisional attempt completed on all ranks.
+            self._admitted[request_id] = _RestoreAdmission(
+                admission.digest, "confirmed-after-provisional"
+            )
+            self.counters["startup_provisional_confirmed"] += 1
+            self.counters["restore_hit"] += 1
+            logger.info(
+                "spark-context-cache-event/v1"
+                " event=startup_provisional_confirmed rank=0 digest=%s"
+                " request_id=%s",
+                admission.digest,
+                request_id,
+            )
 
     @classmethod
     def build_kv_connector_stats(cls, data=None):

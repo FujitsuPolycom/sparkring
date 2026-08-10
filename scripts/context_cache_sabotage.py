@@ -38,17 +38,36 @@ def main() -> int:
         required=True,
     )
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument(
+        "--digest",
+        required=True,
+        help="exact 64-character lowercase context digest to damage",
+    )
     args = parser.parse_args()
 
     engine = load_engine(args.engine)
-    manifests = sorted(args.store.glob("manifests/*/*.json"))
-    if not manifests:
-        print(json.dumps({"error": "no manifests in store"}))
+    if len(args.digest) != 64 or any(c not in "0123456789abcdef" for c in args.digest):
+        print(json.dumps({"error": "--digest must be lowercase SHA-256"}))
+        return 2
+    manifests = sorted(args.store.glob(f"manifests/*/{args.digest}.json"))
+    if len(manifests) != 1:
+        print(
+            json.dumps(
+                {
+                    "error": "exact digest must identify one manifest",
+                    "digest": args.digest,
+                    "matches": len(manifests),
+                }
+            )
+        )
         return 2
     manifest_path = manifests[0]
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     identity = engine.CacheIdentity(**manifest["identity"])
     digest = manifest["context_digest"]
+    if digest != args.digest:
+        print(json.dumps({"error": "manifest digest does not match requested digest"}))
+        return 2
     rng = random.Random(args.seed)
     report = {
         "mode": args.mode,

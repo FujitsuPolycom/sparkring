@@ -2,6 +2,8 @@
 *.patch text eol=lf
 runtime/** text eol=lf
 runtime/exl3/patches/*.patch whitespace=-trailing-space
+# Unified-diff blank context lines intentionally contain one prefix space.
+runtime/benchmarks/*.patch whitespace=-trailing-space
 # These sources are byte-hashed by runtime/exl3/pins.json. Keep checkout
 # bytes stable on Windows as well as Linux so receipt verification is portable.
 spark_transport/integrations/vllm/spark_glm52_mtp_index_reuse.py text eol=lf

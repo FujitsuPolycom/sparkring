@@ -5,6 +5,13 @@ LMCache CS512 deployment on four directly cabled DGX Sparks. For
 configuration errors (exit 3), see the
 [acceptance runbook](EXL3_ACCEPTANCE_RUNBOOK.md) troubleshooting section first.
 
+The controlled `scripts/exl3_attribution_launcher.py` transaction is currently
+Docker-only and rejects `engine=podman` while building its local plan, before
+it composes or executes remote phases. The ordinary public EXL3 launcher still
+supports the runtimes declared by its profile; this narrower limitation exists
+because imported LMCache lifecycle helpers are not yet uniformly
+engine-neutral.
+
 ## Long double 315.78-GiB verification
 
 The EXL3 bootstrap verifies all 81 model shards plus seven runtime metadata
@@ -189,8 +196,8 @@ For the LMCache server logs, replace the container name with
 
 ## LMCache CS512 geometry verification
 
-Before a live acceptance run, verify the LMCache CS512 block-256
-geometry offline:
+Before a live acceptance run, verify the LMCache CS512 recipe offline and
+disclose the geometry that must be attested live:
 
 ```bash
 python scripts/exl3_cache_geometry_gate.py verify
@@ -199,12 +206,14 @@ python scripts/exl3_cache_geometry_gate.py verify
 The `verify` command reports two categories:
 
 - **Verified checks** (configuration facts read from the recipe):
-  chunk_size=512, parent_chunk_size=256, lazy L1, LRU eviction,
+  chunk_size=512, predecessor_chunk_size=256 (historical CS256 tuning-arm
+  provenance, not a vLLM/APC block setting), lazy L1, LRU eviction,
   one-server-per-rank topology, SparkCache disabled
   (SPARK_CONTEXT_CACHE_ENABLE=0), and APC enabled
   (--enable-prefix-caching). These have `passed` verdicts.
 - **Planned live gates** (require a live cluster, never `passed`):
-  boundary token counts (511/512/513/1024/1025), DCP consensus
+  per-rank physical block and DCP-global APC alignment, boundary token counts
+  (255/256/257/511/512/513/1024/1025), DCP consensus
   evidence (object counts > 0 on all ranks plus TTFT ratio warm < cold;
   /status does not expose per-rank hit counters), and capacity metrics
   from /status (eviction_count is not exposed by the current schema).

@@ -35,6 +35,11 @@ PROFILE_IDS = frozenset(
 RECIPE_PATH = ROOT / "recipes/glm52-exl3-tr3-3.25bpw.json"
 DEFAULT_MAX_NUM_BATCHED_TOKENS = 4096
 EXPERIMENT_MAX_NUM_BATCHED_TOKENS = frozenset((2048, 3072, 4096))
+# Keep direct OpenSSH invocations below the Windows CreateProcess command-line
+# ceiling.  Deeply quoted attestation scripts can expand substantially when
+# subprocess converts argv back into a Windows command line.  Oversized
+# scripts are supplied to a remote ``sh -s`` over stdin instead.
+DIRECT_SSH_COMMAND_MAX_CHARS = 30_000
 
 
 class ProfileError(ValueError):
@@ -568,8 +573,23 @@ def execute(actions: list[RemoteAction], timeout: int) -> dict[int, dict]:
 
     def one(action: RemoteAction):
         remote = shlex.join(("sh", "-lc", action.shell_command))
+        direct_argv = [
+            "ssh", "-o", "BatchMode=yes", action.ssh_target, remote,
+        ]
+        if len(subprocess.list2cmdline(direct_argv)) < DIRECT_SSH_COMMAND_MAX_CHARS:
+            return subprocess.run(
+                direct_argv,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
         return subprocess.run(
-            ["ssh", "-o", "BatchMode=yes", action.ssh_target, remote],
+            ["ssh", "-o", "BatchMode=yes", action.ssh_target, "sh", "-s"],
+            # Delimit with EOF.  A trailing newline is observably consumed by
+            # some remote ``sh -s`` implementations as part of the nested
+            # ``sh -lc`` command and produces a spurious post-action failure.
+            input=f"exec {remote}",
             capture_output=True,
             text=True,
             timeout=timeout,

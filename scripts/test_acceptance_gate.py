@@ -1489,6 +1489,16 @@ def test_public_exl3_gate_template_matches_recipe_and_full_concurrency_matrix(
         item["require_json_status"] is True
         for item in profile["extensions"]["pre_shutdown"]
     )
+    correctness_command = profile["extensions"]["pre_shutdown"][0]["command"]
+    probe_mappings = [
+        correctness_command[index + 1]
+        for index, value in enumerate(correctness_command[:-1])
+        if value == "--cache-metric-probe"
+    ]
+    assert probe_mappings == [
+        "cache-long-prefix-json=.sparkring/acceptance/cache-long-prefix-json-metric.json",
+        "cache-long-prefix-recall=.sparkring/acceptance/cache-long-prefix-recall-metric.json",
+    ]
     status_command = " ".join(profile["launch"]["rank_status_command"])
     assert "docker stats --no-stream" in status_command
     assert "nvidia-smi --query-gpu=" in status_command

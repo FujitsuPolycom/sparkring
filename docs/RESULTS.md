@@ -112,7 +112,10 @@ text diverged across phases. The cold and both restart-cold samples shared
 SHA-256 `ebdb4bf8a96c4cf03b2841717e1d313c05b589b1427392c51496afbb721389d0`,
 while the two warm samples had different hashes. Therefore the restart
 boundary is live-passed, but broader correctness and overall public-functional
-acceptance remain false.
+acceptance remain false. A later cache-disabled diagnostic, documented below,
+shows that cache reuse is not a necessary condition for output
+divergence; these lifecycle observations do not attribute causality to
+LMCache.
 
 The final clean-server startup was separately classified from captured engine,
 LMCache-server, and kernel logs by `sparkring_startup_evidence.py` schema v4.
@@ -146,6 +149,38 @@ attribute either a speedup or regression to LMCache. These sustained figures
 must not be mixed with the repository's bounded 128-token deployment-gate
 numbers. Exact hashes and sanitized evidence are in the
 [2026-08-09 machine-readable summary](configurations/glm52-exl3-lmcache-post-firmware-20260809.json).
+
+### 2026-08-10 cache-disabled teacher-forced diagnostic
+
+On four directly cabled DGX Sparks, the public-functional EXL3 3.25-bpw image
+was run at TP4/DCP4 in diagnostic arm A: MTP0, native prefix caching off,
+and LMCache detached. Twenty temperature-zero fixed-seed autoregressive
+repetitions produced five complete token sequences with
+multiplicities `15/2/1/1/1`; the earliest divergence was zero-based generated
+index 112.
+
+Replaying exact forced prefixes 20 times kept the returned top-1 stable at
+index 112, but at generated index 116 the returned top-1 choice split `19/1`.
+At index 116 the returned top-1/top-2 margin ranged from 0 to 0.125 (median
+0.0625), maximum absolute value delta on common returned tokens was 0.6853895,
+minimum top-k Jaccard was 0.81818, and maximum conditional common-support
+symmetric KL was 0.014295.
+
+This is a public-functional live diagnostic observation, not acceptance. It
+demonstrates that cache reuse was not required for this same-context returned
+top-1 nondeterminism observation: MTP and native prefix caching were disabled,
+and LMCache was detached. It does not establish independence across cache
+states or identify the responsible kernel, graph, attention backend,
+collective, quantization path, or other subsystem. The service returned
+raw-logprob top-k values, not raw
+full-vocabulary logits. The symmetric KL is truncated to common returned
+support and renormalized, not full-vocabulary KLD.
+
+The canonical fixed-MTP2, native-prefix-cache-enabled, LMCache-CS512 stack was
+restored afterward and remains the current advertised configuration. Exact
+method, limitations, restoration scope, and hashes are in the
+[diagnostic record](EXL3_TEACHER_FORCED_ATTRIBUTION_20260810.md) and its
+[sanitized machine-readable receipt](configurations/glm52-exl3-teacher-forced-attribution-20260810.json).
 
 This document is the definitive record of SparkRing's measured performance. Every number here is a real measurement pulled from a dated deliverable, carries its full configuration label, and passed the verification gate stated on its row. Nothing in this document is a projection, an extrapolation, or a comparison against systems we did not measure ourselves.
 

@@ -582,3 +582,24 @@ def test_remote_timeout_output_is_json_serializable(monkeypatch):
         "stderr": "remote command timed out",
     }
     json.dumps(result)
+
+
+def test_oversized_remote_command_is_sent_over_stdin(monkeypatch):
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args[0], 0, "ok", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    action = exl3.RemoteAction(0, "rank0", ("printf", "%s", "x" * 40_000))
+    result = exl3.execute([action], timeout=7)
+
+    assert result[0] == {"exit_code": 0, "stdout": "ok", "stderr": ""}
+    args, kwargs = calls[0]
+    assert args[0] == [
+        "ssh", "-o", "BatchMode=yes", "rank0", "sh", "-s",
+    ]
+    assert kwargs["input"].startswith("exec sh -lc ")
+    assert not kwargs["input"].endswith("\n")
+    assert kwargs["timeout"] == 7

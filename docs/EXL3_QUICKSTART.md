@@ -205,7 +205,8 @@ PowerShell log tailing, and LMCache CS512 geometry verification, see
 
 ## Offline geometry verification
 
-Before a live acceptance run, verify the LMCache CS512 block-256 geometry:
+Before a live acceptance run, verify the LMCache CS512 recipe and disclose the
+live geometry gates:
 
 ```bash
 python scripts/exl3_cache_geometry_gate.py verify
@@ -213,10 +214,12 @@ python scripts/exl3_cache_geometry_gate.py plan
 ```
 
 The first command verifies configuration facts from the recipe: chunk_size=512,
-parent_chunk_size=256, lazy L1, LRU eviction, one-server-per-rank topology,
+predecessor_chunk_size=256 (the prior CS256 tuning arm, not an APC setting),
+lazy L1, LRU eviction, one-server-per-rank topology,
 SparkCache disabled (SPARK_CONTEXT_CACHE_ENABLE=0), and APC enabled
 (--enable-prefix-caching). It also lists planned live gates that require a
-cluster: boundary token counts (511/512/513/1024/1025), DCP consensus
+cluster: live physical/DCP-global geometry and boundary token counts
+(255/256/257/511/512/513/1024/1025), DCP consensus
 evidence (object counts + TTFT ratios, not hit counters), and capacity
 metrics from /status (eviction_count is unavailable). The second discloses
 the C1/C2/C4/C8 and 16K/64K cold/warm timing cells that require a live
