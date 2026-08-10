@@ -6,4 +6,5 @@ runtime/exl3/patches/*.patch whitespace=-trailing-space
 # bytes stable on Windows as well as Linux so receipt verification is portable.
 spark_transport/integrations/vllm/spark_glm52_mtp_index_reuse.py text eol=lf
 spark_transport/integrations/vllm/spark_true_adaptive_draft.py text eol=lf
+spark_transport/integrations/vllm/tp4_numerical_audit.py text eol=lf
 spark_transport/experiments/q2r_phase_timing/live_installer.py text eol=lf

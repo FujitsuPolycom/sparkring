@@ -17,7 +17,7 @@ from spark_tp4_query_contract import (
 logger = logging.getLogger(__name__)
 
 _installed = False
-_VALID_MODES = {"shadow", "custom"}
+_VALID_MODES = {"shadow", "custom", "disabled"}
 _TARGET_WIDTH = 6144
 _BF16_BYTES = 2
 _BYTES_PER_ROW = _TARGET_WIDTH * _BF16_BYTES
@@ -130,7 +130,7 @@ class GraphReplayStatus:
 def _mode() -> str:
     mode = os.getenv("VLLM_SPARK_TP4_MODE", "").lower()
     if mode and mode not in _VALID_MODES:
-        raise ValueError("VLLM_SPARK_TP4_MODE must be 'shadow', 'custom', or unset")
+        raise ValueError("VLLM_SPARK_TP4_MODE must be 'shadow', 'custom', 'disabled', or unset")
     return mode
 
 
@@ -783,7 +783,7 @@ def graph_q1_diagnostic_snapshot() -> dict[str, object]:
 def install() -> None:
     global _installed
     mode = _mode()
-    if _installed or not mode:
+    if _installed or not mode or mode == "disabled":
         return
     _prefill_q512_enabled()
 

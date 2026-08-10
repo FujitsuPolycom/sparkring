@@ -274,7 +274,7 @@ class SparkTp4BackendDispatchTest(unittest.TestCase):
     def test_invalid_mode_is_rejected_before_vllm_is_patched(self) -> None:
         with self.assertRaisesRegex(
             ValueError,
-            "VLLM_SPARK_TP4_MODE must be 'shadow', 'custom', or unset",
+            "VLLM_SPARK_TP4_MODE must be 'shadow', 'custom', 'disabled', or unset",
         ):
             self._install("fastest")
 

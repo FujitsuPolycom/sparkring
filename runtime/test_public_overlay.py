@@ -36,6 +36,15 @@ def test_overlay_spec_covers_every_public_runtime_python_module():
         if not path.name.startswith("test_")
         and not path.name.startswith("probe_")
         and path.name != "tp4_numerical_audit.py"
+        # Offline analysis/tooling modules, not serving-overlay inputs.
+        and path.name != "spark_fp32_ground_truth.py"
+        and path.name != "spark_benchmark_contract.py"
+        and path.name != "spark_multislot_overlap_experiment.py"
+        # Offline analysis/tooling modules, not serving-overlay inputs.
+        and path.name != "spark_raw_evidence.py"
+        and path.name != "spark_two_arm_orchestrator.py"
+        and path.name != "spark_multislot_state.py"
+        and path.name != "spark_transport_contract.py"
     }
     for package in ("adaptive_mtp_controller", "q2r_phase_timing"):
         expected.update(
