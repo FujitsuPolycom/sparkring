@@ -99,3 +99,85 @@ notices.
 After the exclusions described above, no file in this snapshot carries a
 third-party SPDX identifier or copyright header. Any file that bears such a
 header must retain it verbatim.
+
+## 9. EXL3 R7 runtime builder components
+
+The `runtime/exl3-r7/` builder package assembles an ARM64/SM121 container image
+from the following upstream components. Each is identified by an exact Git
+commit in `runtime/exl3-r7/pins.json` or `runtime/exl3-r7/prepare_build_deps.py`
+and embedded as an OCI label in the built image. None of these components'
+source code is distributed in this repository; the builder fetches them at
+build time from their public repositories.
+
+### 9a. local-inference-lab vLLM fork
+
+- Repository: `https://github.com/local-inference-lab/vllm.git`
+- Exact commit: `e2666d9a65f41fc376607531453cbd57c4c71016`
+- License: Apache License 2.0 (inherited from `vllm-project/vllm`)
+- Role: Built into the image as the serving engine; patched with a receipt-gated
+  integration patch (SHA-256 pinned in `pins.json`).
+
+### 9b. B12X (local-inference-lab/b12x)
+
+- Repository: `https://github.com/local-inference-lab/b12x.git`
+- Exact commit: `7cecbb2c4819636ae7f05f8b116f2c45ee2cff7b`
+- License: Apache License 2.0
+- Role: SM120/SM121 CuTe DSL kernel library for mixed-Trellis MoE, MLA
+  attention, and fused GEMM. Built into the image as a pip package from source.
+
+### 9c. ExLlamaV3 (brandonmmusic-max/exllamav3)
+
+- Repository: `https://github.com/brandonmmusic-max/exllamav3.git`
+- Exact commit: `704aefd743b390af4bd0fb429d1906f9b964c7d8`
+- License: MIT License
+- Role: EXL3 quantization encoder and extension. Cloned at build time, patched
+  with the inherited ARM64 external-collectives patch (SHA-256 pinned in the
+  Containerfile), and built in place.
+
+### 9d. InstantTensor (voipmonitor/InstantTensor)
+
+- Repository: `https://github.com/voipmonitor/InstantTensor.git`
+- Exact commit: `49b4010afc1cae0441e71fe0b0bffc24fa05e932`
+- License: Apache License 2.0
+- Role: Ultra-fast distributed Safetensors weight loader. Cloned and installed
+  as a pip package from source.
+
+### 9e. NVIDIA CUTLASS
+
+- Repository: `https://github.com/NVIDIA/cutlass.git`
+- Exact commit: `da5e086dab31d63815acafdac9a9c5893b1c69e2`
+- License: BSD-3-Clause
+- Role: CUDA Templates for high-performance linear algebra; consumed as a source
+  dependency by the vLLM build. Staged locally via
+  `prepare_build_deps.py` with a receipt-gated inventory.
+
+### 9f. Triton kernels (triton-lang/triton)
+
+- Repository: `https://github.com/triton-lang/triton.git`
+- Exact commit: `0add68262ab0a2e33b84524346cb27cbb2787356`
+- Subdirectory: `python/triton_kernels/triton_kernels`
+- License: MIT License
+- Role: Triton kernel sources consumed by the vLLM build. Staged locally via
+  `prepare_build_deps.py` with a receipt-gated inventory.
+
+### 9g. Inherited base image
+
+The R7 image is built from an operator-supplied ARM64 parent image. The parent
+is identified by an immutable sha256 image ID (`BASE_IMAGE_ID`), never a
+mutable tag alone, and the build uses the resolved image ID. This repository
+does not establish one universal parent-image license: the builder therefore
+requires the audited SPDX expression for the exact parent as
+`BASE_IMAGE_LICENSES`. The value is recorded as
+`org.sparkring.parent.licenses` and included in the image's combined OCI
+license expression. A registry publisher must audit the parent image's source,
+license, and redistribution terms before publishing a derived image.
+
+### 9h. OCI provenance labels
+
+The built image carries these OCI labels for every component: exact upstream
+revision (`org.sparkring.*.commit`), source repository
+(`org.opencontainers.image.source`), license
+(`org.opencontainers.image.licenses`), and the parent image's immutable ID
+(`org.sparkring.parent.image-id`). Building or distributing the image requires
+compliance with each component's license, including preservation of copyright
+notices and license texts.
