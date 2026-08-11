@@ -1,7 +1,7 @@
 # Four-Spark EXL3 + LMCache quickstart
 
-This is SparkRing's default, main advertised, and currently running public-functional
-configuration on four directly cabled DGX Sparks. It serves
+This is SparkRing's default and main advertised public-functional configuration
+for four directly cabled DGX Sparks. It serves
 `willfalco/GLM-5.2-EXL3-TR3-3.25bpw` at immutable revision
 `d7d79c2d14599dfce7a5d12b85f7ad73f40e623d` with TP4/DCP4, fixed MTP2,
 Q4096/C8/Q32, 524,288 maximum model length, 4.5 GB KV/rank, native prefix

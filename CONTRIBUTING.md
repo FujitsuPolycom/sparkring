@@ -431,25 +431,24 @@ Derived from gaps actually observed in this tree, roughly easiest first. None
 of them need hardware.
 
 1. **No `.editorconfig`.** Add one matching the existing style.
-2. **No ruff configuration file.** The rule selection lives on the CI command
-   line, so local `ruff check` does not match CI. Add a `ruff.toml` or a
-   `[tool.ruff]` section encoding `select = ["E", "F", "W"]`,
-   `ignore = ["E501"]`.
+2. **Ruff policy is split between `.ruff.toml` and CI.** The configuration file
+   preserves two reference-snapshot exceptions, while the enforced rule set
+   still lives on the CI command line. Move `select = ["E", "F", "W"]` and
+   `ignore = ["E501"]` into `.ruff.toml` so `ruff check .` matches CI.
 3. **Move the Markdown link checker out of the workflow.** It is currently
    inlined in `.github/workflows/ci.yml` as a heredoc, so contributors cannot
    run it locally. Extract it to `scripts/` and have CI call it.
 4. **External links are never checked.** Add a scheduled, non-blocking job
    that checks `http(s)` targets in Markdown, kept out of the merge path so
    third-party downtime cannot block a PR.
-5. **Decide a line-length policy.** 28 `E501` violations exist at ruff's
-   default 88 columns. Pick a limit, record it in the ruff config, and either
-   fix the 28 or document the exemption.
-6. **Decide a formatting policy.** `ruff format --check .` would reformat 96 of
-   the 146 Python files. Either adopt formatting in one mechanical,
-   review-free commit, or configure ruff to match the existing style. Do not
-   do it piecemeal inside unrelated pull requests.
-7. **Import ordering is unenforced.** 95 files fail
-   `ruff check --select I`. Worth doing in the same mechanical commit as 6.
+5. **Decide a line-length policy.** Pick a limit, record it in the ruff
+   configuration, and either fix existing `E501` findings mechanically or
+   document the exemption.
+6. **Decide a formatting policy.** Either adopt `ruff format` in one
+   mechanical, review-focused change or configure it to match the established
+   style. Do not reformat files piecemeal inside unrelated pull requests.
+7. **Import ordering is unenforced.** Decide whether to enable Ruff's `I`
+   rules, preferably in the same mechanical change as the formatting policy.
 8. **Let CI cover part of the transport suite.**
     `spark_transport/CMakeLists.txt` declares `LANGUAGES CXX CUDA` and requires
     `CUDAToolkit` and `libibverbs` to configure at all — so a GPU-free runner

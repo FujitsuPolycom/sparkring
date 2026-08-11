@@ -18,6 +18,11 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _sha256_canonical_text(path: Path) -> str:
+    """Hash Git's LF-normalized text representation on every checkout host."""
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
 def test_pins_cover_every_published_overlay_byte():
     assert PINS["schema"] == "sparkring-public-exl3-pins/v1"
     expected = set(PINS["overlay_files"])
@@ -38,8 +43,22 @@ def test_source_patches_and_runtime_overlays_are_receipt_pinned():
         assert len(record["base_commit"]) == 40
         assert len(record["tree"]) == 40
     for relative, record in PINS["spark_runtime_overlay_files"].items():
-        assert _sha256(ROOT / record["source"]) == record["preimage"]
+        assert _sha256_canonical_text(ROOT / record["source"]) == record["preimage"]
         assert _sha256(HERE / "runtime-overlay" / relative) == record["postimage"]
+
+
+def test_receipt_pinned_source_files_have_platform_stable_checkout_bytes():
+    attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8").splitlines()
+    lf_paths = {
+        line.split()[0]
+        for line in attributes
+        if line.strip() and not line.lstrip().startswith("#") and "eol=lf" in line
+    }
+    pinned_sources = {
+        record["source"] for record in PINS["spark_runtime_overlay_files"].values()
+    }
+
+    assert pinned_sources <= lf_paths
 
 
 def test_builder_is_arm64_receipt_gated_and_reuses_exact_images():
