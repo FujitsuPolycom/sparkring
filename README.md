@@ -26,28 +26,32 @@ The operator-running SparkRing research profile uses
 [`brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78`](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78)
 at immutable revision `9ab9579774cc432df91567a36f6e9e863e0d4c9f`. Four directly
 cabled DGX Sparks serve it with TP4/DCP4, fixed MTP4, 9.25 GB of KV memory per
-rank, FP8 MLA KV, and native SparkRing TP transport through Q40.
+rank, dynamic per-token NVFP4 latent KV plus FP8 RoPE, a 262,144-token request
+limit, a 4,096-token prefill ceiling, and native SparkRing TP transport through
+Q40. Eligible pure-prefill work uses the B12X transient full-CKV DCP gather.
 
 | Measurement | Bounded result |
 |---|---:|
-| 1K-context C1 inter-token decode | **33.04 tok/s** |
-| Coding-peak median, five runs | **26.87 tok/s** |
-| Matched synthetic C1 / C2 / C4 / C8 | **34.60 / 51.44 / 76.96 / 85.68 tok/s aggregate** |
-| Unique-16K C2 / C4 / C8 | **30.93 / 41.30 / 46.71 tok/s aggregate** |
-| Proven simultaneous logical-token residency | **at least 512,000 tokens** |
+| 8K / 16K unique cold prefill | **499.82 / 608.33 tok/s** |
+| 64K / 128K unique cold prefill | **563.21 / 551.25 tok/s** |
+| Unique-16K C8 sustained decode | **47.85 tok/s aggregate** |
+| Reported KV capacity | **1,156,864 tokens** |
 
-Repeated 128-token and 256-token greedy outputs matched the MTP-disabled
-control, requested logprobs were finite, all four speculative positions were
-active, and the four-rank transport audit passed. MTP4 improved the matched
-C1-C4 cells over fixed MTP3 but regressed matched C8 by 11.63%, so MTP3 remains
-the relevant high-concurrency comparison.
+Compared with the otherwise identical dynamic-NVFP4 control, CKV gather
+improved the matched single-sample prefill rows by 14.85%-39.16%. CKV gather is
+not active during decode, so the positive C8 difference is treated only as a
+no-regression observation. Repeated 128-token and 256-token greedy outputs
+matched the MTP-disabled control, requested logprobs were finite, all four
+speculative positions were active, and the four-rank transport audit passed.
 
 This configuration is an **operator-running, live-validated research
 candidate**, not the reproducible public default or an accepted support
-matrix. Its sanitized profile-generation chain is not yet published. Read the
+matrix. Its larger NVFP4 pool has not repeated the predecessor FP8 profile's
+near-capacity residency gate. Its sanitized profile-generation chain is not
+yet published. Read the
 [fixed-MTP4 specification](docs/EXL3_R7_FIXED_MTP4_PROFILE.md),
 [optimization record](docs/EXL3_R7_OPTIMIZATION_20260811.md), and
-[machine-readable evidence](docs/configurations/glm52-exl3-r7-mtp4-kv925-20260811.json)
+[machine-readable evidence](docs/configurations/glm52-exl3-r7-mtp4-nvfp4-ckv-gather-20260811.json)
 before reproducing or extending it.
 
 ## Public default: EXL3 3.25-bpw with LMCache CS512

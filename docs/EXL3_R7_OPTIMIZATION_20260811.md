@@ -160,6 +160,29 @@ See [EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md) and
 [glm52-exl3-r7-mtp4-kv925-20260811.json](configurations/glm52-exl3-r7-mtp4-kv925-20260811.json)
 for the complete bounded result.
 
+### Dynamic-NVFP4 CKV-gather serving update
+
+The operator-running fixed-MTP4 service now uses dynamic per-token NVFP4
+latent KV, FP8 RoPE, a 262,144-token request limit, a 4,096-token prefill
+ceiling, and 9.25 GB KV/rank. It reports 1,156,864 KV tokens. The final
+prefill optimization changed only
+`VLLM_B12X_MLA_CKV_GATHER=1` and
+`VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS=262144` from the otherwise identical
+dynamic-NVFP4 control.
+
+The matched single-sample cold-prefill rows improved 14.85%, 39.16%, 29.71%,
+and 29.83% at 8K, 16K, 64K, and 128K. The matched C8 16K decode cell measured
+47.85 tok/s versus the control's displayed 45.4 tok/s. CKV gather is not a
+decode path, so the latter is retained only as a no-regression result.
+Deterministic MTP0 parity, finite logprobs, four-position MTP4 counters, Q40
+transport parity, and post-run idle health passed on the exact profile.
+
+See
+[glm52-exl3-r7-mtp4-nvfp4-ckv-gather-20260811.json](configurations/glm52-exl3-r7-mtp4-nvfp4-ckv-gather-20260811.json)
+for the configuration, hashes, measurement values, and limitations. The
+larger compressed-KV pool has not yet repeated the FP8 predecessor's
+near-capacity residency gate.
+
 ## Rollback and service availability
 
 Every service-changing candidate used a distinct generated launch/site pair
