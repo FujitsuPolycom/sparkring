@@ -15,12 +15,12 @@ This profile is not the repository default or an accepted public-functional
 matrix. It is the rollback and matched performance control for the later
 [fixed-MTP4, 9.25 GB KV candidate](EXL3_R7_FIXED_MTP4_PROFILE.md).
 
-`scripts/prepare_exl3_r7_mtp3.py` consumes the exact stock-DCP4 control and
-the exact qualified fixed-MTP2 profile. It rejects baseline drift, emits a
-separate fixed-MTP3 candidate and site, and copies the fixed-MTP2 input bytes
-unchanged as the rollback profile. It refuses output paths that alias any
-input, so generating the experiment cannot overwrite fixed-MTP2 evidence or
-configuration.
+The maintainer-held `prepare_exl3_r7_mtp3.py` utility consumed the exact
+stock-DCP4 control and qualified fixed-MTP2 profile. It rejected baseline
+drift, emitted a separate fixed-MTP3 candidate and site, copied the fixed-MTP2
+input bytes unchanged as the rollback profile, and refused output paths that
+aliased any input. A sanitized public generator and complete stock-DCP4 input
+chain are not yet published.
 
 ## Exact semantic delta
 

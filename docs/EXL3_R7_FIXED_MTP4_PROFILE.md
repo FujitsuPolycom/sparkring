@@ -58,8 +58,8 @@ invariant without merging graph ownership.
 
 ## Derivation and rollback
 
-`scripts/prepare_exl3_r7_mtp4.py` derives this profile from the qualified
-fixed-MTP3, 9.25 GB KV profile. The only semantic changes are:
+The maintainer-held `prepare_exl3_r7_mtp4.py` utility derived this profile from
+the qualified fixed-MTP3, 9.25 GB KV profile. The only semantic changes were:
 
 ```text
 profile and mode:              fixed-mtp3 -> fixed-mtp4
@@ -147,9 +147,11 @@ residency requirement.
 
 - This is a live-validated candidate on one four-Spark appliance, not an
   accepted or default public-functional configuration.
-- The complete raw evidence bundle and generated site/profile are local
-  operator artifacts. The repository publishes their hashes, generators,
-  contracts, and sanitized summary, not site addresses or host paths.
+- The complete raw evidence bundle, generated site/profile, derivation utility,
+  and corrected stock-DCP4 input chain are maintainer-held. The repository
+  publishes their hashes, contracts, and sanitized summary, not site addresses
+  or host paths. Publishing a sanitized reproducible profile chain remains a
+  release blocker.
 - MTP4 improves the measured C1-C4 cells but regresses the matched C8 cell.
 - DCP and indexer collectives remain on the stock path. Only the qualified TP
   all-reduce and vocabulary families use the SparkRing native transport here.

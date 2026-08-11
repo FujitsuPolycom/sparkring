@@ -2,3 +2,9 @@
 *.patch text eol=lf
 runtime/** text eol=lf
 runtime/exl3/patches/*.patch whitespace=-trailing-space
+
+# Runtime receipts hash these source files byte-for-byte before copying them.
+# Keep their checked-out bytes identical on Windows and POSIX hosts.
+spark_transport/integrations/vllm/spark_glm52_mtp_index_reuse.py text eol=lf
+spark_transport/integrations/vllm/spark_true_adaptive_draft.py text eol=lf
+spark_transport/experiments/q2r_phase_timing/live_installer.py text eol=lf

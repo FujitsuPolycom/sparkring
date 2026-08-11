@@ -20,12 +20,41 @@ It builds heavily on work from the contributors behind B12X, SparkInfer, vLLM, t
 SparkRing’s contribution is to adapt, integrate, and extend those foundations for low-latency inference across switchless DGX Spark clusters.
 
 Detailed project and contributor credits are maintained in the acknowledgements and provenance documentation.
-## Current deployment
+## Featured model: EXL3 R7 3.5-bpw fixed-MTP4
 
-SparkRing's default and main advertised public-functional configuration is
+The operator-running SparkRing research profile uses
+[`brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78`](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78)
+at immutable revision `9ab9579774cc432df91567a36f6e9e863e0d4c9f`. Four directly
+cabled DGX Sparks serve it with TP4/DCP4, fixed MTP4, 9.25 GB of KV memory per
+rank, FP8 MLA KV, and native SparkRing TP transport through Q40.
+
+| Measurement | Bounded result |
+|---|---:|
+| 1K-context C1 inter-token decode | **33.04 tok/s** |
+| Coding-peak median, five runs | **26.87 tok/s** |
+| Matched synthetic C1 / C2 / C4 / C8 | **34.60 / 51.44 / 76.96 / 85.68 tok/s aggregate** |
+| Unique-16K C2 / C4 / C8 | **30.93 / 41.30 / 46.71 tok/s aggregate** |
+| Proven simultaneous logical-token residency | **at least 512,000 tokens** |
+
+Repeated 128-token and 256-token greedy outputs matched the MTP-disabled
+control, requested logprobs were finite, all four speculative positions were
+active, and the four-rank transport audit passed. MTP4 improved the matched
+C1-C4 cells over fixed MTP3 but regressed matched C8 by 11.63%, so MTP3 remains
+the relevant high-concurrency comparison.
+
+This configuration is an **operator-running, live-validated research
+candidate**, not the reproducible public default or an accepted support
+matrix. Its sanitized profile-generation chain is not yet published. Read the
+[fixed-MTP4 specification](docs/EXL3_R7_FIXED_MTP4_PROFILE.md),
+[optimization record](docs/EXL3_R7_OPTIMIZATION_20260811.md), and
+[machine-readable evidence](docs/configurations/glm52-exl3-r7-mtp4-kv925-20260811.json)
+before reproducing or extending it.
+
+## Public default: EXL3 3.25-bpw with LMCache CS512
+
+SparkRing's reproducible, main-advertised public-functional configuration is
 [`willfalco/GLM-5.2-EXL3-TR3-3.25bpw`](https://huggingface.co/willfalco/GLM-5.2-EXL3-TR3-3.25bpw)
-at immutable revision
-`d7d79c2d14599dfce7a5d12b85f7ad73f40e623d`, with LMCache CS512.
+at immutable revision `d7d79c2d14599dfce7a5d12b85f7ad73f40e623d`.
 
 | Item | Configuration | Status |
 |---|---|---|
@@ -47,35 +76,7 @@ See the [EXL3 quickstart](docs/EXL3_QUICKSTART.md) and
 [evidence-scoped recipe](docs/EXL3_RECIPE.md).
 
 This makes EXL3+LMCache the public default, not a blanket correctness or
-release-acceptance claim. NF3 remains an accepted deterministic alternative;
-its quickstart is [here](docs/NF3_QUICKSTART.md).
-
-The operator's running research service is a separately qualified EXL3 R7
-3.5-bpw candidate using TP4/DCP4, fixed MTP4, and 9.25 GB of KV memory per
-rank. Its bounded qualification includes exact MTP-disabled output parity,
-finite logprobs, native TP transport through Q40, a four-cell decode matrix,
-and eight simultaneously resident 64K requests. It is not the public default
-or an accepted matrix. See the
-[R7 fixed-MTP4 candidate specification](docs/EXL3_R7_FIXED_MTP4_PROFILE.md)
-and the
-[gated optimization record](docs/EXL3_R7_OPTIMIZATION_20260811.md).
-
-The maintainer's later one-million-token NF3 operator profile is captured
-separately in the
-[live configuration audit](docs/NF3_LIVE_CONFIGURATION_20260731.md). It records
-the effective command, environment, rank-local transport order, immutable
-runtime hashes, 9 GB/rank NVFP4+FP8-RoPE KV allocation, and reported 1,125,632
-token capacity. It is a live-observed configuration snapshot, not a replacement
-for the smaller accepted public-bootstrap defaults above.
-
-The dated
-[DCP4 fixed-MTP2 live recipe](docs/NF3_FIXED_MTP2_RECIPE_20260801.md) records a
-later operator variant and its recovered benchmark artifact: the effective
-four-rank process state, exact delta from the full audit, sanitized rerun
-command, 732-779 prefill tok/s, up to 60.4 aggregate decode tok/s, and the
-capacity-limited C8 cells that must not be quoted as valid throughput. It is a
-public-functional, live-validated operator snapshot, not a reference-lane or
-current-checkout result.
+release-acceptance claim.
 
 The exact EXL3 model hashes, source pins, environment, vLLM arguments, and
 Q4096/C8/Q32 contract are in
@@ -101,42 +102,9 @@ and provides the exact validation sequence.
 
 ## Measured results
 
-### NF3-hybrid
-
-Two KV layouts are available for the same NF3 checkpoint and launch:
-
-| Bootstrap profile | KV capacity observed | Status |
-|---|---:|---|
-| `fp8` (default) | 511,488 tokens | public bootstrap profile |
-| `nvfp4-rope8` | **875,520 tokens** | clean-checkout public bootstrap validated |
-
-The optional profile stores the compressed latent KV in NVFP4 with per-token
-scaling while retaining FP8 RoPE data. It changes neither the model download
-nor the TP4/DCP4/MTP/C8/Q40 serving policy. Its public clean-checkout bootstrap
-has now built, attested, distributed, launched, captured every configured CUDA
-graph, and served a deterministic API request on four Sparks. See the
-[validation receipt](docs/NF3_NVFP4_PUBLIC_VALIDATION.md).
-
-| Measurement | Result |
-|---|---:|
-| C1 warm coding reference | **22 tok/s** |
-| C2 warm coding sanity | **33.38 tok/s aggregate** |
-| Reported KV capacity | **511,488 tokens** |
-| KV dtype | FP8 |
-| KV allocation | 7,000,000,000 bytes/rank |
-| CUDA workspace reserve | 805,306,368 bytes/rank |
-
-The live NF3 gate also completed all CUDA captures, served a 512-token decode
-while an 18,562-token prefill was active, and returned both requests with
-post-test health intact. These are stability and sanity measurements, not a
-complete performance matrix.
-
-The older coherent GPTQ matrix and its exact configuration are retained on
-[the historical Aiden lane](docs/history/AIDEN_MXFP4_GPTQ.md).
-
 ### EXL3 3.25-bpw + LMCache CS512
 
-| Item | Current live recipe |
+| Item | Default public recipe |
 |---|---|
 | Model | `willfalco/GLM-5.2-EXL3-TR3-3.25bpw@d7d79c2...` |
 | Parallelism | TP4 / DCP4, fixed MTP2 |
@@ -144,7 +112,7 @@ The older coherent GPTQ matrix and its exact configuration are retained on
 | Context/KV | 524,288 model limit; 4.5 GB/rank; 562,688 reported tokens |
 | KV representation | NVFP4 latent plus FP8 RoPE |
 | Cache | native prefix cache + LMCache CS512; SparkCache disabled |
-| Public maturity | clean-checkout live-validated; main advertised/current-running configuration |
+| Public maturity | clean-checkout live-validated; default and main advertised configuration |
 
 Inspect either recipe without contacting the cluster:
 
@@ -169,6 +137,16 @@ evidence, and claim boundaries.
 
 See [docs/TESTING_HISTORY.md](docs/TESTING_HISTORY.md) for experiments,
 resolved failures, superseded configurations, and pending acceptance work.
+
+### Archived and alternative configurations
+
+NF3 remains documented as a deterministic public-functional alternative, but
+it is no longer a featured README profile. Use the
+[NF3 quickstart](docs/NF3_QUICKSTART.md),
+[NVFP4 KV validation receipt](docs/NF3_NVFP4_PUBLIC_VALIDATION.md), and
+[one-million-token operator audit](docs/NF3_LIVE_CONFIGURATION_20260731.md) for
+its reproducible recipe and historical evidence. The former Aiden MXFP4/GPTQ
+reference remains in the [historical lane](docs/history/AIDEN_MXFP4_GPTQ.md).
 
 ## What SparkRing provides
 
