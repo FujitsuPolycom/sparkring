@@ -138,6 +138,7 @@ def _lifecycle_plan(args: Any, parser: Any) -> int:
     try:
         bundle = _load_bundle(Path(args.bundle))
         site = load_site(args.site)
+        bundle_mod.validate_service_ranks(bundle, site)
     except (OSError, KeyError, json.JSONDecodeError,
             SiteConfigError, bundle_mod.BundleError,
             runtime.ProfileError) as exc:
@@ -152,6 +153,7 @@ def _lifecycle_status(args: Any, parser: Any) -> int:
     try:
         bundle = _load_bundle(Path(args.bundle))
         site = load_site(args.site)
+        bundle_mod.validate_service_ranks(bundle, site)
     except (OSError, KeyError, json.JSONDecodeError,
             SiteConfigError, bundle_mod.BundleError,
             runtime.ProfileError) as exc:
@@ -178,6 +180,7 @@ def _lifecycle_verify_rollback(args: Any, parser: Any) -> int:
     try:
         bundle = _load_bundle(Path(args.bundle))
         site = load_site(args.site)
+        bundle_mod.validate_service_ranks(bundle, site)
     except (OSError, KeyError, json.JSONDecodeError,
             SiteConfigError, bundle_mod.BundleError,
             runtime.ProfileError) as exc:
@@ -209,6 +212,10 @@ def _lifecycle_mutation(args: Any, parser: Any, command: str) -> int:
     try:
         bundle = _load_bundle(Path(args.bundle))
         site = load_site(args.site)
+        # Action builders intentionally intersect with the effective rank
+        # scope. Validate membership first so no mutating command can silently
+        # omit an unknown configured rank.
+        bundle_mod.validate_service_ranks(bundle, site)
     except (OSError, KeyError, json.JSONDecodeError,
             SiteConfigError, bundle_mod.BundleError,
             runtime.ProfileError) as exc:
@@ -227,7 +234,6 @@ def _lifecycle_mutation(args: Any, parser: Any, command: str) -> int:
 
     _reject_bridge_execution(parser, bundle)
     _check_confirmation(parser, bundle, args)
-
     if command == "start":
         result = bundle_mod.execute_native_start(
             bundle, site, confirmation=args.confirmation or None,
