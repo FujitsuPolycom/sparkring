@@ -32,9 +32,9 @@ Q40. Eligible pure-prefill work uses the B12X transient full-CKV DCP gather.
 
 | Measurement | Bounded result |
 |---|---:|
-| 8K / 16K unique cold prefill | **499.82 / 608.33 tok/s** |
-| 64K / 128K unique cold prefill | **563.21 / 551.25 tok/s** |
-| Unique-16K C8 sustained decode | **47.85 tok/s aggregate** |
+| 8K / 16K unique cold prefill | **500 / 608 tok/s** |
+| 64K / 128K unique cold prefill | **563 / 551 tok/s** |
+| Unique-16K C8 sustained decode | **48 tok/s aggregate** |
 | Reported KV capacity | **1,156,864 tokens** |
 
 Compared with the otherwise identical dynamic-NVFP4 control, CKV gather
