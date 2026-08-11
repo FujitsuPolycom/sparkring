@@ -4,10 +4,14 @@
 > public-functional matrix retained as the deterministic alternative. Its
 > clean-checkout evidence is in
 > [NF3_NVFP4_PUBLIC_VALIDATION.md](NF3_NVFP4_PUBLIC_VALIDATION.md). EXL3 plus
-> LMCache CS512 is the default, main advertised, currently running
-> configuration, but remains `live-validated`, not accepted; see
+> LMCache CS512 is the default and main advertised configuration, but remains
+> `live-validated`, not accepted; see
 > [QUICKSTART.md](QUICKSTART.md) and the candidate
-> [EXL3 acceptance runbook](EXL3_ACCEPTANCE_RUNBOOK.md).
+> [EXL3 acceptance runbook](EXL3_ACCEPTANCE_RUNBOOK.md). The operator's
+> running EXL3 R7 3.5-bpw fixed-MTP4 service is a separate live-validated
+> candidate documented in
+> [EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md); its evidence
+> does not change the default or accepted matrix.
 
 This document defines the accepted NF3 matrix and the common fail-closed
 acceptance semantics. `scripts/acceptance_gate.py` preserves that matrix as

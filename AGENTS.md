@@ -11,13 +11,17 @@ contributors. Read it before changing or running anything in this repository.
   under `runtime/patches/00-reference-vllm/`; the exact historical launch
   artifacts and evidence harness remain maintainer-held, and public-lane
   reproduction of those measurements is pending.
-- The **default, main advertised, and currently running public-functional configuration**
-  is EXL3 3.25-bpw plus LMCache CS512. Its receipt-gated public bootstrap built
+- The **default and main advertised public-functional configuration** is EXL3
+  3.25-bpw plus LMCache CS512. Its receipt-gated public bootstrap built
   one ARM64 image from a clean checkout, distributed the identical image ID to
   four directly cabled Sparks, and passed startup, graph, API, repeated
   fixed-seed 128-token, bounded C1/C2/C8, and post-run health gates. This is
   clean-checkout live validation, not blanket correctness, persistence,
   release promotion, or full public-functional acceptance.
+- The operator's running research service is the separately labelled EXL3 R7
+  3.5-bpw, fixed-MTP4, DCP4, 9.25 GB KV/rank candidate documented in
+  `docs/EXL3_R7_FIXED_MTP4_PROFILE.md`. Its live evidence does not change the
+  public default or accepted NF3 alternative.
 - NF3 remains an accepted deterministic public-functional alternative. Its
   recipe, bootstrap, and quickstart remain published and explicitly selectable.
 - Never describe a reference-lane number as a result from this checkout.
