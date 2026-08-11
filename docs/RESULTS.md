@@ -50,7 +50,50 @@ correctly suppressed after warmup timeout. Those suppressions were readiness
 timeouts, not KV-capacity failures. Unique 16K validation for this profile
 therefore requires `--cell-warmup-timeout-seconds 300`.
 
-### 2026-08-11 EXL3 R7 fixed-MTP4, 9.25 GB KV candidate
+### 2026-08-11 EXL3 R7 dynamic-NVFP4 CKV-gather candidate
+
+The operator-running fixed-MTP4 profile uses dynamic per-token NVFP4 latent KV
+plus FP8 RoPE, a 262,144-token request limit, a 4,096-token prefill ceiling,
+and 9.25 GB of KV memory per rank. The runtime reported 1,156,864 KV tokens.
+The matched CKV-gather A/B changed only these environment values:
+
+```text
+VLLM_B12X_MLA_CKV_GATHER:             unset -> 1
+VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS:  unset -> 262144
+```
+
+The `llm_decode_bench.py` v0.4.31 workload used fully unique prompts,
+temperature zero, and one cold scout at each prefill length. The decode row
+used eight unique 16K contexts and a 25-second measurement window.
+
+| Workload | NVFP4 control | CKV gather | Change |
+|---|---:|---:|---:|
+| 8K prefill | 435.19 tok/s | **499.82 tok/s** | **+14.85%** |
+| 16K prefill | 437.16 tok/s | **608.33 tok/s** | **+39.16%** |
+| 64K prefill | 434.20 tok/s | **563.21 tok/s** | **+29.71%** |
+| 128K prefill | 424.60 tok/s | **551.25 tok/s** | **+29.83%** |
+| C8 16K sustained decode | 45.4 tok/s | **47.85 tok/s** | +5.40% observed |
+
+CKV gather is active during eligible pure prefill and not during decode. The
+decode result therefore establishes no measured regression; its positive
+difference is not attributed to CKV gather. Each prefill row is a single
+sample, not a latency or throughput distribution.
+
+Three 128-token and three 256-token greedy outputs remained byte-identical to
+the MTP-disabled control, all 96 requested logprobs were finite, and fixed MTP4
+accepted 1,036 of 1,072 draft tokens with position counts
+`[266, 263, 255, 252]`. Every rank activated CKV gather, retained the exact
+7,704/16 graph census, caught up transport sequences without fatal, overflow,
+drop, or Q1-Q40 fallback, and returned to HTTP 200 with zero running, waiting,
+KV use, and preemption.
+
+The exact configuration, artifact hashes, control-artifact limitation, and
+open capacity gates are in the
+[fixed-MTP4 dynamic-NVFP4 candidate specification](EXL3_R7_FIXED_MTP4_PROFILE.md)
+and
+[sanitized machine-readable evidence](configurations/glm52-exl3-r7-mtp4-nvfp4-ckv-gather-20260811.json).
+
+### 2026-08-11 EXL3 R7 fixed-MTP4 FP8 predecessor
 
 On four directly cabled DGX Sparks, the public-functional R7 3.5-bpw research
 checkpoint completed a bounded live qualification at TP4/DCP4, fixed MTP4,
