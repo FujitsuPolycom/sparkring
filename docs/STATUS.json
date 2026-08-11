@@ -1,6 +1,6 @@
 {
   "schema": "sparkring-repository-status/v1",
-  "last_reviewed": "2026-08-10",
+  "last_reviewed": "2026-08-11",
   "lanes": {
     "reference": {
       "maturity": "live-validated",
@@ -16,6 +16,7 @@
       "definition": "recipes/glm52-exl3-tr3-3.25bpw.json",
       "default_configuration": "recipes/glm52-exl3-tr3-3.25bpw.json",
       "accepted_alternative": "recipes/glm52-nf3-hybrid.json",
+      "operator_running_candidate": "docs/EXL3_R7_FIXED_MTP4_PROFILE.md",
       "evidence": "docs/EXL3_RECIPE.md",
       "blockers": [
         "broader correctness gate",
@@ -91,6 +92,31 @@
       "full_live_bundle_exists": false,
       "entrypoint": "docs/EXL3_ACCEPTANCE_RUNBOOK.md"
     },
+    "exl3_r7_mtp4_kv925_candidate": {
+      "maturity": "live-validated",
+      "lane": "public-functional",
+      "configuration_status": "candidate",
+      "accepted": false,
+      "default": false,
+      "operator_running_configuration": true,
+      "hardware": "four directly cabled NVIDIA DGX Sparks / GB10 GPUs",
+      "model": "brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f",
+      "topology": "TP4/DCP4",
+      "mtp_mode": "fixed-mtp4",
+      "maximum_query_rows": 40,
+      "kv_cache_bytes_per_rank": 9250000000,
+      "reported_kv_capacity_tokens": 675840,
+      "request_usable_kv_capacity_tokens": 675584,
+      "correctness_gate_passed": true,
+      "finite_logprobs_passed": true,
+      "transport_gate_passed": true,
+      "matched_decode_matrix_complete": true,
+      "long_context_capacity_gate_passed": true,
+      "minimum_proven_simultaneously_resident_logical_tokens": 512000,
+      "known_performance_limitation": "The matched C8 decode cell was 11.63 percent slower than fixed MTP3.",
+      "entrypoint": "docs/EXL3_R7_FIXED_MTP4_PROFILE.md",
+      "machine_readable_evidence": "docs/configurations/glm52-exl3-r7-mtp4-kv925-20260811.json"
+    },
     "nf3_recipe": {
       "maturity": "accepted",
       "default_public_functional_target": false,
@@ -103,7 +129,8 @@
     "exl3_recipe": {
       "maturity": "live-validated",
       "default": true,
-      "main_advertised_running_configuration": true,
+      "main_advertised_configuration": true,
+      "operator_running_configuration": false,
       "model": "willfalco/GLM-5.2-EXL3-TR3-3.25bpw",
       "zero_build_ready": false,
       "local_build_ready": true,

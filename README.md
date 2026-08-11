@@ -26,8 +26,7 @@ SparkRing’s contribution is to adapt, integrate, and extend those foundations 
 Detailed project and contributor credits are maintained in the acknowledgements and provenance documentation.
 ## Current deployment
 
-SparkRing's default, main advertised, and currently running public-functional
-configuration is
+SparkRing's default and main advertised public-functional configuration is
 [`willfalco/GLM-5.2-EXL3-TR3-3.25bpw`](https://huggingface.co/willfalco/GLM-5.2-EXL3-TR3-3.25bpw)
 at immutable revision
 `d7d79c2d14599dfce7a5d12b85f7ad73f40e623d`, with LMCache CS512.
@@ -60,6 +59,16 @@ stack was restored after the diagnostic.
 This makes EXL3+LMCache the public default, not a blanket correctness or
 release-acceptance claim. NF3 remains an accepted deterministic alternative;
 its quickstart is [here](docs/NF3_QUICKSTART.md).
+
+The operator's running research service is a separately qualified EXL3 R7
+3.5-bpw candidate using TP4/DCP4, fixed MTP4, and 9.25 GB of KV memory per
+rank. Its bounded qualification includes exact MTP-disabled output parity,
+finite logprobs, native TP transport through Q40, a four-cell decode matrix,
+and eight simultaneously resident 64K requests. It is not the public default
+or an accepted matrix. See the
+[R7 fixed-MTP4 candidate specification](docs/EXL3_R7_FIXED_MTP4_PROFILE.md)
+and the
+[gated optimization record](docs/EXL3_R7_OPTIMIZATION_20260811.md).
 
 The maintainer's later one-million-token NF3 operator profile is captured
 separately in the

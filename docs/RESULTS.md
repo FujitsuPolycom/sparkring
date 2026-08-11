@@ -2,8 +2,9 @@
 
 > The detailed matrix below is the historical Aiden MXFP4/GPTQ evidence set.
 > NF3 has a smaller accepted sanity set in [README.md](../README.md).
-> EXL3+LMCache CS512 is the main advertised and currently running
-> public-functional configuration and has the bounded clean-checkout gate below.
+> EXL3+LMCache CS512 is the main advertised public-functional configuration and
+> has the bounded clean-checkout gate below. The operator's running EXL3 R7
+> fixed-MTP4 service is a separately labelled candidate.
 > Results are not interchangeable between checkpoints or evidence origins.
 
 ## Current EXL3+LMCache public-path gate
@@ -181,6 +182,56 @@ restored afterward and remains the current advertised configuration. Exact
 method, limitations, restoration scope, and hashes are in the
 [diagnostic record](EXL3_TEACHER_FORCED_ATTRIBUTION_20260810.md) and its
 [sanitized machine-readable receipt](configurations/glm52-exl3-teacher-forced-attribution-20260810.json).
+
+### 2026-08-11 EXL3 R7 fixed-MTP4, 9.25 GB KV candidate
+
+On four directly cabled DGX Sparks, the public-functional R7 3.5-bpw research
+checkpoint completed a bounded live qualification at TP4/DCP4, fixed MTP4,
+Q1-Q40 CUDA graphs, `fp8_ds_mla`, and 9,250,000,000 KV-cache bytes per rank.
+This is a live-validated candidate, not the advertised default or an accepted
+public-functional matrix.
+
+Three 128-token and three 256-token greedy completions matched the
+MTP-disabled control byte-for-byte. A semantic probe passed, all 96 requested
+logprob values were finite, and MTP4 accepted 1,001 of 1,032 draft tokens with
+non-zero counts at all four draft positions. All ranks completed target,
+draft-prefill, and draft-decode graph capture. Their transport census matched
+at 7,704 native all-reduce nodes and 16 native vocabulary nodes, with zero
+fatal, overflow, dropped-signature, or Q1-Q40 stock TP/vocabulary fallback
+events. DCP and indexer collectives intentionally remained on the stock path.
+
+The matched 25-second decode-only matrix used temperature zero:
+
+| Concurrency | Aggregate tok/s | Change from matched fixed-MTP3 |
+|---:|---:|---:|
+| C1 | **34.60** | +12.34% |
+| C2 | **51.44** | +9.08% |
+| C4 | **76.96** | +10.38% |
+| C8 | **85.68** | -11.63% |
+
+The exact 1,024-prompt plus 128-output endpoint probe measured 33.04
+inter-token decode tokens/s, 10.95% above the matched fixed-MTP3 control. A
+separate unique-16K-context `llm_decode_bench.py` v0.4.31 matrix measured
+30.93, 41.30, and 46.71 aggregate tokens/s at C2, C4, and C8. Its temperature
+was zero. The canonical five-run coding-peak mode intentionally omitted a
+temperature field and measured a 26.87 tokens/s median.
+
+The 9.25 GB/rank pool reported 675,840 tokens; 675,584 were request-usable
+after the runtime's permanent null block. Four C1 requests through 65,280
+prompt tokens passed. The C8 residency arm then completed eight unique
+64,000-prompt plus 1,408-output requests. A single scheduler scrape observed
+eight running, zero waiting, and 77.226% KV use, proving at least 512,000
+logical tokens resident simultaneously. All outputs had exact usage and finite
+logprobs; preemption, OOM, transport-fault, and accepted-run thermal-violation
+counts were zero. The service returned to HTTP 200 and zero scheduler/KV use.
+
+The complete scope, limitations, configuration contract, and immutable raw
+artifact hashes are in the
+[fixed-MTP4 candidate specification](EXL3_R7_FIXED_MTP4_PROFILE.md) and
+[sanitized machine-readable summary](configurations/glm52-exl3-r7-mtp4-kv925-20260811.json).
+The separate promotion decisions for hybrid transport, custom indexer, custom
+DCP, MTP2, MTP3, and KV growth are in the
+[R7 optimization campaign record](EXL3_R7_OPTIMIZATION_20260811.md).
 
 This document is the definitive record of SparkRing's measured performance. Every number here is a real measurement pulled from a dated deliverable, carries its full configuration label, and passed the verification gate stated on its row. Nothing in this document is a projection, an extrapolation, or a comparison against systems we did not measure ourselves.
 

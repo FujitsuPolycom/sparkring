@@ -4,16 +4,23 @@
 > public-functional matrix retained as the deterministic alternative. Its
 > clean-checkout evidence is in
 > [NF3_NVFP4_PUBLIC_VALIDATION.md](NF3_NVFP4_PUBLIC_VALIDATION.md). EXL3 plus
-> LMCache CS512 is the default, main advertised, currently running
-> configuration, but remains `live-validated`, not accepted; see
+> LMCache CS512 is the default and main advertised configuration, but remains
+> `live-validated`, not accepted; see
 > [QUICKSTART.md](QUICKSTART.md) and the candidate
-> [EXL3 acceptance runbook](EXL3_ACCEPTANCE_RUNBOOK.md).
+> [EXL3 acceptance runbook](EXL3_ACCEPTANCE_RUNBOOK.md). The operator's
+> running EXL3 R7 3.5-bpw fixed-MTP4 service is a separate live-validated
+> candidate documented in
+> [EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md); its evidence
+> does not change the default or accepted matrix.
 
 This document defines the accepted NF3 matrix and the common fail-closed
 acceptance semantics. `scripts/acceptance_gate.py` preserves that matrix as
 its default. A named gate profile may declare a different immutable candidate
 matrix; results and evidence never transfer between profiles. The EXL3 profile
-is `scripts/config/gate.exl3.example.json`.
+is `scripts/config/gate.exl3.example.json`. The adaptive-MTP 2/4 requirements
+in §2.4 apply only to the accepted NF3 matrix. The EXL3 profile separately
+pins fixed MTP2, a 524,288-token model limit, 4,500,000,000 KV-cache bytes per
+rank, and eight maximum sequences.
 
 Companion documents: [README.md](../README.md) (two-lane framing),
 [QUICKSTART.md](QUICKSTART.md) (default EXL3 deployment),
@@ -44,7 +51,7 @@ NF3 matrix below nor a published candidate profile, it is outside this lane.
 
 ---
 
-## 2. The supported matrix
+## 2. The accepted NF3 matrix
 
 Everything here is stated as a **requirement**. Where a requirement is
 site-specific (addresses, hostnames, users, paths), the requirement is on the
@@ -119,7 +126,7 @@ the gate's model-identity check with a non-zero exit. A checkpoint reference
 that can change under you is not a pinned configuration, and a result measured
 against one is not reportable.
 
-### 2.4 Serving configuration
+### 2.4 Accepted NF3 serving configuration
 
 The target serving configuration, as recorded in SETUP.md Stage 8.4/8.5 for the
 attested reference window. In this lane these are **requirements of the
@@ -498,7 +505,7 @@ yet, with the workstream that owns closing it.
 | TBD-5 | Minimum supported NVIDIA driver version (reference cluster: 580.173.02; requirement stated only as "580.x") | Users cannot tell whether their driver is in-matrix | hardware / bring-up |
 | TBD-6 | Minimum supported host kernel version (reference cluster: NVIDIA kernel 6.17) | Same | hardware / bring-up |
 | TBD-7 | Minimum Docker CE / podman / `nvidia-container-toolkit` versions | Same; also affects whether the podman path is actually supported or merely believed to work | bring-up |
-| TBD-9 | Whether the pinned adaptive-MTP 2/4 configuration produces **bitwise-identical token ids** across runs. `scripts/context_cache_gate.py` already records that two consecutive restores of a byte-verified entry produced different phrasings, i.e. observed run-to-run nondeterminism in a speculative-decode configuration | Decides whether stage 5's exact-token-id criterion is achievable as specified, or whether the matrix must pin an MTP-off determinism configuration for that stage only | acceptance gate owner |
+| TBD-9 | Whether the accepted NF3 adaptive-MTP 2/4 configuration produces **bitwise-identical token ids** across runs. `scripts/context_cache_gate.py` already records that two consecutive restores of a byte-verified entry produced different phrasings, i.e. observed run-to-run nondeterminism in a speculative-decode configuration | Decides whether stage 5's exact-token-id criterion is achievable as specified, or whether the matrix must pin an MTP-off determinism configuration for that stage only | acceptance gate owner |
 | TBD-10 | The public-lane performance tolerance band. None exists, and reference-lane numbers must not be used (§4.3) | Until a band is committed, `performance_verdict` is permanently `BASELINE-RECORDED` | acceptance gate owner, after N public-lane runs |
 | TBD-11 | Availability and exact response shape of the `/tokenize` endpoint in the pinned vLLM build (the gate uses it to recover output token ids) | If absent, stage 5 fails with an actionable message rather than falling back to hashing text — the fallback is deliberately not implemented | acceptance gate owner |
 | TBD-13 | The site schema pins `serving.mtp_tokens` but not the adaptive depth window; the matrix's `adaptive_speculative_tokens_window: 32` is therefore documented here but not machine-checked | An adaptive-MTP window other than 32 would pass the gate while being off-matrix | site-config workstream + acceptance gate owner |
