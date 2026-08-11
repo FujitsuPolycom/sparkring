@@ -217,6 +217,10 @@ These are **transport-level** measurements: no model in the loop unless a row sa
 
 ## 4. Methodology: the claim discipline
 
+Use the [matched 16K sustained-decode checklist](EVIDENCE_COMPARISON_CHECKLIST.md)
+and `scripts/compare_benchmark_evidence.py` for fail-closed offline comparison
+of two `llm_decode_bench.py` v0.4.31 matrix documents.
+
 The numbers above are only as good as the rules used to produce and report them. Those rules are part of the result, so they are stated here in full.
 
 **Every number carries a full label.** A performance claim in this repository is not a bare number — it names the topology, the checkpoint, the parallelism configuration (TP/DCP degree), the execution mode (eager vs. CUDA-graph, custom vs. fallback transport), the workload and concurrency, the statistic (p50, median-of-N, single sample, log-window observation), and the gate the run had to pass. A number quoted without its label is considered misquoted.
