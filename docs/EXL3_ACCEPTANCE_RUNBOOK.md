@@ -312,6 +312,55 @@ sequences, and lazy 1-GiB LMCache L1. A stale container with a different profile
 label is intentionally not removed. Preserve the failing evidence and resolve
 the named conflict manually.
 
+For an offline, machine-readable classification of already captured startup
+logs, run `scripts/sparkring_startup_evidence.py`. The classifier is
+`offline-validated`: it does not contact a Spark, establish a safe retry bound,
+or replace container inspection. It reports `clean`, `bounded_rm_retry`,
+`indeterminate`, or `fatal` under the
+`sparkring-startup-evidence/v1` schema. Missing engine evidence, stopped
+containers, incomplete timestamp context, and unaligned per-rank inputs fail
+closed.
+
+Supply four engine logs and their matching `docker inspect` JSON documents in
+rank order. When present, supply exactly one kernel or LMCache-server log for
+every engine rank; server logs also require matching inspection JSON. The
+following example classifies four engine and kernel logs. Replace
+`REVIEWED_RM_EVENT_BOUND` only with a bound established by a separately
+reviewed operating policy:
+
+```bash
+python scripts/sparkring_startup_evidence.py \
+  --engine-log evidence/engine-r0.log \
+  --engine-log evidence/engine-r1.log \
+  --engine-log evidence/engine-r2.log \
+  --engine-log evidence/engine-r3.log \
+  --engine-inspect evidence/engine-r0-inspect.json \
+  --engine-inspect evidence/engine-r1-inspect.json \
+  --engine-inspect evidence/engine-r2-inspect.json \
+  --engine-inspect evidence/engine-r3-inspect.json \
+  --engine-container-name glm52-sparkring-exl3-lmcache-cs512-r0 \
+  --engine-container-name glm52-sparkring-exl3-lmcache-cs512-r1 \
+  --engine-container-name glm52-sparkring-exl3-lmcache-cs512-r2 \
+  --engine-container-name glm52-sparkring-exl3-lmcache-cs512-r3 \
+  --kernel-log evidence/kernel-r0.log \
+  --kernel-log evidence/kernel-r1.log \
+  --kernel-log evidence/kernel-r2.log \
+  --kernel-log evidence/kernel-r3.log \
+  --engine-log-year 2026 \
+  --engine-log-tz=-05:00 \
+  --rm-event-bound REVIEWED_RM_EVENT_BOUND \
+  --cluster-ready \
+  classify > evidence/startup-classification.json
+```
+
+`--cluster-ready` is an explicit operator-supplied fact, not a network probe.
+The expected names bind each inspection document to its role and rank. The
+inspection documents must expose `Id`, `Name`, `State.Running`,
+`State.OOMKilled`, and `RestartCount`; duplicate identities and name mismatches
+fail closed, while a stopped, restarted, or OOM-killed component is fatal. Do
+not use a successful classification to relabel a generic CUDA OOM, Xid,
+restart, fabric loss, or driver failure as recoverable.
+
 ### Warm cache does not beat cold cache
 
 Confirm all four servers stored objects and have one registered GPU context.
@@ -350,13 +399,15 @@ python -m pytest \
   scripts/test_acceptance_gate.py \
   scripts/test_exl3_correctness_gate.py \
   scripts/test_exl3_cache_acceptance.py \
-  scripts/test_sparkring_exl3_lmcache_launcher.py -q
+  scripts/test_sparkring_exl3_lmcache_launcher.py \
+  scripts/test_sparkring_startup_evidence.py -q
 
 ruff check --select E,F,W --ignore E501 \
   scripts/acceptance_gate.py \
   scripts/exl3_correctness_gate.py \
   scripts/exl3_cache_acceptance.py \
-  scripts/sparkring_exl3_lmcache_launcher.py
+  scripts/sparkring_exl3_lmcache_launcher.py \
+  scripts/sparkring_startup_evidence.py
 ```
 
 The full repository validation remains the command in [CONTRIBUTING.md](../CONTRIBUTING.md).
