@@ -1,0 +1,28 @@
+{
+  "schema": "sparkring-exl3-r7-pins/v1",
+  "schema_version": 1,
+  "profile_id": "glm52-exl3-r7-3.5bpw",
+  "maturity": "public-candidate",
+  "model": {
+    "repository": "brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78",
+    "revision": "9ab9579774cc432df91567a36f6e9e863e0d4c9f",
+    "config_sha256": "fabb73eb513ec64f3a365da396b38de8d55b3930edfb11baeecbf34ecafa6126",
+    "index_sha256": "9fd852f69ed64442e31dce1cbc5fe7acd0a76bfb848e945d272fe98d00d0c9cd",
+    "shard_count": 157,
+    "weight_count": 186905,
+    "index_total_size": 346218639128
+  },
+  "serving_defaults": {
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 4,
+    "dcp_backend": "ag_rs",
+    "kv_cache_dtype": "fp8_ds_mla",
+    "kv_cache_bytes_per_rank_qualified": 9000000000,
+    "kv_cache_bytes_per_rank_candidate": 9250000000,
+    "max_model_len": 65536,
+    "max_num_seqs": 8,
+    "max_num_batched_tokens": 2048,
+    "gpu_memory_utilization": 0.85
+  },
+  "note": "This public pins file is derived from recipes/glm52-exl3-r7-3.5bpw.json. The runtime/exl3-r7/ builder overlay (Containerfile, entrypoint.sh, build-image.sh, and builder-specific pins) is on a separate branch."
+}

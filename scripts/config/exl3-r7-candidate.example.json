@@ -1,0 +1,13 @@
+{
+  "schema": "sparkring-exl3-r7-candidate-template/v1",
+  "image": "sparkring/glm52-exl3-r7-3.5bpw:REPLACE",
+  "image_id": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "model_host_path": "/var/tmp/sparkring-r7-model",
+  "jit_cache_host_path": "/var/tmp/sparkring-r7-jit",
+  "online_weight_cache_host_path": "/var/tmp/sparkring-r7-online",
+  "online_quantization": "exl3-b6",
+  "transport": "sircl",
+  "indexer_graph_custom": false,
+  "model_config_sha256": "fabb73eb513ec64f3a365da396b38de8d55b3930edfb11baeecbf34ecafa6126",
+  "model_index_sha256": "9fd852f69ed64442e31dce1cbc5fe7acd0a76bfb848e945d272fe98d00d0c9cd"
+}

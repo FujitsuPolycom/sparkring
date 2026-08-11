@@ -16,10 +16,10 @@ ROOT = Path(__file__).resolve().parents[1]
 RECIPES = ROOT / "recipes"
 NF3_RECIPE = "glm52-nf3-hybrid"
 EXL3_RECIPE = "glm52-exl3-tr3-3.25bpw"
-DEFAULT_RECIPE = EXL3_RECIPE
+EXL3_R7_RECIPE = "glm52-exl3-r7-3.5bpw"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 OCI_DIGEST_RE = re.compile(r"^.+@sha256:[0-9a-f]{64}$")
-
+DEFAULT_RECIPE = EXL3_RECIPE
 TOP_LEVEL_KEYS = {
     "schema",
     "recipe_id",
@@ -73,9 +73,10 @@ def _validate(recipe: dict[str, Any]) -> None:
         _validate_nf3(recipe)
     elif recipe["recipe_id"] == EXL3_RECIPE:
         _validate_exl3(recipe)
+    elif recipe["recipe_id"] == EXL3_R7_RECIPE:
+        _validate_exl3_r7(recipe)
     else:
         raise RecipeError(f"unsupported recipe id: {recipe['recipe_id']}")
-
 
 def _validate_hardware(recipe: dict[str, Any]) -> None:
     if recipe["hardware"] != {
@@ -380,6 +381,111 @@ def _validate_exl3(recipe: dict[str, Any]) -> None:
     }
     if lmcache != expected_lmcache:
         raise RecipeError("serving.lmcache drifted from the CS512 contract")
+
+
+def _validate_exl3_r7(recipe: dict[str, Any]) -> None:
+    """Validate the EXL3 R7 3.5-bpw candidate recipe.
+
+    The R7 candidate is a non-default, live-validated candidate. It must
+    not claim to be the default or accepted, and its model and serving
+    contract must match the qualified fixed-MTP4, DCP4, KV9.25 profile.
+    """
+    if recipe["default"] is not False:
+        raise RecipeError("the R7 candidate must remain non-default")
+    if recipe["maturity"] != "live-validated":
+        raise RecipeError("the R7 recipe maturity must remain live-validated")
+    _validate_hardware(recipe)
+
+    model = recipe["model"]
+    if model.get("repository") != (
+        "brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78"
+    ):
+        raise RecipeError("R7 model.repository is not the qualified checkpoint")
+    _require_commit(model.get("revision"), "model.revision")
+    for field in ("config_sha256", "index_sha256"):
+        _require_sha256(model.get(field), f"model.{field}")
+    if model.get("shard_count") != 157:
+        raise RecipeError("R7 model.shard_count must remain 157")
+    if model.get("weight_count") != 186905:
+        raise RecipeError("R7 model.weight_count must remain 186905")
+    if model.get("index_total_size") != 346218639128:
+        raise RecipeError("R7 model.index_total_size must remain 346218639128")
+
+    runtime = recipe["runtime"]
+    if runtime.get("final_image") is not None:
+        raise RecipeError("R7 runtime.final_image must be null (no registry image)")
+    local_id = runtime.get("validated_local_image_id")
+    if not isinstance(local_id, str) or not re.fullmatch(
+        r"sha256:[0-9a-f]{64}", local_id
+    ):
+        raise RecipeError("R7 runtime.validated_local_image_id is malformed")
+    pins = runtime.get("pins")
+    if pins != "runtime/exl3-r7/pins.json":
+        raise RecipeError("R7 runtime.pins must point to the builder branch pins")
+    if not (ROOT / "scripts" / "download_exl3_r7.py").is_file():
+        raise RecipeError("R7 runtime.download_script must be published")
+    if not (ROOT / "scripts" / "generate_exl3_r7_candidate.py").is_file():
+        raise RecipeError("R7 runtime.profile_generator must be published")
+    if not (ROOT / "scripts" / "prepare_exl3_r7_mtp4.py").is_file():
+        raise RecipeError("R7 runtime.mtp4_generator must be published")
+
+    _validate_publication(recipe)
+    publication = recipe["publication"]
+    if publication.get("zero_build_ready") is not False:
+        raise RecipeError("R7 candidate must not claim zero_build_ready")
+    if publication.get("local_build_ready") is not False:
+        raise RecipeError("R7 candidate must not claim local_build_ready")
+    if not publication.get("blocker"):
+        raise RecipeError("R7 must state its public-bootstrap blocker")
+    evidence = publication.get("evidence")
+    if not isinstance(evidence, str) or not (ROOT / evidence).is_file():
+        raise RecipeError("R7 publication.evidence must name a published file")
+
+    serving = recipe["serving"]
+    required_serving = {
+        "served_model_name": "glm-5.2-exl3-r7-3.5bpw",
+        "tensor_parallel_size": 4,
+        "decode_context_parallel_size": 4,
+        "dcp_backend": "ag_rs",
+        "mtp_policy": "fixed-4",
+        "max_model_len": 65536,
+        "kv_cache_dtype": "fp8_ds_mla",
+        "kv_cache_bytes_per_rank": 9250000000,
+        "reported_kv_tokens": 675840,
+        "request_usable_kv_tokens": 675584,
+        "gpu_memory_utilization": 0.85,
+        "max_num_batched_tokens": 2048,
+        "max_num_seqs": 8,
+        "max_query_rows": 40,
+        "load_format": "instanttensor",
+        "online_quantization": "exl3-b6",
+        "online_quantization_scope": "target-only",
+        "online_cache_mode": "readwrite",
+        "execution_mode": "FULL_AND_PIECEWISE",
+        "native_prefix_caching": True,
+        "lmcache": False,
+        "sparkcache": False,
+    }
+    for key, expected in required_serving.items():
+        if serving.get(key) != expected:
+            raise RecipeError(
+                f"R7 serving.{key} must be {expected!r}; got {serving.get(key)!r}"
+            )
+    for transport_field in (
+        "tensor_parallel_transport",
+        "dcp_transport",
+        "indexer_transport",
+    ):
+        if transport_field not in serving:
+            raise RecipeError(f"R7 serving.{transport_field} must be declared")
+    if serving.get("tensor_parallel_transport") != (
+        "sircl-with-nccl-fallback"
+    ):
+        raise RecipeError("R7 TP transport must be the qualified hybrid")
+    if serving.get("dcp_transport") != "stock":
+        raise RecipeError("R7 DCP transport must remain stock")
+    if serving.get("indexer_transport") != "stock":
+        raise RecipeError("R7 indexer transport must remain stock")
 
 
 def _canonical_digest(recipe: dict[str, Any]) -> str:

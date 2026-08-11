@@ -1,0 +1,305 @@
+# EXL3 R7 3.5-bpw candidate stand-up quickstart
+
+This is the stand-up path for the **public-functional-lane, live-validated
+candidate** known as the EXL3 R7 fixed-MTP4, DCP4, 9.25 GB KV/rank profile.
+It is **not** the repository default, not an accepted public-functional
+matrix, and not a reference-lane result. The advertised default remains
+[EXL3 3.25-bpw plus LMCache CS512](EXL3_QUICKSTART.md). NF3 remains an
+[accepted deterministic alternative](NF3_QUICKSTART.md).
+
+## Candidate maturity
+
+| Attribute | Value |
+|---|---|
+| Lane | public-functional |
+| Maturity | live-validated candidate |
+| Accepted | no |
+| Default | no |
+| Hardware | four directly cabled DGX Sparks / GB10 GPUs |
+| Evidence | [EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md) |
+
+## Serving contract
+
+| Setting | Candidate value |
+|---|---|
+| Model | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` |
+| Config SHA-256 | `fabb73eb513ec64f3a365da396b38de8d55b3930edfb11baeecbf34ecafa6126` |
+| Index SHA-256 | `9fd852f69ed64442e31dce1cbc5fe7acd0a76bfb848e945d272fe98d00d0c9cd` |
+| Parallelism | TP4 plus DCP4 `ag_rs`, interleave size one |
+| Speculation | fixed MTP4, greedy draft sampling, adaptive depth disabled |
+| Maximum sequences | 8 |
+| Query-row contract | Q1 through Q40; `8 * (4 + 1) = 40` verification rows |
+| KV representation | `fp8_ds_mla`, B12X block size 64 |
+| KV allocation | 9,250,000,000 bytes/rank; 37,000,000,000 bytes aggregate |
+| Reported KV capacity | 675,840 tokens |
+| Model limit | 65,536 tokens |
+| Graphs | `FULL_AND_PIECEWISE`, Q1 through Q40 |
+| TP transport | hybrid SparkRing native plus patched NCCL 2.30.7 NET/IB fallback |
+| DCP and indexer transport | stock `ag_rs` DCP and stock indexer collectives |
+| Online quantization | EXL3 K6, target-only scope |
+| Cache | native prefix caching enabled; LMCache and SparkCache disabled |
+
+## Rollback profile
+
+The exact rollback is the fixed-MTP3, 9.25 GB KV profile. It differs from
+the candidate only in:
+
+```text
+profile and mode:              fixed-mtp4 -> fixed-mtp3
+VLLM_SPARK_MTP_TOKENS:         4          -> 3
+num_speculative_tokens:        4          -> 3
+VLLM_SPARK_MAX_QUERY_ROWS:     40         -> 32
+CUDA graph capture sizes:      Q1-Q40     -> Q1-Q32
+maximum graph capture size:    40         -> 32
+site serving.mtp_tokens:       4          -> 3
+```
+
+The rollback profile and site are byte-identical to the MTP3 KV9.25 inputs.
+The MTP3 rollback is documented in
+[EXL3_R7_FIXED_MTP3_PROFILE.md](EXL3_R7_FIXED_MTP3_PROFILE.md).
+
+## 1. Complete the prerequisites
+
+Read [PREREQUISITES.md](PREREQUISITES.md) completely. You need four ARM64
+DGX Sparks with the direct 200-Gb/s cycle cabled and qualified, management
+SSH from rank 0 to every rank, Docker with GPU access, enough storage for
+the 346-GB model plus build/image headroom, and a filled ignored site
+configuration.
+
+```bash
+cp scripts/config/exl3-r7-site.example.yaml scripts/config/site.yaml
+$EDITOR scripts/config/site.yaml
+python scripts/sparkring_site.py scripts/config/site.yaml
+python scripts/preflight.py --site scripts/config/site.yaml --print-plan
+```
+
+Do not commit `scripts/config/site.yaml`. It contains local identities
+and paths. Review every resolved rank, NIC, GID, direct-ring peer, model
+path, and storage path before proceeding.
+
+## 2. Download and verify the immutable checkpoint
+
+The model is `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78` at revision
+`9ab9579774cc432df91567a36f6e9e863e0d4c9f`. The downloader verifies
+every runtime file against metadata at that pinned revision.
+
+```bash
+python scripts/download_exl3_r7.py download \
+  --model-path /var/tmp/sparkring-r7-model
+```
+
+This downloads 157 weight shards plus 10 pinned metadata files and
+verifies every SHA-256. The index total size is 346,218,639,128 bytes.
+The downloader rejects a stale payload total, missing LFS metadata, hash
+mismatch, or unmanifested files. It quarantines corrupted local files
+instead of silently overwriting them.
+
+Verify an existing download without re-downloading:
+
+```bash
+python scripts/download_exl3_r7.py verify \
+  --model-path /var/tmp/sparkring-r7-model
+```
+
+## 3. Build or obtain the ARM64 image
+
+The R7 image is **not published to a registry**. You must either:
+
+### Option A: Pull by digest (if you have a local image store)
+
+If you have built the image on the builder branch or received it from a
+trusted builder, replace the placeholder in the site template:
+
+```bash
+# Derive your image ID:
+docker image inspect <your-image-ref> --format '{{.Id}}'
+```
+
+Update `scripts/config/site.yaml`:
+```yaml
+runtime:
+  container_image: <your-image-ref>
+  container_image_digest: <your-image-id>
+```
+
+### Option B: Local ARM64 build (builder branch)
+
+The `runtime/exl3-r7/` directory (Containerfile, entrypoint.sh,
+build-image.sh, builder pins) is on a separate branch. Build the image
+there, then reference the resulting image ID in your site configuration.
+
+The image attestation hook verifies these overlay SHA-256 values at
+container startup:
+
+| File | SHA-256 |
+|---|---|
+| entrypoint | `bbc72446e9a7d811c903e76e37e7d9dfce3d21108b2ea7c3db278bb71e84f95e` |
+| weight_utils | `da5e6c3429293870d0de611183818fa57c0e9e0ad896784bc739c8a812343102` |
+| exl3 scratch | `8e0051faf9b8bac9eefd6f38a5f0133a30bca4c0b5ab41962537e2f13cf968f4` |
+| cudagraph_utils | `ef03d64297ed2d1a5161847b48a435bf8ae5feda7a5b81b668d00ae9a1d65a2a` |
+| quack layout_utils | `3199dc3f55f346183e3d284f6da98f4394eaf14f28b7616d147e6e49ec896194` |
+| quack copy_utils | `2ce88b0d7ee9afe025e52c02fcb32e772a429f1ee626b59546ab8b61d7a37929` |
+| nonfinite trace | `90f4591b71bd8da9e2e37c866bcac17c89583db5d70ae2c80b095a7c35eae01b` |
+| tvm-ffi wheel | `3829216a8500c2f61062e48c627f6db6c3fa49416b3ffa85bc04243ae5d759f7` |
+
+## 4. Generate the offline profile chain
+
+The stand-up entrypoint derives the complete profile chain from tracked
+inputs. It is **dry-run by default** — no files are written and no
+hosts are contacted.
+
+```bash
+python scripts/exl3_r7_standup.py plan
+```
+
+Review the planned steps. All steps in this mode are OFFLINE. To execute
+the offline chain (writes files under `.sparkring/exl3-r7/`):
+
+```bash
+python scripts/exl3_r7_standup.py plan --execute
+```
+
+This produces:
+
+```text
+.sparkring/exl3-r7/
+  stock-dcp4-profile.json      # stock-DCP4 baseline (MTP-off, Q24, 9 GB)
+  mtp2-profile.json            # fixed-MTP2 derivative
+  mtp3-profile.json            # fixed-MTP3 derivative
+  mtp3-kv925-profile.json     # KV9.25 profile (byte-identical to MTP3)
+  mtp3-kv925-site.yaml         # KV9.25 site (9.25 GB KV/rank)
+  mtp4-kv925-profile.json     # fixed-MTP4 candidate
+  mtp4-kv925-site.yaml         # candidate site (mtp_tokens: 4)
+  mtp4-kv925-rollback.json     # byte-identical to MTP3 KV9.25
+  mtp4-kv925-rollback-site.yaml # byte-identical to MTP3 KV9.25 site
+```
+
+The receipt JSON includes SHA-256 hashes for every profile and site, plus
+the rollback identity assertion.
+
+## 5. Validate the generated profiles
+
+```bash
+python -m pytest scripts/test_generate_exl3_r7_candidate.py \
+  scripts/test_generate_exl3_r7_stock_dcp4.py \
+  scripts/test_prepare_exl3_r7_mtp2.py \
+  scripts/test_prepare_exl3_r7_mtp3.py \
+  scripts/test_prepare_exl3_r7_mtp3_kv925.py \
+  scripts/test_prepare_exl3_r7_mtp4.py \
+  scripts/test_download_exl3_r7.py \
+  scripts/test_exl3_r7_standup.py -q
+```
+
+## 6. Inspect the dry-run launch plan (READ-ONLY REMOTE)
+
+After filling `scripts/config/site.yaml`:
+
+```bash
+python scripts/preflight.py --site scripts/config/site.yaml --print-plan
+```
+
+This is a **READ-ONLY REMOTE** step. It contacts configured hosts but is
+guarded against remote mutation. Review the plan before running the full
+read-only preflight:
+
+```bash
+python scripts/preflight.py --site scripts/config/site.yaml
+```
+
+## 7. Start the reviewed profile (MUTATES HOST + STOPS SERVING)
+
+Starting the candidate requires explicit authorization for the four named
+hosts and a preserved rollback path. Use the generic launcher:
+
+```bash
+python scripts/sparkring_generic_launcher.py \
+  --site scripts/config/site.yaml \
+  --profile .sparkring/exl3-r7/mtp4-kv925-profile.json \
+  plan
+```
+
+Review the plan. Then start (this **STOPS SERVING** if a stack is running):
+
+```bash
+python scripts/sparkring_generic_launcher.py \
+  --site scripts/config/site.yaml \
+  --profile .sparkring/exl3-r7/mtp4-kv925-profile.json \
+  --execute \
+  --confirmation START-EXL3-R7-MTP4-KV925-ALL-FOUR \
+  start
+```
+
+## 8. Health and model checks
+
+```bash
+python scripts/sparkring_generic_launcher.py \
+  --site scripts/config/site.yaml \
+  --profile .sparkring/exl3-r7/mtp4-kv925-profile.json \
+  --execute status
+```
+
+Require `/health` HTTP 200, the exact served model name
+`glm-5.2-exl3-r7-3.5bpw`, and 65,536 maximum model length from
+`/v1/models`.
+
+## 9. MTP3 rollback
+
+If the MTP4 candidate must be rolled back, the exact MTP3 KV9.25 profile
+and site are in the rollback artifacts:
+
+```bash
+python scripts/sparkring_generic_launcher.py \
+  --site scripts/config/site.yaml \
+  --profile .sparkring/exl3-r7/mtp4-kv925-rollback.json \
+  --execute \
+  --confirmation ROLLBACK-EXL3-R7-MTP3-KV925-ALL-FOUR \
+  start
+```
+
+The rollback profile is byte-identical to the MTP3 KV9.25 input. Verify:
+
+```bash
+sha256sum .sparkring/exl3-r7/mtp4-kv925-rollback.json
+sha256sum .sparkring/exl3-r7/mtp3-kv925-profile.json
+```
+
+These must match.
+
+## Limitations
+
+- This is a live-validated candidate on one four-Spark appliance, not an
+  accepted or default public-functional configuration.
+- MTP4 improves the measured C1-C4 cells but regresses the matched
+  C8 cell by 11.63%. See
+  [EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md).
+- The `runtime/exl3-r7/` builder overlay (Containerfile, entrypoint.sh,
+  build-image.sh) is on a separate branch. A public registry image does
+  not exist.
+- DCP and indexer collectives remain on the stock path. Only the
+  qualified TP all-reduce and vocabulary families use the SparkRing native
+  transport.
+- Fixed MTP5 is unsupported by this image. Q48 requires a Python
+  contract extension and a rebuilt native library.
+
+## Input chain
+
+The public input chain is:
+
+```text
+recipes/glm52-exl3-r7-3.5bpw.json          # tracked recipe (model + serving contract)
+scripts/config/exl3-r7-pins.json             # public pins (derived from recipe)
+scripts/config/exl3-r7-candidate.example.json # candidate template (placeholders)
+scripts/config/exl3-r7-site.example.yaml       # site template (placeholder addresses)
+scripts/generate_exl3_r7_candidate.py         # baseline profile generator
+scripts/generate_exl3_r7_stock_dcp4.py        # stock-DCP4 baseline generator
+scripts/prepare_exl3_r7_mtp2.py               # MTP2 derivative
+scripts/prepare_exl3_r7_mtp3.py                # MTP3 derivative
+scripts/prepare_exl3_r7_mtp3_kv925.py          # KV9.25 derivative (site-only)
+scripts/prepare_exl3_r7_mtp4.py                # MTP4 derivative (the candidate)
+scripts/download_exl3_r7.py                     # checkpoint downloader/verifier
+scripts/exl3_r7_standup.py                      # stand-up entrypoint (dry-run default)
+```
+
+A user does not need any maintainer-held corrected stock-DCP4 profile. The
+stock-DCP4 baseline is derived from the tracked candidate generator plus
+the recipe's serving contract.
