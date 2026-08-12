@@ -22,36 +22,46 @@ SparkRing’s contribution is to adapt, integrate, and extend those foundations 
 Detailed project and contributor credits are maintained in the acknowledgements and provenance documentation.
 ## Featured model: EXL3 R7 3.5-bpw fixed-MTP4
 
-The operator-running SparkRing research profile uses
+The operator's accepted 3.5-bpw SparkRing profile uses
 [`brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78`](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78)
 at immutable revision `9ab9579774cc432df91567a36f6e9e863e0d4c9f`. Four directly
 cabled DGX Sparks serve it with TP4/DCP4, fixed MTP4, 9.25 GB of KV memory per
 rank, dynamic per-token NVFP4 latent KV plus FP8 RoPE, a 262,144-token request
 limit, a 4,096-token prefill ceiling, and native SparkRing TP transport through
 Q40. Eligible pure-prefill work uses the B12X transient full-CKV DCP gather.
+The target-only exact-Q40 routed-MoE state uses capacity 40 and route block 8;
+Q1-Q32, other prefill shapes, and the draft model retain their prior states.
 
-| Measurement | Bounded result |
-|---|---:|
-| 8K / 16K unique cold prefill | **500 / 608 tok/s** |
-| 64K / 128K unique cold prefill | **563 / 551 tok/s** |
-| Unique-16K C8 sustained decode | **48 tok/s aggregate** |
-| Reported KV capacity | **1,156,864 tokens** |
+| Measurement | TTFT | Bounded result | Samples |
+|---|---:|---:|---:|
+| 8K standalone-cold C1 prefill | 12.273 s | **668 tok/s** | 2 |
+| 16K standalone-cold C1 prefill | 24.875 s | **659 tok/s** | 1 |
+| 32K standalone-cold C1 prefill | 50.172 s | **653 tok/s** | 1 |
+| Unique-16K C8 warm sustained decode | - | **73.208 tok/s aggregate** | 2 candidate arms |
+| Reported KV capacity | - | **1,156,864 tokens** | all four ranks |
 
-Compared with the otherwise identical dynamic-NVFP4 control, CKV gather
-improved the matched single-sample prefill rows by 14.85%-39.16%. CKV gather is
-not active during decode, so the positive C8 difference is treated only as a
-no-regression observation. Repeated 128-token and 256-token greedy outputs
-matched the MTP-disabled control, requested logprobs were finite, all four
-speculative positions were active, and the four-rank transport audit passed.
+The matched exact-Q40 decode bracket replayed the same eight unique 16K
+payloads with full 8/8 residency and a 25-second measurement window. Its
+73.208 tok/s candidate mean was 19.341% above the 61.344 tok/s control mean;
+the slower candidate repeat exceeded the fastest control repeat by 14.93%.
+All 75 target layers passed exact BF16 parity, deterministic 16K and 32K output
+equality passed, and final graph, API, transport, and capacity gates passed.
 
-This configuration is an **operator-running, live-validated research
-candidate**, not the reproducible public default or an accepted support
-matrix. Its larger NVFP4 pool has not repeated the predecessor FP8 profile's
-near-capacity residency gate. Its sanitized profile-generation chain is not
-yet published. Read the
+The 8K-32K prefill rows are client-timed `llm_decode_bench` v0.4.31
+observations with 100% unique generated contexts. Their low sample counts and
+unavailable server-side cached-token accounting make them bounded operating
+snapshots, not throughput distributions or independently proven cache misses.
+The predeclared exact-Q40 prefill reducer separately remains a machine failure:
+its sole primary miss was 0.1215% at 64K. Operator acceptance treats that
+bounded difference as measurement-neutral without relabelling the machine
+result as a pass.
+
+This configuration is the **accepted operator default for 3.5-bpw EXL3**. Its
+acceptance scope is one four-Spark appliance; it is not the reproducible
+public-functional default or an accepted public deployment matrix. Read the
 [fixed-MTP4 specification](docs/EXL3_R7_FIXED_MTP4_PROFILE.md),
 [optimization record](docs/EXL3_R7_OPTIMIZATION_20260811.md), and
-[machine-readable evidence](docs/configurations/glm52-exl3-r7-mtp4-nvfp4-ckv-gather-20260811.json)
+[machine-readable operator acceptance](docs/configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json)
 before reproducing or extending it.
 
 ## Public default: EXL3 3.25-bpw with LMCache CS512

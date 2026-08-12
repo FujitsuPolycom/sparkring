@@ -93,14 +93,16 @@
       "full_live_bundle_exists": false,
       "entrypoint": "docs/EXL3_ACCEPTANCE_RUNBOOK.md"
     },
-    "exl3_r7_mtp4_nvfp4_ckv_candidate": {
-      "maturity": "live-validated",
+    "exl3_r7_mtp4_nvfp4_ckv_operator_default": {
+      "maturity": "accepted",
       "lane": "public-functional",
-      "configuration_status": "candidate",
-      "accepted": false,
+      "configuration_status": "accepted-operator-default",
+      "accepted": true,
       "default": false,
+      "operator_default": true,
+      "public_functional_default": false,
       "operator_running_configuration": true,
-      "comparison_role": "operator-3.5-bpw-quantization-baseline",
+      "acceptance_scope": "operator-3.5-bpw-four-spark-profile",
       "hardware": "four directly cabled NVIDIA DGX Sparks / GB10 GPUs",
       "model": "brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f",
       "topology": "TP4/DCP4",
@@ -122,10 +124,30 @@
       "matched_ckv_gather_ab_complete": true,
       "matched_prefill_gain_percent_range": [14.85, 39.16],
       "matched_decode_regression_observed": false,
+      "exact_q40_policy": {
+        "status": "accepted-operator-default",
+        "scope": "target mixed-EXL3 layers at exactly 40 routed rows",
+        "capacity_rows": 40,
+        "route_block_rows": 8,
+        "q1_q32_unchanged": true,
+        "other_prefill_shapes_unchanged": true,
+        "uniform_draft_unchanged": true,
+        "all_75_layer_exact_bf16_parity_passed": true,
+        "reported_kv_capacity_unchanged": true,
+        "warm_c8_baseline_mean_tok_s": 61.343758379897,
+        "warm_c8_candidate_mean_tok_s": 73.20831541406938,
+        "warm_c8_gain_percent": 19.341098992820307,
+        "prefill_machine_gate": "fail",
+        "prefill_machine_gate_failure_context_tokens": 65536,
+        "prefill_machine_gate_delta_percent": -0.12150089352351845,
+        "prefill_engineering_interpretation": "measurement-neutral",
+        "acceptance_basis": "explicit operator engineering waiver; the machine failure remains preserved"
+      },
       "long_context_capacity_gate_passed": false,
       "long_context_capacity_gate_scope": "The predecessor FP8 profile passed the 512,000-token residency gate; the exact dynamic-NVFP4 CKV-gather profile has not repeated it.",
       "entrypoint": "docs/EXL3_R7_FIXED_MTP4_PROFILE.md",
-      "machine_readable_evidence": "docs/configurations/glm52-exl3-r7-mtp4-nvfp4-ckv-gather-20260811.json"
+      "machine_readable_evidence": "docs/configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json",
+      "predecessor_machine_readable_evidence": "docs/configurations/glm52-exl3-r7-mtp4-nvfp4-ckv-gather-20260811.json"
     },
     "nf3_recipe": {
       "maturity": "accepted",

@@ -4,7 +4,7 @@
 > NF3 has a smaller accepted sanity set in [README.md](../README.md).
 > EXL3+LMCache CS512 is the main advertised public-functional configuration and
 > has the bounded clean-checkout gate below. The operator's running EXL3 R7
-> fixed-MTP4 service is a separately labelled candidate.
+> fixed-MTP4 service is the separately scoped operator default.
 > Results are not interchangeable between checkpoints or evidence origins.
 
 ## Current EXL3+LMCache public-path gate
@@ -92,6 +92,50 @@ open capacity gates are in the
 [fixed-MTP4 dynamic-NVFP4 candidate specification](EXL3_R7_FIXED_MTP4_PROFILE.md)
 and
 [sanitized machine-readable evidence](configurations/glm52-exl3-r7-mtp4-nvfp4-ckv-gather-20260811.json).
+
+### 2026-08-12 EXL3 R7 exact-Q40 operator acceptance
+
+The accepted operator 3.5-bpw profile adds a target-only routed-MoE state for
+exactly 40 rows. It uses capacity 40 and route block 8 without changing Q1-Q32,
+other prefill shapes, or the uniform draft path. The matched decode bracket
+replayed the same eight unique 16K payloads with full 8/8 residency and a
+25-second measurement window.
+
+| Measurement | Control | Exact-Q40 profile | Change |
+|---|---:|---:|---:|
+| Warm C8 mean | 61.344 tok/s | **73.208 tok/s** | **+19.341%** |
+| Slowest candidate versus fastest control | 62.907 tok/s | **72.297 tok/s** | **+14.93%** |
+| Reported KV capacity | 1,156,864 tokens | **1,156,864 tokens** | unchanged |
+
+One later bounded operator snapshot used `llm_decode_bench` v0.4.31 in
+standalone-cold C1 mode with 100% unique generated contexts:
+
+| Context | Client TTFT | Client-timed prefill | Samples |
+|---|---:|---:|---:|
+| 8K | 12.273 s | **668 tok/s** | 2 |
+| 16K | 24.875 s | **659 tok/s** | 1 |
+| 32K | 50.172 s | **653 tok/s** | 1 |
+
+The complete benchmark JSON has SHA-256
+`feed67820caf37cc016473a38584b11b4205a628183f64e2b48b082a7bad2854`.
+These are low-sample client observations. The benchmark did not return
+server-side cached-token accounting for these cells, so they are not presented
+as distributions or independently proven cache misses.
+
+The exact-Q40 prefill non-regression bracket measured medians of 526.449,
+623.599, 615.930, 618.246, and 619.807 tok/s at 8K, 16K, 32K, 64K, and 128K.
+The predeclared reducer returned failure only at 64K: 618.246 tok/s was 0.1215%
+below the lower 618.998 tok/s baseline-envelope median. The operator accepted
+that bounded difference as measurement-neutral without relabelling the machine
+failure as a pass. All-rank runtime attestation, exact BF16 parity across all
+75 target layers, deterministic 16K/32K output equality, graph capture,
+transport convergence, API health, and final capacity passed.
+
+This result is accepted only as the operator's four-Spark 3.5-bpw default. It
+does not replace the clean-checkout 3.25-bpw public-functional default. The
+complete contract and immutable receipt hashes are in the
+[fixed-MTP4 specification](EXL3_R7_FIXED_MTP4_PROFILE.md) and
+[operator-acceptance summary](configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json).
 
 ### 2026-08-11 EXL3 R7 fixed-MTP4 FP8 predecessor
 

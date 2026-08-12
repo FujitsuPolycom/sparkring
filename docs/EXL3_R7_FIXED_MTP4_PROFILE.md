@@ -1,23 +1,25 @@
-# GLM-5.2 R7 3.5-bpw fixed-MTP4 dynamic-NVFP4 candidate
+# GLM-5.2 R7 3.5-bpw fixed-MTP4 operator default
 
 ## Status and evidence scope
 
-This configuration is the operator's **3.5-bpw quantization baseline** and a
-**public-functional-lane, live-validated candidate** for four directly cabled
-NVIDIA DGX Sparks / GB10 GPUs. Its baseline role identifies the comparison
-configuration for 3.5-bpw research; it does not make the profile the repository
-default, an accepted public-functional matrix, or a transferable result for
-other hardware. The advertised default remains EXL3 3.25-bpw plus LMCache
-CS512.
+This configuration is the **accepted operator default for 3.5-bpw EXL3** on
+four directly cabled NVIDIA DGX Sparks / GB10 GPUs. It is live-validated in the
+public-functional lane, but its acceptance scope is the operator's four-Spark
+appliance. It is not the repository-wide public-functional default, an
+accepted public deployment matrix, or a transferable result for other
+hardware. The advertised public-functional default remains EXL3 3.25-bpw plus
+LMCache CS512.
 
-The candidate serves
+The operator profile serves
 `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78` at immutable revision
 `9ab9579774cc432df91567a36f6e9e863e0d4c9f`. It combines TP4, DCP4,
 fixed-depth-four MTP, dynamic per-token NVFP4 latent KV, FP8 RoPE storage, a
 262,144-token request limit, a 4,096-token prefill ceiling, and a transient
 full-CKV DCP gather for pure prefill. The exact four-rank startup, graph,
 bounded correctness, speculative-decoding, transport, and matched
-prefill/decode A/B gates described below passed on 2026-08-11.
+prefill/decode A/B gates described below passed on 2026-08-11. On 2026-08-12,
+the operator accepted the target-only exact-Q40 block-8 policy described below
+as the default extension to this profile.
 
 The sanitized machine-readable result is
 [glm52-exl3-r7-mtp4-nvfp4-ckv-gather-20260811.json](configurations/glm52-exl3-r7-mtp4-nvfp4-ckv-gather-20260811.json).
@@ -25,6 +27,8 @@ The raw endpoint, rank-status, and benchmark artifacts are maintainer-held and
 identified by SHA-256 in that record. The earlier FP8, 65,536-token fixed-MTP4
 qualification remains separately preserved in
 [glm52-exl3-r7-mtp4-kv925-20260811.json](configurations/glm52-exl3-r7-mtp4-kv925-20260811.json).
+The exact-Q40 acceptance result is
+[glm52-exl3-r7-mtp4-q40-block8-20260812.json](configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json).
 
 ## Serving contract
 
@@ -37,6 +41,7 @@ qualification remains separately preserved in
 | Speculation | fixed MTP4, greedy draft sampling, adaptive depth disabled |
 | Maximum sequences | 8 |
 | Query-row contract | Q1 through Q40; `8 * (4 + 1) = 40` verification rows |
+| Exact-Q40 routed-MoE policy | Target mixed-EXL3 layers use capacity 40 and route block 8 only at exactly 40 rows; Q1-Q32, other prefill shapes, and the draft model retain their prior states |
 | KV representation | `nvfp4_ds_mla`, dynamic per-token scale, FP8 RoPE, 368-byte record |
 | KV allocation | 9,250,000,000 bytes/rank; 37,000,000,000 bytes aggregate |
 | Reported KV capacity | 1,156,864 tokens |
@@ -59,6 +64,56 @@ One process-and-device CUDA stream is shared across target, draft-prefill, and
 draft-decode graph managers. Their graph-capture contexts and channel IDs stay
 distinct. This preserves the Spark TP4 graph session's stable-caller-stream
 invariant without merging graph ownership.
+
+## Accepted exact-Q40 routed-MoE policy
+
+The accepted operator profile adds one target-only EXL3 runtime state for
+exactly 40 routed rows. That state uses capacity 40, route block 8, and the
+existing prefill tiers and tile configuration. The insertion-only source delta
+does not change Q1-Q32 decode dispatch, general prefill dispatch for row counts
+other than 40, or the uniform draft-model path. The two unique Q40 arenas add
+32,268,384 bytes per rank and leave the reported KV capacity unchanged at
+1,156,864 tokens.
+
+All four ranks attested all 75 routed target layers before graph capture. Each
+layer produced exact BF16 equality between the new Q40 state and the deployed
+general-prefill comparator. Deterministic 16K and 32K application requests also
+matched the sealed control response and completion-token hashes, with finite
+log probabilities and zero differences. Graph capture, API health, transport
+sequence convergence, and the full 9.25 GB/rank KV allocation passed after the
+measurements.
+
+The matched warm C8 bracket replayed the same eight unique 16K request payloads
+with a 25-second measurement window and full 8/8 residency:
+
+| Arm | Aggregate tokens/s |
+|---|---:|
+| Baseline A1 | 59.656 |
+| Baseline A2 | 61.468 |
+| Baseline C2 | 62.907 |
+| Baseline mean | 61.344 |
+| Exact-Q40 candidate B2 | 74.119 |
+| Exact-Q40 candidate B3 | 72.297 |
+| Exact-Q40 candidate mean | **73.208** |
+| Candidate change from baseline mean | **+19.341%** |
+
+The slower candidate repeat exceeded the fastest baseline repeat by 14.93%.
+A post-prefill durability replay measured 66.685 aggregate tokens/s with all
+eight requests resident and no queue, request error, capacity limit, fatal
+transport state, or overflow.
+
+The predeclared prefill reducer remains recorded as a machine failure. Its sole
+primary-gate miss was the 64K median: 618.246 tokens/s versus the lower sealed
+baseline median of 618.998 tokens/s, or -0.1215%. The operator accepts that
+difference as measurement-neutral rather than a material regression. The 16K
+and 128K primary prefill gates passed; the 32K median was inside the baseline
+envelope. This is an explicit engineering waiver of the literal threshold, not
+a rewritten gate or a claim that the machine result passed.
+
+Fixed-prompt non-Q40 checks measured C1 at 22.218 versus 22.362 tokens/s
+(-0.65%) and C4 at 45.703 versus 46.578 tokens/s (-1.88%). These
+source-identical paths are treated as bounded measurement noise, not as
+optimization results.
 
 ## Exact CKV-gather delta and rollback
 
@@ -189,8 +244,14 @@ contract, not for the exact dynamic-NVFP4/262K/CKV-gather profile. The larger
 
 ## Limitations
 
-- This is a live-validated candidate on one four-Spark appliance, not an
-  accepted or default public-functional configuration.
+- This is the accepted operator default on one four-Spark appliance, not the
+  repository-wide public-functional default or an accepted public deployment
+  matrix.
+- The exact-Q40 acceptance is an explicit engineering decision over a
+  predeclared machine prefill failure at 64K of -0.1215%. The failure remains
+  preserved in the machine-readable evidence.
+- The +19.341% decode result applies to fixed-MTP4 Q40 at 16K with eight fully
+  resident requests. It is not an all-shape or all-concurrency speed claim.
 - The current exact profile has bounded startup, output-equivalence,
   speculative-decoding, transport, and matched prefill/decode evidence. Its
   262,144-token request boundary and near-capacity concurrent residency remain
