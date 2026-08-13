@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "release": {
+    "repository": "https://github.com/local-inference-lab/blackwell-llm-docker.git",
+    "commit": "98224d1303c1497eec26c7d92f34a6fa9a58fa82",
+    "patch_root": "patches/releases/gilded-gnosis-v20-r34"
+  },
+  "components": {
+    "vllm": {
+      "repository": "https://github.com/local-inference-lab/vllm.git",
+      "base_commit": "e2666d9a65f41fc376607531453cbd57c4c71016",
+      "patch": "vllm/integration.patch",
+      "patch_sha256": "8a7269851ab5bfff8f730db9af6f19ac6c0fc26620ba32108ba17cfe4e51c903",
+      "result_tree": "4d006a43928cdee01306691a766542c1e9bebb59"
+    },
+    "b12x": {
+      "repository": "https://github.com/local-inference-lab/b12x.git",
+      "base_commit": "7cecbb2c4819636ae7f05f8b116f2c45ee2cff7b",
+      "patch": "b12x/integration.patch",
+      "patch_sha256": "406970efd643f5a7d1c989b7d988331b16ab7e84d868cf2d9cbabb7707633687",
+      "result_tree": "cd3ce190f0f1917402cdfd5773724267cc9a63f8"
+    }
+  },
+  "runtime_dependencies": {
+    "flashinfer": "1ac6942776b383c6b03c7a5805a22e72a3e3349f",
+    "instanttensor": "49b4010afc1cae0441e71fe0b0bffc24fa05e932",
+    "launcher": "7302862b8fcfdc7c06a411a61e1f0fb072258880",
+    "exllamav3": "704aefd743b390af4bd0fb429d1906f9b964c7d8",
+    "b12x_package_version": "1.2.1"
+  }
+}

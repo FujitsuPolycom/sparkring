@@ -34,6 +34,12 @@ prerequisite for the NF3 alternative. Its operator procedure is
 [`docs/NF3_QUICKSTART.md`](../docs/NF3_QUICKSTART.md). The default EXL3 path is
 [`docs/QUICKSTART.md`](../docs/QUICKSTART.md).
 
+The operator's separately scoped EXL3 R7 3.5-bpw component lineage has its own
+reviewable ARM64 builder at [`runtime/exl3-r7/`](exl3-r7/README.md). That
+builder consumes immutable public source pins and emits a locally tagged image;
+it does not include model weights, a registry push, site configuration, or the
+operator's accepted exact-Q40 serving overlay.
+
 ## The two-lane model
 
 - **Public lane (this directory):** everything needed to rebuild the *public

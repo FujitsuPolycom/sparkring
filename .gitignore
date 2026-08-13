@@ -95,3 +95,6 @@ desktop.ini
 compile_commands.json
 CMakeCache.txt
 CMakeFiles/
+.omp-task.md
+.omp-error.log
+.omp-output.log
