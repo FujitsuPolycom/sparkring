@@ -73,6 +73,8 @@
       "clean_checkout_image_live_gate_passed": false,
       "includes_model_weights": false,
       "includes_operator_exact_q40_overlay": false,
+      "operator_profile_composition_published": true,
+      "operator_profile_composition_entrypoint": "docs/EXL3_R7_OPERATOR_REPRODUCTION.md",
       "entrypoint": "runtime/exl3-r7/README.md"
     },
     "faststart_builder": {
@@ -119,6 +121,9 @@
       "hardware": "four directly cabled NVIDIA DGX Sparks / GB10 GPUs",
       "model": "brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f",
       "topology": "TP4/DCP4",
+      "sircl_graph_protocol": "two_slot_deferred_ack",
+      "sircl_kernel_strategy": "tiered_64k",
+      "sircl_dual_port": false,
       "mtp_mode": "fixed-mtp4",
       "maximum_query_rows": 40,
       "maximum_model_length": 262144,

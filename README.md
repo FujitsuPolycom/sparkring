@@ -63,6 +63,8 @@ public-functional default or an accepted public deployment matrix. Read the
 [optimization record](docs/EXL3_R7_OPTIMIZATION_20260811.md), and
 [machine-readable operator acceptance](docs/configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json)
 before reproducing or extending it.
+The clean source/profile composition and local build commands are in
+[the operator-profile reproduction guide](docs/EXL3_R7_OPERATOR_REPRODUCTION.md).
 
 ## Public default: EXL3 3.25-bpw with LMCache CS512
 

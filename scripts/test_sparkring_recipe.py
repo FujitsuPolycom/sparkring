@@ -30,6 +30,35 @@ def _exl3_recipe() -> dict:
     )
 
 
+def _r7_recipe() -> dict:
+    return json.loads(
+        (ROOT / "recipes" / "glm52-exl3-r7-3.5bpw.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def test_r7_recipe_records_operator_accepted_profile_and_public_generators():
+    recipe = _r7_recipe()
+    recipe_module._validate(recipe)
+    assert recipe["maturity"] == "accepted"
+    assert recipe["default"] is False
+    assert recipe["publication"]["operator_default"] is True
+    assert recipe["serving"]["max_model_len"] == 262144
+    assert recipe["serving"]["kv_cache_dtype"] == "nvfp4_ds_mla"
+    assert recipe["serving"]["reported_kv_tokens"] == 1156864
+    assert recipe["serving"]["exact_q40_policy"]["route_block_rows"] == 8
+    for field in (
+        "nvfp4_generator",
+        "ckv_gather_generator",
+        "sircl_tiered_generator",
+        "exact_q40_profile_generator",
+        "exact_q40_patch",
+        "exact_q40_attestation_overlay",
+    ):
+        assert (ROOT / recipe["runtime"][field]).is_file()
+
+
 def test_nf3_recipe_is_valid_alternative_and_local_build_ready():
     recipe = _recipe()
     recipe_module._validate(recipe)

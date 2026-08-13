@@ -384,16 +384,11 @@ def _validate_exl3(recipe: dict[str, Any]) -> None:
 
 
 def _validate_exl3_r7(recipe: dict[str, Any]) -> None:
-    """Validate the EXL3 R7 3.5-bpw candidate recipe.
-
-    The R7 candidate is a non-default, live-validated candidate. It must
-    not claim to be the default or accepted, and its model and serving
-    contract must match the qualified fixed-MTP4, DCP4, KV9.25 profile.
-    """
+    """Validate the operator-accepted EXL3 R7 3.5-bpw recipe."""
     if recipe["default"] is not False:
         raise RecipeError("the R7 candidate must remain non-default")
-    if recipe["maturity"] != "live-validated":
-        raise RecipeError("the R7 recipe maturity must remain live-validated")
+    if recipe["maturity"] != "accepted":
+        raise RecipeError("the R7 recipe maturity must remain accepted")
     _validate_hardware(recipe)
 
     model = recipe["model"]
@@ -428,6 +423,25 @@ def _validate_exl3_r7(recipe: dict[str, Any]) -> None:
         raise RecipeError("R7 runtime.profile_generator must be published")
     if not (ROOT / "scripts" / "prepare_exl3_r7_mtp4.py").is_file():
         raise RecipeError("R7 runtime.mtp4_generator must be published")
+    required_runtime_files = {
+        "nvfp4_generator": "scripts/prepare_exl3_r7_mtp4_nvfp4.py",
+        "ckv_gather_generator": "scripts/prepare_exl3_r7_mtp4_ckv_gather.py",
+        "sircl_tiered_generator": "scripts/prepare_exl3_r7_sircl_tiered.py",
+        "exact_q40_profile_generator": (
+            "spark_transport/experiments/moe_round_floor/"
+            "prepare_q40_exact_state_serving.py"
+        ),
+        "exact_q40_patch": (
+            "spark_transport/experiments/moe_round_floor/q40_exact_state.patch"
+        ),
+        "exact_q40_attestation_overlay": (
+            "spark_transport/experiments/moe_round_floor/"
+            "q40_exact_state_attestation_overlay.py"
+        ),
+    }
+    for field, expected in required_runtime_files.items():
+        if runtime.get(field) != expected or not (ROOT / expected).is_file():
+            raise RecipeError(f"R7 runtime.{field} must name published source")
 
     _validate_publication(recipe)
     publication = recipe["publication"]
@@ -437,6 +451,8 @@ def _validate_exl3_r7(recipe: dict[str, Any]) -> None:
         raise RecipeError("R7 candidate must not claim local_build_ready")
     if not publication.get("blocker"):
         raise RecipeError("R7 must state its public-bootstrap blocker")
+    if publication.get("operator_default") is not True:
+        raise RecipeError("R7 publication.operator_default must remain true")
     evidence = publication.get("evidence")
     if not isinstance(evidence, str) or not (ROOT / evidence).is_file():
         raise RecipeError("R7 publication.evidence must name a published file")
@@ -447,14 +463,20 @@ def _validate_exl3_r7(recipe: dict[str, Any]) -> None:
         "tensor_parallel_size": 4,
         "decode_context_parallel_size": 4,
         "dcp_backend": "ag_rs",
+        "sircl_graph_protocol": "two_slot_deferred_ack",
+        "sircl_kernel_strategy": "tiered_64k",
+        "sircl_dual_port": False,
         "mtp_policy": "fixed-4",
-        "max_model_len": 65536,
-        "kv_cache_dtype": "fp8_ds_mla",
+        "max_model_len": 262144,
+        "kv_cache_dtype": "nvfp4_ds_mla",
+        "kv_dynamic_per_token_scale": True,
+        "kv_fp8_rope": True,
+        "kv_record_bytes": 368,
         "kv_cache_bytes_per_rank": 9250000000,
-        "reported_kv_tokens": 675840,
-        "request_usable_kv_tokens": 675584,
+        "reported_kv_tokens": 1156864,
         "gpu_memory_utilization": 0.85,
-        "max_num_batched_tokens": 2048,
+        "max_num_batched_tokens": 4096,
+        "exl3_prefill_capacity": 4096,
         "max_num_seqs": 8,
         "max_query_rows": 40,
         "load_format": "instanttensor",
@@ -486,6 +508,27 @@ def _validate_exl3_r7(recipe: dict[str, Any]) -> None:
         raise RecipeError("R7 DCP transport must remain stock")
     if serving.get("indexer_transport") != "stock":
         raise RecipeError("R7 indexer transport must remain stock")
+    expected_q40 = {
+        "scope": "target-mixed-exl3-only",
+        "query_rows": 40,
+        "capacity_rows": 40,
+        "route_block_rows": 8,
+        "uses_prefill_tiers": True,
+        "q1_q32_unchanged": True,
+        "other_prefill_shapes_unchanged": True,
+        "uniform_draft_unchanged": True,
+    }
+    if serving.get("exact_q40_policy") != expected_q40:
+        raise RecipeError("R7 serving.exact_q40_policy drifted")
+    expected_ckv = {
+        "implementation": "b12x-transient-full-ckv-dcp-gather",
+        "enabled": True,
+        "maximum_logical_tokens": 262144,
+        "workspace_mib_per_rank": 414.4,
+        "spark_custom_ckv_allgather_enabled": False,
+    }
+    if serving.get("ckv_gather") != expected_ckv:
+        raise RecipeError("R7 serving.ckv_gather drifted")
 
 
 def _canonical_digest(recipe: dict[str, Any]) -> str:

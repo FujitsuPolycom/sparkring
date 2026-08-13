@@ -15,9 +15,10 @@ public-functional matrix, and not registry-available.
 The builder compiles `spark_transport_capi` from the same SparkRing revision
 and installs the manifest-bounded public vLLM adapter overlay. It therefore
 does not depend on an inherited, operator-held SIRCL binary. The exact-Q40
-EXL3 and model-runner overlays remain a separate publication layer because
-they require their own source-input hashes and pre-graph numerical parity
-receipt.
+EXL3 and model-runner overlays remain a separate, published composition layer
+because they require their own source-input hashes, local image identity, and
+pre-graph numerical parity receipt. See
+[`docs/EXL3_R7_OPERATOR_REPRODUCTION.md`](../../docs/EXL3_R7_OPERATOR_REPRODUCTION.md).
 
 ## Platform
 

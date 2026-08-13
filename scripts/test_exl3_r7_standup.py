@@ -94,8 +94,9 @@ def test_stock_profile_has_correct_schema() -> None:
 
 def test_recipe_records_candidate_maturity() -> None:
     recipe = _recipe()
-    assert recipe["maturity"] == "live-validated"
+    assert recipe["maturity"] == "accepted"
     assert recipe["default"] is False
+    assert recipe["publication"]["operator_default"] is True
     assert recipe["serving"]["mtp_policy"] == "fixed-4"
     assert recipe["serving"]["kv_cache_bytes_per_rank"] == 9_250_000_000
 
