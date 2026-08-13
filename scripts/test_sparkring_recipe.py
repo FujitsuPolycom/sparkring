@@ -44,6 +44,9 @@ def test_r7_recipe_records_operator_accepted_profile_and_public_generators():
     assert recipe["maturity"] == "accepted"
     assert recipe["default"] is False
     assert recipe["publication"]["operator_default"] is True
+    assert recipe["publication"]["zero_build_ready"] is False
+    assert recipe["publication"]["local_build_ready"] is True
+    assert (ROOT / recipe["publication"]["promotion_checklist"]).is_file()
     assert recipe["serving"]["max_model_len"] == 262144
     assert recipe["serving"]["kv_cache_dtype"] == "nvfp4_ds_mla"
     assert recipe["serving"]["reported_kv_tokens"] == 1156864

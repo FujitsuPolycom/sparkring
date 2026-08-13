@@ -95,11 +95,17 @@ def _assert_only_allowed_changes(base: dict[str, Any], candidate: dict[str, Any]
     ]
     if len(exl3) != 1:
         raise PrepareExactQ40ServingError("candidate must contain one EXL3 mount")
-    exl3[0]["host"] = next(
-        volume["host"]
+    base_exl3 = [
+        volume
         for volume in base["extra_volumes"]
         if volume.get("container") == EXL3_CONTAINER
-    )
+    ]
+    if len(base_exl3) > 1:
+        raise PrepareExactQ40ServingError("baseline contains multiple EXL3 mounts")
+    if base_exl3:
+        exl3[0]["host"] = base_exl3[0]["host"]
+    else:
+        restored["extra_volumes"].remove(exl3[0])
     model_runner = [
         volume
         for volume in restored["extra_volumes"]
@@ -180,9 +186,18 @@ def prepare(
         for volume in candidate["extra_volumes"]
         if volume.get("container") == EXL3_CONTAINER
     ]
-    if len(exl3_volumes) != 1:
-        raise PrepareExactQ40ServingError("baseline must contain exactly one EXL3 mount")
-    exl3_volumes[0]["host"] = f"{REMOTE_ROOT}/exl3.py"
+    if len(exl3_volumes) > 1:
+        raise PrepareExactQ40ServingError("baseline contains multiple EXL3 mounts")
+    if exl3_volumes:
+        exl3_volumes[0]["host"] = f"{REMOTE_ROOT}/exl3.py"
+    else:
+        candidate["extra_volumes"].append(
+            {
+                "host": f"{REMOTE_ROOT}/exl3.py",
+                "container": EXL3_CONTAINER,
+                "mode": "ro",
+            }
+        )
     if any(
         volume.get("container") == MODEL_RUNNER_CONTAINER
         for volume in candidate["extra_volumes"]

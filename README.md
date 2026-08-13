@@ -20,6 +20,15 @@ It builds heavily on work from the contributors behind B12X, SparkInfer, vLLM, t
 SparkRing’s contribution is to adapt, integrate, and extend those foundations for low-latency inference across switchless DGX Spark clusters.
 
 Detailed project and contributor credits are maintained in the acknowledgements and provenance documentation.
+
+## Choose a deployment profile
+
+| Goal | Profile | Maturity and evidence scope | Start here |
+|---|---|---|---|
+| Use the operator-accepted 3.5-bpw configuration | EXL3 3.5-bpw fixed-MTP4 (`R7`) | Accepted on one four-Spark appliance; a clean rebuild still requires live qualification | [3.5-bpw quickstart](docs/EXL3_R7_QUICKSTART.md) |
+| Use the reproducible public default | EXL3 3.25-bpw plus LMCache CS512 | Clean-checkout bounded live validation on four Sparks | [public-default quickstart](docs/QUICKSTART.md) |
+| Use the deterministic alternative | NF3 | Accepted public-functional alternative | [NF3 quickstart](docs/NF3_QUICKSTART.md) |
+
 ## Featured model: EXL3 R7 3.5-bpw fixed-MTP4
 
 The operator's accepted 3.5-bpw SparkRing profile uses
@@ -63,7 +72,7 @@ the slower candidate repeat exceeded the fastest control repeat by 14.93%.
 All 75 target layers passed exact BF16 parity, deterministic 16K and 32K output
 equality passed, and final graph, API, transport, and capacity gates passed.
 
-The prefill and decode tables form the operator-accepted current-best matrix
+The prefill and decode tables form the accepted operator performance matrix
 snapshot. Prefill used 100% unique generated contexts. Several operator runs
 produced similar throughput, but only the displayed prefill sample counts and
 five coding-probe repeats are retained here; the decode cells are not presented
@@ -86,6 +95,9 @@ The accepted performance matrix is preserved separately in
 [machine-readable form](docs/configurations/glm52-exl3-r7-current-best-matrix-20260813.json).
 The clean source/profile composition and local build commands are in
 [the operator-profile reproduction guide](docs/EXL3_R7_OPERATOR_REPRODUCTION.md).
+Use the [3.5-bpw quickstart](docs/EXL3_R7_QUICKSTART.md) for the executable
+path and the [promotion checklist](docs/EXL3_R7_PROMOTION_CHECKLIST.md) before
+transferring acceptance to a rebuilt image.
 
 A live-validated LMCache NVMe candidate extension preserved the exact R7/Q40
 serving contract while adding a lazy 512 MiB L1 and bounded 50 GiB O_DIRECT L2

@@ -1,0 +1,1 @@
+apache-tvm-ffi @ https://files.pythonhosted.org/packages/92/d0/54badf5c8f6208e06f331a20ddd154f19c94c2e906da5b8cce7d60727d4b/apache_tvm_ffi-0.1.10-cp312-abi3-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl#sha256=3829216a8500c2f61062e48c627f6db6c3fa49416b3ffa85bc04243ae5d759f7

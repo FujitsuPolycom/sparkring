@@ -1,0 +1,1 @@
+quack-kernels @ https://files.pythonhosted.org/packages/2d/2b/a8f171d5e172880885571bf89e93204aaf231a0e92c4c84714eaf18c271a/quack_kernels-0.5.0-py3-none-any.whl#sha256=08821ebfb8e638cc20308d5c59410c6dbb3b637ccc7b07bd57c7a9261a06af74

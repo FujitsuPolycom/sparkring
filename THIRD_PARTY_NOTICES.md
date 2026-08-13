@@ -160,7 +160,28 @@ build time from their public repositories.
 - Role: Triton kernel sources consumed by the vLLM build. Staged locally via
   `prepare_build_deps.py` with a receipt-gated inventory.
 
-### 9g. Inherited base image
+### 9g. QuACK kernels
+
+- Package: `quack-kernels` 0.5.0 from the Python Package Index
+- Wheel SHA-256: `08821ebfb8e638cc20308d5c59410c6dbb3b637ccc7b07bd57c7a9261a06af74`
+- License: Apache License 2.0; the wheel contains its `LICENSE` file
+- Role: CuTe DSL kernels used by the R7 runtime. The builder applies six
+  hash-bound Python 3.12 annotation compatibility edits to `layout_utils.py`
+  and `copy_utils.py`, then verifies the resulting file hashes. The edits are
+  SparkRing-authored; the remaining files retain their upstream license.
+
+### 9h. Apache TVM FFI
+
+- Repository: `https://github.com/apache/tvm-ffi`
+- Package: `apache-tvm-ffi` 0.1.10
+- ARM64 wheel SHA-256: `3829216a8500c2f61062e48c627f6db6c3fa49416b3ffa85bc04243ae5d759f7`
+- License: Apache License 2.0
+- Notice: Copyright 2024-present The Apache Software Foundation; the wheel
+  contains the upstream `LICENSE` and `NOTICE` files.
+- Role: ARM64 FFI runtime installed under `/opt/sparkring-r7-tvm-ffi` and
+  selected by the profile's `PYTHONPATH`.
+
+### 9i. Inherited base image
 
 The R7 image is built from an operator-supplied ARM64 parent image. The parent
 is identified by an immutable sha256 image ID (`BASE_IMAGE_ID`), never a
@@ -172,7 +193,7 @@ requires the audited SPDX expression for the exact parent as
 license expression. A registry publisher must audit the parent image's source,
 license, and redistribution terms before publishing a derived image.
 
-### 9h. OCI provenance labels
+### 9j. OCI provenance labels
 
 The built image carries these OCI labels for every component: exact upstream
 revision (`org.sparkring.*.commit`), source repository

@@ -13,6 +13,10 @@ ARG VLLM_COMMIT=e2666d9a65f41fc376607531453cbd57c4c71016
 ARG B12X_COMMIT=7cecbb2c4819636ae7f05f8b116f2c45ee2cff7b
 ARG CUTLASS_COMMIT=da5e086dab31d63815acafdac9a9c5893b1c69e2
 ARG TRITON_KERNELS_COMMIT=0add68262ab0a2e33b84524346cb27cbb2787356
+ARG QUACK_KERNELS_VERSION=0.5.0
+ARG QUACK_KERNELS_WHEEL_SHA256=08821ebfb8e638cc20308d5c59410c6dbb3b637ccc7b07bd57c7a9261a06af74
+ARG TVM_FFI_VERSION=0.1.10
+ARG TVM_FFI_WHEEL_SHA256=3829216a8500c2f61062e48c627f6db6c3fa49416b3ffa85bc04243ae5d759f7
 ARG EXLLAMAV3_REPOSITORY=https://github.com/brandonmmusic-max/exllamav3.git
 ARG EXLLAMAV3_COMMIT=704aefd743b390af4bd0fb429d1906f9b964c7d8
 ARG EXLLAMAV3_ARM64_PATCH_SHA256=9fdf5f6fdd2f8bef395c068ce53a360066afbda3a23e1dc8a99852bf48eff975
@@ -34,7 +38,11 @@ LABEL org.opencontainers.image.source="https://github.com/FujitsuPolycom/sparkri
       org.sparkring.exllamav3.commit="${EXLLAMAV3_COMMIT}" \
       org.sparkring.instanttensor.commit="${INSTANTTENSOR_COMMIT}" \
       org.sparkring.cutlass.commit="${CUTLASS_COMMIT}" \
-      org.sparkring.triton-kernels.commit="${TRITON_KERNELS_COMMIT}"
+      org.sparkring.triton-kernels.commit="${TRITON_KERNELS_COMMIT}" \
+      org.sparkring.quack-kernels.version="${QUACK_KERNELS_VERSION}" \
+      org.sparkring.quack-kernels.wheel-sha256="${QUACK_KERNELS_WHEEL_SHA256}" \
+      org.sparkring.tvm-ffi.version="${TVM_FFI_VERSION}" \
+      org.sparkring.tvm-ffi.wheel-sha256="${TVM_FFI_WHEEL_SHA256}"
 
 RUN test "${TARGETARCH}" = arm64 \
  && test "${CUDA_ARCH}" = 121 \
@@ -60,10 +68,29 @@ ENV TORCH_CUDA_ARCH_LIST=12.1a \
 # extension failures must not force the 397-edge CUDA build to run again.
 RUN --mount=type=cache,id=sparkring-r7-ccache,target=/cache/jit/ccache,sharing=locked \
     rm -f /opt/venv/lib/python3.12/site-packages/sparkring_nf3_hybrid.pth \
+ && /opt/venv/bin/python /opt/r7-src/runtime/bake_runtime_artifacts.py \
+      vllm /opt/r7-src/vllm \
+ && /opt/venv/bin/python \
+      /opt/r7-src/runtime/build_parallel_state_shared_capture_overlay.py \
+      --source /opt/r7-src/vllm/vllm/distributed/parallel_state.py \
+      --output /opt/r7-src/vllm/vllm/distributed/parallel_state.py.patched \
+ && mv /opt/r7-src/vllm/vllm/distributed/parallel_state.py.patched \
+      /opt/r7-src/vllm/vllm/distributed/parallel_state.py \
  && /opt/venv/bin/python /opt/r7-src/patch_sm121_cmake.py \
       /opt/r7-src/vllm/CMakeLists.txt \
  && /opt/venv/bin/pip install --no-build-isolation --no-deps /opt/r7-src/b12x \
  && /opt/venv/bin/pip install --no-build-isolation --no-deps /opt/r7-src/vllm
+
+# The accepted profile used two public wheels plus six QuACK annotation edits.
+# Hash-bound URLs and deterministic preimage/output checks make those bytes a
+# clean-checkout build input instead of an operator-held host mount.
+RUN /opt/venv/bin/pip install --no-index --no-deps --require-hashes --force-reinstall \
+      -r /opt/r7-src/runtime/requirements-quack.txt \
+ && /opt/venv/bin/pip install --no-index --no-deps --require-hashes \
+      --target /opt/sparkring-r7-tvm-ffi \
+      -r /opt/r7-src/runtime/requirements-tvm-ffi.txt \
+ && /opt/venv/bin/python /opt/r7-src/runtime/bake_runtime_artifacts.py \
+      quack /opt/venv/lib/python3.12/site-packages/quack
 
 # Build the SparkRing-authored SIRCL runtime from this exact checkout and
 # replace the inherited adapter tree with the manifest-bounded public overlay.
@@ -120,7 +147,17 @@ RUN git clone --filter=blob:none --no-checkout \
       /usr/local/bin/sparkring-r7-entrypoint \
  && install -D -m 0644 /opt/r7-src/runtime/verify_runtime.py \
       /opt/sparkring-r7/verify_runtime.py \
- && PYTHONPATH=/opt/spark-vllm \
+ && printf '%s\n' \
+      'da5e6c3429293870d0de611183818fa57c0e9e0ad896784bc739c8a812343102  /opt/venv/lib/python3.12/site-packages/vllm/model_executor/model_loader/weight_utils.py' \
+      '8e0051faf9b8bac9eefd6f38a5f0133a30bca4c0b5ab41962537e2f13cf968f4  /opt/venv/lib/python3.12/site-packages/vllm/model_executor/layers/quantization/exl3.py' \
+      'ef03d64297ed2d1a5161847b48a435bf8ae5feda7a5b81b668d00ae9a1d65a2a  /opt/venv/lib/python3.12/site-packages/vllm/v1/worker/gpu/cudagraph_utils.py' \
+      'b087e93463e9a2d9bede71d3a6e4d696c8f2657449e8dc1119b38613d5750e4e  /opt/venv/lib/python3.12/site-packages/vllm/distributed/parallel_state.py' \
+      '3199dc3f55f346183e3d284f6da98f4394eaf14f28b7616d147e6e49ec896194  /opt/venv/lib/python3.12/site-packages/quack/layout_utils.py' \
+      '2ce88b0d7ee9afe025e52c02fcb32e772a429f1ee626b59546ab8b61d7a37929  /opt/venv/lib/python3.12/site-packages/quack/copy_utils.py' \
+      '077a234e4edff8b8dd44784953aef713884b4dd7a3f7c46589b14c6bb8b40745  /opt/spark-vllm/spark_dcp_collective_audit.py' \
+      'bbc72446e9a7d811c903e76e37e7d9dfce3d21108b2ea7c3db278bb71e84f95e  /usr/local/bin/sparkring-r7-entrypoint' \
+      | sha256sum --check --strict - \
+ && PYTHONPATH=/opt/sparkring-r7-tvm-ffi:/opt/spark-vllm \
       /opt/venv/bin/python /opt/sparkring-r7/verify_runtime.py --installed-only
 
 ENV VLLM_EXL3_ONLINE_TRELLIS_BITS=6 \

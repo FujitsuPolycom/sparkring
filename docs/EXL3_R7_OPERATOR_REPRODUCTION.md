@@ -22,13 +22,10 @@ does not make a locally rebuilt image equivalent to the operator's historical
 image ID. The local image, generated model-runner overlay, SIRCL library, and
 launch profile receive new hashes and must pass the complete live gate.
 
-Three prerequisites still lack complete zero-context public build chains: the
-weight-utils local-I/O overlay, two quack annotation overlays, and the ARM64
-`tvm-ffi` bundle. They are listed in
-[`EXL3_R7_QUICKSTART.md`](EXL3_R7_QUICKSTART.md#3-build-or-obtain-the-arm64-image).
-Do not remove their profile mounts or bypass their startup hashes. A builder
-must supply independently audited copies until those source/build chains are
-published.
+The builder installs the pinned public QuACK and ARM64 TVM FFI wheels, applies
+hash-bound compatibility edits, and bakes the accepted weight-loading bytes.
+The generated profile attests those installed files without operator-held host
+mounts. Do not bypass the hashes.
 
 ## Resulting serving contract
 
@@ -84,6 +81,18 @@ Copy and fill the ignored site file first:
 ```bash
 cp scripts/config/exl3-r7-site.example.yaml scripts/config/site.yaml
 ${EDITOR:-vi} scripts/config/site.yaml
+```
+
+Create `.sparkring/exl3-r7/candidate.json` from
+`scripts/config/exl3-r7-candidate.example.json`. Replace its image tag and ID
+with the image built in step 1, and make its model and JIT-cache host paths
+match the complete site:
+
+```bash
+mkdir -p .sparkring/exl3-r7
+cp scripts/config/exl3-r7-candidate.example.json \
+  .sparkring/exl3-r7/candidate.json
+${EDITOR:-vi} .sparkring/exl3-r7/candidate.json
 python scripts/sparkring_site.py scripts/config/site.yaml
 python scripts/preflight.py --site scripts/config/site.yaml --print-plan
 ```
@@ -91,8 +100,12 @@ python scripts/preflight.py --site scripts/config/site.yaml --print-plan
 Generate the conservative profile chain without contacting a Spark:
 
 ```bash
-python scripts/exl3_r7_standup.py plan
-python scripts/exl3_r7_standup.py plan --execute
+python scripts/exl3_r7_standup.py plan \
+  --site scripts/config/site.yaml \
+  --template .sparkring/exl3-r7/candidate.json
+python scripts/exl3_r7_standup.py plan --execute \
+  --site scripts/config/site.yaml \
+  --template .sparkring/exl3-r7/candidate.json
 ```
 
 The source for the following stages is:
@@ -301,3 +314,6 @@ prediction for a clean rebuild. See
 
 Never edit a candidate profile to approximate rollback. Start the hash-bound
 preserved input profile and repeat health/capacity checks.
+
+Promote a rebuilt image only after completing
+[`EXL3_R7_PROMOTION_CHECKLIST.md`](EXL3_R7_PROMOTION_CHECKLIST.md).

@@ -185,7 +185,7 @@ def test_speculative_parser_rejects_invalid_or_duplicate_json() -> None:
 def test_candidate_rejects_shared_stream_or_graph_coverage_drift() -> None:
     stock, control = mtp2_profile()
     candidate = mtp3.derive_candidate(stock, control)
-    candidate["extra_volumes"] = []
+    candidate["environment"]["VLLM_SPARK_SHARED_CAPTURE_STREAM"] = "0"
     with pytest.raises(mtp3.ContractError, match="shared capture stream"):
         mtp3.validate_candidate(stock, control, candidate)
 

@@ -64,6 +64,32 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _resolved_standup_inputs(tmp_path: Path) -> tuple[Path, Path]:
+    image = "sparkring/glm52-exl3-r7-3.5bpw:test"
+    image_id = "sha256:02881d5229d4f4d1cbba0cf40537492a2a505b9d4e43bbfe9a0b2a7bd0584513"
+    site_text = (ROOT / "scripts/config/exl3-r7-site.example.yaml").read_text(
+        encoding="utf-8"
+    )
+    site_text = site_text.replace(
+        "sparkring/glm52-exl3-r7-3.5bpw:REPLACE", image
+    ).replace("sha256:" + "1" * 64, image_id).replace(" - REPLACE.", ".")
+    site = tmp_path / "site.yaml"
+    site.write_text(site_text, encoding="utf-8")
+
+    template_document = _template()
+    template_document.update(
+        {
+            "image": image,
+            "image_id": image_id,
+            "model_host_path": "/models/glm52-exl3-r7-3.5bpw",
+            "jit_cache_host_path": "/var/lib/sparkring/jit-cache",
+        }
+    )
+    template = tmp_path / "candidate.json"
+    template.write_text(json.dumps(template_document), encoding="utf-8")
+    return site, template
+
+
 # ---------------------------------------------------------------------------
 # Schema tests
 # ---------------------------------------------------------------------------
@@ -344,6 +370,7 @@ def test_standup_dry_run_does_not_write_files(tmp_path: Path) -> None:
 
 
 def test_standup_execute_writes_files(tmp_path: Path) -> None:
+    site, template = _resolved_standup_inputs(tmp_path)
     result = subprocess.run(
         [
             sys.executable,
@@ -351,6 +378,8 @@ def test_standup_execute_writes_files(tmp_path: Path) -> None:
             "plan",
             "--execute",
             "--output-dir", str(tmp_path),
+            "--site", str(site),
+            "--template", str(template),
         ],
         check=False,
         capture_output=True,
@@ -367,9 +396,44 @@ def test_standup_execute_writes_files(tmp_path: Path) -> None:
     assert "mtp4_profile_sha256" in receipt
     assert "rollback_profile_sha256" in receipt
     assert "rollback_identity" in receipt
+    validation = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "sparkring_generic_launcher.py"),
+            "--site", str(tmp_path / "mtp4-kv925-site.yaml"),
+            "--profile", str(tmp_path / "mtp4-kv925-profile.json"),
+            "validate",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert validation.returncode == 0, validation.stderr
 
 
 def test_standup_execute_rollback_matches_mtp3_kv925(tmp_path: Path) -> None:
+    site, template = _resolved_standup_inputs(tmp_path)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "exl3_r7_standup.py"),
+            "plan",
+            "--execute",
+            "--output-dir", str(tmp_path),
+            "--site", str(site),
+            "--template", str(template),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    rollback = (tmp_path / "mtp4-kv925-rollback.json").read_bytes()
+    mtp3_kv925 = (tmp_path / "mtp3-kv925-profile.json").read_bytes()
+    assert rollback == mtp3_kv925
+
+
+def test_standup_execute_rejects_unresolved_default_inputs(tmp_path: Path) -> None:
     result = subprocess.run(
         [
             sys.executable,
@@ -382,10 +446,8 @@ def test_standup_execute_rollback_matches_mtp3_kv925(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0, result.stderr
-    rollback = (tmp_path / "mtp4-kv925-rollback.json").read_bytes()
-    mtp3_kv925 = (tmp_path / "mtp3-kv925-profile.json").read_bytes()
-    assert rollback == mtp3_kv925
+    assert result.returncode == 2
+    assert "requires a complete ignored --site" in result.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -408,11 +470,14 @@ def test_quickstart_doc_links_resolve() -> None:
         assert dest.exists(), f"broken link: {target}"
 
 
-def test_quickstart_doc_states_candidate_maturity() -> None:
+def test_quickstart_doc_separates_operator_acceptance_from_rebuild_maturity() -> None:
     doc = (ROOT / "docs" / "EXL3_R7_QUICKSTART.md").read_text(encoding="utf-8")
-    assert "live-validated candidate" in doc
-    assert "not an accepted" in doc
-    assert "**not** the repository default" in doc
+    assert "operator-accepted" in doc
+    assert "clean-checkout rebuild is an" in doc
+    assert "offline-validated candidate" in doc
+    assert "Acceptance applies to one four-Spark appliance" in doc
+    assert "not transfer to a rebuilt image" in doc
+    assert "It is not the repository default" in doc
 
     assert "LMCache CS512" in doc
 

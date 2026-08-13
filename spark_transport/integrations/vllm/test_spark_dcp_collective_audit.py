@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 import types
+from pathlib import Path
 from unittest.mock import patch
 
 import spark_collective_audit
 import spark_dcp_collective_audit as adapter
+
+
+def test_linux_checkout_bytes_match_operator_accepted_audit_overlay() -> None:
+    source = Path(adapter.__file__).read_bytes().replace(b"\r\n", b"\n")
+    assert hashlib.sha256(source).hexdigest() == (
+        "077a234e4edff8b8dd44784953aef713884b4dd7a3f7c46589b14c6bb8b40745"
+    )
 
 
 class _FakeTensor:
@@ -74,6 +83,7 @@ def _stock_combine(
     ctx: object = None,
     return_lse: bool = False,
     is_lse_base_on_e: bool = True,
+    head_major_output: bool = False,
 ) -> object:
     cp_group.combine_calls.append(
         (
@@ -82,6 +92,7 @@ def _stock_combine(
             ctx,
             return_lse,
             is_lse_base_on_e,
+            head_major_output,
         )
     )
     return (
@@ -249,7 +260,7 @@ def test_stock_combine_is_audit_only_and_preserves_call_contract() -> None:
     _remove_combine_finders()
     assert common.cp_lse_ag_out_rs is not original
     assert result == (output, lse)
-    assert group.combine_calls == [(output, lse, ctx, True, True)]
+    assert group.combine_calls == [(output, lse, ctx, True, True, False)]
     assert not hasattr(group, "_spark_tp4_dcp_native")
     snapshot = spark_collective_audit.stock_collective_snapshot()
     assert snapshot["capture"] == {"dcp_combine:original": 1}

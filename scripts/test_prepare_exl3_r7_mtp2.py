@@ -114,13 +114,6 @@ def test_candidate_changes_only_exact_fixed_mtp2_contract() -> None:
             ),
         }
     )
-    expected["extra_volumes"].append(
-        {
-            "host": mtp2.SHARED_CAPTURE_HOST_PATH,
-            "container": mtp2.SHARED_CAPTURE_CONTAINER_PATH,
-            "mode": "ro",
-        }
-    )
     expected["attestation_hook"][2] = expected["attestation_hook"][2].replace(
         " | sha256sum --check --strict -",
         (
@@ -164,11 +157,10 @@ def test_candidate_changes_only_exact_fixed_mtp2_contract() -> None:
             "process-device-shared-target+draft"
         ),
     }
-    assert candidate["extra_volumes"][-1] == {
-        "host": mtp2.SHARED_CAPTURE_HOST_PATH,
-        "container": mtp2.SHARED_CAPTURE_CONTAINER_PATH,
-        "mode": "ro",
-    }
+    assert not any(
+        volume["container"] == mtp2.SHARED_CAPTURE_CONTAINER_PATH
+        for volume in candidate["extra_volumes"]
+    )
     assert (
         f"{mtp2.SHARED_CAPTURE_SHA256}  {mtp2.SHARED_CAPTURE_CONTAINER_PATH}"
         in candidate["attestation_hook"][2]
@@ -202,15 +194,17 @@ def test_candidate_validation_rejects_eager_or_adaptive_drift() -> None:
         mtp2.validate_candidate(stock, candidate)
 
 
-def test_candidate_rejects_missing_or_wrong_shared_stream_overlay() -> None:
+def test_candidate_rejects_external_or_wrong_shared_stream_implementation() -> None:
     stock = stock_profile()
     candidate = mtp2.derive_candidate(stock)
-    candidate["extra_volumes"] = [
-        volume
-        for volume in candidate["extra_volumes"]
-        if volume["container"] != mtp2.SHARED_CAPTURE_CONTAINER_PATH
-    ]
-    with pytest.raises(mtp2.ContractError, match="shared capture stream overlay"):
+    candidate["extra_volumes"].append(
+        {
+            "host": "/var/tmp/untracked-parallel-state.py",
+            "container": mtp2.SHARED_CAPTURE_CONTAINER_PATH,
+            "mode": "ro",
+        }
+    )
+    with pytest.raises(mtp2.ContractError, match="baked into the image"):
         mtp2.validate_candidate(stock, candidate)
 
     candidate = mtp2.derive_candidate(stock)

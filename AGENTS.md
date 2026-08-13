@@ -3,6 +3,26 @@
 This file is the entry point for coding agents and other zero-context
 contributors. Read it before changing or running anything in this repository.
 
+## Write without hidden context
+
+All repository prose must make sense to a technically capable reader who has
+the repository but none of the conversation or development history.
+
+- Describe the system as it exists: purpose, behavior, invariants, interfaces,
+  evidence, and limitations. Do not narrate the development journey.
+- Do not use lifecycle labels such as `current`, `new`, `old`, or `latest` as
+  technical identities. Introduce semantic roles before internal identifiers.
+- Treat canonical documentation as a present-state specification. Put
+  chronology and rejected attempts only in explicitly historical documents.
+- Label status as `implemented`, `qualified`, `research-only`, or
+  `unsupported`. State evidence as conditions, measurement, result, and
+  conclusion.
+- Comments explain invariants, intent, and non-obvious constraints. Commits and
+  pull requests state resulting behavior, technical reason, compatibility
+  impact, and validation.
+
+If understanding a sentence requires conversation history, rewrite it.
+
 ## Current truth
 
 - The **reference lane** produced the historical measurements retained in
@@ -18,10 +38,13 @@ contributors. Read it before changing or running anything in this repository.
   fixed-seed 128-token, bounded C1/C2/C8, and post-run health gates. This is
   clean-checkout live validation, not blanket correctness, persistence,
   release promotion, or full public-functional acceptance.
-- The operator's running research service is the separately labelled EXL3 R7
-  3.5-bpw, fixed-MTP4, DCP4, 9.25 GB KV/rank candidate documented in
-  `docs/EXL3_R7_FIXED_MTP4_PROFILE.md`. Its live evidence does not change the
-  public default or accepted NF3 alternative.
+- The operator-accepted **3.5-bpw profile** is EXL3 fixed-MTP4, DCP4, dynamic
+  NVFP4 plus FP8 RoPE, and 9.25 GB KV/rank. The profile is documented in
+  `docs/EXL3_R7_FIXED_MTP4_PROFILE.md`; `R7` is its durable recipe identifier.
+  Acceptance applies to one four-Spark appliance. The public builder is
+  source-complete and offline-validated, but a clean-checkout image has not
+  passed the live promotion gate. This does not change the public default or
+  accepted NF3 alternative.
 - NF3 remains an accepted deterministic public-functional alternative. Its
   recipe, bootstrap, and quickstart remain published and explicitly selectable.
 - Never describe a reference-lane number as a result from this checkout.
@@ -122,6 +145,10 @@ EXL3 gate is `scripts/exl3_live_gate.py`; the candidate full workflow is
 start with `docs/NF3_QUICKSTART.md` and
 `scripts/config/{launch,gate}.example.json`. Any reported blocker is not a
 check to bypass, and a successful plan is not acceptance.
+
+For the operator-accepted 3.5-bpw profile, start with
+`docs/EXL3_R7_QUICKSTART.md`. A rebuilt image remains a candidate until every
+item in `docs/EXL3_R7_PROMOTION_CHECKLIST.md` passes against its immutable ID.
 
 ### Native or cluster work
 

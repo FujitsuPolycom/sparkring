@@ -97,7 +97,7 @@ class PrepareExactQ40ServingTest(unittest.TestCase):
             [f"{prepare_module.REMOTE_ROOT}/model_runner.py"],
         )
         self.assertEqual(
-            len(candidate["extra_volumes"]), len(base["extra_volumes"]) + 1
+            len(candidate["extra_volumes"]), len(base["extra_volumes"]) + 2
         )
         self.assertIn(prepare_module.EXACT_Q40_EXL3_SHA256, candidate["attestation_hook"][2])
         self.assertNotIn(prepare_module.BASE_EXL3_SHA256, candidate["attestation_hook"][2])
