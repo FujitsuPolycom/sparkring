@@ -51,7 +51,6 @@ def derive_stock_profile(candidate_template: dict, pins: dict, recipe: dict) -> 
     stock_template["transport"] = "sircl-nccl-ib"
     base = gen.generate(stock_template, pins, recipe)
     profile = copy.deepcopy(base)
-    serving = recipe["serving"]
 
     profile["profile_id"] = recipe["recipe_id"]
 
