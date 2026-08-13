@@ -40,7 +40,7 @@ RUN test "${TARGETARCH}" = arm64 \
  && test "${CUDA_ARCH}" = 121 \
  && apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      build-essential ccache git ninja-build python3-dev \
+      build-essential ccache cmake git libibverbs-dev ninja-build python3-dev \
  && rm -rf /var/lib/apt/lists/*
 
 COPY bundle /opt/r7-src
@@ -64,6 +64,29 @@ RUN --mount=type=cache,id=sparkring-r7-ccache,target=/cache/jit/ccache,sharing=l
       /opt/r7-src/vllm/CMakeLists.txt \
  && /opt/venv/bin/pip install --no-build-isolation --no-deps /opt/r7-src/b12x \
  && /opt/venv/bin/pip install --no-build-isolation --no-deps /opt/r7-src/vllm
+
+# Build the SparkRing-authored SIRCL runtime from this exact checkout and
+# replace the inherited adapter tree with the manifest-bounded public overlay.
+# The accepted tiered/deferred selector uses an additive C ABI; the legacy
+# serial/fused entry point remains available for explicit rollback profiles.
+RUN cmake -S /opt/r7-src/spark_transport \
+      -B /opt/r7-src/spark_transport-build \
+      -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_CUDA_ARCHITECTURES=121 \
+      -DBUILD_TESTING=OFF \
+ && cmake --build /opt/r7-src/spark_transport-build \
+      --target spark_transport_capi \
+      --parallel "${MAX_JOBS}" \
+ && install -D -m 0755 \
+      /opt/r7-src/spark_transport-build/libspark_transport_capi.so \
+      /opt/sparkring/spark_transport/libspark_transport_capi.so \
+ && /opt/venv/bin/python /opt/r7-src/build-public-overlay.py \
+      --repo /opt/r7-src \
+      --spec /opt/r7-src/public-overlay-files.json \
+      --output /opt/spark-vllm-public \
+ && rm -rf /opt/spark-vllm \
+ && mv /opt/spark-vllm-public /opt/spark-vllm
 
 # ExLlamaV3's native CPU collective sources are x86-only. The inherited
 # SparkRing patch supplies ARM64 stubs because distributed collectives are

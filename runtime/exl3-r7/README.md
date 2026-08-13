@@ -12,6 +12,13 @@ live-validated, but an image built from this clean-checkout builder has not yet
 passed that live gate. It is not the repository default, not an accepted
 public-functional matrix, and not registry-available.
 
+The builder compiles `spark_transport_capi` from the same SparkRing revision
+and installs the manifest-bounded public vLLM adapter overlay. It therefore
+does not depend on an inherited, operator-held SIRCL binary. The exact-Q40
+EXL3 and model-runner overlays remain a separate publication layer because
+they require their own source-input hashes and pre-graph numerical parity
+receipt.
+
 ## Platform
 
 | Property | Value |
@@ -29,7 +36,8 @@ public-functional matrix, and not registry-available.
   receipt-gated inventory verification.
 - `Containerfile` — multi-stage build that clones ExLlamaV3 and InstantTensor
   at pinned commits, applies the ARM64 external-collectives patch, builds
-  vLLM and B12X from the prepared source bundle, and runs `verify_runtime.py`.
+  vLLM and B12X from the prepared source bundle, compiles SIRCL for SM121,
+  installs the public adapter overlay, and runs `verify_runtime.py`.
 - `PREPARED_SOURCES` environment variable (optional) — a pre-verified source
   directory whose receipt is checked by `prepare_context.py --verify`.
 

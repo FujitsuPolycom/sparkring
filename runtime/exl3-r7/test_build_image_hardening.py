@@ -179,6 +179,26 @@ def test_containerfile_labels_cutlass_and_triton() -> None:
     assert "0add68262ab0a2e33b84524346cb27cbb2787356" in build_deps  # Triton
 
 
+def test_builder_compiles_and_installs_sircl_from_the_same_checkout() -> None:
+    """The R7 image must not inherit an unpinned SIRCL binary or adapter."""
+
+    containerfile = (HERE / "Containerfile").read_text(encoding="utf-8")
+    assert "COPY bundle /opt/r7-src" in containerfile
+    assert "cmake -S /opt/r7-src/spark_transport" in containerfile
+    assert "--target spark_transport_capi" in containerfile
+    assert "/opt/sparkring/spark_transport/libspark_transport_capi.so" in containerfile
+    assert "build-public-overlay.py" in containerfile
+    assert "public-overlay-files.json" in containerfile
+    assert "--output /opt/spark-vllm-public" in containerfile
+
+    for path in (
+        "runtime/build-public-overlay.py",
+        "runtime/public-overlay-files.json",
+        "spark_transport",
+    ):
+        assert path in BUILD_SCRIPT
+
+
 # ---------------------------------------------------------------------------
 # 5. Receipt verification with prepare_context verifier
 # ---------------------------------------------------------------------------
