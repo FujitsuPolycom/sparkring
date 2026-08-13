@@ -142,6 +142,20 @@
       "matched_ckv_gather_ab_complete": true,
       "matched_prefill_gain_percent_range": [14.85, 39.16],
       "matched_decode_regression_observed": false,
+      "current_best_prefill_snapshot": {
+        "status": "accepted-operator-result",
+        "concurrency": 1,
+        "unique_context_percent": 100,
+        "client_tokens_per_second": {
+          "8192": 679,
+          "16384": 673,
+          "32768": 666,
+          "65536": 657,
+          "131072": 645
+        },
+        "evidence": "docs/configurations/glm52-exl3-r7-current-best-prefill-20260813.json",
+        "limitations": "Low visible sample counts; accepted as the operator's best measured snapshot, not a throughput distribution; server-side cache accounting unavailable."
+      },
       "exact_q40_policy": {
         "status": "accepted-operator-default",
         "scope": "target mixed-EXL3 layers at exactly 40 routed rows",

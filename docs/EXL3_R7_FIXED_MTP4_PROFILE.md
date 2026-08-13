@@ -29,6 +29,8 @@ qualification remains separately preserved in
 [glm52-exl3-r7-mtp4-kv925-20260811.json](configurations/glm52-exl3-r7-mtp4-kv925-20260811.json).
 The exact-Q40 acceptance result is
 [glm52-exl3-r7-mtp4-q40-block8-20260812.json](configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json).
+The operator-accepted current-best prefill snapshot is
+[glm52-exl3-r7-current-best-prefill-20260813.json](configurations/glm52-exl3-r7-current-best-prefill-20260813.json).
 
 ## Serving contract
 
@@ -114,6 +116,26 @@ Fixed-prompt non-Q40 checks measured C1 at 22.218 versus 22.362 tokens/s
 (-0.65%) and C4 at 45.703 versus 46.578 tokens/s (-1.88%). These
 source-identical paths are treated as bounded measurement noise, not as
 optimization results.
+
+## Current-best operator prefill snapshot
+
+The operator accepts the following 100%-unique-context C1 results as the best
+measured prefill snapshot for this exact four-Spark profile:
+
+| Context | Prompt tokens | Client TTFT | Client-timed prefill | Samples |
+|---|---:|---:|---:|---:|
+| 8K | 8,194 | 12.06 s | **679 tok/s** | 2 |
+| 16K | 16,386 | 24.36 s | **673 tok/s** | 1 |
+| 32K | 32,770 | 49.17 s | **666 tok/s** | 1 |
+| 64K | 65,538 | 99.72 s | **657 tok/s** | 1 |
+| 128K | 131,074 | 203.09 s | **645 tok/s** | 1 |
+
+The displayed throughput changes by 5.0% across the 16x context span. Several
+operator runs produced similar results, but the exact table is a bounded
+snapshot with low visible sample counts rather than a throughput distribution.
+Server-side cached-token accounting was unavailable for these cells; the
+100%-unique request construction is recorded, but the captured result does not
+independently prove cache misses.
 
 ## Exact CKV-gather delta and rollback
 
@@ -256,8 +278,9 @@ contract, not for the exact dynamic-NVFP4/262K/CKV-gather profile. The larger
   speculative-decoding, transport, and matched prefill/decode evidence. Its
   262,144-token request boundary and near-capacity concurrent residency remain
   unqualified.
-- Each prefill row is one cold, fully unique request. Repeat distributions and
-  longer soak testing remain open.
+- The current-best prefill table has one visible sample per context except for
+  8K, which has two. Several operator runs were consistent, but a retained
+  repeat distribution and longer soak test remain open.
 - The control benchmark's JSON destination was invalid, so the harness printed
   the complete result but did not write its JSON artifact. The preserved
   console transcript is identified by SHA-256 in the sanitized evidence file.

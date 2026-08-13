@@ -107,20 +107,32 @@ replayed the same eight unique 16K payloads with full 8/8 residency and a
 | Slowest candidate versus fastest control | 62.907 tok/s | **72.297 tok/s** | **+14.93%** |
 | Reported KV capacity | 1,156,864 tokens | **1,156,864 tokens** | unchanged |
 
-One later bounded operator snapshot used `llm_decode_bench` v0.4.31 in
-standalone-cold C1 mode with 100% unique generated contexts:
+The operator accepts the following client-timed C1 snapshot as the current
+best measured prefill result for this configuration. The benchmark used 100%
+unique generated contexts:
 
 | Context | Client TTFT | Client-timed prefill | Samples |
 |---|---:|---:|---:|
-| 8K | 12.273 s | **668 tok/s** | 2 |
-| 16K | 24.875 s | **659 tok/s** | 1 |
-| 32K | 50.172 s | **653 tok/s** | 1 |
+| 8K | 12.06 s | **679 tok/s** | 2 |
+| 16K | 24.36 s | **673 tok/s** | 1 |
+| 32K | 49.17 s | **666 tok/s** | 1 |
+| 64K | 99.72 s | **657 tok/s** | 1 |
+| 128K | 203.09 s | **645 tok/s** | 1 |
 
-The complete benchmark JSON has SHA-256
-`feed67820caf37cc016473a38584b11b4205a628183f64e2b48b082a7bad2854`.
-These are low-sample client observations. The benchmark did not return
-server-side cached-token accounting for these cells, so they are not presented
-as distributions or independently proven cache misses.
+Throughput declines by only 5.0% from 8K to 128K while the context grows by
+16x. The 8K, 16K, and 32K rows are respectively 1.6%, 2.1%, and 2.0% above the
+earlier bounded snapshot. Several operator runs produced similar prefill
+throughput, but the table reports only the visible samples. These are therefore
+accepted best operating results, not throughput distributions. The benchmark
+did not return server-side cached-token accounting for these cells, so cache
+misses are not independently proven by the captured result. The transcription,
+scope, and limitations are preserved in
+[machine-readable form](configurations/glm52-exl3-r7-current-best-prefill-20260813.json).
+
+The earlier bounded benchmark remains independently identified by complete
+benchmark SHA-256
+`feed67820caf37cc016473a38584b11b4205a628183f64e2b48b082a7bad2854`; it
+measured 668, 659, and 653 tok/s at 8K, 16K, and 32K respectively.
 
 The exact-Q40 prefill non-regression bracket measured medians of 526.449,
 623.599, 615.930, 618.246, and 619.807 tok/s at 8K, 16K, 32K, 64K, and 128K.

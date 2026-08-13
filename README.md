@@ -34,9 +34,11 @@ Q1-Q32, other prefill shapes, and the draft model retain their prior states.
 
 | Measurement | TTFT | Bounded result | Samples |
 |---|---:|---:|---:|
-| 8K standalone-cold C1 prefill | 12.273 s | **668 tok/s** | 2 |
-| 16K standalone-cold C1 prefill | 24.875 s | **659 tok/s** | 1 |
-| 32K standalone-cold C1 prefill | 50.172 s | **653 tok/s** | 1 |
+| 8K unique-context C1 prefill | 12.06 s | **679 tok/s** | 2 |
+| 16K unique-context C1 prefill | 24.36 s | **673 tok/s** | 1 |
+| 32K unique-context C1 prefill | 49.17 s | **666 tok/s** | 1 |
+| 64K unique-context C1 prefill | 99.72 s | **657 tok/s** | 1 |
+| 128K unique-context C1 prefill | 203.09 s | **645 tok/s** | 1 |
 | Unique-16K C8 warm sustained decode | - | **73.208 tok/s aggregate** | 2 candidate arms |
 | Reported KV capacity | - | **1,156,864 tokens** | all four ranks |
 
@@ -47,10 +49,12 @@ the slower candidate repeat exceeded the fastest control repeat by 14.93%.
 All 75 target layers passed exact BF16 parity, deterministic 16K and 32K output
 equality passed, and final graph, API, transport, and capacity gates passed.
 
-The 8K-32K prefill rows are client-timed `llm_decode_bench` v0.4.31
-observations with 100% unique generated contexts. Their low sample counts and
-unavailable server-side cached-token accounting make them bounded operating
-snapshots, not throughput distributions or independently proven cache misses.
+The 8K-128K prefill rows are the operator-accepted current-best client-timed
+snapshot with 100% unique generated contexts. Several operator runs produced
+similar throughput, but the table reports only the visible samples and does
+not treat them as a statistical distribution. Server-side cached-token
+accounting was unavailable for these cells, so cache misses are not
+independently proven by the benchmark artifact.
 The predeclared exact-Q40 prefill reducer separately remains a machine failure:
 its sole primary miss was 0.1215% at 64K. Operator acceptance treats that
 bounded difference as measurement-neutral without relabelling the machine
@@ -63,6 +67,8 @@ public-functional default or an accepted public deployment matrix. Read the
 [optimization record](docs/EXL3_R7_OPTIMIZATION_20260811.md), and
 [machine-readable operator acceptance](docs/configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json)
 before reproducing or extending it.
+The accepted prefill snapshot is preserved separately in
+[machine-readable form](docs/configurations/glm52-exl3-r7-current-best-prefill-20260813.json).
 The clean source/profile composition and local build commands are in
 [the operator-profile reproduction guide](docs/EXL3_R7_OPERATOR_REPRODUCTION.md).
 
