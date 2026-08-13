@@ -59,7 +59,9 @@ def test_generated_profile_uses_generic_launcher_contract(tmp_path: Path) -> Non
     assert profile.environment["CUDA_DEVICE_ORDER"] == "PCI_BUS_ID"
     assert profile.environment["CUDA_DEVICE_MAX_CONNECTIONS"] == "32"
     assert profile.environment["CUTE_DSL_ARCH"] == "sm_121a"
-    assert profile.environment["LD_PRELOAD"] == candidate.CUDA_COMPAT_LIBRARY
+    assert profile.environment["LD_PRELOAD"] == (
+        f"{candidate.CUDA_COMPAT_LIBRARY}:{candidate.PATCHED_NCCL_LIBRARY}"
+    )
     assert profile.environment["ONLINE_QUANT"] == "exl3-b6"
     assert profile.environment["INSTANTTENSOR_BACKEND"] == "BUFFERED"
     assert profile.environment["INSTANTTENSOR_BUFFER_SIZE"] == "536870912"
@@ -88,8 +90,8 @@ def test_generated_profile_uses_generic_launcher_contract(tmp_path: Path) -> Non
     assert profile.environment["SPARK_TP4_GRAPH_PROGRESS_CPU"] == "11"
     assert profile.environment["SPARK_TP4_GRAPH_VOCAB_PROGRESS_CPU"] == "12"
     assert profile.environment["SPARK_TP4_GRAPH_INDEXER_PROGRESS_CPU"] == "14"
-    assert profile.environment["VLLM_NCCL_SO_PATH"] == candidate.NCCL_LIBRARY
-    assert profile.environment["VLLM_NCCL_SO_PATH"] not in profile.environment["LD_PRELOAD"].split(":")
+    assert profile.environment["VLLM_NCCL_SO_PATH"] == candidate.PATCHED_NCCL_LIBRARY
+    assert candidate.PATCHED_NCCL_LIBRARY in profile.environment["LD_PRELOAD"].split(":")
     assert profile.environment["VLLM_PREFIX_CACHE_RETENTION_INTERVAL"] is None
     assert profile.environment["VLLM_B12X_ABSORB_BMM"] == "0"
     assert profile.environment["VLLM_DCP_GLOBAL_TOPK"] == "1"
@@ -104,21 +106,25 @@ def test_generated_profile_uses_generic_launcher_contract(tmp_path: Path) -> Non
     assert profile.environment["VLLM_EXL3_ONLINE_CACHE_MODE"] == "readwrite"
     assert profile.environment["VLLM_EXL3_ONLINE_TRELLIS_BITS"] == "6"
     assert "VLLM_EXL3_R7_FUSED" not in profile.environment
-    assert profile.environment["VLLM_SPARK_R7_NONFINITE_TRACE"] == "1"
+    assert "VLLM_SPARK_R7_NONFINITE_TRACE" not in profile.environment
+    assert profile.environment["SPARK_TP4_DCP_COLLECTIVE_AUDIT"] == "1"
+    assert profile.environment["SPARK_TP4_GRAPH_STATUS_PATH"] == (
+        candidate.DCP_GRAPH_STATUS_PATH
+    )
     assert "SPARKRING_R7_NONFINITE_TRACE" not in profile.environment
     assert "VLLM_SPARK_FINITE_TRACE" not in profile.environment
     assert profile.environment["NCCL_ALGO"] == "Ring"
     assert profile.environment["NCCL_CUMEM_ENABLE"] == "0"
-    assert profile.environment["NCCL_IB_DISABLE"] == "1"
+    assert profile.environment["NCCL_IB_DISABLE"] == "0"
     assert profile.environment["NCCL_IGNORE_CPU_AFFINITY"] == "1"
-    assert profile.environment["NCCL_MAX_NCHANNELS"] is None
-    assert profile.environment["NCCL_MIN_NCHANNELS"] is None
-    assert profile.environment["NCCL_NET"] == "Socket"
+    assert profile.environment["NCCL_MAX_NCHANNELS"] == "4"
+    assert profile.environment["NCCL_MIN_NCHANNELS"] == "4"
+    assert profile.environment["NCCL_NET"] == "IB"
     assert profile.environment["NCCL_SKIP_TREE_CONNECT"] == "1"
     assert profile.environment["PYTORCH_CUDA_ALLOC_CONF"] == "expandable_segments:True"
     assert profile.environment["TORCHINDUCTOR_COMPILE_THREADS"] == "1"
-    assert profile.environment["TORCH_USE_RTLD_GLOBAL"] is None
-    assert "/proc/self/maps" not in profile.attestation_hook[2]
+    assert profile.environment["TORCH_USE_RTLD_GLOBAL"] == "1"
+    assert "/proc/self/maps" in profile.attestation_hook[2]
     assert ("/var/tmp/sparkring-r7-online", "/cache/exl3-online", "rw") in profile.extra_volumes
     assert (
         candidate.ENTRYPOINT_HOST_PATH,
@@ -151,8 +157,8 @@ def test_generated_profile_uses_generic_launcher_contract(tmp_path: Path) -> Non
         "ro",
     ) in profile.extra_volumes
     assert (
-        candidate.NONFINITE_TRACE_HOST_PATH,
-        candidate.NONFINITE_TRACE_CONTAINER_PATH,
+        candidate.DCP_AUDIT_HOST_PATH,
+        candidate.DCP_AUDIT_CONTAINER_PATH,
         "ro",
     ) in profile.extra_volumes
     assert (
@@ -165,7 +171,7 @@ def test_generated_profile_uses_generic_launcher_contract(tmp_path: Path) -> Non
     assert template["model_index_sha256"] in profile.attestation_hook[2]
     assert "sha256sum --check --strict" in profile.attestation_hook[2]
     assert f"test -r {candidate.CUDA_COMPAT_LIBRARY}" in profile.attestation_hook[2]
-    assert f"test -r {candidate.NCCL_LIBRARY}" in profile.attestation_hook[2]
+    assert f"test -r {candidate.PATCHED_NCCL_LIBRARY}" in profile.attestation_hook[2]
     assert (
         f"{candidate.ENTRYPOINT_SHA256}  {candidate.ENTRYPOINT_CONTAINER_PATH}"
         in profile.attestation_hook[2]
@@ -200,12 +206,8 @@ def test_generated_profile_uses_generic_launcher_contract(tmp_path: Path) -> Non
         in profile.attestation_hook[2]
     )
     assert (
-        f"{candidate.NONFINITE_TRACE_SHA256}  "
-        f"{candidate.NONFINITE_TRACE_CONTAINER_PATH}"
+        f"{candidate.DCP_AUDIT_SHA256}  {candidate.DCP_AUDIT_CONTAINER_PATH}"
         in profile.attestation_hook[2]
-    )
-    assert candidate.NONFINITE_TRACE_SHA256 == (
-        "90f4591b71bd8da9e2e37c866bcac17c89583db5d70ae2c80b095a7c35eae01b"
     )
     assert f'assert md.version("apache-tvm-ffi") == "{candidate.TVM_FFI_VERSION}"' in profile.attestation_hook[2]
     assert f'assert tvm_ffi.__version__ == "{candidate.TVM_FFI_VERSION}"' in profile.attestation_hook[2]
@@ -264,6 +266,7 @@ def test_generator_rejects_unknown_kv_cache_dtype() -> None:
 
 def test_generated_clean_profile_removes_only_nonfinite_trace_contract() -> None:
     template, pins, recipe = inputs()
+    template["nonfinite_trace"] = True
     traced = candidate.generate(template, pins, recipe)
     template["nonfinite_trace"] = False
     clean = candidate.generate(template, pins, recipe)

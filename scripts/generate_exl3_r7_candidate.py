@@ -55,6 +55,10 @@ NONFINITE_TRACE_CONTAINER_PATH = (
     "/opt/venv/lib/python3.12/site-packages/vllm/model_executor/models/deepseek_v2.py"
 )
 NONFINITE_TRACE_SHA256 = "90f4591b71bd8da9e2e37c866bcac17c89583db5d70ae2c80b095a7c35eae01b"
+DCP_AUDIT_HOST_PATH = "/var/tmp/sparkring-r7-dcp-audit-head-major.py"
+DCP_AUDIT_CONTAINER_PATH = "/opt/spark-vllm/spark_dcp_collective_audit.py"
+DCP_AUDIT_SHA256 = "077a234e4edff8b8dd44784953aef713884b4dd7a3f7c46589b14c6bb8b40745"
+DCP_GRAPH_STATUS_PATH = "/cache/jit/sparkring-r7-dcp4-stock-graph-status.json"
 TVM_FFI_HOST_PATH = "/var/tmp/sparkring-r7-tvm-ffi-0.1.10-r1"
 TVM_FFI_CONTAINER_PATH = "/opt/sparkring-r7-tvm-ffi"
 TVM_FFI_VERSION = "0.1.10"
@@ -116,9 +120,12 @@ def generate(template: dict, pins: dict, recipe: dict) -> dict:
     kv_cache_dtype = template.get("kv_cache_dtype", "auto")
     if kv_cache_dtype not in {"auto", "fp8_ds_mla"}:
         raise CandidateError("kv_cache_dtype must be auto or fp8_ds_mla")
-    nonfinite_trace = template.get("nonfinite_trace", True)
+    nonfinite_trace = template.get("nonfinite_trace", False)
     if not isinstance(nonfinite_trace, bool):
         raise CandidateError("nonfinite_trace must be true or false")
+    dcp_collective_audit = template.get("dcp_collective_audit", True)
+    if not isinstance(dcp_collective_audit, bool):
+        raise CandidateError("dcp_collective_audit must be true or false")
     online_quantization = template.get("online_quantization", "exl3-b6")
     if online_quantization not in {"exl3-b6", "none"}:
         raise CandidateError("online_quantization must be exl3-b6 or none")
@@ -152,6 +159,11 @@ def generate(template: dict, pins: dict, recipe: dict) -> dict:
         *(
             (f"{NONFINITE_TRACE_SHA256}  {NONFINITE_TRACE_CONTAINER_PATH}",)
             if nonfinite_trace
+            else ()
+        ),
+        *(
+            (f"{DCP_AUDIT_SHA256}  {DCP_AUDIT_CONTAINER_PATH}",)
+            if dcp_collective_audit
             else ()
         ),
         f"{identity['model_config_sha256']}  {model_container_path}/config.json",
@@ -254,6 +266,12 @@ def generate(template: dict, pins: dict, recipe: dict) -> dict:
             "SPARK_TP4_ALLGATHER_ENABLE_CKV": "0",
             "SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS": "10",
             "SPARK_TP4_FLIGHT_RECORDER": "0",
+            "SPARK_TP4_DCP_COLLECTIVE_AUDIT": (
+                "1" if dcp_collective_audit else None
+            ),
+            "SPARK_TP4_GRAPH_STATUS_PATH": (
+                DCP_GRAPH_STATUS_PATH if dcp_collective_audit else None
+            ),
             "SPARK_TP4_GRAPH_CONTROL_PORT0": "9970",
             "SPARK_TP4_GRAPH_CONTROL_PORT1": "9971",
             "SPARK_TP4_GRAPH_INDEXER_CONTROL_PORT0": "9462",
@@ -362,7 +380,12 @@ def generate(template: dict, pins: dict, recipe: dict) -> dict:
                 if nonfinite_trace
                 else []
             ),
-            {"host": TVM_FFI_HOST_PATH, "container": TVM_FFI_CONTAINER_PATH, "mode": "ro"}
+            {"host": TVM_FFI_HOST_PATH, "container": TVM_FFI_CONTAINER_PATH, "mode": "ro"},
+            *(
+                [{"host": DCP_AUDIT_HOST_PATH, "container": DCP_AUDIT_CONTAINER_PATH, "mode": "ro"}]
+                if dcp_collective_audit
+                else []
+            ),
         ],
         "extra_labels": {"org.sparkring.candidate": "exl3-r7-3.5bpw"},
         "privileged": False,

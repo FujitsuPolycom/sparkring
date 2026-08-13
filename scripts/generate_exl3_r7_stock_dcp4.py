@@ -25,7 +25,6 @@ RECIPE_PATH = ROOT / "recipes/glm52-exl3-r7-3.5bpw.json"
 
 STOCK_KV_BYTES_PER_RANK = 9_000_000_000
 STOCK_MAX_QUERY_ROWS = 24
-STOCK_PROFILE_SUFFIX = "-stock-dcp4"
 DCP_COMM_BACKEND = "ag_rs"
 DCP_KV_CACHE_INTERLEAVE_SIZE = "1"
 
@@ -54,7 +53,7 @@ def derive_stock_profile(candidate_template: dict, pins: dict, recipe: dict) -> 
     profile = copy.deepcopy(base)
     serving = recipe["serving"]
 
-    profile["profile_id"] = serving["served_model_name"] + STOCK_PROFILE_SUFFIX
+    profile["profile_id"] = recipe["recipe_id"]
 
     # Stock DCP4: MTP off, Q8 query ceiling, Q24 graph capture, 9.0 GB KV/rank.
     # The generator already sets MAX_QUERY_ROWS=8 and captures Q1-Q32; the
@@ -64,8 +63,9 @@ def derive_stock_profile(candidate_template: dict, pins: dict, recipe: dict) -> 
     profile["environment"]["VLLM_SPARK_TP4_INDEXER_GRAPH_CUSTOM"] = "0"
 
     args = profile["extra_vllm_args"]
-    # Insert DCP4 args before max-num-batched-tokens
-    insert_at = args.index("--max-num-batched-tokens")
+    # Preserve the qualified argument order: DCP configuration follows the
+    # selected MoE backend and precedes the attention backend.
+    insert_at = args.index("--moe-backend") + 2
     args[insert_at:insert_at] = [
         "--dcp-comm-backend", DCP_COMM_BACKEND,
         "--dcp-kv-cache-interleave-size", DCP_KV_CACHE_INTERLEAVE_SIZE,

@@ -115,7 +115,8 @@ def plan(
 
     # Step 3: Generate stock-DCP4 baseline (OFFLINE)
     _step("Generate stock-DCP4 baseline profile", SAFETY_OFFLINE, dry_run)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        output_dir.mkdir(parents=True, exist_ok=True)
     stock_path = output_dir / "stock-dcp4-profile.json"
     _run_script(
         "generate_exl3_r7_stock_dcp4.py",

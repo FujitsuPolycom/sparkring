@@ -319,12 +319,13 @@ def test_model_pin_matches_task_requirement() -> None:
 # ---------------------------------------------------------------------------
 
 def test_standup_dry_run_does_not_write_files(tmp_path: Path) -> None:
+    output_dir = tmp_path / "must-not-be-created"
     result = subprocess.run(
         [
             sys.executable,
             str(ROOT / "scripts" / "exl3_r7_standup.py"),
             "plan",
-            "--output-dir", str(tmp_path),
+            "--output-dir", str(output_dir),
         ],
         check=False,
         capture_output=True,
@@ -337,8 +338,7 @@ def test_standup_dry_run_does_not_write_files(tmp_path: Path) -> None:
     assert json_start >= 0, "no JSON receipt in stdout"
     receipt = json.loads(result.stdout[json_start + 1:])
     # In dry-run, no profile files should exist
-    assert not (tmp_path / "stock-dcp4-profile.json").exists()
-    assert not (tmp_path / "mtp4-kv925-profile.json").exists()
+    assert not output_dir.exists()
     assert receipt["dry_run"] is True
 
 

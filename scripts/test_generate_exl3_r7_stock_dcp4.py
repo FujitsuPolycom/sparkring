@@ -88,6 +88,27 @@ def test_stock_profile_has_correct_identity() -> None:
     assert identity["model_index_sha256"] == (
         "9fd852f69ed64442e31dce1cbc5fe7acd0a76bfb848e945d272fe98d00d0c9cd"
     )
+    assert stock["profile_id"] == "glm52-exl3-r7-3.5bpw"
+
+
+def test_stock_profile_matches_qualified_diagnostic_contract() -> None:
+    template, pins, recipe = _inputs()
+    stock = stock_gen.derive_stock_profile(template, pins, recipe)
+    assert "VLLM_SPARK_R7_NONFINITE_TRACE" not in stock["environment"]
+    assert stock["environment"]["SPARK_TP4_DCP_COLLECTIVE_AUDIT"] == "1"
+    assert stock["environment"]["SPARK_TP4_GRAPH_STATUS_PATH"] == (
+        "/cache/jit/sparkring-r7-dcp4-stock-graph-status.json"
+    )
+    volume = {
+        "host": gen.DCP_AUDIT_HOST_PATH,
+        "container": gen.DCP_AUDIT_CONTAINER_PATH,
+        "mode": "ro",
+    }
+    assert volume in stock["extra_volumes"]
+    assert (
+        f"{gen.DCP_AUDIT_SHA256}  {gen.DCP_AUDIT_CONTAINER_PATH}"
+        in stock["attestation_hook"][2]
+    )
 
 
 def test_stock_profile_validation_rejects_mtp_on() -> None:
