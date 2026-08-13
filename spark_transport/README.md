@@ -59,6 +59,13 @@ ctest --test-dir /build --output-on-failure
 The gate is the full CTest suite: all 20 test executables declared in
 `CMakeLists.txt` must pass.
 
+The operator-accepted four-rank graph all-reduce uses the additive tiered
+kernel and deferred-credit ABI published in this directory. See
+[TIERED_DEFERRED_GRAPH.md](TIERED_DEFERRED_GRAPH.md) for its build, adapter,
+attestation, qualification, and rollback contract. The exact-Q40 routed-MoE
+optimization is a separate EXL3 overlay; compiling the transport library does
+not install it.
+
 ## Pair probe
 
 Server on `spark1`:

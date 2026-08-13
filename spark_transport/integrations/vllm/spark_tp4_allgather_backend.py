@@ -13,6 +13,14 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from spark_tp4_port_namespace import (
+    EAGER_ALLGATHER_PORT_SLOTS,
+    eager_allgather_control_ports,
+    graph_indexer_control_ports,
+    validate_active_port_namespace,
+    validate_control_port_pair,
+)
+
 logger = logging.getLogger(__name__)
 
 _installed = False
@@ -60,6 +68,14 @@ _SUPPORTED_SIGNATURES = {
     ((5, 2, 2048), "torch.int32"): (81920, 6, "indexer-k4"),
     ((23552,), "torch.uint8"): (23552, 7, "ckv-prefill"),
 }
+_CONFIGURED_PORT_SLOTS = tuple(
+    sorted(signature[1] for signature in _SUPPORTED_SIGNATURES.values())
+)
+if _CONFIGURED_PORT_SLOTS != EAGER_ALLGATHER_PORT_SLOTS:
+    raise RuntimeError(
+        "Spark TP4 exact all-gather signatures and the shared port "
+        "namespace disagree"
+    )
 
 
 def _abort_after_native_failure() -> None:
@@ -185,82 +201,18 @@ def _indexer_graph_custom_enabled(mode: str) -> bool:
 
 
 def _validate_control_ports(ports: tuple[int, int]) -> None:
-    port0, port1 = ports
-    if not (0 < port0 <= 65535 and 0 < port1 <= 65535):
-        raise ValueError(
-            "Spark TP4 indexer graph control ports must be in [1,65535]"
-        )
-    if port0 == port1:
-        raise ValueError(
-            "Spark TP4 indexer graph control ports must be distinct"
-        )
+    validate_control_port_pair(
+        ports, owner="graph indexer all-gather"
+    )
+    validate_active_port_namespace()
 
 
 def _indexer_graph_control_ports() -> tuple[int, int]:
-    ports = (
-        int(
-            os.getenv(
-                "SPARK_TP4_GRAPH_INDEXER_CONTROL_PORT0", "9462"
-            )
-        ),
-        int(
-            os.getenv(
-                "SPARK_TP4_GRAPH_INDEXER_CONTROL_PORT1", "9463"
-            )
-        ),
-    )
-    _validate_control_ports(ports)
+    return graph_indexer_control_ports()
 
-    # Exact eager signatures retain their existing namespace. The graph
-    # family gets one audited pair, never one pair per Q.
-    base = int(os.getenv("SPARK_TP4_ALLGATHER_BASE_PORT", "9490"))
-    exact_ports = {
-        port
-        for _, slot, _ in _SUPPORTED_SIGNATURES.values()
-        for port in (base + slot * 10, base + slot * 10 + 1)
-    }
-    allreduce_base0 = int(
-        os.getenv("SPARK_TP4_CONTROL_PORT0", "9480")
-    )
-    allreduce_base1 = int(
-        os.getenv("SPARK_TP4_CONTROL_PORT1", "9481")
-    )
-    allreduce_ports = {
-        port
-        for slot in range(512)
-        for port in (
-            allreduce_base0 + slot * 10,
-            allreduce_base1 + slot * 10,
-        )
-        if port <= 65535
-    }
-    static_ports = {
-        int(os.getenv("SPARK_TP4_GRAPH_CONTROL_PORT0", "9970")),
-        int(os.getenv("SPARK_TP4_GRAPH_CONTROL_PORT1", "9971")),
-        int(os.getenv("SPARK_TP4_DCP_CONTROL_PORT0", "9890")),
-        int(os.getenv("SPARK_TP4_DCP_CONTROL_PORT1", "9891")),
-        int(os.getenv("SPARK_TP4_GRAPH_DCP_CONTROL_PORT0", "9892")),
-        int(os.getenv("SPARK_TP4_GRAPH_DCP_CONTROL_PORT1", "9893")),
-        int(os.getenv("SPARK_TP4_VOCAB_CONTROL_PORT0", "9990")),
-        int(os.getenv("SPARK_TP4_VOCAB_CONTROL_PORT1", "9991")),
-        int(
-            os.getenv(
-                "SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT0", "10110"
-            )
-        ),
-        int(
-            os.getenv(
-                "SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT1", "10111"
-            )
-        ),
-    }
-    reserved_ports = exact_ports | allreduce_ports | static_ports
-    if set(ports) & reserved_ports:
-        raise ValueError(
-            "Spark TP4 indexer graph ports collide with a reserved "
-            "transport namespace"
-        )
-    return ports
+
+def _allgather_control_ports(port_slot: int) -> tuple[int, int]:
+    return eager_allgather_control_ports(port_slot)
 
 
 def _indexer_graph_preflight() -> tuple[int, int]:
@@ -555,6 +507,53 @@ def _record_stock_path(
     )
 
 
+def _is_indexer_communicator(communicator: Any) -> bool:
+    """Return whether this is the exact sparse-indexer shard communicator.
+
+    ``PyNcclCommunicator`` does not carry ``GroupCoordinator.unique_name``.
+    Resolve the indexer's configured shard group and require object identity
+    with its owned PyNCCL communicator.  Any unavailable or mismatched group
+    state fails closed to the stock collective.
+    """
+
+    try:
+        from vllm.distributed.parallel_state import (
+            get_indexer_dcp_group,
+        )
+
+        world_size = int(getattr(communicator, "world_size", 0))
+        communicator_rank = int(getattr(communicator, "rank", -2))
+        indexer_group = get_indexer_dcp_group(world_size)
+        indexer_world_size = int(
+            getattr(indexer_group, "world_size", 0)
+        )
+        indexer_rank = int(
+            getattr(indexer_group, "rank_in_group", -1)
+        )
+    except (AssertionError, ImportError, RuntimeError, TypeError, ValueError):
+        return False
+    if (
+        world_size != 4
+        or getattr(indexer_group, "unique_name", "") != "dcp:0"
+        or indexer_world_size != 4
+        or indexer_rank != communicator_rank
+    ):
+        return False
+    expected_cpu_group = getattr(indexer_group, "cpu_group", None)
+    device_communicator = getattr(
+        indexer_group, "device_communicator", None
+    )
+    expected_pynccl = getattr(
+        device_communicator, "pynccl_comm", None
+    )
+    return (
+        expected_cpu_group is not None
+        and getattr(communicator, "group", None)
+        is expected_cpu_group
+        and expected_pynccl is communicator
+    )
+
+
 def _signature(
     communicator: Any, input_tensor: Any, output_tensor: Any, mode: str
 ) -> _Signature | None:
@@ -596,7 +595,7 @@ def _indexer_graph_q(
     if (
         mode not in _VALID_MODES
         or getattr(communicator, "world_size", None) != 4
-        or getattr(communicator, "unique_name", "") != "tp:0"
+        or not _is_indexer_communicator(communicator)
         or bool(getattr(communicator, "disabled", False))
         or len(shape) != 3
         or shape[0] not in range(1, _INDEXER_MAX_Q + 1)
@@ -642,8 +641,7 @@ class _NativeAllgatherSession:
         self._protocol_trace_calls = 0
 
         default_peer0, default_peer1 = _DEFAULT_PEERS[rank]
-        base_port = int(os.getenv("SPARK_TP4_ALLGATHER_BASE_PORT", "9490"))
-        port0 = base_port + port_slot * 10
+        port0, port1 = _allgather_control_ports(port_slot)
         config = _NativeAllgatherConfig(
             rank=rank,
             peer0=os.getenv("SPARK_TP4_PEER0", default_peer0).encode(),
@@ -653,7 +651,7 @@ class _NativeAllgatherSession:
             gid0=int(os.getenv("SPARK_TP4_GID0", "3")),
             gid1=int(os.getenv("SPARK_TP4_GID1", "3")),
             control_port0=port0,
-            control_port1=port0 + 1,
+            control_port1=port1,
             input_bytes=input_bytes,
         )
         error = ctypes.create_string_buffer(512)
@@ -670,7 +668,7 @@ class _NativeAllgatherSession:
             rank,
             input_bytes,
             port0,
-            port0 + 1,
+            port1,
         )
 
     def all_gather(
@@ -1022,6 +1020,7 @@ def install() -> None:
     if _installed or not mode:
         return
     _indexer_graph_custom_enabled(mode)
+    validate_active_port_namespace()
 
     from vllm.distributed.device_communicators.pynccl import (
         PyNcclCommunicator,

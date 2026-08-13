@@ -380,7 +380,7 @@
   "public_runtime_inputs": [
     {
       "path": "runtime/public-overlay-files.json",
-      "sha256": "2a79a0790a40742a04bdfedb56e95a00369e22eab73c50ab7ccf2be1873f424f"
+      "sha256": "8de0debc8ddc3cdb4aee5951d7aa2adccc81b15199ea8ba3cda6e878e69f6006"
     },
     {
       "path": "runtime/build-public-overlay.py",

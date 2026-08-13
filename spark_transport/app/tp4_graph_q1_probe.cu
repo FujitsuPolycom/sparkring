@@ -31,6 +31,29 @@ constexpr std::size_t kMaximumPayloadBytes =
     kMaximumElements * sizeof(__nv_bfloat16);
 static_assert(kMaximumPayloadBytes == 6U * 1024U * 1024U);
 
+// A physical deferred-ACK slot is reused every two logical sequences. An odd
+// input-epoch period prevents sequence S from having the same payload as S-2.
+// BF16 represents every integer through 256 exactly. Each rank contributes an
+// integer no larger than 32, so both two-rank partials (<=64) and the final
+// four-rank sum (<=128) remain exact under the transport's BF16 additions.
+constexpr unsigned long long kInputEpochPeriod = 7;
+constexpr unsigned int kInputEpochStep = 4;
+constexpr unsigned int kMaximumInputBase = 8;
+constexpr unsigned int kMaximumInputValue =
+    kMaximumInputBase +
+    static_cast<unsigned int>(kInputEpochPeriod - 1) * kInputEpochStep;
+constexpr unsigned int kMaximumReducedValue = 4 * kMaximumInputValue;
+constexpr unsigned int kBfloat16ConsecutiveIntegerLimit = 256;
+static_assert(kInputEpochPeriod % 2 != 0);
+static_assert(kMaximumInputValue == 32);
+static_assert(kMaximumReducedValue == 128);
+static_assert(kMaximumReducedValue <= kBfloat16ConsecutiveIntegerLimit);
+
+enum class TimingMode {
+  kBurst,
+  kIsolated,
+};
+
 struct Options {
   spark_transport::Tp4AllreduceOptions transport;
   int warmup{10};
@@ -38,9 +61,11 @@ struct Options {
   int operations_per_graph{1};
   bool multi_graph_validation{};
   bool mixed_q_validation{};
+  std::uint32_t fixed_q{1};
   std::uint32_t maximum_q{6};
   int graph_a_operations{3};
   int graph_b_operations{128};
+  TimingMode timing_mode{TimingMode::kBurst};
   double max_graph_submit_us{};
   double max_device_us{};
 };
@@ -61,13 +86,18 @@ struct Options {
       << "  --operations-per-graph COUNT\n"
       << "  --multi-graph-validation\n"
       << "  --mixed-q-validation\n"
+      << "  --fixed-q Q\n"
       << "  --maximum-q Q\n"
       << "  --graph-a-operations COUNT\n"
       << "  --graph-b-operations COUNT\n"
       << "  --graph-submit-cpu CPU\n"
       << "  --graph-progress-cpu CPU\n"
+      << "  --allreduce-protocol serial_ack|two_slot_deferred_ack\n"
+      << "  --graph-kernel fused|split_64k|tiered_64k\n"
+      << "  --wire-schedule sequential|dual_port_striped\n"
+      << "  --timing-mode burst|isolated\n"
       << "  --max-graph-submit-us MICROSECONDS\n"
-      << "  --max-device-us MICROSECONDS\n";
+      << "  --max-device-us OUTPUT_READY_MICROSECONDS\n";
   std::exit(2);
 }
 
@@ -139,6 +169,13 @@ Options parse_options(int argc, char** argv) {
       options.multi_graph_validation = true;
     } else if (argument == "--mixed-q-validation") {
       options.mixed_q_validation = true;
+    } else if (argument == "--fixed-q") {
+      const std::uint64_t fixed_q =
+          unsigned_value(take_value(), "fixed Q");
+      if (fixed_q == 0 || fixed_q > kMaximumQ) {
+        throw std::invalid_argument("fixed Q must be in [1, 512]");
+      }
+      options.fixed_q = static_cast<std::uint32_t>(fixed_q);
     } else if (argument == "--maximum-q") {
       const std::uint64_t maximum_q =
           unsigned_value(take_value(), "maximum Q");
@@ -158,6 +195,46 @@ Options parse_options(int argc, char** argv) {
     } else if (argument == "--graph-progress-cpu") {
       options.transport.graph_progress_cpu = static_cast<std::uint32_t>(
           unsigned_value(take_value(), "graph progress CPU"));
+    } else if (argument == "--allreduce-protocol") {
+      options.transport.protocol =
+          spark_transport::parse_tp4_allreduce_protocol(take_value());
+    } else if (argument == "--graph-kernel") {
+      const std::string_view graph_kernel(take_value());
+      if (graph_kernel == "fused") {
+        options.transport.graph_kernel_strategy =
+            spark_transport::Tp4GraphKernelStrategy::kFused;
+      } else if (graph_kernel == "split_64k") {
+        options.transport.graph_kernel_strategy =
+            spark_transport::Tp4GraphKernelStrategy::kSplit64KiB;
+      } else if (graph_kernel == "tiered_64k") {
+        options.transport.graph_kernel_strategy =
+            spark_transport::Tp4GraphKernelStrategy::kTiered64KiB;
+      } else {
+        throw std::invalid_argument(
+            "graph kernel must be fused, split_64k, or tiered_64k");
+      }
+    } else if (argument == "--wire-schedule") {
+      const std::string_view wire_schedule(take_value());
+      if (wire_schedule == "sequential") {
+        options.transport.schedule =
+            spark_transport::Tp4AllreduceSchedule::kSequential;
+      } else if (wire_schedule == "dual_port_striped") {
+        options.transport.schedule =
+            spark_transport::Tp4AllreduceSchedule::kDualPortStriped;
+      } else {
+        throw std::invalid_argument(
+            "wire schedule must be sequential or dual_port_striped");
+      }
+    } else if (argument == "--timing-mode") {
+      const std::string_view timing_mode(take_value());
+      if (timing_mode == "burst") {
+        options.timing_mode = TimingMode::kBurst;
+      } else if (timing_mode == "isolated") {
+        options.timing_mode = TimingMode::kIsolated;
+      } else {
+        throw std::invalid_argument(
+            "timing mode must be burst or isolated");
+      }
     } else if (argument == "--max-graph-submit-us") {
       options.max_graph_submit_us =
           positive_double(take_value(), "graph submit threshold");
@@ -194,12 +271,55 @@ Options parse_options(int argc, char** argv) {
     throw std::invalid_argument(
         "mixed-Q validation requires multi-graph validation");
   }
+  if (options.timing_mode == TimingMode::kIsolated &&
+      (options.multi_graph_validation ||
+       options.mixed_q_validation ||
+       options.operations_per_graph != 1)) {
+    throw std::invalid_argument(
+        "isolated timing requires one single-graph collective");
+  }
+  if (options.fixed_q != 1 &&
+      (options.multi_graph_validation ||
+       options.mixed_q_validation ||
+       options.operations_per_graph != 1)) {
+    throw std::invalid_argument(
+        "fixed Q above one requires one single-graph collective");
+  }
+  if (options.transport.graph_kernel_strategy ==
+      spark_transport::Tp4GraphKernelStrategy::kSplit64KiB) {
+    if (options.multi_graph_validation ||
+        options.mixed_q_validation ||
+        options.operations_per_graph != 1) {
+      throw std::invalid_argument(
+          "split_64k graph kernel requires fixed Q1 through Q512, "
+          "and one collective per graph");
+    }
+  }
+  if (options.transport.schedule ==
+      spark_transport::Tp4AllreduceSchedule::kDualPortStriped) {
+    if ((options.fixed_q != 40 && options.fixed_q != 512) ||
+        options.multi_graph_validation ||
+        options.mixed_q_validation ||
+        options.operations_per_graph != 1 ||
+        options.transport.protocol !=
+            spark_transport::Tp4AllreduceProtocol::kTwoSlotDeferredAck ||
+        options.transport.graph_kernel_strategy !=
+            spark_transport::Tp4GraphKernelStrategy::kFused) {
+      throw std::invalid_argument(
+          "dual_port_striped wire schedule requires fixed Q40 or Q512, "
+          "two_slot_deferred_ack, fused graph kernel, and one "
+          "single-graph collective");
+    }
+  }
   if (options.maximum_q < 6 || options.maximum_q > kMaximumQ) {
     throw std::invalid_argument("maximum Q must be in [6, 512]");
   }
   if (options.mixed_q_validation) {
     options.transport.payload_bytes =
         spark_transport::tp4_graph_payload_bytes(options.maximum_q);
+  } else {
+    options.transport.payload_bytes =
+        spark_transport::tp4_graph_payload_bytes(options.fixed_q);
   }
   return options;
 }
@@ -231,13 +351,24 @@ spark_transport::Tp4GraphReplayStatus wait_for_graph_completion(
 }
 
 __device__ float tp4_input_value(std::uint32_t rank, std::size_t element,
-                                 unsigned long long replay) {
-  // Every adjacent replay has different, exactly representable BF16 inputs.
-  // The alternating offset catches stale replay data without introducing
-  // floating-point comparison tolerance into the correctness gate.
-  const unsigned int replay_offset = (replay & 1ULL) == 0 ? 0U : 16U;
+                                 unsigned long long input_epoch) {
+  const unsigned int epoch_offset =
+      static_cast<unsigned int>(input_epoch % kInputEpochPeriod) *
+      kInputEpochStep;
   return static_cast<float>(
-      ((element * 3U + rank * 5U) & 7U) + 1U + replay_offset);
+      ((element * 3U + rank * 5U) & 7U) + 1U + epoch_offset);
+}
+
+__device__ unsigned long long mixed_node_input_epoch(
+    unsigned long long replay, std::size_t node_epoch_offset,
+    std::size_t operations_per_cycle) {
+  // The probe always launches graph A then graph B. Two adjacent replay IDs
+  // therefore form one graph cycle. node_epoch_offset is the node's ordinal
+  // across A+B, making this epoch equal to its one-based logical collective
+  // sequence. In particular, every slot occupant S differs from S-2.
+  const unsigned long long cycle = (replay - 1ULL) / 2ULL;
+  return cycle * static_cast<unsigned long long>(operations_per_cycle) +
+         static_cast<unsigned long long>(node_epoch_offset) + 1ULL;
 }
 
 __global__ void prepare_replay(__nv_bfloat16* input, std::uint32_t rank,
@@ -253,6 +384,21 @@ __global__ void prepare_replay(__nv_bfloat16* input, std::uint32_t rank,
   if (index == 0) {
     *replay_marker = replay;
   }
+}
+
+__global__ void prepare_mixed_node_input(
+    __nv_bfloat16* input, std::uint32_t rank,
+    const unsigned long long* replay_marker, std::size_t input_elements,
+    std::size_t node_epoch_offset, std::size_t operations_per_cycle) {
+  const std::size_t index =
+      blockIdx.x * static_cast<std::size_t>(blockDim.x) + threadIdx.x;
+  if (index >= input_elements) {
+    return;
+  }
+  const unsigned long long input_epoch = mixed_node_input_epoch(
+      *replay_marker, node_epoch_offset, operations_per_cycle);
+  input[index] =
+      __float2bfloat16(tp4_input_value(rank, index, input_epoch));
 }
 
 __global__ void validate_q1_output(const __nv_bfloat16* output,
@@ -294,6 +440,27 @@ __global__ void validate_active_output(
   }
 }
 
+__global__ void validate_mixed_node_output(
+    const __nv_bfloat16* output, std::size_t active_elements,
+    const unsigned long long* replay_marker,
+    unsigned long long* mismatches, std::size_t node_epoch_offset,
+    std::size_t operations_per_cycle) {
+  const std::size_t index =
+      blockIdx.x * static_cast<std::size_t>(blockDim.x) + threadIdx.x;
+  if (index >= active_elements) {
+    return;
+  }
+  const unsigned long long input_epoch = mixed_node_input_epoch(
+      *replay_marker, node_epoch_offset, operations_per_cycle);
+  float expected = 0.0F;
+  for (std::uint32_t rank = 0; rank < 4; ++rank) {
+    expected += tp4_input_value(rank, index, input_epoch);
+  }
+  if (__bfloat162float(output[index]) != expected) {
+    atomicAdd(mismatches, 1ULL);
+  }
+}
+
 struct CapturedGraph {
   int operations{};
   std::size_t output_offset{};
@@ -304,7 +471,8 @@ CapturedGraph capture_graph(
     spark_transport::Tp4AllreduceSession& session,
     const __nv_bfloat16* input, __nv_bfloat16* output,
     unsigned long long* replay_marker, unsigned long long* mismatches,
-    cudaStream_t stream, int operations, std::size_t output_offset) {
+    cudaStream_t stream, int operations, std::size_t output_offset,
+    bool capture_validation) {
   constexpr int threads = 256;
   const std::size_t output_elements =
       kElements * static_cast<std::size_t>(operations);
@@ -321,9 +489,11 @@ CapturedGraph capture_graph(
             static_cast<std::size_t>(operation) * kElements,
         stream);
   }
-  validate_q1_output<<<validation_blocks, threads, 0, stream>>>(
-      output + output_offset, output_elements, replay_marker, mismatches);
-  check_cuda(cudaGetLastError(), "validate_q1_output capture launch");
+  if (capture_validation) {
+    validate_q1_output<<<validation_blocks, threads, 0, stream>>>(
+        output + output_offset, output_elements, replay_marker, mismatches);
+    check_cuda(cudaGetLastError(), "validate_q1_output capture launch");
+  }
   check_cuda(cudaStreamEndCapture(stream, &graph), "cudaStreamEndCapture");
 
   CapturedGraph captured{operations, output_offset, nullptr};
@@ -338,11 +508,49 @@ CapturedGraph capture_graph(
   return captured;
 }
 
-CapturedGraph capture_mixed_q_graph(
+CapturedGraph capture_fixed_q_graph(
     spark_transport::Tp4AllreduceSession& session,
     const __nv_bfloat16* input, __nv_bfloat16* output,
     unsigned long long* replay_marker, unsigned long long* mismatches,
-    cudaStream_t stream, const std::vector<std::uint32_t>& q_values) {
+    cudaStream_t stream, std::uint32_t q, bool capture_validation) {
+  constexpr int threads = 256;
+  const std::size_t active_elements =
+      static_cast<std::size_t>(q) * kElements;
+  const int validation_blocks = static_cast<int>(
+      (active_elements + threads - 1) / threads);
+
+  cudaGraph_t graph{};
+  check_cuda(cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal),
+             "cudaStreamBeginCapture fixed Q");
+  session.capture_all_reduce(input, output, q, stream);
+  if (capture_validation) {
+    validate_active_output<<<validation_blocks, threads, 0, stream>>>(
+        output, active_elements, replay_marker, mismatches);
+    check_cuda(cudaGetLastError(),
+               "validate_active_output fixed-Q capture launch");
+  }
+  check_cuda(cudaStreamEndCapture(stream, &graph),
+             "cudaStreamEndCapture fixed Q");
+
+  CapturedGraph captured{1, 0, nullptr};
+  try {
+    check_cuda(cudaGraphInstantiate(&captured.executable, graph, 0),
+               "cudaGraphInstantiate fixed Q");
+  } catch (...) {
+    cudaGraphDestroy(graph);
+    throw;
+  }
+  check_cuda(cudaGraphDestroy(graph), "cudaGraphDestroy fixed Q");
+  return captured;
+}
+
+CapturedGraph capture_mixed_q_graph(
+    spark_transport::Tp4AllreduceSession& session,
+    __nv_bfloat16* input, __nv_bfloat16* output,
+    unsigned long long* replay_marker, unsigned long long* mismatches,
+    cudaStream_t stream, std::uint32_t rank,
+    const std::vector<std::uint32_t>& q_values,
+    std::size_t graph_epoch_offset, std::size_t operations_per_cycle) {
   constexpr int threads = 256;
   cudaGraph_t graph{};
   check_cuda(cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal),
@@ -354,15 +562,22 @@ CapturedGraph capture_mixed_q_graph(
     // graph, so every node can reuse one stable maximum-capacity output
     // arena instead of reserving hundreds of MiB for distinct node outputs.
     __nv_bfloat16* operation_output = output;
-    session.capture_all_reduce(input, operation_output, q, stream);
     const std::size_t active_elements =
         static_cast<std::size_t>(q) * kElements;
     const int validation_blocks = static_cast<int>(
         (active_elements + threads - 1) / threads);
-    validate_active_output<<<validation_blocks, threads, 0, stream>>>(
-        operation_output, active_elements, replay_marker, mismatches);
+    const std::size_t node_epoch_offset = graph_epoch_offset + operation;
+    prepare_mixed_node_input<<<validation_blocks, threads, 0, stream>>>(
+        input, rank, replay_marker, active_elements, node_epoch_offset,
+        operations_per_cycle);
     check_cuda(cudaGetLastError(),
-               "validate_active_output capture launch");
+               "prepare_mixed_node_input capture launch");
+    session.capture_all_reduce(input, operation_output, q, stream);
+    validate_mixed_node_output<<<validation_blocks, threads, 0, stream>>>(
+        operation_output, active_elements, replay_marker, mismatches,
+        node_epoch_offset, operations_per_cycle);
+    check_cuda(cudaGetLastError(),
+               "validate_mixed_node_output capture launch");
   }
   check_cuda(cudaStreamEndCapture(stream, &graph),
              "cudaStreamEndCapture mixed Q");
@@ -437,13 +652,13 @@ int main(int argc, char** argv) {
     const std::size_t input_elements =
         options.mixed_q_validation
             ? static_cast<std::size_t>(options.maximum_q) * kElements
-            : kElements;
+            : static_cast<std::size_t>(options.fixed_q) * kElements;
     const int input_blocks = static_cast<int>(
         (input_elements + threads - 1) / threads);
     const std::size_t output_stride_elements =
         options.mixed_q_validation
             ? static_cast<std::size_t>(options.maximum_q) * kElements
-            : kElements;
+            : static_cast<std::size_t>(options.fixed_q) * kElements;
     const std::size_t output_elements =
         options.mixed_q_validation
             ? output_stride_elements
@@ -500,10 +715,22 @@ int main(int argc, char** argv) {
         account_q(q);
       }
     } else {
-      q_histogram[0] = total_output_operations;
+      q_histogram[options.fixed_q - 1] = total_output_operations;
       active_bytes_per_graph_cycle =
-          total_output_operations * kPayloadBytes;
+          total_output_operations *
+          spark_transport::tp4_graph_payload_bytes(options.fixed_q);
     }
+    std::uint64_t kernel_split_nodes{};
+    for (std::size_t index = 0; index < q_histogram.size(); ++index) {
+      if (spark_transport::tp4_graph_kernel_uses_split(
+              options.transport.graph_kernel_strategy,
+              static_cast<std::uint32_t>(index + 1))) {
+        kernel_split_nodes += q_histogram[index];
+      }
+    }
+    const std::uint64_t kernel_fused_nodes =
+        static_cast<std::uint64_t>(total_output_operations) -
+        kernel_split_nodes;
 
     __nv_bfloat16* input{};
     __nv_bfloat16* output{};
@@ -536,25 +763,36 @@ int main(int argc, char** argv) {
       spark_transport::Tp4AllreduceSession session(options.transport);
       std::vector<CapturedGraph> graphs;
       if (options.mixed_q_validation) {
+        const std::size_t operations_per_cycle =
+            graph_a_q.size() + graph_b_q.size();
         graphs.push_back(capture_mixed_q_graph(
             session, input, output, replay_marker, mismatches, stream,
-            graph_a_q));
+            options.transport.rank, graph_a_q, 0,
+            operations_per_cycle));
         graphs.push_back(capture_mixed_q_graph(
             session, input, output, replay_marker, mismatches, stream,
-            graph_b_q));
+            options.transport.rank, graph_b_q, graph_a_q.size(),
+            operations_per_cycle));
       } else if (options.multi_graph_validation) {
         graphs.push_back(capture_graph(
             session, input, output, replay_marker, mismatches, stream,
-            options.graph_a_operations, 0));
+            options.graph_a_operations, 0, true));
         graphs.push_back(capture_graph(
             session, input, output, replay_marker, mismatches, stream,
             options.graph_b_operations,
             static_cast<std::size_t>(options.graph_a_operations) *
-                kElements));
-      } else {
+                kElements,
+            true));
+      } else if (options.fixed_q == 1) {
         graphs.push_back(capture_graph(
             session, input, output, replay_marker, mismatches, stream,
-            options.operations_per_graph, 0));
+            options.operations_per_graph, 0,
+            options.timing_mode == TimingMode::kBurst));
+      } else {
+        graphs.push_back(capture_fixed_q_graph(
+            session, input, output, replay_marker, mismatches, stream,
+            options.fixed_q,
+            options.timing_mode == TimingMode::kBurst));
       }
 
       const std::uint64_t expected_captured_nodes =
@@ -580,8 +818,11 @@ int main(int argc, char** argv) {
       bool monotonic_sequences = true;
       bool post_replay_capture_rejected{};
 
+      const bool isolated_timing =
+          options.timing_mode == TimingMode::kIsolated;
       const auto launch_graph = [&](const CapturedGraph& graph,
-                                    const char* phase) {
+                                    const char* phase,
+                                    bool collect_isolated_sample) {
         if (replay == std::numeric_limits<std::uint64_t>::max()) {
           throw std::overflow_error("graph replay marker exhausted");
         }
@@ -590,9 +831,31 @@ int main(int argc, char** argv) {
             input, options.transport.rank, replay, replay_marker,
             input_elements);
         check_cuda(cudaGetLastError(), "prepare_replay launch");
+        if (collect_isolated_sample) {
+          check_cuda(cudaEventRecord(start, stream),
+                     "cudaEventRecord isolated start");
+        }
+        const auto submit_start = std::chrono::steady_clock::now();
         check_cuda(cudaGraphLaunch(graph.executable, stream), phase);
+        const auto submit_stop = std::chrono::steady_clock::now();
+        if (collect_isolated_sample) {
+          check_cuda(cudaEventRecord(stop, stream),
+                     "cudaEventRecord isolated stop");
+        }
         expected_sequence +=
             static_cast<std::uint64_t>(graph.operations);
+
+        if (isolated_timing) {
+          const std::size_t validation_elements =
+              static_cast<std::size_t>(options.fixed_q) * kElements;
+          const int validation_blocks = static_cast<int>(
+              (validation_elements + threads - 1) / threads);
+          validate_active_output<<<validation_blocks, threads, 0, stream>>>(
+              output + graph.output_offset, validation_elements,
+              replay_marker, mismatches);
+          check_cuda(cudaGetLastError(),
+                     "validate_q1_output isolated launch");
+        }
 
         if (options.multi_graph_validation) {
           check_cuda(cudaStreamSynchronize(stream),
@@ -619,29 +882,93 @@ int main(int argc, char** argv) {
                         : 1U);
           }
         }
+        return std::chrono::duration<double, std::micro>(
+                   submit_stop - submit_start)
+            .count();
       };
 
       for (int iteration = 0; iteration < options.warmup; ++iteration) {
         for (const auto& graph : graphs) {
-          launch_graph(graph, "cudaGraphLaunch warmup");
+          (void)launch_graph(graph, "cudaGraphLaunch warmup", false);
+        }
+        if (isolated_timing) {
+          check_cuda(cudaStreamSynchronize(stream),
+                     "isolated warmup synchronize");
+          (void)wait_for_graph_completion(session, expected_sequence);
         }
       }
       check_cuda(cudaStreamSynchronize(stream), "warmup synchronize");
 
-      check_cuda(cudaEventRecord(start, stream), "cudaEventRecord start");
-      const auto host_start = std::chrono::steady_clock::now();
-      for (int iteration = 0; iteration < options.iterations; ++iteration) {
-        for (const auto& graph : graphs) {
-          launch_graph(graph, "cudaGraphLaunch measured");
+      double host_submit_us{};
+      double device_us{};
+      double device_us_per_collective{};
+      double device_us_min{};
+      double device_us_p50{};
+      double device_us_p95{};
+      if (isolated_timing) {
+        std::vector<double> samples;
+        samples.reserve(static_cast<std::size_t>(options.iterations));
+        double submit_us_total{};
+        for (int iteration = 0; iteration < options.iterations;
+             ++iteration) {
+          submit_us_total += launch_graph(
+              graphs.front(), "cudaGraphLaunch isolated", true);
+          check_cuda(cudaEventSynchronize(stop),
+                     "cudaEventSynchronize isolated stop");
+          float sample_ms{};
+          check_cuda(cudaEventElapsedTime(&sample_ms, start, stop),
+                     "cudaEventElapsedTime isolated");
+          samples.push_back(static_cast<double>(sample_ms) * 1000.0);
+          check_cuda(cudaStreamSynchronize(stream),
+                     "isolated validation synchronize");
         }
+        std::sort(samples.begin(), samples.end());
+        const auto nearest_rank = [&](double quantile) {
+          const std::size_t rank = static_cast<std::size_t>(
+              std::ceil(quantile * static_cast<double>(samples.size())));
+          return samples.at(std::max<std::size_t>(1, rank) - 1);
+        };
+        host_submit_us = submit_us_total / options.iterations;
+        device_us_min = samples.front();
+        device_us_p50 = nearest_rank(0.50);
+        device_us_p95 = nearest_rank(0.95);
+        device_us = device_us_p50;
+        device_us_per_collective = device_us_p50;
+      } else {
+        check_cuda(cudaEventRecord(start, stream),
+                   "cudaEventRecord start");
+        const auto host_start = std::chrono::steady_clock::now();
+        for (int iteration = 0; iteration < options.iterations;
+             ++iteration) {
+          for (const auto& graph : graphs) {
+            (void)launch_graph(
+                graph, "cudaGraphLaunch measured", false);
+          }
+        }
+        const auto host_stop = std::chrono::steady_clock::now();
+        check_cuda(cudaEventRecord(stop, stream),
+                   "cudaEventRecord stop");
+        check_cuda(cudaEventSynchronize(stop),
+                   "cudaEventSynchronize stop");
+        float elapsed_ms{};
+        check_cuda(cudaEventElapsedTime(&elapsed_ms, start, stop),
+                   "cudaEventElapsedTime");
+        host_submit_us =
+            std::chrono::duration<double, std::micro>(
+                host_stop - host_start)
+                .count() /
+            options.iterations;
+        device_us =
+            static_cast<double>(elapsed_ms) * 1000.0 /
+            options.iterations;
+        const int operations_per_iteration =
+            options.multi_graph_validation
+                ? options.graph_a_operations +
+                      options.graph_b_operations
+                : options.operations_per_graph;
+        device_us_per_collective =
+            device_us / operations_per_iteration;
       }
-      const auto host_stop = std::chrono::steady_clock::now();
-      check_cuda(cudaEventRecord(stop, stream), "cudaEventRecord stop");
-      check_cuda(cudaEventSynchronize(stop), "cudaEventSynchronize stop");
-
-      float elapsed_ms{};
-      check_cuda(cudaEventElapsedTime(&elapsed_ms, start, stop),
-                 "cudaEventElapsedTime");
       check_cuda(cudaMemcpy(&host_mismatches, mismatches,
                             sizeof(host_mismatches),
                             cudaMemcpyDeviceToHost),
@@ -649,33 +976,35 @@ int main(int argc, char** argv) {
 
       const auto status =
           wait_for_graph_completion(session, expected_sequence);
-      const double host_submit_us =
-          std::chrono::duration<double, std::micro>(host_stop - host_start)
-              .count() /
-          options.iterations;
-      const double device_us =
-          static_cast<double>(elapsed_ms) * 1000.0 / options.iterations;
-      const int operations_per_iteration =
-          options.multi_graph_validation
-              ? options.graph_a_operations + options.graph_b_operations
-              : options.operations_per_graph;
-      const double device_us_per_collective =
-          device_us / operations_per_iteration;
       const bool sequences_match =
           status.captured_nodes == expected_captured_nodes &&
           status.published_sequence == expected_sequence &&
           status.consumed_sequence == expected_sequence &&
           status.completed_sequence == expected_sequence &&
           status.overflow_sequence == 0;
+      const bool protocol_status_match =
+          status.two_slot_deferred_ack ==
+          spark_transport::tp4_protocol_uses_deferred_ack(
+              options.transport.protocol);
+      const std::size_t payload_slots =
+          spark_transport::tp4_payload_slot_count(
+              options.transport.protocol);
+      const bool slot_reuse_exercised =
+          spark_transport::tp4_protocol_uses_deferred_ack(
+              options.transport.protocol) &&
+          status.completed_sequence >= 3;
       const bool submit_fast_enough =
           options.max_graph_submit_us == 0.0 ||
           host_submit_us <= options.max_graph_submit_us;
       const bool device_fast_enough =
           options.max_device_us == 0.0 ||
-          device_us_per_collective <= options.max_device_us;
+          (isolated_timing ? device_us_p95
+                           : device_us_per_collective) <=
+              options.max_device_us;
       const bool correct =
           host_mismatches == 0 && sequences_match &&
-          pre_replay_capture_valid && monotonic_sequences &&
+          protocol_status_match && pre_replay_capture_valid &&
+          monotonic_sequences &&
           (!options.multi_graph_validation ||
            post_replay_capture_rejected);
       const bool passed =
@@ -685,6 +1014,18 @@ int main(int argc, char** argv) {
           static_cast<std::uint64_t>(options.iterations);
       const std::uint64_t validated_active_bytes_total =
           active_bytes_per_graph_cycle * graph_cycles;
+      const char* const transport_kernel_path =
+          options.transport.schedule ==
+                  spark_transport::Tp4AllreduceSchedule::kDualPortStriped
+              ? "dual_port_striped_dag"
+              : options.transport.graph_kernel_strategy ==
+                        spark_transport::Tp4GraphKernelStrategy::kFused
+                    ? "sequential_fused"
+                    : options.transport.graph_kernel_strategy ==
+                              spark_transport::
+                                  Tp4GraphKernelStrategy::kSplit64KiB
+                          ? "sequential_split_64k"
+                          : "sequential_tiered_64k";
 
       std::cout << "TP4_GRAPH_Q1"
                 << " rank=" << options.transport.rank
@@ -695,9 +1036,27 @@ int main(int argc, char** argv) {
                 << (options.multi_graph_validation ? "multi" : "single")
                 << " mixed_q="
                 << (options.mixed_q_validation ? "true" : "false")
+                << " fixed_q=" << options.fixed_q
                 << " maximum_q=" << options.maximum_q
                 << " session_capacity_bytes="
                 << options.transport.payload_bytes
+                << " allreduce_protocol="
+                << spark_transport::tp4_allreduce_protocol_name(
+                       options.transport.protocol)
+                << " wire_schedule="
+                << spark_transport::tp4_allreduce_schedule_name(
+                       options.transport.schedule)
+                << " transport_kernel_path=" << transport_kernel_path
+                << " graph_kernel="
+                << spark_transport::tp4_graph_kernel_strategy_name(
+                       options.transport.graph_kernel_strategy)
+                << " kernel_fused_nodes=" << kernel_fused_nodes
+                << " kernel_split_64k_nodes=" << kernel_split_nodes
+                << " payload_slots=" << payload_slots
+                << " slot_reuse_exercised="
+                << (slot_reuse_exercised ? "true" : "false")
+                << " timing_mode="
+                << (isolated_timing ? "isolated" : "burst")
                 << " iterations=" << options.iterations
                 << " operations_per_graph="
                 << options.operations_per_graph
@@ -715,6 +1074,7 @@ int main(int argc, char** argv) {
                 << " q4_nodes=" << q_histogram[3]
                 << " q5_nodes=" << q_histogram[4]
                 << " q6_nodes=" << q_histogram[5]
+                << " q40_nodes=" << q_histogram[39]
                 << " q48_nodes=" << q_histogram[47]
                 << " q72_nodes=" << q_histogram[71]
                 << " q144_nodes=" << q_histogram[143]
@@ -730,14 +1090,35 @@ int main(int argc, char** argv) {
                 << (status.submit_affinity_verified ? "true" : "false")
                 << " progress_affinity_verified="
                 << (status.progress_affinity_verified ? "true" : "false")
+                << " protocol_status_match="
+                << (protocol_status_match ? "true" : "false")
                 << " graph_submit_cpu=" << status.graph_submit_cpu
                 << " graph_progress_cpu=" << status.graph_progress_cpu
                 << " pre_replay_capture_valid="
                 << (pre_replay_capture_valid ? "true" : "false")
-                << " graph_submit_us_per_call=" << host_submit_us
-                << " device_us_per_graph=" << device_us
-                << " device_us_per_call=" << device_us_per_collective
-                << " published=" << status.published_sequence
+                << " graph_submit_us_per_call=" << host_submit_us;
+      if (isolated_timing) {
+        std::cout
+            << " timing_scope=device_output_ready_single_replay"
+            << " timing_samples=" << options.iterations
+            << " device_output_ready_us_per_graph_min="
+            << device_us_min
+            << " device_output_ready_us_per_graph_p50="
+            << device_us_p50
+            << " device_output_ready_us_per_graph_p95="
+            << device_us_p95
+            << " device_gate_metric="
+               "p95_device_output_ready_us_per_graph";
+      } else {
+        std::cout
+            << " timing_scope=device_output_ready_replay_throughput"
+            << " device_output_ready_us_per_graph=" << device_us
+            << " device_output_ready_us_per_collective="
+            << device_us_per_collective
+            << " device_gate_metric="
+               "mean_device_output_ready_us_per_collective";
+      }
+      std::cout << " published=" << status.published_sequence
                 << " consumed=" << status.consumed_sequence
                 << " completed=" << status.completed_sequence
                 << " overflow=" << status.overflow_sequence

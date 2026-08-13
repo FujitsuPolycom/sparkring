@@ -45,6 +45,30 @@ enum {
    * This is valid only with an exclusively affined progress CPU.
    */
   SPARK_TP4_GRAPH_STATUS_DEDICATED_SPIN = 1U << 6,
+  /* The graph session uses two generation-tagged payload slots per edge. */
+  SPARK_TP4_GRAPH_STATUS_TWO_SLOT_DEFERRED_ACK = 1U << 7,
+  /* Every captured node uses the fixed 64 KiB split-kernel graph. */
+  SPARK_TP4_GRAPH_STATUS_SPLIT_64K = 1U << 8,
+  /* Captured nodes select fused or split kernels from their active Q. */
+  SPARK_TP4_GRAPH_STATUS_TIERED_64K = 1U << 9,
+  /* The session counter-rotates tensor halves across both physical links. */
+  SPARK_TP4_GRAPH_STATUS_DUAL_PORT_STRIPED = 1U << 10,
+};
+
+enum {
+  SPARK_TP4_ALLREDUCE_PROTOCOL_SERIAL_ACK = 0,
+  SPARK_TP4_ALLREDUCE_PROTOCOL_TWO_SLOT_DEFERRED_ACK = 1,
+};
+
+enum {
+  SPARK_TP4_GRAPH_KERNEL_FUSED = 0,
+  SPARK_TP4_GRAPH_KERNEL_SPLIT_64K = 1,
+  SPARK_TP4_GRAPH_KERNEL_TIERED_64K = 2,
+};
+
+enum {
+  SPARK_TP4_WIRE_SCHEDULE_SEQUENTIAL = 0,
+  SPARK_TP4_WIRE_SCHEDULE_DUAL_PORT_STRIPED = 1,
 };
 
 typedef struct spark_tp4_graph_status {
@@ -61,6 +85,39 @@ typedef struct spark_tp4_graph_status {
 
 spark_tp4_handle spark_tp4_create(const spark_tp4_config* config,
                                   char* error, size_t error_bytes);
+
+/*
+ * Selects a protocol without extending the unversioned spark_tp4_config ABI.
+ * The graph kernel remains FUSED. spark_tp4_create remains equivalent to
+ * SERIAL_ACK plus FUSED. The two-slot protocol is experimental and accepted
+ * only for graph-only sessions.
+ */
+spark_tp4_handle spark_tp4_create_with_protocol(
+    const spark_tp4_config* config, uint32_t protocol, char* error,
+    size_t error_bytes);
+
+/*
+ * Selects protocol and graph-kernel strategy without changing
+ * spark_tp4_config. Invalid scalar values fail before session construction.
+ * SPLIT_64K and TIERED_64K are graph-only research strategies. Their selected
+ * strategy is attested by the corresponding mutually exclusive graph-status
+ * flag; FUSED sets neither strategy flag.
+ */
+spark_tp4_handle spark_tp4_create_with_protocol_and_graph_kernel(
+    const spark_tp4_config* config, uint32_t protocol,
+    uint32_t graph_kernel, char* error, size_t error_bytes);
+
+/*
+ * Additive constructor for a versioned wire schedule. Existing constructors
+ * remain equivalent to SEQUENTIAL. DUAL_PORT_STRIPED is graph-only and the
+ * native session rejects any incompatible protocol, graph kernel, affinity,
+ * or payload capacity before endpoint setup.
+ */
+spark_tp4_handle
+spark_tp4_create_with_protocol_graph_kernel_and_schedule(
+    const spark_tp4_config* config, uint32_t protocol,
+    uint32_t graph_kernel, uint32_t wire_schedule, char* error,
+    size_t error_bytes);
 
 int spark_tp4_all_reduce(spark_tp4_handle handle, const void* input,
                          void* output, void* cuda_stream, char* error,
@@ -95,7 +152,10 @@ int spark_tp4_capture_q1_all_reduce(
  * Counters may advance while they are copied, so callers that require a
  * quiescent equality gate should sample after request synchronization. A
  * completed_sequence increase proves actual graph replay transport progress;
- * captured_nodes alone proves only graph definition.
+ * captured_nodes alone proves only graph definition. When
+ * TWO_SLOT_DEFERRED_ACK is set, completed_sequence means the progress worker
+ * observed output consumption and posted both credits. Device output can be
+ * ready earlier; physical payload-slot retirement remains credit-gated.
  */
 int spark_tp4_get_graph_status(
     spark_tp4_handle handle, spark_tp4_graph_status* status,

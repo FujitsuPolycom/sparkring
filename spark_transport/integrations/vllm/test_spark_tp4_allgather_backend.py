@@ -166,11 +166,13 @@ def _make_pynccl_type() -> type:
             rank: int = 2,
             disabled: bool = False,
             unique_name: str = "tp:0",
+            group: object | None = None,
         ) -> None:
             self.world_size = world_size
             self.rank = rank
             self.disabled = disabled
             self.unique_name = unique_name
+            self.group = group
             self.original_calls: list[tuple[object, object, object]] = []
 
         def all_gather(
@@ -224,6 +226,14 @@ class SparkTp4AllgatherDispatchTest(unittest.TestCase):
             patch.dict(os.environ, environment, clear=True),
             patch.dict(sys.modules, self.modules),
             patch.object(backend_module, "_Backend", backend_type),
+            patch.object(
+                backend_module,
+                "_is_indexer_communicator",
+                side_effect=lambda communicator: getattr(
+                    communicator, "unique_name", ""
+                )
+                == "tp:0",
+            ),
         )
         for patcher in patchers:
             patcher.start()
@@ -810,6 +820,12 @@ class SparkTp4AllgatherDispatchTest(unittest.TestCase):
                 self.assertEqual(len(communicator.original_calls), 1)
         self.assertEqual(_FakeBackend.created, [])
 
+    @patch.object(
+        backend_module,
+        "_is_indexer_communicator",
+        lambda communicator: getattr(communicator, "unique_name", "")
+        == "tp:0",
+    )
     def test_indexer_graph_formula_admits_every_q1_q40(self) -> None:
         communicator = self.pynccl_type()
         for q in range(1, 41):
@@ -852,6 +868,168 @@ class SparkTp4AllgatherDispatchTest(unittest.TestCase):
             )
         )
 
+    def test_indexer_identity_accepts_only_configured_group_owner(
+        self,
+    ) -> None:
+        cpu_group = object()
+        correct = self.pynccl_type(
+            unique_name="",
+            group=cpu_group,
+        )
+        wrong_group = self.pynccl_type(
+            unique_name="",
+            group=object(),
+        )
+        unnamed_nonowner = self.pynccl_type(
+            unique_name="",
+            group=cpu_group,
+        )
+        indexer_group = types.SimpleNamespace(
+            unique_name="dcp:0",
+            world_size=4,
+            rank_in_group=correct.rank,
+            cpu_group=cpu_group,
+            device_communicator=types.SimpleNamespace(
+                pynccl_comm=correct,
+            ),
+        )
+        parallel_state = types.ModuleType(
+            "vllm.distributed.parallel_state"
+        )
+
+        def get_indexer_dcp_group(expected_world_size: int) -> object:
+            self.assertEqual(expected_world_size, 4)
+            return indexer_group
+
+        parallel_state.get_indexer_dcp_group = get_indexer_dcp_group
+        modules = dict(self.modules)
+        modules["vllm.distributed.parallel_state"] = parallel_state
+        input_tensor = _FakeTensor((3, 2, 2048), "torch.int32")
+        output_tensor = _FakeTensor((12, 2, 2048), "torch.int32")
+
+        with patch.dict(sys.modules, modules):
+            self.assertTrue(
+                backend_module._is_indexer_communicator(correct)
+            )
+            self.assertIsNone(
+                backend_module._signature(
+                    correct,
+                    input_tensor,
+                    output_tensor,
+                    "custom",
+                )
+            )
+            self.assertEqual(
+                backend_module._indexer_graph_q(
+                    correct,
+                    input_tensor,
+                    output_tensor,
+                    "custom",
+                ),
+                3,
+            )
+            for reason, rejected in (
+                ("wrong-group", wrong_group),
+                ("unnamed-nonowner", unnamed_nonowner),
+            ):
+                with self.subTest(reason=reason):
+                    self.assertFalse(
+                        backend_module._is_indexer_communicator(
+                            rejected
+                        )
+                    )
+                    self.assertIsNone(
+                        backend_module._signature(
+                            rejected,
+                            input_tensor,
+                            output_tensor,
+                            "custom",
+                        )
+                    )
+                    self.assertIsNone(
+                        backend_module._indexer_graph_q(
+                            rejected,
+                            input_tensor,
+                            output_tensor,
+                            "custom",
+                        )
+                    )
+
+            indexer_group.unique_name = ""
+            self.assertFalse(
+                backend_module._is_indexer_communicator(correct)
+            )
+            indexer_group.unique_name = "dcp:0"
+            indexer_group.world_size = 3
+            self.assertFalse(
+                backend_module._is_indexer_communicator(correct)
+            )
+            indexer_group.world_size = 4
+            indexer_group.rank_in_group = correct.rank + 1
+            self.assertFalse(
+                backend_module._is_indexer_communicator(correct)
+            )
+
+    def test_indexer_identity_fails_closed_without_group_state(
+        self,
+    ) -> None:
+        communicator = self.pynccl_type(unique_name="dcp:0")
+        parallel_state = types.ModuleType(
+            "vllm.distributed.parallel_state"
+        )
+
+        def unavailable_group(expected_world_size: int) -> object:
+            del expected_world_size
+            raise RuntimeError("indexer group unavailable")
+
+        parallel_state.get_indexer_dcp_group = unavailable_group
+        modules = dict(self.modules)
+        modules["vllm.distributed.parallel_state"] = parallel_state
+        with patch.dict(sys.modules, modules):
+            self.assertFalse(
+                backend_module._is_indexer_communicator(communicator)
+            )
+
+    def test_indexer_graph_uses_selected_dcp_communicator_identity(self) -> None:
+        cpu_group = object()
+        selected = self.pynccl_type(unique_name="", group=cpu_group)
+        unrelated = self.pynccl_type(unique_name="", group=cpu_group)
+        indexer_group = types.SimpleNamespace(
+            unique_name="dcp:0",
+            world_size=4,
+            rank_in_group=selected.rank,
+            cpu_group=cpu_group,
+            device_communicator=types.SimpleNamespace(pynccl_comm=selected),
+        )
+        parallel_state = types.ModuleType("vllm.distributed.parallel_state")
+        parallel_state.get_indexer_dcp_group = (
+            lambda expected_world_size: indexer_group
+        )
+        input_tensor = _FakeTensor((3, 2, 2048), "torch.int32")
+        output_tensor = _FakeTensor((12, 2, 2048), "torch.int32")
+
+        with patch.dict(
+            sys.modules,
+            {"vllm.distributed.parallel_state": parallel_state},
+        ):
+            self.assertEqual(
+                backend_module._indexer_graph_q(
+                    selected,
+                    input_tensor,
+                    output_tensor,
+                    "custom",
+                ),
+                3,
+            )
+            self.assertIsNone(
+                backend_module._indexer_graph_q(
+                    unrelated,
+                    input_tensor,
+                    output_tensor,
+                    "custom",
+                )
+            )
+
     def test_indexer_graph_uses_one_noncolliding_port_pair(self) -> None:
         with patch.dict(
             os.environ,
@@ -866,6 +1044,8 @@ class SparkTp4AllgatherDispatchTest(unittest.TestCase):
             patch.dict(
                 os.environ,
                 {
+                    "VLLM_SPARK_TP4_ALLGATHER_MODE": "custom",
+                    "VLLM_SPARK_TP4_INDEXER_GRAPH_CUSTOM": "1",
                     "SPARK_TP4_ALLGATHER_BASE_PORT": "9490",
                     "SPARK_TP4_GRAPH_INDEXER_CONTROL_PORT0": "9490",
                     "SPARK_TP4_GRAPH_INDEXER_CONTROL_PORT1": "9491",
@@ -879,12 +1059,15 @@ class SparkTp4AllgatherDispatchTest(unittest.TestCase):
             patch.dict(
                 os.environ,
                 {
-                    "SPARK_TP4_GRAPH_INDEXER_CONTROL_PORT0": "9570",
-                    "SPARK_TP4_GRAPH_INDEXER_CONTROL_PORT1": "9571",
+                    "VLLM_SPARK_TP4_MODE": "custom",
+                    "VLLM_SPARK_TP4_ALLGATHER_MODE": "custom",
+                    "VLLM_SPARK_TP4_INDEXER_GRAPH_CUSTOM": "1",
+                    "SPARK_TP4_GRAPH_INDEXER_CONTROL_PORT0": "11002",
+                    "SPARK_TP4_GRAPH_INDEXER_CONTROL_PORT1": "11003",
                 },
                 clear=True,
             ),
-            self.assertRaisesRegex(ValueError, "reserved"),
+            self.assertRaisesRegex(ValueError, "eager_allreduce:q=2"),
         ):
             backend_module._indexer_graph_control_ports()
 

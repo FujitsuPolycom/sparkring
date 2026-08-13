@@ -38,6 +38,14 @@ The implementation combines:
    replay; and
 6. pinned host progress threads that submit and reap verbs work.
 
+The operator-accepted EXL3 R7 profile uses the versioned
+`two_slot_deferred_ack` graph protocol with the `tiered_64k` kernel selector.
+Two generation-tagged payload slots let graph replay defer acknowledgement
+without permitting premature reuse. The selector keeps small captured Q on
+the fused kernel and uses split 64-KiB work for larger captured Q. Build,
+attestation, qualification, and rollback instructions are in
+[`spark_transport/TIERED_DEFERRED_GRAPH.md`](../spark_transport/TIERED_DEFERRED_GRAPH.md).
+
 The endpoint exchange is explicitly versioned, and the deployed descriptor
 layout is pinned by the attested runtime bundle. A slot cannot be reused
 before its consumer acknowledges the sequence. Publication regression,
@@ -66,6 +74,10 @@ contiguous tensors on fixed two-node and four-node direct-cable topologies,
 with standard PyTorch integration and visible fallback counters. The current
 public snapshot is not yet a drop-in `torch.distributed` backend; model and
 runtime adapters still live beside the transport core.
+
+The dual-port striped schedule and prefill-capacity pool published beside the
+accepted selector are research-only and default off. They are not implied by
+the accepted sequential tiered/deferred result.
 
 The acronym remains an internal technical name because the unrelated
 [Sircl HTML extension library](https://www.getsircl.com/) already uses the

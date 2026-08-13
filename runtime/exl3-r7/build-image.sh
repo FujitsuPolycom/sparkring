@@ -39,11 +39,19 @@ repo_root="$(git -C "${here}" rev-parse --show-toplevel 2>/dev/null)" ||
   fatal "builder must run from a Git checkout"
 sparkring_revision="$(git -C "${repo_root}" rev-parse HEAD)"
 if ! git -C "${repo_root}" diff --quiet HEAD -- \
-  runtime/exl3-r7 runtime/exl3/patches/exllamav3-arm64-external-collectives.patch; then
+  runtime/exl3-r7 \
+  runtime/build-public-overlay.py \
+  runtime/public-overlay-files.json \
+  runtime/exl3/patches/exllamav3-arm64-external-collectives.patch \
+  spark_transport; then
   fatal "builder inputs differ from SparkRing revision ${sparkring_revision}"
 fi
 untracked_inputs="$(git -C "${repo_root}" ls-files --others --exclude-standard -- \
-  runtime/exl3-r7 runtime/exl3/patches/exllamav3-arm64-external-collectives.patch)"
+  runtime/exl3-r7 \
+  runtime/build-public-overlay.py \
+  runtime/public-overlay-files.json \
+  runtime/exl3/patches/exllamav3-arm64-external-collectives.patch \
+  spark_transport)"
 if [[ -n "${untracked_inputs}" ]]; then
   fatal "builder inputs include untracked files: ${untracked_inputs%%$'\n'*}"
 fi
@@ -68,6 +76,11 @@ cp -a "${deps_cache}/triton_kernels" "${context}/bundle/deps/triton_kernels"
 cp "${here}/verify_runtime.py" "${context}/bundle/runtime/verify_runtime.py"
 cp "${here}/entrypoint.sh" "${context}/bundle/runtime/entrypoint.sh"
 cp "${here}/patch_sm121_cmake.py" "${context}/bundle/patch_sm121_cmake.py"
+cp "${here}/../build-public-overlay.py" \
+  "${context}/bundle/build-public-overlay.py"
+cp "${here}/../public-overlay-files.json" \
+  "${context}/bundle/public-overlay-files.json"
+cp -a "${repo_root}/spark_transport" "${context}/bundle/spark_transport"
 cp "${here}/../exl3/patches/exllamav3-arm64-external-collectives.patch" \
   "${context}/bundle/exllamav3-arm64-external-collectives.patch"
 mv "${context}/sources/vllm" "${context}/bundle/vllm"

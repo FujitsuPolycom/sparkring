@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstddef>
+#include <type_traits>
 
 int main() {
   using spark_transport::DoorbellControl;
@@ -9,6 +10,16 @@ int main() {
 
   static_assert(alignof(DoorbellControl) == 64);
   static_assert(sizeof(DoorbellControl) == 64);
+  static_assert(std::is_standard_layout_v<DoorbellControl>);
+  static_assert(std::is_trivially_copyable_v<DoorbellControl>);
+  static_assert(offsetof(DoorbellControl, command_sequence) == 0);
+  static_assert(offsetof(DoorbellControl, producer_sequence) == 8);
+  static_assert(offsetof(DoorbellControl, remote_sequence) == 16);
+  static_assert(offsetof(DoorbellControl, consumer_sequence) == 24);
+  static_assert(offsetof(DoorbellControl, acknowledgement_sequence) == 32);
+  static_assert(offsetof(DoorbellControl, observed_sequence) == 40);
+  static_assert(offsetof(DoorbellControl, mismatch_count) == 48);
+  static_assert(offsetof(DoorbellControl, reserved) == 56);
   assert(aligned_control_offset(1) == 64);
   assert(aligned_control_offset(64) == 64);
   assert(aligned_control_offset(65) == 128);

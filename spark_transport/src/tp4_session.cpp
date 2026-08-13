@@ -2,6 +2,7 @@
 
 #include "cuda_event_gate.hpp"
 #include "cuda_stream_handoff.hpp"
+#include "tp4_dual_port_striped_host.hpp"
 #include "spark_transport/control_channel.hpp"
 #include "spark_transport/eager_staging_timeout.hpp"
 #include "spark_transport/gpu_doorbell.hpp"
@@ -45,6 +46,10 @@ constexpr std::uint64_t kMaximumMaxInflight = 4096;
 constexpr auto kGraphProtocolTimeout = std::chrono::seconds(5);
 constexpr std::size_t kQ1PayloadBytes =
     tp4_graph_payload_bytes(1);
+// The record layout remains EndpointInfo v1. A distinct wire version makes a
+// mixed old/new deferred-credit deployment fail on both peers before either
+// peer enters the data path; old binaries otherwise ignore reserved tags.
+constexpr std::uint16_t kTwoSlotDeferredEndpointVersion = 2;
 
 bool graph_capacity_supported(std::size_t payload_bytes) {
   for (std::uint32_t q = 1;
@@ -121,25 +126,107 @@ ControlChannel open_channel(const Tp4RoundPlan& plan,
                      : ControlChannel::connect(peer, port);
 }
 
+void exchange_and_connect_endpoint(
+    ControlChannel& channel, VerbsEndpoint& endpoint,
+    Tp4AllreduceProtocol protocol, Tp4AllreduceSchedule schedule) {
+  EndpointInfo local = endpoint.local_info();
+  if (schedule == Tp4AllreduceSchedule::kDualPortStriped) {
+    local.version = detail::kTp4DualPortStripedEndpointVersion;
+    local.reserved = detail::kTp4DualPortStripedEndpointTag;
+  } else if (tp4_protocol_uses_deferred_ack(protocol)) {
+    local.version = kTwoSlotDeferredEndpointVersion;
+    local.reserved = tp4_endpoint_protocol_tag(protocol);
+  } else {
+    local.reserved = tp4_endpoint_protocol_tag(protocol);
+  }
+  const EndpointInfo remote = channel.exchange(local);
+  if (remote.version != local.version) {
+    throw std::runtime_error(
+        "TP4 all-reduce endpoint version mismatch between peers");
+  }
+  if (remote.reserved != local.reserved) {
+    throw std::runtime_error(
+        "TP4 all-reduce protocol mismatch between peers");
+  }
+  if (remote.buffer_bytes != local.buffer_bytes) {
+    throw std::runtime_error(
+        "TP4 all-reduce payload arena mismatch between peers");
+  }
+  endpoint.connect(remote, local.version);
+}
+
+DoorbellControl* slot_control(MemoryBuffer& buffer,
+                              const Tp2BufferLayout& layout,
+                              std::size_t slot) {
+  return reinterpret_cast<DoorbellControl*>(
+      static_cast<std::uint8_t*>(buffer.host_data()) +
+       slot * layout.total_bytes + layout.control_offset);
+}
+
+DoorbellControl* striped_lane_control(
+    MemoryBuffer& buffer, const Tp4StripedEndpointLayout& layout,
+    std::size_t generation, Tp4TensorStripe stripe) {
+  const Tp4StripedLaneRegion region =
+      tp4_striped_lane_region(layout, generation, stripe);
+  return reinterpret_cast<DoorbellControl*>(
+      static_cast<std::uint8_t*>(buffer.host_data()) +
+      region.control_offset);
+}
+
+void post_striped_transfer(
+    VerbsEndpoint& endpoint, const Tp4StripedLaneRegion& region,
+    std::size_t bytes, std::uint64_t doorbell_token,
+    std::uint64_t work_id) {
+  endpoint.write(region.send_offset, region.receive_offset, bytes,
+                 work_id, false);
+  endpoint.write(
+      region.control_offset +
+          offsetof(DoorbellControl, producer_sequence),
+      region.control_offset +
+          offsetof(DoorbellControl, remote_sequence),
+      sizeof(doorbell_token), work_id);
+}
+
+void post_striped_credit(
+    VerbsEndpoint& endpoint, DoorbellControl& control,
+    const Tp4StripedLaneRegion& region, std::uint64_t sequence,
+    std::uint64_t work_id) {
+  store_sequence(&control.reserved, sequence);
+  endpoint.write(
+      region.control_offset + offsetof(DoorbellControl, reserved),
+      region.control_offset +
+          offsetof(DoorbellControl, acknowledgement_sequence),
+      sizeof(sequence), work_id, true);
+}
+
 void exchange_round(VerbsEndpoint& endpoint, DoorbellControl& control,
                     const Tp2BufferLayout& layout, std::size_t bytes,
+                    std::size_t slot_offset, std::uint64_t sequence,
                     std::uint64_t doorbell_token, std::uint32_t rank,
                     std::uint32_t round, bool trace,
+                    Tp4AllreduceProtocol protocol,
                     bool require_exact_doorbell,
                     std::chrono::seconds timeout) {
   store_sequence(&control.producer_sequence, doorbell_token);
-  endpoint.write(layout.send_offset, layout.receive_offset, bytes,
+  endpoint.write(slot_offset + layout.send_offset,
+                 slot_offset + layout.receive_offset, bytes,
                  doorbell_token, false);
   endpoint.write(
-      layout.control_offset + offsetof(DoorbellControl, producer_sequence),
-      layout.control_offset + offsetof(DoorbellControl, remote_sequence),
+      slot_offset + layout.control_offset +
+          offsetof(DoorbellControl, producer_sequence),
+      slot_offset + layout.control_offset +
+          offsetof(DoorbellControl, remote_sequence),
       sizeof(doorbell_token), doorbell_token);
   if (trace) {
     std::fprintf(stderr,
                  "EXCHANGE rank=%u round=%u state=doorbell_posted\n",
                  rank, round);
   }
-  endpoint.wait_for_send(doorbell_token);
+  if (tp4_protocol_uses_deferred_ack(protocol)) {
+    endpoint.wait_for_send_through(doorbell_token);
+  } else {
+    endpoint.wait_for_send(doorbell_token);
+  }
   if (trace) {
     std::fprintf(stderr,
                  "EXCHANGE rank=%u round=%u state=send_complete\n",
@@ -154,18 +241,34 @@ void exchange_round(VerbsEndpoint& endpoint, DoorbellControl& control,
                  "EXCHANGE rank=%u round=%u state=gpu_complete\n",
                  rank, round);
   }
-  endpoint.write(
-      layout.control_offset + offsetof(DoorbellControl, consumer_sequence),
-      layout.control_offset +
-          offsetof(DoorbellControl, acknowledgement_sequence),
-      sizeof(doorbell_token), doorbell_token, false);
-  wait_for_sequence(&control.acknowledgement_sequence, doorbell_token,
-                    "peer tensor consumption", require_exact_doorbell,
-                    timeout);
-  if (trace) {
-    std::fprintf(stderr,
-                 "EXCHANGE rank=%u round=%u state=peer_consumed\n",
-                 rank, round);
+  if (tp4_protocol_uses_deferred_ack(protocol)) {
+    store_sequence(&control.reserved, sequence);
+    endpoint.write(
+        slot_offset + layout.control_offset +
+            offsetof(DoorbellControl, reserved),
+        slot_offset + layout.control_offset +
+            offsetof(DoorbellControl, acknowledgement_sequence),
+        sizeof(sequence), doorbell_token, true);
+    if (trace) {
+      std::fprintf(stderr,
+                   "EXCHANGE rank=%u round=%u state=credit_posted\n",
+                   rank, round);
+    }
+  } else {
+    endpoint.write(
+        slot_offset + layout.control_offset +
+            offsetof(DoorbellControl, consumer_sequence),
+        slot_offset + layout.control_offset +
+            offsetof(DoorbellControl, acknowledgement_sequence),
+        sizeof(doorbell_token), doorbell_token, false);
+    wait_for_sequence(&control.acknowledgement_sequence, doorbell_token,
+                      "peer tensor consumption", require_exact_doorbell,
+                      timeout);
+    if (trace) {
+      std::fprintf(stderr,
+                   "EXCHANGE rank=%u round=%u state=peer_consumed\n",
+                   rank, round);
+    }
   }
 }
 
@@ -256,14 +359,49 @@ class Tp4AllreduceSession::Impl {
     if (options_.rank >= 4 || options_.peer0.empty() ||
         options_.peer1.empty() || options_.device0.empty() ||
         options_.device1.empty() || options_.payload_bytes == 0 ||
-        options_.payload_bytes % 2 != 0) {
+        options_.payload_bytes % 2 != 0 || options_.control_port0 == 0 ||
+        options_.control_port1 == 0) {
       throw std::invalid_argument("invalid TP4 all-reduce options");
+    }
+    (void)tp4_allreduce_protocol_from_wire(
+        static_cast<std::uint32_t>(options_.protocol));
+    if (!tp4_graph_kernel_strategy_valid(
+            options_.graph_kernel_strategy)) {
+      throw std::invalid_argument("invalid graph TP4 kernel strategy");
+    }
+    if (!tp4_allreduce_schedule_valid(options_.schedule)) {
+      throw std::invalid_argument("invalid TP4 all-reduce schedule");
     }
     const bool submit_cpu_set = options_.graph_submit_cpu.has_value();
     const bool progress_cpu_set = options_.graph_progress_cpu.has_value();
     if (submit_cpu_set != progress_cpu_set) {
       throw std::invalid_argument(
           "graph submit/progress CPUs must be configured together");
+    }
+    if (options_.schedule == Tp4AllreduceSchedule::kDualPortStriped &&
+        !detail::tp4_dual_port_striped_options_valid(options_)) {
+      throw std::invalid_argument(
+          "dual-port striped TP4 requires distinct graph submit/progress "
+          "CPUs, two-slot deferred ACK, the fused graph selector, and an "
+          "exact Q40 or Q512 session capacity");
+    }
+    if (tp4_protocol_uses_deferred_ack(options_.protocol) &&
+        (!submit_cpu_set ||
+         !graph_capacity_supported(options_.payload_bytes))) {
+      throw std::invalid_argument(
+          "two-slot deferred ACK requires a graph-only TP4 all-reduce "
+          "session with a supported graph payload capacity");
+    }
+    if (tp4_graph_kernel_strategy_is_graph_only(
+            options_.graph_kernel_strategy)) {
+      if (!submit_cpu_set ||
+          !graph_capacity_supported(options_.payload_bytes)) {
+        throw std::invalid_argument(
+            std::string(tp4_graph_kernel_strategy_name(
+                            options_.graph_kernel_strategy)) +
+            " graph TP4 requires a graph-only session with exact Q1 "
+            "through Q512 capacity");
+      }
     }
     if (submit_cpu_set) {
       if (options_.graph_submit_cpu == options_.graph_progress_cpu) {
@@ -283,29 +421,32 @@ class Tp4AllreduceSession::Impl {
     const auto plan0 = make_tp4_round_plan(options_.rank, 0);
     const auto plan1 = make_tp4_round_plan(options_.rank, 1);
     layout_ = make_tp2_buffer_layout(options_.payload_bytes);
+    if (options_.schedule == Tp4AllreduceSchedule::kDualPortStriped) {
+      striped_layout_ =
+          make_tp4_striped_endpoint_layout(options_.payload_bytes);
+      arena_bytes_ = striped_layout_.total_bytes;
+    } else {
+      arena_bytes_ =
+          tp4_payload_arena_bytes(layout_.total_bytes, options_.protocol);
+    }
 
     channel0_.emplace(
         open_channel(plan0, options_.peer0, options_.control_port0));
     buffer0_ =
-        MemoryBuffer::allocate(MemoryKind::kCudaMapped, layout_.total_bytes);
+        MemoryBuffer::allocate(MemoryKind::kCudaMapped, arena_bytes_);
     endpoint0_ = std::make_unique<VerbsEndpoint>(
         options_.device0, 1, options_.gid0, *buffer0_);
-    endpoint0_->connect(channel0_->exchange(endpoint0_->local_info()));
+    exchange_and_connect_endpoint(*channel0_, *endpoint0_,
+                                  options_.protocol, options_.schedule);
 
     channel1_.emplace(
         open_channel(plan1, options_.peer1, options_.control_port1));
     buffer1_ =
-        MemoryBuffer::allocate(MemoryKind::kCudaMapped, layout_.total_bytes);
+        MemoryBuffer::allocate(MemoryKind::kCudaMapped, arena_bytes_);
     endpoint1_ = std::make_unique<VerbsEndpoint>(
         options_.device1, 1, options_.gid1, *buffer1_);
-    endpoint1_->connect(channel1_->exchange(endpoint1_->local_info()));
-
-    control0_ = reinterpret_cast<DoorbellControl*>(
-        static_cast<std::uint8_t*>(buffer0_->host_data()) +
-        layout_.control_offset);
-    control1_ = reinterpret_cast<DoorbellControl*>(
-        static_cast<std::uint8_t*>(buffer1_->host_data()) +
-        layout_.control_offset);
+    exchange_and_connect_endpoint(*channel1_, *endpoint1_,
+                                  options_.protocol, options_.schedule);
 
     if (graph_capacity_supported(options_.payload_bytes)) {
       int device{};
@@ -327,7 +468,8 @@ class Tp4AllreduceSession::Impl {
 
     worker_ = std::make_unique<GpuTp4TensorWorker>(
         options_.payload_bytes, buffer0_->device_data(), layout_,
-        buffer1_->device_data(), layout_);
+        buffer1_->device_data(), layout_, options_.protocol,
+        options_.graph_kernel_strategy, options_.schedule);
     channel0_->barrier();
     channel1_->barrier();
     start_progress_thread();
@@ -344,6 +486,17 @@ class Tp4AllreduceSession::Impl {
         fatal_async_failure(cudaGetErrorString(result));
       }
     }
+    if (tp4_protocol_uses_deferred_ack(options_.protocol)) {
+      try {
+        const std::uint64_t published =
+            tp4_graph_command_published(graph_commands_host_);
+        wait_for_sequence(
+            &graph_commands_host_->consumer.completed_sequence, published,
+            "graph TP4 teardown completion", true);
+      } catch (const std::exception& error) {
+        fatal_async_failure(error.what());
+      }
+    }
     {
       std::lock_guard<std::mutex> lock(submission_mutex_);
       stopping_ = true;
@@ -353,6 +506,15 @@ class Tp4AllreduceSession::Impl {
     completion_cv_.notify_all();
     if (progress_thread_.joinable()) {
       progress_thread_.join();
+    }
+    if (tp4_protocol_uses_deferred_ack(options_.protocol)) {
+      try {
+        drain_deferred_credits();
+      } catch (const std::exception& error) {
+        fatal_async_failure(error.what());
+      } catch (...) {
+        fatal_async_failure("unknown deferred-credit drain failure");
+      }
     }
     worker_.reset();
   }
@@ -514,6 +676,7 @@ class Tp4AllreduceSession::Impl {
         graph_host_native_atomics_supported_,
         submit_affinity_verified_,
         progress_affinity_verified_.load(std::memory_order_acquire),
+        tp4_protocol_uses_deferred_ack(options_.protocol),
         options_.graph_submit_cpu.has_value()
             ? static_cast<int>(*options_.graph_submit_cpu)
             : -1,
@@ -527,6 +690,76 @@ class Tp4AllreduceSession::Impl {
     std::uint64_t sequence;
     bool trace;
   };
+
+  void drain_striped_deferred_credits() {
+    if (last_credit_work_id0_ != 0) {
+      endpoint0_->wait_for_send(last_credit_work_id0_);
+    }
+    if (last_credit_work_id1_ != 0) {
+      endpoint1_->wait_for_send(last_credit_work_id1_);
+    }
+
+    for (std::size_t generation = 0;
+         generation < kTp4StripedGenerationCount; ++generation) {
+      const std::uint64_t expected0 = tp4_latest_slot_sequence(
+          last_credit_sequence0_, generation, options_.protocol);
+      const std::uint64_t expected1 = tp4_latest_slot_sequence(
+          last_credit_sequence1_, generation, options_.protocol);
+      for (const Tp4TensorStripe stripe :
+           {Tp4TensorStripe::kLowerHalf,
+            Tp4TensorStripe::kUpperHalf}) {
+        if (expected0 != 0) {
+          wait_for_sequence(
+              &striped_lane_control(*buffer0_, striped_layout_,
+                                    generation, stripe)
+                   ->acknowledgement_sequence,
+              expected0, "endpoint-0 striped deferred-credit retirement",
+              true);
+        }
+        if (expected1 != 0) {
+          wait_for_sequence(
+              &striped_lane_control(*buffer1_, striped_layout_,
+                                    generation, stripe)
+                   ->acknowledgement_sequence,
+              expected1, "endpoint-1 striped deferred-credit retirement",
+              true);
+        }
+      }
+    }
+  }
+
+  void drain_deferred_credits() {
+    if (options_.schedule == Tp4AllreduceSchedule::kDualPortStriped) {
+      drain_striped_deferred_credits();
+      return;
+    }
+    if (last_credit_work_id0_ != 0) {
+      endpoint0_->wait_for_send(last_credit_work_id0_);
+    }
+    if (last_credit_work_id1_ != 0) {
+      endpoint1_->wait_for_send(last_credit_work_id1_);
+    }
+
+    const std::size_t slots = tp4_payload_slot_count(options_.protocol);
+    for (std::size_t slot = 0; slot < slots; ++slot) {
+      const std::uint64_t expected0 = tp4_latest_slot_sequence(
+          last_credit_sequence0_, slot, options_.protocol);
+      const std::uint64_t expected1 = tp4_latest_slot_sequence(
+          last_credit_sequence1_, slot, options_.protocol);
+      if (expected0 != 0) {
+        wait_for_sequence(
+            &slot_control(*buffer0_, layout_, slot)
+                 ->acknowledgement_sequence,
+            expected0, "round-0 deferred-credit retirement", true);
+      }
+      if (expected1 != 0) {
+        wait_for_sequence(
+            &slot_control(*buffer1_, layout_, slot)
+                 ->acknowledgement_sequence,
+            expected1, "round-1 deferred-credit retirement", true);
+      }
+    }
+  }
 
   void start_progress_thread() {
     std::promise<std::string> startup_promise;
@@ -642,35 +875,198 @@ class Tp4AllreduceSession::Impl {
              eager_protocol_timeout_);
   }
 
+  void progress_dual_port_striped(
+      std::uint64_t sequence, bool trace, std::size_t payload_bytes,
+      std::uint64_t doorbell_token, bool require_exact_doorbell,
+      std::chrono::seconds timeout) {
+    if (!require_exact_doorbell || payload_bytes == 0 ||
+        payload_bytes % 4U != 0 ||
+        payload_bytes / 2U > striped_layout_.stripe_bytes) {
+      throw std::logic_error(
+          "invalid dual-port striped graph progress request");
+    }
+
+    const std::size_t generation =
+        tp4_striped_generation_slot(sequence);
+    const std::size_t stripe_bytes = payload_bytes / 2U;
+    const Tp4StripedLaneRegion phase1_endpoint0_region =
+        tp4_striped_lane_region(
+            striped_layout_, generation,
+            Tp4TensorStripe::kLowerHalf);
+    const Tp4StripedLaneRegion phase1_endpoint1_region =
+        tp4_striped_lane_region(
+            striped_layout_, generation,
+            Tp4TensorStripe::kUpperHalf);
+    const Tp4StripedLaneRegion phase2_endpoint0_region =
+        tp4_striped_lane_region(
+            striped_layout_, generation,
+            Tp4TensorStripe::kUpperHalf);
+    const Tp4StripedLaneRegion phase2_endpoint1_region =
+        tp4_striped_lane_region(
+            striped_layout_, generation,
+            Tp4TensorStripe::kLowerHalf);
+    DoorbellControl* const phase1_endpoint0_control =
+        striped_lane_control(*buffer0_, striped_layout_, generation,
+                             Tp4TensorStripe::kLowerHalf);
+    DoorbellControl* const phase1_endpoint1_control =
+        striped_lane_control(*buffer1_, striped_layout_, generation,
+                             Tp4TensorStripe::kUpperHalf);
+    DoorbellControl* const phase2_endpoint0_control =
+        striped_lane_control(*buffer0_, striped_layout_, generation,
+                             Tp4TensorStripe::kUpperHalf);
+    DoorbellControl* const phase2_endpoint1_control =
+        striped_lane_control(*buffer1_, striped_layout_, generation,
+                             Tp4TensorStripe::kLowerHalf);
+
+    wait_for_sequence(
+        &phase1_endpoint0_control->producer_sequence, doorbell_token,
+        "GPU striped phase-1 endpoint-0 staging", true, timeout);
+    wait_for_sequence(
+        &phase1_endpoint1_control->producer_sequence, doorbell_token,
+        "GPU striped phase-1 endpoint-1 staging", true, timeout);
+
+    const std::uint64_t phase1_work_id =
+        detail::tp4_striped_work_id(
+            sequence, detail::Tp4StripedWorkEvent::kPhase1Doorbell);
+    post_striped_transfer(*endpoint0_, phase1_endpoint0_region,
+                          stripe_bytes, doorbell_token, phase1_work_id);
+    post_striped_transfer(*endpoint1_, phase1_endpoint1_region,
+                          stripe_bytes, doorbell_token, phase1_work_id);
+    endpoint0_->wait_for_send_through(phase1_work_id);
+    endpoint1_->wait_for_send_through(phase1_work_id);
+    if (trace) {
+      std::fprintf(
+          stderr,
+          "SESSION rank=%u state=striped_phase1_sent sequence=%llu "
+          "token=%llu bytes=%zu generation=%zu\n",
+          options_.rank, static_cast<unsigned long long>(sequence),
+          static_cast<unsigned long long>(doorbell_token), stripe_bytes,
+          generation);
+    }
+
+    wait_for_sequence(
+        &phase1_endpoint0_control->consumer_sequence, doorbell_token,
+        "GPU striped phase-1 endpoint-0 reduction", true, timeout);
+    wait_for_sequence(
+        &phase1_endpoint1_control->consumer_sequence, doorbell_token,
+        "GPU striped phase-1 endpoint-1 reduction", true, timeout);
+    const std::uint64_t phase1_credit_work_id =
+        detail::tp4_striped_work_id(
+            sequence, detail::Tp4StripedWorkEvent::kPhase1Credit);
+    post_striped_credit(*endpoint0_, *phase1_endpoint0_control,
+                         phase1_endpoint0_region, sequence,
+                         phase1_credit_work_id);
+    post_striped_credit(*endpoint1_, *phase1_endpoint1_control,
+                         phase1_endpoint1_region, sequence,
+                         phase1_credit_work_id);
+
+    // Phase-1 consumer publication is the system-fenced GPU-to-host handoff
+    // for both phase-2 send lanes. The host owns phase-2 producer publication.
+    store_sequence(&phase2_endpoint0_control->producer_sequence,
+                   doorbell_token);
+    store_sequence(&phase2_endpoint1_control->producer_sequence,
+                   doorbell_token);
+    const std::uint64_t phase2_work_id =
+        detail::tp4_striped_work_id(
+            sequence, detail::Tp4StripedWorkEvent::kPhase2Doorbell);
+    post_striped_transfer(*endpoint0_, phase2_endpoint0_region,
+                          stripe_bytes, doorbell_token, phase2_work_id);
+    post_striped_transfer(*endpoint1_, phase2_endpoint1_region,
+                          stripe_bytes, doorbell_token, phase2_work_id);
+    endpoint0_->wait_for_send_through(phase2_work_id);
+    endpoint1_->wait_for_send_through(phase2_work_id);
+    if (trace) {
+      std::fprintf(
+          stderr,
+          "SESSION rank=%u state=striped_phase2_sent sequence=%llu "
+          "token=%llu bytes=%zu generation=%zu\n",
+          options_.rank, static_cast<unsigned long long>(sequence),
+          static_cast<unsigned long long>(doorbell_token), stripe_bytes,
+          generation);
+    }
+
+    wait_for_sequence(
+        &phase2_endpoint0_control->consumer_sequence, doorbell_token,
+        "GPU striped phase-2 endpoint-0 reduction", true, timeout);
+    wait_for_sequence(
+        &phase2_endpoint1_control->consumer_sequence, doorbell_token,
+        "GPU striped phase-2 endpoint-1 reduction", true, timeout);
+    const std::uint64_t phase2_credit_work_id =
+        detail::tp4_striped_work_id(
+            sequence, detail::Tp4StripedWorkEvent::kPhase2Credit);
+    post_striped_credit(*endpoint0_, *phase2_endpoint0_control,
+                         phase2_endpoint0_region, sequence,
+                         phase2_credit_work_id);
+    post_striped_credit(*endpoint1_, *phase2_endpoint1_control,
+                         phase2_endpoint1_region, sequence,
+                         phase2_credit_work_id);
+    last_credit_work_id0_ = phase2_credit_work_id;
+    last_credit_work_id1_ = phase2_credit_work_id;
+    last_credit_sequence0_ = sequence;
+    last_credit_sequence1_ = sequence;
+    if (trace) {
+      std::fprintf(stderr,
+                   "SESSION rank=%u state=striped_output_ready\n",
+                   options_.rank);
+    }
+  }
+
   void progress(std::uint64_t sequence, bool trace,
                 std::size_t payload_bytes,
                 std::uint64_t doorbell_token,
                 bool require_exact_doorbell,
                 std::chrono::seconds timeout =
                     kGraphProtocolTimeout) {
-    wait_for_sequence(&control0_->producer_sequence, doorbell_token,
+    if (options_.schedule == Tp4AllreduceSchedule::kDualPortStriped) {
+      progress_dual_port_striped(
+          sequence, trace, payload_bytes, doorbell_token,
+          require_exact_doorbell, timeout);
+      return;
+    }
+    const std::size_t slot =
+        tp4_payload_slot_index(sequence, options_.protocol);
+    const std::size_t slot_offset = slot * layout_.total_bytes;
+    DoorbellControl* const control0 =
+        slot_control(*buffer0_, layout_, slot);
+    DoorbellControl* const control1 =
+        slot_control(*buffer1_, layout_, slot);
+    wait_for_sequence(&control0->producer_sequence, doorbell_token,
                       "GPU tensor input staging",
                       require_exact_doorbell, timeout);
     if (trace) {
       std::fprintf(
           stderr,
-          "SESSION rank=%u state=round0 sequence=%llu token=%llu bytes=%zu\n",
+          "SESSION rank=%u state=round0 sequence=%llu token=%llu "
+          "bytes=%zu slot=%zu\n",
           options_.rank, static_cast<unsigned long long>(sequence),
-          static_cast<unsigned long long>(doorbell_token), payload_bytes);
+          static_cast<unsigned long long>(doorbell_token), payload_bytes,
+          slot);
     }
-    exchange_round(*endpoint0_, *control0_, layout_, payload_bytes,
-                   doorbell_token, options_.rank, 0, trace,
+    exchange_round(*endpoint0_, *control0, layout_, payload_bytes,
+                   slot_offset, sequence, doorbell_token, options_.rank, 0,
+                   trace, options_.protocol,
                    require_exact_doorbell, timeout);
+    if (tp4_protocol_uses_deferred_ack(options_.protocol)) {
+      last_credit_work_id0_ = doorbell_token;
+      last_credit_sequence0_ = sequence;
+    }
     if (trace) {
       std::fprintf(
           stderr,
-          "SESSION rank=%u state=round1 sequence=%llu token=%llu bytes=%zu\n",
+          "SESSION rank=%u state=round1 sequence=%llu token=%llu "
+          "bytes=%zu slot=%zu\n",
           options_.rank, static_cast<unsigned long long>(sequence),
-          static_cast<unsigned long long>(doorbell_token), payload_bytes);
+          static_cast<unsigned long long>(doorbell_token), payload_bytes,
+          slot);
     }
-    exchange_round(*endpoint1_, *control1_, layout_, payload_bytes,
-                   doorbell_token, options_.rank, 1, trace,
+    exchange_round(*endpoint1_, *control1, layout_, payload_bytes,
+                   slot_offset, sequence, doorbell_token, options_.rank, 1,
+                   trace, options_.protocol,
                    require_exact_doorbell, timeout);
+    if (tp4_protocol_uses_deferred_ack(options_.protocol)) {
+      last_credit_work_id1_ = doorbell_token;
+      last_credit_sequence1_ = sequence;
+    }
     if (trace) {
       std::fprintf(stderr, "SESSION rank=%u state=output_ready\n",
                    options_.rank);
@@ -679,14 +1075,14 @@ class Tp4AllreduceSession::Impl {
 
   Tp4AllreduceOptions options_;
   Tp2BufferLayout layout_{};
+  Tp4StripedEndpointLayout striped_layout_{};
+  std::size_t arena_bytes_{};
   std::optional<ControlChannel> channel0_;
   std::optional<ControlChannel> channel1_;
   std::unique_ptr<MemoryBuffer> buffer0_;
   std::unique_ptr<MemoryBuffer> buffer1_;
   std::unique_ptr<VerbsEndpoint> endpoint0_;
   std::unique_ptr<VerbsEndpoint> endpoint1_;
-  DoorbellControl* control0_{};
-  DoorbellControl* control1_{};
   std::unique_ptr<MemoryBuffer> graph_commands_buffer_;
   Tp4GraphCommandRing* graph_commands_host_{};
   Tp4GraphCommandRing* graph_commands_device_{};
@@ -706,6 +1102,10 @@ class Tp4AllreduceSession::Impl {
   std::uint64_t sequence_{};
   std::uint64_t completed_sequence_{};
   std::uint64_t graph_consumed_sequence_{};
+  std::uint64_t last_credit_work_id0_{};
+  std::uint64_t last_credit_work_id1_{};
+  std::uint64_t last_credit_sequence0_{};
+  std::uint64_t last_credit_sequence1_{};
   void* caller_stream_{};
   bool caller_stream_set_{};
   std::atomic<bool> graph_capture_configured_{false};

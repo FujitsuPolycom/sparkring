@@ -7,6 +7,12 @@ import logging
 import os
 from typing import Any
 
+from spark_tp4_port_namespace import (
+    eager_vocab_control_ports,
+    graph_vocab_control_ports,
+    validate_active_port_namespace,
+    validate_control_port_pair,
+)
 from spark_tp4_query_contract import SUPPORTED_QUERY_ROWS
 
 logger = logging.getLogger(__name__)
@@ -166,24 +172,16 @@ def _graph_preflight() -> tuple[int, int]:
 
 
 def _graph_control_ports() -> tuple[int, int]:
-    ports = (
-        int(os.getenv("SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT0", "10110")),
-        int(os.getenv("SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT1", "10111")),
-    )
-    _validate_control_ports(ports)
-    return ports
+    return graph_vocab_control_ports()
+
+
+def _eager_control_ports() -> tuple[int, int]:
+    return eager_vocab_control_ports()
 
 
 def _validate_control_ports(ports: tuple[int, int]) -> None:
-    port0, port1 = ports
-    if not (0 < port0 <= 65535 and 0 < port1 <= 65535):
-        raise ValueError(
-            "Spark TP4 vocabulary control ports must be in [1, 65535]"
-        )
-    if port0 == port1:
-        raise ValueError(
-            "Spark TP4 vocabulary control ports must be distinct"
-        )
+    validate_control_port_pair(ports, owner="vocabulary all-gather")
+    validate_active_port_namespace()
 
 
 def _record_graph_event(group: Any, event: str) -> int:
@@ -320,9 +318,10 @@ class _NativeVocabSession:
         self._capture_stream: int | None = None
 
         default_peer0, default_peer1 = _DEFAULT_PEERS[rank]
-        ports = control_ports or (
-            int(os.getenv("SPARK_TP4_VOCAB_CONTROL_PORT0", "9990")),
-            int(os.getenv("SPARK_TP4_VOCAB_CONTROL_PORT1", "9991")),
+        ports = (
+            _eager_control_ports()
+            if control_ports is None
+            else control_ports
         )
         _validate_control_ports(ports)
         port0, port1 = ports
@@ -641,6 +640,7 @@ def install() -> None:
         _graph_enabled()
     if mode == "shadow":
         _positive_integer("SPARK_TP4_VOCAB_SHADOW_COLLECTIVES", 8)
+    validate_active_port_namespace()
 
     from vllm.distributed.parallel_state import GroupCoordinator
 
