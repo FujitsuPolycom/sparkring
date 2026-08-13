@@ -87,6 +87,18 @@ The accepted performance matrix is preserved separately in
 The clean source/profile composition and local build commands are in
 [the operator-profile reproduction guide](docs/EXL3_R7_OPERATOR_REPRODUCTION.md).
 
+A live-validated LMCache NVMe candidate extension preserved the exact R7/Q40
+serving contract while adding a lazy 512 MiB L1 and bounded 50 GiB O_DIRECT L2
+per rank. One 32,506-token cold publication populated 63 NVMe chunks per rank
+and measured 56.115 seconds of client TTFT. After LMCache-server and engine
+restart cleared both volatile L1 and native vLLM prefix state, the identical
+prompt measured 1.477 seconds with a 99.2% external-cache hit, 0.0% native-
+prefix hit, and zero L1 data bytes. This single-pair result proves attributed
+NVMe persistence, not a latency distribution or deterministic-output gate.
+The extension remains a candidate and does not change the accepted operator
+profile or public-functional default. See the
+[R7 LMCache evidence](docs/configurations/glm52-exl3-r7-lmcache-nvme-20260813.json).
+
 ## Public default: EXL3 3.25-bpw with LMCache CS512
 
 SparkRing's reproducible, main-advertised public-functional configuration is

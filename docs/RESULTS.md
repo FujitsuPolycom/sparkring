@@ -177,6 +177,46 @@ complete contract and immutable receipt hashes are in the
 [fixed-MTP4 specification](EXL3_R7_FIXED_MTP4_PROFILE.md) and
 [operator-acceptance summary](configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json).
 
+### 2026-08-13 EXL3 R7 LMCache NVMe persistence candidate
+
+The accepted four-Spark R7 3.5-bpw operator profile was extended with one
+LMCache MP server per DCP rank. The candidate used 512-token chunks, a lazy
+512 MiB L1 initialized at zero, and a bounded 50 GiB/rank O_DIRECT native-
+filesystem L2. Model, fixed-MTP4, exact-Q40, graph, batching, KV format, and
+9.25 GB/rank KV allocation remained unchanged.
+
+| Measurement | Cold publication | Cross-restart NVMe replay |
+|---|---:|---:|
+| Prompt tokens | 32,506 | 32,506 |
+| Output tokens | 8 | 8 |
+| Client TTFT | 56.115 s | **1.477 s** |
+| Client total time | 56.116 s | **1.477 s** |
+| Native prefix-cache hit rate | 0.0% | **0.0%** |
+| External prefix-cache hit rate | 0.0% | **99.2%** |
+| L2 objects/rank | 63 | 63 |
+| L2 bytes/rank | 257,854,464 | 257,854,464 |
+| LMCache L1 data after attributed replay | - | **0 bytes/rank** |
+
+Before the attributed replay, all LMCache servers were restarted. This emptied
+volatile L1 and released CUDA IPC ownership while leaving the filesystem L2
+unchanged. The engines then restarted with an empty native vLLM prefix cache.
+The 99.2% external hit, 0.0% native hit, empty LMCache L1, and unchanged L2
+population attribute the replay to NVMe. The TTFT ratio was 38.0x, or a 97.37%
+reduction, for this single prompt pair; it is not a latency distribution.
+
+The final snapshot had four engines and four LMCache servers running with zero
+container restarts, zero OOM kills, API and model-list HTTP 200, one registered
+worker per rank, and approximately 1.03 GiB of LMCache-server container memory
+per rank. Docker restart policy was `no`. A supported relaunch must recycle the
+LMCache servers to release CUDA IPC ownership and remove only the rank-local
+one-shot Q40 attestation receipt while preserving compile artifacts and L2.
+
+This is a public-functional, live-validated candidate extension, not operator-
+default acceptance or public-functional promotion. The cold and replay output
+text differed, so the run is not a deterministic-output gate. The sanitized
+record is
+[glm52-exl3-r7-lmcache-nvme-20260813.json](configurations/glm52-exl3-r7-lmcache-nvme-20260813.json).
+
 ### 2026-08-11 EXL3 R7 fixed-MTP4 FP8 predecessor
 
 On four directly cabled DGX Sparks, the public-functional R7 3.5-bpw research

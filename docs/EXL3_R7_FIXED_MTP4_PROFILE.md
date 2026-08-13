@@ -58,6 +58,46 @@ The full prefill, decode, and coding snapshot is
 | DCP, CKV, and indexer transport | stock NCCL-backed paths; custom DCP/indexer/CKV sessions disabled |
 | Cache | native prefix caching enabled; LMCache and SparkCache disabled |
 
+## LMCache NVMe candidate extension
+
+The accepted operator profile above remains defined with LMCache disabled.
+A separately scoped **public-functional, live-validated candidate extension**
+attaches one LMCache MP server to each DCP rank without changing the model,
+TP4/DCP4 topology, fixed-MTP4 policy, exact-Q40 state, KV representation,
+9.25 GB/rank KV allocation, batch limits, or graph plan. This extension is not
+an accepted operator default and has not been reproduced from a clean public
+checkout.
+
+Each rank uses LMCache CS512 with a lazy 512 MiB L1 initialized at zero bytes
+and a bounded 50 GiB native-filesystem L2. The L2 uses O_DIRECT, two workers,
+and LRU eviction with a 0.85 trigger watermark and 0.15 eviction ratio. The
+engine connector uses the `kv_both` role and recomputes on a load failure.
+At the post-validation health snapshot, the LMCache server container used
+approximately 1.03 GiB/rank while the L1 data tier held zero bytes.
+
+A 32,506-token cold request completed with HTTP 200 and 56.115 seconds of
+client TTFT. It published 63 chunks and 257,854,464 L2 bytes on every rank.
+The LMCache servers were then restarted, which emptied volatile L1 and released
+CUDA IPC ownership while preserving the filesystem L2. After a clean engine
+restart, the exact prompt completed with HTTP 200 and 1.477 seconds of client
+TTFT. vLLM reported 0.0% native-prefix-cache hit rate and 99.2% external-prefix-
+cache hit rate; LMCache L1 remained empty and all ranks retained the same 63
+files and L2 byte count. This attributes the replay to the NVMe tier.
+
+The supported restart procedure must recycle the LMCache servers before the
+engines so stale CUDA IPC ownership is released. It must also remove only the
+rank-local one-shot `q40-exact-state-serving-v1-rank{rank}.json` receipt while
+preserving the warm compile cache and LMCache L2. The
+[candidate launcher](../scripts/sparkring_exl3_r7_lmcache_canary.py) implements
+the receipt cleanup. The running containers use Docker restart policy `no`, so
+host reboot recovery still requires an explicit relaunch.
+
+This evidence proves bounded functional publication and attributed NVMe reuse;
+it is not a latency distribution, concurrent-load qualification, clean-checkout
+reproduction, or deterministic-output gate. The cold and restart-replay
+completion text differed. Exact values and scope are recorded in
+[glm52-exl3-r7-lmcache-nvme-20260813.json](configurations/glm52-exl3-r7-lmcache-nvme-20260813.json).
+
 The target model owns the online EXL3 K6 overlay for eligible BF16 weights.
 The reused layer-78 draft retains its checkpoint EXL3 routed experts and
 producer BF16 non-expert weights. The draft inherits the target compressed-KV
