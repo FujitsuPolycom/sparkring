@@ -6,10 +6,11 @@ candidate runtime documented in
 It builds an ARM64/SM121 container image from pinned public source trees with
 fail-closed receipt verification.
 
-**Maturity:** public-functional-lane, live-validated **candidate**. It is
-not the repository default, not an accepted public-functional matrix, and not
-registry-available. The advertised default remains EXL3 3.25-bpw plus
-LMCache CS512.
+**Maturity:** public-functional-lane, **offline-validated builder candidate**.
+The operator configuration assembled from the same pinned component lineage is
+live-validated, but an image built from this clean-checkout builder has not yet
+passed that live gate. It is not the repository default, not an accepted
+public-functional matrix, and not registry-available.
 
 ## Platform
 
@@ -101,10 +102,12 @@ BASE_IMAGE=... BASE_IMAGE_ID=... BASE_IMAGE_LICENSES=... \
 
 ## Maturity
 
-This builder is a **public-functional-lane candidate**. It is:
+This builder is a **public-functional-lane, offline-validated candidate**. It
+is:
 
-- **live-validated** on four directly cabled DGX Sparks per the evidence in
-  `docs/EXL3_R7_FIXED_MTP4_PROFILE.md`;
+- derived from the component lineage used by the four-Spark operator result in
+  `docs/EXL3_R7_FIXED_MTP4_PROFILE.md`, without claiming that a clean-checkout
+  image built here has passed that live gate;
 - **not accepted** as a public-functional matrix;
 - **not the default** advertised configuration;
 - **not registry-available** — the image is built and used locally;
