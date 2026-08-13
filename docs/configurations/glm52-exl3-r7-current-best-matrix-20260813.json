@@ -1,0 +1,53 @@
+{
+  "schema": "sparkring-operator-performance-matrix/v1",
+  "date": "2026-08-13",
+  "lane": "public-functional",
+  "maturity": "accepted",
+  "configuration_status": "accepted-operator-result",
+  "acceptance_scope": "operator-3.5-bpw-four-spark-profile",
+  "source_capture_sha256": "0ef5cb44905ad50fe28baa1f40d7be18430bc7a655f4c853ac79d28083af08ca",
+  "source_capture_bytes": 923496,
+  "hardware": "four directly cabled NVIDIA DGX Sparks / GB10 GPUs",
+  "model": "brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f",
+  "profile": "TP4/DCP4, fixed MTP4, dynamic per-token NVFP4 latent KV plus FP8 RoPE, exact-Q40 capacity 40 and route block 8",
+  "prefill": {
+    "metric": "client_tokens_per_second",
+    "concurrency": 1,
+    "unique_context_percent": 100,
+    "rows": [
+      {"context_label": "8K", "prompt_tokens": 8194, "client_ttft_seconds": 12.06, "tokens_per_second": 679, "visible_samples": 2},
+      {"context_label": "16K", "prompt_tokens": 16386, "client_ttft_seconds": 24.36, "tokens_per_second": 673, "visible_samples": 1},
+      {"context_label": "32K", "prompt_tokens": 32770, "client_ttft_seconds": 49.17, "tokens_per_second": 666, "visible_samples": 1},
+      {"context_label": "64K", "prompt_tokens": 65538, "client_ttft_seconds": 99.72, "tokens_per_second": 657, "visible_samples": 1},
+      {"context_label": "128K", "prompt_tokens": 131074, "client_ttft_seconds": 203.09, "tokens_per_second": 645, "visible_samples": 1}
+    ]
+  },
+  "aggregate_decode": {
+    "metric": "aggregate_tokens_per_second",
+    "rows": [
+      {"context_label": "4K", "concurrency": {"1": 22.6, "2": 32.7, "4": 50.3, "8": 78.4}},
+      {"context_label": "8K", "concurrency": {"1": 22.0, "2": 35.3, "4": 51.9, "8": 71.3}},
+      {"context_label": "16K", "concurrency": {"1": 21.3, "2": 32.9, "4": 49.2, "8": 70.0}},
+      {"context_label": "32K", "concurrency": {"1": 20.4, "2": 32.3, "4": 45.6, "8": 65.5}},
+      {"context_label": "64K", "concurrency": {"1": 21.4, "2": 30.4, "4": 47.2, "8": 67.8}}
+    ],
+    "highest_displayed_cell": {"context_label": "4K", "concurrency": 8, "tokens_per_second": 78.4}
+  },
+  "coding_peak": {
+    "concurrency": 1,
+    "runs_passed": 5,
+    "runs_total": 5,
+    "median_tokens_per_second": 27.3,
+    "mean_tokens_per_second": 27.3,
+    "maximum_tokens_per_second": 28.8,
+    "cjk_runs": 0
+  },
+  "claim_boundaries": [
+    "Decode values are aggregate server throughput, not per-request throughput.",
+    "The decode display does not expose per-cell repeat counts, so the matrix is not a throughput distribution.",
+    "The coding peak is a separate workload probe and does not replace standardized matrix cells.",
+    "The controlled exact-Q40 16K/C8 bracket remains separate because it used identical sealed payload replay and repeated arms.",
+    "Server-side cached-token accounting was unavailable for prefill, so cache misses are not independently proven by this capture.",
+    "This result is accepted only for the operator's exact four-Spark 3.5-bpw profile and does not change the repository-wide public-functional default."
+  ]
+}

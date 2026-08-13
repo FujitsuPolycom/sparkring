@@ -129,6 +129,30 @@ misses are not independently proven by the captured result. The transcription,
 scope, and limitations are preserved in
 [machine-readable form](configurations/glm52-exl3-r7-current-best-prefill-20260813.json).
 
+The same accepted benchmark display reported the following aggregate decode
+matrix:
+
+| Context | C1 | C2 | C4 | C8 |
+|---|---:|---:|---:|---:|
+| 4K | 22.6 tok/s | 32.7 tok/s | 50.3 tok/s | **78.4 tok/s** |
+| 8K | 22.0 tok/s | 35.3 tok/s | 51.9 tok/s | **71.3 tok/s** |
+| 16K | 21.3 tok/s | 32.9 tok/s | 49.2 tok/s | **70.0 tok/s** |
+| 32K | 20.4 tok/s | 32.3 tok/s | 45.6 tok/s | **65.5 tok/s** |
+| 64K | 21.4 tok/s | 30.4 tok/s | 47.2 tok/s | **67.8 tok/s** |
+
+These are aggregate server throughput values, not per-request values. The
+highest displayed matrix cell is 78.4 aggregate tok/s at 4K/C8. The 16K/C8
+cell is 70.0 tok/s; it is a broad matrix observation and does not replace the
+73.208 tok/s mean from the separately controlled exact-payload warm bracket.
+The display does not expose per-cell repeat counts, so this matrix is an
+accepted operating snapshot rather than a distribution.
+
+The coding-peak C1 probe completed 5/5 runs with a 27.3 tok/s median, 27.3
+tok/s mean, and 28.8 tok/s maximum. It ran zero CJK cases. This workload peak
+is reported separately and is not substituted for the standardized C1 matrix
+cells. The complete displayed snapshot is preserved in
+[machine-readable form](configurations/glm52-exl3-r7-current-best-matrix-20260813.json).
+
 The earlier bounded benchmark remains independently identified by complete
 benchmark SHA-256
 `feed67820caf37cc016473a38584b11b4205a628183f64e2b48b082a7bad2854`; it
