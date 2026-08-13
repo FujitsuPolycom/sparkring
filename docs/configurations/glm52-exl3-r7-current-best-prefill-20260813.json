@@ -1,0 +1,69 @@
+{
+  "schema": "sparkring-operator-prefill-snapshot/v1",
+  "date": "2026-08-13",
+  "lane": "public-functional",
+  "maturity": "accepted",
+  "configuration_status": "accepted-operator-result",
+  "acceptance_scope": "operator-3.5-bpw-four-spark-profile",
+  "hardware": "four directly cabled NVIDIA DGX Sparks / GB10 GPUs",
+  "model": "brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f",
+  "profile": "TP4/DCP4, fixed MTP4, dynamic per-token NVFP4 latent KV plus FP8 RoPE, exact-Q40 capacity 40 and route block 8",
+  "measurement": {
+    "mode": "client-timed C1 prefill",
+    "concurrency": 1,
+    "unique_context_percent": 100,
+    "rows": [
+      {
+        "context_label": "8K",
+        "prompt_tokens": 8194,
+        "client_ttft_seconds": 12.06,
+        "displayed_client_tokens_per_second": 679,
+        "visible_samples": 2
+      },
+      {
+        "context_label": "16K",
+        "prompt_tokens": 16386,
+        "client_ttft_seconds": 24.36,
+        "displayed_client_tokens_per_second": 673,
+        "visible_samples": 1
+      },
+      {
+        "context_label": "32K",
+        "prompt_tokens": 32770,
+        "client_ttft_seconds": 49.17,
+        "displayed_client_tokens_per_second": 666,
+        "visible_samples": 1
+      },
+      {
+        "context_label": "64K",
+        "prompt_tokens": 65538,
+        "client_ttft_seconds": 99.72,
+        "displayed_client_tokens_per_second": 657,
+        "visible_samples": 1
+      },
+      {
+        "context_label": "128K",
+        "prompt_tokens": 131074,
+        "client_ttft_seconds": 203.09,
+        "displayed_client_tokens_per_second": 645,
+        "visible_samples": 1
+      }
+    ]
+  },
+  "interpretation": {
+    "operator_acceptance": "current best measured prefill snapshot",
+    "throughput_change_8k_to_128k_percent": -5.01,
+    "context_span_multiple": 16,
+    "prior_snapshot_comparison_percent": {
+      "8192": 1.65,
+      "16384": 2.12,
+      "32768": 1.99
+    }
+  },
+  "limitations": [
+    "The visible sample counts are too small to constitute throughput distributions.",
+    "Several operator runs produced similar results, but their complete per-run artifacts are not included in this record.",
+    "Server-side cached-token accounting was unavailable, so cache misses are not independently proven by this capture.",
+    "This result is accepted only for the operator's exact four-Spark 3.5-bpw profile and does not change the repository-wide public-functional default."
+  ]
+}
