@@ -48,9 +48,13 @@ Q1-Q32, other prefill shapes, and the draft model retain their prior states.
 | 32K context | 20.4 | 32.3 | 45.6 | **65.5** |
 | 64K context | 21.4 | 30.4 | 47.2 | **67.8** |
 
-The separate coding-peak C1 probe completed 5/5 runs at 27.3 tok/s median
-and mean, with a 28.8 tok/s maximum and zero CJK runs. Reported KV capacity is
-1,156,864 tokens across the four-rank serving profile.
+#### Coding benchmark (C1)
+
+| Workload | Runs | Median tok/s | Mean tok/s | Maximum tok/s | CJK runs |
+|---|---:|---:|---:|---:|---:|
+| Coding peak | **5/5** | **27.3** | **27.3** | **28.8** | **0** |
+
+Reported KV capacity is 1,156,864 tokens across the four-rank serving profile.
 
 The matched exact-Q40 decode bracket replayed the same eight unique 16K
 payloads with full 8/8 residency and a 25-second measurement window. Its
