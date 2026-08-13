@@ -31,6 +31,8 @@ The exact-Q40 acceptance result is
 [glm52-exl3-r7-mtp4-q40-block8-20260812.json](configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json).
 The operator-accepted current-best prefill snapshot is
 [glm52-exl3-r7-current-best-prefill-20260813.json](configurations/glm52-exl3-r7-current-best-prefill-20260813.json).
+The full prefill, decode, and coding snapshot is
+[glm52-exl3-r7-current-best-matrix-20260813.json](configurations/glm52-exl3-r7-current-best-matrix-20260813.json).
 
 ## Serving contract
 
@@ -117,7 +119,7 @@ Fixed-prompt non-Q40 checks measured C1 at 22.218 versus 22.362 tokens/s
 source-identical paths are treated as bounded measurement noise, not as
 optimization results.
 
-## Current-best operator prefill snapshot
+## Current-best operator performance snapshot
 
 The operator accepts the following 100%-unique-context C1 results as the best
 measured prefill snapshot for this exact four-Spark profile:
@@ -136,6 +138,25 @@ snapshot with low visible sample counts rather than a throughput distribution.
 Server-side cached-token accounting was unavailable for these cells; the
 100%-unique request construction is recorded, but the captured result does not
 independently prove cache misses.
+
+The same benchmark display reported this aggregate decode matrix:
+
+| Context | C1 | C2 | C4 | C8 |
+|---|---:|---:|---:|---:|
+| 4K | 22.6 | 32.7 | 50.3 | **78.4** |
+| 8K | 22.0 | 35.3 | 51.9 | **71.3** |
+| 16K | 21.3 | 32.9 | 49.2 | **70.0** |
+| 32K | 20.4 | 32.3 | 45.6 | **65.5** |
+| 64K | 21.4 | 30.4 | 47.2 | **67.8** |
+
+Values are aggregate tok/s. The matrix display does not expose repeat counts,
+so it is accepted as a bounded operating snapshot rather than a distribution.
+The separately controlled exact-Q40 bracket remains the stronger 16K/C8
+comparison because it replayed identical sealed payloads across repeated arms.
+
+The coding-peak C1 probe completed 5/5 runs at 27.3 tok/s median and mean,
+with a 28.8 tok/s maximum and zero CJK runs. It is a distinct workload result,
+not a replacement for the standardized C1 matrix.
 
 ## Exact CKV-gather delta and rollback
 

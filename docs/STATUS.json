@@ -156,6 +156,30 @@
         "evidence": "docs/configurations/glm52-exl3-r7-current-best-prefill-20260813.json",
         "limitations": "Low visible sample counts; accepted as the operator's best measured snapshot, not a throughput distribution; server-side cache accounting unavailable."
       },
+      "current_best_decode_matrix": {
+        "status": "accepted-operator-result",
+        "metric": "aggregate_tokens_per_second",
+        "contexts_by_concurrency": {
+          "4096": {"1": 22.6, "2": 32.7, "4": 50.3, "8": 78.4},
+          "8192": {"1": 22.0, "2": 35.3, "4": 51.9, "8": 71.3},
+          "16384": {"1": 21.3, "2": 32.9, "4": 49.2, "8": 70.0},
+          "32768": {"1": 20.4, "2": 32.3, "4": 45.6, "8": 65.5},
+          "65536": {"1": 21.4, "2": 30.4, "4": 47.2, "8": 67.8}
+        },
+        "evidence": "docs/configurations/glm52-exl3-r7-current-best-matrix-20260813.json",
+        "limitations": "Displayed bounded matrix; per-cell repeat counts are not exposed."
+      },
+      "current_best_coding_peak": {
+        "status": "accepted-operator-result",
+        "concurrency": 1,
+        "runs_passed": 5,
+        "runs_total": 5,
+        "median_tokens_per_second": 27.3,
+        "mean_tokens_per_second": 27.3,
+        "maximum_tokens_per_second": 28.8,
+        "cjk_runs": 0,
+        "evidence": "docs/configurations/glm52-exl3-r7-current-best-matrix-20260813.json"
+      },
       "exact_q40_policy": {
         "status": "accepted-operator-default",
         "scope": "target mixed-EXL3 layers at exactly 40 routed rows",

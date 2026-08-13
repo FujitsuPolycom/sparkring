@@ -32,15 +32,25 @@ Q40. Eligible pure-prefill work uses the B12X transient full-CKV DCP gather.
 The target-only exact-Q40 routed-MoE state uses capacity 40 and route block 8;
 Q1-Q32, other prefill shapes, and the draft model retain their prior states.
 
-| Measurement | TTFT | Bounded result | Samples |
-|---|---:|---:|---:|
-| 8K unique-context C1 prefill | 12.06 s | **679 tok/s** | 2 |
-| 16K unique-context C1 prefill | 24.36 s | **673 tok/s** | 1 |
-| 32K unique-context C1 prefill | 49.17 s | **666 tok/s** | 1 |
-| 64K unique-context C1 prefill | 99.72 s | **657 tok/s** | 1 |
-| 128K unique-context C1 prefill | 203.09 s | **645 tok/s** | 1 |
-| Unique-16K C8 warm sustained decode | - | **73.208 tok/s aggregate** | 2 candidate arms |
-| Reported KV capacity | - | **1,156,864 tokens** | all four ranks |
+| Prefill context | Prompt tokens | TTFT | C1 prefill | Samples |
+|---|---:|---:|---:|---:|
+| 8K | 8,194 | 12.06 s | **679 tok/s** | 2 |
+| 16K | 16,386 | 24.36 s | **673 tok/s** | 1 |
+| 32K | 32,770 | 49.17 s | **666 tok/s** | 1 |
+| 64K | 65,538 | 99.72 s | **657 tok/s** | 1 |
+| 128K | 131,074 | 203.09 s | **645 tok/s** | 1 |
+
+| Aggregate decode tok/s | C1 | C2 | C4 | C8 |
+|---|---:|---:|---:|---:|
+| 4K context | 22.6 | 32.7 | 50.3 | **78.4** |
+| 8K context | 22.0 | 35.3 | 51.9 | **71.3** |
+| 16K context | 21.3 | 32.9 | 49.2 | **70.0** |
+| 32K context | 20.4 | 32.3 | 45.6 | **65.5** |
+| 64K context | 21.4 | 30.4 | 47.2 | **67.8** |
+
+The separate coding-peak C1 probe completed 5/5 runs at 27.3 tok/s median
+and mean, with a 28.8 tok/s maximum and zero CJK runs. Reported KV capacity is
+1,156,864 tokens across the four-rank serving profile.
 
 The matched exact-Q40 decode bracket replayed the same eight unique 16K
 payloads with full 8/8 residency and a 25-second measurement window. Its
@@ -49,12 +59,13 @@ the slower candidate repeat exceeded the fastest control repeat by 14.93%.
 All 75 target layers passed exact BF16 parity, deterministic 16K and 32K output
 equality passed, and final graph, API, transport, and capacity gates passed.
 
-The 8K-128K prefill rows are the operator-accepted current-best client-timed
-snapshot with 100% unique generated contexts. Several operator runs produced
-similar throughput, but the table reports only the visible samples and does
-not treat them as a statistical distribution. Server-side cached-token
-accounting was unavailable for these cells, so cache misses are not
-independently proven by the benchmark artifact.
+The prefill and decode tables form the operator-accepted current-best matrix
+snapshot. Prefill used 100% unique generated contexts. Several operator runs
+produced similar throughput, but only the displayed prefill sample counts and
+five coding-probe repeats are retained here; the decode cells are not presented
+as repeat distributions. Server-side cached-token accounting was unavailable
+for the prefill cells, so cache misses are not independently proven by the
+benchmark artifact.
 The predeclared exact-Q40 prefill reducer separately remains a machine failure:
 its sole primary miss was 0.1215% at 64K. Operator acceptance treats that
 bounded difference as measurement-neutral without relabelling the machine
@@ -67,8 +78,8 @@ public-functional default or an accepted public deployment matrix. Read the
 [optimization record](docs/EXL3_R7_OPTIMIZATION_20260811.md), and
 [machine-readable operator acceptance](docs/configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json)
 before reproducing or extending it.
-The accepted prefill snapshot is preserved separately in
-[machine-readable form](docs/configurations/glm52-exl3-r7-current-best-prefill-20260813.json).
+The accepted performance matrix is preserved separately in
+[machine-readable form](docs/configurations/glm52-exl3-r7-current-best-matrix-20260813.json).
 The clean source/profile composition and local build commands are in
 [the operator-profile reproduction guide](docs/EXL3_R7_OPERATOR_REPRODUCTION.md).
 
