@@ -4,10 +4,10 @@
   "lanes": {
     "reference": {
       "maturity": "live-validated",
-      "publicly_runnable": true,
-      "public_source_complete": true,
+      "publicly_runnable": false,
+      "public_source_complete": false,
       "evidence": "docs/RESULTS.md",
-      "reason": "Historical reference-lane measurements and their retained evidence labels are documented separately from public-functional validation."
+      "reason": "The recovered reference-runtime delta is published, but the exact historical launch artifacts and evidence harness remain maintainer-held."
     },
     "public-functional": {
       "maturity": "live-validated",
@@ -16,7 +16,7 @@
       "definition": "recipes/glm52-exl3-tr3-3.25bpw.json",
       "default_configuration": "recipes/glm52-exl3-tr3-3.25bpw.json",
       "accepted_alternative": "recipes/glm52-nf3-hybrid.json",
-      "operator_running_candidate": "docs/EXL3_R7_FIXED_MTP4_PROFILE.md",
+      "operator_accepted_profile": "docs/EXL3_R7_FIXED_MTP4_PROFILE.md",
       "evidence": "docs/EXL3_RECIPE.md",
       "blockers": [
         "broader correctness gate",
@@ -68,6 +68,8 @@
       "accepted": false,
       "hardware_target": "linux/arm64, NVIDIA GB10 / SM121",
       "immutable_public_source_pins": true,
+      "public_source_complete": true,
+      "local_build_ready": true,
       "prepared_source_receipt_verification": true,
       "private_material_audit_passed": true,
       "clean_checkout_image_live_gate_passed": false,
@@ -75,6 +77,7 @@
       "includes_operator_exact_q40_overlay": false,
       "operator_profile_composition_published": true,
       "operator_profile_composition_entrypoint": "docs/EXL3_R7_OPERATOR_REPRODUCTION.md",
+      "promotion_checklist": "docs/EXL3_R7_PROMOTION_CHECKLIST.md",
       "entrypoint": "runtime/exl3-r7/README.md"
     },
     "faststart_builder": {
@@ -116,7 +119,6 @@
       "default": false,
       "operator_default": true,
       "public_functional_default": false,
-      "operator_running_configuration": true,
       "acceptance_scope": "operator-3.5-bpw-four-spark-profile",
       "hardware": "four directly cabled NVIDIA DGX Sparks / GB10 GPUs",
       "model": "brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f",
@@ -142,7 +144,7 @@
       "matched_ckv_gather_ab_complete": true,
       "matched_prefill_gain_percent_range": [14.85, 39.16],
       "matched_decode_regression_observed": false,
-      "current_best_prefill_snapshot": {
+      "accepted_prefill_snapshot": {
         "status": "accepted-operator-result",
         "concurrency": 1,
         "unique_context_percent": 100,
@@ -156,7 +158,7 @@
         "evidence": "docs/configurations/glm52-exl3-r7-current-best-prefill-20260813.json",
         "limitations": "Low visible sample counts; accepted as the operator's best measured snapshot, not a throughput distribution; server-side cache accounting unavailable."
       },
-      "current_best_decode_matrix": {
+      "accepted_decode_snapshot": {
         "status": "accepted-operator-result",
         "metric": "aggregate_tokens_per_second",
         "contexts_by_concurrency": {
@@ -169,7 +171,7 @@
         "evidence": "docs/configurations/glm52-exl3-r7-current-best-matrix-20260813.json",
         "limitations": "Displayed bounded matrix; per-cell repeat counts are not exposed."
       },
-      "current_best_coding_peak": {
+      "accepted_coding_snapshot": {
         "status": "accepted-operator-result",
         "concurrency": 1,
         "runs_passed": 5,
@@ -240,7 +242,6 @@
       "maturity": "live-validated",
       "default": true,
       "main_advertised_configuration": true,
-      "operator_running_configuration": false,
       "model": "willfalco/GLM-5.2-EXL3-TR3-3.25bpw",
       "zero_build_ready": false,
       "local_build_ready": true,

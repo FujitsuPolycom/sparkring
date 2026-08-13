@@ -447,10 +447,13 @@ def _validate_exl3_r7(recipe: dict[str, Any]) -> None:
     publication = recipe["publication"]
     if publication.get("zero_build_ready") is not False:
         raise RecipeError("R7 candidate must not claim zero_build_ready")
-    if publication.get("local_build_ready") is not False:
-        raise RecipeError("R7 candidate must not claim local_build_ready")
-    if not publication.get("blocker"):
-        raise RecipeError("R7 must state its public-bootstrap blocker")
+    if publication.get("local_build_ready") is not True:
+        raise RecipeError("R7 public builder must remain local_build_ready")
+    if not publication.get("remaining_gate"):
+        raise RecipeError("R7 must state the clean-checkout live promotion gate")
+    checklist = publication.get("promotion_checklist")
+    if not isinstance(checklist, str) or not (ROOT / checklist).is_file():
+        raise RecipeError("R7 promotion_checklist must name a published file")
     if publication.get("operator_default") is not True:
         raise RecipeError("R7 publication.operator_default must remain true")
     evidence = publication.get("evidence")

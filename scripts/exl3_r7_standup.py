@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Sanitized stand-up entrypoint for the EXL3 R7 3.5-bpw candidate.
+"""Build the public profile foundation for the EXL3 3.5-bpw operator profile.
 
 This script chains the public input chain from tracked inputs to a complete
-MTP4 KV9.25 candidate profile with an exact MTP3 KV9.25 rollback. It is
+MTP4 KV9.25 rebuilt-image candidate with an exact MTP3 KV9.25 rollback. It is
 dry-run by default and separates OFFLINE, READ-ONLY REMOTE, MUTATES HOST,
 and STOPS SERVING steps.
 
@@ -35,11 +35,11 @@ SAFETY_MUTATES = "MUTATES HOST"
 SAFETY_STOPS = "STOPS SERVING"
 
 DESCRIPTION = """\
-Stand-up entrypoint for the EXL3 R7 3.5-bpw fixed-MTP4, DCP4, KV9.25 candidate.
+Stand-up entrypoint for the EXL3 3.5-bpw fixed-MTP4, DCP4, KV9.25 foundation.
 
-This is a public-functional-lane, live-validated candidate — not the
-repository default, not accepted, and not a reference-lane result.
-The advertised default remains EXL3 3.25-bpw plus LMCache CS512.
+The operator deployment is accepted on one four-Spark appliance. Profiles
+generated for another image ID remain candidates until their live gates pass.
+This is not the repository default or a reference-lane result.
 """
 
 
@@ -88,8 +88,18 @@ def plan(
 
     if output_dir is None:
         output_dir = ROOT / ".sparkring" / "exl3-r7"
-    if template is None:
+    template_was_default = template is None
+    if template_was_default:
         template = SCRIPTS / "config" / "exl3-r7-candidate.example.json"
+
+    if site is not None and not template_was_default:
+        _validate_resolved_inputs(site, template)
+    elif not dry_run:
+        if site is None:
+            raise StandupError("--execute requires a complete ignored --site file")
+        raise StandupError(
+            "--execute requires an ignored --template with the built image ID"
+        )
 
     receipt: dict = {"dry_run": dry_run, "steps": []}
 
@@ -135,7 +145,7 @@ def plan(
     mtp2_rollback = output_dir / "mtp2-rollback.json"
     stock_site = output_dir / "stock-site.yaml"
     if not dry_run:
-        _write_stock_site(stock_site)
+        _write_stock_site(stock_site, site)
     _run_script(
         "prepare_exl3_r7_mtp2.py",
         [
@@ -261,27 +271,73 @@ def plan(
                 raise StandupError(f"preflight plan failed: {result.stderr.strip()}")
         receipt["steps"].append({"step": "preflight-plan", "safety": SAFETY_READ_ONLY})
 
-    receipt["candidate_maturity"] = "live-validated-candidate"
+    receipt["operator_deployment_maturity"] = "accepted"
+    receipt["generated_profile_maturity"] = "candidate"
     receipt["note"] = (
-        "This is a public-functional-lane candidate, not the repository "
-        "default or an accepted configuration. The advertised default "
-        "remains EXL3 3.25-bpw plus LMCache CS512."
+        "Operator acceptance applies to the documented image and four-Spark "
+        "appliance. A profile generated for another image ID requires the "
+        "live promotion gate. The public default remains EXL3 3.25-bpw plus "
+        "LMCache CS512."
     )
     return receipt
 
 
-def _write_stock_site(path: Path) -> None:
-    """Write a minimal stock-DCP4 site for the prepare scripts."""
-    path.write_text(
-        "serving:\n"
-        "  tensor_parallel_size: 4\n"
-        "  decode_context_parallel_size: 4\n"
-        '  mtp_mode: "off"\n'
-        "  mtp_tokens: 0\n"
-        "  kv_cache_bytes_per_rank: 9000000000\n"
-        "  max_num_seqs: 8\n",
-        encoding="utf-8",
+def _validate_resolved_inputs(site: Path, template: Path) -> None:
+    """Reject placeholders and cross-file image or model path drift."""
+
+    from sparkring_site import load_site
+
+    if not site.is_file() or not template.is_file():
+        raise StandupError("--site and --template must name existing files")
+    try:
+        document = json.loads(template.read_text(encoding="utf-8"))
+        parsed_site = load_site(site)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise StandupError(f"invalid resolved stand-up input: {exc}") from exc
+    image = document.get("image")
+    image_id = document.get("image_id")
+    if not isinstance(image, str) or "REPLACE" in image.upper():
+        raise StandupError("candidate template image is unresolved")
+    if image_id == "sha256:" + "1" * 64:
+        raise StandupError("candidate template image_id is unresolved")
+    expected = {
+        "image": (image, parsed_site.runtime.container_image),
+        "image_id": (image_id, parsed_site.runtime.container_image_digest),
+        "model_host_path": (
+            document.get("model_host_path"),
+            parsed_site.runtime.model_path,
+        ),
+        "jit_cache_host_path": (
+            document.get("jit_cache_host_path"),
+            parsed_site.paths.jit_cache_dir,
+        ),
+    }
+    for field, (profile_value, site_value) in expected.items():
+        if profile_value != site_value:
+            raise StandupError(
+                f"candidate template {field} does not match the complete site"
+            )
+
+
+def _write_stock_site(path: Path, source_site: Path) -> None:
+    """Derive a stock-DCP4 control while preserving the complete site."""
+
+    text = source_site.read_text(encoding="utf-8")
+    replacements = (
+        ('  mtp_mode: "static"', '  mtp_mode: "off"'),
+        ("  mtp_tokens: 4", "  mtp_tokens: 0"),
+        (
+            "  kv_cache_bytes_per_rank: 9250000000",
+            "  kv_cache_bytes_per_rank: 9000000000",
+        ),
     )
+    for before, after in replacements:
+        if text.count(before) != 1:
+            raise StandupError(
+                f"complete site requires exactly one {before.strip()} declaration"
+            )
+        text = text.replace(before, after)
+    path.write_text(text, encoding="utf-8")
 
 
 def main() -> int:

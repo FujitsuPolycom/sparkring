@@ -340,11 +340,11 @@ contract, not for the exact dynamic-NVFP4/262K/CKV-gather profile. The larger
   preserved in the machine-readable evidence.
 - The +19.341% decode result applies to fixed-MTP4 Q40 at 16K with eight fully
   resident requests. It is not an all-shape or all-concurrency speed claim.
-- The current exact profile has bounded startup, output-equivalence,
+- The accepted exact-Q40 profile has bounded startup, output-equivalence,
   speculative-decoding, transport, and matched prefill/decode evidence. Its
   262,144-token request boundary and near-capacity concurrent residency remain
   unqualified.
-- The current-best prefill table has one visible sample per context except for
+- The accepted prefill table has one visible sample per context except for
   8K, which has two. Several operator runs were consistent, but a retained
   repeat distribution and longer soak test remain open.
 - The control benchmark's JSON destination was invalid, so the harness printed
@@ -355,3 +355,7 @@ contract, not for the exact dynamic-NVFP4/262K/CKV-gather profile. The larger
 - Fixed MTP5 is unsupported by this image. Q48 requires a Python contract
   extension and a rebuilt native vocabulary/DCP/indexer transport cap; it is
   not a profile-only change.
+
+A rebuilt image must complete the
+[promotion checklist](EXL3_R7_PROMOTION_CHECKLIST.md) before inheriting this
+operator deployment's accepted maturity.

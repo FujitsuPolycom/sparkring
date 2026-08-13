@@ -8,10 +8,11 @@
 > `live-validated`, not accepted; see
 > [QUICKSTART.md](QUICKSTART.md) and the candidate
 > [EXL3 acceptance runbook](EXL3_ACCEPTANCE_RUNBOOK.md). The operator's
-> running EXL3 R7 3.5-bpw fixed-MTP4 service is a separate live-validated
-> candidate documented in
+> EXL3 3.5-bpw fixed-MTP4 profile is accepted for one four-Spark appliance and
+> documented in
 > [EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md); its evidence
-> does not change the default or accepted matrix.
+> does not change the public default or accepted NF3 matrix. A clean-checkout
+> rebuild remains unqualified until it passes the profile's live gates.
 
 This document defines the accepted NF3 matrix and the common fail-closed
 acceptance semantics. `scripts/acceptance_gate.py` preserves that matrix as

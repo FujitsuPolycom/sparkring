@@ -44,9 +44,6 @@ DRAFT_WEIGHT_CONTRACT_LABEL = (
     "checkpoint-exl3-routed+producer-bf16-nonexpert"
 )
 SHARED_CAPTURE_CONTRACT_LABEL = "process-device-shared-target+draft"
-SHARED_CAPTURE_HOST_PATH = (
-    "/var/tmp/sparkring-r7-parallel-state-mtp-shared-stream.py"
-)
 SHARED_CAPTURE_CONTAINER_PATH = (
     "/opt/venv/lib/python3.12/site-packages/vllm/distributed/parallel_state.py"
 )
@@ -196,13 +193,6 @@ def derive_candidate(stock: dict) -> dict:
             ),
         }
     )
-    candidate.setdefault("extra_volumes", []).append(
-        {
-            "host": SHARED_CAPTURE_HOST_PATH,
-            "container": SHARED_CAPTURE_CONTAINER_PATH,
-            "mode": "ro",
-        }
-    )
     hook = candidate.get("attestation_hook")
     if not isinstance(hook, list) or len(hook) != 3 or not isinstance(hook[2], str):
         raise ContractError("stock DCP4 control has no shell attestation hook")
@@ -280,16 +270,9 @@ def validate_capture_stream_contract(profile: dict) -> None:
         for volume in profile.get("extra_volumes", [])
         if volume.get("container") == SHARED_CAPTURE_CONTAINER_PATH
     ]
-    expected = [
-        {
-            "host": SHARED_CAPTURE_HOST_PATH,
-            "container": SHARED_CAPTURE_CONTAINER_PATH,
-            "mode": "ro",
-        }
-    ]
-    if mounted != expected:
+    if mounted:
         raise ContractError(
-            "fixed-MTP2 requires exactly one read-only shared capture stream overlay"
+            "fixed-MTP2 requires the shared capture stream implementation baked into the image"
         )
     hook = profile.get("attestation_hook")
     if not isinstance(hook, list) or len(hook) != 3 or not isinstance(hook[2], str):

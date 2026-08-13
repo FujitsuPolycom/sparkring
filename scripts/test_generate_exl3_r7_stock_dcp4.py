@@ -99,12 +99,10 @@ def test_stock_profile_matches_qualified_diagnostic_contract() -> None:
     assert stock["environment"]["SPARK_TP4_GRAPH_STATUS_PATH"] == (
         "/cache/jit/sparkring-r7-dcp4-stock-graph-status.json"
     )
-    volume = {
-        "host": gen.DCP_AUDIT_HOST_PATH,
-        "container": gen.DCP_AUDIT_CONTAINER_PATH,
-        "mode": "ro",
-    }
-    assert volume in stock["extra_volumes"]
+    assert not any(
+        volume["container"] == gen.DCP_AUDIT_CONTAINER_PATH
+        for volume in stock["extra_volumes"]
+    )
     assert (
         f"{gen.DCP_AUDIT_SHA256}  {gen.DCP_AUDIT_CONTAINER_PATH}"
         in stock["attestation_hook"][2]

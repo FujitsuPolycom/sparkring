@@ -14,8 +14,10 @@ public-functional matrix, and not registry-available.
 
 The builder compiles `spark_transport_capi` from the same SparkRing revision
 and installs the manifest-bounded public vLLM adapter overlay. It therefore
-does not depend on an inherited, operator-held SIRCL binary. The exact-Q40
-EXL3 and model-runner overlays remain a separate, published composition layer
+does not depend on an inherited, operator-held SIRCL binary. It installs the
+pinned public QuACK and ARM64 TVM FFI wheels and applies the hash-bound
+compatibility edits used by the accepted operator profile. The exact-Q40 EXL3
+and model-runner overlays remain a separate, published composition layer
 because they require their own source-input hashes, local image identity, and
 pre-graph numerical parity receipt. See
 [`docs/EXL3_R7_OPERATOR_REPRODUCTION.md`](../../docs/EXL3_R7_OPERATOR_REPRODUCTION.md).
@@ -91,7 +93,10 @@ BASE_IMAGE=... BASE_IMAGE_ID=... BASE_IMAGE_LICENSES=... \
 4. **Build dependencies:** `prepare_build_deps.py` stages CUTLASS and
    Triton kernel sources with a per-file SHA-256 inventory receipt. The
    `--verify` flag re-checks the inventory against the receipt.
-5. **OCI labels:** the built image carries
+5. **Python runtime wheels:** QuACK 0.5.0 and Apache TVM FFI 0.1.10 are fetched
+   from hash-bound public wheel URLs. The build verifies the resulting runtime
+   file hashes.
+6. **OCI labels:** the built image carries
    `org.sparkring.parent.image-id`, `org.opencontainers.image.source`,
    `org.opencontainers.image.revision`, `org.opencontainers.image.licenses`,
    and per-component commit labels for vLLM, B12X, ExLlamaV3, InstantTensor,

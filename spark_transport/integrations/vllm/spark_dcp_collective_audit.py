@@ -79,6 +79,7 @@ def _patch_combine(module: ModuleType) -> None:
         ctx: Any = None,
         return_lse: bool = False,
         is_lse_base_on_e: bool = True,
+        head_major_output: bool = False,
     ) -> Any:
         import torch
         from spark_collective_audit import enabled, record_stock
@@ -97,6 +98,7 @@ def _patch_combine(module: ModuleType) -> None:
             ctx=ctx,
             return_lse=return_lse,
             is_lse_base_on_e=is_lse_base_on_e,
+            head_major_output=head_major_output,
         )
 
     audited_combine._spark_dcp_collective_audit = True  # type: ignore[attr-defined]

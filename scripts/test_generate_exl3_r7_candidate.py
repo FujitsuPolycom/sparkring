@@ -126,46 +126,10 @@ def test_generated_profile_uses_generic_launcher_contract(tmp_path: Path) -> Non
     assert profile.environment["TORCH_USE_RTLD_GLOBAL"] == "1"
     assert "/proc/self/maps" in profile.attestation_hook[2]
     assert ("/var/tmp/sparkring-r7-online", "/cache/exl3-online", "rw") in profile.extra_volumes
-    assert (
-        candidate.ENTRYPOINT_HOST_PATH,
-        candidate.ENTRYPOINT_CONTAINER_PATH,
-        "ro",
-    ) in profile.extra_volumes
-    assert (
-        candidate.WEIGHT_UTILS_HOST_PATH,
-        candidate.WEIGHT_UTILS_CONTAINER_PATH,
-        "ro",
-    ) in profile.extra_volumes
-    assert (
-        candidate.EXL3_SCRATCH_HOST_PATH,
-        candidate.EXL3_SCRATCH_CONTAINER_PATH,
-        "ro",
-    ) in profile.extra_volumes
-    assert (
-        candidate.CUDAGRAPH_UTILS_HOST_PATH,
-        candidate.CUDAGRAPH_UTILS_CONTAINER_PATH,
-        "ro",
-    ) in profile.extra_volumes
-    assert (
-        candidate.QUACK_LAYOUT_UTILS_HOST_PATH,
-        candidate.QUACK_LAYOUT_UTILS_CONTAINER_PATH,
-        "ro",
-    ) in profile.extra_volumes
-    assert (
-        candidate.QUACK_COPY_UTILS_HOST_PATH,
-        candidate.QUACK_COPY_UTILS_CONTAINER_PATH,
-        "ro",
-    ) in profile.extra_volumes
-    assert (
-        candidate.DCP_AUDIT_HOST_PATH,
-        candidate.DCP_AUDIT_CONTAINER_PATH,
-        "ro",
-    ) in profile.extra_volumes
-    assert (
-        candidate.TVM_FFI_HOST_PATH,
-        candidate.TVM_FFI_CONTAINER_PATH,
-        "ro",
-    ) in profile.extra_volumes
+    assert not any(
+        mode == "ro" and host.startswith("/var/tmp/sparkring-r7-")
+        for host, _container, mode in profile.extra_volumes
+    )
     assert profile.attestation_hook[:2] == ("/bin/sh", "-c")
     assert template["model_config_sha256"] in profile.attestation_hook[2]
     assert template["model_index_sha256"] in profile.attestation_hook[2]

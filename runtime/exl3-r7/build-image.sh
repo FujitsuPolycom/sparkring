@@ -75,6 +75,14 @@ cp -a "${deps_cache}/cutlass" "${context}/bundle/deps/cutlass"
 cp -a "${deps_cache}/triton_kernels" "${context}/bundle/deps/triton_kernels"
 cp "${here}/verify_runtime.py" "${context}/bundle/runtime/verify_runtime.py"
 cp "${here}/entrypoint.sh" "${context}/bundle/runtime/entrypoint.sh"
+cp "${here}/bake_runtime_artifacts.py" \
+  "${context}/bundle/runtime/bake_runtime_artifacts.py"
+cp "${here}/build_parallel_state_shared_capture_overlay.py" \
+  "${context}/bundle/runtime/build_parallel_state_shared_capture_overlay.py"
+cp "${here}/requirements-quack.txt" \
+  "${context}/bundle/runtime/requirements-quack.txt"
+cp "${here}/requirements-tvm-ffi.txt" \
+  "${context}/bundle/runtime/requirements-tvm-ffi.txt"
 cp "${here}/patch_sm121_cmake.py" "${context}/bundle/patch_sm121_cmake.py"
 cp "${here}/../build-public-overlay.py" \
   "${context}/bundle/build-public-overlay.py"

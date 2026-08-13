@@ -22,30 +22,24 @@ NCCL_LIBRARY = "/opt/venv/lib/python3.12/site-packages/nvidia/nccl/lib/libnccl.s
 PATCHED_NCCL_LIBRARY = "/opt/sparkring/nccl/libnccl.so.2"
 SIRCL_LIBRARY = "/opt/sparkring/spark_transport/libspark_transport_capi.so"
 LD_PRELOAD = CUDA_COMPAT_LIBRARY
-ENTRYPOINT_HOST_PATH = "/var/tmp/sparkring-r7-entrypoint-hotfix"
 ENTRYPOINT_CONTAINER_PATH = "/usr/local/bin/sparkring-r7-entrypoint"
 ENTRYPOINT_SHA256 = "bbc72446e9a7d811c903e76e37e7d9dfce3d21108b2ea7c3db278bb71e84f95e"
-WEIGHT_UTILS_HOST_PATH = "/var/tmp/sparkring-r7-weight-utils-local-io.py"
 WEIGHT_UTILS_CONTAINER_PATH = (
     "/opt/venv/lib/python3.12/site-packages/vllm/model_executor/model_loader/weight_utils.py"
 )
 WEIGHT_UTILS_SHA256 = "da5e6c3429293870d0de611183818fa57c0e9e0ad896784bc739c8a812343102"
-EXL3_SCRATCH_HOST_PATH = "/var/tmp/sparkring-r7-exl3-sm121-dense-scratch.py"
 EXL3_SCRATCH_CONTAINER_PATH = (
     "/opt/venv/lib/python3.12/site-packages/vllm/model_executor/layers/quantization/exl3.py"
 )
 EXL3_SCRATCH_SHA256 = "8e0051faf9b8bac9eefd6f38a5f0133a30bca4c0b5ab41962537e2f13cf968f4"
-CUDAGRAPH_UTILS_HOST_PATH = "/var/tmp/sparkring-r7-cudagraph-utils-shared-stream.py"
 CUDAGRAPH_UTILS_CONTAINER_PATH = (
     "/opt/venv/lib/python3.12/site-packages/vllm/v1/worker/gpu/cudagraph_utils.py"
 )
 CUDAGRAPH_UTILS_SHA256 = "ef03d64297ed2d1a5161847b48a435bf8ae5feda7a5b81b668d00ae9a1d65a2a"
-QUACK_LAYOUT_UTILS_HOST_PATH = "/var/tmp/sparkring-r7-quack-layout_utils-annotations.py"
 QUACK_LAYOUT_UTILS_CONTAINER_PATH = (
     "/opt/venv/lib/python3.12/site-packages/quack/layout_utils.py"
 )
 QUACK_LAYOUT_UTILS_SHA256 = "3199dc3f55f346183e3d284f6da98f4394eaf14f28b7616d147e6e49ec896194"
-QUACK_COPY_UTILS_HOST_PATH = "/var/tmp/sparkring-r7-quack-copy_utils-annotations.py"
 QUACK_COPY_UTILS_CONTAINER_PATH = (
     "/opt/venv/lib/python3.12/site-packages/quack/copy_utils.py"
 )
@@ -55,11 +49,9 @@ NONFINITE_TRACE_CONTAINER_PATH = (
     "/opt/venv/lib/python3.12/site-packages/vllm/model_executor/models/deepseek_v2.py"
 )
 NONFINITE_TRACE_SHA256 = "90f4591b71bd8da9e2e37c866bcac17c89583db5d70ae2c80b095a7c35eae01b"
-DCP_AUDIT_HOST_PATH = "/var/tmp/sparkring-r7-dcp-audit-head-major.py"
 DCP_AUDIT_CONTAINER_PATH = "/opt/spark-vllm/spark_dcp_collective_audit.py"
 DCP_AUDIT_SHA256 = "077a234e4edff8b8dd44784953aef713884b4dd7a3f7c46589b14c6bb8b40745"
 DCP_GRAPH_STATUS_PATH = "/cache/jit/sparkring-r7-dcp4-stock-graph-status.json"
-TVM_FFI_HOST_PATH = "/var/tmp/sparkring-r7-tvm-ffi-0.1.10-r1"
 TVM_FFI_CONTAINER_PATH = "/opt/sparkring-r7-tvm-ffi"
 TVM_FFI_VERSION = "0.1.10"
 TVM_FFI_WHEEL_SHA256 = "3829216a8500c2f61062e48c627f6db6c3fa49416b3ffa85bc04243ae5d759f7"
@@ -373,21 +365,9 @@ def generate(template: dict, pins: dict, recipe: dict) -> dict:
         "extra_volumes": [
             {"host": _absolute(template.get("jit_cache_host_path"), "jit_cache_host_path"), "container": "/cache/jit", "mode": "rw"},
             {"host": _absolute(template.get("online_weight_cache_host_path"), "online_weight_cache_host_path"), "container": "/cache/exl3-online", "mode": "rw"},
-            {"host": ENTRYPOINT_HOST_PATH, "container": ENTRYPOINT_CONTAINER_PATH, "mode": "ro"},
-            {"host": WEIGHT_UTILS_HOST_PATH, "container": WEIGHT_UTILS_CONTAINER_PATH, "mode": "ro"},
-            {"host": EXL3_SCRATCH_HOST_PATH, "container": EXL3_SCRATCH_CONTAINER_PATH, "mode": "ro"},
-            {"host": CUDAGRAPH_UTILS_HOST_PATH, "container": CUDAGRAPH_UTILS_CONTAINER_PATH, "mode": "ro"},
-            {"host": QUACK_LAYOUT_UTILS_HOST_PATH, "container": QUACK_LAYOUT_UTILS_CONTAINER_PATH, "mode": "ro"},
-            {"host": QUACK_COPY_UTILS_HOST_PATH, "container": QUACK_COPY_UTILS_CONTAINER_PATH, "mode": "ro"},
             *(
                 [{"host": NONFINITE_TRACE_HOST_PATH, "container": NONFINITE_TRACE_CONTAINER_PATH, "mode": "ro"}]
                 if nonfinite_trace
-                else []
-            ),
-            {"host": TVM_FFI_HOST_PATH, "container": TVM_FFI_CONTAINER_PATH, "mode": "ro"},
-            *(
-                [{"host": DCP_AUDIT_HOST_PATH, "container": DCP_AUDIT_CONTAINER_PATH, "mode": "ro"}]
-                if dcp_collective_audit
                 else []
             ),
         ],

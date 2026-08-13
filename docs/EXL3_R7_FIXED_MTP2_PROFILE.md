@@ -71,16 +71,17 @@ each context owns a new stream even when
 first eligible draft graph fails closed with `TP4 session requires one stable
 caller CUDA stream`.
 
-The candidate mounts
-`/var/tmp/sparkring-r7-parallel-state-mtp-shared-stream.py` read-only at
+The public R7 builder generates the shared-capture implementation from its
+hash-pinned vLLM preimage and installs it at
 `/opt/venv/lib/python3.12/site-packages/vllm/distributed/parallel_state.py`.
-Its SHA-256 is
+The generated file's SHA-256 is
 `b087e93463e9a2d9bede71d3a6e4d696c8f2657449e8dc1119b38613d5750e4e`.
 The overlay retains one dedicated stream per process and CUDA device, creates
 a fresh graph-capture context for every manager so channel identities remain
 distinct, preserves explicit caller-provided contexts and DCP/B12X capture
 contexts, and rejects overlapping use. Manager-owned CUDA graph pools are not
-changed. The stock-DCP4 rollback does not mount this overlay.
+changed. The stock-DCP4 rollback retains the shared-stream gate but has no
+speculative draft managers, so it preserves the single target-manager path.
 
 ## Exact speculative configuration
 

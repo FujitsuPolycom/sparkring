@@ -2,8 +2,9 @@
 # SparkRing EXL3 R7 site configuration - EXAMPLE / TEMPLATE
 # =============================================================================
 #
-# This is the R7 3.5-bpw candidate site template. Copy to site.yaml and replace
-# every placeholder. The serving values match the qualified R7 candidate:
+# This is the EXL3 3.5-bpw foundation site template. Copy it to site.yaml and
+# replace every placeholder. The serving values are the reproducible 65K
+# foundation for the operator-accepted 262K profile whose recipe ID is R7:
 # TP4, DCP4, fixed MTP4, 9.25 GB KV/rank, fp8_ds_mla, 65536 max model len.
 #
 # Validate your copy before use:
@@ -167,40 +168,8 @@ paths:
     context_cache: 549755813888
 
 artifacts:
-  # The generated runtime profile mounts these exact files from each host.
-  # Some source/build chains remain publication blockers; see the quickstart.
-  - name: r7_entrypoint
-    path: /var/tmp/sparkring-r7-entrypoint-hotfix
-    sha256: bbc72446e9a7d811c903e76e37e7d9dfce3d21108b2ea7c3db278bb71e84f95e
-    executable: true
-  - name: r7_weight_utils_local_io
-    path: /var/tmp/sparkring-r7-weight-utils-local-io.py
-    sha256: da5e6c3429293870d0de611183818fa57c0e9e0ad896784bc739c8a812343102
-    executable: false
-  - name: r7_exl3_sm121_scratch
-    path: /var/tmp/sparkring-r7-exl3-sm121-dense-scratch.py
-    sha256: 8e0051faf9b8bac9eefd6f38a5f0133a30bca4c0b5ab41962537e2f13cf968f4
-    executable: false
-  - name: r7_cudagraph_shared_stream
-    path: /var/tmp/sparkring-r7-cudagraph-utils-shared-stream.py
-    sha256: ef03d64297ed2d1a5161847b48a435bf8ae5feda7a5b81b668d00ae9a1d65a2a
-    executable: false
-  - name: r7_quack_layout_utils
-    path: /var/tmp/sparkring-r7-quack-layout_utils-annotations.py
-    sha256: 3199dc3f55f346183e3d284f6da98f4394eaf14f28b7616d147e6e49ec896194
-    executable: false
-  - name: r7_quack_copy_utils
-    path: /var/tmp/sparkring-r7-quack-copy_utils-annotations.py
-    sha256: 2ce88b0d7ee9afe025e52c02fcb32e772a429f1ee626b59546ab8b61d7a37929
-    executable: false
-  - name: r7_dcp_collective_audit
-    path: /var/tmp/sparkring-r7-dcp-audit-head-major.py
-    sha256: 077a234e4edff8b8dd44784953aef713884b4dd7a3f7c46589b14c6bb8b40745
-    executable: false
-  - name: r7_parallel_state_shared_capture
-    path: /var/tmp/sparkring-r7-parallel-state-mtp-shared-stream.py
-    sha256: b087e93463e9a2d9bede71d3a6e4d696c8f2657449e8dc1119b38613d5750e4e
-    executable: false
+  # Runtime files used by the default profile are baked into and attested in
+  # the image. Generated experiment bundles add their own host artifacts.
   - name: transport_library
     path: /opt/sparkring/lib/libspark_transport_capi.so
     sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
