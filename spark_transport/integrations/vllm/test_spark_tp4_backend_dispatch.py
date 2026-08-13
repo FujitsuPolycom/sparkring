@@ -131,6 +131,7 @@ class _FakeBackend:
         self.rank = rank
         self.native_sessions: dict[int, _FakeNative] = {}
         self.graph_q1_session: _FakeNative | None = None
+        self.graph_dual_port_q40_session: _FakeNative | None = None
         self.shadow_stats: dict[object, _FakeShadowStats] = {}
         self.created.append(self)
 
@@ -149,7 +150,23 @@ class _FakeBackend:
                 graph_only=True,
             )
             self.graph_q1_session = native
+        if (
+            spark_tp4_backend._graph_dual_port_q40_enabled()
+            and self.graph_dual_port_q40_session is None
+        ):
+            self.graph_dual_port_q40_session = _FakeNative(
+                40 * 6144 * 2,
+                graph_only=True,
+            )
         return native
+
+    def graph_session_for_capture(self, tensor: object) -> _FakeNative | None:
+        if (
+            tensor.shape[0] == 40
+            and self.graph_dual_port_q40_session is not None
+        ):
+            return self.graph_dual_port_q40_session
+        return self.graph_q1_session
 
     def shadow_for(self, signature: object) -> _FakeShadowStats:
         shadow = self.shadow_stats.get(signature)
@@ -174,7 +191,21 @@ class _FakeFunction:
 class _FakeLibrary:
     def __init__(self) -> None:
         self.configs: list[dict[str, object]] = []
+        self.protocols: list[int] = []
+        self.graph_kernels: list[int] = []
+        self.wire_schedules: list[int] = []
         self.spark_tp4_create = _FakeFunction(self._create)
+        self.spark_tp4_create_with_protocol = _FakeFunction(
+            self._create_with_protocol
+        )
+        self.spark_tp4_create_with_protocol_and_graph_kernel = _FakeFunction(
+            self._create_with_protocol_and_graph_kernel
+        )
+        self.spark_tp4_create_with_protocol_graph_kernel_and_schedule = (
+            _FakeFunction(
+                self._create_with_protocol_graph_kernel_and_schedule
+            )
+        )
         self.spark_tp4_all_reduce = _FakeFunction()
         self.spark_tp4_capture_q1_all_reduce = _FakeFunction()
         self.capture_calls: list[dict[str, object]] = []
@@ -192,6 +223,38 @@ class _FakeLibrary:
             }
         )
         return 1
+
+    def _create_with_protocol(
+        self, config_pointer, protocol, error, error_size
+    ) -> int:
+        self.protocols.append(int(protocol))
+        return self._create(config_pointer, error, error_size)
+
+    def _create_with_protocol_and_graph_kernel(
+        self,
+        config_pointer,
+        protocol,
+        graph_kernel,
+        error,
+        error_size,
+    ) -> int:
+        self.protocols.append(int(protocol))
+        self.graph_kernels.append(int(graph_kernel))
+        return self._create(config_pointer, error, error_size)
+
+    def _create_with_protocol_graph_kernel_and_schedule(
+        self,
+        config_pointer,
+        protocol,
+        graph_kernel,
+        wire_schedule,
+        error,
+        error_size,
+    ) -> int:
+        self.protocols.append(int(protocol))
+        self.graph_kernels.append(int(graph_kernel))
+        self.wire_schedules.append(int(wire_schedule))
+        return self._create(config_pointer, error, error_size)
 
     def _capture(
         self, handle, input_pointer, output_pointer, q, stream, error, error_size
@@ -223,6 +286,18 @@ class _FakeLibrary:
             | spark_tp4_backend._GRAPH_STATUS_SUBMIT_AFFINITY_VERIFIED
             | spark_tp4_backend._GRAPH_STATUS_PROGRESS_AFFINITY_VERIFIED
         )
+        if self.protocols and self.protocols[-1] == 1:
+            status.flags |= (
+                spark_tp4_backend._GRAPH_STATUS_TWO_SLOT_DEFERRED_ACK
+            )
+        if self.graph_kernels == [1]:
+            status.flags |= spark_tp4_backend._GRAPH_STATUS_SPLIT_64K
+        elif self.graph_kernels == [2]:
+            status.flags |= spark_tp4_backend._GRAPH_STATUS_TIERED_64K
+        if self.wire_schedules == [1]:
+            status.flags |= (
+                spark_tp4_backend._GRAPH_STATUS_DUAL_PORT_STRIPED
+            )
         status.captured_nodes = 128
         status.published_sequence = 1024
         status.consumed_sequence = 1024
@@ -243,6 +318,7 @@ class SparkTp4BackendDispatchTest(unittest.TestCase):
         self.original_all_reduce = self.communicator_type.all_reduce
         spark_tp4_backend._installed = False
         spark_tp4_backend._graph_q1_sessions.clear()
+        spark_tp4_backend._graph_dual_port_q40_sessions.clear()
         spark_tp4_backend._graph_event_counts.clear()
         spark_collective_audit._reset_for_tests()
         _FakeBackend.created.clear()
@@ -274,11 +350,85 @@ class SparkTp4BackendDispatchTest(unittest.TestCase):
     def test_invalid_mode_is_rejected_before_vllm_is_patched(self) -> None:
         with self.assertRaisesRegex(
             ValueError,
-            "VLLM_SPARK_TP4_MODE must be 'shadow', 'custom', or unset",
+            "VLLM_SPARK_TP4_MODE must be 'shadow', 'custom', 'disabled', or unset",
         ):
             self._install("fastest")
 
         self.assertIs(self.communicator_type.all_reduce, self.original_all_reduce)
+        self.assertFalse(spark_tp4_backend._installed)
+
+    def test_deferred_ack_protocol_requires_custom_graph_transport(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "two_slot_deferred_ack requires custom graph all-reduce",
+        ):
+            self._install(
+                "custom",
+                {
+                    "VLLM_SPARK_TP4_GRAPH_ALLREDUCE_PROTOCOL": (
+                        "two_slot_deferred_ack"
+                    )
+                },
+            )
+
+        self.assertIs(
+            self.communicator_type.all_reduce,
+            self.original_all_reduce,
+        )
+        self.assertFalse(spark_tp4_backend._installed)
+
+    def test_invalid_graph_allreduce_protocol_is_rejected_before_patch(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "VLLM_SPARK_TP4_GRAPH_ALLREDUCE_PROTOCOL",
+        ):
+            self._install(
+                "custom",
+                {
+                    "VLLM_SPARK_TP4_GRAPH_ALLREDUCE_PROTOCOL": "fast",
+                },
+            )
+
+        self.assertIs(
+            self.communicator_type.all_reduce,
+            self.original_all_reduce,
+        )
+        self.assertFalse(spark_tp4_backend._installed)
+
+    def test_invalid_graph_kernel_strategy_is_rejected_before_patch(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "VLLM_SPARK_TP4_GRAPH_KERNEL_STRATEGY",
+        ):
+            self._install(
+                "custom",
+                {
+                    "VLLM_SPARK_TP4_GRAPH_KERNEL_STRATEGY": "automatic",
+                },
+            )
+
+        self.assertIs(
+            self.communicator_type.all_reduce,
+            self.original_all_reduce,
+        )
+        self.assertFalse(spark_tp4_backend._installed)
+
+    def test_tiered_graph_kernel_requires_custom_graph_transport(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "research graph kernel strategies require custom graph all-reduce",
+        ):
+            self._install(
+                "custom",
+                {
+                    "VLLM_SPARK_TP4_GRAPH_KERNEL_STRATEGY": "tiered_64k",
+                },
+            )
+
         self.assertFalse(spark_tp4_backend._installed)
 
     def test_custom_mode_routes_only_mtp_rows_one_through_six(self) -> None:
@@ -460,6 +610,49 @@ class SparkTp4BackendDispatchTest(unittest.TestCase):
             {"captured_nodes": 6},
         )
         self.assertEqual(communicator.original_inputs, [])
+
+    def test_exact_q40_capture_uses_dedicated_dual_port_session(self) -> None:
+        with patch.object(
+            spark_tp4_backend,
+            "_TARGET_SHAPES",
+            frozenset({(39, 6144), (40, 6144)}),
+        ), patch.object(
+            spark_tp4_backend,
+            "MAX_QUERY_ROWS",
+            40,
+        ):
+            self._install(
+                "custom",
+                {
+                    "VLLM_SPARK_TP4_GRAPH_Q1": "1",
+                    "VLLM_SPARK_TP4_GRAPH_DUAL_PORT_Q40": "1",
+                    "SPARK_TP4_GRAPH_DUAL_PORT_Q40_PROGRESS_CPU": "15",
+                },
+            )
+            communicator = self.communicator_type(rank_in_group=1)
+            warmup = _FakeTensor(shape=(39, 6144))
+            q39 = _FakeTensor(shape=(39, 6144))
+            q40 = _FakeTensor(shape=(40, 6144))
+
+            communicator.all_reduce(warmup)
+            backend = _FakeBackend.created[0]
+            self.torch_module.cuda.capturing = True
+            q39_result = communicator.all_reduce(q39)
+            q40_result = communicator.all_reduce(q40)
+
+        self.assertEqual(
+            q39_result,
+            ("graph-candidate", 40 * 6144 * 2, 39, q39),
+        )
+        self.assertEqual(
+            q40_result,
+            ("graph-candidate", 40 * 6144 * 2, 40, q40),
+        )
+        self.assertEqual(backend.graph_q1_session.capture_inputs, [q39])
+        self.assertEqual(
+            backend.graph_dual_port_q40_session.capture_inputs,
+            [q40],
+        )
 
     def test_prefill_graph_capture_uses_one_six_mib_session(self) -> None:
         self._install("custom")
@@ -923,6 +1116,323 @@ class SparkTp4BackendDispatchTest(unittest.TestCase):
 
 
 class SparkTp4NativeSessionConfigTest(unittest.TestCase):
+    def test_native_config_layout_remains_legacy_64_bytes(self) -> None:
+        config = spark_tp4_backend._NativeConfig
+        self.assertEqual(spark_tp4_backend.ctypes.sizeof(config), 64)
+        self.assertEqual(config.rank.offset, 0)
+        self.assertEqual(config.peer0.offset, 8)
+        self.assertEqual(config.peer1.offset, 16)
+        self.assertEqual(config.device0.offset, 24)
+        self.assertEqual(config.device1.offset, 32)
+        self.assertEqual(config.gid0.offset, 40)
+        self.assertEqual(config.gid1.offset, 41)
+        self.assertEqual(config.control_port0.offset, 42)
+        self.assertEqual(config.control_port1.offset, 44)
+        self.assertEqual(config.payload_bytes.offset, 48)
+        self.assertEqual(config.graph_submit_cpu_plus_one.offset, 56)
+        self.assertEqual(config.graph_progress_cpu_plus_one.offset, 60)
+
+    def test_two_slot_protocol_uses_versioned_create_symbol(self) -> None:
+        library = _FakeLibrary()
+        environment = {"SPARK_TP4_LIBRARY": "fake.dll"}
+        with (
+            patch.dict(os.environ, environment, clear=True),
+            patch.object(
+                spark_tp4_backend.ctypes,
+                "CDLL",
+                return_value=library,
+            ),
+        ):
+            session = spark_tp4_backend._NativeSession(
+                0,
+                73728,
+                control_ports=(14000, 14001),
+                graph_only=True,
+                graph_cpu_affinity=(10, 11),
+                allreduce_protocol="two_slot_deferred_ack",
+            )
+            status = session.graph_status()
+
+        self.assertEqual(library.protocols, [1])
+        self.assertEqual(len(library.configs), 1)
+        self.assertTrue(status.two_slot_deferred_ack)
+        self.assertFalse(status.command_caught_up)
+        self.assertIsNone(status.payload_slots_retired)
+
+    def test_two_slot_protocol_is_rejected_for_eager_session(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "two_slot_deferred_ack requires a graph-only session",
+        ):
+            spark_tp4_backend._NativeSession(
+                0,
+                12288,
+                allreduce_protocol="two_slot_deferred_ack",
+            )
+
+    def test_dual_port_schedule_uses_additive_create_symbol(self) -> None:
+        library = _FakeLibrary()
+        with (
+            patch.dict(
+                os.environ,
+                {"SPARK_TP4_LIBRARY": "fake.dll"},
+                clear=True,
+            ),
+            patch.object(
+                spark_tp4_backend.ctypes,
+                "CDLL",
+                return_value=library,
+            ),
+        ):
+            session = spark_tp4_backend._NativeSession(
+                0,
+                40 * 6144 * 2,
+                control_ports=(14000, 14001),
+                graph_only=True,
+                graph_cpu_affinity=(10, 11),
+                allreduce_protocol="two_slot_deferred_ack",
+                graph_kernel_strategy="fused",
+                wire_schedule="dual_port_striped",
+            )
+            status = session.graph_status()
+
+        self.assertEqual(library.protocols, [1])
+        self.assertEqual(library.graph_kernels, [0])
+        self.assertEqual(library.wire_schedules, [1])
+        self.assertEqual(status.wire_schedule, "dual_port_striped")
+
+    def test_dual_port_schedule_rejects_incompatible_contracts(self) -> None:
+        common = {
+            "rank": 0,
+            "payload_bytes": 40 * 6144 * 2,
+            "control_ports": (14000, 14001),
+            "graph_only": True,
+            "graph_cpu_affinity": (10, 11),
+            "allreduce_protocol": "two_slot_deferred_ack",
+            "graph_kernel_strategy": "fused",
+            "wire_schedule": "dual_port_striped",
+        }
+        for field, value, message in (
+            ("graph_only", False, "graph-only"),
+            ("allreduce_protocol", "serial_ack", "two_slot_deferred_ack"),
+            ("graph_kernel_strategy", "tiered_64k", "fused graph kernel"),
+            ("payload_bytes", 39 * 6144 * 2, "Q40 or Q512 capacity"),
+        ):
+            arguments = dict(common)
+            arguments[field] = value
+            if field == "graph_only":
+                arguments["graph_cpu_affinity"] = None
+            with self.assertRaisesRegex(ValueError, message):
+                spark_tp4_backend._NativeSession(**arguments)
+
+    def test_dual_port_schedule_rejects_stale_native_library(self) -> None:
+        library = _FakeLibrary()
+        del library.spark_tp4_create_with_protocol_graph_kernel_and_schedule
+        with (
+            patch.dict(
+                os.environ,
+                {"SPARK_TP4_LIBRARY": "stale.dll"},
+                clear=True,
+            ),
+            patch.object(
+                spark_tp4_backend.ctypes,
+                "CDLL",
+                return_value=library,
+            ),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "lacks the wire-schedule ABI",
+            ):
+                spark_tp4_backend._NativeSession(
+                    0,
+                    40 * 6144 * 2,
+                    control_ports=(14000, 14001),
+                    graph_only=True,
+                    graph_cpu_affinity=(10, 11),
+                    allreduce_protocol="two_slot_deferred_ack",
+                    wire_schedule="dual_port_striped",
+                )
+
+        self.assertEqual(library.configs, [])
+
+    def test_graph_status_rejects_wire_schedule_attestation_mismatch(self) -> None:
+        library = _FakeLibrary()
+        with (
+            patch.dict(
+                os.environ,
+                {"SPARK_TP4_LIBRARY": "fake.dll"},
+                clear=True,
+            ),
+            patch.object(
+                spark_tp4_backend.ctypes,
+                "CDLL",
+                return_value=library,
+            ),
+        ):
+            session = spark_tp4_backend._NativeSession(
+                0,
+                40 * 6144 * 2,
+                control_ports=(14000, 14001),
+                graph_only=True,
+                graph_cpu_affinity=(10, 11),
+                allreduce_protocol="two_slot_deferred_ack",
+                wire_schedule="dual_port_striped",
+            )
+            library.wire_schedules.clear()
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "wire schedule attestation mismatch",
+            ):
+                session.graph_status()
+
+    def test_tiered_graph_kernel_uses_additive_create_symbol(self) -> None:
+        library = _FakeLibrary()
+        with (
+            patch.dict(
+                os.environ,
+                {"SPARK_TP4_LIBRARY": "fake.dll"},
+                clear=True,
+            ),
+            patch.object(
+                spark_tp4_backend.ctypes,
+                "CDLL",
+                return_value=library,
+            ),
+        ):
+            session = spark_tp4_backend._NativeSession(
+                0,
+                73728,
+                control_ports=(14000, 14001),
+                graph_only=True,
+                graph_cpu_affinity=(10, 11),
+                allreduce_protocol="two_slot_deferred_ack",
+                graph_kernel_strategy="tiered_64k",
+            )
+            status = session.graph_status()
+
+        self.assertEqual(library.protocols, [1])
+        self.assertEqual(library.graph_kernels, [2])
+        self.assertEqual(status.graph_kernel_strategy, "tiered_64k")
+
+    def test_tiered_graph_kernel_rejects_stale_native_library(self) -> None:
+        library = _FakeLibrary()
+        del library.spark_tp4_create_with_protocol_and_graph_kernel
+        with (
+            patch.dict(
+                os.environ,
+                {"SPARK_TP4_LIBRARY": "stale.dll"},
+                clear=True,
+            ),
+            patch.object(
+                spark_tp4_backend.ctypes,
+                "CDLL",
+                return_value=library,
+            ),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "lacks the graph-kernel ABI",
+            ):
+                spark_tp4_backend._NativeSession(
+                    0,
+                    73728,
+                    control_ports=(14000, 14001),
+                    graph_only=True,
+                    graph_cpu_affinity=(10, 11),
+                    graph_kernel_strategy="tiered_64k",
+                )
+
+        self.assertEqual(library.configs, [])
+
+    def test_graph_status_rejects_kernel_attestation_mismatch(self) -> None:
+        library = _FakeLibrary()
+        with (
+            patch.dict(
+                os.environ,
+                {"SPARK_TP4_LIBRARY": "fake.dll"},
+                clear=True,
+            ),
+            patch.object(
+                spark_tp4_backend.ctypes,
+                "CDLL",
+                return_value=library,
+            ),
+        ):
+            session = spark_tp4_backend._NativeSession(
+                0,
+                73728,
+                control_ports=(14000, 14001),
+                graph_only=True,
+                graph_cpu_affinity=(10, 11),
+                graph_kernel_strategy="tiered_64k",
+            )
+            library.graph_kernels.clear()
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "kernel attestation mismatch",
+            ):
+                session.graph_status()
+
+    def test_two_slot_protocol_rejects_stale_native_library(self) -> None:
+        library = _FakeLibrary()
+        del library.spark_tp4_create_with_protocol
+        with (
+            patch.dict(
+                os.environ,
+                {"SPARK_TP4_LIBRARY": "stale.dll"},
+                clear=True,
+            ),
+            patch.object(
+                spark_tp4_backend.ctypes,
+                "CDLL",
+                return_value=library,
+            ),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "lacks the deferred-ACK ABI",
+            ):
+                spark_tp4_backend._NativeSession(
+                    0,
+                    73728,
+                    control_ports=(14000, 14001),
+                    graph_only=True,
+                    graph_cpu_affinity=(10, 11),
+                    allreduce_protocol="two_slot_deferred_ack",
+                )
+
+        self.assertEqual(library.configs, [])
+
+    def test_graph_status_rejects_protocol_attestation_mismatch(self) -> None:
+        library = _FakeLibrary()
+        with (
+            patch.dict(
+                os.environ,
+                {"SPARK_TP4_LIBRARY": "fake.dll"},
+                clear=True,
+            ),
+            patch.object(
+                spark_tp4_backend.ctypes,
+                "CDLL",
+                return_value=library,
+            ),
+        ):
+            session = spark_tp4_backend._NativeSession(
+                0,
+                73728,
+                control_ports=(14000, 14001),
+                graph_only=True,
+                graph_cpu_affinity=(10, 11),
+                allreduce_protocol="two_slot_deferred_ack",
+            )
+            library.protocols.clear()
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "protocol attestation mismatch",
+            ):
+                session.graph_status()
+
     def test_prefill_graph_session_has_six_mib_capacity(self) -> None:
         library = _FakeLibrary()
         environment = {
@@ -969,12 +1479,12 @@ class SparkTp4NativeSessionConfigTest(unittest.TestCase):
                 for config in library.configs
             ],
             [
-                (9480, 9481),
-                (9482, 9483),
-                (9484, 9485),
-                (9486, 9487),
-                (9488, 9489),
-                (9490, 9491),
+                (11000, 11001),
+                (11002, 11003),
+                (11004, 11005),
+                (11006, 11007),
+                (11008, 11009),
+                (11010, 11011),
             ],
         )
 
@@ -1072,6 +1582,9 @@ class SparkTp4NativeSessionConfigTest(unittest.TestCase):
         self.assertTrue(status.host_native_atomics)
         self.assertTrue(status.submit_affinity_verified)
         self.assertTrue(status.progress_affinity_verified)
+        self.assertFalse(status.two_slot_deferred_ack)
+        self.assertFalse(status.command_caught_up)
+        self.assertFalse(status.payload_slots_retired)
         self.assertTrue(status.replay_advanced)
         self.assertFalse(status.replay_caught_up)
         self.assertFalse(status.fatal)
@@ -1129,6 +1642,92 @@ class SparkTp4NativeSessionConfigTest(unittest.TestCase):
         self.assertEqual(call["output"].value, 0x5678)
         self.assertEqual(call["stream"].value, 0x9ABC)
 
+    def test_backend_builds_a_separate_exact_q40_striped_session(self) -> None:
+        created: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+        class _PreparedSession:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                created.append((args, kwargs))
+
+        reporter = types.ModuleType("spark_graph_status_reporter")
+
+        def ensure_status_reporter(*, rank: int) -> None:
+            self.assertEqual(rank, 2)
+
+        reporter.ensure_status_reporter = ensure_status_reporter
+        with (
+            patch.dict(
+                os.environ,
+                {"VLLM_SPARK_TP4_GRAPH_DUAL_PORT_Q40": "1"},
+                clear=True,
+            ),
+            patch.dict(
+                sys.modules,
+                {"spark_graph_status_reporter": reporter},
+            ),
+            patch.object(
+                spark_tp4_backend,
+                "_NativeSession",
+                _PreparedSession,
+            ),
+            patch.object(
+                spark_tp4_backend,
+                "_graph_preflight",
+                return_value=(10, 11),
+            ),
+            patch.object(
+                spark_tp4_backend,
+                "_graph_dual_port_q40_cpu_affinity",
+                return_value=(10, 15),
+            ),
+            patch.object(
+                spark_tp4_backend,
+                "_graph_control_ports",
+                return_value=(9970, 9971),
+            ),
+            patch.object(
+                spark_tp4_backend,
+                "_graph_dual_port_q40_control_ports",
+                return_value=(9972, 9973),
+            ),
+            patch.dict(
+                spark_tp4_backend._graph_q1_sessions,
+                {},
+                clear=True,
+            ),
+            patch.dict(
+                spark_tp4_backend._graph_dual_port_q40_sessions,
+                {},
+                clear=True,
+            ),
+        ):
+            backend = spark_tp4_backend._Backend(2)
+            backend.prepare_graph_q1()
+
+        self.assertEqual(len(created), 2)
+        base_args, base_kwargs = created[0]
+        striped_args, striped_kwargs = created[1]
+        self.assertEqual(
+            base_args,
+            (2, spark_tp4_backend._graph_capacity_bytes()),
+        )
+        self.assertEqual(base_kwargs["control_ports"], (9970, 9971))
+        self.assertNotIn("wire_schedule", base_kwargs)
+        self.assertEqual(
+            striped_args,
+            (2, 40 * 6144 * 2),
+        )
+        self.assertEqual(striped_kwargs["control_ports"], (9972, 9973))
+        self.assertEqual(striped_kwargs["graph_cpu_affinity"], (10, 15))
+        self.assertEqual(
+            striped_kwargs["allreduce_protocol"],
+            "two_slot_deferred_ack",
+        )
+        self.assertEqual(
+            striped_kwargs["wire_schedule"],
+            "dual_port_striped",
+        )
+
     def test_generic_graph_capture_rejects_non_exact_signature(self) -> None:
         library = _FakeLibrary()
         with (
@@ -1164,6 +1763,42 @@ class SparkTp4NativeSessionConfigTest(unittest.TestCase):
 
         self.assertEqual(library.capture_calls, [])
 
+    def test_dual_port_graph_capture_requires_exact_fixed_q(self) -> None:
+        library = _FakeLibrary()
+        with (
+            patch.dict(
+                os.environ,
+                {"SPARK_TP4_LIBRARY": "fake.dll"},
+                clear=True,
+            ),
+            patch.object(
+                spark_tp4_backend.ctypes,
+                "CDLL",
+                return_value=library,
+            ),
+            patch.object(
+                spark_tp4_backend,
+                "_target_shape_eligible",
+                return_value=True,
+            ),
+        ):
+            session = spark_tp4_backend._NativeSession(
+                0,
+                40 * 6144 * 2,
+                control_ports=(14000, 14001),
+                graph_only=True,
+                graph_cpu_affinity=(10, 15),
+                allreduce_protocol="two_slot_deferred_ack",
+                wire_schedule="dual_port_striped",
+            )
+            with self.assertRaisesRegex(
+                ValueError,
+                "exact fixed Q",
+            ):
+                session.capture(_FakeTensor(shape=(39, 6144)))
+
+        self.assertEqual(library.capture_calls, [])
+
     def test_process_snapshot_is_read_only_and_rpc_serializable(self) -> None:
         class _StatusSession:
             def graph_status(self):
@@ -1182,15 +1817,30 @@ class SparkTp4NativeSessionConfigTest(unittest.TestCase):
                     progress_cpu=11,
                 )
 
-        spark_tp4_backend._graph_q1_sessions[2] = _StatusSession()
-
-        snapshot = spark_tp4_backend.graph_q1_status_snapshot()
+        with (
+            patch.dict(
+                spark_tp4_backend._graph_q1_sessions,
+                {2: _StatusSession()},
+                clear=True,
+            ),
+            patch.dict(
+                spark_tp4_backend._graph_dual_port_q40_sessions,
+                {2: _StatusSession()},
+                clear=True,
+            ),
+        ):
+            snapshot = spark_tp4_backend.graph_q1_status_snapshot()
+            diagnostic = spark_tp4_backend.graph_q1_diagnostic_snapshot()
 
         self.assertEqual(snapshot[2]["captured_nodes"], 4)
         self.assertEqual(snapshot[2]["completed_sequence"], 9)
         self.assertTrue(snapshot[2]["replay_advanced"])
         self.assertTrue(snapshot[2]["replay_caught_up"])
         self.assertFalse(snapshot[2]["fatal"])
+        self.assertEqual(
+            diagnostic["dual_port_q40_sessions"][2]["captured_nodes"],
+            4,
+        )
 
     def test_graph_preflight_requires_positive_fixed_kv_cache(self) -> None:
         environment = {
@@ -1263,6 +1913,40 @@ class SparkTp4NativeSessionConfigTest(unittest.TestCase):
                 spark_tp4_backend._graph_preflight(argv),
                 (10, 11),
             )
+
+    def test_dual_port_graph_preflight_reserves_a_distinct_progress_cpu(
+        self,
+    ) -> None:
+        argv = ["vllm", "serve", "--kv-cache-memory-bytes", "5500000000"]
+        environment = {
+            "SPARK_TP4_GRAPH_SUBMIT_CPU": "10",
+            "SPARK_TP4_GRAPH_PROGRESS_CPU": "11",
+            "SPARK_TP4_GRAPH_DUAL_PORT_Q40_PROGRESS_CPU": "15",
+            "SPARK_TP4_GRAPH_VOCAB_PROGRESS_CPU": "12",
+            "SPARK_TP4_GRAPH_DCP_PROGRESS_CPU": "13",
+            "SPARK_TP4_GRAPH_INDEXER_PROGRESS_CPU": "14",
+            "VLLM_SPARK_SHARED_CAPTURE_STREAM": "1",
+            "VLLM_SPARK_TP4_VOCAB_MODE": "custom",
+            "VLLM_SPARK_TP4_DCP_GRAPH_CUSTOM": "1",
+            "VLLM_SPARK_TP4_INDEXER_GRAPH_CUSTOM": "1",
+        }
+        with (
+            patch.dict(os.environ, environment, clear=True),
+            patch.object(spark_tp4_backend.sys, "platform", "linux"),
+        ):
+            self.assertEqual(
+                spark_tp4_backend._graph_dual_port_q40_cpu_affinity(argv),
+                (10, 15),
+            )
+            for occupied in (10, 11, 12, 13, 14):
+                os.environ[
+                    "SPARK_TP4_GRAPH_DUAL_PORT_Q40_PROGRESS_CPU"
+                ] = str(occupied)
+                with self.subTest(occupied=occupied), self.assertRaisesRegex(
+                    RuntimeError,
+                    "collides with",
+                ):
+                    spark_tp4_backend._graph_dual_port_q40_cpu_affinity(argv)
 
     def test_graph_preflight_requires_shared_capture_stream(self) -> None:
         argv = ["vllm", "serve", "--kv-cache-memory-bytes=5500000000"]

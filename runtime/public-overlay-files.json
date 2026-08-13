@@ -19,6 +19,8 @@
     "spark_transport/integrations/vllm/spark_tp4_backend.py",
     "spark_transport/integrations/vllm/spark_tp4_dcp_backend.py",
     "spark_transport/integrations/vllm/spark_tp4_flight_recorder.py",
+    "spark_transport/integrations/vllm/spark_tp4_port_namespace.py",
+    "spark_transport/integrations/vllm/spark_tp4_prefill_capacity_pool.py",
     "spark_transport/integrations/vllm/spark_tp4_query_contract.py",
     "spark_transport/integrations/vllm/spark_tp4_stock_timing.py",
     "spark_transport/integrations/vllm/spark_tp4_vocab_allgather_backend.py",

@@ -12,6 +12,12 @@ import sys
 from types import ModuleType
 from typing import Any
 
+from spark_tp4_port_namespace import (
+    eager_dcp_control_ports,
+    graph_dcp_control_ports,
+    validate_active_port_namespace,
+    validate_control_port_pair,
+)
 from spark_tp4_query_contract import SUPPORTED_QUERY_ROWS
 
 logger = logging.getLogger(__name__)
@@ -125,6 +131,30 @@ def _stride(tensor: Any) -> tuple[int, ...]:
     return tuple(int(value) for value in tensor.stride())
 
 
+def _combine_stride_supported(
+    q: int,
+    head_dimension: int,
+    output_stride: tuple[int, ...],
+) -> bool:
+    token_major = (
+        _OUTPUT_HEADS * head_dimension,
+        head_dimension,
+        1,
+    )
+    if output_stride == token_major:
+        return True
+    if len(output_stride) != 3:
+        return False
+    query_stride, head_stride, dimension_stride = output_stride
+    return (
+        query_stride == head_dimension
+        and dimension_stride == 1
+        and head_stride % head_dimension == 0
+        and q * head_dimension <= head_stride
+        and head_stride <= max(_SUPPORTED_Q) * head_dimension
+    )
+
+
 def _query_signature(
     group: Any, input_tensor: Any, dim: int, mode: str
 ) -> _QuerySignature | None:
@@ -153,6 +183,7 @@ def _combine_signature(
     lse_tensor: Any,
     return_lse: bool,
     is_lse_base_on_e: bool,
+    head_major_output: bool,
     mode: str,
 ) -> _CombineSignature | None:
     output_shape = _shape(output_tensor)
@@ -174,29 +205,20 @@ def _combine_signature(
         or not bool(output_tensor.is_cuda)
         or not bool(lse_tensor.is_cuda)
         or output_tensor.device != lse_tensor.device
-        or output_stride
-        not in (
-            (
-                _OUTPUT_HEADS * output_shape[2],
-                output_shape[2],
-                1,
-            ),
-            (
-                output_shape[2],
-                output_shape[0] * output_shape[2],
-                1,
-            ),
+        or not _combine_stride_supported(
+            output_shape[0], output_shape[2], output_stride
         )
         or type(return_lse) is not bool
         or is_lse_base_on_e is not True
+        or type(head_major_output) is not bool
     ):
         return None
-    return (
-        output_shape[0],
-        output_shape[2],
-        output_stride[0],
-        output_stride[1],
-    )
+    q, head_dimension = output_shape[0], output_shape[2]
+    if output_stride[0] == head_dimension:
+        # The native ABI accepts head-major input only with a tight query
+        # pitch. A bounded wider pitch is compacted on the caller stream.
+        return (q, head_dimension, head_dimension, q * head_dimension)
+    return (q, head_dimension, output_stride[0], output_stride[1])
 
 
 def _is_stream_capturing(torch_module: Any) -> bool:
@@ -204,65 +226,23 @@ def _is_stream_capturing(torch_module: Any) -> bool:
     return bool(checker is not None and checker())
 
 
-def _device_index(torch_module: Any, device: Any) -> int:
-    index = getattr(device, "index", None)
-    if not isinstance(index, int):
-        index = None
-    if index is None:
-        text = str(device)
-        if text.startswith("cuda:"):
-            index = int(text.removeprefix("cuda:"))
-    if index is None:
-        current_device = getattr(torch_module.cuda, "current_device", None)
-        if current_device is None:
-            raise RuntimeError(
-                "Spark shared CUDA graph capture cannot resolve the device index"
-            )
-        index = current_device()
-    return int(index)
-
-
-def _stream_handle(stream: Any) -> int | None:
-    handle = getattr(stream, "cuda_stream", None)
-    return None if handle is None else int(handle)
-
-
 def _is_shared_capture_warmup(torch_module: Any, device: Any) -> bool:
-    """Identify vLLM graph-manager warmup on its retained capture stream."""
+    """Identify graph-manager warmup inside vLLM's public capture scope."""
 
+    del torch_module, device
     if os.getenv("VLLM_SPARK_SHARED_CAPTURE_STREAM", "0") != "1":
         return False
-    parallel_state = sys.modules.get("vllm.distributed.parallel_state")
-    if parallel_state is None:
+    multi_stream_utils = sys.modules.get("vllm.utils.multi_stream_utils")
+    marker = getattr(
+        multi_stream_utils,
+        "is_vllm_cudagraph_capture_active",
+        None,
+    )
+    if not callable(marker):
         raise RuntimeError(
-            "Spark shared CUDA graph capture state is unavailable"
+            "vLLM CUDA graph capture-scope marker API is unavailable"
         )
-    active = getattr(parallel_state, "_SPARK_ACTIVE_CAPTURE_STREAMS", None)
-    streams = getattr(parallel_state, "_SPARK_SHARED_CAPTURE_STREAMS", None)
-    if active is None or streams is None:
-        raise RuntimeError(
-            "Spark shared CUDA graph capture markers are unavailable"
-        )
-    key = (os.getpid(), _device_index(torch_module, device))
-    if key not in active:
-        return False
-    expected = streams.get(key)
-    if expected is None:
-        raise RuntimeError(
-            "Spark shared CUDA graph capture is active without a retained stream"
-        )
-    current = torch_module.cuda.current_stream(device=device)
-    expected_handle = _stream_handle(expected)
-    current_handle = _stream_handle(current)
-    if expected_handle is None or current_handle is None:
-        matches = current is expected
-    else:
-        matches = current_handle == expected_handle
-    if not matches:
-        raise RuntimeError(
-            "Spark shared CUDA graph capture warmup left its retained stream"
-        )
-    return True
+    return bool(marker())
 
 
 def _execution_phase(torch_module: Any, device: Any) -> str:
@@ -300,20 +280,16 @@ def _graph_enabled(mode: str) -> bool:
 
 
 def _validate_control_ports(ports: tuple[int, int]) -> None:
-    port0, port1 = ports
-    if not (0 < port0 <= 65535 and 0 < port1 <= 65535):
-        raise ValueError("Spark TP4 DCP graph control ports must be in [1, 65535]")
-    if port0 == port1:
-        raise ValueError("Spark TP4 DCP graph control ports must be distinct")
+    validate_control_port_pair(ports, owner="DCP")
+    validate_active_port_namespace()
 
 
 def _graph_control_ports() -> tuple[int, int]:
-    ports = (
-        int(os.getenv("SPARK_TP4_GRAPH_DCP_CONTROL_PORT0", "9892")),
-        int(os.getenv("SPARK_TP4_GRAPH_DCP_CONTROL_PORT1", "9893")),
-    )
-    _validate_control_ports(ports)
-    return ports
+    return graph_dcp_control_ports()
+
+
+def _eager_control_ports() -> tuple[int, int]:
+    return eager_dcp_control_ports()
 
 
 def _graph_preflight() -> tuple[int, int]:
@@ -494,9 +470,10 @@ class _NativeDcpSession:
         self._graph_only = graph_only
 
         default_peer0, default_peer1 = _DEFAULT_PEERS[rank]
-        ports = control_ports or (
-            int(os.getenv("SPARK_TP4_DCP_CONTROL_PORT0", "9890")),
-            int(os.getenv("SPARK_TP4_DCP_CONTROL_PORT1", "9891")),
+        ports = (
+            _eager_control_ports()
+            if control_ports is None
+            else control_ports
         )
         _validate_control_ports(ports)
         port0, port1 = ports
@@ -814,10 +791,15 @@ class _CombineShadowState:
         self.count = 0
         self.validated = False
 
-    def observe(self, reference_output: Any, reference_lse: Any) -> None:
+    def observe(
+        self,
+        candidate_output: Any,
+        reference_output: Any,
+        reference_lse: Any,
+    ) -> None:
         output_rtol, output_atol, lse_rtol, lse_atol = self.tolerances
         self.output_stats.observe(
-            self.candidate_output,
+            candidate_output,
             reference_output,
             output_rtol,
             output_atol,
@@ -1325,6 +1307,7 @@ def _call_stock_combine(
     ctx: Any,
     return_lse: bool,
     is_lse_base_on_e: bool,
+    head_major_output: bool,
     *,
     reason: str = "original",
 ) -> Any:
@@ -1341,11 +1324,61 @@ def _call_stock_combine(
         ctx=ctx,
         return_lse=return_lse,
         is_lse_base_on_e=is_lse_base_on_e,
+        head_major_output=head_major_output,
     )
 
 
 def _combine_result(output_tensor: Any, lse_tensor: Any, return_lse: bool) -> Any:
     return (output_tensor, lse_tensor) if return_lse else output_tensor
+
+
+def _combine_input_layout(
+    torch_module: Any,
+    output_tensor: Any,
+    signature: _CombineSignature,
+) -> Any:
+    q, head_dimension, query_stride, head_stride = signature
+    expected_stride = (query_stride, head_stride, 1)
+    if _stride(output_tensor) == expected_stride:
+        return output_tensor
+
+    # The B12X decode workspace exposes the active Q rows from a bounded
+    # head-major allocation, so the view retains the maximum-Q head pitch.
+    # This same-stream clone removes the inactive-row gaps before native eager
+    # enqueue or graph capture. Transposing before the clone guarantees Q=1
+    # cannot be treated as contiguous and returned without a copy.
+    compact = (
+        output_tensor.transpose(0, 1)
+        .clone(memory_format=torch_module.contiguous_format)
+        .transpose(0, 1)
+    )
+    if (
+        _shape(compact) != (q, _OUTPUT_HEADS, head_dimension)
+        or _stride(compact) != expected_stride
+        or compact.dtype != output_tensor.dtype
+        or compact.device != output_tensor.device
+    ):
+        raise RuntimeError(
+            "Spark TP4 DCP combine input compaction returned an invalid layout"
+        )
+    return compact
+
+
+def _combine_output_layout(
+    torch_module: Any,
+    output_tensor: Any,
+    head_major_output: bool,
+) -> Any:
+    if not head_major_output:
+        return output_tensor
+    # The native C ABI writes token-major contiguous storage. This conversion
+    # is enqueued immediately on the same caller stream, so the allocator
+    # cannot reuse the raw staging before the copy, including during capture.
+    return (
+        output_tensor.transpose(0, 1)
+        .clone(memory_format=torch_module.contiguous_format)
+        .transpose(0, 1)
+    )
 
 
 def _patch_combine(module: ModuleType) -> None:
@@ -1364,6 +1397,7 @@ def _patch_combine(module: ModuleType) -> None:
         ctx: Any = None,
         return_lse: bool = False,
         is_lse_base_on_e: bool = True,
+        head_major_output: bool = False,
     ) -> Any:
         mode = _mode()
         signature = _combine_signature(
@@ -1372,6 +1406,7 @@ def _patch_combine(module: ModuleType) -> None:
             cp_attn_lse,
             return_lse,
             is_lse_base_on_e,
+            head_major_output,
             mode,
         )
         if signature is None:
@@ -1383,6 +1418,7 @@ def _patch_combine(module: ModuleType) -> None:
                 ctx,
                 return_lse,
                 is_lse_base_on_e,
+                head_major_output,
             )
 
         import torch
@@ -1405,6 +1441,7 @@ def _patch_combine(module: ModuleType) -> None:
                 ctx,
                 return_lse,
                 is_lse_base_on_e,
+                head_major_output,
                 reason="shared_capture_warmup_reference",
             )
 
@@ -1418,6 +1455,7 @@ def _patch_combine(module: ModuleType) -> None:
                     ctx,
                     return_lse,
                     is_lse_base_on_e,
+                    head_major_output,
                 )
             backend = getattr(cp_group, "_spark_tp4_dcp_native", None)
             graph_session = None if backend is None else backend._graph_session
@@ -1435,8 +1473,11 @@ def _patch_combine(module: ModuleType) -> None:
             )
             stream = torch.cuda.current_stream(device=cp_attn_out.device)
             try:
+                native_attn_out = _combine_input_layout(
+                    torch, cp_attn_out, signature
+                )
                 graph_session.capture_combine(
-                    cp_attn_out,
+                    native_attn_out,
                     contiguous_lse,
                     candidate_output,
                     candidate_lse,
@@ -1444,8 +1485,11 @@ def _patch_combine(module: ModuleType) -> None:
                     stream,
                 )
                 _record_graph_event(cp_group, "captured_combine_nodes")
+                result_output = _combine_output_layout(
+                    torch, candidate_output, head_major_output
+                )
                 if mode == "custom":
-                    return _combine_result(candidate_output, candidate_lse, return_lse)
+                    return _combine_result(result_output, candidate_lse, return_lse)
                 reference_output, reference_lse = _call_stock_combine(
                     original,
                     cp_attn_out,
@@ -1454,6 +1498,7 @@ def _patch_combine(module: ModuleType) -> None:
                     ctx,
                     True,
                     is_lse_base_on_e,
+                    head_major_output,
                 )
                 (
                     output_rtol,
@@ -1469,7 +1514,7 @@ def _patch_combine(module: ModuleType) -> None:
                 record = arena.reserve_combine(signature)
                 record.capture(
                     _numeric_sample(
-                        candidate_output,
+                        result_output,
                         reference_output,
                         output_rtol,
                         output_atol,
@@ -1508,6 +1553,7 @@ def _patch_combine(module: ModuleType) -> None:
                     ctx,
                     return_lse,
                     is_lse_base_on_e,
+                    head_major_output,
                 ),
                 torch,
             )
@@ -1538,6 +1584,7 @@ def _patch_combine(module: ModuleType) -> None:
                 ctx,
                 return_lse,
                 is_lse_base_on_e,
+                head_major_output,
             )
 
         shadow_limit = 0
@@ -1559,6 +1606,7 @@ def _patch_combine(module: ModuleType) -> None:
                         ctx,
                         return_lse,
                         is_lse_base_on_e,
+                        head_major_output,
                     )
 
         contiguous_lse = cp_attn_lse.contiguous()
@@ -1577,8 +1625,11 @@ def _patch_combine(module: ModuleType) -> None:
 
         stream = torch.cuda.current_stream(device=cp_attn_out.device)
         try:
+            native_attn_out = _combine_input_layout(
+                torch, cp_attn_out, signature
+            )
             session.combine(
-                cp_attn_out,
+                native_attn_out,
                 contiguous_lse,
                 candidate_output,
                 candidate_lse,
@@ -1593,8 +1644,11 @@ def _patch_combine(module: ModuleType) -> None:
             _abort_after_native_failure()
             raise AssertionError("unreachable after worker termination")
 
+        result_output = _combine_output_layout(
+            torch, candidate_output, head_major_output
+        )
         if mode == "custom" or promoted:
-            return _combine_result(candidate_output, candidate_lse, return_lse)
+            return _combine_result(result_output, candidate_lse, return_lse)
 
         try:
             # Always request LSE during the finite shadow window so both native
@@ -1608,9 +1662,10 @@ def _patch_combine(module: ModuleType) -> None:
                 ctx,
                 True,
                 is_lse_base_on_e,
+                head_major_output,
             )
             assert shadow is not None
-            shadow.observe(reference_output, reference_lse)
+            shadow.observe(result_output, reference_output, reference_lse)
             report = None
             if shadow.count == shadow_limit:
                 report = (
@@ -1734,6 +1789,7 @@ def install() -> None:
     if _installed or not mode:
         return
     _graph_enabled(mode)
+    validate_active_port_namespace()
     if mode == "shadow":
         _positive_integer("SPARK_TP4_DCP_SHADOW_COLLECTIVES", 8)
         _combine_tolerances()

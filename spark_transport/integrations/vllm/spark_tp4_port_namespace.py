@@ -1,0 +1,502 @@
+"""Deterministic control-port namespace for process-local SIRCL sessions.
+
+Every selected TP4 adapter derives this complete plan from the process
+environment before it creates a native session.  Reserving every session that
+the executable configuration can instantiate prevents a later lazy bind from
+colliding with an already-running transport family.
+"""
+
+from __future__ import annotations
+
+import os
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Mapping
+
+from spark_tp4_query_contract import MAX_QUERY_ROWS
+
+_MIN_CONTROL_PORT = 1
+_MAX_CONTROL_PORT = 65535
+
+_EAGER_ALLREDUCE_DEFAULT_PORTS = (11000, 11001)
+_EAGER_ALLREDUCE_PORT_STRIDE = 2
+_EAGER_ALLREDUCE_PREFILL_MAX_QUERY_ROWS = 512
+
+_EAGER_ALLGATHER_DEFAULT_BASE_PORT = 9490
+_EAGER_ALLGATHER_PORT_STRIDE = 10
+# The exact-signature adapter assigns one durable slot to each admitted
+# signature.  Keep its source-level assertion synchronized with this tuple.
+EAGER_ALLGATHER_PORT_SLOTS = tuple(range(8))
+_EAGER_ALLGATHER_CKV_PORT_SLOTS = frozenset({2, 7})
+
+_GRAPH_INDEXER_DEFAULT_PORTS = (9462, 9463)
+_EAGER_DCP_DEFAULT_PORTS = (9890, 9891)
+_GRAPH_DCP_DEFAULT_PORTS = (9892, 9893)
+_GRAPH_ALLREDUCE_DEFAULT_PORTS = (9970, 9971)
+_GRAPH_DUAL_PORT_Q40_DEFAULT_PORTS = (9972, 9973)
+_EAGER_VOCAB_DEFAULT_PORTS = (9990, 9991)
+_GRAPH_VOCAB_DEFAULT_PORTS = (10110, 10111)
+
+
+@dataclass(frozen=True)
+class PortReservation:
+    """One native session's two process-local TCP control ports."""
+
+    owner: str
+    ports: tuple[int, int]
+
+
+def _environment(environ: Mapping[str, str] | None) -> Mapping[str, str]:
+    return os.environ if environ is None else environ
+
+
+def _integer(
+    environ: Mapping[str, str], name: str, default: int
+) -> int:
+    value = environ.get(name, str(default))
+    try:
+        return int(value)
+    except ValueError as error:
+        raise ValueError(f"{name} must be an integer, got {value!r}") from error
+
+
+def _flag(
+    environ: Mapping[str, str], name: str, default: str = "0"
+) -> bool:
+    value = environ.get(name, default)
+    if value not in {"0", "1"}:
+        raise ValueError(f"{name} must be '0', '1', or unset")
+    return value == "1"
+
+
+def _mode(
+    environ: Mapping[str, str],
+    name: str,
+    allowed: frozenset[str],
+) -> str:
+    value = environ.get(name, "").lower()
+    if value and value not in allowed:
+        choices = ", ".join(repr(choice) for choice in sorted(allowed))
+        raise ValueError(f"{name} must be one of {choices}, or unset")
+    return value
+
+
+def validate_control_port_pair(
+    ports: tuple[int, int], *, owner: str
+) -> tuple[int, int]:
+    """Validate one pair independently of whether its family is selected."""
+
+    if len(ports) != 2:
+        raise ValueError(f"Spark TP4 {owner} requires exactly two control ports")
+    port0, port1 = ports
+    if not all(
+        isinstance(port, int)
+        and not isinstance(port, bool)
+        and _MIN_CONTROL_PORT <= port <= _MAX_CONTROL_PORT
+        for port in ports
+    ):
+        raise ValueError(
+            f"Spark TP4 {owner} control ports must be in "
+            f"[{_MIN_CONTROL_PORT}, {_MAX_CONTROL_PORT}]: {ports}"
+        )
+    if port0 == port1:
+        raise ValueError(
+            f"Spark TP4 {owner} control ports must be distinct: {ports}"
+        )
+    return ports
+
+
+def _configured_pair(
+    environ: Mapping[str, str],
+    *,
+    owner: str,
+    name0: str,
+    name1: str,
+    defaults: tuple[int, int],
+) -> tuple[int, int]:
+    return validate_control_port_pair(
+        (
+            _integer(environ, name0, defaults[0]),
+            _integer(environ, name1, defaults[1]),
+        ),
+        owner=owner,
+    )
+
+
+def _maximum_allreduce_query_rows(environ: Mapping[str, str]) -> int:
+    return (
+        _EAGER_ALLREDUCE_PREFILL_MAX_QUERY_ROWS
+        if _flag(environ, "VLLM_SPARK_TP4_PREFILL_Q512")
+        else MAX_QUERY_ROWS
+    )
+
+
+def _eager_allreduce_pair(
+    query_rows: int, environ: Mapping[str, str]
+) -> tuple[int, int]:
+    maximum = _maximum_allreduce_query_rows(environ)
+    if (
+        not isinstance(query_rows, int)
+        or isinstance(query_rows, bool)
+        or query_rows < 1
+        or query_rows > maximum
+    ):
+        raise ValueError(
+            "Spark TP4 eager all-reduce query rows must be in "
+            f"[1, {maximum}]: {query_rows}"
+        )
+    base0 = _integer(
+        environ,
+        "SPARK_TP4_CONTROL_PORT0",
+        _EAGER_ALLREDUCE_DEFAULT_PORTS[0],
+    )
+    base1 = _integer(
+        environ,
+        "SPARK_TP4_CONTROL_PORT1",
+        _EAGER_ALLREDUCE_DEFAULT_PORTS[1],
+    )
+    offset = (query_rows - 1) * _EAGER_ALLREDUCE_PORT_STRIDE
+    return validate_control_port_pair(
+        (base0 + offset, base1 + offset),
+        owner=f"eager all-reduce Q{query_rows}",
+    )
+
+
+def _eager_allgather_pair(
+    port_slot: int, environ: Mapping[str, str]
+) -> tuple[int, int]:
+    if port_slot not in EAGER_ALLGATHER_PORT_SLOTS:
+        raise ValueError(
+            "Spark TP4 eager all-gather port slot must be one of "
+            f"{EAGER_ALLGATHER_PORT_SLOTS}: {port_slot}"
+        )
+    base = _integer(
+        environ,
+        "SPARK_TP4_ALLGATHER_BASE_PORT",
+        _EAGER_ALLGATHER_DEFAULT_BASE_PORT,
+    )
+    port0 = base + port_slot * _EAGER_ALLGATHER_PORT_STRIDE
+    return validate_control_port_pair(
+        (port0, port0 + 1),
+        owner=f"eager all-gather slot {port_slot}",
+    )
+
+
+def _active_eager_allgather_port_slots(
+    environ: Mapping[str, str],
+) -> tuple[int, ...]:
+    ckv_enabled = _flag(
+        environ, "SPARK_TP4_ALLGATHER_ENABLE_CKV"
+    )
+    return tuple(
+        port_slot
+        for port_slot in EAGER_ALLGATHER_PORT_SLOTS
+        if ckv_enabled
+        or port_slot not in _EAGER_ALLGATHER_CKV_PORT_SLOTS
+    )
+
+
+def _graph_allreduce_pair(environ: Mapping[str, str]) -> tuple[int, int]:
+    return _configured_pair(
+        environ,
+        owner="graph all-reduce",
+        name0="SPARK_TP4_GRAPH_CONTROL_PORT0",
+        name1="SPARK_TP4_GRAPH_CONTROL_PORT1",
+        defaults=_GRAPH_ALLREDUCE_DEFAULT_PORTS,
+    )
+
+
+def _graph_dual_port_q40_pair(
+    environ: Mapping[str, str],
+) -> tuple[int, int]:
+    return _configured_pair(
+        environ,
+        owner="graph exact-Q40 dual-port all-reduce",
+        name0="SPARK_TP4_GRAPH_DUAL_PORT_Q40_CONTROL_PORT0",
+        name1="SPARK_TP4_GRAPH_DUAL_PORT_Q40_CONTROL_PORT1",
+        defaults=_GRAPH_DUAL_PORT_Q40_DEFAULT_PORTS,
+    )
+
+
+def _graph_indexer_pair(environ: Mapping[str, str]) -> tuple[int, int]:
+    return _configured_pair(
+        environ,
+        owner="graph indexer all-gather",
+        name0="SPARK_TP4_GRAPH_INDEXER_CONTROL_PORT0",
+        name1="SPARK_TP4_GRAPH_INDEXER_CONTROL_PORT1",
+        defaults=_GRAPH_INDEXER_DEFAULT_PORTS,
+    )
+
+
+def _eager_dcp_pair(environ: Mapping[str, str]) -> tuple[int, int]:
+    return _configured_pair(
+        environ,
+        owner="eager DCP",
+        name0="SPARK_TP4_DCP_CONTROL_PORT0",
+        name1="SPARK_TP4_DCP_CONTROL_PORT1",
+        defaults=_EAGER_DCP_DEFAULT_PORTS,
+    )
+
+
+def _graph_dcp_pair(environ: Mapping[str, str]) -> tuple[int, int]:
+    return _configured_pair(
+        environ,
+        owner="graph DCP",
+        name0="SPARK_TP4_GRAPH_DCP_CONTROL_PORT0",
+        name1="SPARK_TP4_GRAPH_DCP_CONTROL_PORT1",
+        defaults=_GRAPH_DCP_DEFAULT_PORTS,
+    )
+
+
+def _eager_vocab_pair(environ: Mapping[str, str]) -> tuple[int, int]:
+    return _configured_pair(
+        environ,
+        owner="eager vocabulary all-gather",
+        name0="SPARK_TP4_VOCAB_CONTROL_PORT0",
+        name1="SPARK_TP4_VOCAB_CONTROL_PORT1",
+        defaults=_EAGER_VOCAB_DEFAULT_PORTS,
+    )
+
+
+def _graph_vocab_pair(environ: Mapping[str, str]) -> tuple[int, int]:
+    return _configured_pair(
+        environ,
+        owner="graph vocabulary all-gather",
+        name0="SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT0",
+        name1="SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT1",
+        defaults=_GRAPH_VOCAB_DEFAULT_PORTS,
+    )
+
+
+def active_port_reservations(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[PortReservation, ...]:
+    """Return every control-port pair the selected adapters may bind."""
+
+    environment = _environment(environ)
+    reservations: list[PortReservation] = []
+
+    allreduce_mode = _mode(
+        environment,
+        "VLLM_SPARK_TP4_MODE",
+        frozenset({"custom", "disabled", "shadow"}),
+    )
+    if allreduce_mode in {"custom", "shadow"}:
+        for query_rows in range(
+            1, _maximum_allreduce_query_rows(environment) + 1
+        ):
+            reservations.append(
+                PortReservation(
+                    f"eager_allreduce:q={query_rows}",
+                    _eager_allreduce_pair(query_rows, environment),
+                )
+            )
+        if allreduce_mode == "custom" and _flag(
+            environment, "VLLM_SPARK_TP4_GRAPH_Q1"
+        ):
+            reservations.append(
+                PortReservation(
+                    "graph_allreduce", _graph_allreduce_pair(environment)
+                )
+            )
+            if _flag(
+                environment, "VLLM_SPARK_TP4_GRAPH_DUAL_PORT_Q40"
+            ):
+                reservations.append(
+                    PortReservation(
+                        "graph_dual_port_q40_allreduce",
+                        _graph_dual_port_q40_pair(environment),
+                    )
+                )
+
+    allgather_mode = _mode(
+        environment,
+        "VLLM_SPARK_TP4_ALLGATHER_MODE",
+        frozenset({"custom", "shadow"}),
+    )
+    if allgather_mode:
+        for port_slot in _active_eager_allgather_port_slots(environment):
+            reservations.append(
+                PortReservation(
+                    f"eager_allgather:slot={port_slot}",
+                    _eager_allgather_pair(port_slot, environment),
+                )
+            )
+        if allgather_mode == "custom" and _flag(
+            environment, "VLLM_SPARK_TP4_INDEXER_GRAPH_CUSTOM"
+        ):
+            reservations.append(
+                PortReservation(
+                    "graph_indexer_allgather",
+                    _graph_indexer_pair(environment),
+                )
+            )
+
+    vocab_mode = _mode(
+        environment,
+        "VLLM_SPARK_TP4_VOCAB_MODE",
+        frozenset({"custom", "shadow"}),
+    )
+    if vocab_mode:
+        reservations.append(
+            PortReservation("eager_vocab", _eager_vocab_pair(environment))
+        )
+        if vocab_mode == "custom" and _flag(
+            environment, "VLLM_SPARK_TP4_GRAPH_Q1"
+        ):
+            reservations.append(
+                PortReservation("graph_vocab", _graph_vocab_pair(environment))
+            )
+
+    dcp_mode = _mode(
+        environment,
+        "VLLM_SPARK_TP4_DCP_MODE",
+        frozenset({"custom", "shadow"}),
+    )
+    if dcp_mode:
+        query_enabled = _flag(
+            environment, "VLLM_SPARK_TP4_DCP_QUERY_ENABLED", "1"
+        )
+        combine_enabled = _flag(
+            environment, "VLLM_SPARK_TP4_DCP_COMBINE_ENABLED", "1"
+        )
+        if query_enabled or combine_enabled:
+            reservations.append(
+                PortReservation("eager_dcp", _eager_dcp_pair(environment))
+            )
+            graph_shadow = _flag(
+                environment, "VLLM_SPARK_TP4_DCP_GRAPH_SHADOW"
+            )
+            graph_custom = _flag(
+                environment, "VLLM_SPARK_TP4_DCP_GRAPH_CUSTOM"
+            )
+            if graph_shadow and graph_custom:
+                raise ValueError(
+                    "Spark TP4 DCP graph shadow and custom modes are "
+                    "mutually exclusive"
+                )
+            if graph_shadow and dcp_mode != "shadow":
+                raise ValueError(
+                    "VLLM_SPARK_TP4_DCP_GRAPH_SHADOW requires DCP shadow mode"
+                )
+            if graph_custom and dcp_mode != "custom":
+                raise ValueError(
+                    "VLLM_SPARK_TP4_DCP_GRAPH_CUSTOM requires DCP custom mode"
+                )
+            if graph_shadow or graph_custom:
+                reservations.append(
+                    PortReservation("graph_dcp", _graph_dcp_pair(environment))
+                )
+
+    return tuple(reservations)
+
+
+def validate_active_port_namespace(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[PortReservation, ...]:
+    """Reject out-of-range, internally duplicated, or shared active ports."""
+
+    reservations = active_port_reservations(environ)
+    owners_by_port: dict[int, list[str]] = defaultdict(list)
+    for reservation in reservations:
+        validate_control_port_pair(
+            reservation.ports, owner=reservation.owner
+        )
+        for port in reservation.ports:
+            owners_by_port[port].append(reservation.owner)
+
+    collisions = {
+        port: tuple(owners)
+        for port, owners in sorted(owners_by_port.items())
+        if len(owners) > 1
+    }
+    if collisions:
+        details = "; ".join(
+            f"port {port}: {', '.join(owners)}"
+            for port, owners in collisions.items()
+        )
+        raise ValueError(
+            "Spark TP4 active control-port namespaces collide: " + details
+        )
+    return reservations
+
+
+def eager_allreduce_control_ports(
+    query_rows: int, environ: Mapping[str, str] | None = None
+) -> tuple[int, int]:
+    environment = _environment(environ)
+    ports = _eager_allreduce_pair(query_rows, environment)
+    validate_active_port_namespace(environment)
+    return ports
+
+
+def graph_allreduce_control_ports(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[int, int]:
+    environment = _environment(environ)
+    ports = _graph_allreduce_pair(environment)
+    validate_active_port_namespace(environment)
+    return ports
+
+
+def graph_dual_port_q40_control_ports(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[int, int]:
+    environment = _environment(environ)
+    ports = _graph_dual_port_q40_pair(environment)
+    validate_active_port_namespace(environment)
+    return ports
+
+
+def eager_allgather_control_ports(
+    port_slot: int, environ: Mapping[str, str] | None = None
+) -> tuple[int, int]:
+    environment = _environment(environ)
+    ports = _eager_allgather_pair(port_slot, environment)
+    validate_active_port_namespace(environment)
+    return ports
+
+
+def graph_indexer_control_ports(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[int, int]:
+    environment = _environment(environ)
+    ports = _graph_indexer_pair(environment)
+    validate_active_port_namespace(environment)
+    return ports
+
+
+def eager_dcp_control_ports(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[int, int]:
+    environment = _environment(environ)
+    ports = _eager_dcp_pair(environment)
+    validate_active_port_namespace(environment)
+    return ports
+
+
+def graph_dcp_control_ports(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[int, int]:
+    environment = _environment(environ)
+    ports = _graph_dcp_pair(environment)
+    validate_active_port_namespace(environment)
+    return ports
+
+
+def eager_vocab_control_ports(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[int, int]:
+    environment = _environment(environ)
+    ports = _eager_vocab_pair(environment)
+    validate_active_port_namespace(environment)
+    return ports
+
+
+def graph_vocab_control_ports(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[int, int]:
+    environment = _environment(environ)
+    ports = _graph_vocab_pair(environment)
+    validate_active_port_namespace(environment)
+    return ports

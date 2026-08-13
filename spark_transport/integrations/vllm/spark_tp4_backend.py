@@ -10,14 +10,23 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from spark_persistent_output_ring import PersistentOutputRing
+from spark_tp4_port_namespace import (
+    eager_allreduce_control_ports,
+    graph_allreduce_control_ports,
+    graph_dual_port_q40_control_ports,
+    validate_active_port_namespace,
+    validate_control_port_pair,
+)
+from spark_tp4_prefill_capacity_pool import capacity_pool_requested
 from spark_tp4_query_contract import (
+    ABSOLUTE_MAX_QUERY_ROWS,
     MAX_QUERY_ROWS,
 )
 
 logger = logging.getLogger(__name__)
 
 _installed = False
-_VALID_MODES = {"shadow", "custom"}
+_VALID_MODES = {"shadow", "custom", "disabled"}
 _TARGET_WIDTH = 6144
 _BF16_BYTES = 2
 _BYTES_PER_ROW = _TARGET_WIDTH * _BF16_BYTES
@@ -25,19 +34,44 @@ _ALLREDUCE_PREFILL_MAX_QUERY_ROWS = 512
 _ALLREDUCE_PREFILL_CAPACITY_BYTES = (
     _ALLREDUCE_PREFILL_MAX_QUERY_ROWS * _BYTES_PER_ROW
 )
+_DUAL_PORT_Q40_CAPACITY_BYTES = ABSOLUTE_MAX_QUERY_ROWS * _BYTES_PER_ROW
 _TARGET_SHAPES = frozenset(
     (rows, _TARGET_WIDTH) for rows in range(1, MAX_QUERY_ROWS + 1)
 )
 _GRAPH_CAPACITY_BYTES = MAX_QUERY_ROWS * _BYTES_PER_ROW
-_CONTROL_PORT_STRIDE = 2
 _GRAPH_STATUS_CAPTURE_CONFIGURED = 1 << 0
 _GRAPH_STATUS_POLLING_ENABLED = 1 << 1
 _GRAPH_STATUS_HOST_NATIVE_ATOMICS = 1 << 2
 _GRAPH_STATUS_SUBMIT_AFFINITY_VERIFIED = 1 << 3
 _GRAPH_STATUS_PROGRESS_AFFINITY_VERIFIED = 1 << 4
 _GRAPH_STATUS_OVERFLOW_FATAL = 1 << 5
+_GRAPH_STATUS_TWO_SLOT_DEFERRED_ACK = 1 << 7
+_GRAPH_STATUS_SPLIT_64K = 1 << 8
+_GRAPH_STATUS_TIERED_64K = 1 << 9
+_GRAPH_STATUS_DUAL_PORT_STRIPED = 1 << 10
+_SERIAL_ACK_PROTOCOL = "serial_ack"
+_TWO_SLOT_DEFERRED_ACK_PROTOCOL = "two_slot_deferred_ack"
+_ALLREDUCE_PROTOCOL_WIRE = {
+    _SERIAL_ACK_PROTOCOL: 0,
+    _TWO_SLOT_DEFERRED_ACK_PROTOCOL: 1,
+}
+_FUSED_GRAPH_KERNEL = "fused"
+_SPLIT_64K_GRAPH_KERNEL = "split_64k"
+_TIERED_64K_GRAPH_KERNEL = "tiered_64k"
+_GRAPH_KERNEL_WIRE = {
+    _FUSED_GRAPH_KERNEL: 0,
+    _SPLIT_64K_GRAPH_KERNEL: 1,
+    _TIERED_64K_GRAPH_KERNEL: 2,
+}
+_SEQUENTIAL_WIRE_SCHEDULE = "sequential"
+_DUAL_PORT_STRIPED_WIRE_SCHEDULE = "dual_port_striped"
+_WIRE_SCHEDULE_WIRE = {
+    _SEQUENTIAL_WIRE_SCHEDULE: 0,
+    _DUAL_PORT_STRIPED_WIRE_SCHEDULE: 1,
+}
 _MAX_PERSISTENT_OUTPUT_SLOTS = 4096
 _graph_q1_sessions: dict[int, "_NativeSession"] = {}
+_graph_dual_port_q40_sessions: dict[int, "_NativeSession"] = {}
 _graph_event_counts: dict[str, int] = {}
 # PLACEHOLDER ring peers (RFC 5737 TEST-NET-1): 192.0.2.N stands in for
 # rank N-1's direct-cable address. These are NOT routable and MUST be
@@ -101,6 +135,9 @@ class GraphReplayStatus:
     progress_affinity_verified: bool
     submit_cpu: int | None
     progress_cpu: int | None
+    two_slot_deferred_ack: bool = False
+    graph_kernel_strategy: str = _FUSED_GRAPH_KERNEL
+    wire_schedule: str = _SEQUENTIAL_WIRE_SCHEDULE
 
     @property
     def replay_advanced(self) -> bool:
@@ -108,7 +145,7 @@ class GraphReplayStatus:
         return self.published_sequence > 0
 
     @property
-    def replay_caught_up(self) -> bool:
+    def command_caught_up(self) -> bool:
         return (
             self.replay_advanced
             and self.published_sequence == self.consumed_sequence
@@ -116,13 +153,31 @@ class GraphReplayStatus:
         )
 
     @property
+    def replay_caught_up(self) -> bool:
+        """Compatibility alias for command-ring completion.
+
+        In two-slot mode this proves both outgoing credits were posted, not
+        that reciprocal credits retired both physical payload slots.
+        """
+        return self.command_caught_up
+
+    @property
+    def payload_slots_retired(self) -> bool | None:
+        """Return retirement proof when the selected protocol exposes it."""
+        if self.two_slot_deferred_ack:
+            return None
+        return self.command_caught_up
+
+    @property
     def fatal(self) -> bool:
         return self.overflow_sequence != 0
 
     def to_dict(self) -> dict[str, object]:
         snapshot = asdict(self)
+        snapshot["command_caught_up"] = self.command_caught_up
         snapshot["replay_advanced"] = self.replay_advanced
         snapshot["replay_caught_up"] = self.replay_caught_up
+        snapshot["payload_slots_retired"] = self.payload_slots_retired
         snapshot["fatal"] = self.fatal
         return snapshot
 
@@ -130,8 +185,34 @@ class GraphReplayStatus:
 def _mode() -> str:
     mode = os.getenv("VLLM_SPARK_TP4_MODE", "").lower()
     if mode and mode not in _VALID_MODES:
-        raise ValueError("VLLM_SPARK_TP4_MODE must be 'shadow', 'custom', or unset")
+        raise ValueError("VLLM_SPARK_TP4_MODE must be 'shadow', 'custom', 'disabled', or unset")
     return mode
+
+
+def _graph_allreduce_protocol() -> str:
+    value = os.getenv(
+        "VLLM_SPARK_TP4_GRAPH_ALLREDUCE_PROTOCOL",
+        _SERIAL_ACK_PROTOCOL,
+    )
+    if value not in _ALLREDUCE_PROTOCOL_WIRE:
+        raise ValueError(
+            "VLLM_SPARK_TP4_GRAPH_ALLREDUCE_PROTOCOL must be "
+            "'serial_ack', 'two_slot_deferred_ack', or unset"
+        )
+    return value
+
+
+def _graph_kernel_strategy() -> str:
+    value = os.getenv(
+        "VLLM_SPARK_TP4_GRAPH_KERNEL_STRATEGY",
+        _FUSED_GRAPH_KERNEL,
+    )
+    if value not in _GRAPH_KERNEL_WIRE:
+        raise ValueError(
+            "VLLM_SPARK_TP4_GRAPH_KERNEL_STRATEGY must be "
+            "'fused', 'split_64k', 'tiered_64k', or unset"
+        )
+    return value
 
 
 def _prefill_q512_enabled() -> bool:
@@ -258,25 +339,23 @@ def _control_ports(payload_bytes: int) -> tuple[int, int]:
         raise ValueError(
             f"unsupported Spark TP4 payload size: {payload_bytes} bytes"
         )
-    slot = payload_bytes // _BYTES_PER_ROW - 1
-
-    offset = slot * _CONTROL_PORT_STRIDE
-    ports = (
-        int(os.getenv("SPARK_TP4_CONTROL_PORT0", "9480")) + offset,
-        int(os.getenv("SPARK_TP4_CONTROL_PORT1", "9481")) + offset,
-    )
-    if any(port < 0 or port > 65535 for port in ports):
-        raise ValueError(
-            "Spark TP4 control port must be in [0, 65535] after applying "
-            f"payload slot {slot}: {ports}"
-        )
-    return ports
+    query_rows = payload_bytes // _BYTES_PER_ROW
+    return eager_allreduce_control_ports(query_rows)
 
 
 def _graph_q1_enabled() -> bool:
     value = os.getenv("VLLM_SPARK_TP4_GRAPH_Q1", "0")
     if value not in {"0", "1"}:
         raise ValueError("VLLM_SPARK_TP4_GRAPH_Q1 must be '0' or '1'")
+    return value == "1"
+
+
+def _graph_dual_port_q40_enabled() -> bool:
+    value = os.getenv("VLLM_SPARK_TP4_GRAPH_DUAL_PORT_Q40", "0")
+    if value not in {"0", "1"}:
+        raise ValueError(
+            "VLLM_SPARK_TP4_GRAPH_DUAL_PORT_Q40 must be '0' or '1'"
+        )
     return value == "1"
 
 
@@ -297,13 +376,11 @@ def _persistent_output_slots() -> int:
 
 
 def _graph_control_ports() -> tuple[int, int]:
-    ports = (
-        int(os.getenv("SPARK_TP4_GRAPH_CONTROL_PORT0", "9970")),
-        int(os.getenv("SPARK_TP4_GRAPH_CONTROL_PORT1", "9971")),
-    )
-    if any(port < 0 or port > 65535 for port in ports):
-        raise ValueError(f"Spark TP4 graph control port must be in [0, 65535]: {ports}")
-    return ports
+    return graph_allreduce_control_ports()
+
+
+def _graph_dual_port_q40_control_ports() -> tuple[int, int]:
+    return graph_dual_port_q40_control_ports()
 
 
 def _fixed_kv_cache_bytes(argv: list[str] | None = None) -> int:
@@ -378,6 +455,50 @@ def _graph_preflight(argv: list[str] | None = None) -> tuple[int, int]:
     return _graph_cpu_affinity()
 
 
+def _graph_dual_port_q40_cpu_affinity(
+    argv: list[str] | None = None,
+) -> tuple[int, int]:
+    submit_cpu, tp_progress_cpu = _graph_preflight(argv)
+    name = "SPARK_TP4_GRAPH_DUAL_PORT_Q40_PROGRESS_CPU"
+    text = os.getenv(name)
+    if text is None:
+        raise RuntimeError(
+            f"exact-Q40 dual-port graph TP4 requires explicit {name}"
+        )
+    try:
+        progress_cpu = int(text)
+    except ValueError as error:
+        raise RuntimeError(f"{name} must be a nonnegative integer") from error
+    if progress_cpu < 0:
+        raise RuntimeError(f"{name} must be a nonnegative integer")
+
+    occupied = {
+        submit_cpu: "shared graph submit",
+        tp_progress_cpu: "sequential TP graph progress",
+    }
+    if os.getenv("VLLM_SPARK_TP4_VOCAB_MODE", "") == "custom":
+        occupied[
+            int(os.getenv("SPARK_TP4_GRAPH_VOCAB_PROGRESS_CPU", "12"))
+        ] = "vocabulary graph progress"
+    if (
+        os.getenv("VLLM_SPARK_TP4_DCP_GRAPH_CUSTOM", "0") == "1"
+        or os.getenv("VLLM_SPARK_TP4_DCP_GRAPH_SHADOW", "0") == "1"
+    ):
+        occupied[
+            int(os.getenv("SPARK_TP4_GRAPH_DCP_PROGRESS_CPU", "13"))
+        ] = "DCP graph progress"
+    if os.getenv("VLLM_SPARK_TP4_INDEXER_GRAPH_CUSTOM", "0") == "1":
+        occupied[
+            int(os.getenv("SPARK_TP4_GRAPH_INDEXER_PROGRESS_CPU", "14"))
+        ] = "indexer graph progress"
+    if progress_cpu in occupied:
+        raise RuntimeError(
+            f"{name}={progress_cpu} collides with "
+            f"{occupied[progress_cpu]} CPU ownership"
+        )
+    return submit_cpu, progress_cpu
+
+
 def _record_graph_event(communicator: Any, event: str) -> int:
     attribute = f"_spark_tp4_graph_q1_{event}"
     count = int(getattr(communicator, attribute, 0)) + 1
@@ -402,23 +523,74 @@ class _NativeSession:
         control_ports: tuple[int, int] | None = None,
         graph_only: bool = False,
         graph_cpu_affinity: tuple[int, int] | None = None,
+        allreduce_protocol: str = _SERIAL_ACK_PROTOCOL,
+        graph_kernel_strategy: str = _FUSED_GRAPH_KERNEL,
+        wire_schedule: str = _SEQUENTIAL_WIRE_SCHEDULE,
     ) -> None:
         if rank not in _DEFAULT_PEERS:
             raise ValueError(f"TP4 rank must be in [0, 3], got {rank}")
         expected_graph_capacity = _graph_capacity_bytes()
-        if graph_only and payload_bytes != expected_graph_capacity:
+        if (
+            graph_only
+            and wire_schedule == _SEQUENTIAL_WIRE_SCHEDULE
+            and payload_bytes != expected_graph_capacity
+        ):
             raise ValueError(
                 "Spark TP4 graph session requires "
-                f"Q{_maximum_allreduce_query_rows()} capacity"
+                f"Q{expected_graph_capacity // _BYTES_PER_ROW} capacity"
             )
         if graph_only != (graph_cpu_affinity is not None):
             raise ValueError(
                 "Spark TP4 graph session requires an explicit graph CPU "
                 "affinity pair; eager sessions cannot set one"
             )
-        control_port0, control_port1 = (
-            _control_ports(payload_bytes) if control_ports is None else control_ports
-        )
+        if allreduce_protocol not in _ALLREDUCE_PROTOCOL_WIRE:
+            raise ValueError("invalid Spark TP4 all-reduce protocol")
+        if graph_kernel_strategy not in _GRAPH_KERNEL_WIRE:
+            raise ValueError("invalid Spark TP4 graph kernel strategy")
+        if wire_schedule not in _WIRE_SCHEDULE_WIRE:
+            raise ValueError("invalid Spark TP4 wire schedule")
+        if graph_kernel_strategy != _FUSED_GRAPH_KERNEL and not graph_only:
+            raise ValueError(
+                "research graph kernel strategies require a graph-only session"
+            )
+        if (
+            allreduce_protocol == _TWO_SLOT_DEFERRED_ACK_PROTOCOL
+            and not graph_only
+        ):
+            raise ValueError(
+                "two_slot_deferred_ack requires a graph-only session"
+            )
+        if wire_schedule == _DUAL_PORT_STRIPED_WIRE_SCHEDULE:
+            if not graph_only:
+                raise ValueError(
+                    "dual_port_striped requires a graph-only session"
+                )
+            if allreduce_protocol != _TWO_SLOT_DEFERRED_ACK_PROTOCOL:
+                raise ValueError(
+                    "dual_port_striped requires two_slot_deferred_ack"
+                )
+            if graph_kernel_strategy != _FUSED_GRAPH_KERNEL:
+                raise ValueError(
+                    "dual_port_striped requires the fused graph kernel"
+                )
+            if payload_bytes not in {
+                _DUAL_PORT_Q40_CAPACITY_BYTES,
+                _ALLREDUCE_PREFILL_CAPACITY_BYTES,
+            }:
+                raise ValueError(
+                    "dual_port_striped requires Q40 or Q512 capacity"
+                )
+        if control_ports is None:
+            control_port0, control_port1 = _control_ports(payload_bytes)
+        else:
+            control_port0, control_port1 = validate_control_port_pair(
+                control_ports,
+                owner=(
+                    "graph all-reduce" if graph_only else "eager all-reduce"
+                ),
+            )
+            validate_active_port_namespace()
         library_path = os.environ["SPARK_TP4_LIBRARY"]
         self._library = ctypes.CDLL(library_path)
         self._library.spark_tp4_create.argtypes = [
@@ -427,6 +599,62 @@ class _NativeSession:
             ctypes.c_size_t,
         ]
         self._library.spark_tp4_create.restype = ctypes.c_void_p
+        create_session = self._library.spark_tp4_create
+        if wire_schedule != _SEQUENTIAL_WIRE_SCHEDULE:
+            try:
+                create_session = (
+                    self._library
+                    .spark_tp4_create_with_protocol_graph_kernel_and_schedule
+                )
+            except AttributeError as error:
+                raise RuntimeError(
+                    "Spark TP4 native library lacks the wire-schedule ABI; "
+                    "rebuild and deploy a matching library"
+                ) from error
+            create_session.argtypes = [
+                ctypes.POINTER(_NativeConfig),
+                ctypes.c_uint32,
+                ctypes.c_uint32,
+                ctypes.c_uint32,
+                ctypes.c_char_p,
+                ctypes.c_size_t,
+            ]
+            create_session.restype = ctypes.c_void_p
+        elif graph_kernel_strategy != _FUSED_GRAPH_KERNEL:
+            try:
+                create_session = (
+                    self._library.spark_tp4_create_with_protocol_and_graph_kernel
+                )
+            except AttributeError as error:
+                raise RuntimeError(
+                    "Spark TP4 native library lacks the graph-kernel ABI; "
+                    "rebuild and deploy a matching library"
+                ) from error
+            create_session.argtypes = [
+                ctypes.POINTER(_NativeConfig),
+                ctypes.c_uint32,
+                ctypes.c_uint32,
+                ctypes.c_char_p,
+                ctypes.c_size_t,
+            ]
+            create_session.restype = ctypes.c_void_p
+        elif allreduce_protocol == _TWO_SLOT_DEFERRED_ACK_PROTOCOL:
+            try:
+                create_session = (
+                    self._library.spark_tp4_create_with_protocol
+                )
+            except AttributeError as error:
+                raise RuntimeError(
+                    "Spark TP4 native library lacks the deferred-ACK ABI; "
+                    "rebuild and deploy a matching library"
+                ) from error
+            create_session.argtypes = [
+                ctypes.POINTER(_NativeConfig),
+                ctypes.c_uint32,
+                ctypes.c_char_p,
+                ctypes.c_size_t,
+            ]
+            create_session.restype = ctypes.c_void_p
         self._library.spark_tp4_all_reduce.argtypes = [
             ctypes.c_void_p,
             ctypes.c_void_p,
@@ -458,6 +686,9 @@ class _NativeSession:
         self._library.spark_tp4_destroy.argtypes = [ctypes.c_void_p]
         self._library.spark_tp4_destroy.restype = None
         self._graph_only = graph_only
+        self._allreduce_protocol = allreduce_protocol
+        self._graph_kernel_strategy = graph_kernel_strategy
+        self._wire_schedule = wire_schedule
         self._graph_max_query_rows = (
             payload_bytes // _BYTES_PER_ROW if graph_only else 0
         )
@@ -493,20 +724,49 @@ class _NativeSession:
             graph_progress_cpu_plus_one=progress_cpu + 1,
         )
         error = ctypes.create_string_buffer(512)
-        self._handle = self._library.spark_tp4_create(
-            ctypes.byref(config), error, len(error)
-        )
+        if wire_schedule != _SEQUENTIAL_WIRE_SCHEDULE:
+            self._handle = create_session(
+                ctypes.byref(config),
+                _ALLREDUCE_PROTOCOL_WIRE[allreduce_protocol],
+                _GRAPH_KERNEL_WIRE[graph_kernel_strategy],
+                _WIRE_SCHEDULE_WIRE[wire_schedule],
+                error,
+                len(error),
+            )
+        elif graph_kernel_strategy != _FUSED_GRAPH_KERNEL:
+            self._handle = create_session(
+                ctypes.byref(config),
+                _ALLREDUCE_PROTOCOL_WIRE[allreduce_protocol],
+                _GRAPH_KERNEL_WIRE[graph_kernel_strategy],
+                error,
+                len(error),
+            )
+        elif allreduce_protocol == _SERIAL_ACK_PROTOCOL:
+            self._handle = create_session(
+                ctypes.byref(config), error, len(error)
+            )
+        else:
+            self._handle = create_session(
+                ctypes.byref(config),
+                _ALLREDUCE_PROTOCOL_WIRE[allreduce_protocol],
+                error,
+                len(error),
+            )
         if not self._handle:
             message = error.value.decode(errors="replace")
             raise RuntimeError(f"failed to create Spark TP4 session: {message}")
         logger.warning(
             "Spark TP4 %s session ready on rank %d for %d bytes "
-            "(control ports %d/%d)",
+            "(control ports %d/%d, protocol %s, graph kernel %s, "
+            "wire schedule %s)",
             "graph-only" if graph_only else "eager",
             rank,
             payload_bytes,
             control_port0,
             control_port1,
+            allreduce_protocol,
+            graph_kernel_strategy,
+            wire_schedule,
         )
 
     def all_reduce(self, tensor: Any) -> Any:
@@ -556,6 +816,48 @@ class _NativeSession:
                 f"{ctypes.sizeof(_NativeGraphStatus)}"
             )
         flags = int(native.flags)
+        native_deferred = bool(
+            flags & _GRAPH_STATUS_TWO_SLOT_DEFERRED_ACK
+        )
+        requested_deferred = (
+            self._allreduce_protocol == _TWO_SLOT_DEFERRED_ACK_PROTOCOL
+        )
+        if native_deferred != requested_deferred:
+            raise RuntimeError(
+                "Spark TP4 graph protocol attestation mismatch: "
+                f"requested={self._allreduce_protocol} "
+                f"native_deferred={native_deferred}"
+            )
+        native_split = bool(flags & _GRAPH_STATUS_SPLIT_64K)
+        native_tiered = bool(flags & _GRAPH_STATUS_TIERED_64K)
+        if native_split and native_tiered:
+            raise RuntimeError(
+                "Spark TP4 graph kernel attestation is contradictory"
+            )
+        native_graph_kernel = (
+            _TIERED_64K_GRAPH_KERNEL
+            if native_tiered
+            else _SPLIT_64K_GRAPH_KERNEL
+            if native_split
+            else _FUSED_GRAPH_KERNEL
+        )
+        if native_graph_kernel != self._graph_kernel_strategy:
+            raise RuntimeError(
+                "Spark TP4 graph kernel attestation mismatch: "
+                f"requested={self._graph_kernel_strategy} "
+                f"native={native_graph_kernel}"
+            )
+        native_wire_schedule = (
+            _DUAL_PORT_STRIPED_WIRE_SCHEDULE
+            if flags & _GRAPH_STATUS_DUAL_PORT_STRIPED
+            else _SEQUENTIAL_WIRE_SCHEDULE
+        )
+        if native_wire_schedule != self._wire_schedule:
+            raise RuntimeError(
+                "Spark TP4 wire schedule attestation mismatch: "
+                f"requested={self._wire_schedule} "
+                f"native={native_wire_schedule}"
+            )
         return GraphReplayStatus(
             captured_nodes=int(native.captured_nodes),
             published_sequence=int(native.published_sequence),
@@ -585,23 +887,39 @@ class _NativeSession:
                 if native.graph_progress_cpu_plus_one
                 else None
             ),
+            two_slot_deferred_ack=native_deferred,
+            graph_kernel_strategy=native_graph_kernel,
+            wire_schedule=native_wire_schedule,
         )
 
     def capture(self, tensor: Any) -> Any:
         if not self._graph_only:
             raise RuntimeError("Spark TP4 eager session cannot define graph nodes")
         shape = _tensor_shape(tensor)
+        dual_port_session = (
+            self._wire_schedule == _DUAL_PORT_STRIPED_WIRE_SCHEDULE
+        )
+        exact_dual_port_shape = (
+            not dual_port_session
+            or shape == (self._graph_max_query_rows, _TARGET_WIDTH)
+        )
         if (
             not _target_shape_eligible(shape)
             or shape[0] > self._graph_max_query_rows
+            or not exact_dual_port_shape
             or str(tensor.dtype) != "torch.bfloat16"
             or not bool(tensor.is_cuda)
             or not bool(tensor.is_contiguous())
         ):
+            query_requirement = (
+                f"Q={self._graph_max_query_rows}"
+                if dual_port_session
+                else f"Q in [1, {self._graph_max_query_rows}]"
+            )
             raise ValueError(
                 "Spark TP4 graph capture requires contiguous CUDA BF16 "
-                "[Q, 6144] with Q in [1, "
-                f"{self._graph_max_query_rows}]"
+                f"[Q, 6144] with {query_requirement}; dual-port striped "
+                "sessions require their exact fixed Q"
             )
         q = shape[0]
 
@@ -728,6 +1046,7 @@ class _Backend:
         self.rank = rank
         self.native_sessions: dict[int, _NativeSession] = {}
         self.graph_q1_session: _NativeSession | None = None
+        self.graph_dual_port_q40_session: _NativeSession | None = None
         self.shadow_stats: dict[tuple[int, tuple[int, ...], str], _ShadowStats] = {}
 
     def native_for(self, payload_bytes: int) -> _NativeSession:
@@ -747,6 +1066,8 @@ class _Backend:
                 control_ports=_graph_control_ports(),
                 graph_only=True,
                 graph_cpu_affinity=graph_cpu_affinity,
+                allreduce_protocol=_graph_allreduce_protocol(),
+                graph_kernel_strategy=_graph_kernel_strategy(),
             )
             self.graph_q1_session = session
             _graph_q1_sessions[self.rank] = session
@@ -755,7 +1076,33 @@ class _Backend:
             )
 
             ensure_status_reporter(rank=self.rank)
+        if (
+            _graph_dual_port_q40_enabled()
+            and self.graph_dual_port_q40_session is None
+        ):
+            dual_port_session = _NativeSession(
+                self.rank,
+                _DUAL_PORT_Q40_CAPACITY_BYTES,
+                control_ports=_graph_dual_port_q40_control_ports(),
+                graph_only=True,
+                graph_cpu_affinity=_graph_dual_port_q40_cpu_affinity(),
+                allreduce_protocol=_TWO_SLOT_DEFERRED_ACK_PROTOCOL,
+                graph_kernel_strategy=_FUSED_GRAPH_KERNEL,
+                wire_schedule=_DUAL_PORT_STRIPED_WIRE_SCHEDULE,
+            )
+            self.graph_dual_port_q40_session = dual_port_session
+            _graph_dual_port_q40_sessions[self.rank] = dual_port_session
         return session
+
+    def graph_session_for_capture(
+        self, tensor: Any
+    ) -> _NativeSession | None:
+        if (
+            _tensor_shape(tensor) == (ABSOLUTE_MAX_QUERY_ROWS, _TARGET_WIDTH)
+            and self.graph_dual_port_q40_session is not None
+        ):
+            return self.graph_dual_port_q40_session
+        return self.graph_q1_session
 
     def shadow_for(self, signature: tuple[int, tuple[int, ...], str]) -> _ShadowStats:
         stats = self.shadow_stats.get(signature)
@@ -773,9 +1120,18 @@ def graph_q1_status_snapshot() -> dict[int, dict[str, object]]:
     }
 
 
+def graph_dual_port_q40_status_snapshot() -> dict[int, dict[str, object]]:
+    """Return exact-Q40 striped graph progress for process-local TP ranks."""
+    return {
+        rank: session.graph_status().to_dict()
+        for rank, session in sorted(_graph_dual_port_q40_sessions.items())
+    }
+
+
 def graph_q1_diagnostic_snapshot() -> dict[str, object]:
     return {
         "sessions": graph_q1_status_snapshot(),
+        "dual_port_q40_sessions": graph_dual_port_q40_status_snapshot(),
         "events": dict(sorted(_graph_event_counts.items())),
     }
 
@@ -783,9 +1139,40 @@ def graph_q1_diagnostic_snapshot() -> dict[str, object]:
 def install() -> None:
     global _installed
     mode = _mode()
-    if _installed or not mode:
+    graph_protocol = _graph_allreduce_protocol()
+    graph_kernel = _graph_kernel_strategy()
+    graph_dual_port_q40 = _graph_dual_port_q40_enabled()
+    if capacity_pool_requested():
+        raise RuntimeError(
+            "VLLM_SPARK_TP4_PREFILL_CAPACITY_POOL is research-only: "
+            "the active-bytes native ABI is unavailable, so the shared "
+            "tiled engine cannot be dispatched safely"
+        )
+    if graph_protocol == _TWO_SLOT_DEFERRED_ACK_PROTOCOL and (
+        mode != "custom" or not _graph_q1_enabled()
+    ):
+        raise ValueError(
+            "two_slot_deferred_ack requires custom graph all-reduce"
+        )
+    if graph_kernel != _FUSED_GRAPH_KERNEL and (
+        mode != "custom" or not _graph_q1_enabled()
+    ):
+        raise ValueError(
+            "research graph kernel strategies require custom graph all-reduce"
+        )
+    if graph_dual_port_q40 and (
+        mode != "custom"
+        or not _graph_q1_enabled()
+        or MAX_QUERY_ROWS != ABSOLUTE_MAX_QUERY_ROWS
+    ):
+        raise ValueError(
+            "exact-Q40 dual-port graph TP4 requires custom graph all-reduce "
+            f"with VLLM_SPARK_MAX_QUERY_ROWS={ABSOLUTE_MAX_QUERY_ROWS}"
+        )
+    if _installed or not mode or mode == "disabled":
         return
     _prefill_q512_enabled()
+    validate_active_port_namespace()
 
     from vllm.distributed.device_communicators.cuda_communicator import (
         CudaCommunicator,
@@ -819,7 +1206,9 @@ def install() -> None:
             ):
                 backend = getattr(self, "_spark_tp4_native", None)
                 graph_session = (
-                    None if backend is None else backend.graph_q1_session
+                    None
+                    if backend is None
+                    else backend.graph_session_for_capture(input_)
                 )
                 if graph_session is not None:
                     try:
@@ -866,9 +1255,9 @@ def install() -> None:
             )
 
         try:
-            native_session = backend.native_for(payload_bytes)
             if mode == "custom" and _graph_q1_enabled():
                 backend.prepare_graph_q1()
+            native_session = backend.native_for(payload_bytes)
             if os.getenv("SPARK_TP4_FLIGHT_RECORDER", "0") == "1":
                 import torch
                 from spark_tp4_flight_recorder import record_collective

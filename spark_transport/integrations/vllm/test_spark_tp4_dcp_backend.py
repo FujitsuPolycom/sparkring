@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import os
 import sys
 import types
@@ -79,6 +80,7 @@ class _FakeTensor:
         contiguous: bool = True,
         strides: tuple[int, ...] | None = None,
         payload: float = 0,
+        layout_operations: list[str] | None = None,
     ) -> None:
         self.shape = shape
         self.dtype = dtype
@@ -90,6 +92,9 @@ class _FakeTensor:
             self._strides = (self._strides[0] + 1, *self._strides[1:])
         self.contiguous_calls = 0
         self.payload = payload
+        self.layout_operations = (
+            [] if layout_operations is None else layout_operations
+        )
         self.pointer = self._next_pointer
         _FakeTensor._next_pointer += 0x1000
 
@@ -105,6 +110,19 @@ class _FakeTensor:
             next_stride *= dimension
         return tuple(reversed(strides))
 
+    @staticmethod
+    def _strides_are_contiguous(
+        shape: tuple[int, ...], strides: tuple[int, ...]
+    ) -> bool:
+        expected = 1
+        for dimension, stride in reversed(tuple(zip(shape, strides, strict=True))):
+            if dimension == 1:
+                continue
+            if stride != expected:
+                return False
+            expected *= dimension
+        return True
+
     def stride(self) -> tuple[int, ...]:
         return self._strides
 
@@ -115,13 +133,65 @@ class _FakeTensor:
         self.contiguous_calls += 1
         if self._contiguous:
             return self
+        self.layout_operations.append("contiguous")
         return _FakeTensor(
             self.shape,
             self.dtype,
             is_cuda=self.is_cuda,
             contiguous=True,
             payload=self.payload,
+            layout_operations=self.layout_operations,
         )
+
+    def transpose(self, dim0: int, dim1: int) -> _FakeTensor:
+        dimensions = len(self.shape)
+        if dim0 not in range(dimensions) or dim1 not in range(dimensions):
+            raise IndexError("fake transpose dimension out of range")
+        self.layout_operations.append(f"transpose({dim0},{dim1})")
+        shape = list(self.shape)
+        strides = list(self._strides)
+        shape[dim0], shape[dim1] = shape[dim1], shape[dim0]
+        strides[dim0], strides[dim1] = strides[dim1], strides[dim0]
+        result_shape = tuple(shape)
+        result_strides = tuple(strides)
+        return _FakeTensor(
+            result_shape,
+            self.dtype,
+            is_cuda=self.is_cuda,
+            contiguous=self._strides_are_contiguous(result_shape, result_strides),
+            strides=result_strides,
+            payload=self.payload,
+            layout_operations=self.layout_operations,
+        )
+
+    def clone(self, *, memory_format: object) -> _FakeTensor:
+        if memory_format != "torch.contiguous_format":
+            raise AssertionError(f"unexpected memory format: {memory_format}")
+        self.layout_operations.append("clone(contiguous_format)")
+        return _FakeTensor(
+            self.shape,
+            self.dtype,
+            is_cuda=self.is_cuda,
+            contiguous=True,
+            payload=self.payload,
+            layout_operations=self.layout_operations,
+        )
+
+    def first_rows(self, rows: int) -> _FakeTensor:
+        if not 1 <= rows <= self.shape[0]:
+            raise ValueError("fake row slice is outside its source storage")
+        shape = (rows, *self.shape[1:])
+        result = _FakeTensor(
+            shape,
+            self.dtype,
+            is_cuda=self.is_cuda,
+            contiguous=self._strides_are_contiguous(shape, self._strides),
+            strides=self._strides,
+            payload=self.payload,
+            layout_operations=self.layout_operations,
+        )
+        result.pointer = self.pointer
+        return result
 
     def view(self, dtype: object) -> _FakeByteView:
         del dtype
@@ -144,6 +214,20 @@ def _live_combine_output(
         strides=(head_dimension, q * head_dimension, 1),
         payload=payload,
     )
+
+
+def _q8_padded_head_major_combine_output(
+    q: int,
+    *,
+    head_dimension: int = 512,
+    payload: float = 0,
+) -> _FakeTensor:
+    storage = _live_combine_output(
+        8,
+        head_dimension=head_dimension,
+        payload=payload,
+    )
+    return storage.first_rows(q)
 
 
 class _FakeStream:
@@ -172,6 +256,7 @@ def _fake_torch_module() -> types.ModuleType:
     module.uint8 = "torch.uint8"
     module.int64 = "torch.int64"
     module.float32 = "torch.float32"
+    module.contiguous_format = "torch.contiguous_format"
     module.cuda = _FakeCuda()
     module.allocations = []
 
@@ -266,6 +351,7 @@ def _stock_combine(
     ctx: object = None,
     return_lse: bool = False,
     is_lse_base_on_e: bool = True,
+    head_major_output: bool = False,
 ) -> object:
     cp_group.combine_original_calls.append(
         (
@@ -274,14 +360,22 @@ def _stock_combine(
             ctx,
             return_lse,
             is_lse_base_on_e,
+            head_major_output,
         )
     )
     if cp_group.fail_combine_original:
         raise RuntimeError("combine reference failed")
     q = int(cp_attn_out.shape[0])
+    head_dimension = cp_attn_out.shape[2]
     output = _FakeTensor(
-        (q, 16, cp_attn_out.shape[2]),
+        (q, 16, head_dimension),
         cp_attn_out.dtype,
+        contiguous=not head_major_output,
+        strides=(
+            (head_dimension, q * head_dimension, 1)
+            if head_major_output
+            else None
+        ),
         payload=cp_attn_out.payload,
     )
     if not return_lse:
@@ -297,6 +391,12 @@ def _fake_modules(
     distributed = types.ModuleType("vllm.distributed")
     parallel_state = types.ModuleType("vllm.distributed.parallel_state")
     parallel_state.GroupCoordinator = group_type
+    utils = types.ModuleType("vllm.utils")
+    multi_stream_utils = types.ModuleType("vllm.utils.multi_stream_utils")
+    multi_stream_utils.capture_active = False
+    multi_stream_utils.is_vllm_cudagraph_capture_active = (
+        lambda: multi_stream_utils.capture_active
+    )
     v1 = types.ModuleType("vllm.v1")
     attention = types.ModuleType("vllm.v1.attention")
     ops = types.ModuleType("vllm.v1.attention.ops")
@@ -307,6 +407,8 @@ def _fake_modules(
         "vllm": vllm,
         "vllm.distributed": distributed,
         "vllm.distributed.parallel_state": parallel_state,
+        "vllm.utils": utils,
+        "vllm.utils.multi_stream_utils": multi_stream_utils,
         "vllm.v1": v1,
         "vllm.v1.attention": attention,
         "vllm.v1.attention.ops": ops,
@@ -370,6 +472,7 @@ class _FakeNativeSession:
     ) -> None:
         if self.fail_combine_call:
             raise RuntimeError("native combine failed")
+        reduced_output.layout_operations.append("native_write")
         reduced_output.payload = output_tensor.payload + self.combine_output_delta
         reduced_lse.payload = lse_tensor.payload + self.combine_lse_delta
         q = signature[0]
@@ -411,6 +514,7 @@ class _FakeNativeSession:
     ) -> None:
         if not self.graph_only:
             raise RuntimeError("not a graph session")
+        reduced_output.layout_operations.append("native_write")
         reduced_output.payload = output_tensor.payload + self.combine_output_delta
         reduced_lse.payload = lse_tensor.payload + self.combine_lse_delta
         self.graph_combine_calls.append(
@@ -665,12 +769,8 @@ class SparkTp4DcpDispatchTest(unittest.TestCase):
             VLLM_SPARK_SHARED_CAPTURE_STREAM="1",
             SPARK_TP4_GRAPH_STATUS_PATH="/tmp/status.json",
         )
-        key = (os.getpid(), 0)
-        parallel_state = self.modules["vllm.distributed.parallel_state"]
-        parallel_state._SPARK_ACTIVE_CAPTURE_STREAMS = {key}
-        parallel_state._SPARK_SHARED_CAPTURE_STREAMS = {
-            key: self.torch_module.cuda.stream
-        }
+        multi_stream_utils = self.modules["vllm.utils.multi_stream_utils"]
+        multi_stream_utils.capture_active = True
         group = self.group_type(rank_in_group=2)
 
         query_warmup = group._all_gather_out_place(
@@ -681,6 +781,7 @@ class SparkTp4DcpDispatchTest(unittest.TestCase):
             _FakeTensor((5, 64), "torch.float32", payload=29),
             group,
             return_lse=True,
+            head_major_output=True,
         )
 
         sessions = list(_FakeNativeSession.created)
@@ -690,8 +791,10 @@ class SparkTp4DcpDispatchTest(unittest.TestCase):
         self.assertEqual(sessions[0].combine_calls, [])
         self.assertEqual(query_warmup.payload, 17)
         self.assertEqual(combine_warmup[0].payload, 23)
+        self.assertEqual(combine_warmup[0].stride(), (256, 5 * 256, 1))
         self.assertEqual(len(group.original_calls), 1)
         self.assertEqual(len(group.combine_original_calls), 1)
+        self.assertIs(group.combine_original_calls[0][5], True)
 
         self.torch_module.cuda.capturing = True
         query_capture = group._all_gather_out_place(
@@ -702,11 +805,22 @@ class SparkTp4DcpDispatchTest(unittest.TestCase):
             _FakeTensor((5, 64), "torch.float32", payload=41),
             group,
             return_lse=True,
+            head_major_output=True,
         )
         self.torch_module.cuda.capturing = False
 
         self.assertEqual(query_capture.payload, 31)
         self.assertEqual(combine_capture[0].payload, 37)
+        self.assertEqual(combine_capture[0].stride(), (256, 5 * 256, 1))
+        self.assertEqual(
+            sessions[0].graph_combine_calls[0][2].layout_operations,
+            [
+                "native_write",
+                "transpose(0,1)",
+                "clone(contiguous_format)",
+                "transpose(0,1)",
+            ],
+        )
         self.assertEqual(
             sessions[0].operation_order,
             [("graph_query", 5), ("graph_combine", 5)],
@@ -726,9 +840,6 @@ class SparkTp4DcpDispatchTest(unittest.TestCase):
             VLLM_SPARK_TP4_DCP_GRAPH_CUSTOM="1",
             VLLM_SPARK_SHARED_CAPTURE_STREAM="1",
         )
-        parallel_state = self.modules["vllm.distributed.parallel_state"]
-        parallel_state._SPARK_ACTIVE_CAPTURE_STREAMS = set()
-        parallel_state._SPARK_SHARED_CAPTURE_STREAMS = {}
         group = self.group_type(rank_in_group=2)
 
         result = group._all_gather_out_place(
@@ -747,25 +858,19 @@ class SparkTp4DcpDispatchTest(unittest.TestCase):
         self.assertEqual(result.payload, 17)
         self.assertEqual(group.original_calls, [])
 
-    def test_active_shared_capture_marker_rejects_wrong_current_stream(
-        self,
-    ) -> None:
+    def test_shared_capture_requires_public_capture_scope_marker_api(self) -> None:
         self._install(
             "custom",
             VLLM_SPARK_TP4_DCP_GRAPH_CUSTOM="1",
             VLLM_SPARK_SHARED_CAPTURE_STREAM="1",
         )
-        key = (os.getpid(), 0)
-        parallel_state = self.modules["vllm.distributed.parallel_state"]
-        parallel_state._SPARK_ACTIVE_CAPTURE_STREAMS = {key}
-        parallel_state._SPARK_SHARED_CAPTURE_STREAMS = {
-            key: types.SimpleNamespace(cuda_stream=0xBAD)
-        }
+        multi_stream_utils = self.modules["vllm.utils.multi_stream_utils"]
+        del multi_stream_utils.is_vllm_cudagraph_capture_active
         group = self.group_type(rank_in_group=2)
 
         with self.assertRaisesRegex(
             RuntimeError,
-            "warmup left its retained stream",
+            "capture-scope marker API is unavailable",
         ):
             group._all_gather_out_place(
                 _FakeTensor((5, 16, 576), payload=17), 1
@@ -912,11 +1017,13 @@ class SparkTp4DcpDispatchTest(unittest.TestCase):
             _FakeTensor((5, 64), "torch.float32", payload=29),
             group,
             return_lse=True,
+            head_major_output=True,
         )
         self.torch_module.cuda.capturing = False
 
         self.assertEqual(query_reference.payload, 17)
         self.assertEqual(combine_reference[0].payload, 23)
+        self.assertEqual(combine_reference[0].stride(), (256, 5 * 256, 1))
         graph_sessions = [
             session for session in _FakeNativeSession.created if session.graph_only
         ]
@@ -925,6 +1032,16 @@ class SparkTp4DcpDispatchTest(unittest.TestCase):
             graph_sessions[0].operation_order,
             [("graph_query", 5), ("graph_combine", 5)],
         )
+        self.assertEqual(
+            graph_sessions[0].graph_combine_calls[0][2].layout_operations,
+            [
+                "native_write",
+                "transpose(0,1)",
+                "clone(contiguous_format)",
+                "transpose(0,1)",
+            ],
+        )
+        self.assertIs(group.combine_original_calls[0][5], True)
         report = backend_module.dcp_graph_shadow_report()
         self.assertTrue(report["passed"])
         rank = report["ranks"][2]
@@ -1180,13 +1297,268 @@ class SparkTp4DcpDispatchTest(unittest.TestCase):
             lse,
             group,
             is_lse_base_on_e=True,
+            head_major_output=False,
         )
 
         self.assertNotIsInstance(reduced_output, tuple)
         self.assertEqual(reduced_output.shape, (5, 16, 256))
         self.assertEqual(reduced_output.payload, 15)
         self.assertEqual(group.combine_original_calls, [])
-        self.assertEqual(len(_FakeNativeSession.created[0].combine_calls), 1)
+        native_call = _FakeNativeSession.created[0].combine_calls[0]
+        self.assertIs(reduced_output, native_call[2])
+        self.assertTrue(reduced_output.is_contiguous())
+        self.assertEqual(reduced_output.stride(), (16 * 256, 256, 1))
+        self.assertEqual(reduced_output.layout_operations, ["native_write"])
+
+    def test_custom_combine_head_major_output_preserves_layout_and_lse(self) -> None:
+        self._install("custom")
+        group = self.group_type(rank_in_group=1)
+        output = _live_combine_output(5, payload=15)
+        lse = _FakeTensor((5, 64), "torch.float32", payload=25)
+
+        reduced_output, reduced_lse = self.flash_module.cp_lse_ag_out_rs(
+            output,
+            lse,
+            group,
+            return_lse=True,
+            is_lse_base_on_e=True,
+            head_major_output=True,
+        )
+
+        native_call = _FakeNativeSession.created[0].combine_calls[0]
+        raw_output = native_call[2]
+        self.assertIsNot(reduced_output, raw_output)
+        self.assertIs(reduced_lse, native_call[3])
+        self.assertEqual(reduced_output.shape, (5, 16, 256))
+        self.assertEqual(reduced_output.stride(), (256, 5 * 256, 1))
+        self.assertFalse(reduced_output.is_contiguous())
+        self.assertEqual(raw_output.stride(), (16 * 256, 256, 1))
+        self.assertEqual(
+            raw_output.layout_operations,
+            [
+                "native_write",
+                "transpose(0,1)",
+                "clone(contiguous_format)",
+                "transpose(0,1)",
+            ],
+        )
+
+    def test_custom_combine_head_major_output_has_exact_q1_and_q8_strides(
+        self,
+    ) -> None:
+        self._install("custom")
+
+        for q in (1, 8):
+            with self.subTest(q=q):
+                group = self.group_type(rank_in_group=1)
+                reduced_output = self.flash_module.cp_lse_ag_out_rs(
+                    _live_combine_output(q, payload=q),
+                    _FakeTensor((q, 64), "torch.float32", payload=q + 10),
+                    group,
+                    head_major_output=True,
+                )
+
+                self.assertEqual(reduced_output.shape, (q, 16, 256))
+                self.assertEqual(reduced_output.stride(), (256, q * 256, 1))
+
+    def test_custom_combine_compacts_q8_pitched_head_major_input(self) -> None:
+        self._install("custom")
+
+        with patch.object(backend_module, "_SUPPORTED_Q", frozenset(range(1, 9))):
+            for q in (1, 7, 8):
+                with self.subTest(q=q):
+                    group = self.group_type(rank_in_group=1)
+                    source = _q8_padded_head_major_combine_output(q, payload=q)
+                    lse = _FakeTensor(
+                        (q, 64), "torch.float32", payload=q + 10
+                    )
+
+                    reduced_output, reduced_lse = (
+                        self.flash_module.cp_lse_ag_out_rs(
+                            source,
+                            lse,
+                            group,
+                            return_lse=True,
+                            head_major_output=True,
+                        )
+                    )
+
+                    self.assertEqual(source.stride(), (512, 8 * 512, 1))
+                    native_call = _FakeNativeSession.created[-1].combine_calls[0]
+                    native_input = native_call[0]
+                    self.assertEqual(native_input.shape, (q, 64, 512))
+                    self.assertEqual(native_input.stride(), (512, q * 512, 1))
+                    self.assertEqual(
+                        native_call[4], (q, 512, 512, q * 512)
+                    )
+                    self.assertIs(native_call[5], self.torch_module.cuda.stream)
+                    self.assertEqual(native_input.payload, q)
+                    self.assertIs(reduced_lse, native_call[3])
+                    self.assertEqual(reduced_output.payload, q)
+                    self.assertEqual(
+                        reduced_output.stride(), (512, q * 512, 1)
+                    )
+                    if q < 8:
+                        self.assertIsNot(native_input, source)
+                        self.assertEqual(
+                            native_input.layout_operations,
+                            [
+                                "transpose(0,1)",
+                                "clone(contiguous_format)",
+                                "transpose(0,1)",
+                            ],
+                        )
+                    else:
+                        self.assertIs(native_input, source)
+                        self.assertEqual(native_input.layout_operations, [])
+                    self.assertEqual(group.combine_original_calls, [])
+
+    def test_graph_custom_combine_captures_q8_pitched_head_major_input(
+        self,
+    ) -> None:
+        self._install(
+            "custom",
+            VLLM_SPARK_TP4_DCP_GRAPH_CUSTOM="1",
+        )
+        group = self.group_type(rank_in_group=1)
+
+        with patch.object(backend_module, "_SUPPORTED_Q", frozenset(range(1, 9))):
+            # One eager call prepares the graph-only session before CUDA capture.
+            self.flash_module.cp_lse_ag_out_rs(
+                _q8_padded_head_major_combine_output(8, payload=80),
+                _FakeTensor((8, 64), "torch.float32", payload=90),
+                group,
+                head_major_output=True,
+            )
+            graph_session = next(
+                session for session in _FakeNativeSession.created if session.graph_only
+            )
+
+            self.torch_module.cuda.capturing = True
+            try:
+                results = []
+                sources = []
+                for q in (1, 7, 8):
+                    source = _q8_padded_head_major_combine_output(q, payload=q)
+                    sources.append(source)
+                    results.append(
+                        self.flash_module.cp_lse_ag_out_rs(
+                            source,
+                            _FakeTensor(
+                                (q, 64), "torch.float32", payload=q + 10
+                            ),
+                            group,
+                            head_major_output=True,
+                        )
+                    )
+            finally:
+                self.torch_module.cuda.capturing = False
+
+        self.assertEqual(len(graph_session.graph_combine_calls), 3)
+        for q, source, result, native_call in zip(
+            (1, 7, 8),
+            sources,
+            results,
+            graph_session.graph_combine_calls,
+            strict=True,
+        ):
+            native_input = native_call[0]
+            self.assertEqual(source.stride(), (512, 8 * 512, 1))
+            self.assertEqual(native_input.stride(), (512, q * 512, 1))
+            self.assertEqual(native_call[4], (q, 512, 512, q * 512))
+            self.assertIs(native_call[5], self.torch_module.cuda.stream)
+            self.assertEqual(native_input.payload, q)
+            self.assertEqual(result.payload, q)
+            self.assertEqual(result.stride(), (512, q * 512, 1))
+            if q < 8:
+                self.assertIsNot(native_input, source)
+                self.assertEqual(
+                    native_input.layout_operations,
+                    [
+                        "transpose(0,1)",
+                        "clone(contiguous_format)",
+                        "transpose(0,1)",
+                    ],
+                )
+            else:
+                self.assertIs(native_input, source)
+                self.assertEqual(native_input.layout_operations, [])
+        self.assertEqual(group.combine_original_calls, [])
+
+    def test_pitched_head_major_input_rejects_invalid_pitch(self) -> None:
+        self._install("custom")
+        group = self.group_type(rank_in_group=1)
+
+        with patch.object(backend_module, "_SUPPORTED_Q", frozenset(range(1, 9))):
+            for head_stride in (9 * 512, 8 * 512 + 1):
+                with self.subTest(head_stride=head_stride):
+                    source = _FakeTensor(
+                        (7, 64, 512),
+                        contiguous=False,
+                        strides=(512, head_stride, 1),
+                        payload=head_stride,
+                    )
+                    self.flash_module.cp_lse_ag_out_rs(
+                        source,
+                        _FakeTensor((7, 64), "torch.float32"),
+                        group,
+                        head_major_output=True,
+                    )
+
+        self.assertEqual(len(group.combine_original_calls), 2)
+        self.assertEqual(_FakeNativeSession.created, [])
+
+    def test_combine_forwards_head_major_output_to_stock_fallback(self) -> None:
+        self._install(
+            "custom",
+            VLLM_SPARK_TP4_DCP_QUERY_ENABLED="1",
+            VLLM_SPARK_TP4_DCP_COMBINE_ENABLED="0",
+        )
+        group = self.group_type()
+
+        result = self.flash_module.cp_lse_ag_out_rs(
+            _live_combine_output(5, payload=15),
+            _FakeTensor((5, 64), "torch.float32", payload=25),
+            group,
+            return_lse=True,
+            head_major_output=True,
+        )
+
+        self.assertEqual(result[0].payload, 15)
+        self.assertEqual(result[0].stride(), (256, 5 * 256, 1))
+        self.assertEqual(len(group.combine_original_calls), 1)
+        self.assertIs(group.combine_original_calls[0][5], True)
+
+    def test_combine_wrapper_preserves_exact_live_abi(self) -> None:
+        self._install("custom")
+
+        self.assertEqual(
+            tuple(inspect.signature(self.flash_module.cp_lse_ag_out_rs).parameters),
+            (
+                "cp_attn_out",
+                "cp_attn_lse",
+                "cp_group",
+                "ctx",
+                "return_lse",
+                "is_lse_base_on_e",
+                "head_major_output",
+            ),
+        )
+
+    def test_non_boolean_head_major_output_uses_stock(self) -> None:
+        self._install("custom")
+        group = self.group_type()
+
+        self.flash_module.cp_lse_ag_out_rs(
+            _live_combine_output(5, payload=15),
+            _FakeTensor((5, 64), "torch.float32", payload=25),
+            group,
+            head_major_output=1,
+        )
+
+        self.assertEqual(len(group.combine_original_calls), 1)
+        self.assertEqual(group.combine_original_calls[0][5], 1)
+        self.assertEqual(_FakeNativeSession.created, [])
 
     def test_combine_shadow_preserves_default_output_only_contract(self) -> None:
         self._install(
@@ -1200,19 +1572,24 @@ class SparkTp4DcpDispatchTest(unittest.TestCase):
             _live_combine_output(5, payload=15),
             _FakeTensor((5, 64), "torch.float32", payload=25),
             group,
+            head_major_output=True,
         )
         promoted_result = self.flash_module.cp_lse_ag_out_rs(
             _live_combine_output(5, payload=16),
             _FakeTensor((5, 64), "torch.float32", payload=26),
             group,
+            head_major_output=True,
         )
 
         self.assertNotIsInstance(shadow_result, tuple)
         self.assertNotIsInstance(promoted_result, tuple)
         self.assertEqual(shadow_result.payload, 15)
         self.assertEqual(promoted_result.payload, 16)
+        self.assertEqual(shadow_result.stride(), (256, 5 * 256, 1))
+        self.assertEqual(promoted_result.stride(), (256, 5 * 256, 1))
         self.assertEqual(len(group.combine_original_calls), 1)
         self.assertTrue(group.combine_original_calls[0][3])
+        self.assertIs(group.combine_original_calls[0][5], True)
         self.assertTrue(
             group._spark_tp4_dcp_native.combine_shadows[
                 (5, 256, 256, 5 * 256)

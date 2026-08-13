@@ -49,7 +49,7 @@ def test_overlay_spec_covers_every_public_runtime_python_module():
 def test_overlay_build_is_content_addressed(tmp_path):
     output = tmp_path / "bundle"
     manifest = overlay.build(REPO, SPEC, output)
-    assert len(manifest["files"]) == 32
+    assert len(manifest["files"]) == 34
     assert (output / overlay.MANIFEST).is_file()
     for record in manifest["files"]:
         path = output / record["path"]
