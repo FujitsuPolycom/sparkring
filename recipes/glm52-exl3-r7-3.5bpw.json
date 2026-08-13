@@ -1,0 +1,66 @@
+{
+  "schema": "sparkring-recipe/v1",
+  "recipe_id": "glm52-exl3-r7-3.5bpw",
+  "maturity": "live-validated",
+  "default": false,
+  "hardware": {
+    "platform": "linux/arm64",
+    "cuda_arch": "sm_121",
+    "ranks": 4,
+    "topology": "direct-cycle-4"
+  },
+  "model": {
+    "repository": "brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78",
+    "revision": "9ab9579774cc432df91567a36f6e9e863e0d4c9f",
+    "config_sha256": "fabb73eb513ec64f3a365da396b38de8d55b3930edfb11baeecbf34ecafa6126",
+    "index_sha256": "9fd852f69ed64442e31dce1cbc5fe7acd0a76bfb848e945d272fe98d00d0c9cd",
+    "shard_count": 157,
+    "weight_count": 186905,
+    "index_total_size": 346218639128
+  },
+  "runtime": {
+    "final_image": null,
+    "validated_local_image_id": "sha256:02881d5229d4f4d1cbba0cf40537492a2a505b9d4e43bbfe9a0b2a7bd0584513",
+    "pins": "runtime/exl3-r7/pins.json",
+    "download_script": "scripts/download_exl3_r7.py",
+    "profile_generator": "scripts/generate_exl3_r7_candidate.py",
+    "mtp4_generator": "scripts/prepare_exl3_r7_mtp4.py",
+    "build_script": "runtime/exl3-r7/build-image.sh",
+    "build_containerfile": "runtime/exl3-r7/Containerfile"
+  },
+  "serving": {
+    "served_model_name": "glm-5.2-exl3-r7-3.5bpw",
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 4,
+    "dcp_backend": "ag_rs",
+    "tensor_parallel_transport": "sircl-with-nccl-fallback",
+    "dcp_transport": "stock",
+    "indexer_transport": "stock",
+    "mtp_policy": "fixed-4",
+    "max_model_len": 65536,
+    "kv_cache_dtype": "fp8_ds_mla",
+    "kv_cache_bytes_per_rank": 9250000000,
+    "reported_kv_tokens": 675840,
+    "request_usable_kv_tokens": 675584,
+    "gpu_memory_utilization": 0.85,
+    "max_num_batched_tokens": 2048,
+    "max_num_seqs": 8,
+    "max_query_rows": 40,
+    "load_format": "instanttensor",
+    "online_quantization": "exl3-b6",
+    "online_quantization_scope": "target-only",
+    "online_cache_mode": "readwrite",
+    "execution_mode": "FULL_AND_PIECEWISE",
+    "native_prefix_caching": true,
+    "lmcache": false,
+    "sparkcache": false
+  },
+  "publication": {
+    "zero_build_ready": false,
+    "local_build_ready": false,
+    "status": "live-validated-candidate-not-public-bootstrap-ready",
+    "blocker": "Publish a clean-checkout bootstrap for the attested R7 image and operator-local overlay composition before claiming reproducible public deployment.",
+    "evidence": "docs/EXL3_R7_FIXED_MTP4_PROFILE.md",
+    "machine_readable_evidence": "docs/configurations/glm52-exl3-r7-mtp4-kv925-20260811.json"
+  }
+}

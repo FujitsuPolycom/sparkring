@@ -1,0 +1,227 @@
+# =============================================================================
+# SparkRing EXL3 R7 site configuration - EXAMPLE / TEMPLATE
+# =============================================================================
+#
+# This is the R7 3.5-bpw candidate site template. Copy to site.yaml and replace
+# every placeholder. The serving values match the qualified R7 candidate:
+# TP4, DCP4, fixed MTP4, 9.25 GB KV/rank, fp8_ds_mla, 65536 max model len.
+#
+# Validate your copy before use:
+#
+#     python scripts/sparkring_site.py scripts/config/site.yaml
+#     python scripts/preflight.py --site scripts/config/site.yaml --print-plan
+#
+# See docs/EXL3_R7_QUICKSTART.md for the full stand-up path.
+# =============================================================================
+
+schema_version: 1
+
+site:
+  name: exl3-r7-4-node-ring
+  description: Example four-node DGX Spark ring for the R7 3.5-bpw candidate - REPLACE.
+
+topology:
+  mtu: 9000
+  link_speed_mbps: 200000
+  edges:
+    - id: r0-r1
+      subnet: 192.0.2.0/24
+      endpoints: [0, 1]
+    - id: r1-r2
+      subnet: 198.51.100.0/24
+      endpoints: [1, 2]
+    - id: r2-r3
+      subnet: 203.0.113.0/24
+      endpoints: [2, 3]
+    - id: r3-r0
+      subnet: 198.18.0.0/24
+      endpoints: [3, 0]
+
+ranks:
+  - id: 0
+    ssh_target: operator@198.18.1.10
+    management:
+      interface: eth0
+      address: 198.18.1.10
+    ring_ports:
+      - edge: r0-r1
+        interface: eth1
+        address: 192.0.2.10
+        rdma_device: mlx5_0
+        rdma_port: 1
+        roce_gid_index: 3
+      - edge: r3-r0
+        interface: eth2
+        address: 198.18.0.10
+        rdma_device: mlx5_1
+        rdma_port: 1
+        roce_gid_index: 3
+    transport_peers:
+      - rank: 1
+        address: 198.18.1.11
+      - rank: 3
+        address: 198.18.1.13
+
+  - id: 1
+    ssh_target: operator@198.18.1.11
+    management:
+      interface: eth0
+      address: 198.18.1.11
+    ring_ports:
+      - edge: r0-r1
+        interface: eth1
+        address: 192.0.2.11
+        rdma_device: mlx5_0
+        rdma_port: 1
+        roce_gid_index: 3
+      - edge: r1-r2
+        interface: eth2
+        address: 198.51.100.11
+        rdma_device: mlx5_1
+        rdma_port: 1
+        roce_gid_index: 3
+    transport_peers:
+      - rank: 0
+        address: 198.18.1.10
+      - rank: 2
+        address: 198.18.1.12
+
+  - id: 2
+    ssh_target: operator@198.18.1.12
+    management:
+      interface: eth0
+      address: 198.18.1.12
+    ring_ports:
+      - edge: r1-r2
+        interface: eth1
+        address: 198.51.100.12
+        rdma_device: mlx5_0
+        rdma_port: 1
+        roce_gid_index: 3
+      - edge: r2-r3
+        interface: eth2
+        address: 203.0.113.12
+        rdma_device: mlx5_1
+        rdma_port: 1
+        roce_gid_index: 3
+    transport_peers:
+      - rank: 1
+        address: 198.18.1.11
+      - rank: 3
+        address: 198.18.1.13
+
+  - id: 3
+    ssh_target: operator@198.18.1.13
+    management:
+      interface: eth0
+      address: 198.18.1.13
+    ring_ports:
+      - edge: r2-r3
+        interface: eth1
+        address: 203.0.113.13
+        rdma_device: mlx5_0
+        rdma_port: 1
+        roce_gid_index: 3
+      - edge: r3-r0
+        interface: eth2
+        address: 198.18.0.13
+        rdma_device: mlx5_1
+        rdma_port: 1
+        roce_gid_index: 3
+    transport_peers:
+      - rank: 2
+        address: 198.18.1.12
+      - rank: 0
+        address: 198.18.1.10
+
+runtime:
+  # Replace with your locally built ARM64 image reference.
+  container_image: sparkring/glm52-exl3-r7-3.5bpw:REPLACE
+  # Replace with your local image ID (docker image inspect <ref> --format '{{.Id}}').
+  container_image_digest: sha256:1111111111111111111111111111111111111111111111111111111111111111
+  model_path: /models/glm52-exl3-r7-3.5bpw
+  model_repo: brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78
+  model_revision: "9ab9579774cc432df91567a36f6e9e863e0d4c9f"
+  checkpoint_sha256: 9fd852f69ed64442e31dce1cbc5fe7acd0a76bfb848e945d272fe98d00d0c9cd
+
+# R7 candidate serving contract: fixed MTP4, DCP4, 9.25 GB KV/rank, fp8_ds_mla.
+# The MTP3 rollback uses mtp_tokens: 3 and kv_cache_bytes_per_rank: 9250000000.
+serving:
+  tensor_parallel_size: 4
+  decode_context_parallel_size: 4
+  mtp_mode: "static"
+  mtp_tokens: 4
+  max_model_len: 65536
+  kv_cache_bytes_per_rank: 9250000000
+  max_num_seqs: 8
+  master_rank: 0
+  api_port: 8000
+  master_port: 29500
+
+paths:
+  jit_cache_dir: /var/lib/sparkring/jit-cache
+  context_cache_dir: /var/lib/sparkring/context-cache
+  evidence_dir: ./evidence
+  min_free_bytes:
+    jit_cache: 34359738368
+    context_cache: 549755813888
+
+artifacts:
+  # The generated runtime profile mounts these exact files from each host.
+  # Some source/build chains remain publication blockers; see the quickstart.
+  - name: r7_entrypoint
+    path: /var/tmp/sparkring-r7-entrypoint-hotfix
+    sha256: bbc72446e9a7d811c903e76e37e7d9dfce3d21108b2ea7c3db278bb71e84f95e
+    executable: true
+  - name: r7_weight_utils_local_io
+    path: /var/tmp/sparkring-r7-weight-utils-local-io.py
+    sha256: da5e6c3429293870d0de611183818fa57c0e9e0ad896784bc739c8a812343102
+    executable: false
+  - name: r7_exl3_sm121_scratch
+    path: /var/tmp/sparkring-r7-exl3-sm121-dense-scratch.py
+    sha256: 8e0051faf9b8bac9eefd6f38a5f0133a30bca4c0b5ab41962537e2f13cf968f4
+    executable: false
+  - name: r7_cudagraph_shared_stream
+    path: /var/tmp/sparkring-r7-cudagraph-utils-shared-stream.py
+    sha256: ef03d64297ed2d1a5161847b48a435bf8ae5feda7a5b81b668d00ae9a1d65a2a
+    executable: false
+  - name: r7_quack_layout_utils
+    path: /var/tmp/sparkring-r7-quack-layout_utils-annotations.py
+    sha256: 3199dc3f55f346183e3d284f6da98f4394eaf14f28b7616d147e6e49ec896194
+    executable: false
+  - name: r7_quack_copy_utils
+    path: /var/tmp/sparkring-r7-quack-copy_utils-annotations.py
+    sha256: 2ce88b0d7ee9afe025e52c02fcb32e772a429f1ee626b59546ab8b61d7a37929
+    executable: false
+  - name: r7_dcp_collective_audit
+    path: /var/tmp/sparkring-r7-dcp-audit-head-major.py
+    sha256: 077a234e4edff8b8dd44784953aef713884b4dd7a3f7c46589b14c6bb8b40745
+    executable: false
+  - name: r7_parallel_state_shared_capture
+    path: /var/tmp/sparkring-r7-parallel-state-mtp-shared-stream.py
+    sha256: b087e93463e9a2d9bede71d3a6e4d696c8f2657449e8dc1119b38613d5750e4e
+    executable: false
+  - name: transport_library
+    path: /opt/sparkring/lib/libspark_transport_capi.so
+    sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    executable: false
+  - name: nccl_library
+    path: /opt/sparkring/lib/libnccl.so.2
+    sha256: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    executable: false
+  - name: tp4_graph_probe
+    path: /opt/sparkring/bin/spark_tp4_graph_probe
+    sha256: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    executable: true
+  - name: tp4_vocab_graph_probe
+    path: /opt/sparkring/bin/spark_tp4_vocab_graph_probe
+    sha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+    executable: true
+  - name: tp4_dcp_graph_probe
+    path: /opt/sparkring/bin/spark_tp4_dcp_graph_probe
+    sha256: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+    executable: true
+
+preflight:
+  ssh_timeout_seconds: 45
+  required_free_ports: [8000, 29500]
