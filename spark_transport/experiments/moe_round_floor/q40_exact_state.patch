@@ -1,0 +1,55 @@
+diff --git a/vllm/model_executor/layers/quantization/exl3.py b/vllm/model_executor/layers/quantization/exl3.py
+index d1f1e3d..e577fc1 100644
+--- a/vllm/model_executor/layers/quantization/exl3.py
++++ b/vllm/model_executor/layers/quantization/exl3.py
+@@ -112,6 +112,7 @@ _MIXED_TRELLIS_BUFFERS: dict[tuple[Any, ...], Any] = {}
+ _R7_GRAPH_RUNTIMES: dict[tuple[Any, ...], dict[str, Any]] = {}
+ _NEXT_RUNTIME_SCOPE_ID = 0
+ _MIXED_TRELLIS_ROUTE_BLOCK_SIZE = 8
++_MIXED_TRELLIS_TARGET_Q40_ROWS = 40
+ _GLM52_MIXED_TRELLIS_PREFILL_BLOCK_SIZE = 32
+ _GLM52_MIXED_TRELLIS_BLOCK32_SIGNATURES = frozenset(
+     {
+@@ -3459,10 +3460,23 @@ class Exl3MoEMethod(FusedMoEMethodBase):
+                 prefill_block_m,
+                 mixed["prefill_tile_config"],
+             )
++        q40 = None
++        if (
++            not owner_token[1]
++            and max_decode_m == 32
++            and _MIXED_TRELLIS_TARGET_Q40_ROWS
++            <= min(max_batched_tokens, prefill_capacity)
++        ):
++            q40 = make_state(
++                _MIXED_TRELLIS_TARGET_Q40_ROWS,
++                _MIXED_TRELLIS_ROUTE_BLOCK_SIZE,
++                mixed["prefill_tile_config"],
++            )
+         runtime = {
+             "mixed_api": mixed_api,
+             "decode": decode,
+             "prefill": prefill,
++            "q40": q40,
+             "max_decode_m": max_decode_m,
+             "max_batched_tokens": max_batched_tokens,
+             "prefill_capacity": prefill_capacity,
+@@ -3549,6 +3563,18 @@ class Exl3MoEMethod(FusedMoEMethodBase):
+                 mixed["tiers"],
+             )
+ 
++        if (
++            m == _MIXED_TRELLIS_TARGET_Q40_ROWS
++            and runtime["q40"] is not None
++        ):
++            return run_state(
++                x,
++                topk_weights,
++                topk_ids,
++                runtime["q40"],
++                mixed["prefill_tiers"],
++            )
++
+         if runtime["prefill"] is None:
+             raise RuntimeError("mixed-K EXL3 one-grid prefill plan is unavailable")
+         prefill_capacity = int(runtime["prefill_capacity"])
