@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-recipe/v1",
   "recipe_id": "glm52-exl3-r7-3.5bpw",
-  "maturity": "live-validated",
+  "maturity": "accepted",
   "default": false,
   "hardware": {
     "platform": "linux/arm64",
@@ -25,6 +25,12 @@
     "download_script": "scripts/download_exl3_r7.py",
     "profile_generator": "scripts/generate_exl3_r7_candidate.py",
     "mtp4_generator": "scripts/prepare_exl3_r7_mtp4.py",
+    "nvfp4_generator": "scripts/prepare_exl3_r7_mtp4_nvfp4.py",
+    "ckv_gather_generator": "scripts/prepare_exl3_r7_mtp4_ckv_gather.py",
+    "sircl_tiered_generator": "scripts/prepare_exl3_r7_sircl_tiered.py",
+    "exact_q40_profile_generator": "spark_transport/experiments/moe_round_floor/prepare_q40_exact_state_serving.py",
+    "exact_q40_patch": "spark_transport/experiments/moe_round_floor/q40_exact_state.patch",
+    "exact_q40_attestation_overlay": "spark_transport/experiments/moe_round_floor/q40_exact_state_attestation_overlay.py",
     "build_script": "runtime/exl3-r7/build-image.sh",
     "build_containerfile": "runtime/exl3-r7/Containerfile"
   },
@@ -34,18 +40,41 @@
     "decode_context_parallel_size": 4,
     "dcp_backend": "ag_rs",
     "tensor_parallel_transport": "sircl-with-nccl-fallback",
+    "sircl_graph_protocol": "two_slot_deferred_ack",
+    "sircl_kernel_strategy": "tiered_64k",
+    "sircl_dual_port": false,
     "dcp_transport": "stock",
     "indexer_transport": "stock",
     "mtp_policy": "fixed-4",
-    "max_model_len": 65536,
-    "kv_cache_dtype": "fp8_ds_mla",
+    "max_model_len": 262144,
+    "kv_cache_dtype": "nvfp4_ds_mla",
+    "kv_dynamic_per_token_scale": true,
+    "kv_fp8_rope": true,
+    "kv_record_bytes": 368,
     "kv_cache_bytes_per_rank": 9250000000,
-    "reported_kv_tokens": 675840,
-    "request_usable_kv_tokens": 675584,
+    "reported_kv_tokens": 1156864,
     "gpu_memory_utilization": 0.85,
-    "max_num_batched_tokens": 2048,
+    "max_num_batched_tokens": 4096,
+    "exl3_prefill_capacity": 4096,
     "max_num_seqs": 8,
     "max_query_rows": 40,
+    "exact_q40_policy": {
+      "scope": "target-mixed-exl3-only",
+      "query_rows": 40,
+      "capacity_rows": 40,
+      "route_block_rows": 8,
+      "uses_prefill_tiers": true,
+      "q1_q32_unchanged": true,
+      "other_prefill_shapes_unchanged": true,
+      "uniform_draft_unchanged": true
+    },
+    "ckv_gather": {
+      "implementation": "b12x-transient-full-ckv-dcp-gather",
+      "enabled": true,
+      "maximum_logical_tokens": 262144,
+      "workspace_mib_per_rank": 414.4,
+      "spark_custom_ckv_allgather_enabled": false
+    },
     "load_format": "instanttensor",
     "online_quantization": "exl3-b6",
     "online_quantization_scope": "target-only",
@@ -56,11 +85,13 @@
     "sparkcache": false
   },
   "publication": {
+    "operator_default": true,
+    "acceptance_scope": "operator-3.5-bpw-four-spark-profile",
     "zero_build_ready": false,
     "local_build_ready": false,
-    "status": "live-validated-candidate-not-public-bootstrap-ready",
-    "blocker": "Publish a clean-checkout bootstrap for the attested R7 image and operator-local overlay composition before claiming reproducible public deployment.",
+    "status": "operator-accepted-live-validated-profile-composition-published",
+    "blocker": "Publish the remaining weight-utils, quack, and ARM64 tvm-ffi artifact build chains before claiming zero-context clean-checkout live deployment.",
     "evidence": "docs/EXL3_R7_FIXED_MTP4_PROFILE.md",
-    "machine_readable_evidence": "docs/configurations/glm52-exl3-r7-mtp4-kv925-20260811.json"
+    "machine_readable_evidence": "docs/configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json"
   }
 }

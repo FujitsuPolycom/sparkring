@@ -364,7 +364,11 @@ def generate(template: dict, pins: dict, recipe: dict) -> dict:
             "--hf-overrides", json.dumps(HF_OVERRIDES, separators=(",", ":")),
             "--host", "0.0.0.0",
             "--gpu-memory-utilization", str(serving["gpu_memory_utilization"]),
-            "--max-num-batched-tokens", str(serving["max_num_batched_tokens"])
+            # The public chain starts from the conservative 2K prefill profile.
+            # The operator recipe records the accepted 4K endpoint; the
+            # dynamic-NVFP4 derivative changes this value under an explicit
+            # one-variable allowlist.
+            "--max-num-batched-tokens", "2048"
         ],
         "extra_volumes": [
             {"host": _absolute(template.get("jit_cache_host_path"), "jit_cache_host_path"), "container": "/cache/jit", "mode": "rw"},

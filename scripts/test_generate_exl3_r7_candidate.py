@@ -421,13 +421,18 @@ def test_generator_rejects_non_boolean_indexer_graph_selector() -> None:
         candidate.generate(template, pins, recipe)
 
 
-def test_recipe_records_the_live_qualified_mtp4_serving_contract() -> None:
+def test_recipe_records_the_operator_accepted_mtp4_serving_contract() -> None:
     _, _, recipe = inputs()
     serving = recipe["serving"]
     assert serving["tensor_parallel_size"] == 4
     assert serving["decode_context_parallel_size"] == 4
     assert serving["mtp_policy"] == "fixed-4"
-    assert serving["kv_cache_dtype"] == "fp8_ds_mla"
+    assert serving["kv_cache_dtype"] == "nvfp4_ds_mla"
+    assert serving["kv_dynamic_per_token_scale"] is True
+    assert serving["kv_fp8_rope"] is True
+    assert serving["max_model_len"] == 262_144
+    assert serving["max_num_batched_tokens"] == 4_096
+    assert serving["exact_q40_policy"]["capacity_rows"] == 40
     assert serving["kv_cache_bytes_per_rank"] == 9_250_000_000
     assert serving["gpu_memory_utilization"] == 0.85
     assert serving["execution_mode"] == "FULL_AND_PIECEWISE"
