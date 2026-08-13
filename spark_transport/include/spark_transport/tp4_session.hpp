@@ -6,6 +6,10 @@
 #include <optional>
 #include <string>
 
+#include "spark_transport/tp4_allreduce_protocol.hpp"
+#include "spark_transport/tp4_dual_port_striped_allreduce.hpp"
+#include "spark_transport/tp4_graph_kernel_strategy.hpp"
+
 namespace spark_transport {
 
 struct Tp4AllreduceOptions {
@@ -19,6 +23,10 @@ struct Tp4AllreduceOptions {
   std::uint16_t control_port0{9470};
   std::uint16_t control_port1{9471};
   std::size_t payload_bytes{12288};
+  Tp4AllreduceProtocol protocol{Tp4AllreduceProtocol::kSerialAck};
+  Tp4GraphKernelStrategy graph_kernel_strategy{
+      Tp4GraphKernelStrategy::kFused};
+  Tp4AllreduceSchedule schedule{Tp4AllreduceSchedule::kSequential};
   // When both are set, graph-only deployment pins the calling/submission
   // thread exclusively to graph_submit_cpu and pins the persistent verbs
   // progress thread exclusively to graph_progress_cpu. They must be distinct.
@@ -37,6 +45,7 @@ struct Tp4GraphReplayStatus {
   bool host_native_atomics_supported{};
   bool submit_affinity_verified{};
   bool progress_affinity_verified{};
+  bool two_slot_deferred_ack{};
   int graph_submit_cpu{-1};
   int graph_progress_cpu{-1};
 };

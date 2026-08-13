@@ -124,6 +124,14 @@ if(BUILD_TESTING)
     target_link_libraries(wire_protocol_test PRIVATE spark_transport)
     add_test(NAME wire_protocol_test COMMAND wire_protocol_test)
 
+    add_executable(verbs_completion_test
+        tests/verbs_completion_test.cpp)
+    target_include_directories(verbs_completion_test PRIVATE
+        tests/syntax_stubs include)
+    target_compile_options(verbs_completion_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME verbs_completion_test COMMAND verbs_completion_test)
+
     add_executable(topology_test tests/topology_test.cpp)
     target_link_libraries(topology_test PRIVATE spark_transport)
     add_test(NAME topology_test COMMAND topology_test)
@@ -145,6 +153,46 @@ if(BUILD_TESTING)
     add_executable(tp4_schedule_test tests/tp4_schedule_test.cpp)
     target_link_libraries(tp4_schedule_test PRIVATE spark_transport)
     add_test(NAME tp4_schedule_test COMMAND tp4_schedule_test)
+
+    add_executable(tp4_allreduce_protocol_test
+        tests/tp4_allreduce_protocol_test.cpp)
+    target_include_directories(tp4_allreduce_protocol_test PRIVATE include)
+    target_compile_options(tp4_allreduce_protocol_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME tp4_allreduce_protocol_test
+        COMMAND tp4_allreduce_protocol_test)
+
+    add_executable(tp4_graph_kernel_strategy_test
+        tests/tp4_graph_kernel_strategy_test.cpp)
+    target_include_directories(tp4_graph_kernel_strategy_test PRIVATE include)
+    target_compile_options(tp4_graph_kernel_strategy_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME tp4_graph_kernel_strategy_test
+        COMMAND tp4_graph_kernel_strategy_test)
+
+    add_executable(tp4_dual_port_striped_allreduce_test
+        tests/tp4_dual_port_striped_allreduce_test.cpp)
+    target_include_directories(tp4_dual_port_striped_allreduce_test
+        PRIVATE include)
+    target_compile_options(tp4_dual_port_striped_allreduce_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME tp4_dual_port_striped_allreduce_test
+        COMMAND tp4_dual_port_striped_allreduce_test)
+
+    add_executable(tp4_dual_port_striped_host_test
+        tests/tp4_dual_port_striped_host_test.cpp)
+    target_include_directories(tp4_dual_port_striped_host_test
+        PRIVATE include src)
+    target_compile_options(tp4_dual_port_striped_host_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME tp4_dual_port_striped_host_test
+        COMMAND tp4_dual_port_striped_host_test)
+
+    add_executable(tp4_c_api_layout_test tests/tp4_c_api_layout_test.cpp)
+    target_include_directories(tp4_c_api_layout_test PRIVATE include)
+    target_compile_options(tp4_c_api_layout_test PRIVATE
+        -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME tp4_c_api_layout_test COMMAND tp4_c_api_layout_test)
 
     add_executable(tp4_graph_command_test
         tests/tp4_graph_command_test.cpp

@@ -142,9 +142,10 @@ EndpointInfo VerbsEndpoint::local_info() const {
   return info;
 }
 
-void VerbsEndpoint::connect(const EndpointInfo& remote) {
+void VerbsEndpoint::connect(const EndpointInfo& remote,
+                            std::uint16_t expected_version) {
   if (remote.magic != kEndpointMagic ||
-      remote.version != kEndpointVersion) {
+      remote.version != expected_version) {
     throw std::runtime_error("incompatible remote endpoint metadata");
   }
   if (remote.qp_number == 0 || remote.rkey == 0 || remote.address == 0 ||
@@ -229,26 +230,58 @@ void VerbsEndpoint::write(std::size_t local_offset,
 }
 
 void VerbsEndpoint::wait_for_send(std::uint64_t expected_work_id) {
-  const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::seconds(5);
-  while (std::chrono::steady_clock::now() < deadline) {
+  wait_for_send_completion(expected_work_id, false);
+}
+
+void VerbsEndpoint::wait_for_send_through(
+    std::uint64_t expected_work_id) {
+  wait_for_send_completion(expected_work_id, true);
+}
+
+SendCompletionPollState VerbsEndpoint::poll_send_through(
+    std::uint64_t expected_work_id) {
+  return poll_send_completion(expected_work_id, true);
+}
+
+SendCompletionPollState VerbsEndpoint::poll_send_completion(
+    std::uint64_t expected_work_id, bool allow_older) {
+  while (true) {
     ibv_wc completion{};
     const int count = ibv_poll_cq(completion_queue_, 1, &completion);
     if (count < 0) {
       throw std::runtime_error("ibv_poll_cq failed");
     }
     if (count == 0) {
-      continue;
+      return SendCompletionPollState::kPending;
     }
     if (completion.status != IBV_WC_SUCCESS) {
       throw std::runtime_error(
           std::string("RDMA completion failed: ") +
           ibv_wc_status_str(completion.status));
     }
-    if (completion.wr_id != expected_work_id) {
-      throw std::runtime_error("unexpected RDMA completion work ID");
+
+    switch (detail::classify_send_completion(
+        expected_work_id, completion.wr_id, allow_older)) {
+      case detail::SendCompletionDisposition::kRetire:
+        continue;
+      case detail::SendCompletionDisposition::kComplete:
+        return SendCompletionPollState::kComplete;
+      case detail::SendCompletionDisposition::kUnexpected:
+        throw std::runtime_error(
+            "unexpected RDMA completion work ID");
     }
-    return;
+  }
+}
+
+void VerbsEndpoint::wait_for_send_completion(
+    std::uint64_t expected_work_id, bool allow_older) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (poll_send_completion(expected_work_id, allow_older) ==
+        SendCompletionPollState::kComplete) {
+      return;
+    }
   }
   throw std::runtime_error("timed out waiting for RDMA completion");
 }

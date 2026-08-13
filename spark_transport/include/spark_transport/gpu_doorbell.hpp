@@ -13,6 +13,8 @@ struct alignas(64) DoorbellControl {
   std::uint64_t acknowledgement_sequence{};
   std::uint64_t observed_sequence{};
   std::uint64_t mismatch_count{};
+  // The graph-only two-slot all-reduce stages its raw logical credit here
+  // before an inline RDMA write. Other doorbell protocols leave it unused.
   std::uint64_t reserved{};
 };
 

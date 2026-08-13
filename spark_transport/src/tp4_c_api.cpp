@@ -9,6 +9,7 @@
 #include <exception>
 #include <memory>
 #include <stdexcept>
+#include <utility>
 
 namespace {
 
@@ -129,17 +130,94 @@ spark_transport::Tp4DcpOptions translate(
   return options;
 }
 
+spark_transport::Tp4GraphKernelStrategy graph_kernel_from_wire(
+    std::uint32_t value) {
+  using spark_transport::Tp4GraphKernelStrategy;
+  switch (value) {
+    case SPARK_TP4_GRAPH_KERNEL_FUSED:
+      return Tp4GraphKernelStrategy::kFused;
+    case SPARK_TP4_GRAPH_KERNEL_SPLIT_64K:
+      return Tp4GraphKernelStrategy::kSplit64KiB;
+    case SPARK_TP4_GRAPH_KERNEL_TIERED_64K:
+      return Tp4GraphKernelStrategy::kTiered64KiB;
+    default:
+      throw std::invalid_argument("invalid TP4 graph kernel strategy");
+  }
+}
+
+spark_transport::Tp4AllreduceSchedule schedule_from_wire(
+    std::uint32_t value) {
+  using spark_transport::Tp4AllreduceSchedule;
+  switch (value) {
+    case SPARK_TP4_WIRE_SCHEDULE_SEQUENTIAL:
+      return Tp4AllreduceSchedule::kSequential;
+    case SPARK_TP4_WIRE_SCHEDULE_DUAL_PORT_STRIPED:
+      return Tp4AllreduceSchedule::kDualPortStriped;
+    default:
+      throw std::invalid_argument("invalid TP4 wire schedule");
+  }
+}
+
+struct Tp4CAllreduceHandle {
+  explicit Tp4CAllreduceHandle(
+      spark_transport::Tp4AllreduceOptions options)
+      : graph_kernel_strategy(options.graph_kernel_strategy),
+        schedule(options.schedule),
+        session(std::move(options)) {}
+
+  spark_transport::Tp4GraphKernelStrategy graph_kernel_strategy;
+  spark_transport::Tp4AllreduceSchedule schedule;
+  spark_transport::Tp4AllreduceSession session;
+};
+
+Tp4CAllreduceHandle* tp4_allreduce_handle(spark_tp4_handle handle) {
+  return static_cast<Tp4CAllreduceHandle*>(handle);
+}
+
 }  // namespace
 
 extern "C" spark_tp4_handle spark_tp4_create(
     const spark_tp4_config* config, char* error, std::size_t error_bytes) {
+  return spark_tp4_create_with_protocol_and_graph_kernel(
+      config, SPARK_TP4_ALLREDUCE_PROTOCOL_SERIAL_ACK,
+      SPARK_TP4_GRAPH_KERNEL_FUSED, error, error_bytes);
+}
+
+extern "C" spark_tp4_handle spark_tp4_create_with_protocol(
+    const spark_tp4_config* config, std::uint32_t protocol, char* error,
+    std::size_t error_bytes) {
+  return spark_tp4_create_with_protocol_and_graph_kernel(
+      config, protocol, SPARK_TP4_GRAPH_KERNEL_FUSED, error,
+      error_bytes);
+}
+
+extern "C" spark_tp4_handle
+spark_tp4_create_with_protocol_and_graph_kernel(
+    const spark_tp4_config* config, std::uint32_t protocol,
+    std::uint32_t graph_kernel, char* error,
+    std::size_t error_bytes) {
+  return spark_tp4_create_with_protocol_graph_kernel_and_schedule(
+      config, protocol, graph_kernel,
+      SPARK_TP4_WIRE_SCHEDULE_SEQUENTIAL, error, error_bytes);
+}
+
+extern "C" spark_tp4_handle
+spark_tp4_create_with_protocol_graph_kernel_and_schedule(
+    const spark_tp4_config* config, std::uint32_t protocol,
+    std::uint32_t graph_kernel, std::uint32_t wire_schedule,
+    char* error, std::size_t error_bytes) {
   try {
     if (config == nullptr) {
       throw std::invalid_argument("TP4 C API config is null");
     }
-    auto session = std::make_unique<spark_transport::Tp4AllreduceSession>(
-        translate(*config));
-    return session.release();
+    auto options = translate(*config);
+    options.protocol =
+        spark_transport::tp4_allreduce_protocol_from_wire(protocol);
+    options.graph_kernel_strategy = graph_kernel_from_wire(graph_kernel);
+    options.schedule = schedule_from_wire(wire_schedule);
+    auto handle =
+        std::make_unique<Tp4CAllreduceHandle>(std::move(options));
+    return handle.release();
   } catch (const std::exception& exception) {
     copy_error(exception.what(), error, error_bytes);
     return nullptr;
@@ -156,8 +234,8 @@ extern "C" int spark_tp4_all_reduce(
     if (handle == nullptr) {
       throw std::invalid_argument("TP4 C API handle is null");
     }
-    static_cast<spark_transport::Tp4AllreduceSession*>(handle)->all_reduce(
-        input, output, cuda_stream);
+    tp4_allreduce_handle(handle)->session.all_reduce(input, output,
+                                                      cuda_stream);
     return 0;
   } catch (const std::exception& exception) {
     copy_error(exception.what(), error, error_bytes);
@@ -176,8 +254,8 @@ extern "C" int spark_tp4_capture_all_reduce(
     if (handle == nullptr) {
       throw std::invalid_argument("TP4 C API handle is null");
     }
-    static_cast<spark_transport::Tp4AllreduceSession*>(handle)
-        ->capture_all_reduce(input, output, q, cuda_stream);
+    tp4_allreduce_handle(handle)->session.capture_all_reduce(
+        input, output, q, cuda_stream);
     return 0;
   } catch (const std::exception& exception) {
     copy_error(exception.what(), error, error_bytes);
@@ -209,9 +287,8 @@ extern "C" int spark_tp4_get_graph_status(
       throw std::invalid_argument("TP4 graph status buffer is too small");
     }
 
-    const auto snapshot =
-        static_cast<spark_transport::Tp4AllreduceSession*>(handle)
-            ->graph_replay_status();
+    const auto* c_handle = tp4_allreduce_handle(handle);
+    const auto snapshot = c_handle->session.graph_replay_status();
     spark_tp4_graph_status result{};
     result.struct_size = sizeof(result);
     if (snapshot.capture_configured) {
@@ -228,6 +305,20 @@ extern "C" int spark_tp4_get_graph_status(
     }
     if (snapshot.progress_affinity_verified) {
       result.flags |= SPARK_TP4_GRAPH_STATUS_PROGRESS_AFFINITY_VERIFIED;
+    }
+    if (snapshot.two_slot_deferred_ack) {
+      result.flags |= SPARK_TP4_GRAPH_STATUS_TWO_SLOT_DEFERRED_ACK;
+    }
+    if (c_handle->graph_kernel_strategy ==
+        spark_transport::Tp4GraphKernelStrategy::kSplit64KiB) {
+      result.flags |= SPARK_TP4_GRAPH_STATUS_SPLIT_64K;
+    } else if (c_handle->graph_kernel_strategy ==
+               spark_transport::Tp4GraphKernelStrategy::kTiered64KiB) {
+      result.flags |= SPARK_TP4_GRAPH_STATUS_TIERED_64K;
+    }
+    if (c_handle->schedule ==
+        spark_transport::Tp4AllreduceSchedule::kDualPortStriped) {
+      result.flags |= SPARK_TP4_GRAPH_STATUS_DUAL_PORT_STRIPED;
     }
     if (snapshot.overflow_sequence != 0) {
       result.flags |= SPARK_TP4_GRAPH_STATUS_OVERFLOW_FATAL;
@@ -257,7 +348,7 @@ extern "C" int spark_tp4_get_graph_status(
 }
 
 extern "C" void spark_tp4_destroy(spark_tp4_handle handle) {
-  delete static_cast<spark_transport::Tp4AllreduceSession*>(handle);
+  delete tp4_allreduce_handle(handle);
 }
 
 extern "C" spark_tp4_allgather_handle spark_tp4_allgather_create(
