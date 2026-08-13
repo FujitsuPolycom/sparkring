@@ -54,7 +54,7 @@ Q1-Q32, other prefill shapes, and the draft model retain their prior states.
 |---|---:|---:|---:|---:|---:|
 | Coding peak | **5/5** | **27.3** | **27.3** | **28.8** | **0** |
 
-Reported KV capacity is 1,156,864 tokens across the four-rank serving profile.
+Reported KV capacity is **1,156,864 tokens** across the four-rank serving profile.
 
 The matched exact-Q40 decode bracket replayed the same eight unique 16K
 payloads with full 8/8 residency and a 25-second measurement window. Its
