@@ -154,9 +154,14 @@ so it is accepted as a bounded operating snapshot rather than a distribution.
 The separately controlled exact-Q40 bracket remains the stronger 16K/C8
 comparison because it replayed identical sealed payloads across repeated arms.
 
-The coding-peak C1 probe completed 5/5 runs at 27.3 tok/s median and mean,
-with a 28.8 tok/s maximum and zero CJK runs. It is a distinct workload result,
-not a replacement for the standardized C1 matrix.
+### Coding benchmark (C1)
+
+| Workload | Runs | Median tok/s | Mean tok/s | Maximum tok/s | CJK runs |
+|---|---:|---:|---:|---:|---:|
+| Coding peak | **5/5** | **27.3** | **27.3** | **28.8** | **0** |
+
+This is a distinct workload result, not a replacement for the standardized C1
+matrix.
 
 ## Exact CKV-gather delta and rollback
 

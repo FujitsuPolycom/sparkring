@@ -147,10 +147,14 @@ cell is 70.0 tok/s; it is a broad matrix observation and does not replace the
 The display does not expose per-cell repeat counts, so this matrix is an
 accepted operating snapshot rather than a distribution.
 
-The coding-peak C1 probe completed 5/5 runs with a 27.3 tok/s median, 27.3
-tok/s mean, and 28.8 tok/s maximum. It ran zero CJK cases. This workload peak
-is reported separately and is not substituted for the standardized C1 matrix
-cells. The complete displayed snapshot is preserved in
+#### Coding benchmark (C1)
+
+| Workload | Runs | Median tok/s | Mean tok/s | Maximum tok/s | CJK runs |
+|---|---:|---:|---:|---:|---:|
+| Coding peak | **5/5** | **27.3** | **27.3** | **28.8** | **0** |
+
+This workload peak is reported separately and is not substituted for the
+standardized C1 matrix cells. The complete displayed snapshot is preserved in
 [machine-readable form](configurations/glm52-exl3-r7-current-best-matrix-20260813.json).
 
 The earlier bounded benchmark remains independently identified by complete
