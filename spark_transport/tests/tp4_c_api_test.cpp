@@ -60,6 +60,37 @@ int main() {
              sizeof(error)) == nullptr);
   expect_message_contains(error, "invalid TP4 wire schedule");
 
+  std::memset(error, 0, sizeof(error));
+  assert(spark_tp4_create_v2(
+             nullptr, SPARK_TP4_ALLREDUCE_PROTOCOL_SERIAL_ACK,
+             SPARK_TP4_GRAPH_KERNEL_FUSED,
+             SPARK_TP4_WIRE_SCHEDULE_SEQUENTIAL, error,
+             sizeof(error)) == nullptr);
+  expect_message_contains(error, "v2 config is null");
+
+  spark_tp4_config_v2 deepseek_config{};
+  deepseek_config.struct_size = sizeof(deepseek_config) - 1;
+  deepseek_config.base = protocol_config;
+  deepseek_config.elements_per_row = 4096;
+  deepseek_config.bytes_per_row = 8192;
+  std::memset(error, 0, sizeof(error));
+  assert(spark_tp4_create_v2(
+             &deepseek_config, SPARK_TP4_ALLREDUCE_PROTOCOL_SERIAL_ACK,
+             SPARK_TP4_GRAPH_KERNEL_FUSED,
+             SPARK_TP4_WIRE_SCHEDULE_SEQUENTIAL, error,
+             sizeof(error)) == nullptr);
+  expect_message_contains(error, "v2 config is too small");
+
+  deepseek_config.struct_size = sizeof(deepseek_config);
+  deepseek_config.bytes_per_row = 12288;
+  std::memset(error, 0, sizeof(error));
+  assert(spark_tp4_create_v2(
+             &deepseek_config, SPARK_TP4_ALLREDUCE_PROTOCOL_SERIAL_ACK,
+             SPARK_TP4_GRAPH_KERNEL_FUSED,
+             SPARK_TP4_WIRE_SCHEDULE_SEQUENTIAL, error,
+             sizeof(error)) == nullptr);
+  expect_message_contains(error, "contiguous BF16 rows");
+
   assert(spark_tp4_capture_q1_all_reduce(
              nullptr, nullptr, nullptr, nullptr, error, sizeof(error)) == 1);
   expect_message_contains(error, "handle is null");

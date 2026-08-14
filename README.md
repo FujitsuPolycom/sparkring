@@ -211,8 +211,9 @@ reference remains in the [historical lane](docs/history/AIDEN_MXFP4_GPTQ.md).
 
 ## What SparkRing provides
 
-- A GLM/vLLM-oriented direct-cable transport implementation, with reusable
-  low-level transport primitives.
+- A GLM/vLLM deployment plus versioned graph-row geometry for model adapters
+  such as the DeepSeek `[Q,4096]` candidate, with reusable low-level transport
+  primitives.
 - Two- and four-rank collective schedules used by the current GLM/vLLM paths.
 - Registered mapped-host RDMA arenas.
 - GPU doorbells and device-published command rings.

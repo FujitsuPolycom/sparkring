@@ -66,6 +66,20 @@ attestation, qualification, and rollback contract. The exact-Q40 routed-MoE
 optimization is a separate EXL3 overlay; compiling the transport library does
 not install it.
 
+### Versioned graph row geometry
+
+The legacy `spark_tp4_create` ABI retains GLM's BF16 row geometry: 6,144
+elements and 12,288 bytes per row. Model adapters with a different hidden width
+use `spark_tp4_create_v2` and set `struct_size`, `elements_per_row`, and
+`bytes_per_row`. The current DeepSeek candidate uses 4,096 elements and 8,192
+bytes per row. `bytes_per_row` must equal `elements_per_row * 2`.
+
+Graph descriptor validation and capacity checks use the configured byte width.
+The graph all-reduce command ABI admits exact contiguous rows from Q1 through
+Q1024; provision one maximum-capacity session to capture mixed Q values. The
+expanded doorbell layout is wire-incompatible with older builds, so graph and
+dual-port endpoint handshakes reject mixed versions before posting RDMA work.
+
 ## Pair probe
 
 Server on `spark1`:
