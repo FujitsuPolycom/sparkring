@@ -66,10 +66,10 @@ jobs:
       - name: ruff check
         run: ruff check --select E,F,W --ignore E501 --exclude runtime/patches --output-format=github .
 
-      # `ruff format --check` is deliberately NOT run: 96 of the 146 Python
-      # files in the tree would be reformatted. Enforcing it would mean
-      # reformatting the repo, which is out of scope for a CI change. See the
-      # "good first issues" list in CONTRIBUTING.md.
+      # `ruff format --check` is deliberately NOT a blocking gate. Enforcing
+      # it requires first separating maintained Python from hash-attested
+      # recovered and derived payloads. See the "good first issues" list in
+      # CONTRIBUTING.md.
       - name: Formatting status (informational only, never fails the build)
         continue-on-error: true
         run: |
@@ -124,6 +124,9 @@ jobs:
       # NOT run here, and why:
       #   spark_transport CTest / sparkcache CUDA targets — see the header
       #                       comment; they are manual gates.
+      - name: Validate publication consistency
+        run: python scripts/validate_publication_consistency.py
+
       - name: pytest (offline suites only)
         run: python -m pytest spark_transport sparkcache runtime scripts -q -rs
 
