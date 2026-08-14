@@ -79,7 +79,7 @@ sets.
 | `runtime/` | Candidate public runtime builder, lock, and published patches |
 | `scripts/` | Site schema, read-only preflight, dry-run-first launcher, acceptance gate, and evidence tooling |
 | `scripts/config/` | Sanitized templates; real local configs must remain untracked |
-| `docs/` | Architecture, measured results, lane contract, setup reconstruction, and gaps |
+| [`docs/README.md`](docs/README.md) | Task-routing index for specifications, runbooks, evidence, and history; it does not replace the canonical owners above |
 | `.github/` | CPU-only CI, contribution forms, and public-release safety checks |
 
 ## Safety classes
