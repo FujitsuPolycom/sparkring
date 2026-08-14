@@ -41,9 +41,10 @@ an issue is much cheaper than in a 3,000-line diff.
 
 **You need:** a text editor.
 
-Documentation is a first-class contribution here. The setup guide is long,
-hardware-coupled, and partly reconstructed; every ambiguity someone hits and
-writes down makes the next attempt cheaper.
+Documentation is a first-class contribution here. Start with the
+[documentation map](docs/README.md) to distinguish present-state
+specifications, runnable runbooks, evidence records, and historical reference
+material before editing a claim.
 
 ```bash
 git clone https://github.com/FujitsuPolycom/sparkring.git
