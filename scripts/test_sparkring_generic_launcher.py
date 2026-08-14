@@ -1,15 +1,15 @@
 """Offline tests for the generic runtime launcher and shared primitives.
 
 Covers:
-* Malformed profile rejection (structural validation) including F2-F4 checks.
+* Malformed profile rejection, including schema-specific structural checks.
 * Dry-run plan output (no SSH connection).
 * Lifecycle safety (confirmation tokens, profile-label-guarded stop, rollback,
   image verification in start, attestation hooks).
-* F1: Native generic profiles named "exl3" or "nf3" stay generic.
-* F5: NF3 bridge identity resolved from site before plan.
-* F6: EXL3 --max-num-batched-tokens passthrough with golden tests.
-* F8: NF3 RemoteAction/execute/action_succeeded delegated to sparkring_runtime.
-* F9: Schema-aware execution semantics (EXL3 no rollback, NF3 rollback).
+* Native generic profiles named "exl3" or "nf3" remain generic.
+* NF3 bridge identity resolution from the site before planning.
+* EXL3 --max-num-batched-tokens passthrough with golden tests.
+* NF3 remote-action and execution primitives delegated to sparkring_runtime.
+* Schema-aware execution semantics: EXL3 has no rollback; NF3 does.
 * EXL3 bridge golden-equivalence for canonical operations.
 * NF3 bridge golden-equivalence for canonical operations.
 * Deterministic plan structure.
@@ -167,7 +167,7 @@ def test_environment_rejects_site_derived_override(tmp_path):
         runtime.load_runtime_profile(path)
 
 
-# F4: SPARKRING_ prefix is reserved for the runtime
+# The SPARKRING_ prefix is reserved for runtime-owned variables
 def test_environment_rejects_sparkring_prefix(tmp_path):
     doc = _generic_doc(environment={"SPARKRING_FOO": "bar"})
     path = _write_generic(tmp_path, doc)
@@ -175,7 +175,7 @@ def test_environment_rejects_sparkring_prefix(tmp_path):
         runtime.load_runtime_profile(path)
 
 
-# F4: SPARKRING_IMAGE_DIGEST is also reserved
+# SPARKRING_IMAGE_DIGEST is runtime-owned
 def test_environment_rejects_sparkring_image_digest(tmp_path):
     doc = _generic_doc(environment={"SPARKRING_IMAGE_DIGEST": "sha256:x"})
     path = _write_generic(tmp_path, doc)
@@ -190,7 +190,7 @@ def test_extra_vllm_args_rejects_empty_string(tmp_path):
         runtime.load_runtime_profile(path)
 
 
-# F3: site-owned vLLM options are rejected in extra_vllm_args
+# Site-owned vLLM options are rejected in extra_vllm_args
 @pytest.mark.parametrize(
     "bad_arg",
     [
@@ -270,7 +270,7 @@ def test_privileged_must_be_boolean(tmp_path):
         runtime.load_runtime_profile(path)
 
 
-# F2: reserved labels are rejected in extra_labels
+# Reserved labels are rejected in extra_labels
 @pytest.mark.parametrize(
     "reserved_key",
     ["org.sparkring.managed", "org.sparkring.profile"],
@@ -297,7 +297,7 @@ def test_extra_labels_reject_multiline_value(tmp_path):
         runtime.load_runtime_profile(path)
 
 
-# F4: empty confirmation is rejected (must be null or non-empty)
+# Confirmation must be null or non-empty
 def test_empty_confirmation_rejected(tmp_path):
     doc = _generic_doc(confirmation="")
     path = _write_generic(tmp_path, doc)
@@ -313,7 +313,7 @@ def test_invalid_confirmation_rejected(tmp_path, token):
         runtime.load_runtime_profile(path)
 
 
-# F4: identity keys must be lowercase snake_case
+# Identity keys must be lowercase snake_case
 def test_identity_rejects_uppercase_key(tmp_path):
     doc = _generic_doc(identity={"BadKey": "value"})
     path = _write_generic(tmp_path, doc)
@@ -343,7 +343,7 @@ def test_unsupported_schema_is_rejected(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# F1: Native generic profile named "exl3" or "nf3" stays generic
+# Native generic profiles named "exl3" or "nf3" remain generic
 # ---------------------------------------------------------------------------
 
 
@@ -603,7 +603,7 @@ def test_timeout_output_is_json_serializable():
 
 
 # ---------------------------------------------------------------------------
-# F7: Attestation hook and health check tests
+# Attestation-hook and health-check behavior
 # ---------------------------------------------------------------------------
 
 
@@ -717,7 +717,7 @@ def test_health_execute_uses_profile_confirmation_gate(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# F9: Schema-aware execution semantics
+# Schema-aware execution semantics
 # ---------------------------------------------------------------------------
 
 
@@ -811,7 +811,7 @@ def test_exl3_bridge_start_is_byte_identical_to_canonical(tmp_path):
         )
 
 
-# F6: --max-num-batched-tokens passthrough
+# --max-num-batched-tokens passthrough
 def test_exl3_bridge_start_with_batch_tokens_is_byte_identical(tmp_path):
     """EXL3 bridge with --max-num-batched-tokens matches canonical."""
     site_path, profile_path = _exl3_profile(tmp_path)
@@ -928,7 +928,7 @@ def test_nf3_profile_loads_through_bridge():
     assert any("/mtp-draft" in vol[1] for vol in profile.extra_volumes)
 
 
-# F5: NF3 bridge identity resolved from site
+# NF3 bridge identity resolved from the site
 def test_nf3_bridge_identity_resolved_from_site():
     """NF3 bridge plan has truthful image_id from site, not empty."""
     site = load_site(SITE)
@@ -1004,27 +1004,27 @@ def test_nf3_bridge_plan_through_cli():
 
 
 # ---------------------------------------------------------------------------
-# F8: Shared primitives extraction tests
+# Shared runtime primitive delegation
 # ---------------------------------------------------------------------------
 
 
 def test_nf3_remote_action_is_same_class_as_runtime():
-    """NF3 RemoteAction is imported from sparkring_runtime (F8)."""
+    """NF3 uses the shared runtime's RemoteAction contract."""
     assert nf3.RemoteAction is runtime.RemoteAction
 
 
 def test_nf3_execute_is_runtime_execute():
-    """NF3 execute delegates to sparkring_runtime (F8)."""
+    """NF3 execution delegates to the shared runtime."""
     assert nf3.execute is runtime.execute
 
 
 def test_nf3_action_succeeded_is_runtime_action_succeeded():
-    """NF3 action_succeeded delegates to sparkring_runtime (F8)."""
+    """NF3 result classification delegates to the shared runtime."""
     assert nf3.action_succeeded is runtime.action_succeeded
 
 
 def test_nf3_run_remote_is_runtime_run_remote():
-    """NF3 run_remote delegates to sparkring_runtime (F8)."""
+    """NF3 remote invocation delegates to the shared runtime."""
     assert nf3.run_remote is runtime.run_remote
 
 
@@ -1081,12 +1081,12 @@ def test_base_environment_includes_identity_attestation():
     site = load_site(SITE)
     profile = runtime.load_runtime_profile(GENERIC)
     env = runtime.base_environment(site, 0, profile)
-    # Identity keys use SPARKRING_ATTEST_ prefix (F4)
+    # Identity keys use the SPARKRING_ATTEST_ prefix.
     assert env["SPARKRING_ATTEST_MODEL_REPOSITORY"] == "your-org/your-model"
     assert env["SPARKRING_ATTEST_MODEL_CONFIG_SHA256"] == (
         "2222222222222222222222222222222222222222222222222222222222222222"
     )
-    # SPARKRING_IMAGE_DIGEST is still set by the runtime
+    # SPARKRING_IMAGE_DIGEST is set by the runtime.
     assert env["SPARKRING_IMAGE_DIGEST"] == profile.image_id
 
 

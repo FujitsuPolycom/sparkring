@@ -160,7 +160,7 @@ def _lifecycle_status(args: Any, parser: Any) -> int:
         parser.error(str(exc))
         return 2
     _reject_bridge_execution(parser, bundle)
-    # Item 7: status is read-only, no confirmation required
+    # Status is read-only and does not require confirmation.
     if not args.execute:
         plan = bundle_mod.bundle_plan(bundle, site)
         plan["command"] = "status"
@@ -170,7 +170,7 @@ def _lifecycle_status(args: Any, parser: Any) -> int:
             file=sys.stderr,
         )
         return 0
-    # Item 7: aggregate results, return nonzero on failed/missing ranks
+    # Aggregate results and return nonzero for failed or missing ranks.
     result = bundle_mod.execute_native_status(bundle, site)
     print(json.dumps(result, indent=2))
     return 1 if result.get("status") != "ok" else 0
@@ -187,7 +187,7 @@ def _lifecycle_verify_rollback(args: Any, parser: Any) -> int:
         parser.error(str(exc))
         return 2
     _reject_bridge_execution(parser, bundle)
-    # Item 7: verify-rollback is read-only, no confirmation required
+    # Rollback verification is read-only and does not require confirmation.
     if not args.execute:
         plan = bundle_mod.bundle_plan(bundle, site)
         plan["command"] = "verify-rollback"
@@ -395,12 +395,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error("--confirmation does not apply to plan")
         return _lifecycle_plan(args, parser)
     if args.command == "status":
-        # Item 7: status is read-only, no confirmation
+        # Status is read-only and does not require confirmation.
         if args.confirmation:
             parser.error("--confirmation does not apply to status")
         return _lifecycle_status(args, parser)
     if args.command == "verify-rollback":
-        # Item 7: verify-rollback is read-only, no confirmation
+        # Rollback verification is read-only and does not require confirmation.
         if args.confirmation:
             parser.error("--confirmation does not apply to verify-rollback")
         return _lifecycle_verify_rollback(args, parser)

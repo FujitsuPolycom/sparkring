@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Shared runtime primitives for SparkRing launchers.
 
-This module extracts the orchestration behavior that every model-family
+This module provides the orchestration behavior that every model-family
 launcher needs: per-rank RDMA/peer context derivation, transport
 environment construction, the ``RemoteAction`` dataclass, parallel SSH
 execution, and the generic runtime-profile contract.
@@ -13,7 +13,7 @@ canonical builders, so those bridge actions are byte-identical. Operations
 without a canonical counterpart use the generic builders and are identified
 separately in the plan documentation.
 
-Safety is proportional and inherited from the existing launchers:
+The shared runtime enforces these safety invariants:
 
 * ``plan`` is always offline and prints a deterministic JSON document.
 * ``start``/``stop`` require ``--execute``.
@@ -165,7 +165,7 @@ class ProfileError(ValueError):
 
 
 # ---------------------------------------------------------------------------
-# RemoteAction — extracted from both existing launchers (identical dataclass)
+# Remote-action contract
 # ---------------------------------------------------------------------------
 
 
@@ -581,7 +581,7 @@ def resolve_from_site(profile: RuntimeProfile, site: Any) -> RuntimeProfile:
 
 
 # ---------------------------------------------------------------------------
-# Site context — extracted from both existing launchers (identical logic)
+# Per-rank site context
 # ---------------------------------------------------------------------------
 
 
@@ -626,9 +626,9 @@ def base_environment(
 ) -> dict[str, str]:
     """Build the transport environment shared by all model families.
 
-    This is the union of the two existing launchers' ``_base_environment``
-    functions.  Model-specific attestation keys are added from
-    ``profile.identity`` using the ``SPARKRING_ATTEST_`` prefix.
+    Common transport variables come from the validated site context.
+    Model-specific attestation keys come from ``profile.identity`` using the
+    ``SPARKRING_ATTEST_`` prefix.
     """
     context = site_context(site, rank_id)
     rank = site.rank(rank_id)
@@ -831,7 +831,7 @@ def stop_actions(
         name = container_name(profile, rank.id)
         if ownership:
             script = (
-                # Item 1 (fb4): daemon probe, then exact-name enumeration
+                # Probe the daemon before enumerating the exact container name.
                 f"{profile.engine} info >/dev/null 2>&1 || exit 74; "
                 f"listing=$({profile.engine} ps -a --filter name=^/{shlex.quote(name)}$ "
                 f"--format '{{{{.Names}}}}' 2>&1) || exit 74; "
@@ -861,7 +861,7 @@ def stop_actions(
             )
         else:
             script = (
-                # Item 1 (fb4): daemon probe, then exact-name enumeration
+                # Probe the daemon before enumerating the exact container name.
                 f"{profile.engine} info >/dev/null 2>&1 || exit 74; "
                 f"listing=$({profile.engine} ps -a --filter name=^/{shlex.quote(name)}$ "
                 f"--format '{{{{.Names}}}}' 2>&1) || exit 74; "
@@ -1023,7 +1023,7 @@ def execute(actions: list[RemoteAction], timeout: int) -> dict[int, dict]:
                     "stderr": _output_text(exc.stderr, "remote command timed out"),
                 }
             except Exception as exc:
-                # Item 5 (fb4): reserved infrastructure code 125 + error_type
+                # Executor failures use code 125 and include an error type.
                 results[rank] = {
                     "exit_code": 125,
                     "stdout": "",
