@@ -279,7 +279,7 @@ def _is_native_generic_profile(profile: runtime.RuntimeProfile) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Path containment (item 8: confine to bundle directory, reject traversals)
+# Bundle-source path containment
 # ---------------------------------------------------------------------------
 
 
@@ -319,7 +319,7 @@ def _validate_source_path(
 
 
 # ---------------------------------------------------------------------------
-# Structured container validation (item 2)
+# Structured-container validation
 # ---------------------------------------------------------------------------
 
 
@@ -442,7 +442,7 @@ def _validate_structured_container(
 
 
 # ---------------------------------------------------------------------------
-# Bridge shape enforcement (item 10: closed bridge shapes)
+# Closed bridge-shape validation
 # ---------------------------------------------------------------------------
 
 
@@ -588,7 +588,7 @@ def parse_bundle(
         if role == ROLE_SERVING:
             serving_count += 1
 
-        # Item 9: canonicalize depends_on as a set (order-independent)
+        # Dependencies are an order-independent set.
         depends_on: frozenset[str] = frozenset()
         if "depends_on" in svc_doc:
             raw_deps = svc_doc["depends_on"]
@@ -671,7 +671,7 @@ def parse_bundle(
             f"{where}.services[{index}].source.path",
         )
 
-        # Item 8: path containment
+        # Bundle sources must remain inside the bundle directory.
         resolved_path = _validate_source_path(
             src_path, effective_dir,
             f"{where}.services[{index}].source.path",
@@ -732,7 +732,7 @@ def parse_bundle(
                 raise BundleError(str(exc)) from exc
             has_executable = True
 
-        # Item 3 (fb4): validate bridge input exists during structural validation
+        # Validate bridge inputs during structural validation.
         if src_kind in PLAN_ONLY_SOURCE_KINDS:
             if not resolved_path.is_file():
                 raise BundleError(
@@ -760,7 +760,7 @@ def parse_bundle(
 
     _validate_graph(services, where)
 
-    # Item 10: enforce exact bridge shapes
+    # Bridge adapters accept only their exact declared service shape.
     _validate_exl3_bridge_shape(services, where)
 
     # B2: Native executable bundles require a non-null confirmation token
@@ -934,7 +934,7 @@ def _container_name(svc: BundleService, rank: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Shared ownership guard (item 5: one shared builder for both readiness kinds)
+# Shared ownership guard for both readiness kinds
 # ---------------------------------------------------------------------------
 
 
@@ -986,9 +986,9 @@ def _readiness_actions(
 ) -> list[runtime.RemoteAction]:
     """Generate readiness probe actions with shared ownership guards.
 
-    Item 5: both readiness kinds use the same ownership preamble.
+    Both readiness kinds use the same ownership preamble.
     HTTP readiness verifies all labels before curl.
-    Item 5: no sleep after the final attempt; wall-clock budget fits timeout.
+    The final attempt does not sleep, so the wall-clock budget fits the timeout.
     """
     if svc.readiness is None:
         return []
@@ -1102,7 +1102,7 @@ def _structured_start_actions(
 ) -> list[runtime.RemoteAction]:
     """Build direct-argv start actions for a structured container.
 
-    Item 2: runs the declared argv directly, no vLLM serve/TP/DCP flags.
+    Runs the declared argv directly without adding vLLM serve, TP, or DCP flags.
     Uses exact image identity, ownership labels, deterministic env/volumes.
     """
     sc = svc.structured
@@ -1153,7 +1153,7 @@ def _native_stop_actions(
 ) -> list[runtime.RemoteAction]:
     """Build native stop actions with ownership guards, sorted by rank.
 
-    Item 1 (fb4): daemon probe, then exact-name enumeration.
+    Probes the daemon before enumerating the exact container name.
     Enumeration failure => 74; empty => proven absence (exit 0);
     exact name => proceed to label checks; unexpected output => 74.
     Label inspect failure on proven-present => 74 (unknown), not 73.
@@ -1228,7 +1228,7 @@ def _native_verify_rollback_actions(
 ) -> list[runtime.RemoteAction]:
     """Build verify-rollback actions with ownership guards.
 
-    Item 1 (fb4): daemon probe, then exact-name enumeration.
+    Probes the daemon before enumerating the exact container name.
     Enumeration failure => 2; empty => proven absence (exit 0);
     exact name => present (exit 1); unexpected output => 2.
     Label inspect failure on proven-present => 2 (unknown).
@@ -1270,7 +1270,7 @@ def _native_verify_rollback_actions(
 
 
 # ---------------------------------------------------------------------------
-# EXL3+LMCache bridge — delegates to canonical launcher (item 12)
+# EXL3+LMCache bridge delegated to the canonical launcher
 # ---------------------------------------------------------------------------
 
 
@@ -1279,8 +1279,8 @@ def _load_exl3_lmcache_bridge(
 ) -> dict[str, list[runtime.RemoteAction]]:
     """Build all 8 canonical phases by calling the canonical launcher.
 
-    Item 12: consumes ``build_phases()`` and ``lifecycle_sequence()``
-    exported from the canonical launcher.
+    Consumes ``build_phases()`` and ``lifecycle_sequence()`` exported from the
+    canonical launcher.
     """
     import sparkring_exl3_launcher as exl3
     import sparkring_exl3_lmcache_launcher as lmcache
@@ -1295,12 +1295,12 @@ def _load_exl3_lmcache_bridge(
     )
     profile = exl3.load_profile(profile_path)
 
-    # Item 12: use exported build_phases from canonical launcher
+    # Use the canonical launcher's exported phase builder.
     return lmcache.build_phases(site, profile)
 
 
 # ---------------------------------------------------------------------------
-# Canonical lifecycle sequences (item 12: export from canonical launcher)
+# Canonical lifecycle sequences exported by the canonical launcher
 # ---------------------------------------------------------------------------
 
 
@@ -1309,17 +1309,16 @@ def lifecycle_sequence(
 ) -> list[dict[str, Any]]:
     """Return the canonical lifecycle phase sequence for a command.
 
-    Item 12: delegates to the canonical launcher's exported
-    ``lifecycle_sequence()`` function, which is also consumed by
-    canonical ``main()``. Includes command-appropriate ``on_failure``
-    semantics and a timeout for every phase.
+    Delegates to the canonical launcher's exported ``lifecycle_sequence()``
+    function, which is also consumed by canonical ``main()``. Includes
+    command-appropriate ``on_failure`` semantics and a timeout for every phase.
     """
     import sparkring_exl3_lmcache_launcher as lmcache
     return lmcache.lifecycle_sequence(command, profile)
 
 
 # ---------------------------------------------------------------------------
-# Plan document (items 10, 13)
+# Plan document
 # ---------------------------------------------------------------------------
 
 
@@ -1356,7 +1355,7 @@ def bundle_plan(
     validate_service_ranks(bundle, site)
     check_container_name_collisions(bundle, site)
 
-    # Item 13: complete plan phases
+    # Emit every ordered start and readiness phase.
     phases: list[dict[str, Any]] = []
     for svc in ordered:
         phases.append({
@@ -1384,7 +1383,7 @@ def bundle_plan(
                     "actions": _render_actions(ready_actions),
                 })
 
-    # Item 13: status phase
+    # Emit read-only status phases after startup readiness.
     for svc in ordered:
         phases.append({
             "phase": "status",
@@ -1398,7 +1397,7 @@ def bundle_plan(
             ),
         })
 
-    # Item 9: per-service rollback in reverse topological order
+    # Roll back each service in reverse topological order
     # (not a flattened rank-sorted bag)
     for svc in reversed_:
         phases.append({
@@ -1441,7 +1440,7 @@ def bundle_plan(
             ),
         })
 
-    # Item 13: evidence scope, identity scope, ownership labels
+    # Publish evidence scope, identity scope, and ownership labels.
     plan: dict[str, Any] = {
         "schema": BUNDLE_PLAN_SCHEMA,
         "bundle_id": bundle.bundle_id,
@@ -1546,11 +1545,9 @@ def _bridge_plan(
 ) -> dict[str, Any]:
     """Build a plan-only projection for a canonical EXL3+LMCache bridge.
 
-    Item 10: exact bridge shape enforced in parse_bundle.
-    Item 12: consumes canonical build_phases() and lifecycle_sequence().
-    Item 13: complete plan with evidence scope, identity, labels, graph.
-    Item 14: includes canonical phases, lifecycle sequences, labels,
-    mounts, probes, argv, ordering, and topology.
+    ``parse_bundle`` enforces the exact bridge shape. The projection consumes
+    canonical phases and lifecycle sequences, and includes evidence scope,
+    identities, labels, mounts, probes, argv, ordering, and topology.
     """
     import sparkring_exl3_launcher as exl3
 
@@ -1689,7 +1686,7 @@ def plan_projection(
 ) -> dict[str, Any]:
     """Stable semantic projection of a resolved plan for diff comparison.
 
-    Item 14: includes native and canonical phases, lifecycle sequences,
+    Includes native and canonical phases, lifecycle sequences,
     source/profile/image identity, labels, mounts, probes, argv/commands,
     graph/action order, and topology.
     """
@@ -1854,7 +1851,7 @@ def bundle_explain(bundle: RuntimeBundle, site: Any = None) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Native execution with invocation-local ledger (items 6, 7)
+# Native execution with an invocation-local ledger
 # ---------------------------------------------------------------------------
 
 
@@ -1864,8 +1861,8 @@ def execute_native_start(
 ) -> dict[str, Any]:
     """Execute native bundle start with invocation-local ledger.
 
-    Item 6: catches all executor exceptions, returns result for every rank.
-    Item 6: rollback continues after exceptions, reports attempted/missing.
+    Executor exceptions produce a result for every rank. Rollback continues
+    after exceptions and reports attempted and missing ranks.
     """
     if any(
         svc.source_kind in PLAN_ONLY_SOURCE_KINDS for svc in bundle.services
@@ -1897,7 +1894,7 @@ def execute_native_start(
             svc.profile.startup_timeout_seconds if svc.profile
             else svc.structured.startup_timeout_seconds
         )
-        # Item 6: catch all exceptions, return result for every rank
+        # Every scheduled rank receives a result, including executor failures.
         start_results = _safe_execute(start_actions, timeout)
         failed_ranks = runtime.check_results(
             "start", start_results,
@@ -1956,15 +1953,14 @@ def _safe_execute(
 ) -> dict[int, dict]:
     """Execute actions, returning a result for every scheduled rank.
 
-    Item 6: any exception (not just timeout) produces a nonzero
-    structured result for the affected rank.  Other ranks still get
-    their real results.
+    A whole-executor exception gives every scheduled rank reserved failure code
+    125. After a normal return, missing ranks receive individual failure results.
     """
     expected_ranks = {a.rank for a in actions}
     try:
         results = runtime.execute(actions, timeout)
     except Exception as exc:
-        # Item 5 (fb4): reserved infrastructure code 125 + error_type
+        # Executor failures use reserved code 125 and include an error type.
         return {
             rank: {
                 "exit_code": 125,
@@ -2002,8 +1998,8 @@ def _execute_rollback(
 ) -> dict[str, Any]:
     """Roll back only ledgered (service_id, rank) entries.
 
-    Item 6: catches its own exceptions and continues to later services.
-    Item 6: reports attempted/reported/missing ranks.
+    Catches executor exceptions and continues to later services. Reports
+    attempted, reported, and missing ranks.
     """
     rollback_results: dict[str, Any] = {
         "phases": [], "rollback_status": "success",
@@ -2023,7 +2019,7 @@ def _execute_rollback(
             svc.profile.startup_timeout_seconds if svc.profile
             else svc.structured.startup_timeout_seconds
         )
-        # Item 6: catch executor exceptions during rollback
+        # Executor failures do not prevent later rollback phases.
         results = _safe_execute(stop_actions, timeout)
         reported_ranks = set(results)
         missing_ranks = sorted(set(ledger_ranks) - reported_ranks)
@@ -2032,7 +2028,7 @@ def _execute_rollback(
             res.get("exit_code", 0) != 0
             for res in results.values()
         )
-        # Item 6: missing ranks = failure
+        # Missing or unexpected ranks make rollback fail closed.
         if missing_ranks or extra_ranks:
             phase_failed = True
         if phase_failed:
@@ -2054,7 +2050,7 @@ def _execute_rollback(
 def execute_native_status(
     bundle: RuntimeBundle, site: Any,
 ) -> dict[str, Any]:
-    """Execute native status checks.  Item 7: aggregate, nonzero on failure."""
+    """Execute status checks and aggregate failures in the returned status."""
     ordered = topological_order(bundle.services)
     validate_service_ranks(bundle, site)
     results: dict[str, Any] = {"phases": []}

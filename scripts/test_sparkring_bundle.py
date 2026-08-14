@@ -1,6 +1,6 @@
 """Offline tests for the multi-service runtime bundle layer.
 
-Covers all supervisor feedback 3 required items:
+Covers the runtime-bundle interface and fail-closed invariants:
 * Bridge shape enforcement, lifecycle parity, structured containers
 * Ownership guards for both readiness kinds with fake-engine tests
 * Stop/rollback daemon-probe semantics with fake-engine matrix
@@ -308,7 +308,7 @@ def test_nf3_profile_rejected_as_runtime_profile(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Item 8: Path containment
+# Bundle-source path containment
 # ---------------------------------------------------------------------------
 
 
@@ -423,7 +423,7 @@ def test_source_path_not_a_file_rejected(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Item 2: Structured container validation
+# Structured-container validation
 # ---------------------------------------------------------------------------
 
 
@@ -494,7 +494,7 @@ def test_structured_container_readiness_port_matches(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Item 10: Bridge shape enforcement
+# Closed bridge-shape validation
 # ---------------------------------------------------------------------------
 
 
@@ -612,7 +612,7 @@ def test_topological_order_stable(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Item 9: Canonicalization
+# Dependency canonicalization
 # ---------------------------------------------------------------------------
 
 
@@ -699,7 +699,7 @@ def test_container_name_collision_rejected(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Item 5: Shared ownership guard for both readiness kinds
+# Shared ownership guard for both readiness kinds
 # ---------------------------------------------------------------------------
 
 
@@ -733,7 +733,7 @@ def test_container_running_readiness_has_ownership_guards(tmp_path):
 
 
 def test_http_get_readiness_has_ownership_guards(tmp_path):
-    """Item 5: HTTP readiness must verify all labels before curl."""
+    """HTTP readiness must verify every ownership label before curl."""
     bundle, site = _make_bundle_with_readiness(
         tmp_path, "http-get", port="site-api", path="/health",
     )
@@ -750,7 +750,7 @@ def test_http_get_readiness_has_ownership_guards(tmp_path):
 
 
 def test_http_get_no_sleep_after_final_attempt(tmp_path):
-    """Item 5: no sleep after the final curl attempt."""
+    """The final curl attempt must not sleep."""
     bundle, site = _make_bundle_with_readiness(
         tmp_path, "http-get", port="site-api", path="/health",
         timeout_seconds=10, interval_seconds=5,
@@ -764,7 +764,7 @@ def test_http_get_no_sleep_after_final_attempt(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Item 5: Fake-engine behavior tests for ownership guards
+# Fake-engine behavior for ownership guards
 # ---------------------------------------------------------------------------
 
 
@@ -807,7 +807,7 @@ def test_ownership_guard_rejects_wrong_managed_label(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Item 3: Stop/rollback daemon-probe semantics
+# Stop and rollback daemon-probe semantics
 # ---------------------------------------------------------------------------
 
 
@@ -843,7 +843,7 @@ def test_verify_rollback_actions_have_daemon_probe(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Item 6: Executor exception safety
+# Executor exception safety
 # ---------------------------------------------------------------------------
 
 
@@ -943,7 +943,7 @@ def test_rollback_reports_missing_ranks(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Item 7: Status/confirmation symmetry
+# Status and confirmation symmetry
 # ---------------------------------------------------------------------------
 
 
@@ -1031,7 +1031,7 @@ def test_start_requires_confirmation_on_execute(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Item 12: Lifecycle parity — bridge consumes canonical functions
+# Lifecycle parity between the bridge and canonical functions
 # ---------------------------------------------------------------------------
 
 
@@ -1099,7 +1099,7 @@ def test_bridge_phases_match_canonical_build_phases(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Item 13: Plan completeness
+# Plan completeness
 # ---------------------------------------------------------------------------
 
 
@@ -1194,7 +1194,7 @@ def test_native_plan_capabilities_have_confirmation_flags(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Item 14: Resolved diff includes canonical phases
+# Resolved diff includes canonical phases
 # ---------------------------------------------------------------------------
 
 
@@ -1364,7 +1364,7 @@ def test_explain_lists_confirmation_commands(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Item 16: Archive rehearsal
+# Archive rehearsal
 # ---------------------------------------------------------------------------
 
 
@@ -1956,7 +1956,7 @@ def test_bridge_source_must_exist(tmp_path):
 
 
 def test_rehearse_script_runs_clean(monkeypatch):
-    """The rehearsal script passes all checks in the current tree."""
+    """The rehearsal script passes all checks in the checkout."""
     import rehearse_runtime_bundle_archive as rehearse
     rehearse._POISONED = False
     rc = rehearse.main([])
@@ -2013,11 +2013,11 @@ def test_rehearse_script_no_git_operations(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Feedback 6 regressions
+# Fail-closed executor and schema regressions
 # ---------------------------------------------------------------------------
 
 
-# Item 3: _safe_execute rejects extra/missing/duplicate ranks
+# _safe_execute rejects extra, missing, and duplicate ranks
 def test_safe_execute_missing_rank(tmp_path, monkeypatch):
     """Missing rank in executor output produces exit_code=125."""
     profile = _write_profile(tmp_path, "engine", _generic_doc())
@@ -2099,7 +2099,7 @@ def test_start_rollback_fails_on_missing_rank(tmp_path, monkeypatch):
     assert result["rollback"]["rollback_status"] == "failed"
 
 
-# Item 4: verify-rollback classifies nonzero conservatively
+# Rollback verification classifies nonzero results conservatively
 def test_verify_rollback_executor_exception_is_unknown(tmp_path, monkeypatch):
     """Exit 125 (executor exception) must be unknown, not absent."""
     profile = _write_profile(tmp_path, "engine", _generic_doc())
@@ -2158,7 +2158,7 @@ def test_verify_rollback_missing_rank_is_unknown(tmp_path, monkeypatch):
     assert result["status"] == "unknown"
 
 
-# Item 5: rollback CLI treats 73/74/125 as failure
+# Rollback CLI treats reserved failure codes as failures
 def test_rollback_cli_treats_73_as_failure(tmp_path, monkeypatch):
     """Rollback CLI must treat exit 73 (ownership mismatch) as failure."""
     import sparkring_bundle_launcher as launcher
@@ -2192,7 +2192,7 @@ def test_rollback_cli_treats_125_as_failure(tmp_path, monkeypatch):
     assert rc == 1
 
 
-# Item 6: case-insensitive shell entrypoint rejection
+# Case-insensitive shell entrypoint rejection
 @pytest.mark.parametrize("entrypoint", [
     "BASH", "Bash", "PowerShell.EXE", "CMD.EXE", "Cmd.Exe",
     "PWSH", "ZSH", "FiSh", "CSH", "TCSH", "ASH", "DASH",
@@ -2212,7 +2212,7 @@ def test_structured_container_rejects_mixed_case_shell(tmp_path, entrypoint):
     assert "shell" in str(exc.value).lower()
 
 
-# Item 7: structured container schema requirement
+# Structured-container schema requirement
 def test_structured_container_requires_schema(tmp_path):
     """Structured container without schema field must be rejected."""
     sc = _structured_doc()
