@@ -13,7 +13,7 @@ The long-term goal is a model-agnostic runtime for efficient, switchless multi-n
 ## Acknowledgements
 
 SparkRing would not exist without the months of research, profiling, kernel development, runtime patching, model conversion, and operational testing shared by the RTX 6000 Pro inference community.
-https://github.com/local-inference-lab/vllm
+https://github.com/local-inference-lab/
 
 It builds heavily on work from the contributors behind B12X, SparkInfer, vLLM, the GLM model and quantization ecosystem, and the broader NVIDIA inference community. 
 
