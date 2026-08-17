@@ -156,6 +156,36 @@ Pass per model: every accumulated signature validates
 admitted shapes; no aborts. One failing signature: stop, save the stats,
 report — do not promote, do not retry-loop.
 
+### Executed 2026-08-17 — pythia-70m (width 512), shadow window closed
+
+First non-GLM model ever served by this stack: four-rank TP4, shadow mode,
+eager, API healthy, traffic driven per this runbook. The (1, 512) BF16
+signature closed its 10,000-collective window on every rank with
+bit-identical statistics:
+
+```text
+collectives=10000 exact_mismatches=1565908 outside_tolerance=3
+nonfinite_mismatches=0 max_abs=0.5 max_ulp=30080
+```
+
+Configured gate verdict: FAIL (outside_tolerance must be zero). Operator
+disposition (Cody, same day): accepted as explained, not promoted. The
+divergence signature is BF16 reduction-order noise at near-cancellation
+(SIRCL pairwise tree versus NCCL ring order): three elements of 5.12
+million (6e-7) beyond the 1 percent envelope, zero nonfinite, and all four
+ranks agree bit-for-bit, which corruption would not. pythia-70m is a
+research-grade model with documented extreme activation outliers that make
+near-cancellation unusually common. The signature remains unpromoted; the
+matrix proceeds to properly trained models (opt-125m, Qwen3-0.6B,
+TinyLlama) to determine whether any outlier appears at all under sane
+activation statistics.
+
+Launch-shape findings recorded during bring-up, each required for non-GLM
+serving from the deployed image: the entrypoint's LD_PRELOAD compat-libcuda
+and baked-env unset list must be replicated when bypassing it; follower
+ranks require --headless; the full v23 bind-mount set is load-bearing; and
+the CuTe-DSL warmup crash documented in runtime/hotfixes/deployed-r34-20260810.
+
 Excluded candidates, for the record: Qwen2.5-0.5B (14 heads % 4 != 0),
 SmolLM2-135M/360M (9/15 heads), Gemma-3-270M (heads pass; pinned-runtime
 support unverified).
