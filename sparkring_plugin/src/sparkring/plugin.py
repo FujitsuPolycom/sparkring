@@ -52,6 +52,12 @@ def _register_impl() -> None:
         _NATIVE_LIBRARY
     ):
         os.environ["SPARK_TP4_LIBRARY"] = _NATIVE_LIBRARY
+    if _enabled():
+        # Feature-detect the vLLM integration point before any family
+        # patches it; raises a clear refusal on an incompatible vLLM.
+        from sparkring._compat import require_compatible
+
+        require_compatible()
     # Core eager TP4 all-reduce family. install() is idempotent and returns
     # without touching vLLM when its own mode variable is unset or disabled.
     importlib.import_module("spark_tp4_backend").install()
