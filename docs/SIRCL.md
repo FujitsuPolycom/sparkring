@@ -86,6 +86,27 @@ public project and repository are named **SparkRing**. This repository does
 not ship a `sircl` package, a `backend="sircl"` ProcessGroup, or a stable
 `sircl_*` API.
 
+### Design note: ring sizes beyond four
+
+The validated collective decomposes the four-Spark cycle into two perfect
+matchings, exploiting a coincidence specific to N=4: two rounds of pairwise
+sums complete a full all-reduce. This does not generalize.
+
+- Even N > 4: the cycle still splits into two matchings, but two pairwise
+  rounds no longer complete a reduction. A switchless N-ring needs the
+  classic ring reduce-scatter/all-gather schedule (about 2(N-1) neighbor
+  hops, latency growing linearly in N) or relay rounds for the exchanges
+  the cycle does not provide directly.
+- Odd N (5, 7, ...): an odd cycle admits no perfect matching, so the
+  pairwise structure is unavailable outright; only ring schedules apply.
+- Model admission gates independently of the transport: vLLM requires
+  attention-head counts divisible by the TP degree, which makes TP6
+  (24/48/96-head models) and TP8 plausible while TP5/7/10 are rarely
+  satisfiable.
+
+No implementation or evidence exists beyond N in {2, 4}; this note records
+the design boundary only.
+
 ## Code and evidence map
 
 - `spark_transport/src/`, `spark_transport/include/`: verbs endpoints,
