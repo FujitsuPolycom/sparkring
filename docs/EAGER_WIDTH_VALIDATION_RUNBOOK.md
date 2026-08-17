@@ -1,8 +1,8 @@
 # Eager width admission validation runbook
 
-Status: leg 2 executed and passed; leg 3 in progress (pythia-70m window
-closed, gate fail dispositioned — results below); leg 1 unexecuted. All
-executions 2026-08-17. This runbook produces
+Status: leg 2 executed and passed; leg 3 matrix complete (four widths,
+results below; width-1024 disagreement unresolved pending FP32-oracle
+arbitration); leg 1 unexecuted. All executions 2026-08-17. This runbook produces
 functional and regression evidence only — no performance or maturity claim.
 Every leg is operator-launched. Feature under test: opt-in width-generic
 eager TP4 all-reduce admission (`VLLM_SPARK_TP4_EAGER_WIDTHS`), commit
@@ -191,6 +191,35 @@ serving from the deployed image: the entrypoint's LD_PRELOAD compat-libcuda
 and baked-env unset list must be replicated when bypassing it; follower
 ranks require --headless; the full v23 bind-mount set is load-bearing; and
 the CuTe-DSL warmup crash documented in runtime/hotfixes/deployed-r34-20260810.
+
+### Executed 2026-08-17 — full four-width matrix complete
+
+All four models served TP4 shadow-mode from the deployed image via the
+v23-cloned launch harness; every signature window is the (1, W) BF16 decode
+shape at 10,000 collectives; all four ranks reported bit-identical
+statistics in every run.
+
+| Width | Model | outside_tolerance | rate | max_abs | Gate |
+|---:|---|---:|---:|---:|---|
+| 512 | pythia-70m | 3 / 5.12M | 5.9e-7 | 0.5 | FAIL, dispositioned |
+| 768 | opt-125m | 0 / 7.68M | 0 | 0.0156 | PASS |
+| 1024 | Qwen3-0.6B | 1153 / 10.24M | 1.1e-4 | ~1 | FAIL, open |
+| 2048 | TinyLlama-1.1B | 2 / 20.48M | 1.0e-7 | 0.0625 | FAIL, dispositioned |
+
+Interpretation on the evidence: divergence does not scale with width or
+payload (the largest width is the cleanest), zero nonfinite values appeared
+in 40,000 windowed collectives, and every run reproduced bit-identically
+across ranks — jointly inconsistent with transport corruption and
+consistent with BF16 summation-order sensitivity of each model's
+activation distribution. SIRCL reduces as a balanced pairwise tree; the
+stock path reduces in ring order; the two orders disagree most on
+Qwen3-0.6B, an architecture with documented extreme activation-outlier
+channels. The width-1024 signature remains unpromoted pending FP32-oracle
+arbitration (which order lies closer to fp32 truth) and a
+disagreement-policy decision for outlier-heavy models. Diagnostic-only
+shadow decode rates, batch 1: opt-125m 68.8 tok/s, Qwen3-0.6B 6.6 tok/s,
+TinyLlama 5.9 tok/s (shadow executes every admitted collective on both
+transports and compares elementwise; no performance claim attaches).
 
 Excluded candidates, for the record: Qwen2.5-0.5B (14 heads % 4 != 0),
 SmolLM2-135M/360M (9/15 heads), Gemma-3-270M (heads pass; pinned-runtime
