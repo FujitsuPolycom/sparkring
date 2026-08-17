@@ -221,6 +221,34 @@ shadow decode rates, batch 1: opt-125m 68.8 tok/s, Qwen3-0.6B 6.6 tok/s,
 TinyLlama 5.9 tok/s (shadow executes every admitted collective on both
 transports and compares elementwise; no performance claim attaches).
 
+### FP32-oracle arbitration of the width-1024 disagreement (2026-08-17)
+
+Modeled analysis via `spark_fp32_ground_truth` (run CPU-only inside the
+deployed image; module taken from the adaptive-branch checkout), width
+1024, world size 4, 400 iterations per pattern, comparing the SIRCL
+balanced-tree order (as implemented in `gpu_tp4_tensor.cu`) and a naive
+sequential BF16 sum against correctly rounded FP32 ground truth:
+
+| pattern | closer to truth (tree/seq/tie) | max err tree | max err seq | outside gate tol vs truth (tree/seq) |
+|---|---|---:|---:|---|
+| random | 54908 / 52192 / 302500 | 1.25 | 1.375 | 5162 / 5181 |
+| cancellation | 1518 / 139 / 407943 | 0.000732 | 0.125 | 0 / 81 |
+
+On the cancellation pattern — the divergence class observed in the
+Qwen3-0.6B window — the tree order is two orders of magnitude closer to
+truth, records zero elements outside the gate tolerance against truth,
+and the 81 order-versus-order disagreements coincide exactly with the 81
+elements where the sequential reference itself exceeds tolerance against
+truth. In this modeled regime every disagreement the shadow gate counts
+is an error of the reference, not the candidate. Caveats: the sequential
+comparator is a naive left-to-right sum, not NCCL's actual chunked ring
+order (the tool disclaims modeling NCCL), and inputs are synthetic
+patterns rather than captured Qwen activations. Proposed follow-ups
+before any width-1024 promotion decision: capture real divergent
+collective inputs (flight recorder) and rerun the oracle on them, and
+consider a truth-anchored gate criterion for outlier-heavy models
+alongside the existing disagreement gate.
+
 Excluded candidates, for the record: Qwen2.5-0.5B (14 heads % 4 != 0),
 SmolLM2-135M/360M (9/15 heads), Gemma-3-270M (heads pass; pinned-runtime
 support unverified).
