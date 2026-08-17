@@ -1,6 +1,7 @@
 # Eager width admission validation runbook
 
-Status: offline-prepared; no leg has been executed. This runbook produces
+Status: leg 2 executed and passed (2026-08-17, results below); legs 1 and 3
+remain unexecuted. This runbook produces
 functional and regression evidence only — no performance or maturity claim.
 Every leg is operator-launched. Feature under test: opt-in width-generic
 eager TP4 all-reduce admission (`VLLM_SPARK_TP4_EAGER_WIDTHS`), commit
@@ -72,6 +73,33 @@ GID indexes from the deployed topology configuration):
 Pass: all ranks complete every payload point with zero verification
 mismatches; latency in family with the 12288-byte baseline (record, do
 not gate on, the numbers).
+
+### Executed 2026-08-17 19:37Z — ALL PASS
+
+Operator-launched from CodesPC; stack down, links idle. `spark_tp4_tensor_probe`
+from the `sparkring-native-full-20260812T0335Z` build on r0, fanned to
+r1/r2/r3. Control TCP over the direct links (192.168.101/102/103/200.x)
+because the 192.168.0.x network was unavailable; RDMA devices and GID
+indexes per the deployed v23 per-rank env (`rocep1s0f0/f1`, odd ranks
+inverted, GID 3). Every rank reported `mismatched_elements=0 correct=true`
+at every point. r0 percentiles (µs):
+
+| bytes | width x rows | p50 | p95 | p99 | max |
+|---:|---|---:|---:|---:|---:|
+| 1024 | 512 x 1 | 14.8 | 16.3 | 21.0 | 705.3 |
+| 1536 | 768 x 1 | 17.9 | 19.7 | 25.8 | 532.3 |
+| 2048 | 1024 x 1 | 18.2 | 19.5 | 24.1 | 39.5 |
+| 4096 | 2048 x 1 | 20.3 | 21.4 | 23.2 | 27.9 |
+| 6144 | 512 x 6 | 22.8 | 24.8 | 26.5 | 32.2 |
+| 9216 | 768 x 6 | 26.7 | 28.6 | 30.4 | 34.4 |
+| 12288 | 6144 x 1 (baseline) | 32.4 | 33.6 | 37.5 | 443.0 |
+| 24576 | 2048 x 6 | 48.2 | 50.7 | 53.8 | 55.7 |
+| 2097152 | 2048 x 512-equivalent | 2563.3 | 2810.3 | 3067.8 | 5035.4 |
+
+Cross-rank p50 agreement at the baseline was within 0.05 µs
+(32.30-32.35 µs across ranks 0-3). Numbers are recorded, not gated;
+occasional first-iteration max outliers (up to ~0.8 ms) appeared only at
+the smallest payloads and at rank warmup.
 
 ## Leg 3 — small-model shadow matrix
 
