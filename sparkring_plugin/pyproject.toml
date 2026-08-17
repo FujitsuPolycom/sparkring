@@ -25,6 +25,9 @@ Repository = "https://github.com/Cody-Palmer/SparkRing"
 [project.entry-points."vllm.general_plugins"]
 sparkring = "sparkring.plugin:register"
 
+[project.scripts]
+sparkring-preflight = "sparkring.preflight:main"
+
 [tool.setuptools]
 package-dir = { "" = "src" }
 
