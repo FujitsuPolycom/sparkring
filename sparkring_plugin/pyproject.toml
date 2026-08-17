@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sparkring"
+version = "0.1.0.dev0"
+description = "Switchless direct-cable RDMA collectives (SIRCL) for vLLM tensor parallelism on directly cabled NVIDIA GB10 Spark clusters"
+readme = "README.md"
+requires-python = ">=3.10"
+# License mirrors the repository root LICENSE/NOTICE; confirm before first publish.
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: GPU :: NVIDIA CUDA",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+]
+
+[project.urls]
+Repository = "https://github.com/Cody-Palmer/SparkRing"
+
+# vLLM loads every registered general plugin in the engine and all worker
+# processes. register() is a no-op unless a VLLM_SPARK_* mode variable is
+# set, so installing the wheel changes nothing until explicitly enabled.
+[project.entry-points."vllm.general_plugins"]
+sparkring = "sparkring.plugin:register"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+sparkring = ["_vendor/*.py", "_native/*.so"]
