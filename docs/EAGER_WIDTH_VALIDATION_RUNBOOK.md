@@ -1,7 +1,8 @@
 # Eager width admission validation runbook
 
-Status: leg 2 executed and passed (2026-08-17, results below); legs 1 and 3
-remain unexecuted. This runbook produces
+Status: leg 2 executed and passed; leg 3 in progress (pythia-70m window
+closed, gate fail dispositioned — results below); leg 1 unexecuted. All
+executions 2026-08-17. This runbook produces
 functional and regression evidence only — no performance or maturity claim.
 Every leg is operator-launched. Feature under test: opt-in width-generic
 eager TP4 all-reduce admission (`VLLM_SPARK_TP4_EAGER_WIDTHS`), commit
@@ -173,7 +174,12 @@ disposition (Cody, same day): accepted as explained, not promoted. The
 divergence signature is BF16 reduction-order noise at near-cancellation
 (SIRCL pairwise tree versus NCCL ring order): three elements of 5.12
 million (6e-7) beyond the 1 percent envelope, zero nonfinite, and all four
-ranks agree bit-for-bit, which corruption would not. pythia-70m is a
+ranks agree bit-for-bit, which corruption would not. For scale: 99.99994
+percent of compared elements sat inside the 1 percent envelope, and the
+worst absolute divergence was 0.5 on a bf16 activation. The operator also
+notes the practical scope: pythia-70m is a ~140 MB instrument model that
+nobody would serve across four Sparks; it is in this matrix purely as the
+fastest width-512 traffic source. pythia-70m is a
 research-grade model with documented extreme activation outliers that make
 near-cancellation unusually common. The signature remains unpromoted; the
 matrix proceeds to properly trained models (opt-125m, Qwen3-0.6B,
