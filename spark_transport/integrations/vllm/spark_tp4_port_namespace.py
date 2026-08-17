@@ -21,6 +21,7 @@ _MAX_CONTROL_PORT = 65535
 _EAGER_ALLREDUCE_DEFAULT_PORTS = (11000, 11001)
 _EAGER_ALLREDUCE_PORT_STRIDE = 2
 _EAGER_ALLREDUCE_PREFILL_MAX_QUERY_ROWS = 512
+_EAGER_ALLREDUCE_DEFAULT_WIDTH_ELEMENTS = 6144
 
 _EAGER_ALLGATHER_DEFAULT_BASE_PORT = 9490
 _EAGER_ALLGATHER_PORT_STRIDE = 10
@@ -131,6 +132,112 @@ def _maximum_allreduce_query_rows(environ: Mapping[str, str]) -> int:
     )
 
 
+_EAGER_ALLREDUCE_WIDTH_ENV = "VLLM_SPARK_TP4_EAGER_WIDTHS"
+# Width cap: 1_048_576 elements x 512 max rows x 2 bytes = 1 GiB, which
+# stays under the native single-RDMA-write bound of UINT32_MAX bytes by
+# construction.
+_EAGER_ALLREDUCE_MAX_WIDTH_ELEMENTS = 1_048_576
+_EAGER_ALLREDUCE_BF16_BYTES = 2
+
+
+def eager_allreduce_admitted_widths(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[int, ...]:
+    """Parse VLLM_SPARK_TP4_EAGER_WIDTHS into a sorted ascending tuple.
+
+    Unset or empty -> (6144,). Otherwise comma-separated integer widths
+    (elements per row). Fail-closed ValueError names the env var on any
+    empty token, non-integer, out-of-range, or duplicated width.
+    """
+    environment = _environment(environ)
+    raw = environment.get(_EAGER_ALLREDUCE_WIDTH_ENV, "")
+    if not raw:
+        return (_EAGER_ALLREDUCE_DEFAULT_WIDTH_ELEMENTS,)
+    tokens = [token.strip() for token in raw.split(",")]
+    widths: list[int] = []
+    seen: set[int] = set()
+    for token in tokens:
+        if not token:
+            raise ValueError(
+                f"{_EAGER_ALLREDUCE_WIDTH_ENV} contains an empty token"
+            )
+        try:
+            width = int(token)
+        except ValueError as error:
+            raise ValueError(
+                f"{_EAGER_ALLREDUCE_WIDTH_ENV} token {token!r} is not "
+                "an integer"
+            ) from error
+        if width < 1 or width > _EAGER_ALLREDUCE_MAX_WIDTH_ELEMENTS:
+            raise ValueError(
+                f"{_EAGER_ALLREDUCE_WIDTH_ENV} width {width} is out of "
+                f"range [1, {_EAGER_ALLREDUCE_MAX_WIDTH_ELEMENTS}]"
+            )
+        if width in seen:
+            raise ValueError(
+                f"{_EAGER_ALLREDUCE_WIDTH_ENV} duplicates width {width}"
+            )
+        seen.add(width)
+        widths.append(width)
+    return tuple(sorted(widths))
+
+
+def eager_allreduce_payload_sizes(
+    environ: Mapping[str, str] | None = None,
+) -> tuple[int, ...]:
+    """Sorted unique payload byte counts for all admitted widths and rows.
+
+    Each entry is rows * width * 2 bytes for every admitted width and every
+    rows in [1, _maximum_allreduce_query_rows(environ)]. Cross-width
+    duplicates collapse to one entry: the same byte count is the same
+    native operation.
+    """
+    environment = _environment(environ)
+    maximum = _maximum_allreduce_query_rows(environment)
+    widths = eager_allreduce_admitted_widths(environment)
+    sizes: set[int] = set()
+    for width in widths:
+        bytes_per_row = width * _EAGER_ALLREDUCE_BF16_BYTES
+        for rows in range(1, maximum + 1):
+            sizes.add(rows * bytes_per_row)
+    return tuple(sorted(sizes))
+
+
+def eager_allreduce_ports_for_payload(
+    payload_bytes: int,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[int, int]:
+    """Control-port pair for one payload size under canonical indexing.
+
+    Index = position of payload_bytes in eager_allreduce_payload_sizes;
+    the pair is (base0 + 2*index, base1 + 2*index) validated as a pair.
+    """
+    environment = _environment(environ)
+    sizes = eager_allreduce_payload_sizes(environment)
+    try:
+        index = sizes.index(payload_bytes)
+    except ValueError:
+        raise ValueError(
+            "unsupported Spark TP4 eager all-reduce payload size: "
+            f"{payload_bytes} bytes"
+        ) from None
+    base0 = _integer(
+        environment,
+        "SPARK_TP4_CONTROL_PORT0",
+        _EAGER_ALLREDUCE_DEFAULT_PORTS[0],
+    )
+    base1 = _integer(
+        environment,
+        "SPARK_TP4_CONTROL_PORT1",
+        _EAGER_ALLREDUCE_DEFAULT_PORTS[1],
+    )
+    offset = index * _EAGER_ALLREDUCE_PORT_STRIDE
+    return validate_control_port_pair(
+        (base0 + offset, base1 + offset),
+        owner=f"eager all-reduce payload {payload_bytes}",
+    )
+
+
 def _eager_allreduce_pair(
     query_rows: int, environ: Mapping[str, str]
 ) -> tuple[int, int]:
@@ -145,21 +252,16 @@ def _eager_allreduce_pair(
             "Spark TP4 eager all-reduce query rows must be in "
             f"[1, {maximum}]: {query_rows}"
         )
-    base0 = _integer(
-        environ,
-        "SPARK_TP4_CONTROL_PORT0",
-        _EAGER_ALLREDUCE_DEFAULT_PORTS[0],
+    # Legacy row-denominated identity: with the default width the payload
+    # for query_rows is query_rows * default_width * 2 bytes, whose
+    # canonical payload-size index is query_rows - 1, so this delegation
+    # is bit-identical to the former base + 2*(query_rows-1) formula.
+    payload_bytes = (
+        query_rows
+        * _EAGER_ALLREDUCE_DEFAULT_WIDTH_ELEMENTS
+        * _EAGER_ALLREDUCE_BF16_BYTES
     )
-    base1 = _integer(
-        environ,
-        "SPARK_TP4_CONTROL_PORT1",
-        _EAGER_ALLREDUCE_DEFAULT_PORTS[1],
-    )
-    offset = (query_rows - 1) * _EAGER_ALLREDUCE_PORT_STRIDE
-    return validate_control_port_pair(
-        (base0 + offset, base1 + offset),
-        owner=f"eager all-reduce Q{query_rows}",
-    )
+    return eager_allreduce_ports_for_payload(payload_bytes, environ)
 
 
 def _eager_allgather_pair(
@@ -282,13 +384,13 @@ def active_port_reservations(
         frozenset({"custom", "disabled", "shadow"}),
     )
     if allreduce_mode in {"custom", "shadow"}:
-        for query_rows in range(
-            1, _maximum_allreduce_query_rows(environment) + 1
-        ):
+        for payload_bytes in eager_allreduce_payload_sizes(environment):
             reservations.append(
                 PortReservation(
-                    f"eager_allreduce:q={query_rows}",
-                    _eager_allreduce_pair(query_rows, environment),
+                    f"eager_allreduce:payload={payload_bytes}",
+                    eager_allreduce_ports_for_payload(
+                        payload_bytes, environment
+                    ),
                 )
             )
         if allreduce_mode == "custom" and _flag(

@@ -38,9 +38,12 @@ class Tp4PortNamespaceTest(unittest.TestCase):
             reservation.owner: reservation.ports
             for reservation in reservations
         }
-        self.assertEqual(by_owner["eager_allreduce:q=1"], (11000, 11001))
         self.assertEqual(
-            by_owner["eager_allreduce:q=512"], (12022, 12023)
+            by_owner["eager_allreduce:payload=12288"], (11000, 11001)
+        )
+        self.assertEqual(
+            by_owner["eager_allreduce:payload=6291456"],
+            (12022, 12023),
         )
         self.assertEqual(by_owner["eager_allgather:slot=0"], (9490, 9491))
         self.assertNotIn("eager_allgather:slot=2", by_owner)
@@ -118,7 +121,8 @@ class Tp4PortNamespaceTest(unittest.TestCase):
 
         with self.assertRaisesRegex(
             ValueError,
-            r"port 9490: eager_allreduce:q=6, eager_allgather:slot=0",
+            r"port 9490: eager_allreduce:payload=73728, "
+            r"eager_allgather:slot=0",
         ):
             namespace.validate_active_port_namespace(environment)
 
@@ -148,7 +152,8 @@ class Tp4PortNamespaceTest(unittest.TestCase):
 
         with self.assertRaisesRegex(
             ValueError,
-            r"port 12002: eager_allreduce:q=1, eager_allreduce:q=2",
+            r"port 12002: eager_allreduce:payload=12288, "
+            r"eager_allreduce:payload=24576",
         ):
             namespace.validate_active_port_namespace(environment)
 
@@ -211,6 +216,139 @@ class Tp4PortNamespaceTest(unittest.TestCase):
                 spark_tp4_vocab_allgather_backend._graph_control_ports(),
                 (10110, 10111),
             )
+
+    def test_eager_admitted_widths_default_and_empty(self) -> None:
+        self.assertEqual(
+            namespace.eager_allreduce_admitted_widths({}), (6144,)
+        )
+        self.assertEqual(
+            namespace.eager_allreduce_admitted_widths(
+                {"VLLM_SPARK_TP4_EAGER_WIDTHS": ""}
+            ),
+            (6144,),
+        )
+
+    def test_eager_admitted_widths_parsing(self) -> None:
+        self.assertEqual(
+            namespace.eager_allreduce_admitted_widths(
+                {"VLLM_SPARK_TP4_EAGER_WIDTHS": "4096,6144"}
+            ),
+            (4096, 6144),
+        )
+        self.assertEqual(
+            namespace.eager_allreduce_admitted_widths(
+                {"VLLM_SPARK_TP4_EAGER_WIDTHS": " 4096 , 6144 "}
+            ),
+            (4096, 6144),
+        )
+
+    def test_eager_admitted_widths_rejects_invalid(self) -> None:
+        env = "VLLM_SPARK_TP4_EAGER_WIDTHS"
+        for raw in (
+            "0",
+            "-4096",
+            "abc",
+            "4096.5",
+            "6144,6144",
+            "4096,,6144",
+            "2000000",
+        ):
+            with self.assertRaisesRegex(ValueError, env):
+                namespace.eager_allreduce_admitted_widths({env: raw})
+
+    def test_eager_allreduce_legacy_identity(self) -> None:
+        for rows in range(1, 7):
+            payload = rows * 12288
+            self.assertEqual(
+                namespace.eager_allreduce_ports_for_payload(payload, {}),
+                namespace.eager_allreduce_control_ports(rows, {}),
+            )
+        self.assertEqual(
+            namespace.eager_allreduce_ports_for_payload(12288, {}),
+            (11000, 11001),
+        )
+        self.assertEqual(
+            namespace.eager_allreduce_ports_for_payload(73728, {}),
+            (11010, 11011),
+        )
+        prefill = {"VLLM_SPARK_TP4_PREFILL_Q512": "1"}
+        self.assertEqual(
+            namespace.eager_allreduce_ports_for_payload(
+                512 * 12288, prefill
+            ),
+            (12022, 12023),
+        )
+
+    def test_eager_allreduce_multi_width_dedups_payload_sizes(self) -> None:
+        environment = {
+            "VLLM_SPARK_TP4_EAGER_WIDTHS": "3072,6144",
+            "VLLM_SPARK_TP4_PREFILL_Q512": "1",
+        }
+        sizes = namespace.eager_allreduce_payload_sizes(environment)
+        # 2*3072*2 == 1*6144*2 == 12288 appears once.
+        self.assertEqual(sizes.count(12288), 1)
+        self.assertIn(12288, sizes)
+        # Ports stride by 2 from base in sorted-size order.
+        index = sizes.index(12288)
+        self.assertEqual(
+            namespace.eager_allreduce_ports_for_payload(
+                12288, environment
+            ),
+            (11000 + 2 * index, 11001 + 2 * index),
+        )
+
+    def test_eager_allreduce_ports_for_payload_rejects_unknown(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            r"unsupported Spark TP4 eager all-reduce payload size: "
+            r"999999 bytes",
+        ):
+            namespace.eager_allreduce_ports_for_payload(999999, {})
+
+    def test_eager_allreduce_port_ceiling_fails_closed(self) -> None:
+        environment = {
+            "VLLM_SPARK_TP4_MODE": "custom",
+            "VLLM_SPARK_TP4_EAGER_WIDTHS": "4096,6144",
+            "SPARK_TP4_CONTROL_PORT0": "65534",
+            "SPARK_TP4_CONTROL_PORT1": "65535",
+        }
+        with self.assertRaisesRegex(ValueError, r"\[1, 65535\]"):
+            namespace.validate_active_port_namespace(environment)
+
+    def test_eager_allreduce_multi_width_namespace_unique(self) -> None:
+        base = {
+            "VLLM_SPARK_TP4_MODE": "custom",
+            "VLLM_SPARK_TP4_EAGER_WIDTHS": "4096,6144",
+        }
+        single_width = {
+            **base,
+            "VLLM_SPARK_TP4_EAGER_WIDTHS": "6144",
+        }
+        base_reservations = namespace.validate_active_port_namespace(base)
+        single_reservations = namespace.validate_active_port_namespace(
+            single_width
+        )
+        base_ports = [
+            port
+            for reservation in base_reservations
+            for port in reservation.ports
+        ]
+        self.assertEqual(len(base_ports), len(set(base_ports)))
+        self.assertGreater(
+            len(base_reservations), len(single_reservations)
+        )
+        new_sizes = len(
+            set(
+                namespace.eager_allreduce_payload_sizes(base)
+            )
+            - set(
+                namespace.eager_allreduce_payload_sizes(single_width)
+            )
+        )
+        self.assertEqual(
+            len(base_reservations) - len(single_reservations),
+            new_sizes,
+        )
 
 
 if __name__ == "__main__":

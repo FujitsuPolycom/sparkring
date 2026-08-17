@@ -1969,11 +1969,213 @@ class SparkTp4NativeSessionConfigTest(unittest.TestCase):
     def test_unsupported_payload_is_rejected_before_library_load(self) -> None:
         with patch.object(spark_tp4_backend.ctypes, "CDLL") as library_loader:
             with self.assertRaisesRegex(
-                ValueError, "unsupported Spark TP4 payload size"
+                ValueError,
+                "unsupported Spark TP4 eager all-reduce payload size",
             ):
                 spark_tp4_backend._NativeSession(0, 15 * 12288)
 
         library_loader.assert_not_called()
+
+
+class SparkTp4EagerWidthAdmissionTest(unittest.TestCase):
+    """Width-generic eager all-reduce admission (backend half)."""
+
+    def setUp(self) -> None:
+        self.communicator_type = _make_communicator_type()
+        self.modules = _fake_vllm_modules(self.communicator_type)
+        self.torch_module = types.ModuleType("torch")
+        self.torch_module.cuda = _FakeCuda()
+        self.modules["torch"] = self.torch_module
+        self.original_all_reduce = self.communicator_type.all_reduce
+        spark_tp4_backend._installed = False
+        spark_tp4_backend._graph_q1_sessions.clear()
+        spark_tp4_backend._graph_dual_port_q40_sessions.clear()
+        spark_tp4_backend._graph_event_counts.clear()
+        spark_collective_audit._reset_for_tests()
+        _FakeBackend.created.clear()
+
+    def _install(
+        self,
+        mode: str | None,
+        extra_environment: dict[str, str] | None = None,
+    ) -> None:
+        environment = dict(extra_environment or {})
+        if mode is not None:
+            environment["VLLM_SPARK_TP4_MODE"] = mode
+        patchers = (
+            patch.dict(os.environ, environment, clear=True),
+            patch.dict(sys.modules, self.modules),
+            patch.object(spark_tp4_backend, "_Backend", _FakeBackend),
+        )
+        for patcher in patchers:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        spark_tp4_backend.install()
+
+    def test_default_env_rejects_non_6144_width(self) -> None:
+        """Env default -> (1, 4096) bf16 cuda contiguous is NOT eligible."""
+        self._install("custom")
+        communicator = self.communicator_type(rank_in_group=1)
+        tensor = _FakeTensor(shape=(1, 4096))
+
+        result = communicator.all_reduce(tensor)
+
+        self.assertEqual(result, ("reference", tensor))
+        self.assertEqual(communicator.original_inputs, [tensor])
+        self.assertEqual(_FakeBackend.created, [])
+
+    def test_widths_env_admits_4096_and_rejects_ineligible_variants(
+        self,
+    ) -> None:
+        """VLLM_SPARK_TP4_EAGER_WIDTHS='4096,6144' admits (3, 4096)
+        and rejects fp32 / non-cuda / non-contiguous / 3-D / rows-over-max
+        variants of (3, 4096)."""
+        self._install(
+            "custom",
+            {"VLLM_SPARK_TP4_EAGER_WIDTHS": "4096,6144"},
+        )
+        communicator = self.communicator_type(rank_in_group=1)
+        admitted = _FakeTensor(shape=(3, 4096))
+
+        result = communicator.all_reduce(admitted)
+
+        self.assertEqual(result, ("candidate", 3 * 4096 * 2, admitted))
+        self.assertEqual(communicator.original_inputs, [])
+
+        ineligible_cases = {
+            "fp32": _FakeTensor(
+                shape=(3, 4096), dtype="torch.float32"
+            ),
+            "non-cuda": _FakeTensor(shape=(3, 4096), is_cuda=False),
+            "non-contiguous": _FakeTensor(
+                shape=(3, 4096), contiguous=False
+            ),
+            "3-D": _FakeTensor(shape=(3, 4096, 1)),
+            "rows-over-max": _FakeTensor(shape=(7, 4096)),
+        }
+        for name, tensor in ineligible_cases.items():
+            with self.subTest(name=name):
+                rejected = communicator.all_reduce(tensor)
+                self.assertEqual(rejected, ("reference", tensor))
+                self.assertIn(tensor, communicator.original_inputs)
+
+    def test_target_shape_eligible_still_6144_only(self) -> None:
+        """With widths env set, _target_shape_eligible((1, 4096)) is False."""
+        with patch.dict(
+            os.environ,
+            {"VLLM_SPARK_TP4_EAGER_WIDTHS": "4096,6144"},
+            clear=True,
+        ):
+            self.assertFalse(
+                spark_tp4_backend._target_shape_eligible((1, 4096))
+            )
+            self.assertTrue(
+                spark_tp4_backend._target_shape_eligible((1, 6144))
+            )
+
+    def test_capture_guard_routes_non_6144_to_stock_path(self) -> None:
+        """mode=custom, Q1=1, widths env set, capturing, (1, 4096) tensor:
+        wrapped all_reduce returns the STOCK path result, stock recorder sees
+        'graph_width_ineligible', and no abort happens.  A (1, 6144)
+        tensor under the same env still takes the established capture path."""
+        from spark_tp4_port_namespace import (
+            eager_allreduce_ports_for_payload,
+        )
+
+        self._install(
+            "custom",
+            {
+                "VLLM_SPARK_TP4_GRAPH_Q1": "1",
+                "VLLM_SPARK_TP4_EAGER_WIDTHS": "4096,6144",
+            },
+        )
+        os.environ["VLLM_SPARK_TP4_MODE"] = "custom"
+        communicator = self.communicator_type(rank_in_group=1)
+
+        # Warmup (eager, non-capturing) so a graph session is prepared.
+        warmup = _FakeTensor(shape=(1, 6144))
+        communicator.all_reduce(warmup)
+        backend = _FakeBackend.created[0]
+        self.assertIsNotNone(backend.graph_q1_session)
+
+        self.torch_module.cuda.capturing = True
+        os.environ["SPARK_TP4_GRAPH_STATUS_PATH"] = "/tmp/status.json"
+
+        # A (1, 4096) tensor during capture must be routed to stock.
+        ineligible = _FakeTensor(shape=(1, 4096))
+        result = communicator.all_reduce(ineligible)
+
+        self.assertEqual(result, ("reference", ineligible))
+        self.assertIn(ineligible, communicator.original_inputs)
+        snapshot = spark_collective_audit.stock_collective_snapshot()
+        self.assertEqual(
+            snapshot["capture"],
+            {"all_reduce:graph_width_ineligible": 1},
+        )
+        # No abort happened: the 6144 capture path still works below.
+
+        # A (1, 6144) tensor under the same env still captures.
+        captured = _FakeTensor(shape=(1, 6144))
+        captured_result = communicator.all_reduce(captured)
+        self.assertEqual(
+            captured_result,
+            ("graph-candidate", backend.graph_q1_session.payload_bytes,
+             1, captured),
+        )
+        self.assertIn(captured, backend.graph_q1_session.capture_inputs)
+        # eager_allreduce_ports_for_payload is importable and used
+        # implicitly via _control_ports; sanity-check it agrees with the
+        # backend's port math for a supported non-default-width payload.
+        self.assertEqual(
+            spark_tp4_backend._control_ports(3 * 4096 * 2),
+            eager_allreduce_ports_for_payload(3 * 4096 * 2),
+        )
+
+    def test_control_ports_unsupported_payload_raises_value_error(self) -> None:
+        """_control_ports raises ValueError for unsupported payload sizes."""
+        with self.assertRaisesRegex(
+            ValueError,
+            "unsupported Spark TP4 eager all-reduce payload size",
+        ):
+            spark_tp4_backend._control_ports(15 * 12288)
+
+    def test_control_ports_matches_namespace_for_supported_payload(
+        self,
+    ) -> None:
+        """A supported non-default-width payload returns exactly what
+        eager_allreduce_ports_for_payload returns (no duplicated math)."""
+        from spark_tp4_port_namespace import (
+            eager_allreduce_ports_for_payload,
+        )
+
+        with patch.dict(
+            os.environ,
+            {"VLLM_SPARK_TP4_EAGER_WIDTHS": "4096,6144"},
+            clear=True,
+        ):
+            payload = 3 * 4096 * 2
+            self.assertEqual(
+                spark_tp4_backend._control_ports(payload),
+                eager_allreduce_ports_for_payload(payload),
+            )
+
+    def test_install_rejects_malformed_widths_env(self) -> None:
+        """install() with VLLM_SPARK_TP4_EAGER_WIDTHS='abc' raises
+        ValueError before patching vllm."""
+        with self.assertRaisesRegex(
+            ValueError,
+            "VLLM_SPARK_TP4_EAGER_WIDTHS",
+        ):
+            self._install(
+                "custom",
+                {"VLLM_SPARK_TP4_EAGER_WIDTHS": "abc"},
+            )
+
+        self.assertIs(
+            self.communicator_type.all_reduce,
+            self.original_all_reduce,
+        )
+        self.assertFalse(spark_tp4_backend._installed)
 
 
 if __name__ == "__main__":

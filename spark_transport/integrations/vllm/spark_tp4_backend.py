@@ -11,7 +11,8 @@ from typing import Any
 
 from spark_persistent_output_ring import PersistentOutputRing
 from spark_tp4_port_namespace import (
-    eager_allreduce_control_ports,
+    eager_allreduce_admitted_widths,
+    eager_allreduce_ports_for_payload,
     graph_allreduce_control_ports,
     graph_dual_port_q40_control_ports,
     validate_active_port_namespace,
@@ -264,13 +265,26 @@ def _tensor_shape(tensor: Any) -> tuple[int, ...]:
     return tuple(int(size) for size in tensor.shape)
 
 
+def _eager_admitted_widths() -> tuple[int, ...]:
+    """Admitted eager all-reduce widths, read from the port namespace."""
+    return eager_allreduce_admitted_widths()
+
+
+def _eager_shape_eligible(shape: tuple[int, ...]) -> bool:
+    return (
+        len(shape) == 2
+        and shape[1] in _eager_admitted_widths()
+        and 1 <= shape[0] <= _maximum_allreduce_query_rows()
+    )
+
+
 def _eligible(communicator: Any, tensor: Any, mode: str | None = None) -> bool:
     active_mode = _mode() if mode is None else mode
     return (
         active_mode in _VALID_MODES
         and getattr(communicator, "world_size", None) == 4
         and getattr(communicator, "unique_name", "") == "tp:0"
-        and _target_shape_eligible(_tensor_shape(tensor))
+        and _eager_shape_eligible(_tensor_shape(tensor))
         and str(tensor.dtype) == "torch.bfloat16"
         and bool(tensor.is_cuda)
         and bool(tensor.is_contiguous())
@@ -330,17 +344,7 @@ def _collective_signature(tensor: Any) -> tuple[int, tuple[int, ...], str]:
 
 
 def _control_ports(payload_bytes: int) -> tuple[int, int]:
-    if (
-        payload_bytes <= 0
-        or payload_bytes % _BYTES_PER_ROW != 0
-        or payload_bytes // _BYTES_PER_ROW
-        > _maximum_allreduce_query_rows()
-    ):
-        raise ValueError(
-            f"unsupported Spark TP4 payload size: {payload_bytes} bytes"
-        )
-    query_rows = payload_bytes // _BYTES_PER_ROW
-    return eager_allreduce_control_ports(query_rows)
+    return eager_allreduce_ports_for_payload(payload_bytes)
 
 
 def _graph_q1_enabled() -> bool:
@@ -1171,6 +1175,7 @@ def install() -> None:
         )
     if _installed or not mode or mode == "disabled":
         return
+    _eager_admitted_widths()
     _prefill_q512_enabled()
     validate_active_port_namespace()
 
@@ -1204,6 +1209,14 @@ def install() -> None:
                 mode == "custom"
                 and _graph_q1_enabled()
             ):
+                if not _target_shape_eligible(_tensor_shape(input_)):
+                    _record_stock_path(
+                        capturing=True,
+                        reason="graph_width_ineligible",
+                        communicator=self,
+                        tensor=input_,
+                    )
+                    return original(self, input_)
                 backend = getattr(self, "_spark_tp4_native", None)
                 graph_session = (
                     None

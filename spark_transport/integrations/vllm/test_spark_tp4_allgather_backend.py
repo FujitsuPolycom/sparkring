@@ -1067,7 +1067,9 @@ class SparkTp4AllgatherDispatchTest(unittest.TestCase):
                 },
                 clear=True,
             ),
-            self.assertRaisesRegex(ValueError, "eager_allreduce:q=2"),
+            self.assertRaisesRegex(
+                ValueError, "eager_allreduce:payload=24576"
+            ),
         ):
             backend_module._indexer_graph_control_ports()
 
