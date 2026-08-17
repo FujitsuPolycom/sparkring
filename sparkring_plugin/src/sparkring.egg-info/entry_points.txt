@@ -1,2 +1,0 @@
-[vllm.general_plugins]
-sparkring = sparkring.plugin:register
