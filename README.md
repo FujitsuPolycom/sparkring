@@ -80,9 +80,11 @@ label denotes the LMCache `chunk_size: 512` setting pinned in the recipe.
 | Cache | native prefix cache + one LMCache CS512 server/rank; SparkCache disabled | Bounded live validation |
 | Public bootstrap | Receipt-gated EXL3 derived image | Clean-checkout identical-image four-Spark run validated |
 
-One exact image served identically on all four ranks through the full
-bounded-gate sequence; the run receipt (preflight, graph capture, KV
-accounting, byte-identical fixed-seed outputs) is in the
+Validated image identity:
+`sha256:20c4099f2e7e3dd3c8ab64f7d7930bde4f372df1895aa3ffa593252ca04ae96f`,
+served identically on all four ranks through the full bounded-gate
+sequence; the run receipt (preflight, graph capture, KV accounting,
+byte-identical fixed-seed outputs) is in the
 [evidence-scoped recipe](docs/EXL3_RECIPE.md), with the executable path in
 the [EXL3 quickstart](docs/EXL3_QUICKSTART.md).
 
