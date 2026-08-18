@@ -224,7 +224,7 @@ def _prefill_q512_enabled() -> bool:
 
 
 def _maximum_allreduce_query_rows() -> int:
-    return resolve_query_rows(os.environ)[-1]
+    return resolve_query_rows()[-1]
 
 
 def _graph_capacity_bytes() -> int:
@@ -236,11 +236,11 @@ def _admitted_default_width_rows() -> tuple[int, ...]:
 
     Admission and reservation share one resolution:
     spark_tp4_query_row_provider owns the row policy for both this gate
-    and the port namespace, so the two can never disagree. The resolver
-    caches per environment signature, keeping this hot-path lookup
-    allocation-free.
+    and the port namespace, so the two can never disagree. Ambient
+    (process-environment) resolutions are cached, keeping this hot-path
+    lookup allocation-free.
     """
-    return resolve_query_rows(os.environ)
+    return resolve_query_rows()
 
 
 def _target_shape_eligible(shape: tuple[int, ...]) -> bool:
@@ -1197,7 +1197,7 @@ def install() -> None:
     # Resolving validates any configured query-row provider (import,
     # interface, row bounds) so a broken provider fails installation
     # rather than the first collective.
-    resolve_query_rows(os.environ)
+    resolve_query_rows()
     validate_active_port_namespace()
 
     from vllm.distributed.device_communicators.cuda_communicator import (

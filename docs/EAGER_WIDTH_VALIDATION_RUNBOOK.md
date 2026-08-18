@@ -5,7 +5,7 @@ sizes) passed 2026-08-17. Leg 3 (four-width small-model shadow matrix)
 completed 2026-08-17: width 768 passed its gate; widths 512 and 2048
 failed the configured gate with recorded operator disposition; the
 width-1024 disagreement remains open, with FP32-oracle arbitration
-recorded as research-only. Leg 1 (production-model regression, arms A
+recorded as research-only. Leg 1 (GLM-5.2 EXL3-R7 3.5bpw serving regression, arms A
 and B) passed 2026-08-18 under bootstrap-gated exact-state attestation
 — bootstrap-gated live validation, not exact deployment-attestation
 equivalence. This runbook produces functional and regression evidence
@@ -19,14 +19,14 @@ What this runbook does NOT validate: CUDA-graph admission (unchanged,
 active-bytes ABI, non-BF16 dtypes, PP6 or any topology beyond the four
 directly cabled Sparks, and serving performance.
 
-## Leg 1 — GLM-5.2 regression (production shape, no new widths)
+## Leg 1 — GLM-5.2 EXL3-R7 3.5bpw four-Spark serving regression (no new widths)
 
-Purpose: prove the refactor is inert for the production configuration.
+Purpose: prove the refactor is inert for the GLM-5.2 EXL3-R7 3.5bpw four-Spark serving configuration.
 
-Two arms, identical serve config otherwise (the currently qualified
+Two arms, identical serve config otherwise (the 2026-08-11-qualified
 `--enforce-eager` TP4 configuration):
 
-- Arm 1a: `VLLM_SPARK_TP4_EAGER_WIDTHS` unset (production default).
+- Arm 1a: `VLLM_SPARK_TP4_EAGER_WIDTHS` unset (the serving configuration's default).
 - Arm 1b: `VLLM_SPARK_TP4_EAGER_WIDTHS=6144` (explicit; must be
   semantically identical).
 
@@ -365,7 +365,7 @@ The serving-era receipt on rank 0
 `shape_receipts/*/buffer_cache_keys`) records the healthy signature: two
 buffer-cache keys per capacity, identical in every field except
 `tier_count` — one two-tier and one three-tier scratch-arena geometry.
-Today every layer produces only the two-tier variant. The invariant's
+Boots against the surviving 2026-08 model views produce only the two-tier variant on every layer. The invariant's
 `(2, 2)` and its pinned byte totals are hardcoded in the deployed
 `model_runner.py`, so the boot refuses.
 
@@ -384,8 +384,9 @@ rank 0:
   holds 411; 672 is the combined count across both, not the size of
   either.)
 - `3de03931460fa5ae458a` — created 2026-08-17 by the first container
-  clone attempt, and matching the identity that every surviving model
-  directory computes today (verified by recomputing the hash against
+  clone attempt, and matching the identity that every model directory
+  surviving the 2026-08-17 reboot computes (verified by recomputing
+  the hash against
   `/var/tmp/sparkring-model-view-exl3-3f57337`,
   `/var/tmp/sparkring-model-view-exl3-bc036a0`, and
   `/srv/models/GLM-5.2-EXL3-TR3-3.25bpw`; all three produce
@@ -430,7 +431,7 @@ case:
 2. The load path has no overlay or substitution mechanism, and
    tensor-parallel slicing never changes the width dimension.
 3. The serving-era receipt records per-layer expert bitrate mixes that
-   today's checkpoint cannot produce: layers 3, 4, 5, 9 each carried
+   the published 3.25-bpw checkpoint cannot produce: layers 3, 4, 5, 9 each carried
    one or two K5 experts (layer 3: 171 K3 / 86 K4 / 1 K5), and the
    other 71 layers carried K3/K4 splits that differ from the
    checkpoint's uniform 192 K3 / 64 K4. The attested state was
@@ -510,11 +511,16 @@ exact-state receipts, launch).
 - Port comparison: a numeric sweep of each arm's full rank-0 log over
   the reservation range (11100-12288) matched on 84 of 85 distinct
   values. The single arm-A-only value (12049) sits at no valid
-  row-slot position (neither port base yields an integer slot) and
+  row-slot position (neither port base yields an integer slot), and
   its source line was not recoverable after the container was
-  replaced; it is attributed to log noise, not a reservation.
-  Byte-level equality of the admission surfaces across arms is
-  separately proven by test_provider_rows_equivalence.py.
+  replaced. The observation is unresolved: no reservation explains
+  it, and no log line survives to attribute it. Separately,
+  test_provider_rows_equivalence.py establishes parsed
+  admission-surface equality between the adapter pair under test and
+  the deployment lineage for its enumerated environments — a semantic
+  comparison of reservations, port resolution, admission bitmaps, and
+  capacity values, not a byte-level one, and not a comparison between
+  the two arms.
 
 With legs 2 and 3 already qualified, this completes the three-leg
 validation: the width-generic adapter serves the production model

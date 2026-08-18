@@ -29,7 +29,7 @@ files named here.
 | [`test_spark_tp4_port_namespace.py`](../spark_transport/integrations/vllm/test_spark_tp4_port_namespace.py) | Reservation-namespace suite. |
 | [`test_provider_rows_equivalence.py`](../spark_transport/integrations/vllm/test_provider_rows_equivalence.py) | Equivalence oracle against the deployment adapter lineage. Self-skips without the private fixtures. |
 | [`_provider_equivalence_harness.py`](../spark_transport/integrations/vllm/_provider_equivalence_harness.py) | Subprocess harness that loads one backend/namespace file pair and prints its admission surface as canonical JSON. |
-| [`_private_fixtures/`](../spark_transport/integrations/vllm/_private_fixtures/) | Deployment-lineage copies fetched from the cluster runtime (`deployed_backend.py`, `deployed_namespace.py`, `spark_tp4_sparse_q42_q48_contract.py`). Unpublishable, therefore untracked: only the directory's `.gitignore` is in version control. |
+| [`_private_fixtures/`](../spark_transport/integrations/vllm/_private_fixtures/) | Deployment-lineage copies fetched from the cluster runtime (`deployed_backend.py`, `deployed_namespace.py`, `spark_tp4_sparse_q42_q48_contract.py`). Maintainer-held and untracked: only the directory's `.gitignore` is in version control. |
 
 ### Plugin — `sparkring_plugin/`
 

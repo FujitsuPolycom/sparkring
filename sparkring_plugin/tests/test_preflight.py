@@ -22,9 +22,13 @@ def _by_name(checks):
 
 class PreflightTest(unittest.TestCase):
     def setUp(self) -> None:
+        from sparkring.plugin import _VENDOR
+
+        if _VENDOR not in sys.path:
+            sys.path.insert(0, _VENDOR)
         import spark_tp4_query_row_provider
 
-        spark_tp4_query_row_provider._cache.clear()
+        spark_tp4_query_row_provider._ambient_cache.clear()
 
     def test_default_environment_widths_and_mode_pass(self) -> None:
         checks = _by_name(preflight.run_preflight({}))

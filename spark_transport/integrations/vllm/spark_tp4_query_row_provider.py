@@ -48,10 +48,14 @@ MAX_PROVIDER_QUERY_ROW = 512
 
 _PREFILL_Q512_ROWS = tuple(range(1, 513))
 
-# One resolution per (provider, q512, cap) triple. The environment is
-# immutable for the life of a launch, so this is a per-process constant
-# in practice; the cache keeps the admission hot path allocation-free.
-_cache: dict[tuple[str | None, bool, int], tuple[int, ...]] = {}
+# Cache for ambient-environment resolutions only. os.environ is
+# immutable for the life of a launch, so those resolutions are
+# per-process constants and the cache keeps the admission hot path
+# allocation-free. Explicit environment mappings are never cached: a
+# provider may read arbitrary variables from the mapping it is given,
+# so two different mappings naming the same provider are distinct
+# resolutions.
+_ambient_cache: dict[tuple[str | None, bool, int], tuple[int, ...]] = {}
 
 
 def _environment(environ: Mapping[str, str] | None) -> Mapping[str, str]:
@@ -129,6 +133,7 @@ def resolve_query_rows(
     provider that is absent, interface-less, or returns invalid rows.
     """
 
+    ambient = environ is None
     environment = _environment(environ)
     q512 = _prefill_q512(environment)
     module_name = provider_module_name(environment)
@@ -138,16 +143,18 @@ def resolve_query_rows(
             "are mutually exclusive geometry sources"
         )
     key = (module_name, q512, MAX_QUERY_ROWS)
-    cached = _cache.get(key)
-    if cached is not None:
-        return cached
+    if ambient:
+        cached = _ambient_cache.get(key)
+        if cached is not None:
+            return cached
     if q512:
         rows = _PREFILL_Q512_ROWS
     elif module_name is not None:
         rows = _provider_rows(module_name, environment)
     else:
         rows = tuple(range(1, MAX_QUERY_ROWS + 1))
-    _cache[key] = rows
+    if ambient:
+        _ambient_cache[key] = rows
     return rows
 
 

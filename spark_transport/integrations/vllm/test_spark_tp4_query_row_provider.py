@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import types
 import unittest
+import unittest.mock
 
 import spark_tp4_port_namespace
 import spark_tp4_query_row_provider as seam
@@ -21,13 +23,13 @@ def _synthetic_provider(name: str, rows) -> str:
 
 class QueryRowProviderTest(unittest.TestCase):
     def setUp(self) -> None:
-        seam._cache.clear()
+        seam._ambient_cache.clear()
         self._synthetic = [
             name for name in sys.modules if name.startswith("_synthetic_rows_")
         ]
 
     def tearDown(self) -> None:
-        seam._cache.clear()
+        seam._ambient_cache.clear()
         for name in list(sys.modules):
             if name.startswith("_synthetic_rows_"):
                 del sys.modules[name]
@@ -91,6 +93,48 @@ class QueryRowProviderTest(unittest.TestCase):
                 self.assertIn(
                     "VLLM_SPARK_TP4_QUERY_ROW_PROVIDER", str(caught.exception)
                 )
+
+    def test_explicit_mappings_are_never_cached(self) -> None:
+        """One provider, two explicit environments, two fresh resolutions.
+
+        Providers may read arbitrary variables from the mapping they are
+        given, so a resolution for one explicit mapping must never be
+        served for another.
+        """
+
+        name = "_synthetic_rows_env_sensitive"
+        module = types.ModuleType(name)
+        module.provider_query_rows = lambda environ: (
+            [1, 2] if environ.get("SYNTHETIC_ROW_SET") == "a" else [3, 4]
+        )
+        sys.modules[name] = module
+        first = seam.resolve_query_rows({
+            "VLLM_SPARK_TP4_QUERY_ROW_PROVIDER": name,
+            "SYNTHETIC_ROW_SET": "a",
+        })
+        second = seam.resolve_query_rows({
+            "VLLM_SPARK_TP4_QUERY_ROW_PROVIDER": name,
+            "SYNTHETIC_ROW_SET": "b",
+        })
+        self.assertEqual(first, (1, 2))
+        self.assertEqual(second, (3, 4))
+
+    def test_ambient_resolution_is_cached(self) -> None:
+        """Ambient (process-environment) resolutions resolve once."""
+
+        calls = []
+        name = "_synthetic_rows_ambient"
+        module = types.ModuleType(name)
+        module.provider_query_rows = lambda environ: calls.append(1) or [6]
+        sys.modules[name] = module
+        with unittest.mock.patch.dict(
+            os.environ, {"VLLM_SPARK_TP4_QUERY_ROW_PROVIDER": name}
+        ):
+            first = seam.resolve_query_rows()
+            second = seam.resolve_query_rows()
+        self.assertEqual(first, (6,))
+        self.assertEqual(second, (6,))
+        self.assertEqual(len(calls), 1)
 
     def test_q512_and_provider_are_mutually_exclusive(self) -> None:
         name = _synthetic_provider("_synthetic_rows_conflict", [1, 2])
