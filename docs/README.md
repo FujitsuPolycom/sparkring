@@ -16,6 +16,7 @@ canonical-source table below and report the drift.
 | Understand the supported public-functional matrix and acceptance requirements | [Public-functional lane definition](PUBLIC_FUNCTIONAL_TARGET.md) |
 | Interpret measurements and evidence scope | [Measured results](RESULTS.md) |
 | Understand the four-Spark runtime and transport design | [Architecture](ARCHITECTURE.md) |
+| Find which models are validated against the transport, and with what evidence | [Validated-profiles registry](profiles/README.md) |
 
 Commands that contact or modify a Spark retain the safety class stated in the
 linked runbook. A document being listed here does not authorize remote action.
@@ -29,6 +30,7 @@ linked runbook. A document being listed here does not authorize remote action.
 | Runtime input pins | [`runtime/runtime-lock.json`](../runtime/runtime-lock.json) |
 | Site-config schema | [`scripts/sparkring_site.py`](../scripts/sparkring_site.py) |
 | Repository prose standard | [Write Without Hidden Context](WRITING_STANDARD.md) |
+| Model-profile validation status | [Validated-profiles registry](profiles/README.md), then the profile's linked evidence documents |
 | Acceptance behavior and exit codes | [`scripts/acceptance_gate.py`](../scripts/acceptance_gate.py) |
 | Measured claims and evidence labels | [Measured results](RESULTS.md) |
 | Reference deployment reconstruction | [Reference bring-up reconstruction](SETUP.md) |

@@ -2,14 +2,23 @@
 
 SparkRing is a low-latency collective transport and inference runtime for switchless GB1X (NVIDIA DGX Spark) clusters.
 
-It runs GLM-5.2 across four directly connected DGX Sparks. Four 200 Gb/s ConnectX-7 links form a physical ring, 
-with no external Ethernet or InfiniBand switch in the inference fabric.
+Four 200 Gb/s ConnectX-7 links form a physical ring across four directly
+connected DGX Sparks, with no external Ethernet or InfiniBand switch in the
+inference fabric. Models are served over that ring as tensor-parallel
+deployments; which models, and with what evidence, is recorded in the
+[validated-profiles registry](docs/profiles/README.md).
 
 The stack combines SIRCL custom RDMA collectives, CUDA-graph-replayable command rings, a source-attested and fail-closed vLLM overlay,
 DCP4, support for fixed and adaptive MTP speculative decoding, and a patched ring-safe NCCL fallback for communication the custom path does not handle.
 A pip-installable plugin (`sparkring_plugin/`) packages the vLLM adapters as a `vllm.general_plugins` entry point: fail-closed like the overlay, but feature-detected rather than source-attested, and offline-validated only.
 
-The long-term goal is a model-agnostic runtime for efficient, switchless multi-node inference on DGX Spark.
+Serving admission is model-agnostic: the eager TP4 all-reduce admits any
+hidden width whose payloads divide across the four ranks
+(`VLLM_SPARK_TP4_EAGER_WIDTHS`), and default-width row policy resolves
+through a generic query-row provider seam
+(`VLLM_SPARK_TP4_QUERY_ROW_PROVIDER`). The transport carries no
+model-specific policy; models qualify against it through the shadow-mode
+comparison windows recorded per profile.
 
 Use the [documentation map](docs/README.md) to find the canonical specification,
 runnable procedure, evidence record, or historical reference for a task.
@@ -25,15 +34,21 @@ SparkRing’s contribution is to adapt, integrate, and extend those foundations 
 
 Detailed project and contributor credits are maintained in the acknowledgements and provenance documentation.
 
-## Choose a deployment profile
+## Validated profiles
+
+A profile is one model identity plus the serving configuration it was
+validated with on the ring. The
+[validated-profiles registry](docs/profiles/README.md) is the canonical
+index; the rows here are the deployment entry points.
 
 | Goal | Profile | Maturity and evidence scope | Start here |
 |---|---|---|---|
-| Use the operator-accepted 3.5-bpw configuration | EXL3 3.5-bpw fixed-MTP4 (`R7`) | Accepted on one four-Spark appliance; a clean rebuild requires live qualification | [3.5-bpw quickstart](docs/EXL3_R7_QUICKSTART.md) |
-| Use the reproducible public default | EXL3 3.25-bpw plus LMCache CS512 | Clean-checkout bounded live validation on four Sparks | [public-default quickstart](docs/QUICKSTART.md) |
-| Use the deterministic alternative | NF3 | Accepted public-functional alternative | [NF3 quickstart](docs/NF3_QUICKSTART.md) |
+| Use the operator-accepted 3.5-bpw configuration | GLM-5.2 EXL3 3.5-bpw fixed-MTP4 (`R7`) | Accepted on one four-Spark appliance; a clean rebuild requires live qualification | [3.5-bpw quickstart](docs/EXL3_R7_QUICKSTART.md) |
+| Use the reproducible public default | GLM-5.2 EXL3 3.25-bpw plus LMCache CS512 | Clean-checkout bounded live validation on four Sparks | [public-default quickstart](docs/QUICKSTART.md) |
+| Use the deterministic alternative | GLM-5.2 NF3 | Accepted public-functional alternative | [NF3 quickstart](docs/NF3_QUICKSTART.md) |
+| Qualify a non-GLM width over the ring | Width-generic admission plus a per-model profile page | Evidence scope varies by profile; the small-model shadow set is the validation instrument | [profiles registry](docs/profiles/README.md) |
 
-## Featured model: EXL3 R7 3.5-bpw fixed-MTP4
+## Flagship profile: GLM-5.2 EXL3 R7 3.5-bpw fixed-MTP4
 
 The operator's accepted 3.5-bpw SparkRing profile uses
 [`brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78`](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78)
