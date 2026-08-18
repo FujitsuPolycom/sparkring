@@ -13,9 +13,11 @@ This page preserves the original public SparkRing reference lane:
 - KV format: `nvfp4_ds_mla` with per-token outer scaling;
 - adaptive MTP depths 2/4, window 32.
 
-It is retained for historical reproduction and comparison. It is no longer
-the default deployment target. The current deployment lane is the
-madeby561 NF3 hybrid documented in [the NF3 quickstart](../NF3_QUICKSTART.md).
+It is retained for historical reproduction and comparison; it is not a
+supported deployment target. The public default is EXL3 3.25-bpw plus LMCache
+CS512 ([QUICKSTART.md](../QUICKSTART.md)); the madeby561 NF3 hybrid is the
+accepted deterministic alternative
+([NF3 quickstart](../NF3_QUICKSTART.md)).
 
 ## Coherent reference matrix
 

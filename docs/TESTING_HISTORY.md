@@ -3,7 +3,8 @@
 This document records experiments, regressions, resolved failures, superseded
 configurations, and acceptance gaps.
 
-The project README contains current facts and supported entry points. This
+The project README states the present-state facts and supported entry
+points. This
 document explains how those facts were established and what remains under
 validation.
 
@@ -16,7 +17,7 @@ Each entry should state:
 - decisive measurement;
 - pass, fail, or superseded status;
 - evidence location;
-- effect on the current release path.
+- effect on the release path.
 
 Peak observations must not replace sustained measurements. Shared-prefix,
 unique-context, warm, cold, C1, and aggregate-concurrency results must remain
@@ -165,8 +166,8 @@ C8. This is a throughput-scaling result, not a unique-context capacity result.
 The DCP4 capacity window reported a 375,040-token pool at 3 GB/rank and
 56.70 tok/s aggregate C8 decode.
 
-The current NF3 candidate supersedes that capacity figure with a
-511,488-token reported pool at 7 GB/rank.
+The 2026-07-30 NF3 candidate recorded above supersedes that capacity figure
+with a 511,488-token reported pool at 7 GB/rank.
 
 ## Superseded or negative paths
 
@@ -177,8 +178,8 @@ When adding one:
 1. Preserve the exact configuration and evidence.
 2. State whether the cause was isolated.
 3. Name the configuration that superseded it.
-4. Do not present a failed path as a current setup requirement.
+4. Do not present a failed path as a setup requirement.
 
-Detailed measurements and claim boundaries remain in
-[RESULTS.md](RESULTS.md). Runtime reproduction gaps remain in
+Detailed measurements and claim boundaries are in
+[RESULTS.md](RESULTS.md). Runtime reproduction gaps are in
 [RUNTIME_GAPS.md](RUNTIME_GAPS.md).

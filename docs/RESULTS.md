@@ -7,7 +7,7 @@
 > fixed-MTP4 service is the separately scoped operator default.
 > Results are not interchangeable between checkpoints or evidence origins.
 
-## Current EXL3+LMCache public-path gate
+## EXL3+LMCache public-path gate (2026-08-03)
 
 On 2026-08-03, a clean checkout built the EXL3 derived image from source commit
 `19523482c29860024c3a3cf51e793e8436e1c441`; launcher correction `cc9cc1e`
@@ -107,7 +107,7 @@ replayed the same eight unique 16K payloads with full 8/8 residency and a
 | Slowest candidate versus fastest control | 62.907 tok/s | **72.297 tok/s** | **+14.93%** |
 | Reported KV capacity | 1,156,864 tokens | **1,156,864 tokens** | unchanged |
 
-The operator accepts the following client-timed C1 snapshot as the current
+The operator accepts the following client-timed C1 snapshot as the
 best measured prefill result for this configuration. The benchmark used 100%
 unique generated contexts:
 
@@ -121,7 +121,7 @@ unique generated contexts:
 
 Throughput declines by only 5.0% from 8K to 128K while the context grows by
 16x. The 8K, 16K, and 32K rows are respectively 1.6%, 2.1%, and 2.0% above the
-earlier bounded snapshot. Several operator runs produced similar prefill
+bounded prefill snapshot identified below by its benchmark SHA-256. Several operator runs produced similar prefill
 throughput, but the table reports only the visible samples. These are therefore
 accepted best operating results, not throughput distributions. The benchmark
 did not return server-side cached-token accounting for these cells, so cache
@@ -157,7 +157,7 @@ This workload peak is reported separately and is not substituted for the
 standardized C1 matrix cells. The complete displayed snapshot is preserved in
 [machine-readable form](configurations/glm52-exl3-r7-current-best-matrix-20260813.json).
 
-The earlier bounded benchmark remains independently identified by complete
+That bounded benchmark is identified by complete
 benchmark SHA-256
 `feed67820caf37cc016473a38584b11b4205a628183f64e2b48b082a7bad2854`; it
 measured 668, 659, and 653 tok/s at 8K, 16K, and 32K respectively.
@@ -305,7 +305,7 @@ These are end-to-end serving measurements: a real model, real requests, tokens d
 
 1. The highest prefill throughput documented in this repository. DCP4 beat DCP1 prefill at every context length (+2.2% to +5.6%) while quadrupling KV capacity. This is an internal comparison only — this repository makes no claims about systems outside it.
 2. The flagship aggregate number: 3.51x single-stream scaling on a fully verified zero-stock-capture custom-transport graph path, with throughput still rising at the configured concurrency cap of 8.
-3. The newest sealed result (2026-07-28): the first time the full custom DCP query+combine trio ran inside FULL CUDA graphs. At 32K it lands roughly 12% above the earlier 19.14 tok/s stock-trio DCP4 measurement — **that comparison is indicative, not a sealed A/B** (the stock control was not rerun, and adaptive-MTP acceptance variance is real).
+3. The 2026-07-28 sealed result: the first time the full custom DCP query+combine trio ran inside FULL CUDA graphs. At 32K it lands roughly 12% above the earlier 19.14 tok/s stock-trio DCP4 measurement — **that comparison is indicative, not a sealed A/B** (the stock control was not rerun, and adaptive-MTP acceptance variance is real).
 4. The best honest realistic-workload single-stream numbers in the repository: a real coding workload sustained ~27 tok/s median on four consumer-class desk units.
 5. Proof the repaired C2 path can exceed 40 aggregate tok/s when MTP4 stays coherent — but it is a 10-second server-window observation on one workload, and must always be quoted with that label.
 6. The historical single-stream mechanics checkpoint that the CUDA-graph work is measured against. The 708 tok/s prefill is a genuine uncached 32K prefill gate.
