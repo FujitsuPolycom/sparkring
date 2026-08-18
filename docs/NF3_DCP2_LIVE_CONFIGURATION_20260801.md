@@ -54,8 +54,8 @@ paths, and patched NCCL fallback.
 The observed capacity is exactly half of the DCP4 snapshot's 1,125,632-token
 capacity, as predicted from the unchanged per-rank KV allocation.
 
-The first failed launch was not a DCP2 failure. The old container definition
-carried `VLLM_PREFIX_CACHE_RETENTION_INTERVAL=`. Current vLLM attempts to parse
+The first failed launch was not a DCP2 failure. The DCP4 container definition
+carried `VLLM_PREFIX_CACHE_RETENTION_INTERVAL=`. The deployed vLLM attempts to parse
 any present value as an integer, so the empty value failed during worker
 initialization. The accepted launch removes the variable with
 `env -u VLLM_PREFIX_CACHE_RETENTION_INTERVAL` before importing vLLM. The
