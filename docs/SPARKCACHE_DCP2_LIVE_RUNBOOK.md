@@ -2,10 +2,10 @@
 
 > **Historical operator snapshot:** The container names, active-service
 > description, image identity, mounts, and blocker states below were recorded
-> for the 2026-08-01 NF3 deployment. They are not assertions about the current
-> cluster. As of the 2026-08-03 operator snapshot, the current EXL3 3.25 bpw
-> service uses LMCache CS512 and has SparkCache disabled. This NF3 TP4/DCP2
-> SparkCache path remains offline-validated only. Rediscover the live topology,
+> for the 2026-08-01 NF3 deployment. They are not assertions about any live
+> cluster. As of the 2026-08-03 operator snapshot, the EXL3 3.25 bpw
+> service used LMCache CS512 and had SparkCache disabled. This NF3 TP4/DCP2
+> SparkCache path is offline-validated only. Rediscover the live topology,
 > regenerate the plan, and re-attest every identity before executing it.
 
 **Date:** 2026-08-01
@@ -25,7 +25,7 @@ was TP4/DCP4 fixed-MTP2
 (`glm52-sparkring-nf3-dcp4-fixedk2-r{rank}`).
 Four stopped DCP2 containers exist as the intended candidate. This
 runbook assumes the DCP2 variant will be started (via
-`scripts/live_dcp2_cutover.py`) and SparkCache is currently disabled
+`scripts/live_dcp2_cutover.py`) and that SparkCache is disabled in it
 (no `--kv-transfer-config` present).
 
 **Offline tests do NOT establish live acceptance.** They prove code
@@ -348,7 +348,7 @@ python scripts/live_dcp2_cutover.py cutover \
 ```
 
 Before stopping any source, the cutover command re-verifies every
-prepared target against the current source's exact argv/env (recomputed
+prepared target against the running source's exact argv/env (recomputed
 via `_apply_cache_config`) and the requested checkpoint identities.
 Any drift (unrelated flags, env changes, or checkpoint mismatch) aborts
 before any service interruption.

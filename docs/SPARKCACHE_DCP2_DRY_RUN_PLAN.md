@@ -2,10 +2,10 @@
 
 > **Historical operator snapshot:** The container names, active-service
 > description, image identity, mounts, and blocker states below were recorded
-> for the 2026-08-01 NF3 deployment. They are not assertions about the current
-> cluster. As of the 2026-08-03 operator snapshot, the current EXL3 3.25 bpw
-> service uses LMCache CS512 and has SparkCache disabled. This NF3 TP4/DCP2
-> SparkCache path remains offline-validated only; rerun discovery and every
+> for the 2026-08-01 NF3 deployment. They are not assertions about any live
+> cluster. As of the 2026-08-03 operator snapshot, the EXL3 3.25 bpw
+> service used LMCache CS512 and had SparkCache disabled. This NF3 TP4/DCP2
+> SparkCache path is offline-validated only; rerun discovery and every
 > attestation before using this template.
 
 **Date:** 2026-08-01
@@ -186,7 +186,7 @@ compare stable stat metadata before/after every read.
 Per `sparkcache/README.md`, the enable switch is the **presence** of
 the complete `--kv-transfer-config` argument. The public connector
 does **not** consume a `SPARK_CONTEXT_CACHE_ENABLE` flag. That variable
-is a legacy image flag with no connector authority; the generator strips
+is an image environment flag with no connector authority; the generator strips
 it from the env.
 
 Omit `--kv-transfer-config` entirely to disable SparkCache.
@@ -229,7 +229,7 @@ advertise HMA support.
 
 ## Physical-worker identity model
 
-The connector now separates two concepts:
+The connector separates two concepts:
 
 1. **Physical TP worker identity** (`_physical_rank()`): unique across
    all four TP ranks (0..3). Used for worker reports, quorum
