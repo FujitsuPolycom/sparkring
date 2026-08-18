@@ -7,7 +7,7 @@ four directly cabled NVIDIA DGX Sparks / GB10 GPUs. It is live-validated in the
 public-functional lane, but its acceptance scope is the operator's four-Spark
 appliance. It is not the repository-wide public-functional default, an
 accepted public deployment matrix, or a transferable result for other
-hardware. The advertised public-functional default remains EXL3 3.25-bpw plus
+hardware. The advertised public-functional default is EXL3 3.25-bpw plus
 LMCache CS512.
 
 The operator profile serves
@@ -24,8 +24,8 @@ as the default extension to this profile.
 The sanitized machine-readable result is
 [glm52-exl3-r7-mtp4-nvfp4-ckv-gather-20260811.json](configurations/glm52-exl3-r7-mtp4-nvfp4-ckv-gather-20260811.json).
 The raw endpoint, rank-status, and benchmark artifacts are maintainer-held and
-identified by SHA-256 in that record. The earlier FP8, 65,536-token fixed-MTP4
-qualification remains separately preserved in
+identified by SHA-256 in that record. The FP8, 65,536-token fixed-MTP4
+qualification is preserved separately in
 [glm52-exl3-r7-mtp4-kv925-20260811.json](configurations/glm52-exl3-r7-mtp4-kv925-20260811.json).
 The exact-Q40 acceptance result is
 [glm52-exl3-r7-mtp4-q40-block8-20260812.json](configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json).
@@ -45,7 +45,7 @@ The full prefill, decode, and coding snapshot is
 | Speculation | fixed MTP4, greedy draft sampling, adaptive depth disabled |
 | Maximum sequences | 8 |
 | Query-row contract | Q1 through Q40; `8 * (4 + 1) = 40` verification rows |
-| Exact-Q40 routed-MoE policy | Target mixed-EXL3 layers use capacity 40 and route block 8 only at exactly 40 rows; Q1-Q32, other prefill shapes, and the draft model retain their prior states |
+| Exact-Q40 routed-MoE policy | Target mixed-EXL3 layers use capacity 40 and route block 8 only at exactly 40 rows; Q1-Q32, other prefill shapes, and the draft model do not use this state |
 | KV representation | `nvfp4_ds_mla`, dynamic per-token scale, FP8 RoPE, 368-byte record |
 | KV allocation | 9,250,000,000 bytes/rank; 37,000,000,000 bytes aggregate |
 | Reported KV capacity | 1,156,864 tokens |
@@ -60,7 +60,7 @@ The full prefill, decode, and coding snapshot is
 
 ## LMCache NVMe candidate extension
 
-The accepted operator profile above remains defined with LMCache disabled.
+The accepted operator profile above is defined with LMCache disabled.
 A separately scoped **public-functional, live-validated candidate extension**
 attaches one LMCache MP server to each DCP rank without changing the model,
 TP4/DCP4 topology, fixed-MTP4 policy, exact-Q40 state, KV representation,
@@ -146,7 +146,7 @@ A post-prefill durability replay measured 66.685 aggregate tokens/s with all
 eight requests resident and no queue, request error, capacity limit, fatal
 transport state, or overflow.
 
-The predeclared prefill reducer remains recorded as a machine failure. Its sole
+The predeclared prefill reducer is recorded as a machine failure. Its sole
 primary-gate miss was the 64K median: 618.246 tokens/s versus the lower sealed
 baseline median of 618.998 tokens/s, or -0.1215%. The operator accepts that
 difference as measurement-neutral rather than a material regression. The 16K
@@ -159,7 +159,7 @@ Fixed-prompt non-Q40 checks measured C1 at 22.218 versus 22.362 tokens/s
 source-identical paths are treated as bounded measurement noise, not as
 optimization results.
 
-## Current-best operator performance snapshot
+## Best-measured operator performance snapshot
 
 The operator accepts the following 100%-unique-context C1 results as the best
 measured prefill snapshot for this exact four-Spark profile:
@@ -191,7 +191,7 @@ The same benchmark display reported this aggregate decode matrix:
 
 Values are aggregate tok/s. The matrix display does not expose repeat counts,
 so it is accepted as a bounded operating snapshot rather than a distribution.
-The separately controlled exact-Q40 bracket remains the stronger 16K/C8
+The separately controlled exact-Q40 bracket is the stronger 16K/C8
 comparison because it replayed identical sealed payloads across repeated arms.
 
 ### Coding benchmark (C1)
@@ -205,7 +205,8 @@ matrix.
 
 ## Exact CKV-gather delta and rollback
 
-The maintainer-held fail-closed generator derives the CKV-gather candidate
+The fail-closed generator (`scripts/prepare_exl3_r7_mtp4_ckv_gather.py`)
+derives the CKV-gather candidate
 from the otherwise identical dynamic-NVFP4, FP8-RoPE, 4,096-token-prefill
 control. Its SHA-256 is recorded in the sanitized machine-readable evidence.
 The only effective runtime changes are:
@@ -228,7 +229,7 @@ The rollback profile SHA-256 is
 Both use site SHA-256
 `a1c62b5b42c98d75830a8a30ef71c33953fd8d28bd4dce28aecd0d133e81fe4c`.
 
-`SPARK_TP4_ALLGATHER_ENABLE_CKV=0` remains intentional. It disables the
+`SPARK_TP4_ALLGATHER_ENABLE_CKV=0` is intentional. It disables the
 separate Spark custom-all-gather CKV signature; the qualified optimization is
 the B12X transient full-CKV prefill path over the dedicated DCP communicator.
 
@@ -317,16 +318,16 @@ the complete matched workload uses `--contexts 16k`,
 `--max-tokens 2048`. Operators must replace the host and output path with
 their own values; site addresses and local paths are not repository defaults.
 
-## Earlier fixed-MTP4 evidence
+## FP8 65,536-token fixed-MTP4 evidence
 
-The earlier FP8, 65,536-token profile established the fixed-MTP4 depth and Q40
+The FP8, 65,536-token profile established the fixed-MTP4 depth and Q40
 transport contract independently of this KV/prefill update. It measured
 34.60, 51.44, 76.96, and 85.68 aggregate tokens/s at C1, C2, C4, and C8 in a
 matched decode-only matrix; MTP4 improved C1-C4 and regressed C8 relative to
 fixed MTP3. It also completed eight simultaneously resident 64K requests in a
 675,840-token reported KV pool.
 
-Those results remain evidence for the shared fixed-MTP4 and transport
+Those results are evidence for the shared fixed-MTP4 and transport
 contract, not for the exact dynamic-NVFP4/262K/CKV-gather profile. The larger
 1,156,864-token pool has not yet repeated that near-capacity residency gate.
 
@@ -350,7 +351,7 @@ contract, not for the exact dynamic-NVFP4/262K/CKV-gather profile. The larger
 - The control benchmark's JSON destination was invalid, so the harness printed
   the complete result but did not write its JSON artifact. The preserved
   console transcript is identified by SHA-256 in the sanitized evidence file.
-- DCP, CKV, and indexer collectives remain on stock paths. Only the qualified
+- DCP, CKV, and indexer collectives use stock paths. Only the qualified
   TP all-reduce and vocabulary families use SparkRing native transport here.
 - Fixed MTP5 is unsupported by this image. Q48 requires a Python contract
   extension and a rebuilt native vocabulary/DCP/indexer transport cap; it is

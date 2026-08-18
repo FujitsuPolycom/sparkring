@@ -8,16 +8,19 @@ profile completed target, draft-prefill, and draft-decode graph capture,
 matched the MTP-disabled control on repeated 128-token and 256-token greedy
 outputs, returned finite logprobs, exercised both speculative positions, and
 passed its four-rank transport audit. It is not the repository default or an
-accepted public-functional matrix. The later fixed-MTP4, 9.25 GB KV candidate
+accepted public-functional matrix. The fixed-MTP4, 9.25 GB KV candidate
 is the qualified R7 serving profile; see
 [EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md).
 
-The qualified executable MTP2 profile was produced by the maintainer-held
-`prepare_exl3_r7_mtp2.py` utility from the corrected stock-DCP4 R7 control;
-that utility also emitted a byte-identical rollback profile. A sanitized
-public generator and complete stock-DCP4 input chain are not yet published.
+The qualified executable MTP2 profile was produced by a maintainer-held copy
+of the `prepare_exl3_r7_mtp2.py` utility from the maintainer's stock-DCP4 R7
+control; that utility also emitted a byte-identical rollback profile. A public
+generator and stock-DCP4 input chain are tracked at
+`scripts/prepare_exl3_r7_mtp2.py` and `scripts/generate_exl3_r7_stock_dcp4.py`;
+see the input chain in [EXL3_R7_QUICKSTART.md](EXL3_R7_QUICKSTART.md).
 
-The experiment changes speculative decoding from disabled to a fixed depth of
+Relative to the stock-DCP4 control, this profile changes speculative decoding
+from disabled to a fixed depth of
 two. It does not change the target model's weight formats or enable a second
 online-quantization pass for the draft model.
 
