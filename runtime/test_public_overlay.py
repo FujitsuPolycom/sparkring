@@ -35,6 +35,8 @@ def test_overlay_spec_covers_every_public_runtime_python_module():
         for path in (REPO / "spark_transport/integrations/vllm").glob("*.py")
         if not path.name.startswith("test_")
         and not path.name.startswith("probe_")
+        and not path.name.startswith("_")
+        and path.name != "conftest.py"
         and path.name != "tp4_numerical_audit.py"
     }
     for package in ("adaptive_mtp_controller", "q2r_phase_timing"):
