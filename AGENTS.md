@@ -23,14 +23,14 @@ the repository but none of the conversation or development history.
 
 If understanding a sentence requires conversation history, rewrite it.
 
-## Current truth
+## Present state
 
 - The **reference lane** produced the historical measurements retained in
-  `README.md` and `docs/RESULTS.md`; current public-functional results are
+  `README.md` and `docs/RESULTS.md`; public-functional results are
   labelled separately. The recovered 71-file reference-runtime delta is published
   under `runtime/patches/00-reference-vllm/`; the exact historical launch
-  artifacts and evidence harness remain maintainer-held, and public-lane
-  reproduction of those measurements is pending.
+  artifacts and evidence harness are maintainer-held, and public-lane
+  reproduction of those measurements has not been performed.
 - The **default and main advertised public-functional configuration** is EXL3
   3.25-bpw plus LMCache CS512. Its receipt-gated public bootstrap built
   one ARM64 image from a clean checkout, distributed the identical image ID to
@@ -45,8 +45,8 @@ If understanding a sentence requires conversation history, rewrite it.
   source-complete and offline-validated, but a clean-checkout image has not
   passed the live promotion gate. This does not change the public default or
   accepted NF3 alternative.
-- NF3 remains an accepted deterministic public-functional alternative. Its
-  recipe, bootstrap, and quickstart remain published and explicitly selectable.
+- NF3 is an accepted deterministic public-functional alternative. Its
+  recipe, bootstrap, and quickstart are published and explicitly selectable.
 - Never describe a reference-lane number as a result from this checkout.
 
 Machine-readable status is in `docs/STATUS.json`.
