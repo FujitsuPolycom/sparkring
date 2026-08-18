@@ -258,16 +258,31 @@ control-plane re-point substituted. Attestation and the 316 GB
 InstantTensor load completed; engine initialization then failed closed
 with `adaptive-MTP exact-state arena count drifted`.
 
-Root cause: the deployed runtime's adapter lineage is ahead of the
-public repository the feature branch was built on (33 changed lines in
-spark_tp4_backend.py, 31 in spark_tp4_port_namespace.py). The deployed
-lineage admits a SPARSE provider row set via the Q42-Q48 contract
-(`provider_query_rows()`), and the exact-state invariant counts arenas
-against that set; the feature's contiguous payload enumeration produced
-a different arena count and the invariant refused to serve. This is the
-fail-closed design working as intended: it caught a semantic regression
-the public-lineage feature would have introduced into production
-admission before any traffic was carried.
+Two findings, separated after a second launch attempt with the
+provider-rows rebased adapter pair failed identically:
+
+1. Adapter lineage divergence (real, fixed offline): the deployed
+   adapter lineage is ahead of the public repository (33 changed lines
+   in spark_tp4_backend.py, 31 in spark_tp4_port_namespace.py) and
+   admits the sparse Q42-Q48 provider row set. The width feature's
+   contiguous enumeration diverged from that admission surface. The
+   rebase composing the two is validated byte-identical to the deployed
+   lineage under every production environment by
+   test_provider_rows_equivalence.py.
+
+2. Launch blocker (unresolved, not adapter-related): the failing
+   invariant, `_attest_adaptive_mtp_exact_state_policy` in the deployed
+   model_runner, counts MoE exact-state GPU weight-storage arenas
+   (`(len(q40), len(q48)) == (2, 2)` with pinned storage byte totals),
+   not transport reservations. Its per-layer BF16 parity checks pass,
+   confirming the model view and weight repack are correct; the arena
+   count itself drifts under this runbook's container-clone launch
+   (verbatim env, mounts, command, entrypoint) with either adapter
+   lineage. The deployment's own launch pipeline (container name
+   component `launch-tunable-v10-adaptive-closure-v23`) is not present
+   on the rank filesystems examined and evidently performs steps the
+   clone does not reproduce. Reproducing the confirmation load requires
+   that pipeline or its operator's knowledge of it.
 
 Leg 1 therefore requires a provider-rows-aware rebase of the width
 feature onto the deployed lineage (payload enumeration and port
