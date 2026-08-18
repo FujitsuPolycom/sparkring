@@ -9,7 +9,8 @@ SparkRing faststart image, not the unmodified upstream checkout.
 
 ## Outcome
 
-The historical follower shim is unnecessary when pinned vLLM is launched
+The follower `collective_rpc` shim carried by the historical reference
+deployment is unnecessary when pinned vLLM is launched
 through its intended multi-node headless path.  No assertion guard is
 published.  Instead, `runtime/public-headless-abi-gate.py` attests the two
 upstream source files that define this contract and verifies the control-flow

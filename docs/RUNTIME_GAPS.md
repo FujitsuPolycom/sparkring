@@ -1,13 +1,13 @@
 # Runtime Gaps: our frozen vLLM runtime vs public upstream
 
-> **Recovery update — 2026-07-29:** the safe measured-runtime delta is now
+> **Recovery status (2026-07-29):** the safe measured-runtime delta is
 > published under `runtime/patches/00-reference-vllm/`: 59 modified files and
 > 12 additions, all fail-closed and byte-matched to the freeze after newline
 > normalization. Two unsafe empty-return startup shims were excluded. The
 > remaining gap is build/live validation, not missing source.
 
-Audited 2026-07-27 against the frozen production runtime and current
-upstream sources. Companion to the Status section of the README.
+Audited 2026-07-27 against the frozen production runtime and the upstream
+sources available on that date. Companion to the Status section of the README.
 
 ## What we run
 
@@ -55,8 +55,8 @@ metadata (`2.5.0+2073ddb`) and resolves publicly as well.
 
 Everything that differs from upstream vLLM is a **post-install patch overlay**:
 roughly 13k lines across 73 Python files, applied to the installed tree between
-2026-06-29 and 2026-07-27. The full set is now captured as per-file unified
-diffs (now published as the 71 safe recovered operations) and falls into four groups:
+2026-06-29 and 2026-07-27. The full set is captured as per-file unified
+diffs (published as the 71 safe recovered operations) and falls into four groups:
 
 - **B12X/sparse-attention integration (~9.3k lines)** — wires vLLM's sparse-MLA
   path (DeepSeek-V3.2/V4, GLM-5.x family) to the public B12X/sparkinfer kernel
@@ -81,7 +81,7 @@ diffs (now published as the 71 safe recovered operations) and falls into four gr
 - The only non-public native component we ship is our own NCCL transport shim,
   which is SparkRing-authored (not a third-party blob) and outside vLLM.
 
-## Gap-by-gap status against current upstream (v0.26.x, checked 2026-07-27)
+## Gap-by-gap status against upstream v0.26.x (checked 2026-07-27)
 
 Where upstream has caught up, we can drop overlay pieces on the next rebase;
 where it has not, our overlay remains ahead.
@@ -104,16 +104,16 @@ where it has not, our overlay remains ahead.
 - **Reproducibility**: the runtime can be reconstructed from public commits
   plus our captured overlay patches. No capability depends on unobtainable
   binaries.
-- **Rebase path**: on a rebase to current upstream, roughly half the overlay
+- **Rebase path**: on a rebase to upstream, roughly half the overlay
   (GLM-5.2 enablement, DSpark, DCP, generic NVFP4 KV) is superseded by merged
   upstream work; the SM121/GB10 sparse-MLA backend and the low-bit MLA KV
   record formats are the durable deltas to carry or upstream.
 - **Action items**: continue improving attribution for the small support-edit
-  tail, rerun the corrected pinned ARM64 image through four-Spark API/request
+  tail, rerun the pinned ARM64 image through four-Spark API/request
   acceptance, and track the
   open SM121 PRs upstream as the retirement path for the largest patch.
 
-## CUDA-graph correctness remains a live gate
+## CUDA-graph correctness is a live gate
 
 The published patch set contains CUDA-graph integration code, but source
 availability and successful capture are not proof of correct replay. The
@@ -121,7 +121,7 @@ public lane has no accepted end-to-end CUDA-graph result. In particular, its
 graph-native TP/vocabulary path has standalone transport probes but not an
 accepted four-rank vLLM changing-input replay result.
 
-An external reproduction has now reported a deterministic wrong-output
+An external reproduction has reported a deterministic wrong-output
 symptom in graph mode while eager mode remained correct. The focused status,
 ranked isolation sequence, required evidence, and GPU-free artifact comparator
 are documented in
