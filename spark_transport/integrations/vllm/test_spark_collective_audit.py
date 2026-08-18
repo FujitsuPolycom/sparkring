@@ -379,3 +379,26 @@ def test_rejects_empty_unbounded_keys(
         audit.record_stock("", capturing=False, reason="x")
     with pytest.raises(ValueError, match="nonempty"):
         audit.record_stock("x", capturing=False, reason="")
+
+
+def test_armed_audit_starts_status_reporter_from_recording_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """An armed audit must produce a status file regardless of model
+    width or graph eligibility, so recording a stock collective must
+    start the reporter even when no graph session was ever prepared."""
+    import spark_graph_status_reporter as reporter
+    import spark_tp4_backend as backend
+
+    status_path = tmp_path / "status-rank0.json"
+    monkeypatch.setenv("SPARK_TP4_GRAPH_STATUS_PATH", str(status_path))
+    started: list[int] = []
+    monkeypatch.setattr(
+        reporter,
+        "ensure_status_reporter",
+        lambda *, rank, interval_seconds=0.25: started.append(rank),
+    )
+    backend._record_stock_path(
+        capturing=False, reason="ineligible_signature"
+    )
+    assert started == [0]
