@@ -831,7 +831,7 @@ VLLM_SPARK_DECODE_CAPTURE_SIZES=1,2,3,4,5,6,8,10,12,15,16,20,24,25,30,32,35,40
 #  48,72,144,224,288,352,432,512 plus VLLM_SPARK_FULL_DECODE_CAPTURE_SIZES=5,10,15,20,25,30,35,40)
 VLLM_SPARK_TP4_PREFILL_Q512=0
 VLLM_SPARK_KV_SCALE_MODE=per-token
-VLLM_NVFP4_MLA_PER_TOKEN_SCALE=1        # present iff per-token; absent for legacy
+VLLM_NVFP4_MLA_PER_TOKEN_SCALE=1        # present for self-describing per-token records; absent for the legacy static per-layer outer-scale scheme
 ```
 
 Custom-transport selectors:

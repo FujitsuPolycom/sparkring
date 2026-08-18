@@ -140,7 +140,7 @@ with them (see TBD-8).
 | Supported MTP mode | **adaptive MTP 2/4, window 32 with true selected-depth drafting** — `num_speculative_tokens: 4`, `adaptive_speculative_tokens_window: 32`, `method: mtp`, adaptive depths `2,4`, `SPARK_ADAPTIVE_MTP_CONTROL=1`, `SPARK_GLM52_MTP_INDEX_REUSE=1`, and `VLLM_SPARK_TRUE_ADAPTIVE_DRAFT=1` (`VLLM_SPARK_MTP_MODE_ID=adaptive-mtp2-4-window32`). A K2 decision must execute only two draft steps, not compute K4 and truncate it. Fixed-K MTP and MTP-off are **not** part of this matrix. See TBD-9 for the determinism consequence. |
 | Max context | `--max-model-len 262144` |
 | Batching | `--max-num-batched-tokens 4096`, `--max-num-seqs 8` (Q40 ABI cap: max query rows = seqs x (K+1) = 40) |
-| KV cache | `--kv-cache-dtype fp8`, `--kv-cache-memory-bytes 7000000000` (7.0 GB/rank) |
+| KV cache | `--kv-cache-dtype nvfp4_ds_mla`, `--kv-cache-memory-bytes 7000000000` (7.0 GB/rank) |
 | Attention backend | `--attention-backend B12X_MLA_SPARSE` |
 | Memory | `--gpu-memory-utilization 0.88` |
 | FlashInfer startup | `--kernel-config '{"enable_flashinfer_autotune":false}'`; the generic 4096-token full-model tuner is not rank-safe with multi-node DCP. The Spark/B12X-specific prewarm is enabled. |

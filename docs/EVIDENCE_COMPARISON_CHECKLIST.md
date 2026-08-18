@@ -99,7 +99,7 @@ For cache comparisons, name the mechanism precisely:
 |---|---|
 | Native automatic prefix cache | vLLM prefix-caching configuration |
 | LMCache | LMCache connector and one local cache service per rank |
-| SparkCache | `sparkcache/` and `SPARK_CONTEXT_CACHE_ENABLE` |
+| SparkCache | `sparkcache/` connector enabled by a complete `--kv-transfer-config`; omission disables SparkCache |
 
 Changing more than one cache mechanism produces a combined cache comparison,
 not evidence attributable to one implementation.
