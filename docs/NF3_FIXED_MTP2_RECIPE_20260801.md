@@ -10,8 +10,8 @@ runtime manifest, and the live API.
 
 This is a **public-functional-lane, live-validated configuration variant** on
 four directly cabled NVIDIA DGX Sparks / GB10s. It is not an accepted public
-bootstrap, not a reference-lane result, and not a result produced from the
-current checkout. The running image identifies SparkRing source commit
+bootstrap, not a reference-lane result, and not a result produced from this
+repository's checkout. The running image identifies SparkRing source commit
 `267289e259a9ecd86c8cdfd8e0ee4a607d37701c`.
 
 The machine-readable recipe and result summary is
@@ -91,7 +91,7 @@ Replace the speculative configuration with:
 {"model":"/mtp-draft","method":"mtp","num_speculative_tokens":2,"draft_attention_backend":"B12X_MLA_SPARSE"}
 ```
 
-Everything else in the base DCP4 snapshot remains unchanged, including DCP4,
+Everything else in the base DCP4 snapshot is unchanged, including DCP4,
 the one-million-token limit, 9 GB/rank KV allocation, graph widths, transport,
 model/image identity, mounts, and rank peer ordering. After excluding only
 `NCCL_IB_HCA`, `SPARK_TP4_DEVICE{0,1}`, and `SPARK_TP4_PEER{0,1}`, the sorted
@@ -101,7 +101,7 @@ effective PID 1 environment on every rank had the same SHA-256:
 8e8acc049b3aacb067a5e6a80f239006d6345eeb9de363b29715c71a01e98543
 ```
 
-`VLLM_SPARK_NF3_PROFILE=reference-four-spark-adaptive-2-4-c8` remains as a
+`VLLM_SPARK_NF3_PROFILE=reference-four-spark-adaptive-2-4-c8` is a
 stale descriptive label. It does not reactivate adaptive MTP: the process has
 no `VLLM_ADAPTIVE_SPEC_DEPTHS`, the three adaptive switches above are zero,
 and the engine reports `num_spec_tokens=2`.

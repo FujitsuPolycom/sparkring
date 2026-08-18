@@ -28,7 +28,7 @@ the pinned NF3 expert kernels while restoring the packed-MLA reader. The
 875,520-token result and the complete public bootstrap are recorded in the
 [four-Spark validation receipt](NF3_NVFP4_PUBLIC_VALIDATION.md).
 
-The former Aiden MXFP4/GPTQ lane is historical and lives in
+The Aiden MXFP4/GPTQ lane is historical and lives in
 [history/AIDEN_MXFP4_GPTQ.md](history/AIDEN_MXFP4_GPTQ.md).
 
 The EXL3/Trellis plus LMCache CS512 profile is the public default. Its public
@@ -312,7 +312,7 @@ request, expected response properties, exact image identity checks, and
 post-request health checks are in
 [NF3_NVFP4_PUBLIC_VALIDATION.md](NF3_NVFP4_PUBLIC_VALIDATION.md).
 
-The current configuration must report:
+The running configuration must report:
 
 | Setting | Value |
 |---|---:|

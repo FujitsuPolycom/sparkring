@@ -128,7 +128,7 @@ Two requested switches need stronger wording than “enabled”:
   name as unknown and no dedicated startup arming line was found. The setting
   is recorded; activation is not claimed.
 - `VLLM_SPARK_TP4_INDEXER_GRAPH_CUSTOM=1` is also present without a dedicated
-  arming line. It remains unproven in this snapshot.
+  arming line. It is unproven in this snapshot.
 
 The custom DCP query/combine plane variable `VLLM_SPARK_TP4_DCP_MODE` is not
 present, so this snapshot does not claim that plane is active.
@@ -217,7 +217,7 @@ There is no registry digest for this locally built image. The containers use:
 - `/dev/infiniband` plus the local GPU;
 - read-only target and draft model mounts;
 - a writable JIT cache;
-- a context-cache mount that remains unused because SparkCache is disabled;
+- a context-cache mount that is unused because SparkCache is disabled;
 - a read-only NF3 startup-profile cap module.
 
 Key installed versions were CUDA 13.2.1, Torch 2.12.0+cu132, B12X 0.23.0,
@@ -285,7 +285,7 @@ engine configuration win.
 
 ## Drift from the default NF3 recipe
 
-The existing default recipe remains the smaller public profile. This live
+The default recipe is the smaller public profile. This live
 operator profile differs materially:
 
 | Field | default recipe | this live snapshot |
@@ -300,7 +300,7 @@ operator profile differs materially:
 | parser pair | `glm45 / glm47` | **`glm47 / glm47`** |
 | served name | `glm-5.2-nf3-hybrid` | **`GLM-5.2-NF3`** |
 
-The immutable image also differs from the older local image ID recorded in
+The immutable image also differs from the local image ID recorded in
 the default recipe. The full snapshot preserves the live ID and all relevant
 binary hashes so future comparisons can distinguish configuration drift from
 runtime drift.
