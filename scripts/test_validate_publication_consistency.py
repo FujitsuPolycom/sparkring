@@ -207,8 +207,8 @@ def test_volatile_test_totals_are_rejected(publication_tree: Path) -> None:
     contributing = publication_tree / "CONTRIBUTING.md"
     prose = contributing.read_text(encoding="utf-8")
     prose = prose.replace(
-        "| **All four (what CI runs)**",
-        "| 9999 passed, 1 skipped\n| **All four (what CI runs)**",
+        "| **All five (what CI runs)**",
+        "| 9999 passed, 1 skipped\n| **All five (what CI runs)**",
     )
     contributing.write_text(prose, encoding="utf-8")
 
