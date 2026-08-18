@@ -24,7 +24,7 @@ each layer and the historical evidence behind it.
 > **Snapshot scope — what this tree can and cannot execute.**
 >
 > The historical reference orchestrator (`run-glm52-graph-window.ps1` and
-> friends) remains in the maintainer archive. This snapshot includes the
+> its companion scripts) is in the maintainer archive. This snapshot includes the
 > recovered GLM-5.2 runtime delta, public image entrypoint, manifested overlay
 > builder, dry-run-first four-rank launcher, and a thin faststart builder based
 > on the exact public ARM64 community image. A native build and partial
@@ -35,13 +35,13 @@ each layer and the historical evidence behind it.
 > stages below as accepted.
 >
 > Concretely: `QUICKSTART.md` is the public-default entry point. The stages below
-> remain reference reconstruction, including historical loose-artifact procedures.
+> are reference reconstruction, including historical loose-artifact procedures.
 > A successful build is not yet an acceptance result.
 >
-> **SparkCache exception:** the complete current Python implementation, native
+> **SparkCache exception:** the complete Python implementation, native
 > placement source, GPU-free tests, and its two independently written
 > upstream-vLLM compatibility patches are published under `sparkcache/` and
-> `runtime/patches/vllm/`. The broader recovered GLM/SM121 delta is now
+> `runtime/patches/vllm/`. The broader recovered GLM/SM121 delta is
 > published under `runtime/patches/00-reference-vllm/`; the two SparkCache
 > patches apply after it. All 73 operations are preimage-pinned and fail
 > closed.
@@ -272,7 +272,7 @@ All steps **[DOCUMENTED: private archive new-node-provisioning.md §§1-4 and fa
    after its relay has an identity-verified archive. Management SSH
    orchestrates the transfer and validates Docker image IDs; all archive bytes
    stay on these direct 200 GbE addresses. The redundant `rank3 -> rank2`
-   direction remains available under `--scope fanout` for diagnostics, but is
+   direction is available under `--scope fanout` for diagnostics, but is
    not part of the deterministic bootstrap tree.
 
    A failed path is classified as host-key, authorization, name-resolution,
@@ -400,7 +400,7 @@ Use **GID index 3 (IPv4 RoCEv2)** bound to the netdev, everywhere a GID index is
 
 ### 3.3 sysctl / iptables — you need none of it **[DOCUMENTED: spark_transport/ROUTED_QSFP_NCCL_BOOTSTRAP.md]**
 
-The production switchless path requires **no** IP forwarding, rp_filter, or iptables changes. There is an optional legacy "routed-QSFP NCCL Socket bootstrap" (a diagnostic fallback, not the production transport) that needs `net.ipv4.ip_forward=1`, `rp_filter=2` on both fabric NICs, and one tagged FORWARD rule per rank; it is managed reboot-recoverably by `scripts/routed_qsfp_nccl_bootstrap.py` (private archive, not in this snapshot). Skip it unless you are debugging.
+The production switchless path requires **no** IP forwarding, rp_filter, or iptables changes. There is an optional "routed-QSFP NCCL Socket bootstrap" (a diagnostic fallback, not the production transport) that needs `net.ipv4.ip_forward=1`, `rp_filter=2` on both fabric NICs, and one tagged FORWARD rule per rank; it is managed reboot-recoverably by `scripts/routed_qsfp_nccl_bootstrap.py` (private archive, not in this snapshot). Skip it unless you are debugging.
 
 ### 3.4 Per-edge cable qualification — before ANY model work **[DOCUMENTED: spark_transport/CABLE_QUALIFICATION.md; private archive new-node-provisioning.md §8; private archive APPROACH.md Phase 1]**
 
@@ -519,7 +519,7 @@ docker run --rm --gpus all -v "$PWD:/src" -w /src \
 
 ## Stage 5 — Container image and the SparkRing overlay
 
-> **Current recommendation:** use `runtime/build-faststart.sh`, documented
+> **Recommendation:** use `runtime/build-faststart.sh`, documented
 > step-by-step in [NF3_QUICKSTART.md](NF3_QUICKSTART.md). It starts from the exact
 > public base below, applies the recovered delta fail-closed, builds the two
 > native components, and bakes the entrypoint and runtime manifest. The
@@ -561,7 +561,7 @@ docker build -f Dockerfile.serving -t <SERVING_IMAGE> .
 For this historical lane, whole-image IDs could legitimately differ across
 nodes because of timestamp-only dummy layers; its gate compared the derived
 runtime configuration, added-layer hashes, wheel hash, and runtime preflight.
-The current public faststart lane is stricter: distribute one built archive and
+The public faststart lane is stricter: distribute one built archive and
 require the same image ID on all four ranks, as described in the quickstart.
 
 **Important:** the default and only correctness-proven load format is **safetensors**. InstantTensor direct-AIO loading is *disabled* after an MTP-acceptance-collapse failure — the wheel is opt-in machinery only. Leave `VLLM_SPARK_LOAD_FORMAT=safetensors`. **[DOCUMENTED: private archive README.md "Loader checkpoint" and CURRENT_STATUS.md]**
@@ -688,7 +688,7 @@ Stage identical, versioned copies of every artifact on **all four nodes** and re
 
 ## Stage 8 — Launch
 
-> **Reference scope:** the PowerShell workflow below remains private-archive history. The accepted public path uses `scripts/bootstrap_nf3.py` to produce a resolved site and launch profile, then `scripts/sparkring_launcher.py` for lifecycle control. Generate and review its offline plan first. The clean-checkout NVFP4+FP8-RoPE API/request gate is recorded in [NF3_NVFP4_PUBLIC_VALIDATION.md](NF3_NVFP4_PUBLIC_VALIDATION.md).
+> **Reference scope:** the PowerShell workflow below is private-archive history. The accepted public path uses `scripts/bootstrap_nf3.py` to produce a resolved site and launch profile, then `scripts/sparkring_launcher.py` for lifecycle control. Generate and review its offline plan first. The clean-checkout NVFP4+FP8-RoPE API/request gate is recorded in [NF3_NVFP4_PUBLIC_VALIDATION.md](NF3_NVFP4_PUBLIC_VALIDATION.md).
 
 Public-candidate planning is entirely offline:
 
@@ -709,7 +709,8 @@ First edit the rank table at the top of `scripts/run-glm52-graph-window.ps1` to 
 # read-only preflight (verifies SSH, artifacts, hashes, API idle) — run this first, always
 powershell -ExecutionPolicy Bypass -File scripts/run-glm52-graph-window.ps1 -Mode Preflight
 
-# execute the production DCP4 window (RC1-style switchless arm)
+# execute the production DCP4 window ("RC1", the release-candidate-1
+# switchless arm recorded in private archive deliverables/glm52-release-candidate-1.md)
 powershell -ExecutionPolicy Bypass -File scripts/run-glm52-graph-window.ps1 `
   -Mode Execute -Confirmation STOP-GLM52-TRACE-ON-ALL-FOUR `
   -DcpSize 4 -NcclTransportMode switchless_ib `
@@ -961,7 +962,7 @@ In `docker logs glm52-trace` on each rank:
 - serve entrypoint: one `patched <file>` line per source patch, then `starting traced GLM-5.2 rank=<N>; trace=... mtp_tokens=4 ... dcp_size=4 ...`;
 - NCCL: `NCCL ... 2.30.7+cuda13.x`, `NET/IB`, `Connected all rings` on every rank; **zero** `NET/Socket` data-path lines;
 - graph capture completion: **26/26 PIECEWISE and 16/16 FULL** captures (the RC1 DCP4 contract);
-- model + MTP draft load completed on all four ranks. Historical reference window: **500,224 logical tokens** at its 4 GB/rank setting. Current public faststart candidate: `4600000000` bytes/rank, reporting 4.28 GiB and **465,663 logical tokens**, enough for `max_model_len=458752`.
+- model + MTP draft load completed on all four ranks. Historical reference window: **500,224 logical tokens** at its 4 GB/rank setting. The public faststart candidate: `4600000000` bytes/rank, reporting 4.28 GiB and **465,663 logical tokens**, enough for `max_model_len=458752`.
 
 ### 9.5 Graph-capture census and live request gate **[DOCUMENTED: private archive scripts/validate_glm52_graph_live.py and run-glm52-graph-window.ps1 `Invoke-LiveGate`]**
 
@@ -1056,7 +1057,7 @@ Resolved since the first reconstruction (no longer inferred): the deployed vLLM 
 
 ## Appendix C — Source documents
 
-The private working repository ("private archive") this guide was reconstructed from (paths relative to its root). The public snapshot now includes `spark_transport/`, `THIRD_PARTY_NOTICES.md`, and a clean-room `scripts/` orchestration layer. The historical scripts named below, `APPROACH.md`, `serve-glm52-trace.sh`, the deliverable reports, and the private archive's own `README.md`/`CURRENT_STATUS.md`/`HANDOFF.md` remain private-archive-only:
+The private working repository ("private archive") this guide was reconstructed from (paths relative to its root). The public snapshot includes `spark_transport/`, `THIRD_PARTY_NOTICES.md`, and a clean-room `scripts/` orchestration layer. The historical scripts named below, `APPROACH.md`, `serve-glm52-trace.sh`, the deliverable reports, and the private archive's own `README.md`/`CURRENT_STATUS.md`/`HANDOFF.md` remain private-archive-only:
 
 - `README.md`, `APPROACH.md`, `HANDOFF.md`, `CURRENT_STATUS.md`, `THIRD_PARTY_NOTICES.md`
 - `new-node-provisioning.md` (provisioning; credential-bearing early history — nothing reproduced from old revisions)
