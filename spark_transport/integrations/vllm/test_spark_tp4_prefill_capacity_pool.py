@@ -104,7 +104,7 @@ class PrefillCapacityPoolSelectorTest(unittest.TestCase):
         exact_q = [
             reservation
             for reservation in reservations
-            if reservation.owner.startswith("eager_allreduce:payload=")
+            if reservation.owner.startswith("eager_allreduce:q=")
         ]
         self.assertEqual(len(exact_q), 512)
         self.assertEqual(exact_q[0].ports, (11000, 11001))

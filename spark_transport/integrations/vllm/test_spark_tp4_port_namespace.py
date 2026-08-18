@@ -39,10 +39,10 @@ class Tp4PortNamespaceTest(unittest.TestCase):
             for reservation in reservations
         }
         self.assertEqual(
-            by_owner["eager_allreduce:payload=12288"], (11000, 11001)
+            by_owner["eager_allreduce:q=1"], (11000, 11001)
         )
         self.assertEqual(
-            by_owner["eager_allreduce:payload=6291456"],
+            by_owner["eager_allreduce:q=512"],
             (12022, 12023),
         )
         self.assertEqual(by_owner["eager_allgather:slot=0"], (9490, 9491))
@@ -121,8 +121,7 @@ class Tp4PortNamespaceTest(unittest.TestCase):
 
         with self.assertRaisesRegex(
             ValueError,
-            r"port 9490: eager_allreduce:payload=73728, "
-            r"eager_allgather:slot=0",
+            r"port 9490: eager_allreduce:q=6, eager_allgather:slot=0",
         ):
             namespace.validate_active_port_namespace(environment)
 
@@ -152,8 +151,7 @@ class Tp4PortNamespaceTest(unittest.TestCase):
 
         with self.assertRaisesRegex(
             ValueError,
-            r"port 12002: eager_allreduce:payload=12288, "
-            r"eager_allreduce:payload=24576",
+            r"port 12002: eager_allreduce:q=1, eager_allreduce:q=2",
         ):
             namespace.validate_active_port_namespace(environment)
 
@@ -285,16 +283,30 @@ class Tp4PortNamespaceTest(unittest.TestCase):
             "VLLM_SPARK_TP4_PREFILL_Q512": "1",
         }
         sizes = namespace.eager_allreduce_payload_sizes(environment)
-        # 2*3072*2 == 1*6144*2 == 12288 appears once.
+        # 2 rows * 3072 * 2 bytes == 1 row * 6144 * 2 bytes == 12288:
+        # an identical byte count is one native operation, one entry.
         self.assertEqual(sizes.count(12288), 1)
-        self.assertIn(12288, sizes)
-        # Ports stride by 2 from base in sorted-size order.
-        index = sizes.index(12288)
+        # A payload shared with the default width keeps the legacy
+        # row-slot ports (row 1 -> slot 0).
         self.assertEqual(
             namespace.eager_allreduce_ports_for_payload(
                 12288, environment
             ),
-            (11000 + 2 * index, 11001 + 2 * index),
+            (11000, 11001),
+        )
+        # Odd 3072-width row counts have no default-width equivalent and
+        # occupy extension slots past the Q512 legacy span, ordered by
+        # payload size.
+        extension_sizes = sorted(
+            rows * 3072 * 2 for rows in range(1, 513) if rows % 2 == 1
+        )
+        first_extension = extension_sizes[0]
+        self.assertEqual(first_extension, 6144)
+        self.assertEqual(
+            namespace.eager_allreduce_ports_for_payload(
+                first_extension, environment
+            ),
+            (11000 + 2 * 512, 11001 + 2 * 512),
         )
 
     def test_eager_allreduce_ports_for_payload_rejects_unknown(self) -> None:

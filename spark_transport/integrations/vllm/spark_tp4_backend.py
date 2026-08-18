@@ -19,6 +19,11 @@ from spark_tp4_port_namespace import (
     validate_control_port_pair,
 )
 from spark_tp4_prefill_capacity_pool import capacity_pool_requested
+from spark_tp4_sparse_q42_q48_contract import (
+    MAX_PROVIDER_QUERY_ROWS,
+    provider_query_rows,
+    sparse_q42_q48_enabled,
+)
 from spark_tp4_query_contract import (
     ABSOLUTE_MAX_QUERY_ROWS,
     MAX_QUERY_ROWS,
@@ -37,7 +42,7 @@ _ALLREDUCE_PREFILL_CAPACITY_BYTES = (
 )
 _DUAL_PORT_Q40_CAPACITY_BYTES = ABSOLUTE_MAX_QUERY_ROWS * _BYTES_PER_ROW
 _TARGET_SHAPES = frozenset(
-    (rows, _TARGET_WIDTH) for rows in range(1, MAX_QUERY_ROWS + 1)
+    (rows, _TARGET_WIDTH) for rows in provider_query_rows()
 )
 _GRAPH_CAPACITY_BYTES = MAX_QUERY_ROWS * _BYTES_PER_ROW
 _GRAPH_STATUS_CAPTURE_CONFIGURED = 1 << 0
@@ -226,24 +231,43 @@ def _prefill_q512_enabled() -> bool:
 
 
 def _maximum_allreduce_query_rows() -> int:
-    return (
-        _ALLREDUCE_PREFILL_MAX_QUERY_ROWS
-        if _prefill_q512_enabled()
-        else MAX_QUERY_ROWS
-    )
+    if _prefill_q512_enabled():
+        return _ALLREDUCE_PREFILL_MAX_QUERY_ROWS
+    if sparse_q42_q48_enabled():
+        return MAX_PROVIDER_QUERY_ROWS
+    return MAX_QUERY_ROWS
 
 
 def _graph_capacity_bytes() -> int:
     if _prefill_q512_enabled():
         return _ALLREDUCE_PREFILL_CAPACITY_BYTES
+    if sparse_q42_q48_enabled():
+        return MAX_PROVIDER_QUERY_ROWS * _BYTES_PER_ROW
     return MAX_QUERY_ROWS * _BYTES_PER_ROW
+
+
+def _admitted_default_width_rows() -> range | frozenset[int]:
+    """Row set admitted at the default width.
+
+    Mirrors the port namespace's supported-row enumeration branch by
+    branch so admission and reservation can never disagree. Under every
+    production environment (VLLM_SPARK_MAX_QUERY_ROWS=40) this is
+    extensionally identical to the deployment lineage, which consults
+    the provider contract unconditionally and therefore ignores lower
+    row caps when the sparse contract is disabled.
+    """
+    if _prefill_q512_enabled():
+        return range(1, _ALLREDUCE_PREFILL_MAX_QUERY_ROWS + 1)
+    if sparse_q42_q48_enabled():
+        return provider_query_rows()
+    return range(1, MAX_QUERY_ROWS + 1)
 
 
 def _target_shape_eligible(shape: tuple[int, ...]) -> bool:
     return (
         len(shape) == 2
         and shape[1] == _TARGET_WIDTH
-        and 1 <= shape[0] <= _maximum_allreduce_query_rows()
+        and shape[0] in _admitted_default_width_rows()
     )
 
 
@@ -271,11 +295,24 @@ def _eager_admitted_widths() -> tuple[int, ...]:
 
 
 def _eager_shape_eligible(shape: tuple[int, ...]) -> bool:
-    return (
-        len(shape) == 2
-        and shape[1] in _eager_admitted_widths()
-        and 1 <= shape[0] <= _maximum_allreduce_query_rows()
+    """Eager admission across widths.
+
+    The default width follows the same row set as the graph gate,
+    including the sparse provider contract when enabled. Non-default
+    widths use the contiguous row range that the port namespace
+    enumerates for extension payloads; the sparse contract is a
+    default-width serving constraint and does not govern them.
+    """
+    if len(shape) != 2 or shape[1] not in _eager_admitted_widths():
+        return False
+    if shape[1] == _TARGET_WIDTH:
+        return shape[0] in _admitted_default_width_rows()
+    extension_maximum = (
+        _ALLREDUCE_PREFILL_MAX_QUERY_ROWS
+        if _prefill_q512_enabled()
+        else MAX_QUERY_ROWS
     )
+    return 1 <= shape[0] <= extension_maximum
 
 
 def _eligible(communicator: Any, tensor: Any, mode: str | None = None) -> bool:
@@ -1177,6 +1214,7 @@ def install() -> None:
         return
     _eager_admitted_widths()
     _prefill_q512_enabled()
+    sparse_q42_q48_enabled()
     validate_active_port_namespace()
 
     from vllm.distributed.device_communicators.cuda_communicator import (

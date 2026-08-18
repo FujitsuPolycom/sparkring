@@ -14,6 +14,10 @@ from dataclasses import dataclass
 from typing import Mapping
 
 from spark_tp4_query_contract import MAX_QUERY_ROWS
+from spark_tp4_sparse_q42_q48_contract import (
+    provider_query_rows,
+    sparse_q42_q48_enabled,
+)
 
 _MIN_CONTROL_PORT = 1
 _MAX_CONTROL_PORT = 65535
@@ -132,6 +136,16 @@ def _maximum_allreduce_query_rows(environ: Mapping[str, str]) -> int:
     )
 
 
+def _supported_allreduce_query_rows(
+    environ: Mapping[str, str],
+) -> tuple[int, ...]:
+    if _flag(environ, "VLLM_SPARK_TP4_PREFILL_Q512"):
+        return tuple(range(1, _EAGER_ALLREDUCE_PREFILL_MAX_QUERY_ROWS + 1))
+    if sparse_q42_q48_enabled(environ):
+        return tuple(sorted(provider_query_rows(environ)))
+    return tuple(range(1, MAX_QUERY_ROWS + 1))
+
+
 _EAGER_ALLREDUCE_WIDTH_ENV = "VLLM_SPARK_TP4_EAGER_WIDTHS"
 # Width cap: 1_048_576 elements x 512 max rows x 2 bytes = 1 GiB, which
 # stays under the native single-RDMA-write bound of UINT32_MAX bytes by
@@ -193,14 +207,41 @@ def eager_allreduce_payload_sizes(
     native operation.
     """
     environment = _environment(environ)
-    maximum = _maximum_allreduce_query_rows(environment)
-    widths = eager_allreduce_admitted_widths(environment)
-    sizes: set[int] = set()
-    for width in widths:
+    legacy, extensions = _eager_allreduce_size_regimes(environment)
+    return tuple(sorted(legacy | set(extensions)))
+
+
+def _eager_allreduce_size_regimes(
+    environ: Mapping[str, str],
+) -> tuple[set[int], tuple[int, ...]]:
+    """Split admissible payload sizes into their two port regimes.
+
+    Legacy sizes are the default width's row-denominated payloads over
+    the supported row set (the sparse provider contract governs that set
+    when enabled) and keep the deployed row-slot port formula, holes
+    included. Extension sizes come from non-default admitted widths over
+    the contiguous row range; the sparse contract is a default-width
+    serving constraint and does not restrict them. A non-default-width
+    payload equal to a supported legacy payload belongs to the legacy
+    regime: an identical byte count is the same native operation.
+    """
+    default_bytes_per_row = (
+        _EAGER_ALLREDUCE_DEFAULT_WIDTH_ELEMENTS
+        * _EAGER_ALLREDUCE_BF16_BYTES
+    )
+    supported = _supported_allreduce_query_rows(environ)
+    legacy = {rows * default_bytes_per_row for rows in supported}
+    maximum = _maximum_allreduce_query_rows(environ)
+    extensions: set[int] = set()
+    for width in eager_allreduce_admitted_widths(environ):
+        if width == _EAGER_ALLREDUCE_DEFAULT_WIDTH_ELEMENTS:
+            continue
         bytes_per_row = width * _EAGER_ALLREDUCE_BF16_BYTES
         for rows in range(1, maximum + 1):
-            sizes.add(rows * bytes_per_row)
-    return tuple(sorted(sizes))
+            size = rows * bytes_per_row
+            if size not in legacy:
+                extensions.add(size)
+    return legacy, tuple(sorted(extensions))
 
 
 def eager_allreduce_ports_for_payload(
@@ -213,14 +254,28 @@ def eager_allreduce_ports_for_payload(
     the pair is (base0 + 2*index, base1 + 2*index) validated as a pair.
     """
     environment = _environment(environ)
-    sizes = eager_allreduce_payload_sizes(environment)
-    try:
-        index = sizes.index(payload_bytes)
-    except ValueError:
+    legacy, extensions = _eager_allreduce_size_regimes(environment)
+    default_bytes_per_row = (
+        _EAGER_ALLREDUCE_DEFAULT_WIDTH_ELEMENTS
+        * _EAGER_ALLREDUCE_BF16_BYTES
+    )
+    if payload_bytes in legacy:
+        # Deployed row-slot formula: slot = row - 1, so unsupported rows
+        # leave permanent holes in the port sequence. The exact-state
+        # arena accounting depends on these exact pairs.
+        slot = payload_bytes // default_bytes_per_row - 1
+    elif payload_bytes in extensions:
+        # Width extensions occupy slots past the largest legacy span
+        # (Q512 ends at slot 511) so no sparse/Q512 toggle moves them.
+        slot = (
+            _EAGER_ALLREDUCE_PREFILL_MAX_QUERY_ROWS
+            + extensions.index(payload_bytes)
+        )
+    else:
         raise ValueError(
             "unsupported Spark TP4 eager all-reduce payload size: "
             f"{payload_bytes} bytes"
-        ) from None
+        )
     base0 = _integer(
         environment,
         "SPARK_TP4_CONTROL_PORT0",
@@ -231,7 +286,7 @@ def eager_allreduce_ports_for_payload(
         "SPARK_TP4_CONTROL_PORT1",
         _EAGER_ALLREDUCE_DEFAULT_PORTS[1],
     )
-    offset = index * _EAGER_ALLREDUCE_PORT_STRIDE
+    offset = slot * _EAGER_ALLREDUCE_PORT_STRIDE
     return validate_control_port_pair(
         (base0 + offset, base1 + offset),
         owner=f"eager all-reduce payload {payload_bytes}",
@@ -241,21 +296,16 @@ def eager_allreduce_ports_for_payload(
 def _eager_allreduce_pair(
     query_rows: int, environ: Mapping[str, str]
 ) -> tuple[int, int]:
-    maximum = _maximum_allreduce_query_rows(environ)
+    supported = _supported_allreduce_query_rows(environ)
     if (
         not isinstance(query_rows, int)
         or isinstance(query_rows, bool)
-        or query_rows < 1
-        or query_rows > maximum
+        or query_rows not in supported
     ):
         raise ValueError(
-            "Spark TP4 eager all-reduce query rows must be in "
-            f"[1, {maximum}]: {query_rows}"
+            "Spark TP4 eager all-reduce query rows must be in the exact "
+            f"supported set {supported}: {query_rows}"
         )
-    # Legacy row-denominated identity: with the default width the payload
-    # for query_rows is query_rows * default_width * 2 bytes, whose
-    # canonical payload-size index is query_rows - 1, so this delegation
-    # is bit-identical to the former base + 2*(query_rows-1) formula.
     payload_bytes = (
         query_rows
         * _EAGER_ALLREDUCE_DEFAULT_WIDTH_ELEMENTS
@@ -384,7 +434,15 @@ def active_port_reservations(
         frozenset({"custom", "disabled", "shadow"}),
     )
     if allreduce_mode in {"custom", "shadow"}:
-        for payload_bytes in eager_allreduce_payload_sizes(environment):
+        for query_rows in _supported_allreduce_query_rows(environment):
+            reservations.append(
+                PortReservation(
+                    f"eager_allreduce:q={query_rows}",
+                    _eager_allreduce_pair(query_rows, environment),
+                )
+            )
+        _, extension_sizes = _eager_allreduce_size_regimes(environment)
+        for payload_bytes in extension_sizes:
             reservations.append(
                 PortReservation(
                     f"eager_allreduce:payload={payload_bytes}",
