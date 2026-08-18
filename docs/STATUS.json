@@ -30,13 +30,8 @@
     "offline_python_contracts": {
       "maturity": "offline-validated",
       "command": "python -m pytest spark_transport sparkcache runtime scripts -q",
-      "last_observed": {
-        "passed": 2083,
-        "skipped": 13,
-        "clean_host_passed": 2035,
-        "clean_host_skipped": 4,
-        "clean_host_subtests": 113
-      }
+      "ci_job": "offline-tests",
+      "environment": "Python 3.12 with CPU-only torch 2.11.0"
     },
     "site_validator_and_preflight": {
       "maturity": "offline-validated",

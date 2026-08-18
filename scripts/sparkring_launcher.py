@@ -91,7 +91,7 @@ class LaunchConfig:
     extra_vllm_args: tuple[str, ...]
 
 
-# RemoteAction is shared from sparkring_runtime (F8 extraction).
+# Shared remote-action contract.
 RemoteAction = runtime.RemoteAction
 
 
@@ -204,10 +204,8 @@ def _validate_placeholders(value: str, where: str) -> None:
         raise LaunchConfigError(f"{where}: unknown placeholder {{{unknown[0]}}}")
 
 
-# Per-rank transport context derivation (XOR peer/site context) is shared
-# from sparkring_runtime (F8 extraction). The shared site_context is
-# byte-identical to the original NF3 _context. This compatibility wrapper
-# preserves the internal call site name and any external test references.
+# Per-rank transport context derivation uses the shared runtime module.
+# Compatibility aliases preserve the launcher interface.
 _context = runtime.site_context
 _expand = runtime.expand
 
@@ -733,10 +731,8 @@ def simple_actions(
     return actions
 
 
-# run_remote, execute, and action_succeeded are shared from
-# sparkring_runtime (F8 extraction).  The shared implementations are
-# byte-identical to the originals; compatibility re-exports keep
-# existing callers and tests working.
+# Remote execution uses the shared runtime module. Compatibility aliases
+# preserve the launcher interface for callers and tests.
 run_remote = runtime.run_remote
 execute = runtime.execute
 action_succeeded = runtime.action_succeeded

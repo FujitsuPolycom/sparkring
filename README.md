@@ -10,6 +10,9 @@ DCP4, support for fixed and adaptive MTP speculative decoding, and a patched rin
 
 The long-term goal is a model-agnostic runtime for efficient, switchless multi-node inference on DGX Spark.
 
+Use the [documentation map](docs/README.md) to find the canonical specification,
+runnable procedure, evidence record, or historical reference for a task.
+
 ## Acknowledgements
 
 SparkRing would not exist without the months of research, profiling, kernel development, runtime patching, model conversion, and operational testing shared by the RTX 6000 Pro inference community.

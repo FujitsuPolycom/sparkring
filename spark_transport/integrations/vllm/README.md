@@ -190,6 +190,54 @@ The four-rank serving experiment found no uncached-prefill improvement and a
 protocol groundwork rather than a promoted serving configuration. The proven
 default remains the Q40 decode plan.
 
+### Opt-in eager admitted hidden widths
+
+Status: offline-tested groundwork, default-off. No serving evidence.
+
+The eager TP4 all-reduce native session moves a raw byte payload and does not
+depend on the model's hidden width; the historical width restriction is
+adapter-side admission. `VLLM_SPARK_TP4_EAGER_WIDTHS` replaces the admitted
+eager hidden-width list. Unset or empty, admission is exactly the historical
+contiguous CUDA BF16 `[Q, 6144]`. When set (comma-separated element widths,
+for example `4096,6144`), eager all-reduce admits contiguous CUDA BF16
+`[Q, W]` for each listed `W` under the same query-row bounds as before. Every
+other admission term is unchanged: four ranks, `tp:0`, BF16, CUDA,
+contiguous.
+
+- Eager only. Graph capture and replay, dual-port striped, vocabulary, DCP,
+  and all-gather admission are untouched and remain width-bound. A non-6144
+  tensor observed during an active graph capture is routed to the stock path
+  and recorded as `graph_width_ineligible` rather than captured.
+- Eager all-reduce control ports are derived from the ordered set of
+  admissible payload sizes. With the variable unset, the mapping is
+  bit-identical to the historical per-Q scheme. Setting the variable remaps
+  those ports, so all four ranks must share the same value;
+  `validate_active_port_namespace` fails installation on any overlap or
+  malformed value.
+- An identical payload byte count is the same native operation: widths whose
+  `Q * W * 2` coincide share one session and one port pair.
+- Recommended rollout is shadow mode first (`VLLM_SPARK_TP4_MODE=shadow`) so
+  each new signature accumulates its numerical comparison window before any
+  promotion. No performance or maturity claim is attached: prior admission
+  widenings (Q512 prefill, isolated dual-port Q40) regressed serving until
+  qualified, so this remains admission groundwork pending a matched
+  four-Spark comparison.
+
+`VLLM_SPARK_TP4_QUERY_ROW_PROVIDER` replaces the default-width query-row
+policy. Unset, the admitted rows are the contiguous range
+`1..VLLM_SPARK_MAX_QUERY_ROWS`. When set to an importable module name, that
+module owns the row set: it is imported lazily at installation, must expose
+`provider_query_rows(environ) -> Iterable[int]`, and its rows are validated
+in the generic core (integers, unique, positive, at most 512). A configured
+provider that is missing, lacks the interface, or returns invalid rows fails
+installation with a diagnostic naming the variable and module. The variable
+is mutually exclusive with `VLLM_SPARK_TP4_PREFILL_Q512` and, like the width
+list, is launch identity: all four ranks must configure the same value. Row
+providers constrain the default width only; non-default extension widths
+always admit the contiguous range.
+[`spark_tp4_query_row_provider.py`](spark_tp4_query_row_provider.py) is the
+single resolver both the admission gate and the port namespace consult.
+
 ## Direct-cable TP4 all-gather
 
 The all-gather adapter is separately opt-in:

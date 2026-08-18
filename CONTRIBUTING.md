@@ -20,6 +20,9 @@ which claims each level of access earns you.
 ## Pull requests
 
 - Match the existing style of the surrounding code.
+- All prose — documentation, comments, docstrings, commit and PR text — must
+  follow [Write Without Hidden Context](docs/WRITING_STANDARD.md): it must make
+  sense to a reader who has the repository but none of the development history.
 - All tests must be green:
   - Python: `python -m pytest spark_transport sparkcache runtime scripts` from the repo root.
   - C++/CUDA: the CMake (CTest) suite, run in-container.
@@ -41,9 +44,10 @@ an issue is much cheaper than in a 3,000-line diff.
 
 **You need:** a text editor.
 
-Documentation is a first-class contribution here. The setup guide is long,
-hardware-coupled, and partly reconstructed; every ambiguity someone hits and
-writes down makes the next attempt cheaper.
+Documentation is a first-class contribution here. Start with the
+[documentation map](docs/README.md) to distinguish present-state
+specifications, runnable runbooks, evidence records, and historical reference
+material before editing a claim.
 
 ```bash
 git clone https://github.com/FujitsuPolycom/sparkring.git
@@ -86,6 +90,10 @@ python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2
 
 # The full offline suite:
 python -m pytest spark_transport sparkcache runtime scripts -q
+
+# Check that recipes, status roles, evidence paths, and public summary
+# identities still agree:
+python scripts/validate_publication_consistency.py
 
 # Lint (the exact rule selection CI uses):
 ruff check --select E,F,W --ignore E501 .
@@ -157,16 +165,17 @@ ports" is a result worth recording.
 
 ## Test suites and where they run
 
-Counts below were measured on the committed tree with Python 3.12, CPU-only
-torch, on a machine with no GPU and no fabric.
+The blocking `offline-tests` CI job runs the Python suites with Python 3.12 and
+CPU-only torch on a machine with no GPU and no fabric. Test totals are emitted
+by each run rather than copied into this present-state specification.
 
-| Suite | Command | Needs | Measured |
+| Suite | Command | Needs | Validation |
 |---|---|---|---|
-| `spark_transport` Python | `python -m pytest spark_transport -q` | CPU only | 821 passed, 4 skipped |
-| `sparkcache` Python | `python -m pytest sparkcache -q` | CPU only | 407 passed, 1 skipped |
-| `runtime` Python | `python -m pytest runtime -q` | CPU only | 56 passed |
-| Public tooling | `python -m pytest scripts -q` | CPU only | 312 passed |
-| **All four (what CI runs)** | `python -m pytest spark_transport sparkcache runtime scripts -q` | CPU only | **1596 passed, 5 skipped** |
+| `spark_transport` Python | `python -m pytest spark_transport -q` | CPU only | Included in blocking CI |
+| `sparkcache` Python | `python -m pytest sparkcache -q` | CPU only | Included in blocking CI |
+| `runtime` Python | `python -m pytest runtime -q` | CPU only | Included in blocking CI |
+| Public tooling | `python -m pytest scripts -q` | CPU only | Included in blocking CI |
+| **All four (what CI runs)** | `python -m pytest spark_transport sparkcache runtime scripts -q` | CPU only | **Blocking CI gate** |
 | SparkCache native, host half | `cmake -S sparkcache/native ... -DSPARK_CACHE_PLACEMENT_ENABLE_CUDA=OFF` + `ctest` | CPU only, C++17 compiler | runs in CI |
 | SparkCache native, CUDA half | default `cmake -S sparkcache/native` + `ctest` | 1 GPU + CUDA toolkit | **manual gate** |
 | `spark_transport` CTest | `cmake -S spark_transport ...` + `ctest` | CUDA toolkit + `libibverbs` to configure at all; GPU for the CUDA cases | **manual gate** |
@@ -176,9 +185,8 @@ torch, on a machine with no GPU and no fabric.
 | Public acceptance dry-run | `python scripts/acceptance_gate.py --site ... --gate-config ...` | CPU only; complete local configuration | **dry-run by default** |
 | Serving / performance windows | acceptance `--execute` or the private reference orchestrator | 4 Sparks + a complete runtime and launcher | **manual gate; stops serving** |
 
-The five skips in the combined offline run are self-declared and expected:
-four are in the transport tree (vLLM/container, four-rank, or private-evidence
-requirements) and one is in SparkCache.
+Hardware- or environment-dependent cases self-skip with explicit reasons.
+CI uses pytest's `-rs` output so reviewers can inspect every skip reason.
 
 **Nothing in the "manual gate" rows runs in CI.** A green CI run never means
 the native build passed or the transport was verified.
@@ -414,7 +422,7 @@ from forks therefore get the full check set.
 | Job | What it proves |
 |---|---|
 | `lint` | `ruff check --select E,F,W --ignore E501` is clean repo-wide. Formatting is reported but **not** enforced. |
-| `offline-tests` | The four CPU-only pytest trees pass and the sanitized site/preflight/acceptance examples produce an offline dry-run plan. |
+| `offline-tests` | Publication roles and evidence references agree, the four CPU-only pytest trees pass, and the sanitized site/preflight/acceptance examples produce an offline dry-run plan. |
 | `native-cpu-contract` | SparkCache's host-side layout/parser sources compile warning-clean under `-Werror` and their CTest cases pass. **No CUDA is compiled.** |
 | `docs-links` | Every repo-relative Markdown link and heading anchor resolves. External URLs are not fetched. |
 | `release-safety` | No tier-1 identifier or credential shape in tracked files. Blocking. |

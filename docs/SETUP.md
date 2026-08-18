@@ -2,18 +2,20 @@
 
 **GLM-5.2 on 4x NVIDIA DGX Spark (GB10), tensor-parallel 4, switchless direct-cable 200GbE RoCE ring.**
 
-> **Use [EXL3_QUICKSTART.md](EXL3_QUICKSTART.md) for the main advertised and
-> currently running installation.** The madeby561 NF3 hybrid remains the
-> accepted deterministic alternative in [NF3_QUICKSTART.md](NF3_QUICKSTART.md).
-> Model-specific Aiden/GPTQ commands below are retained as historical
-> reconstruction material, not as a supported setup path.
+> **Use [QUICKSTART.md](QUICKSTART.md) for the public-default installation.**
+> The detailed EXL3 procedure is in
+> [EXL3_QUICKSTART.md](EXL3_QUICKSTART.md), and the accepted deterministic NF3
+> alternative is in [NF3_QUICKSTART.md](NF3_QUICKSTART.md). Use the
+> [documentation map](README.md) for specifications, evidence, and other
+> runbooks. Model-specific Aiden/GPTQ commands below are historical
+> reconstruction material, not a supported setup path.
 
-This is the detailed reconstruction of the complete reference deployment:
+This document is the detailed reconstruction of the reference deployment:
 cabling, OS prerequisites, fabric network, patched NCCL, model download,
 native transport, runtime overlay, launcher, and acceptance gates. For the
-short copy/paste route, start with the
-**[EXL3 + LMCache quickstart](EXL3_QUICKSTART.md)**. This longer guide explains every
-layer and the historical evidence behind it.
+supported deployment route, start with the
+**[public-default quickstart](QUICKSTART.md)**. The reconstruction explains
+each layer and the historical evidence behind it.
 
 ---
 
@@ -32,8 +34,8 @@ layer and the historical evidence behind it.
 > [EXL3_RECIPE.md](EXL3_RECIPE.md). That result does not relabel the historical
 > stages below as accepted.
 >
-> Concretely: the EXL3 quickstart is the current advertised public path. The stages below
-> remain the deeper reference, including historical loose-artifact procedures.
+> Concretely: `QUICKSTART.md` is the public-default entry point. The stages below
+> remain reference reconstruction, including historical loose-artifact procedures.
 > A successful build is not yet an acceptance result.
 >
 > **SparkCache exception:** the complete current Python implementation, native

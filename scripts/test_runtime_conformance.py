@@ -4,8 +4,8 @@ Covers: validate/explain/diff CLI, malformed inputs, recursive semantic
 diff with exact nested JSON paths (0=same, 1=different, 2=invalid),
 deterministic output, identity/image/topology/labels/mounts/hooks/action
 change detection, one-sided site fallback, Windows/POSIX invocation,
-offline/no-SSH via poisoned PATH, exact NF3 extraction golden tests
-(old context and expand independently reconstructed and monkeypatched,
+offline/no-SSH via poisoned PATH, exact NF3 shared-runtime golden tests
+(reference context and expansion independently reconstructed and monkeypatched,
 complete RemoteAction lists compared by equality for start/stop/status/
 verify-rollback), actual generated semantic plan snapshots for
 contributor/EXL3/NF3, template validation, contributor workflow,
@@ -611,15 +611,11 @@ def test_cli_path_with_spaces(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# NF3 extraction: exact golden tests (monkeypatched before/after)
+# NF3 shared-runtime conformance against an independent reference
 # ---------------------------------------------------------------------------
 
-def _reconstruct_old_nf3_context(site, rank_id):
-    """Independently reconstruct the pre-extraction NF3 _context.
-
-    This is the exact body that lived in sparkring_launcher.py before
-    the F8 extraction to sparkring_runtime.site_context.
-    """
+def _reference_nf3_context(site, rank_id):
+    """Independently construct the NF3 per-rank transport context."""
     rank = site.rank(rank_id)
     peers_by_rank = {peer.rank: peer for peer in rank.transport_peers}
     peers = [peers_by_rank[rank_id ^ 1], peers_by_rank[rank_id ^ 3]]
@@ -644,8 +640,8 @@ def _reconstruct_old_nf3_context(site, rank_id):
     }
 
 
-def _reconstruct_old_expand(value, context):
-    """Independently reconstruct the pre-extraction NF3 _expand."""
+def _reference_expand(value, context):
+    """Independently expand NF3 transport-context placeholders."""
     import re
     return re.sub(
         r"\{([a-z0-9_]+)\}", lambda m: context[m.group(1)], value,
@@ -658,13 +654,12 @@ def test_nf3_context_is_runtime_site_context():
 
 
 def test_nf3_context_exact_all_ranks():
-    """Exact context dict equality: shared site_context vs independently
-    reconstructed pre-extraction _context, for all 4 ranks."""
+    """Require shared context equality with the independent reference."""
     site = load_site(SITE)
     for rank_id in range(4):
-        old = _reconstruct_old_nf3_context(site, rank_id)
-        new = runtime.site_context(site, rank_id)
-        assert old == new, f"rank {rank_id} context mismatch"
+        reference = _reference_nf3_context(site, rank_id)
+        shared = runtime.site_context(site, rank_id)
+        assert reference == shared, f"rank {rank_id} context mismatch"
 
 
 def test_nf3_expand_exact():
@@ -679,98 +674,98 @@ def test_nf3_expand_exact():
         "{rank}/{world_size}",
     ]
     for val in test_values:
-        old = _reconstruct_old_expand(val, ctx)
-        new = runtime.expand(val, ctx)
-        assert old == new, f"expand mismatch for '{val}'"
+        reference = _reference_expand(val, ctx)
+        shared = runtime.expand(val, ctx)
+        assert reference == shared, f"expand mismatch for '{val}'"
 
 
 def test_nf3_start_actions_exact_monkeypatched():
-    """Exact start actions: monkeypatch old _context/_expand, compare lists.
+    """Compare shared start actions with independent reference functions.
 
     Temporarily replaces nf3._context and nf3._expand with independently
-    reconstructed pre-extraction implementations, builds actions, then
-    restores the shared aliases and builds actions again. The complete
-    RemoteAction lists must be equal by dataclass equality.
+    constructed reference functions, builds actions, then restores the shared
+    aliases and builds actions again. The complete RemoteAction lists must be
+    equal by dataclass equality.
     """
     site = load_site(SITE)
     config = nf3.load_launch(LAUNCH_NF3)
 
-    # Save originals
+    # Preserve the shared aliases for restoration.
     orig_context = nf3._context
     orig_expand = nf3._expand
 
-    # Monkeypatch old implementations
-    nf3._context = _reconstruct_old_nf3_context
-    nf3._expand = _reconstruct_old_expand
+    # Build actions with independent reference functions.
+    nf3._context = _reference_nf3_context
+    nf3._expand = _reference_expand
     try:
-        old_actions = nf3.start_actions(site, config)
+        reference_actions = nf3.start_actions(site, config)
     finally:
         nf3._context = orig_context
         nf3._expand = orig_expand
 
-    new_actions = nf3.start_actions(site, config)
-    assert old_actions == new_actions, "start actions differ after extraction"
+    shared_actions = nf3.start_actions(site, config)
+    assert reference_actions == shared_actions, "start actions differ from reference"
 
 
 def test_nf3_stop_actions_exact_monkeypatched():
-    """Exact stop actions: monkeypatched old vs new shared aliases."""
+    """Compare shared stop actions with independent reference functions."""
     site = load_site(SITE)
     config = nf3.load_launch(LAUNCH_NF3)
 
     orig_context = nf3._context
     orig_expand = nf3._expand
 
-    nf3._context = _reconstruct_old_nf3_context
-    nf3._expand = _reconstruct_old_expand
+    nf3._context = _reference_nf3_context
+    nf3._expand = _reference_expand
     try:
-        old_actions = nf3.simple_actions(site, config, "stop")
+        reference_actions = nf3.simple_actions(site, config, "stop")
     finally:
         nf3._context = orig_context
         nf3._expand = orig_expand
 
-    new_actions = nf3.simple_actions(site, config, "stop")
-    assert old_actions == new_actions, "stop actions differ after extraction"
+    shared_actions = nf3.simple_actions(site, config, "stop")
+    assert reference_actions == shared_actions, "stop actions differ from reference"
 
 
 def test_nf3_status_actions_exact_monkeypatched():
-    """Exact status actions: monkeypatched old vs new shared aliases."""
+    """Compare shared status actions with independent reference functions."""
     site = load_site(SITE)
     config = nf3.load_launch(LAUNCH_NF3)
 
     orig_context = nf3._context
     orig_expand = nf3._expand
 
-    nf3._context = _reconstruct_old_nf3_context
-    nf3._expand = _reconstruct_old_expand
+    nf3._context = _reference_nf3_context
+    nf3._expand = _reference_expand
     try:
-        old_actions = nf3.simple_actions(site, config, "status")
+        reference_actions = nf3.simple_actions(site, config, "status")
     finally:
         nf3._context = orig_context
         nf3._expand = orig_expand
 
-    new_actions = nf3.simple_actions(site, config, "status")
-    assert old_actions == new_actions, "status actions differ after extraction"
+    shared_actions = nf3.simple_actions(site, config, "status")
+    assert reference_actions == shared_actions, "status actions differ from reference"
 
 
 def test_nf3_verify_rollback_exact_monkeypatched():
-    """Exact verify-rollback actions: monkeypatched old vs new."""
+    """Compare shared rollback verification with reference functions."""
     site = load_site(SITE)
     config = nf3.load_launch(LAUNCH_NF3)
 
     orig_context = nf3._context
     orig_expand = nf3._expand
 
-    nf3._context = _reconstruct_old_nf3_context
-    nf3._expand = _reconstruct_old_expand
+    nf3._context = _reference_nf3_context
+    nf3._expand = _reference_expand
     try:
-        old_actions = nf3.simple_actions(site, config, "verify-rollback")
+        reference_actions = nf3.simple_actions(site, config, "verify-rollback")
     finally:
         nf3._context = orig_context
         nf3._expand = orig_expand
 
-    new_actions = nf3.simple_actions(site, config, "verify-rollback")
-    assert old_actions == new_actions, (
-        "verify-rollback actions differ after extraction")
+    shared_actions = nf3.simple_actions(site, config, "verify-rollback")
+    assert reference_actions == shared_actions, (
+        "verify-rollback actions differ from reference")
 
 
 def test_nf3_start_action_structural_fields():

@@ -118,7 +118,7 @@ The CUDA result proves:
 4. The peer GPU can read and verify the resulting data.
 5. No explicit `cudaMemcpy` is required for this storage path.
 
-The original timed region measured the reused RDMA write plus local CQ
+The reported timed region measured the reused RDMA write plus local CQ
 completion. GPU production occurred once before the timed loop, and GPU
 verification once after it. The persistent doorbell mode below removes that
 limitation.
@@ -159,11 +159,12 @@ Vectorized full-consume sweep:
 All 70,000 measured sweep iterations were correct. Direct registration of
 both `cudaMalloc` and `cudaMallocManaged` allocations was also tested and
 failed at `ibv_reg_mr` on both Sparks. This makes CUDA-mapped ingress plus a
-persistent vectorized GPU consumer the current winning path.
+persistent vectorized GPU consumer the qualified path under these registration
+constraints.
 
 ## TP2 BF16 exchange and fused add
 
-`spark_tp2_probe` is the first useful collective primitive. Both ranks
+`spark_tp2_probe` is the TP2 BF16 collective primitive. Both ranks
 simultaneously:
 
 1. publish a local BF16 tensor;
@@ -179,7 +180,7 @@ The packed BF16-pair implementation achieved:
 | 4 KB | small decode/control tensor | 14.98 us | 15.34 us | yes |
 | 8 KB | small hidden fragment | 17.76 us | 19.22 us | yes |
 | 12 KB | one 6,144-wide GLM BF16 vector | 20.27 us | 20.75 us | yes |
-| 16 KB | original target | 22.83 us | 30.02 us | yes |
+| 16 KB | benchmark target | 22.83 us | 30.02 us | yes |
 | 24 KB | two GLM hidden vectors | 27.81 us | 28.85 us | yes |
 | 32 KB | larger batch | 32.77 us | 33.76 us | yes |
 | 64 KB | larger batch/prefill | 52.51 us | 61.14 us | yes |
@@ -194,7 +195,7 @@ p99 23.072 us
 p99.9 37.425 us
 ```
 
-The earlier uniform-value fast path reached 21.84 us p50, 20.8% below the
+The uniform-value fast path reached 21.84 us p50, 20.8% below the
 clean 27.58 us adjacent NCCL-IB p50. The stricter burn remained about 18%
 below NCCL while providing materially stronger corruption detection.
 
@@ -244,13 +245,13 @@ format. The TP partial-sum path remains BF16 unless the runtime explicitly
 adds a quantize/dequantize collective. NVFP4 CKV gather is a separate raw-copy
 transport operation with scale metadata, not a reduction.
 
-## Next milestones
+## TP4 status and open work
 
 The GLM trace confirmed that the hot decode collective is contiguous BF16
 `[1, 6144]`, or 12,288 bytes, and that the runtime issues 128 of these
 all-reduces per generated token.
 
-The first four-rank primitive uses two direct-cable perfect matchings:
+The measured four-rank primitive uses two direct-cable perfect matchings:
 
 ```text
 round 0 / cage 0: 0 <-> 1    2 <-> 3
@@ -287,7 +288,7 @@ This runner refuses to start while `glm52-trace` is running. It reports MAE,
 RMSE, maximum absolute error, per-element wins, and exact agreement with the
 correctly rounded FP32 sum for both the custom tree and NCCL.
 
-Next milestones:
+Open work:
 
 1. Complete the FP32-ground-truth promotion audit.
 2. Benchmark custom-only GLM decode against the NCCL Socket baseline.

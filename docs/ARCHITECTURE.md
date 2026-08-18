@@ -50,7 +50,7 @@ physical port, both matchings run simultaneously at full 200G with zero
 contention — a four-rank all-reduce costs exactly two link traversals. The
 measured ordinary-CUDA-tensor TP4 all-reduce is 40.14–40.22 µs p50
 (50.11–50.85 µs p99, 10,000 iterations, zero mismatches on all four ranks)
-for the hot GLM decode shape (`spark_transport/README.md`, "Next milestones";
+for the hot GLM decode shape (`spark_transport/README.md`, "TP4 status and open work";
 implementation: `spark_transport/src/tp4_schedule.cpp`,
 `spark_transport/src/tp4_session.cpp`).
 
@@ -104,7 +104,7 @@ one.
 SIRCL is the **Switchless Inference RDMA Collective Layer** inside SparkRing,
 not a separate service or an NCCL fork. SparkRing is the full inference stack;
 SIRCL is the direct-cable collective runtime described in this section. See
-[`SIRCL.md`](SIRCL.md) for its public boundary and current-versus-planned
+[`SIRCL.md`](SIRCL.md) for its public boundary and implemented-versus-planned
 surface.
 
 The core abstractions (`spark_transport/README.md`):
@@ -329,4 +329,4 @@ will create before a single model process starts.
 | Cable/edge qualification | `spark_transport/CABLE_QUALIFICATION.md` |
 | Switchless NCCL patches and probes | `spark_transport/experiments/nccl_switchless_ring/` |
 | Orchestration, attestation, live gates | `scripts/run-glm52-graph-window.ps1`, `scripts/validate_glm52_graph_live.py` |
-| Current results and roadmap | `README.md`, `CURRENT_STATUS.md` |
+| Results and open work | [Project overview](../README.md), [component status](STATUS.json), and [measured results](RESULTS.md) |
