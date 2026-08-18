@@ -44,7 +44,7 @@ mounts. Do not bypass the hashes.
 | SIRCL kernel selector | `tiered_64k` |
 | Exact-Q40 policy | target mixed-EXL3 only; capacity 40, route block 8 |
 
-Dual-port graph transport and the prefill capacity pool remain disabled. They
+Dual-port graph transport and the prefill capacity pool are disabled. They
 are research-only options, not part of the accepted profile.
 
 ## 1. Prepare immutable source trees and build the image
@@ -155,8 +155,8 @@ python scripts/prepare_exl3_r7_mtp4_ckv_gather.py \
 ```
 
 The receipt reports the two-lane transient workspace prediction of 434,534,400
-bytes/rank. SparkRing's custom CKV all-gather remains disabled; DCP and the
-sparse indexer remain on their stock paths.
+bytes/rank. SparkRing's custom CKV all-gather is disabled; DCP and the
+sparse indexer use their stock paths.
 
 ## 5. Compile and bind tiered/deferred SIRCL
 

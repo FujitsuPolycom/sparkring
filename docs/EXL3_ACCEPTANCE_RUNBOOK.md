@@ -4,7 +4,7 @@ This runbook advances the default four-DGX-Spark GLM-5.2 EXL3 3.25-bpw plus
 LMCache CS512 profile beyond its bounded live-validation receipt. It is a
 `public-functional` candidate workflow. Publishing the tools does not upgrade
 the profile from `live-validated` to `accepted`; only a reviewed, passing live
-evidence bundle can do that. NF3 remains the accepted deterministic
+evidence bundle can do that. NF3 is the accepted deterministic
 alternative.
 
 The workflow is intentionally easy to inspect and extend. Individual offline
@@ -200,7 +200,7 @@ python scripts/exl3_cache_acceptance.py \
 The gate requires one registered GPU context, healthy L1 state, no temporary
 or locked objects, and stored objects on every rank. It also requires identical
 fixed-seed completion text across cold, warm, and restart samples. The broader
-correctness gate remains the token-ID authority.
+correctness gate is the token-ID authority.
 
 ## 5. Produce and review the full dry-run plan
 
@@ -293,7 +293,7 @@ machine-readable receipt.
 
 Read every listed mismatch. Common causes are an NF3 site file used with the
 EXL3 profile, an unexpanded angle-bracket value, mutable model revision, wrong
-MTP mode, 1M context/9 GB KV settings left from an older profile, or a missing
+MTP mode, 1M context/9 GB KV settings left from a different profile, or a missing
 C2/C4 cell. Regenerate the site/profile with the EXL3 bootstrap rather than
 editing around the recipe contract.
 
@@ -410,4 +410,4 @@ ruff check --select E,F,W --ignore E501 \
   scripts/sparkring_startup_evidence.py
 ```
 
-The full repository validation remains the command in [CONTRIBUTING.md](../CONTRIBUTING.md).
+The full repository validation is the command in [CONTRIBUTING.md](../CONTRIBUTING.md).
