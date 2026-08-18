@@ -1,9 +1,9 @@
 # GLM-5.2 EXL3 3.25-bpw recipe
 
-Status: **default, main advertised, and currently running public-functional
-configuration; clean-checkout four-Spark live-validated; not fully accepted**
+Status: **default and main advertised public-functional configuration;
+bounded clean-checkout four-Spark live-validated; not fully accepted**
 
-This recipe defines the current public EXL3 serving contract for four directly
+This recipe defines the public EXL3 serving contract for four directly
 cabled DGX Sparks:
 
 [`willfalco/GLM-5.2-EXL3-TR3-3.25bpw`](https://huggingface.co/willfalco/GLM-5.2-EXL3-TR3-3.25bpw)
@@ -15,7 +15,7 @@ It contains the model hashes, EXL3 source commits, complete static environment,
 and vLLM argument vector. Site-specific addresses, SSH users, NIC names, GID
 indices, and paths remain in the ignored site configuration.
 
-## Current contract
+## Contract
 
 | Setting | Value |
 |---|---|
@@ -40,16 +40,16 @@ accepts at most 4,096 batched tokens, eight sequences, and 32 query rows. The
 LMCache launcher starts one host-local server for each rank, verifies server
 health, and only then starts the four distributed vLLM engines.
 
-The fixed-MTP2 engine profile and the later LMCache CS512 campaign were first
+The fixed-MTP2 engine profile and the LMCache CS512 campaign were
 validated as external operator configurations. Their exact deltas, bounded
 gates, and evidence limitations are recorded in the
 [DCP4 fixed-MTP2 recipe](EXL3_FIXED_MTP2_RECIPE_20260802.md) and
 [LMCache campaign](EXL3_LMCACHE_CAMPAIGN_20260803.md). Publishing the same
-settings in the executable recipe does not relabel those earlier external runs.
-A later clean-checkout deployment of the public bootstrap has its own bounded
+settings in the executable recipe does not relabel those external runs.
+The clean-checkout deployment of the public bootstrap has its own bounded
 receipt below. In that exact deployment, the repeated 128-token gate passed;
-the earlier external token-124 divergence remains part of the external
-campaign record.
+a token-124 divergence observed in the external campaign remains part of
+that campaign record.
 
 ## Inspect the recipe offline
 
@@ -161,11 +161,11 @@ commit `19523482c29860024c3a3cf51e793e8436e1c441`; launcher correction
 | Standard sustained decode | unique 16K C1/C2/C4/C8: 18.33 / 27.61 / 45.11 / 59.40 aggregate tok/s; exact requested concurrency; zero errors |
 | Offline suite | local: 2,046 passed, 13 skipped; clean host: 2,035 passed, 4 skipped, 113 subtests |
 
-This makes EXL3+LMCache CS512 the default, main advertised, and currently running
+This receipt qualifies EXL3+LMCache CS512 as the default and main advertised
 public-functional configuration. The evidence is intentionally bounded: it
 does not prove blanket model correctness, LMCache persistence, arbitrary-host
 reproducibility, release promotion, or the complete public-functional
-acceptance matrix. NF3 remains an accepted deterministic alternative.
+acceptance matrix. NF3 is an accepted deterministic alternative.
 SparkCache is a separate implementation
 and is disabled in this profile.
 
@@ -202,7 +202,7 @@ python scripts/sparkring_exl3_lmcache_launcher.py \
   status
 ```
 
-Then run the bounded API gate. The initial public-path regression floors are
+Then run the bounded API gate. The public-path regression floors are
 deliberately below the short maintainer sanity measurements; they detect a
 broken path rather than claim a final performance band:
 

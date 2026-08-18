@@ -4,8 +4,8 @@ This is the stand-up path for the **public-functional-lane, operator-accepted**
 EXL3 3.5-bpw fixed-MTP4, DCP4, 9.25 GB KV/rank profile. Its durable recipe
 identifier is `R7`. Acceptance applies to one four-Spark appliance and does
 not transfer to a rebuilt image. It is not the repository default or a
-reference-lane result. The advertised public default remains
-[EXL3 3.25-bpw plus LMCache CS512](EXL3_QUICKSTART.md). NF3 remains an
+reference-lane result. The advertised public default is
+[EXL3 3.25-bpw plus LMCache CS512](EXL3_QUICKSTART.md). NF3 is an
 [accepted deterministic alternative](NF3_QUICKSTART.md).
 
 This quickstart builds the source-complete ARM64 runtime and links to the exact
@@ -346,7 +346,7 @@ These must match.
 - Dynamic-NVFP4, CKV-gather, tiered-SIRCL, and exact-Q40 composition commands
   are published in
   [`EXL3_R7_OPERATOR_REPRODUCTION.md`](EXL3_R7_OPERATOR_REPRODUCTION.md).
-- DCP and indexer collectives remain on the stock path. Only the
+- DCP and indexer collectives use the stock path. Only the
   qualified TP all-reduce and vocabulary families use the SparkRing native
   transport.
 - Fixed MTP5 is unsupported by this image. Q48 requires a Python
@@ -377,6 +377,6 @@ scripts/download_exl3_r7.py                     # checkpoint downloader/verifier
 scripts/exl3_r7_standup.py                      # stand-up entrypoint (dry-run default)
 ```
 
-A user does not need any maintainer-held corrected stock-DCP4 profile. The
+A user does not need any maintainer-held stock-DCP4 profile. The
 stock-DCP4 baseline is derived from the tracked candidate generator plus
 the recipe's serving contract.

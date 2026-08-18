@@ -9,7 +9,7 @@ caching, and one LMCache CS512 server per rank. SparkCache is a separate
 implementation and is disabled in this profile.
 
 The public path was built from a clean checkout and live-validated on four
-directly cabled Sparks. NF3 remains an accepted deterministic alternative
+directly cabled Sparks. NF3 is an accepted deterministic alternative
 documented in [NF3_QUICKSTART.md](NF3_QUICKSTART.md). The EXL3 result is
 bounded live validation, not blanket correctness, LMCache persistence, release
 promotion, or complete public-functional acceptance.
@@ -43,7 +43,7 @@ python scripts/bootstrap_exl3.py plan \
 
 Both commands are offline. Confirm the immutable model revision, fixed-MTP2
 policy, TP4/DCP4 topology, Q4096/C8/Q32 limits, packed-KV profile, and LMCache
-CS512 topology. The recipe declares `default: true`; NF3 remains explicitly
+CS512 topology. The recipe declares `default: true`; NF3 is explicitly
 selectable by recipe ID.
 
 ## 3. Build, verify, and distribute without launching

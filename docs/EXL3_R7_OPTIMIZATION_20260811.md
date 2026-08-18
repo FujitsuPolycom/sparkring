@@ -153,7 +153,7 @@ Fixed MTP4 passed output equivalence, four-position speculation, Q1-Q40
 transport, endpoint, two decode suites, coding peak, and long-context capacity
 gates. It improved the matched C1-C4 cells over MTP3 but regressed C8 by
 11.63%. The retained serving choice favors its single-user and moderate-
-concurrency gains; MTP3 remains the exact rollback and the better matched C8
+concurrency gains; MTP3 is the exact rollback and the better matched C8
 control.
 
 See [EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md) and
@@ -162,7 +162,7 @@ for the complete bounded result.
 
 ### Dynamic-NVFP4 CKV-gather serving update
 
-The operator-running fixed-MTP4 service now uses dynamic per-token NVFP4
+The operator-running fixed-MTP4 service uses dynamic per-token NVFP4
 latent KV, FP8 RoPE, a 262,144-token request limit, a 4,096-token prefill
 ceiling, and 9.25 GB KV/rank. It reports 1,156,864 KV tokens. The final
 prefill optimization changed only

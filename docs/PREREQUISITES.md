@@ -209,7 +209,8 @@ in [SETUP.md](SETUP.md#stage-1--hardware-cabling).
 - NetworkManager/netplan must not automatically remove the fabric addresses,
   lower MTU, or add default routes to the 200 GbE interfaces.
 
-The current example uses API port `8000` and master port `29500`. Treat
+The checked-in `site.example.yaml` uses API port `8000` and master port
+`29500`. Treat
 `site.yaml` and the generated launch plan as authoritative for a real site.
 
 ## Storage and downloads

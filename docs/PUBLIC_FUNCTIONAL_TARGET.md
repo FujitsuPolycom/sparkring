@@ -4,8 +4,8 @@
 > public-functional matrix retained as the deterministic alternative. Its
 > clean-checkout evidence is in
 > [NF3_NVFP4_PUBLIC_VALIDATION.md](NF3_NVFP4_PUBLIC_VALIDATION.md). EXL3 plus
-> LMCache CS512 is the default and main advertised configuration, but remains
-> `live-validated`, not accepted; see
+> LMCache CS512 is the default and main advertised configuration; its maturity
+> is `live-validated`, not accepted; see
 > [QUICKSTART.md](QUICKSTART.md) and the candidate
 > [EXL3 acceptance runbook](EXL3_ACCEPTANCE_RUNBOOK.md). The operator's
 > EXL3 3.5-bpw fixed-MTP4 profile is accepted for one four-Spark appliance and
@@ -140,11 +140,11 @@ with them (see TBD-8).
 | Supported MTP mode | **adaptive MTP 2/4, window 32 with true selected-depth drafting** — `num_speculative_tokens: 4`, `adaptive_speculative_tokens_window: 32`, `method: mtp`, adaptive depths `2,4`, `SPARK_ADAPTIVE_MTP_CONTROL=1`, `SPARK_GLM52_MTP_INDEX_REUSE=1`, and `VLLM_SPARK_TRUE_ADAPTIVE_DRAFT=1` (`VLLM_SPARK_MTP_MODE_ID=adaptive-mtp2-4-window32`). A K2 decision must execute only two draft steps, not compute K4 and truncate it. Fixed-K MTP and MTP-off are **not** part of this matrix. See TBD-9 for the determinism consequence. |
 | Max context | `--max-model-len 262144` |
 | Batching | `--max-num-batched-tokens 4096`, `--max-num-seqs 8` (Q40 ABI cap: max query rows = seqs x (K+1) = 40) |
-| KV cache | `--kv-cache-dtype fp8`, `--kv-cache-memory-bytes 7000000000` (7.0 GB/rank) |
+| KV cache | `--kv-cache-dtype nvfp4_ds_mla`, `--kv-cache-memory-bytes 7000000000` (7.0 GB/rank) |
 | Attention backend | `--attention-backend B12X_MLA_SPARSE` |
 | Memory | `--gpu-memory-utilization 0.88` |
-| FlashInfer startup | `--kernel-config '{"enable_flashinfer_autotune":false}'`; the generic 4096-token full-model tuner is not rank-safe with multi-node DCP. The Spark/B12X-specific prewarm remains enabled. |
-| Graphs | The current NF3 C8 contract uses the pinned Q1-Q40 CUDA-graph buckets, single compile range, fused all-reduce/RMS pass, and the dedicated graph vocabulary session (`VLLM_SPARK_TP4_GRAPH_Q1=1`, ports `10110/10111`, submit/progress CPUs `10/11/12`). The launcher rejects eager or NCCL-in-capture drift. The earlier wrong-output report belongs to a superseded Aiden configuration and remains in [TESTING_HISTORY.md](TESTING_HISTORY.md). |
+| FlashInfer startup | `--kernel-config '{"enable_flashinfer_autotune":false}'`; the generic 4096-token full-model tuner is not rank-safe with multi-node DCP. The Spark/B12X-specific prewarm is enabled. |
+| Graphs | The NF3 C8 contract uses the pinned Q1-Q40 CUDA-graph buckets, single compile range, fused all-reduce/RMS pass, and the dedicated graph vocabulary session (`VLLM_SPARK_TP4_GRAPH_Q1=1`, ports `10110/10111`, submit/progress CPUs `10/11/12`). The launcher rejects eager or NCCL-in-capture drift. A wrong-output report recorded against a superseded Aiden configuration is preserved in [TESTING_HISTORY.md](TESTING_HISTORY.md). |
 | Prefix caching | enabled |
 | API | OpenAI-compatible server on rank 0; served model name and port are site choices recorded in the site config |
 
@@ -244,7 +244,7 @@ the site config.
 |---|---|
 | `IN-BAND` | Every banded metric fell inside its band. |
 | `OUT-OF-BAND` | At least one banded metric fell outside. Stage status is `PERFORMANCE-OUT-OF-BAND`. |
-| `BASELINE-RECORDED` | No band was configured, so the observed numbers were recorded as a candidate band. **This is the expected state today** — no public-lane band exists yet (TBD-10). |
+| `BASELINE-RECORDED` | No band was configured, so the observed numbers were recorded as a candidate band. **This is the expected state** — no public-lane band exists (TBD-10). |
 | `NOT-MEASURED` | The performance stage did not run. |
 
 A performance miss **does not** abort the run and **does not** change
@@ -501,12 +501,12 @@ yet, with the workstream that owns closing it.
 
 | Id | Open value | Why it matters | Owner |
 |---|---|---|---|
-| TBD-4 | The registry digest of each newly built public runtime image | An image cannot contain its own final registry digest. The build operator must push it, record the digest in launch/evidence metadata, and inject it as `SPARKRING_IMAGE_DIGEST`; the acceptance gate now fails rather than accepting an identity skip. | runtime build/release operator |
+| TBD-4 | The registry digest of each newly built public runtime image | An image cannot contain its own final registry digest. The build operator must push it, record the digest in launch/evidence metadata, and inject it as `SPARKRING_IMAGE_DIGEST`; the acceptance gate fails rather than accepting an identity skip. | runtime build/release operator |
 | TBD-5 | Minimum supported NVIDIA driver version (reference cluster: 580.173.02; requirement stated only as "580.x") | Users cannot tell whether their driver is in-matrix | hardware / bring-up |
 | TBD-6 | Minimum supported host kernel version (reference cluster: NVIDIA kernel 6.17) | Same | hardware / bring-up |
 | TBD-7 | Minimum Docker CE / podman / `nvidia-container-toolkit` versions | Same; also affects whether the podman path is actually supported or merely believed to work | bring-up |
-| TBD-8 | **Native capability gate closed; serving gate open.** The recovered overlay supplies `B12X_MLA_SPARSE` and `nvfp4_ds_mla`; both passed in the native ARM64 image and partial four-rank bring-up. API/request acceptance remains. | Execute the corrected matrix before reporting a public-functional result | runtime build / acceptance workstream |
-| TBD-9 | Whether the pinned adaptive-MTP 2/4 configuration produces **bitwise-identical token ids** across runs. `scripts/context_cache_gate.py` already records that two consecutive restores of a byte-verified entry produced different phrasings, i.e. observed run-to-run nondeterminism in a speculative-decode configuration | Decides whether stage 5's exact-token-id criterion is achievable as specified, or whether the matrix must pin an MTP-off determinism configuration for that stage only | acceptance gate owner |
+| TBD-8 | **Native capability gate closed; serving gate open.** The recovered overlay supplies `B12X_MLA_SPARSE` and `nvfp4_ds_mla`; both passed in the native ARM64 image and partial four-rank bring-up. API/request acceptance is outstanding. | Execute the corrected matrix before reporting a public-functional result | runtime build / acceptance workstream |
+| TBD-9 | Whether the pinned adaptive-MTP 2/4 configuration produces **bitwise-identical token ids** across runs. `scripts/context_cache_gate.py` records that two consecutive restores of a byte-verified entry produced different phrasings, i.e. observed run-to-run nondeterminism in a speculative-decode configuration | Decides whether stage 5's exact-token-id criterion is achievable as specified, or whether the matrix must pin an MTP-off determinism configuration for that stage only | acceptance gate owner |
 | TBD-10 | The public-lane performance tolerance band. None exists, and reference-lane numbers must not be used (§4.3) | Until a band is committed, `performance_verdict` is permanently `BASELINE-RECORDED` | acceptance gate owner, after N public-lane runs |
 | TBD-11 | Availability and exact response shape of the `/tokenize` endpoint in the pinned vLLM build (the gate uses it to recover output token ids) | If absent, stage 5 fails with an actionable message rather than falling back to hashing text — the fallback is deliberately not implemented | acceptance gate owner |
 | TBD-13 | The site schema pins `serving.mtp_tokens` but not the adaptive depth window; the matrix's `adaptive_speculative_tokens_window: 32` is therefore documented here but not machine-checked | An adaptive-MTP window other than 32 would pass the gate while being off-matrix | site-config workstream + acceptance gate owner |
@@ -514,8 +514,8 @@ yet, with the workstream that owns closing it.
 
 Closed: TBD-1 (immutable model revision), TBD-2 (ARM64 base-image digests), and
 TBD-3 (DeepGEMM full commit) are pinned in `runtime/runtime-lock.json`. The
-earlier "reconcile site-config key names" item is also resolved:
-`scripts/sparkring_site.py` landed and the gate consumes its normalised schema
+"reconcile site-config key names" item is also resolved: the gate consumes
+`scripts/sparkring_site.py`'s normalised schema
 directly (§7), with gate-specific settings moved into the gate config.
 
 ---

@@ -2,11 +2,11 @@
 
 SparkRing is a low-latency collective transport and inference runtime for switchless GB1X (NVIDIA DGX Spark) clusters.
 
-Today it runs GLM-5.2 across four directly connected DGX Sparks. Four 200 Gb/s ConnectX-7 links form a physical ring, 
+It runs GLM-5.2 across four directly connected DGX Sparks. Four 200 Gb/s ConnectX-7 links form a physical ring, 
 with no external Ethernet or InfiniBand switch in the inference fabric.
 
 The stack combines SIRCL custom RDMA collectives, CUDA-graph-replayable command rings, a source-attested and fail-closed vLLM overlay, 
-DCP4, support for fixed and adaptive MTP speculative decoding, and a patched ring-safe NCCL fallback for communication not yet handled by the custom path.
+DCP4, support for fixed and adaptive MTP speculative decoding, and a patched ring-safe NCCL fallback for communication the custom path does not handle.
 
 The long-term goal is a model-agnostic runtime for efficient, switchless multi-node inference on DGX Spark.
 
@@ -28,7 +28,7 @@ Detailed project and contributor credits are maintained in the acknowledgements 
 
 | Goal | Profile | Maturity and evidence scope | Start here |
 |---|---|---|---|
-| Use the operator-accepted 3.5-bpw configuration | EXL3 3.5-bpw fixed-MTP4 (`R7`) | Accepted on one four-Spark appliance; a clean rebuild still requires live qualification | [3.5-bpw quickstart](docs/EXL3_R7_QUICKSTART.md) |
+| Use the operator-accepted 3.5-bpw configuration | EXL3 3.5-bpw fixed-MTP4 (`R7`) | Accepted on one four-Spark appliance; a clean rebuild requires live qualification | [3.5-bpw quickstart](docs/EXL3_R7_QUICKSTART.md) |
 | Use the reproducible public default | EXL3 3.25-bpw plus LMCache CS512 | Clean-checkout bounded live validation on four Sparks | [public-default quickstart](docs/QUICKSTART.md) |
 | Use the deterministic alternative | NF3 | Accepted public-functional alternative | [NF3 quickstart](docs/NF3_QUICKSTART.md) |
 
@@ -41,8 +41,9 @@ cabled DGX Sparks serve it with TP4/DCP4, fixed MTP4, 9.25 GB of KV memory per
 rank, dynamic per-token NVFP4 latent KV plus FP8 RoPE, a 262,144-token request
 limit, a 4,096-token prefill ceiling, and native SparkRing TP transport through
 Q40. Eligible pure-prefill work uses the B12X transient full-CKV DCP gather.
-The target-only exact-Q40 routed-MoE state uses capacity 40 and route block 8;
-Q1-Q32, other prefill shapes, and the draft model retain their prior states.
+A capacity-40, route-block-8 routed-MoE state applies only to exact-Q40
+target-model batches; Q1-Q32, other prefill shapes, and the draft model do not
+use it.
 
 | Prefill context | Prompt tokens | TTFT | C1 prefill | Samples |
 |---|---:|---:|---:|---:|
@@ -68,8 +69,9 @@ Q1-Q32, other prefill shapes, and the draft model retain their prior states.
 
 Reported KV capacity is **1,156,864 tokens** across the four-rank serving profile.
 
-The matched exact-Q40 decode bracket replayed the same eight unique 16K
-payloads with full 8/8 residency and a 25-second measurement window. Its
+A matched decode comparison between the exact-Q40 candidate and its control
+replayed the same eight unique 16K payloads in both arms with full 8/8
+residency and a 25-second measurement window. The
 73.208 tok/s candidate mean was 19.341% above the 61.344 tok/s control mean;
 the slower candidate repeat exceeded the fastest control repeat by 14.93%.
 All 75 target layers passed exact BF16 parity, deterministic 16K and 32K output
@@ -82,7 +84,8 @@ five coding-probe repeats are retained here; the decode cells are not presented
 as repeat distributions. Server-side cached-token accounting was unavailable
 for the prefill cells, so cache misses are not independently proven by the
 benchmark artifact.
-The predeclared exact-Q40 prefill reducer separately remains a machine failure:
+One predeclared acceptance criterion, the exact-Q40 prefill reducer, is
+recorded as a machine failure:
 its sole primary miss was 0.1215% at 64K. Operator acceptance treats that
 bounded difference as measurement-neutral without relabelling the machine
 result as a pass.
@@ -110,7 +113,7 @@ restart cleared both volatile L1 and native vLLM prefix state, the identical
 prompt measured 1.477 seconds with a 99.2% external-cache hit, 0.0% native-
 prefix hit, and zero L1 data bytes. This single-pair result proves attributed
 NVMe persistence, not a latency distribution or deterministic-output gate.
-The extension remains a candidate and does not change the accepted operator
+The extension is a candidate and does not change the accepted operator
 profile or public-functional default. See the
 [R7 LMCache evidence](docs/configurations/glm52-exl3-r7-lmcache-nvme-20260813.json).
 
@@ -118,11 +121,12 @@ profile or public-functional default. See the
 
 SparkRing's reproducible, main-advertised public-functional configuration is
 [`willfalco/GLM-5.2-EXL3-TR3-3.25bpw`](https://huggingface.co/willfalco/GLM-5.2-EXL3-TR3-3.25bpw)
-at immutable revision `d7d79c2d14599dfce7a5d12b85f7ad73f40e623d`.
+at immutable revision `d7d79c2d14599dfce7a5d12b85f7ad73f40e623d`. The `CS512`
+label denotes the LMCache `chunk_size: 512` setting pinned in the recipe.
 
 | Item | Configuration | Status |
 |---|---|---|
-| Model | EXL3/Trellis 3.25 bpw, legacy `per_expert_v1` | Clean-checkout live-validated on four DGX Sparks |
+| Model | EXL3/Trellis 3.25 bpw, `per_expert_v1` rotation layout | Clean-checkout live-validated on four DGX Sparks |
 | Parallelism | TP4/DCP4, fixed MTP2 | Validated |
 | Transport | Four 200 Gb/s direct links, cycle `0-1-2-3-0` | Validated |
 | API | OpenAI-compatible vLLM endpoint | Validated |
@@ -139,8 +143,8 @@ bounded gates passed; ten fixed-seed 128-token completions were byte-identical.
 See the [EXL3 quickstart](docs/EXL3_QUICKSTART.md) and
 [evidence-scoped recipe](docs/EXL3_RECIPE.md).
 
-This makes EXL3+LMCache the public default, not a blanket correctness or
-release-acceptance claim.
+This evidence qualifies EXL3+LMCache as the public default; it is not a
+blanket correctness or release-acceptance claim.
 
 The exact EXL3 model hashes, source pins, environment, vLLM arguments, and
 Q4096/C8/Q32 contract are in
@@ -152,9 +156,9 @@ records the exact four-Spark operator overlay and its duration-based
 clean-checkout public acceptance, correctness acceptance, or a reference-lane
 result.
 
-The former Aiden MXFP4/GPTQ reference is preserved in
-[the historical lane document](docs/history/AIDEN_MXFP4_GPTQ.md). It is not a
-second supported deployment target.
+The Aiden MXFP4/GPTQ configuration is preserved as a historical reference in
+[docs/history/AIDEN_MXFP4_GPTQ.md](docs/history/AIDEN_MXFP4_GPTQ.md). It is
+not a supported deployment target.
 
 The project is a research pre-release. Pin a commit when deploying because
 environment flags, source attestations, and integration ABIs can change.
@@ -192,7 +196,7 @@ workflow is published and offline-validated; its remaining live gates are not
 yet an acceptance claim.
 
 Transport-only results, historical DCP1 peaks, workload-specific coding
-measurements, and superseded configurations remain documented separately in
+measurements, and superseded configurations are documented separately in
 [docs/RESULTS.md](docs/RESULTS.md) and
 [docs/TESTING_HISTORY.md](docs/TESTING_HISTORY.md).
 
@@ -204,19 +208,20 @@ resolved failures, superseded configurations, and pending acceptance work.
 
 ### Archived and alternative configurations
 
-NF3 remains documented as a deterministic public-functional alternative, but
-it is no longer a featured README profile. Use the
+NF3 is documented as a deterministic public-functional alternative rather
+than a featured README profile. Use the
 [NF3 quickstart](docs/NF3_QUICKSTART.md),
 [NVFP4 KV validation receipt](docs/NF3_NVFP4_PUBLIC_VALIDATION.md), and
 [one-million-token operator audit](docs/NF3_LIVE_CONFIGURATION_20260731.md) for
-its reproducible recipe and historical evidence. The former Aiden MXFP4/GPTQ
-reference remains in the [historical lane](docs/history/AIDEN_MXFP4_GPTQ.md).
+its reproducible recipe and historical evidence. The Aiden MXFP4/GPTQ
+historical reference is in
+[docs/history/AIDEN_MXFP4_GPTQ.md](docs/history/AIDEN_MXFP4_GPTQ.md).
 
 ## What SparkRing provides
 
 - A GLM/vLLM-oriented direct-cable transport implementation, with reusable
   low-level transport primitives.
-- Two- and four-rank collective schedules used by the current GLM/vLLM paths.
+- Two- and four-rank collective schedules used by the GLM/vLLM paths.
 - Registered mapped-host RDMA arenas.
 - GPU doorbells and device-published command rings.
 - CUDA-graph-compatible asynchronous submission.
@@ -332,7 +337,7 @@ serving cutover.
 See [QUICKSTART.md](docs/QUICKSTART.md) for the shortest setup path and
 [EXL3_QUICKSTART.md](docs/EXL3_QUICKSTART.md) for the full receipt, cabling, site fields,
 review, launch, tail, and bounded gate commands. Start with
-[PREREQUISITES.md](docs/PREREQUISITES.md) on a new cluster. NF3 remains an
+[PREREQUISITES.md](docs/PREREQUISITES.md) on a new cluster. NF3 is an
 accepted deterministic alternative through the
 [NF3 quickstart](docs/NF3_QUICKSTART.md).
 

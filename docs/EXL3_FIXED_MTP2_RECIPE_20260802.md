@@ -3,7 +3,7 @@
 ## Scope and evidence boundary
 
 This page records a configuration **actually run** on four directly cabled
-NVIDIA DGX Sparks / GB10s on 2026-08-02. It uses the unchanged legacy
+NVIDIA DGX Sparks / GB10s on 2026-08-02. It uses the unmodified
 [`willfalco/GLM-5.2-EXL3-TR3-3.25bpw`](https://huggingface.co/willfalco/GLM-5.2-EXL3-TR3-3.25bpw)
 checkpoint at revision `d7d79c2d14599dfce7a5d12b85f7ad73f40e623d` with the
 repository's receipt-gated ARM64 EXL3 runtime and a fixed-MTP2 configuration
@@ -11,7 +11,7 @@ overlay.
 
 This is an **external-evidence, live-validated configuration candidate**. It is
 not public-bootstrap acceptance, not a reference-lane result, and not a result
-produced by an unmodified launcher from the current checkout. The trial used an
+produced by an unmodified launcher from this repository's checkout. The trial used an
 ignored operator-local profile and launcher overlay; no tracked validator was
 weakened. The canonical fixed-MTP3 recipe and its pending clean-checkout
 four-Spark publication gate remain unchanged.
@@ -77,7 +77,7 @@ Start with the complete contract in
 [`recipes/glm52-exl3-tr3-3.25bpw.json`](../recipes/glm52-exl3-tr3-3.25bpw.json).
 Change only the fixed speculative depth:
 
-The trial and the current offline recipe plan both report semantic recipe
+The trial and the tracked offline recipe plan both report semantic recipe
 SHA-256 `38685e40969aaf6a77c67bc425533ce514996889db87709786a81232435ca555`.
 This is the planner's canonical JSON hash, not the raw file-byte hash.
 
@@ -165,7 +165,7 @@ replacement for that source of truth.
 
 ## Older-image explicit-unset compatibility
 
-The local ARM64 image used by this external run predates the current public
+The local ARM64 image used by this external run predates the published public
 entrypoint's complete explicit-unset handling. It contains
 `VLLM_PREFIX_CACHE_RETENTION_INTERVAL=4096` in its image environment even though
 the recipe declares that variable absent. If it reaches vLLM, startup fails
@@ -189,8 +189,8 @@ implements the recipe's explicit-unset contract. Treat the wrapper as a
 compatibility measure for this exact older local image, not as a portable public
 launch recipe.
 
-The same image also lacked the newer
-`/opt/sparkring-exl3/verify_exl3_model.py` path expected by the current launcher.
+The same image also lacked the
+`/opt/sparkring-exl3/verify_exl3_model.py` path expected by the tracked launcher.
 For this trial the checkpoint was attested separately before cutover, while the
 image's own entrypoint retained its hash checks. A public reproduction must not
 silently skip model attestation.
@@ -409,7 +409,7 @@ Starting it is **STOPS SERVING** because it replaces the stack bound to the live
 API and distributed rendezvous ports. Obtain explicit authorization for the
 named four hosts and the interruption before executing a cutover.
 
-Before stopping the current stack, record on every rank:
+Before stopping the running stack, record on every rank:
 
 - exact container name, image ID, state, and restart count;
 - PID 1 command, sorted environment, mounts, labels, and network mode;

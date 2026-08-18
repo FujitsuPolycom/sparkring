@@ -1,11 +1,12 @@
 # SparkCache streaming snapshots
 
 > **Scope note (2026-08-03):** This document records the SparkCache v50/v51
-> development and live-validation campaign. It does not describe the current
-> EXL3 3.25 bpw + LMCache CS512 serving configuration; that configuration has
+> development and live-validation campaign. It does not describe the
+> public-default EXL3 3.25 bpw + LMCache CS512 serving configuration; that
+> configuration has
 > SparkCache disabled. SparkCache and LMCache are distinct KV-Connector-V1
 > implementations. The repository's TP4/DCP2 SparkCache integration is
-> offline-validated and has not been promoted to the current service.
+> offline-validated and has not been promoted into any serving configuration.
 
 Status: v50 live pipeline characterized; v51 idle-progress fix implemented
 and **v51 LIVE NO-NUDGE VALIDATION PASSED**
@@ -138,7 +139,8 @@ This is small enough to gather, hash, persist, and optionally replicate
 without placing bulk work on request completion.
 
 Hashing is not the foreground bottleneck. The native restore gate SHA-256
-verified the complete rank-local artifact in about 190 ms. The current pause
+verified the complete rank-local artifact in about 190 ms. The end-of-prefill
+pause
 comes from gathering every registered layer and repeatedly executing
 device-to-CPU conversion, contiguity, NumPy conversion, and `bytes`
 allocation after prefill has already completed.
@@ -183,7 +185,7 @@ eligible for orphan collection.
 
 ## Bounded resources
 
-Current v51 candidate:
+The v51 candidate:
 
 - 256 logical tokens per immutable storage chunk;
 - 16 chunks per gather macro batch;
@@ -295,7 +297,7 @@ path releases all leases.
   `cpu/numpy/tobytes` assembly.
 - Use generation-checked tickets and bounded CUDA events.
 
-Gate: byte-exact comparison against the current snapshot path for all record
+Gate: byte-exact comparison against the end-of-request snapshot path for all record
 families, DCP ranks, tail sizes, and noncontiguous physical block tables.
 
 ### SS-4: chunked-prefill integration (v51 idle-progress gate passed)

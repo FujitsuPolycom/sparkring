@@ -1,7 +1,7 @@
 # Generic Runtime Launcher
 
 > **Lane:** public-functional tooling; a native generic profile is outside the
-> accepted/current matrix until it is named and gated | **Maturity:**
+> published EXL3 and accepted NF3 configurations until it is named and gated | **Maturity:**
 > offline-validated (focused tests
 > and golden-equivalence tests) | **Validation hardware:** CPU-only Windows
 > workspace; no Spark contacted | **Target hardware:** four-Spark GPU/RDMA
@@ -22,10 +22,10 @@ vLLM-style serving with TP4/DCP4 parallelism**. It is not a universal
 model runner — it assumes the same transport topology, container
 lifecycle, and serving shape as the existing EXL3 and NF3 launchers.
 
-## Existing architecture audit
+## Relationship to the model-specific launchers
 
-Before this slice, the public tree had three related but intentionally
-model-specific paths:
+The public tree has three related but intentionally
+model-specific launch paths:
 
 - `sparkring_launcher.py` validates the pinned NF3 contract, including its
   target/draft layout, KV profiles, graph settings, and GLM-specific vLLM
@@ -36,13 +36,13 @@ model-specific paths:
 - `sparkring_exl3_lmcache_launcher.py` composes the EXL3 engines with the
   separate per-rank LMCache server lifecycle and health phases.
 
-Those launchers duplicated the `RemoteAction` shape and remote SSH execution;
-their topology/environment builders were similar but not interchangeable with
-all family-specific rules. This slice extracts `RemoteAction`, `run_remote`,
-`execute`, and `action_succeeded` for use by the native generic path and the
-canonical NF3 launcher. EXL3/NF3 contract validation and action construction
-remain canonical extension seams, while LMCache remains an explicit service
-composition boundary. The EXL3 executor is deliberately not migrated because
+`sparkring_runtime.py` provides the shared primitives — `RemoteAction`,
+`run_remote`, `execute`, and `action_succeeded` — used by the native generic
+path and the canonical NF3 launcher; the launchers' topology/environment
+builders are similar but not interchangeable because of family-specific
+rules. EXL3/NF3 contract validation and action construction
+are canonical extension seams, and LMCache is an explicit service
+composition boundary. The EXL3 launcher keeps its own executor because
 its timeout/result behavior differs.
 
 ## Dispatch by source schema
@@ -202,7 +202,7 @@ A generic profile is a JSON file with schema
 Use `scripts/config/native-profile.template.json` as the minimal authoring
 template and `scripts/config/contributor-example.json` as a filled,
 structurally valid sanitized example. `scripts/config/generic.example.json`
-remains the feature-rich placeholder example used by older generic-runtime
+is the feature-rich placeholder example used elsewhere in the generic-runtime
 documentation and tests; validation reports it as unresolved.
 
 ### Boundaries
@@ -323,7 +323,7 @@ their canonical launchers.
 ## Backward compatibility
 
 The generic launcher accepts the existing EXL3 and NF3 profile formats
-directly; no migration is required. The EXL3 and NF3 launchers remain the
+directly; no migration is required. The EXL3 and NF3 launchers are the
 canonical executable paths. Operations listed as golden-equivalent below are
 delegated and byte-identical; the two generic-only operations documented above
 have no canonical counterpart.
@@ -377,9 +377,9 @@ existing launchers:
 > **Lane:** public-functional tooling | **Maturity:** offline-validated
 > (focused tests) | **Hardware/evidence:** CPU-only checkout tests, no
 > cluster contacted | **Note:** Arbitrary bundles are not accepted or
-> current configurations. EXL3+LMCache remains the current/default
-> canonical launcher. NF3 remains the accepted alternative model/runtime,
-> but the bundle layer no longer has a dedicated NF3 bridge source kind.
+> default configurations. EXL3+LMCache is the default
+> canonical launcher. NF3 is the accepted alternative model/runtime;
+> the bundle layer has no dedicated NF3 bridge source kind.
 
 The bundle layer (`scripts/sparkring_bundle.py`,
 `scripts/sparkring_bundle_launcher.py`) extends the generic runtime to
@@ -547,7 +547,7 @@ identity variables, while the LMCache connector argument contains server URLs
 derived from the resolved site at action-build time. The canonical launcher
 also owns its exact allocator, privilege, entrypoint, and rollback contract.
 Allowing a profile to inject those runtime-owned values would weaken the
-generic schema's safety boundary. Therefore the bridge remains useful for
+generic schema's safety boundary. Therefore the bridge is useful for
 deterministic plan inspection and parity, but only the canonical EXL3+LMCache
 launcher is executable. Rank-scoped structured containers and direct-entrypoint
 execution are generic offline-validated capabilities; they do not constitute
@@ -598,4 +598,4 @@ bridge rejects `--execute` with a plan-only diagnostic.
 - `scripts/config/bundle-engine-cache.json` — native engine+cache example with structured-container sidecar.
 - `scripts/config/bundle-exl3-lmcache-bridge.json` — EXL3+LMCache bridge example (plan-only).
 - `scripts/config/example-cache-sidecar.json` — structured-container sidecar template example.
-- `scripts/rehearse_runtime_bundle_archive.py` — OFFLINE archive rehearsal; poisons remote executors, validates tracked examples, builds EXL3 bridge plan. Supervisor creates the commit/archive and invokes for exact-commit evidence.
+- `scripts/rehearse_runtime_bundle_archive.py` — OFFLINE archive rehearsal; poisons remote executors, validates tracked examples, builds EXL3 bridge plan. The operator creates the commit/archive and invokes it for exact-commit evidence.

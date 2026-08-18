@@ -245,8 +245,10 @@ per-signature **promotion** to custom → optional **graph capture**. Native
 failure before enqueue falls back cleanly; after enqueue it terminates the
 worker. The graph census is window-scoped. In the 2026-07-27 DCP4 switchless
 window the rank-consistent census was 6,744 custom all-reduce and 24 custom
-vocabulary captures, with 2,904 attested stock captures per rank (stock-trio
-DCP). In the 2026-07-28 v40 custom-DCP window the census was 5,464 custom
+vocabulary captures, with 2,904 attested stock captures per rank — the three
+DCP collective families, the "stock trio" of the results register. In the
+2026-07-28 measurement window labelled `v40`, where DCP query and combine ran
+on the custom path, the census was 5,464 custom
 all-reduce + 24 custom vocabulary captures, and each rank additionally
 captured 1,272 custom DCP query and 1,272 custom combine nodes, leaving 360
 stock `dcp_owner_topk_all_gather` nodes per rank as the only stock captures —
@@ -257,8 +259,8 @@ attested, by design.
 ## 6. Serving configuration: the TP4/DCP4 lane
 
 The production GLM-5.2 lane as of the v40 window (2026-07-28), launched via
-the private archive's launcher and serving entrypoint (not included in this
-snapshot):
+the maintainer-held reference launcher and serving entrypoint, which are not
+included in this repository:
 
 - **TP4 / DCP4** — `--tensor-parallel-size 4 --decode-context-parallel-size 4
   --dcp-comm-backend ag_rs`, B12X sparse-MLA attention backend.
@@ -268,7 +270,7 @@ snapshot):
 - **Per-token `nvfp4_ds_mla` KV** — `--kv-cache-dtype nvfp4_ds_mla` with
   per-token scales (`VLLM_NVFP4_MLA_PER_TOKEN_SCALE=1`). v40 window config
   (2026-07-28): KV 4,000,000,000 bytes/rank, max model length 458,752. The
-  earlier 2026-07-27 DCP4 switchless window instead ran 3,000,000,000
+  2026-07-27 DCP4 switchless window instead ran 3,000,000,000
   bytes/rank with max model length 65,536.
 - **FULL_AND_PIECEWISE CUDA graphs** through Q40, capture sizes attested at
   launch and serve.

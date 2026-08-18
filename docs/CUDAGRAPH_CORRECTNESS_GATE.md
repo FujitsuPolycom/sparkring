@@ -25,7 +25,7 @@ all-gather, the target FULL graph, or the DSpark draft graph. The DCP1 result
 therefore lowers the probability of a DCP query/combine bug, but it does not
 clear SparkRing's graph transport.
 
-The repository's own graph documents currently stop short of that claim:
+The repository's own graph documents stop short of that claim:
 
 - `spark_transport/GRAPH_NATIVE_TP4_Q1.md` says the changing-input mixed-Q
   native gate and four-rank vLLM capture/replay are pending;
@@ -52,7 +52,7 @@ performance regression and not an accepted fallback.
    `VLLM_DSPARK_DISABLE_FORWARD_CUDAGRAPH` fixes the graph candidate while the
    target graph remains enabled.
 4. **A workspace was not sized on the path later selected by the 13K
-   request.** The NF3 lane already exposed a related 544 MiB versus 575.31 MiB
+   request.** The NF3 lane exposed a related 544 MiB versus 575.31 MiB
    late request, but there is no evidence yet that the MXFP4 report is the
    same defect. Prediction: `VLLM_DEBUG_WORKSPACE=1` shows either a late
    workspace request or a different buffer/pointer at replay.
