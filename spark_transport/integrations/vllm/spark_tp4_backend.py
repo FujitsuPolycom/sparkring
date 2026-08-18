@@ -38,6 +38,15 @@ _ALLREDUCE_PREFILL_CAPACITY_BYTES = (
 )
 _DUAL_PORT_Q40_CAPACITY_BYTES = ABSOLUTE_MAX_QUERY_ROWS * _BYTES_PER_ROW
 _GRAPH_CAPACITY_BYTES = MAX_QUERY_ROWS * _BYTES_PER_ROW
+# Research-only width-4096 graph geometry (DeepSeek decode shapes). One
+# maximum-capacity session serves every [Q <= 512, 4096] bucket; the
+# command ring carries the active Q.
+_RESEARCH_GRAPH_WIDTH = 4096
+_RESEARCH_GRAPH_ROW_BYTES = _RESEARCH_GRAPH_WIDTH * _BF16_BYTES
+_RESEARCH_GRAPH_MAX_QUERY_ROWS = 512
+_RESEARCH_GRAPH_CAPACITY_BYTES = (
+    _RESEARCH_GRAPH_MAX_QUERY_ROWS * _RESEARCH_GRAPH_ROW_BYTES
+)
 _GRAPH_STATUS_CAPTURE_CONFIGURED = 1 << 0
 _GRAPH_STATUS_POLLING_ENABLED = 1 << 1
 _GRAPH_STATUS_HOST_NATIVE_ATOMICS = 1 << 2
@@ -71,6 +80,7 @@ _WIRE_SCHEDULE_WIRE = {
 _MAX_PERSISTENT_OUTPUT_SLOTS = 4096
 _graph_q1_sessions: dict[int, "_NativeSession"] = {}
 _graph_dual_port_q40_sessions: dict[int, "_NativeSession"] = {}
+_graph_width4096_sessions: dict[int, "_NativeSession"] = {}
 _graph_event_counts: dict[str, int] = {}
 # PLACEHOLDER ring peers (RFC 5737 TEST-NET-1): 192.0.2.N stands in for
 # rank N-1's direct-cable address. These are NOT routable and MUST be
@@ -103,6 +113,15 @@ class _NativeConfig(ctypes.Structure):
         ("payload_bytes", ctypes.c_size_t),
         ("graph_submit_cpu_plus_one", ctypes.c_uint32),
         ("graph_progress_cpu_plus_one", ctypes.c_uint32),
+    ]
+
+
+class _NativeConfigV2(ctypes.Structure):
+    _fields_ = [
+        ("struct_size", ctypes.c_uint32),
+        ("base", _NativeConfig),
+        ("elements_per_row", ctypes.c_uint32),
+        ("bytes_per_row", ctypes.c_uint32),
     ]
 
 
@@ -360,6 +379,61 @@ def _record_stock_path(
     )
 
 
+def _research_graph_all_reduce(
+    communicator: Any, tensor: Any, capturing: bool
+) -> Any | None:
+    """Route research-admitted width-4096 collectives.
+
+    Returns the collective output when this path handled the call, or
+    None to fall through to the unchanged default dispatch. Eager calls
+    are never handled here: the eager pass only prepares the session so
+    it exists before vLLM's first capture.
+    """
+    if (
+        getattr(communicator, "world_size", None) != 4
+        or getattr(communicator, "unique_name", "") != "tp:0"
+    ):
+        return None
+    backend = getattr(communicator, "_spark_tp4_native", None)
+    if backend is None:
+        backend = _Backend(int(communicator.rank_in_group))
+        communicator._spark_tp4_native = backend
+    if not capturing:
+        if backend.graph_width4096_session is None:
+            backend.prepare_graph_width4096()
+        return None
+    shape = _tensor_shape(tensor)
+    if (
+        not _research_graph_shape_eligible(shape)
+        or str(tensor.dtype) != "torch.bfloat16"
+        or not bool(tensor.is_cuda)
+        or not bool(tensor.is_contiguous())
+    ):
+        return None
+    session = backend.graph_width4096_session
+    if session is None:
+        # Fail closed: an admitted capture-phase collective must never
+        # silently take the stock path in the research profile.
+        logger.error(
+            "research width-4096 graph capture reached before session "
+            "preparation; terminating worker"
+        )
+        _abort_after_native_failure()
+        raise AssertionError("unreachable after worker termination")
+    try:
+        output = session.capture(tensor)
+        _record_graph_event(communicator, "width4096_captured_nodes")
+        return output
+    except BaseException:
+        logger.exception(
+            "fatal Spark TP4 width-4096 graph-capture error; terminating "
+            "worker because a partially captured native graph cannot "
+            "safely fall back"
+        )
+        _abort_after_native_failure()
+        raise AssertionError("unreachable after worker termination")
+
+
 def _payload_bytes(tensor: Any) -> int:
     rows, width = _tensor_shape(tensor)
     return rows * width * _BF16_BYTES
@@ -382,6 +456,30 @@ def _graph_q1_enabled() -> bool:
     if value not in {"0", "1"}:
         raise ValueError("VLLM_SPARK_TP4_GRAPH_Q1 must be '0' or '1'")
     return value == "1"
+
+
+def _graph_width4096_research_enabled() -> bool:
+    """Research-only graph admission for BF16 [Q <= 512, 4096].
+
+    Explicitly opt-in and unqualified: enabling it routes captured
+    width-4096 all-reduces through one maximum-capacity native graph
+    session (sequential tiered_64k, two-slot deferred ACK) instead of
+    the stock path. Default behavior is byte-identical when unset.
+    """
+    value = os.getenv("VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH", "0")
+    if value not in {"0", "1"}:
+        raise ValueError(
+            "VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH must be '0' or '1'"
+        )
+    return value == "1"
+
+
+def _research_graph_shape_eligible(shape: tuple[int, ...]) -> bool:
+    return (
+        len(shape) == 2
+        and shape[1] == _RESEARCH_GRAPH_WIDTH
+        and 1 <= shape[0] <= _RESEARCH_GRAPH_MAX_QUERY_ROWS
+    )
 
 
 def _graph_dual_port_q40_enabled() -> bool:
@@ -560,12 +658,31 @@ class _NativeSession:
         allreduce_protocol: str = _SERIAL_ACK_PROTOCOL,
         graph_kernel_strategy: str = _FUSED_GRAPH_KERNEL,
         wire_schedule: str = _SEQUENTIAL_WIRE_SCHEDULE,
+        row_bytes: int = _BYTES_PER_ROW,
     ) -> None:
         if rank not in _DEFAULT_PEERS:
             raise ValueError(f"TP4 rank must be in [0, 3], got {rank}")
+        if row_bytes != _BYTES_PER_ROW:
+            if not graph_only:
+                raise ValueError(
+                    "non-default TP4 row geometry requires a graph-only "
+                    "session"
+                )
+            if row_bytes != _RESEARCH_GRAPH_ROW_BYTES:
+                raise ValueError(
+                    "TP4 row geometry must be the default width or the "
+                    f"research width ({_RESEARCH_GRAPH_ROW_BYTES} bytes "
+                    "per row)"
+                )
+            if payload_bytes != _RESEARCH_GRAPH_CAPACITY_BYTES:
+                raise ValueError(
+                    "research row-geometry graph session requires "
+                    f"Q{_RESEARCH_GRAPH_MAX_QUERY_ROWS} capacity"
+                )
         expected_graph_capacity = _graph_capacity_bytes()
         if (
             graph_only
+            and row_bytes == _BYTES_PER_ROW
             and wire_schedule == _SEQUENTIAL_WIRE_SCHEDULE
             and payload_bytes != expected_graph_capacity
         ):
@@ -634,7 +751,25 @@ class _NativeSession:
         ]
         self._library.spark_tp4_create.restype = ctypes.c_void_p
         create_session = self._library.spark_tp4_create
-        if wire_schedule != _SEQUENTIAL_WIRE_SCHEDULE:
+        use_v2_geometry = row_bytes != _BYTES_PER_ROW
+        if use_v2_geometry:
+            try:
+                create_session = self._library.spark_tp4_create_v2
+            except AttributeError as error:
+                raise RuntimeError(
+                    "Spark TP4 native library lacks the v2 row-geometry "
+                    "ABI; rebuild and deploy a matching library"
+                ) from error
+            create_session.argtypes = [
+                ctypes.POINTER(_NativeConfigV2),
+                ctypes.c_uint32,
+                ctypes.c_uint32,
+                ctypes.c_uint32,
+                ctypes.c_char_p,
+                ctypes.c_size_t,
+            ]
+            create_session.restype = ctypes.c_void_p
+        elif wire_schedule != _SEQUENTIAL_WIRE_SCHEDULE:
             try:
                 create_session = (
                     self._library
@@ -723,8 +858,10 @@ class _NativeSession:
         self._allreduce_protocol = allreduce_protocol
         self._graph_kernel_strategy = graph_kernel_strategy
         self._wire_schedule = wire_schedule
+        self._row_bytes = row_bytes
+        self._elements_per_row = row_bytes // _BF16_BYTES
         self._graph_max_query_rows = (
-            payload_bytes // _BYTES_PER_ROW if graph_only else 0
+            payload_bytes // row_bytes if graph_only else 0
         )
         persistent_slots = 0 if graph_only else _persistent_output_slots()
         self._persistent_outputs = (
@@ -758,7 +895,22 @@ class _NativeSession:
             graph_progress_cpu_plus_one=progress_cpu + 1,
         )
         error = ctypes.create_string_buffer(512)
-        if wire_schedule != _SEQUENTIAL_WIRE_SCHEDULE:
+        if use_v2_geometry:
+            config_v2 = _NativeConfigV2(
+                struct_size=ctypes.sizeof(_NativeConfigV2),
+                base=config,
+                elements_per_row=self._elements_per_row,
+                bytes_per_row=row_bytes,
+            )
+            self._handle = create_session(
+                ctypes.byref(config_v2),
+                _ALLREDUCE_PROTOCOL_WIRE[allreduce_protocol],
+                _GRAPH_KERNEL_WIRE[graph_kernel_strategy],
+                _WIRE_SCHEDULE_WIRE[wire_schedule],
+                error,
+                len(error),
+            )
+        elif wire_schedule != _SEQUENTIAL_WIRE_SCHEDULE:
             self._handle = create_session(
                 ctypes.byref(config),
                 _ALLREDUCE_PROTOCOL_WIRE[allreduce_protocol],
@@ -937,8 +1089,16 @@ class _NativeSession:
             not dual_port_session
             or shape == (self._graph_max_query_rows, _TARGET_WIDTH)
         )
+        if self._row_bytes == _BYTES_PER_ROW:
+            shape_admitted = _target_shape_eligible(shape)
+        else:
+            shape_admitted = (
+                len(shape) == 2
+                and shape[1] == self._elements_per_row
+                and 1 <= shape[0] <= self._graph_max_query_rows
+            )
         if (
-            not _target_shape_eligible(shape)
+            not shape_admitted
             or shape[0] > self._graph_max_query_rows
             or not exact_dual_port_shape
             or str(tensor.dtype) != "torch.bfloat16"
@@ -952,8 +1112,8 @@ class _NativeSession:
             )
             raise ValueError(
                 "Spark TP4 graph capture requires contiguous CUDA BF16 "
-                f"[Q, 6144] with {query_requirement}; dual-port striped "
-                "sessions require their exact fixed Q"
+                f"[Q, {self._elements_per_row}] with {query_requirement}; "
+                "dual-port striped sessions require their exact fixed Q"
             )
         q = shape[0]
 
@@ -1081,6 +1241,7 @@ class _Backend:
         self.native_sessions: dict[int, _NativeSession] = {}
         self.graph_q1_session: _NativeSession | None = None
         self.graph_dual_port_q40_session: _NativeSession | None = None
+        self.graph_width4096_session: _NativeSession | None = None
         self.shadow_stats: dict[tuple[int, tuple[int, ...], str], _ShadowStats] = {}
 
     def native_for(self, payload_bytes: int) -> _NativeSession:
@@ -1128,6 +1289,36 @@ class _Backend:
             _graph_dual_port_q40_sessions[self.rank] = dual_port_session
         return session
 
+    def prepare_graph_width4096(self) -> _NativeSession:
+        """Research-only [Q <= 512, 4096] graph session.
+
+        Sequential tiered_64k on two-slot deferred ACK: the split-class
+        kernels are the measured fix for the fused kernel's
+        large-payload pathology, and tiered keeps fused behavior for
+        small Q (see docs/DUAL_PORT_STRIPING_PROBE_20260818.md).
+        """
+        session = self.graph_width4096_session
+        if session is None:
+            graph_cpu_affinity = _graph_preflight()
+            session = _NativeSession(
+                self.rank,
+                _RESEARCH_GRAPH_CAPACITY_BYTES,
+                control_ports=_graph_control_ports(),
+                graph_only=True,
+                graph_cpu_affinity=graph_cpu_affinity,
+                allreduce_protocol=_TWO_SLOT_DEFERRED_ACK_PROTOCOL,
+                graph_kernel_strategy=_TIERED_64K_GRAPH_KERNEL,
+                row_bytes=_RESEARCH_GRAPH_ROW_BYTES,
+            )
+            self.graph_width4096_session = session
+            _graph_width4096_sessions[self.rank] = session
+            from spark_graph_status_reporter import (
+                ensure_status_reporter,
+            )
+
+            ensure_status_reporter(rank=self.rank)
+        return session
+
     def graph_session_for_capture(
         self, tensor: Any
     ) -> _NativeSession | None:
@@ -1162,10 +1353,19 @@ def graph_dual_port_q40_status_snapshot() -> dict[int, dict[str, object]]:
     }
 
 
+def graph_width4096_status_snapshot() -> dict[int, dict[str, object]]:
+    """Return research width-4096 graph progress for process-local ranks."""
+    return {
+        rank: session.graph_status().to_dict()
+        for rank, session in sorted(_graph_width4096_sessions.items())
+    }
+
+
 def graph_q1_diagnostic_snapshot() -> dict[str, object]:
     return {
         "sessions": graph_q1_status_snapshot(),
         "dual_port_q40_sessions": graph_dual_port_q40_status_snapshot(),
+        "width4096_sessions": graph_width4096_status_snapshot(),
         "events": dict(sorted(_graph_event_counts.items())),
     }
 
@@ -1176,6 +1376,18 @@ def install() -> None:
     graph_protocol = _graph_allreduce_protocol()
     graph_kernel = _graph_kernel_strategy()
     graph_dual_port_q40 = _graph_dual_port_q40_enabled()
+    if _graph_width4096_research_enabled():
+        if mode != "custom":
+            raise ValueError(
+                "VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH requires "
+                "VLLM_SPARK_TP4_MODE=custom"
+            )
+        if _graph_q1_enabled() or graph_dual_port_q40:
+            raise ValueError(
+                "VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH is mutually "
+                "exclusive with the width-6144 graph paths: they share "
+                "the graph control-port pair"
+            )
     if capacity_pool_requested():
         raise RuntimeError(
             "VLLM_SPARK_TP4_PREFILL_CAPACITY_POOL is research-only: "
@@ -1224,6 +1436,14 @@ def install() -> None:
 
     def spark_all_reduce(self: Any, input_: Any) -> Any:
         mode = _mode()
+        if mode == "custom" and _graph_width4096_research_enabled():
+            import torch
+
+            handled = _research_graph_all_reduce(
+                self, input_, _is_stream_capturing(torch)
+            )
+            if handled is not None:
+                return handled
         if not _eligible(self, input_, mode):
             import torch
 

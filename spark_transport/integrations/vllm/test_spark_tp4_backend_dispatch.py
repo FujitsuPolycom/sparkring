@@ -132,6 +132,7 @@ class _FakeBackend:
         self.native_sessions: dict[int, _FakeNative] = {}
         self.graph_q1_session: _FakeNative | None = None
         self.graph_dual_port_q40_session: _FakeNative | None = None
+        self.graph_width4096_session: _FakeNative | None = None
         self.shadow_stats: dict[object, _FakeShadowStats] = {}
         self.created.append(self)
 
@@ -158,6 +159,16 @@ class _FakeBackend:
                 40 * 6144 * 2,
                 graph_only=True,
             )
+        return native
+
+    def prepare_graph_width4096(self) -> _FakeNative:
+        native = self.graph_width4096_session
+        if native is None:
+            native = _FakeNative(
+                spark_tp4_backend._RESEARCH_GRAPH_CAPACITY_BYTES,
+                graph_only=True,
+            )
+            self.graph_width4096_session = native
         return native
 
     def graph_session_for_capture(self, tensor: object) -> _FakeNative | None:
@@ -2178,6 +2189,141 @@ class SparkTp4EagerWidthAdmissionTest(unittest.TestCase):
             self.original_all_reduce,
         )
         self.assertFalse(spark_tp4_backend._installed)
+
+
+class SparkTp4ResearchWidth4096Test(unittest.TestCase):
+    """Research-only [Q <= 512, 4096] graph admission."""
+
+    def setUp(self) -> None:
+        self.communicator_type = _make_communicator_type()
+        self.modules = _fake_vllm_modules(self.communicator_type)
+        self.torch_module = types.ModuleType("torch")
+        self.torch_module.cuda = _FakeCuda()
+        self.modules["torch"] = self.torch_module
+        self.original_all_reduce = self.communicator_type.all_reduce
+        spark_tp4_backend._installed = False
+        spark_tp4_backend._graph_q1_sessions.clear()
+        spark_tp4_backend._graph_dual_port_q40_sessions.clear()
+        spark_tp4_backend._graph_width4096_sessions.clear()
+        spark_tp4_backend._graph_event_counts.clear()
+        spark_collective_audit._reset_for_tests()
+        _FakeBackend.created.clear()
+
+    def _install(
+        self,
+        mode: str | None,
+        extra_environment: dict[str, str] | None = None,
+    ) -> None:
+        environment = dict(extra_environment or {})
+        if mode is not None:
+            environment["VLLM_SPARK_TP4_MODE"] = mode
+        patchers = (
+            patch.dict(os.environ, environment, clear=True),
+            patch.dict(sys.modules, self.modules),
+            patch.object(spark_tp4_backend, "_Backend", _FakeBackend),
+        )
+        for patcher in patchers:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        spark_tp4_backend.install()
+
+    def _research_environment(self) -> dict[str, str]:
+        return {"VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH": "1"}
+
+    def test_research_requires_custom_mode(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError, "VLLM_SPARK_TP4_MODE=custom"
+        ):
+            self._install("shadow", self._research_environment())
+        self.assertIs(
+            self.communicator_type.all_reduce, self.original_all_reduce
+        )
+
+    def test_research_rejects_width6144_graph_paths(self) -> None:
+        environment = self._research_environment()
+        environment["VLLM_SPARK_TP4_GRAPH_Q1"] = "1"
+        with self.assertRaisesRegex(ValueError, "mutually"):
+            self._install("custom", environment)
+        self.assertIs(
+            self.communicator_type.all_reduce, self.original_all_reduce
+        )
+
+    def test_absent_environment_keeps_stock_dispatch_for_width4096(
+        self,
+    ) -> None:
+        self._install("custom")
+        communicator = self.communicator_type()
+        tensor = _FakeTensor(shape=(256, 4096))
+        self.torch_module.cuda.capturing = True
+
+        result = communicator.all_reduce(tensor)
+
+        self.assertEqual(result, ("reference", tensor))
+        self.assertEqual(_FakeBackend.created, [])
+
+    def test_eager_width4096_call_prepares_session_and_stays_stock(
+        self,
+    ) -> None:
+        self._install("custom", self._research_environment())
+        communicator = self.communicator_type()
+        tensor = _FakeTensor(shape=(256, 4096))
+
+        result = communicator.all_reduce(tensor)
+
+        self.assertEqual(result, ("reference", tensor))
+        self.assertEqual(len(_FakeBackend.created), 1)
+        backend = _FakeBackend.created[0]
+        self.assertIsNotNone(backend.graph_width4096_session)
+        self.assertEqual(backend.graph_width4096_session.capture_inputs, [])
+
+    def test_capturing_admitted_width4096_shape_uses_research_session(
+        self,
+    ) -> None:
+        self._install("custom", self._research_environment())
+        communicator = self.communicator_type()
+        eager_tensor = _FakeTensor(shape=(256, 4096))
+        communicator.all_reduce(eager_tensor)
+        backend = _FakeBackend.created[0]
+        self.torch_module.cuda.capturing = True
+        capture_tensor = _FakeTensor(shape=(256, 4096))
+
+        result = communicator.all_reduce(capture_tensor)
+
+        session = backend.graph_width4096_session
+        self.assertEqual(session.capture_inputs, [capture_tensor])
+        self.assertEqual(
+            result,
+            ("graph-candidate", session.payload_bytes, 256, capture_tensor),
+        )
+        self.assertEqual(communicator.original_inputs, [eager_tensor])
+
+    def test_capturing_oversized_or_wrong_width_falls_through(self) -> None:
+        self._install("custom", self._research_environment())
+        communicator = self.communicator_type()
+        communicator.all_reduce(_FakeTensor(shape=(256, 4096)))
+        backend = _FakeBackend.created[0]
+        self.torch_module.cuda.capturing = True
+
+        for shape in ((600, 4096), (256, 2048), (256,)):
+            communicator.all_reduce(_FakeTensor(shape=shape))
+
+        self.assertEqual(backend.graph_width4096_session.capture_inputs, [])
+
+    def test_admitted_capture_without_session_terminates_worker(self) -> None:
+        self._install("custom", self._research_environment())
+        communicator = self.communicator_type()
+        self.torch_module.cuda.capturing = True
+        tensor = _FakeTensor(shape=(256, 4096))
+
+        def _fail() -> None:
+            raise RuntimeError("worker terminated")
+
+        with patch.object(
+            spark_tp4_backend, "_abort_after_native_failure", _fail
+        ):
+            with self.assertRaisesRegex(RuntimeError, "worker terminated"):
+                communicator.all_reduce(tensor)
+        self.assertEqual(communicator.original_inputs, [])
 
 
 if __name__ == "__main__":
