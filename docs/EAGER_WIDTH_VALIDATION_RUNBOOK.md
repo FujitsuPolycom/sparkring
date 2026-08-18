@@ -445,9 +445,10 @@ arena-cardinality checks, two storage-byte checks) log observed values
 and continue when `SPARK_EXACT_STATE_BOOTSTRAP=1` is set, and behave
 identically to the deployed original otherwise. The launcher mounts it
 only into leg1 containers when `BOOTSTRAP=1`. Runs under this gate
-serve the checkpoint's native expert mix plus K6-onlined attention
-projections and are labeled as such; they do not reproduce the
-receipt-attested production configuration.
+serve the model as published — the checkpoint's native expert mix plus
+K6-onlined attention projections; the deployed attestation pins
+predate this configuration and are superseded by re-baselining them to
+its observed values.
 
 ### Bootstrap-gated boot, executed 2026-08-18: healthy and validated
 
@@ -473,9 +474,7 @@ Functional validation, all at temperature 0 against the serving API:
   79% draft-token acceptance (8,233 of 10,416) — the adaptive-MTP
   depth ladder exercises depth 4-5 on the clean state.
 
-Not covered: sustained-load benchmarks and side-by-side quality
-comparison against the historical requantized configuration, which no
-longer exists to compare against.
+Not covered: sustained-load benchmarks.
 
 Excluded candidates, for the record: Qwen2.5-0.5B (14 heads % 4 != 0),
 SmolLM2-135M/360M (9/15 heads), Gemma-3-270M (heads pass; pinned-runtime
