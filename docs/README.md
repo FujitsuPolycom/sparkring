@@ -83,6 +83,7 @@ linked runbook. A document being listed here does not authorize remote action.
 | [NF3 DCP2 record](NF3_DCP2_LIVE_CONFIGURATION_20260801.md) | Dated configuration delta, benchmark snapshot, result, and evidence boundary. |
 | [Faststart validation](FASTSTART_VALIDATION.md) | One-Spark native build and partial four-Spark bring-up receipt. |
 | [Public startup-shim audit](PUBLIC_STARTUP_SHIM_AUDIT.md) | Audit conclusion, validated follower behavior, and conditions that require a new audit. |
+| [Dual-port striping probe record](DUAL_PORT_STRIPING_PROBE_20260818.md) | Model-free four-rank graph-collective measurements: the fused kernel's large-payload pathology, the kernel and schedule fixes with their controls, and a matched NCCL control; research-only, with limitations stated. |
 | [SparkCache streaming snapshots](SPARKCACHE_STREAMING_SNAPSHOTS.md) | Records the v50/v51 live-evidence campaign and implementation invariants; the published TP4/DCP2 integration remains offline-validated and unpromoted. |
 
 ## History and reference reconstruction
