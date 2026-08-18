@@ -141,9 +141,39 @@ variables, not a controlled isolation.
 - An earlier same-day eager host-timed NCCL run is superseded by the
   graph-captured control above and is not quoted.
 
+## Decode-step shape trace, DeepSeek-V4-Flash-0731 serving profile
+
+A same-day trace armed the collective audit
+(`SPARK_TP4_GRAPH_STATUS_PATH`) on the DeepSeek serving profile
+(width 4096, 32 maximum sequences, DSpark speculation with seven
+draft tokens, CUDA graphs enabled) and collected the stock-collective
+signature inventory from all four ranks after graph capture plus a
+small request burst. One instrumentation fact this required: the
+status-reporter thread previously started only when the width-6144
+graph session was prepared, so on any other profile the audit
+recorded signatures in memory that were never written; the trace ran
+with a backend patch that starts the reporter whenever the audit is
+armed. Findings, capture-inventory scope only (signature counts do
+not measure how often a captured graph bucket is replayed):
+
+- Every `[Q, 4096]` collective in the profile currently takes the
+  stock NCCL path (`ineligible_signature` / capture-phase
+  `graph_transport_disabled`); the transport carries none of them.
+- The captured graph buckets are Q = 48 to 512 in steps of 8 (eight
+  rows per sequence: seven draft tokens plus one target), so the
+  32-sequence verification batch is Q256 = exactly 2 MiB. Q288 is
+  simply the 36-sequence bucket, not an extra per-sequence row.
+- About 87 width-4096 all-reduces occur per forward pass
+  (approximately two per layer), the drafter adds width-256
+  collectives of at most 16 KiB, and eager prefill chunks reach
+  [2048, 4096] = 16 MiB, above the 512-row eager admission bound.
+- A single maximum-capacity [Q <= 512, 4096] graph session would
+  cover every traced verification shape.
+
 ## Follow-up measurements this record motivates
 
-1. A decode-step collective shape trace from a serving run, before
-   any tokens-per-second projection.
+1. Graph-bucket replay frequency under sustained traffic (the
+   inventory above shows which buckets exist, not how often each is
+   selected).
 2. Repeated sessions for tail statistics if any default-configuration
    decision comes to rest on p95 differences.
