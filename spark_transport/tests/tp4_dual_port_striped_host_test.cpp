@@ -11,17 +11,17 @@ int main() {
   using spark_transport::detail::kTp4DualPortStripedEndpointTag;
   using spark_transport::detail::kTp4DualPortStripedEndpointVersion;
   using spark_transport::detail::Tp4StripedWorkEvent;
-  using spark_transport::detail::tp4_dual_port_striped_endpoint_tag;
   using spark_transport::detail::tp4_dual_port_striped_options_valid;
   using spark_transport::detail::tp4_striped_work_id;
 
   static_assert(kTp4DualPortStripedEndpointVersion != 1);
   static_assert(kTp4DualPortStripedEndpointVersion != 2);
+  // Version 3 predates the exact geometry-record exchange; version-4
+  // peers must never complete a handshake with one.
+  static_assert(kTp4DualPortStripedEndpointVersion != 3);
   static_assert(kTp4DualPortStripedEndpointTag != 0);
   static_assert(kTp4DualPortStripedEndpointTag !=
                 spark_transport::kTp4TwoSlotEndpointTag);
-  static_assert(tp4_dual_port_striped_endpoint_tag(6144, 12288) !=
-                tp4_dual_port_striped_endpoint_tag(4096, 8192));
 
   constexpr std::array<std::uint64_t, 4> sequence1_work_ids{
       tp4_striped_work_id(1, Tp4StripedWorkEvent::kPhase1Doorbell),

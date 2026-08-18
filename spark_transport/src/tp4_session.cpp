@@ -49,14 +49,27 @@ constexpr auto kGraphProtocolTimeout = std::chrono::seconds(5);
 // peer enters the data path; old binaries otherwise ignore reserved tags.
 constexpr std::uint16_t kTwoSlotDeferredEndpointVersion = 2;
 constexpr std::uint16_t kGraphLayoutEndpointVersion = 4;
+// Constant tag: version-4 graph peers exchange the exact
+// GraphGeometryInfo record below instead of folding geometry into
+// this 16-bit field.
+constexpr std::uint16_t kGraphLayoutEndpointTag = 0xc211;
 
-constexpr std::uint16_t graph_layout_endpoint_tag(
-    std::uint32_t elements_per_row,
-    std::uint32_t bytes_per_row) noexcept {
-  return static_cast<std::uint16_t>(
-      0xc211U ^ elements_per_row ^ (elements_per_row >> 16U) ^
-      bytes_per_row ^ (bytes_per_row >> 16U));
-}
+// Exact graph-row geometry record, exchanged over the control channel
+// after EndpointInfo for every graph session. Both peers must present
+// identical values in every field; geometry identity is never hashed
+// or truncated.
+constexpr std::uint32_t kGraphGeometryMagic = 0x53474d47;  // "SGMG"
+
+struct GraphGeometryInfo {
+  std::uint32_t magic{kGraphGeometryMagic};
+  std::uint16_t version{1};
+  std::uint16_t reserved{};
+  std::uint32_t elements_per_row{};
+  std::uint32_t bytes_per_row{};
+};
+
+static_assert(sizeof(GraphGeometryInfo) == 16);
+static_assert(std::is_trivially_copyable_v<GraphGeometryInfo>);
 
 bool graph_capacity_supported(std::size_t payload_bytes,
                               std::uint32_t bytes_per_row) {
@@ -142,12 +155,10 @@ void exchange_and_connect_endpoint(
   EndpointInfo local = endpoint.local_info();
   if (schedule == Tp4AllreduceSchedule::kDualPortStriped) {
     local.version = detail::kTp4DualPortStripedEndpointVersion;
-    local.reserved = detail::tp4_dual_port_striped_endpoint_tag(
-        elements_per_row, bytes_per_row);
+    local.reserved = detail::kTp4DualPortStripedEndpointTag;
   } else if (graph_session) {
     local.version = kGraphLayoutEndpointVersion;
-    local.reserved =
-        graph_layout_endpoint_tag(elements_per_row, bytes_per_row);
+    local.reserved = kGraphLayoutEndpointTag;
   } else if (tp4_protocol_uses_deferred_ack(protocol)) {
     local.version = kTwoSlotDeferredEndpointVersion;
     local.reserved = tp4_endpoint_protocol_tag(protocol);
@@ -166,6 +177,25 @@ void exchange_and_connect_endpoint(
   if (remote.buffer_bytes != local.buffer_bytes) {
     throw std::runtime_error(
         "TP4 all-reduce payload arena mismatch between peers");
+  }
+  if (graph_session) {
+    GraphGeometryInfo local_geometry{};
+    local_geometry.elements_per_row = elements_per_row;
+    local_geometry.bytes_per_row = bytes_per_row;
+    const GraphGeometryInfo remote_geometry =
+        channel.exchange(local_geometry);
+    if (remote_geometry.magic != local_geometry.magic ||
+        remote_geometry.version != local_geometry.version ||
+        remote_geometry.reserved != local_geometry.reserved) {
+      throw std::runtime_error(
+          "TP4 graph geometry record mismatch between peers");
+    }
+    if (remote_geometry.elements_per_row !=
+            local_geometry.elements_per_row ||
+        remote_geometry.bytes_per_row != local_geometry.bytes_per_row) {
+      throw std::runtime_error(
+          "TP4 graph row-geometry mismatch between peers");
+    }
   }
   endpoint.connect(remote, local.version);
 }
@@ -427,7 +457,7 @@ class Tp4AllreduceSession::Impl {
             std::string(tp4_graph_kernel_strategy_name(
                             options_.graph_kernel_strategy)) +
             " graph TP4 requires a graph-only session with exact Q1 "
-            "through Q1024 capacity");
+            "through Q512 capacity");
       }
     }
     if (submit_cpu_set) {
@@ -636,7 +666,7 @@ class Tp4AllreduceSession::Impl {
         graph_commands_host_ == nullptr) {
       throw std::invalid_argument(
           "graph TP4 all-reduce requires the configured BF16 [q, width], "
-          "q in [1, 1024], "
+          "q in [1, 512], "
           "within session capacity");
     }
     if (!graph_host_native_atomics_supported_) {

@@ -12,16 +12,11 @@ namespace spark_transport::detail {
 // A peer that only understands the legacy or ordinary two-slot layout must
 // fail the setup handshake before either side posts RDMA into a striped arena.
 constexpr std::uint16_t kTp4DualPortStripedEndpointVersion = 4;
+// The tag stays a constant: row geometry is not folded into this 16-bit
+// field. Version 4 peers additionally exchange the exact GraphGeometryInfo
+// record and compare every field, so geometry identity is never hashed or
+// truncated.
 constexpr std::uint16_t kTp4DualPortStripedEndpointTag = 0xc204;
-
-constexpr std::uint16_t tp4_dual_port_striped_endpoint_tag(
-    std::uint32_t elements_per_row,
-    std::uint32_t bytes_per_row) noexcept {
-  return static_cast<std::uint16_t>(
-      kTp4DualPortStripedEndpointTag ^ elements_per_row ^
-      (elements_per_row >> 16U) ^ bytes_per_row ^
-      (bytes_per_row >> 16U));
-}
 
 enum class Tp4StripedWorkEvent : std::uint64_t {
   kPhase1Doorbell = 1,

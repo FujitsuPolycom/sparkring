@@ -851,7 +851,7 @@ void GpuTp4TensorWorker::enqueue_graph(
       active_payload_bytes > payload_bytes_) {
     throw std::invalid_argument(
         "graph TP4 all-reduce requires the configured BF16 [q, width], "
-        "q in [1, 1024], "
+        "q in [1, 512], "
         "within session capacity");
   }
   if (external_input == nullptr || external_output == nullptr ||
@@ -917,7 +917,7 @@ void GpuTp4TensorWorker::enqueue_graph(
   if (tp4_graph_kernel_uses_split(graph_kernel_strategy_, q)) {
     if (!split_graph_q_supported(q) || split_graph_state_ == nullptr) {
       throw std::invalid_argument(
-          "split_64k graph TP4 requires Q1 through Q1024 and initialized "
+          "split_64k graph TP4 requires Q1 through Q512 and initialized "
           "split state");
     }
     constexpr int control_threads = 32;

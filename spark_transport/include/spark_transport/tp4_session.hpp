@@ -82,8 +82,8 @@ class Tp4AllreduceSession {
                              void* cuda_stream);
 
   // Adds one exact contiguous BF16 [q, elements_per_row] all-reduce to CUDA
-  // stream capture. q must be in [1, 1024] and the session capacity must be at
-  // least q rows. GLM may retain Q512 while DeepSeek can provision Q1024.
+  // stream capture. q must be in [1, 512] and the session capacity must be at
+  // least q rows for the session's configured row geometry.
   // arena and can serve decode plus bounded-prefill graph nodes while
   // preserving one ordered sequence.
   void capture_all_reduce(const void* input, void* output, std::uint32_t q,

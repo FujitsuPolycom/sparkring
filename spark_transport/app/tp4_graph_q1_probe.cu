@@ -25,7 +25,7 @@ constexpr std::size_t kElements = 6144;
 constexpr std::size_t kPayloadBytes =
     kElements * sizeof(__nv_bfloat16);
 // This GLM qualification surface remains intentionally bounded at Q512 even
-// though the versioned transport descriptor also admits DeepSeek Q1024.
+// though the versioned transport descriptor also serves DeepSeek row widths.
 constexpr std::size_t kMaximumQ = 512;
 static_assert(kMaximumQ <= spark_transport::kTp4GraphAllreduceMaximumQ);
 constexpr std::size_t kMaximumElements = kMaximumQ * kElements;

@@ -16,9 +16,9 @@ constexpr std::uint32_t kTp4GraphBytesPerRow =
 constexpr std::uint32_t kTp4GraphMaximumQ = 40;
 // All-reduce alone admits the first bounded prefill tier. Vocabulary and
 // DCP descriptors remain capped by kTp4GraphMaximumQ.
-constexpr std::uint32_t kTp4GraphAllreduceMaximumQ = 1024;
-// Q is encoded directly (not Q-1), so Q1024 needs eleven low-order bits.
-constexpr std::uint32_t kTp4GraphDoorbellQBits = 11;
+constexpr std::uint32_t kTp4GraphAllreduceMaximumQ = 512;
+// Q is encoded directly (not Q-1), so Q512 needs ten low-order bits.
+constexpr std::uint32_t kTp4GraphDoorbellQBits = 10;
 constexpr std::uint64_t kTp4GraphDoorbellQMask =
     (std::uint64_t{1} << kTp4GraphDoorbellQBits) - 1;
 constexpr std::uint64_t kTp4GraphMaximumDoorbellSequence =
@@ -161,7 +161,7 @@ bool tp4_graph_command_publish_descriptor(
     std::uint32_t payload_bytes, std::uint64_t* sequence) noexcept;
 
 // All-reduce-only publisher. Unlike the shared Q40 descriptor entrypoint,
-// this accepts exact contiguous BF16 rows through Q1024.
+// this accepts exact contiguous BF16 rows through Q512.
 bool tp4_graph_allreduce_command_publish_descriptor(
     Tp4GraphCommandRing* ring, bool trace, std::uint32_t q,
     std::uint32_t payload_bytes, std::uint64_t* sequence) noexcept;
