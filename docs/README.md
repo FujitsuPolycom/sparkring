@@ -48,6 +48,7 @@ linked runbook. A document being listed here does not authorize remote action.
 | [NF3 quickstart](NF3_QUICKSTART.md) | Prepares, launches, verifies, and troubleshoots the accepted deterministic alternative. |
 | [CUDA-graph correctness gate](CUDAGRAPH_CORRECTNESS_GATE.md) | Runs the minimal live A/B and deterministic comparison required to diagnose graph replay correctness. |
 | [SparkCache DCP2 dry-run plan](SPARKCACHE_DCP2_DRY_RUN_PLAN.md) | Regenerates and inspects a SparkCache plan; embedded operator state is historical and must be rediscovered. |
+| [Eager width admission validation runbook](EAGER_WIDTH_VALIDATION_RUNBOOK.md) | Runs the three-leg validation for width-generic eager TP4 all-reduce admission; leg records are chronological evidence. |
 | [SparkCache DCP2 live runbook](SPARKCACHE_DCP2_LIVE_RUNBOOK.md) | Defines preflight, authorized cutover, evidence collection, and rollback for the offline-validated integration. |
 
 ## Present-state specifications
@@ -87,5 +88,6 @@ linked runbook. A document being listed here does not authorize remote action.
 | Document | Purpose and limitation |
 |---|---|
 | [Reference bring-up reconstruction](SETUP.md) | Reconstructs the historical reference deployment. Only stages explicitly marked runnable are supported from the public tree. |
+| [Eager width admission review handoff](REVIEW_HANDOFF_EAGER_WIDTH_ADMISSION.md) | Component map, architecture, equivalence-evidence scope, and review questions for the width-generic admission work. |
 | [Testing history](TESTING_HISTORY.md) | Preserves dated experiments, regressions, resolved failures, superseded configurations, and acceptance gaps. |
 | [Historical Aiden MXFP4/GPTQ lane](history/AIDEN_MXFP4_GPTQ.md) | Preserves the Aiden MXFP4/GPTQ reference-lane configuration and its evidence scope. |

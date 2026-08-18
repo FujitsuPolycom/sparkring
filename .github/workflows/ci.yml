@@ -8,7 +8,7 @@
 #
 # WHAT THIS WORKFLOW EXPLICITLY DOES **NOT** PROVE  (manual gates — see
 # CONTRIBUTING.md "Test suites and where they run"):
-#   * The `spark_transport` native library and its 20-executable CTest suite.
+#   * The `spark_transport` native library and its 26-executable CTest suite.
 #     `spark_transport/CMakeLists.txt` hard-requires `CUDAToolkit` and
 #     `libibverbs`; it cannot even be configured on a GPU-free runner.
 #     -> MANUAL GATE: reviewer or contributor runs it on a DGX Spark.

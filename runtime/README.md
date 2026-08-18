@@ -86,12 +86,11 @@ commit. Together the ordered series performs 73 verified operations.
    torch/FlashInfer/SparkInfer/DeepGEMM set, verifies final versions, then runs
    the **fail-closed patch apply** (`apply-patches.py`): for every patch the
    sha256 of the exact preimage file is verified *before* applying, no fuzz,
-   abort on any mismatch. Philosophy inherited from
-   `spark_transport/experiments/fail_closed_mod_overlay/` (exact hash
+   abort on any mismatch. Design principles: exact hash
    contracts, no arbitrary script execution, fail-closed validation, target
    tree never mutated on mismatch). Finally it builds `spark_transport` and
    requires the complete CTest suite to pass.
-4. The builder emits an allowlisted 30-file public Python overlay bundle with
+4. The builder emits an allowlisted 35-file public Python overlay bundle with
    a per-file SHA-256 manifest. The bundle specification, builder, capability
    gates, and entrypoint are themselves hash-pinned by `runtime-lock.json`.
 5. **Stage 3** assembles the runtime image and runs `generate-manifest.py`,

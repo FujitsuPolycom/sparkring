@@ -20,7 +20,7 @@ all four ranks by bind-mount.
 This directory is deliberately OUTSIDE `runtime/patches/` so the fail-closed
 applier never consumes it: this hotfix's preimage
 (`6d75f777…`, the deployed image above) differs from the kernel_warmup
-preimage recorded in `runtime/patches/vllm/preimages.json` for the pinned
+preimage recorded in `runtime/patches/00-reference-vllm/preimages.json` for the pinned
 base in `runtime/runtime-lock.json`, and the applier refuses mismatched
 preimages by design.
 

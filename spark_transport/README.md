@@ -56,7 +56,7 @@ cmake --build /build --parallel
 ctest --test-dir /build --output-on-failure
 ```
 
-The gate is the full CTest suite: all 20 test executables declared in
+The gate is the full CTest suite: all 26 test executables declared in
 `CMakeLists.txt` must pass.
 
 The operator-accepted four-rank graph all-reduce uses the additive tiered
