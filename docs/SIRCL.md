@@ -53,7 +53,7 @@ timeout after native enqueue, or protocol disagreement is process-fatal
 because falling back after a CUDA stream has already been gated would expose
 partial state.
 
-## What it carries today
+## What it carries
 
 The validated reference runtime has specializations for measured GLM-5.2
 surfaces, including TP4 all-reduce, generic all-gather, vocabulary all-gather,
@@ -62,7 +62,7 @@ decode widths used by the published configurations. The public tree contains
 the corresponding source and native probes, but its clean-reproduction lane
 has not yet matched the reference lane end to end.
 
-Unsupported data-plane operations remain on the explicitly attested NCCL
+Unsupported data-plane operations run on the explicitly attested NCCL
 fallback. Gloo is limited to bootstrap and control traffic outside SIRCL.
 SIRCL does not own weight loading, arbitrary node counts, switched fabrics,
 or every datatype/layout.
@@ -71,15 +71,15 @@ or every datatype/layout.
 
 The intended reusable boundary is a size-generic collective API for
 contiguous tensors on fixed two-node and four-node direct-cable topologies,
-with standard PyTorch integration and visible fallback counters. The current
+with standard PyTorch integration and visible fallback counters. The
 public snapshot is not yet a drop-in `torch.distributed` backend; model and
-runtime adapters still live beside the transport core.
+runtime adapters live beside the transport core.
 
 The dual-port striped schedule and prefill-capacity pool published beside the
 accepted selector are research-only and default off. They are not implied by
 the accepted sequential tiered/deferred result.
 
-The acronym remains an internal technical name because the unrelated
+The acronym is an internal technical name because the unrelated
 [Sircl HTML extension library](https://www.getsircl.com/) already uses the
 name. The
 public project and repository are named **SparkRing**. This repository does
