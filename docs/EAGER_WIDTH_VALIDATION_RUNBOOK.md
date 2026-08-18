@@ -449,6 +449,34 @@ serve the checkpoint's native expert mix plus K6-onlined attention
 projections and are labeled as such; they do not reproduce the
 receipt-attested production configuration.
 
+### Bootstrap-gated boot, executed 2026-08-18: healthy and validated
+
+The zero-substitution control under the bootstrap gate reached API
+health in 295 seconds. The gate accepted exactly two checks per rank:
+arena counts (1, 1), and storage bytes {q40: 16134192, q48: 18100560}
+— each exactly half the deployed pin, the arithmetic signature of one
+arena variant where the runtime-requantized state had two. CUDA graph
+capture completed through the declared rows, and the boot wrote a
+fresh create-once exact-state receipt recording the clean state.
+
+Functional validation, all at temperature 0 against the serving API:
+
+- Deterministic outputs: 847 × 293 answered 248171; a requested
+  Python one-liner was valid; a factual query answered correctly.
+  All finished with stop.
+- Prefill: a 14,466-token prompt embedding 700 numbered sections
+  answered the exact section count.
+- Concurrency-8 decode: eight parallel bounded generations all
+  completed (two initially truncated by the probe's own token cap;
+  a re-run with adequate budget finished with stop and exact output).
+- Speculative decode: 2,441 drafts, mean draft depth 4.27 tokens,
+  79% draft-token acceptance (8,233 of 10,416) — the adaptive-MTP
+  depth ladder exercises depth 4-5 on the clean state.
+
+Not covered: sustained-load benchmarks and side-by-side quality
+comparison against the historical requantized configuration, which no
+longer exists to compare against.
+
 Excluded candidates, for the record: Qwen2.5-0.5B (14 heads % 4 != 0),
 SmolLM2-135M/360M (9/15 heads), Gemma-3-270M (heads pass; pinned-runtime
 support unverified).
