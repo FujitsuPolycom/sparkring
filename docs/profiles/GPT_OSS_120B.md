@@ -1,6 +1,9 @@
 # Profile: openai/gpt-oss-120b
 
-Status: **unsupported — no validation record exists in this repository.**
+Status: **functional launch attested (operator record, 2026-08-17); not
+shadow-qualified.** The model loads and serves on the four-Spark ring; no
+numerical comparison window was collected, so no correctness or performance
+claim attaches.
 
 ## What it is
 
@@ -12,15 +15,29 @@ Its public `config.json` records hidden size 2880, 64 attention heads, and
 parallelism SparkRing uses. No revision of this model is pinned anywhere in
 this repository.
 
-## Evidence boundary
+## Operator launch record, 2026-08-17
 
-This repository contains **no serving run, no shadow-comparison window, and no
-runbook record for this model**. It does not appear in the
-[eager width admission validation runbook](../EAGER_WIDTH_VALIDATION_RUNBOOK.md),
-in [measured results](../RESULTS.md), or in
-[testing history](../TESTING_HISTORY.md). Neither functional serving nor
-shadow qualification is established. Anything asserting otherwise is not
-backed by this repository.
+The operator launched `openai/gpt-oss-120b` on the four directly cabled DGX
+Sparks and confirmed it working interactively. This is an attested record —
+the serving session predates this page, and its logs were not preserved — so
+its claims are limited to what launching and using the model establishes:
+
+- Four-rank tensor-parallel serving from the deployed GLM runtime image, with
+  the MXFP4 mixture-of-experts weights executing on the GB10 devices.
+- Width 2880 admitted through `VLLM_SPARK_TP4_EAGER_WIDTHS=2880` under
+  `VLLM_SPARK_TP4_MODE=shadow`, `--enforce-eager`, BF16 activations.
+- Decode confirmed: interactive chat completions served to a human operator
+  using the model's harmony chat template (the template's tokenizer requires
+  the `o200k_base` encoding staged locally and named by
+  `TIKTOKEN_ENCODINGS_BASE`).
+- Prefill confirmed to at least an 11,681-token prompt, under a configured
+  131,072-token request limit.
+
+What this record does **not** establish: no shadow-comparison window was
+closed for any width-2880 signature, so numerical agreement with the stock
+path is unmeasured; no throughput, latency, or quality number exists; and no
+model revision was pinned. The runbook-method qualification below remains
+open.
 
 What the repository does contain for the model's hidden width, 2880, is
 **offline-validated admission-surface coverage only**:
@@ -59,7 +76,8 @@ Per the width-generic admission documented in the
 - The width-generic admission feature itself carries no performance or
   maturity claim; the integration README records that prior admission
   widenings regressed serving until qualified.
-- Whether the pinned runtime images serve this architecture at all is
-  unestablished here: the only GLM-external models this stack has ever served
-  are the four shadow-matrix instruments recorded in the runbook, and their
-  bring-up required launch-shape accommodations recorded there.
+- The launch record above is an operator attestation without preserved
+  artifacts; a reproducing run should capture its startup log, environment,
+  and shadow-window statistics so this page can graduate to recorded
+  evidence. The small-model bring-up accommodations recorded in the runbook
+  (launch shape, tokenizer staging) applied to this launch as well.
