@@ -331,7 +331,10 @@ Options parse_options(int argc, char** argv) {
   if (options.maximum_q < 6 || options.maximum_q > kMaximumQ) {
     throw std::invalid_argument("maximum Q must be in [6, 512]");
   }
-  if (options.elements != kElements && options.multi_graph_validation) {
+  if (options.elements != kElements && options.multi_graph_validation &&
+      !options.mixed_q_validation) {
+    // The plain multi-graph path validates through the Q1-specific
+    // kernel; the mixed-Q path is fully row-parameterized.
     throw std::invalid_argument(
         "multi-graph validation requires the default row width");
   }
