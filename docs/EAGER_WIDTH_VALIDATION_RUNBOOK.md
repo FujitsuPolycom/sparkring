@@ -376,12 +376,14 @@ rank 0:
 
 Every surviving model directory is pristine (all marker and shard
 ctimes predate the healthy boot), so the identity input that produced
-`d871f822…` no longer exists on the host. `/tmp` was emptied by the
-site-event reboot; the evidence is consistent with the original
-`/var/tmp/sparkring-r7-model` bind having pointed at a copy on
-since-wiped storage whose distinct mtimes fed the healthy hash. The
-post-reboot bind restore pointed the mount at the surviving
-`/var/tmp` view — weight-identical (same inodes), identity-different.
+`d871f822…` no longer exists on the host. Which deleted path supplied
+that input is unknown and unrecoverable after the reboot; `/tmp` was
+emptied by the site-event reboot and is one candidate, but the
+evidence proves only that the healthy identity's input tuple is gone,
+not where it lived. The post-reboot bind restore pointed
+`/var/tmp/sparkring-r7-model` at the surviving `/var/tmp` view —
+weight-identical to the healthy configuration (same inodes),
+identity-different.
 
 Consequence: the requantizer runs cold, re-derives per-expert bitrates
 from proxy-error thresholds, and lands on a different (uniformly
@@ -394,6 +396,58 @@ mix, which means changing the deployed attestation's pinned constants
 and re-validating quality. Both are deployment-policy decisions,
 neither belongs to the eager-width work, and the width-generic adapter
 remains exonerated by the no-substitution control launch.
+
+### Leg-1 root cause, completed 2026-08-18: the attested state was never the checkpoint
+
+Source analysis of the deployed runtime (the b12x kernel package from
+image `02881d52…`, the deployed `exl3.py`, the instanttensor loader)
+established three facts with citations, then receipt data closed the
+case:
+
+1. Scratch-arena tier arity is a pure function of loaded routed-expert
+   tensor widths. The only constructor of a three-tier launch is
+   `compile_mixed_trellis3`, selected when a layer's gate/up/down
+   expert tensors span three distinct trellis widths; no environment
+   variable, plan file, contract, or `/cache/jit` artifact can add a
+   tier, and no layer-index conditional exists.
+2. The load path has no overlay or substitution mechanism, and
+   tensor-parallel slicing never changes the width dimension.
+3. The serving-era receipt records per-layer expert bitrate mixes that
+   today's checkpoint cannot produce: layers 3, 4, 5, 9 each carried
+   one or two K5 experts (layer 3: 171 K3 / 86 K4 / 1 K5), and the
+   other 71 layers carried K3/K4 splits that differ from the
+   checkpoint's uniform 192 K3 / 64 K4. The attested state was
+   therefore a runtime-requantized expert mix — across all 75 layers —
+   not the published 3.25-bpw checkpoint.
+
+The stores that could have supplied those payloads were checked
+directly: the online EXL3 cache (both identity namespaces) contains
+zero routed-expert tensors and only K6 attention/dense entries, and
+`/opt/sparkring-q35` holds two contract files, no weights. No
+surviving artifact contains the K5-bearing expert payloads. The
+receipt also pins an `exl3.py` source hash (`91187fcd…`) that differs
+from the mounted lineage, whose files carry an Aug 17 02:30 mtime:
+the runtime generation changed in the failure window, and the deployed
+generation does not route online-cache payloads into routed experts at
+all.
+
+Status of the deployed attestation pins: they describe a configuration
+whose weight source did not survive the site-event reboot and whose
+producing runtime generation is no longer mounted. Recovery choices:
+re-encode the per-expert mix from the donor recipe recorded in
+`config.json`'s `k4_patch` note (a quantization campaign), or
+re-baseline the attestation to the checkpoint's native two-tier state.
+
+Bootstrap mode implements the second choice for validation purposes:
+`/var/tmp/leg1-arena-bootstrap/model_runner.py` on each rank is a copy
+of the deployed `model_runner.py` whose four exact-state pins (two
+arena-cardinality checks, two storage-byte checks) log observed values
+and continue when `SPARK_EXACT_STATE_BOOTSTRAP=1` is set, and behave
+identically to the deployed original otherwise. The launcher mounts it
+only into leg1 containers when `BOOTSTRAP=1`. Runs under this gate
+serve the checkpoint's native expert mix plus K6-onlined attention
+projections and are labeled as such; they do not reproduce the
+receipt-attested production configuration.
 
 Excluded candidates, for the record: Qwen2.5-0.5B (14 heads % 4 != 0),
 SmolLM2-135M/360M (9/15 heads), Gemma-3-270M (heads pass; pinned-runtime
