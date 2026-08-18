@@ -28,6 +28,7 @@ linked runbook. A document being listed here does not authorize remote action.
 | Public headless-startup ABI audit | [Public startup-shim audit](PUBLIC_STARTUP_SHIM_AUDIT.md) |
 | Runtime input pins | [`runtime/runtime-lock.json`](../runtime/runtime-lock.json) |
 | Site-config schema | [`scripts/sparkring_site.py`](../scripts/sparkring_site.py) |
+| Repository prose standard | [Write Without Hidden Context](WRITING_STANDARD.md) |
 | Acceptance behavior and exit codes | [`scripts/acceptance_gate.py`](../scripts/acceptance_gate.py) |
 | Measured claims and evidence labels | [Measured results](RESULTS.md) |
 | Reference deployment reconstruction | [Reference bring-up reconstruction](SETUP.md) |

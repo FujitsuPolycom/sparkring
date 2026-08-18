@@ -20,6 +20,9 @@ which claims each level of access earns you.
 ## Pull requests
 
 - Match the existing style of the surrounding code.
+- All prose — documentation, comments, docstrings, commit and PR text — must
+  follow [Write Without Hidden Context](docs/WRITING_STANDARD.md): it must make
+  sense to a reader who has the repository but none of the development history.
 - All tests must be green:
   - Python: `python -m pytest spark_transport sparkcache runtime scripts` from the repo root.
   - C++/CUDA: the CMake (CTest) suite, run in-container.
