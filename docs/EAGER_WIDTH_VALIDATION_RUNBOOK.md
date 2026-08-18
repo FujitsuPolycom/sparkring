@@ -1,12 +1,17 @@
 # Eager width admission validation runbook
 
-Status: leg 2 executed and passed; leg 3 matrix complete (four widths,
-results below; width-1024 disagreement unresolved pending FP32-oracle
-arbitration); leg 1 unexecuted. All executions 2026-08-17. This runbook produces
-functional and regression evidence only — no performance or maturity claim.
-Every leg is operator-launched. Feature under test: opt-in width-generic
-eager TP4 all-reduce admission (`VLLM_SPARK_TP4_EAGER_WIDTHS`), commit
-`12a9fbe`, documented in
+Status: all three legs executed. Leg 2 (native probes at nine payload
+sizes) passed 2026-08-17. Leg 3 (four-width small-model shadow matrix)
+completed 2026-08-17: width 768 passed its gate; widths 512 and 2048
+failed the configured gate with recorded operator disposition; the
+width-1024 disagreement remains open, with FP32-oracle arbitration
+recorded as research-only. Leg 1 (production-model regression, arms A
+and B) passed 2026-08-18 under bootstrap-gated exact-state attestation
+— bootstrap-gated live validation, not exact deployment-attestation
+equivalence. This runbook produces functional and regression evidence
+only — no performance or maturity claim. Every leg is
+operator-launched. Feature under test: opt-in width-generic eager TP4
+all-reduce admission (`VLLM_SPARK_TP4_EAGER_WIDTHS`), documented in
 [`spark_transport/integrations/vllm/README.md`](../spark_transport/integrations/vllm/README.md).
 
 What this runbook does NOT validate: CUDA-graph admission (unchanged,
@@ -336,7 +341,16 @@ capacities is staged at `/var/tmp/leg1-arena-diag/model_runner.py` on
 all four ranks; the launcher binds it in place of the original when
 `DIAG=1`. It is a copy, so no shared runtime file is modified.
 
-### Leg-1 root cause 2026-08-18: online-cache identity severed by the reboot
+### Leg-1 interim hypothesis 2026-08-18, superseded: online-cache identity
+
+This section records an interim diagnosis that later evidence
+disproved. The severed online-cache identity described here is real
+and was repaired, but it was not the cause of the arena-count failure:
+neither online-cache namespace contains routed-expert payloads, so the
+cache could not have supplied the missing expert tier. The completed
+diagnosis is in the section titled "Leg-1 root cause, completed
+2026-08-18". The interim record is preserved because the identity
+repair it prescribes was executed and remains in effect.
 
 The diagnostic launch reported the diverging state directly:
 
@@ -365,7 +379,10 @@ directory's path, revision, marker-file hashes, and per-shard
 rank 0:
 
 - `d871f8223f2678c032f1` — created 2026-08-10 by the healthy boot,
-  672 artifacts, warm through every serving-era launch.
+  261 attention/dense artifacts, warm through every serving-era
+  launch. (A separate namespace created by the post-reboot boots
+  holds 411; 672 is the combined count across both, not the size of
+  either.)
 - `3de03931460fa5ae458a` — created 2026-08-17 by the first container
   clone attempt, and matching the identity that every surviving model
   directory computes today (verified by recomputing the hash against
@@ -387,7 +404,7 @@ identity-different.
 
 Consequence: the requantizer runs cold, re-derives per-expert bitrates
 from proxy-error thresholds, and lands on a different (uniformly
-two-tier) mix than the one the attestation pins. Each of the 672 warm
+two-tier) mix than the one the attestation pins. Each of the 261 warm
 artifacts embeds the full old identity in its `cache_key` metadata and
 its filename digest, so pointing the loader at the old namespace
 requires rewriting that metadata to the new identity — mechanical, and

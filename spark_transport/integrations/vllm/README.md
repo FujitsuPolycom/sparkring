@@ -223,6 +223,21 @@ contiguous.
   qualified, so this remains admission groundwork pending a matched
   four-Spark comparison.
 
+`VLLM_SPARK_TP4_QUERY_ROW_PROVIDER` replaces the default-width query-row
+policy. Unset, the admitted rows are the contiguous range
+`1..VLLM_SPARK_MAX_QUERY_ROWS`. When set to an importable module name, that
+module owns the row set: it is imported lazily at installation, must expose
+`provider_query_rows(environ) -> Iterable[int]`, and its rows are validated
+in the generic core (integers, unique, positive, at most 512). A configured
+provider that is missing, lacks the interface, or returns invalid rows fails
+installation with a diagnostic naming the variable and module. The variable
+is mutually exclusive with `VLLM_SPARK_TP4_PREFILL_Q512` and, like the width
+list, is launch identity: all four ranks must configure the same value. Row
+providers constrain the default width only; non-default extension widths
+always admit the contiguous range.
+[`spark_tp4_query_row_provider.py`](spark_tp4_query_row_provider.py) is the
+single resolver both the admission gate and the port namespace consult.
+
 ## Direct-cable TP4 all-gather
 
 The all-gather adapter is separately opt-in:

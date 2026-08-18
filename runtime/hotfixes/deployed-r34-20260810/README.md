@@ -18,9 +18,14 @@ TP4); reproduced deterministically; the patched file was live-validated on
 all four ranks by bind-mount.
 
 This directory is deliberately OUTSIDE `runtime/patches/` so the fail-closed
-applier never consumes it (its preimage matches the deployed image, not the
-current pinned base, whose kernel_warmup preimage has since moved).
+applier never consumes it: this hotfix's preimage
+(`6d75f777…`, the deployed image above) differs from the kernel_warmup
+preimage recorded in `runtime/patches/vllm/preimages.json` for the pinned
+base in `runtime/runtime-lock.json`, and the applier refuses mismatched
+preimages by design.
 
-Fold into the next `00-reference-vllm` kernel_warmup patch refresh: gate the
-call site on `worker.vllm_config.kernel_config.enable_cutedsl_warmup` and
-wrap it best-effort, as in the patch here; then delete this directory.
+Removal criterion: this directory exists until a `00-reference-vllm`
+kernel_warmup patch revision gates the `_warmup_ll_bf16_router_gemm()` call
+site on `worker.vllm_config.kernel_config.enable_cutedsl_warmup` and wraps
+it best-effort, as the patch here does. When such a revision is applied to
+the pinned base and validated, delete this directory.

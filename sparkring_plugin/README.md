@@ -1,6 +1,6 @@
 # sparkring — vLLM plugin for the SIRCL direct-cable transport
 
-Status: skeleton, `0.1.0.dev0`. Packages the SparkRing vLLM adapter as a
+Status: implemented, offline-validated; not deployment-qualified. Version `0.1.0.dev0`. Packages the SparkRing vLLM adapter as a
 standard `vllm.general_plugins` entry point, replacing the container-era
 `sitecustomize` + per-file bind-mount deployment. No serving evidence is
 attached to this packaging; the transport itself carries the evidence
@@ -37,8 +37,10 @@ are counted by the collective audit.
 `SPARK_TP4_LIBRARY`. If that variable is unset and the wheel ships
 `sparkring/_native/libspark_transport_capi.so` (linux-aarch64/sbsa,
 CUDA 13), the plugin points the variable there. The binary is a build
-artifact, not committed; produce it from the repository source in any
-CUDA 13 aarch64 devel container:
+artifact, not committed: a wheel built from a clean source checkout
+contains no native library, and serving with such a wheel requires
+`SPARK_TP4_LIBRARY` to name an externally built one. Produce it from
+the repository source in any CUDA 13 aarch64 devel container:
 
 ```bash
 cmake -S spark_transport -B build -DCMAKE_BUILD_TYPE=Release
