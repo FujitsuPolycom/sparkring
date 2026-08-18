@@ -359,12 +359,10 @@ def _record_stock_path(
             unique_name=str(getattr(communicator, "unique_name", "")),
         )
     if enabled():
-        # The reporter historically started only when the width-6144
-        # graph session was prepared, so on any other profile an armed
-        # audit accumulated in memory without ever writing the status
-        # file. Starting it from the recording path keeps the
-        # contract: an armed audit always produces a status file,
-        # regardless of model width or graph eligibility.
+        # Invariant: an armed audit always produces a status file,
+        # regardless of model width or graph eligibility. The recording
+        # path must start the reporter itself because no graph-session
+        # preparation is guaranteed to run in the serving profile.
         from spark_graph_status_reporter import ensure_status_reporter
 
         reporter_rank = getattr(communicator, "rank_in_group", None)
