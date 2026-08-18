@@ -8,7 +8,7 @@ This document records a controlled configuration campaign on four directly
 cabled NVIDIA DGX Sparks / GB10s. The target is the unchanged legacy
 [`willfalco/GLM-5.2-EXL3-TR3-3.25bpw`](https://huggingface.co/willfalco/GLM-5.2-EXL3-TR3-3.25bpw)
 checkpoint at revision `d7d79c2d14599dfce7a5d12b85f7ad73f40e623d`.
-The baseline serving configuration is documented in
+The baseline serving configuration, campaign arm `B0`, is documented in
 [`EXL3_FIXED_MTP2_RECIPE_20260802.md`](EXL3_FIXED_MTP2_RECIPE_20260802.md),
 and the canonical fixed-MTP3 source recipe remains
 [`EXL3_RECIPE.md`](EXL3_RECIPE.md).
@@ -22,7 +22,7 @@ from the proposed `shared_h_v1` format. The running model uses legacy
 `per_expert_v1`. The campaign used ignored operator-local profiles, plans, and
 a benchmark harness from repository HEAD
 `2f367c8c66f6b4fb54fed9dadf85250906ea40ce`; the checkout was dirty. No claim
-is made that the current tracked launcher reproduces these results unchanged.
+is made that the tracked launcher reproduces these results unchanged.
 
 The sanitized machine-readable campaign record is
 [`docs/configurations/glm52-exl3-ab-campaign-20260802.json`](configurations/glm52-exl3-ab-campaign-20260802.json).
@@ -78,8 +78,8 @@ A 64K prefill warmup preceded the measured cells. All six completed matched
 full-matrix artifacts reported healthy APIs before and after, the expected served model,
 and zero invalid prefill or decode cells.
 
-The harness file was later extended with a decode-only repeat mode. Its current
-SHA-256 is
+The harness file was later extended with a decode-only repeat mode. The
+extended file's SHA-256 is
 `b276f7f1a54afe4732b204c0b14f0ab1600a8d3cbde718f6ecfec186d6ee67e9`.
 That later hash was used by R8 and ADR8 in repeat mode and by AD and M1 in
 full-matrix mode. It must not be retroactively assigned to the four earlier
@@ -106,8 +106,8 @@ full-matrix artifacts.
 | closing B0 standard quick 16K JSON | `74a5188e36892196c6629df8f21f2d60113875ccd982704ff269b3c3fa778f5a` |
 | incomplete old-salt adaptive repeated-C8 JSON | `9cf2f5f6c30fb6c19bbc506e003864e9db9052fbb80d4ab198dda3510777022e` |
 | original full-matrix harness used by B0/M3/Q8/closing B0 | `12bb68c2ebb033a144f3b9da7415e15917f8aeadd9c5e27f19d607c4384bc133` |
-| current extended streaming/decode-repeat harness, used by R8, AD, M1, and both ADR8 halves | `b276f7f1a54afe4732b204c0b14f0ab1600a8d3cbde718f6ecfec186d6ee67e9` |
-| A/B arm launcher, current after later local arm additions | `89318a90dae5df92a208bb18f779799287c3cbdc727e3dc4cd2bc13dea6b9d34` |
+| final extended streaming/decode-repeat harness, used by R8, AD, M1, and both ADR8 halves | `b276f7f1a54afe4732b204c0b14f0ab1600a8d3cbde718f6ecfec186d6ee67e9` |
+| A/B arm launcher, final version after local arm additions | `89318a90dae5df92a208bb18f779799287c3cbdc727e3dc4cd2bc13dea6b9d34` |
 | B0 profile | `7dc65df82f0bc165104bffa5c786b8aaf4ba5f9ee3c3b77c3afb33c007870bbd` |
 | M3 profile | `5874988de835a78712af83492e01bc5a30041ae7465d3938d8034a65f1fc41c3` |
 | AS profile | `a441d87f95a172cd3153ece132099e8d0bcfd0c215c025b47493b0892690ecc8` |
@@ -470,7 +470,7 @@ AD is a **live-validated, matched-benchmark-complete configuration arm**, but it
 is not promoted. It used adaptive depths 2/3, maximum depth 3, a 32-round
 window, `num_spec_tokens=3`, true adaptive draft, index reuse, synchronous
 scheduling, and the unchanged 4,096 batch-token limit. The artifact timestamp
-was 2026-08-02 17:35:40 UTC and it used the current extended harness hash.
+was 2026-08-02 17:35:40 UTC and it used the final extended harness hash.
 
 Operator-recorded startup evidence showed `next_n=4`, index reuse activated,
 the unchanged 1,125,632-token KV capacity, and every graph family complete.

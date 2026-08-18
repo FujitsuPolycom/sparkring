@@ -88,7 +88,7 @@ reproduction procedure.
 
 ## Campaign state
 
-| Item | Current evidence |
+| Item | Evidence |
 |---|---|
 | B0 control | live-validated with LMCache absent and vLLM native prefix caching enabled |
 | patched LMCache package | ARM64 wheel built; focused topology tests passed |
@@ -101,7 +101,7 @@ reproduction procedure.
 | miss, put, and all-shard hit lifecycle | bounded live proof complete |
 | engine-restart reuse | passed with native prefix caching disabled |
 | LMCache performance | CS512 performance-promoted relative to C0-best; release/public acceptance remains false |
-| latest repeated C8 fairness | passed the lane-ratio check and supports the bounded CS512 performance promotion; it is not a release/public acceptance result |
+| final repeated C8 fairness | passed the lane-ratio check and supports the bounded CS512 performance promotion; it is not a release/public acceptance result |
 | 128-token repeat correctness | failed/open: fixed-seed output hashes differed |
 | durable persistence or storage-tier offload | not demonstrated |
 | C0-best promotion | not promoted; full matrix completed with capacity-limited cells |
