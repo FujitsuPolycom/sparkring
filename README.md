@@ -5,8 +5,9 @@ SparkRing is a low-latency collective transport and inference runtime for switch
 It runs GLM-5.2 across four directly connected DGX Sparks. Four 200 Gb/s ConnectX-7 links form a physical ring, 
 with no external Ethernet or InfiniBand switch in the inference fabric.
 
-The stack combines SIRCL custom RDMA collectives, CUDA-graph-replayable command rings, a source-attested and fail-closed vLLM overlay, 
+The stack combines SIRCL custom RDMA collectives, CUDA-graph-replayable command rings, a source-attested and fail-closed vLLM overlay,
 DCP4, support for fixed and adaptive MTP speculative decoding, and a patched ring-safe NCCL fallback for communication the custom path does not handle.
+A pip-installable plugin (`sparkring_plugin/`) packages the vLLM adapters as a `vllm.general_plugins` entry point: fail-closed like the overlay, but feature-detected rather than source-attested, and offline-validated only.
 
 The long-term goal is a model-agnostic runtime for efficient, switchless multi-node inference on DGX Spark.
 
@@ -292,11 +293,17 @@ See [docs/SIRCL.md](docs/SIRCL.md) and
 
 ### Fail-closed vLLM integration
 
-SparkRing applies a thin overlay through `PYTHONPATH`. Each adapter verifies
-the exact source SHA-256 and ABI it expects before installation.
+The container deployment applies a thin overlay through `PYTHONPATH`. Each
+adapter verifies the exact source SHA-256 and ABI it expects before
+installation. A source mismatch stops startup. The orchestrator also attests
+native libraries, mounts, launch arguments, and rank topology.
 
-A source mismatch stops startup. The orchestrator also attests native
-libraries, mounts, launch arguments, and rank topology.
+The pip-installable plugin (`sparkring_plugin/`) is the second integration
+path: it registers through `vllm.general_plugins`, feature-detects the vLLM
+integration point by signature instead of pinning a source hash, and
+terminates before serving on any installation failure. It is fail-closed but
+not source-attested at runtime; vendored-module parity with the source tree
+is enforced in CI, not at serving install.
 
 ### DCP4 and adaptive MTP
 
@@ -351,6 +358,7 @@ python -m pip install \
   --index-url https://download.pytorch.org/whl/cpu \
   "torch==2.11.0"
 python -m pytest spark_transport sparkcache runtime scripts -q
+python -m pytest sparkring_plugin -q
 ruff check --select E,F,W --ignore E501 --exclude runtime/patches .
 ```
 
@@ -403,6 +411,7 @@ runtime/               pinned runtime builders and public patches
 scripts/               site, preflight, launch, and evidence tools
 scripts/config/        sanitized site and launch templates
 spark_transport/       SIRCL transport, probes, tests, and vLLM adapters
+sparkring_plugin/      pip-installable vLLM plugin packaging of the adapters
 sparkcache/            persistent NVMe context cache
 docs/ARCHITECTURE.md   transport and runtime design
 docs/QUICKSTART.md     default EXL3 four-Spark bring-up

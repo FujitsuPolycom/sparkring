@@ -43,8 +43,11 @@ into all four containers, and set:
 ```
 
 The adapter intercepts only TP world-size four, contiguous CUDA BF16
-`[Q, 6144]` inputs for Q1 through Q5. Every other collective uses the
-original vLLM/NCCL dispatch unchanged.
+`[Q, W]` inputs under the admitted row and width policy — by default
+`[Q, 6144]` for rows `1..VLLM_SPARK_MAX_QUERY_ROWS` (default 6), with rows
+governed by the query-row policy and widths by `VLLM_SPARK_TP4_EAGER_WIDTHS`
+as described below. Every other collective uses the original vLLM/NCCL
+dispatch unchanged.
 
 `shadow` executes both paths, returns the NCCL result, and accumulates exact
 and numerical comparison statistics on the GPU. Its summary includes bitwise
