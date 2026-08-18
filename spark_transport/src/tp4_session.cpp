@@ -44,17 +44,38 @@ namespace {
 constexpr std::uint64_t kDefaultMaxInflight = 64;
 constexpr std::uint64_t kMaximumMaxInflight = 4096;
 constexpr auto kGraphProtocolTimeout = std::chrono::seconds(5);
-constexpr std::size_t kQ1PayloadBytes =
-    tp4_graph_payload_bytes(1);
 // The record layout remains EndpointInfo v1. A distinct wire version makes a
 // mixed old/new deferred-credit deployment fail on both peers before either
 // peer enters the data path; old binaries otherwise ignore reserved tags.
 constexpr std::uint16_t kTwoSlotDeferredEndpointVersion = 2;
+constexpr std::uint16_t kGraphLayoutEndpointVersion = 4;
+// Constant tag: version-4 graph peers exchange the exact
+// GraphGeometryInfo record below instead of folding geometry into
+// this 16-bit field.
+constexpr std::uint16_t kGraphLayoutEndpointTag = 0xc211;
 
-bool graph_capacity_supported(std::size_t payload_bytes) {
+// Exact graph-row geometry record, exchanged over the control channel
+// after EndpointInfo for every graph session. Both peers must present
+// identical values in every field; geometry identity is never hashed
+// or truncated.
+constexpr std::uint32_t kGraphGeometryMagic = 0x53474d47;  // "SGMG"
+
+struct GraphGeometryInfo {
+  std::uint32_t magic{kGraphGeometryMagic};
+  std::uint16_t version{1};
+  std::uint16_t reserved{};
+  std::uint32_t elements_per_row{};
+  std::uint32_t bytes_per_row{};
+};
+
+static_assert(sizeof(GraphGeometryInfo) == 16);
+static_assert(std::is_trivially_copyable_v<GraphGeometryInfo>);
+
+bool graph_capacity_supported(std::size_t payload_bytes,
+                              std::uint32_t bytes_per_row) {
   for (std::uint32_t q = 1;
        q <= kTp4GraphAllreduceMaximumQ; ++q) {
-    if (payload_bytes == tp4_graph_payload_bytes(q)) {
+    if (payload_bytes == tp4_graph_payload_bytes(q, bytes_per_row)) {
       return true;
     }
   }
@@ -128,11 +149,16 @@ ControlChannel open_channel(const Tp4RoundPlan& plan,
 
 void exchange_and_connect_endpoint(
     ControlChannel& channel, VerbsEndpoint& endpoint,
-    Tp4AllreduceProtocol protocol, Tp4AllreduceSchedule schedule) {
+    Tp4AllreduceProtocol protocol, Tp4AllreduceSchedule schedule,
+    bool graph_session, std::uint32_t elements_per_row,
+    std::uint32_t bytes_per_row) {
   EndpointInfo local = endpoint.local_info();
   if (schedule == Tp4AllreduceSchedule::kDualPortStriped) {
     local.version = detail::kTp4DualPortStripedEndpointVersion;
     local.reserved = detail::kTp4DualPortStripedEndpointTag;
+  } else if (graph_session) {
+    local.version = kGraphLayoutEndpointVersion;
+    local.reserved = kGraphLayoutEndpointTag;
   } else if (tp4_protocol_uses_deferred_ack(protocol)) {
     local.version = kTwoSlotDeferredEndpointVersion;
     local.reserved = tp4_endpoint_protocol_tag(protocol);
@@ -151,6 +177,25 @@ void exchange_and_connect_endpoint(
   if (remote.buffer_bytes != local.buffer_bytes) {
     throw std::runtime_error(
         "TP4 all-reduce payload arena mismatch between peers");
+  }
+  if (graph_session) {
+    GraphGeometryInfo local_geometry{};
+    local_geometry.elements_per_row = elements_per_row;
+    local_geometry.bytes_per_row = bytes_per_row;
+    const GraphGeometryInfo remote_geometry =
+        channel.exchange(local_geometry);
+    if (remote_geometry.magic != local_geometry.magic ||
+        remote_geometry.version != local_geometry.version ||
+        remote_geometry.reserved != local_geometry.reserved) {
+      throw std::runtime_error(
+          "TP4 graph geometry record mismatch between peers");
+    }
+    if (remote_geometry.elements_per_row !=
+            local_geometry.elements_per_row ||
+        remote_geometry.bytes_per_row != local_geometry.bytes_per_row) {
+      throw std::runtime_error(
+          "TP4 graph row-geometry mismatch between peers");
+    }
   }
   endpoint.connect(remote, local.version);
 }
@@ -363,6 +408,16 @@ class Tp4AllreduceSession::Impl {
         options_.control_port1 == 0) {
       throw std::invalid_argument("invalid TP4 all-reduce options");
     }
+    if (options_.elements_per_row == 0 || options_.bytes_per_row == 0 ||
+        static_cast<std::uint64_t>(options_.bytes_per_row) !=
+            static_cast<std::uint64_t>(options_.elements_per_row) *
+                kTp4GraphBytesPerElement ||
+        static_cast<std::uint64_t>(options_.bytes_per_row) *
+                kTp4GraphAllreduceMaximumQ >
+            std::numeric_limits<std::uint32_t>::max()) {
+      throw std::invalid_argument(
+          "TP4 graph row geometry must describe contiguous BF16 rows");
+    }
     (void)tp4_allreduce_protocol_from_wire(
         static_cast<std::uint32_t>(options_.protocol));
     if (!tp4_graph_kernel_strategy_valid(
@@ -387,7 +442,8 @@ class Tp4AllreduceSession::Impl {
     }
     if (tp4_protocol_uses_deferred_ack(options_.protocol) &&
         (!submit_cpu_set ||
-         !graph_capacity_supported(options_.payload_bytes))) {
+         !graph_capacity_supported(options_.payload_bytes,
+                                   options_.bytes_per_row))) {
       throw std::invalid_argument(
           "two-slot deferred ACK requires a graph-only TP4 all-reduce "
           "session with a supported graph payload capacity");
@@ -395,7 +451,8 @@ class Tp4AllreduceSession::Impl {
     if (tp4_graph_kernel_strategy_is_graph_only(
             options_.graph_kernel_strategy)) {
       if (!submit_cpu_set ||
-          !graph_capacity_supported(options_.payload_bytes)) {
+          !graph_capacity_supported(options_.payload_bytes,
+                                    options_.bytes_per_row)) {
         throw std::invalid_argument(
             std::string(tp4_graph_kernel_strategy_name(
                             options_.graph_kernel_strategy)) +
@@ -437,7 +494,9 @@ class Tp4AllreduceSession::Impl {
     endpoint0_ = std::make_unique<VerbsEndpoint>(
         options_.device0, 1, options_.gid0, *buffer0_);
     exchange_and_connect_endpoint(*channel0_, *endpoint0_,
-                                  options_.protocol, options_.schedule);
+                                  options_.protocol, options_.schedule,
+                                  submit_cpu_set, options_.elements_per_row,
+                                  options_.bytes_per_row);
 
     channel1_.emplace(
         open_channel(plan1, options_.peer1, options_.control_port1));
@@ -446,9 +505,12 @@ class Tp4AllreduceSession::Impl {
     endpoint1_ = std::make_unique<VerbsEndpoint>(
         options_.device1, 1, options_.gid1, *buffer1_);
     exchange_and_connect_endpoint(*channel1_, *endpoint1_,
-                                  options_.protocol, options_.schedule);
+                                  options_.protocol, options_.schedule,
+                                  submit_cpu_set, options_.elements_per_row,
+                                  options_.bytes_per_row);
 
-    if (graph_capacity_supported(options_.payload_bytes)) {
+    if (graph_capacity_supported(options_.payload_bytes,
+                                 options_.bytes_per_row)) {
       int device{};
       int host_native_atomics{};
       check_cuda(cudaGetDevice(&device), "cudaGetDevice graph TP4");
@@ -467,7 +529,8 @@ class Tp4AllreduceSession::Impl {
     }
 
     worker_ = std::make_unique<GpuTp4TensorWorker>(
-        options_.payload_bytes, buffer0_->device_data(), layout_,
+        options_.payload_bytes, options_.bytes_per_row,
+        buffer0_->device_data(), layout_,
         buffer1_->device_data(), layout_, options_.protocol,
         options_.graph_kernel_strategy, options_.schedule);
     channel0_->barrier();
@@ -595,13 +658,15 @@ class Tp4AllreduceSession::Impl {
           "graph TP4 all-reduce tensor pointer is null");
     }
     const std::uint32_t active_payload_bytes =
-        tp4_graph_payload_bytes(q);
-    if (!tp4_graph_allreduce_command_descriptor_valid(
-            q, active_payload_bytes) ||
+        tp4_graph_payload_bytes(q, options_.bytes_per_row);
+    if (!tp4_graph_command_layout_valid(
+            q, active_payload_bytes, options_.bytes_per_row,
+            kTp4GraphAllreduceMaximumQ) ||
         active_payload_bytes > options_.payload_bytes ||
         graph_commands_host_ == nullptr) {
       throw std::invalid_argument(
-          "graph TP4 all-reduce requires BF16 [q, 6144], q in [1, 512], "
+          "graph TP4 all-reduce requires the configured BF16 [q, width], "
+          "q in [1, 512], "
           "within session capacity");
     }
     if (!graph_host_native_atomics_supported_) {
@@ -844,8 +909,9 @@ class Tp4AllreduceSession::Impl {
 
       Tp4GraphCommand command{};
       const std::uint64_t expected = graph_consumed_sequence_ + 1;
-      if (!tp4_graph_allreduce_command_try_consume_descriptor(
-              graph_commands_host_, expected, &command)) {
+      if (!tp4_graph_command_try_consume_layout(
+              graph_commands_host_, expected, options_.bytes_per_row,
+              kTp4GraphAllreduceMaximumQ, &command)) {
         adaptive_graph_poll_pause(poll_misses);
         continue;
       }

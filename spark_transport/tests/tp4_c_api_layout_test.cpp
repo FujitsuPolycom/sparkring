@@ -26,6 +26,17 @@ static_assert(
     sizeof(void*) != 8 ||
     offsetof(spark_tp4_config, graph_progress_cpu_plus_one) == 60);
 
+static_assert(std::is_standard_layout_v<spark_tp4_config_v2>);
+static_assert(std::is_trivially_copyable_v<spark_tp4_config_v2>);
+static_assert(sizeof(void*) != 8 || sizeof(spark_tp4_config_v2) == 80);
+static_assert(offsetof(spark_tp4_config_v2, struct_size) == 0);
+static_assert(sizeof(void*) != 8 ||
+              offsetof(spark_tp4_config_v2, base) == 8);
+static_assert(sizeof(void*) != 8 ||
+              offsetof(spark_tp4_config_v2, elements_per_row) == 72);
+static_assert(sizeof(void*) != 8 ||
+              offsetof(spark_tp4_config_v2, bytes_per_row) == 76);
+
 static_assert(std::is_standard_layout_v<spark_tp4_graph_status>);
 static_assert(std::is_trivially_copyable_v<spark_tp4_graph_status>);
 static_assert(sizeof(spark_tp4_graph_status) == 56);

@@ -10,6 +10,8 @@ namespace spark_transport {
 constexpr std::size_t kTp4GraphCommandCapacity = 64;
 constexpr std::uint32_t kTp4GraphElementsPerRow = 6144;
 constexpr std::uint32_t kTp4GraphBytesPerElement = 2;
+constexpr std::uint32_t kTp4GraphBytesPerRow =
+    kTp4GraphElementsPerRow * kTp4GraphBytesPerElement;
 // Eight active sequences at maximum MTP4 produce at most Q40.
 constexpr std::uint32_t kTp4GraphMaximumQ = 40;
 // All-reduce alone admits the first bounded prefill tier. Vocabulary and
@@ -30,8 +32,9 @@ static_assert(
     std::numeric_limits<std::uint32_t>::max());
 
 constexpr std::uint32_t tp4_graph_payload_bytes(
-    std::uint32_t q) noexcept {
-  return q * kTp4GraphElementsPerRow * kTp4GraphBytesPerElement;
+    std::uint32_t q,
+    std::uint32_t bytes_per_row = kTp4GraphBytesPerRow) noexcept {
+  return q * bytes_per_row;
 }
 
 constexpr bool tp4_graph_command_layout_valid(
@@ -47,7 +50,7 @@ constexpr bool tp4_graph_command_descriptor_valid(
     std::uint32_t q, std::uint32_t payload_bytes) noexcept {
   return tp4_graph_command_layout_valid(
       q, payload_bytes,
-      kTp4GraphElementsPerRow * kTp4GraphBytesPerElement,
+      kTp4GraphBytesPerRow,
       kTp4GraphMaximumQ);
 }
 
@@ -55,7 +58,7 @@ constexpr bool tp4_graph_allreduce_command_descriptor_valid(
     std::uint32_t q, std::uint32_t payload_bytes) noexcept {
   return tp4_graph_command_layout_valid(
       q, payload_bytes,
-      kTp4GraphElementsPerRow * kTp4GraphBytesPerElement,
+      kTp4GraphBytesPerRow,
       kTp4GraphAllreduceMaximumQ);
 }
 
@@ -158,7 +161,7 @@ bool tp4_graph_command_publish_descriptor(
     std::uint32_t payload_bytes, std::uint64_t* sequence) noexcept;
 
 // All-reduce-only publisher. Unlike the shared Q40 descriptor entrypoint,
-// this accepts exact contiguous BF16 [Q, 6144] through Q512.
+// this accepts exact contiguous BF16 rows through Q512.
 bool tp4_graph_allreduce_command_publish_descriptor(
     Tp4GraphCommandRing* ring, bool trace, std::uint32_t q,
     std::uint32_t payload_bytes, std::uint64_t* sequence) noexcept;

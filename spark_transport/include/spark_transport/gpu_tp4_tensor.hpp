@@ -17,6 +17,7 @@ class GpuTp4TensorWorker {
   GpuTp4TensorWorker& operator=(const GpuTp4TensorWorker&) = delete;
 
   GpuTp4TensorWorker(std::size_t payload_bytes,
+                     std::uint32_t bytes_per_row,
                      void* round0_mapped_device_buffer,
                      const Tp2BufferLayout& round0_layout,
                      void* round1_mapped_device_buffer,
@@ -47,6 +48,7 @@ class GpuTp4TensorWorker {
   Tp2BufferLayout round0_layout_{};
   Tp2BufferLayout round1_layout_{};
   std::size_t payload_bytes_{};
+  std::uint32_t bytes_per_row_{};
   Tp4AllreduceProtocol protocol_{Tp4AllreduceProtocol::kSerialAck};
   Tp4GraphKernelStrategy graph_kernel_strategy_{
       Tp4GraphKernelStrategy::kFused};

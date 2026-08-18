@@ -16,6 +16,9 @@ int main() {
 
   static_assert(kTp4DualPortStripedEndpointVersion != 1);
   static_assert(kTp4DualPortStripedEndpointVersion != 2);
+  // Version 3 predates the exact geometry-record exchange; version-4
+  // peers must never complete a handshake with one.
+  static_assert(kTp4DualPortStripedEndpointVersion != 3);
   static_assert(kTp4DualPortStripedEndpointTag != 0);
   static_assert(kTp4DualPortStripedEndpointTag !=
                 spark_transport::kTp4TwoSlotEndpointTag);

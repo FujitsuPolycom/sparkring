@@ -27,6 +27,19 @@ typedef struct spark_tp4_config {
   uint32_t graph_progress_cpu_plus_one;
 } spark_tp4_config;
 
+/*
+ * Versioned graph-row geometry. The embedded v1 configuration preserves the
+ * established eager and GLM graph ABI. New callers set struct_size, then use
+ * elements_per_row=4096 and bytes_per_row=8192 for DeepSeek BF16 tensors.
+ * bytes_per_row must equal elements_per_row * 2.
+ */
+typedef struct spark_tp4_config_v2 {
+  uint32_t struct_size;
+  spark_tp4_config base;
+  uint32_t elements_per_row;
+  uint32_t bytes_per_row;
+} spark_tp4_config_v2;
+
 typedef void* spark_tp4_handle;
 
 enum {
@@ -119,14 +132,20 @@ spark_tp4_create_with_protocol_graph_kernel_and_schedule(
     uint32_t graph_kernel, uint32_t wire_schedule, char* error,
     size_t error_bytes);
 
+/* Additive constructor for a non-GLM graph row layout. */
+spark_tp4_handle spark_tp4_create_v2(
+    const spark_tp4_config_v2* config, uint32_t protocol,
+    uint32_t graph_kernel, uint32_t wire_schedule, char* error,
+    size_t error_bytes);
+
 int spark_tp4_all_reduce(spark_tp4_handle handle, const void* input,
                          void* output, void* cuda_stream, char* error,
                          size_t error_bytes);
 
 /*
- * Adds one exact contiguous BF16 [q, 6144] all-reduce to an active CUDA
- * stream capture. q must be in [1, 512], and the handle's payload capacity
- * must be at least q * 12,288 bytes. One maximum-capacity handle serves
+ * Adds one exact contiguous BF16 [q, elements_per_row] all-reduce to an active
+ * CUDA stream capture. q must be in [1, 512], and the handle's payload
+ * capacity must be at least q * bytes_per_row. One maximum-capacity handle serves
  * every supported mixed/adaptive concurrency bucket.
  */
 int spark_tp4_capture_all_reduce(
@@ -134,7 +153,7 @@ int spark_tp4_capture_all_reduce(
     void* cuda_stream, char* error, size_t error_bytes);
 
 /*
- * Adds a Q1 BF16 [1, 6144] all-reduce to an active CUDA stream capture.
+ * Adds a Q1 BF16 [1, elements_per_row] all-reduce to capture.
  * The graph is bound to the supplied tensor addresses, must replay on the
  * capture stream, and the handle must outlive all graph replays. The function
  * may be called repeatedly on that stream before the first replay so one

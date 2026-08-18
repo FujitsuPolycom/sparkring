@@ -57,6 +57,17 @@ spark_transport::Tp4AllreduceOptions translate(
   return options;
 }
 
+spark_transport::Tp4AllreduceOptions translate(
+    const spark_tp4_config_v2& config) {
+  if (config.struct_size < sizeof(spark_tp4_config_v2)) {
+    throw std::invalid_argument("TP4 C API v2 config is too small");
+  }
+  auto options = translate(config.base);
+  options.elements_per_row = config.elements_per_row;
+  options.bytes_per_row = config.bytes_per_row;
+  return options;
+}
+
 spark_transport::Tp4AllgatherOptions translate(
     const spark_tp4_allgather_config& config) {
   if (config.peer0 == nullptr || config.peer1 == nullptr ||
@@ -223,6 +234,31 @@ spark_tp4_create_with_protocol_graph_kernel_and_schedule(
     return nullptr;
   } catch (...) {
     copy_error("unknown TP4 create failure", error, error_bytes);
+    return nullptr;
+  }
+}
+
+extern "C" spark_tp4_handle spark_tp4_create_v2(
+    const spark_tp4_config_v2* config, std::uint32_t protocol,
+    std::uint32_t graph_kernel, std::uint32_t wire_schedule,
+    char* error, std::size_t error_bytes) {
+  try {
+    if (config == nullptr) {
+      throw std::invalid_argument("TP4 C API v2 config is null");
+    }
+    auto options = translate(*config);
+    options.protocol =
+        spark_transport::tp4_allreduce_protocol_from_wire(protocol);
+    options.graph_kernel_strategy = graph_kernel_from_wire(graph_kernel);
+    options.schedule = schedule_from_wire(wire_schedule);
+    auto handle =
+        std::make_unique<Tp4CAllreduceHandle>(std::move(options));
+    return handle.release();
+  } catch (const std::exception& exception) {
+    copy_error(exception.what(), error, error_bytes);
+    return nullptr;
+  } catch (...) {
+    copy_error("unknown TP4 v2 create failure", error, error_bytes);
     return nullptr;
   }
 }

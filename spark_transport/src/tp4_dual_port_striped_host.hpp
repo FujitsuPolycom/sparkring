@@ -11,7 +11,11 @@ namespace spark_transport::detail {
 
 // A peer that only understands the legacy or ordinary two-slot layout must
 // fail the setup handshake before either side posts RDMA into a striped arena.
-constexpr std::uint16_t kTp4DualPortStripedEndpointVersion = 3;
+constexpr std::uint16_t kTp4DualPortStripedEndpointVersion = 4;
+// The tag stays a constant: row geometry is not folded into this 16-bit
+// field. Version 4 peers additionally exchange the exact GraphGeometryInfo
+// record and compare every field, so geometry identity is never hashed or
+// truncated.
 constexpr std::uint16_t kTp4DualPortStripedEndpointTag = 0xc204;
 
 enum class Tp4StripedWorkEvent : std::uint64_t {
@@ -52,8 +56,10 @@ inline bool tp4_dual_port_striped_options_valid(
       options.graph_progress_cpu.has_value() &&
       options.graph_submit_cpu != options.graph_progress_cpu;
   const bool capacity_valid =
-      options.payload_bytes == tp4_graph_payload_bytes(40) ||
-      options.payload_bytes == tp4_graph_payload_bytes(512);
+      options.payload_bytes ==
+          tp4_graph_payload_bytes(40, options.bytes_per_row) ||
+      options.payload_bytes ==
+          tp4_graph_payload_bytes(512, options.bytes_per_row);
   return options.schedule == Tp4AllreduceSchedule::kDualPortStriped &&
          options.protocol == Tp4AllreduceProtocol::kTwoSlotDeferredAck &&
          options.graph_kernel_strategy == Tp4GraphKernelStrategy::kFused &&

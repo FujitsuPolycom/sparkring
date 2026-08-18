@@ -236,7 +236,7 @@ historical reference is in
 ## What SparkRing provides
 
 - A GLM/vLLM-oriented direct-cable transport implementation, with reusable
-  low-level transport primitives.
+  low-level transport primitives and configurable graph-row geometry.
 - Two- and four-rank collective schedules used by the GLM/vLLM paths.
 - Registered mapped-host RDMA arenas.
 - GPU doorbells and device-published command rings.
