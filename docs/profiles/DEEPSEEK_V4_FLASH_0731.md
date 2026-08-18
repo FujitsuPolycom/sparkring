@@ -1,11 +1,35 @@
 # Profile: deepseek-ai/DeepSeek-V4-Flash-0731
 
-Status: **research-only / unsupported.** A candidate profile with **no
-validation record of any kind in this repository** — no serving run, no
-shadow window, no probe record, no entry in
-[measured results](../RESULTS.md) or
-[testing history](../TESTING_HISTORY.md). It remains unsupported until a
-validation record exists.
+Status: **functional launch attested (operator record, 2026-08-18); not
+shadow-qualified.** The model loads and serves on the four-Spark ring; no
+shadow-comparison window has been closed, so no correctness or performance
+claim attaches.
+
+## Operator launch record, 2026-08-18
+
+The operator launched the model on the four directly cabled DGX Sparks the
+day it was staged. Attested facts:
+
+- Four-rank tensor-parallel serving from the deployed GLM runtime image:
+  weights load (about 42 GB per rank), the engine reaches API health in
+  about 175 seconds, and interactive chat completions serve with
+  deterministic bounded probes returning exact requested outputs.
+- Width 4096 admitted through `VLLM_SPARK_TP4_EAGER_WIDTHS=4096` under
+  `VLLM_SPARK_TP4_MODE=shadow`, `--enforce-eager`, BF16 activations.
+- The architecture requires `--kv-cache-dtype fp8`: its `fp8_ds_mla`
+  key-value layout refuses any other cache dtype at load, and the first
+  launch attempt failed on exactly that check before the flag was added.
+- Tool calling works end-to-end with `--enable-auto-tool-choice
+  --tool-call-parser deepseek_v4` (a request with `tool_choice: "auto"`
+  serves correctly).
+- Configured limits for the launch: 131,072-token request limit, eight
+  sequences, 32 GiB of key-value cache per rank.
+
+What this record does not establish: no shadow window closed for any
+width-4096 signature, so numerical agreement with the stock path is
+unmeasured; no throughput, latency, or quality number exists; no model
+revision was pinned; and the model's native DSpark speculative mechanism
+is not part of the attested configuration.
 
 ## Model identity and public-config facts
 
