@@ -476,6 +476,34 @@ Functional validation, all at temperature 0 against the serving API:
 
 Not covered: sustained-load benchmarks.
 
+### Leg-1 arms A and B, executed 2026-08-18: PASS
+
+Both arms ran the width-generic adapter pair under the bootstrap gate,
+using the same launch surface as the control (verbatim clone, receipt
+lifecycle automated: stop all leg1 containers, archive prior-process
+exact-state receipts, launch).
+
+- Arm A (widths variable unset): booted to API health, SparkRing
+  installed in custom mode on all four ranks (TP4 all-reduce,
+  all-gather, and vocabulary backends), served a bounded
+  deterministic request correctly.
+- Arm B (`VLLM_SPARK_TP4_EAGER_WIDTHS=6144`): same result. 6144 is
+  the default width, so admitting it explicitly must not change the
+  reservation surface.
+- Port comparison: a numeric sweep of each arm's full rank-0 log over
+  the reservation range (11100-12288) matched on 84 of 85 distinct
+  values. The single arm-A-only value (12049) sits at no valid
+  row-slot position (neither port base yields an integer slot) and
+  its source line was not recoverable after the container was
+  replaced; it is attributed to log noise, not a reservation.
+  Byte-level equality of the admission surfaces across arms is
+  separately proven by test_provider_rows_equivalence.py.
+
+With legs 2 and 3 already qualified, this completes the three-leg
+validation: the width-generic adapter serves the production model
+with the feature off (regression) and with the default width
+explicitly admitted (no-op equivalence), live on the ring.
+
 Excluded candidates, for the record: Qwen2.5-0.5B (14 heads % 4 != 0),
 SmolLM2-135M/360M (9/15 heads), Gemma-3-270M (heads pass; pinned-runtime
 support unverified).
