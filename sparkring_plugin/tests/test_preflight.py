@@ -21,6 +21,11 @@ def _by_name(checks):
 
 
 class PreflightTest(unittest.TestCase):
+    def setUp(self) -> None:
+        import spark_tp4_query_row_provider
+
+        spark_tp4_query_row_provider._cache.clear()
+
     def test_default_environment_widths_and_mode_pass(self) -> None:
         checks = _by_name(preflight.run_preflight({}))
         self.assertTrue(checks["env-widths"].passed)
@@ -28,33 +33,49 @@ class PreflightTest(unittest.TestCase):
         self.assertTrue(checks["env-mode"].passed)
         self.assertIn("disabled", checks["env-mode"].detail)
 
-    def test_runtime_contract_present_passes(self) -> None:
+    def test_provider_unset_passes_with_generic_policy(self) -> None:
         checks = _by_name(preflight.run_preflight({}))
-        self.assertTrue(checks["runtime-contract"].passed)
+        check = checks["query-row-provider"]
+        self.assertTrue(check.passed)
+        self.assertIn("not configured", check.detail)
+        self.assertIn("contiguous", check.detail)
 
-    def test_missing_runtime_contract_blocks_adapter_checks(self) -> None:
-        """A missing deployment runtime is named, not an import traceback."""
+    def test_configured_synthetic_provider_reports_rows(self) -> None:
+        module = types.ModuleType("_preflight_rows_ok")
+        module.provider_query_rows = lambda environ: [2, 5, 9]
+        sys.modules["_preflight_rows_ok"] = module
+        try:
+            checks = _by_name(preflight.run_preflight(
+                {"VLLM_SPARK_TP4_QUERY_ROW_PROVIDER": "_preflight_rows_ok"}
+            ))
+            check = checks["query-row-provider"]
+            self.assertTrue(check.passed)
+            self.assertIn("_preflight_rows_ok", check.detail)
+            self.assertIn("3 rows", check.detail)
+        finally:
+            del sys.modules["_preflight_rows_ok"]
 
-        import builtins
+    def test_missing_provider_fails_with_named_diagnostic(self) -> None:
+        checks = _by_name(preflight.run_preflight(
+            {"VLLM_SPARK_TP4_QUERY_ROW_PROVIDER": "_preflight_rows_absent"}
+        ))
+        check = checks["query-row-provider"]
+        self.assertFalse(check.passed)
+        self.assertIn("VLLM_SPARK_TP4_QUERY_ROW_PROVIDER", check.detail)
+        self.assertIn("_preflight_rows_absent", check.detail)
+        self.assertEqual(check.severity, "required")
 
-        original_import = builtins.__import__
-
-        def _blocked(name, *args, **kwargs):
-            if name == "spark_tp4_sparse_q42_q48_contract":
-                raise ImportError(f"no module named {name}")
-            return original_import(name, *args, **kwargs)
-
-        with patch.dict(sys.modules):
-            sys.modules.pop("spark_tp4_sparse_q42_q48_contract", None)
-            with patch.object(builtins, "__import__", _blocked):
-                checks = _by_name(preflight.run_preflight({}))
-
-        contract = checks["runtime-contract"]
-        self.assertFalse(contract.passed)
-        self.assertIn("deployment runtime", contract.detail)
-        for name in ("env-widths", "port-namespace"):
-            self.assertFalse(checks[name].passed)
-            self.assertIn("blocked", checks[name].detail)
+    def test_malformed_provider_output_fails_closed(self) -> None:
+        module = types.ModuleType("_preflight_rows_bad")
+        module.provider_query_rows = lambda environ: []
+        sys.modules["_preflight_rows_bad"] = module
+        try:
+            checks = _by_name(preflight.run_preflight(
+                {"VLLM_SPARK_TP4_QUERY_ROW_PROVIDER": "_preflight_rows_bad"}
+            ))
+            self.assertFalse(checks["query-row-provider"].passed)
+        finally:
+            del sys.modules["_preflight_rows_bad"]
 
     def test_bad_widths_fail(self) -> None:
         checks = _by_name(

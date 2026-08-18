@@ -4,12 +4,15 @@ The deployment runtime carries an adapter lineage whose eager all-reduce
 admission is governed by the sparse Q42/Q48 provider contract, and whose
 exact-state invariant counts the eager reservation set (arenas) at
 startup, refusing to serve on any drift. These tests pin the worktree
-adapter pair to that lineage: under every environment permutation with
-`VLLM_SPARK_TP4_EAGER_WIDTHS` unset, the complete admission surface —
-reservation tuple, port resolution, shape admission, capacity values —
-must be byte-identical to the deployment pair's. With widths set, the
-deployment surface must be a strict prefix and every extension entry a
-payload-owner reservation.
+adapter pair — which selects that contract through the generic
+`VLLM_SPARK_TP4_QUERY_ROW_PROVIDER` seam — to that lineage: under every
+environment permutation with `VLLM_SPARK_TP4_EAGER_WIDTHS` unset, the
+parsed admission surface (reservation tuple, port resolution, shape
+admission, capacity values) must be identical to the deployment pair's.
+With widths set, the deployment surface must be a strict prefix and
+every extension entry a payload-owner reservation. The comparison is of
+parsed admission surfaces per enumerated environment, not of adapter
+file bytes.
 
 Requires `_private_fixtures/` (deployment-lineage copies fetched from the
 cluster; unpublishable, therefore untracked): `deployed_backend.py`,
@@ -44,6 +47,7 @@ _BASE_ENV = {
 # excludes Q512 (enforced by the provider contract module itself).
 _WIDTHS_UNSET_PERMUTATIONS = [
     ("production_replay_sparse", {
+        "VLLM_SPARK_TP4_QUERY_ROW_PROVIDER": "spark_tp4_sparse_q42_q48_contract",
         "VLLM_SPARK_TP4_SPARSE_Q42_Q48": "1",
         "VLLM_SPARK_MAX_QUERY_ROWS": "40",
     }),
@@ -56,6 +60,7 @@ _WIDTHS_UNSET_PERMUTATIONS = [
     }),
     ("shadow_sparse", {
         "VLLM_SPARK_TP4_MODE": "shadow",
+        "VLLM_SPARK_TP4_QUERY_ROW_PROVIDER": "spark_tp4_sparse_q42_q48_contract",
         "VLLM_SPARK_TP4_SPARSE_Q42_Q48": "1",
         "VLLM_SPARK_MAX_QUERY_ROWS": "40",
     }),
@@ -63,6 +68,7 @@ _WIDTHS_UNSET_PERMUTATIONS = [
 
 _WIDTHS_SET_PERMUTATIONS = [
     ("sparse_with_width_2880", {
+        "VLLM_SPARK_TP4_QUERY_ROW_PROVIDER": "spark_tp4_sparse_q42_q48_contract",
         "VLLM_SPARK_TP4_SPARSE_Q42_Q48": "1",
         "VLLM_SPARK_MAX_QUERY_ROWS": "40",
         "VLLM_SPARK_TP4_EAGER_WIDTHS": "2880",
@@ -92,7 +98,8 @@ def _surface(backend: pathlib.Path, namespace: pathlib.Path,
 
 
 @unittest.skipUnless(
-    GOLDEN_BACKEND.is_file() and GOLDEN_NAMESPACE.is_file(),
+    GOLDEN_BACKEND.is_file() and GOLDEN_NAMESPACE.is_file()
+    and (FIXTURES / "spark_tp4_sparse_q42_q48_contract.py").is_file(),
     "deployment-lineage fixtures absent; fetch them into "
     "_private_fixtures/ from the cluster runtime deployment",
 )

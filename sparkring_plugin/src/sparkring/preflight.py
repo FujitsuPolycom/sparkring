@@ -44,33 +44,38 @@ def _vendored():
     return spark_tp4_port_namespace
 
 
-def _check_runtime_contract() -> Check:
-    """Report whether the deployment-supplied query contract is importable.
+def _check_query_row_provider(environ: Mapping[str, str]) -> Check:
+    """Report the resolved query-row policy.
 
-    ``spark_tp4_sparse_q42_q48_contract`` declares which query rows the
-    provider serves. It is part of the deployment runtime rather than this
-    package, so the wheel does not vendor it and the adapter modules cannot
-    be imported without it. Naming it here keeps a missing deployment
-    runtime from surfacing as an unattributed import error.
+    With VLLM_SPARK_TP4_QUERY_ROW_PROVIDER unset, the generic contiguous
+    policy applies and the check passes. With it set, the named module
+    must import and return a valid row set; any failure is a required
+    diagnostic naming the variable and module.
     """
 
     if _VENDOR not in sys.path:
         sys.path.insert(0, _VENDOR)
+    from spark_tp4_query_row_provider import (
+        provider_module_name,
+        resolve_query_rows,
+    )
+
+    module_name = provider_module_name(environ)
     try:
-        import spark_tp4_sparse_q42_q48_contract as contract
-    except ImportError as error:
+        rows = resolve_query_rows(environ)
+    except ValueError as error:
+        return Check("query-row-provider", False, str(error), "required")
+    if module_name is None:
         return Check(
-            "runtime-contract",
-            False,
-            "spark_tp4_sparse_q42_q48_contract is not importable; it is "
-            "supplied by the deployment runtime, not by this package "
-            f"({error})",
+            "query-row-provider",
+            True,
+            f"not configured; generic contiguous rows 1..{rows[-1]}",
             "required",
         )
     return Check(
-        "runtime-contract",
+        "query-row-provider",
         True,
-        f"query contract from {getattr(contract, '__file__', 'unknown')}",
+        f"{module_name}: {len(rows)} rows, max {rows[-1]}",
         "required",
     )
 
@@ -248,27 +253,16 @@ def run_preflight(
     environ: Mapping[str, str] | None = None, *, connect: bool = False
 ) -> list[Check]:
     env = _environment(environ)
-    contract = _check_runtime_contract()
-    checks = [contract]
-    # env-widths and port-namespace import the adapter modules, which import
-    # the query contract. Without it they would raise instead of reporting,
-    # so they are reported as blocked rather than run.
-    if contract.passed:
-        checks += [_check_widths(env), _check_mode(env),
-                   _check_port_namespace(env)]
-    else:
-        checks += [
-            Check(name, False, "blocked: runtime-contract failed", "required")
-            for name in ("env-widths", "port-namespace")
-        ]
-        checks.append(_check_mode(env))
-    checks += [
+    return [
+        _check_query_row_provider(env),
+        _check_widths(env),
+        _check_mode(env),
+        _check_port_namespace(env),
         _check_hca_devices(env),
         _check_native_library(env),
         _check_vllm_compat(),
         _check_peers(env, connect=connect),
     ]
-    return checks
 
 
 def main(argv: list[str] | None = None) -> int:

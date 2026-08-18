@@ -612,12 +612,14 @@ class SparkTp4BackendDispatchTest(unittest.TestCase):
         self.assertEqual(communicator.original_inputs, [])
 
     def test_exact_q40_capture_uses_dedicated_dual_port_session(self) -> None:
+        import spark_tp4_query_row_provider
+
         with patch.object(
             spark_tp4_backend,
-            "_TARGET_SHAPES",
-            frozenset({(39, 6144), (40, 6144)}),
+            "MAX_QUERY_ROWS",
+            40,
         ), patch.object(
-            spark_tp4_backend,
+            spark_tp4_query_row_provider,
             "MAX_QUERY_ROWS",
             40,
         ):

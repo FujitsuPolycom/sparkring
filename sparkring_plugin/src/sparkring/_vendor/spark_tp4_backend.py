@@ -19,11 +19,7 @@ from spark_tp4_port_namespace import (
     validate_control_port_pair,
 )
 from spark_tp4_prefill_capacity_pool import capacity_pool_requested
-from spark_tp4_sparse_q42_q48_contract import (
-    MAX_PROVIDER_QUERY_ROWS,
-    provider_query_rows,
-    sparse_q42_q48_enabled,
-)
+from spark_tp4_query_row_provider import resolve_query_rows
 from spark_tp4_query_contract import (
     ABSOLUTE_MAX_QUERY_ROWS,
     MAX_QUERY_ROWS,
@@ -41,9 +37,6 @@ _ALLREDUCE_PREFILL_CAPACITY_BYTES = (
     _ALLREDUCE_PREFILL_MAX_QUERY_ROWS * _BYTES_PER_ROW
 )
 _DUAL_PORT_Q40_CAPACITY_BYTES = ABSOLUTE_MAX_QUERY_ROWS * _BYTES_PER_ROW
-_TARGET_SHAPES = frozenset(
-    (rows, _TARGET_WIDTH) for rows in provider_query_rows()
-)
 _GRAPH_CAPACITY_BYTES = MAX_QUERY_ROWS * _BYTES_PER_ROW
 _GRAPH_STATUS_CAPTURE_CONFIGURED = 1 << 0
 _GRAPH_STATUS_POLLING_ENABLED = 1 << 1
@@ -231,36 +224,23 @@ def _prefill_q512_enabled() -> bool:
 
 
 def _maximum_allreduce_query_rows() -> int:
-    if _prefill_q512_enabled():
-        return _ALLREDUCE_PREFILL_MAX_QUERY_ROWS
-    if sparse_q42_q48_enabled():
-        return MAX_PROVIDER_QUERY_ROWS
-    return MAX_QUERY_ROWS
+    return resolve_query_rows(os.environ)[-1]
 
 
 def _graph_capacity_bytes() -> int:
-    if _prefill_q512_enabled():
-        return _ALLREDUCE_PREFILL_CAPACITY_BYTES
-    if sparse_q42_q48_enabled():
-        return MAX_PROVIDER_QUERY_ROWS * _BYTES_PER_ROW
-    return MAX_QUERY_ROWS * _BYTES_PER_ROW
+    return _maximum_allreduce_query_rows() * _BYTES_PER_ROW
 
 
-def _admitted_default_width_rows() -> range | frozenset[int]:
+def _admitted_default_width_rows() -> tuple[int, ...]:
     """Row set admitted at the default width.
 
-    Mirrors the port namespace's supported-row enumeration branch by
-    branch so admission and reservation can never disagree. Under every
-    production environment (VLLM_SPARK_MAX_QUERY_ROWS=40) this is
-    extensionally identical to the deployment lineage, which consults
-    the provider contract unconditionally and therefore ignores lower
-    row caps when the sparse contract is disabled.
+    Admission and reservation share one resolution:
+    spark_tp4_query_row_provider owns the row policy for both this gate
+    and the port namespace, so the two can never disagree. The resolver
+    caches per environment signature, keeping this hot-path lookup
+    allocation-free.
     """
-    if _prefill_q512_enabled():
-        return range(1, _ALLREDUCE_PREFILL_MAX_QUERY_ROWS + 1)
-    if sparse_q42_q48_enabled():
-        return provider_query_rows()
-    return range(1, MAX_QUERY_ROWS + 1)
+    return resolve_query_rows(os.environ)
 
 
 def _target_shape_eligible(shape: tuple[int, ...]) -> bool:
@@ -1214,7 +1194,10 @@ def install() -> None:
         return
     _eager_admitted_widths()
     _prefill_q512_enabled()
-    sparse_q42_q48_enabled()
+    # Resolving validates any configured query-row provider (import,
+    # interface, row bounds) so a broken provider fails installation
+    # rather than the first collective.
+    resolve_query_rows(os.environ)
     validate_active_port_namespace()
 
     from vllm.distributed.device_communicators.cuda_communicator import (

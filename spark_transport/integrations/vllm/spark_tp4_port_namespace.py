@@ -14,10 +14,7 @@ from dataclasses import dataclass
 from typing import Mapping
 
 from spark_tp4_query_contract import MAX_QUERY_ROWS
-from spark_tp4_sparse_q42_q48_contract import (
-    provider_query_rows,
-    sparse_q42_q48_enabled,
-)
+from spark_tp4_query_row_provider import resolve_query_rows
 
 _MIN_CONTROL_PORT = 1
 _MAX_CONTROL_PORT = 65535
@@ -128,7 +125,13 @@ def _configured_pair(
     )
 
 
-def _maximum_allreduce_query_rows(environ: Mapping[str, str]) -> int:
+def _extension_maximum_query_rows(environ: Mapping[str, str]) -> int:
+    """Row bound for non-default-width extension payloads.
+
+    Extensions enumerate the contiguous row range regardless of any
+    configured row-policy provider: a provider constrains default-width
+    serving, not the extension widths.
+    """
     return (
         _EAGER_ALLREDUCE_PREFILL_MAX_QUERY_ROWS
         if _flag(environ, "VLLM_SPARK_TP4_PREFILL_Q512")
@@ -139,11 +142,7 @@ def _maximum_allreduce_query_rows(environ: Mapping[str, str]) -> int:
 def _supported_allreduce_query_rows(
     environ: Mapping[str, str],
 ) -> tuple[int, ...]:
-    if _flag(environ, "VLLM_SPARK_TP4_PREFILL_Q512"):
-        return tuple(range(1, _EAGER_ALLREDUCE_PREFILL_MAX_QUERY_ROWS + 1))
-    if sparse_q42_q48_enabled(environ):
-        return tuple(sorted(provider_query_rows(environ)))
-    return tuple(range(1, MAX_QUERY_ROWS + 1))
+    return resolve_query_rows(environ)
 
 
 _EAGER_ALLREDUCE_WIDTH_ENV = "VLLM_SPARK_TP4_EAGER_WIDTHS"
@@ -202,7 +201,7 @@ def eager_allreduce_payload_sizes(
     """Sorted unique payload byte counts for all admitted widths and rows.
 
     Each entry is rows * width * 2 bytes for every admitted width and every
-    rows in [1, _maximum_allreduce_query_rows(environ)]. Cross-width
+    rows in [1, _extension_maximum_query_rows(environ)]. Cross-width
     duplicates collapse to one entry: the same byte count is the same
     native operation.
     """
@@ -217,10 +216,10 @@ def _eager_allreduce_size_regimes(
     """Split admissible payload sizes into their two port regimes.
 
     Legacy sizes are the default width's row-denominated payloads over
-    the supported row set (the sparse provider contract governs that set
-    when enabled) and keep the deployed row-slot port formula, holes
-    included. Extension sizes come from non-default admitted widths over
-    the contiguous row range; the sparse contract is a default-width
+    the resolved query-row set (spark_tp4_query_row_provider owns that
+    resolution) and keep the row-slot port formula, holes included.
+    Extension sizes come from non-default admitted widths over the
+    contiguous row range; a row-policy provider is a default-width
     serving constraint and does not restrict them. A non-default-width
     payload equal to a supported legacy payload belongs to the legacy
     regime: an identical byte count is the same native operation.
@@ -231,7 +230,7 @@ def _eager_allreduce_size_regimes(
     )
     supported = _supported_allreduce_query_rows(environ)
     legacy = {rows * default_bytes_per_row for rows in supported}
-    maximum = _maximum_allreduce_query_rows(environ)
+    maximum = _extension_maximum_query_rows(environ)
     extensions: set[int] = set()
     for width in eager_allreduce_admitted_widths(environ):
         if width == _EAGER_ALLREDUCE_DEFAULT_WIDTH_ELEMENTS:
@@ -248,10 +247,14 @@ def eager_allreduce_ports_for_payload(
     payload_bytes: int,
     environ: Mapping[str, str] | None = None,
 ) -> tuple[int, int]:
-    """Control-port pair for one payload size under canonical indexing.
+    """Control-port pair for one payload size under two slot regimes.
 
-    Index = position of payload_bytes in eager_allreduce_payload_sizes;
-    the pair is (base0 + 2*index, base1 + 2*index) validated as a pair.
+    A legacy payload (default width, resolved row set) occupies slot
+    ``row - 1``; unsupported rows leave permanent holes. An extension
+    payload (non-default width) occupies slot ``512 + i``, where ``i``
+    is its position in the sorted extension-size tuple, past the
+    largest legacy span. The pair is
+    ``(base0 + 2*slot, base1 + 2*slot)``, validated as a pair.
     """
     environment = _environment(environ)
     legacy, extensions = _eager_allreduce_size_regimes(environment)
@@ -266,7 +269,8 @@ def eager_allreduce_ports_for_payload(
         slot = payload_bytes // default_bytes_per_row - 1
     elif payload_bytes in extensions:
         # Width extensions occupy slots past the largest legacy span
-        # (Q512 ends at slot 511) so no sparse/Q512 toggle moves them.
+        # (Q512 ends at slot 511) so no row-policy or Q512 toggle
+        # moves them.
         slot = (
             _EAGER_ALLREDUCE_PREFILL_MAX_QUERY_ROWS
             + extensions.index(payload_bytes)

@@ -105,7 +105,7 @@ jobs:
             --index-url https://download.pytorch.org/whl/cpu \
             "torch==${TORCH_VERSION}"
 
-      # Only these four trees are run. Each was executed offline on a
+      # Only these five trees are run. Each was executed offline on a
       # GPU-free machine and observed green before being added here.
       #
       #   spark_transport/  — transport adapters, vLLM overlay contracts,
@@ -120,6 +120,11 @@ jobs:
       #   runtime/          — runtime-lock and verify-runtime tests.
       #   scripts/          — site schema, read-only preflight, acceptance
       #                       gate, and evidence-bundle contract tests.
+      #   sparkring_plugin/ — plugin registration, vendored-module hash
+      #                       parity, operator preflight, and the generic
+      #                       query-row-provider seam. GPU-free; the
+      #                       native .so and any external row-policy
+      #                       provider are deliberately absent here.
       #
       # NOT run here, and why:
       #   spark_transport CTest / sparkcache CUDA targets — see the header
@@ -129,6 +134,9 @@ jobs:
 
       - name: pytest (offline suites only)
         run: python -m pytest spark_transport sparkcache runtime scripts -q -rs
+
+      - name: pytest (sparkring plugin, offline)
+        run: python -m pytest sparkring_plugin -q -rs
 
       - name: Validate public configuration examples (offline dry-run)
         run: |

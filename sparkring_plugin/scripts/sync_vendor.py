@@ -16,11 +16,12 @@ import pathlib
 import shutil
 import sys
 
-# Transitive import closure of spark_tp4_backend, excluding
-# spark_tp4_sparse_q42_q48_contract. That module declares which query rows
-# the provider serves, belongs to the deployment runtime, and has no source
-# in this repository, so the wheel cannot ship it: the deployment supplies it
-# on sys.path. The preflight's runtime-contract check names it when absent.
+# Transitive import closure of spark_tp4_backend. Row policy enters
+# through spark_tp4_query_row_provider: a deployment may name an external
+# provider module in VLLM_SPARK_TP4_QUERY_ROW_PROVIDER, which is imported
+# lazily at resolution time and is deliberately not vendored — the wheel
+# is complete without any provider, and the preflight reports a configured
+# provider's importability as its own check.
 MODULES = (
     "spark_collective_audit",
     "spark_cudagraph_replay_timing",
@@ -34,6 +35,7 @@ MODULES = (
     "spark_tp4_port_namespace",
     "spark_tp4_prefill_capacity_pool",
     "spark_tp4_query_contract",
+    "spark_tp4_query_row_provider",
     "spark_tp4_stock_timing",
     "spark_tp4_vocab_allgather_backend",
     "spark_true_adaptive_draft",
