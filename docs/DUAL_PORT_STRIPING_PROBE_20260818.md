@@ -1,27 +1,36 @@
 # Dual-port striping and graph-kernel probe record, 2026-08-18
 
 Status: research-only. Model-free transport measurements on the four
-directly cabled DGX Sparks; no serving claim, no promotion, no NCCL
-comparison established. The one defensible conclusion is stated first;
-everything else here is conditions, data, and limitations.
+directly cabled DGX Sparks; no serving claim, no promotion. The main
+conclusions are stated first; everything else here is conditions,
+data, and limitations. A same-day follow-up session completed the
+originally missing control legs, the counter instrumentation, and a
+comparable NCCL control; those results are folded in below.
 
 ## Conclusion
 
 The graph all-reduce's `fused` kernel is pathological at large
 payloads on the sequential wire schedule: 7,582-7,700 µs p50 for a
 6 MiB collective, an order of magnitude above the alternatives. Two
-mechanisms independently eliminate the pathology and converge:
+mechanisms independently eliminate the pathology:
 
 - `split_64k` or `tiered_64k` graph kernels on the sequential
-  schedule: 1,223 µs p50 at 6 MiB.
+  schedule: 174 µs p50 at 0.5 MiB, 1,223 µs p50 at 6 MiB.
 - The `dual_port_striped` wire schedule (which requires the `fused`
-  kernel): 1,229-1,235 µs p50 at 6 MiB, with a tighter tail
-  (p95 1,259 µs versus 1,382-1,559 µs for the split kernels).
+  kernel): 191 µs p50 at 0.5 MiB, 1,229-1,235 µs p50 at 6 MiB.
 
-At 6 MiB, striping therefore offers no median advantage over the best
-sequential kernel; its demonstrated benefit is tail variance. Whether
-striping helps at 0.5 MiB against the best sequential kernel is
-unmeasured (the control leg is missing; see limitations).
+With the control legs complete, the split kernels are the better fix
+at both payloads: at 0.5 MiB they beat striping by about 9% on both
+median and tail (p95 182-184 µs versus 197 µs), and at 6 MiB they
+match striping's median (0.99x) while striping keeps a modestly
+tighter tail (p95 1,259 µs versus 1,382-1,559 µs). Striping never
+beats the best sequential kernel; its earlier apparent wins were
+measured against the pathological fused baseline.
+
+A graph-captured, device-timed NCCL control on the same ring (see
+below) shows an approximately 800 µs floor for NCCL all-reduce at
+every payload measured, versus 174-1,223 µs for the transport's best
+configurations at the matched payloads.
 
 ## Instrument and conditions
 
@@ -39,8 +48,14 @@ about 2 µs per call, and all host synchronization). Every quoted leg
 reported `mismatched_elements=0 correct=true passed=true` on all four
 ranks, and follower-rank medians agree with rank 0 within 2.3%.
 
-The serving stack was torn down before each probe session. Link
-idleness was not instrumented (no port byte counters recorded).
+The serving stack was torn down before each probe session. The
+original session did not record port byte counters; the follow-up
+session bracketed every leg with rank-0
+`/sys/class/infiniband/rocep1s0f*/ports/1/counters/port_xmit_data`
+snapshots. Every follow-up transport leg moved an essentially
+identical byte total on each of the two ports (about 110 MB per port
+per 220-iteration leg) regardless of wire schedule, consistent with
+equal-per-port transmission and no competing traffic.
 
 ## Measurements
 
@@ -49,16 +64,54 @@ Fixed-Q payloads at the default width: Q40 = 491,520 bytes; Q512 =
 
 | Payload | Schedule | Kernel | p50 | p95 |
 |---|---|---|---:|---:|
-| Q40 | sequential | fused | 618.5 | 700.4 |
-| Q40 | dual_port_striped | fused | 190.5 | 194.6 |
+| Q40 | sequential | fused | 618.5-622.8 | 688.1-700.4 |
+| Q40 | sequential | split_64k | 174.0 | 184.3 |
+| Q40 | sequential | tiered_64k | 174.1 | 182.4 |
+| Q40 | dual_port_striped | fused | 190.5-190.7 | 194.6-196.6 |
 | Q512 | sequential | fused | 7,582-7,700 | 8,026-8,255 |
 | Q512 | sequential | split_64k | 1,223.7 | 1,559.2 |
 | Q512 | sequential | tiered_64k | 1,223.4 | 1,382.1 |
 | Q512 | dual_port_striped | fused | 1,228.5-1,234.6 | 1,259.2-1,265.4 |
 
 The Q512 sequential-fused range spans three same-configuration runs
-(~2% spread). All bandwidth derivations from these numbers are
+(~2% spread); the Q40 fused and striped ranges span the original and
+follow-up sessions. All bandwidth derivations from these numbers are
 algorithm bandwidth (payload divided by time), not wire utilization.
+
+## NCCL control
+
+The follow-up session ran a comparable NCCL control: four ranks in
+throwaway containers using the deployment image and per-rank serving
+environment, `torch.distributed.all_reduce` captured into a CUDA
+graph per payload, individual replays timed with device events
+(synchronized single-replay samples, 20 warmup, 200 iterations),
+result correctness asserted. The loaded runtime identified itself as
+NCCL 2.30.7+cuda13.0 (`NCCL_DEBUG=VERSION` banner; PyTorch's
+compiled-against tuple reports 2.29.7); logs from all four ranks were
+preserved before container removal.
+
+| Bytes | p50 | p95 |
+|---:|---:|---:|
+| 12,288 | 796.2 | 1,229.8 |
+| 65,536 | 820.5 | 1,511.1 |
+| 491,520 | 907.6 | 1,301.4 |
+| 2,097,152 | 1,140.1 | 1,583.7 |
+| 2,359,296 | 1,149.9 | 1,678.1 |
+| 6,291,456 | 1,600.8 | 2,156.5 |
+
+Under this scope NCCL shows an approximately 800 µs floor at every
+payload. At the matched points the transport's best configurations
+measure 174 µs (491,520 bytes) and 1,223 µs (6,291,456 bytes) under
+the same isolated single-replay device timing. Two topology
+observations from the same control: rank 0's byte counters show NCCL
+moved about 4 GB on `rocep1s0f0` and only about 20 MB on
+`rocep1s0f1` (highly asymmetric rail use, unlike the transport's
+equal-per-port totals), and a single-port variant
+(`NCCL_IB_HCA=rocep1s0f0`) fails deterministically (two runs,
+identical `ibv_modify_qp` timeout to the far-rail GID) because each
+rank reaches one ring neighbor only through its second port: on this
+switchless topology both rails are required for connectivity, so no
+single-port NCCL configuration exists to measure.
 
 Probe-enforced constraints (from the binary's own validation):
 `dual_port_striped` requires graph-only execution,
@@ -71,31 +124,26 @@ variables, not a controlled isolation.
 
 ## Limitations
 
-- Missing control: Q40 sequential with `split_64k`/`tiered_64k` was
-  not run, so no striping-versus-best-sequential ratio exists at
-  0.5 MiB.
-- A same-day NCCL `all_reduce` timing exists but is not comparable
-  and is not quoted here: it ran eager (not graph-captured), was
-  host-timed including launch and synchronization overhead, used
-  both RoCE ports (`NCCL_IB_HCA` lists both), used 524,288 bytes
-  rather than 491,520 at the small point, and its container logs were
-  deleted before the loaded `libnccl` identity could be verified.
 - Isolated single-replay timing does not represent serving, where
   collectives pipeline with compute; neither the absolute values nor
   the schedule ratios are established under pipelined conditions.
-- Single-session statistics: one 200-iteration session per
+  This applies equally to the NCCL control and its comparison.
+- Limited-session statistics: one or two 200-iteration sessions per
   configuration (three for sequential-fused Q512); p95 values are
   weakly supported; raw samples were not retained.
 - Any projection to serving payloads is unvalidated: no decode-step
   shape trace exists, and speculative-verification batch shapes are
   assumptions, not measurements.
+- The NCCL control used the stock configuration reachable through the
+  deployment environment; no NCCL tuning (algorithm, protocol,
+  channel, or chunk-size overrides) was attempted, so the control
+  bounds the deployment's NCCL path, not NCCL's best case.
+- An earlier same-day eager host-timed NCCL run is superseded by the
+  graph-captured control above and is not quoted.
 
 ## Follow-up measurements this record motivates
 
-1. Q40 sequential `split_64k`/`tiered_64k` (the missing control).
-2. A graph-captured, device-timed NCCL control at matched payloads,
-   single-port and dual-rail variants, with `NCCL_DEBUG=VERSION`
-   output and logs retained.
-3. Port byte counters (`port_xmit_data`) bracketing every leg.
-4. A decode-step collective shape trace from a serving run, before
+1. A decode-step collective shape trace from a serving run, before
    any tokens-per-second projection.
+2. Repeated sessions for tail statistics if any default-configuration
+   decision comes to rest on p95 differences.
