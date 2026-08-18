@@ -1,0 +1,4 @@
+# Deployment-lineage fixtures; not publishable. Fetched from the cluster
+# runtime deployment; see test_provider_rows_equivalence.py for provenance.
+*
+!.gitignore
