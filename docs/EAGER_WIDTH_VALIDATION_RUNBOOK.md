@@ -284,14 +284,57 @@ provider-rows rebased adapter pair failed identically:
    clone does not reproduce. Reproducing the confirmation load requires
    that pipeline or its operator's knowledge of it.
 
-Leg 1 therefore requires a provider-rows-aware rebase of the width
-feature onto the deployed lineage (payload enumeration and port
-reservations composed with the sparse row contract so arena counts
-match), with offline arena-count tests written first. Also recorded for
-operations: the per-rank model view bind mounts
+Recorded for operations: the per-rank model view bind mounts
 (`/var/tmp/sparkring-model-view-exl3-* -> /var/tmp/sparkring-r7-model`)
 are not reboot-persistent, which is why the original v23 stack exited
 255 after the site event; systemd mount units would close that gap.
+
+### Leg-1 attempt 2026-08-18: launch surface diffed, adapter exonerated
+
+The launch surface of the clone was compared field by field against the
+preserved raw launch script for the reference container
+(`/var/tmp/sparkring-r7-jit/k4k5-pilot/preservation/rank0_v10_launch.sh.bak`
+on rank 0, SHA-256 `1b71e56a59baa766…`), parsing both with a shell-word
+parser rather than by inspection. The comparison covers mounts keyed by
+destination, environment variables, host configuration, image identity
+and command.
+
+The clone matches the reference on every field except one: all 51 mount
+destinations are present with the same sources apart from the two
+deliberately substituted adapter files; all 285 environment variables
+match apart from the five deliberate fabric re-points
+(`MASTER_ADDR`, `SPARK_TP4_PEER0`, `SPARK_TP4_PEER1`,
+`GLOO_SOCKET_IFNAME`, `NCCL_SOCKET_IFNAME`) and an added `VLLM_HOST_IP`;
+image ID, `--network host`, `--ipc host`, 16 GiB shm, `CAP_IPC_LOCK`,
+unlimited memlock, `/dev/infiniband` and the entrypoint all match.
+
+The one divergence: the reference binds every source, contract, library
+and entrypoint path read-only and only the two `/cache` paths writable.
+The clone bound all 51 writable, because its mount-cloning step read
+only source and destination and dropped the mode. The launcher now
+clones the mode as well.
+
+A control launch then ran with the mode fix and **no adapter
+substitution at all** — the deployment lineage's own
+`spark_tp4_backend.py` and `spark_tp4_port_namespace.py`, no
+`VLLM_SPARK_TP4_EAGER_WIDTHS` — verified at the container as 49
+read-only and 2 writable mounts. It failed identically with
+`adaptive-MTP exact-state arena count drifted`.
+
+That control establishes what the failure is not. It is not the
+width-generic adapter pair, which was not mounted; it is not the mount
+modes, which were correct; and it is not a difference in environment,
+flags, image or command, which the diff excludes. The remaining
+candidates are host state that the launch surface does not describe and
+whatever the deployment's own launch pipeline does beyond issuing the
+container invocation.
+
+The invariant's message reports only the two counts, discarding which
+buffer-cache key diverged. A diagnostic copy of the deployed
+`model_runner.py` that also reports the sorted key set for both
+capacities is staged at `/var/tmp/leg1-arena-diag/model_runner.py` on
+all four ranks; the launcher binds it in place of the original when
+`DIAG=1`. It is a copy, so no shared runtime file is modified.
 
 Excluded candidates, for the record: Qwen2.5-0.5B (14 heads % 4 != 0),
 SmolLM2-135M/360M (9/15 heads), Gemma-3-270M (heads pass; pinned-runtime

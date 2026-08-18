@@ -16,7 +16,11 @@ import pathlib
 import shutil
 import sys
 
-# Transitive import closure of spark_tp4_backend (computed 2026-08-17).
+# Transitive import closure of spark_tp4_backend, excluding
+# spark_tp4_sparse_q42_q48_contract. That module declares which query rows
+# the provider serves, belongs to the deployment runtime, and has no source
+# in this repository, so the wheel cannot ship it: the deployment supplies it
+# on sys.path. The preflight's runtime-contract check names it when absent.
 MODULES = (
     "spark_collective_audit",
     "spark_cudagraph_replay_timing",

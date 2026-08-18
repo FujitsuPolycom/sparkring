@@ -28,6 +28,34 @@ class PreflightTest(unittest.TestCase):
         self.assertTrue(checks["env-mode"].passed)
         self.assertIn("disabled", checks["env-mode"].detail)
 
+    def test_runtime_contract_present_passes(self) -> None:
+        checks = _by_name(preflight.run_preflight({}))
+        self.assertTrue(checks["runtime-contract"].passed)
+
+    def test_missing_runtime_contract_blocks_adapter_checks(self) -> None:
+        """A missing deployment runtime is named, not an import traceback."""
+
+        import builtins
+
+        original_import = builtins.__import__
+
+        def _blocked(name, *args, **kwargs):
+            if name == "spark_tp4_sparse_q42_q48_contract":
+                raise ImportError(f"no module named {name}")
+            return original_import(name, *args, **kwargs)
+
+        with patch.dict(sys.modules):
+            sys.modules.pop("spark_tp4_sparse_q42_q48_contract", None)
+            with patch.object(builtins, "__import__", _blocked):
+                checks = _by_name(preflight.run_preflight({}))
+
+        contract = checks["runtime-contract"]
+        self.assertFalse(contract.passed)
+        self.assertIn("deployment runtime", contract.detail)
+        for name in ("env-widths", "port-namespace"):
+            self.assertFalse(checks[name].passed)
+            self.assertIn("blocked", checks[name].detail)
+
     def test_bad_widths_fail(self) -> None:
         checks = _by_name(
             preflight.run_preflight(

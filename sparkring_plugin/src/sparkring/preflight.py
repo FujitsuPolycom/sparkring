@@ -44,6 +44,37 @@ def _vendored():
     return spark_tp4_port_namespace
 
 
+def _check_runtime_contract() -> Check:
+    """Report whether the deployment-supplied query contract is importable.
+
+    ``spark_tp4_sparse_q42_q48_contract`` declares which query rows the
+    provider serves. It is part of the deployment runtime rather than this
+    package, so the wheel does not vendor it and the adapter modules cannot
+    be imported without it. Naming it here keeps a missing deployment
+    runtime from surfacing as an unattributed import error.
+    """
+
+    if _VENDOR not in sys.path:
+        sys.path.insert(0, _VENDOR)
+    try:
+        import spark_tp4_sparse_q42_q48_contract as contract
+    except ImportError as error:
+        return Check(
+            "runtime-contract",
+            False,
+            "spark_tp4_sparse_q42_q48_contract is not importable; it is "
+            "supplied by the deployment runtime, not by this package "
+            f"({error})",
+            "required",
+        )
+    return Check(
+        "runtime-contract",
+        True,
+        f"query contract from {getattr(contract, '__file__', 'unknown')}",
+        "required",
+    )
+
+
 def _check_widths(environ: Mapping[str, str]) -> Check:
     namespace = _vendored()
     try:
@@ -217,15 +248,27 @@ def run_preflight(
     environ: Mapping[str, str] | None = None, *, connect: bool = False
 ) -> list[Check]:
     env = _environment(environ)
-    return [
-        _check_widths(env),
-        _check_mode(env),
-        _check_port_namespace(env),
+    contract = _check_runtime_contract()
+    checks = [contract]
+    # env-widths and port-namespace import the adapter modules, which import
+    # the query contract. Without it they would raise instead of reporting,
+    # so they are reported as blocked rather than run.
+    if contract.passed:
+        checks += [_check_widths(env), _check_mode(env),
+                   _check_port_namespace(env)]
+    else:
+        checks += [
+            Check(name, False, "blocked: runtime-contract failed", "required")
+            for name in ("env-widths", "port-namespace")
+        ]
+        checks.append(_check_mode(env))
+    checks += [
         _check_hca_devices(env),
         _check_native_library(env),
         _check_vllm_compat(),
         _check_peers(env, connect=connect),
     ]
+    return checks
 
 
 def main(argv: list[str] | None = None) -> int:
