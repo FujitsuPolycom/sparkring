@@ -74,9 +74,9 @@ int main() {
       kTp4GraphMaximumQ + 1,
       tp4_graph_payload_bytes(kTp4GraphMaximumQ + 1)));
   static_assert(kTp4GraphMaximumQ == 40);
-  static_assert(kTp4GraphAllreduceMaximumQ == 512);
+  static_assert(kTp4GraphAllreduceMaximumQ == 1024);
   static_assert(tp4_graph_payload_bytes(kTp4GraphAllreduceMaximumQ) ==
-                6U * 1024U * 1024U);
+                12U * 1024U * 1024U);
   assert(tp4_graph_allreduce_command_descriptor_valid(
       kTp4GraphAllreduceMaximumQ,
       tp4_graph_payload_bytes(kTp4GraphAllreduceMaximumQ)));
@@ -88,6 +88,20 @@ int main() {
   assert(!tp4_graph_command_layout_valid(7, 7 * 77440, 77440, 6));
   assert(!tp4_graph_command_layout_valid(6, 6 * 77440 - 1, 77440, 6));
   assert(!tp4_graph_command_layout_valid(1, 1, 0, 6));
+  constexpr std::uint32_t deepseek_bytes_per_row = 4096U * 2U;
+  static_assert(tp4_graph_payload_bytes(1, deepseek_bytes_per_row) ==
+                8192U);
+  static_assert(tp4_graph_payload_bytes(1024, deepseek_bytes_per_row) ==
+                8U * 1024U * 1024U);
+  assert(tp4_graph_command_layout_valid(
+      30, tp4_graph_payload_bytes(30, deepseek_bytes_per_row),
+      deepseek_bytes_per_row, kTp4GraphAllreduceMaximumQ));
+  assert(tp4_graph_command_layout_valid(
+      1024, tp4_graph_payload_bytes(1024, deepseek_bytes_per_row),
+      deepseek_bytes_per_row, kTp4GraphAllreduceMaximumQ));
+  assert(!tp4_graph_command_layout_valid(
+      30, tp4_graph_payload_bytes(30), deepseek_bytes_per_row,
+      kTp4GraphAllreduceMaximumQ));
   assert(!tp4_graph_doorbell_token_valid(0, 1));
   assert(!tp4_graph_doorbell_token_valid(1, 0));
   assert(tp4_graph_doorbell_token_valid(
@@ -112,25 +126,26 @@ int main() {
       previous = token;
     }
   }
-  const auto q512_token = tp4_graph_doorbell_token(
+  const auto maximum_q_token = tp4_graph_doorbell_token(
       7, kTp4GraphAllreduceMaximumQ);
-  assert((q512_token >> kTp4GraphDoorbellQBits) == 7);
-  assert((q512_token & kTp4GraphDoorbellQMask) ==
+  assert((maximum_q_token >> kTp4GraphDoorbellQBits) == 7);
+  assert((maximum_q_token & kTp4GraphDoorbellQMask) ==
          kTp4GraphAllreduceMaximumQ);
-  assert(q512_token < tp4_graph_doorbell_token(8, 1));
+  assert(maximum_q_token < tp4_graph_doorbell_token(8, 1));
 
-  Tp4GraphCommandRing allreduce_q512{};
-  std::uint64_t allreduce_q512_sequence{};
+  Tp4GraphCommandRing allreduce_maximum_q{};
+  std::uint64_t allreduce_maximum_q_sequence{};
   assert(tp4_graph_allreduce_command_publish_descriptor(
-      &allreduce_q512, true, kTp4GraphAllreduceMaximumQ,
+      &allreduce_maximum_q, true, kTp4GraphAllreduceMaximumQ,
       tp4_graph_payload_bytes(kTp4GraphAllreduceMaximumQ),
-      &allreduce_q512_sequence));
-  assert(allreduce_q512_sequence == 1);
-  Tp4GraphCommand allreduce_q512_command{};
+      &allreduce_maximum_q_sequence));
+  assert(allreduce_maximum_q_sequence == 1);
+  Tp4GraphCommand allreduce_maximum_q_command{};
   assert(tp4_graph_allreduce_command_try_consume_descriptor(
-      &allreduce_q512, 1, &allreduce_q512_command));
-  assert(allreduce_q512_command.q == kTp4GraphAllreduceMaximumQ);
-  assert(allreduce_q512_command.payload_bytes == 6U * 1024U * 1024U);
+      &allreduce_maximum_q, 1, &allreduce_maximum_q_command));
+  assert(allreduce_maximum_q_command.q == kTp4GraphAllreduceMaximumQ);
+  assert(allreduce_maximum_q_command.payload_bytes ==
+         12U * 1024U * 1024U);
 
   std::uint64_t sequence{99};
   assert(!tp4_graph_command_publish_descriptor(

@@ -747,7 +747,8 @@ __global__ void tp4_striped_finish(
 }  // namespace
 
 GpuTp4TensorWorker::GpuTp4TensorWorker(
-    std::size_t payload_bytes, void* round0_mapped_device_buffer,
+    std::size_t payload_bytes, std::uint32_t bytes_per_row,
+    void* round0_mapped_device_buffer,
     const Tp2BufferLayout& round0_layout,
     void* round1_mapped_device_buffer,
     const Tp2BufferLayout& round1_layout,
@@ -759,10 +760,11 @@ GpuTp4TensorWorker::GpuTp4TensorWorker(
       round0_layout_(round0_layout),
       round1_layout_(round1_layout),
       payload_bytes_(payload_bytes),
+      bytes_per_row_(bytes_per_row),
       protocol_(protocol),
       graph_kernel_strategy_(graph_kernel_strategy),
       schedule_(schedule) {
-  if (payload_bytes_ == 0 ||
+  if (payload_bytes_ == 0 || bytes_per_row_ == 0 ||
       payload_bytes_ % sizeof(__nv_bfloat16) != 0) {
     throw std::invalid_argument(
         "TP4 tensor size must be nonzero BF16 data");
@@ -842,12 +844,14 @@ void GpuTp4TensorWorker::enqueue_graph(
     const void* external_input, void* external_output, std::uint32_t q,
     void* cuda_stream, Tp4GraphCommandRing* command_ring, bool trace) {
   const std::uint32_t active_payload_bytes =
-      tp4_graph_payload_bytes(q);
-  if (!tp4_graph_allreduce_command_descriptor_valid(
-          q, active_payload_bytes) ||
+      tp4_graph_payload_bytes(q, bytes_per_row_);
+  if (!tp4_graph_command_layout_valid(
+          q, active_payload_bytes, bytes_per_row_,
+          kTp4GraphAllreduceMaximumQ) ||
       active_payload_bytes > payload_bytes_) {
     throw std::invalid_argument(
-        "graph TP4 all-reduce requires BF16 [q, 6144], q in [1, 512], "
+        "graph TP4 all-reduce requires the configured BF16 [q, width], "
+        "q in [1, 1024], "
         "within session capacity");
   }
   if (external_input == nullptr || external_output == nullptr ||
@@ -913,7 +917,7 @@ void GpuTp4TensorWorker::enqueue_graph(
   if (tp4_graph_kernel_uses_split(graph_kernel_strategy_, q)) {
     if (!split_graph_q_supported(q) || split_graph_state_ == nullptr) {
       throw std::invalid_argument(
-          "split_64k graph TP4 requires Q1 through Q512 and initialized "
+          "split_64k graph TP4 requires Q1 through Q1024 and initialized "
           "split state");
     }
     constexpr int control_threads = 32;

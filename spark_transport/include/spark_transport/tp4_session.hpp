@@ -8,6 +8,7 @@
 
 #include "spark_transport/tp4_allreduce_protocol.hpp"
 #include "spark_transport/tp4_dual_port_striped_allreduce.hpp"
+#include "spark_transport/tp4_graph_command.hpp"
 #include "spark_transport/tp4_graph_kernel_strategy.hpp"
 
 namespace spark_transport {
@@ -23,6 +24,10 @@ struct Tp4AllreduceOptions {
   std::uint16_t control_port0{9470};
   std::uint16_t control_port1{9471};
   std::size_t payload_bytes{12288};
+  // Graph all-reduce row geometry. Legacy callers retain the GLM BF16
+  // [Q, 6144] contract; versioned callers may select another BF16 width.
+  std::uint32_t elements_per_row{kTp4GraphElementsPerRow};
+  std::uint32_t bytes_per_row{kTp4GraphBytesPerRow};
   Tp4AllreduceProtocol protocol{Tp4AllreduceProtocol::kSerialAck};
   Tp4GraphKernelStrategy graph_kernel_strategy{
       Tp4GraphKernelStrategy::kFused};
@@ -66,7 +71,7 @@ class Tp4AllreduceSession {
   // saturating CUDA's launch queue.
   void all_reduce(const void* input, void* output, void* cuda_stream);
 
-  // Adds a Q1 BF16 [1, 6144] all-reduce to an active CUDA stream capture.
+  // Adds a Q1 BF16 [1, elements_per_row] all-reduce to capture.
   // The captured graph is tied to these stable input/output addresses and
   // must be replayed on the same stream. This session must outlive every
   // graph replay. Replay sequences are device-published through mapped host
@@ -76,9 +81,9 @@ class Tp4AllreduceSession {
   void capture_q1_all_reduce(const void* input, void* output,
                              void* cuda_stream);
 
-  // Adds one exact contiguous BF16 [q, 6144] all-reduce to an active CUDA
-  // stream capture. q must be in [1, 512] and the session capacity must be at
-  // least q rows. The Q512 maximum-capacity session has a 6 MiB payload
+  // Adds one exact contiguous BF16 [q, elements_per_row] all-reduce to CUDA
+  // stream capture. q must be in [1, 1024] and the session capacity must be at
+  // least q rows. GLM may retain Q512 while DeepSeek can provision Q1024.
   // arena and can serve decode plus bounded-prefill graph nodes while
   // preserving one ordered sequence.
   void capture_all_reduce(const void* input, void* output, std::uint32_t q,

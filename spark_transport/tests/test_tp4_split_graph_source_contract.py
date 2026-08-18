@@ -134,7 +134,8 @@ def test_tiered_worker_rejects_eager_but_accepts_both_graph_protocols() -> None:
     assert "tp4_graph_kernel_uses_split(graph_kernel_strategy_, q)" in enqueue_graph
     assert "q >= 1 && q <= kTp4GraphAllreduceMaximumQ" in worker
     assert "tp4_graph_kernel_strategy_is_graph_only" in session
-    assert "graph_capacity_supported(options_.payload_bytes)" in session
+    assert "graph_capacity_supported(options_.payload_bytes," in session
+    assert "options_.bytes_per_row" in session
     assert "kTp4TieredSplitMinimumQ = 7" in strategy
     assert "q >= kTp4TieredSplitMinimumQ" in strategy
 
