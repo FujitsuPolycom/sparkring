@@ -88,4 +88,4 @@ linked runbook. A document being listed here does not authorize remote action.
 |---|---|
 | [Reference bring-up reconstruction](SETUP.md) | Reconstructs the historical reference deployment. Only stages explicitly marked runnable are supported from the public tree. |
 | [Testing history](TESTING_HISTORY.md) | Preserves dated experiments, regressions, resolved failures, superseded configurations, and acceptance gaps. |
-| [Historical Aiden MXFP4/GPTQ lane](history/AIDEN_MXFP4_GPTQ.md) | Preserves the original reference-lane configuration and its evidence scope. |
+| [Historical Aiden MXFP4/GPTQ lane](history/AIDEN_MXFP4_GPTQ.md) | Preserves the Aiden MXFP4/GPTQ reference-lane configuration and its evidence scope. |

@@ -327,8 +327,8 @@ can add a compatible vLLM-style model without four Sparks or a GPU.
    python -m pytest scripts/test_runtime_conformance.py -q
    ```
 
-A generic profile is outside the current EXL3 and accepted NF3 configurations
-until it is named and gated. The `validate` and `explain` commands never claim
+A generic profile is outside the published EXL3 and accepted NF3
+configurations until it is named and gated. The `validate` and `explain` commands never claim
 model correctness or live acceptance. The `diff` command never normalizes away
 image IDs, model identity, topology, labels, mounts, hooks, or command
 changes.
@@ -345,7 +345,7 @@ numbers were measured on one of them and not the other.
 
 | | Reference lane | Public-functional lane |
 |---|---|---|
-| What it is | the exact pinned runtime the published numbers were measured on | what this tree builds today |
+| What it is | the exact pinned runtime the published numbers were measured on | what this tree builds |
 | Status | validated | candidate |
 | End-to-end serving performance | the source of every headline number | **not** yet performance-equivalent, and not supported until a full acceptance gate passes |
 
@@ -392,7 +392,7 @@ These fail the build. Do not commit:
   passwords, API keys. If you push one by accident, say so and rotate it.
   Force-pushing does not un-leak it.
 
-The blocking job is currently clean across the whole tracked tree, so any hit
+The blocking job is clean across the whole tracked tree, so any hit
 is a genuine regression rather than pre-existing debt. It is a backstop for
 the attestation in the pull request template, not a replacement for it: it
 only knows the shapes it was taught.
@@ -441,9 +441,9 @@ of them need hardware.
 1. **No `.editorconfig`.** Add one matching the existing style.
 2. **Ruff policy is split between `.ruff.toml` and CI.** The configuration file
    preserves two reference-snapshot exceptions, while the enforced rule set
-   still lives on the CI command line. Move `select = ["E", "F", "W"]` and
+   lives on the CI command line. Move `select = ["E", "F", "W"]` and
    `ignore = ["E501"]` into `.ruff.toml` so `ruff check .` matches CI.
-3. **Move the Markdown link checker out of the workflow.** It is currently
+3. **Move the Markdown link checker out of the workflow.** It is
    inlined in `.github/workflows/ci.yml` as a heredoc, so contributors cannot
    run it locally. Extract it to `scripts/` and have CI call it.
 4. **External links are never checked.** Add a scheduled, non-blocking job
