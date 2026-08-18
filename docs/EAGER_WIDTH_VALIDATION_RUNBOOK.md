@@ -24,7 +24,9 @@ directly cabled Sparks, and serving performance.
 Purpose: prove the refactor is inert for the GLM-5.2 EXL3-R7 3.5bpw four-Spark serving configuration.
 
 Two arms, identical serve config otherwise (the 2026-08-11-qualified
-`--enforce-eager` TP4 configuration):
+TP4 configuration: full-and-piecewise CUDA-graph capture with the
+SparkRing graph all-reduce serving in-graph collectives — not an
+eager-mode launch; `--enforce-eager` is the leg-3 method only):
 
 - Arm 1a: `VLLM_SPARK_TP4_EAGER_WIDTHS` unset (the serving configuration's default).
 - Arm 1b: `VLLM_SPARK_TP4_EAGER_WIDTHS=6144` (explicit; must be
