@@ -249,6 +249,35 @@ collective inputs (flight recorder) and rerun the oracle on them, and
 consider a truth-anchored gate criterion for outlier-heavy models
 alongside the existing disagreement gate.
 
+### Leg-1 attempt 2026-08-17: blocked by design, finding recorded
+
+Arm A (widths unset) was launched as a verbatim v23 clone — real
+entrypoint, full attestation env, all mounts, exact production command —
+with only the two width-generic adapter files and the fabric
+control-plane re-point substituted. Attestation and the 316 GB
+InstantTensor load completed; engine initialization then failed closed
+with `adaptive-MTP exact-state arena count drifted`.
+
+Root cause: the deployed runtime's adapter lineage is ahead of the
+public repository the feature branch was built on (33 changed lines in
+spark_tp4_backend.py, 31 in spark_tp4_port_namespace.py). The deployed
+lineage admits a SPARSE provider row set via the Q42-Q48 contract
+(`provider_query_rows()`), and the exact-state invariant counts arenas
+against that set; the feature's contiguous payload enumeration produced
+a different arena count and the invariant refused to serve. This is the
+fail-closed design working as intended: it caught a semantic regression
+the public-lineage feature would have introduced into production
+admission before any traffic was carried.
+
+Leg 1 therefore requires a provider-rows-aware rebase of the width
+feature onto the deployed lineage (payload enumeration and port
+reservations composed with the sparse row contract so arena counts
+match), with offline arena-count tests written first. Also recorded for
+operations: the per-rank model view bind mounts
+(`/var/tmp/sparkring-model-view-exl3-* -> /var/tmp/sparkring-r7-model`)
+are not reboot-persistent, which is why the original v23 stack exited
+255 after the site event; systemd mount units would close that gap.
+
 Excluded candidates, for the record: Qwen2.5-0.5B (14 heads % 4 != 0),
 SmolLM2-135M/360M (9/15 heads), Gemma-3-270M (heads pass; pinned-runtime
 support unverified).
