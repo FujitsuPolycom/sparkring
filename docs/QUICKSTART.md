@@ -17,7 +17,7 @@ capture, API health, repeated fixed-seed output, bounded concurrency gates, and
 post-run health. It is not a blanket correctness, persistence, release, or full
 acceptance claim.
 
-The accepted deterministic NF3 configuration remains available as an explicit
+The accepted deterministic NF3 configuration is available as an explicit
 alternative in [NF3_QUICKSTART.md](NF3_QUICKSTART.md).
 
 ## 1. Prepare the four Sparks
@@ -128,8 +128,7 @@ serving only in explicitly confirmed execute mode.
 
 ## NF3 alternative
 
-NF3 remains published and supported; it has not been removed or overwritten.
-Select it explicitly:
+NF3 is published and supported. Select it explicitly:
 
 ```bash
 python scripts/sparkring_recipe.py plan --recipe glm52-nf3-hybrid
