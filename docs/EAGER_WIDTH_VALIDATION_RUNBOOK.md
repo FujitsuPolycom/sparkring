@@ -336,6 +336,65 @@ capacities is staged at `/var/tmp/leg1-arena-diag/model_runner.py` on
 all four ranks; the launcher binds it in place of the original when
 `DIAG=1`. It is a copy, so no shared runtime file is modified.
 
+### Leg-1 root cause 2026-08-18: online-cache identity severed by the reboot
+
+The diagnostic launch reported the diverging state directly:
+
+```
+arena count drifted: counts q40=1 q48=1 expected (2, 2);
+q40_keys=[((0, False), 0, 40, 8, (128, 128, 32, 512), 8, 6144, 512, 40, 48, 'bf16', torch.int64, 2)]
+q48_keys=[((0, False), 0, 48, 8, (128, 128, 32, 512), 8, 6144, 512, 48, 48, 'bf16', torch.int64, 2)]
+```
+
+The serving-era receipt on rank 0
+(`/var/tmp/sparkring-r7-jit/q35-q40-exact-state-serving-v2-rank0.json`,
+`shape_receipts/*/buffer_cache_keys`) records the healthy signature: two
+buffer-cache keys per capacity, identical in every field except
+`tier_count` — one two-tier and one three-tier scratch-arena geometry.
+Today every layer produces only the two-tier variant. The invariant's
+`(2, 2)` and its pinned byte totals are hardcoded in the deployed
+`model_runner.py`, so the boot refuses.
+
+The tier mix traces to the online EXL3 requantizer
+(`VLLM_EXL3_ONLINE_TRELLIS_BITS=6`, cache under `/cache/exl3-online`,
+host `/var/tmp/sparkring-r7-online`). Its cache namespace is the first
+20 hex digits of a model-identity hash computed over the model
+directory's path, revision, marker-file hashes, and per-shard
+`(name, resolved path, size, mtime_ns)` tuples
+(`exl3_online_cache.resolve_model_identity`). Two namespaces exist on
+rank 0:
+
+- `d871f8223f2678c032f1` — created 2026-08-10 by the healthy boot,
+  672 artifacts, warm through every serving-era launch.
+- `3de03931460fa5ae458a` — created 2026-08-17 by the first container
+  clone attempt, and matching the identity that every surviving model
+  directory computes today (verified by recomputing the hash against
+  `/var/tmp/sparkring-model-view-exl3-3f57337`,
+  `/var/tmp/sparkring-model-view-exl3-bc036a0`, and
+  `/srv/models/GLM-5.2-EXL3-TR3-3.25bpw`; all three produce
+  `3de03931…`, and no tested revision string produces `d871f822…`).
+
+Every surviving model directory is pristine (all marker and shard
+ctimes predate the healthy boot), so the identity input that produced
+`d871f822…` no longer exists on the host. `/tmp` was emptied by the
+site-event reboot; the evidence is consistent with the original
+`/var/tmp/sparkring-r7-model` bind having pointed at a copy on
+since-wiped storage whose distinct mtimes fed the healthy hash. The
+post-reboot bind restore pointed the mount at the surviving
+`/var/tmp` view — weight-identical (same inodes), identity-different.
+
+Consequence: the requantizer runs cold, re-derives per-expert bitrates
+from proxy-error thresholds, and lands on a different (uniformly
+two-tier) mix than the one the attestation pins. Each of the 672 warm
+artifacts embeds the full old identity in its `cache_key` metadata and
+its filename digest, so pointing the loader at the old namespace
+requires rewriting that metadata to the new identity — mechanical, and
+doable against a copy in an isolated namespace — or accepting the new
+mix, which means changing the deployed attestation's pinned constants
+and re-validating quality. Both are deployment-policy decisions,
+neither belongs to the eager-width work, and the width-generic adapter
+remains exonerated by the no-substitution control launch.
+
 Excluded candidates, for the record: Qwen2.5-0.5B (14 heads % 4 != 0),
 SmolLM2-135M/360M (9/15 heads), Gemma-3-270M (heads pass; pinned-runtime
 support unverified).
