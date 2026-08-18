@@ -65,6 +65,7 @@ struct Options {
   bool mixed_q_validation{};
   std::uint32_t fixed_q{1};
   std::uint32_t maximum_q{6};
+  std::size_t elements{kElements};
   int graph_a_operations{3};
   int graph_b_operations{128};
   TimingMode timing_mode{TimingMode::kBurst};
@@ -89,6 +90,7 @@ struct Options {
       << "  --multi-graph-validation\n"
       << "  --mixed-q-validation\n"
       << "  --fixed-q Q\n"
+      << "  --elements-per-row 6144|4096\n"
       << "  --maximum-q Q\n"
       << "  --graph-a-operations COUNT\n"
       << "  --graph-b-operations COUNT\n"
@@ -178,6 +180,19 @@ Options parse_options(int argc, char** argv) {
         throw std::invalid_argument("fixed Q must be in [1, 512]");
       }
       options.fixed_q = static_cast<std::uint32_t>(fixed_q);
+    } else if (argument == "--elements-per-row") {
+      const std::uint64_t elements =
+          unsigned_value(take_value(), "elements per row");
+      if (elements != 6144 && elements != 4096) {
+        throw std::invalid_argument(
+            "elements per row must be 6144 or 4096");
+      }
+      options.elements = static_cast<std::size_t>(elements);
+      options.transport.elements_per_row =
+          static_cast<std::uint32_t>(elements);
+      options.transport.bytes_per_row =
+          static_cast<std::uint32_t>(elements) *
+          spark_transport::kTp4GraphBytesPerElement;
     } else if (argument == "--maximum-q") {
       const std::uint64_t maximum_q =
           unsigned_value(take_value(), "maximum Q");
@@ -316,12 +331,18 @@ Options parse_options(int argc, char** argv) {
   if (options.maximum_q < 6 || options.maximum_q > kMaximumQ) {
     throw std::invalid_argument("maximum Q must be in [6, 512]");
   }
+  if (options.elements != kElements && options.multi_graph_validation) {
+    throw std::invalid_argument(
+        "multi-graph validation requires the default row width");
+  }
   if (options.mixed_q_validation) {
     options.transport.payload_bytes =
-        spark_transport::tp4_graph_payload_bytes(options.maximum_q);
+        spark_transport::tp4_graph_payload_bytes(
+            options.maximum_q, options.transport.bytes_per_row);
   } else {
     options.transport.payload_bytes =
-        spark_transport::tp4_graph_payload_bytes(options.fixed_q);
+        spark_transport::tp4_graph_payload_bytes(
+            options.fixed_q, options.transport.bytes_per_row);
   }
   return options;
 }
@@ -514,10 +535,11 @@ CapturedGraph capture_fixed_q_graph(
     spark_transport::Tp4AllreduceSession& session,
     const __nv_bfloat16* input, __nv_bfloat16* output,
     unsigned long long* replay_marker, unsigned long long* mismatches,
-    cudaStream_t stream, std::uint32_t q, bool capture_validation) {
+    cudaStream_t stream, std::uint32_t q, std::size_t elements,
+    bool capture_validation) {
   constexpr int threads = 256;
   const std::size_t active_elements =
-      static_cast<std::size_t>(q) * kElements;
+      static_cast<std::size_t>(q) * elements;
   const int validation_blocks = static_cast<int>(
       (active_elements + threads - 1) / threads);
 
@@ -552,7 +574,8 @@ CapturedGraph capture_mixed_q_graph(
     unsigned long long* replay_marker, unsigned long long* mismatches,
     cudaStream_t stream, std::uint32_t rank,
     const std::vector<std::uint32_t>& q_values,
-    std::size_t graph_epoch_offset, std::size_t operations_per_cycle) {
+    std::size_t graph_epoch_offset, std::size_t operations_per_cycle,
+    std::size_t elements) {
   constexpr int threads = 256;
   cudaGraph_t graph{};
   check_cuda(cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal),
@@ -565,7 +588,7 @@ CapturedGraph capture_mixed_q_graph(
     // arena instead of reserving hundreds of MiB for distinct node outputs.
     __nv_bfloat16* operation_output = output;
     const std::size_t active_elements =
-        static_cast<std::size_t>(q) * kElements;
+        static_cast<std::size_t>(q) * elements;
     const int validation_blocks = static_cast<int>(
         (active_elements + threads - 1) / threads);
     const std::size_t node_epoch_offset = graph_epoch_offset + operation;
@@ -653,14 +676,14 @@ int main(int argc, char** argv) {
             : static_cast<std::size_t>(options.operations_per_graph);
     const std::size_t input_elements =
         options.mixed_q_validation
-            ? static_cast<std::size_t>(options.maximum_q) * kElements
-            : static_cast<std::size_t>(options.fixed_q) * kElements;
+            ? static_cast<std::size_t>(options.maximum_q) * options.elements
+            : static_cast<std::size_t>(options.fixed_q) * options.elements;
     const int input_blocks = static_cast<int>(
         (input_elements + threads - 1) / threads);
     const std::size_t output_stride_elements =
         options.mixed_q_validation
-            ? static_cast<std::size_t>(options.maximum_q) * kElements
-            : static_cast<std::size_t>(options.fixed_q) * kElements;
+            ? static_cast<std::size_t>(options.maximum_q) * options.elements
+            : static_cast<std::size_t>(options.fixed_q) * options.elements;
     const std::size_t output_elements =
         options.mixed_q_validation
             ? output_stride_elements
@@ -673,7 +696,8 @@ int main(int argc, char** argv) {
     const auto account_q = [&](std::uint32_t q) {
       ++q_histogram.at(q - 1);
       active_bytes_per_graph_cycle +=
-          spark_transport::tp4_graph_payload_bytes(q);
+          spark_transport::tp4_graph_payload_bytes(
+              q, options.transport.bytes_per_row);
     };
     if (options.mixed_q_validation) {
       constexpr std::array<std::uint32_t, 3> graph_a_pattern{
@@ -720,7 +744,8 @@ int main(int argc, char** argv) {
       q_histogram[options.fixed_q - 1] = total_output_operations;
       active_bytes_per_graph_cycle =
           total_output_operations *
-          spark_transport::tp4_graph_payload_bytes(options.fixed_q);
+          spark_transport::tp4_graph_payload_bytes(
+              options.fixed_q, options.transport.bytes_per_row);
     }
     std::uint64_t kernel_split_nodes{};
     for (std::size_t index = 0; index < q_histogram.size(); ++index) {
@@ -770,11 +795,11 @@ int main(int argc, char** argv) {
         graphs.push_back(capture_mixed_q_graph(
             session, input, output, replay_marker, mismatches, stream,
             options.transport.rank, graph_a_q, 0,
-            operations_per_cycle));
+            operations_per_cycle, options.elements));
         graphs.push_back(capture_mixed_q_graph(
             session, input, output, replay_marker, mismatches, stream,
             options.transport.rank, graph_b_q, graph_a_q.size(),
-            operations_per_cycle));
+            operations_per_cycle, options.elements));
       } else if (options.multi_graph_validation) {
         graphs.push_back(capture_graph(
             session, input, output, replay_marker, mismatches, stream,
@@ -785,7 +810,7 @@ int main(int argc, char** argv) {
             static_cast<std::size_t>(options.graph_a_operations) *
                 kElements,
             true));
-      } else if (options.fixed_q == 1) {
+      } else if (options.fixed_q == 1 && options.elements == kElements) {
         graphs.push_back(capture_graph(
             session, input, output, replay_marker, mismatches, stream,
             options.operations_per_graph, 0,
@@ -793,7 +818,7 @@ int main(int argc, char** argv) {
       } else {
         graphs.push_back(capture_fixed_q_graph(
             session, input, output, replay_marker, mismatches, stream,
-            options.fixed_q,
+            options.fixed_q, options.elements,
             options.timing_mode == TimingMode::kBurst));
       }
 
@@ -849,7 +874,7 @@ int main(int argc, char** argv) {
 
         if (isolated_timing) {
           const std::size_t validation_elements =
-              static_cast<std::size_t>(options.fixed_q) * kElements;
+              static_cast<std::size_t>(options.fixed_q) * options.elements;
           const int validation_blocks = static_cast<int>(
               (validation_elements + threads - 1) / threads);
           validate_active_output<<<validation_blocks, threads, 0, stream>>>(
