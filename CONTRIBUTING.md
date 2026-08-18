@@ -24,7 +24,7 @@ which claims each level of access earns you.
   follow [Write Without Hidden Context](docs/WRITING_STANDARD.md): it must make
   sense to a reader who has the repository but none of the development history.
 - All tests must be green:
-  - Python: `python -m pytest spark_transport sparkcache runtime scripts` from the repo root.
+  - Python: `python -m pytest spark_transport sparkcache runtime scripts` and `python -m pytest sparkring_plugin` from the repo root.
   - C++/CUDA: the CMake (CTest) suite, run in-container.
 - No copied code without provenance: any code copied or adapted from another project must carry a provenance note and a corresponding license entry in `THIRD_PARTY_NOTICES.md`.
 - Contributions are accepted under the project license, Apache-2.0 (see `LICENSE`).
@@ -88,8 +88,9 @@ python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2
 # Do NOT install runtime/pip-freeze.txt. That is an aarch64 / CUDA-13.2
 # serving freeze for the container, not a development environment.
 
-# The full offline suite:
+# The full offline suite (both commands are blocking CI steps):
 python -m pytest spark_transport sparkcache runtime scripts -q
+python -m pytest sparkring_plugin -q
 
 # Check that recipes, status roles, evidence paths, and public summary
 # identities still agree:
@@ -175,7 +176,8 @@ by each run rather than copied into this present-state specification.
 | `sparkcache` Python | `python -m pytest sparkcache -q` | CPU only | Included in blocking CI |
 | `runtime` Python | `python -m pytest runtime -q` | CPU only | Included in blocking CI |
 | Public tooling | `python -m pytest scripts -q` | CPU only | Included in blocking CI |
-| **All four (what CI runs)** | `python -m pytest spark_transport sparkcache runtime scripts -q` | CPU only | **Blocking CI gate** |
+| `sparkring_plugin` Python | `python -m pytest sparkring_plugin -q` | CPU only | Included in blocking CI (separate step) |
+| **All five (what CI runs)** | `python -m pytest spark_transport sparkcache runtime scripts -q` plus `python -m pytest sparkring_plugin -q` | CPU only | **Blocking CI gate** |
 | SparkCache native, host half | `cmake -S sparkcache/native ... -DSPARK_CACHE_PLACEMENT_ENABLE_CUDA=OFF` + `ctest` | CPU only, C++17 compiler | runs in CI |
 | SparkCache native, CUDA half | default `cmake -S sparkcache/native` + `ctest` | 1 GPU + CUDA toolkit | **manual gate** |
 | `spark_transport` CTest | `cmake -S spark_transport ...` + `ctest` | CUDA toolkit + `libibverbs` to configure at all; GPU for the CUDA cases | **manual gate** |

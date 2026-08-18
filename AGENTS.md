@@ -76,6 +76,7 @@ sets.
 |---|---|
 | `spark_transport/` | Native transport, probes, vLLM adapters, and experiments |
 | `sparkcache/` | Persistent DCP-sharded context cache |
+| `sparkring_plugin/` | Pip-installable vLLM plugin packaging of the TP4 adapters |
 | `runtime/` | Candidate public runtime builder, lock, and published patches |
 | `scripts/` | Site schema, read-only preflight, dry-run-first launcher, acceptance gate, and evidence tooling |
 | `scripts/config/` | Sanitized templates; real local configs must remain untracked |
@@ -102,6 +103,7 @@ Safe starting commands:
 python scripts/sparkring_site.py scripts/config/site.example.yaml
 python scripts/preflight.py --site scripts/config/site.example.yaml --print-plan
 python -m pytest spark_transport sparkcache runtime scripts -q
+python -m pytest sparkring_plugin -q
 
 # READ-ONLY REMOTE, after reviewing --print-plan and filling site.yaml
 python scripts/preflight.py --site scripts/config/site.yaml
@@ -118,7 +120,7 @@ mode at a production-serving cluster.
 1. Install `requirements-dev.txt`.
 2. Install the CPU torch wheel as shown in `CONTRIBUTING.md`.
 3. Run `ruff check --select E,F,W --ignore E501 .`.
-4. Run `python -m pytest spark_transport sparkcache runtime scripts -q`.
+4. Run `python -m pytest spark_transport sparkcache runtime scripts -q` and `python -m pytest sparkring_plugin -q`.
 5. If Markdown changed, verify repo-relative links using the same checker as
    the `docs-links` CI job.
 
