@@ -43,9 +43,12 @@ speculative mechanism and CUDA graphs:
   The checkpoint carries DSpark draft heads, not a classic MTP block;
   a `deepseek_mtp` speculative method fails at weight load.
 - `VLLM_SPARK_TP4_MODE=custom`, CUDA graphs enabled, 32 sequences,
-  131,072-token request limit, 32 GiB key-value cache per rank
-  (1,859,904-token pool). The checkpoint's native maximum position is
-  1,048,576 (YaRN, factor 16); the 131,072 limit is a launch choice.
+  32 GiB key-value cache per rank. The request limit is a launch
+  choice against the checkpoint's native 1,048,576 maximum position
+  (YaRN, factor 16): first served at 131,072 (engine-reported pool
+  1,859,904 tokens), relaunched the same day at 524,288
+  (engine-reported concurrency 8.36 full contexts; the token-count
+  accounting differs between the two limits and is not reconciled).
 - Operator-observed serving behavior on 2026-08-18: single-stream
   decode near 119-132 tokens per second on code prompts at about 86%
   draft acceptance (stock NCCL collectives inside graphs), and
