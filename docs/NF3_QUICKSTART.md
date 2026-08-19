@@ -5,13 +5,16 @@ New deployment? Complete
 source of truth for hardware, Docker/NVIDIA runtime, management SSH, storage,
 200 GbE/RoCE setup, discovery commands, and the operator-versus-bot boundary.
 
-This is the accepted deterministic, public-live-validated NF3 alternative,
-with two
-KV-storage profiles:
+This is the accepted deterministic, public-live-validated NF3 alternative:
+it serves the GLM-5.2 hybrid checkpoint
+`madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid`, whose routed experts mix
+NVFP4-format and NF3-format weights (64 NVFP4 and 192 NF3 experts per
+layer), with two KV-storage profiles:
 
 ```text
 madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid
-TP4 / DCP4 / adaptive MTP2-4 / C8 / Q40
+TP4 / DCP4 / adaptive MTP2-4 /
+8 concurrent sequences (C8) / CUDA-graph widths through 40 (Q40)
 four directly cabled DGX Sparks
 SparkCache disabled
 ```
@@ -31,7 +34,8 @@ the pinned NF3 expert kernels while restoring the packed-MLA reader. The
 The Aiden MXFP4/GPTQ lane is historical and lives in
 [history/AIDEN_MXFP4_GPTQ.md](history/AIDEN_MXFP4_GPTQ.md).
 
-The EXL3/Trellis plus LMCache CS512 profile is the public default. Its public
+The EXL3/Trellis profile plus LMCache with 512-token cache chunks (CS512)
+is the public default. Its public
 bootstrap passed a clean-checkout four-Spark bounded live gate. Follow
 [QUICKSTART.md](QUICKSTART.md) for the default path; use this page when you
 explicitly choose NF3.
@@ -260,7 +264,8 @@ The script:
 7. saves that image once and loads the identical image ID on ranks 1-3;
 8. writes `.sparkring/bootstrap/site.yaml`;
 9. runs the read-only hardware/image/model preflight;
-10. launches all four ranks with the pinned C8/Q40 graph profile.
+10. launches all four ranks with the pinned graph profile of 8 concurrent
+    sequences (C8) and CUDA-graph widths through 40 (Q40).
 
 To prepare everything but leave the model down, add `--no-launch`.
 

@@ -31,8 +31,9 @@ repository name into each serving rank's Hugging Face cache.
 
 ## Serving configuration used
 
-All four ran identically on all four ranks, from the deployed image via the
-v23-cloned launch harness, executed 2026-08-17:
+All four ran identically on all four ranks, from the deployed image via a
+launch harness cloned from the deployed serving container's launch
+definition (generation label `v23`), executed 2026-08-17:
 
 - `VLLM_SPARK_TP4_MODE=shadow`
 - `VLLM_SPARK_TP4_EAGER_WIDTHS=<model width>` (identical on every rank; a

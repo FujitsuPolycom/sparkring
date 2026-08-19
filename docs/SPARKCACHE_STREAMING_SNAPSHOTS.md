@@ -1,6 +1,9 @@
 # SparkCache streaming snapshots
 
-> **Scope note (2026-08-03):** This document records the SparkCache v50/v51
+> **Scope note (2026-08-03):** `v50` and `v51` are successive revisions of
+> the SparkCache streaming-snapshot implementation: v50 is the streaming
+> end-of-prefill pipeline revision and v51 adds its idle-progress fix.
+> This document records the SparkCache v50/v51
 > development and live-validation campaign. It does not describe the
 > public-default EXL3 3.25 bpw + LMCache CS512 serving configuration; that
 > configuration has

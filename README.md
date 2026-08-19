@@ -38,8 +38,8 @@ index; the rows here are the deployment entry points.
 | Goal | Profile | Maturity and evidence scope | Start here |
 |---|---|---|---|
 | Use the operator-accepted 3.5-bpw configuration | GLM-5.2 EXL3 3.5-bpw fixed-MTP4 (`R7`) | Accepted on one four-Spark appliance; a clean rebuild requires live qualification | [3.5-bpw quickstart](docs/EXL3_R7_QUICKSTART.md) |
-| Use the reproducible public default | GLM-5.2 EXL3 3.25-bpw plus LMCache CS512 | Clean-checkout bounded live validation on four Sparks | [public-default quickstart](docs/QUICKSTART.md) |
-| Use the deterministic alternative | GLM-5.2 NF3 | Accepted public-functional alternative | [NF3 quickstart](docs/NF3_QUICKSTART.md) |
+| Use the reproducible public default | GLM-5.2 EXL3 3.25-bpw plus LMCache with 512-token cache chunks (CS512) | Clean-checkout bounded live validation on four Sparks | [public-default quickstart](docs/QUICKSTART.md) |
+| Use the deterministic alternative | GLM-5.2 with NF3-format experts | Accepted public-functional alternative | [NF3 quickstart](docs/NF3_QUICKSTART.md) |
 | Qualify a non-GLM width over the ring | Width-generic admission plus a per-model profile page | Evidence scope varies by profile; the small-model shadow set is the validation instrument | [profiles registry](docs/profiles/README.md) |
 
 ## Flagship profile: GLM-5.2 EXL3 R7 3.5-bpw fixed-MTP4
@@ -47,7 +47,8 @@ index; the rows here are the deployment entry points.
 The operator's accepted 3.5-bpw profile serves
 [`brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78`](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78)
 at immutable revision `9ab9579774cc432df91567a36f6e9e863e0d4c9f` with TP4/DCP4,
-fixed MTP4, and native SparkRing TP transport through Q40. Headline
+fixed MTP4, and native SparkRing TP transport for all query-row counts
+through the 40-row speculative-verification batch (Q40). Headline
 operator-matrix numbers: 645-679 tok/s C1 prefill from 8K through 128K
 contexts, 65-78 tok/s aggregate decode at C8, and a 1,156,864-token KV
 capacity. Acceptance is scoped to one four-Spark appliance; it is not the
@@ -92,7 +93,8 @@ This evidence qualifies EXL3+LMCache as the public default; it is not a
 blanket correctness or release-acceptance claim.
 
 The exact EXL3 model hashes, source pins, environment, vLLM arguments, and
-Q4096/C8/Q32 contract are in
+the serving contract of at most 4,096 batched tokens, 8 sequences, and a
+32-row CUDA-graph ceiling (Q4096/C8/Q32) are in
 [`recipes/glm52-exl3-tr3-3.25bpw.json`](recipes/glm52-exl3-tr3-3.25bpw.json).
 
 The [fixed-MTP2 EXL3 alternative](docs/EXL3_FIXED_MTP2_RECIPE_20260802.md)
@@ -132,8 +134,10 @@ dry-run-first
 
 ### Archived and alternative configurations
 
-NF3 is documented as a deterministic public-functional alternative rather
-than a featured README profile. Use the
+The NF3 lane serves the GLM-5.2 hybrid checkpoint
+`madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid`, whose routed experts use the
+NF3 weight format; it is documented as a deterministic public-functional
+alternative rather than a featured README profile. Use the
 [NF3 quickstart](docs/NF3_QUICKSTART.md),
 [NVFP4 KV validation receipt](docs/NF3_NVFP4_PUBLIC_VALIDATION.md), and
 [one-million-token operator audit](docs/NF3_LIVE_CONFIGURATION_20260731.md) for
