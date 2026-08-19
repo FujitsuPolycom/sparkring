@@ -1,148 +1,160 @@
-# Bulk striped transport: a bandwidth lane for multi-MiB payloads
+# TP4 tiled bidirectional-ring bulk lane
 
 Status: design proposal, research-only. Nothing in this document is
-implemented, and adopting any stage requires the measurement gates in
-section 6. The problem statement is grounded in measured collective
-latencies; the wire-time figures are arithmetic from link rate, not
-measurements.
+implemented, and native work begins only if the measurement sequence in
+section 6 passes its gate. Measured inputs are cited to their records;
+projections are labeled as fits, not measurements. An earlier revision
+of this proposal framed the lane around dual-port striping and gated it
+against the transport's own sequential path; both framings are
+superseded here. Striping describes the physical port utilization; the
+algorithmic content of this proposal is a bidirectional-ring
+reduce-scatter/all-gather schedule executing under the transport's
+existing tiled-capacity contract, gated against NCCL.
 
 ## 1. Problem
 
 The transport's collective paths are engineered for decode-class
-payloads, which measurement shows are overhead-bound, not
-wire-bound: a BF16 [256, 4096] all-reduce (2 MiB) completes in
-436 µs on the four-rank ring while its per-traversal wire time at
-200 Gb/s is roughly 84 µs — about one fifth of the total
-(docs/DUAL_PORT_STRIPING_PROBE_20260818.md). Kernel-strategy fixes
-(split_64k/tiered_64k), not extra bandwidth, are what removed the
-dominant cost there, and the dual-port striped schedule showed no
-median advantage at any measured decode shape.
+payloads, which measurement shows are overhead-bound: kernel-strategy
+fixes, not bandwidth, removed the dominant cost at every measured
+decode shape (docs/DUAL_PORT_STRIPING_PROBE_20260818.md).
 
-The proportions invert for bulk payloads. The serving stack already
-produces one today: chunked-prefill all-reduces of BF16 [2048, 4096]
-(16 MiB), which currently take the stock NCCL path because they
-exceed every admission bound. At 200 Gb/s a 16 MiB traversal is
-roughly 640 µs of wire time — the dominant term at that size, and
-the term that doubling effective bandwidth would halve. The same
-applies to any future multi-MiB transfer: KV-cache migration between
-tenants or hosts, weight streaming, snapshot shipping.
+Bulk payloads invert the proportions, and the serving stack produces
+one today: chunked-prefill all-reduces of BF16 [2048, 4096] (16 MiB),
+which take the stock NCCL path because they exceed every admission
+bound. KV-cache migration and weight streaming sit in the same class.
 
-No existing path serves this class:
+Linear fits over the probe record's measured points expose the
+problem quantitatively. The transport's best sequential kernels fit
+approximately 85 µs + 1.81e-4 µs/byte; the graph-captured NCCL
+control fits approximately 910 µs + 1.10e-4 µs/byte. NCCL's higher
+floor buys a shallower slope, so the fits cross near 11.1 MiB:
 
-- Eager all-reduce sessions admit at most 512 rows.
-- The graph sessions are decode-shaped (Q512 capacity ceilings) and
-  graph-only.
-- The existing `dual_port_striped` wire schedule is graph-only,
-  fused-kernel-only, and fixed to two exact decode capacities; it is
-  a decode experiment, not a bandwidth lane.
+| 16 MiB all-reduce | Projected from fits |
+|---|---:|
+| Sequential custom path | ~3.12 ms |
+| NCCL | ~2.75 ms |
 
-## 2. Why striping is the right tool here and not for decode
+Above roughly 11 MiB the existing custom path is projected to lose to
+NCCL. A bulk lane that merely extends the sequential schedule upward
+therefore has no serving value; the incumbent for the 16 MiB prefill
+collective is NCCL, and NCCL is the baseline this proposal gates
+against.
 
-A single collective's rounds are data-dependent (round 1 consumes
-round 0's partial sums), so the two NIC ports cannot be overlapped
-across rounds of one recursive-doubling collective. The only way one
-transfer uses both ports is to split its payload across them —
-striping. For decode payloads that attacks the minority wire slice;
-for bulk payloads it attacks the majority slice. The lane is
-therefore scoped to bulk payloads only, with the boundary set by
-measurement (section 6), expected in the 4–16 MiB region where wire
-time crosses half of total time.
+## 2. Why a bidirectional ring
 
-Topology changes what striping means:
+On four ranks, recursive doubling moves 2N bytes per rank per
+all-reduce and performs 2N element additions per rank. A ring
+reduce-scatter plus all-gather moves 1.5N bytes per rank and performs
+0.75N additions, and on this topology its two transfer directions map
+onto the two NIC ports transmitting simultaneously, for an effective
+2 x 200 Gb/s per rank.
 
-- **Four-rank ring.** Each port faces a different neighbor, so
-  striping one peer-to-peer transfer across ports is impossible.
-  The bandwidth-optimal bulk collective is instead a bidirectional
-  ring reduce-scatter + all-gather: every rank transmits on both
-  ports simultaneously in opposite ring directions, for an
-  effective 2 x 200 Gb/s per rank.
-- **Two-rank pair.** With both QSFP cages cabled to the same peer,
-  striping is literal: half the byte range per port, one reduction
-  (or raw copy) at the receiver. This is the only configuration in
-  which a second port helps a two-rank deployment at all.
+The algorithmic counts favor the ring by construction; what they do
+not establish is cost. Element-addition count is not GPU reduction
+cost: memory traffic, staging copies, and per-tile bookkeeping may
+dominate, and the fits above show the non-wire intercept is the
+quantity that decides the outcome. The measurement sequence exists to
+attribute those components before any implementation.
+
+At 16 MiB the ring's projected range is wide precisely because of
+that attribution uncertainty: roughly 1.22 ms if reduction and
+staging scale with the reduced element count, to roughly 2.28 ms if
+they do not scale at all. The bottom of that range beats NCCL by 2.3x;
+the top loses. This is a measurement question, not a design argument.
+
+Reference wire arithmetic, stated exactly: one 16 MiB (16,777,216
+byte) traversal at 200 Gb/s (25 decimal GB/s) is approximately
+671 µs.
 
 ## 3. Design
 
-One new session family, `BulkStripedSession`, alongside the existing
-collective sessions:
+A bidirectional-ring reduction schedule and native executor for the
+transport's existing tiled-capacity contract. This is deliberately
+not a new session architecture: `tp4_tiled_session.hpp` and the
+prefill capacity-pool contract
+(integrations/vllm/TP4_PREFILL_CAPACITY_POOL.md) already define
+tiles, active bytes, tickets, credits, ragged tails, and bounded
+arenas. Those are reusable contracts, not an implemented transport
+engine — their native dispatch is explicitly unsupported today — and
+this proposal supplies the missing executor rather than a parallel
+abstraction.
 
-- **Byte-range contract, no row geometry.** Bulk payloads are
-  contiguous byte ranges with an alignment requirement (proposed:
-  256-byte). The row-geometry machinery (query-row contracts,
-  provider seams, graph command descriptors) does not apply and is
-  not reused. The setup handshake exchanges an exact geometry record
-  {payload_bytes, chunk_bytes, schedule, topology}, following the
-  exact-record pattern the graph sessions use — no hashed identity.
+- **Fixed capacity, per-operation active bytes.** The setup handshake
+  pins, once, in an exact versioned record: maximum active bytes,
+  tile bytes, world size and topology, schedule and protocol
+  versions, datatype and alignment. Ragged operations then carry
+  `active_bytes` in their per-operation descriptors, following the
+  capacity-pool contract. No per-operation payload-size handshake
+  exists.
 - **Eager, not graph-captured.** Prefill runs eager in the serving
-  profiles, and bulk transfers (migration, streaming) are host-driven.
-  Graph capture is out of scope for the lane; a captured bulk
+  profiles, and transfer callers are host-driven. A captured bulk
   collective would be a separate proposal.
-- **Chunked pipeline.** Payloads are processed in fixed-size chunks
-  (proposed initial size: 1 MiB, tuned by measurement) so reduction
-  compute overlaps wire transfer and per-chunk protocol overhead
-  amortizes to noise at bulk sizes.
-- **Two operations.**
-  - `all_reduce(bytes)`: four-rank bidirectional ring
-    reduce-scatter + all-gather, or two-rank striped
-    exchange-and-add.
-  - `write(bytes)`: striped raw copy to one peer (the KV-migration /
-    weight-streaming primitive; no reduction, so it generalizes to
-    any registered destination arena).
-- **Arena reuse.** Registered `cudaHostAllocMapped` arenas, per-port
-  RC QPs, doorbell/credit machinery, and the bounded in-flight window
-  are the existing primitives; the session composes them rather than
-  introducing new transport mechanics.
+- **Tiled pipeline.** Tile-granular staging overlaps reduction with
+  wire transfer; tile size is a measured parameter, not a constant
+  chosen here.
+- **Two operations.** `all_reduce(active_bytes)` as the
+  bidirectional-ring reduce-scatter/all-gather, and
+  `write(active_bytes)` as a dual-direction raw copy to one peer for
+  KV migration and weight streaming (no reduction).
+- **Fail-closed semantics, stated precisely.** Before any native
+  enqueue, falling back to the stock path is safe and permitted.
+  After a native enqueue or RDMA publication, no fallback is
+  attempted under any condition, including operations whose output
+  was never copied out: peer arena and queue-pair state may already
+  have advanced, so the worker terminates, exactly as the existing
+  eager collective paths behave.
+- **Arena reuse.** Registered mapped arenas, per-port RC queue pairs,
+  doorbell and credit machinery, and the bounded in-flight window are
+  composed from the existing primitives.
 
-### Integration: serving prefill
+### Serving integration
 
-The vLLM adapter gains a bulk admission class behind its own
-research-only input, mutually independent of the decode inputs:
-an all-reduce whose payload exceeds the bulk threshold and matches
-the signature gate (world size, group, dtype, contiguity) routes to
-the bulk session instead of stock. Everything below the threshold is
-untouched. The audit records the routing so fallback remains counted,
-never assumed.
+A research-only admission input routes all-reduces above the bulk
+threshold (found by measurement, expected near the fitted 11 MiB
+crossover) and matching the signature gate to the bulk executor.
+Everything below the threshold is untouched. The audit records the
+routing; fallback remains counted, never assumed.
 
-### Integration: transfers
+### Out of scope
 
-`write(bytes)` is exposed through the C API for host-driven callers
-(SparkCache migration, weight staging). No vLLM involvement.
+- Decode collectives, the graph sessions, and the graph-only striped
+  schedule: unchanged.
+- Two-rank literal striping: the qualified four-node ring cables each
+  port to a different neighbor, so a two-port two-rank pair requires
+  a different physical cable plan. That is a separate proposal and
+  does not block this lane.
 
-## 4. What this explicitly does not change
+## 4. Measurement sequence
 
-- Decode collectives: the split-kernel sequential paths remain the
-  decode default; no schedule change is proposed for them.
-- The existing graph-only `dual_port_striped` schedule: unchanged,
-  still a decode-shape experiment.
-- NCCL remains the path for every collective family the lane does
-  not admit.
+1. Single-edge two-rank probe at 1/4/8/16/32 MiB with
+   producer/exchange/reduction/acknowledgement decomposition — bounds
+   the per-component costs (with the caveat that two-rank
+   decomposition bounds components but cannot fully compose the
+   four-rank result: topology, step count, and reduction order
+   differ).
+2. Four-rank write-only dual-direction probe — actual per-port
+   bandwidth with both directions active, no reduction, port byte
+   counters bracketing.
+3. Local reduce-only kernel over the same buffers, sizes, and
+   mapped-memory layout — isolates reduction and memory-traffic cost.
+4. Sequential versus bidirectional-ring all-reduce using the same
+   reducer and tiled staging — isolates the schedule.
+5. NCCL graph and eager controls extended through 16 and 32 MiB,
+   dual-rail, with both port counters and the loaded-version banner
+   retained.
+6. Gate: native serving work is authorized only if the measured
+   bidirectional ring beats the measured NCCL result at 16 MiB.
+   Beating the transport's own sequential path authorizes nothing.
 
-## 5. Build stages
+Every quoted result distinguishes wire utilization (bytes per port
+against link rate) from algorithm bandwidth (payload over time), and
+any bound coverage (sizes skipped, single-session statistics) is
+stated rather than implied.
 
-1. **Probe first.** Extend the four-rank probe (and revive the
-   two-rank probe harness) with a bulk mode: sequential versus
-   bidirectional-ring versus NCCL at 4/8/16/32 MiB, port byte
-   counters bracketing every leg, wire-utilization derivation
-   (bytes moved per port per second against link rate), correctness
-   on every rank. This stage alone answers whether the lane is worth
-   building and locates the admission threshold.
-2. **Native session.** `BulkStripedSession` with the two operations,
-   both topologies, exact geometry handshake, chunk pipeline.
-3. **vLLM bulk admission.** Research-gated prefill routing with
-   audit coverage; serving A/B on time-to-first-token at 8K/64K/128K
-   contexts with decode-regression guard.
-4. **Transfer callers.** SparkCache/KV-migration adoption of
-   `write(bytes)`.
+## 5. Adoption
 
-## 6. Adoption gates
-
-- Stage 1 proceeds to stage 2 only if measured bidirectional-ring
-  (or two-rank striped) bandwidth at 16 MiB exceeds the best
-  sequential result by at least 1.5x with correct results on all
-  ranks.
-- Stage 3 ships as research-only and is evaluated on measured
-  time-to-first-token, not projected; adoption into any qualified
-  profile requires its own qualification evidence.
-- Every quoted number distinguishes wire utilization (bytes per port
-  against link rate) from algorithm bandwidth (payload over time);
-  the striping probe record documents why conflating them misleads.
+Stage 6's gate feeds a research-only serving admission evaluated on
+measured time-to-first-token at matched contexts. Adoption into any
+qualified profile requires its own qualification evidence. If the
+gate fails, this document records the negative result and the lane
+ends there.

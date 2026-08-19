@@ -60,7 +60,7 @@ linked runbook. A document being listed here does not authorize remote action.
 | [Architecture](ARCHITECTURE.md) | Defines the four-Spark topology, transport design, CUDA-graph mechanism, runtime integration, and fallback path. |
 | [Public-functional lane definition](PUBLIC_FUNCTIONAL_TARGET.md) | Defines the supported matrix, unsupported scope, acceptance gates, evidence requirements, and change control. |
 | [SIRCL transport](SIRCL.md) | Defines the internal transport name, implemented data path, supported payloads, and extension scope. |
-| [Bulk striped transport proposal](../spark_transport/BULK_STRIPED_TRANSPORT.md) | Research-only design proposal for a dual-port bandwidth lane serving multi-MiB payloads; nothing implemented, adoption gated on staged measurements. |
+| [TP4 tiled bidirectional-ring bulk lane proposal](../spark_transport/BULK_STRIPED_TRANSPORT.md) | Research-only design proposal for a multi-MiB bulk collective lane: bidirectional-ring schedule under the tiled-capacity contract, gated on beating NCCL at 16 MiB; nothing implemented. |
 | [Generic runtime launcher](GENERIC_RUNTIME.md) | Defines generic launcher profiles, schema dispatch, runtime bundles, safety behavior, and extension points. |
 | [Evidence comparison checklist](EVIDENCE_COMPARISON_CHECKLIST.md) | Defines the validity contract for matched 16K sustained-decode comparisons. |
 | [Runtime gaps](RUNTIME_GAPS.md) | Records the 2026-07-27 upstream comparison, the 2026-07-29 recovery status, and the remaining qualification gaps. |
