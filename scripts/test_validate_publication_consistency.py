@@ -235,7 +235,9 @@ def test_malformed_json_reports_location_without_traceback(
     assert "Traceback" not in "\n".join(messages)
 
 
-@pytest.mark.parametrize("relative", ["docs/STATUS.json", "README.md"])
+@pytest.mark.parametrize(
+    "relative", ["docs/STATUS.json", "docs/profiles/README.md"]
+)
 def test_invalid_utf8_reports_error_without_traceback(
     publication_tree: Path, relative: str
 ) -> None:
@@ -244,6 +246,41 @@ def test_invalid_utf8_reports_error_without_traceback(
     messages = _messages(publication_tree)
     assert any(relative in message and "UTF-8" in message for message in messages)
     assert "Traceback" not in "\n".join(messages)
+
+
+def test_profile_registry_must_project_recipe_model_identities(
+    publication_tree: Path,
+) -> None:
+    registry = publication_tree / "docs/profiles/README.md"
+    prose = registry.read_text(encoding="utf-8").replace(
+        "d7d79c2d14599dfce7a5d12b85f7ad73f40e623d",
+        "missing-default-revision",
+    )
+    registry.write_text(prose, encoding="utf-8")
+
+    assert any(
+        "docs/profiles/README.md: missing glm52-exl3-tr3-3.25bpw model revision"
+        in message
+        for message in _messages(publication_tree)
+    )
+
+
+def test_default_recipe_doc_must_project_validated_image_identity(
+    publication_tree: Path,
+) -> None:
+    recipe_doc = publication_tree / "docs/EXL3_RECIPE.md"
+    prose = recipe_doc.read_text(encoding="utf-8").replace(
+        "sha256:20c4099f2e7e3dd3c8ab64f7d7930bde4f372df1895aa3ffa593252ca04ae96f",
+        "missing-image-identity",
+    )
+    recipe_doc.write_text(prose, encoding="utf-8")
+
+    assert any(
+        "docs/EXL3_RECIPE.md: missing glm52-exl3-tr3-3.25bpw "
+        "validated image identity"
+        in message
+        for message in _messages(publication_tree)
+    )
 
 
 def test_problems_are_deterministic_and_deduplicated(publication_tree: Path) -> None:
