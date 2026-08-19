@@ -7,7 +7,7 @@ directly cabled NVIDIA DGX Sparks:
 ```text
 willfalco/GLM-5.2-EXL3-TR3-3.25bpw@d7d79c2d14599dfce7a5d12b85f7ad73f40e623d
 TP4 / DCP4 / fixed MTP2 / 4,096-token batch budget /
-8 concurrent sequences (C8) / CUDA-graph widths through 32 (Q32)
+8 concurrent sequences (C8) / CUDA-graph query-row buckets through Q32
 524,288-token model limit / 4.5 GB KV per rank
 native prefix cache + one LMCache CS512 server per rank
 ```

@@ -18,9 +18,10 @@ four-Spark publication gate remain unchanged.
 
 This is also not the proposed EXL3 `shared_h_v1` format. The deployed checkpoint
 has no `rotation_layout` field and uses the legacy `per_expert_v1` layout. It was
-not rewritten or requantized. The r19 registry image from the upstream RTX
-6000 Pro inference community (`local-inference-lab`) evaluated during
-qualification was AMD64-only and therefore was not run on the ARM64 Sparks.
+not rewritten or requantized. An upstream release image carrying the tag `r19` was evaluated during
+qualification; its durable repository and digest identity are not
+recorded here. The evidenced conclusion stands on its own: the image
+was AMD64-only and therefore was not run on the ARM64 Sparks.
 
 The raw operator evidence remains outside the tracked documentation because it
 contains site identities and paths. The values below were transcribed from the

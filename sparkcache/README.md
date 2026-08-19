@@ -292,10 +292,10 @@ the false timeout was an observer-window error, not a runtime failure.
 | **Published here** | All-rank quorum admission, corruption withdrawal, clean miss/re-prefill, and self-healing invalidation |
 | **Published here** | Portable logical records: no CUDA pointers, physical slots, block tables, or transport sequence numbers on disk |
 | **Published + live in the earlier asynchronous-restore revision (`v47`)** | Asynchronous restore: only the restoring request parks while background load and verification run |
-| **Published + live v47** | Optional checksum-attested native direct placement with bounded parallel reads/hashing |
-| **Published + live v47 candidate** | Ownership-safe snapshot followed by asynchronous pack/hash/write/manifest commit |
-| **Current source + live v50 evidence** | Metadata-only discovery plus transactional 256-token streaming journal, bounded block leases, and checksum-pinned two-slot mapped-host gather ring |
-| **Current source + live v51 no-nudge pass** | Event-armed idle progress worker that completes ring/writer/manifest/terminal work without a later inference callback |
+| **Published + live in `v47`** | Optional checksum-attested native direct placement with bounded parallel reads/hashing |
+| **Published + live in `v47`, candidate maturity** | Ownership-safe snapshot followed by asynchronous pack/hash/write/manifest commit |
+| **In the published source, with live evidence from the streaming-pipeline revision (`v50`)** | Metadata-only discovery plus transactional 256-token streaming journal, bounded block leases, and checksum-pinned two-slot mapped-host gather ring |
+| **In the published source, with the idle-progress revision's (`v51`) live no-nudge pass** | Event-armed idle progress worker that completes ring/writer/manifest/terminal work without a later inference callback |
 | **Implemented offline; carrier pending** | Transactional, credit-bounded buddy replication suitable for the two diagonal 10 GbE links |
 | **Planned** | Prefix-aware partial restore and chunk reuse when conversations grow |
 

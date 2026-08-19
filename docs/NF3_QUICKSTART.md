@@ -14,7 +14,7 @@ layer), with two KV-storage profiles:
 ```text
 madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid
 TP4 / DCP4 / adaptive MTP2-4 /
-8 concurrent sequences (C8) / CUDA-graph widths through 40 (Q40)
+8 concurrent sequences (C8) / CUDA-graph query-row buckets through Q40
 four directly cabled DGX Sparks
 SparkCache disabled
 ```
@@ -265,7 +265,7 @@ The script:
 8. writes `.sparkring/bootstrap/site.yaml`;
 9. runs the read-only hardware/image/model preflight;
 10. launches all four ranks with the pinned graph profile of 8 concurrent
-    sequences (C8) and CUDA-graph widths through 40 (Q40).
+    sequences (C8) and CUDA-graph query-row buckets through Q40.
 
 To prepare everything but leave the model down, add `--no-launch`.
 

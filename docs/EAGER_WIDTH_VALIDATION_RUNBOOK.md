@@ -88,7 +88,7 @@ Operator-launched from CodesPC; stack down, links idle. `spark_tp4_tensor_probe`
 from the `sparkring-native-full-20260812T0335Z` build on r0, fanned to
 r1/r2/r3. Control TCP over the direct links (192.168.101/102/103/200.x)
 because the 192.168.0.x network was unavailable; RDMA devices and GID
-indexes per the per-rank env of the deployed production launch
+indexes per the per-rank env of the deployed serving launch
 configuration (generation label `v23`, from the container name component
 `launch-tunable-v10-adaptive-closure-v23`): `rocep1s0f0/f1`, odd ranks
 inverted, GID 3. Every rank reported `mismatched_elements=0 correct=true`
