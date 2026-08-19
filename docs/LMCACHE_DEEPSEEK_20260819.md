@@ -1,169 +1,111 @@
-# LMCache with DeepSeek-V4-Flash-0731 on the four-Spark ring, 2026-08-19
+# LMCache key-value reuse for DeepSeek-V4-Flash-0731 on the four-Spark ring
 
-Status: **blocked in the cache library's read path, with storage and
-cross-restart persistence proven functional.** LMCache stores this
-model's key-value state and restores it from a filesystem tier across
-a complete process teardown. Loading those restored bytes into device
-memory then fails on a buffer-size mismatch, every block is marked
-invalid, and the engine recomputes the prompt in full. The serving
-stack runs without LMCache.
+Status: **unsupported.** The cache package installed in the deployment
+image cannot map this checkpoint's key-value cache. Serving this model
+without external key-value reuse is unaffected and is specified below.
 
-Two defects were found. The first is fixed and its fix is verified
-here; the second is open and is the current blocker.
+## Why the installed package cannot map this checkpoint
 
-## What was established
+Conditions: `lmcache 0.5.2+glm52dcp4.1` in the deployment image, one
+multiprocess server per rank inside the engine container, four-rank
+tensor-parallel serving of `deepseek-ai/DeepSeek-V4-Flash-0731` with
+`--kv-cache-dtype fp8_ds_mla`.
 
-- **Registration works.** One LMCache multiprocess server per rank,
-  started inside the engine's own container, registers the engine's
-  key-value cache: `Registered KV cache ... with 170 layers`. The
-  layer count matches the model's heterogeneous set plus the DSpark
-  draft caches that speculation adds.
-- **Storage works.** A 52,623-token request produced 28 store events
-  and 3.2 GB of filesystem-tier objects.
-- **Cross-restart persistence works.** After removing the containers
-  entirely (engine, cache server, its memory tier, and the engine's
-  native prefix cache all destroyed), a fresh deployment's startup
-  scan primed 3.41 GB in 410 objects, and replaying the identical
-  prompt retrieved **410 of 410 keys from the filesystem tier, none
-  from memory**, in 606.4 ms. No surviving in-memory state can
-  explain that restore.
-- **The recompute fallback works.** With the scheduler defect below
-  fixed, a failed load is reported and rescheduled rather than
-  killing the engine core: `Recovered from KV load failure: 1
-  request(s) rescheduled (52480 tokens affected)`.
+Measurement: the server registers 170 layers and reports its kernel
+group inventory. Five engine groups are registered, and group 0 carries
+three distinct geometries:
 
-## Fixed defect: single-group unpack in the load-failure path
-
-Applying restored blocks failed in the engine's scheduler:
-
-```
-vllm/v1/core/sched/scheduler.py, _update_requests_with_invalid_blocks
-    (req_block_ids,) = self.kv_cache_manager.get_block_ids(req_id)
-ValueError: too many values to unpack (expected 1)
-```
-
-The key-value-load failure path unpacked exactly one block-identifier
-list, which holds only for models with a single key-value cache
-group. This checkpoint is heterogeneous, so the call returns one list
-per group, and any external connector reporting an invalid block on
-this model killed the engine core.
-
-The deployed fix iterates positions across all groups, intersects each
-group's block at a position against the invalid set, and evicts the
-tail of every group when eviction is required. With it applied on all
-four ranks the same condition now produces the recovery message quoted
-above.
-
-## Open defect: a uniform buffer for a non-uniform cache
-
-The cache server aborts every retrieve:
-
-```
-lmcache/v1/distributed/storage_manager.py, read prefetched results
-ValueError: Size mismatch: memory_obj nbytes=985664,
-                           gpu_buffer nbytes=15644672
-```
-
-The worker then reports `21525 block(s) marked invalid for scheduler
-recompute`, and the engine recomputes the whole prompt. Every replay
-repeats this, so no request ever benefits from the cache.
-
-The cause is visible in the server's own group inventory. This model
-registers five kernel groups whose geometry does not agree:
-
-| Groups | Layers | Tokens per block | Head size | Element size |
+| Group | Layers | Tokens per block | Head size | Element size |
 |---|---:|---:|---:|---:|
-| 0-2, latent attention | 23 each | 64 | 584 | 1 |
-| 3, sparse indexer | 21 | 4 | 512 and 2048 | 4 |
-| 4, sliding-window compressor | 20 | 8 | 1024 | 4 |
+| 0 | 21 | 64 | 584 | 1 |
+| 0 | 21 | 64 | 132 | 1 |
+| 0 | 20 | 2 | 584 | 1 |
+| 1, 2 | 23 each | 64 | 584 | 1 |
+| 3 | 21 | 4 | 512 and 2048 | 4 |
+| 4 | 20 | 8 | 1024 | 4 |
 
-Block sizes of 4, 8, and 64 tokens and element sizes of 1 and 4 bytes
-coexist in one registration. The read path sizes one device staging
-buffer per transfer against a single geometry, so the buffer it
-allocates and the stored object it is asked to receive disagree and
-the transfer raises before any bytes land.
+Every retrieve aborts in the device-side read path with
+`Size mismatch: memory_obj nbytes=985664, gpu_buffer nbytes=15644672`.
+The worker marks 21,525 blocks invalid and the engine recomputes the
+prompt in full.
 
-The write path has no such assumption: it stores each group correctly,
-which is why all 410 objects are found and read back from the
-filesystem tier. Only the read-into-device-memory path is affected.
+Result: the package contains no reference to `deepseek_v4`, and its read
+path (`lmcache/v1/gpu_connector/gpu_ops.py`) sizes one device staging
+buffer per transfer with no notion of kernel groups.
 
-This is a property of the cache library and the checkpoint, not of the
-hardware, the fabric, or the deployment configuration. A model with a
-single homogeneous key-value group does not reach it.
+Conclusion: a single buffer size cannot satisfy a group holding three
+geometries. The support required for this checkpoint is absent from this
+package. Upstream publishes a
+[DeepSeek-V4-Flash recipe](https://docs.lmcache.ai/recipes/deepseek_v4_flash.html)
+stating that multiprocess mode maps these groups without additional
+configuration, so a package carrying that support is the required input.
 
-## Attribution cautions recorded for reuse
+## Behavior that is functional
 
-Two different signals have each falsely indicated success on this
-work. Both are recorded because each is individually convincing.
+The failure is confined to loading stored bytes into device memory.
 
-- **Speed is not attribution.** A same-process replay measured 36-40x
-  faster than cold with byte-identical output. Engine metrics for that
-  run showed `external_prefix_cache_hits_total = 0` against 47,738
-  queries while the engine's own prefix cache reported 47,104 hits:
-  the speedup was native prefix caching. Only a measurement that
-  destroys the engine's own cache attributes a restore to the external
-  tier.
-- **A hit counter is not a completed load.**
-  `external_prefix_cache_hits_total` counts lookup matches, not bytes
-  delivered. A run reporting 104,960 hits against 105,246 queries,
-  with the engine's native counter at zero, was recomputing every
-  token: the lookups matched and the transfers then failed. Confirm
-  that the request completes before reading any cache counter as
-  success.
+- Registration: 170 layers, matching the model's heterogeneous set plus
+  the speculative draft caches.
+- Storage: a 52,623-token request produces 28 store events and 3.2 GB of
+  filesystem-tier objects.
+- Cross-restart persistence: after the engine, cache server, memory
+  tier, and the engine's native prefix cache are all destroyed, a fresh
+  deployment's startup scan primes 410 objects and retrieves 410 of 410
+  keys from the filesystem tier, none from memory, in 659 ms.
+- Load-failure recovery: the engine reschedules rather than terminating,
+  reporting `Recovered from KV load failure`. This requires the
+  multi-group block-identifier handling described below.
 
-## Configuration that reached this point
+## Engine requirements for this checkpoint
 
-Per rank, inside the engine container so that server and engine share
-a lifecycle and no server can outlive the engine whose device memory
-it maps: chunk size 256 matching the engine block size, an 8 GiB lazy
-memory tier, and a bounded `fs_native` filesystem tier. Engine side:
-the multiprocess connector with both tiers listed,
-`kv_load_failure_policy` recompute, and
-`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False`.
+These hold whether or not external key-value reuse is in use.
 
-Three conditions had to hold before registration succeeded:
+- **Cache dtype `fp8_ds_mla`.** The engine gates the layout on an exact
+  string comparison against `fp8_ds_mla`, so `--kv-cache-dtype fp8`
+  selects a generic path that declares a geometry differing from the one
+  it allocates. Both values allocate identically; only the declaration
+  differs, which is invisible to the engine's own kernels and incorrect
+  for any external consumer.
+- **Tokenizer mode `deepseek_v4`.**
+- **Multi-group block identifiers in the load-failure path.**
+  `KVCacheManager.get_block_ids` returns one list per key-value cache
+  group. A single-list unpack terminates the engine core on the first
+  invalid block. The deployed handling iterates positions across all
+  groups and evicts the tail of every group when eviction is required.
 
-- **The server must run inside the engine's container.** A server in
-  a separate container cannot import the engine's device memory:
-  registration fails with `cudaErrorInvalidResourceHandle`.
-- **The registration deadline must exceed the registration time.**
-  Registering 170 layers against a 32 GiB per-rank reservation took
-  about 75 seconds, past the 60-second default; the deadline is now
-  300 seconds. A deployment with a smaller reservation registers
-  faster.
-- **The heartbeat guard must be patched.** In the installed package,
-  `if self._heartbeats is not None:` guards the heartbeat thread
-  against an empty dictionary, so the thread never starts and the
-  server reaps a healthy engine after roughly 150 seconds. Stores
-  continue while lookups silently stop. The patch is deployed; no run
-  recorded here stayed idle long enough to exercise it, so its effect
-  is unverified.
+Key-value capacity under a 32 GiB per-rank reservation is 4,382,668
+tokens with speculative decoding at depth five and 4,581,351 tokens
+without it, so speculation costs 4.5% of capacity. Capacity does not
+vary with the cache dtype value.
 
-## The build in use is not stock
+## Validation method
 
-The installed package reports itself as `lmcache 0.5.2+glm52dcp4.1`: a
-build carrying local changes made for a GLM deployment, whose
-key-value cache is a single homogeneous group. The size check that
-raises is a correct guard in
-`lmcache/v1/gpu_connector/gpu_ops.py`, comparing the stored object
-against the buffer it was handed; the sizing decision that produces
-the disagreement happens before it. Whether stock LMCache at the same
-version sizes per group is not established here, and the local suffix
-means the failure cannot be attributed upstream on this evidence.
+An external key-value tier is functional only when a request served from
+a destroyed engine satisfies all of: the request completes; its output
+hash matches the store-phase hash for the same prompt; the engine's
+native prefix-cache counter is zero, proving the engine's own cache
+cannot account for the result; and the external hit counter is non-zero.
 
-## What would unblock it
+Counters and timings are corroboration and are not sufficient alone. Two
+instrument properties make partial evidence misleading:
 
-Two candidates, neither attempted here:
+- `external_prefix_cache_hits_total` counts lookup matches, not completed
+  transfers. A configuration that fails every transfer reports 104,960
+  hits against 105,246 queries while recomputing every token.
+- A replay within a live engine process is served by the engine's own
+  prefix cache. Such a replay measures 36-40x faster than cold with
+  byte-identical output while the external hit counter reads 0 against
+  47,738 queries and the native counter reads 47,104.
 
-1. **Establish whether stock LMCache has the same limitation.** The
-   installed build is a local GLM-oriented fork, so the first question
-   is whether an unmodified build of the same version, or a newer one,
-   sizes the staging buffer per kernel group. This is a packaging
-   question before it is a patching question.
-2. **Compare against the two-Spark deployment's engine tree.** That
-   deployment runs LMCache against a different tree; if its read path
-   already handles per-group geometry, it names the change directly.
+## Conditions required for support
 
-Patching the installed build is the fallback if neither resolves it,
-and would mean sizing the staging buffer per kernel group rather than
-once per transfer.
+1. A cache package carrying DeepSeek-V4 kernel-group support, with the
+   local GLM changes in `0.5.2+glm52dcp4.1` either shown to be
+   unnecessary or reconciled with it.
+2. The validation method above, satisfied in full.
+3. Idle-interval verification of the heartbeat guard. In the installed
+   package `if self._heartbeats is not None:` tests a dictionary for
+   existence rather than contents, so the heartbeat thread does not start
+   and the server reaps a live engine after roughly 150 seconds, during
+   which stores continue and lookups stop. Corrected handling is
+   deployed; no recorded interval is long enough to exercise it.
