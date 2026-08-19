@@ -42,6 +42,7 @@ index; the rows here are the deployment entry points.
 | Use the operator-accepted 3.5-bpw configuration | GLM-5.2 EXL3 3.5-bpw fixed-MTP4 (`R7`) | Accepted on one four-Spark appliance; a clean rebuild requires live qualification | [3.5-bpw quickstart](docs/EXL3_R7_QUICKSTART.md) |
 | Use the reproducible public default | GLM-5.2 EXL3 3.25-bpw plus LMCache CS512 | Clean-checkout bounded live validation on four Sparks | [public-default quickstart](docs/QUICKSTART.md) |
 | Use the deterministic alternative | GLM-5.2 NF3 | Accepted public-functional alternative | [NF3 quickstart](docs/NF3_QUICKSTART.md) |
+| Serve DeepSeek-V4-Flash-0731 | DeepSeek V4 Flash, official FP8, native DSpark speculation | Functional launch with operator-observed performance; not shadow-qualified | [DeepSeek quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Qualify a non-GLM width over the ring | Width-generic admission plus a per-model profile page | Evidence scope varies by profile; the small-model shadow set is the validation instrument | [profiles registry](docs/profiles/README.md) |
 
 ## Flagship profile: GLM-5.2 EXL3 R7 3.5-bpw fixed-MTP4

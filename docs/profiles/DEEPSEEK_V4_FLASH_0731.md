@@ -7,6 +7,10 @@ the bounded probes below attaches. A research-only serving configuration
 routing its decode collectives through the transport's width-4096 graph
 session exists and is evidenced below; it is not a qualified profile.
 
+To stand this model up, use the
+[DeepSeek quickstart](../DEEPSEEK_V4_FLASH_QUICKSTART.md); this page is
+the evidence record behind it.
+
 ## Operator launch record, 2026-08-18
 
 The operator launched the model on the four directly cabled DGX Sparks the
