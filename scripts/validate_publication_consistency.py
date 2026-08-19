@@ -586,39 +586,52 @@ class PublicationValidator:
                         parse_json=field == "machine_readable_evidence",
                     )
 
-    def validate_summary_identities(self) -> None:
-        try:
-            readme = (self.root / "README.md").read_text(encoding="utf-8")
-        except UnicodeError as exc:
-            self.problem("README.md", "", f"public summary is not valid UTF-8: {exc}")
-            return
-        except OSError as exc:
-            self.problem("README.md", "", f"cannot read public summary: {exc}")
-            return
-        required: list[tuple[str, str]] = []
+    def validate_profile_identity_owners(self) -> None:
+        """Project recipe identities into their canonical human-readable owners."""
+
+        registry_required: list[tuple[str, Any]] = []
         for recipe_id in (DEFAULT_RECIPE_ID, R7_RECIPE_ID):
             if recipe_id not in self.recipes:
                 continue
             _, recipe = self.recipes[recipe_id]
-            required.extend(
+            registry_required.extend(
                 [
                     (f"{recipe_id} model repository", recipe["model"]["repository"]),
                     (f"{recipe_id} model revision", recipe["model"]["revision"]),
                 ]
             )
+
+        projections: list[tuple[str, list[tuple[str, Any]]]] = [
+            ("docs/profiles/README.md", registry_required),
+        ]
         if DEFAULT_RECIPE_ID in self.recipes:
             _, default_recipe = self.recipes[DEFAULT_RECIPE_ID]
-            required.append(
+            projections.append(
                 (
-                    f"{DEFAULT_RECIPE_ID} validated image identity",
-                    default_recipe["runtime"].get("validated_local_image_id"),
+                    "docs/EXL3_RECIPE.md",
+                    [
+                        (
+                            f"{DEFAULT_RECIPE_ID} validated image identity",
+                            default_recipe["runtime"].get("validated_local_image_id"),
+                        )
+                    ],
                 )
             )
-        for label, token in required:
-            if not isinstance(token, str):
-                self.problem("README.md", "", f"cannot project non-string {label}")
-            elif token not in readme:
-                self.problem("README.md", "", f"missing {label}: {token}")
+
+        for relative, required in projections:
+            try:
+                prose = (self.root / relative).read_text(encoding="utf-8")
+            except UnicodeError as exc:
+                self.problem(relative, "", f"canonical profile prose is not valid UTF-8: {exc}")
+                continue
+            except OSError as exc:
+                self.problem(relative, "", f"cannot read canonical profile prose: {exc}")
+                continue
+            for label, token in required:
+                if not isinstance(token, str):
+                    self.problem(relative, "", f"cannot project non-string {label}")
+                elif token not in prose:
+                    self.problem(relative, "", f"missing {label}: {token}")
 
     def validate_canonical_claim_owners(self) -> None:
         """Anchor projections to the lane and measured-claim specifications."""
@@ -723,7 +736,7 @@ class PublicationValidator:
         self.validate_recipe_roles()
         self.validate_default_receipt()
         self.validate_selected_references()
-        self.validate_summary_identities()
+        self.validate_profile_identity_owners()
         self.validate_canonical_claim_owners()
         self.validate_stable_status()
         return sorted(set(self.problems))
