@@ -1,24 +1,32 @@
 # SparkRing
 
-SparkRing is a low-latency collective transport and inference runtime for switchless GB1X (NVIDIA DGX Spark) clusters.
+SparkRing is a low-latency collective transport and inference runtime for
+switchless clusters of NVIDIA DGX Spark systems powered by the GB10 Grace
+Blackwell Superchip.
 
 Four 200 Gb/s ConnectX-7 links form a physical ring across four directly
 connected DGX Sparks, with no external Ethernet or InfiniBand switch in the
-inference fabric. Models are served over that ring as tensor-parallel
-deployments; which models, and with what evidence, is recorded in the
-[validated-profiles registry](docs/profiles/README.md).
+inference fabric. Models run as tensor-parallel deployments over that ring.
+The [validated-profiles registry](docs/profiles/README.md) records each
+model's configuration, maturity, evidence, and limitations.
 
-The stack combines SIRCL custom RDMA collectives, CUDA-graph-replayable command rings, a source-attested and fail-closed vLLM overlay,
-DCP4, support for fixed and adaptive MTP speculative decoding, and a patched ring-safe NCCL fallback for communication the custom path does not handle.
-A pip-installable plugin (`sparkring_plugin/`) packages the vLLM adapters as a `vllm.general_plugins` entry point: fail-closed like the overlay, but feature-detected rather than source-attested, and offline-validated only.
+The stack combines SIRCL custom RDMA collectives, CUDA-graph-replayable
+command rings, DCP4, fixed and adaptive MTP speculative decoding, and a
+patched ring-safe NCCL fallback for communication outside the custom path.
 
-Serving admission is model-agnostic: the transport carries no
-model-specific policy, and models qualify against it through the
-shadow-mode comparison windows recorded per profile (admission mechanics:
-the [vLLM integration README](spark_transport/integrations/vllm/README.md)).
+The container deployment uses a source-attested, fail-closed vLLM overlay.
+A pip-installable plugin (`sparkring_plugin/`) provides a second
+integration path through `vllm.general_plugins`; it is feature-detected,
+fail-closed, and offline-validated, but not source-attested at runtime.
 
-Use the [documentation map](docs/README.md) to find the canonical specification,
-runnable procedure, evidence record, or historical reference for a task.
+Transport admission is model-agnostic: the core carries no model-specific
+row policy. Each model profile records the eager and graph shapes actually
+qualified, the associated shadow-mode numerical evidence, and the
+collectives that remain on NCCL.
+
+Use the [documentation map](docs/README.md) to find canonical
+specifications, runnable procedures, evidence records, and historical
+references.
 
 ## Acknowledgements
 
