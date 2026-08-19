@@ -2,8 +2,10 @@
 
 Status: **functional launch attested (operator record, 2026-08-18); not
 shadow-qualified.** The model loads and serves on the four-Spark ring; no
-shadow-comparison window has been closed, so no correctness or performance
-claim attaches.
+shadow-comparison window has been closed, so no correctness claim beyond
+the bounded probes below attaches. A research-only serving configuration
+routing its decode collectives through the transport's width-4096 graph
+session exists and is evidenced below; it is not a qualified profile.
 
 ## Operator launch record, 2026-08-18
 
@@ -27,9 +29,57 @@ day it was staged. Attested facts:
 
 What this record does not establish: no shadow window closed for any
 width-4096 signature, so numerical agreement with the stock path is
-unmeasured; no throughput, latency, or quality number exists; no model
-revision was pinned; and the model's native DSpark speculative mechanism
-is not part of the attested configuration.
+unmeasured; no model revision was pinned.
+
+## Serving configuration with speculative decoding, 2026-08-18
+
+A later same-day configuration serves with the model's native DSpark
+speculative mechanism and CUDA graphs:
+
+- `--speculative-config '{"method": "dspark",
+  "num_speculative_tokens": 7, "moe_backend": "b12x"}'`. The
+  `moe_backend` selection is load-bearing for draft quality: measured
+  draft acceptance on code prompts was 42% without it and 86% with it.
+  The checkpoint carries DSpark draft heads, not a classic MTP block;
+  a `deepseek_mtp` speculative method fails at weight load.
+- `VLLM_SPARK_TP4_MODE=custom`, CUDA graphs enabled, 32 sequences,
+  32 GiB key-value cache per rank. The request limit is a launch
+  choice against the checkpoint's native 1,048,576 maximum position
+  (YaRN, factor 16): first served at 131,072 (engine-reported pool
+  1,859,904 tokens), relaunched the same day at 524,288
+  (engine-reported concurrency 8.36 full contexts; the token-count
+  accounting differs between the two limits and is not reconciled).
+- Operator-observed serving behavior on 2026-08-18: single-stream
+  decode near 119-132 tokens per second on code prompts at about 86%
+  draft acceptance (stock NCCL collectives inside graphs), and
+  339.9 tokens per second aggregate at concurrency 32 with 16K-token
+  resident contexts (research transport configuration below). These
+  are operator observations, not qualified measurements.
+
+## Research transport configuration: width-4096 graph collectives
+
+With `VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH=1` (research-only,
+custom mode), the serving profile's decode all-reduces are captured
+into CUDA graphs through one maximum-capacity BF16 [Q <= 512, 4096]
+native session (sequential tiered_64k kernel, two-slot deferred ACK)
+instead of the stock path. Evidence, 2026-08-18:
+
+- Model-free four-rank gate: fixed-Q legs at Q8/Q48/Q256/Q288/Q320/
+  Q512 and a 134-node mixed-Q leg on one session, all reporting zero
+  mismatches and zero overflow on all four ranks
+  ([probe record](../DUAL_PORT_STRIPING_PROBE_20260818.md) documents
+  the instrument and the matched NCCL control).
+- Serving launch: 7,445 width-4096 all-reduce graph nodes captured
+  per rank, zero capture-phase stock fallback for admitted
+  signatures, 9,501 replay commands completed with zero overflow
+  after a 32-way request burst; bounded greedy probes returned
+  correct results.
+- Out of the session's scope by design: the drafter's width-256
+  collectives and the [2048, 4096] chunked-prefill all-reduces, which
+  remain on the stock path.
+
+This configuration is research-only: no shadow-comparison window has
+closed for it, and it carries no qualification.
 
 ## Model identity and public-config facts
 
@@ -60,8 +110,9 @@ and the method in the
 - `VLLM_SPARK_TP4_EAGER_WIDTHS=4096`, identical on all four ranks (a mixed
   environment fails closed at session connect). The 64 attention heads and
   the 4096 width both divide evenly by the four-rank tensor parallelism.
-- Eager only, contiguous CUDA BF16 `[Q, 4096]`; CUDA-graph capture remains
-  6144-only.
+- Eager admission is contiguous CUDA BF16 `[Q, 4096]`. CUDA-graph
+  capture at width 4096 exists only behind the research-only input
+  described above; the qualified graph paths remain 6144-only.
 - Shadow qualification per the runbook's leg-3 method — 10,000-collective
   comparison windows per observed signature in
   `VLLM_SPARK_TP4_MODE=shadow` — before any promotion decision.
