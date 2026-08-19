@@ -55,7 +55,8 @@ speculative mechanism and CUDA graphs:
   accounting differs between the two limits and is not reconciled).
 - Operator-observed serving behavior on 2026-08-18: single-stream
   decode near 119-132 tokens per second on code prompts at about 86%
-  draft acceptance (stock NCCL collectives inside graphs), and
+  draft acceptance (collectives inside graphs served by the patched
+  ring-safe NCCL), and
   339.9 tokens per second aggregate at concurrency 32 with 16K-token
   resident contexts (research transport configuration below). These
   are operator observations, not qualified measurements.

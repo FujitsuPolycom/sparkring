@@ -5,7 +5,8 @@ directly cabled DGX Sparks; no serving claim, no promotion. The main
 conclusions are stated first; everything else here is conditions,
 data, and limitations. A same-day follow-up session completed the
 originally missing control legs, the counter instrumentation, and a
-comparable NCCL control; those results are folded in below.
+comparable control against the patched NCCL fallback; those results
+are folded in below.
 
 ## Conclusion
 
@@ -27,10 +28,11 @@ tighter tail (p95 1,259 µs versus 1,382-1,559 µs). Striping never
 beats the best sequential kernel; its earlier apparent wins were
 measured against the pathological fused baseline.
 
-A graph-captured, device-timed NCCL control on the same ring (see
-below) shows an approximately 800 µs floor for NCCL all-reduce at
-every payload measured, versus 174-1,223 µs for the transport's best
-configurations at the matched payloads.
+A graph-captured, device-timed control against the deployment's
+patched ring-safe NCCL fallback on the same ring (see below) shows an
+approximately 800 µs floor at every payload measured, versus
+174-1,223 µs for the transport's best configurations at the matched
+payloads.
 
 ## Instrument and conditions
 
@@ -80,9 +82,13 @@ algorithm bandwidth (payload divided by time), not wire utilization.
 
 ## NCCL control
 
-The follow-up session ran a comparable NCCL control: four ranks in
-throwaway containers using the deployment image and per-rank serving
-environment, `torch.distributed.all_reduce` captured into a CUDA
+The follow-up session ran a comparable control against the
+deployment's patched ring-safe NCCL, which is the fallback the
+serving stack actually uses; unpatched upstream NCCL cannot
+initialize on this switchless topology at all (see
+[Reference bring-up reconstruction](SETUP.md), "Why stock NCCL cannot
+work here"). Four ranks in throwaway containers using the deployment
+image and per-rank serving environment, `torch.distributed.all_reduce` captured into a CUDA
 graph per payload, individual replays timed with device events
 (synchronized single-replay samples, 20 warmup, 200 iterations),
 result correctness asserted. The loaded runtime identified itself as
@@ -99,8 +105,8 @@ preserved before container removal.
 | 2,359,296 | 1,149.9 | 1,678.1 |
 | 6,291,456 | 1,600.8 | 2,156.5 |
 
-Under this scope NCCL shows an approximately 800 µs floor at every
-payload. At the matched points the transport's best configurations
+Under this scope the patched NCCL fallback shows an approximately
+800 µs floor at every payload. At the matched points the transport's best configurations
 measure 174 µs (491,520 bytes) and 1,223 µs (6,291,456 bytes) under
 the same isolated single-replay device timing. Two topology
 observations from the same control: rank 0's byte counters show NCCL
@@ -131,13 +137,16 @@ variables, not a controlled isolation.
 - Limited-session statistics: one or two 200-iteration sessions per
   configuration (three for sequential-fused Q512); p95 values are
   weakly supported; raw samples were not retained.
-- Any projection to serving payloads is unvalidated: no decode-step
-  shape trace exists, and speculative-verification batch shapes are
-  assumptions, not measurements.
-- The NCCL control used the stock configuration reachable through the
-  deployment environment; no NCCL tuning (algorithm, protocol,
-  channel, or chunk-size overrides) was attempted, so the control
-  bounds the deployment's NCCL path, not NCCL's best case.
+- Any projection to serving payloads remains unvalidated. The decode
+  shape trace below establishes which collective shapes the serving
+  profile produces, but not how often each captured graph bucket
+  replays, and not how much of any collective's duration is exposed
+  on the decode critical path rather than overlapped with compute.
+- The control used the deployment's patched ring-safe NCCL in its
+  default configuration; no tuning (algorithm, protocol, channel, or
+  chunk-size overrides) was attempted, so it bounds the deployment's
+  fallback path, not that library's best case, and it is not a
+  measurement of upstream NCCL.
 - An earlier same-day eager host-timed NCCL run is superseded by the
   graph-captured control above and is not quoted.
 
@@ -157,7 +166,8 @@ armed. Findings, capture-inventory scope only (signature counts do
 not measure how often a captured graph bucket is replayed):
 
 - Every `[Q, 4096]` collective in the profile currently takes the
-  stock NCCL path (`ineligible_signature` / capture-phase
+  stock dispatch path, which is served by the patched ring-safe NCCL
+  (`ineligible_signature` / capture-phase
   `graph_transport_disabled`); the transport carries none of them.
 - The captured graph buckets are Q = 48 to 512 in steps of 8 (eight
   rows per sequence: seven draft tokens plus one target), so the
