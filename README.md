@@ -10,9 +10,15 @@ inference fabric. Models are served over that ring as tensor-parallel
 deployments; which models, and with what evidence, is recorded in the
 [validated-profiles registry](docs/profiles/README.md).
 
-The stack combines SIRCL custom RDMA collectives, CUDA-graph-replayable command rings, a source-attested and fail-closed vLLM overlay,
-DCP4, support for fixed and adaptive MTP speculative decoding, and a patched ring-safe NCCL fallback for communication the custom path does not handle.
-A pip-installable plugin (`sparkring_plugin/`) packages the vLLM adapters as a `vllm.general_plugins` entry point: fail-closed like the overlay, but feature-detected rather than source-attested, and offline-validated only.
+SparkRing routes qualified vLLM collectives through SIRCL, its custom RDMA
+transport for the four-node ring. CUDA-graph command rings support repeated
+decode work, while patched NCCL handles communication outside SIRCL's supported
+paths. The repository also provides speculative-decoding support, launch
+tooling, and model profiles with explicit validation evidence.
+
+vLLM integration is available through the published runtime overlay or an
+optional Python plugin (`sparkring_plugin/`). The plugin passes offline tests
+but has not yet been tested on a live cluster.
 
 Serving admission is model-agnostic: the transport carries no
 model-specific policy, and models qualify against it through the
