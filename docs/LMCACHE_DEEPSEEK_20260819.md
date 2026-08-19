@@ -139,11 +139,31 @@ Three conditions had to hold before registration succeeded:
   recorded here stayed idle long enough to exercise it, so its effect
   is unverified.
 
+## The build in use is not stock
+
+The installed package reports itself as `lmcache 0.5.2+glm52dcp4.1`: a
+build carrying local changes made for a GLM deployment, whose
+key-value cache is a single homogeneous group. The size check that
+raises is a correct guard in
+`lmcache/v1/gpu_connector/gpu_ops.py`, comparing the stored object
+against the buffer it was handed; the sizing decision that produces
+the disagreement happens before it. Whether stock LMCache at the same
+version sizes per group is not established here, and the local suffix
+means the failure cannot be attributed upstream on this evidence.
+
 ## What would unblock it
 
-The read path must size its staging buffer per kernel group rather
-than once per transfer. A deployment of this model on two Sparks runs
-a different engine tree; comparing that tree's read path against this
-one is the next step, and would also settle whether the geometry
-assumption is present upstream or specific to the installed build.
-Neither is attempted here.
+Two candidates, neither attempted here:
+
+1. **Establish whether stock LMCache has the same limitation.** The
+   installed build is a local GLM-oriented fork, so the first question
+   is whether an unmodified build of the same version, or a newer one,
+   sizes the staging buffer per kernel group. This is a packaging
+   question before it is a patching question.
+2. **Compare against the two-Spark deployment's engine tree.** That
+   deployment runs LMCache against a different tree; if its read path
+   already handles per-group geometry, it names the change directly.
+
+Patching the installed build is the fallback if neither resolves it,
+and would mean sizing the staging buffer per kernel group rather than
+once per transfer.
