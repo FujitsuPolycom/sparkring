@@ -137,11 +137,19 @@ All seven gates below are blocking:
 
 ## Qualification sequence
 
-Print the offline plan without contacting a host:
+Exercise the offline selector and its plan contract without contacting a
+host:
 
 ```powershell
-python spark_transport/scripts/plan_tp4_prefill_capacity_pool.py
+python -m pytest spark_transport/integrations/vllm/test_spark_tp4_prefill_capacity_pool.py -q
 ```
+
+The tracked tree does not provide a standalone planner command. The test
+above validates the offline selector in
+[`spark_tp4_prefill_capacity_pool.py`](spark_tp4_prefill_capacity_pool.py)
+and the plan contract it returns; emitting a plan as JSON from a command
+line is separate implementation work, and no such command may be quoted
+here until it is tracked in this repository.
 
 After all prerequisites are implemented, the live harness must run bracketed
 baseline/candidate arms for Q40, Q512, Q1024, and Q4096. It must also exercise
