@@ -13,6 +13,7 @@ canonical-source table below and report the drift.
 | Deploy the public-default EXL3 3.25-bpw plus LMCache CS512 profile | [Public-default quickstart](QUICKSTART.md) |
 | Reproduce the operator-scoped EXL3 3.5-bpw profile; rebuilt images remain candidates until promotion | [EXL3 3.5-bpw quickstart](EXL3_R7_QUICKSTART.md) |
 | Deploy the accepted deterministic NF3 alternative | [NF3 quickstart](NF3_QUICKSTART.md) |
+| Serve DeepSeek-V4-Flash-0731 on the ring | [DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Understand the supported public-functional matrix and acceptance requirements | [Public-functional lane definition](PUBLIC_FUNCTIONAL_TARGET.md) |
 | Interpret measurements and evidence scope | [Measured results](RESULTS.md) |
 | Understand the four-Spark runtime and transport design | [Architecture](ARCHITECTURE.md) |
@@ -48,6 +49,7 @@ linked runbook. A document being listed here does not authorize remote action.
 | [EXL3 3.5-bpw composition](EXL3_R7_OPERATOR_REPRODUCTION.md) | Reconstructs the public source and generated-layer composition used by the operator-accepted profile. |
 | [EXL3 3.5-bpw promotion checklist](EXL3_R7_PROMOTION_CHECKLIST.md) | Qualifies an exact rebuilt image and defines the evidence required for a separate promotion decision. |
 | [NF3 quickstart](NF3_QUICKSTART.md) | Prepares, launches, verifies, and troubleshoots the accepted deterministic alternative. |
+| [DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md) | Launches DeepSeek-V4-Flash-0731 four-rank with its native speculative decoding, with the failure modes that cost time; functional launch, not shadow-qualified. |
 | [CUDA-graph correctness gate](CUDAGRAPH_CORRECTNESS_GATE.md) | Runs the minimal live A/B and deterministic comparison required to diagnose graph replay correctness. |
 | [SparkCache DCP2 dry-run plan](SPARKCACHE_DCP2_DRY_RUN_PLAN.md) | Regenerates and inspects a SparkCache plan; embedded operator state is historical and must be rediscovered. |
 | [Eager width admission validation runbook](EAGER_WIDTH_VALIDATION_RUNBOOK.md) | Runs the three-leg validation for width-generic eager TP4 all-reduce admission; leg records are chronological evidence. |
