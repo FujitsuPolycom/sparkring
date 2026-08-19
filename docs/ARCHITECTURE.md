@@ -1,10 +1,11 @@
 # SparkRing Architecture
 
-SparkRing is a low-latency collective transport and inference-runtime stack for
-**switchless, directly cabled NVIDIA DGX Spark (GB10) clusters**. Four Sparks are
+SparkRing is a low-latency collective transport and vLLM-based
+inference-serving stack for **switchless clusters of directly cabled NVIDIA DGX
+Spark systems powered by the GB10 Grace Blackwell Superchip**. Four Sparks are
 joined into a 200 Gbit/s cycle with plain DAC cables — no switch — and a custom
-RoCE transport drives the hot decode collectives of GLM-5.2 under vLLM, with a
-patched NCCL as the attested fallback lane for everything else.
+RoCE transport drives qualified hot collectives under vLLM, with patched NCCL
+as the attested fallback lane for everything else.
 
 This document explains how the pieces fit. File paths are relative to the
 repository root so you can jump straight to code.
