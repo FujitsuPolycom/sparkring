@@ -11,7 +11,7 @@ canonical-source table below and report the drift.
 |---|---|
 | Check hardware, operating-system, network, storage, and access requirements | [Prerequisites](PREREQUISITES.md) |
 | Deploy the public-default EXL3 3.25-bpw plus LMCache profile | [Public-default quickstart](QUICKSTART.md) |
-| Reproduce the operator-scoped EXL3 3.5-bpw profile; rebuilt images remain candidates until promotion | [EXL3 3.5-bpw quickstart](EXL3_R7_QUICKSTART.md) |
+| Reproduce the operator-scoped EXL3 3.5-bpw profile; rebuilt images remain candidates until promotion | [EXL3 3.5-bpw quickstart](GLM52_35BPW_QUICKSTART.md) |
 | Deploy the accepted deterministic NF3 alternative | [NF3 quickstart](NF3_QUICKSTART.md) |
 | Serve DeepSeek-V4-Flash-0731 on the ring | [DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Understand the supported public-functional matrix and acceptance requirements | [Public-functional lane definition](PUBLIC_FUNCTIONAL_TARGET.md) |
@@ -45,9 +45,9 @@ linked runbook. A document being listed here does not authorize remote action.
 | [Public-default quickstart](QUICKSTART.md) | Concise canonical entry point for the EXL3 3.25-bpw plus LMCache deployment. |
 | [Detailed EXL3 procedure](EXL3_QUICKSTART.md) | Expands the public-default build, distribution, launch, attestation, and bounded gate procedure. |
 | [EXL3 acceptance runbook](EXL3_ACCEPTANCE_RUNBOOK.md) | Runs the candidate workflow required to advance the public-default profile beyond bounded live validation. |
-| [EXL3 3.5-bpw quickstart](EXL3_R7_QUICKSTART.md) | Builds or selects an image, derives and launches the profile, and provides rollback instructions; a rebuilt image remains a candidate until promotion. |
-| [EXL3 3.5-bpw composition](EXL3_R7_OPERATOR_REPRODUCTION.md) | Reconstructs the public source and generated-layer composition used by the operator-accepted profile. |
-| [EXL3 3.5-bpw promotion checklist](EXL3_R7_PROMOTION_CHECKLIST.md) | Qualifies an exact rebuilt image and defines the evidence required for a separate promotion decision. |
+| [EXL3 3.5-bpw quickstart](GLM52_35BPW_QUICKSTART.md) | Builds or selects an image, derives and launches the profile, and provides rollback instructions; a rebuilt image remains a candidate until promotion. |
+| [EXL3 3.5-bpw composition](GLM52_35BPW_REPRODUCTION.md) | Reconstructs the public source and generated-layer composition used by the operator-accepted profile. |
+| [EXL3 3.5-bpw promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md) | Qualifies an exact rebuilt image and defines the evidence required for a separate promotion decision. |
 | [NF3 quickstart](NF3_QUICKSTART.md) | Prepares, launches, verifies, and troubleshoots the accepted deterministic alternative. |
 | [DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md) | Launches DeepSeek-V4-Flash-0731 four-rank with its native speculative decoding, with the failure modes that cost time; functional launch, not shadow-qualified. |
 | [CUDA-graph correctness gate](CUDAGRAPH_CORRECTNESS_GATE.md) | Runs the minimal live A/B and deterministic comparison required to diagnose graph replay correctness. |
@@ -78,10 +78,10 @@ linked runbook. A document being listed here does not authorize remote action.
 | [EXL3 fixed-MTP2 record](EXL3_FIXED_MTP2_RECIPE_20260802.md) | Externally executed configuration, startup proof, measurements, and rollback conditions. |
 | [EXL3 performance campaign](EXL3_AB_CAMPAIGN_20260802.md) | Dated matched measurements, rejected arms, and retained disposition. |
 | [EXL3 LMCache campaign](EXL3_LMCACHE_CAMPAIGN_20260803.md) | Dated LMCache arm evidence, attribution limits, receipt, and remaining gates. |
-| [EXL3 3.5-bpw fixed-MTP2 profile](EXL3_R7_FIXED_MTP2_PROFILE.md) | Live-validated intermediate weight, graph-stream, and speculative-decoding contract. |
-| [EXL3 3.5-bpw fixed-MTP3 profile](EXL3_R7_FIXED_MTP3_PROFILE.md) | Live-validated intermediate depth-three profile and generated artifacts. |
-| [EXL3 3.5-bpw fixed-MTP4 profile](EXL3_R7_FIXED_MTP4_PROFILE.md) | Operator-accepted profile, qualification evidence, acceptance scope, and limitations. |
-| [EXL3 3.5-bpw qualification record](EXL3_R7_OPTIMIZATION_20260811.md) | Transport, DCP, MTP, KV-allocation, and CKV-gather qualification decisions. |
+| [EXL3 3.5-bpw fixed-MTP2 profile](GLM52_35BPW_FIXED_MTP2_PROFILE.md) | Live-validated intermediate weight, graph-stream, and speculative-decoding contract. |
+| [EXL3 3.5-bpw fixed-MTP3 profile](GLM52_35BPW_FIXED_MTP3_PROFILE.md) | Live-validated intermediate depth-three profile and generated artifacts. |
+| [EXL3 3.5-bpw fixed-MTP4 profile](GLM52_35BPW_FIXED_MTP4_PROFILE.md) | Operator-accepted profile, qualification evidence, acceptance scope, and limitations. |
+| [EXL3 3.5-bpw qualification record](GLM52_35BPW_OPTIMIZATION_20260811.md) | Transport, DCP, MTP, KV-allocation, and CKV-gather qualification decisions. |
 | [NF3 public validation](NF3_NVFP4_PUBLIC_VALIDATION.md) | Clean-bootstrap acceptance receipt, immutable inputs, effective configuration, and correctness request. |
 | [NF3 serving snapshot](NF3_LIVE_CONFIGURATION_20260731.md) | Dated observed serving configuration and its drift from the default recipe. |
 | [NF3 fixed-MTP2 record](NF3_FIXED_MTP2_RECIPE_20260801.md) | Dated live configuration, launch command, startup proof, and measurements. |

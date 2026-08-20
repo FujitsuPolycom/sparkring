@@ -1,4 +1,4 @@
-# GLM-5.2 R7 fixed-depth-three speculative profile
+# GLM-5.2 3.5bpw fixed-depth-three speculative profile
 
 ## Status and evidence scope
 
@@ -15,7 +15,7 @@ recipe identifier of this operator-tuned 3.5-bpw EXL3 profile (recipe
 
 This profile is not the repository default or an accepted public-functional
 matrix. It is the rollback and matched performance control for the
-[fixed-MTP4, 9.25 GB KV candidate](EXL3_R7_FIXED_MTP4_PROFILE.md).
+[fixed-MTP4, 9.25 GB KV candidate](GLM52_35BPW_FIXED_MTP4_PROFILE.md).
 
 The maintainer-held `prepare_exl3_r7_mtp3.py` utility consumed the exact
 stock-DCP4 control and qualified fixed-MTP2 profile. It rejected baseline
@@ -24,7 +24,7 @@ input bytes unchanged as the rollback profile, and refused output paths that
 aliased any input. A public generator and stock-DCP4 input chain are tracked
 at `scripts/prepare_exl3_r7_mtp3.py` and
 `scripts/generate_exl3_r7_stock_dcp4.py`; see the input chain in
-[EXL3_R7_QUICKSTART.md](EXL3_R7_QUICKSTART.md).
+[GLM52_35BPW_QUICKSTART.md](GLM52_35BPW_QUICKSTART.md).
 
 ## Exact semantic delta
 

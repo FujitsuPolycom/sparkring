@@ -16,7 +16,7 @@
    "definition": "recipes/glm52-exl3-tr3-3.25bpw.json",
    "default_configuration": "recipes/glm52-exl3-tr3-3.25bpw.json",
    "accepted_alternative": "recipes/glm52-nf3-hybrid.json",
-   "operator_accepted_profile": "docs/EXL3_R7_FIXED_MTP4_PROFILE.md",
+   "operator_accepted_profile": "docs/GLM52_35BPW_FIXED_MTP4_PROFILE.md",
    "evidence": "docs/EXL3_RECIPE.md",
    "blockers": [
     "broader correctness gate",
@@ -80,8 +80,8 @@
    "includes_model_weights": false,
    "includes_operator_exact_q40_overlay": false,
    "operator_profile_composition_published": true,
-   "operator_profile_composition_entrypoint": "docs/EXL3_R7_OPERATOR_REPRODUCTION.md",
-   "promotion_checklist": "docs/EXL3_R7_PROMOTION_CHECKLIST.md",
+   "operator_profile_composition_entrypoint": "docs/GLM52_35BPW_REPRODUCTION.md",
+   "promotion_checklist": "docs/GLM52_35BPW_PROMOTION_CHECKLIST.md",
    "entrypoint": "runtime/exl3-r7/README.md"
   },
   "faststart_builder": {
@@ -262,7 +262,7 @@
    },
    "long_context_capacity_gate_passed": false,
    "long_context_capacity_gate_scope": "The predecessor FP8 profile passed the 512,000-token residency gate; the exact dynamic-NVFP4 CKV-gather profile has not repeated it.",
-   "entrypoint": "docs/EXL3_R7_FIXED_MTP4_PROFILE.md",
+   "entrypoint": "docs/GLM52_35BPW_FIXED_MTP4_PROFILE.md",
    "machine_readable_evidence": "docs/configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json",
    "predecessor_machine_readable_evidence": "docs/configurations/glm52-exl3-r7-mtp4-nvfp4-ckv-gather-20260811.json"
   },

@@ -38,7 +38,7 @@ The implementation combines:
    replay; and
 6. pinned host progress threads that submit and reap verbs work.
 
-The operator-accepted EXL3 3.5-bpw profile (R7) uses the versioned
+The operator-accepted EXL3 3.5-bpw profile (GLM-5.2 3.5bpw) uses the versioned
 `two_slot_deferred_ack` graph protocol with the `tiered_64k` kernel selector.
 Two generation-tagged payload slots let graph replay defer acknowledgement
 without permitting premature reuse. The selector keeps small captured Q on

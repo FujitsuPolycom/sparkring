@@ -1,4 +1,4 @@
-# GLM-5.2 R7 fixed-MTP2 weight-scope contract
+# GLM-5.2 3.5bpw fixed-MTP2 weight-scope contract
 
 ## Status and evidence boundary
 
@@ -9,17 +9,17 @@ matched the MTP-disabled control on repeated 128-token and 256-token greedy
 outputs, returned finite logprobs, exercised both speculative positions, and
 passed its four-rank transport audit. It is not the repository default or an
 accepted public-functional matrix. The fixed-MTP4, 9.25 GB KV candidate
-is the qualified R7 serving profile; see
-[EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md). `R7` is
+is the qualified GLM-5.2 3.5bpw serving profile; see
+[GLM52_35BPW_FIXED_MTP4_PROFILE.md](GLM52_35BPW_FIXED_MTP4_PROFILE.md). `R7` is
 the durable recipe identifier of this operator-tuned 3.5-bpw EXL3 profile
 (recipe `recipes/glm52-exl3-r7-3.5bpw.json`).
 
 The qualified executable MTP2 profile was produced by a maintainer-held copy
-of the `prepare_exl3_r7_mtp2.py` utility from the maintainer's stock-DCP4 R7
+of the `prepare_exl3_r7_mtp2.py` utility from the maintainer's stock-DCP4 GLM-5.2 3.5bpw
 control; that utility also emitted a byte-identical rollback profile. A public
 generator and stock-DCP4 input chain are tracked at
 `scripts/prepare_exl3_r7_mtp2.py` and `scripts/generate_exl3_r7_stock_dcp4.py`;
-see the input chain in [EXL3_R7_QUICKSTART.md](EXL3_R7_QUICKSTART.md).
+see the input chain in [GLM52_35BPW_QUICKSTART.md](GLM52_35BPW_QUICKSTART.md).
 
 Relative to the stock-DCP4 control, this profile changes speculative decoding
 from disabled to a fixed depth of
@@ -76,7 +76,7 @@ each context owns a new stream even when
 first eligible draft graph fails closed with `TP4 session requires one stable
 caller CUDA stream`.
 
-The public R7 builder generates the shared-capture implementation from its
+The public GLM-5.2 3.5bpw builder generates the shared-capture implementation from its
 hash-pinned vLLM preimage and installs it at
 `/opt/venv/lib/python3.12/site-packages/vllm/distributed/parallel_state.py`.
 The generated file's SHA-256 is

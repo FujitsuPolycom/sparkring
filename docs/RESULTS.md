@@ -54,7 +54,7 @@ correctly suppressed after warmup timeout. Those suppressions were readiness
 timeouts, not KV-capacity failures. Unique 16K validation for this profile
 therefore requires `--cell-warmup-timeout-seconds 300`.
 
-### 2026-08-11 EXL3 3.5-bpw (R7) dynamic-NVFP4 CKV-gather candidate
+### 2026-08-11 EXL3 3.5-bpw (GLM-5.2 3.5bpw) dynamic-NVFP4 CKV-gather candidate
 
 The operator-running fixed-MTP4 profile uses dynamic per-token NVFP4 latent KV
 plus FP8 RoPE, a 262,144-token request limit, a 4,096-token prefill ceiling,
@@ -93,11 +93,11 @@ KV use, and preemption.
 
 The exact configuration, artifact hashes, control-artifact limitation, and
 open capacity gates are in the
-[fixed-MTP4 dynamic-NVFP4 candidate specification](EXL3_R7_FIXED_MTP4_PROFILE.md)
+[fixed-MTP4 dynamic-NVFP4 candidate specification](GLM52_35BPW_FIXED_MTP4_PROFILE.md)
 and
 [sanitized machine-readable evidence](configurations/glm52-exl3-r7-mtp4-nvfp4-ckv-gather-20260811.json).
 
-### 2026-08-12 EXL3 3.5-bpw (R7) exact-Q40 operator acceptance
+### 2026-08-12 EXL3 3.5-bpw (GLM-5.2 3.5bpw) exact-Q40 operator acceptance
 
 The accepted operator 3.5-bpw profile adds a target-only routed-MoE state for
 exactly 40 rows. It uses capacity 40 and route block 8 without changing Q1-Q32,
@@ -178,12 +178,12 @@ transport convergence, API health, and final capacity passed.
 This result is accepted only as the operator's four-Spark 3.5-bpw default. It
 does not replace the clean-checkout 3.25-bpw public-functional default. The
 complete contract and immutable receipt hashes are in the
-[fixed-MTP4 specification](EXL3_R7_FIXED_MTP4_PROFILE.md) and
+[fixed-MTP4 specification](GLM52_35BPW_FIXED_MTP4_PROFILE.md) and
 [operator-acceptance summary](configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json).
 
-### 2026-08-13 EXL3 3.5-bpw (R7) LMCache NVMe persistence candidate
+### 2026-08-13 EXL3 3.5-bpw (GLM-5.2 3.5bpw) LMCache NVMe persistence candidate
 
-The accepted four-Spark R7 3.5-bpw operator profile was extended with one
+The accepted four-Spark GLM-5.2 3.5bpw operator profile was extended with one
 LMCache MP server per DCP rank. The candidate used 512-token chunks, a lazy
 512 MiB L1 initialized at zero, and a bounded 50 GiB/rank O_DIRECT native-
 filesystem L2. Model, fixed-MTP4, exact-Q40, graph, batching, KV format, and
@@ -221,9 +221,9 @@ text differed, so the run is not a deterministic-output gate. The sanitized
 record is
 [glm52-exl3-r7-lmcache-nvme-20260813.json](configurations/glm52-exl3-r7-lmcache-nvme-20260813.json).
 
-### 2026-08-11 EXL3 3.5-bpw (R7) fixed-MTP4 FP8 predecessor
+### 2026-08-11 EXL3 3.5-bpw (GLM-5.2 3.5bpw) fixed-MTP4 FP8 predecessor
 
-On four directly cabled DGX Sparks, the public-functional R7 3.5-bpw research
+On four directly cabled DGX Sparks, the public-functional GLM-5.2 3.5bpw research
 checkpoint completed a bounded live qualification at TP4/DCP4, fixed MTP4,
 Q1-Q40 CUDA graphs, `fp8_ds_mla`, and 9,250,000,000 KV-cache bytes per rank.
 This is a live-validated candidate, not the advertised default or an accepted
@@ -265,11 +265,11 @@ counts were zero. The service returned to HTTP 200 and zero scheduler/KV use.
 
 The complete scope, limitations, configuration contract, and immutable raw
 artifact hashes are in the
-[fixed-MTP4 candidate specification](EXL3_R7_FIXED_MTP4_PROFILE.md) and
+[fixed-MTP4 candidate specification](GLM52_35BPW_FIXED_MTP4_PROFILE.md) and
 [sanitized machine-readable summary](configurations/glm52-exl3-r7-mtp4-kv925-20260811.json).
 The separate promotion decisions for hybrid transport, custom indexer, custom
 DCP, MTP2, MTP3, and KV growth are in the
-[R7 optimization campaign record](EXL3_R7_OPTIMIZATION_20260811.md).
+[GLM-5.2 3.5bpw optimization campaign record](GLM52_35BPW_OPTIMIZATION_20260811.md).
 
 This document is the definitive record of SparkRing's measured performance. Every number here is a real measurement pulled from a dated deliverable, carries its full configuration label, and passed the verification gate stated on its row. Nothing in this document is a projection, an extrapolation, or a comparison against systems we did not measure ourselves.
 

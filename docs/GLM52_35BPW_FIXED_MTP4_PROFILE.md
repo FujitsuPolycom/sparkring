@@ -1,4 +1,4 @@
-# GLM-5.2 R7 3.5-bpw fixed-MTP4 operator default
+# GLM-5.2 3.5bpw fixed-MTP4 operator default
 
 ## Status and evidence scope
 
@@ -361,5 +361,5 @@ contract, not for the exact dynamic-NVFP4/262K/CKV-gather profile. The larger
   not a profile-only change.
 
 A rebuilt image must complete the
-[promotion checklist](EXL3_R7_PROMOTION_CHECKLIST.md) before inheriting this
+[promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md) before inheriting this
 operator deployment's accepted maturity.

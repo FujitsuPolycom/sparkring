@@ -12,7 +12,7 @@
 #     python scripts/sparkring_site.py scripts/config/site.yaml
 #     python scripts/preflight.py --site scripts/config/site.yaml --print-plan
 #
-# See docs/EXL3_R7_QUICKSTART.md for the full stand-up path.
+# See docs/GLM52_35BPW_QUICKSTART.md for the full stand-up path.
 # =============================================================================
 
 schema_version: 1

@@ -5,7 +5,7 @@ sizes) passed 2026-08-17. Leg 3 (four-width small-model shadow matrix)
 completed 2026-08-17: width 768 passed its gate; widths 512 and 2048
 failed the configured gate with recorded operator disposition; the
 width-1024 disagreement remains open, with FP32-oracle arbitration
-recorded as research-only. Leg 1 (GLM-5.2 EXL3-R7 3.5bpw serving regression, arms A
+recorded as research-only. Leg 1 (GLM-5.2 EXL3-GLM-5.2 3.5bpw serving regression, arms A
 and B) passed 2026-08-18 under bootstrap-gated exact-state attestation
 — bootstrap-gated live validation, not exact deployment-attestation
 equivalence. This runbook produces functional and regression evidence
@@ -19,9 +19,9 @@ What this runbook does NOT validate: CUDA-graph admission (unchanged,
 active-bytes ABI, non-BF16 dtypes, PP6 or any topology beyond the four
 directly cabled Sparks, and serving performance.
 
-## Leg 1 — GLM-5.2 EXL3-R7 3.5bpw four-Spark serving regression (no new widths)
+## Leg 1 — GLM-5.2 EXL3-GLM-5.2 3.5bpw four-Spark serving regression (no new widths)
 
-Purpose: prove the refactor is inert for the GLM-5.2 EXL3-R7 3.5bpw four-Spark serving configuration.
+Purpose: prove the refactor is inert for the GLM-5.2 EXL3-GLM-5.2 3.5bpw four-Spark serving configuration.
 
 Two arms, identical serve config otherwise (the 2026-08-11-qualified
 TP4 configuration: full-and-piecewise CUDA-graph capture with the

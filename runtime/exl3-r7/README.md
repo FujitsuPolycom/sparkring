@@ -2,7 +2,7 @@
 
 This directory is a **reviewable public builder package** for the EXL3 R7
 candidate runtime documented in
-[`docs/EXL3_R7_FIXED_MTP4_PROFILE.md`](../../docs/EXL3_R7_FIXED_MTP4_PROFILE.md).
+[`docs/GLM52_35BPW_FIXED_MTP4_PROFILE.md`](../../docs/GLM52_35BPW_FIXED_MTP4_PROFILE.md).
 It builds an ARM64/SM121 container image from pinned public source trees with
 fail-closed receipt verification.
 
@@ -20,7 +20,7 @@ compatibility edits used by the accepted operator profile. The exact-Q40 EXL3
 and model-runner overlays remain a separate, published composition layer
 because they require their own source-input hashes, local image identity, and
 pre-graph numerical parity receipt. See
-[`docs/EXL3_R7_OPERATOR_REPRODUCTION.md`](../../docs/EXL3_R7_OPERATOR_REPRODUCTION.md).
+[`docs/GLM52_35BPW_REPRODUCTION.md`](../../docs/GLM52_35BPW_REPRODUCTION.md).
 
 ## Platform
 
@@ -154,7 +154,7 @@ This builder is a **public-functional-lane, offline-validated candidate**. It
 is:
 
 - derived from the component lineage used by the four-Spark operator result in
-  `docs/EXL3_R7_FIXED_MTP4_PROFILE.md`, without claiming that a clean-checkout
+  `docs/GLM52_35BPW_FIXED_MTP4_PROFILE.md`, without claiming that a clean-checkout
   image built here has passed that live gate;
 - **not accepted** as a public-functional matrix;
 - **not the default** advertised configuration;
