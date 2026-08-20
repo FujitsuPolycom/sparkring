@@ -51,7 +51,8 @@ physical port, both matchings run simultaneously at full 200G with zero
 contention — a four-rank all-reduce costs exactly two link traversals. The
 measured ordinary-CUDA-tensor TP4 all-reduce is 40.14–40.22 µs p50
 (50.11–50.85 µs p99, 10,000 iterations, zero mismatches on all four ranks)
-for the hot GLM decode shape (`spark_transport/README.md`, "TP4 status and open work";
+for the hot decode shape of the GLM-5.2 reference deployment
+(`spark_transport/README.md`, "TP4 status and open work";
 implementation: `spark_transport/src/tp4_schedule.cpp`,
 `spark_transport/src/tp4_session.cpp`).
 
@@ -147,8 +148,9 @@ acknowledgement jitter (`spark_transport/README.md`, "TP2 BF16 exchange and
 fused add"); the in-tree four-rank probe runners pin TP submission and
 progress work to dedicated cores (CPUs 10/11).
 
-Numerics: the GLM checkpoint quantizes weights (MXFP4 experts, FP8 attention),
-but the TP partial-sum path stays **BF16** — weight quantization does not make
+Numerics: served checkpoints quantize weights (the GLM-5.2 reference uses
+MXFP4 experts and FP8 attention), but the TP partial-sum path stays
+**BF16** — weight quantization does not make
 packed NVFP4 a valid all-reduce format. NVFP4 CKV movement is a raw-copy
 transport with scale metadata, never a reduction.
 
@@ -260,9 +262,11 @@ attested, by design.
 
 ## 6. Serving configuration: the TP4/DCP4 lane
 
-The production GLM-5.2 lane as of the v40 window (2026-07-28), launched via
-the maintainer-held reference launcher and serving entrypoint, which are not
-included in this repository:
+The GLM-5.2 reference serving configuration recorded on 2026-07-28 (the
+operator's "v40" measurement window), launched via the maintainer-held
+reference launcher and serving entrypoint, which are not included in this
+repository. It is one profile-driven deployment of the transport described
+above, not the only supported configuration:
 
 - **TP4 / DCP4** — `--tensor-parallel-size 4 --decode-context-parallel-size 4
   --dcp-comm-backend ag_rs`, B12X sparse-MLA attention backend.

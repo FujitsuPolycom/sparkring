@@ -217,10 +217,11 @@ int spark_tp4_allgather(spark_tp4_allgather_handle handle,
 void spark_tp4_allgather_destroy(spark_tp4_allgather_handle handle);
 
 /*
- * GLM-5.2 DCP query all-gather is a distinct dynamic-Q operation. One
- * persistent handle accepts Q in [1, 40], reads contiguous BF16
- * [Q, 16, 576], and writes contiguous BF16 [Q, 64, 576] with rank order
- * concatenated on the head axis.
+ * DCP query all-gather is a distinct dynamic-Q operation. One persistent
+ * handle accepts Q in [1, 40], reads contiguous BF16 [Q, 16, 576], and
+ * writes contiguous BF16 [Q, 64, 576] with rank order concatenated on the
+ * head axis. The [16, 576] per-rank shape is the sparse-MLA query layout of
+ * the GLM-5.2 reference deployment.
  */
 typedef struct spark_tp4_dcp_config {
   uint32_t rank;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dry-run-first launcher for the EXL3 CS512 four-server LMCache profile."""
+"""Dry-run-first launcher for the EXL3 four-server LMCache profile (512-token chunks)."""
 
 from __future__ import annotations
 

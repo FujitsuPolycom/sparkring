@@ -479,7 +479,7 @@ def test_quickstart_doc_separates_operator_acceptance_from_rebuild_maturity() ->
     assert "not transfer to a rebuilt image" in doc
     assert "It is not the repository default" in doc
 
-    assert "LMCache CS512" in doc
+    assert "plus LMCache" in doc
 
 
 def test_quickstart_doc_offers_the_published_image_and_binds_identity() -> None:

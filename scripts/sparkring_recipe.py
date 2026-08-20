@@ -380,7 +380,9 @@ def _validate_exl3(recipe: dict[str, Any]) -> None:
         "load_failure_policy": "recompute",
     }
     if lmcache != expected_lmcache:
-        raise RecipeError("serving.lmcache drifted from the CS512 contract")
+        raise RecipeError(
+            "serving.lmcache drifted from the recipe's 512-token-chunk contract"
+        )
 
 
 def _validate_exl3_r7(recipe: dict[str, Any]) -> None:

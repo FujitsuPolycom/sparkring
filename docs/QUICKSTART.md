@@ -1,15 +1,14 @@
 # Four-Spark quickstart
 
-SparkRing's public default is GLM-5.2 EXL3 3.25-bpw plus LMCache with
-512-token cache chunks (CS512) on four
-directly cabled NVIDIA DGX Sparks:
+The public-default profile deploys GLM-5.2 EXL3 3.25-bpw plus LMCache with
+512-token cache chunks on four directly cabled NVIDIA DGX Sparks:
 
 ```text
 willfalco/GLM-5.2-EXL3-TR3-3.25bpw@d7d79c2d14599dfce7a5d12b85f7ad73f40e623d
 TP4 / DCP4 / fixed MTP2 / 4,096-token batch budget /
 8 concurrent sequences (C8) / CUDA-graph query-row buckets through Q32
 524,288-token model limit / 4.5 GB KV per rank
-native prefix cache + one LMCache CS512 server per rank
+native prefix cache + one LMCache server per rank (512-token chunks)
 ```
 
 This public-functional configuration is **live-validated** on four directly

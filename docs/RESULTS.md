@@ -2,7 +2,7 @@
 
 > The detailed matrix below is the historical Aiden MXFP4/GPTQ evidence set.
 > NF3 has a smaller accepted sanity set in [README.md](../README.md).
-> EXL3 plus LMCache with 512-token cache chunks (CS512) is the main
+> EXL3 plus LMCache with 512-token cache chunks is the main
 > advertised public-functional configuration and
 > has the bounded clean-checkout gate below. The operator's EXL3 3.5-bpw
 > fixed-MTP4 profile (recipe identifier `R7`) is the separately scoped
@@ -16,7 +16,7 @@ On 2026-08-03, a clean checkout built the EXL3 derived image from source commit
 deployed it to four directly cabled DGX Sparks. Exact image
 `sha256:20c4099f2e7e3dd3c8ab64f7d7930bde4f372df1895aa3ffa593252ca04ae96f`
 was identical on all ranks. Post-stop preflight passed 116/116 checks, four
-engines and four LMCache CS512 servers started with zero restarts, model load
+engines and four LMCache servers started with zero restarts, model load
 was 84.43 GiB/rank, and 16/16 piecewise plus 12/12 full graphs captured.
 
 Five consecutive bounded `exl3_live_gate.py` runs passed all configured
@@ -44,7 +44,7 @@ prefill skipped, and a 300-second cell-warmup timeout.
 | C8 | **59.40** | 8/8 | 0 |
 
 The metric is `aggregate_tps/openai_continuous_usage`. Relative to the
-external CS512 unique-context 16K quick matrix recorded in the
+external `CS512`-arm unique-context 16K quick matrix recorded in the
 [2026-08-03 LMCache campaign](EXL3_LMCACHE_CAMPAIGN_20260803.md), the
 clean-image cells changed by -0.71%, -5.28%,
 +3.96%, and -2.47% at C1/C2/C4/C8 respectively. This is a cross-run drift

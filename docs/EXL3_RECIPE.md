@@ -32,7 +32,7 @@ indices, and paths remain in the ignored site configuration.
 | CUDA graphs | full and piecewise through Q32 |
 | Prefix cache | enabled |
 | SparkCache | disabled |
-| LMCache | CS512; one local MP server per rank, 512-token chunks, lazy 1-GiB L1 |
+| LMCache | one local MP server per rank, 512-token chunks, lazy 1-GiB L1 |
 | Served name | `glm-5.2-exl3-tr3-3.25bpw` |
 
 The Q4096/C8/Q32 relationship is part of the fail-closed contract: the engine
@@ -40,7 +40,7 @@ accepts at most 4,096 batched tokens, eight sequences, and 32 query rows. The
 LMCache launcher starts one host-local server for each rank, verifies server
 health, and only then starts the four distributed vLLM engines.
 
-The fixed-MTP2 engine profile and the LMCache CS512 campaign were
+The fixed-MTP2 engine profile and the LMCache chunk-size campaign were
 validated as external operator configurations. Their exact deltas, bounded
 gates, and evidence limitations are recorded in the
 [DCP4 fixed-MTP2 recipe](EXL3_FIXED_MTP2_RECIPE_20260802.md) and
@@ -59,8 +59,8 @@ python scripts/sparkring_recipe.py plan \
 ```
 
 This verifies the immutable model metadata, source pins, topology assumptions,
-Q4096/C8/Q32 relationship, fixed-MTP2 policy, packed-KV settings, LMCache CS512
-contract, and required explicit unsets. It does not contact or alter any Spark.
+Q4096/C8/Q32 relationship, fixed-MTP2 policy, packed-KV settings, LMCache
+contract (512-token chunks), and required explicit unsets. It does not contact or alter any Spark.
 
 ## Build and launch from public sources
 
@@ -152,7 +152,7 @@ commit `19523482c29860024c3a3cf51e793e8436e1c441`; launcher correction
 |---|---|
 | Exact image fanout | `sha256:20c4099f2e7e3dd3c8ab64f7d7930bde4f372df1895aa3ffa593252ca04ae96f` on all four ranks |
 | Post-stop preflight | 116/116 passed |
-| Processes | four engines + four LMCache CS512 servers; zero restarts |
+| Processes | four engines + four LMCache servers; zero restarts |
 | Model/API | 524,288 maximum model length; 562,688 reported KV tokens |
 | Model load | 84.43 GiB/rank |
 | CUDA graphs | 16/16 piecewise and 12/12 full captures |
@@ -161,7 +161,7 @@ commit `19523482c29860024c3a3cf51e793e8436e1c441`; launcher correction
 | Standard sustained decode | unique 16K C1/C2/C4/C8: 18.33 / 27.61 / 45.11 / 59.40 aggregate tok/s; exact requested concurrency; zero errors |
 | Offline suite | local: 2,046 passed, 13 skipped; clean host: 2,035 passed, 4 skipped, 113 subtests |
 
-This receipt qualifies EXL3+LMCache CS512 as the default and main advertised
+This receipt qualifies EXL3+LMCache as the default and main advertised
 public-functional configuration. The evidence is intentionally bounded: it
 does not prove blanket model correctness, LMCache persistence, arbitrary-host
 reproducibility, release promotion, or the complete public-functional

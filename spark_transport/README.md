@@ -6,7 +6,8 @@ more ranks with multiple independent edges per process.
 
 Before model work, qualify every physical edge with the non-destructive,
 machine-readable [direct-cable qualification runner](CABLE_QUALIFICATION.md).
-It verifies exact link/IP/route/MTU/RoCE state, tests GLM-sized payloads in
+It verifies exact link/IP/route/MTU/RoCE state, tests the latency-critical
+decode-collective payload sizes in
 both directions, and separates cable/PHY faults from software-path latency.
 
 An early two-node-era milestone ran TP2 x PP2:
@@ -46,7 +47,8 @@ independently. Future 10G backends can implement the same peer-edge contract.
 
 ## Build
 
-The DGX host has CMake and verbs headers, while the GLM image has `nvcc`.
+The DGX host has CMake and verbs headers, while the serving runtime image has
+`nvcc`.
 
 ```bash
 cmake -S /src -B /build \
@@ -193,9 +195,9 @@ The packed BF16-pair implementation achieved:
 |---:|---|---:|---:|---|
 | 4 KB | small decode/control tensor | 14.98 us | 15.34 us | yes |
 | 8 KB | small hidden fragment | 17.76 us | 19.22 us | yes |
-| 12 KB | one 6,144-wide GLM BF16 vector | 20.27 us | 20.75 us | yes |
+| 12 KB | one 6,144-wide BF16 hidden vector | 20.27 us | 20.75 us | yes |
 | 16 KB | benchmark target | 22.83 us | 30.02 us | yes |
-| 24 KB | two GLM hidden vectors | 27.81 us | 28.85 us | yes |
+| 24 KB | two 6,144-wide BF16 hidden vectors | 27.81 us | 28.85 us | yes |
 | 32 KB | larger batch | 32.77 us | 33.76 us | yes |
 | 64 KB | larger batch/prefill | 52.51 us | 61.14 us | yes |
 
@@ -239,9 +241,10 @@ The reusable scripts are:
 - `scripts/run_two_spark_sweep.sh` for the GPU-visible transport;
 - `scripts/run_tp2_sweep.sh` for the fused BF16 operation.
 
-## GLM checkpoint precision
+## Checkpoint precision and valid reduction formats
 
-All four Sparks have the same `config.json` SHA-256:
+The GLM-5.2 reference checkpoint is identical on all four Sparks
+(`config.json` SHA-256):
 
 ```text
 ffd30e72ab8bb7e8ad560f2aaab03cc595f3106f0acf793ef96eedaf90f66d69
@@ -261,7 +264,8 @@ transport operation with scale metadata, not a reduction.
 
 ## TP4 status and open work
 
-The GLM trace confirmed that the hot decode collective is contiguous BF16
+A serving trace of the GLM-5.2 reference deployment confirmed that its hot
+decode collective is contiguous BF16
 `[1, 6144]`, or 12,288 bytes, and that the runtime issues 128 of these
 all-reduces per generated token.
 
@@ -305,6 +309,6 @@ correctly rounded FP32 sum for both the custom tree and NCCL.
 Open work:
 
 1. Complete the FP32-ground-truth promotion audit.
-2. Benchmark custom-only GLM decode against the NCCL Socket baseline.
+2. Benchmark custom-only decode collectives against the NCCL Socket baseline.
 3. Add multi-slot ingress so consecutive decode collectives can overlap.
 4. Retain NCCL for prefill and every non-matching tensor.

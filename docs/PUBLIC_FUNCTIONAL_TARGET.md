@@ -7,8 +7,8 @@
 > NF3 weight format. Its
 > clean-checkout evidence is in
 > [NF3_NVFP4_PUBLIC_VALIDATION.md](NF3_NVFP4_PUBLIC_VALIDATION.md). EXL3 plus
-> LMCache CS512 is the default and main advertised configuration (LMCache
-> with 512-token cache chunks); its maturity
+> LMCache is the default and main advertised configuration (LMCache with
+> 512-token cache chunks); its maturity
 > is `live-validated`, not accepted; see
 > [QUICKSTART.md](QUICKSTART.md) and the candidate
 > [EXL3 acceptance runbook](EXL3_ACCEPTANCE_RUNBOOK.md). The operator's

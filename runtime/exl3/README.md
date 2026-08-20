@@ -1,10 +1,10 @@
 # Public EXL3 derived-image layer
 
 This directory reconstructs and verifies the ARM64/SM121 runtime required by
-the `glm52-exl3-tr3-3.25bpw` recipe. The current executable profile is LMCache
-CS512: TP4/DCP4 with fixed MTP2, a 524,288-token model limit, 4.5 GB of KV per
-rank, a 4,096-token batch budget, C8, a Q32 graph ceiling, and one local LMCache
-server per rank. It is a thin, receipt-gated layer over SparkRing's public NF3
+the `glm52-exl3-tr3-3.25bpw` recipe. The recipe's executable profile is
+TP4/DCP4 with fixed MTP2, a 524,288-token model limit, 4.5 GB of KV per rank,
+a 4,096-token batch budget, C8, a Q32 graph ceiling, and one local LMCache
+server per rank with 512-token chunks. It is a thin, receipt-gated layer over SparkRing's public NF3
 NVFP4/FP8-RoPE image; it does not rebuild Torch, vLLM, CUDA, or FlashInfer from
 scratch.
 

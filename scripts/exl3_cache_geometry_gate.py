@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Dry-run-first LMCache CS512 geometry and boundary verification gate.
+"""Dry-run-first LMCache geometry and boundary verification gate.
 
 Extends the cache acceptance runbook with offline-verifiable configuration
-checks for the LMCache CS512 block-256 geometry, token-count boundaries,
+checks for the recipe's LMCache geometry (512-token chunks, 256-token parent
+chunks), token-count boundaries,
 DCP minimum-hit consensus, SparkCache isolation with the native vLLM prefix
 cache enabled, namespace isolation, and
 capacity/eviction metric declarations.  A companion plan mode discloses
@@ -47,8 +48,7 @@ EXIT_CONFIG_ERROR = 3
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RECIPE = ROOT / "recipes/glm52-exl3-tr3-3.25bpw.json"
 
-# Block-256 is the parent chunk size for this recipe's CS512 configuration.
-# The chunk size is 512, the parent chunk size is 256.
+# The recipe's LMCache geometry: 512-token chunks, 256-token parent chunks.
 REQUIRED_CHUNK_SIZE = 512
 REQUIRED_PARENT_CHUNK_SIZE = 256
 
@@ -137,11 +137,11 @@ def serving_config(recipe: dict[str, Any]) -> dict[str, Any]:
 
 
 def verify_geometry(recipe: dict[str, Any]) -> dict[str, Any]:
-    """Verify the LMCache CS512 block-256 geometry from the recipe.
+    """Verify the recipe's LMCache chunk geometry.
 
     Checks:
-    - chunk_size == 512 (CS512)
-    - parent_chunk_size == 256 (block-256)
+    - chunk_size == 512
+    - parent_chunk_size == 256
     - L1 is lazy (lazy allocation, not eager)
     - eviction policy is LRU
     - transfer mode is lmcache_driven

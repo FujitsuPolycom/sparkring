@@ -10,7 +10,7 @@ canonical-source table below and report the drift.
 | Goal | Document |
 |---|---|
 | Check hardware, operating-system, network, storage, and access requirements | [Prerequisites](PREREQUISITES.md) |
-| Deploy the public-default EXL3 3.25-bpw plus LMCache CS512 profile | [Public-default quickstart](QUICKSTART.md) |
+| Deploy the public-default EXL3 3.25-bpw plus LMCache profile | [Public-default quickstart](QUICKSTART.md) |
 | Reproduce the operator-scoped EXL3 3.5-bpw profile; rebuilt images remain candidates until promotion | [EXL3 3.5-bpw quickstart](EXL3_R7_QUICKSTART.md) |
 | Deploy the accepted deterministic NF3 alternative | [NF3 quickstart](NF3_QUICKSTART.md) |
 | Serve DeepSeek-V4-Flash-0731 on the ring | [DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md) |
@@ -42,7 +42,7 @@ linked runbook. A document being listed here does not authorize remote action.
 | Document | Purpose and scope |
 |---|---|
 | [Prerequisites](PREREQUISITES.md) | Qualifies hardware, host software, management access, storage, and the direct-cable fabric before model work. |
-| [Public-default quickstart](QUICKSTART.md) | Concise canonical entry point for the EXL3 3.25-bpw plus LMCache CS512 deployment. |
+| [Public-default quickstart](QUICKSTART.md) | Concise canonical entry point for the EXL3 3.25-bpw plus LMCache deployment. |
 | [Detailed EXL3 procedure](EXL3_QUICKSTART.md) | Expands the public-default build, distribution, launch, attestation, and bounded gate procedure. |
 | [EXL3 acceptance runbook](EXL3_ACCEPTANCE_RUNBOOK.md) | Runs the candidate workflow required to advance the public-default profile beyond bounded live validation. |
 | [EXL3 3.5-bpw quickstart](EXL3_R7_QUICKSTART.md) | Builds or selects an image, derives and launches the profile, and provides rollback instructions; a rebuilt image remains a candidate until promotion. |

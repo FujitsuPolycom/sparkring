@@ -5,8 +5,7 @@ for four directly cabled DGX Sparks. It serves
 `willfalco/GLM-5.2-EXL3-TR3-3.25bpw` at immutable revision
 `d7d79c2d14599dfce7a5d12b85f7ad73f40e623d` with TP4/DCP4, fixed MTP2,
 Q4096/C8/Q32, 524,288 maximum model length, 4.5 GB KV/rank, native prefix
-caching, and one LMCache server with 512-token cache chunks (CS512) per
-rank. SparkCache is a separate
+caching, and one LMCache server with 512-token cache chunks per rank. SparkCache is a separate
 implementation and is disabled in this profile.
 
 The public path was built from a clean checkout and live-validated on four
@@ -43,8 +42,8 @@ python scripts/bootstrap_exl3.py plan \
 ```
 
 Both commands are offline. Confirm the immutable model revision, fixed-MTP2
-policy, TP4/DCP4 topology, Q4096/C8/Q32 limits, packed-KV profile, and LMCache
-CS512 topology. The recipe declares `default: true`; NF3 is explicitly
+policy, TP4/DCP4 topology, Q4096/C8/Q32 limits, packed-KV profile, and
+LMCache topology (512-token chunks). The recipe declares `default: true`; NF3 is explicitly
 selectable by recipe ID.
 
 ## 3. Build, verify, and distribute without launching

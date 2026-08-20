@@ -5,7 +5,7 @@ EXL3 3.5-bpw fixed-MTP4, DCP4, 9.25 GB KV/rank profile. Its durable recipe
 identifier is `R7`. Acceptance applies to one four-Spark appliance and does
 not transfer to a rebuilt image. It is not the repository default or a
 reference-lane result. The advertised public default is
-[EXL3 3.25-bpw plus LMCache CS512](EXL3_QUICKSTART.md). NF3 is an
+[EXL3 3.25-bpw plus LMCache](EXL3_QUICKSTART.md). NF3 is an
 [accepted deterministic alternative](NF3_QUICKSTART.md).
 
 This quickstart builds the source-complete ARM64 runtime and links to the exact
@@ -234,7 +234,10 @@ python scripts/exl3_r7_standup.py plan --execute \
   --template .sparkring/exl3-r7/candidate.json
 ```
 
-This produces:
+This produces the derivation chain rooted at the **stock-DCP4 baseline**: the
+speculation-off control profile (DCP4 with the stock `ag_rs` DCP collectives,
+MTP disabled, Q24 CUDA graph capture, 9.0 GB of KV per rank) from which every
+fixed-MTP profile below is derived and against which they are A/B compared:
 
 ```text
 .sparkring/exl3-r7/
@@ -437,6 +440,9 @@ scripts/download_exl3_r7.py                     # checkpoint downloader/verifier
 scripts/exl3_r7_standup.py                      # stand-up entrypoint (dry-run default)
 ```
 
-A user does not need any maintainer-held stock-DCP4 profile. The
-stock-DCP4 baseline is derived from the tracked candidate generator plus
-the recipe's serving contract.
+The chain has no untracked inputs. In particular, the stock-DCP4 baseline —
+the MTP-off DCP4 control profile defined in section 4 — is fully derived by
+`scripts/generate_exl3_r7_stock_dcp4.py` from the tracked candidate generator
+output plus the serving contract in
+`recipes/glm52-exl3-r7-3.5bpw.json`; no maintainer-held profile file is
+required to reproduce it.

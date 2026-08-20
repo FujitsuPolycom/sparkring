@@ -12,7 +12,8 @@ and names the acceptance test that closes it.
 
 The missing runtime is not an unknown 13,000-line fork. The production wheel
 was a stock build of `vllm-project/vllm@fcc6141`, followed by a Python overlay.
-For the public GLM-5.2 lane, that overlay reduces to four work packages:
+To reproduce the GLM-5.2 reference runtime from public sources, that overlay
+reduces to four work packages:
 
 | Order | Package | Current state |
 |---:|---|---|
@@ -59,4 +60,4 @@ These notes are provenance, not legal advice.
    evidence.
 
 Do not bypass `runtime/public-capability-gate.py`. It exists so a partially
-ported image refuses to advertise a working GLM-5.2 lane.
+ported image refuses to advertise a complete GLM-5.2 reference runtime.
