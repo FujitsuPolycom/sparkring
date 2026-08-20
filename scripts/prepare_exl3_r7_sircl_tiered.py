@@ -30,11 +30,21 @@ LIBRARY_CONTAINER = "/opt/sparkring/spark_transport/libspark_transport_capi.so"
 BACKEND_CONTAINER = "/opt/spark-vllm/spark_tp4_backend.py"
 PORT_NAMESPACE_CONTAINER = "/opt/spark-vllm/spark_tp4_port_namespace.py"
 CAPACITY_POOL_CONTAINER = "/opt/spark-vllm/spark_tp4_prefill_capacity_pool.py"
+QUERY_ROW_PROVIDER_CONTAINER = "/opt/spark-vllm/spark_tp4_query_row_provider.py"
 ARTIFACTS = {
     "transport_library": ("libspark_transport_capi.so", LIBRARY_CONTAINER),
     "backend": ("spark_tp4_backend.py", BACKEND_CONTAINER),
     "port_namespace": ("spark_tp4_port_namespace.py", PORT_NAMESPACE_CONTAINER),
     "capacity_pool": ("spark_tp4_prefill_capacity_pool.py", CAPACITY_POOL_CONTAINER),
+    # The backend and port namespace both import this module at their top
+    # level, so a bundle that stages them without it produces a worker that
+    # dies on import. The path is derived from the backend's directory
+    # rather than taken as an argument, because the two files are only
+    # correct together.
+    "query_row_provider": (
+        "spark_tp4_query_row_provider.py",
+        QUERY_ROW_PROVIDER_CONTAINER,
+    ),
 }
 ENVIRONMENT_DELTA = {
     "SPARK_TP4_CONTROL_PORT0": "11100",
@@ -250,6 +260,8 @@ def main() -> int:
                 "backend": args.backend.resolve(),
                 "port_namespace": args.port_namespace.resolve(),
                 "capacity_pool": args.capacity_pool.resolve(),
+                "query_row_provider": args.backend.resolve().parent
+                / "spark_tp4_query_row_provider.py",
             },
             bundle=args.bundle.resolve(),
         )
