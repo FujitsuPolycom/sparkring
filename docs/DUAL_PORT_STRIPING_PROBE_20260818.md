@@ -109,15 +109,24 @@ Under this scope the patched NCCL fallback shows an approximately
 800 µs floor at every payload. At the matched points the transport's best configurations
 measure 174 µs (491,520 bytes) and 1,223 µs (6,291,456 bytes) under
 the same isolated single-replay device timing. Two topology
-observations from the same control: rank 0's byte counters show NCCL
-moved about 4 GB on `rocep1s0f0` and only about 20 MB on
-`rocep1s0f1` (highly asymmetric rail use, unlike the transport's
-equal-per-port totals), and a single-port variant
+observations from the same control: rank 0's transmit counters show
+NCCL sent about 4 GB on `rocep1s0f0` and only about 20 MB on
+`rocep1s0f1`, and a single-port variant
 (`NCCL_IB_HCA=rocep1s0f0`) fails deterministically (two runs,
 identical `ibv_modify_qp` timeout to the far-rail GID) because each
 rank reaches one ring neighbor only through its second port: on this
 switchless topology both rails are required for connectivity, so no
 single-port NCCL configuration exists to measure.
+
+`port_xmit_data` counts transmitted octets only, and no receive
+counter was captured in either session. The transmit asymmetry above
+is what a unidirectional ring produces on this cabling, because a rank
+transmits to its ring successor through one cage and receives from its
+predecessor through the other; it is consistent with that pattern but
+does not establish the complementary receive traffic, and no other
+pattern has been excluded. Establishing per-link utilization for
+either path requires bracketing legs with `port_rcv_data` alongside
+`port_xmit_data`.
 
 Probe-enforced constraints (from the binary's own validation):
 `dual_port_striped` requires graph-only execution,
@@ -173,10 +182,12 @@ not measure how often a captured graph bucket is replayed):
   rows per sequence: seven draft tokens plus one target), so the
   32-sequence verification batch is Q256 = exactly 2 MiB. Q288 is
   simply the 36-sequence bucket, not an extra per-sequence row.
-- About 87 width-4096 all-reduces occur per forward pass
-  (approximately two per layer), the drafter adds width-256
-  collectives of at most 16 KiB, and eager prefill chunks reach
-  [2048, 4096] = 16 MiB, above the 512-row eager admission bound.
+- The inventory holds approximately 87 captured width-4096 all-reduce
+  nodes per full-forward graph (approximately two per layer). How
+  often any of them is replayed is unmeasured, so no per-forward-pass
+  collective rate follows. The drafter adds width-256 collectives of
+  at most 16 KiB, and eager prefill chunks reach [2048, 4096] = 16 MiB,
+  above the 512-row eager admission bound.
 - A single maximum-capacity [Q <= 512, 4096] graph session would
   cover every traced verification shape.
 
@@ -187,3 +198,9 @@ not measure how often a captured graph bucket is replayed):
    selected).
 2. Repeated sessions for tail statistics if any default-configuration
    decision comes to rest on p95 differences.
+3. Receive-counter capture (`port_rcv_data` bracketing every leg
+   alongside `port_xmit_data`) on both the transport and NCCL paths,
+   without which no statement about per-link utilization is supported.
+4. Large-message bandwidth on a single link, which no measurement in
+   this record establishes and which every wire-time derivation from
+   the 200 Gb/s nameplate rate presently assumes.
