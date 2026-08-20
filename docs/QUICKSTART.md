@@ -59,6 +59,17 @@ python scripts/bootstrap_exl3.py plan \
 The first command must report `RECIPE: glm52-exl3-tr3-3.25bpw` and direct the
 operator to `bootstrap_exl3.py`.
 
+The launcher's plan mode accepts a profile of the same shape before any of
+this exists, so the remote commands can be read before committing to the
+build:
+
+```bash
+python scripts/sparkring_exl3_lmcache_launcher.py   --site scripts/config/site.yaml   --profile scripts/config/launch.exl3.example.json   plan
+```
+
+That plan reports `mutates_remote: false` and contacts nothing. The example
+carries placeholder image and digest values; the bootstrap writes the real ones.
+
 ## 3. Prepare without interrupting serving
 
 This mutates the four named hosts and transfers/builds hundreds of gigabytes,

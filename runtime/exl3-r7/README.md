@@ -29,7 +29,7 @@ pre-graph numerical parity receipt. See
 | Architecture | `linux/arm64` |
 | GPU target | SM121 (NVIDIA GB10 / DGX Spark, CUDA 13.2) |
 | Python | 3.12 |
-| Parent image | `sparkring/glm52-exl3-tr3-3.25bpw` (EXL3 3.25-bpw public-functional) |
+| Parent image | Supplied by the operator through `BASE_IMAGE` and `BASE_IMAGE_ID`; see "Choosing the parent image" |
 
 ## Inputs
 
@@ -50,6 +50,30 @@ pre-graph numerical parity receipt. See
 - The image's immutable ID is printed by `build-image.sh` on success.
 - OCI labels embedded in the image record every component's upstream commit,
   the parent image ID, the source receipt SHA-256, and the license.
+
+## Choosing the parent image
+
+`BASE_IMAGE` and `BASE_IMAGE_ID` are operator inputs, not pins in this
+repository, and the builder verifies whichever image is supplied against the ID
+given alongside it. Two images in the build chain are usable as that parent, and
+both are produced from this repository rather than obtained from a registry:
+
+| Candidate | What it is | Built by |
+|---|---|---|
+| `sparkring/gb10-vllm-base` | The GB10 runtime layer: SM121 kernels, aarch64 cu132 wheels, the pinned vLLM, B12X, SparkInfer, NCCL, FlashInfer, and DeepGEMM | `scripts/build-gb10-vllm-base-image.sh`, which `scripts/bootstrap_nf3.py` and `scripts/bootstrap_exl3.py` invoke |
+| `sparkring/glm52-exl3-tr3-3.25bpw` | The 3.25-bpw public-functional serving image, itself derived from the runtime base | `scripts/bootstrap_exl3.py` |
+
+An image built by this builder records its parent in the
+`org.sparkring.parent.image-id` label, which is how a deployment identifies
+which of the two it descends from. That label on a built 3.5-bpw image and this
+document have disagreed; the label is the record of what was built, and this
+table describes what the builder accepts rather than asserting one lineage.
+
+Obtain a parent by running the bootstrap for the lane you want, then read its ID:
+
+```bash
+docker image inspect <parent-image-ref> --format '{{.Id}}'
+```
 
 ## Build command
 
