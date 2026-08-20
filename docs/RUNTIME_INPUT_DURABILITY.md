@@ -39,6 +39,17 @@ nothing, and contacts no configured Spark. Run it on a schedule rather
 than only when a build fails: the useful time to discover that an
 upstream has disappeared is before the bytes are needed.
 
+`scripts/pull_pinned_images.py` retrieves the images the locks pin, by
+digest, from wherever their publisher serves them, and confirms the local
+store holds that digest. It republishes nothing, so it carries no
+redistribution obligation for an image this project does not own. Its
+`--plan` mode prints what it would pull and contacts nothing; pulling
+writes to the local container store and is therefore MUTATES HOST.
+
+Pointing at an image and republishing one are different acts. The first
+needs no permission from its publisher; the second does, and the table
+below bounds it.
+
 ## Licensing bounds on mirroring
 
 Redistribution rights differ by input and decide what a mirror may
