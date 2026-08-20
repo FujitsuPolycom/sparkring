@@ -22,9 +22,13 @@ day it was staged. Attested facts:
   deterministic bounded probes returning exact requested outputs.
 - Width 4096 admitted through `VLLM_SPARK_TP4_EAGER_WIDTHS=4096` under
   `VLLM_SPARK_TP4_MODE=shadow`, `--enforce-eager`, BF16 activations.
-- The architecture requires `--kv-cache-dtype fp8`: its `fp8_ds_mla`
-  key-value layout refuses any other cache dtype at load, and the first
-  launch attempt failed on exactly that check before the flag was added.
+- The architecture requires an explicit cache dtype: its `fp8_ds_mla`
+  key-value layout refuses `auto` at load, and the first launch attempt
+  failed on exactly that check before `--kv-cache-dtype fp8` was added.
+  `fp8` and `fp8_ds_mla` allocate identically, but only `fp8_ds_mla`
+  declares the layout the engine actually allocates; the difference is
+  invisible to the engine's own kernels and load-bearing for any
+  external key-value consumer.
 - Tool calling works end-to-end with `--enable-auto-tool-choice
   --tool-call-parser deepseek_v4` (a request with `tool_choice: "auto"`
   serves correctly).
@@ -60,6 +64,16 @@ speculative mechanism and CUDA graphs:
   339.9 tokens per second aggregate at concurrency 32 with 16K-token
   resident contexts (research transport configuration below). These
   are operator observations, not qualified measurements.
+
+## External key-value reuse
+
+Both configurations above serve with no external key-value cache tier,
+and the engine's own prefix caching is unaffected by that. External
+reuse for this checkpoint is `unsupported`: the installed cache package
+stores and restores this model's state across a full teardown but
+cannot load it into device memory. Evidence, failure mechanism, and the
+conditions required for support are in the
+[LMCache record](../LMCACHE_DEEPSEEK_20260819.md).
 
 ## Research transport configuration: width-4096 graph collectives
 
