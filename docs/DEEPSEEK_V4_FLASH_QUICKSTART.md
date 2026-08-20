@@ -32,7 +32,7 @@ You also need a vLLM build that can load `DeepseekV4ForCausalLM` with
 the B12X kernel family. One is published:
 
 ```bash
-docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:df0e2068fc7034a1ec7a2c1fa4e0c3224c720161539525b5a7cbb037dc1d0f8e
+docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:35b29616dc05677b98f647282e81a99fbca1969791ccbfca711c11a44285385e
 ```
 
 That image registers `DeepseekV4ForCausalLM`, carries B12X, LMCache, the
@@ -68,7 +68,7 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
   -v /path/to/deepseek-v4-flash-0731:/models/deepseek-v4-flash-0731:ro \
   --env-file /path/to/rank-"$RANK".env \
   --entrypoint /opt/venv/bin/vllm \
-  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:df0e2068fc7034a1ec7a2c1fa4e0c3224c720161539525b5a7cbb037dc1d0f8e \
+  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:35b29616dc05677b98f647282e81a99fbca1969791ccbfca711c11a44285385e \
   serve /models/deepseek-v4-flash-0731 \
   --tensor-parallel-size 4 --nnodes 4 --node-rank "$RANK" \
   --master-addr "$RANK0_FABRIC_ADDR" --master-port 29500 \

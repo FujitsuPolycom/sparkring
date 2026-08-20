@@ -21,8 +21,8 @@
   ],
   "serving_image": {
     "repository": "ghcr.io/fujitsupolycom/gb10-vllm-serving",
-    "manifest_digest": "sha256:df0e2068fc7034a1ec7a2c1fa4e0c3224c720161539525b5a7cbb037dc1d0f8e",
+    "manifest_digest": "sha256:35b29616dc05677b98f647282e81a99fbca1969791ccbfca711c11a44285385e",
     "platform": "linux/arm64",
-    "note": "The published GB10 runtime image. Carries the pinned vLLM, B12X, LMCache, the EXL3 quantization overlay, FlashInfer, DeepGEMM, the patched NCCL, and libspark_transport_capi.so with its probe binaries. Registers Glm4MoeForCausalLM and DeepseekV4ForCausalLM. Its entrypoint attests a GLM profile, so a launch for another checkpoint overrides it with --entrypoint."
+    "note": "The published GB10 runtime image. Carries the pinned vLLM, B12X, LMCache, the EXL3 quantization overlay, FlashInfer, DeepGEMM, the patched NCCL, and libspark_transport_capi.so with its probe binaries. Registers Glm4MoeForCausalLM and DeepseekV4ForCausalLM. Its entrypoint attests a GLM profile, so a launch for another checkpoint overrides it with --entrypoint. Its configuration carries only component-identity labels; container labels naming the machine that produced it are cleared."
   }
 }
