@@ -5,6 +5,7 @@ import gc
 import hashlib
 import importlib.util
 import os
+import weakref
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,13 @@ SPEC = importlib.util.spec_from_file_location(
 assert SPEC is not None and SPEC.loader is not None
 native = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(native)
+
+
+def _fd_identity(fd: int) -> tuple[int, int]:
+    """Return the device and inode a descriptor currently refers to."""
+
+    status = os.fstat(fd)
+    return (status.st_dev, status.st_ino)
 
 
 def test_snapshot_ctypes_sizes_are_fixed() -> None:
@@ -216,12 +224,28 @@ def test_attested_fd_lifetime_matches_library_object(
         expected_sha256=expected,
         cdll_factory=lambda _path, mode: FakeLibrary(),
     )
-    retained_fd = library._spark_cache_snapshot_attested_file.fileno()
+    owner = library._spark_cache_snapshot_attested_file
+    retained_fd = owner.fileno()
+    attested_identity = _fd_identity(retained_fd)
     assert os.fstat(retained_fd).st_size == len(payload)
+
+    # Observe finalization through a weak reference rather than by probing the
+    # descriptor number. File descriptors are recycled integers: anything else
+    # in the process opening a file between the close and the probe makes the
+    # same number valid again, so a bare fstat cannot distinguish "still ours"
+    # from "reissued to another file".
+    finalized: list[bool] = []
+    weakref.finalize(owner, finalized.append, True)
+    del owner
     del library
     gc.collect()
-    with pytest.raises(OSError):
-        os.fstat(retained_fd)
+
+    assert finalized == [True]
+    try:
+        reused_identity = _fd_identity(retained_fd)
+    except OSError:
+        return
+    assert reused_identity != attested_identity
 
 
 def test_secure_loader_fails_closed_without_linux_procfs(
