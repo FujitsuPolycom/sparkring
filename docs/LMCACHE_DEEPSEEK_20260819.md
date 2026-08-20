@@ -1,8 +1,9 @@
 # LMCache key-value reuse for DeepSeek-V4-Flash-0731 on the four-Spark ring
 
-Status: **unsupported.** The cache package installed in the deployment
-image cannot map this checkpoint's key-value cache. Serving this model
-without external key-value reuse is unaffected and is specified below.
+Status: **unsupported.** Every device-side retrieve for this checkpoint
+aborts on a buffer-size mismatch, and the cause is not yet isolated to a
+package, a configuration, or a code path. Serving this model without
+external key-value reuse is unaffected and is specified below.
 
 ## Why the installed package cannot map this checkpoint
 
@@ -29,16 +30,28 @@ Every retrieve aborts in the device-side read path with
 The worker marks 21,525 blocks invalid and the engine recomputes the
 prompt in full.
 
-Result: the package contains no reference to `deepseek_v4`, and its read
-path (`lmcache/v1/gpu_connector/gpu_ops.py`) sizes one device staging
-buffer per transfer with no notion of kernel groups.
+Result: the read path this transfer takes,
+`lmcache/v1/gpu_connector/gpu_ops.py`, sizes one device staging buffer
+per transfer and carries no group handling. The package contains no
+reference to `deepseek_v4` across its 660 source files.
+
+The package as a whole is not group-blind, and this distinction decides
+what would fix the failure. `lmcache/v1/gpu_connector/utils.py:384`
+defines `get_group_data_ptrs`, and the native
+`native_storage_ops` extension exports group symbols. The capability
+exists in the installed package; the path this transfer takes does not
+reach it.
 
 Conclusion: a single buffer size cannot satisfy a group holding three
-geometries. The support required for this checkpoint is absent from this
-package. Upstream publishes a
+geometries, so the transfer aborts. Replacing the package with one
+carrying DeepSeek-V4 support does not follow from this measurement,
+because the installed package already carries group machinery. What is
+established is that this read path is reached and fails, not that the
+capability is absent. Upstream publishes a
 [DeepSeek-V4-Flash recipe](https://docs.lmcache.ai/recipes/deepseek_v4_flash.html)
 stating that multiprocess mode maps these groups without additional
-configuration, so a package carrying that support is the required input.
+configuration; whether the deployed configuration selects the group-aware
+path is the open question.
 
 ## Behavior that is functional
 
@@ -99,9 +112,14 @@ instrument properties make partial evidence misleading:
 
 ## Conditions required for support
 
-1. A cache package carrying DeepSeek-V4 kernel-group support, with the
-   local GLM changes in `0.5.2+glm52dcp4.1` either shown to be
-   unnecessary or reconciled with it.
+1. Isolation of the failure to a cause. The installed package carries
+   group machinery that the failing read path does not use, so the
+   candidates are the deployed configuration, the path selection, and the
+   local GLM changes in `0.5.2+glm52dcp4.1` — not a missing capability.
+   Note that the installed tree resolves `__version__` to `unknown`, so
+   that version string exists only in the repository pins and the image
+   labels; verify a build by inspecting its properties rather than by
+   what it reports.
 2. The validation method above, satisfied in full.
 3. Idle-interval verification of the heartbeat guard. In the installed
    package `if self._heartbeats is not None:` tests a dictionary for
