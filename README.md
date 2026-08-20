@@ -43,7 +43,7 @@ belongs to profiles rather than the transport.
 | GLM-5.2 EXL3 R7 3.5-bpw | Accepted; one appliance | [Quickstart](docs/EXL3_R7_QUICKSTART.md) |
 | GLM-5.2 NF3 | Accepted; deterministic | [Quickstart](docs/NF3_QUICKSTART.md) |
 | DeepSeek-V4-Flash-0731 | Functional; not shadow-qualified | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| Qwen, Meta, and other families | In progress | [Complete registry](docs/profiles/README.md) |
+| Qwen, Meta, gpt-oss, and others | launch verified| [Complete registry](docs/profiles/README.md) |
 
 The registry owns model identities, revisions, configuration links, maturity,
 and remaining qualification gates. This README does not duplicate those
