@@ -9,6 +9,7 @@ check (control-peer TCP reachability) is opt-in via ``--connect``.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -398,7 +399,15 @@ def main(argv: list[str] | None = None) -> int:
         help="enable the control-peer TCP reachability check",
     )
     arguments = parser.parse_args(argv)
-    checks = run_preflight(connect=arguments.connect)
+    # Collecting the checks imports vLLM, which writes progress lines to
+    # stdout. Under --json stdout carries one document and nothing else, so
+    # the checks run with stdout diverted to stderr; the diagnostics stay
+    # visible to a person and stay out of the parsed stream.
+    if arguments.as_json:
+        with contextlib.redirect_stdout(sys.stderr):
+            checks = run_preflight(connect=arguments.connect)
+    else:
+        checks = run_preflight(connect=arguments.connect)
     if arguments.as_json:
         print(json.dumps([asdict(check) for check in checks], indent=2))
     else:

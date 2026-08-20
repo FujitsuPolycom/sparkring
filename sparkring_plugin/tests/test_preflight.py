@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import json
 import os
 import pathlib
@@ -436,3 +438,42 @@ class PreflightTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JsonStreamIsolationTest(unittest.TestCase):
+    """--json emits one document on stdout and nothing else.
+
+    Collecting the checks imports vLLM, which writes progress lines to
+    stdout. A caller that parses stdout must not receive those lines.
+    """
+
+    def test_json_stdout_carries_only_the_document(self) -> None:
+        def noisy(*_args, **_kwargs):
+            print("INFO 00-00 00:00:00 [importing.py:53] Triton is installed")
+            return [preflight.Check("mode", True, "disabled", "info")]
+
+        with patch.object(preflight, "run_preflight", noisy):
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                with contextlib.redirect_stderr(stderr):
+                    code = preflight.main(["--json"])
+
+        self.assertEqual(code, 0)
+        document = json.loads(stdout.getvalue())
+        self.assertEqual(document[0]["name"], "mode")
+        self.assertIn("Triton is installed", stderr.getvalue())
+
+    def test_text_mode_leaves_diagnostics_on_stdout(self) -> None:
+        def noisy(*_args, **_kwargs):
+            print("collector diagnostic")
+            return [preflight.Check("mode", True, "disabled", "info")]
+
+        with patch.object(preflight, "run_preflight", noisy):
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                code = preflight.main([])
+
+        self.assertEqual(code, 0)
+        self.assertIn("collector diagnostic", stdout.getvalue())
+        self.assertIn("PASS mode", stdout.getvalue())

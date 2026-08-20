@@ -172,3 +172,33 @@ cannot ship silently.
 CUDA-graph admission (open correctness gate; `--enforce-eager` only),
 expert-parallel all-to-all, non-BF16 collective dtypes, topologies beyond
 directly cabled two- and four-Spark rings, and any performance claim.
+
+## Coexistence with the container overlay
+
+Both integration paths install the same four collective families, and
+neither detects the other. The container image used by the qualified
+profiles bakes `sitecustomize.py` and puts its directory on
+`PYTHONPATH`, so installing this package into that image gives an
+interpreter two installers gated on the same variables.
+
+Observed on four Sparks with `VLLM_SPARK_TP4_MODE` set, image
+`sparkring/glm52-exl3-r7-3.5bpw:r34-sm121a-flat2-20260810`:
+
+- `sitecustomize` runs first, at interpreter start, and patches the
+  integration point before any entry point loads.
+- `register()` then runs and reports installing again.
+- `import spark_tp4_backend` resolves to this package's `_vendor` copy,
+  not the overlay's module, because `register()` inserts `_vendor` at
+  the front of `sys.path` while the overlay's directory sits later on
+  `PYTHONPATH`.
+
+The consequence is that the modules executing are this package's
+vendored copies while the deployed overlay files are shadowed, and a
+deployment pinned to specific overlay bytes no longer runs them. Neither
+path reports the substitution.
+
+Use one path per deployment. To exercise this package inside an image
+that carries the overlay, replace `sitecustomize.py` with an empty file
+for the run, which is what
+[the four-Spark live validation](../docs/PLUGIN_LIVE_VALIDATION_20260820.md)
+does.

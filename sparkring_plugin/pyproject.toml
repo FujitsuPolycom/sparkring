@@ -35,4 +35,4 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-sparkring = ["_vendor/*.py", "_native/*.so"]
+sparkring = ["_vendor/*.py", "_vendor/MANIFEST.json", "_native/*.so"]
