@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import subprocess
 from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
 
 
 class ArtifactError(RuntimeError):
@@ -74,6 +77,61 @@ def bake_vllm(root: Path) -> None:
             )
 
 
+CUDAGRAPH_RELATIVE = "vllm/v1/worker/gpu/cudagraph_utils.py"
+CUDAGRAPH_PATCH = HERE / "cudagraph_shared_stream.patch"
+CUDAGRAPH_PATCH_SHA256 = "76a8575adfc98ba26a50d56dc7d2296b48fdc818e257c56fd496d88d470cce13"
+CUDAGRAPH_INPUT_SHA256 = (
+    "a55362bcaa8c31b111c88d083a0a015f401d516d2623f171a0080cc978dc08d5"
+)
+CUDAGRAPH_OUTPUT_SHA256 = (
+    "ef03d64297ed2d1a5161847b48a435bf8ae5feda7a5b81b668d00ae9a1d65a2a"
+)
+
+
+def bake_cudagraph(root: Path) -> None:
+    """Gate full-graph capture on the shared capture stream, hash-bound.
+
+    The pinned vLLM tree captures every full CUDA graph on a private
+    stream. Spark TP4 graph sessions require one stable caller stream, so
+    the serving image carries this edit. The diff regions include a pure
+    insertion, which a byte replacement cannot anchor, so the edit ships
+    as a patch pinned by its own SHA-256 and by the file's before and
+    after hashes.
+    """
+
+    path = root / CUDAGRAPH_RELATIVE
+    observed = sha256(path)
+    if observed == CUDAGRAPH_OUTPUT_SHA256:
+        return
+    if observed != CUDAGRAPH_INPUT_SHA256:
+        raise ArtifactError(
+            f"{path}: expected {CUDAGRAPH_INPUT_SHA256}, got {observed}"
+        )
+    patch_hash = sha256(CUDAGRAPH_PATCH)
+    if patch_hash != CUDAGRAPH_PATCH_SHA256:
+        raise ArtifactError(
+            f"{CUDAGRAPH_PATCH.name}: expected {CUDAGRAPH_PATCH_SHA256}, "
+            f"got {patch_hash}"
+        )
+    result = subprocess.run(
+        ["git", "apply", str(CUDAGRAPH_PATCH)],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip().splitlines()
+        raise ArtifactError(
+            "cudagraph patch did not apply: "
+            + (detail[-1] if detail else "no detail")
+        )
+    observed = sha256(path)
+    if observed != CUDAGRAPH_OUTPUT_SHA256:
+        raise ArtifactError(
+            f"{path}: produced {observed}, expected {CUDAGRAPH_OUTPUT_SHA256}"
+        )
+
+
 def bake_quack(root: Path) -> None:
     replace_exact(
         root / "layout_utils.py",
@@ -96,11 +154,13 @@ def bake_quack(root: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("component", choices=("vllm", "quack"))
+    parser.add_argument("component", choices=("vllm", "quack", "cudagraph"))
     parser.add_argument("root", type=Path)
     args = parser.parse_args()
     if args.component == "vllm":
         bake_vllm(args.root.resolve())
+    elif args.component == "cudagraph":
+        bake_cudagraph(args.root.resolve())
     else:
         bake_quack(args.root.resolve())
     return 0

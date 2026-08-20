@@ -1,0 +1,27 @@
+--- a/vllm/v1/worker/gpu/cudagraph_utils.py
++++ b/vllm/v1/worker/gpu/cudagraph_utils.py
+@@ -513,12 +513,23 @@
+                         # Sync offloader's copy stream before capture.
+                         # Ensure any pre-capture prefetches from offloader are complete.
+                         get_offloader().sync_prev_onload()
++                        if (
++                            os.getenv("VLLM_SPARK_SHARED_CAPTURE_STREAM", "0")
++                            == "1"
++                        ):
++                            full_graph_context = torch.cuda.graph(
++                                graph,
++                                self.pool,
++                                stream=torch.cuda.current_stream(self.device),
++                            )
++                        else:
++                            full_graph_context = torch.cuda.graph(graph, self.pool)
+                         with (
+                             guard_b12x_kernel_resolution(
+                                 "vLLM full CUDA graph capture after B12X warmup"
+                             ),
+                             vllm_cudagraph_capture_scope(),
+-                            torch.cuda.graph(graph, self.pool),
++                            full_graph_context,
+                         ):
+                             forward_fn(CUDAGraphMode.NONE)
+                             # Join offloader's copy stream after forward to avoid
