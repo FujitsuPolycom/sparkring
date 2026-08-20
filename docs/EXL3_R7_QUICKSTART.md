@@ -114,11 +114,45 @@ python scripts/download_exl3_r7.py verify \
   --model-path /var/tmp/sparkring-r7-model
 ```
 
-## 3. Build or obtain the ARM64 image
+## 3. Obtain the ARM64 image
 
-The R7 image is **not published to a registry**. You must either:
+The runtime filesystem is published. `ghcr.io/fujitsupolycom/gb10-vllm-serving`
+holds one layer, `sha256:233970de794aec61170d16ee266015e0760e674974f4843294bc6e24d6b03c98`,
+which is the same layer the image built from `runtime/exl3-r7/` carries. Its
+entrypoint is `/usr/local/bin/sparkring-r7-entrypoint` and it is labelled
+`org.sparkring.runtime_id=glm52-gb10-faststart-19523482c298`. Pulling it is
+therefore an alternative to building, and it needs no registry credentials.
 
-### Option A: Use an existing local image by immutable ID
+### Option A: Pull the published image
+
+```bash
+docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028
+```
+
+`runtime/faststart-lock.json` owns that pin; the command repeats it rather than
+establishing a second one. The digest it names carries a `quack-kernels`
+compatibility correction over its parent
+`sha256:35b29616dc05677b98f647282e81a99fbca1969791ccbfca711c11a44285385e`, which
+a checkpoint other than GLM requires and which is inert for this profile.
+`docs/DEEPSEEK_V4_FLASH_QUICKSTART.md` states what the correction is.
+
+**A pulled image serves this profile, and the exact-Q40 layer refuses it.**
+Container labels differ between a pulled image and one built locally, so the two
+carry the same filesystem under different configuration digests, and a
+configuration digest is what Docker reports as an image ID.
+`spark_transport/experiments/moe_round_floor/q40_exact_state_attestation_overlay.py`
+compares `SPARK_Q40_EXACT_STATE_IMAGE_ID`, which
+`prepare_q40_exact_state_serving.py` derives from the site's image identity,
+against `sha256:02881d5229d4f4d1cbba0cf40537492a2a505b9d4e43bbfe9a0b2a7bd0584513`.
+A pulled image reports a different identity and is refused by that comparison.
+
+What follows from that: sections 1 through 6 and 8 through 10 hold for a pulled
+image, and the exact-Q40 derivation in section 7 does not. Serving without that
+layer is the profile without its target-only decode optimization, not a broken
+stack. Reaching the accepted composition from a pulled image requires the
+attestation contract to name that image's identity.
+
+### Option B: Use an existing local image by immutable ID
 
 If you have built the image or received it from a trusted builder, replace the
 placeholder in the site template:
@@ -135,7 +169,7 @@ runtime:
   container_image_digest: <your-image-id>
 ```
 
-### Option B: Local ARM64 build
+### Option C: Local ARM64 build
 
 Use the receipt-gated builder in [`runtime/exl3-r7/`](../runtime/exl3-r7/README.md),
 then reference the resulting image ID in your site configuration. The builder
@@ -286,6 +320,26 @@ python scripts/sparkring_generic_launcher.py \
   plan
 ```
 
+A rank that has run this profile before holds adaptive-MTP receipts in its
+JIT cache directory, and two guards refuse to start against them: the
+exact-state attestation requires a receipt whose attested flag is unset to be
+archived first, and the adaptive controller refuses to overwrite its own. Both
+name the file they found. Archive every `adaptive-mtp-*.json` and
+`adaptive-mtp-*.jsonl` under `paths.jit_cache_dir` on each rank before
+starting, keeping the contents under a timestamped name rather than deleting
+them:
+
+```bash
+for receipt in "$JIT_CACHE_DIR"/adaptive-mtp-*.json "$JIT_CACHE_DIR"/adaptive-mtp-*.jsonl; do
+  [ -e "$receipt" ] || continue
+  case "$receipt" in *.archived-*) continue ;; esac
+  mv "$receipt" "$receipt.archived-$(date -u +%Y%m%dT%H%M%SZ)"
+done
+```
+
+A first start on a rank that has never run the profile finds no receipt and
+needs nothing archived.
+
 Review the plan. Then start (this **STOPS SERVING** if a stack is running):
 
 ```bash
@@ -340,7 +394,9 @@ These must match.
 - MTP4 improves the measured C1-C4 cells but regresses the matched
   C8 cell by 11.63%. See
   [EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md).
-- A public registry image does not exist. The source builder is
+- The published image carries the runtime filesystem, and the exact-Q40
+  attestation names the identity of an image built locally, so a pulled image
+  serves the profile without that layer. The source builder is
   offline-validated; its clean-checkout image has not completed the published
   four-rank live gate.
 - Dynamic-NVFP4, CKV-gather, tiered-SIRCL, and exact-Q40 composition commands
