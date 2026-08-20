@@ -18,5 +18,12 @@
     "This lane reuses the community image's ARM64/SM121 vLLM and kernel foundation.",
     "SparkRing's recovered vLLM delta is still applied fail-closed by exact preimage SHA-256.",
     "The full source-reproducible lane remains runtime/Containerfile."
-  ]
+  ],
+  "runtime_base_image": {
+    "repository": "ghcr.io/fujitsupolycom/gb10-vllm-base",
+    "manifest_digest": "sha256:9d88c2152b0ae9f33e7a793b7df29398ed79710b205b9244ac63597ab4481ada",
+    "platform": "linux/arm64",
+    "source_commit": "19523482c298",
+    "note": "GB10 runtime layer the serving profiles derive from: SM121 kernels, aarch64 cu132 wheels, and the pinned vLLM, B12X, SparkInfer, NCCL, FlashInfer, and DeepGEMM. Built by scripts/build-gb10-vllm-base-image.sh; published so a deployment can pull it instead of building it."
+  }
 }

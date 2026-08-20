@@ -69,7 +69,15 @@ which of the two it descends from. That label on a built 3.5-bpw image and this
 document have disagreed; the label is the record of what was built, and this
 table describes what the builder accepts rather than asserting one lineage.
 
-Obtain a parent by running the bootstrap for the lane you want, then read its ID:
+The runtime base is published, so it can be pulled rather than built:
+
+```bash
+docker pull ghcr.io/fujitsupolycom/gb10-vllm-base@sha256:9d88c2152b0ae9f33e7a793b7df29398ed79710b205b9244ac63597ab4481ada
+```
+
+`scripts/pull_pinned_images.py` retrieves it along with every other image the
+locks pin. To use the 3.25-bpw serving image as the parent instead, run its
+bootstrap. Either way, read the ID the builder must be given:
 
 ```bash
 docker image inspect <parent-image-ref> --format '{{.Id}}'

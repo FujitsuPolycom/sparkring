@@ -29,10 +29,16 @@ cables, and a working container runtime. Nothing below substitutes
 for that.
 
 You also need a vLLM build that can load `DeepseekV4ForCausalLM` with
-the B12X kernel family. The image this configuration was validated on
-is not published; its lineage is recorded on the profile page. Any
-image that dispatches this architecture and provides B12X should
-accept the flags below.
+the B12X kernel family. The GB10 runtime base carries one:
+
+```bash
+docker pull ghcr.io/fujitsupolycom/gb10-vllm-base@sha256:9d88c2152b0ae9f33e7a793b7df29398ed79710b205b9244ac63597ab4481ada
+```
+
+The image this configuration was measured on is a derivative of that
+base and is not itself published; its lineage is recorded on the profile
+page. Any image that dispatches this architecture and provides B12X
+should accept the flags below.
 
 ## 2. Model
 
