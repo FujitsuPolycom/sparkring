@@ -1,14 +1,14 @@
 # Per-group key-value layout in the external cache tier
 
 Status: **unsupported** for every checkpoint whose key-value cache is laid out
-in more than one layer group, on the cache package pinned by
-[`runtime/exl3/pins.json`](../runtime/exl3/pins.json).
+in more than one layer group. The cause is **not** the deployed cache package,
+which was measured to carry the required property; see
+[The deployed package carries the property](#the-deployed-package-carries-the-property).
 
-This document specifies the package property such a checkpoint requires, the
-package selection that property implies for this hardware, the local delta that
-must survive a package change, the verification that precedes deployment, and
-the gate that decides whether external reuse is functional. It does not
-authorize remote action.
+This document specifies the package property such a checkpoint requires, how to
+verify it, the one defect the deployed package does carry, and the gate that
+decides whether external reuse is functional. It does not authorize remote
+action.
 
 Lane: public-functional. Hardware: four directly cabled NVIDIA DGX Sparks,
 GB10 / SM121, `linux/arm64`. The external cache tier here is LMCache; it is not
@@ -34,12 +34,15 @@ invalid, and the request stalls in the waiting queue instead of completing by
 recomputation. The same package contains no reference to that checkpoint's
 model identifier.
 
-Result: the device-side read path sizes one staging buffer per transfer and has
-no notion of kernel groups.
+Result: a transfer was sized from a geometry other than the one it targeted.
 
 Conclusion: one staging-buffer size cannot satisfy a registration whose groups
-differ in block size or element size. Serving a grouped checkpoint through this
-tier requires a package that tracks key-value layout per layer group.
+differ in block size or element size, so serving a grouped checkpoint through
+this tier requires a package that tracks key-value layout per layer group. That
+requirement is stated here as a property to verify, **not** as a diagnosis of
+this symptom: the deployed package was subsequently measured to carry the
+property, so the symptom has another cause. The next section defines the
+property and records that measurement.
 
 ## The required package property
 
@@ -81,14 +84,45 @@ Measurement: both trees contain `lmcache/v1/kv_layer_groups.py`, define
 Result: stock 0.5.2 — the release this deployment's version string is derived
 from — already carries the required property.
 
-Conclusion: the failure observed on a grouped checkpoint is **not** explained by
-an upstream package that predates per-group tracking, and obtaining a newer
-release is therefore not by itself the remedy. The deployed package is not
-stock 0.5.2: it is composed from fork base `9cebd405` dated 2026-07-28, eleven
-integration heads, and a topology patch. Since that base also postdates the
-capability, the cause lies in the composition rather than in the upstream
-baseline, and the composed tree is where diagnosis continues. This has not been
-determined; see [Open items](#open-items).
+### The deployed package carries the property
+
+Conditions: the composed package installed in serving image
+`sha256:02881d5229d4f4d1cbba0cf40537492a2a505b9d4e43bbfe9a0b2a7bd0584513`, read
+from the container filesystem on rank 0 while the stack was serving. That image
+declares `org.sparkring.lmcache-composed-tree = 7dddbfde874d123e5b5785e6e56b4b7baf4baa82`,
+the tree pinned by [`runtime/exl3/pins.json`](../runtime/exl3/pins.json).
+
+Measurement, by
+[`runtime/exl3/verify_lmcache_group_tracking.py`](../runtime/exl3/verify_lmcache_group_tracking.py)
+over its 660 source files:
+
+| Check | Result |
+|---|---|
+| `group_module_present` | pass |
+| `kernel_group_identity_defined` | pass |
+| `identity_separates_block_size` | pass |
+| `padded_stride_described` | pass |
+| `registration_carries_engine_block_size` | pass |
+| `recipe_connector_symbol_present` | pass |
+| `multi_server_topology_permitted` | pass |
+| `local_topology_patch_applied` | applied |
+| `heartbeat_guard_tests_contents` | **fail** |
+
+Result: the deployed composition tracks key-value layout per layer group, and
+the serving recipe's connector binding is intact. The one failing check is the
+heartbeat guard, at `vllm_multi_process_adapter.py:761` and `:764`.
+
+Conclusion: **replacing the cache package does not address the grouped-layout
+failure, because the deployed package already carries the capability.** Neither
+the upstream baseline nor the composition explains the reported symptom.
+Diagnosis belongs on configuration and on the heartbeat defect. The package
+sections below therefore specify how to verify a package, not a change this
+deployment requires.
+
+The installed tree also reports no usable version: `__version__` resolves to
+`unknown`, so `0.5.2+glm52dcp4.1` exists only in the repository pins and the
+image labels. Verify a build by the property checks above, never by its
+self-reported version.
 
 ### Two checks that do not decide it
 
@@ -250,6 +284,23 @@ become a serving dependency for that checkpoint: the tier is disabled for it,
 the engine serves normally, and the enablement work above is a separate,
 non-blocking track.
 
+The deployment already implements that boundary, and it holds under
+measurement. Conditions: four containers serving that checkpoint from image
+`sha256:02881d52…` across the four ranks.
+
+Measurement: the container entry point starts a cache server only when
+`LMC_IN_CONTAINER` is `1`; that variable is absent from the container
+environment. The serving arguments carry no `--kv-transfer-config`. Each
+container reports `running` with a restart count of zero, and the engine logs
+contain no LMCache line, no `Size mismatch`, and no `LMCache retrieve failed`.
+
+Result: the checkpoint serves with the external tier switched off at the entry
+point rather than configured and failing.
+
+Conclusion: the optional policy describes the deployment as it exists. Enabling
+the tier for this checkpoint is a change to be gated, not a default to be
+restored.
+
 Two properties keep that boundary honest:
 
 - The policy is declared in the evidence document before collection, not chosen
@@ -360,43 +411,40 @@ configuration and are independent of the cache package version.
 
 ## Open items
 
-The single open question is **why the deployed composition fails when its
-upstream baseline does not**. The required property is present in stock 0.5.2,
-and the fork base postdates it, so the cause lies in the eleven integration
-heads or in how the composed tree was assembled.
+The package question is closed: the deployed composition carries per-group
+tracking, so neither the upstream baseline nor the composition explains the
+reported `Size mismatch`. Two items remain, in priority order.
 
-This checkout does not carry the composed tree, but the serving image does. The
-builder installs the composed package into the image's virtual environment and
-also retains its source, so the question is answerable from the image alone,
-without a deployed stack:
+**The heartbeat guard is defective in the deployed package.** This is the one
+confirmed defect, measured at `vllm_multi_process_adapter.py:761` and `:764` in
+the serving image. It is not present in any released package either, so it must
+be corrected locally on whatever base is used. Until it is, any deployment that
+enables the external tier will have its engine reaped by the cache server after
+the idle interval, with stores continuing and lookups stopping silently.
 
-| Path in the image | Contents |
-|---|---|
-| `/opt/venv/lib/python3.12/site-packages/lmcache` | The installed composed package |
-| `/opt/sparkring-exl3/sources/lmcache/` | The composed source tree it was built from |
+**The cause of the reported `Size mismatch` is undetermined.** With the package
+excluded, the remaining candidates are configuration. Take them in this order,
+because the first two are cheap and the reported symptom is consistent with
+both:
 
-Run the checker against the installed package by streaming it into a throwaway
-container built from the same image the profile pins:
+1. The registration deadline. `lmcache.mp.mq_timeout` is pinned at 10 seconds by
+   the serving recipe, against a reported registration time of about 75 seconds
+   for 170 layers at a 32 GiB per-rank reservation.
+2. The declared cache dtype, which must be exactly `fp8_ds_mla`.
+3. The engine's load-failure path, which must accept one block-identifier list
+   per key-value cache group.
+
+Re-running the checker is not required for either item. To repeat it against a
+deployed rank, read the package from the container filesystem rather than
+starting anything:
 
 ```bash
-docker run --rm --network none --entrypoint /opt/venv/bin/python IMAGE_ID - \
-  --package-dir /opt/venv/lib/python3.12/site-packages/lmcache \
-  < runtime/exl3/verify_lmcache_group_tracking.py
+python3 - --package-dir "$(docker inspect CONTAINER --format '{{.GraphDriver.Data.MergedDir}}')/opt/venv/lib/python3.12/site-packages/lmcache" < runtime/exl3/verify_lmcache_group_tracking.py
 ```
 
-Safety class: OFFLINE with respect to the serving stack. It starts a
-short-lived container from an existing image with no device and no network,
-reads one directory, and removes itself. It does not contact, inspect, or
-modify any running engine or cache server, so it is safe while the ring is
-serving. Run it on any host holding the image; the ranks are identical by
-construction, so one is sufficient.
-
-Its output distinguishes the two remaining possibilities. A composition that
-dropped the capability fails `group_module_present`, and the retained source
-tree then localizes which integration head removed it. A composition that
-retains the capability passes every check, which moves diagnosis away from the
-package and onto configuration — the registration deadline and the declared
-cache dtype first.
+Safety class: READ-ONLY REMOTE. It reads files and starts no container and no
+process inside one, so it is safe against a serving rank. Reading the overlay
+path requires root on the host.
 
 ## What this document does not establish
 

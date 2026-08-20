@@ -15,9 +15,11 @@
     "package": "lmcache",
     "is_sparkcache": false,
     "installed_version": "0.5.2+glm52dcp4.1",
-    "installed_version_has_group_tracking": "undetermined",
+    "installed_version_has_group_tracking": true,
     "pins": "runtime/exl3/pins.json",
-    "installed_version_has_group_tracking_note": "the composed tree is not present in this checkout; run the verifier against the package directory installed on a rank to determine it"
+    "installed_version_has_group_tracking_note": "measured on rank 0 against the composed package in serving image sha256:02881d5229d4f4d1cbba0cf40537492a2a505b9d4e43bbfe9a0b2a7bd0584513; all four deciding checks pass over 660 source files",
+    "installed_version_self_reported": "unknown",
+    "installed_version_self_reported_note": "the installed tree resolves __version__ to 'unknown'; 0.5.2+glm52dcp4.1 exists only in the repository pins and image labels, so verify by property, not version"
   },
   "required_capability": {
     "name": "per-layer-group key-value layout tracking in multiprocess mode",
@@ -74,7 +76,7 @@
         "group_tracking": true
       }
     },
-    "upstream_baseline_is_not_the_cause": "stock 0.5.2 already carries the property and the fork base 9cebd405 is dated 2026-07-28, so the observed failure is not explained by a baseline predating per-group tracking; the cause lies in the composition and is undetermined"
+    "upstream_baseline_is_not_the_cause": "stock 0.5.2 carries the property, the fork base postdates it, and the deployed composition was measured to carry it; neither the baseline nor the composition explains the reported symptom"
   },
   "package_selection": {
     "index_latest_release": "0.5.3",
@@ -287,9 +289,8 @@
     }
   ],
   "not_established": [
+    "the cause of the reported Size mismatch; the package is excluded, leaving configuration",
     "no checkpoint has passed the validation gate on this hardware",
-    "no package has been built, deployed, or measured on this ring for this work",
-    "the Size mismatch symptom is operator-reported, unreproduced here, and its cause is undetermined",
     "benchmark comparisons across a key-value cache dtype change are invalid"
   ],
   "fallback": "serving each checkpoint without external key-value reuse is unaffected and is the fallback if a step does not pass",
@@ -317,13 +318,65 @@
     }
   },
   "next_measurement": {
-    "statement": "run the verifier against the composed package installed in the serving image",
-    "safety_class": "OFFLINE with respect to the serving stack; a throwaway container with no device and no network",
-    "image_paths": {
-      "installed_package": "/opt/venv/lib/python3.12/site-packages/lmcache",
-      "composed_source_tree": "/opt/sparkring-exl3/sources/lmcache/"
+    "statement": "correct the heartbeat guard, then investigate configuration in order: registration deadline, declared cache dtype, per-group block-identifier handling in the load-failure path",
+    "registration_deadline_pinned_seconds": 10,
+    "reported_registration_seconds": 75,
+    "safety_class": "OFFLINE for the code correction; enabling the tier is a gated change"
+  },
+  "deployed_measurement": {
+    "image": "sha256:02881d5229d4f4d1cbba0cf40537492a2a505b9d4e43bbfe9a0b2a7bd0584513",
+    "image_label_composed_tree": "7dddbfde874d123e5b5785e6e56b4b7baf4baa82",
+    "matches_pins_composed_tree": true,
+    "read_method": "container filesystem via the container's overlay merged directory; no container started and no process run inside one",
+    "source_file_count": 660,
+    "verdict": "fail",
+    "failed_checks": [
+      "heartbeat_guard_tests_contents"
+    ],
+    "passed_checks": [
+      "group_module_present",
+      "kernel_group_identity_defined",
+      "identity_separates_block_size",
+      "padded_stride_described",
+      "registration_carries_engine_block_size",
+      "recipe_connector_symbol_present",
+      "multi_server_topology_permitted"
+    ],
+    "local_topology_patch_applied": true,
+    "heartbeat_defect_locations": [
+      "integration/vllm/vllm_multi_process_adapter.py:761",
+      "integration/vllm/vllm_multi_process_adapter.py:764"
+    ],
+    "conclusion": "replacing the cache package does not address the grouped-layout failure; the deployed package already carries per-group tracking"
+  },
+  "live_deepseek_stack": {
+    "checkpoint": "deepseek-ai/DeepSeek-V4-Flash-0731",
+    "containers": [
+      "leg3-dsv4-r0",
+      "leg3-dsv4-r1",
+      "leg3-dsv4-r2",
+      "leg3-dsv4-r3"
+    ],
+    "identical_image_ranks": 4,
+    "restart_count_each": 0,
+    "external_tier_enabled": false,
+    "gate_mechanism": "container entry point starts a cache server only when LMC_IN_CONTAINER=1; the variable is absent",
+    "kv_transfer_config_present": false,
+    "engine_log_lmcache_lines": 0,
+    "engine_log_size_mismatch": 0,
+    "engine_log_retrieve_failed": 0,
+    "observed_serving_configuration": {
+      "kv_cache_dtype": "fp8_ds_mla",
+      "tokenizer_mode": "deepseek_v4",
+      "tensor_parallel_size": 4,
+      "max_model_len": 524288,
+      "kv_cache_memory_bytes": 34359738368,
+      "speculative_config": {
+        "method": "dspark",
+        "num_speculative_tokens": 5,
+        "moe_backend": "b12x"
+      }
     },
-    "command": "docker run --rm --network none --entrypoint /opt/venv/bin/python IMAGE_ID - --package-dir /opt/venv/lib/python3.12/site-packages/lmcache < runtime/exl3/verify_lmcache_group_tracking.py",
-    "discriminates": "failing group_module_present means the composition dropped the capability, and the retained source tree localizes which integration head removed it; passing every check moves diagnosis to configuration, starting with the registration deadline and the declared cache dtype"
+    "conclusion": "the checkpoint serves with the external tier switched off at the entry point rather than configured and failing"
   }
 }
