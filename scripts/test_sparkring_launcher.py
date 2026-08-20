@@ -212,7 +212,7 @@ def test_nf3_nvfp4_1m_candidate_contract_is_accepted(tmp_path):
             "VLLM_SPARK_MAX_NUM_BATCHED_TOKENS": "3072",
             "VLLM_SPARK_NF3_PROFILE": "reference-four-spark-adaptive-2-4-c8",
             "VLLM_SPARK_RUNTIME_ID": (
-                "glm52-nf3-nvfp4-rope8-1m-candidate"
+                "gb10-vllm-base-1m-candidate"
             ),
         }
     )

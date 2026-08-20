@@ -318,7 +318,7 @@ def _validate_pinned_model_launch(
 
     candidate_1m = (
         config.environment.get("VLLM_SPARK_RUNTIME_ID")
-        == "glm52-nf3-nvfp4-rope8-1m-candidate"
+        == "gb10-vllm-base-1m-candidate"
     )
     kv_profile = config.environment.get("VLLM_SPARK_KV_PROFILE")
     kv_contracts = {
@@ -542,7 +542,7 @@ def _validate_pinned_model_launch(
         expected_environment.update(
             {
                 "HYBRID_B12X_MAX_TOKENS": "3072",
-                "VLLM_SPARK_RUNTIME_ID": "glm52-nf3-nvfp4-rope8-1m-candidate",
+                "VLLM_SPARK_RUNTIME_ID": "gb10-vllm-base-1m-candidate",
             }
         )
         if site.serving.max_model_len != 1_048_576:
@@ -603,7 +603,7 @@ def start_actions(site: SiteConfig, config: LaunchConfig) -> list[RemoteAction]:
         )
         candidate_1m = (
             config.environment.get("VLLM_SPARK_RUNTIME_ID")
-            == "glm52-nf3-nvfp4-rope8-1m-candidate"
+            == "gb10-vllm-base-1m-candidate"
         )
         argv = [
             config.engine,

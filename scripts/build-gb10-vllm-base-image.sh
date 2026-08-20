@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 ENGINE="${CONTAINER_ENGINE:-docker}"
 CACHE_ROOT="${SPARKRING_BOOTSTRAP_CACHE:-${HOME}/.cache/sparkring/nf3-bootstrap}"
-OUTPUT_IMAGE="${OUTPUT_IMAGE:-sparkring/glm52-nf3-nvfp4-rope8:local}"
+OUTPUT_IMAGE="${OUTPUT_IMAGE:-sparkring/gb10-vllm-base:local}"
 CANDIDATE_IMAGE="${OUTPUT_IMAGE}-candidate"
 
 fatal() {

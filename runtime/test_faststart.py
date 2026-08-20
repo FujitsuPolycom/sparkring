@@ -161,7 +161,7 @@ def test_nvfp4_rope8_layer_preserves_nf3_and_restores_only_mla():
 
 def test_nvfp4_rope8_builder_reuses_pinned_nf3_and_faststart_layers():
     text = (
-        ROOT / "scripts/build-nf3-nvfp4-rope8-image.sh"
+        ROOT / "scripts/build-gb10-vllm-base-image.sh"
     ).read_text(encoding="utf-8")
     assert 'bash "${ROOT}/scripts/build-nf3-image.sh"' in text
     assert "NF3_IMAGE_ID=" in text

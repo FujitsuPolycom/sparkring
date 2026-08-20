@@ -55,7 +55,7 @@ def test_plan_selects_nvfp4_rope8_without_changing_model_downloads():
     assert result.returncode == 0, result.stderr
     plan = json.loads(result.stdout)
     assert plan["profile"] == "nvfp4-rope8"
-    assert plan["image"].startswith("sparkring/glm52-nf3-nvfp4-rope8:")
+    assert plan["image"].startswith("sparkring/gb10-vllm-base:")
     assert plan["model_path"].endswith(
         "GLM-5.2-MXFP8-NVFP4-NF3-Hybrid"
     )

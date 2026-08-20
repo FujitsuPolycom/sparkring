@@ -237,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
     commit = git_value("rev-parse", "HEAD")
     dirty = git_value("status", "--porcelain")
     image = f"sparkring/glm52-exl3-tr3-3.25bpw:{commit[:12]}"
-    base_image = f"sparkring/glm52-nf3-nvfp4-rope8:{commit[:12]}"
+    base_image = f"sparkring/gb10-vllm-base:{commit[:12]}"
     plan = {
         "schema": "sparkring-exl3-bootstrap-plan/v1",
         "runs_on": "rank0",
@@ -297,7 +297,7 @@ def main(argv: list[str] | None = None) -> int:
 
     environment = os.environ.copy()
     environment["OUTPUT_IMAGE"] = base_image
-    run(["bash", str(ROOT / "scripts/build-nf3-nvfp4-rope8-image.sh")], cwd=ROOT, env=environment)
+    run(["bash", str(ROOT / "scripts/build-gb10-vllm-base-image.sh")], cwd=ROOT, env=environment)
     base_id = image_id(base_image)
     Path(args.model_host_path).parent.mkdir(parents=True, exist_ok=True)
     run(container_download_command(base_image, args.model_host_path), cwd=ROOT)
