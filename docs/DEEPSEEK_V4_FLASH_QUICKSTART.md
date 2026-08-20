@@ -78,6 +78,20 @@ VLLM_USE_B12X_MHC=1
 VLLM_DSPARK_GPU_REJECTED_CONTEXT_MASK=1
 ```
 
+This launch attaches no external key-value cache tier. The engine's
+own prefix caching is unaffected and remains active; external reuse is
+`unsupported` for this checkpoint, and the
+[LMCache record](LMCACHE_DEEPSEEK_20260819.md) states why.
+
+`--kv-cache-dtype fp8` is correct for that reason. The engine gates the
+`fp8_ds_mla` layout on an exact string comparison, so `fp8` selects a
+generic path that declares a geometry differing from the one it
+allocates. Both values allocate identically and the engine's own kernels
+never read the declaration, so the difference is invisible here. It is
+not invisible to an external key-value consumer, which reads the
+declared geometry: any configuration that adds one must use
+`--kv-cache-dtype fp8_ds_mla` instead.
+
 Sizing notes. The 32 GiB per-rank key-value reservation and the
 0.70 memory utilization together fit the model on GB10's unified
 memory with headroom; 0.80 has been observed to OOM a follower rank
@@ -139,7 +153,7 @@ agentic use and 1.0 otherwise. The chat template also accepts a
 `reasoning_effort` of `low`, `high`, or `max`; the higher levels
 expect a much larger output budget than most serving profiles allow.
 
-## 7. Failures that cost time
+## 7. Troubleshooting
 
 | Symptom | Cause and fix |
 |---|---|
@@ -156,11 +170,17 @@ repository's GLM profiles, drop its `SPARKRING_MODEL_*` attestation
 variables. They describe a GLM checkpoint, have no effect here, and
 make the running container misreport what it is serving.
 
-## Not covered yet
+## Unsupported or unqualified
 
-- **LMCache.** The GLM 3.25-bpw profile runs LMCache, and an
-  integration path for this model exists on paper, but LMCache has
-  never been run against this checkpoint's key-value layout on the
-  ring. Do not assume the GLM settings transfer.
+- **External key-value reuse**, which is optional and omitted from
+  the launch above. It was run against this checkpoint on the ring and
+  is `unsupported`: the installed cache package stores and restores
+  this model's state across a full teardown but cannot load it into
+  device memory, so every retrieve aborts and the engine recomputes
+  the prompt. Serving without it is unaffected and is the path this
+  page describes. Conditions for support, and the validation method
+  any external tier must satisfy, are in the
+  [LMCache record](LMCACHE_DEEPSEEK_20260819.md). The GLM 3.25-bpw
+  profile's LMCache settings do not transfer.
 - **A pinned model revision** and per-file hashes, as noted above.
 - **Shadow qualification** of any width-4096 collective signature.
