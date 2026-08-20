@@ -349,8 +349,13 @@ These must match.
 - DCP and indexer collectives use the stock path. Only the
   qualified TP all-reduce and vocabulary families use the SparkRing native
   transport.
-- Fixed MTP5 is unsupported by this image. Q48 requires a Python
-  contract extension and a rebuilt native library.
+- Fixed MTP5 requires a Q48 Python contract extension and the matching
+  native library, which the deployed overlay set supplies rather than the
+  bare image. A four-rank launch at `num_speculative_tokens: 5` serves and
+  reports mean acceptance length between 4.38 and 5.52. Whether it decodes
+  faster than the fixed-MTP4 contract above is unmeasured: no matched
+  comparison between the two has been run, so this page continues to
+  specify MTP4.
 
 ## Input chain
 

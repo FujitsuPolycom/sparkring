@@ -168,15 +168,21 @@ start will miss that window, and a rank without a route to the registry
 cannot pull at all. Distribute first, verify every rank reports the same
 image ID, then launch.
 
-Four flags in that command are load-bearing and easy to omit:
+These flags in that command are easy to omit, and one is commonly
+misread as load-bearing:
 
-- `--kernel-config '{"enable_cutedsl_warmup": false}'` disables a CuteDSL
-  router-GEMM warmup pass. Against an uncorrected image that pass aborts
-  the worker before the engine starts, because it reaches the quack import
-  described in section 1. Against the corrected image a launch that omits
-  the flag reports `Skipping CuTeDSL warmup because no compile units were
-  requested` and serves, so the flag is not required; it is retained here
-  because the configuration these observations come from carries it.
+- `--kernel-config '{"enable_cutedsl_warmup": false}'` gates the CuteDSL
+  GEMM autotune section only. It does not gate
+  `_warmup_ll_bf16_router_gemm()`, which runs on any capability-90 or higher
+  device regardless of the flag, so it does not prevent the abort an
+  uncorrected image raises;
+  [`runtime/hotfixes/deployed-r34-20260810/README.md`](../runtime/hotfixes/deployed-r34-20260810/README.md)
+  records that call site and the version skew behind it. Section 1's
+  correction is what prevents the abort. A launch from the corrected image
+  that omits the flag reports `Skipping CuTeDSL warmup because no compile
+  units were requested` and serves. The flag is retained here because the
+  configuration these observations come from carries it, not because it is
+  load-bearing.
 - `--kv-cache-dtype fp8_ds_mla` declares the layout the engine allocates.
   `fp8` allocates identically but declares a generic geometry; the engine's
   own kernels never read the declaration, so both serve, and only
