@@ -20,6 +20,10 @@ the conversation or development history.
   are attributes, not identities.
 - On first reference, give the object's semantic role and, where relevant, its
   durable identifier: artifact name, path, schema, revision, manifest, or hash.
+- Do not make internal codenames, experiment labels, profile numbers, or
+  implementation shorthand the vocabulary of a design. A name such as
+  `XOR-Cheb-T12` is usable only after the text has said what it denotes, and
+  only where a reader must type it.
 - Explain concepts before identifiers. Internal codenames, experiment labels,
   profile numbers, and implementation shorthand are not the vocabulary of the
   design. Mention a literal identifier only after describing what it means, and

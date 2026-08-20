@@ -27,11 +27,10 @@ linked runbook. A document being listed here does not authorize remote action.
 | Subject | Canonical source |
 |---|---|
 | Public-lane definition and open blockers | [Public-functional lane definition](PUBLIC_FUNCTIONAL_TARGET.md) |
-| Public headless-startup ABI audit | [vLLM plugin live validation](PLUGIN_LIVE_VALIDATION_20260820.md) | Records the four-Spark run in which the pip-installed plugin admits width-768 eager all-reduce through the transport and serves a completion, with the overlay neutralized so the result is attributable to one installer; states the limitations and what a profile claim would still require. |
-| [Public startup-shim audit](PUBLIC_STARTUP_SHIM_AUDIT.md) |
+| Public headless-startup ABI audit | [Public startup-shim audit](PUBLIC_STARTUP_SHIM_AUDIT.md) |
 | Runtime input pins | [`runtime/runtime-lock.json`](../runtime/runtime-lock.json) |
 | Site-config schema | [`scripts/sparkring_site.py`](../scripts/sparkring_site.py) |
-| Repository prose standard | [Write Without Hidden Context](WRITING_STANDARD.md) |
+| Repository prose standard | [Write Without Hidden Context](history/WRITING_STANDARD.md) |
 | Model-profile validation status | [Validated-profiles registry](profiles/README.md), then the profile's linked evidence documents |
 | Acceptance behavior and exit codes | [`scripts/acceptance_gate.py`](../scripts/acceptance_gate.py) |
 | Measured claims and evidence labels | [Measured results](RESULTS.md) |
@@ -52,9 +51,9 @@ linked runbook. A document being listed here does not authorize remote action.
 | [NF3 quickstart](NF3_QUICKSTART.md) | Prepares, launches, verifies, and troubleshoots the accepted deterministic alternative. |
 | [DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md) | Launches DeepSeek-V4-Flash-0731 four-rank with its native speculative decoding, with the failure modes that cost time; functional launch, not shadow-qualified. |
 | [CUDA-graph correctness gate](CUDAGRAPH_CORRECTNESS_GATE.md) | Runs the minimal live A/B and deterministic comparison required to diagnose graph replay correctness. |
-| [SparkCache DCP2 dry-run plan](SPARKCACHE_DCP2_DRY_RUN_PLAN.md) | Regenerates and inspects a SparkCache plan; embedded operator state is historical and must be rediscovered. |
+| [SparkCache DCP2 dry-run plan](history/SPARKCACHE_DCP2_DRY_RUN_PLAN.md) | Regenerates and inspects a SparkCache plan; embedded operator state is historical and must be rediscovered. |
 | [Eager width admission validation runbook](EAGER_WIDTH_VALIDATION_RUNBOOK.md) | Runs the three-leg validation for width-generic eager TP4 all-reduce admission; leg records are chronological evidence. |
-| [SparkCache DCP2 live runbook](SPARKCACHE_DCP2_LIVE_RUNBOOK.md) | Defines preflight, authorized cutover, evidence collection, and rollback for the offline-validated integration. |
+| [SparkCache DCP2 live runbook](history/SPARKCACHE_DCP2_LIVE_RUNBOOK.md) | Defines preflight, authorized cutover, evidence collection, and rollback for the offline-validated integration. |
 
 ## Present-state specifications
 
@@ -86,7 +85,7 @@ linked runbook. A document being listed here does not authorize remote action.
 | [NF3 serving snapshot](NF3_LIVE_CONFIGURATION_20260731.md) | Dated observed serving configuration and its drift from the default recipe. |
 | [NF3 fixed-MTP2 record](NF3_FIXED_MTP2_RECIPE_20260801.md) | Dated live configuration, launch command, startup proof, and measurements. |
 | [NF3 DCP2 record](NF3_DCP2_LIVE_CONFIGURATION_20260801.md) | Dated configuration delta, benchmark snapshot, result, and evidence boundary. |
-| [Faststart validation](FASTSTART_VALIDATION.md) | One-Spark native build and partial four-Spark bring-up receipt. |
+| [Faststart validation](history/FASTSTART_VALIDATION.md) | One-Spark native build and partial four-Spark bring-up receipt. |
 | [Public startup-shim audit](PUBLIC_STARTUP_SHIM_AUDIT.md) | Audit conclusion, validated follower behavior, and conditions that require a new audit. |
 | [LMCache with DeepSeek-V4-Flash-0731](LMCACHE_DEEPSEEK_20260819.md) | Records external key-value reuse for this checkpoint as `unsupported`: the installed cache package stores and restores its state across a full teardown but cannot load it into device memory, because the package has no kernel-group support for this architecture. States the engine requirements that hold regardless, the validation method an external tier must satisfy, and the attribution caution that a same-process replay does not evidence external caching. |
 | [Dual-port striping probe record](DUAL_PORT_STRIPING_PROBE_20260818.md) | Model-free four-rank graph-collective measurements: the fused kernel's large-payload pathology, the kernel and schedule fixes with their controls, and a matched NCCL control; research-only, with limitations stated. |
@@ -97,6 +96,6 @@ linked runbook. A document being listed here does not authorize remote action.
 | Document | Purpose and limitation |
 |---|---|
 | [Reference bring-up reconstruction](SETUP.md) | Reconstructs the historical reference deployment. Only stages explicitly marked runnable are supported from the public tree. |
-| [Eager width admission review handoff](REVIEW_HANDOFF_EAGER_WIDTH_ADMISSION.md) | Component map, architecture, equivalence-evidence scope, and review questions for the width-generic admission work. |
+| [Eager width admission review handoff](history/REVIEW_HANDOFF_EAGER_WIDTH_ADMISSION.md) | Component map, architecture, equivalence-evidence scope, and review questions for the width-generic admission work. |
 | [Testing history](TESTING_HISTORY.md) | Preserves dated experiments, regressions, resolved failures, superseded configurations, and acceptance gaps. |
 | [Historical Aiden MXFP4/GPTQ lane](history/AIDEN_MXFP4_GPTQ.md) | Preserves the Aiden MXFP4/GPTQ reference-lane configuration and its evidence scope. |

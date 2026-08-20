@@ -137,8 +137,8 @@ EXL3 + LMCache deployment:
 - [`live_dcp2_cutover.py`](../scripts/live_dcp2_cutover.py) is a confirmation-
   gated, exact-label-guarded operator cutover with rollback.
 
-See the [dry-run plan](../docs/SPARKCACHE_DCP2_DRY_RUN_PLAN.md) and
-[live runbook](../docs/SPARKCACHE_DCP2_LIVE_RUNBOOK.md). This TP4/DCP2 path is
+See the [dry-run plan](../docs/history/SPARKCACHE_DCP2_DRY_RUN_PLAN.md) and
+[live runbook](../docs/history/SPARKCACHE_DCP2_LIVE_RUNBOOK.md). This TP4/DCP2 path is
 **offline-validated only**; it is not the LMCache CS512 serving path and has
 not been promoted into the public default.
 
