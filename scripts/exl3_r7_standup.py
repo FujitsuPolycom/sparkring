@@ -277,7 +277,7 @@ def plan(
         "Operator acceptance applies to the documented image and four-Spark "
         "appliance. A profile generated for another image ID requires the "
         "live promotion gate. The public default remains EXL3 3.25-bpw plus "
-        "LMCache CS512."
+        "LMCache."
     )
     return receipt
 

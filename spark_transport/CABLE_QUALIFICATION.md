@@ -3,7 +3,8 @@
 Run `scripts/qualify_direct_cable.py` on every new, moved, or suspect
 direct-attached cable **before** loading a model. Link-up and ping are not
 enough: the test requires bidirectional 12,288-byte and 16,384-byte traffic,
-the two latency-sensitive GLM collective sizes, while watching NIC error
+the two latency-sensitive decode-collective payload sizes measured in
+`spark_transport/README.md`, while watching NIC error
 counters.
 
 The controller is deliberately non-destructive. It only:

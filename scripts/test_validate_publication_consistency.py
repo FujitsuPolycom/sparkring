@@ -375,8 +375,8 @@ def test_results_remains_canonical_for_clean_checkout_receipt(
 def test_canonical_lane_statement_cannot_disappear(publication_tree: Path) -> None:
     lane_path = publication_tree / "docs/PUBLIC_FUNCTIONAL_TARGET.md"
     prose = lane_path.read_text(encoding="utf-8").replace(
-        "EXL3 plus\n> LMCache CS512 is the default and main advertised configuration",
-        "EXL3 plus\n> LMCache CS512 is an available configuration",
+        "EXL3 plus\n> LMCache is the default and main advertised configuration",
+        "EXL3 plus\n> LMCache is an available configuration",
     )
     lane_path.write_text(prose, encoding="utf-8")
 

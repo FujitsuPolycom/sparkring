@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Derive the public stock-DCP4 R7 baseline from the candidate generator output.
 
-The maintainer-held corrected stock-DCP4 profile was the zero-MTP, DCP4,
+The stock-DCP4 baseline is the speculation-off control: the zero-MTP, DCP4,
 KV9.0 GB, fp8_ds_mla, hybrid-transport, target-only-K6 baseline from which
 all fixed-MTP derivative profiles were derived. This generator reconstructs
 that baseline from the tracked candidate generator plus the recipe's serving
-contract, so a public user does not need the maintainer-held profile.
+contract, so no untracked profile file is required.
 
 The stock-DCP4 baseline is the MTP-off, Q24-graph, 9-GB-KV/rank profile
 that ``prepare_exl3_r7_mtp2.py`` consumes as its ``--stock-profile`` input.

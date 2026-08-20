@@ -1,7 +1,7 @@
 # EXL3 + LMCache public acceptance profile
 
 The acceptance workflow for the default four-DGX-Spark GLM-5.2 EXL3 3.25-bpw
-plus LMCache profile with 512-token cache chunks (CS512). It is a
+plus LMCache profile with 512-token cache chunks. It is a
 `public-functional` candidate workflow: passing it does not upgrade the profile
 from `live-validated` to `accepted`, which only a reviewed live evidence bundle
 does. NF3 is the accepted deterministic alternative.
@@ -16,11 +16,11 @@ does. NF3 is the accepted deterministic alternative.
 | Speculation | fixed MTP2 |
 | Context and KV | 524,288 tokens; 4,500,000,000 KV bytes/rank |
 | Scheduling | maximum 8 sequences; 4,096 batched tokens; Q32 graphs |
-| Cache | native prefix cache plus one LMCache CS512 RAM server per rank |
+| Cache | native prefix cache plus one LMCache RAM server per rank, 512-token chunks |
 
 ## Cache persistence boundary
 
-LMCache CS512 in this recipe has RAM-only L1 storage, so:
+LMCache in this recipe has RAM-only L1 storage, so:
 
 - cache objects and warm reuse survive an **engine-only** restart, because the
   four LMCache servers stay alive;

@@ -1,7 +1,8 @@
 # SparkRing prerequisites
 
 This page is the exhaustive pre-model checklist for a four-node SparkRing
-deployment. Complete it before downloading GLM-5.2 or building the runtime.
+deployment. Complete it before downloading any profile's model checkpoint or
+building the runtime.
 
 SparkRing does not require an Ethernet or InfiniBand switch for inference.
 It does require a separate management path and a correctly configured

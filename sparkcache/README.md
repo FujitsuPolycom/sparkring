@@ -16,7 +16,7 @@ LMCache uses — with a design specific to DCP-sharded serving.
 ## Relationship to the current serving configuration
 
 As of the 2026-08-03 operator snapshot, the four-Spark EXL3 3.25 bpw
-configuration uses **LMCache with 512-token cache chunks (CS512)**, not
+configuration uses **LMCache with 512-token cache chunks**, not
 SparkCache. SparkCache is disabled
 in that configuration: its `--kv-transfer-config` is absent and no SparkCache
 connector is loaded. Similar names do not imply that LMCache data or results
@@ -24,7 +24,7 @@ validate this implementation.
 
 The SparkCache TP4/DCP2 integration published here remains
 **offline-validated**. Its NF3 cutover artifacts are a bounded experimental
-path, not the current service, the EXL3 + LMCache CS512 path, or the public
+path, not the current service, the EXL3 + LMCache path, or the public
 default. The dated DCP2 plan and runbook preserve the operator snapshot for
 which they were written and must be re-attested before any future live use.
 
@@ -139,7 +139,7 @@ EXL3 + LMCache deployment:
 
 See the [dry-run plan](../docs/history/SPARKCACHE_DCP2_DRY_RUN_PLAN.md) and
 [live runbook](../docs/history/SPARKCACHE_DCP2_LIVE_RUNBOOK.md). This TP4/DCP2 path is
-**offline-validated only**; it is not the LMCache CS512 serving path and has
+**offline-validated only**; it is not the LMCache serving path and has
 not been promoted into the public default.
 
 ## Enabling

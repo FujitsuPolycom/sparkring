@@ -309,8 +309,8 @@ preflight is a precondition for a healthy run, not a guarantee of one.
 `gate.example.json` is the companion template for
 `scripts/acceptance_gate.py` and retains the accepted NF3 matrix defaults.
 `gate.exl3.example.json` selects the EXL3 candidate with LMCache using
-512-token cache chunks (CS512) and
-adds its correctness and cache-boundary extensions. Follow
+512-token cache chunks and adds its correctness and cache-boundary
+extensions. Follow
 [`docs/EXL3_ACCEPTANCE_RUNBOOK.md`](../../docs/EXL3_ACCEPTANCE_RUNBOOK.md) for
 that profile. Copy the relevant template to a Git-ignored local path and
 replace every angle-bracket command:

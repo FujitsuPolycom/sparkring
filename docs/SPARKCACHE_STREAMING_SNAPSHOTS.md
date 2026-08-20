@@ -5,7 +5,7 @@
 > end-of-prefill pipeline revision and v51 adds its idle-progress fix.
 > This document records the SparkCache v50/v51
 > development and live-validation campaign. It does not describe the
-> public-default EXL3 3.25 bpw + LMCache CS512 serving configuration; that
+> public-default EXL3 3.25 bpw + LMCache serving configuration; that
 > configuration has
 > SparkCache disabled. SparkCache and LMCache are distinct KV-Connector-V1
 > implementations. The repository's TP4/DCP2 SparkCache integration is

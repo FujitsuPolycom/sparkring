@@ -1,4 +1,4 @@
-"""Tests for the LMCache CS512 geometry and boundary verification gate."""
+"""Tests for the LMCache geometry and boundary verification gate."""
 
 from __future__ import annotations
 

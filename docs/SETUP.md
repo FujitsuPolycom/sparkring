@@ -1,6 +1,6 @@
 # SparkRing Bring-Up Guide
 
-**GLM-5.2 on 4x NVIDIA DGX Spark (GB10), tensor-parallel 4, switchless direct-cable 200GbE RoCE ring.**
+**Reconstruction of the reference deployment: a GLM-5.2 profile on 4x NVIDIA DGX Spark (GB10), tensor-parallel 4, switchless direct-cable 200GbE RoCE ring.**
 
 > **Use [QUICKSTART.md](QUICKSTART.md) for the public-default installation.**
 > The detailed EXL3 procedure is in
@@ -588,7 +588,7 @@ entrypoint, and runtime manifest into the derived image:
 
 ## Stage 6 — Model download and placement
 
-**[DOCUMENTED: private archive new-node-provisioning.md §7, scripts/download-model.sh, and scripts/download_model.py; spark_transport/README.md "GLM checkpoint precision"]**
+**[DOCUMENTED: private archive new-node-provisioning.md §7, scripts/download-model.sh, and scripts/download_model.py; spark_transport/README.md "Checkpoint precision and valid reduction formats"]**
 
 Checkpoint: `<MODEL_REPO>` = **`aidendle94/GLM-5.2-MXFP4-Experts-GPTQ`** at immutable revision `<MODEL_REVISION>` = **`46537e0e16fcd156627800139b41b9c497fc7ee2`**, public on Hugging Face, ~**382 GiB**. Declared precision: BF16 model/output dtype, MXFP4 routed experts, FP8 attention + shared expert, runtime NVFP4 MLA KV cache. Verify identity with both the revision and `config.json` SHA-256 pins below.
 

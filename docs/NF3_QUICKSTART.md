@@ -34,7 +34,7 @@ the pinned NF3 expert kernels while restoring the packed-MLA reader. The
 The Aiden MXFP4/GPTQ lane is historical and lives in
 [history/AIDEN_MXFP4_GPTQ.md](history/AIDEN_MXFP4_GPTQ.md).
 
-The EXL3/Trellis profile plus LMCache with 512-token cache chunks (CS512)
+The EXL3/Trellis profile plus LMCache with 512-token cache chunks
 is the public default. Its public
 bootstrap passed a clean-checkout four-Spark bounded live gate. Follow
 [QUICKSTART.md](QUICKSTART.md) for the default path; use this page when you

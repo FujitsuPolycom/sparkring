@@ -649,7 +649,7 @@ class PublicationValidator:
                 line.lstrip("> ").strip() for line in lane_text.splitlines()
             )
             required_phrases = (
-                "EXL3 plus LMCache CS512 is the default and main advertised configuration",
+                "EXL3 plus LMCache is the default and main advertised configuration",
                 "accepted NF3 matrix",
                 "does not change the public default or accepted NF3 matrix",
             )

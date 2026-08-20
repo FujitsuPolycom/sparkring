@@ -8,7 +8,7 @@ public-functional lane, but its acceptance scope is the operator's four-Spark
 appliance. It is not the repository-wide public-functional default, an
 accepted public deployment matrix, or a transferable result for other
 hardware. The advertised public-functional default is EXL3 3.25-bpw plus
-LMCache CS512. `R7` is the durable recipe identifier of this
+LMCache. `R7` is the durable recipe identifier of this
 operator-tuned 3.5-bpw EXL3 profile (recipe
 `recipes/glm52-exl3-r7-3.5bpw.json`).
 
@@ -70,7 +70,8 @@ TP4/DCP4 topology, fixed-MTP4 policy, exact-Q40 state, KV representation,
 an accepted operator default and has not been reproduced from a clean public
 checkout.
 
-Each rank uses LMCache CS512 with a lazy 512 MiB L1 initialized at zero bytes
+Each rank uses LMCache with 512-token chunks, a lazy 512 MiB L1 initialized at
+zero bytes,
 and a bounded 50 GiB native-filesystem L2. The L2 uses O_DIRECT, two workers,
 and LRU eviction with a 0.85 trigger watermark and 0.15 eviction ratio. The
 engine connector uses the `kv_both` role and recomputes on a load failure.

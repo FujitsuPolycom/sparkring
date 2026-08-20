@@ -277,8 +277,9 @@ runtime:
   # Absolute path to the weights *inside the container*.
   model_path: /models/your-model
 
-  # SparkRing has one current deployment model. The acceptance gate refuses
-  # a different repository; the former Aiden/GPTQ lane is historical only.
+  # Model repository from the profile this site deploys (this template carries
+  # the NF3 profile's pin). The acceptance gate refuses a repository that does
+  # not match the profile; the former Aiden/GPTQ lane is historical only.
   model_repo: madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid
 
   # Immutable revision of that repository: a 40-hex commit sha, never a branch

@@ -52,7 +52,7 @@ If understanding a sentence requires conversation history, rewrite it.
   artifacts and evidence harness are maintainer-held, and public-lane
   reproduction of those measurements has not been performed.
 - The **default and main advertised public-functional configuration** is EXL3
-  3.25-bpw plus LMCache CS512. Its receipt-gated public bootstrap built
+  3.25-bpw plus LMCache. Its receipt-gated public bootstrap built
   one ARM64 image from a clean checkout, distributed the identical image ID to
   four directly cabled Sparks, and passed startup, graph, API, repeated
   fixed-seed 128-token, bounded C1/C2/C8, and post-run health gates. This is
