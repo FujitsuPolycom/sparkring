@@ -193,6 +193,16 @@ in [`TIERED_DEFERRED_GRAPH.md`](../spark_transport/TIERED_DEFERRED_GRAPH.md).
 
 Generate the EXL3 insertion-only state from the prepared vLLM result tree:
 
+Both generators verify their input hashes, and the tree
+`prepare_context.py` produces does not hold either input: `exl3.py` needs
+the W4A16 scratch reservation and `model_runner.py` needs the routed-expert
+capturer. Apply both first; the producer refuses to write when a hash does
+not match and reports an already-prepared tree without rewriting it:
+
+```bash
+python spark_transport/experiments/moe_round_floor/prepare_q40_overlay_inputs.py   .sparkring/r7-prepared-sources/vllm
+```
+
 ```bash
 q40=.sparkring/exl3-r7/q40-exact
 mkdir -p "$q40"
