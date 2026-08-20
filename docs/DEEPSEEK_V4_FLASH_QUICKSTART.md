@@ -35,14 +35,24 @@ the B12X kernel family. One is published:
 docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:df0e2068fc7034a1ec7a2c1fa4e0c3224c720161539525b5a7cbb037dc1d0f8e
 ```
 
-That image registers `DeepseekV4ForCausalLM`, carries B12X, LMCache, the
-patched NCCL, and the SparkRing transport library, and is the image the
-profile page's operator observations were taken on. It also registers
-`Glm4MoeForCausalLM`, so one image covers the GLM profiles as well.
+That image registers `DeepseekV4ForCausalLM` and carries B12X, LMCache,
+the patched NCCL, and the SparkRing transport library. It also registers
+`Glm4MoeForCausalLM`.
 
-The image runs an entrypoint that attests a GLM profile, so a launch
-for this checkpoint overrides it with `--entrypoint`, as the command
-in section 3 does.
+**The image alone has not been shown to serve this checkpoint.** A
+four-rank launch from it, with the flags below and the environment a
+deployment supplies, reached worker initialisation and failed in
+`cutlass.cute.core` with `no attribute 'ThrMma'`. The deployment whose
+observations the profile page records runs the same image with 51
+additional bind mounts, 32 of which overlay patched Python files onto
+`site-packages/vllm` and `/opt/spark-vllm`. Those files are held by the
+operator and are not in this repository or the image.
+
+What the image removes is the ARM64 CUDA build: the transport library,
+its probe binaries, the patched NCCL, and the forked vLLM all arrive
+prebuilt. What remains unresolved is which of those 32 overlays this
+checkpoint requires. Until that is established, treat the launch below
+as the shape of a deployment rather than a procedure known to complete.
 
 ## 2. Model
 
@@ -87,6 +97,22 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
   --served-model-name deepseek-v4-flash-0731 \
   $([ "$RANK" -eq 0 ] && echo "--host 0.0.0.0 --port 8000" || echo "--headless")
 ```
+
+The environment a rank needs is larger than the five variables in
+section 4. A launch also requires `LD_PRELOAD` naming
+`/usr/local/cuda/compat/libcuda.so.1` and the patched
+`/opt/sparkring/nccl/libnccl.so.2`, and roughly twenty `NCCL_*`
+variables that select the ring algorithm, the two host channel adapters,
+and GID index 3. Without the compat preload the worker aborts on an
+undefined `cuTensorMapEncodeTiled`; without the NCCL configuration it
+aborts on an unhandled system error. A deployment carries these in a
+per-rank environment file.
+
+Every rank must hold the image before any rank launches. Rendezvous
+waits 601 seconds for all four; a rank still pulling when the others
+start will miss that window, and a rank without a route to the registry
+cannot pull at all. Distribute first, verify every rank reports the same
+image ID, then launch.
 
 Four flags in that command are load-bearing and easy to omit:
 
