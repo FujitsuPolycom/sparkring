@@ -1,9 +1,14 @@
 # R7 overlay source fixtures
 
-These files are test-only snapshots from the Apache-2.0-licensed vLLM result
-tree produced by [`runtime/exl3-r7/pins.json`](../pins.json). They let offline
-CI verify the target-only exact-Q40 overlay without fetching source trees or
-depending on an operator's ignored `.sparkring` build directory.
+These files are test-only snapshots of the Apache-2.0-licensed vLLM result
+tree that [`runtime/exl3-r7/pins.json`](../pins.json) names, after
+`spark_transport/experiments/moe_round_floor/prepare_q40_overlay_inputs.py`
+has applied the two exact-Q40 input edits: the W4A16 scratch reservation in
+`exl3.py` and the routed-expert capturer from `q40_v2_route_capture.patch`
+in `model_runner.py`. The pinned tree alone does not carry either file at
+these hashes. The snapshots let offline CI verify the target-only exact-Q40
+overlay without fetching source trees or depending on an operator's ignored
+`.sparkring` build directory.
 
 | File | SHA-256 | Role |
 |---|---|---|

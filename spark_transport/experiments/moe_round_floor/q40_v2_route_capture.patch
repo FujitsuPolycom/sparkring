@@ -1,0 +1,379 @@
+diff --git a/vllm/v1/core/sched/scheduler.py b/vllm/v1/core/sched/scheduler.py
+index 208b5a679..ab5605a4d 100644
+--- a/vllm/v1/core/sched/scheduler.py
++++ b/vllm/v1/core/sched/scheduler.py
+@@ -1,6 +1,9 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++import hashlib
+ import itertools
++import json
++import os
+ import time
+ from collections import defaultdict, deque
+ from collections.abc import Iterable
+@@ -340,16 +343,59 @@ class Scheduler(SchedulerInterface):
+             vllm_config.model_config.enable_return_routed_experts
+         )
+ 
+-        if self.enable_return_routed_experts:
+-            assert self.dcp_world_size == 1 and self.pcp_world_size == 1, (
+-                "enable_return_routed_experts does not support context parallelism "
+-                "(dcp_world_size > 1 or pcp_world_size > 1)"
+-            )
++        # This opt-in captures the exact worker-returned Q40 target route
++        # tensor before the normal per-request slot-buffer association.  It is
++        # intentionally separate from the public routed-experts response ABI:
++        # DCP4 has a different physical KV-slot layout, but the raw route tensor
++        # is already complete and rank-replicated.  The trace-only path avoids
++        # claiming that DCP slot association has been validated.
++        self._q40_route_trace_path = os.getenv("SPARK_Q40_ROUTE_CAPTURE_PATH")
++        self._q40_route_trace_only = bool(self._q40_route_trace_path)
++        self._q40_route_capture_count = 0
++        self._q40_route_capture_limit = int(
++            os.getenv("SPARK_Q40_ROUTE_CAPTURE_LIMIT", "64")
++        )
++        if self._q40_route_capture_limit <= 0:
++            raise ValueError("SPARK_Q40_ROUTE_CAPTURE_LIMIT must be positive")
++        self._q40_route_capture_salt = os.getenv(
++            "SPARK_Q40_ROUTE_CAPTURE_SALT", ""
++        )
++        self._q40_route_provenance: dict[str, Any] | None = None
++        if self._q40_route_trace_only:
++            if not self._q40_route_capture_salt:
++                raise ValueError("SPARK_Q40_ROUTE_CAPTURE_SALT is required")
++            try:
++                provenance = json.loads(
++                    os.environ["SPARK_Q40_ROUTE_PROVENANCE_JSON"]
++                )
++            except KeyError as error:
++                raise ValueError(
++                    "SPARK_Q40_ROUTE_PROVENANCE_JSON is required"
++                ) from error
++            except json.JSONDecodeError as error:
++                raise ValueError(
++                    "SPARK_Q40_ROUTE_PROVENANCE_JSON is invalid"
++                ) from error
++            if not isinstance(provenance, dict):
++                raise ValueError(
++                    "SPARK_Q40_ROUTE_PROVENANCE_JSON must be an object"
++                )
++            self._q40_route_provenance = provenance
++            if self.dcp_world_size != 4 or self.pcp_world_size != 1:
++                raise ValueError(
++                    "Q40 route-only capture requires DCP4 and PCP1"
++                )
+ 
+-            self.routed_experts_mgr = RoutedExpertsManager(
+-                vllm_config=vllm_config,
+-                kv_cache_config=kv_cache_config,
+-            )
++        if self.enable_return_routed_experts:
++            if not self._q40_route_trace_only:
++                assert self.dcp_world_size == 1 and self.pcp_world_size == 1, (
++                    "enable_return_routed_experts does not support context "
++                    "parallelism (dcp_world_size > 1 or pcp_world_size > 1)"
++                )
++                self.routed_experts_mgr = RoutedExpertsManager(
++                    vllm_config=vllm_config,
++                    kv_cache_config=kv_cache_config,
++                )
+             # Block-ID snapshot taken at schedule time (before forward),
+             # so update_from_output can read slot data even if a later
+             # schedule() frees the blocks (async scheduling race).
+@@ -361,6 +407,105 @@ class Scheduler(SchedulerInterface):
+         # async KV loads). Their remaining-block reservation gates async loads.
+         self._inflight_prefills: set[Request] = set()
+ 
++    def _capture_q40_route_step(
++        self,
++        scheduler_output: SchedulerOutput,
++        model_runner_output: ModelRunnerOutput,
++    ) -> None:
++        """Append one provenance-complete C8/fixed-MTP4 Q40 route record."""
++
++        if (
++            not self._q40_route_trace_only
++            or self._q40_route_capture_count >= self._q40_route_capture_limit
++        ):
++            return
++        routed = model_runner_output.routed_experts
++        if routed is None:
++            raise RuntimeError("Q40 route-only capture received no route tensor")
++        counts = scheduler_output.num_scheduled_tokens
++        if len(counts) != 8 or any(value != 5 for value in counts.values()):
++            return
++        request_order = model_runner_output.req_ids
++        if len(request_order) != 8 or set(request_order) != set(counts):
++            raise RuntimeError("Q40 route request ordering is inconsistent")
++        data = routed.routing_data
++        if data.ndim != 3 or data.shape[0] != 40 or data.shape[2] != 8:
++            raise RuntimeError(
++                f"Q40 route tensor has unsupported shape {data.shape}"
++            )
++        # GLM-5.2 exposes 78 target layers; layers 0..2 are dense and the
++        # routed-MoE tensor occupies source layer IDs 3..77.
++        if data.shape[1] != 78:
++            raise RuntimeError(
++                f"Q40 route tensor must cover 78 model layers, got {data.shape[1]}"
++            )
++        routed_data = data[:, 3:78, :]
++        if routed_data.min() < 0 or routed_data.max() >= 256:
++            raise RuntimeError("Q40 route tensor contains an invalid expert ID")
++
++        request_digest = hashlib.sha256(
++            (
++                self._q40_route_capture_salt
++                + "\0"
++                + "\0".join(request_order)
++            ).encode("utf-8")
++        ).hexdigest()
++        record = {
++            "schema": "glm52-target-expert-routes/v1",
++            "request_key": request_digest,
++            "round": self._q40_route_capture_count,
++            "width": 40,
++            "phase": "target",
++            "capture_slot": self._q40_route_capture_count,
++            "route_source": {
++                "kind": "captured-real-model-routes",
++                "capture_schema": "sparkring-q40-target-router-capture/v1",
++                "capture_point": (
++                    "scheduler raw worker-returned route tensor before "
++                    "per-request KV-slot association"
++                ),
++            },
++            "row_layout": {
++                "schema": "glm52-fixed-mtp4-c8-route-rows/v1",
++                "requests": 8,
++                "rows_per_request": 5,
++                "total_rows": 40,
++                "row_order": "request-major verification rows",
++            },
++            "provenance": self._q40_route_provenance,
++            "capture_metadata": {
++                "scheduled_tokens_by_request_in_model_order": [
++                    counts[request_id] for request_id in request_order
++                ],
++                "source_model_layers": [3, 77],
++                "captured_at_unix_ns": time.time_ns(),
++            },
++            "layers": [
++                {
++                    "layer": layer,
++                    "positions": [
++                        {"expert_ids": routed_data[row, layer, :].tolist()}
++                        for row in range(40)
++                    ],
++                }
++                for layer in range(75)
++            ],
++        }
++        path = os.fspath(self._q40_route_trace_path)
++        with open(path, "a", encoding="utf-8", newline="\n") as stream:
++            stream.write(
++                json.dumps(record, sort_keys=True, separators=(",", ":"))
++            )
++            stream.write("\n")
++        self._q40_route_capture_count += 1
++        if self._q40_route_capture_count in (1, self._q40_route_capture_limit):
++            logger.warning(
++                "Q40 route-only capture wrote %d/%d records to %s",
++                self._q40_route_capture_count,
++                self._q40_route_capture_limit,
++                path,
++            )
++
+     def _mamba_block_aligned_split(
+         self,
+         request: Request,
+@@ -1292,7 +1437,7 @@ class Scheduler(SchedulerInterface):
+         # have not yet been consumed by update_from_output (async
+         # scheduling may call _update_after_schedule again before the
+         # prior update_from_output runs).
+-        if self.enable_return_routed_experts:
++        if self.enable_return_routed_experts and not self._q40_route_trace_only:
+             gid = self.routed_experts_mgr.attn_gid
+             self._re_block_ids.update(
+                 {
+@@ -1656,17 +1801,24 @@ class Scheduler(SchedulerInterface):
+         routing_offsets: dict[str, int] = {}
+         if model_runner_output.routed_experts is not None:
+             re = model_runner_output.routed_experts
+-            self.routed_experts_mgr.store_batch(re.routing_data, re.slot_mapping)
+-            routing_data = re.routing_data.astype(
+-                self.routed_experts_mgr.routed_experts_by_slot.dtype,
+-                copy=False,
+-            )
+-            # Build offset map using model runner's request order
+-            # (input_batch ordering), NOT scheduler dict order.
+-            offset = 0
+-            for rid in model_runner_output.req_ids:
+-                routing_offsets[rid] = offset
+-                offset += num_scheduled_tokens[rid]
++            if self._q40_route_trace_only:
++                self._capture_q40_route_step(
++                    scheduler_output, model_runner_output
++                )
++            else:
++                self.routed_experts_mgr.store_batch(
++                    re.routing_data, re.slot_mapping
++                )
++                routing_data = re.routing_data.astype(
++                    self.routed_experts_mgr.routed_experts_by_slot.dtype,
++                    copy=False,
++                )
++                # Build offset map using model runner's request order
++                # (input_batch ordering), NOT scheduler dict order.
++                offset = 0
++                for rid in model_runner_output.req_ids:
++                    routing_offsets[rid] = offset
++                    offset += num_scheduled_tokens[rid]
+ 
+         # NOTE(woosuk): As len(num_scheduled_tokens) can be up to 1K or more,
+         # the below loop can be a performance bottleneck. We should do our best
+diff --git a/vllm/v1/worker/gpu/model_runner.py b/vllm/v1/worker/gpu/model_runner.py
+index cbeba2b88..a30354fb4 100644
+--- a/vllm/v1/worker/gpu/model_runner.py
++++ b/vllm/v1/worker/gpu/model_runner.py
+@@ -19,6 +19,7 @@ instead of embedding feature-specific logic directly.
+ 
+ import functools
+ import gc
++import os
+ import sys
+ import time
+ from collections.abc import Callable
+@@ -44,6 +45,9 @@ from vllm.distributed.parallel_state import (
+ )
+ from vllm.forward_context import BatchDescriptor, set_forward_context
+ from vllm.logger import init_logger
++from vllm.model_executor.layers.fused_moe.routed_experts_capturer import (
++    RoutedExpertsCapturer,
++)
+ from vllm.model_executor.layers.mamba.ops.ssu_dispatch import (
+     initialize_mamba_ssu_backend,
+ )
+@@ -62,7 +66,7 @@ from vllm.v1.kv_cache_interface import (
+     get_kv_cache_cp_shard_count,
+ )
+ from vllm.v1.kv_cache_spec_registry import KVCacheSpecRegistry
+-from vllm.v1.outputs import DraftTokenIds, ModelRunnerOutput
++from vllm.v1.outputs import DraftTokenIds, ModelRunnerOutput, RoutedExpertsLists
+ from vllm.v1.utils import record_function_or_nullcontext
+ from vllm.v1.worker.cp_utils import check_attention_cp_compatibility
+ from vllm.v1.worker.gpu.async_utils import AsyncOutput, AsyncPoolingOutput
+@@ -346,6 +350,11 @@ class GPUModelRunner(LoRAModelRunnerMixin):
+         # Expert parallelism load balancer.
+         self.eplb = EPLBController(self.parallel_config, self.device)
+ 
++        # The Q40 research trace is independent from vLLM's public
++        # return-routed-experts ABI.  The latter remains unsupported by model
++        # runner V2 because its KV-slot association has not been implemented.
++        self.q40_route_capture_initialized = False
++
+     def update_max_model_len(self, max_model_len: int) -> None:
+         self.max_model_len = max_model_len
+         self.req_states.max_model_len = max_model_len
+@@ -450,6 +459,9 @@ class GPUModelRunner(LoRAModelRunnerMixin):
+         )
+         self.eplb.maybe_start_async_loop(eplb_models_added)
+ 
++        if os.getenv("SPARK_Q40_ROUTE_CAPTURE_PATH"):
++            self._init_q40_route_capturer()
++
+         if not self.is_first_pp_rank:
+             # For non-first PP ranks, create intermediate tensors sized
+             # for the max capture size so they can be sliced per batch.
+@@ -464,6 +476,73 @@ class GPUModelRunner(LoRAModelRunnerMixin):
+     def get_model(self) -> nn.Module:
+         return self.model
+ 
++    def _init_q40_route_capturer(self) -> None:
++        """Bind a trace-only target-router capturer to model runner V2."""
++
++        if self.q40_route_capture_initialized:
++            return
++        self.q40_route_capturer = RoutedExpertsCapturer(
++            max_num_batched_tokens=self.max_num_tokens,
++            vllm_config=self.vllm_config,
++        )
++
++        from vllm.model_executor.layers.fused_moe.layer import MoERunner
++        from vllm.model_executor.layers.fused_moe.router.base_router import (
++            BaseRouter,
++        )
++
++        bound_layer_ids: list[int] = []
++        for module in self.model.modules():
++            if isinstance(module, MoERunner) and isinstance(module.router, BaseRouter):
++                layer_id = module.layer_id
++
++                def _capture_fn(
++                    topk_ids,
++                    _layer_id=layer_id,
++                    _capturer=self.q40_route_capturer,
++                ):
++                    _capturer.capture(_layer_id, topk_ids)
++
++                module.router.set_capture_fn(_capture_fn)
++                bound_layer_ids.append(layer_id)
++        expected_layer_ids = list(range(3, 78))
++        if sorted(bound_layer_ids) != expected_layer_ids:
++            raise RuntimeError(
++                "Q40 route trace requires target MoE layer IDs 3..77; "
++                f"found {sorted(bound_layer_ids)}"
++            )
++        self.q40_route_capture_initialized = True
++        logger.warning(
++            "Q40 trace-only routed-expert capture bound to %d target layers",
++            len(bound_layer_ids),
++        )
++
++    def _get_q40_route_capture(
++        self, input_batch: InputBatch
++    ) -> RoutedExpertsLists | None:
++        """Synchronously snapshot the small active route slice for tracing."""
++
++        if not self.q40_route_capture_initialized:
++            return None
++        if (
++            input_batch.num_reqs != 8
++            or input_batch.num_tokens != 40
++            or not np.all(input_batch.num_scheduled_tokens == 5)
++        ):
++            return None
++        num_tokens = input_batch.num_tokens
++        route_data = (
++            self.q40_route_capturer.get_device_buffer()[:num_tokens]
++            .to("cpu")
++            .numpy()
++            .copy()
++        )
++        # The trace-only scheduler consumes raw route rows before physical
++        # KV-slot association.  A deterministic sentinel array satisfies the
++        # shared transport type without claiming that V2 slot mapping exists.
++        slot_mapping = np.full((num_tokens,), -1, dtype=np.int64)
++        return RoutedExpertsLists(route_data, slot_mapping)
++
+     def get_draft_model(self) -> nn.Module | None:
+         speculator = self.speculator
+         if not isinstance(speculator, DraftModelSpeculator):
+@@ -1568,6 +1647,8 @@ class GPUModelRunner(LoRAModelRunnerMixin):
+         skip_attn_for_dummy_run: bool = False,
+         is_profile: bool = False,
+     ) -> ModelRunnerOutput | IntermediateTensors | None:
++        if self.q40_route_capture_initialized:
++            self.q40_route_capturer.clear_buffer()
+         if not dummy_run:
+             with record_function_or_nullcontext("vllm:v2/target/update_batch"):
+                 # Update the request states.
+@@ -1972,6 +2053,7 @@ class GPUModelRunner(LoRAModelRunnerMixin):
+             req_id_to_index={req_id: i for i, req_id in enumerate(input_batch.req_ids)},
+             sampled_token_ids=None,  # type: ignore
+             prompt_logprobs_dict=prompt_logprobs_dict,  # type: ignore[arg-type]
++            routed_experts=self._get_q40_route_capture(input_batch),
+         )
+         copy_draft_with_output = (
+             self.num_speculative_steps > 0
+
