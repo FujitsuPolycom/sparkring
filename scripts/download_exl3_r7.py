@@ -43,6 +43,12 @@ PINNED_FILES = {
 }
 
 
+DEFAULT_SEARCH_ROOTS = ("/home", "/srv", "/models", "/data", "/mnt", "/var/tmp")
+SEARCH_MAX_DEPTH = 4
+INDEX_NAME = "model.safetensors.index.json"
+IDENTIFYING_FILES = ("config.json", INDEX_NAME)
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -156,11 +162,92 @@ def download(path: Path, api, snapshot_download) -> dict:
     return verify(path, remote_inventory)
 
 
+
+def identifies_checkpoint(path: Path) -> bool:
+    """Whether a directory holds the pinned checkpoint, judged by its bytes.
+
+    A directory is named for whatever produced it, so a name proves nothing.
+    This compares the size and SHA-256 of the files PINNED_FILES identifies and
+    counts the shards, which is what distinguishes this checkpoint from another
+    quantization of the same model.
+    """
+
+    for name in IDENTIFYING_FILES:
+        size, digest = PINNED_FILES[name]
+        candidate = path / name
+        try:
+            if not candidate.is_file() or candidate.stat().st_size != size:
+                return False
+            if sha256(candidate) != digest:
+                return False
+        except OSError:
+            return False
+    return len(list(path.glob("*.safetensors"))) == EXPECTED_SHARD_COUNT
+
+
+def candidate_directories(roots, max_depth: int = SEARCH_MAX_DEPTH):
+    """Yield directories beneath `roots` that carry a shard index.
+
+    Descent stops at `max_depth` and skips dotted directories, so a search over
+    a home directory does not walk caches unrelated to model storage.
+    """
+
+    for raw in roots:
+        root = Path(raw)
+        if not root.is_dir():
+            continue
+        base = len(root.parts)
+        for current, subdirectories, files in os.walk(root, onerror=lambda _: None):
+            here = Path(current)
+            if len(here.parts) - base >= max_depth:
+                subdirectories[:] = []
+            else:
+                subdirectories[:] = [d for d in subdirectories if not d.startswith(".")]
+            if INDEX_NAME in files:
+                yield here
+
+
+def locate(roots) -> dict:
+    """Report every directory beneath `roots` holding the pinned checkpoint."""
+
+    found = []
+    for directory in candidate_directories(roots):
+        resolved = str(directory.resolve())
+        if resolved in found:
+            continue
+        if identifies_checkpoint(directory):
+            found.append(resolved)
+    return {
+        "repository": REPOSITORY,
+        "revision": REVISION,
+        "searched_roots": [str(root) for root in roots],
+        "shard_count": EXPECTED_SHARD_COUNT,
+        "found": sorted(found),
+        "status": "pass" if found else "absent",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=("download", "verify"))
-    parser.add_argument("--model-path", type=Path, required=True)
+    parser.add_argument("action", choices=("download", "verify", "locate"))
+    parser.add_argument("--model-path", type=Path)
+    parser.add_argument(
+        "--search-root",
+        type=Path,
+        action="append",
+        dest="search_roots",
+        help=(
+            "directory to search for the pinned checkpoint; repeatable, and "
+            "defaults to " + ", ".join(DEFAULT_SEARCH_ROOTS)
+        ),
+    )
     args = parser.parse_args()
+    if args.action == "locate":
+        report = locate(args.search_roots or [Path(r) for r in DEFAULT_SEARCH_ROOTS])
+        print(json.dumps(report, sort_keys=True))
+        return 0 if report["found"] else 1
+    if args.model_path is None:
+        parser.error("--model-path is required for download and verify")
     try:
         from huggingface_hub import HfApi, snapshot_download
 

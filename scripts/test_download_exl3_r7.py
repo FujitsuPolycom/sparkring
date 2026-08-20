@@ -63,3 +63,70 @@ def test_verify_fails_when_revision_has_no_digest_for_a_runtime_shard(tmp_path, 
     monkeypatch.setattr(r7, "indexed_shards", lambda _: {"missing.safetensors"})
     with pytest.raises(RuntimeError, match="lacks LFS SHA-256 metadata"):
         r7.verify(tmp_path, {})
+
+
+def _plant_checkpoint(root, monkeypatch, *, shards=None, config=b"cfg", index=b"idx"):
+    """Create a directory the locator should accept, and pin it to those bytes."""
+    monkeypatch.setitem(r7.PINNED_FILES, "config.json", (len(config), _sha(config)))
+    monkeypatch.setitem(r7.PINNED_FILES, r7.INDEX_NAME, (len(index), _sha(index)))
+    monkeypatch.setattr(r7, "EXPECTED_SHARD_COUNT", 3)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "config.json").write_bytes(config)
+    (root / r7.INDEX_NAME).write_bytes(index)
+    for number in range(3 if shards is None else shards):
+        (root / f"shard-{number}.safetensors").write_bytes(b"")
+    return root
+
+
+def test_locate_finds_checkpoint_under_any_directory_name(tmp_path, monkeypatch):
+    """The directory is named for its repository, not for a mount point."""
+    planted = _plant_checkpoint(
+        tmp_path / "home" / "someone" / "models" / "GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78",
+        monkeypatch,
+    )
+
+    report = r7.locate([tmp_path])
+
+    assert report["status"] == "pass"
+    assert report["found"] == [str(planted.resolve())]
+
+
+def test_locate_rejects_a_directory_whose_config_differs(tmp_path, monkeypatch):
+    """A different quantization of the same model must not be accepted."""
+    _plant_checkpoint(tmp_path / "models" / "other", monkeypatch)
+    (tmp_path / "models" / "other" / "config.json").write_bytes(b"different")
+
+    report = r7.locate([tmp_path])
+
+    assert report["status"] == "absent"
+    assert report["found"] == []
+
+
+def test_locate_rejects_a_partial_shard_set(tmp_path, monkeypatch):
+    _plant_checkpoint(tmp_path / "models" / "partial", monkeypatch, shards=2)
+
+    assert r7.locate([tmp_path])["status"] == "absent"
+
+
+def test_locate_reports_absent_for_a_missing_root(tmp_path):
+    report = r7.locate([tmp_path / "nowhere"])
+
+    assert report["status"] == "absent"
+    assert report["searched_roots"] == [str(tmp_path / "nowhere")]
+
+
+def test_candidate_directories_stops_at_the_depth_limit(tmp_path):
+    deep = tmp_path / "a" / "b" / "c" / "d" / "e"
+    deep.mkdir(parents=True)
+    (deep / r7.INDEX_NAME).write_bytes(b"idx")
+
+    assert list(r7.candidate_directories([tmp_path], max_depth=2)) == []
+    assert deep in list(r7.candidate_directories([tmp_path], max_depth=9))
+
+
+def test_candidate_directories_skips_dotted_directories(tmp_path):
+    hidden = tmp_path / ".cache" / "model"
+    hidden.mkdir(parents=True)
+    (hidden / r7.INDEX_NAME).write_bytes(b"idx")
+
+    assert list(r7.candidate_directories([tmp_path])) == []
