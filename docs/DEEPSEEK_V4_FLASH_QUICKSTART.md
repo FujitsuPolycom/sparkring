@@ -35,10 +35,12 @@ the B12X kernel family. The GB10 runtime base carries one:
 docker pull ghcr.io/fujitsupolycom/gb10-vllm-base@sha256:9d88c2152b0ae9f33e7a793b7df29398ed79710b205b9244ac63597ab4481ada
 ```
 
-The image this configuration was measured on is a derivative of that
-base and is not itself published; its lineage is recorded on the profile
-page. Any image that dispatches this architecture and provides B12X
-should accept the flags below.
+That image registers `DeepseekV4ForCausalLM` and carries B12X, the
+patched NCCL, and the SparkRing transport library, so it serves this
+checkpoint without a derived build. The image the measurements on the
+profile page were taken on is a different derivative of the same base
+and is not published; any image that dispatches this architecture and
+provides B12X accepts the flags below.
 
 ## 2. Model
 
@@ -53,11 +55,18 @@ downloaded and pin them yourself.
 
 ## 3. Launch
 
-Run one process per rank, rank 0 through rank 3, with `--node-rank`
-matching. Rank 0 exposes the API; the other ranks join it.
+Run one container per rank, rank 0 through rank 3, with `--node-rank`
+matching. Rank 0 serves the API; ranks 1 through 3 run `--headless` and
+join it over the fabric address of rank 0.
 
 ```bash
-vllm serve /path/to/deepseek-v4-flash-0731 \
+docker run -d --name deepseek-v4-flash-r"$RANK" \
+  --network host --ipc host --shm-size 16g --gpus all \
+  --ulimit memlock=-1:-1 --device /dev/infiniband \
+  -v /path/to/deepseek-v4-flash-0731:/models/deepseek-v4-flash-0731:ro \
+  --env-file /path/to/rank-"$RANK".env \
+  ghcr.io/fujitsupolycom/gb10-vllm-base@sha256:9d88c2152b0ae9f33e7a793b7df29398ed79710b205b9244ac63597ab4481ada \
+  vllm serve /models/deepseek-v4-flash-0731 \
   --tensor-parallel-size 4 --nnodes 4 --node-rank "$RANK" \
   --master-addr "$RANK0_FABRIC_ADDR" --master-port 29500 \
   --distributed-executor-backend mp \
@@ -66,13 +75,27 @@ vllm serve /path/to/deepseek-v4-flash-0731 \
   --max-num-seqs 32 \
   --gpu-memory-utilization 0.70 \
   --kv-cache-memory-bytes 34359738368 \
-  --kv-cache-dtype fp8 \
+  --kv-cache-dtype fp8_ds_mla \
+  --tokenizer-mode deepseek_v4 \
+  --kernel-config '{"enable_cutedsl_warmup": false}' \
   --enable-auto-tool-choice --tool-call-parser deepseek_v4 \
   --speculative-config '{"method": "dspark",
     "num_speculative_tokens": 5, "moe_backend": "b12x"}' \
   --served-model-name deepseek-v4-flash-0731 \
-  --host 0.0.0.0 --port 8000
+  $([ "$RANK" -eq 0 ] && echo "--host 0.0.0.0 --port 8000" || echo "--headless")
 ```
+
+Four flags in that command are load-bearing and easy to omit:
+
+- `--kernel-config '{"enable_cutedsl_warmup": false}'` disables a CuteDSL
+  router-GEMM warmup pass that aborts the worker before the engine starts.
+- `--kv-cache-dtype fp8_ds_mla` declares the layout the engine allocates.
+  `fp8` allocates identically but declares a generic geometry; the engine's
+  own kernels never read the declaration, so both serve, and only
+  `fp8_ds_mla` is correct for an external key-value consumer.
+- `--tokenizer-mode deepseek_v4` selects this checkpoint's tokenizer.
+- `--headless` on ranks 1 through 3. Without it every rank tries to bind
+  the API port.
 
 Environment the B12X kernel family needs on every rank:
 
