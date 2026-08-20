@@ -3,8 +3,19 @@
 runtime/** text eol=lf
 runtime/exl3/patches/*.patch whitespace=-trailing-space
 
-# Runtime receipts hash these source files byte-for-byte before copying them.
-# Keep their checked-out bytes identical on Windows and POSIX hosts.
+# Runtime receipts hash these source files byte-for-byte before copying them,
+# and the plugin vendors byte-identical copies whose SHA-256 it records in
+# _vendor/MANIFEST.json for a pip-installed wheel to verify on the serving
+# host. Both comparisons are over raw bytes, so every one of these paths must
+# check out identically on Windows and POSIX hosts.
+spark_transport/integrations/vllm/*.py text eol=lf
+sparkring_plugin/src/sparkring/_vendor/*.py text eol=lf
+
+# Named individually as well as covered above: these are the sources the
+# runtime overlay receipts pin by preimage hash, and
+# runtime/exl3/test_public_exl3.py asserts each one appears here by name so a
+# later narrowing of the globs cannot silently unpin them.
 spark_transport/integrations/vllm/spark_glm52_mtp_index_reuse.py text eol=lf
 spark_transport/integrations/vllm/spark_true_adaptive_draft.py text eol=lf
 spark_transport/experiments/q2r_phase_timing/live_installer.py text eol=lf
+
