@@ -110,6 +110,24 @@ Required:
 - `sudo` access when initial networking, package, or service repair is needed;
 - no credentials, passwords, or tokens committed to `site.yaml`.
 
+A Wi-Fi management interface must recover from an access-point restart without
+manual action. Its active NetworkManager profile must carry
+`connection.autoconnect yes` and `connection.autoconnect-retries 0`, and Wi-Fi
+power save must be disabled in both the profile
+(`802-11-wireless.powersave disable`) and the driver. nm-settings defines zero
+retries as retry forever; `-1` selects the global default of four attempts,
+after which autoconnect blocks until a NetworkManager timeout expires, and any
+positive value is a finite cap — either leaves the node off the management
+network for the blocked window when an outage outlasts the attempts. Power
+save causes silent de-association. Set the retry behavior with:
+
+```bash
+nmcli connection modify <name> connection.autoconnect-retries 0
+```
+
+`scripts/ring_doctor.py` reports these settings for every wireless interface
+that has an active NetworkManager connection.
+
 After filling the management targets in `site.yaml`, check them:
 
 ```bash

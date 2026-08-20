@@ -7,6 +7,7 @@ import unittest
 
 from scripts.ring_doctor import (
     FABRIC_INTERFACES,
+    UNAVAILABLE,
     CommandResult,
     InterfaceState,
     NodeObservation,
@@ -15,6 +16,7 @@ from scripts.ring_doctor import (
     build_probe_command,
     diagnose,
     diagnose_launch_endpoints,
+    diagnose_wifi_resilience,
     discover_nodes,
     docker_user_accepts,
     infer_adjacency,
@@ -22,6 +24,7 @@ from scripts.ring_doctor import (
     parse_all_addresses,
     parse_brief_addresses,
     parse_route_get,
+    parse_wifi_observation,
     select_route,
     validate_cycle,
 )
@@ -41,6 +44,7 @@ def observation(
     socket_interfaces: tuple[str, ...] = (),
     host_addresses: str | None = None,
     route_get: str | None = None,
+    wifi: str | None = None,
 ) -> NodeObservation:
     interfaces = parse_brief_addresses(addresses)
     interfaces = {
@@ -63,6 +67,11 @@ def observation(
         ),
         rendezvous_route=(
             parse_route_get(RENDEZVOUS, route_get) if route_get is not None else None
+        ),
+        wifi=(
+            parse_wifi_observation(wifi)
+            if wifi is not None and reachable
+            else None
         ),
     )
 
@@ -94,10 +103,12 @@ def probe_output(
     route_get: str | None = None,
     routes: str = "",
     docker_rules: str = "-N DOCKER-USER",
+    wifi: str | None = None,
 ) -> str:
     rendezvous = (
         f"__RING_DOCTOR_RENDEZVOUS__\n{route_get}\n" if route_get is not None else ""
     )
+    wifi_evidence = f"__RING_DOCTOR_WIFI__\n{wifi}\n" if wifi is not None else ""
     return f"""__RING_DOCTOR_HOSTNAME__
 {hostname}
 __RING_DOCTOR_ADDR__
@@ -113,7 +124,7 @@ __RING_DOCTOR_FORWARD_CHAIN__
 -P FORWARD DROP
 __RING_DOCTOR_DOCKER_USER__
 {docker_rules}
-{rendezvous}__RING_DOCTOR_INTERFACES__
+{wifi_evidence}{rendezvous}__RING_DOCTOR_INTERFACES__
 {IF0}
 {IF1}
 """
@@ -318,6 +329,43 @@ UNADDRESSED_WIFI_LISTING = f"""lo UNKNOWN 127.0.0.1/8
 LOCAL_ROUTE = f"local {RENDEZVOUS} dev lo src {RENDEZVOUS} uid 1000\n    cache <local>"
 FABRIC_ROUTE = f"{RENDEZVOUS} dev {IF1} src 10.0.1.11 uid 1000\n    cache"
 UNREACHABLE_ROUTE = "RTNETLINK answers: Network is unreachable"
+
+WIFI_PROFILE_NAME = "CSmiles"
+
+WIFI_DEVICE_ROWS = (
+    f"{WIFI}:wifi:connected:{WIFI_PROFILE_NAME}\n"
+    f"p2p-dev-{WIFI}:wifi-p2p:disconnected:\n"
+    f"{IF0}:ethernet:connected:fabric-101\n"
+    "lo:loopback:unmanaged:"
+)
+
+WIRED_DEVICE_ROWS = (
+    f"{IF0}:ethernet:connected:fabric-101\n"
+    f"{IF1}:ethernet:connected:fabric-102\n"
+    "lo:loopback:unmanaged:"
+)
+
+DISCONNECTED_WIFI_ROWS = (
+    f"{WIFI}:wifi:disconnected:\n"
+    f"{IF0}:ethernet:connected:fabric-101\n"
+    "lo:loopback:unmanaged:"
+)
+
+
+def wifi_section(
+    autoconnect: str = "yes",
+    retries: str = "0",
+    powersave: str = "disable",
+    driver: str = "off",
+) -> str:
+    return (
+        f"{WIFI_DEVICE_ROWS}\n"
+        f"PROFILE {WIFI} {WIFI_PROFILE_NAME}\n"
+        f"{autoconnect}\n"
+        f"{retries}\n"
+        f"{powersave}\n"
+        f"IW {WIFI} {driver}"
+    )
 
 
 class RouteLookupParsingTests(unittest.TestCase):
@@ -543,6 +591,225 @@ class LaunchEndpointTests(unittest.TestCase):
         )
 
 
+class WifiResilienceTests(unittest.TestCase):
+    @staticmethod
+    def wifi_findings(sections):
+        observations = {
+            name: observation(name, ADDRESSED_WIFI_LISTING, wifi=section)
+            for name, section in sections.items()
+        }
+        return diagnose_wifi_resilience(
+            [item.spec for item in observations.values()], observations
+        )
+
+    def test_probe_gathers_wifi_evidence_in_the_same_contact(self) -> None:
+        command = build_probe_command(FABRIC_INTERFACES)
+
+        self.assertEqual(command.count("__RING_DOCTOR_WIFI__"), 1)
+        self.assertIn("command -v nmcli", command)
+        self.assertIn(
+            "nmcli -t -f DEVICE,TYPE,STATE,CONNECTION device status", command
+        )
+        self.assertIn(
+            "nmcli -t -g connection.autoconnect,"
+            "connection.autoconnect-retries,802-11-wireless.powersave "
+            "connection show",
+            command,
+        )
+        self.assertIn("get power_save", command)
+
+    def test_sound_profiles_on_every_wifi_node_report_one_affirmative_info(
+        self,
+    ) -> None:
+        findings = self.wifi_findings(
+            {"r0": wifi_section(), "r1": wifi_section()}
+        )
+
+        self.assertEqual(
+            [finding.code for finding in findings], ["wifi-resilience-observed"]
+        )
+        self.assertEqual(findings[0].severity, "info")
+        self.assertIsNone(findings[0].node)
+        self.assertIn(f"r0:{WIFI}", findings[0].evidence)
+        self.assertIn(f"r1:{WIFI}", findings[0].evidence)
+        self.assertIn(WIFI_PROFILE_NAME, findings[0].evidence)
+        self.assertIn("retries=0", findings[0].evidence)
+
+    def test_default_retry_limit_is_reported_as_four_attempts(self) -> None:
+        findings = self.wifi_findings(
+            {"r0": wifi_section(), "r1": wifi_section(retries="-1")}
+        )
+
+        self.assertEqual(len(findings), 1)
+        finding = findings[0]
+        self.assertEqual(
+            (finding.severity, finding.code, finding.node),
+            ("warning", "wifi-retries-limited", "r1"),
+        )
+        self.assertIn(WIFI, finding.message)
+        self.assertIn(WIFI_PROFILE_NAME, finding.message)
+        self.assertIn("four", finding.message)
+        self.assertIn("blocks until a NetworkManager timeout", " ".join(finding.message.split()))
+        self.assertIn("off the management network", finding.message)
+        self.assertIn("connection.autoconnect-retries=-1", finding.evidence)
+
+    def test_finite_retry_cap_is_reported_with_its_count(self) -> None:
+        findings = self.wifi_findings({"r0": wifi_section(retries="3")})
+
+        self.assertEqual(len(findings), 1)
+        finding = findings[0]
+        self.assertEqual(finding.code, "wifi-retries-limited")
+        self.assertIn("cap of 3 reconnection attempts", finding.message)
+        self.assertIn("after 3 failed attempts", finding.message)
+        self.assertIn("connection.autoconnect-retries=3", finding.evidence)
+
+    def test_disabled_autoconnect_is_reported(self) -> None:
+        findings = self.wifi_findings({"r0": wifi_section(autoconnect="no")})
+
+        self.assertEqual(len(findings), 1)
+        finding = findings[0]
+        self.assertEqual(
+            (finding.severity, finding.code, finding.node),
+            ("warning", "wifi-autoconnect-disabled", "r0"),
+        )
+        self.assertIn(WIFI, finding.message)
+        self.assertIn(WIFI_PROFILE_NAME, finding.message)
+        self.assertIn("connection.autoconnect=no", finding.evidence)
+
+    def test_profile_powersave_enable_is_reported(self) -> None:
+        for value in ("enable", "3"):
+            with self.subTest(powersave=value):
+                findings = self.wifi_findings(
+                    {"r0": wifi_section(powersave=value)}
+                )
+
+                self.assertEqual(len(findings), 1)
+                finding = findings[0]
+                self.assertEqual(
+                    (finding.severity, finding.code, finding.node),
+                    ("warning", "wifi-powersave-enabled", "r0"),
+                )
+                self.assertIn("de-association", finding.message)
+                self.assertIn(
+                    f"802-11-wireless.powersave={value}", finding.evidence
+                )
+
+    def test_driver_power_save_on_is_reported_despite_a_disabling_profile(
+        self,
+    ) -> None:
+        findings = self.wifi_findings(
+            {"r0": wifi_section(powersave="disable", driver="on")}
+        )
+
+        self.assertEqual(len(findings), 1)
+        finding = findings[0]
+        self.assertEqual(finding.code, "wifi-powersave-enabled")
+        self.assertIn("driver reports power save on", finding.message)
+        self.assertIn("iw power_save=on", finding.evidence)
+
+    def test_absent_iw_leaves_the_profile_verdict_standing(self) -> None:
+        findings = self.wifi_findings(
+            {"r0": wifi_section(driver="unavailable")}
+        )
+
+        self.assertEqual(
+            [finding.code for finding in findings], ["wifi-resilience-observed"]
+        )
+        self.assertIn("driver_power_save=unobserved", findings[0].evidence)
+
+    def test_nodes_without_an_active_wifi_profile_contribute_nothing(
+        self,
+    ) -> None:
+        wired_only = self.wifi_findings(
+            {"r0": WIRED_DEVICE_ROWS, "r1": DISCONNECTED_WIFI_ROWS}
+        )
+        with_one_wifi_node = self.wifi_findings(
+            {
+                "r0": WIRED_DEVICE_ROWS,
+                "r1": DISCONNECTED_WIFI_ROWS,
+                "r2": wifi_section(),
+            }
+        )
+
+        self.assertEqual(wired_only, [])
+        self.assertEqual(
+            [finding.code for finding in with_one_wifi_node],
+            ["wifi-resilience-observed"],
+        )
+        self.assertIn(f"r2:{WIFI}", with_one_wifi_node[0].evidence)
+        self.assertNotIn("r0", with_one_wifi_node[0].evidence)
+
+    def test_missing_nmcli_is_reported_as_unobserved(self) -> None:
+        findings = self.wifi_findings(
+            {"r0": UNAVAILABLE, "r1": wifi_section()}
+        )
+
+        self.assertEqual(len(findings), 1)
+        finding = findings[0]
+        self.assertEqual(
+            (finding.severity, finding.code, finding.node),
+            ("warning", "wifi-resilience-unobserved", "r0"),
+        )
+        self.assertIn("nmcli", finding.message)
+
+    def test_unreadable_profile_settings_are_unobserved_not_sound(self) -> None:
+        section = (
+            f"{WIFI_DEVICE_ROWS}\n"
+            f"PROFILE {WIFI} {WIFI_PROFILE_NAME}\n"
+            f"{UNAVAILABLE}\n"
+            f"IW {WIFI} off"
+        )
+
+        findings = self.wifi_findings({"r0": section})
+
+        self.assertEqual(len(findings), 1)
+        finding = findings[0]
+        self.assertEqual(
+            (finding.severity, finding.code, finding.node),
+            ("warning", "wifi-resilience-unobserved", "r0"),
+        )
+        self.assertIn(WIFI_PROFILE_NAME, finding.message)
+
+    def test_p2p_sub_device_is_never_treated_as_an_interface(self) -> None:
+        section = (
+            f"{WIFI}:wifi:connected:{WIFI_PROFILE_NAME}\n"
+            f"p2p-dev-{WIFI}:wifi-p2p:connected:{WIFI_PROFILE_NAME}-p2p\n"
+            "lo:loopback:unmanaged:\n"
+            f"PROFILE {WIFI} {WIFI_PROFILE_NAME}\n"
+            "yes\n"
+            "0\n"
+            "disable\n"
+            f"IW {WIFI} off"
+        )
+
+        parsed = parse_wifi_observation(section)
+        findings = self.wifi_findings({"r0": section})
+
+        self.assertIsNotNone(parsed)
+        assert parsed is not None
+        self.assertTrue(parsed.nmcli_available)
+        self.assertEqual(
+            [interface.device for interface in parsed.interfaces], [WIFI]
+        )
+        self.assertEqual(
+            [finding.code for finding in findings], ["wifi-resilience-observed"]
+        )
+
+    def test_unreachable_nodes_and_wifi_less_probe_output_are_skipped(
+        self,
+    ) -> None:
+        observations = {
+            "r0": observation("r0", "", reachable=False),
+            "r1": observation("r1", ADDRESSED_WIFI_LISTING),
+        }
+
+        findings = diagnose_wifi_resilience(
+            [item.spec for item in observations.values()], observations
+        )
+
+        self.assertEqual(findings, [])
+
+
 CROSS_ACCEPT_RULES = (
     f"-N DOCKER-USER\n"
     f"-A DOCKER-USER -i {IF0} -o {IF1} -j ACCEPT\n"
@@ -593,6 +860,7 @@ class HealthyRingLaunchEndpointTests(unittest.TestCase):
                 entry[3],
                 routes=entry[2],
                 docker_rules=CROSS_ACCEPT_RULES,
+                wifi=wifi_section() if name == "r0" else WIRED_DEVICE_ROWS,
             )
             for name, entry in HEALTHY_RING.items()
         }
@@ -608,11 +876,74 @@ class HealthyRingLaunchEndpointTests(unittest.TestCase):
         self.assertTrue(topology.valid_cycle, topology.reason)
         self.assertEqual(
             [(finding.severity, finding.code) for finding in findings],
-            [("info", "launch-endpoints-observed")],
+            [
+                ("info", "launch-endpoints-observed"),
+                ("info", "wifi-resilience-observed"),
+            ],
         )
         self.assertIn(str(RENDEZVOUS), findings[0].message)
         for name in HEALTHY_RING:
             self.assertIn(name, findings[0].evidence)
+        self.assertIn(f"r0:{WIFI}", findings[1].evidence)
+
+
+class WifiDiscoveryIntegrationTests(unittest.TestCase):
+    def test_one_probe_round_carries_wifi_evidence_for_every_node(self) -> None:
+        specs = tuple(
+            NodeSpec(name, f"operator@{name}") for name in HEALTHY_RING
+        )
+        wifi_by_node = {
+            "r0": wifi_section(),
+            "r1": WIRED_DEVICE_ROWS,
+            "r2": wifi_section(retries="-1"),
+            "r3": UNAVAILABLE,
+        }
+        outputs = {
+            f"operator@{name}": probe_output(
+                entry[0][0],
+                entry[1],
+                routes=entry[2],
+                docker_rules=CROSS_ACCEPT_RULES,
+                wifi=wifi_by_node[name],
+            )
+            for name, entry in HEALTHY_RING.items()
+        }
+        runner = FakeDiscoveryRunner(outputs, set())
+
+        observations = discover_nodes(specs, runner)
+        topology = infer_topology(observations)
+        plans = build_plans(observations, topology)
+        findings = diagnose(specs, observations, topology, plans)
+
+        self.assertEqual(len(runner.calls), len(specs))
+        self.assertTrue(topology.valid_cycle, topology.reason)
+        checked = observations["r0"].wifi
+        self.assertIsNotNone(checked)
+        assert checked is not None
+        self.assertEqual(
+            [interface.connection for interface in checked.interfaces],
+            [WIFI_PROFILE_NAME],
+        )
+        self.assertEqual(checked.interfaces[0].driver_power_save, "off")
+        wired = observations["r1"].wifi
+        self.assertIsNotNone(wired)
+        assert wired is not None
+        self.assertTrue(wired.nmcli_available)
+        self.assertEqual(wired.interfaces, ())
+        self.assertEqual(
+            [
+                (finding.severity, finding.code, finding.node)
+                for finding in findings
+            ],
+            [
+                ("warning", "wifi-retries-limited", "r2"),
+                ("warning", "wifi-resilience-unobserved", "r3"),
+            ],
+        )
+        self.assertEqual(
+            observations["r0"].to_dict()["wifi"]["interfaces"][0]["device"],
+            WIFI,
+        )
 
 
 if __name__ == "__main__":

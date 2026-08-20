@@ -9,6 +9,8 @@ Repair covers the fabric interfaces and the routes between them. The launch
 endpoints a distributed job names — the rendezvous address and the per-node
 NCCL and GLOO socket interfaces — are reported against what each node observes
 and are never changed, because they can sit on networks outside this fabric.
+The NetworkManager reconnection settings of wireless management interfaces are
+read and diagnosed the same way, never changed.
 """
 
 from __future__ import annotations
@@ -108,6 +110,51 @@ class RendezvousRoute:
 
 
 @dataclasses.dataclass(frozen=True)
+class WifiInterfaceState:
+    """Reconnection settings observed for one wireless management interface.
+
+    An interface appears here only when a NetworkManager connection was active
+    on it during the probe. The three profile settings hold the raw ``nmcli``
+    values (``autoconnect_retries`` uses ``0`` for retry-forever), or None
+    when the per-profile query produced no value. ``driver_power_save`` holds
+    the ``iw`` power-save state, ``on`` or ``off``, or None when ``iw`` was
+    unavailable on the node.
+    """
+
+    device: str
+    connection: str
+    autoconnect: str | None
+    autoconnect_retries: str | None
+    powersave: str | None
+    driver_power_save: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+
+@dataclasses.dataclass(frozen=True)
+class WifiObservation:
+    """Wireless management reconnection evidence for one node.
+
+    ``nmcli_available`` is False when the node has no ``nmcli``, in which case
+    no wireless interface can be enumerated there. ``interfaces`` holds every
+    wireless interface that had an active NetworkManager connection when
+    probed; a node whose management runs over a wired path has none.
+    """
+
+    nmcli_available: bool
+    interfaces: tuple[WifiInterfaceState, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "nmcli_available": self.nmcli_available,
+            "interfaces": [
+                interface.to_dict() for interface in self.interfaces
+            ],
+        }
+
+
+@dataclasses.dataclass(frozen=True)
 class CommandResult:
     ok: bool
     stdout: str = ""
@@ -179,7 +226,9 @@ class NodeObservation:
     ``interfaces`` holds only the two fabric interfaces the ring is built from.
     ``host_interfaces`` holds every interface the node reported, so a name that
     a launch configuration gives to NCCL or GLOO can be checked for existence
-    and for an IPv4 address without a second remote round.
+    and for an IPv4 address without a second remote round. ``wifi`` holds the
+    wireless management reconnection evidence gathered by the same probe, or
+    None when the probe output carried no wifi section.
     """
 
     spec: NodeSpec
@@ -196,6 +245,7 @@ class NodeObservation:
         default_factory=dict
     )
     rendezvous_route: RendezvousRoute | None = None
+    wifi: WifiObservation | None = None
 
     @property
     def label(self) -> str:
@@ -237,6 +287,7 @@ class NodeObservation:
             "rendezvous_route": (
                 self.rendezvous_route.to_dict() if self.rendezvous_route else None
             ),
+            "wifi": self.wifi.to_dict() if self.wifi else None,
             "ip_forward": self.ip_forward,
             "forward_policy": self.forward_policy,
             "docker_user_rules": (
@@ -444,6 +495,47 @@ def _require_unique_specs(specs: Sequence[NodeSpec]) -> None:
         raise ConfigurationError("node SSH targets must be unique")
 
 
+# Shell for the probe section holding wireless management reconnection
+# evidence. It prints the raw ``nmcli`` terse device rows, then, for every
+# row whose TYPE is exactly ``wifi`` and whose CONNECTION is non-empty, a
+# ``PROFILE <device> <connection>`` line, the three per-profile setting values
+# (one per line), and an ``IW <device> <on|off|unavailable>`` driver
+# power-save line. The per-profile query needs the connection names the same
+# section just discovered, so the shell loops over them itself instead of
+# adding a second remote contact. ``nmcli -t`` escapes ``:`` and ``\\`` in
+# connection names with a backslash; ``sed`` removes those escapes before the
+# name is reused. A node without ``nmcli`` prints the unavailable sentinel and
+# never fails the probe.
+_WIFI_PROBE = f"""printf '%s\\n' '__RING_DOCTOR_WIFI__'
+if command -v nmcli >/dev/null 2>&1; then
+  rd_wifi_rows=$(nmcli -t -f DEVICE,TYPE,STATE,CONNECTION device status 2>/dev/null)
+  printf '%s\\n' "$rd_wifi_rows"
+  printf '%s\\n' "$rd_wifi_rows" | while IFS= read -r rd_row; do
+    rd_dev=${{rd_row%%:*}}
+    rd_rest=${{rd_row#*:}}
+    rd_type=${{rd_rest%%:*}}
+    rd_rest=${{rd_rest#*:}}
+    rd_name=$(printf '%s\\n' "${{rd_rest#*:}}" | sed 's/\\\\\\(.\\)/\\1/g')
+    [ "$rd_type" = wifi ] || continue
+    [ -n "$rd_name" ] || continue
+    printf 'PROFILE %s %s\\n' "$rd_dev" "$rd_name"
+    nmcli -t -g connection.autoconnect,connection.autoconnect-retries,802-11-wireless.powersave connection show "$rd_name" 2>/dev/null || printf '%s\\n' '{UNAVAILABLE}'
+    if command -v iw >/dev/null 2>&1; then
+      case "$(iw dev "$rd_dev" get power_save 2>/dev/null)" in
+        *': on') printf 'IW %s on\\n' "$rd_dev" ;;
+        *': off') printf 'IW %s off\\n' "$rd_dev" ;;
+        *) printf 'IW %s unavailable\\n' "$rd_dev" ;;
+      esac
+    else
+      printf 'IW %s unavailable\\n' "$rd_dev"
+    fi
+  done
+else
+  printf '%s\\n' '{UNAVAILABLE}'
+fi
+"""
+
+
 def build_probe_command(
     interfaces: Sequence[str],
     rendezvous_address: ipaddress.IPv4Address | None = None,
@@ -451,7 +543,9 @@ def build_probe_command(
     """Build the read-only remote probe that emits sectioned evidence.
 
     Naming a rendezvous address adds one route lookup to the same probe, so a
-    node is still contacted once per discovery attempt.
+    node is still contacted once per discovery attempt. The wifi section
+    likewise rides the same contact: it enumerates wireless interfaces and
+    reads each active profile's reconnection settings inside this one command.
     """
     for index, interface in enumerate(interfaces):
         _validate_interface(interface, f"fabric_interfaces[{index}]")
@@ -478,7 +572,7 @@ printf '%s\\n' '__RING_DOCTOR_FORWARD_CHAIN__'
 sudo -n iptables -S FORWARD 2>/dev/null || printf '%s\\n' '{UNAVAILABLE}'
 printf '%s\\n' '__RING_DOCTOR_DOCKER_USER__'
 sudo -n iptables -S DOCKER-USER 2>/dev/null || printf '%s\\n' '{UNAVAILABLE}'
-{rendezvous_probe}printf '%s\\n' '__RING_DOCTOR_INTERFACES__'
+{_WIFI_PROBE}{rendezvous_probe}printf '%s\\n' '__RING_DOCTOR_INTERFACES__'
 printf '%s\\n' {names}
 """
 
@@ -636,6 +730,86 @@ def parse_route_get(
     )
 
 
+_NMCLI_ESCAPE_RE = re.compile(r"\\(.)")
+
+
+def parse_wifi_observation(text: str) -> WifiObservation | None:
+    """Parse the wifi probe section into per-interface reconnection evidence.
+
+    The section body holds the raw ``nmcli -t -f DEVICE,TYPE,STATE,CONNECTION
+    device status`` rows, then one block per wireless interface with an active
+    connection: a ``PROFILE <device> <connection>`` line, the three values
+    printed one per line by ``nmcli -t -g connection.autoconnect,connection.
+    autoconnect-retries,802-11-wireless.powersave connection show``, and an
+    ``IW <device> <on|off|unavailable>`` line holding the driver power-save
+    state. Only rows whose TYPE is exactly ``wifi`` name a wireless
+    interface: the ``wifi-p2p`` row NetworkManager adds for the same radio,
+    whose DEVICE carries a ``p2p-dev-`` prefix, is a sub-device, never an
+    interface. Returns None for an absent or empty section, and an
+    observation with ``nmcli_available=False`` when the section holds the
+    sentinel a node without ``nmcli`` prints.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return None
+    if stripped == UNAVAILABLE:
+        return WifiObservation(nmcli_available=False)
+    active: dict[str, str] = {}
+    settings: dict[str, tuple[str | None, str | None, str | None]] = {}
+    driver: dict[str, str | None] = {}
+    lines = text.splitlines()
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if line.startswith("PROFILE "):
+            head = line.split(" ", 2)
+            device = head[1] if len(head) > 1 else ""
+            index += 1
+            values: list[str] = []
+            while (
+                index < len(lines)
+                and len(values) < 3
+                and not lines[index].startswith(("PROFILE ", "IW "))
+            ):
+                values.append(lines[index].strip())
+                index += 1
+            if UNAVAILABLE in values:
+                settings[device] = (None, None, None)
+            else:
+                padded = values + [""] * (3 - len(values))
+                settings[device] = (
+                    padded[0] or None,
+                    padded[1] or None,
+                    padded[2] or None,
+                )
+            continue
+        if line.startswith("IW "):
+            fields = line.split()
+            if len(fields) >= 3:
+                driver[fields[1]] = (
+                    fields[2] if fields[2] in {"on", "off"} else None
+                )
+            index += 1
+            continue
+        fields = line.split(":", 3)
+        if len(fields) == 4:
+            device, device_type, _state, connection = fields
+            connection = _NMCLI_ESCAPE_RE.sub(r"\1", connection)
+            if device_type == "wifi" and connection and device not in active:
+                active[device] = connection
+        index += 1
+    interfaces = tuple(
+        WifiInterfaceState(
+            device,
+            connection,
+            *settings.get(device, (None, None, None)),
+            driver_power_save=driver.get(device),
+        )
+        for device, connection in active.items()
+    )
+    return WifiObservation(True, interfaces)
+
+
 def parse_probe_output(
     spec: NodeSpec,
     text: str,
@@ -692,6 +866,7 @@ def parse_probe_output(
         proxy_jump_used=proxy_jump_used,
         host_interfaces=host_interfaces,
         rendezvous_route=rendezvous_route,
+        wifi=parse_wifi_observation(sections.get("WIFI", "")),
     )
 
 
@@ -1171,6 +1346,206 @@ def diagnose_launch_endpoints(
     return findings
 
 
+def diagnose_wifi_resilience(
+    specs: Sequence[NodeSpec],
+    observations: Mapping[str, NodeObservation],
+) -> list[Finding]:
+    """Check that wireless management interfaces survive an access-point blip.
+
+    A wireless management interface recovers from an access-point restart on
+    its own only when its active NetworkManager profile autoconnects, retries
+    without a cap, and runs with Wi-Fi power save disabled. Any other
+    combination is a latent fault: every reachability check passes while the
+    interface is associated, then one blip leaves the node off the management
+    network until someone reconnects it by hand. Every wireless interface with
+    an active NetworkManager connection on a reachable node is checked, from
+    evidence the discovery probe gathered in its single contact per node. The
+    check reports observations only and never proposes a profile change. A
+    node with no such interface contributes nothing, because wired management
+    is not a fault; a node without ``nmcli`` is reported as unobserved,
+    because nothing about its wireless configuration could be read.
+
+    When at least one wireless interface was checked and nothing was faulted
+    or unreadable, the result carries one ``info`` finding recording the
+    affirmative outcome, so a passing check is distinguishable from a site
+    with wired-only management, where the check contributes nothing. An
+    ``info`` finding does not affect the process exit code.
+    """
+    findings: list[Finding] = []
+    sound: list[str] = []
+    for spec in specs:
+        observation = observations.get(spec.name)
+        if observation is None or not observation.reachable:
+            continue
+        wifi = observation.wifi
+        if wifi is None:
+            continue
+        if not wifi.nmcli_available:
+            findings.append(
+                Finding(
+                    "warning",
+                    "wifi-resilience-unobserved",
+                    spec.name,
+                    "nmcli is not installed on this node, so no wireless "
+                    "management interface here can be checked for the "
+                    "NetworkManager settings that reconnect it after an "
+                    "access-point restart.",
+                    "command -v nmcli found no executable",
+                )
+            )
+            continue
+        for interface in wifi.interfaces:
+            if (
+                interface.autoconnect is None
+                or interface.autoconnect_retries is None
+                or interface.powersave is None
+            ):
+                findings.append(
+                    Finding(
+                        "warning",
+                        "wifi-resilience-unobserved",
+                        spec.name,
+                        f"NetworkManager reports profile "
+                        f"{interface.connection} active on wireless "
+                        f"interface {interface.device}, but the profile's "
+                        "reconnection settings could not be read, so the "
+                        "interface is neither confirmed resilient nor "
+                        "confirmed faulted.",
+                        "nmcli -t -g connection.autoconnect,"
+                        "connection.autoconnect-retries,"
+                        "802-11-wireless.powersave connection show "
+                        f"{interface.connection} returned no values",
+                    )
+                )
+                continue
+            faulted = False
+            if interface.autoconnect != "yes":
+                faulted = True
+                findings.append(
+                    Finding(
+                        "warning",
+                        "wifi-autoconnect-disabled",
+                        spec.name,
+                        f"NetworkManager profile {interface.connection} on "
+                        f"wireless interface {interface.device} sets "
+                        f"connection.autoconnect={interface.autoconnect}, so "
+                        "after any disconnect NetworkManager does not rejoin "
+                        "the network and the node stays off the management "
+                        "network until the profile is activated by hand.",
+                        f"connection.autoconnect={interface.autoconnect}",
+                    )
+                )
+            try:
+                retries: int | None = int(interface.autoconnect_retries)
+            except ValueError:
+                retries = None
+            if retries is None:
+                faulted = True
+                findings.append(
+                    Finding(
+                        "warning",
+                        "wifi-resilience-unobserved",
+                        spec.name,
+                        f"NetworkManager profile {interface.connection} on "
+                        f"wireless interface {interface.device} reports "
+                        "connection.autoconnect-retries="
+                        f"{interface.autoconnect_retries}, which is not an "
+                        "integer, so the reconnection cap here cannot be "
+                        "determined.",
+                        "connection.autoconnect-retries="
+                        f"{interface.autoconnect_retries}",
+                    )
+                )
+            elif retries != 0:
+                faulted = True
+                if retries == -1:
+                    cap_clause = (
+                        "connection.autoconnect-retries=-1, the global "
+                        "default of four reconnection attempts"
+                    )
+                    count = "four"
+                else:
+                    cap_clause = (
+                        f"connection.autoconnect-retries={retries}, a finite "
+                        f"cap of {retries} reconnection attempts"
+                    )
+                    count = str(retries)
+                findings.append(
+                    Finding(
+                        "warning",
+                        "wifi-retries-limited",
+                        spec.name,
+                        f"NetworkManager profile {interface.connection} on "
+                        f"wireless interface {interface.device} sets "
+                        f"{cap_clause}. nm-settings defines zero as retry "
+                        f"forever; after {count} failed attempts autoconnect "
+                        "blocks until a NetworkManager timeout expires, so an "
+                        "access-point outage that outlasts them leaves the "
+                        "node off the management network for that window.",
+                        "connection.autoconnect-retries="
+                        f"{interface.autoconnect_retries}",
+                    )
+                )
+            profile_powersave_on = interface.powersave in {"3", "enable"}
+            driver_powersave_on = interface.driver_power_save == "on"
+            if profile_powersave_on or driver_powersave_on:
+                faulted = True
+                if profile_powersave_on:
+                    cause = (
+                        f"NetworkManager profile {interface.connection} on "
+                        f"wireless interface {interface.device} enables "
+                        "Wi-Fi power save (802-11-wireless.powersave="
+                        f"{interface.powersave})"
+                    )
+                else:
+                    cause = (
+                        "The wireless driver reports power save on for "
+                        f"interface {interface.device}, whose active "
+                        f"NetworkManager profile {interface.connection} sets "
+                        "802-11-wireless.powersave="
+                        f"{interface.powersave}"
+                    )
+                findings.append(
+                    Finding(
+                        "warning",
+                        "wifi-powersave-enabled",
+                        spec.name,
+                        f"{cause}. Wi-Fi power save causes silent "
+                        "de-association from the access point, so the node "
+                        "can drop off the management network with no failure "
+                        "recorded.",
+                        f"802-11-wireless.powersave={interface.powersave}; "
+                        "iw power_save="
+                        + (interface.driver_power_save or "unobserved"),
+                    )
+                )
+            if not faulted:
+                sound.append(
+                    f"{spec.name}:{interface.device} profile "
+                    f"{interface.connection} autoconnect="
+                    f"{interface.autoconnect} retries="
+                    f"{interface.autoconnect_retries} powersave="
+                    f"{interface.powersave} driver_power_save="
+                    + (interface.driver_power_save or "unobserved")
+                )
+    if not sound or findings:
+        return findings
+    findings.append(
+        Finding(
+            "info",
+            "wifi-resilience-observed",
+            None,
+            "Every wireless interface with an active NetworkManager "
+            "connection on a reachable node autoconnects, retries without "
+            "limit, and runs with Wi-Fi power save disabled, so management "
+            "over Wi-Fi survives an access-point restart without manual "
+            "action.",
+            " | ".join(sound),
+        )
+    )
+    return findings
+
+
 def diagnose(
     specs: Sequence[NodeSpec],
     observations: Mapping[str, NodeObservation],
@@ -1355,6 +1730,7 @@ def diagnose(
     findings.extend(
         diagnose_launch_endpoints(specs, observations, rendezvous_address)
     )
+    findings.extend(diagnose_wifi_resilience(specs, observations))
     return findings
 
 
