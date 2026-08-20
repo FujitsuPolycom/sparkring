@@ -136,21 +136,20 @@ compatibility correction over its parent
 a checkpoint other than GLM requires and which is inert for this profile.
 `docs/DEEPSEEK_V4_FLASH_QUICKSTART.md` states what the correction is.
 
-**A pulled image serves this profile, and the exact-Q40 layer refuses it.**
-Container labels differ between a pulled image and one built locally, so the two
-carry the same filesystem under different configuration digests, and a
-configuration digest is what Docker reports as an image ID.
-`spark_transport/experiments/moe_round_floor/q40_exact_state_attestation_overlay.py`
-compares `SPARK_Q40_EXACT_STATE_IMAGE_ID`, which
-`prepare_q40_exact_state_serving.py` derives from the site's image identity,
-against `sha256:02881d5229d4f4d1cbba0cf40537492a2a505b9d4e43bbfe9a0b2a7bd0584513`.
-A pulled image reports a different identity and is refused by that comparison.
+Container labels differ between a pulled image and one built locally, so the
+two carry the same filesystem under different configuration digests, and a
+configuration digest is what Docker reports as an image ID. Record whichever
+identity the image you run reports, by the command under Option B, and use it
+everywhere the stand-up asks for one. Every section of this page holds for a
+pulled image.
 
-What follows from that: sections 1 through 6 and 8 through 10 hold for a pulled
-image, and the exact-Q40 derivation in section 7 does not. Serving without that
-layer is the profile without its target-only decode optimization, not a broken
-stack. Reaching the accepted composition from a pulled image requires the
-attestation contract to name that image's identity.
+The exact-Q40 layer binds to that identity rather than to a fixed one.
+`spark_transport/experiments/moe_round_floor/q40_exact_state_attestation_overlay.py`
+takes a required `--image-id` and embeds it in the model-runner source it
+emits, so its output hash depends on the image it was generated for, and
+`prepare_q40_exact_state_serving.py` sets `SPARK_Q40_EXACT_STATE_IMAGE_ID` from
+the same site identity. Generating the overlay against the image you run is
+what makes the two agree; section 7 covers that step.
 
 ### Option B: Use an existing local image by immutable ID
 

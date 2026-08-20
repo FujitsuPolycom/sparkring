@@ -482,19 +482,21 @@ def test_quickstart_doc_separates_operator_acceptance_from_rebuild_maturity() ->
     assert "LMCache CS512" in doc
 
 
-def test_quickstart_doc_bounds_what_a_pulled_image_delivers() -> None:
-    """A pull must not read as delivering the accepted composition.
+def test_quickstart_doc_offers_the_published_image_and_binds_identity() -> None:
+    """The page offers the pull and says which identity the profile binds to.
 
     The published image carries the same runtime filesystem as one built from
-    runtime/exl3-r7, so the page offers the pull. Container labels differ
-    between them, so the two carry different configuration digests, and
-    q40_exact_state_attestation_overlay.py compares that identity against the
-    locally built one. A reader who pulls therefore gets the profile without
-    its exact-Q40 layer, and the page has to say so.
+    runtime/exl3-r7. Container labels differ between them, so the two report
+    different configuration digests, and a reader has to know that the identity
+    to record is whichever the image they run reports.
+    q40_exact_state_attestation_overlay.py takes a required --image-id and
+    embeds it, so the exact-Q40 layer binds to that identity rather than to a
+    fixed one, and the page must not describe a pulled image as excluded.
     """
 
     doc = (ROOT / "docs" / "EXL3_R7_QUICKSTART.md").read_text(encoding="utf-8")
     assert "ghcr.io/fujitsupolycom/gb10-vllm-serving" in doc
-    assert "exact-Q40 layer refuses it" in doc
-    assert "SPARK_Q40_EXACT_STATE_IMAGE_ID" in doc
+    assert "--image-id" in doc
+    assert "Every section of this page holds for a" in doc
     assert "not published to a registry" not in doc
+    assert "refuses it" not in doc
