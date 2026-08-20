@@ -672,6 +672,7 @@ class GateContext:
                     "interface": str(port["interface"]),
                     "address": str(port["address"]),
                     "gid_index": int(port["roce_gid_index"]),
+                    "rdma_device": str(port["rdma_device"]),
                 }
             )
         return descriptors[0], descriptors[1]
@@ -1730,6 +1731,10 @@ def _qualifier_argv(ctx: GateContext, edge: dict) -> list[str]:
         str(dig(ctx.site, "topology.mtu")),
         "--gid-index",
         str(left["gid_index"]),
+        "--left-rdma-device",
+        left["rdma_device"],
+        "--right-rdma-device",
+        right["rdma_device"],
         "--strict-latency",
     ]
     probe = dig(ctx.gate, "fabric.probe_binary", None)

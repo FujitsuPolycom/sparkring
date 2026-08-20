@@ -16,8 +16,12 @@ fail-closed contract the container deployment enforced via
 
 ## Enabling (shadow-first)
 
+This package is not on a public index. Install it from a checkout of
+this repository; a wheel built that way carries no native library, so
+`SPARK_TP4_LIBRARY` must name one unless the build packaged it.
+
 ```bash
-pip install sparkring
+pip install ./sparkring_plugin
 export VLLM_SPARK_TP4_MODE=shadow          # or custom, after qualification
 export VLLM_SPARK_TP4_EAGER_WIDTHS=5120    # admitted eager hidden widths
 export SPARK_TP4_PEER0=... SPARK_TP4_PEER1=...        # ring control peers

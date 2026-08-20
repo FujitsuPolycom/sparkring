@@ -376,8 +376,8 @@ artifacts:
     sha256: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
     executable: false
 
-  - name: tp4_graph_probe
-    path: /opt/sparkring/bin/spark_tp4_graph_probe
+  - name: tp4_graph_q1_probe
+    path: /opt/sparkring/bin/spark_tp4_graph_q1_probe
     sha256: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     executable: true
 

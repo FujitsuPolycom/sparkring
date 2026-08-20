@@ -167,29 +167,12 @@ paths:
     jit_cache: 34359738368
     context_cache: 549755813888
 
-artifacts:
-  # Runtime files used by the default profile are baked into and attested in
-  # the image. Generated experiment bundles add their own host artifacts.
-  - name: transport_library
-    path: /opt/sparkring/lib/libspark_transport_capi.so
-    sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-    executable: false
-  - name: nccl_library
-    path: /opt/sparkring/lib/libnccl.so.2
-    sha256: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-    executable: false
-  - name: tp4_graph_probe
-    path: /opt/sparkring/bin/spark_tp4_graph_probe
-    sha256: cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-    executable: true
-  - name: tp4_vocab_graph_probe
-    path: /opt/sparkring/bin/spark_tp4_vocab_graph_probe
-    sha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
-    executable: true
-  - name: tp4_dcp_graph_probe
-    path: /opt/sparkring/bin/spark_tp4_dcp_graph_probe
-    sha256: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
-    executable: true
+# The runtime files this profile depends on are baked into the image and
+# verified from its in-image runtime manifest before vLLM starts, so there
+# is nothing on the host for preflight to hash. Host artifacts belong here
+# only when a deployment stages a file outside the image, and each entry
+# must name a path something actually writes.
+artifacts: []
 
 preflight:
   ssh_timeout_seconds: 45

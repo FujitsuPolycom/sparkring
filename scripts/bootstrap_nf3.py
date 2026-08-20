@@ -27,6 +27,19 @@ from verify_ssh_mesh import Hop, image_fanout_hops, split_ssh_target
 ROOT = Path(__file__).resolve().parents[1]
 CONFIRMATION = "BOOTSTRAP-NF3-ALL-FOUR"
 PUBLIC_REPOSITORY = "https://github.com/FujitsuPolycom/sparkring.git"
+# Follower ranks clone the source they build from. A deployment working from a
+# fork, a mirror, or an internal host serves that source elsewhere, and every
+# rank must agree on which. This environment variable names that origin; the
+# clone still verifies the checked-out commit, so a substituted origin cannot
+# change which bytes are built.
+BOOTSTRAP_REPOSITORY_ENV = "SPARKRING_BOOTSTRAP_REPOSITORY"
+
+
+def bootstrap_repository(environ=None) -> str:
+    """Return the repository URL follower ranks clone."""
+
+    source = os.environ if environ is None else environ
+    return str(source.get(BOOTSTRAP_REPOSITORY_ENV, "")).strip() or PUBLIC_REPOSITORY
 IMAGE_TRANSFER_HEADROOM_BYTES = 5 * 1024**3
 RECIPE_PATH = ROOT / "recipes/glm52-nf3-hybrid.json"
 PROFILES = {
@@ -419,20 +432,23 @@ def fanout_image_archive(
         )
 
 
-def checkout_command(commit: str, remote_root: str) -> str:
+def checkout_command(
+    commit: str, remote_root: str, repository_url: str | None = None
+) -> str:
     repository = f"{remote_root}/{commit}"
+    origin = repository_url or bootstrap_repository()
     return "\n".join(
         (
             "set -euo pipefail",
             f"mkdir -p -- {shlex.quote(remote_root)}",
             (
                 f"if [ ! -d {shlex.quote(repository + '/.git')} ]; then "
-                f"git clone --filter=blob:none {shlex.quote(PUBLIC_REPOSITORY)} "
+                f"git clone --filter=blob:none {shlex.quote(origin)} "
                 f"{shlex.quote(repository)}; fi"
             ),
             (
                 f"test \"$(git -C {shlex.quote(repository)} remote get-url origin)\" "
-                f"= {shlex.quote(PUBLIC_REPOSITORY)}"
+                f"= {shlex.quote(origin)}"
             ),
             (
                 f"git -C {shlex.quote(repository)} fetch --depth 1 origin "
