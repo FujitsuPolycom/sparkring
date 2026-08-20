@@ -33,11 +33,20 @@ input remains retrievable only while its host chooses to serve it, and a
 repository can be made private, renamed, or deleted without notice.
 
 `scripts/check_runtime_inputs.py --check-remote` observes that
-separately. It contacts the public sources the lock names and reports
-which pinned identities still resolve. It reaches the network, mutates
-nothing, and contacts no configured Spark. Run it on a schedule rather
-than only when a build fails: the useful time to discover that an
-upstream has disappeared is before the bytes are needed.
+separately. It performs, for each pinned source, the fetch a build
+performs, because a repository answering at all proves nothing about a
+particular commit. It reaches the network, mutates nothing, and contacts
+no configured Spark. Run it on a schedule rather than only when a build
+fails: the useful time to discover that an upstream has disappeared is
+before the bytes are needed.
+
+That request is refused for reasons unrelated to the commit. Rate
+limiting and transient transport failures are indistinguishable from a
+genuine refusal in the response, so the check retries before reporting
+one and treats a single success as conclusive. Investigate a reported
+refusal by hand before concluding an upstream has gone; repeated
+unauthenticated fetches of the same object are themselves a cause of
+refusals.
 
 `scripts/pull_pinned_images.py` retrieves the images the locks pin, by
 digest, from wherever their publisher serves them, and confirms the local

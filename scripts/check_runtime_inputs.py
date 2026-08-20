@@ -27,6 +27,8 @@ import hashlib
 import json
 import re
 import subprocess
+import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -194,27 +196,46 @@ def check_tracked_artifacts(
     return findings
 
 
-def _git_commit_resolves(repository: str, commit: str, timeout: int = 60) -> bool:
-    """Whether a server will serve one commit by its object name."""
+def _fetch_once(repository: str, commit: str, timeout: int) -> bool:
+    """Attempt the fetch a build performs, restricted to history."""
 
-    result = subprocess.run(
-        ["git", "ls-remote", "--exit-code", repository, commit],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    if result.returncode == 0:
-        return True
-    # A commit that is not itself a ref still counts as retrievable when the
-    # server allows fetching it by object name, which is how a lock entry is
-    # actually consumed.
-    probe = subprocess.run(
-        ["git", "-c", "protocol.version=2", "ls-remote", repository, "HEAD"],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    return probe.returncode == 0
+    with tempfile.TemporaryDirectory() as scratch:
+        init = subprocess.run(
+            ["git", "init", "--quiet", scratch],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if init.returncode != 0:
+            return False
+        fetched = subprocess.run(
+            ["git", "-C", scratch, "fetch", "--depth", "1", repository, commit],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return fetched.returncode == 0
+
+
+def _git_commit_resolves(
+    repository: str, commit: str, timeout: int = 300, attempts: int = 3
+) -> bool:
+    """Whether a server serves one commit to a client, retried.
+
+    A repository answering at all proves nothing about a particular commit, so
+    this performs the fetch a build performs. That request is also refused for
+    reasons unrelated to the commit — rate limiting and transient transport
+    failures both look like a refusal — and a durability check that cries wolf
+    gets ignored. A single success is conclusive; only repeated refusals are
+    reported.
+    """
+
+    for attempt in range(attempts):
+        if _fetch_once(repository, commit, timeout):
+            return True
+        if attempt + 1 < attempts:
+            time.sleep(5 * (attempt + 1))
+    return False
 
 
 def check_remote_sources(lock: Mapping[str, Any]) -> list[Finding]:
