@@ -32,7 +32,7 @@ You also need a vLLM build that can load `DeepseekV4ForCausalLM` with
 the B12X kernel family. One is published:
 
 ```bash
-docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:df0e2068fc7034a1ec7a2c1fa4e0c3224c720161539525b5a7cbb037dc1d0f8e
+docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028
 ```
 
 That image registers `DeepseekV4ForCausalLM` and carries B12X, LMCache,
@@ -41,12 +41,14 @@ the patched NCCL, and the SparkRing transport library. It also registers
 
 What the image removes is the ARM64 CUDA build: the transport library,
 its probe binaries, the patched NCCL, and the forked vLLM all arrive
-prebuilt. What it does not carry is a `quack-kernels` compatible with
-its own `nvidia-cutlass-dsl`, so it requires the correction below before
-it serves this checkpoint. No bind mount and no file outside this
-repository is required.
+prebuilt. It also carries the `quack-kernels` correction described below,
+so no bind mount and no file outside this repository is required to serve
+this checkpoint from it.
 
-### Correcting the image
+`runtime/faststart-lock.json` owns this pin. The command above repeats it
+rather than establishing a second one.
+
+### What the correction is, and how to rebuild it
 
 `quack-kernels` 0.5.0 reaches the published image as a transitive
 dependency, so it escapes the two things `runtime/exl3-r7` applies to a
@@ -76,14 +78,15 @@ profiling:
   `map_dataclass_to_tuple` argument that `apache-tvm-ffi` 0.1.9 does not
   accept, raising `TypeError`.
 
-Build the corrected image on every rank, from a checkout of this
-repository:
+The published digest above is that correction already applied. To
+reproduce it, or to apply it to a different parent, build from a checkout
+of this repository:
 
 ```bash
 mkdir -p /var/tmp/sparkring-correction
 cp runtime/exl3-r7/bake_runtime_artifacts.py /var/tmp/sparkring-correction/
 cat > /var/tmp/sparkring-correction/Dockerfile <<'DOCKERFILE'
-FROM ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:df0e2068fc7034a1ec7a2c1fa4e0c3224c720161539525b5a7cbb037dc1d0f8e
+FROM ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:35b29616dc05677b98f647282e81a99fbca1969791ccbfca711c11a44285385e
 COPY bake_runtime_artifacts.py /tmp/bake_runtime_artifacts.py
 RUN /opt/venv/bin/pip install --no-cache-dir "apache-tvm-ffi==0.1.10" \
  && /opt/venv/bin/python /tmp/bake_runtime_artifacts.py quack \
@@ -101,8 +104,9 @@ bytes. A rank without a route to a package index needs the
 `--no-index --find-links` pointed at it; the wheel URL and its SHA-256
 are in `runtime/exl3-r7/requirements-tvm-ffi.txt`.
 
-Use `sparkring/gb10-vllm-serving:corrected` wherever the launch below
-names an image.
+A locally built image carries a different identity from the published
+digest, so a launch from one is evidence about that build rather than
+about the pin.
 
 ## 2. Model
 
@@ -128,7 +132,7 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
   -v /path/to/deepseek-v4-flash-0731:/models/deepseek-v4-flash-0731:ro \
   --env-file /path/to/rank-"$RANK".env \
   --entrypoint /opt/venv/bin/vllm \
-  sparkring/gb10-vllm-serving:corrected \
+  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028 \
   serve /models/deepseek-v4-flash-0731 \
   --tensor-parallel-size 4 --nnodes 4 --node-rank "$RANK" \
   --master-addr "$RANK0_FABRIC_ADDR" --master-port 29500 \

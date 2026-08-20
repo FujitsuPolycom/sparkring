@@ -69,10 +69,12 @@ which of the two it descends from. That label on a built 3.5-bpw image and this
 document have disagreed; the label is the record of what was built, and this
 table describes what the builder accepts rather than asserting one lineage.
 
-A published image can serve as the parent rather than one built locally:
+A published image can serve as the parent rather than one built locally. The
+pin for it lives in `runtime/faststart-lock.json` under `serving_image`; this
+command repeats that digest rather than establishing a second pin:
 
 ```bash
-docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:df0e2068fc7034a1ec7a2c1fa4e0c3224c720161539525b5a7cbb037dc1d0f8e
+docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028
 ```
 
 `scripts/pull_pinned_images.py` retrieves it along with every other image the

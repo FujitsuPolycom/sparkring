@@ -21,8 +21,15 @@
   ],
   "serving_image": {
     "repository": "ghcr.io/fujitsupolycom/gb10-vllm-serving",
-    "manifest_digest": "sha256:df0e2068fc7034a1ec7a2c1fa4e0c3224c720161539525b5a7cbb037dc1d0f8e",
+    "manifest_digest": "sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028",
+    "tag_for_humans": "quack-corrected",
     "platform": "linux/arm64",
-    "note": "The published GB10 runtime image. Carries the pinned vLLM, B12X, LMCache, the EXL3 quantization overlay, FlashInfer, DeepGEMM, the patched NCCL, and libspark_transport_capi.so with its probe binaries. Registers Glm4MoeForCausalLM and DeepseekV4ForCausalLM. Its entrypoint attests a GLM profile, so a launch for another checkpoint overrides it with --entrypoint."
+    "parent_manifest_digest": "sha256:35b29616dc05677b98f647282e81a99fbca1969791ccbfca711c11a44285385e",
+    "notes": [
+      "The published GB10 runtime image. Carries the pinned vLLM, B12X, LMCache, the EXL3 quantization overlay, FlashInfer, DeepGEMM, the patched NCCL, and libspark_transport_capi.so with its probe binaries. Registers Glm4MoeForCausalLM and DeepseekV4ForCausalLM.",
+      "Its entrypoint attests a GLM profile, so a launch for another checkpoint overrides it with --entrypoint.",
+      "It is built from parent_manifest_digest by installing apache-tvm-ffi 0.1.10 and running runtime/exl3-r7/bake_runtime_artifacts.py over /opt/venv/lib/python3.12/site-packages/quack. That rewrites the cute.core.ThrMma and cute.core.ThrCopy annotations the image's cutlass no longer exports. Without the rewrite a worker raises AttributeError on cutlass.cute.core.ThrMma while determining available memory for a checkpoint other than GLM; GLM serving does not reach that call site, so the parent serves GLM and this digest serves both.",
+      "Serving evidence for DeepSeek-V4-Flash-0731 is one four-rank launch on which three ranks ran this image's content and the fourth, which has no route to a registry, ran an image built locally and never compared against this digest. A four-rank launch from a registry pull of this digest is untested."
+    ]
   }
 }
