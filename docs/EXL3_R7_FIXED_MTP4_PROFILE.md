@@ -8,7 +8,9 @@ public-functional lane, but its acceptance scope is the operator's four-Spark
 appliance. It is not the repository-wide public-functional default, an
 accepted public deployment matrix, or a transferable result for other
 hardware. The advertised public-functional default is EXL3 3.25-bpw plus
-LMCache CS512.
+LMCache CS512. `R7` is the durable recipe identifier of this
+operator-tuned 3.5-bpw EXL3 profile (recipe
+`recipes/glm52-exl3-r7-3.5bpw.json`).
 
 The operator profile serves
 `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78` at immutable revision
@@ -29,7 +31,7 @@ qualification is preserved separately in
 [glm52-exl3-r7-mtp4-kv925-20260811.json](configurations/glm52-exl3-r7-mtp4-kv925-20260811.json).
 The exact-Q40 acceptance result is
 [glm52-exl3-r7-mtp4-q40-block8-20260812.json](configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json).
-The operator-accepted current-best prefill snapshot is
+The accepted prefill snapshot is preserved in
 [glm52-exl3-r7-current-best-prefill-20260813.json](configurations/glm52-exl3-r7-current-best-prefill-20260813.json).
 The full prefill, decode, and coding snapshot is
 [glm52-exl3-r7-current-best-matrix-20260813.json](configurations/glm52-exl3-r7-current-best-matrix-20260813.json).

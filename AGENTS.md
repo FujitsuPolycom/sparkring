@@ -44,9 +44,12 @@ If understanding a sentence requires conversation history, rewrite it.
   Acceptance applies to one four-Spark appliance. The public builder is
   source-complete and offline-validated, but a clean-checkout image has not
   passed the live promotion gate. This does not change the public default or
-  accepted NF3 alternative.
-- NF3 is an accepted deterministic public-functional alternative. Its
-  recipe, bootstrap, and quickstart are published and explicitly selectable.
+  the accepted alternative built on the GLM-5.2 hybrid checkpoint
+  `madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid`, whose routed experts use the
+  NF3 weight format.
+- That NF3 lane is an accepted deterministic public-functional alternative.
+  Its recipe, bootstrap, and quickstart are published and explicitly
+  selectable.
 - Never describe a reference-lane number as a result from this checkout.
 
 Machine-readable status is in `docs/STATUS.json`.

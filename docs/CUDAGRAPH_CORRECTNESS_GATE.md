@@ -21,7 +21,8 @@ in eager mode. A DCP1 graph run had the same symptom.
 
 DCP1 removes DCP attention collectives. It does **not** remove four-rank tensor
 parallelism, the graph-native TP all-reduce, the graph-native vocabulary
-all-gather, the target FULL graph, or the DSpark draft graph. The DCP1 result
+all-gather, the target FULL graph, or the separately captured draft-model
+graph (the DSpark speculative-decoding subsystem). The DCP1 result
 therefore lowers the probability of a DCP query/combine bug, but it does not
 clear SparkRing's graph transport.
 
@@ -53,8 +54,10 @@ performance regression and not an accepted fallback.
    target graph remains enabled.
 4. **A workspace was not sized on the path later selected by the 13K
    request.** The NF3 lane exposed a related 544 MiB versus 575.31 MiB
-   late request, but there is no evidence yet that the MXFP4 report is the
-   same defect. Prediction: `VLLM_DEBUG_WORKSPACE=1` shows either a late
+   late workspace request, but there is no evidence yet that the external
+   reproduction's report, which ran the historical MXFP4/GPTQ configuration
+   ([docs/history/AIDEN_MXFP4_GPTQ.md](history/AIDEN_MXFP4_GPTQ.md)), is
+   the same defect. Prediction: `VLLM_DEBUG_WORKSPACE=1` shows either a late
    workspace request or a different buffer/pointer at replay.
 5. **The long prompt merely exposes another graph-stable metadata lifetime
    bug.** Prediction: the failure has a sharp context/token boundary even

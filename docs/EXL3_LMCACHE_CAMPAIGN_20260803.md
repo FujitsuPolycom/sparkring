@@ -481,7 +481,9 @@ failed/open; the 32-token bounded gate remains only a startup/lifecycle check.
 
 The upstream-derived integration is from
 `local-inference-lab/LMCache`, based on
-`release/v0.5.2-glm52-dcp-base`. The r20 OCI labels report base commit
+`release/v0.5.2-glm52-dcp-base`. An upstream registry image carrying the tag `r20` (its durable
+repository and digest identity are not recorded here) carries OCI
+labels reporting base commit
 `9cebd405d0caf4bebe01d694b5a8bf4e3e354314`, integration tree
 `a5aa59cc8edca462a3f4c198d17fd2b9c1a7ffaa`, package version
 `0.5.2+glm52dcp.4`, patch SHA-256

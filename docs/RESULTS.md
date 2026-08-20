@@ -2,9 +2,11 @@
 
 > The detailed matrix below is the historical Aiden MXFP4/GPTQ evidence set.
 > NF3 has a smaller accepted sanity set in [README.md](../README.md).
-> EXL3+LMCache CS512 is the main advertised public-functional configuration and
-> has the bounded clean-checkout gate below. The operator's EXL3 R7
-> fixed-MTP4 profile is the separately scoped operator default.
+> EXL3 plus LMCache with 512-token cache chunks (CS512) is the main
+> advertised public-functional configuration and
+> has the bounded clean-checkout gate below. The operator's EXL3 3.5-bpw
+> fixed-MTP4 profile (recipe identifier `R7`) is the separately scoped
+> operator default.
 > Results are not interchangeable between checkpoints or evidence origins.
 
 ## EXL3+LMCache public-path gate (2026-08-03)
@@ -41,8 +43,10 @@ prefill skipped, and a 300-second cell-warmup timeout.
 | C4 | **45.11** | 4/4 | 0 |
 | C8 | **59.40** | 8/8 | 0 |
 
-The metric is `aggregate_tps/openai_continuous_usage`. Relative to the earlier
-external CS512 quick matrix, the clean-image cells changed by -0.71%, -5.28%,
+The metric is `aggregate_tps/openai_continuous_usage`. Relative to the
+external CS512 unique-context 16K quick matrix recorded in the
+[2026-08-03 LMCache campaign](EXL3_LMCACHE_CAMPAIGN_20260803.md), the
+clean-image cells changed by -0.71%, -5.28%,
 +3.96%, and -2.47% at C1/C2/C4/C8 respectively. This is a cross-run drift
 comparison, not a sealed A/B. The first attempt used the harness's automatic
 60-second readiness allowance: C1 was valid at 18.2 tok/s, while C2/C4/C8 were
@@ -50,7 +54,7 @@ correctly suppressed after warmup timeout. Those suppressions were readiness
 timeouts, not KV-capacity failures. Unique 16K validation for this profile
 therefore requires `--cell-warmup-timeout-seconds 300`.
 
-### 2026-08-11 EXL3 R7 dynamic-NVFP4 CKV-gather candidate
+### 2026-08-11 EXL3 3.5-bpw (R7) dynamic-NVFP4 CKV-gather candidate
 
 The operator-running fixed-MTP4 profile uses dynamic per-token NVFP4 latent KV
 plus FP8 RoPE, a 262,144-token request limit, a 4,096-token prefill ceiling,
@@ -93,7 +97,7 @@ open capacity gates are in the
 and
 [sanitized machine-readable evidence](configurations/glm52-exl3-r7-mtp4-nvfp4-ckv-gather-20260811.json).
 
-### 2026-08-12 EXL3 R7 exact-Q40 operator acceptance
+### 2026-08-12 EXL3 3.5-bpw (R7) exact-Q40 operator acceptance
 
 The accepted operator 3.5-bpw profile adds a target-only routed-MoE state for
 exactly 40 rows. It uses capacity 40 and route block 8 without changing Q1-Q32,
@@ -177,7 +181,7 @@ complete contract and immutable receipt hashes are in the
 [fixed-MTP4 specification](EXL3_R7_FIXED_MTP4_PROFILE.md) and
 [operator-acceptance summary](configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json).
 
-### 2026-08-13 EXL3 R7 LMCache NVMe persistence candidate
+### 2026-08-13 EXL3 3.5-bpw (R7) LMCache NVMe persistence candidate
 
 The accepted four-Spark R7 3.5-bpw operator profile was extended with one
 LMCache MP server per DCP rank. The candidate used 512-token chunks, a lazy
@@ -217,7 +221,7 @@ text differed, so the run is not a deterministic-output gate. The sanitized
 record is
 [glm52-exl3-r7-lmcache-nvme-20260813.json](configurations/glm52-exl3-r7-lmcache-nvme-20260813.json).
 
-### 2026-08-11 EXL3 R7 fixed-MTP4 FP8 predecessor
+### 2026-08-11 EXL3 3.5-bpw (R7) fixed-MTP4 FP8 predecessor
 
 On four directly cabled DGX Sparks, the public-functional R7 3.5-bpw research
 checkpoint completed a bounded live qualification at TP4/DCP4, fixed MTP4,
@@ -295,7 +299,7 @@ These are end-to-end serving measurements: a real model, real requests, tokens d
 |---|---|---|---|
 | 1 | **834 / 884 / 854 tok/s uncached prefill at 8K / 16K / 32K** | 4x Spark switchless ring; MXFP4-Experts-GPTQ; TP4/DCP4 (ag_rs), adaptive MTP2/4 window 32, FULL_AND_PIECEWISE CUDA graphs; custom SparkRing hot paths + checksum-pinned patched NCCL 2.30.7 NET/IB fallback; C1, one request at a time; end-to-end serving; **single-sample "integrated one-sample scout" per context, not prefix-cache-hit** (TTFT 9.828 / 18.359 / 37.844 s); gate: zero request errors, live graph census + 32-token live request gate passed, no NET/Socket data path | `deliverables/glm52-dcp4-switchless-result-20260727.md` ("C1 prefill and decode"); `CURRENT_STATUS.md`; `HANDOFF.md` |
 | 2 | **63.60 tok/s aggregate sustained decode at C8** (7.95 tok/s per user; 3.51x C1; still rising at the configured C8 cap) | 4x Spark; MXFP4-Experts-GPTQ; TP4/**DCP1**, adaptive MTP2/4, Q40 capture plan (FULL+PIECEWISE), max sequences 8; fully **shared-prefix** 8K contexts; controlled **15-second sustained-decode cells**; aggregate (per-user also reported); end-to-end serving; single cell per concurrency; gate: zero errors/queueing at every C1–C8 step, 5,464 custom all-reduce + 24 custom vocabulary graph captures, **zero stock captures**, no Q1–Q40 stock fallback in decode | `deliverables/glm52-concurrency-fast-path-20260727.md` ("Passed C8 candidate"); evidence: `deliverables/evidence/glm52-c8-baseline-20260727.json` |
-| 3 | **20.83 / 19.28 / 21.43 tok/s p50 decode at 8K / 16K / 32K — sealed custom/custom CUDA-graph C1 cell (v40, 2026-07-28)** | 4x Spark; MXFP4-Experts-GPTQ; TP4/**DCP4**, adaptive MTP2/4 window 32, Q40 FULL_AND_PIECEWISE with the full custom DCP trio captured (1,272 query + 1,272 combine nodes/rank; only 360 stock `dcp_owner_topk_all_gather` nodes/rank, capture-unsupported by design); C1 single stream; 30 s sustained decode per context; per-user = aggregate; end-to-end serving; statistic p50 (inter-token p50 48.0 / 51.9 / 46.7 ms, TTFT p50 0.75 / 0.89 / 0.94 s); gate: sealed cell `custom-dcp-cell-20260728T023220Z`, cell-validation passed, zero JIT events, frozen transport counters, zero target-family stock fallback | `deliverables/dcp4-v40-window-result-20260728.md` |
+| 3 | **20.83 / 19.28 / 21.43 tok/s p50 decode at 8K / 16K / 32K — sealed custom/custom CUDA-graph C1 cell (from the 2026-07-28 sealed custom-DCP measurement window, archive tag `v40`)** | 4x Spark; MXFP4-Experts-GPTQ; TP4/**DCP4**, adaptive MTP2/4 window 32, Q40 FULL_AND_PIECEWISE with the full custom DCP trio captured (1,272 query + 1,272 combine nodes/rank; only 360 stock `dcp_owner_topk_all_gather` nodes/rank, capture-unsupported by design); C1 single stream; 30 s sustained decode per context; per-user = aggregate; end-to-end serving; statistic p50 (inter-token p50 48.0 / 51.9 / 46.7 ms, TTFT p50 0.75 / 0.89 / 0.94 s); gate: sealed cell `custom-dcp-cell-20260728T023220Z`, cell-validation passed, zero JIT events, frozen transport counters, zero target-family stock fallback | `deliverables/dcp4-v40-window-result-20260728.md` |
 | 4 | **27.246 median / 29.295 max tok/s, five-run coding-peak** | 4x Spark; MXFP4-Experts-GPTQ; TP4/DCP1 ("MIDWAY GOOD" checkpoint: adaptive MTP2/4 window 32, capture sizes 1/3/5, max seqs 3, NCCL Socket fallback in this config); C1; coding-peak prompts, 5 sequential runs, 30-second windows, max_tokens 2000; per-user = aggregate; end-to-end serving; statistic: median / mean 27.615 / max / min 26.690 over 5 runs; gate: all 5 completed, 0/5 CJK output; benchmark JSON SHA-256 pinned | `deliverables/glm52-midway-good-checkpoint-20260727.md` ("Five sequential coding-peak runs"); cross-referenced in `deliverables/glm52-dcp2-switchless-result-20260727.md` |
 | 5 | **43.0 and 42.6 aggregate tok/s structured-code C2 peaks** | 4x Spark; MXFP4-Experts-GPTQ; TP4/DCP1, adaptive MTP2/4, Q10 C2 candidate (capture sizes 1–10); C2, two simultaneous real "write me a webpage" prompts via OpenWebUI; aggregate; end-to-end serving; statistic: two separate **ten-second server-side log windows** (not a controlled bench cell); gate: the 43.0 window had mean acceptance length 4.30 and 82.5% draft acceptance; explicitly labeled a workload-dependent peak, **not** the C2 baseline | `deliverables/glm52-concurrency-fast-path-20260727.md` ("Passed C2 candidate") |
 | 6 | **Historical eager single-stream: 20.83 tok/s pinned / 19.88 tok/s novel-code median, with 708.1 tok/s uncached 32K prefill** | 4x Spark; MXFP4-Experts-GPTQ; TP4/DCP1, fixed-K4 MTP with B12X remap, **eager** (pre-graph) execution; exact-32K pinned context, C1; per-user = aggregate; end-to-end serving; statistics: 20.832311 median periodic pinned gate (G0d-c), 20.694064 median with proposal-scoped reuse (G0d-e), 19.880764 median over **five runs** on the novel-code suffix (G0d-f); 708.081532 tok/s uncached 32K prefill (G0d-e); gate: coherent output + bounded numerical envelope; 100% P0–P3 acceptance on the pinned gate (pinned context makes MTP acceptance unusually easy — see caveats) | `deliverables/goal-ledger.md` rows G0d-c/e/f |

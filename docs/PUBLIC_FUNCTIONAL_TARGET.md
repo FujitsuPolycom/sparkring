@@ -1,10 +1,14 @@
 # SparkRing — Public-Functional Lane: supported matrix and acceptance definition
 
 > **Configuration status:** the matrix in §2 is the accepted NF3
-> public-functional matrix retained as the deterministic alternative. Its
+> public-functional matrix retained as the deterministic alternative; the
+> NF3 lane serves the GLM-5.2 hybrid checkpoint
+> `madeby561/GLM-5.2-MXFP8-NVFP4-NF3-Hybrid`, whose routed experts use the
+> NF3 weight format. Its
 > clean-checkout evidence is in
 > [NF3_NVFP4_PUBLIC_VALIDATION.md](NF3_NVFP4_PUBLIC_VALIDATION.md). EXL3 plus
-> LMCache CS512 is the default and main advertised configuration; its maturity
+> LMCache CS512 is the default and main advertised configuration (LMCache
+> with 512-token cache chunks); its maturity
 > is `live-validated`, not accepted; see
 > [QUICKSTART.md](QUICKSTART.md) and the candidate
 > [EXL3 acceptance runbook](EXL3_ACCEPTANCE_RUNBOOK.md). The operator's

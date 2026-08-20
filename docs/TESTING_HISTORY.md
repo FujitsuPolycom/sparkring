@@ -141,7 +141,8 @@ The exact boundary is maintained in
 
 ## 2026-07-28: DCP4 custom-collective window
 
-The v40 window captured the custom DCP query and fused combine paths inside
+The 2026-07-28 sealed custom-DCP measurement window (archive tag `v40`)
+captured the custom DCP query and fused combine paths inside
 FULL CUDA graphs.
 
 The sealed C1 sustained-decode cell measured:

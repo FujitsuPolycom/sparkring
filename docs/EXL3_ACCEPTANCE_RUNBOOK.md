@@ -1,7 +1,8 @@
 # EXL3 + LMCache public acceptance runbook
 
 This runbook advances the default four-DGX-Spark GLM-5.2 EXL3 3.25-bpw plus
-LMCache CS512 profile beyond its bounded live-validation receipt. It is a
+LMCache profile with 512-token cache chunks (CS512) beyond its bounded
+live-validation receipt. It is a
 `public-functional` candidate workflow. Publishing the tools does not upgrade
 the profile from `live-validated` to `accepted`; only a reviewed, passing live
 evidence bundle can do that. NF3 is the accepted deterministic
