@@ -317,8 +317,13 @@
     }
   },
   "next_measurement": {
-    "statement": "run the verifier against the package directory installed on a rank",
-    "safety_class": "READ-ONLY REMOTE",
-    "discriminates": "a composition that dropped the capability fails group_module_present; one that retains it passes every check and moves diagnosis to configuration"
+    "statement": "run the verifier against the composed package installed in the serving image",
+    "safety_class": "OFFLINE with respect to the serving stack; a throwaway container with no device and no network",
+    "image_paths": {
+      "installed_package": "/opt/venv/lib/python3.12/site-packages/lmcache",
+      "composed_source_tree": "/opt/sparkring-exl3/sources/lmcache/"
+    },
+    "command": "docker run --rm --network none --entrypoint /opt/venv/bin/python IMAGE_ID - --package-dir /opt/venv/lib/python3.12/site-packages/lmcache < runtime/exl3/verify_lmcache_group_tracking.py",
+    "discriminates": "failing group_module_present means the composition dropped the capability, and the retained source tree localizes which integration head removed it; passing every check moves diagnosis to configuration, starting with the registration deadline and the declared cache dtype"
   }
 }

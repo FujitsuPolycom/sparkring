@@ -363,22 +363,40 @@ configuration and are independent of the cache package version.
 The single open question is **why the deployed composition fails when its
 upstream baseline does not**. The required property is present in stock 0.5.2,
 and the fork base postdates it, so the cause lies in the eleven integration
-heads or in how the composed tree was assembled. That has not been determined,
-and it is not determinable from this checkout, which does not carry the composed
-tree.
+heads or in how the composed tree was assembled.
 
-The next measurement is to run the checker against the package directory
-installed on a rank:
+This checkout does not carry the composed tree, but the serving image does. The
+builder installs the composed package into the image's virtual environment and
+also retains its source, so the question is answerable from the image alone,
+without a deployed stack:
+
+| Path in the image | Contents |
+|---|---|
+| `/opt/venv/lib/python3.12/site-packages/lmcache` | The installed composed package |
+| `/opt/sparkring-exl3/sources/lmcache/` | The composed source tree it was built from |
+
+Run the checker against the installed package by streaming it into a throwaway
+container built from the same image the profile pins:
 
 ```bash
-python runtime/exl3/verify_lmcache_group_tracking.py --package-dir "$(python -c 'import lmcache, os; print(os.path.dirname(lmcache.__file__))')"
+docker run --rm --network none --entrypoint /opt/venv/bin/python IMAGE_ID - \
+  --package-dir /opt/venv/lib/python3.12/site-packages/lmcache \
+  < runtime/exl3/verify_lmcache_group_tracking.py
 ```
 
-Safety class: READ-ONLY REMOTE. It reads one directory, starts nothing, and
-changes nothing, so it can run against a serving rank. Its output distinguishes
-the two remaining possibilities: a composition that dropped the capability
-fails `group_module_present`, while a composition that retains it but
-misbehaves passes every check and moves diagnosis to configuration.
+Safety class: OFFLINE with respect to the serving stack. It starts a
+short-lived container from an existing image with no device and no network,
+reads one directory, and removes itself. It does not contact, inspect, or
+modify any running engine or cache server, so it is safe while the ring is
+serving. Run it on any host holding the image; the ranks are identical by
+construction, so one is sufficient.
+
+Its output distinguishes the two remaining possibilities. A composition that
+dropped the capability fails `group_module_present`, and the retained source
+tree then localizes which integration head removed it. A composition that
+retains the capability passes every check, which moves diagnosis away from the
+package and onto configuration — the registration deadline and the declared
+cache dtype first.
 
 ## What this document does not establish
 
