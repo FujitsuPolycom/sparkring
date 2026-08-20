@@ -29,18 +29,25 @@ cables, and a working container runtime. Nothing below substitutes
 for that.
 
 You also need a vLLM build that can load `DeepseekV4ForCausalLM` with
-the B12X kernel family. The GB10 runtime base carries one:
+the B12X kernel family. One is published:
 
 ```bash
-docker pull ghcr.io/fujitsupolycom/gb10-vllm-base@sha256:9d88c2152b0ae9f33e7a793b7df29398ed79710b205b9244ac63597ab4481ada
+docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:df0e2068fc7034a1ec7a2c1fa4e0c3224c720161539525b5a7cbb037dc1d0f8e
 ```
 
-That image registers `DeepseekV4ForCausalLM` and carries B12X, the
-patched NCCL, and the SparkRing transport library, so it serves this
-checkpoint without a derived build. The image the measurements on the
-profile page were taken on is a different derivative of the same base
-and is not published; any image that dispatches this architecture and
-provides B12X accepts the flags below.
+That image registers `DeepseekV4ForCausalLM`, carries B12X, LMCache, the
+patched NCCL, and the SparkRing transport library, and is the image the
+profile page's operator observations were taken on.
+
+The GB10 runtime base at `ghcr.io/fujitsupolycom/gb10-vllm-base@sha256:9d88c2152b0ae9f33e7a793b7df29398ed79710b205b9244ac63597ab4481ada`
+is a smaller image that also registers the architecture, but it does not
+serve this checkpoint: its vLLM build rejects the `--kernel-config`
+option below, and its entrypoint requires GLM attestation variables this
+checkpoint has no values for. Use the serving image above.
+
+Both published images run an attestation entrypoint, so a launch for
+this checkpoint overrides it with `--entrypoint`, as the command in
+section 3 does.
 
 ## 2. Model
 
@@ -65,8 +72,9 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
   --ulimit memlock=-1:-1 --device /dev/infiniband \
   -v /path/to/deepseek-v4-flash-0731:/models/deepseek-v4-flash-0731:ro \
   --env-file /path/to/rank-"$RANK".env \
-  ghcr.io/fujitsupolycom/gb10-vllm-base@sha256:9d88c2152b0ae9f33e7a793b7df29398ed79710b205b9244ac63597ab4481ada \
-  vllm serve /models/deepseek-v4-flash-0731 \
+  --entrypoint /opt/venv/bin/vllm \
+  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:df0e2068fc7034a1ec7a2c1fa4e0c3224c720161539525b5a7cbb037dc1d0f8e \
+  serve /models/deepseek-v4-flash-0731 \
   --tensor-parallel-size 4 --nnodes 4 --node-rank "$RANK" \
   --master-addr "$RANK0_FABRIC_ADDR" --master-port 29500 \
   --distributed-executor-backend mp \
@@ -96,6 +104,10 @@ Four flags in that command are load-bearing and easy to omit:
 - `--tokenizer-mode deepseek_v4` selects this checkpoint's tokenizer.
 - `--headless` on ranks 1 through 3. Without it every rank tries to bind
   the API port.
+- `--entrypoint /opt/venv/bin/vllm`. The image's own entrypoint verifies a
+  GLM attestation contract and exits 78 before reaching vLLM when a
+  variable such as `SPARKRING_MTP_DRAFT_PATH` is absent, which it is for
+  this checkpoint.
 
 Environment the B12X kernel family needs on every rank:
 

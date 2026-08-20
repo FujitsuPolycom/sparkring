@@ -35,7 +35,11 @@ LOCK_IMAGE_PATHS = {
         ("base_image", "builder"),
         ("base_image", "runtime"),
     ),
-    "runtime/faststart-lock.json": (("base_image",), ("runtime_base_image",)),
+    "runtime/faststart-lock.json": (
+        ("base_image",),
+        ("runtime_base_image",),
+        ("serving_image",),
+    ),
 }
 
 
