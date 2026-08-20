@@ -1,12 +1,17 @@
 """vLLM general-plugin entry point for the SparkRing SIRCL transport.
 
-Contract, carried over from the container ``sitecustomize`` deployment:
+Two properties define this entry point, and the tests under
+``sparkring_plugin/tests`` enforce both:
 
 - With no ``VLLM_SPARK_*`` mode variable set, ``register()`` does nothing.
   Installing the wheel must never change a serving process by itself.
 - When a mode is enabled and installation fails for any reason, the process
   exits with code 78 before vLLM can serve traffic. A partially installed
   transport must never carry collectives.
+
+``spark_transport/integrations/vllm/sitecustomize.py`` holds the same two
+properties for a deployment that overlays the integration onto a container
+image instead of installing this wheel.
 """
 
 from __future__ import annotations
