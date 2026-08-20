@@ -152,15 +152,16 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
   $([ "$RANK" -eq 0 ] && echo "--host 0.0.0.0 --port 8000" || echo "--headless")
 ```
 
-The environment a rank needs is larger than the five variables in
-section 4. A launch also requires `LD_PRELOAD` naming
-`/usr/local/cuda/compat/libcuda.so.1` and the patched
-`/opt/sparkring/nccl/libnccl.so.2`, and roughly twenty `NCCL_*`
-variables that select the ring algorithm, the two host channel adapters,
-and GID index 3. Without the compat preload the worker aborts on an
-undefined `cuTensorMapEncodeTiled`; without the NCCL configuration it
-aborts on an unhandled system error. A deployment carries these in a
-per-rank environment file.
+The full per-rank environment is tracked:
+[`scripts/config/deepseek-v4-flash-0731.env.example`](../scripts/config/deepseek-v4-flash-0731.env.example),
+taken verbatim from the environment of a deployment that serves this
+checkpoint. Copy it to one file per rank and replace its two
+placeholders — the rank's fabric interface (`enp1s0f0np0` on even ranks,
+`enp1s0f1np1` on odd, matching the ring cabling) and that interface's
+address. Everything else is identical on every rank. `LD_PRELOAD` and the
+patched NCCL it names are required: without the compat preload the worker
+aborts on an undefined `cuTensorMapEncodeTiled`, and without the `NCCL_*`
+configuration it aborts on an unhandled system error.
 
 Every rank must hold the image before any rank launches. Rendezvous
 waits 601 seconds for all four; a rank still pulling when the others
@@ -195,15 +196,10 @@ misread as load-bearing:
   variable such as `SPARKRING_MTP_DRAFT_PATH` is absent, which it is for
   this checkpoint.
 
-Environment the B12X kernel family needs on every rank:
-
-```bash
-VLLM_USE_B12X_MOE=1
-VLLM_USE_B12X_FP8_GEMM=1
-VLLM_USE_B12X_SPARSE_INDEXER=1
-VLLM_USE_B12X_MHC=1
-VLLM_DSPARK_GPU_REJECTED_CONTEXT_MASK=1
-```
+The B12X and DSpark variables the kernel family reads are part of the
+tracked environment file above; nothing beyond it is required. The
+serving environment this page's observations come from does not set
+`VLLM_DSPARK_GPU_REJECTED_CONTEXT_MASK`.
 
 This launch attaches no external key-value cache tier. The engine's
 own prefix caching is unaffected and remains active; external reuse is
