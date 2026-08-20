@@ -1,5 +1,12 @@
 # SparkRing
 
+> **This repository is changing rapidly.** Documentation, profiles, and
+> branch history are being restructured as SparkRing's scope narrows to
+> switchless four-Spark collective transport and serving. Published
+> branches may be rebased and documents may be moved, renamed, or
+> replaced without a deprecation period. Pin a commit if you depend on a
+> specific state of this tree.
+
 SparkRing is a low-latency collective transport and vLLM-based
 inference-serving stack for switchless clusters of NVIDIA DGX Spark systems
 powered by the GB10 Grace Blackwell Superchip.
@@ -32,11 +39,11 @@ belongs to profiles rather than the transport.
 
 | Profile | Status | Start here |
 |---|---|---|
-| GLM-5.2 EXL3 3.25-bpw with LMCache CS512 | Public-functional default; bounded clean-checkout live validation | [Quickstart](docs/QUICKSTART.md) |
-| GLM-5.2 EXL3 R7 3.5-bpw | Accepted on one four-Spark appliance; rebuilds require qualification | [R7 quickstart](docs/EXL3_R7_QUICKSTART.md) |
-| GLM-5.2 NF3 | Accepted deterministic alternative | [NF3 quickstart](docs/NF3_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | Functional operator launch; not shadow-qualified | [DeepSeek quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| Other models and widths | Maturity varies by profile | [Complete registry](docs/profiles/README.md) |
+| GLM-5.2 EXL3 3.25-bpw with LMCache CS512 | Public default; live-validated | [Quickstart](docs/QUICKSTART.md) |
+| GLM-5.2 EXL3 R7 3.5-bpw | Accepted; one appliance | [Quickstart](docs/EXL3_R7_QUICKSTART.md) |
+| GLM-5.2 NF3 | Accepted; deterministic | [Quickstart](docs/NF3_QUICKSTART.md) |
+| DeepSeek-V4-Flash-0731 | Functional; not shadow-qualified | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| Qwen, Meta, and other families | In progress | [Complete registry](docs/profiles/README.md) |
 
 The registry owns model identities, revisions, configuration links, maturity,
 and remaining qualification gates. This README does not duplicate those
