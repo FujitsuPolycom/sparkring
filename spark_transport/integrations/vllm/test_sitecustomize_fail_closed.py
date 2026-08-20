@@ -481,3 +481,81 @@ def test_broken_diagnostic_stream_still_exits(
         )
 
     assert caught.value.code == 78
+
+
+def _fake_tp4_backend_module(name: str, install_error: Exception) -> ModuleType:
+    module = ModuleType(name)
+
+    def install() -> None:
+        raise install_error
+
+    module.install = install  # type: ignore[attr-defined]
+    return module
+
+
+TP4_FAMILIES = (
+    ("VLLM_SPARK_TP4_MODE", "spark_tp4_backend"),
+    ("VLLM_SPARK_TP4_ALLGATHER_MODE", "spark_tp4_allgather_backend"),
+    ("VLLM_SPARK_TP4_VOCAB_MODE", "spark_tp4_vocab_allgather_backend"),
+    ("VLLM_SPARK_TP4_DCP_MODE", "spark_tp4_dcp_backend"),
+)
+
+
+@pytest.mark.parametrize(("flag", "module_name"), TP4_FAMILIES)
+def test_required_tp4_family_failure_is_fatal(
+    monkeypatch: pytest.MonkeyPatch,
+    flag: str,
+    module_name: str,
+) -> None:
+    """A failed TP4 install terminates rather than serving on stock NCCL.
+
+    CPython's site module suppresses exceptions raised while importing
+    sitecustomize. Without an explicit exit, an enabled TP4 family whose
+    install fails would leave vLLM serving its own collectives, which is
+    a silent transport substitution rather than a refusal.
+    """
+
+    _clear_features(monkeypatch)
+    monkeypatch.setenv(flag, "custom")
+    monkeypatch.setitem(
+        sys.modules,
+        module_name,
+        _fake_tp4_backend_module(
+            module_name, RuntimeError(f"synthetic {module_name} failure")
+        ),
+    )
+    monkeypatch.setattr(
+        os,
+        "_exit",
+        lambda code: (_ for _ in ()).throw(FatalExit(code)),
+    )
+
+    with pytest.raises(FatalExit) as caught:
+        runpy.run_path(str(SITECUSTOMIZE), run_name=f"test_{module_name}")
+
+    assert caught.value.code == 78
+
+
+@pytest.mark.parametrize(("flag", "module_name"), TP4_FAMILIES)
+def test_tp4_family_is_not_installed_when_its_flag_is_unset(
+    monkeypatch: pytest.MonkeyPatch,
+    flag: str,
+    module_name: str,
+) -> None:
+    """No TP4 family installs without its own flag, so the guard is scoped."""
+
+    _clear_features(monkeypatch)
+    monkeypatch.setitem(
+        sys.modules,
+        module_name,
+        _fake_tp4_backend_module(
+            module_name, AssertionError(f"{module_name} installed unbidden")
+        ),
+    )
+    monkeypatch.setattr(
+        os,
+        "_exit",
+        lambda code: (_ for _ in ()).throw(FatalExit(code)),
+    )
+
+    runpy.run_path(str(SITECUSTOMIZE), run_name=f"test_{module_name}_unset")
