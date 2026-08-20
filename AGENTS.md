@@ -5,21 +5,37 @@ contributors. Read it before changing or running anything in this repository.
 
 ## Write without hidden context
 
-All repository prose must make sense to a technically capable reader who has
-the repository but none of the conversation or development history.
+All repository prose — documentation, comments, docstrings, commit and pull
+request text, plans, reports, names, errors, and technical summaries — must
+make sense to a technically capable reader who has the repository but none of
+the conversation or development history.
 
 - Describe the system as it exists: purpose, behavior, invariants, interfaces,
   evidence, and limitations. Do not narrate the development journey.
-- Do not use lifecycle labels such as `current`, `new`, `old`, or `latest` as
-  technical identities. Introduce semantic roles before internal identifiers.
-- Treat canonical documentation as a present-state specification. Put
-  chronology and rejected attempts only in explicitly historical documents.
+- Do not use lifecycle labels as identities. `Phase 2`, `pilot`, `next`,
+  `current`, `new`, `old`, and `latest` are not technical names.
+- Do not use false definite references. A phrase such as `the 1M-token
+  capture`, `the experiment`, or `this approach` is invalid unless that exact
+  object was introduced locally and unambiguously. Counts, dates, and versions
+  are attributes, not identities.
+- On first reference, give the object's semantic role and, where relevant, its
+  durable identifier: artifact name, path, schema, revision, manifest, or hash.
+- Explain concepts before identifiers. Internal codenames, experiment labels,
+  profile numbers, and implementation shorthand are not the vocabulary of the
+  design. Mention a literal identifier only after describing what it means, and
+  only where the reader must use it.
+- Treat canonical documentation as a present-state specification, not a
+  changelog. Replace stale claims rather than layering history on top. Put
+  chronology, rejected attempts, and retrospectives only in explicitly
+  historical documents.
 - Label status as `implemented`, `qualified`, `research-only`, or
   `unsupported`. State evidence as conditions, measurement, result, and
   conclusion.
-- Comments explain invariants, intent, and non-obvious constraints. Commits and
-  pull requests state resulting behavior, technical reason, compatibility
-  impact, and validation.
+- Comments explain invariants, intent, and non-obvious constraints, never
+  change history. A TODO names the missing condition and the criterion for
+  removing it.
+- Commits and pull requests state resulting behavior, technical reason,
+  compatibility impact, and validation. They do not recount attempts or pivots.
 
 If understanding a sentence requires conversation history, rewrite it.
 
