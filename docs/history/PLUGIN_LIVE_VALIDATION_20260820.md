@@ -82,7 +82,7 @@ completion. Shadow mode reported no mismatch.
 ## Conditions required for a profile claim
 
 1. A shadow-comparison window closed per
-   [eager width admission validation runbook](EAGER_WIDTH_VALIDATION_RUNBOOK.md)
+   [eager width admission validation runbook](../EAGER_WIDTH_VALIDATION_RUNBOOK.md)
    at each width a profile admits.
 2. `custom` mode serving the same shapes with the transport carrying the
    result, compared against the overlay path on the same model.

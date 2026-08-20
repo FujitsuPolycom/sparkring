@@ -51,7 +51,7 @@ What the repository does contain for the model's hidden width, 2880, is
 - The scope and limits of that evidence — parsed admission surfaces only; no
   GPU, no RDMA link, no native library, no live vLLM, no numerical or
   performance claim — are stated in the
-  [eager width admission review handoff](../REVIEW_HANDOFF_EAGER_WIDTH_ADMISSION.md).
+  [eager width admission review handoff](../history/REVIEW_HANDOFF_EAGER_WIDTH_ADMISSION.md).
 
 ## What admission would require
 

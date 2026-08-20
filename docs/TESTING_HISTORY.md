@@ -137,7 +137,7 @@ and MTP loading, B12X prewarm, and KV allocation.
 
 That sequence did not complete a fresh-clone public-lane API acceptance run.
 The exact boundary is maintained in
-[FASTSTART_VALIDATION.md](FASTSTART_VALIDATION.md).
+[history/FASTSTART_VALIDATION.md](history/FASTSTART_VALIDATION.md).
 
 ## 2026-07-28: DCP4 custom-collective window
 

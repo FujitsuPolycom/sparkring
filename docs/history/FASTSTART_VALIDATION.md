@@ -74,4 +74,4 @@ that unsafe distributed tuner through
 retaining the bounded B12X prewarm, and fixes the launcher JIT-cache mount.
 That historical candidate stopped at this point. The later clean-checkout NF3
 NVFP4+FP8-RoPE bootstrap completed the full four-rank serving gate; see
-[NF3_NVFP4_PUBLIC_VALIDATION.md](NF3_NVFP4_PUBLIC_VALIDATION.md).
+[NF3_NVFP4_PUBLIC_VALIDATION.md](../NF3_NVFP4_PUBLIC_VALIDATION.md).

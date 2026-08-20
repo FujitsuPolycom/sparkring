@@ -204,5 +204,5 @@ path reports the substitution.
 Use one path per deployment. To exercise this package inside an image
 that carries the overlay, replace `sitecustomize.py` with an empty file
 for the run, which is what
-[the four-Spark live validation](../docs/PLUGIN_LIVE_VALIDATION_20260820.md)
+[the four-Spark live validation](../docs/history/PLUGIN_LIVE_VALIDATION_20260820.md)
 does.

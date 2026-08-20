@@ -40,5 +40,5 @@ a stated gate), **offline-validated** (evidence from GPU-free suites or
 offline comparison, no live cluster), **validation-grade** instruments
 (profiles that exist to produce evidence, not to be served), and the status
 labels **implemented / qualified / research-only / unsupported** from
-[Write Without Hidden Context](../WRITING_STANDARD.md). A label here restates
+[Write Without Hidden Context](../history/WRITING_STANDARD.md). A label here restates
 the linked document's scope; it never widens it.

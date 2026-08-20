@@ -40,7 +40,7 @@ Usage (offline, read-only):
 Actually hashing the deployed mounts is READ-ONLY REMOTE and may be
 expensive (the target model has ~184 weight shards).  The generator
 is designed to be supplied via stdin to a container running the same
-image — see docs/SPARKCACHE_DCP2_LIVE_RUNBOOK.md.
+image — see docs/history/SPARKCACHE_DCP2_LIVE_RUNBOOK.md.
 """
 
 from __future__ import annotations
