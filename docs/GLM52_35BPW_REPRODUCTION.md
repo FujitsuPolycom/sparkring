@@ -162,6 +162,13 @@ sparse indexer use their stock paths.
 
 ## 5. Compile and bind tiered/deferred SIRCL
 
+The CUDA compiler must be resolvable; a host whose login environment does
+not put it on `PATH` needs both named explicitly:
+
+```bash
+export CUDACXX=/usr/local/cuda/bin/nvcc PATH=/usr/local/cuda/bin:$PATH
+```
+
 ```bash
 cmake -S spark_transport -B .sparkring/sircl-sm121-build \
   -G Ninja \

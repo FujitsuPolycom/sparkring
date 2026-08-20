@@ -78,6 +78,23 @@ The rollback profile and site are byte-identical to the MTP3 KV9.25 inputs.
 The MTP3 rollback is documented in
 [GLM52_35BPW_FIXED_MTP3_PROFILE.md](GLM52_35BPW_FIXED_MTP3_PROFILE.md).
 
+## What it serves, measured
+
+Figures from the operator-accepted deployment; conditions and evidence in
+[GLM52_35BPW_FIXED_MTP4_PROFILE.md](GLM52_35BPW_FIXED_MTP4_PROFILE.md).
+
+| context | 4K | 8K | 16K | 32K | 64K | 128K |
+|---|---|---|---|---|---|---|
+| prefill, tokens/s | | 679 | 673 | 666 | 657 | 645 |
+| decode, one stream | 22.6 | 22.0 | 21.3 | 20.4 | 21.4 | |
+| decode, four streams | 50.3 | 51.9 | 49.2 | 45.6 | 47.2 | |
+| decode, eight streams | 78.4 | 71.3 | 70.0 | 65.5 | 67.8 | |
+
+Coding prompts peak at 27.3 tokens/s on one stream because MTP4 draft
+acceptance is higher there; the measured acceptance rate is 96.64%. The
+key-value pool holds 1,156,864 tokens: four concurrent requests at the
+full 262,144-token context, or roughly 140 at 8K.
+
 ## Literal identifiers
 
 Scripts, directories, environment variables, and container paths spell this
@@ -104,6 +121,30 @@ Do not commit `scripts/config/site.yaml`. It contains local identities
 and paths. Review every resolved rank, NIC, GID, direct-ring peer, model
 path, and storage path before proceeding. The image fields remain unresolved
 until step 3, so validate the complete file after updating them there.
+
+Two properties of the site configuration are load-bearing beyond schema
+validation, and a four-rank launch established both:
+
+- **The management interface must be a LAN interface.** The launcher
+  derives the rendezvous address and the NCCL and GLOO out-of-band
+  interface from each rank's `management` block, and NCCL communicator
+  initialisation does not complete over a mesh-VPN interface: with
+  management on a Tailscale device, bootstrap TCP connected between every
+  rank and initialisation still made no progress in twenty minutes, while
+  the identical stack with management on the LAN formed every group in
+  seconds. Ring ports are rejected as management by the validator, so a
+  rank whose LAN link is down has no valid configuration until the link
+  returns.
+- **`runtime.model_path` is one path for every rank.** A checkpoint kept
+  under per-user home directories needs the same mount point on each
+  rank first. Bind-mount it; the Docker daemon refuses a symlink as a
+  bind source:
+
+  ```bash
+  sudo mkdir -p /var/tmp/glm52-r7-model
+  sudo mount --bind /home/<user>/models/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 \
+    /var/tmp/glm52-r7-model
+  ```
 
 ## 2. Download and verify the immutable checkpoint
 
@@ -165,6 +206,55 @@ emits, so its output hash depends on the image it was generated for, and
 `prepare_q40_exact_state_serving.py` sets `SPARK_Q40_EXACT_STATE_IMAGE_ID` from
 the same site identity. Generating the overlay against the image you run is
 what makes the two agree; section 7 covers that step.
+
+#### Complete a pulled image's serving contract
+
+The generated profiles attest seven files the published image does not
+carry — its deployment lineage supplied them through bind mounts. Every
+producer is tracked, so a derived image closes the gap. From a checkout
+holding the prepared tree of section 4 of the
+[reproduction guide](GLM52_35BPW_REPRODUCTION.md):
+
+```bash
+tree=.sparkring/r7-prepared-sources/vllm
+python spark_transport/experiments/moe_round_floor/prepare_q40_overlay_inputs.py "$tree"
+python runtime/exl3-r7/bake_runtime_artifacts.py cudagraph "$tree"
+python runtime/exl3-r7/bake_runtime_artifacts.py vllm "$tree"
+python runtime/exl3-r7/build_parallel_state_shared_capture_overlay.py \
+  --source "$tree/vllm/distributed/parallel_state.py" --output parallel_state.py
+
+build=/var/tmp/glm52-image-contract
+mkdir -p "$build"
+cp runtime/exl3-r7/entrypoint.sh "$build/"
+cp "$tree/vllm/model_executor/model_loader/weight_utils.py" "$build/"
+cp "$tree/vllm/v1/worker/gpu/cudagraph_utils.py" "$build/"
+cp parallel_state.py "$build/"
+cp spark_transport/integrations/vllm/spark_dcp_collective_audit.py "$build/"
+cp runtime/exl3-r7/bake_runtime_artifacts.py "$build/"
+```
+
+The wheel named by `runtime/exl3-r7/requirements-tvm-ffi.txt` goes into
+the same directory. The image then bakes everything:
+
+```dockerfile
+FROM ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028
+COPY entrypoint.sh /usr/local/bin/sparkring-r7-entrypoint
+COPY weight_utils.py /opt/venv/lib/python3.12/site-packages/vllm/model_executor/model_loader/weight_utils.py
+COPY cudagraph_utils.py /opt/venv/lib/python3.12/site-packages/vllm/v1/worker/gpu/cudagraph_utils.py
+COPY parallel_state.py /opt/venv/lib/python3.12/site-packages/vllm/distributed/parallel_state.py
+COPY spark_dcp_collective_audit.py /opt/spark-vllm/spark_dcp_collective_audit.py
+COPY bake_runtime_artifacts.py apache_tvm_ffi-0.1.10-*.whl /tmp/
+RUN chmod 0755 /usr/local/bin/sparkring-r7-entrypoint \
+ && /opt/venv/bin/python /tmp/bake_runtime_artifacts.py quack /opt/venv/lib/python3.12/site-packages/quack \
+ && /opt/venv/bin/pip install --no-cache-dir --no-index --no-deps \
+      --target /opt/sparkring-r7-tvm-ffi /tmp/apache_tvm_ffi-0.1.10-*.whl \
+ && rm /tmp/bake_runtime_artifacts.py /tmp/apache_tvm_ffi-0.1.10-*.whl
+```
+
+Every profile start verifies the resulting hashes before running the
+engine, so a wrong input fails the launch rather than serving. A
+four-rank start from an image built this way passed that attestation on
+every rank and served through section 9's checks.
 
 ### Option B: Use an existing local image by immutable ID
 

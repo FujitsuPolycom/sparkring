@@ -47,3 +47,32 @@ def test_replace_exact_checks_replacement_count(tmp_path: Path) -> None:
             output_sha256="0" * 64,
             replacements=((b"before", b"after"),),
         )
+
+
+def test_cudagraph_component_is_hash_bound() -> None:
+    """The patch on disk matches its pin, and the contract names both states."""
+
+    import hashlib
+
+    patch = BAKER.CUDAGRAPH_PATCH
+    assert patch.is_file()
+    observed = hashlib.sha256(patch.read_bytes()).hexdigest()
+    assert observed == BAKER.CUDAGRAPH_PATCH_SHA256
+    assert BAKER.CUDAGRAPH_INPUT_SHA256 != BAKER.CUDAGRAPH_OUTPUT_SHA256
+    for digest in (BAKER.CUDAGRAPH_INPUT_SHA256, BAKER.CUDAGRAPH_OUTPUT_SHA256):
+        assert len(digest) == 64 and int(digest, 16) >= 0
+    text = patch.read_text(encoding="utf-8")
+    assert "VLLM_SPARK_SHARED_CAPTURE_STREAM" in text
+    assert "vllm/v1/worker/gpu/cudagraph_utils.py" in text
+
+
+def test_cudagraph_component_refuses_an_unexpected_tree(tmp_path) -> None:
+    target = tmp_path / "vllm/v1/worker/gpu/cudagraph_utils.py"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"unrelated source\n")
+    try:
+        BAKER.bake_cudagraph(tmp_path)
+    except BAKER.ArtifactError as error:
+        assert "expected" in str(error)
+    else:  # pragma: no cover - the refusal is the contract
+        raise AssertionError("an unexpected tree must be refused")
