@@ -27,7 +27,8 @@ linked runbook. A document being listed here does not authorize remote action.
 | Subject | Canonical source |
 |---|---|
 | Public-lane definition and open blockers | [Public-functional lane definition](PUBLIC_FUNCTIONAL_TARGET.md) |
-| Public headless-startup ABI audit | [Public startup-shim audit](PUBLIC_STARTUP_SHIM_AUDIT.md) |
+| Public headless-startup ABI audit | [vLLM plugin live validation](PLUGIN_LIVE_VALIDATION_20260820.md) | Records the four-Spark run in which the pip-installed plugin admits width-768 eager all-reduce through the transport and serves a completion, with the overlay neutralized so the result is attributable to one installer; states the limitations and what a profile claim would still require. |
+| [Public startup-shim audit](PUBLIC_STARTUP_SHIM_AUDIT.md) |
 | Runtime input pins | [`runtime/runtime-lock.json`](../runtime/runtime-lock.json) |
 | Site-config schema | [`scripts/sparkring_site.py`](../scripts/sparkring_site.py) |
 | Repository prose standard | [Write Without Hidden Context](WRITING_STANDARD.md) |

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
+import io
 import json
 import os
 import pathlib
+import socket
 import sys
 import types
 import unittest
@@ -186,6 +190,66 @@ class PreflightTest(unittest.TestCase):
             bad = _by_name(preflight.run_preflight({}))
         self.assertFalse(bad["vllm-compat"].passed)
 
+    def test_provider_raising_non_valueerror_stays_in_the_report(self) -> None:
+        def explode(environ):
+            raise RuntimeError("provider backend unavailable")
+
+        module = types.ModuleType("_preflight_rows_raise")
+        module.provider_query_rows = explode
+        sys.modules["_preflight_rows_raise"] = module
+        environ = {
+            "VLLM_SPARK_TP4_QUERY_ROW_PROVIDER": "_preflight_rows_raise",
+            "VLLM_SPARK_TP4_MODE": "custom",
+        }
+        try:
+            checks = _by_name(preflight.run_preflight(environ))
+        finally:
+            del sys.modules["_preflight_rows_raise"]
+        check = checks["query-row-provider"]
+        self.assertFalse(check.passed)
+        self.assertEqual(check.severity, "required")
+        self.assertIn("VLLM_SPARK_TP4_QUERY_ROW_PROVIDER", check.detail)
+        self.assertIn("_preflight_rows_raise", check.detail)
+        self.assertIn("RuntimeError", check.detail)
+        # The reservation plan resolves the same row policy, so it sees
+        # the same exception and must also report instead of aborting.
+        self.assertFalse(checks["port-namespace"].passed)
+        self.assertIn("RuntimeError", checks["port-namespace"].detail)
+        # Every later check still produced a result.
+        self.assertIn("peer-reachability", checks)
+
+    def test_main_json_survives_a_raising_provider(self) -> None:
+        import contextlib
+        import io
+
+        def explode(environ):
+            raise RuntimeError("provider backend unavailable")
+
+        module = types.ModuleType("_preflight_rows_raise_cli")
+        module.provider_query_rows = explode
+        sys.modules["_preflight_rows_raise_cli"] = module
+        environ = {
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith(("VLLM_SPARK", "SPARK_TP4"))
+        }
+        environ["VLLM_SPARK_TP4_QUERY_ROW_PROVIDER"] = (
+            "_preflight_rows_raise_cli"
+        )
+        environ["VLLM_SPARK_TP4_MODE"] = "custom"
+        stream = io.StringIO()
+        try:
+            with patch.dict(os.environ, environ, clear=True):
+                with contextlib.redirect_stdout(stream):
+                    code = preflight.main(["--json"])
+        finally:
+            del sys.modules["_preflight_rows_raise_cli"]
+        self.assertEqual(code, 1)  # query-row-provider fails
+        payload = json.loads(stream.getvalue())
+        names = {entry["name"] for entry in payload}
+        self.assertIn("query-row-provider", names)
+        self.assertIn("peer-reachability", names)
+
     def test_peer_check_skipped_by_default(self) -> None:
         checks = _by_name(
             preflight.run_preflight(
@@ -194,6 +258,162 @@ class PreflightTest(unittest.TestCase):
         )
         self.assertTrue(checks["peer-reachability"].passed)
         self.assertEqual(checks["peer-reachability"].severity, "info")
+
+    def test_peer_reachable_over_loopback(self) -> None:
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            port = listener.getsockname()[1]
+            checks = _by_name(
+                preflight.run_preflight(
+                    {
+                        "SPARK_TP4_PEER0": "127.0.0.1",
+                        "SPARK_TP4_CONTROL_PORT0": str(port),
+                    },
+                    connect=True,
+                )
+            )
+        finally:
+            listener.close()
+        check = checks["peer-reachability"]
+        self.assertTrue(check.passed)
+        self.assertEqual(check.severity, "required")
+        self.assertIn(f"127.0.0.1:{port}", check.detail)
+
+    def test_refused_peer_counts_as_routable(self) -> None:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+        probe.close()  # nothing listens on this port now
+        # How fast a host turns a closed port into a refusal is a host
+        # property: loopback RST is immediate on Linux and takes about
+        # two seconds on Windows. Raise the bound so this exercises the
+        # refusal branch rather than the timeout branch anywhere.
+        with patch.object(preflight, "_CONNECT_TIMEOUT_SECONDS", 10.0):
+            checks = _by_name(
+                preflight.run_preflight(
+                    {
+                        "SPARK_TP4_PEER0": "127.0.0.1",
+                        "SPARK_TP4_CONTROL_PORT0": str(port),
+                    },
+                    connect=True,
+                )
+            )
+        check = checks["peer-reachability"]
+        self.assertTrue(check.passed)
+        self.assertEqual(check.severity, "required")
+        self.assertIn(f"127.0.0.1:{port}", check.detail)
+
+    def test_unroutable_peer_is_a_required_failure(self) -> None:
+        class _UnroutableSocket:
+            """Every connect fails the way an absent route does.
+
+            Substituted for socket.socket because reaching a genuinely
+            unroutable address requires a host outside this checkout.
+            """
+
+            def __init__(self, family, kind):
+                pass
+
+            def settimeout(self, seconds):
+                pass
+
+            def connect(self, address):
+                raise OSError("network is unreachable")
+
+            def close(self):
+                pass
+
+        with patch.object(preflight.socket, "socket", _UnroutableSocket):
+            checks = _by_name(
+                preflight.run_preflight(
+                    {"SPARK_TP4_PEER0": "127.0.0.1"}, connect=True
+                )
+            )
+        check = checks["peer-reachability"]
+        self.assertFalse(check.passed)
+        self.assertEqual(check.severity, "required")
+        self.assertIn("127.0.0.1:11000", check.detail)
+        self.assertIn("network is unreachable", check.detail)
+
+    def test_non_integer_control_port_is_reported_not_raised(self) -> None:
+        checks = _by_name(
+            preflight.run_preflight(
+                {
+                    "SPARK_TP4_PEER0": "127.0.0.1",
+                    "SPARK_TP4_CONTROL_PORT0": "eleven-thousand",
+                },
+                connect=True,
+            )
+        )
+        check = checks["peer-reachability"]
+        self.assertFalse(check.passed)
+        self.assertEqual(check.severity, "required")
+        self.assertIn("SPARK_TP4_CONTROL_PORT0/1", check.detail)
+
+    def _write_vendor(self, root, contents):
+        """Write module files and return their true digests by name."""
+
+        modules = {}
+        for name, data in contents.items():
+            with open(os.path.join(root, name), "wb") as handle:
+                handle.write(data)
+            modules[name] = hashlib.sha256(data).hexdigest()
+        return modules
+
+    def _write_manifest(self, root, modules):
+        path = os.path.join(root, "MANIFEST.json")
+        with open(path, "wb") as handle:
+            handle.write(json.dumps({"modules": modules}).encode("utf-8"))
+        return path
+
+    def test_vendor_integrity_without_manifest_is_info_pass(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as root:
+            absent = os.path.join(root, "MANIFEST.json")
+            with patch.object(preflight, "_VENDOR_MANIFEST", absent):
+                checks = _by_name(preflight.run_preflight({}))
+        check = checks["vendor-integrity"]
+        self.assertTrue(check.passed)
+        self.assertEqual(check.severity, "info")
+
+    def test_vendor_integrity_matches_recorded_digests(self) -> None:
+        import tempfile
+
+        # CRLF bytes: the digest covers the file as written, so a
+        # newline-translating read would compute a different hash.
+        contents = {
+            "spark_a.py": b"x = 1\r\ny = 2\r\n",
+            "spark_b.py": b"z = 3\n",
+        }
+        with tempfile.TemporaryDirectory() as root:
+            modules = self._write_vendor(root, contents)
+            manifest = self._write_manifest(root, modules)
+            with patch.object(preflight, "_VENDOR_MANIFEST", manifest):
+                checks = _by_name(preflight.run_preflight({}))
+        check = checks["vendor-integrity"]
+        self.assertTrue(check.passed)
+        self.assertEqual(check.severity, "required")
+        self.assertIn("2 vendored modules", check.detail)
+
+    def test_vendor_integrity_fails_on_altered_and_missing(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as root:
+            modules = self._write_vendor(root, {"spark_a.py": b"x = 1\n"})
+            modules["spark_gone.py"] = "0" * 64
+            manifest = self._write_manifest(root, modules)
+            with open(os.path.join(root, "spark_a.py"), "wb") as handle:
+                handle.write(b"x = 2\n")  # altered after the manifest
+            with patch.object(preflight, "_VENDOR_MANIFEST", manifest):
+                checks = _by_name(preflight.run_preflight({}))
+        check = checks["vendor-integrity"]
+        self.assertFalse(check.passed)
+        self.assertEqual(check.severity, "required")
+        self.assertIn("spark_a.py: sha256", check.detail)
+        self.assertIn("spark_gone.py: missing", check.detail)
 
     def test_main_json_and_exit_codes(self) -> None:
         import contextlib
@@ -218,3 +438,42 @@ class PreflightTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JsonStreamIsolationTest(unittest.TestCase):
+    """--json emits one document on stdout and nothing else.
+
+    Collecting the checks imports vLLM, which writes progress lines to
+    stdout. A caller that parses stdout must not receive those lines.
+    """
+
+    def test_json_stdout_carries_only_the_document(self) -> None:
+        def noisy(*_args, **_kwargs):
+            print("INFO 00-00 00:00:00 [importing.py:53] Triton is installed")
+            return [preflight.Check("mode", True, "disabled", "info")]
+
+        with patch.object(preflight, "run_preflight", noisy):
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                with contextlib.redirect_stderr(stderr):
+                    code = preflight.main(["--json"])
+
+        self.assertEqual(code, 0)
+        document = json.loads(stdout.getvalue())
+        self.assertEqual(document[0]["name"], "mode")
+        self.assertIn("Triton is installed", stderr.getvalue())
+
+    def test_text_mode_leaves_diagnostics_on_stdout(self) -> None:
+        def noisy(*_args, **_kwargs):
+            print("collector diagnostic")
+            return [preflight.Check("mode", True, "disabled", "info")]
+
+        with patch.object(preflight, "run_preflight", noisy):
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                code = preflight.main([])
+
+        self.assertEqual(code, 0)
+        self.assertIn("collector diagnostic", stdout.getvalue())
+        self.assertIn("PASS mode", stdout.getvalue())

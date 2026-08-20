@@ -1,14 +1,16 @@
 """Read-only operator preflight for the SparkRing transport.
 
 Run on one rank before enabling any SparkRing mode. Validates
-configuration and host state without touching GPUs, RDMA queues, or the
-network; the single network-touching check (control-peer TCP
-reachability) is opt-in via ``--connect``.
+configuration, vendored-module integrity, and host state without
+touching GPUs, RDMA queues, or the network; the single network-touching
+check (control-peer TCP reachability) is opt-in via ``--connect``.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
+import hashlib
 import json
 import os
 import socket
@@ -22,6 +24,8 @@ _SYSFS_INFINIBAND = "/sys/class/infiniband"
 _VALID_MODES = ("shadow", "custom", "disabled")
 _DEFAULT_CONTROL_PORTS = (11000, 11001)
 _CONNECT_TIMEOUT_SECONDS = 2.0
+_VENDOR_MANIFEST = os.path.join(_VENDOR, "MANIFEST.json")
+_HASH_CHUNK_BYTES = 1 << 20
 
 
 @dataclass(frozen=True)
@@ -44,6 +48,95 @@ def _vendored():
     return spark_tp4_port_namespace
 
 
+def _raised(name: str, context: str, error: Exception) -> Check:
+    """Turn an exception a handler does not model into a failed Check.
+
+    run_preflight is the sole producer of the report, so an exception
+    that escapes one handler erases every other result: --json then
+    prints no Check array at all. Every handler that calls into
+    configuration-derived or third-party code routes what it cannot
+    model here, naming the configuration it was resolving. Only
+    Exception is converted; a KeyboardInterrupt still ends the run.
+    """
+
+    return Check(
+        name, False, f"{context}: {type(error).__name__}: {error}", "required"
+    )
+
+
+def _sha256_file(path: str) -> str:
+    """Hash the file's bytes as written; no newline or encoding translation."""
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        while True:
+            block = handle.read(_HASH_CHUNK_BYTES)
+            if not block:
+                break
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _check_vendor_integrity() -> Check:
+    """Compare the vendored backend modules against their manifest.
+
+    scripts/sync_vendor.py writes MANIFEST.json beside the copies it
+    makes, as ``{"modules": {"<stem>.py": "<sha256 hex>"}}``, and every
+    entry is resolved relative to that file. A checkout that has not
+    generated a manifest reports info: absence is not evidence of
+    tampering. A manifest that is present is authoritative, so a listed
+    module that is missing, unreadable, or altered is a required
+    failure — the vendored copies are what every other check imports.
+    """
+
+    if not os.path.isfile(_VENDOR_MANIFEST):
+        return Check(
+            "vendor-integrity",
+            True,
+            f"no manifest at {_VENDOR_MANIFEST}",
+            "info",
+        )
+    try:
+        with open(_VENDOR_MANIFEST, "rb") as handle:
+            manifest = json.loads(handle.read())
+    except (OSError, ValueError) as error:
+        return _raised("vendor-integrity", _VENDOR_MANIFEST, error)
+    modules = manifest.get("modules") if isinstance(manifest, dict) else None
+    if not isinstance(modules, dict):
+        return Check(
+            "vendor-integrity",
+            False,
+            f"{_VENDOR_MANIFEST}: no 'modules' object",
+            "required",
+        )
+    root = os.path.dirname(_VENDOR_MANIFEST)
+    problems: list[str] = []
+    for name in sorted(modules):
+        path = os.path.join(root, name)
+        if not os.path.isfile(path):
+            problems.append(f"{name}: missing")
+            continue
+        try:
+            actual = _sha256_file(path)
+        except OSError as error:
+            problems.append(f"{name}: unreadable: {error}")
+            continue
+        if actual != modules[name]:
+            problems.append(
+                f"{name}: sha256 {actual} != manifest {modules[name]}"
+            )
+    if problems:
+        return Check(
+            "vendor-integrity", False, "; ".join(problems), "required"
+        )
+    return Check(
+        "vendor-integrity",
+        True,
+        f"{len(modules)} vendored modules match the manifest",
+        "required",
+    )
+
+
 def _check_query_row_provider(environ: Mapping[str, str]) -> Check:
     """Report the resolved query-row policy.
 
@@ -56,15 +149,26 @@ def _check_query_row_provider(environ: Mapping[str, str]) -> Check:
     if _VENDOR not in sys.path:
         sys.path.insert(0, _VENDOR)
     from spark_tp4_query_row_provider import (
+        PROVIDER_ENV,
         provider_module_name,
         resolve_query_rows,
     )
 
     module_name = provider_module_name(environ)
+    configured = (
+        f"{PROVIDER_ENV}={module_name}"
+        if module_name is not None
+        else f"{PROVIDER_ENV} unset"
+    )
     try:
         rows = resolve_query_rows(environ)
     except ValueError as error:
         return Check("query-row-provider", False, str(error), "required")
+    except Exception as error:
+        # A configured provider is third-party code, and the resolver
+        # models only its ValueError contract. Whatever else it raises
+        # at call time is this rank's diagnostic, not a crash.
+        return _raised("query-row-provider", configured, error)
     if module_name is None:
         return Check(
             "query-row-provider",
@@ -86,6 +190,8 @@ def _check_widths(environ: Mapping[str, str]) -> Check:
         widths = namespace.eager_allreduce_admitted_widths(environ)
     except ValueError as error:
         return Check("env-widths", False, str(error), "required")
+    except Exception as error:
+        return _raised("env-widths", "VLLM_SPARK_TP4_EAGER_WIDTHS", error)
     return Check(
         "env-widths",
         True,
@@ -116,6 +222,12 @@ def _check_port_namespace(environ: Mapping[str, str]) -> Check:
         reservations = namespace.validate_active_port_namespace(environ)
     except ValueError as error:
         return Check("port-namespace", False, str(error), "required")
+    except Exception as error:
+        # The reservation plan resolves the query-row policy, so a
+        # provider that raises anything but ValueError reaches here too.
+        return _raised(
+            "port-namespace", "active control-port reservations", error
+        )
     return Check(
         "port-namespace",
         True,
@@ -193,11 +305,15 @@ def _check_vllm_compat() -> Check:
         return Check(
             "vllm-compat", True, "compat module unavailable", "info"
         )
-    report = compat_report()
-    detail = (
-        f"vLLM {report['vllm_version']!r}: {report['detail']}"
-    )
-    return Check("vllm-compat", bool(report["ok"]), detail, "required")
+    try:
+        report = compat_report()
+        detail = (
+            f"vLLM {report['vllm_version']!r}: {report['detail']}"
+        )
+        passed = bool(report["ok"])
+    except Exception as error:
+        return _raised("vllm-compat", "sparkring._compat", error)
+    return Check("vllm-compat", passed, detail, "required")
 
 
 def _check_peers(
@@ -207,18 +323,23 @@ def _check_peers(
         return Check(
             "peer-reachability", True, "skipped (--connect)", "info"
         )
-    peers = [
-        (
-            environ.get(f"SPARK_TP4_PEER{index}"),
-            int(
-                environ.get(
-                    f"SPARK_TP4_CONTROL_PORT{index}",
-                    str(_DEFAULT_CONTROL_PORTS[index]),
-                )
-            ),
+    try:
+        peers = [
+            (
+                environ.get(f"SPARK_TP4_PEER{index}"),
+                int(
+                    environ.get(
+                        f"SPARK_TP4_CONTROL_PORT{index}",
+                        str(_DEFAULT_CONTROL_PORTS[index]),
+                    )
+                ),
+            )
+            for index in (0, 1)
+        ]
+    except Exception as error:
+        return _raised(
+            "peer-reachability", "SPARK_TP4_CONTROL_PORT0/1", error
         )
-        for index in (0, 1)
-    ]
     configured = [(p, port) for p, port in peers if p]
     if not configured:
         return Check(
@@ -254,6 +375,7 @@ def run_preflight(
 ) -> list[Check]:
     env = _environment(environ)
     return [
+        _check_vendor_integrity(),
         _check_query_row_provider(env),
         _check_widths(env),
         _check_mode(env),
@@ -277,7 +399,15 @@ def main(argv: list[str] | None = None) -> int:
         help="enable the control-peer TCP reachability check",
     )
     arguments = parser.parse_args(argv)
-    checks = run_preflight(connect=arguments.connect)
+    # Collecting the checks imports vLLM, which writes progress lines to
+    # stdout. Under --json stdout carries one document and nothing else, so
+    # the checks run with stdout diverted to stderr; the diagnostics stay
+    # visible to a person and stay out of the parsed stream.
+    if arguments.as_json:
+        with contextlib.redirect_stdout(sys.stderr):
+            checks = run_preflight(connect=arguments.connect)
+    else:
+        checks = run_preflight(connect=arguments.connect)
     if arguments.as_json:
         print(json.dumps([asdict(check) for check in checks], indent=2))
     else:
