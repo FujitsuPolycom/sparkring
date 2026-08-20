@@ -196,24 +196,27 @@ if os.getenv("SPARK_CUDAGRAPH_REPLAY_TIMING") == "1":
 if os.getenv("VLLM_SPARK_TP4_MODE"):
     from spark_tp4_backend import install as install_tp4
 
-    install_tp4()
+    _install_required("TP4 all-reduce backend", install_tp4)
 
 if os.getenv("VLLM_SPARK_TP4_ALLGATHER_MODE"):
     from spark_tp4_allgather_backend import install as install_tp4_allgather
 
-    install_tp4_allgather()
+    _install_required("TP4 all-gather backend", install_tp4_allgather)
 
 if os.getenv("VLLM_SPARK_TP4_VOCAB_MODE"):
     from spark_tp4_vocab_allgather_backend import (
         install as install_tp4_vocab_allgather,
     )
 
-    install_tp4_vocab_allgather()
+    _install_required(
+        "TP4 vocabulary all-gather backend",
+        install_tp4_vocab_allgather,
+    )
 
 if os.getenv("VLLM_SPARK_TP4_DCP_MODE"):
     from spark_tp4_dcp_backend import install as install_tp4_dcp
 
-    install_tp4_dcp()
+    _install_required("TP4 DCP backend", install_tp4_dcp)
 
 if os.getenv("SPARK_TP4_DCP_COLLECTIVE_AUDIT") == "1":
     from spark_dcp_collective_audit import (
