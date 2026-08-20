@@ -122,6 +122,7 @@ Safe starting commands:
 python scripts/sparkring_site.py scripts/config/site.example.yaml
 python scripts/preflight.py --site scripts/config/site.example.yaml --print-plan
 python -m pytest spark_transport sparkcache runtime scripts -q
+python scripts/check_runtime_inputs.py
 python -m pytest sparkring_plugin -q
 
 # READ-ONLY REMOTE, after reviewing --print-plan and filling site.yaml
