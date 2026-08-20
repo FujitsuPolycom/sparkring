@@ -116,20 +116,20 @@ class AddressAndTopologyTests(unittest.TestCase):
         observations = {
             "r0": observation(
                 "r0",
-                f"{IF0} UP 192.168.101.10/24\n"
-                f"{IF1} UP 192.168.200.12/24",
+                f"{IF0} UP 10.0.1.10/24\n"
+                f"{IF1} UP 10.0.4.12/24",
                 hostname="spark-edfd",
             ),
             "r1": observation(
                 "r1",
-                f"{IF0} UP 192.168.102.10/24\n"
-                f"{IF1} UP 192.168.101.11/24",
+                f"{IF0} UP 10.0.2.10/24\n"
+                f"{IF1} UP 10.0.1.11/24",
                 hostname="spark-ebb8",
             ),
             "r2": observation(
                 "r2",
-                f"{IF0} UP 192.168.103.11/24\n"
-                f"{IF1} UP 192.168.102.11/24",
+                f"{IF0} UP 10.0.3.11/24\n"
+                f"{IF1} UP 10.0.2.11/24",
                 hostname="spark-ebee",
             ),
             "r3": observation("r3", "", reachable=False),
@@ -142,11 +142,11 @@ class AddressAndTopologyTests(unittest.TestCase):
         self.assertEqual(adjacency["r2"], {"r1"})
         self.assertNotIn("r3", adjacency)
         self.assertEqual(
-            subnet_nodes[ipaddress.ip_network("192.168.101.0/24")],
+            subnet_nodes[ipaddress.ip_network("10.0.1.0/24")],
             ("r0", "r1"),
         )
         self.assertEqual(
-            subnet_nodes[ipaddress.ip_network("192.168.200.0/24")], ("r0",)
+            subnet_nodes[ipaddress.ip_network("10.0.4.0/24")], ("r0",)
         )
 
     def test_cycle_validation_accepts_cycle_and_rejects_path(self) -> None:
@@ -240,18 +240,18 @@ class PartialDiscoveryTests(unittest.TestCase):
         outputs = {
             "operator@r0": probe_output(
                 "spark-edfd",
-                f"{IF0} UP 192.168.101.10/24\n"
-                f"{IF1} UP 192.168.200.12/24",
+                f"{IF0} UP 10.0.1.10/24\n"
+                f"{IF1} UP 10.0.4.12/24",
             ),
             "operator@r1": probe_output(
                 "spark-ebb8",
-                f"{IF0} UP 192.168.102.10/24\n"
-                f"{IF1} UP 192.168.101.11/24",
+                f"{IF0} UP 10.0.2.10/24\n"
+                f"{IF1} UP 10.0.1.11/24",
             ),
             "operator@r2": probe_output(
                 "spark-ebee",
-                f"{IF0} UP 192.168.103.11/24\n"
-                f"{IF1} UP 192.168.102.11/24",
+                f"{IF0} UP 10.0.3.11/24\n"
+                f"{IF1} UP 10.0.2.11/24",
             ),
         }
         runner = FakeDiscoveryRunner(outputs, {"operator@r3"})
