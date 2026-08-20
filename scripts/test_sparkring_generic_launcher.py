@@ -1095,3 +1095,43 @@ def test_container_name_follows_convention():
     for rank_id in range(4):
         name = runtime.container_name(profile, rank_id)
         assert name == f"sparkring-generic-example-r{rank_id}"
+
+
+def test_exl3_lmcache_example_profile_matches_the_generated_contract():
+    """The shipped example carries the keys the bootstrap generates.
+
+    The EXL3 + LMCache launcher rejects a profile whose key set differs from
+    the generated one, and the generated profile only exists after a bootstrap
+    that transfers and builds hundreds of gigabytes. Without an example that
+    stays in step with the generator, a launch profile cannot be shape-checked
+    until after that build.
+    """
+
+    import json
+    import sys
+    from pathlib import Path
+    from tempfile import TemporaryDirectory
+
+    root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(root / "scripts"))
+    import bootstrap_exl3
+
+    example = json.loads(
+        (root / "scripts/config/launch.exl3.example.json").read_text(encoding="utf-8")
+    )
+    with TemporaryDirectory() as scratch:
+        generated_path = Path(scratch) / "launch.json"
+        bootstrap_exl3.write_generated_profile(
+            generated_path,
+            image="sparkring/example:tag",
+            digest="sha256:" + "0" * 64,
+            model_path="/srv/models/example",
+            jit_cache="/srv/sparkring/jit-cache",
+        )
+        generated = json.loads(generated_path.read_text(encoding="utf-8"))
+
+    assert set(example) == set(generated), (
+        "example profile drifted from write_generated_profile: "
+        f"missing={sorted(set(generated) - set(example))} "
+        f"unknown={sorted(set(example) - set(generated))}"
+    )
