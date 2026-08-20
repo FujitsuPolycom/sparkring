@@ -1,0 +1,324 @@
+{
+  "schema": "sparkring-lmcache-group-tracking-spec/v1",
+  "documentation": "docs/LMCACHE_GROUP_TRACKING.md",
+  "lane": "public-functional",
+  "maturity": "planned",
+  "status": "unsupported",
+  "status_scope": "every checkpoint whose key-value cache is laid out in more than one layer group",
+  "hardware": {
+    "platform": "linux/arm64",
+    "accelerator": "NVIDIA GB10 / SM121",
+    "ranks": 4,
+    "topology": "tp4-dcp4-pp1-four-local-servers"
+  },
+  "external_tier": {
+    "package": "lmcache",
+    "is_sparkcache": false,
+    "installed_version": "0.5.2+glm52dcp4.1",
+    "installed_version_has_group_tracking": "undetermined",
+    "pins": "runtime/exl3/pins.json",
+    "installed_version_has_group_tracking_note": "the composed tree is not present in this checkout; run the verifier against the package directory installed on a rank to determine it"
+  },
+  "required_capability": {
+    "name": "per-layer-group key-value layout tracking in multiprocess mode",
+    "upstream_change": {
+      "repository": "https://github.com/LMCache/LMCache",
+      "pull_request": 3171,
+      "title": "[MP][Feat] Support DeepSeek V4",
+      "merge_commit": "384d79df5c3a023ccfebedc2b69b094b0d7b7084",
+      "merged_at": "2026-05-14",
+      "base_branch": "dev"
+    },
+    "deciding_properties": [
+      {
+        "check": "group_module_present",
+        "artifact": "lmcache/v1/kv_layer_groups.py",
+        "symbol": "KVLayerGroupsManager"
+      },
+      {
+        "check": "identity_separates_block_size",
+        "artifact": "KernelGroupIdentity",
+        "field": "block_size"
+      },
+      {
+        "check": "padded_stride_described",
+        "artifact": "PageBufferShapeDesc",
+        "field": "block_stride_elems"
+      },
+      {
+        "check": "registration_carries_engine_block_size",
+        "artifact": "REGISTER_KV_CACHE payload",
+        "field": "vllm_block_size"
+      }
+    ],
+    "rejected_checks": [
+      {
+        "check": "at least one file matches the model identifier",
+        "reason": "the implementing module names no model; the capability is layout-driven"
+      },
+      {
+        "check": "lmcache/v1/gpu_connector/gpu_ops.py sizes buffers per kernel group",
+        "reason": "in both the 0.5.2 and 0.5.3 source distributions that file is 146 lines with zero layer-group, block_size, block_stride_elems, or KernelGroup references, and pull request 3171 does not modify it; the check rejects a correct package"
+      }
+    ],
+    "verification_evidence": "source inspection of the 0.5.2 and 0.5.3 source distributions downloaded from the package index; not executed on the target hardware",
+    "present_in_released_line": {
+      "0.5.2": {
+        "published": "2026-07-22",
+        "sdist_sha256": "90e747898ef304026c9e8a8475dd970f31cfdd622213f9034f98b48f417fb0ec",
+        "group_tracking": true
+      },
+      "0.5.3": {
+        "published": "2026-08-05",
+        "sdist_sha256": "aa2e1313d6dcfa719638b3cd62cb42875469841dec6e62e32111856bc8d04d96",
+        "group_tracking": true
+      }
+    },
+    "upstream_baseline_is_not_the_cause": "stock 0.5.2 already carries the property and the fork base 9cebd405 is dated 2026-07-28, so the observed failure is not explained by a baseline predating per-group tracking; the cause lies in the composition and is undetermined"
+  },
+  "package_selection": {
+    "index_latest_release": "0.5.3",
+    "index_latest_release_published": "2026-08-05",
+    "release_wheel_platforms": [
+      "manylinux_2_27_x86_64",
+      "manylinux_2_28_x86_64"
+    ],
+    "arm64_release_wheel_exists": false,
+    "consequence": "an ARM64 wheel must be built from a source ref; a release wheel cannot be preferred on this hardware",
+    "earliest_confirmed_ref": "0.5.2",
+    "prerelease_refs": [
+      "v0.5.4rc2",
+      "v0.5.4rc3",
+      "v0.5.4rc4"
+    ],
+    "earliest_confirmed_ref_note": "earliest released ref confirmed by inspection to carry per-group tracking"
+  },
+  "local_delta": {
+    "source_repository": "https://github.com/local-inference-lab/LMCache.git",
+    "base_commit": "9cebd405d0caf4bebe01d694b5a8bf4e3e354314",
+    "integration_head_count": 11,
+    "topology_patch": "runtime/exl3/patches/lmcache-tp4-dcp4-four-local-servers.patch",
+    "composed_tree": "7dddbfde874d123e5b5785e6e56b4b7baf4baa82",
+    "stock_diff_is_sufficient": false,
+    "stock_diff_reason": "a comparison against a stock 0.5.2 source distribution reports fork-versus-release, the integration heads, and the topology patch as one undifferentiated set, attributing fork changes to this deployment",
+    "topology_patch_required": false,
+    "topology_patch_supersession_status": "superseded",
+    "topology_patch_supersession_note": "git apply --check against stock 0.5.2 fails on the adapter hunk because the single-server rejection it rewrites is absent; stock 0.5.2 derives n_servers from the server-URL list and already performs the same contiguous-block local-server routing the patch extracts into a helper",
+    "version_string_reuse_prohibited": "0.5.2+glm52dcp4.1",
+    "fork_base_date": "2026-07-28",
+    "fork_base_subject": "fix(vllm): support MLA cache transfer with DCP"
+  },
+  "configuration_coupling": [
+    {
+      "pinned_value": "runtime.lmcache.version",
+      "current": "0.5.2+glm52dcp4.1",
+      "owner": "scripts/sparkring_recipe.py",
+      "effect": "the recipe validator rejects any other value"
+    },
+    {
+      "pinned_value": "serving.lmcache.connector",
+      "current": "LMCacheMPConnector",
+      "owner": "recipes/glm52-exl3-tr3-3.25bpw.json",
+      "effect": "pull request 3171 describes a connector rename; the symbol is still defined at v0.5.3 in lmcache/integration/vllm/lmcache_mp_connector.py, and LMCacheMPConnectorDynamic is not defined there",
+      "requires_reverification_per_ref": true
+    },
+    {
+      "pinned_value": "serving.lmcache.mq_timeout_seconds",
+      "current": 10,
+      "rendered_as": "lmcache.mp.mq_timeout",
+      "owner": "recipes/glm52-exl3-tr3-3.25bpw.json",
+      "effect": "the registration deadline is a per-checkpoint value; a checkpoint whose registration exceeds the deployed value cannot register"
+    },
+    {
+      "pinned_value": "REGISTER_KV_CACHE payload",
+      "effect": "the payload gained vllm_block_size, so client and server at different versions are wire-incompatible; a mixed deployment presents as a stalled request rather than an error"
+    }
+  ],
+  "deployment_constraints": [
+    "each cache server runs inside its rank's engine container",
+    "the registration deadline exceeds the observed registration time for the largest reservation in use",
+    "the heartbeat guard tests contents rather than existence",
+    "native prefix caching is disabled during validation",
+    "the package is byte-identical on every rank"
+  ],
+  "validation_gate": {
+    "evaluator": "scripts/lmcache_external_reuse_gate.py",
+    "evidence_schema": "sparkring-lmcache-external-reuse-evidence/v1",
+    "fail_closed": true,
+    "conditions": [
+      "replay_request_completed",
+      "replayed_prompt_is_identical",
+      "output_hash_matches_store_phase",
+      "native_prefix_cache_cannot_account_for_result",
+      "external_tier_recorded_hits",
+      "no_transfer_size_mismatch",
+      "no_retrieve_failures",
+      "deployment_destroyed_and_recreated",
+      "store_phase_completed",
+      "hit_counter_not_misreporting_a_stall"
+    ],
+    "misleading_instrument_properties": [
+      "the external hit counter counts lookup matches, not completed transfers",
+      "a replay inside a live engine process is served by that engine's own prefix cache"
+    ],
+    "exit_codes": {
+      "pass": 0,
+      "required_failed": 2,
+      "config_error": 3,
+      "optional_unavailable": 4
+    }
+  },
+  "verifier": {
+    "script": "runtime/exl3/verify_lmcache_group_tracking.py",
+    "safety_class": "OFFLINE",
+    "exit_codes": {
+      "pass": 0,
+      "fail": 2,
+      "config_error": 3
+    }
+  },
+  "checkpoints": [
+    {
+      "order": 1,
+      "checkpoint": "Qwen/Qwen3.8-27B",
+      "layout": "uniform",
+      "requires_group_tracking": false,
+      "registration_inventory_recorded": false,
+      "gate_passed": false,
+      "status": "planned",
+      "external_reuse_policy": "required"
+    },
+    {
+      "order": 2,
+      "checkpoint": "zai-org/GLM-5.2",
+      "bits_per_weight": 3.5,
+      "layout": "multiple groups, from dynamic sparse attention",
+      "requires_group_tracking": true,
+      "registration_inventory_recorded": false,
+      "upstream_stated_chunk_size": 1024,
+      "gate_passed": false,
+      "status": "unsupported",
+      "external_reuse_policy": "required"
+    },
+    {
+      "order": 3,
+      "checkpoint": "deepseek-ai/DeepSeek-V4-Flash-0731",
+      "layout": "multiple groups, one internally heterogeneous",
+      "requires_group_tracking": true,
+      "registration_inventory_recorded": true,
+      "registration_inventory_origin": "operator-reported",
+      "registered_layers": 170,
+      "engine_groups": 5,
+      "registration_inventory": [
+        {
+          "engine_group": "0",
+          "layers": 21,
+          "tokens_per_block": 64,
+          "head_size": [
+            584
+          ],
+          "element_size": 1
+        },
+        {
+          "engine_group": "0",
+          "layers": 21,
+          "tokens_per_block": 64,
+          "head_size": [
+            132
+          ],
+          "element_size": 1
+        },
+        {
+          "engine_group": "0",
+          "layers": 20,
+          "tokens_per_block": 2,
+          "head_size": [
+            584
+          ],
+          "element_size": 1
+        },
+        {
+          "engine_group": "1,2",
+          "layers": 23,
+          "tokens_per_block": 64,
+          "head_size": [
+            584
+          ],
+          "element_size": 1
+        },
+        {
+          "engine_group": "3",
+          "layers": 21,
+          "tokens_per_block": 4,
+          "head_size": [
+            512,
+            2048
+          ],
+          "element_size": 4
+        },
+        {
+          "engine_group": "4",
+          "layers": 20,
+          "tokens_per_block": 8,
+          "head_size": [
+            1024
+          ],
+          "element_size": 4
+        }
+      ],
+      "engine_configuration": {
+        "kv_cache_dtype": "fp8_ds_mla",
+        "kv_cache_dtype_reason": "the engine gates its layout on an exact string comparison; fp8 declares a geometry differing from the one it allocates",
+        "tokenizer_mode": "deepseek_v4",
+        "speculative_minimum_depth": 5,
+        "speculative_backend": "b12x",
+        "load_failure_path_requires_per_group_block_ids": true
+      },
+      "reported_draft_acceptance_percent": {
+        "without_b12x": 42,
+        "with_b12x": 86
+      },
+      "reported_draft_acceptance_origin": "operator-reported",
+      "gate_passed": false,
+      "status": "external-reuse-optional-and-not-functional",
+      "external_reuse_policy": "optional",
+      "external_reuse_functional": false,
+      "serving_without_external_tier": "supported configuration"
+    }
+  ],
+  "not_established": [
+    "no checkpoint has passed the validation gate on this hardware",
+    "no package has been built, deployed, or measured on this ring for this work",
+    "the Size mismatch symptom is operator-reported, unreproduced here, and its cause is undetermined",
+    "benchmark comparisons across a key-value cache dtype change are invalid"
+  ],
+  "fallback": "serving each checkpoint without external key-value reuse is unaffected and is the fallback if a step does not pass",
+  "heartbeat_defect": {
+    "present_in": [
+      "0.5.2",
+      "0.5.3"
+    ],
+    "location": "lmcache/integration/vllm/vllm_multi_process_adapter.py",
+    "symptom": "_heartbeats is initialized to an empty dict and _ensure_heartbeat_started returns when it is not None, so the heartbeat thread never starts",
+    "fixed_by_upgrade": false,
+    "local_correction_required": true
+  },
+  "external_reuse_policy": {
+    "values": [
+      "required",
+      "optional"
+    ],
+    "declared_before_collection": true,
+    "exit_codes": {
+      "pass": 0,
+      "required_failed": 2,
+      "config_error": 3,
+      "optional_unavailable": 4
+    }
+  },
+  "next_measurement": {
+    "statement": "run the verifier against the package directory installed on a rank",
+    "safety_class": "READ-ONLY REMOTE",
+    "discriminates": "a composition that dropped the capability fails group_module_present; one that retains it passes every check and moves diagnosis to configuration"
+  }
+}

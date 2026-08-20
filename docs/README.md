@@ -59,6 +59,7 @@ linked runbook. A document being listed here does not authorize remote action.
 | [Generic runtime launcher](GENERIC_RUNTIME.md) | Defines generic launcher profiles, schema dispatch, runtime bundles, safety behavior, and extension points. |
 | [Evidence comparison checklist](EVIDENCE_COMPARISON_CHECKLIST.md) | Defines the validity contract for matched 16K sustained-decode comparisons. |
 | [Runtime gaps](RUNTIME_GAPS.md) | Records the 2026-07-27 upstream comparison, the 2026-07-29 recovery status, and the remaining qualification gaps. |
+| [External cache per-group layout](LMCACHE_GROUP_TRACKING.md) | Defines the cache-package property grouped checkpoints require, the package selection it implies, the local delta, and the reuse validation gate. |
 
 ## Profiles and evidence records
 

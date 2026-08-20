@@ -398,6 +398,38 @@
       "documentation": "docs/GENERIC_RUNTIME.md",
       "tests": "scripts/test_sparkring_bundle.py",
       "archive_rehearsal": "scripts/rehearse_runtime_bundle_archive.py (OFFLINE; poisons remote executors; supervisor creates commit/archive and invokes for exact-commit evidence)"
+    },
+    "lmcache_group_tracking": {
+      "maturity": "planned",
+      "lane": "public-functional",
+      "status": "unsupported",
+      "status_scope": "every checkpoint whose key-value cache is laid out in more than one layer group",
+      "validation_hardware": "CPU-only Windows workspace; no Spark contacted",
+      "target_hardware": "four directly cabled NVIDIA DGX Sparks / GB10 GPUs, linux/arm64",
+      "installed_package_version": "0.5.2+glm52dcp4.1",
+      "installed_package_has_group_tracking": "undetermined",
+      "required_upstream_change": "LMCache pull request 3171, merge commit 384d79df5c3a023ccfebedc2b69b094b0d7b7084, merged 2026-05-14",
+      "capability_verified_by": "source inspection of the 0.5.2 and 0.5.3 source distributions; not executed on this hardware",
+      "arm64_release_wheel_exists": false,
+      "package_built": false,
+      "package_deployed": false,
+      "gate_passed_checkpoints": 0,
+      "topology_patch_supersession_status": "superseded",
+      "topology_patch_required": false,
+      "heartbeat_defect_present_in_released_line": true,
+      "heartbeat_defect_fixed_by_upgrade": false,
+      "upstream_baseline_explains_failure": false,
+      "failure_cause": "undetermined; lies in the composed tree, which this checkout does not carry",
+      "deepseek_external_reuse_policy": "optional",
+      "deepseek_serving_without_external_tier": "supported configuration",
+      "verifier": "runtime/exl3/verify_lmcache_group_tracking.py",
+      "verifier_safety_class": "OFFLINE",
+      "validation_gate": "scripts/lmcache_external_reuse_gate.py",
+      "validation_gate_fail_closed": true,
+      "live_validation": false,
+      "acceptance": false,
+      "entrypoint": "docs/LMCACHE_GROUP_TRACKING.md",
+      "machine_readable_evidence": "docs/configurations/lmcache-group-tracking.json"
     }
   }
 }
