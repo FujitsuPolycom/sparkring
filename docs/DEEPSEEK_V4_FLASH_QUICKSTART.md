@@ -39,20 +39,70 @@ That image registers `DeepseekV4ForCausalLM` and carries B12X, LMCache,
 the patched NCCL, and the SparkRing transport library. It also registers
 `Glm4MoeForCausalLM`.
 
-**The image alone has not been shown to serve this checkpoint.** A
-four-rank launch from it, with the flags below and the environment a
-deployment supplies, reached worker initialisation and failed in
-`cutlass.cute.core` with `no attribute 'ThrMma'`. The deployment whose
-observations the profile page records runs the same image with 51
-additional bind mounts, 32 of which overlay patched Python files onto
-`site-packages/vllm` and `/opt/spark-vllm`. Those files are held by the
-operator and are not in this repository or the image.
-
 What the image removes is the ARM64 CUDA build: the transport library,
 its probe binaries, the patched NCCL, and the forked vLLM all arrive
-prebuilt. What remains unresolved is which of those 32 overlays this
-checkpoint requires. Until that is established, treat the launch below
-as the shape of a deployment rather than a procedure known to complete.
+prebuilt. What it does not carry is a `quack-kernels` compatible with
+its own `nvidia-cutlass-dsl`, so it requires the correction below before
+it serves this checkpoint. No bind mount and no file outside this
+repository is required.
+
+### Correcting the image
+
+`quack-kernels` 0.5.0 reaches the published image as a transitive
+dependency, so it escapes the two things `runtime/exl3-r7` applies to a
+copy it installs directly: the pinned `apache-tvm-ffi` 0.1.10 in
+`runtime/exl3-r7/requirements-tvm-ffi.txt`, and the hash-bound
+compatibility edits in `runtime/exl3-r7/bake_runtime_artifacts.py`.
+`quack-kernels` 0.5.0 declares `nvidia-cutlass-dsl>=4.5.2` with no upper
+bound and caps `apache-tvm-ffi<0.2`; the image resolves cutlass-dsl to
+4.6.0 and `apache-tvm-ffi` to 0.1.9.
+
+Two failures follow, both raised on the first forward pass during memory
+profiling:
+
+- cutlass-dsl 4.6.0 defines `ThrMma` and `ThrCopy` in `cutlass.cute.atom`,
+  while `quack-kernels` 0.5.0 annotates them at `cutlass.cute.core` at
+  module scope. Importing quack therefore raises `AttributeError: module
+  'cutlass.cute.core' has no attribute 'ThrMma'`. This checkpoint's
+  attention path reaches that import from
+  `site-packages/vllm/models/deepseek_v4/common/ops/fused_indexer_q.py`,
+  behind the `has_cutedsl` guard in
+  `site-packages/vllm/utils/import_utils.py`, which tests only whether
+  `cutlass` imports at all and so never suppresses it. Both paths are in
+  the image's own vLLM installation: this repository vendors a different
+  vLLM tree and does not contain either file, so they are verifiable only
+  against the image.
+- cutlass-dsl 4.6.0 calls `make_kwargs_wrapper` with a
+  `map_dataclass_to_tuple` argument that `apache-tvm-ffi` 0.1.9 does not
+  accept, raising `TypeError`.
+
+Build the corrected image on every rank, from a checkout of this
+repository:
+
+```bash
+mkdir -p /var/tmp/sparkring-correction
+cp runtime/exl3-r7/bake_runtime_artifacts.py /var/tmp/sparkring-correction/
+cat > /var/tmp/sparkring-correction/Dockerfile <<'DOCKERFILE'
+FROM ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:df0e2068fc7034a1ec7a2c1fa4e0c3224c720161539525b5a7cbb037dc1d0f8e
+COPY bake_runtime_artifacts.py /tmp/bake_runtime_artifacts.py
+RUN /opt/venv/bin/pip install --no-cache-dir "apache-tvm-ffi==0.1.10" \
+ && /opt/venv/bin/python /tmp/bake_runtime_artifacts.py quack \
+      /opt/venv/lib/python3.12/site-packages/quack \
+ && rm /tmp/bake_runtime_artifacts.py
+DOCKERFILE
+docker build -t sparkring/gb10-vllm-serving:corrected /var/tmp/sparkring-correction
+```
+
+`bake_runtime_artifacts.py` verifies the SHA-256 of each file it edits
+before and after the edit, so the build fails closed rather than
+producing a silently different image if the base ever carries other
+bytes. A rank without a route to a package index needs the
+`apache-tvm-ffi` 0.1.10 aarch64 wheel staged locally and
+`--no-index --find-links` pointed at it; the wheel URL and its SHA-256
+are in `runtime/exl3-r7/requirements-tvm-ffi.txt`.
+
+Use `sparkring/gb10-vllm-serving:corrected` wherever the launch below
+names an image.
 
 ## 2. Model
 
@@ -78,7 +128,7 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
   -v /path/to/deepseek-v4-flash-0731:/models/deepseek-v4-flash-0731:ro \
   --env-file /path/to/rank-"$RANK".env \
   --entrypoint /opt/venv/bin/vllm \
-  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:df0e2068fc7034a1ec7a2c1fa4e0c3224c720161539525b5a7cbb037dc1d0f8e \
+  sparkring/gb10-vllm-serving:corrected \
   serve /models/deepseek-v4-flash-0731 \
   --tensor-parallel-size 4 --nnodes 4 --node-rank "$RANK" \
   --master-addr "$RANK0_FABRIC_ADDR" --master-port 29500 \
@@ -117,7 +167,12 @@ image ID, then launch.
 Four flags in that command are load-bearing and easy to omit:
 
 - `--kernel-config '{"enable_cutedsl_warmup": false}'` disables a CuteDSL
-  router-GEMM warmup pass that aborts the worker before the engine starts.
+  router-GEMM warmup pass. Against an uncorrected image that pass aborts
+  the worker before the engine starts, because it reaches the quack import
+  described in section 1. Against the corrected image a launch that omits
+  the flag reports `Skipping CuTeDSL warmup because no compile units were
+  requested` and serves, so the flag is not required; it is retained here
+  because the configuration these observations come from carries it.
 - `--kv-cache-dtype fp8_ds_mla` declares the layout the engine allocates.
   `fp8` allocates identically but declares a generic geometry; the engine's
   own kernels never read the declaration, so both serve, and only
@@ -193,7 +248,15 @@ That path carries no qualification.
 ## 5. Verify
 
 The engine reaches API health in roughly three to five minutes on a
-warm page cache. Then:
+warm page cache. A four-rank launch following this page, from the
+corrected image with no bind mounts, reached `Application startup
+complete` in 390 seconds and answered a chat completion; it reported a
+key-value pool of 4,382,668 tokens and a maximum concurrency of 8.36
+requests at the 524,288-token limit. Those two figures depend on the
+per-rank reservation and the context limit, so a configuration that
+changes either will report different ones.
+
+Then:
 
 ```bash
 curl -s localhost:8000/v1/chat/completions \
