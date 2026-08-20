@@ -23,6 +23,23 @@ def test_faststart_lock_pins_arm64_base_and_model():
     assert re.fullmatch(r"[0-9a-f]{64}", model["config_sha256"])
 
 
+def test_faststart_lock_pins_the_published_serving_image():
+    serving = LOCK["serving_image"]
+    assert serving["repository"] == "ghcr.io/fujitsupolycom/gb10-vllm-serving"
+    assert serving["platform"] == "linux/arm64"
+    for field in ("manifest_digest", "parent_manifest_digest"):
+        assert re.fullmatch(r"sha256:[0-9a-f]{64}", serving[field])
+    assert serving["manifest_digest"] != serving["parent_manifest_digest"]
+
+
+def test_exl3_r7_builder_documents_the_locked_serving_image_digest():
+    """The builder's parent-image command repeats the lock, never a second pin."""
+
+    serving = LOCK["serving_image"]
+    text = (RUNTIME / "exl3-r7/README.md").read_text(encoding="utf-8")
+    assert f'{serving["repository"]}@{serving["manifest_digest"]}' in text
+
+
 def test_faststart_model_pin_matches_full_runtime_lock():
     full = json.loads((RUNTIME / "runtime-lock.json").read_text(encoding="utf-8"))
     assert LOCK["model"]["repository"] == full["model"]["repository"]
