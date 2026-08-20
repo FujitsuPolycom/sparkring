@@ -54,7 +54,7 @@ def test_receipt_is_deterministic_and_names_final_and_parent_images(tmp_path):
     verifier = _verifier(tmp_path / "verification.json")
     installed_receipt = _installed_receipt(tmp_path / "installed.json")
     arguments = {
-        "image": "sparkring/glm52-nf3-nvfp4-rope8:test",
+        "image": "sparkring/gb10-vllm-base:test",
         "image_id": "sha256:" + "1" * 64,
         "nf3_image_id": "sha256:" + "2" * 64,
         "mla_image_id": "sha256:" + "3" * 64,
@@ -135,7 +135,7 @@ def test_receipt_rejects_untrusted_installed_file_receipt(tmp_path):
 
 def test_builder_writes_receipt_for_reused_and_new_images():
     text = (
-        ROOT / "scripts/build-nf3-nvfp4-rope8-image.sh"
+        ROOT / "scripts/build-gb10-vllm-base-image.sh"
     ).read_text(encoding="utf-8")
     assert "write_final_receipt()" in text
     assert text.count('write_final_receipt "') == 2
@@ -227,7 +227,7 @@ def test_final_layer_binds_installed_receipt_digest_and_reverifies():
 
 def test_builder_generates_receipt_from_candidate_then_builds_final_layer():
     text = (
-        ROOT / "scripts/build-nf3-nvfp4-rope8-image.sh"
+        ROOT / "scripts/build-gb10-vllm-base-image.sh"
     ).read_text(encoding="utf-8")
     assert 'CANDIDATE_IMAGE="${OUTPUT_IMAGE}-candidate"' in text
     assert "write-nf3-installed-receipt.py" in text

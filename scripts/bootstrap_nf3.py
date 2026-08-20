@@ -49,8 +49,8 @@ PROFILES = {
         "build_step": "build faststart plus thin NF3 image once on rank0",
     },
     "nvfp4-rope8": {
-        "image_prefix": "sparkring/glm52-nf3-nvfp4-rope8",
-        "build_script": "scripts/build-nf3-nvfp4-rope8-image.sh",
+        "image_prefix": "sparkring/gb10-vllm-base",
+        "build_script": "scripts/build-gb10-vllm-base-image.sh",
         "build_step": (
             "build the thin NVFP4-latent/FP8-RoPE compatibility layer"
         ),
