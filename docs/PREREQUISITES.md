@@ -47,6 +47,11 @@ connected. Do not add or assume those fabric paths.
 - Both 200 GbE ports detected and link-capable on every Spark.
 - A separate management connection on every Spark: wired LAN, Wi-Fi, USB
   Ethernet, or Tailscale.
+- Outbound HTTPS from every Spark to the source repository. The bootstrap
+  clones the tree on ranks 1 through 3 and fetches rank 0's exact commit, so
+  all four need to reach it, not only the controller. A deployment working
+  from a fork, a mirror, or an internal host sets
+  `SPARKRING_BOOTSTRAP_REPOSITORY` to that origin.
 - Adequate cooling and power for four sustained full-load systems.
 - About 450 GB of usable storage per rank for the checkpoint, MTP draft,
   images, caches, and working headroom.

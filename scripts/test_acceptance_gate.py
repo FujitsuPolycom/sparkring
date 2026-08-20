@@ -15,6 +15,7 @@ obviously fake hex. No real site's identifiers appear in this tree.
 from __future__ import annotations
 
 import copy
+import argparse
 import json
 import sys
 import threading
@@ -1787,3 +1788,42 @@ def test_evidence_bundle_carries_a_manifest_and_a_review_warning(tmp_path):
     assert all(entry["sha256"] for entry in manifest["files"])
     assert "Review" in manifest["warning"]
     assert (out / "README.txt").is_file()
+
+
+def test_cable_qualifier_argv_carries_both_rdma_devices(tmp_path):
+    """The roce200 tier refuses to run without both RDMA device names.
+
+    `qualify_direct_cable.py` raises on a missing `--left-rdma-device` or
+    `--right-rdma-device` before it contacts a host, so an argv without them
+    fails stage 2 on a correct fabric and aborts every later stage. The
+    executor is stubbed everywhere else in this suite, which is why the argv
+    itself is asserted here.
+    """
+
+    site = normalised_site(tmp_path)
+    gate_config = gate_document(tmp_path)
+    gate_config.setdefault("fabric", {})["qualifier"] = (
+        "spark_transport/scripts/qualify_direct_cable.py"
+    )
+    ctx = gate.GateContext(
+        site=site,
+        gate=gate_config,
+        site_path=tmp_path / "site.yaml",
+        site_sha256="0" * 64,
+        gate_config_sha256="0" * 64,
+        repo_root=tmp_path,
+        lock={},
+        executor=None,
+        http=None,
+        bundle=gate.Bundle(None),
+        args=argparse.Namespace(),
+    )
+    edge = site["topology"]["edges"][0]
+
+    argv = gate._qualifier_argv(ctx, edge)
+
+    assert "--left-rdma-device" in argv
+    assert "--right-rdma-device" in argv
+    left, right = ctx.edge_endpoints(edge)
+    assert argv[argv.index("--left-rdma-device") + 1] == left["rdma_device"]
+    assert argv[argv.index("--right-rdma-device") + 1] == right["rdma_device"]
