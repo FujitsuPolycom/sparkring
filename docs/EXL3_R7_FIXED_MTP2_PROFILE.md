@@ -10,7 +10,9 @@ outputs, returned finite logprobs, exercised both speculative positions, and
 passed its four-rank transport audit. It is not the repository default or an
 accepted public-functional matrix. The fixed-MTP4, 9.25 GB KV candidate
 is the qualified R7 serving profile; see
-[EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md).
+[EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md). `R7` is
+the durable recipe identifier of this operator-tuned 3.5-bpw EXL3 profile
+(recipe `recipes/glm52-exl3-r7-3.5bpw.json`).
 
 The qualified executable MTP2 profile was produced by a maintainer-held copy
 of the `prepare_exl3_r7_mtp2.py` utility from the maintainer's stock-DCP4 R7

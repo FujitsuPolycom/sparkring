@@ -4,7 +4,9 @@ This document composes the public source layers used by the operator-accepted
 EXL3 R7 3.5-bpw profile on four directly cabled NVIDIA DGX Sparks. The profile
 uses fixed MTP4, DCP4, dynamic per-token NVFP4 MLA KV with FP8 RoPE, bounded
 full-CKV gather, tiered/deferred SIRCL tensor-parallel transport, and a
-target-only exact-40-row routed-MoE state.
+target-only exact-40-row routed-MoE state. `R7` is the durable recipe
+identifier of this operator-tuned 3.5-bpw EXL3 profile (recipe
+`recipes/glm52-exl3-r7-3.5bpw.json`).
 
 ## Status and scope
 

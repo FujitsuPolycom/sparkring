@@ -88,8 +88,10 @@ Operator-launched from CodesPC; stack down, links idle. `spark_tp4_tensor_probe`
 from the `sparkring-native-full-20260812T0335Z` build on r0, fanned to
 r1/r2/r3. Control TCP over the direct links (192.168.101/102/103/200.x)
 because the 192.168.0.x network was unavailable; RDMA devices and GID
-indexes per the deployed v23 per-rank env (`rocep1s0f0/f1`, odd ranks
-inverted, GID 3). Every rank reported `mismatched_elements=0 correct=true`
+indexes per the per-rank env of the deployed serving launch
+configuration (generation label `v23`, from the container name component
+`launch-tunable-v10-adaptive-closure-v23`): `rocep1s0f0/f1`, odd ranks
+inverted, GID 3. Every rank reported `mismatched_elements=0 correct=true`
 at every point. r0 percentiles (µs):
 
 | bytes | width x rows | p50 | p95 | p99 | max |
@@ -231,7 +233,8 @@ transports and compares elementwise; no performance claim attaches).
 ### FP32-oracle arbitration of the width-1024 disagreement (2026-08-17)
 
 Modeled analysis via `spark_fp32_ground_truth` (run CPU-only inside the
-deployed image; module taken from the adaptive-branch checkout), width
+deployed image; the module is not part of this repository and was taken
+from a maintainer development checkout), width
 1024, world size 4, 400 iterations per pattern, comparing the SIRCL
 balanced-tree order (as implemented in `gpu_tp4_tensor.cu`) and a naive
 sequential BF16 sum against correctly rounded FP32 ground truth:

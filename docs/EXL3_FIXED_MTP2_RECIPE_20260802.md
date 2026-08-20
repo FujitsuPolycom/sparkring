@@ -18,8 +18,10 @@ four-Spark publication gate remain unchanged.
 
 This is also not the proposed EXL3 `shared_h_v1` format. The deployed checkpoint
 has no `rotation_layout` field and uses the legacy `per_expert_v1` layout. It was
-not rewritten or requantized. The upstream r19 registry image evaluated during
-qualification was AMD64-only and therefore was not run on the ARM64 Sparks.
+not rewritten or requantized. An upstream release image carrying the tag `r19` was evaluated during
+qualification; its durable repository and digest identity are not
+recorded here. The evidenced conclusion stands on its own: the image
+was AMD64-only and therefore was not run on the ARM64 Sparks.
 
 The raw operator evidence remains outside the tracked documentation because it
 contains site identities and paths. The values below were transcribed from the
@@ -33,10 +35,12 @@ This unchanged LMCache-disabled configuration also supplies the B0 control for
 the
 [`EXL3 LMCache campaign`](EXL3_LMCACHE_CAMPAIGN_20260803.md). That campaign's
 B0 native prefix-cache measurements are not LMCache results, and the subsequent
-LMCache work remains a separate candidate. Its full-envelope L0 arm was
-rejected on a pre-readiness CUDA OOM; reduced-envelope C0 subsequently passed
-bounded four-server lifecycle gates. C0-best's warm result combines native
-prefix caching with LMCache, while its NPC-off arm supplies separate LMCache
+LMCache work remains a separate candidate. Its first arm (`L0`, the full
+1M-token/9 GB envelope) was rejected on a pre-readiness CUDA OOM; a
+reduced-capacity arm (`C0`) subsequently passed bounded four-server
+lifecycle gates. The best-performing reduced arm (`C0-best`) combines
+native prefix caching with LMCache; its variant with native prefix caching
+disabled supplies separate LMCache
 attribution. The final CS512 tuning arm changes only LMCache `chunk_size` from
 256 to 512 and is performance-promoted relative to C0-best; all base engine
 settings here remain unchanged. CS512 is live external evidence, not durably

@@ -3,8 +3,8 @@
 ## Status and scope
 
 The sequential two-slot deferred-credit protocol plus the tiered 64-KiB graph
-kernel is **live-validated** in the operator's accepted four-Spark EXL3 R7
-profile. It serves TP4 BF16 all-reduce shapes from Q1 through Q40. The public
+kernel is **live-validated** in the operator-accepted four-Spark EXL3 3.5-bpw
+profile (R7). It serves TP4 BF16 all-reduce shapes from Q1 through Q40. The public
 source is hardware-specific: it assumes four ranks, two directly attached
 ConnectX-7 edges per rank, CUDA architecture SM121, and the GLM hidden width
 6,144.

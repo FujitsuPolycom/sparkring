@@ -246,8 +246,9 @@ per-signature **promotion** to custom → optional **graph capture**. Native
 failure before enqueue falls back cleanly; after enqueue it terminates the
 worker. The graph census is window-scoped. In the 2026-07-27 DCP4 switchless
 window the rank-consistent census was 6,744 custom all-reduce and 24 custom
-vocabulary captures, with 2,904 attested stock captures per rank — the three
-DCP collective families, the "stock trio" of the results register. In the
+vocabulary captures, with 2,904 attested stock captures per rank: the three
+DCP collective families that [RESULTS.md](RESULTS.md) records as the
+attested stock captures. In the
 2026-07-28 measurement window labelled `v40`, where DCP query and combine ran
 on the custom path, the census was 5,464 custom
 all-reduce + 24 custom vocabulary captures, and each rank additionally

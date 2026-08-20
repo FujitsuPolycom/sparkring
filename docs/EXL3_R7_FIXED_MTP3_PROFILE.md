@@ -9,7 +9,9 @@ shared capture stream per process and CUDA device. Repeated 128-token and
 256-token greedy outputs matched the MTP-disabled control, requested logprobs
 were finite, all three speculative positions were active, and the four-rank
 transport audit passed. The 9.25 GB/rank derivative also passed startup,
-correctness, endpoint, and C1/C2/C4/C8 decode gates.
+correctness, endpoint, and C1/C2/C4/C8 decode gates. `R7` is the durable
+recipe identifier of this operator-tuned 3.5-bpw EXL3 profile (recipe
+`recipes/glm52-exl3-r7-3.5bpw.json`).
 
 This profile is not the repository default or an accepted public-functional
 matrix. It is the rollback and matched performance control for the
