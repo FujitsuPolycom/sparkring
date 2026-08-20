@@ -303,7 +303,7 @@ WIFI = "wlP9s9"
 ADDRESSED_WIFI_LISTING = f"""lo UNKNOWN 127.0.0.1/8
 {IF0} UP 10.0.1.10/24
 {IF1} UP 10.0.4.12/24
-{WIFI} UP 192.168.7.21/24"""
+{WIFI} UP 192.0.2.21/24"""
 
 FABRIC_ONLY_LISTING = f"""lo UNKNOWN 127.0.0.1/8
 {IF0} UP 10.0.2.10/24
@@ -522,7 +522,7 @@ class LaunchEndpointTests(unittest.TestCase):
         self.assertEqual(len(runner.calls), len(specs))
         self.assertEqual(
             observations["r0"].host_interfaces[WIFI].addresses[0],
-            ipaddress.ip_interface("192.168.7.21/24"),
+            ipaddress.ip_interface("192.0.2.21/24"),
         )
         self.assertFalse(observations["r3"].rendezvous_route.routable)
         launch_findings = {
@@ -553,7 +553,7 @@ HEALTHY_RING = {
     "r0": (
         ("spark-edfd", (WIFI, IF0)),
         f"lo UNKNOWN 127.0.0.1/8\n{IF0} UP 10.0.1.10/24\n{IF1} UP 10.0.4.12/24\n"
-        f"{WIFI} UP 192.168.7.21/24",
+        f"{WIFI} UP 192.0.2.21/24",
         f"10.0.2.0/24 via 10.0.1.11 dev {IF0}\n10.0.3.0/24 via 10.0.4.13 dev {IF1}",
         f"local {RENDEZVOUS} dev lo src {RENDEZVOUS} uid 1000",
     ),
