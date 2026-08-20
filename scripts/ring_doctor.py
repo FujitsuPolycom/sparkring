@@ -4,6 +4,11 @@
 The default operation is read-only. Remote changes require ``--apply``. Every
 route next hop and every boot-time address guard comes from addresses observed
 through SSH during the same invocation.
+
+Repair covers the fabric interfaces and the routes between them. The launch
+endpoints a distributed job names — the rendezvous address and the per-node
+NCCL and GLOO socket interfaces — are reported against what each node observes
+and are never changed, because they can sit on networks outside this fabric.
 """
 
 from __future__ import annotations
@@ -35,11 +40,17 @@ class ConfigurationError(ValueError):
 
 @dataclasses.dataclass(frozen=True)
 class NodeSpec:
-    """One management SSH target and its optional discovery jump host."""
+    """One management SSH target and its optional discovery jump host.
+
+    ``socket_interfaces`` holds the interface names a distributed launch gives
+    to ``NCCL_SOCKET_IFNAME`` and ``GLOO_SOCKET_IFNAME`` on this node. They are
+    inputs to be checked against the node, never values this tool sets.
+    """
 
     name: str
     target: str
     proxy_jump: str | None = None
+    socket_interfaces: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -66,6 +77,34 @@ class Route:
     gateway: ipaddress.IPv4Address | None
     device: str | None
     raw: str
+
+
+@dataclasses.dataclass(frozen=True)
+class RendezvousRoute:
+    """One node's kernel route selection for a distributed rendezvous address.
+
+    A distributed launch names a single rendezvous address that every rank
+    connects to; torch passes it as ``--master-addr`` and its TCPStore listens
+    there. ``routable`` is true only when the kernel selected an egress device
+    for that address on the observed node.
+    """
+
+    address: ipaddress.IPv4Address
+    routable: bool
+    device: str | None
+    source: ipaddress.IPv4Address | None
+    gateway: ipaddress.IPv4Address | None
+    raw: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "address": str(self.address),
+            "routable": self.routable,
+            "device": self.device,
+            "source": str(self.source) if self.source else None,
+            "gateway": str(self.gateway) if self.gateway else None,
+            "raw": self.raw,
+        }
 
 
 @dataclasses.dataclass(frozen=True)
@@ -135,7 +174,13 @@ class SshRunner:
 
 @dataclasses.dataclass
 class NodeObservation:
-    """Discovery evidence for one configured node, including probe failures."""
+    """Discovery evidence for one configured node, including probe failures.
+
+    ``interfaces`` holds only the two fabric interfaces the ring is built from.
+    ``host_interfaces`` holds every interface the node reported, so a name that
+    a launch configuration gives to NCCL or GLOO can be checked for existence
+    and for an IPv4 address without a second remote round.
+    """
 
     spec: NodeSpec
     reachable: bool
@@ -147,6 +192,10 @@ class NodeObservation:
     docker_user_rules: tuple[str, ...] | None = None
     error: str = ""
     proxy_jump_used: str | None = None
+    host_interfaces: dict[str, InterfaceState] = dataclasses.field(
+        default_factory=dict
+    )
+    rendezvous_route: RendezvousRoute | None = None
 
     @property
     def label(self) -> str:
@@ -177,6 +226,17 @@ class NodeObservation:
                 }
                 for route in self.routes
             ],
+            "host_interfaces": {
+                name: {
+                    "addresses": [str(address) for address in state.addresses],
+                    "oper_state": state.oper_state,
+                    "mtu": state.mtu,
+                }
+                for name, state in sorted(self.host_interfaces.items())
+            },
+            "rendezvous_route": (
+                self.rendezvous_route.to_dict() if self.rendezvous_route else None
+            ),
             "ip_forward": self.ip_forward,
             "forward_policy": self.forward_policy,
             "docker_user_rules": (
@@ -334,7 +394,7 @@ def parse_node_specs(document: Mapping[str, Any]) -> tuple[NodeSpec, ...]:
             continue
         if not isinstance(raw, Mapping):
             raise ConfigurationError(f"{where} must be a string or object")
-        unknown = set(raw) - {"name", "target", "proxy_jump"}
+        unknown = set(raw) - {"name", "target", "proxy_jump", "socket_interfaces"}
         if unknown:
             raise ConfigurationError(
                 f"{where} has unsupported keys: {', '.join(sorted(unknown))}"
@@ -351,7 +411,26 @@ def parse_node_specs(document: Mapping[str, Any]) -> tuple[NodeSpec, ...]:
             if not isinstance(jump_value, str):
                 raise ConfigurationError(f"{where}.proxy_jump must be a string")
             jump_value = _validate_ssh_jump_chain(jump_value, f"{where}.proxy_jump")
-        specs.append(NodeSpec(name_value, target, jump_value))
+        socket_value = raw.get("socket_interfaces")
+        sockets: tuple[str, ...] = ()
+        if socket_value is not None:
+            if not isinstance(socket_value, list) or not socket_value:
+                raise ConfigurationError(
+                    f"{where}.socket_interfaces must be a non-empty list of names"
+                )
+            names: list[str] = []
+            for socket_index, name in enumerate(socket_value):
+                if not isinstance(name, str):
+                    raise ConfigurationError(
+                        f"{where}.socket_interfaces[{socket_index}] must be a string"
+                    )
+                names.append(
+                    _validate_interface(
+                        name, f"{where}.socket_interfaces[{socket_index}]"
+                    )
+                )
+            sockets = tuple(names)
+        specs.append(NodeSpec(name_value, target, jump_value, sockets))
     _require_unique_specs(specs)
     return tuple(specs)
 
@@ -365,11 +444,25 @@ def _require_unique_specs(specs: Sequence[NodeSpec]) -> None:
         raise ConfigurationError("node SSH targets must be unique")
 
 
-def build_probe_command(interfaces: Sequence[str]) -> str:
-    """Build the read-only remote probe that emits sectioned evidence."""
+def build_probe_command(
+    interfaces: Sequence[str],
+    rendezvous_address: ipaddress.IPv4Address | None = None,
+) -> str:
+    """Build the read-only remote probe that emits sectioned evidence.
+
+    Naming a rendezvous address adds one route lookup to the same probe, so a
+    node is still contacted once per discovery attempt.
+    """
     for index, interface in enumerate(interfaces):
         _validate_interface(interface, f"fabric_interfaces[{index}]")
     names = " ".join(shlex.quote(interface) for interface in interfaces)
+    rendezvous_probe = ""
+    if rendezvous_address is not None:
+        destination = shlex.quote(str(rendezvous_address))
+        rendezvous_probe = (
+            "printf '%s\\n' '__RING_DOCTOR_RENDEZVOUS__'\n"
+            f"ip -4 route get {destination} 2>&1\n"
+        )
     return f"""set +e
 printf '%s\\n' '__RING_DOCTOR_HOSTNAME__'
 hostname
@@ -385,7 +478,7 @@ printf '%s\\n' '__RING_DOCTOR_FORWARD_CHAIN__'
 sudo -n iptables -S FORWARD 2>/dev/null || printf '%s\\n' '{UNAVAILABLE}'
 printf '%s\\n' '__RING_DOCTOR_DOCKER_USER__'
 sudo -n iptables -S DOCKER-USER 2>/dev/null || printf '%s\\n' '{UNAVAILABLE}'
-printf '%s\\n' '__RING_DOCTOR_INTERFACES__'
+{rendezvous_probe}printf '%s\\n' '__RING_DOCTOR_INTERFACES__'
 printf '%s\\n' {names}
 """
 
@@ -403,15 +496,16 @@ def _split_sections(text: str) -> dict[str, str]:
     return {name: "\n".join(lines).strip() for name, lines in sections.items()}
 
 
-def parse_brief_addresses(
-    text: str, fabric_interfaces: Sequence[str] = FABRIC_INTERFACES
-) -> dict[str, InterfaceState]:
-    """Parse ``ip -br -4 addr`` output for the selected fabric interfaces."""
-    selected = set(fabric_interfaces)
+def parse_all_addresses(text: str) -> dict[str, InterfaceState]:
+    """Parse ``ip -br -4 addr`` output for every interface a node reports.
+
+    An interface with no IPv4 address still occupies a row, so an empty
+    address tuple distinguishes an addressless interface from an absent one.
+    """
     states: dict[str, InterfaceState] = {}
     for line in text.splitlines():
         fields = line.split()
-        if len(fields) < 2 or fields[0] not in selected:
+        if len(fields) < 2:
             continue
         addresses: list[ipaddress.IPv4Interface] = []
         for field in fields[2:]:
@@ -425,6 +519,18 @@ def parse_brief_addresses(
             fields[0], tuple(addresses), fields[1].upper()
         )
     return states
+
+
+def parse_brief_addresses(
+    text: str, fabric_interfaces: Sequence[str] = FABRIC_INTERFACES
+) -> dict[str, InterfaceState]:
+    """Parse ``ip -br -4 addr`` output for the selected fabric interfaces."""
+    selected = set(fabric_interfaces)
+    return {
+        name: state
+        for name, state in parse_all_addresses(text).items()
+        if name in selected
+    }
 
 
 def parse_link_details(text: str) -> dict[str, tuple[str, int | None]]:
@@ -476,15 +582,71 @@ def parse_routes(text: str) -> tuple[Route, ...]:
     return tuple(routes)
 
 
+def _field_after(fields: Sequence[str], keyword: str) -> str | None:
+    if keyword not in fields:
+        return None
+    index = list(fields).index(keyword) + 1
+    return fields[index] if index < len(fields) else None
+
+
+def _address_after(
+    fields: Sequence[str], keyword: str
+) -> ipaddress.IPv4Address | None:
+    value = _field_after(fields, keyword)
+    if value is None:
+        return None
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return None
+    return address if isinstance(address, ipaddress.IPv4Address) else None
+
+
+def parse_route_get(
+    address: ipaddress.IPv4Address, text: str
+) -> RendezvousRoute:
+    """Parse ``ip -4 route get`` output for one destination address.
+
+    On success the kernel prints the selected egress device, the source
+    address it would use, and any gateway. It prints an ``RTNETLINK`` error
+    when no route exists, and prefixes the destination with ``unreachable``,
+    ``prohibit``, ``blackhole``, or ``throw`` when a route denies the
+    destination. Any of those, and any output without a device, is reported as
+    not routable, with the kernel's own wording retained as evidence.
+    """
+    raw = " ".join(
+        line.strip() for line in text.strip().splitlines() if line.strip()
+    )
+    if not raw or UNAVAILABLE in raw:
+        return RendezvousRoute(
+            address, False, None, None, None, "the route probe produced no output"
+        )
+    fields = raw.split()
+    denied = fields[0] in {"unreachable", "prohibit", "blackhole", "throw"}
+    if denied or raw.startswith("RTNETLINK answers:"):
+        return RendezvousRoute(address, False, None, None, None, raw)
+    device = _field_after(fields, "dev")
+    return RendezvousRoute(
+        address,
+        device is not None,
+        device,
+        _address_after(fields, "src"),
+        _address_after(fields, "via"),
+        raw,
+    )
+
+
 def parse_probe_output(
     spec: NodeSpec,
     text: str,
     interfaces: Sequence[str] = FABRIC_INTERFACES,
     proxy_jump_used: str | None = None,
+    rendezvous_address: ipaddress.IPv4Address | None = None,
 ) -> NodeObservation:
     """Convert one successful probe record into typed discovery evidence."""
     sections = _split_sections(text)
     interface_states = parse_brief_addresses(sections.get("ADDR", ""), interfaces)
+    host_interfaces = parse_all_addresses(sections.get("ADDR", ""))
     for name, (oper_state, mtu) in parse_link_details(
         sections.get("LINK", "")
     ).items():
@@ -493,6 +655,17 @@ def parse_probe_output(
             interface_states[name] = dataclasses.replace(
                 state, oper_state=oper_state, mtu=mtu
             )
+        existing = host_interfaces.get(name)
+        host_interfaces[name] = (
+            dataclasses.replace(existing, oper_state=oper_state, mtu=mtu)
+            if existing is not None
+            else InterfaceState(name, (), oper_state, mtu)
+        )
+    rendezvous_route: RendezvousRoute | None = None
+    if rendezvous_address is not None and "RENDEZVOUS" in sections:
+        rendezvous_route = parse_route_get(
+            rendezvous_address, sections["RENDEZVOUS"]
+        )
     forward_text = sections.get("FORWARD", "")
     ip_forward: bool | None = None
     if forward_text.strip() in {"0", "1"}:
@@ -517,6 +690,8 @@ def parse_probe_output(
         forward_policy=forward_policy,
         docker_user_rules=docker_rules,
         proxy_jump_used=proxy_jump_used,
+        host_interfaces=host_interfaces,
+        rendezvous_route=rendezvous_route,
     )
 
 
@@ -524,9 +699,10 @@ def discover_nodes(
     specs: Sequence[NodeSpec],
     runner: Runner,
     interfaces: Sequence[str] = FABRIC_INTERFACES,
+    rendezvous_address: ipaddress.IPv4Address | None = None,
 ) -> dict[str, NodeObservation]:
     """Probe nodes directly, then retry failures through discovered jump hosts."""
-    command = build_probe_command(interfaces)
+    command = build_probe_command(interfaces, rendezvous_address)
     observations: dict[str, NodeObservation] = {}
     attempted: dict[str, list[str]] = {spec.name: [] for spec in specs}
 
@@ -538,7 +714,7 @@ def discover_nodes(
         result = runner.run(spec.target, command, jump)
         if result.ok:
             observations[spec.name] = parse_probe_output(
-                spec, result.stdout, interfaces, jump
+                spec, result.stdout, interfaces, jump, rendezvous_address
             )
             return True
         observations[spec.name] = NodeObservation(
@@ -865,12 +1041,143 @@ def docker_user_accepts(
     return False
 
 
+def diagnose_launch_endpoints(
+    specs: Sequence[NodeSpec],
+    observations: Mapping[str, NodeObservation],
+    rendezvous_address: ipaddress.IPv4Address | None = None,
+) -> list[Finding]:
+    """Check the address and interfaces a distributed launch names per node.
+
+    Two launch inputs are checked against each reachable node: the single
+    rendezvous address every rank must connect to, and the socket interface
+    names that node gives to NCCL and GLOO for out-of-band bootstrap. Both are
+    supplied by the caller. The check is read-only: it reports a node that
+    cannot route to the rendezvous address, or that lacks a named interface, or
+    whose named interface holds no IPv4 address, and it never proposes a change
+    to a route or an interface.
+
+    When at least one node was checked and no such condition was found, the
+    result carries one ``info`` finding recording the affirmative outcome, so a
+    passing check is distinguishable from a check that did not run. An ``info``
+    finding does not affect the process exit code.
+    """
+    findings: list[Finding] = []
+    checked: list[str] = []
+    evidence: list[str] = []
+    for spec in specs:
+        observation = observations.get(spec.name)
+        if observation is None or not observation.reachable:
+            continue
+        if rendezvous_address is None and not spec.socket_interfaces:
+            continue
+        node_evidence: list[str] = []
+        faulted = False
+        if rendezvous_address is not None:
+            route = observation.rendezvous_route
+            if route is None:
+                faulted = True
+                findings.append(
+                    Finding(
+                        "warning",
+                        "rendezvous-route-unobserved",
+                        spec.name,
+                        "The route to rendezvous address "
+                        f"{rendezvous_address} could not be read, so the node "
+                        "is neither confirmed able nor confirmed unable to "
+                        "join the rendezvous.",
+                        "The probe returned no ip route get section.",
+                    )
+                )
+            elif not route.routable:
+                faulted = True
+                findings.append(
+                    Finding(
+                        "error",
+                        "rendezvous-unroutable",
+                        spec.name,
+                        "The node has no route to rendezvous address "
+                        f"{rendezvous_address}. Ranks placed here cannot reach "
+                        "the rendezvous store, so the launch stalls until the "
+                        "rendezvous timeout expires on every other node.",
+                        f"ip route get {rendezvous_address} reported: {route.raw}",
+                    )
+                )
+            else:
+                node_evidence.append(
+                    f"{rendezvous_address} via dev {route.device} "
+                    f"src {route.source if route.source else 'unreported'}"
+                )
+        for name in spec.socket_interfaces:
+            state = observation.host_interfaces.get(name)
+            if state is None:
+                faulted = True
+                findings.append(
+                    Finding(
+                        "error",
+                        "socket-interface-absent",
+                        spec.name,
+                        f"Socket interface {name} is named for NCCL and GLOO "
+                        "bootstrap on this node but does not exist here, so "
+                        "bootstrap cannot bind and the ranks on this node "
+                        "never join the job.",
+                        "observed interfaces: "
+                        + (
+                            ", ".join(sorted(observation.host_interfaces))
+                            if observation.host_interfaces
+                            else "none"
+                        ),
+                    )
+                )
+            elif not state.addresses:
+                faulted = True
+                findings.append(
+                    Finding(
+                        "error",
+                        "socket-interface-unaddressed",
+                        spec.name,
+                        f"Socket interface {name} is named for NCCL and GLOO "
+                        "bootstrap on this node and exists here, but carries "
+                        "no IPv4 address, so bootstrap has no address to bind "
+                        "and advertise.",
+                        f"observed state={state.oper_state}, IPv4 addresses=none",
+                    )
+                )
+            else:
+                node_evidence.append(
+                    f"{name}="
+                    + ",".join(str(address) for address in state.addresses)
+                )
+        checked.append(spec.name)
+        if not faulted:
+            evidence.append(f"{spec.name}: " + "; ".join(node_evidence))
+    if not checked or findings:
+        return findings
+    clauses = []
+    if rendezvous_address is not None:
+        clauses.append(f"routes to rendezvous address {rendezvous_address}")
+    if any(spec.socket_interfaces for spec in specs):
+        clauses.append(
+            "holds every socket interface named for it with an IPv4 address"
+        )
+    findings.append(
+        Finding(
+            "info",
+            "launch-endpoints-observed",
+            None,
+            "Every reachable node " + " and ".join(clauses) + ".",
+            " | ".join(evidence),
+        )
+    )
+    return findings
+
+
 def diagnose(
     specs: Sequence[NodeSpec],
     observations: Mapping[str, NodeObservation],
     topology: Topology,
     plans: Mapping[str, NodePlan],
     interfaces: Sequence[str] = FABRIC_INTERFACES,
+    rendezvous_address: ipaddress.IPv4Address | None = None,
 ) -> list[Finding]:
     """Evaluate required ring invariants and retain evidence for every fault."""
     findings: list[Finding] = []
@@ -1045,16 +1352,24 @@ def diagnose(
                                 ),
                             )
                         )
+    findings.extend(
+        diagnose_launch_endpoints(specs, observations, rendezvous_address)
+    )
     return findings
 
 
 def _probe_by_name(
-    specs: Sequence[NodeSpec], runner: Runner, interfaces: Sequence[str]
+    specs: Sequence[NodeSpec],
+    runner: Runner,
+    interfaces: Sequence[str],
+    rendezvous_address: ipaddress.IPv4Address | None = None,
 ) -> tuple[dict[str, NodeObservation], Topology, dict[str, NodePlan], list[Finding]]:
-    observations = discover_nodes(specs, runner, interfaces)
+    observations = discover_nodes(specs, runner, interfaces, rendezvous_address)
     topology = infer_topology(observations)
     plans = build_plans(observations, topology)
-    findings = diagnose(specs, observations, topology, plans, interfaces)
+    findings = diagnose(
+        specs, observations, topology, plans, interfaces, rendezvous_address
+    )
     return observations, topology, plans, findings
 
 
@@ -1289,6 +1604,12 @@ def render_text(report: Mapping[str, Any]) -> str:
         lines.append("Ring cycle: " + " -> ".join(cycle + cycle[:1]))
     else:
         lines.append(f"Ring cycle: UNKNOWN ({topology['reason']})")
+    rendezvous_address = report.get("rendezvous_address")
+    lines.append(
+        f"Rendezvous address: {rendezvous_address}"
+        if rendezvous_address
+        else "Rendezvous address: none named, so no node was checked for a route to one"
+    )
     lines.append("Nodes:")
     for name, node in report["nodes"].items():
         status = "reachable" if node["reachable"] else "unreachable"
@@ -1328,9 +1649,28 @@ def render_text(report: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _load_inputs(args: argparse.Namespace) -> tuple[tuple[NodeSpec, ...], tuple[str, ...], int]:
+def _parse_rendezvous_address(value: str, field: str) -> ipaddress.IPv4Address:
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError as exc:
+        raise ConfigurationError(
+            f"{field} must be an IPv4 address literal"
+        ) from exc
+    if not isinstance(address, ipaddress.IPv4Address):
+        raise ConfigurationError(f"{field} must be an IPv4 address literal")
+    return address
+
+
+def _load_inputs(
+    args: argparse.Namespace,
+) -> tuple[tuple[NodeSpec, ...], tuple[str, ...], int, ipaddress.IPv4Address | None]:
     interfaces = tuple(args.interface or FABRIC_INTERFACES)
     timeout = args.ssh_timeout
+    rendezvous_address = (
+        _parse_rendezvous_address(args.rendezvous_address, "--rendezvous-address")
+        if args.rendezvous_address
+        else None
+    )
     if args.config:
         try:
             document = json.loads(Path(args.config).read_text(encoding="utf-8"))
@@ -1362,9 +1702,38 @@ def _load_inputs(args: argparse.Namespace) -> tuple[tuple[NodeSpec, ...], tuple[
                     "config.ssh_timeout_seconds must be an integer from 1 to 3600"
                 )
             timeout = configured_timeout
+        configured_rendezvous = document.get("rendezvous_address")
+        if configured_rendezvous is not None:
+            if not isinstance(configured_rendezvous, str):
+                raise ConfigurationError(
+                    "config.rendezvous_address must be a string"
+                )
+            rendezvous_address = _parse_rendezvous_address(
+                configured_rendezvous, "config.rendezvous_address"
+            )
     else:
         if not args.node:
             raise ConfigurationError("provide --config or at least one --node user@host")
+        sockets: dict[str, tuple[str, ...]] = {}
+        for item in args.socket_interface or []:
+            if "=" not in item:
+                raise ConfigurationError(
+                    "--socket-interface must have the form NODE=NAME[,NAME]"
+                )
+            socket_target, socket_names = item.split("=", 1)
+            socket_target = _validate_ssh_target(
+                socket_target, "--socket-interface NODE"
+            )
+            parsed_names = tuple(name for name in socket_names.split(",") if name)
+            if not parsed_names:
+                raise ConfigurationError(
+                    f"--socket-interface {socket_target} names no interface"
+                )
+            for index, name in enumerate(parsed_names):
+                _validate_interface(
+                    name, f"--socket-interface {socket_target} name {index + 1}"
+                )
+            sockets[socket_target] = parsed_names
         jumps: dict[str, str] = {}
         for item in args.proxy_jump or []:
             if "=" not in item:
@@ -1378,6 +1747,7 @@ def _load_inputs(args: argparse.Namespace) -> tuple[tuple[NodeSpec, ...], tuple[
                 _default_name(_validate_ssh_target(target, "--node")),
                 target,
                 jumps.get(target),
+                sockets.get(target, ()),
             )
             for target in args.node
         )
@@ -1387,13 +1757,19 @@ def _load_inputs(args: argparse.Namespace) -> tuple[tuple[NodeSpec, ...], tuple[
             raise ConfigurationError(
                 "--proxy-jump names targets absent from --node: " + ", ".join(unused)
             )
+        unused_sockets = sorted(set(sockets) - {spec.target for spec in specs})
+        if unused_sockets:
+            raise ConfigurationError(
+                "--socket-interface names targets absent from --node: "
+                + ", ".join(unused_sockets)
+            )
     if len(interfaces) != 2 or len(set(interfaces)) != 2:
         raise ConfigurationError("exactly two distinct fabric interfaces are required")
     for index, interface in enumerate(interfaces):
         _validate_interface(interface, f"fabric_interfaces[{index}]")
     if not isinstance(timeout, int) or not 1 <= timeout <= 3600:
         raise ConfigurationError("--ssh-timeout must be an integer from 1 to 3600")
-    return specs, interfaces, timeout
+    return specs, interfaces, timeout, rendezvous_address
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -1421,6 +1797,26 @@ def _build_parser() -> argparse.ArgumentParser:
         help="fabric interface name; specify exactly twice to override defaults",
     )
     parser.add_argument(
+        "--rendezvous-address",
+        metavar="ADDR",
+        help=(
+            "IPv4 address every rank connects to for distributed rendezvous, "
+            "the value passed to torch as --master-addr; each node is checked "
+            "for a route to it. A config file entry overrides this flag."
+        ),
+    )
+    parser.add_argument(
+        "--socket-interface",
+        action="append",
+        metavar="NODE=NAME[,NAME]",
+        help=(
+            "interface names a node gives to NCCL_SOCKET_IFNAME and "
+            "GLOO_SOCKET_IFNAME, checked for existence and an IPv4 address on "
+            "that node; applies to --node inputs and is repeatable. Use the "
+            "per-node socket_interfaces key with --config."
+        ),
+    )
+    parser.add_argument(
         "--ssh-timeout", type=int, default=20, help="SSH command timeout in seconds"
     )
     parser.add_argument(
@@ -1445,13 +1841,13 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     try:
-        specs, interfaces, timeout = _load_inputs(args)
+        specs, interfaces, timeout, rendezvous_address = _load_inputs(args)
     except ConfigurationError as exc:
         print(f"INVALID RING DOCTOR INPUT: {exc}", file=sys.stderr)
         return 2
     runner = SshRunner(timeout_seconds=timeout)
     observations, topology, plans, findings = _probe_by_name(
-        specs, runner, interfaces
+        specs, runner, interfaces, rendezvous_address
     )
     apply_findings: list[Finding] = []
     apply_executed = False
@@ -1463,7 +1859,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             apply_executed = True
             apply_findings = apply_plans(observations, plans, runner)
             observations, topology, plans, findings = _probe_by_name(
-                specs, runner, interfaces
+                specs, runner, interfaces, rendezvous_address
             )
             enough = len(specs) == 4 and all(
                 observation.reachable for observation in observations.values()
@@ -1509,6 +1905,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     report = {
         "schema": "sparkring-ring-doctor/v1",
+        "rendezvous_address": (
+            str(rendezvous_address) if rendezvous_address else None
+        ),
         "nodes": {
             name: observation.to_dict()
             for name, observation in observations.items()
@@ -1535,7 +1934,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(render_text(report))
     if not enough:
         return 2
-    if findings:
+    if any(finding.severity != "info" for finding in findings):
         return 1
     if verification and (verification["failed"] or verification["unknown"]):
         return 1
