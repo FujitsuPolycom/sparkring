@@ -88,6 +88,11 @@ def _write_inputs(tmp_path: Path) -> tuple[Path, dict[str, Path], str]:
         path = tmp_path / f"input-{filename}"
         path.write_bytes(f"public-{name}\n".encode())
         artifacts[name] = path
+    # The CLI derives the query-row provider as the backend's sibling
+    # rather than taking it as an argument, so the fixture places it there.
+    (tmp_path / "spark_tp4_query_row_provider.py").write_bytes(
+        b"public-query_row_provider\n"
+    )
     return base, artifacts, hashlib.sha256(base.read_bytes()).hexdigest()
 
 
@@ -128,6 +133,7 @@ def test_cli_builds_exclusive_hash_bound_bundle(tmp_path: Path) -> None:
     assert receipt["schema"] == "sparkring-r7-sircl-tiered-bundle/v1"
     assert receipt["rollback"]["sha256"] == base_sha
     assert receipt["policy"]["dual_port"] is False
+    assert (bundle / "spark_tp4_query_row_provider.py").is_file()
     assert receipt["policy"]["prefill_capacity_pool"] is False
     for name, (filename, _container) in sircl.ARTIFACTS.items():
         assert (bundle / filename).read_bytes() == artifacts[name].read_bytes()
