@@ -6,8 +6,15 @@ The sequential two-slot deferred-credit protocol plus the tiered 64-KiB graph
 kernel is **live-validated** in the operator-accepted four-Spark EXL3 3.5-bpw
 profile (R7). It serves TP4 BF16 all-reduce shapes from Q1 through Q40. The public
 source is hardware-specific: it assumes four ranks, two directly attached
-ConnectX-7 edges per rank, CUDA architecture SM121, and the GLM hidden width
-6,144.
+ConnectX-7 edges per rank, and CUDA architecture SM121.
+
+Hidden width is a qualification scope, not a source assumption. Eager
+admission is width-generic behind `VLLM_SPARK_TP4_EAGER_WIDTHS`, described in
+the [vLLM integration README](integrations/vllm/README.md); the
+DeepSeek-V4-Flash-0731 profile admits width 4096, and the shadow validation set
+exercises widths 512 through 2048. What is qualified only at the GLM hidden
+width of 6,144 is CUDA-graph capture: the graph paths in the accepted profiles
+capture that width alone, and any other width is research-only.
 
 The dual-port striped schedule and the prefill-capacity pool are
 **research-only** and default off. They are included because the vLLM adapter
