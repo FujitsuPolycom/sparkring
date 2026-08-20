@@ -37,17 +37,12 @@ docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:df0e2068fc7034a1ec7a
 
 That image registers `DeepseekV4ForCausalLM`, carries B12X, LMCache, the
 patched NCCL, and the SparkRing transport library, and is the image the
-profile page's operator observations were taken on.
+profile page's operator observations were taken on. It also registers
+`Glm4MoeForCausalLM`, so one image covers the GLM profiles as well.
 
-The GB10 runtime base at `ghcr.io/fujitsupolycom/gb10-vllm-base@sha256:9d88c2152b0ae9f33e7a793b7df29398ed79710b205b9244ac63597ab4481ada`
-is a smaller image that also registers the architecture, but it does not
-serve this checkpoint: its vLLM build rejects the `--kernel-config`
-option below, and its entrypoint requires GLM attestation variables this
-checkpoint has no values for. Use the serving image above.
-
-Both published images run an attestation entrypoint, so a launch for
-this checkpoint overrides it with `--entrypoint`, as the command in
-section 3 does.
+The image runs an entrypoint that attests a GLM profile, so a launch
+for this checkpoint overrides it with `--entrypoint`, as the command
+in section 3 does.
 
 ## 2. Model
 

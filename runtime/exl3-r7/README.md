@@ -69,10 +69,10 @@ which of the two it descends from. That label on a built 3.5-bpw image and this
 document have disagreed; the label is the record of what was built, and this
 table describes what the builder accepts rather than asserting one lineage.
 
-The runtime base is published, so it can be pulled rather than built:
+A published image can serve as the parent rather than one built locally:
 
 ```bash
-docker pull ghcr.io/fujitsupolycom/gb10-vllm-base@sha256:9d88c2152b0ae9f33e7a793b7df29398ed79710b205b9244ac63597ab4481ada
+docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:df0e2068fc7034a1ec7a2c1fa4e0c3224c720161539525b5a7cbb037dc1d0f8e
 ```
 
 `scripts/pull_pinned_images.py` retrieves it along with every other image the
