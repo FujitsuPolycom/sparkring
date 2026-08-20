@@ -1,7 +1,7 @@
-# Reproduce the operator-accepted EXL3 R7 profile composition
+# Reproduce the operator-accepted GLM-5.2 3.5bpw EXL3 profile composition
 
 This document composes the public source layers used by the operator-accepted
-EXL3 R7 3.5-bpw profile on four directly cabled NVIDIA DGX Sparks. The profile
+GLM-5.2 3.5bpw profile on four directly cabled NVIDIA DGX Sparks. The profile
 uses fixed MTP4, DCP4, dynamic per-token NVFP4 MLA KV with FP8 RoPE, bounded
 full-CKV gather, tiered/deferred SIRCL tensor-parallel transport, and a
 target-only exact-40-row routed-MoE state. `R7` is the durable recipe
@@ -314,7 +314,7 @@ A locally rebuilt profile remains a candidate until all gates pass:
 The operator evidence measured a 19.34% warm C8 aggregate decode gain. It is
 evidence for the exact operator profile and four-Spark appliance, not a
 prediction for a clean rebuild. See
-[`EXL3_R7_FIXED_MTP4_PROFILE.md`](EXL3_R7_FIXED_MTP4_PROFILE.md).
+[`GLM52_35BPW_FIXED_MTP4_PROFILE.md`](GLM52_35BPW_FIXED_MTP4_PROFILE.md).
 
 ## Rollback
 
@@ -328,4 +328,4 @@ Never edit a candidate profile to approximate rollback. Start the hash-bound
 preserved input profile and repeat health/capacity checks.
 
 Promote a rebuilt image only after completing
-[`EXL3_R7_PROMOTION_CHECKLIST.md`](EXL3_R7_PROMOTION_CHECKLIST.md).
+[`GLM52_35BPW_PROMOTION_CHECKLIST.md`](GLM52_35BPW_PROMOTION_CHECKLIST.md).

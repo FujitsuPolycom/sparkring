@@ -40,7 +40,7 @@ belongs to profiles rather than the transport.
 | Profile | Status | Start here |
 |---|---|---|
 | GLM-5.2 EXL3 3.25-bpw with LMCache | Public default; live-validated | [Quickstart](docs/QUICKSTART.md) |
-| GLM-5.2 EXL3 R7 3.5-bpw | Accepted; one appliance | [Quickstart](docs/EXL3_R7_QUICKSTART.md) |
+| GLM-5.2 3.5bpw | Accepted; one appliance | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
 | GLM-5.2 NF3 | Accepted; deterministic | [Quickstart](docs/NF3_QUICKSTART.md) |
 | DeepSeek-V4-Flash-0731 | Functional; not shadow-qualified | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Qwen, Meta, gpt-oss, and others | launch verified| [Complete registry](docs/profiles/README.md) |

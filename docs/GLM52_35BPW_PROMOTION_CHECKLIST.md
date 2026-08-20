@@ -1,4 +1,4 @@
-# Promote a rebuilt EXL3 3.5-bpw operator profile
+# Promote a rebuilt GLM-5.2 3.5bpw image
 
 This checklist promotes a clean-checkout build of the operator-accepted EXL3
 3.5-bpw fixed-MTP4 profile, whose durable recipe identifier is `R7`. The

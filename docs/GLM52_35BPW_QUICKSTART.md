@@ -1,8 +1,14 @@
-# EXL3 3.5-bpw operator-profile quickstart
+# GLM-5.2 3.5bpw quickstart
 
-This is the stand-up path for the **public-functional-lane, operator-accepted**
-EXL3 3.5-bpw fixed-MTP4, DCP4, 9.25 GB KV/rank profile. Its durable recipe
-identifier is `R7`. Acceptance applies to one four-Spark appliance and does
+Stands up GLM-5.2 at EXL3 3.5 bits per weight on four DGX Sparks:
+fixed MTP4, DCP4, 9.25 GB of KV per rank. The recipe file is
+`recipes/glm52-exl3-r7-3.5bpw.json`. Measured figures in the linked profile
+records belong to the operator-accepted image they were taken on;
+acceptance applies to one four-Spark appliance and does not transfer to a
+rebuilt image, which stays an offline-validated candidate until the
+[promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md) passes against
+its image ID. It is not the repository default; the default is
+[EXL3 3.25-bpw plus LMCache](EXL3_QUICKSTART.md). Acceptance applies to one four-Spark appliance and does
 not transfer to a rebuilt image. It is not the repository default or a
 reference-lane result. The advertised public default is
 [EXL3 3.25-bpw plus LMCache](EXL3_QUICKSTART.md). NF3 is an
@@ -12,7 +18,7 @@ This quickstart builds the source-complete ARM64 runtime and links to the exact
 commands that derive the accepted 262K dynamic-NVFP4, full-CKV-gather,
 tiered-SIRCL, target-only exact-Q40 composition. A clean-checkout rebuild is an
 offline-validated candidate until it passes the
-[promotion checklist](EXL3_R7_PROMOTION_CHECKLIST.md) against its image ID.
+[promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md) against its image ID.
 
 SparkRing native transport and the exact-Q40 optimization are separate
 layers. SparkRing supplies the native TP all-reduce and vocabulary paths with
@@ -30,7 +36,7 @@ exactly 40 rows; compiling SparkRing alone does not install that policy.
 | Clean-checkout rebuilt image maturity | candidate until the live promotion gate passes |
 | Default | no |
 | Hardware | four directly cabled DGX Sparks / GB10 GPUs |
-| Evidence | [EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md) |
+| Evidence | [GLM52_35BPW_FIXED_MTP4_PROFILE.md](GLM52_35BPW_FIXED_MTP4_PROFILE.md) |
 
 ## Accepted operator profile contract
 
@@ -70,7 +76,16 @@ site serving.mtp_tokens:       4          -> 3
 
 The rollback profile and site are byte-identical to the MTP3 KV9.25 inputs.
 The MTP3 rollback is documented in
-[EXL3_R7_FIXED_MTP3_PROFILE.md](EXL3_R7_FIXED_MTP3_PROFILE.md).
+[GLM52_35BPW_FIXED_MTP3_PROFILE.md](GLM52_35BPW_FIXED_MTP3_PROFILE.md).
+
+## Literal identifiers
+
+Scripts, directories, environment variables, and container paths spell this
+profile `exl3-r7` or `r7` — `runtime/exl3-r7/`, `scripts/exl3_r7_standup.py`,
+`/opt/sparkring-r7-tvm-ffi`, `/var/tmp/sparkring-r7-model`, and similar. Those
+strings are wire and filesystem contracts: attested hashes, baked image paths,
+and the serving stack's mounts all carry them, so they keep their spelling.
+The profile's name is GLM-5.2 3.5bpw; `r7` survives only inside literals.
 
 ## 1. Complete the prerequisites
 
@@ -287,7 +302,7 @@ python scripts/preflight.py --site scripts/config/site.yaml
 ## 7. Complete the operator-profile derivation
 
 Run sections 3 through 6 of the
-[operator reproduction guide](EXL3_R7_OPERATOR_REPRODUCTION.md) to create:
+[operator reproduction guide](GLM52_35BPW_REPRODUCTION.md) to create:
 
 ```text
 .sparkring/exl3-r7/mtp4-nvfp4-ckv-site.yaml
@@ -376,7 +391,7 @@ python scripts/sparkring_generic_launcher.py \
   --site scripts/config/site.yaml \
   --profile .sparkring/exl3-r7/mtp4-kv925-rollback.json \
   --execute \
-  --confirmation START-EXL3-R7-CANDIDATE-ALL-FOUR \
+  --confirmation START-EXL3-GLM-5.2 3.5bpw-CANDIDATE-ALL-FOUR \
   start
 ```
 
@@ -395,7 +410,7 @@ These must match.
   image is not accepted until the promotion checklist passes against its ID.
 - MTP4 improves the measured C1-C4 cells but regresses the matched
   C8 cell by 11.63%. See
-  [EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md).
+  [GLM52_35BPW_FIXED_MTP4_PROFILE.md](GLM52_35BPW_FIXED_MTP4_PROFILE.md).
 - The published image carries the runtime filesystem, and the exact-Q40
   attestation names the identity of an image built locally, so a pulled image
   serves the profile without that layer. The source builder is
@@ -403,7 +418,7 @@ These must match.
   four-rank live gate.
 - Dynamic-NVFP4, CKV-gather, tiered-SIRCL, and exact-Q40 composition commands
   are published in
-  [`EXL3_R7_OPERATOR_REPRODUCTION.md`](EXL3_R7_OPERATOR_REPRODUCTION.md).
+  [`GLM52_35BPW_REPRODUCTION.md`](GLM52_35BPW_REPRODUCTION.md).
 - DCP and indexer collectives use the stock path. Only the
   qualified TP all-reduce and vocabulary families use the SparkRing native
   transport.

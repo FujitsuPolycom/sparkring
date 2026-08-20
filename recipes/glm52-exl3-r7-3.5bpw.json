@@ -92,8 +92,8 @@
     "status": "operator-accepted-live-validated-public-builder-source-complete",
     "clean_checkout_image_live_gate_passed": false,
     "remaining_gate": "Build the ARM64 image from a clean checkout and pass the four-rank promotion checklist against that exact image ID.",
-    "evidence": "docs/EXL3_R7_FIXED_MTP4_PROFILE.md",
+    "evidence": "docs/GLM52_35BPW_FIXED_MTP4_PROFILE.md",
     "machine_readable_evidence": "docs/configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json",
-    "promotion_checklist": "docs/EXL3_R7_PROMOTION_CHECKLIST.md"
+    "promotion_checklist": "docs/GLM52_35BPW_PROMOTION_CHECKLIST.md"
   }
 }

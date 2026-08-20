@@ -455,12 +455,12 @@ def test_standup_execute_rejects_unresolved_default_inputs(tmp_path: Path) -> No
 # ---------------------------------------------------------------------------
 
 def test_quickstart_doc_exists() -> None:
-    assert (ROOT / "docs" / "EXL3_R7_QUICKSTART.md").exists()
+    assert (ROOT / "docs" / "GLM52_35BPW_QUICKSTART.md").exists()
 
 
 def test_quickstart_doc_links_resolve() -> None:
     import re
-    doc = (ROOT / "docs" / "EXL3_R7_QUICKSTART.md").read_text(encoding="utf-8")
+    doc = (ROOT / "docs" / "GLM52_35BPW_QUICKSTART.md").read_text(encoding="utf-8")
     link_pattern = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
     for match in link_pattern.finditer(doc):
         target = match.group(2)
@@ -471,13 +471,13 @@ def test_quickstart_doc_links_resolve() -> None:
 
 
 def test_quickstart_doc_separates_operator_acceptance_from_rebuild_maturity() -> None:
-    doc = (ROOT / "docs" / "EXL3_R7_QUICKSTART.md").read_text(encoding="utf-8")
-    assert "operator-accepted" in doc
-    assert "clean-checkout rebuild is an" in doc
-    assert "offline-validated candidate" in doc
-    assert "Acceptance applies to one four-Spark appliance" in doc
-    assert "not transfer to a rebuilt image" in doc
-    assert "It is not the repository default" in doc
+    doc = (ROOT / "docs" / "GLM52_35BPW_QUICKSTART.md").read_text(encoding="utf-8")
+    flat = " ".join(doc.split())
+    assert "operator-accepted" in flat
+    assert "offline-validated candidate" in flat
+    assert "does not transfer to a rebuilt image" in flat
+    assert "acceptance applies to one four-Spark appliance" in flat
+    assert "It is not the repository default" in flat
 
     assert "plus LMCache" in doc
 
@@ -494,7 +494,7 @@ def test_quickstart_doc_offers_the_published_image_and_binds_identity() -> None:
     fixed one, and the page must not describe a pulled image as excluded.
     """
 
-    doc = (ROOT / "docs" / "EXL3_R7_QUICKSTART.md").read_text(encoding="utf-8")
+    doc = (ROOT / "docs" / "GLM52_35BPW_QUICKSTART.md").read_text(encoding="utf-8")
     assert "ghcr.io/fujitsupolycom/gb10-vllm-serving" in doc
     assert "--image-id" in doc
     assert "Every section of this page holds for a" in doc

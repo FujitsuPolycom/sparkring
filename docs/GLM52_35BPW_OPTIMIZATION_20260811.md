@@ -1,4 +1,4 @@
-# GLM-5.2 R7 3.5-bpw transport, DCP, MTP, and KV qualification
+# GLM-5.2 3.5bpw transport, DCP, MTP, and KV qualification
 
 ## Scope
 
@@ -9,7 +9,7 @@ candidate advanced only after bounded semantic output, finite-logprob,
 transport, performance, and post-run health checks appropriate to that change.
 
 The final retained service is the
-[fixed-MTP4, 9.25 GB/rank KV candidate](EXL3_R7_FIXED_MTP4_PROFILE.md). The
+[fixed-MTP4, 9.25 GB/rank KV candidate](GLM52_35BPW_FIXED_MTP4_PROFILE.md). The
 campaign does not change the repository's advertised EXL3 3.25-bpw plus
 LMCache default or its accepted NF3 alternative.
 
@@ -156,7 +156,7 @@ gates. It improved the matched C1-C4 cells over MTP3 but regressed C8 by
 concurrency gains; MTP3 is the exact rollback and the better matched C8
 control.
 
-See [EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md) and
+See [GLM52_35BPW_FIXED_MTP4_PROFILE.md](GLM52_35BPW_FIXED_MTP4_PROFILE.md) and
 [glm52-exl3-r7-mtp4-kv925-20260811.json](configurations/glm52-exl3-r7-mtp4-kv925-20260811.json)
 for the complete bounded result.
 

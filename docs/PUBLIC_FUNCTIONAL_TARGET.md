@@ -14,7 +14,7 @@
 > [EXL3 acceptance runbook](EXL3_ACCEPTANCE_RUNBOOK.md). The operator's
 > EXL3 3.5-bpw fixed-MTP4 profile is accepted for one four-Spark appliance and
 > documented in
-> [EXL3_R7_FIXED_MTP4_PROFILE.md](EXL3_R7_FIXED_MTP4_PROFILE.md); its evidence
+> [GLM52_35BPW_FIXED_MTP4_PROFILE.md](GLM52_35BPW_FIXED_MTP4_PROFILE.md); its evidence
 > does not change the public default or accepted NF3 matrix. A clean-checkout
 > rebuild remains unqualified until it passes the profile's live gates.
 

@@ -60,7 +60,7 @@ If understanding a sentence requires conversation history, rewrite it.
   release promotion, or full public-functional acceptance.
 - The operator-accepted **3.5-bpw profile** is EXL3 fixed-MTP4, DCP4, dynamic
   NVFP4 plus FP8 RoPE, and 9.25 GB KV/rank. The profile is documented in
-  `docs/EXL3_R7_FIXED_MTP4_PROFILE.md`; `R7` is its durable recipe identifier.
+  `docs/GLM52_35BPW_FIXED_MTP4_PROFILE.md`; `R7` is its durable recipe identifier.
   Acceptance applies to one four-Spark appliance. The public builder is
   source-complete and offline-validated, but a clean-checkout image has not
   passed the live promotion gate. This does not change the public default or
@@ -173,8 +173,8 @@ start with `docs/NF3_QUICKSTART.md` and
 check to bypass, and a successful plan is not acceptance.
 
 For the operator-accepted 3.5-bpw profile, start with
-`docs/EXL3_R7_QUICKSTART.md`. A rebuilt image remains a candidate until every
-item in `docs/EXL3_R7_PROMOTION_CHECKLIST.md` passes against its immutable ID.
+`docs/GLM52_35BPW_QUICKSTART.md`. A rebuilt image remains a candidate until every
+item in `docs/GLM52_35BPW_PROMOTION_CHECKLIST.md` passes against its immutable ID.
 
 ### Native or cluster work
 
