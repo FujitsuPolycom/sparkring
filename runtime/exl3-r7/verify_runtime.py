@@ -28,27 +28,21 @@ REQUIRED_SOURCE_MARKERS = {
     ),
 }
 
+# SIRCL ships two collective families: the TP all-reduce and the vocabulary
+# all-gather. DCP, indexer, and every other collective use patched NCCL, so
+# no hook module exists for them and none is verified here.
 SIRCL_HOOK_MARKERS = {
     "sitecustomize": (
         "VLLM_SPARK_TP4_MODE",
-        "VLLM_SPARK_TP4_ALLGATHER_MODE",
         "VLLM_SPARK_TP4_VOCAB_MODE",
     ),
     "spark_tp4_backend": (
         "CudaCommunicator.all_reduce = spark_all_reduce",
         "_spark_tp4_backend",
     ),
-    "spark_tp4_allgather_backend": (
-        "PyNcclCommunicator.all_gather = spark_all_gather",
-        "_spark_tp4_allgather_backend",
-    ),
     "spark_tp4_vocab_allgather_backend": (
         "GroupCoordinator._all_gather_out_place = spark_vocab_all_gather",
         "_spark_tp4_vocab_backend",
-    ),
-    "spark_tp4_dcp_backend": (
-        "GroupCoordinator._all_gather_out_place = spark_dcp_all_gather",
-        "_spark_tp4_dcp_backend",
     ),
 }
 _MAX_SIRCL_ORIGINAL_LINKS = 64
@@ -153,7 +147,9 @@ def verify_sircl_hooks(evidence: dict[str, object]) -> None:
             PyNcclCommunicator.all_gather,
             ("self", "output_tensor", "input_tensor", "stream"),
             "_spark_tp4_allgather_backend",
-            "VLLM_SPARK_TP4_ALLGATHER_MODE",
+            # No SIRCL family hooks this target; the signature check proves
+            # the patched-NCCL path is unwrapped.
+            "",
         ),
         (
             "GroupCoordinator._all_gather_out_place",
@@ -161,13 +157,6 @@ def verify_sircl_hooks(evidence: dict[str, object]) -> None:
             ("self", "input_", "dim"),
             "_spark_tp4_vocab_backend",
             "VLLM_SPARK_TP4_VOCAB_MODE",
-        ),
-        (
-            "GroupCoordinator._all_gather_out_place[DCP]",
-            GroupCoordinator._all_gather_out_place,
-            ("self", "input_", "dim"),
-            "_spark_tp4_dcp_backend",
-            "VLLM_SPARK_TP4_DCP_MODE",
         ),
     )
     target_signatures: dict[str, list[str]] = {}
