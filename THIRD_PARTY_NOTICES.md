@@ -13,7 +13,7 @@ SparkRing work licensed under Apache-2.0.
 ## 1. NVIDIA NCCL (portions included)
 
 The following patch files under
-`spark_transport/experiments/nccl_switchless_ring/` contain portions of NVIDIA
+`spark_transport/nccl/` contain portions of NVIDIA
 NCCL:
 
 - `nccl-2.29.7-skip-tree-pat.patch` — against NCCL v2.29.7,

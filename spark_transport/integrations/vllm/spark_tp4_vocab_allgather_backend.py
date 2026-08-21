@@ -720,22 +720,6 @@ def install() -> None:
                 )
             return original(self, input_tensor, dim)
 
-        if os.getenv("SPARK_TP4_STOCK_TIMING", "0") == "1":
-            from spark_tp4_stock_timing import time_original
-
-            stream = torch.cuda.current_stream(device=input_tensor.device)
-            _record_stock_path(
-                capturing=False,
-                reason="stock_timing",
-            )
-            return time_original(
-                "vocab",
-                signature,
-                stream,
-                lambda: original(self, input_tensor, dim),
-                torch,
-            )
-
         backend = getattr(self, "_spark_tp4_vocab_native", None)
         if backend is None:
             backend = _Backend(int(self.rank_in_group))

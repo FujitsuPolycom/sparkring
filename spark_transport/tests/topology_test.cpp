@@ -4,7 +4,7 @@
 #include <set>
 
 int main() {
-  const auto topology = spark_transport::Topology::four_spark_tp2_pp2();
+  const auto topology = spark_transport::Topology::four_spark_direct_cycle();
   assert((topology.ranks() == std::vector<std::uint32_t>{0, 1, 2, 3}));
 
   const std::set<std::pair<std::uint32_t, std::uint32_t>> expected{

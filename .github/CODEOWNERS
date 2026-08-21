@@ -1,41 +1,31 @@
 # SparkRing code owners.
 #
-# There is exactly one maintainer today. @FujitsuPolycom is the owner of
-# github.com/FujitsuPolycom/sparkring and the author of every commit on
-# `main`; no other GitHub account, team, or email is asserted here, because
-# no other one is verifiable from this repository.
+# The repository supports two serving configurations: GLM-5.2 EXL3 3.5-bpw
+# with the R7 runtime, and DeepSeek-V4-Flash-0731 with its per-rank
+# environment contract. One maintainer is verifiable from this repository.
 #
-# This file exists so that review is requested automatically rather than by
-# memory. It is not a claim that a second reviewer exists. When more
-# maintainers join, split the paths below by area instead of adding everyone
-# to the catch-all.
-#
-# NOTE: CODEOWNERS only has an effect once branch protection on `main`
-# requires review. Until then it is documentation.
+# CODEOWNERS requests review automatically when branch protection requires it;
+# it does not assert that a second reviewer exists.
 
-# Catch-all.
 *                               @FujitsuPolycom
 
-# Hardware-coupled code. Changes here cannot be validated by CI (no GPU, no
-# RDMA fabric, no four-Spark ring on a hosted runner) and always need a
-# maintainer to run the hardware gate.
+# Hardware-coupled transport and serving integration. Hosted CI cannot validate
+# CUDA, RDMA, or a four-rank live serving ring.
 /spark_transport/               @FujitsuPolycom
-/sparkcache/native/             @FujitsuPolycom
 
-# The fail-closed runtime overlay and its pins. A wrong preimage hash here
-# turns a fail-closed refusal into a silent misbehaviour.
+# Runtime definitions, image pins, and the GLM-5.2 EXL3 R7 build surface.
 /runtime/                       @FujitsuPolycom
 
-# Claim surfaces. Every number and every lane statement lives in these files.
-/README.md                      @FujitsuPolycom
-/docs/                          @FujitsuPolycom
+# Configuration, measurement, and user-facing claim surfaces.
+/scripts/                        @FujitsuPolycom
+/performance/                    @FujitsuPolycom
+/docs/                           @FujitsuPolycom
+/README.md                       @FujitsuPolycom
 
-# Licensing and attribution.
-/LICENSE                        @FujitsuPolycom
-/NOTICE                         @FujitsuPolycom
-/THIRD_PARTY_NOTICES.md         @FujitsuPolycom
-/SECURITY.md                    @FujitsuPolycom
-
-# The public-repo boundary and the contributor surface itself.
-/.github/                       @FujitsuPolycom
-/CONTRIBUTING.md                @FujitsuPolycom
+# Licensing, security, and repository contribution controls.
+/.github/                        @FujitsuPolycom
+/LICENSE                         @FujitsuPolycom
+/NOTICE                          @FujitsuPolycom
+/THIRD_PARTY_NOTICES.md          @FujitsuPolycom
+/SECURITY.md                     @FujitsuPolycom
+/CONTRIBUTING.md                 @FujitsuPolycom

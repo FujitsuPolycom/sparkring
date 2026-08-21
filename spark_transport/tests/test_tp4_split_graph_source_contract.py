@@ -241,7 +241,7 @@ def test_mixed_graph_restages_and_validates_each_node_epoch() -> None:
     assert "operations_per_cycle" in epoch
     assert "node_epoch_offset" in epoch
 
-    # Reproduce the accepted A/B launch order and prove the generated node
+    # Reproduce the qualified A/B launch order and prove the generated node
     # epoch is exactly the logical sequence, including graph boundaries.
     graph_a = 3
     graph_b = 128

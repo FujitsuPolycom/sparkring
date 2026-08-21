@@ -178,8 +178,8 @@ __device__ void publish_sequence_block(std::uint64_t* address,
 }
 
 __global__ void tp4_tensor_all_reduce(
-    std::uint8_t* round0_buffer, Tp2BufferLayout round0_layout,
-    std::uint8_t* round1_buffer, Tp2BufferLayout round1_layout,
+    std::uint8_t* round0_buffer, ExchangeBufferLayout round0_layout,
+    std::uint8_t* round1_buffer, ExchangeBufferLayout round1_layout,
     const __nv_bfloat16* input, __nv_bfloat16* output,
     std::size_t payload_bytes, std::uint64_t fixed_sequence,
     Tp4GraphCommandRing* graph_commands, std::uint32_t graph_q,
@@ -290,7 +290,7 @@ __global__ void tp4_tensor_all_reduce(
 
 __global__ void tp4_split_claim_command(
     Tp4GraphCommandRing* graph_commands,
-    std::uint8_t* round0_buffer, Tp2BufferLayout round0_layout,
+    std::uint8_t* round0_buffer, ExchangeBufferLayout round0_layout,
     SplitGraphOperationState* state, std::uint32_t graph_q,
     std::uint32_t payload_bytes, bool graph_trace,
     Tp4AllreduceProtocol protocol) {
@@ -321,7 +321,7 @@ __global__ void tp4_split_claim_command(
 }
 
 __global__ void tp4_split_stage_round0(
-    std::uint8_t* round0_buffer, Tp2BufferLayout round0_layout,
+    std::uint8_t* round0_buffer, ExchangeBufferLayout round0_layout,
     const __nv_bfloat16* input,
     const SplitGraphOperationState* state) {
   round0_buffer += state->slot * round0_layout.total_bytes;
@@ -343,7 +343,7 @@ __global__ void tp4_split_stage_round0(
 }
 
 __global__ void tp4_split_publish_round0(
-    std::uint8_t* round0_buffer, Tp2BufferLayout round0_layout,
+    std::uint8_t* round0_buffer, ExchangeBufferLayout round0_layout,
     const SplitGraphOperationState* state) {
   round0_buffer += state->slot * round0_layout.total_bytes;
   auto* control0 = reinterpret_cast<DoorbellControl*>(
@@ -353,8 +353,8 @@ __global__ void tp4_split_publish_round0(
 }
 
 __global__ void tp4_split_wait_round0(
-    std::uint8_t* round0_buffer, Tp2BufferLayout round0_layout,
-    std::uint8_t* round1_buffer, Tp2BufferLayout round1_layout,
+    std::uint8_t* round0_buffer, ExchangeBufferLayout round0_layout,
+    std::uint8_t* round1_buffer, ExchangeBufferLayout round1_layout,
     const SplitGraphOperationState* state,
     Tp4GraphCommandRing* graph_commands,
     Tp4AllreduceProtocol protocol) {
@@ -379,8 +379,8 @@ __global__ void tp4_split_wait_round0(
 }
 
 __global__ void tp4_split_reduce_round0(
-    std::uint8_t* round0_buffer, Tp2BufferLayout round0_layout,
-    std::uint8_t* round1_buffer, Tp2BufferLayout round1_layout,
+    std::uint8_t* round0_buffer, ExchangeBufferLayout round0_layout,
+    std::uint8_t* round1_buffer, ExchangeBufferLayout round1_layout,
     const SplitGraphOperationState* state) {
   round0_buffer += state->slot * round0_layout.total_bytes;
   round1_buffer += state->slot * round1_layout.total_bytes;
@@ -406,8 +406,8 @@ __global__ void tp4_split_reduce_round0(
 }
 
 __global__ void tp4_split_handoff_round1(
-    std::uint8_t* round0_buffer, Tp2BufferLayout round0_layout,
-    std::uint8_t* round1_buffer, Tp2BufferLayout round1_layout,
+    std::uint8_t* round0_buffer, ExchangeBufferLayout round0_layout,
+    std::uint8_t* round1_buffer, ExchangeBufferLayout round1_layout,
     const SplitGraphOperationState* state,
     Tp4GraphCommandRing* graph_commands,
     Tp4AllreduceProtocol protocol) {
@@ -433,7 +433,7 @@ __global__ void tp4_split_handoff_round1(
 }
 
 __global__ void tp4_split_reduce_round1(
-    std::uint8_t* round1_buffer, Tp2BufferLayout round1_layout,
+    std::uint8_t* round1_buffer, ExchangeBufferLayout round1_layout,
     __nv_bfloat16* output,
     const SplitGraphOperationState* state) {
   round1_buffer += state->slot * round1_layout.total_bytes;
@@ -458,7 +458,7 @@ __global__ void tp4_split_reduce_round1(
 }
 
 __global__ void tp4_split_finish(
-    std::uint8_t* round1_buffer, Tp2BufferLayout round1_layout,
+    std::uint8_t* round1_buffer, ExchangeBufferLayout round1_layout,
     const SplitGraphOperationState* state,
     Tp4GraphCommandRing* graph_commands,
     Tp4AllreduceProtocol protocol) {
@@ -749,9 +749,9 @@ __global__ void tp4_striped_finish(
 GpuTp4TensorWorker::GpuTp4TensorWorker(
     std::size_t payload_bytes, std::uint32_t bytes_per_row,
     void* round0_mapped_device_buffer,
-    const Tp2BufferLayout& round0_layout,
+    const ExchangeBufferLayout& round0_layout,
     void* round1_mapped_device_buffer,
-    const Tp2BufferLayout& round1_layout,
+    const ExchangeBufferLayout& round1_layout,
     Tp4AllreduceProtocol protocol,
     Tp4GraphKernelStrategy graph_kernel_strategy,
     Tp4AllreduceSchedule schedule)

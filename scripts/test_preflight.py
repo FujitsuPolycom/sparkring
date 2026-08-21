@@ -40,7 +40,9 @@ from preflight import (  # noqa: E402
 )
 from sparkring_site import ipv4_mapped_gid, load_site  # noqa: E402
 
-EXAMPLE_PATH = Path(__file__).resolve().parent / "config" / "site.example.yaml"
+EXAMPLE_PATH = (
+    Path(__file__).resolve().parent / "config" / "exl3-r7-site.example.yaml"
+)
 
 
 @pytest.fixture(scope="session")
@@ -402,7 +404,14 @@ def test_healthy_evaluation_covers_the_expected_check_ids(site):
     rank = site.rank(0)
     state = parse_probe_output(healthy_transcript(site, rank))
     emitted = {result.check_id for result in evaluate_rank(site, rank, state)}
-    assert emitted == set(CHECK_IDS)
+    expected = set(CHECK_IDS)
+    if not site.artifacts:
+        expected -= {
+            "ARTIFACT.PRESENT",
+            "ARTIFACT.SHA256",
+            "ARTIFACT.EXECUTABLE",
+        }
+    assert emitted == expected
 
 
 def test_check_id_table_has_no_duplicates_and_all_have_descriptions():
@@ -650,6 +659,8 @@ DEGRADED_CASES = [
 def test_degraded_transcript_fails_the_right_check(
     site, case_id, transform, expected_check_id
 ):
+    if expected_check_id.startswith("ARTIFACT.") and not site.artifacts:
+        pytest.skip("the supported R7 image carries no loose host artifacts")
     rank = site.rank(0)
     lines = transform(healthy_lines(site, rank), site, rank)
     state = parse_probe_output("\n".join(lines) + "\n")

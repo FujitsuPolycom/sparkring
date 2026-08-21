@@ -32,7 +32,7 @@ class Topology {
                          std::uint32_t peer_rank) const;
   std::vector<std::uint32_t> ranks() const;
 
-  static Topology four_spark_tp2_pp2();
+  static Topology four_spark_direct_cycle();
 
  private:
   std::vector<EdgeConfig> edges_;

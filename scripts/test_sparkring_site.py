@@ -35,7 +35,9 @@ from sparkring_site import (  # noqa: E402
     validate_site,
 )
 
-EXAMPLE_PATH = Path(__file__).resolve().parent / "config" / "site.example.yaml"
+EXAMPLE_PATH = (
+    Path(__file__).resolve().parent / "config" / "exl3-r7-site.example.yaml"
+)
 
 
 @pytest.fixture(scope="session")
@@ -45,7 +47,22 @@ def example_document() -> dict:
 
 @pytest.fixture()
 def document(example_document: dict) -> dict:
-    return copy.deepcopy(example_document)
+    result = copy.deepcopy(example_document)
+    result["artifacts"] = [
+        {
+            "name": "transport-library",
+            "path": "/opt/sparkring/libspark_transport_capi.so",
+            "sha256": "1" * 64,
+            "executable": False,
+        },
+        {
+            "name": "transport-probe",
+            "path": "/opt/sparkring/spark_tp4_probe",
+            "sha256": "2" * 64,
+            "executable": True,
+        },
+    ]
+    return result
 
 
 # ==========================================================================

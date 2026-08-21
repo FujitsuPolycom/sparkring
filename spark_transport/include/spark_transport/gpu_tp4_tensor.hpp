@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "spark_transport/gpu_tp2.hpp"
+#include "spark_transport/gpu_doorbell.hpp"
 #include "spark_transport/tp4_allreduce_protocol.hpp"
 #include "spark_transport/tp4_dual_port_striped_allreduce.hpp"
 #include "spark_transport/tp4_graph_command.hpp"
@@ -19,9 +19,9 @@ class GpuTp4TensorWorker {
   GpuTp4TensorWorker(std::size_t payload_bytes,
                      std::uint32_t bytes_per_row,
                      void* round0_mapped_device_buffer,
-                     const Tp2BufferLayout& round0_layout,
+                     const ExchangeBufferLayout& round0_layout,
                      void* round1_mapped_device_buffer,
-                     const Tp2BufferLayout& round1_layout,
+                     const ExchangeBufferLayout& round1_layout,
                      Tp4AllreduceProtocol protocol,
                      Tp4GraphKernelStrategy graph_kernel_strategy,
                      Tp4AllreduceSchedule schedule);
@@ -45,8 +45,8 @@ class GpuTp4TensorWorker {
  private:
   void* round0_buffer_{};
   void* round1_buffer_{};
-  Tp2BufferLayout round0_layout_{};
-  Tp2BufferLayout round1_layout_{};
+  ExchangeBufferLayout round0_layout_{};
+  ExchangeBufferLayout round1_layout_{};
   std::size_t payload_bytes_{};
   std::uint32_t bytes_per_row_{};
   Tp4AllreduceProtocol protocol_{Tp4AllreduceProtocol::kSerialAck};

@@ -18,7 +18,6 @@ from spark_tp4_port_namespace import (
     validate_active_port_namespace,
     validate_control_port_pair,
 )
-from spark_tp4_prefill_capacity_pool import capacity_pool_requested
 from spark_tp4_query_row_provider import resolve_query_rows
 from spark_tp4_query_contract import (
     ABSOLUTE_MAX_QUERY_ROWS,
@@ -1386,12 +1385,6 @@ def install() -> None:
                 "exclusive with the width-6144 graph paths: they share "
                 "the graph control-port pair"
             )
-    if capacity_pool_requested():
-        raise RuntimeError(
-            "VLLM_SPARK_TP4_PREFILL_CAPACITY_POOL is research-only: "
-            "the active-bytes native ABI is unavailable, so the shared "
-            "tiled engine cannot be dispatched safely"
-        )
     if graph_protocol == _TWO_SLOT_DEFERRED_ACK_PROTOCOL and (
         mode != "custom" or not _graph_q1_enabled()
     ):
@@ -1506,10 +1499,6 @@ def install() -> None:
         if backend is None:
             backend = _Backend(int(self.rank_in_group))
             self._spark_tp4_native = backend
-            if os.getenv("SPARK_TP4_FLIGHT_RECORDER", "0") == "1":
-                from spark_tp4_flight_recorder import activate
-
-                activate(int(self.rank_in_group))
 
         shadow = None
         promoted = False
@@ -1523,15 +1512,6 @@ def install() -> None:
             if mode == "custom" and _graph_q1_enabled():
                 backend.prepare_graph_q1()
             native_session = backend.native_for(payload_bytes)
-            if os.getenv("SPARK_TP4_FLIGHT_RECORDER", "0") == "1":
-                import torch
-                from spark_tp4_flight_recorder import record_collective
-
-                record_collective(
-                    "AR",
-                    torch.cuda.current_stream(device=input_.device),
-                    input_,
-                )
             candidate = native_session.all_reduce(input_)
         except BaseException:
             logger.exception(

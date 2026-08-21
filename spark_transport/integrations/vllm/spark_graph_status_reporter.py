@@ -18,42 +18,15 @@ _process_reporter_lock = threading.Lock()
 def collect_graph_status() -> dict[str, object]:
     from spark_collective_audit import stock_collective_snapshot
     from spark_tp4_backend import graph_q1_diagnostic_snapshot
-    from spark_tp4_dcp_backend import dcp_graph_diagnostic_snapshot
-    from spark_tp4_allgather_backend import (
-        indexer_graph_diagnostic_snapshot,
-    )
     from spark_tp4_vocab_allgather_backend import (
         vocab_graph_diagnostic_snapshot,
     )
 
-    status: dict[str, object] = {
+    return {
         "all_reduce": graph_q1_diagnostic_snapshot(),
-        "dcp": dcp_graph_diagnostic_snapshot(),
-        "indexer": indexer_graph_diagnostic_snapshot(),
         "vocabulary": vocab_graph_diagnostic_snapshot(),
         "stock_collectives": stock_collective_snapshot(),
     }
-    if os.getenv("SPARK_CUDAGRAPH_REPLAY_TIMING") == "1":
-        from spark_cudagraph_replay_timing import (
-            graph_replay_timing_snapshot,
-        )
-
-        status["graph_replay_timing"] = graph_replay_timing_snapshot()
-    if os.getenv("SPARK_Q2R_PROBE") == "1":
-        from spark_q2r_probe_bridge import q2r_probe_snapshot
-
-        status["q2r_probe"] = q2r_probe_snapshot()
-    if os.getenv("VLLM_SPARK_TRUE_ADAPTIVE_DRAFT") == "1":
-        from spark_true_adaptive_draft import true_adaptive_draft_snapshot
-
-        status["true_adaptive_draft"] = true_adaptive_draft_snapshot()
-    if os.getenv("SPARK_ADAPTIVE_MTP_CONTROL") == "1":
-        from adaptive_mtp_controller.runtime_installer import (
-            runtime_installation_snapshot,
-        )
-
-        status["adaptive_mtp_controller"] = runtime_installation_snapshot()
-    return status
 
 
 class GraphStatusReporter:

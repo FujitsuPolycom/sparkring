@@ -24,4 +24,10 @@ int main() {
   assert(aligned_control_offset(64) == 64);
   assert(aligned_control_offset(65) == 128);
   assert(aligned_control_offset(16 * 1024) == 16 * 1024);
+  const auto exchange =
+      spark_transport::make_exchange_buffer_layout(16 * 1024);
+  assert(exchange.send_offset == 0);
+  assert(exchange.receive_offset == 16 * 1024);
+  assert(exchange.control_offset == 32 * 1024);
+  assert(exchange.total_bytes == 32 * 1024 + 64);
 }

@@ -1,8 +1,7 @@
 {
   "schema": "sparkring-recipe/v1",
   "recipe_id": "glm52-exl3-r7-3.5bpw",
-  "maturity": "accepted",
-  "default": false,
+  "status": "qualified",
   "hardware": {
     "platform": "linux/arm64",
     "cuda_arch": "sm_121",
@@ -22,15 +21,11 @@
     "final_image": null,
     "validated_local_image_id": "sha256:02881d5229d4f4d1cbba0cf40537492a2a505b9d4e43bbfe9a0b2a7bd0584513",
     "pins": "runtime/exl3-r7/pins.json",
-    "download_script": "scripts/download_exl3_r7.py",
-    "profile_generator": "scripts/generate_exl3_r7_candidate.py",
-    "mtp4_generator": "scripts/prepare_exl3_r7_mtp4.py",
-    "nvfp4_generator": "scripts/prepare_exl3_r7_mtp4_nvfp4.py",
-    "ckv_gather_generator": "scripts/prepare_exl3_r7_mtp4_ckv_gather.py",
-    "sircl_tiered_generator": "scripts/prepare_exl3_r7_sircl_tiered.py",
-    "exact_q40_profile_generator": "spark_transport/experiments/moe_round_floor/prepare_q40_exact_state_serving.py",
-    "exact_q40_patch": "spark_transport/experiments/moe_round_floor/q40_exact_state.patch",
-    "exact_q40_attestation_overlay": "spark_transport/experiments/moe_round_floor/q40_exact_state_attestation_overlay.py",
+    "profile_name": "glm52-exl3-3.5bpw-fixed-mtp4-foundation",
+    "profile_derivation": "scripts/glm35_profile.py",
+    "exact_q40_profile_generator": "scripts/glm35_q40/prepare_q40_exact_state_serving.py",
+    "exact_q40_patch": "scripts/glm35_q40/q40_exact_state.patch",
+    "exact_q40_attestation_overlay": "scripts/glm35_q40/q40_exact_state_attestation_overlay.py",
     "build_script": "runtime/exl3-r7/build-image.sh",
     "build_containerfile": "runtime/exl3-r7/Containerfile"
   },
@@ -43,8 +38,8 @@
     "sircl_graph_protocol": "two_slot_deferred_ack",
     "sircl_kernel_strategy": "tiered_64k",
     "sircl_dual_port": false,
-    "dcp_transport": "stock",
-    "indexer_transport": "stock",
+    "dcp_transport": "stock-nccl",
+    "indexer_transport": "stock-nccl",
     "mtp_policy": "fixed-4",
     "max_model_len": 262144,
     "kv_cache_dtype": "nvfp4_ds_mla",
@@ -72,8 +67,7 @@
       "implementation": "b12x-transient-full-ckv-dcp-gather",
       "enabled": true,
       "maximum_logical_tokens": 262144,
-      "workspace_mib_per_rank": 414.4,
-      "spark_custom_ckv_allgather_enabled": false
+      "workspace_mib_per_rank": 414.4
     },
     "load_format": "instanttensor",
     "online_quantization": "exl3-b6",
@@ -82,18 +76,16 @@
     "execution_mode": "FULL_AND_PIECEWISE",
     "native_prefix_caching": true,
     "lmcache": false,
-    "sparkcache": false
+    "external_kv_cache": false
   },
   "publication": {
-    "operator_default": true,
-    "acceptance_scope": "operator-3.5-bpw-four-spark-profile",
-    "zero_build_ready": false,
-    "local_build_ready": true,
-    "status": "operator-accepted-live-validated-public-builder-source-complete",
+    "status": "qualified",
+    "qualification_scope": "one four-DGX-Spark appliance and the exact operator image",
+    "builder_status": "implemented",
     "clean_checkout_image_live_gate_passed": false,
     "remaining_gate": "Build the ARM64 image from a clean checkout and pass the four-rank promotion checklist against that exact image ID.",
     "evidence": "docs/GLM52_35BPW_FIXED_MTP4_PROFILE.md",
-    "machine_readable_evidence": "docs/configurations/glm52-exl3-r7-mtp4-q40-block8-20260812.json",
+    "machine_readable_evidence": "performance/records/glm-3.5bpw/mtp4-q40-block8-20260812.json",
     "promotion_checklist": "docs/GLM52_35BPW_PROMOTION_CHECKLIST.md"
   }
 }

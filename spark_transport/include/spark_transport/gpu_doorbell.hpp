@@ -20,6 +20,16 @@ struct alignas(64) DoorbellControl {
 
 static_assert(sizeof(DoorbellControl) == 64);
 
+struct ExchangeBufferLayout {
+  std::size_t send_offset{};
+  std::size_t receive_offset{};
+  std::size_t control_offset{};
+  std::size_t total_bytes{};
+};
+
+ExchangeBufferLayout make_exchange_buffer_layout(
+    std::size_t payload_bytes);
+
 std::size_t aligned_control_offset(std::size_t payload_bytes);
 
 void launch_sender_doorbell(void* device_buffer, std::size_t payload_bytes,

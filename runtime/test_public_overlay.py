@@ -1,12 +1,10 @@
-"""Offline contracts for the public overlay bundle and capability gate."""
+"""Offline contracts for the supported-profile overlay bundle."""
 
 from __future__ import annotations
 
 import importlib.util
 import json
 from pathlib import Path
-import subprocess
-
 import pytest
 
 RUNTIME = Path(__file__).resolve().parent
@@ -24,34 +22,23 @@ def load_script(name: str):
 
 
 overlay = load_script("build-public-overlay.py")
-capability = load_script("public-capability-gate.py")
 
 
-def test_overlay_spec_covers_every_public_runtime_python_module():
+def test_overlay_spec_names_existing_supported_profile_modules():
     document = json.loads(SPEC.read_text(encoding="utf-8"))
-    listed = set(document["files"])
-    expected = {
-        path.relative_to(REPO).as_posix()
-        for path in (REPO / "spark_transport/integrations/vllm").glob("*.py")
-        if not path.name.startswith("test_")
-        and not path.name.startswith("probe_")
-        and not path.name.startswith("_")
-        and path.name != "conftest.py"
-        and path.name != "tp4_numerical_audit.py"
-    }
-    for package in ("adaptive_mtp_controller", "q2r_phase_timing"):
-        expected.update(
-            path.relative_to(REPO).as_posix()
-            for path in (REPO / "spark_transport/experiments" / package).glob("*.py")
-            if not path.name.startswith("test_")
-        )
-    assert listed == expected
+    listed = document["files"]
+    assert listed
+    assert len(listed) == len(set(listed))
+    assert all((REPO / path).is_file() for path in listed)
+    assert not any("/experiments/" in path for path in listed)
+    assert not any("nf3" in path.lower() for path in listed)
 
 
 def test_overlay_build_is_content_addressed(tmp_path):
     output = tmp_path / "bundle"
     manifest = overlay.build(REPO, SPEC, output)
-    assert len(manifest["files"]) == 35
+    expected = json.loads(SPEC.read_text(encoding="utf-8"))["files"]
+    assert len(manifest["files"]) == len(expected)
     assert (output / overlay.MANIFEST).is_file()
     for record in manifest["files"]:
         path = output / record["path"]
@@ -75,53 +62,6 @@ def test_overlay_builder_rejects_unrecognised_layout(tmp_path):
     )
     with pytest.raises(ValueError, match="unsupported public-overlay"):
         overlay.build(tmp_path / "repo", spec, tmp_path / "output")
-
-
-def test_capability_gate_reports_missing_surface(tmp_path, monkeypatch):
-    package = tmp_path / "vllm"
-    package.mkdir()
-    (package / "config.py").write_text("VALUE = 1\n", encoding="utf-8")
-    monkeypatch.setattr(capability, "vllm_root", lambda: package)
-    monkeypatch.setattr(
-        capability.subprocess,
-        "run",
-        lambda *args, **kwargs: subprocess.CompletedProcess(
-            args[0], 0, stdout="--attention-backend\n", stderr=""
-        ),
-    )
-    report = capability.evaluate("vllm")
-    assert report["passed"] is False
-    assert report["cli_flags"]["--attention-backend"] is True
-    assert report["source_tokens"]["B12X_MLA_SPARSE"] is False
-    assert report["failures"]
-
-
-def test_public_entrypoint_has_valid_shell_syntax():
-    script = (RUNTIME / "public-entrypoint.sh").read_text(encoding="utf-8")
-    result = subprocess.run(
-        ["bash", "-n"],
-        input=script.replace("\r\n", "\n").encode("utf-8"),
-        capture_output=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
-
-
-def test_containerfile_installs_attested_overlay_and_entrypoint():
-    text = (RUNTIME / "Containerfile").read_text(encoding="utf-8")
-    assert "--tree public-overlay=/opt/spark-vllm" in text
-    assert "--image-digest external" in text
-    assert "COPY --from=vllm-build /out/public-overlay /opt/spark-vllm" in text
-    assert "COPY runtime/public-headless-abi-gate.py" in text
-    assert 'ENTRYPOINT ["/opt/sparkring/public-entrypoint.sh"]' in text
-
-
-def test_entrypoint_attests_before_capability_probe_can_import_vllm():
-    text = (RUNTIME / "public-entrypoint.sh").read_text(encoding="utf-8")
-    assert text.index("verify-runtime.py") < text.index("public-capability-gate.py")
-    assert text.index("public-headless-abi-gate.py") < text.index(
-        "public-capability-gate.py"
-    )
 
 
 if __name__ == "__main__":

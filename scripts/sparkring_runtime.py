@@ -2,31 +2,24 @@
 """Shared runtime primitives for SparkRing launchers.
 
 This module provides the orchestration behavior that every model-family
-launcher needs: per-rank RDMA/peer context derivation, transport
-environment construction, the ``RemoteAction`` dataclass, parallel SSH
-execution, and the generic runtime-profile contract.
+launcher needs: per-rank RDMA/peer context derivation, transport environment
+construction, the ``RemoteAction`` dataclass, parallel SSH execution, and the
+native runtime-profile contract.
 
-Model-specific contract validation (exact pins, KV profiles, MTP modes,
-speculative configs) lives in the canonical family launchers — not here.
-The generic launcher delegates operations shared with EXL3 and NF3 to their
-canonical builders, so those bridge actions are byte-identical. Operations
-without a canonical counterpart use the generic builders and are identified
-separately in the plan documentation.
+Model-family values identify a runtime profile but do not alter its
+structural validation, action construction, or execution contract.
+
 
 The shared runtime enforces these safety invariants:
 
 * ``plan`` is always offline and prints a deterministic JSON document.
-* ``start``/``stop`` require ``--execute``.
+* ``start`` and ``stop`` require ``--execute``.
 * Mutation commands with a ``confirmation`` field require an exact token.
-* Stop actions are profile-label-guarded so a foreign same-named
-  container is never removed.
-* Each generic ``start`` action verifies the exact image digest before
-  ``docker run`` — fail-closed on identity drift.
-* An optional ``attestation_hook`` runs after image verification and
-  before ``docker run`` (fail-closed model attestation).
-* Execution semantics follow the source schema: EXL3 bridges use
-  exit-status-only (no rollback); NF3 bridges and generic profiles use
-  ``action_succeeded`` with partial-start rollback.
+* Stop actions are profile-label-guarded so a foreign same-named container is
+  never removed.
+* Each ``start`` action verifies the exact image digest before ``docker run``.
+* A successful ``start`` action must print a container identifier; any failed
+  partial start rolls back the containers started by that action set.
 """
 
 from __future__ import annotations
@@ -36,7 +29,7 @@ import json
 import re
 import shlex
 import subprocess
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -48,11 +41,6 @@ from typing import Any, Mapping
 SCHEMA = "sparkring-runtime-profile/v1"
 PLAN_SCHEMA = "sparkring-runtime-plan/v1"
 
-# Source-schema strings for bridge dispatch (kept here so both the generic
-# launcher and the execution-mode logic can reference them without circular
-# imports).
-EXL3_SCHEMA = "sparkring-public-exl3-launch/v1"
-NF3_SCHEMA = "sparkring-public-launch/v1"
 
 # Character classes — kept independent so this module has no import
 # dependency on the site validator.
@@ -205,12 +193,7 @@ class Ownership:
 
 @dataclass(frozen=True)
 class RuntimeProfile:
-    """A validated, model-family-agnostic runtime profile.
-
-    The generic launcher consumes this dataclass. For EXL3 and NF3 profiles,
-    operations with canonical counterparts are delegated and byte-identical;
-    generic-only operations use the shared builders.
-    """
+    """A validated, model-family-agnostic runtime profile."""
 
     profile_id: str
     model_family: str
@@ -224,10 +207,6 @@ class RuntimeProfile:
     startup_timeout_seconds: int
     environment: dict[str, str | None]
     extra_vllm_args: tuple[str, ...]
-    # Source schema — determines dispatch and execution semantics.
-    # Generic profiles set this to SCHEMA; bridge loaders set the
-    # family-specific schema.
-    source_schema: str = ""
     # Optional: secondary host paths to mount (e.g. MTP draft, JIT cache)
     extra_volumes: tuple[tuple[str, str, str], ...] = ()
     # Optional: container labels beyond the managed and profile labels
@@ -251,8 +230,6 @@ class RuntimeProfile:
     # inside the container via ``docker exec``.  Has a deterministic
     # dry-run action path.
     health_check: tuple[str, ...] = ()
-    # Raw document for bridge access
-    document: dict[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -548,7 +525,6 @@ def parse_runtime_profile(
         startup_timeout_seconds=startup_timeout,
         environment=environment,
         extra_vllm_args=extra_vllm_args,
-        source_schema=SCHEMA,
         extra_volumes=extra_volumes,
         extra_labels=extra_labels,
         privileged=privileged,
@@ -557,27 +533,9 @@ def parse_runtime_profile(
         identity=identity,
         attestation_hook=attestation_hook,
         health_check=health_check,
-        document=document,
     )
 
 
-def resolve_from_site(profile: RuntimeProfile, site: Any) -> RuntimeProfile:
-    """Return a profile with image identity resolved from ``site.runtime``.
-
-    NF3 bridge profiles leave ``image`` and ``image_id`` empty because
-    the site owns the container image.  This resolves them before plan
-    creation so ``profile_attestation.image_id`` is truthful.
-    """
-    if profile.image and profile.image_id:
-        return profile
-    return replace(
-        profile,
-        image=site.runtime.container_image,
-        image_id=site.runtime.container_image_digest,
-        model_container_path=(
-            profile.model_container_path or site.runtime.model_path
-        ),
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -1050,37 +1008,20 @@ def failed(result: dict[int, dict]) -> bool:
     )
 
 
-def execution_mode(profile: RuntimeProfile) -> str:
-    """Return the execution semantics for a profile.
+def check_results(command: str, results: dict[int, dict]) -> list[int]:
+    """Return ranks whose result violates the action contract.
 
-    - ``exl3``: exit-status-only check, no rollback (EXL3 canonical).
-    - ``nf3``: ``action_succeeded`` + rollback on start failure (NF3).
-    - ``generic``: same as NF3.
+    A successful start must print a container identifier. Other actions
+    succeed when their remote command exits zero.
     """
-    if profile.source_schema == EXL3_SCHEMA:
-        return "exl3"
-    if profile.source_schema == NF3_SCHEMA:
-        return "nf3"
-    return "generic"
-
-
-def check_results(command: str, results: dict[int, dict], mode: str) -> list[int]:
-    """Return list of failed ranks, per execution mode."""
-    if mode == "exl3":
-        return [
-            rank for rank, result in results.items()
-            if result.get("exit_code", 1) != 0
-        ]
     return [
         rank for rank, result in results.items()
         if not action_succeeded(command, result)
     ]
 
 
-def should_rollback(command: str, mode: str) -> bool:
-    """Whether to rollback on partial start failure, per execution mode."""
-    if mode == "exl3":
-        return False
+def should_rollback(command: str) -> bool:
+    """Return whether a failed command requires partial-start rollback."""
     return command == "start"
 
 
@@ -1109,21 +1050,12 @@ def plan_document(
         "command": command,
         "profile_id": profile.profile_id,
         "model_family": profile.model_family,
-        "source_schema": profile.source_schema,
         "mutates_remote": command in ("start", "stop", "health"),
         "stops_serving_risk": command in ("stop", "health"),
         "identity_scope": (
-            "canonical-model-verification"
-            if profile.source_schema == EXL3_SCHEMA
-            else (
-                "declared-site-image"
-                if profile.source_schema == NF3_SCHEMA
-                else (
-                    "attestation-hook-configured"
-                    if profile.attestation_hook
-                    else "image-verified-before-start"
-                )
-            )
+            "attestation-hook-configured"
+            if profile.attestation_hook
+            else "image-verified-before-start"
         ),
         "profile_attestation": {
             "profile_id": profile.profile_id,

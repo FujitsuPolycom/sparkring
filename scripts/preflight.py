@@ -2,7 +2,8 @@
 """SparkRing public preflight: a read-only, fail-closed cluster checker.
 
 Everything this tool knows about your cluster comes from the site
-configuration (``scripts/config/site.yaml``, see ``site.example.yaml``).  It
+configuration (``scripts/config/site.yaml``, see
+``exl3-r7-site.example.yaml``). It
 opens one ssh session per rank, runs a single read-only probe script, and
 turns the result into a table of pass/fail checks plus a machine-readable
 evidence file.
