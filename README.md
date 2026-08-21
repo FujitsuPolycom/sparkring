@@ -1,9 +1,28 @@
 # SparkRing
 
-SparkRing serves two supported model profiles on four directly cabled NVIDIA DGX
-Sparks. Four 200 Gb/s ConnectX-7 links form a switchless cycle; tensor-parallel
-ranks use the cycle for inference traffic and the management network for SSH,
-rendezvous, and the API.
+> **This repository is changing rapidly.** Documentation, profiles, and
+> branch history are being restructured as SparkRing's scope narrows to
+> switchless four-Spark collective transport and serving. Published
+> branches may be rebased and documents may be moved, renamed, or
+> replaced without a deprecation period. Pin a commit if you depend on a
+> specific state of this tree.
+
+SparkRing is a low-latency collective transport and vLLM-based
+inference-serving stack for switchless clusters of NVIDIA DGX Spark systems
+powered by the GB10 Grace Blackwell Superchip.
+
+Four 200 Gb/s ConnectX-7 links connect four DGX Sparks in a physical ring.
+Models run as tensor-parallel deployments without an Ethernet or InfiniBand
+switch in the inference fabric.
+
+SparkRing routes qualified vLLM collectives through SIRCL, its custom RDMA
+transport for the four-node ring. CUDA-graph command rings support repeated
+decode work, while patched NCCL handles communication outside SIRCL's
+supported paths.
+
+The repository provides launch tooling, speculative-decoding integration,
+model profiles, and explicit qualification evidence. Model-specific policy
+belongs to profiles rather than the transport.
 
 ## Profiles
 
@@ -57,6 +76,15 @@ limitations are in [results](docs/RESULTS.md). The two-profile registry is
 | `scripts/` | Site validation, preflight, launch, and evidence tooling |
 | `recipes/` | Machine-readable serving recipes |
 | `docs/` | Profile procedures, architecture, prerequisites, and evidence |
+
+## Acknowledgements
+
+SparkRing builds on work from vLLM, NVIDIA NCCL, B12X, SparkInfer, LMCache,
+ExLlamaV3, and the
+[local inference community](https://github.com/local-inference-lab/).
+
+Detailed third-party attribution is in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 ## License
 
