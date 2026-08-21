@@ -45,9 +45,9 @@
   },
   "evidence": {
     "status": "implemented",
-    "conditions": "Four directly cabled DGX Sparks using the pinned published runtime image and the tracked rank environment.",
-    "result": "The model loaded and served chat completions, tool calls, and DSpark speculative decoding.",
-    "conclusion": "The documented four-rank launch is functional for the observed configuration.",
+    "conditions": "Four directly cabled DGX Sparks in a cycle using the pinned published runtime image and the tracked rank environment, with only the checkpoint and a writable cache directory mounted. Fabric routing, IPv4 forwarding and the DOCKER-USER relay rules were verified by scripts/ring_doctor.py with every node pair reachable before launch.",
+    "result": "All four ranks rendezvoused across the cycle, including ranks not directly cabled to rank 0, which reach the rendezvous address only by neighbour relay. Each rank loaded 40.82 GiB of weights. The engine reported a 4,382,668-token key-value pool and 8.36x maximum concurrency at a 524,288-token request length. A deterministic chat completion returned the correct arithmetic result and a tool call was emitted with correct arguments. DSpark speculation was active at depth 5 with a 3.06 mean acceptance length and a 41.2% draft acceptance rate, and a 512-token completion measured 70.2 tokens per second client-observed.",
+    "conclusion": "The documented four-rank launch is functional for the observed configuration, and requires no source overlay beyond the published image.",
     "limitations": [
       "No checkpoint revision or per-file hashes are pinned.",
       "No SIRCL shadow-comparison window is qualified for width 4096.",

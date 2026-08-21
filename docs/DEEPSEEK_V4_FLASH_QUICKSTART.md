@@ -194,9 +194,12 @@ speculation ran at depth 5 with a 2.76 mean acceptance length. It mounted only
 the checkpoint and a cache directory, so the published image needs no source
 overlay.
 
-The four-Spark launch carries the earlier recorded cycle deployment's evidence:
-API health, chat completions, tool calling, and DSpark speculation. It has not
-been re-exercised against the pinned image published here.
+The four-Spark launch was exercised on 2026-08-21 against the same pinned
+image: all four ranks rendezvoused across the cycle, each loading 40.82 GiB of
+weights, the engine reported a 4,382,668-token key-value pool at 8.36x maximum
+concurrency, a deterministic completion and an emitted tool call were correct,
+and DSpark speculation ran at depth 5 with a 3.06 mean acceptance length. It
+mounted only the checkpoint and a cache directory.
 
 Performance observations in either topology are not qualified measurements. The
 normal launch uses patched NCCL from the environment template; SIRCL width-4096
