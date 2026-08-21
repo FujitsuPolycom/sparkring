@@ -1,120 +1,92 @@
-name: Hardware / cable result
-description: Report what a topology, cable, or NIC combination actually did — success or failure.
+name: Four-rank hardware result
+description: Report measured transport or serving behavior for a supported profile.
 title: "[hardware] "
 body:
   - type: markdown
     attributes:
       value: |
-        Use this to report **measured hardware behaviour**: a cable that
-        qualified, a cable that did not, a NIC or transceiver combination that
-        worked or did not, a topology other than the four-node ring.
+        Use this form for four-rank live validation of either supported
+        configuration. Negative results are valid. Redact site identity before
+        posting: use RFC 5737 addresses, placeholder hostnames and paths, and
+        never include accounts, credentials, or private image names.
 
-        Negative results are as valuable as positive ones. "This QSFP module
-        never reached 200 Gb/s on both ports" is a result worth recording.
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Supported profile
+      options:
+        - GLM-5.2 EXL3 3.5-bpw — R7 runtime
+        - DeepSeek-V4-Flash-0731 — published serving image
+    validations:
+      required: true
 
-        **Public repository — redact before pasting:** IP addresses (use RFC
-        5737 ranges), hostnames, SSH accounts, and absolute host paths.
-        ConnectX-7 / RoCE interface names are fine; they are identical on
-        every DGX Spark.
+  - type: dropdown
+    id: status
+    attributes:
+      label: Result status
+      options:
+        - implemented
+        - qualified
+        - research-only
+        - unsupported
+    validations:
+      required: true
 
   - type: checkboxes
     id: sanitized
     attributes:
-      label: Sanitization
+      label: Sanitization and authorization
       options:
-        - label: I have redacted IPs, hostnames, accounts, and absolute host paths.
+        - label: I redacted IPs, hostnames, accounts, absolute host paths, credentials, and private image names.
+          required: true
+        - label: I had explicit authorization for any MUTATES HOST or STOPS SERVING action on the named hosts.
           required: true
 
-  - type: dropdown
-    id: outcome
+  - type: textarea
+    id: conditions
     attributes:
-      label: Outcome
-      options:
-        - "Qualified — all edges passed"
-        - "Partially qualified — some edges passed, some did not"
-        - "Failed — cable/PHY integrity"
-        - "Failed — configuration (link speed, MTU, GID, routing)"
-        - "Passed integrity but missed the latency target"
-        - "Could not run the qualification at all"
+      label: Conditions
+      description: State node count, rank layout, topology, image/model identity, drivers, and relevant environment values without private identifiers.
+      value: |
+        - Nodes and ranks:
+        - Topology:
+        - Image and model identity:
+        - Driver / CUDA / RDMA versions:
+        - Relevant environment:
     validations:
       required: true
 
   - type: textarea
-    id: topology
+    id: measurements
     attributes:
-      label: Topology
-      description: >-
-        Node count, how they are cabled, and whether a switch is involved.
-        Draw it if that is easier. State explicitly whether cable ends are
-        cage-matched.
-      value: |
-        - Node count:
-        - Cabling:        (e.g. ring 0-1-2-3-0, one direct link per edge)
-        - Switch?:        (none / model)
-        - Cage-matched:   (yes / no / unknown)
-    validations:
-      required: true
-
-  - type: textarea
-    id: hardware
-    attributes:
-      label: Hardware under test
-      value: |
-        - Node model:
-        - NIC model + firmware:
-        - Cable/transceiver: (DAC or AOC, vendor, part number, length)
-        - Driver / OFED / rdma-core versions:
-    validations:
-      required: true
-
-  - type: textarea
-    id: edges
-    attributes:
-      label: Per-edge measurements
-      description: >-
-        One row per directed or undirected edge. Speed as reported by the
-        link, MTU as configured, GID index used for RoCEv2, and the p50/p99
-        the qualification reported. Mark any edge that failed.
-      value: |
-        | Edge | Port speed | MTU | GID idx | p50 (us) | p99 (us) | Integrity |
-        |------|-----------:|----:|--------:|---------:|---------:|-----------|
-        | 0-1  |            |     |         |          |          |           |
-        | 1-2  |            |     |         |          |          |           |
-        | 2-3  |            |     |         |          |          |           |
-        | 3-0  |            |     |         |          |          |           |
+      label: Measurements
+      description: Include units, per-rank or per-edge results, request errors, and integrity counters.
+      render: text
     validations:
       required: true
 
   - type: textarea
     id: command
     attributes:
-      label: Qualification command
-      description: >-
-        The exact `qualify_direct_cable.py` invocation (or whatever you ran
-        instead), verbatim then redacted.
+      label: Exact validation command
+      description: Paste the redacted command and exit code.
       render: shell
     validations:
       required: true
 
   - type: textarea
-    id: qualification_json
+    id: evidence
     attributes:
-      label: Qualification output
-      description: >-
-        Attach the JSON document from `--output` (drag the file in), or paste
-        it here. Include the exit code. Reviewers read `cable_qualified`,
-        `latency_target_met`, `model_path_ready`, `failure_domain`, and
-        `counter_deltas` — a good median with any new CRC/drop counter is an
-        integrity failure, not a pass.
+      label: Evidence artifact
+      description: Attach immutable JSON from performance/records/ or the applicable validation output. State limitations.
       render: json
     validations:
       required: true
 
   - type: textarea
-    id: notes
+    id: conclusion
     attributes:
-      label: Notes
-      description: >-
-        Anything that would help someone reproduce this, or anything that
-        surprised you. If you had to change something in the repo to get this
-        far, say what.
+      label: Conclusion
+      description: State the result, qualification decision, and what would make the result unsupported.
+    validations:
+      required: true

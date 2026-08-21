@@ -1,0 +1,91 @@
+diff --git a/exllamav3/exllamav3_ext/parallel/all_reduce_cpu_arm64.cpp b/exllamav3/exllamav3_ext/parallel/all_reduce_cpu_arm64.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..66b00479c57a19908a6175ba5844b5b5daf38124
+--- /dev/null
++++ b/exllamav3/exllamav3_ext/parallel/all_reduce_cpu_arm64.cpp
+@@ -0,0 +1,38 @@
++#if defined(__aarch64__) || defined(_M_ARM64)
++
++#include <stdexcept>
++
++#include "../avx2_target.h"
++#include "../avx512_target.h"
++#include "all_reduce_cpu_avx2.h"
++
++bool is_avx2_supported()
++{
++    return false;
++}
++
++bool is_avx512_supported()
++{
++    return false;
++}
++
++void enable_fast_fp()
++{
++}
++
++void perform_cpu_reduce
++(
++    PGContext*,
++    size_t,
++    uint32_t,
++    uint8_t*,
++    size_t
++)
++{
++    throw std::runtime_error(
++        "ExLlamaV3 native CPU tensor-parallel reduction is unavailable on ARM64; "
++        "SparkRing must provide the distributed collective backend"
++    );
++}
++
++#endif
+diff --git a/exllamav3/ext.py b/exllamav3/ext.py
+index 77f2dedc555f014e5472b653fd8cc867bcfb302e..43665e01738ea0bc8f46cd8cd5ff0ea846e27a35 100644
+--- a/exllamav3/ext.py
++++ b/exllamav3/ext.py
+@@ -137,6 +137,16 @@ else:
+         for file in files
+         if file.endswith(('.c', '.cpp', '.cu'))
+     ]
++    if os.uname().machine in ("aarch64", "arm64"):
++        arm64_unsupported = {
++            os.path.join(sources_dir, "avx2_target.cpp"),
++            os.path.join(sources_dir, "avx512_target.cpp"),
++            os.path.join(sources_dir, "parallel", "all_reduce_cpu_avx2.cpp"),
++            os.path.join(sources_dir, "parallel", "all_reduce_cpu_avx512.cpp"),
++        }
++        sources = [
++            source for source in sources if source not in arm64_unsupported
++        ]
+ 
+     # Load extension
+ 
+diff --git a/setup.py b/setup.py
+index 65d7065e19a30ac876cd8cf013bfc0f1e06d5d1d..135ff590b4689251e4ff3d75c847e92fd9677723 100644
+--- a/setup.py
++++ b/setup.py
+@@ -57,6 +57,21 @@ sources = [
+     if file.endswith(('.c', '.cpp', '.cu'))
+ ]
+ 
++if os.uname().machine in ("aarch64", "arm64"):
++    arm64_unsupported = {
++        os.path.normpath("exllamav3/exllamav3_ext/avx2_target.cpp"),
++        os.path.normpath("exllamav3/exllamav3_ext/avx512_target.cpp"),
++        os.path.normpath(
++            "exllamav3/exllamav3_ext/parallel/all_reduce_cpu_avx2.cpp"
++        ),
++        os.path.normpath(
++            "exllamav3/exllamav3_ext/parallel/all_reduce_cpu_avx512.cpp"
++        ),
++    }
++    sources = [
++        source for source in sources if os.path.normpath(source) not in arm64_unsupported
++    ]
++
+ print (sources)
+ 
+ setup_kwargs = (

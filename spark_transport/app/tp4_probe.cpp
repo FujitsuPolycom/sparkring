@@ -1,6 +1,5 @@
 #include "spark_transport/control_channel.hpp"
 #include "spark_transport/gpu_doorbell.hpp"
-#include "spark_transport/gpu_tp2.hpp"
 #include "spark_transport/gpu_tp4.hpp"
 #include "spark_transport/memory_buffer.hpp"
 #include "spark_transport/statistics.hpp"
@@ -143,7 +142,7 @@ void wait_for_sequence(const std::uint64_t* address, std::uint64_t expected,
 
 void exchange_round(spark_transport::VerbsEndpoint& endpoint,
                     spark_transport::DoorbellControl& control,
-                    const spark_transport::Tp2BufferLayout& layout,
+                    const spark_transport::ExchangeBufferLayout& layout,
                     std::size_t bytes, std::uint64_t sequence,
                     const char* producer_name, const char* consumer_name,
                     const char* acknowledgement_name) {
@@ -198,7 +197,7 @@ int main(int argc, char** argv) {
     const auto plan1 =
         spark_transport::make_tp4_round_plan(options.rank, 1);
     const auto layout =
-        spark_transport::make_tp2_buffer_layout(options.bytes);
+        spark_transport::make_exchange_buffer_layout(options.bytes);
 
     auto channel0 =
         plan0.server

@@ -110,7 +110,7 @@ ControlChannel open_channel(const Tp4RoundPlan& plan,
 }
 
 void exchange_round(VerbsEndpoint& endpoint, DoorbellControl& control,
-                    const Tp2BufferLayout& layout, std::size_t bytes,
+                    const ExchangeBufferLayout& layout, std::size_t bytes,
                     std::uint64_t doorbell_token,
                     bool require_exact_doorbell,
                     std::chrono::seconds timeout) {

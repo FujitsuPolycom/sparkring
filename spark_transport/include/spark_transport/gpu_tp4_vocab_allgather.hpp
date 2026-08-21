@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "spark_transport/gpu_tp2.hpp"
+#include "spark_transport/gpu_doorbell.hpp"
 #include "spark_transport/tp4_graph_command.hpp"
 
 namespace spark_transport {
@@ -17,8 +17,8 @@ inline constexpr std::size_t kTp4VocabBytesPerRankRow =
     kTp4VocabShardElements * kTp4VocabElementBytes;
 
 struct Tp4VocabAllgatherBufferLayout {
-  Tp2BufferLayout round0;
-  Tp2BufferLayout round1;
+  ExchangeBufferLayout round0;
+  ExchangeBufferLayout round1;
   std::size_t max_input_bytes{};
   std::size_t max_output_bytes{};
 };

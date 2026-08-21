@@ -6,7 +6,6 @@
 #include "spark_transport/control_channel.hpp"
 #include "spark_transport/eager_staging_timeout.hpp"
 #include "spark_transport/gpu_doorbell.hpp"
-#include "spark_transport/gpu_tp2.hpp"
 #include "spark_transport/gpu_tp4_tensor.hpp"
 #include "spark_transport/memory_buffer.hpp"
 #include "spark_transport/tp4_graph_command.hpp"
@@ -201,7 +200,7 @@ void exchange_and_connect_endpoint(
 }
 
 DoorbellControl* slot_control(MemoryBuffer& buffer,
-                              const Tp2BufferLayout& layout,
+                              const ExchangeBufferLayout& layout,
                               std::size_t slot) {
   return reinterpret_cast<DoorbellControl*>(
       static_cast<std::uint8_t*>(buffer.host_data()) +
@@ -245,7 +244,7 @@ void post_striped_credit(
 }
 
 void exchange_round(VerbsEndpoint& endpoint, DoorbellControl& control,
-                    const Tp2BufferLayout& layout, std::size_t bytes,
+                    const ExchangeBufferLayout& layout, std::size_t bytes,
                     std::size_t slot_offset, std::uint64_t sequence,
                     std::uint64_t doorbell_token, std::uint32_t rank,
                     std::uint32_t round, bool trace,
@@ -477,7 +476,7 @@ class Tp4AllreduceSession::Impl {
 
     const auto plan0 = make_tp4_round_plan(options_.rank, 0);
     const auto plan1 = make_tp4_round_plan(options_.rank, 1);
-    layout_ = make_tp2_buffer_layout(options_.payload_bytes);
+    layout_ = make_exchange_buffer_layout(options_.payload_bytes);
     if (options_.schedule == Tp4AllreduceSchedule::kDualPortStriped) {
       striped_layout_ =
           make_tp4_striped_endpoint_layout(options_.payload_bytes);
@@ -1140,7 +1139,7 @@ class Tp4AllreduceSession::Impl {
   }
 
   Tp4AllreduceOptions options_;
-  Tp2BufferLayout layout_{};
+  ExchangeBufferLayout layout_{};
   Tp4StripedEndpointLayout striped_layout_{};
   std::size_t arena_bytes_{};
   std::optional<ControlChannel> channel0_;

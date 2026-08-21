@@ -128,30 +128,7 @@ int main() {
              &invalid_affinity, error, sizeof(error)) == nullptr);
   expect_message_contains(error, "must be distinct");
 
-  std::memset(error, 0, sizeof(error));
-  assert(spark_tp4_allgather_create(nullptr, error, sizeof(error)) ==
-         nullptr);
-  expect_message_contains(error, "config is null");
-
-  std::memset(error, 0, sizeof(error));
-  spark_tp4_allgather_config config{};
-  config.rank = 0;
-  config.peer0 = nullptr;
-  config.peer1 = "127.0.0.1";
-  config.device0 = "unused0";
-  config.device1 = "unused1";
-  config.input_bytes = 16384;
-  assert(spark_tp4_allgather_create(&config, error, sizeof(error)) ==
-         nullptr);
-  expect_message_contains(error, "null string");
-
-  std::memset(error, 0, sizeof(error));
-  assert(spark_tp4_allgather(nullptr, nullptr, nullptr, nullptr, error,
-                            sizeof(error)) == 1);
-  expect_message_contains(error, "handle is null");
-
   // Destroying a null handle follows delete-null semantics and is harmless.
   spark_tp4_destroy(nullptr);
-  spark_tp4_allgather_destroy(nullptr);
   return 0;
 }

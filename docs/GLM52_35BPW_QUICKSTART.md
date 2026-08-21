@@ -1,553 +1,199 @@
-# GLM-5.2 3.5bpw quickstart
+# GLM-5.2 EXL3 3.5-bpw four-Spark quickstart
 
-Stands up GLM-5.2 at EXL3 3.5 bits per weight on four DGX Sparks:
-fixed MTP4, DCP4, 9.25 GB of KV per rank. The recipe file is
-`recipes/glm52-exl3-r7-3.5bpw.json`. Measured figures in the linked profile
-records belong to the operator-accepted image they were taken on;
-acceptance applies to one four-Spark appliance and does not transfer to a
-rebuilt image, which stays an offline-validated candidate until the
-[promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md) passes against
-its image ID. It is not the repository default; the default is
-[EXL3 3.25-bpw plus LMCache](EXL3_QUICKSTART.md). Acceptance applies to one four-Spark appliance and does
-not transfer to a rebuilt image. It is not the repository default or a
-reference-lane result. The advertised public default is
-[EXL3 3.25-bpw plus LMCache](EXL3_QUICKSTART.md). NF3 is an
-[accepted deterministic alternative](NF3_QUICKSTART.md).
+Deploy the qualified GLM-5.2 EXL3 profile on four directly cabled NVIDIA DGX
+Sparks. The machine-readable contract is
+[`recipes/glm52-exl3-r7-3.5bpw.json`](../recipes/glm52-exl3-r7-3.5bpw.json).
+Its qualification applies to one appliance. A clean-checkout rebuild has
+status **implemented** based on offline test evidence. It becomes qualified
+only after completing the
+[promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md) using the image
+identity actually deployed.
 
-This quickstart builds the source-complete ARM64 runtime and links to the exact
-commands that derive the accepted 262K dynamic-NVFP4, full-CKV-gather,
-tiered-SIRCL, target-only exact-Q40 composition. A clean-checkout rebuild is an
-offline-validated candidate until it passes the
-[promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md) against its image ID.
+## Serving contract
 
-SparkRing native transport and the exact-Q40 optimization are separate
-layers. SparkRing supplies the native TP all-reduce and vocabulary paths with
-NCCL fallback. The measured exact-Q40 decode gain comes from a target-only
-EXL3 routed-MoE state that selects capacity 40 and route block 8 only for
-exactly 40 rows; compiling SparkRing alone does not install that policy.
-
-## Maturity
-
-| Attribute | Value |
+| Setting | Value |
 |---|---|
-| Lane | public-functional |
-| Operator deployment maturity | accepted |
-| Clean-checkout builder maturity | offline-validated |
-| Clean-checkout rebuilt image maturity | candidate until the live promotion gate passes |
-| Default | no |
-| Hardware | four directly cabled DGX Sparks / GB10 GPUs |
-| Evidence | [GLM52_35BPW_FIXED_MTP4_PROFILE.md](GLM52_35BPW_FIXED_MTP4_PROFILE.md) |
-
-## Accepted operator profile contract
-
-| Setting | Candidate value |
-|---|---|
-| Model | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` |
+| Checkpoint | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` |
 | Config SHA-256 | `fabb73eb513ec64f3a365da396b38de8d55b3930edfb11baeecbf34ecafa6126` |
 | Index SHA-256 | `9fd852f69ed64442e31dce1cbc5fe7acd0a76bfb848e945d272fe98d00d0c9cd` |
-| Parallelism | TP4 plus DCP4 `ag_rs`, interleave size one |
-| Speculation | fixed MTP4, greedy draft sampling, adaptive depth disabled |
+| Parallelism | TP4, DCP4 `ag_rs` |
+| Speculation | fixed MTP4 |
+| Request limit | 262,144 tokens |
+| Key-value cache | `nvfp4_ds_mla`, 9,250,000,000 bytes per rank |
 | Maximum sequences | 8 |
-| Query-row contract | Q1 through Q40; `8 * (4 + 1) = 40` verification rows |
-| KV representation | `nvfp4_ds_mla`, dynamic per-token scale, FP8 RoPE, B12X block size 64 |
-| KV allocation | 9,250,000,000 bytes/rank; 37,000,000,000 bytes aggregate |
-| Reported KV capacity | 1,156,864 tokens |
-| Model limit | 262,144 tokens |
-| Graphs | `FULL_AND_PIECEWISE`, Q1 through Q40 |
-| TP transport | hybrid SparkRing native plus patched NCCL 2.30.7 NET/IB fallback |
-| DCP and indexer transport | stock `ag_rs` DCP and stock indexer collectives |
-| Online quantization | EXL3 K6, target-only scope |
-| Cache | native prefix caching enabled; LMCache and SparkCache disabled |
+| Tensor-parallel transport | SIRCL with patched NCCL fallback |
 
-## Rollback profile
+## 1. Prepare the four ranks
 
-The exact rollback is the fixed-MTP3, 9.25 GB KV profile. It differs from
-the candidate only in:
-
-```text
-profile and mode:              fixed-mtp4 -> fixed-mtp3
-VLLM_SPARK_MTP_TOKENS:         4          -> 3
-num_speculative_tokens:        4          -> 3
-VLLM_SPARK_MAX_QUERY_ROWS:     40         -> 32
-CUDA graph capture sizes:      Q1-Q40     -> Q1-Q32
-maximum graph capture size:    40         -> 32
-site serving.mtp_tokens:       4          -> 3
-```
-
-The rollback profile and site are byte-identical to the MTP3 KV9.25 inputs.
-The MTP3 rollback is documented in
-[GLM52_35BPW_FIXED_MTP3_PROFILE.md](GLM52_35BPW_FIXED_MTP3_PROFILE.md).
-
-## What it serves, measured
-
-Figures from the operator-accepted deployment; conditions and evidence in
-[GLM52_35BPW_FIXED_MTP4_PROFILE.md](GLM52_35BPW_FIXED_MTP4_PROFILE.md).
-
-| context | 4K | 8K | 16K | 32K | 64K | 128K |
-|---|---|---|---|---|---|---|
-| prefill, tokens/s | | 679 | 673 | 666 | 657 | 645 |
-| decode, one stream | 22.6 | 22.0 | 21.3 | 20.4 | 21.4 | |
-| decode, four streams | 50.3 | 51.9 | 49.2 | 45.6 | 47.2 | |
-| decode, eight streams | 78.4 | 71.3 | 70.0 | 65.5 | 67.8 | |
-
-Coding prompts peak at 27.3 tokens/s on one stream because MTP4 draft
-acceptance is higher there; the measured acceptance rate is 96.64%. The
-key-value pool holds 1,156,864 tokens: four concurrent requests at the
-full 262,144-token context, or roughly 140 at 8K.
-
-## Literal identifiers
-
-Scripts, directories, environment variables, and container paths spell this
-profile `exl3-r7` or `r7` — `runtime/exl3-r7/`, `scripts/exl3_r7_standup.py`,
-`/opt/sparkring-r7-tvm-ffi`, `/var/tmp/sparkring-r7-model`, and similar. Those
-strings are wire and filesystem contracts: attested hashes, baked image paths,
-and the serving stack's mounts all carry them, so they keep their spelling.
-The profile's name is GLM-5.2 3.5bpw; `r7` survives only inside literals.
-
-## 1. Complete the prerequisites
-
-Read [PREREQUISITES.md](PREREQUISITES.md) completely. You need four ARM64
-DGX Sparks with the direct 200-Gb/s cycle cabled and qualified, management
-SSH from rank 0 to every rank, Docker with GPU access, enough storage for
-the 346-GB model plus build/image headroom, and a filled ignored site
-configuration.
+Complete [the prerequisites](PREREQUISITES.md). Copy the site template to the
+ignored local configuration, replace every placeholder, and use one identical
+model path on every rank.
 
 ```bash
 cp scripts/config/exl3-r7-site.example.yaml scripts/config/site.yaml
 $EDITOR scripts/config/site.yaml
+python scripts/sparkring_site.py scripts/config/site.yaml
+python scripts/preflight.py --site scripts/config/site.yaml --print-plan
 ```
 
-Do not commit `scripts/config/site.yaml`. It contains local identities
-and paths. Review every resolved rank, NIC, GID, direct-ring peer, model
-path, and storage path before proceeding. The image fields remain unresolved
-until step 3, so validate the complete file after updating them there.
+The printed plan is offline. Run the command without `--print-plan` only after
+reviewing it; that contacts the configured hosts but does not mutate them.
 
-Two properties of the site configuration are load-bearing beyond schema
-validation, and a four-rank launch established both:
+## 2. Download and verify the checkpoint
 
-- **The management interface must be a LAN interface.** The launcher
-  derives the rendezvous address and the NCCL and GLOO out-of-band
-  interface from each rank's `management` block, and NCCL communicator
-  initialisation does not complete over a mesh-VPN interface: with
-  management on a Tailscale device, bootstrap TCP connected between every
-  rank and initialisation still made no progress in twenty minutes, while
-  the identical stack with management on the LAN formed every group in
-  seconds. Ring ports are rejected as management by the validator, so a
-  rank whose LAN link is down has no valid configuration until the link
-  returns.
-- **`runtime.model_path` is one path for every rank.** A checkpoint kept
-  under per-user home directories needs the same mount point on each
-  rank first. Bind-mount it; the Docker daemon refuses a symlink as a
-  bind source:
-
-  ```bash
-  sudo mkdir -p /var/tmp/glm52-r7-model
-  sudo mount --bind /home/<user>/models/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 \
-    /var/tmp/glm52-r7-model
-  ```
-
-## 2. Download and verify the immutable checkpoint
-
-The model is `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78` at revision
-`9ab9579774cc432df91567a36f6e9e863e0d4c9f`. The downloader verifies
-every runtime file against metadata at that pinned revision.
+Download the pinned checkpoint to the model path configured in the site file.
 
 ```bash
 python scripts/download_exl3_r7.py download \
   --model-path /var/tmp/sparkring-r7-model
-```
-
-This downloads 157 weight shards plus 10 pinned metadata files and
-verifies every SHA-256. The index total size is 346,218,639,128 bytes.
-The downloader rejects a stale payload total, missing LFS metadata, hash
-mismatch, or unmanifested files. It quarantines corrupted local files
-instead of silently overwriting them.
-
-Verify an existing download without re-downloading:
-
-```bash
 python scripts/download_exl3_r7.py verify \
   --model-path /var/tmp/sparkring-r7-model
 ```
 
-## 3. Obtain the ARM64 image
+The pinned checkpoint contains 157 weight shards. The index total is
+346,218,639,128 bytes.
 
-The runtime filesystem is published. `ghcr.io/fujitsupolycom/gb10-vllm-serving`
-holds one layer, `sha256:233970de794aec61170d16ee266015e0760e674974f4843294bc6e24d6b03c98`,
-which is the same layer the image built from `runtime/exl3-r7/` carries. Its
-entrypoint is `/usr/local/bin/sparkring-r7-entrypoint` and it is labelled
-`org.sparkring.runtime_id=glm52-gb10-faststart-19523482c298`. Pulling it is
-therefore an alternative to building, and it needs no registry credentials.
+## 3. Build and identify the runtime image
 
-### Option A: Pull the published image
+Pull the published ARM64 serving image as the builder's pinned parent:
 
 ```bash
 docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028
+docker image inspect \
+  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028 \
+  --format '{{.Id}}'
 ```
 
-`runtime/faststart-lock.json` owns that pin; the command repeats it rather than
-establishing a second one. The digest it names carries a `quack-kernels`
-compatibility correction over its parent
-`sha256:35b29616dc05677b98f647282e81a99fbca1969791ccbfca711c11a44285385e`, which
-a checkpoint other than GLM requires and which is inert for this profile.
-`docs/DEEPSEEK_V4_FLASH_QUICKSTART.md` states what the correction is.
-
-Container labels differ between a pulled image and one built locally, so the
-two carry the same filesystem under different configuration digests, and a
-configuration digest is what Docker reports as an image ID. Record whichever
-identity the image you run reports, by the command under Option B, and use it
-everywhere the stand-up asks for one. Every section of this page holds for a
-pulled image.
-
-The exact-Q40 layer binds to that identity rather than to a fixed one.
-`spark_transport/experiments/moe_round_floor/q40_exact_state_attestation_overlay.py`
-takes a required `--image-id` and embeds it in the model-runner source it
-emits, so its output hash depends on the image it was generated for, and
-`prepare_q40_exact_state_serving.py` sets `SPARK_Q40_EXACT_STATE_IMAGE_ID` from
-the same site identity. Generating the overlay against the image you run is
-what makes the two agree; section 7 covers that step.
-
-#### Complete a pulled image's serving contract
-
-The generated profiles attest seven files the published image does not
-carry — its deployment lineage supplied them through bind mounts. Every
-producer is tracked, so a derived image closes the gap. From a checkout
-holding the prepared tree of section 4 of the
-[reproduction guide](GLM52_35BPW_REPRODUCTION.md):
+Build on an ARM64 host from the tracked runtime inputs. Supply that immutable
+parent reference, the local image ID reported by Docker, and the audited SPDX
+license expression for the exact parent:
 
 ```bash
-tree=.sparkring/r7-prepared-sources/vllm
-python spark_transport/experiments/moe_round_floor/prepare_q40_overlay_inputs.py "$tree"
-python runtime/exl3-r7/bake_runtime_artifacts.py cudagraph "$tree"
-python runtime/exl3-r7/bake_runtime_artifacts.py vllm "$tree"
-python runtime/exl3-r7/build_parallel_state_shared_capture_overlay.py \
-  --source "$tree/vllm/distributed/parallel_state.py" --output parallel_state.py
-
-build=/var/tmp/glm52-image-contract
-mkdir -p "$build"
-cp runtime/exl3-r7/entrypoint.sh "$build/"
-cp "$tree/vllm/model_executor/model_loader/weight_utils.py" "$build/"
-cp "$tree/vllm/v1/worker/gpu/cudagraph_utils.py" "$build/"
-cp parallel_state.py "$build/"
-cp spark_transport/integrations/vllm/spark_dcp_collective_audit.py "$build/"
-cp runtime/exl3-r7/bake_runtime_artifacts.py "$build/"
+BASE_IMAGE=<parent-image-tag> \
+BASE_IMAGE_ID=<parent-image-sha256-id> \
+BASE_IMAGE_LICENSES=<parent-image-spdx-expression> \
+  ./runtime/exl3-r7/build-image.sh
 ```
 
-The wheel named by `runtime/exl3-r7/requirements-tvm-ffi.txt` goes into
-the same directory. The image then bakes everything:
-
-```dockerfile
-FROM ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028
-COPY entrypoint.sh /usr/local/bin/sparkring-r7-entrypoint
-COPY weight_utils.py /opt/venv/lib/python3.12/site-packages/vllm/model_executor/model_loader/weight_utils.py
-COPY cudagraph_utils.py /opt/venv/lib/python3.12/site-packages/vllm/v1/worker/gpu/cudagraph_utils.py
-COPY parallel_state.py /opt/venv/lib/python3.12/site-packages/vllm/distributed/parallel_state.py
-COPY spark_dcp_collective_audit.py /opt/spark-vllm/spark_dcp_collective_audit.py
-COPY bake_runtime_artifacts.py apache_tvm_ffi-0.1.10-*.whl /tmp/
-RUN chmod 0755 /usr/local/bin/sparkring-r7-entrypoint \
- && /opt/venv/bin/python /tmp/bake_runtime_artifacts.py quack /opt/venv/lib/python3.12/site-packages/quack \
- && /opt/venv/bin/pip install --no-cache-dir --no-index --no-deps \
-      --target /opt/sparkring-r7-tvm-ffi /tmp/apache_tvm_ffi-0.1.10-*.whl \
- && rm /tmp/bake_runtime_artifacts.py /tmp/apache_tvm_ffi-0.1.10-*.whl
-```
-
-Every profile start verifies the resulting hashes before running the
-engine, so a wrong input fails the launch rather than serving. A
-four-rank start from an image built this way passed that attestation on
-every rank and served through section 9's checks.
-
-### Option B: Use an existing local image by immutable ID
-
-If you have built the image or received it from a trusted builder, replace the
-placeholder in the site template:
+The exact-Q40 attestation generator requires `--image-id` and binds its output
+to the derived image. Record the immutable Docker image ID and set both runtime image fields in
+`scripts/config/site.yaml` before generating the launch profile.
 
 ```bash
-# Derive your image ID:
 docker image inspect <your-image-ref> --format '{{.Id}}'
 ```
 
-Update `scripts/config/site.yaml`:
 ```yaml
 runtime:
   container_image: <your-image-ref>
   container_image_digest: <your-image-id>
 ```
 
-### Option C: Local ARM64 build
+## 4. Generate the complete pre-exact-Q40 profile
 
-Use the receipt-gated builder in [`runtime/exl3-r7/`](../runtime/exl3-r7/README.md),
-then reference the resulting image ID in your site configuration. The builder
-is offline-validated source; a clean-checkout image built from it still needs
-the runtime overlay and live acceptance gates described below before it can be
-called live-validated.
-
-After either option, create an ignored candidate template with the same image
-identity and local paths. Do not edit the tracked example in place:
+Build and test the native SIRCL library, then create a local candidate template
+whose image and host paths match `scripts/config/site.yaml`.
 
 ```bash
+cmake -S spark_transport -B build/sircl-tiered \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CUDA_ARCHITECTURES=121
+cmake --build build/sircl-tiered \
+  --target spark_transport_capi \
+  --parallel
+ctest --test-dir build/sircl-tiered --output-on-failure
+
 mkdir -p .sparkring/exl3-r7
 cp scripts/config/exl3-r7-candidate.example.json \
   .sparkring/exl3-r7/candidate.json
 $EDITOR .sparkring/exl3-r7/candidate.json
-```
 
-Replace the image tag and image ID, then make `model_host_path` and
-`jit_cache_host_path` match `runtime.model_path` and `paths.jit_cache_dir` in
-the complete site file. The stand-up command rejects placeholders and
-cross-file drift. Validate the resolved site and inspect the preflight plan:
-
-```bash
-python scripts/sparkring_site.py scripts/config/site.yaml
-python scripts/preflight.py --site scripts/config/site.yaml --print-plan
-```
-
-The built image contains and startup-attests these runtime files:
-
-| File | SHA-256 | Public source status |
-|---|---|---|
-| entrypoint | `bbc72446e9a7d811c903e76e37e7d9dfce3d21108b2ea7c3db278bb71e84f95e` | `runtime/exl3-r7/entrypoint.sh` |
-| weight_utils local-I/O correction | `da5e6c3429293870d0de611183818fa57c0e9e0ad896784bc739c8a812343102` | hash-bound edit over the pinned vLLM result tree |
-| EXL3 SM121 scratch overlay | `8e0051faf9b8bac9eefd6f38a5f0133a30bca4c0b5ab41962537e2f13cf968f4` | pinned vLLM result tree |
-| cudagraph shared-stream overlay | `ef03d64297ed2d1a5161847b48a435bf8ae5feda7a5b81b668d00ae9a1d65a2a` | pinned vLLM result tree |
-| QuACK layout correction | `3199dc3f55f346183e3d284f6da98f4394eaf14f28b7616d147e6e49ec896194` | public QuACK 0.5.0 wheel plus hash-bound compatibility edit |
-| QuACK copy correction | `2ce88b0d7ee9afe025e52c02fcb32e772a429f1ee626b59546ab8b61d7a37929` | public QuACK 0.5.0 wheel plus hash-bound compatibility edit |
-| stock-DCP audit overlay | `077a234e4edff8b8dd44784953aef713884b4dd7a3f7c46589b14c6bb8b40745` | `spark_transport/integrations/vllm/spark_dcp_collective_audit.py` |
-| shared target/draft capture implementation | `b087e93463e9a2d9bede71d3a6e4d696c8f2657449e8dc1119b38613d5750e4e` | generated and baked by `runtime/exl3-r7/build_parallel_state_shared_capture_overlay.py` |
-| ARM64 tvm-ffi 0.1.10 wheel | `3829216a8500c2f61062e48c627f6db6c3fa49416b3ffa85bc04243ae5d759f7` | pinned public wheel installed into the image |
-
-The complete operator-profile generators, SIRCL source, exact-Q40 overlays,
-wheel inputs, and compatibility edits are public. Do not bypass their hashes.
-
-## 4. Generate the offline profile chain
-
-The stand-up entrypoint derives the complete profile chain from tracked
-inputs. It is **dry-run by default** — no files are written and no
-hosts are contacted.
-
-```bash
-python scripts/exl3_r7_standup.py plan \
+python scripts/glm35_profile.py plan --execute \
   --site scripts/config/site.yaml \
-  --template .sparkring/exl3-r7/candidate.json
+  --template .sparkring/exl3-r7/candidate.json \
+  --transport-library build/sircl-tiered/libspark_transport_capi.so \
+  --backend spark_transport/integrations/vllm/spark_tp4_backend.py \
+  --port-namespace spark_transport/integrations/vllm/spark_tp4_port_namespace.py
 ```
 
-Review the planned steps. All steps in this mode are OFFLINE. To execute
-the offline chain (writes files under `.sparkring/exl3-r7/`):
-
-```bash
-python scripts/exl3_r7_standup.py plan --execute \
-  --site scripts/config/site.yaml \
-  --template .sparkring/exl3-r7/candidate.json
-```
-
-This produces the derivation chain rooted at the **stock-DCP4 baseline**: the
-speculation-off control profile (DCP4 with the stock `ag_rs` DCP collectives,
-MTP disabled, Q24 CUDA graph capture, 9.0 GB of KV per rank) from which every
-fixed-MTP profile below is derived and against which they are A/B compared:
+The command writes only `.sparkring/exl3-r7/`. The complete dynamic-NVFP4,
+bounded full-CKV-gather, tiered-SIRCL serving inputs are:
 
 ```text
-.sparkring/exl3-r7/
-  stock-dcp4-profile.json      # stock-DCP4 baseline (MTP-off, Q24, 9 GB)
-  mtp2-profile.json            # fixed-MTP2 derivative
-  mtp3-profile.json            # fixed-MTP3 derivative
-  mtp3-kv925-profile.json     # KV9.25 profile (byte-identical to MTP3)
-  mtp3-kv925-site.yaml         # KV9.25 site (9.25 GB KV/rank)
-  mtp4-kv925-profile.json     # fixed-MTP4 candidate
-  mtp4-kv925-site.yaml         # candidate site (mtp_tokens: 4)
-  mtp4-kv925-rollback.json     # byte-identical to MTP3 KV9.25
-  mtp4-kv925-rollback-site.yaml # byte-identical to MTP3 KV9.25 site
+.sparkring/exl3-r7/pre-q40-profile.json
+.sparkring/exl3-r7/pre-q40-site.yaml
+.sparkring/exl3-r7/pre-q40-receipt.json
+.sparkring/exl3-r7/pre-q40-bundle/
 ```
 
-The receipt JSON includes SHA-256 hashes for every profile and site, plus
-the rollback identity assertion.
+The output directory also contains the fixed-MTP4 foundation, each
+intermediate profile and site, and byte-identical rollback inputs. The receipt
+binds the complete profile, site, and five SIRCL artifacts by SHA-256.
 
-## 5. Validate the generated profiles
+## 5. Bind the exact-Q40 overlays
+
+The exact-Q40 tools remain separate because they accept only pinned vLLM source
+bytes and bind the serving profile to the built image ID. Prepare the pinned
+vLLM tree, generate `exl3.py` with
+`q40_exact_state_overlay.py`, and generate `model_runner.py` with
+`q40_exact_state_attestation_overlay.py`. Then bind those outputs to the
+complete pre-Q40 profile:
 
 ```bash
-python -m pytest scripts/test_generate_exl3_r7_candidate.py \
-  scripts/test_generate_exl3_r7_stock_dcp4.py \
-  scripts/test_prepare_exl3_r7_mtp2.py \
-  scripts/test_prepare_exl3_r7_mtp3.py \
-  scripts/test_prepare_exl3_r7_mtp3_kv925.py \
-  scripts/test_prepare_exl3_r7_mtp4.py \
-  scripts/test_download_exl3_r7.py \
-  scripts/test_exl3_r7_standup.py -q
+python scripts/glm35_q40/prepare_q40_exact_state_serving.py \
+  --base-profile .sparkring/exl3-r7/pre-q40-profile.json \
+  --expected-base-profile-sha256 <pre-q40-profile-sha256> \
+  --exl3 .sparkring/exl3-r7/q40-overlay/exl3.py \
+  --model-runner .sparkring/exl3-r7/q40-overlay/model_runner.py \
+  --expected-model-runner-sha256 <model-runner-sha256> \
+  --bundle .sparkring/exl3-r7/q40-bundle \
+  --output-profile .sparkring/exl3-r7/exact-q40-profile.json \
+  --output-manifest .sparkring/exl3-r7/exact-q40-receipt.json
 ```
 
-## 6. Inspect the dry-run launch plan (OFFLINE)
+Use `pre_q40_profile_sha256` from the compiler's printed receipt. The exact-Q40
+generators reject source-byte or image-identity drift rather than rewriting an
+unrecognized runtime.
 
-After filling `scripts/config/site.yaml`:
-
-```bash
-python scripts/preflight.py --site scripts/config/site.yaml --print-plan
-```
-
-This plan-only command is **OFFLINE** and prints the remote checks without
-contacting the configured hosts. Review it before running the full
-**READ-ONLY REMOTE** preflight:
-
-```bash
-python scripts/preflight.py --site scripts/config/site.yaml
-```
-
-## 7. Complete the operator-profile derivation
-
-Run sections 3 through 6 of the
-[operator reproduction guide](GLM52_35BPW_REPRODUCTION.md) to create:
-
-```text
-.sparkring/exl3-r7/mtp4-nvfp4-ckv-site.yaml
-.sparkring/exl3-r7/operator-profile.json
-```
-
-These files contain the dynamic-NVFP4, CKV-gather, tiered-SIRCL, and exact-Q40
-layers. The 65K `mtp4-kv925-profile.json` is only their reproducible foundation.
-Stage the two generated bundles using section 7 of the reproduction guide;
-that step mutates the four named hosts and requires explicit authorization.
-Then inspect and run the final site's preflight:
+Inspect the final launch plan before starting any remote process.
 
 ```bash
 python scripts/preflight.py \
-  --site .sparkring/exl3-r7/mtp4-nvfp4-ckv-site.yaml \
+  --site .sparkring/exl3-r7/pre-q40-site.yaml \
   --print-plan
-python scripts/preflight.py \
-  --site .sparkring/exl3-r7/mtp4-nvfp4-ckv-site.yaml
-```
-
-## 8. Start the reviewed profile (MUTATES HOST + STOPS SERVING)
-
-Starting the candidate requires explicit authorization for the four named
-hosts, every baked artifact at its exact container path, both generated bundles
-at their attested remote paths, and a preserved rollback path. Use the generic
-launcher:
-
-```bash
 python scripts/sparkring_generic_launcher.py \
-  --site .sparkring/exl3-r7/mtp4-nvfp4-ckv-site.yaml \
-  --profile .sparkring/exl3-r7/operator-profile.json \
+  --site .sparkring/exl3-r7/pre-q40-site.yaml \
+  --profile .sparkring/exl3-r7/exact-q40-profile.json \
   plan
 ```
 
-A rank that has run this profile before holds adaptive-MTP receipts in its
-JIT cache directory, and two guards refuse to start against them: the
-exact-state attestation requires a receipt whose attested flag is unset to be
-archived first, and the adaptive controller refuses to overwrite its own. Both
-name the file they found. Archive every `adaptive-mtp-*.json` and
-`adaptive-mtp-*.jsonl` under `paths.jit_cache_dir` on each rank before
-starting, keeping the contents under a timestamped name rather than deleting
-them:
+## 6. Start and verify
 
-```bash
-for receipt in "$JIT_CACHE_DIR"/adaptive-mtp-*.json "$JIT_CACHE_DIR"/adaptive-mtp-*.jsonl; do
-  [ -e "$receipt" ] || continue
-  case "$receipt" in *.archived-*) continue ;; esac
-  mv "$receipt" "$receipt.archived-$(date -u +%Y%m%dT%H%M%SZ)"
-done
-```
-
-A first start on a rank that has never run the profile finds no receipt and
-needs nothing archived.
-
-Review the plan. Then start (this **STOPS SERVING** if a stack is running):
+The complete profile has status **implemented**. Copy the two generated
+bundles to their declared remote roots on all four ranks before launch.
+Staging bundles and starting the service mutate the named hosts; starting can
+replace a running serving stack and requires explicit authorization.
 
 ```bash
 python scripts/sparkring_generic_launcher.py \
-  --site .sparkring/exl3-r7/mtp4-nvfp4-ckv-site.yaml \
-  --profile .sparkring/exl3-r7/operator-profile.json \
+  --site .sparkring/exl3-r7/pre-q40-site.yaml \
+  --profile .sparkring/exl3-r7/exact-q40-profile.json \
   --execute \
   --confirmation START-SIRCL-Q40-EXACT-STATE-CANARY-ALL-FOUR \
   start
-```
 
-## 9. Health and model checks
-
-```bash
 python scripts/sparkring_generic_launcher.py \
-  --site .sparkring/exl3-r7/mtp4-nvfp4-ckv-site.yaml \
-  --profile .sparkring/exl3-r7/operator-profile.json \
+  --site .sparkring/exl3-r7/pre-q40-site.yaml \
+  --profile .sparkring/exl3-r7/exact-q40-profile.json \
   --execute status
 ```
 
-Require `/health` HTTP 200, the exact served model name
-`glm-5.2-exl3-r7-3.5bpw`, and 262,144 maximum model length from
-`/v1/models`.
+Require HTTP 200 from `/health`, model name `glm-5.2-exl3-r7-3.5bpw`, and a
+262,144-token maximum length in `/v1/models`.
 
-## 10. MTP3 rollback
+## Evidence and limitations
 
-If the MTP4 candidate must be rolled back, the exact MTP3 KV9.25 profile
-and site are in the rollback artifacts:
-
-```bash
-python scripts/sparkring_generic_launcher.py \
-  --site scripts/config/site.yaml \
-  --profile .sparkring/exl3-r7/mtp4-kv925-rollback.json \
-  --execute \
-  --confirmation START-EXL3-GLM-5.2 3.5bpw-CANDIDATE-ALL-FOUR \
-  start
-```
-
-The rollback profile is byte-identical to the MTP3 KV9.25 input. Verify:
-
-```bash
-sha256sum .sparkring/exl3-r7/mtp4-kv925-rollback.json
-sha256sum .sparkring/exl3-r7/mtp3-kv925-profile.json
-```
-
-These must match.
-
-## Limitations
-
-- The operator profile is accepted on one four-Spark appliance. A rebuilt
-  image is not accepted until the promotion checklist passes against its ID.
-- MTP4 improves the measured C1-C4 cells but regresses the matched
-  C8 cell by 11.63%. See
-  [GLM52_35BPW_FIXED_MTP4_PROFILE.md](GLM52_35BPW_FIXED_MTP4_PROFILE.md).
-- The published image carries the runtime filesystem, and the exact-Q40
-  attestation names the identity of an image built locally, so a pulled image
-  serves the profile without that layer. The source builder is
-  offline-validated; its clean-checkout image has not completed the published
-  four-rank live gate.
-- Dynamic-NVFP4, CKV-gather, tiered-SIRCL, and exact-Q40 composition commands
-  are published in
-  [`GLM52_35BPW_REPRODUCTION.md`](GLM52_35BPW_REPRODUCTION.md).
-- DCP and indexer collectives use the stock path. Only the
-  qualified TP all-reduce and vocabulary families use the SparkRing native
-  transport.
-- Fixed MTP5 requires a Q48 Python contract extension and the matching
-  native library, which the deployed overlay set supplies rather than the
-  bare image. A four-rank launch at `num_speculative_tokens: 5` serves and
-  reports mean acceptance length between 4.38 and 5.52. Whether it decodes
-  faster than the fixed-MTP4 contract above is unmeasured: no matched
-  comparison between the two has been run, so this page continues to
-  specify MTP4.
-
-## Input chain
-
-The public input chain is:
-
-```text
-recipes/glm52-exl3-r7-3.5bpw.json          # tracked recipe (model + serving contract)
-scripts/config/exl3-r7-pins.json             # public pins (derived from recipe)
-scripts/config/exl3-r7-candidate.example.json # candidate template (placeholders)
-scripts/config/exl3-r7-site.example.yaml       # site template (placeholder addresses)
-scripts/generate_exl3_r7_candidate.py         # baseline profile generator
-scripts/generate_exl3_r7_stock_dcp4.py        # stock-DCP4 baseline generator
-scripts/prepare_exl3_r7_mtp2.py               # MTP2 derivative
-scripts/prepare_exl3_r7_mtp3.py                # MTP3 derivative
-scripts/prepare_exl3_r7_mtp3_kv925.py          # KV9.25 derivative (site-only)
-scripts/prepare_exl3_r7_mtp4.py                # MTP4 derivative (the candidate)
-scripts/prepare_exl3_r7_mtp4_nvfp4.py          # 262K dynamic-NVFP4 derivative
-scripts/prepare_exl3_r7_mtp4_ckv_gather.py     # bounded full-CKV derivative
-scripts/prepare_exl3_r7_sircl_tiered.py         # tiered/deferred SIRCL bundle/profile
-spark_transport/experiments/moe_round_floor/q40_exact_state_overlay.py
-spark_transport/experiments/moe_round_floor/q40_exact_state_attestation_overlay.py
-spark_transport/experiments/moe_round_floor/prepare_q40_exact_state_serving.py
-scripts/download_exl3_r7.py                     # checkpoint downloader/verifier
-scripts/exl3_r7_standup.py                      # stand-up entrypoint (dry-run default)
-```
-
-The chain has no untracked inputs. In particular, the stock-DCP4 baseline —
-the MTP-off DCP4 control profile defined in section 4 — is fully derived by
-`scripts/generate_exl3_r7_stock_dcp4.py` from the tracked candidate generator
-output plus the serving contract in
-`recipes/glm52-exl3-r7-3.5bpw.json`; no maintainer-held profile file is
-required to reproduce it.
+The qualified appliance measured the profile with fixed MTP4, dynamic NVFP4 MLA
+key-value cache, bounded full-CKV gather, and SIRCL TP collectives. Results and
+limits are in [the serving record](GLM52_35BPW_FIXED_MTP4_PROFILE.md) and
+[results](RESULTS.md). DCP and indexer collectives use the stock path.

@@ -1,9 +1,0 @@
---- upstream/vllm/model_executor/layers/quantization/__init__.py
-+++ installed/vllm/model_executor/layers/quantization/__init__.py
-@@ -189,3 +189,6 @@
-     "register_quantization_config",
-     "QUANTIZATION_METHODS",
- ]
-+
-+# --- hybrid overlay (07-19): register hybrid_mxfp4_ct at import time ---
-+from . import hybrid_mxfp4_ct  # noqa: F401,E402

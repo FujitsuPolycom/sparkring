@@ -2,7 +2,7 @@
 
 These files are test-only snapshots of the Apache-2.0-licensed vLLM result
 tree that [`runtime/exl3-r7/pins.json`](../pins.json) names, after
-`spark_transport/experiments/moe_round_floor/prepare_q40_overlay_inputs.py`
+`scripts/glm35_q40/prepare_q40_overlay_inputs.py`
 has applied the two exact-Q40 input edits: the W4A16 scratch reservation in
 `exl3.py` and the routed-expert capturer from `q40_v2_route_capture.patch`
 in `model_runner.py`. The pinned tree alone does not carry either file at

@@ -1,55 +1,27 @@
 # SparkRing
 
-> **This repository is changing rapidly.** Documentation, profiles, and
-> branch history are being restructured as SparkRing's scope narrows to
-> switchless four-Spark collective transport and serving. Published
-> branches may be rebased and documents may be moved, renamed, or
-> replaced without a deprecation period. Pin a commit if you depend on a
-> specific state of this tree.
+SparkRing serves two supported model profiles on four directly cabled NVIDIA DGX
+Sparks. Four 200 Gb/s ConnectX-7 links form a switchless cycle; tensor-parallel
+ranks use the cycle for inference traffic and the management network for SSH,
+rendezvous, and the API.
 
-SparkRing is a low-latency collective transport and vLLM-based
-inference-serving stack for switchless clusters of NVIDIA DGX Spark systems
-powered by the GB10 Grace Blackwell Superchip.
+## Profiles
 
-Four 200 Gb/s ConnectX-7 links connect four DGX Sparks in a physical ring.
-Models run as tensor-parallel deployments without an Ethernet or InfiniBand
-switch in the inference fabric.
+| Profile | Model identity | Status | Start here |
+|---|---|---|---|
+| GLM-5.2 EXL3 3.5-bpw | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | qualified on one four-Spark appliance; rebuilt images retain implemented status until promotion | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
+| DeepSeek-V4-Flash-0731 | `deepseek-ai/DeepSeek-V4-Flash-0731` | implemented launch; SIRCL width 4096 is research-only | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 
-SparkRing routes qualified vLLM collectives through SIRCL, its custom RDMA
-transport for the four-node ring. CUDA-graph command rings support repeated
-decode work, while patched NCCL handles communication outside SIRCL's supported
-paths.
+The GLM profile is defined by
+[`recipes/glm52-exl3-r7-3.5bpw.json`](recipes/glm52-exl3-r7-3.5bpw.json). The
+DeepSeek profile is defined by
+[`recipes/deepseek-v4-flash-0731.json`](recipes/deepseek-v4-flash-0731.json)
+and uses the immutable published image pinned in
+[`runtime/faststart-lock.json`](runtime/faststart-lock.json) and the tracked
+per-rank environment template
+[`scripts/config/deepseek-v4-flash-0731.env.example`](scripts/config/deepseek-v4-flash-0731.env.example).
 
-The repository provides launch tooling, speculative-decoding integration,
-model profiles, and explicit qualification evidence. Model-specific policy
-belongs to profiles rather than the transport.
-
-## Start here
-
-| Goal | Documentation |
-|---|---|
-| Deploy the reproducible public default | [Four-Spark quickstart](docs/QUICKSTART.md) |
-| Select another model or configuration | [Validated-profiles registry](docs/profiles/README.md) |
-| Understand the transport and runtime | [Architecture](docs/ARCHITECTURE.md) |
-| Inspect measured results | [Results and evidence boundaries](docs/RESULTS.md) |
-| Prepare a new cluster | [Prerequisites](docs/PREREQUISITES.md) |
-| Contribute code or documentation | [Contributor guide](CONTRIBUTING.md) and [agent guide](AGENTS.md) |
-
-## Deployment profiles
-
-| Profile | Status | Start here |
-|---|---|---|
-| GLM-5.2 EXL3 3.25-bpw with LMCache | Public default; live-validated | [Quickstart](docs/QUICKSTART.md) |
-| GLM-5.2 3.5bpw | Accepted; one appliance | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
-| GLM-5.2 NF3 | Accepted; deterministic | [Quickstart](docs/NF3_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | Functional; not shadow-qualified | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| Qwen, Meta, gpt-oss, and others | launch verified| [Complete registry](docs/profiles/README.md) |
-
-The registry owns model identities, revisions, configuration links, maturity,
-and remaining qualification gates. This README does not duplicate those
-contracts.
-
-## Topology
+## Architecture
 
 ```text
              management network
@@ -65,75 +37,26 @@ contracts.
                   200 Gb/s
 ```
 
-Management traffic uses the ordinary LAN. RDMA inference traffic uses the four
-direct ConnectX-7 links.
+SIRCL, the Switchless Inference RDMA Collective Layer, provides the qualified
+collective path. Patched NCCL is the fallback for communication outside that
+path. See [architecture](docs/ARCHITECTURE.md) and [SIRCL](docs/SIRCL.md).
 
-## Transport and vLLM integration
+## Prerequisites and evidence
 
-SIRCL is the Switchless Inference RDMA Collective Layer. It owns the persistent
-RDMA sessions and graph-replayable command rings used by qualified collective
-operations.
-
-A checksum-pinned NCCL build provides the ring-safe fallback for communication
-that SIRCL does not admit.
-
-SparkRing integrates with vLLM through either the published runtime overlay or
-the optional `sparkring_plugin` Python package. The plugin passes offline tests
-but has not yet been validated on a live cluster.
-
-Implementation details and admission mechanics are documented in:
-
-- [SIRCL](docs/SIRCL.md)
-- [System architecture](docs/ARCHITECTURE.md)
-- [vLLM integration](spark_transport/integrations/vllm/README.md)
-- [Machine-readable component status](docs/STATUS.json)
+Before deploying either profile, complete the four-Spark
+[prerequisites](docs/PREREQUISITES.md). Measured results, conditions, and
+limitations are in [results](docs/RESULTS.md). The two-profile registry is
+[`docs/profiles/README.md`](docs/profiles/README.md).
 
 ## Repository map
 
 | Path | Purpose |
 |---|---|
-| `spark_transport/` | Native transport, probes, tests, and vLLM adapters |
-| `sparkring_plugin/` | Optional pip-installable vLLM integration |
-| `sparkcache/` | Persistent rank-local context cache |
-| `runtime/` | Pinned runtime builders and published patches |
-| `scripts/` | Site configuration, preflight, launch, and evidence tooling |
-| `recipes/` | Machine-readable serving profiles |
-| `docs/` | Architecture, procedures, profiles, results, and historical records |
-
-## Offline contributor checks
-
-These commands require neither a cluster nor a GPU:
-
-```bash
-python -m pip install -r requirements-dev.txt
-python -m pip install \
-  --index-url https://download.pytorch.org/whl/cpu \
-  "torch==2.11.0"
-
-python -m pytest spark_transport sparkcache runtime scripts -q
-python -m pytest sparkring_plugin -q
-ruff check --select E,F,W --ignore E501 --exclude runtime/patches .
-```
-
-## Evidence and maturity
-
-Measured claims and their limitations are recorded in
-[`docs/RESULTS.md`](docs/RESULTS.md). Component maturity is recorded in
-[`docs/STATUS.json`](docs/STATUS.json). Experimental chronology and superseded
-configurations belong in explicitly historical documents.
-
-A published configuration is not automatically accepted. Each profile states
-whether it is offline-validated, live-validated, accepted, research-only, or
-unsupported.
-
-## Acknowledgements
-
-SparkRing builds on work from vLLM, NVIDIA NCCL, B12X, SparkInfer, LMCache,
-ExLlamaV3, and the
-[local inference community](https://github.com/local-inference-lab/).
-
-Detailed third-party attribution is in
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+| `spark_transport/` | Native transport and vLLM adapters |
+| `runtime/` | Pinned runtime inputs and builders |
+| `scripts/` | Site validation, preflight, launch, and evidence tooling |
+| `recipes/` | Machine-readable serving recipes |
+| `docs/` | Profile procedures, architecture, prerequisites, and evidence |
 
 ## License
 

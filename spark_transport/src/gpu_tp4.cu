@@ -52,8 +52,8 @@ __device__ void publish_sequence(std::uint64_t* address,
 }
 
 __global__ void tp4_worker_kernel(
-    std::uint8_t* round0_buffer, Tp2BufferLayout round0_layout,
-    std::uint8_t* round1_buffer, Tp2BufferLayout round1_layout,
+    std::uint8_t* round0_buffer, ExchangeBufferLayout round0_layout,
+    std::uint8_t* round1_buffer, ExchangeBufferLayout round1_layout,
     const __nv_bfloat16* input, __nv_bfloat16* intermediate,
     __nv_bfloat16* output, std::size_t payload_bytes, std::uint32_t rank,
     std::uint64_t final_sequence) {
@@ -233,9 +233,9 @@ GpuTp4Worker::~GpuTp4Worker() {
 }
 
 void GpuTp4Worker::launch(void* round0_mapped_device_buffer,
-                          const Tp2BufferLayout& round0_layout,
+                          const ExchangeBufferLayout& round0_layout,
                           void* round1_mapped_device_buffer,
-                          const Tp2BufferLayout& round1_layout,
+                          const ExchangeBufferLayout& round1_layout,
                           std::uint32_t rank,
                           std::uint64_t final_sequence) {
   if (rank >= 4) {

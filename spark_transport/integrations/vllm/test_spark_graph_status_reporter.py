@@ -67,7 +67,7 @@ class GraphStatusReporterTest(unittest.TestCase):
             self.assertGreaterEqual(payload["snapshot"]["sequence"], 2)
             self.assertEqual(list(path.parent.glob("*.tmp")), [])
 
-    def test_collects_all_transport_families_in_one_snapshot(
+    def test_collects_retained_transport_families_in_one_snapshot(
         self,
     ) -> None:
         all_reduce = types.ModuleType("spark_tp4_backend")
@@ -82,26 +82,10 @@ class GraphStatusReporterTest(unittest.TestCase):
             "sessions": {"2": {"completed_sequence": 5}},
             "events": {"captured_nodes": 5},
         }
-        dcp = types.ModuleType("spark_tp4_dcp_backend")
-        dcp.dcp_graph_diagnostic_snapshot = lambda: {
-            "sessions": {"2": {"completed_sequence": 11}},
-            "events": {
-                "captured_query_nodes": 78,
-                "captured_combine_nodes": 78,
-            },
-            "shadow_nodes": {"2": {"query": 78, "combine": 78}},
-        }
-        indexer = types.ModuleType("spark_tp4_allgather_backend")
-        indexer.indexer_graph_diagnostic_snapshot = lambda: {
-            "sessions": {"2": {"completed_sequence": 7}},
-            "events": {"captured_nodes": 9},
-        }
         with patch.dict(
             "sys.modules",
             {
                 "spark_tp4_backend": all_reduce,
-                "spark_tp4_allgather_backend": indexer,
-                "spark_tp4_dcp_backend": dcp,
                 "spark_tp4_vocab_allgather_backend": vocabulary,
             },
         ):
@@ -118,24 +102,6 @@ class GraphStatusReporterTest(unittest.TestCase):
                     },
                     "events": {"captured_nodes": 169},
                 },
-                "dcp": {
-                    "sessions": {
-                        "2": {"completed_sequence": 11}
-                    },
-                    "events": {
-                        "captured_query_nodes": 78,
-                        "captured_combine_nodes": 78,
-                    },
-                    "shadow_nodes": {
-                        "2": {"query": 78, "combine": 78}
-                    },
-                },
-                "indexer": {
-                    "sessions": {
-                        "2": {"completed_sequence": 7}
-                    },
-                    "events": {"captured_nodes": 9},
-                },
                 "vocabulary": {
                     "sessions": {
                         "2": {"completed_sequence": 5}
@@ -149,6 +115,24 @@ class GraphStatusReporterTest(unittest.TestCase):
                     "eager_total": 0,
                 },
             },
+        )
+
+    def test_retained_snapshot_excludes_unsupported_families(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "SPARK_CUDAGRAPH_REPLAY_TIMING": "1",
+                "SPARK_Q2R_PROBE": "1",
+                "VLLM_SPARK_TRUE_ADAPTIVE_DRAFT": "1",
+                "SPARK_ADAPTIVE_MTP_CONTROL": "1",
+            },
+            clear=False,
+        ):
+            snapshot = spark_graph_status_reporter.collect_graph_status()
+
+        self.assertEqual(
+            set(snapshot),
+            {"all_reduce", "vocabulary", "stock_collectives"},
         )
 
     def test_opt_in_process_reporter_is_idempotent(self) -> None:
@@ -182,82 +166,6 @@ class GraphStatusReporterTest(unittest.TestCase):
             # after the context manager and is therefore too late on Linux.
             spark_graph_status_reporter.stop_status_reporter()
 
-    def test_collects_replay_timing_only_when_enabled(self) -> None:
-        timing = types.ModuleType("spark_cudagraph_replay_timing")
-        timing.graph_replay_timing_snapshot = lambda: {
-            "enabled": True,
-            "completed": 7,
-        }
-        with (
-            patch.dict(
-                os.environ,
-                {"SPARK_CUDAGRAPH_REPLAY_TIMING": "1"},
-                clear=False,
-            ),
-            patch.dict(
-                "sys.modules",
-                {"spark_cudagraph_replay_timing": timing},
-            ),
-        ):
-            snapshot = spark_graph_status_reporter.collect_graph_status()
-
-        self.assertEqual(
-            snapshot["graph_replay_timing"],
-            {"enabled": True, "completed": 7},
-        )
-
-    def test_collects_q2r_probe_only_when_enabled(self) -> None:
-        probe = types.ModuleType("spark_q2r_probe_bridge")
-        probe.q2r_probe_snapshot = lambda: {
-            "enabled": True,
-            "session_id": "gate-1",
-        }
-        with (
-            patch.dict(
-                os.environ,
-                {"SPARK_Q2R_PROBE": "1"},
-                clear=False,
-            ),
-            patch.dict(
-                "sys.modules",
-                {"spark_q2r_probe_bridge": probe},
-            ),
-        ):
-            snapshot = spark_graph_status_reporter.collect_graph_status()
-
-        self.assertEqual(
-            snapshot["q2r_probe"],
-            {"enabled": True, "session_id": "gate-1"},
-        )
-
-    def test_collects_true_adaptive_draft_only_when_enabled(self) -> None:
-        adaptive = types.ModuleType("spark_true_adaptive_draft")
-        adaptive.true_adaptive_draft_snapshot = lambda: {
-            "enabled": True,
-            "saved_draft_steps": 91,
-            "proposal_requests_by_depth": {"2": 7, "4": 3},
-        }
-        with (
-            patch.dict(
-                os.environ,
-                {"VLLM_SPARK_TRUE_ADAPTIVE_DRAFT": "1"},
-                clear=False,
-            ),
-            patch.dict(
-                "sys.modules",
-                {"spark_true_adaptive_draft": adaptive},
-            ),
-        ):
-            snapshot = spark_graph_status_reporter.collect_graph_status()
-
-        self.assertEqual(
-            snapshot["true_adaptive_draft"],
-            {
-                "enabled": True,
-                "saved_draft_steps": 91,
-                "proposal_requests_by_depth": {"2": 7, "4": 3},
-            },
-        )
 
     def test_transient_snapshot_failure_does_not_kill_reporter(
         self,

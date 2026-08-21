@@ -4,7 +4,7 @@
 A "site" is one four-node ring: the ranks, the four 200GbE cables that join
 them, the control-channel rendezvous addresses, the pinned runtime, and the
 paths and artifacts every rank must agree on.  ``scripts/config/site.yaml``
-(copied from ``site.example.yaml``) is the single source of truth for the
+(copied from ``exl3-r7-site.example.yaml``) is the single source of truth for the
 public tooling; ``scripts/preflight.py`` is driven entirely by it.
 
 Design rules:
@@ -22,7 +22,7 @@ Design rules:
 
 Usage::
 
-    python scripts/sparkring_site.py scripts/config/site.example.yaml
+    python scripts/sparkring_site.py scripts/config/exl3-r7-site.example.yaml
     python -m sparkring_site scripts/config/site.yaml --json
 
 Exit status is 0 when the file validates, 1 when it does not.
@@ -1465,8 +1465,8 @@ def load_site(path: str | Path) -> SiteConfig:
     except FileNotFoundError:
         raise SiteConfigError(
             str(resolved),
-            "site configuration file not found; copy "
-            "scripts/config/site.example.yaml and fill it in",
+                "site configuration file not found; copy "
+                "scripts/config/exl3-r7-site.example.yaml and fill it in",
         ) from None
     except OSError as exc:
         raise SiteConfigError(

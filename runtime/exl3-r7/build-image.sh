@@ -42,7 +42,6 @@ if ! git -C "${repo_root}" diff --quiet HEAD -- \
   runtime/exl3-r7 \
   runtime/build-public-overlay.py \
   runtime/public-overlay-files.json \
-  runtime/exl3/patches/exllamav3-arm64-external-collectives.patch \
   spark_transport; then
   fatal "builder inputs differ from SparkRing revision ${sparkring_revision}"
 fi
@@ -50,7 +49,6 @@ untracked_inputs="$(git -C "${repo_root}" ls-files --others --exclude-standard -
   runtime/exl3-r7 \
   runtime/build-public-overlay.py \
   runtime/public-overlay-files.json \
-  runtime/exl3/patches/exllamav3-arm64-external-collectives.patch \
   spark_transport)"
 if [[ -n "${untracked_inputs}" ]]; then
   fatal "builder inputs include untracked files: ${untracked_inputs%%$'\n'*}"
@@ -89,7 +87,7 @@ cp "${here}/../build-public-overlay.py" \
 cp "${here}/../public-overlay-files.json" \
   "${context}/bundle/public-overlay-files.json"
 cp -a "${repo_root}/spark_transport" "${context}/bundle/spark_transport"
-cp "${here}/../exl3/patches/exllamav3-arm64-external-collectives.patch" \
+cp "${here}/exllamav3-arm64-external-collectives.patch" \
   "${context}/bundle/exllamav3-arm64-external-collectives.patch"
 mv "${context}/sources/vllm" "${context}/bundle/vllm"
 mv "${context}/sources/b12x" "${context}/bundle/b12x"

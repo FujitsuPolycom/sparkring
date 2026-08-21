@@ -24,16 +24,6 @@ _EAGER_ALLREDUCE_PORT_STRIDE = 2
 _EAGER_ALLREDUCE_PREFILL_MAX_QUERY_ROWS = 512
 _EAGER_ALLREDUCE_DEFAULT_WIDTH_ELEMENTS = 6144
 
-_EAGER_ALLGATHER_DEFAULT_BASE_PORT = 9490
-_EAGER_ALLGATHER_PORT_STRIDE = 10
-# The exact-signature adapter assigns one durable slot to each admitted
-# signature.  Keep its source-level assertion synchronized with this tuple.
-EAGER_ALLGATHER_PORT_SLOTS = tuple(range(8))
-_EAGER_ALLGATHER_CKV_PORT_SLOTS = frozenset({2, 7})
-
-_GRAPH_INDEXER_DEFAULT_PORTS = (9462, 9463)
-_EAGER_DCP_DEFAULT_PORTS = (9890, 9891)
-_GRAPH_DCP_DEFAULT_PORTS = (9892, 9893)
 _GRAPH_ALLREDUCE_DEFAULT_PORTS = (9970, 9971)
 _GRAPH_DUAL_PORT_Q40_DEFAULT_PORTS = (9972, 9973)
 _EAGER_VOCAB_DEFAULT_PORTS = (9990, 9991)
@@ -318,38 +308,6 @@ def _eager_allreduce_pair(
     return eager_allreduce_ports_for_payload(payload_bytes, environ)
 
 
-def _eager_allgather_pair(
-    port_slot: int, environ: Mapping[str, str]
-) -> tuple[int, int]:
-    if port_slot not in EAGER_ALLGATHER_PORT_SLOTS:
-        raise ValueError(
-            "Spark TP4 eager all-gather port slot must be one of "
-            f"{EAGER_ALLGATHER_PORT_SLOTS}: {port_slot}"
-        )
-    base = _integer(
-        environ,
-        "SPARK_TP4_ALLGATHER_BASE_PORT",
-        _EAGER_ALLGATHER_DEFAULT_BASE_PORT,
-    )
-    port0 = base + port_slot * _EAGER_ALLGATHER_PORT_STRIDE
-    return validate_control_port_pair(
-        (port0, port0 + 1),
-        owner=f"eager all-gather slot {port_slot}",
-    )
-
-
-def _active_eager_allgather_port_slots(
-    environ: Mapping[str, str],
-) -> tuple[int, ...]:
-    ckv_enabled = _flag(
-        environ, "SPARK_TP4_ALLGATHER_ENABLE_CKV"
-    )
-    return tuple(
-        port_slot
-        for port_slot in EAGER_ALLGATHER_PORT_SLOTS
-        if ckv_enabled
-        or port_slot not in _EAGER_ALLGATHER_CKV_PORT_SLOTS
-    )
 
 
 def _graph_allreduce_pair(environ: Mapping[str, str]) -> tuple[int, int]:
@@ -374,34 +332,6 @@ def _graph_dual_port_q40_pair(
     )
 
 
-def _graph_indexer_pair(environ: Mapping[str, str]) -> tuple[int, int]:
-    return _configured_pair(
-        environ,
-        owner="graph indexer all-gather",
-        name0="SPARK_TP4_GRAPH_INDEXER_CONTROL_PORT0",
-        name1="SPARK_TP4_GRAPH_INDEXER_CONTROL_PORT1",
-        defaults=_GRAPH_INDEXER_DEFAULT_PORTS,
-    )
-
-
-def _eager_dcp_pair(environ: Mapping[str, str]) -> tuple[int, int]:
-    return _configured_pair(
-        environ,
-        owner="eager DCP",
-        name0="SPARK_TP4_DCP_CONTROL_PORT0",
-        name1="SPARK_TP4_DCP_CONTROL_PORT1",
-        defaults=_EAGER_DCP_DEFAULT_PORTS,
-    )
-
-
-def _graph_dcp_pair(environ: Mapping[str, str]) -> tuple[int, int]:
-    return _configured_pair(
-        environ,
-        owner="graph DCP",
-        name0="SPARK_TP4_GRAPH_DCP_CONTROL_PORT0",
-        name1="SPARK_TP4_GRAPH_DCP_CONTROL_PORT1",
-        defaults=_GRAPH_DCP_DEFAULT_PORTS,
-    )
 
 
 def _eager_vocab_pair(environ: Mapping[str, str]) -> tuple[int, int]:
@@ -473,29 +403,6 @@ def active_port_reservations(
                     )
                 )
 
-    allgather_mode = _mode(
-        environment,
-        "VLLM_SPARK_TP4_ALLGATHER_MODE",
-        frozenset({"custom", "shadow"}),
-    )
-    if allgather_mode:
-        for port_slot in _active_eager_allgather_port_slots(environment):
-            reservations.append(
-                PortReservation(
-                    f"eager_allgather:slot={port_slot}",
-                    _eager_allgather_pair(port_slot, environment),
-                )
-            )
-        if allgather_mode == "custom" and _flag(
-            environment, "VLLM_SPARK_TP4_INDEXER_GRAPH_CUSTOM"
-        ):
-            reservations.append(
-                PortReservation(
-                    "graph_indexer_allgather",
-                    _graph_indexer_pair(environment),
-                )
-            )
-
     vocab_mode = _mode(
         environment,
         "VLLM_SPARK_TP4_VOCAB_MODE",
@@ -511,46 +418,6 @@ def active_port_reservations(
             reservations.append(
                 PortReservation("graph_vocab", _graph_vocab_pair(environment))
             )
-
-    dcp_mode = _mode(
-        environment,
-        "VLLM_SPARK_TP4_DCP_MODE",
-        frozenset({"custom", "shadow"}),
-    )
-    if dcp_mode:
-        query_enabled = _flag(
-            environment, "VLLM_SPARK_TP4_DCP_QUERY_ENABLED", "1"
-        )
-        combine_enabled = _flag(
-            environment, "VLLM_SPARK_TP4_DCP_COMBINE_ENABLED", "1"
-        )
-        if query_enabled or combine_enabled:
-            reservations.append(
-                PortReservation("eager_dcp", _eager_dcp_pair(environment))
-            )
-            graph_shadow = _flag(
-                environment, "VLLM_SPARK_TP4_DCP_GRAPH_SHADOW"
-            )
-            graph_custom = _flag(
-                environment, "VLLM_SPARK_TP4_DCP_GRAPH_CUSTOM"
-            )
-            if graph_shadow and graph_custom:
-                raise ValueError(
-                    "Spark TP4 DCP graph shadow and custom modes are "
-                    "mutually exclusive"
-                )
-            if graph_shadow and dcp_mode != "shadow":
-                raise ValueError(
-                    "VLLM_SPARK_TP4_DCP_GRAPH_SHADOW requires DCP shadow mode"
-                )
-            if graph_custom and dcp_mode != "custom":
-                raise ValueError(
-                    "VLLM_SPARK_TP4_DCP_GRAPH_CUSTOM requires DCP custom mode"
-                )
-            if graph_shadow or graph_custom:
-                reservations.append(
-                    PortReservation("graph_dcp", _graph_dcp_pair(environment))
-                )
 
     return tuple(reservations)
 
@@ -612,40 +479,6 @@ def graph_dual_port_q40_control_ports(
     return ports
 
 
-def eager_allgather_control_ports(
-    port_slot: int, environ: Mapping[str, str] | None = None
-) -> tuple[int, int]:
-    environment = _environment(environ)
-    ports = _eager_allgather_pair(port_slot, environment)
-    validate_active_port_namespace(environment)
-    return ports
-
-
-def graph_indexer_control_ports(
-    environ: Mapping[str, str] | None = None,
-) -> tuple[int, int]:
-    environment = _environment(environ)
-    ports = _graph_indexer_pair(environment)
-    validate_active_port_namespace(environment)
-    return ports
-
-
-def eager_dcp_control_ports(
-    environ: Mapping[str, str] | None = None,
-) -> tuple[int, int]:
-    environment = _environment(environ)
-    ports = _eager_dcp_pair(environment)
-    validate_active_port_namespace(environment)
-    return ports
-
-
-def graph_dcp_control_ports(
-    environ: Mapping[str, str] | None = None,
-) -> tuple[int, int]:
-    environment = _environment(environ)
-    ports = _graph_dcp_pair(environment)
-    validate_active_port_namespace(environment)
-    return ports
 
 
 def eager_vocab_control_ports(

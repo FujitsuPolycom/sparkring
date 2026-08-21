@@ -57,16 +57,10 @@ std::vector<std::uint32_t> Topology::ranks() const {
   return {unique.begin(), unique.end()};
 }
 
-Topology Topology::four_spark_tp2_pp2() {
-  // vLLM global ranks are deliberately mapped to logical nodes:
-  //   0=spark0, 1=spark1, 2=spark3, 3=spark2.
-  //
-  // TP edges: 0<->1 and 2<->3.
-  // PP edges: 0<->2 and 1<->3.
-  //
-  // Each pair is a directly attached 200G edge. Device selection is local:
-  // the spark0/spark1 TP pair uses cage 0; the spark3/spark2 TP pair and the
-  // two PP lanes use the corresponding direct cage on each physical node.
+Topology Topology::four_spark_direct_cycle() {
+  // vLLM global ranks map to physical nodes as
+  // 0=spark0, 1=spark1, 2=spark3, 3=spark2. The four undirected pairs below
+  // are the direct-cable cycle 0-1-3-2-0 in that logical rank space.
   // Exact device assignment is injected at deployment; these logical edges
   // intentionally do not embed host-specific interface names.
   std::vector<EdgeConfig> edges;

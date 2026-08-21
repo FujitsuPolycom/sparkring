@@ -1,11 +1,12 @@
 # Direct-cable qualification
 
-Run `scripts/qualify_direct_cable.py` on every new, moved, or suspect
+Status: implemented offline qualification procedure.
+
+Run `spark_transport/scripts/qualify_direct_cable.py` on every new, moved, or suspect
 direct-attached cable **before** loading a model. Link-up and ping are not
-enough: the test requires bidirectional 12,288-byte and 16,384-byte traffic,
-the two latency-sensitive decode-collective payload sizes measured in
-`spark_transport/README.md`, while watching NIC error
-counters.
+enough: the test requires bidirectional traffic for the 12,288-byte GLM Q1
+BF16 payload (`[1, 6144]`) and the 16,384-byte DeepSeek Q2 BF16 payload
+(`[2, 4096]`) while watching NIC error counters.
 
 The controller is deliberately non-destructive. It only:
 
@@ -55,8 +56,7 @@ install the exact same executable at `/tmp/spark_transport_probe` on both
 Sparks. The script verifies SHA-256 equality.
 
 Example for the rank 0--1 edge (`<SUBNET_01>` is that cable's /24 fabric
-prefix from `../docs/SETUP.md` Section 1):
-
+prefix from `../docs/PREREQUISITES.md`):
 ```bash
 python3 spark_transport/scripts/qualify_direct_cable.py \
   --tier roce200 \
@@ -86,52 +86,6 @@ The RoCE tier additionally requires:
 
 The default p99 target is 20 microseconds. Override it only as an explicit
 experiment with `--max-p99-us`.
-
-## Direct 10GbE diagonal
-
-Build the existing raw benchmark:
-
-```bash
-cd spark_transport/experiments/ten_gbe_diagonal
-./build_raw.sh
-./ten_gbe_raw_bench --self-test
-```
-
-Copy the same executable to `/tmp/ten_gbe_raw_bench` on both endpoints. Raw
-Ethernet requires `CAP_NET_RAW`; `--use-sudo` invokes only the benchmark with
-`sudo -n` and will fail closed if noninteractive sudo is unavailable.
-
-Example for rank 0--2 with its current MTU 1500 (`<SUBNET_D02>` is the
-diagonal's own /24 prefix, distinct from the four ring `<SUBNET_xx>` prefixes
-in `../docs/SETUP.md`):
-
-```bash
-python3 spark_transport/scripts/qualify_direct_cable.py \
-  --tier diagonal10 \
-  --left user@192.0.2.1 \
-  --right user@192.0.2.3 \
-  --left-interface enP7s7 \
-  --right-interface enP7s7 \
-  --left-ip <SUBNET_D02>.1 \
-  --right-ip <SUBNET_D02>.2 \
-  --expected-mtu 1500 \
-  --probe-binary /tmp/ten_gbe_raw_bench \
-  --left-cpu 13 \
-  --right-cpu 13 \
-  --use-sudo \
-  --iterations 10000 \
-  --output results/cable-r0-r2-10gbe.json
-```
-
-Use `--expected-mtu 9000` for a diagonal already configured and verified at
-jumbo MTU. The script does not change it.
-
-The raw benchmark uses private EtherType `0x88B5`, TPACKET_V2, `sendmmsg`,
-exact MAC filtering, per-fragment and full-payload CRC, and sequence/loss
-accounting. The default 30-microsecond p99 target is a *transport* target. A
-miss is a warning by default because AF_PACKET includes kernel/NAPI work; add
-`--strict-latency` only when this cable must qualify for the current decode
-critical path.
 
 ## Fast preflight and test policy
 

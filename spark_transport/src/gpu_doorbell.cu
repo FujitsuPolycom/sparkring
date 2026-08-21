@@ -123,6 +123,24 @@ std::size_t aligned_control_offset(std::size_t payload_bytes) {
   return (payload_bytes + alignment - 1) & ~(alignment - 1);
 }
 
+ExchangeBufferLayout make_exchange_buffer_layout(
+    std::size_t payload_bytes) {
+  if (payload_bytes == 0 ||
+      payload_bytes % sizeof(std::uint16_t) != 0) {
+    throw std::invalid_argument(
+        "exchange payload must contain a nonzero whole number of "
+        "16-bit elements");
+  }
+
+  ExchangeBufferLayout layout{};
+  layout.send_offset = 0;
+  layout.receive_offset = aligned_control_offset(payload_bytes);
+  layout.control_offset =
+      aligned_control_offset(layout.receive_offset + payload_bytes);
+  layout.total_bytes = layout.control_offset + sizeof(DoorbellControl);
+  return layout;
+}
+
 void launch_sender_doorbell(void* device_buffer, std::size_t payload_bytes,
                             std::size_t control_offset,
                             std::uint64_t final_sequence) {

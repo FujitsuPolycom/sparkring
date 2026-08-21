@@ -80,8 +80,8 @@ __device__ void copy_token_major(
 
 __global__ void tp4_vocab_all_gather(
     std::uint32_t rank, std::uint8_t* round0_buffer,
-    Tp2BufferLayout round0_layout, std::uint8_t* round1_buffer,
-    Tp2BufferLayout round1_layout, const std::uint8_t* input,
+    ExchangeBufferLayout round0_layout, std::uint8_t* round1_buffer,
+    ExchangeBufferLayout round1_layout, const std::uint8_t* input,
     std::uint8_t* output, std::uint32_t query_rows,
     std::uint64_t fixed_sequence,
     Tp4GraphCommandRing* graph_commands, bool graph_trace) {
@@ -229,9 +229,9 @@ make_tp4_vocab_allgather_buffer_layout() {
       tp4_vocab_input_bytes(kTp4VocabMaxQueryRows);
   layout.max_output_bytes =
       tp4_vocab_output_bytes(kTp4VocabMaxQueryRows);
-  layout.round0 = make_tp2_buffer_layout(layout.max_input_bytes);
+  layout.round0 = make_exchange_buffer_layout(layout.max_input_bytes);
   layout.round1 =
-      make_tp2_buffer_layout(layout.max_input_bytes * 2);
+      make_exchange_buffer_layout(layout.max_input_bytes * 2);
   return layout;
 }
 
