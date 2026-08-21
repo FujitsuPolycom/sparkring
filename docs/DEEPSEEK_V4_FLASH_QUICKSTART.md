@@ -31,9 +31,14 @@ verification — is identical.
 ## 1. Prepare the ranks
 
 Complete [the prerequisites](PREREQUISITES.md) for the topology you are
-deploying. Download the official FP8 checkpoint once, distribute identical
-bytes to every rank, and choose the same container model mount on each host.
-The model contains 48 safetensors shards totaling about 167 GB.
+deploying, including the fabric routing and forwarding checks. On a cycle, a
+rendezvous reaches ranks that are not directly cabled to each other only if
+every node relays for its neighbours, and Docker's default `FORWARD` policy
+blocks that relay.
+
+Download the official FP8 checkpoint once, distribute identical bytes to every
+rank, and choose the same container model mount on each host. The model
+contains 48 safetensors shards totaling about 167 GB.
 
 Pull the immutable ARM64 runtime image on every rank before launching any rank:
 
