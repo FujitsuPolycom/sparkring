@@ -45,8 +45,16 @@ def test_build_script_fails_closed_on_base_image_drift() -> None:
 
 
 def test_build_script_passes_base_image_id_as_build_arg() -> None:
-    """The immutable image ID must be forwarded to the Containerfile."""
-    assert '--build-arg "BASE_IMAGE=${observed_base}"' in BUILD_SCRIPT
+    """The immutable image ID must be forwarded to the Containerfile.
+
+    BuildKit resolves a bare sha256 ID in FROM against the registry, so the
+    verified parent is retagged under a build-local name; the immutable ID
+    still travels as BASE_IMAGE_ID, and the tag is applied to the observed
+    ID only after the drift check.
+    """
+    assert '"${engine}" tag "${observed_base}" "${parent_build_tag}"' in BUILD_SCRIPT
+    assert '--build-arg "BASE_IMAGE=${parent_build_tag}"' in BUILD_SCRIPT
+    assert '--build-arg "BASE_IMAGE_ID=${observed_base}"' in BUILD_SCRIPT
 
 
 def test_containerfile_labels_parent_image_id() -> None:

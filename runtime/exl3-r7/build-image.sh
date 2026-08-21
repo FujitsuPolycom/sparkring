@@ -65,6 +65,15 @@ else
   python3 "${here}/prepare_context.py" "${context}/sources"
 fi
 
+# The image bake verifies the exact-Q40 overlay input state of the vLLM tree
+# (bake_runtime_artifacts.py pins the post-preparation exl3.py hash), while
+# receipt verification accepts only the pristine prepared tree. Apply the
+# overlay-input preparation to the build-context copy so both gates hold: the
+# original prepared tree stays receipt-clean, and the tree entering the image
+# carries the state the bake requires.
+python3 "${repo_root}/scripts/glm35_q40/prepare_q40_overlay_inputs.py" \
+  "${context}/sources/vllm"
+
 cp "${here}/Containerfile" "${context}/Containerfile"
 python3 "${here}/prepare_build_deps.py" "${deps_cache}"
 python3 "${here}/prepare_build_deps.py" --verify "${deps_cache}"
@@ -75,6 +84,8 @@ cp "${here}/verify_runtime.py" "${context}/bundle/runtime/verify_runtime.py"
 cp "${here}/entrypoint.sh" "${context}/bundle/runtime/entrypoint.sh"
 cp "${here}/bake_runtime_artifacts.py" \
   "${context}/bundle/runtime/bake_runtime_artifacts.py"
+cp "${here}/cudagraph_shared_stream.patch" \
+  "${context}/bundle/runtime/cudagraph_shared_stream.patch"
 cp "${here}/build_parallel_state_shared_capture_overlay.py" \
   "${context}/bundle/runtime/build_parallel_state_shared_capture_overlay.py"
 cp "${here}/requirements-quack.txt" \
@@ -95,11 +106,20 @@ mv "${context}/sources/b12x" "${context}/bundle/b12x"
 source_receipt_sha="$(sha256sum "${context}/sources/receipt.json" | awk '{print $1}')"
 rm -rf -- "${context}/sources"
 
+# BuildKit resolves a bare sha256 image ID in FROM against the registry, not
+# the local store, so the verified parent is retagged under a local name for
+# the build. Identity remains enforced: the tag is applied to the observed ID
+# after the drift check, and the ID itself is recorded via BASE_IMAGE_ID.
+parent_build_tag="sparkring-r7-parent:${observed_base#sha256:}"
+parent_build_tag="${parent_build_tag:0:70}"
+"${engine}" tag "${observed_base}" "${parent_build_tag}"
+trap '"${engine}" rmi "${parent_build_tag}" >/dev/null 2>&1 || true; rm -rf -- "${context}"' EXIT
+
 "${engine}" build \
   --platform linux/arm64 \
   --file "${context}/Containerfile" \
   --tag "${image}" \
-  --build-arg "BASE_IMAGE=${observed_base}" \
+  --build-arg "BASE_IMAGE=${parent_build_tag}" \
   --build-arg "BASE_IMAGE_ID=${observed_base}" \
   --build-arg "BASE_IMAGE_LICENSES=${base_image_licenses}" \
   --build-arg "IMAGE_LICENSES=${image_licenses}" \

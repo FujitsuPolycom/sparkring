@@ -113,7 +113,7 @@ def test_wrapper_chain_rejects_non_callable_original_link() -> None:
         )
 
 
-def test_dcp_mode_requires_dcp_marker_in_stacked_group_chain(
+def test_vocab_mode_requires_vocab_marker_in_group_chain(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -126,24 +126,13 @@ def test_dcp_mode_requires_dcp_marker_in_stacked_group_chain(
     all_reduce_wrapper._spark_original = all_reduce_terminal  # type: ignore[attr-defined]
     all_reduce_wrapper._spark_tp4_backend = True  # type: ignore[attr-defined]
 
-    def all_gather_terminal(
+    def all_gather_stock(
         self: object,
         output_tensor: object,
         input_tensor: object,
         stream: object,
     ) -> None:
         del self, output_tensor, input_tensor, stream
-
-    def all_gather_wrapper(
-        self: object,
-        output_tensor: object,
-        input_tensor: object,
-        stream: object,
-    ) -> None:
-        del self, output_tensor, input_tensor, stream
-
-    all_gather_wrapper._spark_original = all_gather_terminal  # type: ignore[attr-defined]
-    all_gather_wrapper._spark_tp4_allgather_backend = True  # type: ignore[attr-defined]
 
     def group_terminal(
         self: object,
@@ -159,16 +148,7 @@ def test_dcp_mode_requires_dcp_marker_in_stacked_group_chain(
     ) -> None:
         del self, input_tensor, dim
 
-    def dcp_wrapper(
-        self: object,
-        input_tensor: object,
-        dim: int,
-    ) -> None:
-        del self, input_tensor, dim
-
     vocabulary_wrapper._spark_original = group_terminal  # type: ignore[attr-defined]
-    vocabulary_wrapper._spark_tp4_vocab_backend = True  # type: ignore[attr-defined]
-    dcp_wrapper._spark_original = vocabulary_wrapper  # type: ignore[attr-defined]
 
     cuda_module = types.ModuleType(
         "vllm.distributed.device_communicators.cuda_communicator"
@@ -180,11 +160,11 @@ def test_dcp_mode_requires_dcp_marker_in_stacked_group_chain(
         "vllm.distributed.device_communicators.pynccl"
     )
     pynccl_module.PyNcclCommunicator = types.SimpleNamespace(
-        all_gather=all_gather_wrapper
+        all_gather=all_gather_stock
     )
     parallel_state = types.ModuleType("vllm.distributed.parallel_state")
     parallel_state.GroupCoordinator = types.SimpleNamespace(
-        _all_gather_out_place=dcp_wrapper
+        _all_gather_out_place=vocabulary_wrapper
     )
     for name, module in {
         cuda_module.__name__: cuda_module,
@@ -205,22 +185,20 @@ def test_dcp_mode_requires_dcp_marker_in_stacked_group_chain(
     library.write_bytes(b"test")
     for name in (
         "VLLM_SPARK_TP4_MODE",
-        "VLLM_SPARK_TP4_ALLGATHER_MODE",
         "VLLM_SPARK_TP4_VOCAB_MODE",
-        "VLLM_SPARK_TP4_DCP_MODE",
     ):
         monkeypatch.setenv(name, "custom")
     monkeypatch.setenv("SPARK_TP4_LIBRARY", str(library))
 
     with pytest.raises(
         RuntimeError,
-        match="_spark_tp4_dcp_backend is absent",
+        match="_spark_tp4_vocab_backend is absent",
     ):
         verify_runtime.verify_sircl_hooks({})
 
-    dcp_wrapper._spark_tp4_dcp_backend = True  # type: ignore[attr-defined]
+    vocabulary_wrapper._spark_tp4_vocab_backend = True  # type: ignore[attr-defined]
     evidence: dict[str, object] = {}
     verify_runtime.verify_sircl_hooks(evidence)
     assert evidence["sircl"]["targets"][  # type: ignore[index]
-        "GroupCoordinator._all_gather_out_place[DCP]"
+        "GroupCoordinator._all_gather_out_place"
     ] == ["self", "input_", "dim"]

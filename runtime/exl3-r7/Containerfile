@@ -19,7 +19,7 @@ ARG TVM_FFI_VERSION=0.1.10
 ARG TVM_FFI_WHEEL_SHA256=3829216a8500c2f61062e48c627f6db6c3fa49416b3ffa85bc04243ae5d759f7
 ARG EXLLAMAV3_REPOSITORY=https://github.com/brandonmmusic-max/exllamav3.git
 ARG EXLLAMAV3_COMMIT=704aefd743b390af4bd0fb429d1906f9b964c7d8
-ARG EXLLAMAV3_ARM64_PATCH_SHA256=9fdf5f6fdd2f8bef395c068ce53a360066afbda3a23e1dc8a99852bf48eff975
+ARG EXLLAMAV3_ARM64_PATCH_SHA256=8666a992878c56a0268f63b3e9f089a963a2c9d0e5cf1fc814f2ed1cd57ca7e1
 ARG EXLLAMAV3_ARM64_TREE=581d6fd7b5d39f6890d8a7a5c6b3e6e519a73a2a
 ARG INSTANTTENSOR_REPOSITORY=https://github.com/voipmonitor/InstantTensor.git
 ARG INSTANTTENSOR_COMMIT=49b4010afc1cae0441e71fe0b0bffc24fa05e932
@@ -51,6 +51,11 @@ RUN test "${TARGETARCH}" = arm64 \
       build-essential ccache cmake git libibverbs-dev ninja-build python3-dev \
  && rm -rf /var/lib/apt/lists/*
 
+# A parent that is itself a derived serving image may carry /opt/r7-src,
+# /opt/exllamav3-python, and /opt/instanttensor-src from its own build. Each
+# is removed before being repopulated so the produced content depends only on
+# this build's pinned inputs, never on parent leftovers.
+RUN rm -rf /opt/r7-src
 COPY bundle /opt/r7-src
 
 ENV TORCH_CUDA_ARCH_LIST=12.1a \
@@ -68,6 +73,8 @@ ENV TORCH_CUDA_ARCH_LIST=12.1a \
 # extension failures must not force the 397-edge CUDA build to run again.
 RUN --mount=type=cache,id=sparkring-r7-ccache,target=/cache/jit/ccache,sharing=locked \
     rm -f /opt/venv/lib/python3.12/site-packages/sparkring_nf3_hybrid.pth \
+ && /opt/venv/bin/python /opt/r7-src/runtime/bake_runtime_artifacts.py \
+      cudagraph /opt/r7-src/vllm \
  && /opt/venv/bin/python /opt/r7-src/runtime/bake_runtime_artifacts.py \
       vllm /opt/r7-src/vllm \
  && /opt/venv/bin/python \
@@ -119,7 +126,8 @@ RUN cmake -S /opt/r7-src/spark_transport \
 # SparkRing patch supplies ARM64 stubs because distributed collectives are
 # provided by SIRCL instead of ExLlamaV3's CPU backend.
 RUN --mount=type=cache,id=sparkring-r7-ccache,target=/cache/jit/ccache,sharing=locked \
-    git clone --filter=blob:none --no-checkout \
+    rm -rf /opt/exllamav3-python \
+ && git clone --filter=blob:none --no-checkout \
       "${EXLLAMAV3_REPOSITORY}" /opt/exllamav3-python \
  && git -C /opt/exllamav3-python config core.autocrlf false \
  && git -C /opt/exllamav3-python fetch --depth 1 origin "${EXLLAMAV3_COMMIT}" \
@@ -134,7 +142,8 @@ RUN --mount=type=cache,id=sparkring-r7-ccache,target=/cache/jit/ccache,sharing=l
  && /opt/venv/bin/python setup.py build_ext --inplace \
  && test "$(find /opt/exllamav3-python -maxdepth 1 -type f -name 'exllamav3_ext*.so' | wc -l)" = 1
 
-RUN git clone --filter=blob:none --no-checkout \
+RUN rm -rf /opt/instanttensor-src \
+ && git clone --filter=blob:none --no-checkout \
       "${INSTANTTENSOR_REPOSITORY}" /opt/instanttensor-src \
  && git -C /opt/instanttensor-src config core.autocrlf false \
  && git -C /opt/instanttensor-src fetch --depth 1 origin "${INSTANTTENSOR_COMMIT}" \
