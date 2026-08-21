@@ -185,8 +185,20 @@ bought.
 
 ## Evidence boundary
 
-Both launches exercised API health, chat completions, tool calling, and DSpark
-speculation. Performance observations are not qualified measurements. The
+Each topology carries its own evidence, recorded in its serving contract.
+
+The two-Spark launch was exercised on 2026-08-21 on two directly cabled Sparks:
+both ranks rendezvoused, a deterministic completion, an emitted tool call and a
+34-tool chat request returned coherent output with no leaked markers, and DSpark
+speculation ran at depth 5 with a 2.76 mean acceptance length. It mounted only
+the checkpoint and a cache directory, so the published image needs no source
+overlay.
+
+The four-Spark launch carries the earlier recorded cycle deployment's evidence:
+API health, chat completions, tool calling, and DSpark speculation. It has not
+been re-exercised against the pinned image published here.
+
+Performance observations in either topology are not qualified measurements. The
 normal launch uses patched NCCL from the environment template; SIRCL width-4096
 graph collectives are research-only and are not part of this quickstart. See
 [the profile record](profiles/DEEPSEEK_V4_FLASH_0731.md) and
