@@ -12,21 +12,25 @@ for the pair and
 [`recipes/deepseek-v4-flash-0731.json`](../recipes/deepseek-v4-flash-0731.json)
 for the cycle.
 
-The two topologies differ in exactly three places: the parallelism flags, the
-per-rank key-value reservation and request length that follow from how much of
-the model each rank holds, and the transport half of the environment template.
-Everything else — image, entrypoint, checkpoint, speculation, parsers,
-verification — is identical.
+Both topologies serve the checkpoint's full 1,048,576-token request length with
+identical scheduler settings. They differ in the parallelism flags, the
+key-value reservation each node can afford, and the transport half of the
+environment template. Image, entrypoint, checkpoint, speculation, parsers and
+verification are shared.
 
 | | Two-Spark pair | Four-Spark cycle |
 |---|---|---|
 | Ranks | 0-1 | 0-3 |
 | Cabling | one DAC, cage 0 to cage 0 | four DACs as `0-1-2-3-0` |
-| Weight share per rank | one half | one quarter |
+| Weights resident per rank | 80.97 GiB | 40.82 GiB |
 | `--tensor-parallel-size` / `--nnodes` | 2 | 4 |
-| `--kv-cache-memory-bytes` | 10737418240 (10 GiB) | 34359738368 (32 GiB) |
-| `--max-model-len` | 131072 | 524288 |
+| `--kv-cache-memory-bytes` | 12884901888 (12 GiB) | 17179869184 (16 GiB) |
+| Resulting pool / concurrency at 1M | 1,139,967 tokens, 1.09x | 1,519,925 tokens, 1.45x |
+| Free memory per node while serving | 8-10 GB | ~50 GB |
 | Environment template | `deepseek-v4-flash-0731-pair.env.example` | `deepseek-v4-flash-0731.env.example` |
+
+`--max-model-len 1048576`, `--max-num-seqs 32` and `--max-num-batched-tokens
+8192` are the same in both.
 
 ## 1. Prepare the ranks
 
@@ -107,10 +111,11 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
   --master-addr "$RANK0_FABRIC_ADDR" --master-port 29500 \
   --distributed-executor-backend mp \
   --dtype bfloat16 \
-  --max-model-len 131072 \
+  --max-model-len 1048576 \
   --max-num-seqs 32 \
+  --max-num-batched-tokens 8192 \
   --gpu-memory-utilization 0.70 \
-  --kv-cache-memory-bytes 10737418240 \
+  --kv-cache-memory-bytes 12884901888 \
   --kv-cache-dtype fp8_ds_mla \
   --tokenizer-mode deepseek_v4 \
   --kernel-config '{"enable_cutedsl_warmup": false}' \
@@ -121,17 +126,11 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
   $([ "$RANK" -eq 0 ] && echo "--host 0.0.0.0 --port 8000" || echo "--headless")
 ```
 
-Two ranks hold half the weights each rather than a quarter, so less memory
-remains for the key-value reservation than on a cycle. The 10 GiB reservation
-and 131,072 request length above are the documented pair values. Raising either
-without measuring free memory after load risks a rank being killed during
-startup; on this platform that failure can leave the host answering ICMP while
-refusing to complete any new connection, recoverable only by a power cycle.
-
 ### Four-Spark cycle
 
 Set `RANK` to `0`, `1`, `2`, or `3` on the corresponding host. Rank 0 serves the
-API; the other ranks must use `--headless`.
+API; the other ranks must use `--headless`. The command is identical to the
+pair's except for the parallelism flags and the key-value reservation:
 
 ```bash
 docker run -d --name deepseek-v4-flash-r"$RANK" \
@@ -147,10 +146,11 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
   --master-addr "$RANK0_FABRIC_ADDR" --master-port 29500 \
   --distributed-executor-backend mp \
   --dtype bfloat16 \
-  --max-model-len 524288 \
+  --max-model-len 1048576 \
   --max-num-seqs 32 \
+  --max-num-batched-tokens 8192 \
   --gpu-memory-utilization 0.70 \
-  --kv-cache-memory-bytes 34359738368 \
+  --kv-cache-memory-bytes 17179869184 \
   --kv-cache-dtype fp8_ds_mla \
   --tokenizer-mode deepseek_v4 \
   --kernel-config '{"enable_cutedsl_warmup": false}' \
@@ -163,10 +163,53 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
 
 `--kv-cache-dtype fp8_ds_mla` is required in both topologies: it declares the
 model's MLA key-value geometry and matches the allocated layout. Do not
-substitute generic `fp8`. `--gpu-memory-utilization 0.70` is the documented
-GB10 value for both launches.
+substitute generic `fp8`.
 
-## 3. Verify rank 0
+## 3. Sizing: four coupled parameters, and one inactive guard
+
+`--max-model-len`, `--kv-cache-memory-bytes`, `--max-num-seqs` and
+`--max-num-batched-tokens` are not independent. Changing one alone will
+usually fail or waste memory.
+
+**Set `--max-num-batched-tokens` explicitly.** Left unset, the engine derives a
+scheduled-token budget from the speculation settings and warns that it is
+suboptimal: at 32 sequences and speculation depth 5 it derived 1,920 tokens.
+Setting 8192 raises the budget to 7,936 and measured **+51% aggregate
+throughput at 32 concurrent requests** on a pair, with single-stream and
+8-stream throughput unchanged. A small budget only bites once enough sequences
+compete for it.
+
+**A longer request limit is close to free; a larger pool is not.** This model
+has bounded cache groups whose cost per sequence is fixed, so per-token pool
+cost falls as the request limit rises — about 18.5 KB per token at a
+131,072-token limit and about 6 KB at 1,048,576. Raising `--max-model-len` from
+131,072 to 1,048,576 on a pair, changing nothing else, cost no additional
+memory.
+
+**Sequence count and speculation depth inflate the per-request floor.** The
+engine refuses to start unless the pool can hold one full-length request. On a
+pair at 1,048,576 tokens that floor was about 6.2 GiB at 32 sequences with the
+derived budget, and **11.04 GiB at 64 sequences with an 8192 budget** — the same
+context, nearly twice the floor. Raising sequences therefore forces a larger
+reservation, which buys less pool per byte: 64 sequences at 16 GiB produced a
+*smaller* pool (1,519,925 tokens) than 32 sequences at 12 GiB relative to the
+memory spent, while measuring within 2% on every concurrency cell. Prefer 32.
+
+**`--kv-cache-memory-bytes` disables the memory-utilization guard.** The engine
+states this explicitly: it "skipped memory profiling. This does not respect the
+`gpu_memory_utilization` config." `--gpu-memory-utilization 0.70` is therefore
+**not** a safety ceiling in either launch above — it is inert whenever an
+explicit byte count is given. Nothing will stop an oversized reservation from
+exhausting the node.
+
+Check free memory after a launch rather than trusting the flag. A pair serving
+this configuration reports 8-10 GB free per node; a cycle reports about 50 GB.
+A node driven to 2-3 GB free with swap in use is one long prefill away from
+having its engine core killed, and on this platform severe memory exhaustion
+can leave a host answering ICMP while refusing to complete any new connection,
+recoverable only by a power cycle.
+
+## 4. Verify rank 0
 
 Wait for the API health endpoint, then issue a deterministic chat request.
 
@@ -183,6 +226,42 @@ metrics. `Mean acceptance length` above one confirms speculative decoding is
 active, and `GPU KV cache size` reports the token capacity the reservation
 bought.
 
+## Measured
+
+Client-observed aggregate throughput, 256-token prompts, 512-token
+generations, both topologies on the settings above:
+
+| Concurrent requests | Two-Spark pair | Four-Spark cycle |
+|---:|---:|---:|
+| 1 | 36.7 tok/s | 56.5 tok/s |
+| 8 | 123.8 tok/s | 177.5 tok/s |
+| 16 | 173.4 tok/s | 256.1 tok/s |
+| 32 | 237.7 tok/s | 347.5 tok/s |
+
+Doubling the node count buys about 1.45x across the whole ladder rather than
+2x. Decode is latency-bound on collectives, not bandwidth-bound: the model
+issues two all-reduces per layer across 43 layers, about 688 KB per token in
+total, which is a fraction of a percent of a 200 Gb/s link, but each token
+waits on roughly 86 synchronous round-trips that cannot overlap, because
+decode is autoregressive: the input to step `N+1` includes the token produced
+at step `N`.
+
+Speculation amortises those round-trips. At a mean acceptance length of 3.06 on
+a cycle, one forward pass yields about three tokens, so the collectives cost
+roughly a third as much per output token. Raising acceptance is equivalent to
+making collectives cheaper.
+
+**Do not expect a faster all-reduce backend on this hardware.** The engine
+reports selecting `PYNCCL` from the potential set `NCCL_SYMM_MEM`,
+`QUICK_REDUCE`, `FLASHINFER`, `AITER_CUSTOM`, `CUSTOM`, `SYMM_MEM`, `PYNCCL`.
+Every faster entry requires peer-accessible GPU memory on one host — NVLink or
+PCIe peer-to-peer — or is ROCm-only. With one GPU per node communicating over
+RoCE, `PYNCCL` is the correct selection rather than a fallback. Setting
+`VLLM_ENABLE_PCIE_ALLREDUCE`, `VLLM_PCIE_ALLREDUCE_BACKEND=cpp` and
+`VLLM_CPP_AR_1STAGE_NCCL_CUTOFF` on a cycle changed nothing: 56.0 against 56.5
+tok/s at one request, 174.2 against 177.5 at eight. Those variables belong to
+single-host multi-GPU profiles and are not worth carrying here.
+
 ## Evidence boundary
 
 Each topology carries its own evidence, recorded in its serving contract.
@@ -195,14 +274,14 @@ the checkpoint and a cache directory, so the published image needs no source
 overlay.
 
 The four-Spark launch was exercised on 2026-08-21 against the same pinned
-image: all four ranks rendezvoused across the cycle, each loading 40.82 GiB of
-weights, the engine reported a 4,382,668-token key-value pool at 8.36x maximum
-concurrency, a deterministic completion and an emitted tool call were correct,
-and DSpark speculation ran at depth 5 with a 3.06 mean acceptance length. It
-mounted only the checkpoint and a cache directory.
+image: all four ranks rendezvoused, each loading 40.82 GiB of weights, a
+deterministic completion and an emitted tool call were correct, and DSpark
+speculation ran at depth 5 with a 3.06 mean acceptance length.
 
-Performance observations in either topology are not qualified measurements. The
-normal launch uses patched NCCL from the environment template; SIRCL width-4096
-graph collectives are research-only and are not part of this quickstart. See
+Throughput figures above are client-observed on the stated prompt and
+generation lengths. They are not qualified measurements, and no output-quality
+measurement of any kind is recorded for either topology. The normal launch uses
+patched NCCL from the environment template; SIRCL width-4096 graph collectives
+are research-only and are not part of this quickstart. See
 [the profile record](profiles/DEEPSEEK_V4_FLASH_0731.md) and
 [results](RESULTS.md).
