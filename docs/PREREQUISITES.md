@@ -1,20 +1,35 @@
 # SparkRing prerequisites
 
-Complete this checklist before deploying either supported four-DGX-Spark profile.
-It defines the hardware and operator conditions required by the
+Complete this checklist before deploying any supported profile. It defines the
+hardware and operator conditions required by the
 [GLM](GLM52_35BPW_QUICKSTART.md) and
-[DeepSeek](DEEPSEEK_V4_FLASH_QUICKSTART.md) quickstarts.
+[DeepSeek](DEEPSEEK_V4_FLASH_QUICKSTART.md) quickstarts. The GLM quickstart and
+the DeepSeek four-Spark cycle require four Sparks; the DeepSeek two-Spark pair
+requires two.
 
 ## Hardware and topology
 
+For a four-Spark cycle:
+
 - Four NVIDIA DGX Sparks with both 200 Gb/s ConnectX-7 ports available.
 - Four qualified 200 Gb/s DACs cabled exactly as `0-1-2-3-0`.
-- A management LAN reachable by the operator and every rank.
 - Stable rank assignment: the same host is rank 0, 1, 2, or 3 throughout a
   deployment.
 
-The direct ring is the inference fabric. Do not use a ring port as a management
-interface.
+For a two-Spark pair:
+
+- Two NVIDIA DGX Sparks with at least one 200 Gb/s ConnectX-7 port available on
+  each.
+- One qualified 200 Gb/s DAC joining them, cage 0 to cage 0, so that both ranks
+  name the same interface.
+- Stable rank assignment: the same host is rank 0 throughout a deployment, and
+  serves the API.
+
+Both topologies also require a management LAN reachable by the operator and
+every rank.
+
+The direct cabling is the inference fabric. Do not use a fabric port as a
+management interface.
 
 ## Operating system and storage
 
@@ -28,7 +43,7 @@ has 48 shards totaling about 167 GB. Budget additional image and cache headroom.
 
 ## Network requirements
 
-- RoCEv2 must be configured on both fabric ports per rank.
+- RoCEv2 must be configured on every fabric port a rank uses.
 - Every direct cable must pass link, address, and RDMA checks before a model
   launch.
 - The management LAN must permit SSH between the operator and ranks, and
