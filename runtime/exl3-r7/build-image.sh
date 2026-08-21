@@ -65,6 +65,15 @@ else
   python3 "${here}/prepare_context.py" "${context}/sources"
 fi
 
+# The image bake verifies the exact-Q40 overlay input state of the vLLM tree
+# (bake_runtime_artifacts.py pins the post-preparation exl3.py hash), while
+# receipt verification accepts only the pristine prepared tree. Apply the
+# overlay-input preparation to the build-context copy so both gates hold: the
+# original prepared tree stays receipt-clean, and the tree entering the image
+# carries the state the bake requires.
+python3 "${repo_root}/scripts/glm35_q40/prepare_q40_overlay_inputs.py" \
+  "${context}/sources/vllm"
+
 cp "${here}/Containerfile" "${context}/Containerfile"
 python3 "${here}/prepare_build_deps.py" "${deps_cache}"
 python3 "${here}/prepare_build_deps.py" --verify "${deps_cache}"
