@@ -51,6 +51,11 @@ RUN test "${TARGETARCH}" = arm64 \
       build-essential ccache cmake git libibverbs-dev ninja-build python3-dev \
  && rm -rf /var/lib/apt/lists/*
 
+# A parent that is itself a derived serving image may carry /opt/r7-src,
+# /opt/exllamav3-python, and /opt/instanttensor-src from its own build. Each
+# is removed before being repopulated so the produced content depends only on
+# this build's pinned inputs, never on parent leftovers.
+RUN rm -rf /opt/r7-src
 COPY bundle /opt/r7-src
 
 ENV TORCH_CUDA_ARCH_LIST=12.1a \
@@ -121,7 +126,8 @@ RUN cmake -S /opt/r7-src/spark_transport \
 # SparkRing patch supplies ARM64 stubs because distributed collectives are
 # provided by SIRCL instead of ExLlamaV3's CPU backend.
 RUN --mount=type=cache,id=sparkring-r7-ccache,target=/cache/jit/ccache,sharing=locked \
-    git clone --filter=blob:none --no-checkout \
+    rm -rf /opt/exllamav3-python \
+ && git clone --filter=blob:none --no-checkout \
       "${EXLLAMAV3_REPOSITORY}" /opt/exllamav3-python \
  && git -C /opt/exllamav3-python config core.autocrlf false \
  && git -C /opt/exllamav3-python fetch --depth 1 origin "${EXLLAMAV3_COMMIT}" \
@@ -136,7 +142,8 @@ RUN --mount=type=cache,id=sparkring-r7-ccache,target=/cache/jit/ccache,sharing=l
  && /opt/venv/bin/python setup.py build_ext --inplace \
  && test "$(find /opt/exllamav3-python -maxdepth 1 -type f -name 'exllamav3_ext*.so' | wc -l)" = 1
 
-RUN git clone --filter=blob:none --no-checkout \
+RUN rm -rf /opt/instanttensor-src \
+ && git clone --filter=blob:none --no-checkout \
       "${INSTANTTENSOR_REPOSITORY}" /opt/instanttensor-src \
  && git -C /opt/instanttensor-src config core.autocrlf false \
  && git -C /opt/instanttensor-src fetch --depth 1 origin "${INSTANTTENSOR_COMMIT}" \
