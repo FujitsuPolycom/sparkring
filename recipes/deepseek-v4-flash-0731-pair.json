@@ -1,0 +1,63 @@
+{
+  "schema": "sparkring-recipe/v1",
+  "recipe_id": "deepseek-v4-flash-0731-pair",
+  "status": "implemented",
+  "hardware": {
+    "platform": "linux/arm64",
+    "cuda_arch": "sm_121",
+    "ranks": 2,
+    "topology": "direct-pair-2"
+  },
+  "model": {
+    "repository": "deepseek-ai/DeepSeek-V4-Flash-0731",
+    "revision": null,
+    "identity_status": "unsupported",
+    "identity_limitation": "The repository does not pin a checkpoint revision or per-file hashes. An operator must record both before treating a deployment as reproducible."
+  },
+  "runtime": {
+    "image_lock": "runtime/faststart-lock.json",
+    "environment_template": "scripts/config/deepseek-v4-flash-0731-pair.env.example",
+    "entrypoint": "/opt/venv/bin/vllm"
+  },
+  "serving": {
+    "served_model_name": "deepseek-v4-flash-0731",
+    "tensor_parallel_size": 2,
+    "node_count": 2,
+    "distributed_executor_backend": "mp",
+    "dtype": "bfloat16",
+    "max_model_len": 1048576,
+    "max_num_seqs": 32,
+    "gpu_memory_utilization": 0.7,
+    "kv_cache_memory_bytes_per_rank": 12884901888,
+    "kv_cache_dtype": "fp8_ds_mla",
+    "tokenizer_mode": "deepseek_v4",
+    "speculation": {
+      "method": "dspark",
+      "num_speculative_tokens": 5,
+      "moe_backend": "b12x"
+    },
+    "tool_call_parser": "deepseek_v4",
+    "external_kv_cache": false,
+    "sircl": {
+      "default": false,
+      "width_4096_graph_status": "unsupported"
+    },
+    "max_num_batched_tokens": 8192,
+    "sizing_note": "max_model_len, kv_cache_memory_bytes, max_num_seqs and max_num_batched_tokens are coupled: the engine refuses to start unless the pool holds one full-length request, and that floor scales with sequence count and speculation depth. Setting kv_cache_memory_bytes disables the gpu_memory_utilization guard, so free memory must be checked after launch rather than assumed."
+  },
+  "transport": {
+    "difference_from_cycle": "A pair uses one host channel adapter per rank instead of two, so the cycle template's second adapter, subnet-aware routing, subnet prefix length, pinned channel counts, Ring algorithm selection and tree-connect skip are all removed. The tree-connect skip exists because a four-cycle contains non-adjacent rank pairs; the two ranks of a pair are directly adjacent.",
+    "gid_index": "site-specific; read with show_gids for the fabric interface's IPv4 address"
+  },
+  "evidence": {
+    "status": "implemented",
+    "conditions": "Two directly cabled NVIDIA DGX Sparks (GB10, driver 580.173.02, one 200 Gb/s ConnectX-7 link, RoCE GID index 0) using the pinned published runtime image and the tracked pair environment, with only the checkpoint and a writable cache directory mounted.",
+    "result": "Both ranks rendezvoused and the model served. The engine reported a 1,139,967-token key-value pool and 1.09x maximum concurrency at a 1,048,576-token request length, with 8-10 GB free per node while serving. A deterministic chat completion, an emitted tool call, and a 34-tool chat request all returned coherent output with no leaked template or end-of-sequence markers. DSpark speculation was active at depth 5 with a mean acceptance length of 2.76. Client-observed aggregate throughput measured 36.7, 123.8, 173.4 and 237.7 tokens per second at 1, 8, 16 and 32 concurrent requests.",
+    "conclusion": "The documented two-rank launch is functional for the observed configuration, and requires no source overlay beyond the published image.",
+    "limitations": [
+      "No checkpoint revision or per-file hashes are pinned.",
+      "Performance observations are not qualified measurements."
+    ],
+    "record": "docs/profiles/DEEPSEEK_V4_FLASH_0731.md"
+  }
+}
