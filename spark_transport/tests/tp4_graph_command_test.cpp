@@ -74,9 +74,9 @@ int main() {
       kTp4GraphMaximumQ + 1,
       tp4_graph_payload_bytes(kTp4GraphMaximumQ + 1)));
   static_assert(kTp4GraphMaximumQ == 40);
-  static_assert(kTp4GraphAllreduceMaximumQ == 1024);
+  static_assert(kTp4GraphAllreduceMaximumQ == 512);
   static_assert(tp4_graph_payload_bytes(kTp4GraphAllreduceMaximumQ) ==
-                12U * 1024U * 1024U);
+                6U * 1024U * 1024U);
   assert(tp4_graph_allreduce_command_descriptor_valid(
       kTp4GraphAllreduceMaximumQ,
       tp4_graph_payload_bytes(kTp4GraphAllreduceMaximumQ)));
@@ -91,13 +91,16 @@ int main() {
   constexpr std::uint32_t deepseek_bytes_per_row = 4096U * 2U;
   static_assert(tp4_graph_payload_bytes(1, deepseek_bytes_per_row) ==
                 8192U);
-  static_assert(tp4_graph_payload_bytes(1024, deepseek_bytes_per_row) ==
-                8U * 1024U * 1024U);
+  static_assert(tp4_graph_payload_bytes(kTp4GraphAllreduceMaximumQ,
+                                        deepseek_bytes_per_row) ==
+                4U * 1024U * 1024U);
   assert(tp4_graph_command_layout_valid(
       30, tp4_graph_payload_bytes(30, deepseek_bytes_per_row),
       deepseek_bytes_per_row, kTp4GraphAllreduceMaximumQ));
   assert(tp4_graph_command_layout_valid(
-      1024, tp4_graph_payload_bytes(1024, deepseek_bytes_per_row),
+      kTp4GraphAllreduceMaximumQ,
+      tp4_graph_payload_bytes(kTp4GraphAllreduceMaximumQ,
+                              deepseek_bytes_per_row),
       deepseek_bytes_per_row, kTp4GraphAllreduceMaximumQ));
   assert(!tp4_graph_command_layout_valid(
       30, tp4_graph_payload_bytes(30), deepseek_bytes_per_row,
@@ -145,7 +148,7 @@ int main() {
       &allreduce_maximum_q, 1, &allreduce_maximum_q_command));
   assert(allreduce_maximum_q_command.q == kTp4GraphAllreduceMaximumQ);
   assert(allreduce_maximum_q_command.payload_bytes ==
-         12U * 1024U * 1024U);
+         6U * 1024U * 1024U);
 
   std::uint64_t sequence{99};
   assert(!tp4_graph_command_publish_descriptor(
