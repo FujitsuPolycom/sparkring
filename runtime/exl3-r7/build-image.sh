@@ -95,11 +95,20 @@ mv "${context}/sources/b12x" "${context}/bundle/b12x"
 source_receipt_sha="$(sha256sum "${context}/sources/receipt.json" | awk '{print $1}')"
 rm -rf -- "${context}/sources"
 
+# BuildKit resolves a bare sha256 image ID in FROM against the registry, not
+# the local store, so the verified parent is retagged under a local name for
+# the build. Identity remains enforced: the tag is applied to the observed ID
+# after the drift check, and the ID itself is recorded via BASE_IMAGE_ID.
+parent_build_tag="sparkring-r7-parent:${observed_base#sha256:}"
+parent_build_tag="${parent_build_tag:0:70}"
+"${engine}" tag "${observed_base}" "${parent_build_tag}"
+trap '"${engine}" rmi "${parent_build_tag}" >/dev/null 2>&1 || true; rm -rf -- "${context}"' EXIT
+
 "${engine}" build \
   --platform linux/arm64 \
   --file "${context}/Containerfile" \
   --tag "${image}" \
-  --build-arg "BASE_IMAGE=${observed_base}" \
+  --build-arg "BASE_IMAGE=${parent_build_tag}" \
   --build-arg "BASE_IMAGE_ID=${observed_base}" \
   --build-arg "BASE_IMAGE_LICENSES=${base_image_licenses}" \
   --build-arg "IMAGE_LICENSES=${image_licenses}" \
