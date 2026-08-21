@@ -69,6 +69,8 @@ ENV TORCH_CUDA_ARCH_LIST=12.1a \
 RUN --mount=type=cache,id=sparkring-r7-ccache,target=/cache/jit/ccache,sharing=locked \
     rm -f /opt/venv/lib/python3.12/site-packages/sparkring_nf3_hybrid.pth \
  && /opt/venv/bin/python /opt/r7-src/runtime/bake_runtime_artifacts.py \
+      cudagraph /opt/r7-src/vllm \
+ && /opt/venv/bin/python /opt/r7-src/runtime/bake_runtime_artifacts.py \
       vllm /opt/r7-src/vllm \
  && /opt/venv/bin/python \
       /opt/r7-src/runtime/build_parallel_state_shared_capture_overlay.py \
