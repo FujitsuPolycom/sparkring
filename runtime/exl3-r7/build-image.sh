@@ -84,6 +84,8 @@ cp "${here}/verify_runtime.py" "${context}/bundle/runtime/verify_runtime.py"
 cp "${here}/entrypoint.sh" "${context}/bundle/runtime/entrypoint.sh"
 cp "${here}/bake_runtime_artifacts.py" \
   "${context}/bundle/runtime/bake_runtime_artifacts.py"
+cp "${here}/cudagraph_shared_stream.patch" \
+  "${context}/bundle/runtime/cudagraph_shared_stream.patch"
 cp "${here}/build_parallel_state_shared_capture_overlay.py" \
   "${context}/bundle/runtime/build_parallel_state_shared_capture_overlay.py"
 cp "${here}/requirements-quack.txt" \
