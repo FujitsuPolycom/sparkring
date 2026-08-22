@@ -4,8 +4,11 @@ Deploy the qualified GLM-5.2 EXL3 profile on four directly cabled NVIDIA DGX
 Sparks. The machine-readable contract is
 [`recipes/glm52-exl3-r7-3.5bpw.json`](../recipes/glm52-exl3-r7-3.5bpw.json).
 Its qualification applies to one appliance. A clean-checkout rebuild has
-status **implemented** based on offline test evidence. It becomes qualified
-only after completing the
+status **implemented**: one rebuilt image has been built by this document's
+own steps, verified against the pinned checkpoint and runtime identities, and
+brought up serving on four ranks, as recorded in
+[the rebuilt-image bring-up record](../performance/records/glm-3.5bpw/rebuilt-image-20260821.md).
+A rebuild becomes qualified only after completing the
 [promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md) using the image
 identity actually deployed.
 

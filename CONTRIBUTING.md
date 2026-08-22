@@ -8,8 +8,10 @@ and evidence boundaries that make those surfaces reviewable.
 
 - Match the surrounding code and follow [the repository writing
   standard](AGENTS.md#write-without-hidden-context).
-- Do not commit site addresses, SSH targets, credentials, local paths, image
-  IDs, or model files.
+- Do not commit site addresses, SSH targets, credentials, local paths, model
+  files, or mutable local image names. Sanitized evidence records may include
+  immutable registry digests and Docker image IDs when they are required to
+  bind a result to exact bytes and reveal no site identity.
 - Do not add compatibility code, documentation, or CI coverage for removed
   cache, plugin, runtime-builder, or configuration-example surfaces.
 - Include the relevant focused validation command and its result.
