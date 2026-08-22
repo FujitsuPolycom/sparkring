@@ -82,8 +82,8 @@
     "record": "README.md"
   },
   "limitations": [
-    "The 4096-token scheduler budget is the only qualified budget. A budget of 8192 remains unsupported until it passes its own cold-store, coordinated-restart, external-hit, and canary smoke.",
+    "The published qualification receipt used a 4096-token scheduler budget. Operators may choose other values; 8192 is known to work, but its performance and capacity behavior is outside this receipt.",
     "The qualified lane requires the exact Q40 runtime receipt procedure before every coordinated restart.",
-    "Streaming snapshots and native restore are unsupported."
+    "This recipe disables streaming snapshots and native restore; the published receipt does not cover either mode."
   ]
 }
