@@ -50,22 +50,42 @@ unsupported until it passes a separate smoke for the exact composition.
 ## Architecture
 
 ```text
-             management network
-          |       |       |       |
-         S0      S1      S2      S3
+management LAN ─┬─────────────┬─────────────┬─────────────┐
+            ┌───┴────┐    ┌───┴────┐    ┌───┴────┐    ┌───┴────┐
+     API ──>│ rank 0 ╞════╡ rank 1 ╞════╡ rank 2 ╞════╡ rank 3 │
+            └───╤────┘    └────────┘    └────────┘    └───╤────┘
+                ╚═════════════════════════════════════════╝
 
-                  200 Gb/s
-             S0 ========== S1
-             ||             ||
-    200 Gb/s ||             || 200 Gb/s
-             ||             ||
-             S3 ========== S2
-                  200 Gb/s
+  ═══  one 200 Gb/s ConnectX-7 DAC per edge (RoCEv2); the inference fabric
+  ───  management LAN: SSH, rendezvous, rank-0 API; never a fabric edge
 ```
 
-SIRCL, the Switchless Inference RDMA Collective Layer, provides the qualified
-collective path. Patched NCCL is the fallback for communication outside that
-path. See [architecture](docs/ARCHITECTURE.md) and [SIRCL](docs/SIRCL.md).
+Four DGX Sparks serve one model as four tensor-parallel ranks, numbered 0
+through 3. The inference fabric is a cycle of four direct cables - rank 0 to
+rank 1, 1 to 2, 2 to 3, and 3 back to 0 - each one 200 Gb/s ConnectX-7 link
+carrying RoCEv2. Every rank has exactly two fabric neighbours, and no switch
+carries collective traffic. A separate management LAN reaches all four ranks
+with SSH, rendezvous, and the client API that rank 0 serves; it is never a
+fabric edge.
+
+A switchless fabric has no shared broadcast domain, so a rank reaches the peer
+opposite it on the cycle only through a neighbour that forwards the traffic.
+Routes, IP forwarding, and Docker forward rules are therefore launch
+prerequisites on every rank, checked by
+[`scripts/ring_doctor.py`](scripts/ring_doctor.py).
+
+Collectives do not take that relay. SIRCL, the Switchless Inference RDMA
+Collective Layer, schedules a four-rank collective as the cycle's two perfect
+matchings - ranks 0-1 with 2-3, then 1-2 with 3-0 - so every step is a
+neighbour exchange and the two steps together use all four links. SIRCL holds
+persistent RDMA sessions and device-published command rings that CUDA graph
+replay resubmits without host work. Patched NCCL is the fallback for collective
+shapes outside SIRCL's qualified families.
+
+DeepSeek-V4-Flash-0731 also deploys as two ranks on a single cabled pair. The
+GLM profile requires the four-Spark cycle.
+
+See [architecture](docs/ARCHITECTURE.md) and [SIRCL](docs/SIRCL.md).
 
 ## Prerequisites and evidence
 
