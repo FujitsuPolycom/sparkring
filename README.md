@@ -26,19 +26,24 @@ belongs to profiles rather than the transport.
 
 ## Profiles
 
-| Profile | Model identity | Status | Start here |
-|---|---|---|---|
-| GLM-5.2 EXL3 3.5-bpw | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | qualified on one four-Spark appliance; rebuilt images retain implemented status until promotion | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | `deepseek-ai/DeepSeek-V4-Flash-0731` | implemented launch; SIRCL width 4096 is research-only | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| Profile | Model identity | Topology | Status | Start here |
+|---|---|---|---|---|
+| GLM-5.2 EXL3 3.5-bpw | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | four-Spark cycle, TP4/DCP4 | qualified on one appliance; rebuilt images retain implemented status until promotion | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
+| DeepSeek-V4-Flash-0731 | `deepseek-ai/DeepSeek-V4-Flash-0731` | two-Spark pair, TP2/DCP1 | implemented launch; SIRCL is unsupported | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| DeepSeek-V4-Flash-0731 | `deepseek-ai/DeepSeek-V4-Flash-0731` | four-Spark cycle, TP4/DCP1 | implemented launch; SIRCL width 4096 is research-only | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| GLM-5.2 EXL3 3.5-bpw + SparkCache | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | four-Spark cycle, TP4/DCP4 | qualified durable prefix-state composition | [SparkCache compositions](recipes/sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 + SparkCache | `deepseek-ai/DeepSeek-V4-Flash-0731` | two-Spark pair, TP2/DCP1 | qualified durable prefix-state composition | [SparkCache compositions](recipes/sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 + SparkCache | `deepseek-ai/DeepSeek-V4-Flash-0731` | four-Spark cycle, TP4/DCP1 | qualified durable prefix-state composition | [SparkCache compositions](recipes/sparkcache/README.md) |
 
-The GLM profile is defined by
+The GLM base profile is defined by
 [`recipes/glm52-exl3-r7-3.5bpw.json`](recipes/glm52-exl3-r7-3.5bpw.json). The
-DeepSeek profile is defined by
-[`recipes/deepseek-v4-flash-0731.json`](recipes/deepseek-v4-flash-0731.json)
-and uses the immutable published image pinned in
+two-Spark and four-Spark DeepSeek base profiles are defined by
+[`recipes/deepseek-v4-flash-0731-pair.json`](recipes/deepseek-v4-flash-0731-pair.json)
+and
+[`recipes/deepseek-v4-flash-0731.json`](recipes/deepseek-v4-flash-0731.json).
+The DeepSeek profiles use the immutable published image pinned in
 [`runtime/faststart-lock.json`](runtime/faststart-lock.json) and the tracked
-per-rank environment template
-[`scripts/config/deepseek-v4-flash-0731.env.example`](scripts/config/deepseek-v4-flash-0731.env.example).
+per-rank environment templates in [`scripts/config/`](scripts/config/).
 
 Qualified durable prefix-state compositions for the two-Spark DeepSeek,
 four-Spark DeepSeek, and four-Spark GLM profiles are in
@@ -69,9 +74,9 @@ path. See [architecture](docs/ARCHITECTURE.md) and [SIRCL](docs/SIRCL.md).
 
 ## Prerequisites and evidence
 
-Before deploying either profile, complete the four-Spark
+Before deploying a profile, complete the applicable
 [prerequisites](docs/PREREQUISITES.md). Measured results, conditions, and
-limitations are in [results](docs/RESULTS.md). The two-profile registry is
+limitations are in [results](docs/RESULTS.md). The six-profile registry is
 [`docs/profiles/README.md`](docs/profiles/README.md).
 
 ## Repository map
