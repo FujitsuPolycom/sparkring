@@ -26,7 +26,7 @@ belongs to profiles rather than the transport.
   with SparkCache.
 - **4× DGX Spark — physical ring.** Models: GLM-5.2 EXL3 3.5-bpw;
   DeepSeek-V4-Flash-0731; compatible with SparkCache.
-- **6× DGX Spark — physical ring.** **Coming soon.**
+- **6× DGX Spark — physical ring.** **Coming soon. Models: GLM | KIMI.**
 
 ## Profiles
 
