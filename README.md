@@ -94,8 +94,8 @@ replay resubmits without host work. Patched NCCL is the fallback for collective
 shapes outside SIRCL's qualified families.
 
 DeepSeek-V4-Flash-0731 has an implemented two-rank launch on a single cabled
-pair using patched NCCL; SIRCL is unsupported on that topology. The GLM
-profile requires the four-Spark cycle.
+pair using patched NCCL; SIRCL is unsupported on that topology currently. The GLM
+profile requires the four or six Spark cycle.
 
 See [architecture](docs/ARCHITECTURE.md) and [SIRCL](docs/SIRCL.md).
 
