@@ -1,11 +1,13 @@
 # SparkRing
 
-> **This repository is changing rapidly.** Documentation, profiles, and
-> branch history are being restructured as SparkRing's scope narrows to
-> switchless multi-Spark collective transport and serving. Published
-> branches may be rebased and documents may be moved, renamed, or
-> replaced without a deprecation period. Pin a commit if you depend on a
-> specific state of this tree.
+> [!WARNING]
+> **Alpha / research software.** SparkRing is intended for technical
+> evaluation on explicitly documented NVIDIA DGX Spark configurations. Some
+> profiles have narrow, artifact-specific qualification evidence; the
+> repository as a whole does not make a general production-readiness or
+> compatibility commitment. Interfaces, recipes, and documentation may change
+> without a deprecation period. Pin an exact commit and follow each profile's
+> stated evidence scope and limitations.
 
 SparkRing is a low-latency collective transport and vLLM-based
 inference-serving stack for switchless clusters of NVIDIA DGX Spark systems
