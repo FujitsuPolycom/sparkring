@@ -40,6 +40,13 @@ and uses the immutable published image pinned in
 per-rank environment template
 [`scripts/config/deepseek-v4-flash-0731.env.example`](scripts/config/deepseek-v4-flash-0731.env.example).
 
+Qualified durable prefix-state compositions for the two-Spark DeepSeek,
+four-Spark DeepSeek, and four-Spark GLM profiles are in
+[`recipes/sparkcache/`](recipes/sparkcache/README.md). They pin the exact
+SparkCache wheel and runtime image used by each live store/restart/restore
+gate. Their qualified scheduler budget is 4,096 tokens; 8,192 remains
+unsupported until it passes a separate smoke for the exact composition.
+
 ## Architecture
 
 ```text

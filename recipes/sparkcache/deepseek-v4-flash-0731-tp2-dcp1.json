@@ -1,0 +1,81 @@
+{
+  "schema": "sparkring-sparkcache-composition/v1",
+  "recipe_id": "deepseek-v4-flash-0731-sparkcache-tp2-dcp1",
+  "status": "qualified",
+  "base_recipe": "../deepseek-v4-flash-0731-pair.json",
+  "hardware": {
+    "platform": "linux/arm64",
+    "cuda_arch": "sm_121",
+    "ranks": 2,
+    "topology": "direct-pair-2"
+  },
+  "model": {
+    "repository": "deepseek-ai/DeepSeek-V4-Flash-0731",
+    "checkpoint_sha256": "bd6b0117ca28997acc9f22022814bb6bc50b5c3e1bc466d148b1d45067fe714f"
+  },
+  "runtime": {
+    "image_id": "sha256:50036224411e5ef04d651730c56d794111991b37981ec76ca81b66ea7d35dae7",
+    "sparkcache": {
+      "package": "sparkcache",
+      "version": "0.1.0a1",
+      "wheel_sha256": "87c17d8dab5052f5a7833349dc9b99b76a3b6531ca6f0d3deff812f724fecdcc",
+      "source_repository": "https://github.com/FujitsuPolycom/sparkcache",
+      "source_tag": "v0.1.0a1"
+    }
+  },
+  "serving": {
+    "tensor_parallel_size": 2,
+    "decode_context_parallel_size": 1,
+    "node_count": 2,
+    "max_model_len": 131072,
+    "max_num_seqs": 6,
+    "max_num_batched_tokens": 4096,
+    "scheduler_budget_status": "qualified",
+    "gpu_memory_utilization": 0.78,
+    "kv_cache_memory_bytes_per_rank": 17179869184,
+    "kv_cache_dtype": "fp8_ds_mla",
+    "block_size": 256,
+    "max_cudagraph_capture_size_requested": 36,
+    "max_cudagraph_capture_size_observed": 32
+  },
+  "sparkcache": {
+    "kv_connector": "SparkContextCacheConnector",
+    "kv_connector_module_path": "sparkcache.spark_context_cache_connector",
+    "kv_load_failure_policy": "recompute",
+    "kv_role": "kv_both",
+    "model_profile": "deepseek-v4-fp8-hma",
+    "draft_policy": "colocated_target",
+    "scheduler_probe": "none",
+    "store": true,
+    "restore": true,
+    "max_bytes_per_rank": 214748364800,
+    "low_watermark_bytes_per_rank": 193273528320,
+    "ttl_seconds": 0,
+    "min_span_tokens": 256,
+    "max_span_tokens": 131072,
+    "streaming_snapshots": false,
+    "native_restore": false,
+    "root_requirement": "Use a dedicated rank-local host directory mounted at the same container path on both ranks."
+  },
+  "qualification": {
+    "date": "2026-08-21",
+    "artifact_scope": "The exact SparkCache wheel, runtime image, checkpoint identity, topology, and serving values in this file.",
+    "prompt_tokens": 73774,
+    "reusable_tokens": 73728,
+    "cache_digest": "1b2a4d1b6faf7685d1641e298f16c5ef97ad40a279c0a451ab4c0438d2922925",
+    "chunks_per_rank": 288,
+    "bytes_per_rank": 300904448,
+    "restore_milliseconds_by_rank": [459.8, 517.0],
+    "external_cache_queried_tokens": 73814,
+    "external_cache_hit_tokens": 73728,
+    "expected_response": "SPARKCACHE_OK:9540",
+    "post_restore_canary": "SPARKCACHE_CANARY_OK",
+    "record": "README.md"
+  },
+  "limitations": [
+    "The 4096-token scheduler budget is the only qualified budget. A budget of 8192 remains unsupported until it passes its own cold-store, coordinated-restart, external-hit, and canary smoke.",
+    "The qualified context limit is 131072 tokens; the base recipe's 1048576-token setting is not qualified with SparkCache.",
+    "DeepSeek DCP2 and DCP4 are unsupported.",
+    "Streaming snapshots and native restore are unsupported."
+  ]
+}
