@@ -1,20 +1,10 @@
-# Blank issues are disabled on purpose. SparkRing is hardware-coupled
-# research: an issue without hardware, runtime, and evidence context is
-# usually unactionable, and the forms exist to collect exactly that. Use
-# Discussions for anything that does not fit a form.
-blank_issues_enabled: false
+blank_issues_enabled: true
 
 contact_links:
-  - name: Question, idea, or "is this expected?"
+  - name: Questions and discussion
     url: https://github.com/FujitsuPolycom/sparkring/discussions
-    about: >-
-      Open-ended questions, measurement discussions, design feedback, and
-      "has anyone tried X" belong in Discussions rather than the issue
-      tracker. Reproduction attempts and design feedback are welcome.
+    about: Ask an open-ended question or discuss an idea. Opening an issue is also welcome.
 
-  - name: Report a security vulnerability (private)
+  - name: Report a security vulnerability privately
     url: https://github.com/FujitsuPolycom/sparkring/security/advisories/new
-    about: >-
-      Do NOT open a public issue for a suspected vulnerability. Report it
-      privately through GitHub security advisories, as described in
-      SECURITY.md.
+    about: Do not publish suspected vulnerabilities in an issue.

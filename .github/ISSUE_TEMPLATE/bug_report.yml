@@ -1,0 +1,42 @@
+name: Bug or setup problem
+description: Report incorrect behavior, a regression, or a setup failure.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting the problem. Share what you have; Spark hardware and a complete evidence bundle are not required. Remove credentials and private site identifiers from logs.
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: What happened?
+      description: Include what you expected and what happened instead.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: SparkRing version
+      description: Commit, tag, or deployment profile if known.
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How can we reproduce it?
+      description: Provide the shortest commands or steps you have.
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Add relevant node count, hardware, OS, drivers, image, model, or configuration. Omit anything unavailable.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or other evidence
+      description: Paste sanitized output or attach evidence if available.
+      render: shell
