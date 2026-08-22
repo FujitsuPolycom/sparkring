@@ -1,7 +1,7 @@
 # Deployment profiles
 
 A profile names one model identity, hardware topology, serving configuration,
-and evidence scope. SparkRing supports exactly the following six profiles.
+and evidence scope. SparkRing supports exactly the following six profiles officially. 
 
 | Profile | Topology | Status and evidence scope | Documentation |
 |---|---|---|---|
