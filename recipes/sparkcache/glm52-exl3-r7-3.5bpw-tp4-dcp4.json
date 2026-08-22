@@ -18,10 +18,10 @@
     "image_id": "sha256:02881d5229d4f4d1cbba0cf40537492a2a505b9d4e43bbfe9a0b2a7bd0584513",
     "sparkcache": {
       "package": "sparkcache",
-      "version": "0.1.0a1",
-      "wheel_sha256": "87c17d8dab5052f5a7833349dc9b99b76a3b6531ca6f0d3deff812f724fecdcc",
+      "version": "0.1.0a2",
+      "wheel_sha256": "3345b8c574951a8204377b0c27f53765c84b96ab4f5a8ec1ac147574dba7568b",
       "source_repository": "https://github.com/FujitsuPolycom/sparkcache",
-      "source_tag": "v0.1.0a1"
+      "source_tag": "v0.1.0a2"
     }
   },
   "serving": {
@@ -64,26 +64,38 @@
     "receipt_path_template": "/var/lib/sparkring/jit-cache/q40-exact-state-serving-v1-rank<RANK>.json",
     "procedure": "Before every coordinated restart, stop all four containers, record each receipt SHA-256, move each receipt to a unique hash-preserving backup name, start all four containers, require fresh Q40 attestation on every rank, and require serving health before sending traffic."
   },
-  "qualification": {
+  "evidence": {
+    "status": "qualified",
+    "conditions": "Four directly cabled NVIDIA DGX Spark systems at TP4/DCP4 using the immutable runtime image, checkpoint identity, dedicated rank-local cache roots, and SparkCache 0.1.0a2 wheel recorded in this file. The semantic gate used a 512-token completion budget.",
+    "result": "A cold-cache deterministic prompt of 225,555 tokens committed 225,536 reusable tokens as 881 chunks and 1,803,702,724 bytes on each of 4 ranks. After a coordinated restart that left the cache roots in place, every rank discovered one manifest and restored in 4,171.2, 3,588.4, 3,697.5, 3,172.2 ms. A short arithmetic request returned 2 and transported all four workers' manifest inventories to the scheduler before the long hit. The repeated prompt served 225,536 external-cache hit tokens of 225,607 queried, returned final content SPARKCACHE_OK:9540 with finish reason stop, and the post-restore canary returned SPARKCACHE_CANARY_OK. No tokens were served from the native prefix cache.",
+    "conclusion": "This composition restores durable prefix state across a coordinated engine restart and continues generating correct output. The result qualifies the exact artifacts and settings recorded in this file; it does not establish general vLLM, checkpoint, topology, or production reliability.",
+    "limitations": [
+      "The published qualification receipt used a 4096-token scheduler budget. Operators may choose other values; 8192 is known to work, but its performance and capacity behavior is outside this receipt.",
+      "The qualified lane requires preserving and regenerating the 40-query-row exact-state receipt, whose path contains q40-exact-state-serving-v1, before every coordinated restart.",
+      "This recipe disables streaming snapshots and native restore; the published receipt does not cover either mode.",
+      "Full GLM reasoning-trace equality is an inconclusive diagnostic under this runtime: repeated temperature-zero and fixed-seed requests produced different non-empty reasoning bodies with identical final content and finish reason stop."
+    ],
+    "record": "https://github.com/FujitsuPolycom/sparkcache/blob/999bc13d6c0b52a6cee3c90487ac9b8643ba3f99/GLM52_A2_LIVE_VALIDATION.md",
     "date": "2026-08-21",
-    "artifact_scope": "The exact SparkCache wheel, runtime image, checkpoint identity, topology, and serving values in this file.",
     "prompt_tokens": 225555,
     "reusable_tokens": 225536,
     "cache_digest": "fd441fa9535cd5eba7a261b0ef908cebe278d1667fd676d12a3e016c65d4d31a",
     "chunks_per_rank": 881,
     "bytes_per_rank": 1803702724,
-    "restore_milliseconds_by_rank": [3954.2, 3385.0, 3649.6, 3722.4],
-    "external_cache_queried_tokens": 225633,
+    "restore_milliseconds_by_rank": [
+      4171.2,
+      3588.4,
+      3697.5,
+      3172.2
+    ],
+    "external_cache_queried_tokens": 225607,
     "external_cache_hit_tokens": 225536,
     "local_prefix_cache_hit_tokens": 0,
     "quorum_prime": "2",
+    "semantic_completion_budget_tokens": 512,
+    "reasoning_trace_determinism": "inconclusive",
+    "finish_reason": "stop",
     "expected_response": "SPARKCACHE_OK:9540",
-    "post_restore_canary": "SPARKCACHE_CANARY_OK",
-    "record": "README.md"
-  },
-  "limitations": [
-    "The published qualification receipt used a 4096-token scheduler budget. Operators may choose other values; 8192 is known to work, but its performance and capacity behavior is outside this receipt.",
-    "The qualified lane requires the exact Q40 runtime receipt procedure before every coordinated restart.",
-    "This recipe disables streaming snapshots and native restore; the published receipt does not cover either mode."
-  ]
+    "post_restore_canary": "SPARKCACHE_CANARY_OK"
+  }
 }
