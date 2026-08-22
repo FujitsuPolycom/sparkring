@@ -22,15 +22,11 @@ belongs to profiles rather than the transport.
 
 ## Cluster sizes
 
-Availability is profile-scoped; a cluster size does not imply that every model
-runs at that size.
-
-- **2× DGX Spark — direct pair.** Implemented for DeepSeek-V4-Flash-0731;
-  qualified with SparkCache.
-- **4× DGX Spark — physical ring.** Qualified for GLM-5.2 EXL3 3.5-bpw;
-  implemented for DeepSeek-V4-Flash-0731; qualified with SparkCache.
-- **6× DGX Spark — physical ring.** **Coming soon — unsupported; no published
-  launch profile.**
+- **2× DGX Spark — direct pair.** Models: DeepSeek-V4-Flash-0731; compatible
+  with SparkCache.
+- **4× DGX Spark — physical ring.** Models: GLM-5.2 EXL3 3.5-bpw;
+  DeepSeek-V4-Flash-0731; compatible with SparkCache.
+- **6× DGX Spark — physical ring.** **Coming soon.**
 
 ## Profiles
 
