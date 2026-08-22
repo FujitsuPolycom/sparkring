@@ -21,9 +21,13 @@ full-CKV gather, and SIRCL TP collectives with patched NCCL fallback.
 Coding prompts reached 27.3 tokens/s single-stream with 96.64% measured draft
 acceptance. The matched C8 cell regressed 11.63% under MTP4. A rebuilt image
 has no acceptance status until it completes
-[the promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md); the figures
-above belong to the image ID that produced them and do not transfer to a
-rebuild.
+[the promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md). The figures
+above belong to qualified operator image
+`sha256:02881d5229d4f4d1cbba0cf40537492a2a505b9d4e43bbfe9a0b2a7bd0584513`;
+they do not transfer to rebuilt image
+`sha256:5569c4778c9561a8595ac283c7adf31e22be1d35517aa208569af5224244a2da`,
+whose separate scope is recorded in
+[`rebuilt-image-20260821.md`](../performance/records/glm-3.5bpw/rebuilt-image-20260821.md).
 
 One rebuilt image has been carried from a clean checkout to a serving
 endpoint on four ranks, with its checkpoint, generated profiles, and in-image
