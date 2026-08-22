@@ -16,7 +16,7 @@ SparkRing supports GB10 pairs, four-node rings, and Six-node rings (in dev).
 Models run as tensor-parallel deployments over the direct fabric without an
 external Ethernet or InfiniBand switch. SIRCL provides custom RDMA collectives
 for qualified four-node paths, CUDA-graph command rings support repeated decode
-work, and patched NCCL handles communication outside SIRCL's supported paths.
+work, and [patched NCCL](https://github.com/FujitsuPolycom/sparkring/blob/main/spark_transport/nccl/README.md) handles communication outside SIRCL's supported paths.
 
 The repository provides launch tooling, speculative-decoding integration,
 model profiles, and qualification evidence. Model-specific policy
