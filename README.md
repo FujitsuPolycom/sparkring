@@ -11,18 +11,30 @@ SparkRing is a low-latency collective transport and vLLM-based
 inference-serving stack for switchless clusters of NVIDIA DGX Spark systems
 powered by the GB10 Grace Blackwell Superchip.
 
-Four 200 Gb/s ConnectX-7 links connect four DGX Sparks in a physical ring.
-Models run as tensor-parallel deployments without an Ethernet or InfiniBand
-switch in the inference fabric.
+Two DGX Sparks connect as a directly cabled pair. Four 200 Gb/s ConnectX-7
+links connect four DGX Sparks in a physical ring. Models run as
+tensor-parallel deployments without an Ethernet or InfiniBand switch in the
+inference fabric.
 
-SparkRing routes qualified vLLM collectives through SIRCL, its custom RDMA
-transport for the four-node ring. CUDA-graph command rings support repeated
-decode work, while patched NCCL handles communication outside SIRCL's
-supported paths.
+SparkRing routes qualified four-node vLLM collectives through SIRCL, its custom
+RDMA transport for the physical ring. CUDA-graph command rings support
+repeated decode work, while patched NCCL handles communication outside SIRCL's
+supported paths, including the two-node DeepSeek pair.
 
 The repository provides launch tooling, speculative-decoding integration,
 model profiles, and qualification evidence. Model-specific policy
 belongs to profiles rather than the transport.
+
+## Cluster sizes
+
+Availability is profile-scoped; a cluster size does not imply that every model
+runs at that size.
+
+| DGX Sparks | Physical topology | Availability |
+|---:|---|---|
+| **2×** | one directly cabled pair | implemented for DeepSeek-V4-Flash-0731; qualified with SparkCache |
+| **4×** | four-link switchless cycle | qualified for GLM-5.2 EXL3 3.5-bpw; implemented for DeepSeek-V4-Flash-0731; qualified with SparkCache |
+| **6×** | planned switchless topology | **Coming soon — unsupported; no published launch profile** |
 
 ## Profiles
 
