@@ -103,6 +103,13 @@ path; it does not qualify output agreement with the patched-NCCL control or a
 performance advantage. See the
 [SIRCL live-validation record](../performance/records/deepseek-v4-flash/sircl-width4096-live-validation-20260822.md).
 
+A matched research A/B found no performance advantage for the width-4096 SIRCL
+path. Prefill was flat because both arms use NCCL there. Five-run Coding Peak
+was 1.9% lower by mean under SIRCL. Long C32 rates were dominated by DSpark
+acceptance variation, but repeated near-matched ten-second samples placed SIRCL
+2.4-3.0% below NCCL. See the
+[transport A/B record](../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
+
 ## Interpretation
 
 Do not compare these values across model identities or use them as a generic

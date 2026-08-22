@@ -98,8 +98,9 @@ performance advantage over patched NCCL.
 ## Limitations
 
 The checkpoint identity is not pinned. The mounted runtime outputs are bound by
-hash, but their source-build receipt is incomplete. No matched patched-NCCL
-control used identical request bytes and ordering. Raw harness receipts contain
+hash, but their source-build receipt is incomplete. Matched transport
+observations are reported separately in the
+[SIRCL/NCCL A/B record](sircl-width4096-nccl-ab-20260822.md). Raw harness receipts contain
 deployment-specific addresses and remain maintainer-held; their hashes are in
 the JSON record. The completed C32 client/server accounting disagreement
 requires comparison of server-counter rates against the same field from a

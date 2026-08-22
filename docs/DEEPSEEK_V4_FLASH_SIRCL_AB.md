@@ -118,8 +118,13 @@ temperature 1.0, a 240-second measurement window, 32,768 maximum output tokens,
 a 2,198,756-token key-value budget, and a 600-second readiness timeout. The
 large output ceiling keeps admitted streams alive while all 32 unique prompts
 finish prefill. Measurement is valid only after the scheduler reports all 32
-requests running simultaneously and no request waiting.
+requests running simultaneously and no request waiting. The command asserts
+`--isolated-server` so the process-global vLLM generation-token counter is the
+headline authority when duration-bounded streams do not emit complete OpenAI
+usage.
 
 This invocation is not part of the 2K/8K validation matrix. Compare it only to
 another 16K/C32 receipt using the same timing, output ceiling, temperature,
 key-value budget, prompt construction, and readiness gate.
+The completed transport comparison is recorded in
+[`sircl-width4096-nccl-ab-20260822.md`](../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).

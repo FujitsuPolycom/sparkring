@@ -298,7 +298,7 @@
   "limitations": [
     "The model checkpoint revision and per-file hashes were not recorded.",
     "The staged SIRCL artifacts are bound by output hash, but their build receipt does not prove a source revision.",
-    "No matched patched-NCCL control was run with identical request bytes and ordering in this record.",
+    "Matched patched-NCCL observations are retained in the separate SIRCL/NCCL A/B record; this execution-path record remains candidate-only.",
     "The C8 8192-token cell has a client/server accounting discrepancy and is rejected for performance comparison.",
     "The raw harness receipts contain deployment-specific addresses and remain maintainer-held; their hashes are retained here.",
     "The C32 temperature-1.0 cells have client/server accounting discrepancies; server-counter rates must be compared only with the same field from a matched control receipt."

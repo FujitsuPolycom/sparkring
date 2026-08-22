@@ -1,0 +1,140 @@
+{
+  "schema": "sparkring-transport-ab/v1",
+  "status": "research-only",
+  "subject": "DeepSeek-V4-Flash-0731 width-4096 SIRCL versus patched NCCL",
+  "conditions": {
+    "hardware": "four directly cabled NVIDIA DGX Sparks in a cycle",
+    "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+    "image": "ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028",
+    "parallelism": "TP4/DCP1",
+    "maximum_model_tokens": 1048576,
+    "maximum_sequences": 32,
+    "maximum_batched_tokens": 4096,
+    "kv_cache_bytes_per_rank": 17179869184,
+    "kv_cache_dtype": "fp8_ds_mla",
+    "speculation": "DSpark K5 with B12X, non-greedy draft",
+    "prefix_caching": false,
+    "external_kv_cache": false,
+    "common_capture_behavior": "shared CUDA capture stream enabled",
+    "changed_variable": {
+      "sircl": {
+        "VLLM_SPARK_TP4_MODE": "custom",
+        "VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH": "1"
+      },
+      "nccl": {
+        "VLLM_SPARK_TP4_MODE": "disabled",
+        "VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH": "0"
+      }
+    }
+  },
+  "measurement": {
+    "initial_harness": {
+      "version": "0.4.31",
+      "sha256": "0df3cc642677c88796ccdd9a3c88f6f7b14971d21c77c1fc612c4594f6b5ff18",
+      "git_revision": "ca84f366edfe9dc0648a4ac035b568356949602d",
+      "git_dirty": true
+    },
+    "frozen_harness": {
+      "version": "0.4.31",
+      "sha256": "07aad353cd9c894e14e9d1392c8509d3af8999c4022d3d22b29423a4572f5851",
+      "isolated_server": true,
+      "purpose": "Same-byte confirmation after the shared harness changed its accounting policy during the A/B/A sequence."
+    },
+    "prefill_client_tokens_per_second": {
+      "contexts": [8192, 65536, 131072],
+      "sircl": [2445.0, 2364.0, 2172.0],
+      "nccl": [2395.0, 2381.0, 2212.0]
+    },
+    "coding_peak": {
+      "temperature": 1.0,
+      "runs_per_arm": 5,
+      "sircl": {
+        "median_tokens_per_second": 92.7087111986733,
+        "mean_tokens_per_second": 93.37938086396086,
+        "maximum_tokens_per_second": 96.75199559588283,
+        "cjk_runs": 0
+      },
+      "nccl": {
+        "median_tokens_per_second": 95.75177935944797,
+        "mean_tokens_per_second": 95.20317968623148,
+        "maximum_tokens_per_second": 99.95285242813836,
+        "cjk_runs": 0
+      }
+    },
+    "c1_temperature_one": {
+      "contexts": [2048, 8192],
+      "sircl_tokens_per_second": {
+        "2048": [62.94444444444444, 97.14444444444445, 94.37316002886944],
+        "8192": [94.7942587984324, 99.27124066832204, 113.57777777777778]
+      },
+      "nccl_tokens_per_second": {
+        "2048": [103.16666666666667, 103.2, 104.77026306434033],
+        "8192": [104.47777777777777, 54.29034838250781, 65.4439210806944]
+      },
+      "interpretation": "Temperature-one speculative acceptance varied enough to reverse the apparent winner between contexts; these cells do not isolate transport."
+    },
+    "c32_16k_initial_harness": {
+      "temperature": 1.0,
+      "duration_seconds": 240,
+      "maximum_output_tokens": 32768,
+      "kv_budget_tokens": 2198756,
+      "fully_unique_streams": 32,
+      "sircl": [
+        {"server_tokens_per_second": 530.1273585495469, "speculative_acceptance": 0.7484375},
+        {"server_tokens_per_second": 567.4558702834498, "speculative_acceptance": 0.81375},
+        {"server_tokens_per_second": 545.9969335377567, "speculative_acceptance": 0.80625, "client_accounting_valid": false}
+      ],
+      "nccl": [
+        {"server_tokens_per_second": 550.5705513037504, "speculative_acceptance": 0.7375},
+        {"server_tokens_per_second": 577.8375, "speculative_acceptance": 0.7515625},
+        {"server_tokens_per_second": 472.893473768409, "speculative_acceptance": 0.6020833333333333}
+      ],
+      "sircl_mean_server_tokens_per_second": 547.8600541235845,
+      "sircl_mean_speculative_acceptance": 0.7894791666666667,
+      "nccl_mean_server_tokens_per_second": 533.7671750240531,
+      "nccl_mean_speculative_acceptance": 0.6970486111111112
+    },
+    "c32_16k_frozen_isolated_harness": {
+      "sircl": {
+        "server_tokens_per_second": 598.7559940173965,
+        "speculative_acceptance": 0.840625,
+        "aggregate_valid": true
+      },
+      "nccl": {
+        "server_tokens_per_second": 511.82972199426774,
+        "speculative_acceptance": 0.646875,
+        "aggregate_valid": true
+      }
+    },
+    "near_matched_ten_second_samples": [
+      {
+        "sircl": {"tokens_per_second": 585.1, "mean_acceptance_length": 4.46, "draft_acceptance": 0.692},
+        "nccl": {"tokens_per_second": 599.6, "mean_acceptance_length": 4.46, "draft_acceptance": 0.692},
+        "sircl_delta_fraction": -0.024182788525683816
+      },
+      {
+        "sircl": {"tokens_per_second": 636.8, "mean_acceptance_length": 4.85, "draft_acceptance": 0.771},
+        "nccl": {"tokens_per_second": 653.1, "mean_acceptance_length": 4.86, "draft_acceptance": 0.772},
+        "sircl_delta_fraction": -0.02495789235951622
+      }
+    ]
+  },
+  "result": {
+    "prefill_transport_difference": "none expected; observed values were within 2.1%",
+    "coding_peak_sircl_mean_delta_fraction": -0.01915705546230182,
+    "coding_peak_sircl_median_delta_fraction": -0.031780188975349066,
+    "matched_acceptance_sircl_delta_range_fraction": [-0.03, -0.024],
+    "sircl_functional": true,
+    "sircl_overflow_sequence": 0,
+    "sircl_fatal": false
+  },
+  "conclusion": "The width-4096 SIRCL path is functional but does not improve this DeepSeek decode profile. Temperature-one DSpark acceptance dominates whole-window variance. At near-identical acceptance and mean accepted length, SIRCL was 2.4-3.0% slower than patched NCCL; five-run Coding Peak was 1.9% lower by mean.",
+  "limitations": [
+    "The model checkpoint revision and per-file hashes were not recorded.",
+    "Temperature-one prompts and samples were not byte-identical between arms, and DSpark acceptance varied materially.",
+    "The shared benchmark file changed accounting policy during the A/B/A sequence; the frozen isolated-server pair uses one later immutable copy.",
+    "The frozen isolated pair had materially different speculative acceptance and cannot isolate transport by its raw aggregate rates.",
+    "Near-matched ten-second samples are diagnostic windows, not independent 240-second repetitions.",
+    "The A/B applies only to the sequential tiered-64K width-4096 graph path on this four-Spark cycle."
+  ]
+}

@@ -400,6 +400,7 @@ def aligned_c32_arguments() -> list[str]:
         "--token-targeting",
         "exact",
         "--skip-prefill",
+        "--isolated-server",
         "--cell-warmup-timeout-seconds",
         "600",
         "--decode-warmup-seconds",
@@ -551,6 +552,7 @@ def build_plan(
                 "kv_budget_tokens": 2198756,
                 "readiness_timeout_seconds": 600,
                 "all_requests_must_be_running_before_measurement": True,
+                "isolated_server": True,
                 "invocation": aligned_c32_arguments(),
             },
             "acceptance_gates_per_cell": {

@@ -170,7 +170,9 @@ def test_aligned_c32_invocation_matches_tp2_workload() -> None:
     for option, expected in expected_pairs.items():
         assert args[args.index(option) + 1] == expected
     assert "--skip-prefill" in args
+    assert "--isolated-server" in args
     assert comparison["all_requests_must_be_running_before_measurement"] is True
+    assert comparison["isolated_server"] is True
 
 
 def test_benchmark_identity_binds_modified_file_bytes(tmp_path: Path) -> None:
