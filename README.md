@@ -11,16 +11,16 @@ SparkRing is a low-latency collective transport and vLLM-based
 inference-serving stack for switchless clusters of NVIDIA DGX Spark systems
 powered by the GB10 Grace Blackwell Superchip.
 
-SparkRing supports GB10 pairs, four-node rings, and Six-node rings (in dev).
+The 200 Gb/s ConnectX-7 links connect DGX Sparks directly, with no external
+Ethernet or InfiniBand switch in the inference fabric. SparkRing supports
+tensor-parallel deployments on two-node, four-node, and six-node (support in
+progress) GB10 clusters. Model profiles cover setup, tested configurations,
+limitations, and [performance results](docs/RESULTS.md).
 
-Models run as tensor-parallel deployments over the direct fabric without an
-external Ethernet or InfiniBand switch. SIRCL provides custom RDMA collectives
-for qualified four-node paths, CUDA-graph command rings support repeated decode
-work, and patched NCCL handles communication outside SIRCL's supported paths.
-
-The repository provides launch tooling, speculative-decoding integration,
-model profiles, and qualification evidence. Model-specific policy
-belongs to profiles rather than the transport.
+The stack combines [SIRCL](docs/SIRCL.md) custom RDMA collectives,
+CUDA-graph-replayable command rings, vLLM patches and adapters, and a
+[patched NCCL fallback](#architecture) for communication not handled by the
+custom path.
 
 ## Cluster sizes
 
@@ -28,7 +28,8 @@ belongs to profiles rather than the transport.
   with SparkCache.
 - **4× DGX Spark — physical ring.** Models: GLM-5.2 EXL3 3.5-bpw;
   DeepSeek-V4-Flash-0731; compatible with SparkCache.
-- **6× DGX Spark — physical ring.** **In dev. Target models: GLM | KIMI.**
+- **6× DGX Spark — physical ring (support in progress).** Target models: GLM |
+  Kimi.
 
 ## Profiles
 
@@ -119,8 +120,7 @@ limitations are in [results](docs/RESULTS.md). The six-profile registry is
 
 ## Acknowledgements
 
-SparkRing builds on work from vLLM, NVIDIA NCCL, B12X, SparkInfer, LMCache,
-ExLlamaV3, and the
+SparkRing builds on work from vLLM, NVIDIA NCCL, B12X, ExLlamaV3, and the
 [local inference community](https://github.com/local-inference-lab/).
 
 Detailed third-party attribution is in
