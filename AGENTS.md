@@ -22,11 +22,16 @@ conversation or development history.
 
 ## Supported repository surface
 
-SparkRing supports two serving configurations:
+SparkRing supports two model families across six deployment profiles:
 
-- GLM-5.2 EXL3 3.5-bpw, using the R7 runtime and site/candidate contracts.
-- DeepSeek-V4-Flash-0731, using the published serving image and per-rank
-  environment contract.
+- GLM-5.2 EXL3 3.5-bpw at four-Spark TP4/DCP4, as a base profile and a
+  SparkCache composition, using the R7 runtime and site/candidate contracts.
+- DeepSeek-V4-Flash-0731 at two-Spark TP2/DCP1 and four-Spark TP4/DCP1, as
+  base profiles and SparkCache compositions, using the published serving image
+  and per-rank environment contracts.
+
+Six-Spark GLM and KIMI profiles are in dev and are not part of the supported
+repository surface.
 
 Maintained Python trees are `spark_transport/`, `runtime/`, `scripts/`, and
 `performance/`. The R7 runtime builder is `runtime/exl3-r7/`. Do not add
