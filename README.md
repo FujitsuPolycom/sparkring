@@ -21,7 +21,7 @@ decode work, while patched NCCL handles communication outside SIRCL's
 supported paths.
 
 The repository provides launch tooling, speculative-decoding integration,
-model profiles, and explicit qualification evidence. Model-specific policy
+model profiles, and qualification evidence. Model-specific policy
 belongs to profiles rather than the transport.
 
 ## Profiles
