@@ -55,24 +55,32 @@
     "native_restore": false,
     "root_requirement": "Use one dedicated rank-local host directory per physical rank, mounted at the same container path on all four ranks."
   },
-  "qualification": {
+  "evidence": {
+    "status": "qualified",
+    "conditions": "Four directly cabled NVIDIA DGX Spark systems at TP4/DCP1 using the immutable runtime image, checkpoint identity, dedicated rank-local cache roots, and SparkCache wheel recorded in this file.",
+    "result": "A cold-cache deterministic prompt of 73,774 tokens committed 73,728 reusable tokens as 288 chunks and 300,908,544 bytes on each of 4 ranks. After a coordinated restart that left the cache roots in place, every rank discovered its manifest and restored in 483.9, 413.9, 443.0, 494.6 ms. The repeated prompt served 73,728 external-cache hit tokens of 73,814 queried and returned SPARKCACHE_OK:9540; the post-restore canary returned SPARKCACHE_CANARY_OK.",
+    "conclusion": "This composition restores durable prefix state across a coordinated engine restart and continues generating correct output. The result qualifies the exact artifacts and settings recorded in this file; it does not establish general vLLM, checkpoint, topology, or production reliability.",
+    "limitations": [
+      "The 4096-token scheduler budget is the only qualified budget. A budget of 8192 remains unsupported until it passes its own cold-store, coordinated-restart, external-hit, and canary smoke.",
+      "DeepSeek DCP2 and DCP4 are unsupported.",
+      "Streaming snapshots and native restore are unsupported."
+    ],
+    "record": "README.md",
     "date": "2026-08-21",
-    "artifact_scope": "The exact SparkCache wheel, runtime image, checkpoint identity, topology, and serving values in this file.",
     "prompt_tokens": 73774,
     "reusable_tokens": 73728,
     "cache_digest": "c17e6fbaefea740b4a83890f20d0e72e792cf9db9429633340e3c48d41d02d1c",
     "chunks_per_rank": 288,
     "bytes_per_rank": 300908544,
-    "restore_milliseconds_by_rank": [483.9, 413.9, 443.0, 494.6],
+    "restore_milliseconds_by_rank": [
+      483.9,
+      413.9,
+      443.0,
+      494.6
+    ],
     "external_cache_queried_tokens": 73814,
     "external_cache_hit_tokens": 73728,
     "expected_response": "SPARKCACHE_OK:9540",
-    "post_restore_canary": "SPARKCACHE_CANARY_OK",
-    "record": "README.md"
-  },
-  "limitations": [
-    "The 4096-token scheduler budget is the only qualified budget. A budget of 8192 remains unsupported until it passes its own cold-store, coordinated-restart, external-hit, and canary smoke.",
-    "DeepSeek DCP2 and DCP4 are unsupported.",
-    "Streaming snapshots and native restore are unsupported."
-  ]
+    "post_restore_canary": "SPARKCACHE_CANARY_OK"
+  }
 }

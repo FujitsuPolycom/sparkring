@@ -45,7 +45,8 @@ def test_unsupported_scheduler_budget_is_not_an_operator_setting() -> None:
     for path in RECIPE_PATHS:
         recipe = _load(path)
         assert 8192 not in recipe["serving"].values()
-        assert any("8192 remains unsupported" in item for item in recipe["limitations"])
+        limitations = recipe["evidence"]["limitations"]
+        assert any("8192 remains unsupported" in item for item in limitations)
 
 
 def test_parallelism_matches_physical_rank_count() -> None:
@@ -55,3 +56,21 @@ def test_parallelism_matches_physical_rank_count() -> None:
         assert serving["tensor_parallel_size"] == recipe["hardware"]["ranks"]
         assert serving["node_count"] == recipe["hardware"]["ranks"]
         assert serving["decode_context_parallel_size"] in (1, 4)
+
+
+def test_composition_evidence_matches_the_base_recipe_shape() -> None:
+    """Both recipe schemas state evidence in one shape.
+
+    A composition carries extra measurement fields, but the keys a reader
+    relies on to judge a claim -- what was run, what came out, what it means,
+    and what it excludes -- are the same as in a base recipe.
+    """
+    required = {"status", "conditions", "result", "conclusion", "limitations", "record"}
+    base = _load(ROOT / "recipes" / "deepseek-v4-flash-0731.json")["evidence"]
+    assert required <= set(base)
+    for path in RECIPE_PATHS:
+        evidence = _load(path)["evidence"]
+        assert required <= set(evidence), path.name
+        assert evidence["status"] == _load(path)["status"]
+        assert evidence["conclusion"].strip()
+        assert evidence["result"].strip()
