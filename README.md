@@ -18,8 +18,7 @@ external Ethernet or InfiniBand switch. [SIRCL](https://github.com/FujitsuPolyco
 for qualified four-node paths, CUDA-graph command rings support repeated decode
 work, and [patched NCCL](https://github.com/FujitsuPolycom/sparkring/blob/main/spark_transport/nccl/README.md) handles communication outside SIRCL's supported paths.
 
-The repository provides launch tooling, speculative-decoding integration,
-model profiles, and qualification evidence. Model-specific policy
+The repository provides launch tooling, model profiles, and qualification evidence, and [performance data](https://github.com/FujitsuPolycom/sparkring/tree/main/performance). Model-specific policy
 belongs to profiles rather than the transport.
 
 ## Cluster sizes
