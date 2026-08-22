@@ -109,6 +109,8 @@ was 1.9% lower by mean under SIRCL. Long C32 rates were dominated by DSpark
 acceptance variation, but repeated near-matched ten-second samples placed SIRCL
 2.4-3.0% below NCCL. See the
 [transport A/B record](../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
+The consolidated findings page is
+[DeepSeek-V4 SIRCL Findings](DEEPSEEK_V4_SIRCL_FINDINGS.md).
 
 ## Interpretation
 
