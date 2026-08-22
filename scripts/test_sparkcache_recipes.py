@@ -9,9 +9,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RECIPE_DIR = ROOT / "recipes" / "sparkcache"
 RECIPE_PATHS = sorted(RECIPE_DIR.glob("*.json"))
-WHEEL_SHA256 = (
-    "87c17d8dab5052f5a7833349dc9b99b76a3b6531ca6f0d3deff812f724fecdcc"
-)
+ARTIFACTS = {
+    "deepseek-v4-flash-0731-tp2-dcp1.json": (
+        "0.1.0a1",
+        "87c17d8dab5052f5a7833349dc9b99b76a3b6531ca6f0d3deff812f724fecdcc",
+    ),
+    "deepseek-v4-flash-0731-tp4-dcp1.json": (
+        "0.1.0a1",
+        "87c17d8dab5052f5a7833349dc9b99b76a3b6531ca6f0d3deff812f724fecdcc",
+    ),
+    "glm52-exl3-r7-3.5bpw-tp4-dcp4.json": (
+        "0.1.0a2",
+        "3345b8c574951a8204377b0c27f53765c84b96ab4f5a8ec1ac147574dba7568b",
+    ),
+}
 
 
 def _load(path: Path) -> dict:
@@ -32,8 +43,9 @@ def test_compositions_pin_artifact_and_fail_closed_policy() -> None:
         assert recipe["schema"] == "sparkring-sparkcache-composition/v1"
         assert recipe["status"] == "qualified"
         assert (path.parent / recipe["base_recipe"]).resolve().is_file()
-        assert recipe["runtime"]["sparkcache"]["version"] == "0.1.0a1"
-        assert recipe["runtime"]["sparkcache"]["wheel_sha256"] == WHEEL_SHA256
+        version, wheel_sha256 = ARTIFACTS[path.name]
+        assert recipe["runtime"]["sparkcache"]["version"] == version
+        assert recipe["runtime"]["sparkcache"]["wheel_sha256"] == wheel_sha256
         assert recipe["serving"]["max_num_batched_tokens"] == 4096
         assert recipe["serving"]["scheduler_budget_status"] == "qualified"
         assert recipe["sparkcache"]["kv_load_failure_policy"] == "recompute"
@@ -44,7 +56,7 @@ def test_compositions_pin_artifact_and_fail_closed_policy() -> None:
 def test_scheduler_budget_records_evidence_without_an_operator_ceiling() -> None:
     for path in RECIPE_PATHS:
         recipe = _load(path)
-        limitations = " ".join(recipe["limitations"])
+        limitations = " ".join(recipe["evidence"]["limitations"])
         assert "Operators may choose other values" in limitations
         assert "8192 is known to work" in limitations
         assert "8192 remains unsupported" not in limitations
@@ -58,3 +70,22 @@ def test_parallelism_matches_physical_rank_count() -> None:
         assert serving["tensor_parallel_size"] == recipe["hardware"]["ranks"]
         assert serving["node_count"] == recipe["hardware"]["ranks"]
         assert serving["decode_context_parallel_size"] in (1, 4)
+
+
+def test_composition_evidence_matches_the_base_recipe_shape() -> None:
+    """Both recipe schemas state evidence in one shape.
+
+    A composition carries extra measurement fields, but the keys a reader
+    relies on to judge a claim -- what was run, what came out, what it means,
+    and what it excludes -- are the same as in a base recipe.
+    """
+    required = {"status", "conditions", "result", "conclusion", "limitations", "record"}
+    base = _load(ROOT / "recipes" / "deepseek-v4-flash-0731.json")["evidence"]
+    assert set(base) == required
+    for path in RECIPE_PATHS:
+        evidence = _load(path)["evidence"]
+        assert set(base) <= set(evidence), path.name
+        assert evidence["status"] == _load(path)["status"]
+        assert evidence["conclusion"].strip()
+        assert evidence["result"].strip()
+        assert evidence["record"] != "README.md"
