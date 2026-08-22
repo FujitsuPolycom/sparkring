@@ -2,7 +2,7 @@
 
 > **This repository is changing rapidly.** Documentation, profiles, and
 > branch history are being restructured as SparkRing's scope narrows to
-> switchless four-Spark collective transport and serving. Published
+> switchless multi-Spark collective transport and serving. Published
 > branches may be rebased and documents may be moved, renamed, or
 > replaced without a deprecation period. Pin a commit if you depend on a
 > specific state of this tree.
@@ -11,7 +11,7 @@ SparkRing is a low-latency collective transport and vLLM-based
 inference-serving stack for switchless clusters of NVIDIA DGX Spark systems
 powered by the GB10 Grace Blackwell Superchip.
 
-SparkRing supports GB10 pairs, four-node rings, and (soon) six-node rings.
+SparkRing supports GB10 pairs and four-node rings. Six-node rings are in dev.
 
 Models run as tensor-parallel deployments over the direct fabric without an
 external Ethernet or InfiniBand switch. SIRCL provides custom RDMA collectives
@@ -28,7 +28,7 @@ belongs to profiles rather than the transport.
   with SparkCache.
 - **4× DGX Spark — physical ring.** Models: GLM-5.2 EXL3 3.5-bpw;
   DeepSeek-V4-Flash-0731; compatible with SparkCache.
-- **6× DGX Spark — physical ring.** **Coming soon. Models: GLM | KIMI.**
+- **6× DGX Spark — physical ring.** **In dev. Target models: GLM | KIMI.**
 
 ## Profiles
 
