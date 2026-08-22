@@ -74,27 +74,29 @@ management LAN ─┬─────────────┬─────�
 Four DGX Sparks serve one model as four tensor-parallel ranks, numbered 0
 through 3. The inference fabric is a cycle of four direct cables - rank 0 to
 rank 1, 1 to 2, 2 to 3, and 3 back to 0 - each one 200 Gb/s ConnectX-7 link
-carrying RoCEv2. Every rank has exactly two fabric neighbours, and no switch
+carrying RoCEv2. Every rank has exactly two fabric neighbors, and no switch
 carries collective traffic. A separate management LAN reaches all four ranks
 with SSH, rendezvous, and the client API that rank 0 serves; it is never a
 fabric edge.
 
-A switchless fabric has no shared broadcast domain, so a rank reaches the peer
-opposite it on the cycle only through a neighbour that forwards the traffic.
-Routes, IP forwarding, and Docker forward rules are therefore launch
-prerequisites on every rank, checked by
+A rank reaches a non-adjacent fabric address only through a neighbor that
+forwards the traffic. Routes to non-adjacent fabric subnets,
+`net.ipv4.ip_forward=1`, and unrestricted `DOCKER-USER` ACCEPT rules between
+the two fabric interfaces are therefore launch prerequisites on every rank,
+checked by
 [`scripts/ring_doctor.py`](scripts/ring_doctor.py).
 
 Collectives do not take that relay. SIRCL, the Switchless Inference RDMA
 Collective Layer, schedules a four-rank collective as the cycle's two perfect
-matchings - ranks 0-1 with 2-3, then 1-2 with 3-0 - so every step is a
-neighbour exchange and the two steps together use all four links. SIRCL holds
+matchings - ranks 0-1 with 2-3, then 1-2 with 3-0 - so every step is a neighbor
+exchange and the two steps together use all four links. SIRCL holds
 persistent RDMA sessions and device-published command rings that CUDA graph
 replay resubmits without host work. Patched NCCL is the fallback for collective
 shapes outside SIRCL's qualified families.
 
-DeepSeek-V4-Flash-0731 also deploys as two ranks on a single cabled pair. The
-GLM profile requires the four-Spark cycle.
+DeepSeek-V4-Flash-0731 has an implemented two-rank launch on a single cabled
+pair using patched NCCL; SIRCL is unsupported on that topology. The GLM
+profile requires the four-Spark cycle.
 
 See [architecture](docs/ARCHITECTURE.md) and [SIRCL](docs/SIRCL.md).
 

@@ -68,10 +68,11 @@ They are sanitized templates. Resolved inputs remain local and untracked.
 Validate configuration changes through the affected tests in `scripts/`; do
 not use an example configuration as evidence of a deployable appliance.
 
-DeepSeek-V4-Flash-0731 uses the per-rank environment template
-[`scripts/config/deepseek-v4-flash-0731.env.example`](scripts/config/deepseek-v4-flash-0731.env.example).
-Keep its placeholders explicit and document any environment-variable
-invariant in the template.
+DeepSeek-V4-Flash-0731 uses separate per-rank environment templates for the
+[four-Spark cycle](scripts/config/deepseek-v4-flash-0731.env.example) and
+[two-Spark pair](scripts/config/deepseek-v4-flash-0731-pair.env.example). Keep
+their placeholders explicit and document environment-variable invariants in
+the applicable template.
 
 ## Performance contributions
 
