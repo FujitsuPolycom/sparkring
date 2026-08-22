@@ -21,7 +21,15 @@ full-CKV gather, and SIRCL TP collectives with patched NCCL fallback.
 Coding prompts reached 27.3 tokens/s single-stream with 96.64% measured draft
 acceptance. The matched C8 cell regressed 11.63% under MTP4. A rebuilt image
 has no acceptance status until it completes
-[the promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md).
+[the promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md); the figures
+above belong to the image ID that produced them and do not transfer to a
+rebuild.
+
+One rebuilt image has been carried from a clean checkout to a serving
+endpoint on four ranks, with its checkpoint, generated profiles, and in-image
+runtime bytes verified against their pinned identities. That record reports
+no throughput figure and does not promote the profile. See
+[the rebuilt-image bring-up record](../performance/records/glm-3.5bpw/rebuilt-image-20260821.md).
 
 ## DeepSeek-V4-Flash-0731
 
