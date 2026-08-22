@@ -23,7 +23,9 @@ outside those families; DCP and indexer collectives use stock paths.
 
 The DeepSeek-V4-Flash-0731 quickstart uses patched NCCL. Its width-4096 SIRCL
 CUDA-graph configuration is research-only and excluded from functional profile
-qualification.
+qualification. A bounded four-rank live validation established native replay,
+API health, and zero overflow for the target and DSpark capture path; see the
+[DeepSeek SIRCL evidence record](../performance/records/deepseek-v4-flash/sircl-width4096-live-validation-20260822.md).
 
 The Qwen3.8-27B EXL3 K5/K6 profile uses patched NCCL. Its width-5,120
 tensor-parallel shape is unsupported by SIRCL, so the profile does not load a

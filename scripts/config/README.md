@@ -70,6 +70,20 @@ runtime under `/ws`; it does not supply the model, rank environment, a site
 address, or live evidence. Follow
 [`docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md`](../../docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md).
 
+## DeepSeek SIRCL research overlay
+
+`deepseek-v4-flash-0731-sircl-research.env.example` is a second per-rank
+environment file for the research-only width-4096 SIRCL graph candidate. It
+does not replace the canonical environment. Apply it after the canonical file
+only for an authorized matched A/B, and resolve both direct peer addresses
+against the device named beside each address. The offline plan and evidence
+requirements are documented in
+[`docs/DEEPSEEK_V4_FLASH_SIRCL_AB.md`](../../docs/DEEPSEEK_V4_FLASH_SIRCL_AB.md).
+The environment overlay is not sufficient by itself: both generated A/B
+commands require the same six read-only, SHA-bound runtime mounts for the
+vLLM capture overlays and SIRCL implementation. The control leaves their
+activation variables unset.
+
 ## Safety
 
 Copying or validating a template is **OFFLINE**. Contacting configured ranks

@@ -16,6 +16,7 @@ qualified its collective results. Use the
 | Parallelism | TP4 across four DGX Sparks |
 | Activations | `bfloat16` |
 | Request limit | 1,048,576 tokens |
+| Maximum sequences | 32 |
 | Key-value reservation | 17,179,869,184 bytes per rank in both base targets; SparkCache TP4 retains 34,359,738,368 bytes per rank |
 | Scheduler budget | 4,096 tokens |
 | Block size | 256 tokens |
@@ -40,5 +41,10 @@ has not been recorded. Any deployment using a locally built image is evidence
 for that image identity, not the published digest.
 
 The native transport's width-4096 graph mode is research-only and is not part
-of this profile's qualification. The normal launch uses the NCCL configuration
-in `scripts/config/deepseek-v4-flash-0731.env.example`.
+of this profile's qualification. One hash-bound candidate using the pinned
+serving image completed target and DSpark CUDA-graph capture, API smoke, and
+sustained C1/C8 decode with native replay advancing equally on every rank and
+zero overflow. That bounded evidence is retained in
+[`sircl-width4096-live-validation-20260822.md`](../../performance/records/deepseek-v4-flash/sircl-width4096-live-validation-20260822.md).
+The normal launch continues to use the NCCL configuration in
+`scripts/config/deepseek-v4-flash-0731.env.example`.
