@@ -73,9 +73,9 @@
     "record": "README.md"
   },
   "limitations": [
-    "The 4096-token scheduler budget is the only qualified budget. A budget of 8192 remains unsupported until it passes its own cold-store, coordinated-restart, external-hit, and canary smoke.",
+    "The published qualification receipt used a 4096-token scheduler budget. Operators may choose other values; 8192 is known to work, but its performance and capacity behavior is outside this receipt.",
     "The qualified context limit is 131072 tokens; the base recipe's 1048576-token setting is not qualified with SparkCache.",
-    "DeepSeek DCP2 and DCP4 are unsupported.",
-    "Streaming snapshots and native restore are unsupported."
+    "The published receipt covers DeepSeek DCP1, not DCP2 or DCP4.",
+    "This recipe disables streaming snapshots and native restore; the published receipt does not cover either mode."
   ]
 }

@@ -41,11 +41,14 @@ def test_compositions_pin_artifact_and_fail_closed_policy() -> None:
         assert recipe["sparkcache"]["native_restore"] is False
 
 
-def test_unsupported_scheduler_budget_is_not_an_operator_setting() -> None:
+def test_scheduler_budget_records_evidence_without_an_operator_ceiling() -> None:
     for path in RECIPE_PATHS:
         recipe = _load(path)
-        assert 8192 not in recipe["serving"].values()
-        assert any("8192 remains unsupported" in item for item in recipe["limitations"])
+        limitations = " ".join(recipe["limitations"])
+        assert "Operators may choose other values" in limitations
+        assert "8192 is known to work" in limitations
+        assert "8192 remains unsupported" not in limitations
+        assert "only qualified budget" not in limitations
 
 
 def test_parallelism_matches_physical_rank_count() -> None:
