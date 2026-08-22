@@ -66,6 +66,7 @@
       "This recipe disables streaming snapshots and native restore; the published receipt does not cover either mode."
     ],
     "record": "recipes/sparkcache/README.md",
+    "artifact_scope": "The exact SparkCache wheel, runtime image, checkpoint identity, topology, and serving values in this file.",
     "date": "2026-08-21",
     "prompt_tokens": 73774,
     "reusable_tokens": 73728,

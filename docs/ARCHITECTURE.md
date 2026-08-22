@@ -2,8 +2,9 @@
 
 SparkRing is a DGX Spark inference stack. It serves the GLM-5.2 EXL3 3.5-bpw
 and DeepSeek-V4-Flash-0731 profiles as four tensor-parallel ranks on a
-switchless 200 Gb/s direct-cable cycle; DeepSeek-V4-Flash-0731 also serves as
-two ranks on a single cabled pair.
+switchless 200 Gb/s direct-cable cycle. DeepSeek-V4-Flash-0731 also has an
+implemented two-rank launch on a single cabled pair using patched NCCL; SIRCL
+is unsupported on that topology.
 
 ## Topology
 
@@ -20,24 +21,25 @@ management LAN ─┬─────────────┬─────�
 
 Four ranks, numbered 0 through 3, are cabled as the cycle `0-1-2-3-0`. Each of
 those four edges is one direct 200 Gb/s ConnectX-7 link carrying RoCEv2, so
-every rank has exactly two fabric neighbours - rank 0 neighbours ranks 1 and 3,
-rank 1 neighbours ranks 0 and 2, and so on around the cycle - and no switch
-sits in the inference fabric. Ranks use both cycle neighbours for RDMA
+every rank has exactly two fabric neighbors - rank 0 neighbors ranks 1 and 3,
+rank 1 neighbors ranks 0 and 2, and so on around the cycle - and no switch
+sits in the inference fabric. Ranks use both cycle neighbors for RDMA
 communication.
 
 The management network reaches all four ranks and carries SSH, rendezvous, and
 rank 0's API traffic. It is not an inference-fabric edge.
 
-A switchless fabric has no shared broadcast domain, so a rank reaches the peer
-opposite it on the cycle only through a neighbour that forwards the traffic.
+A switchless fabric has no shared broadcast domain, so a rank reaches a
+non-adjacent fabric address only through a neighbor that forwards the traffic.
 Routes to each non-adjacent fabric subnet, `net.ipv4.ip_forward=1`, and an
 unrestricted `DOCKER-USER` forward rule are launch prerequisites on every rank;
 [prerequisites](PREREQUISITES.md) states the conditions and
 [`scripts/ring_doctor.py`](../scripts/ring_doctor.py) verifies them.
 
-The DeepSeek two-Spark pair holds ranks 0 and 1 only, joined by one direct
-cable cage 0 to cage 0, with rank 0 serving the API and no relayed fabric hop.
-The GLM profile requires the four-Spark cycle.
+The implemented DeepSeek two-Spark profile holds ranks 0 and 1 only, joined by
+one direct cable from cage 0 to cage 0, with rank 0 serving the API and no
+relayed fabric hop. It uses patched NCCL; SIRCL is unsupported on the pair. The
+GLM profile requires the four-Spark cycle.
 
 ## Collective path
 
@@ -45,15 +47,17 @@ SIRCL (Switchless Inference RDMA Collective Layer) owns persistent RDMA
 sessions and graph-replayable command rings for qualified tensor-parallel
 collectives. On the four-rank cycle, a collective is scheduled as the cycle's
 two perfect matchings - ranks 0-1 with 2-3, then 1-2 with 3-0 - so every step
-is a neighbour exchange and no rank relays another rank's collective data. See
+is a neighbor exchange and no rank relays another rank's collective data. See
 [SIRCL](SIRCL.md) for the transport boundary.
 
 Patched NCCL is the fallback for collective shapes and phases outside SIRCL's
 qualified path. The GLM profile uses SIRCL for qualified TP all-reduce and
 vocabulary families; its DCP and indexer collectives remain stock. The
-DeepSeek quickstart uses the patched NCCL configuration from
-`scripts/config/deepseek-v4-flash-0731.env.example`; width-4096 SIRCL graph
-collectives are research-only.
+four-Spark DeepSeek profile uses
+`scripts/config/deepseek-v4-flash-0731.env.example`; the two-Spark profile uses
+`scripts/config/deepseek-v4-flash-0731-pair.env.example`. Both use patched
+NCCL. Width-4096 SIRCL graph collectives are research-only on the four-Spark
+cycle and unsupported on the pair.
 
 ## Profile composition
 

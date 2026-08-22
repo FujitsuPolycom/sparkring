@@ -72,20 +72,23 @@ def test_parallelism_matches_physical_rank_count() -> None:
         assert serving["decode_context_parallel_size"] in (1, 4)
 
 
-def test_composition_evidence_matches_the_base_recipe_shape() -> None:
-    """Both recipe schemas state evidence in one shape.
-
-    A composition carries extra measurement fields, but the keys a reader
-    relies on to judge a claim -- what was run, what came out, what it means,
-    and what it excludes -- are the same as in a base recipe.
-    """
+def test_composition_evidence_has_claim_shape_and_valid_base() -> None:
+    """Each composition states a full claim and names its actual base recipe."""
     required = {"status", "conditions", "result", "conclusion", "limitations", "record"}
-    base = _load(ROOT / "recipes" / "deepseek-v4-flash-0731.json")["evidence"]
-    assert set(base) == required
     for path in RECIPE_PATHS:
-        evidence = _load(path)["evidence"]
-        assert set(base) <= set(evidence), path.name
-        assert evidence["status"] == _load(path)["status"]
+        recipe = _load(path)
+        base = _load((path.parent / recipe["base_recipe"]).resolve())
+        evidence = recipe["evidence"]
+        assert required <= set(evidence), path.name
+        assert evidence["status"] == recipe["status"]
         assert evidence["conclusion"].strip()
         assert evidence["result"].strip()
         assert evidence["record"] != "README.md"
+        assert evidence["artifact_scope"].strip()
+        assert base["schema"] == "sparkring-recipe/v1"
+        assert base["model"]["repository"] == recipe["model"]["repository"]
+        assert base["hardware"]["ranks"] == recipe["hardware"]["ranks"]
+        if "evidence" in base:
+            assert required <= set(base["evidence"])
+        else:
+            assert {"status", "evidence"} <= set(base["publication"])

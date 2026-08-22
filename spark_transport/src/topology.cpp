@@ -58,9 +58,8 @@ std::vector<std::uint32_t> Topology::ranks() const {
 }
 
 Topology Topology::four_spark_direct_cycle() {
-  // vLLM global ranks map to physical nodes as
-  // 0=spark0, 1=spark1, 2=spark3, 3=spark2. The four undirected pairs below
-  // are the direct-cable cycle 0-1-3-2-0 in that logical rank space.
+  // vLLM global ranks follow the physical direct-cable cycle 0-1-2-3-0.
+  // The pairs below are the two perfect matchings used by the TP4 schedule.
   // Exact device assignment is injected at deployment; these logical edges
   // intentionally do not embed host-specific interface names.
   std::vector<EdgeConfig> edges;
@@ -75,8 +74,8 @@ Topology Topology::four_spark_direct_cycle() {
   };
   add_pair(0, 1, 9410);
   add_pair(2, 3, 9420);
-  add_pair(0, 2, 9430);
-  add_pair(1, 3, 9440);
+  add_pair(0, 3, 9430);
+  add_pair(1, 2, 9440);
   return Topology(std::move(edges));
 }
 

@@ -76,6 +76,7 @@
       "Full GLM reasoning-trace equality is an inconclusive diagnostic under this runtime: repeated temperature-zero and fixed-seed requests produced different non-empty reasoning bodies with identical final content and finish reason stop."
     ],
     "record": "https://github.com/FujitsuPolycom/sparkcache/blob/999bc13d6c0b52a6cee3c90487ac9b8643ba3f99/GLM52_A2_LIVE_VALIDATION.md",
+    "artifact_scope": "The exact SparkCache wheel, runtime image, checkpoint identity, topology, and serving values in this file.",
     "date": "2026-08-21",
     "prompt_tokens": 225555,
     "reusable_tokens": 225536,

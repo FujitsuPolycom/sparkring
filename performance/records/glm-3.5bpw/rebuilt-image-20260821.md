@@ -47,9 +47,10 @@ The operator performed these gates against the image ID above:
 
 Worker logs supplied weight bytes and load durations. The reported duration is
 the minimum-to-maximum range across four workers; no average or variability
-estimate was computed. Graph capture and startup completed before API health
-was accepted. No throughput, latency, deterministic-output, concurrency, or
-acceptance workload was measured.
+estimate was computed. That range is a single-run startup measurement, not a
+qualified performance distribution. Graph capture and startup completed before
+API health was accepted. No serving throughput, request latency,
+deterministic-output, concurrency, or acceptance workload was measured.
 
 The raw site, preflight, profile, attestation, and worker-log receipts remain
 outside the public repository. Their public derivatives are the hashes and
@@ -108,5 +109,5 @@ claims from another image.
   portable hardware claim.
 - Native transport tests passed 18 of 18 CTest targets on one GB10 host, not on
   the four-rank serving path.
-- No throughput, latency, acceptance-rate, cache, or output-quality result is
-  claimed.
+- No serving-throughput, request-latency, acceptance-rate, cache, or
+  output-quality result is claimed.
