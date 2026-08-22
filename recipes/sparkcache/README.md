@@ -12,13 +12,17 @@ SparkCache.
 | [`deepseek-v4-flash-0731-tp4-dcp1.json`](deepseek-v4-flash-0731-tp4-dcp1.json) | TP4/DCP1 | 524,288 | 4,096 |
 | [`glm52-exl3-r7-3.5bpw-tp4-dcp4.json`](glm52-exl3-r7-3.5bpw-tp4-dcp4.json) | TP4/DCP4 | 262,144 | 4,096 |
 
-Every composition was qualified with SparkCache `0.1.0a1` wheel SHA-256
+The DeepSeek compositions were qualified with SparkCache `0.1.0a1` wheel
+SHA-256
 `87c17d8dab5052f5a7833349dc9b99b76a3b6531ca6f0d3deff812f724fecdcc`.
-Install that exact wheel into the runtime Python environment on every rank and
-verify its hash before launch. The connector module is
-`sparkcache.spark_context_cache_connector`; the load-failure policy is
-`recompute`, so an unprovable restore becomes a cache miss and serving does not
-consume unverified bytes.
+The GLM composition was qualified with SparkCache `0.1.0a2` wheel SHA-256
+`3345b8c574951a8204377b0c27f53765c84b96ab4f5a8ec1ac147574dba7568b`.
+Use the artifact named by the selected recipe and verify its hash on every rank
+when reproducing a published qualification gate. Operators may use another
+SparkCache build; the receipts on this page do not describe that artifact. The
+connector module is `sparkcache.spark_context_cache_connector`; the
+load-failure policy is `recompute`, so an unprovable restore becomes a cache
+miss and serving does not consume unverified bytes.
 
 Use a different rank-local host directory for every model stack and physical
 rank. Mount those directories at the same container path across a stack. Do
@@ -27,18 +31,18 @@ checkpoints, or between incompatible connector settings.
 
 ## Scheduler budget
 
-`--max-num-batched-tokens 4096` is the conservative qualified default in all
-three compositions. A value of `8192` is unsupported and is not an operator
-option in these recipes. It can be added to a composition only after the exact
-profile passes a separate cold-store, coordinated-restart, external-hit, and
-post-restore canary smoke at that value.
+`--max-num-batched-tokens 4096` is the scheduler budget used by the published
+qualification gates for all three compositions; it is not a configuration
+ceiling. Operators may change the value, and `8192` is known to work. The
+receipts below cover `4096`; performance and capacity behavior at other values
+is outside their evidence scope.
 
 ## Qualification evidence
 
 Conditions: two or four directly cabled NVIDIA DGX Sparks, the immutable
 runtime image and checkpoint identity in each composition, TP and DCP degrees
 recorded in each file, dedicated rank-local cache roots, and the exact
-SparkCache wheel identified above.
+SparkCache wheel identified by that composition.
 
 Measurement: each gate sent a deterministic semantic prompt on a cold cache,
 required every rank to commit the same reusable-token digest, restarted all
@@ -52,15 +56,20 @@ Result:
 |---|---:|---:|---:|---|
 | DeepSeek TP2/DCP1 | 73,774 / 73,728 | 459.8, 517.0 ms | 73,728 | `SPARKCACHE_OK:9540`; canary passed |
 | DeepSeek TP4/DCP1 | 73,774 / 73,728 | 483.9, 413.9, 443.0, 494.6 ms | 73,728 | `SPARKCACHE_OK:9540`; canary passed |
-| GLM TP4/DCP4 | 225,555 / 225,536 | 3,954.2, 3,385.0, 3,649.6, 3,722.4 ms | 225,536 | quorum prime `2`; `SPARKCACHE_OK:9540`; canary passed |
+| GLM TP4/DCP4 | 225,555 / 225,536 | 4,171.2, 3,588.4, 3,697.5, 3,172.2 ms | 225,536 | all-rank inventory prime returned `2`; final content `SPARKCACHE_OK:9540`; canary passed; reasoning-trace equality inconclusive |
 
 Conclusion: the three exact compositions restore durable prefix state after
 a coordinated engine restart and continue generating correct output. The
 result qualifies the recorded artifacts and settings; it does not establish
 general vLLM, checkpoint, topology, or production reliability.
 
-Limitations: DeepSeek DCP2 and DCP4, streaming snapshots, native restore,
-other scheduler budgets, other images, other checkpoints, and other cache
-geometries are unsupported. The GLM composition also requires the Q40 receipt
-preservation and regeneration procedure recorded in its recipe before every
-coordinated restart.
+Limitations: The published receipts use a 4,096-token scheduler budget; other
+budgets are operator choices whose performance and capacity behavior is not
+recorded here. The DeepSeek receipts cover DCP1, not DCP2 or DCP4. These
+recipes disable streaming snapshots and native restore, so the receipts do not
+cover either mode. Other images, checkpoints, and cache geometries are also
+outside the recorded evidence. The GLM composition requires the 40-query-row
+exact-state receipt preservation and regeneration procedure recorded in its
+recipe before every coordinated restart. Full GLM reasoning-trace equality is
+not a qualification condition because repeated requests varied while final
+content and finish reason remained exact.

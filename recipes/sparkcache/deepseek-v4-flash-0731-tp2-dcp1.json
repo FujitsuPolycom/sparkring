@@ -63,12 +63,12 @@
     "result": "A cold-cache deterministic prompt of 73,774 tokens committed 73,728 reusable tokens as 288 chunks and 300,904,448 bytes on each of 2 ranks. After a coordinated restart that left the cache roots in place, every rank discovered its manifest and restored in 459.8, 517.0 ms. The repeated prompt served 73,728 external-cache hit tokens of 73,814 queried and returned SPARKCACHE_OK:9540; the post-restore canary returned SPARKCACHE_CANARY_OK.",
     "conclusion": "This composition restores durable prefix state across a coordinated engine restart and continues generating correct output. The result qualifies the exact artifacts and settings recorded in this file; it does not establish general vLLM, checkpoint, topology, or production reliability.",
     "limitations": [
-      "The 4096-token scheduler budget is the only qualified budget. A budget of 8192 remains unsupported until it passes its own cold-store, coordinated-restart, external-hit, and canary smoke.",
+      "The published qualification receipt used a 4096-token scheduler budget. Operators may choose other values; 8192 is known to work, but its performance and capacity behavior is outside this receipt.",
       "The qualified context limit is 131072 tokens; the base recipe's 1048576-token setting is not qualified with SparkCache.",
-      "DeepSeek DCP2 and DCP4 are unsupported.",
-      "Streaming snapshots and native restore are unsupported."
+      "The published receipt covers DeepSeek DCP1, not DCP2 or DCP4.",
+      "This recipe disables streaming snapshots and native restore; the published receipt does not cover either mode."
     ],
-    "record": "README.md",
+    "record": "recipes/sparkcache/README.md",
     "date": "2026-08-21",
     "prompt_tokens": 73774,
     "reusable_tokens": 73728,
