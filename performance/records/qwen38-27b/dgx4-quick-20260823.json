@@ -1,0 +1,180 @@
+{
+  "schema": "sparkring-qwen38-dgx4-quick/v1",
+  "lane": "public-functional",
+  "status": "research-only",
+  "captured_at_utc": "2026-08-23T03:11:53Z",
+  "conditions": "One TP4/DCP1 run on four directly cabled NVIDIA DGX Sparks using the pinned checkpoint and maintainer-held source runtime described below; native prefix caching enabled; external key-value caching and SIRCL disabled.",
+  "hardware": {
+    "nodes": 4,
+    "system": "NVIDIA DGX Spark",
+    "soc": "NVIDIA GB10",
+    "driver": "580.173.02",
+    "topology": "direct-cycle-4"
+  },
+  "runtime": {
+    "base_image_digest": "sha256:5c36750138dc1447a17dafbb397674f167d3b44ce18d9160d769df114577b35d",
+    "source_archive_sha256": "1cb85824af4ab45f28ff80f5ed1ac96a8fbc0ae0f0935ccb88aa608595e740ae",
+    "source_archive_status": "maintainer-held; no public image or archive; public reproduction pending",
+    "vllm_commit": "229effc810ee6b8112f661472f6aace4eb8c787d",
+    "vllm_worktree_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "vllm_status_porcelain_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "vllm_version": "0.1.dev19076+g3e6393ae6",
+    "exllamav3_commit": "5f3c537ca9d89893d771256f5c43c93656553fbb",
+    "exllamav3_worktree_diff_sha256": "594b01547b0d801cf95926ea973719354150893121019aba2ad8832bc9f17fdb",
+    "exllamav3_status_porcelain_sha256": "50d1a8375a38a705db327f9f17bcba5b269dfb55757958541c51b6c60193c4cc",
+    "torch": "2.12.0+cu132",
+    "cuda_toolkit": "13.2.86",
+    "patched_nccl_sha256": "e69a8c240f45d10166bcd901d99db78bb63147adda66e586d8dd505c6d608b54",
+    "chat_template_sha256": "4f9201169f5bacd1a494c8824470a1ef899c7024d23a2b166e42493e7efd9ac9",
+    "public_requirements_freeze_sha256": "d773c781bcc1de6cf81a64f9fa6b2ab80535f77eea08c5aeb5b96c2ce4423ba8",
+    "installed_pip_freeze_sha256": "a9069ccdd3fd5ad4461e28e6a81c7127db50891bffef1e8b1c604692d744c579",
+    "selected_dpkg_query_sha256": "cdb183448f037a69f43485ecc835231e649da04452b97be6f982b56be9e33f50",
+    "system_packages": {
+      "ccache": "4.9.1-1",
+      "cmake": "3.28.3-1build7",
+      "cuda-toolkit-13-2": "13.2.2-1",
+      "git": "1:2.43.0-1ubuntu7.3",
+      "ibverbs-providers": "50.0-2ubuntu0.2",
+      "ibverbs-utils": "50.0-2ubuntu0.2",
+      "libibverbs1": "50.0-2ubuntu0.2",
+      "ninja-build": "1.11.1-2",
+      "procps": "2:4.0.4-4ubuntu3.2",
+      "python3": "3.12.3-0ubuntu2.1",
+      "python3-dev": "3.12.3-0ubuntu2.1",
+      "python3-venv": "3.12.3-0ubuntu2.1"
+    },
+    "identity_checks": {
+      "source_archive_same_sha256_on_all_ranks": true,
+      "vllm_commit_same_on_all_ranks": true,
+      "vllm_worktree_clean_on_all_ranks": true,
+      "exllamav3_commit_same_on_all_ranks": true,
+      "exllamav3_arm_patch_diff_same_sha256_on_all_ranks": true,
+      "installed_pip_freeze_same_sha256_on_all_ranks": true,
+      "selected_dpkg_query_same_sha256_on_all_ranks": true
+    }
+  },
+  "model": {
+    "repository": "malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated",
+    "revision": "ab3a91a13813df8096cb4c1d560ed3669035d0cf",
+    "sha256sums_sha256": "7626d18481e7f995fd1d9ff211083b7fd57f044daba39e107fb29a48207f24c4",
+    "config_sha256": "fbb105334da6554c10784ff1257fda5e3821d4d5426d64469cee2b2ad67ba2b3",
+    "index_sha256": "ea6e0e1064efbb72d89b4a6f9e0ee76c909a94b3f25047487a2ffb282896a26c",
+    "sha256sum_entries_per_rank": 16,
+    "sha256sum_entries_passed_by_rank": [16, 16, 16, 16]
+  },
+  "serving": {
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 1,
+    "distributed_executor_backend": "mp",
+    "max_model_len": 262144,
+    "max_num_seqs": 64,
+    "max_num_batched_tokens": 8192,
+    "enable_chunked_prefill": true,
+    "async_scheduling": true,
+    "scheduler_reserve_full_isl": true,
+    "requested_attention_block_size": 16,
+    "effective_attention_block_size": 1600,
+    "effective_mamba_block_size": 1600,
+    "gpu_memory_utilization": 0.7,
+    "kv_cache_dtype": "fp8",
+    "speculative_method": "qwen3_5_mtp",
+    "num_speculative_tokens": 3,
+    "prefix_caching": true,
+    "mamba_cache_mode": "align",
+    "exl3_prefill_fp8": true,
+    "exl3_prefill_reconstruct_m": 256,
+    "cuda_graph_mode": "FULL_DECODE_ONLY",
+    "roce_gid_index": 3,
+    "nccl_protocols": ["LL", "LL128", "Simple"],
+    "external_kv_cache": false
+  },
+  "startup": {
+    "cold_start_seconds_approx": 328,
+    "model_loading_gib_per_rank": 5.39,
+    "rank0_model_load_seconds": 34.34,
+    "target_compile_seconds": 90.09,
+    "target_profile_seconds": 46.1,
+    "draft_compile_seconds": 9.11,
+    "draft_profile_seconds": 2.01,
+    "decode_graph_capture_sizes": 48,
+    "kv_memory_gib_per_rank": 74.74,
+    "kv_tokens": 8382750,
+    "maximum_full_context_concurrency": 31.98
+  },
+  "correctness": {
+    "api_health": "passed",
+    "greedy_arithmetic": "391",
+    "repeated_message_sha256": "51a965a114e5cefc8964e6c65838b72327bae853e1fec60f29aff2d5155c35c0",
+    "repeated_output_identical": true,
+    "tool_call": "multiply(a=6,b=7)",
+    "vision_smoke": "VISION_OK",
+    "native_prefix_replay": "8992-token replay returned identical output; timing omitted because the public record lacks a complete timing method",
+    "shared_prefix_divergence": "13 and 17 returned for distinct suffix questions",
+    "mtp_post_probe_snapshot": {
+      "mean_acceptance_length": 3.82,
+      "draft_acceptance_percent": 94.1,
+      "scope": "post-probe server metric snapshot; not a whole-window average"
+    },
+    "raw_artifact_status": "maintainer-held; request and response artifacts are unavailable in the public record"
+  },
+  "measurement": {
+    "harness_repository": "local-inference-lab/llm-inference-bench",
+    "harness_commit": "0b4185b5b435e948b199c9077a00b084864aa963",
+    "harness_version": "llm-decode-bench v0.4.29",
+    "argument_equivalent_command": "python3 llm_decode_bench.py --host <rank-0-management-address> --port 8000 --model qwen38 --contexts 4k,16k --concurrency 1,4 --duration 15 --max-tokens 1024 --temperature 0 --prefill-contexts 8k,64k,128k --prefill-metric client --kv-budget 8382750 --display-mode plain --no-hw-monitor --output logs/qwen38-dgx4-quick-20260823.json",
+    "payload_policy": {
+      "raw_metadata_temperature": 0,
+      "duration_decode": {"temperature_override": 0, "top_p_override": "omitted", "ignore_eos_override": true},
+      "integrated_scout": {"temperature_override": "omitted", "top_p_override": "omitted", "ignore_eos_override": true, "effective_model_defaults": {"temperature": 1.0, "top_p": 0.95}},
+      "scout_only": {"temperature_override": "omitted", "top_p_override": "omitted", "ignore_eos_override": "omitted", "effective_model_defaults": {"temperature": 1.0, "top_p": 0.95}}
+    },
+    "decode_mode": "duration-saturated",
+    "decode_clock": "client time.monotonic",
+    "decode_aggregation": "OpenAI continuous-usage completion tokens divided by the measured duration window",
+    "decode_warmup": "one hidden C1 warmup at the largest requested context for 3 seconds, followed by each cell's readiness warmup",
+    "prefill_definition": "one integrated or scout-only request; client prompt_tokens divided by client TTFT",
+    "prefix_cache_state": "native prefix caching enabled; each duration cell first sent a one-token scout with the same messages, so its C1/C4 streams deliberately reused a warm prefix; the client-metric run did not preserve a reliable cached-token delta for the scout measurements, so no prefill value is labelled cold or unique-prompt",
+    "raw_record_status": "maintainer-held validation-workspace artifact; unavailable in the public repository because it contains site identities",
+    "gates": {
+      "all_cells_reached_requested_running_count": true,
+      "request_errors": 0,
+      "underfilled_cells": 0,
+      "warmup_timeouts": 0,
+      "capacity_limited_cells": 0,
+      "duration_stream_completion_note": "streams were intentionally canceled at the end of each window; no finite-request completion or latency claim is made"
+    },
+    "uncertainty": "one observation per coordinate; no repetition variance or confidence interval"
+  },
+  "benchmark": {
+    "prefill": {
+      "4k": {"prompt_tokens": 4195, "ttft_seconds": 2.251, "tokens_per_second": 1864, "samples": 1, "method": "integrated_scout", "server_cached_tokens": null},
+      "8k": {"prompt_tokens": 8197, "ttft_seconds": 4.127, "tokens_per_second": 1986, "samples": 1, "method": "scout_only", "server_cached_tokens": null},
+      "16k": {"prompt_tokens": 16174, "ttft_seconds": 8.287, "tokens_per_second": 1952, "samples": 1, "method": "integrated_scout", "server_cached_tokens": null},
+      "64k": {"prompt_tokens": 64123, "ttft_seconds": 39.658, "tokens_per_second": 1617, "samples": 1, "method": "scout_only", "server_cached_tokens": null},
+      "128k": {"prompt_tokens": 128059, "ttft_seconds": 99.46, "tokens_per_second": 1288, "samples": 1, "method": "scout_only", "server_cached_tokens": null}
+    },
+    "decode_cells": [
+      {"context": "4k", "concurrency": 1, "measurement_seconds": 14.979315, "measurement_wall_seconds": 15.000875, "output_tokens": 575, "aggregate_tokens_per_second": 38.3863, "max_running_requests": 1, "errors": 0, "underfilled": false, "warmup_timed_out": false, "capacity_limited": false},
+      {"context": "4k", "concurrency": 4, "measurement_seconds": 14.94228, "measurement_wall_seconds": 15.000849, "output_tokens": 1939, "aggregate_tokens_per_second": 129.766, "max_running_requests": 4, "errors": 0, "underfilled": false, "warmup_timed_out": false, "capacity_limited": false},
+      {"context": "16k", "concurrency": 1, "measurement_seconds": 14.967306, "measurement_wall_seconds": 15.000721, "output_tokens": 578, "aggregate_tokens_per_second": 38.6175, "max_running_requests": 1, "errors": 0, "underfilled": false, "warmup_timed_out": false, "capacity_limited": false},
+      {"context": "16k", "concurrency": 4, "measurement_seconds": 14.994604, "measurement_wall_seconds": 15.001102, "output_tokens": 1925, "aggregate_tokens_per_second": 128.3795, "max_running_requests": 4, "errors": 0, "underfilled": false, "warmup_timed_out": false, "capacity_limited": false}
+    ]
+  },
+  "post_run": {
+    "health_http_status": 200,
+    "all_four_workers_alive": true,
+    "available_memory_gib_by_rank": [23, 26, 26, 27],
+    "memory_measurement": "one post-run /proc/meminfo MemAvailable sample per rank, rounded down to GiB"
+  },
+  "result": "All ranks rendezvoused and remained alive; bounded text, tool, image, and hybrid-prefix probes returned expected outputs; every C1/C4 duration cell reached requested occupancy without errors, underfill, warmup timeout, or a capacity flag.",
+  "conclusion": "The pinned model and maintainer-held runtime implemented the stated four-Spark TP4/DCP1 serving object. The N=1 observations do not establish general performance, complete correctness, restart behavior, or public reproducibility.",
+  "limitations": [
+    "Each benchmark coordinate is one bounded observation; no confidence interval is established.",
+    "The decode matrix covers warm repeated-prefix C1 and C4 only, at 4K and 16K contexts; it is not cold end-to-end request throughput.",
+    "The 64K and 128K cells are single scout TTFT observations, not long-context generation tests.",
+    "Native prefix caching was enabled, and no scout has a reliable cached-token delta; the prefill values are not cold or unique-prompt measurements.",
+    "No restart, reboot persistence, eager-versus-graph equivalence, LMCache, or SparkCache result is included.",
+    "The exact runtime archive, raw benchmark output, API responses, and per-rank logs remain maintainer-held and are unavailable in the public artifact.",
+    "The initial container start exposed a missing userspace verbs dependency; maintainer-held failure logs precede installation of libibverbs1, ibverbs-providers, and ibverbs-utils."
+  ]
+}

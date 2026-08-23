@@ -36,13 +36,18 @@ conversation or development history.
 
 ## Supported repository surface
 
-SparkRing supports two model families across six deployment profiles:
+SparkRing supports three model families across seven deployment profiles:
 
 - GLM-5.2 EXL3 3.5-bpw at four-Spark TP4/DCP4, as a base profile and a
   SparkCache composition, using the R7 runtime and site/candidate contracts.
 - DeepSeek-V4-Flash-0731 at two-Spark TP2/DCP1 and four-Spark TP4/DCP1, as
   base profiles and SparkCache compositions, using the published serving image
   and per-rank environment contracts.
+- Qwen3.8-27B EXL3 K5/K6 at four-Spark TP4/DCP1 as a base candidate, using
+  the source-built runtime and checkpoint pins from the companion Qwen recipe.
+
+Qwen3.8-27B with SparkCache is Pending. No composition recipe or live cache
+evidence is published for that combination.
 
 Six-Spark GLM and KIMI profiles are in dev and are not part of the supported
 repository surface.
@@ -64,6 +69,7 @@ choosing one.
 | Public Python overlay allowlist | `runtime/public-overlay-files.json` |
 | R7 site and candidate templates | `scripts/config/exl3-r7-site.example.yaml`, `scripts/config/exl3-r7-candidate.example.json` |
 | DeepSeek per-rank environment | `scripts/config/deepseek-v4-flash-0731.env.example` |
+| Qwen3.8-27B four-rank environment | `scripts/config/qwen38-27b-exl3-k5k6.env.example` |
 | Performance claim requirements | `performance/README.md` |
 
 ## Safety classes
@@ -105,6 +111,11 @@ Use `scripts/config/exl3-r7-site.example.yaml` and
 resolved site addresses, image identities, host paths, and credentials out of
 version control. Use `scripts/config/deepseek-v4-flash-0731.env.example` only
 as a per-rank environment template for DeepSeek-V4-Flash-0731.
+
+Use `scripts/config/qwen38-27b-exl3-k5k6.env.example` with the prepared
+source-built Qwen runtime described in
+`docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md`. The profile does not use the GLM
+R7 builder or the DeepSeek serving image.
 
 ## Performance work
 

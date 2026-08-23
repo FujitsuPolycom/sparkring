@@ -1,0 +1,151 @@
+{
+  "schema": "sparkring-recipe/v1",
+  "recipe_id": "qwen38-27b-exl3-k5k6",
+  "status": "candidate",
+  "hardware": {
+    "platform": "linux/arm64",
+    "cuda_arch": "sm_121",
+    "ranks": 4,
+    "topology": "direct-cycle-4"
+  },
+  "model": {
+    "repository": "malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated",
+    "revision": "ab3a91a13813df8096cb4c1d560ed3669035d0cf",
+    "base_model": "Qwen/Qwen3.8-27B@1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+    "config_sha256": "fbb105334da6554c10784ff1257fda5e3821d4d5426d64469cee2b2ad67ba2b3",
+    "weight_index_sha256": "ea6e0e1064efbb72d89b4a6f9e0ee76c909a94b3f25047487a2ffb282896a26c",
+    "sha256sums_sha256": "7626d18481e7f995fd1d9ff211083b7fd57f044daba39e107fb29a48207f24c4",
+    "weight_shards": 3,
+    "weights_bytes": 21587265510,
+    "repository_tree_bytes": 21621875958,
+    "quantization": "EXL3 K5/K6 with quantized MTP head and BF16 embeddings/vision tower",
+    "geometry": {
+      "hidden_size": 5120,
+      "intermediate_size": 17408,
+      "num_attention_heads": 24,
+      "num_key_value_heads": 4,
+      "linear_num_key_heads": 16,
+      "linear_num_value_heads": 48,
+      "vocab_size": 248320,
+      "full_attention_layers": 16,
+      "gated_delta_net_layers": 48,
+      "mamba_block_size": 1600
+    }
+  },
+  "runtime": {
+    "base_image": "nvcr.io/nvidia/cuda@sha256:5c36750138dc1447a17dafbb397674f167d3b44ce18d9160d769df114577b35d",
+    "image_status": "source-built; no published image",
+    "recipe_repository": "https://github.com/FujitsuPolycom/qwen38-spark-pair",
+    "recipe_commit": "b9e1031b80b6f3f64bfc75ae3922322f56954fd6",
+    "requirements_freeze_repository_path": "requirements-freeze.txt",
+    "requirements_freeze_sha256": "d773c781bcc1de6cf81a64f9fa6b2ab80535f77eea08c5aeb5b96c2ce4423ba8",
+    "engine_repository": "https://github.com/FujitsuPolycom/vllm",
+    "engine_tag": "qwen38-tested-20260817",
+    "engine_commit": "229effc810ee6b8112f661472f6aace4eb8c787d",
+    "engine_worktree_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "engine_status_porcelain_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "exllamav3_commit": "5f3c537ca9d89893d771256f5c43c93656553fbb",
+    "exllamav3_arm_patch_sha256": "594b01547b0d801cf95926ea973719354150893121019aba2ad8832bc9f17fdb",
+    "exllamav3_status_porcelain_sha256": "50d1a8375a38a705db327f9f17bcba5b269dfb55757958541c51b6c60193c4cc",
+    "torch": "2.12.0+cu132",
+    "cuda_toolkit": "13.2.86",
+    "b12x": "1.2.4",
+    "system_packages": [
+      "python3",
+      "python3-dev",
+      "python3-venv",
+      "git",
+      "cmake",
+      "ninja-build",
+      "ccache",
+      "cuda-toolkit-13-2",
+      "procps",
+      "libibverbs1",
+      "ibverbs-providers",
+      "ibverbs-utils"
+    ],
+    "patched_nccl_sha256": "e69a8c240f45d10166bcd901d99db78bb63147adda66e586d8dd505c6d608b54",
+    "chat_template_repository_path": "scripts/chat_template_agentic.jinja",
+    "chat_template_sha256": "4f9201169f5bacd1a494c8824470a1ef899c7024d23a2b166e42493e7efd9ac9",
+    "environment_template": "scripts/config/qwen38-27b-exl3-k5k6.env.example",
+    "launcher": "scripts/qwen38_dgx4_serve.sh",
+    "entrypoint": "/ws/venv/bin/vllm"
+  },
+  "serving": {
+    "served_model_name": "qwen38",
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 1,
+    "pipeline_parallel_size": 1,
+    "node_count": 4,
+    "distributed_executor_backend": "mp",
+    "max_model_len": 262144,
+    "max_num_seqs": 64,
+    "max_num_batched_tokens": 8192,
+    "enable_chunked_prefill": true,
+    "async_scheduling": true,
+    "scheduler_reserve_full_isl": true,
+    "requested_attention_block_size": 16,
+    "effective_attention_block_size": 1600,
+    "effective_mamba_block_size": 1600,
+    "gpu_memory_utilization": 0.7,
+    "kv_cache_dtype": "fp8",
+    "native_prefix_caching": true,
+    "mamba_cache_mode": "align",
+    "attention_backend": "TRITON_ATTN",
+    "multimodal_encoder_attention_backend": "TORCH_SDPA",
+    "compilation": {
+      "cudagraph_mode": "FULL_DECODE_ONLY"
+    },
+    "speculation": {
+      "method": "qwen3_5_mtp",
+      "num_speculative_tokens": 3,
+      "attention_backend": "TRITON_ATTN"
+    },
+    "reasoning_parser": "qwen3",
+    "tool_call_parser": "qwen3_coder",
+    "auto_tool_choice": true,
+    "multimodal_processor_kwargs": {
+      "truncation": false
+    },
+    "exl3_prefill_fp8": true,
+    "exl3_prefill_reconstruct_m": 256,
+    "external_kv_cache": false,
+    "sircl": {
+      "default": false,
+      "width_5120_graph_status": "unsupported"
+    },
+    "sizing_note": "The four-Spark candidate keeps the two-Spark model limit, sequence limit, FP8 key-value dtype, MTP depth, and cache-free 8192-token scheduler budget. A live TP4 launch reported 8382750 logical key-value tokens, 31.98x maximum concurrency at the 262144-token request limit, and one post-run MemAvailable sample of 23-27 GiB per rank after rounding down."
+  },
+  "transport": {
+    "backend": "patched-nccl",
+    "topology": "four-rank switchless direct-cable cycle",
+    "rendezvous_network": "management LAN",
+    "roce_gid_index": "site-specific; the live evidence used 3",
+    "host_channel_adapters_per_rank": 2,
+    "subnet_aware_routing": true,
+    "algorithm": "Ring",
+    "protocols": ["LL", "LL128", "Simple"],
+    "channels": 4,
+    "skip_tree_connect": true,
+    "sircl_status": "unsupported for width 5120"
+  },
+  "evidence": {
+    "status": "implemented",
+    "conditions": "Live evidence from four directly cabled NVIDIA DGX Sparks using the pinned checkpoint and a maintainer-held source-built runtime, TP4/DCP1, the multi-node multiprocess executor, a 262144-token request limit, 64 sequences, an 8192-token scheduler budget, chunked prefill, asynchronous scheduling, full-input-length reservation, a requested 16-token attention block that hybrid alignment raised to an effective 1600-token attention and mamba block, FP8 key-value cache, Qwen MTP depth 3, native prefix caching with mamba alignment, full-decode CUDA graphs, FP8 EXL3 prefill with reconstruction tile 256, and patched NCCL over both RoCE devices per rank at RoCEv2 GID index 3. External key-value caching and SIRCL were disabled.",
+    "measurement": "Startup and capacity came from engine logs. Prefill is one client prompt_tokens/TTFT scout per shape. Each decode cell first warmed the same messages with a one-token scout, then measured OpenAI continuous-usage output tokens over one approximately 15-second duration window after readiness warmup. The decode values are warm repeated-prefix throughput, not cold end-to-end throughput. Raw harness and API artifacts remain maintainer-held; the public record preserves exact token counts, timing windows, cache observations, and gate outcomes.",
+    "result": "All four ranks rendezvoused and served the pinned model. Health, deterministic arithmetic, tool-call, vision, and hybrid-prefix checks passed. The engine reported 74.74 GiB of key-value memory per rank, 8382750 logical key-value tokens, and 31.98x maximum concurrency at 262144 tokens. One bounded observation measured 38.4-38.6 aggregate decode tokens/s at concurrency 1 and 128.4-129.8 at concurrency 4; prefill ranged from 1986 tokens/s at 8K to 1288 tokens/s at 128K. All workers remained alive and rank 0 remained healthy after the workload.",
+    "conclusion": "The four-rank serving object in this recipe is implemented and live-benchmarked. The profile remains a candidate because the observations are bounded, restart behavior is untested, the tracked launcher's fail-closed wrapper changes have offline validation only, and the wider correctness and sustained-load gate is incomplete.",
+    "limitations": [
+      "Each performance coordinate is one bounded observation; no confidence interval is established.",
+      "The sustained decode matrix covers warm repeated-prefix concurrency 1 and 4 at 4K and 16K contexts; it is not cold end-to-end throughput, and the 64K and 128K observations are prefill scouts.",
+      "Native prefix caching was enabled, and no scout has a reliable cached-token delta; the prefill values are not cold or unique-prompt measurements.",
+      "Restart, reboot persistence, eager-versus-graph equivalence, and long-duration serving have not been tested.",
+      "The source-built runtime has no published container image. Every rank must use the same prepared runtime sources, Python environment, patched NCCL library, model revision, and chat template.",
+      "The exact measured source archive is maintainer-held; public reproduction of that artifact remains pending.",
+      "SIRCL does not admit the model's width-5120 all-reduce shape. Patched NCCL is the only configured collective backend.",
+      "SparkCache support is Pending and is not part of this recipe."
+    ],
+    "record": "docs/profiles/QWEN38_27B_EXL3_K5K6.md",
+    "live_record": "performance/records/qwen38-27b/dgx4-quick-20260823.json"
+  }
+}

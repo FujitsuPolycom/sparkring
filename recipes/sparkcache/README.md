@@ -12,6 +12,13 @@ SparkCache.
 | [`deepseek-v4-flash-0731-tp4-dcp1.json`](deepseek-v4-flash-0731-tp4-dcp1.json) | TP4/DCP1 | 1,048,576 / 32 | 524,288 / 32 | 4,096 |
 | [`glm52-exl3-r7-3.5bpw-tp4-dcp4.json`](glm52-exl3-r7-3.5bpw-tp4-dcp4.json) | TP4/DCP4 | 1,048,576 / 16 | 262,144 / 8 | 4,096 |
 
+## Pending integrations
+
+**Qwen3.8-27B EXL3 K5/K6: Pending.** No SparkCache composition recipe or live
+cache evidence is published for Qwen. The four-Spark base candidate disables
+external key-value caching. This pending entry does not add a fourth entry to
+the composition table above.
+
 The recipe objects are normalized candidates. The durable-state receipts below
 remain qualified only for the historical context and sequence limits shown in
 the table; they do not promote the candidate limits.

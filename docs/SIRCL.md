@@ -25,6 +25,10 @@ The DeepSeek-V4-Flash-0731 quickstart uses patched NCCL. Its width-4096 SIRCL
 CUDA-graph configuration is research-only and excluded from functional profile
 qualification.
 
+The Qwen3.8-27B EXL3 K5/K6 profile uses patched NCCL. Its width-5,120
+tensor-parallel shape is unsupported by SIRCL, so the profile does not load a
+custom SparkRing collective adapter.
+
 ## Operational invariants
 
 - All four ranks require the same topology, peer ordering, RDMA device mapping,
@@ -36,4 +40,5 @@ qualification.
 
 Deployment commands and profile limits are in the
 [GLM quickstart](GLM52_35BPW_QUICKSTART.md) and
-[DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md).
+[DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md), and
+[Qwen3.8-27B quickstart](QWEN38_27B_EXL3_K5K6_QUICKSTART.md).
