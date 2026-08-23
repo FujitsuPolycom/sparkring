@@ -47,10 +47,11 @@ SparkRing supports three model families across eight deployment profiles:
   implemented base profiles, using topology-specific launchers and the
   checkpoint/source pins from the companion recipe.
 
-Qwen3.8-27B with SparkCache is unsupported. No composition recipe or live cache
+Qwen3.8-27B with SparkCache is Pending. No composition recipe or live cache
 evidence is published for that combination.
 
-Six-Spark GLM and KIMI profiles are unsupported.
+Six-Spark GLM and KIMI profiles are in dev and are not part of the supported
+repository surface.
 
 Maintained Python trees are `spark_transport/`, `runtime/`, `scripts/`, and
 `performance/`. The GLM and Qwen runtime builders are `runtime/exl3-r7/` and
