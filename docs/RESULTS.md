@@ -67,6 +67,18 @@ The public tree retains functional SparkCache launcher and restore validation,
 but does not publish performance tables from other sampling temperatures. The
 normalized SparkCache profiles still require temperature-1 remeasurement.
 
+A research-only width-4096 SIRCL candidate completed four-rank CUDA graph
+capture and API smoke while every rank's native published, consumed, and
+completed counters remained equal and overflow remained zero. A matched
+temperature-1 research A/B found no performance advantage for the SIRCL
+path. Prefill was flat because both arms use NCCL there. Five-run Coding Peak
+was 1.9% lower by mean under SIRCL. Long C32 rates were dominated by DSpark
+acceptance variation, but repeated near-matched ten-second samples placed SIRCL
+2.4-3.0% below NCCL. See the
+[transport A/B record](../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
+The consolidated findings page is
+[DeepSeek-V4 SIRCL Findings](DEEPSEEK_V4_SIRCL_FINDINGS.md).
+
 ## Qwen3.8-27B EXL3 K5/K6
 
 **Status: experimental four-Spark candidate.** A maintainer-held image and
@@ -94,17 +106,23 @@ accounting contract. See the
 [profile record](profiles/QWEN38_27B_EXL3_K5K6.md) and
 [experimental quickstart](QWEN38_27B_EXL3_K5K6_QUICKSTART.md).
 
-A research-only width-4096 SIRCL candidate completed four-rank CUDA graph
-capture and API smoke while every rank's native published, consumed, and
-completed counters remained equal and overflow remained zero. A matched
-temperature-1 research A/B found no performance advantage for the SIRCL
-path. Prefill was flat because both arms use NCCL there. Five-run Coding Peak
-was 1.9% lower by mean under SIRCL. Long C32 rates were dominated by DSpark
-acceptance variation, but repeated near-matched ten-second samples placed SIRCL
-2.4-3.0% below NCCL. See the
-[transport A/B record](../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
-The consolidated findings page is
-[DeepSeek-V4 SIRCL Findings](DEEPSEEK_V4_SIRCL_FINDINGS.md).
+### Two-Spark 1M probabilistic-MTP bring-up
+
+**Status: research-only.** A maintainer-built runtime started on two directly
+cabled DGX Sparks at TP2/DCP1 with a 1,000,000-token static-YaRN limit, 32
+sequences, an 8,192-token scheduler budget, explicit FP8 KV, native prefix
+caching, and probabilistic Qwen MTP depth 3. LMCache, SparkCache and SIRCL were
+disabled.
+
+Both ranks rendezvoused and served bounded API probes. The engine advertised
+1,000,000 tokens and reported a 4,093,750-token logical KV pool, or 4.09x
+capacity at the advertised limit. A 128-token temperature-1 probe measured
+67.5% draft acceptance and 3.02 mean acceptance length. No 1M prompt or
+performance benchmark is published, so these values are startup and bounded
+functional evidence only. See the
+[pair profile](profiles/QWEN38_27B_EXL3_K5K6_PAIR.md),
+[quickstart](QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md), and
+[sanitized record](../performance/records/qwen38-27b/dgx2-1m-probmtp-20260823.md).
 
 ## Interpretation
 

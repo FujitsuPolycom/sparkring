@@ -1,0 +1,96 @@
+{
+  "schema": "sparkring-qwen38-dgx2-live/v1",
+  "lane": "public-functional",
+  "status": "research-only",
+  "captured_at_utc": "2026-08-23T07:40:15Z",
+  "hardware": {
+    "nodes": 2,
+    "system": "NVIDIA DGX Spark",
+    "soc": "NVIDIA GB10",
+    "topology": "direct-pair-2"
+  },
+  "runtime": {
+    "vllm_commit": "229effc810ee6b8112f661472f6aace4eb8c787d",
+    "exllamav3_commit": "5f3c537ca9d89893d771256f5c43c93656553fbb",
+    "patched_nccl_sha256": "e69a8c240f45d10166bcd901d99db78bb63147adda66e586d8dd505c6d608b54",
+    "public_builder_status": "offline-validated; live TP2 image build pending"
+  },
+  "model": {
+    "repository": "malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated",
+    "revision": "ab3a91a13813df8096cb4c1d560ed3669035d0cf",
+    "sha256sums_sha256": "7626d18481e7f995fd1d9ff211083b7fd57f044daba39e107fb29a48207f24c4"
+  },
+  "serving": {
+    "tensor_parallel_size": 2,
+    "decode_context_parallel_size": 1,
+    "distributed_executor_backend": "mp",
+    "max_model_len": 1000000,
+    "context_extension": "static YaRN factor 4.0 over 262144",
+    "max_num_seqs": 32,
+    "max_num_batched_tokens": 8192,
+    "gpu_memory_utilization": 0.7,
+    "kv_cache_dtype": "fp8",
+    "prefix_caching": true,
+    "external_kv_cache": false,
+    "speculation": {
+      "method": "qwen3_5_mtp",
+      "num_speculative_tokens": 3,
+      "draft_sample_method": "probabilistic",
+      "rejection_sample_method": "standard"
+    },
+    "sampling_defaults": {
+      "temperature": 1.0,
+      "top_p": 0.95,
+      "top_k": 20
+    }
+  },
+  "startup": {
+    "model_memory_gib_per_rank": 11.22,
+    "available_kv_memory_gib_per_rank": 67.96,
+    "kv_tokens": 4093750,
+    "maximum_full_context_concurrency": 4.09,
+    "cuda_graph_capture_seconds": 17,
+    "cuda_graph_pool_gib": 1.46
+  },
+  "functional": {
+    "health_http_status": 200,
+    "advertised_max_model_len": 1000000,
+    "arithmetic": "391",
+    "tool_call": "multiply(a=6,b=7)",
+    "vision": "VISION_OK",
+    "shared_prefix_suffixes": ["13", "17"],
+    "native_prefix_replay_identical": true
+  },
+  "probabilistic_mtp_probe": {
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "top_k": 20,
+    "completion_tokens": 128,
+    "draft_steps": 42,
+    "draft_tokens": 126,
+    "accepted_draft_tokens": 85,
+    "draft_acceptance_percent": 67.5,
+    "mean_acceptance_length": 3.02,
+    "accepted_tokens_by_position": [37, 28, 20]
+  },
+  "measurement": {
+    "startup_source": "vLLM rank logs from one successful launch",
+    "functional_protocol": "bounded OpenAI-compatible API requests; exact-marker requests used temperature 0 with thinking disabled",
+    "probabilistic_mtp_protocol": "one 128-token request explicitly set temperature 1.0, top_p 0.95 and top_k 20; speculative values are after-minus-before Prometheus counter deltas",
+    "counter_formulas": {
+      "draft_acceptance_percent": "accepted draft tokens / proposed draft tokens",
+      "mean_acceptance_length": "1 + accepted draft tokens / speculative steps"
+    },
+    "samples": 1,
+    "raw_artifact_status": "rank logs and API responses remain maintainer-held; this file is a sanitized summary"
+  },
+  "result": "Both ranks rendezvoused, served the API and remained alive through bounded functional probes.",
+  "conclusion": "The maintainer-built TP2 serving object is implemented as a research profile. No throughput, 1M-input correctness or public-image live result is established.",
+  "limitations": [
+    "No one-million-token request was sent.",
+    "No temperature-1 performance benchmark is published.",
+    "Static YaRN can alter short-context distributions.",
+    "The public image builder has not reproduced this launch.",
+    "Restart and long-duration reliability are untested."
+  ]
+}

@@ -36,16 +36,16 @@ conversation or development history.
 
 ## Supported repository surface
 
-SparkRing supports three model families across seven deployment profiles:
+SparkRing supports three model families across eight deployment profiles:
 
 - GLM-5.2 EXL3 3.5-bpw at four-Spark TP4/DCP4, as a base profile and a
   SparkCache composition, using the R7 runtime and site/candidate contracts.
 - DeepSeek-V4-Flash-0731 at two-Spark TP2/DCP1 and four-Spark TP4/DCP1, as
   base profiles and SparkCache compositions, using the published serving image
   and per-rank environment contracts.
-- Qwen3.8-27B EXL3 K5/K6 at four-Spark TP4/DCP1 as a base candidate, using
-  the clean-checkout local image builder and checkpoint/source pins from the
-  companion Qwen recipe.
+- Qwen3.8-27B EXL3 K5/K6 at two-Spark TP2/DCP1 as a research-only base profile
+  and at four-Spark TP4/DCP1 as a base candidate, using the clean-checkout
+  local image builder and checkpoint/source pins from the companion recipe.
 
 Qwen3.8-27B with SparkCache is Pending. No composition recipe or live cache
 evidence is published for that combination.
@@ -72,6 +72,7 @@ choosing one.
 | Public Python overlay allowlist | `runtime/public-overlay-files.json` |
 | R7 site and candidate templates | `scripts/config/exl3-r7-site.example.yaml`, `scripts/config/exl3-r7-candidate.example.json` |
 | DeepSeek per-rank environment | `scripts/config/deepseek-v4-flash-0731.env.example` |
+| Qwen3.8-27B pair environment | `scripts/config/qwen38-27b-exl3-k5k6-pair.env.example` |
 | Qwen3.8-27B four-rank environment | `scripts/config/qwen38-27b-exl3-k5k6.env.example` |
 | Performance claim requirements | `performance/README.md` |
 
@@ -100,7 +101,7 @@ python -m pytest spark_transport runtime/exl3-r7 runtime/qwen38 runtime/test_pub
 ```
 
 The test suite is CPU-only contract coverage. It does not validate CUDA,
-RDMA, four-rank serving, or a performance result.
+RDMA, live pair/cycle serving, or a performance result.
 
 ## Runtime and configuration work
 
@@ -116,10 +117,11 @@ resolved site addresses, image identities, host paths, and credentials out of
 version control. Use `scripts/config/deepseek-v4-flash-0731.env.example` only
 as a per-rank environment template for DeepSeek-V4-Flash-0731.
 
-Use `scripts/config/qwen38-27b-exl3-k5k6.env.example` with the image built by
-`runtime/qwen38/build-image.sh`, as described in
-`docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md`. The profile does not use the GLM
-R7 builder or the DeepSeek serving image.
+Use the topology-specific Qwen environment in `scripts/config/` with the image
+built by `runtime/qwen38/build-image.sh`, as described in
+`docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md` and
+`docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md`. The profiles do not use the GLM R7
+builder or the DeepSeek serving image.
 
 ## Performance work
 

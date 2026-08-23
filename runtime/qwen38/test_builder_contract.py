@@ -23,6 +23,7 @@ def test_container_preserves_architecture_split_and_workspace_layout() -> None:
     assert "CMAKE_CUDA_ARCHITECTURES=121" not in text
     assert "COPY bundle/sources/vllm /ws/src/vllm-gg" in text
     assert "COPY bundle/sources/exllamav3 /ws/src/exllamav3" in text
+    assert "COPY bundle/runtime/qwen38_dgx2_serve.sh /ws/qwen38_dgx2_serve.sh" in text
     assert "COPY bundle/runtime/qwen38_dgx4_serve.sh /ws/qwen38_dgx4_serve.sh" in text
     assert "huggingface" not in text.lower()
     assert "Qwen3.8-27B-EXL3-K5K6-hydrated" not in text
