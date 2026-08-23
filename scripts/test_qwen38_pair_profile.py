@@ -16,15 +16,6 @@ ENV = ROOT / "scripts" / "config" / "qwen38-27b-exl3-k5k6-pair.env.example"
 LAUNCHER = ROOT / "scripts" / "qwen38_dgx2_serve.sh"
 QUICKSTART = ROOT / "docs" / "QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md"
 PROFILE = ROOT / "docs" / "profiles" / "QWEN38_27B_EXL3_K5K6_PAIR.md"
-EVIDENCE = (
-    ROOT
-    / "performance"
-    / "records"
-    / "qwen38-27b"
-    / "dgx2-1m-probmtp-20260823.json"
-)
-
-
 def _recipe() -> dict:
     return json.loads(RECIPE.read_text(encoding="utf-8"))
 
@@ -47,7 +38,7 @@ def test_recipe_declares_the_pair_research_contract() -> None:
     recipe = _recipe()
     assert recipe["schema"] == "sparkring-recipe/v1"
     assert recipe["recipe_id"] == "qwen38-27b-exl3-k5k6-pair"
-    assert recipe["status"] == "research-only"
+    assert recipe["status"] == "implemented"
     assert recipe["hardware"] == {
         "platform": "linux/arm64",
         "cuda_arch": "sm_121",
@@ -287,17 +278,10 @@ def test_quickstart_separates_normalized_and_shared_prefix_benchmarks() -> None:
         assert required in text
     assert "shared-prefix" in text
     assert "full result" in text
-    assert "sanitized replayable receipts" in text
+    assert "sanitized command receipts" in text
 
 
-def test_evidence_is_research_only_and_publishes_no_throughput() -> None:
-    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
-    assert evidence["status"] == "research-only"
-    assert evidence["startup"]["kv_tokens"] == 4_093_750
-    assert evidence["startup"]["maximum_full_context_concurrency"] == 4.09
-    assert evidence["probabilistic_mtp_probe"]["draft_acceptance_percent"] == 67.5
-    assert "benchmark" not in evidence
-    assert "throughput" not in evidence
+def test_profile_record_is_published() -> None:
     assert PROFILE.is_file()
 
 

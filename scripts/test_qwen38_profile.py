@@ -23,7 +23,7 @@ def test_recipe_declares_the_four_spark_candidate() -> None:
     recipe = _recipe()
     assert recipe["schema"] == "sparkring-recipe/v1"
     assert recipe["recipe_id"] == "qwen38-27b-exl3-k5k6"
-    assert recipe["status"] == "candidate"
+    assert recipe["status"] == "implemented"
     assert recipe["hardware"] == {
         "platform": "linux/arm64",
         "cuda_arch": "sm_121",
@@ -118,9 +118,9 @@ def test_recipe_records_the_tp4_live_evidence_separately_from_the_pair() -> None
         "record",
     } <= set(evidence)
     assert evidence["status"] == "implemented"
-    assert "four directly cabled NVIDIA DGX Sparks" in evidence["conditions"]
-    assert "8382750 logical key-value tokens" in evidence["result"]
-    assert "temperature-1" in evidence["conclusion"]
+    assert "four directly cabled nvidia dgx sparks" in evidence["conditions"].lower()
+    assert "8743342-token logical KV pool" in evidence["measurement"]
+    assert "through 128K context" in evidence["conclusion"]
     assert evidence["limitations"]
 
 

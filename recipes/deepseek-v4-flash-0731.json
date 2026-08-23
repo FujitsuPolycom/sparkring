@@ -46,7 +46,7 @@
     "max_num_batched_tokens": 4096,
     "async_scheduling": true,
     "scheduler_reserve_full_isl": true,
-    "sizing_note": "The candidate cycle uses the normalized 1048576-token context, 32-sequence limit, 4096-token scheduler budget, 256-token block size, and 16 GiB per-rank key-value reservation measured by the temperature-1 campaign. Setting kv_cache_memory_bytes disables the gpu_memory_utilization guard, so free memory must be checked after launch rather than assumed."
+    "sizing_note": "The candidate cycle uses the 1048576-token context, 32-sequence limit, 4096-token scheduler budget, 256-token block size, and 16 GiB per-rank key-value reservation used by the benchmark campaign. Setting kv_cache_memory_bytes disables the gpu_memory_utilization guard, so free memory must be checked after launch rather than assumed."
   },
   "evidence": {
     "status": "implemented",
@@ -57,7 +57,7 @@
       "No SIRCL shadow-comparison window is qualified for width 4096.",
       "The TP4 plain 0731 weight package differs from the DSpark package used by TP2, so TP2-versus-TP4 values are not an exact same-weight scaling comparison.",
       "Enabling VLLM_ENABLE_PCIE_ALLREDUCE with the cpp backend changed throughput by less than 2% at one and eight concurrent requests; the engine selects PYNCCL because every faster all-reduce backend requires peer-accessible GPU memory on one host.",
-      "The temperature-1 measurements apply to the recorded serving settings and checkpoint revision."
+      "The measurements apply to the recorded serving settings and checkpoint revision."
     ],
     "record": "docs/profiles/DEEPSEEK_V4_FLASH_0731.md",
     "normalized_candidate_benchmark": "performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.json"

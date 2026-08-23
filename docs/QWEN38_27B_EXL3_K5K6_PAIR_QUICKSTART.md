@@ -1,7 +1,10 @@
 # Qwen3.8-27B EXL3 K5/K6 two-Spark quickstart
 
-This setup was tested on two directly cabled DGX Sparks at TP2/DCP1. The
-temperature-one results are included below.
+This setup was tested on two directly cabled DGX Sparks at TP2/DCP1. Results
+are included below.
+
+The results use the runtime identified in the benchmark record. Building from
+this quickstart creates a new image with the same serving settings.
 
 This profile serves
 `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf`
@@ -23,7 +26,7 @@ machine-readable contract is
 | Prefix reuse | native vLLM prefix cache with mamba alignment |
 | External cache | disabled; no LMCache or SparkCache |
 | Speculation | Qwen MTP depth 3, probabilistic draft sampling, standard rejection sampling |
-| Model-card thinking guidance | temperature 1.0, top-p 0.95, top-k 20; benchmark requests are described separately |
+| Sampling | temperature 1.0; checkpoint defaults supply top-p 0.95 and top-k 20 |
 | Decode | full-decode CUDA graphs |
 | Collective transport | patched NCCL over one direct RoCEv2 link |
 | SIRCL | unsupported for model width 5,120 |
@@ -203,16 +206,13 @@ API health, the advertised limit, repeated arithmetic, tool parsing, data-URL
 vision, repeated-prefix equality, and distinct shared-prefix suffixes. It does
 not prove 1M-input correctness or a native-prefix cache hit.
 
-For an interactive request that follows the model-card guidance, use
-temperature 1.0, top-p 0.95, and top-k 20, then verify that the server's
-speculative counters increase. These are application sampling choices, not
-the benchmark request policy below.
+For an interactive request, use the sampling settings above and verify that the
+server's speculative counters increase.
 
 ## 8. Benchmark the normalized unique-context lane
 
-The normalized campaign changes temperature only: it sends temperature 1.0
-and leaves top-p and top-k unset. vLLM then applies the pinned checkpoint's
-`generation_config.json`: effective top-p 0.95 and top-k 20. Its SHA-256 is
+The campaign leaves top-p and top-k unset, so vLLM applies the pinned
+`generation_config.json`. Its SHA-256 is
 `e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e`.
 Each machine-readable receipt must bind the harness revision, request and
 effective sampling policy, 100% unique per-stream context, request shapes,
@@ -245,4 +245,4 @@ recorded launch specification rather than reconstructing it from memory.
 ## Results and receipts
 
 See the [full benchmark result](../performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md) and
-[sanitized replayable receipts](../performance/receipts/qwen38-27b/temp1/20260823-tp2/).
+[sanitized command receipts](../performance/receipts/qwen38-27b/temp1/20260823-tp2/).

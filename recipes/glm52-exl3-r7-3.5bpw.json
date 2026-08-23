@@ -87,7 +87,7 @@
     "clean_checkout_image_full_promotion_gate_passed": false,
     "remaining_gate": "Complete the normalized 16-sequence candidate benchmark matrix, fixed-seed equivalence, capacity, post-workload rank and transport health checks, and a restartability gate against the deployed image ID.",
     "evidence": "docs/GLM52_35BPW_FIXED_MTP4_PROFILE.md",
-    "machine_readable_evidence": "performance/records/glm-3.5bpw/mtp4-q40-block8-20260812.json",
+    "machine_readable_evidence": "performance/records/glm-3.5bpw/normalized-base-20260822.json",
     "normalized_candidate_benchmark": "performance/records/glm-3.5bpw/normalized-base-20260822.json",
     "promotion_checklist": "docs/GLM52_35BPW_PROMOTION_CHECKLIST.md"
   }

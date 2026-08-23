@@ -5,6 +5,10 @@ records for the supported GLM-5.2 EXL3 3.5-bpw, DeepSeek-V4-Flash-0731, and
 Qwen3.8-27B EXL3 K5/K6 serving configurations. It does not establish a general
 hardware, model, or production-serving claim.
 
+Public model-throughput summaries use only the normalized profile records.
+Functional gates and transport experiments are stored separately and do not
+feed those summaries.
+
 ## Layout
 
 | Path | Purpose |
@@ -19,7 +23,7 @@ hardware, model, or production-serving claim.
 | `records/deepseek-v4-flash/` | DeepSeek-V4-Flash-0731 evidence records |
 | `records/qwen38-27b/` | Qwen3.8-27B EXL3 K5/K6 evidence records |
 | `records/transport/` | Transport evidence records independent of a model result |
-| `receipts/` | Sanitized temperature-1 benchmark receipts with public replay commands |
+| `receipts/` | Sanitized benchmark receipts and recorded commands |
 
 Run harness tests offline from the repository root:
 
@@ -65,13 +69,12 @@ sections:
 5. **Limitations** — unmeasured behavior, failed or omitted gates, sampling
    limits, topology limits, and reasons the result cannot be generalized.
 
-A record without all five sections is research material, not a qualified
-performance claim. Do not describe a number from one model configuration as a
-result for the other model configuration.
+A record without all five sections is research material, not a published model
+benchmark. Do not describe a number from one model configuration as a result
+for another model configuration.
 
 ## Status and retention
 
-Evidence is qualified only for the conditions written in its record. Preserve
-raw machine-readable records when changing summaries so reviewers can verify
-aggregation. A later run may supersede a claim only when it identifies the
-same metric and conditions or explicitly states each changed condition.
+Evidence applies only to the conditions written in its record. Preserve raw
+machine-readable records when changing summaries so reviewers can verify the
+aggregation.

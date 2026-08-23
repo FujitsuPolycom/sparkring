@@ -4,8 +4,7 @@ SparkRing is a DGX Spark inference stack. It serves the GLM-5.2 EXL3 3.5-bpw,
 DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6 profiles as four
 tensor-parallel ranks on a switchless 200 Gb/s direct-cable cycle.
 DeepSeek-V4-Flash-0731 and Qwen3.8-27B also have two-rank launches on a single
-cabled pair using patched NCCL; SIRCL is unsupported on that topology. The
-Qwen pair launch is research-only.
+cabled pair using patched NCCL; SIRCL is unsupported on that topology.
 
 ## Topology
 

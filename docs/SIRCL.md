@@ -23,7 +23,7 @@ outside those families; DCP and indexer collectives use stock paths.
 
 The DeepSeek-V4-Flash-0731 quickstart uses patched NCCL. Its width-4096 SIRCL
 CUDA-graph configuration is research-only and excluded from functional profile
-qualification. A four-rank temperature-1 comparison established native replay,
+qualification. A four-rank matched comparison established native replay,
 API health, and zero overflow for the target and DSpark capture path; see the
 [DeepSeek SIRCL evidence record](../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
 
