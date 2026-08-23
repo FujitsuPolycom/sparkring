@@ -1,0 +1,117 @@
+ARG BASE_IMAGE
+
+FROM ${BASE_IMAGE} AS nccl-build
+
+ARG TARGETARCH
+ARG NCCL_CUDA_ARCH=121
+ARG MAX_JOBS=8
+ARG NCCL_LIBRARY_SHA256
+
+RUN test "${TARGETARCH}" = arm64 \
+ && apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      build-essential debhelper devscripts fakeroot git \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY bundle/sources/nccl /build/nccl
+RUN test "$(git -C /build/nccl rev-parse HEAD)" = \
+      "73cf112295c33aee2b895f329f592f2a9b4b0f97" \
+ && test "$(git -C /build/nccl write-tree)" = \
+      "9e80bc2489864b4e6c6e2184af8797b07baa68f1" \
+ && make -C /build/nccl -j"${MAX_JOBS}" src.build \
+      NVCC_GENCODE="-gencode=arch=compute_${NCCL_CUDA_ARCH},code=sm_${NCCL_CUDA_ARCH}" \
+ && mkdir -p /out/nccl \
+ && cp -a /build/nccl/build/lib/libnccl.so* /out/nccl/ \
+ && test "$(sha256sum /out/nccl/libnccl.so.2.30.7 | cut -d' ' -f1)" = \
+      "${NCCL_LIBRARY_SHA256}"
+
+FROM ${BASE_IMAGE} AS runtime
+
+ARG TARGETARCH
+ARG MAX_JOBS=8
+ARG BASE_IMAGE_ID
+ARG BASE_IMAGE_LICENSES
+ARG SPARKRING_REVISION
+ARG SOURCE_RECEIPT_SHA256
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu132
+ARG VLLM_TORCH_CUDA_ARCH_LIST=12.0f
+ARG EXLLAMAV3_TORCH_CUDA_ARCH_LIST=12.1
+ARG CUDA_TOOLKIT_PACKAGE_VERSION=13.2.2-1
+
+LABEL org.opencontainers.image.source="https://github.com/FujitsuPolycom/sparkring" \
+      org.opencontainers.image.revision="${SPARKRING_REVISION}" \
+      org.opencontainers.image.licenses="${BASE_IMAGE_LICENSES}" \
+      org.sparkring.parent.image-id="${BASE_IMAGE_ID}" \
+      org.sparkring.parent.licenses="${BASE_IMAGE_LICENSES}" \
+      org.sparkring.source-receipt-sha256="${SOURCE_RECEIPT_SHA256}" \
+      org.sparkring.qwen-companion.commit="b9e1031b80b6f3f64bfc75ae3922322f56954fd6" \
+      org.sparkring.vllm.commit="229effc810ee6b8112f661472f6aace4eb8c787d" \
+      org.sparkring.exllamav3.commit="5f3c537ca9d89893d771256f5c43c93656553fbb" \
+      org.sparkring.nccl.commit="73cf112295c33aee2b895f329f592f2a9b4b0f97"
+
+RUN test "${TARGETARCH}" = arm64 \
+ && apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      build-essential ccache cmake git iproute2 libibverbs-dev libibverbs1 \
+      ibverbs-providers ibverbs-utils ninja-build procps python3 python3-dev \
+      python3-venv "cuda-toolkit-13-2=${CUDA_TOOLKIT_PACKAGE_VERSION}" \
+ && rm -rf /var/lib/apt/lists/* \
+ && test "$(python3 -c 'import platform; print(platform.python_version())')" = "3.12.3" \
+ && nvcc --version | grep -F 'V13.2.86'
+
+COPY bundle/sources/qwen38-spark-pair /ws/src/qwen38-spark-pair
+COPY bundle/sources/vllm /ws/src/vllm-gg
+COPY bundle/sources/exllamav3 /ws/src/exllamav3
+COPY bundle/sources/nccl /ws/src/nccl
+COPY bundle/runtime/pins.json /ws/runtime/pins.json
+COPY bundle/runtime/verify_runtime.py /ws/runtime/verify_runtime.py
+COPY bundle/runtime/requirements-public.txt /ws/runtime/requirements-public.txt
+COPY bundle/runtime/qwen38_dgx4_serve.sh /ws/qwen38_dgx4_serve.sh
+COPY bundle/runtime/chat_template_agentic.jinja /ws/chat_template_agentic.jinja
+COPY receipt.json /ws/runtime/source-receipt.json
+COPY --from=nccl-build /out/nccl /ws/nccl-patched
+
+RUN cd /ws/nccl-patched \
+ && ln -sf libnccl.so.2.30.7 libnccl.so.2 \
+ && ln -sf libnccl.so.2 libnccl.so \
+ && test "$(sha256sum libnccl.so.2.30.7 | cut -d' ' -f1)" = \
+      "e69a8c240f45d10166bcd901d99db78bb63147adda66e586d8dd505c6d608b54"
+
+ENV PATH=/ws/venv/bin:$PATH \
+    TORCH_CUDA_ARCH_LIST=12.0f \
+    VLLM_TARGET_DEVICE=cuda
+
+RUN python3 -m venv /ws/venv \
+ && /ws/venv/bin/pip install --no-cache-dir \
+      --extra-index-url "${TORCH_INDEX_URL}" \
+      -r /ws/runtime/requirements-public.txt \
+ && test "$(/ws/venv/bin/python -c 'import torch; print(torch.__version__)')" = \
+      "2.12.0+cu132" \
+ && test "$(/ws/venv/bin/python -c 'import torchvision; print(torchvision.__version__)')" = \
+      "0.27.0+cu132"
+
+RUN --mount=type=cache,id=sparkring-qwen38-ccache,target=/root/.cache/ccache,sharing=locked \
+    cd /ws/src/exllamav3 \
+ && test "$(git rev-parse HEAD)" = "5f3c537ca9d89893d771256f5c43c93656553fbb" \
+ && test "$(git write-tree)" = "c0b055f5e651ae0c93ba9407d90e6f136aa778c3" \
+ && TORCH_CUDA_ARCH_LIST="${EXLLAMAV3_TORCH_CUDA_ARCH_LIST}" \
+      /ws/venv/bin/python setup.py bdist_wheel \
+ && /ws/venv/bin/pip install --no-cache-dir --no-deps dist/*.whl
+
+RUN --mount=type=cache,id=sparkring-qwen38-ccache,target=/root/.cache/ccache,sharing=locked \
+    test "$(git -C /ws/src/vllm-gg rev-parse HEAD)" = \
+      "229effc810ee6b8112f661472f6aace4eb8c787d" \
+ && test "$(git -C /ws/src/vllm-gg rev-parse HEAD^{tree})" = \
+      "ae2ccd066d7c072fb5106db64c2f2a9da5916c9d" \
+ && TORCH_CUDA_ARCH_LIST="${VLLM_TORCH_CUDA_ARCH_LIST}" \
+      /ws/venv/bin/pip install --no-cache-dir --no-build-isolation --no-deps \
+      -e /ws/src/vllm-gg
+
+RUN chmod 0555 /ws/qwen38_dgx4_serve.sh /ws/runtime/verify_runtime.py \
+ && mkdir -p /ws/cache/jit /ws/logs /ws/model \
+ && /ws/venv/bin/python /ws/runtime/verify_runtime.py --imports
+
+ENV LD_PRELOAD=/ws/nccl-patched/libnccl.so.2 \
+    VLLM_NCCL_SO_PATH=/ws/nccl-patched/libnccl.so.2
+
+CMD ["sleep", "infinity"]

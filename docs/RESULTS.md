@@ -67,6 +67,33 @@ The public tree retains functional SparkCache launcher and restore validation,
 but does not publish performance tables from other sampling temperatures. The
 normalized SparkCache profiles still require temperature-1 remeasurement.
 
+## Qwen3.8-27B EXL3 K5/K6
+
+**Status: experimental four-Spark candidate.** A maintainer-held image and
+model started and served on four directly cabled DGX Sparks. The public builder
+has not reproduced that exact runtime from a clean checkout. The clean-checkout
+builder in `runtime/qwen38/` is offline-validated and has no live result yet.
+
+### Conditions
+
+The candidate fixes TP4/DCP1, a 262,144-token request limit, 64 sequences, an
+8,192-token cache-free scheduler budget, FP8 key-value cache, Qwen MTP depth 3,
+native prefix caching with recurrent-state alignment, full-decode CUDA graphs,
+and patched NCCL. SIRCL and external key-value caching are disabled.
+
+### Functional result
+
+All ranks rendezvoused and remained alive. API health, deterministic arithmetic,
+tool calling, data-URL vision, and a maintainer-held hybrid-prefix probe passed.
+The engine reported 74.74 GiB of key-value memory per rank, 8,382,750 logical
+tokens, and 31.98x maximum concurrency at 262,144 tokens.
+
+Temperature-1 performance qualification is pending. No Qwen throughput table
+is published until the benchmark is rerun under the documented sampling and
+accounting contract. See the
+[profile record](profiles/QWEN38_27B_EXL3_K5K6.md) and
+[experimental quickstart](QWEN38_27B_EXL3_K5K6_QUICKSTART.md).
+
 ## Interpretation
 
 Do not compare these values across model identities or use them as a generic

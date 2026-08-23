@@ -36,19 +36,26 @@ conversation or development history.
 
 ## Supported repository surface
 
-SparkRing supports two model families across six deployment profiles:
+SparkRing supports three model families across seven deployment profiles:
 
 - GLM-5.2 EXL3 3.5-bpw at four-Spark TP4/DCP4, as a base profile and a
   SparkCache composition, using the R7 runtime and site/candidate contracts.
 - DeepSeek-V4-Flash-0731 at two-Spark TP2/DCP1 and four-Spark TP4/DCP1, as
   base profiles and SparkCache compositions, using the published serving image
   and per-rank environment contracts.
+- Qwen3.8-27B EXL3 K5/K6 at four-Spark TP4/DCP1 as a base candidate, using
+  the clean-checkout local image builder and checkpoint/source pins from the
+  companion Qwen recipe.
+
+Qwen3.8-27B with SparkCache is Pending. No composition recipe or live cache
+evidence is published for that combination.
 
 Six-Spark GLM and KIMI profiles are in dev and are not part of the supported
 repository surface.
 
 Maintained Python trees are `spark_transport/`, `runtime/`, `scripts/`, and
-`performance/`. The R7 runtime builder is `runtime/exl3-r7/`. Do not add
+`performance/`. The GLM and Qwen runtime builders are `runtime/exl3-r7/` and
+`runtime/qwen38/`. Do not add
 references, CI jobs, or contributor commands for removed native cache,
 plugin, legacy runtime-builder, or deleted configuration-example surfaces.
 
@@ -60,10 +67,12 @@ choosing one.
 | Subject | Canonical source |
 |---|---|
 | GLM-5.2 EXL3 runtime build | `runtime/exl3-r7/README.md` |
+| Qwen3.8-27B runtime build | `runtime/qwen38/README.md` |
 | Runtime base image and model identity pins | `runtime/faststart-lock.json` |
 | Public Python overlay allowlist | `runtime/public-overlay-files.json` |
 | R7 site and candidate templates | `scripts/config/exl3-r7-site.example.yaml`, `scripts/config/exl3-r7-candidate.example.json` |
 | DeepSeek per-rank environment | `scripts/config/deepseek-v4-flash-0731.env.example` |
+| Qwen3.8-27B four-rank environment | `scripts/config/qwen38-27b-exl3-k5k6.env.example` |
 | Performance claim requirements | `performance/README.md` |
 
 ## Safety classes
@@ -87,7 +96,7 @@ test imports torch:
 python -m pip install -r requirements-dev.txt
 python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.11.0"
 ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance
-python -m pytest spark_transport runtime/exl3-r7 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
+python -m pytest spark_transport runtime/exl3-r7 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
 ```
 
 The test suite is CPU-only contract coverage. It does not validate CUDA,
@@ -95,8 +104,9 @@ RDMA, four-rank serving, or a performance result.
 
 ## Runtime and configuration work
 
-`runtime/exl3-r7/` builds the GLM-5.2 EXL3 R7 image. `runtime/faststart-lock.json`
-pins its ARM64 base image and model identity. `runtime/build-public-overlay.py`
+`runtime/exl3-r7/` builds the GLM-5.2 EXL3 R7 image. `runtime/qwen38/` builds
+the Qwen3.8-27B ARM64 image. `runtime/faststart-lock.json` pins the GLM/DeepSeek
+foundation image and GLM model identity. `runtime/build-public-overlay.py`
 produces a content-manifested bundle from the explicit allowlist in
 `runtime/public-overlay-files.json`.
 
@@ -105,6 +115,11 @@ Use `scripts/config/exl3-r7-site.example.yaml` and
 resolved site addresses, image identities, host paths, and credentials out of
 version control. Use `scripts/config/deepseek-v4-flash-0731.env.example` only
 as a per-rank environment template for DeepSeek-V4-Flash-0731.
+
+Use `scripts/config/qwen38-27b-exl3-k5k6.env.example` with the image built by
+`runtime/qwen38/build-image.sh`, as described in
+`docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md`. The profile does not use the GLM
+R7 builder or the DeepSeek serving image.
 
 ## Performance work
 

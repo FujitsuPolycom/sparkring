@@ -1,10 +1,10 @@
 # SparkRing architecture
 
-SparkRing is a DGX Spark inference stack. It serves the GLM-5.2 EXL3 3.5-bpw
-and DeepSeek-V4-Flash-0731 profiles as four tensor-parallel ranks on a
-switchless 200 Gb/s direct-cable cycle. DeepSeek-V4-Flash-0731 also has an
-implemented two-rank launch on a single cabled pair using patched NCCL; SIRCL
-is unsupported on that topology.
+SparkRing is a DGX Spark inference stack. It serves the GLM-5.2 EXL3 3.5-bpw,
+DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6 profiles as four
+tensor-parallel ranks on a switchless 200 Gb/s direct-cable cycle.
+DeepSeek-V4-Flash-0731 also has an implemented two-rank launch on a single
+cabled pair using patched NCCL; SIRCL is unsupported on that topology.
 
 ## Topology
 
@@ -39,7 +39,7 @@ unrestricted `DOCKER-USER` forward rule are launch prerequisites on every rank;
 The implemented DeepSeek two-Spark profile holds ranks 0 and 1 only, joined by
 one direct cable from cage 0 to cage 0, with rank 0 serving the API and no
 relayed fabric hop. It uses patched NCCL; SIRCL is unsupported on the pair. The
-GLM profile requires the four-Spark cycle.
+GLM and Qwen profiles require the four-Spark cycle.
 
 ## Collective path
 
@@ -59,6 +59,11 @@ four-Spark DeepSeek profile uses
 NCCL. Width-4096 SIRCL graph collectives are research-only on the four-Spark
 cycle and unsupported on the pair.
 
+The Qwen four-Spark candidate uses
+`scripts/config/qwen38-27b-exl3-k5k6.env.example` and patched NCCL. Its
+width-5,120 tensor-parallel path is not admitted by SIRCL, so the candidate
+does not load a custom SparkRing collective adapter.
+
 ## Profile composition
 
 The GLM deployment is generated from
@@ -68,6 +73,15 @@ exact-Q40 routing policy. The DeepSeek deployment uses the immutable published
 runtime image in `runtime/faststart-lock.json`, its native DSpark speculation,
 and `fp8_ds_mla` key-value cache geometry.
 
-The two quickstarts own operational commands:
+The Qwen deployment uses the clean-checkout local ARM64 image builder in
+`runtime/qwen38/` and the model pins in
+`recipes/qwen38-27b-exl3-k5k6.json`. The image is built once and distributed
+with one content-addressed image ID. It combines EXL3 K5/K6 weights, Qwen MTP
+depth 3, FP8 key-value cache, native prefix caching with recurrent-state
+alignment, and full-decode CUDA graphs. External key-value caching is disabled
+in the base profile.
+
+The quickstarts own operational commands:
 [GLM-5.2 EXL3 3.5-bpw](GLM52_35BPW_QUICKSTART.md) and
-[DeepSeek-V4-Flash-0731](DEEPSEEK_V4_FLASH_QUICKSTART.md).
+[DeepSeek-V4-Flash-0731](DEEPSEEK_V4_FLASH_QUICKSTART.md), and
+[Qwen3.8-27B EXL3 K5/K6](QWEN38_27B_EXL3_K5K6_QUICKSTART.md).

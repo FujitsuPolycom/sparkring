@@ -37,9 +37,12 @@ NCCL_CUMEM_ENABLE=0
 NCCL_SOCKET_IFNAME=<management-interface>
 ```
 
-`NCCL_PROTO` remains unset so NCCL can select a protocol per communicator.
-The management interface is bootstrap-only; collective payloads use the two
-direct RoCE interfaces.
+`NCCL_PROTO` remains unset for the generic fallback so NCCL can select a
+protocol per communicator. A model profile may override it only when the
+profile's environment, recipe, and live evidence bind the same value. The
+DeepSeek and Qwen four-Spark profiles bind `LL,LL128,Simple`; that setting is
+not a default for other serving objects. The management interface is
+bootstrap-only; collective payloads use the two direct RoCE interfaces.
 
 ## Fail-closed requirements
 

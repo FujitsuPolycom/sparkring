@@ -1,0 +1,85 @@
+{
+  "schema": "sparkring-qwen38-runtime-pins/v1",
+  "parent_image": {
+    "repository": "nvcr.io/nvidia/cuda",
+    "manifest_digest": "sha256:5c36750138dc1447a17dafbb397674f167d3b44ce18d9160d769df114577b35d",
+    "reference": "nvcr.io/nvidia/cuda@sha256:5c36750138dc1447a17dafbb397674f167d3b44ce18d9160d769df114577b35d",
+    "platform": "linux/arm64"
+  },
+  "toolchain": {
+    "python": "3.12.3",
+    "cuda_toolkit_package": "cuda-toolkit-13-2",
+    "cuda_toolkit_package_version": "13.2.2-1",
+    "nvcc_version": "13.2.86",
+    "torch": "2.12.0+cu132",
+    "torchvision": "0.27.0+cu132",
+    "torch_index_url": "https://download.pytorch.org/whl/cu132",
+    "vllm_torch_cuda_arch_list": "12.0f",
+    "exllamav3_torch_cuda_arch_list": "12.1",
+    "nccl_cuda_arch": "121"
+  },
+  "companion": {
+    "repository": "https://github.com/FujitsuPolycom/qwen38-spark-pair.git",
+    "commit": "b9e1031b80b6f3f64bfc75ae3922322f56954fd6",
+    "tree": "65891f7fc06356f2c0d5787e357419216aa544c2",
+    "requirements_freeze_path": "requirements-freeze.txt",
+    "requirements_freeze_sha256": "d773c781bcc1de6cf81a64f9fa6b2ab80535f77eea08c5aeb5b96c2ce4423ba8",
+    "chat_template_path": "scripts/chat_template_agentic.jinja",
+    "chat_template_sha256": "4f9201169f5bacd1a494c8824470a1ef899c7024d23a2b166e42493e7efd9ac9",
+    "exllamav3_arm_patch_path": "patches/exllamav3-arm.patch",
+    "exllamav3_arm_patch_sha256": "594b01547b0d801cf95926ea973719354150893121019aba2ad8832bc9f17fdb"
+  },
+  "sources": {
+    "vllm": {
+      "repository": "https://github.com/FujitsuPolycom/vllm.git",
+      "tag": "qwen38-tested-20260817",
+      "commit": "229effc810ee6b8112f661472f6aace4eb8c787d",
+      "tree": "ae2ccd066d7c072fb5106db64c2f2a9da5916c9d"
+    },
+    "exllamav3": {
+      "repository": "https://github.com/turboderp-org/exllamav3.git",
+      "commit": "5f3c537ca9d89893d771256f5c43c93656553fbb",
+      "base_tree": "ffc0a1d31c25d4174b96adffef3727f12a7056c7",
+      "patched_tree": "c0b055f5e651ae0c93ba9407d90e6f136aa778c3"
+    },
+    "nccl": {
+      "repository": "https://github.com/NVIDIA/nccl.git",
+      "commit": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
+      "base_tree": "3e7de6f92f0190d1afe9f05642e634cbf43ae4c9",
+      "patched_tree": "9e80bc2489864b4e6c6e2184af8797b07baa68f1"
+    }
+  },
+  "python_packages": {
+    "b12x": "1.2.4",
+    "ray": "2.57.0",
+    "excluded_from_public_freeze": [
+      "exllamav3 @ file:///ws/wheels/exllamav3-1.4.2-cp312-cp312-linux_aarch64.whl#sha256=4fcfff31d38e83d5c4bad1180482b32d1219ff48b72cb96137b3fc252a917a29",
+      "-e /ws/src/vllm-gg",
+      "lmcache==0.5.2"
+    ]
+  },
+  "nccl": {
+    "library_name": "libnccl.so.2.30.7",
+    "library_sha256": "e69a8c240f45d10166bcd901d99db78bb63147adda66e586d8dd505c6d608b54",
+    "patches": [
+      {
+        "path": "spark_transport/nccl/nccl-2.30.7-skip-tree-pat.patch",
+        "sha256": "097656d07a5774919f0d51558b51ec05de8168c0097ed6cb7764c33230ba6eb2"
+      },
+      {
+        "path": "spark_transport/nccl/nccl-2.30.7-advertise-all-listener-gids.patch",
+        "sha256": "dccfce86d14c15c39f0e0a742863960205a3d9823c464b31a7f7389354844178"
+      }
+    ]
+  },
+  "layout": {
+    "venv": "/ws/venv",
+    "vllm_source": "/ws/src/vllm-gg",
+    "exllamav3_source": "/ws/src/exllamav3",
+    "companion_source": "/ws/src/qwen38-spark-pair",
+    "nccl_source": "/ws/src/nccl",
+    "patched_nccl": "/ws/nccl-patched/libnccl.so.2.30.7",
+    "chat_template": "/ws/chat_template_agentic.jinja",
+    "launcher": "/ws/qwen38_dgx4_serve.sh"
+  }
+}

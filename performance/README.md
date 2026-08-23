@@ -1,9 +1,9 @@
 # Performance evidence
 
 `performance/` contains reproducible measurement programs and bounded evidence
-records for the supported GLM-5.2 EXL3 3.5-bpw and DeepSeek-V4-Flash-0731
-serving configurations. It does not establish a general hardware, model, or
-production-serving claim.
+records for the supported GLM-5.2 EXL3 3.5-bpw, DeepSeek-V4-Flash-0731, and
+Qwen3.8-27B EXL3 K5/K6 serving configurations. It does not establish a general
+hardware, model, or production-serving claim.
 
 ## Layout
 
@@ -17,6 +17,7 @@ production-serving claim.
 | `methodology/` | Measurement definitions, attribution rules, and CUDA-graph correctness requirements |
 | `records/glm-3.5bpw/` | GLM-5.2 EXL3 R7 evidence records |
 | `records/deepseek-v4-flash/` | DeepSeek-V4-Flash-0731 evidence records |
+| `records/qwen38-27b/` | Qwen3.8-27B EXL3 K5/K6 evidence records |
 | `records/transport/` | Transport evidence records independent of a model result |
 | `receipts/` | Sanitized temperature-1 benchmark receipts with public replay commands |
 
