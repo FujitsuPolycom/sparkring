@@ -126,7 +126,7 @@ for name in \
     NCCL_MAX_NCHANNELS NCCL_CROSS_NIC NCCL_CUMEM_ENABLE \
     NCCL_SKIP_TREE_CONNECT NCCL_IGNORE_CPU_AFFINITY \
     VLLM_EXL3_GRAPH_DECODE VLLM_EXL3_PREFILL_FP8 \
-    VLLM_EXL3_PREFILL_RECONSTRUCT_M; do
+    VLLM_EXL3_PREFILL_RECONSTRUCT_M VLLM_ALLOW_LONG_MAX_MODEL_LEN; do
     require_env_value "$name"
 done
 
@@ -161,6 +161,9 @@ done
 [ "$VLLM_EXL3_PREFILL_FP8" = "1" ] || die "VLLM_EXL3_PREFILL_FP8 must be 1"
 [ "$VLLM_EXL3_PREFILL_RECONSTRUCT_M" = "256" ] || {
     die "VLLM_EXL3_PREFILL_RECONSTRUCT_M must be 256"
+}
+[ "$VLLM_ALLOW_LONG_MAX_MODEL_LEN" = "1" ] || {
+    die "VLLM_ALLOW_LONG_MAX_MODEL_LEN must be 1 for the 1048576-token profile"
 }
 case "$NCCL_IB_GID_INDEX" in
     ''|*[!0-9]*) die "NCCL_IB_GID_INDEX must be a non-negative integer" ;;
@@ -376,6 +379,9 @@ if [ "$rank" = "0" ]; then
     endpoint_args=(--host 0.0.0.0 --port "$api_port")
 fi
 
+hf_overrides='{"text_config":{"rope_parameters":{"mrope_interleaved":true,"mrope_section":[11,11,10],"rope_type":"yarn","rope_theta":10000000,"partial_rotary_factor":0.25,"factor":4.0,"original_max_position_embeddings":262144}}}'
+speculation='{"method":"qwen3_5_mtp","num_speculative_tokens":3,"attention_backend":"TRITON_ATTN","draft_sample_method":"probabilistic","rejection_sample_method":"standard"}'
+
 command=(
     "$venv/bin/vllm" serve "$model_path"
     --served-model-name qwen38
@@ -387,7 +393,8 @@ command=(
     --master-addr "$rank0_rendezvous_addr"
     --master-port "$master_port"
     --distributed-executor-backend mp
-    --max-model-len 262144
+    --max-model-len 1048576
+    --hf-overrides "$hf_overrides"
     --max-num-seqs 64
     --max-num-batched-tokens 8192
     --enable-chunked-prefill
@@ -401,7 +408,7 @@ command=(
     --attention-backend TRITON_ATTN
     --mm-processor-kwargs '{"truncation":false}'
     --mm-encoder-attn-backend TORCH_SDPA
-    --speculative-config '{"method":"qwen3_5_mtp","num_speculative_tokens":3,"attention_backend":"TRITON_ATTN"}'
+    --speculative-config "$speculation"
     --compilation-config '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
     --chat-template "$chat_template"
     --reasoning-parser qwen3

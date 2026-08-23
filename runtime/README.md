@@ -10,7 +10,7 @@ credentials, or a live-deployment result.
 | Path | Role |
 |---|---|
 | [`exl3-r7/`](exl3-r7/README.md) | GLM-5.2 EXL3 3.5-bpw R7 ARM64 image builder and its verification tests |
-| [`qwen38/`](qwen38/README.md) | Public-source ARM64 image builder for the Qwen3.8-27B EXL3 K5/K6 profile |
+| [`qwen38/`](qwen38/README.md) | Public-source ARM64 image builder for the Qwen3.8-27B EXL3 K5/K6 pair and cycle profiles |
 | [`faststart-lock.json`](faststart-lock.json) | Immutable ARM64 base-image and model-identity pins |
 | [`build-public-overlay.py`](build-public-overlay.py) | Builds the reviewed Python overlay bundle |
 | [`public-overlay-files.json`](public-overlay-files.json) | Explicit source-file allowlist for the public overlay |
@@ -47,7 +47,7 @@ immutable source inputs over a pinned CUDA ARM64 parent. It produces a local
 image and requires no published Qwen image or maintainer-held runtime archive.
 The image contains no checkpoint or site configuration. Build it once, record
 its image ID, and distribute the same saved OCI archive to every rank before
-running the Qwen quickstart.
+running the applicable Qwen pair or cycle quickstart.
 
 ## Public overlay
 

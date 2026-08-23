@@ -80,6 +80,7 @@
     "nccl_source": "/ws/src/nccl",
     "patched_nccl": "/ws/nccl-patched/libnccl.so.2.30.7",
     "chat_template": "/ws/chat_template_agentic.jinja",
+    "pair_launcher": "/ws/qwen38_dgx2_serve.sh",
     "launcher": "/ws/qwen38_dgx4_serve.sh"
   }
 }

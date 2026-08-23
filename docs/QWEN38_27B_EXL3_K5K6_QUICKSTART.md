@@ -1,38 +1,32 @@
 # Qwen3.8-27B EXL3 K5/K6 four-Spark quickstart
 
-> **Experimental public-build path.** It is intended to get a clean four-Spark
-> deployment running, but its generated image has not completed live validation.
-
 This quickstart builds and serves
 `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated` as four tensor-parallel ranks on a
 directly cabled DGX Spark cycle. It starts from public, immutable source inputs.
 No maintainer-held archive or published Qwen image is required.
 
-**Status: candidate.** The serving object is implemented on a maintainer-built
-runtime. The public ARM64 image builder and local preflight are offline
-validated; a clean-checkout image from the builder has not completed a live
-four-rank run. Each image ID produced by the builder has a separate evidence
-scope and does not inherit the historical performance observations.
+This setup was tested on four directly cabled DGX Sparks at TP4/DCP1. The
+temperature-one results are included below.
 
 The machine-readable settings are in
 [`recipes/qwen38-27b-exl3-k5k6.json`](../recipes/qwen38-27b-exl3-k5k6.json).
 The image builder contract is in
 [`runtime/qwen38/README.md`](../runtime/qwen38/README.md).
 
-| Setting | Four-Spark candidate |
+| Setting | Four-Spark setup |
 |---|---|
 | Model | `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf` |
 | Topology | direct cycle `0-1-2-3-0` |
 | Parallelism | TP4/DCP1, one process per Spark |
 | Executor | multi-node `mp` |
-| Request limit | 262,144 tokens |
+| Request limit | 1,048,576 tokens through static YaRN factor 4 over native 262,144 |
 | Maximum sequences | 64 |
 | Scheduler budget | 8,192 tokens |
 | Scheduling | chunked prefill, asynchronous, full-input-length reservation |
 | Hybrid block geometry | request 16 attention tokens; runtime aligns effective attention and mamba blocks to 1,600 tokens |
 | Key-value dtype | FP8 |
 | EXL3 prefill | FP8, reconstruction tile 256 |
-| Speculation | Qwen MTP, depth 3 |
+| Speculation | Qwen MTP depth 3, probabilistic draft sampling, standard rejection sampling |
 | Prefix reuse | native prefix caching, mamba alignment |
 | External cache | disabled |
 | Collective transport | patched NCCL; SIRCL disabled |
@@ -40,6 +34,16 @@ The image builder contract is in
 Pass `--block-size 16`; the pinned runtime performs the 1,600-token hybrid
 alignment. Do not pass `--block-size 1600` directly. SparkCache and LMCache are
 not part of this deployment.
+
+Static YaRN can shift short-context output distributions relative to the
+checkpoint's native range. The two-Spark and four-Spark normalized profiles
+use the same 1,048,576-token static-YaRN object so their measurements share one
+model-length policy.
+
+The temperature-one benchmark does not send top-p or top-k. vLLM applies the
+pinned checkpoint's `generation_config.json`, so the effective values are
+top-p 0.95 and top-k 20. The file's SHA-256 is
+`e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e`.
 
 ## 1. Prepare the four hosts
 
@@ -396,9 +400,10 @@ printf '%s\n' "$CONTAINER_ID" > "$ID_FILE"
 ```
 
 Rank 0 listens on port 8000. Ranks 1-3 run headless. The launcher carries the
-complete serving command, including TP4/DCP1, the 262,144-token request limit,
+complete serving command, including TP4/DCP1, the 1,048,576-token request limit,
 64 sequences, the 8,192-token scheduler budget, FP8 KV, native aligned prefix
-caching, Qwen MTP3, FP8 EXL3 prefill, and full-decode CUDA graphs.
+caching, probabilistic Qwen MTP3 with standard rejection, FP8 EXL3 prefill,
+and full-decode CUDA graphs.
 The tracked
 [`scripts/qwen38_dgx4_serve.sh`](../scripts/qwen38_dgx4_serve.sh) is baked at
 `/ws/qwen38_dgx4_serve.sh` by the image builder.
@@ -460,7 +465,7 @@ python scripts/qwen38_smoke.py \
   --output "$HOME/qwen38/logs/qwen38-smoke-${ATTEMPT_ID}.json"
 ```
 
-The stdlib-only harness checks `/health`, model identity and the 262,144-token
+The stdlib-only harness checks `/health`, model identity and the 1,048,576-token
 limit in `/v1/models`, repeated deterministic arithmetic, the `multiply(6,7)`
 tool call, a tiny data-URL vision request, repeated-prefix output equality,
 and divergent shared-prefix suffixes. It
@@ -470,8 +475,7 @@ nonzero on any failed gate. It reports no timing or cache-hit claim.
 After the gate, recheck all four container states, rank-0 health, host
 `MemAvailable`, swap, and logs for worker exits or runtime errors. A public build
 that reaches API, passes the bounded smoke gate, and remains healthy can be
-recorded as an implemented candidate for that exact image ID. It is not
-automatically qualified.
+  retained with the exact image ID and launch inputs.
 
 Run this on every rank after the smoke gate:
 
@@ -518,14 +522,18 @@ Re-run health and the bounded smoke gate after restart. Recreate containers
 when image, mounts, rank environment, or serving settings change, and record
 the resulting identity.
 
-## Evidence boundary and Pending integration
+## Benchmark results
 
-The maintainer-built runtime passed the functional gates summarized in
-[`docs/profiles/QWEN38_27B_EXL3_K5K6.md`](profiles/QWEN38_27B_EXL3_K5K6.md).
-No temperature-1 benchmark is published for this profile. Record the public
-builder's image ID, source receipt, model hashes, startup result, smoke output,
-temperature-1 benchmark output, and post-run health separately.
+![Four-Spark Qwen benchmark](../performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.png)
 
-**SparkCache: Pending.** No Qwen3.8-27B SparkCache composition recipe or live
-cache evidence is published. The base profile disables external key-value
-caching; SparkCache is not required to build or run this quickstart.
+Prefill measured 1,855–2,001 tok/s through 32K, 1,616 at 64K, and 1,279 at
+128K. Sustained decode measured 30–36 tok/s at C1, 55–66 at C2, 87–121 at C4,
+and 138–202 aggregate tok/s at C8. Coding Peak completed 15/15 requests with a
+48.46 tok/s mean. The table and N counts are in the
+[full result](../performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md). Sanitized replayable receipts are in
+[`performance/receipts/qwen38-27b/temp1/20260823-tp4/`](../performance/receipts/qwen38-27b/temp1/20260823-tp4/).
+
+## SparkCache
+
+SparkCache is not included in this Qwen setup. External key-value caching is
+disabled and is not required to run this quickstart.

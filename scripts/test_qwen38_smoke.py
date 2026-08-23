@@ -18,8 +18,13 @@ import qwen38_smoke as smoke  # noqa: E402
 
 
 class _ServerState:
-    def __init__(self, failing_gate: str | None = None) -> None:
+    def __init__(
+        self,
+        failing_gate: str | None = None,
+        model_max_model_len: int = 1048576,
+    ) -> None:
         self.failing_gate = failing_gate
+        self.model_max_model_len = model_max_model_len
         self.response_number = 0
         self.arithmetic_requests = 0
 
@@ -64,7 +69,9 @@ def _handler(state: _ServerState) -> type[BaseHTTPRequestHandler]:
             if self.path == "/v1/models":
                 model_id = "wrong-model" if state.failing_gate == "models" else "qwen38"
                 max_model_len = (
-                    131072 if state.failing_gate == "model_length" else 262144
+                    131072
+                    if state.failing_gate == "model_length"
+                    else state.model_max_model_len
                 )
                 self._send_json(
                     200,
@@ -88,6 +95,7 @@ def _handler(state: _ServerState) -> type[BaseHTTPRequestHandler]:
                 request.get("model") != "qwen38"
                 or request.get("temperature") != 0
                 or request.get("seed") != smoke.SMOKE_SEED
+                or request.get("chat_template_kwargs") != {"enable_thinking": False}
             ):
                 self._send_json(400, {"error": "sampling contract mismatch"})
                 return
@@ -181,8 +189,14 @@ def _handler(state: _ServerState) -> type[BaseHTTPRequestHandler]:
 
 
 @contextmanager
-def _fake_server(failing_gate: str | None = None) -> Iterator[str]:
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _handler(_ServerState(failing_gate)))
+def _fake_server(
+    failing_gate: str | None = None,
+    model_max_model_len: int = 1048576,
+) -> Iterator[str]:
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0),
+        _handler(_ServerState(failing_gate, model_max_model_len)),
+    )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -213,7 +227,8 @@ def test_smoke_passes_all_bounded_gates_without_leaking_response_metadata() -> N
         "function": "multiply",
         "arguments": {"a": 6, "b": 7},
     }
-    assert result["gates"]["models"]["observed"]["max_model_len"] == 262144
+    assert result["gates"]["models"]["observed"]["max_model_len"] == 1048576
+    assert result["sampling"]["enable_thinking"] is False
     serialized = json.dumps(result, sort_keys=True)
     assert endpoint not in serialized
     assert "chatcmpl-dynamic" not in serialized
@@ -258,8 +273,21 @@ def test_smoke_rejects_a_drifted_model_length() -> None:
     assert result["status"] == "fail"
     assert result["gates"]["models"] == {
         "status": "fail",
-        "detail": "requested model does not report the 262144-token limit",
+        "detail": "requested model does not report the expected token limit (1048576)",
     }
+
+
+def test_smoke_accepts_the_exact_normalized_token_limit() -> None:
+    with _fake_server(model_max_model_len=1_048_576) as endpoint:
+        result = smoke.run_smoke(
+            endpoint=endpoint,
+            model="qwen38",
+            timeout=2,
+            expected_max_model_len=1_048_576,
+        )
+
+    assert result["status"] == "pass"
+    assert result["gates"]["models"]["observed"]["max_model_len"] == 1_048_576
 
 
 def test_arithmetic_gate_ignores_response_ids_but_rejects_message_drift() -> None:

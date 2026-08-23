@@ -66,6 +66,7 @@ COPY bundle/sources/nccl /ws/src/nccl
 COPY bundle/runtime/pins.json /ws/runtime/pins.json
 COPY bundle/runtime/verify_runtime.py /ws/runtime/verify_runtime.py
 COPY bundle/runtime/requirements-public.txt /ws/runtime/requirements-public.txt
+COPY bundle/runtime/qwen38_dgx2_serve.sh /ws/qwen38_dgx2_serve.sh
 COPY bundle/runtime/qwen38_dgx4_serve.sh /ws/qwen38_dgx4_serve.sh
 COPY bundle/runtime/chat_template_agentic.jinja /ws/chat_template_agentic.jinja
 COPY receipt.json /ws/runtime/source-receipt.json
@@ -107,7 +108,8 @@ RUN --mount=type=cache,id=sparkring-qwen38-ccache,target=/root/.cache/ccache,sha
       /ws/venv/bin/pip install --no-cache-dir --no-build-isolation --no-deps \
       -e /ws/src/vllm-gg
 
-RUN chmod 0555 /ws/qwen38_dgx4_serve.sh /ws/runtime/verify_runtime.py \
+RUN chmod 0555 /ws/qwen38_dgx2_serve.sh /ws/qwen38_dgx4_serve.sh \
+      /ws/runtime/verify_runtime.py \
  && mkdir -p /ws/cache/jit /ws/logs /ws/model \
  && /ws/venv/bin/python /ws/runtime/verify_runtime.py --imports
 

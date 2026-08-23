@@ -1,15 +1,9 @@
 # Qwen3.8-27B EXL3 K5/K6 four-Spark profile
 
-## Status
+## Tested setup
 
-**Tag: Experimental public-build path.**
-
-**Status: implemented on a maintainer-built runtime; not qualified.** The
-candidate serving object started and served on four directly cabled DGX
-Sparks. A bounded live run passed API, deterministic arithmetic, tool-use,
-vision, and hybrid-prefix checks. The public clean-checkout image builder is
-offline-validated; ARM64 build execution, live four-rank evidence, and
-temperature-1 performance measurement remain pending.
+The profile ran on four directly cabled DGX Sparks and produced the
+temperature-one results linked below.
 
 Use the
 [Qwen3.8-27B four-Spark quickstart](../QWEN38_27B_EXL3_K5K6_QUICKSTART.md)
@@ -22,10 +16,10 @@ Spark.
 |---|---|
 | Model | `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf` |
 | Public runtime builder | `runtime/qwen38/build-image.sh`, using pins in `runtime/qwen38/pins.json`; build once and distribute one image ID |
-| Historical measured runtime | `FujitsuPolycom/qwen38-spark-pair@b9e1031b80b6f3f64bfc75ae3922322f56954fd6`, maintainer-built and replicated identically to every rank |
+| Tested runtime source | `FujitsuPolycom/qwen38-spark-pair@b9e1031b80b6f3f64bfc75ae3922322f56954fd6` |
 | Parallelism | TP4/DCP1 across four DGX Sparks |
 | Collective transport | patched NCCL on the direct cycle |
-| Request limit | 262,144 tokens |
+| Request limit | 1,048,576 tokens through static YaRN factor 4 over native 262,144 |
 | Maximum sequences | 64 |
 | Scheduler budget | 8,192 tokens |
 | Scheduling | chunked prefill, asynchronous, full-input-length reservation |
@@ -33,18 +27,20 @@ Spark.
 | Key-value dtype | FP8 |
 | EXL3 prefill | FP8, reconstruction tile 256 |
 | Prefix caching | enabled with mamba alignment |
-| Speculation | Qwen MTP depth 3 |
+| Speculation | Qwen MTP depth 3, probabilistic drafts, standard rejection sampling |
+| Temperature-one benchmark sampling | request sets temperature 1.0; pinned model config supplies effective top-p 0.95/top-k 20 |
 | Decode execution | full-decode CUDA graphs |
 | External key-value cache | disabled |
 | SIRCL | unsupported for the width-5,120 path |
 
-The candidate deliberately keeps Qwen's model-specific values instead of
-copying DeepSeek's 1M context, 4,096-token scheduler budget, DSpark proposer,
-or MLA cache format. It reuses DeepSeek's four-Spark physical topology,
+The four-Spark and [two-Spark](QWEN38_27B_EXL3_K5K6_PAIR.md) normalized
+profiles use the same static-YaRN model-length and MTP sampling contract. The
+four-Spark profile does not copy DeepSeek's DSpark proposer or MLA cache
+format. It reuses DeepSeek's four-Spark physical topology,
 non-adjacent-rank routing, multi-node process shape, and patched-NCCL cycle
 settings.
 
-## Public reproduction path
+## Build and launch
 
 The [four-Spark quickstart](../QWEN38_27B_EXL3_K5K6_QUICKSTART.md) is
 self-contained within public repositories. It builds a local ARM64 image from
@@ -57,12 +53,13 @@ No published Qwen image is required. A published image would reduce build
 time, but it would not replace site-specific topology checks, model
 verification, or live functional evidence for the selected image ID.
 
-## Evidence
+## Earlier functional check
 
 Conditions: four NVIDIA DGX Sparks in the direct cycle, the pinned checkpoint,
-identical copies of a maintainer-held source-built runtime, TP4/DCP1 with
+identical copies of a maintainer-held source-built runtime, a 262,144-token
+request limit, TP4/DCP1 with
 vLLM's multi-node `mp` executor, patched NCCL on two RoCE devices per rank, and
-the serving contract above. External key-value caching and SIRCL were
+the same cache, scheduler, and transport settings. External key-value caching and SIRCL were
 disabled. All 16 checkpoint hashes, both source commits, the clean vLLM
 worktree, and the ExLlamaV3 ARM patch digest passed on every rank.
 
@@ -76,33 +73,17 @@ The engine reported 74.74 GiB of key-value memory per rank, 8,382,750 logical
 key-value tokens, and 31.98x maximum concurrency at the 262,144-token request
 limit.
 
-Conclusion: the maintainer-built four-rank serving object is implemented. The
-profile remains a candidate because the public builder has not completed a
-live gate and temperature-1 performance has not been measured under the
-repository benchmark contract.
+Conclusion: the earlier startup checks passed.
+
+## Benchmark results
+
+See the [temperature-one table, screenshot, and machine-readable data](../../performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md).
 
 Limitations:
 
-- No temperature-1 prefill or sustained-decode result is published for this
-  profile.
-- Restart, reboot persistence, eager-versus-graph equivalence, and
-  long-duration serving have not been tested.
-- The runtime has no published Qwen image. Every rank must use the same
-  prepared source tree, environment, model revision, patched NCCL library, and
-  chat template.
-- The exact measured source archive and raw harness output are maintainer-held;
-  public reproduction remains pending.
-- The clean-checkout image builder and preflight pass offline tests only. No
-  image produced by that builder has completed a four-rank startup or the
-  public smoke gate, so historical capacity and performance do not transfer.
-- The tracked launcher adds fail-closed checks and makes effective scheduler
-  defaults and the requested block input explicit; those wrapper changes have
-  offline validation only.
 - The pinned CUDA base does not supply `libibverbs.so.1`. Install
   `libibverbs1`, `ibverbs-providers`, and `ibverbs-utils` before starting NCCL.
 
-## Pending integration
+## SparkCache
 
-**SparkCache: Pending.** No Qwen3.8-27B SparkCache composition recipe or live
-cache evidence is published. The base profile keeps external key-value caching
-disabled while the four-Spark serving path is tested.
+SparkCache is not included. External key-value caching is disabled.

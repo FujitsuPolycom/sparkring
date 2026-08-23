@@ -4,9 +4,10 @@ Complete this checklist before deploying any supported profile. It defines the
 hardware and operator conditions required by the
 [GLM](GLM52_35BPW_QUICKSTART.md) and
 [DeepSeek](DEEPSEEK_V4_FLASH_QUICKSTART.md) quickstarts, and the
+[Qwen3.8-27B pair quickstart](QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md), and
 [Qwen3.8-27B four-Spark quickstart](QWEN38_27B_EXL3_K5K6_QUICKSTART.md). The
-GLM, Qwen, and DeepSeek cycle configurations require four Sparks; the DeepSeek
-pair requires two.
+GLM, Qwen cycle, and DeepSeek cycle configurations require four Sparks; the
+DeepSeek and Qwen pair profiles require two.
 
 ## Hardware and topology
 
@@ -110,14 +111,14 @@ The DeepSeek quickstart uses one local copy of
 `scripts/config/deepseek-v4-flash-0731.env.example` per rank. Replace only its
 network interface and fabric-address placeholders.
 
-The Qwen quickstart uses one private local copy of
-`scripts/config/qwen38-27b-exl3-k5k6.env.example` per rank. Its image-baked
-launcher accepts `--check` to validate the complete local rank contract and
-print the resolved command without starting vLLM.
+The Qwen quickstarts use one private local copy of their topology-specific
+environment template per rank. Both image-baked launchers accept `--check` to
+validate the complete local rank contract and print the resolved command
+without starting vLLM.
 
 ## Safety boundary
 
 A plan-only command is offline. Remote preflight is read-only. Starting or
 replacing a serving stack mutates hosts and can stop serving; do not execute a
-start command without explicit authorization for the four named hosts and the
-action.
+start command without explicit authorization for every named host in the
+selected topology and the action.

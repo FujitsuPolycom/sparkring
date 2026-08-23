@@ -221,6 +221,8 @@ Decode values are aggregate generated tok/s. The
 contains the Coding Peak N=5 summary, machine-readable data, accounting gates,
 exclusions, and pending coordinates.
 
+![GLM Coding Peak temperature-one result](../performance/records/glm-3.5bpw/coding-peak-temperature1-20260822.png)
+
 This launch used fresh rank-specific JIT and create-once receipt
 namespaces. A same-namespace restart currently fails before model startup when
 the exact-Q40 producer finds its existing receipt. Keep the receipt and use a

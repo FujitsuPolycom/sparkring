@@ -255,11 +255,13 @@ def prepare(output: Path, *, repo_root: Path, pins_path: Path) -> dict[str, Any]
 
     copy_file(pins_path, runtime / "pins.json")
     copy_file(HERE / "verify_runtime.py", runtime / "verify_runtime.py")
+    copy_file(repo_root / "scripts" / "qwen38_dgx2_serve.sh", runtime / "qwen38_dgx2_serve.sh")
     copy_file(repo_root / "scripts" / "qwen38_dgx4_serve.sh", runtime / "qwen38_dgx4_serve.sh")
 
     receipt_files = (
         "bundle/runtime/pins.json",
         "bundle/runtime/verify_runtime.py",
+        "bundle/runtime/qwen38_dgx2_serve.sh",
         "bundle/runtime/qwen38_dgx4_serve.sh",
         "bundle/runtime/chat_template_agentic.jinja",
         "bundle/runtime/requirements-public.txt",

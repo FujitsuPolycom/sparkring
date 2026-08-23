@@ -42,6 +42,8 @@ all-rank logs. Displayed cells are one accepted observation each.
 
 ## Coding workload
 
+![Coding Peak green-text result](coding-peak-temperature1-20260822.png)
+
 Coding Peak at temperature 1.0 completed five normal requests: mean
 25.39 tok/s, median 25.57, range 22.70–26.92 tok/s.
 

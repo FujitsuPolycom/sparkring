@@ -27,8 +27,8 @@ qualification. A four-rank temperature-1 comparison established native replay,
 API health, and zero overflow for the target and DSpark capture path; see the
 [DeepSeek SIRCL evidence record](../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
 
-The Qwen3.8-27B EXL3 K5/K6 profile uses patched NCCL. Its width-5,120
-tensor-parallel shape is unsupported by SIRCL, so the profile does not load a
+The Qwen3.8-27B EXL3 K5/K6 pair and cycle profiles use patched NCCL. Their
+width-5,120 tensor-parallel shape is unsupported by SIRCL, so neither loads a
 custom SparkRing collective adapter.
 
 ## Operational invariants
@@ -43,4 +43,5 @@ custom SparkRing collective adapter.
 Deployment commands and profile limits are in the
 [GLM quickstart](GLM52_35BPW_QUICKSTART.md) and
 [DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md), and
-[Qwen3.8-27B quickstart](QWEN38_27B_EXL3_K5K6_QUICKSTART.md).
+[Qwen3.8-27B pair quickstart](QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md), and
+[Qwen3.8-27B cycle quickstart](QWEN38_27B_EXL3_K5K6_QUICKSTART.md).

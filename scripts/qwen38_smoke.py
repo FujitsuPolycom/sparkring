@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run bounded, sanitized API checks against the Qwen four-Spark profile."""
+"""Run bounded, sanitized API checks against a normalized Qwen profile."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from urllib.request import Request, urlopen
 
 SCHEMA = "sparkring-qwen38-api-smoke/v1"
 SMOKE_SEED = 17_023
-EXPECTED_MAX_MODEL_LEN = 262_144
+EXPECTED_MAX_MODEL_LEN = 1_048_576
 VISION_MARKER = "VISION_OK"
 PREFIX_MARKER = "PREFIX_OK"
 TINY_PNG_DATA_URL = (
@@ -162,6 +162,7 @@ def _chat_payload(
         "temperature": 0,
         "seed": SMOKE_SEED,
         "max_tokens": max_tokens,
+        "chat_template_kwargs": {"enable_thinking": False},
     }
 
 
@@ -185,7 +186,12 @@ def _run_gate(operation: Callable[[], dict[str, Any]]) -> dict[str, Any]:
     return {"status": "pass", "observed": observed}
 
 
-def run_smoke(endpoint: str, model: str, timeout: float = 60.0) -> dict[str, Any]:
+def run_smoke(
+    endpoint: str,
+    model: str,
+    timeout: float = 60.0,
+    expected_max_model_len: int = EXPECTED_MAX_MODEL_LEN,
+) -> dict[str, Any]:
     """Run every bounded gate and return a sanitized JSON-compatible result."""
 
     client = _Client(endpoint, timeout)
@@ -207,14 +213,15 @@ def run_smoke(endpoint: str, model: str, timeout: float = 60.0) -> dict[str, Any
         ]
         if len(matching) != 1:
             raise SmokeFailure("requested model is absent from /v1/models")
-        if matching[0].get("max_model_len") != EXPECTED_MAX_MODEL_LEN:
+        if matching[0].get("max_model_len") != expected_max_model_len:
             raise SmokeFailure(
-                "requested model does not report the 262144-token limit"
+                "requested model does not report the expected token limit "
+                f"({expected_max_model_len})"
             )
         return {
             "http_status": status,
             "model_present": True,
-            "max_model_len": EXPECTED_MAX_MODEL_LEN,
+            "max_model_len": expected_max_model_len,
         }
 
     def arithmetic_repeat() -> dict[str, Any]:
@@ -335,7 +342,11 @@ def run_smoke(endpoint: str, model: str, timeout: float = 60.0) -> dict[str, Any
         "status": "pass" if passed else "fail",
         "model": model,
         "scope": "bounded API correctness smoke; no performance or cache-hit claim",
-        "sampling": {"temperature": 0, "seed": SMOKE_SEED},
+        "sampling": {
+            "temperature": 0,
+            "seed": SMOKE_SEED,
+            "enable_thinking": False,
+        },
         "gates": gates,
         "limitations": [
             "No timing is collected or reported.",
@@ -358,12 +369,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--endpoint", default="http://127.0.0.1:8000")
     parser.add_argument("--model", default="qwen38")
     parser.add_argument("--timeout", type=float, default=60.0)
+    parser.add_argument(
+        "--expected-max-model-len",
+        type=int,
+        default=EXPECTED_MAX_MODEL_LEN,
+    )
     parser.add_argument("--output", default="-", help="JSON path, or - for stdout")
     arguments = parser.parse_args(argv)
     if arguments.timeout <= 0:
         parser.error("--timeout must be positive")
+    if arguments.expected_max_model_len <= 0:
+        parser.error("--expected-max-model-len must be positive")
     try:
-        document = run_smoke(arguments.endpoint, arguments.model, arguments.timeout)
+        document = run_smoke(
+            arguments.endpoint,
+            arguments.model,
+            arguments.timeout,
+            arguments.expected_max_model_len,
+        )
     except SmokeFailure as error:
         document = {
             "schema": SCHEMA,

@@ -91,7 +91,17 @@
     "pipeline_parallel_size": 1,
     "node_count": 4,
     "distributed_executor_backend": "mp",
-    "max_model_len": 262144,
+    "max_model_len": 1048576,
+    "context_extension": {
+      "method": "static-yarn",
+      "factor": 4.0,
+      "original_max_position_embeddings": 262144,
+      "rope_type": "yarn",
+      "rope_theta": 10000000,
+      "partial_rotary_factor": 0.25,
+      "mrope_interleaved": true,
+      "mrope_section": [11, 11, 10]
+    },
     "max_num_seqs": 64,
     "max_num_batched_tokens": 8192,
     "enable_chunked_prefill": true,
@@ -112,7 +122,14 @@
     "speculation": {
       "method": "qwen3_5_mtp",
       "num_speculative_tokens": 3,
-      "attention_backend": "TRITON_ATTN"
+      "attention_backend": "TRITON_ATTN",
+      "draft_sample_method": "probabilistic",
+      "rejection_sample_method": "standard"
+    },
+    "sampling": {
+      "benchmark_request": {"temperature": 1.0, "top_p": null, "top_k": null},
+      "effective_model_defaults": {"temperature": 1.0, "top_p": 0.95, "top_k": 20},
+      "generation_config_sha256": "e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e"
     },
     "reasoning_parser": "qwen3",
     "tool_call_parser": "qwen3_coder",
@@ -127,7 +144,7 @@
       "default": false,
       "width_5120_graph_status": "unsupported"
     },
-    "sizing_note": "The four-Spark candidate keeps the two-Spark model limit, sequence limit, FP8 key-value dtype, MTP depth, and cache-free 8192-token scheduler budget. A live TP4 launch reported 8382750 logical key-value tokens, 31.98x maximum concurrency at the 262144-token request limit, and one post-run MemAvailable sample of 23-27 GiB per rank after rounding down."
+    "sizing_note": "The normalized four-Spark profile serves a 1048576-token limit with 64 maximum sequences. The measured launch reported 8743342 logical key-value tokens, enough for 8.34 full-length request footprints before generated-token headroom."
   },
   "transport": {
     "backend": "patched-nccl",
@@ -147,9 +164,9 @@
     "conditions": "Live evidence from four directly cabled NVIDIA DGX Sparks using the pinned checkpoint and a maintainer-held source-built runtime, TP4/DCP1, the multi-node multiprocess executor, a 262144-token request limit, 64 sequences, an 8192-token scheduler budget, chunked prefill, asynchronous scheduling, full-input-length reservation, a requested 16-token attention block that hybrid alignment raised to an effective 1600-token attention and mamba block, FP8 key-value cache, Qwen MTP depth 3, native prefix caching with mamba alignment, full-decode CUDA graphs, FP8 EXL3 prefill with reconstruction tile 256, and patched NCCL over both RoCE devices per rank at RoCEv2 GID index 3. External key-value caching and SIRCL were disabled.",
     "measurement": "Startup and capacity came from engine logs. Functional checks exercised API health, deterministic arithmetic, tool parsing, data-URL vision, and repeated-prefix behavior. Raw artifacts remain maintainer-held.",
     "result": "All four ranks rendezvoused and served the pinned model. Health, deterministic arithmetic, tool-call, vision, and hybrid-prefix checks passed. The engine reported 74.74 GiB of key-value memory per rank, 8382750 logical key-value tokens, and 31.98x maximum concurrency at 262144 tokens. All workers remained alive and rank 0 remained healthy after the workload.",
-    "conclusion": "The maintainer-built four-rank serving object in this recipe is implemented. The profile remains a candidate because the public builder has offline validation only, restart behavior is untested, the wider correctness gate is incomplete, and temperature-1 performance has not been measured under the repository benchmark contract.",
+    "conclusion": "The TP4 profile served successfully and produced temperature-1 prefill, sustained-decode, and Coding Peak results through 128K context.",
+    "benchmark_result": "Prefill reached 1855-2001 tok/s through 32K and 1279 tok/s at 128K. Aggregate decode reached 138-202 tok/s at C8. Coding Peak averaged 48.46 tok/s over 15 requests.",
     "limitations": [
-      "No temperature-1 prefill or sustained-decode result is published for this profile.",
       "Restart, reboot persistence, eager-versus-graph equivalence, and long-duration serving have not been tested.",
       "The source-built runtime has no published container image. Every rank must use the same prepared runtime sources, Python environment, patched NCCL library, model revision, and chat template.",
       "The exact measured source archive is maintainer-held; public reproduction of that artifact remains pending.",
@@ -157,6 +174,7 @@
       "SIRCL does not admit the model's width-5120 all-reduce shape. Patched NCCL is the only configured collective backend.",
       "SparkCache support is Pending and is not part of this recipe."
     ],
-    "record": "docs/profiles/QWEN38_27B_EXL3_K5K6.md"
+    "record": "docs/profiles/QWEN38_27B_EXL3_K5K6.md",
+    "benchmark_record": "performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.json"
   }
 }
