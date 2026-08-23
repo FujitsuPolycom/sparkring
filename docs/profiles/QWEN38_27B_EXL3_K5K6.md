@@ -53,7 +53,7 @@ No published Qwen image is required. A published image would reduce build
 time, but it would not replace site-specific topology checks, model
 verification, or live functional evidence for the selected image ID.
 
-## Earlier functional check
+## TP4 startup record — 262,144-token launch
 
 Conditions: four NVIDIA DGX Sparks in the direct cycle, the pinned checkpoint,
 identical copies of a maintainer-held source-built runtime, a 262,144-token
@@ -73,7 +73,7 @@ The engine reported 74.74 GiB of key-value memory per rank, 8,382,750 logical
 key-value tokens, and 31.98x maximum concurrency at the 262,144-token request
 limit.
 
-Conclusion: the earlier startup checks passed.
+Conclusion: the 262,144-token startup checks passed.
 
 ## Benchmark results
 

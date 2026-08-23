@@ -15,8 +15,8 @@ SparkCache.
 ## Pending integrations
 
 **Qwen3.8-27B EXL3 K5/K6: Pending.** No SparkCache composition recipe or live
-cache evidence is published for Qwen. The four-Spark base candidate disables
-external key-value caching, and the two-Spark research profile explicitly
+cache evidence is published for Qwen. The four-Spark base profile disables
+external key-value caching, and the two-Spark base profile explicitly
 omits LMCache to keep its 8,192-token scheduler budget. This pending entry does not add a fourth entry to
 the composition table above.
 

@@ -3,6 +3,9 @@
 This setup was tested on two directly cabled DGX Sparks at TP2/DCP1. The
 temperature-one results are included below.
 
+The results use the runtime identified in the benchmark record. Building from
+this quickstart creates a new image with the same serving settings.
+
 This profile serves
 `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf`
 with Qwen's official static-YaRN 1M configuration, probabilistic MTP depth 3,
@@ -245,4 +248,4 @@ recorded launch specification rather than reconstructing it from memory.
 ## Results and receipts
 
 See the [full benchmark result](../performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md) and
-[sanitized replayable receipts](../performance/receipts/qwen38-27b/temp1/20260823-tp2/).
+[sanitized command receipts](../performance/receipts/qwen38-27b/temp1/20260823-tp2/).

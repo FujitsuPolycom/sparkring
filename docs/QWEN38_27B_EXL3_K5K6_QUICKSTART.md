@@ -8,6 +8,9 @@ No maintainer-held archive or published Qwen image is required.
 This setup was tested on four directly cabled DGX Sparks at TP4/DCP1. The
 temperature-one results are included below.
 
+The results use the runtime identified in the benchmark record. Building from
+this quickstart creates a new image with the same serving settings.
+
 The machine-readable settings are in
 [`recipes/qwen38-27b-exl3-k5k6.json`](../recipes/qwen38-27b-exl3-k5k6.json).
 The image builder contract is in
@@ -530,7 +533,7 @@ Prefill measured 1,855–2,001 tok/s through 32K, 1,616 at 64K, and 1,279 at
 128K. Sustained decode measured 30–36 tok/s at C1, 55–66 at C2, 87–121 at C4,
 and 138–202 aggregate tok/s at C8. Coding Peak completed 15/15 requests with a
 48.46 tok/s mean. The table and N counts are in the
-[full result](../performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md). Sanitized replayable receipts are in
+[full result](../performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md). Sanitized command receipts are in
 [`performance/receipts/qwen38-27b/temp1/20260823-tp4/`](../performance/receipts/qwen38-27b/temp1/20260823-tp4/).
 
 ## SparkCache

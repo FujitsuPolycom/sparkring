@@ -13,11 +13,9 @@ for the pair and
 [`recipes/deepseek-v4-flash-0731.json`](../recipes/deepseek-v4-flash-0731.json)
 for the cycle.
 
-Both topologies serve the checkpoint's full 1,048,576-token request length with
-identical scheduler settings. They differ in the parallelism flags, the
-key-value reservation each node can afford, and the transport half of the
-environment template. Image, entrypoint, checkpoint, speculation, parsers and
-verification are shared.
+Both public recipes use the plain 0731 package and serve a 1,048,576-token
+request length. The measured TP2 result used the DSpark package named above;
+its configuration and tensor index match, while its weight payloads differ.
 
 | | Two-Spark pair | Four-Spark cycle |
 |---|---|---|
@@ -26,9 +24,7 @@ verification are shared.
 | Weights resident per rank | 80.97 GiB | 40.82 GiB |
 | `--tensor-parallel-size` / `--nnodes` | 2 | 4 |
 | `--kv-cache-memory-bytes` | 17179869184 (16 GiB) | 17179869184 (16 GiB) |
-| 1M pool / concurrency | 2,198,756 tokens / 2.10x observed | not measured yet |
 | Context / Seq / Batch | 1M, 32, 4096 | 1M, 32, 4096 |
-| Free memory per node | 4.9–6.0 GiB observed, with swap in use | older setup measured ~50 GB; new setup not measured |
 | Environment template | `deepseek-v4-flash-0731-pair.env.example` | `deepseek-v4-flash-0731.env.example` |
 
 `--max-model-len 1048576`, `--max-num-seqs 32`, `--max-num-batched-tokens
@@ -42,8 +38,7 @@ input-length reservation before admission:
 --async-scheduling --scheduler-reserve-full-isl
 ```
 
-The running engine previously selected those values automatically. Spelling
-them out prevents a future vLLM default from silently changing the profile.
+The flags are explicit so a vLLM default cannot silently change the profile.
 Disabling full-input reservation is a separate research experiment because it
 can improve admission latency while increasing later queueing, preemption, or
 KV pressure under chunked prefill.

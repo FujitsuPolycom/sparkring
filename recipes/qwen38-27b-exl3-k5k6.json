@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-recipe/v1",
   "recipe_id": "qwen38-27b-exl3-k5k6",
-  "status": "candidate",
+  "status": "implemented",
   "hardware": {
     "platform": "linux/arm64",
     "cuda_arch": "sm_121",
@@ -161,9 +161,9 @@
   },
   "evidence": {
     "status": "implemented",
-    "conditions": "Live evidence from four directly cabled NVIDIA DGX Sparks using the pinned checkpoint and a maintainer-held source-built runtime, TP4/DCP1, the multi-node multiprocess executor, a 262144-token request limit, 64 sequences, an 8192-token scheduler budget, chunked prefill, asynchronous scheduling, full-input-length reservation, a requested 16-token attention block that hybrid alignment raised to an effective 1600-token attention and mamba block, FP8 key-value cache, Qwen MTP depth 3, native prefix caching with mamba alignment, full-decode CUDA graphs, FP8 EXL3 prefill with reconstruction tile 256, and patched NCCL over both RoCE devices per rank at RoCEv2 GID index 3. External key-value caching and SIRCL were disabled.",
-    "measurement": "Startup and capacity came from engine logs. Functional checks exercised API health, deterministic arithmetic, tool parsing, data-URL vision, and repeated-prefix behavior. Raw artifacts remain maintainer-held.",
-    "result": "All four ranks rendezvoused and served the pinned model. Health, deterministic arithmetic, tool-call, vision, and hybrid-prefix checks passed. The engine reported 74.74 GiB of key-value memory per rank, 8382750 logical key-value tokens, and 31.98x maximum concurrency at 262144 tokens. All workers remained alive and rank 0 remained healthy after the workload.",
+    "conditions": "Four directly cabled NVIDIA DGX Sparks used runtime image sha256:d1f3dc428c537e98f04bf6957f6bbccf77a4a51cab06b6a1cba36e543b285679 and the pinned checkpoint at TP4/DCP1 with a 1048576-token static-YaRN request limit, 64 sequences, an 8192-token scheduler budget, chunked prefill, asynchronous scheduling, full-input-length reservation, aligned 1600-token attention/mamba pages, FP8 key-value cache, native prefix caching, full-decode CUDA graphs, probabilistic Qwen MTP depth 3, and patched NCCL. External key-value caching and SIRCL were disabled.",
+    "measurement": "Engine logs supplied startup and the 8743342-token logical KV pool. llm-decode-bench 0.4.31 measured temperature-1 prefill, sustained decode with 100% unique per-stream context, and 15 Coding Peak requests through 128K.",
+    "result": "All four ranks served the pinned model at the 1048576-token limit. Prefill reached 1855-2001 tok/s through 32K and 1279 tok/s at 128K. Aggregate C8 decode reached 138-202 tok/s. Coding Peak averaged 48.46 tok/s.",
     "conclusion": "The TP4 profile served successfully and produced temperature-1 prefill, sustained-decode, and Coding Peak results through 128K context.",
     "benchmark_result": "Prefill reached 1855-2001 tok/s through 32K and 1279 tok/s at 128K. Aggregate decode reached 138-202 tok/s at C8. Coding Peak averaged 48.46 tok/s over 15 requests.",
     "limitations": [

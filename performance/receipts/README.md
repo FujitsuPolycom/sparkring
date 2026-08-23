@@ -7,7 +7,7 @@ per-cell observations, summary table, and methodology.
 
 | Directory | Contents |
 |---|---|
-| [`deepseek-v4-flash/temp1/`](deepseek-v4-flash/temp1/) | 28 earlier two-Spark TP2/DCP1 sustained-decode and Coding Peak receipts |
+| [`deepseek-v4-flash/temp1/`](deepseek-v4-flash/temp1/) | 28 two-Spark TP2/DCP1 sustained-decode and Coding Peak receipts |
 | [`deepseek-v4-flash/temp1/20260823-tp2/`](deepseek-v4-flash/temp1/20260823-tp2/) | 31 additional TP2 receipts contributing to the N=5/N=3 pair matrix, including temperature-1 prefill |
 | [`deepseek-v4-flash/temp1/20260823-tp4/`](deepseek-v4-flash/temp1/20260823-tp4/) | 31 TP4 receipts contributing to the N=5/N=3 cycle matrix, including prefill and Coding Peak |
 | [`glm-3.5bpw/temp1/`](glm-3.5bpw/temp1/) | 10 four-Spark TP4/DCP4 sustained-decode and Coding Peak receipts |
@@ -19,12 +19,17 @@ the benchmark command line. Qwen used effective top-p 0.95 and top-k 20 from
 the pinned checkpoint's `generation_config.json`; neither was overridden by
 the benchmark command.
 
-## Replay commands
+## Recorded commands
 
-`public_replay_command` is an argument array that can be joined or passed to a
-process launcher. Replace `<rank-0-endpoint>` and `<output-directory>`. It
-retains the measured workload and timing arguments but disables remote hardware
-monitoring because the original SSH targets are private site configuration.
+The receipts retain the measured argument arrays in `public_replay_command`.
+Replace `<rank-0-endpoint>` and `<output-directory>` before running one. Remote
+hardware monitoring is disabled because SSH targets are private site data.
+
+These runs used `llm_decode_bench.py` version 0.4.31. The measured script
+SHA-256 is
+`07aad353cd9c894e14e9d1392c8509d3af8999c4022d3d22b29423a4572f5851`.
+That exact script is not published in this repository, so these files document
+the commands and evidence but are not turnkey replay scripts.
 
 The original run also recorded endpoint bindings, the client hostname, SSH
 monitor targets, local GPU diagnostics, event text, and hardware summaries.
@@ -40,7 +45,6 @@ alignment, capacity, and aggregate-validity checks.
 
 ## Prefill boundary
 
-The readable result tables retain prefill TTFT measurements because the metric
-ends at the first token and does not measure sustained sampled decode. The new
-DeepSeek and Qwen TP2/TP4 bundles use temperature-1 prefill envelopes and are
-included. Older temperature-0 prefill envelopes remain excluded.
+The result tables retain prefill TTFT because it ends at the first token and
+does not measure sustained sampled decode. DeepSeek and Qwen TP2/TP4 use
+temperature-1 prefill. Temperature-zero prefill is excluded.

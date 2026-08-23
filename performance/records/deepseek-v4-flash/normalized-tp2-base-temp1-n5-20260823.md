@@ -1,24 +1,32 @@
 # DeepSeek-V4-Flash DSpark package — two Sparks, TP2/DCP1
 
+## Conditions
+
 | Field | Value |
 |---|---|
 | Lane | public-functional |
-| Maturity | live-validated candidate; performance measured |
+| Status | implemented; live-benchmarked |
 | Hardware | two directly cabled NVIDIA DGX Sparks, TP2/DCP1 |
 | Checkpoint | `deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7` |
+| Runtime image | `ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028` |
+| Harness | `llm_decode_bench.py` 0.4.31; SHA-256 `07aad353cd9c894e14e9d1392c8509d3af8999c4022d3d22b29423a4572f5851` |
 | Serving contract | 1,048,576-token request limit; 32 sequences; 4,096 batched tokens; 16 GiB KV/rank; block 256; `fp8_ds_mla`; DSpark K5 |
 | Sampling | temperature 1.0, effective top-p 1.0 |
+| Inputs | 2K–128K; C1/C2/C4/C8/C16/C32 where the KV pool fit; 100% unique prompts |
 
-The tables report means from accepted, fully aligned measurements. C1/C2 use
-at least five observations per context; other applicable decode cells use at
-least three. This DSpark package has the same model configuration, tokenizer
-configuration, and weight index as the plain 0731 package used by TP4, but all
-48 safetensors payload identifiers differ. Treat TP2-versus-TP4 comparisons as
-practical topology evidence, not an exact same-weight scaling experiment.
+## Measurement
 
-Temperature 1.0; two directly cabled NVIDIA DGX Sparks, TP2/DCP1; at least 3 accepted repetitions per applicable cell, with at least 5 for C1/C2.
+Prefill is prompt tokens divided by client TTFT. Decode divides an accepted token delta by a monotonic-clock window. The receipts identify the authority: OpenAI stream usage, Prometheus fallback, or the isolated vLLM generation counter.
 
-## Prefill
+Each decode cell waited for full concurrency, zero queue, and three seconds of stable state, followed by a 10-second decode warm-up. Cell durations and capacity timeouts vary by concurrency and are preserved in the receipts.
+
+The tables report means and sample standard deviations from accepted cells. C1/C2 use at least five observations per context; other applicable decode cells use at least three. Included cells passed alignment, request-error, timeout, and capacity gates.
+
+Raw records: [all sanitized TP2 command receipts](../../receipts/deepseek-v4-flash/temp1/).
+
+## Result
+
+### Prefill
 
 | Context | Mean tok/s | SD | N | Mean TTFT s |
 |---:|---:|---:|---:|---:|
@@ -29,7 +37,7 @@ Temperature 1.0; two directly cabled NVIDIA DGX Sparks, TP2/DCP1; at least 3 acc
 | 64K | 1855.50 | 63.85 | 4 | 35.352 |
 | 128K | 1691.25 | 83.30 | 4 | 77.644 |
 
-## Sustained decode
+### Sustained decode
 
 Aggregate generated tokens per second, shown as mean ± SD (N):
 
@@ -42,10 +50,16 @@ Aggregate generated tokens per second, shown as mean ± SD (N):
 | 64K | 50.06 ± 17.52 (5) | 76.57 ± 11.89 (5) | 108.41 ± 17.44 (3) | 154.57 ± 20.55 (3) | 205.27 ± 10.13 (3) | — |
 | 128K | 53.05 ± 11.34 (5) | 73.82 ± 5.69 (5) | 86.43 ± 7.86 (3) | — | — | — |
 
-## Coding Peak
+### Coding Peak
 
 Mean 59.31 tok/s; median 60.13; range 56.31–61.35; N=5.
 
-## Receipt scope
+## Conclusion
+
+The two-Spark profile served through 128K prefill and every decode cell that fit its KV pool.
+
+## Limitations
 
 Combined 59 machine-readable temperature-1 receipts. JIT/server-log-rejected invocations are excluded. Request-error, timed-out, underfilled, capacity-limited, invalid, and non-positive rows are excluded; valid rows from otherwise mixed receipts are retained.
+
+The DSpark and plain 0731 packages share model and tokenizer configuration and a tensor index, but their 48 weight payloads differ. TP2/TP4 comparisons therefore include both topology and package differences.

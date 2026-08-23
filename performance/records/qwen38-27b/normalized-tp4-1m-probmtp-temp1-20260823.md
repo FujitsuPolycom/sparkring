@@ -4,13 +4,29 @@
 
 ## Conditions
 
-Four directly cabled NVIDIA DGX Sparks ran the pinned Qwen3.8-27B EXL3 K5/K6 checkpoint at TP4/DCP1. The server used a 1,048,576-token static-YaRN limit, 64 maximum sequences, an 8,192-token scheduler budget, FP8 KV, requested block size 16 with effective 1,600-token hybrid alignment, asynchronous scheduling with full-input-length reservation, native prefix caching, full-decode CUDA graphs, and probabilistic Qwen MTP3 with standard rejection.
-
-Benchmark requests set temperature 1.0 and left top-p/top-k unset. vLLM confirmed that the pinned `generation_config.json` supplied effective top-p 0.95 and top-k 20. Decode prompts were 100% unique between streams.
+| Field | Value |
+|---|---|
+| Lane | public-functional |
+| Status | implemented; live-benchmarked |
+| Hardware | four directly cabled NVIDIA DGX Sparks, TP4/DCP1 |
+| Checkpoint | `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf` |
+| Runtime image | `sha256:d1f3dc428c537e98f04bf6957f6bbccf77a4a51cab06b6a1cba36e543b285679` |
+| Harness | `llm_decode_bench.py` 0.4.31; SHA-256 `07aad353cd9c894e14e9d1392c8509d3af8999c4022d3d22b29423a4572f5851` |
+| Serving limits | 1,048,576 tokens through static YaRN; 64 sequences; 8,192 batched tokens |
+| KV and scheduling | FP8 KV; 1,600-token hybrid alignment; asynchronous scheduling; full-input-length reservation |
+| Decode | native prefix caching; full-decode CUDA graphs; probabilistic Qwen MTP3 with standard rejection |
+| Sampling | temperature 1.0; effective top-p 0.95 and top-k 20 from `generation_config.json` |
+| Inputs | 2K–128K; C1/C2/C4/C8; 100% unique prompts |
 
 ## Measurement
 
-`llm-decode-bench` 0.4.31 measured client-observed prefill and sustained aggregate decode. Every included decode cell reached the requested concurrency with zero queued requests before timing. Client and isolated-server generated-token counters agreed. A separate older C32 receipt came from a 262,144-token server and is intentionally excluded from this normalized 1,048,576-token record.
+Prefill is prompt tokens divided by client TTFT. Decode is the isolated vLLM `generation_tokens_total` delta over a monotonic-clock window.
+
+Each decode cell waited for full concurrency, zero queue, and three seconds of stable state, followed by a 10-second decode warm-up. Durations and capacity timeouts are preserved in the receipts.
+
+Repeated cells are arithmetic means; N appears in the table. Single-observation cells have no uncertainty estimate. Included cells passed alignment, request-error, timeout, capacity, and client/server token-agreement gates.
+
+Raw records: [sanitized command receipts](../../receipts/qwen38-27b/temp1/20260823-tp4/).
 
 ## Result
 
@@ -34,5 +50,6 @@ The tested four-Spark profile is healthy through 128K prefill and C1/C2/C4/C8 su
 ## Limitations
 
 - N is shown in the result table. C16 and C32 were not run and are shown as dashes, not zero throughput.
+- Rejected, timed-out, underfilled, or request-error attempts are excluded.
 
-The [machine-readable results](normalized-tp4-1m-probmtp-temp1-20260823.json) and [standalone HTML render](normalized-tp4-1m-probmtp-temp1-20260823.html) accompany this record.
+The [machine-readable results](normalized-tp4-1m-probmtp-temp1-20260823.json) and [HTML render](normalized-tp4-1m-probmtp-temp1-20260823.html) accompany this record.

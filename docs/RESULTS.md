@@ -11,8 +11,7 @@ The serving contract is [the fixed-MTP4 profile](GLM52_35BPW_FIXED_MTP4_PROFILE.
 fixed MTP4, `nvfp4_ds_mla` key-value cache with 9.25 GB per rank, bounded
 full-CKV gather, and SIRCL TP collectives with patched NCCL fallback.
 
-This first table shows the older 262,144-token, eight-sequence setup. It does
-not describe the new settings:
+This table belongs to the qualified 262,144-token, eight-sequence profile:
 
 | Context | 4K | 8K | 16K | 32K | 64K | 128K |
 |---|---:|---:|---:|---:|---:|---:|
@@ -38,7 +37,7 @@ runtime bytes verified against their pinned identities. That record reports
 no throughput figure and does not promote the profile. See
 [the rebuilt-image bring-up record](../performance/records/glm-3.5bpw/rebuilt-image-20260821.md).
 
-The new 1,048,576-token, 16-sequence setup started successfully. At temperature
+The 1,048,576-token, 16-sequence profile started successfully. At temperature
 1.0 and top-p 0.95, prefill measured 694 tok/s at 2K down to 635 tok/s at 128K.
 Decode is complete through C8 from 2K to 32K, plus 64K/C1. The remaining
 long-context coordinates are pending. See
@@ -119,5 +118,5 @@ dashes rather than zero throughput.
 ## Interpretation
 
 Do not compare these values across model identities or use them as a generic
-hardware benchmark. The GLM result is acceptance evidence for one appliance;
-the DeepSeek observations establish functional serving only.
+hardware benchmark. The DeepSeek and Qwen tables apply to the exact
+checkpoints, settings, and topologies named in their records.

@@ -47,7 +47,7 @@ def test_recipe_declares_the_pair_research_contract() -> None:
     recipe = _recipe()
     assert recipe["schema"] == "sparkring-recipe/v1"
     assert recipe["recipe_id"] == "qwen38-27b-exl3-k5k6-pair"
-    assert recipe["status"] == "research-only"
+    assert recipe["status"] == "implemented"
     assert recipe["hardware"] == {
         "platform": "linux/arm64",
         "cuda_arch": "sm_121",
@@ -287,7 +287,7 @@ def test_quickstart_separates_normalized_and_shared_prefix_benchmarks() -> None:
         assert required in text
     assert "shared-prefix" in text
     assert "full result" in text
-    assert "sanitized replayable receipts" in text
+    assert "sanitized command receipts" in text
 
 
 def test_evidence_is_research_only_and_publishes_no_throughput() -> None:

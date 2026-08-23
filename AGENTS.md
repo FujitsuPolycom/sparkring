@@ -43,9 +43,9 @@ SparkRing supports three model families across eight deployment profiles:
 - DeepSeek-V4-Flash-0731 at two-Spark TP2/DCP1 and four-Spark TP4/DCP1, as
   base profiles and SparkCache compositions, using the published serving image
   and per-rank environment contracts.
-- Qwen3.8-27B EXL3 K5/K6 at two-Spark TP2/DCP1 as a research-only base profile
-  and at four-Spark TP4/DCP1 as a base candidate, using the clean-checkout
-  local image builder and checkpoint/source pins from the companion recipe.
+- Qwen3.8-27B EXL3 K5/K6 at two-Spark TP2/DCP1 and four-Spark TP4/DCP1 as
+  implemented base profiles, using topology-specific launchers and the
+  checkpoint/source pins from the companion recipe.
 
 Qwen3.8-27B with SparkCache is Pending. No composition recipe or live cache
 evidence is published for that combination.

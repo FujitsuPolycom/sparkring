@@ -12,7 +12,7 @@
     "repository": "deepseek-ai/DeepSeek-V4-Flash-0731",
     "revision": "7872f01b1d1fe23eabc4c98b48bffcef5a386062",
     "identity_status": "recorded",
-    "identity_note": "The public pair target uses the plain 0731 package. Its benchmark evidence used the DSpark package at 913f0657a874f76844e2e91cbe706dbcaceeb6d7, with matching configuration and tensor index but different weight payloads."
+    "identity_note": "The TP2 benchmark used the DSpark package at 913f0657a874f76844e2e91cbe706dbcaceeb6d7. Its configuration and tensor index match this plain 0731 package, while its weight payloads differ."
   },
   "runtime": {
     "image_lock": "runtime/faststart-lock.json",
@@ -54,7 +54,7 @@
   },
   "evidence": {
     "status": "implemented",
-    "conditions": "Live candidate evidence from two directly cabled NVIDIA DGX Sparks using the serving settings above and deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7 instead of the recipe's plain 0731 weight package: 1048576-token request limit, 32 sequences, 4096 batched tokens, 16 GiB key-value reservation per rank, block size 256, fp8_ds_mla, and DSpark depth 5. Prefill and sustained decode used temperature 1.0 and effective top-p 1.0 through 128K.",
+    "conditions": "Two directly cabled NVIDIA DGX Sparks used the serving settings above and deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7 instead of the recipe checkpoint: 1048576-token request limit, 32 sequences, 4096 batched tokens, 16 GiB key-value reservation per rank, block size 256, fp8_ds_mla, and DSpark depth 5. Prefill and sustained decode used temperature 1.0 and effective top-p 1.0 through 128K.",
     "result": "Both ranks rendezvoused and served the model. C1/C2 were measured with five accepted observations per context; every other applicable decode cell used at least three. At 16K, aggregate throughput measured 58.36 tok/s at C1, 77.65 at C2, 202.74 at C16, and 307.13 at C32. Coding Peak averaged 59.31 tok/s across five requests.",
     "conclusion": "The normalized two-rank serving settings are implemented and live-benchmarked with the starred DSpark checkpoint difference.",
     "limitations": [

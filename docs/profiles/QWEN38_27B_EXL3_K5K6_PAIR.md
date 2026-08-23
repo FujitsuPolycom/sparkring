@@ -34,7 +34,7 @@ scheduler budget matches the operator's selected comparison envelope. The
 Qwen LMCache path cannot compose with that budget, so LMCache and SparkCache
 remain outside this profile.
 
-## Earlier startup check
+## TP2 startup record — 1,000,000-token launch
 
 Conditions: two directly cabled NVIDIA DGX Sparks, the pinned checkpoint,
 identical runtime inputs, vLLM
@@ -59,7 +59,7 @@ mean acceptance length. Arithmetic returned `391`, the tool parser emitted
 `multiply(a=6,b=7)`, vision returned `VISION_OK`, and shared suffixes returned
 `13` and `17`.
 
-Conclusion: the earlier startup checks passed.
+Conclusion: the 1,000,000-token startup checks passed.
 
 ## Benchmark results
 
