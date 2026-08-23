@@ -59,6 +59,14 @@ median 60.13, range 56.31–61.35 tok/s.
 - Saved last-scrape acceptance fields are diagnostics, not run averages.
 - Hardware summaries created before the measurement-boundary fix include a
   cancellation tail and are not used for precise thermal or power claims.
-- Raw JSON and bounded rank logs remain in the maintainer-held operator archive.
+- Sanitized temperature-1 decode and Coding Peak receipts are published in the
+  [receipt bundle](../../receipts/deepseek-v4-flash/temp1/). Endpoint bindings,
+  SSH targets, local paths, event logs, and unreliable hardware summaries are
+  removed; each file retains a public replay command and the private source
+  receipt's SHA-256 digest.
+- Raw rank logs and unsanitized JSON remain in the maintainer-held operator archive.
+- Prefill-only raw receipts are excluded because their harness envelope recorded
+  temperature 0; the TTFT values remain summarized because they do not measure
+  sustained sampled decode.
 - [The machine-readable summary](normalized-tp2-base-20260822.json) contains
   the displayed values and exclusion policy.

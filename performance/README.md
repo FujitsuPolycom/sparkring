@@ -18,6 +18,7 @@ production-serving claim.
 | `records/glm-3.5bpw/` | GLM-5.2 EXL3 R7 evidence records |
 | `records/deepseek-v4-flash/` | DeepSeek-V4-Flash-0731 evidence records |
 | `records/transport/` | Transport evidence records independent of a model result |
+| `receipts/` | Sanitized temperature-1 benchmark receipts with public replay commands |
 
 Run harness tests offline from the repository root:
 

@@ -58,5 +58,13 @@ launcher can safely revalidate and reuse an exact match.
 - Saved last-scrape acceptance is not used as a run average.
 - Pre-boundary-fix hardware summaries are not used for exact thermal claims.
 - Available memory was approximately 1.3–3.5 GB per rank during this campaign.
+- Sanitized temperature-1 decode and Coding Peak receipts are published in the
+  [receipt bundle](../../receipts/glm-3.5bpw/temp1/). Endpoint bindings, SSH
+  targets, local paths, event logs, and unreliable hardware summaries are
+  removed; each file retains a public replay command and the private source
+  receipt's SHA-256 digest.
+- Prefill-only raw receipts are excluded because their harness envelope recorded
+  temperature 0; the TTFT values remain summarized because they do not measure
+  sustained sampled decode.
 - [The machine-readable summary](normalized-base-20260822.json) records the
   displayed values and pending coordinates.
