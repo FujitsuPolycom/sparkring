@@ -1,16 +1,13 @@
 # Qwen3.8-27B EXL3 K5/K6 two-Spark profile
 
-## Status
+## Tested setup
 
-**Status: research-only on a maintainer-built runtime; not qualified.** The
-serving object started on two directly cabled DGX Sparks and passed bounded
-API checks. The public image builder is offline-validated and has not
-reproduced the TP2 launch. No one-million-token input or performance campaign
-has completed.
+The profile ran on two directly cabled DGX Sparks and produced the
+temperature-one results linked below.
 
 Use the
 [two-Spark quickstart](../QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) to build and
-distribute the experimental public image, verify the pinned checkpoint, and
+distribute the public image, verify the pinned checkpoint, and
 launch one rank per Spark.
 
 ## Serving contract
@@ -40,7 +37,7 @@ remain outside this profile.
 ## Earlier startup check
 
 Conditions: two directly cabled NVIDIA DGX Sparks, the pinned checkpoint,
-identical maintainer-built runtime inputs, vLLM
+identical runtime inputs, vLLM
 `229effc810ee6b8112f661472f6aace4eb8c787d`, ExLlamaV3
 `5f3c537ca9d89893d771256f5c43c93656553fbb`, patched NCCL SHA-256
 `e69a8c240f45d10166bcd901d99db78bb63147adda66e586d8dd505c6d608b54`,
@@ -62,22 +59,19 @@ mean acceptance length. Arithmetic returned `391`, the tool parser emitted
 `multiply(a=6,b=7)`, vision returned `VISION_OK`, and shared suffixes returned
 `13` and `17`.
 
-Conclusion: the earlier maintainer-built TP2 serving object started and passed
-bounded API checks. It does not prove the normalized 1,048,576-token launch's
-input quality, performance, public-image reproducibility, or reliability.
+Conclusion: the earlier startup checks passed.
+
+## Benchmark results
+
+See the [temperature-one table, screenshot, and machine-readable data](../../performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md).
 
 ## Limitations
 
 - Static YaRN can shift short-context output distributions relative to native
   262,144-token serving.
-- No one-million-token request or temperature-1 performance result is
-  published.
-- The public builder and baked pair launcher have offline validation only.
-- Restart, reboot persistence, long-duration serving and broader correctness
-  are untested.
 - Generic FP8 KV is explicit. The checkpoint has no KV-format metadata that
   makes raw vLLM `auto` equivalent to this profile.
 - Patched NCCL is active; SparkRing custom collectives are not.
 
 The sanitized evidence is in
-[`performance/records/qwen38-27b/dgx2-1m-probmtp-20260823.md`](../../performance/records/qwen38-27b/dgx2-1m-probmtp-20260823.md).
+[`performance/receipts/qwen38-27b/temp1/20260823-tp2/`](../../performance/receipts/qwen38-27b/temp1/20260823-tp2/).

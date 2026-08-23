@@ -120,7 +120,7 @@ def test_recipe_records_the_tp4_live_evidence_separately_from_the_pair() -> None
     assert evidence["status"] == "implemented"
     assert "four directly cabled NVIDIA DGX Sparks" in evidence["conditions"]
     assert "8382750 logical key-value tokens" in evidence["result"]
-    assert "remains a candidate" in evidence["conclusion"]
+    assert "temperature-1" in evidence["conclusion"]
     assert evidence["limitations"]
 
 
@@ -275,9 +275,9 @@ def test_quickstart_command_matches_the_recipe() -> None:
         assert quickstart.count(shared_container_contract) == 2
 
 
-def test_profile_marks_sparkcache_pending_without_publishing_a_composition() -> None:
+def test_profile_excludes_sparkcache_without_publishing_a_composition() -> None:
     profile = PROFILE_PATH.read_text(encoding="utf-8")
     compositions = ROOT / "recipes" / "sparkcache"
     assert "SparkCache" in profile
-    assert "Pending" in profile
+    assert "not included" in profile
     assert not (compositions / "qwen38-27b-exl3-k5k6-tp4-dcp1.json").exists()

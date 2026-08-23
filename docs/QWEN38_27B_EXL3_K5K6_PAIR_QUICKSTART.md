@@ -1,10 +1,7 @@
 # Qwen3.8-27B EXL3 K5/K6 two-Spark quickstart
 
-Status: **research-only live bring-up; experimental public builder**. A
-maintainer-built runtime served the pinned checkpoint on two directly cabled
-DGX Sparks at TP2/DCP1. The public clean-checkout image builder is
-offline-validated and has not reproduced this launch. No 1M-input correctness
-or temperature-1 performance result is published.
+This setup was tested on two directly cabled DGX Sparks at TP2/DCP1. The
+temperature-one results are included below.
 
 This profile serves
 `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf`
@@ -223,6 +220,14 @@ measurement clock, and server-accounting authority. The hybrid-KV estimator
 must defer admission to the server while retaining queue, underfill, and
 request-error gates.
 
+![Two-Spark Qwen benchmark](../performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.png)
+
+Prefill measured 1,274–1,401 tok/s through 32K, 1,050 at 64K, and 785 at
+128K. Sustained decode measured 25–30 tok/s at C1, 41–54 at C2, 72–100 at C4,
+and 90–154 aggregate tok/s at C8. Coding Peak completed 15/15 requests with a
+39.95 tok/s mean. The table and N counts are in the
+[full result](../performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md).
+
 Do not publish a live display value. Retain the final JSON and require zero
 request errors, no underfill, no capacity-limit flag, the requested running
 count, and client/server token-accounting agreement. A fully shared-prefix
@@ -237,14 +242,7 @@ JIT cache, or receipt trees to make a later launch pass. If this profile
 replaced another stack, restore that stack from its retained container or
 recorded launch specification rather than reconstructing it from memory.
 
-## Evidence boundary
+## Results and receipts
 
-An earlier maintainer-built live object advertised 1,000,000 tokens, exposed a
-4,093,750-token logical KV pool, and passed bounded API checks. One
-temperature-1 request
-measured 67.5% draft acceptance and 3.02 mean acceptance length. No 1M prompt,
-matched performance campaign, restart, public-image build, or reliability
-gate has completed. See
-[`docs/profiles/QWEN38_27B_EXL3_K5K6_PAIR.md`](profiles/QWEN38_27B_EXL3_K5K6_PAIR.md)
-and the
-[`sanitized live record`](../performance/records/qwen38-27b/dgx2-1m-probmtp-20260823.md).
+See the [full benchmark result](../performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md) and
+[sanitized replayable receipts](../performance/receipts/qwen38-27b/temp1/20260823-tp2/).

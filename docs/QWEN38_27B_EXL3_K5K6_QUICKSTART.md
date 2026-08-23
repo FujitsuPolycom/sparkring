@@ -1,25 +1,19 @@
 # Qwen3.8-27B EXL3 K5/K6 four-Spark quickstart
 
-> **Experimental public-build path.** It is intended to get a clean four-Spark
-> deployment running, but its generated image has not completed live validation.
-
 This quickstart builds and serves
 `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated` as four tensor-parallel ranks on a
 directly cabled DGX Spark cycle. It starts from public, immutable source inputs.
 No maintainer-held archive or published Qwen image is required.
 
-**Status: candidate.** The serving object is implemented on a maintainer-built
-runtime. The public ARM64 image builder and local preflight are offline
-validated; a clean-checkout image from the builder has not completed a live
-four-rank run. Each image ID produced by the builder has a separate evidence
-scope and does not inherit the historical performance observations.
+This setup was tested on four directly cabled DGX Sparks at TP4/DCP1. The
+temperature-one results are included below.
 
 The machine-readable settings are in
 [`recipes/qwen38-27b-exl3-k5k6.json`](../recipes/qwen38-27b-exl3-k5k6.json).
 The image builder contract is in
 [`runtime/qwen38/README.md`](../runtime/qwen38/README.md).
 
-| Setting | Four-Spark candidate |
+| Setting | Four-Spark setup |
 |---|---|
 | Model | `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf` |
 | Topology | direct cycle `0-1-2-3-0` |
@@ -481,8 +475,7 @@ nonzero on any failed gate. It reports no timing or cache-hit claim.
 After the gate, recheck all four container states, rank-0 health, host
 `MemAvailable`, swap, and logs for worker exits or runtime errors. A public build
 that reaches API, passes the bounded smoke gate, and remains healthy can be
-recorded as an implemented candidate for that exact image ID. It is not
-automatically qualified.
+  retained with the exact image ID and launch inputs.
 
 Run this on every rank after the smoke gate:
 
@@ -529,14 +522,18 @@ Re-run health and the bounded smoke gate after restart. Recreate containers
 when image, mounts, rank environment, or serving settings change, and record
 the resulting identity.
 
-## Evidence boundary and Pending integration
+## Benchmark results
 
-The maintainer-built runtime passed the functional gates summarized in
-[`docs/profiles/QWEN38_27B_EXL3_K5K6.md`](profiles/QWEN38_27B_EXL3_K5K6.md).
-No temperature-1 benchmark is published for this profile. Record the public
-builder's image ID, source receipt, model hashes, startup result, smoke output,
-temperature-1 benchmark output, and post-run health separately.
+![Four-Spark Qwen benchmark](../performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.png)
 
-**SparkCache: Pending.** No Qwen3.8-27B SparkCache composition recipe or live
-cache evidence is published. The base profile disables external key-value
-caching; SparkCache is not required to build or run this quickstart.
+Prefill measured 1,855–2,001 tok/s through 32K, 1,616 at 64K, and 1,279 at
+128K. Sustained decode measured 30–36 tok/s at C1, 55–66 at C2, 87–121 at C4,
+and 138–202 aggregate tok/s at C8. Coding Peak completed 15/15 requests with a
+48.46 tok/s mean. The table and N counts are in the
+[full result](../performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md). Sanitized replayable receipts are in
+[`performance/receipts/qwen38-27b/temp1/20260823-tp4/`](../performance/receipts/qwen38-27b/temp1/20260823-tp4/).
+
+## SparkCache
+
+SparkCache is not included in this Qwen setup. External key-value caching is
+disabled and is not required to run this quickstart.

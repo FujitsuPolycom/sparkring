@@ -286,7 +286,8 @@ def test_quickstart_separates_normalized_and_shared_prefix_benchmarks() -> None:
     ):
         assert required in text
     assert "shared-prefix" in text
-    assert "No 1M prompt" in text
+    assert "full result" in text
+    assert "sanitized replayable receipts" in text
 
 
 def test_evidence_is_research_only_and_publishes_no_throughput() -> None:

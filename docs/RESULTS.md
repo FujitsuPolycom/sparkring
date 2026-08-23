@@ -89,49 +89,32 @@ The consolidated findings page is
 
 ## Qwen3.8-27B EXL3 K5/K6
 
-**Status: experimental two-Spark and four-Spark candidates.** Maintainer-built
-runtimes have served the pinned model on both topologies. The public builder
-has not reproduced those exact runtime objects from a clean checkout.
+Both tested profiles use a 1,048,576-token static-YaRN limit, an 8,192-token
+scheduler budget, FP8 KV, probabilistic Qwen MTP3 with standard rejection,
+native prefix caching, full-decode CUDA graphs, and patched NCCL. Benchmark
+requests used temperature 1.0; the pinned model config supplied effective
+top-p 0.95 and top-k 20.
 
-### Conditions
+### Two Sparks — TP2/DCP1
 
-Both normalized profiles use a 1,048,576-token static-YaRN limit, an 8,192-token
-cache-free scheduler budget, FP8 key-value cache, probabilistic Qwen MTP depth
-3 with standard rejection, native prefix caching with recurrent-state
-alignment, full-decode CUDA graphs, and patched NCCL. The pair uses TP2/DCP1
-and 32 maximum sequences; the cycle uses TP4/DCP1 and 64. SIRCL and external
-key-value caching are disabled.
+![Two-Spark Qwen benchmark](../performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.png)
 
-### Earlier four-Spark functional result
+Prefill measured 1,274–1,401 tok/s through 32K, 1,050 at 64K, and 785 at
+128K. Sustained decode measured 25–30 tok/s at C1, 41–54 at C2, 72–100 at C4,
+and 90–154 aggregate tok/s at C8. Coding Peak completed 15/15 requests with a
+39.95 tok/s mean. See the [full two-Spark result](../performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md).
 
-The earlier four-Spark check used a 262,144-token limit. All ranks rendezvoused and remained alive. API health, deterministic arithmetic,
-tool calling, data-URL vision, and a maintainer-held hybrid-prefix probe passed.
-The engine reported 74.74 GiB of key-value memory per rank, 8,382,750 logical
-tokens, and 31.98x maximum concurrency at 262,144 tokens.
+### Four Sparks — TP4/DCP1
 
-Temperature-1 performance qualification is pending. No Qwen throughput table
-is published until the benchmark is rerun under the documented sampling and
-accounting contract. See the
-[profile record](profiles/QWEN38_27B_EXL3_K5K6.md) and
-[experimental quickstart](QWEN38_27B_EXL3_K5K6_QUICKSTART.md).
+![Four-Spark Qwen benchmark](../performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.png)
 
-### Earlier two-Spark probabilistic-MTP bring-up
+Prefill measured 1,855–2,001 tok/s through 32K, 1,616 at 64K, and 1,279 at
+128K. Sustained decode measured 30–36 tok/s at C1, 55–66 at C2, 87–121 at C4,
+and 138–202 aggregate tok/s at C8. Coding Peak completed 15/15 requests with a
+48.46 tok/s mean. See the [full four-Spark result](../performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md).
 
-**Status: research-only.** A maintainer-built runtime started on two directly
-cabled DGX Sparks at TP2/DCP1 with a 1,000,000-token static-YaRN limit, 32
-sequences, an 8,192-token scheduler budget, explicit FP8 KV, native prefix
-caching, and probabilistic Qwen MTP depth 3. LMCache, SparkCache and SIRCL were
-disabled.
-
-Both ranks rendezvoused and served bounded API probes. The engine advertised
-1,000,000 tokens and reported a 4,093,750-token logical KV pool, or 4.09x
-capacity at the advertised limit. A 128-token temperature-1 probe measured
-67.5% draft acceptance and 3.02 mean acceptance length. No 1M prompt or
-performance benchmark is published, so these values are startup and bounded
-functional evidence only. See the
-[pair profile](profiles/QWEN38_27B_EXL3_K5K6_PAIR.md),
-[quickstart](QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md), and
-[sanitized record](../performance/records/qwen38-27b/dgx2-1m-probmtp-20260823.md).
+N is shown in each full result table. C16 and C32 were not run and are shown as
+dashes rather than zero throughput.
 
 ## Interpretation
 

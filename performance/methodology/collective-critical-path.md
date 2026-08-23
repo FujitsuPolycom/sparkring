@@ -387,9 +387,8 @@ This repository has published serving comparisons that its own analysis later
 declined to treat as effects. The threshold below is set so that this design
 cannot repeat that.
 
-Two observations fix the scale (**measured**; conditions in [EXL3 performance
-campaign, 2026-08-02](EXL3_AB_CAMPAIGN_20260802.md), which states the
-harness version, salts, artifact hashes, and window settings):
+Two observations from the measured 2026-08-02 EXL3 performance campaign fix
+the scale:
 
 - Same-configuration C8 decode aggregates over three repeats of one arm gave
   ranges of 16.20, 24.28, and 16.32 tok/s against medians of 73.04, 60.48,
