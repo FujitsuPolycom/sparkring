@@ -117,6 +117,7 @@ def test_benchmark_contract_matches_sustained_decode_method() -> None:
     assert benchmark["contexts_total_chat_tokens"] == [2048, 8192]
     assert benchmark["concurrency_levels"] == [1, 2, 4, 8, 16, 32]
     assert benchmark["ignore_eos"] is True
+    assert benchmark["temperature"] == 1.0
     assert benchmark["maximum_output_tokens_per_request"] == 8192
     assert benchmark["context_targeting"] == "exact"
     assert benchmark["unique_context_percent"] == 100.0
@@ -128,6 +129,7 @@ def test_benchmark_contract_matches_sustained_decode_method() -> None:
         assert args[args.index("--concurrency") + 1] == str(concurrency)
         assert args[args.index("--contexts") + 1] == "2k,8k"
         assert args[args.index("--duration") + 1] == "90"
+        assert args[args.index("--temperature") + 1] == "1.0"
         assert args[args.index("--decode-warmup-seconds") + 1] == "10"
         assert args[args.index("--max-total-tokens") + 1] == "2198756"
         assert "--respect-eos" not in args

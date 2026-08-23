@@ -46,7 +46,7 @@ EXPECTED_SERVING = {
     },
     "tool_call_parser": "deepseek_v4",
 }
-SOURCE_RECIPE_BATCH_TOKENS = 8192
+SOURCE_RECIPE_BATCH_TOKENS = 4096
 
 SIRCL_ENVIRONMENT = {
     "PYTHONPATH": "/opt/spark-vllm",
@@ -348,7 +348,7 @@ def benchmark_arguments(concurrency: int) -> list[str]:
         "--max-tokens",
         "8192",
         "--temperature",
-        "0",
+        "1.0",
         "--decode-warmup-seconds",
         "10",
         "--cell-warmup-timeout-seconds",
@@ -518,7 +518,7 @@ def build_plan(
             "one_invocation_per_concurrency": True,
             "maximum_output_tokens_per_request": 8192,
             "ignore_eos": True,
-            "temperature": 0.0,
+            "temperature": 1.0,
             "decode_warmup": {
                 "concurrency": 1,
                 "largest_requested_context": 8192,

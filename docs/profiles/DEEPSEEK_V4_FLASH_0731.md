@@ -42,9 +42,9 @@ for that image identity, not the published digest.
 
 The native transport's width-4096 graph mode is research-only and is not part
 of this profile's qualification. One hash-bound candidate using the pinned
-serving image completed target and DSpark CUDA-graph capture, API smoke, and
-sustained C1/C8 decode with native replay advancing equally on every rank and
-zero overflow. That bounded evidence is retained in
-[`sircl-width4096-live-validation-20260822.md`](../../performance/records/deepseek-v4-flash/sircl-width4096-live-validation-20260822.md).
+serving image completed target and DSpark CUDA-graph capture and API smoke,
+with native replay advancing equally on every rank and zero overflow. The
+temperature-1 comparison is retained in
+[`sircl-width4096-nccl-ab-20260822.md`](../../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
 The normal launch continues to use the NCCL configuration in
 `scripts/config/deepseek-v4-flash-0731.env.example`.

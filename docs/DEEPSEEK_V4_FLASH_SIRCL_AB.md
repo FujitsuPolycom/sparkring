@@ -3,9 +3,9 @@
 Status: **research-only; live-validated on one four-Spark appliance**. This
 plan prepares a matched transport experiment for four directly cabled NVIDIA
 DGX Sparks. It does not qualify SIRCL or the DeepSeek profile and does not
-provide an execution command that contacts a host. The bounded live validation
-is recorded in
-[`sircl-width4096-live-validation-20260822.md`](../performance/records/deepseek-v4-flash/sircl-width4096-live-validation-20260822.md).
+provide an execution command that contacts a host. The completed temperature-1
+transport comparison is recorded in
+[`sircl-width4096-nccl-ab-20260822.md`](../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
 
 The patched-NCCL control and SIRCL candidate use the same serving contract. The
 plan validates model, scheduler, memory, and speculation fields against
@@ -96,7 +96,7 @@ than a finite-request latency benchmark:
 - every cell measures 90 seconds after a hidden ten-second C1 warmup at the
   largest requested context;
 - every stream has a fully unique context;
-- requests use temperature zero, ignore EOS, and permit up to 8,192 output
+- requests use temperature 1.0, ignore EOS, and permit up to 8,192 output
   tokens so completions do not drain the cell;
 - queueing, underfilled concurrency, errors, capacity rejection, warmup
   timeout, and missing hardware samples reject a cell; and

@@ -192,9 +192,10 @@ to patched NCCL. The public DeepSeek profile should remain on NCCL.
 The next useful experiment is acceptance-controlled transport profiling:
 
 1. Freeze one harness revision and one prompt set.
-2. Use temperature zero or identical prompt/seed material to hold DSpark
-   acceptance fixed.
+2. Use temperature 1.0 with identical prompt, seed, and request ordering, then
+   compare windows with matched DSpark acceptance.
 3. Compare per-iteration collective timing and server generation counters.
 4. Investigate the 2.4–3.0% graph transport gap before considering promotion.
 
-The implementation and evidence are in draft [PR #109](https://github.com/FujitsuPolycom/sparkring/pull/109).
+The implementation and evidence are linked from
+[`docs/DEEPSEEK_V4_FLASH_SIRCL_AB.md`](DEEPSEEK_V4_FLASH_SIRCL_AB.md).

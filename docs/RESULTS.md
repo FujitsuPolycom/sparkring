@@ -94,16 +94,10 @@ accounting contract. See the
 [profile record](profiles/QWEN38_27B_EXL3_K5K6.md) and
 [experimental quickstart](QWEN38_27B_EXL3_K5K6_QUICKSTART.md).
 
-A separate research-only width-4096 SIRCL candidate completed four-rank CUDA
-graph capture, deterministic API smoke, and sustained C1/C8 decode while every
-rank's native published, consumed, and completed counters remained equal and
-overflow remained zero. The candidate used a 4,096-token batch budget and
-six hash-bound runtime mounts. This evidence validates the bounded execution
-path; it does not qualify output agreement with the patched-NCCL control or a
-performance advantage. See the
-[SIRCL live-validation record](../performance/records/deepseek-v4-flash/sircl-width4096-live-validation-20260822.md).
-
-A matched research A/B found no performance advantage for the width-4096 SIRCL
+A research-only width-4096 SIRCL candidate completed four-rank CUDA graph
+capture and API smoke while every rank's native published, consumed, and
+completed counters remained equal and overflow remained zero. A matched
+temperature-1 research A/B found no performance advantage for the SIRCL
 path. Prefill was flat because both arms use NCCL there. Five-run Coding Peak
 was 1.9% lower by mean under SIRCL. Long C32 rates were dominated by DSpark
 acceptance variation, but repeated near-matched ten-second samples placed SIRCL
