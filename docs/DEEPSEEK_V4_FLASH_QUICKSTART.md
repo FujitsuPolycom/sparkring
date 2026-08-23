@@ -26,6 +26,7 @@ verification are shared.
 | `--tensor-parallel-size` / `--nnodes` | 2 | 4 |
 | `--kv-cache-memory-bytes` | 12884901888 (12 GiB) | 17179869184 (16 GiB) |
 | Resulting pool / concurrency at 1M | 1,139,967 tokens, 1.09x | 1,519,925 tokens, 1.45x |
+| Context / Seq / Batch | 1M , 32 , 8192 | 1M , 32 , 8192 |
 | Free memory per node while serving | 8-10 GB | ~50 GB |
 | Environment template | `deepseek-v4-flash-0731-pair.env.example` | `deepseek-v4-flash-0731.env.example` |
 
