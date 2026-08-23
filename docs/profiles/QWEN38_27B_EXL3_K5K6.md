@@ -2,6 +2,8 @@
 
 ## Status
 
+**Tag: Experimental public-build path.**
+
 **Status: implemented on a maintainer-built runtime; not qualified.** The
 candidate serving object started and served on four directly cabled DGX
 Sparks. A bounded live run passed API, deterministic arithmetic, tool-use,

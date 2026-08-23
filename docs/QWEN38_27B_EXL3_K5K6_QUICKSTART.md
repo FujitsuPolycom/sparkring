@@ -1,5 +1,8 @@
 # Qwen3.8-27B EXL3 K5/K6 four-Spark quickstart
 
+> **Experimental public-build path.** It is intended to get a clean four-Spark
+> deployment running, but its generated image has not completed live validation.
+
 This quickstart builds and serves
 `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated` as four tensor-parallel ranks on a
 directly cabled DGX Spark cycle. It starts from public, immutable source inputs.

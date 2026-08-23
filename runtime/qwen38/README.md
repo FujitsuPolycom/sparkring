@@ -5,7 +5,7 @@ Qwen3.8-27B EXL3 K5/K6 profile. Every source and patch comes from a public,
 immutable input. The build does not use the maintainer-held runtime archive
 described by the performance record.
 
-Status: **implemented builder; live validation pending.** Offline tests cover
+Status: **experimental, offline-validated builder; live validation pending.** Offline tests cover
 pin handling, prepared-source receipts, the container contract, and runtime
 verification logic. A locally produced image has no four-rank evidence until
 that exact image ID completes the Qwen startup and functional checks.

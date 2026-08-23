@@ -159,7 +159,7 @@ def test_runtime_records_the_public_qwen_image_builder() -> None:
     assert runtime["image_status"] == (
         "public clean-checkout local image builder; no published image"
     )
-    assert runtime["builder_status"].startswith("offline-validated")
+    assert runtime["builder_status"].startswith("experimental; offline-validated")
     assert runtime["image_builder"] == "runtime/qwen38/build-image.sh"
     assert runtime["image_pins"] == "runtime/qwen38/pins.json"
     assert runtime["image_default_tag"] == "sparkring-qwen38:arm64-sm121"

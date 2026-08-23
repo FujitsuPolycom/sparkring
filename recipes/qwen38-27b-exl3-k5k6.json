@@ -35,7 +35,7 @@
   "runtime": {
     "base_image": "nvcr.io/nvidia/cuda@sha256:5c36750138dc1447a17dafbb397674f167d3b44ce18d9160d769df114577b35d",
     "image_status": "public clean-checkout local image builder; no published image",
-    "builder_status": "offline-validated; ARM64 build execution and live validation pending",
+    "builder_status": "experimental; offline-validated; ARM64 build execution and live validation pending",
     "image_builder": "runtime/qwen38/build-image.sh",
     "image_pins": "runtime/qwen38/pins.json",
     "image_default_tag": "sparkring-qwen38:arm64-sm121",
