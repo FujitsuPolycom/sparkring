@@ -1,18 +1,20 @@
 # GLM-5.2 EXL3 3.5-bpw four-Spark quickstart
 
-Deploy the 16-sequence GLM-5.2 EXL3 candidate on four directly cabled NVIDIA
-DGX Sparks. The machine-readable contract is
+This quickstart deploys the 16-sequence GLM-5.2 EXL3 **candidate** on four
+directly cabled NVIDIA DGX Sparks. The machine-readable settings are in
 [`recipes/glm52-exl3-r7-3.5bpw.json`](../recipes/glm52-exl3-r7-3.5bpw.json).
-The retained qualification applies to the exact eight-sequence operator
-artifact on one appliance. The 16-sequence target is **candidate** until it
-passes startup, capacity, correctness, concurrency, and post-run health gates.
-A clean-checkout rebuild has status **implemented**: one rebuilt image has been built by this document's
-own steps, verified against the pinned checkpoint and runtime identities, and
-brought up serving on four ranks, as recorded in
+
+The older 262,144-token, eight-sequence setup is **qualified** only on the one
+appliance that was tested. The settings below are still being tested.
+
+A clean-checkout rebuild has **implemented** status. One image built with these
+steps started on four ranks and matched the pinned checkpoint and runtime, as
+recorded in
 [the rebuilt-image bring-up record](../performance/records/glm-3.5bpw/rebuilt-image-20260821.md).
-A rebuild becomes qualified only after completing the
-[promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md) using the image
-identity actually deployed.
+
+Each rebuilt image must pass the
+[full acceptance checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md) before it can be
+called qualified.
 
 ## Serving contract
 
@@ -197,10 +199,10 @@ python scripts/sparkring_generic_launcher.py \
 Require HTTP 200 from `/health`, model name `glm-5.2-exl3-r7-3.5bpw`, and a
 1,048,576-token maximum length in `/v1/models`.
 
-## Normalized-candidate benchmark snapshot
+## Benchmark snapshot for these settings
 
-The 1,048,576-token, 16-sequence base candidate reached ready state and was
-benchmarked on four directly cabled DGX Sparks with SparkCache disabled.
+The 1,048,576-token, 16-sequence setup started successfully and was benchmarked
+on four directly cabled DGX Sparks with SparkCache disabled.
 
 | Context | Prefill tok/s | T=0 C1 | C2 | C4 | C8 | T=1 C1 | C2 | C4 | C8 |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -213,17 +215,17 @@ benchmarked on four directly cabled DGX Sparks with SparkCache disabled.
 
 Decode values are aggregate generated tok/s. Temperature 0 and 1.0 are
 separate datasets with `top_p` unset. The
-[normalized GLM evidence record](../performance/records/glm-3.5bpw/normalized-base-20260822.md)
+[full GLM benchmark record](../performance/records/glm-3.5bpw/normalized-base-20260822.md)
 contains the temperature-0.9 probe, temperature-1 Coding Peak N=5 summary,
 machine-readable data, accounting gates, exclusions, and pending coordinates.
 
-The normalized launch used fresh rank-specific JIT and create-once receipt
+This launch used fresh rank-specific JIT and create-once receipt
 namespaces. A same-namespace restart currently fails before model startup when
-the exact-Q40 producer finds its existing receipt. Preserve the receipt and use
-a fresh namespace until exact-match receipt revalidation/reuse is implemented;
-this is an artifact-lifecycle limitation, not a model-performance failure.
+the exact-Q40 producer finds its existing receipt. Keep the receipt and use a
+fresh namespace until the launcher can safely reuse a matching receipt. This is
+a restart problem, not a model-performance failure.
 
-## Evidence and limitations
+## Older qualified result
 
 The qualified appliance measured the profile with fixed MTP4, dynamic NVFP4 MLA
 key-value cache, bounded full-CKV gather, and SIRCL TP collectives. Results and

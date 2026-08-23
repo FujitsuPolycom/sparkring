@@ -1,8 +1,12 @@
 # DeepSeek-V4-Flash normalized TP2 base benchmark
 
-Lane: **public-functional candidate**. Maturity: **live-validated candidate**;
-not qualified. Hardware: two directly cabled NVIDIA DGX Sparks, TP2/DCP1.
-Evidence scope: the normalized base recipe with 1,048,576-token request limit,
+| Field | Value |
+|---|---|
+| Lane | public-functional |
+| Status | **live-validated candidate** — tested on hardware, still being tested, not qualified |
+| Hardware | two directly cabled NVIDIA DGX Sparks, TP2/DCP1 |
+
+These results apply only to the base recipe with a 1,048,576-token request limit,
 32 sequences, 4,096 batched tokens, 16 GiB KV per rank, block size 256,
 `fp8_ds_mla`, DSpark K5, async scheduling, full-input-length reservation, and
 no SparkCache. The checkpoint revision was not pinned.
@@ -68,7 +72,7 @@ single-cell differences are not transport or thermal verdicts.
 | 0.3 | 5 | 61.03 | 60.82 | 60.29–62.57 |
 | 1.0 | 5 | 59.31 | 60.13 | 56.31–61.35 |
 
-## Evidence limits
+## Limits
 
 - Rows named `DISCARD`, `ABORTED`, JIT-affected, or accounting-invalid in the
   operator archive are excluded.

@@ -2,10 +2,11 @@
 
 Deploy `deepseek-ai/DeepSeek-V4-Flash-0731` across directly cabled DGX Sparks
 in either of two topologies: **two tensor-parallel ranks on a cabled pair**, or
-**four on a cycle**. Both normalized profiles are **candidates** and neither is
-qualified. The pair has live benchmark evidence; the cycle still requires its
-normalized live gate. No checkpoint revision is pinned in this repository; record the
-revision and file hashes used by an operator deployment.
+**four on a cycle**. Both setups have **candidate** status. The pair has been
+benchmarked; the cycle has not yet completed the same tests.
+
+The checkpoint revision is not pinned. Record the revision and file hashes
+used for each deployment.
 
 The machine-readable serving contracts are
 [`recipes/deepseek-v4-flash-0731-pair.json`](../recipes/deepseek-v4-flash-0731-pair.json)
@@ -26,14 +27,14 @@ verification are shared.
 | Weights resident per rank | 80.97 GiB | 40.82 GiB |
 | `--tensor-parallel-size` / `--nnodes` | 2 | 4 |
 | `--kv-cache-memory-bytes` | 17179869184 (16 GiB) | 17179869184 (16 GiB) |
-| Candidate pool / concurrency at 1M | 2,198,756 tokens / 2.10x observed | requires live startup census |
+| 1M pool / concurrency | 2,198,756 tokens / 2.10x observed | not measured yet |
 | Context / Seq / Batch | 1M, 32, 4096 | 1M, 32, 4096 |
-| Free memory per node | 4.9–6.0 GiB observed, with swap in use | historical observation only: ~50 GB before normalized block geometry |
+| Free memory per node | 4.9–6.0 GiB observed, with swap in use | older setup measured ~50 GB; new setup not measured |
 | Environment template | `deepseek-v4-flash-0731-pair.env.example` | `deepseek-v4-flash-0731.env.example` |
 
 `--max-model-len 1048576`, `--max-num-seqs 32`, `--max-num-batched-tokens
-4096`, `--block-size 256`, and the 16 GiB reservation are the normalized
-candidate values in both base topologies.
+4096`, `--block-size 256`, and the 16 GiB reservation are the settings used by
+both base topologies.
 
 Both commands explicitly enable asynchronous scheduling and retain complete
 input-length reservation before admission:
@@ -246,10 +247,9 @@ bought.
 
 ## Measured
 
-The normalized TP2/DCP1 base candidate was live-benchmarked on two directly
-cabled DGX Sparks with the serving values above and no SparkCache. It remains
-a candidate because the checkpoint revision was not pinned and the complete
-qualification gate is pending.
+The TP2/DCP1 setup above was benchmarked on two directly cabled DGX Sparks
+without SparkCache. It remains **candidate** because the checkpoint revision is
+not pinned and the full test set is not complete.
 
 | Context | Prefill tok/s | T=0 C1 | C8 | T=1 C1 | C8 |
 |---:|---:|---:|---:|---:|---:|
@@ -262,20 +262,20 @@ qualification gate is pending.
 
 `*` The 32K temperature-1 C1 value is an N=5 mean. Other table cells are one
 accepted observation unless the
-[normalized TP2 evidence record](../performance/records/deepseek-v4-flash/normalized-tp2-base-20260822.md)
+[full TP2 benchmark record](../performance/records/deepseek-v4-flash/normalized-tp2-base-20260822.md)
 states a repetition mean. Temperature 0 and 1.0 are separate datasets with
 `top_p` unset. Synthetic sustained text changes DSpark acceptance with sampling,
 so a single temperature delta is not a transport or thermal verdict.
 
-At 16K, the normalized candidate also measured 308.54 tok/s at C16 and 444.89
+At 16K, the same setup measured 308.54 tok/s at C16 and 444.89
 tok/s at C32 for temperature 0, and 202.71/C16 and 349.00/C32 for temperature
 1.0. The machine-readable record includes every accepted coordinate, prefill
 through 128K, temperature-0.3 probes, Coding Peak N=5 summaries, and exclusions.
 
-Historical client-observed aggregate throughput below used 256-token prompts,
+The older benchmark below used 256-token prompts,
 512-token generations, an 8192-token scheduler budget, runtime-selected block
-geometry, and a 12 GiB reservation on the pair. These rows do not describe the
-normalized candidate setup:
+geometry, and a 12 GiB reservation on the pair. It does not describe the setup
+in this quickstart:
 
 | Concurrent requests | Two-Spark pair | Four-Spark cycle |
 |---:|---:|---:|
@@ -308,9 +308,9 @@ RoCE, `PYNCCL` is the correct selection rather than a fallback. Setting
 tok/s at one request, 174.2 against 177.5 at eight. Those variables belong to
 single-host multi-GPU profiles and are not worth carrying here.
 
-## Evidence boundary
+## What these results cover
 
-Each topology carries its own evidence, recorded in its serving contract.
+Each topology has separate results recorded in its serving contract.
 
 The two-Spark launch was exercised on 2026-08-21 on two directly cabled Sparks:
 both ranks rendezvoused, a deterministic completion, an emitted tool call and a
@@ -326,8 +326,8 @@ speculation ran at depth 5 with a 3.06 mean acceptance length.
 
 The historical throughput figures are client-observed on the stated prompt and
 generation lengths. The normalized TP2 table is isolated-server sustained
-decode and standalone prefill. Neither dataset is a qualified output-quality
-measurement. The normal launch uses
+decode and standalone prefill. Neither dataset measures output quality or
+qualifies the setup for general use. The normal launch uses
 patched NCCL from the environment template; SIRCL width-4096 graph collectives
 are research-only and are not part of this quickstart. See
 [the profile record](profiles/DEEPSEEK_V4_FLASH_0731.md) and

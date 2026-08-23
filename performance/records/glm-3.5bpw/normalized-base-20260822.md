@@ -1,8 +1,12 @@
 # GLM-5.2 EXL3 3.5-bpw normalized base benchmark
 
-Lane: **public-functional candidate**. Maturity: **live-validated candidate**;
-not qualified. Hardware: four directly cabled NVIDIA DGX Sparks in a cycle,
-TP4/DCP4. Evidence scope: fixed MTP4, dynamic NVFP4 MLA plus FP8 RoPE,
+| Field | Value |
+|---|---|
+| Lane | public-functional |
+| Status | **live-validated candidate** — tested on hardware, still being tested, not qualified |
+| Hardware | four directly cabled NVIDIA DGX Sparks in a cycle, TP4/DCP4 |
+
+These results apply only to fixed MTP4, dynamic NVFP4 MLA plus FP8 RoPE,
 1,048,576-token request limit, 16 sequences, 4,096 batched tokens, 9.25 GB KV
 per rank, block size 64, native prefix caching, target-only exact Q40, and no
 SparkCache.
@@ -44,14 +48,14 @@ the exact measurement-boundary fix.
 GLM Coding Peak at temperature 1.0 completed five normal requests: mean 25.391,
 median 25.565, range 22.699–26.919 tok/s. All five stopped normally.
 
-## Lifecycle and evidence limits
+## Limits and restart behavior
 
 The normalized stack reached ready state from a fresh rank-specific JIT and
 create-once receipt namespace. Restarting the preserved containers in the same
 namespace fails before model startup because the exact-Q40 producer refuses to
-overwrite an existing receipt. This is an artifact-lifecycle limitation, not a
-model crash. Preserve existing receipts; use a fresh namespace until matching
-receipt revalidation/reuse is implemented and tested.
+overwrite an existing receipt. This is a restart problem, not a model crash.
+Keep existing receipts and use a fresh namespace until the launcher can safely
+reuse a matching receipt.
 
 - Temperature-1 C4/C8 at 16K/32K, longer-context temperature-1 cells, and
   temperature-0 C8 at 16K/32K are pending.

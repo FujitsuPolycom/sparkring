@@ -1,20 +1,18 @@
 # SparkRing results
 
-This page records evidence for the two supported four-DGX-Spark profiles. A
-result applies only to its stated model identity, runtime configuration,
-hardware topology, and evidence scope.
+This page lists results for the supported DGX Spark profiles. Each number only
+applies to the model, settings, hardware, and topology stated with it.
 
 ## GLM-5.2 EXL3 3.5-bpw
 
-**Status: candidate at a 1,048,576-token context and 16 sequences; historical
-qualification retained at 262,144 tokens and 8 sequences.**
+**Status: candidate at 1,048,576 tokens and 16 sequences. The older
+262,144-token, eight-sequence setup remains qualified on one appliance.**
 The serving contract is [the fixed-MTP4 profile](GLM52_35BPW_FIXED_MTP4_PROFILE.md): TP4/DCP4,
 fixed MTP4, `nvfp4_ds_mla` key-value cache with 9.25 GB per rank, bounded
 full-CKV gather, and SIRCL TP collectives with patched NCCL fallback.
 
-The following table is retained historical qualification evidence for the
-262,144-token, eight-sequence operator artifact; it is not the normalized
-candidate benchmark:
+This first table shows the older 262,144-token, eight-sequence setup. It does
+not describe the new settings:
 
 | Context | 4K | 8K | 16K | 32K | 64K | 128K |
 |---|---:|---:|---:|---:|---:|---:|
@@ -26,7 +24,7 @@ candidate benchmark:
 Coding prompts reached 27.3 tokens/s single-stream with 96.64% measured draft
 acceptance. The matched C8 cell regressed 11.63% under MTP4. A rebuilt image
 has no acceptance status until it completes
-[the promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md). The figures
+[the full acceptance checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md). The figures
 above belong to qualified operator image
 `sha256:02881d5229d4f4d1cbba0cf40537492a2a505b9d4e43bbfe9a0b2a7bd0584513`;
 they do not transfer to rebuilt image
@@ -40,31 +38,31 @@ runtime bytes verified against their pinned identities. That record reports
 no throughput figure and does not promote the profile. See
 [the rebuilt-image bring-up record](../performance/records/glm-3.5bpw/rebuilt-image-20260821.md).
 
-The normalized 1,048,576-token, 16-sequence candidate reached ready state and
+The new 1,048,576-token, 16-sequence setup started successfully and
 produced prefill measurements from 694 tok/s at 2K to 635 tok/s at 128K.
 Temperature-1 decode is complete at 2K/8K through C8 and at 16K/32K for C1/C2;
 the remaining long-context and higher-concurrency coordinates are pending. See
-the [normalized candidate record](../performance/records/glm-3.5bpw/normalized-base-20260822.md).
+the [full benchmark record](../performance/records/glm-3.5bpw/normalized-base-20260822.md).
 Its fresh-namespace launch also exposed a create-once exact-Q40 receipt
 restartability limitation; no receipt was deleted or overwritten.
 
 ## DeepSeek-V4-Flash-0731
 
-**Status: candidate normalized settings; not qualified.** Historical
+**Status: candidate settings; not qualified.** Older
 two-Spark-pair and four-Spark-cycle launches exercised API health, chat
 completions, tool calling, and DSpark
 speculative decoding using the immutable image pinned by
 [`runtime/faststart-lock.json`](../runtime/faststart-lock.json). Both use
 `fp8_ds_mla` for the MLA key-value cache and a 1,048,576-token request limit.
-The normalized base targets reserve 17,179,869,184 bytes per rank, use a
+The base settings reserve 17,179,869,184 bytes per rank, use a
 4,096-token scheduler budget, and set block size 256 in both topologies.
 
-The normalized two-Spark base candidate was live-benchmarked through 128K
+The new two-Spark base setup was benchmarked through 128K
 prefill and sustained decode at temperatures 0 and 1.0 with `top_p` unset.
 At 16K it measured 444.89 aggregate tok/s at C32 for temperature 0 and 349.00
 tok/s for temperature 1.0. These are one accepted observation each; repeated
 C1/C8 cells show substantial DSpark-acceptance variance. See the
-[normalized TP2 record](../performance/records/deepseek-v4-flash/normalized-tp2-base-20260822.md).
+[full TP2 benchmark record](../performance/records/deepseek-v4-flash/normalized-tp2-base-20260822.md).
 
 Historical operator-observed aggregate decode throughput for 256-token prompts
 and 512-token generations used an 8,192-token scheduler budget, runtime-selected
@@ -75,10 +73,10 @@ does not qualify numerical agreement with a stock collective path or establish
 a four-rank run in which every rank pulled the published image digest. See
 [the profile record](profiles/DEEPSEEK_V4_FLASH_0731.md).
 
-Fresh research matrices now record the two-Spark base recipe, the live-validated
-TP2 SparkCache launcher on a separate research checkpoint, and matched
-four-Spark base/SparkCache recipe signals. They do not promote the implemented
-base profiles or transfer the qualified SparkCache checkpoint receipt:
+The additional reports cover the two-Spark base recipe, the TP2 SparkCache
+launcher on a separate research checkpoint, and matched four-Spark
+base/SparkCache tests. They do not change the status of the base profiles or
+apply an older SparkCache receipt to new settings:
 
 - [two-Spark base performance](../performance/records/deepseek-v4-flash/base-tp2-performance-20260822.md);
 - [TP2 launcher persistence](../performance/records/deepseek-v4-flash/sparkcache-tp2-launcher-research-validation-20260822.md)
