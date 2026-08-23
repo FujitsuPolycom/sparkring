@@ -1,12 +1,11 @@
 # DeepSeek-V4-Flash-0731 Spark quickstart
 
-Deploy `deepseek-ai/DeepSeek-V4-Flash-0731` across directly cabled DGX Sparks
-in either of two topologies: **two tensor-parallel ranks on a cabled pair**, or
-**four on a cycle**. Both setups have **candidate** status. The pair has been
-benchmarked; the cycle has not yet completed the same tests.
-
-The checkpoint revision is not pinned. Record the revision and file hashes
-used for each deployment.
+Deploy DeepSeek-V4-Flash across directly cabled DGX Sparks in either of two
+topologies: **two tensor-parallel ranks on a cabled pair**, or **four on a
+cycle**. Both setups have been benchmarked. The measured pair used
+`deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7`;
+the measured cycle used
+`deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062`.
 
 The machine-readable serving contracts are
 [`recipes/deepseek-v4-flash-0731-pair.json`](../recipes/deepseek-v4-flash-0731-pair.json)
@@ -196,7 +195,7 @@ usually fail or waste memory.
 uses 4096 in every DeepSeek base and SparkCache profile. A historical pair run
 with 8192 measured higher C32 throughput, but it is not the default because it
 would make the base and cache comparison change two variables. The 4096 target
-requires a fresh C1/C2/C4/C8/C16/C32 capacity and throughput sweep.
+was measured in the C1/C2/C4/C8/C16/C32 campaign below.
 
 **A longer request limit is close to free; a larger pool is not.** This model
 has bounded cache groups whose cost per sequence is fixed, so per-token pool
@@ -247,27 +246,47 @@ bought.
 
 ## Measured
 
-The TP2/DCP1 setup above was benchmarked on two directly cabled DGX Sparks
-without SparkCache. It remains **candidate** because the checkpoint revision is
-not pinned and the full test set is not complete.
+Both cache-disabled base setups were measured at temperature 1.0 and effective
+top-p 1.0. C1/C2 use at least five accepted observations per context; every
+other applicable decode cell uses at least three. Decode values below are mean
+aggregate generated tok/s.
 
-The serving profile was measured at temperature 1.0 and top-p 1.0.
+The DSpark package used by TP2 has the same model configuration, tokenizer
+configuration, and tensor index as the plain 0731 package used by TP4. Its 48
+weight payloads differ, so the tables are useful serving results but not an
+exact same-weight TP2-versus-TP4 scaling test.
+
+### Two-Spark pair, TP2/DCP1
 
 | Context | Prefill tok/s | C1 | C2 | C4 | C8 | C16 | C32 |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 2K | 1,822 | 67.62 | 82.76 | 107.43 | 142.53 | — | — |
-| 8K | 1,921 | 34.97 | 111.43 | 103.63 | 151.06 | — | — |
-| 16K | 2,005 | 58.36* | 61.12 | 114.37 | 164.93† | 202.71 | 295.34 |
-| 32K | 1,999 | 51.59‡ | 78.18 | 104.70 | 160.54 | — | — |
-| 64K | 1,938 | 32.59 | 90.27 | 97.66 | — | — | — |
-| 128K | 1,808 | 59.10 | 77.59 | — | — | — | — |
+| 2K | 1,793 | 62.53 | 75.79 | 106.07 | 144.05 | 201.26 | 275.26 |
+| 8K | 1,800 | 48.42 | 89.67 | 110.90 | 156.68 | 217.37 | 299.66 |
+| 16K | 1,926 | 58.36 | 77.65 | 104.16 | 162.69 | 202.74 | 307.13 |
+| 32K | 1,922 | 51.59 | 85.05 | 107.13 | 147.40 | 223.25 | 301.00 |
+| 64K | 1,856 | 50.06 | 76.57 | 108.41 | 154.57 | 205.27 | — |
+| 128K | 1,691 | 53.05 | 73.82 | 86.43 | — | — | — |
 
-Decode values are aggregate generated tok/s. `*` and `‡` are N=5 means;
-`†` is an N=3 mean. The
-[full TP2 benchmark record](../performance/records/deepseek-v4-flash/normalized-tp2-base-20260822.md)
-lists variability, exclusions, and the machine-readable summary. Synthetic
-sustained text changes DSpark acceptance, so single observations should not be
-read as transport or thermal verdicts.
+[Full TP2 record](../performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md)
+· [green console matrix](../performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.png)
+
+### Four-Spark cycle, TP4/DCP1
+
+| Context | Prefill tok/s | C1 | C2 | C4 | C8 | C16 | C32 |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2K | 2,343 | 105.88 | 131.89 | 187.88 | 245.96 | 373.16 | 463.06 |
+| 8K | 2,409 | 103.41 | 122.96 | 184.75 | 253.33 | 367.58 | 463.98 |
+| 16K | 2,488 | 68.84 | 139.01 | 210.48 | 265.16 | 428.48 | 508.11 |
+| 32K | 2,464 | 92.48 | 118.21 | 176.80 | 233.96 | 399.50 | 476.95 |
+| 64K | 2,389 | 92.91 | 141.49 | 186.10 | 277.81 | 364.56 | — |
+| 128K | 2,223 | 89.98 | 136.07 | 184.66 | 251.52 | — | — |
+
+[Full TP4 record](../performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md)
+· [green console matrix](../performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.png)
+
+The full records report mean, standard deviation, N, Coding Peak, exclusions,
+and source-receipt hashes. Synthetic sustained text changes DSpark acceptance,
+so even five-observation cells retain meaningful variance.
 
 The profile remains collective-latency-sensitive: the model issues two
 all-reduces per layer across 43 layers, and each token waits on synchronous

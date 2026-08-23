@@ -1,0 +1,263 @@
+{
+  "schema": "sparkring-sanitized-llm-decode-receipt/v1",
+  "sanitization": {
+    "source_receipt_sha256": "2c4a75e0ddeb7bc706ab36ffe7f1fefe9ec09c491abb9854170cd1e19b212d78",
+    "removed": [
+      "endpoint and port binding",
+      "client hostname",
+      "SSH monitor targets",
+      "local filesystem paths",
+      "client GPU diagnostics",
+      "event log",
+      "per-cell hardware summaries"
+    ],
+    "public_replay_difference": "remote hardware monitoring is disabled; workload and timing arguments are retained"
+  },
+  "request_policy": {
+    "temperature": 1.0,
+    "top_p": 1.0,
+    "top_p_source": "effective model default; no command-line override"
+  },
+  "public_replay_command": [
+    "python",
+    "llm_decode_bench.py",
+    "--host",
+    "<rank-0-endpoint>",
+    "--port",
+    "8000",
+    "--model",
+    "deepseek-v4-flash-0731",
+    "--display-mode",
+    "plain",
+    "--isolated-server",
+    "--token-targeting",
+    "exact",
+    "--temperature",
+    "1.0",
+    "--kv-budget",
+    "2198756",
+    "--no-hw-monitor",
+    "--prefill-only",
+    "--prefill-contexts",
+    "2k,8k,16k,32k,64k,128k",
+    "--prefill-metric",
+    "client",
+    "--output",
+    "<output-directory>/receipt.json"
+  ],
+  "public_replay_powershell": "python llm_decode_bench.py `\n  --host '<rank-0-endpoint>' `\n  --port 8000 `\n  --model deepseek-v4-flash-0731 `\n  --display-mode plain `\n  --isolated-server `\n  --token-targeting exact `\n  --temperature 1.0 `\n  --kv-budget 2198756 `\n  --no-hw-monitor `\n  --prefill-only `\n  --prefill-contexts 2k,8k,16k,32k,64k,128k `\n  --prefill-metric client `\n  --output '<output-directory>/receipt.json'",
+  "metadata": {
+    "version": "0.4.31",
+    "engine": "vllm",
+    "model": "deepseek-v4-flash-0731",
+    "timestamp": "2026-08-23T03:45:42.736965",
+    "decode_mode": "duration",
+    "primary_decode_layer": "sustained_decode",
+    "duration_per_test": 30.0,
+    "request_count": 0,
+    "warmup_request_count": 0,
+    "run_burst": false,
+    "prefill_mode": "standalone_cold",
+    "standalone_prefill": true,
+    "prefill_only": true,
+    "skip_prefill": false,
+    "burst_e2e_status": "not_run_use_--run-burst",
+    "burst_request_count": 0,
+    "burst_warmup_request_count": 0,
+    "burst_requests_per_concurrency": 5,
+    "decode_warmup_seconds": 3.0,
+    "decode_warmup_context": 0,
+    "decode_warmup_concurrency": 1,
+    "cell_warmup_timeout_seconds": 0.0,
+    "cell_warmup_timeout_policy": "<=32k:60s,64k:120s,>=128k:180s when override is 0",
+    "show_capacity_limited_values": false,
+    "max_tokens": 8192,
+    "temperature": 1.0,
+    "reasoning_effort": null,
+    "isolated_server": true,
+    "ignore_eos": true,
+    "max_total_tokens": 2198756,
+    "dcp_size": 0,
+    "metrics_available": true,
+    "metrics_warning": "",
+    "concurrency_levels": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32,
+      64,
+      128
+    ],
+    "context_lengths": [
+      0,
+      16384,
+      32768,
+      65536,
+      131072
+    ],
+    "unique_context_percent": 0.0,
+    "shared_context_percent": 100.0,
+    "token_targeting": "exact",
+    "context_sharing_mode": "fully_shared",
+    "startup_diagnostics_available": true,
+    "nvidia_p2p_override_effective": false,
+    "p2pmark_status": "not_run",
+    "amd_fabric_status": "not_run"
+  },
+  "prefill": {
+    "2048": {
+      "ttft_seconds": 0.875,
+      "prefill_seconds": 0.875,
+      "tok_per_sec": 2343.0,
+      "client_ttft_seconds": 0.875,
+      "client_tok_per_sec": 2343.0,
+      "prompt_tokens": 2050,
+      "samples": 10,
+      "method": "client",
+      "server_validation": {
+        "method": "",
+        "tok_per_sec": 0.0,
+        "prefill_seconds": 0.0,
+        "prompt_tokens": 0,
+        "request_prompt_tokens": 0,
+        "cached_tokens": 0,
+        "token_source": "",
+        "samples": 0,
+        "invalid_reason": ""
+      }
+    },
+    "8192": {
+      "ttft_seconds": 3.391,
+      "prefill_seconds": 3.391,
+      "tok_per_sec": 2416.0,
+      "client_ttft_seconds": 3.391,
+      "client_tok_per_sec": 2416.0,
+      "prompt_tokens": 8194,
+      "samples": 3,
+      "method": "client",
+      "server_validation": {
+        "method": "",
+        "tok_per_sec": 0.0,
+        "prefill_seconds": 0.0,
+        "prompt_tokens": 0,
+        "request_prompt_tokens": 0,
+        "cached_tokens": 0,
+        "token_source": "",
+        "samples": 0,
+        "invalid_reason": ""
+      }
+    },
+    "16384": {
+      "ttft_seconds": 6.547,
+      "prefill_seconds": 6.547,
+      "tok_per_sec": 2503.0,
+      "client_ttft_seconds": 6.547,
+      "client_tok_per_sec": 2503.0,
+      "prompt_tokens": 16386,
+      "samples": 2,
+      "method": "client",
+      "server_validation": {
+        "method": "",
+        "tok_per_sec": 0.0,
+        "prefill_seconds": 0.0,
+        "prompt_tokens": 0,
+        "request_prompt_tokens": 0,
+        "cached_tokens": 0,
+        "token_source": "",
+        "samples": 0,
+        "invalid_reason": ""
+      }
+    },
+    "32768": {
+      "ttft_seconds": 13.234,
+      "prefill_seconds": 13.234,
+      "tok_per_sec": 2476.0,
+      "client_ttft_seconds": 13.234,
+      "client_tok_per_sec": 2476.0,
+      "prompt_tokens": 32770,
+      "samples": 1,
+      "method": "client",
+      "server_validation": {
+        "method": "",
+        "tok_per_sec": 0.0,
+        "prefill_seconds": 0.0,
+        "prompt_tokens": 0,
+        "request_prompt_tokens": 0,
+        "cached_tokens": 0,
+        "token_source": "",
+        "samples": 0,
+        "invalid_reason": ""
+      }
+    },
+    "65536": {
+      "ttft_seconds": 27.39,
+      "prefill_seconds": 27.39,
+      "tok_per_sec": 2393.0,
+      "client_ttft_seconds": 27.39,
+      "client_tok_per_sec": 2393.0,
+      "prompt_tokens": 65538,
+      "samples": 1,
+      "method": "client",
+      "server_validation": {
+        "method": "",
+        "tok_per_sec": 0.0,
+        "prefill_seconds": 0.0,
+        "prompt_tokens": 0,
+        "request_prompt_tokens": 0,
+        "cached_tokens": 0,
+        "token_source": "",
+        "samples": 0,
+        "invalid_reason": ""
+      }
+    },
+    "131072": {
+      "ttft_seconds": 58.922,
+      "prefill_seconds": 58.922,
+      "tok_per_sec": 2225.0,
+      "client_ttft_seconds": 58.922,
+      "client_tok_per_sec": 2225.0,
+      "prompt_tokens": 131074,
+      "samples": 1,
+      "method": "client",
+      "server_validation": {
+        "method": "",
+        "tok_per_sec": 0.0,
+        "prefill_seconds": 0.0,
+        "prompt_tokens": 0,
+        "request_prompt_tokens": 0,
+        "cached_tokens": 0,
+        "token_source": "",
+        "samples": 0,
+        "invalid_reason": ""
+      }
+    }
+  },
+  "results": [],
+  "summary_table": {},
+  "burst_results": [],
+  "burst_summary_table": {},
+  "methodology": {
+    "prefill": {
+      "name": "Prefill",
+      "present": true,
+      "mode": "standalone_cold",
+      "formula": "prompt_tokens / TTFT",
+      "notes": "Default mode records the required decode scout request for each non-zero decode context, so normal runs do not pay for a separate prefill phase. Standalone mode repeats cold-prefill samples. Prometheus prefill counters, when available and uncontaminated, are stored as validation."
+    },
+    "sustained_decode": {
+      "name": "Sustained Decode",
+      "present": false,
+      "formula": "OpenAI continuous-usage completion_tokens per covered measured window; an exact process-global vLLM counter may replace it only with the explicit --isolated-server all-traffic-authority assertion",
+      "notes": "Duration-based steady-state cell after warmup. This is the main tuning/regression signal for kernels, NCCL, DCP, MTP, and scheduling. Client/server token disagreement is invalid by default. SSE chunk rate is transport diagnostics only and cannot supply token throughput. Context sharing is controlled by --unique-context-percent: one scout warms stream 0, then each worker diverges at the requested suffix boundary."
+    },
+    "burst_e2e_decode": {
+      "name": "Burst / E2E Decode",
+      "present": false,
+      "status": "not run; use --run-burst",
+      "formula": "sum(completion_tokens) / profiling_wall_time",
+      "notes": "Finite client-facing request burst using OpenAI stream usage. It includes request admission, scheduling, prefill/cache behavior, and completion."
+    }
+  }
+}
