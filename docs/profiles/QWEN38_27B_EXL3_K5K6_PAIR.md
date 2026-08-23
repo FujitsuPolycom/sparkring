@@ -20,13 +20,13 @@ launch one rank per Spark.
 | Model | `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf` |
 | Parallelism | TP2/DCP1 across two DGX Sparks |
 | Transport | patched NCCL over one direct RoCEv2 link |
-| Advertised request limit | 1,000,000 tokens through static YaRN factor 4 |
+| Advertised request limit | 1,048,576 tokens through static YaRN factor 4 |
 | Maximum sequences | 32 |
 | Scheduler budget | 8,192 tokens |
 | Key-value cache | explicit FP8, 0.70 unified-memory utilization |
 | Prefix caching | native cache with mamba alignment |
 | Speculation | Qwen MTP depth 3, probabilistic drafts, standard rejection sampling |
-| Thinking defaults | temperature 1.0, top-p 0.95, top-k 20 |
+| Temperature-one benchmark sampling | request sets temperature 1.0; pinned model config supplies effective top-p 0.95/top-k 20 |
 | Decode | full-decode CUDA graphs |
 | External key-value cache | disabled |
 | SIRCL | unsupported for width 5,120 |
@@ -37,14 +37,15 @@ scheduler budget matches the operator's selected comparison envelope. The
 Qwen LMCache path cannot compose with that budget, so LMCache and SparkCache
 remain outside this profile.
 
-## Evidence
+## Earlier startup check
 
 Conditions: two directly cabled NVIDIA DGX Sparks, the pinned checkpoint,
 identical maintainer-built runtime inputs, vLLM
 `229effc810ee6b8112f661472f6aace4eb8c787d`, ExLlamaV3
 `5f3c537ca9d89893d771256f5c43c93656553fbb`, patched NCCL SHA-256
 `e69a8c240f45d10166bcd901d99db78bb63147adda66e586d8dd505c6d608b54`,
-TP2/DCP1, static YaRN, FP8 KV, native prefix caching and probabilistic MTP3.
+TP2/DCP1, a 1,000,000-token static-YaRN limit, FP8 KV, native prefix caching,
+and probabilistic MTP3.
 LMCache, SparkCache and SIRCL were disabled.
 
 Measurement: engine logs supplied startup, model memory, graph and KV-capacity
@@ -61,9 +62,9 @@ mean acceptance length. Arithmetic returned `391`, the tool parser emitted
 `multiply(a=6,b=7)`, vision returned `VISION_OK`, and shared suffixes returned
 `13` and `17`.
 
-Conclusion: the maintainer-built TP2 serving object is implemented as a
-research profile. The result proves startup and bounded API behavior, not 1M
-input quality, performance, public-image reproducibility or reliability.
+Conclusion: the earlier maintainer-built TP2 serving object started and passed
+bounded API checks. It does not prove the normalized 1,048,576-token launch's
+input quality, performance, public-image reproducibility, or reliability.
 
 ## Limitations
 

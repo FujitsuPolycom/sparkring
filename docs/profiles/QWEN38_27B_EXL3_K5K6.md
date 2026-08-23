@@ -25,7 +25,7 @@ Spark.
 | Historical measured runtime | `FujitsuPolycom/qwen38-spark-pair@b9e1031b80b6f3f64bfc75ae3922322f56954fd6`, maintainer-built and replicated identically to every rank |
 | Parallelism | TP4/DCP1 across four DGX Sparks |
 | Collective transport | patched NCCL on the direct cycle |
-| Request limit | 262,144 tokens |
+| Request limit | 1,048,576 tokens through static YaRN factor 4 over native 262,144 |
 | Maximum sequences | 64 |
 | Scheduler budget | 8,192 tokens |
 | Scheduling | chunked prefill, asynchronous, full-input-length reservation |
@@ -33,15 +33,16 @@ Spark.
 | Key-value dtype | FP8 |
 | EXL3 prefill | FP8, reconstruction tile 256 |
 | Prefix caching | enabled with mamba alignment |
-| Speculation | Qwen MTP depth 3 |
+| Speculation | Qwen MTP depth 3, probabilistic drafts, standard rejection sampling |
+| Temperature-one benchmark sampling | request sets temperature 1.0; pinned model config supplies effective top-p 0.95/top-k 20 |
 | Decode execution | full-decode CUDA graphs |
 | External key-value cache | disabled |
 | SIRCL | unsupported for the width-5,120 path |
 
-This four-Spark candidate deliberately keeps the native Qwen request limit
-instead of enabling the static-YaRN extension used by the separate
-[two-Spark research profile](QWEN38_27B_EXL3_K5K6_PAIR.md). It does not copy
-DeepSeek's DSpark proposer or MLA cache format. It reuses DeepSeek's four-Spark physical topology,
+The four-Spark and [two-Spark](QWEN38_27B_EXL3_K5K6_PAIR.md) normalized
+profiles use the same static-YaRN model-length and MTP sampling contract. The
+four-Spark profile does not copy DeepSeek's DSpark proposer or MLA cache
+format. It reuses DeepSeek's four-Spark physical topology,
 non-adjacent-rank routing, multi-node process shape, and patched-NCCL cycle
 settings.
 
@@ -58,12 +59,13 @@ No published Qwen image is required. A published image would reduce build
 time, but it would not replace site-specific topology checks, model
 verification, or live functional evidence for the selected image ID.
 
-## Evidence
+## Earlier functional check
 
 Conditions: four NVIDIA DGX Sparks in the direct cycle, the pinned checkpoint,
-identical copies of a maintainer-held source-built runtime, TP4/DCP1 with
+identical copies of a maintainer-held source-built runtime, a 262,144-token
+request limit, TP4/DCP1 with
 vLLM's multi-node `mp` executor, patched NCCL on two RoCE devices per rank, and
-the serving contract above. External key-value caching and SIRCL were
+the same cache, scheduler, and transport settings. External key-value caching and SIRCL were
 disabled. All 16 checkpoint hashes, both source commits, the clean vLLM
 worktree, and the ExLlamaV3 ARM patch digest passed on every rank.
 
@@ -77,10 +79,9 @@ The engine reported 74.74 GiB of key-value memory per rank, 8,382,750 logical
 key-value tokens, and 31.98x maximum concurrency at the 262,144-token request
 limit.
 
-Conclusion: the maintainer-built four-rank serving object is implemented. The
-profile remains a candidate because the public builder has not completed a
-live gate and temperature-1 performance has not been measured under the
-repository benchmark contract.
+Conclusion: the earlier 262,144-token four-rank serving object started and
+passed bounded API checks. It does not prove the normalized 1,048,576-token
+profile's public-image reproduction or temperature-1 performance.
 
 Limitations:
 

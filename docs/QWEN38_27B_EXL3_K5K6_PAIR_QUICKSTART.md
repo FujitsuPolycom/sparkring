@@ -19,14 +19,14 @@ machine-readable contract is
 |---|---|
 | Hardware | two directly cabled NVIDIA DGX Sparks |
 | Parallelism | TP2/DCP1, one rank per Spark, multi-node `mp` executor |
-| Advertised request limit | 1,000,000 tokens via static YaRN factor 4 over native 262,144 |
+| Advertised request limit | 1,048,576 tokens via static YaRN factor 4 over native 262,144 |
 | Maximum sequences | 32 |
 | Scheduler budget | 8,192 tokens |
 | Key-value cache | explicit generic FP8, 0.70 unified-memory utilization |
 | Prefix reuse | native vLLM prefix cache with mamba alignment |
 | External cache | disabled; no LMCache or SparkCache |
 | Speculation | Qwen MTP depth 3, probabilistic draft sampling, standard rejection sampling |
-| Thinking sampler defaults | temperature 1.0, top-p 0.95, top-k 20 |
+| Model-card thinking guidance | temperature 1.0, top-p 0.95, top-k 20; benchmark requests are described separately |
 | Decode | full-decode CUDA graphs |
 | Collective transport | patched NCCL over one direct RoCEv2 link |
 | SIRCL | unsupported for model width 5,120 |
@@ -35,9 +35,10 @@ The 8,192-token scheduler budget is intentionally cache-free. The Qwen
 LMCache connector's recurrent-state guard requires a budget below 3,200; do
 not attach LMCache by deleting or weakening that guard.
 
-Static YaRN is not free: it can shift short-context output distributions.
-Use the native 262,144-token four-Spark profile when the larger advertised
-limit is unnecessary.
+Static YaRN can shift short-context output distributions relative to the
+checkpoint's native 262,144-token range. Both normalized SparkRing Qwen
+profiles use the same 1,048,576-token static-YaRN contract so pair and cycle
+measurements use the same model-length policy.
 
 ## 1. Prepare the pair
 
@@ -181,11 +182,11 @@ docker logs --follow "qwen38-dgx2-${ATTEMPT_ID}-r0"
 The ready service must report all of these:
 
 - TP world size 2 and one worker per rank;
-- `max_seq_len=1000000` and `kv_cache_dtype=fp8`;
+- `max_seq_len=1048576` and `kv_cache_dtype=fp8`;
 - `draft_sample_method=probabilistic` in the resolved speculative config;
 - NCCL connected over the selected RoCEv2 GID;
 - `Application startup complete` on rank 0; and
-- `/v1/models` advertising `qwen38` with `max_model_len` 1,000,000.
+- `/v1/models` advertising `qwen38` with `max_model_len` 1,048,576.
 
 ## 7. Run bounded functional checks
 
@@ -195,7 +196,7 @@ From the checkout or another machine that can reach rank 0:
 python scripts/qwen38_smoke.py \
   --endpoint http://<rank-0-management-address>:8000 \
   --model qwen38 \
-  --expected-max-model-len 1000000 \
+  --expected-max-model-len 1048576 \
   --timeout 180 \
   --output "$HOME/qwen38/logs/qwen38-smoke-${ATTEMPT_ID}.json"
 ```
@@ -205,20 +206,22 @@ API health, the advertised limit, repeated arithmetic, tool parsing, data-URL
 vision, repeated-prefix equality, and distinct shared-prefix suffixes. It does
 not prove 1M-input correctness or a native-prefix cache hit.
 
-For probabilistic MTP, send a temperature-1 request with top-p 0.95 and top-k
-20, then verify the server's speculative counters increase. The model's pinned
-`generation_config.json` already supplies those sampler defaults when clients
-omit them.
+For an interactive request that follows the model-card guidance, use
+temperature 1.0, top-p 0.95, and top-k 20, then verify that the server's
+speculative counters increase. These are application sampling choices, not
+the benchmark request policy below.
 
 ## 8. Benchmark the normalized unique-context lane
 
-No external benchmark-harness revision is pinned by this profile yet, so this
-quickstart does not publish a copy-paste performance command. A future
-machine-readable receipt must bind the harness repository and revision,
-temperature 1, the checkpoint defaults top-p 0.95/top-k 20, 100% unique
-per-stream context, request shapes, measurement clock and server-accounting
-authority. Its generic hybrid-KV estimator must defer admission to the server
-while retaining queue, underfill and request-error gates.
+The normalized campaign changes temperature only: it sends temperature 1.0
+and leaves top-p and top-k unset. vLLM then applies the pinned checkpoint's
+`generation_config.json`: effective top-p 0.95 and top-k 20. Its SHA-256 is
+`e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e`.
+Each machine-readable receipt must bind the harness revision, request and
+effective sampling policy, 100% unique per-stream context, request shapes,
+measurement clock, and server-accounting authority. The hybrid-KV estimator
+must defer admission to the server while retaining queue, underfill, and
+request-error gates.
 
 Do not publish a live display value. Retain the final JSON and require zero
 request errors, no underfill, no capacity-limit flag, the requested running
@@ -236,8 +239,9 @@ recorded launch specification rather than reconstructing it from memory.
 
 ## Evidence boundary
 
-The maintainer-built live object advertised 1M, exposed a 4,093,750-token
-logical KV pool, and passed bounded API checks. One temperature-1 request
+An earlier maintainer-built live object advertised 1,000,000 tokens, exposed a
+4,093,750-token logical KV pool, and passed bounded API checks. One
+temperature-1 request
 measured 67.5% draft acceptance and 3.02 mean acceptance length. No 1M prompt,
 matched performance campaign, restart, public-image build, or reliability
 gate has completed. See

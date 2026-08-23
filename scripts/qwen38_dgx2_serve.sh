@@ -190,7 +190,7 @@ command=(
     --nnodes 2 --node-rank "$rank"
     --master-addr "$rank0_rendezvous_addr" --master-port "$master_port"
     --distributed-executor-backend mp
-    --max-model-len 1000000 --hf-overrides "$hf_overrides"
+    --max-model-len 1048576 --hf-overrides "$hf_overrides"
     --max-num-seqs 32 --max-num-batched-tokens 8192
     --enable-chunked-prefill --async-scheduling --scheduler-reserve-full-isl
     --block-size 16 --gpu-memory-utilization 0.70 --kv-cache-dtype fp8

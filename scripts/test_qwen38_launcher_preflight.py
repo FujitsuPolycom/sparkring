@@ -284,6 +284,7 @@ EOF
         "VLLM_EXL3_GRAPH_DECODE=1",
         "VLLM_EXL3_PREFILL_FP8=1",
         "VLLM_EXL3_PREFILL_RECONSTRUCT_M=256",
+        "VLLM_ALLOW_LONG_MAX_MODEL_LEN=1",
     ]
     _write(env_file, "\n".join(env_lines) + "\n")
 

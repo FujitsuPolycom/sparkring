@@ -89,21 +89,22 @@ The consolidated findings page is
 
 ## Qwen3.8-27B EXL3 K5/K6
 
-**Status: experimental four-Spark candidate.** A maintainer-held image and
-model started and served on four directly cabled DGX Sparks. The public builder
-has not reproduced that exact runtime from a clean checkout. The clean-checkout
-builder in `runtime/qwen38/` is offline-validated and has no live result yet.
+**Status: experimental two-Spark and four-Spark candidates.** Maintainer-built
+runtimes have served the pinned model on both topologies. The public builder
+has not reproduced those exact runtime objects from a clean checkout.
 
 ### Conditions
 
-The candidate fixes TP4/DCP1, a 262,144-token request limit, 64 sequences, an
-8,192-token cache-free scheduler budget, FP8 key-value cache, Qwen MTP depth 3,
-native prefix caching with recurrent-state alignment, full-decode CUDA graphs,
-and patched NCCL. SIRCL and external key-value caching are disabled.
+Both normalized profiles use a 1,048,576-token static-YaRN limit, an 8,192-token
+cache-free scheduler budget, FP8 key-value cache, probabilistic Qwen MTP depth
+3 with standard rejection, native prefix caching with recurrent-state
+alignment, full-decode CUDA graphs, and patched NCCL. The pair uses TP2/DCP1
+and 32 maximum sequences; the cycle uses TP4/DCP1 and 64. SIRCL and external
+key-value caching are disabled.
 
-### Functional result
+### Earlier four-Spark functional result
 
-All ranks rendezvoused and remained alive. API health, deterministic arithmetic,
+The earlier four-Spark check used a 262,144-token limit. All ranks rendezvoused and remained alive. API health, deterministic arithmetic,
 tool calling, data-URL vision, and a maintainer-held hybrid-prefix probe passed.
 The engine reported 74.74 GiB of key-value memory per rank, 8,382,750 logical
 tokens, and 31.98x maximum concurrency at 262,144 tokens.
@@ -114,7 +115,7 @@ accounting contract. See the
 [profile record](profiles/QWEN38_27B_EXL3_K5K6.md) and
 [experimental quickstart](QWEN38_27B_EXL3_K5K6_QUICKSTART.md).
 
-### Two-Spark 1M probabilistic-MTP bring-up
+### Earlier two-Spark probabilistic-MTP bring-up
 
 **Status: research-only.** A maintainer-built runtime started on two directly
 cabled DGX Sparks at TP2/DCP1 with a 1,000,000-token static-YaRN limit, 32

@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RECIPE = ROOT / "recipes" / "qwen38-27b-exl3-k5k6-pair.json"
+CYCLE_RECIPE = ROOT / "recipes" / "qwen38-27b-exl3-k5k6.json"
 ENV = ROOT / "scripts" / "config" / "qwen38-27b-exl3-k5k6-pair.env.example"
 LAUNCHER = ROOT / "scripts" / "qwen38_dgx2_serve.sh"
 QUICKSTART = ROOT / "docs" / "QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md"
@@ -28,6 +29,20 @@ def _recipe() -> dict:
     return json.loads(RECIPE.read_text(encoding="utf-8"))
 
 
+def test_pair_and_cycle_share_the_normalized_serving_contract() -> None:
+    pair = _recipe()["serving"]
+    cycle = json.loads(CYCLE_RECIPE.read_text(encoding="utf-8"))["serving"]
+    topology_specific = {
+        "tensor_parallel_size",
+        "node_count",
+        "max_num_seqs",
+        "sizing_note",
+    }
+    assert {key: value for key, value in pair.items() if key not in topology_specific} == {
+        key: value for key, value in cycle.items() if key not in topology_specific
+    }
+
+
 def test_recipe_declares_the_pair_research_contract() -> None:
     recipe = _recipe()
     assert recipe["schema"] == "sparkring-recipe/v1"
@@ -43,7 +58,17 @@ def test_recipe_declares_the_pair_research_contract() -> None:
     assert serving["tensor_parallel_size"] == 2
     assert serving["decode_context_parallel_size"] == 1
     assert serving["distributed_executor_backend"] == "mp"
-    assert serving["max_model_len"] == 1_000_000
+    assert serving["max_model_len"] == 1_048_576
+    assert serving["context_extension"] == {
+        "method": "static-yarn",
+        "factor": 4.0,
+        "original_max_position_embeddings": 262144,
+        "rope_type": "yarn",
+        "rope_theta": 10000000,
+        "partial_rotary_factor": 0.25,
+        "mrope_interleaved": True,
+        "mrope_section": [11, 11, 10],
+    }
     assert serving["max_num_seqs"] == 32
     assert serving["max_num_batched_tokens"] == 8192
     assert serving["gpu_memory_utilization"] == 0.7
@@ -55,11 +80,6 @@ def test_recipe_declares_the_pair_research_contract() -> None:
     assert serving["multimodal_processor_kwargs"] == {"truncation": False}
     assert serving["exl3_prefill_fp8"] is True
     assert serving["exl3_prefill_reconstruct_m"] == 256
-    assert serving["sampling_defaults"] == {
-        "temperature": 1.0,
-        "top_p": 0.95,
-        "top_k": 20,
-    }
     assert serving["speculation"] == {
         "method": "qwen3_5_mtp",
         "num_speculative_tokens": 3,
@@ -102,7 +122,7 @@ def test_pair_launcher_matches_recipe_and_fails_closed() -> None:
         "--decode-context-parallel-size 1",
         "--nnodes 2",
         "--distributed-executor-backend mp",
-        "--max-model-len 1000000",
+        "--max-model-len 1048576",
         "--max-num-seqs 32",
         "--max-num-batched-tokens 8192",
         "--gpu-memory-utilization 0.70",
@@ -257,7 +277,7 @@ def test_quickstart_separates_normalized_and_shared_prefix_benchmarks() -> None:
         "runtime/qwen38/build-image.sh",
         "scripts/config/qwen38-27b-exl3-k5k6-pair.env.example",
         "/ws/qwen38_dgx2_serve.sh",
-        "--expected-max-model-len 1000000",
+        "--expected-max-model-len 1048576",
         "temperature 1",
         "100% unique",
         "defer admission to the server",

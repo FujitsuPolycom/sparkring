@@ -48,11 +48,16 @@
     "pipeline_parallel_size": 1,
     "node_count": 2,
     "distributed_executor_backend": "mp",
-    "max_model_len": 1000000,
+    "max_model_len": 1048576,
     "context_extension": {
       "method": "static-yarn",
       "factor": 4.0,
-      "original_max_position_embeddings": 262144
+      "original_max_position_embeddings": 262144,
+      "rope_type": "yarn",
+      "rope_theta": 10000000,
+      "partial_rotary_factor": 0.25,
+      "mrope_interleaved": true,
+      "mrope_section": [11, 11, 10]
     },
     "max_num_seqs": 32,
     "max_num_batched_tokens": 8192,
@@ -82,9 +87,14 @@
       "draft_sample_method": "probabilistic",
       "rejection_sample_method": "standard"
     },
-    "sampling_defaults": {"temperature": 1.0, "top_p": 0.95, "top_k": 20},
+    "sampling": {
+      "benchmark_request": {"temperature": 1.0, "top_p": null, "top_k": null},
+      "effective_model_defaults": {"temperature": 1.0, "top_p": 0.95, "top_k": 20},
+      "generation_config_sha256": "e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e"
+    },
     "external_kv_cache": false,
-    "sircl": {"default": false, "width_5120_graph_status": "unsupported"}
+    "sircl": {"default": false, "width_5120_graph_status": "unsupported"},
+    "sizing_note": "The normalized pair serves a 1048576-token limit with 32 maximum sequences. The measured launch reported 4130233 logical key-value tokens, enough for 3.94 full-length request footprints before generated-token headroom."
   },
   "transport": {
     "backend": "patched-nccl",

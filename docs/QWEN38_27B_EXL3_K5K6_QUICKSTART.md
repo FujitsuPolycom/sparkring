@@ -25,14 +25,14 @@ The image builder contract is in
 | Topology | direct cycle `0-1-2-3-0` |
 | Parallelism | TP4/DCP1, one process per Spark |
 | Executor | multi-node `mp` |
-| Request limit | 262,144 tokens |
+| Request limit | 1,048,576 tokens through static YaRN factor 4 over native 262,144 |
 | Maximum sequences | 64 |
 | Scheduler budget | 8,192 tokens |
 | Scheduling | chunked prefill, asynchronous, full-input-length reservation |
 | Hybrid block geometry | request 16 attention tokens; runtime aligns effective attention and mamba blocks to 1,600 tokens |
 | Key-value dtype | FP8 |
 | EXL3 prefill | FP8, reconstruction tile 256 |
-| Speculation | Qwen MTP, depth 3 |
+| Speculation | Qwen MTP depth 3, probabilistic draft sampling, standard rejection sampling |
 | Prefix reuse | native prefix caching, mamba alignment |
 | External cache | disabled |
 | Collective transport | patched NCCL; SIRCL disabled |
@@ -40,6 +40,16 @@ The image builder contract is in
 Pass `--block-size 16`; the pinned runtime performs the 1,600-token hybrid
 alignment. Do not pass `--block-size 1600` directly. SparkCache and LMCache are
 not part of this deployment.
+
+Static YaRN can shift short-context output distributions relative to the
+checkpoint's native range. The two-Spark and four-Spark normalized profiles
+use the same 1,048,576-token static-YaRN object so their measurements share one
+model-length policy.
+
+The temperature-one benchmark does not send top-p or top-k. vLLM applies the
+pinned checkpoint's `generation_config.json`, so the effective values are
+top-p 0.95 and top-k 20. The file's SHA-256 is
+`e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e`.
 
 ## 1. Prepare the four hosts
 
@@ -396,9 +406,10 @@ printf '%s\n' "$CONTAINER_ID" > "$ID_FILE"
 ```
 
 Rank 0 listens on port 8000. Ranks 1-3 run headless. The launcher carries the
-complete serving command, including TP4/DCP1, the 262,144-token request limit,
+complete serving command, including TP4/DCP1, the 1,048,576-token request limit,
 64 sequences, the 8,192-token scheduler budget, FP8 KV, native aligned prefix
-caching, Qwen MTP3, FP8 EXL3 prefill, and full-decode CUDA graphs.
+caching, probabilistic Qwen MTP3 with standard rejection, FP8 EXL3 prefill,
+and full-decode CUDA graphs.
 The tracked
 [`scripts/qwen38_dgx4_serve.sh`](../scripts/qwen38_dgx4_serve.sh) is baked at
 `/ws/qwen38_dgx4_serve.sh` by the image builder.
@@ -460,7 +471,7 @@ python scripts/qwen38_smoke.py \
   --output "$HOME/qwen38/logs/qwen38-smoke-${ATTEMPT_ID}.json"
 ```
 
-The stdlib-only harness checks `/health`, model identity and the 262,144-token
+The stdlib-only harness checks `/health`, model identity and the 1,048,576-token
 limit in `/v1/models`, repeated deterministic arithmetic, the `multiply(6,7)`
 tool call, a tiny data-URL vision request, repeated-prefix output equality,
 and divergent shared-prefix suffixes. It

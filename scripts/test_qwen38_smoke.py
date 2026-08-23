@@ -21,7 +21,7 @@ class _ServerState:
     def __init__(
         self,
         failing_gate: str | None = None,
-        model_max_model_len: int = 262144,
+        model_max_model_len: int = 1048576,
     ) -> None:
         self.failing_gate = failing_gate
         self.model_max_model_len = model_max_model_len
@@ -191,7 +191,7 @@ def _handler(state: _ServerState) -> type[BaseHTTPRequestHandler]:
 @contextmanager
 def _fake_server(
     failing_gate: str | None = None,
-    model_max_model_len: int = 262144,
+    model_max_model_len: int = 1048576,
 ) -> Iterator[str]:
     server = ThreadingHTTPServer(
         ("127.0.0.1", 0),
@@ -227,7 +227,7 @@ def test_smoke_passes_all_bounded_gates_without_leaking_response_metadata() -> N
         "function": "multiply",
         "arguments": {"a": 6, "b": 7},
     }
-    assert result["gates"]["models"]["observed"]["max_model_len"] == 262144
+    assert result["gates"]["models"]["observed"]["max_model_len"] == 1048576
     assert result["sampling"]["enable_thinking"] is False
     serialized = json.dumps(result, sort_keys=True)
     assert endpoint not in serialized
@@ -273,21 +273,21 @@ def test_smoke_rejects_a_drifted_model_length() -> None:
     assert result["status"] == "fail"
     assert result["gates"]["models"] == {
         "status": "fail",
-        "detail": "requested model does not report the expected token limit (262144)",
+        "detail": "requested model does not report the expected token limit (1048576)",
     }
 
 
-def test_smoke_accepts_a_profile_specific_one_million_token_limit() -> None:
-    with _fake_server(model_max_model_len=1_000_000) as endpoint:
+def test_smoke_accepts_the_exact_normalized_token_limit() -> None:
+    with _fake_server(model_max_model_len=1_048_576) as endpoint:
         result = smoke.run_smoke(
             endpoint=endpoint,
             model="qwen38",
             timeout=2,
-            expected_max_model_len=1_000_000,
+            expected_max_model_len=1_048_576,
         )
 
     assert result["status"] == "pass"
-    assert result["gates"]["models"]["observed"]["max_model_len"] == 1_000_000
+    assert result["gates"]["models"]["observed"]["max_model_len"] == 1_048_576
 
 
 def test_arithmetic_gate_ignores_response_ids_but_rejects_message_drift() -> None:

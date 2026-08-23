@@ -68,7 +68,8 @@ choosing one.
 |---|---|
 | GLM-5.2 EXL3 runtime build | `runtime/exl3-r7/README.md` |
 | Qwen3.8-27B runtime build | `runtime/qwen38/README.md` |
-| Runtime base image and model identity pins | `runtime/faststart-lock.json` |
+| GLM/DeepSeek runtime base and model pins | `runtime/faststart-lock.json` |
+| Qwen runtime/source pins and model identities | `runtime/qwen38/pins.json`, then `recipes/qwen38-27b-exl3-k5k6{,-pair}.json` |
 | Public Python overlay allowlist | `runtime/public-overlay-files.json` |
 | R7 site and candidate templates | `scripts/config/exl3-r7-site.example.yaml`, `scripts/config/exl3-r7-candidate.example.json` |
 | DeepSeek per-rank environment | `scripts/config/deepseek-v4-flash-0731.env.example` |

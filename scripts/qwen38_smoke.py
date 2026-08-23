@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run bounded, sanitized API checks against the Qwen four-Spark profile."""
+"""Run bounded, sanitized API checks against a normalized Qwen profile."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from urllib.request import Request, urlopen
 
 SCHEMA = "sparkring-qwen38-api-smoke/v1"
 SMOKE_SEED = 17_023
-EXPECTED_MAX_MODEL_LEN = 262_144
+EXPECTED_MAX_MODEL_LEN = 1_048_576
 VISION_MARKER = "VISION_OK"
 PREFIX_MARKER = "PREFIX_OK"
 TINY_PNG_DATA_URL = (

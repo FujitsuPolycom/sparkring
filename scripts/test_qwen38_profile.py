@@ -36,7 +36,17 @@ def test_recipe_declares_the_four_spark_candidate() -> None:
     assert serving["decode_context_parallel_size"] == 1
     assert serving["node_count"] == 4
     assert serving["distributed_executor_backend"] == "mp"
-    assert serving["max_model_len"] == 262144
+    assert serving["max_model_len"] == 1048576
+    assert serving["context_extension"] == {
+        "method": "static-yarn",
+        "factor": 4.0,
+        "original_max_position_embeddings": 262144,
+        "rope_type": "yarn",
+        "rope_theta": 10000000,
+        "partial_rotary_factor": 0.25,
+        "mrope_interleaved": True,
+        "mrope_section": [11, 11, 10],
+    }
     assert serving["max_num_seqs"] == 64
     assert serving["max_num_batched_tokens"] == 8192
     assert serving["enable_chunked_prefill"] is True
@@ -53,6 +63,19 @@ def test_recipe_declares_the_four_spark_candidate() -> None:
         "method": "qwen3_5_mtp",
         "num_speculative_tokens": 3,
         "attention_backend": "TRITON_ATTN",
+        "draft_sample_method": "probabilistic",
+        "rejection_sample_method": "standard",
+    }
+    assert serving["sampling"] == {
+        "benchmark_request": {"temperature": 1.0, "top_p": None, "top_k": None},
+        "effective_model_defaults": {
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "top_k": 20,
+        },
+        "generation_config_sha256": (
+            "e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e"
+        ),
     }
 
 
@@ -192,7 +215,7 @@ def test_quickstart_command_matches_the_recipe() -> None:
         "--tensor-parallel-size 4",
         "--nnodes 4",
         "--distributed-executor-backend mp",
-        "--max-model-len 262144",
+        "--max-model-len 1048576",
         "--max-num-seqs 64",
         "--max-num-batched-tokens 8192",
         "--enable-chunked-prefill",
@@ -204,6 +227,9 @@ def test_quickstart_command_matches_the_recipe() -> None:
         "--mamba-cache-mode align",
         '"method":"qwen3_5_mtp"',
         '"num_speculative_tokens":3',
+        '"draft_sample_method":"probabilistic"',
+        '"rejection_sample_method":"standard"',
+        '"original_max_position_embeddings":262144',
         '"cudagraph_mode":"FULL_DECODE_ONLY"',
         '--mm-processor-kwargs \'{"truncation":false}\'',
         "--enable-auto-tool-choice",
