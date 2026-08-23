@@ -24,8 +24,7 @@ belongs to profiles rather than the transport.
 ## Cluster sizes
 
 - **2× DGX Spark — direct pair.** Models: DeepSeek-V4-Flash-0731 and
-  Qwen3.8-27B EXL3 K5/K6. DeepSeek is compatible with SparkCache; the Qwen
-  pair profile is cache-free.
+  Qwen3.8-27B EXL3 K5/K6. DeepSeek is compatible with SparkCache
 - **4× DGX Spark — physical ring.** Models: GLM-5.2 EXL3 3.5-bpw,
   DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6. GLM and DeepSeek are
   compatible with SparkCache; Qwen SparkCache support is Pending.
