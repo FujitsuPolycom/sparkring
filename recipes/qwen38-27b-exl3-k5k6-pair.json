@@ -119,7 +119,7 @@
       "SIRCL and external key-value caching are not part of the profile."
     ],
     "record": "docs/profiles/QWEN38_27B_EXL3_K5K6_PAIR.md",
-    "live_record": "performance/records/qwen38-27b/dgx2-1m-probmtp-20260823.json",
+    "live_record": "performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.json",
     "benchmark_record": "performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.json"
   }
 }

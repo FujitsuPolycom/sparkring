@@ -2,11 +2,8 @@
 
 ## Status and scope
 
-The 262,144-token, eight-sequence operator artifact is **qualified** on one
-four-DGX-Spark appliance. The recipe now targets a 1,048,576-token,
-16-sequence **candidate** with the retained qualified values identified below.
-A build from tracked inputs remains **implemented** until its exact image
-identity passes [the promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md).
+The tested profile uses a 1,048,576-token request limit and 16 sequences on
+four directly cabled DGX Sparks.
 
 The profile is defined by
 [`recipes/glm52-exl3-r7-3.5bpw.json`](../recipes/glm52-exl3-r7-3.5bpw.json).
@@ -15,12 +12,12 @@ The checkpoint is
 
 ## Serving contract
 
-| Setting | Qualified value |
+| Setting | Value |
 |---|---|
 | Parallelism | TP4 plus DCP4 `ag_rs` |
 | Speculation | fixed MTP4, greedy draft sampling |
-| Request limit | 1,048,576-token candidate target; retained qualification used 262,144 |
-| Maximum sequences | 16 candidate target; retained qualification used 8 |
+| Request limit | 1,048,576 tokens |
+| Maximum sequences | 16 |
 | Key-value cache | `nvfp4_ds_mla`, dynamic per-token scale, FP8 RoPE |
 | Key-value allocation | 9,250,000,000 bytes per rank |
 | Key-value block size | 64 tokens |
@@ -36,25 +33,23 @@ routing behavior.
 
 ## Measured results
 
-The qualified appliance measured the following unique-context results. Conditions
-and evidence scope are recorded in [results](RESULTS.md).
+| Context | Prefill | C1 | C2 | C4 | C8 |
+|---|---:|---:|---:|---:|---:|
+| 2K | 694 | 22.00 | 28.28 | 46.98 | 67.62 |
+| 8K | 675 | 19.15 | 30.21 | 47.70 | 65.53 |
+| 16K | 671 | 20.15 | 32.38 | 45.38 | 62.71 |
+| 32K | 661 | 21.61 | 30.52 | 46.08 | 62.88 |
+| 64K | 649 | 20.17 | — | — | — |
+| 128K | 635 | — | — | — | — |
 
-| Context | 4K | 8K | 16K | 32K | 64K | 128K |
-|---|---:|---:|---:|---:|---:|---:|
-| Prefill, tokens/s | — | 679 | 673 | 666 | 657 | 645 |
-| Decode, one stream | 22.6 | 22.0 | 21.3 | 20.4 | 21.4 | — |
-| Decode, four streams | 50.3 | 51.9 | 49.2 | 45.6 | 47.2 | — |
-| Decode, eight streams | 78.4 | 71.3 | 70.0 | 65.5 | 67.8 | — |
-
-Coding prompts reached 27.3 tokens/s on one stream with measured draft
-acceptance of 96.64%. These measurements apply only to the qualified appliance
-and serving contract above.
+Coding Peak averaged 25.39 tokens/s over five requests. Full settings and
+limits are recorded in [results](RESULTS.md).
 
 ## Limits
 
-The profile's fixed-MTP4 configuration improved measured C1-C4 cells but
-regressed the matched C8 cell by 11.63%. The TP native path covers qualified TP
-all-reduce and vocabulary families; DCP and indexer collectives remain stock.
+The 64K C2/C4/C8 cells and all 128K decode cells were not measured. The TP
+native path covers tested TP all-reduce and vocabulary families; DCP and
+indexer collectives remain stock.
 Use [the quickstart](GLM52_35BPW_QUICKSTART.md) for deployment and
 [the reproduction procedure](GLM52_35BPW_REPRODUCTION.md) for the generated
 layers.

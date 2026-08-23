@@ -23,7 +23,6 @@ launch one rank per Spark.
 | Key-value cache | explicit FP8, 0.70 unified-memory utilization |
 | Prefix caching | native cache with mamba alignment |
 | Speculation | Qwen MTP depth 3, probabilistic drafts, standard rejection sampling |
-| Benchmark sampling | temperature 1.0; pinned model config supplies effective top-p 0.95/top-k 20 |
 | Decode | full-decode CUDA graphs |
 | External key-value cache | disabled |
 | SIRCL | unsupported for width 5,120 |
@@ -33,33 +32,6 @@ proposer, explicit KV byte reservation, or block geometry. Its 8,192-token
 scheduler budget matches the operator's selected comparison envelope. The
 Qwen LMCache path cannot compose with that budget, so LMCache and SparkCache
 remain outside this profile.
-
-## TP2 startup record — 1,000,000-token launch
-
-Conditions: two directly cabled NVIDIA DGX Sparks, the pinned checkpoint,
-identical runtime inputs, vLLM
-`229effc810ee6b8112f661472f6aace4eb8c787d`, ExLlamaV3
-`5f3c537ca9d89893d771256f5c43c93656553fbb`, patched NCCL SHA-256
-`e69a8c240f45d10166bcd901d99db78bb63147adda66e586d8dd505c6d608b54`,
-TP2/DCP1, a 1,000,000-token static-YaRN limit, FP8 KV, native prefix caching,
-and probabilistic MTP3.
-LMCache, SparkCache and SIRCL were disabled.
-
-Measurement: engine logs supplied startup, model memory, graph and KV-capacity
-values. Bounded requests checked health, arithmetic, tools, vision, repeated
-prefixes and distinct shared-prefix suffixes. A probabilistic request measured
-speculative-counter deltas.
-
-Result: both ranks rendezvoused and served. `/v1/models` advertised 1,000,000
-tokens. The engine reported 11.22 GiB of model memory per rank, 67.96 GiB of
-available KV memory per rank, 4,093,750 logical KV tokens, and 4.09x maximum
-concurrency at the advertised limit. The probabilistic probe accepted 85 of
-126 draft tokens over 42 speculative steps: 67.5% draft acceptance and 3.02
-mean acceptance length. Arithmetic returned `391`, the tool parser emitted
-`multiply(a=6,b=7)`, vision returned `VISION_OK`, and shared suffixes returned
-`13` and `17`.
-
-Conclusion: the 1,000,000-token startup checks passed.
 
 ## Benchmark results
 

@@ -1,20 +1,8 @@
 # GLM-5.2 EXL3 3.5-bpw four-Spark quickstart
 
-This quickstart deploys the 16-sequence GLM-5.2 EXL3 **candidate** on four
-directly cabled NVIDIA DGX Sparks. The machine-readable settings are in
+This quickstart deploys the tested 1,048,576-token, 16-sequence GLM-5.2 EXL3
+profile on four directly cabled NVIDIA DGX Sparks. The machine-readable settings are in
 [`recipes/glm52-exl3-r7-3.5bpw.json`](../recipes/glm52-exl3-r7-3.5bpw.json).
-
-The older 262,144-token, eight-sequence setup is **qualified** only on the one
-appliance that was tested. The settings below are still being tested.
-
-A clean-checkout rebuild has **implemented** status. One image built with these
-steps started on four ranks and matched the pinned checkpoint and runtime, as
-recorded in
-[the rebuilt-image bring-up record](../performance/records/glm-3.5bpw/rebuilt-image-20260821.md).
-
-Each rebuilt image must pass the
-[full acceptance checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md) before it can be
-called qualified.
 
 ## Serving contract
 
@@ -204,9 +192,6 @@ Require HTTP 200 from `/health`, model name `glm-5.2-exl3-r7-3.5bpw`, and a
 The 1,048,576-token, 16-sequence setup started successfully and was benchmarked
 on four directly cabled DGX Sparks with SparkCache disabled.
 
-The serving profile was measured at temperature 1.0. The checkpoint generation
-configuration supplied top-p 0.95.
-
 | Context | Prefill tok/s | C1 | C2 | C4 | C8 |
 |---:|---:|---:|---:|---:|---:|
 | 2K | 694 | 22.00 | 28.28 | 46.98 | 67.62 |
@@ -228,10 +213,3 @@ namespaces. A same-namespace restart currently fails before model startup when
 the exact-Q40 producer finds its existing receipt. Keep the receipt and use a
 fresh namespace until the launcher can safely reuse a matching receipt. This is
 a restart problem, not a model-performance failure.
-
-## Older qualified result
-
-The qualified appliance measured the profile with fixed MTP4, dynamic NVFP4 MLA
-key-value cache, bounded full-CKV gather, and SIRCL TP collectives. Results and
-limits are in [the serving record](GLM52_35BPW_FIXED_MTP4_PROFILE.md) and
-[results](RESULTS.md). DCP and indexer collectives use the stock path.

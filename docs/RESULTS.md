@@ -1,7 +1,7 @@
 # SparkRing benchmark results
 
-All values are tokens per second from temperature 1.0 runs. Decode values are
-aggregate throughput across all active streams.
+All values are tokens per second. Decode values are aggregate throughput across
+all active streams.
 
 ## At a glance — 16K context
 
@@ -23,18 +23,22 @@ aggregate throughput across all active streams.
 | Qwen3.8-27B EXL3 K5/K6, two Sparks | [Full record](../performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md) | [Matrix image](../performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.png) | [Receipts](../performance/receipts/qwen38-27b/temp1/20260823-tp2/) |
 | Qwen3.8-27B EXL3 K5/K6, four Sparks | [Full record](../performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md) | [Matrix image](../performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.png) | [Receipts](../performance/receipts/qwen38-27b/temp1/20260823-tp4/) |
 
-## GLM 262,144-token setup
+The normalized DeepSeek two-Spark profile also completed a
+[three-hour llama-benchy prefix-cache benchmark](../performance/records/deepseek-v4-flash/llama-benchy-normalized-tp2-20260822.md).
 
-| Context | 4K | 8K | 16K | 32K | 64K | 128K |
-|---|---:|---:|---:|---:|---:|---:|
-| Prefill | — | 679 | 673 | 666 | 657 | 645 |
-| Decode, one stream | 22.6 | 22.0 | 21.3 | 20.4 | 21.4 | — |
-| Decode, four streams | 50.3 | 51.9 | 49.2 | 45.6 | 47.2 | — |
-| Decode, eight streams | 78.4 | 71.3 | 70.0 | 65.5 | 67.8 | — |
+## GLM-5.2 EXL3 3.5-bpw — four Sparks
 
-`71.3` is the 8K/C8 result. The 16K/C8 result is `70.0`. This captured
-matrix does not record per-cell repeat counts, so these are displayed values,
-not documented multi-run averages.
+| Context | Prefill | C1 decode | C2 decode | C4 decode | C8 decode |
+|---|---:|---:|---:|---:|---:|
+| 2K | 694 | 22.00 | 28.28 | 46.98 | 67.62 |
+| 8K | 675 | 19.15 | 30.21 | 47.70 | 65.53 |
+| 16K | 671 | 20.15 | 32.38 | 45.38 | 62.71 |
+| 32K | 661 | 21.61 | 30.52 | 46.08 | 62.88 |
+| 64K | 649 | 20.17 | — | — | — |
+| 128K | 635 | — | — | — | — |
+
+These are single accepted observations from the 1,048,576-token,
+16-sequence setup. See the [full record](../performance/records/glm-3.5bpw/normalized-base-20260822.md).
 
 ## Notes
 

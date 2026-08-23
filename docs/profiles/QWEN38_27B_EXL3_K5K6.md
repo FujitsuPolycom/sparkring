@@ -28,7 +28,6 @@ Spark.
 | EXL3 prefill | FP8, reconstruction tile 256 |
 | Prefix caching | enabled with mamba alignment |
 | Speculation | Qwen MTP depth 3, probabilistic drafts, standard rejection sampling |
-| Benchmark sampling | temperature 1.0; pinned model config supplies effective top-p 0.95/top-k 20 |
 | Decode execution | full-decode CUDA graphs |
 | External key-value cache | disabled |
 | SIRCL | unsupported for the width-5,120 path |
@@ -52,28 +51,6 @@ the public `scripts/qwen38_smoke.py` gate.
 No published Qwen image is required. A published image would reduce build
 time, but it would not replace site-specific topology checks, model
 verification, or live functional evidence for the selected image ID.
-
-## TP4 startup record — 262,144-token launch
-
-Conditions: four NVIDIA DGX Sparks in the direct cycle, the pinned checkpoint,
-identical copies of a maintainer-held source-built runtime, a 262,144-token
-request limit, TP4/DCP1 with
-vLLM's multi-node `mp` executor, patched NCCL on two RoCE devices per rank, and
-the same cache, scheduler, and transport settings. External key-value caching and SIRCL were
-disabled. All 16 checkpoint hashes, both source commits, the clean vLLM
-worktree, and the ExLlamaV3 ARM patch digest passed on every rank.
-
-Measurement: startup and capacity values came from engine logs. Functional
-checks exercised API health, deterministic arithmetic, tool parsing, data-URL
-vision, and repeated-prefix behavior. Raw artifacts remain maintainer-held.
-
-Result: all ranks rendezvoused and stayed alive. The API, deterministic
-arithmetic, tool parser, data-URL vision, and three hybrid-prefix gates passed.
-The engine reported 74.74 GiB of key-value memory per rank, 8,382,750 logical
-key-value tokens, and 31.98x maximum concurrency at the 262,144-token request
-limit.
-
-Conclusion: the 262,144-token startup checks passed.
 
 ## Benchmark results
 
