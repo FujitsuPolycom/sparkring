@@ -15,11 +15,6 @@ LAUNCHER_PATH = ROOT / "scripts" / "qwen38_dgx4_serve.sh"
 SMOKE_PATH = ROOT / "scripts" / "qwen38_smoke.py"
 BUILDER_PATH = ROOT / "runtime" / "qwen38" / "build-image.sh"
 BUILDER_PINS_PATH = ROOT / "runtime" / "qwen38" / "pins.json"
-LIVE_RECORD_PATH = (
-    ROOT / "performance" / "records" / "qwen38-27b" / "dgx4-quick-20260823.json"
-)
-
-
 def _recipe() -> dict:
     return json.loads(RECIPE_PATH.read_text(encoding="utf-8"))
 
@@ -98,37 +93,12 @@ def test_recipe_records_the_tp4_live_evidence_separately_from_the_pair() -> None
         "conclusion",
         "limitations",
         "record",
-        "live_record",
     } <= set(evidence)
     assert evidence["status"] == "implemented"
     assert "four directly cabled NVIDIA DGX Sparks" in evidence["conditions"]
     assert "8382750 logical key-value tokens" in evidence["result"]
     assert "remains a candidate" in evidence["conclusion"]
-    assert evidence["live_record"] == (
-        "performance/records/qwen38-27b/dgx4-quick-20260823.json"
-    )
     assert evidence["limitations"]
-
-
-def test_live_record_matches_the_candidate_contract() -> None:
-    record = json.loads(LIVE_RECORD_PATH.read_text(encoding="utf-8"))
-    recipe = _recipe()
-    assert {"conditions", "measurement", "result", "conclusion", "limitations"} <= set(
-        record
-    )
-    assert record["status"] == "research-only"
-    assert record["lane"] == "public-functional"
-    assert record["model"]["revision"] == recipe["model"]["revision"]
-    assert record["serving"]["tensor_parallel_size"] == 4
-    assert record["serving"]["max_model_len"] == 262144
-    assert record["serving"]["external_kv_cache"] is False
-    assert record["startup"]["kv_tokens"] == 8382750
-    assert record["correctness"]["api_health"] == "passed"
-    assert record["post_run"]["all_four_workers_alive"] is True
-    assert record["measurement"]["harness_commit"] == (
-        "0b4185b5b435e948b199c9077a00b084864aa963"
-    )
-    assert "mtp_acceptance_length" not in record["benchmark"]
 
 
 def test_runtime_records_the_public_qwen_image_builder() -> None:

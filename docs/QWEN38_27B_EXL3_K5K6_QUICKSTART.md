@@ -520,12 +520,11 @@ the resulting identity.
 
 ## Evidence boundary and Pending integration
 
-The bounded historical TP4 record is in
-[`performance/records/qwen38-27b/dgx4-live-20260823.md`](../performance/records/qwen38-27b/dgx4-live-20260823.md).
-It describes a maintainer-held runtime and does not predict performance for a
-runtime image produced by the public builder. Record that image ID, source
-receipt, model hashes, startup result, smoke output, and post-run health
-separately.
+The maintainer-built runtime passed the functional gates summarized in
+[`docs/profiles/QWEN38_27B_EXL3_K5K6.md`](profiles/QWEN38_27B_EXL3_K5K6.md).
+No temperature-1 benchmark is published for this profile. Record the public
+builder's image ID, source receipt, model hashes, startup result, smoke output,
+temperature-1 benchmark output, and post-run health separately.
 
 **SparkCache: Pending.** No Qwen3.8-27B SparkCache composition recipe or live
 cache evidence is published. The base profile disables external key-value

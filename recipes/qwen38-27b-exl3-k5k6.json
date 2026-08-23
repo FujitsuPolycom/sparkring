@@ -145,21 +145,18 @@
   "evidence": {
     "status": "implemented",
     "conditions": "Live evidence from four directly cabled NVIDIA DGX Sparks using the pinned checkpoint and a maintainer-held source-built runtime, TP4/DCP1, the multi-node multiprocess executor, a 262144-token request limit, 64 sequences, an 8192-token scheduler budget, chunked prefill, asynchronous scheduling, full-input-length reservation, a requested 16-token attention block that hybrid alignment raised to an effective 1600-token attention and mamba block, FP8 key-value cache, Qwen MTP depth 3, native prefix caching with mamba alignment, full-decode CUDA graphs, FP8 EXL3 prefill with reconstruction tile 256, and patched NCCL over both RoCE devices per rank at RoCEv2 GID index 3. External key-value caching and SIRCL were disabled.",
-    "measurement": "Startup and capacity came from engine logs. Prefill is one client prompt_tokens/TTFT scout per shape. Each decode cell first warmed the same messages with a one-token scout, then measured OpenAI continuous-usage output tokens over one approximately 15-second duration window after readiness warmup. The decode values are warm repeated-prefix throughput, not cold end-to-end throughput. Raw harness and API artifacts remain maintainer-held; the public record preserves exact token counts, timing windows, cache observations, and gate outcomes.",
-    "result": "All four ranks rendezvoused and served the pinned model. Health, deterministic arithmetic, tool-call, vision, and hybrid-prefix checks passed. The engine reported 74.74 GiB of key-value memory per rank, 8382750 logical key-value tokens, and 31.98x maximum concurrency at 262144 tokens. One bounded observation measured 38.4-38.6 aggregate decode tokens/s at concurrency 1 and 128.4-129.8 at concurrency 4; prefill ranged from 1986 tokens/s at 8K to 1288 tokens/s at 128K. All workers remained alive and rank 0 remained healthy after the workload.",
-    "conclusion": "The four-rank serving object in this recipe is implemented and live-benchmarked. The profile remains a candidate because the observations are bounded, restart behavior is untested, the tracked launcher's fail-closed wrapper changes have offline validation only, and the wider correctness and sustained-load gate is incomplete.",
+    "measurement": "Startup and capacity came from engine logs. Functional checks exercised API health, deterministic arithmetic, tool parsing, data-URL vision, and repeated-prefix behavior. Raw artifacts remain maintainer-held.",
+    "result": "All four ranks rendezvoused and served the pinned model. Health, deterministic arithmetic, tool-call, vision, and hybrid-prefix checks passed. The engine reported 74.74 GiB of key-value memory per rank, 8382750 logical key-value tokens, and 31.98x maximum concurrency at 262144 tokens. All workers remained alive and rank 0 remained healthy after the workload.",
+    "conclusion": "The maintainer-built four-rank serving object in this recipe is implemented. The profile remains a candidate because the public builder has offline validation only, restart behavior is untested, the wider correctness gate is incomplete, and temperature-1 performance has not been measured under the repository benchmark contract.",
     "limitations": [
-      "Each performance coordinate is one bounded observation; no confidence interval is established.",
-      "The sustained decode matrix covers warm repeated-prefix concurrency 1 and 4 at 4K and 16K contexts; it is not cold end-to-end throughput, and the 64K and 128K observations are prefill scouts.",
-      "Native prefix caching was enabled, and no scout has a reliable cached-token delta; the prefill values are not cold or unique-prompt measurements.",
+      "No temperature-1 prefill or sustained-decode result is published for this profile.",
       "Restart, reboot persistence, eager-versus-graph equivalence, and long-duration serving have not been tested.",
       "The source-built runtime has no published container image. Every rank must use the same prepared runtime sources, Python environment, patched NCCL library, model revision, and chat template.",
       "The exact measured source archive is maintainer-held; public reproduction of that artifact remains pending.",
-      "The public local-image builder is offline-validated only. An image ID from that builder requires separate ARM64 build, four-rank startup, functional, and post-run health evidence; historical performance does not transfer.",
+      "The public local-image builder is offline-validated only. An image ID from that builder requires separate ARM64 build, four-rank startup, functional, performance, and post-run health evidence.",
       "SIRCL does not admit the model's width-5120 all-reduce shape. Patched NCCL is the only configured collective backend.",
       "SparkCache support is Pending and is not part of this recipe."
     ],
-    "record": "docs/profiles/QWEN38_27B_EXL3_K5K6.md",
-    "live_record": "performance/records/qwen38-27b/dgx4-quick-20260823.json"
+    "record": "docs/profiles/QWEN38_27B_EXL3_K5K6.md"
   }
 }

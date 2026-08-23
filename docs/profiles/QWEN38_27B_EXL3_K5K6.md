@@ -7,10 +7,9 @@
 **Status: implemented on a maintainer-built runtime; not qualified.** The
 candidate serving object started and served on four directly cabled DGX
 Sparks. A bounded live run passed API, deterministic arithmetic, tool-use,
-vision, and hybrid-prefix checks, then measured prefill and decode at limited
-contexts and concurrency. The public clean-checkout image builder is
-offline-validated; ARM64 build execution and live four-rank evidence remain
-pending.
+vision, and hybrid-prefix checks. The public clean-checkout image builder is
+offline-validated; ARM64 build execution, live four-rank evidence, and
+temperature-1 performance measurement remain pending.
 
 Use the
 [Qwen3.8-27B four-Spark quickstart](../QWEN38_27B_EXL3_K5K6_QUICKSTART.md)
@@ -67,40 +66,25 @@ the serving contract above. External key-value caching and SIRCL were
 disabled. All 16 checkpoint hashes, both source commits, the clean vLLM
 worktree, and the ExLlamaV3 ARM patch digest passed on every rank.
 
-Measurement: the startup/capacity values came from engine logs. Prefill used
-one client `prompt_tokens / TTFT` scout per shape. Decode used OpenAI
-continuous-usage output tokens over one approximately 15-second sustained
-window per cell after a same-message one-token scout and readiness warmup. The
-decode values are warm repeated-prefix throughput, not cold end-to-end
-throughput. Raw artifacts remain maintainer-held; the public summary records
-exact output-token counts, timing windows, cache observations, and gate
-outcomes.
+Measurement: startup and capacity values came from engine logs. Functional
+checks exercised API health, deterministic arithmetic, tool parsing, data-URL
+vision, and repeated-prefix behavior. Raw artifacts remain maintainer-held.
 
 Result: all ranks rendezvoused and stayed alive. The API, deterministic
 arithmetic, tool parser, data-URL vision, and three hybrid-prefix gates passed.
 The engine reported 74.74 GiB of key-value memory per rank, 8,382,750 logical
 key-value tokens, and 31.98x maximum concurrency at the 262,144-token request
-limit. A bounded N=1 sweep measured 38.4-38.6 aggregate decode tokens/s at C1,
-128.4-129.8 at C4, and 1,288-1,986 prefill tokens/s from 4K through 128K.
+limit.
 
-Conclusion: the four-rank serving object is implemented and
-live-benchmarked. The profile remains a candidate because the observations do
-not establish sustained performance, restart behavior, or complete
-correctness.
-
-The full conditions and machine-readable values are in the
-[live bring-up record](../../performance/records/qwen38-27b/dgx4-live-20260823.md)
-and [quick benchmark data](../../performance/records/qwen38-27b/dgx4-quick-20260823.json).
+Conclusion: the maintainer-built four-rank serving object is implemented. The
+profile remains a candidate because the public builder has not completed a
+live gate and temperature-1 performance has not been measured under the
+repository benchmark contract.
 
 Limitations:
 
-- Each performance coordinate is one bounded observation. The sustained
-  decode matrix covers only warm repeated-prefix C1 and C4 at 4K and 16K
-  contexts; it is not cold end-to-end throughput.
-- The 64K and 128K cells are prefill scouts, not long-context generation
-  results.
-- Native prefix caching was enabled, and no scout has a reliable cached-token
-  delta; the prefill values are not cold or unique-prompt measurements.
+- No temperature-1 prefill or sustained-decode result is published for this
+  profile.
 - Restart, reboot persistence, eager-versus-graph equivalence, and
   long-duration serving have not been tested.
 - The runtime has no published Qwen image. Every rank must use the same
