@@ -38,10 +38,10 @@ runtime bytes verified against their pinned identities. That record reports
 no throughput figure and does not promote the profile. See
 [the rebuilt-image bring-up record](../performance/records/glm-3.5bpw/rebuilt-image-20260821.md).
 
-The new 1,048,576-token, 16-sequence setup started successfully and
-produced prefill measurements from 694 tok/s at 2K to 635 tok/s at 128K.
-Temperature-1 decode is complete at 2K/8K through C8 and at 16K/32K for C1/C2;
-the remaining long-context and higher-concurrency coordinates are pending. See
+The new 1,048,576-token, 16-sequence setup started successfully. At temperature
+1.0 and top-p 0.95, prefill measured 694 tok/s at 2K down to 635 tok/s at 128K.
+Decode is complete through C8 from 2K to 32K, plus 64K/C1. The remaining
+long-context coordinates are pending. See
 the [full benchmark record](../performance/records/glm-3.5bpw/normalized-base-20260822.md).
 Its fresh-namespace launch also exposed a create-once exact-Q40 receipt
 restartability limitation; no receipt was deleted or overwritten.
@@ -57,54 +57,15 @@ speculative decoding using the immutable image pinned by
 The base settings reserve 17,179,869,184 bytes per rank, use a
 4,096-token scheduler budget, and set block size 256 in both topologies.
 
-The new two-Spark base setup was benchmarked through 128K
-prefill and sustained decode at temperatures 0 and 1.0 with `top_p` unset.
-At 16K it measured 444.89 aggregate tok/s at C32 for temperature 0 and 349.00
-tok/s for temperature 1.0. These are one accepted observation each; repeated
-C1/C8 cells show substantial DSpark-acceptance variance. See the
+The new two-Spark base setup was benchmarked through 128K prefill and sustained
+decode at temperature 1.0 and top-p 1.0. At 16K it measured 295.34 aggregate
+tok/s at C32 using the isolated vLLM generation counter. Repeated C1/C8 cells
+show substantial DSpark-acceptance variance. See the
 [full TP2 benchmark record](../performance/records/deepseek-v4-flash/normalized-tp2-base-20260822.md).
 
-Historical operator-observed aggregate decode throughput for 256-token prompts
-and 512-token generations used an 8,192-token scheduler budget, runtime-selected
-block geometry, and a 12 GiB pair reservation. It was 36.7 tokens/s on the pair and 56.5 tokens/s on the
-cycle at one concurrent request, rising to 237.7 and 347.5 tokens/s at 32
-concurrent requests. These are not qualified measurements. The launch record
-does not qualify numerical agreement with a stock collective path or establish
-a four-rank run in which every rank pulled the published image digest. See
-[the profile record](profiles/DEEPSEEK_V4_FLASH_0731.md).
-
-The additional reports cover the two-Spark base recipe, the TP2 SparkCache
-launcher on a separate research checkpoint, and matched four-Spark
-base/SparkCache tests. They do not change the status of the base profiles or
-apply an older SparkCache receipt to new settings:
-
-- [two-Spark base performance](../performance/records/deepseek-v4-flash/base-tp2-performance-20260822.md);
-- [TP2 launcher persistence](../performance/records/deepseek-v4-flash/sparkcache-tp2-launcher-research-validation-20260822.md)
-  and [research performance](../performance/records/deepseek-v4-flash/sparkcache-tp2-research-performance-20260822.md);
-- [four-Spark base performance](../performance/records/deepseek-v4-flash/base-tp4-performance-20260822.md);
-- [TP4 public-artifact reproduction](../performance/records/deepseek-v4-flash/sparkcache-tp4-public-reproduction-20260822.md)
-  and [research performance](../performance/records/deepseek-v4-flash/sparkcache-tp4-performance-20260822.md).
-
-## Baseline versus SparkCache comparison classes
-
-The table below records the 2026-08-22 benchmark settings, not the normalized
-candidate recipes. The repository accepts measured performance data as
-`research-only` even when
-the arms are not a controlled mechanism comparison. A SparkCache-only
-attribution requires equality of the material performance settings defined in
-[`performance/README.md`](../performance/README.md).
-
-| Pair | Material settings held equal | Unequal or unproven material settings | Accepted use |
-|---|---|---|---|
-| DeepSeek TP2/DCP1 | serving image, hardware, topology, TP2/DCP1, key-value dtype, DSpark K5, prompt shapes | Base checkpoint identity was not recorded; model limit 1,048,576 vs 131,072; maximum sequences 32 vs 6; scheduler budget 8,192 vs 4,096; key-value reservation 12 vs 16 GiB per rank; base effective block geometry unrecorded vs 256 explicit. GPU utilization 0.70 vs 0.78 is non-operative because both arms set explicit key-value bytes. | Recipe-level research data. It demonstrates each configuration's observed behavior but cannot attribute a difference only to SparkCache. |
-| DeepSeek TP4/DCP1 | checkpoint digest `bd6b01…`, serving image, hardware, topology, TP4/DCP1, maximum sequences 32, key-value dtype, DSpark K5, prompt shapes | Model limit 1,048,576 vs 524,288; scheduler budget 8,192 vs 4,096; key-value reservation 16 vs 32 GiB per rank; base effective block geometry unrecorded vs 256 explicit. | Recipe-level research data. |
-| GLM TP4/DCP4 | checkpoint, operator image, hardware, topology, TP4/DCP4, model limit 262,144, maximum sequences 8, scheduler budget 4,096, 9.25 GB key-value reservation, block geometry 64, fixed MTP4, exact-Q40/SIRCL contract, prompt shapes | No unrelated performance knob changed. SparkCache wheel, connector, required overlays, mounts, and selected cache state comprise the treatment. | Mechanism-level research comparison for the exact operator artifact. The one ordered sample per shape does not establish a precise regression percentage or statistical confidence. |
-
-The GLM image's maintainer-local availability limits public reproduction and
-generalization; it does not invalidate measurements made with the same exact
-image in both arms. The DeepSeek TP2 persistence cycle validates the launcher
-and cache path on a layout-compatible research checkpoint, but it does not
-replace the qualified checkpoint receipt.
+The public tree retains functional SparkCache launcher and restore validation,
+but does not publish performance tables from other sampling temperatures. The
+normalized SparkCache profiles still require temperature-1 remeasurement.
 
 ## Interpretation
 

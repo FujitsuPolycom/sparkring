@@ -237,7 +237,7 @@ curl -s localhost:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"deepseek-v4-flash-0731",
        "messages":[{"role":"user","content":"What is 17 * 23?"}],
-       "max_tokens":16,"temperature":0}'
+       "max_tokens":16,"temperature":1.0,"top_p":1.0}'
 ```
 
 Check rank logs for a successful rendezvous across every rank and for DSpark
@@ -251,44 +251,27 @@ The TP2/DCP1 setup above was benchmarked on two directly cabled DGX Sparks
 without SparkCache. It remains **candidate** because the checkpoint revision is
 not pinned and the full test set is not complete.
 
-| Context | Prefill tok/s | T=0 C1 | C8 | T=1 C1 | C8 |
-|---:|---:|---:|---:|---:|---:|
-| 2K | 1,822 | 52.07 | 179.96 | 67.62 | 142.53 |
-| 8K | 1,921 | 67.12 | 204.88 | 34.97 | 151.06 |
-| 16K | 2,005 | 52.69 | 223.53 | 75.13 | 134.32 |
-| 32K | 1,999 | 73.57 | 159.73 | 51.59* | 160.54 |
-| 64K | 1,938 | 76.55 | — | 32.59 | — |
-| 128K | 1,808 | 54.02 | — | 59.10 | — |
+The serving profile was measured at temperature 1.0 and top-p 1.0.
 
-`*` The 32K temperature-1 C1 value is an N=5 mean. Other table cells are one
-accepted observation unless the
+| Context | Prefill tok/s | C1 | C2 | C4 | C8 | C16 | C32 |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2K | 1,822 | 67.62 | 82.76 | 107.43 | 142.53 | — | — |
+| 8K | 1,921 | 34.97 | 111.43 | 103.63 | 151.06 | — | — |
+| 16K | 2,005 | 58.36* | 61.12 | 114.37 | 164.93† | 202.71 | 295.34 |
+| 32K | 1,999 | 51.59‡ | 78.18 | 104.70 | 160.54 | — | — |
+| 64K | 1,938 | 32.59 | 90.27 | 97.66 | — | — | — |
+| 128K | 1,808 | 59.10 | 77.59 | — | — | — | — |
+
+Decode values are aggregate generated tok/s. `*` and `‡` are N=5 means;
+`†` is an N=3 mean. The
 [full TP2 benchmark record](../performance/records/deepseek-v4-flash/normalized-tp2-base-20260822.md)
-states a repetition mean. Temperature 0 and 1.0 are separate datasets with
-`top_p` unset. Synthetic sustained text changes DSpark acceptance with sampling,
-so a single temperature delta is not a transport or thermal verdict.
+lists variability, exclusions, and the machine-readable summary. Synthetic
+sustained text changes DSpark acceptance, so single observations should not be
+read as transport or thermal verdicts.
 
-At 16K, the same setup measured 308.54 tok/s at C16 and 444.89
-tok/s at C32 for temperature 0, and 202.71/C16 and 349.00/C32 for temperature
-1.0. The machine-readable record includes every accepted coordinate, prefill
-through 128K, temperature-0.3 probes, Coding Peak N=5 summaries, and exclusions.
-
-The older benchmark below used 256-token prompts,
-512-token generations, an 8192-token scheduler budget, runtime-selected block
-geometry, and a 12 GiB reservation on the pair. It does not describe the setup
-in this quickstart:
-
-| Concurrent requests | Two-Spark pair | Four-Spark cycle |
-|---:|---:|---:|
-| 1 | 36.7 tok/s | 56.5 tok/s |
-| 8 | 123.8 tok/s | 177.5 tok/s |
-| 16 | 173.4 tok/s | 256.1 tok/s |
-| 32 | 237.7 tok/s | 347.5 tok/s |
-
-Doubling the node count buys about 1.45x across the whole ladder rather than
-2x. Decode is latency-bound on collectives, not bandwidth-bound: the model
-issues two all-reduces per layer across 43 layers, about 688 KB per token in
-total, which is a fraction of a percent of a 200 Gb/s link, but each token
-waits on roughly 86 synchronous round-trips that cannot overlap, because
+The profile remains collective-latency-sensitive: the model issues two
+all-reduces per layer across 43 layers, and each token waits on synchronous
+round-trips that cannot fully overlap, because
 decode is autoregressive: the input to step `N+1` includes the token produced
 at step `N`.
 

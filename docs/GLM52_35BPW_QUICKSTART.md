@@ -204,20 +204,22 @@ Require HTTP 200 from `/health`, model name `glm-5.2-exl3-r7-3.5bpw`, and a
 The 1,048,576-token, 16-sequence setup started successfully and was benchmarked
 on four directly cabled DGX Sparks with SparkCache disabled.
 
-| Context | Prefill tok/s | T=0 C1 | C2 | C4 | C8 | T=1 C1 | C2 | C4 | C8 |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 2K | 694 | 23.13 | 35.34 | 50.95 | 71.82 | 22.001 | 28.283 | 46.981 | 67.622 |
-| 8K | 675 | 22.87 | 34.17 | 51.26 | 74.50 | 19.153 | 30.207 | 47.697 | 65.534 |
-| 16K | 671 | 21.60 | 33.45 | 49.14 | pending | 20.151 | 32.384 | pending | pending |
-| 32K | 661 | 22.40 | 34.62 | 48.98 | pending | 21.611 | 30.524 | pending | pending |
-| 64K | 649 | — | — | — | — | pending | pending | pending | pending |
-| 128K | 635 | — | — | — | — | pending | pending | pending | pending |
+The serving profile was measured at temperature 1.0. The checkpoint generation
+configuration supplied top-p 0.95.
 
-Decode values are aggregate generated tok/s. Temperature 0 and 1.0 are
-separate datasets with `top_p` unset. The
+| Context | Prefill tok/s | C1 | C2 | C4 | C8 |
+|---:|---:|---:|---:|---:|---:|
+| 2K | 694 | 22.00 | 28.28 | 46.98 | 67.62 |
+| 8K | 675 | 19.15 | 30.21 | 47.70 | 65.53 |
+| 16K | 671 | 20.15 | 32.38 | 45.38 | 62.71 |
+| 32K | 661 | 21.61 | 30.52 | 46.08 | 62.88 |
+| 64K | 649 | 20.17 | — | — | — |
+| 128K | 635 | — | — | — | — |
+
+Decode values are aggregate generated tok/s. The
 [full GLM benchmark record](../performance/records/glm-3.5bpw/normalized-base-20260822.md)
-contains the temperature-0.9 probe, temperature-1 Coding Peak N=5 summary,
-machine-readable data, accounting gates, exclusions, and pending coordinates.
+contains the Coding Peak N=5 summary, machine-readable data, accounting gates,
+exclusions, and pending coordinates.
 
 This launch used fresh rank-specific JIT and create-once receipt
 namespaces. A same-namespace restart currently fails before model startup when

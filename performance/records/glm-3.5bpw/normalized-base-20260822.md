@@ -3,13 +3,14 @@
 | Field | Value |
 |---|---|
 | Lane | public-functional |
-| Status | **live-validated candidate** — tested on hardware, still being tested, not qualified |
+| Status | **live-validated candidate** — tested on hardware, not qualified |
 | Hardware | four directly cabled NVIDIA DGX Sparks in a cycle, TP4/DCP4 |
+| Sampling | temperature 1.0, top-p 0.95 from the checkpoint generation configuration |
 
-These results apply only to fixed MTP4, dynamic NVFP4 MLA plus FP8 RoPE,
-1,048,576-token request limit, 16 sequences, 4,096 batched tokens, 9.25 GB KV
-per rank, block size 64, native prefix caching, target-only exact Q40, and no
-SparkCache.
+These results apply only to fixed MTP4 with greedy draft proposals, dynamic
+NVFP4 MLA plus FP8 RoPE, a 1,048,576-token request limit, 16 sequences, 4,096
+batched tokens, 9.25 GB KV per rank, block size 64, native prefix caching,
+target-only exact Q40, and no SparkCache.
 
 ## Prefill
 
@@ -24,45 +25,38 @@ SparkCache.
 
 ## Sustained decode
 
-Temperature datasets changed only temperature and left `top_p` unset.
-Aggregate values are generated tokens per second.
+Aggregate generated tokens per second:
 
-| Context | T=0 C1 | C2 | C4 | C8 | T=1 C1 | C2 | C4 | C8 |
-|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 2K | 23.13 | 35.34 | 50.95 | 71.82 | 22.001 | 28.283 | 46.981 | 67.622 |
-| 8K | 22.87 | 34.17 | 51.26 | 74.50 | 19.153 | 30.207 | 47.697 | 65.534 |
-| 16K | 21.60 | 33.45 | 49.14 | pending | 20.151 | 32.384 | pending | pending |
-| 32K | 22.40 | 34.62 | 48.98 | pending | 21.611 | 30.524 | pending | pending |
+| Context | C1 | C2 | C4 | C8 |
+|---:|---:|---:|---:|---:|
+| 2K | 22.00 | 28.28 | 46.98 | 67.62 |
+| 8K | 19.15 | 30.21 | 47.70 | 65.53 |
+| 16K | 20.15 | 32.38 | 45.38 | 62.71 |
+| 32K | 21.61 | 30.52 | 46.08 | 62.88 |
+| 64K | 20.17 | — | — | — |
+| 128K | — | — | — | — |
 
-The temperature-1 rows had 99.7–100% client coverage, exact client/server
-agreement, requested concurrency, zero queue/errors, and clean all-rank logs.
-The temperature-0 rows passed token checks but their hardware summaries predate
-the exact measurement-boundary fix.
+Every displayed decode cell had complete client accounting, exact
+client/server agreement, requested concurrency, zero queue/errors, and clean
+all-rank logs. Displayed cells are one accepted observation each.
 
-## Temperature probe and coding workload
+## Coding workload
 
-| Temperature-0.9 C1 probe | 2K | 8K |
-|---|---:|---:|
-| Aggregate tok/s | 19.999 | 22.056 |
-
-GLM Coding Peak at temperature 1.0 completed five normal requests: mean 25.391,
-median 25.565, range 22.699–26.919 tok/s. All five stopped normally.
+Coding Peak at temperature 1.0 completed five normal requests: mean
+25.39 tok/s, median 25.57, range 22.70–26.92 tok/s.
 
 ## Limits and restart behavior
 
-The normalized stack reached ready state from a fresh rank-specific JIT and
-create-once receipt namespace. Restarting the preserved containers in the same
-namespace fails before model startup because the exact-Q40 producer refuses to
-overwrite an existing receipt. This is a restart problem, not a model crash.
-Keep existing receipts and use a fresh namespace until the launcher can safely
-reuse a matching receipt.
+The stack reached ready state from fresh rank-specific JIT and create-once
+receipt namespaces. Restarting a preserved container in the same namespace
+fails before model startup because the exact-Q40 producer refuses to overwrite
+its existing receipt. Preserve the receipt and use a fresh namespace until the
+launcher can safely revalidate and reuse an exact match.
 
-- Temperature-1 C4/C8 at 16K/32K, longer-context temperature-1 cells, and
-  temperature-0 C8 at 16K/32K are pending.
-- Rows named `DISCARD`, `ABORTED`, or JIT-affected are excluded.
+- 64K C2/C4/C8 and all 128K decode cells remain unmeasured.
+- Rows named `DISCARD`, `ABORTED`, JIT-affected, or with request errors are excluded.
 - Saved last-scrape acceptance is not used as a run average.
-- Pre-boundary-fix hardware summaries are invalid for exact thermal attribution.
-- Available memory was approximately 1.3–3.5 GB per rank during this campaign;
-  the campaign stopped at 128K and makes no 256K-or-longer performance claim.
-- [The machine-readable summary](normalized-base-20260822.json) records table
-  values, pending coordinates, and exclusions.
+- Pre-boundary-fix hardware summaries are not used for exact thermal claims.
+- Available memory was approximately 1.3–3.5 GB per rank during this campaign.
+- [The machine-readable summary](normalized-base-20260822.json) records the
+  displayed values and pending coordinates.

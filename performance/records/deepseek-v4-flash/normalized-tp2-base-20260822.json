@@ -3,9 +3,22 @@
   "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
   "lane": "public-functional",
   "maturity": "live-validated-candidate",
-  "hardware": {"platform": "NVIDIA DGX Spark", "ranks": 2, "topology": "direct-pair", "parallelism": "TP2/DCP1"},
-  "serving": {"max_model_len": 1048576, "max_num_seqs": 32, "max_num_batched_tokens": 4096, "kv_cache_bytes_per_rank": 17179869184, "kv_cache_dtype": "fp8_ds_mla", "block_size": 256, "sparkcache": false},
-  "request_policy": {"top_p": "unset", "temperatures_are_separate_datasets": true},
+  "hardware": {
+    "platform": "NVIDIA DGX Spark",
+    "ranks": 2,
+    "topology": "direct-pair",
+    "parallelism": "TP2/DCP1"
+  },
+  "serving": {
+    "max_model_len": 1048576,
+    "max_num_seqs": 32,
+    "max_num_batched_tokens": 4096,
+    "kv_cache_bytes_per_rank": 17179869184,
+    "kv_cache_dtype": "fp8_ds_mla",
+    "block_size": 256,
+    "sparkcache": false
+  },
+  "request_policy": {"temperature": 1.0, "top_p": 1.0},
   "prefill": [
     {"context": 2048, "prompt_tokens": 2050, "ttft_s": 1.13, "prompt_tok_s": 1822},
     {"context": 8192, "prompt_tokens": 8194, "ttft_s": 4.27, "prompt_tok_s": 1921},
@@ -15,18 +28,23 @@
     {"context": 131072, "prompt_tokens": 131074, "ttft_s": 72.52, "prompt_tok_s": 1808}
   ],
   "decode_aggregate_tok_s": {
-    "temperature_0": {"2048": {"1": 52.07, "2": 109.22, "4": 152.54, "8": 179.96}, "8192": {"1": 67.12, "2": 107.87, "4": 133.52, "8": 204.88}, "16384": {"1": 52.69, "2": 128.28, "4": 152.31, "8": 223.53, "16": 308.54, "32": 444.89}, "32768": {"1": 73.57, "2": 115.12, "4": 146.70, "8": 159.73}, "65536": {"1": 76.55, "2": 121.83, "4": 142.97}, "131072": {"1": 54.02, "2": 85.34}},
-    "temperature_1": {"2048": {"1": 67.62, "2": 82.76, "4": 107.43, "8": 142.53}, "8192": {"1": 34.97, "2": 111.43, "4": 103.63, "8": 151.06}, "16384": {"1": 75.13, "2": 61.12, "4": 114.37, "8": 134.32, "16": 202.71, "32": 349.00}, "32768": {"1": {"mean": 51.59, "n": 5}, "2": 78.18, "4": 104.70, "8": 160.54}, "65536": {"1": 32.59, "2": 90.27, "4": 97.66}, "131072": {"1": 59.10, "2": 77.59}}
+    "2048": {"1": 67.62, "2": 82.76, "4": 107.43, "8": 142.53},
+    "8192": {"1": 34.97, "2": 111.43, "4": 103.63, "8": 151.06},
+    "16384": {"1": {"mean": 58.36, "n": 5}, "2": 61.12, "4": 114.37, "8": {"mean": 164.93, "n": 3}, "16": 202.71, "32": 295.34},
+    "32768": {"1": {"mean": 51.59, "n": 5}, "2": 78.18, "4": 104.70, "8": 160.54},
+    "65536": {"1": 32.59, "2": 90.27, "4": 97.66},
+    "131072": {"1": 59.10, "2": 77.59}
   },
   "repetitions": [
-    {"temperature": 0, "context": 16384, "concurrency": 1, "n": 5, "mean_tok_s": 62.97, "median_tok_s": 61.42, "cv_pct": 15.26},
-    {"temperature": 0, "context": 16384, "concurrency": 8, "n": 3, "mean_tok_s": 228.24, "median_tok_s": 223.53, "cv_pct": 7.80},
-    {"temperature": 1.0, "context": 16384, "concurrency": 1, "n": 5, "mean_tok_s": 58.36, "median_tok_s": 58.47, "cv_pct": 29.58},
-    {"temperature": 1.0, "context": 16384, "concurrency": 8, "n": 3, "mean_tok_s": 164.93, "median_tok_s": 170.00, "cv_pct": 17.23},
-    {"temperature": 1.0, "context": 32768, "concurrency": 1, "n": 5, "mean_tok_s": 51.59, "median_tok_s": 54.25, "cv_pct": 29.14}
+    {"context": 16384, "concurrency": 1, "n": 5, "mean_tok_s": 58.36, "median_tok_s": 58.47, "cv_pct": 29.58},
+    {"context": 16384, "concurrency": 8, "n": 3, "mean_tok_s": 164.93, "median_tok_s": 170.00, "cv_pct": 17.23},
+    {"context": 32768, "concurrency": 1, "n": 5, "mean_tok_s": 51.59, "median_tok_s": 54.25, "cv_pct": 29.14}
   ],
-  "probes": [{"temperature": 0.3, "top_p": "unset", "context": 16384, "aggregate_tok_s": {"1": 51.10, "8": 176.71, "32": 406.76}}],
-  "coding_peak": [{"temperature": 0, "n": 5, "mean_tok_s": 60.90, "median_tok_s": 60.33, "min_tok_s": 60.17, "max_tok_s": 62.30}, {"temperature": 0.3, "n": 5, "mean_tok_s": 61.03, "median_tok_s": 60.82, "min_tok_s": 60.29, "max_tok_s": 62.57}, {"temperature": 1.0, "n": 5, "mean_tok_s": 59.31, "median_tok_s": 60.13, "min_tok_s": 56.31, "max_tok_s": 61.35}],
-  "exclusions": ["DISCARD", "ABORTED", "JIT-affected", "accounting-invalid"],
-  "limitations": ["checkpoint revision unpinned", "pre-boundary-fix hardware summaries are invalid for exact thermal interpretation", "last-scrape speculative acceptance is not a run average"]
+  "coding_peak": {"n": 5, "mean_tok_s": 59.31, "median_tok_s": 60.13, "min_tok_s": 56.31, "max_tok_s": 61.35},
+  "exclusions": ["DISCARD", "ABORTED", "JIT-affected", "accounting-invalid", "request-error"],
+  "limitations": [
+    "checkpoint revision unpinned",
+    "pre-boundary-fix hardware summaries are invalid for exact thermal interpretation",
+    "last-scrape speculative acceptance is not a run average"
+  ]
 }
