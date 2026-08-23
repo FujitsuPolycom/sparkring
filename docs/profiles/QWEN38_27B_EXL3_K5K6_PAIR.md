@@ -2,8 +2,8 @@
 
 ## Tested setup
 
-The profile ran on two directly cabled DGX Sparks and produced the
-temperature-one results linked below.
+The profile ran on two directly cabled DGX Sparks and produced the results
+linked below.
 
 Use the
 [two-Spark quickstart](../QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) to build and
@@ -23,7 +23,7 @@ launch one rank per Spark.
 | Key-value cache | explicit FP8, 0.70 unified-memory utilization |
 | Prefix caching | native cache with mamba alignment |
 | Speculation | Qwen MTP depth 3, probabilistic drafts, standard rejection sampling |
-| Temperature-one benchmark sampling | request sets temperature 1.0; pinned model config supplies effective top-p 0.95/top-k 20 |
+| Benchmark sampling | temperature 1.0; pinned model config supplies effective top-p 0.95/top-k 20 |
 | Decode | full-decode CUDA graphs |
 | External key-value cache | disabled |
 | SIRCL | unsupported for width 5,120 |
@@ -47,13 +47,13 @@ LMCache, SparkCache and SIRCL were disabled.
 
 Measurement: engine logs supplied startup, model memory, graph and KV-capacity
 values. Bounded requests checked health, arithmetic, tools, vision, repeated
-prefixes and distinct shared-prefix suffixes. A separate temperature-1 request
-measured speculative-counter deltas.
+prefixes and distinct shared-prefix suffixes. A probabilistic request measured
+speculative-counter deltas.
 
 Result: both ranks rendezvoused and served. `/v1/models` advertised 1,000,000
 tokens. The engine reported 11.22 GiB of model memory per rank, 67.96 GiB of
 available KV memory per rank, 4,093,750 logical KV tokens, and 4.09x maximum
-concurrency at the advertised limit. The temperature-1 probe accepted 85 of
+concurrency at the advertised limit. The probabilistic probe accepted 85 of
 126 draft tokens over 42 speculative steps: 67.5% draft acceptance and 3.02
 mean acceptance length. Arithmetic returned `391`, the tool parser emitted
 `multiply(a=6,b=7)`, vision returned `VISION_OK`, and shared suffixes returned
@@ -63,7 +63,7 @@ Conclusion: the 1,000,000-token startup checks passed.
 
 ## Benchmark results
 
-See the [temperature-one table, screenshot, and machine-readable data](../../performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md).
+See the [benchmark table, screenshot, and machine-readable data](../../performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md).
 
 ## Limitations
 

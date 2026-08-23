@@ -120,7 +120,7 @@ def test_recipe_records_the_tp4_live_evidence_separately_from_the_pair() -> None
     assert evidence["status"] == "implemented"
     assert "four directly cabled nvidia dgx sparks" in evidence["conditions"].lower()
     assert "8743342-token logical KV pool" in evidence["measurement"]
-    assert "temperature-1" in evidence["conclusion"]
+    assert "through 128K context" in evidence["conclusion"]
     assert evidence["limitations"]
 
 

@@ -61,6 +61,6 @@ The four-Spark profile served through 128K prefill and every decode cell that fi
 
 ## Limitations
 
-Combined 31 machine-readable temperature-1 receipts. JIT/server-log-rejected invocations are excluded. Request-error, timed-out, underfilled, capacity-limited, invalid, and non-positive rows are excluded; valid rows from otherwise mixed receipts are retained.
+Combined 31 machine-readable receipts. JIT/server-log-rejected invocations are excluded. Request-error, timed-out, underfilled, capacity-limited, invalid, and non-positive rows are excluded; valid rows from otherwise mixed receipts are retained.
 
 TP2 used the DSpark package at `913f0657…`. Its configuration and tensor index match TP4, but its weight payloads differ. TP2/TP4 comparisons therefore include both topology and package differences.

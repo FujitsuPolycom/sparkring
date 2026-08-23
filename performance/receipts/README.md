@@ -1,14 +1,14 @@
 # Sanitized benchmark receipts
 
-These JSON files are sanitized copies of the accepted temperature-1
-`llm_decode_bench.py` receipts used by the normalized DeepSeek, GLM, and Qwen result
+These JSON files are sanitized copies of the accepted `llm_decode_bench.py`
+receipts used by the DeepSeek, GLM, and Qwen result
 tables. They preserve the workload arguments, timing policy, token accounting,
 per-cell observations, summary table, and methodology.
 
 | Directory | Contents |
 |---|---|
 | [`deepseek-v4-flash/temp1/`](deepseek-v4-flash/temp1/) | 28 two-Spark TP2/DCP1 sustained-decode and Coding Peak receipts |
-| [`deepseek-v4-flash/temp1/20260823-tp2/`](deepseek-v4-flash/temp1/20260823-tp2/) | 31 additional TP2 receipts contributing to the N=5/N=3 pair matrix, including temperature-1 prefill |
+| [`deepseek-v4-flash/temp1/20260823-tp2/`](deepseek-v4-flash/temp1/20260823-tp2/) | 31 additional TP2 receipts contributing to the N=5/N=3 pair matrix, including prefill |
 | [`deepseek-v4-flash/temp1/20260823-tp4/`](deepseek-v4-flash/temp1/20260823-tp4/) | 31 TP4 receipts contributing to the N=5/N=3 cycle matrix, including prefill and Coding Peak |
 | [`glm-3.5bpw/temp1/`](glm-3.5bpw/temp1/) | 10 four-Spark TP4/DCP4 sustained-decode and Coding Peak receipts |
 | [`qwen38-27b/temp1/`](qwen38-27b/temp1/) | 13 two-Spark and 16 four-Spark accepted prefill, decode, and Coding Peak receipts |
@@ -46,5 +46,4 @@ alignment, capacity, and aggregate-validity checks.
 ## Prefill boundary
 
 The result tables retain prefill TTFT because it ends at the first token and
-does not measure sustained sampled decode. DeepSeek and Qwen TP2/TP4 use
-temperature-1 prefill. Temperature-zero prefill is excluded.
+does not measure sustained sampled decode.

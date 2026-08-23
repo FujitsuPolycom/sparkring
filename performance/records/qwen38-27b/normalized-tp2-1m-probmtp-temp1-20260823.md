@@ -1,4 +1,4 @@
-# Qwen3.8-27B EXL3 K5/K6 — two-Spark temperature-one results
+# Qwen3.8-27B EXL3 K5/K6 — two-Spark results
 
 ![Green-text benchmark result](normalized-tp2-1m-probmtp-temp1-20260823.png)
 

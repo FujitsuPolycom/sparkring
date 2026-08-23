@@ -2,8 +2,8 @@
 
 ## Tested setup
 
-The profile ran on four directly cabled DGX Sparks and produced the
-temperature-one results linked below.
+The profile ran on four directly cabled DGX Sparks and produced the results
+linked below.
 
 Use the
 [Qwen3.8-27B four-Spark quickstart](../QWEN38_27B_EXL3_K5K6_QUICKSTART.md)
@@ -28,7 +28,7 @@ Spark.
 | EXL3 prefill | FP8, reconstruction tile 256 |
 | Prefix caching | enabled with mamba alignment |
 | Speculation | Qwen MTP depth 3, probabilistic drafts, standard rejection sampling |
-| Temperature-one benchmark sampling | request sets temperature 1.0; pinned model config supplies effective top-p 0.95/top-k 20 |
+| Benchmark sampling | temperature 1.0; pinned model config supplies effective top-p 0.95/top-k 20 |
 | Decode execution | full-decode CUDA graphs |
 | External key-value cache | disabled |
 | SIRCL | unsupported for the width-5,120 path |
@@ -77,7 +77,7 @@ Conclusion: the 262,144-token startup checks passed.
 
 ## Benchmark results
 
-See the [temperature-one table, screenshot, and machine-readable data](../../performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md).
+See the [benchmark table, screenshot, and machine-readable data](../../performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md).
 
 Limitations:
 

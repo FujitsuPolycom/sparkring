@@ -241,8 +241,8 @@ bought.
 
 ## Measured
 
-Both cache-disabled base setups were measured at temperature 1.0 and effective
-top-p 1.0. C1/C2 use at least five accepted observations per context; every
+Both cache-disabled base setups were measured with the sampling settings in
+their benchmark records. C1/C2 use at least five accepted observations per context; every
 other applicable decode cell uses at least three. Decode values below are mean
 aggregate generated tok/s.
 

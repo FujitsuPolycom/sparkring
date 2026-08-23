@@ -38,7 +38,7 @@ Every rank within one deployment must use the same package and revision.
 
 The implemented pair and cycle launches exercised API health, chat
 completions, tool calling, and DSpark speculative decoding. Both topologies
-completed temperature-1 prefill and sustained-decode matrices through 128K,
+completed prefill and sustained-decode matrices through 128K,
 with C1/C2 measured at least five times and every other applicable cell at
 least three times. The [TP2 record](../../performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md)
 and [TP4 record](../../performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md)
@@ -50,7 +50,7 @@ The native transport's width-4096 graph mode is research-only and is not part
 of this profile's qualification. One hash-bound candidate using the pinned
 serving image completed target and DSpark CUDA-graph capture and API smoke,
 with native replay advancing equally on every rank and zero overflow. The
-temperature-1 comparison is retained in
+matched comparison is retained in
 [`sircl-width4096-nccl-ab-20260822.md`](../../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
 The normal launch continues to use the NCCL configuration in
 `scripts/config/deepseek-v4-flash-0731.env.example`.

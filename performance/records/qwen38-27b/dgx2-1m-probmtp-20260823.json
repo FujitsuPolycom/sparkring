@@ -75,7 +75,7 @@
   },
   "measurement": {
     "startup_source": "vLLM rank logs from one successful launch",
-    "functional_protocol": "bounded OpenAI-compatible API requests; exact-marker requests used temperature 0 with thinking disabled",
+    "functional_protocol": "bounded OpenAI-compatible API requests; exact-marker requests used deterministic sampling with thinking disabled",
     "probabilistic_mtp_protocol": "one 128-token request explicitly set temperature 1.0, top_p 0.95 and top_k 20; speculative values are after-minus-before Prometheus counter deltas",
     "counter_formulas": {
       "draft_acceptance_percent": "accepted draft tokens / proposed draft tokens",
@@ -88,7 +88,7 @@
   "conclusion": "The maintainer-built TP2 serving object is implemented as a research profile. No throughput, 1M-input correctness or public-image live result is established.",
   "limitations": [
     "No one-million-token request was sent.",
-    "No temperature-1 performance benchmark is published.",
+    "This startup record does not include a performance benchmark.",
     "Static YaRN can alter short-context distributions.",
     "The public image builder has not reproduced this launch.",
     "Restart and long-duration reliability are untested."

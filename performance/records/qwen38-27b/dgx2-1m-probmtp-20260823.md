@@ -27,7 +27,7 @@ included.
 
 Startup, model-memory, graph and KV-capacity values came from the two vLLM
 rank logs from one successful launch. Functional checks used bounded
-OpenAI-compatible API requests. Exact-marker requests set temperature 0 and
+OpenAI-compatible API requests. Exact-marker requests used deterministic sampling and
 disabled thinking so the finite output budget tested the marker rather than
 reasoning length.
 
@@ -54,7 +54,7 @@ and shared-prefix suffix divergence (`13`, `17`). Exact-marker requests
 disabled thinking so a bounded output budget could test the marker rather
 than reasoning length.
 
-A fresh temperature-1 request produced 128 completion tokens over 42
+A probabilistic request produced 128 completion tokens over 42
 speculative steps. The server proposed 126 draft tokens and accepted 85:
 67.5% draft acceptance and 3.02 mean acceptance length. Accepted tokens by
 draft position were 37, 28 and 20.

@@ -5,8 +5,8 @@ This quickstart builds and serves
 directly cabled DGX Spark cycle. It starts from public, immutable source inputs.
 No maintainer-held archive or published Qwen image is required.
 
-This setup was tested on four directly cabled DGX Sparks at TP4/DCP1. The
-temperature-one results are included below.
+This setup was tested on four directly cabled DGX Sparks at TP4/DCP1. Results
+are included below.
 
 The results use the runtime identified in the benchmark record. Building from
 this quickstart creates a new image with the same serving settings.
@@ -43,9 +43,8 @@ checkpoint's native range. The two-Spark and four-Spark normalized profiles
 use the same 1,048,576-token static-YaRN object so their measurements share one
 model-length policy.
 
-The temperature-one benchmark does not send top-p or top-k. vLLM applies the
-pinned checkpoint's `generation_config.json`, so the effective values are
-top-p 0.95 and top-k 20. The file's SHA-256 is
+The benchmark leaves top-p and top-k unset, so vLLM applies the pinned
+checkpoint's `generation_config.json`. The file's SHA-256 is
 `e70c136c1b78ddc1fb0905bac8e733a4dc448d4f852a5dd75143fffc70be550e`.
 
 ## 1. Prepare the four hosts

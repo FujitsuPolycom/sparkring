@@ -108,9 +108,9 @@
   "evidence": {
     "status": "implemented",
     "conditions": "Two directly cabled NVIDIA DGX Sparks used runtime image sha256:50036224411e5ef04d651730c56d794111991b37981ec76ca81b66ea7d35dae7 and the pinned checkpoint at TP2/DCP1 with a 1048576-token static-YaRN request limit, 32 sequences, an 8192-token scheduler budget, chunked prefill, asynchronous scheduling, full-input-length reservation, aligned 1600-token attention/mamba pages, FP8 key-value cache, native prefix caching, full-decode CUDA graphs, and probabilistic Qwen MTP depth 3. LMCache, SparkCache, and SIRCL were disabled.",
-    "measurement": "Engine logs supplied startup and the 4130233-token logical KV pool. llm-decode-bench 0.4.31 measured temperature-1 prefill, sustained decode with 100% unique per-stream context, and 15 Coding Peak requests through 128K.",
+    "measurement": "Engine logs supplied startup and the 4130233-token logical KV pool. llm-decode-bench 0.4.31 measured prefill, sustained decode with 100% unique per-stream context, and 15 Coding Peak requests through 128K.",
     "result": "Both ranks served the pinned model at the 1048576-token limit. Prefill reached 1274-1401 tok/s through 32K and 785 tok/s at 128K. Aggregate C8 decode reached 90-154 tok/s. Coding Peak averaged 39.95 tok/s.",
-    "conclusion": "The TP2 profile served successfully and produced temperature-1 prefill, sustained-decode, and Coding Peak results through 128K context.",
+    "conclusion": "The TP2 profile served successfully and produced prefill, sustained-decode, and Coding Peak results through 128K context.",
     "benchmark_result": "Prefill reached 1274-1401 tok/s through 32K and 785 tok/s at 128K. Aggregate decode reached 90-154 tok/s at C8. Coding Peak averaged 39.95 tok/s over 15 requests.",
     "limitations": [
       "Static YaRN can change short-context output distributions relative to the native 262144-token profile.",

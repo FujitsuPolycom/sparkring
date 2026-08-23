@@ -7,13 +7,17 @@ SparkRing is a low-latency collective transport and vLLM-based
 inference-serving stack for switchless clusters of NVIDIA DGX Spark systems
 powered by the GB10 Grace Blackwell Superchip.
 
-SparkRing supports GB10 pairs and four-node rings. Six-node profiles are in
-development.
+SparkRing supports GB10 pairs and four-node rings.
 
 Models run as tensor-parallel deployments over the direct fabric without an
-external Ethernet or InfiniBand switch. [SIRCL](https://github.com/FujitsuPolycom/sparkring/blob/main/docs/SIRCL.md) provides custom RDMA collectives
-for qualified paths, CUDA-graph command rings support repeated decode
-work, and [patched NCCL](https://github.com/FujitsuPolycom/sparkring/blob/main/spark_transport/nccl/README.md) handles communication outside SIRCL's supported paths.
+external Ethernet or InfiniBand switch.
+
+The [Switchless Inference RDMA Collective Layer (SIRCL)](docs/SIRCL.md)
+provides custom RDMA collectives and CUDA-graph command rings for qualified
+paths.
+
+[Patched NCCL](spark_transport/nccl/README.md) handles communication outside
+SIRCL's supported paths.
 
 The repository provides launch tooling, model profiles, and measured results.
 Model-specific policy belongs to profiles rather than the transport.
@@ -21,109 +25,46 @@ Model-specific policy belongs to profiles rather than the transport.
 ## Start here
 
 - [Supported models and profiles](#profiles)
-- [Benchmark results](docs/RESULTS.md)
-- [Install and run](docs/PREREQUISITES.md) — then choose a profile quickstart below
+- [Benchmark results and throughput tables](docs/RESULTS.md)
+- [Deployment prerequisites](docs/PREREQUISITES.md) — then choose a profile quickstart below
 
 ## Cluster sizes
 
-- **2× DGX Spark — direct pair.** Models: DeepSeek-V4-Flash-0731 and
-  Qwen3.8-27B EXL3 K5/K6. DeepSeek is compatible with SparkCache
+- **2× DGX Spark — direct pair.** Models: DeepSeek-V4-Flash DSpark and
+  Qwen3.8-27B EXL3 K5/K6. DeepSeek is compatible with SparkCache.
+
 - **4× DGX Spark — physical ring.** Models: GLM-5.2 EXL3 3.5-bpw,
   DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6. GLM and DeepSeek are
-  compatible with SparkCache; Qwen SparkCache support is Pending.
-- **6× DGX Spark — physical ring.** **In dev. Target models: GLM | KIMI.**
+  compatible with SparkCache; Qwen with SparkCache is unsupported.
 
 ## Profiles
 
-| Profile | Model identity | Topology | Status | Start here |
-|---|---|---|---|---|
-| GLM-5.2 EXL3 3.5-bpw | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | four-Spark cycle, TP4/DCP4 | implemented at 1M/16; qualified at 262K/eight sequences | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
-| DeepSeek-V4-Flash | `deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7` | two-Spark pair, TP2/DCP1 | implemented; live-benchmarked; SIRCL unsupported | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` | four-Spark cycle, TP4/DCP1 | implemented; live-benchmarked; SIRCL width 4096 research-only | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| Qwen3.8-27B EXL3 K5/K6 | `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf` | two-Spark pair, TP2/DCP1 | implemented; temperature-1 results through C8 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
-| Qwen3.8-27B EXL3 K5/K6 | `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf` | four-Spark cycle, TP4/DCP1 | implemented; temperature-1 results through C8; SIRCL unsupported | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
-| GLM-5.2 EXL3 3.5-bpw + SparkCache | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | four-Spark cycle, TP4/DCP4 | implemented at 1M/16; cache restore qualified at 262K/eight sequences | [SparkCache compositions](recipes/sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 + SparkCache | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` | two-Spark pair, TP2/DCP1 | implemented at 1M/32; cache restore qualified at 131K/six sequences | [SparkCache compositions](recipes/sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 + SparkCache | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` | four-Spark cycle, TP4/DCP1 | implemented at 1M/32; cache restore qualified at 524K | [SparkCache compositions](recipes/sparkcache/README.md) |
+TP is tensor parallelism; DCP is decode-context parallelism. Capacity values
+state maximum context tokens and maximum concurrent sequences.
 
-**Pending:** Qwen3.8-27B with SparkCache has no published composition recipe or
-live cache evidence. It is not part of the eight base/composition profiles in
-the table.
+| Profile | Topology | Status | Start here |
+|---|---|---|---|
+| GLM-5.2 EXL3 3.5-bpw | four-Spark cycle, TP4/DCP4 | qualified at 262,144 tokens/eight sequences; 1,048,576 tokens/16 sequences not qualified | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
+| DeepSeek-V4-Flash DSpark | two-Spark pair, TP2/DCP1 | implemented and benchmarked; SIRCL unsupported | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| DeepSeek-V4-Flash-0731 | four-Spark cycle, TP4/DCP1 | implemented and benchmarked; SIRCL width 4096 research-only | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| Qwen3.8-27B EXL3 K5/K6 | two-Spark pair, TP2/DCP1 | implemented and benchmarked through eight concurrent requests | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
+| Qwen3.8-27B EXL3 K5/K6 | four-Spark cycle, TP4/DCP1 | implemented and benchmarked through eight concurrent requests; SIRCL unsupported | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
+| GLM-5.2 EXL3 3.5-bpw + SparkCache | four-Spark cycle, TP4/DCP4 | restore qualified at 262,144 tokens/eight sequences; 1,048,576 tokens/16 sequences not qualified | [SparkCache compositions](recipes/sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 + SparkCache | two-Spark pair, TP2/DCP1 | restore qualified at 131,072 tokens/six sequences; 1,048,576 tokens/32 sequences not qualified | [SparkCache compositions](recipes/sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 + SparkCache | four-Spark cycle, TP4/DCP1 | restore qualified at 524,288 tokens/32 sequences; 1,048,576 tokens/32 sequences not qualified | [SparkCache compositions](recipes/sparkcache/README.md) |
 
-The GLM base profile is defined by
-[`recipes/glm52-exl3-r7-3.5bpw.json`](recipes/glm52-exl3-r7-3.5bpw.json). The
-two-Spark and four-Spark DeepSeek base profiles are defined by
-[`recipes/deepseek-v4-flash-0731-pair.json`](recipes/deepseek-v4-flash-0731-pair.json)
-and
-[`recipes/deepseek-v4-flash-0731.json`](recipes/deepseek-v4-flash-0731.json).
-The DeepSeek profiles use the immutable published image pinned in
-[`runtime/faststart-lock.json`](runtime/faststart-lock.json) and the tracked
-per-rank environment templates in [`scripts/config/`](scripts/config/).
-The Qwen pair and cycle profiles are
-[`recipes/qwen38-27b-exl3-k5k6-pair.json`](recipes/qwen38-27b-exl3-k5k6-pair.json)
-and
-[`recipes/qwen38-27b-exl3-k5k6.json`](recipes/qwen38-27b-exl3-k5k6.json).
-They use the clean-checkout local image builder in
-[`runtime/qwen38/`](runtime/qwen38/README.md), the public source pins from the
-companion Qwen recipe, and the tracked pair/cycle environments in
-`scripts/config/`.
-
-Qualified durable prefix-state compositions for the two-Spark DeepSeek,
-four-Spark DeepSeek, and four-Spark GLM profiles are in
-[`recipes/sparkcache/`](recipes/sparkcache/README.md). They pin the exact
-SparkCache wheel and runtime image used by each live store/restart/restore
-gate. Those gates used a 4,096-token scheduler budget. Operators may choose
-other values; 8,192 is known to work but is outside the published receipts.
+Qwen with SparkCache is unsupported. See the
+[profile registry](docs/profiles/README.md) for recipe identities and evidence
+scope.
 
 ## Architecture
 
-```text
-management LAN ─┬─────────────┬─────────────┬─────────────┐
-            ┌───┴────┐    ┌───┴────┐    ┌───┴────┐    ┌───┴────┐
-     API ──>│ rank 0 ╞════╡ rank 1 ╞════╡ rank 2 ╞════╡ rank 3 │
-            └───╤────┘    └────────┘    └────────┘    └───╤────┘
-                ╚═════════════════════════════════════════╝
+Two-Spark profiles use one direct 200 Gb/s cable and patched NCCL. Four-Spark
+profiles use a switchless `0-1-2-3-0` cable cycle. SIRCL serves its qualified
+collective paths; patched NCCL handles the remaining paths.
 
-  ═══  one 200 Gb/s ConnectX-7 DAC per edge (RoCEv2); the inference fabric
-  ───  management LAN: SSH, rendezvous, rank-0 API; never a fabric edge
-```
-
-Four DGX Sparks serve one model as four tensor-parallel ranks, numbered 0
-through 3. The inference fabric is a cycle of four direct cables - rank 0 to
-rank 1, 1 to 2, 2 to 3, and 3 back to 0 - each one 200 Gb/s ConnectX-7 link
-carrying RoCEv2. Every rank has exactly two fabric neighbors, and no switch
-carries collective traffic. A separate management LAN reaches all four ranks
-with SSH, rendezvous, and the client API that rank 0 serves; it is never a
-fabric edge.
-
-A rank reaches a non-adjacent fabric address only through a neighbor that
-forwards the traffic. Routes to non-adjacent fabric subnets,
-`net.ipv4.ip_forward=1`, and unrestricted `DOCKER-USER` ACCEPT rules between
-the two fabric interfaces are therefore launch prerequisites on every rank,
-checked by
-[`scripts/ring_doctor.py`](scripts/ring_doctor.py).
-
-Collectives do not take that relay. SIRCL, the Switchless Inference RDMA
-Collective Layer, schedules a four-rank collective as the cycle's two perfect
-matchings - ranks 0-1 with 2-3, then 1-2 with 3-0 - so every step is a neighbor
-exchange and the two steps together use all four links. SIRCL holds
-persistent RDMA sessions and device-published command rings that CUDA graph
-replay resubmits without host work. Patched NCCL is the fallback for collective
-shapes outside SIRCL's qualified families.
-
-DeepSeek-V4-Flash-0731 and Qwen3.8-27B have two-rank launches on a single
-cabled pair using patched NCCL; SIRCL is unsupported on that topology. The
-GLM profile requires the four-Spark cycle. Both Qwen topologies use patched
-NCCL; their width-5,120 SIRCL path is unsupported.
-
-See [architecture](docs/ARCHITECTURE.md) and [SIRCL](docs/SIRCL.md).
-
-## Prerequisites and evidence
-
-Before deploying a profile, complete the applicable
-[prerequisites](docs/PREREQUISITES.md). Measured results, conditions, and
-limitations are in [results](docs/RESULTS.md). The profile registry is
-[`docs/profiles/README.md`](docs/profiles/README.md).
+See [architecture](docs/ARCHITECTURE.md), [SIRCL](docs/SIRCL.md), and the
+[deployment prerequisites](docs/PREREQUISITES.md).
 
 ## Repository map
 
@@ -133,6 +74,7 @@ limitations are in [results](docs/RESULTS.md). The profile registry is
 | `runtime/` | Pinned runtime inputs and builders |
 | `scripts/` | Site validation, preflight, launch, and evidence tooling |
 | `recipes/` | Machine-readable serving recipes |
+| `performance/` | Benchmark methods, records, and sanitized receipts |
 | `docs/` | Profile procedures, architecture, prerequisites, and evidence |
 
 ## Acknowledgements

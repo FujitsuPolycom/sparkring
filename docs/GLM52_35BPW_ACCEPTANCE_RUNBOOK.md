@@ -76,7 +76,7 @@ python llm_decode_bench.py \
   --request-count 16 \
   --warmup-request-count 1 \
   --max-tokens 128 \
-  --temperature 0 \
+  --temperature 1.0 \
   --token-targeting exact \
   --kv-budget 1156864 \
   --dcp-size 4 \

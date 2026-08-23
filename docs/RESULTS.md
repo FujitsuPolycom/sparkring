@@ -3,6 +3,9 @@
 This page lists results for the supported DGX Spark profiles. Each number only
 applies to the model, settings, hardware, and topology stated with it.
 
+All benchmark tables use temperature 1.0. Model-specific sampling defaults are
+recorded with each profile.
+
 ## GLM-5.2 EXL3 3.5-bpw
 
 **Status: candidate at 1,048,576 tokens and 16 sequences. The older
@@ -37,8 +40,8 @@ runtime bytes verified against their pinned identities. That record reports
 no throughput figure and does not promote the profile. See
 [the rebuilt-image bring-up record](../performance/records/glm-3.5bpw/rebuilt-image-20260821.md).
 
-The 1,048,576-token, 16-sequence profile started successfully. At temperature
-1.0 and top-p 0.95, prefill measured 694 tok/s at 2K down to 635 tok/s at 128K.
+The 1,048,576-token, 16-sequence profile started successfully. Prefill measured
+694 tok/s at 2K down to 635 tok/s at 128K.
 Decode is complete through C8 from 2K to 32K, plus 64K/C1. The remaining
 long-context coordinates are pending. See
 the [full benchmark record](../performance/records/glm-3.5bpw/normalized-base-20260822.md).
@@ -62,22 +65,20 @@ differ. The results therefore describe two explicit serving profiles rather
 than an exact same-weight topology scaling experiment.
 
 The two-Spark and four-Spark base setups were benchmarked through 128K prefill
-and every concurrency/context combination that fit their KV pools at
-temperature 1.0 and effective top-p 1.0. C1/C2 use at least five accepted
+and every concurrency/context combination that fit their KV pools. C1/C2 use at least five accepted
 observations per context; other applicable cells use at least three. At 16K,
 the pair measured 307.13 aggregate tok/s at C32 and the cycle measured 508.11.
 Repeated cells retain substantial DSpark-acceptance variance. See the
 [full TP2 record](../performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md)
 and [full TP4 record](../performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md).
 
-The public tree retains functional SparkCache launcher and restore validation,
-but does not publish performance tables from other sampling temperatures. The
-normalized SparkCache profiles still require temperature-1 remeasurement.
+The public tree retains functional SparkCache launcher and restore validation.
+The normalized SparkCache profiles still require benchmark measurement.
 
 A research-only width-4096 SIRCL candidate completed four-rank CUDA graph
 capture and API smoke while every rank's native published, consumed, and
 completed counters remained equal and overflow remained zero. A matched
-temperature-1 research A/B found no performance advantage for the SIRCL
+research A/B found no performance advantage for the SIRCL
 path. Prefill was flat because both arms use NCCL there. Five-run Coding Peak
 was 1.9% lower by mean under SIRCL. Long C32 rates were dominated by DSpark
 acceptance variation, but repeated near-matched ten-second samples placed SIRCL
@@ -90,9 +91,8 @@ The consolidated findings page is
 
 Both tested profiles use a 1,048,576-token static-YaRN limit, an 8,192-token
 scheduler budget, FP8 KV, probabilistic Qwen MTP3 with standard rejection,
-native prefix caching, full-decode CUDA graphs, and patched NCCL. Benchmark
-requests used temperature 1.0; the pinned model config supplied effective
-top-p 0.95 and top-k 20.
+native prefix caching, full-decode CUDA graphs, and patched NCCL. The pinned
+model config supplied effective top-p 0.95 and top-k 20.
 
 ### Two Sparks — TP2/DCP1
 
