@@ -1,4 +1,4 @@
-"""GPU-free contract tests for the qualified SparkCache compositions."""
+"""GPU-free contracts for candidate compositions and retained receipts."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def _load(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_composition_registry_has_all_qualified_profiles() -> None:
+def test_composition_registry_has_all_profiles() -> None:
     assert [path.name for path in RECIPE_PATHS] == [
         "deepseek-v4-flash-0731-tp2-dcp1.json",
         "deepseek-v4-flash-0731-tp4-dcp1.json",
@@ -41,12 +41,15 @@ def test_compositions_pin_artifact_and_fail_closed_policy() -> None:
     for path in RECIPE_PATHS:
         recipe = _load(path)
         assert recipe["schema"] == "sparkring-sparkcache-composition/v1"
-        assert recipe["status"] == "qualified"
+        assert recipe["status"] == "candidate"
         assert (path.parent / recipe["base_recipe"]).resolve().is_file()
         version, wheel_sha256 = ARTIFACTS[path.name]
         assert recipe["runtime"]["sparkcache"]["version"] == version
         assert recipe["runtime"]["sparkcache"]["wheel_sha256"] == wheel_sha256
         assert recipe["serving"]["max_num_batched_tokens"] == 4096
+        if "deepseek" in path.name:
+            assert recipe["serving"]["async_scheduling"] is True
+            assert recipe["serving"]["scheduler_reserve_full_isl"] is True
         assert recipe["serving"]["scheduler_budget_status"] == "qualified"
         assert recipe["sparkcache"]["kv_load_failure_policy"] == "recompute"
         assert recipe["sparkcache"]["streaming_snapshots"] is False
@@ -80,7 +83,8 @@ def test_composition_evidence_has_claim_shape_and_valid_base() -> None:
         base = _load((path.parent / recipe["base_recipe"]).resolve())
         evidence = recipe["evidence"]
         assert required <= set(evidence), path.name
-        assert evidence["status"] == recipe["status"]
+        assert evidence["status"] == "qualified"
+        assert "Historical qualified receipt" in evidence["conditions"]
         assert evidence["conclusion"].strip()
         assert evidence["result"].strip()
         assert evidence["record"] != "README.md"

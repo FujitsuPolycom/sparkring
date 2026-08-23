@@ -86,6 +86,6 @@ python scripts/sparkring_generic_launcher.py \
 Copy both generated bundles to their declared remote roots before launch.
 Staging files and starting are host-mutating, and starting can stop a running
 service. Perform those actions only with authorization for the four named
-hosts. Verify `/health`, the served model name, and the 262,144-token maximum.
+hosts. Verify `/health`, the served model name, and the 1,048,576-token maximum.
 The rebuilt profile has status **implemented** until it completes the promotion
 checklist.

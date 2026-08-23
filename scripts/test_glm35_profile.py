@@ -35,7 +35,7 @@ def source_mtp4_site() -> str:
         "  mtp_tokens: 4\n"
         "  max_model_len: 65536\n"
         "  kv_cache_bytes_per_rank: 9250000000\n"
-        "  max_num_seqs: 8\n"
+        "  max_num_seqs: 16\n"
     )
 
 
@@ -118,18 +118,19 @@ def test_dynamic_nvfp4_transformation_is_exact() -> None:
     source = source_mtp4_profile()
     candidate = profile._derive_nvfp4(source)
     assert candidate["profile_id"] == (
-        f"{source['profile_id']}-nvfp4-rope8-ctx256k-b4096"
+        f"{source['profile_id']}-nvfp4-rope8-ctx1m-b4096"
     )
     assert candidate["environment"]["KV_FP8_ROPE"] == "1"
     assert candidate["environment"]["VLLM_NVFP4_MLA_DYNAMIC_SCALE"] == "1"
     assert candidate["environment"]["VLLM_EXL3_PREFILL_CAPACITY"] == "4096"
     assert _option(candidate, "--max-num-batched-tokens") == "4096"
+    assert _option(candidate, "--block-size") == "64"
     assert _option(candidate, "--kv-cache-dtype") == "nvfp4_ds_mla"
     assert candidate["extra_labels"]["org.sparkring.r7.kv-contract"] == (
         profile._NVFP4_KV_CONTRACT
     )
     expected_site = source_mtp4_site().replace(
-        "max_model_len: 65536", "max_model_len: 262144"
+        "max_model_len: 65536", "max_model_len: 1048576"
     )
     assert profile._derive_nvfp4_site(source_mtp4_site()) == expected_site
 
@@ -165,12 +166,12 @@ def test_ckv_gather_transformation_and_workspace_are_exact() -> None:
     expected = copy.deepcopy(source)
     expected["profile_id"] = profile._CKV_PROFILE_ID
     expected["environment"]["VLLM_B12X_MLA_CKV_GATHER"] = "1"
-    expected["environment"]["VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS"] = "262144"
+    expected["environment"]["VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS"] = "1048576"
     expected["extra_labels"][profile._CKV_LABEL] = profile._CKV_LABEL_VALUE
     assert candidate == expected
-    assert profile._CKV_LOCAL_CAPACITY_TOKENS == 65_600
-    assert profile._CKV_WORKSPACE_BYTES_PER_LANE == 217_267_200
-    assert profile._CKV_WORKSPACE_POOL_BYTES_PER_RANK == 434_534_400
+    assert profile._CKV_LOCAL_CAPACITY_TOKENS == 262_208
+    assert profile._CKV_WORKSPACE_BYTES_PER_LANE == 868_432_896
+    assert profile._CKV_WORKSPACE_POOL_BYTES_PER_RANK == 1_736_865_792
 
 
 @pytest.mark.parametrize(
@@ -329,7 +330,7 @@ def test_execute_emits_byte_compatible_complete_pre_q40_outputs(
     ):
         assert receipt[key] == hashlib.sha256(path.read_bytes()).hexdigest()
     assert receipt["sircl_artifact_sha256"] == expected_digests
-    assert receipt["ckv_workspace_pool_bytes_per_rank"] == 434_534_400
+    assert receipt["ckv_workspace_pool_bytes_per_rank"] == 1_736_865_792
     assert receipt["reported_kv_capacity_tokens"] == 1_156_864
 
 

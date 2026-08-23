@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-sparkcache-composition/v1",
   "recipe_id": "glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4",
-  "status": "qualified",
+  "status": "candidate",
   "base_recipe": "../glm52-exl3-r7-3.5bpw.json",
   "hardware": {
     "platform": "linux/arm64",
@@ -30,8 +30,8 @@
     "node_count": 4,
     "dcp_backend": "ag_rs",
     "dcp_kv_cache_interleave_size": 1,
-    "max_model_len": 262144,
-    "max_num_seqs": 8,
+    "max_model_len": 1048576,
+    "max_num_seqs": 16,
     "max_num_batched_tokens": 4096,
     "scheduler_budget_status": "qualified",
     "gpu_memory_utilization": 0.85,
@@ -55,7 +55,7 @@
     "low_watermark_bytes_per_rank": 193273528320,
     "ttl_seconds": 0,
     "min_span_tokens": 256,
-    "max_span_tokens": 262144,
+    "max_span_tokens": 1048576,
     "streaming_snapshots": false,
     "native_restore": false,
     "root_requirement": "Use one dedicated rank-local host directory per physical rank, mounted at the same container path on all four ranks."
@@ -66,17 +66,20 @@
   },
   "evidence": {
     "status": "qualified",
-    "conditions": "Four directly cabled NVIDIA DGX Spark systems at TP4/DCP4 using the immutable runtime image, checkpoint identity, dedicated rank-local cache roots, and SparkCache 0.1.0a2 wheel recorded in this file. The semantic gate used a 512-token completion budget.",
+    "conditions": "Historical qualified receipt from four directly cabled NVIDIA DGX Spark systems at TP4/DCP4 using max_model_len=262144 and max_num_seqs=8 with the immutable runtime image, checkpoint identity, dedicated rank-local cache roots, and SparkCache 0.1.0a2 wheel recorded in this file. The semantic gate used a 512-token completion budget. It does not qualify the current 1048576-token, 16-sequence candidate.",
     "result": "A cold-cache deterministic prompt of 225,555 tokens committed 225,536 reusable tokens as 881 chunks and 1,803,702,724 bytes on each of 4 ranks. After a coordinated restart that left the cache roots in place, every rank discovered one manifest and restored in 4,171.2, 3,588.4, 3,697.5, 3,172.2 ms. A short arithmetic request returned 2 and transported all four workers' manifest inventories to the scheduler before the long hit. The repeated prompt served 225,536 external-cache hit tokens of 225,607 queried, returned final content SPARKCACHE_OK:9540 with finish reason stop, and the post-restore canary returned SPARKCACHE_CANARY_OK. No tokens were served from the native prefix cache.",
-    "conclusion": "This composition restores durable prefix state across a coordinated engine restart and continues generating correct output. The result qualifies the exact artifacts and settings recorded in this file; it does not establish general vLLM, checkpoint, topology, or production reliability.",
+    "conclusion": "The historical 262144-token, eight-sequence composition restored durable prefix state across a coordinated engine restart and continued generating correct output. The normalized 1048576-token, 16-sequence candidate retains the same artifacts and cache policy but requires a fresh live gate.",
     "limitations": [
       "The published qualification receipt used a 4096-token scheduler budget. Operators may choose other values; 8192 is known to work, but its performance and capacity behavior is outside this receipt.",
+      "The qualified receipt covers max_num_seqs=8; the current max_num_seqs=16 target is candidate and requires capacity and concurrency validation.",
+      "The qualified receipt covers max_model_len=262144; the current max_model_len=1048576 target requires a larger CKV-gather workspace and live memory validation.",
+      "The qualified operator image is identified by local image ID but has no published immutable image reference. A clean-checkout rebuild has implemented status until it passes the promotion checklist.",
       "The qualified lane requires preserving and regenerating the 40-query-row exact-state receipt, whose path contains q40-exact-state-serving-v1, before every coordinated restart.",
       "This recipe disables streaming snapshots and native restore; the published receipt does not cover either mode.",
       "Full GLM reasoning-trace equality is an inconclusive diagnostic under this runtime: repeated temperature-zero and fixed-seed requests produced different non-empty reasoning bodies with identical final content and finish reason stop."
     ],
     "record": "https://github.com/FujitsuPolycom/sparkcache/blob/999bc13d6c0b52a6cee3c90487ac9b8643ba3f99/GLM52_A2_LIVE_VALIDATION.md",
-    "artifact_scope": "The exact SparkCache wheel, runtime image, checkpoint identity, topology, and serving values in this file.",
+    "artifact_scope": "The exact SparkCache wheel, runtime image, checkpoint identity, topology, and historical max_model_len=262144, max_num_seqs=8 serving values stated in evidence.conditions.",
     "date": "2026-08-21",
     "prompt_tokens": 225555,
     "reusable_tokens": 225536,

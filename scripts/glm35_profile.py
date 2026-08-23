@@ -121,7 +121,7 @@ _EXPECTED_IDENTITY = {
 }
 
 _NVFP4_SOURCE_MODEL_LEN = 65_536
-_NVFP4_MODEL_LEN = 262_144
+_NVFP4_MODEL_LEN = 1_048_576
 _NVFP4_SOURCE_BATCHED_TOKENS = 2_048
 _NVFP4_BATCHED_TOKENS = 4_096
 _NVFP4_KV_CACHE_DTYPE = "nvfp4_ds_mla"
@@ -129,16 +129,16 @@ _NVFP4_KV_CONTRACT = "nvfp4-dynamic-per-token+fp8-rope-368-byte"
 _REPORTED_KV_CAPACITY_TOKENS = 1_156_864
 
 _CKV_SOURCE_PROFILE_ID = (
-    "glm52-exl3-r7-3.5bpw-fixed-mtp4-nvfp4-rope8-ctx256k-b4096"
+    "glm52-exl3-r7-3.5bpw-fixed-mtp4-nvfp4-rope8-ctx1m-b4096"
 )
 _CKV_PROFILE_ID = f"{_CKV_SOURCE_PROFILE_ID}-ckv-gather"
 _CKV_LABEL = "org.sparkring.r7.ckv-prefill-contract"
-_CKV_LABEL_VALUE = "dcp4-full-ckv-prefetch1-max262144"
-_CKV_GATHER_MAX_TOKENS = 262_144
+_CKV_LABEL_VALUE = "dcp4-full-ckv-prefetch1-max1048576"
+_CKV_GATHER_MAX_TOKENS = 1_048_576
 _CKV_PREFETCH_DEPTH = 1
 _CKV_RECORD_BYTES = 368
 _DCP_WORLD_SIZE = 4
-_MAX_NUM_SEQS = 8
+_MAX_NUM_SEQS = 16
 _DCP_KV_INTERLEAVE_SIZE = 1
 _KV_BLOCK_SIZE = 64
 _CKV_EXECUTION_LANES = 2
@@ -452,6 +452,8 @@ def _base_profile(
             "0.0.0.0",
             "--gpu-memory-utilization",
             str(recipe["serving"]["gpu_memory_utilization"]),
+            "--block-size",
+            str(recipe["serving"]["block_size"]),
             "--max-num-batched-tokens",
             "2048",
         ],
@@ -667,7 +669,7 @@ def _validate_nvfp4_source(profile: dict[str, Any]) -> None:
 
     _validate_mtp(profile, 4)
     if profile.get("profile_id") != _CKV_SOURCE_PROFILE_ID.removesuffix(
-        "-nvfp4-rope8-ctx256k-b4096"
+        "-nvfp4-rope8-ctx1m-b4096"
     ):
         raise ProfileError("source fixed-MTP4 profile identity drift")
     environment = profile.get("environment")
@@ -706,11 +708,11 @@ def _validate_nvfp4_source(profile: dict[str, Any]) -> None:
 
 
 def _derive_nvfp4(source: dict[str, Any]) -> dict[str, Any]:
-    """Return the exact 262K dynamic-NVFP4 derivative."""
+    """Return the exact 1M-context dynamic-NVFP4 derivative."""
 
     _validate_nvfp4_source(source)
     candidate = copy.deepcopy(source)
-    candidate["profile_id"] = f"{source['profile_id']}-nvfp4-rope8-ctx256k-b4096"
+    candidate["profile_id"] = f"{source['profile_id']}-nvfp4-rope8-ctx1m-b4096"
     candidate["environment"].update(
         {
             "KV_FP8_ROPE": "1",
@@ -740,7 +742,7 @@ def _validate_nvfp4_candidate(
 
     _validate_nvfp4_source(source)
     expected = copy.deepcopy(source)
-    expected["profile_id"] = f"{source['profile_id']}-nvfp4-rope8-ctx256k-b4096"
+    expected["profile_id"] = f"{source['profile_id']}-nvfp4-rope8-ctx1m-b4096"
     expected["environment"].update(
         {
             "KV_FP8_ROPE": "1",
@@ -770,7 +772,7 @@ def _derive_nvfp4_site(source: str) -> str:
         '  mtp_mode: "static"',
         "  mtp_tokens: 4",
         "  kv_cache_bytes_per_rank: 9250000000",
-        "  max_num_seqs: 8",
+        "  max_num_seqs: 16",
     )
     for line in required:
         if source.count(line) != 1:
@@ -854,9 +856,9 @@ def _derive_ckv_gather(source: dict[str, Any]) -> dict[str, Any]:
 def _validate_ckv_site(site: str) -> None:
     for line in (
         "  decode_context_parallel_size: 4",
-        "  max_model_len: 262144",
+        "  max_model_len: 1048576",
         "  kv_cache_bytes_per_rank: 9250000000",
-        "  max_num_seqs: 8",
+        "  max_num_seqs: 16",
     ):
         if site.count(line) != 1:
             raise ProfileError(
@@ -886,8 +888,12 @@ def _validate_sircl_source(profile: dict[str, Any]) -> None:
         raise ProfileError("source profile_id is not the full-CKV derivative")
     if environment.get("VLLM_B12X_MLA_CKV_GATHER") != "1":
         raise ProfileError("source full-CKV gather must be enabled")
-    if environment.get("VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS") != "262144":
-        raise ProfileError("source CKV gather ceiling must be 262144")
+    if environment.get("VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS") != str(
+        _CKV_GATHER_MAX_TOKENS
+    ):
+        raise ProfileError(
+            f"source CKV gather ceiling must be {_CKV_GATHER_MAX_TOKENS}"
+        )
     if labels.get(_CKV_LABEL) != _CKV_LABEL_VALUE:
         raise ProfileError("source CKV label is missing")
     for key in _SIRCL_ENVIRONMENT_DELTA:

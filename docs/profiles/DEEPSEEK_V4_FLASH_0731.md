@@ -15,8 +15,10 @@ qualified its collective results. Use the
 | Runtime image | `ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028` |
 | Parallelism | TP4 across four DGX Sparks |
 | Activations | `bfloat16` |
-| Request limit | 524,288 tokens |
-| Key-value reservation | 34,359,738,368 bytes per rank |
+| Request limit | 1,048,576 tokens |
+| Key-value reservation | 17,179,869,184 bytes per rank in both base targets; SparkCache TP4 retains 34,359,738,368 bytes per rank |
+| Scheduler budget | 4,096 tokens |
+| Block size | 256 tokens |
 | Key-value dtype | `fp8_ds_mla` |
 | Speculation | DSpark, five speculative tokens, B12X MoE backend |
 | API model name | `deepseek-v4-flash-0731` |

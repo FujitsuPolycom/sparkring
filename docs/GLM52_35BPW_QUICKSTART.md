@@ -1,10 +1,12 @@
 # GLM-5.2 EXL3 3.5-bpw four-Spark quickstart
 
-Deploy the qualified GLM-5.2 EXL3 profile on four directly cabled NVIDIA DGX
-Sparks. The machine-readable contract is
+Deploy the 16-sequence GLM-5.2 EXL3 candidate on four directly cabled NVIDIA
+DGX Sparks. The machine-readable contract is
 [`recipes/glm52-exl3-r7-3.5bpw.json`](../recipes/glm52-exl3-r7-3.5bpw.json).
-Its qualification applies to one appliance. A clean-checkout rebuild has
-status **implemented**: one rebuilt image has been built by this document's
+The retained qualification applies to the exact eight-sequence operator
+artifact on one appliance. The 16-sequence target is **candidate** until it
+passes startup, capacity, correctness, concurrency, and post-run health gates.
+A clean-checkout rebuild has status **implemented**: one rebuilt image has been built by this document's
 own steps, verified against the pinned checkpoint and runtime identities, and
 brought up serving on four ranks, as recorded in
 [the rebuilt-image bring-up record](../performance/records/glm-3.5bpw/rebuilt-image-20260821.md).
@@ -21,9 +23,10 @@ identity actually deployed.
 | Index SHA-256 | `9fd852f69ed64442e31dce1cbc5fe7acd0a76bfb848e945d272fe98d00d0c9cd` |
 | Parallelism | TP4, DCP4 `ag_rs` |
 | Speculation | fixed MTP4 |
-| Request limit | 262,144 tokens |
+| Request limit | 1,048,576 tokens |
 | Key-value cache | `nvfp4_ds_mla`, 9,250,000,000 bytes per rank |
-| Maximum sequences | 8 |
+| Maximum sequences | 16 |
+| Key-value block size | 64 tokens |
 | Tensor-parallel transport | SIRCL with patched NCCL fallback |
 
 ## 1. Prepare the four ranks
@@ -192,7 +195,33 @@ python scripts/sparkring_generic_launcher.py \
 ```
 
 Require HTTP 200 from `/health`, model name `glm-5.2-exl3-r7-3.5bpw`, and a
-262,144-token maximum length in `/v1/models`.
+1,048,576-token maximum length in `/v1/models`.
+
+## Normalized-candidate benchmark snapshot
+
+The 1,048,576-token, 16-sequence base candidate reached ready state and was
+benchmarked on four directly cabled DGX Sparks with SparkCache disabled.
+
+| Context | Prefill tok/s | T=0 C1 | C2 | C4 | C8 | T=1 C1 | C2 | C4 | C8 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2K | 694 | 23.13 | 35.34 | 50.95 | 71.82 | 22.001 | 28.283 | 46.981 | 67.622 |
+| 8K | 675 | 22.87 | 34.17 | 51.26 | 74.50 | 19.153 | 30.207 | 47.697 | 65.534 |
+| 16K | 671 | 21.60 | 33.45 | 49.14 | pending | 20.151 | 32.384 | pending | pending |
+| 32K | 661 | 22.40 | 34.62 | 48.98 | pending | 21.611 | 30.524 | pending | pending |
+| 64K | 649 | — | — | — | — | pending | pending | pending | pending |
+| 128K | 635 | — | — | — | — | pending | pending | pending | pending |
+
+Decode values are aggregate generated tok/s. Temperature 0 and 1.0 are
+separate datasets with `top_p` unset. The
+[normalized GLM evidence record](../performance/records/glm-3.5bpw/normalized-base-20260822.md)
+contains the temperature-0.9 probe, temperature-1 Coding Peak N=5 summary,
+machine-readable data, accounting gates, exclusions, and pending coordinates.
+
+The normalized launch used fresh rank-specific JIT and create-once receipt
+namespaces. A same-namespace restart currently fails before model startup when
+the exact-Q40 producer finds its existing receipt. Preserve the receipt and use
+a fresh namespace until exact-match receipt revalidation/reuse is implemented;
+this is an artifact-lifecycle limitation, not a model-performance failure.
 
 ## Evidence and limitations
 
