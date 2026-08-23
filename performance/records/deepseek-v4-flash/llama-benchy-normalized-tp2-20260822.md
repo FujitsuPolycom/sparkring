@@ -23,6 +23,24 @@ per-request mean ± standard deviation, peak generation rate, time to first
 response, estimated prompt-processing time, and end-to-end time to first token.
 The matrices below are a compact view of its aggregate means.
 
+## Cross-check against sustained decode bench
+
+| Context | llama-benchy context load | llm-decode-bench prefill | Difference |
+|---:|---:|---:|---:|
+| 8K | 1,855 | 1,800 | +3.1% |
+| 16K | 1,954 | 1,926 | +1.4% |
+| 32K | 1,943 | 1,922 | +1.1% |
+| 64K | 1,893 | 1,856 | +2.0% |
+
+The prefill measurements closely agree. Decode measures a different workload:
+llama-benchy sends finite 128-token follow-up requests over a loaded prefix,
+while llm-decode-bench holds streams open for a sustained measurement window.
+Do not average or directly substitute the two decode tables.
+
+The run did not request exact output length, so 128 tokens was a maximum rather
+than a guaranteed completion length. Its concurrency results describe short
+request batches, not continuous C1-C32 saturation.
+
 ## Follow-up prompt processing
 
 Aggregate `pp2048` tokens/s after loading the stated context depth:
