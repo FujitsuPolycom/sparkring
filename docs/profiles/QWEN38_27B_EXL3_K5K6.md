@@ -38,9 +38,10 @@ Spark.
 | External key-value cache | disabled |
 | SIRCL | unsupported for the width-5,120 path |
 
-The candidate deliberately keeps Qwen's model-specific values instead of
-copying DeepSeek's 1M context, 4,096-token scheduler budget, DSpark proposer,
-or MLA cache format. It reuses DeepSeek's four-Spark physical topology,
+This four-Spark candidate deliberately keeps the native Qwen request limit
+instead of enabling the static-YaRN extension used by the separate
+[two-Spark research profile](QWEN38_27B_EXL3_K5K6_PAIR.md). It does not copy
+DeepSeek's DSpark proposer or MLA cache format. It reuses DeepSeek's four-Spark physical topology,
 non-adjacent-rank routing, multi-node process shape, and patched-NCCL cycle
 settings.
 

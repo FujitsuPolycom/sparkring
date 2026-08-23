@@ -53,6 +53,13 @@ inputs differ, stop and resolve the identity drift before launching.
 
 ## Qwen3.8-27B EXL3 K5/K6
 
+`qwen38-27b-exl3-k5k6-pair.env.example` is the per-rank environment for the
+two-Spark Qwen research profile. It names one direct-link interface, one RoCE
+device and one site-specific RoCEv2 GID. The pair leaves NCCL algorithm and
+channel selection at library defaults and sets the long-context override used
+by the 1M static-YaRN launch. Follow
+[`docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md`](../../docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md).
+
 `qwen38-27b-exl3-k5k6.env.example` is the per-rank environment for the
 four-Spark Qwen candidate. Copy it once per rank and replace:
 

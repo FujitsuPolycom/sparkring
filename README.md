@@ -23,8 +23,9 @@ belongs to profiles rather than the transport.
 
 ## Cluster sizes
 
-- **2× DGX Spark — direct pair.** Models: DeepSeek-V4-Flash-0731; compatible
-  with SparkCache.
+- **2× DGX Spark — direct pair.** Models: DeepSeek-V4-Flash-0731 and
+  Qwen3.8-27B EXL3 K5/K6. DeepSeek is compatible with SparkCache; the Qwen
+  pair profile is cache-free and research-only.
 - **4× DGX Spark — physical ring.** Models: GLM-5.2 EXL3 3.5-bpw,
   DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6. GLM and DeepSeek are
   compatible with SparkCache; Qwen SparkCache support is Pending.
@@ -37,13 +38,14 @@ belongs to profiles rather than the transport.
 | GLM-5.2 EXL3 3.5-bpw | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | four-Spark cycle, TP4/DCP4 | normalized candidate at 1M context/16 sequences; historical 262K/eight-sequence qualification retained | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
 | DeepSeek-V4-Flash | `deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7` | two-Spark pair, TP2/DCP1 | normalized profile live-benchmarked; SIRCL unsupported | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | DeepSeek-V4-Flash-0731 | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` | four-Spark cycle, TP4/DCP1 | normalized profile live-benchmarked; SIRCL width 4096 research-only | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| Qwen3.8-27B EXL3 K5/K6 | `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf` | two-Spark pair, TP2/DCP1 | research-only live bring-up; 1M advertised through static YaRN; no performance result | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf` | four-Spark cycle, TP4/DCP1 | **Experimental public builder**; candidate; historical runtime implemented; SIRCL unsupported | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
 | GLM-5.2 EXL3 3.5-bpw + SparkCache | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | four-Spark cycle, TP4/DCP4 | normalized candidate; historical durable-state receipt retained | [SparkCache compositions](recipes/sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 + SparkCache | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` | two-Spark pair, TP2/DCP1 | normalized candidate; historical 131K/six-sequence receipt retained | [SparkCache compositions](recipes/sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 + SparkCache | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` | four-Spark cycle, TP4/DCP1 | normalized candidate; historical 524K receipt retained | [SparkCache compositions](recipes/sparkcache/README.md) |
 
 **Pending:** Qwen3.8-27B with SparkCache has no published composition recipe or
-live cache evidence. It is not part of the seven base/composition profiles in
+live cache evidence. It is not part of the eight base/composition profiles in
 the table.
 
 The GLM base profile is defined by
@@ -55,11 +57,13 @@ and
 The DeepSeek profiles use the immutable published image pinned in
 [`runtime/faststart-lock.json`](runtime/faststart-lock.json) and the tracked
 per-rank environment templates in [`scripts/config/`](scripts/config/).
-The Qwen cycle profile is
-[`recipes/qwen38-27b-exl3-k5k6.json`](recipes/qwen38-27b-exl3-k5k6.json). It
-uses the clean-checkout local image builder in
+The Qwen pair and cycle profiles are
+[`recipes/qwen38-27b-exl3-k5k6-pair.json`](recipes/qwen38-27b-exl3-k5k6-pair.json)
+and
+[`recipes/qwen38-27b-exl3-k5k6.json`](recipes/qwen38-27b-exl3-k5k6.json).
+They use the clean-checkout local image builder in
 [`runtime/qwen38/`](runtime/qwen38/README.md), the public source pins from the
-companion Qwen recipe, and the tracked four-rank environment in
+companion Qwen recipe, and the tracked pair/cycle environments in
 `scripts/config/`.
 
 Qualified durable prefix-state compositions for the two-Spark DeepSeek,
@@ -105,10 +109,10 @@ persistent RDMA sessions and device-published command rings that CUDA graph
 replay resubmits without host work. Patched NCCL is the fallback for collective
 shapes outside SIRCL's qualified families.
 
-DeepSeek-V4-Flash-0731 has an implemented two-rank launch on a single cabled
-pair using patched NCCL; SIRCL is unsupported on that topology currently. The
-GLM and Qwen profiles require the four-Spark cycle. Qwen uses patched NCCL;
-its width-5,120 SIRCL path is unsupported.
+DeepSeek-V4-Flash-0731 and Qwen3.8-27B have two-rank launches on a single
+cabled pair using patched NCCL; SIRCL is unsupported on that topology. The
+GLM profile requires the four-Spark cycle. Both Qwen topologies use patched
+NCCL; their width-5,120 SIRCL path is unsupported.
 
 See [architecture](docs/ARCHITECTURE.md) and [SIRCL](docs/SIRCL.md).
 

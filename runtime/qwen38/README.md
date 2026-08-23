@@ -1,19 +1,20 @@
 # Qwen3.8-27B public ARM64 runtime builder
 
-This directory builds a local ARM64/SM121 image for the four-Spark
-Qwen3.8-27B EXL3 K5/K6 profile. Every source and patch comes from a public,
+This directory builds a local ARM64/SM121 image for the two- and four-Spark
+Qwen3.8-27B EXL3 K5/K6 profiles. Every source and patch comes from a public,
 immutable input. The build does not use the maintainer-held runtime archive
 described by the performance record.
 
 Status: **experimental, offline-validated builder; live validation pending.** Offline tests cover
 pin handling, prepared-source receipts, the container contract, and runtime
-verification logic. A locally produced image has no four-rank evidence until
-that exact image ID completes the Qwen startup and functional checks.
+verification logic. A locally produced image has no pair or cycle evidence
+until that exact image ID completes the topology-specific Qwen startup and
+functional checks.
 
 ## Why no published image is required
 
 The runtime can be built once on an ARM64 DGX Spark, exported with
-`docker save`, and loaded on the other three ranks. Loading the same OCI archive
+`docker save`, and loaded on the other rank or ranks. Loading the same OCI archive
 gives every rank the same image ID without requiring a public registry. A
 published image would shorten setup time, but it is not an input to this
 builder.
@@ -110,7 +111,8 @@ build.
 
 The image command is `sleep infinity` because one identical image serves two
 roles: a persistent rank container and a verified runtime carrier. Starting a
-rank remains an explicit operator action through `/ws/qwen38_dgx4_serve.sh`;
+rank remains an explicit operator action through `/ws/qwen38_dgx2_serve.sh`
+or `/ws/qwen38_dgx4_serve.sh`;
 loading the image never starts a model, claims a GPU, or replaces an existing
 service.
 
@@ -131,7 +133,7 @@ docker load --input qwen38-runtime.oci.tar
 docker image inspect --format '{{.Id}}' sparkring-qwen38:arm64-sm121
 ```
 
-All four ranks must report the same image ID. Registry push and pull are an
+All ranks must report the same image ID. Registry push and pull are an
 optional replacement for this save/load step.
 
 Mount only the mutable inputs beneath the baked `/ws` tree: the model at
@@ -145,13 +147,13 @@ starting the image does not launch a model. The canonical quickstart creates
 the rank containers directly with an explicit launcher entrypoint and `--run`;
 do not create a separate idle set first.
 
-Continue with the repository's Qwen four-Spark quickstart after recording the
-locally built image ID. Building, saving, loading, or starting an image changes
+Continue with the repository's Qwen pair or four-Spark quickstart after
+recording the locally built image ID. Building, saving, loading, or starting an image changes
 host state. Starting it can stop an existing model service.
 
 ## Evidence boundary
 
 The source inputs are public, but the resulting image is a distinct artifact.
-The maintainer-held TP4 measurements do not transfer to it. Record the image
-ID, source receipt, model hashes, startup result, functional checks, and
+The maintainer-held TP2/TP4 measurements do not transfer to it. Record the
+image ID, source receipt, model hashes, startup result, functional checks, and
 post-run health before describing the image as live-validated.
