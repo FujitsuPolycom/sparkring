@@ -48,20 +48,28 @@ restartability limitation; no receipt was deleted or overwritten.
 
 ## DeepSeek-V4-Flash-0731
 
-**Status: candidate settings; not qualified.** Older
-two-Spark-pair and four-Spark-cycle launches exercised API health, chat
-completions, tool calling, and DSpark
-speculative decoding using the immutable image pinned by
+**Status: live-benchmarked base settings.** Two-Spark-pair and
+four-Spark-cycle launches exercised API health, chat completions, tool calling,
+and DSpark speculative decoding using the immutable image pinned by
 [`runtime/faststart-lock.json`](../runtime/faststart-lock.json). Both use
 `fp8_ds_mla` for the MLA key-value cache and a 1,048,576-token request limit.
 The base settings reserve 17,179,869,184 bytes per rank, use a
 4,096-token scheduler budget, and set block size 256 in both topologies.
 
-The new two-Spark base setup was benchmarked through 128K prefill and sustained
-decode at temperature 1.0 and top-p 1.0. At 16K it measured 295.34 aggregate
-tok/s at C32 using the isolated vLLM generation counter. Repeated C1/C8 cells
-show substantial DSpark-acceptance variance. See the
-[full TP2 benchmark record](../performance/records/deepseek-v4-flash/normalized-tp2-base-20260822.md).
+The pair used `DeepSeek-V4-Flash-DSpark@913f0657…`; the cycle used the plain
+`DeepSeek-V4-Flash-0731@7872f01…`. Their configuration, tokenizer
+configuration, and tensor index match, while all 48 weight payload identifiers
+differ. The results therefore describe two explicit serving profiles rather
+than an exact same-weight topology scaling experiment.
+
+The two-Spark and four-Spark base setups were benchmarked through 128K prefill
+and every concurrency/context combination that fit their KV pools at
+temperature 1.0 and effective top-p 1.0. C1/C2 use at least five accepted
+observations per context; other applicable cells use at least three. At 16K,
+the pair measured 307.13 aggregate tok/s at C32 and the cycle measured 508.11.
+Repeated cells retain substantial DSpark-acceptance variance. See the
+[full TP2 record](../performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md)
+and [full TP4 record](../performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md).
 
 The public tree retains functional SparkCache launcher and restore validation,
 but does not publish performance tables from other sampling temperatures. The

@@ -10,9 +10,9 @@
   },
   "model": {
     "repository": "deepseek-ai/DeepSeek-V4-Flash-0731",
-    "revision": null,
-    "identity_status": "unsupported",
-    "identity_limitation": "The repository does not pin a checkpoint revision or per-file hashes. An operator must record both before treating a deployment as reproducible."
+    "revision": "7872f01b1d1fe23eabc4c98b48bffcef5a386062",
+    "identity_status": "recorded",
+    "identity_note": "The public pair target uses the plain 0731 package. Its benchmark evidence used the DSpark package at 913f0657a874f76844e2e91cbe706dbcaceeb6d7, with matching configuration and tensor index but different weight payloads."
   },
   "runtime": {
     "image_lock": "runtime/faststart-lock.json",
@@ -46,7 +46,7 @@
     "max_num_batched_tokens": 4096,
     "async_scheduling": true,
     "scheduler_reserve_full_isl": true,
-    "sizing_note": "The candidate pair uses the same 1048576-token context, 32-sequence limit, 4096-token scheduler budget, 256-token block size, and 16 GiB per-rank key-value reservation as the normalized comparison plan. These coupled values require a fresh startup, capacity, correctness, and performance gate. Setting kv_cache_memory_bytes disables the gpu_memory_utilization guard, so free memory must be checked after launch rather than assumed."
+    "sizing_note": "The candidate pair uses the 1048576-token context, 32-sequence limit, 4096-token scheduler budget, 256-token block size, and 16 GiB per-rank key-value reservation measured by the normalized temperature-1 campaign. Setting kv_cache_memory_bytes disables the gpu_memory_utilization guard, so free memory must be checked after launch rather than assumed."
   },
   "transport": {
     "difference_from_cycle": "A pair uses one host channel adapter per rank instead of two, so the cycle template's second adapter, subnet-aware routing, subnet prefix length, pinned channel counts, Ring algorithm selection and tree-connect skip are all removed. The tree-connect skip exists because a four-cycle contains non-adjacent rank pairs; the two ranks of a pair are directly adjacent.",
@@ -54,15 +54,14 @@
   },
   "evidence": {
     "status": "implemented",
-    "conditions": "Historical implemented evidence from two directly cabled NVIDIA DGX Sparks using a 1048576-token context, 32 sequences, an 8192-token scheduler budget, an unrecorded effective block size, and 12884901888 key-value bytes per rank. It does not validate the candidate serving object in this recipe.",
-    "result": "Both ranks rendezvoused and the model served. The engine reported a 1,139,967-token key-value pool and 1.09x maximum concurrency at a 1,048,576-token request length, with 8-10 GB free per node while serving. A deterministic chat completion, an emitted tool call, and a 34-tool chat request all returned coherent output with no leaked template or end-of-sequence markers. DSpark speculation was active at depth 5 with a mean acceptance length of 2.76. Client-observed aggregate throughput measured 36.7, 123.8, 173.4 and 237.7 tokens per second at 1, 8, 16 and 32 concurrent requests.",
-    "conclusion": "The two-rank launch path is implemented for the historical configuration. The normalized candidate completed startup, API, prefill-through-128K, and sustained-decode benchmark observations, but remains candidate until checkpoint identity and the complete promotion gate are closed.",
+    "conditions": "Live candidate evidence from two directly cabled NVIDIA DGX Sparks using the serving settings above and deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7 instead of the recipe's plain 0731 weight package: 1048576-token request limit, 32 sequences, 4096 batched tokens, 16 GiB key-value reservation per rank, block size 256, fp8_ds_mla, and DSpark depth 5. Prefill and sustained decode used temperature 1.0 and effective top-p 1.0 through 128K.",
+    "result": "Both ranks rendezvoused and served the model. C1/C2 were measured with five accepted observations per context; every other applicable decode cell used at least three. At 16K, aggregate throughput measured 58.36 tok/s at C1, 77.65 at C2, 202.74 at C16, and 307.13 at C32. Coding Peak averaged 59.31 tok/s across five requests.",
+    "conclusion": "The normalized two-rank serving settings are implemented and live-benchmarked with the starred DSpark checkpoint difference.",
     "limitations": [
-      "No checkpoint revision or per-file hashes are pinned.",
-      "Performance observations are not qualified measurements.",
-      "The candidate 16 GiB, block-256, 4096-token scheduler configuration is live-benchmarked but not qualified; the checkpoint revision is unpinned and the complete correctness, capacity, and post-workload health gate remains open."
+      "The TP2 DSpark weight package differs from the plain 0731 package used by TP4, so TP2-versus-TP4 values are not an exact same-weight scaling comparison.",
+      "The temperature-1 measurements apply to the recorded serving settings and checkpoint revision."
     ],
     "record": "docs/profiles/DEEPSEEK_V4_FLASH_0731.md",
-    "normalized_candidate_benchmark": "performance/records/deepseek-v4-flash/normalized-tp2-base-20260822.json"
+    "normalized_candidate_benchmark": "performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.json"
   }
 }

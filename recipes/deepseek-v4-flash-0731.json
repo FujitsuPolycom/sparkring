@@ -10,9 +10,9 @@
   },
   "model": {
     "repository": "deepseek-ai/DeepSeek-V4-Flash-0731",
-    "revision": null,
-    "identity_status": "unsupported",
-    "identity_limitation": "The repository does not pin a checkpoint revision or per-file hashes. An operator must record both before treating a deployment as reproducible."
+    "revision": "7872f01b1d1fe23eabc4c98b48bffcef5a386062",
+    "identity_status": "recorded",
+    "identity_note": "This is the plain 0731 checkpoint package used by the TP4 benchmark."
   },
   "runtime": {
     "image_lock": "runtime/faststart-lock.json",
@@ -46,20 +46,20 @@
     "max_num_batched_tokens": 4096,
     "async_scheduling": true,
     "scheduler_reserve_full_isl": true,
-    "sizing_note": "The candidate cycle uses the normalized 1048576-token context, 32-sequence limit, 4096-token scheduler budget, 256-token block size, and 16 GiB per-rank key-value reservation. These coupled values require a fresh startup, capacity, correctness, and performance gate. Setting kv_cache_memory_bytes disables the gpu_memory_utilization guard, so free memory must be checked after launch rather than assumed."
+    "sizing_note": "The candidate cycle uses the normalized 1048576-token context, 32-sequence limit, 4096-token scheduler budget, 256-token block size, and 16 GiB per-rank key-value reservation measured by the temperature-1 campaign. Setting kv_cache_memory_bytes disables the gpu_memory_utilization guard, so free memory must be checked after launch rather than assumed."
   },
   "evidence": {
     "status": "implemented",
-    "conditions": "Historical implemented evidence from four directly cabled DGX Sparks using a 1048576-token context, 32 sequences, an 8192-token scheduler budget, an unrecorded effective block size, and 17179869184 key-value bytes per rank. It does not validate the candidate serving object in this recipe. Fabric routing, IPv4 forwarding and the DOCKER-USER relay rules were verified by scripts/ring_doctor.py with every node pair reachable before launch.",
-    "result": "All four ranks rendezvoused across the cycle, including ranks not directly cabled to rank 0, which reach the rendezvous address only by neighbour relay. Each rank loaded 40.82 GiB of weights. The engine reported a 1,519,925-token key-value pool and 1.45x maximum concurrency at a 1,048,576-token request length, with about 50 GB free per node while serving. A deterministic chat completion returned the correct arithmetic result and a tool call was emitted with correct arguments. DSpark speculation was active at depth 5 with a 3.06 mean acceptance length and a 41.2% draft acceptance rate. Client-observed aggregate throughput measured 56.5, 177.5, 256.1 and 347.5 tokens per second at 1, 8, 16 and 32 concurrent requests.",
-    "conclusion": "The four-rank launch path is implemented for the historical configuration. The normalized candidate serving values in this recipe require a fresh live gate before promotion.",
+    "conditions": "Live candidate evidence from four directly cabled DGX Sparks using deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062 and the serving object above: 1048576-token request limit, 32 sequences, 4096 batched tokens, 16 GiB key-value reservation per rank, block size 256, fp8_ds_mla, DSpark depth 5, asynchronous scheduling, full-input-length reservation, and patched NCCL. Prefill and sustained decode used temperature 1.0 and effective top-p 1.0 through 128K.",
+    "result": "All four ranks rendezvoused and served the model. C1/C2 were measured with five accepted observations per context; every other applicable decode cell used at least three. At 16K, aggregate throughput measured 68.84 tok/s at C1, 139.01 at C2, 428.48 at C16, and 508.11 at C32. Coding Peak averaged 95.77 tok/s across fifteen requests.",
+    "conclusion": "The normalized four-rank serving object is implemented and live-benchmarked.",
     "limitations": [
-      "No checkpoint revision or per-file hashes are pinned.",
       "No SIRCL shadow-comparison window is qualified for width 4096.",
-      "Performance observations are not qualified measurements.",
+      "The TP4 plain 0731 weight package differs from the DSpark package used by TP2, so TP2-versus-TP4 values are not an exact same-weight scaling comparison.",
       "Enabling VLLM_ENABLE_PCIE_ALLREDUCE with the cpp backend changed throughput by less than 2% at one and eight concurrent requests; the engine selects PYNCCL because every faster all-reduce backend requires peer-accessible GPU memory on one host.",
-      "The candidate block-256, 4096-token scheduler configuration has not completed a live startup or benchmark gate."
+      "The temperature-1 measurements apply to the recorded serving settings and checkpoint revision."
     ],
-    "record": "docs/profiles/DEEPSEEK_V4_FLASH_0731.md"
+    "record": "docs/profiles/DEEPSEEK_V4_FLASH_0731.md",
+    "normalized_candidate_benchmark": "performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.json"
   }
 }
