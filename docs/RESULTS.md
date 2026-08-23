@@ -71,7 +71,8 @@ normalized SparkCache profiles still require temperature-1 remeasurement.
 
 **Status: experimental four-Spark candidate.** A maintainer-held image and
 model started and served on four directly cabled DGX Sparks. The public builder
-has not reproduced that exact runtime from a clean checkout.
+has not reproduced that exact runtime from a clean checkout. The clean-checkout
+builder in `runtime/qwen38/` is offline-validated and has no live result yet.
 
 ### Conditions
 

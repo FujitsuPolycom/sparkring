@@ -2,7 +2,7 @@
 #
 # The repository supports three model families: GLM-5.2 EXL3 3.5-bpw with the
 # R7 runtime, DeepSeek-V4-Flash-0731 with its per-rank environment contracts,
-# and Qwen3.8-27B EXL3 K5/K6 with a source-built runtime contract. One
+# and Qwen3.8-27B EXL3 K5/K6 with a clean-checkout local image builder. One
 # maintainer is verifiable from this repository.
 #
 # CODEOWNERS requests review automatically when branch protection requires it;
@@ -14,7 +14,7 @@
 # CUDA, RDMA, or a four-rank live serving ring.
 /spark_transport/               @FujitsuPolycom
 
-# Runtime definitions, image pins, and the GLM-5.2 EXL3 R7 build surface.
+# Runtime definitions, image pins, and the GLM/Qwen ARM64 build surfaces.
 /runtime/                       @FujitsuPolycom
 
 # Configuration, measurement, and user-facing claim surfaces.

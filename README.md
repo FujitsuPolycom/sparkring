@@ -37,7 +37,7 @@ belongs to profiles rather than the transport.
 | GLM-5.2 EXL3 3.5-bpw | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | four-Spark cycle, TP4/DCP4 | normalized candidate at 1M context/16 sequences; historical 262K/eight-sequence qualification retained | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
 | DeepSeek-V4-Flash-0731 | `deepseek-ai/DeepSeek-V4-Flash-0731` | two-Spark pair, TP2/DCP1 | normalized candidate live-benchmarked; SIRCL unsupported | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | DeepSeek-V4-Flash-0731 | `deepseek-ai/DeepSeek-V4-Flash-0731` | four-Spark cycle, TP4/DCP1 | normalized candidate; SIRCL width 4096 research-only | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| Qwen3.8-27B EXL3 K5/K6 | `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf` | four-Spark cycle, TP4/DCP1 | candidate; implemented and live-benchmarked; SIRCL unsupported | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
+| Qwen3.8-27B EXL3 K5/K6 | `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf` | four-Spark cycle, TP4/DCP1 | candidate; historical runtime implemented; public builder offline-validated; SIRCL unsupported | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
 | GLM-5.2 EXL3 3.5-bpw + SparkCache | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | four-Spark cycle, TP4/DCP4 | normalized candidate; historical durable-state receipt retained | [SparkCache compositions](recipes/sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 + SparkCache | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` | two-Spark pair, TP2/DCP1 | normalized candidate; historical 131K/six-sequence receipt retained | [SparkCache compositions](recipes/sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 + SparkCache | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` | four-Spark cycle, TP4/DCP1 | normalized candidate; historical 524K receipt retained | [SparkCache compositions](recipes/sparkcache/README.md) |
@@ -57,8 +57,10 @@ The DeepSeek profiles use the immutable published image pinned in
 per-rank environment templates in [`scripts/config/`](scripts/config/).
 The Qwen cycle profile is
 [`recipes/qwen38-27b-exl3-k5k6.json`](recipes/qwen38-27b-exl3-k5k6.json). It
-uses the source-built runtime pinned by the companion Qwen recipe and the
-tracked four-rank environment in `scripts/config/`.
+uses the clean-checkout local image builder in
+[`runtime/qwen38/`](runtime/qwen38/README.md), the public source pins from the
+companion Qwen recipe, and the tracked four-rank environment in
+`scripts/config/`.
 
 Qualified durable prefix-state compositions for the two-Spark DeepSeek,
 four-Spark DeepSeek, and four-Spark GLM profiles are in

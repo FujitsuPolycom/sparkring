@@ -1,16 +1,20 @@
 # Qwen3.8-27B EXL3 K5/K6 four-Spark quickstart
 
-Serve `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated` as four tensor-parallel
-ranks on the direct-cable Spark cycle.
+This quickstart builds and serves
+`malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated` as four tensor-parallel ranks on a
+directly cabled DGX Spark cycle. It starts from public, immutable source inputs.
+No maintainer-held archive or published Qwen image is required.
 
-**Status: candidate; implemented and live-benchmarked.** The four-Spark
-serving object started and served the pinned checkpoint. A bounded run recorded
-startup, memory, key-value capacity, functional checks, and limited
-performance. It is not a restart, sustained-load, or complete qualification
-result.
+**Status: candidate.** The serving object is implemented on a maintainer-built
+runtime. The public ARM64 image builder and local preflight are offline
+validated; a clean-checkout image from the builder has not completed a live
+four-rank run. Each image ID produced by the builder has a separate evidence
+scope and does not inherit the historical performance observations.
 
 The machine-readable settings are in
 [`recipes/qwen38-27b-exl3-k5k6.json`](../recipes/qwen38-27b-exl3-k5k6.json).
+The image builder contract is in
+[`runtime/qwen38/README.md`](../runtime/qwen38/README.md).
 
 | Setting | Four-Spark candidate |
 |---|---|
@@ -30,212 +34,496 @@ The machine-readable settings are in
 | External cache | disabled |
 | Collective transport | patched NCCL; SIRCL disabled |
 
-The candidate uses the companion Qwen base recipe's cache-free 8,192-token
-scheduler budget. The companion LMCache launch's 3,072-token budget is a
-transfer constraint and does not apply here. Pass `--block-size 16`; the
-pinned runtime then aligns the effective attention and mamba cache blocks to
-1,600 tokens. Do not pass `--block-size 1600` directly.
+Pass `--block-size 16`; the pinned runtime performs the 1,600-token hybrid
+alignment. Do not pass `--block-size 1600` directly. SparkCache and LMCache are
+not part of this deployment.
 
-## 1. Prepare the cycle
+## 1. Prepare the four hosts
 
-Complete the [four-Spark prerequisites](PREREQUISITES.md). The four fabric
-edges must be cabled as `0-1`, `1-2`, `2-3`, and `3-0`. Every rank must route
-to the non-adjacent fabric subnets through a neighbour, forward IPv4 traffic,
-and allow the relay through Docker's forwarding chain.
+Complete [the four-Spark prerequisites](PREREQUISITES.md). Each host needs
+Linux ARM64, Docker with NVIDIA GPU access, both ConnectX-7 ports,
+`/dev/infiniband`, and writable storage for the image, approximately 22 GB of
+model files, and JIT caches. The build host additionally needs substantial
+temporary disk space and internet access to the pinned CUDA image, GitHub,
+PyPI, and the PyTorch CUDA 13.2 index.
 
-Run the topology checks before preparing a serving process:
-
-```bash
-python scripts/ring_doctor.py --help
-```
-
-Use the command form appropriate for the local site configuration. Do not
-start Qwen until every rank can reach the rendezvous address and every direct
-cable has passed the repository's cable checks.
-
-## 2. Prepare one identical runtime per rank
-
-The profile uses the source-built runtime documented by
-[`FujitsuPolycom/qwen38-spark-pair`](https://github.com/FujitsuPolycom/qwen38-spark-pair/tree/b9e1031b80b6f3f64bfc75ae3922322f56954fd6)
-at commit `b9e1031b80b6f3f64bfc75ae3922322f56954fd6`. The repository name describes
-its measured pair deployment; its model loader, kernels, and Python
-environment are the inputs reused here.
-
-Follow its container, Python, ExLlamaV3, vLLM, model-download, and patched-NCCL
-steps on rank 0. Stop before the LMCache setup. The relevant identities are:
-
-| Input | Identity |
-|---|---|
-| Base image | `nvcr.io/nvidia/cuda@sha256:5c36750138dc1447a17dafbb397674f167d3b44ce18d9160d769df114577b35d` |
-| vLLM mirror | `FujitsuPolycom/vllm`, tag `qwen38-tested-20260817`, commit `229effc810ee6b8112f661472f6aace4eb8c787d` |
-| ExLlamaV3 | `5f3c537ca9d89893d771256f5c43c93656553fbb` plus ARM64 patch SHA-256 `594b01547b0d801cf95926ea973719354150893121019aba2ad8832bc9f17fdb` |
-| Torch | `2.12.0+cu132` |
-| B12X | `1.2.4` |
-| Python dependency reference | companion `requirements-freeze.txt` blob SHA-256 `d773c781bcc1de6cf81a64f9fa6b2ab80535f77eea08c5aeb5b96c2ce4423ba8` |
-| Patched NCCL | SHA-256 `e69a8c240f45d10166bcd901d99db78bb63147adda66e586d8dd505c6d608b54` |
-
-Replicate the prepared `/ws/venv`, source trees, model, patched NCCL library,
-and chat template to ranks 1-3. Each prepared container must mount its local
-work directory at `/ws` and expose `/dev/infiniband`. No public image or source
-archive represents the measured runtime, so public reproduction remains
-pending.
-
-The pinned CUDA base does not contain Python, the CUDA 13.2 toolkit, or the
-userspace verbs provider. Install the companion recipe's build packages plus
-`procps`, `libibverbs1`, `ibverbs-providers`, and `ibverbs-utils` in every
-prepared container. `/dev/infiniband` without `libibverbs.so.1` is
-insufficient: NCCL will discover the device nodes and then fail before model
-loading. The launcher uses `pgrep` from `procps` for its duplicate-engine
-guard.
-
-Verify the public source base commits, working-tree states, and runtime imports
-on every rank:
+The literal flow also requires these commands on the control/build host or the
+rank where each command is shown:
 
 ```bash
-/ws/venv/bin/python -c 'import vllm; print(vllm.__version__)'
-/ws/venv/bin/python -c 'import torch; from exllamav3_ext import exl3_gemm; print("exl3 ok")'
-git -c safe.directory=/ws/src/vllm-gg -C /ws/src/vllm-gg rev-parse HEAD
-git -c safe.directory=/ws/src/vllm-gg -C /ws/src/vllm-gg diff --binary | sha256sum
-git -c safe.directory=/ws/src/exllamav3 -C /ws/src/exllamav3 rev-parse HEAD
-git -c safe.directory=/ws/src/exllamav3 -C /ws/src/exllamav3 diff --binary | sha256sum
-sha256sum /ws/nccl-patched/libnccl.so.2
+for command in docker python3 git ssh scp rsync curl timeout sha256sum awk cat \
+  ip ss ibdev2netdev show_gids; do
+  command -v "$command" >/dev/null || { echo "missing command: $command" >&2; exit 1; }
+done
 ```
 
-The source commands must return vLLM
-`229effc810ee6b8112f661472f6aace4eb8c787d` and ExLlamaV3
-`5f3c537ca9d89893d771256f5c43c93656553fbb`. The vLLM diff must have the empty
-SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`;
-the ExLlamaV3 ARM diff must have SHA-256
-`594b01547b0d801cf95926ea973719354150893121019aba2ad8832bc9f17fdb`.
-The Python version string alone does not identify the Qwen hybrid-prefix
-safety ports. The tracked launcher also rejects any additional vLLM status and
-any ExLlamaV3 status that differs from the pinned ARM patch state.
+On Debian/Ubuntu, Git, OpenSSH client tools, rsync, curl, coreutils, iproute2,
+`rdma-core`, and `ibverbs-utils` provide the non-Docker utilities. Install
+Docker and the NVIDIA container runtime using the platform's supported DGX
+Spark procedure.
 
-Download the model at the pinned revision. Verify that `SHA256SUMS` itself has
-SHA-256 `7626d18481e7f995fd1d9ff211083b7fd57f044daba39e107fb29a48207f24c4`,
-then run all 16 entries in that file on every rank. Copy
-`scripts/chat_template_agentic.jinja` from the pinned companion checkout to
-`/ws/chat_template_agentic.jinja`; its expected SHA-256 is
-`4f9201169f5bacd1a494c8824470a1ef899c7024d23a2b166e42493e7efd9ac9`.
-
-After replication, copy SparkRing's rank launcher into the `/ws`-mounted work
-directory on every rank:
+Assign stable ranks 0-3 and cable the four fabric edges as `0-1`, `1-2`,
+`2-3`, and `3-0`. From the clean SparkRing checkout, run the read-only topology
+check from a control host:
 
 ```bash
-cp scripts/qwen38_dgx4_serve.sh /path/to/qwen-runtime/qwen38_dgx4_serve.sh
+python scripts/ring_doctor.py \
+  --node <user>@<rank0-host> \
+  --node <user>@<rank1-host> \
+  --node <user>@<rank2-host> \
+  --node <user>@<rank3-host> \
+  --verify
 ```
 
-## 3. Configure each rank
+Require zero `ERROR` findings and a reachability matrix in which every pair
+passes. Do not continue from a plan that reports missing routes, disabled IPv4
+forwarding, a blocked Docker forwarding chain, an unhealthy cable, or an
+unreachable rendezvous address.
 
-Copy the cycle environment template to `/ws/rank.env` inside each prepared
-container's work directory:
+On every rank, identify the management interface, the two fabric netdevs, the
+corresponding RDMA devices, and the RoCEv2 GID entries:
 
 ```bash
-cp scripts/config/qwen38-27b-exl3-k5k6.env.example /path/to/qwen-runtime/rank.env
+ip -br -4 address
+ibdev2netdev
+show_gids
 ```
 
-Replace `<RENDEZVOUS_IFNAME>`, `<RANK_RENDEZVOUS_IP>`, `<NCCL_IB_HCA>`, and
-`<NCCL_IB_GID_INDEX>` separately on every host. The rendezvous interface is
-the management NIC and must allow unrestricted mutual TCP because vLLM's
-multiprocess executor uses random worker ports in addition to port 29500. List
-the two RoCE devices in the local ring order. Use `show_gids` to find the
-RoCEv2 entry for each device's fabric IPv4 address; both devices on one rank
-must expose that address type at the selected rank-global GID index. Do not
-copy index 3 from the recorded run without checking the site. Keep every other
-value equal. See [the architecture](ARCHITECTURE.md).
-
-The environment intentionally contains no DeepSeek, GLM, LMCache,
-SparkCache, or SIRCL settings. It combines the Qwen EXL3 runtime gates with
-the patched-NCCL cycle transport.
-
-## 4. Start the four ranks
-
-Set these host variables on each Spark:
+Rerun the read-only check with the actual Qwen rendezvous and management
+interfaces:
 
 ```bash
-RANK=REPLACE_WITH_0_TO_3
-RANK0_RENDEZVOUS_ADDR=REPLACE_WITH_RANK0_MANAGEMENT_ADDRESS
-CONTAINER=REPLACE_WITH_PREPARED_QWEN_CONTAINER
+python scripts/ring_doctor.py \
+  --node <user>@<rank0-host> \
+  --node <user>@<rank1-host> \
+  --node <user>@<rank2-host> \
+  --node <user>@<rank3-host> \
+  --rendezvous-address <rank0-management-ip> \
+  --socket-interface <user>@<rank0-host>=<rank0-management-interface> \
+  --socket-interface <user>@<rank1-host>=<rank1-management-interface> \
+  --socket-interface <user>@<rank2-host>=<rank2-management-interface> \
+  --socket-interface <user>@<rank3-host>=<rank3-management-interface> \
+  --verify
 ```
 
-This launch stops being safe if another model stack owns the GPU, rank-0 API
-port, or rendezvous port. Inspect the running containers and GPU processes on
-all four hosts, identify any serving stack, and preserve its launch contract
-before stopping it. Do not start Qwen until the selected Qwen containers are
-the only containers assigned to the GPUs. The rank launcher separately rejects
-an existing `vllm serve` process in its container and bound rank-0 ports; it
-cannot see a process isolated in another container.
+Require zero rendezvous and socket-interface findings in addition to the full
+fabric reachability matrix. The site firewall must permit unrestricted mutual
+TCP among the four management addresses because the `mp` executor allocates
+dynamic worker ports.
 
-Start ranks 1-3, then rank 0 without a long delay between them:
+Each `NCCL_IB_HCA` value must name exactly the two RDMA devices connected to
+that rank's cycle neighbours. `NCCL_IB_GID_INDEX` is rank-global, so both
+devices on one rank must expose their fabric IPv4 RoCEv2 entries at the chosen
+index. Do not copy an index from another site.
+
+## 2. Build one public runtime image on rank 0
+
+Build once on rank 0 from its clean SparkRing checkout. The build compiles
+NCCL, ExLlamaV3, and vLLM and can take several hours. `MAX_JOBS` bounds build
+parallelism when memory is limited.
+
+Pull the immutable CUDA parent and record its local content-addressed image ID:
 
 ```bash
-docker exec -d \
-  --env RANK="$RANK" \
-  --env RANK0_RENDEZVOUS_ADDR="$RANK0_RENDEZVOUS_ADDR" \
-  --env QWEN_ENV_FILE=/ws/rank.env \
-  "$CONTAINER" \
-  bash -lc 'mkdir -p /ws/logs && exec bash /ws/qwen38_dgx4_serve.sh >> "/ws/logs/qwen38-r${RANK}.log" 2>&1'
+IMAGE=sparkring-qwen38:arm64-sm121
+PARENT='nvcr.io/nvidia/cuda@sha256:5c36750138dc1447a17dafbb397674f167d3b44ce18d9160d769df114577b35d'
+
+docker pull "$PARENT"
+PARENT_ID=$(docker image inspect --format '{{.Id}}' "$PARENT")
 ```
 
-[`scripts/qwen38_dgx4_serve.sh`](../scripts/qwen38_dgx4_serve.sh) carries the
-full serving command, including:
-
-```text
---tensor-parallel-size 4
---decode-context-parallel-size 1
---nnodes 4
---distributed-executor-backend mp
---max-model-len 262144
---max-num-seqs 64
---max-num-batched-tokens 8192
---enable-chunked-prefill
---async-scheduling
---scheduler-reserve-full-isl
---block-size 16
---kv-cache-dtype fp8
---enable-prefix-caching
---mamba-cache-mode align
---speculative-config {"method":"qwen3_5_mtp","num_speculative_tokens":3,"attention_backend":"TRITON_ATTN"}
---compilation-config {"cudagraph_mode":"FULL_DECODE_ONLY"}
-```
-
-Rank 0 listens on port 8000. Ranks 1-3 use `--headless`.
-
-## 5. Validate a deployment
-
-Wait for rank 0 to answer:
+Build from the tracked public inputs:
 
 ```bash
-curl -fsS http://127.0.0.1:8000/v1/models
+BASE_IMAGE="$PARENT" \
+BASE_IMAGE_ID="$PARENT_ID" \
+BASE_IMAGE_LICENSES='LicenseRef-NVIDIA-Deep-Learning-Container' \
+IMAGE="$IMAGE" \
+MAX_JOBS=8 \
+  bash ./runtime/qwen38/build-image.sh
 ```
 
-Then send a temperature-zero request twice and compare `message.content`,
-`reasoning_content`, tool calls, and finish reason. Do not compare dynamic API
-IDs or timestamps. Check all four logs for successful rendezvous, the same
-model revision, the reported key-value pool, graph capture, and MTP acceptance
-counters.
+The builder fails on parent-image drift, dirty builder inputs, source commit or
+tree drift, patch drift, dependency-input drift, a wrong CUDA architecture, or
+a patched NCCL binary that does not have SHA-256
+`e69a8c240f45d10166bcd901d99db78bb63147adda66e586d8dd505c6d608b54`.
+It builds vLLM for `12.0f` and ExLlamaV3 for `12.1`, then import-checks vLLM
+and `exllamav3_ext.exl3_gemm` without loading a model.
 
-The bounded record below intentionally has partial coverage. Before making a
-wider or qualified performance claim, record at least:
+Record the resulting immutable image ID:
 
-- available host memory and swap after model load;
-- reported key-value tokens and maximum 262,144-token concurrency;
-- arithmetic, instruction-following, tool-call, and vision checks;
-- eager-versus-graph output comparison;
-- native shared-prefix and divergent-suffix checks;
-- cold prefill at 4K, 16K, and 64K;
-- sustained decode at C1, C8, and C32; and
-- API, rank-process, NCCL, and host health after the workload.
+```bash
+IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE")
+printf '%s\n' "$IMAGE_ID"
 
-The one- and two-Spark observations in the pinned companion Qwen recipe are
-useful controls but are not TP4 results. The bounded TP4 bring-up is recorded in
+docker run --rm \
+  -e LD_PRELOAD= -e VLLM_NCCL_SO_PATH= \
+  --entrypoint cat "$IMAGE" \
+  /ws/runtime/source-receipt.json \
+  > qwen38-source-receipt.json
+RECEIPT_SHA=$(sha256sum qwen38-source-receipt.json | awk '{print $1}')
+LABEL_SHA=$(docker image inspect --format \
+  '{{index .Config.Labels "org.sparkring.source-receipt-sha256"}}' "$IMAGE")
+test "$RECEIPT_SHA" = "$LABEL_SHA" || { echo "source receipt label mismatch" >&2; exit 1; }
+docker image inspect "$IMAGE" > qwen38-image-inspect.json
+```
+
+Retain `IMAGE_ID`, `qwen38-source-receipt.json`, its SHA-256, and
+`qwen38-image-inspect.json` with any startup or smoke evidence for this build.
+
+The image contains the runtime under `/ws`. It contains no model, rank
+configuration, site address, credentials, benchmark result, LMCache, or
+SparkCache.
+
+## 3. Distribute the identical image
+
+Export the image once on the build host:
+
+```bash
+IMAGE=sparkring-qwen38:arm64-sm121
+docker save --output qwen38-runtime.oci.tar "$IMAGE"
+sha256sum qwen38-runtime.oci.tar > qwen38-runtime.oci.tar.sha256
+```
+
+Copy both files to ranks 1-3 using the site's normal transfer mechanism. For
+example:
+
+```bash
+ssh <user>@<rank1-host> 'mkdir -p "$HOME/qwen38/staging"'
+ssh <user>@<rank2-host> 'mkdir -p "$HOME/qwen38/staging"'
+ssh <user>@<rank3-host> 'mkdir -p "$HOME/qwen38/staging"'
+scp qwen38-runtime.oci.tar qwen38-runtime.oci.tar.sha256 <user>@<rank1-host>:qwen38/staging/
+scp qwen38-runtime.oci.tar qwen38-runtime.oci.tar.sha256 <user>@<rank2-host>:qwen38/staging/
+scp qwen38-runtime.oci.tar qwen38-runtime.oci.tar.sha256 <user>@<rank3-host>:qwen38/staging/
+```
+
+On every receiving rank, verify before loading:
+
+```bash
+cd "$HOME/qwen38/staging"
+sha256sum --check qwen38-runtime.oci.tar.sha256
+docker load --input qwen38-runtime.oci.tar
+docker image inspect --format '{{.Id}}' sparkring-qwen38:arm64-sm121
+```
+
+All four hosts must report the same `IMAGE_ID`. Building independently on each
+rank is not equivalent to distributing one image identity.
+
+## 4. Download, verify, and distribute the model
+
+On one host, create a model parent directory and use the built image's pinned
+Hugging Face client:
+
+```bash
+IMAGE=sparkring-qwen38:arm64-sm121
+MODEL_PARENT="$HOME/qwen38/model"
+MODEL_DIR="$MODEL_PARENT/Qwen3.8-27B-EXL3-K5K6-hydrated"
+mkdir -p "$MODEL_PARENT"
+
+docker run --rm \
+  -v "$MODEL_PARENT:/models" \
+  -e LD_PRELOAD= -e VLLM_NCCL_SO_PATH= \
+  --entrypoint /ws/venv/bin/hf \
+  "$IMAGE" \
+  download malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated \
+  --revision ab3a91a13813df8096cb4c1d560ed3669035d0cf \
+  --local-dir /models/Qwen3.8-27B-EXL3-K5K6-hydrated
+```
+
+Verify the manifest identity and all 16 files:
+
+```bash
+docker run --rm \
+  -v "$MODEL_DIR:/model:ro" \
+  -e LD_PRELOAD= -e VLLM_NCCL_SO_PATH= \
+  --entrypoint bash \
+  "$IMAGE" -lc \
+  'printf "%s  %s\n" \
+    7626d18481e7f995fd1d9ff211083b7fd57f044daba39e107fb29a48207f24c4 \
+    /model/SHA256SUMS | sha256sum --check --strict - && \
+   cd /model && sha256sum --check --strict SHA256SUMS'
+```
+
+Copy the complete directory to the same host path on ranks 1-3. `rsync -aH`
+preserves filenames, modes, and symlinks without deleting unrelated files:
+
+```bash
+ssh <user>@<rank1-host> 'mkdir -p "$HOME/qwen38/model/Qwen3.8-27B-EXL3-K5K6-hydrated"'
+ssh <user>@<rank2-host> 'mkdir -p "$HOME/qwen38/model/Qwen3.8-27B-EXL3-K5K6-hydrated"'
+ssh <user>@<rank3-host> 'mkdir -p "$HOME/qwen38/model/Qwen3.8-27B-EXL3-K5K6-hydrated"'
+rsync -aH --info=progress2 "$MODEL_DIR/" <user>@<rank1-host>:qwen38/model/Qwen3.8-27B-EXL3-K5K6-hydrated/
+rsync -aH --info=progress2 "$MODEL_DIR/" <user>@<rank2-host>:qwen38/model/Qwen3.8-27B-EXL3-K5K6-hydrated/
+rsync -aH --info=progress2 "$MODEL_DIR/" <user>@<rank3-host>:qwen38/model/Qwen3.8-27B-EXL3-K5K6-hydrated/
+```
+
+Run the 16-file verification command on every rank after transfer. The image
+identity does not attest separately mounted model bytes.
+
+## 5. Create one rank environment per host
+
+From rank 0's checkout, create its writable directories and local environment,
+then install one private template copy on each other rank:
+
+```bash
+mkdir -p "$HOME/qwen38/cache" "$HOME/qwen38/logs" "$HOME/qwen38/config"
+cp scripts/config/qwen38-27b-exl3-k5k6.env.example \
+  "$HOME/qwen38/config/rank.env"
+ssh <user>@<rank1-host> 'mkdir -p "$HOME/qwen38/cache" "$HOME/qwen38/logs" "$HOME/qwen38/config"'
+ssh <user>@<rank2-host> 'mkdir -p "$HOME/qwen38/cache" "$HOME/qwen38/logs" "$HOME/qwen38/config"'
+ssh <user>@<rank3-host> 'mkdir -p "$HOME/qwen38/cache" "$HOME/qwen38/logs" "$HOME/qwen38/config"'
+scp scripts/config/qwen38-27b-exl3-k5k6.env.example \
+  <user>@<rank1-host>:qwen38/config/rank.env
+scp scripts/config/qwen38-27b-exl3-k5k6.env.example \
+  <user>@<rank2-host>:qwen38/config/rank.env
+scp scripts/config/qwen38-27b-exl3-k5k6.env.example \
+  <user>@<rank3-host>:qwen38/config/rank.env
+```
+
+Edit `$HOME/qwen38/config/rank.env` locally on each rank; do not reuse rank 0's
+resolved file on another rank.
+
+Replace all four placeholders:
+
+- `<RENDEZVOUS_IFNAME>`: the management interface used by vLLM, Gloo, and
+  NCCL bootstrap TCP;
+- `<RANK_RENDEZVOUS_IP>`: this rank's IPv4 address on that management
+  interface;
+- `<NCCL_IB_HCA>`: the two cycle-facing RDMA devices discovered with
+  `ibdev2netdev`; and
+- `<NCCL_IB_GID_INDEX>`: the verified RoCEv2 GID index for both devices on
+  this rank.
+
+The management LAN must permit mutual TCP between ranks. vLLM's multi-node
+`mp` executor uses dynamic worker ports in addition to rendezvous port 29500.
+The environment uses management only for process/bootstrap traffic; model
+collectives use the two RoCE devices.
+
+## 6. Run the no-start local preflight
+
+Set these values separately on each host:
+
+```bash
+IMAGE=sparkring-qwen38:arm64-sm121
+MODEL_PARENT="$HOME/qwen38/model"
+MODEL_DIR="$MODEL_PARENT/Qwen3.8-27B-EXL3-K5K6-hydrated"
+ATTEMPT_ID=<shared-deployment-id>
+RANK=<0-to-3>
+RANK0_RENDEZVOUS_ADDR=<rank0-management-ip>
+ENV_FILE="$HOME/qwen38/config/rank.env"
+CACHE_DIR="$HOME/qwen38/cache"
+LOG_DIR="$HOME/qwen38/logs"
+
+case "$ATTEMPT_ID" in
+  ''|*[!A-Za-z0-9_.-]*) echo "ATTEMPT_ID must match [A-Za-z0-9_.-]+" >&2; exit 1 ;;
+esac
+```
+
+Before claiming the GPU, inspect host-level ownership. The container preflight
+cannot see a serving process isolated in another container:
+
+```bash
+docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+nvidia-smi
+ss -ltn
+```
+
+Do not continue while another model stack owns the GPU or rank-0 ports 8000
+and 29500. Then run the same container and mounts as the real launch, but pass
+`--check`:
+
+```bash
+docker run --rm \
+  --network host --ipc host --shm-size 16g --gpus all \
+  --ulimit memlock=-1:-1 --cap-add IPC_LOCK --device /dev/infiniband \
+  -v "$MODEL_DIR:/ws/model/Qwen3.8-27B-EXL3-K5K6-hydrated:ro" \
+  -v "$CACHE_DIR:/ws/cache" \
+  -v "$LOG_DIR:/ws/logs" \
+  -v "$ENV_FILE:/ws/rank.env:ro" \
+  -e RANK="$RANK" \
+  -e RANK0_RENDEZVOUS_ADDR="$RANK0_RENDEZVOUS_ADDR" \
+  --label org.sparkring.profile=qwen38-27b-exl3-k5k6 \
+  --label org.sparkring.attempt="$ATTEMPT_ID" \
+  --label org.sparkring.rank="$RANK" \
+  --entrypoint /ws/qwen38_dgx4_serve.sh \
+  "$IMAGE" --check
+```
+
+`--check` does not start vLLM. It rejects unresolved placeholders, wrong
+source or patch state, model/template/NCCL hash drift, failed runtime imports,
+missing verbs/RDMA devices, incorrect management address binding, invalid
+HCA/GID mappings, duplicate vLLM processes, and occupied rank-0 ports. It ends
+by printing the resolved command. Require success on all four ranks.
+
+The model verification reads approximately 22 GB per rank. This is deliberate
+when no immutable model lifecycle has been recorded. A later restart policy
+can cite a separately recorded lifecycle rather than silently removing the
+gate.
+
+## 7. Start the four ranks
+
+Starting a container claims the GPU and can interrupt an existing service.
+This is a **STOPS SERVING** action when another stack is active. Preserve that
+stack's image, mounts, configuration, and logs before stopping it.
+
+Use the same variables and mounts as preflight. Start ranks 1-3 first, then
+rank 0, dispatching all four within two minutes. Choose one unique
+`ATTEMPT_ID` containing only letters, digits, dots, underscores, or hyphens and
+use it on all four hosts. Do not reuse an ID from a preserved container:
+
+```bash
+CONTAINER="qwen38-dgx4-${ATTEMPT_ID}-r${RANK}"
+ID_FILE="$LOG_DIR/container-id-${ATTEMPT_ID}-r${RANK}"
+test ! -e "$ID_FILE" || { echo "attempt ID file already exists: $ID_FILE" >&2; exit 1; }
+
+CONTAINER_ID=$(docker run -d --name "$CONTAINER" \
+  --network host --ipc host --shm-size 16g --gpus all \
+  --ulimit memlock=-1:-1 --cap-add IPC_LOCK --device /dev/infiniband \
+  -v "$MODEL_DIR:/ws/model/Qwen3.8-27B-EXL3-K5K6-hydrated:ro" \
+  -v "$CACHE_DIR:/ws/cache" \
+  -v "$LOG_DIR:/ws/logs" \
+  -v "$ENV_FILE:/ws/rank.env:ro" \
+  -e RANK="$RANK" \
+  -e RANK0_RENDEZVOUS_ADDR="$RANK0_RENDEZVOUS_ADDR" \
+  --label org.sparkring.profile=qwen38-27b-exl3-k5k6 \
+  --label org.sparkring.attempt="$ATTEMPT_ID" \
+  --label org.sparkring.rank="$RANK" \
+  --entrypoint /ws/qwen38_dgx4_serve.sh \
+  "$IMAGE" --run) || exit
+printf '%s\n' "$CONTAINER_ID" > "$ID_FILE"
+```
+
+Rank 0 listens on port 8000. Ranks 1-3 run headless. The launcher carries the
+complete serving command, including TP4/DCP1, the 262,144-token request limit,
+64 sequences, the 8,192-token scheduler budget, FP8 KV, native aligned prefix
+caching, Qwen MTP3, FP8 EXL3 prefill, and full-decode CUDA graphs.
+The tracked
+[`scripts/qwen38_dgx4_serve.sh`](../scripts/qwen38_dgx4_serve.sh) is baked at
+`/ws/qwen38_dgx4_serve.sh` by the image builder.
+
+## 8. Bound startup and inspect every rank
+
+Allow up to 15 minutes for first-start compilation and graph capture:
+
+```bash
+timeout 900 bash -c \
+  'until curl -fsS http://<rank0-management-ip>:8000/health >/dev/null; do sleep 5; done'
+curl -fsS http://<rank0-management-ip>:8000/v1/models
+```
+
+On every rank, require the container to remain running and inspect its log:
+
+```bash
+ID_FILE="$LOG_DIR/container-id-${ATTEMPT_ID}-r${RANK}"
+CONTAINER_ID=$(cat "$ID_FILE")
+test "$(docker inspect --format '{{index .Config.Labels "org.sparkring.attempt"}}' "$CONTAINER_ID")" = "$ATTEMPT_ID" || { echo "container attempt label mismatch" >&2; exit 1; }
+test "$(docker inspect --format '{{index .Config.Labels "org.sparkring.rank"}}' "$CONTAINER_ID")" = "$RANK" || { echo "container rank label mismatch" >&2; exit 1; }
+docker inspect --format '{{.State.Status}} {{.State.ExitCode}}' \
+  "$CONTAINER_ID"
+test "$(docker inspect --format '{{.State.Running}}' "$CONTAINER_ID")" = true || { echo "rank container is not running" >&2; exit 1; }
+docker logs "$CONTAINER_ID"
+```
+
+The combined logs must show four-rank rendezvous, TP4/DCP1, both RoCE devices,
+four Ring channels, Qwen MTP depth 3, full-decode graph capture, and the
+reported key-value capacity. A dispatch success is not startup success.
+
+If startup fails, preserve each log before cleanup:
+
+```bash
+ID_FILE="$LOG_DIR/container-id-${ATTEMPT_ID}-r${RANK}"
+CONTAINER_ID=$(cat "$ID_FILE")
+test "$(docker inspect --format '{{index .Config.Labels "org.sparkring.attempt"}}' "$CONTAINER_ID")" = "$ATTEMPT_ID" || { echo "container attempt label mismatch" >&2; exit 1; }
+test "$(docker inspect --format '{{index .Config.Labels "org.sparkring.rank"}}' "$CONTAINER_ID")" = "$RANK" || { echo "container rank label mismatch" >&2; exit 1; }
+docker logs "$CONTAINER_ID" \
+  > "$LOG_DIR/startup-${ATTEMPT_ID}-rank-${RANK}.log" 2>&1
+docker stop "$CONTAINER_ID"
+```
+
+Stop only IDs recorded by the failed attempt after both label checks pass. Keep
+the containers and logs, and diagnose the first error. Do not remove evidence,
+stop a pre-existing container whose ID was not captured, or weaken a
+hash/preflight check to make a later attempt proceed.
+
+## 9. Run the public bounded smoke gate
+
+From a client that can reach rank 0:
+
+```bash
+mkdir -p "$HOME/qwen38/logs"
+python scripts/qwen38_smoke.py \
+  --endpoint http://<rank0-management-ip>:8000 \
+  --model qwen38 \
+  --timeout 120 \
+  --output "$HOME/qwen38/logs/qwen38-smoke-${ATTEMPT_ID}.json"
+```
+
+The stdlib-only harness checks `/health`, model identity and the 262,144-token
+limit in `/v1/models`, repeated deterministic arithmetic, the `multiply(6,7)`
+tool call, a tiny data-URL vision request, repeated-prefix output equality,
+and divergent shared-prefix suffixes. It
+compares stable message fields rather than API IDs or timestamps and returns
+nonzero on any failed gate. It reports no timing or cache-hit claim.
+
+After the gate, recheck all four container states, rank-0 health, host
+`MemAvailable`, swap, and logs for worker exits or runtime errors. A public build
+that reaches API, passes the bounded smoke gate, and remains healthy can be
+recorded as an implemented candidate for that exact image ID. It is not
+automatically qualified.
+
+Run this on every rank after the smoke gate:
+
+```bash
+ID_FILE="$LOG_DIR/container-id-${ATTEMPT_ID}-r${RANK}"
+CONTAINER_ID=$(cat "$ID_FILE")
+test "$(docker inspect --format '{{index .Config.Labels "org.sparkring.attempt"}}' "$CONTAINER_ID")" = "$ATTEMPT_ID" || { echo "container attempt label mismatch" >&2; exit 1; }
+test "$(docker inspect --format '{{index .Config.Labels "org.sparkring.rank"}}' "$CONTAINER_ID")" = "$RANK" || { echo "container rank label mismatch" >&2; exit 1; }
+test "$(docker inspect --format '{{.State.Running}}' "$CONTAINER_ID")" = true || { echo "rank container exited" >&2; exit 1; }
+grep -E '^(MemAvailable|SwapTotal|SwapFree):' /proc/meminfo
+docker logs --tail 200 "$CONTAINER_ID"
+```
+
+From the client, require rank 0 to remain healthy:
+
+```bash
+curl -fsS http://<rank0-management-ip>:8000/health
+```
+
+## 10. Stop or restart the exact deployment
+
+Stop ranks 0-3 without removing their containers or logs:
+
+```bash
+ID_FILE="$LOG_DIR/container-id-${ATTEMPT_ID}-r${RANK}"
+CONTAINER_ID=$(cat "$ID_FILE")
+test "$(docker inspect --format '{{index .Config.Labels "org.sparkring.attempt"}}' "$CONTAINER_ID")" = "$ATTEMPT_ID" || { echo "container attempt label mismatch" >&2; exit 1; }
+test "$(docker inspect --format '{{index .Config.Labels "org.sparkring.rank"}}' "$CONTAINER_ID")" = "$RANK" || { echo "container rank label mismatch" >&2; exit 1; }
+docker stop "$CONTAINER_ID"
+```
+
+For a coordinated restart with unchanged mounts and environment, start ranks
+1-3 and then rank 0 within two minutes:
+
+```bash
+ID_FILE="$LOG_DIR/container-id-${ATTEMPT_ID}-r${RANK}"
+CONTAINER_ID=$(cat "$ID_FILE")
+test "$(docker inspect --format '{{index .Config.Labels "org.sparkring.attempt"}}' "$CONTAINER_ID")" = "$ATTEMPT_ID" || { echo "container attempt label mismatch" >&2; exit 1; }
+test "$(docker inspect --format '{{index .Config.Labels "org.sparkring.rank"}}' "$CONTAINER_ID")" = "$RANK" || { echo "container rank label mismatch" >&2; exit 1; }
+docker start "$CONTAINER_ID"
+```
+
+Re-run health and the bounded smoke gate after restart. Recreate containers
+when image, mounts, rank environment, or serving settings change, and record
+the resulting identity.
+
+## Evidence boundary and Pending integration
+
+The bounded historical TP4 record is in
 [`performance/records/qwen38-27b/dgx4-live-20260823.md`](../performance/records/qwen38-27b/dgx4-live-20260823.md).
-Future runs should add immutable records under `performance/records/qwen38-27b/`
-without changing the candidate settings to match an unrecorded or
-configuration-drifted launch.
-
-## Pending integration
+It describes a maintainer-held runtime and does not predict performance for a
+runtime image produced by the public builder. Record that image ID, source
+receipt, model hashes, startup result, smoke output, and post-run health
+separately.
 
 **SparkCache: Pending.** No Qwen3.8-27B SparkCache composition recipe or live
-cache evidence is published. The four-Spark base profile disables external
-key-value caching; cache work is not required for this bring-up.
+cache evidence is published. The base profile disables external key-value
+caching; SparkCache is not required to build or run this quickstart.

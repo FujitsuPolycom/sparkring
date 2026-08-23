@@ -2,22 +2,26 @@
 
 ## Status
 
-**Status: implemented; not qualified.** The candidate serving object started
-and served on four directly cabled DGX Sparks. A bounded live run passed API,
-deterministic arithmetic, tool-use, vision, and hybrid-prefix checks, then
-measured prefill and decode at limited contexts and concurrency. Restart,
-sustained-load, and the wider correctness gate remain open.
+**Status: implemented on a maintainer-built runtime; not qualified.** The
+candidate serving object started and served on four directly cabled DGX
+Sparks. A bounded live run passed API, deterministic arithmetic, tool-use,
+vision, and hybrid-prefix checks, then measured prefill and decode at limited
+contexts and concurrency. The public clean-checkout image builder is
+offline-validated; ARM64 build execution and live four-rank evidence remain
+pending.
 
 Use the
 [Qwen3.8-27B four-Spark quickstart](../QWEN38_27B_EXL3_K5K6_QUICKSTART.md)
-to prepare the source-built runtime and launch one rank per Spark.
+to build one local runtime image, distribute it, and launch one rank per
+Spark.
 
 ## Serving contract
 
 | Setting | Value |
 |---|---|
 | Model | `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf` |
-| Runtime | `FujitsuPolycom/qwen38-spark-pair@b9e1031b80b6f3f64bfc75ae3922322f56954fd6`, source-built and replicated identically to every rank |
+| Public runtime builder | `runtime/qwen38/build-image.sh`, using pins in `runtime/qwen38/pins.json`; build once and distribute one image ID |
+| Historical measured runtime | `FujitsuPolycom/qwen38-spark-pair@b9e1031b80b6f3f64bfc75ae3922322f56954fd6`, maintainer-built and replicated identically to every rank |
 | Parallelism | TP4/DCP1 across four DGX Sparks |
 | Collective transport | patched NCCL on the direct cycle |
 | Request limit | 262,144 tokens |
@@ -38,6 +42,19 @@ copying DeepSeek's 1M context, 4,096-token scheduler budget, DSpark proposer,
 or MLA cache format. It reuses DeepSeek's four-Spark physical topology,
 non-adjacent-rank routing, multi-node process shape, and patched-NCCL cycle
 settings.
+
+## Public reproduction path
+
+The [four-Spark quickstart](../QWEN38_27B_EXL3_K5K6_QUICKSTART.md) is
+self-contained within public repositories. It builds a local ARM64 image from
+immutable CUDA, vLLM, ExLlamaV3, companion-recipe, Torch, B12X, and NCCL
+inputs; distributes one image ID and the separately verified checkpoint; runs
+the rank launcher in `--check` mode; starts one container per rank; and runs
+the public `scripts/qwen38_smoke.py` gate.
+
+No published Qwen image is required. A published image would reduce build
+time, but it would not replace site-specific topology checks, model
+verification, or live functional evidence for the selected image ID.
 
 ## Evidence
 
@@ -89,6 +106,9 @@ Limitations:
   chat template.
 - The exact measured source archive and raw harness output are maintainer-held;
   public reproduction remains pending.
+- The clean-checkout image builder and preflight pass offline tests only. No
+  image produced by that builder has completed a four-rank startup or the
+  public smoke gate, so historical capacity and performance do not transfer.
 - The tracked launcher adds fail-closed checks and makes effective scheduler
   defaults and the requested block input explicit; those wrapper changes have
   offline validation only.

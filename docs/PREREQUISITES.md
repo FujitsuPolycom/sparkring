@@ -42,7 +42,9 @@ on every rank at the paths used by the launch command.
 The GLM checkpoint index totals 346,218,639,128 bytes. The DeepSeek checkpoint
 has 48 shards totaling about 167 GB. The Qwen checkpoint has three shards and
 requires about 22 GB before runtime and JIT caches. Budget additional image and
-cache headroom.
+cache headroom. A Qwen build host also needs temporary space for the pinned
+vLLM, ExLlamaV3, and NCCL source trees and their ARM64 build products; the
+builder is documented in [`runtime/qwen38/`](../runtime/qwen38/README.md).
 
 ## Network requirements
 
@@ -107,6 +109,11 @@ hosts without mutating them.
 The DeepSeek quickstart uses one local copy of
 `scripts/config/deepseek-v4-flash-0731.env.example` per rank. Replace only its
 network interface and fabric-address placeholders.
+
+The Qwen quickstart uses one private local copy of
+`scripts/config/qwen38-27b-exl3-k5k6.env.example` per rank. Its image-baked
+launcher accepts `--check` to validate the complete local rank contract and
+print the resolved command without starting vLLM.
 
 ## Safety boundary
 

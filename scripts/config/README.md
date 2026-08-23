@@ -65,8 +65,9 @@ four-Spark Qwen candidate. Copy it once per rank and replace:
 The template combines the Qwen EXL3 graph/prefill settings with the
 four-Spark patched-NCCL cycle. Management carries rendezvous and random worker
 TCP ports; the RoCE devices carry collectives. The template assumes the
-source-built runtime is mounted at `/ws`; it does not supply that runtime, the
-model, a site address, or live evidence. Follow
+Qwen image built by `runtime/qwen38/build-image.sh` supplies the immutable
+runtime under `/ws`; it does not supply the model, rank environment, a site
+address, or live evidence. Follow
 [`docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md`](../../docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md).
 
 ## Safety

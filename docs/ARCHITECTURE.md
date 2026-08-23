@@ -73,8 +73,10 @@ exact-Q40 routing policy. The DeepSeek deployment uses the immutable published
 runtime image in `runtime/faststart-lock.json`, its native DSpark speculation,
 and `fp8_ds_mla` key-value cache geometry.
 
-The Qwen deployment uses the source-built runtime and model pins in
-`recipes/qwen38-27b-exl3-k5k6.json`. It combines EXL3 K5/K6 weights, Qwen MTP
+The Qwen deployment uses the clean-checkout local ARM64 image builder in
+`runtime/qwen38/` and the model pins in
+`recipes/qwen38-27b-exl3-k5k6.json`. The image is built once and distributed
+with one content-addressed image ID. It combines EXL3 K5/K6 weights, Qwen MTP
 depth 3, FP8 key-value cache, native prefix caching with recurrent-state
 alignment, and full-decode CUDA graphs. External key-value caching is disabled
 in the base profile.

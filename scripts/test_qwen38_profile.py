@@ -12,6 +12,9 @@ ENV_PATH = ROOT / "scripts" / "config" / "qwen38-27b-exl3-k5k6.env.example"
 QUICKSTART_PATH = ROOT / "docs" / "QWEN38_27B_EXL3_K5K6_QUICKSTART.md"
 PROFILE_PATH = ROOT / "docs" / "profiles" / "QWEN38_27B_EXL3_K5K6.md"
 LAUNCHER_PATH = ROOT / "scripts" / "qwen38_dgx4_serve.sh"
+SMOKE_PATH = ROOT / "scripts" / "qwen38_smoke.py"
+BUILDER_PATH = ROOT / "runtime" / "qwen38" / "build-image.sh"
+BUILDER_PINS_PATH = ROOT / "runtime" / "qwen38" / "pins.json"
 LIVE_RECORD_PATH = (
     ROOT / "performance" / "records" / "qwen38-27b" / "dgx4-quick-20260823.json"
 )
@@ -128,8 +131,9 @@ def test_live_record_matches_the_candidate_contract() -> None:
     assert "mtp_acceptance_length" not in record["benchmark"]
 
 
-def test_runtime_records_the_existing_qwen_source_build() -> None:
+def test_runtime_records_the_public_qwen_image_builder() -> None:
     runtime = _recipe()["runtime"]
+    builder_pins = json.loads(BUILDER_PINS_PATH.read_text(encoding="utf-8"))
     assert runtime["base_image"].endswith(
         "@sha256:5c36750138dc1447a17dafbb397674f167d3b44ce18d9160d769df114577b35d"
     )
@@ -152,9 +156,28 @@ def test_runtime_records_the_existing_qwen_source_build() -> None:
         "scripts/config/qwen38-27b-exl3-k5k6.env.example"
     )
     assert runtime["launcher"] == "scripts/qwen38_dgx4_serve.sh"
-    assert runtime["image_status"] == "source-built; no published image"
+    assert runtime["image_status"] == (
+        "public clean-checkout local image builder; no published image"
+    )
+    assert runtime["builder_status"].startswith("offline-validated")
+    assert runtime["image_builder"] == "runtime/qwen38/build-image.sh"
+    assert runtime["image_pins"] == "runtime/qwen38/pins.json"
+    assert runtime["image_default_tag"] == "sparkring-qwen38:arm64-sm121"
+    assert runtime["launcher_preflight_argument"] == "--check"
+    assert runtime["launcher_run_argument"] == "--run"
+    assert runtime["smoke_harness"] == "scripts/qwen38_smoke.py"
+    assert BUILDER_PATH.is_file()
+    assert SMOKE_PATH.is_file()
+    assert builder_pins["sources"]["vllm"]["commit"] == runtime["engine_commit"]
+    assert builder_pins["sources"]["exllamav3"]["patched_tree"] == (
+        runtime["exllamav3_patched_tree"]
+    )
+    assert builder_pins["sources"]["nccl"]["patched_tree"] == (
+        runtime["nccl_patched_tree"]
+    )
     assert {
         "cuda-toolkit-13-2",
+        "iproute2",
         "procps",
         "libibverbs1",
         "ibverbs-providers",
@@ -225,6 +248,35 @@ def test_quickstart_command_matches_the_recipe() -> None:
     assert "594b01547b0d801cf95926ea973719354150893121019aba2ad8832bc9f17fdb" in text
     quickstart = QUICKSTART_PATH.read_text(encoding="utf-8")
     assert "scripts/qwen38_dgx4_serve.sh" in quickstart
+    for value in (
+        "runtime/qwen38/build-image.sh",
+        "bash ./runtime/qwen38/build-image.sh",
+        "docker save",
+        "docker load",
+        "--entrypoint /ws/venv/bin/hf",
+        '"$IMAGE" --check',
+        '"$IMAGE" --run',
+        "scripts/qwen38_smoke.py",
+        "ATTEMPT_ID must match [A-Za-z0-9_.-]+",
+        "container-id-${ATTEMPT_ID}-r${RANK}",
+        "{{.State.Running}}",
+        "/ws/runtime/source-receipt.json",
+        "org.sparkring.source-receipt-sha256",
+    ):
+        assert value in quickstart
+    for shared_container_contract in (
+        "--network host --ipc host --shm-size 16g --gpus all",
+        "--ulimit memlock=-1:-1 --cap-add IPC_LOCK --device /dev/infiniband",
+        '"$MODEL_DIR:/ws/model/Qwen3.8-27B-EXL3-K5K6-hydrated:ro"',
+        '"$CACHE_DIR:/ws/cache"',
+        '"$LOG_DIR:/ws/logs"',
+        '"$ENV_FILE:/ws/rank.env:ro"',
+        '-e RANK="$RANK"',
+        '-e RANK0_RENDEZVOUS_ADDR="$RANK0_RENDEZVOUS_ADDR"',
+        "--label org.sparkring.profile=qwen38-27b-exl3-k5k6",
+        "--entrypoint /ws/qwen38_dgx4_serve.sh",
+    ):
+        assert quickstart.count(shared_container_contract) == 2
 
 
 def test_profile_marks_sparkcache_pending_without_publishing_a_composition() -> None:
