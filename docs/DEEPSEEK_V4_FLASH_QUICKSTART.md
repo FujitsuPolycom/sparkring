@@ -315,3 +315,10 @@ patched NCCL from the environment template; SIRCL width-4096 graph collectives
 are research-only and are not part of this quickstart. See
 [the profile record](profiles/DEEPSEEK_V4_FLASH_0731.md) and
 [results](RESULTS.md).
+
+The offline-only [four-Spark SIRCL A/B plan](DEEPSEEK_V4_FLASH_SIRCL_AB.md)
+validates both transport arms against this quickstart's machine-readable
+recipe, applies the research experiment's 4,096-token batch budget to both
+arms, and preserves its model, memory, scheduler-mode, and five-token DSpark
+contract. The plan has no execution mode and does not promote SIRCL into this
+quickstart.
