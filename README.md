@@ -33,12 +33,12 @@ belongs to profiles rather than the transport.
 
 | Profile | Model identity | Topology | Status | Start here |
 |---|---|---|---|---|
-| GLM-5.2 EXL3 3.5-bpw | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | four-Spark cycle, TP4/DCP4 | qualified on one appliance; rebuilt images retain implemented status until promotion | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | `deepseek-ai/DeepSeek-V4-Flash-0731` | two-Spark pair, TP2/DCP1 | implemented launch; SIRCL is unsupported | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | `deepseek-ai/DeepSeek-V4-Flash-0731` | four-Spark cycle, TP4/DCP1 | implemented launch; SIRCL width 4096 is research-only | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| GLM-5.2 EXL3 3.5-bpw + SparkCache | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | four-Spark cycle, TP4/DCP4 | qualified durable prefix-state composition | [SparkCache compositions](recipes/sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 + SparkCache | `deepseek-ai/DeepSeek-V4-Flash-0731` | two-Spark pair, TP2/DCP1 | qualified durable prefix-state composition | [SparkCache compositions](recipes/sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 + SparkCache | `deepseek-ai/DeepSeek-V4-Flash-0731` | four-Spark cycle, TP4/DCP1 | qualified durable prefix-state composition | [SparkCache compositions](recipes/sparkcache/README.md) |
+| GLM-5.2 EXL3 3.5-bpw | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | four-Spark cycle, TP4/DCP4 | normalized candidate at 1M context/16 sequences; historical 262K/eight-sequence qualification retained | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
+| DeepSeek-V4-Flash-0731 | `deepseek-ai/DeepSeek-V4-Flash-0731` | two-Spark pair, TP2/DCP1 | normalized candidate live-benchmarked; SIRCL unsupported | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| DeepSeek-V4-Flash-0731 | `deepseek-ai/DeepSeek-V4-Flash-0731` | four-Spark cycle, TP4/DCP1 | normalized candidate; SIRCL width 4096 research-only | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| GLM-5.2 EXL3 3.5-bpw + SparkCache | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | four-Spark cycle, TP4/DCP4 | normalized candidate; historical durable-state receipt retained | [SparkCache compositions](recipes/sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 + SparkCache | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` | two-Spark pair, TP2/DCP1 | normalized candidate; historical 131K/six-sequence receipt retained | [SparkCache compositions](recipes/sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 + SparkCache | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` | four-Spark cycle, TP4/DCP1 | normalized candidate; historical 524K receipt retained | [SparkCache compositions](recipes/sparkcache/README.md) |
 
 The GLM base profile is defined by
 [`recipes/glm52-exl3-r7-3.5bpw.json`](recipes/glm52-exl3-r7-3.5bpw.json). The

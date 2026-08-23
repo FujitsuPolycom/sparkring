@@ -2,9 +2,11 @@
 
 Deploy `deepseek-ai/DeepSeek-V4-Flash-0731` across directly cabled DGX Sparks
 in either of two topologies: **two tensor-parallel ranks on a cabled pair**, or
-**four on a cycle**. Both profiles are **implemented** and neither is
-qualified. No checkpoint revision is pinned in this repository; record the
-revision and file hashes used by an operator deployment.
+**four on a cycle**. Both setups have **candidate** status. The pair has been
+benchmarked; the cycle has not yet completed the same tests.
+
+The checkpoint revision is not pinned. Record the revision and file hashes
+used for each deployment.
 
 The machine-readable serving contracts are
 [`recipes/deepseek-v4-flash-0731-pair.json`](../recipes/deepseek-v4-flash-0731-pair.json)
@@ -24,14 +26,28 @@ verification are shared.
 | Cabling | one DAC, cage 0 to cage 0 | four DACs as `0-1-2-3-0` |
 | Weights resident per rank | 80.97 GiB | 40.82 GiB |
 | `--tensor-parallel-size` / `--nnodes` | 2 | 4 |
-| `--kv-cache-memory-bytes` | 12884901888 (12 GiB) | 17179869184 (16 GiB) |
-| Resulting pool / concurrency at 1M | 1,139,967 tokens, 1.09x | 1,519,925 tokens, 1.45x |
-| Context / Seq / Batch | 1M , 32 , 8192 | 1M , 32 , 8192 |
-| Free memory per node while serving | 8-10 GB | ~50 GB |
+| `--kv-cache-memory-bytes` | 17179869184 (16 GiB) | 17179869184 (16 GiB) |
+| 1M pool / concurrency | 2,198,756 tokens / 2.10x observed | not measured yet |
+| Context / Seq / Batch | 1M, 32, 4096 | 1M, 32, 4096 |
+| Free memory per node | 4.9–6.0 GiB observed, with swap in use | older setup measured ~50 GB; new setup not measured |
 | Environment template | `deepseek-v4-flash-0731-pair.env.example` | `deepseek-v4-flash-0731.env.example` |
 
-`--max-model-len 1048576`, `--max-num-seqs 32` and `--max-num-batched-tokens
-8192` are the same in both.
+`--max-model-len 1048576`, `--max-num-seqs 32`, `--max-num-batched-tokens
+4096`, `--block-size 256`, and the 16 GiB reservation are the settings used by
+both base topologies.
+
+Both commands explicitly enable asynchronous scheduling and retain complete
+input-length reservation before admission:
+
+```text
+--async-scheduling --scheduler-reserve-full-isl
+```
+
+The running engine previously selected those values automatically. Spelling
+them out prevents a future vLLM default from silently changing the profile.
+Disabling full-input reservation is a separate research experiment because it
+can improve admission latency while increasing later queueing, preemption, or
+KV pressure under chunked prefill.
 
 ## 1. Prepare the ranks
 
@@ -114,10 +130,12 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
   --dtype bfloat16 \
   --max-model-len 1048576 \
   --max-num-seqs 32 \
-  --max-num-batched-tokens 8192 \
+  --max-num-batched-tokens 4096 \
+  --async-scheduling --scheduler-reserve-full-isl \
   --gpu-memory-utilization 0.70 \
-  --kv-cache-memory-bytes 12884901888 \
+  --kv-cache-memory-bytes 17179869184 \
   --kv-cache-dtype fp8_ds_mla \
+  --block-size 256 \
   --tokenizer-mode deepseek_v4 \
   --kernel-config '{"enable_cutedsl_warmup": false}' \
   --enable-auto-tool-choice --tool-call-parser deepseek_v4 \
@@ -149,10 +167,12 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
   --dtype bfloat16 \
   --max-model-len 1048576 \
   --max-num-seqs 32 \
-  --max-num-batched-tokens 8192 \
+  --max-num-batched-tokens 4096 \
+  --async-scheduling --scheduler-reserve-full-isl \
   --gpu-memory-utilization 0.70 \
   --kv-cache-memory-bytes 17179869184 \
   --kv-cache-dtype fp8_ds_mla \
+  --block-size 256 \
   --tokenizer-mode deepseek_v4 \
   --kernel-config '{"enable_cutedsl_warmup": false}' \
   --enable-auto-tool-choice --tool-call-parser deepseek_v4 \
@@ -172,13 +192,11 @@ substitute generic `fp8`.
 `--max-num-batched-tokens` are not independent. Changing one alone will
 usually fail or waste memory.
 
-**Set `--max-num-batched-tokens` explicitly.** Left unset, the engine derives a
-scheduled-token budget from the speculation settings and warns that it is
-suboptimal: at 32 sequences and speculation depth 5 it derived 1,920 tokens.
-Setting 8192 raises the budget to 7,936 and measured **+51% aggregate
-throughput at 32 concurrent requests** on a pair, with single-stream and
-8-stream throughput unchanged. A small budget only bites once enough sequences
-compete for it.
+**Set `--max-num-batched-tokens` explicitly.** The normalized comparison target
+uses 4096 in every DeepSeek base and SparkCache profile. A historical pair run
+with 8192 measured higher C32 throughput, but it is not the default because it
+would make the base and cache comparison change two variables. The 4096 target
+requires a fresh C1/C2/C4/C8/C16/C32 capacity and throughput sweep.
 
 **A longer request limit is close to free; a larger pool is not.** This model
 has bounded cache groups whose cost per sequence is fixed, so per-token pool
@@ -188,13 +206,11 @@ cost falls as the request limit rises — about 18.5 KB per token at a
 memory.
 
 **Sequence count and speculation depth inflate the per-request floor.** The
-engine refuses to start unless the pool can hold one full-length request. On a
-pair at 1,048,576 tokens that floor was about 6.2 GiB at 32 sequences with the
-derived budget, and **11.04 GiB at 64 sequences with an 8192 budget** — the same
-context, nearly twice the floor. Raising sequences therefore forces a larger
-reservation, which buys less pool per byte: 64 sequences at 16 GiB produced a
-*smaller* pool (1,519,925 tokens) than 32 sequences at 12 GiB relative to the
-memory spent, while measuring within 2% on every concurrency cell. Prefer 32.
+engine refuses to start unless the pool can hold one full-length request. The
+32-sequence target retains the bounded sequence count while the pair reservation
+increases to 16 GiB. The normalized pair reported a 2,198,756-token pool and
+2.10x full-length capacity. A separate cycle gate must record its pool and free
+memory before a concurrency campaign begins.
 
 **`--kv-cache-memory-bytes` disables the memory-utilization guard.** The engine
 states this explicitly: it "skipped memory profiling. This does not respect the
@@ -203,8 +219,10 @@ states this explicitly: it "skipped memory profiling. This does not respect the
 explicit byte count is given. Nothing will stop an oversized reservation from
 exhausting the node.
 
-Check free memory after a launch rather than trusting the flag. A pair serving
-this configuration reports 8-10 GB free per node; a cycle reports about 50 GB.
+Check free memory after a launch rather than trusting the flag. The normalized
+pair had only 4.9–6.0 GiB available per node and used swap. The roughly 50 GB
+cycle observation came from a historical configuration, not the normalized
+block-256, batch-4096 target.
 A node driven to 2-3 GB free with swap in use is one long prefill away from
 having its engine core killed, and on this platform severe memory exhaustion
 can leave a host answering ICMP while refusing to complete any new connection,
@@ -219,7 +237,7 @@ curl -s localhost:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"deepseek-v4-flash-0731",
        "messages":[{"role":"user","content":"What is 17 * 23?"}],
-       "max_tokens":16,"temperature":0}'
+       "max_tokens":16,"temperature":1.0,"top_p":1.0}'
 ```
 
 Check rank logs for a successful rendezvous across every rank and for DSpark
@@ -229,21 +247,31 @@ bought.
 
 ## Measured
 
-Client-observed aggregate throughput, 256-token prompts, 512-token
-generations, both topologies on the settings above:
+The TP2/DCP1 setup above was benchmarked on two directly cabled DGX Sparks
+without SparkCache. It remains **candidate** because the checkpoint revision is
+not pinned and the full test set is not complete.
 
-| Concurrent requests | Two-Spark pair | Four-Spark cycle |
-|---:|---:|---:|
-| 1 | 36.7 tok/s | 56.5 tok/s |
-| 8 | 123.8 tok/s | 177.5 tok/s |
-| 16 | 173.4 tok/s | 256.1 tok/s |
-| 32 | 237.7 tok/s | 347.5 tok/s |
+The serving profile was measured at temperature 1.0 and top-p 1.0.
 
-Doubling the node count buys about 1.45x across the whole ladder rather than
-2x. Decode is latency-bound on collectives, not bandwidth-bound: the model
-issues two all-reduces per layer across 43 layers, about 688 KB per token in
-total, which is a fraction of a percent of a 200 Gb/s link, but each token
-waits on roughly 86 synchronous round-trips that cannot overlap, because
+| Context | Prefill tok/s | C1 | C2 | C4 | C8 | C16 | C32 |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2K | 1,822 | 67.62 | 82.76 | 107.43 | 142.53 | — | — |
+| 8K | 1,921 | 34.97 | 111.43 | 103.63 | 151.06 | — | — |
+| 16K | 2,005 | 58.36* | 61.12 | 114.37 | 164.93† | 202.71 | 295.34 |
+| 32K | 1,999 | 51.59‡ | 78.18 | 104.70 | 160.54 | — | — |
+| 64K | 1,938 | 32.59 | 90.27 | 97.66 | — | — | — |
+| 128K | 1,808 | 59.10 | 77.59 | — | — | — | — |
+
+Decode values are aggregate generated tok/s. `*` and `‡` are N=5 means;
+`†` is an N=3 mean. The
+[full TP2 benchmark record](../performance/records/deepseek-v4-flash/normalized-tp2-base-20260822.md)
+lists variability, exclusions, and the machine-readable summary. Synthetic
+sustained text changes DSpark acceptance, so single observations should not be
+read as transport or thermal verdicts.
+
+The profile remains collective-latency-sensitive: the model issues two
+all-reduces per layer across 43 layers, and each token waits on synchronous
+round-trips that cannot fully overlap, because
 decode is autoregressive: the input to step `N+1` includes the token produced
 at step `N`.
 
@@ -263,9 +291,9 @@ RoCE, `PYNCCL` is the correct selection rather than a fallback. Setting
 tok/s at one request, 174.2 against 177.5 at eight. Those variables belong to
 single-host multi-GPU profiles and are not worth carrying here.
 
-## Evidence boundary
+## What these results cover
 
-Each topology carries its own evidence, recorded in its serving contract.
+Each topology has separate results recorded in its serving contract.
 
 The two-Spark launch was exercised on 2026-08-21 on two directly cabled Sparks:
 both ranks rendezvoused, a deterministic completion, an emitted tool call and a
@@ -279,9 +307,10 @@ image: all four ranks rendezvoused, each loading 40.82 GiB of weights, a
 deterministic completion and an emitted tool call were correct, and DSpark
 speculation ran at depth 5 with a 3.06 mean acceptance length.
 
-Throughput figures above are client-observed on the stated prompt and
-generation lengths. They are not qualified measurements, and no output-quality
-measurement of any kind is recorded for either topology. The normal launch uses
+The historical throughput figures are client-observed on the stated prompt and
+generation lengths. The normalized TP2 table is isolated-server sustained
+decode and standalone prefill. Neither dataset measures output quality or
+qualifies the setup for general use. The normal launch uses
 patched NCCL from the environment template; SIRCL width-4096 graph collectives
 are research-only and are not part of this quickstart. See
 [the profile record](profiles/DEEPSEEK_V4_FLASH_0731.md) and

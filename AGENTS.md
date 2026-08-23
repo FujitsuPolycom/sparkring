@@ -20,6 +20,20 @@ conversation or development history.
 - Comments explain non-obvious intent or invariants. TODOs name the missing
   condition and removal criterion.
 
+### Prefer plain language
+
+- Lead with the outcome. State a formal status once, then immediately explain
+  what it means in ordinary words.
+- Keep operator instructions focused on what to do and what result to expect.
+- Put lane, maturity, hardware, and evidence metadata in one table or callout
+  instead of repeating it throughout the prose.
+- Prefer `the new settings are still being tested` over phrases such as
+  `candidate target changes`, `silent promotion`, `historical qualification
+  scope`, or `revalidate the composition` when the plain statement is accurate.
+- Use exact formal vocabulary only where a machine-readable contract or release
+  decision requires it.
+- Use short sentences and short paragraphs.
+
 ## Supported repository surface
 
 SparkRing supports two model families across six deployment profiles:

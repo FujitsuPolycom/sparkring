@@ -20,9 +20,9 @@
     "kv_cache_bytes_per_rank_qualified": 9000000000,
     "kv_cache_bytes_per_rank_candidate": 9250000000,
     "max_model_len": 65536,
-    "max_num_seqs": 8,
+    "max_num_seqs": 16,
     "max_num_batched_tokens": 2048,
     "gpu_memory_utilization": 0.85
   },
-  "note": "This public pins file is derived from recipes/glm52-exl3-r7-3.5bpw.json. The runtime/exl3-r7/ builder overlay (Containerfile, entrypoint.sh, build-image.sh, and builder-specific pins) is on a separate branch."
+  "note": "This foundation pins file is derived from recipes/glm52-exl3-r7-3.5bpw.json. The runtime/exl3-r7/ builder and its builder-specific pins are published in this checkout; scripts/glm35_profile.py transforms these foundation values into the 1048576-token, 16-sequence candidate operator contract."
 }

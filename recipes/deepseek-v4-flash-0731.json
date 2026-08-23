@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-recipe/v1",
   "recipe_id": "deepseek-v4-flash-0731",
-  "status": "implemented",
+  "status": "candidate",
   "hardware": {
     "platform": "linux/arm64",
     "cuda_arch": "sm_121",
@@ -30,6 +30,7 @@
     "gpu_memory_utilization": 0.7,
     "kv_cache_memory_bytes_per_rank": 17179869184,
     "kv_cache_dtype": "fp8_ds_mla",
+    "block_size": 256,
     "tokenizer_mode": "deepseek_v4",
     "speculation": {
       "method": "dspark",
@@ -42,19 +43,22 @@
       "default": false,
       "width_4096_graph_status": "research-only"
     },
-    "max_num_batched_tokens": 8192,
-    "sizing_note": "max_model_len, kv_cache_memory_bytes, max_num_seqs and max_num_batched_tokens are coupled: the engine refuses to start unless the pool holds one full-length request, and that floor scales with sequence count and speculation depth. Setting kv_cache_memory_bytes disables the gpu_memory_utilization guard, so free memory must be checked after launch rather than assumed."
+    "max_num_batched_tokens": 4096,
+    "async_scheduling": true,
+    "scheduler_reserve_full_isl": true,
+    "sizing_note": "The candidate cycle uses the normalized 1048576-token context, 32-sequence limit, 4096-token scheduler budget, 256-token block size, and 16 GiB per-rank key-value reservation. These coupled values require a fresh startup, capacity, correctness, and performance gate. Setting kv_cache_memory_bytes disables the gpu_memory_utilization guard, so free memory must be checked after launch rather than assumed."
   },
   "evidence": {
     "status": "implemented",
-    "conditions": "Four directly cabled DGX Sparks in a cycle using the pinned published runtime image and the tracked rank environment, with only the checkpoint and a writable cache directory mounted. Fabric routing, IPv4 forwarding and the DOCKER-USER relay rules were verified by scripts/ring_doctor.py with every node pair reachable before launch.",
+    "conditions": "Historical implemented evidence from four directly cabled DGX Sparks using a 1048576-token context, 32 sequences, an 8192-token scheduler budget, an unrecorded effective block size, and 17179869184 key-value bytes per rank. It does not validate the candidate serving object in this recipe. Fabric routing, IPv4 forwarding and the DOCKER-USER relay rules were verified by scripts/ring_doctor.py with every node pair reachable before launch.",
     "result": "All four ranks rendezvoused across the cycle, including ranks not directly cabled to rank 0, which reach the rendezvous address only by neighbour relay. Each rank loaded 40.82 GiB of weights. The engine reported a 1,519,925-token key-value pool and 1.45x maximum concurrency at a 1,048,576-token request length, with about 50 GB free per node while serving. A deterministic chat completion returned the correct arithmetic result and a tool call was emitted with correct arguments. DSpark speculation was active at depth 5 with a 3.06 mean acceptance length and a 41.2% draft acceptance rate. Client-observed aggregate throughput measured 56.5, 177.5, 256.1 and 347.5 tokens per second at 1, 8, 16 and 32 concurrent requests.",
-    "conclusion": "The documented four-rank launch is functional for the observed configuration, and requires no source overlay beyond the published image.",
+    "conclusion": "The four-rank launch path is implemented for the historical configuration. The normalized candidate serving values in this recipe require a fresh live gate before promotion.",
     "limitations": [
       "No checkpoint revision or per-file hashes are pinned.",
       "No SIRCL shadow-comparison window is qualified for width 4096.",
       "Performance observations are not qualified measurements.",
-      "Enabling VLLM_ENABLE_PCIE_ALLREDUCE with the cpp backend changed throughput by less than 2% at one and eight concurrent requests; the engine selects PYNCCL because every faster all-reduce backend requires peer-accessible GPU memory on one host."
+      "Enabling VLLM_ENABLE_PCIE_ALLREDUCE with the cpp backend changed throughput by less than 2% at one and eight concurrent requests; the engine selects PYNCCL because every faster all-reduce backend requires peer-accessible GPU memory on one host.",
+      "The candidate block-256, 4096-token scheduler configuration has not completed a live startup or benchmark gate."
     ],
     "record": "docs/profiles/DEEPSEEK_V4_FLASH_0731.md"
   }

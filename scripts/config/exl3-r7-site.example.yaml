@@ -154,7 +154,7 @@ serving:
   mtp_tokens: 4
   max_model_len: 65536
   kv_cache_bytes_per_rank: 9250000000
-  max_num_seqs: 8
+  max_num_seqs: 16
   master_rank: 0
   api_port: 8000
   master_port: 29500

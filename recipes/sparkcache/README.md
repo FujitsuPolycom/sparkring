@@ -6,11 +6,15 @@ SparkRing recipe and records only the serving values, immutable artifacts,
 cache policy, restart contract, evidence, and limitations qualified with
 SparkCache.
 
-| Composition | Parallelism | Qualified context | Qualified scheduler budget |
-|---|---:|---:|---:|
-| [`deepseek-v4-flash-0731-tp2-dcp1.json`](deepseek-v4-flash-0731-tp2-dcp1.json) | TP2/DCP1 | 131,072 | 4,096 |
-| [`deepseek-v4-flash-0731-tp4-dcp1.json`](deepseek-v4-flash-0731-tp4-dcp1.json) | TP4/DCP1 | 524,288 | 4,096 |
-| [`glm52-exl3-r7-3.5bpw-tp4-dcp4.json`](glm52-exl3-r7-3.5bpw-tp4-dcp4.json) | TP4/DCP4 | 262,144 | 4,096 |
+| Composition | Parallelism | Candidate context / sequences | Historical qualified context / sequences | Scheduler budget |
+|---|---:|---:|---:|---:|
+| [`deepseek-v4-flash-0731-tp2-dcp1.json`](deepseek-v4-flash-0731-tp2-dcp1.json) | TP2/DCP1 | 1,048,576 / 32 | 131,072 / 6 | 4,096 |
+| [`deepseek-v4-flash-0731-tp4-dcp1.json`](deepseek-v4-flash-0731-tp4-dcp1.json) | TP4/DCP1 | 1,048,576 / 32 | 524,288 / 32 | 4,096 |
+| [`glm52-exl3-r7-3.5bpw-tp4-dcp4.json`](glm52-exl3-r7-3.5bpw-tp4-dcp4.json) | TP4/DCP4 | 1,048,576 / 16 | 262,144 / 8 | 4,096 |
+
+The recipe objects are normalized candidates. The durable-state receipts below
+remain qualified only for the historical context and sequence limits shown in
+the table; they do not promote the candidate limits.
 
 The DeepSeek compositions were qualified with SparkCache `0.1.0a1` wheel
 SHA-256

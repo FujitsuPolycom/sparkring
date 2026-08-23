@@ -1,0 +1,47 @@
+{
+  "schema": "sparkring-normalized-benchmark-summary/v1",
+  "model": "brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f",
+  "lane": "public-functional",
+  "maturity": "live-validated-candidate",
+  "hardware": {
+    "platform": "NVIDIA DGX Spark",
+    "ranks": 4,
+    "topology": "direct-cycle-4",
+    "parallelism": "TP4/DCP4"
+  },
+  "serving": {
+    "max_model_len": 1048576,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 4096,
+    "kv_cache_bytes_per_rank": 9250000000,
+    "kv_cache_dtype": "nvfp4_ds_mla",
+    "block_size": 64,
+    "sparkcache": false,
+    "mtp": {"depth": 4, "draft_sample_method": "greedy"}
+  },
+  "request_policy": {"temperature": 1.0, "top_p": 0.95, "source": "checkpoint generation_config.json"},
+  "prefill": [
+    {"context": 2048, "prompt_tokens": 2050, "ttft_s": 2.95, "prompt_tok_s": 694},
+    {"context": 8192, "prompt_tokens": 8194, "ttft_s": 12.14, "prompt_tok_s": 675},
+    {"context": 16384, "prompt_tokens": 16386, "ttft_s": 24.41, "prompt_tok_s": 671},
+    {"context": 32768, "prompt_tokens": 32770, "ttft_s": 49.56, "prompt_tok_s": 661},
+    {"context": 65536, "prompt_tokens": 65538, "ttft_s": 100.92, "prompt_tok_s": 649},
+    {"context": 131072, "prompt_tokens": 131073, "ttft_s": 206.55, "prompt_tok_s": 635}
+  ],
+  "decode_aggregate_tok_s": {
+    "2048": {"1": 22.001, "2": 28.283, "4": 46.981, "8": 67.622},
+    "8192": {"1": 19.153, "2": 30.207, "4": 47.697, "8": 65.534},
+    "16384": {"1": 20.151, "2": 32.384, "4": 45.384, "8": 62.707},
+    "32768": {"1": 21.611, "2": 30.524, "4": 46.078, "8": 62.878},
+    "65536": {"1": 20.166}
+  },
+  "coding_peak": {"n": 5, "mean_tok_s": 25.391, "median_tok_s": 25.565, "min_tok_s": 22.699, "max_tok_s": 26.919},
+  "pending": ["64K:C2,C4,C8", "128K:C1,C2,C4,C8"],
+  "exclusions": ["DISCARD", "ABORTED", "JIT-affected", "request-error"],
+  "lifecycle_limitation": "The exact-Q40 create-once receipt cannot be overwritten on same-namespace restart; preserve it and use a fresh namespace until exact-match revalidation/reuse is implemented.",
+  "limitations": [
+    "pre-boundary-fix hardware summaries are invalid for exact thermal interpretation",
+    "last-scrape speculative acceptance is not a run average",
+    "no performance claim beyond 128K context"
+  ]
+}

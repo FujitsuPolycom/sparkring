@@ -2,10 +2,11 @@
 
 ## Status and scope
 
-This profile is **qualified** on one four-DGX-Spark appliance. It is not a
-claim about any rebuilt image. A build from the tracked inputs is
-**implemented** with offline test evidence until the image identity that it produces passes
-[the promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md).
+The 262,144-token, eight-sequence operator artifact is **qualified** on one
+four-DGX-Spark appliance. The recipe now targets a 1,048,576-token,
+16-sequence **candidate** with the retained qualified values identified below.
+A build from tracked inputs remains **implemented** until its exact image
+identity passes [the promotion checklist](GLM52_35BPW_PROMOTION_CHECKLIST.md).
 
 The profile is defined by
 [`recipes/glm52-exl3-r7-3.5bpw.json`](../recipes/glm52-exl3-r7-3.5bpw.json).
@@ -18,10 +19,11 @@ The checkpoint is
 |---|---|
 | Parallelism | TP4 plus DCP4 `ag_rs` |
 | Speculation | fixed MTP4, greedy draft sampling |
-| Request limit | 262,144 tokens |
-| Maximum sequences | 8 |
+| Request limit | 1,048,576-token candidate target; retained qualification used 262,144 |
+| Maximum sequences | 16 candidate target; retained qualification used 8 |
 | Key-value cache | `nvfp4_ds_mla`, dynamic per-token scale, FP8 RoPE |
 | Key-value allocation | 9,250,000,000 bytes per rank |
+| Key-value block size | 64 tokens |
 | Graph capture | `FULL_AND_PIECEWISE`, query rows Q1 through Q40 |
 | TP transport | SIRCL with patched NCCL fallback |
 | DCP and indexer | stock collectives |
