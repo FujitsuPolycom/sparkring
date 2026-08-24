@@ -40,7 +40,7 @@ For a two-Spark pair:
 - Stable rank assignment: the same host is rank 0 throughout a deployment, and
   serves the API.
 
-Both topologies also require a management LAN reachable by the operator and
+All topologies also require a management LAN reachable by the operator and
 every rank.
 
 The direct cabling is the inference fabric. Do not use a fabric port as a
@@ -65,8 +65,10 @@ builder is documented in [`runtime/qwen38/`](../runtime/qwen38/README.md).
 - RoCEv2 must be configured on every fabric port a rank uses.
 - Every direct cable must pass link, address, and RDMA checks before a model
   launch.
-- The management LAN must permit SSH between the operator and ranks, and
-  rendezvous traffic between ranks.
+- The management LAN must permit SSH between the operator and ranks.
+- It must also permit a profile's rendezvous and control traffic when that
+  profile configures management addresses for those channels.
+- Rank 0 must expose the configured API port to intended clients.
 
 ### Routing and forwarding across the fabric
 
@@ -146,7 +148,6 @@ reapply the plan at boot. Install the program at a path that exists **on the
 node**, and set the unit's `ExecStart` to that path: the emitted unit names the
 directory the files were generated in, which is only correct when they are
 generated on the node itself.
-- Rank 0 must expose the configured API port to intended clients.
 
 ## Local configuration and preflight
 
