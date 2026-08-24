@@ -38,16 +38,16 @@ belongs to profiles rather than the transport.
 
 ## Profiles
 
-| Profile | Model identity | Topology | Status | Start here |
-|---|---|---|---|---|
-| GLM-5.2 EXL3 3.5-bpw | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | four-Spark cycle, TP4/DCP4 | 1M context/16 sequences; benchmark results published | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
-| DeepSeek-V4-Flash | `deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7` | two-Spark pair, TP2/DCP1 | tested; benchmark results published | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` | four-Spark cycle, TP4/DCP1 | tested; benchmark results published | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| Qwen3.8-27B EXL3 K5/K6 | `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf` | two-Spark pair, TP2/DCP1 | 1,048,576-token profile; benchmark results through C8 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
-| Qwen3.8-27B EXL3 K5/K6 | `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated@ab3a91a13813df8096cb4c1d560ed3669035d0cf` | four-Spark cycle, TP4/DCP1 | 1,048,576-token profile; benchmark results through C8 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
-| GLM-5.2 EXL3 3.5-bpw + SparkCache | `brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78@9ab9579774cc432df91567a36f6e9e863e0d4c9f` | four-Spark cycle, TP4/DCP4 | cache restore tested at 262K/eight sequences | [SparkCache compositions](recipes/sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 + SparkCache | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` | two-Spark pair, TP2/DCP1 | cache restore tested at 131K/six sequences | [SparkCache compositions](recipes/sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 + SparkCache | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` | four-Spark cycle, TP4/DCP1 | cache restore tested at 524K | [SparkCache compositions](recipes/sparkcache/README.md) |
+| Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
+|---|---|---:|---:|---:|---|---|
+| GLM-5.2 EXL3 3.5-bpw | 4 Sparks · TP4/DCP4 | 1M | 16 | 4,096 | NVFP4 DS-MLA · 9.25 GB/rank | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
+| DeepSeek-V4-Flash-0731 | 2 Sparks · TP2/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA · 16 GiB/rank | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| DeepSeek-V4-Flash-0731 | 4 Sparks · TP4/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA · 16 GiB/rank | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| Qwen3.8-27B EXL3 K5/K6 | 2 Sparks · TP2/DCP1 | 1M | 32 | 8,192 | FP8 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
+| Qwen3.8-27B EXL3 K5/K6 | 4 Sparks · TP4/DCP1 | 1M | 64 | 8,192 | FP8 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
+| GLM-5.2 EXL3 3.5-bpw + SparkCache | 4 Sparks · TP4/DCP4 | 1M | 16 | 4,096 | NVFP4 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 + SparkCache | 2 Sparks · TP2/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 + SparkCache | 4 Sparks · TP4/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
 
 Qwen with SparkCache has no published composition recipe or live cache evidence.
 See the
