@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """SparkRing site configuration: loader and fail-closed validator.
 
-A "site" is one four-node ring: the ranks, the four 200GbE cables that join
-them, the control-channel rendezvous addresses, the pinned runtime, and the
-paths and artifacts every rank must agree on.  ``scripts/config/site.yaml``
+A "site" is one supported ring: the ranks, the 200GbE cables that join them,
+the control-channel rendezvous addresses, the pinned runtime, and the paths
+and artifacts every rank must agree on. ``scripts/config/site.yaml``
 (copied from ``exl3-r7-site.example.yaml``) is the single source of truth for the
 public tooling; ``scripts/preflight.py`` is driven entirely by it.
 
@@ -15,8 +15,8 @@ Design rules:
   hardware.
 * **No third-party dependencies** beyond PyYAML.  If PyYAML is missing the
   error says so plainly instead of surfacing as an ImportError traceback.
-* **Structure, not just types.**  The four ring edges must form a single closed
-  4-cycle through all four ranks, each edge must be claimed exactly once by
+* **Structure, not just types.** The ring edges must form one closed cycle
+  through all configured ranks, each edge must be claimed exactly once by
   each of its two endpoints, and every address must live in its own edge's /24.
   A mis-cabled or half-edited config fails here rather than at collective init.
 
@@ -55,7 +55,7 @@ SCHEMA_VERSION = 1
 # Accepted ranges.  These are deliberately wide enough for hardware that is
 # not a DGX Spark, and narrow enough that a typo (mtu: 90000, tp: 400) fails.
 # --------------------------------------------------------------------------
-RANK_IDS = (0, 1, 2, 3)
+SUPPORTED_RING_SIZES = (4, 6)
 RING_PORTS_PER_RANK = 2
 EDGE_PREFIX_LENGTH = 24
 
@@ -374,6 +374,10 @@ class Topology:
     edges: tuple[Edge, ...]
 
     @property
+    def rank_ids(self) -> tuple[int, ...]:
+        return tuple(sorted({rank for edge in self.edges for rank in edge.endpoints}))
+
+    @property
     def jumbo_payload_bytes(self) -> int:
         """ICMP payload that exactly fills ``mtu`` (20B IP + 8B ICMP header)."""
         return self.mtu - 28
@@ -614,7 +618,7 @@ class SiteConfig:
             f"description : {self.description}",
             f"source      : {self.source or '<in-memory>'}",
             "",
-            f"topology    : closed 4-cycle, mtu={self.topology.mtu}, "
+            f"topology    : closed {len(self.ranks)}-cycle, mtu={self.topology.mtu}, "
             f"link={self.topology.link_speed_mbps} Mb/s, "
             f"jumbo payload={self.topology.jumbo_payload_bytes}B",
         ]
@@ -688,12 +692,14 @@ def _validate_topology(raw: Any) -> Topology:
     speed = _integer(data, "topology", "link_speed_mbps", LINK_SPEED_RANGE)
 
     edges_raw = _sequence(data["edges"], "topology.edges")
-    if len(edges_raw) != len(RANK_IDS):
+    if len(edges_raw) not in SUPPORTED_RING_SIZES:
         raise SiteConfigError(
             "topology.edges",
-            f"a four-node ring has exactly {len(RANK_IDS)} edges, "
-            f"got {len(edges_raw)}",
+            "a supported ring has exactly "
+            + " or ".join(str(size) for size in SUPPORTED_RING_SIZES)
+            + f" edges, got {len(edges_raw)}",
         )
+    rank_ids = tuple(range(len(edges_raw)))
 
     edges: list[Edge] = []
     seen_ids: dict[str, int] = {}
@@ -742,10 +748,10 @@ def _validate_topology(raw: Any) -> Topology:
                     f"{where}.endpoints[{position}]",
                     f"expected a rank id integer, got {type(value).__name__}",
                 )
-            if value not in RANK_IDS:
+            if value not in rank_ids:
                 raise SiteConfigError(
                     f"{where}.endpoints[{position}]",
-                    f"rank id {value} is not one of {list(RANK_IDS)}",
+                    f"rank id {value} is not one of {list(rank_ids)}",
                 )
             endpoints.append(value)
         if endpoints[0] == endpoints[1]:
@@ -766,18 +772,22 @@ def _validate_topology(raw: Any) -> Topology:
                  endpoints=(endpoints[0], endpoints[1]))
         )
 
-    _require_single_cycle(edges)
+    _require_single_cycle(edges, rank_ids)
     return Topology(mtu=mtu, link_speed_mbps=speed, edges=tuple(edges))
 
 
-def _require_single_cycle(edges: Sequence[Edge]) -> None:
+def _require_single_cycle(
+    edges: Sequence[Edge], rank_ids: Sequence[int] | None = None
+) -> None:
     """Reject any edge set that is not one closed cycle through all ranks."""
-    degree: dict[int, list[Edge]] = {rank_id: [] for rank_id in RANK_IDS}
+    if rank_ids is None:
+        rank_ids = tuple(range(len(edges)))
+    degree: dict[int, list[Edge]] = {rank_id: [] for rank_id in rank_ids}
     for edge in edges:
         for endpoint in edge.endpoints:
             degree[endpoint].append(edge)
 
-    for rank_id in RANK_IDS:
+    for rank_id in rank_ids:
         incident = degree[rank_id]
         if len(incident) != RING_PORTS_PER_RANK:
             raise SiteConfigError(
@@ -788,7 +798,7 @@ def _require_single_cycle(edges: Sequence[Edge]) -> None:
                 f"{RING_PORTS_PER_RANK}",
             )
 
-    start = RANK_IDS[0]
+    start = rank_ids[0]
     current = start
     used: set[str] = set()
     visited = [start]
@@ -804,14 +814,14 @@ def _require_single_cycle(edges: Sequence[Edge]) -> None:
         visited.append(current)
 
     closed = current == start and len(used) == len(edges)
-    covered = set(visited) == set(RANK_IDS)
+    covered = set(visited) == set(rank_ids)
     if not (closed and covered):
         raise SiteConfigError(
             "topology.edges",
-            "edges do not form a single closed ring through all four ranks; "
+            f"edges do not form a single closed ring through all {len(rank_ids)} ranks; "
             f"walking from rank {start} visited {visited} using "
             f"{sorted(used)}. Check the endpoint pairs - a ring is "
-            "0-1, 1-2, 2-3, 3-0 (in any labelling), not two disjoint pairs.",
+            "each rank must have exactly two neighbours in one connected cycle.",
         )
 
 
@@ -853,10 +863,11 @@ def _validate_ring_port(raw: Any, where: str, topology: Topology) -> RingPort:
 
 def _validate_ranks(raw: Any, topology: Topology) -> tuple[Rank, ...]:
     entries = _sequence(raw, "ranks")
-    if len(entries) != len(RANK_IDS):
+    rank_ids = topology.rank_ids
+    if len(entries) != len(rank_ids):
         raise SiteConfigError(
             "ranks",
-            f"expected exactly {len(RANK_IDS)} ranks, got {len(entries)}",
+            f"expected exactly {len(rank_ids)} ranks, got {len(entries)}",
         )
 
     ranks: list[Rank] = []
@@ -875,10 +886,10 @@ def _validate_ranks(raw: Any, topology: Topology) -> tuple[Rank, ...]:
                 f"{where}.id",
                 f"expected an integer rank id, got {type(raw_id).__name__}",
             )
-        if raw_id not in RANK_IDS:
+        if raw_id not in rank_ids:
             raise SiteConfigError(
                 f"{where}.id",
-                f"rank id {raw_id} is not one of {list(RANK_IDS)}",
+                f"rank id {raw_id} is not one of {list(rank_ids)}",
             )
         if raw_id in seen_ids:
             raise SiteConfigError(
@@ -962,10 +973,10 @@ def _validate_ranks(raw: Any, topology: Topology) -> tuple[Rank, ...]:
                     f"expected an integer rank id, "
                     f"got {type(peer_rank).__name__}",
                 )
-            if peer_rank not in RANK_IDS:
+            if peer_rank not in rank_ids:
                 raise SiteConfigError(
                     f"{peer_where}.rank",
-                    f"rank id {peer_rank} is not one of {list(RANK_IDS)}",
+                    f"rank id {peer_rank} is not one of {list(rank_ids)}",
                 )
             if peer_rank == raw_id:
                 raise SiteConfigError(
@@ -1000,7 +1011,7 @@ def _validate_ranks(raw: Any, topology: Topology) -> tuple[Rank, ...]:
         )
 
     ranks.sort(key=lambda entry: entry.id)
-    missing = sorted(set(RANK_IDS) - set(seen_ids))
+    missing = sorted(set(rank_ids) - set(seen_ids))
     if missing:
         raise SiteConfigError(
             "ranks", "missing rank id(s): " + ", ".join(str(x) for x in missing)
@@ -1232,7 +1243,7 @@ def _validate_serving(raw: Any) -> Serving:
             "serving.mtp_tokens",
             f"must be at least 1 when mtp_mode is {mode!r}, got {tokens}",
         )
-    master_rank = _integer(data, "serving", "master_rank", (0, max(RANK_IDS)))
+    master_rank = _integer(data, "serving", "master_rank", (0, TP_RANGE[1] - 1))
     api_port = _integer(data, "serving", "api_port", PORT_RANGE)
     master_port = _integer(data, "serving", "master_port", PORT_RANGE)
     if api_port == master_port:

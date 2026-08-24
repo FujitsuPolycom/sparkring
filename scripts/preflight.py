@@ -62,10 +62,17 @@ from sparkring_site import (  # noqa: E402  (local import after sys.path fix)
     ipv4_mapped_gid,
     load_site,
 )
+from sparkring_cluster import ClusterConfig  # noqa: E402
+from sparkring_diagnostics import (  # noqa: E402
+    CheckStatus,
+    DiagnosticCheck,
+    build_receipt,
+)
 
 EVIDENCE_SCHEMA = "sparkring-preflight/v1"
 PROBE_SENTINEL = "SPARKRING-PREFLIGHT-READY"
 PREFLIGHT_SCOPES = ("full", "fabric")
+FabricConfiguration = SiteConfig | ClusterConfig
 
 # --------------------------------------------------------------------------
 # Stable check ids.  These are contract: they appear in evidence JSON and are
@@ -186,7 +193,7 @@ def assert_read_only(command: str) -> None:
     """Raise :class:`ReadOnlyViolation` unless ``command`` is read-only.
 
     This is a guard rail, not a sandbox: it exists so that a well-meaning edit
-    to :func:`build_probe_script` cannot start mutating four production nodes
+    to :func:`build_probe_script` cannot start mutating production nodes
     without someone noticing.  Redirection to anywhere other than /dev/null is
     treated as a write.
     """
@@ -229,6 +236,19 @@ class CheckResult:
             "passed": self.passed,
             "detail": self.detail,
         }
+
+    def to_diagnostic_check(self) -> DiagnosticCheck:
+        """Represent a preflight result in the shared diagnostic receipt."""
+        return DiagnosticCheck(
+            check_id=self.check_id,
+            status=CheckStatus.PASS if self.passed else CheckStatus.FAIL,
+            scope=("fabric" if self.check_id.startswith("RING.") else "host"),
+            subject=self.subject,
+            summary=CHECK_DESCRIPTIONS[self.check_id],
+            evidence=self.detail,
+            node=f"rank{self.rank}",
+            source="preflight",
+        )
 
 
 @dataclass(frozen=True)
@@ -315,8 +335,19 @@ def _validate_scope(scope: str) -> None:
         )
 
 
+def _validate_configuration_scope(
+    configuration: FabricConfiguration, scope: str
+) -> None:
+    _validate_scope(scope)
+    if isinstance(configuration, ClusterConfig) and scope != "fabric":
+        raise ValueError(
+            "a cluster inventory supports fabric preflight only; use a "
+            "deployment site for runtime, image, disk, and port checks"
+        )
+
+
 def build_probe_script(
-    site: SiteConfig,
+    site: FabricConfiguration,
     rank: Rank,
     scope: str = "full",
 ) -> str:
@@ -326,7 +357,7 @@ def build_probe_script(
     :func:`parse_probe_output`.  Every value is guarded so that a missing sysfs
     file becomes the literal ``-`` rather than a shifted field.
     """
-    _validate_scope(scope)
+    _validate_configuration_scope(site, scope)
     lines: list[str] = [
         "set -u",
         # v <path>: print the file's contents, or '-' if absent/empty.
@@ -542,13 +573,13 @@ def _normalise_digest(value: str) -> str:
 
 
 def evaluate_rank(
-    site: SiteConfig,
+    site: FabricConfiguration,
     rank: Rank,
     state: ProbeState,
     scope: str = "full",
 ) -> list[CheckResult]:
     """Turn one rank's probe state into check results.  Pure: no I/O."""
-    _validate_scope(scope)
+    _validate_configuration_scope(site, scope)
     results: list[CheckResult] = []
 
     def record(check_id: str, subject: str, passed: bool, detail: str) -> None:
@@ -662,7 +693,7 @@ def evaluate_rank(
     return results
 
 
-def _evaluate_ring_port(site: SiteConfig, rank: Rank, port: RingPort,
+def _evaluate_ring_port(site: FabricConfiguration, rank: Rank, port: RingPort,
                         state: ProbeState) -> list[CheckResult]:
     results: list[CheckResult] = []
     subject = f"{port.interface} [{port.edge}]"
@@ -743,13 +774,13 @@ def unreachable_results(rank: Rank, detail: str) -> list[CheckResult]:
 
 
 def check_rank(
-    site: SiteConfig,
+    site: FabricConfiguration,
     rank: Rank,
     runner: Runner,
     scope: str = "full",
 ) -> list[CheckResult]:
     """Probe one rank and evaluate it.  Never mutates remote state."""
-    _validate_scope(scope)
+    _validate_configuration_scope(site, scope)
     script = build_probe_script(site, rank, scope=scope)
     outcome = runner.run(rank.ssh_target, script)
     state = parse_probe_output(outcome.stdout)
@@ -762,12 +793,12 @@ def check_rank(
     return evaluate_rank(site, rank, state, scope=scope)
 
 
-def run_preflight(site: SiteConfig, runner: Runner,
+def run_preflight(site: FabricConfiguration, runner: Runner,
                   ranks: Sequence[int] | None = None,
                   max_workers: int = 4,
                   scope: str = "full") -> list[CheckResult]:
     """Probe every selected rank in parallel and return all check results."""
-    _validate_scope(scope)
+    _validate_configuration_scope(site, scope)
     selected = [
         rank for rank in site.ranks
         if ranks is None or rank.id in set(ranks)
@@ -834,14 +865,15 @@ def build_evidence(site: SiteConfig, results: Sequence[CheckResult],
     summary = summarise(results)
     if warnings is None:
         warnings = site.placeholder_warnings()
+    receipt_generated_at = generated_at or time.strftime(
+        "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+    )
     by_rank: dict[int, list[CheckResult]] = {}
     for result in results:
         by_rank.setdefault(result.rank, []).append(result)
     return {
         "schema": EVIDENCE_SCHEMA,
-        "generated_at": generated_at or time.strftime(
-            "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
-        ),
+        "generated_at": receipt_generated_at,
         "read_only": True,
         "scope": scope,
         "passed": summary.ok,
@@ -859,6 +891,11 @@ def build_evidence(site: SiteConfig, results: Sequence[CheckResult],
         "failed_ranks": list(summary.failed_ranks),
         "placeholder_warnings": list(warnings),
         "known_check_ids": list(CHECK_IDS),
+        "diagnostics": build_receipt(
+            [result.to_diagnostic_check() for result in results],
+            generated_at=receipt_generated_at,
+            source="preflight",
+        ),
         "ranks": [
             {
                 "rank": rank.id,

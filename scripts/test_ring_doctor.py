@@ -4,29 +4,43 @@ from __future__ import annotations
 
 import ipaddress
 import unittest
+from pathlib import Path
 
 from scripts.ring_doctor import (
     FABRIC_INTERFACES,
     UNAVAILABLE,
     CommandResult,
+    ControllerIdentity,
     InterfaceState,
+    ManagementGuard,
     NodeObservation,
+    NodePlan,
     NodeSpec,
+    ProposedRoute,
+    _build_parser,
+    _load_inputs,
+    _unit_program,
     build_plans,
+    build_diagnostic_checks,
+    build_management_guards,
     build_probe_command,
     diagnose,
     diagnose_launch_endpoints,
     diagnose_wifi_resilience,
     discover_nodes,
+    discovery_sufficient,
     docker_user_accepts,
     infer_adjacency,
     infer_topology,
+    enforce_controller_location,
     parse_all_addresses,
     parse_brief_addresses,
     parse_route_get,
     parse_wifi_observation,
+    apply_plans,
     select_route,
     validate_cycle,
+    validate_plan_management_safety,
 )
 
 IF0, IF1 = FABRIC_INTERFACES
@@ -97,6 +111,18 @@ def synthetic_cycle() -> dict[str, NodeObservation]:
     }
 
 
+def synthetic_six_cycle() -> dict[str, NodeObservation]:
+    size = 6
+    return {
+        f"r{rank}": observation(
+            f"r{rank}",
+            f"{IF0} UP 10.30.{rank}.{rank + 10}/24\n"
+            f"{IF1} UP 10.30.{(rank - 1) % size}.{rank + 100}/24",
+        )
+        for rank in range(size)
+    }
+
+
 def probe_output(
     hostname: str,
     addresses: str,
@@ -135,18 +161,259 @@ class FakeDiscoveryRunner:
         self.outputs = outputs
         self.down = down
         self.calls: list[tuple[str, str | None]] = []
+        self.commands: list[tuple[str, str]] = []
 
     def run(
         self, target: str, command: str, proxy_jump: str | None = None
     ) -> CommandResult:
-        del command
         self.calls.append((target, proxy_jump))
+        self.commands.append((target, command))
         if target in self.down:
             return CommandResult(False, detail="SSH exited 255: connection timed out")
         return CommandResult(True, stdout=self.outputs[target])
 
 
+class SiteConfigInputTests(unittest.TestCase):
+    SITE = Path(__file__).parent / "config" / "exl3-r7-site.example.yaml"
+
+    def test_site_supplies_canonical_nodes_interfaces_and_launch_endpoints(self) -> None:
+        args = _build_parser().parse_args(["--site", str(self.SITE)])
+
+        loaded = _load_inputs(args)
+        specs = loaded.specs
+
+        self.assertEqual([spec.name for spec in specs], ["rank0", "rank1", "rank2", "rank3"])
+        self.assertEqual(specs[0].target, "operator@198.18.1.10")
+        self.assertEqual(specs[0].fabric_interfaces, ("eth1", "eth2"))
+        self.assertEqual(specs[0].socket_interfaces, ("eth0",))
+        self.assertEqual(loaded.interfaces, ("eth1", "eth2"))
+        self.assertEqual(loaded.timeout, 45)
+        self.assertEqual(
+            loaded.rendezvous_address, ipaddress.ip_address("198.18.1.10")
+        )
+        self.assertIsNotNone(loaded.site)
+
+    def test_site_rejects_a_second_cluster_description(self) -> None:
+        args = _build_parser().parse_args(
+            ["--site", str(self.SITE), "--node", "operator@rank0"]
+        )
+
+        with self.assertRaisesRegex(ValueError, "--site cannot be combined with --node"):
+            _load_inputs(args)
+
+    def test_discovery_uses_each_nodes_site_defined_interface_names(self) -> None:
+        specs = (
+            NodeSpec("r0", "operator@r0", fabric_interfaces=("cx0a", "cx0b")),
+            NodeSpec("r1", "operator@r1", fabric_interfaces=("cx1a", "cx1b")),
+        )
+        outputs = {
+            "operator@r0": probe_output(
+                "spark-r0", "cx0a UP 10.0.1.10/24\ncx0b UP 10.0.4.10/24"
+            ).replace(IF0, "cx0a").replace(IF1, "cx0b"),
+            "operator@r1": probe_output(
+                "spark-r1", "cx1a UP 10.0.2.11/24\ncx1b UP 10.0.1.11/24"
+            ).replace(IF0, "cx1a").replace(IF1, "cx1b"),
+        }
+        runner = FakeDiscoveryRunner(outputs, set())
+
+        observations = discover_nodes(specs, runner)
+
+        commands = dict(runner.commands)
+        self.assertIn("cx0a", commands["operator@r0"])
+        self.assertNotIn("cx1a", commands["operator@r0"])
+        self.assertIn("cx1a", commands["operator@r1"])
+        self.assertEqual(set(observations["r0"].interfaces), {"cx0a", "cx0b"})
+        self.assertEqual(set(observations["r1"].interfaces), {"cx1a", "cx1b"})
+
+    def test_controller_defaults_to_head_and_worker_requires_recovery_flag(self) -> None:
+        loaded = _load_inputs(
+            _build_parser().parse_args(["--site", str(self.SITE)])
+        )
+        head = ControllerIdentity(
+            frozenset(), frozenset({ipaddress.ip_address("198.18.1.10")})
+        )
+        worker = ControllerIdentity(
+            frozenset(), frozenset({ipaddress.ip_address("198.18.1.12")})
+        )
+
+        self.assertEqual(
+            enforce_controller_location(loaded, allow_worker=False, identity=head),
+            "rank0",
+        )
+        with self.assertRaisesRegex(ValueError, "--allow-worker-controller"):
+            enforce_controller_location(loaded, allow_worker=False, identity=worker)
+        self.assertEqual(
+            enforce_controller_location(loaded, allow_worker=True, identity=worker),
+            "rank2",
+        )
+
+    def test_worker_override_never_allows_an_external_controller(self) -> None:
+        loaded = _load_inputs(
+            _build_parser().parse_args(["--site", str(self.SITE)])
+        )
+        external = ControllerIdentity(
+            frozenset({"operator-laptop"}),
+            frozenset({ipaddress.ip_address("203.0.114.50")}),
+        )
+
+        with self.assertRaisesRegex(ValueError, "configured Spark"):
+            enforce_controller_location(loaded, allow_worker=True, identity=external)
+
+
+class DiagnosticReceiptAdapterTests(unittest.TestCase):
+    def test_healthy_topology_produces_affirmative_shared_check(self) -> None:
+        topology = infer_topology(synthetic_cycle())
+
+        checks = build_diagnostic_checks(topology, [])
+
+        self.assertEqual(checks[0].check_id, "fabric-topology-cycle")
+        self.assertEqual(checks[0].status.value, "pass")
+
+    def test_warning_is_unknown_not_a_pass(self) -> None:
+        topology = infer_topology(synthetic_cycle())
+        findings = diagnose_wifi_resilience(
+            [NodeSpec("r0", "operator@r0")],
+            {
+                "r0": observation(
+                    "r0",
+                    f"{IF0} UP 10.0.1.10/24\n{IF1} UP 10.0.4.10/24",
+                    wifi=UNAVAILABLE,
+                )
+            },
+        )
+
+        checks = build_diagnostic_checks(topology, findings)
+
+        self.assertEqual(checks[-1].status.value, "unknown")
+
+
+class ManagementRepairSafetyTests(unittest.TestCase):
+    def guarded_observation(self) -> NodeObservation:
+        return observation(
+            "r0",
+            f"{IF0} UP 10.0.1.10/24\n{IF1} UP 10.0.4.10/24",
+            socket_interfaces=("eth0",),
+            host_addresses=(
+                f"{IF0} UP 10.0.1.10/24\n"
+                f"{IF1} UP 10.0.4.10/24\n"
+                "eth0 UP 192.0.2.10/24"
+            ),
+        )
+
+    def test_management_guard_requires_distinct_addressed_interface(self) -> None:
+        guarded = self.guarded_observation()
+        guards, findings = build_management_guards([guarded.spec], {"r0": guarded})
+
+        self.assertEqual(findings, [])
+        self.assertEqual(guards["r0"].address_map(), {"eth0": ["192.0.2.10/24"]})
+
+        unguarded = observation(
+            "r0", f"{IF0} UP 10.0.1.10/24\n{IF1} UP 10.0.4.10/24"
+        )
+        guards, findings = build_management_guards(
+            [unguarded.spec], {"r0": unguarded}
+        )
+        self.assertEqual(guards, {})
+        self.assertEqual(findings[0].code, "management-guard-unconfigured")
+
+    def test_plan_overlapping_management_subnet_is_rejected(self) -> None:
+        guarded = self.guarded_observation()
+        guard = ManagementGuard(
+            "r0", (guarded.host_interfaces["eth0"],)
+        )
+        plan = NodePlan(
+            "r0",
+            routes=[
+                ProposedRoute(
+                    ipaddress.ip_network("192.0.2.0/24"),
+                    ipaddress.ip_address("10.0.1.11"),
+                    IF0,
+                    ("r0", "r1"),
+                )
+            ],
+        )
+
+        reason = validate_plan_management_safety(guarded, plan, guard)
+
+        self.assertIn("contains a management address", reason or "")
+
+    def test_apply_checks_management_before_and_after_each_change(self) -> None:
+        guarded = self.guarded_observation()
+        guard = ManagementGuard("r0", (guarded.host_interfaces["eth0"],))
+        plan = NodePlan(
+            "r0",
+            routes=[
+                ProposedRoute(
+                    ipaddress.ip_network("10.0.2.0/24"),
+                    ipaddress.ip_address("10.0.1.11"),
+                    IF0,
+                    ("r0", "r1"),
+                )
+            ],
+        )
+
+        class ApplyRunner:
+            def __init__(self) -> None:
+                self.commands: list[str] = []
+
+            def run(self, target, command, proxy_jump=None):
+                self.commands.append(command)
+                return CommandResult(True)
+
+        runner = ApplyRunner()
+        findings = apply_plans(
+            {"r0": guarded}, {"r0": plan}, {"r0": guard}, runner
+        )
+
+        self.assertEqual(findings, [])
+        self.assertEqual(len(runner.commands), 1)
+        self.assertGreaterEqual(runner.commands[0].count("192.0.2.10/24"), 2)
+        self.assertIn("ip route replace 10.0.2.0/24", runner.commands[0])
+
+    def test_boot_program_checks_management_after_every_change(self) -> None:
+        guarded = self.guarded_observation()
+        guard = ManagementGuard("r0", (guarded.host_interfaces["eth0"],))
+        plan = NodePlan(
+            "r0",
+            routes=[
+                ProposedRoute(
+                    ipaddress.ip_network("10.0.2.0/24"),
+                    ipaddress.ip_address("10.0.1.11"),
+                    IF0,
+                    ("r0", "r1"),
+                )
+            ],
+            relay_directions={(IF0, IF1)},
+        )
+
+        program = _unit_program(guarded, plan, guard)
+
+        self.assertIn("EXPECTED_MANAGEMENT = {'eth0': ['192.0.2.10/24']}", program)
+        self.assertGreaterEqual(program.count("require_management()"), 5)
+
+
 class AddressAndTopologyTests(unittest.TestCase):
+    def test_six_node_cycle_infers_routes_for_every_remote_edge(self) -> None:
+        observations = synthetic_six_cycle()
+
+        topology = infer_topology(observations)
+        plans = build_plans(observations, topology)
+
+        self.assertTrue(topology.valid_cycle, topology.reason)
+        self.assertEqual(len(topology.cycle), 6)
+        self.assertTrue(
+            discovery_sufficient(
+                [observation.spec for observation in observations.values()],
+                observations,
+                topology,
+            )
+        )
+        for plan in plans.values():
+            self.assertEqual(len(plan.routes), 4)
+            self.assertEqual(
+                plan.relay_directions, {(IF0, IF1), (IF1, IF0)}
+            )
+
     def test_adjacency_inference_from_real_brief_address_fixture(self) -> None:
         observations = {
             "r0": observation(

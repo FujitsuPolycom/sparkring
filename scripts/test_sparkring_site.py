@@ -65,6 +65,65 @@ def document(example_document: dict) -> dict:
     return result
 
 
+def six_ring_document(base: dict) -> dict:
+    """Return a complete six-rank cycle derived from the shipped four-ring."""
+    result = copy.deepcopy(base)
+    size = 6
+    result["site"] = {
+        "name": "six-ring-test",
+        "description": "Offline six-rank SparkRing validation fixture.",
+    }
+    result["topology"]["edges"] = [
+        {
+            "id": f"r{rank}-r{(rank + 1) % size}",
+            "subnet": f"10.20.{rank}.0/24",
+            "endpoints": [rank, (rank + 1) % size],
+        }
+        for rank in range(size)
+    ]
+    ranks = []
+    for rank in range(size):
+        previous = (rank - 1) % size
+        following = (rank + 1) % size
+        ranks.append(
+            {
+                "id": rank,
+                "ssh_target": f"operator@192.0.2.{rank + 10}",
+                "management": {
+                    "interface": "eth0",
+                    "address": f"192.0.2.{rank + 10}",
+                },
+                "ring_ports": [
+                    {
+                        "edge": f"r{previous}-r{rank}",
+                        "interface": "eth1",
+                        "address": f"10.20.{previous}.{rank + 100}",
+                        "rdma_device": "mlx5_0",
+                        "rdma_port": 1,
+                        "roce_gid_index": 3,
+                    },
+                    {
+                        "edge": f"r{rank}-r{following}",
+                        "interface": "eth2",
+                        "address": f"10.20.{rank}.{rank + 10}",
+                        "rdma_device": "mlx5_1",
+                        "rdma_port": 1,
+                        "roce_gid_index": 3,
+                    },
+                ],
+                "transport_peers": [
+                    {"rank": previous, "address": f"192.0.2.{previous + 10}"},
+                    {"rank": following, "address": f"192.0.2.{following + 10}"},
+                ],
+            }
+        )
+    result["ranks"] = ranks
+    result["serving"]["tensor_parallel_size"] = size
+    result["serving"]["decode_context_parallel_size"] = 1
+    result["serving"]["master_rank"] = 0
+    return result
+
+
 # ==========================================================================
 # Happy path
 # ==========================================================================
@@ -102,6 +161,30 @@ def test_example_has_four_edges_each_with_two_ring_ports():
             claims[port.edge].append(rank.id)
     for edge in site.topology.edges:
         assert sorted(claims[edge.id]) == sorted(edge.endpoints)
+
+
+def test_six_rank_ring_loads_and_resolves_every_neighbour(document):
+    site = validate_site(six_ring_document(document))
+
+    assert site.topology.rank_ids == (0, 1, 2, 3, 4, 5)
+    assert len(site.topology.edges) == 6
+    assert len(site.ranks) == 6
+    for rank in site.ranks:
+        assert len(rank.ring_ports) == 2
+        assert len(rank.neighbour_ranks) == 2
+        assert {peer.rank for peer in rank.transport_peers} == set(
+            rank.neighbour_ranks
+        )
+        for port in rank.ring_ports:
+            assert port.peer_address is not None
+
+
+def test_five_rank_ring_is_rejected_as_unsupported(document):
+    candidate = six_ring_document(document)
+    candidate["topology"]["edges"] = candidate["topology"]["edges"][:5]
+
+    with pytest.raises(SiteConfigError, match="exactly 4 or 6 edges"):
+        validate_site(candidate)
 
 
 def test_peer_addresses_are_resolved_for_every_ring_port():
@@ -379,7 +462,7 @@ CASES: list[tuple[str, object, str, str]] = [
         lambda d: d["topology"].__setitem__(
             "edges", d["topology"]["edges"][:3]
         ),
-        "topology.edges", "exactly 4 edges",
+        "topology.edges", "exactly 4 or 6 edges",
     ),
     (
         "topology-duplicate-edge-id",

@@ -9,6 +9,11 @@ hardware and operator conditions required by the
 GLM, Qwen cycle, and DeepSeek cycle configurations require four Sparks; the
 DeepSeek and Qwen pair profiles require two.
 
+Ring Doctor, canonical site validation, and fabric preflight support closed
+four- and six-Spark cycles. Six-Spark serving profiles remain `research-only`
+until their runtime and performance evidence are qualified; infrastructure
+support here does not promote those profiles into the supported surface.
+
 ## Hardware and topology
 
 For a four-Spark cycle:
@@ -17,6 +22,14 @@ For a four-Spark cycle:
 - Four qualified 200 Gb/s DACs cabled exactly as `0-1-2-3-0`.
 - Stable rank assignment: the same host is rank 0, 1, 2, or 3 throughout a
   deployment.
+
+For a six-Spark cycle (`research-only` serving profiles):
+
+- Six NVIDIA DGX Sparks with both 200 Gb/s ConnectX-7 ports available.
+- Six qualified 200 Gb/s DACs cabled exactly as `0-1-2-3-4-5-0`.
+- Stable rank assignment from rank 0 through rank 5 throughout a deployment.
+- A canonical site file with six edges and six ranks; every rank still owns
+  exactly two distinct fabric interfaces and two ring neighbours.
 
 For a two-Spark pair:
 
@@ -74,15 +87,58 @@ on every node before a launch:
   unreachable.
 
 [`scripts/ring_doctor.py`](../scripts/ring_doctor.py) checks all three, plus
-addressing and reachability, and prints a repair plan. Run it read-only first:
+addressing and reachability, and prints a repair plan. When a canonical site
+file is available, Ring Doctor also reuses the preflight implementation for
+negotiated link speed, expected MTU and address, active RDMA ports, Ethernet
+link mode, the configured RoCEv2 GID, and a don't-fragment jumbo ping. Run it
+read-only first:
 
 ```bash
-python scripts/ring_doctor.py   --node <user>@<host0> --node <user>@<host1>   --node <user>@<host2> --node <user>@<host3> --verify
+python scripts/ring_doctor.py \
+  --site scripts/config/site.yaml \
+  --verify
 ```
 
-Require zero `ERROR` findings and a reachability matrix in which every pair
-passes. `--apply` executes the printed plan, which is idempotent and needs
-passwordless `sudo` on each node.
+Run Ring Doctor on rank 0, the head node. The command verifies local identity
+against the configured rank management addresses and SSH hostnames before it
+contacts the cluster. If rank 0 cannot run the tool, run it from a configured
+worker with the explicit recovery flag:
+
+```bash
+python scripts/ring_doctor.py \
+  --site scripts/config/site.yaml \
+  --allow-worker-controller \
+  --verify
+```
+
+The flag does not permit execution from a laptop or unknown control host; the
+local machine must still identify as one configured worker rank. The report
+records when worker recovery mode was used.
+
+Require zero `ERROR` findings, a passing canonical fabric preflight, and a
+reachability matrix in which every pair passes. `--apply` executes the printed
+plan only after both the discovered cycle and canonical fabric checks pass. It
+is idempotent and needs passwordless `sudo` on each node.
+
+### Management safety during repair
+
+Ring Doctor treats management reachability as a hard mutation invariant. It
+does not change management addresses, links, routes, or NetworkManager
+profiles. Before `--apply` or `--emit-unit`, every node must meet all of these
+conditions:
+
+- discovery reached the node directly, not through a fabric jump host;
+- the canonical management interface exists and holds an IPv4 address; and
+- the management interface is distinct from both fabric interfaces.
+
+Each repair operation is restricted to observed fabric interfaces and fabric
+subnets. Ring Doctor checks that the active SSH session terminates on a guarded
+management address and that its return route uses a guarded management
+interface immediately before and after every individual change. The remaining
+plan stops on the first mismatch. Generated boot programs also verify the exact
+recorded management addresses before and after every change. If a legacy
+`--node` invocation is used instead of `--site`, name the management interface
+for every node with `--socket-interface`; otherwise all mutation is withheld.
 
 The repairs are runtime state and do not survive a reboot. `--emit-unit DIR`
 writes a per-node program and systemd unit that revalidate the addresses and
