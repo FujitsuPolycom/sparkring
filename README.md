@@ -13,6 +13,12 @@ powered by the GB10 Grace Blackwell Superchip.
 
 SparkRing supports GB10 pairs, four-node rings, and Six-node rings (in dev).
 
+Start with a blank DGX Spark using the
+[bootstrap guide](docs/BOOTSTRAP.md). The model-independent `sparkring cluster
+init` workflow enrolls nodes, discovers management and ConnectX-7 hardware,
+generates the cluster inventory, and launches Ring Doctor before any model
+profile is selected.
+
 Models run as tensor-parallel deployments over the direct fabric without an
 external Ethernet or InfiniBand switch. [SIRCL](https://github.com/FujitsuPolycom/sparkring/blob/main/docs/SIRCL.md) provides custom RDMA collectives
 for tested paths, CUDA-graph command rings support repeated decode

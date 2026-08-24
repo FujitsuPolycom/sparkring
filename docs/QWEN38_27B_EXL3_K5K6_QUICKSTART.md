@@ -72,8 +72,8 @@ Docker and the NVIDIA container runtime using the platform's supported DGX
 Spark procedure.
 
 Assign stable ranks 0-3 and cable the four fabric edges as `0-1`, `1-2`,
-`2-3`, and `3-0`. From the clean SparkRing checkout, run the read-only topology
-check from a control host:
+`2-3`, and `3-0`. From the clean SparkRing checkout on rank 0, run the
+read-only topology check:
 
 ```bash
 python scripts/ring_doctor.py \

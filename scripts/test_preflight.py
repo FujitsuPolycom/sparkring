@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -38,7 +39,8 @@ from preflight import (  # noqa: E402
     run_preflight,
     summarise,
 )
-from sparkring_site import ipv4_mapped_gid, load_site  # noqa: E402
+from sparkring_site import ipv4_mapped_gid, load_site, validate_site  # noqa: E402
+from test_sparkring_site import six_ring_document  # noqa: E402
 
 EXAMPLE_PATH = (
     Path(__file__).resolve().parent / "config" / "exl3-r7-site.example.yaml"
@@ -725,6 +727,20 @@ def test_run_preflight_covers_every_rank(site):
     assert exit_code_for(results) == 0
 
 
+def test_run_preflight_covers_all_six_ring_ranks():
+    document = yaml.safe_load(EXAMPLE_PATH.read_text(encoding="utf-8"))
+    six_site = validate_site(six_ring_document(document))
+    runner = healthy_runner(six_site)
+
+    results = run_preflight(six_site, runner, scope="fabric")
+    evidence = build_evidence(six_site, results, scope="fabric")
+
+    assert {result.rank for result in results} == set(range(6))
+    assert len(runner.commands) == 6
+    assert exit_code_for(results) == 0
+    assert [entry["rank"] for entry in evidence["ranks"]] == list(range(6))
+
+
 def test_fabric_scope_emits_only_connectivity_and_ring_checks(site):
     runner = FakeRunner({
         rank.ssh_target: CommandResult(
@@ -827,6 +843,9 @@ def test_evidence_shape_on_success(site):
     assert evidence["failed_check_ids"] == []
     assert evidence["failed_ranks"] == []
     assert evidence["known_check_ids"] == list(CHECK_IDS)
+    assert evidence["diagnostics"]["schema"] == "sparkring-diagnostics/v1"
+    assert evidence["diagnostics"]["passed"] is True
+    assert evidence["diagnostics"]["generated_at"] == evidence["generated_at"]
     assert [entry["rank"] for entry in evidence["ranks"]] == [0, 1, 2, 3]
     for entry in evidence["ranks"]:
         for check in entry["checks"]:

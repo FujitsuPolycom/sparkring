@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Discover, diagnose, repair, and verify a four-node SparkRing fabric.
+"""Discover, diagnose, repair, and verify a supported SparkRing fabric.
 
 The default operation is read-only. Remote changes require ``--apply``. Every
 route next hop and every boot-time address guard comes from addresses observed
@@ -22,11 +22,28 @@ import json
 import os
 import re
 import shlex
+import socket
 import subprocess
 import sys
 from collections import deque
 from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence
+
+try:
+    from .sparkring_cluster import ClusterConfig, ClusterConfigError, load_cluster
+    from .sparkring_site import (
+        SUPPORTED_RING_SIZES,
+        SiteConfig,
+        SiteConfigError,
+        load_site,
+    )
+    from .sparkring_diagnostics import CheckStatus, DiagnosticCheck, build_receipt
+    from .preflight import assert_read_only, run_preflight
+except ImportError:  # Direct execution: python scripts/ring_doctor.py
+    from sparkring_cluster import ClusterConfig, ClusterConfigError, load_cluster
+    from sparkring_site import SUPPORTED_RING_SIZES, SiteConfig, SiteConfigError, load_site
+    from sparkring_diagnostics import CheckStatus, DiagnosticCheck, build_receipt
+    from preflight import assert_read_only, run_preflight
 
 FABRIC_INTERFACES = ("enp1s0f0np0", "enp1s0f1np1")
 SSH_TARGET_RE = re.compile(r"^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$")
@@ -41,18 +58,48 @@ class ConfigurationError(ValueError):
 
 
 @dataclasses.dataclass(frozen=True)
+class LoadedInputs:
+    """One validated Ring Doctor invocation, optionally backed by SiteConfig."""
+
+    specs: tuple[NodeSpec, ...]
+    interfaces: tuple[str, ...]
+    timeout: int
+    rendezvous_address: ipaddress.IPv4Address | None
+    site: SiteConfig | None = None
+    cluster: ClusterConfig | None = None
+
+    @property
+    def fabric_configuration(self) -> SiteConfig | ClusterConfig | None:
+        return self.cluster or self.site
+
+
+@dataclasses.dataclass(frozen=True)
+class ControllerIdentity:
+    """Hostnames and non-loopback IPv4 addresses observed on this machine."""
+
+    hostnames: frozenset[str]
+    addresses: frozenset[ipaddress.IPv4Address]
+
+
+@dataclasses.dataclass(frozen=True)
 class NodeSpec:
     """One management SSH target and its optional discovery jump host.
 
     ``socket_interfaces`` holds the interface names a distributed launch gives
     to ``NCCL_SOCKET_IFNAME`` and ``GLOO_SOCKET_IFNAME`` on this node. They are
     inputs to be checked against the node, never values this tool sets.
+
+    ``fabric_interfaces`` is empty for the legacy discovery interface, which
+    applies the invocation-wide defaults. Site-driven discovery fills it from
+    the rank's canonical ``SiteConfig`` ring ports, so ranks may use different
+    Linux interface names without creating a second topology description.
     """
 
     name: str
     target: str
     proxy_jump: str | None = None
     socket_interfaces: tuple[str, ...] = ()
+    fabric_interfaces: tuple[str, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -219,6 +266,17 @@ class SshRunner:
         )
 
 
+class ReadOnlyRunnerAdapter:
+    """Expose Ring Doctor's SSH runner to checks guarded as read-only."""
+
+    def __init__(self, runner: Runner) -> None:
+        self.runner = runner
+
+    def run(self, target: str, command: str) -> CommandResult:
+        assert_read_only(command)
+        return self.runner.run(target, command)
+
+
 @dataclasses.dataclass
 class NodeObservation:
     """Discovery evidence for one configured node, including probe failures.
@@ -311,6 +369,30 @@ class Finding:
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
 
+    def to_diagnostic_check(self) -> DiagnosticCheck:
+        """Represent the legacy finding in the shared diagnostic receipt."""
+        status = {
+            "info": CheckStatus.PASS,
+            "warning": CheckStatus.UNKNOWN,
+            "error": CheckStatus.FAIL,
+        }[self.severity]
+        if self.code.startswith("wifi-"):
+            scope = "management"
+        elif self.code.startswith(("rendezvous-", "socket-interface-", "launch-")):
+            scope = "distributed"
+        else:
+            scope = "fabric"
+        return DiagnosticCheck(
+            check_id=self.code,
+            status=status,
+            scope=scope,
+            subject=self.node or "cluster",
+            summary=self.message,
+            evidence=self.evidence,
+            node=self.node,
+            source="ring-doctor",
+        )
+
 
 @dataclasses.dataclass(frozen=True)
 class ProposedRoute:
@@ -368,6 +450,47 @@ class NodePlan:
                 for ingress, egress in sorted(self.relay_directions)
             ],
             "commands": self.commands(),
+        }
+
+
+@dataclasses.dataclass(frozen=True)
+class ManagementGuard:
+    """Management interfaces and addresses that must survive every repair."""
+
+    node: str
+    interfaces: tuple[InterfaceState, ...]
+
+    def shell_command(self) -> str:
+        checks: list[str] = []
+        guarded_addresses: list[str] = []
+        guarded_interfaces: list[str] = []
+        for interface in self.interfaces:
+            name = shlex.quote(interface.name)
+            guarded_interfaces.append(interface.name)
+            checks.append(f"ip link show dev {name} >/dev/null")
+            for address in interface.addresses:
+                guarded_addresses.append(str(address.ip))
+                literal = shlex.quote(str(address))
+                checks.append(
+                    f"ip -4 -o addr show dev {name} | grep -F -q -- {literal}"
+                )
+        server_cases = "|".join(shlex.quote(value) for value in guarded_addresses)
+        route_devices = "|".join(re.escape(value) for value in guarded_interfaces)
+        checks.extend(
+            (
+                'set -- $SSH_CONNECTION; test "$#" -ge 4',
+                f'case "$3" in {server_cases}) ;; *) exit 91 ;; esac',
+                'management_route=$(ip -4 route get "$1")',
+                f"printf '%s\\n' \"$management_route\" | "
+                f"grep -E -q -- ' dev ({route_devices})( |$)'",
+            )
+        )
+        return "\n".join(checks)
+
+    def address_map(self) -> dict[str, list[str]]:
+        return {
+            interface.name: sorted(str(address) for address in interface.addresses)
+            for interface in self.interfaces
         }
 
 
@@ -429,6 +552,143 @@ def _validate_interface(value: str, field: str) -> str:
 
 def _default_name(target: str) -> str:
     return target.split("@", 1)[1]
+
+
+def _interfaces_for(
+    spec: NodeSpec, defaults: Sequence[str] = FABRIC_INTERFACES
+) -> tuple[str, ...]:
+    """Return the canonical fabric interface names for one node."""
+    return spec.fabric_interfaces or tuple(defaults)
+
+
+def node_specs_from_configuration(
+    configuration: SiteConfig | ClusterConfig,
+) -> tuple[NodeSpec, ...]:
+    """Adapt canonical cluster facts to Ring Doctor discovery inputs."""
+    specs: list[NodeSpec] = []
+    for rank in sorted(configuration.ranks, key=lambda item: item.id):
+        fabric_interfaces = tuple(port.interface for port in rank.ring_ports)
+        if len(fabric_interfaces) != 2 or len(set(fabric_interfaces)) != 2:
+            raise ConfigurationError(
+                f"site rank{rank.id} must name two distinct fabric interfaces"
+            )
+        for index, name in enumerate(fabric_interfaces):
+            _validate_interface(name, f"site rank{rank.id} ring port {index + 1}")
+        management_interface = _validate_interface(
+            rank.management.interface, f"site rank{rank.id} management interface"
+        )
+        specs.append(
+            NodeSpec(
+                name=f"rank{rank.id}",
+                target=_validate_ssh_target(
+                    rank.ssh_target, f"site rank{rank.id} ssh_target"
+                ),
+                socket_interfaces=(management_interface,),
+                fabric_interfaces=fabric_interfaces,
+            )
+        )
+    _require_unique_specs(specs)
+    return tuple(specs)
+
+
+def node_specs_from_site(site: SiteConfig) -> tuple[NodeSpec, ...]:
+    """Compatibility name for existing callers."""
+    return node_specs_from_configuration(site)
+
+
+def read_controller_identity() -> ControllerIdentity:
+    """Observe enough local identity to prove which configured rank runs us."""
+    raw_names = {socket.gethostname(), socket.getfqdn()}
+    names = {
+        value.lower().rstrip(".")
+        for name in raw_names
+        for value in (name, name.split(".", 1)[0])
+        if value
+    }
+    addresses: set[ipaddress.IPv4Address] = set()
+    for name in raw_names:
+        try:
+            records = socket.getaddrinfo(name, None, socket.AF_INET)
+        except socket.gaierror:
+            continue
+        for record in records:
+            address = ipaddress.ip_address(record[4][0])
+            if isinstance(address, ipaddress.IPv4Address) and not address.is_loopback:
+                addresses.add(address)
+    try:
+        completed = subprocess.run(
+            ["ip", "-j", "-4", "addr", "show"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if completed.returncode == 0:
+            for row in json.loads(completed.stdout):
+                for item in row.get("addr_info", []):
+                    if item.get("family") != "inet":
+                        continue
+                    address = ipaddress.ip_address(item["local"])
+                    if not address.is_loopback:
+                        addresses.add(address)
+    except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError):
+        pass
+    return ControllerIdentity(frozenset(names), frozenset(addresses))
+
+
+def identify_controller_node(
+    loaded: LoadedInputs,
+    identity: ControllerIdentity,
+) -> str:
+    """Return the one configured rank proven to be the local machine."""
+    matches: list[str] = []
+    for spec in loaded.specs:
+        target_host = spec.target.split("@", 1)[1].lower().rstrip(".")
+        target_short = target_host.split(".", 1)[0]
+        matched = target_host in identity.hostnames or target_short in identity.hostnames
+        configuration = loaded.fabric_configuration
+        if configuration is not None:
+            rank_id = int(spec.name.removeprefix("rank"))
+            management_address = configuration.rank(rank_id).management.address
+            matched = matched or management_address in identity.addresses
+        else:
+            try:
+                target_address = ipaddress.ip_address(target_host)
+            except ValueError:
+                target_address = None
+            matched = matched or target_address in identity.addresses
+        if matched:
+            matches.append(spec.name)
+    if not matches:
+        raise ConfigurationError(
+            "Ring Doctor must run on a configured Spark. This machine did not "
+            "match any rank management address or SSH hostname."
+        )
+    if len(matches) != 1:
+        raise ConfigurationError(
+            "controller identity is ambiguous across configured ranks: "
+            + ", ".join(matches)
+        )
+    return matches[0]
+
+
+def enforce_controller_location(
+    loaded: LoadedInputs,
+    *,
+    allow_worker: bool,
+    identity: ControllerIdentity | None = None,
+) -> str:
+    """Require rank 0 unless explicit worker-controller recovery is enabled."""
+    controller = identify_controller_node(
+        loaded, identity if identity is not None else read_controller_identity()
+    )
+    head = loaded.specs[0].name
+    if controller == head or allow_worker:
+        return controller
+    raise ConfigurationError(
+        f"Ring Doctor is running on worker {controller}; run it on head node "
+        f"{head}, or use --allow-worker-controller only for head-node recovery."
+    )
 
 
 def parse_node_specs(document: Mapping[str, Any]) -> tuple[NodeSpec, ...]:
@@ -877,7 +1137,6 @@ def discover_nodes(
     rendezvous_address: ipaddress.IPv4Address | None = None,
 ) -> dict[str, NodeObservation]:
     """Probe nodes directly, then retry failures through discovered jump hosts."""
-    command = build_probe_command(interfaces, rendezvous_address)
     observations: dict[str, NodeObservation] = {}
     attempted: dict[str, list[str]] = {spec.name: [] for spec in specs}
 
@@ -886,10 +1145,12 @@ def discover_nodes(
         if label in attempted[spec.name]:
             return False
         attempted[spec.name].append(label)
+        node_interfaces = _interfaces_for(spec, interfaces)
+        command = build_probe_command(node_interfaces, rendezvous_address)
         result = runner.run(spec.target, command, jump)
         if result.ok:
             observations[spec.name] = parse_probe_output(
-                spec, result.stdout, interfaces, jump, rendezvous_address
+                spec, result.stdout, node_interfaces, jump, rendezvous_address
             )
             return True
         observations[spec.name] = NodeObservation(
@@ -1571,7 +1832,7 @@ def diagnose(
                 )
             )
             continue
-        for interface_name in interfaces:
+        for interface_name in _interfaces_for(spec, interfaces):
             state = observation.interfaces.get(interface_name)
             if state is None:
                 findings.append(
@@ -1749,41 +2010,191 @@ def _probe_by_name(
     return observations, topology, plans, findings
 
 
+def discovery_sufficient(
+    specs: Sequence[NodeSpec],
+    observations: Mapping[str, NodeObservation],
+    topology: Topology,
+) -> bool:
+    """Require a complete qualified-size cycle before persistence or repair."""
+    return (
+        len(specs) in SUPPORTED_RING_SIZES
+        and len(observations) == len(specs)
+        and all(observation.reachable for observation in observations.values())
+        and topology.valid_cycle
+        and len(topology.cycle) == len(specs)
+    )
+
+
+def build_management_guards(
+    specs: Sequence[NodeSpec],
+    observations: Mapping[str, NodeObservation],
+) -> tuple[dict[str, ManagementGuard], list[Finding]]:
+    """Fail closed unless every repair target has a direct management path."""
+    guards: dict[str, ManagementGuard] = {}
+    findings: list[Finding] = []
+    for spec in specs:
+        observation = observations[spec.name]
+        if not observation.reachable:
+            continue
+        if observation.proxy_jump_used is not None:
+            findings.append(
+                Finding(
+                    "error",
+                    "management-direct-path-unavailable",
+                    spec.name,
+                    "Repair is unsafe because discovery reached this node through "
+                    "a jump host instead of its direct management path.",
+                    f"proxy_jump_used={observation.proxy_jump_used}",
+                )
+            )
+            continue
+        if not spec.socket_interfaces:
+            findings.append(
+                Finding(
+                    "error",
+                    "management-guard-unconfigured",
+                    spec.name,
+                    "Repair is unsafe because no management interface was named. "
+                    "Use the canonical site file or identify it with "
+                    "--socket-interface.",
+                    "socket_interfaces=none",
+                )
+            )
+            continue
+        guarded: list[InterfaceState] = []
+        unsafe = False
+        for name in spec.socket_interfaces:
+            if name in observation.interfaces:
+                unsafe = True
+                findings.append(
+                    Finding(
+                        "error",
+                        "management-interface-is-fabric",
+                        spec.name,
+                        f"Repair is unsafe because {name} is named as both a "
+                        "management and fabric interface.",
+                        f"fabric interfaces={','.join(sorted(observation.interfaces))}",
+                    )
+                )
+                continue
+            state = observation.host_interfaces.get(name)
+            if state is None or not state.addresses:
+                unsafe = True
+                findings.append(
+                    Finding(
+                        "error",
+                        "management-interface-unaddressed",
+                        spec.name,
+                        f"Repair is unsafe because management interface {name} "
+                        "was not observed with an IPv4 address.",
+                        "interface absent" if state is None else "IPv4 addresses=none",
+                    )
+                )
+                continue
+            guarded.append(state)
+        if not unsafe and guarded:
+            guards[spec.name] = ManagementGuard(spec.name, tuple(guarded))
+    return guards, findings
+
+
+def validate_plan_management_safety(
+    observation: NodeObservation,
+    plan: NodePlan,
+    guard: ManagementGuard,
+) -> str | None:
+    """Return an explanation when a plan could overlap management state."""
+    fabric_names = set(observation.interfaces)
+    management_names = {interface.name for interface in guard.interfaces}
+    if fabric_names & management_names:
+        return "management and fabric interface sets overlap"
+    management_addresses = {
+        address.ip
+        for interface in guard.interfaces
+        for address in interface.addresses
+    }
+    for route in plan.routes:
+        if route.device not in fabric_names:
+            return f"route device {route.device} is not an observed fabric interface"
+        if route.destination.prefixlen == 0:
+            return "plan attempts to replace a default route"
+        if any(address in route.destination for address in management_addresses):
+            return f"fabric route {route.destination} contains a management address"
+    for ingress, egress in plan.relay_directions:
+        if ingress not in fabric_names or egress not in fabric_names:
+            return f"relay direction {ingress}->{egress} is not fabric-only"
+    return None
+
+
 def apply_plans(
     observations: Mapping[str, NodeObservation],
     plans: Mapping[str, NodePlan],
+    guards: Mapping[str, ManagementGuard],
     runner: Runner,
 ) -> list[Finding]:
-    """Execute complete plans through the SSH paths proven by discovery."""
+    """Apply one fabric change at a time while management stays invariant."""
     findings: list[Finding] = []
     for name, plan in sorted(plans.items()):
         commands = plan.commands()
         if not commands:
             continue
         observation = observations[name]
-        result = runner.run(
-            observation.spec.target,
-            "set -e\n" + "\n".join(commands),
-            observation.proxy_jump_used,
-        )
-        if not result.ok:
+        guard = guards.get(name)
+        if guard is None:
             findings.append(
                 Finding(
                     "error",
                     "apply-failed",
                     name,
-                    "The idempotent repair plan did not complete.",
-                    result.detail or result.stderr.strip() or "remote command failed",
+                    "The repair plan was withheld because no verified management "
+                    "guard exists for this node.",
+                    "management guard missing",
                 )
             )
+            continue
+        unsafe = validate_plan_management_safety(observation, plan, guard)
+        if unsafe:
+            findings.append(
+                Finding(
+                    "error",
+                    "apply-failed",
+                    name,
+                    "The repair plan was withheld because it is not fabric-only.",
+                    unsafe,
+                )
+            )
+            continue
+        guard_command = guard.shell_command()
+        for index, command in enumerate(commands, start=1):
+            result = runner.run(
+                observation.spec.target,
+                "set -e\n" + guard_command + "\n" + command + "\n" + guard_command,
+                None,
+            )
+            if result.ok:
+                continue
+            findings.append(
+                Finding(
+                    "error",
+                    "apply-failed",
+                    name,
+                    "The repair stopped immediately because a change failed or "
+                    "the management invariant did not hold afterward.",
+                    f"operation={index}/{len(commands)}; "
+                    + (result.detail or result.stderr.strip() or "remote command failed"),
+                )
+            )
+            break
     return findings
 
 
-def _unit_program(observation: NodeObservation, plan: NodePlan) -> str:
-    expected = {
+def _unit_program(
+    observation: NodeObservation, plan: NodePlan, guard: ManagementGuard
+) -> str:
+    expected_fabric = {
         name: sorted(str(address) for address in interface.addresses)
         for name, interface in sorted(observation.interfaces.items())
     }
+    expected_management = guard.address_map()
     route_argv = [
         [
             "ip",
@@ -1806,7 +2217,8 @@ import json
 import subprocess
 import sys
 
-EXPECTED = {expected!r}
+EXPECTED_FABRIC = {expected_fabric!r}
+EXPECTED_MANAGEMENT = {expected_management!r}
 ROUTES = {route_argv!r}
 RELAY_DIRECTIONS = {directions!r}
 
@@ -1831,25 +2243,44 @@ def observed_addresses(interface):
     return sorted(addresses)
 
 
-def main():
-    for interface, expected in EXPECTED.items():
+def check_addresses(expected_by_interface, label):
+    for interface, expected in expected_by_interface.items():
         try:
             actual = observed_addresses(interface)
         except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError) as exc:
-            print(f"ADDRESS CHECK FAILED {{interface}}: {{exc}}", file=sys.stderr)
-            return 1
+            print(f"{{label}} ADDRESS CHECK FAILED {{interface}}: {{exc}}", file=sys.stderr)
+            return False
         if actual != expected:
             print(
-                f"ADDRESS MISMATCH {{interface}}: expected={{expected}} actual={{actual}}",
+                f"{{label}} ADDRESS MISMATCH {{interface}}: "
+                f"expected={{expected}} actual={{actual}}",
                 file=sys.stderr,
             )
-            return 1
+            return False
+    return True
+
+
+def require_management():
+    if not check_addresses(EXPECTED_MANAGEMENT, "MANAGEMENT"):
+        raise RuntimeError("management invariant failed")
+
+
+def main():
+    if not check_addresses(EXPECTED_FABRIC, "FABRIC"):
+        return 1
+    try:
+        require_management()
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     for command in ROUTES:
         subprocess.run(command, check=True)
+        require_management()
     if RELAY_DIRECTIONS:
         subprocess.run(
             ["sysctl", "-w", "net.ipv4.ip_forward=1"], check=True
         )
+        require_management()
     for ingress, egress in RELAY_DIRECTIONS:
         rule = ["-i", ingress, "-o", egress, "-j", "ACCEPT"]
         check = subprocess.run(
@@ -1859,6 +2290,7 @@ def main():
             subprocess.run(
                 ["iptables", "-I", "DOCKER-USER", "1", *rule], check=True
             )
+        require_management()
     return 0
 
 
@@ -1871,16 +2303,20 @@ def emit_units(
     directory: Path,
     observations: Mapping[str, NodeObservation],
     plans: Mapping[str, NodePlan],
+    guards: Mapping[str, ManagementGuard],
 ) -> list[str]:
     """Write one fail-closed systemd service and program per observed node."""
     directory.mkdir(parents=True, exist_ok=True)
     written: list[str] = []
     for name, plan in sorted(plans.items()):
         observation = observations[name]
+        guard = guards[name]
         slug = re.sub(r"[^A-Za-z0-9_.-]", "-", name)
         program_path = (directory / f"ring-doctor-{slug}.py").resolve()
         unit_path = directory / f"ring-doctor-{slug}.service"
-        program_path.write_text(_unit_program(observation, plan), encoding="utf-8")
+        program_path.write_text(
+            _unit_program(observation, plan, guard), encoding="utf-8"
+        )
         os.chmod(program_path, 0o755)
         unit = f"""[Unit]
 Description=Reapply verified SparkRing fabric plan for {name}
@@ -1971,9 +2407,72 @@ def _render_matrix(matrix: Mapping[str, Mapping[str, bool | None]]) -> list[str]
     return lines
 
 
+def build_diagnostic_checks(
+    topology: Topology,
+    findings: Sequence[Finding],
+    verification: Mapping[str, Any] | None = None,
+) -> list[DiagnosticCheck]:
+    """Translate Ring Doctor evidence into the shared diagnostic interface."""
+    checks = [finding.to_diagnostic_check() for finding in findings]
+    checks.insert(
+        0,
+        DiagnosticCheck(
+            check_id="fabric-topology-cycle",
+            status=(CheckStatus.PASS if topology.valid_cycle else CheckStatus.FAIL),
+            scope="fabric",
+            subject="cluster",
+            summary=(
+                "The observed fabric forms one cycle."
+                if topology.valid_cycle
+                else "The observed fabric does not form one cycle."
+            ),
+            evidence=topology.reason,
+            source="ring-doctor",
+        ),
+    )
+    if verification is not None:
+        if verification["failed"]:
+            status = CheckStatus.FAIL
+            summary = "At least one observed fabric address was unreachable."
+        elif verification["unknown"]:
+            status = CheckStatus.UNKNOWN
+            summary = "At least one fabric reachability result was unavailable."
+        else:
+            status = CheckStatus.PASS
+            summary = "Every observed fabric address was reachable from every node."
+        checks.append(
+            DiagnosticCheck(
+                check_id="fabric-ip-reachability",
+                status=status,
+                scope="fabric",
+                subject="cluster",
+                summary=summary,
+                evidence=json.dumps(verification["matrix"], sort_keys=True),
+                source="ring-doctor",
+            )
+        )
+    return checks
+
+
 def render_text(report: Mapping[str, Any]) -> str:
     """Render the complete report for an operator without hidden context."""
     lines = ["SparkRing fabric diagnosis"]
+    site = report.get("site")
+    if site:
+        lines.append(
+            f"Canonical site: {site['name']} (schema {site['schema_version']}, "
+            f"source={site['source']})"
+        )
+    cluster = report.get("cluster")
+    if cluster:
+        lines.append(
+            f"Cluster inventory: {cluster['name']} "
+            f"(schema {cluster['schema_version']}, source={cluster['source']})"
+        )
+    controller = report.get("controller")
+    if controller:
+        mode = "worker recovery override" if controller["worker_override"] else "head"
+        lines.append(f"Controller: {controller['node']} ({mode})")
     topology = report["topology"]
     if topology["valid_cycle"]:
         cycle = topology["cycle"]
@@ -2022,6 +2521,32 @@ def render_text(report: Mapping[str, Any]) -> str:
         lines.append(f"Repair application: {outcome}")
     if report.get("verification"):
         lines.extend(_render_matrix(report["verification"]["matrix"]))
+    repair_safety = report.get("repair_safety")
+    if repair_safety:
+        lines.append(
+            "Management repair guard: "
+            + ("READY" if repair_safety["management_guard_ready"] else "NOT READY")
+        )
+        if repair_safety["guarded_nodes"]:
+            lines.append(
+                "  guarded nodes: " + ", ".join(repair_safety["guarded_nodes"])
+            )
+        for issue in repair_safety["issues"]:
+            lines.append(
+                f"  [{issue['severity'].upper()}] {issue['code']} "
+                f"{issue['node']}: {issue['message']}"
+            )
+    fabric_preflight = report.get("fabric_preflight") or []
+    if fabric_preflight:
+        failures = [result for result in fabric_preflight if not result["passed"]]
+        lines.append(
+            "Canonical fabric preflight: " + ("PASS" if not failures else "FAIL")
+        )
+        for result in failures:
+            lines.append(
+                f"  [FAIL] {result['check_id']} rank{result['rank']} "
+                f"{result['subject']}: {result['detail']}"
+            )
     return "\n".join(lines)
 
 
@@ -2039,15 +2564,70 @@ def _parse_rendezvous_address(value: str, field: str) -> ipaddress.IPv4Address:
 
 def _load_inputs(
     args: argparse.Namespace,
-) -> tuple[tuple[NodeSpec, ...], tuple[str, ...], int, ipaddress.IPv4Address | None]:
+) -> LoadedInputs:
     interfaces = tuple(args.interface or FABRIC_INTERFACES)
-    timeout = args.ssh_timeout
+    timeout = args.ssh_timeout if args.ssh_timeout is not None else 20
+    site: SiteConfig | None = None
+    cluster: ClusterConfig | None = None
     rendezvous_address = (
         _parse_rendezvous_address(args.rendezvous_address, "--rendezvous-address")
         if args.rendezvous_address
         else None
     )
-    if args.config:
+    if args.cluster:
+        conflicting = []
+        for option, value in (
+            ("--site", args.site),
+            ("--config", args.config),
+            ("--node", args.node),
+            ("--proxy-jump", args.proxy_jump),
+            ("--interface", args.interface),
+            ("--socket-interface", args.socket_interface),
+        ):
+            if value:
+                conflicting.append(option)
+        if conflicting:
+            raise ConfigurationError(
+                "--cluster cannot be combined with " + ", ".join(conflicting)
+            )
+        try:
+            cluster = load_cluster(args.cluster)
+        except ClusterConfigError as exc:
+            raise ConfigurationError(f"could not load --cluster: {exc}") from exc
+        specs = node_specs_from_configuration(cluster)
+        interfaces = specs[0].fabric_interfaces
+        if args.ssh_timeout is None:
+            timeout = cluster.preflight.ssh_timeout_seconds
+        if rendezvous_address is None:
+            rendezvous_address = cluster.head_rank.management.address
+    elif args.site:
+        conflicting = []
+        for option, value in (
+            ("--config", args.config),
+            ("--node", args.node),
+            ("--proxy-jump", args.proxy_jump),
+            ("--interface", args.interface),
+            ("--socket-interface", args.socket_interface),
+        ):
+            if value:
+                conflicting.append(option)
+        if conflicting:
+            raise ConfigurationError(
+                "--site cannot be combined with " + ", ".join(conflicting)
+            )
+        try:
+            site = load_site(args.site)
+        except SiteConfigError as exc:
+            raise ConfigurationError(f"could not load --site: {exc}") from exc
+        specs = node_specs_from_configuration(site)
+        interfaces = specs[0].fabric_interfaces
+        if args.ssh_timeout is None:
+            timeout = site.preflight.ssh_timeout_seconds
+        if rendezvous_address is None:
+            rendezvous_address = site.rank(
+                site.serving.master_rank
+            ).management.address
+    elif args.config:
         try:
             document = json.loads(Path(args.config).read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
@@ -2089,7 +2669,9 @@ def _load_inputs(
             )
     else:
         if not args.node:
-            raise ConfigurationError("provide --config or at least one --node user@host")
+            raise ConfigurationError(
+                "provide --cluster, --site, --config, or at least one --node user@host"
+            )
         sockets: dict[str, tuple[str, ...]] = {}
         for item in args.socket_interface or []:
             if "=" not in item:
@@ -2145,18 +2727,28 @@ def _load_inputs(
         _validate_interface(interface, f"fabric_interfaces[{index}]")
     if not isinstance(timeout, int) or not 1 <= timeout <= 3600:
         raise ConfigurationError("--ssh-timeout must be an integer from 1 to 3600")
-    return specs, interfaces, timeout, rendezvous_address
+    return LoadedInputs(
+        specs, interfaces, timeout, rendezvous_address, site, cluster
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ring-doctor",
         description=(
-            "Discover and diagnose a four-node switchless SparkRing fabric. "
+            "Discover and diagnose a 4- or 6-node switchless SparkRing fabric. "
             "The default operation is read-only and prints a repair plan."
         ),
     )
-    parser.add_argument("--config", help="JSON file containing node SSH targets")
+    parser.add_argument(
+        "--site",
+        help=(
+            "canonical SparkRing site YAML; supplies ranks, per-rank fabric "
+            "interfaces, management socket interfaces, rendezvous address, "
+            "and SSH timeout"
+        ),
+    )
+    parser.add_argument("--config", help="legacy JSON file containing node SSH targets")
     parser.add_argument(
         "--node", action="append", metavar="USER@HOST", help="seed SSH target; repeatable"
     )
@@ -2193,7 +2785,27 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--ssh-timeout", type=int, default=20, help="SSH command timeout in seconds"
+        "--ssh-timeout",
+        type=int,
+        default=None,
+        help=(
+            "SSH command timeout in seconds; defaults to the site preflight "
+            "value with --site, otherwise 20"
+        ),
+    )
+    parser.add_argument(
+        "--cluster",
+        help=(
+            "model-independent SparkRing cluster YAML generated during bootstrap"
+        ),
+    )
+    parser.add_argument(
+        "--allow-worker-controller",
+        action="store_true",
+        help=(
+            "emergency recovery: allow execution from a configured worker "
+            "rank when the head node cannot run Ring Doctor"
+        ),
     )
     parser.add_argument(
         "--apply", action="store_true", help="execute the verified idempotent repair plan"
@@ -2217,44 +2829,83 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     try:
-        specs, interfaces, timeout, rendezvous_address = _load_inputs(args)
+        loaded = _load_inputs(args)
+        controller_node = enforce_controller_location(
+            loaded, allow_worker=args.allow_worker_controller
+        )
     except ConfigurationError as exc:
         print(f"INVALID RING DOCTOR INPUT: {exc}", file=sys.stderr)
         return 2
-    runner = SshRunner(timeout_seconds=timeout)
+    specs = loaded.specs
+    interfaces = loaded.interfaces
+    rendezvous_address = loaded.rendezvous_address
+    runner = SshRunner(timeout_seconds=loaded.timeout)
     observations, topology, plans, findings = _probe_by_name(
         specs, runner, interfaces, rendezvous_address
     )
+    fabric_configuration = loaded.fabric_configuration
+    fabric_preflight = (
+        run_preflight(
+            fabric_configuration,
+            ReadOnlyRunnerAdapter(runner),
+            scope="fabric",
+        )
+        if fabric_configuration is not None
+        else []
+    )
+    fabric_preflight_ok = (
+        fabric_configuration is None
+        or (bool(fabric_preflight) and all(result.passed for result in fabric_preflight))
+    )
+    management_guards, management_guard_findings = build_management_guards(
+        specs, observations
+    )
+    management_repair_safe = (
+        not management_guard_findings
+        and len(management_guards)
+        == sum(observation.reachable for observation in observations.values())
+    )
     apply_findings: list[Finding] = []
+    if (args.apply or args.emit_unit) and management_guard_findings:
+        apply_findings.extend(management_guard_findings)
     apply_executed = False
-    enough = len(specs) == 4 and all(
-        observation.reachable for observation in observations.values()
-    ) and topology.valid_cycle
+    enough = discovery_sufficient(specs, observations, topology)
+    repair_safe = enough and fabric_preflight_ok and management_repair_safe
     if args.apply:
-        if enough:
+        if repair_safe:
             apply_executed = True
-            apply_findings = apply_plans(observations, plans, runner)
+            apply_findings.extend(
+                apply_plans(observations, plans, management_guards, runner)
+            )
             observations, topology, plans, findings = _probe_by_name(
                 specs, runner, interfaces, rendezvous_address
             )
-            enough = len(specs) == 4 and all(
-                observation.reachable for observation in observations.values()
-            ) and topology.valid_cycle
+            enough = discovery_sufficient(specs, observations, topology)
+            repair_safe = enough and fabric_preflight_ok and management_repair_safe
         else:
+            if not enough:
+                reason = topology.reason
+            elif not fabric_preflight_ok:
+                reason = "canonical site fabric preflight has one or more failures"
+            else:
+                reason = "direct addressed management guards are not ready on every node"
             apply_findings.append(
                 Finding(
                     "error",
                     "apply-withheld",
                     None,
-                    "No repair was applied because the complete four-node cycle was not observed.",
-                    topology.reason,
+                    "No repair was applied because the complete supported cycle "
+                    "and canonical fabric checks did not both pass.",
+                    reason,
                 )
             )
     unit_files: list[str] = []
     if args.emit_unit:
-        if enough:
+        if repair_safe:
             try:
-                unit_files = emit_units(Path(args.emit_unit), observations, plans)
+                unit_files = emit_units(
+                    Path(args.emit_unit), observations, plans, management_guards
+                )
             except OSError as exc:
                 apply_findings.append(
                     Finding(
@@ -2271,16 +2922,53 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "error",
                     "unit-withheld",
                     None,
-                    "No systemd files were written because the complete four-node cycle was not observed.",
-                    topology.reason,
+                    "No systemd files were written because the complete supported "
+                    "cycle and canonical fabric checks did not both pass.",
+                    (
+                        topology.reason
+                        if not enough
+                        else (
+                            "canonical site fabric preflight has failures"
+                            if not fabric_preflight_ok
+                            else "management guards are not ready on every node"
+                        )
+                    ),
                 )
             )
     findings.extend(apply_findings)
     verification = (
         verify_reachability(specs, observations, runner) if args.verify else None
     )
+    diagnostic_checks = build_diagnostic_checks(topology, findings, verification)
+    diagnostic_checks.extend(
+        result.to_diagnostic_check() for result in fabric_preflight
+    )
+    diagnostics = build_receipt(diagnostic_checks, source="ring-doctor")
     report = {
         "schema": "sparkring-ring-doctor/v1",
+        "controller": {
+            "node": controller_node,
+            "head": loaded.specs[0].name,
+            "worker_override": controller_node != loaded.specs[0].name,
+        },
+        "site": (
+            {
+                "name": loaded.site.name,
+                "schema_version": loaded.site.schema_version,
+                "source": loaded.site.source,
+            }
+            if loaded.site is not None
+            else None
+        ),
+        "cluster": (
+            {
+                "name": loaded.cluster.name,
+                "schema_version": loaded.cluster.schema_version,
+                "source": loaded.cluster.source,
+            }
+            if loaded.cluster is not None
+            else None
+        ),
         "rendezvous_address": (
             str(rendezvous_address) if rendezvous_address else None
         ),
@@ -2290,6 +2978,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         },
         "topology": topology.to_dict(),
         "findings": [finding.to_dict() for finding in findings],
+        "diagnostics": diagnostics,
+        "fabric_preflight": [result.to_dict() for result in fabric_preflight],
+        "repair_safety": {
+            "management_guard_ready": management_repair_safe,
+            "guarded_nodes": sorted(management_guards),
+            "issues": [finding.to_dict() for finding in management_guard_findings],
+        },
         "plans": {name: plan.to_dict() for name, plan in plans.items()},
         "apply": {
             "requested": args.apply,
@@ -2310,9 +3005,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(render_text(report))
     if not enough:
         return 2
-    if any(finding.severity != "info" for finding in findings):
-        return 1
-    if verification and (verification["failed"] or verification["unknown"]):
+    if not diagnostics["passed"]:
         return 1
     return 0
 
