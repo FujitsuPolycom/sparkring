@@ -16,6 +16,7 @@
   },
   "runtime": {
     "image_lock": "runtime/faststart-lock.json",
+    "image_lock_entry": "deepseek_v4_flash_0731_hardened_serving_image",
     "environment_template": "scripts/config/deepseek-v4-flash-0731-pair.env.example",
     "entrypoint": "/opt/venv/bin/vllm"
   },
@@ -54,12 +55,14 @@
   },
   "evidence": {
     "status": "implemented",
-    "conditions": "Two directly cabled NVIDIA DGX Sparks used the serving settings above and deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7 instead of the recipe checkpoint: 1048576-token request limit, 32 sequences, 4096 batched tokens, 16 GiB key-value reservation per rank, block size 256, fp8_ds_mla, and DSpark depth 5. Prefill and sustained decode used temperature 1.0 and effective top-p 1.0 through 128K.",
+    "benchmark_runtime_image": "ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028",
+    "conditions": "Two directly cabled NVIDIA DGX Sparks used benchmark_runtime_image, the serving settings above, and deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7 instead of the recipe checkpoint: 1048576-token request limit, 32 sequences, 4096 batched tokens, 16 GiB key-value reservation per rank, block size 256, fp8_ds_mla, and DSpark depth 5. Prefill and sustained decode used temperature 1.0 and effective top-p 1.0 through 128K.",
     "result": "Both ranks rendezvoused and served the model. C1/C2 were measured with five accepted observations per context; every other applicable decode cell used at least three. At 16K, aggregate throughput measured 58.36 tok/s at C1, 77.65 at C2, 202.74 at C16, and 307.13 at C32. Coding Peak averaged 59.31 tok/s across five requests.",
-    "conclusion": "The normalized two-rank serving settings are implemented and live-benchmarked with the starred DSpark checkpoint difference.",
+    "conclusion": "The normalized two-rank settings are live-benchmarked on benchmark_runtime_image with the starred DSpark checkpoint difference. The currently selected hardened runtime still needs an exact TP2 published-digest replay.",
     "limitations": [
       "The TP2 DSpark weight package differs from the plain 0731 package used by TP4, so TP2-versus-TP4 values are not an exact same-weight scaling comparison.",
-      "The measurements apply to the recorded serving settings and checkpoint revision."
+      "The measurements apply to the recorded serving settings and checkpoint revision.",
+      "The hardened runtime selected by runtime.image_lock_entry has not been live-replayed on TP2."
     ],
     "record": "docs/profiles/DEEPSEEK_V4_FLASH_0731.md",
     "normalized_candidate_benchmark": "performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.json"

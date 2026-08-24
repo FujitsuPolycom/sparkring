@@ -98,7 +98,7 @@ test imports torch:
 python -m pip install -r requirements-dev.txt
 python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.11.0"
 ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance
-python -m pytest spark_transport runtime/exl3-r7 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
+python -m pytest spark_transport runtime/exl3-r7 runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
 ```
 
 The test suite is CPU-only contract coverage. It does not validate CUDA,
@@ -106,9 +106,11 @@ RDMA, live pair/cycle serving, or a performance result.
 
 ## Runtime and configuration work
 
-`runtime/exl3-r7/` builds the GLM-5.2 EXL3 R7 image. `runtime/qwen38/` builds
-the Qwen3.8-27B ARM64 image. `runtime/faststart-lock.json` pins the GLM/DeepSeek
-foundation image and GLM model identity. `runtime/build-public-overlay.py`
+`runtime/exl3-r7/` builds the GLM-5.2 EXL3 R7 image.
+`runtime/deepseek0731-gb10/` builds the hardened DeepSeek-V4-Flash-0731 image,
+and `runtime/qwen38/` builds the Qwen3.8-27B ARM64 image.
+`runtime/faststart-lock.json` pins the generic GLM/rollback image, the hardened
+DeepSeek image, and the GLM model identity. `runtime/build-public-overlay.py`
 produces a content-manifested bundle from the explicit allowlist in
 `runtime/public-overlay-files.json`.
 

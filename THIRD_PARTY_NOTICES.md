@@ -48,14 +48,15 @@ minimal (approximately four-line) environment-variable gate — the
 project is included in this repository. This entry records credit for the
 approach.
 
-## 3. vLLM (referenced; not distributed; no code included)
+## 3. vLLM (referenced and patched)
 
-No vLLM source code is distributed in this repository. The files under
-`spark_transport/integrations/vllm/` and the vLLM-facing files under
-`spark_transport/experiments/` are original SparkRing adapters: they
-monkey-patch a running vLLM installation at runtime and verify the exact
-upstream source by SHA-256 hash before installing any modification, declining
-to install (falling back to stock behavior) if the hash does not match.
+The unified diffs under `runtime/deepseek0731-gb10/patches/` contain context
+and removed lines from vLLM, pinned to the source revision recorded by that
+runtime contract. The added lines port upstream vLLM fixes and SparkRing's
+DeepSeek GB10 integration. The files under `spark_transport/integrations/vllm/`
+and the vLLM-facing files under `spark_transport/experiments/` remain original
+SparkRing adapters: they verify exact upstream source before installing any
+runtime modification and decline to install when the source differs.
 
 vLLM is licensed under the Apache License, Version 2.0, Copyright the vLLM team
 and contributors. Obtaining and running vLLM is subject to its own license and

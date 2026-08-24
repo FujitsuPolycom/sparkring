@@ -16,6 +16,7 @@
   },
   "runtime": {
     "image_lock": "runtime/faststart-lock.json",
+    "image_lock_entry": "deepseek_v4_flash_0731_hardened_serving_image",
     "environment_template": "scripts/config/deepseek-v4-flash-0731.env.example",
     "entrypoint": "/opt/venv/bin/vllm"
   },
@@ -50,14 +51,16 @@
   },
   "evidence": {
     "status": "implemented",
-    "conditions": "Live candidate evidence from four directly cabled DGX Sparks using deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062 and the serving object above: 1048576-token request limit, 32 sequences, 4096 batched tokens, 16 GiB key-value reservation per rank, block size 256, fp8_ds_mla, DSpark depth 5, asynchronous scheduling, full-input-length reservation, and patched NCCL. Prefill and sustained decode used temperature 1.0 and effective top-p 1.0 through 128K.",
+    "benchmark_runtime_image": "ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028",
+    "conditions": "Historical live candidate evidence from four directly cabled DGX Sparks using the benchmark_runtime_image and deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062: 1048576-token request limit, 32 sequences, 4096 batched tokens, 16 GiB key-value reservation per rank, block size 256, fp8_ds_mla, DSpark depth 5, asynchronous scheduling, full-input-length reservation, and patched NCCL. Prefill and sustained decode used temperature 1.0 and effective top-p 1.0 through 128K.",
     "result": "All four ranks rendezvoused and served the model. C1/C2 were measured with five accepted observations per context; every other applicable decode cell used at least three. At 16K, aggregate throughput measured 68.84 tok/s at C1, 139.01 at C2, 428.48 at C16, and 508.11 at C32. Coding Peak averaged 95.77 tok/s across fifteen requests.",
-    "conclusion": "The normalized four-rank serving object is implemented and live-benchmarked.",
+    "conclusion": "The normalized four-rank settings are live-benchmarked on benchmark_runtime_image. The currently selected hardened runtime still needs an exact published-digest replay.",
     "limitations": [
       "No SIRCL shadow-comparison window is qualified for width 4096.",
       "The TP4 plain 0731 weight package differs from the DSpark package used by TP2, so TP2-versus-TP4 values are not an exact same-weight scaling comparison.",
       "Enabling VLLM_ENABLE_PCIE_ALLREDUCE with the cpp backend changed throughput by less than 2% at one and eight concurrent requests; the engine selects PYNCCL because every faster all-reduce backend requires peer-accessible GPU memory on one host.",
-      "The measurements apply to the recorded serving settings and checkpoint revision."
+      "The measurements apply to the recorded serving settings and checkpoint revision.",
+      "A diagnostic TP4/K5 build from the hardened runtime lane passed strict short, 98K, and 262K tool calls, but that run did not attest the published digest selected by runtime.image_lock_entry."
     ],
     "record": "docs/profiles/DEEPSEEK_V4_FLASH_0731.md",
     "normalized_candidate_benchmark": "performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.json"

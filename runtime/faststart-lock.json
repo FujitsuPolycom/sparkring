@@ -31,5 +31,19 @@
       "It is built from parent_manifest_digest by installing apache-tvm-ffi 0.1.10 and running runtime/exl3-r7/bake_runtime_artifacts.py over /opt/venv/lib/python3.12/site-packages/quack. That rewrites the cute.core.ThrMma and cute.core.ThrCopy annotations the image's cutlass no longer exports. Without the rewrite a worker raises AttributeError on cutlass.cute.core.ThrMma while determining available memory for a checkpoint other than GLM; GLM serving does not reach that call site, so the parent serves GLM and this digest serves both.",
       "Serving evidence for DeepSeek-V4-Flash-0731 is one four-rank launch on which three ranks ran this image's content and the fourth, which has no route to a registry, ran an image built locally and never compared against this digest. A four-rank launch from a registry pull of this digest is untested."
     ]
+  },
+  "deepseek_v4_flash_0731_hardened_serving_image": {
+    "repository": "ghcr.io/fujitsupolycom/gb10-vllm-serving",
+    "manifest_digest": "sha256:1574ba87fe4a0ad38c25a30087929ad549d823730be83b33e91fe4745b7a6571",
+    "tag_for_humans": "deepseek-v4-0731-k5-pr431-20260824",
+    "platform": "linux/arm64",
+    "base_manifest_digest": "sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028",
+    "builder": "runtime/deepseek0731-gb10",
+    "notes": [
+      "DeepSeek-specific derivative of serving_image; the generic image remains the GLM/default rollback target.",
+      "Adds malformed-DSML recovery, sparse-row clamps, and the native PR431 top-k repair without embedding model weights.",
+      "This first published derivative does not add explicit OCI revision or combined-license labels; this lock and the builder sources are its provenance record.",
+      "A diagnostic TP4/K5 build passed 100 strict max-reasoning streams plus cold 98K and 262K tool calls, but the run did not attest this published digest. TP4/K5 and TP2/K5 still need exact post-publication pull-and-replay evidence."
+    ]
   }
 }

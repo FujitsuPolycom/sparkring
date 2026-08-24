@@ -1,0 +1,87 @@
+From 171d821f816a9b1f1a07a76a5c3083a63ff50e8d Mon Sep 17 00:00:00 2001
+From: Martin Vit <martin@voipmonitor.org>
+Date: Tue, 18 Aug 2026 21:48:24 +0000
+Subject: [PATCH] Bound native sparse top-k row lengths on the r29 source tree
+
+Compiled C++ portion of Infernal Invocation pull request 431. The Python and
+Triton producer clamp from the same upstream commit remains owned by
+0003-sparse-row-length-clamp.patch and is intentionally excluded here.
+---
+ csrc/libtorch_stable/cooperative_topk.cuh |  2 +-
+ csrc/libtorch_stable/persistent_topk.cuh  | 19 +++++++++++++++----
+ 2 files changed, 16 insertions(+), 5 deletions(-)
+
+diff --git a/csrc/libtorch_stable/cooperative_topk.cuh b/csrc/libtorch_stable/cooperative_topk.cuh
+index 34dec87abb36cf455d9cd17f68b26e0750c4a9f2..10a08b38021aa5c18811f9bde24e53e8d94526da 100644
+--- a/csrc/libtorch_stable/cooperative_topk.cuh
++++ b/csrc/libtorch_stable/cooperative_topk.cuh
+@@ -496,7 +496,7 @@ __device__ void large_topk(const float* __restrict__ row_input,
+ template <uint32_t TopK, uint32_t CS>
+ __device__ void cooperative_topk_body(CooperativeTopKParams<TopK> params) {
+   const auto rank = blockIdx.y, row = blockIdx.x, tx = threadIdx.x;
+-  const auto sl = params.lengths[row];
++  const int32_t sl = params.lengths[row] > 0 ? params.lengths[row] : 0;
+   int32_t* out = params.output + row * TopK;
+   const float* in = params.input + row * params.stride;
+ 
+diff --git a/csrc/libtorch_stable/persistent_topk.cuh b/csrc/libtorch_stable/persistent_topk.cuh
+index 85618feeb8a0b4f099b3008a2dd752b7a74302fd..16980c7fc44d67d30fd6e19c90e2c434a0fb0707 100644
+--- a/csrc/libtorch_stable/persistent_topk.cuh
++++ b/csrc/libtorch_stable/persistent_topk.cuh
+@@ -661,7 +661,7 @@ __device__ void radix_topk(const float* __restrict__ row_input,
+                            uint32_t* shared_scalars, uint32_t* shared_ordered,
+                            RadixRowState* state, uint32_t cta_in_group,
+                            uint32_t ctas_per_group, int& barrier_phase,
+-                           uint32_t iter, uint32_t tx) {
++                           uint32_t radix_iter, uint32_t tx) {
+   const uint32_t my_chunk_end = (my_chunk_start + chunk_size < seq_len)
+                                     ? my_chunk_start + chunk_size
+                                     : seq_len;
+@@ -718,7 +718,7 @@ __device__ void radix_topk(const float* __restrict__ row_input,
+ 
+   // -- Stage 2: 4 rounds of radix select --
+   for (uint32_t round = 0; round < 4; round++) {
+-    const uint32_t global_round = iter * 4 + round;
++    const uint32_t global_round = radix_iter * 4 + round;
+     const uint32_t shift = 24 - round * 8;
+     const uint32_t prefix = shared_scalars[0];
+     const uint32_t remaining_k = shared_scalars[1];
+@@ -898,6 +898,7 @@ __global__ void __launch_bounds__(kThreadsPerBlock, 2)
+   RadixRowState* state = &params.row_states[group_id];
+ 
+   int barrier_phase = 0;
++  uint32_t radix_iter = 0;
+   const uint32_t total_iters = (params.num_rows + num_groups - 1) / num_groups;
+ 
+   for (uint32_t iter = 0; iter < total_iters; iter++) {
+@@ -905,7 +906,16 @@ __global__ void __launch_bounds__(kThreadsPerBlock, 2)
+     uint32_t row_idx = group_id + iter * num_groups;
+     if (row_idx >= params.num_rows) break;
+ 
+-    const uint32_t seq_len = params.lengths[row_idx];
++    // A row may only expose scores inside both its physical stride and the
++    // host-declared active sequence bound. Padding rows use non-positive
++    // lengths and therefore select no scores.
++    const int32_t raw_len = params.lengths[row_idx];
++    const uint32_t row_bound =
++        params.stride < params.max_seq_len ? params.stride : params.max_seq_len;
++    const uint32_t non_negative_len =
++        raw_len > 0 ? static_cast<uint32_t>(raw_len) : 0u;
++    const uint32_t seq_len =
++        non_negative_len < row_bound ? non_negative_len : row_bound;
+     int32_t* row_output = params.output + row_idx * params.top_k;
+     const float* row_input = params.input + row_idx * params.stride;
+ 
+@@ -930,7 +940,8 @@ __global__ void __launch_bounds__(kThreadsPerBlock, 2)
+     radix_topk<TopK, VEC_SIZE>(
+         row_input, row_output, seq_len, my_chunk_start, chunk_size,
+         local_histogram, suffix_sum, shared_scalars, shared_ordered, state,
+-        cta_in_group, ctas_per_group, barrier_phase, iter, tx);
++        cta_in_group, ctas_per_group, barrier_phase, radix_iter, tx);
++    radix_iter++;
+   }
+ }
+ 
+-- 
+2.51.0.windows.1
+

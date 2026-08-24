@@ -1,0 +1,1177 @@
+From: SparkRing GB10 semantic port
+Subject: [PATCH] Harden DeepSeek V4 sparse rows and malformed DSML recovery
+
+Ports local-inference-lab/vllm PR 431 Python/Triton row clamps and
+vllm-project/vllm PR 52645 at 3df9776b0d423dd3124ee9ae80d9d92aef92013a
+onto Fujitsu GB10 vLLM source e2666d9a65f41fc376607531453cbd57c4c71016.
+The streaming-parser port retains the GB10 drop-token and skip-tool control
+flow while adding provisional orphan-invoke recovery.
+
+--- a/vllm/v1/attention/backends/mla/indexer.py
++++ b/vllm/v1/attention/backends/mla/indexer.py
+@@ -63,9 +63,10 @@
+     req_id = idx // max_decode_len
+     local_idx = idx % max_decode_len
+ 
+-    # Compute number of KVs attended to by this token.
++    # Graph-padding requests have no KV entries. Clamp their per-token lengths
++    # before downstream kernels consume the signed values as unsigned bounds.
+     seq_len = tl.load(seq_lens_ptr + req_id)
+-    per_token_seq_len = seq_len - max_decode_len + local_idx + 1
++    per_token_seq_len = tl.maximum(seq_len - max_decode_len + local_idx + 1, 0)
+     tl.store(decode_seq_lens_ptr + idx, per_token_seq_len)
+ 
+     # Copy block table row.
+@@ -752,7 +753,7 @@
+                     - max_decode_len
+                     + 1
+                     + self.offsets_buffer[:max_decode_len]
+-                )
++                ).clamp_(min=0)
+                 seq_lens = seq_lens_buffer
+             return seq_lens, block_table, decode_lens, num_decodes, requires_padding
+ 
+--- a/vllm/parser/abstract_parser.py
++++ b/vllm/parser/abstract_parser.py
+@@ -1022,6 +1022,9 @@
+ 
+         # Reasoning extraction
+         if self._in_reasoning_phase(state):
++            reasoning_parser = self._reasoning_parser
++            if reasoning_parser is not None and reasoning_parser.engine_based_streaming:
++                reasoning_parser.adjust_request(request)
+             delta_message = self.extract_reasoning_streaming(
+                 previous_text=state.previous_text,
+                 current_text=current_text,
+@@ -1030,7 +1033,6 @@
+                 current_token_ids=current_token_ids,
+                 delta_token_ids=delta_token_ids,
+             )
+-            reasoning_parser = self._reasoning_parser
+             if reasoning_parser is not None and reasoning_parser.engine_based_streaming:
+                 should_transition = (
+                     reasoning_parser.has_engine_confirmed_reasoning_end()
+--- a/vllm/parser/deepseek_v4.py
++++ b/vllm/parser/deepseek_v4.py
+@@ -32,7 +32,7 @@
+     ParserState,
+     Transition,
+ )
+-from vllm.tool_parsers.utils import find_tool_properties
++from vllm.tool_parsers.utils import find_tool_name, find_tool_properties
+ 
+ if TYPE_CHECKING:
+     from vllm.tokenizers import TokenizerLike
+@@ -48,6 +48,9 @@
+ DSML_INVOKE_NAME_END = '">'
+ DSML_INVOKE_END = f"</{_DSML}invoke>"
+ DSML_PARAM_CLOSE = f"</{_DSML}parameter>"
++DSML_CORRUPTED_TOOL_START = f"<{_DSML}toolcalls>"
++DSML_FOREIGN_TOOL_START = f"<{_DSML}function_calls>"
++DSML_FOREIGN_TOOL_END = f"</{_DSML}function_calls>"
+ 
+ _ESCAPED_DSML = re.escape(_DSML)
+ _PARAM_RE = re.compile(
+@@ -135,6 +138,9 @@
+             "INVOKE_NAME_END": DSML_INVOKE_NAME_END,
+             "INVOKE_END": DSML_INVOKE_END,
+             "PARAM_CLOSE": DSML_PARAM_CLOSE,
++            "CORRUPTED_TOOL_START": DSML_CORRUPTED_TOOL_START,
++            "FOREIGN_START": DSML_FOREIGN_TOOL_START,
++            "FOREIGN_END": DSML_FOREIGN_TOOL_END,
+         },
+         token_id_terminals={
+             "THINK_START": DSML_THINK_START,
+@@ -170,6 +176,62 @@
+                 ParserState.TOOL_PREAMBLE,
+                 (),
+             ),
++            # Consume the known missing-underscore opener only at the same
++            # boundary as a valid outer tool wrapper; never strip it globally.
++            (ParserState.REASONING, "CORRUPTED_TOOL_START"): Transition(
++                ParserState.TOOL_PREAMBLE,
++                (EventType.REASONING_END,),
++            ),
++            (ParserState.CONTENT, "CORRUPTED_TOOL_START"): Transition(
++                ParserState.TOOL_PREAMBLE,
++                (),
++            ),
++            # Keep V3.2 wrappers verbatim so their inner invokes cannot enter
++            # the V4 orphan-recovery path.
++            (ParserState.CONTENT, "FOREIGN_START"): Transition(
++                ParserState.FOREIGN_BLOCK,
++                (EventType.TEXT_CHUNK,),
++            ),
++            (ParserState.FOREIGN_BLOCK, "FOREIGN_END"): Transition(
++                ParserState.CONTENT,
++                (EventType.TEXT_CHUNK,),
++            ),
++            (ParserState.FOREIGN_BLOCK, "TOOL_START"): Transition(
++                ParserState.TOOL_PREAMBLE,
++                (),
++            ),
++            (ParserState.REASONING, "FOREIGN_START"): Transition(
++                ParserState.FOREIGN_REASONING_BLOCK,
++                (EventType.REASONING_CHUNK,),
++            ),
++            (
++                ParserState.FOREIGN_REASONING_BLOCK,
++                "FOREIGN_END",
++            ): Transition(
++                ParserState.REASONING,
++                (EventType.REASONING_CHUNK,),
++            ),
++            (
++                ParserState.FOREIGN_REASONING_BLOCK,
++                "TOOL_START",
++            ): Transition(
++                ParserState.TOOL_PREAMBLE,
++                (EventType.REASONING_END,),
++            ),
++            # DeepSeek V4 can intermittently omit or corrupt the outer
++            # <｜DSML｜tool_calls> wrapper while still emitting a complete
++            # invoke. Hold this recovery path until the function name is
++            # complete and verify that the request actually declared it.
++            (ParserState.REASONING, "INVOKE_PREFIX"): Transition(
++                ParserState.TOOL_NAME,
++                (EventType.REASONING_END, EventType.TOOL_CALL_START),
++                provisional_tool_call=True,
++            ),
++            (ParserState.CONTENT, "INVOKE_PREFIX"): Transition(
++                ParserState.TOOL_NAME,
++                (EventType.TOOL_CALL_START,),
++                provisional_tool_call=True,
++            ),
+             (ParserState.TOOL_PREAMBLE, "INVOKE_PREFIX"): Transition(
+                 ParserState.TOOL_NAME,
+                 (EventType.TOOL_CALL_START,),
+@@ -181,6 +243,7 @@
+             (ParserState.TOOL_ARGS, "INVOKE_END"): Transition(
+                 ParserState.TOOL_BETWEEN,
+                 (EventType.TOOL_CALL_END,),
++                commit_provisional_tool_call=True,
+             ),
+             (ParserState.TOOL_ARGS, "TOOL_END"): Transition(
+                 ParserState.CONTENT,
+@@ -199,6 +262,8 @@
+         content_events={
+             ParserState.CONTENT: EventType.TEXT_CHUNK,
+             ParserState.REASONING: EventType.REASONING_CHUNK,
++            ParserState.FOREIGN_BLOCK: EventType.TEXT_CHUNK,
++            ParserState.FOREIGN_REASONING_BLOCK: EventType.REASONING_CHUNK,
+             ParserState.TOOL_NAME: EventType.TOOL_NAME,
+             ParserState.TOOL_ARGS: EventType.ARG_VALUE_CHUNK,
+         },
+@@ -228,6 +293,22 @@
+             **kwargs,
+         )
+         self._arg_converter = self._convert_args
++        self._recovery_request_tools: list[Tool] = list(tools or [])
++        self._recovery_suppressed = False
++        self._engine.recovery_tool_name_validator = self._can_recover_tool_name
++
++    def _check_skip_tool_parsing(self, request) -> None:
++        super()._check_skip_tool_parsing(request)
++        self._recovery_request_tools = list(getattr(request, "tools", None) or [])
++        self._recovery_suppressed = getattr(request, "tool_choice", None) == "none"
++
++    def _can_recover_tool_name(self, name: str) -> bool:
++        return bool(
++            name
++            and self._recovery_request_tools
++            and not self._recovery_suppressed
++            and find_tool_name(self._recovery_request_tools, name)
++        )
+ 
+     def _convert_args(self, raw_args: str, partial: bool) -> str:
+         result = _dsml_arg_converter(raw_args, partial)
+--- a/vllm/parser/engine/adapters.py
++++ b/vllm/parser/engine/adapters.py
+@@ -80,6 +80,8 @@
+         model_output: str,
+         request: ChatCompletionRequest | ResponsesRequest,
+     ) -> tuple[str | None, str | None]:
++        self.adjust_request(request)
++        self._streaming_count_valid = False
+         with self._skip_tool_parsing():
+             return self._parser_engine.extract_reasoning(model_output, request)
+ 
+@@ -114,7 +116,10 @@
+         self,
+         request: ChatCompletionRequest | ResponsesRequest,
+     ) -> ChatCompletionRequest | ResponsesRequest:
+-        return self._parser_engine.adjust_request(request)
++        request = self._parser_engine.adjust_request(request)
++        with self._skip_tool_parsing():
++            self._parser_engine._check_skip_tool_parsing(request)
++        return request
+ 
+     def has_engine_confirmed_reasoning_end(self) -> bool:
+         return self._parser_engine.reasoning_ended
+--- a/vllm/parser/engine/events.py
++++ b/vllm/parser/engine/events.py
+@@ -24,3 +24,4 @@
+     type: EventType
+     value: str = ""
+     tool_index: int = -1
++    token_count: int = 0
+--- a/vllm/parser/engine/incremental_lexer.py
++++ b/vllm/parser/engine/incremental_lexer.py
+@@ -24,6 +24,7 @@
+ class LexToken:
+     terminal: str
+     value: str
++    token_count: int = 0
+ 
+ 
+ class LexerShape:
+@@ -104,6 +105,7 @@
+         self.terminals = shape.terminals
+         self.content_terminal = content_terminal
+         self.buffer = ""
++        self._token_counts: list[int] = []
+ 
+         self._literal_strings = shape.literal_strings
+         self._max_literal_len = shape.max_literal_len
+@@ -114,15 +116,23 @@
+ 
+     def reset(self) -> None:
+         self.buffer = ""
+-
+-    def feed(self, text: str) -> list[LexToken]:
++        self._token_counts.clear()
++
++    def feed(
++        self,
++        text: str,
++        token_texts: tuple[str, ...] = (),
++        token_count: int = 0,
++    ) -> list[LexToken]:
++        char_token_counts = self._char_token_counts(text, token_texts, token_count)
+         if not self.buffer and self._has_only_literals and self._literal_first_chars:
+             for ch in text:
+                 if ch in self._literal_first_chars:
+                     break
+             else:
+-                return [LexToken(self.content_terminal, text)]
++                return [LexToken(self.content_terminal, text, sum(char_token_counts))]
+         self.buffer += text
++        self._token_counts.extend(char_token_counts)
+         return self._drain()
+ 
+     def flush(self) -> list[LexToken]:
+@@ -130,9 +140,45 @@
+         if self.buffer:
+             tokens.extend(self._drain(final=True))
+         if self.buffer:
+-            tokens.append(LexToken(self.content_terminal, self.buffer))
++            tokens.append(
++                LexToken(self.content_terminal, self.buffer, sum(self._token_counts))
++            )
+             self.buffer = ""
++            self._token_counts.clear()
+         return tokens
++
++    @staticmethod
++    def _char_token_counts(
++        text: str,
++        token_texts: tuple[str, ...],
++        token_count: int,
++    ) -> list[int]:
++        counts = [0] * len(text)
++        if not text:
++            return counts
++        if token_texts:
++            pos = 0
++            assigned = 0
++            for token_text in token_texts:
++                if not token_text:
++                    continue
++                found = text.find(token_text, pos)
++                if found < 0:
++                    continue
++                counts[found] += 1
++                assigned += 1
++                pos = found + len(token_text)
++            missing = token_count - assigned
++            if missing > 0:
++                counts[0] += missing
++        elif token_count:
++            counts[0] = token_count
++        return counts
++
++    def _pop_token_count(self, length: int) -> int:
++        token_count = sum(self._token_counts[:length])
++        del self._token_counts[:length]
++        return token_count
+ 
+     def _drain(self, *, final: bool = False) -> list[LexToken]:
+         tokens: list[LexToken] = []
+@@ -150,8 +196,11 @@
+                         has_potential = True
+                         break
+                 if not has_potential:
+-                    tokens.append(LexToken(content_terminal, self.buffer))
++                    tokens.append(
++                        LexToken(content_terminal, self.buffer, sum(self._token_counts))
++                    )
+                     self.buffer = ""
++                    self._token_counts.clear()
+                     break
+ 
+             best_match: tuple[str, str, int] | None = None
+@@ -175,7 +224,13 @@
+                             longer_match = True
+                             break
+                     if not longer_match:
+-                        tokens.append(LexToken(best_match[0], best_match[1]))
++                        tokens.append(
++                            LexToken(
++                                best_match[0],
++                                best_match[1],
++                                self._pop_token_count(best_match[2]),
++                            )
++                        )
+                         self.buffer = self.buffer[best_match[2] :]
+                         continue
+                     break
+@@ -183,15 +238,33 @@
+                     break
+ 
+             if best_match is not None:
+-                tokens.append(LexToken(best_match[0], best_match[1]))
++                tokens.append(
++                    LexToken(
++                        best_match[0],
++                        best_match[1],
++                        self._pop_token_count(best_match[2]),
++                    )
++                )
+                 self.buffer = self.buffer[best_match[2] :]
+             else:
+                 content_end = self._find_content_boundary()
+                 if content_end > 0:
+-                    tokens.append(LexToken(content_terminal, self.buffer[:content_end]))
++                    tokens.append(
++                        LexToken(
++                            content_terminal,
++                            self.buffer[:content_end],
++                            self._pop_token_count(content_end),
++                        )
++                    )
+                     self.buffer = self.buffer[content_end:]
+                 else:
+-                    tokens.append(LexToken(content_terminal, self.buffer[0]))
++                    tokens.append(
++                        LexToken(
++                            content_terminal,
++                            self.buffer[0],
++                            self._pop_token_count(1),
++                        )
++                    )
+                     self.buffer = self.buffer[1:]
+ 
+         return tokens
+--- a/vllm/parser/engine/parser_engine.py
++++ b/vllm/parser/engine/parser_engine.py
+@@ -198,8 +198,9 @@
+ 
+     def finish_streaming(self) -> DeltaMessage | None:
+         events = self._engine.finish()
+-        if events or self._deferred_content:
+-            return self._events_to_delta(events, finished=True)
++        if events or self._deferred_content or self._deferred_reasoning:
++            delta = self._events_to_delta(events, finished=True)
++            return self._strip_trailing_reasoning(delta)
+         return None
+ 
+     def _reset(self, initial_state: ParserState | None = None) -> None:
+@@ -413,12 +414,13 @@
+         request: ChatCompletionRequest | ResponsesRequest,
+     ) -> None:
+         tools = getattr(request, "tools", None)
+-        if tools:
+-            self._tools = tools
+-        if not self.skip_tool_parsing and not self._suppress_tool_calls:
+-            tool_choice = getattr(request, "tool_choice", None)
+-            if tool_choice == "none" and tools:
+-                self._suppress_tool_calls = True
++        self._tools = list(tools) if tools else []
++        tool_choice = getattr(request, "tool_choice", None)
++        self._suppress_tool_calls = (
++            not self.skip_tool_parsing
++            and tool_choice == "none"
++            and bool(self._tools)
++        )
+ 
+     def _strip_content_whitespace(
+         self,
+--- a/vllm/parser/engine/parser_engine_config.py
++++ b/vllm/parser/engine/parser_engine_config.py
+@@ -33,6 +33,8 @@
+     TOOL_NAME = auto()
+     TOOL_ARGS = auto()
+     TOOL_BETWEEN = auto()
++    FOREIGN_BLOCK = auto()
++    FOREIGN_REASONING_BLOCK = auto()
+ 
+ 
+ @dataclass(frozen=True, slots=True)
+@@ -40,6 +42,14 @@
+     next_state: ParserState
+     events: tuple[EventType, ...] = field(default_factory=tuple)
+     skip_in_token_id_mode: bool = False
++    # Treat this transition as a provisional tool-call recovery path. The
++    # engine buffers its semantic events, validates the completed tool name
++    # through a parser-supplied callback, and commits only after the call ends.
++    provisional_tool_call: bool = False
++    # Commit a buffered provisional call at this transition. Recovery paths
++    # that leave tool arguments through any other transition are restored as
++    # ordinary text.
++    commit_provisional_tool_call: bool = False
+ 
+ 
+ @dataclass(frozen=True)
+--- a/vllm/parser/engine/token_id_scanner.py
++++ b/vllm/parser/engine/token_id_scanner.py
+@@ -14,6 +14,8 @@
+ @dataclass(slots=True)
+ class TextChunk:
+     text: str
++    token_texts: tuple[str, ...] = ()
++    token_count: int = 0
+ 
+ 
+ @dataclass(slots=True)
+@@ -49,17 +51,29 @@
+         self.tokenizer = tokenizer
+         self._token_text_cache: dict[int, str] = {}
+         self._deferred_terminals: list[PreLexedTerminal] = []
++        self._deferred_prefix_token_counts: list[int] = []
++        self._deferred_trailing_token_count = 0
+         self._deferred_post_text: str = ""
+ 
+     def reset(self) -> None:
+         """Clear mutable state for reuse. Preserves the token text cache."""
+         self._deferred_terminals.clear()
++        self._deferred_prefix_token_counts.clear()
++        self._deferred_trailing_token_count = 0
+         self._deferred_post_text = ""
+ 
+     def _decode_token(self, token_id: int) -> str:
+         if token_id not in self._token_text_cache:
+-            self._token_text_cache[token_id] = self.tokenizer.decode([token_id])
++            token_text = self.tokenizer.decode([token_id])
++            self._token_text_cache[token_id] = (
++                token_text if isinstance(token_text, str) else ""
++            )
+         return self._token_text_cache[token_id]
++
++    def _decode_tokens(self, token_ids: Sequence[int]) -> tuple[str, ...]:
++        if self.tokenizer is None:
++            return ()
++        return tuple(self._decode_token(tid) for tid in token_ids)
+ 
+     _EMPTY: tuple[LexerInput, ...] = ()
+ 
+@@ -70,13 +84,23 @@
+     ) -> Sequence[LexerInput]:
+         prefix_items: list[LexerInput] = []
+         effective_text = delta_text
++        deferred_trailing_count = 0
+ 
+         if self._deferred_terminals:
+-            prefix_items, effective_text = self._resolve_deferred(delta_text)
++            prefix_items, effective_text, deferred_trailing_count = (
++                self._resolve_deferred(delta_text, len(delta_token_ids))
++            )
+ 
+         if not self.token_id_to_terminal:
+             if effective_text:
+-                prefix_items.append(TextChunk(effective_text))
++                token_texts = self._decode_tokens(delta_token_ids)
++                prefix_items.append(
++                    TextChunk(
++                        effective_text,
++                        token_texts,
++                        deferred_trailing_count + len(token_texts),
++                    )
++                )
+             return prefix_items
+ 
+         has_special = False
+@@ -89,14 +113,23 @@
+         if not has_special:
+             if effective_text:
+                 if not prefix_items:
+-                    return [TextChunk(effective_text)]
+-                prefix_items.append(TextChunk(effective_text))
++                    token_texts = self._decode_tokens(delta_token_ids)
++                    return [TextChunk(effective_text, token_texts, len(token_texts))]
++                token_texts = self._decode_tokens(delta_token_ids)
++                prefix_items.append(
++                    TextChunk(
++                        effective_text,
++                        token_texts,
++                        deferred_trailing_count + len(token_texts),
++                    )
++                )
+             return prefix_items or self._EMPTY
+ 
+-        token_texts = [self._decode_token(tid) for tid in delta_token_ids]
++        decoded_token_texts = [self._decode_token(tid) for tid in delta_token_ids]
+ 
+         results: list[LexerInput] = []
+         text_accum: list[str] = []
++        token_text_accum: list[str] = []
+ 
+         for idx, tid in enumerate(delta_token_ids):
+             terminal = self.token_id_to_terminal.get(tid)
+@@ -104,16 +137,31 @@
+                 if text_accum:
+                     joined = "".join(text_accum)
+                     if joined:
+-                        results.append(TextChunk(joined))
++                        results.append(
++                            TextChunk(
++                                joined,
++                                tuple(token_text_accum),
++                                len(token_text_accum),
++                            )
++                        )
+                     text_accum.clear()
+-                results.append(PreLexedTerminal(terminal, tid, token_texts[idx]))
++                    token_text_accum.clear()
++                results.append(
++                    PreLexedTerminal(terminal, tid, decoded_token_texts[idx])
++                )
+             else:
+-                text_accum.append(token_texts[idx])
++                text_accum.append(decoded_token_texts[idx])
++                token_text_accum.append(decoded_token_texts[idx])
+ 
+         if text_accum:
+             joined = "".join(text_accum)
+             if joined:
+-                results.append(TextChunk(joined))
++                results.append(
++                    TextChunk(joined, tuple(token_text_accum), len(token_text_accum))
++                )
++
++        if deferred_trailing_count:
++            results.insert(0, TextChunk("", token_count=deferred_trailing_count))
+ 
+         if effective_text:
+             results = self._recover_holdback_text(effective_text, results)
+@@ -124,9 +172,15 @@
+             # transition before the preceding text has arrived.  The
+             # deferred terminals will be resolved against the actual
+             # delta_text in a subsequent scan() or flushed by finish().
++            prefix_token_count = 0
+             for r in results:
++                if isinstance(r, TextChunk):
++                    prefix_token_count += r.token_count
+                 if isinstance(r, PreLexedTerminal):
+                     self._deferred_terminals.append(r)
++                    self._deferred_prefix_token_counts.append(prefix_token_count)
++                    prefix_token_count = 0
++            self._deferred_trailing_token_count += prefix_token_count
+             results = []
+ 
+         return prefix_items + results
+@@ -136,16 +190,30 @@
+             return []
+         results: list[LexerInput] = []
+         if self._deferred_post_text:
+-            results.append(TextChunk(self._deferred_post_text))
++            prefix_count = (
++                self._deferred_prefix_token_counts[0]
++                if self._deferred_prefix_token_counts
++                else 0
++            )
++            results.append(
++                TextChunk(self._deferred_post_text, token_count=prefix_count)
++            )
+             self._deferred_post_text = ""
+         results.extend(self._deferred_terminals)
++        if self._deferred_trailing_token_count:
++            results.append(
++                TextChunk("", token_count=self._deferred_trailing_token_count)
++            )
+         self._deferred_terminals.clear()
++        self._deferred_prefix_token_counts.clear()
++        self._deferred_trailing_token_count = 0
+         return results
+ 
+     def _resolve_deferred(
+         self,
+         delta_text: str,
+-    ) -> tuple[list[LexerInput], str]:
++        current_token_count: int = 0,
++    ) -> tuple[list[LexerInput], str, int]:
+         """Resolve deferred terminals against new delta_text.
+ 
+         When a previous ``scan()`` deferred a terminal (its text hadn't
+@@ -160,7 +228,11 @@
+         should be scanned with the current delta's token IDs.
+         """
+         deferred = self._deferred_terminals
++        prefix_token_counts = self._deferred_prefix_token_counts
++        trailing_token_count = self._deferred_trailing_token_count
+         self._deferred_terminals = []
++        self._deferred_prefix_token_counts = []
++        self._deferred_trailing_token_count = 0
+ 
+         results: list[LexerInput] = []
+         remaining = delta_text
+@@ -171,10 +243,13 @@
+ 
+         # Duplicate-text deferred terminals resolve left-to-right via
+         # find(); correct when each terminal text appears once in sequence.
+-        for terminal in deferred:
++        for idx, terminal in enumerate(deferred):
++            prefix_token_count = prefix_token_counts[idx]
+             pos = remaining.find(terminal.text)
+             if pos > 0:
+-                results.append(TextChunk(remaining[:pos]))
++                results.append(
++                    TextChunk(remaining[:pos], token_count=prefix_token_count)
++                )
+                 results.append(terminal)
+                 remaining = remaining[pos + len(terminal.text) :]
+             elif pos == 0:
+@@ -185,10 +260,16 @@
+                 # only the terminal provides a reliable split point.
+                 if remaining:
+                     self._deferred_post_text += remaining
++                    prefix_token_count += current_token_count
+                     remaining = ""
+                 self._deferred_terminals.append(terminal)
+-
+-        return results, remaining
++                self._deferred_prefix_token_counts.append(prefix_token_count)
++
++        if self._deferred_terminals:
++            self._deferred_trailing_token_count = trailing_token_count
++            trailing_token_count = 0
++
++        return results, remaining, trailing_token_count
+ 
+     def _recover_holdback_text(
+         self,
+@@ -257,6 +338,16 @@
+         if not anchors:
+             return [TextChunk(delta_text)]
+ 
++        token_groups: list[list[str]] = [[] for _ in range(len(anchors) + 1)]
++        count_groups = [0] * (len(anchors) + 1)
++        group_idx = 0
++        for item in results:
++            if isinstance(item, PreLexedTerminal):
++                group_idx += 1
++            else:
++                token_groups[group_idx].extend(item.token_texts)
++                count_groups[group_idx] += item.token_count
++
+         # Resolve positions right-to-left: each anchor gets the
+         # rightmost occurrence that is still before the next anchor.
+         positions: list[int] = [-1] * len(anchors)
+@@ -274,7 +365,13 @@
+             pos = positions[i]
+             if pos >= consumed:
+                 if pos > consumed:
+-                    new_results.append(TextChunk(delta_text[consumed:pos]))
++                    new_results.append(
++                        TextChunk(
++                            delta_text[consumed:pos],
++                            tuple(token_groups[i]),
++                            count_groups[i],
++                        )
++                    )
+                 new_results.append(anchor)
+                 consumed = pos + len(anchor.text)
+             else:
+@@ -291,6 +388,13 @@
+                     self._deferred_post_text += delta_text[consumed:]
+                     consumed = len(delta_text)
+                 self._deferred_terminals.append(anchor)
++                self._deferred_prefix_token_counts.append(count_groups[i])
+         if consumed < len(delta_text):
+-            new_results.append(TextChunk(delta_text[consumed:]))
++            new_results.append(
++                TextChunk(
++                    delta_text[consumed:],
++                    tuple(token_groups[-1]),
++                    count_groups[-1],
++                )
++            )
+         return new_results
+--- a/vllm/parser/engine/streaming_parser_engine.py
++++ b/vllm/parser/engine/streaming_parser_engine.py
+@@ -5,7 +5,7 @@
+ 
+ from __future__ import annotations
+ 
+-from collections.abc import Sequence
++from collections.abc import Callable, Sequence
+ from dataclasses import dataclass
+ 
+ from vllm.parser.engine.events import EventType, SemanticEvent
+@@ -156,9 +156,31 @@
+             for (state, terminal), tr in config.transitions.items()
+             if tr.next_state in self._TOOL_STATES or state in self._TOOL_STATES
+         )
++        # TOOL_CALL_END may close an inner call rather than its lexical wrapper,
++        # as in MiniMax, so identify exits from state transitions instead.
++        self._tool_exit_terminals: frozenset[str] = frozenset(
++            terminal
++            for (state, terminal), tr in config.transitions.items()
++            if state in self._TOOL_STATES and tr.next_state not in self._TOOL_STATES
++        )
+ 
+         self.skip_tool_parsing = False
++        # Optional parser-owned validator used only by provisional tool-call
++        # transitions. It intentionally survives reset() so the owning
++        # ParserEngine can bind a stable callback once at construction.
++        self.recovery_tool_name_validator: Callable[[str], bool] | None = None
+         self.reset(initial_state=initial_state)
++
++    @property
++    def reasoning_token_count(self) -> int:
++        return self._reasoning_token_count
++
++    def _record_reasoning_tokens(self, events: Sequence[SemanticEvent]) -> None:
++        self._reasoning_token_count += sum(
++            event.token_count
++            for event in events
++            if event.type == EventType.REASONING_CHUNK
++        )
+ 
+     def _reset_args_state(self) -> None:
+         self._args_buffer: str = ""
+@@ -179,6 +201,7 @@
+         )
+         self.tool_index = -1
+         self._ever_had_token_ids = False
++        self._reasoning_token_count = 0
+         # DO NOT reset skip_tool_parsing here — callers set it before
+         # calling methods that trigger reset() (e.g. extract_reasoning),
+         # and clearing it silently breaks non-streaming tool-call-as-
+@@ -186,6 +209,15 @@
+         self._scanner.reset()
+         self._lexer.reset()
+         self._reset_args_state()
++        self._recovery_hold_active = False
++        self._recovery_hold_events: list[SemanticEvent] = []
++        self._recovery_hold_raw = ""
++        self._recovery_hold_token_count = 0
++        self._recovery_hold_name = ""
++        self._recovery_prior_state = self.state
++        self._recovery_prior_tool_index = -1
++        self._recovery_outer_closer_pending = False
++        self._recovery_outer_closer_as_content_pending = False
+ 
+     def feed(
+         self,
+@@ -209,18 +241,30 @@
+                     has_special = True
+                     break
+             if not has_special:
+-                return self._emit_for_state(delta_text)
++                events = self._emit_for_state(
++                    delta_text, token_count=len(delta_token_ids)
++                )
++                self._record_reasoning_tokens(events)
++                return events
+ 
+         scanner_items = self._scanner.scan(delta_text, delta_token_ids)
+ 
+         if len(scanner_items) == 1 and isinstance(scanner_items[0], TextChunk):
+-            lex_tokens = self._lexer.feed(scanner_items[0].text)
++            item = scanner_items[0]
++            lex_tokens = self._lexer.feed(item.text, item.token_texts, item.token_count)
+             if len(lex_tokens) == 1 and lex_tokens[0].terminal == CONTENT_TERMINAL:
+-                text = lex_tokens[0].value
+-                return self._emit_for_state(text)
+-            return self._process_lex_tokens(lex_tokens)
+-
+-        return self._process_scanner_items(scanner_items)
++                events = self._emit_for_state(
++                    lex_tokens[0].value,
++                    token_count=lex_tokens[0].token_count,
++                )
++            else:
++                events = self._process_lex_tokens(lex_tokens)
++            self._record_reasoning_tokens(events)
++            return events
++
++        events = self._process_scanner_items(scanner_items)
++        self._record_reasoning_tokens(events)
++        return events
+ 
+     def _process_scanner_items(
+         self, items: Sequence[LexerInput]
+@@ -231,13 +275,27 @@
+                 events.extend(self._process_lex_tokens(self._lexer.flush()))
+                 events.extend(self._on_terminal(item.terminal, item.text))
+             elif isinstance(item, TextChunk):
+-                events.extend(self._process_lex_tokens(self._lexer.feed(item.text)))
++                if not item.text and item.token_count:
++                    events.extend(
++                        self._emit_for_state("", token_count=item.token_count)
++                    )
++                else:
++                    events.extend(
++                        self._process_lex_tokens(
++                            self._lexer.feed(
++                                item.text, item.token_texts, item.token_count
++                            )
++                        )
++                    )
+         return events
+ 
+     def finish(self) -> list[SemanticEvent]:
+         events = self._process_scanner_items(self._scanner.flush_pending())
+ 
+         events.extend(self._process_lex_tokens(self._lexer.flush()))
++
++        if self._recovery_hold_active:
++            events.extend(self._abort_recovery_hold())
+ 
+         if self._args_buffer:
+             events.append(
+@@ -264,14 +322,20 @@
+                     )
+                 )
+             self.state = ParserState.CONTENT
+-        elif self.state == ParserState.REASONING:
++        elif self.state in (
++            ParserState.REASONING,
++            ParserState.FOREIGN_REASONING_BLOCK,
++        ):
+             events.append(
+                 SemanticEvent(EventType.REASONING_END, tool_index=self.tool_index)
+             )
+             self.state = ParserState.CONTENT
++        elif self.state == ParserState.FOREIGN_BLOCK:
++            self.state = ParserState.CONTENT
+         elif self.state == ParserState.MESSAGE_HEADER:
+             self.state = ParserState.CONTENT
+ 
++        self._record_reasoning_tokens(events)
+         return events
+ 
+     def parse_complete(self, text: str) -> list[SemanticEvent]:
+@@ -285,9 +349,11 @@
+         strict = self._token_id_terminal_names if self._ever_had_token_ids else None
+         for tok in tokens:
+             if tok.terminal == CONTENT_TERMINAL or (strict and tok.terminal in strict):
+-                events.extend(self._on_content(tok.value))
++                events.extend(self._on_content(tok.value, tok.token_count))
+             else:
+-                events.extend(self._on_terminal(tok.terminal, tok.value))
++                events.extend(
++                    self._on_terminal(tok.terminal, tok.value, tok.token_count)
++                )
+         return events
+ 
+     _TOOL_STATES = frozenset(
+@@ -299,21 +365,50 @@
+         }
+     )
+ 
+-    def _on_terminal(self, terminal: str, value: str) -> list[SemanticEvent]:
++    def _on_terminal(
++        self, terminal: str, value: str, token_count: int = 0
++    ) -> list[SemanticEvent]:
++        if (
++            self._recovery_outer_closer_as_content_pending
++            and self.state == ParserState.CONTENT
++            and terminal in self._tool_exit_terminals
++        ):
++            self._recovery_outer_closer_as_content_pending = False
++            return self._emit_for_state_now(value, token_count)
++
++        if (
++            self._recovery_outer_closer_pending
++            and self.state == ParserState.CONTENT
++            and terminal in self._tool_exit_terminals
++        ):
++            self._recovery_outer_closer_pending = False
++            return []
++
+         key = (self.state, terminal)
+         transition = self.config.transitions.get(key)
+ 
+         if transition is None:
+-            if (
+-                self._has_drops
+-                and terminal == DROP_TERMINAL
+-                # Preserve drop tokens when skip_tool_parsing is active so
+-                # the reasoning pass doesn't silently remove tokens that a
+-                # later tool-call pass might need to see.
+-                and not self.skip_tool_parsing
+-            ):
+-                return []
+-            return self._emit_for_state(value)
++            # DROP_TERMINAL must never enter provisional recovery buffers.
++            # Outside recovery, preserve GB10's existing skip-tool behavior so
++            # a reasoning pass does not consume a token needed by the tool pass.
++            if self._has_drops and terminal == DROP_TERMINAL:
++                if self._recovery_hold_active or not self.skip_tool_parsing:
++                    return []
++            if self._recovery_hold_active and self.state == ParserState.TOOL_NAME:
++                events = self._abort_recovery_hold()
++                events.extend(self._on_terminal(terminal, value, token_count))
++                return events
++            if self._recovery_hold_active and self.state == ParserState.TOOL_ARGS:
++                # DSML parameter closers are terminals but deliberately have
++                # no state transition. During recovery they are still part of
++                # the candidate invoke and must stay buffered as arguments.
++                return self._emit_for_state(value, token_count)
++            return self._emit_for_state(value, token_count)
++
++        if self.skip_tool_parsing and (
++            transition.provisional_tool_call or self._recovery_hold_active
++        ):
++            return self._apply_transition(transition, value, token_count)
+ 
+         if self.skip_tool_parsing and terminal in self._tool_terminals:
+             if self.state == ParserState.MESSAGE_HEADER:
+@@ -323,6 +418,7 @@
+                         EventType.TEXT_CHUNK,
+                         value=value,
+                         tool_index=self.tool_index,
++                        token_count=token_count,
+                     )
+                 ]
+             if EventType.REASONING_END in transition.events:
+@@ -332,26 +428,40 @@
+                         EventType.REASONING_END,
+                         value=value,
+                         tool_index=self.tool_index,
++                        token_count=token_count,
+                     ),
+                     SemanticEvent(
+                         EventType.TEXT_CHUNK,
+                         value=value,
+                         tool_index=self.tool_index,
++                        token_count=token_count,
+                     ),
+                 ]
+             content_type = self.config.content_events.get(self.state)
+             if content_type is not None:
+                 return [
+-                    SemanticEvent(content_type, value=value, tool_index=self.tool_index)
++                    SemanticEvent(
++                        content_type,
++                        value=value,
++                        tool_index=self.tool_index,
++                        token_count=token_count,
++                    )
+                 ]
+             return []
+ 
+         if transition.skip_in_token_id_mode and self._ever_had_token_ids:
+-            return self._emit_for_state(value)
+-
+-        return self._apply_transition(transition, value)
+-
+-    def _emit_for_state(self, text: str) -> list[SemanticEvent]:
++            return self._emit_for_state(value, token_count)
++
++        return self._apply_transition(transition, value, token_count)
++
++    def _emit_for_state(self, text: str, token_count: int = 0) -> list[SemanticEvent]:
++        if self._recovery_hold_active:
++            return self._hold_recovery_text(text, token_count)
++        return self._emit_for_state_now(text, token_count)
++
++    def _emit_for_state_now(
++        self, text: str, token_count: int = 0
++    ) -> list[SemanticEvent]:
+         if self.state == ParserState.TOOL_ARGS:
+             if self.config.tool_args_json:
+                 return self._feed_args_text(text)
+@@ -360,22 +470,170 @@
+                     EventType.ARG_VALUE_CHUNK,
+                     value=text,
+                     tool_index=self.tool_index,
++                    token_count=token_count,
+                 )
+             ]
+         content_type = self.config.content_events.get(self.state)
+         if content_type is not None:
+-            return [SemanticEvent(content_type, value=text, tool_index=self.tool_index)]
++            return [
++                SemanticEvent(
++                    content_type,
++                    value=text,
++                    tool_index=self.tool_index,
++                    token_count=token_count,
++                )
++            ]
+         return []
+ 
+-    def _on_content(self, text: str) -> list[SemanticEvent]:
++    def _hold_recovery_text(
++        self, text: str, token_count: int = 0
++    ) -> list[SemanticEvent]:
++        self._recovery_hold_raw += text
++        self._recovery_hold_token_count += token_count
++
++        if self.state == ParserState.TOOL_NAME:
++            self._recovery_hold_name += text
++            # Tool names are expected to be compact. Avoid delaying an entire
++            # response if ordinary prose happens to quote an unterminated
++            # invoke marker.
++            if len(self._recovery_hold_name) > 256 or "\n" in self._recovery_hold_name:
++                return self._abort_recovery_hold()
++
++        self._recovery_hold_events.extend(self._emit_for_state_now(text, token_count))
++        return []
++
++    def _on_content(self, text: str, token_count: int = 0) -> list[SemanticEvent]:
+         if not text:
+             return []
+-        return self._emit_for_state(text)
++        return self._emit_for_state(text, token_count)
+ 
+     def _apply_transition(
+         self,
+         transition: Transition,
+         value: str,
++        token_count: int = 0,
++    ) -> list[SemanticEvent]:
++        if self._recovery_hold_active:
++            return self._advance_recovery_hold(transition, value, token_count)
++        if transition.provisional_tool_call:
++            if self.recovery_tool_name_validator is None:
++                return self._emit_for_state(value, token_count)
++            return self._begin_recovery_hold(transition, value, token_count)
++        if (
++            self.state == ParserState.CONTENT
++            and transition.next_state in self._TOOL_STATES
++        ):
++            self._recovery_outer_closer_pending = False
++            self._recovery_outer_closer_as_content_pending = False
++        return self._run_transition(transition, value, token_count)
++
++    def _begin_recovery_hold(
++        self,
++        transition: Transition,
++        value: str,
++        token_count: int,
++    ) -> list[SemanticEvent]:
++        prior_state = self.state
++        prior_tool_index = self.tool_index
++        held_events = self._run_transition(transition, value, token_count)
++        self._recovery_hold_active = True
++        self._recovery_hold_events = held_events
++        self._recovery_hold_raw = value
++        self._recovery_hold_token_count = token_count
++        self._recovery_hold_name = ""
++        self._recovery_prior_state = prior_state
++        self._recovery_prior_tool_index = prior_tool_index
++        return []
++
++    def _advance_recovery_hold(
++        self,
++        transition: Transition,
++        value: str,
++        token_count: int,
++    ) -> list[SemanticEvent]:
++        self._recovery_hold_raw += value
++        self._recovery_hold_token_count += token_count
++
++        if self.state == ParserState.TOOL_NAME:
++            validator = self.recovery_tool_name_validator
++            if validator is None or not validator(self._recovery_hold_name):
++                return self._abort_recovery_hold()
++            self._recovery_hold_events.extend(
++                self._run_transition(transition, value, token_count)
++            )
++            return []
++
++        if self.state == ParserState.TOOL_ARGS:
++            if not transition.commit_provisional_tool_call:
++                return self._abort_recovery_hold()
++            if self.skip_tool_parsing:
++                raw = self._recovery_hold_raw
++                held_token_count = self._recovery_hold_token_count
++                prior_state = self._recovery_prior_state
++                prior_tool_index = self._recovery_prior_tool_index
++                self.state = ParserState.CONTENT
++                self.tool_index = prior_tool_index
++                self._reset_args_state()
++                self._clear_recovery_hold()
++                if not self._recovery_outer_closer_pending:
++                    self._recovery_outer_closer_as_content_pending = True
++                events: list[SemanticEvent] = []
++                if prior_state == ParserState.REASONING:
++                    events.append(
++                        SemanticEvent(
++                            EventType.REASONING_END,
++                            tool_index=prior_tool_index,
++                        )
++                    )
++                events.append(
++                    SemanticEvent(
++                        EventType.TEXT_CHUNK,
++                        value=raw,
++                        tool_index=prior_tool_index,
++                        token_count=held_token_count,
++                    )
++                )
++                return events
++            transition_events = self._run_transition(transition, value, token_count)
++            self._recovery_hold_events.extend(transition_events)
++            events = self._recovery_hold_events
++            self._clear_recovery_hold()
++            # A recovered invoke started outside a valid outer tool wrapper.
++            # Do not leave it in TOOL_BETWEEN: subsequent text is content, and
++            # a following bare invoke must enter the provisional path again.
++            self.state = ParserState.CONTENT
++            self._recovery_outer_closer_as_content_pending = False
++            self._recovery_outer_closer_pending = True
++            return events
++
++        return self._abort_recovery_hold()
++
++    def _abort_recovery_hold(self) -> list[SemanticEvent]:
++        raw = self._recovery_hold_raw
++        token_count = self._recovery_hold_token_count
++        self.state = self._recovery_prior_state
++        self.tool_index = self._recovery_prior_tool_index
++        self._reset_args_state()
++        self._clear_recovery_hold()
++        if (
++            self.state == ParserState.CONTENT
++            and not self._recovery_outer_closer_pending
++        ):
++            self._recovery_outer_closer_as_content_pending = True
++        return self._emit_for_state_now(raw, token_count)
++
++    def _clear_recovery_hold(self) -> None:
++        self._recovery_hold_active = False
++        self._recovery_hold_events = []
++        self._recovery_hold_raw = ""
++        self._recovery_hold_token_count = 0
++        self._recovery_hold_name = ""
++
++    def _run_transition(
++        self,
++        transition: Transition,
++        value: str,
++        token_count: int = 0,
+     ) -> list[SemanticEvent]:
+         events: list[SemanticEvent] = []
+ 
+@@ -403,6 +661,7 @@
+                     event_type,
+                     value=value,
+                     tool_index=self.tool_index,
++                    token_count=token_count,
+                 )
+             )
+ 

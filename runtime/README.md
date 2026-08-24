@@ -10,6 +10,7 @@ credentials, or a live-deployment result.
 | Path | Role |
 |---|---|
 | [`exl3-r7/`](exl3-r7/README.md) | GLM-5.2 EXL3 3.5-bpw R7 ARM64 image builder and its verification tests |
+| [`deepseek0731-gb10/`](deepseek0731-gb10/README.md) | DeepSeek-V4-Flash-0731 GB10 parser, K5 sparse-row, and native PR431 image layer |
 | [`qwen38/`](qwen38/README.md) | Public-source ARM64 image builder for the Qwen3.8-27B EXL3 K5/K6 pair and cycle profiles |
 | [`faststart-lock.json`](faststart-lock.json) | Immutable ARM64 base-image and model-identity pins |
 | [`build-public-overlay.py`](build-public-overlay.py) | Builds the reviewed Python overlay bundle |
@@ -65,16 +66,18 @@ file. It rejects an unsupported source layout, a missing allowlisted source,
 and unsafe relative paths. Add an overlay member only by updating the
 allowlist and validating the generated manifest through the builder.
 
-The builder test suites cover the GLM and Qwen runtime contracts:
+The builder test suites cover the GLM, DeepSeek, and Qwen runtime contracts:
 
 ```bash
-python -m pytest runtime/exl3-r7 runtime/qwen38 -q
+python -m pytest runtime/exl3-r7 runtime/deepseek0731-gb10 runtime/qwen38 -q
 ```
 
 ## DeepSeek-V4-Flash-0731
 
-The lock records the published ARM64 serving image that registers the
-DeepSeek-V4 model surface. Its per-rank container environment is defined in
+[`runtime/deepseek0731-gb10/`](deepseek0731-gb10/README.md) builds the
+DeepSeek-specific layer over the generic GB10 serving image. The lock records
+both the hardened image digest and the unchanged generic rollback digest. The
+per-rank container environment is defined in
 [`scripts/config/deepseek-v4-flash-0731.env.example`](../scripts/config/deepseek-v4-flash-0731.env.example).
 The environment template and immutable image digest must agree; neither
 substitutes for a four-rank serving qualification.

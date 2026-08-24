@@ -1,0 +1,137 @@
+{
+  "schema": "sparkring-deepseek-v4-gb10-hardening/v1",
+  "status": "research-only",
+  "base_image": {
+    "reference": "ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028",
+    "image_id": "sha256:50036224411e5ef04d651730c56d794111991b37981ec76ca81b66ea7d35dae7",
+    "platform": "linux/arm64",
+    "local_size_bytes": 30840726886
+  },
+  "vllm_source": {
+    "repository": "https://github.com/local-inference-lab/vllm.git",
+    "commit": "e2666d9a65f41fc376607531453cbd57c4c71016",
+    "retained_root": "/opt/r7-src/vllm"
+  },
+  "attested_noop": [
+    {
+      "path": "vllm/models/deepseek_v4/sparse_mla.py",
+      "sha256": "6adba4b482316512fff5c5a9bf722fc54cb116d4607679bc4a61cc7967509d90",
+      "reason": "The GB10 runtime already uses fixed-capacity C128A rows and passes each physical buffer stride to the Triton kernel."
+    },
+    {
+      "path": "vllm/models/deepseek_v4/attention.py",
+      "sha256": "d00661e63a74dbbec51ee9f138352b4ddeb52cc5322ae7e2f05c0ba140da0517",
+      "reason": "The captured all-candidates shortcut fixed by vLLM PR 52492 is absent; GB10 always dispatches through indexer_op."
+    }
+  ],
+  "runtime_patch": {
+    "path": "patches/0001-gb10-deepseek-runtime-hardening.patch",
+    "sha256": "e545486a2046b4f951000cadfddc2273badd38ef3eb909af5e0d1ac4f4edf6ed",
+    "upstream_inputs": [
+      "https://github.com/local-inference-lab/vllm/pull/431",
+      "https://github.com/vllm-project/vllm/pull/52645",
+      "vllm-project/vllm@3df9776b0d423dd3124ee9ae80d9d92aef92013a"
+    ],
+    "files": [
+      {
+        "path": "vllm/v1/attention/backends/mla/indexer.py",
+        "preimage_sha256": "9757e1763137bf25886b1ea90d44d928b310cfba875dc64705596d2134815ecf",
+        "result_sha256": "8124251eba84d0c133d9b7e8617143ef67b047224b3f4270fa9760d8db8c9096"
+      },
+      {
+        "path": "vllm/parser/abstract_parser.py",
+        "preimage_sha256": "54c8ad805cfc8370804e88e2cc18052d8531c2100becb2be6a167dafea2dfab5",
+        "result_sha256": "8551a21c9b671f6c81a8713175f9c68efc00f46dcad34cef7412cb1bc80d817f"
+      },
+      {
+        "path": "vllm/parser/deepseek_v4.py",
+        "preimage_sha256": "97d7cd3c2affb37c29948aba321454090341294756d46fde2bf9f3623c30ee6f",
+        "result_sha256": "4d7f7e9f1f3fbabedeb9054724f4b33ef5d26702c98534ccf9e788c525d08d16"
+      },
+      {
+        "path": "vllm/parser/engine/adapters.py",
+        "preimage_sha256": "8a7bfc1609e3e4ff3fb2a355de48a5105f8452442e7315d8897854724a20e301",
+        "result_sha256": "a8c59db43b1db3905e615c0ef6334596439ac3fac76e1edf2c05bef23f98d7f7"
+      },
+      {
+        "path": "vllm/parser/engine/events.py",
+        "preimage_sha256": "493543e5832b721c67640c09a6ad664823423a98afe0bb53ba78518608047f0a",
+        "result_sha256": "fc094827b5444dd7ec986a430fc26615f0b1a5de4fcd132a4d4e210a4c1c552d"
+      },
+      {
+        "path": "vllm/parser/engine/incremental_lexer.py",
+        "preimage_sha256": "c58797ba16d60a6a4db365dc678b38b756df83eea566c6e34dac2785f55c4cce",
+        "result_sha256": "b0d6446db45259535d6180e6e52d28db6d3a5754512d6317a5fd5ae82d604aab"
+      },
+      {
+        "path": "vllm/parser/engine/parser_engine.py",
+        "preimage_sha256": "67c254570ae1ccfa36f463b004d8cd5b589b0848fa86b9cfea4ab923808a8274",
+        "result_sha256": "d698119ab1ceb073e182d305685e350df564a223b7d0a9a55b7b3d9782c3a720"
+      },
+      {
+        "path": "vllm/parser/engine/parser_engine_config.py",
+        "preimage_sha256": "f7350e0ca9124001684f1f874ee72bf6a34932d3e4b84cc84567bbccf2f3e4b9",
+        "result_sha256": "63e36743a80ae1e49dac0b9ccedaefa18a899b3f1d38c7b0360bcfad0b342b61"
+      },
+      {
+        "path": "vllm/parser/engine/streaming_parser_engine.py",
+        "preimage_sha256": "2eace718fc728b46676cd5d01eee2c893aec396a4551f05c529e83a120d07715",
+        "result_sha256": "da5e9db173979dfa9bea0c3a97c26997f9dda31b5b1c40d6d6cc8a622fc467f4"
+      },
+      {
+        "path": "vllm/parser/engine/token_id_scanner.py",
+        "preimage_sha256": "c9db6d6a29865d65ba1adc523015488aad4d7dbef46b7539041e9efbe81bd034",
+        "result_sha256": "5800a7db3ab9dd505f9f6dbdcdcda5b98a4c530e4417d2e0dfadc3b53a7c972e"
+      }
+    ]
+  },
+  "native_patch": {
+    "path": "patches/0002-pr431-native-topk-row-contract.patch",
+    "sha256": "26f01d22f3bc5a3dc07ba39910d02194aac45c5086477d47a1ce749075717b03",
+    "source_commit": "e2666d9a65f41fc376607531453cbd57c4c71016",
+    "build_directory": "/opt/r7-src/vllm/build/temp.linux-aarch64-cpython-312",
+    "build_inputs_sha256": {
+      "CMakeCache.txt": "4f0055177396f27580a24e6d70f677fc066ef389cbe6160a6a66d9ceb59a05ca",
+      "build.ninja": "902e92ac1c9503799cd45ecb7fa90fb7bc754ed4e8201afca3016790d86a1964"
+    },
+    "cmake_target": "_C_stable_libtorch",
+    "cmake_component": "_C_stable_libtorch",
+    "build_output": "/opt/r7-src/vllm/build/temp.linux-aarch64-cpython-312/_C_stable_libtorch.abi3.so",
+    "component_output": "/out/stage/vllm/_C_stable_libtorch.abi3.so",
+    "installed_path": "/opt/venv/lib/python3.12/site-packages/vllm/_C_stable_libtorch.abi3.so",
+    "installed_preimage_sha256": "f915e2e4ca3da77f90a980e9166e0aba2389a9185ce453129aa080da7f1287ca",
+    "reference_result_sha256": "fe8b061337c2932031e20370dce3521a968ee5dc3f14e65ccdadd05ed1f19f8a",
+    "result_size_bytes": 164090840,
+    "files": [
+      {
+        "path": "csrc/libtorch_stable/cooperative_topk.cuh",
+        "preimage_sha256": "645284e56360c0f2b2695646fdec957adb1c82d3ece1af3434f5370cdcbd5a83",
+        "result_sha256": "30ca6bf0b2c2b7cc43bba3b50001e510bc5c6b0c8fed416957e4138cd5312ea7"
+      },
+      {
+        "path": "csrc/libtorch_stable/persistent_topk.cuh",
+        "preimage_sha256": "70137433c0b0e205c16f1d94da80a78971831fe67d6a735610f3bbe8207cca6f",
+        "result_sha256": "fb62021d5e967bdfd8c6124eb13af9cf81c456cc4c81112b87ff4c2768728985"
+      }
+    ]
+  },
+  "supported_launch_shapes": [
+    {
+      "topology": "TP2",
+      "speculative_tokens": 5,
+      "qualification": "requires exact-image live gate"
+    },
+    {
+      "topology": "TP4",
+      "speculative_tokens": 5,
+      "qualification": "requires exact-image live gate"
+    }
+  ],
+  "optional_research_arms": [
+    {
+      "topology": "TP4",
+      "speculative_tokens": 7,
+      "qualification": "unqualified; separate NVFP4 experiment, not the plain-0731 primary profile"
+    }
+  ]
+}

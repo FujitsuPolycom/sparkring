@@ -12,7 +12,8 @@ on directly cabled DGX Sparks. The TP2 benchmark used the DSpark package at
 
 | Setting | Value |
 |---|---|
-| Runtime image | `ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028` |
+| Runtime image | `ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:1574ba87fe4a0ad38c25a30087929ad549d823730be83b33e91fe4745b7a6571` |
+| Rollback image | `ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028` |
 | Parallelism | TP2 across a directly cabled pair or TP4 across a four-Spark cycle |
 | TP2 checkpoint | `deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7` |
 | TP4 checkpoint | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` |
@@ -45,6 +46,13 @@ and [TP4 record](../../performance/records/deepseek-v4-flash/normalized-tp4-base
 retain the conditions, variability, and source-receipt hashes. These results
 remain evidence for the recorded image/checkpoint objects; they do not qualify
 an unrecorded model revision or locally built image.
+
+The hardened runtime lane adds malformed-DSML recovery and the Python/Triton
+plus native sparse-row repairs. A diagnostic TP4/K5 build from that lane passed
+100 strict max-reasoning streams and cold tool calls near 98K and 262K prompt
+tokens on 2026-08-24. That run did not attest the published digest. The
+throughput matrices above predate the hardened image and remain historical
+baseline measurements; TP4 and TP2 still need exact published-digest replays.
 
 The native transport's width-4096 graph mode is research-only and is not part
 of this profile's qualification. One hash-bound candidate using the pinned

@@ -1,0 +1,103 @@
+ARG SPARKRING_SOURCE_REVISION
+FROM ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028 AS runtime-overlay
+ARG SPARKRING_SOURCE_REVISION
+
+USER root
+
+COPY LICENSE THIRD_PARTY_NOTICES.md /opt/sparkring-deepseek-gb10/licenses/
+COPY runtime/deepseek0731-gb10/runtime-contract.json /opt/sparkring-deepseek-gb10/runtime-contract.json
+COPY runtime/deepseek0731-gb10/apply_runtime_overlay.py /opt/sparkring-deepseek-gb10/apply_runtime_overlay.py
+COPY runtime/deepseek0731-gb10/apply_native_overlay.py /opt/sparkring-deepseek-gb10/apply_native_overlay.py
+COPY runtime/deepseek0731-gb10/native_artifact_receipt.py /opt/sparkring-deepseek-gb10/native_artifact_receipt.py
+COPY runtime/deepseek0731-gb10/parser_replay.py /opt/sparkring-deepseek-gb10/parser_replay.py
+COPY runtime/deepseek0731-gb10/verify_image.py /opt/sparkring-deepseek-gb10/verify_image.py
+COPY runtime/deepseek0731-gb10/patches /opt/sparkring-deepseek-gb10/patches
+
+RUN python3 /opt/sparkring-deepseek-gb10/apply_runtime_overlay.py \
+      --contract /opt/sparkring-deepseek-gb10/runtime-contract.json \
+      --receipt /opt/sparkring-deepseek-gb10/installed-runtime-overlay-receipt.json
+
+RUN python3 /opt/sparkring-deepseek-gb10/apply_runtime_overlay.py \
+      --site-root /opt/r7-src/vllm \
+      --patch-only \
+      --contract /opt/sparkring-deepseek-gb10/runtime-contract.json \
+      --receipt /opt/sparkring-deepseek-gb10/source-runtime-overlay-receipt.json
+
+RUN python3 /opt/sparkring-deepseek-gb10/parser_replay.py \
+      --contract /opt/sparkring-deepseek-gb10/runtime-contract.json
+
+LABEL org.opencontainers.image.title="SparkRing hardened DeepSeek V4 GB10 runtime" \
+      org.opencontainers.image.description="Fujitsu GB10 runtime with exact-preimage sparse-row and malformed-DSML hardening" \
+      org.opencontainers.image.source="https://github.com/FujitsuPolycom/sparkring" \
+      org.opencontainers.image.revision="${SPARKRING_SOURCE_REVISION}" \
+      org.sparkring.profile="deepseek-v4-flash-0731-gb10-hardened" \
+      org.sparkring.maturity="research-only" \
+      org.sparkring.base-manifest="sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028" \
+      org.sparkring.vllm-source="e2666d9a65f41fc376607531453cbd57c4c71016" \
+      local-inference.vllm.gb10-runtime-overlay="sparse-row-clamp+dsml-recovery-v1" \
+      local-inference.vllm.dsml-recovery="vllm-project/vllm#52645@3df9776b0d423dd3124ee9ae80d9d92aef92013a"
+
+
+FROM runtime-overlay AS native-builder
+
+ARG MAX_JOBS=10
+
+RUN python3 /opt/sparkring-deepseek-gb10/apply_native_overlay.py \
+      --source-root /opt/r7-src/vllm \
+      --contract /opt/sparkring-deepseek-gb10/runtime-contract.json \
+      --receipt /out/native-source-receipt.json
+
+RUN cmake --build /opt/r7-src/vllm/build/temp.linux-aarch64-cpython-312 \
+      --target _C_stable_libtorch \
+      --parallel "${MAX_JOBS}"
+
+RUN test ! -e /out/stage \
+    && cmake --install /opt/r7-src/vllm/build/temp.linux-aarch64-cpython-312 \
+         --prefix /out/stage \
+         --component _C_stable_libtorch
+
+RUN python3 /opt/sparkring-deepseek-gb10/native_artifact_receipt.py \
+      --contract /opt/sparkring-deepseek-gb10/runtime-contract.json \
+      --old /opt/venv/lib/python3.12/site-packages/vllm/_C_stable_libtorch.abi3.so \
+      --new /out/stage/vllm/_C_stable_libtorch.abi3.so \
+      --component-root /out/stage \
+      --source-receipt /out/native-source-receipt.json \
+      --output /out/native-artifact-receipt.json
+
+
+FROM runtime-overlay AS thin
+
+RUN LD_PRELOAD=/usr/local/cuda/compat/libcuda.so.1:/opt/sparkring/nccl/libnccl.so.2 \
+    python3 /opt/sparkring-deepseek-gb10/verify_image.py \
+      --require-launch-env \
+      --contract /opt/sparkring-deepseek-gb10/runtime-contract.json \
+      --output /opt/sparkring-deepseek-gb10/final-image-receipt.json
+
+LABEL org.sparkring.native-pr431="excluded-thin-diagnostic"
+
+
+FROM runtime-overlay AS native
+
+RUN python3 /opt/sparkring-deepseek-gb10/apply_native_overlay.py \
+      --source-root /opt/r7-src/vllm \
+      --contract /opt/sparkring-deepseek-gb10/runtime-contract.json \
+      --receipt /opt/sparkring-deepseek-gb10/final-native-source-receipt.json
+
+COPY --from=native-builder /out/stage/vllm/_C_stable_libtorch.abi3.so /opt/venv/lib/python3.12/site-packages/vllm/_C_stable_libtorch.abi3.so
+COPY --from=native-builder /out/native-artifact-receipt.json /opt/sparkring-deepseek-gb10/native-artifact-receipt.json
+
+RUN python3 /opt/sparkring-deepseek-gb10/native_artifact_receipt.py \
+      --contract /opt/sparkring-deepseek-gb10/runtime-contract.json \
+      --verify-installed /opt/venv/lib/python3.12/site-packages/vllm/_C_stable_libtorch.abi3.so \
+      --source-root /opt/r7-src/vllm \
+      --artifact-receipt /opt/sparkring-deepseek-gb10/native-artifact-receipt.json
+
+RUN LD_PRELOAD=/usr/local/cuda/compat/libcuda.so.1:/opt/sparkring/nccl/libnccl.so.2 \
+    python3 /opt/sparkring-deepseek-gb10/verify_image.py \
+      --expect-native \
+      --require-launch-env \
+      --contract /opt/sparkring-deepseek-gb10/runtime-contract.json \
+      --output /opt/sparkring-deepseek-gb10/final-image-receipt.json
+
+LABEL org.sparkring.native-pr431="compiled-from-gb10-e2666d9" \
+      org.sparkring.native-pr431-reference-sha256="fe8b061337c2932031e20370dce3521a968ee5dc3f14e65ccdadd05ed1f19f8a"

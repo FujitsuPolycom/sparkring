@@ -40,19 +40,24 @@ class CollectPinnedImagesTest(unittest.TestCase):
                     "base_image": {
                         "repository": "reg/faststart",
                         "manifest_digest": DIGEST_A,
-                    }
+                    },
+                    "deepseek_v4_flash_0731_hardened_serving_image": {
+                        "repository": "reg/deepseek",
+                        "manifest_digest": DIGEST_B,
+                    },
                 },
             )
 
             images = puller.collect_pinned_images(root)
 
-            self.assertEqual(len(images), 3)
+            self.assertEqual(len(images), 4)
             self.assertEqual(
                 {image.reference for image in images},
                 {
                     f"reg/base@{DIGEST_A}",
                     f"reg/base@{DIGEST_B}",
                     f"reg/faststart@{DIGEST_A}",
+                    f"reg/deepseek@{DIGEST_B}",
                 },
             )
 

@@ -58,13 +58,16 @@ contains 48 safetensors shards totaling about 167 GB.
 Pull the immutable ARM64 runtime image on every rank before launching any rank:
 
 ```bash
-docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028
+docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:1574ba87fe4a0ad38c25a30087929ad549d823730be83b33e91fe4745b7a6571
 ```
 
-This is the `serving_image.manifest_digest` pinned by
+This is the `deepseek_v4_flash_0731_hardened_serving_image.manifest_digest`
+pinned by
 [`runtime/faststart-lock.json`](../runtime/faststart-lock.json). The image
-registers `DeepseekV4ForCausalLM`; override its GLM-specific entrypoint as shown
-below.
+registers `DeepseekV4ForCausalLM` and adds malformed-DSML recovery plus the K5
+sparse-row/native top-k repairs. Override its inherited GLM-specific entrypoint
+as shown below. The prior generic `serving_image` digest remains available as
+the rollback image and continues to serve the GLM profiles.
 
 Copy the environment template for your topology to one local file per rank.
 
@@ -116,7 +119,7 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
   -v /path/to/jit-cache:/cache \
   --env-file /path/to/rank-"$RANK".env \
   --entrypoint /opt/venv/bin/vllm \
-  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028 \
+  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:1574ba87fe4a0ad38c25a30087929ad549d823730be83b33e91fe4745b7a6571 \
   serve /models/deepseek-v4-flash-0731 \
   --tensor-parallel-size 2 --nnodes 2 --node-rank "$RANK" \
   --master-addr "$RANK0_FABRIC_ADDR" --master-port 29500 \
@@ -153,7 +156,7 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
   -v /path/to/jit-cache:/cache \
   --env-file /path/to/rank-"$RANK".env \
   --entrypoint /opt/venv/bin/vllm \
-  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028 \
+  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:1574ba87fe4a0ad38c25a30087929ad549d823730be83b33e91fe4745b7a6571 \
   serve /models/deepseek-v4-flash-0731 \
   --tensor-parallel-size 4 --nnodes 4 --node-rank "$RANK" \
   --master-addr "$RANK0_FABRIC_ADDR" --master-port 29500 \
@@ -308,6 +311,14 @@ single-host multi-GPU profiles and are not worth carrying here.
 ## What these results cover
 
 Each topology has separate results recorded in its serving contract.
+
+A diagnostic plain-0731 TP4/K5 deployment built from this runtime lane was
+exercised on 2026-08-24: 100 consecutive max-reasoning strict streamed tool
+calls passed, followed by cold tool calls at approximately 98K and 262K prompt
+tokens. No raw DSML/control tokens or server-error responses were observed. The run did
+not attest the published digest, so both TP4/K5 and TP2/K5 still need an exact
+post-publication pull-and-replay. These correctness checks do not replace the
+throughput tables below.
 
 The two-Spark launch was exercised on 2026-08-21 on two directly cabled Sparks:
 both ranks rendezvoused, a deterministic completion, an emitted tool call and a
