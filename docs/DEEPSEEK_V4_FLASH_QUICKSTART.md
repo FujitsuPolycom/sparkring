@@ -263,7 +263,7 @@ exact same-weight TP2-versus-TP4 scaling test.
 | 16K | 1,926 | 58.36 | 77.65 | 104.16 | 162.69 | 202.74 | 307.13 |
 | 32K | 1,922 | 51.59 | 85.05 | 107.13 | 147.40 | 223.25 | 301.00 |
 | 64K | 1,856 | 50.06 | 76.57 | 108.41 | 154.57 | 205.27 | — |
-| 128K | 1,691 | 53.05 | 73.82 | 86.43 | — | — | — |
+| 128K | 1,691 | 53.05 | 73.82 | 86.43 | 135.90 | — | — |
 
 [Full TP2 record](../performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md)
 · [green console matrix](../performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.png)

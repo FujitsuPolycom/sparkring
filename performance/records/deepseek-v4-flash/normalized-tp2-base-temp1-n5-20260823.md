@@ -48,7 +48,7 @@ Aggregate generated tokens per second, shown as mean ± SD (N):
 | 16K | 58.36 ± 17.26 (5) | 77.65 ± 16.54 (5) | 104.16 ± 12.33 (3) | 162.69 ± 18.29 (6) | 202.74 ± 18.05 (4) | 307.13 ± 20.92 (5) |
 | 32K | 51.59 ± 15.03 (5) | 85.05 ± 10.88 (5) | 107.13 ± 3.77 (3) | 147.40 ± 19.72 (4) | 223.25 ± 14.45 (3) | 301.00 ± 27.60 (3) |
 | 64K | 50.06 ± 17.52 (5) | 76.57 ± 11.89 (5) | 108.41 ± 17.44 (3) | 154.57 ± 20.55 (3) | 205.27 ± 10.13 (3) | — |
-| 128K | 53.05 ± 11.34 (5) | 73.82 ± 5.69 (5) | 86.43 ± 7.86 (3) | — | — | — |
+| 128K | 53.05 ± 11.34 (5) | 73.82 ± 5.69 (5) | 86.43 ± 7.86 (3) | 135.90 ± 2.01 (3) | — | — |
 
 ### Coding Peak
 
@@ -60,6 +60,6 @@ The two-Spark profile served through 128K prefill and every decode cell that fit
 
 ## Limitations
 
-Combined 59 machine-readable receipts. JIT/server-log-rejected invocations are excluded. Request-error, timed-out, underfilled, capacity-limited, invalid, and non-positive rows are excluded; valid rows from otherwise mixed receipts are retained.
+Combined 62 machine-readable receipts. JIT/server-log-rejected invocations are excluded. Request-error, timed-out, underfilled, capacity-limited, invalid, and non-positive rows are excluded; valid rows from otherwise mixed receipts are retained.
 
 The DSpark and plain 0731 packages share model and tokenizer configuration and a tensor index, but their 48 weight payloads differ. TP2/TP4 comparisons therefore include both topology and package differences.
