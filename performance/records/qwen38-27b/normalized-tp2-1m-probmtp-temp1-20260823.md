@@ -16,7 +16,7 @@
 | KV and scheduling | FP8 KV; 1,600-token hybrid alignment; asynchronous scheduling; full-input-length reservation |
 | Decode | native prefix caching; full-decode CUDA graphs; probabilistic Qwen MTP3 with standard rejection |
 | Sampling | temperature 1.0; effective top-p 0.95 and top-k 20 from `generation_config.json` |
-| Inputs | 2K–128K; C1/C2/C4/C8; 100% unique prompts |
+| Inputs | 2K–128K; C1/C2/C4/C8 and C16 through 64K; 100% unique prompts |
 
 ## Measurement
 
@@ -32,24 +32,24 @@ Raw records: [sanitized command receipts](../../receipts/qwen38-27b/temp1/202608
 
 Aggregate generated tokens per second:
 
-| Context | Prefill N=3 | C1 N=4 | C2 N=1 | C4 N=1 | C8 N=1 | C16 | C32 |
+| Context | Prefill N=3 | C1 N=4 | C2 N=1 | C4 N=1 | C8 N=1 | C16 N=3 | C32 |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 2K | 1,273.67 | 27.93 | 53.85 | 100.10 | 154.06 | — | — |
-| 8K | 1,401.33 | 27.60 | 52.88 | 100.70 | 150.10 | — | — |
-| 16K | 1,366.67 | 29.50 | 49.67 | 96.20 | 142.20 | — | — |
-| 32K | 1,254.00 | 27.24 | 49.60 | 89.36 | 133.50 | — | — |
-| 64K | 1,050.33 | 25.99 | 47.23 | 80.54 | 112.48 | — | — |
+| 2K | 1,273.67 | 27.93 | 53.85 | 100.10 | 154.06 | 203.11 | — |
+| 8K | 1,401.33 | 27.60 | 52.88 | 100.70 | 150.10 | 193.37 | — |
+| 16K | 1,366.67 | 29.50 | 49.67 | 96.20 | 142.20 | 184.39 | — |
+| 32K | 1,254.00 | 27.24 | 49.60 | 89.36 | 133.50 | 167.05 | — |
+| 64K | 1,050.33 | 25.99 | 47.23 | 80.54 | 112.48 | 139.12 | — |
 | 128K | 785.00 | 24.85 | 41.32 | 72.00 | 90.36 | — | — |
 
 Coding Peak completed 15/15 requests: mean 39.95 tok/s, median 39.70, range 37.22–42.63 tok/s, with zero CJK-contaminated runs.
 
 ## Conclusion
 
-The tested two-Spark profile is healthy through 128K prefill and C1/C2/C4/C8 sustained decode. Throughput scales from roughly 25–30 tok/s at C1 to 90–154 aggregate tok/s at C8, depending on context.
+The tested two-Spark profile is healthy through 128K prefill, C1/C2/C4/C8 sustained decode through 128K, and C16 through 64K.
 
 ## Limitations
 
-- N is shown in the result table. C16 and C32 were not run and are shown as dashes, not zero throughput.
+- N is shown in the result table. 128K/C16 has two accepted runs and remains unpublished; C32 was not run. Dashes are not zero throughput.
 - Rejected, timed-out, underfilled, or request-error attempts are excluded.
 
 The [machine-readable results](normalized-tp2-1m-probmtp-temp1-20260823.json) and [HTML render](normalized-tp2-1m-probmtp-temp1-20260823.html) accompany this record.

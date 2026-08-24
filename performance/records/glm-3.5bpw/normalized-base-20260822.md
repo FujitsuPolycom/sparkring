@@ -29,20 +29,24 @@ Aggregate generated tokens per second:
 
 | Context | C1 | C2 | C4 | C8 |
 |---:|---:|---:|---:|---:|
-| 2K | 22.00 | 28.28 | 46.98 | 67.62 |
-| 8K | 19.15 | 30.21 | 47.70 | 65.53 |
-| 16K | 20.15 | 32.38 | 45.38 | 62.71 |
-| 32K | 21.61 | 30.52 | 46.08 | 62.88 |
-| 64K | 20.17 | — | — | — |
-| 128K | — | — | — | — |
+| 2K | 22.00 | 28.28 | 46.98 | 65.35 |
+| 8K | 19.15 | 30.21 | 47.70 | 64.46 |
+| 16K | 20.15 | 32.38 | 45.38 | 64.13 |
+| 32K | 21.61 | 30.52 | 46.08 | 65.79 |
+| 64K | 20.17 | 30.12 | 45.52 | 63.58 |
+| 128K | 19.67 | 30.64 | 45.73 | 62.63 |
 
 Every displayed decode cell had complete client accounting, exact
 client/server agreement, requested concurrency, zero queue/errors, and clean
-all-rank logs. Displayed cells are one accepted observation each.
+all-rank logs. Newly completed C8 and long-context cells are N=3 means; the
+remaining short-context cells are one accepted observation each.
 
 ## Coding workload
 
-![Coding Peak green-text result](coding-peak-temperature1-20260822.png)
+![Green-text benchmark matrix](normalized-base-20260822.png)
+
+The separate [Coding Peak green-text result](coding-peak-temperature1-20260822.png)
+retains its per-run detail.
 
 Coding Peak at temperature 1.0 completed five normal requests: mean
 25.39 tok/s, median 25.57, range 22.70–26.92 tok/s.
@@ -55,7 +59,6 @@ fails before model startup because the exact-Q40 producer refuses to overwrite
 its existing receipt. Preserve the receipt and use a fresh namespace until the
 launcher can safely revalidate and reuse an exact match.
 
-- 64K C2/C4/C8 and all 128K decode cells remain unmeasured.
 - Rows named `DISCARD`, `ABORTED`, JIT-affected, or with request errors are excluded.
 - Saved last-scrape acceptance is not used as a run average.
 - Pre-boundary-fix hardware summaries are not used for exact thermal claims.

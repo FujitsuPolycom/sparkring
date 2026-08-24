@@ -194,19 +194,21 @@ on four directly cabled DGX Sparks with SparkCache disabled.
 
 | Context | Prefill tok/s | C1 | C2 | C4 | C8 |
 |---:|---:|---:|---:|---:|---:|
-| 2K | 694 | 22.00 | 28.28 | 46.98 | 67.62 |
-| 8K | 675 | 19.15 | 30.21 | 47.70 | 65.53 |
-| 16K | 671 | 20.15 | 32.38 | 45.38 | 62.71 |
-| 32K | 661 | 21.61 | 30.52 | 46.08 | 62.88 |
-| 64K | 649 | 20.17 | — | — | — |
-| 128K | 635 | — | — | — | — |
+| 2K | 694 | 22.00 | 28.28 | 46.98 | 65.35 |
+| 8K | 675 | 19.15 | 30.21 | 47.70 | 64.46 |
+| 16K | 671 | 20.15 | 32.38 | 45.38 | 64.13 |
+| 32K | 661 | 21.61 | 30.52 | 46.08 | 65.79 |
+| 64K | 649 | 20.17 | 30.12 | 45.52 | 63.58 |
+| 128K | 635 | 19.67 | 30.64 | 45.73 | 62.63 |
 
 Decode values are aggregate generated tok/s. The
 [full GLM benchmark record](../performance/records/glm-3.5bpw/normalized-base-20260822.md)
 contains the Coding Peak N=5 summary, machine-readable data, accounting gates,
 exclusions, and pending coordinates.
 
-![GLM Coding Peak result](../performance/records/glm-3.5bpw/coding-peak-temperature1-20260822.png)
+![GLM benchmark matrix](../performance/records/glm-3.5bpw/normalized-base-20260822.png)
+
+[Coding Peak per-run image](../performance/records/glm-3.5bpw/coding-peak-temperature1-20260822.png)
 
 This launch used fresh rank-specific JIT and create-once receipt
 namespaces. A same-namespace restart currently fails before model startup when

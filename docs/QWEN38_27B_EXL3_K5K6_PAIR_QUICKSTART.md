@@ -224,7 +224,7 @@ request-error gates.
 
 Prefill measured 1,274–1,401 tok/s through 32K, 1,050 at 64K, and 785 at
 128K. Sustained decode measured 25–30 tok/s at C1, 41–54 at C2, 72–100 at C4,
-and 90–154 aggregate tok/s at C8. Coding Peak completed 15/15 requests with a
+90–154 at C8, and 139–203 aggregate tok/s at C16 through 64K. Coding Peak completed 15/15 requests with a
 39.95 tok/s mean. The table and N counts are in the
 [full result](../performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md).
 
