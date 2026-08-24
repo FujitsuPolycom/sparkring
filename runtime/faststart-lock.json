@@ -34,7 +34,7 @@
   },
   "deepseek_v4_flash_0731_hardened_serving_image": {
     "repository": "ghcr.io/fujitsupolycom/gb10-vllm-serving",
-    "manifest_digest": "sha256:1574ba87fe4a0ad38c25a30087929ad549d823730be83b33e91fe4745b7a6571",
+    "manifest_digest": "sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd",
     "tag_for_humans": "deepseek-v4-0731-k5-pr431-20260824",
     "platform": "linux/arm64",
     "base_manifest_digest": "sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028",
@@ -42,7 +42,7 @@
     "notes": [
       "DeepSeek-specific derivative of serving_image; the generic image remains the GLM/default rollback target.",
       "Adds malformed-DSML recovery, sparse-row clamps, and the native PR431 top-k repair without embedding model weights.",
-      "This first published derivative does not add explicit OCI revision or combined-license labels; this lock and the builder sources are its provenance record.",
+      "The derivative includes SparkRing's LICENSE and THIRD_PARTY_NOTICES.md plus an OCI source-revision label; it does not claim one combined license expression for every inherited component.",
       "A diagnostic TP4/K5 build passed 100 strict max-reasoning streams plus cold 98K and 262K tool calls, but the run did not attest this published digest. TP4/K5 and TP2/K5 still need exact post-publication pull-and-replay evidence."
     ]
   }

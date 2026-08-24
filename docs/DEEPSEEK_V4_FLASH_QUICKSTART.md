@@ -58,7 +58,7 @@ contains 48 safetensors shards totaling about 167 GB.
 Pull the immutable ARM64 runtime image on every rank before launching any rank:
 
 ```bash
-docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:1574ba87fe4a0ad38c25a30087929ad549d823730be83b33e91fe4745b7a6571
+docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd
 ```
 
 This is the `deepseek_v4_flash_0731_hardened_serving_image.manifest_digest`
@@ -119,7 +119,7 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
   -v /path/to/jit-cache:/cache \
   --env-file /path/to/rank-"$RANK".env \
   --entrypoint /opt/venv/bin/vllm \
-  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:1574ba87fe4a0ad38c25a30087929ad549d823730be83b33e91fe4745b7a6571 \
+  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd \
   serve /models/deepseek-v4-flash-0731 \
   --tensor-parallel-size 2 --nnodes 2 --node-rank "$RANK" \
   --master-addr "$RANK0_FABRIC_ADDR" --master-port 29500 \
@@ -156,7 +156,7 @@ docker run -d --name deepseek-v4-flash-r"$RANK" \
   -v /path/to/jit-cache:/cache \
   --env-file /path/to/rank-"$RANK".env \
   --entrypoint /opt/venv/bin/vllm \
-  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:1574ba87fe4a0ad38c25a30087929ad549d823730be83b33e91fe4745b7a6571 \
+  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd \
   serve /models/deepseek-v4-flash-0731 \
   --tensor-parallel-size 4 --nnodes 4 --node-rank "$RANK" \
   --master-addr "$RANK0_FABRIC_ADDR" --master-port 29500 \

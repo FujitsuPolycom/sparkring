@@ -9,14 +9,14 @@ TP2/K5 and TP4/K5 live replays.
 Published image:
 
 ```text
-ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:1574ba87fe4a0ad38c25a30087929ad549d823730be83b33e91fe4745b7a6571
+ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd
 ```
 
 The generic `6fc26f...` image remains unchanged as the rollback and GLM base.
-The first published derivative does not add explicit OCI revision or combined
-license labels. Treat the digest and this repository as its provenance record;
-a later rebuild should add those labels only after auditing the inherited
-image's complete license expression.
+The published derivative includes this repository's `LICENSE`,
+`THIRD_PARTY_NOTICES.md`, and source-revision label. It does not claim one
+combined OCI license expression for every inherited component; that label
+requires a separate audit of the exact base image.
 
 ## What changes
 

@@ -12,7 +12,7 @@ on directly cabled DGX Sparks. The TP2 benchmark used the DSpark package at
 
 | Setting | Value |
 |---|---|
-| Runtime image | `ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:1574ba87fe4a0ad38c25a30087929ad549d823730be83b33e91fe4745b7a6571` |
+| Runtime image | `ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd` |
 | Rollback image | `ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028` |
 | Parallelism | TP2 across a directly cabled pair or TP4 across a four-Spark cycle |
 | TP2 checkpoint | `deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7` |

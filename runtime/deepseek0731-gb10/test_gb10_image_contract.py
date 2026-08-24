@@ -6,7 +6,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 BASE = "ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028"
-PUBLISHED = "sha256:1574ba87fe4a0ad38c25a30087929ad549d823730be83b33e91fe4745b7a6571"
+PUBLISHED = "sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd"
 
 
 def test_public_lock_pins_published_image() -> None:
