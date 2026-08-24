@@ -1,33 +1,31 @@
 # SparkRing
 
-> **This repository is changing rapidly.** Documentation, profiles, and
-> branch history are being restructured as SparkRing's scope narrows to
-> switchless multi-Spark collective transport and serving. Published
-> branches may be rebased and documents may be moved, renamed, or
-> replaced without a deprecation period. Pin a commit if you depend on a
+> **This repository is changing rapidly.** Pin a commit if you depend on a
 > specific state of this tree.
 
-SparkRing is a low-latency collective transport and vLLM-based
-inference-serving stack for switchless clusters of NVIDIA DGX Spark systems
+  
+  SparkRing is a low-latency collective transport and vLLM-based
+inference-serving stack for switchless clusters of NVIDIA DGX 'Spark' systems
 powered by the GB10 Grace Blackwell Superchip.
 
 SparkRing supports GB10 pairs, four-node rings, and Six-node rings (in dev).
 
-Start with a blank DGX Spark using the
-[bootstrap guide](docs/BOOTSTRAP.md). The model-independent `sparkring cluster
+Models run as tensor-parallel deployments over the direct fabric without an
+external Ethernet or InfiniBand switch. [SIRCL](https://github.com/FujitsuPolycom/sparkring/blob/main/docs/SIRCL.md) provides custom RDMA collectives
+where applicable, CUDA-graph command rings support repeated decode
+work, and [patched NCCL](https://github.com/FujitsuPolycom/sparkring/blob/main/spark_transport/nccl/README.md) handles communication outside SIRCL's supported paths.
+
+The repository provides launch tooling, model profiles, test evidence, and [performance data](https://github.com/FujitsuPolycom/sparkring/tree/main/performance).
+
+## Setup
+
+Start with ssh to node0 and enough disk space for the intended model weights. 
+Use the [bootstrap guide](docs/BOOTSTRAP.md). The model-independent `sparkring cluster
 init` workflow enrolls nodes, discovers management and ConnectX-7 hardware,
 generates the cluster inventory, and launches Ring Doctor before any model
 profile is selected.
 
-Models run as tensor-parallel deployments over the direct fabric without an
-external Ethernet or InfiniBand switch. [SIRCL](https://github.com/FujitsuPolycom/sparkring/blob/main/docs/SIRCL.md) provides custom RDMA collectives
-for tested paths, CUDA-graph command rings support repeated decode
-work, and [patched NCCL](https://github.com/FujitsuPolycom/sparkring/blob/main/spark_transport/nccl/README.md) handles communication outside SIRCL's supported paths.
-
-The repository provides launch tooling, model profiles, test evidence, and [performance data](https://github.com/FujitsuPolycom/sparkring/tree/main/performance). Model-specific policy
-belongs to profiles rather than the transport.
-
-## Start here
+## Resources
 
 - [Supported models and profiles](#profiles)
 - [Benchmark results and throughput tables](docs/RESULTS.md)
