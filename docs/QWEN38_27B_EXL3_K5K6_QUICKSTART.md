@@ -305,7 +305,8 @@ sequence limit, and scheduler budget in addition to these topology values:
   this rank.
 
 The management LAN must permit mutual TCP between ranks. vLLM's multi-node
-`mp` executor uses dynamic worker ports in addition to rendezvous port 29500.
+`mp` executor uses dynamic worker ports in addition to the rendezvous port
+configured by `MASTER_PORT`.
 The environment uses management only for process/bootstrap traffic; model
 collectives use the two RoCE devices.
 
@@ -351,9 +352,9 @@ nvidia-smi
 ss -ltn
 ```
 
-Do not continue while another model stack owns the GPU or rank-0 ports 8000
-and 29500. Then run the same container and mounts as the real launch, but pass
-`--check`:
+Do not continue while another model stack owns the GPU or either rank-0 port
+configured by `API_PORT` and `MASTER_PORT`. Then run the same container and
+mounts as the serving launch, but pass `--check`:
 
 ```bash
 docker run --rm \
@@ -412,11 +413,12 @@ CONTAINER_ID=$(docker run -d --name "$CONTAINER" \
 printf '%s\n' "$CONTAINER_ID" > "$ID_FILE"
 ```
 
-Rank 0 listens on port 8000. Ranks 1-3 run headless. The launcher carries the
-complete serving command, including TP4/DCP1, the 1,048,576-token request limit,
-64 sequences, the 8,192-token scheduler budget, FP8 KV, native aligned prefix
-caching, probabilistic Qwen MTP3 with standard rejection, FP8 EXL3 prefill,
-and full-decode CUDA graphs.
+Rank 0 listens on `API_PORT`. Ranks 1-3 run headless. The launcher carries the
+complete serving command, including TP4/DCP1; the request, sequence, scheduler,
+and speculative-token limits configured by `MAX_MODEL_LEN`, `MAX_NUM_SEQS`,
+`MAX_NUM_BATCHED_TOKENS`, and `NUM_SPECULATIVE_TOKENS`; FP8 KV; native aligned
+prefix caching; probabilistic Qwen speculation with standard rejection; FP8
+EXL3 prefill; and full-decode CUDA graphs.
 The tracked
 [`scripts/qwen38_dgx4_serve.sh`](../scripts/qwen38_dgx4_serve.sh) is baked at
 `/ws/qwen38_dgx4_serve.sh` by the image builder.
@@ -470,16 +472,20 @@ hash/preflight check to make a later attempt proceed.
 From a client that can reach rank 0:
 
 ```bash
+API_PORT=<API_PORT value from rank 0 environment>
+MAX_MODEL_LEN=<MAX_MODEL_LEN value from rank 0 environment>
 mkdir -p "$HOME/qwen38/logs"
 python scripts/qwen38_smoke.py \
-  --endpoint http://<rank0-management-ip>:8000 \
+  --endpoint "http://<rank0-management-ip>:$API_PORT" \
   --model qwen38 \
+  --expected-max-model-len "$MAX_MODEL_LEN" \
   --timeout 120 \
   --output "$HOME/qwen38/logs/qwen38-smoke-${ATTEMPT_ID}.json"
 ```
 
-The stdlib-only harness checks `/health`, model identity and the 1,048,576-token
-limit in `/v1/models`, repeated deterministic arithmetic, the `multiply(6,7)`
+The stdlib-only harness checks `/health`, model identity and the configured
+`MAX_MODEL_LEN` value in `/v1/models`, repeated deterministic arithmetic, the
+`multiply(6,7)`
 tool call, a tiny data-URL vision request, repeated-prefix output equality,
 and divergent shared-prefix suffixes. It
 compares stable message fields rather than API IDs or timestamps and returns
@@ -505,7 +511,7 @@ docker logs --tail 200 "$CONTAINER_ID"
 From the client, require rank 0 to remain healthy:
 
 ```bash
-curl -fsS http://<rank0-management-ip>:8000/health
+curl -fsS "http://<rank0-management-ip>:$API_PORT/health"
 ```
 
 ## 10. Stop or restart the exact deployment

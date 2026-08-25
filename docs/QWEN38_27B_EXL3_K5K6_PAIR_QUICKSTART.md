@@ -196,11 +196,12 @@ docker logs --follow "qwen38-dgx2-${ATTEMPT_ID}-r0"
 The ready service must report all of these:
 
 - TP world size 2 and one worker per rank;
-- `max_seq_len=1048576` and `kv_cache_dtype=fp8`;
+- `max_seq_len` equal to `MAX_MODEL_LEN` and `kv_cache_dtype=fp8`;
 - `draft_sample_method=probabilistic` in the resolved speculative config;
 - NCCL connected over the selected RoCEv2 GID;
 - `Application startup complete` on rank 0; and
-- `/v1/models` advertising `qwen38` with `max_model_len` 1,048,576.
+- `/v1/models` advertising `qwen38` with `max_model_len` equal to
+  `MAX_MODEL_LEN`.
 
 ## 7. Run bounded functional checks
 

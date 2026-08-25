@@ -19,7 +19,7 @@ schema_version: 1
 
 site:
   name: exl3-r7-4-node-ring
-  description: Example four-node DGX Spark ring for the R7 3.5-bpw candidate - REPLACE.
+  description: Example four-node DGX Spark ring for the R7 3.5-bpw serving profile - REPLACE.
 
 topology:
   mtu: 9000
@@ -147,7 +147,7 @@ runtime:
   model_revision: "9ab9579774cc432df91567a36f6e9e863e0d4c9f"
   checkpoint_sha256: 9fd852f69ed64442e31dce1cbc5fe7acd0a76bfb848e945d272fe98d00d0c9cd
 
-# R7 candidate serving contract: fixed MTP4, DCP4, 9.25 GB KV/rank, fp8_ds_mla.
+# R7 serving contract: fixed MTP4, DCP4, 9.25 GB KV/rank, fp8_ds_mla.
 # The MTP3 rollback uses mtp_tokens: 3 and kv_cache_bytes_per_rank: 9250000000.
 serving:
   tensor_parallel_size: 4

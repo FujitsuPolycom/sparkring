@@ -251,7 +251,9 @@ usually fail or waste memory.
 
 For the pair, change `MAX_MODEL_LEN`, `MAX_NUM_SEQS`, and
 `MAX_NUM_BATCHED_TOKENS` in its environment file and rerun the launcher's
-`--check` mode. The four-Spark workflow uses explicit CLI configuration.
+`--check` mode. For the four-Spark cycle, change the same values in every
+rank's `deepseek-v4-flash-0731.env.example` copy, confirm that they match, and
+rerun `deepseek_v4_cycle_serve.sh --check` on every rank.
 
 **Set `--max-num-batched-tokens` explicitly.** The normalized comparison target
 uses 4096 in every DeepSeek base and SparkCache profile. A recorded pair run

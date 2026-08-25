@@ -1,4 +1,4 @@
-"""GPU-free contracts for the Qwen3.8-27B four-Spark candidate profile."""
+"""GPU-free contracts for the implemented Qwen3.8-27B four-Spark profile."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def _env_values() -> dict[str, str]:
     return values
 
 
-def test_recipe_declares_the_four_spark_candidate() -> None:
+def test_recipe_declares_the_four_spark_profile() -> None:
     recipe = _recipe()
     assert recipe["schema"] == "sparkring-recipe/v1"
     assert recipe["recipe_id"] == "qwen38-27b-exl3-k5k6"

@@ -12,10 +12,10 @@ The R7 configuration is split by responsibility:
 | File | Role |
 |---|---|
 | `exl3-r7-site.example.yaml` | Four-rank site topology, host paths, and serving parameters |
-| `exl3-r7-candidate.example.json` | Candidate image identity, model hashes, transport selection, and enabled R7 options |
+| `exl3-r7-candidate.example.json` | Image identity, model hashes, transport selection, and enabled R7 options |
 | `exl3-r7-pins.json` | R7 model and runtime identity pins |
 
-Copy the site and candidate templates to local, untracked paths. Replace every
+Copy the site and image-identity templates to local, untracked paths. Replace every
 placeholder with values for one appliance, then record the resolved inputs and
 image identity with the resulting evidence. Do not commit host addresses,
 credentials, model files, local paths, or a locally produced image ID.
@@ -36,8 +36,9 @@ site override. SparkCache recipes inherit the model, cache, ports, and serving
 values from the generated GLM base profile.
 
 The site template is a declarative input for four directly connected ranks.
-The candidate template binds the selected image and model hashes to the
-transport and runtime options. Treat a mismatch between candidate, pins, and
+The image-identity template, `exl3-r7-candidate.example.json`, binds the
+selected image and model hashes to the transport and runtime options. Treat a
+mismatch between that template, pins, and
 the built image as a failed configuration, not a value to normalize manually.
 
 Run the focused offline tests after changing an R7 configuration contract:
@@ -94,7 +95,7 @@ validates and consumes the serving values inside the prepared runtime
 container.
 
 `qwen38-27b-exl3-k5k6.env.example` is the per-rank environment for the
-four-Spark Qwen candidate. Copy it once per rank and replace:
+implemented four-Spark Qwen profile. Copy it once per rank and replace:
 
 - `<RENDEZVOUS_IFNAME>` with the rank's management interface;
 - `<RANK_RENDEZVOUS_IP>` with that interface's address;
@@ -117,7 +118,7 @@ four-rank defaults from `recipes/qwen38-27b-exl3-k5k6.json`.
 ## DeepSeek SIRCL research overlay
 
 `deepseek-v4-flash-0731-sircl-research.env.example` is a second per-rank
-environment file for the research-only width-4096 SIRCL graph candidate. It
+environment file for the research-only width-4096 SIRCL graph overlay. It
 does not replace the canonical environment. Apply it after the canonical file
 only for an authorized matched A/B, and resolve both direct peer addresses
 against the device named beside each address. The offline plan and evidence

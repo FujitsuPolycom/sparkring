@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-recipe/v1",
   "recipe_id": "deepseek-v4-flash-0731",
-  "status": "candidate",
+  "status": "implemented",
   "hardware": {
     "platform": "linux/arm64",
     "cuda_arch": "sm_121",
@@ -50,14 +50,14 @@
     "max_num_batched_tokens": 4096,
     "async_scheduling": true,
     "scheduler_reserve_full_isl": true,
-    "sizing_note": "The candidate cycle uses the 1048576-token context, 32-sequence limit, 4096-token scheduler budget, 256-token block size, and 16 GiB per-rank key-value reservation used by the benchmark campaign. Setting kv_cache_memory_bytes disables the gpu_memory_utilization guard, so free memory must be checked after launch rather than assumed."
+    "sizing_note": "The four-rank cycle profile uses a 1048576-token request limit, 32-sequence limit, 4096-token scheduler budget, 256-token block size, and 16 GiB per-rank key-value reservation. Setting kv_cache_memory_bytes disables the gpu_memory_utilization guard, so free memory must be checked after launch rather than assumed."
   },
   "evidence": {
     "status": "implemented",
     "benchmark_runtime_image": "ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028",
-    "conditions": "Historical live candidate evidence from four directly cabled DGX Sparks using the benchmark_runtime_image and deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062: 1048576-token request limit, 32 sequences, 4096 batched tokens, 16 GiB key-value reservation per rank, block size 256, fp8_ds_mla, DSpark depth 5, asynchronous scheduling, full-input-length reservation, and patched NCCL. Prefill and sustained decode used temperature 1.0 and effective top-p 1.0 through 128K.",
+    "conditions": "Four directly cabled DGX Sparks used benchmark_runtime_image and deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062 with a 1048576-token request limit, 32 sequences, 4096 batched tokens, 16 GiB key-value reservation per rank, block size 256, fp8_ds_mla, DSpark depth 5, asynchronous scheduling, full-input-length reservation, and patched NCCL. Prefill and sustained decode used temperature 1.0 and effective top-p 1.0 through 128K.",
     "result": "All four ranks rendezvoused and served the model. C1/C2 were measured with five accepted observations per context; every other applicable decode cell used at least three. At 16K, aggregate throughput measured 68.84 tok/s at C1, 139.01 at C2, 428.48 at C16, and 508.11 at C32. Coding Peak averaged 95.77 tok/s across fifteen requests.",
-    "conclusion": "The normalized four-rank settings are live-benchmarked on benchmark_runtime_image. The currently selected hardened runtime still needs an exact published-digest replay.",
+    "conclusion": "The recorded four-rank settings are live-benchmarked on benchmark_runtime_image. The hardened runtime selected by runtime.image_lock_entry still needs an exact published-digest replay.",
     "limitations": [
       "No SIRCL shadow-comparison window is qualified for width 4096.",
       "The TP4 plain 0731 weight package differs from the DSpark package used by TP2, so TP2-versus-TP4 values are not an exact same-weight scaling comparison.",

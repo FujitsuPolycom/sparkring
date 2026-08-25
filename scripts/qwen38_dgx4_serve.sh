@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start one rank of the Qwen3.8-27B EXL3 K5/K6 four-Spark candidate.
+# Start one rank of the implemented Qwen3.8-27B EXL3 K5/K6 four-Spark profile.
 # Run inside the prepared runtime container on every rank. Rank 0 serves the
 # API; ranks 1-3 run headless workers. Pass --check to validate the complete
 # local rank contract and print the command without starting vLLM.
