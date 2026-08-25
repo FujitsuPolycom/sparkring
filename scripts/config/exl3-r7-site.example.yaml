@@ -140,6 +140,8 @@ runtime:
   container_image: sparkring/glm52-exl3-r7-3.5bpw:REPLACE
   # Replace with your local image ID (docker image inspect <ref> --format '{{.Id}}').
   container_image_digest: sha256:1111111111111111111111111111111111111111111111111111111111111111
+  # Absolute host model directory. The generated launcher mounts it read-only
+  # at the profile's fixed container model path.
   model_path: /models/glm52-exl3-r7-3.5bpw
   model_repo: brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78
   model_revision: "9ab9579774cc432df91567a36f6e9e863e0d4c9f"
@@ -160,6 +162,8 @@ serving:
   master_port: 29500
 
 paths:
+  # Host directories. The JIT path is mounted at /cache/jit. The context path
+  # stores external SparkCache state when a SparkCache recipe is selected.
   jit_cache_dir: /var/lib/sparkring/jit-cache
   context_cache_dir: /var/lib/sparkring/context-cache
   evidence_dir: ./evidence

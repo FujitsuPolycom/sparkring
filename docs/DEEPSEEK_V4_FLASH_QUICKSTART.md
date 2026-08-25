@@ -2,10 +2,27 @@
 
 Deploy DeepSeek-V4-Flash across directly cabled DGX Sparks in either of two
 topologies: **two tensor-parallel ranks on a cabled pair**, or **four on a
-cycle**. Both setups have been benchmarked. The measured pair used
+cycle**.
+
+**Status: implemented.** The env-driven launchers at
+[`scripts/deepseek_v4_pair_serve.sh`](../scripts/deepseek_v4_pair_serve.sh) and
+[`scripts/deepseek_v4_cycle_serve.sh`](../scripts/deepseek_v4_cycle_serve.sh)
+have offline contract coverage. Equivalent two-rank and four-rank serving
+arguments have served requests with benchmark image
+`ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028`
+under the checkpoint conditions below. The published image selected by the
+`deepseek_v4_flash_0731_hardened_serving_image` key in
+[`runtime/faststart-lock.json`](../runtime/faststart-lock.json) has not completed an exact
+post-publication pull-and-replay on either topology, so the profiles are not
+qualified for general use or for 1,048,576-token output quality. The recorded
+pair throughput used
 `deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7`;
-the measured cycle used
+the recorded cycle throughput used
 `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062`.
+The pair package has the same configuration and tensor index as plain 0731,
+but different weight payloads. The measurements therefore establish launch
+behavior and conditional throughput, not exact checkpoint scaling or output
+quality.
 
 The machine-readable serving contracts are
 [`recipes/deepseek-v4-flash-0731-pair.json`](../recipes/deepseek-v4-flash-0731-pair.json)
@@ -13,9 +30,8 @@ for the pair and
 [`recipes/deepseek-v4-flash-0731.json`](../recipes/deepseek-v4-flash-0731.json)
 for the cycle.
 
-Both public recipes use the plain 0731 package and serve a 1,048,576-token
-request length. The measured TP2 result used the DSpark package named above;
-its configuration and tensor index match, while its weight payloads differ.
+Both public recipes use the plain 0731 package and configure a
+1,048,576-token request limit.
 
 | | Two-Spark pair | Four-Spark cycle |
 |---|---|---|
@@ -24,15 +40,15 @@ its configuration and tensor index match, while its weight payloads differ.
 | Weights resident per rank | 80.97 GiB | 40.82 GiB |
 | `--tensor-parallel-size` / `--nnodes` | 2 | 4 |
 | `--kv-cache-memory-bytes` | 17179869184 (16 GiB) | 17179869184 (16 GiB) |
-| Context / Seq / Batch | 1M, 32, 4096 | 1M, 32, 4096 |
+| Request limit / sequences / scheduler tokens | 1M / 32 / 4096 | 1M / 32 / 4096 |
 | Environment template | `deepseek-v4-flash-0731-pair.env.example` | `deepseek-v4-flash-0731.env.example` |
 
 `--max-model-len 1048576`, `--max-num-seqs 32`, `--max-num-batched-tokens
 4096`, `--block-size 256`, and the 16 GiB reservation are the settings used by
 both base topologies.
 
-Both commands explicitly enable asynchronous scheduling and retain complete
-input-length reservation before admission:
+Both commands explicitly enable asynchronous scheduling and reserve each
+request's complete input length before admission:
 
 ```text
 --async-scheduling --scheduler-reserve-full-isl
@@ -64,23 +80,38 @@ docker pull ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc
 This is the `deepseek_v4_flash_0731_hardened_serving_image.manifest_digest`
 pinned by
 [`runtime/faststart-lock.json`](../runtime/faststart-lock.json). The image
-registers `DeepseekV4ForCausalLM` and adds malformed-DSML recovery plus the K5
-sparse-row/native top-k repairs. Override its inherited GLM-specific entrypoint
-as shown below. The prior generic `serving_image` digest remains available as
-the rollback image and continues to serve the GLM profiles.
+registers `DeepseekV4ForCausalLM` and repairs malformed speculative-model
+metadata plus five-token sparse-row/native top-k execution. The launch commands
+override its GLM-specific entrypoint. The generic image used to roll back GLM
+profiles is pinned by the `serving_image` key in
+[`runtime/faststart-lock.json`](../runtime/faststart-lock.json).
 
 Copy the environment template for your topology to one local file per rank.
 
-For a pair, replace `<FABRIC_IFNAME>`, `<RANK_FABRIC_IP>`, and `<GID_INDEX>`.
-Both ranks name the same interface when the pair is cabled cage 0 to cage 0:
+For a pair, fill the rank, rank-0 rendezvous address, model/cache host paths,
+fabric interface, rank fabric address, and GID index. Both ranks normally name
+the same interface when the pair is cabled cage 0 to cage 0. Keep the serving
+defaults unchanged for the first launch:
 
 ```bash
+# Run on the rank 0 / API host.
 cp scripts/config/deepseek-v4-flash-0731-pair.env.example /path/to/rank-0.env
+
+# Run on the rank 1 / worker host.
 cp scripts/config/deepseek-v4-flash-0731-pair.env.example /path/to/rank-1.env
 ```
 
-For a cycle, replace `<NCCL_SOCKET_IFNAME>` and `<RANK_FABRIC_IP>`. Even ranks
-use cage 0 (`enp1s0f0np0`) and odd ranks use cage 1 (`enp1s0f1np1`):
+Create the cache directory named by `CACHE_HOST_PATH` on each host before
+validation. It must be writable by the account running Docker:
+
+```bash
+mkdir -p /absolute/path/to/deepseek-cache
+test -w /absolute/path/to/deepseek-cache
+```
+
+For a cycle, resolve the rank/rendezvous values, model/cache host paths,
+serving values, `<NCCL_SOCKET_IFNAME>`, and `<RANK_FABRIC_IP>`. Even ranks use
+cage 0 (`enp1s0f0np0`) and odd ranks use cage 1 (`enp1s0f1np1`):
 
 ```bash
 cp scripts/config/deepseek-v4-flash-0731.env.example /path/to/rank-0.env
@@ -89,16 +120,36 @@ cp scripts/config/deepseek-v4-flash-0731.env.example /path/to/rank-2.env
 cp scripts/config/deepseek-v4-flash-0731.env.example /path/to/rank-3.env
 ```
 
+Create the `CACHE_HOST_PATH` directory recorded in each cycle rank env before
+running `deepseek_v4_cycle_serve.sh --check`.
+
 The templates' `LD_PRELOAD`, `VLLM_NCCL_SO_PATH`, and `NCCL_*` values are
-required by the published image. Do not use a GLM profile environment file, and
+required by the image selected by the
+`deepseek_v4_flash_0731_hardened_serving_image` lock key. Do not use a GLM
+profile environment file, and
 do not use the cycle template on a pair: its transport settings name two host
 channel adapters, enable subnet-aware routing, and skip tree connect, none of
 which applies when the two ranks are directly adjacent.
 
-The `<GID_INDEX>` placeholder in the pair template is the RoCE GID index for
-that interface's IPv4 address. `show_gids` lists them. Do not copy a value from
-another deployment; the correct index depends on the RoCE version and the
-address configured on the host.
+The pair template is the single operator input for the pair launcher. It
+contains the host model/cache mounts, API and rendezvous ports, speculative
+depth, request limit, sequence ceiling, and scheduler token budget in addition
+to the container environment. Rank 0 and rank 1 may use different local model
+and cache paths, but the mounted model bytes and all serving values must agree.
+
+Use these rank-specific values; keep the serving values below them identical:
+
+| Variable | Rank 0 / API host | Rank 1 / worker host |
+|---|---|---|
+| `NODE_RANK` | `0` | `1` |
+| `MASTER_ADDR` | rank 0 fabric address | same rank 0 fabric address |
+| `VLLM_HOST_IP` | rank 0 fabric address | rank 1 fabric address |
+| `MODEL_HOST_PATH` | local model directory | local directory with identical model bytes |
+| `CACHE_HOST_PATH` | local writable cache directory | local writable cache directory |
+
+The `<GID_INDEX>` placeholder is the RoCE GID index for that interface's IPv4
+address. `show_gids` lists them. Do not copy a value from another deployment;
+the correct index depends on the RoCE version and host address.
 
 ## 2. Launch one rank per host
 
@@ -108,75 +159,84 @@ recompiles its just-in-time kernels from scratch.
 
 ### Two-Spark pair
 
-Set `RANK` to `0` or `1` on the corresponding host, and `RANK0_FABRIC_ADDR` to
-rank 0's fabric address. Rank 0 serves the API; rank 1 must use `--headless`.
+The pair launcher checks the resolved environment, host paths, API and
+rendezvous ports, direct-pair NCCL settings, and positive serving limits before
+constructing Docker arguments. `--check` is offline and prints the exact
+command without creating a container. Run it on both hosts:
 
 ```bash
-docker run -d --name deepseek-v4-flash-r"$RANK" \
-  --network host --ipc host --shm-size 16g --gpus all \
-  --ulimit memlock=-1:-1 --device /dev/infiniband \
-  -v /path/to/deepseek-v4-flash-0731:/models/deepseek-v4-flash-0731:ro \
-  -v /path/to/jit-cache:/cache \
-  --env-file /path/to/rank-"$RANK".env \
-  --entrypoint /opt/venv/bin/vllm \
-  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd \
-  serve /models/deepseek-v4-flash-0731 \
-  --tensor-parallel-size 2 --nnodes 2 --node-rank "$RANK" \
-  --master-addr "$RANK0_FABRIC_ADDR" --master-port 29500 \
-  --distributed-executor-backend mp \
-  --dtype bfloat16 \
-  --max-model-len 1048576 \
-  --max-num-seqs 32 \
-  --max-num-batched-tokens 4096 \
-  --async-scheduling --scheduler-reserve-full-isl \
-  --gpu-memory-utilization 0.70 \
-  --kv-cache-memory-bytes 17179869184 \
-  --kv-cache-dtype fp8_ds_mla \
-  --block-size 256 \
-  --tokenizer-mode deepseek_v4 \
-  --kernel-config '{"enable_cutedsl_warmup": false}' \
-  --enable-auto-tool-choice --tool-call-parser deepseek_v4 \
-  --speculative-config '{"method": "dspark",
-    "num_speculative_tokens": 5, "moe_backend": "b12x"}' \
-  --served-model-name deepseek-v4-flash-0731 \
-  $([ "$RANK" -eq 0 ] && echo "--host 0.0.0.0 --port 8000" || echo "--headless")
+scripts/deepseek_v4_pair_serve.sh --check /path/to/rank-0.env
+scripts/deepseek_v4_pair_serve.sh --check /path/to/rank-1.env
 ```
+
+Each check covers one rank. Compare the printed `MAX_MODEL_LEN`,
+`MAX_NUM_SEQS`, `MAX_NUM_BATCHED_TOKENS`, and `NUM_SPECULATIVE_TOKENS` values
+on both hosts before launching; matching values do not verify that model bytes
+are identical.
+
+Start rank 1 first, then rank 0. `--run` refuses to replace an existing
+container; remove an existing container intentionally before a relaunch.
+
+```bash
+# Rank 1 / worker host
+scripts/deepseek_v4_pair_serve.sh --run /path/to/rank-1.env
+docker logs -f deepseek-v4-flash-r1
+
+# Rank 0 / API host
+scripts/deepseek_v4_pair_serve.sh --run /path/to/rank-0.env
+docker logs -f deepseek-v4-flash-r0
+```
+
+The pair environment exposes these operator-facing settings and uses the
+defaults recorded in
+[`recipes/deepseek-v4-flash-0731-pair.json`](../recipes/deepseek-v4-flash-0731-pair.json):
+
+| Variable | Default | Purpose |
+|---|---:|---|
+| `MODEL_HOST_PATH` | required | Read-only host model directory mounted at the fixed container model path |
+| `CACHE_HOST_PATH` | required | Writable parent for persistent JIT/compiler caches mounted at `/cache` |
+| `API_PORT` | 8000 | Rank-0 OpenAI-compatible API port |
+| `NUM_SPECULATIVE_TOKENS` | 5 | DSpark proposal depth |
+| `MAX_MODEL_LEN` | 1048576 | Per-request token limit |
+| `MAX_NUM_SEQS` | 32 | Scheduler admission ceiling |
+| `MAX_NUM_BATCHED_TOKENS` | 4096 | Scheduler budget and chunked-prefill size |
+
+The launcher uses `--ipc host --shm-size 16g`. Host IPC makes the host's
+`/dev/shm` allocation authoritative, so changing the declaration from 16 GiB
+to 64 GiB does not enlarge shared memory. Compare `df -h /dev/shm` on the host
+and inside the running container when diagnosing shared-memory pressure.
 
 ### Four-Spark cycle
 
-Set `RANK` to `0`, `1`, `2`, or `3` on the corresponding host. Rank 0 serves the
-API; the other ranks must use `--headless`. The command is identical to the
-pair's except for the parallelism flags and the key-value reservation:
+The cycle launcher consumes one resolved
+`deepseek-v4-flash-0731.env.example` copy per rank and exposes the same model,
+cache, port, speculation, context, sequence, and scheduler settings as the pair
+launcher. Validate all four ranks and compare their printed serving values:
 
 ```bash
-docker run -d --name deepseek-v4-flash-r"$RANK" \
-  --network host --ipc host --shm-size 16g --gpus all \
-  --ulimit memlock=-1:-1 --device /dev/infiniband \
-  -v /path/to/deepseek-v4-flash-0731:/models/deepseek-v4-flash-0731:ro \
-  -v /path/to/jit-cache:/cache \
-  --env-file /path/to/rank-"$RANK".env \
-  --entrypoint /opt/venv/bin/vllm \
-  ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd \
-  serve /models/deepseek-v4-flash-0731 \
-  --tensor-parallel-size 4 --nnodes 4 --node-rank "$RANK" \
-  --master-addr "$RANK0_FABRIC_ADDR" --master-port 29500 \
-  --distributed-executor-backend mp \
-  --dtype bfloat16 \
-  --max-model-len 1048576 \
-  --max-num-seqs 32 \
-  --max-num-batched-tokens 4096 \
-  --async-scheduling --scheduler-reserve-full-isl \
-  --gpu-memory-utilization 0.70 \
-  --kv-cache-memory-bytes 17179869184 \
-  --kv-cache-dtype fp8_ds_mla \
-  --block-size 256 \
-  --tokenizer-mode deepseek_v4 \
-  --kernel-config '{"enable_cutedsl_warmup": false}' \
-  --enable-auto-tool-choice --tool-call-parser deepseek_v4 \
-  --speculative-config '{"method": "dspark",
-    "num_speculative_tokens": 5, "moe_backend": "b12x"}' \
-  --served-model-name deepseek-v4-flash-0731 \
-  $([ "$RANK" -eq 0 ] && echo "--host 0.0.0.0 --port 8000" || echo "--headless")
+scripts/deepseek_v4_cycle_serve.sh --check /path/to/rank-0.env
+scripts/deepseek_v4_cycle_serve.sh --check /path/to/rank-1.env
+scripts/deepseek_v4_cycle_serve.sh --check /path/to/rank-2.env
+scripts/deepseek_v4_cycle_serve.sh --check /path/to/rank-3.env
+```
+
+Start worker ranks 1-3 first, then rank 0:
+
+```bash
+# Run on the corresponding worker hosts.
+scripts/deepseek_v4_cycle_serve.sh --run /path/to/rank-1.env
+scripts/deepseek_v4_cycle_serve.sh --run /path/to/rank-2.env
+scripts/deepseek_v4_cycle_serve.sh --run /path/to/rank-3.env
+
+# Run on the API host after all workers are waiting for rendezvous.
+scripts/deepseek_v4_cycle_serve.sh --run /path/to/rank-0.env
+```
+
+Follow the container for the rank on each host, for example:
+
+```bash
+docker logs -f deepseek-v4-flash-r1
+docker logs -f deepseek-v4-flash-r0
 ```
 
 `--kv-cache-dtype fp8_ds_mla` is required in both topologies: it declares the
@@ -189,11 +249,15 @@ substitute generic `fp8`.
 `--max-num-batched-tokens` are not independent. Changing one alone will
 usually fail or waste memory.
 
+For the pair, change `MAX_MODEL_LEN`, `MAX_NUM_SEQS`, and
+`MAX_NUM_BATCHED_TOKENS` in its environment file and rerun the launcher's
+`--check` mode. The four-Spark workflow uses explicit CLI configuration.
+
 **Set `--max-num-batched-tokens` explicitly.** The normalized comparison target
-uses 4096 in every DeepSeek base and SparkCache profile. A historical pair run
-with 8192 measured higher C32 throughput, but it is not the default because it
-would make the base and cache comparison change two variables. The 4096 target
-was measured in the C1/C2/C4/C8/C16/C32 campaign below.
+uses 4096 in every DeepSeek base and SparkCache profile. A recorded pair run
+with 8192 measured higher throughput at concurrency 32, but the base and cache
+comparison uses 4096 so the scheduler budget remains controlled. The
+measurement records cover concurrency levels 1, 2, 4, 8, 16, and 32.
 
 **A longer request limit is close to free; a larger pool is not.** This model
 has bounded cache groups whose cost per sequence is fixed, so per-token pool
@@ -204,10 +268,9 @@ memory.
 
 **Sequence count and speculation depth inflate the per-request floor.** The
 engine refuses to start unless the pool can hold one full-length request. The
-32-sequence target retains the bounded sequence count while the pair reservation
-increases to 16 GiB. The normalized pair reported a 2,198,756-token pool and
-2.10x full-length capacity. A separate cycle gate must record its pool and free
-memory before a concurrency campaign begins.
+32-sequence pair profile uses a 16 GiB reservation. The recorded pair reported
+a 2,198,756-token pool and 2.10x full-length capacity. A four-Spark concurrency
+measurement must record its pool and free memory before load generation.
 
 **`--kv-cache-memory-bytes` disables the memory-utilization guard.** The engine
 states this explicitly: it "skipped memory profiling. This does not respect the
@@ -218,8 +281,8 @@ exhausting the node.
 
 Check free memory after a launch rather than trusting the flag. The normalized
 pair had only 4.9–6.0 GiB available per node and used swap. The roughly 50 GB
-cycle observation came from a historical configuration, not the normalized
-block-256, batch-4096 target.
+cycle observation used settings other than the block-256, batch-4096
+configuration recorded here.
 A node driven to 2-3 GB free with swap in use is one long prefill away from
 having its engine core killed, and on this platform severe memory exhaustion
 can leave a host answering ICMP while refusing to complete any new connection,
@@ -228,9 +291,14 @@ recoverable only by a power cycle.
 ## 4. Verify rank 0
 
 Wait for the API health endpoint, then issue a deterministic chat request.
+Read the configured port from the rank-0 environment so a non-default
+`API_PORT` is verified correctly.
 
 ```bash
-curl -s localhost:8000/v1/chat/completions \
+api_port=$(sed -n 's/^API_PORT=//p' /path/to/rank-0.env)
+curl --fail "http://localhost:$api_port/health"
+curl "http://localhost:$api_port/v1/models"
+curl -s "http://localhost:$api_port/v1/chat/completions" \
   -H 'Content-Type: application/json' \
   -d '{"model":"deepseek-v4-flash-0731",
        "messages":[{"role":"user","content":"What is 17 * 23?"}],
@@ -245,9 +313,10 @@ bought.
 ## Measured
 
 Both cache-disabled base setups were measured with the sampling settings in
-their benchmark records. C1/C2 use at least five accepted observations per context; every
-other applicable decode cell uses at least three. Decode values below are mean
-aggregate generated tok/s.
+their benchmark records. Concurrency levels 1 and 2 use at least five accepted
+observations per context; every other applicable decode cell uses at least
+three. Table headings `C1` through `C32` denote concurrent request counts.
+Decode values are mean aggregate generated tokens per second.
 
 The DSpark package used by TP2 has the same model configuration, tokenizer
 configuration, and tensor index as the plain 0731 package used by TP4. Its 48
@@ -284,7 +353,7 @@ exact same-weight TP2-versus-TP4 scaling test.
 
 The full records report mean, standard deviation, N, Coding Peak, exclusions,
 and source-receipt hashes. Synthetic sustained text changes DSpark acceptance,
-so even five-observation cells retain meaningful variance.
+so five-observation cells have meaningful variance.
 
 The profile remains collective-latency-sensitive: the model issues two
 all-reduces per layer across 43 layers, and each token waits on synchronous
@@ -312,30 +381,33 @@ single-host multi-GPU profiles and are not worth carrying here.
 
 Each topology has separate results recorded in its serving contract.
 
-A diagnostic plain-0731 TP4/K5 deployment built from this runtime lane was
-exercised on 2026-08-24: 100 consecutive max-reasoning strict streamed tool
-calls passed, followed by cold tool calls at approximately 98K and 262K prompt
-tokens. No raw DSML/control tokens or server-error responses were observed. The run did
-not attest the published digest, so both TP4/K5 and TP2/K5 still need an exact
-post-publication pull-and-replay. These correctness checks do not replace the
-throughput tables below.
+A diagnostic four-rank tensor-parallel deployment of plain 0731 with five
+DSpark proposal tokens was exercised on 2026-08-24: 100 consecutive
+maximum-reasoning strict streamed tool calls passed, followed by cold tool
+calls at approximately 98K and 262K prompt tokens. No raw speculative-model
+control tokens or server-error responses were observed. The run did not attest
+an image digest, so both the two-rank and four-rank five-token profiles
+require an exact post-publication pull-and-replay. These correctness checks are
+separate from the throughput tables in this document.
 
-The two-Spark launch was exercised on 2026-08-21 on two directly cabled Sparks:
+The two-Spark launch used benchmark image
+`ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028`
+on 2026-08-21 on two directly cabled Sparks:
 both ranks rendezvoused, a deterministic completion, an emitted tool call and a
 34-tool chat request returned coherent output with no leaked markers, and DSpark
 speculation ran at depth 5 with a 2.76 mean acceptance length. It mounted only
-the checkpoint and a cache directory, so the published image needs no source
+the checkpoint and a cache directory, so that benchmark image needs no source
 overlay.
 
-The four-Spark launch was exercised on 2026-08-21 against the same pinned
-image: all four ranks rendezvoused, each loading 40.82 GiB of weights, a
+The four-Spark launch used the same benchmark image digest on 2026-08-21: all
+four ranks rendezvoused, each loading 40.82 GiB of weights, a
 deterministic completion and an emitted tool call were correct, and DSpark
 speculation ran at depth 5 with a 3.06 mean acceptance length.
 
-The historical throughput figures are client-observed on the stated prompt and
+The throughput figures are client-observed on the stated prompt and
 generation lengths. The normalized TP2 table is isolated-server sustained
 decode and standalone prefill. Neither dataset measures output quality or
-qualifies the setup for general use. The normal launch uses
+qualifies the setup for general use. The documented launch uses
 patched NCCL from the environment template; SIRCL width-4096 graph collectives
 are research-only and are not part of this quickstart. See
 [the profile record](profiles/DEEPSEEK_V4_FLASH_0731.md) and
@@ -343,7 +415,7 @@ are research-only and are not part of this quickstart. See
 
 The offline-only [four-Spark SIRCL A/B plan](DEEPSEEK_V4_FLASH_SIRCL_AB.md)
 validates both transport arms against this quickstart's machine-readable
-recipe, applies the research experiment's 4,096-token batch budget to both
-arms, and preserves its model, memory, scheduler-mode, and five-token DSpark
+recipe, applies a 4,096-token batch budget to both arms, and uses the same
+model, memory, scheduler mode, and five-token DSpark
 contract. The plan has no execution mode and does not promote SIRCL into this
 quickstart.

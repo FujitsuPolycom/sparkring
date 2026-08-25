@@ -291,7 +291,9 @@ scp scripts/config/qwen38-27b-exl3-k5k6.env.example \
 Edit `$HOME/qwen38/config/rank.env` locally on each rank; do not reuse rank 0's
 resolved file on another rank.
 
-Replace all four placeholders:
+Resolve every placeholder. The env file contains the rank/rendezvous values,
+host model/cache/log paths, API/master ports, speculative depth, request limit,
+sequence limit, and scheduler budget in addition to these topology values:
 
 - `<RENDEZVOUS_IFNAME>`: the management interface used by vLLM, Gloo, and
   NCCL bootstrap TCP;
@@ -307,20 +309,33 @@ The management LAN must permit mutual TCP between ranks. vLLM's multi-node
 The environment uses management only for process/bootstrap traffic; model
 collectives use the two RoCE devices.
 
+Create the configured writable directories and verify the model mount source
+on every rank:
+
+```bash
+# shellcheck disable=SC1090
+. "$HOME/qwen38/config/rank.env"
+export -n LD_PRELOAD
+mkdir -p "$CACHE_HOST_PATH" "$LOG_HOST_PATH"
+test -d "$MODEL_HOST_PATH"
+test -w "$CACHE_HOST_PATH" && test -w "$LOG_HOST_PATH"
+```
+
 ## 6. Run the no-start local preflight
 
-Set these values separately on each host:
+Read the host mounts and rank settings from the resolved env file:
 
 ```bash
 IMAGE=sparkring-qwen38:arm64-sm121
-MODEL_PARENT="$HOME/qwen38/model"
-MODEL_DIR="$MODEL_PARENT/Qwen3.8-27B-EXL3-K5K6-hydrated"
 ATTEMPT_ID=<shared-deployment-id>
-RANK=<0-to-3>
-RANK0_RENDEZVOUS_ADDR=<rank0-management-ip>
 ENV_FILE="$HOME/qwen38/config/rank.env"
-CACHE_DIR="$HOME/qwen38/cache"
-LOG_DIR="$HOME/qwen38/logs"
+# shellcheck disable=SC1090
+. "$ENV_FILE"
+# Do not apply the container's NCCL preload to host commands.
+export -n LD_PRELOAD
+MODEL_DIR="$MODEL_HOST_PATH"
+CACHE_DIR="$CACHE_HOST_PATH"
+LOG_DIR="$LOG_HOST_PATH"
 
 case "$ATTEMPT_ID" in
   ''|*[!A-Za-z0-9_.-]*) echo "ATTEMPT_ID must match [A-Za-z0-9_.-]+" >&2; exit 1 ;;
@@ -348,8 +363,6 @@ docker run --rm \
   -v "$CACHE_DIR:/ws/cache" \
   -v "$LOG_DIR:/ws/logs" \
   -v "$ENV_FILE:/ws/rank.env:ro" \
-  -e RANK="$RANK" \
-  -e RANK0_RENDEZVOUS_ADDR="$RANK0_RENDEZVOUS_ADDR" \
   --label org.sparkring.profile=qwen38-27b-exl3-k5k6 \
   --label org.sparkring.attempt="$ATTEMPT_ID" \
   --label org.sparkring.rank="$RANK" \
@@ -391,8 +404,6 @@ CONTAINER_ID=$(docker run -d --name "$CONTAINER" \
   -v "$CACHE_DIR:/ws/cache" \
   -v "$LOG_DIR:/ws/logs" \
   -v "$ENV_FILE:/ws/rank.env:ro" \
-  -e RANK="$RANK" \
-  -e RANK0_RENDEZVOUS_ADDR="$RANK0_RENDEZVOUS_ADDR" \
   --label org.sparkring.profile=qwen38-27b-exl3-k5k6 \
   --label org.sparkring.attempt="$ATTEMPT_ID" \
   --label org.sparkring.rank="$RANK" \
@@ -416,8 +427,8 @@ Allow up to 15 minutes for first-start compilation and graph capture:
 
 ```bash
 timeout 900 bash -c \
-  'until curl -fsS http://<rank0-management-ip>:8000/health >/dev/null; do sleep 5; done'
-curl -fsS http://<rank0-management-ip>:8000/v1/models
+  "until curl -fsS http://<rank0-management-ip>:$API_PORT/health >/dev/null; do sleep 5; done"
+curl -fsS "http://<rank0-management-ip>:$API_PORT/v1/models"
 ```
 
 On every rank, require the container to remain running and inspect its log:

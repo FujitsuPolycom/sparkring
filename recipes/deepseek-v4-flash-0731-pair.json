@@ -18,6 +18,9 @@
     "image_lock": "runtime/faststart-lock.json",
     "image_lock_entry": "deepseek_v4_flash_0731_hardened_serving_image",
     "environment_template": "scripts/config/deepseek-v4-flash-0731-pair.env.example",
+    "launcher": "scripts/deepseek_v4_pair_serve.sh",
+    "launcher_preflight_argument": "--check",
+    "launcher_run_argument": "--run",
     "entrypoint": "/opt/venv/bin/vllm"
   },
   "serving": {

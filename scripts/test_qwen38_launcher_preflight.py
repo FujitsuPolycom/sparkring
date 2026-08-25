@@ -417,3 +417,27 @@ def test_explicit_run_mode_overrides_the_image_sleep_command(
     assert result.returncode == 0, result.stderr
     assert marker.exists()
     assert "--tensor-parallel-size\n4\n" in marker.read_text(encoding="utf-8")
+
+
+def test_env_serving_overrides_reach_the_vllm_command(
+    prepared_rank: tuple[dict[str, str], Path, Path],
+) -> None:
+    env, env_file, marker = prepared_rank
+    with env_file.open("a", encoding="utf-8", newline="\n") as stream:
+        stream.write(
+            "API_PORT=8123\n"
+            "NUM_SPECULATIVE_TOKENS=2\n"
+            "MAX_MODEL_LEN=262144\n"
+            "MAX_NUM_SEQS=12\n"
+            "MAX_NUM_BATCHED_TOKENS=4096\n"
+        )
+
+    result = _run_launcher(env, "--run")
+
+    assert result.returncode == 0, result.stderr
+    arguments = marker.read_text(encoding="utf-8")
+    assert "--port\n8123\n" in arguments
+    assert "--max-model-len\n262144\n" in arguments
+    assert "--max-num-seqs\n12\n" in arguments
+    assert "--max-num-batched-tokens\n4096\n" in arguments
+    assert '"num_speculative_tokens":2' in arguments
