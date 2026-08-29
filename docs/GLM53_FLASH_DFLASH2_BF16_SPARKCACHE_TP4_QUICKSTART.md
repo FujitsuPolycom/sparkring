@@ -1,7 +1,10 @@
 # Serve GLM-5.3 Flash with BF16 DFlash2 and SparkCache on four DGX Sparks
 
-Status: **qualified** for the immutable image, model revisions, and TP4/DCP1
-settings in this guide. The image is a FujitsuPolycom community derivative,
+Status: **qualified** for startup, semantic generation, runtime health, and one
+8,192-token persistent restore using the immutable image, model revisions, and
+TP4/DCP1 settings in this guide. The configured 524,288-token request limit and
+32-sequence limit were not exercised at their limits. The image is a
+FujitsuPolycom community derivative,
 not an official NVIDIA, vLLM, local-inference-lab, B12X, Inco AI, Z.AI, or
 SparkCache release.
 
@@ -44,7 +47,7 @@ obtain it under Inco AI's published terms.
   rank. Model weights are not included in either container image.
 - Python 3.11 or newer with PyYAML on the operator host.
 
-## Obtain the images
+## Obtain the images and qualification client
 
 The qualified image can be pulled directly:
 
@@ -58,15 +61,23 @@ The runtime image is the source-built parent. The SparkCache image adds the
 connector and vLLM compatibility patch; it contains the complete runtime, so
 the service profile uses only `sparkcache_image`.
 
+The deterministic qualification client is versioned with the SparkCache image
+source. Obtain that source at the revision recorded by
+`runtime/glm53-flash/pins.json`, even when using the prebuilt image:
+
+```bash
+git clone https://github.com/FujitsuPolycom/sparkcache.git
+git -C sparkcache checkout --detach 3860a2250193a6679ac6bac857af53e0757841f8
+sparkcache_root="$PWD/sparkcache"
+```
+
 To build both images instead, follow
 [`runtime/glm53-flash/BUILD.md`](../runtime/glm53-flash/BUILD.md) for the
 runtime and then run:
 
 ```bash
-git clone https://github.com/FujitsuPolycom/sparkcache.git
-git -C sparkcache checkout --detach 3860a2250193a6679ac6bac857af53e0757841f8
-python sparkcache/deploy/glm53_flash/build_public_image.py \
-  --repository sparkcache \
+python "${sparkcache_root}/deploy/glm53_flash/build_public_image.py" \
+  --repository "${sparkcache_root}" \
   --base-image "${runtime_image}" \
   --output-image sparkring-glm53-sparkcache:local \
   --output glm53-sparkcache-build-receipt.json
@@ -81,12 +92,13 @@ and the SparkCache repository's `deploy/glm53_flash/PUBLISHING.md`.
 
 ## Configure the cluster
 
-Clone the SparkRing branch containing this profile and detach at an immutable
-revision before operating a production service:
+Clone SparkRing and detach at the reviewed 40-character commit that contains
+this profile. A branch name is not an immutable deployment identity:
 
 ```bash
 git clone https://github.com/FujitsuPolycom/sparkring.git
-git -C sparkring checkout codex/glm53-flash-sparkcache-tp4
+sparkring_revision=REPLACE_WITH_REVIEWED_40_CHARACTER_COMMIT
+git -C sparkring checkout --detach "${sparkring_revision}"
 sparkring_root="$PWD/sparkring"
 cp "${sparkring_root}/scripts/config/glm53-flash-tp4-site.example.yaml" site.yaml
 cp "${sparkring_root}/scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-sparkcache.example.json" profile.json
@@ -159,7 +171,7 @@ not a particular progress line, defines readiness.
 Use SparkCache's deterministic request program:
 
 ```bash
-qualification_script="$PWD/sparkcache/deploy/glm53_flash/qualification_request.py"
+qualification_script="${sparkcache_root}/deploy/glm53_flash/qualification_request.py"
 served_model='glm-5.3-flash-nvfp4-dflash7-bf16-tp4'
 python "${qualification_script}" --endpoint "${api_endpoint}" \
   --model "${served_model}" --kind persistent --output cold.json

@@ -15,7 +15,20 @@ DFlash2 revisions, 20 GiB of FP8 GPU KV memory per rank, a 524,288-token model
 limit, 8,192 batched tokens, 32 sequences, and the 48/40 GiB SparkCache
 maximum/low-watermark policy.
 
-## Measurement and result
+## Measurement
+
+This record accepts one functional observation from the configured service.
+The sanitized receipt retains the resolved image, model, serving limits,
+capacity, startup durations, semantic result, restore timing, DFlash counters,
+memory values, RDMA state, and health gates. It contains no repeated runs or
+uncertainty calculation. The collection command, harness revision, clock
+source, and warm-up policy were not retained, so the observation remains
+research-only.
+
+The machine-readable observation is
+[`performance/receipts/glm53-flash/sparkcache-dflash2-bf16-tp4-20g-20260829/observation.json`](../../receipts/glm53-flash/sparkcache-dflash2-bf16-tp4-20g-20260829/observation.json).
+
+## Result
 
 | Measurement | Result |
 |---|---|
@@ -38,8 +51,9 @@ span. All target, DFlash, and DFlash2 CUDA graph captures completed.
 
 Twenty GiB per rank is operational at the 524,288-token model limit. The
 measured 916,676-token KV capacity cannot hold one 1,048,576-token request.
-Linear capacity scaling projects 24 GiB as a practical 1M candidate, but that
-configuration is not tested by this record.
+Linear capacity scaling estimates that 24 GiB per rank could hold a
+1,048,576-token request. That configuration is untested and the estimate is
+not a serving result.
 
 ## Limitations
 
@@ -50,5 +64,5 @@ configuration is not tested by this record.
   limiting rank has insufficient ordinary disk headroom for that ceiling plus
   a comfortable filesystem reserve.
 
-The sanitized machine-readable receipt is
-[`performance/receipts/glm53-flash/sparkcache-dflash2-bf16-tp4-20g-20260829/observation.json`](../../receipts/glm53-flash/sparkcache-dflash2-bf16-tp4-20g-20260829/observation.json).
+- The collection command, harness revision, clock source, and warm-up policy
+  are not available in the sanitized receipt.

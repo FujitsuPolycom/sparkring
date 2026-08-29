@@ -31,8 +31,21 @@ topology, serving geometry, and 8,192-token persistent restore described here.
   `FULL_AND_PIECEWISE` target CUDA graphs.
 - SparkCache maximum 48 GiB and low watermark 40 GiB per rank; native direct
   restore and streaming snapshots disabled.
+- The qualification request program came from
+  `FujitsuPolycom/sparkcache@3860a2250193a6679ac6bac857af53e0757841f8`.
+  Its source file has SHA-256
+  `82801edd4f0ee48691cd2ed5b2f03b24aac413ce9319be52360c4be0dce19199`.
 
 ## Measurement
+
+Each retained client request is one observation at concurrency one. The client
+reports wall-clock request duration; no aggregation or uncertainty estimate is
+applied. The persistent-restore procedure uses the cache commit, coordinated
+container replacement, readiness wait, one allowed recomputation while worker
+inventories converge, and then the measured restore request. The semantic
+canary runs separately after readiness. The sanitized client receipts are
+stored under
+[`performance/receipts/glm53-flash/sparkcache-dflash2-bf16-tp4-20260828/`](../../receipts/glm53-flash/sparkcache-dflash2-bf16-tp4-20260828/).
 
 The deterministic persistent request produced 8,215 prompt tokens with one
 8,192-token reusable span. Every rank committed digest `a6d78b05026f...`.
@@ -87,6 +100,11 @@ is omitted.
   selects `/opt/sparkring/nccl/libnccl.so.2` and serves successfully.
 - The target repository does not identify its unquantized base-checkpoint
   revision.
+- Per-rank transport, cache, process, and fatal-log observations are accepted
+  from the hash-bound qualification record named in
+  `runtime/glm53-flash/pins.json`. That host record is not published, so an
+  independent reader can verify the client receipts and immutable identities
+  but cannot reconstruct every host-level gate from repository content.
 
 ## Provenance
 

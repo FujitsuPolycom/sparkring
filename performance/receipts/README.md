@@ -1,9 +1,10 @@
 # Sanitized benchmark receipts
 
 Most JSON files are sanitized copies of accepted `llm_decode_bench.py`
-receipts used by the DeepSeek, GLM-5.2, and Qwen result tables. The GLM-5.3
-directory contains a functional semantic-canary receipt and does not contribute
-to a throughput table.
+receipts used by the DeepSeek, GLM-5.2, Qwen, and research-only GLM-5.3 result
+tables. The GLM-5.3 tree also contains functional restore, semantic-canary, and
+KV-capacity observations. Each GLM-5.3 record states whether it supports a
+qualified functional claim or a research-only observation.
 
 | Directory | Contents |
 |---|---|
@@ -12,6 +13,8 @@ to a throughput table.
 | [`deepseek-v4-flash/temp1/20260823-tp4/`](deepseek-v4-flash/temp1/20260823-tp4/) | 31 TP4 receipts contributing to the N=5/N=3 cycle matrix, including prefill and Coding Peak |
 | [`glm-3.5bpw/temp1/`](glm-3.5bpw/temp1/) | 10 four-Spark TP4/DCP4 sustained-decode and Coding Peak receipts |
 | [`glm53-flash/sparkcache-dflash2-bf16-tp4-20260828/`](glm53-flash/sparkcache-dflash2-bf16-tp4-20260828/) | Sanitized post-restore semantic canary for the TP4/DCP1 SparkCache validation |
+| [`glm53-flash/sparkcache-dflash2-bf16-tp4-20260829/`](glm53-flash/sparkcache-dflash2-bf16-tp4-20260829/) | One accepted 16K prefill and C1 decode observation; capacity-limited C4 and C8 cells are excluded |
+| [`glm53-flash/sparkcache-dflash2-bf16-tp4-20g-20260829/`](glm53-flash/sparkcache-dflash2-bf16-tp4-20g-20260829/) | One accepted functional observation with 20 GiB of GPU KV memory per rank |
 | [`qwen38-27b/temp1/`](qwen38-27b/temp1/) | 13 two-Spark and 16 four-Spark accepted prefill, decode, and Coding Peak receipts |
 
 Every receipt records `temperature: 1.0`. DeepSeek used effective top-p 1.0;

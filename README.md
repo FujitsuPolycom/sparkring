@@ -8,7 +8,8 @@
 inference-serving stack for switchless clusters of NVIDIA DGX 'Spark' systems
 powered by the GB10 Grace Blackwell Superchip.
 
-SparkRing supports GB10 pairs, four-node rings, and Six-node rings (in dev).
+SparkRing supports GB10 pairs and four-node rings. Six-node ring work is
+research-only.
 
 Models run as tensor-parallel deployments over the direct fabric without an
 external Ethernet or InfiniBand switch. [SIRCL](https://github.com/FujitsuPolycom/sparkring/blob/main/docs/SIRCL.md) provides custom RDMA collectives
@@ -42,7 +43,8 @@ profile is selected.
   GLM-5.3 Flash with BF16 DFlash2, DeepSeek-V4-Flash-0731, and Qwen3.8-27B
   EXL3 K5/K6. Both GLM families and DeepSeek are compatible with SparkCache;
   Qwen with SparkCache is unsupported.
-- **6× DGX Spark — physical ring.** **In dev. Target models: GLM | KIMI.**
+- **6× DGX Spark — physical ring.** **Research-only.** GLM and KIMI profiles
+  are not part of the supported repository surface.
 
 ## Profiles
 
@@ -50,8 +52,8 @@ profile is selected.
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
 |---|---|---:|---:|---:|---|---|
-| GLM-5.3 Flash + BF16 DFlash2 — qualified | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 hybrid target cache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
-| GLM-5.3 Flash + BF16 DFlash2 + SparkCache — qualified | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 target KV + 48 GiB/rank SparkCache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md) |
+| GLM-5.3 Flash + BF16 DFlash2 — functionally qualified | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 hybrid target cache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
+| GLM-5.3 Flash + BF16 DFlash2 + SparkCache — functionally qualified | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 target KV + 48 GiB/rank SparkCache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md) |
 
 ### Other model profiles
 
@@ -67,6 +69,10 @@ profile is selected.
 | DeepSeek-V4-Flash-0731 + SparkCache | 4 Sparks · TP4/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
 
 Qwen with SparkCache has no published composition recipe or live cache evidence.
+The GLM-5.3 context and sequence values are configured serving limits. The
+functional qualification covers startup, semantic generation, runtime health,
+and an 8,192-token persistent restore; it does not exercise a 512K request,
+full-limit concurrency, throughput qualification, or soak behavior.
 The public BF16 DFlash2 checkpoint is licensed CC BY-NC-ND 4.0 for research
 and evaluation; review its model card before use.
 The qualified GLM-5.3 community images are published by immutable digest in

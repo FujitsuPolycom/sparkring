@@ -1,7 +1,10 @@
 # Serve GLM-5.3 Flash with BF16 DFlash2 without an external KV cache
 
-Status: **qualified** for the immutable image, model revisions, and TP4/DCP1
-settings in this guide. The image is a FujitsuPolycom community derivative.
+Status: **qualified** for startup, semantic generation, and runtime health
+using the immutable image, model revisions, and TP4/DCP1 settings in this
+guide. The configured 524,288-token request limit and 32-sequence limit were
+not exercised at their limits. The image is a FujitsuPolycom community
+derivative.
 
 This profile is the controlled comparison for the SparkCache-enabled service.
 It uses the same image, target checkpoint, BF16 DFlash2 checkpoint, 12 GiB FP8
@@ -12,7 +15,7 @@ NCCL. It omits only `--kv-transfer-config`.
 ## Prepare the four-rank service
 
 Complete the prerequisites, model acquisition, image pull or source-build,
-cluster inventory, and provenance review in
+qualification-client checkout, cluster inventory, and provenance review in
 [`GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md`](GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md).
 The qualified service image is:
 
@@ -30,6 +33,7 @@ Copy and edit the sanitized inputs:
 
 ```bash
 sparkring_root="$PWD/sparkring"
+sparkcache_root="$PWD/sparkcache"
 cp "${sparkring_root}/scripts/config/glm53-flash-tp4-site.example.yaml" site.yaml
 cp "${sparkring_root}/scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1.example.json" profile.json
 ```
@@ -73,7 +77,7 @@ Wait for health and run the deterministic semantic canary:
 api_endpoint='http://rank0.example.net:8015'
 served_model='glm-5.3-flash-nvfp4-dflash7-bf16-tp4'
 until curl --fail --silent "${api_endpoint}/health" >/dev/null; do sleep 5; done
-python "$PWD/sparkcache/deploy/glm53_flash/qualification_request.py" \
+python "${sparkcache_root}/deploy/glm53_flash/qualification_request.py" \
   --endpoint "${api_endpoint}" --model "${served_model}" \
   --kind semantic --output no-external-cache-semantic.json
 curl --fail --silent "${api_endpoint}/metrics" > no-external-cache-metrics.prom
@@ -94,12 +98,11 @@ The target is
 `local-inference-lab/GLM-5.3-Flash-NVFP4@520de24eabf507659eaef7c70f14fd584527facc`.
 Its published ModelOpt configuration uses NVFP4 target experts and an MXFP8
 embedded MTP expert; the unquantized base-checkpoint revision is not recorded.
-The serving engine is
-`local-inference-lab/vllm` `dev/jovian-judgement@da4d7be6c97434f6942292ed8abbf4b32dc44355`.
 The draft is
 `incoai/GLM-5.3-Flash-DFlash2@dc77ff1c99eeb2df044ee3d4f0094eb033fee410`,
-BF16, under CC BY-NC-ND 4.0. vLLM is the
-`local-inference-lab/vllm` `dev/jovian-judgement` branch at `da4d7be...`;
+BF16, under CC BY-NC-ND 4.0. vLLM is
+`local-inference-lab/vllm` at
+`dev/jovian-judgement@da4d7be6c97434f6942292ed8abbf4b32dc44355`;
 B12X is `2fcf23a0ce269be27b2e03fece73d46e90e6aeea`.
 
 Complete source, pull-request, patch, quantization, image, SBOM, and license

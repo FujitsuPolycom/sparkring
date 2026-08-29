@@ -1,7 +1,10 @@
 # GLM-5.3 Flash with BF16 DFlash2 on a four-Spark cycle
 
-Status: **qualified** with and without the SparkCache connector for the exact
-OCI image and configuration recorded below.
+Status: **qualified** with and without the SparkCache connector for startup,
+semantic generation, runtime health, and the exact OCI image and configuration
+recorded below. SparkCache restore qualification covers one 8,192-token span.
+The 524,288-token request limit and 32-sequence limit are configured values,
+not fully exercised request and concurrency measurements.
 
 ## Serving contract
 

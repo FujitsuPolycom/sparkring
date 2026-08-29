@@ -487,6 +487,23 @@ def test_operator_docs_state_status_invariants_and_full_provenance() -> None:
     cache_text = CACHE_QUICKSTART_PATH.read_text(encoding="utf-8")
     assert "deploy/glm53_flash/build_public_image.py" in cache_text
     assert "runtime/glm53-flash/BUILD.md" in cache_text
+    assert (
+        "git -C sparkcache checkout --detach "
+        "3860a2250193a6679ac6bac857af53e0757841f8"
+    ) in cache_text
+    assert 'git -C sparkring checkout --detach "${sparkring_revision}"' in cache_text
+    assert "checkout codex/glm53-flash-sparkcache-tp4" not in cache_text
     assert "metrics-before-restore.prom" in cache_text
     assert "restored 8192 tokens async" in cache_text
     assert "A rebuilt image has **implemented** status" in cache_text
+
+    base_text = BASE_QUICKSTART_PATH.read_text(encoding="utf-8")
+    assert "qualification-client checkout" in base_text
+    assert '${sparkcache_root}/deploy/glm53_flash/qualification_request.py' in base_text
+
+
+def test_ci_runs_glm53_runtime_contracts() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "runtime/exl3-r7 runtime/glm53-flash runtime/deepseek0731-gb10" in workflow

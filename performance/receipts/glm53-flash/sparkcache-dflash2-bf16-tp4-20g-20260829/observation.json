@@ -45,7 +45,7 @@
   "limitations": [
     "The cache-disabled profile was not tested at 20 GiB.",
     "A 1048576-token model limit was not tested and cannot fit in the measured 916676-token KV capacity.",
-    "Twenty-four GiB is a projected candidate for a 1048576-token limit, not a measured result.",
+    "Linear capacity scaling estimates that 24 GiB per rank could hold a 1048576-token request; that configuration is untested and is not a serving result.",
     "The configured 48 GiB SparkCache ceiling remains a disk-capacity risk on the limiting rank."
   ]
 }

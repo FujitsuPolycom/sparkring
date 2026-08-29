@@ -70,16 +70,19 @@ allowlist and validating the generated manifest through the builder.
 The builder test suites cover the GLM, DeepSeek, and Qwen runtime contracts:
 
 ```bash
-python -m pytest runtime/exl3-r7 runtime/deepseek0731-gb10 runtime/qwen38 -q
+python -m pytest runtime/exl3-r7 runtime/glm53-flash runtime/deepseek0731-gb10 runtime/qwen38 -q
 ```
 
-The GLM-5.3 runtime contract has no image builder in this repository.
-SparkCache owns its derived `deploy/glm53_flash/Containerfile`; SparkRing
-validates that image through exact labels and an in-container source contract.
-Run its CPU-only profile tests with:
+[`runtime/glm53-flash/`](glm53-flash/README.md) builds the source-pinned
+GLM-5.3 ARM64 parent runtime. It verifies the vLLM, B12X, patched NCCL,
+InstantTensor, source-receipt, image-label, and SBOM inputs recorded in
+`runtime/glm53-flash/pins.json`. SparkCache owns the derived
+`deploy/glm53_flash/Containerfile`; SparkRing validates the published derived
+image through exact labels and an in-container source contract. Run the
+GLM-5.3 builder, publisher, profile, and launcher contracts with:
 
 ```bash
-python -m pytest scripts/test_glm53_flash_profile.py -q
+python -m pytest runtime/glm53-flash scripts/test_glm53_flash_profile.py scripts/test_sparkring_generic_launcher.py -q
 ```
 
 ## DeepSeek-V4-Flash-0731

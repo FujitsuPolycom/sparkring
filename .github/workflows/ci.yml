@@ -53,7 +53,7 @@ jobs:
             --index-url https://download.pytorch.org/whl/cpu \
             "torch==${TORCH_VERSION}"
       - name: Test maintained Python trees
-        run: python -m pytest spark_transport runtime/exl3-r7 runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
+        run: python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
 
   docs-links:
     name: docs links

@@ -54,12 +54,12 @@ SparkRing supports four model families across ten deployment profiles:
 Qwen3.8-27B with SparkCache is unsupported. No composition recipe or live cache
 evidence is published for that combination.
 
-Six-Spark GLM and KIMI profiles are in dev and are not part of the supported
+Six-Spark GLM and KIMI work is research-only and is not part of the supported
 repository surface.
 
 Maintained Python trees are `spark_transport/`, `runtime/`, `scripts/`, and
-`performance/`. The GLM and Qwen runtime builders are `runtime/exl3-r7/` and
-`runtime/qwen38/`. Do not add
+`performance/`. The GLM-5.2, GLM-5.3, and Qwen runtime builders are
+`runtime/exl3-r7/`, `runtime/glm53-flash/`, and `runtime/qwen38/`. Do not add
 references, CI jobs, or contributor commands for removed native cache,
 plugin, legacy runtime-builder, or deleted configuration-example surfaces.
 
@@ -104,7 +104,7 @@ test imports torch:
 python -m pip install -r requirements-dev.txt
 python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.11.0"
 ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance
-python -m pytest spark_transport runtime/exl3-r7 runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
+python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
 ```
 
 The test suite is CPU-only contract coverage. It does not validate CUDA,
