@@ -29,7 +29,7 @@ profile is selected.
 ## Resources
 
 - [Supported models and profiles](#profiles)
-- [Benchmark results and throughput tables](docs/RESULTS.md)
+- [Benchmark results](#benchmark-results)
 - [Deployment prerequisites](docs/PREREQUISITES.md) — then choose a profile quickstart below
 
 ## Cluster sizes
@@ -59,6 +59,23 @@ Qwen with SparkCache has no published composition recipe or live cache evidence.
 See the
 [profile registry](docs/profiles/README.md) for recipe identities and evidence
 scope.
+
+## Benchmark results
+
+**Qualified — 16K context.** All values are tokens per second. Prefill uses a
+cold prompt with caching disabled. Decode uses unique, cold prompt contexts at
+temperature 1.0; decode values are aggregate throughput across active streams.
+
+| Profile | Prefill | C1 decode | C8 decode | Highest tested decode | Coding peak |
+|---|---:|---:|---:|---:|---:|
+| [GLM-5.2 EXL3 3.5-bpw · 4 Sparks](performance/records/glm-3.5bpw/normalized-base-20260822.md) | 671 | 20.15 | 64.13 | C8: 64.13 | 25.39 |
+| [DeepSeek-V4-Flash DSpark · 2 Sparks](performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md) | 1,926 | 58.36 | 162.69 | C32: 307.13 | 59.31 |
+| [DeepSeek-V4-Flash-0731 · 4 Sparks](performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md) | 2,488 | 68.84 | 265.16 | C32: 508.11 | 95.77 |
+| [Qwen3.8-27B EXL3 K5/K6 · 2 Sparks](performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md) | 1,367 | 29.50 | 142.20 | C8: 142.20 | 39.95 |
+| [Qwen3.8-27B EXL3 K5/K6 · 4 Sparks](performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md) | 1,964 | 35.07 | 191.02 | C8: 191.02 | 48.46 |
+
+See [benchmark results and throughput tables](docs/RESULTS.md) for full
+matrices, sample counts, exact settings, and limitations.
 
 ## Architecture
 
