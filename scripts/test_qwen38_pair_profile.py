@@ -20,6 +20,16 @@ def _recipe() -> dict:
     return json.loads(RECIPE.read_text(encoding="utf-8"))
 
 
+def _env_values() -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw_line in ENV.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if line and not line.startswith("#"):
+            key, value = line.split("=", 1)
+            values[key] = value
+    return values
+
+
 def test_pair_and_cycle_share_the_normalized_serving_contract() -> None:
     pair = _recipe()["serving"]
     cycle = json.loads(CYCLE_RECIPE.read_text(encoding="utf-8"))["serving"]
@@ -105,6 +115,22 @@ def test_pair_environment_is_single_hca_and_cache_free() -> None:
         assert forbidden not in text
 
 
+def test_pair_environment_operator_defaults_match_recipe() -> None:
+    values = _env_values()
+    serving = _recipe()["serving"]
+    assert int(values["API_PORT"]) == 8000
+    assert int(values["MASTER_PORT"]) == 29500
+    assert int(values["NUM_SPECULATIVE_TOKENS"]) == serving["speculation"][
+        "num_speculative_tokens"
+    ]
+    assert int(values["MAX_MODEL_LEN"]) == serving["max_model_len"]
+    assert int(values["MAX_NUM_SEQS"]) == serving["max_num_seqs"]
+    assert int(values["MAX_NUM_BATCHED_TOKENS"]) == serving[
+        "max_num_batched_tokens"
+    ]
+    assert "CACHE_HOST_PATH=/cache/qwen38-pair" in ENV.read_text(encoding="utf-8")
+
+
 def test_pair_launcher_matches_recipe_and_fails_closed() -> None:
     text = LAUNCHER.read_text(encoding="utf-8")
     for required in (
@@ -113,11 +139,15 @@ def test_pair_launcher_matches_recipe_and_fails_closed() -> None:
         "--decode-context-parallel-size 1",
         "--nnodes 2",
         "--distributed-executor-backend mp",
-        "--max-model-len 1048576",
-        "--max-num-seqs 32",
-        "--max-num-batched-tokens 8192",
+        'max_model_len=${MAX_MODEL_LEN:-1048576}',
+        'max_num_seqs=${MAX_NUM_SEQS:-32}',
+        'max_num_batched_tokens=${MAX_NUM_BATCHED_TOKENS:-8192}',
+        '--max-model-len "$max_model_len"',
+        '--max-num-seqs "$max_num_seqs"',
+        '--max-num-batched-tokens "$max_num_batched_tokens"',
         "--gpu-memory-utilization 0.70",
         "--kv-cache-dtype fp8",
+        'num_speculative_tokens=${NUM_SPECULATIVE_TOKENS:-3}',
         '"draft_sample_method":"probabilistic"',
         '"rejection_sample_method":"standard"',
         '"factor":4.0',
@@ -267,8 +297,11 @@ def test_quickstart_separates_normalized_and_shared_prefix_benchmarks() -> None:
     for required in (
         "runtime/qwen38/build-image.sh",
         "scripts/config/qwen38-27b-exl3-k5k6-pair.env.example",
+        'MODEL_DIR="$MODEL_HOST_PATH"',
+        'CACHE_DIR="$CACHE_HOST_PATH"',
+        'LOG_DIR="$LOG_HOST_PATH"',
         "/ws/qwen38_dgx2_serve.sh",
-        "--expected-max-model-len 1048576",
+        '--expected-max-model-len "$MAX_MODEL_LEN"',
         "temperature 1",
         "100% unique",
         "defer admission to the server",

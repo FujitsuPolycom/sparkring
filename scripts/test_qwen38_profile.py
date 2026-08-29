@@ -1,4 +1,4 @@
-"""GPU-free contracts for the Qwen3.8-27B four-Spark candidate profile."""
+"""GPU-free contracts for the implemented Qwen3.8-27B four-Spark profile."""
 
 from __future__ import annotations
 
@@ -19,7 +19,17 @@ def _recipe() -> dict:
     return json.loads(RECIPE_PATH.read_text(encoding="utf-8"))
 
 
-def test_recipe_declares_the_four_spark_candidate() -> None:
+def _env_values() -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw_line in ENV_PATH.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if line and not line.startswith("#"):
+            key, value = line.split("=", 1)
+            values[key] = value
+    return values
+
+
+def test_recipe_declares_the_four_spark_profile() -> None:
     recipe = _recipe()
     assert recipe["schema"] == "sparkring-recipe/v1"
     assert recipe["recipe_id"] == "qwen38-27b-exl3-k5k6"
@@ -209,15 +219,36 @@ def test_environment_is_the_patched_nccl_cycle_without_model_foreign_knobs() -> 
         assert forbidden not in text
 
 
+def test_environment_operator_defaults_match_recipe() -> None:
+    values = _env_values()
+    serving = _recipe()["serving"]
+    assert int(values["API_PORT"]) == 8000
+    assert int(values["MASTER_PORT"]) == 29500
+    assert int(values["NUM_SPECULATIVE_TOKENS"]) == serving["speculation"][
+        "num_speculative_tokens"
+    ]
+    assert int(values["MAX_MODEL_LEN"]) == serving["max_model_len"]
+    assert int(values["MAX_NUM_SEQS"]) == serving["max_num_seqs"]
+    assert int(values["MAX_NUM_BATCHED_TOKENS"]) == serving[
+        "max_num_batched_tokens"
+    ]
+    assert "CACHE_HOST_PATH=/cache/qwen38-cycle" in ENV_PATH.read_text(
+        encoding="utf-8"
+    )
+
+
 def test_quickstart_command_matches_the_recipe() -> None:
     text = LAUNCHER_PATH.read_text(encoding="utf-8")
     for value in (
         "--tensor-parallel-size 4",
         "--nnodes 4",
         "--distributed-executor-backend mp",
-        "--max-model-len 1048576",
-        "--max-num-seqs 64",
-        "--max-num-batched-tokens 8192",
+        'max_model_len=${MAX_MODEL_LEN:-1048576}',
+        'max_num_seqs=${MAX_NUM_SEQS:-64}',
+        'max_num_batched_tokens=${MAX_NUM_BATCHED_TOKENS:-8192}',
+        '--max-model-len "$max_model_len"',
+        '--max-num-seqs "$max_num_seqs"',
+        '--max-num-batched-tokens "$max_num_batched_tokens"',
         "--enable-chunked-prefill",
         "--async-scheduling",
         "--scheduler-reserve-full-isl",
@@ -226,7 +257,7 @@ def test_quickstart_command_matches_the_recipe() -> None:
         "--enable-prefix-caching",
         "--mamba-cache-mode align",
         '"method":"qwen3_5_mtp"',
-        '"num_speculative_tokens":3',
+        'num_speculative_tokens=${NUM_SPECULATIVE_TOKENS:-3}',
         '"draft_sample_method":"probabilistic"',
         '"rejection_sample_method":"standard"',
         '"original_max_position_embeddings":262144',
@@ -252,8 +283,11 @@ def test_quickstart_command_matches_the_recipe() -> None:
         "--entrypoint /ws/venv/bin/hf",
         '"$IMAGE" --check',
         '"$IMAGE" --run',
-        "scripts/qwen38_smoke.py",
-        "ATTEMPT_ID must match [A-Za-z0-9_.-]+",
+            "scripts/qwen38_smoke.py",
+            'MODEL_DIR="$MODEL_HOST_PATH"',
+            'CACHE_DIR="$CACHE_HOST_PATH"',
+            'LOG_DIR="$LOG_HOST_PATH"',
+            "ATTEMPT_ID must match [A-Za-z0-9_.-]+",
         "container-id-${ATTEMPT_ID}-r${RANK}",
         "{{.State.Running}}",
         "/ws/runtime/source-receipt.json",
@@ -265,11 +299,9 @@ def test_quickstart_command_matches_the_recipe() -> None:
         "--ulimit memlock=-1:-1 --cap-add IPC_LOCK --device /dev/infiniband",
         '"$MODEL_DIR:/ws/model/Qwen3.8-27B-EXL3-K5K6-hydrated:ro"',
         '"$CACHE_DIR:/ws/cache"',
-        '"$LOG_DIR:/ws/logs"',
-        '"$ENV_FILE:/ws/rank.env:ro"',
-        '-e RANK="$RANK"',
-        '-e RANK0_RENDEZVOUS_ADDR="$RANK0_RENDEZVOUS_ADDR"',
-        "--label org.sparkring.profile=qwen38-27b-exl3-k5k6",
+            '"$LOG_DIR:/ws/logs"',
+            '"$ENV_FILE:/ws/rank.env:ro"',
+            "--label org.sparkring.profile=qwen38-27b-exl3-k5k6",
         "--entrypoint /ws/qwen38_dgx4_serve.sh",
     ):
         assert quickstart.count(shared_container_contract) == 2
