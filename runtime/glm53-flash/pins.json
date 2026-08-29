@@ -1,0 +1,221 @@
+{
+  "schema": "sparkring-glm53-flash-runtime-lock/v1",
+  "status": "qualified",
+  "qualification_scope": "The source and artifact identities below define the GLM-5.3 Flash TP4/DCP1 DFlash2 runtime qualified with and without the SparkCache connector. A rebuilt image has implemented status until its immutable digest passes the recorded live checks.",
+  "public_image_build": {
+    "status": "qualified",
+    "status_scope": "The recorded runtime and SparkCache image digests were distributed unchanged to four DGX Spark systems and passed the recorded TP4/DCP1 checks.",
+    "platform": "linux/arm64",
+    "base_images": {
+      "arm_builder": {
+        "reference": "pytorch/manylinuxaarch64-builder@sha256:f91599c49f526c77d01b68286f2bf943a5fd6a432d7e3f0afcc5784825908fe9",
+        "distribution_role": "build-only"
+      },
+      "cuda_runtime": {
+        "reference": "nvidia/cuda:13.0.3-base-ubuntu24.04@sha256:56d9d8183e2181a20be6b0d3801d1f056a0e75c17706df939ba207b126e1cb9c",
+        "distribution_role": "runtime parent",
+        "license": "LicenseRef-NVIDIA-Deep-Learning-Container"
+      }
+    },
+    "sources": {
+      "vllm": {
+        "repository": "https://github.com/local-inference-lab/vllm.git",
+        "commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+        "tree": "4a99033352bc1a6b00852dc0e8b1cecbdd9f0ebb",
+        "license": "Apache-2.0"
+      },
+      "b12x": {
+        "repository": "https://github.com/local-inference-lab/b12x.git",
+        "commit": "2fcf23a0ce269be27b2e03fece73d46e90e6aeea",
+        "tree": "58a046fc8faa747346f40f87166cda7e0f67ff47",
+        "license": "Apache-2.0"
+      },
+      "nccl": {
+        "repository": "https://github.com/NVIDIA/nccl.git",
+        "commit": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
+        "tag": "v2.30.7-1",
+        "base_tree": "3e7de6f92f0190d1afe9f05642e634cbf43ae4c9",
+        "patched_tree": "abdeb053b94c3f6d472cd55ae2b79ca821299009",
+        "license": "Apache-2.0 AND BSD-3-Clause",
+        "patches": [
+          {
+            "path": "spark_transport/nccl/nccl-2.30.7-switchless-cycle.patch",
+            "sha256": "6709063fa1c25055ae77a9397dea5d89643f8211d25e7990bdd11597d08c0dde",
+            "ownership": "Original SparkRing implementation of ring-only transport setup and switchless-cycle RoCE device advertisement."
+          }
+        ]
+      }
+    },
+    "instanttensor": {
+      "version": "0.1.9",
+      "sdist_url": "https://files.pythonhosted.org/packages/37/69/a4dc4e0f0018a0e558b716e90bcb19cb6a8c7506f68e89a1493608cf5e62/instanttensor-0.1.9.tar.gz",
+      "sdist_sha256": "d8692b97991c1a5fb2db7905b9a6ae90a7f967c7ddd853d35e41caa146750c02",
+      "license": "Apache-2.0"
+    },
+    "toolchain": {
+      "python": "3.12",
+      "cuda": "13.0.3",
+      "nccl_cuda_arch": "121",
+      "vllm_torch_cuda_arch_list": "12.1a"
+    },
+    "outputs": {
+      "runtime_image": "ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:864adfe68f458223e186a19844ac80c7adc7365e5db1f25e109b85fc19850dcd",
+      "runtime_image_id": "sha256:7e8c0ebcb2001efb4cdab0ec9d20d53972e62db3688230044e22e61ffb1d35d5",
+      "sparkcache_image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943",
+      "sparkcache_image_id": "sha256:7c007cf673c35f5818da7fea8faa343304baed00f489efdcbd027d6616b8a290",
+      "nccl_library_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
+      "runtime_sbom_sha256": "f5261dbed089a52923d4b2e2d5204aa889f0031ff57e324022b16c584068cd43",
+      "sparkcache_sbom_sha256": "14450bf58a8b08fd1997706de4fefc9ae4681ebe990176b6c195e296b32c9d27",
+      "source_receipt_sha256": "afec2f37aa0adfea8c330f0a8e25c393c6276c3e8b8e0f855932f7f2d4ba45df"
+    }
+  },
+  "target_model": {
+    "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+    "revision": "520de24eabf507659eaef7c70f14fd584527facc",
+    "repository_owner": "local-inference-lab",
+    "revision_uploader": "lukealonso",
+    "license": "MIT",
+    "cache_revision_identity_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9",
+    "config_sha256": "676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996",
+    "weight_index_sha256": "0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb",
+    "quantization": {
+      "producer": "The pinned repository is published by local-inference-lab and the revision was uploaded by lukealonso. The model card does not name a different individual or organization as the quantization producer.",
+      "tool": "NVIDIA ModelOpt",
+      "tool_version": "0.39.0.dev290+gf9d9a71de.d20260407",
+      "algorithm": "MIXED_PRECISION",
+      "target_expert_layers": "NVFP4 routed experts in target layers 3 through 44",
+      "mtp_expert_layer": "MXFP8 routed experts in MTP layer 45",
+      "base_checkpoint_revision": null,
+      "base_checkpoint_limitation": "The pinned Hugging Face repository does not record the source base-checkpoint revision. No base-checkpoint lineage is inferred."
+    }
+  },
+  "draft_model": {
+    "repository": "incoai/GLM-5.3-Flash-DFlash2",
+    "revision": "dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+    "producer": "Inco AI",
+    "revision_uploader": "zhijianliu",
+    "dtype": "bfloat16",
+    "config_sha256": "c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573",
+    "weights_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
+    "weights_bytes": 2342169800,
+    "license": "CC-BY-NC-ND-4.0",
+    "license_scope": "The model card limits the checkpoint to research and evaluation and directs commercial licensing inquiries to Inco AI."
+  },
+  "vllm": {
+    "repository": "https://github.com/local-inference-lab/vllm.git",
+    "branch": "dev/jovian-judgement",
+    "commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+    "archive_sha256": "fdf09ff187b3823f3d4f58214c9ec8cb3b0f54e69800e5bbe9a59e75c38e56a9",
+    "direct_commits": [
+      {"commit": "e0db84abedb4a85f93d130252e54b73c0f3ed695", "role": "GLM model implementation"},
+      {"commit": "0c878821cf46c99729c7936bcbd4d868ad40e44e", "role": "B12X integration"},
+      {"commit": "4dbd82b9ced13114f90e93b8b6fae0966c942a3b", "role": "C4 state support"},
+      {"commit": "1036123e935177900122c14d3cf02ad67b5422aa", "role": "C4 behavior support"},
+      {"commit": "e7097feb6fcdf57911cd68884420af2d80600dd7", "role": "DFlash speculative decoding"}
+    ],
+    "merged_pull_requests": [
+      {"number": 486, "merge_commit": "15d3f79439eadc396a57e253c955aa149def94ea", "role": "B12X C4 decode-context parallelism"},
+      {"number": 489, "merge_commit": "015dcd423d6aabf843c8ad69074ff67d35c2a395", "role": "single-application MoE router gate"},
+      {"number": 493, "merge_commit": "067c37d974ca2b775d95e51e8fec234929f4e2c4", "role": "captured custom-operation resource lifetime"},
+      {"number": 494, "merge_commit": "e91c7e68f5863a27c79d2773205678be7d8ff132", "role": "independent target and draft KV cache formats"},
+      {"number": 497, "merge_commit": "05d85f603097fe7678d7dda2d522613d9dc61f46", "role": "multimodal processor revision binding"},
+      {"number": 499, "merge_commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355", "role": "native serialized MXFP8 DFlash2 projections"}
+    ],
+    "dependency_note": "Pull request 499 declares dependencies on pull requests 493 and 494.",
+    "lineage_scope": "The listed commits and pull requests are verified members of the pinned fork history. No relationship to another upstream pull request is claimed."
+  },
+  "b12x": {
+    "repository": "https://github.com/local-inference-lab/b12x.git",
+    "branch": "master",
+    "commit": "2fcf23a0ce269be27b2e03fece73d46e90e6aeea",
+    "archive_sha256": "0ce3330579bf2e52d236890856061d1384049f952de009d6b5ab74cf1969aa7e",
+    "license": "Apache-2.0",
+    "commit_title": "Accept runtime QSA cache page sizes",
+    "pull_request": null,
+    "lineage_scope": "No associated pull request was found, so the immutable commit is the only claimed source identity."
+  },
+  "patched_nccl": {
+    "upstream_repository": "https://github.com/NVIDIA/nccl",
+    "version": "2.30.7",
+    "tag": "v2.30.7-1",
+    "commit": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
+    "base_tree": "3e7de6f92f0190d1afe9f05642e634cbf43ae4c9",
+    "patched_tree": "abdeb053b94c3f6d472cd55ae2b79ca821299009",
+    "qualified_binary_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
+    "spark_ring_patches": [
+      {
+        "path": "spark_transport/nccl/nccl-2.30.7-switchless-cycle.patch",
+        "sha256": "6709063fa1c25055ae77a9397dea5d89643f8211d25e7990bdd11597d08c0dde",
+        "ownership": "Original SparkRing implementation of ring-only topology setup and switchless-cycle RoCE device advertisement."
+      }
+    ],
+    "reproducibility_scope": "The source commit, base tree, patch, patched tree, and qualified binary are bound in the image. Compiler output is not claimed to be bit-for-bit reproducible across clean builds."
+  },
+  "sparkcache": {
+    "repository": "https://github.com/FujitsuPolycom/sparkcache",
+    "branch": "codex/glm53-public-image",
+    "commit": "3860a2250193a6679ac6bac857af53e0757841f8",
+    "source_tree_sha256": "6210f439c64e4079ed3304c9cc181174abb3e6045de740ba7b7c2546bcaf6ac2",
+    "profile": "glm53-flash-hybrid",
+    "vllm_lease_contract": {
+      "path": "runtime/glm53-flash/vllm-kv-block-lease-contract-da4d7be.json",
+      "sha256": "2e3b17fd6a34f2dbb8e91a99b83dbf18629cf0e718f9f814236da4bbfc9ae3f1"
+    },
+    "vmm_exemption_patch_sha256": "370b498eebf44b4e52a2d2751fa249ad4bd3d0b6fd951b063a161fb06febbe99",
+    "vmm_exemption_preimages_sha256": "e0eb1b64d15812f122450f2e32323f0c907c640b8f8ccc270c77037bb9909b85",
+    "image_build": {
+      "containerfile": "deploy/glm53_flash/Containerfile",
+      "containerfile_sha256": "a2b65f3600950855cbfa00d82d532de1fbced3f4fa26c4bf1e59c3b6a519abd9",
+      "builder": "deploy/glm53_flash/build_public_image.py",
+      "builder_sha256": "b72466799e2fe569ecdee3a536cfb4606d2599da0a20cd398ca03aa99e21a3e6",
+      "profile_source": "deploy/glm53_flash/profile.py",
+      "profile_source_sha256": "a431f51b6d5146834194e05dc6bbf1e84320746c5af7384055a64e8f4d6fe94c",
+      "qualification_request": "deploy/glm53_flash/qualification_request.py",
+      "qualification_request_sha256": "82801edd4f0ee48691cd2ed5b2f03b24aac413ce9319be52360c4be0dce19199"
+    },
+    "qualification": {
+      "record": "GLM53_FLASH_DFLASH7_LIVE_VALIDATION.md",
+      "qualified_host_record_sha256": "4a3a7bdf327e0d4b963ab46d58e9db3c7658e40ebabd5bf68fd5b093e856abf7",
+      "qualified_host_receipt_sha256": {
+        "cold.json": "7d1a57964779a740863eaed9d67e1da234f570c8d22784ff1ee08658bc4c4af6",
+        "post-restart-prime.json": "fdac6f3bea3b8c5fedd93cf9e5efba6c65866aa4f487bc43ac89b950dc2cd320",
+        "post-restart-restore.json": "af2b62432c88ca0b1bbb7255e77f05c557f4589409b5acce4c1c15d52db34498",
+        "post-restore-semantic.json": "c0724084314eee1ae71c5d1fb9d4aa8751971d3c83680982e556763ede1c220d"
+      }
+    },
+    "identity_scope": "The immutable commit identifies the repository state. The source-tree, contract, patch, and build-recipe SHA-256 values bind the exact files consumed by the qualified images."
+  },
+  "toolchain": {
+    "python": "3.12",
+    "torch": "2.13.0",
+    "cuda": "13.0.3",
+    "cutlass_dsl": "4.6.2",
+    "humming_kernels": "0.1.12",
+    "instanttensor": "0.1.9",
+    "nccl": "2.30.7"
+  },
+  "spark_ring_profile": {
+    "repository": "https://github.com/FujitsuPolycom/sparkring",
+    "branch": "codex/glm53-flash-sparkcache-tp4",
+    "base_revision": "510556275ed3b77fc56a14367d319417072eeb8c",
+    "runtime_image_source_revision": "862db89b1dd905e0ce3197f1d7b64b8a5802dbf1",
+    "profile_templates": [
+      "scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1.example.json",
+      "scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-sparkcache.example.json"
+    ],
+    "identity_scope": "The runtime image source revision binds the files consumed by the published runtime. Documentation and sanitized profile records may be committed later without changing the image's source identity."
+  },
+  "qualified_cluster_artifact": {
+    "rank_count": 4,
+    "registry_digest": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943",
+    "image_id_on_every_rank": "sha256:7c007cf673c35f5818da7fea8faa343304baed00f489efdcbd027d6616b8a290",
+    "parent_registry_digest": "ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:864adfe68f458223e186a19844ac80c7adc7365e5db1f25e109b85fc19850dcd",
+    "parent_image_id": "sha256:7e8c0ebcb2001efb4cdab0ec9d20d53972e62db3688230044e22e61ffb1d35d5"
+  },
+  "operator_interface": {
+    "site_schema": "sparkring-cluster/v1",
+    "profile_schema": "sparkring-runtime-profile/v1",
+    "launcher": "scripts/sparkring_generic_launcher.py",
+    "adaptation_scope": "Operators supply SSH targets, ring addresses, and host paths through the validated site and runtime-profile schemas. Model, kernel, DFlash, and SparkCache implementation sources are not copied into the operator profile."
+  }
+}

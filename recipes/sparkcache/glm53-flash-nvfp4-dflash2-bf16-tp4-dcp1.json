@@ -1,0 +1,123 @@
+{
+  "schema": "sparkring-sparkcache-composition/v1",
+  "recipe_id": "glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4-dcp1",
+  "status": "qualified",
+  "base_recipe": "../glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1.json",
+  "hardware": {
+    "platform": "linux/arm64",
+    "cuda_arch": "sm_121",
+    "ranks": 4,
+    "topology": "direct-cycle-4"
+  },
+  "model": {
+    "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+    "revision": "520de24eabf507659eaef7c70f14fd584527facc",
+    "cache_revision_identity_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9",
+    "config_sha256": "676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996",
+    "weight_index_sha256": "0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb"
+  },
+  "draft_model": {
+    "repository": "incoai/GLM-5.3-Flash-DFlash2",
+    "revision": "dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+    "dtype": "bfloat16",
+    "config_sha256": "c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573",
+    "weights_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
+    "license": "CC-BY-NC-ND-4.0"
+  },
+  "runtime": {
+    "pins": "runtime/glm53-flash/pins.json",
+    "profile_template": "scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-sparkcache.example.json",
+    "parent_image_policy": "The overlay image label org.sparkcache.parent-image-id equals the immutable local image ID of the source-built parent runtime.",
+    "runtime_image": "ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:864adfe68f458223e186a19844ac80c7adc7365e5db1f25e109b85fc19850dcd",
+    "runtime_image_id": "sha256:7e8c0ebcb2001efb4cdab0ec9d20d53972e62db3688230044e22e61ffb1d35d5",
+    "sparkcache_image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943",
+    "sparkcache_image_id": "sha256:7c007cf673c35f5818da7fea8faa343304baed00f489efdcbd027d6616b8a290",
+    "sparkcache": {
+      "artifact_kind": "OCI image overlay",
+      "source_repository": "https://github.com/FujitsuPolycom/sparkcache",
+      "source_branch": "codex/glm53-public-image",
+      "source_commit": "3860a2250193a6679ac6bac857af53e0757841f8",
+      "source_sha256": "6210f439c64e4079ed3304c9cc181174abb3e6045de740ba7b7c2546bcaf6ac2"
+    },
+    "vllm": {
+      "repository": "https://github.com/local-inference-lab/vllm.git",
+      "branch": "dev/jovian-judgement",
+      "commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+      "lease_contract": "runtime/glm53-flash/vllm-kv-block-lease-contract-da4d7be.json",
+      "lease_contract_sha256": "2e3b17fd6a34f2dbb8e91a99b83dbf18629cf0e718f9f814236da4bbfc9ae3f1"
+    }
+  },
+  "serving": {
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 1,
+    "pipeline_parallel_size": 1,
+    "node_count": 4,
+    "max_model_len": 524288,
+    "max_num_seqs": 32,
+    "max_num_batched_tokens": 8192,
+    "scheduler_budget_status": "qualified",
+    "gpu_memory_utilization": 0.8,
+    "kv_cache_memory_bytes_per_rank": 12884901888,
+    "kv_cache_dtype": "fp8",
+    "block_size": 256,
+    "async_scheduling": true,
+    "native_prefix_caching": true,
+    "chunked_prefill": true,
+    "mamba_cache_mode": "align",
+    "kda_prefill_backend": "triton",
+    "compilation_mode": "FULL_AND_PIECEWISE"
+  },
+  "sparkcache": {
+    "kv_connector": "SparkContextCacheConnector",
+    "kv_connector_module_path": "sparkcache.spark_context_cache_connector",
+    "kv_load_failure_policy": "recompute",
+    "kv_role": "kv_both",
+    "model_profile": "glm53-flash-hybrid",
+    "draft_policy": "separate",
+    "scheduler_probe": "none",
+    "store": true,
+    "restore": true,
+    "max_bytes_per_rank": 51539607552,
+    "low_watermark_bytes_per_rank": 42949672960,
+    "ttl_seconds": 0,
+    "min_span_tokens": 4096,
+    "max_span_tokens": 524288,
+    "streaming_snapshots": false,
+    "native_restore": false,
+    "root_requirement": "Use one dedicated rank-local host directory per physical rank, mounted at /cache/jit on every rank."
+  },
+  "evidence": {
+    "status": "qualified",
+    "conditions": "Four directly cabled NVIDIA DGX Spark systems served the pinned target and public BF16 DFlash2 checkpoints from one SparkCache OCI image digest at TP4/DCP1 with a 524288-token model limit, 8192-token scheduler budget, 32 sequences, 12 GiB FP8 key-value slab per rank, asynchronous scheduling, native prefix caching, chunked prefill, aligned recurrent cache, Triton KDA prefill, FULL_AND_PIECEWISE target graphs, DFlash FULL graphs, 48 GiB rank-local SparkCache limits, and the source identities recorded in this file.",
+    "measurement": "A deterministic 8192-token reusable span was stored on all ranks. All four serving containers were replaced without deleting their cache roots. Each worker discovered its one rank-local manifest with zero rejections. One request recomputed while the scheduler received all-rank inventory, then an identical request restored external target context and was followed by an uncached semantic canary and transport/process health checks.",
+    "result": "All four ranks committed reusable-context digest a6d78b05026f. The restored request reported 8192 external-prefix hit tokens and completed in 1.902 seconds. Rank restore times were 162.7, 171.8, 158.8, and 156.8 milliseconds. DFlash emitted 504 draft tokens from 72 drafts and accepted 170 tokens. The semantic canary completed in 2.840 seconds with finish reason stop and the required answer suffix. Every rank retained 24 RTS VLLM::Worker RDMA queue pairs with zero preemptions, container restarts, out-of-memory events, or fatal-log matches.",
+    "conclusion": "The recorded TP4/DCP1 composition restores persistent target-model context after a coordinated engine restart while DFlash2 continues seven-token speculative decoding and the service continues correct generation.",
+    "limitations": [
+      "The receipt qualifies only the recorded OCI image digest, source contracts, checkpoints, topology, serving geometry, and 8192-token restored span.",
+      "A rebuilt image has implemented status until its immutable digest passes the same live qualification.",
+      "The first request after API startup recomputed because the scheduler had not received a complete four-rank inventory checkpoint; the following identical request formed quorum and restored.",
+      "The receipt does not establish throughput neutrality or restore performance for spans larger than 8192 tokens.",
+      "Streaming snapshots, native direct restore, MTP drafting, and other DFlash checkpoints are unsupported by this evidence.",
+      "The source-built runtime uses the Triton KDA prefill backend and stock safetensors loading; FlashKDA prefill and InstantTensor checkpoint loading are unsupported by this image.",
+      "The optional deep_ep import emits a duplicate-NCCL warning. vLLM selects the source-built NCCL library through VLLM_NCCL_SO_PATH and serving proceeds.",
+      "The target repository does not record its base-checkpoint revision."
+    ],
+    "record": "performance/records/glm53-flash/sparkcache-dflash2-bf16-tp4-20260828.md",
+    "artifact_scope": "The four base/derived image pairs, SparkCache source digest, seven-file vLLM source contract, target and draft revisions, TP4/DCP1 topology, and serving/cache settings recorded in this recipe.",
+    "date": "2026-08-29",
+    "prompt_reusable_tokens": 8192,
+    "external_cache_queried_tokens": 16457,
+    "external_cache_hit_tokens": 8192,
+    "restore_request_seconds": 1.902,
+    "restore_milliseconds_by_rank": [162.7, 171.8, 158.8, 156.8],
+    "commit_milliseconds_by_rank": [271.2, 271.2, 267.6, 313.8],
+    "manifests_per_rank": 1,
+    "chunks_per_rank": 32,
+    "cache_bytes_per_rank": 103890664,
+    "drafts": 72,
+    "draft_tokens": 504,
+    "accepted_tokens": 170,
+    "post_restore_canary_seconds": 2.84,
+    "post_restore_canary_suffix": "SPARKCACHE_GLM53_OK"
+  }
+}

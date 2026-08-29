@@ -1,0 +1,82 @@
+{
+  "schema": "sparkring-vllm-kv-block-lease-contract/v1",
+  "vllm_commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+  "files": [
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+      "accepted_sha256": {
+        "source_checkout": "cda4487271a81e3280e6b46d46076b8ac625768452c508517b1664536be9a9e8",
+        "jovian_glm53_runtime": "bc1965431087676876f58360cd9cc07ab6c06febe6d747695f10b051fd85c412"
+      },
+      "required_symbols": [
+        "KVConnectorBase_V1.handle_preemptions",
+        "KVConnectorBase_V1.request_finished",
+        "KVConnectorBase_V1.get_finished"
+      ]
+    },
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/utils.py",
+      "accepted_sha256": {
+        "source_checkout": "f8f055e87448f2e908331c98a5201b1987fa47370a110a7881ff67a9d3d127cf",
+        "jovian_glm53_runtime": "115512dca36b0711223f55f5ff304abffccc6d078923ba4c6bbb3cdb7fdd39a2"
+      },
+      "required_symbols": [
+        "KVOutputAggregator.from_connector",
+        "KVOutputAggregator.aggregate"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/sched/scheduler.py",
+      "accepted_sha256": {
+        "source_checkout": "edfa3af964698cd17d62188acfeacc7b8985aab5b4dcb672944a3c2ea77990ba",
+        "jovian_glm53_runtime": "98bfb14fa37e8c2a2db5aba96bf8a6f0e6d1c0393ef686b075208889a2e46ab3"
+      },
+      "required_symbols": [
+        "Scheduler._connector_finished",
+        "Scheduler._update_from_kv_xfer_finished",
+        "Scheduler._free_blocks"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/sched/output.py",
+      "accepted_sha256": {
+        "source_checkout": "20217670751b22cb37ee1608a299d6b3707ae529257f8f9674096921c0eddf03",
+        "jovian_glm53_runtime": "62a4d3818a616c25fb2816d157162e5786134c45954eb5e7fa8c3795d0735324"
+      },
+      "required_symbols": [
+        "SchedulerOutput.preempted_req_ids"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/gpu_model_runner.py",
+      "accepted_sha256": {
+        "source_checkout": "612860e2eb79d8d371bdeb6569acfd9d1e35bbdfe6a0ec6d9ce627967a9c1985",
+        "jovian_glm53_runtime": "699ecba3b6cc4a96d32621ee00d078b9dde8f4f82844ac2c5d8ec40c5e81a9e7"
+      },
+      "required_symbols": [
+        "GPUModelRunner.execute_model"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+      "accepted_sha256": {
+        "source_checkout": "5bccde201dc7741e1056d36b098cde38087a30b0521a74d1c9d437d32470a04a",
+        "jovian_glm53_runtime": "e4b1c5c38b63b708fd55aa40a9ab0d008b266d006a63dcfcef55890ac1371cb8"
+      },
+      "required_symbols": [
+        "MambaManager.remove_skipped_blocks",
+        "MambaManager.allocate_new_blocks"
+      ]
+    },
+    {
+      "path": "vllm/v1/kv_cache_interface.py",
+      "accepted_sha256": {
+        "source_checkout": "d6f560d1669563aef92c145d2814882622a837cefd199b75adffe68cef4bd6dc",
+        "jovian_glm53_runtime": "72acc5ae3f61f7ecbebdb3a3a16b7c69c064d6fd7af23a1fcc3cf946bdaee952"
+      },
+      "required_symbols": [
+        "MambaSpec.max_num_blocks_per_req"
+      ]
+    }
+  ]
+}

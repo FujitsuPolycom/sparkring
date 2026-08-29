@@ -1,0 +1,98 @@
+{
+  "schema": "sparkring-recipe/v1",
+  "recipe_id": "glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1",
+  "status": "qualified",
+  "hardware": {
+    "platform": "linux/arm64",
+    "cuda_arch": "sm_121",
+    "ranks": 4,
+    "topology": "direct-cycle-4"
+  },
+  "model": {
+    "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+    "revision": "520de24eabf507659eaef7c70f14fd584527facc",
+    "cache_revision_identity_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9",
+    "config_sha256": "676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996",
+    "weight_index_sha256": "0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb",
+    "quantization": "ModelOpt MIXED_PRECISION with NVFP4 target expert layers 3-44 and MXFP8 MTP expert layer 45"
+  },
+  "draft_model": {
+    "repository": "incoai/GLM-5.3-Flash-DFlash2",
+    "revision": "dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+    "dtype": "bfloat16",
+    "config_sha256": "c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573",
+    "weights_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
+    "license": "CC-BY-NC-ND-4.0"
+  },
+  "runtime": {
+    "pins": "runtime/glm53-flash/pins.json",
+    "site_template": "scripts/config/glm53-flash-tp4-site.example.yaml",
+    "profile_template": "scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1.example.json",
+    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943",
+    "image_id": "sha256:7c007cf673c35f5818da7fea8faa343304baed00f489efdcbd027d6616b8a290",
+    "image_policy": "Use the immutable image digest on all ranks. The profile verifies the image ID, source labels, model files, source-built NCCL binary, and installed vLLM lease contract before launch."
+  },
+  "serving": {
+    "served_model_name": "glm-5.3-flash-nvfp4-dflash7-bf16-tp4",
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 1,
+    "pipeline_parallel_size": 1,
+    "node_count": 4,
+    "distributed_executor_backend": "mp",
+    "dtype": "bfloat16",
+    "quantization": "modelopt_mixed",
+    "max_model_len": 524288,
+    "max_num_seqs": 32,
+    "max_num_batched_tokens": 8192,
+    "gpu_memory_utilization": 0.8,
+    "kv_cache_memory_bytes_per_rank": 12884901888,
+    "kv_cache_dtype": "fp8",
+    "block_size": 256,
+    "mamba_cache_mode": "align",
+    "kda_prefill_backend": "triton",
+    "async_scheduling": true,
+    "native_prefix_caching": true,
+    "chunked_prefill": true,
+    "external_kv_cache": false,
+    "compilation": {
+      "cudagraph_mode": "FULL_AND_PIECEWISE",
+      "cudagraph_capture_sizes": [8, 16, 32, 64, 128, 256],
+      "custom_ops": ["all"]
+    },
+    "speculation": {
+      "method": "dflash",
+      "num_speculative_tokens": 7,
+      "draft_tensor_parallel_size": 4,
+      "draft_kv_cache_dtype": "auto",
+      "draft_sample_method": "probabilistic",
+      "rejection_sample_method": "standard"
+    }
+  },
+  "transport": {
+    "backend": "patched-nccl",
+    "nccl_version": "2.30.7",
+    "topology": "four-rank switchless direct-cable cycle",
+    "subnet_aware_routing": true,
+    "algorithm": "Ring",
+    "protocols": ["LL", "LL128", "Simple"],
+    "channels": 4,
+    "switchless_ring_only": true,
+    "nccl_commit": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
+    "nccl_patched_tree": "abdeb053b94c3f6d472cd55ae2b79ca821299009",
+    "nccl_library_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3"
+  },
+  "evidence": {
+    "status": "qualified",
+    "conditions": "The cache-disabled runtime profile uses the same immutable SparkCache image, target, BF16 DFlash2, TP4/DCP1, scheduler, graph, native prefix-cache, chunked-prefill, asynchronous scheduling, Triton KDA prefill, and source-built NCCL settings as the SparkCache composition while omitting only the external key-value connector.",
+    "measurement": "The image digest was launched on four directly cabled NVIDIA DGX Spark systems. A deterministic semantic canary exercised generation after startup, and vLLM metrics, resolved container arguments, RDMA state, container state, and fatal-log patterns were inspected on every rank.",
+    "result": "The semantic canary completed in 2.703 seconds with finish reason stop and semantic_match true. DFlash emitted 231 draft tokens from 33 drafts. Every rank exposed 24 RTS VLLM::Worker RDMA queue pairs and the same image ID. SparkCache emitted no connector log lines, external-cache queries remained zero, and no preemptions, restarts, OOMs, or fatal-log matches occurred.",
+    "conclusion": "The immutable SparkCache image serves GLM-5.3 Flash with BF16 DFlash2 at TP4/DCP1 when the external connector is omitted.",
+    "limitations": [
+      "The receipt is a functional startup and semantic validation, not a throughput or soak qualification.",
+      "The target repository does not identify its base-checkpoint revision.",
+      "FlashKDA prefill and InstantTensor checkpoint loading are unsupported by the source-built image.",
+      "The optional deep_ep import emits a duplicate-NCCL warning before vLLM selects the source-built NCCL library."
+    ],
+    "record": "docs/profiles/GLM53_FLASH_DFLASH2_BF16_TP4.md"
+  }
+}

@@ -1,13 +1,14 @@
 # Performance evidence
 
 `performance/` contains reproducible measurement programs and bounded evidence
-records for the supported GLM-5.2 EXL3 3.5-bpw, DeepSeek-V4-Flash-0731, and
-Qwen3.8-27B EXL3 K5/K6 serving configurations. It does not establish a general
-hardware, model, or production-serving claim.
+records for the supported GLM-5.2 EXL3 3.5-bpw, GLM-5.3 Flash,
+DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6 serving configurations. It
+does not establish a general hardware, model, or production-serving claim.
 
-Public model-throughput summaries use only the normalized profile records.
-Functional gates and transport experiments are stored separately and do not
-feed those summaries.
+Public model-throughput summaries link to their evidence records. Normalized
+profile records support qualified summaries; explicitly labeled single-run
+records may support research-only observations. Functional gates and transport
+experiments are stored separately and do not feed those summaries.
 
 ## Layout
 
@@ -20,6 +21,7 @@ feed those summaries.
 | `harnesses/transport/` | Model-loop replay and direct-link payload sweeps |
 | `methodology/` | Measurement definitions, attribution rules, and CUDA-graph correctness requirements |
 | `records/glm-3.5bpw/` | GLM-5.2 EXL3 R7 evidence records |
+| `records/glm53-flash/` | GLM-5.3 Flash functional cache evidence and research-only throughput observations |
 | `records/deepseek-v4-flash/` | DeepSeek-V4-Flash-0731 evidence records |
 | `records/qwen38-27b/` | Qwen3.8-27B EXL3 K5/K6 evidence records |
 | `records/transport/` | Transport evidence records independent of a model result |

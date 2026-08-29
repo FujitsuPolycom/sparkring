@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-sparkcache-composition/v1",
   "recipe_id": "deepseek-v4-flash-0731-sparkcache-tp4-dcp1",
-  "status": "candidate",
+  "status": "implemented",
   "base_recipe": "../deepseek-v4-flash-0731.json",
   "hardware": {
     "platform": "linux/arm64",

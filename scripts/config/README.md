@@ -1,7 +1,7 @@
 # Serving configuration templates
 
 This directory contains sanitized inputs for the supported GLM-5.2 EXL3
-3.5-bpw, DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6 serving
+3.5-bpw, GLM-5.3 Flash, DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6 serving
 configurations. Templates describe contracts; they are not deployment receipts
 or evidence of a healthy cluster.
 
@@ -47,6 +47,35 @@ Run the focused offline tests after changing an R7 configuration contract:
 python -m pytest \
   scripts/test_glm35_profile.py \
   runtime/exl3-r7/test_exl3_r7_verify_runtime.py -q
+```
+
+## GLM-5.3 Flash with BF16 DFlash2
+
+The GLM-5.3 Flash deployment uses three sanitized inputs:
+
+| File | Role |
+|---|---|
+| `glm53-flash-tp4-site.example.yaml` | Four-rank direct-cycle topology and the shared TP4/DCP1 serving geometry |
+| `glm53-flash-dflash2-bf16-tp4-dcp1.example.json` | Cache-disabled runtime profile |
+| `glm53-flash-dflash2-bf16-tp4-dcp1-sparkcache.example.json` | SparkCache-enabled runtime profile |
+
+Copy the selected files outside version control and replace the documentation
+addresses, SSH targets, interfaces, devices, immutable image identity, target
+model host path, draft model host path, and writable cache path. Both runtime
+profiles keep asynchronous scheduling, native prefix caching, and chunked
+prefill enabled. The cache-enabled profile adds only the external key-value
+connector to the serving arguments.
+
+The generic launcher rejects the zero image ID in each template. A resolved
+profile also fails before launch if the image labels, BF16 DFlash hashes,
+patched NCCL binary, vLLM configuration postimage, or vLLM lease contract
+differs. Follow the [SparkCache-enabled quickstart](../../docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md)
+or [cache-disabled quickstart](../../docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md).
+
+Run the focused CPU-only contract suite after changing these inputs:
+
+```bash
+python -m pytest scripts/test_glm53_flash_profile.py -q
 ```
 
 ## DeepSeek-V4-Flash-0731

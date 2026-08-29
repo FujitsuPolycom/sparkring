@@ -14,12 +14,14 @@ Safety:
 * Stop actions are profile-label-guarded (``org.sparkring.managed=true`` and
   ``org.sparkring.profile=<id>``) so a foreign same-named container is never
   removed.
-* Each ``start`` action verifies the exact image digest before ``docker run``.
+* Deployment commands reject site/profile drift and unresolved template values.
+* Each ``start`` action verifies the exact image digest and required source
+  labels before ``docker run``.
 * An optional ``attestation_hook`` runs after image verification and before
   ``docker run``.
 
 Compatibility boundary: four-Spark GPU/RDMA clusters running vLLM-style
-serving with TP4/DCP4 parallelism.
+serving with the TP4/DCP degree declared by the validated site.
 """
 
 from __future__ import annotations
@@ -93,6 +95,7 @@ def _conformance_validate(args: Any, parser: Any) -> int:
         validation_scope = "structural"
         if args.site:
             site = load_site(args.site)
+            _validate_site_profile_alignment(site, profile)
             build_actions(site, profile, "plan")
             validation_scope = "plan-build"
     except (
@@ -101,7 +104,9 @@ def _conformance_validate(args: Any, parser: Any) -> int:
     ) as exc:
         print(json.dumps({"valid": False, "error": str(exc)}, indent=2))
         return 1
-    template_unresolved = _is_template(profile)
+    template_unresolved = _is_template(profile) or (
+        site is not None and _is_site_template(site)
+    )
     result = {
         "valid": not template_unresolved,
         "validation_scope": validation_scope,
@@ -114,8 +119,10 @@ def _conformance_validate(args: Any, parser: Any) -> int:
         result["valid"] = False
         result["error"] = (
             "template/unresolved: profile contains obvious placeholder "
-            "values (REPLACE, all-zero image ID, all-zero identity pins); "
-            "fill in real model identity, image, and pins before deployment"
+            "values or the site contains documentation/example values "
+            "(REPLACE, all-zero image ID, all-zero identity pins, or "
+            "placeholder host paths); fill in real site, model, image, and "
+            "pin values before deployment"
         )
     print(json.dumps(result, indent=2))
     return 0 if not template_unresolved else 1
@@ -123,7 +130,11 @@ def _conformance_validate(args: Any, parser: Any) -> int:
 
 def _is_template(profile: runtime.RuntimeProfile) -> bool:
     """Detect obvious placeholder values in native profiles."""
-    if "REPLACE" in profile.image:
+    path_values = [profile.model_host_path]
+    path_values.extend(volume[0] for volume in profile.extra_volumes)
+    if "REPLACE" in profile.image or any(
+        "REPLACE" in value for value in path_values
+    ):
         return True
     if profile.image_id == "sha256:" + "0" * 64:
         return True
@@ -132,7 +143,71 @@ def _is_template(profile: runtime.RuntimeProfile) -> bool:
             return True
         if "your-" in value or "REPLACE" in value:
             return True
+    if any(
+        value in {"0" * 64, "sha256:" + "0" * 64}
+        or "REPLACE" in value
+        for value in profile.required_image_labels.values()
+    ):
+        return True
     return False
+
+
+def _is_site_template(site: Any) -> bool:
+    """Detect every example value recognized by the site schema."""
+    return bool(site.placeholder_warnings())
+
+
+def _validate_site_profile_alignment(
+    site: Any, profile: runtime.RuntimeProfile,
+) -> None:
+    """Reject contradictions between site-owned and profile-owned identity."""
+    comparisons = (
+        (
+            "runtime.container_image",
+            site.runtime.container_image,
+            profile.image,
+        ),
+        (
+            "runtime.container_image_digest",
+            site.runtime.container_image_digest,
+            profile.image_id,
+        ),
+        (
+            "runtime.model_path",
+            site.runtime.model_path,
+            profile.model_container_path,
+        ),
+    )
+    for field, site_value, profile_value in comparisons:
+        if site_value != profile_value:
+            raise runtime.ProfileError(
+                f"site/profile mismatch for {field}: "
+                f"site={site_value!r}, profile={profile_value!r}"
+            )
+
+    identity_comparisons = (
+        ("target_repository", site.runtime.model_repo),
+        ("target_revision", site.runtime.model_revision),
+        ("target_cache_identity_sha256", site.runtime.checkpoint_sha256),
+    )
+    for key, site_value in identity_comparisons:
+        profile_value = profile.identity.get(key)
+        if profile_value is not None and profile_value != site_value:
+            raise runtime.ProfileError(
+                f"site/profile mismatch for identity.{key}: "
+                f"site={site_value!r}, profile={profile_value!r}"
+            )
+
+
+def _require_resolved_inputs(
+    site: Any, profile: runtime.RuntimeProfile,
+) -> None:
+    """Reject deployment commands that bypassed template resolution."""
+    if _is_template(profile) or _is_site_template(site):
+        raise runtime.ProfileError(
+            "deployment input is unresolved; replace placeholder image "
+            "identities and host paths before plan or lifecycle commands"
+        )
 
 
 def _conformance_explain(args: Any, parser: Any) -> int:
@@ -143,6 +218,7 @@ def _conformance_explain(args: Any, parser: Any) -> int:
         site = None
         if args.site:
             site = load_site(args.site)
+            _validate_site_profile_alignment(site, profile)
     except (
         OSError, KeyError, json.JSONDecodeError,
         SiteConfigError, runtime.ProfileError,
@@ -155,6 +231,7 @@ def _conformance_explain(args: Any, parser: Any) -> int:
         "profile_id": profile.profile_id,
         "model_family": profile.model_family,
         "identity_scope": _identity_scope(profile),
+        "required_image_labels": dict(sorted(profile.required_image_labels.items())),
         "site_owned_settings": sorted(site_owned),
         "profile_owned_settings": sorted(profile_owned),
         "hooks": _hook_representation(profile),
@@ -236,6 +313,8 @@ def _diff_plans(args: Any) -> int:
     site_b = load_site(site_b_path)
     left_profile = load_profile(Path(args.profile_a))
     right_profile = load_profile(Path(args.profile_b))
+    _validate_site_profile_alignment(site_a, left_profile)
+    _validate_site_profile_alignment(site_b, right_profile)
     left_plan = runtime.plan_document(
         "plan", build_actions(site_a, left_profile, "plan"), left_profile,
     )
@@ -272,6 +351,8 @@ def _profile_projection(profile: runtime.RuntimeProfile) -> dict[str, Any]:
         "model_container_path": profile.model_container_path,
         "shm_size": profile.shm_size,
         "startup_timeout_seconds": profile.startup_timeout_seconds,
+        "init": profile.init,
+        "security_opts": list(profile.security_opts),
         "privileged": profile.privileged,
         "entrypoint": profile.entrypoint,
         "confirmation": profile.confirmation,
@@ -280,6 +361,7 @@ def _profile_projection(profile: runtime.RuntimeProfile) -> dict[str, Any]:
         "extra_volumes": [list(v) for v in profile.extra_volumes],
         "extra_labels": dict(profile.extra_labels),
         "identity": dict(profile.identity),
+        "required_image_labels": dict(profile.required_image_labels),
         "attestation_hook": list(profile.attestation_hook),
         "health_check": list(profile.health_check),
     }
@@ -403,8 +485,10 @@ def _owned_settings(
         "container_name", "image", "image_id", "model_host_path",
         "model_container_path", "shm_size", "startup_timeout_seconds",
         "environment", "extra_vllm_args",
-        "extra_volumes", "extra_labels", "privileged", "entrypoint",
-        "confirmation", "identity", "attestation_hook", "health_check",
+        "extra_volumes", "extra_labels", "init", "security_opts",
+        "privileged", "entrypoint",
+        "confirmation", "identity", "required_image_labels",
+        "attestation_hook", "health_check",
     }
     return site_owned, profile_owned
 
@@ -569,6 +653,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise runtime.ProfileError("plan is always offline; remove --execute")
         site = load_site(args.site)
         profile = load_profile(Path(args.profile))
+        _validate_site_profile_alignment(site, profile)
+        _require_resolved_inputs(site, profile)
         actions = build_actions(site, profile, args.command)
     except (
         OSError, KeyError, json.JSONDecodeError,
@@ -590,7 +676,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # A profile-supplied health argv runs inside the serving container. It may
     # mutate state or stop serving, so it receives the same optional
-    # confirmation-token gate as explicit lifecycle mutations.
+    # confirmation-token check as explicit lifecycle mutations.
     mutating = args.command in ("start", "stop", "health")
     requires_confirmation = mutating and profile.confirmation is not None
     if requires_confirmation and args.confirmation != profile.confirmation:

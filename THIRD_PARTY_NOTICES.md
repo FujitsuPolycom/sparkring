@@ -22,6 +22,8 @@ NCCL:
   `src/transport/generic.cc`
 - `nccl-2.30.7-advertise-all-listener-gids.patch` — against NCCL v2.30.7-1,
   `src/transport/net_ib/connect.cc`
+- `nccl-2.30.7-switchless-cycle.patch` — against NCCL v2.30.7-1,
+  `src/transport/generic.cc` and `src/transport/net_ib/connect.cc`
 
 The context and removed lines in these unified diffs are verbatim NVIDIA NCCL
 source code:
@@ -34,8 +36,11 @@ repository. Applying these patches and building or distributing a patched
 `libnccl` binary requires compliance with NCCL's complete `LICENSE.txt`,
 including preservation of its copyright notices and license text.
 
-The lines added by `nccl-2.30.7-advertise-all-listener-gids.patch` are original
-SparkRing work. For the lines added by the two skip-tree patches, see Section 2.
+The lines added by `nccl-2.30.7-advertise-all-listener-gids.patch` and
+`nccl-2.30.7-switchless-cycle.patch` are original SparkRing work. The
+source-complete GLM-5.3 image builder uses only
+`nccl-2.30.7-switchless-cycle.patch`. For the lines added by the two older
+skip-tree patches, see Section 2.
 
 ## 2. josephdrose/nccl-spark-switchless (approach credit)
 
@@ -43,10 +48,12 @@ The switchless skip-Tree/skip-PAT approach reproduced by
 `nccl-2.29.7-skip-tree-pat.patch` and `nccl-2.30.7-skip-tree-pat.patch`
 originates from Joseph Rose's `josephdrose/nccl-spark-switchless`. That
 repository states no license. The guard reproduced in these patches is a
-minimal (approximately four-line) environment-variable gate — the
+minimal (approximately four-line) environment-variable check — the
 `NCCL_SKIP_TREE_CONNECT` check and its log message. No other code from that
-project is included in this repository. This entry records credit for the
-approach.
+project is included in this repository. This entry records credit for those
+two compatibility patches. The public GLM-5.3 builder does not consume them;
+its `NCCL_SWITCHLESS_RING_ONLY` parameter and diagnostics are an independent
+SparkRing implementation.
 
 ## 3. vLLM (referenced and patched)
 
@@ -203,3 +210,27 @@ revision (`org.sparkring.*.commit`), source repository
 (`org.sparkring.parent.image-id`). Building or distributing the image requires
 compliance with each component's license, including preservation of copyright
 notices and license texts.
+
+## 10. GLM-5.3 Flash profile artifacts (referenced; not included)
+
+The GLM-5.3 Flash TP4/DCP1 recipes reference model and runtime artifacts that
+are not distributed in this repository:
+
+- `local-inference-lab/GLM-5.3-Flash-NVFP4` revision
+  `520de24eabf507659eaef7c70f14fd584527facc`, MIT, used as the ModelOpt
+  mixed-precision target checkpoint;
+- `incoai/GLM-5.3-Flash-DFlash2` revision
+  `dc77ff1c99eeb2df044ee3d4f0094eb033fee410`, CC BY-NC-ND 4.0, used as
+  the BF16 speculative drafter; its model card limits use to research and
+  evaluation and directs commercial licensing inquiries to Inco AI;
+- `local-inference-lab/vllm` commit
+  `da4d7be6c97434f6942292ed8abbf4b32dc44355`, Apache-2.0, used as the
+  serving runtime; and
+- `local-inference-lab/b12x` commit
+  `2fcf23a0ce269be27b2e03fece73d46e90e6aeea`, used as the GB10 kernel
+  implementation under Apache-2.0 and its repository notices.
+
+SparkRing records these identities and validates compatible image content; it
+does not redistribute the model weights, vLLM source, or B12X source. Operators
+must obtain each artifact under its own terms. The complete profile provenance
+and known lineage limitations are in `runtime/glm53-flash/pins.json`.
