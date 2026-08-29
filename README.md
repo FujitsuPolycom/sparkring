@@ -8,7 +8,8 @@
 inference-serving stack for switchless clusters of NVIDIA DGX 'Spark' systems
 powered by the GB10 Grace Blackwell Superchip.
 
-SparkRing supports GB10 pairs, four-node rings, and Six-node rings (in dev).
+SparkRing supports GB10 pairs and four-node rings. Six-node ring work is
+research-only.
 
 Models run as tensor-parallel deployments over the direct fabric without an
 external Ethernet or InfiniBand switch. [SIRCL](https://github.com/FujitsuPolycom/sparkring/blob/main/docs/SIRCL.md) provides custom RDMA collectives
@@ -38,7 +39,8 @@ profile is selected.
 - **4× DGX Spark — physical ring.** Models: GLM-5.2 EXL3 3.5-bpw,
   DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6. GLM and DeepSeek are
   compatible with SparkCache; Qwen SparkCache support is Pending.
-- **6× DGX Spark — physical ring.** **In dev. Target models: GLM | KIMI.**
+- **6× DGX Spark — physical ring.** **Research-only.** GLM and KIMI profiles
+  are not part of the supported repository surface.
 
 ## Profiles
 

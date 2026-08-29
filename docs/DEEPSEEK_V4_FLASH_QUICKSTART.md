@@ -381,37 +381,18 @@ single-host multi-GPU profiles and are not worth carrying here.
 
 ## What these results cover
 
-Each topology has separate results recorded in its serving contract.
+Each topology has separate results recorded in its serving contract. The
+reported throughput values are client-observed for the prompt and generation
+lengths named by each record. The two-rank matrix uses isolated-server
+sustained decode and standalone prefill. Neither dataset measures output
+quality or qualifies an untested image, checkpoint, topology, or request
+shape.
 
-A diagnostic four-rank tensor-parallel deployment of plain 0731 with five
-DSpark proposal tokens was exercised on 2026-08-24: 100 consecutive
-maximum-reasoning strict streamed tool calls passed, followed by cold tool
-calls at approximately 98K and 262K prompt tokens. No raw speculative-model
-control tokens or server-error responses were observed. The run did not attest
-an image digest, so both the two-rank and four-rank five-token profiles
-require an exact post-publication pull-and-replay. These correctness checks are
-separate from the throughput tables in this document.
-
-The two-Spark launch used benchmark image
-`ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028`
-on 2026-08-21 on two directly cabled Sparks:
-both ranks rendezvoused, a deterministic completion, an emitted tool call and a
-34-tool chat request returned coherent output with no leaked markers, and DSpark
-speculation ran at depth 5 with a 2.76 mean acceptance length. It mounted only
-the checkpoint and a cache directory, so that benchmark image needs no source
-overlay.
-
-The four-Spark launch used the same benchmark image digest on 2026-08-21: all
-four ranks rendezvoused, each loading 40.82 GiB of weights, a
-deterministic completion and an emitted tool call were correct, and DSpark
-speculation ran at depth 5 with a 3.06 mean acceptance length.
-
-The throughput figures are client-observed on the stated prompt and
-generation lengths. The normalized TP2 table is isolated-server sustained
-decode and standalone prefill. Neither dataset measures output quality or
-qualifies the setup for general use. The documented launch uses
-patched NCCL from the environment template; SIRCL width-4096 graph collectives
-are research-only and are not part of this quickstart. See
+The documented launch uses patched NCCL from the selected topology-specific
+environment template. SIRCL width-4096 graph collectives are research-only and
+are not part of this quickstart. Diagnostic tool-call evidence, benchmark
+image identities, acceptance lengths, dates, and published-digest replay
+requirements are retained in
 [the profile record](profiles/DEEPSEEK_V4_FLASH_0731.md) and
 [results](RESULTS.md).
 

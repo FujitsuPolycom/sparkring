@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
 from pathlib import Path
@@ -18,6 +19,7 @@ RECIPE = ROOT / "recipes" / "deepseek-v4-flash-0731-pair.json"
 CYCLE_LAUNCHER = ROOT / "scripts" / "deepseek_v4_cycle_serve.sh"
 CYCLE_TEMPLATE = ROOT / "scripts" / "config" / "deepseek-v4-flash-0731.env.example"
 CYCLE_RECIPE = ROOT / "recipes" / "deepseek-v4-flash-0731.json"
+RUNTIME_LOCK = ROOT / "runtime" / "faststart-lock.json"
 
 
 def _bash_path(path: str | Path) -> str:
@@ -59,6 +61,12 @@ def _env_values(path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         values[key] = value
     return values
+
+
+def _launcher_image(path: Path) -> str:
+    match = re.search(r"^image=(\S+)$", path.read_text(encoding="utf-8"), re.MULTILINE)
+    assert match is not None
+    return match.group(1)
 
 
 @pytest.fixture
@@ -144,6 +152,15 @@ def test_cycle_env_defaults_match_recipe() -> None:
     assert int(values["MAX_NUM_BATCHED_TOKENS"]) == serving[
         "max_num_batched_tokens"
     ]
+
+
+def test_launchers_pin_the_hardened_image_from_the_runtime_lock() -> None:
+    lock = json.loads(RUNTIME_LOCK.read_text(encoding="utf-8"))
+    image = lock["deepseek_v4_flash_0731_hardened_serving_image"]
+    expected = f"{image['repository']}@{image['manifest_digest']}"
+
+    assert _launcher_image(LAUNCHER) == expected
+    assert _launcher_image(CYCLE_LAUNCHER) == expected
 
 
 def test_cycle_check_renders_operator_settings(cycle_env: Path) -> None:
