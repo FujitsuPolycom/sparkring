@@ -1,0 +1,166 @@
+# Sanitized four-rank site template for GLM-5.3 Flash TP4/DCP1.
+#
+# Copy this file outside version control and replace every documentation-only
+# address, SSH target, interface, RDMA device, GID index, and image identity.
+# The serving values are shared by the SparkCache-enabled and cache-disabled
+# runtime profiles. The runtime profile owns the target and draft host mounts.
+
+schema_version: 1
+
+site:
+  name: glm53-flash-four-rank-cycle
+  description: Four directly cabled NVIDIA DGX Spark systems serving GLM-5.3 Flash with BF16 DFlash2 at TP4/DCP1.
+
+topology:
+  mtu: 9000
+  link_speed_mbps: 200000
+  edges:
+    - id: r0-r1
+      subnet: 192.0.2.0/24
+      endpoints: [0, 1]
+    - id: r1-r2
+      subnet: 198.51.100.0/24
+      endpoints: [1, 2]
+    - id: r2-r3
+      subnet: 203.0.113.0/24
+      endpoints: [2, 3]
+    - id: r3-r0
+      subnet: 198.18.0.0/24
+      endpoints: [3, 0]
+
+ranks:
+  - id: 0
+    ssh_target: operator@198.18.1.10
+    management:
+      interface: eth0
+      address: 198.18.1.10
+    ring_ports:
+      - edge: r0-r1
+        interface: eth1
+        address: 192.0.2.10
+        rdma_device: mlx5_0
+        rdma_port: 1
+        roce_gid_index: 3
+      - edge: r3-r0
+        interface: eth2
+        address: 198.18.0.10
+        rdma_device: mlx5_1
+        rdma_port: 1
+        roce_gid_index: 3
+    transport_peers:
+      - rank: 1
+        address: 198.18.1.11
+      - rank: 3
+        address: 198.18.1.13
+
+  - id: 1
+    ssh_target: operator@198.18.1.11
+    management:
+      interface: eth0
+      address: 198.18.1.11
+    ring_ports:
+      - edge: r0-r1
+        interface: eth1
+        address: 192.0.2.11
+        rdma_device: mlx5_0
+        rdma_port: 1
+        roce_gid_index: 3
+      - edge: r1-r2
+        interface: eth2
+        address: 198.51.100.11
+        rdma_device: mlx5_1
+        rdma_port: 1
+        roce_gid_index: 3
+    transport_peers:
+      - rank: 0
+        address: 198.18.1.10
+      - rank: 2
+        address: 198.18.1.12
+
+  - id: 2
+    ssh_target: operator@198.18.1.12
+    management:
+      interface: eth0
+      address: 198.18.1.12
+    ring_ports:
+      - edge: r1-r2
+        interface: eth1
+        address: 198.51.100.12
+        rdma_device: mlx5_0
+        rdma_port: 1
+        roce_gid_index: 3
+      - edge: r2-r3
+        interface: eth2
+        address: 203.0.113.12
+        rdma_device: mlx5_1
+        rdma_port: 1
+        roce_gid_index: 3
+    transport_peers:
+      - rank: 1
+        address: 198.18.1.11
+      - rank: 3
+        address: 198.18.1.13
+
+  - id: 3
+    ssh_target: operator@198.18.1.13
+    management:
+      interface: eth0
+      address: 198.18.1.13
+    ring_ports:
+      - edge: r2-r3
+        interface: eth1
+        address: 203.0.113.13
+        rdma_device: mlx5_0
+        rdma_port: 1
+        roce_gid_index: 3
+      - edge: r3-r0
+        interface: eth2
+        address: 198.18.0.13
+        rdma_device: mlx5_1
+        rdma_port: 1
+        roce_gid_index: 3
+    transport_peers:
+      - rank: 2
+        address: 198.18.1.12
+      - rank: 0
+        address: 198.18.1.10
+
+runtime:
+  # Replace both values with one immutable image distributed to every rank.
+  # The generic runtime profile independently verifies the local image ID,
+  # source labels, vLLM lease contract, model files, draft hashes, and NCCL.
+  container_image: registry.example.invalid/sparkring/glm53-flash-sparkcache@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  container_image_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  model_path: /models/target
+  model_repo: local-inference-lab/GLM-5.3-Flash-NVFP4
+  model_revision: "520de24eabf507659eaef7c70f14fd584527facc"
+  # This is the revision-derived SparkCache identity, not a full checkpoint
+  # byte-manifest hash. The target repository does not publish a complete
+  # content manifest or identify its base-checkpoint revision.
+  checkpoint_sha256: a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9
+
+serving:
+  tensor_parallel_size: 4
+  decode_context_parallel_size: 1
+  mtp_mode: "off"
+  mtp_tokens: 0
+  max_model_len: 524288
+  kv_cache_bytes_per_rank: 12884901888
+  max_num_seqs: 32
+  master_rank: 0
+  api_port: 8015
+  master_port: 29755
+
+paths:
+  jit_cache_dir: /var/lib/sparkring/glm53-flash/jit
+  context_cache_dir: /var/lib/sparkring/glm53-flash/context
+  evidence_dir: ./evidence/glm53-flash
+  min_free_bytes:
+    jit_cache: 34359738368
+    context_cache: 214748364800
+
+artifacts: []
+
+preflight:
+  ssh_timeout_seconds: 45
+  required_free_ports: [8015, 29755]

@@ -36,8 +36,9 @@ profile is selected.
 - **2× DGX Spark — direct pair.** Models: DeepSeek-V4-Flash-0731 and
   Qwen3.8-27B EXL3 K5/K6. DeepSeek is compatible with SparkCache
 - **4× DGX Spark — physical ring.** Models: GLM-5.2 EXL3 3.5-bpw,
-  DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6. GLM and DeepSeek are
-  compatible with SparkCache; Qwen SparkCache support is Pending.
+  GLM-5.3 Flash with BF16 DFlash2, DeepSeek-V4-Flash-0731, and Qwen3.8-27B
+  EXL3 K5/K6. Both GLM families and DeepSeek are compatible with SparkCache;
+  Qwen with SparkCache is unsupported.
 - **6× DGX Spark — physical ring.** **In dev. Target models: GLM | KIMI.**
 
 ## Profiles
@@ -49,11 +50,15 @@ profile is selected.
 | DeepSeek-V4-Flash-0731 | 4 Sparks · TP4/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA · 16 GiB/rank | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | 2 Sparks · TP2/DCP1 | 1M | 32 | 8,192 | FP8 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | 4 Sparks · TP4/DCP1 | 1M | 64 | 8,192 | FP8 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
+| GLM-5.3 Flash + BF16 DFlash2 — implemented | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | FP8 hybrid target cache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
 | GLM-5.2 EXL3 3.5-bpw + SparkCache | 4 Sparks · TP4/DCP4 | 1M | 16 | 4,096 | NVFP4 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
+| GLM-5.3 Flash + BF16 DFlash2 + SparkCache — qualified | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | FP8 hybrid target cache + SparkCache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md) |
 | DeepSeek-V4-Flash-0731 + SparkCache | 2 Sparks · TP2/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 + SparkCache | 4 Sparks · TP4/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
 
 Qwen with SparkCache has no published composition recipe or live cache evidence.
+The public BF16 DFlash2 checkpoint is licensed CC BY-NC-ND 4.0 for research
+and evaluation; review its model card before use.
 See the
 [profile registry](docs/profiles/README.md) for recipe identities and evidence
 scope.

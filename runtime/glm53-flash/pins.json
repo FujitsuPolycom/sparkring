@@ -1,0 +1,189 @@
+{
+  "schema": "sparkring-glm53-flash-runtime-lock/v1",
+  "status": "qualified",
+  "qualification_scope": "The source and artifact identities below are the identities used by the GLM-5.3 Flash TP4/DCP1 DFlash2 SparkCache restart-and-restore qualification. A rebuilt image has implemented status until its image ID and live behavior are recorded.",
+  "target_model": {
+    "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+    "revision": "520de24eabf507659eaef7c70f14fd584527facc",
+    "repository_owner": "local-inference-lab",
+    "revision_uploader": "lukealonso",
+    "license": "MIT",
+    "cache_revision_identity_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9",
+    "config_sha256": "676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996",
+    "weight_index_sha256": "0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb",
+    "quantization": {
+      "producer": "The pinned repository is published by local-inference-lab and the revision was uploaded by lukealonso. The model card does not name a different individual or organization as the quantization producer.",
+      "tool": "NVIDIA ModelOpt",
+      "tool_version": "0.39.0.dev290+gf9d9a71de.d20260407",
+      "algorithm": "MIXED_PRECISION",
+      "target_expert_layers": "NVFP4 routed experts in target layers 3 through 44",
+      "mtp_expert_layer": "MXFP8 routed experts in MTP layer 45",
+      "base_checkpoint_revision": null,
+      "base_checkpoint_limitation": "The pinned Hugging Face repository does not record the source base-checkpoint revision. No base-checkpoint lineage is inferred."
+    }
+  },
+  "draft_model": {
+    "repository": "incoai/GLM-5.3-Flash-DFlash2",
+    "revision": "dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+    "producer": "Inco AI",
+    "revision_uploader": "zhijianliu",
+    "dtype": "bfloat16",
+    "config_sha256": "c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573",
+    "weights_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
+    "weights_bytes": 2342169800,
+    "license": "CC-BY-NC-ND-4.0",
+    "license_scope": "The model card limits the checkpoint to research and evaluation and directs commercial licensing inquiries to Inco AI."
+  },
+  "vllm": {
+    "repository": "https://github.com/local-inference-lab/vllm.git",
+    "branch": "dev/jovian-judgement",
+    "commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+    "archive_sha256": "fdf09ff187b3823f3d4f58214c9ec8cb3b0f54e69800e5bbe9a59e75c38e56a9",
+    "direct_commits": [
+      {"commit": "e0db84abedb4a85f93d130252e54b73c0f3ed695", "role": "GLM model implementation"},
+      {"commit": "0c878821cf46c99729c7936bcbd4d868ad40e44e", "role": "B12X integration"},
+      {"commit": "4dbd82b9ced13114f90e93b8b6fae0966c942a3b", "role": "C4 state support"},
+      {"commit": "1036123e935177900122c14d3cf02ad67b5422aa", "role": "C4 behavior support"},
+      {"commit": "e7097feb6fcdf57911cd68884420af2d80600dd7", "role": "DFlash speculative decoding"}
+    ],
+    "merged_pull_requests": [
+      {"number": 486, "merge_commit": "15d3f79439eadc396a57e253c955aa149def94ea", "role": "B12X C4 decode-context parallelism"},
+      {"number": 489, "merge_commit": "015dcd423d6aabf843c8ad69074ff67d35c2a395", "role": "single-application MoE router gate"},
+      {"number": 493, "merge_commit": "067c37d974ca2b775d95e51e8fec234929f4e2c4", "role": "captured custom-operation resource lifetime"},
+      {"number": 494, "merge_commit": "e91c7e68f5863a27c79d2773205678be7d8ff132", "role": "independent target and draft KV cache formats"},
+      {"number": 497, "merge_commit": "05d85f603097fe7678d7dda2d522613d9dc61f46", "role": "multimodal processor revision binding"},
+      {"number": 499, "merge_commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355", "role": "native serialized MXFP8 DFlash2 projections"}
+    ],
+    "dependency_note": "Pull request 499 declares dependencies on pull requests 493 and 494.",
+    "lineage_scope": "The listed commits and pull requests are verified members of the pinned fork history. No relationship to another upstream pull request is claimed."
+  },
+  "b12x": {
+    "repository": "https://github.com/local-inference-lab/b12x.git",
+    "branch": "master",
+    "commit": "2fcf23a0ce269be27b2e03fece73d46e90e6aeea",
+    "archive_sha256": "0ce3330579bf2e52d236890856061d1384049f952de009d6b5ab74cf1969aa7e",
+    "license": "Apache-2.0",
+    "commit_title": "Accept runtime QSA cache page sizes",
+    "pull_request": null,
+    "lineage_scope": "No associated pull request was found, so the immutable commit is the only claimed source identity."
+  },
+  "patched_nccl": {
+    "upstream_repository": "https://github.com/NVIDIA/nccl",
+    "version": "2.30.7",
+    "qualified_binary_sha256": "ccd57342449c3f680befcb379329b935746e5299dc4de5f2516146e0411bd85f",
+    "spark_ring_patches": [
+      {
+        "path": "spark_transport/nccl/nccl-2.30.7-skip-tree-pat.patch",
+        "sha256": "097656d07a5774919f0d51558b51ec05de8168c0097ed6cb7764c33230ba6eb2"
+      },
+      {
+        "path": "spark_transport/nccl/nccl-2.30.7-advertise-all-listener-gids.patch",
+        "sha256": "dccfce86d14c15c39f0e0a742863960205a3d9823c464b31a7f7389354844178"
+      }
+    ],
+    "source_limitation": "The qualification receipt records the loaded NCCL binary hash but does not bind that binary to an NVIDIA NCCL source commit and patch-build receipt. The binary hash, version, and repository patch hashes are recorded without inferring a source commit."
+  },
+  "sparkcache": {
+    "repository": "https://github.com/FujitsuPolycom/sparkcache",
+    "branch": "codex/glm53-flash",
+    "commit": "2d6a222f04fcb7b903cb899aba3ed3fdc75edc11",
+    "source_tree_sha256": "6210f439c64e4079ed3304c9cc181174abb3e6045de740ba7b7c2546bcaf6ac2",
+    "profile": "glm53-flash-hybrid",
+    "vllm_lease_contract": {
+      "path": "runtime/glm53-flash/vllm-kv-block-lease-contract-da4d7be.json",
+      "sha256": "2e3b17fd6a34f2dbb8e91a99b83dbf18629cf0e718f9f814236da4bbfc9ae3f1"
+    },
+    "vmm_exemption_patch_sha256": "370b498eebf44b4e52a2d2751fa249ad4bd3d0b6fd951b063a161fb06febbe99",
+    "vmm_exemption_preimages_sha256": "e0eb1b64d15812f122450f2e32323f0c907c640b8f8ccc270c77037bb9909b85",
+    "image_build": {
+      "containerfile": "deploy/glm53_flash/Containerfile",
+      "containerfile_sha256": "ccc6b39173df80f604820959c3f19f8bc363f79d11f7d4f2d913054a4161b3f5",
+      "builder": "deploy/glm53_flash/build_image.py",
+      "builder_sha256": "c130e5c2fdd5f33e73f90f04ef85fa1247d93bfe6db409cd99508841f8d84547",
+      "profile_source": "deploy/glm53_flash/profile.py",
+      "profile_source_sha256": "a431f51b6d5146834194e05dc6bbf1e84320746c5af7384055a64e8f4d6fe94c",
+      "qualification_request": "deploy/glm53_flash/qualification_request.py",
+      "qualification_request_sha256": "1c3e5d2c8471173b3016e54e97e8218edff73a0ee0c910becd208e2a6d1d0c0b"
+    },
+    "qualification": {
+      "record": "GLM53_FLASH_DFLASH7_LIVE_VALIDATION.md",
+      "qualified_host_record_sha256": "4a3a7bdf327e0d4b963ab46d58e9db3c7658e40ebabd5bf68fd5b093e856abf7",
+      "qualified_host_receipt_sha256": {
+        "cold.json": "7d1a57964779a740863eaed9d67e1da234f570c8d22784ff1ee08658bc4c4af6",
+        "post-restart-prime.json": "fdac6f3bea3b8c5fedd93cf9e5efba6c65866aa4f487bc43ac89b950dc2cd320",
+        "post-restart-restore.json": "af2b62432c88ca0b1bbb7255e77f05c557f4589409b5acce4c1c15d52db34498",
+        "post-restore-semantic.json": "c0724084314eee1ae71c5d1fb9d4aa8751971d3c83680982e556763ede1c220d"
+      }
+    },
+    "identity_scope": "The immutable commit identifies the repository state. The source-tree, contract, patch, and build-recipe SHA-256 values bind the exact files consumed by the qualified images."
+  },
+  "toolchain": {
+    "python": "3.12",
+    "torch": "2.13.0",
+    "cuda": "13.0.3",
+    "cutlass_dsl": "4.6.2",
+    "humming_kernels": "0.1.12",
+    "instanttensor": "0.1.9",
+    "nccl": "2.30.7"
+  },
+  "spark_ring_profile": {
+    "repository": "https://github.com/FujitsuPolycom/sparkring",
+    "branch": "codex/glm53-flash-sparkcache-tp4",
+    "base_revision": "510556275ed3b77fc56a14367d319417072eeb8c",
+    "publication_revision": null,
+    "revision_limitation": "publication_revision is null because no immutable SparkRing commit contains the profile files. A pull request or image publication must set it to the commit that contains the published profile."
+  },
+  "qualified_images_by_rank": [
+    {
+      "rank": 0,
+      "base_image_id": "sha256:ddd13fb1ea8ca61aaf771715dc8c5a52dfe6860f0cc62c145d155916bf381fc9",
+      "derived_image_id": "sha256:56f051b1b1b6f9f858ea5d21b7933b64af81c22bee2c417a3f8b4466220e37e6"
+    },
+    {
+      "rank": 1,
+      "base_image_id": "sha256:7fb81337ba088a6bf0bbce71b22a5881f812a21af9ac1d6deea9533a8e9eed92",
+      "derived_image_id": "sha256:8506935b369bd4f0d5d73495ded9a2fcb52bbe2f310ea093818e5d3d5366ae38"
+    },
+    {
+      "rank": 2,
+      "base_image_id": "sha256:9bd97e3d77de969ee0788aaac31b2888fd4c6a3d893ac5fc544ca85363927935",
+      "derived_image_id": "sha256:b969a49ec091157c686a3bc3f52816b6aa910e495af0c92780a321ea5fbd5324"
+    },
+    {
+      "rank": 3,
+      "base_image_id": "sha256:d592c83cc04106532adf7d8d410347062ac1b80fc1b6981deca414b5335efff4",
+      "derived_image_id": "sha256:c9f0be4dccfd8fdcec80a3edce1ad217604fa09afee0f14d13a2839fb97eed9f"
+    }
+  ],
+  "adapted_operator_inputs": {
+    "base_git_revision": "f3ba67fa476fd28109868811d6edbb4085c8f0a0",
+    "working_tree_status": "The qualified operator inputs contained uncommitted configuration and evidence. Their file hashes identify the exact snapshots; the base Git revision alone does not reproduce them.",
+    "files": [
+      {
+        "role": "four-rank DFlash and SparkCache launcher",
+        "sha256": "fef84dda87bab36f36f993f21a3e582438f3b0d1e3239b292ef0ef39e8c44b23"
+      },
+      {
+        "role": "qualified BF16 DFlash2 TP4 service settings",
+        "sha256": "2c4d81d04060d92f4419d3f17d3c51b2f195d66376c9271617a167c18de14df1"
+      },
+      {
+        "role": "vLLM, B12X, toolchain, and model source lock",
+        "sha256": "913d54bd68fdea1280a8dd2baf15cf3461e04645f50be5bda9eafc027d03e4a8"
+      },
+      {
+        "role": "persistent-context semantic request harness",
+        "sha256": "053a5b6671152ce32e16bd6493b64819679a858b28d703611aea1c506314e7de"
+      },
+      {
+        "role": "four-rank deployment orchestrator",
+        "sha256": "aa568cf7daba1ed8bf62204bc79f88dfc829a0ea495b635d3c46d718651368c8"
+      },
+      {
+        "role": "all-rank health and speculation verifier",
+        "sha256": "f04f2dbb540f1ff063531be7e0de075a5b195909324c43040a076052a0bda69e"
+      }
+    ],
+    "adaptation_scope": "SparkRing expresses the launcher and service settings through its validated site and runtime-profile schemas. No vLLM, B12X, DFlash, or SparkCache implementation source is copied into this profile."
+  }
+}

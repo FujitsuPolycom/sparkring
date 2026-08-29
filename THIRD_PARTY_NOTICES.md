@@ -203,3 +203,27 @@ revision (`org.sparkring.*.commit`), source repository
 (`org.sparkring.parent.image-id`). Building or distributing the image requires
 compliance with each component's license, including preservation of copyright
 notices and license texts.
+
+## 10. GLM-5.3 Flash profile artifacts (referenced; not included)
+
+The GLM-5.3 Flash TP4/DCP1 recipes reference model and runtime artifacts that
+are not distributed in this repository:
+
+- `local-inference-lab/GLM-5.3-Flash-NVFP4` revision
+  `520de24eabf507659eaef7c70f14fd584527facc`, MIT, used as the ModelOpt
+  mixed-precision target checkpoint;
+- `incoai/GLM-5.3-Flash-DFlash2` revision
+  `dc77ff1c99eeb2df044ee3d4f0094eb033fee410`, CC BY-NC-ND 4.0, used as
+  the BF16 speculative drafter; its model card limits use to research and
+  evaluation and directs commercial licensing inquiries to Inco AI;
+- `local-inference-lab/vllm` commit
+  `da4d7be6c97434f6942292ed8abbf4b32dc44355`, Apache-2.0, used as the
+  serving runtime; and
+- `local-inference-lab/b12x` commit
+  `2fcf23a0ce269be27b2e03fece73d46e90e6aeea`, used as the GB10 kernel
+  implementation under Apache-2.0 and its repository notices.
+
+SparkRing records these identities and validates compatible image content; it
+does not redistribute the model weights, vLLM source, or B12X source. Operators
+must obtain each artifact under its own terms. The complete profile provenance
+and known lineage limitations are in `runtime/glm53-flash/pins.json`.

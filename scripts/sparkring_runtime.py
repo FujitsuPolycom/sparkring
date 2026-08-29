@@ -17,7 +17,8 @@ The shared runtime enforces these safety invariants:
 * Mutation commands with a ``confirmation`` field require an exact token.
 * Stop actions are profile-label-guarded so a foreign same-named container is
   never removed.
-* Each ``start`` action verifies the exact image digest before ``docker run``.
+* Each ``start`` action verifies the exact image digest and required image
+  labels before ``docker run``.
 * A successful ``start`` action must print a container identifier; any failed
   partial start rolls back the containers started by that action set.
 """
@@ -101,6 +102,7 @@ SITE_DERIVED_ENVIRONMENT = frozenset(
         "SPARK_TP4_PEER0",
         "SPARK_TP4_PEER1",
         "WORLD_SIZE",
+        "VLLM_HOST_IP",
     }
 )
 
@@ -211,6 +213,9 @@ class RuntimeProfile:
     extra_volumes: tuple[tuple[str, str, str], ...] = ()
     # Optional: container labels beyond the managed and profile labels
     extra_labels: dict[str, str] = field(default_factory=dict)
+    # Optional container lifecycle and Linux security settings.
+    init: bool = False
+    security_opts: tuple[str, ...] = ()
     # Optional: privileged flag (LMCache servers need it)
     privileged: bool = False
     # Optional: entrypoint override
@@ -222,6 +227,10 @@ class RuntimeProfile:
     # Identity keys are lowercase snake_case; env vars use SPARKRING_ATTEST_
     # prefix to avoid collision with runtime-owned SPARKRING_ keys.
     identity: dict[str, str] = field(default_factory=dict)
+    # Image labels that must match before any attestation hook or serving
+    # process starts. These bind an image ID to source and profile contracts
+    # that are not visible from the Docker content digest alone.
+    required_image_labels: dict[str, str] = field(default_factory=dict)
     # Optional: pre-start model attestation hook — a validated argv array
     # that runs as ``docker run --rm <image> <hook>`` after exact image
     # verification and before the main ``docker run``.  Fail-closed.
@@ -367,6 +376,31 @@ def _validate_extra_labels(labels: Any, where: str) -> dict[str, str]:
     return checked
 
 
+def _validate_required_image_labels(
+    labels: Any, where: str,
+) -> dict[str, str]:
+    """Validate exact labels inspected on a local image before launch."""
+    if labels is None:
+        return {}
+    if not isinstance(labels, dict):
+        raise ProfileError(f"{where}: must be an object")
+    checked: dict[str, str] = {}
+    for key, value in labels.items():
+        if not isinstance(key, str) or not _LABEL_KEY.fullmatch(key):
+            raise ProfileError(f"{where}: invalid label key {key!r}")
+        if (
+            not isinstance(value, str)
+            or not value
+            or "\x00" in value
+            or "\n" in value
+        ):
+            raise ProfileError(
+                f"{where}.{key}: expected value must be a non-empty one-line string"
+            )
+        checked[key] = value
+    return checked
+
+
 def _validate_identity(identity: Any) -> dict[str, str]:
     if identity is None:
         return {}
@@ -419,8 +453,10 @@ def parse_runtime_profile(
         "environment", "extra_vllm_args",
     }
     optional = {
-        "extra_volumes", "extra_labels", "privileged", "entrypoint",
+        "extra_volumes", "extra_labels", "init", "security_opts",
+        "privileged", "entrypoint",
         "confirmation", "identity",
+        "required_image_labels",
         "attestation_hook", "health_check",
     }
     unknown = sorted(set(document) - required - optional)
@@ -486,6 +522,13 @@ def parse_runtime_profile(
         document.get("extra_labels"), f"{where}.extra_labels",
     )
 
+    init = document.get("init", False)
+    if not isinstance(init, bool):
+        raise ProfileError(f"{where}.init: must be a boolean")
+    security_opts = _validate_argv_array(
+        document.get("security_opts"), f"{where}.security_opts",
+    )
+
     privileged = document.get("privileged", False)
     if not isinstance(privileged, bool):
         raise ProfileError(f"{where}.privileged: must be a boolean")
@@ -504,6 +547,10 @@ def parse_runtime_profile(
         )
 
     identity = _validate_identity(document.get("identity"))
+    required_image_labels = _validate_required_image_labels(
+        document.get("required_image_labels"),
+        f"{where}.required_image_labels",
+    )
 
     attestation_hook = _validate_argv_array(
         document.get("attestation_hook"), f"{where}.attestation_hook",
@@ -527,10 +574,13 @@ def parse_runtime_profile(
         extra_vllm_args=extra_vllm_args,
         extra_volumes=extra_volumes,
         extra_labels=extra_labels,
+        init=init,
+        security_opts=security_opts,
         privileged=privileged,
         entrypoint=entrypoint,
         confirmation=confirmation,
         identity=identity,
+        required_image_labels=required_image_labels,
         attestation_hook=attestation_hook,
         health_check=health_check,
     )
@@ -605,6 +655,7 @@ def base_environment(
         "NCCL_SOCKET_IFNAME": rank.management.interface,
         "RANK": context["rank"],
         "WORLD_SIZE": context["world_size"],
+        "VLLM_HOST_IP": str(rank.management.address),
         "SPARKRING_IMAGE_DIGEST": profile.image_id,
         "SPARK_TP4_DEVICE0": context["peer0_device"],
         "SPARK_TP4_DEVICE1": context["peer1_device"],
@@ -623,12 +674,20 @@ def container_name(profile: RuntimeProfile, rank: int) -> str:
 
 
 def _image_verify_prefix(profile: RuntimeProfile) -> str:
-    """Shell guard that fails closed if the local image ID differs."""
-    return (
+    """Build guards for the local image ID and required image labels."""
+    guard = (
         f'test "$({profile.engine} image inspect --format '
         f"'{{{{.Id}}}}' {shlex.quote(profile.image)})\" = "
         f"{shlex.quote(profile.image_id)}"
     )
+    for key, expected in sorted(profile.required_image_labels.items()):
+        label_format = "{{ index .Config.Labels " + json.dumps(key) + " }}"
+        guard += (
+            f" && test \"$({profile.engine} image inspect --format "
+            f"{shlex.quote(label_format)} {shlex.quote(profile.image)})\" = "
+            f"{shlex.quote(expected)}"
+        )
+    return guard
 
 
 # ---------------------------------------------------------------------------
@@ -691,6 +750,8 @@ def start_actions(
         if profile.extra_labels:
             for label_key, label_value in profile.extra_labels.items():
                 command.extend(("--label", f"{label_key}={label_value}"))
+        if profile.init:
+            command.append("--init")
         command.extend(
             (
                 "--network", "host",
@@ -704,6 +765,8 @@ def start_actions(
         )
         if profile.privileged:
             command.append("--privileged")
+        for security_opt in profile.security_opts:
+            command.extend(("--security-opt", security_opt))
         if profile.entrypoint:
             command.extend(("--entrypoint", profile.entrypoint))
 
@@ -759,6 +822,8 @@ def start_actions(
                 attest_cmd.extend(
                     ("--volume", f"{host_path}:{container_path}:{mode}")
                 )
+            for security_opt in profile.security_opts:
+                attest_cmd.extend(("--security-opt", security_opt))
             attest_cmd.extend(("--entrypoint", hook_entrypoint, profile.image_id))
             attest_cmd.extend(
                 expand(arg, context) for arg in profile.attestation_hook[1:]
@@ -1061,6 +1126,7 @@ def plan_document(
             "profile_id": profile.profile_id,
             "image_id": profile.image_id,
             "declared_identity": profile.identity,
+            "required_image_labels": profile.required_image_labels,
         },
         "actions": render(actions),
     }

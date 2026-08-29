@@ -102,7 +102,86 @@ def test_plan_start_status_and_stop_actions_preserve_native_identity(tmp_path):
         "profile_id": "deepseek-runtime",
         "image_id": IMAGE_ID,
         "declared_identity": {},
+        "required_image_labels": {},
     }
+
+
+def test_start_verifies_required_image_labels_before_attestation(tmp_path):
+    profile = generic.load_profile(
+        _write_profile(
+            tmp_path,
+            "labeled.json",
+            _native_document(
+                required_image_labels={
+                    "org.example.profile": "exact-profile",
+                    "org.example.source-sha256": "b" * 64,
+                },
+                attestation_hook=["/bin/true"],
+            ),
+        )
+    )
+    action = generic.build_actions(load_site(SITE), profile, "start")[0]
+
+    command = action.argv[2]
+    assert "org.example.profile" in command
+    assert "exact-profile" in command
+    assert "org.example.source-sha256" in command
+    assert "b" * 64 in command
+    assert command.index("org.example.profile") < command.index("/bin/true")
+
+
+def test_required_image_labels_reject_empty_expected_value(tmp_path):
+    with pytest.raises(runtime.ProfileError, match="non-empty one-line string"):
+        generic.load_profile(
+            _write_profile(
+                tmp_path,
+                "empty-label.json",
+                _native_document(
+                    required_image_labels={"org.example.source": ""}
+                ),
+            )
+        )
+
+
+def test_template_detection_includes_host_paths_and_site_image_identity(tmp_path):
+    profile = generic.load_profile(
+        _write_profile(
+            tmp_path,
+            "path-template.json",
+            _native_document(model_host_path="/REPLACE/MODEL_HOST_PATH"),
+        )
+    )
+    assert generic._is_template(profile) is True
+    assert generic._is_site_template(load_site(SITE)) is True
+
+
+def test_site_profile_alignment_rejects_image_identity_drift(tmp_path):
+    profile = generic.load_profile(
+        _write_profile(tmp_path, "native.json", _native_document())
+    )
+    with pytest.raises(runtime.ProfileError, match="container_image"):
+        generic._validate_site_profile_alignment(load_site(SITE), profile)
+
+
+def test_plan_rejects_unresolved_deployment_inputs(tmp_path, capsys):
+    site = load_site(SITE)
+    profile_path = _write_profile(
+        tmp_path,
+        "template.json",
+        _native_document(
+            image=site.runtime.container_image,
+            image_id=site.runtime.container_image_digest,
+            model_host_path="/REPLACE/MODEL_HOST_PATH",
+            model_container_path=site.runtime.model_path,
+        ),
+    )
+    with pytest.raises(SystemExit):
+        generic.main([
+            "--site", str(SITE),
+            "--profile", str(profile_path),
+            "plan",
+        ])
+    assert "unresolved" in capsys.readouterr().err
 
 
 def test_start_requires_container_identifier_and_rolls_back_partial_start(
@@ -126,6 +205,12 @@ def test_start_requires_container_identifier_and_rolls_back_partial_start(
         }
 
     monkeypatch.setattr(runtime, "execute", fake_execute)
+    monkeypatch.setattr(
+        generic, "_validate_site_profile_alignment", lambda site, profile: None
+    )
+    monkeypatch.setattr(
+        generic, "_require_resolved_inputs", lambda site, profile: None
+    )
 
     assert generic.main([
         "--site", str(SITE), "--profile", str(profile_path), "--execute", "start",
