@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1.7
+
+ARG ARM_BUILDER
+ARG CUDA_RUNTIME
+
+FROM ${ARM_BUILDER} AS instanttensor-wheel
+ARG INSTANTTENSOR_VERSION
+ARG INSTANTTENSOR_SDIST_SHA256
+ENV PYTHON=/opt/python/cp312-cp312/bin/python
+COPY bundle/sources/instanttensor-${INSTANTTENSOR_VERSION}.tar.gz /tmp/src/instanttensor.tar.gz
+RUN test "$(sha256sum /tmp/src/instanttensor.tar.gz | cut -d' ' -f1)" = \
+      "${INSTANTTENSOR_SDIST_SHA256}" \
+ && "${PYTHON}" -m pip install --disable-pip-version-check setuptools wheel \
+ && "${PYTHON}" -m pip wheel --no-deps --no-build-isolation \
+      --wheel-dir /tmp/wheels /tmp/src/instanttensor.tar.gz
+
+FROM ${CUDA_RUNTIME}
+ARG INSTANTTENSOR_VERSION
+ARG INSTANTTENSOR_SDIST_SHA256
+COPY --from=instanttensor-wheel /tmp/wheels/ /opt/sparkring/wheelhouse/
+COPY bundle/sources/instanttensor-${INSTANTTENSOR_VERSION}.tar.gz \
+  /usr/share/licenses/source-archives/instanttensor-${INSTANTTENSOR_VERSION}.tar.gz
+ENV UV_FIND_LINKS=/opt/sparkring/wheelhouse \
+    PIP_FIND_LINKS=/opt/sparkring/wheelhouse
+LABEL org.jovian.instanttensor.version="${INSTANTTENSOR_VERSION}" \
+      org.jovian.instanttensor.sdist-sha256="${INSTANTTENSOR_SDIST_SHA256}" \
+      org.jovian.architecture="linux-arm64"

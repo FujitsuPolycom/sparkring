@@ -4,6 +4,7 @@ Complete this checklist before deploying any supported profile. It defines the
 hardware and operator conditions required by the
 [GLM-5.2 quickstart](GLM52_35BPW_QUICKSTART.md),
 [GLM-5.3 Flash SparkCache quickstart](GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md),
+[source-built GLM-5.3 e10536a quickstart](GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md),
 [GLM-5.3 Flash cache-disabled quickstart](GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md),
 [DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md),
 [Qwen3.8-27B pair quickstart](QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md), and
