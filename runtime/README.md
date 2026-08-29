@@ -11,6 +11,7 @@ credentials, or a live-deployment result.
 |---|---|
 | [`exl3-r7/`](exl3-r7/README.md) | GLM-5.2 EXL3 3.5-bpw R7 ARM64 image builder and its verification tests |
 | [`glm53-flash/`](glm53-flash/README.md) | GLM-5.3 Flash target, BF16 DFlash2, vLLM, B12X, patched NCCL, and SparkCache identity and attestation contract |
+| [`glm53-flash-e10536a/`](glm53-flash-e10536a/README.md) | Implemented source builder for vLLM e10536a with internal MTP5 and opt-in adaptive depth; live serving unqualified |
 | [`deepseek0731-gb10/`](deepseek0731-gb10/README.md) | DeepSeek-V4-Flash-0731 GB10 parser, K5 sparse-row, and native PR431 image layer |
 | [`qwen38/`](qwen38/README.md) | Public-source ARM64 image builder for the Qwen3.8-27B EXL3 K5/K6 pair and cycle profiles |
 | [`faststart-lock.json`](faststart-lock.json) | Immutable ARM64 base-image and model-identity pins |
@@ -82,7 +83,7 @@ image through exact labels and an in-container source contract. Run the
 GLM-5.3 builder, publisher, profile, and launcher contracts with:
 
 ```bash
-python -m pytest runtime/glm53-flash scripts/test_glm53_flash_profile.py scripts/test_sparkring_generic_launcher.py -q
+python -m pytest runtime/glm53-flash runtime/glm53-flash-e10536a scripts/test_glm53_flash_profile.py scripts/test_prepare_glm53_e105_profile.py scripts/test_sparkring_generic_launcher.py -q
 ```
 
 ## DeepSeek-V4-Flash-0731
