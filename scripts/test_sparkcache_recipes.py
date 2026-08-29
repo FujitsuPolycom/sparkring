@@ -56,10 +56,13 @@ def test_compositions_pin_artifact_and_fail_closed_policy() -> None:
             assert artifact["wheel_sha256"] == wheel_sha256
             assert recipe["serving"]["max_num_batched_tokens"] == 4096
         else:
-            assert artifact["artifact_kind"] == "source-tree"
+            assert artifact["artifact_kind"] == "OCI image overlay"
             assert artifact["source_sha256"] == SOURCE_ARTIFACTS[path.name]
             assert artifact["source_commit"] == (
-                "2d6a222f04fcb7b903cb899aba3ed3fdc75edc11"
+                "3860a2250193a6679ac6bac857af53e0757841f8"
+            )
+            assert recipe["runtime"]["sparkcache_image"].startswith(
+                "ghcr.io/fujitsupolycom/"
             )
             assert recipe["serving"]["max_num_batched_tokens"] == 8192
         if "deepseek" in path.name:

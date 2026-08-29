@@ -32,7 +32,10 @@ def test_public_builder_pins_complete_source_and_license_boundary() -> None:
     pins = json.loads(PINS.read_text(encoding="utf-8"))
     build = pins["public_image_build"]
     assert build["platform"] == "linux/arm64"
-    assert build["status"] == "research-only"
+    assert build["status"] == "qualified"
+    assert build["outputs"]["runtime_image"].endswith(
+        "@sha256:864adfe68f458223e186a19844ac80c7adc7365e5db1f25e109b85fc19850dcd"
+    )
     assert build["base_images"]["cuda_runtime"]["license"] == (
         "LicenseRef-NVIDIA-Deep-Learning-Container"
     )

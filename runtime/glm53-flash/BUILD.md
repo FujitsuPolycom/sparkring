@@ -1,8 +1,9 @@
 # Build the GLM-5.3 Flash ARM64 runtime
 
-Status: **research-only**. The builder constructs and verifies a runtime from
-public, immutable inputs. Its output has not passed the four-Spark TP4/DCP1
-qualification recorded for the rank-local images in `pins.json`.
+Status: **implemented**. The builder constructs and verifies a runtime from
+public, immutable inputs. `pins.json` identifies one builder output as
+**qualified** after four-Spark TP4/DCP1 validation; another build has
+implemented status until its own immutable digest passes those checks.
 
 The image contains vLLM, B12X, InstantTensor, CUDA runtime libraries, and a
 source-built NCCL 2.30.7 library for a switchless four-Spark cycle. It does not

@@ -129,8 +129,8 @@ runtime:
   # Replace both values with one immutable image distributed to every rank.
   # The generic runtime profile independently verifies the local image ID,
   # source labels, vLLM lease contract, model files, draft hashes, and NCCL.
-  container_image: registry.example.invalid/sparkring/glm53-flash-sparkcache@sha256:0000000000000000000000000000000000000000000000000000000000000000
-  container_image_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  container_image: ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943
+  container_image_digest: sha256:7c007cf673c35f5818da7fea8faa343304baed00f489efdcbd027d6616b8a290
   model_path: /models/target
   model_repo: local-inference-lab/GLM-5.3-Flash-NVFP4
   model_revision: "520de24eabf507659eaef7c70f14fd584527facc"

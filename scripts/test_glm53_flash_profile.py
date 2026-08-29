@@ -124,20 +124,25 @@ def test_pins_record_complete_provenance_without_inferred_lineage() -> None:
     )
     assert pins["b12x"]["pull_request"] is None
     assert pins["patched_nccl"]["qualified_binary_sha256"] == (
-        "ccd57342449c3f680befcb379329b935746e5299dc4de5f2516146e0411bd85f"
+        "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3"
     )
-    assert "does not bind" in pins["patched_nccl"]["source_limitation"]
+    assert pins["patched_nccl"]["commit"] == (
+        "73cf112295c33aee2b895f329f592f2a9b4b0f97"
+    )
+    assert pins["patched_nccl"]["patched_tree"] == (
+        "abdeb053b94c3f6d472cd55ae2b79ca821299009"
+    )
     assert pins["sparkcache"]["image_build"]["containerfile_sha256"] == (
-        "ccc6b39173df80f604820959c3f19f8bc363f79d11f7d4f2d913054a4161b3f5"
+        "a2b65f3600950855cbfa00d82d532de1fbced3f4fa26c4bf1e59c3b6a519abd9"
     )
     assert pins["sparkcache"]["image_build"]["builder_sha256"] == (
-        "c130e5c2fdd5f33e73f90f04ef85fa1247d93bfe6db409cd99508841f8d84547"
+        "b72466799e2fe569ecdee3a536cfb4606d2599da0a20cd398ca03aa99e21a3e6"
     )
     assert pins["sparkcache"]["commit"] == (
-        "2d6a222f04fcb7b903cb899aba3ed3fdc75edc11"
+        "3860a2250193a6679ac6bac857af53e0757841f8"
     )
-    assert pins["spark_ring_profile"]["publication_revision"] == (
-        "d45572dbd2adc7afa1d3208fb801c8ad9eac7864"
+    assert pins["spark_ring_profile"]["runtime_image_source_revision"] == (
+        "862db89b1dd905e0ce3197f1d7b64b8a5802dbf1"
     )
 
 
@@ -185,7 +190,7 @@ def test_profiles_preserve_scheduler_prefix_and_prefill_contracts() -> None:
         assert "--enable-chunked-prefill" in arguments
         assert _argument_value(arguments, "--max-num-batched-tokens") == "8192"
         assert _argument_value(arguments, "--mamba-cache-mode") == "align"
-        assert _argument_value(arguments, "--kda-prefill-backend") == "flashkda"
+        assert _argument_value(arguments, "--kda-prefill-backend") == "triton"
         assert _argument_value(arguments, "--max-cudagraph-capture-size") == "256"
         assert json.loads(_argument_value(arguments, "--speculative-config")) == {
             "method": "dflash",
@@ -260,7 +265,7 @@ def test_profiles_fail_closed_on_image_source_draft_contract_and_nccl() -> None:
             "org.sparkcache.deployment-profile"
         ] == "glm53-flash-hybrid"
         assert profile.required_image_labels["org.sparkcache.parent-image-id"] == (
-            "sha256:" + "0" * 64
+            "sha256:7e8c0ebcb2001efb4cdab0ec9d20d53972e62db3688230044e22e61ffb1d35d5"
         )
         command = launcher.build_actions(site, profile, "start")[0].argv[2]
         assert "org.sparkcache.source-sha256" in command
@@ -270,7 +275,7 @@ def test_profiles_fail_closed_on_image_source_draft_contract_and_nccl() -> None:
         assert "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b" in command
         assert "676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996" in command
         assert "0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb" in command
-        assert "ccd57342449c3f680befcb379329b935746e5299dc4de5f2516146e0411bd85f" in command
+        assert "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3" in command
         assert "VLLM_HOST_IP=198.18.1.10" in command
         assert "--init" in command
         assert "--security-opt label=disable" in command
@@ -284,28 +289,26 @@ def test_site_and_runtime_profiles_have_one_identity_contract() -> None:
         )
 
 
-def test_recipes_distinguish_qualified_cache_evidence_from_implementation() -> None:
+def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
     base = _json(BASE_RECIPE_PATH)
     cache = _json(CACHE_RECIPE_PATH)
 
-    assert base["status"] == "implemented"
+    assert base["status"] == "qualified"
     assert base["serving"]["external_kv_cache"] is False
-    assert base["evidence"]["status"] == "implemented"
+    assert base["evidence"]["status"] == "qualified"
     assert cache["status"] == "qualified"
     assert cache["evidence"]["status"] == "qualified"
     assert cache["serving"]["async_scheduling"] is True
     assert cache["serving"]["native_prefix_caching"] is True
     assert cache["serving"]["chunked_prefill"] is True
     assert cache["evidence"]["external_cache_hit_tokens"] == 8192
-    assert cache["evidence"]["restore_request_seconds"] == 1.509
+    assert cache["evidence"]["restore_request_seconds"] == 1.902
     assert cache["evidence"]["draft_tokens"] == 7 * cache["evidence"]["drafts"]
-    assert [entry["rank"] for entry in cache["runtime"]["qualified_images_by_rank"]] == [
-        0, 1, 2, 3,
-    ]
-    assert all(
-        entry["base_image_id"].startswith("sha256:")
-        and entry["derived_image_id"].startswith("sha256:")
-        for entry in cache["runtime"]["qualified_images_by_rank"]
+    assert cache["runtime"]["sparkcache_image"].endswith(
+        "@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943"
+    )
+    assert cache["runtime"]["sparkcache_image_id"] == (
+        "sha256:7c007cf673c35f5818da7fea8faa343304baed00f489efdcbd027d6616b8a290"
     )
     receipt_dir = (
         ROOT
@@ -320,9 +323,11 @@ def test_recipes_distinguish_qualified_cache_evidence_from_implementation() -> N
         "post-restart-prime.json",
         "post-restart-restore.json",
         "post-restore-semantic.json",
+        "no-external-cache-semantic.json",
     }
-    assert receipts["post-restart-restore.json"]["elapsed_seconds"] == 1.509
+    assert receipts["post-restart-restore.json"]["elapsed_seconds"] == 1.902
     assert receipts["post-restore-semantic.json"]["semantic_match"] is True
+    assert receipts["no-external-cache-semantic.json"]["semantic_match"] is True
 
 
 def test_public_profile_files_do_not_embed_private_site_values_or_mutable_tags() -> None:
@@ -354,39 +359,27 @@ def test_public_profile_files_do_not_embed_private_site_values_or_mutable_tags()
 def test_operator_docs_state_status_invariants_and_full_provenance() -> None:
     for path in (CACHE_QUICKSTART_PATH, BASE_QUICKSTART_PATH, PROFILE_RECORD_PATH):
         text = path.read_text(encoding="utf-8")
-        assert "## Provenance" in text
+        assert "Provenance" in text
         assert "local-inference-lab/GLM-5.3-Flash-NVFP4@520de24" in text
         assert "incoai/GLM-5.3-Flash-DFlash2@dc77ff1" in text
         assert "CC BY-NC-ND 4.0" in text
         assert "dev/jovian-judgement@da4d7be" in text
         assert "2fcf23a0ce269be27b2e03fece73d46e90e6aeea" in text
-        assert "ccd57342449c3f680befcb379329b935746e5299dc4de5f2516146e0411bd85f" in text
-        assert "6210f439c64e4079ed3304c9cc181174abb3e6045de740ba7b7c2546bcaf6ac2" in text
-        assert "2d6a222f04fcb7b903cb899aba3ed3fdc75edc11" in text
         assert "base-checkpoint revision" in text
-        assert "binary" in text and "source commit" in text
-        assert "Docker image publication" in text
-        assert "FujitsuPolycom community" in text
-        assert "parent-image" in text
         assert "FujitsuPolycom/sparkring/issues" in text
         assert "FujitsuPolycom/sparkcache/issues" in text
-        assert "announcement" in text.casefold()
+        assert "@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943" in text
 
     for path in (CACHE_QUICKSTART_PATH, BASE_QUICKSTART_PATH):
         text = path.read_text(encoding="utf-8")
-        assert "--async-scheduling" in text
-        assert "--enable-prefix-caching" in text
-        assert "--enable-chunked-prefill" in text
+        assert "asynchronous scheduling" in text
+        assert "native prefix caching" in text
+        assert "chunked prefill" in text
         assert "docker logs --follow --tail 120" in text
-        assert "org.sparkcache.parent-image-id" in text
-        assert "Public reproduction: unsupported" in text
         assert "--strict-placeholders" in text
-        assert "fatal_pattern=" in text
     cache_text = CACHE_QUICKSTART_PATH.read_text(encoding="utf-8")
-    assert "deploy/glm53_flash/build_image.py" in cache_text
-    assert '--base-image-id "${base_image_id}"' in cache_text
-    assert "hf cache verify" in cache_text
+    assert "deploy/glm53_flash/build_public_image.py" in cache_text
+    assert "runtime/glm53-flash/BUILD.md" in cache_text
     assert "metrics-before-restore.prom" in cache_text
-    assert '${TARGET_MODEL_DIR:?' in cache_text
-    assert "temporary_build_tag" in cache_text
-    assert "inherits qualified" not in cache_text
+    assert "restored 8192 tokens async" in cache_text
+    assert "A rebuilt image has **implemented** status" in cache_text

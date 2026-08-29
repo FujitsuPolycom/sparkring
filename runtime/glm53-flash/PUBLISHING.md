@@ -1,7 +1,8 @@
 # Publish the GLM-5.3 ARM64 runtime
 
-Status: **implemented** for private GHCR publication. A registry digest remains
-unqualified until four DGX Spark ranks run that exact image through the
+Status: **implemented** for GHCR publication. The runtime digest recorded in
+`pins.json` is **qualified** as the parent of the SparkCache image used by four
+DGX Spark ranks. Another digest remains implemented until it passes the
 TP4/DCP1 checks.
 
 Build and verify the image according to [`BUILD.md`](BUILD.md). Generate an
@@ -12,7 +13,8 @@ syft scan sparkring-glm53-runtime:da4d7be-source-arm64 \
   --output spdx-json=glm53-runtime.spdx.json
 ```
 
-Authenticate to GHCR with `write:packages`, then publish privately:
+Authenticate to GHCR with `write:packages`, then publish privately while
+qualification is pending:
 
 ```bash
 python runtime/glm53-flash/publish_image.py \

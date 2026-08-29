@@ -1,10 +1,10 @@
 {
   "schema": "sparkring-glm53-flash-runtime-lock/v1",
   "status": "qualified",
-  "qualification_scope": "The source and artifact identities below are the identities used by the GLM-5.3 Flash TP4/DCP1 DFlash2 SparkCache restart-and-restore qualification. A rebuilt image has implemented status until its image ID and live behavior are recorded.",
+  "qualification_scope": "The source and artifact identities below define the GLM-5.3 Flash TP4/DCP1 DFlash2 runtime qualified with and without the SparkCache connector. A rebuilt image has implemented status until its immutable digest passes the recorded live checks.",
   "public_image_build": {
-    "status": "research-only",
-    "status_scope": "The source-complete builder is not qualified until one image digest is distributed unchanged to four DGX Spark systems and passes the recorded TP4/DCP1 checks.",
+    "status": "qualified",
+    "status_scope": "The recorded runtime and SparkCache image digests were distributed unchanged to four DGX Spark systems and passed the recorded TP4/DCP1 checks.",
     "platform": "linux/arm64",
     "base_images": {
       "arm_builder": {
@@ -59,10 +59,14 @@
       "vllm_torch_cuda_arch_list": "12.1a"
     },
     "outputs": {
-      "runtime_image": null,
-      "sparkcache_image": null,
-      "nccl_library_sha256": null,
-      "build_receipt_sha256": null
+      "runtime_image": "ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:864adfe68f458223e186a19844ac80c7adc7365e5db1f25e109b85fc19850dcd",
+      "runtime_image_id": "sha256:7e8c0ebcb2001efb4cdab0ec9d20d53972e62db3688230044e22e61ffb1d35d5",
+      "sparkcache_image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943",
+      "sparkcache_image_id": "sha256:7c007cf673c35f5818da7fea8faa343304baed00f489efdcbd027d6616b8a290",
+      "nccl_library_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
+      "runtime_sbom_sha256": "f5261dbed089a52923d4b2e2d5204aa889f0031ff57e324022b16c584068cd43",
+      "sparkcache_sbom_sha256": "14450bf58a8b08fd1997706de4fefc9ae4681ebe990176b6c195e296b32c9d27",
+      "source_receipt_sha256": "afec2f37aa0adfea8c330f0a8e25c393c6276c3e8b8e0f855932f7f2d4ba45df"
     }
   },
   "target_model": {
@@ -133,23 +137,24 @@
   "patched_nccl": {
     "upstream_repository": "https://github.com/NVIDIA/nccl",
     "version": "2.30.7",
-    "qualified_binary_sha256": "ccd57342449c3f680befcb379329b935746e5299dc4de5f2516146e0411bd85f",
+    "tag": "v2.30.7-1",
+    "commit": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
+    "base_tree": "3e7de6f92f0190d1afe9f05642e634cbf43ae4c9",
+    "patched_tree": "abdeb053b94c3f6d472cd55ae2b79ca821299009",
+    "qualified_binary_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
     "spark_ring_patches": [
       {
-        "path": "spark_transport/nccl/nccl-2.30.7-skip-tree-pat.patch",
-        "sha256": "097656d07a5774919f0d51558b51ec05de8168c0097ed6cb7764c33230ba6eb2"
-      },
-      {
-        "path": "spark_transport/nccl/nccl-2.30.7-advertise-all-listener-gids.patch",
-        "sha256": "dccfce86d14c15c39f0e0a742863960205a3d9823c464b31a7f7389354844178"
+        "path": "spark_transport/nccl/nccl-2.30.7-switchless-cycle.patch",
+        "sha256": "6709063fa1c25055ae77a9397dea5d89643f8211d25e7990bdd11597d08c0dde",
+        "ownership": "Original SparkRing implementation of ring-only topology setup and switchless-cycle RoCE device advertisement."
       }
     ],
-    "source_limitation": "The qualification receipt records the loaded NCCL binary hash but does not bind that binary to an NVIDIA NCCL source commit and patch-build receipt. The binary hash, version, and repository patch hashes are recorded without inferring a source commit."
+    "reproducibility_scope": "The source commit, base tree, patch, patched tree, and qualified binary are bound in the image. Compiler output is not claimed to be bit-for-bit reproducible across clean builds."
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache",
-    "branch": "codex/glm53-flash",
-    "commit": "2d6a222f04fcb7b903cb899aba3ed3fdc75edc11",
+    "branch": "codex/glm53-public-image",
+    "commit": "3860a2250193a6679ac6bac857af53e0757841f8",
     "source_tree_sha256": "6210f439c64e4079ed3304c9cc181174abb3e6045de740ba7b7c2546bcaf6ac2",
     "profile": "glm53-flash-hybrid",
     "vllm_lease_contract": {
@@ -160,13 +165,13 @@
     "vmm_exemption_preimages_sha256": "e0eb1b64d15812f122450f2e32323f0c907c640b8f8ccc270c77037bb9909b85",
     "image_build": {
       "containerfile": "deploy/glm53_flash/Containerfile",
-      "containerfile_sha256": "ccc6b39173df80f604820959c3f19f8bc363f79d11f7d4f2d913054a4161b3f5",
-      "builder": "deploy/glm53_flash/build_image.py",
-      "builder_sha256": "c130e5c2fdd5f33e73f90f04ef85fa1247d93bfe6db409cd99508841f8d84547",
+      "containerfile_sha256": "a2b65f3600950855cbfa00d82d532de1fbced3f4fa26c4bf1e59c3b6a519abd9",
+      "builder": "deploy/glm53_flash/build_public_image.py",
+      "builder_sha256": "b72466799e2fe569ecdee3a536cfb4606d2599da0a20cd398ca03aa99e21a3e6",
       "profile_source": "deploy/glm53_flash/profile.py",
       "profile_source_sha256": "a431f51b6d5146834194e05dc6bbf1e84320746c5af7384055a64e8f4d6fe94c",
       "qualification_request": "deploy/glm53_flash/qualification_request.py",
-      "qualification_request_sha256": "1c3e5d2c8471173b3016e54e97e8218edff73a0ee0c910becd208e2a6d1d0c0b"
+      "qualification_request_sha256": "82801edd4f0ee48691cd2ed5b2f03b24aac413ce9319be52360c4be0dce19199"
     },
     "qualification": {
       "record": "GLM53_FLASH_DFLASH7_LIVE_VALIDATION.md",
@@ -193,60 +198,24 @@
     "repository": "https://github.com/FujitsuPolycom/sparkring",
     "branch": "codex/glm53-flash-sparkcache-tp4",
     "base_revision": "510556275ed3b77fc56a14367d319417072eeb8c",
-    "publication_revision": "d45572dbd2adc7afa1d3208fb801c8ad9eac7864",
-    "revision_limitation": "The profile is published on a branch at the immutable revision above but has no pull request, release tag, or distributed image artifact."
-  },
-  "qualified_images_by_rank": [
-    {
-      "rank": 0,
-      "base_image_id": "sha256:ddd13fb1ea8ca61aaf771715dc8c5a52dfe6860f0cc62c145d155916bf381fc9",
-      "derived_image_id": "sha256:56f051b1b1b6f9f858ea5d21b7933b64af81c22bee2c417a3f8b4466220e37e6"
-    },
-    {
-      "rank": 1,
-      "base_image_id": "sha256:7fb81337ba088a6bf0bbce71b22a5881f812a21af9ac1d6deea9533a8e9eed92",
-      "derived_image_id": "sha256:8506935b369bd4f0d5d73495ded9a2fcb52bbe2f310ea093818e5d3d5366ae38"
-    },
-    {
-      "rank": 2,
-      "base_image_id": "sha256:9bd97e3d77de969ee0788aaac31b2888fd4c6a3d893ac5fc544ca85363927935",
-      "derived_image_id": "sha256:b969a49ec091157c686a3bc3f52816b6aa910e495af0c92780a321ea5fbd5324"
-    },
-    {
-      "rank": 3,
-      "base_image_id": "sha256:d592c83cc04106532adf7d8d410347062ac1b80fc1b6981deca414b5335efff4",
-      "derived_image_id": "sha256:c9f0be4dccfd8fdcec80a3edce1ad217604fa09afee0f14d13a2839fb97eed9f"
-    }
-  ],
-  "adapted_operator_inputs": {
-    "base_git_revision": "f3ba67fa476fd28109868811d6edbb4085c8f0a0",
-    "working_tree_status": "The qualified operator inputs contained uncommitted configuration and evidence. Their file hashes identify the exact snapshots; the base Git revision alone does not reproduce them.",
-    "files": [
-      {
-        "role": "four-rank DFlash and SparkCache launcher",
-        "sha256": "fef84dda87bab36f36f993f21a3e582438f3b0d1e3239b292ef0ef39e8c44b23"
-      },
-      {
-        "role": "qualified BF16 DFlash2 TP4 service settings",
-        "sha256": "2c4d81d04060d92f4419d3f17d3c51b2f195d66376c9271617a167c18de14df1"
-      },
-      {
-        "role": "vLLM, B12X, toolchain, and model source lock",
-        "sha256": "913d54bd68fdea1280a8dd2baf15cf3461e04645f50be5bda9eafc027d03e4a8"
-      },
-      {
-        "role": "persistent-context semantic request harness",
-        "sha256": "053a5b6671152ce32e16bd6493b64819679a858b28d703611aea1c506314e7de"
-      },
-      {
-        "role": "four-rank deployment orchestrator",
-        "sha256": "aa568cf7daba1ed8bf62204bc79f88dfc829a0ea495b635d3c46d718651368c8"
-      },
-      {
-        "role": "all-rank health and speculation verifier",
-        "sha256": "f04f2dbb540f1ff063531be7e0de075a5b195909324c43040a076052a0bda69e"
-      }
+    "runtime_image_source_revision": "862db89b1dd905e0ce3197f1d7b64b8a5802dbf1",
+    "profile_templates": [
+      "scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1.example.json",
+      "scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-sparkcache.example.json"
     ],
-    "adaptation_scope": "SparkRing expresses the launcher and service settings through its validated site and runtime-profile schemas. No vLLM, B12X, DFlash, or SparkCache implementation source is copied into this profile."
+    "identity_scope": "The runtime image source revision binds the files consumed by the published runtime. Documentation and sanitized profile records may be committed later without changing the image's source identity."
+  },
+  "qualified_cluster_artifact": {
+    "rank_count": 4,
+    "registry_digest": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943",
+    "image_id_on_every_rank": "sha256:7c007cf673c35f5818da7fea8faa343304baed00f489efdcbd027d6616b8a290",
+    "parent_registry_digest": "ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:864adfe68f458223e186a19844ac80c7adc7365e5db1f25e109b85fc19850dcd",
+    "parent_image_id": "sha256:7e8c0ebcb2001efb4cdab0ec9d20d53972e62db3688230044e22e61ffb1d35d5"
+  },
+  "operator_interface": {
+    "site_schema": "sparkring-cluster/v1",
+    "profile_schema": "sparkring-runtime-profile/v1",
+    "launcher": "scripts/sparkring_generic_launcher.py",
+    "adaptation_scope": "Operators supply SSH targets, ring addresses, and host paths through the validated site and runtime-profile schemas. Model, kernel, DFlash, and SparkCache implementation sources are not copied into the operator profile."
   }
 }

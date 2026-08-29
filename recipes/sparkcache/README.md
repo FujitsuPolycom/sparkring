@@ -31,7 +31,7 @@ SHA-256
 The GLM composition was qualified with SparkCache `0.1.0a2` wheel SHA-256
 `3345b8c574951a8204377b0c27f53765c84b96ab4f5a8ec1ac147574dba7568b`.
 The GLM-5.3 Flash composition was qualified from SparkCache commit
-`2d6a222f04fcb7b903cb899aba3ed3fdc75edc11` and source-tree SHA-256
+`3860a2250193a6679ac6bac857af53e0757841f8` and source-tree SHA-256
 `6210f439c64e4079ed3304c9cc181174abb3e6045de740ba7b7c2546bcaf6ac2`
 using cache profile `glm53-flash-hybrid` and the vLLM lease contract named by
 its recipe. It did not use a published wheel.

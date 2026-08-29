@@ -15,11 +15,12 @@ contracts.
 The source-complete public builder is documented in [`BUILD.md`](BUILD.md).
 It fetches every source by immutable commit, builds NCCL from the NVIDIA
 `v2.30.7-1` source with SparkRing's independently implemented switchless-cycle
-patch, and emits an image receipt. The builder and its output are
-**research-only** until one registry digest passes the four-rank checks. The
+patch, and emits an image receipt. The builder is **implemented**. The digest
+recorded in `pins.json` is **qualified**; another output remains implemented
+until its own digest passes the four-rank checks. The
 license and redistribution boundary is documented in
 [`LICENSES/README.md`](LICENSES/README.md).
-Private registry publication and its required SPDX SBOM are documented in
+Registry publication and its required SPDX SBOM are documented in
 [`PUBLISHING.md`](PUBLISHING.md).
 
 Before any rank starts, the runtime profile requires one exact image ID,
