@@ -78,7 +78,7 @@ choosing one.
 | Qwen runtime/source pins and model identities | `runtime/qwen38/pins.json`, then `recipes/qwen38-27b-exl3-k5k6{,-pair}.json` |
 | Public Python overlay allowlist | `runtime/public-overlay-files.json` |
 | R7 site and candidate templates | `scripts/config/exl3-r7-site.example.yaml`, `scripts/config/exl3-r7-candidate.example.json` |
-| DeepSeek per-rank environment | `scripts/config/deepseek-v4-flash-0731.env.example` |
+| DeepSeek two-rank and four-rank environments | `scripts/config/deepseek-v4-flash-0731-pair.env.example`, `scripts/config/deepseek-v4-flash-0731.env.example` |
 | Qwen3.8-27B pair environment | `scripts/config/qwen38-27b-exl3-k5k6-pair.env.example` |
 | Qwen3.8-27B four-rank environment | `scripts/config/qwen38-27b-exl3-k5k6.env.example` |
 | Performance claim requirements | `performance/README.md` |
@@ -125,8 +125,9 @@ produces a content-manifested bundle from the explicit allowlist in
 Use `scripts/config/exl3-r7-site.example.yaml` and
 `scripts/config/exl3-r7-candidate.example.json` as sanitized R7 inputs. Keep
 resolved site addresses, image identities, host paths, and credentials out of
-version control. Use `scripts/config/deepseek-v4-flash-0731.env.example` only
-as a per-rank environment template for DeepSeek-V4-Flash-0731.
+version control. Use `scripts/config/deepseek-v4-flash-0731-pair.env.example`
+for a two-rank pair and `scripts/config/deepseek-v4-flash-0731.env.example` for
+a four-rank cycle.
 
 Use `scripts/config/glm53-flash-tp4-site.example.yaml` with exactly one of the
 two GLM-5.3 runtime-profile templates. Keep resolved site addresses, host

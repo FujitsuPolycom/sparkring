@@ -12,17 +12,33 @@ The R7 configuration is split by responsibility:
 | File | Role |
 |---|---|
 | `exl3-r7-site.example.yaml` | Four-rank site topology, host paths, and serving parameters |
-| `exl3-r7-candidate.example.json` | Candidate image identity, model hashes, transport selection, and enabled R7 options |
+| `exl3-r7-candidate.example.json` | Image identity, model hashes, transport selection, and enabled R7 options |
 | `exl3-r7-pins.json` | R7 model and runtime identity pins |
 
-Copy the site and candidate templates to local, untracked paths. Replace every
-placeholder with values for one appliance, then retain the resolved inputs and
+Copy the site and image-identity templates to local, untracked paths. Replace every
+placeholder with values for one appliance, then record the resolved inputs and
 image identity with the resulting evidence. Do not commit host addresses,
 credentials, model files, local paths, or a locally produced image ID.
 
+The GLM configuration provides the operator-facing equivalent of the
+env-driven profiles:
+
+| Operator setting | Config field | Container use |
+|---|---|---|
+| Model host path | `model_host_path` and `runtime.model_path` | Read-only model mount |
+| JIT cache parent | `jit_cache_host_path` and `paths.jit_cache_dir` | `/cache/jit` |
+| Online EXL3 weight cache | `online_weight_cache_host_path` | `/cache/exl3-online` |
+| API/master ports | `serving.api_port`, `serving.master_port` | Rank-0 API and rendezvous |
+| MTP depth, context, sequences | `serving.mtp_tokens`, `serving.max_model_len`, `serving.max_num_seqs` | vLLM serving arguments |
+
+The profile generator owns the qualified scheduler-token budget; it is not a
+site override. SparkCache recipes inherit the model, cache, ports, and serving
+values from the generated GLM base profile.
+
 The site template is a declarative input for four directly connected ranks.
-The candidate template binds the selected image and model hashes to the
-transport and runtime options. Treat a mismatch between candidate, pins, and
+The image-identity template, `exl3-r7-candidate.example.json`, binds the
+selected image and model hashes to the transport and runtime options. Treat a
+mismatch between that template, pins, and
 the built image as a failed configuration, not a value to normalize manually.
 
 Run the focused offline tests after changing an R7 configuration contract:
@@ -64,17 +80,28 @@ python -m pytest scripts/test_glm53_flash_profile.py -q
 
 ## DeepSeek-V4-Flash-0731
 
-`deepseek-v4-flash-0731.env.example` is the per-rank Docker environment file
-for DeepSeek-V4-Flash-0731. Copy it once per rank and replace:
+**Status: implemented.**
+
+`deepseek-v4-flash-0731-pair.env.example` is both the host launch contract and
+the container environment for the two-Spark profile. It is consumed by
+`scripts/deepseek_v4_pair_serve.sh`, which validates model/cache host paths,
+rank/rendezvous inputs, API and master ports, speculative depth, context,
+sequence count, scheduler budget, and pair transport before rendering or
+running Docker. Keep one resolved copy per rank outside version control.
+
+`deepseek-v4-flash-0731.env.example` is the corresponding host launch contract
+and container environment for the four-Spark cycle. It is consumed by
+`scripts/deepseek_v4_cycle_serve.sh`. Copy it once per rank and resolve:
 
 - `<NCCL_SOCKET_IFNAME>` with the rank's configured fabric interface;
 - `<RANK_FABRIC_IP>` with that interface's address.
 
-All other values are the common runtime contract. Keep each rank's resolved
-environment file local. The template configures the loader, patched NCCL,
-RoCE transport, B12X kernels, and local cache paths required by the pinned
-serving image. It does not supply a model path, launch command, registry
-credential, or serving acceptance result.
+The file also records model/cache host paths, API and master ports,
+speculative depth, context, sequence count, and scheduler budget. Keep each
+rank's resolved environment file local. Both DeepSeek env files map
+`CACHE_HOST_PATH` to `/cache`; their `/cache/jit` values are container paths
+and must remain unchanged. DeepSeek SparkCache recipes inherit these
+base-profile inputs.
 
 The template's immutable image digest is also represented in
 [`runtime/faststart-lock.json`](../../runtime/faststart-lock.json). If those
@@ -89,8 +116,15 @@ channel selection at library defaults and sets the long-context override used
 by the 1M static-YaRN launch. Follow
 [`docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md`](../../docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md).
 
+The pair env also records host model/cache/log paths, API and master ports,
+speculative depth, context, sequence count, and scheduler budget.
+`CACHE_HOST_PATH` is mounted at `/ws/cache`; the `/ws/cache/jit` values are
+container paths and must remain unchanged. `scripts/qwen38_dgx2_serve.sh`
+validates and consumes the serving values inside the prepared runtime
+container.
+
 `qwen38-27b-exl3-k5k6.env.example` is the per-rank environment for the
-four-Spark Qwen candidate. Copy it once per rank and replace:
+implemented four-Spark Qwen profile. Copy it once per rank and replace:
 
 - `<RENDEZVOUS_IFNAME>` with the rank's management interface;
 - `<RANK_RENDEZVOUS_IP>` with that interface's address;
@@ -102,14 +136,18 @@ The template combines the Qwen EXL3 graph/prefill settings with the
 four-Spark patched-NCCL cycle. Management carries rendezvous and random worker
 TCP ports; the RoCE devices carry collectives. The template assumes the
 Qwen image built by `runtime/qwen38/build-image.sh` supplies the immutable
-runtime under `/ws`; it does not supply the model, rank environment, a site
-address, or live evidence. Follow
+runtime under `/ws`. Host paths in the env select separately mounted model,
+cache, and log directories; they do not attest model bytes or provide live
+evidence. Follow
 [`docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md`](../../docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md).
+
+The cycle env uses the same host/cache/serving contract as the pair, with
+four-rank defaults from `recipes/qwen38-27b-exl3-k5k6.json`.
 
 ## DeepSeek SIRCL research overlay
 
 `deepseek-v4-flash-0731-sircl-research.env.example` is a second per-rank
-environment file for the research-only width-4096 SIRCL graph candidate. It
+environment file for the research-only width-4096 SIRCL graph overlay. It
 does not replace the canonical environment. Apply it after the canonical file
 only for an authorized matched A/B, and resolve both direct peer addresses
 against the device named beside each address. The offline plan and evidence

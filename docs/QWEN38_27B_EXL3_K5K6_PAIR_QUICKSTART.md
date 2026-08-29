@@ -114,34 +114,49 @@ cp scripts/config/qwen38-27b-exl3-k5k6-pair.env.example \
   "$HOME/qwen38/config/rank.env"
 ```
 
-Replace all four placeholders in each rank's file. The pair template names
-one HCA, disables subnet-aware routing, and leaves the NCCL channel count and
-algorithm at library defaults. Do not use the four-Spark cycle template: its
-two-HCA routing, forced Ring algorithm, four-channel pin and tree skip describe
-a different topology.
+Resolve every placeholder in each rank's file. In addition to the direct-link
+interface, address, HCA, and GID, the file records rank/rendezvous values, host
+model/cache/log paths, API/master ports, speculative depth, request limit,
+sequence limit, and scheduler budget. The pair template names one HCA,
+disables subnet-aware routing, and leaves NCCL channel count and algorithm at
+library defaults. Do not use the four-Spark cycle template: its two-HCA
+routing, Ring algorithm, four-channel pin, and tree skip describe a different
+topology.
 
 Review the resolved file and confirm it contains no `REPLACE_WITH_` or angle
 bracket placeholders.
 
+Create the configured writable directories and verify the model mount source:
+
+```bash
+# shellcheck disable=SC1090
+. "$HOME/qwen38/config/rank.env"
+export -n LD_PRELOAD
+mkdir -p "$CACHE_HOST_PATH" "$LOG_HOST_PATH"
+test -d "$MODEL_HOST_PATH"
+test -w "$CACHE_HOST_PATH" && test -w "$LOG_HOST_PATH"
+```
+
 ## 5. Run the no-start preflight
 
-Set the site values separately on each rank:
+Read the host mounts and rank settings from the resolved env file:
 
 ```bash
 IMAGE=sparkring-qwen38:arm64-sm121
-MODEL_DIR="$HOME/qwen38/model/Qwen3.8-27B-EXL3-K5K6-hydrated"
 ENV_FILE="$HOME/qwen38/config/rank.env"
-CACHE_DIR="$HOME/qwen38/cache"
-LOG_DIR="$HOME/qwen38/logs"
-RANK=0                         # 1 on the follower
-RANK0_RENDEZVOUS_ADDR=<rank-0-direct-link-ip>
+# shellcheck disable=SC1090
+. "$ENV_FILE"
+# Do not apply the container's NCCL preload to host commands.
+export -n LD_PRELOAD
+MODEL_DIR="$MODEL_HOST_PATH"
+CACHE_DIR="$CACHE_HOST_PATH"
+LOG_DIR="$LOG_HOST_PATH"
 
 docker run --rm --network host --ipc host --shm-size 16g --gpus all \
   --ulimit memlock=-1:-1 --cap-add IPC_LOCK --device /dev/infiniband \
   -v "$MODEL_DIR:/ws/model/Qwen3.8-27B-EXL3-K5K6-hydrated:ro" \
   -v "$CACHE_DIR:/ws/cache" -v "$LOG_DIR:/ws/logs" \
   -v "$ENV_FILE:/ws/rank.env:ro" \
-  -e RANK="$RANK" -e RANK0_RENDEZVOUS_ADDR="$RANK0_RENDEZVOUS_ADDR" \
   --entrypoint /ws/qwen38_dgx2_serve.sh \
   "$IMAGE" --check
 ```
@@ -166,7 +181,6 @@ docker run -d --name "$CONTAINER" \
   -v "$MODEL_DIR:/ws/model/Qwen3.8-27B-EXL3-K5K6-hydrated:ro" \
   -v "$CACHE_DIR:/ws/cache" -v "$LOG_DIR:/ws/logs" \
   -v "$ENV_FILE:/ws/rank.env:ro" \
-  -e RANK="$RANK" -e RANK0_RENDEZVOUS_ADDR="$RANK0_RENDEZVOUS_ADDR" \
   --label org.sparkring.profile=qwen38-27b-exl3-k5k6-pair \
   --label org.sparkring.attempt="$ATTEMPT_ID" \
   --entrypoint /ws/qwen38_dgx2_serve.sh \
@@ -182,11 +196,12 @@ docker logs --follow "qwen38-dgx2-${ATTEMPT_ID}-r0"
 The ready service must report all of these:
 
 - TP world size 2 and one worker per rank;
-- `max_seq_len=1048576` and `kv_cache_dtype=fp8`;
+- `max_seq_len` equal to `MAX_MODEL_LEN` and `kv_cache_dtype=fp8`;
 - `draft_sample_method=probabilistic` in the resolved speculative config;
 - NCCL connected over the selected RoCEv2 GID;
 - `Application startup complete` on rank 0; and
-- `/v1/models` advertising `qwen38` with `max_model_len` 1,048,576.
+- `/v1/models` advertising `qwen38` with `max_model_len` equal to
+  `MAX_MODEL_LEN`.
 
 ## 7. Run bounded functional checks
 
@@ -194,9 +209,9 @@ From the checkout or another machine that can reach rank 0:
 
 ```bash
 python scripts/qwen38_smoke.py \
-  --endpoint http://<rank-0-management-address>:8000 \
+  --endpoint "http://<rank-0-management-address>:$API_PORT" \
   --model qwen38 \
-  --expected-max-model-len 1048576 \
+  --expected-max-model-len "$MAX_MODEL_LEN" \
   --timeout 180 \
   --output "$HOME/qwen38/logs/qwen38-smoke-${ATTEMPT_ID}.json"
 ```

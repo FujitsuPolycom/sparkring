@@ -28,19 +28,36 @@ check_sha256() {
     [ "$actual" = "$expected" ] || die "$label SHA-256 mismatch: expected $expected, got $actual"
 }
 
+case "${RANK-}" in
+    ''|0|1) ;;
+    *) die "RANK must be 0 or 1; got $RANK" ;;
+esac
+env_file=${QWEN_ENV_FILE:-/ws/rank.env}
+require_file "$env_file" "rank environment file is missing"
+if grep -Ev '^[[:space:]]*(#|$)' "$env_file" | grep -Eq '<[A-Za-z0-9_]+>|REPLACE_WITH_'; then
+    die "rank environment file contains unresolved placeholders: $env_file"
+fi
+set -a
+# shellcheck disable=SC1090
+. "$env_file"
+set +a
+
 rank=${RANK:-}
 case "$rank" in 0|1) ;; *) die "RANK must be 0 or 1; got ${rank:-empty}" ;; esac
 rank0_rendezvous_addr=${RANK0_RENDEZVOUS_ADDR:-}
 [ -n "$rank0_rendezvous_addr" ] || die "RANK0_RENDEZVOUS_ADDR is required"
 
-env_file=${QWEN_ENV_FILE:-/ws/rank.env}
 model_path=${QWEN_MODEL_PATH:-/ws/model/Qwen3.8-27B-EXL3-K5K6-hydrated}
 chat_template=${QWEN_CHAT_TEMPLATE:-/ws/chat_template_agentic.jinja}
 venv=${QWEN_VENV:-/ws/venv}
 infiniband_root=${QWEN_INFINIBAND_SYS_ROOT:-/sys/class/infiniband}
 infiniband_dev_root=${QWEN_INFINIBAND_DEV_ROOT:-/dev/infiniband}
-api_port=${QWEN_API_PORT:-8000}
-master_port=${QWEN_MASTER_PORT:-29500}
+api_port=${API_PORT:-${QWEN_API_PORT:-8000}}
+master_port=${MASTER_PORT:-${QWEN_MASTER_PORT:-29500}}
+num_speculative_tokens=${NUM_SPECULATIVE_TOKENS:-3}
+max_model_len=${MAX_MODEL_LEN:-1048576}
+max_num_seqs=${MAX_NUM_SEQS:-32}
+max_num_batched_tokens=${MAX_NUM_BATCHED_TOKENS:-8192}
 
 expected_manifest=7626d18481e7f995fd1d9ff211083b7fd57f044daba39e107fb29a48207f24c4
 expected_config=fbb105334da6554c10784ff1257fda5e3821d4d5426d64469cee2b2ad67ba2b3
@@ -51,15 +68,6 @@ expected_nccl=e69a8c240f45d10166bcd901d99db78bb63147adda66e586d8dd505c6d608b54
 for command_name in cut find grep ip pgrep printenv python3 sha256sum; do
     command -v "$command_name" >/dev/null 2>&1 || die "required command is unavailable: $command_name"
 done
-require_file "$env_file" "rank environment file is missing"
-if grep -Ev '^[[:space:]]*(#|$)' "$env_file" | grep -Eq '<[A-Za-z0-9_]+>|REPLACE_WITH_'; then
-    die "rank environment file contains unresolved placeholders: $env_file"
-fi
-set -a
-# shellcheck disable=SC1090
-. "$env_file"
-set +a
-
 for name in \
     LD_PRELOAD VLLM_NCCL_SO_PATH NCCL_SOCKET_IFNAME GLOO_SOCKET_IFNAME \
     VLLM_HOST_IP NCCL_NET NCCL_NET_PLUGIN NCCL_IB_DISABLE NCCL_IB_HCA \
@@ -69,6 +77,15 @@ for name in \
     VLLM_EXL3_PREFILL_FP8 VLLM_EXL3_PREFILL_RECONSTRUCT_M \
     VLLM_ALLOW_LONG_MAX_MODEL_LEN; do
     require_env "$name"
+done
+
+for value_name in num_speculative_tokens max_model_len max_num_seqs \
+    max_num_batched_tokens; do
+    value=${!value_name}
+    case "$value" in
+        ''|*[!0-9]*) die "$value_name must be a positive integer: $value" ;;
+    esac
+    [ "$((10#$value))" -gt 0 ] || die "$value_name must be greater than zero"
 done
 
 [ "$NCCL_SOCKET_IFNAME" = "$GLOO_SOCKET_IFNAME" ] || die "NCCL and Gloo interfaces differ"
@@ -181,7 +198,7 @@ fi
 endpoint=(--headless)
 [ "$rank" = 0 ] && endpoint=(--host 0.0.0.0 --port "$api_port")
 hf_overrides='{"text_config":{"rope_parameters":{"mrope_interleaved":true,"mrope_section":[11,11,10],"rope_type":"yarn","rope_theta":10000000,"partial_rotary_factor":0.25,"factor":4.0,"original_max_position_embeddings":262144}}}'
-speculation='{"method":"qwen3_5_mtp","num_speculative_tokens":3,"attention_backend":"TRITON_ATTN","draft_sample_method":"probabilistic","rejection_sample_method":"standard"}'
+speculation=$(printf '{"method":"qwen3_5_mtp","num_speculative_tokens":%s,"attention_backend":"TRITON_ATTN","draft_sample_method":"probabilistic","rejection_sample_method":"standard"}' "$num_speculative_tokens")
 
 command=(
     "$venv/bin/vllm" serve "$model_path"
@@ -190,8 +207,9 @@ command=(
     --nnodes 2 --node-rank "$rank"
     --master-addr "$rank0_rendezvous_addr" --master-port "$master_port"
     --distributed-executor-backend mp
-    --max-model-len 1048576 --hf-overrides "$hf_overrides"
-    --max-num-seqs 32 --max-num-batched-tokens 8192
+    --max-model-len "$max_model_len" --hf-overrides "$hf_overrides"
+    --max-num-seqs "$max_num_seqs"
+    --max-num-batched-tokens "$max_num_batched_tokens"
     --enable-chunked-prefill --async-scheduling --scheduler-reserve-full-isl
     --block-size 16 --gpu-memory-utilization 0.70 --kv-cache-dtype fp8
     --enable-prefix-caching --mamba-cache-mode align
@@ -206,6 +224,9 @@ command=(
 )
 
 printf 'qwen38 pair preflight passed for rank %s\n' "$rank"
+printf 'MAX_MODEL_LEN=%s MAX_NUM_SEQS=%s MAX_NUM_BATCHED_TOKENS=%s NUM_SPECULATIVE_TOKENS=%s\n' \
+    "$max_model_len" "$max_num_seqs" "$max_num_batched_tokens" \
+    "$num_speculative_tokens"
 printf 'resolved command:'
 printf ' %q' "${command[@]}"
 printf '\n'

@@ -90,10 +90,13 @@ python -m pytest runtime/glm53-flash scripts/test_glm53_flash_profile.py scripts
 [`runtime/deepseek0731-gb10/`](deepseek0731-gb10/README.md) builds the
 DeepSeek-specific layer over the generic GB10 serving image. The lock records
 both the hardened image digest and the unchanged generic rollback digest. The
-per-rank container environment is defined in
-[`scripts/config/deepseek-v4-flash-0731.env.example`](../scripts/config/deepseek-v4-flash-0731.env.example).
-The environment template and immutable image digest must agree; neither
-substitutes for a four-rank serving qualification.
+per-rank container environments are defined by topology:
+[`scripts/config/deepseek-v4-flash-0731-pair.env.example`](../scripts/config/deepseek-v4-flash-0731-pair.env.example)
+for a two-rank pair and
+[`scripts/config/deepseek-v4-flash-0731.env.example`](../scripts/config/deepseek-v4-flash-0731.env.example)
+for a four-rank cycle. The selected environment template and immutable image
+digest must agree. Neither offline validation nor a successful launch on one
+topology qualifies the other topology.
 
 ## Scope and safety
 
