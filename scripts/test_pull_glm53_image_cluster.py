@@ -45,3 +45,23 @@ def test_pull_cluster_requires_one_local_image_id(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(pull.subprocess, "run", fake_run)
     with pytest.raises(pull.PullError, match="different local image IDs"):
         pull.pull_cluster(_site(), IMAGE, 30)
+
+
+def test_remote_execution_preserves_the_shell_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    observed = []
+    document = [{
+        "Id": "sha256:" + "b" * 64,
+        "Architecture": "arm64",
+        "Os": "linux",
+    }]
+
+    def fake_run(arguments, **_kwargs):
+        observed.append(arguments)
+        return subprocess.CompletedProcess(arguments, 0, json.dumps(document), "")
+
+    monkeypatch.setattr(pull.subprocess, "run", fake_run)
+    rank, _result = pull._pull_one(_site().ranks[0], IMAGE, 30)
+    assert rank == 0
+    assert len(observed[0]) == 3
+    assert observed[0][2].startswith("sh -lc ")
+    assert "docker pull --platform linux/arm64" in observed[0][2]

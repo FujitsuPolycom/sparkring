@@ -52,8 +52,9 @@ def plan_document(site: Any, image: str) -> dict[str, Any]:
 
 
 def _pull_one(rank: Any, image: str, timeout: int) -> tuple[int, dict[str, Any]]:
+    remote = shlex.join(remote_command(image))
     completed = subprocess.run(
-        ("ssh", rank.ssh_target, *remote_command(image)),
+        ("ssh", rank.ssh_target, remote),
         check=False,
         text=True,
         stdout=subprocess.PIPE,
