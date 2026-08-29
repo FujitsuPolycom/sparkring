@@ -12,6 +12,14 @@ image recipe at `deploy/glm53_flash/Containerfile` in its source repository.
 SparkRing owns the topology, launch, image-label, and artifact-attestation
 contracts.
 
+The source-complete public builder is documented in [`BUILD.md`](BUILD.md).
+It fetches every source by immutable commit, builds NCCL from the NVIDIA
+`v2.30.7-1` source with SparkRing's independently implemented switchless-cycle
+patch, and emits an image receipt. The builder and its output are
+**research-only** until one registry digest passes the four-rank checks. The
+license and redistribution boundary is documented in
+[`LICENSES/README.md`](LICENSES/README.md).
+
 Before any rank starts, the runtime profile requires one exact image ID,
 checks the source/profile labels, hashes the DFlash files and NCCL library,
 checks the vLLM configuration postimage, and runs SparkCache's seven-file lease-contract

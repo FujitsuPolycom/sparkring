@@ -1,0 +1,74 @@
+diff --git a/src/transport/generic.cc b/src/transport/generic.cc
+index 548d57c..2aeb171 100644
+--- a/src/transport/generic.cc
++++ b/src/transport/generic.cc
+@@ -10,6 +10,7 @@
+ #include "bootstrap.h"
+ 
+ NCCL_PARAM(MultiSegmentRegister, "MULTI_SEGMENT_REGISTER", 1);
++NCCL_PARAM(SwitchlessRingOnly, "SWITCHLESS_RING_ONLY", 0);
+ 
+ ncclResult_t ncclTransportRingConnect(struct ncclComm* comm) {
+   struct ringConnInfo {
+@@ -48,6 +49,10 @@ fail:
+ 
+ ncclResult_t ncclTransportTreeConnect(struct ncclComm* comm) {
+   ncclResult_t ret = ncclSuccess;
++  if (ncclParamSwitchlessRingOnly()) {
++    INFO(NCCL_INIT, "Tree transport setup disabled by NCCL_SWITCHLESS_RING_ONLY");
++    return ncclSuccess;
++  }
+   if (comm && comm->nRanks > 1) {
+     // Connect Trees
+     for (int c = 0; c < comm->nChannels; c++) {
+@@ -68,6 +73,10 @@ fail:
+ 
+ ncclResult_t ncclTransportPatConnect(struct ncclComm* comm) {
+   ncclResult_t ret = ncclSuccess;
++  if (ncclParamSwitchlessRingOnly()) {
++    INFO(NCCL_INIT, "PAT transport setup disabled by NCCL_SWITCHLESS_RING_ONLY");
++    return ncclSuccess;
++  }
+   if (comm && comm->nRanks > 1) {
+     for (int mask = 1; mask < comm->nRanks; mask <<= 1) {
+       int prevPeer = (comm->rank + mask) % comm->nRanks;
+diff --git a/src/transport/net_ib/connect.cc b/src/transport/net_ib/connect.cc
+index e2c8ecb..6bc1e5c 100644
+--- a/src/transport/net_ib/connect.cc
++++ b/src/transport/net_ib/connect.cc
+@@ -605,20 +605,23 @@ ncclResult_t ncclIbListen(void* ctx, int dev, void* opaqueHandle, void** listenC
+   NCCLCHECKGOTO(ncclSocketListen(&comm->sock), ret, fail);
+   NCCLCHECKGOTO(ncclSocketGetAddr(&comm->sock, &handle->connectAddr), ret, fail);
+ 
+-  // Embed GIDs of all PFs in the handle so the connector can find a local NIC
+-  // on the same subnet as any of our ports.
++  // Advertise every eligible local RoCE device. A switchless cycle selects the
++  // physical cable shared with each peer after receiving this handle; limiting
++  // the handle to the topology-selected device can advertise the other cable.
+   if (ncclParamIbSubnetAwareRouting() && dev < ncclNMergedIbDevs) {
+-    struct ncclIbMergedDev* mDev = ncclIbMergedDevs + dev;
+     int gidSlot = 0;
+-    for (int i = 0; i < mDev->vProps.ndevs && gidSlot < 2; i++) {
+-      int ibDevN = mDev->vProps.devs[i];
+-      ncclIbDev* ibDev = ncclIbDevs + ibDevN;
+-      if (ibDev->portAttr.link_layer != IBV_LINK_LAYER_ETHERNET) continue;
+-      int gidIndex;
+-      NCCLCHECKGOTO(ncclIbGetGidIndex(ibDev->context, ibDev->portNum, &ibDev->portAttr, &gidIndex), ret, fail);
+-      NCCLCHECKGOTO(wrap_ibv_query_gid(ibDev->context, ibDev->portNum, gidIndex, &handle->listenGids[gidSlot]), ret,
+-                    fail);
+-      gidSlot++;
++    for (int devIdx = 0; devIdx < ncclNMergedIbDevs && gidSlot < 2; devIdx++) {
++      struct ncclIbMergedDev* mDev = ncclIbMergedDevs + devIdx;
++      for (int i = 0; i < mDev->vProps.ndevs && gidSlot < 2; i++) {
++        int ibDevN = mDev->vProps.devs[i];
++        ncclIbDev* ibDev = ncclIbDevs + ibDevN;
++        if (ibDev->portAttr.link_layer != IBV_LINK_LAYER_ETHERNET) continue;
++        int gidIndex;
++        NCCLCHECKGOTO(ncclIbGetGidIndex(ibDev->context, ibDev->portNum, &ibDev->portAttr, &gidIndex), ret, fail);
++        NCCLCHECKGOTO(wrap_ibv_query_gid(ibDev->context, ibDev->portNum, gidIndex, &handle->listenGids[gidSlot]), ret,
++                      fail);
++        gidSlot++;
++      }
+     }
+   }
+ 

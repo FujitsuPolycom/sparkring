@@ -2,6 +2,69 @@
   "schema": "sparkring-glm53-flash-runtime-lock/v1",
   "status": "qualified",
   "qualification_scope": "The source and artifact identities below are the identities used by the GLM-5.3 Flash TP4/DCP1 DFlash2 SparkCache restart-and-restore qualification. A rebuilt image has implemented status until its image ID and live behavior are recorded.",
+  "public_image_build": {
+    "status": "research-only",
+    "status_scope": "The source-complete builder is not qualified until one image digest is distributed unchanged to four DGX Spark systems and passes the recorded TP4/DCP1 checks.",
+    "platform": "linux/arm64",
+    "base_images": {
+      "arm_builder": {
+        "reference": "pytorch/manylinuxaarch64-builder@sha256:f91599c49f526c77d01b68286f2bf943a5fd6a432d7e3f0afcc5784825908fe9",
+        "distribution_role": "build-only"
+      },
+      "cuda_runtime": {
+        "reference": "nvidia/cuda:13.0.3-base-ubuntu24.04@sha256:56d9d8183e2181a20be6b0d3801d1f056a0e75c17706df939ba207b126e1cb9c",
+        "distribution_role": "runtime parent",
+        "license": "LicenseRef-NVIDIA-Deep-Learning-Container"
+      }
+    },
+    "sources": {
+      "vllm": {
+        "repository": "https://github.com/local-inference-lab/vllm.git",
+        "commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+        "tree": "4a99033352bc1a6b00852dc0e8b1cecbdd9f0ebb",
+        "license": "Apache-2.0"
+      },
+      "b12x": {
+        "repository": "https://github.com/local-inference-lab/b12x.git",
+        "commit": "2fcf23a0ce269be27b2e03fece73d46e90e6aeea",
+        "tree": "58a046fc8faa747346f40f87166cda7e0f67ff47",
+        "license": "Apache-2.0"
+      },
+      "nccl": {
+        "repository": "https://github.com/NVIDIA/nccl.git",
+        "commit": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
+        "tag": "v2.30.7-1",
+        "base_tree": "3e7de6f92f0190d1afe9f05642e634cbf43ae4c9",
+        "patched_tree": "abdeb053b94c3f6d472cd55ae2b79ca821299009",
+        "license": "Apache-2.0 AND BSD-3-Clause",
+        "patches": [
+          {
+            "path": "spark_transport/nccl/nccl-2.30.7-switchless-cycle.patch",
+            "sha256": "6709063fa1c25055ae77a9397dea5d89643f8211d25e7990bdd11597d08c0dde",
+            "ownership": "Original SparkRing implementation of ring-only transport setup and switchless-cycle RoCE device advertisement."
+          }
+        ]
+      }
+    },
+    "instanttensor": {
+      "version": "0.1.9",
+      "sdist_url": "https://files.pythonhosted.org/packages/37/69/a4dc4e0f0018a0e558b716e90bcb19cb6a8c7506f68e89a1493608cf5e62/instanttensor-0.1.9.tar.gz",
+      "sdist_sha256": "d8692b97991c1a5fb2db7905b9a6ae90a7f967c7ddd853d35e41caa146750c02",
+      "license": "Apache-2.0"
+    },
+    "toolchain": {
+      "python": "3.12",
+      "cuda": "13.0.3",
+      "nccl_cuda_arch": "121",
+      "vllm_torch_cuda_arch_list": "12.1a"
+    },
+    "outputs": {
+      "runtime_image": null,
+      "sparkcache_image": null,
+      "nccl_library_sha256": null,
+      "build_receipt_sha256": null
+    }
+  },
   "target_model": {
     "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
     "revision": "520de24eabf507659eaef7c70f14fd584527facc",
