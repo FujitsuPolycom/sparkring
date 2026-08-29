@@ -17,6 +17,13 @@ SHA256_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
 NATIVE_PLACEHOLDER = "REPLACE_WITH_NATIVE_LIBRARY_SHA256"
 IMAGE_PLACEHOLDER = "REPLACE_WITH_E10536A_SPARKCACHE_IMAGE"
 PARENT_PLACEHOLDER = "REPLACE_WITH_E10536A_RUNTIME_IMAGE"
+SPARKCACHE_COMMIT = "eb3690c1aac2b9e86be8d513799dbb64afa53f25"
+SPARKCACHE_SOURCE_SHA256 = (
+    "34108fb22ba95b457bf4b357407b176dcbf3a6db6227227b21ecee045502a16f"
+)
+LEASE_CONTRACT_SHA256 = (
+    "70cd4e923d049da96bcfa4a5b460e2ff5f7460881d5cfd0621607080fd70f68f"
+)
 
 
 class ResolveError(ValueError):
@@ -53,6 +60,16 @@ def resolve(
         raise ResolveError("runtime parent image ID must be sha256 plus 64 lowercase hex")
     if SHA256.fullmatch(native_library_sha256) is None:
         raise ResolveError("native library SHA-256 must be 64 lowercase hex")
+    identity = profile.get("identity", {})
+    if identity.get("sparkcache_source_revision") != SPARKCACHE_COMMIT:
+        raise ResolveError("profile does not name the integrated SparkCache commit")
+    if identity.get("sparkcache_source_sha256") != SPARKCACHE_SOURCE_SHA256:
+        raise ResolveError("profile does not name the integrated SparkCache source")
+    attestation = " ".join(str(value) for value in profile.get("attestation_hook", []))
+    if SPARKCACHE_SOURCE_SHA256 not in attestation:
+        raise ResolveError("profile does not attest the integrated SparkCache source")
+    if LEASE_CONTRACT_SHA256 not in attestation:
+        raise ResolveError("profile does not attest the e10536a lease contract")
 
     profile = _replace_native(profile, native_library_sha256)
     profile["image"] = image

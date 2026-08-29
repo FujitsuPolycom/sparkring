@@ -80,11 +80,11 @@
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache",
-    "commit": "2993e18355a505148bbda1cbc81c8c556826a4c2",
-    "source_tree_sha256": "1bac4577b6a83c7d494a83f68f1262127a716e7ef4aab01aa58f128e69bf3e30",
+    "commit": "eb3690c1aac2b9e86be8d513799dbb64afa53f25",
+    "source_tree_sha256": "34108fb22ba95b457bf4b357407b176dcbf3a6db6227227b21ecee045502a16f",
     "lease_contract": "sparkcache/runtime_patches/vllm-kv-block-lease-contract-e10536a.json",
     "lease_contract_sha256": "70cd4e923d049da96bcfa4a5b460e2ff5f7460881d5cfd0621607080fd70f68f",
     "overlay_containerfile": "deploy/glm53_flash/Containerfile.e10536a",
-    "overlay_containerfile_sha256": "5a57bab12ac607aad51abdb83fb32565f3204e986522e1d7f4ec7693fbb8b058"
+    "overlay_containerfile_sha256": "41d0f82a9c648664589a040153b91682720ae133719d86694fd4d028e2800f99"
   }
 }

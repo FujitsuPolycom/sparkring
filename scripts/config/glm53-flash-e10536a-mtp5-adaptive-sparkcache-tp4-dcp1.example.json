@@ -106,8 +106,8 @@
     "mtp_adaptive_initial_tokens": "3",
     "mtp_adaptive_window": "32",
     "mtp_cache_identity_sha256": "915b7f71f16348ab84f138d975f3db90f3edfca69976e1b9ffcc03f21cf5eb22",
-    "sparkcache_source_sha256": "1bac4577b6a83c7d494a83f68f1262127a716e7ef4aab01aa58f128e69bf3e30",
-    "sparkcache_source_revision": "2993e18355a505148bbda1cbc81c8c556826a4c2",
+    "sparkcache_source_sha256": "34108fb22ba95b457bf4b357407b176dcbf3a6db6227227b21ecee045502a16f",
+    "sparkcache_source_revision": "eb3690c1aac2b9e86be8d513799dbb64afa53f25",
     "vllm_revision": "e10536aadf02a18fccddda7ec939c33147e8b0b3"
   },
   "required_image_labels": {
@@ -117,10 +117,10 @@
     "org.jovian.vllm.commit": "e10536aadf02a18fccddda7ec939c33147e8b0b3",
     "org.sparkcache.deployment-profile": "glm53-flash-e10536a-source-built",
     "org.opencontainers.image.base.name": "REPLACE_WITH_E10536A_RUNTIME_IMAGE",
-    "org.opencontainers.image.revision": "2993e18355a505148bbda1cbc81c8c556826a4c2",
+    "org.opencontainers.image.revision": "eb3690c1aac2b9e86be8d513799dbb64afa53f25",
     "org.sparkcache.parent-image-id": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-    "org.sparkcache.source-revision": "2993e18355a505148bbda1cbc81c8c556826a4c2",
-    "org.sparkcache.source-sha256": "1bac4577b6a83c7d494a83f68f1262127a716e7ef4aab01aa58f128e69bf3e30",
+    "org.sparkcache.source-revision": "eb3690c1aac2b9e86be8d513799dbb64afa53f25",
+    "org.sparkcache.source-sha256": "34108fb22ba95b457bf4b357407b176dcbf3a6db6227227b21ecee045502a16f",
     "org.sparkring.nccl.commit": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
     "org.sparkring.nccl.patch-sha256": "6709063fa1c25055ae77a9397dea5d89643f8211d25e7990bdd11597d08c0dde",
     "org.sparkring.nccl.patched-tree": "abdeb053b94c3f6d472cd55ae2b79ca821299009"
@@ -128,6 +128,6 @@
   "attestation_hook": [
     "/bin/sh",
     "-ec",
-    "test -f /models/target/config.json && test -f /models/target/model.safetensors.index.json && test \"$(sha256sum /models/target/config.json | cut -d ' ' -f1)\" = 676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996 && test \"$(sha256sum /models/target/model.safetensors.index.json | cut -d ' ' -f1)\" = 0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb && test \"$(sha256sum /opt/sparkring/nccl/libnccl.so.2 | cut -d ' ' -f1)\" = 5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3 && test \"$(python3 -c 'import importlib.util, pathlib; spec = importlib.util.spec_from_file_location(\"source_identity\", \"/opt/sparkcache-source-identity.py\"); module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module); print(module.source_tree_sha256(pathlib.Path(\"/opt/sparkcache-src/sparkcache\")))')\" = 1bac4577b6a83c7d494a83f68f1262127a716e7ef4aab01aa58f128e69bf3e30 && test \"$(sha256sum /opt/sparkcache-src/sparkcache/runtime_patches/vllm-kv-block-lease-contract-e10536a.json | cut -d ' ' -f1)\" = 70cd4e923d049da96bcfa4a5b460e2ff5f7460881d5cfd0621607080fd70f68f && test \"$(sha256sum /usr/local/lib/python3.12/dist-packages/vllm/config/vllm.py | cut -d ' ' -f1)\" = 852c2277bd99858cf940238856e7b7f51e9011f768d3c704c930bb9deaf73f61 && test \"$(sha256sum /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so | cut -d ' ' -f1)\" = REPLACE_WITH_NATIVE_LIBRARY_SHA256 && python3 /opt/sparkcache-src/sparkcache/runtime_patches/verify_lease_contract.py --vllm-root /usr/local/lib/python3.12/dist-packages --contract /opt/sparkcache-src/sparkcache/runtime_patches/vllm-kv-block-lease-contract-e10536a.json"
+    "test -f /models/target/config.json && test -f /models/target/model.safetensors.index.json && test \"$(sha256sum /models/target/config.json | cut -d ' ' -f1)\" = 676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996 && test \"$(sha256sum /models/target/model.safetensors.index.json | cut -d ' ' -f1)\" = 0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb && test \"$(sha256sum /opt/sparkring/nccl/libnccl.so.2 | cut -d ' ' -f1)\" = 5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3 && test \"$(python3 -c 'import importlib.util, pathlib; spec = importlib.util.spec_from_file_location(\"source_identity\", \"/opt/sparkcache-source-identity.py\"); module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module); print(module.source_tree_sha256(pathlib.Path(\"/opt/sparkcache-src/sparkcache\")))')\" = 34108fb22ba95b457bf4b357407b176dcbf3a6db6227227b21ecee045502a16f && test \"$(sha256sum /opt/sparkcache-src/sparkcache/runtime_patches/vllm-kv-block-lease-contract-e10536a.json | cut -d ' ' -f1)\" = 70cd4e923d049da96bcfa4a5b460e2ff5f7460881d5cfd0621607080fd70f68f && test \"$(sha256sum /usr/local/lib/python3.12/dist-packages/vllm/config/vllm.py | cut -d ' ' -f1)\" = 852c2277bd99858cf940238856e7b7f51e9011f768d3c704c930bb9deaf73f61 && test \"$(sha256sum /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so | cut -d ' ' -f1)\" = REPLACE_WITH_NATIVE_LIBRARY_SHA256 && python3 /opt/sparkcache-src/sparkcache/runtime_patches/verify_lease_contract.py --vllm-root /usr/local/lib/python3.12/dist-packages --contract /opt/sparkcache-src/sparkcache/runtime_patches/vllm-kv-block-lease-contract-e10536a.json"
   ]
 }

@@ -9,7 +9,13 @@ import pytest
 import yaml
 
 import sparkring_generic_launcher as launcher
-from prepare_glm53_e105_profile import ResolveError, resolve
+from prepare_glm53_e105_profile import (
+    LEASE_CONTRACT_SHA256,
+    SPARKCACHE_COMMIT,
+    SPARKCACHE_SOURCE_SHA256,
+    ResolveError,
+    resolve,
+)
 from sparkring_site import load_site
 
 
@@ -50,6 +56,14 @@ def test_profiles_separate_runtime_upgrade_from_speculator_changes() -> None:
     }
     assert configs["mtp_adaptive"]["adaptive_speculative_tokens_initial"] == 3
     assert configs["mtp_adaptive"]["adaptive_speculative_tokens_window"] == 32
+    for profile in profiles.values():
+        assert profile["identity"]["sparkcache_source_revision"] == SPARKCACHE_COMMIT
+        assert profile["identity"]["sparkcache_source_sha256"] == (
+            SPARKCACHE_SOURCE_SHA256
+        )
+        attestation = " ".join(profile["attestation_hook"])
+        assert SPARKCACHE_SOURCE_SHA256 in attestation
+        assert LEASE_CONTRACT_SHA256 in attestation
 
 
 def test_embedded_mtp_identities_are_derived_and_distinct() -> None:

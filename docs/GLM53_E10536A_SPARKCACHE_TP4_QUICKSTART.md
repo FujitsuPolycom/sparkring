@@ -25,7 +25,7 @@ bandwidth even though it does not stop the running service.
 git clone https://github.com/FujitsuPolycom/sparkring.git sparkring
 git -C sparkring checkout --detach <revision-containing-this-guide>
 git clone https://github.com/FujitsuPolycom/sparkcache.git sparkcache
-git -C sparkcache checkout --detach 2993e18355a505148bbda1cbc81c8c556826a4c2
+git -C sparkcache checkout --detach eb3690c1aac2b9e86be8d513799dbb64afa53f25
 
 IMAGE='sparkring-glm53-runtime:e10536a-source-arm64' \
 BUILD_RECEIPT="$PWD/glm53-e10536a-runtime-receipt.json" \
@@ -33,14 +33,14 @@ bash sparkring/runtime/glm53-flash-e10536a/build-image.sh
 
 runtime_image='sparkring-glm53-runtime:e10536a-source-arm64'
 runtime_image_id="$(docker image inspect --format '{{.Id}}' "${runtime_image}")"
-sparkcache_source_sha256='1bac4577b6a83c7d494a83f68f1262127a716e7ef4aab01aa58f128e69bf3e30'
+sparkcache_source_sha256='34108fb22ba95b457bf4b357407b176dcbf3a6db6227227b21ecee045502a16f'
 python sparkcache/deploy/glm53_flash/build_image.py \
   --repository "$PWD/sparkcache" \
   --containerfile deploy/glm53_flash/Containerfile.e10536a \
   --base-image "${runtime_image}" \
   --base-image-id "${runtime_image_id}" \
   --source-sha256 "${sparkcache_source_sha256}" \
-  --sparkcache-revision 2993e18355a505148bbda1cbc81c8c556826a4c2 \
+  --sparkcache-revision eb3690c1aac2b9e86be8d513799dbb64afa53f25 \
   --output-image sparkring-glm53-sparkcache:e10536a-source-arm64
 ```
 

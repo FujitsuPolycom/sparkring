@@ -7,6 +7,13 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 PINS = HERE / "pins.json"
+SPARKCACHE_COMMIT = "eb3690c1aac2b9e86be8d513799dbb64afa53f25"
+SPARKCACHE_SOURCE_SHA256 = (
+    "34108fb22ba95b457bf4b357407b176dcbf3a6db6227227b21ecee045502a16f"
+)
+OVERLAY_CONTAINERFILE_SHA256 = (
+    "41d0f82a9c648664589a040153b91682720ae133719d86694fd4d028e2800f99"
+)
 
 
 def _module(name: str, path: Path):
@@ -33,6 +40,13 @@ def test_e105_source_build_is_exact_and_unqualified() -> None:
     }
     assert build["outputs"]["runtime_image"] is None
     assert build["outputs"]["sparkcache_image"] is None
+    sparkcache = pins["sparkcache"]
+    assert sparkcache["commit"] == SPARKCACHE_COMMIT
+    assert sparkcache["source_tree_sha256"] == SPARKCACHE_SOURCE_SHA256
+    assert (
+        sparkcache["overlay_containerfile_sha256"]
+        == OVERLAY_CONTAINERFILE_SHA256
+    )
 
 
 def test_e105_image_labels_bind_the_vllm_revision() -> None:
