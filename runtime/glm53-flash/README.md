@@ -3,7 +3,7 @@
 Status: **qualified** for the exact source and artifact identities in
 [`pins.json`](pins.json) when used by the SparkCache-enabled TP4/DCP1
 composition. A rebuilt image has **implemented** status until it passes the
-recorded live gate.
+recorded live qualification.
 
 The runtime uses the `local-inference-lab/vllm` GLM-5.3 implementation, B12X
 kernels, SparkRing-patched NCCL 2.30.7, the public BF16 Inco DFlash2 drafter,

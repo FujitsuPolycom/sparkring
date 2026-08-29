@@ -676,7 +676,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # A profile-supplied health argv runs inside the serving container. It may
     # mutate state or stop serving, so it receives the same optional
-    # confirmation-token gate as explicit lifecycle mutations.
+    # confirmation-token check as explicit lifecycle mutations.
     mutating = args.command in ("start", "stop", "health")
     requires_confirmation = mutating and profile.confirmation is not None
     if requires_confirmation and args.confirmation != profile.confirmation:

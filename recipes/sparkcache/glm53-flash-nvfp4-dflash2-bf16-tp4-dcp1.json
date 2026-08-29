@@ -96,7 +96,7 @@
     "conclusion": "The recorded TP4/DCP1 composition restores persistent target-model context after a coordinated engine restart while DFlash2 continues seven-token speculative decoding and the service continues correct generation.",
     "limitations": [
       "The receipt qualifies only the four recorded base/derived image pairs, source-tree digest, source contracts, checkpoints, topology, serving geometry, and 8192-token restored span.",
-      "A rebuilt or redistributed image has implemented status until it passes the same live gate.",
+      "A rebuilt or redistributed image has implemented status until it passes the same live qualification.",
       "The first request after API startup recomputed because the scheduler had not received a complete four-rank inventory checkpoint; the following identical request formed quorum and restored.",
       "The receipt does not establish throughput neutrality or restore performance for spans larger than 8192 tokens.",
       "Streaming snapshots, native direct restore, MTP drafting, and other DFlash checkpoints are unsupported by this evidence.",

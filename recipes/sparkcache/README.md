@@ -36,7 +36,7 @@ The GLM-5.3 Flash composition was qualified from SparkCache commit
 using cache profile `glm53-flash-hybrid` and the vLLM lease contract named by
 its recipe. It did not use a published wheel.
 Use the artifact named by the selected recipe and verify its hash on every rank
-when reproducing a published qualification gate. Operators may use another
+when reproducing a published qualification. Operators may use another
 SparkCache build; the receipts on this page do not describe that artifact. The
 connector module is `sparkcache.spark_context_cache_connector`; the
 load-failure policy is `recompute`, so an unprovable restore becomes a cache
@@ -55,8 +55,8 @@ inquiries to Inco AI.
 ## Scheduler budget
 
 `--max-num-batched-tokens 4096` is the scheduler budget used by the DeepSeek
-and GLM-5.2 qualification gates; it is not a configuration ceiling. Their
-receipts cover `4096`. The GLM-5.3 Flash gate qualifies `8192`. Performance and
+and GLM-5.2 qualifications; it is not a configuration ceiling. Their
+receipts cover `4096`. The GLM-5.3 Flash qualification covers `8192`. Performance and
 capacity behavior at another value is outside each receipt's evidence scope.
 
 ## Qualification evidence
@@ -66,7 +66,7 @@ runtime image and checkpoint identity in each composition, TP and DCP degrees
 recorded in each file, dedicated rank-local cache roots, and the exact
 SparkCache wheel or source-tree artifact identified by that composition.
 
-Measurement: each gate sent a deterministic semantic prompt on a cold cache,
+Measurement: each validation sent a deterministic semantic prompt on a cold cache,
 required every rank to commit the same reusable-token digest, restarted all
 ranks without removing the cache roots, required manifest discovery on every
 rank, repeated the identical prompt, read vLLM cache metrics, and sent a fresh
@@ -74,7 +74,7 @@ post-restore canary.
 
 Result:
 
-| Composition | Prompt / reusable tokens | Restore time by rank | External hits | Semantic gates |
+| Composition | Prompt / reusable tokens | Restore time by rank | External hits | Semantic checks |
 |---|---:|---:|---:|---|
 | DeepSeek TP2/DCP1 | 73,774 / 73,728 | 459.8, 517.0 ms | 73,728 | `SPARKCACHE_OK:9540`; canary passed |
 | DeepSeek TP4/DCP1 | 73,774 / 73,728 | 483.9, 413.9, 443.0, 494.6 ms | 73,728 | `SPARKCACHE_OK:9540`; canary passed |

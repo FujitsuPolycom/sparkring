@@ -64,7 +64,7 @@ the four parent/derived image pairs recorded in the composition recipe.
 Measurement: all ranks stored one 8,192-token reusable span, all serving
 containers were replaced without removing the cache roots, every rank
 discovered three manifests with zero rejected, and a repeated request restored
-after the scheduler received an all-rank inventory checkpoint. The gate also
+after the scheduler received an all-rank inventory checkpoint. The validation also
 sent an uncached semantic canary, verified the 59 expected target repository
 files, and checked process, log, speculation, and RDMA state.
 
@@ -91,7 +91,7 @@ Limitations:
 - The evidence covers an 8,192-token restored span. It does not establish
   throughput neutrality or larger-span restore performance.
 - A rebuilt or redistributed image has implemented status until the same live
-  gate records its image identity and result.
+  qualification records its image identity and result.
 - Streaming snapshots, native direct restore, MTP drafting, and other DFlash
   checkpoints are outside the evidence scope.
 - A no-extra-files target-checkout claim applies only to ranks 0, 2, and 3.
@@ -140,7 +140,7 @@ The recorded qualification used these immutable parent and derived image IDs:
 The qualification rebuilt the derivative independently from four rank-local
 parents, so its image IDs are not one distributable artifact. A publishable
 build must produce one derived image from one recorded parent and distribute
-that same image ID to all ranks before repeating the live gate.
+that same image ID to all ranks before repeating the live qualification.
 
 Before publication, attach a receipt containing every checklist item:
 

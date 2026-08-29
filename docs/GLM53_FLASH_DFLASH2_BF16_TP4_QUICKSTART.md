@@ -12,6 +12,14 @@ prefill as the SparkCache-enabled profile. It omits only vLLM's external
 key-value connector. Using the same image makes the cache-disabled service a
 controlled comparison rather than a different runtime build.
 
+## Public reproducibility requirement
+
+This procedure is not a standalone public build. It requires the unpublished
+GLM-5.3 ARM64 parent image and the checksum-pinned patched NCCL binary described
+by the SparkCache-enabled quickstart. A reader without those artifacts can
+inspect and adapt the deployment plan but cannot reproduce the qualified image
+from public model downloads and these repositories alone.
+
 ## Required artifacts
 
 Download both immutable model revisions on every rank:

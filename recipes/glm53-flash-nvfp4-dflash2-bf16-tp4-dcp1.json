@@ -83,7 +83,7 @@
     "result": "The public profile can produce a fail-closed four-rank plan with SparkCache disabled. No standalone live cache-disabled receipt for this exact public BF16 DFlash2 image composition is recorded.",
     "conclusion": "The cache-disabled profile is implemented and suitable as a controlled comparison configuration after operators supply and verify one immutable image ID on every rank.",
     "limitations": [
-      "A live cache-disabled startup, semantic gate, soak, and throughput measurement are not recorded for this exact public profile.",
+      "A live cache-disabled startup, semantic validation, soak, and throughput measurement are not recorded for this exact public profile.",
       "The target repository does not identify its base-checkpoint revision.",
       "The qualified NCCL binary is identified by SHA-256 but not by a complete source-commit and build receipt.",
       "The public template does not name a published serving-image manifest because none was recorded by the qualification."

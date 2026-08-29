@@ -3,13 +3,23 @@
 Status: **qualified** for the exact artifacts and four parent/derived image pairs recorded in
 [`recipes/sparkcache/glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1.json`](../recipes/sparkcache/glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1.json).
 The operator template is **implemented** for a rebuilt immutable image; that
-image requires its own live gate before it inherits qualified status.
+image requires its own live qualification before it inherits qualified status.
 
 This procedure starts GLM-5.3 Flash on four directly cabled NVIDIA DGX Spark
 systems at TP4/DCP1. It uses the public BF16 DFlash2 model for seven-token
 speculation and SparkCache for persistent target-context store and restore.
 Asynchronous scheduling, native vLLM prefix caching, and chunked prefill remain
 enabled.
+
+## Public reproducibility requirement
+
+This procedure is not a standalone public build. The qualified GLM-5.3 ARM64
+parent images are not published, and the loaded NCCL binary is checksum-bound
+but lacks a complete public source/build receipt. A reader must already have an
+equivalent GLM-5.3 parent image and the exact patched NCCL binary, or construct
+and validate replacements independently. Stop here if those artifacts are not
+available; the remaining steps cannot produce the qualified runtime from the
+model downloads and these repositories alone.
 
 ## Required artifacts
 
@@ -205,7 +215,7 @@ qualified receipt records these parent/derived pairs:
 
 The four rank-local builds are not one distributable image. A publication
 must build once from one recorded parent, distribute the resulting image ID,
-and repeat the live gate on all ranks.
+and repeat the live qualification on all ranks.
 
 Publish only one build distributed unchanged to all ranks. Its receipt must
 include:

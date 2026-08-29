@@ -58,7 +58,7 @@ that safely recomputed, one following request that restored, and one uncached
 semantic canary. The client measured end-to-end request duration with Python's
 monotonic `time.perf_counter`. SparkCache rank logs measured each restore
 operation. Values below are individual observations; no averaging, percentile,
-or variability estimate is reported for the single-run functional gate.
+or variability estimate is reported for the single-run functional validation.
 
 The public request commands were:
 
@@ -114,7 +114,7 @@ and continued correct generation.
   larger-span latency or throughput neutrality.
 - The result does not cover streaming snapshots, native direct restore, MTP,
   another checkpoint, another topology, or another scheduler/cache geometry.
-- Full reasoning-trace equality is not used as a semantic oracle. The gate
+- Full reasoning-trace equality is not used as a semantic oracle. The validation
   requires final-answer suffix, finish reason, continued generation, all-rank
   restore, and fail-closed counters.
 - The target repository does not record a base-checkpoint revision.
