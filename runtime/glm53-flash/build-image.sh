@@ -65,8 +65,8 @@ python3 "${here}/prepare_context.py" \
   --verify --pins "${pins}" "${context}/prepared" >/dev/null
 cp -a "${context}/prepared/." "${context}/"
 rm -rf -- "${context}/prepared"
-cp "${here}/Containerfile.seed" "${context}/Containerfile.seed"
-cp "${here}/Containerfile" "${context}/Containerfile"
+cp "${context}/bundle/runtime/Containerfile.seed" "${context}/Containerfile.seed"
+cp "${context}/bundle/runtime/Containerfile" "${context}/Containerfile"
 
 source_receipt_sha256="$(sha256sum "${context}/receipt.json" | cut -d' ' -f1)"
 seed_image="sparkring-glm53-seed:cu130-py312-${source_receipt_sha256:0:12}"

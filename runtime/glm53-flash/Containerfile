@@ -46,6 +46,8 @@ RUN cd /opt/sparkring/nccl \
 COPY bundle/runtime/pins.json /opt/sparkring/runtime/pins.json
 COPY bundle/runtime/verify_image.py /opt/sparkring/runtime/verify_image.py
 COPY receipt.json /opt/sparkring/runtime/source-receipt.json
+COPY bundle/runtime/SparkRing-LICENSE /usr/share/licenses/SparkRing/LICENSE
+COPY bundle/runtime/LICENSES.md /usr/share/licenses/SparkRing/THIRD-PARTY-BOUNDARY.md
 COPY bundle/sources/vllm/LICENSE /usr/share/licenses/vLLM/LICENSE
 COPY bundle/sources/b12x/LICENSE /usr/share/licenses/B12X/LICENSE
 COPY bundle/sources/nccl/LICENSE.txt /usr/share/licenses/NCCL/LICENSE.txt

@@ -202,10 +202,20 @@ def prepare(output: Path, *, repository_root: Path, pins_path: Path) -> dict[str
 
     copy_file(pins_path, runtime / "pins.json")
     copy_file(HERE / "verify_image.py", runtime / "verify_image.py")
+    copy_file(HERE / "Containerfile", runtime / "Containerfile")
+    copy_file(HERE / "Containerfile.seed", runtime / "Containerfile.seed")
+    copy_file(HERE / "build-image.sh", runtime / "build-image.sh")
+    copy_file(HERE / "LICENSES" / "README.md", runtime / "LICENSES.md")
+    copy_file(repository_root / "LICENSE", runtime / "SparkRing-LICENSE")
 
     receipt_files = (
         "bundle/runtime/pins.json",
         "bundle/runtime/verify_image.py",
+        "bundle/runtime/Containerfile",
+        "bundle/runtime/Containerfile.seed",
+        "bundle/runtime/build-image.sh",
+        "bundle/runtime/LICENSES.md",
+        "bundle/runtime/SparkRing-LICENSE",
         f"bundle/sources/instanttensor-{instanttensor['version']}.tar.gz",
     )
     receipt = {
