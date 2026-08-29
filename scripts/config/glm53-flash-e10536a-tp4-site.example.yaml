@@ -9,7 +9,7 @@ schema_version: 1
 
 site:
   name: glm53-flash-four-rank-cycle
-  description: Four directly cabled NVIDIA DGX Spark systems serving a source-built GLM-5.3 e10536a candidate at TP4/DCP1.
+  description: Four directly cabled NVIDIA DGX Spark systems serving the source-built GLM-5.3 vLLM e10536a runtime at TP4/DCP1.
 
 topology:
   mtu: 9000

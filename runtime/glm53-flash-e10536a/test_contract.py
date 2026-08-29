@@ -62,3 +62,8 @@ def test_e105_builder_uses_its_own_pins_and_image_name() -> None:
     assert "runtime/glm53-flash-e10536a" in script
     assert "sparkring-glm53-runtime:e10536a-source-arm64" in script
     assert "prepare_context.py" in script
+
+
+def test_e105_image_probe_requires_the_parallel_loader_dependency() -> None:
+    script = (HERE / "verify_image.py").read_text(encoding="utf-8")
+    assert "'fastsafetensors': importlib.metadata.version('fastsafetensors')" in script

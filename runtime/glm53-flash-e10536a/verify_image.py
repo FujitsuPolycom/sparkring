@@ -93,6 +93,7 @@ document = {
     'python': platform.python_version(),
     'vllm': importlib.metadata.version('vllm'),
     'b12x': importlib.metadata.version('b12x'),
+    'fastsafetensors': importlib.metadata.version('fastsafetensors'),
     'instanttensor': importlib.metadata.version('instanttensor'),
     'nccl_sha256': hashlib.sha256(nccl.read_bytes()).hexdigest(),
     'nccl_bytes': nccl.stat().st_size,

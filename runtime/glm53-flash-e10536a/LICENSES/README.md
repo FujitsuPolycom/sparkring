@@ -31,6 +31,7 @@ including its license and bundled third-party notices, under
 The source-built NCCL binary uses the original SparkRing patch
 `spark_transport/nccl/nccl-2.30.7-switchless-cycle.patch`. That patch does not
 copy the `NCCL_SKIP_TREE_CONNECT` check from the unlicensed
-`josephdrose/nccl-spark-switchless` repository. The older compatibility patches
-remain credited in the repository notices but are not inputs to this public
-image builder.
+`josephdrose/nccl-spark-switchless` repository. The compatibility patches
+`spark_transport/nccl/nccl-2.29.7-skip-tree-pat.patch` and
+`spark_transport/nccl/nccl-2.30.7-skip-tree-pat.patch` remain credited in the
+repository notices but are not inputs to this public image builder.
