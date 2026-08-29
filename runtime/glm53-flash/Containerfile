@@ -64,6 +64,11 @@ ENV VLLM_PLUGINS= \
     VLLM_NCCL_SO_PATH=/opt/sparkring/nccl/libnccl.so.2
 ENV LD_LIBRARY_PATH=/usr/local/lib/python3.12/dist-packages/nvidia/cu13/lib:${LD_LIBRARY_PATH}
 
+# SparkRing supplies the `serve` subcommand and model path. The upstream image
+# entrypoint already includes `serve`; override it so the launcher does not
+# produce `vllm serve serve <model>`.
+ENTRYPOINT ["vllm"]
+
 LABEL org.opencontainers.image.title="SparkRing GLM-5.3 Flash ARM64 runtime" \
       org.opencontainers.image.description="Source-pinned GLM-5.3 Flash runtime for four DGX Spark systems" \
       org.opencontainers.image.source="https://github.com/FujitsuPolycom/sparkring" \

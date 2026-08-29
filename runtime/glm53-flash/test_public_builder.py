@@ -83,5 +83,6 @@ def test_builder_uses_public_context_and_source_built_nccl() -> None:
     assert "sparkring-glm53-official-spark" not in script
     assert "make -C /build/nccl" in containerfile
     assert "org.opencontainers.image.licenses" in containerfile
+    assert 'ENTRYPOINT ["vllm"]' in containerfile
     assert "COPY bundle/runtime/SparkRing-LICENSE" in containerfile
     assert "COPY bundle/sources/vllm/LICENSE" in containerfile
