@@ -2,13 +2,21 @@
 
 Status: **implemented, not qualified**. This guide builds an exact vLLM
 `e10536aadf02a18fccddda7ec939c33147e8b0b3` runtime and a SparkCache overlay.
-It does not replace or extend the qualification of the older public 8K OCI
-image.
+Its status is independent of the qualified vLLM `da4d7be6c97434f6942292ed8abbf4b32dc44355`
+composition in
+`scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-sparkcache.example.json`.
 
-The first cutover profile retains external BF16 DFlash2 at depth five. Two
-separate profiles exercise embedded static MTP5 and opt-in adaptive MTP5
-with initial depth three and a 32-step acceptance window. Do not combine the
-runtime upgrade and speculator change in the first live cutover.
+The external BF16 DFlash2 profile isolates the vLLM source change while
+retaining depth five. Separate profiles exercise embedded static MTP5 and
+acceptance-based adaptive MTP5 with initial depth three and a 32-step
+observation window. Qualify one profile at a time so each result names one
+runtime and speculation policy.
+
+A research-only adaptive-MTP5 profile selects the fastsafetensors parallel
+loader and sets `VLLM_FASTSAFETENSORS_QUEUE_SIZE=1`. The TP4 process group
+forces `nogds=True` in vLLM revision `e10536a`, so this profile evaluates
+pipelined shard loading without GPU Direct Storage. The queue can retain one
+additional shard-sized device buffer during model loading.
 
 All profiles use TP4/DCP1, 20 GiB FP8 KV per rank, a 524,288-token request
 limit, 32 sequences, native direct restore, two restore lanes, eight native
@@ -59,14 +67,16 @@ test "${#native_sha256}" -eq 64
 
 Copy the e10536a site template and select exactly one profile:
 
-| Candidate | Profile template | Purpose |
+| Status and runtime role | Profile template | Purpose |
 |---|---|---|
-| Runtime-only cutover | `glm53-flash-e10536a-dflash2-bf16-sparkcache-tp4-dcp1.example.json` | e10536a with external DFlash2 depth five |
-| Embedded MTP | `glm53-flash-e10536a-mtp5-sparkcache-tp4-dcp1.example.json` | static internal MTP5 |
-| Adaptive embedded MTP | `glm53-flash-e10536a-mtp5-adaptive-sparkcache-tp4-dcp1.example.json` | MTP5 maximum, initial depth three, 32-step window |
+| Implemented, external-speculator control | `glm53-flash-e10536a-dflash2-bf16-sparkcache-tp4-dcp1.example.json` | e10536a with external DFlash2 depth five |
+| Implemented, embedded MTP | `glm53-flash-e10536a-mtp5-sparkcache-tp4-dcp1.example.json` | static internal MTP5 |
+| Implemented, adaptive embedded MTP | `glm53-flash-e10536a-mtp5-adaptive-sparkcache-tp4-dcp1.example.json` | MTP5 maximum, initial depth three, 32-step window |
+| Research-only, adaptive MTP loader comparison | `glm53-flash-e10536a-mtp5-adaptive-fastsafetensors-sparkcache-tp4-dcp1.example.json` | adaptive MTP5 with the fastsafetensors parallel loader, queue size one, and no GDS under TP4 |
 
-The commands below prepare the runtime-only cutover. Change only
-`profile_template` for a later MTP experiment.
+The commands below prepare the external-speculator control profile. Select a
+different table entry only when the named speculation or loader behavior is
+the intended test variable.
 
 ```bash
 profile_template='sparkring/scripts/config/glm53-flash-e10536a-dflash2-bf16-sparkcache-tp4-dcp1.example.json'
@@ -88,9 +98,10 @@ rank-local cache paths in `profile.json`. The MTP profiles have no external
 draft-model mount. Every rank must use a different local cache directory.
 
 The one-shot clear token is stored after successful removal. Restarting an
-unchanged profile does not clear again. Each speculator profile has a distinct
-token and cache identity, so a deliberate profile switch clears once and then
-uses its own namespace.
+unchanged profile does not clear again. Every profile has a distinct clear
+token. External DFlash2, static MTP5, and adaptive MTP5 have distinct cache
+identities. The two adaptive-MTP5 profiles share a cache identity because the
+model loader does not alter model or KV semantics.
 
 ## Validate and launch
 
@@ -122,11 +133,13 @@ python sparkcache/deploy/glm53_flash/qualification_request.py \
   --kind semantic --output semantic.json
 ```
 
-The first cutover requires health on all four ranks, an exact semantic match,
-the e10536a and SparkCache source labels, the ten-file lease contract, the
+Qualification requires health on all four ranks, an exact semantic match, the
+e10536a and SparkCache source labels, the ten-file lease contract, the
 native-library digest, and no engine exit, OOM, NCCL error, or traceback. Run
 persistent restore and C2/C8/C16 shared-prefix checks before calling the image
-qualified.
+qualified. The fastsafetensors profile also requires a model-load result that
+records elapsed startup time and peak device memory; it remains research-only
+without that evidence.
 
 ## Cache namespace impact
 
@@ -134,7 +147,9 @@ The e10536a overlay does not change SparkCache wire fields, digest salts,
 256-token geometry, or stored object formats. External DFlash, static MTP5,
 and adaptive MTP5 deliberately use different draft identity digests. A
 speculator-policy change therefore recomputes instead of reusing an entry
-published under another policy.
+published under another policy. Standard safetensors and fastsafetensors
+loading use the same adaptive-MTP5 identity because they materialize the same
+pinned tensors and do not change the KV representation.
 
 Embedded MTP identities are SHA-256 over
 `glm53-embedded-mtp-v1`, the target cache identity, maximum depth five, and

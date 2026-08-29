@@ -3,11 +3,19 @@
 Status: **implemented**. This builder pins
 `local-inference-lab/vllm@e10536aadf02a18fccddda7ec939c33147e8b0b3`,
 B12X, InstantTensor, CUDA, and SparkRing's source-built NCCL transport. It
-does not inherit the qualification of the older public GLM-5.3 OCI image.
+does not inherit the qualification of the vLLM
+`da4d7be6c97434f6942292ed8abbf4b32dc44355` image recorded in
+`runtime/glm53-flash/pins.json`.
 
 The vLLM revision adds GLM-5.3 internal MTP5 and opt-in acceptance-length
 adaptation. A static MTP configuration remains static unless the launch
 explicitly provides `adaptive_speculative_tokens_window`.
+
+The revision also supplies the fastsafetensors parallel weight loader. The
+research-only TP4 profile sets `VLLM_FASTSAFETENSORS_QUEUE_SIZE=1`; TP4 forces
+the loader's `nogds=True` path, so the profile measures pipelined shard loading
+rather than GPU Direct Storage. Loader selection does not change the target,
+speculator, KV format, or SparkCache identity.
 
 Build on Linux ARM64 with Docker BuildKit, at least 250 GiB of free storage,
 and enough CPU and memory that the build does not interfere with serving:

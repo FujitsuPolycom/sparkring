@@ -26,6 +26,8 @@ PROFILES = {
     "dflash": CONFIG / "glm53-flash-e10536a-dflash2-bf16-sparkcache-tp4-dcp1.example.json",
     "mtp_static": CONFIG / "glm53-flash-e10536a-mtp5-sparkcache-tp4-dcp1.example.json",
     "mtp_adaptive": CONFIG / "glm53-flash-e10536a-mtp5-adaptive-sparkcache-tp4-dcp1.example.json",
+    "mtp_adaptive_fastsafetensors": CONFIG
+    / "glm53-flash-e10536a-mtp5-adaptive-fastsafetensors-sparkcache-tp4-dcp1.example.json",
 }
 TARGET = "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9"
 
@@ -56,6 +58,7 @@ def test_profiles_separate_runtime_upgrade_from_speculator_changes() -> None:
     }
     assert configs["mtp_adaptive"]["adaptive_speculative_tokens_initial"] == 3
     assert configs["mtp_adaptive"]["adaptive_speculative_tokens_window"] == 32
+    assert configs["mtp_adaptive_fastsafetensors"] == configs["mtp_adaptive"]
     for profile in profiles.values():
         assert profile["identity"]["sparkcache_source_revision"] == SPARKCACHE_COMMIT
         assert profile["identity"]["sparkcache_source_sha256"] == (
@@ -66,26 +69,92 @@ def test_profiles_separate_runtime_upgrade_from_speculator_changes() -> None:
         assert LEASE_CONTRACT_SHA256 in attestation
 
 
-def test_embedded_mtp_identities_are_derived_and_distinct() -> None:
+def test_profile_identities_follow_model_and_speculator_semantics() -> None:
     static = json.loads(PROFILES["mtp_static"].read_text())
     adaptive = json.loads(PROFILES["mtp_adaptive"].read_text())
+    adaptive_fastsafetensors = json.loads(
+        PROFILES["mtp_adaptive_fastsafetensors"].read_text()
+    )
     assert static["identity"]["mtp_cache_identity_sha256"] == _mtp_identity("static")
     assert adaptive["identity"]["mtp_cache_identity_sha256"] == _mtp_identity(
         "adaptive:3:32"
     )
+    assert adaptive_fastsafetensors["identity"]["mtp_cache_identity_sha256"] == (
+        adaptive["identity"]["mtp_cache_identity_sha256"]
+    )
     identities = set()
     clear_tokens = set()
+    profile_ids = set()
+    container_names = set()
+    confirmations = set()
     for path in PROFILES.values():
         profile = json.loads(path.read_text())
         transfer = json.loads(_argument(profile, "--kv-transfer-config"))
         extra = transfer["kv_connector_extra_config"]
         identities.add(extra["spark_cache_draft_checkpoint_sha256"])
         clear_tokens.add(extra["spark_cache_clear_once"])
+        profile_ids.add(profile["profile_id"])
+        container_names.add(profile["container_name"])
+        confirmations.add(profile["confirmation"])
         assert extra["spark_cache_native_restore"] is True
         assert extra["spark_cache_native_arena_bytes"] == 256 * 1024**2
         assert extra["spark_cache_native_io_workers"] == 8
         assert extra["spark_cache_load_threads"] == 2
-    assert len(identities) == len(clear_tokens) == 3
+    assert len(identities) == 3
+    assert len(clear_tokens) == len(PROFILES)
+    assert len(profile_ids) == len(PROFILES)
+    assert len(container_names) == len(PROFILES)
+    assert len(confirmations) == len(PROFILES)
+
+
+def test_fastsafetensors_profile_is_only_an_adaptive_loader_variant() -> None:
+    adaptive = json.loads(PROFILES["mtp_adaptive"].read_text())
+    fast = json.loads(PROFILES["mtp_adaptive_fastsafetensors"].read_text())
+
+    assert _argument(adaptive, "--load-format") == "safetensors"
+    assert _argument(fast, "--load-format") == "fastsafetensors"
+    assert fast["environment"]["VLLM_FASTSAFETENSORS_QUEUE_SIZE"] == "1"
+
+    adaptive_transfer = json.loads(_argument(adaptive, "--kv-transfer-config"))
+    fast_transfer = json.loads(_argument(fast, "--kv-transfer-config"))
+    adaptive_extra = adaptive_transfer["kv_connector_extra_config"]
+    fast_extra = fast_transfer["kv_connector_extra_config"]
+    assert fast_extra["spark_cache_draft_checkpoint_sha256"] == (
+        adaptive_extra["spark_cache_draft_checkpoint_sha256"]
+    )
+    assert fast_extra["spark_cache_clear_once"] != adaptive_extra[
+        "spark_cache_clear_once"
+    ]
+
+    assert fast["identity"] == adaptive["identity"]
+
+    normalized = copy.deepcopy(fast)
+    for key in ("profile_id", "container_name", "confirmation"):
+        normalized[key] = adaptive[key]
+    normalized["environment"].pop("VLLM_FASTSAFETENSORS_QUEUE_SIZE")
+    normalized["extra_labels"]["org.sparkring.model-profile"] = adaptive[
+        "extra_labels"
+    ]["org.sparkring.model-profile"]
+    for option in ("--served-model-name", "--load-format"):
+        normalized["extra_vllm_args"][
+            normalized["extra_vllm_args"].index(option) + 1
+        ] = _argument(adaptive, option)
+
+    adaptive_transfer_index = adaptive["extra_vllm_args"].index(
+        "--kv-transfer-config"
+    ) + 1
+    normalized_transfer_index = normalized["extra_vllm_args"].index(
+        "--kv-transfer-config"
+    ) + 1
+    normalized_transfer = json.loads(
+        normalized["extra_vllm_args"][normalized_transfer_index]
+    )
+    normalized_transfer["kv_connector_extra_config"]["spark_cache_clear_once"] = (
+        adaptive_extra["spark_cache_clear_once"]
+    )
+    adaptive["extra_vllm_args"][adaptive_transfer_index] = adaptive_transfer
+    normalized["extra_vllm_args"][normalized_transfer_index] = normalized_transfer
+    assert normalized == adaptive
 
 
 def test_resolver_produces_aligned_twenty_gib_profile() -> None:
