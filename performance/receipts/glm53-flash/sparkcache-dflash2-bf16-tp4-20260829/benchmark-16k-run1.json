@@ -1,0 +1,100 @@
+{
+  "schema": "sparkring-public-benchmark-receipt/v1",
+  "status": "research-only",
+  "observation_count": 1,
+  "comparison": {
+    "ab_baseline_present": false,
+    "claim": "This receipt reports one SparkCache-enabled observation and does not measure a cache-disabled baseline."
+  },
+  "conditions": {
+    "topology": "four NVIDIA DGX Spark systems in a direct RoCE cycle",
+    "parallelism": {
+      "tensor_parallel": 4,
+      "decode_context_parallel": 1,
+      "pipeline_parallel": 1
+    },
+    "image": {
+      "registry_digest": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943",
+      "image_id_on_every_rank": "sha256:7c007cf673c35f5818da7fea8faa343304baed00f489efdcbd027d6616b8a290"
+    },
+    "models": {
+      "target": "local-inference-lab/GLM-5.3-Flash-NVFP4@520de24eabf507659eaef7c70f14fd584527facc",
+      "draft": "incoai/GLM-5.3-Flash-DFlash2@dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+      "draft_dtype": "bfloat16",
+      "speculative_tokens": 7
+    },
+    "runtime": {
+      "vllm_commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+      "b12x_commit": "2fcf23a0ce269be27b2e03fece73d46e90e6aeea"
+    },
+    "sparkcache": {
+      "enabled": true,
+      "maximum_bytes_per_rank": 51539607552,
+      "low_watermark_bytes_per_rank": 42949672960
+    },
+    "benchmark": {
+      "version": "0.4.31",
+      "script": "llm_decode_bench.py",
+      "working_file_sha256": "07aad353cd9c894e14e9d1392c8509d3af8999c4022d3d22b29423a4572f5851",
+      "source_snapshot_published": false,
+      "source_snapshot_limitation": "The exact benchmark source snapshot is not published, so reproduction is limited even though the measured working file is bound by SHA-256.",
+      "retained_input_sha256": "0b5ef2215eeb3dac942fea715b3c9336fbce1fac6d3e3581ac6d77eab46fca92"
+    },
+    "request": {
+      "context_tokens": 16384,
+      "max_output_tokens": 512,
+      "temperature": 1.0,
+      "unique_context_percent": 100.0,
+      "decode_measurement_seconds": 30.0,
+      "decode_warmup_seconds": 3.0,
+      "kv_budget_tokens": 549950
+    }
+  },
+  "command": "python llm_decode_bench.py --host http://<rank-0-address> --port 8015 --model glm-5.3-flash-nvfp4-dflash7-bf16-tp4 --concurrency 1,4,8 --contexts 16k --prefill-contexts 16k --prefill-duration 10 --max-tokens 512 --duration 30 --decode-warmup-seconds 3 --cell-warmup-timeout-seconds 180 --temperature 1.0 --token-targeting exact --display-mode plain --no-hw-monitor --isolated-server --unique-context-percent 100 --chat-template-kwargs '{\"enable_thinking\":false}' --kv-budget 549950 --output ./benchmark-16k-run1.json",
+  "measurement": {
+    "prefill": {
+      "context_tokens": 16384,
+      "method": "integrated_scout",
+      "samples": 1,
+      "metric": "prompt tokens divided by client time to first token"
+    },
+    "sustained_decode": {
+      "concurrency": 1,
+      "measurement_seconds": 29.953,
+      "output_tokens": 1080,
+      "metric": "OpenAI continuous-usage completion tokens per covered measured window",
+      "server_token_agreement": true
+    }
+  },
+  "result": {
+    "valid_cells": [
+      {
+        "cell": "16K integrated-scout prefill",
+        "tokens_per_second": 2371.0
+      },
+      {
+        "cell": "16K sustained C1 decode",
+        "tokens_per_second": 36.05648849867254
+      }
+    ],
+    "excluded_cells": [
+      {
+        "cell": "16K sustained C4 decode",
+        "status": "invalid/excluded",
+        "reason": "capacity-limited"
+      },
+      {
+        "cell": "16K sustained C8 decode",
+        "status": "invalid/excluded",
+        "reason": "capacity-limited; readiness warmup reached its timeout"
+      }
+    ]
+  },
+  "limitations": [
+    "This is one observation, with no repetitions or uncertainty estimate.",
+    "No A/B baseline was measured, so the receipt does not attribute throughput to SparkCache.",
+    "The command passed a chat-template setting, but the retained receipt did not record that field; this receipt does not claim the setting was applied.",
+    "C4 and C8 were capacity-limited and their throughput values are intentionally omitted.",
+    "The exact benchmark source snapshot is not published, so reproduction is limited."
+  ]
+}

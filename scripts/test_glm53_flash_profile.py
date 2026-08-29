@@ -54,6 +54,37 @@ BASE_QUICKSTART_PATH = (
 PROFILE_RECORD_PATH = (
     ROOT / "docs" / "profiles" / "GLM53_FLASH_DFLASH2_BF16_TP4.md"
 )
+PERFORMANCE_RECORD_PATH = (
+    ROOT
+    / "performance"
+    / "records"
+    / "glm53-flash"
+    / "sparkcache-dflash2-bf16-tp4-16k-run1-20260829.md"
+)
+PERFORMANCE_RECEIPT_PATH = (
+    ROOT
+    / "performance"
+    / "receipts"
+    / "glm53-flash"
+    / "sparkcache-dflash2-bf16-tp4-20260829"
+    / "benchmark-16k-run1.json"
+)
+KV20_RECEIPT_PATH = (
+    ROOT
+    / "performance"
+    / "receipts"
+    / "glm53-flash"
+    / "sparkcache-dflash2-bf16-tp4-20g-20260829"
+    / "observation.json"
+)
+KV20_RECORD_PATH = (
+    ROOT
+    / "performance"
+    / "records"
+    / "glm53-flash"
+    / "sparkcache-dflash2-bf16-tp4-20g-20260829.md"
+)
+README_PATH = ROOT / "README.md"
 
 
 def _json(path: Path) -> dict:
@@ -328,6 +359,82 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
     assert receipts["post-restart-restore.json"]["elapsed_seconds"] == 1.902
     assert receipts["post-restore-semantic.json"]["semantic_match"] is True
     assert receipts["no-external-cache-semantic.json"]["semantic_match"] is True
+
+
+def test_public_glm53_benchmark_retains_only_valid_run1_cells() -> None:
+    receipt = _json(PERFORMANCE_RECEIPT_PATH)
+
+    assert receipt["status"] == "research-only"
+    assert receipt["observation_count"] == 1
+    assert receipt["comparison"]["ab_baseline_present"] is False
+    assert receipt["conditions"]["benchmark"]["working_file_sha256"] == (
+        "07aad353cd9c894e14e9d1392c8509d3af8999c4022d3d22b29423a4572f5851"
+    )
+    assert receipt["conditions"]["benchmark"]["source_snapshot_published"] is False
+    assert receipt["conditions"]["image"]["registry_digest"].endswith(
+        "@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943"
+    )
+    assert receipt["conditions"]["image"]["image_id_on_every_rank"] == (
+        "sha256:7c007cf673c35f5818da7fea8faa343304baed00f489efdcbd027d6616b8a290"
+    )
+    assert receipt["result"]["valid_cells"] == [
+        {
+            "cell": "16K integrated-scout prefill",
+            "tokens_per_second": 2371.0,
+        },
+        {
+            "cell": "16K sustained C1 decode",
+            "tokens_per_second": 36.05648849867254,
+        },
+    ]
+    assert [cell["cell"] for cell in receipt["result"]["excluded_cells"]] == [
+        "16K sustained C4 decode",
+        "16K sustained C8 decode",
+    ]
+    assert all(
+        "tokens_per_second" not in cell
+        for cell in receipt["result"]["excluded_cells"]
+    )
+
+
+def test_public_glm53_benchmark_is_sanitized_and_bounded() -> None:
+    paths = [PERFORMANCE_RECEIPT_PATH, PERFORMANCE_RECORD_PATH]
+    text = "\n".join(path.read_text(encoding="utf-8") for path in paths)
+
+    assert "http://<rank-0-address>" in text
+    assert "--chat-template-kwargs" in text
+    assert "exact benchmark source snapshot is not published" in text
+    assert "no A/B baseline" in text
+    assert "invalid/excluded: capacity-limited" in text
+    assert re.search(r"(?i)\b[A-Z]:\\", text) is None
+    assert re.search(r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)", text) is None
+    assert "DESKTOP-" not in text
+    assert "api_key" not in text.lower()
+
+    readme = README_PATH.read_text(encoding="utf-8")
+    assert "GLM-5.3 Flash research observation" in readme
+    assert "| 2,371 | 36.06 | — | C1: 36.06 | — |" in readme
+    assert "C4 and C8 were capacity-limited" in readme
+
+
+def test_twenty_gib_kv_observation_is_research_only_and_sanitized() -> None:
+    receipt = _json(KV20_RECEIPT_PATH)
+    assert receipt["status"] == "research-only"
+    assert receipt["conditions"]["kv_cache_memory_bytes_per_rank"] == 20 * 1024**3
+    assert receipt["conditions"]["max_model_len"] == 524288
+    assert receipt["result"]["kv_capacity_tokens"] == 916676
+    assert receipt["result"]["external_restore_tokens"] == 8192
+    assert receipt["result"]["dflash_draft_tokens"] == (
+        7 * receipt["result"]["dflash_drafts"]
+    )
+    assert receipt["result"]["preemptions"] == 0
+    assert receipt["result"]["cgroup_oom_events_by_rank"] == [0, 0, 0, 0]
+    assert "does not qualify a 1048576-token model limit" in receipt["conclusion"]
+
+    text = KV20_RECORD_PATH.read_text(encoding="utf-8") + json.dumps(receipt)
+    assert re.search(r"(?i)\b[A-Z]:\\", text) is None
+    assert re.search(r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)", text) is None
+    assert "SparkCache storage remains configured for a 48 GiB ceiling" in text
 
 
 def test_public_profile_files_do_not_embed_private_site_values_or_mutable_tags() -> None:

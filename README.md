@@ -46,6 +46,15 @@ profile is selected.
 
 ## Profiles
 
+### GLM-5.3 Flash profiles
+
+| Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
+|---|---|---:|---:|---:|---|---|
+| GLM-5.3 Flash + BF16 DFlash2 — qualified | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 hybrid target cache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
+| GLM-5.3 Flash + BF16 DFlash2 + SparkCache — qualified | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 target KV + 48 GiB/rank SparkCache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md) |
+
+### Other model profiles
+
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
 |---|---|---:|---:|---:|---|---|
 | GLM-5.2 EXL3 3.5-bpw | 4 Sparks · TP4/DCP4 | 1M | 16 | 4,096 | NVFP4 DS-MLA · 9.25 GB/rank | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
@@ -53,9 +62,7 @@ profile is selected.
 | DeepSeek-V4-Flash-0731 | 4 Sparks · TP4/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA · 16 GiB/rank | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | 2 Sparks · TP2/DCP1 | 1M | 32 | 8,192 | FP8 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | 4 Sparks · TP4/DCP1 | 1M | 64 | 8,192 | FP8 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
-| GLM-5.3 Flash + BF16 DFlash2 — qualified | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 hybrid target cache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
 | GLM-5.2 EXL3 3.5-bpw + SparkCache | 4 Sparks · TP4/DCP4 | 1M | 16 | 4,096 | NVFP4 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
-| GLM-5.3 Flash + BF16 DFlash2 + SparkCache — qualified | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 target KV + 48 GiB/rank SparkCache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md) |
 | DeepSeek-V4-Flash-0731 + SparkCache | 2 Sparks · TP2/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 + SparkCache | 4 Sparks · TP4/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
 
@@ -70,6 +77,19 @@ See the
 scope.
 
 ## Benchmark results
+
+### GLM-5.3 Flash research observation
+
+**Research-only — 16K context, single observation.** The SparkCache-enabled
+profile recorded 2,371 tok/s integrated-scout prefill and 36.06 tok/s sustained
+C1 decode. No A/B baseline was measured. C4 and C8 were capacity-limited, so
+their throughput values are invalid and excluded.
+
+| Profile | Prefill | C1 decode | C8 decode | Highest valid decode | Coding peak |
+|---|---:|---:|---:|---:|---:|
+| [GLM-5.3 Flash + BF16 DFlash2 + SparkCache · 4 Sparks](performance/records/glm53-flash/sparkcache-dflash2-bf16-tp4-16k-run1-20260829.md) | 2,371 | 36.06 | — | C1: 36.06 | — |
+
+### Other model profiles
 
 **Qualified — 16K context.** All values are tokens per second. Prefill uses a
 cold prompt with caching disabled. Decode uses unique, cold prompt contexts at

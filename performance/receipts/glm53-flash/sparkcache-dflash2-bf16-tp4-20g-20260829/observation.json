@@ -1,0 +1,51 @@
+{
+  "schema": "sparkring-glm53-live-observation/v1",
+  "status": "research-only",
+  "date": "2026-08-29",
+  "artifact": {
+    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943",
+    "image_id_on_every_rank": "sha256:7c007cf673c35f5818da7fea8faa343304baed00f489efdcbd027d6616b8a290"
+  },
+  "conditions": {
+    "hardware": "four NVIDIA DGX Spark systems in a direct RoCE cycle",
+    "parallelism": "TP4/DCP1/PP1",
+    "target": "local-inference-lab/GLM-5.3-Flash-NVFP4@520de24eabf507659eaef7c70f14fd584527facc",
+    "draft": "incoai/GLM-5.3-Flash-DFlash2@dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+    "kv_cache_memory_bytes_per_rank": 21474836480,
+    "kv_cache_dtype": "fp8",
+    "max_model_len": 524288,
+    "max_num_batched_tokens": 8192,
+    "max_num_seqs": 32,
+    "sparkcache_max_bytes_per_rank": 51539607552,
+    "sparkcache_low_watermark_bytes_per_rank": 42949672960
+  },
+  "result": {
+    "kv_capacity_tokens": 916676,
+    "maximum_524288_token_concurrency": 1.75,
+    "model_load_seconds": 443.994,
+    "graph_capture_seconds": 49,
+    "semantic_request_seconds": 0.997,
+    "semantic_match": true,
+    "post_inventory_restore_request_seconds": 2.242,
+    "external_restore_tokens": 8192,
+    "restore_milliseconds_by_rank": [168.8, 160.1, 190.7, 172.2],
+    "dflash_drafts": 51,
+    "dflash_draft_tokens": 357,
+    "dflash_accepted_tokens": 121,
+    "preemptions": 0,
+    "cuda_allocation_mib_by_rank": [82479, 82479, 82479, 82479],
+    "mem_available_kib_by_rank": [24374672, 29170080, 28440156, 29265108],
+    "worker_rts_qps_by_rank": [24, 24, 24, 24],
+    "container_restarts_by_rank": [0, 0, 0, 0],
+    "oom_by_rank": [false, false, false, false],
+    "fatal_log_matches_by_rank": [0, 0, 0, 0],
+    "cgroup_oom_events_by_rank": [0, 0, 0, 0]
+  },
+  "conclusion": "Twenty GiB of FP8 GPU KV memory starts and serves successfully at a 524288-token model limit. The measured 916676-token capacity does not qualify a 1048576-token model limit.",
+  "limitations": [
+    "The cache-disabled profile was not tested at 20 GiB.",
+    "A 1048576-token model limit was not tested and cannot fit in the measured 916676-token KV capacity.",
+    "Twenty-four GiB is a projected candidate for a 1048576-token limit, not a measured result.",
+    "The configured 48 GiB SparkCache ceiling remains a disk-capacity risk on the limiting rank."
+  ]
+}
