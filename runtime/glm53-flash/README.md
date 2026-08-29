@@ -19,6 +19,8 @@ patch, and emits an image receipt. The builder and its output are
 **research-only** until one registry digest passes the four-rank checks. The
 license and redistribution boundary is documented in
 [`LICENSES/README.md`](LICENSES/README.md).
+Private registry publication and its required SPDX SBOM are documented in
+[`PUBLISHING.md`](PUBLISHING.md).
 
 Before any rank starts, the runtime profile requires one exact image ID,
 checks the source/profile labels, hashes the DFlash files and NCCL library,
