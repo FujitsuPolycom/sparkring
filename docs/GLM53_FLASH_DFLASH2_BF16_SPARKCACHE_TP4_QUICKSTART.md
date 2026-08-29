@@ -1,9 +1,15 @@
 # GLM-5.3 Flash TP4 with BF16 DFlash2 and SparkCache
 
-Status: **qualified** for the exact artifacts and four parent/derived image pairs recorded in
+**Qualified:** only the exact artifacts and four parent/derived image pairs in
 [`recipes/sparkcache/glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1.json`](../recipes/sparkcache/glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1.json).
-The operator template is **implemented** for a rebuilt immutable image; that
-image requires its own live qualification before it inherits qualified status.
+
+**Implemented, unqualified:** the deployment template with any other image
+identity. Mark a rebuilt image **qualified** only after it produces the store,
+coordinated restart, restore, and semantic-canary evidence required by
+[Verify persistent restore](#verify-persistent-restore).
+
+**Public reproduction: unsupported.** The required parent image and exact NCCL
+build are not published.
 
 This procedure starts GLM-5.3 Flash on four directly cabled NVIDIA DGX Spark
 systems at TP4/DCP1. It uses the public BF16 DFlash2 model for seven-token
@@ -11,75 +17,137 @@ speculation and SparkCache for persistent target-context store and restore.
 Asynchronous scheduling, native vLLM prefix caching, and chunked prefill remain
 enabled.
 
-## Public reproducibility requirement
+## Public artifact boundary
 
-This procedure is not a standalone public build. The qualified GLM-5.3 ARM64
-parent images are not published, and the loaded NCCL binary is checksum-bound
-but lacks a complete public source/build receipt. A reader must already have an
-equivalent GLM-5.3 parent image and the exact patched NCCL binary, or construct
-and validate replacements independently. Stop here if those artifacts are not
-available; the remaining steps cannot produce the qualified runtime from the
-model downloads and these repositories alone.
+The four qualified GLM-5.3 ARM64 parent images are local Docker objects rather
+than pullable registry artifacts. Their loaded NCCL binary is checksum-bound
+but lacks a complete public source/build receipt. The public repositories and
+model downloads therefore cannot construct the qualified runtime by
+themselves.
+
+An operator-supplied parent must provide Linux ARM64 with CUDA SM121 support,
+Python 3.12, vLLM commit
+`da4d7be6c97434f6942292ed8abbf4b32dc44355`, B12X commit
+`2fcf23a0ce269be27b2e03fece73d46e90e6aeea`, and NCCL 2.30.7 binary SHA-256
+`ccd57342449c3f680befcb379329b935746e5299dc4de5f2516146e0411bd85f` at
+`/opt/sparkring/nccl/libnccl.so.2`. The parent must also satisfy every vLLM
+postimage check and provide the inherited `org.jovian.*` labels required by
+[`scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-sparkcache.example.json`](../scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-sparkcache.example.json).
+The completed derived image must satisfy every required OCI-label check in that
+profile. No public recipe is claimed to produce the parent. Stop before the
+build if an attested parent is unavailable.
+
+## Operator prerequisites
+
+Complete [SparkRing prerequisites](PREREQUISITES.md) and, for an unconfigured
+four-Spark cycle, [cluster bootstrap](BOOTSTRAP.md). Run the commands below in a
+Bash shell on the controller Spark with Git, Python 3 and PyYAML, Docker with
+NVIDIA GPU access, and Hugging Face CLI `hf`. Every rank requires passwordless
+SSH from the controller, two active 200 Gb/s RoCE links, the same absolute
+model paths, at least 346,218,639,128 bytes for the target checkpoint, and
+writable local JIT/context-cache storage. Port 8015 on rank 0 and port 29755 on
+every rank must be free before startup.
+
+Create immutable source checkouts on the controller:
+
+```bash
+operator_root="${PWD}/glm53-flash-operator"
+sparkring_root="${operator_root}/sparkring"
+sparkcache_root="${operator_root}/sparkcache"
+site_yaml="${operator_root}/glm53-flash-tp4.site.yaml"
+profile_json="${operator_root}/glm53-flash-sparkcache-tp4.profile.json"
+plan_json="${operator_root}/glm53-flash-sparkcache-tp4.plan.json"
+receipt_dir="${operator_root}/receipts"
+
+mkdir -p "${operator_root}" "${receipt_dir}"
+git clone https://github.com/FujitsuPolycom/sparkring.git "${sparkring_root}"
+git -C "${sparkring_root}" checkout --detach \
+  d45572dbd2adc7afa1d3208fb801c8ad9eac7864
+git clone https://github.com/FujitsuPolycom/sparkcache.git "${sparkcache_root}"
+git -C "${sparkcache_root}" checkout --detach \
+  2d6a222f04fcb7b903cb899aba3ed3fdc75edc11
+```
 
 ## Required artifacts
 
-Download each model by immutable revision on every rank:
+On every rank, choose identical absolute model paths, download both immutable
+revisions, and verify every file published by those revisions. Edit the first
+two assignments before running this block:
 
 ```bash
+TARGET_MODEL_DIR=''
+DFLASH_MODEL_DIR=''
+: "${TARGET_MODEL_DIR:?Set TARGET_MODEL_DIR to an absolute model directory}"
+: "${DFLASH_MODEL_DIR:?Set DFLASH_MODEL_DIR to an absolute model directory}"
+target_model_dir="${TARGET_MODEL_DIR}"
+draft_model_dir="${DFLASH_MODEL_DIR}"
+
+mkdir -p "${target_model_dir}" "${draft_model_dir}"
 hf download local-inference-lab/GLM-5.3-Flash-NVFP4 \
   --revision 520de24eabf507659eaef7c70f14fd584527facc \
-  --local-dir <target-model-directory>
+  --local-dir "${target_model_dir}"
 
 hf download incoai/GLM-5.3-Flash-DFlash2 \
   --revision dc77ff1c99eeb2df044ee3d4f0094eb033fee410 \
-  --local-dir <draft-model-directory>
+  --local-dir "${draft_model_dir}"
 
-printf '%s  %s\n' \
-  676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996 \
-  <target-model-directory>/config.json | sha256sum --check --strict
-printf '%s  %s\n' \
-  0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb \
-  <target-model-directory>/model.safetensors.index.json | sha256sum --check --strict
-printf '%s  %s\n' \
-  c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573 \
-  <draft-model-directory>/config.json | sha256sum --check --strict
-printf '%s  %s\n' \
-  b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b \
-  <draft-model-directory>/model.safetensors | sha256sum --check --strict
+hf cache verify local-inference-lab/GLM-5.3-Flash-NVFP4 \
+  --revision 520de24eabf507659eaef7c70f14fd584527facc \
+  --local-dir "${target_model_dir}" --fail-on-missing-files
+hf cache verify incoai/GLM-5.3-Flash-DFlash2 \
+  --revision dc77ff1c99eeb2df044ee3d4f0094eb033fee410 \
+  --local-dir "${draft_model_dir}" --fail-on-missing-files
+
+test "$(sha256sum "${target_model_dir}/config.json" | awk '{print $1}')" = \
+  676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996
+test "$(sha256sum "${target_model_dir}/model.safetensors.index.json" | awk '{print $1}')" = \
+  0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb
+test "$(sha256sum "${draft_model_dir}/config.json" | awk '{print $1}')" = \
+  c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573
+test "$(sha256sum "${draft_model_dir}/model.safetensors" | awk '{print $1}')" = \
+  b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b
 ```
 
 The Inco DFlash2 checkpoint is licensed CC BY-NC-ND 4.0 for research and
 evaluation. Review that license before downloading or using the artifact.
 
-Use SparkCache commit `2d6a222f04fcb7b903cb899aba3ed3fdc75edc11`, whose normalized source SHA-256 is
+The SparkCache checkout above has normalized source SHA-256
 `6210f439c64e4079ed3304c9cc181174abb3e6045de740ba7b7c2546bcaf6ac2`.
-From that checkout, verify the digest and build the derived image from an
-immutable GLM-5.3 runtime image:
+Verify it and build once on one Spark. Replace the immutable parent reference
+and expected local parent ID with values from the operator's attested parent:
 
 ```bash
-git clone https://github.com/FujitsuPolycom/sparkcache.git <sparkcache-source>
-git -C <sparkcache-source> checkout --detach \
-  2d6a222f04fcb7b903cb899aba3ed3fdc75edc11
-cd <sparkcache-source>
-python -c 'from pathlib import Path; from deploy.deployment_contract.source import source_tree_sha256; print(source_tree_sha256(Path("sparkcache")))'
+sparkcache_source_sha256="$(
+  cd "${sparkcache_root}" &&
+  python -c 'from pathlib import Path; from deploy.deployment_contract.source import source_tree_sha256; print(source_tree_sha256(Path("sparkcache")))'
+)"
+test "${sparkcache_source_sha256}" = \
+  6210f439c64e4079ed3304c9cc181174abb3e6045de740ba7b7c2546bcaf6ac2
 
-base_image_ref='<immutable-glm53-runtime-image@sha256:manifest-digest>'
-base_image_id='sha256:<resolved-parent-image-id>'
+base_image_ref='registry.example.invalid/REPLACE/glm53-runtime@sha256:0000000000000000000000000000000000000000000000000000000000000000'
+base_image_id='sha256:0000000000000000000000000000000000000000000000000000000000000000'
+temporary_build_tag='sparkring/glm53-flash-sparkcache:da4d7be-glm53-hybrid'
 test "$(docker image inspect --format '{{.Id}}' "${base_image_ref}")" = \
   "${base_image_id}"
 
-docker build \
-  --file deploy/glm53_flash/Containerfile \
-  --build-arg BASE_IMAGE="${base_image_ref}" \
-  --build-arg BASE_IMAGE_ID="${base_image_id}" \
-  --build-arg SPARKCACHE_SOURCE_SHA256=6210f439c64e4079ed3304c9cc181174abb3e6045de740ba7b7c2546bcaf6ac2 \
-  --iidfile <image-id-file> \
-  .
+python "${sparkcache_root}/deploy/glm53_flash/build_image.py" \
+  --repository "${sparkcache_root}" \
+  --base-image "${base_image_ref}" \
+  --base-image-id "${base_image_id}" \
+  --source-sha256 "${sparkcache_source_sha256}" \
+  --output-image "${temporary_build_tag}"
+derived_image_id="$(docker image inspect --format '{{.Id}}' "${temporary_build_tag}")"
+printf 'derived image ID: %s\n' "${derived_image_id}"
 ```
 
-Build once, then distribute that exact image to all four ranks with a registry
-manifest digest or `docker save`/`docker load`. Do not rebuild independently
-on each rank. Record the common value printed to `<image-id-file>`.
+`temporary_build_tag` identifies only the local build command; it is not a
+deployment identity. Push and pull one registry manifest, or transfer one
+`docker save` archive and load it on every rank. Do not rebuild independently
+per rank. Configure `image` with the immutable registry manifest reference or
+`derived_image_id`, never the temporary tag. On every rank,
+`docker image inspect --format '{{.Id}}' "${derived_image_id}"` must print the
+same `derived_image_id`. Record the registry manifest digest, local image ID,
+parent reference, and parent local image ID.
 
 ## Prepare sanitized deployment inputs
 
@@ -87,12 +155,14 @@ Copy the site and runtime templates to files that remain outside version
 control:
 
 ```bash
-cp scripts/config/glm53-flash-tp4-site.example.yaml <site-yaml>
-cp scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-sparkcache.example.json <profile-json>
+cp "${sparkring_root}/scripts/config/glm53-flash-tp4-site.example.yaml" \
+  "${site_yaml}"
+cp "${sparkring_root}/scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-sparkcache.example.json" \
+  "${profile_json}"
 ```
 
-In `<site-yaml>`, replace all documentation-only addresses, SSH targets,
-interfaces, RDMA devices, GID indices, and image values. In `<profile-json>`:
+In `site_yaml`, replace all documentation-only addresses, SSH targets,
+interfaces, RDMA devices, GID indices, and image values. In `profile_json`:
 
 - set `image` to an immutable registry reference or the exact local image ID;
 - set `image_id` to the common `sha256:` image ID on all ranks;
@@ -100,20 +170,30 @@ interfaces, RDMA devices, GID indices, and image values. In `<profile-json>`:
   `base_image_id` used by the build;
 - set `model_host_path` to the target revision directory present on every rank;
 - set the DFlash volume host path to its pinned revision directory; and
-- set the writable cache volume host path. The same path string is safe across
-  hosts because each physical rank owns a different local filesystem.
+- set the writable `/cache/jit` volume host path to the site file's
+  `paths.jit_cache_dir`. Set `paths.context_cache_dir` to the
+  `sparkcache-context` child of that host path. Create both writable
+  directories on every rank before preflight. The same path string is safe
+  across hosts because each physical rank owns a different local filesystem.
+
+The site and profile must contain the same image reference, image ID, and
+target container path. All four ranks must have the target model, DFlash model,
+and cache directories at the configured host paths.
 
 Do not put site-resolved files into the repository. Validate the complete
 plan offline:
 
 ```bash
-python scripts/sparkring_site.py --strict-placeholders <site-yaml>
-python scripts/sparkring_generic_launcher.py \
-  --site <site-yaml> --profile <profile-json> validate
-python scripts/sparkring_generic_launcher.py \
-  --site <site-yaml> --profile <profile-json> explain
-python scripts/sparkring_generic_launcher.py \
-  --site <site-yaml> --profile <profile-json> plan > <reviewed-plan-json>
+python "${sparkring_root}/scripts/sparkring_site.py" \
+  --strict-placeholders "${site_yaml}"
+python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
+  --site "${site_yaml}" --profile "${profile_json}" validate
+python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
+  --site "${site_yaml}" --profile "${profile_json}" explain
+python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
+  --site "${site_yaml}" --profile "${profile_json}" plan > "${plan_json}"
+python "${sparkring_root}/scripts/preflight.py" \
+  --site "${site_yaml}" --strict-placeholders --print-plan
 ```
 
 `validate` must fail while a zero image ID or another unresolved template value
@@ -122,14 +202,26 @@ remains. The resolved plan must show TP4/DCP1, 524,288 maximum model length,
 connector configuration. It must retain `--async-scheduling`,
 `--enable-prefix-caching`, and `--enable-chunked-prefill`.
 
-## Start and observe
-
-Starting the profile changes all four hosts and can replace a serving stack.
-Review `<reviewed-plan-json>`, then run:
+Review the printed remote probes, then run the read-only preflight and retain
+its JSON receipt:
 
 ```bash
-python scripts/sparkring_generic_launcher.py \
-  --site <site-yaml> --profile <profile-json> \
+python "${sparkring_root}/scripts/preflight.py" \
+  --site "${site_yaml}" --strict-placeholders \
+  --json "${receipt_dir}/preflight.json"
+```
+
+Preflight must pass every rank. If it reports port 8015 or 29755 in use, stop
+the owning service with that service's documented command and rerun preflight.
+The launcher does not remove a foreign container or process.
+
+## Start and observe
+
+Starting the profile changes all four hosts. Review `plan_json`, then run:
+
+```bash
+python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
+  --site "${site_yaml}" --profile "${profile_json}" \
   --execute --confirmation START_GLM53_FLASH_DFLASH2_TP4 start
 ```
 
@@ -141,24 +233,126 @@ rank fails.
 Tail the API rank's vLLM log:
 
 ```bash
-ssh <rank-0-ssh-target> \
+rank0_ssh='operator@rank0.example.net'
+api_endpoint='http://rank0.example.net:8015'
+served_model='glm-5.3-flash-nvfp4-dflash7-bf16-tp4'
+
+ssh "${rank0_ssh}" \
   'docker logs --follow --tail 120 glm53-flash-dflash2-bf16-sparkcache-tp4-r0 2>&1'
 ```
 
-Check the API after all ranks finish graph capture:
+Replace `rank0_ssh` and `api_endpoint` with the values in `site_yaml`. API
+readiness, rather than an informal log phrase, defines completion of graph
+capture and startup. In another shell, wait for readiness and inspect the
+served-model identity:
 
 ```bash
-curl --fail http://<rank-0-management-address>:8015/health
-curl --fail http://<rank-0-management-address>:8015/v1/models
+timeout 7200 bash -c \
+  'until curl --fail --silent --show-error "$1/health" >/dev/null; do sleep 5; done' \
+  _ "${api_endpoint}"
+curl --fail --silent --show-error "${api_endpoint}/v1/models"
 ```
 
 ## Verify persistent restore
 
-Use one deterministic prompt with at least 8,192 reusable aligned tokens.
-Require every rank to log the same committed digest. Stop all four containers
-without removing the rank-local cache roots, start the same resolved profile,
-and wait for all ranks to report manifest discovery. Repeat the exact prompt
-until the scheduler reports all-rank inventory quorum.
+The pinned SparkCache checkout contains the deterministic 8,192-token request
+and semantic canary. Store the context and retain the request receipt:
+
+```bash
+qualification_script="${sparkcache_root}/deploy/glm53_flash/qualification_request.py"
+python "${qualification_script}" \
+  --endpoint "${api_endpoint}" --model "${served_model}" \
+  --kind persistent --output "${receipt_dir}/cold.json"
+```
+
+Require every rank log to contain `committed 8192 tokens` for one common
+digest. Stop all four containers without deleting the rank-local cache roots,
+then start the exact same resolved site and profile:
+
+```bash
+python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
+  --site "${site_yaml}" --profile "${profile_json}" \
+  --execute --confirmation START_GLM53_FLASH_DFLASH2_TP4 stop
+python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
+  --site "${site_yaml}" --profile "${profile_json}" \
+  --execute --confirmation START_GLM53_FLASH_DFLASH2_TP4 start
+```
+
+Wait for API readiness again. Every rank must log
+`manifest discovery checked=3 offered=3 rejected=0`. The first request can
+cleanly recompute if it reaches the scheduler before the complete inventory;
+record that request as a prime, then repeat the identical request for the
+restore result:
+
+```bash
+python "${qualification_script}" \
+  --endpoint "${api_endpoint}" --model "${served_model}" \
+  --kind persistent --output "${receipt_dir}/post-restart-prime.json"
+curl --fail --silent --show-error "${api_endpoint}/metrics" \
+  > "${receipt_dir}/metrics-before-restore.prom"
+python "${qualification_script}" \
+  --endpoint "${api_endpoint}" --model "${served_model}" \
+  --kind persistent --output "${receipt_dir}/post-restart-restore.json"
+python "${qualification_script}" \
+  --endpoint "${api_endpoint}" --model "${served_model}" \
+  --kind semantic --output "${receipt_dir}/post-restore-semantic.json"
+curl --fail --silent --show-error "${api_endpoint}/metrics" \
+  > "${receipt_dir}/metrics-after-restore.prom"
+
+grep -E '^vllm:(external_prefix_cache_(queries|hits)_total|prompt_tokens_by_source_total|spec_decode_num_(drafts|draft_tokens|accepted_tokens)_total|num_preemptions_total)' \
+  "${receipt_dir}/metrics-before-restore.prom" \
+  "${receipt_dir}/metrics-after-restore.prom"
+```
+
+### Inspect all ranks
+
+Inspect every rank with the SSH targets and rank-specific container names from
+`site_yaml`. Replace the four example SSH targets before running the block:
+
+```bash
+set -euo pipefail
+rank_ssh=(
+  'operator@rank0.example.net'
+  'operator@rank1.example.net'
+  'operator@rank2.example.net'
+  'operator@rank3.example.net'
+)
+container_prefix='glm53-flash-dflash2-bf16-sparkcache-tp4'
+fatal_pattern='Traceback \(most recent call last\)|CUDA out of memory|OutOfMemoryError|NCCL.*(unhandled|error|failed)|Fatal Python error|Segmentation fault|ProcessGroupNCCL.*exception'
+
+for rank in 0 1 2 3; do
+  host="${rank_ssh[$rank]}"
+  container="${container_prefix}-r${rank}"
+  if ! log_text="$(ssh "${host}" "docker logs '${container}' 2>&1")"; then
+    printf 'log retrieval failed on rank %s\n' "${rank}" >&2
+    exit 1
+  fi
+  if ! grep -Fq 'spark-context-cache: restored 8192 tokens async' <<<"${log_text}"; then
+    printf '8,192-token restore log is absent on rank %s\n' "${rank}" >&2
+    exit 1
+  fi
+  if ! container_state="$(ssh "${host}" "docker inspect --format '{{.RestartCount}} {{.State.OOMKilled}} {{.State.Status}}' '${container}'")"; then
+    printf 'container inspection failed on rank %s\n' "${rank}" >&2
+    exit 1
+  fi
+  if [[ "${container_state}" != '0 false running' ]]; then
+    printf 'unhealthy container state on rank %s: %s\n' "${rank}" "${container_state}" >&2
+    exit 1
+  fi
+  if ! qp_count="$(ssh "${host}" "rdma resource show qp 2>/dev/null | awk '/state RTS/ && /comm VLLM::Worker/ {n++} END {print n+0}'")"; then
+    printf 'RDMA inspection failed on rank %s\n' "${rank}" >&2
+    exit 1
+  fi
+  if [[ "${qp_count}" != '24' ]]; then
+    printf 'rank %s has %s worker QPs in RTS; expected 24\n' "${rank}" "${qp_count}" >&2
+    exit 1
+  fi
+  if grep -Eiq "${fatal_pattern}" <<<"${log_text}"; then
+    printf 'fatal log match on rank %s\n' "${rank}" >&2
+    exit 1
+  fi
+done
+```
 
 Qualification requires all of the following:
 
@@ -168,7 +362,12 @@ Qualification requires all of the following:
 - a separate uncached semantic canary ends with `stop` and its expected final
   answer;
 - no rank records a preemption, restart, OOM, or fatal error; and
-- every rank retains its qualified `VLLM::Worker` RTS queue-pair count.
+- every rank retains exactly 24 `VLLM::Worker` queue pairs in RTS.
+
+The external-hit and `external_kv_transfer` prompt-token counters must each
+increase by 8,192 across the restore request. DFlash draft tokens must increase
+by seven times the draft-count increase. The semantic receipt must report
+`semantic_match: true`; the all-rank inspection must exit successfully.
 
 The connector's `recompute` policy makes an incomplete inventory or rejected
 manifest a cache miss. A recompute is safe but is not a restore result.
@@ -176,8 +375,8 @@ manifest a cache miss. A recompute is safe but is not a restore result.
 Stop the stack with the same explicit confirmation:
 
 ```bash
-python scripts/sparkring_generic_launcher.py \
-  --site <site-yaml> --profile <profile-json> \
+python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
+  --site "${site_yaml}" --profile "${profile_json}" \
   --execute --confirmation START_GLM53_FLASH_DFLASH2_TP4 stop
 ```
 
@@ -275,7 +474,7 @@ binary-build lineage beyond the listed records is inferred.
 | B12X | `local-inference-lab/b12x`, `master@2fcf23a0ce269be27b2e03fece73d46e90e6aeea`, Apache-2.0, commit title `Accept runtime QSA cache page sizes`. | No associated pull request was found. |
 | SparkRing NCCL | NVIDIA NCCL 2.30.7; skip-Tree/PAT patch SHA-256 `097656d07a5774919f0d51558b51ec05de8168c0097ed6cb7764c33230ba6eb2`; listener-GID patch SHA-256 `dccfce86d14c15c39f0e0a742863960205a3d9823c464b31a7f7389354844178`; qualified loaded binary SHA-256 `ccd57342449c3f680befcb379329b935746e5299dc4de5f2516146e0411bd85f`. | The binary is not bound to an NVIDIA NCCL source commit and complete patch-build receipt. |
 | SparkCache | `FujitsuPolycom/sparkcache@2d6a222f04fcb7b903cb899aba3ed3fdc75edc11` on branch `codex/glm53-flash`, normalized source-tree SHA-256 `6210f439c64e4079ed3304c9cc181174abb3e6045de740ba7b7c2546bcaf6ac2`, profile `glm53-flash-hybrid`, vLLM lease-contract SHA-256 `2e3b17fd6a34f2dbb8e91a99b83dbf18629cf0e718f9f814236da4bbfc9ae3f1`, VMM exemption patch SHA-256 `370b498eebf44b4e52a2d2751fa249ad4bd3d0b6fd951b063a161fb06febbe99`, patch-preimage manifest SHA-256 `e0eb1b64d15812f122450f2e32323f0c907c640b8f8ccc270c77037bb9909b85`, Containerfile SHA-256 `ccc6b39173df80f604820959c3f19f8bc363f79d11f7d4f2d913054a4161b3f5`, and builder SHA-256 `c130e5c2fdd5f33e73f90f04ef85fa1247d93bfe6db409cd99508841f8d84547`. | The immutable commit and the source, contract, and build-recipe digests are authoritative. |
-| SparkRing profile | `FujitsuPolycom/sparkring`, branch `codex/glm53-flash-sparkcache-tp4`, based on `510556275ed3b77fc56a14367d319417072eeb8c`. | A PR or image receipt must record the immutable commit containing this uncommitted profile branch. |
+| SparkRing deployment profile | `FujitsuPolycom/sparkring@d45572dbd2adc7afa1d3208fb801c8ad9eac7864` on branch `codex/glm53-flash-sparkcache-tp4`, based on `510556275ed3b77fc56a14367d319417072eeb8c`. | The branch has no pull request, release tag, or distributed image artifact. |
 | Adapted launch inputs | Four-rank launcher snapshot SHA-256 `fef84dda87bab36f36f993f21a3e582438f3b0d1e3239b292ef0ef39e8c44b23`; service-settings snapshot SHA-256 `2c4d81d04060d92f4419d3f17d3c51b2f195d66376c9271617a167c18de14df1`; source-lock snapshot SHA-256 `913d54bd68fdea1280a8dd2baf15cf3461e04645f50be5bda9eafc027d03e4a8`. SparkRing expresses their settings through validated site and runtime schemas; no implementation source was copied. | The snapshots were uncommitted operator artifacts. Base Git revision `f3ba67fa476fd28109868811d6edbb4085c8f0a0` does not reproduce them without the recorded snapshots. |
 
 The machine-readable provenance manifest is

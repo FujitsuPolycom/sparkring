@@ -130,8 +130,8 @@
     "repository": "https://github.com/FujitsuPolycom/sparkring",
     "branch": "codex/glm53-flash-sparkcache-tp4",
     "base_revision": "510556275ed3b77fc56a14367d319417072eeb8c",
-    "publication_revision": null,
-    "revision_limitation": "publication_revision is null because no immutable SparkRing commit contains the profile files. A pull request or image publication must set it to the commit that contains the published profile."
+    "publication_revision": "d45572dbd2adc7afa1d3208fb801c8ad9eac7864",
+    "revision_limitation": "The profile is published on a branch at the immutable revision above but has no pull request, release tag, or distributed image artifact."
   },
   "qualified_images_by_rank": [
     {

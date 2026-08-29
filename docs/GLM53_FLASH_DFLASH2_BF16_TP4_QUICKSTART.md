@@ -1,9 +1,12 @@
 # GLM-5.3 Flash TP4 with BF16 DFlash2 and external caching disabled
 
-Status: **implemented**. The runtime profile produces a fail-closed TP4/DCP1
-deployment plan and preserves the qualified model, scheduler, graph, and
-transport settings, but no standalone live receipt qualifies this exact
-cache-disabled composition.
+**Implemented, unqualified.** The runtime profile produces a fail-closed
+TP4/DCP1 deployment plan and preserves the model, scheduler, graph, and
+transport settings used by the qualified SparkCache composition. No live
+receipt qualifies external-cache-disabled behavior or performance.
+
+**Public reproduction: unsupported.** The required parent image and exact NCCL
+build are not published.
 
 This procedure uses the same SparkCache-capable image, target checkpoint,
 public BF16 DFlash2 checkpoint, rank topology, CUDA-graph settings, key-value
@@ -12,49 +15,45 @@ prefill as the SparkCache-enabled profile. It omits only vLLM's external
 key-value connector. Using the same image makes the cache-disabled service a
 controlled comparison rather than a different runtime build.
 
-## Public reproducibility requirement
+## Public artifact boundary and prerequisites
 
-This procedure is not a standalone public build. It requires the unpublished
-GLM-5.3 ARM64 parent image and the checksum-pinned patched NCCL binary described
-by the SparkCache-enabled quickstart. A reader without those artifacts can
-inspect and adapt the deployment plan but cannot reproduce the qualified image
-from public model downloads and these repositories alone.
+This procedure uses the same image as the
+[SparkCache deployment](GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md)
+so an A/B comparison changes only the external connector. Complete that
+guide's [public artifact boundary](GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md#public-artifact-boundary),
+[operator prerequisites](GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md#operator-prerequisites),
+and [required artifacts](GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md#required-artifacts)
+before continuing. Those sections define `operator_root`, `sparkring_root`,
+`sparkcache_root`, `site_yaml`, `receipt_dir`, and `derived_image_id`.
+
+An operator without the unpublished GLM-5.3 ARM64 parent and checksum-pinned
+NCCL binary can inspect the profile but cannot construct its runtime from the
+public model downloads and repositories alone.
 
 ## Required artifacts
 
-Download both immutable model revisions on every rank:
+The target and draft directories on every rank must pass the complete
+Hugging Face revision checks in the SparkCache guide. The two identity hashes
+used by the launch-time check can also be verified directly:
 
 ```bash
-hf download local-inference-lab/GLM-5.3-Flash-NVFP4 \
-  --revision 520de24eabf507659eaef7c70f14fd584527facc \
-  --local-dir <target-model-directory>
-
-hf download incoai/GLM-5.3-Flash-DFlash2 \
-  --revision dc77ff1c99eeb2df044ee3d4f0094eb033fee410 \
-  --local-dir <draft-model-directory>
-
-printf '%s  %s\n' \
-  676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996 \
-  <target-model-directory>/config.json | sha256sum --check --strict
-printf '%s  %s\n' \
-  0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb \
-  <target-model-directory>/model.safetensors.index.json | sha256sum --check --strict
-printf '%s  %s\n' \
-  c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573 \
-  <draft-model-directory>/config.json | sha256sum --check --strict
-printf '%s  %s\n' \
-  b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b \
-  <draft-model-directory>/model.safetensors | sha256sum --check --strict
+test "$(sha256sum "${target_model_dir}/config.json" | awk '{print $1}')" = \
+  676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996
+test "$(sha256sum "${target_model_dir}/model.safetensors.index.json" | awk '{print $1}')" = \
+  0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb
+test "$(sha256sum "${draft_model_dir}/config.json" | awk '{print $1}')" = \
+  c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573
+test "$(sha256sum "${draft_model_dir}/model.safetensors" | awk '{print $1}')" = \
+  b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b
 ```
 
 The DFlash2 checkpoint is licensed CC BY-NC-ND 4.0 for research and
 evaluation. Review that license before downloading or using it.
 
-Use the same immutable SparkCache-capable image described in the
-[SparkCache-enabled quickstart](GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md#required-artifacts).
-The cache-disabled profile still verifies the SparkCache source label and
-vLLM lease contract so both modes run identical image content. Build once and
-distribute the exact image ID to every rank; do not rebuild per rank.
+The cache-disabled profile still verifies the SparkCache source label and vLLM
+lease contract so both modes run identical image content. The same
+`derived_image_id` must be present on all four ranks. This profile does not
+load or call the external connector.
 
 ## Prepare and validate inputs
 
@@ -62,11 +61,19 @@ Copy the shared site template and the cache-disabled runtime template to files
 outside version control:
 
 ```bash
-cp scripts/config/glm53-flash-tp4-site.example.yaml <site-yaml>
-cp scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1.example.json <profile-json>
+profile_json="${operator_root}/glm53-flash-cache-disabled-tp4.profile.json"
+sparkcache_profile_json="${operator_root}/glm53-flash-sparkcache-tp4.profile.json"
+plan_json="${operator_root}/glm53-flash-cache-disabled-tp4.plan.json"
+
+cp "${sparkring_root}/scripts/config/glm53-flash-tp4-site.example.yaml" \
+  "${site_yaml}"
+cp "${sparkring_root}/scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1.example.json" \
+  "${profile_json}"
+cp "${sparkring_root}/scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-sparkcache.example.json" \
+  "${sparkcache_profile_json}"
 ```
 
-Replace the documentation-only site values. In `<profile-json>`, set the exact
+Replace the documentation-only site values. In `profile_json`, set the exact
 image reference, image ID, required `org.sparkcache.parent-image-id` label,
 target model host path, DFlash model host path, and writable JIT/cache host
 path. The external-cache mount remains present so
@@ -76,13 +83,16 @@ no `--kv-transfer-config` argument consumes persistent context data.
 Run all offline checks:
 
 ```bash
-python scripts/sparkring_site.py --strict-placeholders <site-yaml>
-python scripts/sparkring_generic_launcher.py \
-  --site <site-yaml> --profile <profile-json> validate
-python scripts/sparkring_generic_launcher.py \
-  --site <site-yaml> --profile <profile-json> explain
-python scripts/sparkring_generic_launcher.py \
-  --site <site-yaml> --profile <profile-json> plan > <reviewed-plan-json>
+python "${sparkring_root}/scripts/sparkring_site.py" \
+  --strict-placeholders "${site_yaml}"
+python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
+  --site "${site_yaml}" --profile "${profile_json}" validate
+python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
+  --site "${site_yaml}" --profile "${profile_json}" explain
+python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
+  --site "${site_yaml}" --profile "${profile_json}" plan > "${plan_json}"
+python "${sparkring_root}/scripts/preflight.py" \
+  --site "${site_yaml}" --strict-placeholders --print-plan
 ```
 
 `validate` must fail until every zero image identity and unresolved path is
@@ -90,14 +100,28 @@ replaced. The plan must contain `--async-scheduling`,
 `--enable-prefix-caching`, and `--enable-chunked-prefill`; it must not contain
 `--kv-transfer-config`.
 
-For an A/B review, compare the two resolved profiles. Exit status 1 is expected
-because the profiles intentionally differ:
+The site file's `paths.jit_cache_dir` must equal the host path mounted at
+`/cache/jit`; its `paths.context_cache_dir` must be the
+`sparkcache-context` child of that host path. Create those directories on every
+rank. Review the printed probes, then run the read-only preflight. It must pass
+all ranks, including the free-port, directory, storage, image, RoCE, and SSH
+checks:
 
 ```bash
-python scripts/sparkring_generic_launcher.py \
-  --site <site-yaml> \
-  --profile-a <profile-json> \
-  --profile-b <sparkcache-profile-json> diff
+python "${sparkring_root}/scripts/preflight.py" \
+  --site "${site_yaml}" --strict-placeholders \
+  --json "${receipt_dir}/cache-disabled-preflight.json"
+```
+
+For an A/B review, apply the same resolved image IDs and host paths to
+`sparkcache_profile_json`, then compare the profiles. Exit status 1 is expected
+because the external connector is intentionally different:
+
+```bash
+python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
+  --site "${site_yaml}" \
+  --profile-a "${profile_json}" \
+  --profile-b "${sparkcache_profile_json}" diff
 ```
 
 The serving-argument difference must be the external connector and its
@@ -106,12 +130,12 @@ prefix-cache, memory, and transport settings must match.
 
 ## Start and observe
 
-Starting changes all four hosts and can replace a serving stack. Review the
-plan, then run:
+Starting changes all four hosts. Review `plan_json`, ensure ports 8015 and
+29755 are free, then run:
 
 ```bash
-python scripts/sparkring_generic_launcher.py \
-  --site <site-yaml> --profile <profile-json> \
+python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
+  --site "${site_yaml}" --profile "${profile_json}" \
   --execute --confirmation START_GLM53_FLASH_DFLASH2_TP4 start
 ```
 
@@ -121,28 +145,96 @@ DFlash, NCCL, vLLM configuration, or lease-contract mismatch.
 Tail the API rank's vLLM log:
 
 ```bash
-ssh <rank-0-ssh-target> \
+rank0_ssh='operator@rank0.example.net'
+api_endpoint='http://rank0.example.net:8015'
+served_model='glm-5.3-flash-nvfp4-dflash7-bf16-tp4'
+
+ssh "${rank0_ssh}" \
   'docker logs --follow --tail 120 glm53-flash-dflash2-bf16-tp4-r0 2>&1'
 ```
 
-After graph capture completes:
+Replace `rank0_ssh` and `api_endpoint` with the values in `site_yaml`. In
+another shell, use API readiness as the startup-completion condition:
 
 ```bash
-curl --fail http://<rank-0-management-address>:8015/health
-curl --fail http://<rank-0-management-address>:8015/v1/models
+timeout 7200 bash -c \
+  'until curl --fail --silent --show-error "$1/health" >/dev/null; do sleep 5; done' \
+  _ "${api_endpoint}"
+curl --fail --silent --show-error "${api_endpoint}/v1/models"
 ```
 
-Run an uncached semantic canary and verify the DFlash invariant: total draft
-tokens must equal seven times the draft count. Inspect all ranks for
-preemptions, restarts, OOMs, fatal logs, and the expected RTS worker queue-pair
-count. These checks establish basic operation; they do not create a qualified
-performance or soak result.
+Capture metrics around the exact semantic canary from the pinned SparkCache
+checkout:
+
+```bash
+qualification_script="${sparkcache_root}/deploy/glm53_flash/qualification_request.py"
+curl --fail --silent --show-error "${api_endpoint}/metrics" \
+  > "${receipt_dir}/cache-disabled-metrics-before.prom"
+python "${qualification_script}" \
+  --endpoint "${api_endpoint}" --model "${served_model}" \
+  --kind semantic --output "${receipt_dir}/cache-disabled-semantic.json"
+curl --fail --silent --show-error "${api_endpoint}/metrics" \
+  > "${receipt_dir}/cache-disabled-metrics-after.prom"
+grep -E '^vllm:(external_prefix_cache_(queries|hits)_total|spec_decode_num_(drafts|draft_tokens|accepted_tokens)_total|num_preemptions_total)' \
+  "${receipt_dir}/cache-disabled-metrics-before.prom" \
+  "${receipt_dir}/cache-disabled-metrics-after.prom"
+```
+
+The receipt must report `semantic_match: true`. Draft tokens must increase by
+seven times the draft-count increase, preemptions must not increase, and
+external-prefix counters must not increase.
+
+Inspect all four ranks after replacing the example SSH targets:
+
+```bash
+set -euo pipefail
+rank_ssh=(
+  'operator@rank0.example.net'
+  'operator@rank1.example.net'
+  'operator@rank2.example.net'
+  'operator@rank3.example.net'
+)
+container_prefix='glm53-flash-dflash2-bf16-tp4'
+fatal_pattern='Traceback \(most recent call last\)|CUDA out of memory|OutOfMemoryError|NCCL.*(unhandled|error|failed)|Fatal Python error|Segmentation fault|ProcessGroupNCCL.*exception'
+
+for rank in 0 1 2 3; do
+  host="${rank_ssh[$rank]}"
+  container="${container_prefix}-r${rank}"
+  if ! log_text="$(ssh "${host}" "docker logs '${container}' 2>&1")"; then
+    printf 'log retrieval failed on rank %s\n' "${rank}" >&2
+    exit 1
+  fi
+  if ! container_state="$(ssh "${host}" "docker inspect --format '{{.RestartCount}} {{.State.OOMKilled}} {{.State.Status}}' '${container}'")"; then
+    printf 'container inspection failed on rank %s\n' "${rank}" >&2
+    exit 1
+  fi
+  if [[ "${container_state}" != '0 false running' ]]; then
+    printf 'unhealthy container state on rank %s: %s\n' "${rank}" "${container_state}" >&2
+    exit 1
+  fi
+  if ! qp_count="$(ssh "${host}" "rdma resource show qp 2>/dev/null | awk '/state RTS/ && /comm VLLM::Worker/ {n++} END {print n+0}'")"; then
+    printf 'RDMA inspection failed on rank %s\n' "${rank}" >&2
+    exit 1
+  fi
+  if [[ "${qp_count}" != '24' ]]; then
+    printf 'rank %s has %s worker QPs in RTS; expected 24\n' "${rank}" "${qp_count}" >&2
+    exit 1
+  fi
+  if grep -Eiq "${fatal_pattern}" <<<"${log_text}"; then
+    printf 'fatal log match on rank %s\n' "${rank}" >&2
+    exit 1
+  fi
+done
+```
+
+The block must exit successfully. These checks establish basic operation; they
+do not create a qualified performance or soak result.
 
 Stop the stack with:
 
 ```bash
-python scripts/sparkring_generic_launcher.py \
-  --site <site-yaml> --profile <profile-json> \
+python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
+  --site "${site_yaml}" --profile "${profile_json}" \
   --execute --confirmation START_GLM53_FLASH_DFLASH2_TP4 stop
 ```
 
@@ -237,7 +329,7 @@ binary-build lineage beyond the listed records is inferred.
 | B12X | `local-inference-lab/b12x`, `master@2fcf23a0ce269be27b2e03fece73d46e90e6aeea`, Apache-2.0, commit title `Accept runtime QSA cache page sizes`. | No associated pull request was found. |
 | SparkRing NCCL | NVIDIA NCCL 2.30.7; skip-Tree/PAT patch SHA-256 `097656d07a5774919f0d51558b51ec05de8168c0097ed6cb7764c33230ba6eb2`; listener-GID patch SHA-256 `dccfce86d14c15c39f0e0a742863960205a3d9823c464b31a7f7389354844178`; qualified loaded binary SHA-256 `ccd57342449c3f680befcb379329b935746e5299dc4de5f2516146e0411bd85f`. | The binary is not bound to an NVIDIA NCCL source commit and complete patch-build receipt. |
 | SparkCache | `FujitsuPolycom/sparkcache@2d6a222f04fcb7b903cb899aba3ed3fdc75edc11` on branch `codex/glm53-flash`, normalized source-tree SHA-256 `6210f439c64e4079ed3304c9cc181174abb3e6045de740ba7b7c2546bcaf6ac2`, profile `glm53-flash-hybrid`, vLLM lease-contract SHA-256 `2e3b17fd6a34f2dbb8e91a99b83dbf18629cf0e718f9f814236da4bbfc9ae3f1`, VMM exemption patch SHA-256 `370b498eebf44b4e52a2d2751fa249ad4bd3d0b6fd951b063a161fb06febbe99`, patch-preimage manifest SHA-256 `e0eb1b64d15812f122450f2e32323f0c907c640b8f8ccc270c77037bb9909b85`, Containerfile SHA-256 `ccc6b39173df80f604820959c3f19f8bc363f79d11f7d4f2d913054a4161b3f5`, and builder SHA-256 `c130e5c2fdd5f33e73f90f04ef85fa1247d93bfe6db409cd99508841f8d84547`. | The immutable commit and the source, contract, and build-recipe digests are authoritative. |
-| SparkRing profile | `FujitsuPolycom/sparkring`, branch `codex/glm53-flash-sparkcache-tp4`, based on `510556275ed3b77fc56a14367d319417072eeb8c`. | A PR or image receipt must record the immutable commit containing this uncommitted profile branch. |
+| SparkRing deployment profile | `FujitsuPolycom/sparkring@d45572dbd2adc7afa1d3208fb801c8ad9eac7864` on branch `codex/glm53-flash-sparkcache-tp4`, based on `510556275ed3b77fc56a14367d319417072eeb8c`. | The branch has no pull request, release tag, or distributed image artifact. |
 | Adapted launch inputs | Four-rank launcher snapshot SHA-256 `fef84dda87bab36f36f993f21a3e582438f3b0d1e3239b292ef0ef39e8c44b23`; service-settings snapshot SHA-256 `2c4d81d04060d92f4419d3f17d3c51b2f195d66376c9271617a167c18de14df1`; source-lock snapshot SHA-256 `913d54bd68fdea1280a8dd2baf15cf3461e04645f50be5bda9eafc027d03e4a8`. SparkRing expresses their settings through validated site and runtime schemas; no implementation source was copied. | The snapshots were uncommitted operator artifacts. Base Git revision `f3ba67fa476fd28109868811d6edbb4085c8f0a0` does not reproduce them without the recorded snapshots. |
 
 The machine-readable provenance manifest is

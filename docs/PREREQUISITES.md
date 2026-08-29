@@ -2,8 +2,10 @@
 
 Complete this checklist before deploying any supported profile. It defines the
 hardware and operator conditions required by the
-[GLM](GLM52_35BPW_QUICKSTART.md) and
-[DeepSeek](DEEPSEEK_V4_FLASH_QUICKSTART.md) quickstarts, and the
+[GLM-5.2 quickstart](GLM52_35BPW_QUICKSTART.md),
+[GLM-5.3 Flash SparkCache quickstart](GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md),
+[GLM-5.3 Flash cache-disabled quickstart](GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md),
+[DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md),
 [Qwen3.8-27B pair quickstart](QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md), and
 [Qwen3.8-27B four-Spark quickstart](QWEN38_27B_EXL3_K5K6_QUICKSTART.md). The
 GLM, Qwen cycle, and DeepSeek cycle configurations require four Sparks; the
@@ -11,8 +13,8 @@ DeepSeek and Qwen pair profiles require two.
 
 Ring Doctor, canonical site validation, and fabric preflight support closed
 four- and six-Spark cycles. Six-Spark serving profiles remain `research-only`
-until their runtime and performance evidence are qualified; infrastructure
-support here does not promote those profiles into the supported surface.
+until their runtime and performance evidence are qualified. Infrastructure
+support does not make a serving profile qualified.
 
 ## Hardware and topology
 

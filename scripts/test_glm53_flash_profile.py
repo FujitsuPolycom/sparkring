@@ -136,6 +136,9 @@ def test_pins_record_complete_provenance_without_inferred_lineage() -> None:
     assert pins["sparkcache"]["commit"] == (
         "2d6a222f04fcb7b903cb899aba3ed3fdc75edc11"
     )
+    assert pins["spark_ring_profile"]["publication_revision"] == (
+        "d45572dbd2adc7afa1d3208fb801c8ad9eac7864"
+    )
 
 
 def test_vllm_lease_contract_matches_the_pinned_copy() -> None:
@@ -376,6 +379,14 @@ def test_operator_docs_state_status_invariants_and_full_provenance() -> None:
         assert "--enable-chunked-prefill" in text
         assert "docker logs --follow --tail 120" in text
         assert "org.sparkcache.parent-image-id" in text
-    assert "--build-arg BASE_IMAGE_ID" in CACHE_QUICKSTART_PATH.read_text(
-        encoding="utf-8"
-    )
+        assert "Public reproduction: unsupported" in text
+        assert "--strict-placeholders" in text
+        assert "fatal_pattern=" in text
+    cache_text = CACHE_QUICKSTART_PATH.read_text(encoding="utf-8")
+    assert "deploy/glm53_flash/build_image.py" in cache_text
+    assert '--base-image-id "${base_image_id}"' in cache_text
+    assert "hf cache verify" in cache_text
+    assert "metrics-before-restore.prom" in cache_text
+    assert '${TARGET_MODEL_DIR:?' in cache_text
+    assert "temporary_build_tag" in cache_text
+    assert "inherits qualified" not in cache_text
