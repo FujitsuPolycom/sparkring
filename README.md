@@ -28,6 +28,8 @@ profile is selected.
 ## Resources
 
 - [Supported models and profiles](#profiles)
+- [GLM-5.3 Flash TP4 with SparkCache](docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md)
+- [GLM-5.3 Flash TP4 with external caching disabled](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md)
 - [Benchmark results](#benchmark-results)
 - [Deployment prerequisites](docs/PREREQUISITES.md) — then choose a profile quickstart below
 
