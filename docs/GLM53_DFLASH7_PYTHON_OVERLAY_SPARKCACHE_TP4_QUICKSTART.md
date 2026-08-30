@@ -21,6 +21,12 @@ benchmark, so response quality is **unsupported**. Public OCI publication is
 also **unsupported**; the image has no published digest. No rebuild inherits
 these observations without its own exact evidence.
 
+The `ed60...` artifact uses `block_pages_v1`. Its C16 case proves that one
+exact 131,072-token prefix was restored once for requests with 16 distinct
+tails. It does not exercise `per_token_rows` different-root descriptor-segment
+coalescing. That behavior is implemented with GPU-free coverage only and is
+absent from this artifact's live qualification.
+
 ### Separate historical artifact
 
 Historical local image ID
@@ -41,7 +47,7 @@ identity and requires its own live checks.
 | vLLM native extensions and wheel metadata | `da4d7be6c97434f6942292ed8abbf4b32dc44355` |
 | vLLM Python source | `0b67266a0f37d6146a8403fb8482403c62f412d5`, tree `ba9484ccb33aa56e90ff2f447f15ca9b9da97639` |
 | B12X | `b1d541f9e71a35f030d45fae437630fff7507c2a`, tree `c69cdec1c59a08e8e0e549f930fa8abcfb5134ae` |
-| SparkCache shared-segment restore, tail-only copy-on-write publication, canonical CUDA configuration, and bounded page-delta reads | `65b6642df1afc64366430d3aef9aca01f5c5e1c3`, tree `41ad0a119ba109fd28900a2dcc9f9b4d8c293809`, clean source SHA-256 `a2add45a9f97446f6c2a843355161da9a5499ff7501b4750d2163591785d7345` |
+| SparkCache exact prefix restore, GPU-free row-descriptor coalescing, tail-only copy-on-write publication, canonical CUDA configuration, and bounded page-delta reads | `65b6642df1afc64366430d3aef9aca01f5c5e1c3`, tree `41ad0a119ba109fd28900a2dcc9f9b4d8c293809`, clean source SHA-256 `a2add45a9f97446f6c2a843355161da9a5499ff7501b4750d2163591785d7345` |
 | Recurrent replay-boundary producer | Patch SHA-256 `5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0`; produces the four postimages accepted by SparkCache lease contract SHA-256 `8adbdfa3fd4b06b213c3aab45255a0b039f1c9940a4b1fad0efd004d263227c9` |
 | DFlash draft-loader separation | Patch SHA-256 `39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279`, postimage SHA-256 `98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4` |
 | Unused DeepEP removal | Distribution `deep_ep==2.0.0+local`, removal receipt SHA-256 `65514f44829e7d176b0b2cacc9559ed22724e525b7041a8bcd4d2e02d1f372e3` |
@@ -89,7 +95,7 @@ Two profiles share the same image and DFlash7 cache identity:
 | Profile | Status | Loader behavior |
 |---|---|---|
 | `glm53-flash-dflash7-python-overlay-safetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Uses global safetensors for target and draft. This follows the qualified-compatible loader shape but still requires live qualification on the composed 0b image. |
-| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified for the selected source contract | Uses global fastsafetensors with queue size one for the target and `draft_load_config={"load_format":"safetensors"}` for DFlash. The historical receipt remains evidence only for its recorded image. |
+| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **qualified** only for exact image `sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8` and the bounded cases above; rebuilds are not qualified | Uses global fastsafetensors with queue size one for the target and `draft_load_config={"load_format":"safetensors"}` for DFlash. |
 
 The image applies an exact-input vLLM patch that passes
 `SpeculativeConfig.draft_load_config` to the DFlash model loader. The image
@@ -136,7 +142,8 @@ python scripts/sparkring_generic_launcher.py \
   plan
 ```
 
-`plan` is offline. Inspect every rank action before a lifecycle command.
+`plan` is offline. Inspect every rank action before a command that changes
+containers.
 
 ## Start and observe the four-rank service
 
@@ -200,8 +207,9 @@ different cache root and one-shot clear token so loader observations remain
 isolated.
 
 The pinned SparkCache source combines canonical CUDA configuration names,
-authenticated shared-segment restore, an eight-worker ordered page-delta
-reader, and tail-only copy-on-write publication. Cache identities, digest
+authenticated exact prefix restore, GPU-free row-descriptor coalescing, an
+eight-worker ordered page-delta reader, and tail-only copy-on-write
+publication. Cache identities, digest
 salts, 256-token chunk geometry, page-delta wire bytes, and the CUDA placement
 ABI are unchanged. The source change does not change the namespace, so
 compatible `page-tail-cow-v1` entries remain eligible.

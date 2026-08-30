@@ -1,5 +1,10 @@
 {
-  "schema": "sparkring-glm53-pr146-live-validation/v1",
+  "schema": "sparkring-glm53-pr146-live-validation/v2",
+  "normalization": {
+    "supersedes_schema": "sparkring-glm53-pr146-live-validation/v1",
+    "reason": "The C16 observation is classified as shared exact prefix reuse for block_pages_v1; it does not demonstrate per_token_rows different-root descriptor coalescing.",
+    "raw_measurements_changed": false
+  },
   "status": {
     "artifact_construction": "implemented",
     "construction_verification_before_container_creation": "qualified",
@@ -9,7 +14,8 @@
     "persistent_128k_restore": "qualified",
     "tail_publication_128k_to_256k": "qualified",
     "persistent_256k_restore_correctness": "qualified",
-    "segment_shared_restore_c16": "qualified",
+    "shared_exact_prefix_c16": "qualified",
+    "different_root_row_descriptor_coalescing_live_validation": "unsupported",
     "restore_performance": "research-only",
     "continuous_availability_during_replacement": "unsupported",
     "dflash_response_quality": "unsupported"
@@ -77,7 +83,9 @@
     "sparkcache_effective_publication_schema": "page-tail-cow-v1",
     "sparkcache_config_schema": "canonical-v1",
     "sparkcache_cuda_restore_io_workers": 8,
-    "sparkcache_load_threads": 2
+    "sparkcache_load_threads": 2,
+    "restore_storage_mode": "block_pages_v1",
+    "different_root_row_descriptor_coalescing": "implemented with GPU-free coverage; not exercised by this artifact"
   },
   "measurements": {
     "construction_verification_before_container_creation": {
@@ -203,8 +211,9 @@
         "3": {"end_to_end_ms": 6738.472, "service_ms": 6738.307, "restore_read_ms": 5369.241, "h2d_submit_ms": 983.740, "cuda_sync_ms": 314.508, "outcome": "verified"}
       }
     },
-    "segment_shared_restore_c16": {
-      "scenario": "shared-trunk",
+    "shared_exact_prefix_c16": {
+      "scenario": "shared_exact_prefix",
+      "storage_mode": "block_pages_v1",
       "cache_state": "hot",
       "input_mode": "pretokenized",
       "concurrency": 16,
@@ -318,7 +327,7 @@
     "Restore timing values are single observations or single waves and are research-only; they do not establish throughput, variability, or soak behavior.",
     "The 131072-token opaque base contains 512 per-page objects. The 131072-to-262144 tail is macro-grouped into 13 objects, but flat opaque snapshots are not macro-grouped.",
     "The 262144-token restore reads 1024 logical chunks and took 6688.887 to 7206.548 milliseconds across ranks, so it is a correctness result rather than a speed claim.",
-    "The final image has one C16 shared-trunk wave. C2, C8, and C16 identical-prefix waves were observed only on the predecessor image and do not qualify the final image.",
+    "The final image has one C16 shared exact prefix wave. It does not exercise per_token_rows different-root descriptor coalescing. C2, C8, and C16 identical-prefix waves were observed only on the predecessor image and do not qualify the final image.",
     "The semantic canary verifies one fixed expected response. No scored DFlash response-quality benchmark was run.",
     "The image has no published OCI digest and exists only on the observed deployment hosts.",
     "The retained timestamps prove construction and source-contract verification preceded replacement-container creation. They do not prove uninterrupted availability of the previous service before or during replacement.",

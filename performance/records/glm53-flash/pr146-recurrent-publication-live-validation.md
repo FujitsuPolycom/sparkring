@@ -1,4 +1,4 @@
-# GLM-5.3 recurrent publication and shared-restore validation
+# GLM-5.3 recurrent publication and exact prefix restore validation
 
 Status: **qualified** for the bounded functional checks recorded below on the
 exact local image. Restore timing is **research-only**. DFlash response quality
@@ -48,6 +48,12 @@ SparkCache used the requested `tail-cow-v1` publication schema, resolved to
 CUDA restore I/O workers, and two load threads. The observation window was
 2026-08-30 09:59:15 through 11:06:44 UTC.
 
+The live restore observations used `block_pages_v1`. The C16 case restored one
+exact 131,072-token prefix for requests with distinct tails. It did not use
+`per_token_rows` or exercise different-root row-descriptor coalescing. That
+coalescing behavior is implemented with GPU-free coverage only and receives no
+live qualification from this artifact.
+
 A second local artifact supplied corroborating evidence for the connector's
 publication-target API before the scheduler explicitly limited publication
 to the allocation that reaches the target. That image was
@@ -94,12 +100,12 @@ as its result. It represented the appended 128K tail as 826,457,677 encoded byte
 objects with a 64 MiB target size. The base remained a 512-object opaque page
 root.
 
-The shared-restore case sent 16 concurrent requests with one identical
-131,072-token trunk and 16 distinct tails. All 16 prompt SHA-256 values were
+The shared exact prefix case sent 16 concurrent requests with one identical
+131,072-token prefix and 16 distinct tails. All 16 prompt SHA-256 values were
 different. During that cohort, each rank emitted exactly one restore shard
 for request `cmpl-9ac4e6b523215233-0-9c41ccbc`, and no second external restore
 or recurrent-publication warning was observed. One logical external restore
-therefore supplied the shared trunk; its four log entries were the TP4 rank
+therefore supplied the shared exact prefix; its four log entries were the TP4 rank
 shards of that operation, not four independent restores.
 
 The predecessor artifact also ran an 8K prime and clean persistent replay,
@@ -117,7 +123,7 @@ Those measurements show the behavior of that exact artifact only.
 | Persistent 128K restore | 131,072 tokens and 813,068,464 bytes per rank; all ranks verified; 154.233-285.283 ms rank end-to-end |
 | Tail-only 128K-to-256K publication | base 131,072; result 262,144; 826,457,677 delta bytes; 13 delta objects; 64 MiB target object size |
 | Persistent 256K restore | 262,144 tokens; 1,575,821,491 page bytes; 1,024 logical chunks; all ranks verified; 6,688.887-7,206.548 ms rank end-to-end |
-| Final-image C16 shared trunk | 16 distinct prompts; 16 HTTP 200 responses; one logical external 128K restore; 2.932669 s minimum, 4.242638 s p50, 4.244709 s p95/maximum client time |
+| Final-image C16 shared exact prefix | 16 distinct prompts; 16 HTTP 200 responses; one logical external 128K restore; 2.932669 s minimum, 4.242638 s p50, 4.244709 s p95/maximum client time |
 | Predecessor clean-restart 8K | 8,192-token publication target; 59-67 ms rounded rank range; 1.744 s client time |
 | Predecessor cold flat 128K | 512 opaque page objects; 3.39-4.15 s observed rank range |
 | Predecessor identical-prefix C2 | 2 HTTP 200 responses; 4.667638-4.860512 s client range |
@@ -137,10 +143,11 @@ four observed replacement containers. This establishes construction
 verification before the observed replacement, but it does not establish
 continuous availability of the previous service.
 
-The final C16 shared-trunk cohort completed 16 distinct requests after one
-rank-sharded external restore of the common 128K segment. This qualifies
-segment-level sharing for that one bounded cohort. It does not establish a
-throughput or latency claim.
+The final C16 shared exact prefix cohort completed 16 distinct requests after
+one rank-sharded external restore of the common 128K prefix. This qualifies
+exact prefix reuse for that one bounded cohort. It does not qualify
+`per_token_rows` different-root row-descriptor coalescing and does not
+establish a throughput or latency claim.
 
 The predecessor C2, C8, and C16 waves corroborate the connector API behavior
 before the reaching-allocation correction. They are not evidence for the
@@ -156,7 +163,9 @@ final image and are not used to widen its qualification.
   macro-grouped.
 - The 256K restore read 1,024 logical chunks and took 6.689-7.207 seconds
   across ranks. This is a correctness result, not a speed claim.
-- The final image has one C16 shared-trunk wave. The C2, C8, and C16
+- The final image has one C16 shared exact prefix wave. Different-root
+  row-descriptor coalescing is implemented with GPU-free coverage only and was
+  not exercised. The C2, C8, and C16
   identical-prefix matrix belongs to the predecessor artifact and cannot be
   transferred to the final image.
 - The semantic canary checks one fixed expected response. No scored DFlash

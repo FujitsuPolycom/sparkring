@@ -285,6 +285,12 @@ def test_quickstart_names_both_loader_statuses_and_exact_builder() -> None:
     assert "clean-restart" in guide
     assert "131,072 to 262,144 tokens" in guide
     assert "16 distinct" in guide
+    assert "`block_pages_v1`" in guide
+    assert "`per_token_rows` different-root descriptor-segment" in guide
+    assert "absent from this artifact's live qualification" in guide
+    assert "rebuilds are not qualified" in guide
+    assert "twelve-file lease contract" in guide
+    assert "command that changes\ncontainers" in guide
     assert "Restore timings are" in guide and "research-only" in guide
     assert "response quality is **unsupported**" in guide
     assert "Public OCI publication is" in guide

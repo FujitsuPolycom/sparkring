@@ -33,7 +33,16 @@ def _receipt() -> dict[str, object]:
 
 def test_receipt_binds_exact_final_artifact_and_source_contracts() -> None:
     receipt = _receipt()
-    assert receipt["schema"] == "sparkring-glm53-pr146-live-validation/v1"
+    assert receipt["schema"] == "sparkring-glm53-pr146-live-validation/v2"
+    assert receipt["normalization"] == {
+        "supersedes_schema": "sparkring-glm53-pr146-live-validation/v1",
+        "reason": (
+            "The C16 observation is classified as shared exact prefix reuse for "
+            "block_pages_v1; it does not demonstrate per_token_rows different-root "
+            "descriptor coalescing."
+        ),
+        "raw_measurements_changed": False,
+    }
     artifact = receipt["artifact"]
     assert artifact["image_id"] == (
         "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8"
@@ -61,10 +70,14 @@ def test_status_scopes_functional_and_performance_claims() -> None:
         "persistent_128k_restore",
         "tail_publication_128k_to_256k",
         "persistent_256k_restore_correctness",
-        "segment_shared_restore_c16",
+        "shared_exact_prefix_c16",
     ):
         assert status[status_name] == "qualified"
     assert status["restore_performance"] == "research-only"
+    assert (
+        status["different_root_row_descriptor_coalescing_live_validation"]
+        == "unsupported"
+    )
     assert status["continuous_availability_during_replacement"] == "unsupported"
     assert status["dflash_response_quality"] == "unsupported"
 
@@ -150,9 +163,15 @@ def test_256k_restore_retains_all_rank_correctness_evidence() -> None:
     )
 
 
-def test_shared_trunk_cohort_records_one_logical_restore() -> None:
-    shared = _receipt()["measurements"]["segment_shared_restore_c16"]
-    assert shared["scenario"] == "shared-trunk"
+def test_shared_exact_prefix_cohort_records_one_logical_restore() -> None:
+    receipt = _receipt()
+    shared = receipt["measurements"]["shared_exact_prefix_c16"]
+    assert shared["scenario"] == "shared_exact_prefix"
+    assert shared["storage_mode"] == "block_pages_v1"
+    assert receipt["conditions"]["restore_storage_mode"] == "block_pages_v1"
+    assert receipt["conditions"]["different_root_row_descriptor_coalescing"] == (
+        "implemented with GPU-free coverage; not exercised by this artifact"
+    )
     assert shared["concurrency"] == 16
     assert shared["distinct_prompt_sha256_count"] == 16
     assert len(shared["prompt_sha256"]) == len(set(shared["prompt_sha256"])) == 16
@@ -195,6 +214,8 @@ def test_record_follows_evidence_method_and_rejects_speed_claim() -> None:
         assert heading in record
     assert "One logical external restore" in record
     assert "not a speed claim" in record
+    assert "shared exact prefix cohort" in record
+    assert "does not qualify\n`per_token_rows` different-root" in record
     assert "do not qualify the final image" in record
     assert "`--prefill-schedule-interval 8` was not tested" in record
     assert (
@@ -212,6 +233,9 @@ def test_quickstart_links_the_exact_artifact_evidence_separately() -> None:
     assert "d93cb3d98305041081cf572521602625185112ae" in quickstart
     assert "65b6642df1afc64366430d3aef9aca01f5c5e1c3" in quickstart
     assert "pr146-recurrent-publication-live-validation.md" in quickstart
+    assert "`block_pages_v1`" in quickstart
+    assert "`per_token_rows` different-root descriptor-segment" in quickstart
+    assert "rebuilds are not qualified" in quickstart
     assert "### Separate historical artifact" in quickstart
     assert (
         "sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb"
