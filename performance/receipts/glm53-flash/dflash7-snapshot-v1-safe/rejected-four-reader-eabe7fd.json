@@ -1,0 +1,51 @@
+{
+  "schema": "sparkring-glm53-dflash7-rejected-restore-candidate/v1",
+  "status": "research-only",
+  "conclusion": "semantic-rejection",
+  "candidate": {
+    "image_id": "sha256:df4e09a32cdbf1c0e69cc7c4c9e95d890d6c7a1e3eaac84f969912a16fd27dd3",
+    "sparkcache_commit": "eabe7fd0c878db7384ef87fe80a1e96b9bedcf67",
+    "sparkcache_tree": "d88a65ea265a6f212367baa8c4a4970079d6b08a",
+    "sparkcache_source_sha256": "d9a7800ce201b0671676fc8d71423947c7b24e4797758db727c06e0e684495fe",
+    "maximum_parallel_reads": 4,
+    "deployable": false,
+    "qualified": false
+  },
+  "case": {
+    "topology": "TP4/DCP1",
+    "publication_schema": "snapshot-v1",
+    "context_digest": "b4161571df103395e2abae10372a90f35468561ec6c42bf4a7b7f0d0dfda5873",
+    "prompt_sha256": "965acd85cb28f804ab59cdc160688b04efaee14341e0bd27b647673e652ab812",
+    "committed_tokens": 131072,
+    "prompt_tokens": 131073,
+    "encoded_bytes_per_rank": 813068464,
+    "objects_per_rank": 13,
+    "structurally_verified_ranks": [0, 1, 2, 3]
+  },
+  "timing_ranges_ms": {
+    "read_and_authentication": [484.1, 528.8],
+    "placement": [323.7, 330.9],
+    "arena_wait": [293.2, 297.7],
+    "final_completion": [129.5, 131.6],
+    "cache_service": [1231.7, 1331.2]
+  },
+  "semantic_restore": {
+    "expected": "red",
+    "observed": "spark",
+    "passed": false,
+    "response_sha256": "0bb1366f58973e94b3cd518d4981be67c86ee35768039e392bb5c494b27bc58e"
+  },
+  "recomputation_control": {
+    "relationship": "one-token-changed prompt with the same token count",
+    "prompt_sha256": "4bb683a895caaaacb783294e65cb9c4b59c808c1e7b563a48edb6cd52b302dfe",
+    "expected": "red",
+    "observed": "red",
+    "passed": true,
+    "elapsed_seconds": 55.14106
+  },
+  "retained_quickstart_artifact": {
+    "image_id": "sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e",
+    "sparkcache_commit": "a1511d26a1fe2b17b24561bc52e376bf7f54b06a",
+    "qualification_receipt": "validation.json"
+  }
+}

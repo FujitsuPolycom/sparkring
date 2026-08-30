@@ -402,6 +402,13 @@ def test_quickstart_has_one_copy_paste_four_rank_start_path() -> None:
     assert "\ndocker run " not in section
     normalized = " ".join(section.split())
     assert "four hand-maintained `docker run` commands" in normalized
+    assert "df4e09a32cdb" not in section
+
+    research = guide.split("### Research-only", 1)[1]
+    assert "eabe7fd0c878db7384ef87fe80a1e96b9bedcf67" in research
+    assert "df4e09a32cdbf1c0e69cc7c4c9e95d890d6c7a1e3eaac84f969912a16fd27dd3" in research
+    assert "is not deployable" in research
+    assert "rejected-four-reader-eabe7fd.json" in research
 
     routing = (ROOT / "docs/GLM53_FLASH_QUICKSTARTS.md").read_text(
         encoding="utf-8"

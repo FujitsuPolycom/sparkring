@@ -135,6 +135,15 @@ correct oracle. That result does not qualify C2 delta restore. The prior
 but they do not replace the snapshot-v1 default or qualify multi-root
 concurrency. Response quality and public OCI publication are **unsupported**.
 
+Four-reader flat-page prefetch at SparkCache
+`eabe7fd0c878db7384ef87fe80a1e96b9bedcf67` is also **research-only**. Its
+exact 131,072-token TP4/DCP1 run structurally verified every rank but returned
+`spark` instead of the required `red`; recomputation returned `red`. Candidate
+image `sha256:df4e09a32cdbf1c0e69cc7c4c9e95d890d6c7a1e3eaac84f969912a16fd27dd3`
+is not deployable. The
+[machine-readable rejection receipt](../performance/receipts/glm53-flash/dflash7-snapshot-v1-safe/rejected-four-reader-eabe7fd.json)
+keeps that result separate from the qualified `35b58a7…` setup above.
+
 ## Runtime contract
 
 | Role | Exact identity |

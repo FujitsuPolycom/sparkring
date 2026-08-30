@@ -96,3 +96,30 @@ def test_snapshot_v1_receipt_does_not_qualify_research_paths() -> None:
     assert limitations["host_base_read_coalescing"] == "research-only"
     assert limitations["multi_root_concurrent_restore"] == "research-only"
     assert limitations["c2_delta_restore"].startswith("not qualified")
+
+
+def test_rejected_four_reader_candidate_cannot_replace_safe_quickstart() -> None:
+    rejected = _json("rejected-four-reader-eabe7fd.json")
+    qualified = _json("validation.json")
+
+    assert rejected["schema"] == (
+        "sparkring-glm53-dflash7-rejected-restore-candidate/v1"
+    )
+    assert rejected["status"] == "research-only"
+    assert rejected["conclusion"] == "semantic-rejection"
+    assert rejected["candidate"]["deployable"] is False
+    assert rejected["candidate"]["qualified"] is False
+    assert rejected["case"]["structurally_verified_ranks"] == [0, 1, 2, 3]
+    assert rejected["semantic_restore"] == {
+        "expected": "red",
+        "observed": "spark",
+        "passed": False,
+        "response_sha256": (
+            "0bb1366f58973e94b3cd518d4981be67c86ee35768039e392bb5c494b27bc58e"
+        ),
+    }
+    assert rejected["recomputation_control"]["observed"] == "red"
+    assert rejected["recomputation_control"]["passed"] is True
+    assert rejected["retained_quickstart_artifact"]["image_id"] == (
+        qualified["artifact"]["image_id"]
+    )
