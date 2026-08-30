@@ -56,7 +56,7 @@ test "${#native_sha256}" -eq 64
 
 The runtime builder verifies the complete first-parent vLLM history from
 `da4d7be` through adaptive MTP and the three live-tensor B12X KDA commits. The
-SparkCache build verifies LF Linux preimages, four exact patches, and ten
+SparkCache build verifies LF Linux preimages, four exact patches, and eleven
 postimage source files.
 
 ## Resolve the TP4 profile
