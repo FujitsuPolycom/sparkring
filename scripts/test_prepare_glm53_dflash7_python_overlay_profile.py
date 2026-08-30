@@ -16,6 +16,9 @@ from prepare_glm53_dflash7_python_overlay_profile import (
     DFLASH_LOADER_PATCH_SHA256,
     DFLASH_LOADER_POSTIMAGE_SHA256,
     DFLASH_WEIGHTS_SHA256,
+    SPARKCACHE_COMMIT,
+    SPARKCACHE_SOURCE_SHA256,
+    SPARKCACHE_TREE,
     VLLM_NATIVE_COMMIT,
     VLLM_PYTHON_COMMIT,
     ResolveError,
@@ -170,6 +173,9 @@ def test_resolved_profile_requires_dflash7_image_labels() -> None:
         "glm53-flash-dflash7-python-overlay"
     )
     assert labels["org.sparkcache.cuda-config-schema"] == "canonical-v1"
+    assert labels["org.sparkcache.source-revision"] == SPARKCACHE_COMMIT
+    assert labels["org.sparkcache.source-tree"] == SPARKCACHE_TREE
+    assert labels["org.sparkcache.source-sha256"] == SPARKCACHE_SOURCE_SHA256
     assert labels["org.sparkring.vllm.dflash-draft-loader-patch-sha256"] == (
         DFLASH_LOADER_PATCH_SHA256
     )

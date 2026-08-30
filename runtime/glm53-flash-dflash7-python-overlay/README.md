@@ -11,10 +11,10 @@ The image combines these exact roles:
 - the 31-file vLLM Python delta at
   `0b67266a0f37d6146a8403fb8482403c62f412d5`;
 - B12X `b1d541f9e71a35f030d45fae437630fff7507c2a`;
-- SparkCache reconstructed-page placement source
-  `19e2ec8b59c84ef359c2a3290f86962e3ff71d96`, Git tree
-  `d8b417bb4b6d734c4403c0a73e7e42b95abd8343`, and deployable source SHA-256
-  `bc7cae86732c869ee8b2205d48ac5be6f580ee8b77a3e4ffd4c69dcd4f1bfae5`;
+- SparkCache reconstructed-page placement and bounded page-delta-read source
+  `5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3`, Git tree
+  `94c236b9dfbf5f70075eb47877fd9caaa5d8c249`, and deployable source SHA-256
+  `bc238f96e550c7ec27d4081dd1f2e741d404aaf5c8572d89ccc5e76812be4d63`;
 - external BF16 DFlash2 weights with SHA-256
   `b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b`.
 
@@ -54,12 +54,13 @@ No PR25 compatibility profile or legacy-key translation is required by these
 profiles.
 
 The pinned SparkCache source from
-[pull request #29](https://github.com/FujitsuPolycom/sparkcache/pull/29)
-accepts canonical CUDA configuration keys and replaces a partial terminal HMA
-page when the authenticated cache boundary falls inside that page. It does not
-change cache identity, page-tail wire schemas, record geometry, vLLM patch
-bytes, the lease contract, or the CUDA placement ABI. Compatible entries
-produced by the source at commit
+[pull request #30](https://github.com/FujitsuPolycom/sparkcache/pull/30)
+accepts canonical CUDA configuration keys, replaces a partial terminal HMA
+page when the authenticated cache boundary falls inside that page, and reads
+authenticated page-delta chunks with a bounded eight-worker pool while
+preserving descriptor order. It does not change cache identity, page-tail wire
+schemas, record geometry, vLLM patch bytes, the lease contract, or the CUDA
+placement ABI. Compatible entries produced by the source at commit
 `5d571018de5b63a9a90e5c11e6d6e86bbff4a957` remain in the same namespace.
 Null-block publication failures remain unsupported by this source contract.
 Both profiles preserve B12X compute backends and the pinned PYNCCL/NCCL

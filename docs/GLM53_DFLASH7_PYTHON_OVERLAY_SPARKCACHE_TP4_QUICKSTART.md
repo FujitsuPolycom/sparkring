@@ -12,7 +12,7 @@ store/restart/restore, or concurrency qualification.
 | vLLM native extensions and wheel metadata | `da4d7be6c97434f6942292ed8abbf4b32dc44355` |
 | vLLM Python source | `0b67266a0f37d6146a8403fb8482403c62f412d5`, tree `ba9484ccb33aa56e90ff2f447f15ca9b9da97639` |
 | B12X | `b1d541f9e71a35f030d45fae437630fff7507c2a`, tree `c69cdec1c59a08e8e0e549f930fa8abcfb5134ae` |
-| SparkCache reconstructed-page placement and canonical CUDA configuration | `19e2ec8b59c84ef359c2a3290f86962e3ff71d96`, tree `d8b417bb4b6d734c4403c0a73e7e42b95abd8343`, clean source SHA-256 `bc7cae86732c869ee8b2205d48ac5be6f580ee8b77a3e4ffd4c69dcd4f1bfae5` |
+| SparkCache reconstructed-page placement, canonical CUDA configuration, and bounded page-delta reads | `5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3`, tree `94c236b9dfbf5f70075eb47877fd9caaa5d8c249`, clean source SHA-256 `bc238f96e550c7ec27d4081dd1f2e741d404aaf5c8572d89ccc5e76812be4d63` |
 | DFlash draft-loader separation | Patch SHA-256 `39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279`, postimage SHA-256 `98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4` |
 | Unused DeepEP removal | Distribution `deep_ep==2.0.0+local`, removal receipt SHA-256 `65514f44829e7d176b0b2cacc9559ed22724e525b7041a8bcd4d2e02d1f372e3` |
 | Target | `local-inference-lab/GLM-5.3-Flash-NVFP4@520de24eabf507659eaef7c70f14fd584527facc` |
@@ -110,12 +110,14 @@ manifests. The two target-loader profiles share a namespace because loader
 choice does not change target or draft model state; each profile uses a
 different cache root and one-shot clear token while qualification is pending.
 
-[SparkCache pull request #29](https://github.com/FujitsuPolycom/sparkcache/pull/29)
-combines canonical CUDA configuration names with replacement of a partial
-terminal HMA page when an authenticated cache boundary falls inside that page.
+[SparkCache pull request #30](https://github.com/FujitsuPolycom/sparkcache/pull/30)
+combines canonical CUDA configuration names, replacement of a partial terminal
+HMA page when an authenticated cache boundary falls inside that page, and an
+eight-worker reader for authenticated page-delta chunks. The reader preserves
+manifest descriptor order after concurrent reads.
 Moving from SparkCache commit
 `5d571018de5b63a9a90e5c11e6d6e86bbff4a957` to the pinned commit
-`19e2ec8b59c84ef359c2a3290f86962e3ff71d96` does not change the namespace.
+`5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3` does not change the namespace.
 Checkpoint identities, page-delta wire schemas, record vocabulary, digest
 salts, parallel geometry, vLLM patches, the lease contract, and the CUDA
 placement ABI are unchanged. Compatible `page-tail-cow-v1` entries remain
