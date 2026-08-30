@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Produce and verify deterministic GLM-5.3 page-base-flight evidence."""
+"""Produce and verify GLM-5.3 page-base-flight evidence with stable oracles."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -22,7 +23,31 @@ PARTICIPANTS = 16
 TP_RANKS = 4
 FLIGHT_SCHEMA = "sparkcache-page-base-restore-flight/v1"
 RESTORE_SCHEMA = "sparkcache-restore-timing/v1"
-RECEIPT_SCHEMA = "sparkring-glm53-pr42-page-base-flight-qualification/v1"
+RECEIPT_SCHEMA = "sparkring-glm53-pr42-page-base-flight-qualification/v2"
+BASE_CODEWORD = "base"
+LANE_CODEWORDS = (
+    "red",
+    "blue",
+    "green",
+    "black",
+    "white",
+    "gold",
+    "silver",
+    "orange",
+    "purple",
+    "yellow",
+    "brown",
+    "gray",
+    "pink",
+    "cyan",
+    "coral",
+    "apple",
+)
+UNRELATED_CODEWORD = "quartz"
+INSTRUCTION_TEMPLATE = "Reply with exactly the lowercase word {word}.\nAnswer:"
+READINESS_RETRY_SECONDS = 1.0
+READINESS_MAX_ATTEMPTS = 8
+READINESS_TOTAL_SECONDS = 60.0
 PROMPT_SEED = (
     "SparkCache deterministic token bank: alpha beta gamma delta epsilon zeta "
     "eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon."
@@ -30,7 +55,7 @@ PROMPT_SEED = (
 
 
 class QualificationError(RuntimeError):
-    """The deterministic qualification evidence is incomplete or contradictory."""
+    """The qualification evidence is incomplete or contradictory."""
 
 
 def _canonical(value: object) -> bytes:
@@ -96,17 +121,84 @@ def discover_token_bank(endpoint: str, model: str, timeout: float) -> list[int]:
     return unique[: PARTICIPANTS + 2]
 
 
-def prompts(token_bank: list[int]) -> tuple[list[int], list[list[int]], list[int]]:
+def _instruction(word: str) -> str:
+    return INSTRUCTION_TEMPLATE.format(word=word)
+
+
+def discover_instruction_tokens(
+    endpoint: str, model: str, timeout: float
+) -> dict[str, list[int]]:
+    instructions: dict[str, list[int]] = {}
+    for word in (BASE_CODEWORD, *LANE_CODEWORDS, UNRELATED_CODEWORD):
+        document = _post(
+            endpoint,
+            "/tokenize",
+            {"model": model, "prompt": _instruction(word)},
+            timeout,
+        )
+        observed = document.get("tokens") or document.get("token_ids")
+        if (
+            not isinstance(observed, list)
+            or len(observed) < 2
+            or len(observed) > 64
+            or any(not isinstance(value, int) or value < 0 for value in observed)
+        ):
+            raise QualificationError(
+                f"tokenizer returned an invalid instruction for {word!r}"
+            )
+        instructions[word] = list(observed)
+    return instructions
+
+
+def _prompt_spec_sha256(instructions: dict[str, list[int]]) -> str:
+    return _sha256(
+        _canonical(
+            {
+                "instruction_template": INSTRUCTION_TEMPLATE,
+                "base_codeword": BASE_CODEWORD,
+                "lane_codewords": LANE_CODEWORDS,
+                "unrelated_codeword": UNRELATED_CODEWORD,
+                "instruction_tokens": instructions,
+            }
+        )
+    )
+
+
+def prompts(
+    token_bank: list[int],
+    instructions: dict[str, list[int]],
+) -> tuple[list[int], list[list[int]], list[int]]:
     if len(token_bank) < PARTICIPANTS + 2:
         raise QualificationError("token bank must contain at least 18 distinct IDs")
-    common, terminator = token_bank[0], token_bank[-1]
-    base = [common] * BASE_TOKENS + [terminator]
-    results = [
-        [common] * BASE_TOKENS + [token_bank[index + 1]] * TAIL_TOKENS + [terminator]
-        for index in range(PARTICIPANTS)
-    ]
-    unrelated = [token_bank[-2]] * 4096 + [terminator]
+    required_words = {BASE_CODEWORD, *LANE_CODEWORDS, UNRELATED_CODEWORD}
+    if set(instructions) != required_words:
+        raise QualificationError("instruction-token lanes are incomplete")
+    common = token_bank[0]
+    base_instruction = instructions[BASE_CODEWORD]
+    base_fill = BASE_TOKENS - len(base_instruction) + 1
+    if base_fill <= 0:
+        raise QualificationError("base instruction exceeds the publication boundary")
+    base_prefix = [common] * base_fill + base_instruction[:-1]
+    base = base_prefix + [base_instruction[-1]]
+    results = []
+    for index, word in enumerate(LANE_CODEWORDS):
+        instruction = instructions[word]
+        private_fill = TAIL_TOKENS - len(instruction) + 1
+        if private_fill <= 0:
+            raise QualificationError(f"lane instruction {word!r} exceeds its tail")
+        results.append(
+            base_prefix + [token_bank[index + 1]] * private_fill + instruction
+        )
+    unrelated_instruction = instructions[UNRELATED_CODEWORD]
+    unrelated_fill = 4096 - len(unrelated_instruction) + 1
+    if unrelated_fill <= 0:
+        raise QualificationError("unrelated instruction exceeds its request boundary")
+    unrelated = [token_bank[-2]] * unrelated_fill + unrelated_instruction
     return base, results, unrelated
+
+
+def _normalize_oracle(text: str) -> str:
+    return unicodedata.normalize("NFKC", text).strip().casefold()
 
 
 def _completion(
@@ -114,6 +206,8 @@ def _completion(
     model: str,
     token_ids: list[int],
     timeout: float,
+    *,
+    expected_oracle: str | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     response = _post(
@@ -134,7 +228,7 @@ def _completion(
     if not isinstance(text, str):
         raise QualificationError("completion response omits text")
     usage = response.get("usage") or {}
-    return {
+    receipt = {
         "http_status": 200,
         "prompt_tokens": len(token_ids),
         "prompt_sha256": _token_hash(token_ids),
@@ -143,6 +237,14 @@ def _completion(
         "finish_reason": choices[0].get("finish_reason"),
         "elapsed_seconds": round(time.perf_counter() - started, 6),
     }
+    if expected_oracle is not None:
+        observed_oracle = _normalize_oracle(text)
+        receipt.update(
+            expected_oracle=expected_oracle,
+            observed_oracle=observed_oracle,
+            oracle_match=observed_oracle == expected_oracle,
+        )
+    return receipt
 
 
 def _confirm_base_held_on_all_ranks(
@@ -153,18 +255,26 @@ def _confirm_base_held_on_all_ranks(
     scheduler_log_offset: int,
     timeout: float,
 ) -> dict[str, Any]:
-    # One request below SparkCache's publication threshold gives the scheduler
-    # a step in which to absorb the workers' post-commit held-digest reports.
-    scheduler_step = _completion(
-        endpoint,
-        model,
-        [token_bank[-2], token_bank[-1]],
-        timeout,
-    )
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + min(timeout, READINESS_TOTAL_SECONDS)
     last_counts: tuple[int, int] | None = None
     matched_line: str | None = None
+    scheduler_steps: list[dict[str, Any]] = []
+    next_trigger = 0.0
     while time.monotonic() < deadline:
+        now = time.monotonic()
+        if now >= next_trigger and len(scheduler_steps) < READINESS_MAX_ATTEMPTS:
+            scheduler_steps.append(
+                {
+                    "attempt": len(scheduler_steps) + 1,
+                    **_completion(
+                        endpoint,
+                        model,
+                        [token_bank[-2], token_bank[-1]],
+                        timeout,
+                    ),
+                }
+            )
+            next_trigger = time.monotonic() + READINESS_RETRY_SECONDS
         try:
             size = scheduler_log.stat().st_size
             offset = scheduler_log_offset if size >= scheduler_log_offset else 0
@@ -202,7 +312,7 @@ def _confirm_base_held_on_all_ranks(
         "ranks_reporting": TP_RANKS,
         "digests_held": TP_RANKS,
         "scheduler_log_line_sha256": _sha256(matched_line.encode()),
-        "scheduler_step": scheduler_step,
+        "scheduler_steps": scheduler_steps,
     }
 
 
@@ -217,8 +327,15 @@ def publish(
     except OSError as exc:
         raise QualificationError(f"scheduler log cannot be read: {scheduler_log}") from exc
     bank = discover_token_bank(endpoint, model, timeout)
-    base, results, _unrelated = prompts(bank)
-    base_result = _completion(endpoint, model, base, timeout)
+    instructions = discover_instruction_tokens(endpoint, model, timeout)
+    base, results, _unrelated = prompts(bank, instructions)
+    base_result = _completion(
+        endpoint,
+        model,
+        base,
+        timeout,
+        expected_oracle=BASE_CODEWORD,
+    )
     base_readiness = _confirm_base_held_on_all_ranks(
         endpoint,
         model,
@@ -228,21 +345,37 @@ def publish(
         timeout,
     )
     result_receipts = [
-        {"result_index": index, **_completion(endpoint, model, prompt, timeout)}
-        for index, prompt in enumerate(results)
+        {
+            "result_index": index,
+            **_completion(
+                endpoint,
+                model,
+                prompt,
+                timeout,
+                expected_oracle=word,
+            ),
+        }
+        for index, (prompt, word) in enumerate(
+            zip(results, LANE_CODEWORDS, strict=True)
+        )
+    ]
+    oracle_mismatch_indices = [
+        item["result_index"] for item in result_receipts if not item["oracle_match"]
     ]
     return {
         "schema": RECEIPT_SCHEMA,
         "kind": "publish",
-        "status": "observed",
+        "status": "rejected" if oracle_mismatch_indices else "observed",
         "model": model,
         "token_bank_sha256": _token_hash(bank),
+        "prompt_spec_sha256": _prompt_spec_sha256(instructions),
         "base_publication_tokens": BASE_TOKENS,
         "result_publication_tokens": RESULT_TOKENS,
         "private_tail_tokens": TAIL_TOKENS,
         "base_request": base_result,
         "base_readiness": base_readiness,
         "results": result_receipts,
+        "oracle_mismatch_indices": oracle_mismatch_indices,
     }
 
 
@@ -274,36 +407,61 @@ def replay(
     timeout: float,
 ) -> dict[str, Any]:
     bank = discover_token_bank(endpoint, model, timeout)
-    _base, results, unrelated = prompts(bank)
+    instructions = discover_instruction_tokens(endpoint, model, timeout)
+    prompt_spec_sha256 = _prompt_spec_sha256(instructions)
+    if publish_receipt.get("prompt_spec_sha256") != prompt_spec_sha256:
+        raise QualificationError("prompt specification differs from publication")
+    _base, results, unrelated = prompts(bank, instructions)
     expected = [item["prompt_sha256"] for item in publish_receipt["results"]]
     observed = [_token_hash(item) for item in results]
     if observed != expected:
         raise QualificationError("reconstructed prompt hashes differ from publication")
     with concurrent.futures.ThreadPoolExecutor(max_workers=PARTICIPANTS + 1) as pool:
         futures = [
-            pool.submit(_completion, endpoint, model, prompt, timeout)
-            for prompt in results
+            pool.submit(
+                _completion,
+                endpoint,
+                model,
+                prompt,
+                timeout,
+                expected_oracle=word,
+            )
+            for prompt, word in zip(results, LANE_CODEWORDS, strict=True)
         ]
         time.sleep(0.05)
-        unrelated_future = pool.submit(_completion, endpoint, model, unrelated, timeout)
+        unrelated_future = pool.submit(
+            _completion,
+            endpoint,
+            model,
+            unrelated,
+            timeout,
+            expected_oracle=UNRELATED_CODEWORD,
+        )
         receipts = [future.result() for future in futures]
         unrelated_receipt = unrelated_future.result()
     response_mismatch_indices: list[int] = []
+    oracle_mismatch_indices: list[int] = []
     for index, item in enumerate(receipts):
         item["result_index"] = index
         if item["response_sha256"] != publish_receipt["results"][index][
             "response_sha256"
         ]:
             response_mismatch_indices.append(index)
+        if not item["oracle_match"]:
+            oracle_mismatch_indices.append(index)
+    if not unrelated_receipt["oracle_match"]:
+        oracle_mismatch_indices.append(PARTICIPANTS)
     return {
         "schema": RECEIPT_SCHEMA,
         "kind": "replay",
-        "status": "rejected" if response_mismatch_indices else "verified",
+        "status": "rejected" if oracle_mismatch_indices else "verified",
         "model": model,
         "token_bank_sha256": _token_hash(bank),
+        "prompt_spec_sha256": prompt_spec_sha256,
         "results": receipts,
         "unrelated_later_request": unrelated_receipt,
         "response_mismatch_indices": response_mismatch_indices,
+        "oracle_mismatch_indices": oracle_mismatch_indices,
     }
 
 
@@ -428,8 +586,28 @@ def verify_evidence(
         raise QualificationError("artifact receipt contains a contradictory contract")
     if semantic_document.get("status") != "verified":
         raise QualificationError("semantic canary is not verified")
+    if published.get("schema") != RECEIPT_SCHEMA or replayed.get("schema") != RECEIPT_SCHEMA:
+        raise QualificationError("publication and replay require qualification schema v2")
+    readiness = published.get("base_readiness")
+    if not isinstance(readiness, dict) or readiness.get("status") != "verified":
+        raise QualificationError("base publication readiness is not verified")
+    scheduler_steps = readiness.get("scheduler_steps")
+    if (
+        not isinstance(scheduler_steps, list)
+        or not scheduler_steps
+        or len(scheduler_steps) > READINESS_MAX_ATTEMPTS
+        or [item.get("attempt") for item in scheduler_steps]
+        != list(range(1, len(scheduler_steps) + 1))
+    ):
+        raise QualificationError("base readiness scheduler attempts are incomplete")
     if replayed.get("status") != "verified":
         raise QualificationError("replay receipt is not verified")
+    if published.get("prompt_spec_sha256") != replayed.get("prompt_spec_sha256"):
+        raise QualificationError("publication and replay prompt specifications differ")
+    if published.get("oracle_mismatch_indices") or replayed.get(
+        "oracle_mismatch_indices"
+    ):
+        raise QualificationError("publication or replay has an oracle mismatch")
     published_results = published.get("results", [])
     replayed_results = replayed.get("results", [])
     if len(published_results) != PARTICIPANTS or len(replayed_results) != PARTICIPANTS:
@@ -438,10 +616,28 @@ def verify_evidence(
         item["prompt_sha256"] for item in replayed_results
     ]:
         raise QualificationError("publication and replay prompt hashes differ")
-    if [item["response_sha256"] for item in published_results] != [
-        item["response_sha256"] for item in replayed_results
-    ]:
-        raise QualificationError("publication and replay response hashes differ")
+    for index, word in enumerate(LANE_CODEWORDS):
+        for label, item in (
+            ("publication", published_results[index]),
+            ("replay", replayed_results[index]),
+        ):
+            if (
+                item.get("expected_oracle") != word
+                or item.get("observed_oracle") != word
+                or item.get("oracle_match") is not True
+            ):
+                raise QualificationError(
+                    f"{label} result {index} does not match oracle {word!r}"
+                )
+    unrelated = replayed.get("unrelated_later_request")
+    if (
+        not isinstance(unrelated, dict)
+        or unrelated.get("http_status") != 200
+        or unrelated.get("expected_oracle") != UNRELATED_CODEWORD
+        or unrelated.get("observed_oracle") != UNRELATED_CODEWORD
+        or unrelated.get("oracle_match") is not True
+    ):
+        raise QualificationError("unrelated request oracle is not verified")
     manifests = [json.loads(path.read_text(encoding="utf-8")) for path in manifest_receipts]
     if len(manifests) != 4 or any(item.get("status") != "verified" for item in manifests):
         raise QualificationError("four verified rank manifest receipts are required")

@@ -3,16 +3,21 @@
 Status: **implemented, not qualified**.
 
 `qualification.py` publishes one 98,304-token base and sixteen independently
-authenticated 131,072-token result roots with private 32,768-token tails. It
-records prompt and response hashes without response content. It never starts,
-stops, or restarts a service.
+authenticated 131,072-token result roots with private 32,768-token tails. Each
+private tail ends with an intact natural-language instruction naming one
+single-token codeword. Publication and replay must return the lane's exact
+codeword after Unicode normalization, surrounding-whitespace removal, and
+case folding. Raw response hashes remain diagnostic evidence; speculative
+decoding may change an ambiguous raw next token without proving cache-state
+divergence. The harness never starts, stops, or restarts a service.
 
 Run `semantic` and capture rank 0's container log continuously to a local file
 before invoking `publish --scheduler-log PATH`. After the base commit, the
-publisher submits one two-token scheduler step and reads only log bytes written
-after publication began. It requires one `KV Transfer metrics` record with four
-ranks reporting and four held digests before it submits any private-tail
-request. Inspect each rank's isolated manifest root and retain the receipts. A
+publisher submits bounded two-token scheduler steps and reads only log bytes
+written after publication began. Every attempt is recorded. It requires one
+`KV Transfer metrics` record with four ranks reporting and four held digests
+before it submits any private-tail request. Inspect each rank's isolated
+manifest root and retain the receipts. A
 service restart is a separate operator action and
 must not occur without authorization. After that action, run `replay`, capture
 bounded rank logs for only that cohort, and run `verify` with four manifest

@@ -9,12 +9,15 @@ import pytest
 
 import qualification
 from qualification import (
+    BASE_CODEWORD,
     BASE_TOKENS,
     FLIGHT_SCHEMA,
+    LANE_CODEWORDS,
     PARTICIPANTS,
     RECEIPT_SCHEMA,
     RESULT_TOKENS,
     TAIL_TOKENS,
+    UNRELATED_CODEWORD,
     QualificationError,
     inspect_manifests,
     publish,
@@ -22,6 +25,11 @@ from qualification import (
     replay,
     verify_evidence,
 )
+
+
+def _instructions() -> dict[str, list[int]]:
+    words = (BASE_CODEWORD, *LANE_CODEWORDS, UNRELATED_CODEWORD)
+    return {word: [900 + index, 999] for index, word in enumerate(words)}
 
 
 def _write(path: Path, value: object) -> Path:
@@ -34,19 +42,33 @@ def _canonical(value: object) -> bytes:
 
 
 def test_prompt_geometry_is_exact_and_distinct() -> None:
-    base, results, unrelated = prompts(list(range(100, 118)))
+    instructions = _instructions()
+    base, results, unrelated = prompts(list(range(100, 118)), instructions)
     assert len(base) == BASE_TOKENS + 1
     assert len(results) == PARTICIPANTS
     assert all(len(result) == RESULT_TOKENS + 1 for result in results)
     assert all(result[:BASE_TOKENS] == base[:BASE_TOKENS] for result in results)
+    assert all(
+        result[-len(instructions[word]) :] == instructions[word]
+        for result, word in zip(results, LANE_CODEWORDS, strict=True)
+    )
+    assert all(result[BASE_TOKENS] == 101 + index for index, result in enumerate(results))
+    assert base[-len(instructions[BASE_CODEWORD]) :] == instructions[BASE_CODEWORD]
+    assert unrelated[-len(instructions[UNRELATED_CODEWORD]) :] == instructions[
+        UNRELATED_CODEWORD
+    ]
     assert len({hashlib.sha256(_canonical(result)).hexdigest() for result in results}) == 16
     assert len(unrelated) == 4097
     assert unrelated[:4096] != base[:4096]
     assert TAIL_TOKENS == 32768
 
 
-def _completion_receipt(tokens: list[int], response_sha256: str = "a" * 64) -> dict:
-    return {
+def _completion_receipt(
+    tokens: list[int],
+    response_sha256: str = "a" * 64,
+    expected_oracle: str | None = None,
+) -> dict:
+    receipt = {
         "http_status": 200,
         "prompt_tokens": len(tokens),
         "prompt_sha256": hashlib.sha256(_canonical(tokens)).hexdigest(),
@@ -55,6 +77,13 @@ def _completion_receipt(tokens: list[int], response_sha256: str = "a" * 64) -> d
         "finish_reason": "length",
         "elapsed_seconds": 0.125,
     }
+    if expected_oracle is not None:
+        receipt.update(
+            expected_oracle=expected_oracle,
+            observed_oracle=expected_oracle,
+            oracle_match=True,
+        )
+    return receipt
 
 
 def test_publish_waits_for_all_rank_held_digest_report_before_results(
@@ -62,6 +91,7 @@ def test_publish_waits_for_all_rank_held_digest_report_before_results(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bank = list(range(100, 118))
+    instructions = _instructions()
     observed_lengths: list[int] = []
     scheduler_log = tmp_path / "scheduler.log"
     scheduler_log.write_text(
@@ -71,25 +101,36 @@ def test_publish_waits_for_all_rank_held_digest_report_before_results(
     )
 
     monkeypatch.setattr(qualification, "discover_token_bank", lambda *_args: bank)
+    monkeypatch.setattr(
+        qualification, "discover_instruction_tokens", lambda *_args: instructions
+    )
+    scheduler_attempts = 0
 
     def fake_completion(
-        _endpoint: str, _model: str, tokens: list[int], _timeout: float
+        _endpoint: str,
+        _model: str,
+        tokens: list[int],
+        _timeout: float,
+        *,
+        expected_oracle: str | None = None,
     ) -> dict:
+        nonlocal scheduler_attempts
         observed_lengths.append(len(tokens))
         if len(tokens) == 2:
+            scheduler_attempts += 1
             with scheduler_log.open("a", encoding="utf-8") as stream:
                 stream.write(
                     "KV Transfer metrics: spark_cache_ranks_reporting=4, "
-                    "spark_cache_digests_held=4\n"
+                    f"spark_cache_digests_held={3 if scheduler_attempts == 1 else 4}\n"
                 )
-        return _completion_receipt(tokens)
+        return _completion_receipt(tokens, expected_oracle=expected_oracle)
 
     monkeypatch.setattr(qualification, "_completion", fake_completion)
 
     receipt = publish("http://rank0", "model", scheduler_log, 10.0)
 
-    assert observed_lengths[:3] == [BASE_TOKENS + 1, 2, RESULT_TOKENS + 1]
-    assert observed_lengths[2:] == [RESULT_TOKENS + 1] * PARTICIPANTS
+    assert observed_lengths[:4] == [BASE_TOKENS + 1, 2, 2, RESULT_TOKENS + 1]
+    assert observed_lengths[3:] == [RESULT_TOKENS + 1] * PARTICIPANTS
     assert receipt["base_readiness"] == {
         "status": "verified",
         "required_ranks": 4,
@@ -101,8 +142,12 @@ def test_publish_waits_for_all_rank_held_digest_report_before_results(
                 "spark_cache_digests_held=4"
             ).encode()
         ).hexdigest(),
-        "scheduler_step": _completion_receipt([bank[-2], bank[-1]]),
+        "scheduler_steps": [
+            {"attempt": 1, **_completion_receipt([bank[-2], bank[-1]])},
+            {"attempt": 2, **_completion_receipt([bank[-2], bank[-1]])},
+        ],
     }
+    assert all(item["oracle_match"] for item in receipt["results"])
 
 
 def test_publish_rejects_before_private_results_without_all_rank_holds(
@@ -110,13 +155,22 @@ def test_publish_rejects_before_private_results_without_all_rank_holds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bank = list(range(100, 118))
+    instructions = _instructions()
     observed_lengths: list[int] = []
     scheduler_log = tmp_path / "scheduler.log"
     scheduler_log.write_text("startup\n", encoding="utf-8")
     monkeypatch.setattr(qualification, "discover_token_bank", lambda *_args: bank)
+    monkeypatch.setattr(
+        qualification, "discover_instruction_tokens", lambda *_args: instructions
+    )
 
     def fake_completion(
-        _endpoint: str, _model: str, tokens: list[int], _timeout: float
+        _endpoint: str,
+        _model: str,
+        tokens: list[int],
+        _timeout: float,
+        *,
+        expected_oracle: str | None = None,
     ) -> dict:
         observed_lengths.append(len(tokens))
         if len(tokens) == 2:
@@ -125,7 +179,7 @@ def test_publish_rejects_before_private_results_without_all_rank_holds(
                     "KV Transfer metrics: spark_cache_ranks_reporting=4, "
                     "spark_cache_digests_held=3\n"
                 )
-        return _completion_receipt(tokens)
+        return _completion_receipt(tokens, expected_oracle=expected_oracle)
 
     monkeypatch.setattr(qualification, "_completion", fake_completion)
 
@@ -134,38 +188,56 @@ def test_publish_rejects_before_private_results_without_all_rank_holds(
     assert observed_lengths == [BASE_TOKENS + 1, 2]
 
 
-def test_replay_returns_complete_rejected_receipt_after_response_mismatches(
+def test_replay_accepts_raw_hash_drift_when_lane_oracles_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bank = list(range(100, 118))
-    _base, results, unrelated = prompts(bank)
+    instructions = _instructions()
+    _base, results, unrelated = prompts(bank, instructions)
     published_results = [
-        {"prompt_sha256": _completion_receipt(tokens)["prompt_sha256"],
-         "response_sha256": "a" * 64}
-        for tokens in results
+        {
+            "prompt_sha256": _completion_receipt(tokens)["prompt_sha256"],
+            "response_sha256": "a" * 64,
+            "expected_oracle": word,
+            "observed_oracle": word,
+            "oracle_match": True,
+        }
+        for tokens, word in zip(results, LANE_CODEWORDS, strict=True)
     ]
     mismatch_prompt_sha256 = {
         published_results[index]["prompt_sha256"] for index in (2, 11)
     }
     monkeypatch.setattr(qualification, "discover_token_bank", lambda *_args: bank)
+    monkeypatch.setattr(
+        qualification, "discover_instruction_tokens", lambda *_args: instructions
+    )
 
     def fake_completion(
-        _endpoint: str, _model: str, tokens: list[int], _timeout: float
+        _endpoint: str,
+        _model: str,
+        tokens: list[int],
+        _timeout: float,
+        *,
+        expected_oracle: str | None = None,
     ) -> dict:
         prompt_sha256 = _completion_receipt(tokens)["prompt_sha256"]
         digest = "b" * 64 if prompt_sha256 in mismatch_prompt_sha256 else "a" * 64
-        return _completion_receipt(tokens, digest)
+        return _completion_receipt(tokens, digest, expected_oracle)
 
     monkeypatch.setattr(qualification, "_completion", fake_completion)
     receipt = replay(
         "http://rank0",
         "model",
-        {"results": published_results},
+        {
+            "prompt_spec_sha256": qualification._prompt_spec_sha256(instructions),
+            "results": published_results,
+        },
         10.0,
     )
 
-    assert receipt["status"] == "rejected"
+    assert receipt["status"] == "verified"
     assert receipt["response_mismatch_indices"] == [2, 11]
+    assert receipt["oracle_mismatch_indices"] == []
     assert len(receipt["results"]) == PARTICIPANTS
     assert [item["result_index"] for item in receipt["results"]] == list(
         range(PARTICIPANTS)
@@ -173,6 +245,56 @@ def test_replay_returns_complete_rejected_receipt_after_response_mismatches(
     assert receipt["unrelated_later_request"]["prompt_sha256"] == (
         _completion_receipt(unrelated)["prompt_sha256"]
     )
+
+
+def test_replay_returns_complete_rejected_receipt_after_oracle_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bank = list(range(100, 118))
+    instructions = _instructions()
+    _base, results, _unrelated = prompts(bank, instructions)
+    published_results = [
+        {
+            "prompt_sha256": _completion_receipt(tokens)["prompt_sha256"],
+            "response_sha256": "a" * 64,
+            "expected_oracle": word,
+            "observed_oracle": word,
+            "oracle_match": True,
+        }
+        for tokens, word in zip(results, LANE_CODEWORDS, strict=True)
+    ]
+    monkeypatch.setattr(qualification, "discover_token_bank", lambda *_args: bank)
+    monkeypatch.setattr(
+        qualification, "discover_instruction_tokens", lambda *_args: instructions
+    )
+
+    def fake_completion(
+        _endpoint: str,
+        _model: str,
+        tokens: list[int],
+        _timeout: float,
+        *,
+        expected_oracle: str | None = None,
+    ) -> dict:
+        receipt = _completion_receipt(tokens, expected_oracle=expected_oracle)
+        if expected_oracle == LANE_CODEWORDS[6]:
+            receipt.update(observed_oracle="spark", oracle_match=False)
+        return receipt
+
+    monkeypatch.setattr(qualification, "_completion", fake_completion)
+    receipt = replay(
+        "http://rank0",
+        "model",
+        {
+            "prompt_spec_sha256": qualification._prompt_spec_sha256(instructions),
+            "results": published_results,
+        },
+        10.0,
+    )
+
+    assert receipt["status"] == "rejected"
+    assert receipt["oracle_mismatch_indices"] == [6]
+    assert len(receipt["results"]) == PARTICIPANTS
 
 
 def test_replay_cli_writes_rejected_receipt_before_nonzero_exit(
@@ -289,19 +411,39 @@ def test_verdict_requires_one_flight_and_sixteen_result_restores_per_rank(
             "http_status": 200,
             "prompt_sha256": f"{index + 1:064x}",
             "response_sha256": f"{index + 101:064x}",
+            "expected_oracle": LANE_CODEWORDS[index],
+            "observed_oracle": LANE_CODEWORDS[index],
+            "oracle_match": True,
         }
         for index in range(PARTICIPANTS)
     ]
-    published = _write(tmp_path / "publish.json", {"results": results})
+    published = _write(
+        tmp_path / "publish.json",
+        {
+            "schema": RECEIPT_SCHEMA,
+            "prompt_spec_sha256": "c" * 64,
+            "base_readiness": {
+                "status": "verified",
+                "scheduler_steps": [{"attempt": 1}],
+            },
+            "results": results,
+        },
+    )
     replayed = _write(
         tmp_path / "replay.json",
         {
+            "schema": RECEIPT_SCHEMA,
             "status": "verified",
+            "prompt_spec_sha256": "c" * 64,
+            "oracle_mismatch_indices": [],
             "results": results,
             "unrelated_later_request": {
                 "http_status": 200,
                 "prompt_sha256": "f" * 64,
                 "response_sha256": "0" * 64,
+                "expected_oracle": UNRELATED_CODEWORD,
+                "observed_oracle": UNRELATED_CODEWORD,
+                "oracle_match": True,
             },
         },
     )

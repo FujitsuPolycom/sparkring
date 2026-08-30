@@ -7,7 +7,7 @@ publication, lease, and CUDA placement identities from SparkRing pull request
 #146 while installing SparkCache commit
 `a1511d26a1fe2b17b24561bc52e376bf7f54b06a`. Its build receipt records the
 `sparkcache-page-base-restore-flight/v1` qualification contract. Live serving
-claims require the deterministic harness under
+claims require the codeword-oracle harness under
 `performance/harnesses/glm53_page_base_flight/`.
 
 Build on Linux ARM64:
