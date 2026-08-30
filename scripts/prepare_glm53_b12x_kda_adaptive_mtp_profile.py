@@ -17,9 +17,10 @@ SHA256_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
 NATIVE_PLACEHOLDER = "REPLACE_WITH_NATIVE_LIBRARY_SHA256"
 IMAGE_PLACEHOLDER = "REPLACE_WITH_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_IMAGE"
 PARENT_PLACEHOLDER = "REPLACE_WITH_B12X_KDA_ADAPTIVE_MTP_RUNTIME_IMAGE"
-SPARKCACHE_COMMIT = "20838ace3ebda570ca039cb7f1976c29da554b39"
+SPARKCACHE_COMMIT = "5d571018de5b63a9a90e5c11e6d6e86bbff4a957"
+SPARKCACHE_TREE = "e864ed9ad64f771188fdb59aa9738e348134d636"
 SPARKCACHE_SOURCE_SHA256 = (
-    "4998b24f4f504aeeb9bf92769ec720e282f546e6726d89fdfd06c4efa8d17c10"
+    "f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88"
 )
 LEASE_CONTRACT_SHA256 = (
     "6defde9551cbb586fd09bb2d3020495531b6573397875a767eaae1dbad126024"
@@ -74,6 +75,8 @@ def resolve(
     identity = profile.get("identity", {})
     if identity.get("sparkcache_source_revision") != SPARKCACHE_COMMIT:
         raise ResolveError("profile does not name the integrated SparkCache commit")
+    if identity.get("sparkcache_source_tree") != SPARKCACHE_TREE:
+        raise ResolveError("profile does not name the integrated SparkCache Git tree")
     if identity.get("sparkcache_source_sha256") != SPARKCACHE_SOURCE_SHA256:
         raise ResolveError("profile does not name the integrated SparkCache source")
     if identity.get("vllm_revision") != VLLM_COMMIT:

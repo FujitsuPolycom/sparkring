@@ -46,6 +46,7 @@ overlay_manifest_sha256="$(read_pin vllm.overlay_manifest_sha256)"
 b12x_commit="$(read_pin b12x.commit)"
 b12x_tree="$(read_pin b12x.tree)"
 sparkcache_commit="$(read_pin sparkcache.commit)"
+sparkcache_tree="$(read_pin sparkcache.tree)"
 sparkcache_source_sha256="$(read_pin sparkcache.source_tree_sha256)"
 sparkring_revision="$(git -C "${repo_root}" rev-parse HEAD)"
 
@@ -103,6 +104,7 @@ sparkcache_native_sha256="$("${engine}" run --rm --entrypoint sha256sum \
   --build-arg "B12X_COMMIT=${b12x_commit}" \
   --build-arg "B12X_TREE=${b12x_tree}" \
   --build-arg "SPARKCACHE_COMMIT=${sparkcache_commit}" \
+  --build-arg "SPARKCACHE_TREE=${sparkcache_tree}" \
   --build-arg "SPARKCACHE_SOURCE_SHA256=${sparkcache_source_sha256}" \
   --build-arg "SPARKRING_REVISION=${sparkring_revision}" \
   --build-arg "SOURCE_RECEIPT_SHA256=${source_receipt_sha256}" \

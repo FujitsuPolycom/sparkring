@@ -103,6 +103,7 @@ def expected_output_labels(pins: dict[str, Any]) -> dict[str, str]:
             "org.sparkring.nccl.commit"
         ],
         "org.sparkcache.source-revision": pins["sparkcache"]["commit"],
+        "org.sparkcache.source-tree": pins["sparkcache"]["tree"],
         "org.sparkcache.source-sha256": pins["sparkcache"]["source_tree_sha256"],
         "org.sparkcache.vllm-contract-sha256": pins["sparkcache"]["contract"][
             "sha256"

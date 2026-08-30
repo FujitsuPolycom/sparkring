@@ -36,6 +36,7 @@ ARG VLLM_PYTHON_TREE
 ARG B12X_COMMIT
 ARG B12X_TREE
 ARG SPARKCACHE_COMMIT
+ARG SPARKCACHE_TREE
 ARG SPARKCACHE_SOURCE_SHA256
 ARG SPARKRING_REVISION
 ARG SOURCE_RECEIPT_SHA256
@@ -168,6 +169,7 @@ LABEL org.opencontainers.image.title="SparkRing GLM-5.3 adaptive-MTP Python over
       org.jovian.b12x.commit="${B12X_COMMIT}" \
       org.sparkring.b12x.tree="${B12X_TREE}" \
       org.sparkcache.source-revision="${SPARKCACHE_COMMIT}" \
+      org.sparkcache.source-tree="${SPARKCACHE_TREE}" \
       org.sparkcache.source-sha256="${SPARKCACHE_SOURCE_SHA256}" \
       org.sparkcache.native-library-sha256="${SPARKCACHE_NATIVE_SHA256}" \
       org.sparkcache.vllm-contract-sha256="6defde9551cbb586fd09bb2d3020495531b6573397875a767eaae1dbad126024" \

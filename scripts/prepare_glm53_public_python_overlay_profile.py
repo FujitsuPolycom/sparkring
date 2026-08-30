@@ -37,9 +37,10 @@ B12X_TREE = "c69cdec1c59a08e8e0e549f930fa8abcfb5134ae"
 OVERLAY_MANIFEST_SHA256 = (
     "e5e528288b173399611a4930fecc4182b7208bc1564881d52ca5d2c5c4ae0f6a"
 )
-SPARKCACHE_COMMIT = "20838ace3ebda570ca039cb7f1976c29da554b39"
+SPARKCACHE_COMMIT = "5d571018de5b63a9a90e5c11e6d6e86bbff4a957"
+SPARKCACHE_TREE = "e864ed9ad64f771188fdb59aa9738e348134d636"
 SPARKCACHE_SOURCE_SHA256 = (
-    "4998b24f4f504aeeb9bf92769ec720e282f546e6726d89fdfd06c4efa8d17c10"
+    "f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88"
 )
 LEASE_CONTRACT_SHA256 = (
     "6defde9551cbb586fd09bb2d3020495531b6573397875a767eaae1dbad126024"
@@ -124,6 +125,7 @@ def resolve(
         "b12x_tree": B12X_TREE,
         "vllm_python_overlay_manifest_sha256": OVERLAY_MANIFEST_SHA256,
         "sparkcache_source_revision": SPARKCACHE_COMMIT,
+        "sparkcache_source_tree": SPARKCACHE_TREE,
         "sparkcache_source_sha256": SPARKCACHE_SOURCE_SHA256,
         "mtp_cache_identity_schema": "glm53-embedded-mtp-composed-runtime-v1",
         "mtp_cache_identity_sha256": MTP_CACHE_IDENTITY_SHA256,
@@ -172,6 +174,7 @@ def resolve(
         "org.opencontainers.image.base.name": PUBLIC_BASE,
         "org.sparkring.base.image-id": PUBLIC_BASE_ID,
         "org.sparkcache.source-revision": SPARKCACHE_COMMIT,
+        "org.sparkcache.source-tree": SPARKCACHE_TREE,
         "org.sparkcache.source-sha256": SPARKCACHE_SOURCE_SHA256,
         "org.sparkcache.vllm-contract-sha256": LEASE_CONTRACT_SHA256,
     }

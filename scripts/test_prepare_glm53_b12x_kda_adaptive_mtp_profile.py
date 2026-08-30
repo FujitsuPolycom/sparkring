@@ -14,6 +14,7 @@ from prepare_glm53_b12x_kda_adaptive_mtp_profile import (
     MTP_CACHE_IDENTITY_SHA256,
     SPARKCACHE_COMMIT,
     SPARKCACHE_SOURCE_SHA256,
+    SPARKCACHE_TREE,
     VLLM_COMMIT,
     ResolveError,
     resolve,
@@ -66,6 +67,7 @@ def test_profile_pins_adaptive_mtp_fastsafetensors_and_sparkcache() -> None:
     identity = profile["identity"]
     assert identity["vllm_revision"] == VLLM_COMMIT
     assert identity["sparkcache_source_revision"] == SPARKCACHE_COMMIT
+    assert identity["sparkcache_source_tree"] == SPARKCACHE_TREE
     assert identity["sparkcache_source_sha256"] == SPARKCACHE_SOURCE_SHA256
     assert identity["mtp_cache_identity_sha256"] == _mtp_identity()
     assert identity["mtp_cache_identity_sha256"] == MTP_CACHE_IDENTITY_SHA256
@@ -150,6 +152,11 @@ def test_resolver_rejects_runtime_or_loader_identity_drift() -> None:
         resolve(changed, copy.deepcopy(site), **arguments)
 
     changed = copy.deepcopy(profile)
+    changed["identity"]["sparkcache_source_tree"] = "0" * 40
+    with pytest.raises(ResolveError, match="SparkCache Git tree"):
+        resolve(changed, copy.deepcopy(site), **arguments)
+
+    changed = copy.deepcopy(profile)
     changed["environment"]["VLLM_FASTSAFETENSORS_QUEUE_SIZE"] = "2"
     with pytest.raises(ResolveError, match="queue size must be one"):
         resolve(changed, copy.deepcopy(site), **arguments)
@@ -162,6 +169,7 @@ def test_quickstart_names_the_executable_builder_and_profile_contracts() -> None
     assert str(SITE.relative_to(ROOT)).replace("\\", "/") in guide
     assert "prepare_glm53_b12x_kda_adaptive_mtp_profile.py" in guide
     assert SPARKCACHE_COMMIT in guide
+    assert SPARKCACHE_TREE in guide
     assert SPARKCACHE_SOURCE_SHA256 in guide
     assert VLLM_COMMIT in guide
     assert "START_GLM53_FLASH_MTP5_ADAPTIVE_FASTSAFETENSORS_TP4" in guide

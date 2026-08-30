@@ -25,9 +25,13 @@ files. Construction fails if any retained artifact changes. The output labels
 identify the retained native commit and overlaid Python commit separately; the
 image is not described as a source-built vLLM 0b67266 wheel.
 
-SparkCache source
-`20838ace3ebda570ca039cb7f1976c29da554b39` is included in the image. The
-builder compiles its SM121 placement library, applies the VMM exemption,
+The SparkCache source that routes reconstructed opaque pages through the SM121
+placement library is commit
+`5d571018de5b63a9a90e5c11e6d6e86bbff4a957`, Git tree
+`e864ed9ad64f771188fdb59aa9738e348134d636`. The builder verifies clean
+deployable-source SHA-256
+`f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88`
+before generating the native library. It applies the VMM exemption,
 load-failure recovery, shared-prefix retention, and follower-attachment
 patches in order, then runs the eleven-file lease-contract verifier. The test
 profile selects `spark_cache_publication_schema=tail-cow-v1`, which maps opaque

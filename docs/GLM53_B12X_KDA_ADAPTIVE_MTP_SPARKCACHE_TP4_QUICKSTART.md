@@ -2,7 +2,8 @@
 
 Status: **implemented, not qualified**. This guide builds vLLM commit
 `0b67266a0f37d6146a8403fb8482403c62f412d5` and the SparkCache overlay from
-commit `20838ace3ebda570ca039cb7f1976c29da554b39` for four DGX Spark systems at
+commit `5d571018de5b63a9a90e5c11e6d6e86bbff4a957`, Git tree
+`e864ed9ad64f771188fdb59aa9738e348134d636`, for four DGX Spark systems at
 TP4/DCP1.
 
 The serving profile uses embedded MTP with maximum depth five, initial depth
@@ -25,7 +26,7 @@ storage. Clone both repositories beside each other:
 git clone https://github.com/FujitsuPolycom/sparkring.git sparkring
 git -C sparkring checkout --detach <revision-containing-this-guide>
 git clone https://github.com/FujitsuPolycom/sparkcache.git sparkcache
-git -C sparkcache checkout --detach 20838ace3ebda570ca039cb7f1976c29da554b39
+git -C sparkcache checkout --detach 5d571018de5b63a9a90e5c11e6d6e86bbff4a957
 
 IMAGE='sparkring-glm53-runtime:b12x-kda-adaptive-mtp-0b67266a-arm64' \
 BUILD_RECEIPT="$PWD/glm53-b12x-kda-adaptive-mtp-runtime-receipt.json" \
@@ -38,8 +39,8 @@ python sparkcache/deploy/glm53_flash/build_image.py \
   --containerfile deploy/glm53_flash/Containerfile.b12x-kda-adaptive-mtp \
   --base-image "${runtime_image}" \
   --base-image-id "${runtime_image_id}" \
-  --source-sha256 4998b24f4f504aeeb9bf92769ec720e282f546e6726d89fdfd06c4efa8d17c10 \
-  --sparkcache-revision 20838ace3ebda570ca039cb7f1976c29da554b39 \
+  --source-sha256 f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88 \
+  --sparkcache-revision 5d571018de5b63a9a90e5c11e6d6e86bbff4a957 \
   --output-image sparkring-glm53-sparkcache:b12x-kda-adaptive-mtp-0b67266a-arm64
 ```
 

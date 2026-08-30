@@ -8,9 +8,10 @@ from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 PINS = HERE / "pins.json"
-SPARKCACHE_COMMIT = "20838ace3ebda570ca039cb7f1976c29da554b39"
+SPARKCACHE_COMMIT = "5d571018de5b63a9a90e5c11e6d6e86bbff4a957"
+SPARKCACHE_TREE = "e864ed9ad64f771188fdb59aa9738e348134d636"
 SPARKCACHE_SOURCE_SHA256 = (
-    "4998b24f4f504aeeb9bf92769ec720e282f546e6726d89fdfd06c4efa8d17c10"
+    "f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88"
 )
 OVERLAY_CONTAINERFILE_SHA256 = (
     "8e2377d034ba80b059f9a4387a6590a08e205313568ee1382e0e25342f8c5d40"
@@ -49,6 +50,7 @@ def test_glm53_b12x_kda_adaptive_mtp_source_build_is_exact_and_unqualified() -> 
     assert build["outputs"]["sparkcache_image"] is None
     sparkcache = pins["sparkcache"]
     assert sparkcache["commit"] == SPARKCACHE_COMMIT
+    assert sparkcache["tree"] == SPARKCACHE_TREE
     assert sparkcache["source_tree_sha256"] == SPARKCACHE_SOURCE_SHA256
     assert (
         sparkcache["overlay_containerfile_sha256"]
