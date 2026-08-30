@@ -173,6 +173,14 @@ commands require the same six read-only, SHA-bound runtime mounts for the
 vLLM capture overlays and SIRCL implementation. The control leaves their
 activation variables unset.
 
+## Direct-fabric image archive distribution
+
+The rank and edge data in a validated four-rank site file can drive
+`scripts/fanout_image_archive.py`. The utility downloads one checksum-bound
+archive on a seed rank and forwards it through adjacent direct links. See
+[`docs/DIRECT_FABRIC_IMAGE_ARCHIVE_FANOUT.md`](../../docs/DIRECT_FABRIC_IMAGE_ARCHIVE_FANOUT.md)
+for planning, verification, create-only, and image-import behavior.
+
 ## Safety
 
 Copying or validating a template is **OFFLINE**. Contacting configured ranks
