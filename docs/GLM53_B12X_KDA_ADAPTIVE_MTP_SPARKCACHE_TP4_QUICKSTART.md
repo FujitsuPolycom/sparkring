@@ -3,8 +3,8 @@
 Status: **implemented, not qualified**. This guide retains vLLM native
 extensions from `da4d7be6c97434f6942292ed8abbf4b32dc44355`, overlays Python
 source `0b67266a0f37d6146a8403fb8482403c62f412d5`, and installs SparkCache
-commit `b830c84d93a80db869e0cfeed433f330bd611a7b`, Git tree
-`1659bd9ca6613e4e28fb1656b93d24370f7704cf`, for four DGX Spark systems at
+commit `65b6642df1afc64366430d3aef9aca01f5c5e1c3`, Git tree
+`41ad0a119ba109fd28900a2dcc9f9b4d8c293809`, for four DGX Spark systems at
 TP4/DCP1. The adaptive-MTP composition has GPU-free contract coverage but no
 four-rank persistent-restore or performance qualification.
 
@@ -38,11 +38,11 @@ bash runtime/glm53-flash-adaptive-mtp-python-overlay/build-image.sh
 
 The builder verifies the 31-file Python overlay, retained native ELF and
 dispatch manifests, B12X `b1d541f`, SparkCache clean source SHA-256
-`09b74cf425c5a4f6149cc9e9c518a50a679996c9abe2e6d176a3fd95ff66250a`,
+`a2add45a9f97446f6c2a843355161da9a5499ff7501b4750d2163591785d7345`,
 four SparkCache patches, recurrent-boundary producer patch SHA-256
 `5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0`,
 and lease contract SHA-256
-`9d5c9a4c4d4efdc56560d63135f5e85a1e083c2bf635b52a8ba1ad2ab86d4da8`.
+`8adbdfa3fd4b06b213c3aab45255a0b039f1c9940a4b1fad0efd004d263227c9`.
 The receipt binds these sources to the local image ID. The builder does not
 push the image or contact serving hosts.
 

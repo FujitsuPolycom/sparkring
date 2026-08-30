@@ -71,7 +71,7 @@
       {
         "status": "implemented",
         "path": "runtime/glm53-flash-adaptive-mtp-python-overlay/patches/013-recurrent-publication-boundary.patch",
-        "sha256": "5c8102866b18ea7cb411fa3e5611700eb2d8020b6a3392d3d6053afaa04ace22",
+        "sha256": "587fc332917a8ffd5a29712dc5253d51e6051eca1166ed4a165e576a84f2e300",
         "contract": "Connector-proposed recurrent publication targets split scheduling without changing native hash geometry; exact secondary hashes survive CoW.",
         "targets": [
           {
@@ -92,7 +92,7 @@
           {
             "path": "vllm/v1/core/sched/scheduler.py",
             "preimage_sha256": "260f36ce8fabf70c193b20009ea465eea7b1b6c8e9fb72f2307a01ba8fcf7b2a",
-            "postimage_sha256": "74afcccd11b0ad48cab3925c623cb310effbf425825bc278bed03163848c528f"
+            "postimage_sha256": "494bfd8758e32d3b265fe4df92e8c93b91292899baf5fafe8b490d27bd15cd0f"
           },
           {
             "path": "vllm/v1/core/single_type_kv_cache_manager.py",
@@ -102,10 +102,10 @@
         ],
         "test_patch": {
           "path": "runtime/glm53-flash-adaptive-mtp-python-overlay/patches/012-recurrent-boundary-contract-tests.patch",
-          "sha256": "52f3a951d817efc335c926a6b7cb42618b88ae85a785577d1e59e2ad2db15804",
+          "sha256": "ebdb733db81651eaa8d7b1d3811c08782fd34a05cf9e2550bee7ef5a6fa8f48c",
           "target": "tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py",
           "preimage_sha256": "2f58e600fd39413b385b9e96b3c642a9ffb051bedcfc247a700fb532b35ec185",
-          "postimage_sha256": "d45f232a26b1a1bbaed232a2fd1372e3589d8d374915bb108cc9bc7408699073"
+          "postimage_sha256": "4f1577ac68ff6d7eb9d9f2d57936feb03d8ef3fecd38b04a436178b863284c8c"
         }
       }
     ],
@@ -147,9 +147,9 @@
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-    "commit": "b830c84d93a80db869e0cfeed433f330bd611a7b",
-    "tree": "1659bd9ca6613e4e28fb1656b93d24370f7704cf",
-    "source_tree_sha256": "09b74cf425c5a4f6149cc9e9c518a50a679996c9abe2e6d176a3fd95ff66250a",
+    "commit": "65b6642df1afc64366430d3aef9aca01f5c5e1c3",
+    "tree": "41ad0a119ba109fd28900a2dcc9f9b4d8c293809",
+    "source_tree_sha256": "a2add45a9f97446f6c2a843355161da9a5499ff7501b4750d2163591785d7345",
     "cuda_config_schema": "canonical-v1",
     "canonical_cuda_config_keys": [
       "spark_cache_cuda_restore",
@@ -160,7 +160,7 @@
     ],
     "contract": {
       "path": "sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json",
-      "sha256": "9d5c9a4c4d4efdc56560d63135f5e85a1e083c2bf635b52a8ba1ad2ab86d4da8",
+      "sha256": "8adbdfa3fd4b06b213c3aab45255a0b039f1c9940a4b1fad0efd004d263227c9",
       "files": 12
     },
     "patches": [

@@ -38,13 +38,13 @@ def test_pins_bind_the_exact_dflash7_composition() -> None:
         "b1d541f9e71a35f030d45fae437630fff7507c2a"
     )
     assert pins["sparkcache"]["commit"] == (
-        "b830c84d93a80db869e0cfeed433f330bd611a7b"
+        "65b6642df1afc64366430d3aef9aca01f5c5e1c3"
     )
     assert pins["sparkcache"]["tree"] == (
-        "1659bd9ca6613e4e28fb1656b93d24370f7704cf"
+        "41ad0a119ba109fd28900a2dcc9f9b4d8c293809"
     )
     assert pins["sparkcache"]["source_tree_sha256"] == (
-        "09b74cf425c5a4f6149cc9e9c518a50a679996c9abe2e6d176a3fd95ff66250a"
+        "a2add45a9f97446f6c2a843355161da9a5499ff7501b4750d2163591785d7345"
     )
     assert pins["sparkcache"]["cuda_config_schema"] == "canonical-v1"
     assert pins["sparkcache"]["canonical_cuda_config_keys"] == [
@@ -106,13 +106,13 @@ def test_verifier_requires_the_dflash7_deployment_label() -> None:
     )
     assert labels["org.sparkcache.cuda-config-schema"] == "canonical-v1"
     assert labels["org.sparkcache.source-revision"] == (
-        "b830c84d93a80db869e0cfeed433f330bd611a7b"
+        "65b6642df1afc64366430d3aef9aca01f5c5e1c3"
     )
     assert labels["org.sparkcache.source-tree"] == (
-        "1659bd9ca6613e4e28fb1656b93d24370f7704cf"
+        "41ad0a119ba109fd28900a2dcc9f9b4d8c293809"
     )
     assert labels["org.sparkcache.source-sha256"] == (
-        "09b74cf425c5a4f6149cc9e9c518a50a679996c9abe2e6d176a3fd95ff66250a"
+        "a2add45a9f97446f6c2a843355161da9a5499ff7501b4750d2163591785d7345"
     )
     assert labels["org.jovian.vllm.commit"] != labels[
         "org.sparkring.vllm.python.commit"
@@ -124,7 +124,7 @@ def test_verifier_requires_the_dflash7_deployment_label() -> None:
         "5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0"
     )
     assert labels["org.sparkring.vllm.recurrent-publication-patch-sha256"] == (
-        "5c8102866b18ea7cb411fa3e5611700eb2d8020b6a3392d3d6053afaa04ace22"
+        "587fc332917a8ffd5a29712dc5253d51e6051eca1166ed4a165e576a84f2e300"
     )
     assert labels["org.sparkring.runtime.removed-deep-ep-distribution"] == (
         "deep_ep==2.0.0+local"

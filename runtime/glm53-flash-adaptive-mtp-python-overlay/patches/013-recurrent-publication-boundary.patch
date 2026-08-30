@@ -183,7 +183,7 @@ index 80d4500ff9..38ee870840 100644
                  return pinned
          self.block_pool.touch((block,))
 diff --git a/vllm/v1/core/sched/scheduler.py b/vllm/v1/core/sched/scheduler.py
-index 3d1e136656..76754e7eb4 100644
+index 3d1e136656..a7b205d405 100644
 --- a/vllm/v1/core/sched/scheduler.py
 +++ b/vllm/v1/core/sched/scheduler.py
 @@ -411,6 +411,34 @@ class Scheduler(SchedulerInterface):
@@ -273,17 +273,14 @@ index 3d1e136656..76754e7eb4 100644
                      )
  
                      if new_blocks is not None:
-@@ -1144,6 +1198,15 @@ class Scheduler(SchedulerInterface):
+@@ -1144,6 +1198,12 @@ class Scheduler(SchedulerInterface):
                      full_sequence_must_fit=self.scheduler_reserve_full_isl,
                      reserved_blocks=reserved_blocks,
                      has_scheduled_reqs=bool(self.running),
 +                    recurrent_publication_boundary=(
 +                        self._recurrent_publication_boundary_at(
 +                            request,
-+                            num_computed_tokens
-+                            + num_new_local_computed_tokens
-+                            + num_external_computed_tokens
-+                            + num_new_tokens,
++                            num_computed_tokens + num_new_tokens,
 +                        )
 +                    ),
                  )

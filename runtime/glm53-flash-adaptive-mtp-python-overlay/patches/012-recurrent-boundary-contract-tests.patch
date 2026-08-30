@@ -1,5 +1,5 @@
 diff --git a/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py b/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py
-index eff889b987..c1cfaa807b 100644
+index eff889b987..c7144f060a 100644
 --- a/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py
 +++ b/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py
 @@ -4,6 +4,7 @@
@@ -69,7 +69,7 @@ index eff889b987..c1cfaa807b 100644
  def make_full_mamba_manager(
      *,
      dcp_world_size: int,
-@@ -856,6 +887,485 @@ def test_take_partial_tail_offloads_empty_without_partial_tail():
+@@ -856,6 +887,546 @@ def test_take_partial_tail_offloads_empty_without_partial_tail():
      assert manager.take_partial_tail_offloads() == {}
  
  
@@ -310,6 +310,9 @@ index eff889b987..c1cfaa807b 100644
 +
 +def _make_glm_recurrent_scheduler(
 +    monkeypatch: pytest.MonkeyPatch,
++    *,
++    max_model_len: int = 16384,
++    num_blocks: int = 2048,
 +) -> Scheduler:
 +    """Build a CPU-only Scheduler with the live GLM recurrent geometry.
 +
@@ -333,7 +336,7 @@ index eff889b987..c1cfaa807b 100644
 +        dtype="float16",
 +        seed=42,
 +        skip_tokenizer_init=True,
-+        max_model_len=16384,
++        max_model_len=max_model_len,
 +    )
 +    speculative_config = SpeculativeConfig(model="ngram", num_speculative_tokens=7)
 +    speculative_config.method = "mtp"
@@ -341,7 +344,7 @@ index eff889b987..c1cfaa807b 100644
 +        scheduler_config=SchedulerConfig(
 +            max_num_seqs=4,
 +            max_num_batched_tokens=8192,
-+            max_model_len=16384,
++            max_model_len=max_model_len,
 +            enable_chunked_prefill=True,
 +            is_encoder_decoder=False,
 +            watermark=0.0,
@@ -360,9 +363,9 @@ index eff889b987..c1cfaa807b 100644
 +        ),
 +        device_config=DeviceConfig(device="cpu"),
 +    )
-+    vllm_config.cache_config.num_gpu_blocks = 2048
++    vllm_config.cache_config.num_gpu_blocks = num_blocks
 +    kv_cache_config = KVCacheConfig(
-+        num_blocks=2048,
++        num_blocks=num_blocks,
 +        kv_cache_tensors=[],
 +        kv_cache_groups=[
 +            KVCacheGroupSpec(
@@ -551,6 +554,64 @@ index eff889b987..c1cfaa807b 100644
 +    for manager in scheduler.kv_cache_manager.coordinator.single_type_managers:
 +        assert manager.recurrent_publication_boundary is None
 +        assert not manager.take_pending_partial_tail_offloads()
++
++
++@pytest.mark.parametrize("restored_tokens", [0, 131072])
++@pytest.mark.skip_global_cleanup
++def test_256k_publication_target_reaches_only_the_final_allocation(
++    monkeypatch: pytest.MonkeyPatch,
++    restored_tokens: int,
++) -> None:
++    target = 262144
++    prompt_tokens = target + 26
++    scheduler = _make_glm_recurrent_scheduler(
++        monkeypatch,
++        max_model_len=300000,
++        num_blocks=40000,
++    )
++    request = make_request("long-output", list(range(prompt_tokens)), 16, sha256)
++    request.num_computed_tokens = restored_tokens
++    scheduler.add_request(request)
++    allocations: list[tuple[int, int, int | None]] = []
++    allocate_slots = scheduler.kv_cache_manager.allocate_slots
++
++    def record_allocation(req, num_new_tokens, *args, **kwargs):
++        allocations.append(
++            (
++                req.num_computed_tokens,
++                num_new_tokens,
++                kwargs.get("recurrent_publication_boundary"),
++            )
++        )
++        return allocate_slots(req, num_new_tokens, *args, **kwargs)
++
++    scheduler.kv_cache_manager.allocate_slots = record_allocation
++    while request.num_computed_tokens < target:
++        output = scheduler.schedule()
++        assert output.num_scheduled_tokens["long-output"] <= 8192
++        assert output.recurrent_boundary_blocks is None
++        scheduler.update_from_output(output, _empty_model_output("long-output"))
++
++    assert request.num_computed_tokens == target
++    assert all(
++        publication is None
++        for start, scheduled, publication in allocations
++        if start + scheduled < target
++    )
++    assert allocations[-1][2] == target
++
++    cow = scheduler.schedule()
++    assert cow.recurrent_boundary_blocks is not None
++    ((group_id, block_id, boundary_tokens),) = cow.recurrent_boundary_blocks[
++        "long-output"
++    ]
++    assert (group_id, boundary_tokens) == (1, target)
++    exact_hash = make_block_hash_with_group_id(
++        request.block_hashes[target // 16 - 1], group_id
++    )
++    assert scheduler.kv_cache_manager.block_pool.cached_block_hash_to_block.contain(
++        exact_hash, block_id
++    )
 +
  def test_truncate_computed_blocks_preserves_sparse_prefix_positions():
      """truncate_computed_blocks slices each group by its own block size,

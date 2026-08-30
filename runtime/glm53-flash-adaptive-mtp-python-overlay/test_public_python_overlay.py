@@ -52,14 +52,14 @@ def test_overlay_pins_public_base_and_mixed_vllm_provenance() -> None:
     assert pins["b12x"]["commit"] != pins["b12x"]["base_commit"]
     sparkcache = pins["sparkcache"]
     assert sparkcache["commit"] == (
-        "b830c84d93a80db869e0cfeed433f330bd611a7b"
+        "65b6642df1afc64366430d3aef9aca01f5c5e1c3"
     )
-    assert sparkcache["tree"] == "1659bd9ca6613e4e28fb1656b93d24370f7704cf"
+    assert sparkcache["tree"] == "41ad0a119ba109fd28900a2dcc9f9b4d8c293809"
     assert sparkcache["source_tree_sha256"] == (
-        "09b74cf425c5a4f6149cc9e9c518a50a679996c9abe2e6d176a3fd95ff66250a"
+        "a2add45a9f97446f6c2a843355161da9a5499ff7501b4750d2163591785d7345"
     )
     assert sparkcache["contract"]["sha256"] == (
-        "9d5c9a4c4d4efdc56560d63135f5e85a1e083c2bf635b52a8ba1ad2ab86d4da8"
+        "8adbdfa3fd4b06b213c3aab45255a0b039f1c9940a4b1fad0efd004d263227c9"
     )
     assert sparkcache["cuda_config_schema"] == "canonical-v1"
     assert pins["dependencies"]["torch"] == "2.13.0+cu130"
@@ -415,7 +415,7 @@ def test_pr35_lease_verifier_runs_only_after_recurrent_symbols_exist() -> None:
     assert recurrent_apply < lease_verify
     contract = json.loads(PINS.read_text(encoding="utf-8"))["sparkcache"]["contract"]
     assert contract["sha256"] == (
-        "9d5c9a4c4d4efdc56560d63135f5e85a1e083c2bf635b52a8ba1ad2ab86d4da8"
+        "8adbdfa3fd4b06b213c3aab45255a0b039f1c9940a4b1fad0efd004d263227c9"
     )
     for definition in (
         "def take_recurrent_boundary_blocks(",
@@ -456,5 +456,5 @@ def test_output_labels_do_not_claim_a_source_built_0b_wheel() -> None:
         "5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0"
     )
     assert labels["org.sparkring.vllm.recurrent-publication-patch-sha256"] == (
-        "5c8102866b18ea7cb411fa3e5611700eb2d8020b6a3392d3d6053afaa04ace22"
+        "587fc332917a8ffd5a29712dc5253d51e6051eca1166ed4a165e576a84f2e300"
     )

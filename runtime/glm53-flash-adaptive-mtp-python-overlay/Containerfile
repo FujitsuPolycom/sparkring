@@ -157,8 +157,8 @@ RUN set -eu; \
     publication_patch="${PYTHON_OVERLAY_ROOT}/patches/013-recurrent-publication-boundary.patch"; \
     recurrent_tests="${PYTHON_OVERLAY_ROOT}/patches/012-recurrent-boundary-contract-tests.patch"; \
     test "$(sha256sum "${recurrent_patch}" | cut -d' ' -f1)" = 5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0; \
-    test "$(sha256sum "${publication_patch}" | cut -d' ' -f1)" = 5c8102866b18ea7cb411fa3e5611700eb2d8020b6a3392d3d6053afaa04ace22; \
-    test "$(sha256sum "${recurrent_tests}" | cut -d' ' -f1)" = 52f3a951d817efc335c926a6b7cb42618b88ae85a785577d1e59e2ad2db15804; \
+    test "$(sha256sum "${publication_patch}" | cut -d' ' -f1)" = 587fc332917a8ffd5a29712dc5253d51e6051eca1166ed4a165e576a84f2e300; \
+    test "$(sha256sum "${recurrent_tests}" | cut -d' ' -f1)" = ebdb733db81651eaa8d7b1d3811c08782fd34a05cf9e2550bee7ef5a6fa8f48c; \
     test "$(sha256sum "${root}/vllm/v1/core/kv_cache_manager.py" | cut -d' ' -f1)" = ee03dc9ce2b720c0be6e9f572d23580ba96eff68fe3406250557e83071654af0; \
     test "$(sha256sum "${root}/vllm/v1/core/sched/output.py" | cut -d' ' -f1)" = 65235eba652e5a3ccee18bf3cbfeac9bf4da8fb9c61e961580f612cfb7e593bc; \
     test "$(sha256sum "${root}/vllm/v1/core/sched/scheduler.py" | cut -d' ' -f1)" = 6d397c97f31e67a75efc01b5ddd89fa58db425de14fa43965ef2d6146b6b9bdb; \
@@ -174,7 +174,7 @@ RUN set -eu; \
     test "$(sha256sum "${root}/vllm/distributed/kv_transfer/kv_connector/v1/base.py" | cut -d' ' -f1)" = 7460e0638c0c81808dbdbbad7114db2e840e531e9ce83360c55b9171fcc872b1; \
     test "$(sha256sum "${root}/vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py" | cut -d' ' -f1)" = 8741b86b0f3e91af06d01a52240cdc988e3073bf049f72b506f56d6ceebb1ac0; \
     test "$(sha256sum "${root}/vllm/v1/core/kv_cache_manager.py" | cut -d' ' -f1)" = 2c646969b750f6cb4e17fe8a6bf12993d01eefbfbe74e5f8c755f7e0d929faf2; \
-    test "$(sha256sum "${root}/vllm/v1/core/sched/scheduler.py" | cut -d' ' -f1)" = 74afcccd11b0ad48cab3925c623cb310effbf425825bc278bed03163848c528f; \
+    test "$(sha256sum "${root}/vllm/v1/core/sched/scheduler.py" | cut -d' ' -f1)" = 494bfd8758e32d3b265fe4df92e8c93b91292899baf5fafe8b490d27bd15cd0f; \
     test "$(sha256sum "${root}/vllm/v1/core/single_type_kv_cache_manager.py" | cut -d' ' -f1)" = abbedbd7b9165bbb005c9ba7ceb4367ee1987ac47c632a629dd17ed08ae1db0c; \
     python3 /opt/sparkcache-src/sparkcache/runtime_patches/verify_lease_contract.py \
       --vllm-root "${root}" \
@@ -207,7 +207,7 @@ LABEL org.opencontainers.image.title="SparkRing GLM-5.3 adaptive-MTP Python over
       org.sparkring.vllm.dflash-draft-loader-patch-sha256="39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279" \
       org.sparkring.vllm.dflash-draft-loader-postimage-sha256="98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4" \
       org.sparkring.vllm.recurrent-boundary-patch-sha256="5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0" \
-      org.sparkring.vllm.recurrent-publication-patch-sha256="5c8102866b18ea7cb411fa3e5611700eb2d8020b6a3392d3d6053afaa04ace22" \
+      org.sparkring.vllm.recurrent-publication-patch-sha256="587fc332917a8ffd5a29712dc5253d51e6051eca1166ed4a165e576a84f2e300" \
       org.sparkring.vllm.native-elf-manifest-sha256="${NATIVE_ELF_MANIFEST_SHA256}" \
       org.sparkring.vllm.native-dispatch-manifest-sha256="${NATIVE_DISPATCH_MANIFEST_SHA256}" \
       org.jovian.b12x.commit="${B12X_COMMIT}" \
@@ -216,6 +216,6 @@ LABEL org.opencontainers.image.title="SparkRing GLM-5.3 adaptive-MTP Python over
       org.sparkcache.source-tree="${SPARKCACHE_TREE}" \
       org.sparkcache.source-sha256="${SPARKCACHE_SOURCE_SHA256}" \
       org.sparkcache.cuda-placement-library-sha256="${SPARKCACHE_CUDA_PLACEMENT_SHA256}" \
-      org.sparkcache.vllm-contract-sha256="9d5c9a4c4d4efdc56560d63135f5e85a1e083c2bf635b52a8ba1ad2ab86d4da8" \
+      org.sparkcache.vllm-contract-sha256="8adbdfa3fd4b06b213c3aab45255a0b039f1c9940a4b1fad0efd004d263227c9" \
       org.sparkcache.deployment-profile="glm53-flash-adaptive-mtp-python-overlay" \
       org.sparkring.source-receipt-sha256="${SOURCE_RECEIPT_SHA256}"
