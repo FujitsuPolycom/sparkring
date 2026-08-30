@@ -83,12 +83,19 @@ def test_verdict_requires_one_flight_and_sixteen_result_restores_per_rank(
         "org.sparkcache.feature.page-base-read-flight": "implemented-gpu-free-tested",
         "org.sparkcache.feature.page-base-read-flight-pr": "42",
         "org.sparkcache.cache-namespace-impact": "none",
+        "org.sparkcache.diagnostic-fix": (
+            "source-tree-marker=834ff02c235e3f3a3594cec31d0a83d981ac8d410d6482d062725fd9b846a95c;"
+            "parent=sha256:ba6ca684f5dbbe7fccac93aedce8abe907cf4cabcc4f5d2f481fad2706fdbfde"
+        ),
     }
     artifact = _write(
         tmp_path / "artifact.json",
         {
             "schema": "sparkcache-diagnostic-image-receipt/v1",
-            "image": {"id": "sha256:" + "c" * 64, "labels": labels},
+            "image": {
+                "id": "sha256:9f485c4408a56c0868c75f3e62b09432b2d908b5e4eb28915e0e6b4c4e4fe99f",
+                "labels": labels,
+            },
         },
     )
     semantic = _write(
@@ -170,7 +177,9 @@ def test_verdict_requires_one_flight_and_sixteen_result_restores_per_rank(
     )
     assert verdict["schema"] == RECEIPT_SCHEMA
     assert verdict["status"] == "qualified"
-    assert verdict["image_id"] == "sha256:" + "c" * 64
+    assert verdict["image_id"] == (
+        "sha256:9f485c4408a56c0868c75f3e62b09432b2d908b5e4eb28915e0e6b4c4e4fe99f"
+    )
     assert [item["verified_result_restores"] for item in verdict["rank_evidence"]] == [
         16,
         16,

@@ -74,6 +74,9 @@ def test_pr42_profile_resolves_exact_source_and_feature_labels() -> None:
         "implemented-gpu-free-tested"
     )
     assert labels["org.sparkcache.feature.page-base-read-flight-pr"] == "42"
+    assert labels["org.sparkcache.diagnostic-fix"].startswith(
+        "source-tree-marker=834ff02c"
+    )
     assert labels["org.sparkcache.cuda-placement-library-sha256"] == (
         DIGESTS["cuda_placement_library_sha256"]
     )

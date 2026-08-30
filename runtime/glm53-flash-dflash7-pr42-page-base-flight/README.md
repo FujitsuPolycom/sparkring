@@ -13,7 +13,7 @@ claims require the deterministic harness under
 Build on Linux ARM64:
 
 ```bash
-IMAGE='sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-arm64' \
+IMAGE='sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-exact-arm64' \
 BUILD_RECEIPT="$PWD/glm53-pr42-page-base-flight-image-receipt.json" \
 bash runtime/glm53-flash-dflash7-pr42-page-base-flight/build-image.sh
 ```

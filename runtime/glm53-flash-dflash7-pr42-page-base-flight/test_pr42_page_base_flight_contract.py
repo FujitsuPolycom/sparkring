@@ -61,11 +61,11 @@ def test_pins_bind_pr42_without_changing_runtime_contracts() -> None:
         "maximum_declared_bytes_per_flight": 1073741824,
         "maximum_peak_reserved_bytes": 2147483648,
         "artifact_receipt": {
-            "schema": "sparkcache-diagnostic-image-receipt/v1",
-            "sha256": "551072f700db6cf064a85242ed1c8fbd52c8cca870c20534a6d0c1b133ba6bc4",
-            "builder_path": "/home/code/image-build-receipts/sparkring-glm53-sparkcache-dflash7-pr42-page-base-flight-arm64.json",
-            "image": "sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-arm64",
-            "image_id": "sha256:ba6ca684f5dbbe7fccac93aedce8abe907cf4cabcc4f5d2f481fad2706fdbfde",
+            "schema": "sparkcache-diagnostic-image-receipt/v2",
+            "sha256": "18052a885776d7da31511c53cf8ed3c626f2b5ab0e56b321d4f669c2bc46241c",
+            "builder_path": "/home/code/image-build-receipts/sparkring-glm53-sparkcache-dflash7-pr42-page-base-flight-exact-arm64.json",
+            "image": "sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-exact-arm64",
+            "image_id": "sha256:9f485c4408a56c0868c75f3e62b09432b2d908b5e4eb28915e0e6b4c4e4fe99f",
             "builder": "spark-aa42",
             "feature_status": "implemented-gpu-free-tested",
             "parent_image_id": "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8",
@@ -88,10 +88,13 @@ def test_rendered_context_and_verifier_bind_feature_receipt_fields() -> None:
         "implemented-gpu-free-tested"
     )
     assert labels["org.sparkcache.feature.page-base-read-flight-pr"] == "42"
+    assert labels["org.sparkcache.diagnostic-fix"].startswith(
+        "source-tree-marker=834ff02c"
+    )
 
 
 def test_build_script_uses_isolated_default_outputs() -> None:
     script = (HERE / "build-image.sh").read_text(encoding="utf-8")
-    assert "dflash7-pr42-page-base-flight-arm64" in script
+    assert "dflash7-pr42-page-base-flight-exact-arm64" in script
     assert "glm53-pr42-page-base-flight-image-receipt.json" in script
     assert "runtime/glm53-flash-dflash7-pr42-page-base-flight" in script
