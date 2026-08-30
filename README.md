@@ -35,7 +35,7 @@ profile is selected.
 ## Profiles
 
 ### GLM-5.3 Flash profiles
-
+> these profiles are still in heavy dev and testing - Aug 30 2026 - new build imminent 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
 |---|---|---:|---:|---:|---|---|
 | GLM-5.3 Flash + BF16 DFlash2 | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 KV | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
