@@ -29,23 +29,8 @@ profile is selected.
 ## Resources
 
 - [Supported models and profiles](#profiles)
-- [GLM-5.3 Flash TP4 with SparkCache](docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md)
-- [GLM-5.3 adaptive MTP and live-tensor B12X KDA with SparkCache](docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md)
-- [GLM-5.3 Flash TP4 with external caching disabled](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md)
-- [GLM-5.3 source-built image recipe](runtime/glm53-flash/BUILD.md)
 - [Benchmark results](#benchmark-results)
 - [Deployment prerequisites](docs/PREREQUISITES.md) — then choose a profile quickstart below
-
-## Cluster sizes
-
-- **2× DGX Spark — direct pair.** Models: DeepSeek-V4-Flash-0731 and
-  Qwen3.8-27B EXL3 K5/K6. DeepSeek is compatible with SparkCache
-- **4× DGX Spark — physical ring.** Models: GLM-5.2 EXL3 3.5-bpw,
-  GLM-5.3 Flash with BF16 DFlash2, DeepSeek-V4-Flash-0731, and Qwen3.8-27B
-  EXL3 K5/K6. Both GLM families and DeepSeek are compatible with SparkCache;
-  Qwen with SparkCache is unsupported.
-- **6× DGX Spark — physical ring.** **Research-only.** GLM and KIMI profiles
-  are not part of the supported repository surface.
 
 ## Profiles
 
@@ -53,8 +38,8 @@ profile is selected.
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
 |---|---|---:|---:|---:|---|---|
-| GLM-5.3 Flash + BF16 DFlash2 — functionally qualified | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 hybrid target cache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
-| GLM-5.3 Flash + BF16 DFlash2 + SparkCache — functionally qualified | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 target KV + 48 GiB/rank SparkCache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md) |
+| GLM-5.3 Flash + BF16 DFlash2 | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 hybrid target cache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
+| GLM-5.3 Flash + BF16 DFlash2 + SparkCache | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 target KV + 48 GiB/rank SparkCache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md) |
 
 ### Other model profiles
 
@@ -69,19 +54,11 @@ profile is selected.
 | DeepSeek-V4-Flash-0731 + SparkCache | 2 Sparks · TP2/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 + SparkCache | 4 Sparks · TP4/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
 
-Qwen with SparkCache has no published composition recipe or live cache evidence.
-The GLM-5.3 context and sequence values are configured serving limits. The
-functional qualification covers startup, semantic generation, runtime health,
-and an 8,192-token persistent restore; it does not exercise a 512K request,
-full-limit concurrency, throughput qualification, or soak behavior.
 The public BF16 DFlash2 checkpoint is licensed CC BY-NC-ND 4.0 for research
-and evaluation; review its model card before use.
-The qualified GLM-5.3 community images are published by immutable digest in
-the two quickstarts. Both guides also link the complete source-build recipes,
-SBOM workflow, source commits, applied patches, and license record.
-See the
-[profile registry](docs/profiles/README.md) for recipe identities and evidence
-scope.
+and evaluation; review its model card before use. The qualified GLM-5.3 community 
+images are published by immutable digest in the two quickstarts. Both guides also 
+link the complete source-build recipes, SBOM workflow, source commits, applied patches, and license record.
+See the [profile registry](docs/profiles/README.md) for recipe identities and evidence scope.
 
 ## Benchmark results
 
