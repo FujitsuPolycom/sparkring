@@ -1,8 +1,9 @@
 # SparkRing
 
 > ALPHA SOFTWARE
-Repository branches are mutable. Pin an immutable commit when reproducing a
-> deployment.
+Repository branches are mutable and likely to do so, this message may not survive the next 5 minutes, for example. 
+Pin an immutable commit when reproducing a deployment. Hopefully this repo will find a more stable cadence pattern
+and layout that works for me. 
 
   
   SparkRing is a low-latency collective transport and vLLM-based
