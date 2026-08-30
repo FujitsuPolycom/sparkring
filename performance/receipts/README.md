@@ -14,6 +14,7 @@ qualified functional claim or a research-only observation.
 | [`glm-3.5bpw/temp1/`](glm-3.5bpw/temp1/) | 10 four-Spark TP4/DCP4 sustained-decode and Coding Peak receipts |
 | [`glm53-flash/sparkcache-dflash2-bf16-tp4-20260828/`](glm53-flash/sparkcache-dflash2-bf16-tp4-20260828/) | Sanitized post-restore semantic canary for the TP4/DCP1 SparkCache validation |
 | [`glm53-flash/sparkcache-dflash2-bf16-tp4-20260829/`](glm53-flash/sparkcache-dflash2-bf16-tp4-20260829/) | One accepted 16K prefill and C1 decode observation; capacity-limited C4 and C8 cells are excluded |
+| [`glm53-flash/adaptive-mtp-vs-dflash7-20260829/`](glm53-flash/adaptive-mtp-vs-dflash7-20260829/) | Research-only server-log diagnostic; prompt and output receipts are absent |
 | [`glm53-flash/sparkcache-dflash2-bf16-tp4-20g-20260829/`](glm53-flash/sparkcache-dflash2-bf16-tp4-20g-20260829/) | One accepted functional observation with 20 GiB of GPU KV memory per rank |
 | [`qwen38-27b/temp1/`](qwen38-27b/temp1/) | 13 two-Spark and 16 four-Spark accepted prefill, decode, and Coding Peak receipts |
 
