@@ -39,10 +39,10 @@ are released during request cleanup.
 The SparkCache source that routes reconstructed opaque pages through the SM121
 placement library, restores shared segment objects, and publishes only the
 copy-on-write tail is commit
-`bf7174e341e032d9b5cc970cca3d6c2985d364fc`, Git tree
-`21a0598e0f7f05739d2e27478c484a345d565556`. The builder verifies clean
+`bd3eec1c10b259a24c5f335161d9f8be51c887cd`, Git tree
+`ab6e25fd1126405a94ce8735a6261f9dd08c0b5f`. The builder verifies clean
 deployable-source SHA-256
-`155a06101524d4c2d2f55dbbd01576e35d5c729888e216fd2f3963e275949ba0`
+`490d2c069c2eb755ecb93727aa47c41df38665427228895af0638b8588a049f3`
 before generating the SparkCache CUDA placement library. It applies the VMM exemption,
 load-failure recovery, shared-prefix retention, and follower-attachment
 patches in order, then runs the eleven-file lease-contract verifier. The

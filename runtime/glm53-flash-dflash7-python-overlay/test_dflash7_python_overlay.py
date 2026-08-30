@@ -38,13 +38,13 @@ def test_pins_bind_the_exact_dflash7_composition() -> None:
         "b1d541f9e71a35f030d45fae437630fff7507c2a"
     )
     assert pins["sparkcache"]["commit"] == (
-        "bf7174e341e032d9b5cc970cca3d6c2985d364fc"
+        "bd3eec1c10b259a24c5f335161d9f8be51c887cd"
     )
     assert pins["sparkcache"]["tree"] == (
-        "21a0598e0f7f05739d2e27478c484a345d565556"
+        "ab6e25fd1126405a94ce8735a6261f9dd08c0b5f"
     )
     assert pins["sparkcache"]["source_tree_sha256"] == (
-        "155a06101524d4c2d2f55dbbd01576e35d5c729888e216fd2f3963e275949ba0"
+        "490d2c069c2eb755ecb93727aa47c41df38665427228895af0638b8588a049f3"
     )
     assert pins["sparkcache"]["cuda_config_schema"] == "canonical-v1"
     assert pins["sparkcache"]["canonical_cuda_config_keys"] == [
@@ -106,13 +106,13 @@ def test_verifier_requires_the_dflash7_deployment_label() -> None:
     )
     assert labels["org.sparkcache.cuda-config-schema"] == "canonical-v1"
     assert labels["org.sparkcache.source-revision"] == (
-        "bf7174e341e032d9b5cc970cca3d6c2985d364fc"
+        "bd3eec1c10b259a24c5f335161d9f8be51c887cd"
     )
     assert labels["org.sparkcache.source-tree"] == (
-        "21a0598e0f7f05739d2e27478c484a345d565556"
+        "ab6e25fd1126405a94ce8735a6261f9dd08c0b5f"
     )
     assert labels["org.sparkcache.source-sha256"] == (
-        "155a06101524d4c2d2f55dbbd01576e35d5c729888e216fd2f3963e275949ba0"
+        "490d2c069c2eb755ecb93727aa47c41df38665427228895af0638b8588a049f3"
     )
     assert labels["org.jovian.vllm.commit"] != labels[
         "org.sparkring.vllm.python.commit"

@@ -20,7 +20,7 @@ identity and requires its own live checks.
 | vLLM native extensions and wheel metadata | `da4d7be6c97434f6942292ed8abbf4b32dc44355` |
 | vLLM Python source | `0b67266a0f37d6146a8403fb8482403c62f412d5`, tree `ba9484ccb33aa56e90ff2f447f15ca9b9da97639` |
 | B12X | `b1d541f9e71a35f030d45fae437630fff7507c2a`, tree `c69cdec1c59a08e8e0e549f930fa8abcfb5134ae` |
-| SparkCache shared-segment restore, tail-only copy-on-write publication, canonical CUDA configuration, and bounded page-delta reads | `bf7174e341e032d9b5cc970cca3d6c2985d364fc`, tree `21a0598e0f7f05739d2e27478c484a345d565556`, clean source SHA-256 `155a06101524d4c2d2f55dbbd01576e35d5c729888e216fd2f3963e275949ba0` |
+| SparkCache shared-segment restore, tail-only copy-on-write publication, canonical CUDA configuration, and bounded page-delta reads | `bd3eec1c10b259a24c5f335161d9f8be51c887cd`, tree `ab6e25fd1126405a94ce8735a6261f9dd08c0b5f`, clean source SHA-256 `490d2c069c2eb755ecb93727aa47c41df38665427228895af0638b8588a049f3` |
 | Recurrent replay-boundary producer | Patch SHA-256 `5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0`; produces the four postimages accepted by SparkCache lease contract SHA-256 `f36ed14eaf1f97a5dffa94bda8151b1e0fa182afc0d121b757b70bebc6a43811` |
 | DFlash draft-loader separation | Patch SHA-256 `39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279`, postimage SHA-256 `98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4` |
 | Unused DeepEP removal | Distribution `deep_ep==2.0.0+local`, removal receipt SHA-256 `65514f44829e7d176b0b2cacc9559ed22724e525b7041a8bcd4d2e02d1f372e3` |
@@ -80,7 +80,7 @@ The all-safetensors profile remains unqualified. The fastsafetensors result
 belongs only to the image ID and cases named above; it does not transfer to a
 rebuild.
 
-SparkCache commit `bf7174e341e032d9b5cc970cca3d6c2985d364fc`
+SparkCache commit `bd3eec1c10b259a24c5f335161d9f8be51c887cd`
 accepts the canonical CUDA keys used by both profiles. It consumes the
 hash-proven recurrent hand-off emitted by this exact vLLM overlay and cancels
 publication when the metadata is absent, incomplete, or contradictory.

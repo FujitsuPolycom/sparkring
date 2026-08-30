@@ -114,9 +114,9 @@
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-    "commit": "bf7174e341e032d9b5cc970cca3d6c2985d364fc",
-    "tree": "21a0598e0f7f05739d2e27478c484a345d565556",
-    "source_tree_sha256": "155a06101524d4c2d2f55dbbd01576e35d5c729888e216fd2f3963e275949ba0",
+    "commit": "bd3eec1c10b259a24c5f335161d9f8be51c887cd",
+    "tree": "ab6e25fd1126405a94ce8735a6261f9dd08c0b5f",
+    "source_tree_sha256": "490d2c069c2eb755ecb93727aa47c41df38665427228895af0638b8588a049f3",
     "cuda_config_schema": "canonical-v1",
     "canonical_cuda_config_keys": [
       "spark_cache_cuda_restore",
