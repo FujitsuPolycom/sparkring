@@ -33,6 +33,7 @@ def expected_output_labels(pins: dict[str, Any]) -> dict[str, str]:
     labels["org.sparkcache.deployment-profile"] = (
         "glm53-flash-dflash7-python-overlay"
     )
+    labels["org.sparkcache.cuda-config-schema"] = "canonical-v1"
     return labels
 
 

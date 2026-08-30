@@ -42,10 +42,10 @@ DFLASH_LOADER_PATCH_SHA256 = (
 DFLASH_LOADER_POSTIMAGE_SHA256 = (
     "98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4"
 )
-SPARKCACHE_COMMIT = "5d571018de5b63a9a90e5c11e6d6e86bbff4a957"
-SPARKCACHE_TREE = "e864ed9ad64f771188fdb59aa9738e348134d636"
+SPARKCACHE_COMMIT = "b95aa8ab0068dc66a6892a5c311d7e9dd4a9c55a"
+SPARKCACHE_TREE = "723fc604d73911a9e907798fd7932e4fc9c95df5"
 SPARKCACHE_SOURCE_SHA256 = (
-    "f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88"
+    "48e008ba0cbd12f1ffae1c28388ea83310f41c6219c955e13d63ab171290d8de"
 )
 LEASE_CONTRACT_SHA256 = (
     "6defde9551cbb586fd09bb2d3020495531b6573397875a767eaae1dbad126024"
@@ -205,6 +205,7 @@ def resolve(
         "org.opencontainers.image.base.name": PUBLIC_BASE,
         "org.sparkring.base.image-id": PUBLIC_BASE_ID,
         "org.sparkcache.deployment-profile": "glm53-flash-dflash7-python-overlay",
+        "org.sparkcache.cuda-config-schema": "canonical-v1",
         "org.sparkcache.source-revision": SPARKCACHE_COMMIT,
         "org.sparkcache.source-tree": SPARKCACHE_TREE,
         "org.sparkcache.source-sha256": SPARKCACHE_SOURCE_SHA256,

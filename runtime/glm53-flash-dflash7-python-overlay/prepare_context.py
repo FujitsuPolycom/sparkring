@@ -47,6 +47,15 @@ def _longpath_run(argv, *, cwd=None):
 
 
 _original_run = common.run
+_original_copy_file = common.copy_file
+
+
+def _routed_copy_file(source: Path, destination: Path) -> None:
+    """Place the DFlash7 pins in the shared prepared-context topology."""
+
+    if source == COMMON / "pins.json":
+        source = PINS
+    _original_copy_file(source, destination)
 
 
 def _render_containerfile() -> str:
@@ -79,6 +88,15 @@ def _render_containerfile() -> str:
         if old not in text:
             raise PrepareError(f"shared Containerfile omits required text: {old}")
         text = text.replace(old, new)
+    deployment = (
+        'org.sparkcache.deployment-profile="glm53-flash-dflash7-python-overlay"'
+    )
+    if deployment not in text:
+        raise PrepareError("rendered Containerfile omits the DFlash7 deployment label")
+    text = text.replace(
+        deployment,
+        'org.sparkcache.cuda-config-schema="canonical-v1" \\\n      ' + deployment,
+    )
     return text
 
 
@@ -96,6 +114,17 @@ def _render_verify_image() -> str:
         if old not in text:
             raise PrepareError(f"shared image verifier omits required text: {old}")
         text = text.replace(old, new)
+    deployment = (
+        '"org.sparkcache.deployment-profile": '
+        '"glm53-flash-dflash7-python-overlay",'
+    )
+    if deployment not in text:
+        raise PrepareError("rendered verifier omits the DFlash7 deployment label")
+    text = text.replace(
+        deployment,
+        '"org.sparkcache.cuda-config-schema": "canonical-v1",\n'
+        f"        {deployment}",
+    )
     return text
 
 
@@ -132,9 +161,11 @@ def _replace_runtime_files(context: Path) -> None:
 def prepare(output: Path, *, repository_root: Path = ROOT) -> dict[str, Any]:
     original_pins = common.PINS
     original_run = common.run
+    original_copy_file = common.copy_file
     try:
         common.PINS = PINS
         common.run = _longpath_run
+        common.copy_file = _routed_copy_file
         common.prepare(output, repository_root=repository_root)
         _replace_runtime_files(output)
         common.verify_context(output)
@@ -142,6 +173,7 @@ def prepare(output: Path, *, repository_root: Path = ROOT) -> dict[str, Any]:
     finally:
         common.PINS = original_pins
         common.run = original_run
+        common.copy_file = original_copy_file
 
 
 def verify_context(context: Path) -> dict[str, Any]:

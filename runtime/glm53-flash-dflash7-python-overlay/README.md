@@ -12,8 +12,8 @@ The image combines these exact roles:
   `0b67266a0f37d6146a8403fb8482403c62f412d5`;
 - B12X `b1d541f9e71a35f030d45fae437630fff7507c2a`;
 - SparkCache reconstructed-page placement source
-  `5d571018de5b63a9a90e5c11e6d6e86bbff4a957`, Git tree
-  `e864ed9ad64f771188fdb59aa9738e348134d636`;
+  `b95aa8ab0068dc66a6892a5c311d7e9dd4a9c55a`, Git tree
+  `723fc604d73911a9e907798fd7932e4fc9c95df5`;
 - external BF16 DFlash2 weights with SHA-256
   `b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b`.
 
@@ -43,3 +43,11 @@ profile uses global fastsafetensors for the target and an exact
 `draft_load_config` selecting safetensors for DFlash. The image applies and
 verifies the draft-loader patch before installing SparkCache patches. See
 `docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md`.
+
+The SparkCache source accepts the canonical CUDA configuration keys directly.
+No PR25 compatibility profile or legacy-key translation is required by these
+profiles.
+
+The PR26 source update does not change cache identity, page-tail publication,
+record geometry, vLLM patch bytes, the lease contract, or the CUDA placement
+ABI. Existing compatible PR25 cache entries remain in the same namespace.

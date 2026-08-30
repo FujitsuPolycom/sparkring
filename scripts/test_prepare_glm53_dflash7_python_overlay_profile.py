@@ -144,6 +144,7 @@ def test_resolved_profile_requires_dflash7_image_labels() -> None:
     assert labels["org.sparkcache.deployment-profile"] == (
         "glm53-flash-dflash7-python-overlay"
     )
+    assert labels["org.sparkcache.cuda-config-schema"] == "canonical-v1"
     assert labels["org.sparkring.vllm.dflash-draft-loader-patch-sha256"] == (
         DFLASH_LOADER_PATCH_SHA256
     )
@@ -208,3 +209,5 @@ def test_quickstart_names_both_loader_statuses_and_exact_builder() -> None:
     assert "implemented" in guide and "not qualified" in guide
     assert DFLASH_WEIGHTS_SHA256 in guide
     assert DFLASH_LOADER_PATCH_SHA256 in guide
+    assert "does not change the namespace" in guide
+    assert "PR25 compatibility profile" in guide

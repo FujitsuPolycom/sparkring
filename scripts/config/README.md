@@ -107,6 +107,8 @@ SparkCache CUDA restore with page-tail copy-on-write publication.
 Resolve either profile with
 `scripts/prepare_glm53_dflash7_python_overlay_profile.py`. Follow the
 [DFlash7 Python-overlay quickstart](../../docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md).
+Both templates use only SparkCache PR #26 canonical CUDA keys; they do not
+require a PR25 compatibility profile.
 
 ## DeepSeek-V4-Flash-0731
 

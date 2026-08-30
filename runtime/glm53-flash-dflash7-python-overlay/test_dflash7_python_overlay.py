@@ -33,8 +33,22 @@ def test_pins_bind_the_exact_dflash7_composition() -> None:
         "b1d541f9e71a35f030d45fae437630fff7507c2a"
     )
     assert pins["sparkcache"]["commit"] == (
-        "5d571018de5b63a9a90e5c11e6d6e86bbff4a957"
+        "b95aa8ab0068dc66a6892a5c311d7e9dd4a9c55a"
     )
+    assert pins["sparkcache"]["tree"] == (
+        "723fc604d73911a9e907798fd7932e4fc9c95df5"
+    )
+    assert pins["sparkcache"]["source_tree_sha256"] == (
+        "48e008ba0cbd12f1ffae1c28388ea83310f41c6219c955e13d63ab171290d8de"
+    )
+    assert pins["sparkcache"]["cuda_config_schema"] == "canonical-v1"
+    assert pins["sparkcache"]["canonical_cuda_config_keys"] == [
+        "spark_cache_cuda_restore",
+        "spark_cache_cuda_placement_library",
+        "spark_cache_cuda_placement_library_sha256",
+        "spark_cache_cuda_placement_arena_bytes",
+        "spark_cache_cuda_restore_io_workers",
+    ]
     workload = pins["workload"]
     assert workload["role"] == "external-dflash7"
     assert workload["draft"]["weights_sha256"] == (
@@ -59,6 +73,7 @@ def test_rendered_image_metadata_names_dflash7_not_adaptive_mtp() -> None:
     recipe = prepare._render_containerfile()
     assert "SparkRing GLM-5.3 DFlash7 Python overlay" in recipe
     assert "glm53-flash-dflash7-python-overlay" in recipe
+    assert 'org.sparkcache.cuda-config-schema="canonical-v1"' in recipe
     assert "010-dflash-draft-load-config.patch" in recipe
     assert "98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4" in recipe
     label_section = recipe[recipe.index("LABEL org.opencontainers.image.title=") :]
@@ -74,6 +89,7 @@ def test_verifier_requires_the_dflash7_deployment_label() -> None:
     assert labels["org.sparkcache.deployment-profile"] == (
         "glm53-flash-dflash7-python-overlay"
     )
+    assert labels["org.sparkcache.cuda-config-schema"] == "canonical-v1"
     assert labels["org.jovian.vllm.commit"] != labels[
         "org.sparkring.vllm.python.commit"
     ]

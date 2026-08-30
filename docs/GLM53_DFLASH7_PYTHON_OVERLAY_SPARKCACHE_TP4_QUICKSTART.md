@@ -12,7 +12,7 @@ store/restart/restore, or concurrency qualification.
 | vLLM native extensions and wheel metadata | `da4d7be6c97434f6942292ed8abbf4b32dc44355` |
 | vLLM Python source | `0b67266a0f37d6146a8403fb8482403c62f412d5`, tree `ba9484ccb33aa56e90ff2f447f15ca9b9da97639` |
 | B12X | `b1d541f9e71a35f030d45fae437630fff7507c2a`, tree `c69cdec1c59a08e8e0e549f930fa8abcfb5134ae` |
-| SparkCache reconstructed-page placement | `5d571018de5b63a9a90e5c11e6d6e86bbff4a957`, tree `e864ed9ad64f771188fdb59aa9738e348134d636` |
+| SparkCache reconstructed-page placement and canonical CUDA configuration | `b95aa8ab0068dc66a6892a5c311d7e9dd4a9c55a`, tree `723fc604d73911a9e907798fd7932e4fc9c95df5`, clean source SHA-256 `48e008ba0cbd12f1ffae1c28388ea83310f41c6219c955e13d63ab171290d8de` |
 | DFlash draft-loader separation | Patch SHA-256 `39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279`, postimage SHA-256 `98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4` |
 | Target | `local-inference-lab/GLM-5.3-Flash-NVFP4@520de24eabf507659eaef7c70f14fd584527facc` |
 | External draft | `incoai/GLM-5.3-Flash-DFlash2@dc77ff1c99eeb2df044ee3d4f0094eb033fee410`, BF16 weights SHA-256 `b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b` |
@@ -54,6 +54,9 @@ postimage SHA-256
 `98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4`.
 Both profiles remain unqualified until live four-rank gates pass.
 
+SparkCache PR #26 accepts the canonical CUDA keys used by both profiles. No
+local PR25 compatibility profile or legacy-key rewrite is part of this path.
+
 ## Resolve the profile and inspect the plan
 
 Copy `scripts/config/glm53-flash-tp4-site.example.yaml`
@@ -93,3 +96,9 @@ MTP profiles. `tail-cow-v1` also separates these entries from snapshot-v1
 manifests. The two target-loader profiles share a namespace because loader
 choice does not change target or draft model state; each profile uses a
 different cache root and one-shot clear token while qualification is pending.
+
+Moving from SparkCache PR #25 to PR #26 does not change the namespace. The
+checkpoint identities, publication schema, record vocabulary, digest salts,
+parallel geometry, vLLM patches, lease contract, and CUDA placement ABI are
+unchanged. Compatible PR25 `page-tail-cow-v1` entries remain eligible; only
+the configuration vocabulary and SparkCache source receipt change.
