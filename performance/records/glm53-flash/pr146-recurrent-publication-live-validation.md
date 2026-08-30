@@ -11,6 +11,9 @@ The final artifact was the local ARM64 image
 `sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8`.
 It had no published OCI digest. The image construction receipt had SHA-256
 `2c4a02efe91df5de21c5e3c92f65710b7d41680f25c22baed43ca96c1e5a51d3`.
+The builder created the image at
+`2026-08-30T05:23:13.09226879-05:00` and completed that 8,690-byte receipt at
+`2026-08-30T05:23:18.699254136-05:00`.
 
 The artifact bound these source contracts:
 
@@ -65,6 +68,14 @@ count, and OOM-killed flag on each rank after the clean relaunch. The
 containers had no Docker healthcheck, so this record calls that check process
 health rather than HTTP health.
 
+The earliest observed replacement-container creation time was
+`2026-08-30T10:46:32.079344046Z`; all four creation times and current start
+times are retained in the machine receipt. The exact construction and
+source-contract receipt therefore existed before every observed replacement
+container was created. No retained service-availability timeline proves that
+the previous service remained continuously available, so this record does
+not make that claim.
+
 The request harness retained prompt and response digests, token counts, HTTP
 outcomes, and client elapsed time. The semantic canary compared one fixed
 response with its expected content. Client time is included only as a
@@ -99,6 +110,7 @@ Those measurements show the behavior of that exact artifact only.
 
 | Check or observation | Result |
 |---|---|
+| Construction verification before container creation | exact receipt completed at `2026-08-30T05:23:18.699254136-05:00`; earliest replacement container created at `2026-08-30T10:46:32.079344046Z` |
 | Final-image process state after clean relaunch | four ranks running the exact image; restart counts `0,0,0,0`; OOM-killed flags `false,false,false,false` |
 | Semantic canary | semantic match; 27 prompt tokens; 45 completion tokens; 1.411 s client time |
 | Clean-restart persistent 8K restore | 8,192 tokens and 103,841,965 bytes per rank; all ranks verified; 59.759-66.550 ms rank end-to-end; 1.573 s client time |
@@ -119,6 +131,11 @@ persistent restores at 8K after a clean restart, at 128K, and at 256K. The
 committed 256K manifest referenced the existing 128K base and represented the
 new tail with 13 delta objects, which is the expected tail-only copy-on-write
 publication shape.
+
+The exact construction and source-contract receipt preceded creation of all
+four observed replacement containers. This establishes construction
+verification before the observed replacement, but it does not establish
+continuous availability of the previous service.
 
 The final C16 shared-trunk cohort completed 16 distinct requests after one
 rank-sharded external restore of the common 128K segment. This qualifies
@@ -146,6 +163,8 @@ final image and are not used to widen its qualification.
   response-quality benchmark was run.
 - The image has no published OCI digest and exists only on the observed
   deployment hosts.
+- The retained timestamps do not establish that the previous service remained
+  continuously available before or during replacement.
 - `--prefill-schedule-interval 8` was not tested; the profile default remained
   in use.
 - A complete command transcript and sanitized raw HTTP response bodies were

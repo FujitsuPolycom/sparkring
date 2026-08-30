@@ -62,7 +62,28 @@ def test_status_scopes_functional_and_performance_claims() -> None:
     ):
         assert status[status_name] == "qualified"
     assert status["restore_performance"] == "research-only"
+    assert status["continuous_availability_during_replacement"] == "unsupported"
     assert status["dflash_response_quality"] == "unsupported"
+
+
+def test_construction_receipt_precedes_replacement_container_creation() -> None:
+    ordering = _receipt()["measurements"][
+        "construction_verification_before_container_creation"
+    ]
+    assert ordering["image_id"] == (
+        "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8"
+    )
+    assert ordering["image_receipt_sha256"] == (
+        "2c4a02efe91df5de21c5e3c92f65710b7d41680f25c22baed43ca96c1e5a51d3"
+    )
+    receipt_time = ordering["image_receipt_modified_at"]
+    assert receipt_time == "2026-08-30T05:23:18.699254136-05:00"
+    assert ordering["image_receipt_bytes"] == 8690
+    assert all(
+        created > "2026-08-30T10:23:18.699254136Z"
+        for created in ordering["container_created_at_by_rank"].values()
+    )
+    assert ordering["continuous_availability"] == "unsupported"
 
 
 def test_clean_restart_8k_restore_is_verified_on_every_rank() -> None:

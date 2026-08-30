@@ -2,6 +2,7 @@
   "schema": "sparkring-glm53-pr146-live-validation/v1",
   "status": {
     "artifact_construction": "implemented",
+    "construction_verification_before_container_creation": "qualified",
     "four_rank_process_health": "qualified",
     "semantic_canary": "qualified",
     "persistent_8k_restore_after_restart": "qualified",
@@ -10,6 +11,7 @@
     "persistent_256k_restore_correctness": "qualified",
     "segment_shared_restore_c16": "qualified",
     "restore_performance": "research-only",
+    "continuous_availability_during_replacement": "unsupported",
     "dflash_response_quality": "unsupported"
   },
   "artifact": {
@@ -78,6 +80,27 @@
     "sparkcache_load_threads": 2
   },
   "measurements": {
+    "construction_verification_before_container_creation": {
+      "image_created_at": "2026-08-30T05:23:13.09226879-05:00",
+      "image_id": "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8",
+      "image_receipt_modified_at": "2026-08-30T05:23:18.699254136-05:00",
+      "image_receipt_bytes": 8690,
+      "image_receipt_sha256": "2c4a02efe91df5de21c5e3c92f65710b7d41680f25c22baed43ca96c1e5a51d3",
+      "container_created_at_by_rank": {
+        "0": "2026-08-30T10:46:32.100779355Z",
+        "1": "2026-08-30T10:46:32.552667746Z",
+        "2": "2026-08-30T10:46:32.57152575Z",
+        "3": "2026-08-30T10:46:32.079344046Z"
+      },
+      "container_current_started_at_by_rank": {
+        "0": "2026-08-30T11:02:10.85447775Z",
+        "1": "2026-08-30T11:02:22.761844485Z",
+        "2": "2026-08-30T11:02:22.561316447Z",
+        "3": "2026-08-30T11:02:22.135979337Z"
+      },
+      "result": "The exact construction and source-contract receipt existed before every observed replacement container was created.",
+      "continuous_availability": "unsupported"
+    },
     "final_image_process_state_after_clean_relaunch": {
       "image_id_on_all_ranks": "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8",
       "container_state_by_rank": ["running", "running", "running", "running"],
@@ -298,6 +321,7 @@
     "The final image has one C16 shared-trunk wave. C2, C8, and C16 identical-prefix waves were observed only on the predecessor image and do not qualify the final image.",
     "The semantic canary verifies one fixed expected response. No scored DFlash response-quality benchmark was run.",
     "The image has no published OCI digest and exists only on the observed deployment hosts.",
+    "The retained timestamps prove construction and source-contract verification preceded replacement-container creation. They do not prove uninterrupted availability of the previous service before or during replacement.",
     "The prefill schedule interval remained at the profile default; --prefill-schedule-interval 8 was not tested.",
     "A complete command transcript and sanitized raw HTTP response bodies were not retained with this record."
   ]
