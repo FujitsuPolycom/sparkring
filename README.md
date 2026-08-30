@@ -30,6 +30,7 @@ profile is selected.
 
 - [Supported models and profiles](#profiles)
 - [GLM-5.3 Flash TP4 with SparkCache](docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md)
+- [GLM-5.3 adaptive MTP and live-tensor B12X KDA with SparkCache](docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md)
 - [GLM-5.3 Flash TP4 with external caching disabled](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md)
 - [GLM-5.3 source-built image recipe](runtime/glm53-flash/BUILD.md)
 - [Benchmark results](#benchmark-results)

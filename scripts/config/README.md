@@ -78,6 +78,21 @@ Run the focused CPU-only contract suite after changing these inputs:
 python -m pytest scripts/test_glm53_flash_profile.py -q
 ```
 
+## GLM-5.3 adaptive MTP with live-tensor B12X KDA
+
+Status: **implemented, not qualified**. The source-built runtime composition
+uses these sanitized inputs:
+
+| File | Role |
+|---|---|
+| `glm53-flash-b12x-kda-adaptive-mtp-tp4-site.example.yaml` | Four-rank TP4/DCP1 site and 20 GiB FP8 KV reservation per rank |
+| `glm53-flash-b12x-kda-mtp5-adaptive-fastsafetensors-sparkcache-tp4-dcp1.example.json` | Adaptive MTP 3→5, 32-step window, fastsafetensors queue one, native SparkCache restore |
+
+Resolve both templates with
+`scripts/prepare_glm53_b12x_kda_adaptive_mtp_profile.py`. The resolver rejects
+source, contract, image, loader, adaptive-policy, and cache-identity drift.
+Follow the [executable quickstart](../../docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md).
+
 ## DeepSeek-V4-Flash-0731
 
 **Status: implemented.**

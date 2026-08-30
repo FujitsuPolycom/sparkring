@@ -1,0 +1,114 @@
+{
+  "schema": "sparkring-glm53-flash-runtime-lock/v1",
+  "status": "implemented",
+  "qualification_scope": "This source-built GLM-5.3 runtime combines acceptance-based adaptive MTP, live-tensor B12X KDA binding, and fastsafetensors. Its SparkCache overlay requires an immutable image digest and four-rank live qualification before serving claims are made.",
+  "public_image_build": {
+    "status": "implemented",
+    "platform": "linux/arm64",
+    "base_images": {
+      "arm_builder": {
+        "reference": "pytorch/manylinuxaarch64-builder@sha256:f91599c49f526c77d01b68286f2bf943a5fd6a432d7e3f0afcc5784825908fe9",
+        "distribution_role": "build-only"
+      },
+      "cuda_runtime": {
+        "reference": "nvidia/cuda:13.0.3-base-ubuntu24.04@sha256:56d9d8183e2181a20be6b0d3801d1f056a0e75c17706df939ba207b126e1cb9c",
+        "distribution_role": "runtime parent",
+        "license": "LicenseRef-NVIDIA-Deep-Learning-Container"
+      }
+    },
+    "sources": {
+      "vllm": {
+        "repository": "https://github.com/local-inference-lab/vllm.git",
+        "commit": "0b67266a0f37d6146a8403fb8482403c62f412d5",
+        "tree": "ba9484ccb33aa56e90ff2f447f15ca9b9da97639",
+        "source_lineage": {
+          "base_commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+          "included_commits": [
+            "766acf0e218a075432e6c45755cd561ab765ec2d",
+            "0ca18da0a7feab3ddd2fee5eb6992981a0b76afa",
+            "8590bf9cb569dd99968be7279fc130570077313f",
+            "c5f47c6dc255128ac0d6e7bbb4368dc082910966",
+            "d65b96b169919385c12437d8498605adbee419e1",
+            "dbb2242baa23e1f811fe0efb611b4c68d77d3a32",
+            "e823e48c0dbfbc8d60c9c384179f258b91477241",
+            "f71e0deaa64625b53613dc9b40321d38c1ffd598",
+            "e10536aadf02a18fccddda7ec939c33147e8b0b3",
+            "eda08cc3a0b3959826d3d0a7317e9106ec15cf83",
+            "852537e6a359e9b9790381a4254d8b7642b971be",
+            "0b67266a0f37d6146a8403fb8482403c62f412d5"
+          ],
+          "adaptive_mtp_commit": "e10536aadf02a18fccddda7ec939c33147e8b0b3",
+          "adaptive_mtp_tree": "f7864d18865573dd162d3b850b4aa26acf320ab7",
+          "kda_live_tensor_commits": [
+            "eda08cc3a0b3959826d3d0a7317e9106ec15cf83",
+            "852537e6a359e9b9790381a4254d8b7642b971be",
+            "0b67266a0f37d6146a8403fb8482403c62f412d5"
+          ]
+        },
+        "license": "Apache-2.0"
+      },
+      "b12x": {
+        "repository": "https://github.com/local-inference-lab/b12x.git",
+        "commit": "2fcf23a0ce269be27b2e03fece73d46e90e6aeea",
+        "tree": "58a046fc8faa747346f40f87166cda7e0f67ff47",
+        "license": "Apache-2.0"
+      },
+      "nccl": {
+        "repository": "https://github.com/NVIDIA/nccl.git",
+        "commit": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
+        "tag": "v2.30.7-1",
+        "base_tree": "3e7de6f92f0190d1afe9f05642e634cbf43ae4c9",
+        "patched_tree": "abdeb053b94c3f6d472cd55ae2b79ca821299009",
+        "license": "Apache-2.0 AND BSD-3-Clause",
+        "patches": [
+          {
+            "path": "spark_transport/nccl/nccl-2.30.7-switchless-cycle.patch",
+            "sha256": "6709063fa1c25055ae77a9397dea5d89643f8211d25e7990bdd11597d08c0dde",
+            "ownership": "SparkRing switchless-cycle ring transport setup."
+          }
+        ]
+      }
+    },
+    "instanttensor": {
+      "version": "0.1.9",
+      "sdist_url": "https://files.pythonhosted.org/packages/37/69/a4dc4e0f0018a0e558b716e90bcb19cb6a8c7506f68e89a1493608cf5e62/instanttensor-0.1.9.tar.gz",
+      "sdist_sha256": "d8692b97991c1a5fb2db7905b9a6ae90a7f967c7ddd853d35e41caa146750c02",
+      "license": "Apache-2.0"
+    },
+    "toolchain": {
+      "python": "3.12",
+      "cuda": "13.0.3",
+      "nccl_cuda_arch": "121",
+      "vllm_torch_cuda_arch_list": "12.1a"
+    },
+    "outputs": {
+      "runtime_image": null,
+      "runtime_image_id": null,
+      "sparkcache_image": null,
+      "sparkcache_image_id": null,
+      "nccl_library_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3"
+    }
+  },
+  "target_model": {
+    "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+    "revision": "520de24eabf507659eaef7c70f14fd584527facc",
+    "cache_revision_identity_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9",
+    "config_sha256": "676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996",
+    "weight_index_sha256": "0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb"
+  },
+  "external_dflash": {
+    "repository": "incoai/GLM-5.3-Flash-DFlash2",
+    "revision": "dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+    "weights_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
+    "license": "CC-BY-NC-ND-4.0"
+  },
+  "sparkcache": {
+    "repository": "https://github.com/FujitsuPolycom/sparkcache",
+    "commit": "20838ace3ebda570ca039cb7f1976c29da554b39",
+    "source_tree_sha256": "4998b24f4f504aeeb9bf92769ec720e282f546e6726d89fdfd06c4efa8d17c10",
+    "lease_contract": "sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json",
+    "lease_contract_sha256": "6defde9551cbb586fd09bb2d3020495531b6573397875a767eaae1dbad126024",
+    "overlay_containerfile": "deploy/glm53_flash/Containerfile.b12x-kda-adaptive-mtp",
+    "overlay_containerfile_sha256": "8e2377d034ba80b059f9a4387a6590a08e205313568ee1382e0e25342f8c5d40"
+  }
+}
