@@ -224,20 +224,20 @@ def test_record_follows_evidence_method_and_rejects_speed_claim() -> None:
     )
 
 
-def test_quickstart_links_the_exact_artifact_evidence_separately() -> None:
+def test_quickstart_separates_qualified_and_rejected_restore_artifacts() -> None:
     quickstart = QUICKSTART_PATH.read_text(encoding="utf-8")
     assert (
-        "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8"
+        "sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e"
         in quickstart
     )
-    assert "d93cb3d98305041081cf572521602625185112ae" in quickstart
-    assert "65b6642df1afc64366430d3aef9aca01f5c5e1c3" in quickstart
-    assert "pr146-recurrent-publication-live-validation.md" in quickstart
-    assert "`block_pages_v1`" in quickstart
-    assert "`per_token_rows` different-root descriptor-segment" in quickstart
-    assert "rebuilds are not qualified" in quickstart
-    assert "### Separate historical artifact" in quickstart
+    assert "dflash7-snapshot-v1-safe/validation.json" in quickstart
     assert (
-        "sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb"
+        "sha256:df4e09a32cdbf1c0e69cc7c4c9e95d890d6c7a1e3eaac84f969912a16fd27dd3"
         in quickstart
     )
+    assert "rejected-four-reader-eabe7fd.json" in quickstart
+    assert "is not deployable" in quickstart
+    assert "65b6642df1afc64366430d3aef9aca01f5c5e1c3" in quickstart
+    assert "rebuilds are not qualified" in quickstart
+    assert "sha256:ed60be066d6" not in quickstart
+    assert "sha256:eef863d8" not in quickstart
