@@ -89,6 +89,9 @@ def test_profiles_pin_external_dflash7_and_tp4(path: Path, loader: str) -> None:
     assert profile["identity"]["max_num_seqs"] == "32"
     assert profile["identity"]["vllm_block_size"] == "256"
     assert profile["identity"]["kv_cache_dtype"] == "fp8"
+    assert not any(
+        name.startswith("INSTANTTENSOR_") for name in profile["environment"]
+    )
 
 
 def test_fastsafetensors_profile_separates_the_draft_loader() -> None:
