@@ -125,11 +125,11 @@ The all-safetensors tail-cow profile remains research-only and unqualified.
 The fastsafetensors snapshot result belongs only to the image ID and case
 named above; it does not transfer to a rebuild.
 
-SparkCache commit `65b6642df1afc64366430d3aef9aca01f5c5e1c3`
-accepts the canonical CUDA keys used by both profiles. It consumes the
-hash-proven recurrent hand-off emitted by this exact vLLM overlay and cancels
-publication when the metadata is absent, incomplete, or contradictory.
-No legacy-key rewrite is part of this path.
+The snapshot-v1 fastsafetensors profile requires SparkCache
+`a1511d26a1fe2b17b24561bc52e376bf7f54b06a` and exact image35b. The isolated
+all-safetensors research profile retains SparkCache
+`65b6642df1afc64366430d3aef9aca01f5c5e1c3`. Both accept canonical CUDA keys;
+No legacy-key rewrite is part of either path.
 
 ## Resolve the profile and inspect the plan
 
@@ -138,19 +138,19 @@ outside version control and replace every address, interface, SSH target,
 device, host path, and image identity. Select one profile template:
 
 ```bash
-receipt="$PWD/glm53-dflash7-python-overlay-image-receipt.json"
-image='sparkring-glm53-sparkcache:dflash7-vllm-python-0b67266-native-da4d7be-b12x-b1d541f-arm64'
+receipt='/path/to/sparkring-glm53-sparkcache-dflash7-pr42-page-base-flight-singletonfix-arm64.json'
+image='sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-singletonfix-arm64'
 profile_template='scripts/config/glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json'
 
 python scripts/prepare_glm53_dflash7_python_overlay_profile.py \
   --profile-template "$profile_template" \
   --site-template /path/to/resolved-glm53-site.yaml \
   --image "$image" \
-  --image-id "$(jq -r .image_id "$receipt")" \
-  --cuda-placement-library-sha256 "$(jq -r .artifacts.sparkcache_cuda_placement_sha256 "$receipt")" \
+  --image-id 'sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e' \
+  --cuda-placement-library-sha256 'd57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c' \
   --native-elf-manifest-sha256 "$(jq -r .runtime_contract.native_elf_manifest_sha256 "$receipt")" \
   --native-dispatch-manifest-sha256 "$(jq -r .runtime_contract.native_dispatch_manifest_sha256 "$receipt")" \
-  --source-receipt-sha256 "$(jq -r .artifacts.source_receipt_sha256 "$receipt")" \
+  --source-receipt-sha256 '611c88a48d30aae933828c6938dea2790f841ceeb05adbb80721d738cc029085' \
   --profile-output /path/to/glm53-dflash7-profile.json \
   --site-output /path/to/glm53-dflash7-site.yaml
 

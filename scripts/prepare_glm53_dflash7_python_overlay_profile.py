@@ -48,10 +48,26 @@ RECURRENT_BOUNDARY_PATCH_SHA256 = (
 RECURRENT_PUBLICATION_PATCH_SHA256 = (
     "587fc332917a8ffd5a29712dc5253d51e6051eca1166ed4a165e576a84f2e300"
 )
-SPARKCACHE_COMMIT = "65b6642df1afc64366430d3aef9aca01f5c5e1c3"
-SPARKCACHE_TREE = "41ad0a119ba109fd28900a2dcc9f9b4d8c293809"
+SPARKCACHE_COMMIT = "a1511d26a1fe2b17b24561bc52e376bf7f54b06a"
+SPARKCACHE_TREE = "4d5b8eb8c5c13793ee7a1e67b2b34bd38fcf4ddb"
 SPARKCACHE_SOURCE_SHA256 = (
+    "6651f2823c816fac93779cbca54a8f19c0ed262830953149f3a87d189d1f833b"
+)
+LEGACY_SPARKCACHE_COMMIT = "65b6642df1afc64366430d3aef9aca01f5c5e1c3"
+LEGACY_SPARKCACHE_TREE = "41ad0a119ba109fd28900a2dcc9f9b4d8c293809"
+LEGACY_SPARKCACHE_SOURCE_SHA256 = (
     "a2add45a9f97446f6c2a843355161da9a5499ff7501b4750d2163591785d7345"
+)
+SAFE_IMAGE = (
+    "sparkring-glm53-sparkcache:"
+    "dflash7-pr42-page-base-flight-singletonfix-arm64"
+)
+SAFE_IMAGE_ID = "sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e"
+SAFE_SOURCE_RECEIPT_SHA256 = (
+    "611c88a48d30aae933828c6938dea2790f841ceeb05adbb80721d738cc029085"
+)
+SAFE_CUDA_PLACEMENT_SHA256 = (
+    "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
 )
 LEASE_CONTRACT_SHA256 = (
     "8adbdfa3fd4b06b213c3aab45255a0b039f1c9940a4b1fad0efd004d263227c9"
@@ -126,6 +142,20 @@ def resolve(
 
     identity = profile.get("identity", {})
     loader = _argument(profile, "--load-format")
+    if loader == "fastsafetensors":
+        if image != SAFE_IMAGE or image_id != SAFE_IMAGE_ID:
+            raise ResolveError("fastsafetensors snapshot profile requires exact image35b")
+        if cuda_placement_library_sha256 != SAFE_CUDA_PLACEMENT_SHA256:
+            raise ResolveError("fastsafetensors snapshot profile requires exact CUDA library")
+        if source_receipt_sha256 != SAFE_SOURCE_RECEIPT_SHA256:
+            raise ResolveError("fastsafetensors snapshot profile requires exact source receipt")
+        source_commit = SPARKCACHE_COMMIT
+        source_tree = SPARKCACHE_TREE
+        source_sha256 = SPARKCACHE_SOURCE_SHA256
+    else:
+        source_commit = LEGACY_SPARKCACHE_COMMIT
+        source_tree = LEGACY_SPARKCACHE_TREE
+        source_sha256 = LEGACY_SPARKCACHE_SOURCE_SHA256
     publication_schema = "snapshot-v1" if loader == "fastsafetensors" else "tail-cow-v1"
     effective_schema = (
         "page-snapshot-v1" if loader == "fastsafetensors" else "page-tail-cow-v1"
@@ -141,9 +171,9 @@ def resolve(
         "max_num_seqs": "32",
         "sparkcache_publication_schema": publication_schema,
         "sparkcache_effective_publication_schema": effective_schema,
-        "sparkcache_source_revision": SPARKCACHE_COMMIT,
-        "sparkcache_source_tree": SPARKCACHE_TREE,
-        "sparkcache_source_sha256": SPARKCACHE_SOURCE_SHA256,
+        "sparkcache_source_revision": source_commit,
+        "sparkcache_source_tree": source_tree,
+        "sparkcache_source_sha256": source_sha256,
         "vllm_native_revision": VLLM_NATIVE_COMMIT,
         "vllm_python_revision": VLLM_PYTHON_COMMIT,
         "vllm_python_tree": VLLM_PYTHON_TREE,
@@ -270,9 +300,9 @@ def resolve(
         "org.sparkring.base.image-id": PUBLIC_BASE_ID,
         "org.sparkcache.deployment-profile": "glm53-flash-dflash7-python-overlay",
         "org.sparkcache.cuda-config-schema": "canonical-v1",
-        "org.sparkcache.source-revision": SPARKCACHE_COMMIT,
-        "org.sparkcache.source-tree": SPARKCACHE_TREE,
-        "org.sparkcache.source-sha256": SPARKCACHE_SOURCE_SHA256,
+        "org.sparkcache.source-revision": source_commit,
+        "org.sparkcache.source-tree": source_tree,
+        "org.sparkcache.source-sha256": source_sha256,
         "org.sparkcache.vllm-contract-sha256": LEASE_CONTRACT_SHA256,
         "org.sparkring.runtime.removed-deep-ep-distribution": DEEP_EP_DISTRIBUTION,
         "org.sparkring.runtime.deep-ep-removal-receipt-sha256": (
@@ -284,15 +314,25 @@ def resolve(
             raise ResolveError(f"profile image label {name} must be {expected}")
 
     attestation = " ".join(str(item) for item in profile.get("attestation_hook", []))
+    attestation_artifacts = [source_sha256]
+    attestation_placeholders = list(PLACEHOLDERS)
+    if loader == "fastsafetensors":
+        attestation_artifacts.extend(
+            (SAFE_SOURCE_RECEIPT_SHA256, SAFE_CUDA_PLACEMENT_SHA256)
+        )
+        attestation_placeholders = [
+            "REPLACE_WITH_VLLM_NATIVE_ELF_MANIFEST_SHA256",
+            "REPLACE_WITH_VLLM_NATIVE_DISPATCH_MANIFEST_SHA256",
+        ]
     for required in (
         DFLASH_CONFIG_SHA256,
         DFLASH_WEIGHTS_SHA256,
-        SPARKCACHE_SOURCE_SHA256,
         LEASE_CONTRACT_SHA256,
         DEEP_EP_REMOVAL_RECEIPT_SHA256,
         'find_spec("deep_ep") is None',
         "/opt/sparkring/runtime/python-overlay/sparkcache-source-tree.sha256",
-        *PLACEHOLDERS,
+        *attestation_artifacts,
+        *attestation_placeholders,
     ):
         if required not in attestation:
             raise ResolveError(f"profile attestation omits {required}")

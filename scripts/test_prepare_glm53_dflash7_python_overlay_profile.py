@@ -17,6 +17,10 @@ from prepare_glm53_dflash7_python_overlay_profile import (
     DFLASH_LOADER_POSTIMAGE_SHA256,
     RECURRENT_BOUNDARY_PATCH_SHA256,
     DFLASH_WEIGHTS_SHA256,
+    SAFE_CUDA_PLACEMENT_SHA256,
+    SAFE_IMAGE,
+    SAFE_IMAGE_ID,
+    SAFE_SOURCE_RECEIPT_SHA256,
     SPARKCACHE_COMMIT,
     SPARKCACHE_SOURCE_SHA256,
     SPARKCACHE_TREE,
@@ -44,10 +48,10 @@ QUALIFIED_IMAGE_ID = (
 )
 QUALIFIED_SPARKCACHE_COMMIT = "a1511d26a1fe2b17b24561bc52e376bf7f54b06a"
 DIGESTS = {
-    "cuda_placement_library_sha256": "1a" * 32,
+    "cuda_placement_library_sha256": SAFE_CUDA_PLACEMENT_SHA256,
     "native_elf_manifest_sha256": "2b" * 32,
     "native_dispatch_manifest_sha256": "3c" * 32,
-    "source_receipt_sha256": "4d" * 32,
+    "source_receipt_sha256": SAFE_SOURCE_RECEIPT_SHA256,
 }
 
 
@@ -79,11 +83,13 @@ def _resolved(path: Path) -> tuple[dict, dict]:
             port["address"] = port_address
         for peer in rank["transport_peers"]:
             peer["address"] = management[peer["rank"]]
+    image = SAFE_IMAGE if path == FAST else "local/glm53-dflash7-overlay@sha256:" + "ab" * 32
+    image_id = SAFE_IMAGE_ID if path == FAST else "sha256:" + "cd" * 32
     return resolve(
         profile,
         site,
-        image="local/glm53-dflash7-overlay@sha256:" + "ab" * 32,
-        image_id="sha256:" + "cd" * 32,
+        image=image,
+        image_id=image_id,
         **DIGESTS,
     )
 
@@ -129,6 +135,8 @@ def test_profiles_pin_external_dflash7_and_tp4(path: Path, loader: str) -> None:
 
 def test_fastsafetensors_profile_separates_the_draft_loader() -> None:
     profile = json.loads(FAST.read_text(encoding="utf-8"))
+    assert profile["image"] == SAFE_IMAGE
+    assert profile["image_id"] == SAFE_IMAGE_ID
     assert profile["environment"]["VLLM_FASTSAFETENSORS_QUEUE_SIZE"] == "1"
     speculative = json.loads(_argument(profile, "--speculative-config"))
     assert speculative["draft_load_config"] == {"load_format": "safetensors"}
@@ -140,6 +148,30 @@ def test_fastsafetensors_profile_separates_the_draft_loader() -> None:
     assert profile["extra_labels"]["org.sparkring.qualification-status"] == (
         "implemented"
     )
+
+
+def test_fastsafetensors_resolver_rejects_predecessor_images_and_source() -> None:
+    profile = json.loads(FAST.read_text(encoding="utf-8"))
+    site = yaml.safe_load(SITE.read_text(encoding="utf-8"))
+    kwargs = {"image": SAFE_IMAGE, "image_id": SAFE_IMAGE_ID, **DIGESTS}
+
+    for predecessor in (
+        "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8",
+        "sha256:cc2c0e2f812f4b78d5b91f863aaf46fd8e8e505844245aa50911af1fb8e061c0",
+    ):
+        with pytest.raises(ResolveError, match="exact image35b"):
+            resolve(
+                copy.deepcopy(profile),
+                copy.deepcopy(site),
+                **{**kwargs, "image_id": predecessor},
+            )
+
+    changed = copy.deepcopy(profile)
+    changed["identity"]["sparkcache_source_revision"] = (
+        "65b6642df1afc64366430d3aef9aca01f5c5e1c3"
+    )
+    with pytest.raises(ResolveError, match="sparkcache_source_revision"):
+        resolve(changed, copy.deepcopy(site), **kwargs)
 
 
 def test_cuda_restore_uses_only_canonical_configuration_keys() -> None:
@@ -179,6 +211,8 @@ def test_loader_profiles_share_model_identity_but_isolate_test_roots() -> None:
 
 def test_resolved_profile_requires_dflash7_image_labels() -> None:
     profile, _ = _resolved(FAST)
+    assert profile["image"] == SAFE_IMAGE
+    assert profile["image_id"] == SAFE_IMAGE_ID
     labels = profile["required_image_labels"]
     assert labels["org.jovian.vllm.commit"] == VLLM_NATIVE_COMMIT
     assert labels["org.sparkring.vllm.python.commit"] == VLLM_PYTHON_COMMIT
@@ -190,6 +224,12 @@ def test_resolved_profile_requires_dflash7_image_labels() -> None:
     assert labels["org.sparkcache.source-revision"] == SPARKCACHE_COMMIT
     assert labels["org.sparkcache.source-tree"] == SPARKCACHE_TREE
     assert labels["org.sparkcache.source-sha256"] == SPARKCACHE_SOURCE_SHA256
+    assert labels["org.sparkcache.cuda-placement-library-sha256"] == (
+        SAFE_CUDA_PLACEMENT_SHA256
+    )
+    assert labels["org.sparkring.source-receipt-sha256"] == (
+        SAFE_SOURCE_RECEIPT_SHA256
+    )
     assert labels["org.sparkring.vllm.dflash-draft-loader-patch-sha256"] == (
         DFLASH_LOADER_PATCH_SHA256
     )
@@ -206,14 +246,18 @@ def test_resolved_profile_requires_dflash7_image_labels() -> None:
         DEEP_EP_REMOVAL_RECEIPT_SHA256
     )
     assert "adaptive" not in " ".join(labels.values()).lower()
+    attestation = " ".join(profile["attestation_hook"])
+    assert SPARKCACHE_SOURCE_SHA256 in attestation
+    assert SAFE_SOURCE_RECEIPT_SHA256 in attestation
+    assert SAFE_CUDA_PLACEMENT_SHA256 in attestation
 
 
 def test_resolver_rejects_mtp_or_noncanonical_cuda_restore() -> None:
     profile = json.loads(FAST.read_text(encoding="utf-8"))
     site = yaml.safe_load(SITE.read_text(encoding="utf-8"))
     kwargs = {
-        "image": "image",
-        "image_id": "sha256:" + "ab" * 32,
+        "image": SAFE_IMAGE,
+        "image_id": SAFE_IMAGE_ID,
         **DIGESTS,
     }
     changed = copy.deepcopy(profile)
