@@ -107,11 +107,16 @@ COPY bundle/sources/sparkcache/LICENSE /usr/share/licenses/SparkCache/LICENSE
 
 RUN set -eu; \
     actual_source="$(python3 -c 'import importlib.util, pathlib; spec = importlib.util.spec_from_file_location("source_identity", "/opt/sparkcache-source-identity.py"); module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module); print(module.source_tree_sha256(pathlib.Path("/opt/sparkcache-src/sparkcache")))')"; \
+    actual_native="$(sha256sum /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so | cut -d' ' -f1)"; \
+    printf 'sparkcache_source_sha256=%s\nsparkcache_native_sha256=%s\n' \
+      "${actual_source}" "${actual_native}"; \
     test "${actual_source}" = "${SPARKCACHE_SOURCE_SHA256}"; \
-    test "$(sha256sum /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so | cut -d' ' -f1)" = "${SPARKCACHE_NATIVE_SHA256}"; \
+    test "${actual_native}" = "${SPARKCACHE_NATIVE_SHA256}"; \
     root=/usr/local/lib/python3.12/dist-packages; \
     config="${root}/vllm/config/vllm.py"; \
-    test "$(sha256sum "${config}" | cut -d' ' -f1)" = cc03756d9bebf2a128828e5fbf7e9766446884dfce016c34381bce0aa78bfd9e; \
+    config_sha256="$(sha256sum "${config}" | cut -d' ' -f1)"; \
+    printf 'vllm_config_preimage_sha256=%s\n' "${config_sha256}"; \
+    test "${config_sha256}" = cc03756d9bebf2a128828e5fbf7e9766446884dfce016c34381bce0aa78bfd9e; \
     patch --batch --forward -p1 -d "${root}" \
       < /opt/sparkcache-vllm-patches/020-sparkcache-vmm-exemption.patch; \
     test "$(sha256sum "${config}" | cut -d' ' -f1)" = 9f64f5041f7f9d953e9f6bc53de8733b3eb4035c0753056a1f646346702a0994; \
