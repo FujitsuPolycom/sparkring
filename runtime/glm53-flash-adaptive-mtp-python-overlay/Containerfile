@@ -154,7 +154,7 @@ RUN set -eu; \
     recurrent_patch="${PYTHON_OVERLAY_ROOT}/patches/011-recurrent-boundary-contract.patch"; \
     recurrent_tests="${PYTHON_OVERLAY_ROOT}/patches/012-recurrent-boundary-contract-tests.patch"; \
     test "$(sha256sum "${recurrent_patch}" | cut -d' ' -f1)" = b895327f7e7560d6053c89849718a612c84e2efd84e9e6f6734e27b04f42b185; \
-    test "$(sha256sum "${recurrent_tests}" | cut -d' ' -f1)" = 4a23f25b540760aa3f793427017e3ee39605e60de7af1b851cbbd6cc0faeddec; \
+    test "$(sha256sum "${recurrent_tests}" | cut -d' ' -f1)" = d49aa3b441984139c13f8e392c12b1a3a55e670048e79ffd58ea194389e396ce; \
     test "$(sha256sum "${root}/vllm/v1/core/kv_cache_manager.py" | cut -d' ' -f1)" = ee03dc9ce2b720c0be6e9f572d23580ba96eff68fe3406250557e83071654af0; \
     test "$(sha256sum "${root}/vllm/v1/core/sched/output.py" | cut -d' ' -f1)" = 65235eba652e5a3ccee18bf3cbfeac9bf4da8fb9c61e961580f612cfb7e593bc; \
     test "$(sha256sum "${root}/vllm/v1/core/sched/scheduler.py" | cut -d' ' -f1)" = 6d397c97f31e67a75efc01b5ddd89fa58db425de14fa43965ef2d6146b6b9bdb; \

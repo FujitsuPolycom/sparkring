@@ -1,19 +1,54 @@
 diff --git a/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py b/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py
-index eff889b98..64d8409ae 100644
+index eff889b98..dbe1eb9c3 100644
 --- a/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py
 +++ b/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py
 @@ -4,6 +4,7 @@
  "align") models: scheduler chunk splitting, partial tail registration, CoW
  on partial hits, and same-step deferral."""
-
+ 
 +import inspect
  from math import lcm
  from types import SimpleNamespace
  from unittest.mock import MagicMock
-@@ -69,6 +70,14 @@ def test_capable_connector_uses_divergent_partial_hit_lookup():
+@@ -12,6 +13,16 @@ import pytest
+ import torch
+ 
+ from tests.v1.core.test_prefix_caching import make_kv_cache_manager, make_request
++from vllm.config import (
++    CacheConfig,
++    DeviceConfig,
++    KVTransferConfig,
++    ModelConfig,
++    SchedulerConfig,
++    VllmConfig,
++)
++from vllm.distributed.kv_transfer.kv_connector.factory import KVConnectorFactory
++from vllm.distributed.kv_transfer.kv_connector.v1.base import SupportsHMA
+ from vllm.utils.hashing import sha256
+ from vllm.v1.core.kv_cache_utils import (
+     KVCacheBlockCopy,
+@@ -20,6 +31,7 @@ from vllm.v1.core.kv_cache_utils import (
+     init_none_hash,
+ )
+ from vllm.v1.core.sched.scheduler import Scheduler
++from vllm.v1.core.single_type_kv_cache_manager import register_all_kvcache_specs
+ from vllm.v1.kv_cache_interface import (
+     FullAttentionSpec,
+     KVCacheConfig,
+@@ -27,6 +39,9 @@ from vllm.v1.kv_cache_interface import (
+     MambaSpec,
+     SlidingWindowSpec,
+ )
++from vllm.v1.outputs import ModelRunnerOutput
++from vllm.v1.request import RequestStatus
++from vllm.v1.structured_output import StructuredOutputManager
+ 
+ 
+ @pytest.fixture(autouse=True)
+@@ -69,6 +84,14 @@ def test_capable_connector_uses_divergent_partial_hit_lookup():
      manager.get_computed_blocks.assert_not_called()
-
-
+ 
+ 
 +@pytest.mark.skip_global_cleanup
 +def test_recurrent_boundary_capability_defers_overlapping_block_free():
 +    source = inspect.getsource(Scheduler.__init__)
@@ -25,10 +60,10 @@ index eff889b98..64d8409ae 100644
  def make_full_mamba_manager(
      *,
      dcp_world_size: int,
-@@ -856,6 +865,138 @@ def test_take_partial_tail_offloads_empty_without_partial_tail():
+@@ -856,6 +879,329 @@ def test_take_partial_tail_offloads_empty_without_partial_tail():
      assert manager.take_partial_tail_offloads() == {}
-
-
+ 
+ 
 +@pytest.mark.parametrize("prompt_tokens", [6992, 7168])
 +@pytest.mark.skip_global_cleanup
 +def test_aligned_recurrent_boundary_ignores_seven_speculative_slots(
@@ -79,7 +114,7 @@ index eff889b98..64d8409ae 100644
 +    )
 +    computed_blocks, num_computed, _ = manager.get_computed_blocks(request)
 +    assert manager.allocate_slots(
-+        request, boundary_tokens, num_computed, computed_blocks
++        request, prompt_tokens, num_computed, computed_blocks
 +    ) is not None
 +
 +    assert manager.take_partial_tail_offloads() == {}
@@ -90,21 +125,18 @@ index eff889b98..64d8409ae 100644
 +    assert (group_id, emitted_boundary) == (1, boundary_tokens)
 +
 +    mamba_blocks = manager.get_blocks("aligned").blocks[1]
-+    assert len(mamba_blocks) == 3 + 7
++    assert len(mamba_blocks) == 4 + 7
 +    boundary_block = mamba_blocks[2]
 +    assert block_id == boundary_block.block_id
 +    assert block_id not in {block.block_id for block in mamba_blocks[3:]}
 +    assert boundary_block.block_hash_num_tokens == boundary_tokens
 +    assert get_group_id(boundary_block.block_hash) == group_id
 +
-+    # Finish the prompt, then schedule one decode token. The second allocation
-+    # runs remove_skipped_blocks, which nulls arithmetic slot 2. The hand-off
-+    # must keep naming and pinning the exact cached boundary block rather than
-+    # selecting a later running or speculative slot.
-+    request.num_computed_tokens = boundary_tokens
-+    assert manager.allocate_slots(
-+        request, prompt_tokens - boundary_tokens
-+    ) is not None
++    # Schedule one decode token. The first allocation crossed the replay
++    # boundary while finishing the prompt; the second runs remove_skipped_blocks,
++    # which nulls arithmetic slot 2. The hand-off must keep naming and pinning
++    # the exact cached boundary block rather than selecting a later running or
++    # speculative slot.
 +    request.num_computed_tokens = prompt_tokens
 +    request.append_output_token_ids([prompt_tokens])
 +    assert manager.allocate_slots(request, 1) is not None
@@ -160,6 +192,200 @@ index eff889b98..64d8409ae 100644
 +
 +    assert manager.take_recurrent_boundary_blocks() == {}
 +    assert boundary.ref_cnt == ref_cnt
++
++
++class _RecurrentProducerConnector(SupportsHMA):
++    """Minimal scheduler-side producer at the real KV connector seam."""
++
++    supports_divergent_local_hybrid_hits = False
++    supports_recurrent_boundary_blocks = True
++    requires_kv_delivery = False
++
++    def bind_gpu_block_pool(self, block_pool) -> None:
++        self.block_pool = block_pool
++
++    def on_new_request(self, request) -> None:
++        pass
++
++    def get_num_new_matched_tokens(self, request, num_computed_tokens):
++        return 0, False
++
++    def update_state_after_alloc(self, request, blocks, num_external_tokens) -> None:
++        pass
++
++    def build_connector_meta(self, scheduler_output):
++        return None
++
++    def get_kv_connector_stats(self):
++        return None
++
++    def take_events(self):
++        return ()
++
++    def request_finished_all_groups(self, request, block_ids):
++        return False, None
++
++
++def _make_glm_recurrent_scheduler(
++    monkeypatch: pytest.MonkeyPatch,
++) -> Scheduler:
++    """Build a CPU-only Scheduler with the live GLM recurrent geometry."""
++    monkeypatch.setenv("VLLM_ALLOW_LONG_MAX_MODEL_LEN", "1")
++    hash_block_size = 256
++    mamba_block_size = 2304
++    connector = _RecurrentProducerConnector()
++    monkeypatch.setattr(
++        KVConnectorFactory,
++        "create_connector",
++        lambda **_kwargs: connector,
++    )
++    model_config = ModelConfig(
++        model="facebook/opt-125m",
++        trust_remote_code=True,
++        dtype="float16",
++        seed=42,
++        skip_tokenizer_init=True,
++        max_model_len=16384,
++    )
++    vllm_config = VllmConfig(
++        scheduler_config=SchedulerConfig(
++            max_num_seqs=4,
++            max_num_batched_tokens=8192,
++            max_model_len=16384,
++            enable_chunked_prefill=True,
++            is_encoder_decoder=False,
++            watermark=0.0,
++        ),
++        model_config=model_config,
++        cache_config=CacheConfig(
++            block_size=hash_block_size,
++            enable_prefix_caching=True,
++            mamba_cache_mode="align",
++            prefix_match_unit=hash_block_size,
++        ),
++        kv_transfer_config=KVTransferConfig(
++            kv_connector="SimpleCPUOffloadConnector",
++            kv_role="kv_producer",
++        ),
++        device_config=DeviceConfig(device="cpu"),
++    )
++    vllm_config.cache_config.num_gpu_blocks = 256
++    kv_cache_config = KVCacheConfig(
++        num_blocks=256,
++        kv_cache_tensors=[],
++        kv_cache_groups=[
++            KVCacheGroupSpec(
++                ["full"],
++                FullAttentionSpec(
++                    block_size=hash_block_size,
++                    num_kv_heads=1,
++                    head_size=1,
++                    dtype=torch.float32,
++                ),
++            ),
++            KVCacheGroupSpec(
++                ["mamba"],
++                MambaSpec(
++                    block_size=mamba_block_size,
++                    shapes=(1, 1),
++                    dtypes=(torch.float32,),
++                    mamba_cache_mode="align",
++                    num_speculative_blocks=7,
++                ),
++            ),
++        ],
++    )
++    register_all_kvcache_specs(vllm_config)
++    return Scheduler(
++        vllm_config=vllm_config,
++        kv_cache_config=kv_cache_config,
++        structured_output_manager=StructuredOutputManager(vllm_config),
++        block_size=mamba_block_size,
++        hash_block_size=hash_block_size,
++    )
++
++
++def _empty_model_output(request_id: str) -> ModelRunnerOutput:
++    return ModelRunnerOutput(
++        req_ids=[request_id],
++        req_id_to_index={request_id: 0},
++        sampled_token_ids=[[]],
++        logprobs=None,
++        prompt_logprobs_dict={},
++        pooler_output=[],
++    )
++
++
++@pytest.mark.skip_global_cleanup
++def test_aligned_glm_boundary_is_in_the_allocating_scheduler_output(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    scheduler = _make_glm_recurrent_scheduler(monkeypatch)
++    request = make_request("aligned-output", list(range(6992)), 256, sha256)
++    scheduler.add_request(request)
++
++    output = scheduler.schedule()
++
++    assert output.num_scheduled_tokens == {"aligned-output": 6912}
++    assert output.partial_tail_offloads is None
++    assert output.recurrent_boundary_blocks is not None
++    ((group_id, block_id, boundary_tokens),) = output.recurrent_boundary_blocks[
++        "aligned-output"
++    ]
++    assert (group_id, boundary_tokens) == (1, 6912)
++    boundary_block = scheduler.kv_cache_manager.block_pool.blocks[block_id]
++    assert boundary_block.block_hash_num_tokens == boundary_tokens
++    assert get_group_id(boundary_block.block_hash) == group_id
++    assert scheduler.kv_cache_manager._partial_tail_pins["aligned-output"] == [
++        boundary_block
++    ]
++
++    scheduler.update_from_output(output, _empty_model_output("aligned-output"))
++    scheduler.finish_requests("aligned-output", RequestStatus.FINISHED_ABORTED)
++    assert "aligned-output" not in scheduler.kv_cache_manager._partial_tail_pins
++    assert boundary_block.ref_cnt == 0
++
++
++@pytest.mark.skip_global_cleanup
++def test_partial_glm_boundary_is_in_next_scheduler_output_after_cow(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    scheduler = _make_glm_recurrent_scheduler(monkeypatch)
++    request = make_request("partial-output", list(range(8193)), 256, sha256)
++    scheduler.add_request(request)
++
++    first = scheduler.schedule()
++    assert first.num_scheduled_tokens == {"partial-output": 8192}
++    assert first.kv_cache_block_copies is None
++    assert first.partial_tail_offloads is None
++    assert first.recurrent_boundary_blocks is None
++    scheduler.update_from_output(first, _empty_model_output("partial-output"))
++
++    second = scheduler.schedule()
++
++    assert second.num_scheduled_tokens == {"partial-output": 1}
++    assert second.kv_cache_block_copies is not None
++    assert second.partial_tail_offloads is not None
++    assert second.recurrent_boundary_blocks == second.partial_tail_offloads
++    ((group_id, block_id, boundary_tokens),) = second.recurrent_boundary_blocks[
++        "partial-output"
++    ]
++    assert (group_id, boundary_tokens) == (1, 8192)
++    cow_copy = next(
++        copy
++        for copy in second.kv_cache_block_copies
++        if copy.dst_block_id == block_id
++    )
++    assert cow_copy.src_block_id != block_id
++    cow_block = scheduler.kv_cache_manager.block_pool.blocks[block_id]
++    assert scheduler.kv_cache_manager._partial_tail_pins["partial-output"] == [
++        cow_block
++    ]
++
++    scheduler.update_from_output(second, _empty_model_output("partial-output"))
++    scheduler.finish_requests("partial-output", RequestStatus.FINISHED_ABORTED)
++    assert "partial-output" not in scheduler.kv_cache_manager._partial_tail_pins
++    assert cow_block.ref_cnt == 0
 +
  def test_truncate_computed_blocks_preserves_sparse_prefix_positions():
      """truncate_computed_blocks slices each group by its own block size,
