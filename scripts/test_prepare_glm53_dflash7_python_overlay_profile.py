@@ -9,7 +9,10 @@ import yaml
 
 import sparkring_generic_launcher as launcher
 from prepare_glm53_dflash7_python_overlay_profile import (
+    ALLOWED_RUNTIME_WARNINGS,
     B12X_COMMIT,
+    DEEP_EP_DISTRIBUTION,
+    DEEP_EP_REMOVAL_RECEIPT_SHA256,
     DFLASH_LOADER_PATCH_SHA256,
     DFLASH_LOADER_POSTIMAGE_SHA256,
     DFLASH_WEIGHTS_SHA256,
@@ -92,6 +95,28 @@ def test_profiles_pin_external_dflash7_and_tp4(path: Path, loader: str) -> None:
     assert not any(
         name.startswith("INSTANTTENSOR_") for name in profile["environment"]
     )
+    environment = profile["environment"]
+    assert "OMP_NUM_THREADS" not in environment
+    assert "PYTHONWARNINGS" not in environment
+    assert environment["VLLM_ALLREDUCE_USE_SYMM_MEM"] == "0"
+    assert environment["VLLM_ALLREDUCE_USE_FLASHINFER"] == "0"
+    assert environment["VLLM_NCCL_SO_PATH"] == "/opt/sparkring/nccl/libnccl.so.2"
+    assert environment["LD_PRELOAD"] == environment["VLLM_NCCL_SO_PATH"]
+    assert environment["VLLM_ENABLE_PCIE_ALLREDUCE"] == "0"
+    assert profile["extra_vllm_args"].count("--disable-custom-all-reduce") == 1
+    assert profile["extra_vllm_args"].count("--language-model-only") == 1
+    assert _argument(profile, "--attention-backend") == "B12X"
+    assert _argument(profile, "--moe-backend") == "b12x"
+    assert _argument(profile, "--linear-backend") == "b12x"
+    compilation = json.loads(_argument(profile, "--compilation-config"))
+    assert compilation["pass_config"]["fuse_allreduce_rms"] is False
+    assert profile["identity"]["deep_ep_removed_distribution"] == (
+        DEEP_EP_DISTRIBUTION
+    )
+    assert profile["identity"]["deep_ep_module_status"] == "absent"
+    assert profile["identity"]["allowed_runtime_warnings"] == (
+        ALLOWED_RUNTIME_WARNINGS
+    )
 
 
 def test_fastsafetensors_profile_separates_the_draft_loader() -> None:
@@ -150,6 +175,12 @@ def test_resolved_profile_requires_dflash7_image_labels() -> None:
     assert labels["org.sparkring.vllm.dflash-draft-loader-postimage-sha256"] == (
         DFLASH_LOADER_POSTIMAGE_SHA256
     )
+    assert labels["org.sparkring.runtime.removed-deep-ep-distribution"] == (
+        DEEP_EP_DISTRIBUTION
+    )
+    assert labels["org.sparkring.runtime.deep-ep-removal-receipt-sha256"] == (
+        DEEP_EP_REMOVAL_RECEIPT_SHA256
+    )
     assert "adaptive" not in " ".join(labels.values()).lower()
 
 
@@ -182,6 +213,24 @@ def test_resolver_rejects_mtp_or_noncanonical_cuda_restore() -> None:
     with pytest.raises(ResolveError, match="draft_load_config safetensors"):
         resolve(changed, copy.deepcopy(site), **kwargs)
 
+    changed = copy.deepcopy(profile)
+    changed["environment"]["OMP_NUM_THREADS"] = "16"
+    with pytest.raises(ResolveError, match="OMP_NUM_THREADS"):
+        resolve(changed, copy.deepcopy(site), **kwargs)
+
+    changed = copy.deepcopy(profile)
+    changed["environment"].pop("VLLM_ALLREDUCE_USE_SYMM_MEM")
+    with pytest.raises(ResolveError, match="VLLM_ALLREDUCE_USE_SYMM_MEM"):
+        resolve(changed, copy.deepcopy(site), **kwargs)
+
+    changed = copy.deepcopy(profile)
+    compilation = json.loads(_argument(changed, "--compilation-config"))
+    compilation["pass_config"]["fuse_allreduce_rms"] = True
+    args = changed["extra_vllm_args"]
+    args[args.index("--compilation-config") + 1] = json.dumps(compilation)
+    with pytest.raises(ResolveError, match="all-reduce RMS fusion"):
+        resolve(changed, copy.deepcopy(site), **kwargs)
+
 
 def test_generic_launcher_emits_four_rank_dry_run(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -208,3 +257,6 @@ def test_quickstart_names_both_loader_statuses_and_exact_builder() -> None:
     assert "implemented" in guide and "not qualified" in guide
     assert DFLASH_WEIGHTS_SHA256 in guide
     assert DFLASH_LOADER_PATCH_SHA256 in guide
+    assert "DeepEP" in guide
+    assert "ModelOpt" in guide
+    assert "FP8 KV" in guide

@@ -32,8 +32,12 @@ bash runtime/glm53-flash-dflash7-python-overlay/build-image.sh
 
 The script does not push the image. Its receipt verifies mixed vLLM
 provenance, B12X, target loader dependencies, NCCL, SparkCache CUDA placement,
-the clean SparkCache source receipt, and the vLLM lease contract. DFlash model
-files remain operator-mounted and are verified by the runtime profile.
+the clean SparkCache source receipt, the vLLM lease contract, and removal of the
+unused `deep_ep==2.0.0+local` distribution. The removal receipt has SHA-256
+`65514f44829e7d176b0b2cacc9559ed22724e525b7041a8bcd4d2e02d1f372e3`.
+The build accepts removal only when `deep_ep` has that one distribution owner,
+then verifies that the module is absent. DFlash model files remain
+operator-mounted and are verified by the runtime profile.
 
 Two executable profiles use external DFlash at depth seven and TP4, FP8 target
 KV, 256-token vLLM blocks, 32 sequences, and SparkCache page-tail copy-on-write
@@ -43,3 +47,10 @@ profile uses global fastsafetensors for the target and an exact
 `draft_load_config` selecting safetensors for DFlash. The image applies and
 verifies the draft-loader patch before installing SparkCache patches. See
 `docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md`.
+
+Both profiles preserve B12X compute backends and the pinned PYNCCL/NCCL
+library. They disable unsupported symmetric-memory and FlashInfer all-reduce
+probes, disable the all-reduce RMS fusion, select language-model-only serving,
+and leave Torch thread selection unset. ModelOpt and FP8 KV warnings remain
+visible because they describe supported-runtime limitations rather than unused
+optional backends.

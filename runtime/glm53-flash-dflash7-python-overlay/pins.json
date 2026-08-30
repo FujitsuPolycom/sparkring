@@ -116,6 +116,15 @@
       }
     ]
   },
+  "runtime_cleanup": {
+    "deep_ep": {
+      "module": "deep_ep",
+      "distribution": "deep_ep",
+      "version": "2.0.0+local",
+      "receipt_sha256": "65514f44829e7d176b0b2cacc9559ed22724e525b7041a8bcd4d2e02d1f372e3",
+      "reason": "The four-rank DFlash7 profile uses B12X kernels and PYNCCL collectives. Removing unused DeepEP prevents its import probe from loading a second NCCL distribution."
+    }
+  },
   "runtime_cache_roots": {
     "VLLM_CACHE_ROOT": "/cache/jit/vllm/dflash7-py-0b67266-native-da4d7be",
     "B12X_CUTE_COMPILE_CACHE_DIR": "/cache/jit/b12x/b1d541f9/dflash7-cute",

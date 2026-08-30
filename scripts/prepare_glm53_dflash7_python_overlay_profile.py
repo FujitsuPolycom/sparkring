@@ -57,6 +57,13 @@ DFLASH_CONFIG_SHA256 = (
 DFLASH_WEIGHTS_SHA256 = (
     "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b"
 )
+DEEP_EP_REMOVAL_RECEIPT_SHA256 = (
+    "65514f44829e7d176b0b2cacc9559ed22724e525b7041a8bcd4d2e02d1f372e3"
+)
+DEEP_EP_DISTRIBUTION = "deep_ep==2.0.0+local"
+ALLOWED_RUNTIME_WARNINGS = (
+    "modelopt_experimental_quantization,fp8_kv_cache_accuracy"
+)
 
 
 class ResolveError(ValueError):
@@ -132,6 +139,9 @@ def resolve(
         "b12x_revision": B12X_COMMIT,
         "b12x_tree": B12X_TREE,
         "vllm_python_overlay_manifest_sha256": OVERLAY_MANIFEST_SHA256,
+        "deep_ep_removed_distribution": DEEP_EP_DISTRIBUTION,
+        "deep_ep_module_status": "absent",
+        "allowed_runtime_warnings": ALLOWED_RUNTIME_WARNINGS,
     }
     for name, expected in fixed_identity.items():
         if identity.get(name) != expected:
@@ -165,6 +175,42 @@ def resolve(
     for name, expected in expected_speculative.items():
         if speculative.get(name) != expected:
             raise ResolveError(f"DFlash configuration {name} must be {expected}")
+
+    environment = profile.get("environment", {})
+    environment_contract = {
+        "LD_PRELOAD": "/opt/sparkring/nccl/libnccl.so.2",
+        "VLLM_NCCL_SO_PATH": "/opt/sparkring/nccl/libnccl.so.2",
+        "NCCL_ALGO": "Ring",
+        "NCCL_NET": "IB",
+        "VLLM_ENABLE_PCIE_ALLREDUCE": "0",
+        "VLLM_ALLREDUCE_USE_FLASHINFER": "0",
+        "VLLM_ALLREDUCE_USE_SYMM_MEM": "0",
+    }
+    for name, expected in environment_contract.items():
+        if environment.get(name) != expected:
+            raise ResolveError(f"runtime environment {name} must be {expected}")
+    if "OMP_NUM_THREADS" in environment:
+        raise ResolveError("OMP_NUM_THREADS must remain unset for vLLM thread selection")
+    if "PYTHONWARNINGS" in environment:
+        raise ResolveError("runtime warnings must remain visible")
+
+    arguments = profile.get("extra_vllm_args", [])
+    for flag in ("--disable-custom-all-reduce", "--language-model-only"):
+        if arguments.count(flag) != 1:
+            raise ResolveError(f"profile must contain exactly one {flag}")
+    backend_contract = {
+        "--attention-backend": "B12X",
+        "--moe-backend": "b12x",
+        "--linear-backend": "b12x",
+        "--kv-cache-dtype": "fp8",
+        "--quantization": "modelopt_mixed",
+    }
+    for option, expected in backend_contract.items():
+        if _argument(profile, option) != expected:
+            raise ResolveError(f"runtime backend {option} must be {expected}")
+    compilation = json.loads(_argument(profile, "--compilation-config"))
+    if compilation.get("pass_config", {}).get("fuse_allreduce_rms") is not False:
+        raise ResolveError("compilation must disable the all-reduce RMS fusion")
 
     transfer = json.loads(_argument(profile, "--kv-transfer-config"))
     extra = transfer.get("kv_connector_extra_config", {})
@@ -209,6 +255,10 @@ def resolve(
         "org.sparkcache.source-tree": SPARKCACHE_TREE,
         "org.sparkcache.source-sha256": SPARKCACHE_SOURCE_SHA256,
         "org.sparkcache.vllm-contract-sha256": LEASE_CONTRACT_SHA256,
+        "org.sparkring.runtime.removed-deep-ep-distribution": DEEP_EP_DISTRIBUTION,
+        "org.sparkring.runtime.deep-ep-removal-receipt-sha256": (
+            DEEP_EP_REMOVAL_RECEIPT_SHA256
+        ),
     }
     for name, expected in fixed_labels.items():
         if labels.get(name) != expected:
@@ -220,6 +270,8 @@ def resolve(
         DFLASH_WEIGHTS_SHA256,
         SPARKCACHE_SOURCE_SHA256,
         LEASE_CONTRACT_SHA256,
+        DEEP_EP_REMOVAL_RECEIPT_SHA256,
+        'find_spec("deep_ep") is None',
         "/opt/sparkring/runtime/python-overlay/sparkcache-source-tree.sha256",
         *PLACEHOLDERS,
     ):

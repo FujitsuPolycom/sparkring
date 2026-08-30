@@ -32,13 +32,14 @@
     "NCCL_P2P_LEVEL": "SYS",
     "NCCL_PROTO": "LL,LL128,Simple",
     "NCCL_SWITCHLESS_RING_ONLY": "1",
-    "OMP_NUM_THREADS": "16",
     "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
     "TORCHINDUCTOR_CACHE_DIR": "/cache/jit/torchinductor/dflash7-vllm-py-0b67266-native-da4d7be",
     "TORCHINDUCTOR_COMPILE_THREADS": "1",
     "TORCH_CUDA_ARCH_LIST": "12.1a",
     "TRANSFORMERS_OFFLINE": "1",
     "TRITON_CACHE_DIR": "/cache/jit/triton/dflash7-vllm-py-0b67266-native-da4d7be",
+    "VLLM_ALLREDUCE_USE_FLASHINFER": "0",
+    "VLLM_ALLREDUCE_USE_SYMM_MEM": "0",
     "VLLM_B12X_MOE_FP4_FORCE_A16": "0",
     "VLLM_CACHE_ROOT": "/cache/jit/vllm/dflash7-py-0b67266-native-da4d7be",
     "VLLM_ENABLE_PCIE_ALLREDUCE": "0",
@@ -58,6 +59,7 @@
     "--disable-custom-all-reduce",
     "--mamba-cache-mode",
     "align",
+    "--language-model-only",
     "--enable-chunked-prefill",
     "--dtype",
     "bfloat16",
@@ -90,7 +92,7 @@
     "--speculative-config",
     "{\"method\":\"dflash\",\"model\":\"/dflash-draft\",\"num_speculative_tokens\":7,\"draft_tensor_parallel_size\":4,\"kv_cache_dtype\":\"auto\",\"draft_sample_method\":\"probabilistic\",\"rejection_sample_method\":\"standard\",\"draft_load_config\":{\"load_format\":\"safetensors\"}}",
     "--compilation-config",
-    "{\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"cudagraph_capture_sizes\":[8,16,32,64,128,256],\"custom_ops\":[\"all\"]}",
+    "{\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"cudagraph_capture_sizes\":[8,16,32,64,128,256],\"custom_ops\":[\"all\"],\"pass_config\":{\"fuse_allreduce_rms\":false}}",
     "--max-cudagraph-capture-size",
     "256",
     "--async-scheduling",
@@ -156,7 +158,10 @@
     "vllm_python_tree": "ba9484ccb33aa56e90ff2f447f15ca9b9da97639",
     "b12x_revision": "b1d541f9e71a35f030d45fae437630fff7507c2a",
     "b12x_tree": "c69cdec1c59a08e8e0e549f930fa8abcfb5134ae",
-    "vllm_python_overlay_manifest_sha256": "e5e528288b173399611a4930fecc4182b7208bc1564881d52ca5d2c5c4ae0f6a"
+    "vllm_python_overlay_manifest_sha256": "e5e528288b173399611a4930fecc4182b7208bc1564881d52ca5d2c5c4ae0f6a",
+    "deep_ep_removed_distribution": "deep_ep==2.0.0+local",
+    "deep_ep_module_status": "absent",
+    "allowed_runtime_warnings": "modelopt_experimental_quantization,fp8_kv_cache_accuracy"
   },
   "required_image_labels": {
     "org.jovian.architecture": "linux-arm64-sm121",
@@ -180,6 +185,8 @@
     "org.sparkcache.source-tree": "e864ed9ad64f771188fdb59aa9738e348134d636",
     "org.sparkcache.source-sha256": "f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88",
     "org.sparkcache.vllm-contract-sha256": "6defde9551cbb586fd09bb2d3020495531b6573397875a767eaae1dbad126024",
+    "org.sparkring.runtime.removed-deep-ep-distribution": "deep_ep==2.0.0+local",
+    "org.sparkring.runtime.deep-ep-removal-receipt-sha256": "65514f44829e7d176b0b2cacc9559ed22724e525b7041a8bcd4d2e02d1f372e3",
     "org.sparkring.source-receipt-sha256": "REPLACE_WITH_SOURCE_RECEIPT_SHA256",
     "org.sparkring.nccl.commit": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
     "org.sparkring.nccl.patch-sha256": "6709063fa1c25055ae77a9397dea5d89643f8211d25e7990bdd11597d08c0dde",
@@ -188,6 +195,6 @@
   "attestation_hook": [
     "/bin/sh",
     "-ec",
-    "test -f /models/target/config.json && test -f /models/target/model.safetensors.index.json && test \"$(sha256sum /models/target/config.json | cut -d ' ' -f1)\" = 676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996 && test \"$(sha256sum /models/target/model.safetensors.index.json | cut -d ' ' -f1)\" = 0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb && test -f /dflash-draft/config.json && test -f /dflash-draft/model.safetensors && test \"$(sha256sum /dflash-draft/config.json | cut -d ' ' -f1)\" = c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573 && test \"$(sha256sum /dflash-draft/model.safetensors | cut -d ' ' -f1)\" = b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b && test \"$(sha256sum /opt/sparkring/nccl/libnccl.so.2 | cut -d ' ' -f1)\" = 5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3 && grep -q '\"tail-cow-v1\"' /opt/sparkcache-src/sparkcache/spark_context_cache_config.py && test \"$(sha256sum /opt/sparkring/runtime/python-overlay/vllm-python-overlay.json | cut -d ' ' -f1)\" = e5e528288b173399611a4930fecc4182b7208bc1564881d52ca5d2c5c4ae0f6a && test \"$(sha256sum /opt/sparkring/runtime/python-overlay/source-receipt.json | cut -d ' ' -f1)\" = REPLACE_WITH_SOURCE_RECEIPT_SHA256 && test \"$(python3 -c 'import json; print(json.load(open(\"/opt/sparkring/runtime/python-overlay/retained-native.json\", encoding=\"utf-8\"))[\"native_elf_manifest_sha256\"])')\" = REPLACE_WITH_VLLM_NATIVE_ELF_MANIFEST_SHA256 && test \"$(python3 -c 'import json; print(json.load(open(\"/opt/sparkring/runtime/python-overlay/retained-native.json\", encoding=\"utf-8\"))[\"native_dispatch_manifest_sha256\"])')\" = REPLACE_WITH_VLLM_NATIVE_DISPATCH_MANIFEST_SHA256 && test \"$(cat /opt/sparkring/runtime/python-overlay/sparkcache-source-tree.sha256)\" = f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88 && test \"$(sha256sum /opt/sparkcache-src/sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json | cut -d ' ' -f1)\" = 6defde9551cbb586fd09bb2d3020495531b6573397875a767eaae1dbad126024 && test \"$(sha256sum /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so | cut -d ' ' -f1)\" = REPLACE_WITH_CUDA_PLACEMENT_LIBRARY_SHA256 && python3 /opt/sparkcache-src/sparkcache/runtime_patches/verify_lease_contract.py --vllm-root /usr/local/lib/python3.12/dist-packages --contract /opt/sparkcache-src/sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json"
+    "test -f /models/target/config.json && test -f /models/target/model.safetensors.index.json && test \"$(sha256sum /models/target/config.json | cut -d ' ' -f1)\" = 676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996 && test \"$(sha256sum /models/target/model.safetensors.index.json | cut -d ' ' -f1)\" = 0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb && test -f /dflash-draft/config.json && test -f /dflash-draft/model.safetensors && test \"$(sha256sum /dflash-draft/config.json | cut -d ' ' -f1)\" = c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573 && test \"$(sha256sum /dflash-draft/model.safetensors | cut -d ' ' -f1)\" = b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b && test \"$(sha256sum /opt/sparkring/nccl/libnccl.so.2 | cut -d ' ' -f1)\" = 5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3 && grep -q '\"tail-cow-v1\"' /opt/sparkcache-src/sparkcache/spark_context_cache_config.py && test \"$(sha256sum /opt/sparkring/runtime/python-overlay/vllm-python-overlay.json | cut -d ' ' -f1)\" = e5e528288b173399611a4930fecc4182b7208bc1564881d52ca5d2c5c4ae0f6a && test \"$(sha256sum /opt/sparkring/runtime/python-overlay/source-receipt.json | cut -d ' ' -f1)\" = REPLACE_WITH_SOURCE_RECEIPT_SHA256 && test \"$(python3 -c 'import json; print(json.load(open(\"/opt/sparkring/runtime/python-overlay/retained-native.json\", encoding=\"utf-8\"))[\"native_elf_manifest_sha256\"])')\" = REPLACE_WITH_VLLM_NATIVE_ELF_MANIFEST_SHA256 && test \"$(python3 -c 'import json; print(json.load(open(\"/opt/sparkring/runtime/python-overlay/retained-native.json\", encoding=\"utf-8\"))[\"native_dispatch_manifest_sha256\"])')\" = REPLACE_WITH_VLLM_NATIVE_DISPATCH_MANIFEST_SHA256 && test \"$(cat /opt/sparkring/runtime/python-overlay/sparkcache-source-tree.sha256)\" = f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88 && test \"$(sha256sum /opt/sparkcache-src/sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json | cut -d ' ' -f1)\" = 6defde9551cbb586fd09bb2d3020495531b6573397875a767eaae1dbad126024 && test \"$(sha256sum /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so | cut -d ' ' -f1)\" = REPLACE_WITH_CUDA_PLACEMENT_LIBRARY_SHA256 && test \"$(sha256sum /opt/sparkring/runtime/python-overlay/deep-ep-removal-receipt.json | cut -d ' ' -f1)\" = 65514f44829e7d176b0b2cacc9559ed22724e525b7041a8bcd4d2e02d1f372e3 && python3 -c 'import importlib.util; assert importlib.util.find_spec(\"deep_ep\") is None' && python3 /opt/sparkcache-src/sparkcache/runtime_patches/verify_lease_contract.py --vllm-root /usr/local/lib/python3.12/dist-packages --contract /opt/sparkcache-src/sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json"
   ]
 }
