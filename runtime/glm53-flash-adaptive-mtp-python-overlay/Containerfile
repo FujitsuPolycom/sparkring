@@ -13,18 +13,18 @@ RUN test "$(git -C /build/b12x rev-parse HEAD)" = "${B12X_COMMIT}" \
       --no-deps --wheel-dir /out/wheels /build/b12x \
  && sha256sum /out/wheels/b12x-*.whl > /out/wheels/b12x-wheel.sha256
 
-FROM ${ARM_BUILDER} AS sparkcache-native
-COPY bundle/sources/sparkcache/sparkcache/native /build/sparkcache-native
-RUN cmake -S /build/sparkcache-native \
-      -B /build/sparkcache-native/build-cuda \
+FROM ${ARM_BUILDER} AS sparkcache-cuda-placement
+COPY bundle/sources/sparkcache/sparkcache/native /build/sparkcache-cuda-placement
+RUN cmake -S /build/sparkcache-cuda-placement \
+      -B /build/sparkcache-cuda-placement/build-cuda \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_CUDA_ARCHITECTURES=121 \
       -DSPARK_CACHE_PLACEMENT_ENABLE_CUDA=ON \
- && cmake --build /build/sparkcache-native/build-cuda \
+ && cmake --build /build/sparkcache-cuda-placement/build-cuda \
       --target spark_cache_placement -j"$(nproc)" \
- && test -s /build/sparkcache-native/build-cuda/libspark_cache_placement.so \
- && sha256sum /build/sparkcache-native/build-cuda/libspark_cache_placement.so \
-      > /build/sparkcache-native/build-cuda/libspark_cache_placement.so.sha256
+ && test -s /build/sparkcache-cuda-placement/build-cuda/libspark_cache_placement.so \
+ && sha256sum /build/sparkcache-cuda-placement/build-cuda/libspark_cache_placement.so \
+      > /build/sparkcache-cuda-placement/build-cuda/libspark_cache_placement.so.sha256
 
 FROM ${PUBLIC_BASE}
 
@@ -43,7 +43,7 @@ ARG SOURCE_RECEIPT_SHA256
 ARG OVERLAY_MANIFEST_SHA256
 ARG NATIVE_ELF_MANIFEST_SHA256
 ARG NATIVE_DISPATCH_MANIFEST_SHA256
-ARG SPARKCACHE_NATIVE_SHA256
+ARG SPARKCACHE_CUDA_PLACEMENT_SHA256
 
 ENV PYTHON_OVERLAY_ROOT=/opt/sparkring/runtime/python-overlay \
     VLLM_CACHE_ROOT=/cache/jit/vllm/py-0b67266-native-da4d7be \
@@ -98,11 +98,11 @@ RUN actual_source="$(python3 -c 'import importlib.util, pathlib; spec = importli
  && test "${actual_source}" = "${SPARKCACHE_SOURCE_SHA256}" \
  && printf '%s\n' "${actual_source}" \
       > "${PYTHON_OVERLAY_ROOT}/sparkcache-source-tree.sha256"
-COPY --from=sparkcache-native \
-  /build/sparkcache-native/build-cuda/libspark_cache_placement.so \
+COPY --from=sparkcache-cuda-placement \
+  /build/sparkcache-cuda-placement/build-cuda/libspark_cache_placement.so \
   /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so
-COPY --from=sparkcache-native \
-  /build/sparkcache-native/build-cuda/libspark_cache_placement.so.sha256 \
+COPY --from=sparkcache-cuda-placement \
+  /build/sparkcache-cuda-placement/build-cuda/libspark_cache_placement.so.sha256 \
   /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so.sha256
 COPY bundle/sources/sparkcache/patches/vllm-glm53-b12x-kda-adaptive-mtp \
   /opt/sparkcache-vllm-patches
@@ -112,9 +112,9 @@ COPY bundle/sources/b12x/LICENSE /usr/share/licenses/B12X/LICENSE
 COPY bundle/sources/sparkcache/LICENSE /usr/share/licenses/SparkCache/LICENSE
 
 RUN set -eu; \
-    actual_native="$(sha256sum /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so | cut -d' ' -f1)"; \
-    printf 'sparkcache_native_sha256=%s\n' "${actual_native}"; \
-    test "${actual_native}" = "${SPARKCACHE_NATIVE_SHA256}"; \
+    actual_cuda_placement="$(sha256sum /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so | cut -d' ' -f1)"; \
+    printf 'sparkcache_cuda_placement_sha256=%s\n' "${actual_cuda_placement}"; \
+    test "${actual_cuda_placement}" = "${SPARKCACHE_CUDA_PLACEMENT_SHA256}"; \
     root=/usr/local/lib/python3.12/dist-packages; \
     config="${root}/vllm/config/vllm.py"; \
     config_sha256="$(sha256sum "${config}" | cut -d' ' -f1)"; \
@@ -171,7 +171,7 @@ LABEL org.opencontainers.image.title="SparkRing GLM-5.3 adaptive-MTP Python over
       org.sparkcache.source-revision="${SPARKCACHE_COMMIT}" \
       org.sparkcache.source-tree="${SPARKCACHE_TREE}" \
       org.sparkcache.source-sha256="${SPARKCACHE_SOURCE_SHA256}" \
-      org.sparkcache.native-library-sha256="${SPARKCACHE_NATIVE_SHA256}" \
+      org.sparkcache.cuda-placement-library-sha256="${SPARKCACHE_CUDA_PLACEMENT_SHA256}" \
       org.sparkcache.vllm-contract-sha256="6defde9551cbb586fd09bb2d3020495531b6573397875a767eaae1dbad126024" \
       org.sparkcache.deployment-profile="glm53-flash-adaptive-mtp-python-overlay" \
       org.sparkring.source-receipt-sha256="${SOURCE_RECEIPT_SHA256}"

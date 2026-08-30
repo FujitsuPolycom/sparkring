@@ -80,17 +80,17 @@ mkdir -p "${context}/base-probe"
   --output /out/retained-native.json >/dev/null
 native_elf_manifest_sha256="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["native_elf_manifest_sha256"])' "${context}/base-probe/retained-native.json")"
 native_dispatch_manifest_sha256="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["native_dispatch_manifest_sha256"])' "${context}/base-probe/retained-native.json")"
-native_stage="sparkring-sparkcache-native:${sparkcache_commit:0:12}-${sparkring_revision:0:12}"
+cuda_placement_stage="sparkring-sparkcache-cuda-placement:${sparkcache_commit:0:12}-${sparkring_revision:0:12}"
 "${engine}" build \
   --platform linux/arm64 \
-  --target sparkcache-native \
+  --target sparkcache-cuda-placement \
   --file "${context}/bundle/runtime/Containerfile" \
   --build-arg "ARM_BUILDER=${arm_builder}" \
-  --tag "${native_stage}" \
+  --tag "${cuda_placement_stage}" \
   "${context}"
-sparkcache_native_sha256="$("${engine}" run --rm --entrypoint sha256sum \
-  "${native_stage}" \
-  /build/sparkcache-native/build-cuda/libspark_cache_placement.so | cut -d' ' -f1)"
+sparkcache_cuda_placement_sha256="$("${engine}" run --rm --entrypoint sha256sum \
+  "${cuda_placement_stage}" \
+  /build/sparkcache-cuda-placement/build-cuda/libspark_cache_placement.so | cut -d' ' -f1)"
 
 "${engine}" build \
   --platform linux/arm64 \
@@ -111,7 +111,7 @@ sparkcache_native_sha256="$("${engine}" run --rm --entrypoint sha256sum \
   --build-arg "OVERLAY_MANIFEST_SHA256=${overlay_manifest_sha256}" \
   --build-arg "NATIVE_ELF_MANIFEST_SHA256=${native_elf_manifest_sha256}" \
   --build-arg "NATIVE_DISPATCH_MANIFEST_SHA256=${native_dispatch_manifest_sha256}" \
-  --build-arg "SPARKCACHE_NATIVE_SHA256=${sparkcache_native_sha256}" \
+  --build-arg "SPARKCACHE_CUDA_PLACEMENT_SHA256=${sparkcache_cuda_placement_sha256}" \
   --tag "${image}" \
   "${context}"
 

@@ -11,10 +11,17 @@ from typing import Any
 
 import yaml
 
+from sparkcache_terminology import (
+    SparkCacheTerminologyError,
+    canonicalize_profile_connector_arguments,
+    resolve_string_alias,
+)
+
 
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 SHA256_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
-NATIVE_PLACEHOLDER = "REPLACE_WITH_NATIVE_LIBRARY_SHA256"
+CUDA_PLACEMENT_PLACEHOLDER = "REPLACE_WITH_CUDA_PLACEMENT_LIBRARY_SHA256"
+LEGACY_PLACEMENT_PLACEHOLDER = "REPLACE_WITH_NATIVE_LIBRARY_SHA256"
 IMAGE_PLACEHOLDER = "REPLACE_WITH_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_IMAGE"
 PARENT_PLACEHOLDER = "REPLACE_WITH_B12X_KDA_ADAPTIVE_MTP_RUNTIME_IMAGE"
 SPARKCACHE_COMMIT = "5d571018de5b63a9a90e5c11e6d6e86bbff4a957"
@@ -35,13 +42,18 @@ class ResolveError(ValueError):
     """A source-built image identity or profile template is incomplete."""
 
 
-def _replace_native(value: Any, digest: str) -> Any:
+def _replace_cuda_placement(value: Any, digest: str) -> Any:
     if isinstance(value, str):
-        return value.replace(NATIVE_PLACEHOLDER, digest)
+        return value.replace(CUDA_PLACEMENT_PLACEHOLDER, digest).replace(
+            LEGACY_PLACEMENT_PLACEHOLDER, digest
+        )
     if isinstance(value, list):
-        return [_replace_native(item, digest) for item in value]
+        return [_replace_cuda_placement(item, digest) for item in value]
     if isinstance(value, dict):
-        return {key: _replace_native(item, digest) for key, item in value.items()}
+        return {
+            key: _replace_cuda_placement(item, digest)
+            for key, item in value.items()
+        }
     return value
 
 
@@ -60,8 +72,19 @@ def resolve(
     image_id: str,
     parent_image: str,
     parent_image_id: str,
-    native_library_sha256: str,
+    cuda_placement_library_sha256: str | None = None,
+    native_library_sha256: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    try:
+        profile = canonicalize_profile_connector_arguments(profile)
+        cuda_placement_library_sha256 = resolve_string_alias(
+            cuda_placement_library_sha256,
+            native_library_sha256,
+            canonical_name="cuda_placement_library_sha256",
+            legacy_name="native_library_sha256",
+        )
+    except SparkCacheTerminologyError as error:
+        raise ResolveError(str(error)) from error
     if not image or IMAGE_PLACEHOLDER in image:
         raise ResolveError("SparkCache image reference is unresolved")
     if not parent_image or PARENT_PLACEHOLDER in parent_image:
@@ -70,8 +93,10 @@ def resolve(
         raise ResolveError("SparkCache image ID must be sha256 plus 64 lowercase hex")
     if SHA256_ID.fullmatch(parent_image_id) is None:
         raise ResolveError("runtime parent image ID must be sha256 plus 64 lowercase hex")
-    if SHA256.fullmatch(native_library_sha256) is None:
-        raise ResolveError("native library SHA-256 must be 64 lowercase hex")
+    if SHA256.fullmatch(cuda_placement_library_sha256) is None:
+        raise ResolveError(
+            "SparkCache CUDA placement library SHA-256 must be 64 lowercase hex"
+        )
     identity = profile.get("identity", {})
     if identity.get("sparkcache_source_revision") != SPARKCACHE_COMMIT:
         raise ResolveError("profile does not name the integrated SparkCache commit")
@@ -113,7 +138,7 @@ def resolve(
     if LEASE_CONTRACT_SHA256 not in attestation:
         raise ResolveError("profile does not attest the live-tensor KDA lease contract")
 
-    profile = _replace_native(profile, native_library_sha256)
+    profile = _replace_cuda_placement(profile, cuda_placement_library_sha256)
     profile["image"] = image
     profile["image_id"] = image_id
     labels = profile["required_image_labels"]
@@ -136,7 +161,8 @@ def main() -> int:
     parser.add_argument("--image-id", required=True)
     parser.add_argument("--parent-image", required=True)
     parser.add_argument("--parent-image-id", required=True)
-    parser.add_argument("--native-library-sha256", required=True)
+    parser.add_argument("--cuda-placement-library-sha256")
+    parser.add_argument("--native-library-sha256")
     parser.add_argument("--profile-output", type=Path, required=True)
     parser.add_argument("--site-output", type=Path, required=True)
     args = parser.parse_args()
@@ -150,6 +176,9 @@ def main() -> int:
             image_id=args.image_id,
             parent_image=args.parent_image,
             parent_image_id=args.parent_image_id,
+            cuda_placement_library_sha256=(
+                args.cuda_placement_library_sha256
+            ),
             native_library_sha256=args.native_library_sha256,
         )
     except (OSError, KeyError, json.JSONDecodeError, ResolveError) as exc:

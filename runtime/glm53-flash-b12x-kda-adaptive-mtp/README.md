@@ -32,7 +32,7 @@ receipt proves image construction only. Startup, semantic generation,
 SparkCache restore, shared-prefix concurrency, and fatal-log checks require a
 separate four-rank receipt.
 
-The matching SparkCache reconstructed-page placement source is commit
+The matching SparkCache CUDA placement source is commit
 `5d571018de5b63a9a90e5c11e6d6e86bbff4a957`, Git tree
 `e864ed9ad64f771188fdb59aa9738e348134d636`, with clean deployable-source
 SHA-256 `f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88`.

@@ -11,7 +11,7 @@ three, and a 32-step acceptance window. Fastsafetensors uses queue size one.
 TP4 makes the pinned vLLM loader select `nogds=True`, so model loading uses
 pipelined host I/O without GPU Direct Storage.
 
-The profile reserves 20 GiB of FP8 KV per rank and enables SparkCache native
+The profile reserves 20 GiB of FP8 KV per rank and enables SparkCache CUDA
 restore, tail-only publication, shared restore trunks, and bounded shared GPU
 prefix leases. Image construction and distribution do not require stopping an
 existing service. Do not run the launch command until all four ranks have the
@@ -49,10 +49,10 @@ Record immutable local identities:
 ```bash
 sparkcache_image='sparkring-glm53-sparkcache:b12x-kda-adaptive-mtp-0b67266a-arm64'
 sparkcache_image_id="$(docker image inspect --format '{{.Id}}' "${sparkcache_image}")"
-native_sha256="$(docker run --rm --entrypoint sha256sum "${sparkcache_image}" \
+cuda_placement_sha256="$(docker run --rm --entrypoint sha256sum "${sparkcache_image}" \
   /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so \
   | cut -d ' ' -f1)"
-test "${#native_sha256}" -eq 64
+test "${#cuda_placement_sha256}" -eq 64
 ```
 
 The runtime builder verifies the complete first-parent vLLM history from
@@ -72,7 +72,7 @@ python sparkring/scripts/prepare_glm53_b12x_kda_adaptive_mtp_profile.py \
   --image-id "${sparkcache_image_id}" \
   --parent-image "${runtime_image}" \
   --parent-image-id "${runtime_image_id}" \
-  --native-library-sha256 "${native_sha256}" \
+  --cuda-placement-library-sha256 "${cuda_placement_sha256}" \
   --profile-output profile.json \
   --site-output site.yaml
 ```

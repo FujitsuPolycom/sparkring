@@ -163,14 +163,14 @@ import json
 import pathlib
 
 root = pathlib.Path('/opt/sparkring/runtime/python-overlay')
-native = pathlib.Path('/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so')
+cuda_placement = pathlib.Path('/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so')
 contract = pathlib.Path('/opt/sparkcache-src/sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json')
 sparkcache_source_receipt = root / 'sparkcache-source-tree.sha256'
 wheel_receipt = (root / 'b12x-wheel.sha256').read_text(encoding='utf-8').split()
 print(json.dumps({
     'b12x_wheel_sha256': wheel_receipt[0],
     'b12x_wheel': pathlib.Path(wheel_receipt[1]).name,
-    'sparkcache_native_sha256': hashlib.sha256(native.read_bytes()).hexdigest(),
+    'sparkcache_cuda_placement_sha256': hashlib.sha256(cuda_placement.read_bytes()).hexdigest(),
     'sparkcache_contract_sha256': hashlib.sha256(contract.read_bytes()).hexdigest(),
     'sparkcache_source_tree_sha256': sparkcache_source_receipt.read_text(encoding='utf-8').strip(),
     'source_receipt_sha256': hashlib.sha256((root / 'source-receipt.json').read_bytes()).hexdigest(),
@@ -210,7 +210,7 @@ def verify_image(engine: str, image: str, pins_path: Path = PINS) -> dict[str, A
         raise VerifyError("clean SparkCache source receipt differs from its pin")
     for name in (
         "b12x_wheel_sha256",
-        "sparkcache_native_sha256",
+        "sparkcache_cuda_placement_sha256",
         "source_receipt_sha256",
     ):
         if SHA256.fullmatch(str(artifacts.get(name, ""))) is None:
@@ -223,8 +223,8 @@ def verify_image(engine: str, image: str, pins_path: Path = PINS) -> dict[str, A
         "org.sparkring.vllm.native-dispatch-manifest-sha256": runtime[
             "native_dispatch_manifest_sha256"
         ],
-        "org.sparkcache.native-library-sha256": artifacts[
-            "sparkcache_native_sha256"
+        "org.sparkcache.cuda-placement-library-sha256": artifacts[
+            "sparkcache_cuda_placement_sha256"
         ],
         "org.sparkring.source-receipt-sha256": artifacts[
             "source_receipt_sha256"

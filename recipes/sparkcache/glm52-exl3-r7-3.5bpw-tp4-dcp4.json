@@ -57,7 +57,7 @@
     "min_span_tokens": 256,
     "max_span_tokens": 1048576,
     "streaming_snapshots": false,
-    "native_restore": false,
+    "cuda_restore": false,
     "root_requirement": "Use one dedicated rank-local host directory per physical rank, mounted at the same container path on all four ranks."
   },
   "restart_contract": {
@@ -75,7 +75,7 @@
       "The qualified receipt covers max_model_len=262144; the current max_model_len=1048576 target requires a larger CKV-gather workspace and live memory validation.",
       "The qualified operator image is identified by local image ID but has no published immutable image reference. A clean-checkout rebuild has implemented status until it passes the promotion checklist.",
       "The qualified lane requires preserving and regenerating the 40-query-row exact-state receipt, whose path contains q40-exact-state-serving-v1, before every coordinated restart.",
-      "This recipe disables streaming snapshots and native restore; the published receipt does not cover either mode.",
+      "This recipe disables streaming snapshots and SparkCache CUDA restore; the published receipt does not cover either mode.",
       "Full GLM reasoning-trace equality is an inconclusive diagnostic under this runtime: repeated fixed-seed requests produced different non-empty reasoning bodies with identical final content and finish reason stop."
     ],
     "record": "https://github.com/FujitsuPolycom/sparkcache/blob/999bc13d6c0b52a6cee3c90487ac9b8643ba3f99/GLM52_A2_LIVE_VALIDATION.md",

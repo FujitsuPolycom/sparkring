@@ -154,8 +154,10 @@ def test_containerfile_reuses_vllm_and_nccl_native_artifacts() -> None:
     )
     source_verification = recipe.index('printf \'sparkcache_source_sha256=%s')
     source_receipt = recipe.index("sparkcache-source-tree.sha256")
-    native_copy = recipe.index("COPY --from=sparkcache-native", source_verification)
-    assert source_copy < source_verification < source_receipt < native_copy
+    cuda_placement_copy = recipe.index(
+        "COPY --from=sparkcache-cuda-placement", source_verification
+    )
+    assert source_copy < source_verification < source_receipt < cuda_placement_copy
 
 
 def test_image_verifier_reads_the_clean_sparkcache_source_receipt() -> None:

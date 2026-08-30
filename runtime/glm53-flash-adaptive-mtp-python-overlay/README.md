@@ -31,7 +31,7 @@ placement library is commit
 `e864ed9ad64f771188fdb59aa9738e348134d636`. The builder verifies clean
 deployable-source SHA-256
 `f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88`
-before generating the native library. It applies the VMM exemption,
+before generating the SparkCache CUDA placement library. It applies the VMM exemption,
 load-failure recovery, shared-prefix retention, and follower-attachment
 patches in order, then runs the eleven-file lease-contract verifier. The test
 profile selects `spark_cache_publication_schema=tail-cow-v1`, which maps opaque
@@ -50,7 +50,7 @@ bash runtime/glm53-flash-adaptive-mtp-python-overlay/build-image.sh
 
 The script pulls and verifies the immutable public base, fetches exact source
 commits into a temporary build context, builds a pure B12X wheel and the
-SparkCache placement library, creates the composed image, and writes a local
+SparkCache CUDA placement library, creates the composed image, and writes a local
 receipt. It does not push an image or contact serving hosts.
 
 ## Resolve and inspect the four-rank plan
@@ -68,7 +68,7 @@ python scripts/prepare_glm53_public_python_overlay_profile.py \
   --site-template /path/to/resolved-glm53-site.yaml \
   --image "$image" \
   --image-id "$(jq -r .image_id "$receipt")" \
-  --native-library-sha256 "$(jq -r .artifacts.sparkcache_native_sha256 "$receipt")" \
+  --cuda-placement-library-sha256 "$(jq -r .artifacts.sparkcache_cuda_placement_sha256 "$receipt")" \
   --native-elf-manifest-sha256 "$(jq -r .runtime_contract.native_elf_manifest_sha256 "$receipt")" \
   --native-dispatch-manifest-sha256 "$(jq -r .runtime_contract.native_dispatch_manifest_sha256 "$receipt")" \
   --source-receipt-sha256 "$(jq -r .artifacts.source_receipt_sha256 "$receipt")" \

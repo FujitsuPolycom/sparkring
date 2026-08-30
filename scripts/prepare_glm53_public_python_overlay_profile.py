@@ -12,12 +12,22 @@ from typing import Any
 
 import yaml
 
+from sparkcache_terminology import (
+    SparkCacheTerminologyError,
+    canonicalize_profile_connector_arguments,
+    resolve_string_alias,
+)
+
 
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 SHA256_ID = re.compile(r"sha256:[0-9a-f]{64}\Z")
 IMAGE_PLACEHOLDER = "REPLACE_WITH_PUBLIC_PYTHON_OVERLAY_SPARKCACHE_IMAGE"
+CUDA_PLACEMENT_PLACEHOLDER = "REPLACE_WITH_CUDA_PLACEMENT_LIBRARY_SHA256"
+LEGACY_PLACEMENT_PLACEHOLDER = "REPLACE_WITH_NATIVE_LIBRARY_SHA256"
+CUDA_PLACEMENT_LABEL = "org.sparkcache.cuda-placement-library-sha256"
+LEGACY_PLACEMENT_LABEL = "org.sparkcache.native-library-sha256"
 PLACEHOLDERS = {
-    "REPLACE_WITH_NATIVE_LIBRARY_SHA256": "native_library_sha256",
+    CUDA_PLACEMENT_PLACEHOLDER: "cuda_placement_library_sha256",
     "REPLACE_WITH_VLLM_NATIVE_ELF_MANIFEST_SHA256": "native_elf_manifest_sha256",
     "REPLACE_WITH_VLLM_NATIVE_DISPATCH_MANIFEST_SHA256": (
         "native_dispatch_manifest_sha256"
@@ -98,17 +108,46 @@ def resolve(
     *,
     image: str,
     image_id: str,
-    native_library_sha256: str,
+    cuda_placement_library_sha256: str | None = None,
     native_elf_manifest_sha256: str,
     native_dispatch_manifest_sha256: str,
     source_receipt_sha256: str,
+    native_library_sha256: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    try:
+        profile = canonicalize_profile_connector_arguments(profile)
+        cuda_placement_library_sha256 = resolve_string_alias(
+            cuda_placement_library_sha256,
+            native_library_sha256,
+            canonical_name="cuda_placement_library_sha256",
+            legacy_name="native_library_sha256",
+        )
+    except SparkCacheTerminologyError as error:
+        raise ResolveError(str(error)) from error
+    profile = _replace(
+        profile,
+        {LEGACY_PLACEMENT_PLACEHOLDER: CUDA_PLACEMENT_PLACEHOLDER},
+    )
+    labels = dict(profile.get("required_image_labels", {}))
+    if (
+        CUDA_PLACEMENT_LABEL in labels
+        and LEGACY_PLACEMENT_LABEL in labels
+        and labels[CUDA_PLACEMENT_LABEL] != labels[LEGACY_PLACEMENT_LABEL]
+    ):
+        raise ResolveError(
+            f"profile image labels {CUDA_PLACEMENT_LABEL} and compatibility "
+            f"alias {LEGACY_PLACEMENT_LABEL} have conflicting values"
+        )
+    if LEGACY_PLACEMENT_LABEL in labels and CUDA_PLACEMENT_LABEL not in labels:
+        labels[CUDA_PLACEMENT_LABEL] = labels[LEGACY_PLACEMENT_LABEL]
+    labels.pop(LEGACY_PLACEMENT_LABEL, None)
+    profile["required_image_labels"] = labels
     if not image or IMAGE_PLACEHOLDER in image:
         raise ResolveError("Python-overlay image reference is unresolved")
     if SHA256_ID.fullmatch(image_id) is None:
         raise ResolveError("Python-overlay image ID must be sha256 plus 64 lowercase hex")
     supplied = {
-        "native_library_sha256": native_library_sha256,
+        "cuda_placement_library_sha256": cuda_placement_library_sha256,
         "native_elf_manifest_sha256": native_elf_manifest_sha256,
         "native_dispatch_manifest_sha256": native_dispatch_manifest_sha256,
         "source_receipt_sha256": source_receipt_sha256,
@@ -234,7 +273,8 @@ def main() -> int:
     parser.add_argument("--site-template", type=Path, required=True)
     parser.add_argument("--image", required=True)
     parser.add_argument("--image-id", required=True)
-    parser.add_argument("--native-library-sha256", required=True)
+    parser.add_argument("--cuda-placement-library-sha256")
+    parser.add_argument("--native-library-sha256")
     parser.add_argument("--native-elf-manifest-sha256", required=True)
     parser.add_argument("--native-dispatch-manifest-sha256", required=True)
     parser.add_argument("--source-receipt-sha256", required=True)
@@ -249,10 +289,13 @@ def main() -> int:
             site,
             image=args.image,
             image_id=args.image_id,
-            native_library_sha256=args.native_library_sha256,
+            cuda_placement_library_sha256=(
+                args.cuda_placement_library_sha256
+            ),
             native_elf_manifest_sha256=args.native_elf_manifest_sha256,
             native_dispatch_manifest_sha256=args.native_dispatch_manifest_sha256,
             source_receipt_sha256=args.source_receipt_sha256,
+            native_library_sha256=args.native_library_sha256,
         )
     except (OSError, KeyError, json.JSONDecodeError, ResolveError) as exc:
         parser.error(str(exc))

@@ -30,7 +30,7 @@ PROFILE = (
 )
 SITE = CONFIG / "glm53-flash-b12x-kda-adaptive-mtp-tp4-site.example.yaml"
 IMAGE_ID = "sha256:" + "ab" * 32
-NATIVE_LIBRARY = "1a" * 32
+CUDA_PLACEMENT_LIBRARY = "1a" * 32
 NATIVE_ELF = "2b" * 32
 NATIVE_DISPATCH = "3c" * 32
 SOURCE_RECEIPT = "4d" * 32
@@ -70,7 +70,7 @@ def _resolved() -> tuple[dict, dict]:
         site,
         image="local/glm53-public-python-overlay@sha256:" + "a" * 64,
         image_id=IMAGE_ID,
-        native_library_sha256=NATIVE_LIBRARY,
+        cuda_placement_library_sha256=CUDA_PLACEMENT_LIBRARY,
         native_elf_manifest_sha256=NATIVE_ELF,
         native_dispatch_manifest_sha256=NATIVE_DISPATCH,
         source_receipt_sha256=SOURCE_RECEIPT,
@@ -98,6 +98,10 @@ def test_profile_selects_opaque_page_tail_copy_on_write() -> None:
     profile = json.loads(PROFILE.read_text(encoding="utf-8"))
     transfer = json.loads(_argument(profile, "--kv-transfer-config"))
     extra = transfer["kv_connector_extra_config"]
+    assert extra["spark_cache_cuda_restore"] is True
+    assert extra["spark_cache_cuda_placement_arena_bytes"] == 256 * 1024**2
+    assert extra["spark_cache_cuda_restore_io_workers"] == 8
+    assert not any(key.startswith("spark_cache_native_") for key in extra)
     assert extra["spark_cache_publication_schema"] == "tail-cow-v1"
     assert "tail-cow" in extra["spark_cache_root"]
     assert "tail-cow" in extra["spark_cache_clear_once"]
@@ -130,7 +134,10 @@ def test_resolver_requires_mixed_provenance_and_all_artifact_hashes() -> None:
     assert labels["org.sparkring.vllm.native-dispatch-manifest-sha256"] == (
         NATIVE_DISPATCH
     )
-    assert labels["org.sparkcache.native-library-sha256"] == NATIVE_LIBRARY
+    assert labels["org.sparkcache.cuda-placement-library-sha256"] == (
+        CUDA_PLACEMENT_LIBRARY
+    )
+    assert "org.sparkcache.native-library-sha256" not in labels
     assert labels["org.sparkcache.source-tree"] == (
         "e864ed9ad64f771188fdb59aa9738e348134d636"
     )
@@ -147,7 +154,7 @@ def test_resolver_rejects_snapshot_publication_or_source_built_labels() -> None:
     arguments = {
         "image": "image",
         "image_id": "sha256:" + "a" * 64,
-        "native_library_sha256": "b" * 64,
+        "cuda_placement_library_sha256": "b" * 64,
         "native_elf_manifest_sha256": "c" * 64,
         "native_dispatch_manifest_sha256": "d" * 64,
         "source_receipt_sha256": "e" * 64,
@@ -172,6 +179,52 @@ def test_resolver_rejects_snapshot_publication_or_source_built_labels() -> None:
     changed["attestation_hook"][2] += " && source_tree_sha256("
     with pytest.raises(ResolveError, match="clean SparkCache source receipt"):
         resolve(changed, copy.deepcopy(site), **arguments)
+
+
+def test_resolver_normalizes_legacy_placement_label_and_digest_alias() -> None:
+    profile = json.loads(PROFILE.read_text(encoding="utf-8"))
+    site = yaml.safe_load(SITE.read_text(encoding="utf-8"))
+    labels = profile["required_image_labels"]
+    labels["org.sparkcache.native-library-sha256"] = labels.pop(
+        "org.sparkcache.cuda-placement-library-sha256"
+    )
+
+    resolved, _ = resolve(
+        profile,
+        site,
+        image="image",
+        image_id="sha256:" + "a" * 64,
+        native_library_sha256="b" * 64,
+        native_elf_manifest_sha256="c" * 64,
+        native_dispatch_manifest_sha256="d" * 64,
+        source_receipt_sha256="e" * 64,
+    )
+
+    resolved_labels = resolved["required_image_labels"]
+    assert resolved_labels["org.sparkcache.cuda-placement-library-sha256"] == (
+        "b" * 64
+    )
+    assert "org.sparkcache.native-library-sha256" not in resolved_labels
+
+
+def test_resolver_rejects_conflicting_placement_label_aliases() -> None:
+    profile = json.loads(PROFILE.read_text(encoding="utf-8"))
+    site = yaml.safe_load(SITE.read_text(encoding="utf-8"))
+    profile["required_image_labels"][
+        "org.sparkcache.native-library-sha256"
+    ] = "0" * 64
+
+    with pytest.raises(ResolveError, match="conflicting values"):
+        resolve(
+            profile,
+            site,
+            image="image",
+            image_id="sha256:" + "a" * 64,
+            cuda_placement_library_sha256="b" * 64,
+            native_elf_manifest_sha256="c" * 64,
+            native_dispatch_manifest_sha256="d" * 64,
+            source_receipt_sha256="e" * 64,
+        )
 
 
 def test_generic_launcher_builds_a_four_rank_dry_run(

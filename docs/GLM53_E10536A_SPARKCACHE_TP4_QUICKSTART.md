@@ -19,8 +19,8 @@ pipelined shard loading without GPU Direct Storage. The queue can retain one
 additional shard-sized device buffer during model loading.
 
 All profiles use TP4/DCP1, 20 GiB FP8 KV per rank, a 524,288-token request
-limit, 32 sequences, native direct restore, two restore lanes, eight native
-I/O workers, two 256 MiB arenas, shared GPU-prefix leases, and one-shot cache
+limit, 32 sequences, SparkCache CUDA restore, two restore lanes, eight CUDA
+restore I/O workers, two 256 MiB placement arenas, shared GPU-prefix leases, and one-shot cache
 clearing.
 
 ## Build immutable inputs
@@ -57,10 +57,10 @@ Record the exact output identities:
 ```bash
 sparkcache_image='sparkring-glm53-sparkcache:e10536a-source-arm64'
 sparkcache_image_id="$(docker image inspect --format '{{.Id}}' "${sparkcache_image}")"
-native_sha256="$(docker run --rm --entrypoint sha256sum "${sparkcache_image}" \
+cuda_placement_sha256="$(docker run --rm --entrypoint sha256sum "${sparkcache_image}" \
   /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so \
   | cut -d ' ' -f1)"
-test "${#native_sha256}" -eq 64
+test "${#cuda_placement_sha256}" -eq 64
 ```
 
 ## Resolve a serving profile
@@ -88,7 +88,7 @@ python sparkring/scripts/prepare_glm53_e105_profile.py \
   --image-id "${sparkcache_image_id}" \
   --parent-image "${runtime_image}" \
   --parent-image-id "${runtime_image_id}" \
-  --native-library-sha256 "${native_sha256}" \
+  --cuda-placement-library-sha256 "${cuda_placement_sha256}" \
   --profile-output profile.json \
   --site-output site.yaml
 ```

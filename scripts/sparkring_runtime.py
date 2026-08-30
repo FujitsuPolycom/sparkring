@@ -34,6 +34,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
 
+from sparkcache_terminology import (
+    SparkCacheTerminologyError,
+    canonicalize_connector_arguments,
+)
+
 
 # ---------------------------------------------------------------------------
 # Schema constants
@@ -514,6 +519,10 @@ def parse_runtime_profile(
     extra_vllm_args = _validate_extra_vllm_args(
         document["extra_vllm_args"], f"{where}.extra_vllm_args",
     )
+    try:
+        extra_vllm_args = canonicalize_connector_arguments(extra_vllm_args)
+    except SparkCacheTerminologyError as error:
+        raise ProfileError(f"{where}.extra_vllm_args: {error}") from error
     extra_volumes = _validate_extra_volumes(
         document.get("extra_volumes"), f"{where}.extra_volumes",
     )
