@@ -28,7 +28,7 @@ The artifact bound these source contracts:
 | SparkCache deployable-source SHA-256 | `a2add45a9f97446f6c2a843355161da9a5499ff7501b4750d2163591785d7345` |
 | SparkCache vLLM contract SHA-256 | `8adbdfa3fd4b06b213c3aab45255a0b039f1c9940a4b1fad0efd004d263227c9` |
 | SparkCache CUDA placement library SHA-256 | `d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c` |
-| vLLM native commit | `da4d7be6c97434f6942292ed8abbf4b32dc44355` |
+| vLLM retained compiled commit | `da4d7be6c97434f6942292ed8abbf4b32dc44355` |
 | vLLM Python commit and tree | `0b67266a0f37d6146a8403fb8482403c62f412d5`, `ba9484ccb33aa56e90ff2f447f15ca9b9da97639` |
 | B12X commit and tree | `b1d541f9e71a35f030d45fae437630fff7507c2a`, `c69cdec1c59a08e8e0e549f930fa8abcfb5134ae` |
 | Recurrent-boundary patch SHA-256 | `5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0` |
@@ -69,7 +69,7 @@ containers had no Docker healthcheck, so this record calls that check process
 health rather than HTTP health.
 
 The earliest observed replacement-container creation time was
-`2026-08-30T10:46:32.079344046Z`; all four creation times and current start
+`2026-08-30T10:46:32.079344046Z`; all four creation times and observed start
 times are retained in the machine receipt. The exact construction and
 source-contract receipt therefore existed before every observed replacement
 container was created. No retained service-availability timeline proves that
@@ -90,7 +90,7 @@ for the persistent 8,192-token entry after all four containers restarted.
 The 131,072-to-262,144 publication was inspected from the committed rank-zero
 manifest. Its file SHA-256 was checked before parsing. The v2 manifest named
 the committed 131,072-token context as its base and the 262,144-token context
-as its result. It represented the new tail as 826,457,677 encoded bytes in 13
+as its result. It represented the appended 128K tail as 826,457,677 encoded bytes in 13
 objects with a 64 MiB target size. The base remained a 512-object opaque page
 root.
 
@@ -129,7 +129,7 @@ Those measurements show the behavior of that exact artifact only.
 The exact final image preserved semantic generation and completed verified
 persistent restores at 8K after a clean restart, at 128K, and at 256K. The
 committed 256K manifest referenced the existing 128K base and represented the
-new tail with 13 delta objects, which is the expected tail-only copy-on-write
+appended 128K tail with 13 delta objects, which is the expected tail-only copy-on-write
 publication shape.
 
 The exact construction and source-contract receipt preceded creation of all
@@ -151,8 +151,8 @@ final image and are not used to widen its qualification.
 - Every restore timing and concurrency value is a single observation or one
   wave. The values are research-only and do not establish variability,
   throughput, or soak behavior.
-- The 128K opaque base still consists of 512 per-page objects. The new 128K
-  tail is grouped into 13 objects, but flat opaque snapshots are not
+- The 128K opaque base still consists of 512 per-page objects. The appended
+  128K delta is grouped into 13 objects, but flat opaque snapshots are not
   macro-grouped.
 - The 256K restore read 1,024 logical chunks and took 6.689-7.207 seconds
   across ranks. This is a correctness result, not a speed claim.

@@ -157,7 +157,7 @@ def test_shared_trunk_cohort_records_one_logical_restore() -> None:
     assert shared["distinct_prompt_sha256_count"] == 16
     assert len(shared["prompt_sha256"]) == len(set(shared["prompt_sha256"])) == 16
     assert shared["http_200"] == 16
-    assert shared["failed"] == 0
+    assert shared["unsuccessful"] == 0
     assert len(shared["request_elapsed_seconds"]) == 16
     assert shared["external_restore_events_per_rank"] == 1
     assert shared["external_restore_request_id"] == (
@@ -203,7 +203,7 @@ def test_record_follows_evidence_method_and_rejects_speed_claim() -> None:
     )
 
 
-def test_quickstart_links_the_exact_current_evidence_separately() -> None:
+def test_quickstart_links_the_exact_artifact_evidence_separately() -> None:
     quickstart = QUICKSTART_PATH.read_text(encoding="utf-8")
     assert (
         "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8"

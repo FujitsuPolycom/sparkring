@@ -28,7 +28,7 @@
     "sparkcache_source_sha256": "a2add45a9f97446f6c2a843355161da9a5499ff7501b4750d2163591785d7345",
     "sparkcache_vllm_contract_sha256": "8adbdfa3fd4b06b213c3aab45255a0b039f1c9940a4b1fad0efd004d263227c9",
     "sparkcache_cuda_placement_library_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
-    "vllm_native_revision": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+    "vllm_compiled_revision": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
     "vllm_python_revision": "0b67266a0f37d6146a8403fb8482403c62f412d5",
     "vllm_python_tree": "ba9484ccb33aa56e90ff2f447f15ca9b9da97639",
     "b12x_revision": "b1d541f9e71a35f030d45fae437630fff7507c2a",
@@ -92,7 +92,7 @@
         "2": "2026-08-30T10:46:32.57152575Z",
         "3": "2026-08-30T10:46:32.079344046Z"
       },
-      "container_current_started_at_by_rank": {
+      "container_observed_started_at_by_rank": {
         "0": "2026-08-30T11:02:10.85447775Z",
         "1": "2026-08-30T11:02:22.761844485Z",
         "2": "2026-08-30T11:02:22.561316447Z",
@@ -231,7 +231,7 @@
       ],
       "http_200": 16,
       "succeeded": 16,
-      "failed": 0,
+      "unsuccessful": 0,
       "request_elapsed_seconds": [
         4.240340,
         4.243560,
