@@ -13,7 +13,7 @@ claims require the deterministic harness under
 Build on Linux ARM64:
 
 ```bash
-IMAGE='sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-singleton-arm64' \
+IMAGE='sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-singletonfix-arm64' \
 BUILD_RECEIPT="$PWD/glm53-pr42-page-base-flight-image-receipt.json" \
 bash runtime/glm53-flash-dflash7-pr42-page-base-flight/build-image.sh
 ```
@@ -21,3 +21,11 @@ bash runtime/glm53-flash-dflash7-pr42-page-base-flight/build-image.sh
 The builder contacts no serving host. A verified local image and receipt are
 construction evidence only; the runtime remains unqualified until the
 four-rank procedure is separately authorized and completed.
+
+The offline-verified ARM64 artifact is
+`sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-singletonfix-arm64`
+with image ID
+`sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e`.
+Its build receipt SHA-256 is
+`ec51c5b99227fe14709977df026e25e3e60f220b81ae252155d048556e8ea90a`.
+This construction evidence does not establish four-rank serving behavior.

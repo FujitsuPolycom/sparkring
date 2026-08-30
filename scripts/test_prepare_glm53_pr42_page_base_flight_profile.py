@@ -30,6 +30,13 @@ def _argument(profile: dict, option: str) -> str:
 
 def test_pr42_profile_is_operationally_isolated_without_identity_geometry_change() -> None:
     profile = json.loads(PROFILE.read_text(encoding="utf-8"))
+    assert profile["image"] == (
+        "sparkring-glm53-sparkcache:"
+        "dflash7-pr42-page-base-flight-singletonfix-arm64"
+    )
+    assert profile["image_id"] == (
+        "sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e"
+    )
     assert profile["profile_id"].startswith("glm53-flash-dflash7-pr42-page-base-flight")
     assert "pr42-page-base-flight" in profile["container_name"]
     assert "pr42-page-base-flight" in _argument(profile, "--served-model-name")

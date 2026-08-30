@@ -23,6 +23,14 @@ verify = _module("glm53_pr42_verify", HERE / "verify_image.py")
 
 def test_pins_bind_pr42_without_changing_runtime_contracts() -> None:
     pins = json.loads(PINS.read_text(encoding="utf-8"))
+    assert pins["builder"]["output_name"] == (
+        "sparkring-glm53-sparkcache:"
+        "dflash7-pr42-page-base-flight-singletonfix-arm64"
+    )
+    assert pins["outputs"]["image"] == pins["builder"]["output_name"]
+    assert pins["outputs"]["image_id"] == (
+        "sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e"
+    )
     assert pins["sparkcache"] == {
         **pins["sparkcache"],
         "commit": "a1511d26a1fe2b17b24561bc52e376bf7f54b06a",
@@ -63,6 +71,24 @@ def test_pins_bind_pr42_without_changing_runtime_contracts() -> None:
         "source_feature_commit": "6f3edede4b9f707ef9e8879359b05b0775ed5fee",
         "page_header_source_bytes_fix": "229d7d6158261e9510ab99d7e82d532abb9ade01",
         "singleton_later_cohort_commit": "a1511d26a1fe2b17b24561bc52e376bf7f54b06a",
+        "singleton_artifact_receipt": {
+            "schema": "sparkcache-singletonfix-image-receipt/v1",
+            "sha256": "ec51c5b99227fe14709977df026e25e3e60f220b81ae252155d048556e8ea90a",
+            "builder_path": "/home/code/image-build-receipts/sparkring-glm53-sparkcache-dflash7-pr42-page-base-flight-singletonfix-arm64.json",
+            "image": "sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-singletonfix-arm64",
+            "image_id": "sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e",
+            "builder": "spark-aa42",
+            "parent_image_id": "sha256:cc2c0e2f812f4b78d5b91f863aaf46fd8e8e505844245aa50911af1fb8e061c0",
+            "cache_namespace_impact": "none",
+            "archive_receipt": {
+                "schema": "sparkcache-singletonfix-archive-receipt/v1",
+                "path": "/home/code/image-build-receipts/pr42-singletonfix-archive-receipt.json",
+                "sha256": "729b220d050f67fa043c123c394aaa1e2353f31e9858e8d4c8b9c5d6d5203857",
+                "archive_path": "/var/tmp/sparkring-glm53-sparkcache-dflash7-pr42-page-base-flight-singletonfix-arm64.35b58a7b.oci.tar",
+                "archive_sha256": "d6b29b2a3f8595a70890e1795a50c1d65951280f7a302a3b0e1edc0417e6ab55",
+                "archive_bytes": 20828999168,
+            },
+        },
         "historical_sourcebytesfix_artifact_receipt": {
             "schema": "sparkcache-sourcebytesfix-image-receipt/v1",
             "sha256": "31c226697752672cafe83b6d06793638fb64d6ad1abe9937edf89ee4814bca5a",
@@ -109,6 +135,6 @@ def test_rendered_context_and_verifier_bind_feature_receipt_fields() -> None:
 
 def test_build_script_uses_isolated_default_outputs() -> None:
     script = (HERE / "build-image.sh").read_text(encoding="utf-8")
-    assert "dflash7-pr42-page-base-flight-singleton-arm64" in script
+    assert "dflash7-pr42-page-base-flight-singletonfix-arm64" in script
     assert "glm53-pr42-page-base-flight-image-receipt.json" in script
     assert "runtime/glm53-flash-dflash7-pr42-page-base-flight" in script
