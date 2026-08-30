@@ -28,6 +28,17 @@
     "python_tree": "ba9484ccb33aa56e90ff2f447f15ca9b9da97639",
     "overlay_manifest": "runtime/glm53-flash-adaptive-mtp-python-overlay/vllm-python-overlay.json",
     "overlay_manifest_sha256": "e5e528288b173399611a4930fecc4182b7208bc1564881d52ca5d2c5c4ae0f6a",
+    "runtime_patches": [
+      {
+        "status": "implemented",
+        "path": "runtime/glm53-flash-adaptive-mtp-python-overlay/patches/010-dflash-draft-load-config.patch",
+        "target": "vllm/v1/worker/gpu/spec_decode/dflash/utils.py",
+        "sha256": "39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279",
+        "preimage_sha256": "2301c8199b73ed893dfbd3ae14ad125816f100b2d2ed034215b1f2d9aa2c23c5",
+        "postimage_sha256": "98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4",
+        "contract": "DFlash passes SpeculativeConfig.draft_load_config to get_model; None retains the target LoadConfig fallback."
+      }
+    ],
     "native_source_objects": {
       "csrc": "9ada29088768f1bc08dadd2eed3c9738eb9ac8a1",
       "cmake": "5e5bbdbe1c1b3a479656d8d6a41cc32a1982c43d",

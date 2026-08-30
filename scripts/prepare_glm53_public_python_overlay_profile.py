@@ -47,6 +47,12 @@ B12X_TREE = "c69cdec1c59a08e8e0e549f930fa8abcfb5134ae"
 OVERLAY_MANIFEST_SHA256 = (
     "e5e528288b173399611a4930fecc4182b7208bc1564881d52ca5d2c5c4ae0f6a"
 )
+DFLASH_LOADER_PATCH_SHA256 = (
+    "39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279"
+)
+DFLASH_LOADER_POSTIMAGE_SHA256 = (
+    "98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4"
+)
 SPARKCACHE_COMMIT = "5d571018de5b63a9a90e5c11e6d6e86bbff4a957"
 SPARKCACHE_TREE = "e864ed9ad64f771188fdb59aa9738e348134d636"
 SPARKCACHE_SOURCE_SHA256 = (
@@ -208,6 +214,12 @@ def resolve(
         "org.sparkring.vllm.python.commit": VLLM_PYTHON_COMMIT,
         "org.sparkring.vllm.python.tree": VLLM_PYTHON_TREE,
         "org.sparkring.vllm.python-overlay-manifest-sha256": OVERLAY_MANIFEST_SHA256,
+        "org.sparkring.vllm.dflash-draft-loader-patch-sha256": (
+            DFLASH_LOADER_PATCH_SHA256
+        ),
+        "org.sparkring.vllm.dflash-draft-loader-postimage-sha256": (
+            DFLASH_LOADER_POSTIMAGE_SHA256
+        ),
         "org.jovian.b12x.commit": B12X_COMMIT,
         "org.sparkring.b12x.tree": B12X_TREE,
         "org.opencontainers.image.base.name": PUBLIC_BASE,

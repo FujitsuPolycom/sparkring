@@ -87,7 +87,7 @@ def validate_base(document: dict[str, Any], pins: dict[str, Any]) -> None:
 
 
 def expected_output_labels(pins: dict[str, Any]) -> dict[str, str]:
-    return {
+    labels = {
         "org.opencontainers.image.base.name": pins["public_base"]["reference"],
         "org.sparkring.base.image-id": pins["public_base"]["image_id"],
         "org.sparkring.vllm.native.commit": pins["vllm"]["native_commit"],
@@ -110,6 +110,17 @@ def expected_output_labels(pins: dict[str, Any]) -> dict[str, str]:
         ],
         "org.sparkcache.deployment-profile": "glm53-flash-adaptive-mtp-python-overlay",
     }
+    runtime_patches = pins["vllm"].get("runtime_patches", ())
+    if len(runtime_patches) != 1:
+        raise VerifyError("runtime contract requires one DFlash loader patch")
+    patch = runtime_patches[0]
+    labels["org.sparkring.vllm.dflash-draft-loader-patch-sha256"] = patch[
+        "sha256"
+    ]
+    labels["org.sparkring.vllm.dflash-draft-loader-postimage-sha256"] = patch[
+        "postimage_sha256"
+    ]
+    return labels
 
 
 def validate_output(document: dict[str, Any], pins: dict[str, Any]) -> None:
@@ -202,6 +213,15 @@ def verify_image(engine: str, image: str, pins_path: Path = PINS) -> dict[str, A
     artifacts = artifact_probe(engine, image)
     if runtime.get("vllm_python_files_verified") != 31:
         raise VerifyError("runtime did not verify all 31 vLLM Python overlay files")
+    expected_runtime_patches = [
+        {
+            "path": record["target"],
+            "sha256": record["postimage_sha256"],
+        }
+        for record in pins["vllm"].get("runtime_patches", ())
+    ]
+    if runtime.get("vllm_runtime_patches") != expected_runtime_patches:
+        raise VerifyError("runtime did not verify the DFlash draft-loader patch")
     if artifacts["sparkcache_contract_sha256"] != pins["sparkcache"]["contract"]["sha256"]:
         raise VerifyError("installed SparkCache lease contract differs from its pin")
     if artifacts["sparkcache_source_tree_sha256"] != pins["sparkcache"][

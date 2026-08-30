@@ -72,6 +72,7 @@ def clone_detached(
     destination.mkdir(parents=True)
     run(("git", "init", "--quiet", str(destination)))
     run(("git", "-C", str(destination), "config", "core.autocrlf", "false"))
+    run(("git", "-C", str(destination), "config", "core.longpaths", "true"))
     run(("git", "-C", str(destination), "remote", "add", "origin", repository))
     run(
         (
@@ -172,6 +173,39 @@ def verify_vllm_lineage(
             raise PrepareError(f"vLLM base blob mismatch: {path}")
 
 
+def verify_vllm_runtime_patches(
+    source: Path,
+    pins: dict[str, Any],
+    patch_root: Path,
+) -> None:
+    """Verify each exact-input runtime patch and restore the clean source."""
+
+    for record in pins["vllm"].get("runtime_patches", ()):
+        patch = patch_root / Path(record["path"]).name
+        target = source / record["target"]
+        if sha256_file(patch) != record["sha256"]:
+            raise PrepareError(f"vLLM runtime patch mismatch: {record['path']}")
+        if sha256_file(target) != record["preimage_sha256"]:
+            raise PrepareError(
+                f"vLLM runtime patch preimage mismatch: {record['target']}"
+            )
+        run(("git", "-C", str(source), "apply", "--check", str(patch)))
+        run(("git", "-C", str(source), "apply", str(patch)))
+        try:
+            observed = sha256_file(target)
+            if observed != record["postimage_sha256"]:
+                raise PrepareError(
+                    f"vLLM runtime patch postimage mismatch: {record['target']}"
+                )
+        finally:
+            run(("git", "-C", str(source), "apply", "--reverse", str(patch)))
+    verify_git_source(
+        source,
+        commit=pins["vllm"]["python_commit"],
+        tree=pins["vllm"]["python_tree"],
+    )
+
+
 def copy_overlay(source: Path, destination: Path, manifest: dict[str, Any]) -> None:
     target = manifest["target"]["commit"]
     for record in manifest["files"]:
@@ -241,6 +275,8 @@ def prepare(output: Path, *, repository_root: Path = ROOT) -> dict[str, Any]:
     )
     verify_vllm_lineage(vllm, pins, manifest)
     copy_overlay(vllm, overlay, manifest)
+    patch_root = HERE / "patches"
+    verify_vllm_runtime_patches(vllm, pins, patch_root)
 
     b12x = sources / "b12x"
     clone_detached(
@@ -283,6 +319,11 @@ def prepare(output: Path, *, repository_root: Path = ROOT) -> dict[str, Any]:
         "README.md",
     ):
         copy_file(HERE / filename, runtime / filename)
+    runtime_patches = []
+    for patch in pins["vllm"].get("runtime_patches", ()):
+        name = Path(patch["path"]).name
+        copy_file(patch_root / name, runtime / "patches" / name)
+        runtime_patches.append(f"bundle/runtime/patches/{name}")
     copy_file(repository_root / "LICENSE", runtime / "SparkRing-LICENSE")
 
     receipt_inputs = tuple(
@@ -297,7 +338,7 @@ def prepare(output: Path, *, repository_root: Path = ROOT) -> dict[str, Any]:
             "README.md",
             "SparkRing-LICENSE",
         )
-    )
+    ) + tuple(runtime_patches)
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "status": "implemented",
@@ -318,6 +359,7 @@ def prepare(output: Path, *, repository_root: Path = ROOT) -> dict[str, Any]:
                 "source_tree_sha256": observed_sparkcache,
             },
         },
+        "vllm_runtime_patches": pins["vllm"].get("runtime_patches", []),
         "files": {relative: sha256_file(output / relative) for relative in receipt_inputs},
     }
     (output / "receipt.json").write_text(
@@ -344,6 +386,15 @@ def verify_context(context: Path) -> dict[str, Any]:
         tree=pins["vllm"]["python_tree"],
     )
     verify_vllm_lineage(context / "bundle/sources/vllm", pins, manifest)
+    if receipt.get("vllm_runtime_patches") != pins["vllm"].get(
+        "runtime_patches", []
+    ):
+        raise PrepareError("prepared context vLLM runtime patch receipt differs")
+    verify_vllm_runtime_patches(
+        context / "bundle/sources/vllm",
+        pins,
+        context / "bundle/runtime/patches",
+    )
     verify_git_source(
         context / "bundle/sources/b12x",
         commit=pins["b12x"]["commit"],

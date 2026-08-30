@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import importlib.metadata
 import inspect
@@ -116,6 +117,118 @@ def final_file_hashes(pins: dict[str, Any]) -> dict[str, str]:
             patch["postimage_sha256"], f"{target} patch postimage"
         )
     return result
+
+
+def validate_dflash_loader_source(source: str) -> None:
+    """Require DFlash to pass its optional draft LoadConfig to get_model."""
+
+    tree = ast.parse(source)
+    function = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "load_dflash_model"
+        ),
+        None,
+    )
+    if function is None:
+        raise ContractError("DFlash loader source omits load_dflash_model")
+    calls = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "get_model"
+    ]
+    if len(calls) != 1:
+        raise ContractError("DFlash loader must contain exactly one get_model call")
+    keyword = next(
+        (item for item in calls[0].keywords if item.arg == "load_config"),
+        None,
+    )
+    value = None if keyword is None else keyword.value
+    if not (
+        isinstance(value, ast.Attribute)
+        and value.attr == "draft_load_config"
+        and isinstance(value.value, ast.Name)
+        and value.value.id == "speculative_config"
+    ):
+        raise ContractError(
+            "DFlash get_model must consume speculative_config.draft_load_config"
+        )
+
+
+def validate_optional_load_config_fallback(source: str) -> None:
+    """Require get_model(None) to retain the enclosing vLLM LoadConfig."""
+
+    tree = ast.parse(source)
+    function = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "get_model"
+        ),
+        None,
+    )
+    if function is None:
+        raise ContractError("model-loader source omits get_model")
+    calls = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "get_model_loader"
+    ]
+    if len(calls) != 1 or len(calls[0].args) != 1:
+        raise ContractError("get_model must select exactly one model loader")
+    selected = calls[0].args[0]
+    if not (
+        isinstance(selected, ast.BoolOp)
+        and isinstance(selected.op, ast.Or)
+        and len(selected.values) == 2
+        and isinstance(selected.values[0], ast.Name)
+        and selected.values[0].id == "load_config"
+        and isinstance(selected.values[1], ast.Attribute)
+        and selected.values[1].attr == "load_config"
+        and isinstance(selected.values[1].value, ast.Name)
+        and selected.values[1].value.id == "vllm_config"
+    ):
+        raise ContractError(
+            "get_model must fall back from a missing draft LoadConfig to "
+            "vllm_config.load_config"
+        )
+
+
+def verify_vllm_runtime_patch_files(
+    root: Path,
+    pins: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Verify installed runtime-patch postimages and loader semantics."""
+
+    verified = []
+    for record in pins["vllm"].get("runtime_patches", ()):
+        relative = safe_relative_path(record["target"])
+        path = root / relative
+        observed = sha256_file(path)
+        if observed != record["postimage_sha256"]:
+            raise ContractError(
+                f"vLLM runtime patch postimage mismatch for {relative}: "
+                f"expected {record['postimage_sha256']}, got {observed}"
+            )
+        compile(path.read_bytes(), str(path), "exec")
+        if relative.as_posix() == "vllm/v1/worker/gpu/spec_decode/dflash/utils.py":
+            validate_dflash_loader_source(path.read_text(encoding="utf-8"))
+        verified.append(
+            {
+                "path": relative.as_posix(),
+                "sha256": observed,
+            }
+        )
+    loader = root / "vllm/model_executor/model_loader/__init__.py"
+    validate_optional_load_config_fallback(loader.read_text(encoding="utf-8"))
+    return verified
 
 
 def verify_overlay_files(
@@ -372,12 +485,14 @@ def composed_report(
     verified = verify_overlay_files(root, manifest, stage="final", pins=pins)
     compile_overlay_files(root, manifest)
     verify_retained_native(site_root, console_script, base_record)
+    runtime_patches = verify_vllm_runtime_patch_files(root, pins)
     return {
         "schema": "sparkring-glm53-public-python-overlay-verification/v1",
         "status": "implemented",
         "vllm_python_files_verified": len(verified),
         "vllm_python_commit": pins["vllm"]["python_commit"],
         "vllm_native_commit": pins["vllm"]["native_commit"],
+        "vllm_runtime_patches": runtime_patches,
         "b12x": verify_b12x_contract(pins),
         "dependencies": verify_dependencies(pins),
         "native_elf_manifest_sha256": base_record["native_elf_manifest_sha256"],

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ import pytest
 HERE = Path(__file__).resolve().parent
 PINS = HERE / "pins.json"
 MANIFEST = HERE / "vllm-python-overlay.json"
+DFLASH_PATCH = HERE / "patches/010-dflash-draft-load-config.patch"
 
 
 def _module(name: str, path: Path):
@@ -25,6 +27,7 @@ def _module(name: str, path: Path):
 
 contract = _module("glm53_public_python_overlay_contract", HERE / "overlay_contract.py")
 verify = _module("glm53_public_python_overlay_verify", HERE / "verify_image.py")
+prepare = _module("glm53_public_python_overlay_prepare", HERE / "prepare_context.py")
 
 
 def test_overlay_pins_public_base_and_mixed_vllm_provenance() -> None:
@@ -70,6 +73,93 @@ def test_overlay_manifest_is_the_exact_31_file_python_delta() -> None:
     assert hashlib.sha256(MANIFEST.read_bytes()).hexdigest() == pins["vllm"][
         "overlay_manifest_sha256"
     ]
+
+
+def test_dflash_loader_patch_binds_exact_0b_preimage_and_postimage() -> None:
+    pins = json.loads(PINS.read_text(encoding="utf-8"))
+    assert pins["vllm"]["runtime_patches"] == [
+        {
+            "status": "implemented",
+            "path": (
+                "runtime/glm53-flash-adaptive-mtp-python-overlay/patches/"
+                "010-dflash-draft-load-config.patch"
+            ),
+            "target": "vllm/v1/worker/gpu/spec_decode/dflash/utils.py",
+            "sha256": "39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279",
+            "preimage_sha256": (
+                "2301c8199b73ed893dfbd3ae14ad125816f100b2d2ed034215b1f2d9aa2c23c5"
+            ),
+            "postimage_sha256": (
+                "98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4"
+            ),
+            "contract": (
+                "DFlash passes SpeculativeConfig.draft_load_config to get_model; "
+                "None retains the target LoadConfig fallback."
+            ),
+        }
+    ]
+    assert prepare.sha256_file(DFLASH_PATCH) == pins["vllm"]["runtime_patches"][
+        0
+    ]["sha256"]
+
+
+def test_dflash_loader_contract_honors_explicit_draft_load_config() -> None:
+    contract.validate_dflash_loader_source(
+        """
+def load_dflash_model(target_model, vllm_config):
+    speculative_config = vllm_config.speculative_config
+    return get_model(
+        vllm_config=vllm_config,
+        model_config=speculative_config.draft_model_config,
+        load_config=speculative_config.draft_load_config,
+    )
+"""
+    )
+
+
+def test_dflash_loader_contract_rejects_an_ignored_draft_load_config() -> None:
+    with pytest.raises(contract.ContractError, match="draft_load_config"):
+        contract.validate_dflash_loader_source(
+            """
+def load_dflash_model(target_model, vllm_config):
+    speculative_config = vllm_config.speculative_config
+    return get_model(
+        vllm_config=vllm_config,
+        model_config=speculative_config.draft_model_config,
+    )
+"""
+        )
+
+
+def test_missing_draft_load_config_uses_the_target_load_config_fallback() -> None:
+    contract.validate_optional_load_config_fallback(
+        """
+def get_model(*, vllm_config, load_config=None):
+    loader = get_model_loader(load_config or vllm_config.load_config)
+    return loader.load_model()
+"""
+    )
+
+    with pytest.raises(contract.ContractError, match="fall back"):
+        contract.validate_optional_load_config_fallback(
+            """
+def get_model(*, vllm_config, load_config=None):
+    loader = get_model_loader(vllm_config.load_config)
+    return loader.load_model()
+"""
+        )
+
+
+def test_documented_dflash_config_separates_target_and_draft_loaders() -> None:
+    guide = (HERE / "README.md").read_text(encoding="utf-8")
+    match = re.search(r"--speculative-config '([^']+)'", guide)
+    assert match is not None
+    speculative = json.loads(match.group(1))
+    assert "--load-format fastsafetensors" in guide
+    assert speculative["method"] == "dflash"
+    assert speculative["model"] == "/mtp-draft"
+    assert speculative["num_speculative_tokens"] == 7
+    assert speculative["draft_load_config"] == {"load_format": "safetensors"}
 
 
 def test_native_build_inputs_are_identical_git_objects() -> None:
@@ -168,20 +258,23 @@ def test_image_verifier_reads_the_clean_sparkcache_source_receipt() -> None:
 
 def test_build_prepares_context_below_the_temporary_workspace() -> None:
     script = (HERE / "build-image.sh").read_text(encoding="utf-8")
+    preparer = (HERE / "prepare_context.py").read_text(encoding="utf-8")
     assert 'workspace="$(mktemp -d)"' in script
     assert 'context="${workspace}/context"' in script
     assert 'rm -rf -- "${workspace}"' in script
+    assert '"core.longpaths", "true"' in preparer
 
 
 def test_sparkcache_patches_and_contract_run_after_the_python_overlay() -> None:
     recipe = (HERE / "Containerfile").read_text(encoding="utf-8")
     overlay = recipe.index("COPY bundle/vllm-overlay/")
     patch_020 = recipe.index("020-sparkcache-vmm-exemption.patch")
+    dflash_patch = recipe.index("010-dflash-draft-load-config.patch")
     patch_030 = recipe.index("030-sparkcache-hma-load-failure.patch")
     patch_040 = recipe.index("040-sparkcache-shared-prefix-lease.patch")
     patch_041 = recipe.index("041-sparkcache-shared-prefix-attach.patch")
     lease = recipe.index("verify_lease_contract.py")
-    assert overlay < patch_020 < patch_030 < patch_040 < patch_041 < lease
+    assert overlay < dflash_patch < patch_020 < patch_030 < patch_040 < patch_041 < lease
 
 
 def test_output_labels_do_not_claim_a_source_built_0b_wheel() -> None:
@@ -194,3 +287,9 @@ def test_output_labels_do_not_claim_a_source_built_0b_wheel() -> None:
     assert labels["org.jovian.vllm.commit"] != labels[
         "org.sparkring.vllm.python.commit"
     ]
+    assert labels["org.sparkring.vllm.dflash-draft-loader-patch-sha256"] == (
+        "39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279"
+    )
+    assert labels["org.sparkring.vllm.dflash-draft-loader-postimage-sha256"] == (
+        "98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4"
+    )

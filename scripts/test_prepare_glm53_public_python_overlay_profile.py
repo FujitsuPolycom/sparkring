@@ -10,6 +10,8 @@ import yaml
 import sparkring_generic_launcher as launcher
 from prepare_glm53_public_python_overlay_profile import (
     B12X_COMMIT,
+    DFLASH_LOADER_PATCH_SHA256,
+    DFLASH_LOADER_POSTIMAGE_SHA256,
     LEASE_CONTRACT_SHA256,
     MTP_CACHE_IDENTITY_SHA256,
     OVERLAY_MANIFEST_SHA256,
@@ -129,6 +131,12 @@ def test_resolver_requires_mixed_provenance_and_all_artifact_hashes() -> None:
     assert labels["org.opencontainers.image.base.name"] == PUBLIC_BASE
     assert labels["org.sparkring.vllm.python-overlay-manifest-sha256"] == (
         OVERLAY_MANIFEST_SHA256
+    )
+    assert labels["org.sparkring.vllm.dflash-draft-loader-patch-sha256"] == (
+        DFLASH_LOADER_PATCH_SHA256
+    )
+    assert labels["org.sparkring.vllm.dflash-draft-loader-postimage-sha256"] == (
+        DFLASH_LOADER_POSTIMAGE_SHA256
     )
     assert labels["org.sparkring.vllm.native-elf-manifest-sha256"] == NATIVE_ELF
     assert labels["org.sparkring.vllm.native-dispatch-manifest-sha256"] == (

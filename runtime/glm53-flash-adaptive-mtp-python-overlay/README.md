@@ -53,6 +53,25 @@ commits into a temporary build context, builds a pure B12X wheel and the
 SparkCache CUDA placement library, creates the composed image, and writes a local
 receipt. It does not push an image or contact serving hosts.
 
+## External DFlash loader separation
+
+Status: **implemented, not qualified**. The composed vLLM runtime passes
+`SpeculativeConfig.draft_load_config` to the DFlash model loader. An external
+BF16 DFlash2 checkpoint can therefore retain the standard safetensors loader
+while the NVFP4 target uses fastsafetensors:
+
+```text
+--load-format fastsafetensors
+--speculative-config '{"method":"dflash","model":"/mtp-draft","num_speculative_tokens":7,"draft_tensor_parallel_size":4,"kv_cache_dtype":"auto","draft_sample_method":"probabilistic","rejection_sample_method":"standard","draft_load_config":{"load_format":"safetensors"}}'
+```
+
+Mount the exact external checkpoint read-only at `/mtp-draft`. The draft
+loader config is optional: omitting it inherits the target `LoadConfig`, which
+means both models use fastsafetensors under the command above. The separated
+configuration requires `fastsafetensors==0.3.3` for the target and no
+InstantTensor mount or environment setting. Four-rank model loading,
+generation, draft counters, and peak device memory remain unqualified.
+
 ## Resolve and inspect the four-rank plan
 
 Copy the sanitized site template outside version control and replace its
