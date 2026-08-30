@@ -72,7 +72,7 @@ allowlist and validating the generated manifest through the builder.
 The builder test suites cover the GLM, DeepSeek, and Qwen runtime contracts:
 
 ```bash
-python -m pytest runtime/exl3-r7 runtime/glm53-flash runtime/deepseek0731-gb10 runtime/qwen38 -q
+python -m pytest runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-b12x-kda-adaptive-mtp runtime/deepseek0731-gb10 runtime/qwen38 -q
 ```
 
 [`runtime/glm53-flash/`](glm53-flash/README.md) builds the source-pinned
