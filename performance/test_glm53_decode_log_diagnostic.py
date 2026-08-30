@@ -29,6 +29,25 @@ def test_glm53_decode_log_diagnostic_preserves_bounded_claims() -> None:
     assert max(item["generation_tokens_per_second"] for item in observations) == 38.7
     assert min(document["dflash7"]["generation_tokens_per_second"]) == 40.6
     assert max(document["dflash7"]["generation_tokens_per_second"]) == 136.0
+    post_switch = document["dflash7"]["post_switch_validation"]
+    post_switch_observations = post_switch["observations"]
+    assert post_switch["log_interval_utc"] == {
+        "start": post_switch_observations[0]["timestamp"],
+        "end": post_switch_observations[-1]["timestamp"],
+    }
+    assert min(
+        item["generation_tokens_per_second"] for item in post_switch_observations
+    ) == 48.8
+    assert max(
+        item["generation_tokens_per_second"] for item in post_switch_observations
+    ) == 74.5
+    assert min(
+        item["draft_acceptance_percent"] for item in post_switch_observations
+    ) == 47.6
+    assert max(
+        item["draft_acceptance_percent"] for item in post_switch_observations
+    ) == 67.0
+    assert post_switch["sparkcache_events_in_interval"] == 0
     assert adaptive["sparkcache_events_in_interval"] == 0
     assert document["dflash7"]["sparkcache_events_in_interval"] == 0
     assert document["prompt_receipt_present"] is False

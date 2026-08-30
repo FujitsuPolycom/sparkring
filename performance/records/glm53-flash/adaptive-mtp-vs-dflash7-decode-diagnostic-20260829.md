@@ -36,6 +36,12 @@ at fixed depth seven. Per-rank image IDs are preserved in the linked receipt.
 The observed rank-0 log interval was `2026-08-29T21:13:57Z` through
 `2026-08-29T21:15:07Z`.
 
+After the DFlash7 service was restored, a second rank-0 interval from
+`2026-08-30T04:02:49Z` through `2026-08-30T04:04:09Z` recorded the same
+fixed-depth-seven runtime under operator traffic. The prompt and output were
+again not retained, so this interval is diagnostic evidence rather than a
+controlled replay.
+
 The two compositions differ in vLLM Python, B12X, SparkCache, model loading,
 and draft implementation. The observations therefore do not isolate one
 changed variable.
@@ -44,8 +50,9 @@ changed variable.
 
 The source is vLLM's rank-0 ten-second `Avg generation throughput` gauge and
 the speculative-decoding metrics emitted at the same timestamps. The
-machine-readable fixture preserves all 12 adaptive-MTP observations and all
-eight DFlash7 throughput observations used here.
+machine-readable fixture preserves all 12 adaptive-MTP observations, the
+eight earlier DFlash7 throughput observations, and nine post-switch DFlash7
+observations used here.
 
 Neither interval contains a `spark-context-cache` store, restore, or
 maintenance event. SparkCache was enabled, but it was idle during the measured
@@ -61,7 +68,8 @@ confidence intervals.
 | Runtime observation | Depth seen | Draft acceptance | Generation throughput |
 |---|---:|---:|---:|
 | Adaptive embedded MTP | 2–4 | 48.9–81.2% | 24.5–38.7 tok/s |
-| Retained DFlash7 | fixed 7 | not summarized for this record | 40.6–136.0 tok/s |
+| Retained DFlash7, earlier interval | fixed 7 | not summarized for this record | 40.6–136.0 tok/s |
+| Retained DFlash7, post-switch interval | fixed 7 | 47.6–67.0% | 48.8–74.5 tok/s |
 
 The operator also reported a matched coding-peak observation of approximately
 70 tok/s for DFlash7 and 33.5 tok/s for adaptive MTP. No prompt or output
@@ -72,10 +80,11 @@ context rather than measured evidence.
 
 The adaptive runtime changed draft depth between two and four while serving,
 which confirms that acceptance-based control executed. During the recorded
-windows, its server generation gauge remained below the retained DFlash7
-range. The evidence does not establish a general DFlash7 advantage or an MTP
-regression because the requests and outputs were not preserved and the
-runtime compositions were not otherwise matched.
+windows, its server generation gauge remained below both retained DFlash7
+intervals. The post-switch interval independently reproduced the operator's
+approximately 70 tok/s DFlash7 performance class. The evidence does not
+establish a general DFlash7 advantage because the requests and outputs were
+not preserved and the runtime compositions were not otherwise matched.
 
 SparkCache performed no logged work in either decode interval. These numbers
 do not measure or implicate SparkCache restore, placement, publication, or

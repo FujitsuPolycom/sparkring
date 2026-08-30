@@ -66,7 +66,25 @@
       "end": "2026-08-29T21:15:07Z"
     },
     "generation_tokens_per_second": [40.6, 48.2, 52.6, 94.9, 111.8, 69.8, 133.6, 136.0],
-    "sparkcache_events_in_interval": 0
+    "sparkcache_events_in_interval": 0,
+    "post_switch_validation": {
+      "log_interval_utc": {
+        "start": "2026-08-30T04:02:49Z",
+        "end": "2026-08-30T04:04:09Z"
+      },
+      "observations": [
+        {"timestamp": "2026-08-30T04:02:49Z", "generation_tokens_per_second": 48.8, "mean_acceptance_length": 4.82, "draft_acceptance_percent": 54.6},
+        {"timestamp": "2026-08-30T04:02:59Z", "generation_tokens_per_second": 61.3, "mean_acceptance_length": 4.61, "draft_acceptance_percent": 51.6},
+        {"timestamp": "2026-08-30T04:03:09Z", "generation_tokens_per_second": 74.5, "mean_acceptance_length": 5.69, "draft_acceptance_percent": 67.0},
+        {"timestamp": "2026-08-30T04:03:19Z", "generation_tokens_per_second": 60.9, "mean_acceptance_length": 4.54, "draft_acceptance_percent": 50.5},
+        {"timestamp": "2026-08-30T04:03:29Z", "generation_tokens_per_second": 61.3, "mean_acceptance_length": 4.51, "draft_acceptance_percent": 50.1},
+        {"timestamp": "2026-08-30T04:03:39Z", "generation_tokens_per_second": 56.3, "mean_acceptance_length": 4.33, "draft_acceptance_percent": 47.6},
+        {"timestamp": "2026-08-30T04:03:49Z", "generation_tokens_per_second": 64.4, "mean_acceptance_length": 5.07, "draft_acceptance_percent": 58.1},
+        {"timestamp": "2026-08-30T04:03:59Z", "generation_tokens_per_second": 72.1, "mean_acceptance_length": 5.30, "draft_acceptance_percent": 61.4},
+        {"timestamp": "2026-08-30T04:04:09Z", "generation_tokens_per_second": 72.2, "mean_acceptance_length": 5.47, "draft_acceptance_percent": 63.9}
+      ],
+      "sparkcache_events_in_interval": 0
+    }
   },
   "user_reported_matched_coding_peak": {
     "dflash7_tokens_per_second": 70.0,
