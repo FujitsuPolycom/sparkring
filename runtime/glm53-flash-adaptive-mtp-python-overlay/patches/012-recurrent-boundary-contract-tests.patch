@@ -1,5 +1,5 @@
 diff --git a/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py b/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py
-index eff889b98..dbe1eb9c3 100644
+index eff889b98..4f4975379 100644
 --- a/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py
 +++ b/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py
 @@ -4,6 +4,7 @@
@@ -10,7 +10,7 @@ index eff889b98..dbe1eb9c3 100644
  from math import lcm
  from types import SimpleNamespace
  from unittest.mock import MagicMock
-@@ -12,6 +13,16 @@ import pytest
+@@ -12,6 +13,17 @@ import pytest
  import torch
  
  from tests.v1.core.test_prefix_caching import make_kv_cache_manager, make_request
@@ -20,6 +20,7 @@ index eff889b98..dbe1eb9c3 100644
 +    KVTransferConfig,
 +    ModelConfig,
 +    SchedulerConfig,
++    SpeculativeConfig,
 +    VllmConfig,
 +)
 +from vllm.distributed.kv_transfer.kv_connector.factory import KVConnectorFactory
@@ -27,7 +28,7 @@ index eff889b98..dbe1eb9c3 100644
  from vllm.utils.hashing import sha256
  from vllm.v1.core.kv_cache_utils import (
      KVCacheBlockCopy,
-@@ -20,6 +31,7 @@ from vllm.v1.core.kv_cache_utils import (
+@@ -20,6 +32,7 @@ from vllm.v1.core.kv_cache_utils import (
      init_none_hash,
  )
  from vllm.v1.core.sched.scheduler import Scheduler
@@ -35,7 +36,7 @@ index eff889b98..dbe1eb9c3 100644
  from vllm.v1.kv_cache_interface import (
      FullAttentionSpec,
      KVCacheConfig,
-@@ -27,6 +39,9 @@ from vllm.v1.kv_cache_interface import (
+@@ -27,6 +40,9 @@ from vllm.v1.kv_cache_interface import (
      MambaSpec,
      SlidingWindowSpec,
  )
@@ -45,7 +46,7 @@ index eff889b98..dbe1eb9c3 100644
  
  
  @pytest.fixture(autouse=True)
-@@ -69,6 +84,14 @@ def test_capable_connector_uses_divergent_partial_hit_lookup():
+@@ -69,6 +85,14 @@ def test_capable_connector_uses_divergent_partial_hit_lookup():
      manager.get_computed_blocks.assert_not_called()
  
  
@@ -60,7 +61,7 @@ index eff889b98..dbe1eb9c3 100644
  def make_full_mamba_manager(
      *,
      dcp_world_size: int,
-@@ -856,6 +879,329 @@ def test_take_partial_tail_offloads_empty_without_partial_tail():
+@@ -856,6 +880,415 @@ def test_take_partial_tail_offloads_empty_without_partial_tail():
      assert manager.take_partial_tail_offloads() == {}
  
  
@@ -114,7 +115,7 @@ index eff889b98..dbe1eb9c3 100644
 +    )
 +    computed_blocks, num_computed, _ = manager.get_computed_blocks(request)
 +    assert manager.allocate_slots(
-+        request, prompt_tokens, num_computed, computed_blocks
++        request, boundary_tokens, num_computed, computed_blocks
 +    ) is not None
 +
 +    assert manager.take_partial_tail_offloads() == {}
@@ -125,18 +126,21 @@ index eff889b98..dbe1eb9c3 100644
 +    assert (group_id, emitted_boundary) == (1, boundary_tokens)
 +
 +    mamba_blocks = manager.get_blocks("aligned").blocks[1]
-+    assert len(mamba_blocks) == 4 + 7
++    assert len(mamba_blocks) == 3 + 7
 +    boundary_block = mamba_blocks[2]
 +    assert block_id == boundary_block.block_id
 +    assert block_id not in {block.block_id for block in mamba_blocks[3:]}
 +    assert boundary_block.block_hash_num_tokens == boundary_tokens
 +    assert get_group_id(boundary_block.block_hash) == group_id
 +
-+    # Schedule one decode token. The first allocation crossed the replay
-+    # boundary while finishing the prompt; the second runs remove_skipped_blocks,
-+    # which nulls arithmetic slot 2. The hand-off must keep naming and pinning
-+    # the exact cached boundary block rather than selecting a later running or
-+    # speculative slot.
++    # Finish the prompt, then schedule one decode token. The second allocation
++    # runs remove_skipped_blocks, which nulls arithmetic slot 2. The hand-off
++    # must keep naming and pinning the exact cached boundary block rather than
++    # selecting a later running or speculative slot.
++    request.num_computed_tokens = boundary_tokens
++    assert manager.allocate_slots(
++        request, prompt_tokens - boundary_tokens
++    ) is not None
 +    request.num_computed_tokens = prompt_tokens
 +    request.append_output_token_ids([prompt_tokens])
 +    assert manager.allocate_slots(request, 1) is not None
@@ -150,6 +154,67 @@ index eff889b98..dbe1eb9c3 100644
 +
 +    manager.free(request)
 +    assert boundary_block.ref_cnt == 0
++
++
++@pytest.mark.parametrize("prompt_tokens", [6992, 7168])
++@pytest.mark.skip_global_cleanup
++def test_crossed_aligned_boundary_refuses_unmaterialized_handoff(
++    prompt_tokens: int,
++):
++    """A caller that skips the required 6,912-token scheduler stop has no
++    hash-proven recurrent page to publish and must fail closed."""
++    hash_block_size = 256
++    mamba_block_size = 2304
++    kv_cache_config = KVCacheConfig(
++        num_blocks=128,
++        kv_cache_tensors=[],
++        kv_cache_groups=[
++            KVCacheGroupSpec(
++                ["full"],
++                FullAttentionSpec(
++                    block_size=hash_block_size,
++                    num_kv_heads=1,
++                    head_size=1,
++                    dtype=torch.float32,
++                ),
++            ),
++            KVCacheGroupSpec(
++                ["mamba"],
++                MambaSpec(
++                    block_size=mamba_block_size,
++                    shapes=(1, 1),
++                    dtypes=(torch.float32,),
++                    mamba_cache_mode="align",
++                    num_speculative_blocks=7,
++                ),
++            ),
++        ],
++    )
++    manager = make_kv_cache_manager(
++        kv_cache_config=kv_cache_config,
++        max_model_len=8192,
++        enable_caching=True,
++        scheduler_block_size=mamba_block_size,
++        hash_block_size=hash_block_size,
++    )
++    request = make_request(
++        "crossed-aligned",
++        list(range(prompt_tokens)),
++        hash_block_size,
++        sha256,
++    )
++    computed_blocks, num_computed, _ = manager.get_computed_blocks(request)
++
++    assert manager.allocate_slots(
++        request, prompt_tokens, num_computed, computed_blocks
++    ) is not None
++    assert manager.take_partial_tail_offloads() == {}
++    assert manager.take_recurrent_boundary_blocks() == {}
++    assert "crossed-aligned" not in manager._partial_tail_pins
++
++    mamba_blocks = manager.get_blocks("crossed-aligned").blocks[1]
++    assert all(block.is_null for block in mamba_blocks[:3])
++    manager.free(request)
 +
 +
 +@pytest.mark.skip_global_cleanup
@@ -229,7 +294,12 @@ index eff889b98..dbe1eb9c3 100644
 +def _make_glm_recurrent_scheduler(
 +    monkeypatch: pytest.MonkeyPatch,
 +) -> Scheduler:
-+    """Build a CPU-only Scheduler with the live GLM recurrent geometry."""
++    """Build a CPU-only Scheduler with the live GLM recurrent geometry.
++
++    The ngram fixture is switched to multi-module MTP after construction. This
++    avoids loading a drafter while exercising the same ``use_eagle`` prefill
++    split and seven-slot lookahead path used by the GLM DFlash/MTP runtimes.
++    """
 +    monkeypatch.setenv("VLLM_ALLOW_LONG_MAX_MODEL_LEN", "1")
 +    hash_block_size = 256
 +    mamba_block_size = 2304
@@ -247,6 +317,8 @@ index eff889b98..dbe1eb9c3 100644
 +        skip_tokenizer_init=True,
 +        max_model_len=16384,
 +    )
++    speculative_config = SpeculativeConfig(model="ngram", num_speculative_tokens=7)
++    speculative_config.method = "mtp"
 +    vllm_config = VllmConfig(
 +        scheduler_config=SchedulerConfig(
 +            max_num_seqs=4,
@@ -257,6 +329,7 @@ index eff889b98..dbe1eb9c3 100644
 +            watermark=0.0,
 +        ),
 +        model_config=model_config,
++        speculative_config=speculative_config,
 +        cache_config=CacheConfig(
 +            block_size=hash_block_size,
 +            enable_prefix_caching=True,
@@ -324,9 +397,15 @@ index eff889b98..dbe1eb9c3 100644
 +    request = make_request("aligned-output", list(range(6992)), 256, sha256)
 +    scheduler.add_request(request)
 +
++    first = scheduler.schedule()
++    assert first.num_scheduled_tokens == {"aligned-output": 6656}
++    assert first.recurrent_boundary_blocks is None
++    scheduler.update_from_output(first, _empty_model_output("aligned-output"))
++
 +    output = scheduler.schedule()
 +
-+    assert output.num_scheduled_tokens == {"aligned-output": 6912}
++    assert output.num_scheduled_tokens == {"aligned-output": 256}
++    assert request.num_computed_tokens == 6912
 +    assert output.partial_tail_offloads is None
 +    assert output.recurrent_boundary_blocks is not None
 +    ((group_id, block_id, boundary_tokens),) = output.recurrent_boundary_blocks[
@@ -355,11 +434,19 @@ index eff889b98..dbe1eb9c3 100644
 +    scheduler.add_request(request)
 +
 +    first = scheduler.schedule()
-+    assert first.num_scheduled_tokens == {"partial-output": 8192}
++    assert first.num_scheduled_tokens == {"partial-output": 7936}
 +    assert first.kv_cache_block_copies is None
 +    assert first.partial_tail_offloads is None
 +    assert first.recurrent_boundary_blocks is None
 +    scheduler.update_from_output(first, _empty_model_output("partial-output"))
++
++    boundary = scheduler.schedule()
++    assert boundary.num_scheduled_tokens == {"partial-output": 256}
++    assert request.num_computed_tokens == 8192
++    assert boundary.kv_cache_block_copies is None
++    assert boundary.partial_tail_offloads is None
++    assert boundary.recurrent_boundary_blocks is None
++    scheduler.update_from_output(boundary, _empty_model_output("partial-output"))
 +
 +    second = scheduler.schedule()
 +

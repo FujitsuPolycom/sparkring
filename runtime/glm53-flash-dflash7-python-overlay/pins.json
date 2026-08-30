@@ -69,10 +69,10 @@
         ],
         "test_patch": {
           "path": "runtime/glm53-flash-adaptive-mtp-python-overlay/patches/012-recurrent-boundary-contract-tests.patch",
-          "sha256": "d49aa3b441984139c13f8e392c12b1a3a55e670048e79ffd58ea194389e396ce",
+          "sha256": "fd6ebb99c60f7d242d7594bc5de4136f73768ccfa7327cef562c241126d3581c",
           "target": "tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py",
           "preimage_sha256": "2f58e600fd39413b385b9e96b3c642a9ffb051bedcfc247a700fb532b35ec185",
-          "postimage_sha256": "82bc6c8bace16fa1399f5c77d44a692975827c606f20aacfef05f3baf17b6f41"
+          "postimage_sha256": "1a43d1a4bd43ee81dd89975e23ea6b0333e287d53c7a7e8c21f1554a6ca8b32a"
         }
       }
     ],
