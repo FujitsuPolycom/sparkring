@@ -331,9 +331,9 @@ def test_sparkcache_patches_and_contract_run_after_the_python_overlay() -> None:
     patch_030 = recipe.index("030-sparkcache-hma-load-failure.patch")
     patch_040 = recipe.index("040-sparkcache-shared-prefix-lease.patch")
     patch_041 = recipe.index("041-sparkcache-shared-prefix-attach.patch")
-    lease = recipe.index("verify_lease_contract.py")
-    recurrent = recipe.index("011-recurrent-boundary-contract.patch", lease)
+    recurrent = recipe.index("011-recurrent-boundary-contract.patch", patch_041)
     final_lease = recipe.index("verify_lease_contract.py", recurrent)
+    assert recipe.count("verify_lease_contract.py") == 1
     assert (
         overlay
         < dflash_patch
@@ -341,10 +341,31 @@ def test_sparkcache_patches_and_contract_run_after_the_python_overlay() -> None:
         < patch_030
         < patch_040
         < patch_041
-        < lease
         < recurrent
         < final_lease
     )
+
+
+def test_pr35_lease_verifier_runs_only_after_recurrent_symbols_exist() -> None:
+    recipe = (HERE / "Containerfile").read_text(encoding="utf-8")
+    recurrent_patch = (HERE / "patches/011-recurrent-boundary-contract.patch").read_text(
+        encoding="utf-8"
+    )
+    recurrent_apply = recipe.index(
+        'patch --batch --forward -p1 -d "${root}" < "${recurrent_patch}"'
+    )
+    lease_verify = recipe.index("verify_lease_contract.py")
+    assert recurrent_apply < lease_verify
+    contract = json.loads(PINS.read_text(encoding="utf-8"))["sparkcache"]["contract"]
+    assert contract["sha256"] == (
+        "45d7a92b38b836a4f829f02df85e339cfeea860e1080e4663a8340af6c125125"
+    )
+    for definition in (
+        "def take_recurrent_boundary_blocks(",
+        "recurrent_boundary_blocks:",
+        "def take_pending_aligned_recurrent_boundaries(",
+    ):
+        assert definition in recurrent_patch
 
 
 def test_output_labels_do_not_claim_a_source_built_0b_wheel() -> None:

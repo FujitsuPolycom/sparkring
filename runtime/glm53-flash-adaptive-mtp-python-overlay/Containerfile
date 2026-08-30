@@ -151,9 +151,6 @@ RUN set -eu; \
     patch --batch --forward -p1 -d "${root}" \
       < /opt/sparkcache-vllm-patches/041-sparkcache-shared-prefix-attach.patch; \
     test "$(sha256sum "${scheduler}" | cut -d' ' -f1)" = 6d397c97f31e67a75efc01b5ddd89fa58db425de14fa43965ef2d6146b6b9bdb; \
-    python3 /opt/sparkcache-src/sparkcache/runtime_patches/verify_lease_contract.py \
-      --vllm-root "${root}" \
-      --contract /opt/sparkcache-src/sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json; \
     recurrent_patch="${PYTHON_OVERLAY_ROOT}/patches/011-recurrent-boundary-contract.patch"; \
     recurrent_tests="${PYTHON_OVERLAY_ROOT}/patches/012-recurrent-boundary-contract-tests.patch"; \
     test "$(sha256sum "${recurrent_patch}" | cut -d' ' -f1)" = 5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0; \
