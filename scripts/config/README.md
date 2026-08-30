@@ -93,6 +93,21 @@ Resolve both templates with
 source, contract, image, loader, adaptive-policy, and cache-identity drift.
 Follow the [executable quickstart](../../docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md).
 
+## GLM-5.3 external DFlash7 Python overlay
+
+Status: **implemented**, not qualified. Both profiles use external DFlash at
+depth seven and TP4, FP8 target KV, 256-token blocks, 32 sequences, and
+SparkCache CUDA restore with page-tail copy-on-write publication.
+
+| File | Status | Target loader |
+|---|---|---|
+| `glm53-flash-dflash7-python-overlay-safetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Global safetensors for target and draft |
+| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **research-only** | Global fastsafetensors queue one; external-draft peak GPU memory requires live qualification |
+
+Resolve either profile with
+`scripts/prepare_glm53_dflash7_python_overlay_profile.py`. Follow the
+[DFlash7 Python-overlay quickstart](../../docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md).
+
 ## DeepSeek-V4-Flash-0731
 
 **Status: implemented.**
