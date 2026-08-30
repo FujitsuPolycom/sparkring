@@ -76,24 +76,25 @@ def test_verdict_requires_one_flight_and_sixteen_result_restores_per_rank(
     tmp_path: Path,
 ) -> None:
     labels = {
-        "org.sparkcache.source-revision": "9c2f6c8ac36e0aa5d134fbcd81e819db2ce63970",
-        "org.sparkcache.source-tree": "e7ac2ef7a3180c5a83771edac44216c3325894e5",
-        "org.sparkcache.source-sha256": "834ff02c235e3f3a3594cec31d0a83d981ac8d410d6482d062725fd9b846a95c",
+        "org.sparkcache.source-revision": "5a6613e473a713695948e69e0027fd67530028f8",
+        "org.sparkcache.source-tree": "5e74b3f9d484064d966ce6392dda1e0f7ff17190",
+        "org.sparkcache.source-sha256": "446c5bdd5a3efae8a4c4955cfbb577be1d8672a91d47770db63115cb25889313",
         "org.sparkcache.cuda-placement-library-sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
         "org.sparkcache.feature.page-base-read-flight": "implemented-gpu-free-tested",
         "org.sparkcache.feature.page-base-read-flight-pr": "42",
         "org.sparkcache.cache-namespace-impact": "none",
         "org.sparkcache.diagnostic-fix": (
-            "source-tree-marker=834ff02c235e3f3a3594cec31d0a83d981ac8d410d6482d062725fd9b846a95c;"
-            "parent=sha256:ba6ca684f5dbbe7fccac93aedce8abe907cf4cabcc4f5d2f481fad2706fdbfde"
+            "page-header-source-bytes-fix=229d7d6;"
+            "parent=sha256:9f485c4408a56c0868c75f3e62b09432b2d908b5e4eb28915e0e6b4c4e4fe99f"
         ),
+        "org.sparkcache.page-header-source-bytes-fix": "229d7d6",
     }
     artifact = _write(
         tmp_path / "artifact.json",
         {
             "schema": "sparkcache-diagnostic-image-receipt/v1",
             "image": {
-                "id": "sha256:9f485c4408a56c0868c75f3e62b09432b2d908b5e4eb28915e0e6b4c4e4fe99f",
+                "id": "sha256:cc2c0e2f812f4b78d5b91f863aaf46fd8e8e505844245aa50911af1fb8e061c0",
                 "labels": labels,
             },
         },
@@ -178,7 +179,7 @@ def test_verdict_requires_one_flight_and_sixteen_result_restores_per_rank(
     assert verdict["schema"] == RECEIPT_SCHEMA
     assert verdict["status"] == "qualified"
     assert verdict["image_id"] == (
-        "sha256:9f485c4408a56c0868c75f3e62b09432b2d908b5e4eb28915e0e6b4c4e4fe99f"
+        "sha256:cc2c0e2f812f4b78d5b91f863aaf46fd8e8e505844245aa50911af1fb8e061c0"
     )
     assert [item["verified_result_restores"] for item in verdict["rank_evidence"]] == [
         16,

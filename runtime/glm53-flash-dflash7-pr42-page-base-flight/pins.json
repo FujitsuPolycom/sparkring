@@ -18,7 +18,7 @@
   },
   "builder": {
     "arm_builder": "pytorch/manylinuxaarch64-builder@sha256:f91599c49f526c77d01b68286f2bf943a5fd6a432d7e3f0afcc5784825908fe9",
-    "output_name": "sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-exact-arm64"
+    "output_name": "sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-sourcebytesfix-arm64"
   },
   "vllm": {
     "repository": "https://github.com/local-inference-lab/vllm.git",
@@ -147,9 +147,9 @@
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-    "commit": "9c2f6c8ac36e0aa5d134fbcd81e819db2ce63970",
-    "tree": "e7ac2ef7a3180c5a83771edac44216c3325894e5",
-    "source_tree_sha256": "834ff02c235e3f3a3594cec31d0a83d981ac8d410d6482d062725fd9b846a95c",
+    "commit": "5a6613e473a713695948e69e0027fd67530028f8",
+    "tree": "5e74b3f9d484064d966ce6392dda1e0f7ff17190",
+    "source_tree_sha256": "446c5bdd5a3efae8a4c4955cfbb577be1d8672a91d47770db63115cb25889313",
     "cuda_placement_library_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
     "cuda_config_schema": "canonical-v1",
     "canonical_cuda_config_keys": [
@@ -218,16 +218,25 @@
     "maximum_simultaneous_flights": 2,
     "maximum_declared_bytes_per_flight": 1073741824,
     "maximum_peak_reserved_bytes": 2147483648,
+    "source_feature_commit": "6f3edede4b9f707ef9e8879359b05b0775ed5fee",
+    "page_header_source_bytes_fix": "229d7d6158261e9510ab99d7e82d532abb9ade01",
     "artifact_receipt": {
-      "schema": "sparkcache-diagnostic-image-receipt/v2",
-      "sha256": "18052a885776d7da31511c53cf8ed3c626f2b5ab0e56b321d4f669c2bc46241c",
-      "builder_path": "/home/code/image-build-receipts/sparkring-glm53-sparkcache-dflash7-pr42-page-base-flight-exact-arm64.json",
-      "image": "sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-exact-arm64",
-      "image_id": "sha256:9f485c4408a56c0868c75f3e62b09432b2d908b5e4eb28915e0e6b4c4e4fe99f",
+      "schema": "sparkcache-sourcebytesfix-image-receipt/v1",
+      "sha256": "31c226697752672cafe83b6d06793638fb64d6ad1abe9937edf89ee4814bca5a",
+      "builder_path": "/home/code/image-build-receipts/sparkring-glm53-sparkcache-dflash7-pr42-page-base-flight-sourcebytesfix-arm64.json",
+      "image": "sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-sourcebytesfix-arm64",
+      "image_id": "sha256:cc2c0e2f812f4b78d5b91f863aaf46fd8e8e505844245aa50911af1fb8e061c0",
       "builder": "spark-aa42",
       "feature_status": "implemented-gpu-free-tested",
       "parent_image_id": "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8",
-      "cache_namespace_impact": "none"
+      "cache_namespace_impact": "none",
+      "tp4_import_receipt": {
+        "schema": "sparkcache-pr42-sourcebytesfix-tp4-import-receipt/v1",
+        "path": "/home/code/image-build-receipts/pr42-sourcebytesfix-tp4-import-receipt.json",
+        "sha256": "0e14c0e6e21a8fdd8a21bbdcad960188a853512bdf97cfbc3f2843edb8a79e72",
+        "archive_sha256": "9e1876207e7cbb3a85ac121fd91c21974eb73298af2638813a3a2fc5a27dc2ab",
+        "archive_bytes": 20822443008
+      }
     }
   },
   "runtime_cache_roots": {

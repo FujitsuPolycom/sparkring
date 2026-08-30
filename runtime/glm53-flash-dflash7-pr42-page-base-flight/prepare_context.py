@@ -61,7 +61,8 @@ def _render_containerfile() -> str:
         marker
         + '      org.sparkcache.feature.page-base-read-flight="implemented-gpu-free-tested" \\\n'
         + '      org.sparkcache.feature.page-base-read-flight-pr="42" \\\n'
-        + '      org.sparkcache.diagnostic-fix="source-tree-marker=834ff02c235e3f3a3594cec31d0a83d981ac8d410d6482d062725fd9b846a95c;parent=sha256:ba6ca684f5dbbe7fccac93aedce8abe907cf4cabcc4f5d2f481fad2706fdbfde" \\\n'
+        + '      org.sparkcache.diagnostic-fix="page-header-source-bytes-fix=229d7d6;parent=sha256:9f485c4408a56c0868c75f3e62b09432b2d908b5e4eb28915e0e6b4c4e4fe99f" \\\n'
+        + '      org.sparkcache.page-header-source-bytes-fix="229d7d6" \\\n'
         + '      org.sparkcache.parent-image-id="sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8" \\\n'
         + '      org.sparkcache.cache-namespace-impact="none" \\\n'
     )
@@ -84,7 +85,8 @@ def _render_verify_image() -> str:
         + '"implemented-gpu-free-tested",\n'
         + '        "org.sparkcache.feature.page-base-read-flight-pr": "42",\n'
         + '        "org.sparkcache.diagnostic-fix": '
-        + '"source-tree-marker=834ff02c235e3f3a3594cec31d0a83d981ac8d410d6482d062725fd9b846a95c;parent=sha256:ba6ca684f5dbbe7fccac93aedce8abe907cf4cabcc4f5d2f481fad2706fdbfde",\n'
+        + '"page-header-source-bytes-fix=229d7d6;parent=sha256:9f485c4408a56c0868c75f3e62b09432b2d908b5e4eb28915e0e6b4c4e4fe99f",\n'
+        + '        "org.sparkcache.page-header-source-bytes-fix": "229d7d6",\n'
         + '        "org.sparkcache.parent-image-id": '
         + '"sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8",\n'
         + '        "org.sparkcache.cache-namespace-impact": "none",\n'
