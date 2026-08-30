@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import inspect
 import json
 import re
 from dataclasses import dataclass
@@ -51,14 +52,14 @@ def test_overlay_pins_public_base_and_mixed_vllm_provenance() -> None:
     assert pins["b12x"]["commit"] != pins["b12x"]["base_commit"]
     sparkcache = pins["sparkcache"]
     assert sparkcache["commit"] == (
-        "08e297769a796da2668ea58d0ed5c0d9b588565b"
+        "49c517ed76e09dd2f7e78eb3ad5fe83382bda6fb"
     )
-    assert sparkcache["tree"] == "18497db629a204d761f2514824a4c18408a40184"
+    assert sparkcache["tree"] == "c8cbfb54fc52c5966f19af3450629376e4e703db"
     assert sparkcache["source_tree_sha256"] == (
-        "88633ef676b4dfe258a6fa9b788ddeb22cad68349d0cae0c503ee404d1724f7b"
+        "83853050f790b18af95d424fec837abeb1a9a33f0538b5e4b97c16fb9c681781"
     )
     assert sparkcache["contract"]["sha256"] == (
-        "45d7a92b38b836a4f829f02df85e339cfeea860e1080e4663a8340af6c125125"
+        "f36ed14eaf1f97a5dffa94bda8151b1e0fa182afc0d121b757b70bebc6a43811"
     )
     assert sparkcache["cuda_config_schema"] == "canonical-v1"
     assert pins["dependencies"]["torch"] == "2.13.0+cu130"
@@ -358,7 +359,7 @@ def test_pr35_lease_verifier_runs_only_after_recurrent_symbols_exist() -> None:
     assert recurrent_apply < lease_verify
     contract = json.loads(PINS.read_text(encoding="utf-8"))["sparkcache"]["contract"]
     assert contract["sha256"] == (
-        "45d7a92b38b836a4f829f02df85e339cfeea860e1080e4663a8340af6c125125"
+        "f36ed14eaf1f97a5dffa94bda8151b1e0fa182afc0d121b757b70bebc6a43811"
     )
     for definition in (
         "def take_recurrent_boundary_blocks(",
@@ -366,6 +367,17 @@ def test_pr35_lease_verifier_runs_only_after_recurrent_symbols_exist() -> None:
         "def take_pending_aligned_recurrent_boundaries(",
     ):
         assert definition in recurrent_patch
+
+
+def test_context_preparer_runs_the_real_lease_verifier_on_composed_source() -> None:
+    source = inspect.getsource(prepare.verify_composed_runtime_patches)
+    recurrent_apply = source.index('run(("git", "-C", str(source), "apply", str(patch)))')
+    exact_postimage = source.index('target_record["postimage_sha256"]')
+    verifier = source.index("verify_lease_contract.py")
+    recurrent_reverse = source.index("for patch in reversed(applied_composed)")
+    assert recurrent_apply < exact_postimage < verifier < recurrent_reverse
+    assert '"--vllm-root"' in source
+    assert "str(contract)" in source
 
 
 def test_output_labels_do_not_claim_a_source_built_0b_wheel() -> None:

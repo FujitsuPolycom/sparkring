@@ -203,6 +203,6 @@ LABEL org.opencontainers.image.title="SparkRing GLM-5.3 adaptive-MTP Python over
       org.sparkcache.source-tree="${SPARKCACHE_TREE}" \
       org.sparkcache.source-sha256="${SPARKCACHE_SOURCE_SHA256}" \
       org.sparkcache.cuda-placement-library-sha256="${SPARKCACHE_CUDA_PLACEMENT_SHA256}" \
-      org.sparkcache.vllm-contract-sha256="45d7a92b38b836a4f829f02df85e339cfeea860e1080e4663a8340af6c125125" \
+      org.sparkcache.vllm-contract-sha256="f36ed14eaf1f97a5dffa94bda8151b1e0fa182afc0d121b757b70bebc6a43811" \
       org.sparkcache.deployment-profile="glm53-flash-adaptive-mtp-python-overlay" \
       org.sparkring.source-receipt-sha256="${SOURCE_RECEIPT_SHA256}"

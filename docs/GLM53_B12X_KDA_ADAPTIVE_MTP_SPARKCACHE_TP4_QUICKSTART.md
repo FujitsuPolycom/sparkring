@@ -3,8 +3,8 @@
 Status: **implemented, not qualified**. This guide retains vLLM native
 extensions from `da4d7be6c97434f6942292ed8abbf4b32dc44355`, overlays Python
 source `0b67266a0f37d6146a8403fb8482403c62f412d5`, and installs SparkCache
-commit `08e297769a796da2668ea58d0ed5c0d9b588565b`, Git tree
-`18497db629a204d761f2514824a4c18408a40184`, for four DGX Spark systems at
+commit `49c517ed76e09dd2f7e78eb3ad5fe83382bda6fb`, Git tree
+`c8cbfb54fc52c5966f19af3450629376e4e703db`, for four DGX Spark systems at
 TP4/DCP1. The adaptive-MTP composition has GPU-free contract coverage but no
 four-rank persistent-restore or performance qualification.
 
@@ -37,18 +37,18 @@ bash runtime/glm53-flash-adaptive-mtp-python-overlay/build-image.sh
 
 The builder verifies the 31-file Python overlay, retained native ELF and
 dispatch manifests, B12X `b1d541f`, SparkCache clean source SHA-256
-`88633ef676b4dfe258a6fa9b788ddeb22cad68349d0cae0c503ee404d1724f7b`,
+`83853050f790b18af95d424fec837abeb1a9a33f0538b5e4b97c16fb9c681781`,
 four SparkCache patches, recurrent-boundary producer patch SHA-256
 `5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0`,
 and lease contract SHA-256
-`45d7a92b38b836a4f829f02df85e339cfeea860e1080e4663a8340af6c125125`.
+`f36ed14eaf1f97a5dffa94bda8151b1e0fa182afc0d121b757b70bebc6a43811`.
 The receipt binds these sources to the local image ID. The builder does not
 push the image or contact serving hosts.
 
 `runtime/glm53-flash-b12x-kda-adaptive-mtp/` remains an exact full-source
 builder for its older SparkCache contract. It does not apply the recurrent
 producer after SparkCache's vLLM patches, so it is unsupported with SparkCache
-`08e2977` and must not be substituted in this guide.
+`49c517e` and must not be substituted in this guide.
 
 ## Resolve the TP4 profile
 
@@ -133,6 +133,6 @@ five, and `adaptive:3:32`, separated by zero bytes.
 Including both retained-native and overlaid-Python revisions gives this runtime
 a distinct draft-state cache identity from the e105 adaptive-MTP and older
 full-source profiles. Stored entries therefore recompute instead of crossing a
-runtime boundary without byte-equivalence evidence. SparkCache `08e2977` does
+runtime boundary without byte-equivalence evidence. SparkCache `49c517e` does
 not change wire fields, digest salts, or 256-token geometry; the new lease
 contract accepts the producer postimages needed to prove recurrent publication.

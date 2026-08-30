@@ -114,9 +114,9 @@
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-    "commit": "08e297769a796da2668ea58d0ed5c0d9b588565b",
-    "tree": "18497db629a204d761f2514824a4c18408a40184",
-    "source_tree_sha256": "88633ef676b4dfe258a6fa9b788ddeb22cad68349d0cae0c503ee404d1724f7b",
+    "commit": "49c517ed76e09dd2f7e78eb3ad5fe83382bda6fb",
+    "tree": "c8cbfb54fc52c5966f19af3450629376e4e703db",
+    "source_tree_sha256": "83853050f790b18af95d424fec837abeb1a9a33f0538b5e4b97c16fb9c681781",
     "cuda_config_schema": "canonical-v1",
     "canonical_cuda_config_keys": [
       "spark_cache_cuda_restore",
@@ -127,7 +127,7 @@
     ],
     "contract": {
       "path": "sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json",
-      "sha256": "45d7a92b38b836a4f829f02df85e339cfeea860e1080e4663a8340af6c125125",
+      "sha256": "f36ed14eaf1f97a5dffa94bda8151b1e0fa182afc0d121b757b70bebc6a43811",
       "files": 11
     },
     "patches": [

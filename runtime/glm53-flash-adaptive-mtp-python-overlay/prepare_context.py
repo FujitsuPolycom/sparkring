@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -214,6 +215,9 @@ def verify_composed_runtime_patches(
 ) -> None:
     """Verify patches whose preimages include the SparkCache vLLM chain."""
 
+    contract = sparkcache / pins["sparkcache"]["contract"]["path"]
+    if sha256_file(contract) != pins["sparkcache"]["contract"]["sha256"]:
+        raise PrepareError("SparkCache vLLM contract differs from its pin")
     applied_sparkcache: list[Path] = []
     applied_composed: list[Path] = []
     try:
@@ -258,6 +262,17 @@ def verify_composed_runtime_patches(
                     raise PrepareError("vLLM recurrent-boundary test postimage mismatch")
             finally:
                 run(("git", "-C", str(source), "apply", "--reverse", str(test_patch)))
+        verifier = sparkcache / "sparkcache/runtime_patches/verify_lease_contract.py"
+        run(
+            (
+                sys.executable,
+                str(verifier),
+                "--vllm-root",
+                str(source),
+                "--contract",
+                str(contract),
+            )
+        )
     finally:
         for patch in reversed(applied_composed):
             run(("git", "-C", str(source), "apply", "--reverse", str(patch)))
