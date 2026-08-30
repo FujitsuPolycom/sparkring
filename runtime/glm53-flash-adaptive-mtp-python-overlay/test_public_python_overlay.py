@@ -141,6 +141,13 @@ def test_containerfile_reuses_vllm_and_nccl_native_artifacts() -> None:
     assert "make -C /build/nccl" not in recipe
 
 
+def test_build_prepares_context_below_the_temporary_workspace() -> None:
+    script = (HERE / "build-image.sh").read_text(encoding="utf-8")
+    assert 'workspace="$(mktemp -d)"' in script
+    assert 'context="${workspace}/context"' in script
+    assert 'rm -rf -- "${workspace}"' in script
+
+
 def test_sparkcache_patches_and_contract_run_after_the_python_overlay() -> None:
     recipe = (HERE / "Containerfile").read_text(encoding="utf-8")
     overlay = recipe.index("COPY bundle/vllm-overlay/")

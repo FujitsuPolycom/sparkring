@@ -53,10 +53,11 @@ sparkring_revision="$(git -C "${repo_root}" rev-parse HEAD)"
 python3 "${here}/verify_image.py" \
   --engine "${engine}" --pins "${pins}" --base-image "${public_base}" >/dev/null
 
-context="$(mktemp -d)"
+workspace="$(mktemp -d)"
+context="${workspace}/context"
 cleanup() {
-  # `context` is created by mktemp in this process and never accepts caller input.
-  rm -rf -- "${context}"
+  # `workspace` is created by mktemp in this process and never accepts caller input.
+  rm -rf -- "${workspace}"
 }
 trap cleanup EXIT
 
