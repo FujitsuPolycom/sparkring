@@ -12,8 +12,9 @@ The image combines these exact roles:
   `0b67266a0f37d6146a8403fb8482403c62f412d5`;
 - B12X `b1d541f9e71a35f030d45fae437630fff7507c2a`;
 - SparkCache reconstructed-page placement source
-  `b95aa8ab0068dc66a6892a5c311d7e9dd4a9c55a`, Git tree
-  `723fc604d73911a9e907798fd7932e4fc9c95df5`;
+  `19e2ec8b59c84ef359c2a3290f86962e3ff71d96`, Git tree
+  `d8b417bb4b6d734c4403c0a73e7e42b95abd8343`, and deployable source SHA-256
+  `bc7cae86732c869ee8b2205d48ac5be6f580ee8b77a3e4ffd4c69dcd4f1bfae5`;
 - external BF16 DFlash2 weights with SHA-256
   `b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b`.
 
@@ -48,6 +49,12 @@ The SparkCache source accepts the canonical CUDA configuration keys directly.
 No PR25 compatibility profile or legacy-key translation is required by these
 profiles.
 
-The PR26 source update does not change cache identity, page-tail publication,
-record geometry, vLLM patch bytes, the lease contract, or the CUDA placement
-ABI. Existing compatible PR25 cache entries remain in the same namespace.
+The pinned SparkCache source from
+[pull request #29](https://github.com/FujitsuPolycom/sparkcache/pull/29)
+accepts canonical CUDA configuration keys and replaces a partial terminal HMA
+page when the authenticated cache boundary falls inside that page. It does not
+change cache identity, page-tail wire schemas, record geometry, vLLM patch
+bytes, the lease contract, or the CUDA placement ABI. Compatible entries
+produced by the source at commit
+`5d571018de5b63a9a90e5c11e6d6e86bbff4a957` remain in the same namespace.
+Null-block publication failures remain unsupported by this source contract.

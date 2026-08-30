@@ -33,13 +33,13 @@ def test_pins_bind_the_exact_dflash7_composition() -> None:
         "b1d541f9e71a35f030d45fae437630fff7507c2a"
     )
     assert pins["sparkcache"]["commit"] == (
-        "b95aa8ab0068dc66a6892a5c311d7e9dd4a9c55a"
+        "19e2ec8b59c84ef359c2a3290f86962e3ff71d96"
     )
     assert pins["sparkcache"]["tree"] == (
-        "723fc604d73911a9e907798fd7932e4fc9c95df5"
+        "d8b417bb4b6d734c4403c0a73e7e42b95abd8343"
     )
     assert pins["sparkcache"]["source_tree_sha256"] == (
-        "48e008ba0cbd12f1ffae1c28388ea83310f41c6219c955e13d63ab171290d8de"
+        "bc7cae86732c869ee8b2205d48ac5be6f580ee8b77a3e4ffd4c69dcd4f1bfae5"
     )
     assert pins["sparkcache"]["cuda_config_schema"] == "canonical-v1"
     assert pins["sparkcache"]["canonical_cuda_config_keys"] == [
