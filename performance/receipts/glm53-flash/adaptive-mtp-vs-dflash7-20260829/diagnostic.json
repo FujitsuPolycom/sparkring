@@ -1,0 +1,78 @@
+{
+  "schema": "sparkring-glm53-decode-log-diagnostic/v1",
+  "status": "research-only",
+  "target_model": {
+    "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+    "revision": "520de24eabf507659eaef7c70f14fd584527facc",
+    "cache_identity_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9"
+  },
+  "topology": {
+    "systems": 4,
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 1,
+    "pipeline_parallel_size": 1
+  },
+  "adaptive_mtp": {
+    "container": "glm53-flash-public-python-overlay-mtp5-adaptive-fastsafetensors-sparkcache-tp4-r0",
+    "image_id": "sha256:d209cf986c1f14f320e53d8b425c5e3a255eef9320f25b632af50f5b5c977314",
+    "served_model": "glm-5.3-flash-nvfp4-python-overlay-0b67266-on-da4d7be-b12x-b1d541f-mtp5-adaptive-tp4",
+    "vllm_native_commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+    "vllm_python_commit": "0b67266a0f37d6146a8403fb8482403c62f412d5",
+    "b12x_commit": "b1d541f9e71a35f030d45fae437630fff7507c2a",
+    "sparkcache_commit": "20838ace3ebda570ca039cb7f1976c29da554b39",
+    "sparkring_revision": "914c94d084d6881e90660305dedaa410ef02b167",
+    "draft_identity_sha256": "2e06d909ce5bb71c0c0e3e8be74a70e3b41d92ba4c30196cfb0957fb812acef6",
+    "maximum_depth": 5,
+    "initial_depth": 3,
+    "observation_window_steps": 32,
+    "log_interval_utc": {
+      "start": "2026-08-30T03:23:25Z",
+      "end": "2026-08-30T03:25:15Z"
+    },
+    "observations": [
+      {"timestamp": "2026-08-30T03:23:25Z", "generation_tokens_per_second": 38.7, "depth": 4, "draft_acceptance_percent": 74.2},
+      {"timestamp": "2026-08-30T03:23:35Z", "generation_tokens_per_second": 30.7, "depth": 3, "draft_acceptance_percent": 65.9},
+      {"timestamp": "2026-08-30T03:23:45Z", "generation_tokens_per_second": 34.1, "depth": 3, "draft_acceptance_percent": 62.2},
+      {"timestamp": "2026-08-30T03:23:55Z", "generation_tokens_per_second": 29.5, "depth": 4, "draft_acceptance_percent": 77.0},
+      {"timestamp": "2026-08-30T03:24:05Z", "generation_tokens_per_second": 34.6, "depth": 4, "draft_acceptance_percent": 72.4},
+      {"timestamp": "2026-08-30T03:24:15Z", "generation_tokens_per_second": 31.4, "depth": 3, "draft_acceptance_percent": 59.4},
+      {"timestamp": "2026-08-30T03:24:25Z", "generation_tokens_per_second": 36.3, "depth": 3, "draft_acceptance_percent": 67.5},
+      {"timestamp": "2026-08-30T03:24:35Z", "generation_tokens_per_second": 36.8, "depth": 4, "draft_acceptance_percent": 72.0},
+      {"timestamp": "2026-08-30T03:24:45Z", "generation_tokens_per_second": 28.0, "depth": 3, "draft_acceptance_percent": 58.2},
+      {"timestamp": "2026-08-30T03:24:55Z", "generation_tokens_per_second": 24.5, "depth": 2, "draft_acceptance_percent": 48.9},
+      {"timestamp": "2026-08-30T03:25:05Z", "generation_tokens_per_second": 31.9, "depth": 3, "draft_acceptance_percent": 75.1},
+      {"timestamp": "2026-08-30T03:25:15Z", "generation_tokens_per_second": 37.1, "depth": 4, "draft_acceptance_percent": 81.2}
+    ],
+    "sparkcache_events_in_interval": 0
+  },
+  "dflash7": {
+    "container": "glm53-flash-dflash2-bf16-sparkcache-public-tp4-r0-dflash7-stopped-20260829",
+    "rank_image_ids": [
+      "sha256:80b407904d21211d9a6b435c8ee4292ce66bfebcf802d94deb6605cdbc94d648",
+      "sha256:de4e219db4bdc2dfe4a2bcf2d5adb11655da22b5d40bf42494028c5ed128ea83",
+      "sha256:b5c29a1fc97fe7e086b62cffd832d90b292dc4f60cbf10c5593ef2f3debea365",
+      "sha256:9aeaf31b13af8a940734e31ec2963ce2714db535430ce7953a8baa5cf6dd4401"
+    ],
+    "served_model": "glm-5.3-flash-nvfp4-dflash7-bf16-tp4",
+    "vllm_commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+    "b12x_commit": "2fcf23a0ce269be27b2e03fece73d46e90e6aeea",
+    "sparkcache_commit": "2b86fb9d02fa3595cca5caa864b81aedce44b8bb",
+    "draft_repository": "incoai/GLM-5.3-Flash-DFlash2",
+    "draft_revision": "dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+    "draft_weights_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
+    "depth": 7,
+    "log_interval_utc": {
+      "start": "2026-08-29T21:13:57Z",
+      "end": "2026-08-29T21:15:07Z"
+    },
+    "generation_tokens_per_second": [40.6, 48.2, 52.6, 94.9, 111.8, 69.8, 133.6, 136.0],
+    "sparkcache_events_in_interval": 0
+  },
+  "user_reported_matched_coding_peak": {
+    "dflash7_tokens_per_second": 70.0,
+    "adaptive_mtp_tokens_per_second": 33.5,
+    "receipt_present": false
+  },
+  "prompt_receipt_present": false,
+  "output_receipt_present": false
+}
