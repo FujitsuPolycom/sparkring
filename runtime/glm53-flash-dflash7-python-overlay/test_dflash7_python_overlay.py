@@ -44,14 +44,23 @@ def test_pins_bind_the_exact_dflash7_composition() -> None:
     assert workload["draft"]["tensor_parallel_size"] == 4
     assert workload["target_loaders"] == {
         "safetensors": "implemented",
-        "fastsafetensors": "research-only",
+        "fastsafetensors": "implemented",
     }
+    patch = pins["vllm"]["runtime_patches"][0]
+    assert patch["sha256"] == (
+        "39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279"
+    )
+    assert patch["postimage_sha256"] == (
+        "98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4"
+    )
 
 
 def test_rendered_image_metadata_names_dflash7_not_adaptive_mtp() -> None:
     recipe = prepare._render_containerfile()
     assert "SparkRing GLM-5.3 DFlash7 Python overlay" in recipe
     assert "glm53-flash-dflash7-python-overlay" in recipe
+    assert "010-dflash-draft-load-config.patch" in recipe
+    assert "98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4" in recipe
     label_section = recipe[recipe.index("LABEL org.opencontainers.image.title=") :]
     assert "adaptive-MTP" not in label_section
     verifier = prepare._render_verify_image()
@@ -68,6 +77,9 @@ def test_verifier_requires_the_dflash7_deployment_label() -> None:
     assert labels["org.jovian.vllm.commit"] != labels[
         "org.sparkring.vllm.python.commit"
     ]
+    assert labels["org.sparkring.vllm.dflash-draft-loader-patch-sha256"] == (
+        "39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279"
+    )
 
 
 def test_builder_uses_the_dflash7_runtime_path_and_receipt() -> None:

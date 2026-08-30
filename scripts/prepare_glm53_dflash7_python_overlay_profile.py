@@ -36,6 +36,12 @@ B12X_TREE = "c69cdec1c59a08e8e0e549f930fa8abcfb5134ae"
 OVERLAY_MANIFEST_SHA256 = (
     "e5e528288b173399611a4930fecc4182b7208bc1564881d52ca5d2c5c4ae0f6a"
 )
+DFLASH_LOADER_PATCH_SHA256 = (
+    "39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279"
+)
+DFLASH_LOADER_POSTIMAGE_SHA256 = (
+    "98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4"
+)
 SPARKCACHE_COMMIT = "5d571018de5b63a9a90e5c11e6d6e86bbff4a957"
 SPARKCACHE_TREE = "e864ed9ad64f771188fdb59aa9738e348134d636"
 SPARKCACHE_SOURCE_SHA256 = (
@@ -131,21 +137,25 @@ def resolve(
         if identity.get(name) != expected:
             raise ResolveError(f"profile identity {name} must be {expected}")
 
+    speculative = json.loads(_argument(profile, "--speculative-config"))
     loader = _argument(profile, "--load-format")
     if loader != identity.get("target_weight_loader"):
         raise ResolveError("target loader argument and profile identity differ")
     if loader == "fastsafetensors":
         if profile.get("environment", {}).get("VLLM_FASTSAFETENSORS_QUEUE_SIZE") != "1":
             raise ResolveError("fastsafetensors queue size must be one")
-        if identity.get("dflash_peak_gpu_memory_status") != "research-only":
-            raise ResolveError("fastsafetensors DFlash requires live peak-memory qualification")
+        if identity.get("dflash_peak_gpu_memory_status") != "implemented":
+            raise ResolveError("separated fastsafetensors DFlash status must be implemented")
+        if speculative.get("draft_load_config") != {"load_format": "safetensors"}:
+            raise ResolveError(
+                "fastsafetensors target requires draft_load_config safetensors"
+            )
     elif loader == "safetensors":
         if identity.get("dflash_peak_gpu_memory_status") != "implemented":
             raise ResolveError("safetensors DFlash loader status must be implemented")
     else:
         raise ResolveError("DFlash7 target loader must be safetensors or fastsafetensors")
 
-    speculative = json.loads(_argument(profile, "--speculative-config"))
     expected_speculative = {
         "method": "dflash",
         "model": "/dflash-draft",
@@ -184,6 +194,12 @@ def resolve(
         "org.sparkring.vllm.python.commit": VLLM_PYTHON_COMMIT,
         "org.sparkring.vllm.python.tree": VLLM_PYTHON_TREE,
         "org.sparkring.vllm.python-overlay-manifest-sha256": OVERLAY_MANIFEST_SHA256,
+        "org.sparkring.vllm.dflash-draft-loader-patch-sha256": (
+            DFLASH_LOADER_PATCH_SHA256
+        ),
+        "org.sparkring.vllm.dflash-draft-loader-postimage-sha256": (
+            DFLASH_LOADER_POSTIMAGE_SHA256
+        ),
         "org.jovian.b12x.commit": B12X_COMMIT,
         "org.sparkring.b12x.tree": B12X_TREE,
         "org.opencontainers.image.base.name": PUBLIC_BASE,

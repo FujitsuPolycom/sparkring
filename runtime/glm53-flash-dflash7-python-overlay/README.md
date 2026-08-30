@@ -37,7 +37,9 @@ files remain operator-mounted and are verified by the runtime profile.
 
 Two executable profiles use external DFlash at depth seven and TP4, FP8 target
 KV, 256-token vLLM blocks, 32 sequences, and SparkCache page-tail copy-on-write
-publication with CUDA restore. The global safetensors profile is implemented
-but unqualified on the composed 0b image. The global fastsafetensors profile is
-research-only until external-draft loading and peak GPU memory pass live gates.
-See `docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md`.
+publication with CUDA restore. Both are implemented but unqualified on the
+composed 0b image. The conservative profile uses global safetensors. The mixed
+profile uses global fastsafetensors for the target and an exact
+`draft_load_config` selecting safetensors for DFlash. The image applies and
+verifies the draft-loader patch before installing SparkCache patches. See
+`docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md`.

@@ -10,6 +10,8 @@ import yaml
 import sparkring_generic_launcher as launcher
 from prepare_glm53_dflash7_python_overlay_profile import (
     B12X_COMMIT,
+    DFLASH_LOADER_PATCH_SHA256,
+    DFLASH_LOADER_POSTIMAGE_SHA256,
     DFLASH_WEIGHTS_SHA256,
     VLLM_NATIVE_COMMIT,
     VLLM_PYTHON_COMMIT,
@@ -89,14 +91,14 @@ def test_profiles_pin_external_dflash7_and_tp4(path: Path, loader: str) -> None:
     assert profile["identity"]["kv_cache_dtype"] == "fp8"
 
 
-def test_fastsafetensors_profile_is_research_only_for_dflash_peak_memory() -> None:
+def test_fastsafetensors_profile_separates_the_draft_loader() -> None:
     profile = json.loads(FAST.read_text(encoding="utf-8"))
     assert profile["environment"]["VLLM_FASTSAFETENSORS_QUEUE_SIZE"] == "1"
-    assert profile["identity"]["dflash_peak_gpu_memory_status"] == (
-        "research-only"
-    )
+    speculative = json.loads(_argument(profile, "--speculative-config"))
+    assert speculative["draft_load_config"] == {"load_format": "safetensors"}
+    assert profile["identity"]["dflash_peak_gpu_memory_status"] == "implemented"
     assert profile["extra_labels"]["org.sparkring.qualification-status"] == (
-        "research-only"
+        "implemented"
     )
 
 
@@ -139,6 +141,12 @@ def test_resolved_profile_requires_dflash7_image_labels() -> None:
     assert labels["org.sparkcache.deployment-profile"] == (
         "glm53-flash-dflash7-python-overlay"
     )
+    assert labels["org.sparkring.vllm.dflash-draft-loader-patch-sha256"] == (
+        DFLASH_LOADER_PATCH_SHA256
+    )
+    assert labels["org.sparkring.vllm.dflash-draft-loader-postimage-sha256"] == (
+        DFLASH_LOADER_POSTIMAGE_SHA256
+    )
     assert "adaptive" not in " ".join(labels.values()).lower()
 
 
@@ -161,6 +169,14 @@ def test_resolver_rejects_mtp_or_noncanonical_cuda_restore() -> None:
     args = changed["extra_vllm_args"]
     args[args.index("--kv-transfer-config") + 1] = json.dumps(transfer)
     with pytest.raises(ResolveError, match="cuda_restore_io_workers"):
+        resolve(changed, copy.deepcopy(site), **kwargs)
+
+    changed = copy.deepcopy(profile)
+    speculative = json.loads(_argument(changed, "--speculative-config"))
+    speculative.pop("draft_load_config")
+    args = changed["extra_vllm_args"]
+    args[args.index("--speculative-config") + 1] = json.dumps(speculative)
+    with pytest.raises(ResolveError, match="draft_load_config safetensors"):
         resolve(changed, copy.deepcopy(site), **kwargs)
 
 
@@ -186,5 +202,6 @@ def test_quickstart_names_both_loader_statuses_and_exact_builder() -> None:
     guide = GUIDE.read_text(encoding="utf-8")
     assert "runtime/glm53-flash-dflash7-python-overlay/build-image.sh" in guide
     assert FAST.name in guide and SAFE.name in guide
-    assert "research-only" in guide
+    assert "implemented" in guide and "not qualified" in guide
     assert DFLASH_WEIGHTS_SHA256 in guide
+    assert DFLASH_LOADER_PATCH_SHA256 in guide

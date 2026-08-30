@@ -170,6 +170,8 @@
     "org.sparkring.vllm.python.commit": "0b67266a0f37d6146a8403fb8482403c62f412d5",
     "org.sparkring.vllm.python.tree": "ba9484ccb33aa56e90ff2f447f15ca9b9da97639",
     "org.sparkring.vllm.python-overlay-manifest-sha256": "e5e528288b173399611a4930fecc4182b7208bc1564881d52ca5d2c5c4ae0f6a",
+    "org.sparkring.vllm.dflash-draft-loader-patch-sha256": "39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279",
+    "org.sparkring.vllm.dflash-draft-loader-postimage-sha256": "98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4",
     "org.sparkring.vllm.native-elf-manifest-sha256": "REPLACE_WITH_VLLM_NATIVE_ELF_MANIFEST_SHA256",
     "org.sparkring.vllm.native-dispatch-manifest-sha256": "REPLACE_WITH_VLLM_NATIVE_DISPATCH_MANIFEST_SHA256",
     "org.sparkring.b12x.tree": "c69cdec1c59a08e8e0e549f930fa8abcfb5134ae",

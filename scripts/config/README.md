@@ -102,7 +102,7 @@ SparkCache CUDA restore with page-tail copy-on-write publication.
 | File | Status | Target loader |
 |---|---|---|
 | `glm53-flash-dflash7-python-overlay-safetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Global safetensors for target and draft |
-| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **research-only** | Global fastsafetensors queue one; external-draft peak GPU memory requires live qualification |
+| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Target fastsafetensors queue one with explicit draft safetensors |
 
 Resolve either profile with
 `scripts/prepare_glm53_dflash7_python_overlay_profile.py`. Follow the

@@ -13,6 +13,7 @@ store/restart/restore, or concurrency qualification.
 | vLLM Python source | `0b67266a0f37d6146a8403fb8482403c62f412d5`, tree `ba9484ccb33aa56e90ff2f447f15ca9b9da97639` |
 | B12X | `b1d541f9e71a35f030d45fae437630fff7507c2a`, tree `c69cdec1c59a08e8e0e549f930fa8abcfb5134ae` |
 | SparkCache reconstructed-page placement | `5d571018de5b63a9a90e5c11e6d6e86bbff4a957`, tree `e864ed9ad64f771188fdb59aa9738e348134d636` |
+| DFlash draft-loader separation | Patch SHA-256 `39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279`, postimage SHA-256 `98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4` |
 | Target | `local-inference-lab/GLM-5.3-Flash-NVFP4@520de24eabf507659eaef7c70f14fd584527facc` |
 | External draft | `incoai/GLM-5.3-Flash-DFlash2@dc77ff1c99eeb2df044ee3d4f0094eb033fee410`, BF16 weights SHA-256 `b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b` |
 
@@ -43,11 +44,15 @@ Two profiles share the same image and DFlash7 cache identity:
 | Profile | Status | Loader behavior |
 |---|---|---|
 | `glm53-flash-dflash7-python-overlay-safetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Uses global safetensors for target and draft. This follows the qualified-compatible loader shape but still requires live qualification on the composed 0b image. |
-| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **research-only** | Uses global fastsafetensors with queue size one. vLLM also sends DFlash loading through that global loader, and DFlash materializes all yielded GPU tensors in a dictionary. Live peak-memory and loading qualification are required. |
+| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Uses global fastsafetensors with queue size one for the target and `draft_load_config={"load_format":"safetensors"}` for DFlash. |
 
-Do not describe the fastsafetensors profile as qualified until the external
-draft loads successfully at TP4 with measured peak GPU memory, or vLLM gains a
-separately enforced draft-loader contract.
+The image applies an exact-input vLLM patch that passes
+`SpeculativeConfig.draft_load_config` to the DFlash model loader. The image
+receipt verifies patch SHA-256
+`39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279` and
+postimage SHA-256
+`98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4`.
+Both profiles remain unqualified until live four-rank gates pass.
 
 ## Resolve the profile and inspect the plan
 
