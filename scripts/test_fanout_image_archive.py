@@ -239,6 +239,16 @@ def test_path_and_image_identity_inputs_are_bounded() -> None:
     assert plan["expected_image_id"] == IMAGE_ID
 
 
+def test_image_import_tags_an_archive_saved_by_image_id() -> None:
+    paths = fanout.archive_paths("/var/lib/sparkring/images", "runtime.tar.zst")
+    image = "registry.example/runtime:verified"
+    script = fanout._load_script(paths, image, IMAGE_ID)
+
+    assert f"docker image inspect {IMAGE_ID}" in script
+    assert f"test \"$loaded\" = {IMAGE_ID}" in script
+    assert f"docker image tag {IMAGE_ID} {image}" in script
+
+
 def test_operator_documentation_link_resolves() -> None:
     document = ROOT / "docs/DIRECT_FABRIC_IMAGE_ARCHIVE_FANOUT.md"
     assert document.is_file()

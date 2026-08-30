@@ -97,6 +97,11 @@ python scripts/fanout_image_archive.py \
   --output ./evidence/image-import.json
 ```
 
+An archive created with `docker image save sha256:<image-id>` may contain no
+repository tag. After loading such an archive, the tool verifies that the
+expected image ID exists locally before applying the requested tag. An
+existing tag that points at another image remains a conflict.
+
 ## File and interruption behavior
 
 - An exact final file is reused without downloading or transferring it.
