@@ -50,6 +50,7 @@ b12x_tree="$(read_pin b12x.tree)"
 sparkcache_commit="$(read_pin sparkcache.commit)"
 sparkcache_tree="$(read_pin sparkcache.tree)"
 sparkcache_source_sha256="$(read_pin sparkcache.source_tree_sha256)"
+deep_ep_removal_receipt_sha256="$(read_pin runtime_cleanup.deep_ep.receipt_sha256)"
 sparkring_revision="$(git -C "${repo_root}" rev-parse HEAD)"
 
 "${engine}" pull --platform linux/arm64 "${public_base}"
@@ -115,6 +116,7 @@ sparkcache_cuda_placement_sha256="$("${engine}" run --rm --entrypoint sha256sum 
   --build-arg "NATIVE_ELF_MANIFEST_SHA256=${native_elf_manifest_sha256}" \
   --build-arg "NATIVE_DISPATCH_MANIFEST_SHA256=${native_dispatch_manifest_sha256}" \
   --build-arg "SPARKCACHE_CUDA_PLACEMENT_SHA256=${sparkcache_cuda_placement_sha256}" \
+  --build-arg "DEEP_EP_REMOVAL_RECEIPT_SHA256=${deep_ep_removal_receipt_sha256}" \
   --tag "${image}" \
   "${context}"
 

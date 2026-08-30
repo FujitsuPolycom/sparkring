@@ -16,6 +16,7 @@ ROOT = HERE.parents[1]
 COMMON = ROOT / "runtime" / "glm53-flash-adaptive-mtp-python-overlay"
 PINS = HERE / "pins.json"
 RECEIPT_SCHEMA = "sparkring-glm53-public-python-overlay-context/v1"
+DEEP_EP_RECEIPT = "deep-ep-removal-receipt.json"
 
 
 class PrepareError(RuntimeError):
@@ -60,6 +61,8 @@ def _routed_copy_file(source: Path, destination: Path) -> None:
 
 def _render_containerfile() -> str:
     text = (COMMON / "Containerfile").read_text(encoding="utf-8")
+    pins = json.loads(PINS.read_text(encoding="utf-8"))
+    cleanup = pins["runtime_cleanup"]["deep_ep"]
     replacements = {
         "/cache/jit/vllm/py-0b67266-native-da4d7be": (
             "/cache/jit/vllm/dflash7-py-0b67266-native-da4d7be"
@@ -97,6 +100,40 @@ def _render_containerfile() -> str:
         deployment,
         'org.sparkcache.cuda-config-schema="canonical-v1" \\\n      ' + deployment,
     )
+    argument_marker = "ARG SPARKCACHE_CUDA_PLACEMENT_SHA256\n"
+    if text.count(argument_marker) != 1:
+        raise PrepareError("shared Containerfile omits the CUDA placement argument")
+    text = text.replace(
+        argument_marker,
+        argument_marker + "ARG DEEP_EP_REMOVAL_RECEIPT_SHA256\n",
+    )
+    receipt_marker = (
+        "COPY receipt.json ${PYTHON_OVERLAY_ROOT}/source-receipt.json\n"
+    )
+    if text.count(receipt_marker) != 1:
+        raise PrepareError("shared Containerfile omits the source receipt copy")
+    cleanup_block = f"""{receipt_marker}COPY bundle/runtime/remove_distribution.py ${{PYTHON_OVERLAY_ROOT}}/remove_distribution.py
+COPY bundle/runtime/{DEEP_EP_RECEIPT} ${{PYTHON_OVERLAY_ROOT}}/{DEEP_EP_RECEIPT}
+RUN test \"$(sha256sum \"${{PYTHON_OVERLAY_ROOT}}/{DEEP_EP_RECEIPT}\" | cut -d' ' -f1)\" = \"${{DEEP_EP_REMOVAL_RECEIPT_SHA256}}\" \\
+ && python3 \"${{PYTHON_OVERLAY_ROOT}}/remove_distribution.py\" \\
+      --receipt \"${{PYTHON_OVERLAY_ROOT}}/{DEEP_EP_RECEIPT}\" \\
+ && python3 -c 'import importlib.util; assert importlib.util.find_spec("deep_ep") is None'
+"""
+    text = text.replace(receipt_marker, cleanup_block)
+    label_marker = (
+        "      org.sparkcache.deployment-profile="
+        '"glm53-flash-dflash7-python-overlay" \\\n'
+    )
+    if text.count(label_marker) != 1:
+        raise PrepareError("rendered Containerfile omits the DFlash7 profile label")
+    cleanup_labels = (
+        label_marker
+        + "      org.sparkring.runtime.removed-deep-ep-distribution="
+        + f'"{cleanup["distribution"]}=={cleanup["version"]}" \\\n'
+        + "      org.sparkring.runtime.deep-ep-removal-receipt-sha256="
+        + '"${DEEP_EP_REMOVAL_RECEIPT_SHA256}" \\\n'
+    )
+    text = text.replace(label_marker, cleanup_labels)
     return text
 
 
@@ -128,11 +165,36 @@ def _render_verify_image() -> str:
     return text
 
 
+def _deep_ep_removal_receipt(pins: dict[str, Any]) -> dict[str, str]:
+    cleanup = pins["runtime_cleanup"]["deep_ep"]
+    return {
+        "schema": "sparkring-python-distribution-removal/v1",
+        "status": "implemented",
+        "module": cleanup["module"],
+        "distribution": cleanup["distribution"],
+        "version": cleanup["version"],
+        "postcondition": "module-absent",
+        "reason": cleanup["reason"],
+    }
+
+
 def _replace_runtime_files(context: Path) -> None:
     runtime = context / "bundle" / "runtime"
+    pins = json.loads(PINS.read_text(encoding="utf-8"))
     shutil.copy2(PINS, runtime / "pins.json")
     shutil.copy2(HERE / "build-image.sh", runtime / "build-image.sh")
     shutil.copy2(HERE / "README.md", runtime / "README.md")
+    shutil.copy2(HERE / "remove_distribution.py", runtime / "remove_distribution.py")
+    removal_receipt = runtime / DEEP_EP_RECEIPT
+    removal_receipt.write_text(
+        json.dumps(_deep_ep_removal_receipt(pins), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    if common.sha256_file(removal_receipt) != pins["runtime_cleanup"]["deep_ep"][
+        "receipt_sha256"
+    ]:
+        raise PrepareError("DeepEP removal receipt differs from its pin")
     (runtime / "Containerfile").write_text(
         _render_containerfile(), encoding="utf-8", newline="\n"
     )
@@ -148,6 +210,8 @@ def _replace_runtime_files(context: Path) -> None:
         "Containerfile",
         "build-image.sh",
         "README.md",
+        "remove_distribution.py",
+        DEEP_EP_RECEIPT,
     ):
         relative = f"bundle/runtime/{name}"
         receipt["files"][relative] = common.sha256_file(context / relative)

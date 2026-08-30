@@ -120,6 +120,14 @@ def expected_output_labels(pins: dict[str, Any]) -> dict[str, str]:
     labels["org.sparkring.vllm.dflash-draft-loader-postimage-sha256"] = patch[
         "postimage_sha256"
     ]
+    cleanup = pins.get("runtime_cleanup", {}).get("deep_ep")
+    if cleanup is not None:
+        labels["org.sparkring.runtime.removed-deep-ep-distribution"] = (
+            f"{cleanup['distribution']}=={cleanup['version']}"
+        )
+        labels["org.sparkring.runtime.deep-ep-removal-receipt-sha256"] = cleanup[
+            "receipt_sha256"
+        ]
     return labels
 
 
@@ -170,6 +178,8 @@ def runtime_contract_probe(engine: str, image: str) -> dict[str, Any]:
 def artifact_probe(engine: str, image: str) -> dict[str, Any]:
     program = r"""
 import hashlib
+import importlib.metadata
+import importlib.util
 import json
 import pathlib
 
@@ -178,6 +188,12 @@ cuda_placement = pathlib.Path('/opt/sparkcache-src/sparkcache/native/build-cuda/
 contract = pathlib.Path('/opt/sparkcache-src/sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json')
 sparkcache_source_receipt = root / 'sparkcache-source-tree.sha256'
 wheel_receipt = (root / 'b12x-wheel.sha256').read_text(encoding='utf-8').split()
+deep_ep_receipt = root / 'deep-ep-removal-receipt.json'
+try:
+    importlib.metadata.distribution('deep_ep')
+    deep_ep_distribution_present = True
+except importlib.metadata.PackageNotFoundError:
+    deep_ep_distribution_present = False
 print(json.dumps({
     'b12x_wheel_sha256': wheel_receipt[0],
     'b12x_wheel': pathlib.Path(wheel_receipt[1]).name,
@@ -185,6 +201,11 @@ print(json.dumps({
     'sparkcache_contract_sha256': hashlib.sha256(contract.read_bytes()).hexdigest(),
     'sparkcache_source_tree_sha256': sparkcache_source_receipt.read_text(encoding='utf-8').strip(),
     'source_receipt_sha256': hashlib.sha256((root / 'source-receipt.json').read_bytes()).hexdigest(),
+    'deep_ep_receipt': json.loads(deep_ep_receipt.read_text(encoding='utf-8')) if deep_ep_receipt.is_file() else None,
+    'deep_ep_receipt_sha256': hashlib.sha256(deep_ep_receipt.read_bytes()).hexdigest() if deep_ep_receipt.is_file() else None,
+    'deep_ep_module_present': importlib.util.find_spec('deep_ep') is not None,
+    'deep_ep_owners': importlib.metadata.packages_distributions().get('deep_ep') or [],
+    'deep_ep_distribution_present': deep_ep_distribution_present,
 }, sort_keys=True))
 """.strip()
     output = run(
@@ -203,6 +224,31 @@ print(json.dumps({
         return json.loads(output)
     except json.JSONDecodeError as exc:
         raise VerifyError(f"artifact probe did not return JSON: {output!r}") from exc
+
+
+def verify_runtime_cleanup(artifacts: dict[str, Any], pins: dict[str, Any]) -> None:
+    cleanup = pins.get("runtime_cleanup", {}).get("deep_ep")
+    if cleanup is None:
+        return
+    expected_removal_receipt = {
+        "schema": "sparkring-python-distribution-removal/v1",
+        "status": "implemented",
+        "module": cleanup["module"],
+        "distribution": cleanup["distribution"],
+        "version": cleanup["version"],
+        "postcondition": "module-absent",
+        "reason": cleanup["reason"],
+    }
+    if artifacts.get("deep_ep_receipt") != expected_removal_receipt:
+        raise VerifyError("installed DeepEP removal receipt differs from its pin")
+    if artifacts.get("deep_ep_receipt_sha256") != cleanup["receipt_sha256"]:
+        raise VerifyError("installed DeepEP removal receipt checksum differs")
+    if artifacts.get("deep_ep_module_present") is not False:
+        raise VerifyError("deep_ep remains importable in the composed image")
+    if artifacts.get("deep_ep_owners") != []:
+        raise VerifyError("deep_ep still has installed distribution owners")
+    if artifacts.get("deep_ep_distribution_present") is not False:
+        raise VerifyError("the attested deep_ep distribution remains installed")
 
 
 def verify_image(engine: str, image: str, pins_path: Path = PINS) -> dict[str, Any]:
@@ -228,6 +274,7 @@ def verify_image(engine: str, image: str, pins_path: Path = PINS) -> dict[str, A
         "source_tree_sha256"
     ]:
         raise VerifyError("clean SparkCache source receipt differs from its pin")
+    verify_runtime_cleanup(artifacts, pins)
     for name in (
         "b12x_wheel_sha256",
         "sparkcache_cuda_placement_sha256",

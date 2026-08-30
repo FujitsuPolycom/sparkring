@@ -14,6 +14,7 @@ store/restart/restore, or concurrency qualification.
 | B12X | `b1d541f9e71a35f030d45fae437630fff7507c2a`, tree `c69cdec1c59a08e8e0e549f930fa8abcfb5134ae` |
 | SparkCache reconstructed-page placement and canonical CUDA configuration | `19e2ec8b59c84ef359c2a3290f86962e3ff71d96`, tree `d8b417bb4b6d734c4403c0a73e7e42b95abd8343`, clean source SHA-256 `bc7cae86732c869ee8b2205d48ac5be6f580ee8b77a3e4ffd4c69dcd4f1bfae5` |
 | DFlash draft-loader separation | Patch SHA-256 `39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279`, postimage SHA-256 `98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4` |
+| Unused DeepEP removal | Distribution `deep_ep==2.0.0+local`, removal receipt SHA-256 `65514f44829e7d176b0b2cacc9559ed22724e525b7041a8bcd4d2e02d1f372e3` |
 | Target | `local-inference-lab/GLM-5.3-Flash-NVFP4@520de24eabf507659eaef7c70f14fd584527facc` |
 | External draft | `incoai/GLM-5.3-Flash-DFlash2@dc77ff1c99eeb2df044ee3d4f0094eb033fee410`, BF16 weights SHA-256 `b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b` |
 
@@ -35,7 +36,19 @@ bash runtime/glm53-flash-dflash7-python-overlay/build-image.sh
 The builder verifies the public da4 image, the 31-file Python overlay, retained
 native ELFs and dispatch operators, B12X, SparkCache clean source, the CUDA
 placement library, four exact vLLM patches, and the eleven-file lease contract.
-It does not push the image.
+The base-image inspection must identify exactly one installed distribution,
+`deep_ep==2.0.0+local`, as the owner of the `deep_ep` module. The derived image
+uninstalls that exact distribution and verifies that `deep_ep` is absent. The
+profiles use B12X kernels and PYNCCL collectives, so DeepEP is not a serving
+dependency. The builder does not push the image.
+
+Both profiles leave Torch thread selection to vLLM, select language-model-only
+serving, and disable the unsupported symmetric-memory and FlashInfer all-reduce
+candidates. PYNCCL remains bound to `/opt/sparkring/nccl/libnccl.so.2`, B12X
+remains the attention, MoE, and linear backend, and the all-reduce RMS fusion is
+disabled. ModelOpt experimental-quantization and FP8 KV accuracy warnings remain
+visible because they describe real format and accuracy limitations; the profiles
+do not suppress warnings.
 
 ## Choose the target loader
 
