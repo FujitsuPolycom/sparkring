@@ -18,9 +18,9 @@ The image combines these exact roles:
 - B12X `b1d541f9e71a35f030d45fae437630fff7507c2a`;
 - SparkCache reconstructed-page placement, shared-segment restore, bounded
   page-delta reads, and tail-only copy-on-write publication source
-  `bd3eec1c10b259a24c5f335161d9f8be51c887cd`, Git tree
-  `ab6e25fd1126405a94ce8735a6261f9dd08c0b5f`, and deployable source SHA-256
-  `490d2c069c2eb755ecb93727aa47c41df38665427228895af0638b8588a049f3`;
+  `c56f77f97b3da907d32e888d82046359a62f0f88`, Git tree
+  `deac36758f86695cd13f07b2870c2e49842aed9c`, and deployable source SHA-256
+  `788686e858ba4af01f535e95122c7650f412fddc40cd221a0924f4ce2b32ff98`;
 - external BF16 DFlash2 weights with SHA-256
   `b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b`.
 
@@ -61,7 +61,7 @@ No legacy-key compatibility profile or translation is required by these
 profiles.
 
 The pinned SparkCache source at
-`bd3eec1c10b259a24c5f335161d9f8be51c887cd` accepts canonical CUDA
+`c56f77f97b3da907d32e888d82046359a62f0f88` accepts canonical CUDA
 configuration keys, restores authenticated shared segment objects, reads page
 deltas with a bounded worker pool, and publishes only the copy-on-write tail.
 Its recurrent publication path requires the hash-proven boundary hand-off

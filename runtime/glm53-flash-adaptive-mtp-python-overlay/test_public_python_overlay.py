@@ -52,11 +52,11 @@ def test_overlay_pins_public_base_and_mixed_vllm_provenance() -> None:
     assert pins["b12x"]["commit"] != pins["b12x"]["base_commit"]
     sparkcache = pins["sparkcache"]
     assert sparkcache["commit"] == (
-        "bd3eec1c10b259a24c5f335161d9f8be51c887cd"
+        "c56f77f97b3da907d32e888d82046359a62f0f88"
     )
-    assert sparkcache["tree"] == "ab6e25fd1126405a94ce8735a6261f9dd08c0b5f"
+    assert sparkcache["tree"] == "deac36758f86695cd13f07b2870c2e49842aed9c"
     assert sparkcache["source_tree_sha256"] == (
-        "490d2c069c2eb755ecb93727aa47c41df38665427228895af0638b8588a049f3"
+        "788686e858ba4af01f535e95122c7650f412fddc40cd221a0924f4ce2b32ff98"
     )
     assert sparkcache["contract"]["sha256"] == (
         "f36ed14eaf1f97a5dffa94bda8151b1e0fa182afc0d121b757b70bebc6a43811"

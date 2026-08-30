@@ -3,8 +3,8 @@
 Status: **implemented, not qualified**. This guide retains vLLM native
 extensions from `da4d7be6c97434f6942292ed8abbf4b32dc44355`, overlays Python
 source `0b67266a0f37d6146a8403fb8482403c62f412d5`, and installs SparkCache
-commit `bd3eec1c10b259a24c5f335161d9f8be51c887cd`, Git tree
-`ab6e25fd1126405a94ce8735a6261f9dd08c0b5f`, for four DGX Spark systems at
+commit `c56f77f97b3da907d32e888d82046359a62f0f88`, Git tree
+`deac36758f86695cd13f07b2870c2e49842aed9c`, for four DGX Spark systems at
 TP4/DCP1. The adaptive-MTP composition has GPU-free contract coverage but no
 four-rank persistent-restore or performance qualification.
 
@@ -38,7 +38,7 @@ bash runtime/glm53-flash-adaptive-mtp-python-overlay/build-image.sh
 
 The builder verifies the 31-file Python overlay, retained native ELF and
 dispatch manifests, B12X `b1d541f`, SparkCache clean source SHA-256
-`490d2c069c2eb755ecb93727aa47c41df38665427228895af0638b8588a049f3`,
+`788686e858ba4af01f535e95122c7650f412fddc40cd221a0924f4ce2b32ff98`,
 four SparkCache patches, recurrent-boundary producer patch SHA-256
 `5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0`,
 and lease contract SHA-256
@@ -49,7 +49,7 @@ push the image or contact serving hosts.
 `runtime/glm53-flash-b12x-kda-adaptive-mtp/` remains an exact full-source
 builder for its older SparkCache contract. It does not apply the recurrent
 producer after SparkCache's vLLM patches, so it is unsupported with SparkCache
-`bd3eec1` and must not be substituted in this guide.
+`c56f77f` and must not be substituted in this guide.
 
 ## Resolve the TP4 profile
 
