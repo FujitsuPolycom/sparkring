@@ -6,6 +6,7 @@ hardware and operator conditions required by the
 [GLM-5.3 Flash SparkCache quickstart](GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md),
 [source-built GLM-5.3 e10536a quickstart](GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md),
 [GLM-5.3 adaptive-MTP and live-tensor KDA quickstart](GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md),
+[GLM-5.3 DFlash7 Python-overlay quickstart](GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md),
 [GLM-5.3 Flash cache-disabled quickstart](GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md),
 [DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md),
 [Qwen3.8-27B pair quickstart](QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md), and
