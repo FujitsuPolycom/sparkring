@@ -240,14 +240,15 @@ def test_resolver_normalizes_legacy_cuda_restore_aliases_and_rejects_conflicts()
 
 def test_quickstart_names_the_executable_builder_and_profile_contracts() -> None:
     guide = QUICKSTART.read_text(encoding="utf-8")
-    assert "runtime/glm53-flash-b12x-kda-adaptive-mtp/build-image.sh" in guide
-    assert str(PROFILE.relative_to(ROOT)).replace("\\", "/") in guide
+    assert "runtime/glm53-flash-b12x-kda-adaptive-mtp/build-image.sh" not in guide
+    assert str(PROFILE.relative_to(ROOT)).replace("\\", "/") not in guide
     assert str(SITE.relative_to(ROOT)).replace("\\", "/") in guide
-    assert "prepare_glm53_b12x_kda_adaptive_mtp_profile.py" in guide
-    assert SPARKCACHE_COMMIT in guide
-    assert SPARKCACHE_TREE in guide
-    assert SPARKCACHE_SOURCE_SHA256 in guide
+    assert "prepare_glm53_b12x_kda_adaptive_mtp_profile.py" not in guide
+    assert "unsupported with SparkCache" in guide
     assert VLLM_COMMIT in guide
-    assert "START_GLM53_FLASH_MTP5_ADAPTIVE_FASTSAFETENSORS_TP4" in guide
+    assert (
+        "START_GLM53_FLASH_PUBLIC_PYTHON_OVERLAY_MTP5_ADAPTIVE_FASTSAFETENSORS_TP4"
+        in guide
+    )
     assert "--cuda-placement-library-sha256" in guide
     assert "--native-library-sha256" not in guide

@@ -206,6 +206,70 @@ def verify_vllm_runtime_patches(
     )
 
 
+def verify_composed_runtime_patches(
+    source: Path,
+    pins: dict[str, Any],
+    patch_root: Path,
+    sparkcache: Path,
+) -> None:
+    """Verify patches whose preimages include the SparkCache vLLM chain."""
+
+    applied_sparkcache: list[Path] = []
+    applied_composed: list[Path] = []
+    try:
+        for record in pins["sparkcache"]["patches"]:
+            patch = sparkcache / record["path"]
+            run(("git", "-C", str(source), "apply", str(patch)))
+            applied_sparkcache.append(patch)
+
+        for record in pins["vllm"].get("composed_runtime_patches", ()):
+            patch = patch_root / Path(record["path"]).name
+            if sha256_file(patch) != record["sha256"]:
+                raise PrepareError(f"vLLM composed patch mismatch: {record['path']}")
+            for target_record in record["targets"]:
+                target = source / target_record["path"]
+                if sha256_file(target) != target_record["preimage_sha256"]:
+                    raise PrepareError(
+                        "vLLM composed patch preimage mismatch: "
+                        f"{target_record['path']}"
+                    )
+            run(("git", "-C", str(source), "apply", "--check", str(patch)))
+            run(("git", "-C", str(source), "apply", str(patch)))
+            applied_composed.append(patch)
+            for target_record in record["targets"]:
+                target = source / target_record["path"]
+                if sha256_file(target) != target_record["postimage_sha256"]:
+                    raise PrepareError(
+                        "vLLM composed patch postimage mismatch: "
+                        f"{target_record['path']}"
+                    )
+
+            test_record = record["test_patch"]
+            test_patch = patch_root / Path(test_record["path"]).name
+            test_target = source / test_record["target"]
+            if sha256_file(test_patch) != test_record["sha256"]:
+                raise PrepareError("vLLM recurrent-boundary test patch mismatch")
+            if sha256_file(test_target) != test_record["preimage_sha256"]:
+                raise PrepareError("vLLM recurrent-boundary test preimage mismatch")
+            run(("git", "-C", str(source), "apply", "--check", str(test_patch)))
+            run(("git", "-C", str(source), "apply", str(test_patch)))
+            try:
+                if sha256_file(test_target) != test_record["postimage_sha256"]:
+                    raise PrepareError("vLLM recurrent-boundary test postimage mismatch")
+            finally:
+                run(("git", "-C", str(source), "apply", "--reverse", str(test_patch)))
+    finally:
+        for patch in reversed(applied_composed):
+            run(("git", "-C", str(source), "apply", "--reverse", str(patch)))
+        for patch in reversed(applied_sparkcache):
+            run(("git", "-C", str(source), "apply", "--reverse", str(patch)))
+    verify_git_source(
+        source,
+        commit=pins["vllm"]["python_commit"],
+        tree=pins["vllm"]["python_tree"],
+    )
+
+
 def copy_overlay(source: Path, destination: Path, manifest: dict[str, Any]) -> None:
     target = manifest["target"]["commit"]
     for record in manifest["files"]:
@@ -305,6 +369,7 @@ def prepare(output: Path, *, repository_root: Path = ROOT) -> dict[str, Any]:
         path = sparkcache / patch["path"]
         if sha256_file(path) != patch["sha256"]:
             raise PrepareError(f"SparkCache patch mismatch: {patch['path']}")
+    verify_composed_runtime_patches(vllm, pins, patch_root, sparkcache)
     contract = sparkcache / pins["sparkcache"]["contract"]["path"]
     if sha256_file(contract) != pins["sparkcache"]["contract"]["sha256"]:
         raise PrepareError("SparkCache vLLM contract differs from its pin")
@@ -320,7 +385,10 @@ def prepare(output: Path, *, repository_root: Path = ROOT) -> dict[str, Any]:
     ):
         copy_file(HERE / filename, runtime / filename)
     runtime_patches = []
-    for patch in pins["vllm"].get("runtime_patches", ()):
+    patch_records = list(pins["vllm"].get("runtime_patches", ()))
+    for patch in pins["vllm"].get("composed_runtime_patches", ()):
+        patch_records.extend((patch, patch["test_patch"]))
+    for patch in patch_records:
         name = Path(patch["path"]).name
         copy_file(patch_root / name, runtime / "patches" / name)
         runtime_patches.append(f"bundle/runtime/patches/{name}")
@@ -360,6 +428,9 @@ def prepare(output: Path, *, repository_root: Path = ROOT) -> dict[str, Any]:
             },
         },
         "vllm_runtime_patches": pins["vllm"].get("runtime_patches", []),
+        "vllm_composed_runtime_patches": pins["vllm"].get(
+            "composed_runtime_patches", []
+        ),
         "files": {relative: sha256_file(output / relative) for relative in receipt_inputs},
     }
     (output / "receipt.json").write_text(
@@ -390,10 +461,20 @@ def verify_context(context: Path) -> dict[str, Any]:
         "runtime_patches", []
     ):
         raise PrepareError("prepared context vLLM runtime patch receipt differs")
+    if receipt.get("vllm_composed_runtime_patches") != pins["vllm"].get(
+        "composed_runtime_patches", []
+    ):
+        raise PrepareError("prepared context composed vLLM patch receipt differs")
     verify_vllm_runtime_patches(
         context / "bundle/sources/vllm",
         pins,
         context / "bundle/runtime/patches",
+    )
+    verify_composed_runtime_patches(
+        context / "bundle/sources/vllm",
+        pins,
+        context / "bundle/runtime/patches",
+        context / "bundle/sources/sparkcache",
     )
     verify_git_source(
         context / "bundle/sources/b12x",

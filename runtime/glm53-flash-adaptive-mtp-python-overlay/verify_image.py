@@ -120,6 +120,12 @@ def expected_output_labels(pins: dict[str, Any]) -> dict[str, str]:
     labels["org.sparkring.vllm.dflash-draft-loader-postimage-sha256"] = patch[
         "postimage_sha256"
     ]
+    composed = pins["vllm"].get("composed_runtime_patches", ())
+    if len(composed) != 1:
+        raise VerifyError("runtime contract requires one recurrent-boundary patch")
+    labels["org.sparkring.vllm.recurrent-boundary-patch-sha256"] = composed[0][
+        "sha256"
+    ]
     cleanup = pins.get("runtime_cleanup", {}).get("deep_ep")
     if cleanup is not None:
         labels["org.sparkring.runtime.removed-deep-ep-distribution"] = (

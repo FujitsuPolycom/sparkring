@@ -13,9 +13,13 @@ from prepare_glm53_public_python_overlay_profile import (
     DFLASH_LOADER_PATCH_SHA256,
     DFLASH_LOADER_POSTIMAGE_SHA256,
     LEASE_CONTRACT_SHA256,
+    RECURRENT_BOUNDARY_PATCH_SHA256,
     MTP_CACHE_IDENTITY_SHA256,
     OVERLAY_MANIFEST_SHA256,
     PUBLIC_BASE,
+    SPARKCACHE_COMMIT,
+    SPARKCACHE_SOURCE_SHA256,
+    SPARKCACHE_TREE,
     VLLM_NATIVE_COMMIT,
     VLLM_PYTHON_COMMIT,
     ResolveError,
@@ -31,6 +35,7 @@ PROFILE = (
     / "glm53-flash-public-python-overlay-mtp5-adaptive-fastsafetensors-sparkcache-tp4-dcp1.example.json"
 )
 SITE = CONFIG / "glm53-flash-b12x-kda-adaptive-mtp-tp4-site.example.yaml"
+QUICKSTART = ROOT / "docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md"
 IMAGE_ID = "sha256:" + "ab" * 32
 CUDA_PLACEMENT_LIBRARY = "1a" * 32
 NATIVE_ELF = "2b" * 32
@@ -138,6 +143,9 @@ def test_resolver_requires_mixed_provenance_and_all_artifact_hashes() -> None:
     assert labels["org.sparkring.vllm.dflash-draft-loader-postimage-sha256"] == (
         DFLASH_LOADER_POSTIMAGE_SHA256
     )
+    assert labels["org.sparkring.vllm.recurrent-boundary-patch-sha256"] == (
+        RECURRENT_BOUNDARY_PATCH_SHA256
+    )
     assert labels["org.sparkring.vllm.native-elf-manifest-sha256"] == NATIVE_ELF
     assert labels["org.sparkring.vllm.native-dispatch-manifest-sha256"] == (
         NATIVE_DISPATCH
@@ -147,7 +155,7 @@ def test_resolver_requires_mixed_provenance_and_all_artifact_hashes() -> None:
     )
     assert "org.sparkcache.native-library-sha256" not in labels
     assert labels["org.sparkcache.source-tree"] == (
-        "94c236b9dfbf5f70075eb47877fd9caaa5d8c249"
+        "18497db629a204d761f2514824a4c18408a40184"
     )
     assert labels["org.sparkcache.vllm-contract-sha256"] == LEASE_CONTRACT_SHA256
     assert labels["org.sparkring.source-receipt-sha256"] == SOURCE_RECEIPT
@@ -181,6 +189,13 @@ def test_resolver_rejects_snapshot_publication_or_source_built_labels() -> None:
     changed = copy.deepcopy(profile)
     changed["required_image_labels"]["org.jovian.vllm.commit"] = VLLM_PYTHON_COMMIT
     with pytest.raises(ResolveError, match="org.jovian.vllm.commit"):
+        resolve(changed, copy.deepcopy(site), **arguments)
+
+    changed = copy.deepcopy(profile)
+    changed["required_image_labels"].pop(
+        "org.sparkring.vllm.recurrent-boundary-patch-sha256"
+    )
+    with pytest.raises(ResolveError, match="recurrent-boundary-patch-sha256"):
         resolve(changed, copy.deepcopy(site), **arguments)
 
     changed = copy.deepcopy(profile)
@@ -265,3 +280,15 @@ def test_generic_launcher_builds_a_four_rank_dry_run(
     rendered = json.dumps(plan)
     assert profile["container_name"] in rendered
     assert profile["image"] in rendered
+
+
+def test_quickstart_uses_the_recurrent_capable_python_overlay() -> None:
+    guide = QUICKSTART.read_text(encoding="utf-8")
+    assert "runtime/glm53-flash-adaptive-mtp-python-overlay/build-image.sh" in guide
+    assert str(PROFILE.relative_to(ROOT)).replace("\\", "/") in guide
+    assert "prepare_glm53_public_python_overlay_profile.py" in guide
+    assert SPARKCACHE_COMMIT in guide
+    assert SPARKCACHE_TREE in guide
+    assert SPARKCACHE_SOURCE_SHA256 in guide
+    assert RECURRENT_BOUNDARY_PATCH_SHA256 in guide
+    assert "runtime/glm53-flash-b12x-kda-adaptive-mtp/build-image.sh" not in guide

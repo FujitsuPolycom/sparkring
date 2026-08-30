@@ -39,6 +39,43 @@
         "contract": "DFlash passes SpeculativeConfig.draft_load_config to get_model; None retains the target LoadConfig fallback."
       }
     ],
+    "composed_runtime_patches": [
+      {
+        "status": "implemented",
+        "path": "runtime/glm53-flash-adaptive-mtp-python-overlay/patches/011-recurrent-boundary-contract.patch",
+        "sha256": "5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0",
+        "contract": "SchedulerOutput.recurrent_boundary_blocks exposes only hash-proven aligned Mamba pages and partial-tail CoW targets; request cleanup releases their pins.",
+        "targets": [
+          {
+            "path": "vllm/v1/core/kv_cache_manager.py",
+            "preimage_sha256": "ee03dc9ce2b720c0be6e9f572d23580ba96eff68fe3406250557e83071654af0",
+            "postimage_sha256": "c5b83d382c96b2bf8c466a993ed77123a14a971e2661797128533319388d0b5f"
+          },
+          {
+            "path": "vllm/v1/core/sched/output.py",
+            "preimage_sha256": "65235eba652e5a3ccee18bf3cbfeac9bf4da8fb9c61e961580f612cfb7e593bc",
+            "postimage_sha256": "9911b3f9d21815a185285852b5a6176e5484e1ab0ff5c30f7caaa68ea0fab543"
+          },
+          {
+            "path": "vllm/v1/core/sched/scheduler.py",
+            "preimage_sha256": "6d397c97f31e67a75efc01b5ddd89fa58db425de14fa43965ef2d6146b6b9bdb",
+            "postimage_sha256": "260f36ce8fabf70c193b20009ea465eea7b1b6c8e9fb72f2307a01ba8fcf7b2a"
+          },
+          {
+            "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+            "preimage_sha256": "e4b1c5c38b63b708fd55aa40a9ab0d008b266d006a63dcfcef55890ac1371cb8",
+            "postimage_sha256": "f67a1850a7e0288baaa6d42e7ec55b22b09c156720767e23acaabedcae333c8a"
+          }
+        ],
+        "test_patch": {
+          "path": "runtime/glm53-flash-adaptive-mtp-python-overlay/patches/012-recurrent-boundary-contract-tests.patch",
+          "sha256": "4a23f25b540760aa3f793427017e3ee39605e60de7af1b851cbbd6cc0faeddec",
+          "target": "tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py",
+          "preimage_sha256": "2f58e600fd39413b385b9e96b3c642a9ffb051bedcfc247a700fb532b35ec185",
+          "postimage_sha256": "9081e5b910a6712ed497ca6cf76abcf7aa911268c4b2c0e79dc8a89cc3a20daa"
+        }
+      }
+    ],
     "native_source_objects": {
       "csrc": "9ada29088768f1bc08dadd2eed3c9738eb9ac8a1",
       "cmake": "5e5bbdbe1c1b3a479656d8d6a41cc32a1982c43d",
@@ -77,9 +114,9 @@
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-    "commit": "5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3",
-    "tree": "94c236b9dfbf5f70075eb47877fd9caaa5d8c249",
-    "source_tree_sha256": "bc238f96e550c7ec27d4081dd1f2e741d404aaf5c8572d89ccc5e76812be4d63",
+    "commit": "08e297769a796da2668ea58d0ed5c0d9b588565b",
+    "tree": "18497db629a204d761f2514824a4c18408a40184",
+    "source_tree_sha256": "88633ef676b4dfe258a6fa9b788ddeb22cad68349d0cae0c503ee404d1724f7b",
     "cuda_config_schema": "canonical-v1",
     "canonical_cuda_config_keys": [
       "spark_cache_cuda_restore",
@@ -90,7 +127,7 @@
     ],
     "contract": {
       "path": "sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json",
-      "sha256": "6defde9551cbb586fd09bb2d3020495531b6573397875a767eaae1dbad126024",
+      "sha256": "45d7a92b38b836a4f829f02df85e339cfeea860e1080e4663a8340af6c125125",
       "files": 11
     },
     "patches": [

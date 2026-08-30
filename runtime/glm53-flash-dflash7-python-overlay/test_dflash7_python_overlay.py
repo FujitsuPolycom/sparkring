@@ -38,13 +38,13 @@ def test_pins_bind_the_exact_dflash7_composition() -> None:
         "b1d541f9e71a35f030d45fae437630fff7507c2a"
     )
     assert pins["sparkcache"]["commit"] == (
-        "5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3"
+        "08e297769a796da2668ea58d0ed5c0d9b588565b"
     )
     assert pins["sparkcache"]["tree"] == (
-        "94c236b9dfbf5f70075eb47877fd9caaa5d8c249"
+        "18497db629a204d761f2514824a4c18408a40184"
     )
     assert pins["sparkcache"]["source_tree_sha256"] == (
-        "bc238f96e550c7ec27d4081dd1f2e741d404aaf5c8572d89ccc5e76812be4d63"
+        "88633ef676b4dfe258a6fa9b788ddeb22cad68349d0cae0c503ee404d1724f7b"
     )
     assert pins["sparkcache"]["cuda_config_schema"] == "canonical-v1"
     assert pins["sparkcache"]["canonical_cuda_config_keys"] == [
@@ -106,19 +106,22 @@ def test_verifier_requires_the_dflash7_deployment_label() -> None:
     )
     assert labels["org.sparkcache.cuda-config-schema"] == "canonical-v1"
     assert labels["org.sparkcache.source-revision"] == (
-        "5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3"
+        "08e297769a796da2668ea58d0ed5c0d9b588565b"
     )
     assert labels["org.sparkcache.source-tree"] == (
-        "94c236b9dfbf5f70075eb47877fd9caaa5d8c249"
+        "18497db629a204d761f2514824a4c18408a40184"
     )
     assert labels["org.sparkcache.source-sha256"] == (
-        "bc238f96e550c7ec27d4081dd1f2e741d404aaf5c8572d89ccc5e76812be4d63"
+        "88633ef676b4dfe258a6fa9b788ddeb22cad68349d0cae0c503ee404d1724f7b"
     )
     assert labels["org.jovian.vllm.commit"] != labels[
         "org.sparkring.vllm.python.commit"
     ]
     assert labels["org.sparkring.vllm.dflash-draft-loader-patch-sha256"] == (
         "39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279"
+    )
+    assert labels["org.sparkring.vllm.recurrent-boundary-patch-sha256"] == (
+        "5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0"
     )
     assert labels["org.sparkring.runtime.removed-deep-ep-distribution"] == (
         "deep_ep==2.0.0+local"

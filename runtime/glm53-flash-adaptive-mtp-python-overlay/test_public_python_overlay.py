@@ -51,11 +51,14 @@ def test_overlay_pins_public_base_and_mixed_vllm_provenance() -> None:
     assert pins["b12x"]["commit"] != pins["b12x"]["base_commit"]
     sparkcache = pins["sparkcache"]
     assert sparkcache["commit"] == (
-        "5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3"
+        "08e297769a796da2668ea58d0ed5c0d9b588565b"
     )
-    assert sparkcache["tree"] == "94c236b9dfbf5f70075eb47877fd9caaa5d8c249"
+    assert sparkcache["tree"] == "18497db629a204d761f2514824a4c18408a40184"
     assert sparkcache["source_tree_sha256"] == (
-        "bc238f96e550c7ec27d4081dd1f2e741d404aaf5c8572d89ccc5e76812be4d63"
+        "88633ef676b4dfe258a6fa9b788ddeb22cad68349d0cae0c503ee404d1724f7b"
+    )
+    assert sparkcache["contract"]["sha256"] == (
+        "45d7a92b38b836a4f829f02df85e339cfeea860e1080e4663a8340af6c125125"
     )
     assert sparkcache["cuda_config_schema"] == "canonical-v1"
     assert pins["dependencies"]["torch"] == "2.13.0+cu130"
@@ -102,6 +105,60 @@ def test_dflash_loader_patch_binds_exact_0b_preimage_and_postimage() -> None:
     assert prepare.sha256_file(DFLASH_PATCH) == pins["vllm"]["runtime_patches"][
         0
     ]["sha256"]
+
+
+def test_recurrent_boundary_patch_binds_composed_source_and_exact_tests() -> None:
+    pins = json.loads(PINS.read_text(encoding="utf-8"))
+    (record,) = pins["vllm"]["composed_runtime_patches"]
+    assert prepare.sha256_file(HERE / "patches" / Path(record["path"]).name) == (
+        record["sha256"]
+    )
+    test_record = record["test_patch"]
+    assert prepare.sha256_file(
+        HERE / "patches" / Path(test_record["path"]).name
+    ) == test_record["sha256"]
+    assert {target["path"] for target in record["targets"]} == {
+        "vllm/v1/core/kv_cache_manager.py",
+        "vllm/v1/core/sched/output.py",
+        "vllm/v1/core/sched/scheduler.py",
+        "vllm/v1/core/single_type_kv_cache_manager.py",
+    }
+
+
+def test_recurrent_boundary_source_validator_is_fail_closed(tmp_path: Path) -> None:
+    sources = {
+        "vllm/v1/core/sched/output.py": (
+            "recurrent_boundary_blocks: "
+            "dict[str, list[tuple[int, int, int]]] | None = None\n"
+        ),
+        "vllm/v1/core/sched/scheduler.py": (
+            "recurrent_boundary_blocks=pending_recurrent_boundary_blocks\n"
+            'getattr(self.connector, "supports_recurrent_boundary_blocks", False)\n'
+            "kv_transfer_config.is_kv_consumer\n"
+            "multiple_inflight_batches and (\n"
+        ),
+        "vllm/v1/core/single_type_kv_cache_manager.py": (
+            "(request.num_prompt_tokens - 1) // self.block_pool.hash_block_size\n"
+            "block.block_hash_num_tokens != replay_boundary\n"
+            "get_group_id(block.block_hash) != self.kv_cache_group_id\n"
+        ),
+        "vllm/v1/core/kv_cache_manager.py": "self._pin_recurrent_boundary\n",
+    }
+    for relative, source in sources.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+    contract.validate_recurrent_boundary_sources(tmp_path)
+
+    manager = tmp_path / "vllm/v1/core/single_type_kv_cache_manager.py"
+    manager.write_text(
+        sources["vllm/v1/core/single_type_kv_cache_manager.py"].replace(
+            "request.num_prompt_tokens - 1", "request.num_prompt_tokens"
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(contract.ContractError, match="prompt-minus-one"):
+        contract.validate_recurrent_boundary_sources(tmp_path)
 
 
 def test_dflash_loader_contract_honors_explicit_draft_load_config() -> None:
@@ -275,7 +332,19 @@ def test_sparkcache_patches_and_contract_run_after_the_python_overlay() -> None:
     patch_040 = recipe.index("040-sparkcache-shared-prefix-lease.patch")
     patch_041 = recipe.index("041-sparkcache-shared-prefix-attach.patch")
     lease = recipe.index("verify_lease_contract.py")
-    assert overlay < dflash_patch < patch_020 < patch_030 < patch_040 < patch_041 < lease
+    recurrent = recipe.index("011-recurrent-boundary-contract.patch", lease)
+    final_lease = recipe.index("verify_lease_contract.py", recurrent)
+    assert (
+        overlay
+        < dflash_patch
+        < patch_020
+        < patch_030
+        < patch_040
+        < patch_041
+        < lease
+        < recurrent
+        < final_lease
+    )
 
 
 def test_output_labels_do_not_claim_a_source_built_0b_wheel() -> None:
@@ -293,4 +362,7 @@ def test_output_labels_do_not_claim_a_source_built_0b_wheel() -> None:
     )
     assert labels["org.sparkring.vllm.dflash-draft-loader-postimage-sha256"] == (
         "98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4"
+    )
+    assert labels["org.sparkring.vllm.recurrent-boundary-patch-sha256"] == (
+        "5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0"
     )

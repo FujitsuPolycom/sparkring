@@ -104,7 +104,7 @@ test imports torch:
 python -m pip install -r requirements-dev.txt
 python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.11.0"
 ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance
-python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
+python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-adaptive-mtp-python-overlay runtime/glm53-flash-dflash7-python-overlay runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
 ```
 
 The test suite is CPU-only contract coverage. It does not validate CUDA,

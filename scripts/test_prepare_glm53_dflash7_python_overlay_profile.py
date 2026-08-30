@@ -15,6 +15,7 @@ from prepare_glm53_dflash7_python_overlay_profile import (
     DEEP_EP_REMOVAL_RECEIPT_SHA256,
     DFLASH_LOADER_PATCH_SHA256,
     DFLASH_LOADER_POSTIMAGE_SHA256,
+    RECURRENT_BOUNDARY_PATCH_SHA256,
     DFLASH_WEIGHTS_SHA256,
     SPARKCACHE_COMMIT,
     SPARKCACHE_SOURCE_SHA256,
@@ -182,6 +183,9 @@ def test_resolved_profile_requires_dflash7_image_labels() -> None:
     assert labels["org.sparkring.vllm.dflash-draft-loader-postimage-sha256"] == (
         DFLASH_LOADER_POSTIMAGE_SHA256
     )
+    assert labels["org.sparkring.vllm.recurrent-boundary-patch-sha256"] == (
+        RECURRENT_BOUNDARY_PATCH_SHA256
+    )
     assert labels["org.sparkring.runtime.removed-deep-ep-distribution"] == (
         DEEP_EP_DISTRIBUTION
     )
@@ -223,6 +227,13 @@ def test_resolver_rejects_mtp_or_noncanonical_cuda_restore() -> None:
     changed = copy.deepcopy(profile)
     changed["environment"]["OMP_NUM_THREADS"] = "16"
     with pytest.raises(ResolveError, match="OMP_NUM_THREADS"):
+        resolve(changed, copy.deepcopy(site), **kwargs)
+
+    changed = copy.deepcopy(profile)
+    changed["required_image_labels"].pop(
+        "org.sparkring.vllm.recurrent-boundary-patch-sha256"
+    )
+    with pytest.raises(ResolveError, match="recurrent-boundary-patch-sha256"):
         resolve(changed, copy.deepcopy(site), **kwargs)
 
     changed = copy.deepcopy(profile)

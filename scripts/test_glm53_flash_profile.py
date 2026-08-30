@@ -507,4 +507,11 @@ def test_ci_runs_glm53_runtime_contracts() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
         encoding="utf-8"
     )
-    assert "runtime/exl3-r7 runtime/glm53-flash runtime/deepseek0731-gb10" in workflow
+    for runtime_path in (
+        "runtime/exl3-r7",
+        "runtime/glm53-flash",
+        "runtime/glm53-flash-adaptive-mtp-python-overlay",
+        "runtime/glm53-flash-dflash7-python-overlay",
+        "runtime/deepseek0731-gb10",
+    ):
+        assert runtime_path in workflow

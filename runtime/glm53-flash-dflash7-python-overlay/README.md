@@ -1,12 +1,13 @@
 # GLM-5.3 DFlash7 public-base Python overlay
 
-Status: **implemented**. The builder constructs and verifies an ARM64 image.
-Local image ID
+Status: **implemented, not qualified** for the current source contract. The
+builder constructs and verifies an ARM64 image. Historical local image ID
 `sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb`
 is **qualified** only for the bounded four-rank cases recorded in
 `performance/records/glm53-flash/dflash7-python-overlay-pr30-live-validation.md`.
-Qualification does not transfer to a rebuild or to the all-safetensors
-profile.
+That image used SparkCache `5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3`,
+not the current source below. Qualification does not transfer to a rebuild or
+to either current profile.
 
 The image combines these exact roles:
 
@@ -15,10 +16,11 @@ The image combines these exact roles:
 - the 31-file vLLM Python delta at
   `0b67266a0f37d6146a8403fb8482403c62f412d5`;
 - B12X `b1d541f9e71a35f030d45fae437630fff7507c2a`;
-- SparkCache reconstructed-page placement and bounded page-delta-read source
-  `5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3`, Git tree
-  `94c236b9dfbf5f70075eb47877fd9caaa5d8c249`, and deployable source SHA-256
-  `bc238f96e550c7ec27d4081dd1f2e741d404aaf5c8572d89ccc5e76812be4d63`;
+- SparkCache reconstructed-page placement, shared-segment restore, bounded
+  page-delta reads, and tail-only copy-on-write publication source
+  `08e297769a796da2668ea58d0ed5c0d9b588565b`, Git tree
+  `18497db629a204d761f2514824a4c18408a40184`, and deployable source SHA-256
+  `88633ef676b4dfe258a6fa9b788ddeb22cad68349d0cae0c503ee404d1724f7b`;
 - external BF16 DFlash2 weights with SHA-256
   `b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b`.
 
@@ -46,9 +48,9 @@ operator-mounted and are verified by the runtime profile.
 
 Two executable profiles use external DFlash at depth seven and TP4, FP8 target
 KV, 256-token vLLM blocks, 32 sequences, and SparkCache page-tail copy-on-write
-publication with CUDA restore. The all-safetensors profile is implemented but
-unqualified. The mixed-loader profile is qualified only for the exact image
-and bounded cases named above. The conservative profile uses global
+publication with CUDA restore. Both current profiles are implemented but
+unqualified. The historical mixed-loader image is qualified only for the
+bounded cases named above. The conservative profile uses global
 safetensors. The mixed profile uses global fastsafetensors for the target and
 an exact `draft_load_config` selecting safetensors for DFlash. The image applies and
 verifies the draft-loader patch before installing SparkCache patches. See
@@ -59,18 +61,48 @@ No legacy-key compatibility profile or translation is required by these
 profiles.
 
 The pinned SparkCache source at
-`5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3` accepts canonical CUDA
-configuration keys, replaces a partial terminal HMA
-page when the authenticated cache boundary falls inside that page, and reads
-authenticated page-delta chunks with a bounded eight-worker pool while
-preserving descriptor order. It does not change cache identity, page-tail wire
-schemas, record geometry, vLLM patch bytes, the lease contract, or the CUDA
-placement ABI. Compatible entries produced by the source at commit
-`5d571018de5b63a9a90e5c11e6d6e86bbff4a957` remain in the same namespace.
-Null-block publication failures remain unsupported by this source contract.
+`08e297769a796da2668ea58d0ed5c0d9b588565b` accepts canonical CUDA
+configuration keys, restores authenticated shared segment objects, reads page
+deltas with a bounded worker pool, and publishes only the copy-on-write tail.
+Its recurrent publication path requires the hash-proven boundary hand-off
+produced by this vLLM overlay and fails closed when that evidence is missing or
+contradictory. It does not change cache identity, page-tail wire schemas,
+record geometry, or the CUDA placement ABI. Compatible `page-tail-cow-v1`
+entries remain eligible; unverified state is recomputed.
 Both profiles preserve B12X compute backends and the pinned PYNCCL/NCCL
 library. They disable unsupported symmetric-memory and FlashInfer all-reduce
 probes, disable the all-reduce RMS fusion, select language-model-only serving,
 and leave Torch thread selection unset. ModelOpt and FP8 KV warnings remain
 visible because they describe supported-runtime limitations rather than unused
 optional backends.
+
+## Recurrent replay-boundary hand-off
+
+Status: **implemented** in both sides of this exact composition. The pinned
+SparkCache connector advertises `supports_recurrent_boundary_blocks`, validates
+the hand-off against request and recurrent topology, and recomputes instead of
+publishing when proof is absent or malformed. Live qualification remains
+required for any rebuilt image.
+
+`SchedulerOutput.recurrent_boundary_blocks` has this schema:
+
+```text
+dict[str, list[tuple[int, int, int]]] | None
+request_id -> [(group_id, block_id, boundary_tokens), ...]
+```
+
+Each entry identifies a Mamba `align` block whose prefix-cache hash covers
+exactly `boundary_tokens`. The replay boundary is the greatest 256-token hash
+boundary below the prompt end. A full 2,304-token recurrent page is admitted
+only when its stored hash token count and group ID both match that boundary.
+The scheduler never substitutes a later running-state or DFlash speculative
+slot. Existing partial-tail copy-on-write targets remain available through
+`partial_tail_offloads` and are also included in the new field.
+
+The scheduler pins an admitted block before worker execution. A connector that
+opts in must finish its worker-side snapshot before request cleanup; overlapping
+scheduler steps defer request-block recycling until their execution fence has
+completed. Request cleanup releases the pin, including cancellation paths.
+Connectors without the capability receive no aligned-boundary metadata and
+retain no additional recurrent block. The interface does not change
+SparkCache cache identities or on-disk namespaces.

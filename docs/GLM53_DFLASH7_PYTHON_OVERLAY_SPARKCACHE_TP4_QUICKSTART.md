@@ -1,14 +1,17 @@
 # Serve GLM-5.3 with external DFlash7 and the exact Python-overlay runtime
 
-Status: **implemented**. The image builder, profile resolver, and four-rank
-dry-run contract pass without GPUs. Local image ID
+Status: **implemented, not qualified** for the current build contract. The
+image builder, profile resolver, and four-rank dry-run contract pass without
+GPUs. Historical local image ID
 `sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb`
 is **qualified** only for the TP4/DCP1 startup, health, semantic generation,
 arbitrary page-boundary replay, and 131,072- and 262,144-token restore cases
 in the
 [bounded validation record](../performance/records/glm53-flash/dflash7-python-overlay-pr30-live-validation.md).
-The exact image has no retained C2/C8/C16 or DFlash response-quality evidence.
-A rebuilt image has a different identity and requires its own live checks.
+That historical image used SparkCache `5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3`;
+it is not an artifact of the current contract below. It has no retained
+C2/C8/C16 or DFlash response-quality evidence. A current build has a different
+identity and requires its own live checks.
 
 ## Runtime contract
 
@@ -17,7 +20,8 @@ A rebuilt image has a different identity and requires its own live checks.
 | vLLM native extensions and wheel metadata | `da4d7be6c97434f6942292ed8abbf4b32dc44355` |
 | vLLM Python source | `0b67266a0f37d6146a8403fb8482403c62f412d5`, tree `ba9484ccb33aa56e90ff2f447f15ca9b9da97639` |
 | B12X | `b1d541f9e71a35f030d45fae437630fff7507c2a`, tree `c69cdec1c59a08e8e0e549f930fa8abcfb5134ae` |
-| SparkCache reconstructed-page placement, canonical CUDA configuration, and bounded page-delta reads | `5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3`, tree `94c236b9dfbf5f70075eb47877fd9caaa5d8c249`, clean source SHA-256 `bc238f96e550c7ec27d4081dd1f2e741d404aaf5c8572d89ccc5e76812be4d63` |
+| SparkCache shared-segment restore, tail-only copy-on-write publication, canonical CUDA configuration, and bounded page-delta reads | `08e297769a796da2668ea58d0ed5c0d9b588565b`, tree `18497db629a204d761f2514824a4c18408a40184`, clean source SHA-256 `88633ef676b4dfe258a6fa9b788ddeb22cad68349d0cae0c503ee404d1724f7b` |
+| Recurrent replay-boundary producer | Patch SHA-256 `5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0`; produces the four postimages accepted by SparkCache lease contract SHA-256 `45d7a92b38b836a4f829f02df85e339cfeea860e1080e4663a8340af6c125125` |
 | DFlash draft-loader separation | Patch SHA-256 `39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279`, postimage SHA-256 `98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4` |
 | Unused DeepEP removal | Distribution `deep_ep==2.0.0+local`, removal receipt SHA-256 `65514f44829e7d176b0b2cacc9559ed22724e525b7041a8bcd4d2e02d1f372e3` |
 | Target | `local-inference-lab/GLM-5.3-Flash-NVFP4@520de24eabf507659eaef7c70f14fd584527facc` |
@@ -40,7 +44,9 @@ bash runtime/glm53-flash-dflash7-python-overlay/build-image.sh
 
 The builder verifies the public da4 image, the 31-file Python overlay, retained
 native ELFs and dispatch operators, B12X, SparkCache clean source, the CUDA
-placement library, four exact vLLM patches, and the eleven-file lease contract.
+placement library, four SparkCache vLLM patches, the recurrent-boundary
+producer patch, and the eleven-file lease contract. The resulting profile also
+requires the producer patch label before starting any container.
 The base-image inspection must identify exactly one installed distribution,
 `deep_ep==2.0.0+local`, as the owner of the `deep_ep` module. The derived image
 uninstalls that exact distribution and verifies that `deep_ep` is absent. The
@@ -62,7 +68,7 @@ Two profiles share the same image and DFlash7 cache identity:
 | Profile | Status | Loader behavior |
 |---|---|---|
 | `glm53-flash-dflash7-python-overlay-safetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Uses global safetensors for target and draft. This follows the qualified-compatible loader shape but still requires live qualification on the composed 0b image. |
-| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **qualified** only for the recorded image and bounded cases | Uses global fastsafetensors with queue size one for the target and `draft_load_config={"load_format":"safetensors"}` for DFlash. |
+| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified for the current build | Uses global fastsafetensors with queue size one for the target and `draft_load_config={"load_format":"safetensors"}` for DFlash. The historical receipt remains evidence only for its recorded image. |
 
 The image applies an exact-input vLLM patch that passes
 `SpeculativeConfig.draft_load_config` to the DFlash model loader. The image
@@ -74,9 +80,11 @@ The all-safetensors profile remains unqualified. The fastsafetensors result
 belongs only to the image ID and cases named above; it does not transfer to a
 rebuild.
 
-SparkCache commit `5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3`
-accepts the canonical CUDA keys used by both profiles. No legacy-key rewrite
-is part of this path.
+SparkCache commit `08e297769a796da2668ea58d0ed5c0d9b588565b`
+accepts the canonical CUDA keys used by both profiles. It consumes the
+hash-proven recurrent hand-off emitted by this exact vLLM overlay and cancels
+publication when the metadata is absent, incomplete, or contradictory.
+No legacy-key rewrite is part of this path.
 
 ## Resolve the profile and inspect the plan
 
@@ -156,7 +164,7 @@ content, writes the token's completion marker only after successful removal,
 and treats later starts with the same token as no-ops. Change the token only
 when another intentional cache reset is required.
 
-`--prefill-schedule-interval` is not part of the qualified DFlash7 profile.
+`--prefill-schedule-interval` is not part of the current DFlash7 profiles.
 Test interval `8` in a separate research-only profile so its mixed
 prefill/decode tradeoff is measured independently.
 
@@ -171,13 +179,11 @@ different cache root and one-shot clear token so loader observations remain
 isolated.
 
 The pinned SparkCache source combines canonical CUDA configuration names,
-replacement of a partial terminal HMA page when an authenticated cache
-boundary falls inside that page, and an eight-worker reader for authenticated
-page-delta chunks. The reader preserves manifest descriptor order after
-concurrent reads. Moving from SparkCache commit
-`5d571018de5b63a9a90e5c11e6d6e86bbff4a957` to
-`5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3` does not change the namespace.
-Checkpoint identities, page-delta wire schemas, record vocabulary, digest
-salts, parallel geometry, vLLM patches, the lease contract, and the CUDA
-placement ABI are unchanged. Compatible `page-tail-cow-v1` entries remain
-eligible. Null-block publication failures remain unsupported.
+authenticated shared-segment restore, an eight-worker ordered page-delta
+reader, and tail-only copy-on-write publication. Cache identities, digest
+salts, 256-token chunk geometry, page-delta wire bytes, and the CUDA placement
+ABI are unchanged. The source change does not change the namespace, so
+compatible `page-tail-cow-v1` entries remain eligible.
+The vLLM lease-contract bytes do change to accept the recurrent-boundary
+postimages. Missing or malformed boundary evidence is a cache miss and
+recomputation, never an unverified publication.

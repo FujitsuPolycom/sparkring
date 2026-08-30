@@ -25,12 +25,22 @@ files. Construction fails if any retained artifact changes. The output labels
 identify the retained native commit and overlaid Python commit separately; the
 image is not described as a source-built vLLM 0b67266 wheel.
 
+The composed vLLM source also provides the opt-in
+`SchedulerOutput.recurrent_boundary_blocks` interface for connectors that need
+the exact Mamba replay-boundary state. Entries are emitted only after the block
+hash proves both the KV group and token boundary. Partial-tail copy-on-write
+handoffs remain backward compatible. Aligned handoffs require the connector to
+advertise `supports_recurrent_boundary_blocks`; other connectors retain no
+additional recurrent page. Pins live through the worker execution fence and
+are released during request cleanup.
+
 The SparkCache source that routes reconstructed opaque pages through the SM121
-placement library is commit
-`5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3`, Git tree
-`94c236b9dfbf5f70075eb47877fd9caaa5d8c249`. The builder verifies clean
+placement library, restores shared segment objects, and publishes only the
+copy-on-write tail is commit
+`08e297769a796da2668ea58d0ed5c0d9b588565b`, Git tree
+`18497db629a204d761f2514824a4c18408a40184`. The builder verifies clean
 deployable-source SHA-256
-`bc238f96e550c7ec27d4081dd1f2e741d404aaf5c8572d89ccc5e76812be4d63`
+`88633ef676b4dfe258a6fa9b788ddeb22cad68349d0cae0c503ee404d1724f7b`
 before generating the SparkCache CUDA placement library. It applies the VMM exemption,
 load-failure recovery, shared-prefix retention, and follower-attachment
 patches in order, then runs the eleven-file lease-contract verifier. The
