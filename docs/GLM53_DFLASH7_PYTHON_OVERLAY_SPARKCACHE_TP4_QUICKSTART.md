@@ -37,6 +37,94 @@ That image binds SparkCache
 The checked-in builder source below is a separate construction; rebuilding it
 does not inherit this qualification.
 
+## Shortest qualified start
+
+Use this path when the exact qualified image is already imported on all four
+GB10 systems. A replacement image belongs here only after its own live receipt
+records the exact image ID, source identities, restart restore, and response.
+Until then, the block intentionally keeps the qualified `35b58a7…` fallback.
+
+Prerequisites:
+
+- four GB10 systems connected as the direct `0-1-2-3-0` cycle, with Docker and
+  passwordless controller SSH ready;
+- the target model, draft model, and writable cache directory at identical host
+  paths on every rank;
+- the exact qualified image and its builder receipt available on every rank and
+  on the controller respectively; and
+- this checkout's Python dependencies plus `jq` on the controller.
+
+The site file is unavoidable because it names four SSH targets, eight direct
+interfaces, eight RDMA devices, and their addresses. Set the run directory,
+receipt, three host paths, and rank-zero SSH target below, then replace every
+documentation address, interface, RDMA device, and GID in the copied site file.
+The remaining commands resolve the exact profile and run read-only preflight,
+plan, and image checks:
+
+```bash
+run_dir="${HOME}/.config/sparkring/glm53"
+site_input="${run_dir}/site.yaml"
+site="${run_dir}/site.resolved.yaml"
+profile_template="${run_dir}/profile.template.json"
+profile="${run_dir}/profile.json"
+receipt='/path/to/qualified-image-build-receipt.json'
+target_model='/srv/models/glm53-target'
+draft_model='/srv/models/glm53-draft'
+cache_root='/srv/cache/glm53'
+rank0_ssh='operator@rank0.example.net'
+api_endpoint='http://rank0.example.net:8015'
+
+mkdir -p "${run_dir}"
+test -e "${site_input}" || cp scripts/config/glm53-flash-tp4-site.example.yaml "${site_input}"
+"${EDITOR:-vi}" "${site_input}"
+
+jq --arg target "${target_model}" --arg draft "${draft_model}" --arg cache "${cache_root}" '
+  .model_host_path = $target
+  | .extra_volumes[0].host = $draft
+  | .extra_volumes[1].host = $cache
+' scripts/config/glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json \
+  > "${profile_template}"
+
+python scripts/prepare_glm53_dflash7_python_overlay_profile.py \
+  --profile-template "${profile_template}" \
+  --site-template "${site_input}" \
+  --image 'sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-singletonfix-arm64' \
+  --image-id 'sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e' \
+  --cuda-placement-library-sha256 'd57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c' \
+  --native-elf-manifest-sha256 "$(jq -r .runtime_contract.native_elf_manifest_sha256 "${receipt}")" \
+  --native-dispatch-manifest-sha256 "$(jq -r .runtime_contract.native_dispatch_manifest_sha256 "${receipt}")" \
+  --source-receipt-sha256 '611c88a48d30aae933828c6938dea2790f841ceeb05adbb80721d738cc029085' \
+  --profile-output "${profile}" \
+  --site-output "${site}"
+
+python scripts/preflight.py --site "${site}" --strict-placeholders --json "${run_dir}/preflight.json"
+python scripts/sparkring_generic_launcher.py --site "${site}" --profile "${profile}" validate
+python scripts/sparkring_generic_launcher.py --site "${site}" --profile "${profile}" plan > "${run_dir}/start-plan.json"
+python scripts/sparkring_generic_launcher.py --site "${site}" --profile "${profile}" --execute verify-image > "${run_dir}/verify-image.json"
+```
+
+Review the three JSON files, then run this one controller command. It replaces
+the named four-rank deployment and requires explicit authority to interrupt it:
+
+```bash
+python scripts/sparkring_generic_launcher.py --site "${site}" --profile "${profile}" \
+  --execute --confirmation START_GLM53_FLASH_DFLASH7_PYTHON_OVERLAY_FASTSAFETENSORS_TP4 start
+```
+
+From the same shell, wait for the distributed endpoint and then follow rank
+zero's log:
+
+```bash
+until curl --fail --silent "${api_endpoint}/health" >/dev/null; do sleep 5; done && \
+ssh "${rank0_ssh}" \
+  'docker logs --follow --tail 120 glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-r0 2>&1'
+```
+
+SparkRing intentionally does not provide four hand-maintained `docker run`
+commands for this profile. The controller derives each rank's network and
+collective arguments, verifies the exact image and required labels, and applies
+the profile's guarded rollback behavior.
+
 ### Research-only tail publication and concurrent restore
 
 Opaque-page tail copy-on-write deltas, host-base read coalescing, and

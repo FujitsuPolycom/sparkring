@@ -370,4 +370,47 @@ def test_quickstart_names_both_loader_statuses_and_exact_builder() -> None:
     assert "docker logs --follow --tail 120" in guide
     assert "spark_cache_clear_once" in guide
     assert "prefill-schedule-interval" in guide
-    assert FAST.name in guide.split("profile_template=", 1)[1].splitlines()[0]
+    shortest = guide.split("## Shortest qualified start", 1)[1].split(
+        "### Research-only", 1
+    )[0]
+    assert FAST.name in shortest
+
+
+def test_quickstart_has_one_copy_paste_four_rank_start_path() -> None:
+    guide = GUIDE.read_text(encoding="utf-8")
+    section = guide.split("## Shortest qualified start", 1)[1].split(
+        "### Research-only", 1
+    )[0]
+
+    for required in (
+        SAFE_IMAGE,
+        SAFE_IMAGE_ID,
+        SAFE_CUDA_PLACEMENT_SHA256,
+        SAFE_SOURCE_RECEIPT_SHA256,
+        "scripts/config/glm53-flash-tp4-site.example.yaml",
+        "prepare_glm53_dflash7_python_overlay_profile.py",
+        "--strict-placeholders",
+        "verify-image.json",
+        'until curl --fail --silent "${api_endpoint}/health"',
+        "docker logs --follow --tail 120",
+        "replacement image belongs here only after its own live receipt",
+    ):
+        assert required in section
+
+    token = "START_GLM53_FLASH_DFLASH7_PYTHON_OVERLAY_FASTSAFETENSORS_TP4"
+    assert section.count(f"--confirmation {token} start") == 1
+    assert "\ndocker run " not in section
+    normalized = " ".join(section.split())
+    assert "four hand-maintained `docker run` commands" in normalized
+
+    routing = (ROOT / "docs/GLM53_FLASH_QUICKSTARTS.md").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        "GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md"
+        "#shortest-qualified-start"
+    ) in routing
+    assert (
+        "docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md"
+        "#shortest-qualified-start"
+    ) in (ROOT / "README.md").read_text(encoding="utf-8")
