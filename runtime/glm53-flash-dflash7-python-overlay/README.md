@@ -18,9 +18,9 @@ The image combines these exact roles:
 - B12X `b1d541f9e71a35f030d45fae437630fff7507c2a`;
 - SparkCache reconstructed-page placement, shared-segment restore, bounded
   page-delta reads, and tail-only copy-on-write publication source
-  `972b203a716eb20f1889583f7f408788f2a67684`, Git tree
-  `fb2d635bad4bbe68ac0da9cd3246f0e6693e18a9`, and deployable source SHA-256
-  `0c7547fb7e78b3af202d83690170efec2c7602a7c7ea6b407ef70c3fcdd8cfbb`;
+  `bf7174e341e032d9b5cc970cca3d6c2985d364fc`, Git tree
+  `21a0598e0f7f05739d2e27478c484a345d565556`, and deployable source SHA-256
+  `155a06101524d4c2d2f55dbbd01576e35d5c729888e216fd2f3963e275949ba0`;
 - external BF16 DFlash2 weights with SHA-256
   `b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b`.
 
@@ -61,7 +61,7 @@ No legacy-key compatibility profile or translation is required by these
 profiles.
 
 The pinned SparkCache source at
-`972b203a716eb20f1889583f7f408788f2a67684` accepts canonical CUDA
+`bf7174e341e032d9b5cc970cca3d6c2985d364fc` accepts canonical CUDA
 configuration keys, restores authenticated shared segment objects, reads page
 deltas with a bounded worker pool, and publishes only the copy-on-write tail.
 Its recurrent publication path requires the hash-proven boundary hand-off
@@ -95,8 +95,8 @@ request_id -> [(group_id, block_id, boundary_tokens), ...]
 Each entry identifies a Mamba `align` block whose prefix-cache hash covers
 exactly `boundary_tokens`. The replay boundary is the greatest 256-token hash
 boundary below the prompt end. A full 2,304-token recurrent page is admitted
-when an allocation newly caches and crosses it, but only when its stored hash
-token count and group ID both match that boundary.
+only when the scheduler stops at that boundary and its stored hash token count
+and group ID both match. An overshooting direct manager call emits no mapping.
 The scheduler never substitutes a later running-state or DFlash speculative
 slot. Existing partial-tail copy-on-write targets remain available through
 `partial_tail_offloads` and are also included in the new field.
