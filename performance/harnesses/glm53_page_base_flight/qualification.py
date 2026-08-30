@@ -44,7 +44,8 @@ LANE_CODEWORDS = (
     "apple",
 )
 UNRELATED_CODEWORD = "quartz"
-INSTRUCTION_TEMPLATE = (
+BASE_INSTRUCTION_TEMPLATE = "Reply with exactly the lowercase word {word}.\nAnswer:"
+LANE_INSTRUCTION_TEMPLATE = (
     "The required answer is {word}. Reply with exactly {word}.\nAnswer:"
 )
 READINESS_RETRY_SECONDS = 1.0
@@ -124,7 +125,10 @@ def discover_token_bank(endpoint: str, model: str, timeout: float) -> list[int]:
 
 
 def _instruction(word: str) -> str:
-    return INSTRUCTION_TEMPLATE.format(word=word)
+    template = (
+        BASE_INSTRUCTION_TEMPLATE if word == BASE_CODEWORD else LANE_INSTRUCTION_TEMPLATE
+    )
+    return template.format(word=word)
 
 
 def discover_instruction_tokens(
@@ -156,7 +160,8 @@ def _prompt_spec_sha256(instructions: dict[str, list[int]]) -> str:
     return _sha256(
         _canonical(
             {
-                "instruction_template": INSTRUCTION_TEMPLATE,
+                "base_instruction_template": BASE_INSTRUCTION_TEMPLATE,
+                "lane_instruction_template": LANE_INSTRUCTION_TEMPLATE,
                 "base_codeword": BASE_CODEWORD,
                 "lane_codewords": LANE_CODEWORDS,
                 "unrelated_codeword": UNRELATED_CODEWORD,
