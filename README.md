@@ -55,10 +55,12 @@ The [GLM-5.3 routing guide](docs/GLM53_FLASH_QUICKSTARTS.md) explains source
 ancestry, image construction, immutable registry pulls, local archive fanout,
 profile resolution, and evidence boundaries.
 
-For the recorded 20 GiB FP8 KV pool of approximately 916,676 resident tokens
-per rank, plan long-context concurrency at C6 × 128K, C8 × 64K, or C16 × 32K.
-C16 × 128K is unsupported at that capacity unless GPU trunk pages are shared
-or the GPU KV pool is increased.
+For the 20 GiB FP8 KV pool, GLM hybrid allocation does not scale linearly from
+the reported 916,676-token capacity. A no-cache C6 × 128K observation admitted
+one request at a time and serialized completions. C2 × 128K is the only
+observed safe candidate pending live CUDA qualification. C8 × 64K and
+C16 × 32K are planned and unqualified; C16 × 128K is unsupported unless GPU
+trunk pages are shared or KV capacity increases.
 
 ### Other model profiles
 

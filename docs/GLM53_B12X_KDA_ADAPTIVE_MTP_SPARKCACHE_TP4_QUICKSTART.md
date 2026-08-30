@@ -26,10 +26,12 @@ evidence. Image construction and distribution
 do not require stopping an existing service. Do not run the launch command
 until all four ranks have the same verified image ID.
 
-The recorded 20 GiB pool holds approximately 916,676 resident tokens per
-rank. Use C6 × 128K, C8 × 64K, or C16 × 32K as the long-context concurrency
-plan. C16 × 128K is unsupported at that capacity unless GPU-resident trunk
-pages are shared or the GPU KV pool is increased. See
+Do not derive concurrency by dividing the reported 916,676-token capacity by
+prompt length. A no-cache C6 × 128K observation admitted one request at a time
+and serialized completions. C2 × 128K is the only observed safe candidate
+pending live CUDA qualification. C8 × 64K and C16 × 32K are planned and
+unqualified. C16 × 128K is unsupported unless GPU-resident trunk pages are
+shared or KV capacity increases. See
 [resident-token concurrency](GLM53_FLASH_QUICKSTARTS.md#plan-resident-token-concurrency).
 
 ## Build the exact Python-overlay image

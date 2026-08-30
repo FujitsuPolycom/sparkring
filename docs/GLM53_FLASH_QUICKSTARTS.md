@@ -37,26 +37,32 @@ three following commits without claiming a source-built `0b67266a` wheel.
 
 ## Plan resident-token concurrency
 
-The GPU KV pool limits the sum of tokens resident on the GPU. The model's
-configured request limit and SparkCache's NVMe capacity do not increase that
-pool. The recorded 20 GiB FP8 KV configuration reported approximately 916,676
-resident tokens per rank.
+The GPU KV pool limits request admission, but the GLM hybrid allocator does
+not convert its reported token capacity into linear long-context concurrency.
+The 20 GiB FP8 configuration reported approximately 916,676 tokens. In a
+no-cache C6 × 128K observation, vLLM admitted one request at a time, reported
+approximately 39–41% GPU KV use for each admitted request, kept four through
+zero requests waiting as the cohort drained, and completed requests serially
+in 61–313 seconds.
 
-Use these prompt-residency bounds for that pool unless the selected runtime
-proves that identical trunk pages are shared in GPU memory:
+Do not estimate GLM hybrid concurrency by dividing 916,676 by prompt length.
+Use these bounded statuses until each shape has direct live evidence:
 
-| Workload | Prompt tokens resident without GPU trunk sharing | Planning status |
-|---|---:|---|
-| C6 × 128K | 786,432 | Recommended; leaves 130,244 tokens for generation and allocator variation |
-| C8 × 64K | 524,288 | Recommended; leaves 392,388 tokens |
-| C16 × 32K | 524,288 | Recommended; leaves 392,388 tokens |
-| C16 × 128K | 2,097,152 | **Unsupported** at 916,676 tokens |
+| Workload | Status |
+|---|---|
+| C2 × 128K | Only observed safe candidate; live CUDA qualification is pending |
+| C6 × 128K | Does not provide six-way concurrency under the observed allocator behavior; requests serialized |
+| C8 × 64K | Planned and **unqualified** until measured |
+| C16 × 32K | Planned and **unqualified** until measured |
+| C16 × 128K | **Unsupported** at the recorded 20 GiB capacity unless GPU trunk pages are shared or KV capacity increases |
+
+C16 × 128K is unsupported at the recorded capacity unless GPU trunk pages
+are shared and verified or KV capacity increases.
 
 External-cache read coalescing can avoid repeated NVMe reads without sharing
-the restored GPU pages among requests. C16 × 128K is unsupported at this KV
-size unless GPU-resident trunk-page sharing is active and verified for the
-selected composition. Otherwise, reduce context or concurrency, or increase
-the GPU KV pool. Generated tokens also consume the remaining capacity.
+the restored GPU pages among requests. Generated tokens also consume KV
+capacity. Treat the server's admission, waiting, preemption, and GPU KV
+metrics as authoritative for each workload shape.
 
 ## Put one exact image on every rank
 
