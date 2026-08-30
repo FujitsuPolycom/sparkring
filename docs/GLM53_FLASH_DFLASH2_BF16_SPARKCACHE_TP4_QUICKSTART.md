@@ -1,5 +1,9 @@
 # Serve GLM-5.3 Flash with BF16 DFlash2 and SparkCache on four DGX Sparks
 
+Use the [GLM-5.3 routing guide](GLM53_FLASH_QUICKSTARTS.md) to compare this
+published immutable image with the source-built DFlash7, adaptive-MTP, and
+`e10536a` paths.
+
 Status: **qualified** for startup, semantic generation, runtime health, and one
 8,192-token persistent restore using the immutable image, model revisions, and
 TP4/DCP1 settings in this guide. The configured 524,288-token request limit and

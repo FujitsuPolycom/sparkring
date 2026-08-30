@@ -29,8 +29,9 @@ profile is selected.
 ## Resources
 
 - [Supported models and profiles](#profiles)
-- [Benchmark results](#benchmark-results)
+- [Evidence and results](#evidence-and-results)
 - [Deployment prerequisites](docs/PREREQUISITES.md) — then choose a profile quickstart below
+- [GLM-5.3 Flash quickstart routing](docs/GLM53_FLASH_QUICKSTARTS.md)
 
 ## Profiles
 
@@ -40,6 +41,19 @@ profile is selected.
 |---|---|---:|---:|---:|---|---|
 | GLM-5.3 Flash + BF16 DFlash2 | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 KV | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
 | GLM-5.3 Flash + BF16 DFlash2 + SparkCache | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 KV + 48 GiB nvme/rank SparkCache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md) |
+
+Source-built GLM-5.3 paths are reviewed separately from the published BF16
+DFlash2 composition:
+
+| Runtime path | Status | Start here |
+|---|---|---|
+| External DFlash7 with vLLM `0b67266a` Python over retained `da4d7be6` extensions | **qualified** only for one exact local image and its recorded cases | [DFlash7 quickstart](docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md) |
+| Adaptive embedded MTP with live-tensor B12X KDA | **implemented**, not qualified | [Adaptive-MTP quickstart](docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md) |
+| Source-built vLLM `e10536a` profiles | **implemented**, not qualified | [e10536a quickstart](docs/GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md) |
+
+The [GLM-5.3 routing guide](docs/GLM53_FLASH_QUICKSTARTS.md) explains source
+ancestry, image construction, immutable registry pulls, local archive fanout,
+profile resolution, and evidence boundaries.
 
 ### Other model profiles
 
@@ -55,41 +69,18 @@ profile is selected.
 | DeepSeek-V4-Flash-0731 + SparkCache | 4 Sparks · TP4/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
 
 The public BF16 DFlash2 checkpoint is licensed CC BY-NC-ND 4.0 for research
-and evaluation; review its model card before use. The qualified GLM-5.3 community 
-images are published by immutable digest in the two quickstarts. Both guides also 
-link the complete source-build recipes, SBOM workflow, source commits, applied patches, and license record.
+and evaluation; review its model card before use. The qualified BF16 DFlash2
+community image is published by immutable digest. The DFlash7 qualification
+belongs to a local image ID and has no published OCI digest.
 See the [profile registry](docs/profiles/README.md) for recipe identities and evidence scope.
 
-## Benchmark results
+## Evidence and results
 
-### GLM-5.3 Flash research observation
-
-**Research-only — 16K context, single observation.** The SparkCache-enabled
-profile recorded 2,371 tok/s prefill and 36.06 tok/s sustained C1 decode on
-random tokens. No A/B baseline has been completed. C4 and C8 were
-capacity-limited and are omitted rather than reported as throughput results.
-
-| Profile | Prefill | C1 decode | C8 decode | Highest valid decode | Coding peak |
-|---|---:|---:|---:|---:|---:|
-| [GLM-5.3 Flash + BF16 DFlash2 + SparkCache · 4 Sparks](performance/records/glm53-flash/sparkcache-dflash2-bf16-tp4-16k-run1-20260829.md) | 2,371 | 36.06 | — | C1: 36.06 | — |
-
-### Other model profiles
-
-**Qualified — 16K context.** All values are tokens per second. Prefill uses a
-cold prompt with caching disabled. Decode uses unique, cold prompt contexts at
-temperature 1.0; decode values are aggregate throughput across active streams.
-
-| Profile | Prefill | C1 decode | C8 decode | Highest tested decode | Coding peak |
-|---|---:|---:|---:|---:|---:|
-| [GLM-5.3flash NVFP4 · 4 Sparks](IN PROGRESS) | 2300 | 40 | 130 | C8: 130 | 70 |
-| [GLM-5.2 EXL3 3.5-bpw · 4 Sparks](performance/records/glm-3.5bpw/normalized-base-20260822.md) | 671 | 20.15 | 64.13 | C8: 64.13 | 25.39 |
-| [DeepSeek-V4-Flash DSpark · 2 Sparks](performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md) | 1,926 | 58.36 | 162.69 | C32: 307.13 | 59.31 |
-| [DeepSeek-V4-Flash-0731 · 4 Sparks](performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md) | 2,488 | 68.84 | 265.16 | C32: 508.11 | 95.77 |
-| [Qwen3.8-27B EXL3 K5/K6 · 2 Sparks](performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md) | 1,367 | 29.50 | 142.20 | C8: 142.20 | 39.95 |
-| [Qwen3.8-27B EXL3 K5/K6 · 4 Sparks](performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md) | 1,964 | 35.07 | 191.02 | C8: 191.02 | 48.46 |
-
-See [benchmark results and throughput tables](docs/RESULTS.md) for full
-matrices, sample counts, exact settings, and limitations.
+Evidence records stay beside their methods, exact inputs, and limitations.
+See [results](docs/RESULTS.md) for qualified throughput tables and
+[`performance/records/`](performance/records/) for research-only and
+artifact-specific observations. A runtime status or green CPU-only test does
+not establish throughput, output quality, or live serving behavior.
 
 ## Architecture
 

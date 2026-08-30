@@ -1,5 +1,9 @@
 # Serve GLM-5.3 with external DFlash7 and the exact Python-overlay runtime
 
+Use the [GLM-5.3 routing guide](GLM53_FLASH_QUICKSTARTS.md) to compare this
+local-image path with the published BF16 DFlash2 composition, adaptive MTP,
+and the source-built `e10536a` path.
+
 Status: **implemented** for reproducible image construction, profile
 resolution, and four-rank dry-run planning from the selected source contract.
 Exact local image

@@ -1,5 +1,9 @@
 # Serve GLM-5.3 with adaptive MTP, live-tensor B12X KDA, and SparkCache
 
+Use the [GLM-5.3 routing guide](GLM53_FLASH_QUICKSTARTS.md) to compare this
+implemented adaptive-MTP path with the qualified artifact-specific DFlash
+paths before building an image.
+
 Status: **implemented, not qualified**. This guide retains vLLM native
 extensions from `da4d7be6c97434f6942292ed8abbf4b32dc44355`, overlays Python
 source `0b67266a0f37d6146a8403fb8482403c62f412d5`, and installs SparkCache

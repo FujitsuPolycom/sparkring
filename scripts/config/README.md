@@ -49,6 +49,14 @@ python -m pytest \
   runtime/exl3-r7/test_exl3_r7_verify_runtime.py -q
 ```
 
+## Choose a GLM-5.3 Flash template
+
+Use the [GLM-5.3 quickstart routing guide](../../docs/GLM53_FLASH_QUICKSTARTS.md)
+to select the published BF16 DFlash2 composition, external DFlash7, adaptive
+MTP, or the source-built `e10536a` path. Copy only the selected site and
+profile templates to untracked paths. A template's checked-in status and an
+image's exact evidence must both support the intended claim.
+
 ## GLM-5.3 Flash with BF16 DFlash2
 
 The GLM-5.3 Flash deployment uses three sanitized inputs:
@@ -95,14 +103,14 @@ Follow the [executable quickstart](../../docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKC
 
 ## GLM-5.3 external DFlash7 Python overlay
 
-Status: **implemented**, not qualified. Both profiles use external DFlash at
-depth seven and TP4, FP8 target KV, 256-token blocks, 32 sequences, and
-SparkCache CUDA restore with page-tail copy-on-write publication.
+Both profiles use external DFlash at depth seven and TP4, FP8 target KV,
+256-token blocks, 32 sequences, and SparkCache CUDA restore with page-tail
+copy-on-write publication. Qualification is image-specific.
 
 | File | Status | Target loader |
 |---|---|---|
 | `glm53-flash-dflash7-python-overlay-safetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Global safetensors for target and draft |
-| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Target fastsafetensors queue one with explicit draft safetensors |
+| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **qualified** only for image ID `sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8` and its recorded bounded cases; rebuilds are not qualified | Target fastsafetensors queue one with explicit draft safetensors |
 
 Resolve either profile with
 `scripts/prepare_glm53_dflash7_python_overlay_profile.py`. Follow the

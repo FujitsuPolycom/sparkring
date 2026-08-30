@@ -1,5 +1,12 @@
 # Serve source-built GLM-5.3 e10536a with SparkCache on four DGX Sparks
 
+Use the [GLM-5.3 routing guide](GLM53_FLASH_QUICKSTARTS.md) before selecting
+this source-built path. Commit `e10536a` is nine commits after `da4d7be6`;
+`0b67266a` is three commits after `e10536a`. The separate Python-overlay
+runtimes include the production Python changes through `0b67266a` while
+retaining compiled `da4d7be6` extensions. This guide instead builds the exact
+`e10536a` source runtime.
+
 Status: **implemented, not qualified**. This guide builds an exact vLLM
 `e10536aadf02a18fccddda7ec939c33147e8b0b3` runtime and a SparkCache overlay.
 Its status is independent of the qualified vLLM `da4d7be6c97434f6942292ed8abbf4b32dc44355`

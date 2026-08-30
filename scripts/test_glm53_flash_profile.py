@@ -413,9 +413,11 @@ def test_public_glm53_benchmark_is_sanitized_and_bounded() -> None:
     assert "api_key" not in text.lower()
 
     readme = README_PATH.read_text(encoding="utf-8")
-    assert "GLM-5.3 Flash research observation" in readme
-    assert "| 2,371 | 36.06 | — | C1: 36.06 | — |" in readme
-    assert "C4 and C8 were capacity-limited" in readme
+    assert "## Evidence and results" in readme
+    assert "[results](docs/RESULTS.md)" in readme
+    assert "[`performance/records/`](performance/records/)" in readme
+    assert "GLM-5.3 Flash research observation" not in readme
+    assert "IN PROGRESS" not in readme
 
 
 def test_twenty_gib_kv_observation_is_research_only_and_sanitized() -> None:

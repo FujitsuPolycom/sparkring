@@ -1,5 +1,8 @@
 # Serve GLM-5.3 Flash with BF16 DFlash2 without an external KV cache
 
+Use the [GLM-5.3 routing guide](GLM53_FLASH_QUICKSTARTS.md) to compare this
+cache-disabled profile with the SparkCache and source-built GLM-5.3 paths.
+
 Status: **qualified** for startup, semantic generation, and runtime health
 using the immutable image, model revisions, and TP4/DCP1 settings in this
 guide. The configured 524,288-token request limit and 32-sequence limit were

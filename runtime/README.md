@@ -21,6 +21,28 @@ credentials, or a live-deployment result.
 | [`public-overlay-files.json`](public-overlay-files.json) | Explicit source-file allowlist for the public overlay |
 | [`test_public_overlay.py`](test_public_overlay.py) | Offline contract coverage for allowlisting and manifest generation |
 
+## GLM-5.3 runtime selection and image placement
+
+Start with the [GLM-5.3 quickstart routing guide](../docs/GLM53_FLASH_QUICKSTARTS.md).
+It separates the published BF16 DFlash2 image from locally built DFlash7,
+adaptive-MTP, and `e10536a` images and states the evidence boundary for each.
+
+The `e10536a` source builder and the `0b67266a` Python-overlay builders are
+different constructions. Commit `e10536a` is nine commits after the retained
+`da4d7be6` base; `0b67266a` is three commits after `e10536a`. The overlay
+builders install 31 exact production Python files from `0b67266a` over
+compiled `da4d7be6` extensions. They do not describe the result as a
+source-built `0b67266a` wheel.
+
+Each builder README provides an executable local build command and receipt
+path. A local build changes only the builder's container store and does not
+place the image on serving ranks. Use
+`scripts/pull_glm53_image_cluster.py` for a published immutable registry
+digest. Use the [direct-fabric archive tool](../docs/DIRECT_FABRIC_IMAGE_ARCHIVE_FANOUT.md)
+for a checksum-bound local archive. Both placement paths require explicit
+confirmation before changing hosts and produce identity receipts; neither
+path qualifies model serving.
+
 ## GLM-5.2 EXL3 R7 builder
 
 [`runtime/exl3-r7/`](exl3-r7/README.md) is the supported builder for the
