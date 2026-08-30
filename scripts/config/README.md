@@ -86,7 +86,7 @@ uses these sanitized inputs:
 | File | Role |
 |---|---|
 | `glm53-flash-b12x-kda-adaptive-mtp-tp4-site.example.yaml` | Four-rank TP4/DCP1 site and 20 GiB FP8 KV reservation per rank |
-| `glm53-flash-b12x-kda-mtp5-adaptive-fastsafetensors-sparkcache-tp4-dcp1.example.json` | Adaptive MTP 3→5, 32-step window, fastsafetensors queue one, native SparkCache restore |
+| `glm53-flash-b12x-kda-mtp5-adaptive-fastsafetensors-sparkcache-tp4-dcp1.example.json` | Adaptive MTP 3→5, 32-step window, fastsafetensors queue one, SparkCache C++/CUDA restore, and page-tail copy-on-write publication |
 
 Resolve both templates with
 `scripts/prepare_glm53_b12x_kda_adaptive_mtp_profile.py`. The resolver rejects

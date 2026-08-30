@@ -28,6 +28,7 @@ VLLM_COMMIT = "0b67266a0f37d6146a8403fb8482403c62f412d5"
 MTP_CACHE_IDENTITY_SHA256 = (
     "3255539158b8a4fd199b4d97d89eb5231df3b39a5370881c16099a8059b09e44"
 )
+PUBLICATION_SCHEMA = "tail-cow-v1"
 
 
 class ResolveError(ValueError):
@@ -104,6 +105,14 @@ def resolve(
         raise ResolveError("adaptive MTP observation window must be 32")
     if profile.get("environment", {}).get("VLLM_FASTSAFETENSORS_QUEUE_SIZE") != "1":
         raise ResolveError("fastsafetensors queue size must be one")
+    transfer = json.loads(_argument(profile, "--kv-transfer-config"))
+    connector_extra = transfer.get("kv_connector_extra_config")
+    if not isinstance(connector_extra, dict):
+        raise ResolveError("profile must contain SparkCache connector extra config")
+    if connector_extra.get("spark_cache_publication_schema") != PUBLICATION_SCHEMA:
+        raise ResolveError(
+            "profile must select SparkCache tail-cow-v1 publication"
+        )
     attestation = " ".join(str(value) for value in profile.get("attestation_hook", []))
     if SPARKCACHE_SOURCE_SHA256 not in attestation:
         raise ResolveError("profile does not attest the integrated SparkCache source")

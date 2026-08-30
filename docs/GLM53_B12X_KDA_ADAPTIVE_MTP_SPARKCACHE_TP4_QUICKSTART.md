@@ -123,12 +123,26 @@ NCCL error, or traceback.
 
 ## Cache namespace impact
 
-The overlay does not change SparkCache wire fields, digest salts, 256-token
-geometry, or stored object schemas. Its embedded-MTP digest is SHA-256 over
-`glm53-embedded-mtp-runtime-v1`, the target identity, the full vLLM commit,
-maximum depth five, and `adaptive:3:32`, separated by zero bytes.
+The connector explicitly requests publication schema `tail-cow-v1`. The
+`glm53-flash-hybrid` block-page profile maps that operator value to
+`page-tail-cow-v1` in `CacheIdentity`, so it selects the tail-specific storage
+key rather than the `snapshot-v1` storage key. `snapshot-v1` entries cleanly
+miss instead of being interpreted as page-tail objects.
+
+The publication schema does not change the embedded-MTP digest. That digest is
+SHA-256 over `glm53-embedded-mtp-runtime-v1`, the target identity, the full
+vLLM commit, maximum depth five, and `adaptive:3:32`, separated by zero bytes.
+SparkCache binds publication schema independently in `CacheIdentity`, so
+changing the MTP digest would add an unrelated identity change.
 
 Including the vLLM revision gives this runtime a distinct draft-state cache
 identity from the e105 adaptive-MTP profile. Stored entries therefore
 recompute instead of crossing the KDA source boundary without byte-equivalence
 evidence.
+
+The profile retains the one-shot clear token
+`sparkring-b12x-kda-adaptive-mtp-fastsafetensors-initialization`. Clear tokens
+are durable operator-action markers, not cache-identity fields. Rotating this
+token solely for the publication-schema selection would request another
+root-wide clear even though the tail-specific storage key prevents
+cross-schema restore.

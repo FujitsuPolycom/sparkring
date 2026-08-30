@@ -12,6 +12,7 @@ import sparkring_generic_launcher as launcher
 from prepare_glm53_b12x_kda_adaptive_mtp_profile import (
     LEASE_CONTRACT_SHA256,
     MTP_CACHE_IDENTITY_SHA256,
+    PUBLICATION_SCHEMA,
     SPARKCACHE_COMMIT,
     SPARKCACHE_SOURCE_SHA256,
     VLLM_COMMIT,
@@ -77,6 +78,7 @@ def test_profile_pins_adaptive_mtp_fastsafetensors_and_sparkcache() -> None:
     assert extra["spark_cache_native_arena_bytes"] == 256 * 1024**2
     assert extra["spark_cache_native_io_workers"] == 8
     assert extra["spark_cache_load_threads"] == 2
+    assert extra["spark_cache_publication_schema"] == PUBLICATION_SCHEMA
     assert extra["spark_cache_clear_once"] == (
         "sparkring-b12x-kda-adaptive-mtp-fastsafetensors-initialization"
     )
@@ -153,6 +155,26 @@ def test_resolver_rejects_runtime_or_loader_identity_drift() -> None:
     changed["environment"]["VLLM_FASTSAFETENSORS_QUEUE_SIZE"] = "2"
     with pytest.raises(ResolveError, match="queue size must be one"):
         resolve(changed, copy.deepcopy(site), **arguments)
+
+
+def test_resolver_rejects_publication_schema_drift() -> None:
+    profile = json.loads(PROFILE.read_text(encoding="utf-8"))
+    site = yaml.safe_load(SITE.read_text(encoding="utf-8"))
+    transfer_index = profile["extra_vllm_args"].index("--kv-transfer-config") + 1
+    transfer = json.loads(profile["extra_vllm_args"][transfer_index])
+    transfer["kv_connector_extra_config"].pop("spark_cache_publication_schema")
+    profile["extra_vllm_args"][transfer_index] = json.dumps(transfer)
+
+    with pytest.raises(ResolveError, match="tail-cow-v1 publication"):
+        resolve(
+            profile,
+            site,
+            image="image",
+            image_id="sha256:" + "a" * 64,
+            parent_image="parent",
+            parent_image_id="sha256:" + "b" * 64,
+            native_library_sha256="c" * 64,
+        )
 
 
 def test_quickstart_names_the_executable_builder_and_profile_contracts() -> None:
