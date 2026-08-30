@@ -80,6 +80,7 @@ temperature 1.0; decode values are aggregate throughput across active streams.
 
 | Profile | Prefill | C1 decode | C8 decode | Highest tested decode | Coding peak |
 |---|---:|---:|---:|---:|---:|
+| [GLM-5.3flash NVFP4 · 4 Sparks](IN PROGRESS) | 2300 | 40 | 130 | C8: 130 | 70 |
 | [GLM-5.2 EXL3 3.5-bpw · 4 Sparks](performance/records/glm-3.5bpw/normalized-base-20260822.md) | 671 | 20.15 | 64.13 | C8: 64.13 | 25.39 |
 | [DeepSeek-V4-Flash DSpark · 2 Sparks](performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md) | 1,926 | 58.36 | 162.69 | C32: 307.13 | 59.31 |
 | [DeepSeek-V4-Flash-0731 · 4 Sparks](performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md) | 2,488 | 68.84 | 265.16 | C32: 508.11 | 95.77 |
