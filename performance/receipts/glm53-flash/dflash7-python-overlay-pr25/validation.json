@@ -1,0 +1,132 @@
+{
+  "schema": "sparkring-glm53-dflash7-pr25-live-validation/v1",
+  "status": {
+    "artifact_construction": "implemented",
+    "startup_health": "qualified",
+    "semantic_smoke": "qualified",
+    "flat_restore": "qualified",
+    "page_delta_restore_correctness": "qualified",
+    "page_delta_restore_performance": "research-only",
+    "persistent_128k_restore": "qualified",
+    "shared_prefix_waves": "qualified",
+    "dflash_quality": "unsupported"
+  },
+  "artifact": {
+    "image": "sparkring-glm53-sparkcache:dflash7-vllm-python-0b67266-native-da4d7be-b12x-b1d541f-arm64",
+    "image_id": "sha256:9faa36a9f37aee16d97ab9214ef3153b4d200121126e6b2dee5ebb63109fea18",
+    "oci_revision_label": "e2d92fdc7d0306d664d6fd9f296dc2adcaf0fe05",
+    "sparkring_revision": "e2d92fdc7d0306d664d6fd9f296dc2adcaf0fe05",
+    "vllm_native_revision": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+    "vllm_python_revision": "0b67266a0f37d6146a8403fb8482403c62f412d5",
+    "b12x_revision": "b1d541f9e71a35f030d45fae437630fff7507c2a",
+    "sparkcache_revision": "5d571018de5b63a9a90e5c11e6d6e86bbff4a957",
+    "sparkcache_tree": "e864ed9ad64f771188fdb59aa9738e348134d636",
+    "sparkcache_source_sha256": "f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88",
+    "cuda_placement_library_sha256": "a2e495162bf3d58b01613cd82ac15c8e15031dd7d6de7299700d2c58d905ada8",
+    "dflash_loader_patch_sha256": "39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279",
+    "dflash_loader_postimage_sha256": "98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4"
+  },
+  "conditions": {
+    "hardware": "four NVIDIA DGX Spark systems",
+    "topology": {
+      "tensor_parallel_size": 4,
+      "decode_context_parallel_size": 1,
+      "pipeline_parallel_size": 1
+    },
+    "target_loader": "fastsafetensors",
+    "draft_loader": "safetensors",
+    "draft_method": "dflash",
+    "draft_tokens": 7,
+    "draft_tensor_parallel_size": 4,
+    "kv_cache_dtype": "fp8",
+    "vllm_block_size": 256,
+    "max_num_seqs": 32,
+    "sparkcache_publication_schema": "tail-cow-v1",
+    "sparkcache_effective_publication_schema": "page-tail-cow-v1",
+    "sparkcache_config_surface": "PR25 legacy-key compatibility",
+    "sparkcache_accepted_legacy_keys": [
+      "spark_cache_native_restore",
+      "spark_cache_native_library",
+      "spark_cache_native_library_sha256",
+      "spark_cache_native_arena_bytes",
+      "spark_cache_native_io_workers"
+    ]
+  },
+  "measurements": {
+    "startup": {
+      "target_fastsafetensors_seconds": 69.52,
+      "draft_safetensors_seconds": 4.18,
+      "total_model_load_seconds": 79.27,
+      "warm_ready_seconds_approx": 190.0,
+      "healthy_ranks": 4,
+      "restart_count_by_rank": [0, 0, 0, 0],
+      "oom_killed_by_rank": [false, false, false, false]
+    },
+    "semantic_smoke": {
+      "raw_completion_tokens": [2, 2],
+      "scope": "continued raw completion only; no quality score"
+    },
+    "flat_restore": {
+      "restored_tokens": 11520,
+      "rank": 0,
+      "restore_milliseconds": 29.258
+    },
+    "page_delta_restore": {
+      "restored_tokens": 17152,
+      "restore_milliseconds": 703.826,
+      "restore_read_milliseconds": 579.259,
+      "chunk_count": 67,
+      "type_error_observed": false
+    },
+    "prime_128k": {
+      "request_seconds": 55.522,
+      "completion_token": 13,
+      "snapshot_milliseconds": 2440.7,
+      "commit_milliseconds": 1687.7
+    },
+    "unrelated_sentinel": {
+      "completion_token": 271
+    },
+    "persistent_restore_128k": {
+      "bytes_per_rank": 813068464,
+      "rank_restore_milliseconds": {
+        "minimum": 123.69,
+        "maximum": 153.253
+      }
+    },
+    "shared_prefix_waves": [
+      {
+        "concurrency": 2,
+        "wall_seconds": 0.808,
+        "http_200": 2,
+        "completion_token": 13,
+        "restore_events_observed": 1,
+        "retention_observed": true
+      },
+      {
+        "concurrency": 8,
+        "wall_seconds": 1.506,
+        "http_200": 8,
+        "completion_token": 13,
+        "restore_events_observed": 1,
+        "retention_observed": true
+      },
+      {
+        "concurrency": 16,
+        "wall_seconds": 1.781,
+        "http_200": 16,
+        "completion_token": 13,
+        "restore_events_observed": 1,
+        "retention_observed": true
+      }
+    ]
+  },
+  "limitations": [
+    "The 7168-to-12032 base-geometry failure is fixed only in draft SparkCache PR28 and is not fixed in this artifact.",
+    "Null-block publication failures at 6912 tokens remain under investigation.",
+    "Page-delta read and reconstruction latency is too high for a performance claim.",
+    "No DFlash quality benchmark was run on this artifact.",
+    "One observed wave per concurrency does not establish latency variability, throughput, or soak behavior.",
+    "The collection timestamp, complete command transcript, and independent clock audit are not part of this bounded receipt."
+  ]
+}

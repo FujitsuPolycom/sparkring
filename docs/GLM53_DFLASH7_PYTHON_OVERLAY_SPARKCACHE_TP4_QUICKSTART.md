@@ -1,9 +1,12 @@
 # Serve GLM-5.3 with external DFlash7 and the exact Python-overlay runtime
 
-Status: **implemented**, not qualified. The image builder, profile resolver,
-and four-rank dry-run contract pass without GPUs. No image digest from this
-path has completed TP4/DCP1 model loading, semantic generation, SparkCache
-store/restart/restore, or concurrency qualification.
+Status: **implemented** for the builder and profile resolver. Image ID
+`sha256:9faa36a9f37aee16d97ab9214ef3153b4d200121126e6b2dee5ebb63109fea18`
+is **qualified** only for the bounded startup, health, semantic smoke, and
+restore cases in the
+[live-validation record](../performance/records/glm53-flash/dflash7-python-overlay-pr25-live-validation.md).
+DFlash response quality and serving configurations outside that record are
+**unsupported** by its evidence.
 
 ## Runtime contract
 
@@ -43,8 +46,8 @@ Two profiles share the same image and DFlash7 cache identity:
 
 | Profile | Status | Loader behavior |
 |---|---|---|
-| `glm53-flash-dflash7-python-overlay-safetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Uses global safetensors for target and draft. This follows the qualified-compatible loader shape but still requires live qualification on the composed 0b image. |
-| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Uses global fastsafetensors with queue size one for the target and `draft_load_config={"load_format":"safetensors"}` for DFlash. |
+| `glm53-flash-dflash7-python-overlay-safetensors-sparkcache-tp4-dcp1.example.json` | **implemented** | Uses global safetensors for target and draft. This profile has no live evidence on the composed image. |
+| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **qualified** for the recorded image and bounded gates | Uses global fastsafetensors with queue size one for the target and `draft_load_config={"load_format":"safetensors"}` for DFlash. |
 
 The image applies an exact-input vLLM patch that passes
 `SpeculativeConfig.draft_load_config` to the DFlash model loader. The image
@@ -52,7 +55,12 @@ receipt verifies patch SHA-256
 `39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279` and
 postimage SHA-256
 `98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4`.
-Both profiles remain unqualified until live four-rank gates pass.
+The all-safetensors profile is implemented and not qualified; it has no live
+four-rank evidence.
+The fastsafetensors profile completed the bounded four-rank gates recorded for
+image ID
+`sha256:9faa36a9f37aee16d97ab9214ef3153b4d200121126e6b2dee5ebb63109fea18`.
+That result does not qualify other image IDs or the all-safetensors profile.
 
 ## Resolve the profile and inspect the plan
 
@@ -85,11 +93,76 @@ python scripts/sparkring_generic_launcher.py \
 
 `plan` is offline. Inspect every rank action before a lifecycle command.
 
+## Launch the recorded image with SparkCache pull request 25 keys
+
+The validated image ID
+`sha256:9faa36a9f37aee16d97ab9214ef3153b4d200121126e6b2dee5ebb63109fea18`
+contains SparkRing commit
+`e2d92fdc7d0306d664d6fd9f296dc2adcaf0fe05` and
+[SparkCache pull request 25](https://github.com/FujitsuPolycom/sparkcache/pull/25)
+commit `5d571018de5b63a9a90e5c11e6d6e86bbff4a957`. That SparkCache commit accepts
+the configuration names whose literals begin `spark_cache_native_`. The
+profile templates expose the canonical CUDA names, so translate the resolved
+profile only when launching this exact image:
+
+| Canonical profile key | Key accepted by the recorded image |
+|---|---|
+| `spark_cache_cuda_restore` | `spark_cache_native_restore` |
+| `spark_cache_cuda_placement_library` | `spark_cache_native_library` |
+| `spark_cache_cuda_placement_library_sha256` | `spark_cache_native_library_sha256` |
+| `spark_cache_cuda_placement_arena_bytes` | `spark_cache_native_arena_bytes` |
+| `spark_cache_cuda_restore_io_workers` | `spark_cache_native_io_workers` |
+
+Apply the translation after resolving the profile and before running
+`plan`. The program fails if a source key is absent or a destination key is
+already present:
+
+```bash
+python - /path/to/glm53-dflash7-profile.json <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+profile = json.loads(path.read_text())
+args = profile["extra_vllm_args"]
+index = args.index("--kv-transfer-config") + 1
+config = json.loads(args[index])
+extra = config["kv_connector_extra_config"]
+mapping = {
+    "spark_cache_cuda_restore": "spark_cache_native_restore",
+    "spark_cache_cuda_placement_library": "spark_cache_native_library",
+    "spark_cache_cuda_placement_library_sha256": "spark_cache_native_library_sha256",
+    "spark_cache_cuda_placement_arena_bytes": "spark_cache_native_arena_bytes",
+    "spark_cache_cuda_restore_io_workers": "spark_cache_native_io_workers",
+}
+for source, destination in mapping.items():
+    if source not in extra or destination in extra:
+        raise SystemExit(f"refusing ambiguous SparkCache key translation: {source} -> {destination}")
+    extra[destination] = extra.pop(source)
+args[index] = json.dumps(config, separators=(",", ":"))
+path.write_text(json.dumps(profile, indent=2) + "\n")
+PY
+
+python scripts/sparkring_generic_launcher.py \
+  --site /path/to/glm53-dflash7-site.yaml \
+  --profile /path/to/glm53-dflash7-profile.json \
+  plan
+```
+
+[SparkRing pull request #137](https://github.com/FujitsuPolycom/sparkring/pull/137)
+changes the image contract to SparkCache pull request 26 and canonical CUDA
+configuration names. The image specified by pull request #137 has not been
+built or live-validated. Do not use the translation above for an
+image whose receipt binds SparkCache pull request 26 or a later source
+contract.
+
 ## Cache namespace impact
 
 The external DFlash weights SHA-256 is stored as
 `spark_cache_draft_checkpoint_sha256`. It cannot share entries with embedded
 MTP profiles. `tail-cow-v1` also separates these entries from snapshot-v1
-manifests. The two target-loader profiles share a namespace because loader
-choice does not change target or draft model state; each profile uses a
-different cache root and one-shot clear token while qualification is pending.
+manifests. The two target-loader profiles could share a namespace because
+loader choice does not change target or draft model state. Their templates use
+different cache roots and one-shot clear tokens so observations from one
+loader do not enter validation of the other loader.
