@@ -1,0 +1,12 @@
+{
+  "completion_tokens": 1,
+  "elapsed_seconds": 55.77577,
+  "expected_oracle": "red",
+  "finish_reason": "length",
+  "http_status": 200,
+  "observed_oracle": "red",
+  "oracle_match": true,
+  "prompt_sha256": "965acd85cb28f804ab59cdc160688b04efaee14341e0bd27b647673e652ab812",
+  "prompt_tokens": 131073,
+  "response_sha256": "2c68d02422a6c4bdb42bd10221940894e746342bef6a56695fdbcb549074a355"
+}

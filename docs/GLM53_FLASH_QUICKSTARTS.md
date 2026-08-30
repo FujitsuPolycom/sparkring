@@ -8,8 +8,8 @@ profile. A result recorded for one image ID does not qualify another build.
 |---|---|---|---|
 | BF16 DFlash2 with SparkCache | **qualified** for the bounded cases in its guide | Published immutable OCI digest | [SparkCache quickstart](GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md) |
 | BF16 DFlash2 without an external KV cache | **qualified** for the bounded cases in its guide | Uses the same published image | [Cache-disabled quickstart](GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
-| External DFlash7, fastsafetensors target | **qualified** only for local image ID `sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8` and its recorded cases | Local image; no published OCI digest | [DFlash7 Python-overlay quickstart](GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md) |
-| External DFlash7, all-safetensors target | **implemented**, not qualified | Build locally | [DFlash7 Python-overlay quickstart](GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md) |
+| External DFlash7 snapshot-v1, fastsafetensors target | **qualified** only for local image ID `sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e` and its recorded 131,072-token full-snapshot case | Local image; no published OCI digest | [DFlash7 Python-overlay quickstart](GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md) |
+| External DFlash7 tail-cow, all-safetensors target | **research-only**, not qualified | Build locally | [DFlash7 Python-overlay quickstart](GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md) |
 | Adaptive embedded MTP with live-tensor B12X KDA | **implemented**, not qualified | Build locally | [Adaptive-MTP quickstart](GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md) |
 | Source-built vLLM `e10536a` profiles | **implemented**, not qualified | Build locally | [e10536a source-build quickstart](GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md) |
 

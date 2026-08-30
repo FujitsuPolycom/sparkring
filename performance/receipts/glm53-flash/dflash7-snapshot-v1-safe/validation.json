@@ -1,0 +1,98 @@
+{
+  "schema": "sparkring-glm53-dflash7-snapshot-v1-safe-validation/v1",
+  "status": "qualified",
+  "artifact": {
+    "image": "sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-singletonfix-arm64",
+    "image_id": "sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e",
+    "build_receipt_sha256": "ec51c5b99227fe14709977df026e25e3e60f220b81ae252155d048556e8ea90a",
+    "sparkcache_commit": "a1511d26a1fe2b17b24561bc52e376bf7f54b06a",
+    "sparkcache_tree": "4d5b8eb8c5c13793ee7a1e67b2b34bd38fcf4ddb",
+    "sparkcache_source_sha256": "6651f2823c816fac93779cbca54a8f19c0ed262830953149f3a87d189d1f833b"
+  },
+  "profile": {
+    "profile_id": "glm53-flash-dflash7-pr42-page-base-flight-singleton-fastsafetensors-sparkcache-tp4-dcp1",
+    "served_model": "glm-5.3-flash-nvfp4-dflash7-pr42-page-base-flight-singleton-0b67266-on-da4d7be-b12x-b1d541f-tp4",
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 1,
+    "kv_cache_dtype": "fp8",
+    "kv_cache_bytes_per_rank": 21474836480,
+    "publication_schema": "snapshot-v1",
+    "storage_mode": "block_pages_v1",
+    "load_threads": 1,
+    "max_pending_restores": 1,
+    "cache_root_role": "isolated snapshot-v1 root"
+  },
+  "case": {
+    "committed_tokens": 131072,
+    "prompt_tokens": 131073,
+    "context_digest": "b4161571df103395e2abae10372a90f35468561ec6c42bf4a7b7f0d0dfda5873",
+    "prompt_sha256": "965acd85cb28f804ab59cdc160688b04efaee14341e0bd27b647673e652ab812",
+    "expected_oracle": "red",
+    "publish_oracle": "red",
+    "restore_oracle": "red",
+    "publish_response_sha256": "2c68d02422a6c4bdb42bd10221940894e746342bef6a56695fdbcb549074a355",
+    "restore_response_sha256": "2c68d02422a6c4bdb42bd10221940894e746342bef6a56695fdbcb549074a355",
+    "snapshot_encoded_bytes_per_rank": 813068464,
+    "snapshot_object_count_per_rank": 13
+  },
+  "rank_restore_evidence": [
+    {
+      "rank": 0,
+      "bounded_log_input_sha256": "51b08020048de990db83ad9d19e0685c2d2992279879af84175edc57e34b9f66",
+      "request_id": "cmpl-b9d74d7ae8408bfd-0-a83c9e07",
+      "digest_prefix": "b4161571df10",
+      "end_to_end_ms": 1699.752,
+      "service_ms": 1699.596,
+      "page_bytes": 813068464,
+      "outcome": "verified"
+    },
+    {
+      "rank": 1,
+      "bounded_log_input_sha256": "8407153d7763f848756086f40cb659c0eadc5d319ac07ea44080fd8637d8458c",
+      "request_id": "cmpl-b9d74d7ae8408bfd-0-a83c9e07",
+      "digest_prefix": "b4161571df10",
+      "end_to_end_ms": 1552.485,
+      "service_ms": 1552.151,
+      "page_bytes": 813068464,
+      "outcome": "verified"
+    },
+    {
+      "rank": 2,
+      "bounded_log_input_sha256": "1bb183e59202105287a24e132f36d43e9834c521e73260d0749b088303126c3d",
+      "request_id": "cmpl-b9d74d7ae8408bfd-0-a83c9e07",
+      "digest_prefix": "b4161571df10",
+      "end_to_end_ms": 1601.705,
+      "service_ms": 1601.543,
+      "page_bytes": 813068464,
+      "outcome": "verified"
+    },
+    {
+      "rank": 3,
+      "bounded_log_input_sha256": "878272a73fd509db1fb66352d257904f9056ada68f36fb785af0451853fbcf87",
+      "request_id": "cmpl-b9d74d7ae8408bfd-0-a83c9e07",
+      "digest_prefix": "b4161571df10",
+      "end_to_end_ms": 1585.375,
+      "service_ms": 1584.75,
+      "page_bytes": 813068464,
+      "outcome": "verified"
+    }
+  ],
+  "input_sha256": {
+    "source_publish_json": "8cfc242084ecfe17c5ac6088349d00634bf78ae1cfad1d654a805fa7eb2cfe3f",
+    "source_restore_json": "601087f4902fc9385af3a7461c61ec4a17067ea41653c65739a09a8148abedaf",
+    "source_readiness_json": "861dd1dd33bac4624e870974a0e7ad65cec87330d73dcf03654c57e1014ac32c",
+    "source_manifest_inspection_json": "e1eca7a4cd0b1dbc88fceb1836126f3c93a6103d0d24ddc0372e55e05ff72e13",
+    "repository_publish_json": "c14b51b790732c072c1d8a4de9a7285ce8e2e103742132eb5ecbb0cd72c2157d",
+    "repository_restore_json": "d8ef8839e5f072f164696bf4fb6c54388a421ad78222cbf1a67c628d7afadff7",
+    "repository_readiness_json": "861dd1dd33bac4624e870974a0e7ad65cec87330d73dcf03654c57e1014ac32c",
+    "repository_manifest_inspection_json": "eafbd2de41bcaaa7a32b55e6b73845c3a1ca19c20d33cbefeb225cf6aaec127d"
+  },
+  "limitations": {
+    "tail_cow_opaque_page_deltas": "research-only",
+    "host_base_read_coalescing": "research-only",
+    "multi_root_concurrent_restore": "research-only",
+    "c2_delta_restore": "not qualified; one request recomputed and returned the correct oracle",
+    "response_quality": "unsupported",
+    "performance": "unsupported beyond the bounded restore observation"
+  }
+}

@@ -16,6 +16,7 @@ qualified functional claim or a research-only observation.
 | [`glm53-flash/sparkcache-dflash2-bf16-tp4-20260829/`](glm53-flash/sparkcache-dflash2-bf16-tp4-20260829/) | One accepted 16K prefill and C1 decode observation; capacity-limited C4 and C8 cells are excluded |
 | [`glm53-flash/adaptive-mtp-vs-dflash7-20260829/`](glm53-flash/adaptive-mtp-vs-dflash7-20260829/) | Research-only server-log diagnostic; prompt and output receipts are absent |
 | [`glm53-flash/sparkcache-dflash2-bf16-tp4-20g-20260829/`](glm53-flash/sparkcache-dflash2-bf16-tp4-20g-20260829/) | One accepted functional observation with 20 GiB of GPU KV memory per rank |
+| [`glm53-flash/dflash7-snapshot-v1-safe/`](glm53-flash/dflash7-snapshot-v1-safe/) | Exact 131,072-token DFlash7 snapshot-v1 publication and all-rank CUDA restore with bounded oracle evidence |
 | [`qwen38-27b/temp1/`](qwen38-27b/temp1/) | 13 two-Spark and 16 four-Spark accepted prefill, decode, and Coding Peak receipts |
 
 Every receipt records `temperature: 1.0`. DeepSeek used effective top-p 1.0;

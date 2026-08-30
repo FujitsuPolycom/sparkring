@@ -1,0 +1,9 @@
+{
+  "kind": "semantic",
+  "model": "glm-5.3-flash-nvfp4-dflash7-pr42-page-base-flight-singleton-0b67266-on-da4d7be-b12x-b1d541f-tp4",
+  "prompt_sha256": "bbaff4d2ecd5892d4a442b0f53131641bf6e6f284761dd20fc0664bc97145762",
+  "response_sha256": "a42804ed9f2d855f01b319a2355d4cd8ba21c6d24c1731bb0db817e3de35d4ec",
+  "schema": "sparkring-glm53-pr42-page-base-flight-qualification/v2",
+  "semantic_match": true,
+  "status": "verified"
+}

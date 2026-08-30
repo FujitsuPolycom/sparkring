@@ -5,44 +5,47 @@ local-image path with the published BF16 DFlash2 composition, adaptive MTP,
 and the source-built `e10536a` path.
 
 Status: **implemented** for reproducible image construction, profile
-resolution, and four-rank dry-run planning from the selected source contract.
+resolution, and four-rank dry-run planning. The executable fastsafetensors
+profile defaults to full `snapshot-v1` publication, one SparkCache load
+thread, one pending restore, and an isolated snapshot-v1 cache root and clear
+token.
+
 Exact local image
-`sparkring-glm53-sparkcache:dflash7-pr39-reaching-d93cb3d-arm64`, image ID
-`sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8`,
-is **qualified** only for the bounded cases in the
-[exact-artifact validation record](../performance/records/glm53-flash/pr146-recurrent-publication-live-validation.md)
-from [pull request #147](https://github.com/FujitsuPolycom/sparkring/pull/147).
-It binds SparkRing `d93cb3d98305041081cf572521602625185112ae` and
-SparkCache `65b6642df1afc64366430d3aef9aca01f5c5e1c3`.
+`sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-singletonfix-arm64`,
+image ID
+`sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e`,
+is **qualified** only for this bounded snapshot case in the
+[machine-readable validation receipt](../performance/receipts/glm53-flash/dflash7-snapshot-v1-safe/validation.json):
 
-The exact image completed the fixed semantic canary, a clean-restart
-8,192-token persistent restore, a 131,072-token persistent restore, tail-only
-copy-on-write publication from 131,072 to 262,144 tokens, a verified
-262,144-token persistent restore, and one C16 cohort in which 16 distinct
-request tails shared one restored 131,072-token segment. Restore timings are
-**research-only**. The fixed semantic canary is not a DFlash response-quality
-benchmark, so response quality is **unsupported**. Public OCI publication is
-also **unsupported**; the image has no published digest. No rebuild inherits
-these observations without its own exact evidence.
+- GLM-5.3 DFlash7 on four DGX Sparks at TP4/DCP1;
+- 20 GiB of FP8 GPU KV per rank;
+- one 131,072-token full page snapshot, encoded as 813,068,464 bytes and 13
+  authenticated macro objects per rank;
+- exact context digest
+  `b4161571df103395e2abae10372a90f35468561ec6c42bf4a7b7f0d0dfda5873`;
+- all-rank CUDA restore in 1.552–1.700 seconds;
+- exact prompt SHA-256
+  `965acd85cb28f804ab59cdc160688b04efaee14341e0bd27b647673e652ab812`;
+- expected and observed oracle `red` before publication and after restart,
+  with response SHA-256
+  `2c68d02422a6c4bdb42bd10221940894e746342bef6a56695fdbcb549074a355`.
 
-The `ed60...` artifact uses `block_pages_v1`. Its C16 case proves that one
-exact 131,072-token prefix was restored once for requests with 16 distinct
-tails. It does not exercise `per_token_rows` different-root descriptor-segment
-coalescing. That behavior is implemented with GPU-free coverage only and is
-absent from this artifact's live qualification.
+That image binds SparkCache
+`a1511d26a1fe2b17b24561bc52e376bf7f54b06a`, tree
+`4d5b8eb8c5c13793ee7a1e67b2b34bd38fcf4ddb`, source SHA-256
+`6651f2823c816fac93779cbca54a8f19c0ed262830953149f3a87d189d1f833b`.
+The checked-in builder source below is a separate construction; rebuilding it
+does not inherit this qualification.
 
-### Separate historical artifact
+### Research-only tail publication and concurrent restore
 
-Historical local image ID
-`sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb`
-is **qualified** only for the TP4/DCP1 startup, health, semantic generation,
-arbitrary page-boundary replay, and 131,072- and 262,144-token restore cases
-in the
-[bounded validation record](../performance/records/glm53-flash/dflash7-python-overlay-pr30-live-validation.md).
-That historical image used SparkCache `5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3`;
-it is not an artifact of the source contract below. It has no retained
-C2/C8/C16 or DFlash response-quality evidence. A rebuild has a different
-identity and requires its own live checks.
+Opaque-page tail copy-on-write deltas, host-base read coalescing, and
+different-root concurrent restore are **research-only**. A C2 delta-restore
+attempt did not complete correctly; one request recomputed and returned its
+correct oracle. That result does not qualify C2 delta restore. The prior
+`ed60...` and `eef...` artifact records remain useful bounded observations,
+but they do not replace the snapshot-v1 default or qualify multi-root
+concurrency. Response quality and public OCI publication are **unsupported**.
 
 ## Runtime contract
 
@@ -59,9 +62,11 @@ identity and requires its own live checks.
 | External draft | `incoai/GLM-5.3-Flash-DFlash2@dc77ff1c99eeb2df044ee3d4f0094eb033fee410`, BF16 weights SHA-256 `b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b` |
 
 The serving contract uses seven speculative tokens, draft TP4, target FP8 KV,
-32 sequences, and 256-token vLLM blocks. SparkCache selects
-`tail-cow-v1`, which maps opaque GLM pages to the `page-tail-cow-v1`
-namespace, and uses the canonical CUDA restore keys.
+32 sequences, and 256-token vLLM blocks. The executable fastsafetensors
+profile selects `snapshot-v1`, which stores full opaque pages in authenticated
+macro objects. It uses the canonical CUDA restore keys, one load thread, and
+one pending restore. The all-safetensors tail-cow profile is isolated and
+research-only.
 
 Do not derive concurrency by dividing the reported 916,676-token capacity by
 prompt length. A no-cache C6 × 128K observation admitted one request at a time
@@ -108,7 +113,7 @@ Two profiles share the same image and DFlash7 cache identity:
 | Profile | Status | Loader behavior |
 |---|---|---|
 | `glm53-flash-dflash7-python-overlay-safetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Uses global safetensors for target and draft. This follows the qualified-compatible loader shape but still requires live qualification on the composed 0b image. |
-| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **qualified** only for exact image `sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8` and the bounded cases above; rebuilds are not qualified | Uses global fastsafetensors with queue size one for the target and `draft_load_config={"load_format":"safetensors"}` for DFlash. |
+| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | Its snapshot-v1 settings are **qualified** only for exact image `sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e` and the bounded full-snapshot case above; rebuilds are not qualified | Uses global fastsafetensors with queue size one for the target and `draft_load_config={"load_format":"safetensors"}` for DFlash. |
 
 The image applies an exact-input vLLM patch that passes
 `SpeculativeConfig.draft_load_config` to the DFlash model loader. The image
@@ -116,9 +121,9 @@ receipt verifies patch SHA-256
 `39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279` and
 postimage SHA-256
 `98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4`.
-The all-safetensors profile remains unqualified. The fastsafetensors result
-belongs only to the image ID and cases named above; it does not transfer to a
-rebuild.
+The all-safetensors tail-cow profile remains research-only and unqualified.
+The fastsafetensors snapshot result belongs only to the image ID and case
+named above; it does not transfer to a rebuild.
 
 SparkCache commit `65b6642df1afc64366430d3aef9aca01f5c5e1c3`
 accepts the canonical CUDA keys used by both profiles. It consumes the
@@ -213,19 +218,17 @@ prefill/decode tradeoff is measured independently.
 
 The external DFlash weights SHA-256 is stored as
 `spark_cache_draft_checkpoint_sha256`. It cannot share entries with embedded
-MTP profiles. `tail-cow-v1` also separates these entries from snapshot-v1
-manifests. The two target-loader profiles share a namespace because loader
-choice does not change target or draft model state. Each template uses a
-different cache root and one-shot clear token so loader observations remain
-isolated.
+MTP profiles. The executable fastsafetensors profile uses `snapshot-v1`; the
+all-safetensors research profile uses `tail-cow-v1`. The formats, cache roots,
+and one-shot clear tokens are distinct, so their entries cannot alias even
+though loader choice does not change target or draft model state.
 
 The pinned SparkCache source combines canonical CUDA configuration names,
-authenticated exact prefix restore, GPU-free row-descriptor coalescing, an
-eight-worker ordered page-delta reader, and tail-only copy-on-write
-publication. Cache identities, digest
-salts, 256-token chunk geometry, page-delta wire bytes, and the CUDA placement
-ABI are unchanged. The source change does not change the namespace, so
-compatible `page-tail-cow-v1` entries remain eligible.
+authenticated restore, full-page snapshots, and research-only page-delta
+paths. Cache identities, digest salts, 256-token chunk geometry, stored wire
+bytes, and the CUDA placement ABI are unchanged. Compatible snapshot entries
+remain eligible only under the snapshot-v1 profile, and compatible
+`page-tail-cow-v1` entries remain eligible only under the research profile.
 The vLLM lease-contract bytes do change to accept the recurrent-boundary
 postimages. Missing or malformed boundary evidence is a cache miss and
 recomputation, never an unverified publication.

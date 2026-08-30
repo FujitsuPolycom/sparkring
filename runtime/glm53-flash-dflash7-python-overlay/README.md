@@ -47,13 +47,15 @@ then verifies that the module is absent. DFlash model files remain
 operator-mounted and are verified by the runtime profile.
 
 Two executable profiles use external DFlash at depth seven and TP4, FP8 target
-KV, 256-token vLLM blocks, 32 sequences, and SparkCache page-tail copy-on-write
-publication with CUDA restore. Both selected profiles are implemented but
-unqualified. The historical mixed-loader image is qualified only for the
-bounded cases named above. The conservative profile uses global
-safetensors. The mixed profile uses global fastsafetensors for the target and
-an exact `draft_load_config` selecting safetensors for DFlash. The image applies and
-verifies the draft-loader patch before installing SparkCache patches. See
+KV, 256-token vLLM blocks, 32 sequences, and SparkCache CUDA restore. The
+fastsafetensors profile uses full `snapshot-v1` publication, one load thread,
+one pending restore, and an isolated cache root and clear token. Its settings
+are qualified only for the exact image and 131,072-token full-snapshot case
+named by the quickstart. The conservative all-safetensors profile retains
+isolated research-only tail-cow publication. The mixed profile uses global
+fastsafetensors for the target and an exact `draft_load_config` selecting
+safetensors for DFlash. The image applies and verifies the draft-loader patch
+before installing SparkCache patches. See
 `docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md`.
 
 The SparkCache source accepts the canonical CUDA configuration keys directly.
@@ -62,13 +64,11 @@ profiles.
 
 The pinned SparkCache source at
 `65b6642df1afc64366430d3aef9aca01f5c5e1c3` accepts canonical CUDA
-configuration keys, restores authenticated shared segment objects, reads page
-deltas with a bounded worker pool, and publishes only the copy-on-write tail.
-Its recurrent publication path requires the hash-proven boundary hand-off
-produced by this vLLM overlay and does not publish when that evidence is
-missing or contradictory. It does not change cache identity, page-tail wire schemas,
-record geometry, or the CUDA placement ABI. Compatible `page-tail-cow-v1`
-entries remain eligible; unverified state is recomputed.
+configuration keys and full snapshot-v1 publication. Its research-only
+recurrent path can also read page deltas and publish a copy-on-write tail when
+the hash-proven boundary hand-off is complete. Snapshot and tail-cow profiles
+use separate roots and schema namespaces. Neither changes cache identity,
+record geometry, or the CUDA placement ABI; unverified state is recomputed.
 Both profiles preserve B12X compute backends and the pinned PYNCCL/NCCL
 library. They disable unsupported symmetric-memory and FlashInfer all-reduce
 probes, disable the all-reduce RMS fusion, select language-model-only serving,

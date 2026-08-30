@@ -104,13 +104,15 @@ Follow the [executable quickstart](../../docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKC
 ## GLM-5.3 external DFlash7 Python overlay
 
 Both profiles use external DFlash at depth seven and TP4, FP8 target KV,
-256-token blocks, 32 sequences, and SparkCache CUDA restore with page-tail
-copy-on-write publication. Qualification is image-specific.
+256-token blocks, 32 sequences, and SparkCache CUDA restore. The executable
+fastsafetensors profile uses full snapshot-v1 publication with one load thread
+and one pending restore. The all-safetensors profile retains isolated
+research-only tail-cow publication. Qualification is image-specific.
 
 | File | Status | Target loader |
 |---|---|---|
 | `glm53-flash-dflash7-python-overlay-safetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Global safetensors for target and draft |
-| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **qualified** only for image ID `sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8` and its recorded bounded cases; rebuilds are not qualified | Target fastsafetensors queue one with explicit draft safetensors |
+| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | Snapshot-v1 settings are **qualified** only for image ID `sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e` and one recorded 131,072-token full-snapshot restore; rebuilds are not qualified | Target fastsafetensors queue one with explicit draft safetensors |
 
 Resolve either profile with
 `scripts/prepare_glm53_dflash7_python_overlay_profile.py`. Follow the

@@ -40,9 +40,9 @@ SAFE = (
 SITE = CONFIG / "glm53-flash-tp4-site.example.yaml"
 GUIDE = ROOT / "docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md"
 QUALIFIED_IMAGE_ID = (
-    "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8"
+    "sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e"
 )
-QUALIFIED_SPARKRING_COMMIT = "d93cb3d98305041081cf572521602625185112ae"
+QUALIFIED_SPARKCACHE_COMMIT = "a1511d26a1fe2b17b24561bc52e376bf7f54b06a"
 DIGESTS = {
     "cuda_placement_library_sha256": "1a" * 32,
     "native_elf_manifest_sha256": "2b" * 32,
@@ -133,6 +133,10 @@ def test_fastsafetensors_profile_separates_the_draft_loader() -> None:
     speculative = json.loads(_argument(profile, "--speculative-config"))
     assert speculative["draft_load_config"] == {"load_format": "safetensors"}
     assert profile["identity"]["dflash_peak_gpu_memory_status"] == "implemented"
+    assert profile["identity"]["sparkcache_publication_schema"] == "snapshot-v1"
+    assert profile["identity"]["sparkcache_effective_publication_schema"] == (
+        "page-snapshot-v1"
+    )
     assert profile["extra_labels"]["org.sparkring.qualification-status"] == (
         "implemented"
     )
@@ -148,6 +152,10 @@ def test_cuda_restore_uses_only_canonical_configuration_keys() -> None:
     )
     assert extra["spark_cache_cuda_placement_arena_bytes"] == 256 * 1024**2
     assert extra["spark_cache_cuda_restore_io_workers"] == 8
+    assert extra["spark_cache_load_threads"] == 1
+    assert extra["spark_cache_max_pending_restores"] == 1
+    assert extra["spark_cache_root"].endswith("snapshot-v1-safe")
+    assert extra["spark_cache_clear_once"].endswith("snapshot-v1-safe")
     assert not any(key.startswith("spark_cache_native_") for key in extra)
 
 
@@ -163,7 +171,8 @@ def test_loader_profiles_share_model_identity_but_isolate_test_roots() -> None:
     assert fast_extra["spark_cache_draft_checkpoint_sha256"] == (
         safe_extra["spark_cache_draft_checkpoint_sha256"]
     )
-    assert fast_extra["spark_cache_publication_schema"] == "tail-cow-v1"
+    assert fast_extra["spark_cache_publication_schema"] == "snapshot-v1"
+    assert safe_extra["spark_cache_publication_schema"] == "tail-cow-v1"
     assert fast_extra["spark_cache_root"] != safe_extra["spark_cache_root"]
     assert fast_extra["spark_cache_clear_once"] != safe_extra["spark_cache_clear_once"]
 
@@ -218,6 +227,19 @@ def test_resolver_rejects_mtp_or_noncanonical_cuda_restore() -> None:
     args = changed["extra_vllm_args"]
     args[args.index("--kv-transfer-config") + 1] = json.dumps(transfer)
     with pytest.raises(ResolveError, match="cuda_restore_io_workers"):
+        resolve(changed, copy.deepcopy(site), **kwargs)
+
+    changed = copy.deepcopy(profile)
+    transfer = json.loads(_argument(changed, "--kv-transfer-config"))
+    transfer["kv_connector_extra_config"].pop("spark_cache_max_pending_restores")
+    args = changed["extra_vllm_args"]
+    args[args.index("--kv-transfer-config") + 1] = json.dumps(transfer)
+    with pytest.raises(ResolveError, match="max_pending_restores"):
+        resolve(changed, copy.deepcopy(site), **kwargs)
+
+    changed = copy.deepcopy(profile)
+    changed["identity"]["sparkcache_publication_schema"] = "tail-cow-v1"
+    with pytest.raises(ResolveError, match="sparkcache_publication_schema"):
         resolve(changed, copy.deepcopy(site), **kwargs)
 
     changed = copy.deepcopy(profile)
@@ -278,27 +300,24 @@ def test_quickstart_names_both_loader_statuses_and_exact_builder() -> None:
     assert FAST.name in guide and SAFE.name in guide
     assert "implemented" in guide and "qualified" in guide
     assert QUALIFIED_IMAGE_ID in guide
-    assert QUALIFIED_SPARKRING_COMMIT in guide
+    assert QUALIFIED_SPARKCACHE_COMMIT in guide
     assert SPARKCACHE_COMMIT in guide
-    assert "pr146-recurrent-publication-live-validation.md" in guide
-    assert "pull request #147" in guide
-    assert "clean-restart" in guide
-    assert "131,072 to 262,144 tokens" in guide
-    assert "16 distinct" in guide
-    assert "`block_pages_v1`" in guide
-    assert "`per_token_rows` different-root descriptor-segment" in guide
-    assert "absent from this artifact's live qualification" in guide
+    assert "full `snapshot-v1` publication" in guide
+    assert "13\n  authenticated macro objects per rank" in guide
+    assert "1.552–1.700 seconds" in guide
+    assert "expected and observed oracle `red`" in guide
+    assert "C2 delta-restore" in guide
+    assert "does not qualify C2 delta restore" in guide
+    assert "host-base read coalescing" in guide
+    assert "different-root concurrent restore" in guide
+    assert "research-only" in guide
     assert "rebuilds are not qualified" in guide
     assert "twelve-file lease contract" in guide
     assert "command that changes\ncontainers" in guide
-    assert "Restore timings are" in guide and "research-only" in guide
-    assert "response quality is **unsupported**" in guide
-    assert "Public OCI publication is" in guide
-    assert "Separate historical artifact" in guide
-    assert "sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb" in guide
+    assert "Response quality and public OCI publication are **unsupported**" in guide
     assert DFLASH_WEIGHTS_SHA256 in guide
     assert DFLASH_LOADER_PATCH_SHA256 in guide
-    assert "does not change the namespace" in guide
+    assert "formats, cache roots,\nand one-shot clear tokens are distinct" in guide
     assert "No legacy-key rewrite" in guide
     assert "DeepEP" in guide
     assert "ModelOpt" in guide

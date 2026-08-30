@@ -125,6 +125,11 @@ def resolve(
         _require_sha256(value, name.replace("_", " "))
 
     identity = profile.get("identity", {})
+    loader = _argument(profile, "--load-format")
+    publication_schema = "snapshot-v1" if loader == "fastsafetensors" else "tail-cow-v1"
+    effective_schema = (
+        "page-snapshot-v1" if loader == "fastsafetensors" else "page-tail-cow-v1"
+    )
     fixed_identity = {
         "speculator": "external_dflash",
         "draft_weights_sha256": DFLASH_WEIGHTS_SHA256,
@@ -134,8 +139,8 @@ def resolve(
         "kv_cache_dtype": "fp8",
         "vllm_block_size": "256",
         "max_num_seqs": "32",
-        "sparkcache_publication_schema": "tail-cow-v1",
-        "sparkcache_effective_publication_schema": "page-tail-cow-v1",
+        "sparkcache_publication_schema": publication_schema,
+        "sparkcache_effective_publication_schema": effective_schema,
         "sparkcache_source_revision": SPARKCACHE_COMMIT,
         "sparkcache_source_tree": SPARKCACHE_TREE,
         "sparkcache_source_sha256": SPARKCACHE_SOURCE_SHA256,
@@ -154,7 +159,6 @@ def resolve(
             raise ResolveError(f"profile identity {name} must be {expected}")
 
     speculative = json.loads(_argument(profile, "--speculative-config"))
-    loader = _argument(profile, "--load-format")
     if loader != identity.get("target_weight_loader"):
         raise ResolveError("target loader argument and profile identity differ")
     if loader == "fastsafetensors":
@@ -221,7 +225,7 @@ def resolve(
     transfer = json.loads(_argument(profile, "--kv-transfer-config"))
     extra = transfer.get("kv_connector_extra_config", {})
     cuda_contract = {
-        "spark_cache_publication_schema": "tail-cow-v1",
+        "spark_cache_publication_schema": publication_schema,
         "spark_cache_draft_checkpoint_sha256": DFLASH_WEIGHTS_SHA256,
         "spark_cache_cuda_restore": True,
         "spark_cache_cuda_placement_library": (
@@ -233,8 +237,10 @@ def resolve(
         ),
         "spark_cache_cuda_placement_arena_bytes": 256 * 1024**2,
         "spark_cache_cuda_restore_io_workers": 8,
-        "spark_cache_load_threads": 2,
+        "spark_cache_load_threads": 1 if loader == "fastsafetensors" else 2,
     }
+    if loader == "fastsafetensors":
+        cuda_contract["spark_cache_max_pending_restores"] = 1
     for name, expected in cuda_contract.items():
         if extra.get(name) != expected:
             raise ResolveError(f"SparkCache CUDA restore setting {name} must be {expected}")
