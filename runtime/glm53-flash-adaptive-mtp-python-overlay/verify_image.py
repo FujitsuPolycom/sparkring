@@ -257,6 +257,46 @@ def verify_runtime_cleanup(artifacts: dict[str, Any], pins: dict[str, Any]) -> N
         raise VerifyError("the attested deep_ep distribution remains installed")
 
 
+def verify_runtime_patch_report(runtime: dict[str, Any], pins: dict[str, Any]) -> None:
+    """Require the exact DFlash member and exact recurrent postimage set."""
+
+    records = runtime.get("vllm_runtime_patches")
+    if not isinstance(records, list) or any(
+        not isinstance(record, dict)
+        or set(record) != {"path", "sha256"}
+        or not isinstance(record["path"], str)
+        or not isinstance(record["sha256"], str)
+        for record in records
+    ):
+        raise VerifyError("runtime patch verification report is malformed")
+    observed = {record["path"]: record["sha256"] for record in records}
+    if len(observed) != len(records):
+        raise VerifyError("runtime patch verification report contains duplicate paths")
+
+    expected_dflash = {
+        record["target"]: record["postimage_sha256"]
+        for record in pins["vllm"].get("runtime_patches", ())
+    }
+    observed_dflash = {
+        path: observed[path] for path in expected_dflash if path in observed
+    }
+    if observed_dflash != expected_dflash:
+        raise VerifyError("runtime did not verify the exact DFlash draft-loader patch")
+
+    expected_recurrent = {
+        target["path"]: target["postimage_sha256"]
+        for record in pins["vllm"].get("composed_runtime_patches", ())
+        for target in record["targets"]
+    }
+    observed_recurrent = {
+        path: observed[path] for path in expected_recurrent if path in observed
+    }
+    if observed_recurrent != expected_recurrent:
+        raise VerifyError("runtime did not verify the exact recurrent postimage set")
+    if set(observed) != set(expected_dflash) | set(expected_recurrent):
+        raise VerifyError("runtime patch verification report contains unexpected paths")
+
+
 def verify_image(engine: str, image: str, pins_path: Path = PINS) -> dict[str, Any]:
     pins = load_pins(pins_path)
     inspection = inspect_image(engine, image)
@@ -265,15 +305,7 @@ def verify_image(engine: str, image: str, pins_path: Path = PINS) -> dict[str, A
     artifacts = artifact_probe(engine, image)
     if runtime.get("vllm_python_files_verified") != 31:
         raise VerifyError("runtime did not verify all 31 vLLM Python overlay files")
-    expected_runtime_patches = [
-        {
-            "path": record["target"],
-            "sha256": record["postimage_sha256"],
-        }
-        for record in pins["vllm"].get("runtime_patches", ())
-    ]
-    if runtime.get("vllm_runtime_patches") != expected_runtime_patches:
-        raise VerifyError("runtime did not verify the DFlash draft-loader patch")
+    verify_runtime_patch_report(runtime, pins)
     if artifacts["sparkcache_contract_sha256"] != pins["sparkcache"]["contract"]["sha256"]:
         raise VerifyError("installed SparkCache lease contract differs from its pin")
     if artifacts["sparkcache_source_tree_sha256"] != pins["sparkcache"][

@@ -315,6 +315,40 @@ def test_image_verifier_reads_the_clean_sparkcache_source_receipt() -> None:
     assert 'artifacts["sparkcache_source_tree_sha256"]' in verifier
 
 
+def test_image_verifier_accepts_dflash_member_and_four_recurrent_postimages() -> None:
+    pins = json.loads(PINS.read_text(encoding="utf-8"))
+    report = {
+        "vllm_runtime_patches": [
+            {
+                "path": record["target"],
+                "sha256": record["postimage_sha256"],
+            }
+            for record in pins["vllm"]["runtime_patches"]
+        ]
+        + [
+            {
+                "path": target["path"],
+                "sha256": target["postimage_sha256"],
+            }
+            for record in pins["vllm"]["composed_runtime_patches"]
+            for target in record["targets"]
+        ]
+    }
+    assert len(report["vllm_runtime_patches"]) == 5
+    verify.verify_runtime_patch_report(report, pins)
+
+    missing_dflash = {
+        "vllm_runtime_patches": report["vllm_runtime_patches"][1:]
+    }
+    with pytest.raises(verify.VerifyError, match="exact DFlash"):
+        verify.verify_runtime_patch_report(missing_dflash, pins)
+
+    wrong_recurrent = json.loads(json.dumps(report))
+    wrong_recurrent["vllm_runtime_patches"][-1]["sha256"] = "0" * 64
+    with pytest.raises(verify.VerifyError, match="exact recurrent"):
+        verify.verify_runtime_patch_report(wrong_recurrent, pins)
+
+
 def test_build_prepares_context_below_the_temporary_workspace() -> None:
     script = (HERE / "build-image.sh").read_text(encoding="utf-8")
     preparer = (HERE / "prepare_context.py").read_text(encoding="utf-8")
