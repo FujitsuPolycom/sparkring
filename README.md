@@ -38,8 +38,8 @@ profile is selected.
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
 |---|---|---:|---:|---:|---|---|
-| GLM-5.3 Flash + BF16 DFlash2 | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 hybrid target cache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
-| GLM-5.3 Flash + BF16 DFlash2 + SparkCache | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 target KV + 48 GiB/rank SparkCache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md) |
+| GLM-5.3 Flash + BF16 DFlash2 | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 KV | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
+| GLM-5.3 Flash + BF16 DFlash2 + SparkCache | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 KV + 48 GiB nvme/rank SparkCache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md) |
 
 ### Other model profiles
 
