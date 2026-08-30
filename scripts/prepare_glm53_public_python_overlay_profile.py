@@ -53,10 +53,10 @@ DFLASH_LOADER_PATCH_SHA256 = (
 DFLASH_LOADER_POSTIMAGE_SHA256 = (
     "98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4"
 )
-SPARKCACHE_COMMIT = "5d571018de5b63a9a90e5c11e6d6e86bbff4a957"
-SPARKCACHE_TREE = "e864ed9ad64f771188fdb59aa9738e348134d636"
+SPARKCACHE_COMMIT = "5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3"
+SPARKCACHE_TREE = "94c236b9dfbf5f70075eb47877fd9caaa5d8c249"
 SPARKCACHE_SOURCE_SHA256 = (
-    "f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88"
+    "bc238f96e550c7ec27d4081dd1f2e741d404aaf5c8572d89ccc5e76812be4d63"
 )
 LEASE_CONTRACT_SHA256 = (
     "6defde9551cbb586fd09bb2d3020495531b6573397875a767eaae1dbad126024"
@@ -206,6 +206,21 @@ def resolve(
     transfer_extra = transfer.get("kv_connector_extra_config", {})
     if transfer_extra.get("spark_cache_publication_schema") != "tail-cow-v1":
         raise ResolveError("opaque page-tail publication requires tail-cow-v1")
+    canonical_cuda_keys = {
+        "spark_cache_cuda_restore",
+        "spark_cache_cuda_placement_library",
+        "spark_cache_cuda_placement_library_sha256",
+        "spark_cache_cuda_placement_arena_bytes",
+        "spark_cache_cuda_restore_io_workers",
+    }
+    missing_cuda_keys = canonical_cuda_keys.difference(transfer_extra)
+    if missing_cuda_keys:
+        raise ResolveError(
+            "profile omits canonical SparkCache CUDA keys: "
+            + ", ".join(sorted(missing_cuda_keys))
+        )
+    if any(name.startswith("spark_cache_native_") for name in transfer_extra):
+        raise ResolveError("profile may not use legacy SparkCache native keys")
 
     labels = profile.get("required_image_labels", {})
     fixed_labels = {

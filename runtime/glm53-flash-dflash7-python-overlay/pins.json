@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-glm53-public-python-overlay/v1",
   "status": "implemented",
-  "qualification": "The DFlash7 image builder and offline verifier are implemented. The resulting image is unsupported for serving until an immutable digest passes four-rank TP4/DCP1 target and external-draft loading, semantic generation, SparkCache store and restore, failure-recovery, and concurrency checks.",
+  "qualification": "The DFlash7 image builder and offline verifier are implemented. An image is unsupported for serving until its exact immutable identity passes four-rank TP4/DCP1 target and external-draft loading, semantic generation, SparkCache store and restore, and failure-recovery checks. Local image ID sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb has bounded startup, health, semantic-generation, and restore qualification; it has no retained shared-prefix concurrency or DFlash response-quality qualification.",
   "platform": "linux/arm64",
   "public_base": {
     "reference": "ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:864adfe68f458223e186a19844ac80c7adc7365e5db1f25e109b85fc19850dcd",

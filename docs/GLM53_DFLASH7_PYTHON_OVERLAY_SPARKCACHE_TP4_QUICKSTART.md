@@ -1,9 +1,14 @@
 # Serve GLM-5.3 with external DFlash7 and the exact Python-overlay runtime
 
-Status: **implemented**, not qualified. The image builder, profile resolver,
-and four-rank dry-run contract pass without GPUs. No image digest from this
-path has completed TP4/DCP1 model loading, semantic generation, SparkCache
-store/restart/restore, or concurrency qualification.
+Status: **implemented**. The image builder, profile resolver, and four-rank
+dry-run contract pass without GPUs. Local image ID
+`sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb`
+is **qualified** only for the TP4/DCP1 startup, health, semantic generation,
+arbitrary page-boundary replay, and 131,072- and 262,144-token restore cases
+in the
+[bounded validation record](../performance/records/glm53-flash/dflash7-python-overlay-pr30-live-validation.md).
+The exact image has no retained C2/C8/C16 or DFlash response-quality evidence.
+A rebuilt image has a different identity and requires its own live checks.
 
 ## Runtime contract
 
@@ -57,7 +62,7 @@ Two profiles share the same image and DFlash7 cache identity:
 | Profile | Status | Loader behavior |
 |---|---|---|
 | `glm53-flash-dflash7-python-overlay-safetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Uses global safetensors for target and draft. This follows the qualified-compatible loader shape but still requires live qualification on the composed 0b image. |
-| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Uses global fastsafetensors with queue size one for the target and `draft_load_config={"load_format":"safetensors"}` for DFlash. |
+| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **qualified** only for the recorded image and bounded cases | Uses global fastsafetensors with queue size one for the target and `draft_load_config={"load_format":"safetensors"}` for DFlash. |
 
 The image applies an exact-input vLLM patch that passes
 `SpeculativeConfig.draft_load_config` to the DFlash model loader. The image
@@ -65,10 +70,13 @@ receipt verifies patch SHA-256
 `39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279` and
 postimage SHA-256
 `98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4`.
-Both profiles remain unqualified until live four-rank gates pass.
+The all-safetensors profile remains unqualified. The fastsafetensors result
+belongs only to the image ID and cases named above; it does not transfer to a
+rebuild.
 
-SparkCache PR #26 accepts the canonical CUDA keys used by both profiles. No
-local PR25 compatibility profile or legacy-key rewrite is part of this path.
+SparkCache commit `5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3`
+accepts the canonical CUDA keys used by both profiles. No legacy-key rewrite
+is part of this path.
 
 ## Resolve the profile and inspect the plan
 
@@ -79,7 +87,7 @@ device, host path, and image identity. Select one profile template:
 ```bash
 receipt="$PWD/glm53-dflash7-python-overlay-image-receipt.json"
 image='sparkring-glm53-sparkcache:dflash7-vllm-python-0b67266-native-da4d7be-b12x-b1d541f-arm64'
-profile_template='scripts/config/glm53-flash-dflash7-python-overlay-safetensors-sparkcache-tp4-dcp1.example.json'
+profile_template='scripts/config/glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json'
 
 python scripts/prepare_glm53_dflash7_python_overlay_profile.py \
   --profile-template "$profile_template" \
@@ -101,22 +109,73 @@ python scripts/sparkring_generic_launcher.py \
 
 `plan` is offline. Inspect every rank action before a lifecycle command.
 
+## Start and observe the four-rank service
+
+Run the strict placeholder check before starting containers:
+
+```bash
+python scripts/preflight.py \
+  --site /path/to/glm53-dflash7-site.yaml \
+  --strict-placeholders \
+  --json /path/to/glm53-dflash7-preflight.json
+```
+
+Starting the profile replaces the named four-rank deployment:
+
+```bash
+python scripts/sparkring_generic_launcher.py \
+  --site /path/to/glm53-dflash7-site.yaml \
+  --profile /path/to/glm53-dflash7-profile.json \
+  --execute \
+  --confirmation START_GLM53_FLASH_DFLASH7_PYTHON_OVERLAY_FASTSAFETENSORS_TP4 \
+  start
+```
+
+Tail rank zero from another terminal:
+
+```bash
+ssh operator@rank0.example.net \
+  'docker logs --follow --tail 120 glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-r0 2>&1'
+```
+
+Wait for health and send a bounded generation smoke request with the model name from
+the selected profile:
+
+```bash
+api_endpoint='http://rank0.example.net:8015'
+served_model='glm-5.3-flash-nvfp4-dflash7-python-overlay-0b67266-on-da4d7be-b12x-b1d541f-tp4'
+until curl --fail --silent "${api_endpoint}/health" >/dev/null; do sleep 5; done
+curl --fail --silent --show-error "${api_endpoint}/v1/completions" \
+  -H 'Content-Type: application/json' \
+  -d "{\"model\":\"${served_model}\",\"prompt\":\"The capital of France is\",\"max_tokens\":16,\"temperature\":0}"
+```
+
+The configured `spark_cache_clear_once` value is a durable operation token,
+not a permanent clear-on-start switch. SparkCache removes its owned cache
+content, writes the token's completion marker only after successful removal,
+and treats later starts with the same token as no-ops. Change the token only
+when another intentional cache reset is required.
+
+`--prefill-schedule-interval` is not part of the qualified DFlash7 profile.
+Test interval `8` in a separate research-only profile so its mixed
+prefill/decode tradeoff is measured independently.
+
 ## Cache namespace impact
 
 The external DFlash weights SHA-256 is stored as
 `spark_cache_draft_checkpoint_sha256`. It cannot share entries with embedded
 MTP profiles. `tail-cow-v1` also separates these entries from snapshot-v1
 manifests. The two target-loader profiles share a namespace because loader
-choice does not change target or draft model state; each profile uses a
-different cache root and one-shot clear token while qualification is pending.
+choice does not change target or draft model state. Each template uses a
+different cache root and one-shot clear token so loader observations remain
+isolated.
 
-[SparkCache pull request #30](https://github.com/FujitsuPolycom/sparkcache/pull/30)
-combines canonical CUDA configuration names, replacement of a partial terminal
-HMA page when an authenticated cache boundary falls inside that page, and an
-eight-worker reader for authenticated page-delta chunks. The reader preserves
-manifest descriptor order after concurrent reads.
-Moving from SparkCache commit
-`5d571018de5b63a9a90e5c11e6d6e86bbff4a957` to the pinned commit
+The pinned SparkCache source combines canonical CUDA configuration names,
+replacement of a partial terminal HMA page when an authenticated cache
+boundary falls inside that page, and an eight-worker reader for authenticated
+page-delta chunks. The reader preserves manifest descriptor order after
+concurrent reads. Moving from SparkCache commit
+`5d571018de5b63a9a90e5c11e6d6e86bbff4a957` to
 `5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3` does not change the namespace.
 Checkpoint identities, page-delta wire schemas, record vocabulary, digest
 salts, parallel geometry, vLLM patches, the lease contract, and the CUDA

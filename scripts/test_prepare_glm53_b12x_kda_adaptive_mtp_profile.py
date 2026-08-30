@@ -162,6 +162,18 @@ def test_resolver_rejects_runtime_or_loader_identity_drift() -> None:
     with pytest.raises(ResolveError, match="queue size must be one"):
         resolve(changed, copy.deepcopy(site), **arguments)
 
+    changed = copy.deepcopy(profile)
+    transfer = json.loads(_argument(changed, "--kv-transfer-config"))
+    transfer["kv_connector_extra_config"].pop(
+        "spark_cache_cuda_restore_io_workers"
+    )
+    changed_args = changed["extra_vllm_args"]
+    changed_args[changed_args.index("--kv-transfer-config") + 1] = json.dumps(
+        transfer, separators=(",", ":")
+    )
+    with pytest.raises(ResolveError, match="omits canonical SparkCache CUDA keys"):
+        resolve(changed, copy.deepcopy(site), **arguments)
+
 
 def test_resolver_normalizes_legacy_cuda_restore_aliases_and_rejects_conflicts() -> None:
     profile = json.loads(PROFILE.read_text(encoding="utf-8"))

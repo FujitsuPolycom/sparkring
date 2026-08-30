@@ -27,13 +27,15 @@ image is not described as a source-built vLLM 0b67266 wheel.
 
 The SparkCache source that routes reconstructed opaque pages through the SM121
 placement library is commit
-`5d571018de5b63a9a90e5c11e6d6e86bbff4a957`, Git tree
-`e864ed9ad64f771188fdb59aa9738e348134d636`. The builder verifies clean
+`5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3`, Git tree
+`94c236b9dfbf5f70075eb47877fd9caaa5d8c249`. The builder verifies clean
 deployable-source SHA-256
-`f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88`
+`bc238f96e550c7ec27d4081dd1f2e741d404aaf5c8572d89ccc5e76812be4d63`
 before generating the SparkCache CUDA placement library. It applies the VMM exemption,
 load-failure recovery, shared-prefix retention, and follower-attachment
-patches in order, then runs the eleven-file lease-contract verifier. The test
+patches in order, then runs the eleven-file lease-contract verifier. The
+pinned source accepts the canonical `spark_cache_cuda_*` configuration keys
+used by the profile. The test
 profile selects `spark_cache_publication_schema=tail-cow-v1`, which maps opaque
 GLM page storage to the distinct `page-tail-cow-v1` cache namespace.
 

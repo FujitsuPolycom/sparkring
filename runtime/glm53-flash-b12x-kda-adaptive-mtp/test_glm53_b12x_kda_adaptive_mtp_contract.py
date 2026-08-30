@@ -8,10 +8,10 @@ from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 PINS = HERE / "pins.json"
-SPARKCACHE_COMMIT = "5d571018de5b63a9a90e5c11e6d6e86bbff4a957"
-SPARKCACHE_TREE = "e864ed9ad64f771188fdb59aa9738e348134d636"
+SPARKCACHE_COMMIT = "5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3"
+SPARKCACHE_TREE = "94c236b9dfbf5f70075eb47877fd9caaa5d8c249"
 SPARKCACHE_SOURCE_SHA256 = (
-    "f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88"
+    "bc238f96e550c7ec27d4081dd1f2e741d404aaf5c8572d89ccc5e76812be4d63"
 )
 OVERLAY_CONTAINERFILE_SHA256 = (
     "8e2377d034ba80b059f9a4387a6590a08e205313568ee1382e0e25342f8c5d40"
@@ -52,6 +52,14 @@ def test_glm53_b12x_kda_adaptive_mtp_source_build_is_exact_and_unqualified() -> 
     assert sparkcache["commit"] == SPARKCACHE_COMMIT
     assert sparkcache["tree"] == SPARKCACHE_TREE
     assert sparkcache["source_tree_sha256"] == SPARKCACHE_SOURCE_SHA256
+    assert sparkcache["cuda_config_schema"] == "canonical-v1"
+    assert set(sparkcache["canonical_cuda_config_keys"]) == {
+        "spark_cache_cuda_restore",
+        "spark_cache_cuda_placement_library",
+        "spark_cache_cuda_placement_library_sha256",
+        "spark_cache_cuda_placement_arena_bytes",
+        "spark_cache_cuda_restore_io_workers",
+    }
     assert (
         sparkcache["overlay_containerfile_sha256"]
         == OVERLAY_CONTAINERFILE_SHA256

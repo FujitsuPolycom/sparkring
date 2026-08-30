@@ -2,9 +2,10 @@
 
 Status: **implemented, not qualified**. This guide builds vLLM commit
 `0b67266a0f37d6146a8403fb8482403c62f412d5` and the SparkCache overlay from
-commit `5d571018de5b63a9a90e5c11e6d6e86bbff4a957`, Git tree
-`e864ed9ad64f771188fdb59aa9738e348134d636`, for four DGX Spark systems at
-TP4/DCP1.
+commit `5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3`, Git tree
+`94c236b9dfbf5f70075eb47877fd9caaa5d8c249`, for four DGX Spark systems at
+TP4/DCP1. The adaptive-MTP composition has GPU-free contract coverage but no
+four-rank persistent-restore or performance qualification.
 
 The serving profile uses embedded MTP with maximum depth five, initial depth
 three, and a 32-step acceptance window. Fastsafetensors uses queue size one.
@@ -26,7 +27,7 @@ storage. Clone both repositories beside each other:
 git clone https://github.com/FujitsuPolycom/sparkring.git sparkring
 git -C sparkring checkout --detach <revision-containing-this-guide>
 git clone https://github.com/FujitsuPolycom/sparkcache.git sparkcache
-git -C sparkcache checkout --detach 5d571018de5b63a9a90e5c11e6d6e86bbff4a957
+git -C sparkcache checkout --detach 5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3
 
 IMAGE='sparkring-glm53-runtime:b12x-kda-adaptive-mtp-0b67266a-arm64' \
 BUILD_RECEIPT="$PWD/glm53-b12x-kda-adaptive-mtp-runtime-receipt.json" \
@@ -39,8 +40,8 @@ python sparkcache/deploy/glm53_flash/build_image.py \
   --containerfile deploy/glm53_flash/Containerfile.b12x-kda-adaptive-mtp \
   --base-image "${runtime_image}" \
   --base-image-id "${runtime_image_id}" \
-  --source-sha256 f7c0565521fddeff7085e4cc08043cb8d1e2bde33abc67f83b8608a162d05b88 \
-  --sparkcache-revision 5d571018de5b63a9a90e5c11e6d6e86bbff4a957 \
+  --source-sha256 bc238f96e550c7ec27d4081dd1f2e741d404aaf5c8572d89ccc5e76812be4d63 \
+  --sparkcache-revision 5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3 \
   --output-image sparkring-glm53-sparkcache:b12x-kda-adaptive-mtp-0b67266a-arm64
 ```
 
@@ -58,7 +59,9 @@ test "${#cuda_placement_sha256}" -eq 64
 The runtime builder verifies the complete first-parent vLLM history from
 `da4d7be` through adaptive MTP and the three live-tensor B12X KDA commits. The
 SparkCache build verifies LF Linux preimages, four exact patches, and eleven
-postimage source files.
+postimage source files. The pinned SparkCache source accepts the canonical
+`spark_cache_cuda_*` keys in the profile directly; no legacy-key translation
+is part of this composition.
 
 ## Resolve the TP4 profile
 
@@ -84,6 +87,10 @@ loader queue, source identities, or attestation command.
 
 The one-shot clear token is recorded only after a successful SparkCache-owned
 cache removal. Restarting this unchanged profile does not clear again.
+
+`--prefill-schedule-interval` is not part of this implemented profile. Test
+interval `8` as a separate research-only profile so its mixed prefill/decode
+tradeoff cannot be confused with adaptive-MTP or SparkCache results.
 
 ## Verify and launch
 

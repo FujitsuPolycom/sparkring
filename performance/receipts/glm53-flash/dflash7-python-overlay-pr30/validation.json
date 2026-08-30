@@ -1,0 +1,120 @@
+{
+  "schema": "sparkring-glm53-dflash7-pr30-live-validation/v1",
+  "status": {
+    "artifact_construction": "implemented",
+    "startup_health": "qualified",
+    "semantic_generation": "qualified",
+    "arbitrary_page_boundary_restore": "qualified",
+    "persistent_128k_restore": "qualified",
+    "persistent_256k_restore_correctness": "qualified",
+    "persistent_256k_restore_performance": "research-only",
+    "shared_prefix_concurrency": "unsupported",
+    "dflash_response_quality": "unsupported"
+  },
+  "artifact": {
+    "image": "sparkring-glm53-sparkcache:dflash7-vllm-python-0b67266-native-da4d7be-b12x-b1d541f-pr30-clean-arm64",
+    "image_id": "sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb",
+    "published_digest": null,
+    "oci_revision_label": "b7a7265c62c1df05b17d1221d8fd0c97c54240d1",
+    "vllm_native_revision": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+    "vllm_python_revision": "0b67266a0f37d6146a8403fb8482403c62f412d5",
+    "vllm_python_tree": "ba9484ccb33aa56e90ff2f447f15ca9b9da97639",
+    "b12x_revision": "b1d541f9e71a35f030d45fae437630fff7507c2a",
+    "b12x_tree": "c69cdec1c59a08e8e0e549f930fa8abcfb5134ae",
+    "sparkcache_revision": "5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3",
+    "sparkcache_tree": "94c236b9dfbf5f70075eb47877fd9caaa5d8c249",
+    "sparkcache_source_sha256": "bc238f96e550c7ec27d4081dd1f2e741d404aaf5c8572d89ccc5e76812be4d63",
+    "cuda_placement_library_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
+    "source_receipt_sha256": "497b068d4fb789499c540ea5ccc1638ff6d31a7a871b706f61f2a8b64606d88d",
+    "dflash_loader_patch_sha256": "39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279",
+    "dflash_loader_postimage_sha256": "98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4"
+  },
+  "conditions": {
+    "observed_at_utc": "2026-08-30T05:32:01Z/2026-08-30T05:40:04Z",
+    "hardware": "four NVIDIA DGX Spark systems",
+    "topology": {
+      "tensor_parallel_size": 4,
+      "decode_context_parallel_size": 1,
+      "pipeline_parallel_size": 1
+    },
+    "served_model": "glm-5.3-flash-nvfp4-dflash7-python-overlay-0b67266-on-da4d7be-b12x-b1d541f-tp4",
+    "target_loader": "fastsafetensors",
+    "target_loader_queue_size": 1,
+    "draft_loader": "safetensors",
+    "draft_method": "dflash",
+    "draft_tokens": 7,
+    "draft_tensor_parallel_size": 4,
+    "kv_cache_dtype": "fp8",
+    "kv_cache_bytes_per_rank": 21474836480,
+    "vllm_block_size_tokens": 256,
+    "max_num_seqs": 32,
+    "sparkcache_publication_schema": "tail-cow-v1",
+    "sparkcache_effective_publication_schema": "page-tail-cow-v1",
+    "sparkcache_config_schema": "canonical-v1",
+    "sparkcache_cuda_restore_io_workers": 8,
+    "sparkcache_load_threads": 2
+  },
+  "measurements": {
+    "startup": {
+      "target_fastsafetensors_seconds": 53.93,
+      "draft_safetensors_seconds": 4.85,
+      "total_model_load_seconds": 64.375343,
+      "ready_seconds_approx": 146.0,
+      "healthy_ranks": 4,
+      "restart_count_by_rank": [0, 0, 0, 0],
+      "oom_killed_by_rank": [false, false, false, false]
+    },
+    "clear_once": {
+      "worker_result": "already completed",
+      "scheduler_result": "already completed"
+    },
+    "arbitrary_page_boundary_restore": {
+      "base_tokens": 7168,
+      "restored_tokens": 12032,
+      "rank_0_end_to_end_milliseconds": 487.657,
+      "rank_0_read_milliseconds": 402.873,
+      "rank_0_h2d_submit_milliseconds": 52.12,
+      "rank_0_cuda_sync_milliseconds": 16.698,
+      "chunk_count": 47,
+      "connector_outcome": "verified"
+    },
+    "persistent_restore_128k": {
+      "restored_tokens": 131072,
+      "completion_token": 13,
+      "rank_restore_milliseconds": {
+        "0": 151.4,
+        "1": 123.6,
+        "2": 130.6,
+        "3": 138.8
+      }
+    },
+    "persistent_restore_256k": {
+      "restored_tokens": 262144,
+      "prime_request_seconds": 67.164,
+      "prime_completion_token": 916,
+      "replay_completion_token": 916,
+      "replay_wall_seconds": 7.835,
+      "rank_restore_milliseconds": {
+        "0": 5842.1,
+        "1": 7217.9,
+        "2": 6208.7,
+        "3": 7121.6
+      },
+      "rank_0_page_bytes": 1575821491,
+      "rank_0_chunk_count": 1024,
+      "rank_0_read_milliseconds": 4437.355,
+      "rank_0_h2d_submit_milliseconds": 961.72,
+      "rank_0_cuda_sync_milliseconds": 313.987
+    }
+  },
+  "limitations": [
+    "The exact image has no retained C2, C8, or C16 shared-prefix wave on this SparkCache revision.",
+    "The 262144-token result is one prime and one committed replay; it has no variability estimate.",
+    "The 1024-object page-delta layout makes the 262144-token restore a correctness result, not a performance qualification.",
+    "The first 262144-token replay began before all-rank manifest visibility and recomputed the unavailable tail; only the replay after committed visibility is reported as a restore.",
+    "No scored DFlash response-quality benchmark was run.",
+    "Sanitized raw HTTP response bodies and a complete command transcript were not retained with this record.",
+    "The image has no published OCI digest and exists only on the observed deployment hosts.",
+    "The prefill schedule interval was not changed from the profile default."
+  ]
+}

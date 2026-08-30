@@ -147,7 +147,7 @@ def test_resolver_requires_mixed_provenance_and_all_artifact_hashes() -> None:
     )
     assert "org.sparkcache.native-library-sha256" not in labels
     assert labels["org.sparkcache.source-tree"] == (
-        "e864ed9ad64f771188fdb59aa9738e348134d636"
+        "94c236b9dfbf5f70075eb47877fd9caaa5d8c249"
     )
     assert labels["org.sparkcache.vllm-contract-sha256"] == LEASE_CONTRACT_SHA256
     assert labels["org.sparkring.source-receipt-sha256"] == SOURCE_RECEIPT
@@ -181,6 +181,18 @@ def test_resolver_rejects_snapshot_publication_or_source_built_labels() -> None:
     changed = copy.deepcopy(profile)
     changed["required_image_labels"]["org.jovian.vllm.commit"] = VLLM_PYTHON_COMMIT
     with pytest.raises(ResolveError, match="org.jovian.vllm.commit"):
+        resolve(changed, copy.deepcopy(site), **arguments)
+
+    changed = copy.deepcopy(profile)
+    transfer = json.loads(_argument(changed, "--kv-transfer-config"))
+    transfer["kv_connector_extra_config"].pop(
+        "spark_cache_cuda_restore_io_workers"
+    )
+    changed_args = changed["extra_vllm_args"]
+    changed_args[changed_args.index("--kv-transfer-config") + 1] = json.dumps(
+        transfer, separators=(",", ":")
+    )
+    with pytest.raises(ResolveError, match="omits canonical SparkCache CUDA keys"):
         resolve(changed, copy.deepcopy(site), **arguments)
 
     changed = copy.deepcopy(profile)

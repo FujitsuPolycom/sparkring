@@ -1,8 +1,12 @@
 # GLM-5.3 DFlash7 public-base Python overlay
 
-Status: **implemented**, not qualified. The builder constructs and verifies an
-ARM64 image but no image digest from this path has completed four-rank serving
-qualification.
+Status: **implemented**. The builder constructs and verifies an ARM64 image.
+Local image ID
+`sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb`
+is **qualified** only for the bounded four-rank cases recorded in
+`performance/records/glm53-flash/dflash7-python-overlay-pr30-live-validation.md`.
+Qualification does not transfer to a rebuild or to the all-safetensors
+profile.
 
 The image combines these exact roles:
 
@@ -42,20 +46,21 @@ operator-mounted and are verified by the runtime profile.
 
 Two executable profiles use external DFlash at depth seven and TP4, FP8 target
 KV, 256-token vLLM blocks, 32 sequences, and SparkCache page-tail copy-on-write
-publication with CUDA restore. Both are implemented but unqualified on the
-composed 0b image. The conservative profile uses global safetensors. The mixed
-profile uses global fastsafetensors for the target and an exact
-`draft_load_config` selecting safetensors for DFlash. The image applies and
+publication with CUDA restore. The all-safetensors profile is implemented but
+unqualified. The mixed-loader profile is qualified only for the exact image
+and bounded cases named above. The conservative profile uses global
+safetensors. The mixed profile uses global fastsafetensors for the target and
+an exact `draft_load_config` selecting safetensors for DFlash. The image applies and
 verifies the draft-loader patch before installing SparkCache patches. See
 `docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md`.
 
 The SparkCache source accepts the canonical CUDA configuration keys directly.
-No PR25 compatibility profile or legacy-key translation is required by these
+No legacy-key compatibility profile or translation is required by these
 profiles.
 
-The pinned SparkCache source from
-[pull request #30](https://github.com/FujitsuPolycom/sparkcache/pull/30)
-accepts canonical CUDA configuration keys, replaces a partial terminal HMA
+The pinned SparkCache source at
+`5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3` accepts canonical CUDA
+configuration keys, replaces a partial terminal HMA
 page when the authenticated cache boundary falls inside that page, and reads
 authenticated page-delta chunks with a bounded eight-worker pool while
 preserving descriptor order. It does not change cache identity, page-tail wire

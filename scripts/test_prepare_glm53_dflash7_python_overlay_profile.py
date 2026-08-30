@@ -261,11 +261,17 @@ def test_quickstart_names_both_loader_statuses_and_exact_builder() -> None:
     guide = GUIDE.read_text(encoding="utf-8")
     assert "runtime/glm53-flash-dflash7-python-overlay/build-image.sh" in guide
     assert FAST.name in guide and SAFE.name in guide
-    assert "implemented" in guide and "not qualified" in guide
+    assert "implemented" in guide and "qualified" in guide
+    assert "sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb" in guide
     assert DFLASH_WEIGHTS_SHA256 in guide
     assert DFLASH_LOADER_PATCH_SHA256 in guide
     assert "does not change the namespace" in guide
-    assert "PR25 compatibility profile" in guide
+    assert "No legacy-key rewrite" in guide
     assert "DeepEP" in guide
     assert "ModelOpt" in guide
     assert "FP8 KV" in guide
+    assert "START_GLM53_FLASH_DFLASH7_PYTHON_OVERLAY_FASTSAFETENSORS_TP4" in guide
+    assert "docker logs --follow --tail 120" in guide
+    assert "spark_cache_clear_once" in guide
+    assert "prefill-schedule-interval" in guide
+    assert FAST.name in guide.split("profile_template=", 1)[1].splitlines()[0]
