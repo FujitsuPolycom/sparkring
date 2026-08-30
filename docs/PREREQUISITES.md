@@ -15,8 +15,7 @@ DeepSeek and Qwen pair profiles require two.
 
 Ring Doctor, canonical site validation, and fabric preflight support closed
 four- and six-Spark cycles. Six-Spark serving profiles remain `research-only`
-until their runtime and performance evidence are qualified. Infrastructure
-support does not make a serving profile qualified.
+until their runtime and performance evidence are qualified.
 
 ## Hardware and topology
 
