@@ -109,6 +109,11 @@ def test_profile_selects_opaque_page_tail_copy_on_write() -> None:
     )
     attestation = " ".join(profile["attestation_hook"])
     assert '"tail-cow-v1"' in attestation
+    assert "/opt/sparkring/runtime/python-overlay/sparkcache-source-tree.sha256" in (
+        attestation
+    )
+    assert "source_tree_sha256(" not in attestation
+    assert "/opt/sparkcache-source-identity.py" not in attestation
 
 
 def test_resolver_requires_mixed_provenance_and_all_artifact_hashes() -> None:
@@ -158,6 +163,11 @@ def test_resolver_rejects_snapshot_publication_or_source_built_labels() -> None:
     changed = copy.deepcopy(profile)
     changed["required_image_labels"]["org.jovian.vllm.commit"] = VLLM_PYTHON_COMMIT
     with pytest.raises(ResolveError, match="org.jovian.vllm.commit"):
+        resolve(changed, copy.deepcopy(site), **arguments)
+
+    changed = copy.deepcopy(profile)
+    changed["attestation_hook"][2] += " && source_tree_sha256("
+    with pytest.raises(ResolveError, match="clean SparkCache source receipt"):
         resolve(changed, copy.deepcopy(site), **arguments)
 
 

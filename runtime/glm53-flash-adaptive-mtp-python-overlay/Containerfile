@@ -94,7 +94,9 @@ COPY bundle/sources/sparkcache/deploy/deployment_contract/source.py \
   /opt/sparkcache-source-identity.py
 RUN actual_source="$(python3 -c 'import importlib.util, pathlib; spec = importlib.util.spec_from_file_location("source_identity", "/opt/sparkcache-source-identity.py"); module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module); print(module.source_tree_sha256(pathlib.Path("/opt/sparkcache-src/sparkcache")))')" \
  && printf 'sparkcache_source_sha256=%s\n' "${actual_source}" \
- && test "${actual_source}" = "${SPARKCACHE_SOURCE_SHA256}"
+ && test "${actual_source}" = "${SPARKCACHE_SOURCE_SHA256}" \
+ && printf '%s\n' "${actual_source}" \
+      > "${PYTHON_OVERLAY_ROOT}/sparkcache-source-tree.sha256"
 COPY --from=sparkcache-native \
   /build/sparkcache-native/build-cuda/libspark_cache_placement.so \
   /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so

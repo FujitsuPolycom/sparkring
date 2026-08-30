@@ -185,11 +185,16 @@ def resolve(
         SPARKCACHE_SOURCE_SHA256,
         LEASE_CONTRACT_SHA256,
         '"tail-cow-v1"',
+        "/opt/sparkring/runtime/python-overlay/sparkcache-source-tree.sha256",
         *PLACEHOLDERS,
     )
     for required in required_attestations:
         if required not in attestation:
             raise ResolveError(f"profile attestation omits {required}")
+    if "source_tree_sha256(" in attestation:
+        raise ResolveError(
+            "profile attestation must use the clean SparkCache source receipt"
+        )
 
     replacements = {
         placeholder: supplied[name] for placeholder, name in PLACEHOLDERS.items()
