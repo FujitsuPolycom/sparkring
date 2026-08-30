@@ -22,6 +22,9 @@ RECORD_PATH = (
     / "glm53-flash"
     / "pr146-recurrent-publication-live-validation.md"
 )
+QUICKSTART_PATH = (
+    ROOT / "docs" / "GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md"
+)
 
 
 def _receipt() -> dict[str, object]:
@@ -197,4 +200,20 @@ def test_record_follows_evidence_method_and_rejects_speed_claim() -> None:
     assert (
         "../../receipts/glm53-flash/pr146-recurrent-publication/validation.json"
         in record
+    )
+
+
+def test_quickstart_links_the_exact_current_evidence_separately() -> None:
+    quickstart = QUICKSTART_PATH.read_text(encoding="utf-8")
+    assert (
+        "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8"
+        in quickstart
+    )
+    assert "d93cb3d98305041081cf572521602625185112ae" in quickstart
+    assert "65b6642df1afc64366430d3aef9aca01f5c5e1c3" in quickstart
+    assert "pr146-recurrent-publication-live-validation.md" in quickstart
+    assert "### Separate historical artifact" in quickstart
+    assert (
+        "sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb"
+        in quickstart
     )

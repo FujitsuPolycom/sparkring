@@ -1,8 +1,29 @@
 # Serve GLM-5.3 with external DFlash7 and the exact Python-overlay runtime
 
-Status: **implemented, not qualified** for the selected source contract. The
-image builder, profile resolver, and four-rank dry-run contract pass without
-GPUs. Historical local image ID
+Status: **implemented** for reproducible image construction, profile
+resolution, and four-rank dry-run planning from the selected source contract.
+Exact local image
+`sparkring-glm53-sparkcache:dflash7-pr39-reaching-d93cb3d-arm64`, image ID
+`sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8`,
+is **qualified** only for the bounded cases in the
+[exact-artifact validation record](../performance/records/glm53-flash/pr146-recurrent-publication-live-validation.md)
+from [pull request #147](https://github.com/FujitsuPolycom/sparkring/pull/147).
+It binds SparkRing `d93cb3d98305041081cf572521602625185112ae` and
+SparkCache `65b6642df1afc64366430d3aef9aca01f5c5e1c3`.
+
+The exact image completed the fixed semantic canary, a clean-restart
+8,192-token persistent restore, a 131,072-token persistent restore, tail-only
+copy-on-write publication from 131,072 to 262,144 tokens, a verified
+262,144-token persistent restore, and one C16 cohort in which 16 distinct
+request tails shared one restored 131,072-token segment. Restore timings are
+**research-only**. The fixed semantic canary is not a DFlash response-quality
+benchmark, so response quality is **unsupported**. Public OCI publication is
+also **unsupported**; the image has no published digest. No rebuild inherits
+these observations without its own exact evidence.
+
+### Separate historical artifact
+
+Historical local image ID
 `sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb`
 is **qualified** only for the TP4/DCP1 startup, health, semantic generation,
 arbitrary page-boundary replay, and 131,072- and 262,144-token restore cases
