@@ -1,0 +1,121 @@
+{
+  "schema": "sparkring-glm53-public-python-overlay/v1",
+  "status": "implemented",
+  "qualification": "The builder and offline verifier are implemented. The resulting image is unsupported for serving until an immutable image digest passes four-rank TP4/DCP1 model loading, generation, SparkCache restore, failure-recovery, and concurrency checks.",
+  "platform": "linux/arm64",
+  "public_base": {
+    "reference": "ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:864adfe68f458223e186a19844ac80c7adc7365e5db1f25e109b85fc19850dcd",
+    "image_id": "sha256:7e8c0ebcb2001efb4cdab0ec9d20d53972e62db3688230044e22e61ffb1d35d5",
+    "labels": {
+      "org.jovian.architecture": "linux-arm64-sm121",
+      "org.jovian.vllm.commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+      "org.jovian.b12x.commit": "2fcf23a0ce269be27b2e03fece73d46e90e6aeea",
+      "org.jovian.transport": "sparkring-nccl-2.30.7-source-built",
+      "org.sparkring.nccl.commit": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
+      "org.sparkring.nccl.patched-tree": "abdeb053b94c3f6d472cd55ae2b79ca821299009",
+      "org.sparkring.nccl.patch-sha256": "6709063fa1c25055ae77a9397dea5d89643f8211d25e7990bdd11597d08c0dde"
+    }
+  },
+  "builder": {
+    "arm_builder": "pytorch/manylinuxaarch64-builder@sha256:f91599c49f526c77d01b68286f2bf943a5fd6a432d7e3f0afcc5784825908fe9",
+    "output_name": "sparkring-glm53-sparkcache:vllm-python-0b67266-native-da4d7be-b12x-b1d541f-arm64"
+  },
+  "vllm": {
+    "repository": "https://github.com/local-inference-lab/vllm.git",
+    "native_commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+    "native_tree": "4a99033352bc1a6b00852dc0e8b1cecbdd9f0ebb",
+    "python_commit": "0b67266a0f37d6146a8403fb8482403c62f412d5",
+    "python_tree": "ba9484ccb33aa56e90ff2f447f15ca9b9da97639",
+    "overlay_manifest": "runtime/glm53-flash-adaptive-mtp-python-overlay/vllm-python-overlay.json",
+    "overlay_manifest_sha256": "e5e528288b173399611a4930fecc4182b7208bc1564881d52ca5d2c5c4ae0f6a",
+    "native_source_objects": {
+      "csrc": "9ada29088768f1bc08dadd2eed3c9738eb9ac8a1",
+      "cmake": "5e5bbdbe1c1b3a479656d8d6a41cc32a1982c43d",
+      "rust": "85c3cd52db223217d45377d3f7f884e756641de3",
+      "CMakeLists.txt": "bb0f51b43ef4e1c57918b551b8cf213f9059b601",
+      "setup.py": "ae64a13daa0f1facc255afcdb4ffcad264776b98",
+      "pyproject.toml": "0766645fc7481da0ec439208128b838b3348d94c",
+      "requirements": "d6e1c8e13cd4c4358ab422e3ef006d3f9f23e18b",
+      "docker/Dockerfile": "6e20f6eab482782ed90a05d91b669b59641eaa46"
+    },
+    "retained_distribution_metadata": [
+      "vllm/_version.py",
+      "vllm-*.dist-info",
+      "/usr/local/bin/vllm"
+    ]
+  },
+  "b12x": {
+    "repository": "https://github.com/local-inference-lab/b12x.git",
+    "commit": "b1d541f9e71a35f030d45fae437630fff7507c2a",
+    "tree": "c69cdec1c59a08e8e0e549f930fa8abcfb5134ae",
+    "package_version": "1.3.0",
+    "base_commit": "2fcf23a0ce269be27b2e03fece73d46e90e6aeea",
+    "base_tree": "58a046fc8faa747346f40f87166cda7e0f67ff47",
+    "required_caps_field": "kda_metadata_validation",
+    "required_caps_value": "trusted"
+  },
+  "dependencies": {
+    "python": "3.12",
+    "torch": "2.13.0",
+    "cuda": "13.0.3",
+    "fastsafetensors": "0.3.3",
+    "instanttensor": "0.1.9",
+    "instanttensor_sdist_sha256": "d8692b97991c1a5fb2db7905b9a6ae90a7f967c7ddd853d35e41caa146750c02",
+    "nccl_library": "/opt/sparkring/nccl/libnccl.so.2.30.7",
+    "nccl_library_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3"
+  },
+  "sparkcache": {
+    "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
+    "commit": "20838ace3ebda570ca039cb7f1976c29da554b39",
+    "tree": "2bf80112357cd7bf94d1f039d9a3e7755c59d5c2",
+    "source_tree_sha256": "4998b24f4f504aeeb9bf92769ec720e282f546e6726d89fdfd06c4efa8d17c10",
+    "contract": {
+      "path": "sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json",
+      "sha256": "6defde9551cbb586fd09bb2d3020495531b6573397875a767eaae1dbad126024",
+      "files": 11
+    },
+    "patches": [
+      {
+        "path": "patches/vllm-glm53-b12x-kda-adaptive-mtp/020-sparkcache-vmm-exemption.patch",
+        "sha256": "370b498eebf44b4e52a2d2751fa249ad4bd3d0b6fd951b063a161fb06febbe99",
+        "target": "vllm/config/vllm.py",
+        "preimage_sha256": "cc03756d9bebf2a128828e5fbf7e9766446884dfce016c34381bce0aa78bfd9e",
+        "postimage_sha256": "9f64f5041f7f9d953e9f6bc53de8733b3eb4035c0753056a1f646346702a0994"
+      },
+      {
+        "path": "patches/vllm-glm53-b12x-kda-adaptive-mtp/030-sparkcache-hma-load-failure.patch",
+        "sha256": "0202df4b5db7bd35540eebdef51fcbe2bb01845b952964080e1fe903ee19b404",
+        "target": "vllm/v1/core/sched/scheduler.py",
+        "preimage_sha256": "05c05f4b372c7a4bf76399b38b338eab657c69406b7019ab02101d2ab0c7764c",
+        "postimage_sha256": "337893b6b088d12eb38d8d70c866242d085134442289b4f4574a1f162c9f11c8"
+      },
+      {
+        "path": "patches/vllm-glm53-b12x-kda-adaptive-mtp/040-sparkcache-shared-prefix-lease.patch",
+        "sha256": "6c6d6bdc2d6e35742ef37715e88697b1f972d23b28948690c4d8d835edcaf01b",
+        "target": "vllm/v1/core/kv_cache_manager.py",
+        "preimage_sha256": "02c71da26bbac81629248ee42b0a71bd2db817d339894d647d2ff6b66fd5ad19",
+        "postimage_sha256": "ee03dc9ce2b720c0be6e9f572d23580ba96eff68fe3406250557e83071654af0"
+      },
+      {
+        "path": "patches/vllm-glm53-b12x-kda-adaptive-mtp/041-sparkcache-shared-prefix-attach.patch",
+        "sha256": "b98e6bc06990f608fc5f0828c11b8eb453fbec0f8fbbf24ba45254810b7e67c3",
+        "target": "vllm/v1/core/sched/scheduler.py",
+        "preimage_sha256": "337893b6b088d12eb38d8d70c866242d085134442289b4f4574a1f162c9f11c8",
+        "postimage_sha256": "6d397c97f31e67a75efc01b5ddd89fa58db425de14fa43965ef2d6146b6b9bdb"
+      }
+    ]
+  },
+  "runtime_cache_roots": {
+    "VLLM_CACHE_ROOT": "/cache/jit/vllm/py-0b67266-native-da4d7be",
+    "B12X_CUTE_COMPILE_CACHE_DIR": "/cache/jit/b12x/b1d541f9/cute",
+    "TRITON_CACHE_DIR": "/cache/jit/triton/vllm-py-0b67266-native-da4d7be"
+  },
+  "outputs": {
+    "image": null,
+    "image_id": null,
+    "image_digest": null,
+    "native_elf_manifest_sha256": null,
+    "native_dispatch_manifest_sha256": null,
+    "b12x_wheel_sha256": null
+  }
+}

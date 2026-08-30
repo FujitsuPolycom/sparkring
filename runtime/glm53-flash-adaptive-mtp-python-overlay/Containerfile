@@ -1,0 +1,168 @@
+# syntax=docker/dockerfile:1.7
+
+ARG PUBLIC_BASE=ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:864adfe68f458223e186a19844ac80c7adc7365e5db1f25e109b85fc19850dcd
+ARG ARM_BUILDER=pytorch/manylinuxaarch64-builder@sha256:f91599c49f526c77d01b68286f2bf943a5fd6a432d7e3f0afcc5784825908fe9
+
+FROM ${ARM_BUILDER} AS b12x-wheel
+ARG B12X_COMMIT
+ARG B12X_TREE
+COPY bundle/sources/b12x /build/b12x
+RUN test "$(git -C /build/b12x rev-parse HEAD)" = "${B12X_COMMIT}" \
+ && test "$(git -C /build/b12x rev-parse HEAD^{tree})" = "${B12X_TREE}" \
+ && /opt/python/cp312-cp312/bin/python -m pip wheel \
+      --no-deps --wheel-dir /out/wheels /build/b12x \
+ && sha256sum /out/wheels/b12x-*.whl > /out/wheels/b12x-wheel.sha256
+
+FROM ${ARM_BUILDER} AS sparkcache-native
+COPY bundle/sources/sparkcache/sparkcache/native /build/sparkcache-native
+RUN cmake -S /build/sparkcache-native \
+      -B /build/sparkcache-native/build-cuda \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_CUDA_ARCHITECTURES=121 \
+      -DSPARK_CACHE_PLACEMENT_ENABLE_CUDA=ON \
+ && cmake --build /build/sparkcache-native/build-cuda \
+      --target spark_cache_placement -j"$(nproc)" \
+ && test -s /build/sparkcache-native/build-cuda/libspark_cache_placement.so \
+ && sha256sum /build/sparkcache-native/build-cuda/libspark_cache_placement.so \
+      > /build/sparkcache-native/build-cuda/libspark_cache_placement.so.sha256
+
+FROM ${PUBLIC_BASE}
+
+ARG PUBLIC_BASE
+ARG PUBLIC_BASE_ID
+ARG VLLM_NATIVE_COMMIT
+ARG VLLM_PYTHON_COMMIT
+ARG VLLM_PYTHON_TREE
+ARG B12X_COMMIT
+ARG B12X_TREE
+ARG SPARKCACHE_COMMIT
+ARG SPARKCACHE_SOURCE_SHA256
+ARG SPARKRING_REVISION
+ARG SOURCE_RECEIPT_SHA256
+ARG OVERLAY_MANIFEST_SHA256
+ARG NATIVE_ELF_MANIFEST_SHA256
+ARG NATIVE_DISPATCH_MANIFEST_SHA256
+ARG SPARKCACHE_NATIVE_SHA256
+
+ENV PYTHON_OVERLAY_ROOT=/opt/sparkring/runtime/python-overlay \
+    VLLM_CACHE_ROOT=/cache/jit/vllm/py-0b67266-native-da4d7be \
+    B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x/b1d541f9/cute \
+    TRITON_CACHE_DIR=/cache/jit/triton/vllm-py-0b67266-native-da4d7be
+
+COPY bundle/runtime/pins.json ${PYTHON_OVERLAY_ROOT}/pins.json
+COPY bundle/runtime/vllm-python-overlay.json ${PYTHON_OVERLAY_ROOT}/vllm-python-overlay.json
+COPY bundle/runtime/overlay_contract.py ${PYTHON_OVERLAY_ROOT}/overlay_contract.py
+COPY bundle/runtime/verify_image.py ${PYTHON_OVERLAY_ROOT}/verify_image.py
+COPY receipt.json ${PYTHON_OVERLAY_ROOT}/source-receipt.json
+
+RUN set -eu; \
+    test "$(sha256sum "${PYTHON_OVERLAY_ROOT}/vllm-python-overlay.json" | cut -d' ' -f1)" = \
+      "${OVERLAY_MANIFEST_SHA256}"; \
+    python3 "${PYTHON_OVERLAY_ROOT}/overlay_contract.py" \
+      --pins "${PYTHON_OVERLAY_ROOT}/pins.json" \
+      --manifest "${PYTHON_OVERLAY_ROOT}/vllm-python-overlay.json" \
+      verify-files \
+      --root /usr/local/lib/python3.12/dist-packages \
+      --stage base; \
+    python3 "${PYTHON_OVERLAY_ROOT}/overlay_contract.py" \
+      --pins "${PYTHON_OVERLAY_ROOT}/pins.json" \
+      --manifest "${PYTHON_OVERLAY_ROOT}/vllm-python-overlay.json" \
+      record-base \
+      --site-root /usr/local/lib/python3.12/dist-packages \
+      --console-script /usr/local/bin/vllm \
+      --output "${PYTHON_OVERLAY_ROOT}/retained-native.json"; \
+    python3 -c 'import json,sys; record=json.load(open(sys.argv[1], encoding="utf-8")); assert record["native_elf_manifest_sha256"] == sys.argv[2]; assert record["native_dispatch_manifest_sha256"] == sys.argv[3]' \
+      "${PYTHON_OVERLAY_ROOT}/retained-native.json" \
+      "${NATIVE_ELF_MANIFEST_SHA256}" "${NATIVE_DISPATCH_MANIFEST_SHA256}"
+
+COPY bundle/vllm-overlay/ /usr/local/lib/python3.12/dist-packages/
+RUN python3 "${PYTHON_OVERLAY_ROOT}/overlay_contract.py" \
+      --pins "${PYTHON_OVERLAY_ROOT}/pins.json" \
+      --manifest "${PYTHON_OVERLAY_ROOT}/vllm-python-overlay.json" \
+      verify-files \
+      --root /usr/local/lib/python3.12/dist-packages \
+      --stage target
+
+COPY --from=b12x-wheel /out/wheels/ /opt/sparkring/wheelhouse/
+RUN uv pip install --system --reinstall --no-deps \
+      /opt/sparkring/wheelhouse/b12x-*.whl \
+ && cp /opt/sparkring/wheelhouse/b12x-wheel.sha256 \
+      "${PYTHON_OVERLAY_ROOT}/b12x-wheel.sha256"
+
+COPY bundle/sources/sparkcache/sparkcache /opt/sparkcache-src/sparkcache
+COPY --from=sparkcache-native \
+  /build/sparkcache-native/build-cuda/libspark_cache_placement.so \
+  /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so
+COPY --from=sparkcache-native \
+  /build/sparkcache-native/build-cuda/libspark_cache_placement.so.sha256 \
+  /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so.sha256
+COPY bundle/sources/sparkcache/patches/vllm-glm53-b12x-kda-adaptive-mtp \
+  /opt/sparkcache-vllm-patches
+COPY bundle/sources/sparkcache/deploy/deployment_contract/source.py \
+  /opt/sparkcache-source-identity.py
+COPY bundle/runtime/SparkRing-LICENSE /usr/share/licenses/SparkRing/LICENSE
+COPY bundle/sources/vllm/LICENSE /usr/share/licenses/vLLM/LICENSE
+COPY bundle/sources/b12x/LICENSE /usr/share/licenses/B12X/LICENSE
+COPY bundle/sources/sparkcache/LICENSE /usr/share/licenses/SparkCache/LICENSE
+
+RUN set -eu; \
+    actual_source="$(python3 -c 'import importlib.util, pathlib; spec = importlib.util.spec_from_file_location("source_identity", "/opt/sparkcache-source-identity.py"); module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module); print(module.source_tree_sha256(pathlib.Path("/opt/sparkcache-src/sparkcache")))')"; \
+    test "${actual_source}" = "${SPARKCACHE_SOURCE_SHA256}"; \
+    test "$(sha256sum /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so | cut -d' ' -f1)" = "${SPARKCACHE_NATIVE_SHA256}"; \
+    root=/usr/local/lib/python3.12/dist-packages; \
+    config="${root}/vllm/config/vllm.py"; \
+    test "$(sha256sum "${config}" | cut -d' ' -f1)" = cc03756d9bebf2a128828e5fbf7e9766446884dfce016c34381bce0aa78bfd9e; \
+    patch --batch --forward -p1 -d "${root}" \
+      < /opt/sparkcache-vllm-patches/020-sparkcache-vmm-exemption.patch; \
+    test "$(sha256sum "${config}" | cut -d' ' -f1)" = 9f64f5041f7f9d953e9f6bc53de8733b3eb4035c0753056a1f646346702a0994; \
+    scheduler="${root}/vllm/v1/core/sched/scheduler.py"; \
+    test "$(sha256sum "${scheduler}" | cut -d' ' -f1)" = 05c05f4b372c7a4bf76399b38b338eab657c69406b7019ab02101d2ab0c7764c; \
+    patch --batch --forward -p1 -d "${root}" \
+      < /opt/sparkcache-vllm-patches/030-sparkcache-hma-load-failure.patch; \
+    test "$(sha256sum "${scheduler}" | cut -d' ' -f1)" = 337893b6b088d12eb38d8d70c866242d085134442289b4f4574a1f162c9f11c8; \
+    kv_manager="${root}/vllm/v1/core/kv_cache_manager.py"; \
+    test "$(sha256sum "${kv_manager}" | cut -d' ' -f1)" = 02c71da26bbac81629248ee42b0a71bd2db817d339894d647d2ff6b66fd5ad19; \
+    patch --batch --forward -p1 -d "${root}" \
+      < /opt/sparkcache-vllm-patches/040-sparkcache-shared-prefix-lease.patch; \
+    test "$(sha256sum "${kv_manager}" | cut -d' ' -f1)" = ee03dc9ce2b720c0be6e9f572d23580ba96eff68fe3406250557e83071654af0; \
+    patch --batch --forward -p1 -d "${root}" \
+      < /opt/sparkcache-vllm-patches/041-sparkcache-shared-prefix-attach.patch; \
+    test "$(sha256sum "${scheduler}" | cut -d' ' -f1)" = 6d397c97f31e67a75efc01b5ddd89fa58db425de14fa43965ef2d6146b6b9bdb; \
+    python3 /opt/sparkcache-src/sparkcache/runtime_patches/verify_lease_contract.py \
+      --vllm-root "${root}" \
+      --contract /opt/sparkcache-src/sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json; \
+    python3 "${PYTHON_OVERLAY_ROOT}/overlay_contract.py" \
+      --pins "${PYTHON_OVERLAY_ROOT}/pins.json" \
+      --manifest "${PYTHON_OVERLAY_ROOT}/vllm-python-overlay.json" \
+      verify-composed \
+      --root "${root}" \
+      --site-root "${root}" \
+      --console-script /usr/local/bin/vllm \
+      --base-record "${PYTHON_OVERLAY_ROOT}/retained-native.json" \
+      --output "${PYTHON_OVERLAY_ROOT}/composed-verification.json"; \
+    find "${root}/vllm" -type d -name __pycache__ -prune -exec rm -rf '{}' +
+
+ENV PYTHONPATH=/opt/sparkcache-src
+ENTRYPOINT ["vllm"]
+
+LABEL org.opencontainers.image.title="SparkRing GLM-5.3 adaptive-MTP Python overlay" \
+      org.opencontainers.image.description="vLLM 0b67266 Python over da4d7be native extensions with B12X b1d541f and SparkCache" \
+      org.opencontainers.image.source="https://github.com/FujitsuPolycom/sparkring" \
+      org.opencontainers.image.revision="${SPARKRING_REVISION}" \
+      org.opencontainers.image.base.name="${PUBLIC_BASE}" \
+      org.opencontainers.image.licenses="LicenseRef-NVIDIA-Deep-Learning-Container AND Apache-2.0 AND BSD-3-Clause" \
+      org.sparkring.base.image-id="${PUBLIC_BASE_ID}" \
+      org.sparkring.vllm.native.commit="${VLLM_NATIVE_COMMIT}" \
+      org.sparkring.vllm.python.commit="${VLLM_PYTHON_COMMIT}" \
+      org.sparkring.vllm.python.tree="${VLLM_PYTHON_TREE}" \
+      org.sparkring.vllm.python-overlay-manifest-sha256="${OVERLAY_MANIFEST_SHA256}" \
+      org.sparkring.vllm.native-elf-manifest-sha256="${NATIVE_ELF_MANIFEST_SHA256}" \
+      org.sparkring.vllm.native-dispatch-manifest-sha256="${NATIVE_DISPATCH_MANIFEST_SHA256}" \
+      org.jovian.b12x.commit="${B12X_COMMIT}" \
+      org.sparkring.b12x.tree="${B12X_TREE}" \
+      org.sparkcache.source-revision="${SPARKCACHE_COMMIT}" \
+      org.sparkcache.source-sha256="${SPARKCACHE_SOURCE_SHA256}" \
+      org.sparkcache.native-library-sha256="${SPARKCACHE_NATIVE_SHA256}" \
+      org.sparkcache.vllm-contract-sha256="6defde9551cbb586fd09bb2d3020495531b6573397875a767eaae1dbad126024" \
+      org.sparkcache.deployment-profile="glm53-flash-adaptive-mtp-python-overlay" \
+      org.sparkring.source-receipt-sha256="${SOURCE_RECEIPT_SHA256}"
