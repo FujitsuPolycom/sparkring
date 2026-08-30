@@ -41,6 +41,9 @@ def expected_output_labels(pins: dict[str, Any]) -> dict[str, str]:
                 "implemented-gpu-free-tested"
             ),
             "org.sparkcache.feature.page-base-read-flight-pr": "42",
+            "org.sparkcache.page-base-read-flight-singleton-later-cohorts": (
+                "a1511d26a1fe2b17b24561bc52e376bf7f54b06a"
+            ),
             "org.sparkcache.diagnostic-fix": (
                 "page-header-source-bytes-fix=229d7d6;"
                 "parent=sha256:9f485c4408a56c0868c75f3e62b09432b2d908b5e4eb28915e0e6b4c4e4fe99f"

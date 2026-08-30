@@ -37,7 +37,7 @@ def test_pr42_profile_is_operationally_isolated_without_identity_geometry_change
     extra = transfer["kv_connector_extra_config"]
     assert extra["spark_cache_root"].endswith("dflash7-pr42-page-base-flight")
     assert extra["spark_cache_clear_once"] == (
-        "sparkring-dflash7-pr42-page-base-flight-5a6613e-sourcebytesfix"
+        "sparkring-dflash7-pr42-page-base-flight-a1511d26-singleton"
     )
     assert extra["spark_cache_publication_schema"] == "tail-cow-v1"
     assert extra["spark_cache_model_profile"] == "glm53-flash-hybrid"
@@ -64,7 +64,7 @@ def test_pr42_profile_resolves_exact_source_and_feature_labels() -> None:
     )
     assert resolved_site["runtime"]["container_image"] == resolved["image"]
     assert resolved["identity"]["sparkcache_source_revision"] == (
-        "5a6613e473a713695948e69e0027fd67530028f8"
+        "a1511d26a1fe2b17b24561bc52e376bf7f54b06a"
     )
     labels = resolved["required_image_labels"]
     assert labels["org.sparkcache.deployment-profile"] == (
@@ -78,6 +78,9 @@ def test_pr42_profile_resolves_exact_source_and_feature_labels() -> None:
         "page-header-source-bytes-fix=229d7d6"
     )
     assert labels["org.sparkcache.page-header-source-bytes-fix"] == "229d7d6"
+    assert labels[
+        "org.sparkcache.page-base-read-flight-singleton-later-cohorts"
+    ] == "a1511d26a1fe2b17b24561bc52e376bf7f54b06a"
     assert labels["org.sparkcache.cuda-placement-library-sha256"] == (
         DIGESTS["cuda_placement_library_sha256"]
     )

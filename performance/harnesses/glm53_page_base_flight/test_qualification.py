@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 
+import pytest
+
+import qualification
 from qualification import (
     BASE_TOKENS,
     FLIGHT_SCHEMA,
@@ -11,8 +15,11 @@ from qualification import (
     RECEIPT_SCHEMA,
     RESULT_TOKENS,
     TAIL_TOKENS,
+    QualificationError,
     inspect_manifests,
+    publish,
     prompts,
+    replay,
     verify_evidence,
 )
 
@@ -36,6 +43,172 @@ def test_prompt_geometry_is_exact_and_distinct() -> None:
     assert len(unrelated) == 4097
     assert unrelated[:4096] != base[:4096]
     assert TAIL_TOKENS == 32768
+
+
+def _completion_receipt(tokens: list[int], response_sha256: str = "a" * 64) -> dict:
+    return {
+        "http_status": 200,
+        "prompt_tokens": len(tokens),
+        "prompt_sha256": hashlib.sha256(_canonical(tokens)).hexdigest(),
+        "response_sha256": response_sha256,
+        "completion_tokens": 1,
+        "finish_reason": "length",
+        "elapsed_seconds": 0.125,
+    }
+
+
+def test_publish_waits_for_all_rank_held_digest_report_before_results(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bank = list(range(100, 118))
+    observed_lengths: list[int] = []
+    scheduler_log = tmp_path / "scheduler.log"
+    scheduler_log.write_text(
+        "KV Transfer metrics: spark_cache_ranks_reporting=4, "
+        "spark_cache_digests_held=3\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(qualification, "discover_token_bank", lambda *_args: bank)
+
+    def fake_completion(
+        _endpoint: str, _model: str, tokens: list[int], _timeout: float
+    ) -> dict:
+        observed_lengths.append(len(tokens))
+        if len(tokens) == 2:
+            with scheduler_log.open("a", encoding="utf-8") as stream:
+                stream.write(
+                    "KV Transfer metrics: spark_cache_ranks_reporting=4, "
+                    "spark_cache_digests_held=4\n"
+                )
+        return _completion_receipt(tokens)
+
+    monkeypatch.setattr(qualification, "_completion", fake_completion)
+
+    receipt = publish("http://rank0", "model", scheduler_log, 10.0)
+
+    assert observed_lengths[:3] == [BASE_TOKENS + 1, 2, RESULT_TOKENS + 1]
+    assert observed_lengths[2:] == [RESULT_TOKENS + 1] * PARTICIPANTS
+    assert receipt["base_readiness"] == {
+        "status": "verified",
+        "required_ranks": 4,
+        "ranks_reporting": 4,
+        "digests_held": 4,
+        "scheduler_log_line_sha256": hashlib.sha256(
+            (
+                "KV Transfer metrics: spark_cache_ranks_reporting=4, "
+                "spark_cache_digests_held=4"
+            ).encode()
+        ).hexdigest(),
+        "scheduler_step": _completion_receipt([bank[-2], bank[-1]]),
+    }
+
+
+def test_publish_rejects_before_private_results_without_all_rank_holds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bank = list(range(100, 118))
+    observed_lengths: list[int] = []
+    scheduler_log = tmp_path / "scheduler.log"
+    scheduler_log.write_text("startup\n", encoding="utf-8")
+    monkeypatch.setattr(qualification, "discover_token_bank", lambda *_args: bank)
+
+    def fake_completion(
+        _endpoint: str, _model: str, tokens: list[int], _timeout: float
+    ) -> dict:
+        observed_lengths.append(len(tokens))
+        if len(tokens) == 2:
+            with scheduler_log.open("a", encoding="utf-8") as stream:
+                stream.write(
+                    "KV Transfer metrics: spark_cache_ranks_reporting=4, "
+                    "spark_cache_digests_held=3\n"
+                )
+        return _completion_receipt(tokens)
+
+    monkeypatch.setattr(qualification, "_completion", fake_completion)
+
+    with pytest.raises(QualificationError, match="not held on all ranks"):
+        publish("http://rank0", "model", scheduler_log, 0.01)
+    assert observed_lengths == [BASE_TOKENS + 1, 2]
+
+
+def test_replay_returns_complete_rejected_receipt_after_response_mismatches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bank = list(range(100, 118))
+    _base, results, unrelated = prompts(bank)
+    published_results = [
+        {"prompt_sha256": _completion_receipt(tokens)["prompt_sha256"],
+         "response_sha256": "a" * 64}
+        for tokens in results
+    ]
+    mismatch_prompt_sha256 = {
+        published_results[index]["prompt_sha256"] for index in (2, 11)
+    }
+    monkeypatch.setattr(qualification, "discover_token_bank", lambda *_args: bank)
+
+    def fake_completion(
+        _endpoint: str, _model: str, tokens: list[int], _timeout: float
+    ) -> dict:
+        prompt_sha256 = _completion_receipt(tokens)["prompt_sha256"]
+        digest = "b" * 64 if prompt_sha256 in mismatch_prompt_sha256 else "a" * 64
+        return _completion_receipt(tokens, digest)
+
+    monkeypatch.setattr(qualification, "_completion", fake_completion)
+    receipt = replay(
+        "http://rank0",
+        "model",
+        {"results": published_results},
+        10.0,
+    )
+
+    assert receipt["status"] == "rejected"
+    assert receipt["response_mismatch_indices"] == [2, 11]
+    assert len(receipt["results"]) == PARTICIPANTS
+    assert [item["result_index"] for item in receipt["results"]] == list(
+        range(PARTICIPANTS)
+    )
+    assert receipt["unrelated_later_request"]["prompt_sha256"] == (
+        _completion_receipt(unrelated)["prompt_sha256"]
+    )
+
+
+def test_replay_cli_writes_rejected_receipt_before_nonzero_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "replay.json"
+    published = _write(tmp_path / "publish.json", {"results": []})
+    rejected = {
+        "schema": RECEIPT_SCHEMA,
+        "kind": "replay",
+        "status": "rejected",
+        "results": [{"result_index": index} for index in range(PARTICIPANTS)],
+        "unrelated_later_request": {"http_status": 200},
+        "response_mismatch_indices": [4],
+    }
+    monkeypatch.setattr(qualification, "replay", lambda *_args: rejected)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "qualification.py",
+            "replay",
+            "--endpoint",
+            "http://rank0",
+            "--model",
+            "model",
+            "--publish-receipt",
+            str(published),
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert qualification.main() == 1
+    assert json.loads(output.read_text(encoding="utf-8")) == rejected
 
 
 def test_manifest_inspection_requires_one_shared_base_and_private_deltas(
@@ -76,12 +249,15 @@ def test_verdict_requires_one_flight_and_sixteen_result_restores_per_rank(
     tmp_path: Path,
 ) -> None:
     labels = {
-        "org.sparkcache.source-revision": "5a6613e473a713695948e69e0027fd67530028f8",
-        "org.sparkcache.source-tree": "5e74b3f9d484064d966ce6392dda1e0f7ff17190",
-        "org.sparkcache.source-sha256": "446c5bdd5a3efae8a4c4955cfbb577be1d8672a91d47770db63115cb25889313",
+        "org.sparkcache.source-revision": "a1511d26a1fe2b17b24561bc52e376bf7f54b06a",
+        "org.sparkcache.source-tree": "4d5b8eb8c5c13793ee7a1e67b2b34bd38fcf4ddb",
+        "org.sparkcache.source-sha256": "6651f2823c816fac93779cbca54a8f19c0ed262830953149f3a87d189d1f833b",
         "org.sparkcache.cuda-placement-library-sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
         "org.sparkcache.feature.page-base-read-flight": "implemented-gpu-free-tested",
         "org.sparkcache.feature.page-base-read-flight-pr": "42",
+        "org.sparkcache.page-base-read-flight-singleton-later-cohorts": (
+            "a1511d26a1fe2b17b24561bc52e376bf7f54b06a"
+        ),
         "org.sparkcache.cache-namespace-impact": "none",
         "org.sparkcache.diagnostic-fix": (
             "page-header-source-bytes-fix=229d7d6;"
@@ -94,7 +270,7 @@ def test_verdict_requires_one_flight_and_sixteen_result_restores_per_rank(
         {
             "schema": "sparkcache-diagnostic-image-receipt/v1",
             "image": {
-                "id": "sha256:cc2c0e2f812f4b78d5b91f863aaf46fd8e8e505844245aa50911af1fb8e061c0",
+                "id": "sha256:" + "1" * 64,
                 "labels": labels,
             },
         },
@@ -178,9 +354,7 @@ def test_verdict_requires_one_flight_and_sixteen_result_restores_per_rank(
     )
     assert verdict["schema"] == RECEIPT_SCHEMA
     assert verdict["status"] == "qualified"
-    assert verdict["image_id"] == (
-        "sha256:cc2c0e2f812f4b78d5b91f863aaf46fd8e8e505844245aa50911af1fb8e061c0"
-    )
+    assert verdict["image_id"] == "sha256:" + "1" * 64
     assert [item["verified_result_restores"] for item in verdict["rank_evidence"]] == [
         16,
         16,

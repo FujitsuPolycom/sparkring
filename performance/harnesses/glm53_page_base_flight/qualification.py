@@ -7,6 +7,7 @@ import argparse
 import concurrent.futures
 import hashlib
 import json
+import re
 import time
 import urllib.error
 import urllib.request
@@ -18,6 +19,7 @@ BASE_TOKENS = 98_304
 RESULT_TOKENS = 131_072
 TAIL_TOKENS = RESULT_TOKENS - BASE_TOKENS
 PARTICIPANTS = 16
+TP_RANKS = 4
 FLIGHT_SCHEMA = "sparkcache-page-base-restore-flight/v1"
 RESTORE_SCHEMA = "sparkcache-restore-timing/v1"
 RECEIPT_SCHEMA = "sparkring-glm53-pr42-page-base-flight-qualification/v1"
@@ -143,10 +145,88 @@ def _completion(
     }
 
 
-def publish(endpoint: str, model: str, timeout: float) -> dict[str, Any]:
+def _confirm_base_held_on_all_ranks(
+    endpoint: str,
+    model: str,
+    token_bank: list[int],
+    scheduler_log: Path,
+    scheduler_log_offset: int,
+    timeout: float,
+) -> dict[str, Any]:
+    # One request below SparkCache's publication threshold gives the scheduler
+    # a step in which to absorb the workers' post-commit held-digest reports.
+    scheduler_step = _completion(
+        endpoint,
+        model,
+        [token_bank[-2], token_bank[-1]],
+        timeout,
+    )
+    deadline = time.monotonic() + timeout
+    last_counts: tuple[int, int] | None = None
+    matched_line: str | None = None
+    while time.monotonic() < deadline:
+        try:
+            size = scheduler_log.stat().st_size
+            offset = scheduler_log_offset if size >= scheduler_log_offset else 0
+            with scheduler_log.open("rb") as stream:
+                stream.seek(offset)
+                observed = stream.read().decode("utf-8", errors="replace")
+        except OSError as exc:
+            raise QualificationError(
+                f"scheduler log cannot be read: {scheduler_log}"
+            ) from exc
+        for line in observed.splitlines():
+            if "KV Transfer metrics:" not in line:
+                continue
+            ranks = re.search(r"\bspark_cache_ranks_reporting=(\d+)\b", line)
+            held = re.search(r"\bspark_cache_digests_held=(\d+)\b", line)
+            if ranks is None or held is None:
+                continue
+            last_counts = (int(ranks.group(1)), int(held.group(1)))
+            if last_counts == (TP_RANKS, TP_RANKS):
+                matched_line = line
+                break
+        if matched_line is not None:
+            break
+        time.sleep(0.1)
+    if matched_line is None:
+        suffix = "no complete report observed"
+        if last_counts is not None:
+            suffix = (
+                f"ranks_reporting={last_counts[0]} digests_held={last_counts[1]}"
+            )
+        raise QualificationError(f"base publication is not held on all ranks: {suffix}")
+    return {
+        "status": "verified",
+        "required_ranks": TP_RANKS,
+        "ranks_reporting": TP_RANKS,
+        "digests_held": TP_RANKS,
+        "scheduler_log_line_sha256": _sha256(matched_line.encode()),
+        "scheduler_step": scheduler_step,
+    }
+
+
+def publish(
+    endpoint: str,
+    model: str,
+    scheduler_log: Path,
+    timeout: float,
+) -> dict[str, Any]:
+    try:
+        scheduler_log_offset = scheduler_log.stat().st_size
+    except OSError as exc:
+        raise QualificationError(f"scheduler log cannot be read: {scheduler_log}") from exc
     bank = discover_token_bank(endpoint, model, timeout)
     base, results, _unrelated = prompts(bank)
     base_result = _completion(endpoint, model, base, timeout)
+    base_readiness = _confirm_base_held_on_all_ranks(
+        endpoint,
+        model,
+        bank,
+        scheduler_log,
+        scheduler_log_offset,
+        timeout,
+    )
     result_receipts = [
         {"result_index": index, **_completion(endpoint, model, prompt, timeout)}
         for index, prompt in enumerate(results)
@@ -161,6 +241,7 @@ def publish(endpoint: str, model: str, timeout: float) -> dict[str, Any]:
         "result_publication_tokens": RESULT_TOKENS,
         "private_tail_tokens": TAIL_TOKENS,
         "base_request": base_result,
+        "base_readiness": base_readiness,
         "results": result_receipts,
     }
 
@@ -207,20 +288,22 @@ def replay(
         unrelated_future = pool.submit(_completion, endpoint, model, unrelated, timeout)
         receipts = [future.result() for future in futures]
         unrelated_receipt = unrelated_future.result()
+    response_mismatch_indices: list[int] = []
     for index, item in enumerate(receipts):
         item["result_index"] = index
         if item["response_sha256"] != publish_receipt["results"][index][
             "response_sha256"
         ]:
-            raise QualificationError(f"result {index} response differs from publication")
+            response_mismatch_indices.append(index)
     return {
         "schema": RECEIPT_SCHEMA,
         "kind": "replay",
-        "status": "verified",
+        "status": "rejected" if response_mismatch_indices else "verified",
         "model": model,
         "token_bank_sha256": _token_hash(bank),
         "results": receipts,
         "unrelated_later_request": unrelated_receipt,
+        "response_mismatch_indices": response_mismatch_indices,
     }
 
 
@@ -315,17 +398,20 @@ def verify_evidence(
         image_id = image.get("id")
     if not isinstance(labels, dict) or not isinstance(image_id, str):
         raise QualificationError("artifact receipt omits labels or image ID")
-    if image_id != "sha256:cc2c0e2f812f4b78d5b91f863aaf46fd8e8e505844245aa50911af1fb8e061c0":
-        raise QualificationError("artifact receipt is not the corrected exact image")
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None:
+        raise QualificationError("artifact receipt omits an exact image ID")
     expected_labels = {
-        "org.sparkcache.source-revision": "5a6613e473a713695948e69e0027fd67530028f8",
-        "org.sparkcache.source-tree": "5e74b3f9d484064d966ce6392dda1e0f7ff17190",
-        "org.sparkcache.source-sha256": "446c5bdd5a3efae8a4c4955cfbb577be1d8672a91d47770db63115cb25889313",
+        "org.sparkcache.source-revision": "a1511d26a1fe2b17b24561bc52e376bf7f54b06a",
+        "org.sparkcache.source-tree": "4d5b8eb8c5c13793ee7a1e67b2b34bd38fcf4ddb",
+        "org.sparkcache.source-sha256": "6651f2823c816fac93779cbca54a8f19c0ed262830953149f3a87d189d1f833b",
         "org.sparkcache.cuda-placement-library-sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
         "org.sparkcache.feature.page-base-read-flight": (
             "implemented-gpu-free-tested"
         ),
         "org.sparkcache.feature.page-base-read-flight-pr": "42",
+        "org.sparkcache.page-base-read-flight-singleton-later-cohorts": (
+            "a1511d26a1fe2b17b24561bc52e376bf7f54b06a"
+        ),
         "org.sparkcache.cache-namespace-impact": "none",
         "org.sparkcache.diagnostic-fix": (
             "page-header-source-bytes-fix=229d7d6;"
@@ -433,6 +519,8 @@ def main() -> int:
         command.add_argument("--output", type=Path, required=True)
         if name == "replay":
             command.add_argument("--publish-receipt", type=Path, required=True)
+        elif name == "publish":
+            command.add_argument("--scheduler-log", type=Path, required=True)
     inspect = subparsers.add_parser("inspect-manifests")
     inspect.add_argument("--manifest-root", type=Path, required=True)
     inspect.add_argument("--rank", type=int, choices=range(4), required=True)
@@ -449,7 +537,7 @@ def main() -> int:
     if args.command == "semantic":
         document = semantic(args.endpoint, args.model, args.timeout)
     elif args.command == "publish":
-        document = publish(args.endpoint, args.model, args.timeout)
+        document = publish(args.endpoint, args.model, args.scheduler_log, args.timeout)
     elif args.command == "replay":
         document = replay(
             args.endpoint,

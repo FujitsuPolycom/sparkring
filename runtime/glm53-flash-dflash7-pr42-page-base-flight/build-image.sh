@@ -7,7 +7,7 @@ repo_root="$(git -C "${here}" rev-parse --show-toplevel)"
 pins="${here}/pins.json"
 shared_overlay="${repo_root}/runtime/glm53-flash-adaptive-mtp-python-overlay"
 engine="${CONTAINER_ENGINE:-docker}"
-image="${IMAGE:-sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-sourcebytesfix-arm64}"
+image="${IMAGE:-sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-singleton-arm64}"
 receipt_path="${BUILD_RECEIPT:-${PWD}/glm53-pr42-page-base-flight-image-receipt.json}"
 
 fatal() {

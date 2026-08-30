@@ -25,10 +25,10 @@ def test_pins_bind_pr42_without_changing_runtime_contracts() -> None:
     pins = json.loads(PINS.read_text(encoding="utf-8"))
     assert pins["sparkcache"] == {
         **pins["sparkcache"],
-        "commit": "5a6613e473a713695948e69e0027fd67530028f8",
-        "tree": "5e74b3f9d484064d966ce6392dda1e0f7ff17190",
+        "commit": "a1511d26a1fe2b17b24561bc52e376bf7f54b06a",
+        "tree": "4d5b8eb8c5c13793ee7a1e67b2b34bd38fcf4ddb",
         "source_tree_sha256": (
-            "446c5bdd5a3efae8a4c4955cfbb577be1d8672a91d47770db63115cb25889313"
+            "6651f2823c816fac93779cbca54a8f19c0ed262830953149f3a87d189d1f833b"
         ),
         "cuda_placement_library_sha256": (
             "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
@@ -62,7 +62,8 @@ def test_pins_bind_pr42_without_changing_runtime_contracts() -> None:
         "maximum_peak_reserved_bytes": 2147483648,
         "source_feature_commit": "6f3edede4b9f707ef9e8879359b05b0775ed5fee",
         "page_header_source_bytes_fix": "229d7d6158261e9510ab99d7e82d532abb9ade01",
-        "artifact_receipt": {
+        "singleton_later_cohort_commit": "a1511d26a1fe2b17b24561bc52e376bf7f54b06a",
+        "historical_sourcebytesfix_artifact_receipt": {
             "schema": "sparkcache-sourcebytesfix-image-receipt/v1",
             "sha256": "31c226697752672cafe83b6d06793638fb64d6ad1abe9937edf89ee4814bca5a",
             "builder_path": "/home/code/image-build-receipts/sparkring-glm53-sparkcache-dflash7-pr42-page-base-flight-sourcebytesfix-arm64.json",
@@ -97,6 +98,9 @@ def test_rendered_context_and_verifier_bind_feature_receipt_fields() -> None:
         "implemented-gpu-free-tested"
     )
     assert labels["org.sparkcache.feature.page-base-read-flight-pr"] == "42"
+    assert labels[
+        "org.sparkcache.page-base-read-flight-singleton-later-cohorts"
+    ] == "a1511d26a1fe2b17b24561bc52e376bf7f54b06a"
     assert labels["org.sparkcache.diagnostic-fix"].startswith(
         "page-header-source-bytes-fix=229d7d6"
     )
@@ -105,6 +109,6 @@ def test_rendered_context_and_verifier_bind_feature_receipt_fields() -> None:
 
 def test_build_script_uses_isolated_default_outputs() -> None:
     script = (HERE / "build-image.sh").read_text(encoding="utf-8")
-    assert "dflash7-pr42-page-base-flight-sourcebytesfix-arm64" in script
+    assert "dflash7-pr42-page-base-flight-singleton-arm64" in script
     assert "glm53-pr42-page-base-flight-image-receipt.json" in script
     assert "runtime/glm53-flash-dflash7-pr42-page-base-flight" in script
