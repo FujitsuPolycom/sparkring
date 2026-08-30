@@ -107,6 +107,38 @@ def test_pins_bind_pr42_without_changing_runtime_contracts() -> None:
                 "archive_bytes": 20822443008,
             },
         },
+        "research_evidence": {
+            "status": "research-only",
+            "c16_page_delta": {
+                "participants": 16,
+                "result_tokens_per_request": 131072,
+                "shared_base_tokens": 98304,
+                "physical_base_reads_per_rank": 1,
+                "avoided_base_reads_per_rank": 15,
+                "residency": "exceeded-20-gib-hybrid-pool",
+                "semantic_result": "rejected",
+            },
+            "resident_safe_c2_page_delta": {
+                "participants": 2,
+                "result_tokens_per_request": 131072,
+                "placement_modes_with_failure": ["python", "sparkcache-cuda"],
+                "admitted_restore_semantic_result": "rejected",
+                "recomputed_request_semantic_result": "verified",
+            },
+            "flat_snapshot_fallback": {
+                "tokens": 131072,
+                "macro_objects": 13,
+                "restore_seconds_min": 1.55,
+                "restore_seconds_max": 1.70,
+                "expected_oracle": "red",
+                "semantic_result": "verified",
+            },
+            "conclusion": (
+                "The persistent base-read mechanism is implemented, but"
+                " reconstructed page-delta admission is unsupported for GLM-5.3"
+                " by this evidence."
+            ),
+        },
     }
 
 

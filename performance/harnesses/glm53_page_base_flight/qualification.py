@@ -697,8 +697,8 @@ def verify_evidence(
     ]
     return {
         "schema": RECEIPT_SCHEMA,
-        "kind": "qualification-verdict",
-        "status": "qualified",
+        "kind": "research-verdict",
+        "status": "research-only",
         "image_id": image_id,
         "sparkcache_revision": labels["org.sparkcache.source-revision"],
         "semantic_prompt_sha256": semantic_document["prompt_sha256"],
@@ -763,7 +763,7 @@ def main() -> int:
         )
     _write(args.output, document)
     print(json.dumps(document, indent=2, sort_keys=True))
-    return 0 if document.get("status") in {"observed", "verified", "qualified"} else 1
+    return 0 if document.get("status") in {"observed", "verified", "research-only"} else 1
 
 
 if __name__ == "__main__":

@@ -367,7 +367,7 @@ def test_manifest_inspection_requires_one_shared_base_and_private_deltas(
     assert len(receipt["delta_sha256"]) == 16
 
 
-def test_verdict_requires_one_flight_and_sixteen_result_restores_per_rank(
+def test_verdict_records_research_evidence_for_complete_mechanical_inputs(
     tmp_path: Path,
 ) -> None:
     labels = {
@@ -495,7 +495,8 @@ def test_verdict_requires_one_flight_and_sixteen_result_restores_per_rank(
         logs,
     )
     assert verdict["schema"] == RECEIPT_SCHEMA
-    assert verdict["status"] == "qualified"
+    assert verdict["kind"] == "research-verdict"
+    assert verdict["status"] == "research-only"
     assert verdict["image_id"] == "sha256:" + "1" * 64
     assert [item["verified_result_restores"] for item in verdict["rank_evidence"]] == [
         16,
