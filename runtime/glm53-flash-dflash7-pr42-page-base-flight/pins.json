@@ -1,0 +1,269 @@
+{
+  "schema": "sparkring-glm53-dflash7-pr42-page-base-flight/v1",
+  "status": "implemented",
+  "qualification": "Image construction and GPU-free qualification tooling are implemented. Four-rank model loading, semantic generation, persistent publication, restart, base-flight reuse, result restore, isolation, and response checks have no live qualification.",
+  "platform": "linux/arm64",
+  "public_base": {
+    "reference": "ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:864adfe68f458223e186a19844ac80c7adc7365e5db1f25e109b85fc19850dcd",
+    "image_id": "sha256:7e8c0ebcb2001efb4cdab0ec9d20d53972e62db3688230044e22e61ffb1d35d5",
+    "labels": {
+      "org.jovian.architecture": "linux-arm64-sm121",
+      "org.jovian.vllm.commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+      "org.jovian.b12x.commit": "2fcf23a0ce269be27b2e03fece73d46e90e6aeea",
+      "org.jovian.transport": "sparkring-nccl-2.30.7-source-built",
+      "org.sparkring.nccl.commit": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
+      "org.sparkring.nccl.patched-tree": "abdeb053b94c3f6d472cd55ae2b79ca821299009",
+      "org.sparkring.nccl.patch-sha256": "6709063fa1c25055ae77a9397dea5d89643f8211d25e7990bdd11597d08c0dde"
+    }
+  },
+  "builder": {
+    "arm_builder": "pytorch/manylinuxaarch64-builder@sha256:f91599c49f526c77d01b68286f2bf943a5fd6a432d7e3f0afcc5784825908fe9",
+    "output_name": "sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-arm64"
+  },
+  "vllm": {
+    "repository": "https://github.com/local-inference-lab/vllm.git",
+    "native_commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+    "native_tree": "4a99033352bc1a6b00852dc0e8b1cecbdd9f0ebb",
+    "python_commit": "0b67266a0f37d6146a8403fb8482403c62f412d5",
+    "python_tree": "ba9484ccb33aa56e90ff2f447f15ca9b9da97639",
+    "overlay_manifest": "runtime/glm53-flash-adaptive-mtp-python-overlay/vllm-python-overlay.json",
+    "overlay_manifest_sha256": "e5e528288b173399611a4930fecc4182b7208bc1564881d52ca5d2c5c4ae0f6a",
+    "runtime_patches": [
+      {
+        "status": "implemented",
+        "path": "runtime/glm53-flash-adaptive-mtp-python-overlay/patches/010-dflash-draft-load-config.patch",
+        "target": "vllm/v1/worker/gpu/spec_decode/dflash/utils.py",
+        "sha256": "39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279",
+        "preimage_sha256": "2301c8199b73ed893dfbd3ae14ad125816f100b2d2ed034215b1f2d9aa2c23c5",
+        "postimage_sha256": "98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4",
+        "contract": "DFlash passes SpeculativeConfig.draft_load_config to get_model; None retains the target LoadConfig fallback."
+      }
+    ],
+    "composed_runtime_patches": [
+      {
+        "status": "implemented",
+        "path": "runtime/glm53-flash-adaptive-mtp-python-overlay/patches/011-recurrent-boundary-contract.patch",
+        "sha256": "5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0",
+        "contract": "SchedulerOutput.recurrent_boundary_blocks exposes only hash-proven aligned Mamba pages and partial-tail CoW targets; request cleanup releases their pins.",
+        "targets": [
+          {
+            "path": "vllm/v1/core/kv_cache_manager.py",
+            "preimage_sha256": "ee03dc9ce2b720c0be6e9f572d23580ba96eff68fe3406250557e83071654af0",
+            "postimage_sha256": "c5b83d382c96b2bf8c466a993ed77123a14a971e2661797128533319388d0b5f"
+          },
+          {
+            "path": "vllm/v1/core/sched/output.py",
+            "preimage_sha256": "65235eba652e5a3ccee18bf3cbfeac9bf4da8fb9c61e961580f612cfb7e593bc",
+            "postimage_sha256": "9911b3f9d21815a185285852b5a6176e5484e1ab0ff5c30f7caaa68ea0fab543"
+          },
+          {
+            "path": "vllm/v1/core/sched/scheduler.py",
+            "preimage_sha256": "6d397c97f31e67a75efc01b5ddd89fa58db425de14fa43965ef2d6146b6b9bdb",
+            "postimage_sha256": "260f36ce8fabf70c193b20009ea465eea7b1b6c8e9fb72f2307a01ba8fcf7b2a"
+          },
+          {
+            "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+            "preimage_sha256": "e4b1c5c38b63b708fd55aa40a9ab0d008b266d006a63dcfcef55890ac1371cb8",
+            "postimage_sha256": "f67a1850a7e0288baaa6d42e7ec55b22b09c156720767e23acaabedcae333c8a"
+          }
+        ]
+      },
+      {
+        "status": "implemented",
+        "path": "runtime/glm53-flash-adaptive-mtp-python-overlay/patches/013-recurrent-publication-boundary.patch",
+        "sha256": "587fc332917a8ffd5a29712dc5253d51e6051eca1166ed4a165e576a84f2e300",
+        "contract": "Connector-proposed recurrent publication targets split scheduling without changing native hash geometry; exact secondary hashes survive CoW.",
+        "targets": [
+          {
+            "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+            "preimage_sha256": "bc1965431087676876f58360cd9cc07ab6c06febe6d747695f10b051fd85c412",
+            "postimage_sha256": "7460e0638c0c81808dbdbbad7114db2e840e531e9ce83360c55b9171fcc872b1"
+          },
+          {
+            "path": "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py",
+            "preimage_sha256": "aafafbf4b0e3a43e7c864270fe56ffaa4b0f3dc343e77a0871db25f075d984dd",
+            "postimage_sha256": "8741b86b0f3e91af06d01a52240cdc988e3073bf049f72b506f56d6ceebb1ac0"
+          },
+          {
+            "path": "vllm/v1/core/kv_cache_manager.py",
+            "preimage_sha256": "c5b83d382c96b2bf8c466a993ed77123a14a971e2661797128533319388d0b5f",
+            "postimage_sha256": "2c646969b750f6cb4e17fe8a6bf12993d01eefbfbe74e5f8c755f7e0d929faf2"
+          },
+          {
+            "path": "vllm/v1/core/sched/scheduler.py",
+            "preimage_sha256": "260f36ce8fabf70c193b20009ea465eea7b1b6c8e9fb72f2307a01ba8fcf7b2a",
+            "postimage_sha256": "494bfd8758e32d3b265fe4df92e8c93b91292899baf5fafe8b490d27bd15cd0f"
+          },
+          {
+            "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+            "preimage_sha256": "f67a1850a7e0288baaa6d42e7ec55b22b09c156720767e23acaabedcae333c8a",
+            "postimage_sha256": "abbedbd7b9165bbb005c9ba7ceb4367ee1987ac47c632a629dd17ed08ae1db0c"
+          }
+        ],
+        "test_patch": {
+          "path": "runtime/glm53-flash-adaptive-mtp-python-overlay/patches/012-recurrent-boundary-contract-tests.patch",
+          "sha256": "c358ba374f35dbe5939e39a7c7433676fbf4aef8e52e3fea0df131c7a6506ea7",
+          "target": "tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py",
+          "preimage_sha256": "2f58e600fd39413b385b9e96b3c642a9ffb051bedcfc247a700fb532b35ec185",
+          "postimage_sha256": "82ad238c138d33537cb05b990c1e2cdf3350f4002faceb55aa97770245c5f868"
+        }
+      }
+    ],
+    "native_source_objects": {
+      "csrc": "9ada29088768f1bc08dadd2eed3c9738eb9ac8a1",
+      "cmake": "5e5bbdbe1c1b3a479656d8d6a41cc32a1982c43d",
+      "rust": "85c3cd52db223217d45377d3f7f884e756641de3",
+      "CMakeLists.txt": "bb0f51b43ef4e1c57918b551b8cf213f9059b601",
+      "setup.py": "ae64a13daa0f1facc255afcdb4ffcad264776b98",
+      "pyproject.toml": "0766645fc7481da0ec439208128b838b3348d94c",
+      "requirements": "d6e1c8e13cd4c4358ab422e3ef006d3f9f23e18b",
+      "docker/Dockerfile": "6e20f6eab482782ed90a05d91b669b59641eaa46"
+    },
+    "retained_distribution_metadata": [
+      "vllm/_version.py",
+      "vllm-*.dist-info",
+      "/usr/local/bin/vllm"
+    ]
+  },
+  "b12x": {
+    "repository": "https://github.com/local-inference-lab/b12x.git",
+    "commit": "b1d541f9e71a35f030d45fae437630fff7507c2a",
+    "tree": "c69cdec1c59a08e8e0e549f930fa8abcfb5134ae",
+    "package_version": "1.3.0",
+    "base_commit": "2fcf23a0ce269be27b2e03fece73d46e90e6aeea",
+    "base_tree": "58a046fc8faa747346f40f87166cda7e0f67ff47",
+    "required_caps_field": "kda_metadata_validation",
+    "required_caps_value": "trusted"
+  },
+  "dependencies": {
+    "python": "3.12",
+    "torch": "2.13.0+cu130",
+    "cuda": "13.0.3",
+    "fastsafetensors": "0.3.3",
+    "instanttensor": "0.1.9",
+    "instanttensor_sdist_sha256": "d8692b97991c1a5fb2db7905b9a6ae90a7f967c7ddd853d35e41caa146750c02",
+    "nccl_library": "/opt/sparkring/nccl/libnccl.so.2.30.7",
+    "nccl_library_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3"
+  },
+  "sparkcache": {
+    "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
+    "commit": "9c2f6c8ac36e0aa5d134fbcd81e819db2ce63970",
+    "tree": "e7ac2ef7a3180c5a83771edac44216c3325894e5",
+    "source_tree_sha256": "834ff02c235e3f3a3594cec31d0a83d981ac8d410d6482d062725fd9b846a95c",
+    "cuda_placement_library_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
+    "cuda_config_schema": "canonical-v1",
+    "canonical_cuda_config_keys": [
+      "spark_cache_cuda_restore",
+      "spark_cache_cuda_placement_library",
+      "spark_cache_cuda_placement_library_sha256",
+      "spark_cache_cuda_placement_arena_bytes",
+      "spark_cache_cuda_restore_io_workers"
+    ],
+    "contract": {
+      "path": "sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json",
+      "sha256": "8adbdfa3fd4b06b213c3aab45255a0b039f1c9940a4b1fad0efd004d263227c9",
+      "files": 12
+    },
+    "patches": [
+      {
+        "path": "patches/vllm-glm53-b12x-kda-adaptive-mtp/020-sparkcache-vmm-exemption.patch",
+        "sha256": "370b498eebf44b4e52a2d2751fa249ad4bd3d0b6fd951b063a161fb06febbe99",
+        "target": "vllm/config/vllm.py",
+        "preimage_sha256": "cc03756d9bebf2a128828e5fbf7e9766446884dfce016c34381bce0aa78bfd9e",
+        "postimage_sha256": "9f64f5041f7f9d953e9f6bc53de8733b3eb4035c0753056a1f646346702a0994"
+      },
+      {
+        "path": "patches/vllm-glm53-b12x-kda-adaptive-mtp/030-sparkcache-hma-load-failure.patch",
+        "sha256": "0202df4b5db7bd35540eebdef51fcbe2bb01845b952964080e1fe903ee19b404",
+        "target": "vllm/v1/core/sched/scheduler.py",
+        "preimage_sha256": "05c05f4b372c7a4bf76399b38b338eab657c69406b7019ab02101d2ab0c7764c",
+        "postimage_sha256": "337893b6b088d12eb38d8d70c866242d085134442289b4f4574a1f162c9f11c8"
+      },
+      {
+        "path": "patches/vllm-glm53-b12x-kda-adaptive-mtp/040-sparkcache-shared-prefix-lease.patch",
+        "sha256": "6c6d6bdc2d6e35742ef37715e88697b1f972d23b28948690c4d8d835edcaf01b",
+        "target": "vllm/v1/core/kv_cache_manager.py",
+        "preimage_sha256": "02c71da26bbac81629248ee42b0a71bd2db817d339894d647d2ff6b66fd5ad19",
+        "postimage_sha256": "ee03dc9ce2b720c0be6e9f572d23580ba96eff68fe3406250557e83071654af0"
+      },
+      {
+        "path": "patches/vllm-glm53-b12x-kda-adaptive-mtp/041-sparkcache-shared-prefix-attach.patch",
+        "sha256": "b98e6bc06990f608fc5f0828c11b8eb453fbec0f8fbbf24ba45254810b7e67c3",
+        "target": "vllm/v1/core/sched/scheduler.py",
+        "preimage_sha256": "337893b6b088d12eb38d8d70c866242d085134442289b4f4574a1f162c9f11c8",
+        "postimage_sha256": "6d397c97f31e67a75efc01b5ddd89fa58db425de14fa43965ef2d6146b6b9bdb"
+      }
+    ]
+  },
+  "runtime_cleanup": {
+    "deep_ep": {
+      "module": "deep_ep",
+      "distribution": "deep_ep",
+      "version": "2.0.0+local",
+      "receipt_sha256": "65514f44829e7d176b0b2cacc9559ed22724e525b7041a8bcd4d2e02d1f372e3",
+      "reason": "The four-rank DFlash7 profile uses B12X kernels and PYNCCL collectives. Removing unused DeepEP prevents its import probe from loading a second NCCL distribution."
+    }
+  },
+  "page_base_restore_flight": {
+    "status": "implemented-unqualified",
+    "summary_schema": "sparkcache-page-base-restore-flight/v1",
+    "storage_mode": "block_pages_v1",
+    "base_tokens": 98304,
+    "result_tokens": 131072,
+    "private_tail_tokens": 32768,
+    "participants": 16,
+    "physical_base_reads": 1,
+    "avoided_base_reads": 15,
+    "required_outcome": "verified",
+    "maximum_simultaneous_flights": 2,
+    "maximum_declared_bytes_per_flight": 1073741824,
+    "maximum_peak_reserved_bytes": 2147483648,
+    "artifact_receipt": {
+      "schema": "sparkcache-diagnostic-image-receipt/v1",
+      "sha256": "551072f700db6cf064a85242ed1c8fbd52c8cca870c20534a6d0c1b133ba6bc4",
+      "builder_path": "/home/code/image-build-receipts/sparkring-glm53-sparkcache-dflash7-pr42-page-base-flight-arm64.json",
+      "image": "sparkring-glm53-sparkcache:dflash7-pr42-page-base-flight-arm64",
+      "image_id": "sha256:ba6ca684f5dbbe7fccac93aedce8abe907cf4cabcc4f5d2f481fad2706fdbfde",
+      "builder": "spark-aa42",
+      "feature_status": "implemented-gpu-free-tested",
+      "parent_image_id": "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8",
+      "cache_namespace_impact": "none"
+    }
+  },
+  "runtime_cache_roots": {
+    "VLLM_CACHE_ROOT": "/cache/jit/vllm/dflash7-pr42-page-base-flight",
+    "B12X_CUTE_COMPILE_CACHE_DIR": "/cache/jit/b12x/b1d541f9/dflash7-pr42-page-base-flight",
+    "TRITON_CACHE_DIR": "/cache/jit/triton/dflash7-pr42-page-base-flight"
+  },
+  "outputs": {
+    "image": null,
+    "image_id": null,
+    "image_digest": null,
+    "native_elf_manifest_sha256": null,
+    "native_dispatch_manifest_sha256": null,
+    "b12x_wheel_sha256": null
+  },
+  "workload": {
+    "role": "external-dflash7",
+    "target": {
+      "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+      "revision": "520de24eabf507659eaef7c70f14fd584527facc",
+      "cache_identity_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9"
+    },
+    "draft": {
+      "repository": "incoai/GLM-5.3-Flash-DFlash2",
+      "revision": "dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+      "config_sha256": "c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573",
+      "weights_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
+      "speculative_tokens": 7,
+      "tensor_parallel_size": 4
+    },
+    "target_loaders": {
+      "safetensors": "implemented",
+      "fastsafetensors": "implemented"
+    },
+    "kv_cache_dtype": "fp8",
+    "block_size": 256,
+    "max_num_seqs": 32
+  }
+}
