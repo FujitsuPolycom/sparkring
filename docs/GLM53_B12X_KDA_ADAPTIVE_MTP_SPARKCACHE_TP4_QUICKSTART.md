@@ -47,7 +47,7 @@ The receipt binds these sources to the local image ID. The builder does not
 push the image or contact serving hosts.
 
 `runtime/glm53-flash-b12x-kda-adaptive-mtp/` remains an exact full-source
-builder for its older SparkCache contract. It does not apply the recurrent
+builder for its separate SparkCache contract. It does not apply the recurrent
 producer after SparkCache's vLLM patches, so it is unsupported with SparkCache
 `c56f77f` and must not be substituted in this guide.
 
@@ -132,8 +132,9 @@ vLLM Python commit, retained native vLLM commit, B12X commit, maximum depth
 five, and `adaptive:3:32`, separated by zero bytes.
 
 Including both retained-native and overlaid-Python revisions gives this runtime
-a distinct draft-state cache identity from the e105 adaptive-MTP and older
-full-source profiles. Stored entries therefore recompute instead of crossing a
-runtime boundary without byte-equivalence evidence. SparkCache `49c517e` does
-not change wire fields, digest salts, or 256-token geometry; the new lease
+a distinct draft-state cache identity from the e105 adaptive-MTP and
+full-source profiles with other source identities. Stored entries therefore
+recompute instead of crossing a runtime boundary without byte-equivalence
+evidence. SparkCache `49c517e` does not change wire fields, digest salts, or
+256-token geometry; the lease
 contract accepts the producer postimages needed to prove recurrent publication.

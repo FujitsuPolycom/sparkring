@@ -1,6 +1,6 @@
 # Serve GLM-5.3 with external DFlash7 and the exact Python-overlay runtime
 
-Status: **implemented, not qualified** for the current build contract. The
+Status: **implemented, not qualified** for the selected source contract. The
 image builder, profile resolver, and four-rank dry-run contract pass without
 GPUs. Historical local image ID
 `sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb`
@@ -9,8 +9,8 @@ arbitrary page-boundary replay, and 131,072- and 262,144-token restore cases
 in the
 [bounded validation record](../performance/records/glm53-flash/dflash7-python-overlay-pr30-live-validation.md).
 That historical image used SparkCache `5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3`;
-it is not an artifact of the current contract below. It has no retained
-C2/C8/C16 or DFlash response-quality evidence. A current build has a different
+it is not an artifact of the source contract below. It has no retained
+C2/C8/C16 or DFlash response-quality evidence. A rebuild has a different
 identity and requires its own live checks.
 
 ## Runtime contract
@@ -45,7 +45,7 @@ bash runtime/glm53-flash-dflash7-python-overlay/build-image.sh
 The builder verifies the public da4 image, the 31-file Python overlay, retained
 native ELFs and dispatch operators, B12X, SparkCache clean source, the CUDA
 placement library, four SparkCache vLLM patches, the recurrent-boundary
-producer patch, and the eleven-file lease contract. The resulting profile also
+producer patch, and the twelve-file lease contract. The resulting profile also
 requires the producer patch label before starting any container.
 The base-image inspection must identify exactly one installed distribution,
 `deep_ep==2.0.0+local`, as the owner of the `deep_ep` module. The derived image
@@ -68,7 +68,7 @@ Two profiles share the same image and DFlash7 cache identity:
 | Profile | Status | Loader behavior |
 |---|---|---|
 | `glm53-flash-dflash7-python-overlay-safetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Uses global safetensors for target and draft. This follows the qualified-compatible loader shape but still requires live qualification on the composed 0b image. |
-| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified for the current build | Uses global fastsafetensors with queue size one for the target and `draft_load_config={"load_format":"safetensors"}` for DFlash. The historical receipt remains evidence only for its recorded image. |
+| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified for the selected source contract | Uses global fastsafetensors with queue size one for the target and `draft_load_config={"load_format":"safetensors"}` for DFlash. The historical receipt remains evidence only for its recorded image. |
 
 The image applies an exact-input vLLM patch that passes
 `SpeculativeConfig.draft_load_config` to the DFlash model loader. The image
@@ -164,7 +164,7 @@ content, writes the token's completion marker only after successful removal,
 and treats later starts with the same token as no-ops. Change the token only
 when another intentional cache reset is required.
 
-`--prefill-schedule-interval` is not part of the current DFlash7 profiles.
+`--prefill-schedule-interval` is not part of the selected DFlash7 profiles.
 Test interval `8` in a separate research-only profile so its mixed
 prefill/decode tradeoff is measured independently.
 

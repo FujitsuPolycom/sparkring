@@ -239,7 +239,7 @@ def validate_recurrent_boundary_sources(root: Path) -> None:
             "recurrent_boundary_blocks=pending_recurrent_boundary_blocks",
             scheduler_source,
         ),
-        "connector capability gate": (
+        "connector capability contract": (
             '"supports_recurrent_boundary_blocks"',
             scheduler_source,
         ),

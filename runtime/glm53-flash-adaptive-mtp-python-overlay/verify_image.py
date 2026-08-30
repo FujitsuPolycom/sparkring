@@ -35,7 +35,9 @@ def run(argv: Iterable[str]) -> str:
     )
     if completed.returncode:
         detail = completed.stderr.strip() or completed.stdout.strip()
-        raise VerifyError(f"command failed ({' '.join(arguments)}): {detail}")
+        raise VerifyError(
+            f"command did not complete ({' '.join(arguments)}): {detail}"
+        )
     return completed.stdout.strip()
 
 

@@ -1,9 +1,9 @@
 # GLM-5.3 public-base Python overlay
 
 Status: **implemented** for image construction and offline verification. The
-image is unsupported for serving until an immutable digest passes four-rank
-TP4/DCP1 model loading, semantic generation, SparkCache restore,
-failure-recovery, and concurrency checks.
+image is unsupported for serving until an immutable digest completes
+four-rank TP4/DCP1 model loading, semantic generation, SparkCache restore,
+restore-rejection recovery, and concurrency checks.
 
 This builder retains the compiled vLLM extensions and wheel metadata from the
 qualified public runtime
@@ -44,8 +44,8 @@ copy-on-write tail is commit
 deployable-source SHA-256
 `a2add45a9f97446f6c2a843355161da9a5499ff7501b4750d2163591785d7345`
 before generating the SparkCache CUDA placement library. It applies the VMM exemption,
-load-failure recovery, shared-prefix retention, and follower-attachment
-patches in order, then runs the eleven-file lease-contract verifier. The
+load-rejection recovery, shared-prefix retention, and follower-attachment
+patches in order, then runs the twelve-file lease-contract verifier. The
 pinned source accepts the canonical `spark_cache_cuda_*` configuration keys
 used by the profile. The test
 profile selects `spark_cache_publication_schema=tail-cow-v1`, which maps opaque

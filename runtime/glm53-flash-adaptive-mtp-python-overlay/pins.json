@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-glm53-public-python-overlay/v1",
   "status": "implemented",
-  "qualification": "The builder and offline verifier are implemented. The resulting image is unsupported for serving until an immutable image digest passes four-rank TP4/DCP1 model loading, generation, SparkCache restore, failure-recovery, and concurrency checks.",
+  "qualification": "The builder and offline verifier are implemented. The resulting image is unsupported for serving until an immutable image digest completes four-rank TP4/DCP1 model loading, generation, SparkCache restore, restore-rejection recovery, and concurrency checks.",
   "platform": "linux/arm64",
   "public_base": {
     "reference": "ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:864adfe68f458223e186a19844ac80c7adc7365e5db1f25e109b85fc19850dcd",
@@ -102,10 +102,10 @@
         ],
         "test_patch": {
           "path": "runtime/glm53-flash-adaptive-mtp-python-overlay/patches/012-recurrent-boundary-contract-tests.patch",
-          "sha256": "ebdb733db81651eaa8d7b1d3811c08782fd34a05cf9e2550bee7ef5a6fa8f48c",
+          "sha256": "c358ba374f35dbe5939e39a7c7433676fbf4aef8e52e3fea0df131c7a6506ea7",
           "target": "tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py",
           "preimage_sha256": "2f58e600fd39413b385b9e96b3c642a9ffb051bedcfc247a700fb532b35ec185",
-          "postimage_sha256": "4f1577ac68ff6d7eb9d9f2d57936feb03d8ef3fecd38b04a436178b863284c8c"
+          "postimage_sha256": "82ad238c138d33537cb05b990c1e2cdf3350f4002faceb55aa97770245c5f868"
         }
       }
     ],

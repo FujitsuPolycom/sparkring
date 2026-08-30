@@ -46,7 +46,7 @@ estimate.
 
 ## Result
 
-| Gate or measurement | Observed result |
+| Check or measurement | Observed result |
 |---|---|
 | Target fastsafetensors load | 53.93 seconds |
 | Draft safetensors load | 4.85 seconds |
@@ -57,7 +57,7 @@ estimate.
 | Arbitrary page boundary | 7,168-token base followed by verified 12,032-token restore; rank-zero total 487.657 ms; 47 objects |
 | Persistent 131,072-token restore | prime and replay completion token 13; rank range 123.6-151.4 ms |
 | Persistent 262,144-token restore | prime and replay completion token 916; 7.835-second request; rank range 5,842.1-7,217.9 ms |
-| Rank-zero 262,144-token phases | 1,024 objects; 4,437.355 ms read; 961.720 ms CUDA submission; 313.987 ms CUDA synchronization |
+| Rank-zero 262,144-token components | 1,024 objects; 4,437.355 ms read; 961.720 ms CUDA submission; 313.987 ms CUDA synchronization |
 
 ## Conclusion
 

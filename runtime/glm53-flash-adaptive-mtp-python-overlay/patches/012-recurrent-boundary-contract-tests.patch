@@ -170,7 +170,7 @@ index eff889b987..c7144f060a 100644
 +    prompt_tokens: int,
 +):
 +    """A caller that skips the required 6,912-token scheduler stop has no
-+    hash-proven recurrent page to publish and must fail closed."""
++    hash-proven recurrent page to publish and must emit no publication mapping."""
 +    hash_block_size = 256
 +    mamba_block_size = 2304
 +    kv_cache_config = KVCacheConfig(

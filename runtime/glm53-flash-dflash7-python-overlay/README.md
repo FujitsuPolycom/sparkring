@@ -1,13 +1,13 @@
 # GLM-5.3 DFlash7 public-base Python overlay
 
-Status: **implemented, not qualified** for the current source contract. The
+Status: **implemented, not qualified** for the selected source contract. The
 builder constructs and verifies an ARM64 image. Historical local image ID
 `sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb`
 is **qualified** only for the bounded four-rank cases recorded in
 `performance/records/glm53-flash/dflash7-python-overlay-pr30-live-validation.md`.
 That image used SparkCache `5ec6a9953ad5d39120298bbfc26e95a6fa4b1dc3`,
-not the current source below. Qualification does not transfer to a rebuild or
-to either current profile.
+not the source defined below. Qualification does not transfer to a rebuild or
+to either selected profile.
 
 The image combines these exact roles:
 
@@ -25,7 +25,7 @@ The image combines these exact roles:
   `b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b`.
 
 The image builder shares the byte allowlist, retained-native verifier, exact
-SparkCache patch chain, and eleven-file lease contract with
+SparkCache patch chain, and twelve-file lease contract with
 `runtime/glm53-flash-adaptive-mtp-python-overlay/`. Prepared image metadata is
 rendered for external DFlash7; it does not claim adaptive MTP.
 
@@ -48,7 +48,7 @@ operator-mounted and are verified by the runtime profile.
 
 Two executable profiles use external DFlash at depth seven and TP4, FP8 target
 KV, 256-token vLLM blocks, 32 sequences, and SparkCache page-tail copy-on-write
-publication with CUDA restore. Both current profiles are implemented but
+publication with CUDA restore. Both selected profiles are implemented but
 unqualified. The historical mixed-loader image is qualified only for the
 bounded cases named above. The conservative profile uses global
 safetensors. The mixed profile uses global fastsafetensors for the target and
@@ -65,8 +65,8 @@ The pinned SparkCache source at
 configuration keys, restores authenticated shared segment objects, reads page
 deltas with a bounded worker pool, and publishes only the copy-on-write tail.
 Its recurrent publication path requires the hash-proven boundary hand-off
-produced by this vLLM overlay and fails closed when that evidence is missing or
-contradictory. It does not change cache identity, page-tail wire schemas,
+produced by this vLLM overlay and does not publish when that evidence is
+missing or contradictory. It does not change cache identity, page-tail wire schemas,
 record geometry, or the CUDA placement ABI. Compatible `page-tail-cow-v1`
 entries remain eligible; unverified state is recomputed.
 Both profiles preserve B12X compute backends and the pinned PYNCCL/NCCL
@@ -99,7 +99,7 @@ only when the scheduler stops at that boundary and its stored hash token count
 and group ID both match. An overshooting direct manager call emits no mapping.
 The scheduler never substitutes a later running-state or DFlash speculative
 slot. Existing partial-tail copy-on-write targets remain available through
-`partial_tail_offloads` and are also included in the new field.
+`partial_tail_offloads` and are also included in the combined field.
 
 The scheduler pins an admitted block before worker execution. A connector that
 opts in must finish its worker-side snapshot before request cleanup; overlapping
