@@ -1,0 +1,337 @@
+{
+  "schema": "sparkring-glm53-pr146-live-validation/v2",
+  "normalization": {
+    "supersedes_schema": "sparkring-glm53-pr146-live-validation/v1",
+    "reason": "The C16 observation is classified as shared exact prefix reuse for block_pages_v1; it does not demonstrate per_token_rows different-root descriptor coalescing.",
+    "raw_measurements_changed": false
+  },
+  "status": {
+    "artifact_construction": "implemented",
+    "construction_verification_before_container_creation": "qualified",
+    "four_rank_process_health": "qualified",
+    "semantic_canary": "qualified",
+    "persistent_8k_restore_after_restart": "qualified",
+    "persistent_128k_restore": "qualified",
+    "tail_publication_128k_to_256k": "qualified",
+    "persistent_256k_restore_correctness": "qualified",
+    "shared_exact_prefix_c16": "qualified",
+    "different_root_row_descriptor_coalescing_live_validation": "unsupported",
+    "restore_performance": "research-only",
+    "continuous_availability_during_replacement": "unsupported",
+    "dflash_response_quality": "unsupported"
+  },
+  "artifact": {
+    "image": "sparkring-glm53-sparkcache:dflash7-pr39-reaching-d93cb3d-arm64",
+    "image_id": "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8",
+    "published_digest": null,
+    "image_receipt_sha256": "2c4a02efe91df5de21c5e3c92f65710b7d41680f25c22baed43ca96c1e5a51d3",
+    "oci_revision_label": "d93cb3d98305041081cf572521602625185112ae",
+    "sparkring_revision": "d93cb3d98305041081cf572521602625185112ae",
+    "sparkring_tree": "867c43d0107856c3ba43500912462008ba149cc8",
+    "sparkcache_pull_request": 39,
+    "sparkcache_revision": "65b6642df1afc64366430d3aef9aca01f5c5e1c3",
+    "sparkcache_tree": "41ad0a119ba109fd28900a2dcc9f9b4d8c293809",
+    "sparkcache_source_sha256": "a2add45a9f97446f6c2a843355161da9a5499ff7501b4750d2163591785d7345",
+    "sparkcache_vllm_contract_sha256": "8adbdfa3fd4b06b213c3aab45255a0b039f1c9940a4b1fad0efd004d263227c9",
+    "sparkcache_cuda_placement_library_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
+    "vllm_compiled_revision": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+    "vllm_python_revision": "0b67266a0f37d6146a8403fb8482403c62f412d5",
+    "vllm_python_tree": "ba9484ccb33aa56e90ff2f447f15ca9b9da97639",
+    "b12x_revision": "b1d541f9e71a35f030d45fae437630fff7507c2a",
+    "b12x_tree": "c69cdec1c59a08e8e0e549f930fa8abcfb5134ae",
+    "recurrent_boundary_patch_sha256": "5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0",
+    "recurrent_publication_patch_sha256": "587fc332917a8ffd5a29712dc5253d51e6051eca1166ed4a165e576a84f2e300",
+    "source_receipt_sha256": "611c88a48d30aae933828c6938dea2790f841ceeb05adbb80721d738cc029085"
+  },
+  "predecessor_artifact": {
+    "purpose": "Corroborating observations for the same connector publication-target API before the reaching-allocation correction; results do not qualify the final image.",
+    "image": "sparkring-glm53-sparkcache:dflash7-pr39-boundary-8a887be-arm64",
+    "image_id": "sha256:1b4e58dc0999292da34d7418688b2b7f745a5b4d06e048ceb19f06f9d63a1185",
+    "sparkring_revision": "8a887bebefa4bfcc0b47fc24de34a986b042fb29",
+    "sparkcache_revision": "b830c84d93a80db869e0cfeed433f330bd611a7b",
+    "sparkcache_source_sha256": "09b74cf425c5a4f6149cc9e9c518a50a679996c9abe2e6d176a3fd95ff66250a",
+    "sparkcache_vllm_contract_sha256": "9d5c9a4c4d4efdc56560d63135f5e85a1e083c2bf635b52a8ba1ad2ab86d4da8",
+    "recurrent_publication_patch_sha256": "5c8102866b18ea7cb411fa3e5611700eb2d8020b6a3392d3d6053afaa04ace22"
+  },
+  "conditions": {
+    "observed_at_utc": "2026-08-30T09:59:15Z/2026-08-30T11:06:44Z",
+    "hardware": "four NVIDIA DGX Spark systems",
+    "topology": {
+      "tensor_parallel_size": 4,
+      "decode_context_parallel_size": 1,
+      "pipeline_parallel_size": 1
+    },
+    "served_model": "glm-5.3-flash-nvfp4-dflash7-python-overlay-0b67266-on-da4d7be-b12x-b1d541f-tp4",
+    "target_repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+    "target_revision": "520de24eabf507659eaef7c70f14fd584527facc",
+    "target_cache_identity_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9",
+    "draft_repository": "incoai/GLM-5.3-Flash-DFlash2",
+    "draft_revision": "dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+    "draft_weights_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
+    "target_loader": "fastsafetensors",
+    "target_loader_queue_size": 1,
+    "draft_loader": "safetensors",
+    "draft_method": "dflash",
+    "draft_tokens": 7,
+    "draft_tensor_parallel_size": 4,
+    "kv_cache_dtype": "fp8",
+    "kv_cache_bytes_per_rank": 21474836480,
+    "vllm_block_size_tokens": 256,
+    "max_num_seqs": 32,
+    "max_num_batched_tokens": 8192,
+    "sparkcache_publication_schema": "tail-cow-v1",
+    "sparkcache_effective_publication_schema": "page-tail-cow-v1",
+    "sparkcache_config_schema": "canonical-v1",
+    "sparkcache_cuda_restore_io_workers": 8,
+    "sparkcache_load_threads": 2,
+    "restore_storage_mode": "block_pages_v1",
+    "different_root_row_descriptor_coalescing": "implemented with GPU-free coverage; not exercised by this artifact"
+  },
+  "measurements": {
+    "construction_verification_before_container_creation": {
+      "image_created_at": "2026-08-30T05:23:13.09226879-05:00",
+      "image_id": "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8",
+      "image_receipt_modified_at": "2026-08-30T05:23:18.699254136-05:00",
+      "image_receipt_bytes": 8690,
+      "image_receipt_sha256": "2c4a02efe91df5de21c5e3c92f65710b7d41680f25c22baed43ca96c1e5a51d3",
+      "container_created_at_by_rank": {
+        "0": "2026-08-30T10:46:32.100779355Z",
+        "1": "2026-08-30T10:46:32.552667746Z",
+        "2": "2026-08-30T10:46:32.57152575Z",
+        "3": "2026-08-30T10:46:32.079344046Z"
+      },
+      "container_observed_started_at_by_rank": {
+        "0": "2026-08-30T11:02:10.85447775Z",
+        "1": "2026-08-30T11:02:22.761844485Z",
+        "2": "2026-08-30T11:02:22.561316447Z",
+        "3": "2026-08-30T11:02:22.135979337Z"
+      },
+      "result": "The exact construction and source-contract receipt existed before every observed replacement container was created.",
+      "continuous_availability": "unsupported"
+    },
+    "final_image_process_state_after_clean_relaunch": {
+      "image_id_on_all_ranks": "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8",
+      "container_state_by_rank": ["running", "running", "running", "running"],
+      "docker_healthcheck": "not configured",
+      "restart_count_by_rank": [0, 0, 0, 0],
+      "oom_killed_by_rank": [false, false, false, false]
+    },
+    "semantic_canary": {
+      "prompt_sha256": "2db5eec56761ff3e65d2ffac7831166072631322bae9f6535c20766cc518f70c",
+      "content_sha256": "b3247575fe963313f8b2f298a0210161c66049bbdd7f3a69a7c3f4f62b8992c6",
+      "elapsed_seconds": 1.411,
+      "prompt_tokens": 27,
+      "completion_tokens": 45,
+      "finish_reason": "stop",
+      "semantic_match": true,
+      "validation_passed": true
+    },
+    "persistent_restore_8k_after_clean_relaunch": {
+      "prompt_sha256": "a8569c46a6cbf22bae4736c897023f7c552952440bf75e1ef6ebabe594f513cf",
+      "request_id": "chatcmpl-9c60514089aed6f5-b033fd19",
+      "client_elapsed_seconds": 1.573,
+      "prompt_tokens": 8215,
+      "completion_tokens": 64,
+      "restored_tokens": 8192,
+      "page_bytes_per_rank": 103841965,
+      "rank_restore": {
+        "0": {
+          "end_to_end_ms": 66.550,
+          "service_ms": 66.397,
+          "restore_read_ms": 26.756,
+          "h2d_submit_ms": 0.869,
+          "cuda_sync_ms": 7.521,
+          "outcome": "verified"
+        },
+        "1": {
+          "end_to_end_ms": 59.759,
+          "service_ms": 59.648,
+          "restore_read_ms": 26.125,
+          "h2d_submit_ms": 0.840,
+          "cuda_sync_ms": 7.257,
+          "outcome": "verified"
+        },
+        "2": {
+          "end_to_end_ms": 60.924,
+          "service_ms": 60.792,
+          "restore_read_ms": 26.813,
+          "h2d_submit_ms": 0.909,
+          "cuda_sync_ms": 7.050,
+          "outcome": "verified"
+        },
+        "3": {
+          "end_to_end_ms": 63.868,
+          "service_ms": 63.589,
+          "restore_read_ms": 29.189,
+          "h2d_submit_ms": 1.320,
+          "cuda_sync_ms": 7.485,
+          "outcome": "verified"
+        }
+      }
+    },
+    "persistent_restore_128k": {
+      "request_id": "cmpl-a0a54340ddee4a20-0-922b327d",
+      "context_digest_prefix": "2010bc9db8fe",
+      "restored_tokens": 131072,
+      "page_bytes_per_rank": 813068464,
+      "logical_page_objects": 512,
+      "rank_restore": {
+        "0": {"end_to_end_ms": 285.283, "service_ms": 285.130, "restore_read_ms": 114.632, "outcome": "verified"},
+        "1": {"end_to_end_ms": 160.515, "service_ms": 160.367, "restore_read_ms": 117.423, "outcome": "verified"},
+        "2": {"end_to_end_ms": 154.233, "service_ms": 154.087, "restore_read_ms": 105.059, "outcome": "verified"},
+        "3": {"end_to_end_ms": 216.350, "service_ms": 216.119, "restore_read_ms": 137.881, "outcome": "verified"}
+      }
+    },
+    "tail_publication_128k_to_256k": {
+      "manifest_schema": "sparkcache-page-delta-manifest/v2",
+      "manifest_sha256": "f21221318441d809c7393582741ff896cec0cf82e5c35c34a6dabd3d5b77eba6",
+      "context_digest": "e532f048762ffec5bcc0c69283a3d5afacb652efbbf4267d34afab99737460b9",
+      "base_context_digest": "2010bc9db8fee25489d1580d1105cdcc819fa7a04c8edeffaf23d298e52452cd",
+      "base_committed_tokens": 131072,
+      "result_committed_tokens": 262144,
+      "base_root_objects": 512,
+      "delta_encoded_bytes": 826457677,
+      "delta_object_target_bytes": 67108864,
+      "delta_object_count": 13,
+      "last_delta_object_bytes": 21151309,
+      "delta_sha256": "3976f30ef3575e6f8e80b1f90f742d22c2cac30c7d428b96e69d4ca98bf5a41c",
+      "layout_sha256": "0d0b44eeb515963cf262f5d4d5b345caf794b85b1fa0cf11ad18576c1e8e7331",
+      "logical_chunk_tokens": 256
+    },
+    "persistent_restore_256k": {
+      "request_id": "cmpl-96421d674c60905b-0-8b3016dc",
+      "context_digest_prefix": "e532f048762f",
+      "restored_tokens": 262144,
+      "page_bytes_per_rank": 1575821491,
+      "logical_chunk_count": 1024,
+      "rank_restore": {
+        "0": {"end_to_end_ms": 7149.323, "service_ms": 7149.171, "restore_read_ms": 5642.991, "h2d_submit_ms": 1021.598, "cuda_sync_ms": 311.630, "outcome": "verified"},
+        "1": {"end_to_end_ms": 6688.887, "service_ms": 6688.648, "restore_read_ms": 5205.596, "h2d_submit_ms": 999.986, "cuda_sync_ms": 309.115, "outcome": "verified"},
+        "2": {"end_to_end_ms": 7206.548, "service_ms": 7206.445, "restore_read_ms": 5693.261, "h2d_submit_ms": 1094.960, "cuda_sync_ms": 310.021, "outcome": "verified"},
+        "3": {"end_to_end_ms": 6738.472, "service_ms": 6738.307, "restore_read_ms": 5369.241, "h2d_submit_ms": 983.740, "cuda_sync_ms": 314.508, "outcome": "verified"}
+      }
+    },
+    "shared_exact_prefix_c16": {
+      "scenario": "shared_exact_prefix",
+      "storage_mode": "block_pages_v1",
+      "cache_state": "hot",
+      "input_mode": "pretokenized",
+      "concurrency": 16,
+      "shared_prefix_tokens": 131072,
+      "prompt_tokens_per_request": 131198,
+      "distinct_prompt_sha256_count": 16,
+      "prompt_sha256": [
+        "d5f1b3ab33b2f2f15edeedc2cc2eba72e5383a90643b45d63424cb327da66482",
+        "d815fcfce3972dce322b12b4834103c098f3edb0792b40af2aea5b50975e36f4",
+        "b743a059dbd6f40efc1d49436595d304b5bce4fa9ee9cc4a162e8bb4ce70771e",
+        "4efc76064841085a037719d26665fa2f2bdcdc8138193aa8c23fcb2a537e09a1",
+        "2e9c159903bf85804405f936f86e209f17c0b09feaacbb61c97cdce56a054efe",
+        "b44f9d32533c4695851124f26227e75db40c2dbcb8acfffd6ed8bed6ff57ea76",
+        "a0b7280567c81425abe52561810bf87f24a009edf5360e3b7729593c98b43a60",
+        "6a557ba1e08903be2e4a01b28603196df1d3cccfd4c28f8b19ada630dacec2eb",
+        "26b067c27b6b655e139bf23458482e83bfad1ae42feba0031daf7a5cb6ef4bca",
+        "1b587fce54df6a28d716f78a41dce3487992f59309b8cdda17682a0fa44b1cc9",
+        "8b7d00b764e3ebac0c441d06209bbf42037c814f9cef41569d1b790b6fc0810f",
+        "2bd40c188874f684846083ea51e5a7a72b332ae40d953b5c2990d795fdb446d5",
+        "2fc76ad6f02962844e34b08fa36ca51e1ea3551368567ffe7011e7548a7f2976",
+        "fafe33fdca12bea5739cf2a35a9a9007d9af1e4b68535cd6c12b6547fd7c518e",
+        "c2ccd604267c338f388572e00e496eb30d8b177209aa7709df97a1a8c4a638fd",
+        "0f0bde228ec8fc00651e7a8808c5afcfa594debfbc3d637ee4b2ddc8ff995b5a"
+      ],
+      "http_200": 16,
+      "succeeded": 16,
+      "unsuccessful": 0,
+      "request_elapsed_seconds": [
+        4.240340,
+        4.243560,
+        2.932669,
+        4.243596,
+        4.239915,
+        4.242356,
+        4.241536,
+        4.240078,
+        4.244709,
+        4.243628,
+        4.240034,
+        4.242638,
+        4.243659,
+        4.243318,
+        4.243736,
+        4.244259
+      ],
+      "aggregate": {
+        "minimum_seconds": 2.932669,
+        "p50_seconds": 4.242638,
+        "p95_seconds": 4.244709,
+        "maximum_seconds": 4.244709
+      },
+      "external_restore_events_per_rank": 1,
+      "external_restore_request_id": "cmpl-9ac4e6b523215233-0-9c41ccbc",
+      "external_restore": {
+        "restored_tokens": 131072,
+        "page_bytes_per_rank": 813068464,
+        "rank_restore": {
+          "0": {"end_to_end_ms": 400.689, "service_ms": 400.345, "restore_read_ms": 196.672, "h2d_submit_ms": 9.367, "cuda_sync_ms": 3.413, "outcome": "verified"},
+          "1": {"end_to_end_ms": 447.798, "service_ms": 447.384, "restore_read_ms": 181.070, "h2d_submit_ms": 9.699, "cuda_sync_ms": 3.467, "outcome": "verified"},
+          "2": {"end_to_end_ms": 455.789, "service_ms": 455.542, "restore_read_ms": 193.841, "h2d_submit_ms": 10.823, "cuda_sync_ms": 3.394, "outcome": "verified"},
+          "3": {"end_to_end_ms": 360.578, "service_ms": 360.305, "restore_read_ms": 205.863, "h2d_submit_ms": 11.200, "cuda_sync_ms": 3.414, "outcome": "verified"}
+        }
+      },
+      "recurrent_warning_count": 0
+    },
+    "predecessor_same_boundary_api": {
+      "scope": "Observations from image sha256:1b4e58dc0999292da34d7418688b2b7f745a5b4d06e048ceb19f06f9d63a1185; not transferred to the final image.",
+      "persistent_8k": {
+        "prime_client_seconds": 7.694,
+        "clean_postrestart_client_seconds": 1.744,
+        "prompt_tokens": 8215,
+        "publication_target_tokens": 8192,
+        "rank_restore_milliseconds_rounded_range": {"minimum": 59, "maximum": 67}
+      },
+      "persistent_128k_cold_flat": {
+        "logical_page_objects": 512,
+        "rank_restore_seconds_observed_range": {"minimum": 3.39, "maximum": 4.15}
+      },
+      "identical_prefix_waves": [
+        {
+          "concurrency": 2,
+          "http_200": 2,
+          "request_elapsed_seconds": [4.860512, 4.667638],
+          "minimum_seconds": 4.667638,
+          "p50_seconds": 4.667638,
+          "p95_seconds": 4.860512,
+          "maximum_seconds": 4.860512
+        },
+        {
+          "concurrency": 8,
+          "http_200": 8,
+          "request_elapsed_seconds": [4.924467, 4.924104, 4.925342, 4.152364, 4.923964, 4.925845, 4.924800, 4.925012],
+          "minimum_seconds": 4.152364,
+          "p50_seconds": 4.924467,
+          "p95_seconds": 4.925845,
+          "maximum_seconds": 4.925845
+        },
+        {
+          "concurrency": 16,
+          "http_200": 16,
+          "request_elapsed_seconds": [6.205471, 6.205773, 6.207588, 4.393610, 6.205077, 6.204673, 6.205487, 6.207900, 6.206825, 6.202956, 6.208569, 6.208230, 6.204779, 6.205961, 6.207079, 6.204510],
+          "minimum_seconds": 4.393610,
+          "p50_seconds": 6.205487,
+          "p95_seconds": 6.208569,
+          "maximum_seconds": 6.208569
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "Restore timing values are single observations or single waves and are research-only; they do not establish throughput, variability, or soak behavior.",
+    "The 131072-token opaque base contains 512 per-page objects. The 131072-to-262144 tail is macro-grouped into 13 objects, but flat opaque snapshots are not macro-grouped.",
+    "The 262144-token restore reads 1024 logical chunks and took 6688.887 to 7206.548 milliseconds across ranks, so it is a correctness result rather than a speed claim.",
+    "The final image has one C16 shared exact prefix wave. It does not exercise per_token_rows different-root descriptor coalescing. C2, C8, and C16 identical-prefix waves were observed only on the predecessor image and do not qualify the final image.",
+    "The semantic canary verifies one fixed expected response. No scored DFlash response-quality benchmark was run.",
+    "The image has no published OCI digest and exists only on the observed deployment hosts.",
+    "The retained timestamps prove construction and source-contract verification preceded replacement-container creation. They do not prove uninterrupted availability of the previous service before or during replacement.",
+    "The prefill schedule interval remained at the profile default; --prefill-schedule-interval 8 was not tested.",
+    "A complete command transcript and sanitized raw HTTP response bodies were not retained with this record."
+  ]
+}

@@ -39,6 +39,10 @@ SAFE = (
 )
 SITE = CONFIG / "glm53-flash-tp4-site.example.yaml"
 GUIDE = ROOT / "docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md"
+QUALIFIED_IMAGE_ID = (
+    "sha256:ed60be066d6d9eadea267bc4597a0687869f3ddb95a3e5c6f86649893a838eb8"
+)
+QUALIFIED_SPARKRING_COMMIT = "d93cb3d98305041081cf572521602625185112ae"
 DIGESTS = {
     "cuda_placement_library_sha256": "1a" * 32,
     "native_elf_manifest_sha256": "2b" * 32,
@@ -273,6 +277,24 @@ def test_quickstart_names_both_loader_statuses_and_exact_builder() -> None:
     assert "runtime/glm53-flash-dflash7-python-overlay/build-image.sh" in guide
     assert FAST.name in guide and SAFE.name in guide
     assert "implemented" in guide and "qualified" in guide
+    assert QUALIFIED_IMAGE_ID in guide
+    assert QUALIFIED_SPARKRING_COMMIT in guide
+    assert SPARKCACHE_COMMIT in guide
+    assert "pr146-recurrent-publication-live-validation.md" in guide
+    assert "pull request #147" in guide
+    assert "clean-restart" in guide
+    assert "131,072 to 262,144 tokens" in guide
+    assert "16 distinct" in guide
+    assert "`block_pages_v1`" in guide
+    assert "`per_token_rows` different-root descriptor-segment" in guide
+    assert "absent from this artifact's live qualification" in guide
+    assert "rebuilds are not qualified" in guide
+    assert "twelve-file lease contract" in guide
+    assert "command that changes\ncontainers" in guide
+    assert "Restore timings are" in guide and "research-only" in guide
+    assert "response quality is **unsupported**" in guide
+    assert "Public OCI publication is" in guide
+    assert "Separate historical artifact" in guide
     assert "sha256:eef863d8bc578815a80b0e2d9f0d745102b6363415225101fd92171a2e5a55cb" in guide
     assert DFLASH_WEIGHTS_SHA256 in guide
     assert DFLASH_LOADER_PATCH_SHA256 in guide
