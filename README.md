@@ -65,9 +65,8 @@ See the [profile registry](docs/profiles/README.md) for recipe identities and ev
 ### GLM-5.3 Flash research observation
 
 **Research-only — 16K context, single observation.** The SparkCache-enabled
-profile recorded 2,371 tok/s integrated-scout prefill and 36.06 tok/s sustained
-C1 decode. No A/B baseline was measured. C4 and C8 were capacity-limited, so
-their throughput values are invalid and excluded.
+profile recorded 2,371 tok/s prefill and 36.06 tok/s sustained
+C1 decode on random tokens. No A/B baseline has been completed.
 
 | Profile | Prefill | C1 decode | C8 decode | Highest valid decode | Coding peak |
 |---|---:|---:|---:|---:|---:|
