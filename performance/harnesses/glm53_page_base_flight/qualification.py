@@ -44,7 +44,9 @@ LANE_CODEWORDS = (
     "apple",
 )
 UNRELATED_CODEWORD = "quartz"
-INSTRUCTION_TEMPLATE = "Reply with exactly the lowercase word {word}.\nAnswer:"
+INSTRUCTION_TEMPLATE = (
+    "The required answer is {word}. Reply with exactly {word}.\nAnswer:"
+)
 READINESS_RETRY_SECONDS = 1.0
 READINESS_MAX_ATTEMPTS = 8
 READINESS_TOTAL_SECONDS = 60.0
