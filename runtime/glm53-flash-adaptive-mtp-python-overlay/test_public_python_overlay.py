@@ -140,6 +140,13 @@ def test_containerfile_reuses_vllm_and_nccl_native_artifacts() -> None:
     assert "setup.py bdist_wheel" not in recipe
     assert "make -C /build/nccl" not in recipe
 
+    source_copy = recipe.index(
+        "COPY bundle/sources/sparkcache/sparkcache /opt/sparkcache-src/sparkcache"
+    )
+    source_verification = recipe.index('printf \'sparkcache_source_sha256=%s')
+    native_copy = recipe.index("COPY --from=sparkcache-native", source_verification)
+    assert source_copy < source_verification < native_copy
+
 
 def test_build_prepares_context_below_the_temporary_workspace() -> None:
     script = (HERE / "build-image.sh").read_text(encoding="utf-8")

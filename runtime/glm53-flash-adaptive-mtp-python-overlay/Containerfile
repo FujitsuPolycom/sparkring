@@ -90,6 +90,11 @@ RUN uv pip install --system --reinstall --no-deps \
       "${PYTHON_OVERLAY_ROOT}/b12x-wheel.sha256"
 
 COPY bundle/sources/sparkcache/sparkcache /opt/sparkcache-src/sparkcache
+COPY bundle/sources/sparkcache/deploy/deployment_contract/source.py \
+  /opt/sparkcache-source-identity.py
+RUN actual_source="$(python3 -c 'import importlib.util, pathlib; spec = importlib.util.spec_from_file_location("source_identity", "/opt/sparkcache-source-identity.py"); module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module); print(module.source_tree_sha256(pathlib.Path("/opt/sparkcache-src/sparkcache")))')" \
+ && printf 'sparkcache_source_sha256=%s\n' "${actual_source}" \
+ && test "${actual_source}" = "${SPARKCACHE_SOURCE_SHA256}"
 COPY --from=sparkcache-native \
   /build/sparkcache-native/build-cuda/libspark_cache_placement.so \
   /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so
@@ -98,19 +103,14 @@ COPY --from=sparkcache-native \
   /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so.sha256
 COPY bundle/sources/sparkcache/patches/vllm-glm53-b12x-kda-adaptive-mtp \
   /opt/sparkcache-vllm-patches
-COPY bundle/sources/sparkcache/deploy/deployment_contract/source.py \
-  /opt/sparkcache-source-identity.py
 COPY bundle/runtime/SparkRing-LICENSE /usr/share/licenses/SparkRing/LICENSE
 COPY bundle/sources/vllm/LICENSE /usr/share/licenses/vLLM/LICENSE
 COPY bundle/sources/b12x/LICENSE /usr/share/licenses/B12X/LICENSE
 COPY bundle/sources/sparkcache/LICENSE /usr/share/licenses/SparkCache/LICENSE
 
 RUN set -eu; \
-    actual_source="$(python3 -c 'import importlib.util, pathlib; spec = importlib.util.spec_from_file_location("source_identity", "/opt/sparkcache-source-identity.py"); module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module); print(module.source_tree_sha256(pathlib.Path("/opt/sparkcache-src/sparkcache")))')"; \
     actual_native="$(sha256sum /opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so | cut -d' ' -f1)"; \
-    printf 'sparkcache_source_sha256=%s\nsparkcache_native_sha256=%s\n' \
-      "${actual_source}" "${actual_native}"; \
-    test "${actual_source}" = "${SPARKCACHE_SOURCE_SHA256}"; \
+    printf 'sparkcache_native_sha256=%s\n' "${actual_native}"; \
     test "${actual_native}" = "${SPARKCACHE_NATIVE_SHA256}"; \
     root=/usr/local/lib/python3.12/dist-packages; \
     config="${root}/vllm/config/vllm.py"; \
