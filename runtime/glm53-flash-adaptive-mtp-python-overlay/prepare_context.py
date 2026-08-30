@@ -248,7 +248,9 @@ def verify_composed_runtime_patches(
                         f"{target_record['path']}"
                     )
 
-            test_record = record["test_patch"]
+            test_record = record.get("test_patch")
+            if test_record is None:
+                continue
             test_patch = patch_root / Path(test_record["path"]).name
             test_target = source / test_record["target"]
             if sha256_file(test_patch) != test_record["sha256"]:
@@ -402,7 +404,9 @@ def prepare(output: Path, *, repository_root: Path = ROOT) -> dict[str, Any]:
     runtime_patches = []
     patch_records = list(pins["vllm"].get("runtime_patches", ()))
     for patch in pins["vllm"].get("composed_runtime_patches", ()):
-        patch_records.extend((patch, patch["test_patch"]))
+        patch_records.append(patch)
+        if "test_patch" in patch:
+            patch_records.append(patch["test_patch"])
     for patch in patch_records:
         name = Path(patch["path"]).name
         copy_file(patch_root / name, runtime / "patches" / name)

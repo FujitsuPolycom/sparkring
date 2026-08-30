@@ -89,6 +89,8 @@ COPY bundle/runtime/patches/011-recurrent-boundary-contract.patch \
   ${PYTHON_OVERLAY_ROOT}/patches/011-recurrent-boundary-contract.patch
 COPY bundle/runtime/patches/012-recurrent-boundary-contract-tests.patch \
   ${PYTHON_OVERLAY_ROOT}/patches/012-recurrent-boundary-contract-tests.patch
+COPY bundle/runtime/patches/013-recurrent-publication-boundary.patch \
+  ${PYTHON_OVERLAY_ROOT}/patches/013-recurrent-publication-boundary.patch
 RUN root=/usr/local/lib/python3.12/dist-packages; \
     target="${root}/vllm/v1/worker/gpu/spec_decode/dflash/utils.py"; \
     before="$(sha256sum "${target}" | cut -d' ' -f1)"; \
@@ -152,9 +154,11 @@ RUN set -eu; \
       < /opt/sparkcache-vllm-patches/041-sparkcache-shared-prefix-attach.patch; \
     test "$(sha256sum "${scheduler}" | cut -d' ' -f1)" = 6d397c97f31e67a75efc01b5ddd89fa58db425de14fa43965ef2d6146b6b9bdb; \
     recurrent_patch="${PYTHON_OVERLAY_ROOT}/patches/011-recurrent-boundary-contract.patch"; \
+    publication_patch="${PYTHON_OVERLAY_ROOT}/patches/013-recurrent-publication-boundary.patch"; \
     recurrent_tests="${PYTHON_OVERLAY_ROOT}/patches/012-recurrent-boundary-contract-tests.patch"; \
     test "$(sha256sum "${recurrent_patch}" | cut -d' ' -f1)" = 5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0; \
-    test "$(sha256sum "${recurrent_tests}" | cut -d' ' -f1)" = fd6ebb99c60f7d242d7594bc5de4136f73768ccfa7327cef562c241126d3581c; \
+    test "$(sha256sum "${publication_patch}" | cut -d' ' -f1)" = 5c8102866b18ea7cb411fa3e5611700eb2d8020b6a3392d3d6053afaa04ace22; \
+    test "$(sha256sum "${recurrent_tests}" | cut -d' ' -f1)" = 52f3a951d817efc335c926a6b7cb42618b88ae85a785577d1e59e2ad2db15804; \
     test "$(sha256sum "${root}/vllm/v1/core/kv_cache_manager.py" | cut -d' ' -f1)" = ee03dc9ce2b720c0be6e9f572d23580ba96eff68fe3406250557e83071654af0; \
     test "$(sha256sum "${root}/vllm/v1/core/sched/output.py" | cut -d' ' -f1)" = 65235eba652e5a3ccee18bf3cbfeac9bf4da8fb9c61e961580f612cfb7e593bc; \
     test "$(sha256sum "${root}/vllm/v1/core/sched/scheduler.py" | cut -d' ' -f1)" = 6d397c97f31e67a75efc01b5ddd89fa58db425de14fa43965ef2d6146b6b9bdb; \
@@ -164,6 +168,14 @@ RUN set -eu; \
     test "$(sha256sum "${root}/vllm/v1/core/sched/output.py" | cut -d' ' -f1)" = 9911b3f9d21815a185285852b5a6176e5484e1ab0ff5c30f7caaa68ea0fab543; \
     test "$(sha256sum "${root}/vllm/v1/core/sched/scheduler.py" | cut -d' ' -f1)" = 260f36ce8fabf70c193b20009ea465eea7b1b6c8e9fb72f2307a01ba8fcf7b2a; \
     test "$(sha256sum "${root}/vllm/v1/core/single_type_kv_cache_manager.py" | cut -d' ' -f1)" = f67a1850a7e0288baaa6d42e7ec55b22b09c156720767e23acaabedcae333c8a; \
+    test "$(sha256sum "${root}/vllm/distributed/kv_transfer/kv_connector/v1/base.py" | cut -d' ' -f1)" = bc1965431087676876f58360cd9cc07ab6c06febe6d747695f10b051fd85c412; \
+    test "$(sha256sum "${root}/vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py" | cut -d' ' -f1)" = aafafbf4b0e3a43e7c864270fe56ffaa4b0f3dc343e77a0871db25f075d984dd; \
+    patch --batch --forward -p1 -d "${root}" < "${publication_patch}"; \
+    test "$(sha256sum "${root}/vllm/distributed/kv_transfer/kv_connector/v1/base.py" | cut -d' ' -f1)" = 7460e0638c0c81808dbdbbad7114db2e840e531e9ce83360c55b9171fcc872b1; \
+    test "$(sha256sum "${root}/vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py" | cut -d' ' -f1)" = 8741b86b0f3e91af06d01a52240cdc988e3073bf049f72b506f56d6ceebb1ac0; \
+    test "$(sha256sum "${root}/vllm/v1/core/kv_cache_manager.py" | cut -d' ' -f1)" = 2c646969b750f6cb4e17fe8a6bf12993d01eefbfbe74e5f8c755f7e0d929faf2; \
+    test "$(sha256sum "${root}/vllm/v1/core/sched/scheduler.py" | cut -d' ' -f1)" = 74afcccd11b0ad48cab3925c623cb310effbf425825bc278bed03163848c528f; \
+    test "$(sha256sum "${root}/vllm/v1/core/single_type_kv_cache_manager.py" | cut -d' ' -f1)" = abbedbd7b9165bbb005c9ba7ceb4367ee1987ac47c632a629dd17ed08ae1db0c; \
     python3 /opt/sparkcache-src/sparkcache/runtime_patches/verify_lease_contract.py \
       --vllm-root "${root}" \
       --contract /opt/sparkcache-src/sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json; \
@@ -195,6 +207,7 @@ LABEL org.opencontainers.image.title="SparkRing GLM-5.3 adaptive-MTP Python over
       org.sparkring.vllm.dflash-draft-loader-patch-sha256="39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279" \
       org.sparkring.vllm.dflash-draft-loader-postimage-sha256="98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4" \
       org.sparkring.vllm.recurrent-boundary-patch-sha256="5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0" \
+      org.sparkring.vllm.recurrent-publication-patch-sha256="5c8102866b18ea7cb411fa3e5611700eb2d8020b6a3392d3d6053afaa04ace22" \
       org.sparkring.vllm.native-elf-manifest-sha256="${NATIVE_ELF_MANIFEST_SHA256}" \
       org.sparkring.vllm.native-dispatch-manifest-sha256="${NATIVE_DISPATCH_MANIFEST_SHA256}" \
       org.jovian.b12x.commit="${B12X_COMMIT}" \
@@ -203,6 +216,6 @@ LABEL org.opencontainers.image.title="SparkRing GLM-5.3 adaptive-MTP Python over
       org.sparkcache.source-tree="${SPARKCACHE_TREE}" \
       org.sparkcache.source-sha256="${SPARKCACHE_SOURCE_SHA256}" \
       org.sparkcache.cuda-placement-library-sha256="${SPARKCACHE_CUDA_PLACEMENT_SHA256}" \
-      org.sparkcache.vllm-contract-sha256="f36ed14eaf1f97a5dffa94bda8151b1e0fa182afc0d121b757b70bebc6a43811" \
+      org.sparkcache.vllm-contract-sha256="9d5c9a4c4d4efdc56560d63135f5e85a1e083c2bf635b52a8ba1ad2ab86d4da8" \
       org.sparkcache.deployment-profile="glm53-flash-adaptive-mtp-python-overlay" \
       org.sparkring.source-receipt-sha256="${SOURCE_RECEIPT_SHA256}"

@@ -20,8 +20,8 @@ identity and requires its own live checks.
 | vLLM native extensions and wheel metadata | `da4d7be6c97434f6942292ed8abbf4b32dc44355` |
 | vLLM Python source | `0b67266a0f37d6146a8403fb8482403c62f412d5`, tree `ba9484ccb33aa56e90ff2f447f15ca9b9da97639` |
 | B12X | `b1d541f9e71a35f030d45fae437630fff7507c2a`, tree `c69cdec1c59a08e8e0e549f930fa8abcfb5134ae` |
-| SparkCache shared-segment restore, tail-only copy-on-write publication, canonical CUDA configuration, and bounded page-delta reads | `c56f77f97b3da907d32e888d82046359a62f0f88`, tree `deac36758f86695cd13f07b2870c2e49842aed9c`, clean source SHA-256 `788686e858ba4af01f535e95122c7650f412fddc40cd221a0924f4ce2b32ff98` |
-| Recurrent replay-boundary producer | Patch SHA-256 `5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0`; produces the four postimages accepted by SparkCache lease contract SHA-256 `f36ed14eaf1f97a5dffa94bda8151b1e0fa182afc0d121b757b70bebc6a43811` |
+| SparkCache shared-segment restore, tail-only copy-on-write publication, canonical CUDA configuration, and bounded page-delta reads | `b830c84d93a80db869e0cfeed433f330bd611a7b`, tree `1659bd9ca6613e4e28fb1656b93d24370f7704cf`, clean source SHA-256 `09b74cf425c5a4f6149cc9e9c518a50a679996c9abe2e6d176a3fd95ff66250a` |
+| Recurrent replay-boundary producer | Patch SHA-256 `5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0`; produces the four postimages accepted by SparkCache lease contract SHA-256 `9d5c9a4c4d4efdc56560d63135f5e85a1e083c2bf635b52a8ba1ad2ab86d4da8` |
 | DFlash draft-loader separation | Patch SHA-256 `39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279`, postimage SHA-256 `98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4` |
 | Unused DeepEP removal | Distribution `deep_ep==2.0.0+local`, removal receipt SHA-256 `65514f44829e7d176b0b2cacc9559ed22724e525b7041a8bcd4d2e02d1f372e3` |
 | Target | `local-inference-lab/GLM-5.3-Flash-NVFP4@520de24eabf507659eaef7c70f14fd584527facc` |
@@ -80,7 +80,7 @@ The all-safetensors profile remains unqualified. The fastsafetensors result
 belongs only to the image ID and cases named above; it does not transfer to a
 rebuild.
 
-SparkCache commit `c56f77f97b3da907d32e888d82046359a62f0f88`
+SparkCache commit `b830c84d93a80db869e0cfeed433f330bd611a7b`
 accepts the canonical CUDA keys used by both profiles. It consumes the
 hash-proven recurrent hand-off emitted by this exact vLLM overlay and cancels
 publication when the metadata is absent, incomplete, or contradictory.

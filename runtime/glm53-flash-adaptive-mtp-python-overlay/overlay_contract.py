@@ -223,6 +223,12 @@ def validate_recurrent_boundary_sources(root: Path) -> None:
     cache_source = (root / "vllm/v1/core/kv_cache_manager.py").read_text(
         encoding="utf-8"
     )
+    base_source = (
+        root / "vllm/distributed/kv_transfer/kv_connector/v1/base.py"
+    ).read_text(encoding="utf-8")
+    multi_source = (
+        root / "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py"
+    ).read_text(encoding="utf-8")
     required = {
         "SchedulerOutput field": (
             "recurrent_boundary_blocks: "
@@ -245,9 +251,25 @@ def validate_recurrent_boundary_sources(root: Path) -> None:
             "multiple_inflight_batches and (",
             scheduler_source,
         ),
-        "prompt-minus-one replay rule": (
-            "(request.num_prompt_tokens - 1) // self.block_pool.hash_block_size",
-            manager_source,
+        "connector boundary proposal": (
+            "get_recurrent_publication_boundaries",
+            base_source,
+        ),
+        "MultiConnector boundary union": (
+            "connector.get_recurrent_publication_boundaries",
+            multi_source,
+        ),
+        "request-local scheduler target": (
+            "recurrent_publication_boundary=",
+            scheduler_source,
+        ),
+        "native hash geometry fallback": (
+            "request.num_prompt_tokens // self.hash_block_size * self.hash_block_size",
+            scheduler_source,
+        ),
+        "exact CoW hash ownership": (
+            "cached_block_hash_to_block.contain",
+            cache_source,
         ),
         "exact token-boundary proof": (
             "block.block_hash_num_tokens != replay_boundary",
@@ -289,18 +311,22 @@ def verify_vllm_runtime_patch_files(
                 "sha256": observed,
             }
         )
-    for record in pins["vllm"].get("composed_runtime_patches", ()):
-        for target_record in record["targets"]:
-            relative = safe_relative_path(target_record["path"])
-            path = root / relative
-            observed = sha256_file(path)
-            if observed != target_record["postimage_sha256"]:
-                raise ContractError(
-                    f"vLLM composed patch postimage mismatch for {relative}: "
-                    f"expected {target_record['postimage_sha256']}, got {observed}"
-                )
-            compile(path.read_bytes(), str(path), "exec")
-            verified.append({"path": relative.as_posix(), "sha256": observed})
+    final_composed_targets = {
+        target_record["path"]: target_record
+        for record in pins["vllm"].get("composed_runtime_patches", ())
+        for target_record in record["targets"]
+    }
+    for target_record in final_composed_targets.values():
+        relative = safe_relative_path(target_record["path"])
+        path = root / relative
+        observed = sha256_file(path)
+        if observed != target_record["postimage_sha256"]:
+            raise ContractError(
+                f"vLLM composed patch postimage mismatch for {relative}: "
+                f"expected {target_record['postimage_sha256']}, got {observed}"
+            )
+        compile(path.read_bytes(), str(path), "exec")
+        verified.append({"path": relative.as_posix(), "sha256": observed})
     if pins["vllm"].get("composed_runtime_patches"):
         validate_recurrent_boundary_sources(root)
     loader = root / "vllm/model_executor/model_loader/__init__.py"

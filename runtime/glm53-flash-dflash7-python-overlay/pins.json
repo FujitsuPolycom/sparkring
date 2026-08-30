@@ -66,13 +66,46 @@
             "preimage_sha256": "e4b1c5c38b63b708fd55aa40a9ab0d008b266d006a63dcfcef55890ac1371cb8",
             "postimage_sha256": "f67a1850a7e0288baaa6d42e7ec55b22b09c156720767e23acaabedcae333c8a"
           }
+        ]
+      },
+      {
+        "status": "implemented",
+        "path": "runtime/glm53-flash-adaptive-mtp-python-overlay/patches/013-recurrent-publication-boundary.patch",
+        "sha256": "5c8102866b18ea7cb411fa3e5611700eb2d8020b6a3392d3d6053afaa04ace22",
+        "contract": "Connector-proposed recurrent publication targets split scheduling without changing native hash geometry; exact secondary hashes survive CoW.",
+        "targets": [
+          {
+            "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+            "preimage_sha256": "bc1965431087676876f58360cd9cc07ab6c06febe6d747695f10b051fd85c412",
+            "postimage_sha256": "7460e0638c0c81808dbdbbad7114db2e840e531e9ce83360c55b9171fcc872b1"
+          },
+          {
+            "path": "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py",
+            "preimage_sha256": "aafafbf4b0e3a43e7c864270fe56ffaa4b0f3dc343e77a0871db25f075d984dd",
+            "postimage_sha256": "8741b86b0f3e91af06d01a52240cdc988e3073bf049f72b506f56d6ceebb1ac0"
+          },
+          {
+            "path": "vllm/v1/core/kv_cache_manager.py",
+            "preimage_sha256": "c5b83d382c96b2bf8c466a993ed77123a14a971e2661797128533319388d0b5f",
+            "postimage_sha256": "2c646969b750f6cb4e17fe8a6bf12993d01eefbfbe74e5f8c755f7e0d929faf2"
+          },
+          {
+            "path": "vllm/v1/core/sched/scheduler.py",
+            "preimage_sha256": "260f36ce8fabf70c193b20009ea465eea7b1b6c8e9fb72f2307a01ba8fcf7b2a",
+            "postimage_sha256": "74afcccd11b0ad48cab3925c623cb310effbf425825bc278bed03163848c528f"
+          },
+          {
+            "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+            "preimage_sha256": "f67a1850a7e0288baaa6d42e7ec55b22b09c156720767e23acaabedcae333c8a",
+            "postimage_sha256": "abbedbd7b9165bbb005c9ba7ceb4367ee1987ac47c632a629dd17ed08ae1db0c"
+          }
         ],
         "test_patch": {
           "path": "runtime/glm53-flash-adaptive-mtp-python-overlay/patches/012-recurrent-boundary-contract-tests.patch",
-          "sha256": "fd6ebb99c60f7d242d7594bc5de4136f73768ccfa7327cef562c241126d3581c",
+          "sha256": "52f3a951d817efc335c926a6b7cb42618b88ae85a785577d1e59e2ad2db15804",
           "target": "tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py",
           "preimage_sha256": "2f58e600fd39413b385b9e96b3c642a9ffb051bedcfc247a700fb532b35ec185",
-          "postimage_sha256": "1a43d1a4bd43ee81dd89975e23ea6b0333e287d53c7a7e8c21f1554a6ca8b32a"
+          "postimage_sha256": "d45f232a26b1a1bbaed232a2fd1372e3589d8d374915bb108cc9bc7408699073"
         }
       }
     ],
@@ -114,9 +147,9 @@
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-    "commit": "c56f77f97b3da907d32e888d82046359a62f0f88",
-    "tree": "deac36758f86695cd13f07b2870c2e49842aed9c",
-    "source_tree_sha256": "788686e858ba4af01f535e95122c7650f412fddc40cd221a0924f4ce2b32ff98",
+    "commit": "b830c84d93a80db869e0cfeed433f330bd611a7b",
+    "tree": "1659bd9ca6613e4e28fb1656b93d24370f7704cf",
+    "source_tree_sha256": "09b74cf425c5a4f6149cc9e9c518a50a679996c9abe2e6d176a3fd95ff66250a",
     "cuda_config_schema": "canonical-v1",
     "canonical_cuda_config_keys": [
       "spark_cache_cuda_restore",
@@ -127,8 +160,8 @@
     ],
     "contract": {
       "path": "sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json",
-      "sha256": "f36ed14eaf1f97a5dffa94bda8151b1e0fa182afc0d121b757b70bebc6a43811",
-      "files": 11
+      "sha256": "9d5c9a4c4d4efdc56560d63135f5e85a1e083c2bf635b52a8ba1ad2ab86d4da8",
+      "files": 12
     },
     "patches": [
       {

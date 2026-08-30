@@ -38,13 +38,13 @@ def test_pins_bind_the_exact_dflash7_composition() -> None:
         "b1d541f9e71a35f030d45fae437630fff7507c2a"
     )
     assert pins["sparkcache"]["commit"] == (
-        "c56f77f97b3da907d32e888d82046359a62f0f88"
+        "b830c84d93a80db869e0cfeed433f330bd611a7b"
     )
     assert pins["sparkcache"]["tree"] == (
-        "deac36758f86695cd13f07b2870c2e49842aed9c"
+        "1659bd9ca6613e4e28fb1656b93d24370f7704cf"
     )
     assert pins["sparkcache"]["source_tree_sha256"] == (
-        "788686e858ba4af01f535e95122c7650f412fddc40cd221a0924f4ce2b32ff98"
+        "09b74cf425c5a4f6149cc9e9c518a50a679996c9abe2e6d176a3fd95ff66250a"
     )
     assert pins["sparkcache"]["cuda_config_schema"] == "canonical-v1"
     assert pins["sparkcache"]["canonical_cuda_config_keys"] == [
@@ -106,13 +106,13 @@ def test_verifier_requires_the_dflash7_deployment_label() -> None:
     )
     assert labels["org.sparkcache.cuda-config-schema"] == "canonical-v1"
     assert labels["org.sparkcache.source-revision"] == (
-        "c56f77f97b3da907d32e888d82046359a62f0f88"
+        "b830c84d93a80db869e0cfeed433f330bd611a7b"
     )
     assert labels["org.sparkcache.source-tree"] == (
-        "deac36758f86695cd13f07b2870c2e49842aed9c"
+        "1659bd9ca6613e4e28fb1656b93d24370f7704cf"
     )
     assert labels["org.sparkcache.source-sha256"] == (
-        "788686e858ba4af01f535e95122c7650f412fddc40cd221a0924f4ce2b32ff98"
+        "09b74cf425c5a4f6149cc9e9c518a50a679996c9abe2e6d176a3fd95ff66250a"
     )
     assert labels["org.jovian.vllm.commit"] != labels[
         "org.sparkring.vllm.python.commit"
@@ -122,6 +122,9 @@ def test_verifier_requires_the_dflash7_deployment_label() -> None:
     )
     assert labels["org.sparkring.vllm.recurrent-boundary-patch-sha256"] == (
         "5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0"
+    )
+    assert labels["org.sparkring.vllm.recurrent-publication-patch-sha256"] == (
+        "5c8102866b18ea7cb411fa3e5611700eb2d8020b6a3392d3d6053afaa04ace22"
     )
     assert labels["org.sparkring.runtime.removed-deep-ep-distribution"] == (
         "deep_ep==2.0.0+local"
