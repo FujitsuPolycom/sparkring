@@ -96,9 +96,10 @@ def test_profile_identities_follow_model_and_speculator_semantics() -> None:
         profile_ids.add(profile["profile_id"])
         container_names.add(profile["container_name"])
         confirmations.add(profile["confirmation"])
-        assert extra["spark_cache_native_restore"] is True
-        assert extra["spark_cache_native_arena_bytes"] == 256 * 1024**2
-        assert extra["spark_cache_native_io_workers"] == 8
+        assert extra["spark_cache_cuda_restore"] is True
+        assert extra["spark_cache_cuda_placement_arena_bytes"] == 256 * 1024**2
+        assert extra["spark_cache_cuda_restore_io_workers"] == 8
+        assert not any(key.startswith("spark_cache_native_") for key in extra)
         assert extra["spark_cache_load_threads"] == 2
     assert len(identities) == 3
     assert len(clear_tokens) == len(PROFILES)
@@ -167,7 +168,7 @@ def test_resolver_produces_aligned_twenty_gib_profile() -> None:
         image_id="sha256:" + "b" * 64,
         parent_image="local/e105-runtime@sha256:" + "c" * 64,
         parent_image_id="sha256:" + "d" * 64,
-        native_library_sha256="e" * 64,
+        cuda_placement_library_sha256="e" * 64,
     )
     assert resolved_site["runtime"]["container_image"] == resolved_profile["image"]
     assert resolved_site["runtime"]["container_image_digest"] == resolved_profile["image_id"]
@@ -188,7 +189,7 @@ def test_each_resolved_profile_passes_site_alignment(
         image_id="sha256:" + "b" * 64,
         parent_image="local/e105-runtime@sha256:" + "c" * 64,
         parent_image_id="sha256:" + "d" * 64,
-        native_library_sha256="e" * 64,
+        cuda_placement_library_sha256="e" * 64,
     )
     profile_path_out = tmp_path / "profile.json"
     site_path_out = tmp_path / "site.yaml"
@@ -204,12 +205,12 @@ def test_each_resolved_profile_passes_site_alignment(
 def test_resolver_rejects_unverified_native_library() -> None:
     profile = json.loads(PROFILES["dflash"].read_text())
     site = yaml.safe_load(SITE.read_text())
-    with pytest.raises(ResolveError, match="native library"):
+    with pytest.raises(ResolveError, match="CUDA placement library"):
         resolve(
             profile, site,
             image="image",
             image_id="sha256:" + "a" * 64,
             parent_image="parent",
             parent_image_id="sha256:" + "b" * 64,
-            native_library_sha256="short",
+            cuda_placement_library_sha256="short",
         )

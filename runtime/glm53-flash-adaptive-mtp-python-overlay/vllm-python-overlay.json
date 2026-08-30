@@ -1,0 +1,232 @@
+{
+  "schema": "sparkring-vllm-python-overlay/v1",
+  "base": {
+    "repository": "https://github.com/local-inference-lab/vllm.git",
+    "commit": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+    "tree": "4a99033352bc1a6b00852dc0e8b1cecbdd9f0ebb"
+  },
+  "target": {
+    "repository": "https://github.com/local-inference-lab/vllm.git",
+    "commit": "0b67266a0f37d6146a8403fb8482403c62f412d5",
+    "tree": "ba9484ccb33aa56e90ff2f447f15ca9b9da97639"
+  },
+  "files": [
+    {
+      "path": "vllm/config/speculative.py",
+      "operation": "replace",
+      "base_sha256": "6cb3d8145f435d4bb4f6201b64df4759b2e4d46f29e4e7b3b465b1a4c8be3f2f",
+      "target_sha256": "fc14efbcf18ad3d67cb869591d2f480b55724d1e663bb433ee5b502976bd52b9",
+      "target_bytes": 84471
+    },
+    {
+      "path": "vllm/config/vllm.py",
+      "operation": "replace",
+      "base_sha256": "e6a6e4087331b897bb3116720f608cc23b43dcdbca9c65187aa54dbbd5c0e16e",
+      "target_sha256": "cc03756d9bebf2a128828e5fbf7e9766446884dfce016c34381bce0aa78bfd9e",
+      "target_bytes": 125842
+    },
+    {
+      "path": "vllm/model_executor/layers/fused_moe/b12x.py",
+      "operation": "replace",
+      "base_sha256": "ee76cc6aa801e24be8ec78a9e8502061ad48667d5ff8711e43f68fba912425bd",
+      "target_sha256": "34b7dc76e9a3df1cb562406dc6c304cf3abf5e234b986140656230145da1bfa6",
+      "target_bytes": 26664
+    },
+    {
+      "path": "vllm/model_executor/layers/logits_processor.py",
+      "operation": "replace",
+      "base_sha256": "3bf29abb2654427a1f272ae019bab966b29ab85eea2e2adcbf257e89cab48c50",
+      "target_sha256": "36c5a32a55ab0fbb061d9632962ccfb33322c5a24f3fb2b237bb05740f0b3ad1",
+      "target_bytes": 14685
+    },
+    {
+      "path": "vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py",
+      "operation": "replace",
+      "base_sha256": "310cfd16734d42a9dc28715f559e86a0f29ba3a31eed0940e296046b4841319a",
+      "target_sha256": "8bf8bc579dd4a80224dc1633e7513f2a0c58e07db72a736c7e41d28d3c35f3b9",
+      "target_bytes": 39290
+    },
+    {
+      "path": "vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py",
+      "operation": "replace",
+      "base_sha256": "8ed1dd4881983880f2d8fb360e4637d6ce71681943dbfc76891bf251972ca0a2",
+      "target_sha256": "908b1decb6d1aaa44416a7925f9391473b53b2b33d2f8b1e265a708d29e344a7",
+      "target_bytes": 90000
+    },
+    {
+      "path": "vllm/model_executor/model_loader/default_loader.py",
+      "operation": "replace",
+      "base_sha256": "9c9d54b1b650bf5affc924ebb8b8c73711e187ae7486cadd9f737bb1279cc7b8",
+      "target_sha256": "f391aebb45fb781e5f81ac26005a45b43d6b7190c65f34a96c091b862cd01dbb",
+      "target_bytes": 21047
+    },
+    {
+      "path": "vllm/model_executor/model_loader/weight_utils.py",
+      "operation": "replace",
+      "base_sha256": "b42ff2bd9301c4034592598f86a03df7d60a9fc7e13576054deb44bce9ceccf7",
+      "target_sha256": "5a8bd3cfc063a824e1a63b00f7409fb7679eb3769aa6af22873a5e67d1817a8b",
+      "target_bytes": 75236
+    },
+    {
+      "path": "vllm/models/glm5next/nvidia/model.py",
+      "operation": "replace",
+      "base_sha256": "cc07fcdc350e3d9e91cf955b43a160b347e07c9bdf2aa68d37986a4509fcda8f",
+      "target_sha256": "afeafe96c6022dc371c3c56060ea085f65f72582ce0787183ded3b0b0a0ae26b",
+      "target_bytes": 53168
+    },
+    {
+      "path": "vllm/models/glm5next/nvidia/mtp.py",
+      "operation": "replace",
+      "base_sha256": "03a601119e976168d3645f19f7c3f6420a36be5cb1b15a922340911566c990bb",
+      "target_sha256": "248a1472fc25530c808567110d9947b54eed736ee3fe12469f106cec70781fa1",
+      "target_bytes": 19005
+    },
+    {
+      "path": "vllm/models/glm5next/nvidia/pooled_indexer.py",
+      "operation": "replace",
+      "base_sha256": "69b90194146f75b44d850833737eb727c337430a886fb7acb89faadff3410e2b",
+      "target_sha256": "b1dfabf9146b0011427b21f035ac63720450bdbfd6ea02e38ae6bdef81817d94",
+      "target_bytes": 20723
+    },
+    {
+      "path": "vllm/models/qwen3_8_flash_next/model.py",
+      "operation": "replace",
+      "base_sha256": "edcfb0c4bd39332e2d55498ed293545fac17e1786e03fed40954c6c952acfe77",
+      "target_sha256": "c315a02c98ab9cfd889283829c94dcfc8cd6b21efc7819f39100d84cb26a09f2",
+      "target_bytes": 33701
+    },
+    {
+      "path": "vllm/models/qwen3_8_flash_next/mtp.py",
+      "operation": "replace",
+      "base_sha256": "5b21079bcbdb05ec85d6a1f840ce87baa0a5546dfc8308de8b3ba9fb371ce404",
+      "target_sha256": "8efbaca8d42097061802a7e8cedd7c84eaede0648b0b31e810e752ce5573c34c",
+      "target_bytes": 20071
+    },
+    {
+      "path": "vllm/models/qwen3_8_flash_next/nvidia/qsa.py",
+      "operation": "replace",
+      "base_sha256": "eafefbc18e1b2164cfd63d01cdccd0cb94770cbbe0946e3c260a476bf6f2f548",
+      "target_sha256": "8e21c17d382bf9b2016fbfa4195abd9c4656b203556e60c80f369cfdf0ea906d",
+      "target_bytes": 55541
+    },
+    {
+      "path": "vllm/models/qwen3_8_flash_next/ple_layer.py",
+      "operation": "replace",
+      "base_sha256": "dfc180223a0fba618ebf50e2777fb3e3f1bbf284284de219159391f4db7f88e9",
+      "target_sha256": "90f5f130d12a66a6aebd6e4c590c1c5b86fe7086ce4f502dc5ce5f8192b05d41",
+      "target_bytes": 40229
+    },
+    {
+      "path": "vllm/utils/b12x.py",
+      "operation": "replace",
+      "base_sha256": "caa5faa0457a53f2f4402e33df560e822039d5ffd97de27c99cec1cb2e7344fd",
+      "target_sha256": "0789bfc595eb69f4a9ce9cf2ebc603962ab78527eca923603d9428269f47981f",
+      "target_bytes": 6360
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/b12x_mla_sparse.py",
+      "operation": "replace",
+      "base_sha256": "cb6d1add482cd23dfc1f9f5847258833805b452fd9e7cfc0c84f4c5cc867e977",
+      "target_sha256": "5924a62c4d093f1311ed5606ab31f0fe406efc8217657badd72052f95f8189b7",
+      "target_bytes": 36158
+    },
+    {
+      "path": "vllm/v1/core/sched/async_scheduler.py",
+      "operation": "replace",
+      "base_sha256": "e586a0ef3c6778be56a93e7f9bb712d4de9de6e7d7fe7e3e1d51dae83ecfc508",
+      "target_sha256": "d58ca33d48fb1eeddd7165327ea367be88752982023d58f0f831a0b90fad2c50",
+      "target_bytes": 3315
+    },
+    {
+      "path": "vllm/v1/core/sched/output.py",
+      "operation": "replace",
+      "base_sha256": "62a4d3818a616c25fb2816d157162e5786134c45954eb5e7fa8c3795d0735324",
+      "target_sha256": "65235eba652e5a3ccee18bf3cbfeac9bf4da8fb9c61e961580f612cfb7e593bc",
+      "target_bytes": 12153
+    },
+    {
+      "path": "vllm/v1/core/sched/scheduler.py",
+      "operation": "replace",
+      "base_sha256": "98bfb14fa37e8c2a2db5aba96bf8a6f0e6d1c0393ef686b075208889a2e46ab3",
+      "target_sha256": "05c05f4b372c7a4bf76399b38b338eab657c69406b7019ab02101d2ab0c7764c",
+      "target_bytes": 146907
+    },
+    {
+      "path": "vllm/v1/spec_decode/dynamic/acceptance_length.py",
+      "operation": "add",
+      "base_sha256": null,
+      "target_sha256": "2e3167f3a16006c7de34d6eda78aae1bc0a3489171b17c41122cd782303792c8",
+      "target_bytes": 7298
+    },
+    {
+      "path": "vllm/v1/spec_decode/metrics.py",
+      "operation": "replace",
+      "base_sha256": "c1c6b20bbf0ae3427dc331bbf8032193cf0b1ab9f3fe552257da6e4d51f2f4f6",
+      "target_sha256": "1610913505ac7d87cbebb36e83deeaef9aa050ad45f698a3ed1fb2d9441ab0b3",
+      "target_bytes": 10872
+    },
+    {
+      "path": "vllm/v1/worker/gpu/cudagraph_utils.py",
+      "operation": "replace",
+      "base_sha256": "a6bb8f0e7e97df6892bebfcce3c3a15f264c445f205141faa80da5c3abc58dbe",
+      "target_sha256": "9023bca429176187e74e18026d8d25a0b57e9698bfca1dcf0485cd043dd08ebb",
+      "target_bytes": 42402
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_runner.py",
+      "operation": "replace",
+      "base_sha256": "be17cf4c5629f3671d40f31a1f31005fb8806f7aad8a7c25e3a0e0679b1c97a3",
+      "target_sha256": "764120deade163cc6e29a8b22261c09e9399f64066542d3125de927895a59134",
+      "target_bytes": 92890
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py",
+      "operation": "replace",
+      "base_sha256": "b4d7284792d590419cefd3640c93a7a1a6e6d4674cb20e1eb393999d7acbfaf6",
+      "target_sha256": "851a90bf3ac3940abfc6662d6270c0d65ebe356d115f4d2343c1ba07a660c85b",
+      "target_bytes": 44958
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/dflash/speculator.py",
+      "operation": "replace",
+      "base_sha256": "68bae390178cb1deabc4c02c3433159bbca78d38d8ae172a8bfca9efed643a30",
+      "target_sha256": "2fb0f4bd41fe0662555016119c1f0e6648d7b83057b5cf14c3f5904bb3210a1a",
+      "target_bytes": 31894
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/extract_hidden_states.py",
+      "operation": "replace",
+      "base_sha256": "453451bedd34dea6442b50c5dff7c21315d82f30029083b32ff72e35f528dba5",
+      "target_sha256": "758f33d2d8b7eaddc73e48ce508dfa43313051e9d873bbc5723c1f18edf201c0",
+      "target_bytes": 5628
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/multi_module_mtp/speculator.py",
+      "operation": "replace",
+      "base_sha256": "f2f99e4c6a27646737fd74733e54a328bfaff27ac34a8e3ba45e89bd5482ea05",
+      "target_sha256": "0dfc31a7e7f0b6247ce8ea7f580dc930828a885b28c9e4a2d4e69f7ba6b516d7",
+      "target_bytes": 40810
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/speculator.py",
+      "operation": "replace",
+      "base_sha256": "64407e596985e7c3928a6abbfd67f79ea4cb6477fcc0de8f279d444b40b8de08",
+      "target_sha256": "2a24c693204032b77bf8abe08df916ca20b119cfe60fd91ad33e87920ae37685",
+      "target_bytes": 17731
+    },
+    {
+      "path": "vllm/v1/worker/gpu/spec_decode/utils.py",
+      "operation": "replace",
+      "base_sha256": "39ebdfdc8de50d7fddc324aa011275dccd38f2dcc32c4e3268dbbf3ea915fe49",
+      "target_sha256": "be78a83c689047c84abe373650e0506e66090665f877e32ef18ddcc12da987a0",
+      "target_bytes": 4430
+    },
+    {
+      "path": "vllm/v1/worker/gpu_model_runner.py",
+      "operation": "replace",
+      "base_sha256": "699ecba3b6cc4a96d32621ee00d078b9dde8f4f82844ac2c5d8ec40c5e81a9e7",
+      "target_sha256": "5ac63bf43acc6b254282426a8a9b989cc07fcdbd07223101bdc99f91f4e4ce5f",
+      "target_bytes": 343829
+    }
+  ]
+}

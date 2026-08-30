@@ -14,6 +14,7 @@ from prepare_glm53_b12x_kda_adaptive_mtp_profile import (
     MTP_CACHE_IDENTITY_SHA256,
     SPARKCACHE_COMMIT,
     SPARKCACHE_SOURCE_SHA256,
+    SPARKCACHE_TREE,
     VLLM_COMMIT,
     ResolveError,
     resolve,
@@ -66,6 +67,7 @@ def test_profile_pins_adaptive_mtp_fastsafetensors_and_sparkcache() -> None:
     identity = profile["identity"]
     assert identity["vllm_revision"] == VLLM_COMMIT
     assert identity["sparkcache_source_revision"] == SPARKCACHE_COMMIT
+    assert identity["sparkcache_source_tree"] == SPARKCACHE_TREE
     assert identity["sparkcache_source_sha256"] == SPARKCACHE_SOURCE_SHA256
     assert identity["mtp_cache_identity_sha256"] == _mtp_identity()
     assert identity["mtp_cache_identity_sha256"] == MTP_CACHE_IDENTITY_SHA256
@@ -73,9 +75,10 @@ def test_profile_pins_adaptive_mtp_fastsafetensors_and_sparkcache() -> None:
     transfer = json.loads(_argument(profile, "--kv-transfer-config"))
     extra = transfer["kv_connector_extra_config"]
     assert extra["spark_cache_draft_checkpoint_sha256"] == MTP_CACHE_IDENTITY_SHA256
-    assert extra["spark_cache_native_restore"] is True
-    assert extra["spark_cache_native_arena_bytes"] == 256 * 1024**2
-    assert extra["spark_cache_native_io_workers"] == 8
+    assert extra["spark_cache_cuda_restore"] is True
+    assert extra["spark_cache_cuda_placement_arena_bytes"] == 256 * 1024**2
+    assert extra["spark_cache_cuda_restore_io_workers"] == 8
+    assert not any(key.startswith("spark_cache_native_") for key in extra)
     assert extra["spark_cache_load_threads"] == 2
     assert extra["spark_cache_clear_once"] == (
         "sparkring-b12x-kda-adaptive-mtp-fastsafetensors-initialization"
@@ -117,7 +120,7 @@ def test_resolver_produces_an_aligned_tp4_profile(tmp_path: Path) -> None:
         image_id="sha256:" + "b" * 64,
         parent_image="local/glm53-kda-runtime@sha256:" + "c" * 64,
         parent_image_id="sha256:" + "d" * 64,
-        native_library_sha256="e" * 64,
+        cuda_placement_library_sha256="e" * 64,
     )
     assert site["topology"] and len(site["ranks"]) == 4
     assert site["serving"]["tensor_parallel_size"] == 4
@@ -142,7 +145,7 @@ def test_resolver_rejects_runtime_or_loader_identity_drift() -> None:
         "image_id": "sha256:" + "a" * 64,
         "parent_image": "parent",
         "parent_image_id": "sha256:" + "b" * 64,
-        "native_library_sha256": "c" * 64,
+        "cuda_placement_library_sha256": "c" * 64,
     }
     changed = copy.deepcopy(profile)
     changed["identity"]["vllm_revision"] = "0" * 40
@@ -150,9 +153,77 @@ def test_resolver_rejects_runtime_or_loader_identity_drift() -> None:
         resolve(changed, copy.deepcopy(site), **arguments)
 
     changed = copy.deepcopy(profile)
+    changed["identity"]["sparkcache_source_tree"] = "0" * 40
+    with pytest.raises(ResolveError, match="SparkCache Git tree"):
+        resolve(changed, copy.deepcopy(site), **arguments)
+
+    changed = copy.deepcopy(profile)
     changed["environment"]["VLLM_FASTSAFETENSORS_QUEUE_SIZE"] = "2"
     with pytest.raises(ResolveError, match="queue size must be one"):
         resolve(changed, copy.deepcopy(site), **arguments)
+
+
+def test_resolver_normalizes_legacy_cuda_restore_aliases_and_rejects_conflicts() -> None:
+    profile = json.loads(PROFILE.read_text(encoding="utf-8"))
+    site = yaml.safe_load(SITE.read_text(encoding="utf-8"))
+    arguments = profile["extra_vllm_args"]
+    index = arguments.index("--kv-transfer-config") + 1
+    transfer = json.loads(arguments[index])
+    extra = transfer["kv_connector_extra_config"]
+    extra["spark_cache_native_restore"] = extra.pop("spark_cache_cuda_restore")
+    extra["spark_cache_native_library"] = extra.pop(
+        "spark_cache_cuda_placement_library"
+    )
+    arguments[index] = json.dumps(transfer, separators=(",", ":"))
+
+    resolved, _ = resolve(
+        profile,
+        site,
+        image="image",
+        image_id="sha256:" + "a" * 64,
+        parent_image="parent",
+        parent_image_id="sha256:" + "b" * 64,
+        native_library_sha256="c" * 64,
+    )
+    resolved_extra = json.loads(_argument(resolved, "--kv-transfer-config"))[
+        "kv_connector_extra_config"
+    ]
+    assert resolved_extra["spark_cache_cuda_restore"] is True
+    assert "spark_cache_native_restore" not in resolved_extra
+    assert "spark_cache_native_library" not in resolved_extra
+
+    conflict = copy.deepcopy(profile)
+    conflict_arguments = conflict["extra_vllm_args"]
+    conflict_index = conflict_arguments.index("--kv-transfer-config") + 1
+    conflict_transfer = json.loads(conflict_arguments[conflict_index])
+    conflict_transfer["kv_connector_extra_config"][
+        "spark_cache_cuda_restore"
+    ] = False
+    conflict_arguments[conflict_index] = json.dumps(
+        conflict_transfer, separators=(",", ":")
+    )
+    with pytest.raises(ResolveError, match="conflicting values"):
+        resolve(
+            conflict,
+            copy.deepcopy(site),
+            image="image",
+            image_id="sha256:" + "a" * 64,
+            parent_image="parent",
+            parent_image_id="sha256:" + "b" * 64,
+            cuda_placement_library_sha256="c" * 64,
+        )
+
+    with pytest.raises(ResolveError, match="conflicting values"):
+        resolve(
+            json.loads(PROFILE.read_text(encoding="utf-8")),
+            copy.deepcopy(site),
+            image="image",
+            image_id="sha256:" + "a" * 64,
+            parent_image="parent",
+            parent_image_id="sha256:" + "b" * 64,
+            cuda_placement_library_sha256="c" * 64,
+            native_library_sha256="d" * 64,
+        )
 
 
 def test_quickstart_names_the_executable_builder_and_profile_contracts() -> None:
@@ -162,6 +233,9 @@ def test_quickstart_names_the_executable_builder_and_profile_contracts() -> None
     assert str(SITE.relative_to(ROOT)).replace("\\", "/") in guide
     assert "prepare_glm53_b12x_kda_adaptive_mtp_profile.py" in guide
     assert SPARKCACHE_COMMIT in guide
+    assert SPARKCACHE_TREE in guide
     assert SPARKCACHE_SOURCE_SHA256 in guide
     assert VLLM_COMMIT in guide
     assert "START_GLM53_FLASH_MTP5_ADAPTIVE_FASTSAFETENSORS_TP4" in guide
+    assert "--cuda-placement-library-sha256" in guide
+    assert "--native-library-sha256" not in guide

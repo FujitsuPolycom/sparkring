@@ -253,7 +253,8 @@ def test_cache_profile_adds_only_the_external_connector_to_serving_arguments() -
     assert extra["spark_cache_model_profile"] == "glm53-flash-hybrid"
     assert extra["spark_cache_draft_policy"] == "separate"
     assert extra["spark_cache_streaming_snapshots"] is False
-    assert extra["spark_cache_native_restore"] is False
+    assert extra["spark_cache_cuda_restore"] is False
+    assert not any(key.startswith("spark_cache_native_") for key in extra)
 
     for attribute in (
         "image",

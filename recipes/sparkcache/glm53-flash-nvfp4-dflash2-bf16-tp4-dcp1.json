@@ -83,7 +83,7 @@
     "min_span_tokens": 4096,
     "max_span_tokens": 524288,
     "streaming_snapshots": false,
-    "native_restore": false,
+    "cuda_restore": false,
     "root_requirement": "Use one dedicated rank-local host directory per physical rank, mounted at /cache/jit on every rank."
   },
   "evidence": {
@@ -97,7 +97,7 @@
       "A rebuilt image has implemented status until its immutable digest passes the same live qualification.",
       "The first request after API startup recomputed because the scheduler had not received a complete four-rank inventory checkpoint; the following identical request formed quorum and restored.",
       "The receipt does not establish throughput neutrality or restore performance for spans larger than 8192 tokens.",
-      "Streaming snapshots, native direct restore, MTP drafting, and other DFlash checkpoints are unsupported by this evidence.",
+      "Streaming snapshots, SparkCache CUDA restore, MTP drafting, and other DFlash checkpoints are unsupported by this evidence.",
       "The source-built runtime uses the Triton KDA prefill backend and stock safetensors loading; FlashKDA prefill and InstantTensor checkpoint loading are unsupported by this image.",
       "The optional deep_ep import emits a duplicate-NCCL warning. vLLM selects the source-built NCCL library through VLLM_NCCL_SO_PATH and serving proceeds.",
       "The target repository does not record its base-checkpoint revision."

@@ -64,7 +64,7 @@
     "min_span_tokens": 256,
     "max_span_tokens": 1048576,
     "streaming_snapshots": false,
-    "native_restore": false,
+    "cuda_restore": false,
     "root_requirement": "Use a dedicated rank-local host directory mounted at the same container path on both ranks."
   },
   "evidence": {
@@ -78,7 +78,7 @@
       "The 17179869184-byte reservation, block size 256, and 4096-token scheduler budget carry forward unchanged, but their capacity with the larger context and sequence target must be measured.",
       "The complete checkpoint manifest is generated from the pinned revision and must reproduce the recorded digest. A different digest is a different composition and does not reproduce this qualification.",
       "The published receipt covers DeepSeek DCP1, not DCP2 or DCP4.",
-      "This recipe disables streaming snapshots and native restore; the published receipt does not cover either mode."
+      "This recipe disables streaming snapshots and SparkCache CUDA restore; the published receipt does not cover either mode."
     ],
     "record": "recipes/sparkcache/README.md",
     "artifact_scope": "The exact SparkCache wheel, runtime image, checkpoint identity, topology, and historical max_model_len=131072, max_num_seqs=6 serving values stated in evidence.conditions.",

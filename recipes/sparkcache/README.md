@@ -90,7 +90,7 @@ Limitations: The published receipts use a 4,096-token scheduler budget; other
 budgets are operator choices whose performance and capacity behavior is not
 recorded here, except that the GLM-5.3 Flash receipt uses 8,192. The DeepSeek
 receipts cover DCP1, not DCP2 or DCP4. These
-recipes disable streaming snapshots and native restore, so the receipts do not
+recipes disable streaming snapshots and SparkCache CUDA restore, so the receipts do not
 cover either mode. Other images, checkpoints, and cache geometries are also
 outside the recorded evidence. The GLM-5.3 Flash receipt covers an 8,192-token
 restored span and does not establish throughput neutrality or larger-span

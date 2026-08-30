@@ -86,12 +86,29 @@ uses these sanitized inputs:
 | File | Role |
 |---|---|
 | `glm53-flash-b12x-kda-adaptive-mtp-tp4-site.example.yaml` | Four-rank TP4/DCP1 site and 20 GiB FP8 KV reservation per rank |
-| `glm53-flash-b12x-kda-mtp5-adaptive-fastsafetensors-sparkcache-tp4-dcp1.example.json` | Adaptive MTP 3→5, 32-step window, fastsafetensors queue one, native SparkCache restore |
+| `glm53-flash-b12x-kda-mtp5-adaptive-fastsafetensors-sparkcache-tp4-dcp1.example.json` | Adaptive MTP 3→5, 32-step window, fastsafetensors queue one, SparkCache CUDA restore |
 
 Resolve both templates with
 `scripts/prepare_glm53_b12x_kda_adaptive_mtp_profile.py`. The resolver rejects
 source, contract, image, loader, adaptive-policy, and cache-identity drift.
 Follow the [executable quickstart](../../docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md).
+
+## GLM-5.3 external DFlash7 Python overlay
+
+Status: **implemented**, not qualified. Both profiles use external DFlash at
+depth seven and TP4, FP8 target KV, 256-token blocks, 32 sequences, and
+SparkCache CUDA restore with page-tail copy-on-write publication.
+
+| File | Status | Target loader |
+|---|---|---|
+| `glm53-flash-dflash7-python-overlay-safetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Global safetensors for target and draft |
+| `glm53-flash-dflash7-python-overlay-fastsafetensors-sparkcache-tp4-dcp1.example.json` | **implemented**, not qualified | Target fastsafetensors queue one with explicit draft safetensors |
+
+Resolve either profile with
+`scripts/prepare_glm53_dflash7_python_overlay_profile.py`. Follow the
+[DFlash7 Python-overlay quickstart](../../docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md).
+Both templates use only SparkCache PR #26 canonical CUDA keys; they do not
+require a PR25 compatibility profile.
 
 ## DeepSeek-V4-Flash-0731
 

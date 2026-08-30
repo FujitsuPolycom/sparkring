@@ -59,6 +59,50 @@ def test_native_profile_loads_with_declared_identity(tmp_path):
     assert profile.identity == {"model_revision": "b" * 40}
 
 
+def test_profile_loader_normalizes_legacy_sparkcache_connector_keys(tmp_path):
+    transfer = {
+        "kv_connector": "SparkContextCacheConnector",
+        "kv_connector_extra_config": {"spark_cache_native_restore": True},
+    }
+    profile = generic.load_profile(
+        _write_profile(
+            tmp_path,
+            "sparkcache-alias.json",
+            _native_document(
+                extra_vllm_args=["--kv-transfer-config", json.dumps(transfer)]
+            ),
+        )
+    )
+
+    normalized = json.loads(profile.extra_vllm_args[1])
+    assert normalized["kv_connector_extra_config"] == {
+        "spark_cache_cuda_restore": True
+    }
+
+
+def test_profile_loader_rejects_conflicting_sparkcache_connector_keys(tmp_path):
+    transfer = {
+        "kv_connector": "SparkContextCacheConnector",
+        "kv_connector_extra_config": {
+            "spark_cache_cuda_restore": True,
+            "spark_cache_native_restore": False,
+        },
+    }
+    with pytest.raises(runtime.ProfileError, match="conflicting values"):
+        generic.load_profile(
+            _write_profile(
+                tmp_path,
+                "sparkcache-conflict.json",
+                _native_document(
+                    extra_vllm_args=[
+                        "--kv-transfer-config",
+                        json.dumps(transfer),
+                    ]
+                ),
+            )
+        )
+
+
 @pytest.mark.parametrize(
     "document, error",
     [

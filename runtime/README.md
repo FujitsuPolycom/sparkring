@@ -13,6 +13,7 @@ credentials, or a live-deployment result.
 | [`glm53-flash/`](glm53-flash/README.md) | GLM-5.3 Flash target, BF16 DFlash2, vLLM, B12X, patched NCCL, and SparkCache identity and attestation contract |
 | [`glm53-flash-e10536a/`](glm53-flash-e10536a/README.md) | Implemented source builder for vLLM e10536a with internal MTP5 and opt-in adaptive depth; live serving unqualified |
 | [`glm53-flash-b12x-kda-adaptive-mtp/`](glm53-flash-b12x-kda-adaptive-mtp/README.md) | Implemented source builder for adaptive MTP and live-tensor B12X KDA at vLLM `0b67266a`; live serving unqualified |
+| [`glm53-flash-dflash7-python-overlay/`](glm53-flash-dflash7-python-overlay/README.md) | Implemented public-base builder for external DFlash7 with vLLM `0b67266a` Python over retained `da4d7be` native extensions; live serving unqualified |
 | [`deepseek0731-gb10/`](deepseek0731-gb10/README.md) | DeepSeek-V4-Flash-0731 GB10 parser, K5 sparse-row, and native PR431 image layer |
 | [`qwen38/`](qwen38/README.md) | Public-source ARM64 image builder for the Qwen3.8-27B EXL3 K5/K6 pair and cycle profiles |
 | [`faststart-lock.json`](faststart-lock.json) | Immutable ARM64 base-image and model-identity pins |

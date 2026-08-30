@@ -75,7 +75,8 @@ def test_compositions_pin_artifact_and_fail_closed_policy() -> None:
         assert recipe["serving"]["scheduler_budget_status"] == "qualified"
         assert recipe["sparkcache"]["kv_load_failure_policy"] == "recompute"
         assert recipe["sparkcache"]["streaming_snapshots"] is False
-        assert recipe["sparkcache"]["native_restore"] is False
+        assert recipe["sparkcache"]["cuda_restore"] is False
+        assert "native_restore" not in recipe["sparkcache"]
 
 
 def test_scheduler_budget_records_evidence_without_an_operator_ceiling() -> None:
