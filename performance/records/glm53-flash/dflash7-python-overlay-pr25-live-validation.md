@@ -68,6 +68,7 @@ so no variability estimate is available.
 | 128K-class prime | 55.522 seconds; completion token 13; snapshot 2,440.7 ms; commit 1,687.7 ms |
 | Unrelated sentinel | completion token 271 |
 | Persistent restore | 813,068,464 bytes per rank; rank range 123.690-153.253 ms |
+| Slowest-rank logical restore rate | 855,265 tokens/s (`131,072 / 0.153253`); ranks are shards of one context and are not summed |
 | Concurrency 2 retained-prefix wave | 0.808 seconds; 2 HTTP 200 responses; every completion token 13; one restore observed |
 | Concurrency 8 retained-prefix wave | 1.506 seconds; 8 HTTP 200 responses; every completion token 13; one restore observed |
 | Concurrency 16 retained-prefix wave | 1.781 seconds; 16 HTTP 200 responses; every completion token 13; one restore observed |

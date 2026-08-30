@@ -97,8 +97,10 @@ def test_receipt_preserves_startup_and_restore_observations() -> None:
         "type_error_observed": False,
     }
     assert measurements["persistent_restore_128k"] == {
+        "restored_tokens": 131072,
         "bytes_per_rank": 813068464,
         "rank_restore_milliseconds": {"minimum": 123.69, "maximum": 153.253},
+        "logical_tokens_per_second_at_slowest_rank": 855265.476,
     }
 
 
