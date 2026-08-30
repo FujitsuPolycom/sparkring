@@ -1,6 +1,6 @@
 # GLM-5.3 recurrent publication and shared-restore validation
 
-Status: **qualified** for the bounded functional gates recorded below on the
+Status: **qualified** for the bounded functional checks recorded below on the
 exact local image. Restore timing is **research-only**. DFlash response quality
 is **unsupported** by this record.
 
@@ -46,8 +46,8 @@ CUDA restore I/O workers, and two load threads. The observation window was
 2026-08-30 09:59:15 through 11:06:44 UTC.
 
 A second local artifact supplied corroborating evidence for the connector's
-publication-target API before the allocation that reaches the target was
-explicitly gated. That image was
+publication-target API before the scheduler explicitly limited publication
+to the allocation that reaches the target. That image was
 `sparkring-glm53-sparkcache:dflash7-pr39-boundary-8a887be-arm64`, image ID
 `sha256:1b4e58dc0999292da34d7418688b2b7f745a5b4d06e048ceb19f06f9d63a1185`,
 at SparkRing commit `8a887bebefa4bfcc0b47fc24de34a986b042fb29`. Its observations are labeled
@@ -62,7 +62,7 @@ fields, scoped status, and limitations are retained in
 Image labels and construction fields came from the image receipt. A read-only
 container-state snapshot checked the exact image ID, process state, restart
 count, and OOM-killed flag on each rank after the clean relaunch. The
-containers had no Docker healthcheck, so this record calls that gate process
+containers had no Docker healthcheck, so this record calls that check process
 health rather than HTTP health.
 
 The request harness retained prompt and response digests, token counts, HTTP
@@ -83,7 +83,7 @@ as its result. It represented the new tail as 826,457,677 encoded bytes in 13
 objects with a 64 MiB target size. The base remained a 512-object opaque page
 root.
 
-The shared-restore gate sent 16 concurrent requests with one identical
+The shared-restore case sent 16 concurrent requests with one identical
 131,072-token trunk and 16 distinct tails. All 16 prompt SHA-256 values were
 different. During that cohort, each rank emitted exactly one restore shard
 for request `cmpl-9ac4e6b523215233-0-9c41ccbc`, and no second external restore
@@ -97,7 +97,7 @@ Those measurements show the behavior of that exact artifact only.
 
 ## Result
 
-| Gate or observation | Result |
+| Check or observation | Result |
 |---|---|
 | Final-image process state after clean relaunch | four ranks running the exact image; restart counts `0,0,0,0`; OOM-killed flags `false,false,false,false` |
 | Semantic canary | semantic match; 27 prompt tokens; 45 completion tokens; 1.411 s client time |

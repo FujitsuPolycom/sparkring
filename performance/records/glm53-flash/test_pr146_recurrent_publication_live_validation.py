@@ -52,7 +52,7 @@ def test_receipt_binds_exact_final_artifact_and_source_contracts() -> None:
 
 def test_status_scopes_functional_and_performance_claims() -> None:
     status = _receipt()["status"]
-    for gate in (
+    for status_name in (
         "semantic_canary",
         "persistent_8k_restore_after_restart",
         "persistent_128k_restore",
@@ -60,7 +60,7 @@ def test_status_scopes_functional_and_performance_claims() -> None:
         "persistent_256k_restore_correctness",
         "segment_shared_restore_c16",
     ):
-        assert status[gate] == "qualified"
+        assert status[status_name] == "qualified"
     assert status["restore_performance"] == "research-only"
     assert status["dflash_response_quality"] == "unsupported"
 
