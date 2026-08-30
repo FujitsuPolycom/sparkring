@@ -46,6 +46,7 @@ def test_overlay_pins_public_base_and_mixed_vllm_provenance() -> None:
     assert pins["b12x"]["tree"] == "c69cdec1c59a08e8e0e549f930fa8abcfb5134ae"
     assert pins["b12x"]["package_version"] == "1.3.0"
     assert pins["b12x"]["commit"] != pins["b12x"]["base_commit"]
+    assert pins["dependencies"]["torch"] == "2.13.0+cu130"
 
 
 def test_overlay_manifest_is_the_exact_31_file_python_delta() -> None:

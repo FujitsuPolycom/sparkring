@@ -56,7 +56,7 @@
   },
   "dependencies": {
     "python": "3.12",
-    "torch": "2.13.0",
+    "torch": "2.13.0+cu130",
     "cuda": "13.0.3",
     "fastsafetensors": "0.3.3",
     "instanttensor": "0.1.9",
