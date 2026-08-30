@@ -28,8 +28,10 @@ image is not described as a source-built vLLM 0b67266 wheel.
 The composed vLLM source also provides the opt-in
 `SchedulerOutput.recurrent_boundary_blocks` interface for connectors that need
 the exact Mamba replay-boundary state. Entries are emitted only after the block
-hash proves both the KV group and token boundary. Partial-tail copy-on-write
-handoffs remain backward compatible. Aligned handoffs require the connector to
+hash proves both the KV group and token boundary. A scheduler allocation may
+cross a full recurrent boundary; the producer detects the newly cached boundary
+block instead of requiring the scheduled token count to equal it. Partial-tail
+copy-on-write handoffs remain backward compatible. Aligned handoffs require the connector to
 advertise `supports_recurrent_boundary_blocks`; other connectors retain no
 additional recurrent page. Pins live through the worker execution fence and
 are released during request cleanup.
@@ -37,10 +39,10 @@ are released during request cleanup.
 The SparkCache source that routes reconstructed opaque pages through the SM121
 placement library, restores shared segment objects, and publishes only the
 copy-on-write tail is commit
-`49c517ed76e09dd2f7e78eb3ad5fe83382bda6fb`, Git tree
-`c8cbfb54fc52c5966f19af3450629376e4e703db`. The builder verifies clean
+`972b203a716eb20f1889583f7f408788f2a67684`, Git tree
+`fb2d635bad4bbe68ac0da9cd3246f0e6693e18a9`. The builder verifies clean
 deployable-source SHA-256
-`83853050f790b18af95d424fec837abeb1a9a33f0538b5e4b97c16fb9c681781`
+`0c7547fb7e78b3af202d83690170efec2c7602a7c7ea6b407ef70c3fcdd8cfbb`
 before generating the SparkCache CUDA placement library. It applies the VMM exemption,
 load-failure recovery, shared-prefix retention, and follower-attachment
 patches in order, then runs the eleven-file lease-contract verifier. The

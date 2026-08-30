@@ -194,15 +194,20 @@ index ceb56a598..aef3efe8e 100644
          return super().pop_blocks_for_free(request_id)
 
      def get_num_skipped_tokens(self, num_computed_tokens: int) -> int:
-@@ -1720,6 +1737,7 @@ class MambaManager(SingleTypeKVCacheManager):
+@@ -1720,6 +1737,12 @@ class MambaManager(SingleTypeKVCacheManager):
              partial_hash = self._cache_partial_tail_block(request, num_tokens)
              if partial_hash is not None:
                  self.cached_blocks_this_step.add(partial_hash)
-+            self._queue_aligned_recurrent_boundary(request, num_tokens)
++            self._queue_aligned_recurrent_boundary(
++                request,
++                num_tokens,
++                num_cached_blocks_before,
++                num_cached_blocks_after,
++            )
          if num_cached_blocks_after > num_cached_blocks_before:
              for block in self.req_to_blocks[request.request_id][
                  num_cached_blocks_before:num_cached_blocks_after
-@@ -1778,6 +1796,41 @@ class MambaManager(SingleTypeKVCacheManager):
+@@ -1778,6 +1801,51 @@ class MambaManager(SingleTypeKVCacheManager):
              self._producer_partial_tail_reqs[request.request_id] = num_tokens
          return partial_hash
 
@@ -210,17 +215,27 @@ index ceb56a598..aef3efe8e 100644
 +        self,
 +        request: Request,
 +        num_tokens: int,
++        num_cached_blocks_before: int,
++        num_cached_blocks_after: int,
 +    ) -> None:
-+        """Queue a full Mamba page only when its hash proves the replay boundary."""
-+        if num_tokens <= 0 or num_tokens % self.block_size != 0:
++        """Queue a newly cached page only when its hash proves the boundary."""
++        if num_tokens <= 0:
 +            return
 +        replay_boundary = (
 +            (request.num_prompt_tokens - 1) // self.block_pool.hash_block_size
 +        ) * self.block_pool.hash_block_size
-+        if num_tokens != replay_boundary:
++        if (
++            replay_boundary <= 0
++            or replay_boundary % self.block_size != 0
++            or num_tokens < replay_boundary
++        ):
 +            return
 +
-+        block_idx = num_tokens // self.block_size - 1
++        block_idx = replay_boundary // self.block_size - 1
++        if not (
++            num_cached_blocks_before <= block_idx < num_cached_blocks_after
++        ):
++            return
 +        blocks = self.req_to_blocks[request.request_id]
 +        if block_idx >= len(blocks):
 +            return

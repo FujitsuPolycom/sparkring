@@ -43,7 +43,7 @@
       {
         "status": "implemented",
         "path": "runtime/glm53-flash-adaptive-mtp-python-overlay/patches/011-recurrent-boundary-contract.patch",
-        "sha256": "5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0",
+        "sha256": "b895327f7e7560d6053c89849718a612c84e2efd84e9e6f6734e27b04f42b185",
         "contract": "SchedulerOutput.recurrent_boundary_blocks exposes only hash-proven aligned Mamba pages and partial-tail CoW targets; request cleanup releases their pins.",
         "targets": [
           {
@@ -64,7 +64,7 @@
           {
             "path": "vllm/v1/core/single_type_kv_cache_manager.py",
             "preimage_sha256": "e4b1c5c38b63b708fd55aa40a9ab0d008b266d006a63dcfcef55890ac1371cb8",
-            "postimage_sha256": "f67a1850a7e0288baaa6d42e7ec55b22b09c156720767e23acaabedcae333c8a"
+            "postimage_sha256": "2ab95dea008d65488bc2d55ccbe023c4481dba633fe92924001b9e4155ff38a2"
           }
         ],
         "test_patch": {
@@ -114,9 +114,9 @@
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-    "commit": "49c517ed76e09dd2f7e78eb3ad5fe83382bda6fb",
-    "tree": "c8cbfb54fc52c5966f19af3450629376e4e703db",
-    "source_tree_sha256": "83853050f790b18af95d424fec837abeb1a9a33f0538b5e4b97c16fb9c681781",
+    "commit": "972b203a716eb20f1889583f7f408788f2a67684",
+    "tree": "fb2d635bad4bbe68ac0da9cd3246f0e6693e18a9",
+    "source_tree_sha256": "0c7547fb7e78b3af202d83690170efec2c7602a7c7ea6b407ef70c3fcdd8cfbb",
     "cuda_config_schema": "canonical-v1",
     "canonical_cuda_config_keys": [
       "spark_cache_cuda_restore",
@@ -127,7 +127,7 @@
     ],
     "contract": {
       "path": "sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json",
-      "sha256": "f36ed14eaf1f97a5dffa94bda8151b1e0fa182afc0d121b757b70bebc6a43811",
+      "sha256": "70b94520f1094d99ebf0e2a3f5a61e29ca377f61f6bd052bd899f23d034957b8",
       "files": 11
     },
     "patches": [

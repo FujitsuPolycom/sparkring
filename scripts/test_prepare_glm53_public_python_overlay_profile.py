@@ -155,7 +155,7 @@ def test_resolver_requires_mixed_provenance_and_all_artifact_hashes() -> None:
     )
     assert "org.sparkcache.native-library-sha256" not in labels
     assert labels["org.sparkcache.source-tree"] == (
-        "c8cbfb54fc52c5966f19af3450629376e4e703db"
+        "fb2d635bad4bbe68ac0da9cd3246f0e6693e18a9"
     )
     assert labels["org.sparkcache.vllm-contract-sha256"] == LEASE_CONTRACT_SHA256
     assert labels["org.sparkring.source-receipt-sha256"] == SOURCE_RECEIPT
