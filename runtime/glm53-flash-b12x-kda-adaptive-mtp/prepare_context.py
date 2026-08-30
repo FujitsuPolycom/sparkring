@@ -18,6 +18,7 @@ HERE = Path(__file__).resolve().parent
 DEFAULT_PINS = HERE / "pins.json"
 PINS_SCHEMA = "sparkring-glm53-flash-runtime-lock/v1"
 RECEIPT_SCHEMA = "sparkring-glm53-public-build-context/v1"
+KDA_CONTRACT_SCHEMA = "sparkring-vllm-b12x-live-tensor-kda/v1"
 
 
 class PrepareError(RuntimeError):
@@ -91,7 +92,12 @@ def clone_detached(
     verify_git_tree(destination, expected_commit=commit, expected_tree=tree)
 
 
-def verify_source_lineage(repository: Path, lineage: dict[str, Any]) -> None:
+def verify_first_parent_lineage(
+    repository: Path,
+    lineage: dict[str, Any],
+    *,
+    source_name: str,
+) -> None:
     base = lineage["base_commit"]
     expected = lineage["included_commits"]
     observed = run(
@@ -107,8 +113,14 @@ def verify_source_lineage(repository: Path, lineage: dict[str, Any]) -> None:
     ).splitlines()
     if observed != expected:
         raise PrepareError(
-            "vLLM first-parent lineage differs from the pinned commit sequence"
+            f"{source_name} first-parent lineage differs from the pinned commit sequence"
         )
+
+
+def verify_source_lineage(repository: Path, lineage: dict[str, Any]) -> None:
+    """Verify the vLLM feature boundary and exact first-parent sequence."""
+    verify_first_parent_lineage(repository, lineage, source_name="vLLM")
+    expected = lineage["included_commits"]
     adaptive_commit = lineage["adaptive_mtp_commit"]
     observed_tree = git_value(repository, f"{adaptive_commit}^{{tree}}")
     if observed_tree != lineage["adaptive_mtp_tree"]:
@@ -119,6 +131,118 @@ def verify_source_lineage(repository: Path, lineage: dict[str, Any]) -> None:
         raise PrepareError(
             "vLLM live-tensor KDA commits are not the final source-lineage entries"
         )
+
+
+def verify_b12x_source_lineage(repository: Path, lineage: dict[str, Any]) -> None:
+    """Verify the B12X ancestry that supplies the live-tensor KDA API."""
+    verify_first_parent_lineage(repository, lineage, source_name="B12X")
+
+
+def _require_source_markers(
+    source: str,
+    requirements: tuple[tuple[str, str], ...],
+    *,
+    source_name: str,
+) -> None:
+    for behavior, marker in requirements:
+        if marker not in source:
+            raise PrepareError(f"{source_name} does not implement {behavior}")
+
+
+def reject_unsupported_b12x_source(
+    observed_sha256: str,
+    contract: dict[str, Any],
+) -> None:
+    """Reject a byte-exact B12X source with a known incompatible KDA API."""
+    for source in contract.get("unsupported_b12x_sources", []):
+        if observed_sha256 == source.get("source_sha256"):
+            raise PrepareError(
+                f"unsupported B12X KDA source {source.get('commit')}: "
+                f"{source.get('limitation')}"
+            )
+
+
+def verify_live_tensor_kda_contract(
+    vllm: Path,
+    b12x: Path,
+    contract: dict[str, Any],
+) -> None:
+    """Verify the byte identity and call semantics of the vLLM/B12X KDA pair."""
+    if contract.get("schema") != KDA_CONTRACT_SCHEMA:
+        raise PrepareError(
+            f"unsupported vLLM/B12X KDA contract: {contract.get('schema')!r}"
+        )
+    if contract.get("status") != "implemented":
+        raise PrepareError("vLLM/B12X KDA contract status must be implemented")
+    if contract.get("metadata_validation") != "trusted":
+        raise PrepareError("vLLM/B12X KDA metadata validation must be trusted")
+    if contract.get("tensor_binding") != "request-sized-live-tensors":
+        raise PrepareError(
+            "vLLM/B12X KDA tensor binding must use request-sized live tensors"
+        )
+
+    vllm_pin = contract["vllm_source"]
+    b12x_pin = contract["b12x_source"]
+    vllm_source = vllm / vllm_pin["path"]
+    b12x_source = b12x / b12x_pin["path"]
+    require_hash(vllm_source, vllm_pin["sha256"], vllm_pin["path"])
+    reject_unsupported_b12x_source(sha256_file(b12x_source), contract)
+    require_hash(b12x_source, b12x_pin["sha256"], b12x_pin["path"])
+
+    _require_source_markers(
+        vllm_source.read_text(encoding="utf-8"),
+        (
+            (
+                "trusted metadata selection in the B12X KDA plan",
+                'kda_metadata_validation="trusted"',
+            ),
+            (
+                "request-sized token capacity derived from the live projection",
+                "num_tokens = int(mixed_qkv.shape[0])",
+            ),
+            (
+                "request-sized packed request boundaries",
+                "query_start_loc = query_start_loc[: num_requests + 1]",
+            ),
+            (
+                "request-sized recurrent-state metadata",
+                "state_indices = state_indices[:num_requests, :state_columns]",
+            ),
+            ("live-tensor KDA binding", "binding = api.bind_kda("),
+            ("bound KDA execution", "api.run_kda("),
+        ),
+        source_name="vLLM",
+    )
+    _require_source_markers(
+        b12x_source.read_text(encoding="utf-8"),
+        (
+            (
+                "the trusted KDA metadata policy",
+                'KdaMetadataValidation = Literal["transactional", "trusted"]',
+            ),
+            (
+                "a configurable KDA metadata-validation field",
+                'kda_metadata_validation: KdaMetadataValidation = "transactional"',
+            ),
+            (
+                "request-sized token capacity",
+                'token_capacity = _positive("mixed_qkv token capacity", mixed_qkv.shape[0])',
+            ),
+            (
+                "request-sized sequence capacity",
+                '"state_indices sequence capacity", state_indices.shape[0]',
+            ),
+            (
+                "request-sized projection binding",
+                "shape=(token_capacity, caps.packed_qkv_width)",
+            ),
+            (
+                "trusted metadata dispatch",
+                'validate_metadata=caps.kda_metadata_validation == "transactional"',
+            ),
+        ),
+        source_name="B12X",
+    )
 
 
 def verify_git_tree(
@@ -199,11 +323,19 @@ def prepare(output: Path, *, repository_root: Path, pins_path: Path) -> dict[str
     )
     verify_source_lineage(sources / "vllm", vllm_lineage)
     b12x_pin = source_pins["b12x"]
+    b12x_lineage = b12x_pin["source_lineage"]
     clone_detached(
         sources / "b12x",
         repository=b12x_pin["repository"],
         commit=b12x_pin["commit"],
         tree=b12x_pin["tree"],
+        fetch_depth=len(b12x_lineage["included_commits"]) + 1,
+    )
+    verify_b12x_source_lineage(sources / "b12x", b12x_lineage)
+    verify_live_tensor_kda_contract(
+        sources / "vllm",
+        sources / "b12x",
+        build["vllm_b12x_kda"],
     )
 
     nccl_pin = source_pins["nccl"]
@@ -261,12 +393,17 @@ def prepare(output: Path, *, repository_root: Path, pins_path: Path) -> dict[str
                 "tree": vllm_pin["tree"],
                 "source_lineage": vllm_lineage,
             },
-            "b12x": {"commit": b12x_pin["commit"], "tree": b12x_pin["tree"]},
+            "b12x": {
+                "commit": b12x_pin["commit"],
+                "tree": b12x_pin["tree"],
+                "source_lineage": b12x_lineage,
+            },
             "nccl": {
                 "commit": nccl_pin["commit"],
                 "tree": nccl_pin["patched_tree"],
             },
         },
+        "vllm_b12x_kda": build["vllm_b12x_kda"],
         "files": {
             relative: sha256_file(output / relative) for relative in receipt_files
         },
@@ -296,6 +433,26 @@ def verify_context(context: Path, *, pins_path: Path) -> dict[str, Any]:
     build = pins["public_image_build"]
     source_pins = build["sources"]
     sources = context / "bundle" / "sources"
+    expected_receipt_sources = {
+        "vllm": {
+            "commit": source_pins["vllm"]["commit"],
+            "tree": source_pins["vllm"]["tree"],
+            "source_lineage": source_pins["vllm"]["source_lineage"],
+        },
+        "b12x": {
+            "commit": source_pins["b12x"]["commit"],
+            "tree": source_pins["b12x"]["tree"],
+            "source_lineage": source_pins["b12x"]["source_lineage"],
+        },
+        "nccl": {
+            "commit": source_pins["nccl"]["commit"],
+            "tree": source_pins["nccl"]["patched_tree"],
+        },
+    }
+    if receipt.get("sources") != expected_receipt_sources:
+        raise PrepareError("prepared context source receipt differs from its pins")
+    if receipt.get("vllm_b12x_kda") != build["vllm_b12x_kda"]:
+        raise PrepareError("prepared context KDA contract receipt differs from its pins")
     source_contracts = {
         "vllm": (
             source_pins["vllm"]["commit"],
@@ -321,6 +478,14 @@ def verify_context(context: Path, *, pins_path: Path) -> dict[str, Any]:
             indexed=indexed,
         )
     verify_source_lineage(sources / "vllm", source_pins["vllm"]["source_lineage"])
+    verify_b12x_source_lineage(
+        sources / "b12x", source_pins["b12x"]["source_lineage"]
+    )
+    verify_live_tensor_kda_contract(
+        sources / "vllm",
+        sources / "b12x",
+        build["vllm_b12x_kda"],
+    )
     return receipt
 
 

@@ -82,7 +82,7 @@
     "--async-scheduling",
     "--enable-prefix-caching",
     "--cudagraph-metrics",
-    "--kv-transfer-config", "{\"kv_connector\":\"SparkContextCacheConnector\",\"kv_connector_module_path\":\"sparkcache.spark_context_cache_connector\",\"kv_role\":\"kv_both\",\"kv_load_failure_policy\":\"recompute\",\"kv_connector_extra_config\":{\"spark_cache_root\":\"/cache/jit/sparkcache-context\",\"spark_cache_model_profile\":\"glm53-flash-hybrid\",\"spark_cache_target_checkpoint_sha256\":\"a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9\",\"spark_cache_draft_checkpoint_sha256\":\"3255539158b8a4fd199b4d97d89eb5231df3b39a5370881c16099a8059b09e44\",\"spark_cache_draft_policy\":\"separate\",\"spark_cache_store\":true,\"spark_cache_restore\":true,\"spark_cache_scheduler_probe\":\"none\",\"spark_cache_streaming_snapshots\":false,\"spark_cache_native_restore\":true,\"spark_cache_max_bytes\":51539607552,\"spark_cache_low_watermark_bytes\":42949672960,\"spark_cache_ttl_seconds\":0,\"spark_cache_min_span_tokens\":4096,\"spark_cache_max_span_tokens\":524288,\"spark_cache_native_library\":\"/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so\",\"spark_cache_native_library_sha256\":\"REPLACE_WITH_NATIVE_LIBRARY_SHA256\",\"spark_cache_native_arena_bytes\":268435456,\"spark_cache_native_io_workers\":8,\"spark_cache_load_threads\":2,\"spark_cache_clear_once\":\"sparkring-b12x-kda-adaptive-mtp-fastsafetensors-initialization\"}}"
+    "--kv-transfer-config", "{\"kv_connector\":\"SparkContextCacheConnector\",\"kv_connector_module_path\":\"sparkcache.spark_context_cache_connector\",\"kv_role\":\"kv_both\",\"kv_load_failure_policy\":\"recompute\",\"kv_connector_extra_config\":{\"spark_cache_root\":\"/cache/jit/sparkcache-context\",\"spark_cache_model_profile\":\"glm53-flash-hybrid\",\"spark_cache_target_checkpoint_sha256\":\"a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9\",\"spark_cache_draft_checkpoint_sha256\":\"2761488b43742f849e2cb7ac4977dc28d771faf5afef1951044327948d6ad71e\",\"spark_cache_draft_policy\":\"separate\",\"spark_cache_store\":true,\"spark_cache_restore\":true,\"spark_cache_scheduler_probe\":\"none\",\"spark_cache_streaming_snapshots\":false,\"spark_cache_native_restore\":true,\"spark_cache_max_bytes\":51539607552,\"spark_cache_low_watermark_bytes\":42949672960,\"spark_cache_ttl_seconds\":0,\"spark_cache_min_span_tokens\":4096,\"spark_cache_max_span_tokens\":524288,\"spark_cache_native_library\":\"/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so\",\"spark_cache_native_library_sha256\":\"REPLACE_WITH_NATIVE_LIBRARY_SHA256\",\"spark_cache_native_arena_bytes\":268435456,\"spark_cache_native_io_workers\":8,\"spark_cache_load_threads\":2,\"spark_cache_clear_once\":\"sparkring-b12x-kda-adaptive-mtp-fastsafetensors-initialization\"}}"
   ],
   "extra_volumes": [
     {"host": "/REPLACE/GLM53_CACHE_HOST_ROOT", "container": "/cache/jit", "mode": "rw"}
@@ -106,18 +106,22 @@
     "mtp_adaptive": "true",
     "mtp_adaptive_initial_tokens": "3",
     "mtp_adaptive_window": "32",
-    "mtp_cache_identity_schema": "glm53-embedded-mtp-runtime-v1",
-    "mtp_cache_identity_sha256": "3255539158b8a4fd199b4d97d89eb5231df3b39a5370881c16099a8059b09e44",
+    "mtp_cache_identity_schema": "glm53-embedded-mtp-vllm-b12x-runtime-v1",
+    "mtp_cache_identity_sha256": "2761488b43742f849e2cb7ac4977dc28d771faf5afef1951044327948d6ad71e",
     "weight_loader": "fastsafetensors",
     "weight_loader_queue_size": "1",
     "weight_loader_tp_nogds": "true",
     "sparkcache_source_sha256": "4998b24f4f504aeeb9bf92769ec720e282f546e6726d89fdfd06c4efa8d17c10",
     "sparkcache_source_revision": "20838ace3ebda570ca039cb7f1976c29da554b39",
-    "vllm_revision": "0b67266a0f37d6146a8403fb8482403c62f412d5"
+    "vllm_revision": "0b67266a0f37d6146a8403fb8482403c62f412d5",
+    "b12x_revision": "b1d541f9e71a35f030d45fae437630fff7507c2a",
+    "b12x_tree": "c69cdec1c59a08e8e0e549f930fa8abcfb5134ae"
   },
   "required_image_labels": {
     "org.jovian.architecture": "linux-arm64-sm121",
-    "org.jovian.b12x.commit": "2fcf23a0ce269be27b2e03fece73d46e90e6aeea",
+    "org.jovian.b12x.commit": "b1d541f9e71a35f030d45fae437630fff7507c2a",
+    "org.jovian.b12x.tree": "c69cdec1c59a08e8e0e549f930fa8abcfb5134ae",
+    "org.jovian.b12x.kda-contract": "sparkring-vllm-b12x-live-tensor-kda/v1",
     "org.jovian.transport": "sparkring-nccl-2.30.7-source-built",
     "org.jovian.vllm.commit": "0b67266a0f37d6146a8403fb8482403c62f412d5",
     "org.sparkcache.deployment-profile": "glm53-flash-b12x-kda-adaptive-mtp-source-built",

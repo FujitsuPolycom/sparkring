@@ -56,6 +56,8 @@ def expected_labels(pins: dict[str, Any]) -> dict[str, str]:
         "org.jovian.architecture": "linux-arm64-sm121",
         "org.jovian.vllm.commit": sources["vllm"]["commit"],
         "org.jovian.b12x.commit": sources["b12x"]["commit"],
+        "org.jovian.b12x.tree": sources["b12x"]["tree"],
+        "org.jovian.b12x.kda-contract": build["vllm_b12x_kda"]["schema"],
         "org.sparkring.nccl.commit": sources["nccl"]["commit"],
         "org.sparkring.nccl.patched-tree": sources["nccl"]["patched_tree"],
         "org.sparkring.nccl.patch-sha256": sources["nccl"]["patches"][0]["sha256"],
@@ -84,11 +86,17 @@ def runtime_probe(engine: str, image: str) -> dict[str, Any]:
     program = """
 import hashlib
 import importlib.metadata
+import inspect
 import json
 import pathlib
 import platform
+from vllm.utils.b12x import get_b12x_gdn_decode
 
 nccl = pathlib.Path('/opt/sparkring/nccl/libnccl.so.2.30.7')
+gdn = get_b12x_gdn_decode()
+caps_field = None if gdn is None else gdn.Caps.__dataclass_fields__.get('kda_metadata_validation')
+bind_source = '' if gdn is None else inspect.getsource(gdn.bind_kda)
+run_source = '' if gdn is None else inspect.getsource(gdn.run_kda)
 document = {
     'python': platform.python_version(),
     'vllm': importlib.metadata.version('vllm'),
@@ -99,6 +107,12 @@ document = {
     'nccl_bytes': nccl.stat().st_size,
     'source_receipt_present': pathlib.Path('/opt/sparkring/runtime/source-receipt.json').is_file(),
     'pins_present': pathlib.Path('/opt/sparkring/runtime/pins.json').is_file(),
+    'b12x_kda_contract': {
+        'metadata_validation_default': None if caps_field is None else caps_field.default,
+        'request_sized_token_binding': 'mixed_qkv.shape[0]' in bind_source,
+        'request_sized_sequence_binding': 'state_indices.shape[0]' in bind_source,
+        'trusted_metadata_dispatch': 'caps.kda_metadata_validation == "transactional"' in run_source,
+    },
 }
 print(json.dumps(document, sort_keys=True))
 """.strip()
@@ -122,6 +136,17 @@ print(json.dumps(document, sort_keys=True))
         raise VerifyError("runtime probe returned an invalid NCCL SHA-256")
     if not probe.get("source_receipt_present") or not probe.get("pins_present"):
         raise VerifyError("runtime image omits its source receipt or pins")
+    expected_kda_contract = {
+        "metadata_validation_default": "transactional",
+        "request_sized_token_binding": True,
+        "request_sized_sequence_binding": True,
+        "trusted_metadata_dispatch": True,
+    }
+    if probe.get("b12x_kda_contract") != expected_kda_contract:
+        raise VerifyError(
+            "runtime image does not implement trusted-metadata, request-sized "
+            "live-tensor B12X KDA binding"
+        )
     return probe
 
 

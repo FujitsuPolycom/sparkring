@@ -25,8 +25,11 @@ LEASE_CONTRACT_SHA256 = (
     "6defde9551cbb586fd09bb2d3020495531b6573397875a767eaae1dbad126024"
 )
 VLLM_COMMIT = "0b67266a0f37d6146a8403fb8482403c62f412d5"
+B12X_COMMIT = "b1d541f9e71a35f030d45fae437630fff7507c2a"
+B12X_TREE = "c69cdec1c59a08e8e0e549f930fa8abcfb5134ae"
+B12X_KDA_CONTRACT = "sparkring-vllm-b12x-live-tensor-kda/v1"
 MTP_CACHE_IDENTITY_SHA256 = (
-    "3255539158b8a4fd199b4d97d89eb5231df3b39a5370881c16099a8059b09e44"
+    "2761488b43742f849e2cb7ac4977dc28d771faf5afef1951044327948d6ad71e"
 )
 
 
@@ -78,6 +81,10 @@ def resolve(
         raise ResolveError("profile does not name the integrated SparkCache source")
     if identity.get("vllm_revision") != VLLM_COMMIT:
         raise ResolveError("profile does not name the live-tensor B12X KDA runtime")
+    if identity.get("b12x_revision") != B12X_COMMIT:
+        raise ResolveError("profile does not name the compatible B12X revision")
+    if identity.get("b12x_tree") != B12X_TREE:
+        raise ResolveError("profile does not name the compatible B12X source tree")
     if identity.get("mtp_cache_identity_sha256") != MTP_CACHE_IDENTITY_SHA256:
         raise ResolveError("profile does not use the runtime-bound MTP identity")
     expected_identity = {
@@ -85,7 +92,7 @@ def resolve(
         "mtp_adaptive": "true",
         "mtp_adaptive_initial_tokens": "3",
         "mtp_adaptive_window": "32",
-        "mtp_cache_identity_schema": "glm53-embedded-mtp-runtime-v1",
+        "mtp_cache_identity_schema": "glm53-embedded-mtp-vllm-b12x-runtime-v1",
         "weight_loader": "fastsafetensors",
         "weight_loader_queue_size": "1",
         "weight_loader_tp_nogds": "true",
@@ -104,6 +111,15 @@ def resolve(
         raise ResolveError("adaptive MTP observation window must be 32")
     if profile.get("environment", {}).get("VLLM_FASTSAFETENSORS_QUEUE_SIZE") != "1":
         raise ResolveError("fastsafetensors queue size must be one")
+    required_labels = profile.get("required_image_labels", {})
+    expected_b12x_labels = {
+        "org.jovian.b12x.commit": B12X_COMMIT,
+        "org.jovian.b12x.tree": B12X_TREE,
+        "org.jovian.b12x.kda-contract": B12X_KDA_CONTRACT,
+    }
+    for name, expected in expected_b12x_labels.items():
+        if required_labels.get(name) != expected:
+            raise ResolveError(f"profile image label {name} must be {expected}")
     attestation = " ".join(str(value) for value in profile.get("attestation_hook", []))
     if SPARKCACHE_SOURCE_SHA256 not in attestation:
         raise ResolveError("profile does not attest the integrated SparkCache source")

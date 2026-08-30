@@ -49,8 +49,29 @@
       },
       "b12x": {
         "repository": "https://github.com/local-inference-lab/b12x.git",
-        "commit": "2fcf23a0ce269be27b2e03fece73d46e90e6aeea",
-        "tree": "58a046fc8faa747346f40f87166cda7e0f67ff47",
+        "commit": "b1d541f9e71a35f030d45fae437630fff7507c2a",
+        "tree": "c69cdec1c59a08e8e0e549f930fa8abcfb5134ae",
+        "source_lineage": {
+          "base_commit": "2fcf23a0ce269be27b2e03fece73d46e90e6aeea",
+          "included_commits": [
+            "f1ddd12fe51667ade19a6fb6b460e338f0e94461",
+            "d56c1163b6e019d828ed24f135c2efd05fdca6ea",
+            "f2fd5113db6344a117074424e5461329ba33704f",
+            "11814a27cabc3501f3ab8d20f159a80f6d29d0af",
+            "ff9abf8a08fd4af0d3f7b3bab69d500e924bab2e",
+            "e8905c1afaedb1b905dc8dd80537dbc25d35453b",
+            "5c20a7f3190f92fabd290ddbd2a77390fe2b0f8f",
+            "501ffb9a9b118009b8ea2ea20b8d43f57ba4f221",
+            "98149b404f59498324d3193ccbd1a49aa8df21a8",
+            "cd9c3431f760f965fcf5f268b6a8d6ef1de9b6db",
+            "80d68e5702e7c9e99ca37988f87c964021d7e1b4",
+            "4e65ed4d7a57b708bc213580c19a4e9cf0a9ca82",
+            "12aea7d96928f540a64259e4e24ef7688093b515",
+            "f1a37c87a1b81cfe7b302b0a8c148ca4302ca8dc",
+            "00f7d4be8c080e6faf359c089d1439839565b87e",
+            "b1d541f9e71a35f030d45fae437630fff7507c2a"
+          ]
+        },
         "license": "Apache-2.0"
       },
       "nccl": {
@@ -68,6 +89,29 @@
           }
         ]
       }
+    },
+    "vllm_b12x_kda": {
+      "schema": "sparkring-vllm-b12x-live-tensor-kda/v1",
+      "status": "implemented",
+      "metadata_validation": "trusted",
+      "tensor_binding": "request-sized-live-tensors",
+      "vllm_source": {
+        "path": "vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py",
+        "sha256": "8bf8bc579dd4a80224dc1633e7513f2a0c58e07db72a736c7e41d28d3c35f3b9"
+      },
+      "b12x_source": {
+        "path": "b12x/sequence/gdn_decode/_impl.py",
+        "sha256": "a2c81a486eb4d86a59f39e4f03855382583d39cdadd5fc8fd1c685ba28b1b56e"
+      },
+      "unsupported_b12x_sources": [
+        {
+          "status": "unsupported",
+          "commit": "2fcf23a0ce269be27b2e03fece73d46e90e6aeea",
+          "tree": "58a046fc8faa747346f40f87166cda7e0f67ff47",
+          "source_sha256": "b1f072405ad2f3bba83e720419a59ae791e1269dfccc9fc4a279889f8bd07d6e",
+          "limitation": "Caps does not accept kda_metadata_validation, and bind_kda requires plan-sized tensors instead of request-sized live tensors."
+        }
+      ]
     },
     "instanttensor": {
       "version": "0.1.9",

@@ -90,7 +90,10 @@ uses these sanitized inputs:
 
 Resolve both templates with
 `scripts/prepare_glm53_b12x_kda_adaptive_mtp_profile.py`. The resolver rejects
-source, contract, image, loader, adaptive-policy, and cache-identity drift.
+vLLM source, B12X source and KDA interface, image, loader, adaptive-policy, and
+cache-identity drift. The profile requires B12X commit
+`b1d541f9e71a35f030d45fae437630fff7507c2a` and tree
+`c69cdec1c59a08e8e0e549f930fa8abcfb5134ae`.
 Follow the [executable quickstart](../../docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md).
 
 ## DeepSeek-V4-Flash-0731

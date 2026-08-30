@@ -5,8 +5,10 @@ ARG ARM_BUILDER
 
 FROM ${ARM_BUILDER} AS b12x-wheel
 ARG B12X_COMMIT
+ARG B12X_TREE
 COPY bundle/sources/b12x /build/b12x
 RUN test "$(git -C /build/b12x rev-parse HEAD)" = "${B12X_COMMIT}" \
+ && test "$(git -C /build/b12x rev-parse 'HEAD^{tree}')" = "${B12X_TREE}" \
  && /opt/python/cp312-cp312/bin/python -m pip wheel \
       --no-deps --wheel-dir /out/wheels /build/b12x
 
@@ -27,6 +29,8 @@ RUN test "$(git -C /build/nccl rev-parse HEAD)" = "${NCCL_COMMIT}" \
 FROM ${VLLM_BASE}
 ARG VLLM_COMMIT
 ARG B12X_COMMIT
+ARG B12X_TREE
+ARG B12X_KDA_CONTRACT
 ARG NCCL_COMMIT
 ARG NCCL_PATCHED_TREE
 ARG NCCL_PATCH_SHA256
@@ -35,7 +39,7 @@ ARG SPARKRING_REVISION
 
 COPY --from=b12x-wheel /out/wheels/ /opt/sparkring/wheelhouse/
 RUN uv pip install --system --no-deps /opt/sparkring/wheelhouse/b12x-*.whl \
- && python3 -c "import b12x; from vllm.utils.b12x import get_b12x_sparse_mla, get_b12x_dsa_indexer, get_b12x_gdn_decode, get_b12x_mhc; assert get_b12x_sparse_mla(); assert get_b12x_dsa_indexer(); assert get_b12x_gdn_decode(); assert get_b12x_mhc()"
+ && python3 -c "import b12x, inspect; from vllm.utils.b12x import get_b12x_sparse_mla, get_b12x_dsa_indexer, get_b12x_gdn_decode, get_b12x_mhc; gdn = get_b12x_gdn_decode(); assert get_b12x_sparse_mla(); assert get_b12x_dsa_indexer(); assert gdn; assert get_b12x_mhc(); assert gdn.Caps.__dataclass_fields__['kda_metadata_validation'].default == 'transactional'; bind_source = inspect.getsource(gdn.bind_kda); run_source = inspect.getsource(gdn.run_kda); assert 'mixed_qkv.shape[0]' in bind_source; assert 'state_indices.shape[0]' in bind_source; assert 'caps.kda_metadata_validation == \"transactional\"' in run_source"
 
 COPY --from=nccl-build /out/nccl/ /opt/sparkring/nccl/
 RUN cd /opt/sparkring/nccl \
@@ -77,6 +81,8 @@ LABEL org.opencontainers.image.title="SparkRing GLM-5.3 Flash ARM64 runtime" \
       org.jovian.architecture="linux-arm64-sm121" \
       org.jovian.vllm.commit="${VLLM_COMMIT}" \
       org.jovian.b12x.commit="${B12X_COMMIT}" \
+      org.jovian.b12x.tree="${B12X_TREE}" \
+      org.jovian.b12x.kda-contract="${B12X_KDA_CONTRACT}" \
       org.jovian.transport="sparkring-nccl-2.30.7-source-built" \
       org.sparkring.nccl.commit="${NCCL_COMMIT}" \
       org.sparkring.nccl.patched-tree="${NCCL_PATCHED_TREE}" \

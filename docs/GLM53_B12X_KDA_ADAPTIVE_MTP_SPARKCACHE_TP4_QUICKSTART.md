@@ -1,9 +1,17 @@
 # Serve GLM-5.3 with adaptive MTP, live-tensor B12X KDA, and SparkCache
 
 Status: **implemented, not qualified**. This guide builds vLLM commit
-`0b67266a0f37d6146a8403fb8482403c62f412d5` and the SparkCache overlay from
-commit `20838ace3ebda570ca039cb7f1976c29da554b39` for four DGX Spark systems at
-TP4/DCP1.
+`0b67266a0f37d6146a8403fb8482403c62f412d5`, B12X commit
+`b1d541f9e71a35f030d45fae437630fff7507c2a` with Git tree
+`c69cdec1c59a08e8e0e549f930fa8abcfb5134ae`, and the SparkCache overlay
+from commit `20838ace3ebda570ca039cb7f1976c29da554b39` for four DGX Spark systems
+at TP4/DCP1.
+
+The B12X implementation accepts `kda_metadata_validation="trusted"` and binds
+each request's live projection, metadata, and output tensors at their actual
+capacities. B12X commit `2fcf23a0ce269be27b2e03fece73d46e90e6aeea`
+is **unsupported** with this vLLM revision because it lacks both parts of that
+interface.
 
 The serving profile uses embedded MTP with maximum depth five, initial depth
 three, and a 32-step acceptance window. Fastsafetensors uses queue size one.
@@ -55,9 +63,11 @@ test "${#native_sha256}" -eq 64
 ```
 
 The runtime builder verifies the complete first-parent vLLM history from
-`da4d7be` through adaptive MTP and the three live-tensor B12X KDA commits. The
-SparkCache build verifies LF Linux preimages, four exact patches, and eleven
-postimage source files.
+`da4d7be` through adaptive MTP and the three vLLM live-tensor KDA commits. It
+also verifies the B12X first-parent history from `2fcf23a` through `b1d541f9`,
+the exact KDA source hashes, trusted metadata selection, and request-sized
+live-tensor binding. The SparkCache build verifies LF Linux preimages, four
+exact patches, and eleven postimage source files.
 
 ## Resolve the TP4 profile
 
@@ -125,10 +135,13 @@ NCCL error, or traceback.
 
 The overlay does not change SparkCache wire fields, digest salts, 256-token
 geometry, or stored object schemas. Its embedded-MTP digest is SHA-256 over
-`glm53-embedded-mtp-runtime-v1`, the target identity, the full vLLM commit,
-maximum depth five, and `adaptive:3:32`, separated by zero bytes.
+`glm53-embedded-mtp-vllm-b12x-runtime-v1`, the target identity, the full vLLM
+commit, the full B12X commit, maximum depth five, and `adaptive:3:32`, separated
+by zero bytes. The resulting digest is
+`2761488b43742f849e2cb7ac4977dc28d771faf5afef1951044327948d6ad71e`.
 
-Including the vLLM revision gives this runtime a distinct draft-state cache
-identity from the e105 adaptive-MTP profile. Stored entries therefore
-recompute instead of crossing the KDA source boundary without byte-equivalence
-evidence.
+Including both implementation revisions gives this runtime a distinct
+draft-state cache identity from the e105 adaptive-MTP profile and from any
+0b67266 runtime paired with another B12X source. Stored entries therefore miss
+and recompute instead of crossing a KDA implementation boundary without
+byte-equivalence evidence.
