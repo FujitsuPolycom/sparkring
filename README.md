@@ -55,6 +55,11 @@ The [GLM-5.3 routing guide](docs/GLM53_FLASH_QUICKSTARTS.md) explains source
 ancestry, image construction, immutable registry pulls, local archive fanout,
 profile resolution, and evidence boundaries.
 
+For the recorded 20 GiB FP8 KV pool of approximately 916,676 resident tokens
+per rank, plan long-context concurrency at C6 × 128K, C8 × 64K, or C16 × 32K.
+C16 × 128K is unsupported at that capacity unless GPU trunk pages are shared
+or the GPU KV pool is increased.
+
 ### Other model profiles
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |

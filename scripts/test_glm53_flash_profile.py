@@ -85,6 +85,7 @@ KV20_RECORD_PATH = (
     / "sparkcache-dflash2-bf16-tp4-20g-20260829.md"
 )
 README_PATH = ROOT / "README.md"
+GLM53_ROUTING_PATH = ROOT / "docs" / "GLM53_FLASH_QUICKSTARTS.md"
 
 
 def _json(path: Path) -> dict:
@@ -438,6 +439,26 @@ def test_twenty_gib_kv_observation_is_research_only_and_sanitized() -> None:
     assert re.search(r"(?i)\b[A-Z]:\\", text) is None
     assert re.search(r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)", text) is None
     assert "SparkCache storage remains configured for a 48 GiB ceiling" in text
+
+
+def test_glm53_routing_bounds_concurrency_by_resident_token_capacity() -> None:
+    receipt = _json(KV20_RECEIPT_PATH)
+    capacity = receipt["result"]["kv_capacity_tokens"]
+    assert capacity == 916676
+    assert 6 * 131072 == 786432 < capacity
+    assert 7 * 131072 == 917504 > capacity
+    assert 8 * 65536 == 16 * 32768 == 524288 < capacity
+    assert 16 * 131072 == 2097152 > capacity
+
+    routing = GLM53_ROUTING_PATH.read_text(encoding="utf-8")
+    readme = README_PATH.read_text(encoding="utf-8")
+    for text in (routing, readme):
+        assert "C6 × 128K" in text
+        assert "C8 × 64K" in text
+        assert "C16 × 32K" in text
+        assert "C16 × 128K is unsupported" in text
+    assert "GPU-resident trunk-page sharing" in routing
+    assert "External-cache read coalescing" in routing
 
 
 def test_public_profile_files_do_not_embed_private_site_values_or_mutable_tags() -> None:

@@ -26,6 +26,12 @@ evidence. Image construction and distribution
 do not require stopping an existing service. Do not run the launch command
 until all four ranks have the same verified image ID.
 
+The recorded 20 GiB pool holds approximately 916,676 resident tokens per
+rank. Use C6 × 128K, C8 × 64K, or C16 × 32K as the long-context concurrency
+plan. C16 × 128K is unsupported at that capacity unless GPU-resident trunk
+pages are shared or the GPU KV pool is increased. See
+[resident-token concurrency](GLM53_FLASH_QUICKSTARTS.md#plan-resident-token-concurrency).
+
 ## Build the exact Python-overlay image
 
 Use Linux ARM64 with Docker BuildKit and enough space for the exact source

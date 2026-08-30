@@ -63,6 +63,13 @@ The serving contract uses seven speculative tokens, draft TP4, target FP8 KV,
 `tail-cow-v1`, which maps opaque GLM pages to the `page-tail-cow-v1`
 namespace, and uses the canonical CUDA restore keys.
 
+The 20 GiB FP8 KV pool holds approximately 916,676 resident tokens per rank.
+Use C6 × 128K, C8 × 64K, or C16 × 32K as the long-context concurrency plan.
+C16 × 128K is unsupported at that capacity unless the selected runtime proves
+GPU-resident trunk-page sharing or the GPU KV pool is increased. SparkCache
+base-read coalescing alone does not change resident-token accounting. See
+[resident-token concurrency](GLM53_FLASH_QUICKSTARTS.md#plan-resident-token-concurrency).
+
 ## Build the image
 
 Run on Linux ARM64 from a clean checkout containing this guide:

@@ -35,6 +35,29 @@ production-source comparison contains no C, C++, CUDA, or build-source change,
 so the overlay includes the Python developments through `e10536a` and the
 three following commits without claiming a source-built `0b67266a` wheel.
 
+## Plan resident-token concurrency
+
+The GPU KV pool limits the sum of tokens resident on the GPU. The model's
+configured request limit and SparkCache's NVMe capacity do not increase that
+pool. The recorded 20 GiB FP8 KV configuration reported approximately 916,676
+resident tokens per rank.
+
+Use these prompt-residency bounds for that pool unless the selected runtime
+proves that identical trunk pages are shared in GPU memory:
+
+| Workload | Prompt tokens resident without GPU trunk sharing | Planning status |
+|---|---:|---|
+| C6 × 128K | 786,432 | Recommended; leaves 130,244 tokens for generation and allocator variation |
+| C8 × 64K | 524,288 | Recommended; leaves 392,388 tokens |
+| C16 × 32K | 524,288 | Recommended; leaves 392,388 tokens |
+| C16 × 128K | 2,097,152 | **Unsupported** at 916,676 tokens |
+
+External-cache read coalescing can avoid repeated NVMe reads without sharing
+the restored GPU pages among requests. C16 × 128K is unsupported at this KV
+size unless GPU-resident trunk-page sharing is active and verified for the
+selected composition. Otherwise, reduce context or concurrency, or increase
+the GPU KV pool. Generated tokens also consume the remaining capacity.
+
 ## Put one exact image on every rank
 
 Use one of these paths. Do not mix a local image ID with a registry digest in
