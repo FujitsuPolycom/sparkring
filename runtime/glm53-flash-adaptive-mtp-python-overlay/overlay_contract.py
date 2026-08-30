@@ -116,6 +116,13 @@ def final_file_hashes(pins: dict[str, Any]) -> dict[str, str]:
         result[target] = _sha256(
             patch["postimage_sha256"], f"{target} patch postimage"
         )
+    for patch in pins["vllm"].get("composed_runtime_patches", ()):
+        for target_record in patch["targets"]:
+            target = safe_relative_path(target_record["path"]).as_posix()
+            result[target] = _sha256(
+                target_record["postimage_sha256"],
+                f"{target} composed patch postimage",
+            )
     return result
 
 
@@ -201,6 +208,62 @@ def validate_optional_load_config_fallback(source: str) -> None:
         )
 
 
+def validate_recurrent_boundary_sources(root: Path) -> None:
+    """Require exact-boundary selection and the SchedulerOutput hand-off."""
+
+    output_source = (root / "vllm/v1/core/sched/output.py").read_text(
+        encoding="utf-8"
+    )
+    scheduler_source = (root / "vllm/v1/core/sched/scheduler.py").read_text(
+        encoding="utf-8"
+    )
+    manager_source = (
+        root / "vllm/v1/core/single_type_kv_cache_manager.py"
+    ).read_text(encoding="utf-8")
+    cache_source = (root / "vllm/v1/core/kv_cache_manager.py").read_text(
+        encoding="utf-8"
+    )
+    required = {
+        "SchedulerOutput field": (
+            "recurrent_boundary_blocks: "
+            "dict[str, list[tuple[int, int, int]]] | None = None",
+            output_source,
+        ),
+        "scheduler hand-off": (
+            "recurrent_boundary_blocks=pending_recurrent_boundary_blocks",
+            scheduler_source,
+        ),
+        "connector capability gate": (
+            '"supports_recurrent_boundary_blocks"',
+            scheduler_source,
+        ),
+        "consumer-compatible free fence": (
+            "kv_transfer_config.is_kv_consumer",
+            scheduler_source,
+        ),
+        "overlapping-step free fence": (
+            "multiple_inflight_batches and (",
+            scheduler_source,
+        ),
+        "prompt-minus-one replay rule": (
+            "(request.num_prompt_tokens - 1) // self.block_pool.hash_block_size",
+            manager_source,
+        ),
+        "exact token-boundary proof": (
+            "block.block_hash_num_tokens != replay_boundary",
+            manager_source,
+        ),
+        "exact group proof": (
+            "get_group_id(block.block_hash) != self.kv_cache_group_id",
+            manager_source,
+        ),
+        "request-lifetime pin": ("self._pin_recurrent_boundary", cache_source),
+    }
+    for label, (fragment, source) in required.items():
+        if fragment not in source:
+            raise ContractError(f"recurrent-boundary source omits {label}")
+
+
 def verify_vllm_runtime_patch_files(
     root: Path,
     pins: dict[str, Any],
@@ -226,6 +289,20 @@ def verify_vllm_runtime_patch_files(
                 "sha256": observed,
             }
         )
+    for record in pins["vllm"].get("composed_runtime_patches", ()):
+        for target_record in record["targets"]:
+            relative = safe_relative_path(target_record["path"])
+            path = root / relative
+            observed = sha256_file(path)
+            if observed != target_record["postimage_sha256"]:
+                raise ContractError(
+                    f"vLLM composed patch postimage mismatch for {relative}: "
+                    f"expected {target_record['postimage_sha256']}, got {observed}"
+                )
+            compile(path.read_bytes(), str(path), "exec")
+            verified.append({"path": relative.as_posix(), "sha256": observed})
+    if pins["vllm"].get("composed_runtime_patches"):
+        validate_recurrent_boundary_sources(root)
     loader = root / "vllm/model_executor/model_loader/__init__.py"
     validate_optional_load_config_fallback(loader.read_text(encoding="utf-8"))
     return verified

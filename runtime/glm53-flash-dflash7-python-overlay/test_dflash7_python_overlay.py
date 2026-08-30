@@ -38,7 +38,7 @@ def test_pins_bind_the_exact_dflash7_composition() -> None:
         "b1d541f9e71a35f030d45fae437630fff7507c2a"
     )
     assert pins["sparkcache"]["commit"] == (
-        "5d571018de5b63a9a90e5c11e6d6e86bbff4a957"
+        "9e779c32b285e00577a7829a75192069d12685dc"
     )
     workload = pins["workload"]
     assert workload["role"] == "external-dflash7"
@@ -94,6 +94,9 @@ def test_verifier_requires_the_dflash7_deployment_label() -> None:
     ]
     assert labels["org.sparkring.vllm.dflash-draft-loader-patch-sha256"] == (
         "39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279"
+    )
+    assert labels["org.sparkring.vllm.recurrent-boundary-patch-sha256"] == (
+        "5a6561a5bbab990dcd03bfd6a485ea26c3b5a578c2fd61b76305767b16dbfba0"
     )
     assert labels["org.sparkring.runtime.removed-deep-ep-distribution"] == (
         "deep_ep==2.0.0+local"

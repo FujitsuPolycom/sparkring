@@ -1,0 +1,166 @@
+diff --git a/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py b/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py
+index eff889b98..64d8409ae 100644
+--- a/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py
++++ b/tests/v1/core/prefix_cache/test_partial_prefix_cache_hits.py
+@@ -4,6 +4,7 @@
+ "align") models: scheduler chunk splitting, partial tail registration, CoW
+ on partial hits, and same-step deferral."""
+
++import inspect
+ from math import lcm
+ from types import SimpleNamespace
+ from unittest.mock import MagicMock
+@@ -69,6 +70,14 @@ def test_capable_connector_uses_divergent_partial_hit_lookup():
+     manager.get_computed_blocks.assert_not_called()
+
+
++@pytest.mark.skip_global_cleanup
++def test_recurrent_boundary_capability_defers_overlapping_block_free():
++    source = inspect.getsource(Scheduler.__init__)
++    assert "multiple_inflight_batches and (" in source
++    assert "kv_transfer_config.is_kv_consumer" in source
++    assert '"supports_recurrent_boundary_blocks"' in source
++
++
+ def make_full_mamba_manager(
+     *,
+     dcp_world_size: int,
+@@ -856,6 +865,138 @@ def test_take_partial_tail_offloads_empty_without_partial_tail():
+     assert manager.take_partial_tail_offloads() == {}
+
+
++@pytest.mark.parametrize("prompt_tokens", [6992, 7168])
++@pytest.mark.skip_global_cleanup
++def test_aligned_recurrent_boundary_ignores_seven_speculative_slots(
++    prompt_tokens: int,
++):
++    """The GLM aligned boundary is selected by its exact hash, not by scanning
++    the later running and DFlash speculative slots."""
++    hash_block_size = 256
++    mamba_block_size = 2304
++    boundary_tokens = 6912
++    kv_cache_config = KVCacheConfig(
++        num_blocks=128,
++        kv_cache_tensors=[],
++        kv_cache_groups=[
++            KVCacheGroupSpec(
++                ["full"],
++                FullAttentionSpec(
++                    block_size=hash_block_size,
++                    num_kv_heads=1,
++                    head_size=1,
++                    dtype=torch.float32,
++                ),
++            ),
++            KVCacheGroupSpec(
++                ["mamba"],
++                MambaSpec(
++                    block_size=mamba_block_size,
++                    shapes=(1, 1),
++                    dtypes=(torch.float32,),
++                    mamba_cache_mode="align",
++                    num_speculative_blocks=7,
++                ),
++            ),
++        ],
++    )
++    manager = make_kv_cache_manager(
++        kv_cache_config=kv_cache_config,
++        max_model_len=8192,
++        enable_caching=True,
++        scheduler_block_size=mamba_block_size,
++        hash_block_size=hash_block_size,
++    )
++    request = make_request(
++        "aligned",
++        list(range(prompt_tokens)),
++        hash_block_size,
++        sha256,
++    )
++    computed_blocks, num_computed, _ = manager.get_computed_blocks(request)
++    assert manager.allocate_slots(
++        request, boundary_tokens, num_computed, computed_blocks
++    ) is not None
++
++    assert manager.take_partial_tail_offloads() == {}
++    boundaries = manager.take_recurrent_boundary_blocks()
++    assert list(boundaries) == ["aligned"]
++    assert len(boundaries["aligned"]) == 1
++    group_id, block_id, emitted_boundary = boundaries["aligned"][0]
++    assert (group_id, emitted_boundary) == (1, boundary_tokens)
++
++    mamba_blocks = manager.get_blocks("aligned").blocks[1]
++    assert len(mamba_blocks) == 3 + 7
++    boundary_block = mamba_blocks[2]
++    assert block_id == boundary_block.block_id
++    assert block_id not in {block.block_id for block in mamba_blocks[3:]}
++    assert boundary_block.block_hash_num_tokens == boundary_tokens
++    assert get_group_id(boundary_block.block_hash) == group_id
++
++    # Finish the prompt, then schedule one decode token. The second allocation
++    # runs remove_skipped_blocks, which nulls arithmetic slot 2. The hand-off
++    # must keep naming and pinning the exact cached boundary block rather than
++    # selecting a later running or speculative slot.
++    request.num_computed_tokens = boundary_tokens
++    assert manager.allocate_slots(
++        request, prompt_tokens - boundary_tokens
++    ) is not None
++    request.num_computed_tokens = prompt_tokens
++    request.append_output_token_ids([prompt_tokens])
++    assert manager.allocate_slots(request, 1) is not None
++
++    assert mamba_blocks[2].is_null
++    assert boundary_block.ref_cnt == 1
++    assert block_id not in {
++        block.block_id for block in mamba_blocks[3:] if not block.is_null
++    }
++    assert boundaries["aligned"] == [(1, block_id, boundary_tokens)]
++
++    manager.free(request)
++    assert boundary_block.ref_cnt == 0
++
++
++@pytest.mark.skip_global_cleanup
++def test_recurrent_boundary_union_preserves_partial_tail_handoff():
++    hash_block_size = 2
++    manager = make_full_mamba_manager(
++        dcp_world_size=1,
++        hash_block_size=hash_block_size,
++        full_block_size=hash_block_size,
++        mamba_block_size=2 * hash_block_size,
++    )
++    request = make_request("partial", [0, 0, 1, 1, 2, 2], 2, sha256)
++    computed_blocks, num_computed, _ = manager.get_computed_blocks(request)
++    assert manager.allocate_slots(
++        request, 6, num_computed, computed_blocks
++    ) is not None
++    request.num_computed_tokens = 6
++    request.append_output_token_ids([3])
++    assert manager.allocate_slots(request, 1) is not None
++
++    partial = manager.take_partial_tail_offloads()
++    assert manager.take_recurrent_boundary_blocks(partial) == partial
++
++
++@pytest.mark.skip_global_cleanup
++def test_aligned_recurrent_boundary_can_be_discarded_without_a_pin():
++    manager = make_full_mamba_manager(
++        dcp_world_size=1,
++        hash_block_size=2,
++        full_block_size=2,
++        mamba_block_size=4,
++    )
++    request = make_request("no-capability", [0, 0, 1, 1, 2], 2, sha256)
++    computed_blocks, num_computed, _ = manager.get_computed_blocks(request)
++    assert manager.allocate_slots(request, 4, num_computed, computed_blocks) is not None
++    boundary = manager.get_blocks("no-capability").blocks[1][0]
++    ref_cnt = boundary.ref_cnt
++
++    manager.discard_aligned_recurrent_boundaries()
++
++    assert manager.take_recurrent_boundary_blocks() == {}
++    assert boundary.ref_cnt == ref_cnt
++
+ def test_truncate_computed_blocks_preserves_sparse_prefix_positions():
+     """truncate_computed_blocks slices each group by its own block size,
+     keeps null placeholders in the retained prefix, and leaves the original

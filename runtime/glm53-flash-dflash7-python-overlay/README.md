@@ -12,8 +12,8 @@ The image combines these exact roles:
   `0b67266a0f37d6146a8403fb8482403c62f412d5`;
 - B12X `b1d541f9e71a35f030d45fae437630fff7507c2a`;
 - SparkCache reconstructed-page placement source
-  `5d571018de5b63a9a90e5c11e6d6e86bbff4a957`, Git tree
-  `e864ed9ad64f771188fdb59aa9738e348134d636`;
+  `9e779c32b285e00577a7829a75192069d12685dc`, Git tree
+  `4df3ea1435241a688e6d44345687414605131450`;
 - external BF16 DFlash2 weights with SHA-256
   `b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b`.
 
@@ -54,3 +54,32 @@ probes, disable the all-reduce RMS fusion, select language-model-only serving,
 and leave Torch thread selection unset. ModelOpt and FP8 KV warnings remain
 visible because they describe supported-runtime limitations rather than unused
 optional backends.
+
+## Recurrent replay-boundary hand-off
+
+Status: **implemented** in the vLLM overlay; unsupported until the selected KV
+connector explicitly advertises `supports_recurrent_boundary_blocks` and
+consumes the interface.
+
+`SchedulerOutput.recurrent_boundary_blocks` has this schema:
+
+```text
+dict[str, list[tuple[int, int, int]]] | None
+request_id -> [(group_id, block_id, boundary_tokens), ...]
+```
+
+Each entry identifies a Mamba `align` block whose prefix-cache hash covers
+exactly `boundary_tokens`. The replay boundary is the greatest 256-token hash
+boundary below the prompt end. A full 2,304-token recurrent page is admitted
+only when its stored hash token count and group ID both match that boundary.
+The scheduler never substitutes a later running-state or DFlash speculative
+slot. Existing partial-tail copy-on-write targets remain available through
+`partial_tail_offloads` and are also included in the new field.
+
+The scheduler pins an admitted block before worker execution. A connector that
+opts in must finish its worker-side snapshot before request cleanup; overlapping
+scheduler steps defer request-block recycling until their execution fence has
+completed. Request cleanup releases the pin, including cancellation paths.
+Connectors without the capability receive no aligned-boundary metadata and
+retain no additional recurrent block. The interface does not change
+SparkCache cache identities or on-disk namespaces.

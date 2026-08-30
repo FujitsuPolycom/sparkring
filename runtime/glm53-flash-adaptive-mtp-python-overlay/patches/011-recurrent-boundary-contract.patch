@@ -1,0 +1,246 @@
+diff --git a/vllm/v1/core/kv_cache_manager.py b/vllm/v1/core/kv_cache_manager.py
+index 645af9c87..80d4500ff 100644
+--- a/vllm/v1/core/kv_cache_manager.py
++++ b/vllm/v1/core/kv_cache_manager.py
+@@ -1155,13 +1155,66 @@ class KVCacheManager:
+                 block,
+                 boundary_tokens,
+             ) in mgr.take_pending_partial_tail_offloads():
+-                self.block_pool.touch((block,))
+-                self._partial_tail_pins.setdefault(req_id, []).append(block)
++                block = self._pin_recurrent_boundary(req_id, block, boundary_tokens)
+                 offloads.setdefault(req_id, []).append(
+                     (group_id, block.block_id, boundary_tokens)
+                 )
+         return offloads
+
++    def take_recurrent_boundary_blocks(
++        self,
++        partial_tail_offloads: dict[str, list[tuple[int, int, int]]] | None = None,
++    ) -> dict[str, list[tuple[int, int, int]]]:
++        """Drain hash-proven recurrent boundaries for connector metadata.
++
++        The returned union preserves the partial-tail entries already exposed
++        to connectors and adds full Mamba pages at the scheduler replay
++        boundary. Pins use the existing request-cleanup lifetime.
++        """
++        boundaries = {
++            req_id: list(entries)
++            for req_id, entries in (partial_tail_offloads or {}).items()
++        }
++        for mgr in self.coordinator.single_type_managers:
++            for (
++                req_id,
++                group_id,
++                block,
++                boundary_tokens,
++            ) in mgr.take_pending_aligned_recurrent_boundaries():
++                block = self._pin_recurrent_boundary(req_id, block, boundary_tokens)
++                entry = (group_id, block.block_id, boundary_tokens)
++                request_entries = boundaries.setdefault(req_id, [])
++                if entry not in request_entries:
++                    request_entries.append(entry)
++        return boundaries
++
++    def _pin_recurrent_boundary(
++        self,
++        request_id: str,
++        block: KVCacheBlock,
++        boundary_tokens: int,
++    ) -> KVCacheBlock:
++        """Pin one exact boundary without duplicating a prior hand-off."""
++        assert not block.is_null
++        assert block.block_hash is not None
++        assert block.block_hash_num_tokens == boundary_tokens
++        pins = self._partial_tail_pins.setdefault(request_id, [])
++        for pinned in pins:
++            if (
++                pinned.block_hash == block.block_hash
++                and pinned.block_hash_num_tokens == boundary_tokens
++            ):
++                return pinned
++        self.block_pool.touch((block,))
++        pins.append(block)
++        return block
++
++    def discard_aligned_recurrent_boundaries(self) -> None:
++        """Drop aligned hand-offs when the producer connector did not opt in."""
++        for mgr in self.coordinator.single_type_managers:
++            mgr.take_pending_aligned_recurrent_boundaries()
++
+     def new_step_starts(self) -> None:
+         """Notify the coordinator that a new step is starting."""
+         self.coordinator.new_step_starts()
+diff --git a/vllm/v1/core/sched/output.py b/vllm/v1/core/sched/output.py
+index ad09529e8..f3a363085 100644
+--- a/vllm/v1/core/sched/output.py
++++ b/vllm/v1/core/sched/output.py
+@@ -280,6 +280,13 @@ class SchedulerOutput:
+     # tail (mamba "align" CoW target). None unless partial hash hits are active.
+     partial_tail_offloads: dict[str, list[tuple[int, int, int]]] | None = None
+
++    # Hash-proven recurrent-state blocks for external KV connectors:
++    # {request_id: [(group_id, block_id, boundary_tokens), ...]}. The union
++    # includes full aligned Mamba pages and the partial-tail CoW targets above.
++    # Consumers opting into aligned boundaries must finish their worker-side
++    # snapshot before request cleanup releases the scheduler pin.
++    recurrent_boundary_blocks: dict[str, list[tuple[int, int, int]]] | None = None
++
+     # Dynamic speculative decoding: optimal K chosen by scheduler.
+     # Number of spec tokens to schedule for the next step.
+     num_spec_tokens_to_schedule: int | None = None
+diff --git a/vllm/v1/core/sched/scheduler.py b/vllm/v1/core/sched/scheduler.py
+index 562c240f4..3d1e13665 100644
+--- a/vllm/v1/core/sched/scheduler.py
++++ b/vllm/v1/core/sched/scheduler.py
+@@ -165,7 +165,14 @@ class Scheduler(SchedulerInterface):
+             # Connector can reallocate and fill those blocks via a load that
+             # isn't ordered against that write, so defer freeing them.
+             multiple_inflight_batches = self.vllm_config.max_concurrent_batches > 1
+-            if multiple_inflight_batches and kv_transfer_config.is_kv_consumer:
++            if multiple_inflight_batches and (
++                kv_transfer_config.is_kv_consumer
++                or bool(
++                    getattr(
++                        self.connector, "supports_recurrent_boundary_blocks", False
++                    )
++                )
++            ):
+                 self.defer_block_free = True
+
+             self.requires_kv_delivery = self.connector.requires_kv_delivery
+@@ -1331,6 +1338,7 @@ class Scheduler(SchedulerInterface):
+         # pin); the manager drops stale entries when the request's blocks are
+         # popped for free.
+         pending_partial_tail_offloads = None
++        pending_recurrent_boundary_blocks = None
+         if (
+             self.connector is not None
+             and self.vllm_config.kv_transfer_config is not None
+@@ -1339,6 +1347,19 @@ class Scheduler(SchedulerInterface):
+             pending_partial_tail_offloads = (
+                 self.kv_cache_manager.take_partial_tail_offloads() or None
+             )
++            if bool(
++                getattr(self.connector, "supports_recurrent_boundary_blocks", False)
++            ):
++                # Opting in requires the connector's worker snapshot to finish
++                # before request cleanup releases the boundary pins.
++                pending_recurrent_boundary_blocks = (
++                    self.kv_cache_manager.take_recurrent_boundary_blocks(
++                        pending_partial_tail_offloads
++                    )
++                    or None
++                )
++            else:
++                self.kv_cache_manager.discard_aligned_recurrent_boundaries()
+
+         kv_cache_block_copies, cow_retained_blocks = (
+             self.kv_cache_manager.take_kv_cache_block_copies()
+@@ -1391,6 +1412,7 @@ class Scheduler(SchedulerInterface):
+             new_block_ids_to_zero=self._get_new_block_ids_to_zero(),
+             kv_cache_block_copies=pending_kv_cache_block_copies,
+             partial_tail_offloads=pending_partial_tail_offloads,
++            recurrent_boundary_blocks=pending_recurrent_boundary_blocks,
+             num_spec_tokens_to_schedule=num_spec_tokens_to_schedule,
+             ec_manager_metadata=self.encoder_cache_manager.get_manager_metadata(),
+         )
+diff --git a/vllm/v1/core/single_type_kv_cache_manager.py b/vllm/v1/core/single_type_kv_cache_manager.py
+index ceb56a598..aef3efe8e 100644
+--- a/vllm/v1/core/single_type_kv_cache_manager.py
++++ b/vllm/v1/core/single_type_kv_cache_manager.py
+@@ -13,6 +13,7 @@ from vllm.v1.core.kv_cache_utils import (
+     BlockHashListWithBlockSize,
+     BlockHashWithGroupId,
+     KVCacheBlock,
++    get_group_id,
+     resolve_block_hashes,
+ )
+ from vllm.v1.kv_cache_interface import (
+@@ -121,6 +122,9 @@ class SingleTypeKVCacheManager(ABC):
+         self._pending_partial_tail_offloads: list[
+             tuple[str, int, KVCacheBlock, int]
+         ] = []
++        self._pending_aligned_recurrent_boundaries: list[
++            tuple[str, int, KVCacheBlock, int]
++        ] = []
+
+     @classmethod
+     def _get_num_evictable_blocks(cls, blocks: Sequence[KVCacheBlock]):
+@@ -399,6 +403,14 @@ class SingleTypeKVCacheManager(ABC):
+         self._pending_partial_tail_offloads = []
+         return pending
+
++    def take_pending_aligned_recurrent_boundaries(
++        self,
++    ) -> list[tuple[str, int, KVCacheBlock, int]]:
++        """Drain full-page Mamba boundary hand-offs."""
++        pending = self._pending_aligned_recurrent_boundaries
++        self._pending_aligned_recurrent_boundaries = []
++        return pending
++
+     def _apply_cow(
+         self,
+         request_id: str,
+@@ -1697,6 +1709,11 @@ class MambaManager(SingleTypeKVCacheManager):
+                 for entry in self._pending_partial_tail_offloads
+                 if entry[0] != request_id
+             ]
++            self._pending_aligned_recurrent_boundaries = [
++                entry
++                for entry in self._pending_aligned_recurrent_boundaries
++                if entry[0] != request_id
++            ]
+         return super().pop_blocks_for_free(request_id)
+
+     def get_num_skipped_tokens(self, num_computed_tokens: int) -> int:
+@@ -1720,6 +1737,7 @@ class MambaManager(SingleTypeKVCacheManager):
+             partial_hash = self._cache_partial_tail_block(request, num_tokens)
+             if partial_hash is not None:
+                 self.cached_blocks_this_step.add(partial_hash)
++            self._queue_aligned_recurrent_boundary(request, num_tokens)
+         if num_cached_blocks_after > num_cached_blocks_before:
+             for block in self.req_to_blocks[request.request_id][
+                 num_cached_blocks_before:num_cached_blocks_after
+@@ -1778,6 +1796,41 @@ class MambaManager(SingleTypeKVCacheManager):
+             self._producer_partial_tail_reqs[request.request_id] = num_tokens
+         return partial_hash
+
++    def _queue_aligned_recurrent_boundary(
++        self,
++        request: Request,
++        num_tokens: int,
++    ) -> None:
++        """Queue a full Mamba page only when its hash proves the replay boundary."""
++        if num_tokens <= 0 or num_tokens % self.block_size != 0:
++            return
++        replay_boundary = (
++            (request.num_prompt_tokens - 1) // self.block_pool.hash_block_size
++        ) * self.block_pool.hash_block_size
++        if num_tokens != replay_boundary:
++            return
++
++        block_idx = num_tokens // self.block_size - 1
++        blocks = self.req_to_blocks[request.request_id]
++        if block_idx >= len(blocks):
++            return
++        block = blocks[block_idx]
++        if (
++            block.is_null
++            or block.block_hash is None
++            or block.block_hash_num_tokens != replay_boundary
++            or get_group_id(block.block_hash) != self.kv_cache_group_id
++        ):
++            return
++        self._pending_aligned_recurrent_boundaries.append(
++            (
++                request.request_id,
++                self.kv_cache_group_id,
++                block,
++                replay_boundary,
++            )
++        )
++
+
+ class CrossAttentionManager(SingleTypeKVCacheManager):
+     """Manager for cross-attention KV cache in encoder-decoder models."""
