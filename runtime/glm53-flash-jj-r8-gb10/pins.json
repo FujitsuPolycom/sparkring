@@ -52,6 +52,7 @@
   "defaults": {
     "max_model_len": 1048576,
     "max_num_batched_tokens": 8192,
+    "prefill_schedule_interval": 8,
     "kv_cache_bytes_per_rank": 32212254720,
     "full_ckv_gather_max_tokens": 524288,
     "dcp": {

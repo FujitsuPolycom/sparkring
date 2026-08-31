@@ -206,6 +206,7 @@ def test_environment_exposes_common_settings_and_matches_artifact_defaults() -> 
         "MAX_MODEL_LEN",
         "MAX_NUM_SEQS",
         "MAX_NUM_BATCHED_TOKENS",
+        "PREFILL_SCHEDULE_INTERVAL",
         "KV_CACHE_MEMORY_BYTES",
         "GPU_MEMORY_UTILIZATION",
         "KV_CACHE_DTYPE",
@@ -235,6 +236,9 @@ def test_environment_exposes_common_settings_and_matches_artifact_defaults() -> 
     assert int(values["MAX_MODEL_LEN"]) == artifacts["max_model_len"]
     assert int(values["MAX_NUM_SEQS"]) == artifacts["max_num_seqs"]
     assert int(values["MAX_NUM_BATCHED_TOKENS"]) == artifacts["max_num_batched_tokens"]
+    assert int(values["PREFILL_SCHEDULE_INTERVAL"]) == artifacts[
+        "prefill_schedule_interval"
+    ]
     assert (
         int(values["SPARKCACHE_MAX_SPAN_TOKENS"])
         == artifacts["sparkcache_max_span_tokens"]
@@ -365,6 +369,8 @@ printf '%s  %s\n' "$hash" "$2"
             assert arguments[interleave_index + 1] == expected_interleave
             assert f"VLLM_B12X_MLA_CKV_GATHER={expected_gather}" in arguments
             assert "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS=524288" in arguments
+            cadence_index = arguments.index("--prefill-schedule-interval")
+            assert arguments[cadence_index + 1] == "8"
             assert (
                 "org.sparkring.launch.status=implemented-unqualified-configuration"
                 in arguments
@@ -376,6 +382,7 @@ printf '%s  %s\n' "$hash" "$2"
             )
             assert "MAX_MODEL_LEN" in modified
             assert "MAX_NUM_BATCHED_TOKENS" in modified
+            assert "PREFILL_SCHEDULE_INTERVAL" in modified
             if dcp == 1:
                 assert "CP_KV_CACHE_INTERLEAVE_SIZE" not in modified
                 assert "B12X_MLA_CKV_GATHER" not in modified
