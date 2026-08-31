@@ -1,0 +1,105 @@
+{
+  "schema": "sparkring-glm53-jj-r8-public-image/v1",
+  "status": "implemented-with-bounded-live-evidence",
+  "image": {
+    "registry_reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a",
+    "image_id": "sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f",
+    "platform": "linux/arm64",
+    "archive_sha256": "7f5a9d97e16a984167f970d4c0a5ca1536aa49a02b9a46aec864d3c87a1bcb89",
+    "archive_bytes": 8467064540
+  },
+  "sources": {
+    "sparkring_revision": "6c32b7049318c4aadc05fc2e51229d609b18d9d6",
+    "vllm_revision": "55969c16d4da57da76ee5729f3102d4b2003833c",
+    "sparkcache_revision": "c3887f34bcd51788a8ae7d202ab64a9d40348546",
+    "sparkcache_tree": "2372add6defbf67355da4ca40fa7828dcbd45abd",
+    "sparkcache_source_sha256": "57ad5bb26c721a6c68c7ab4c135057073e7d34ad86cfd04acdc04331b8f7e213",
+    "b12x_revision": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
+    "nccl_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
+    "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
+  },
+  "construction": {
+    "native_extensions_verified": 15,
+    "build_receipt_sha256": "2de9d069606c96dc3542125d8750ed62e60af2a48e62c5984bc779e5e9d049ef",
+    "source_labels_verified": true
+  },
+  "distribution": {
+    "schema": "sparkring-image-archive-fabric-receipt/v1",
+    "receipt_sha256": "a38d781c447487febc8d80488d7b24bfe0a06cba7db7a5cc3d4a187ac2b87029",
+    "ranks_verified": 4,
+    "direct_hops_verified": 3,
+    "link_speed_mbps": 200000,
+    "loaded_image_ids_equal": true
+  },
+  "defaults": {
+    "max_model_len": 1048576,
+    "max_num_batched_tokens": 8192,
+    "max_num_seqs": 16,
+    "prefill_schedule_interval": 8,
+    "kv_cache_bytes_per_rank": {
+      "dcp1": 27917287424,
+      "dcp2": 32212254720,
+      "dcp4": 32212254720
+    },
+    "publication_schema": "snapshot-v1",
+    "manager_page_identity": "manager-pages-v2"
+  },
+  "profiles": {
+    "dcp1_sparkcache": {
+      "gpu_kv_cache_tokens": 1303701,
+      "published_span_tokens": 10752,
+      "digest_prefix": "8fe03904f5b3",
+      "restart_restore_service_ms_by_physical_rank": [214.891, 267.005, 223.825, 219.872],
+      "expected_marker": "STRANGER_CACHE_7261",
+      "marker_present_after_restart": true
+    },
+    "dcp1_vllm_only": {
+      "sparkcache_enabled": false,
+      "vllm_prefix_caching_enabled": true,
+      "kv_transfer_config_present": false,
+      "sparkcache_connector_log_lines": 0,
+      "expected_marker": "VLLM_ONLY_OK",
+      "marker_present": true
+    },
+    "dcp2_sparkcache": {
+      "gpu_kv_cache_tokens": 2899004,
+      "published_span_tokens": 12288,
+      "digest_prefix": "deb5883045ba",
+      "restart_restore_service_ms_by_physical_rank": [163.064, 191.137, 156.122, 169.445],
+      "expected_marker": "FINAL_DCP2_2042",
+      "marker_present_after_restart": true
+    },
+    "dcp4_sparkcache": {
+      "gpu_kv_cache_tokens": 5402023,
+      "published_span_tokens": 12288,
+      "digest_prefix": "b668e8820fdb",
+      "restart_restore_service_ms_by_physical_rank": [138.918, 134.117, 132.692, 134.503],
+      "expected_marker": "FINAL_DCP4_4044",
+      "marker_present_after_restart": true
+    }
+  },
+  "deep_context": {
+    "requested_depth": 1000000,
+    "actual_prompt_tokens": 942898,
+    "completion_tokens": 57,
+    "elapsed_seconds": 473.4,
+    "finish_reason": "stop",
+    "needle": "57248313",
+    "needle_present": true,
+    "snapshot": {
+      "aligned_tokens": 942592,
+      "digest_prefix": "5dffaec9f12d",
+      "snapshot_ms_by_physical_rank": [15225.2, 17969.7, 17491.7, 17844.1],
+      "commit_ms_by_physical_rank": [10403.9, 10328.4, 10657.9, 10138.4],
+      "restart_restore_replayed": false
+    }
+  },
+  "not_established": [
+    "restart restore of the 942592-token snapshot",
+    "concurrent deep-context requests",
+    "tail-only publication for a deep context",
+    "long-duration serving",
+    "fault recovery",
+    "general throughput"
+  ]
+}
