@@ -30,8 +30,20 @@ launches Ring Doctor before any model profile is selected.
 ## Resources
 
 - [Supported models and profiles](#profiles)
+- [Container image roles](#container-images)
 - [Benchmark results](#benchmark-results)
 - [Deployment prerequisites](docs/PREREQUISITES.md) — then choose a profile quickstart below
+
+## Container images
+
+| Package | Purpose | When to use it |
+|---|---|---|
+| [`sparkring-glm53-sparkcache`](https://github.com/users/FujitsuPolycom/packages/container/package/sparkring-glm53-sparkcache) | Published GLM-5.3 R8 operator image. One image supports SparkCache-enabled and vLLM-only launches. | Use the immutable digest from the [GLM-5.3 quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md). |
+| [`sparkring-glm53-runtime`](https://github.com/users/FujitsuPolycom/packages/container/package/sparkring-glm53-runtime) | Source-pinned GLM-5.3 runtime bases used to construct later operator images. | Use only when a source-build procedure names an exact digest. |
+| [`gb10-vllm-serving`](https://github.com/users/FujitsuPolycom/packages/container/package/gb10-vllm-serving) | Profile-specific GB10 serving images, including published DeepSeek inputs. | Use only when a model profile names an exact digest. |
+
+Package tags are convenient labels, not reproducible identities. Deployment
+guides use immutable digests.
 
 ## Profiles
 
