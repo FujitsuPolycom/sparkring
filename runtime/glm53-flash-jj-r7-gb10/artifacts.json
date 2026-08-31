@@ -130,14 +130,15 @@
       "dcp4": {"cp_kv_cache_interleave_size": 4, "b12x_full_ckv_gather": true}
     },
     "served_model_name": "glm-5.3-flash-nvfp4-dflash2-bf16-t7-jj-r7-gb10",
-    "max_model_len": 524288,
+    "max_model_len": 1048576,
     "max_num_seqs": 16,
     "max_num_batched_tokens": 8192,
     "kv_cache_dtype": "fp8",
-    "kv_cache_bytes_per_rank": 21474836480,
+    "kv_cache_bytes_per_rank": 32212254720,
     "target_page_size_tokens": 512,
     "recurrent_page_size_tokens": 512,
-    "sparkcache_max_span_tokens": 524288,
+    "sparkcache_max_span_tokens": 1048576,
+    "b12x_full_ckv_gather_max_tokens": 524288,
     "base_cache_namespace": "jj-r7-gb10-base-v1",
     "sparkcache_cache_namespace": "jj-r7-gb10-page-tail-cow-v1",
     "status": "implemented; long-context capacity and throughput unqualified"

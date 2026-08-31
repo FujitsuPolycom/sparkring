@@ -406,7 +406,7 @@ printf '%s  %s\n' "$hash" "$2"
         ),
         (
             "DECODE_CONTEXT_PARALLEL_SIZE=2\nIMAGE_VARIANT=sparkcache",
-            "published SparkCache image supports DCP1",
+            "published r7 SparkCache image supports DCP1",
         ),
     )
     for index, (topology, expected_error) in enumerate(invalid):

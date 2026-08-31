@@ -26,6 +26,8 @@ fi
 : "${IMAGE_VARIANT:=base}"
 : "${BASE_IMAGE_REF:=ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:11922064b342de1fc98f0ef85e6648843c8fa7eb3e4f4353c6ad82d6e457dde0}"
 : "${SPARKCACHE_IMAGE_REF:=ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5}"
+: "${SPARKCACHE_DCP_IMAGE_REF:=}"
+: "${SPARKCACHE_DCP_IMAGE_ID:=}"
 : "${CONTAINER_PREFIX:=glm53-jj-r7-gb10}"
 : "${SERVED_MODEL_NAME:=glm-5.3-flash-nvfp4-dflash2-bf16-t7-jj-r7-gb10}"
 : "${PORT:=8015}"
@@ -36,11 +38,12 @@ fi
 : "${DECODE_CONTEXT_PARALLEL_SIZE:=1}"
 : "${CP_KV_CACHE_INTERLEAVE_SIZE:=auto}"
 : "${B12X_MLA_CKV_GATHER:=auto}"
+: "${B12X_MLA_CKV_GATHER_MAX_TOKENS:=524288}"
 : "${NODE_COUNT:=4}"
-: "${MAX_MODEL_LEN:=524288}"
+: "${MAX_MODEL_LEN:=1048576}"
 : "${MAX_NUM_SEQS:=16}"
 : "${MAX_NUM_BATCHED_TOKENS:=8192}"
-: "${KV_CACHE_MEMORY_BYTES:=21474836480}"
+: "${KV_CACHE_MEMORY_BYTES:=32212254720}"
 : "${GPU_MEMORY_UTILIZATION:=0.80}"
 : "${KV_CACHE_DTYPE:=fp8}"
 : "${SPECULATION_METHOD:=dflash}"
@@ -58,12 +61,13 @@ fi
 : "${MAX_CUDAGRAPH_CAPTURE_SIZE:=128}"
 : "${BASE_CACHE_NAMESPACE:=jj-r7-gb10-base-v1}"
 : "${SPARKCACHE_CACHE_NAMESPACE:=jj-r7-gb10-page-tail-cow-v1}"
-: "${SPARKCACHE_CLEAR_ONCE:=${SPARKCACHE_CACHE_NAMESPACE}}"
+: "${SPARKCACHE_DCP_CACHE_NAMESPACE:=jj-r8-gb10-manager-pages-v2}"
+: "${SPARKCACHE_CLEAR_ONCE:=auto}"
 : "${SPARKCACHE_MAX_BYTES:=42949672960}"
 : "${SPARKCACHE_LOW_WATERMARK_BYTES:=34359738368}"
 : "${SPARKCACHE_TTL_SECONDS:=0}"
 : "${SPARKCACHE_MIN_SPAN_TOKENS:=4096}"
-: "${SPARKCACHE_MAX_SPAN_TOKENS:=524288}"
+: "${SPARKCACHE_MAX_SPAN_TOKENS:=1048576}"
 : "${SPARKCACHE_LOAD_THREADS:=8}"
 : "${SPARKCACHE_MAX_PENDING_RESTORES:=8}"
 : "${SPARKCACHE_CUDA_RESTORE_IO_WORKERS:=8}"
@@ -97,6 +101,7 @@ for name in \
   DECODE_CONTEXT_PARALLEL_SIZE NODE_COUNT MAX_MODEL_LEN MAX_NUM_SEQS \
   MAX_NUM_BATCHED_TOKENS KV_CACHE_MEMORY_BYTES NUM_SPECULATIVE_TOKENS \
   DRAFT_TENSOR_PARALLEL_SIZE MAX_CUDAGRAPH_CAPTURE_SIZE \
+  B12X_MLA_CKV_GATHER_MAX_TOKENS \
   SPARKCACHE_MAX_BYTES SPARKCACHE_MIN_SPAN_TOKENS SPARKCACHE_MAX_SPAN_TOKENS \
   SPARKCACHE_LOAD_THREADS SPARKCACHE_MAX_PENDING_RESTORES \
   SPARKCACHE_CUDA_RESTORE_IO_WORKERS SPARKCACHE_CUDA_ARENA_BYTES \
@@ -155,7 +160,9 @@ esac
   die 'CONTAINER_PREFIX is not a valid Docker container-name prefix'
 [[ "${SPECULATION_METHOD}" == dflash ]] || \
   die 'the smoke-verified images support SPECULATION_METHOD=dflash in this launcher'
-for name in BASE_CACHE_NAMESPACE SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE; do
+for name in BASE_CACHE_NAMESPACE SPARKCACHE_CACHE_NAMESPACE \
+  SPARKCACHE_DCP_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE
+do
   [[ "${!name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || \
     die "${name} must contain only letters, digits, dot, underscore, or hyphen"
 done
@@ -188,14 +195,27 @@ case "${IMAGE_VARIANT}" in
     cache_namespace="${BASE_CACHE_NAMESPACE}"
     ;;
   sparkcache)
-    (( DECODE_CONTEXT_PARALLEL_SIZE == 1 )) || \
-      die 'the published SparkCache image supports DCP1; use IMAGE_VARIANT=base for DCP2/DCP4'
-    image_ref="${SPARKCACHE_IMAGE_REF}"
-    expected_image_id='sha256:6af83baabb239db6b05e379401daf93c8f51694f81483c2781f6014c30e31db4'
-    cache_namespace="${SPARKCACHE_CACHE_NAMESPACE}"
+    if [[ -n "${SPARKCACHE_DCP_IMAGE_REF}" || -n "${SPARKCACHE_DCP_IMAGE_ID}" ]]; then
+      [[ "${SPARKCACHE_DCP_IMAGE_REF}" =~ ^[^[:space:]]+@sha256:[0-9a-f]{64}$ ]] || \
+        die 'SPARKCACHE_DCP_IMAGE_REF must be an immutable sha256 registry reference'
+      [[ "${SPARKCACHE_DCP_IMAGE_ID}" =~ ^sha256:[0-9a-f]{64}$ ]] || \
+        die 'SPARKCACHE_DCP_IMAGE_ID must be an immutable local image ID'
+      image_ref="${SPARKCACHE_DCP_IMAGE_REF}"
+      expected_image_id="${SPARKCACHE_DCP_IMAGE_ID}"
+      cache_namespace="${SPARKCACHE_DCP_CACHE_NAMESPACE}"
+    else
+      (( DECODE_CONTEXT_PARALLEL_SIZE == 1 )) || \
+        die 'the published r7 SparkCache image supports DCP1; set the immutable r8 DCP image reference and ID for DCP2/DCP4'
+      image_ref="${SPARKCACHE_IMAGE_REF}"
+      expected_image_id='sha256:6af83baabb239db6b05e379401daf93c8f51694f81483c2781f6014c30e31db4'
+      cache_namespace="${SPARKCACHE_CACHE_NAMESPACE}"
+    fi
     ;;
   *) die 'IMAGE_VARIANT must be base or sparkcache' ;;
 esac
+if [[ "${SPARKCACHE_CLEAR_ONCE}" == auto ]]; then
+  SPARKCACHE_CLEAR_ONCE="${cache_namespace}"
+fi
 
 actual_image_id="$(docker image inspect --format '{{.Id}}' "${image_ref}")"
 [[ "${actual_image_id}" == "${expected_image_id}" ]] || \
@@ -413,7 +433,7 @@ exec docker run -d \
   -e VLLM_GLM53_SPLIT_TARGET_BLOCK_SIZE=512 \
   -e VLLM_GLM53_SPLIT_MAMBA_BLOCK_SIZE=512 \
   -e "VLLM_B12X_MLA_CKV_GATHER=${B12X_MLA_CKV_GATHER}" \
-  -e "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS=${MAX_MODEL_LEN}" \
+  -e "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS=${B12X_MLA_CKV_GATHER_MAX_TOKENS}" \
   -e "VLLM_CACHE_ROOT=/cache/jit/vllm/${cache_namespace}" \
   -e "B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x/6255090a/${cache_namespace}" \
   -e "TRITON_CACHE_DIR=/cache/jit/triton/${cache_namespace}" \
