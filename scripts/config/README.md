@@ -49,33 +49,31 @@ python -m pytest \
   runtime/exl3-r7/test_exl3_r7_verify_runtime.py -q
 ```
 
-## GLM-5.3 Flash with BF16 DFlash2
+## GLM-5.3 Flash R8 with BF16 DFlash2
 
-The GLM-5.3 Flash deployment uses three sanitized inputs:
+The operator template is
+[`runtime/glm53-flash-jj-r8-gb10/runtime.env.example`](../../runtime/glm53-flash-jj-r8-gb10/runtime.env.example).
+It configures one published Linux/ARM64 image for TP4 with DCP1, DCP2, or
+DCP4. Its defaults are a 1,048,576-token request limit, 16 sequences, an
+8,192-token batched-token budget, and FP8 KV allocations of 26 GiB/rank for
+DCP1 or 30 GiB/rank for DCP2/DCP4.
 
-| File | Role |
-|---|---|
-| `glm53-flash-tp4-site.example.yaml` | Four-rank direct-cycle topology and the shared TP4/DCP1 serving geometry |
-| `glm53-flash-dflash2-bf16-tp4-dcp1.example.json` | Cache-disabled runtime profile |
-| `glm53-flash-dflash2-bf16-tp4-dcp1-sparkcache.example.json` | SparkCache-enabled runtime profile |
+`SPARKCACHE_ENABLED=1` enables persistent SparkCache plus vLLM prefix caching.
+`SPARKCACHE_ENABLED=0` omits the persistent connector and retains vLLM prefix
+caching. Both modes use the same image and
+[`GLM-5.3 R8 quickstart`](../../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md).
 
-Copy the selected files outside version control and replace the documentation
-addresses, SSH targets, interfaces, devices, immutable image identity, target
-model host path, draft model host path, and writable cache path. Both runtime
-profiles keep asynchronous scheduling, native prefix caching, and chunked
-prefill enabled. The cache-enabled profile adds only the external key-value
-connector to the serving arguments.
+The `glm53-flash-*.example.json` and `glm53-flash-tp4-site.example.yaml` files
+describe source-bound TP4/DCP1 profiles at other vLLM revisions. They are not
+the operator inputs for the published R8 image.
 
-The generic launcher rejects the zero image ID in each template. A resolved
-profile also fails before launch if the image labels, BF16 DFlash hashes,
-patched NCCL binary, vLLM configuration postimage, or vLLM lease contract
-differs. Follow the [SparkCache-enabled quickstart](../../docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md)
-or [cache-disabled quickstart](../../docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md).
-
-Run the focused CPU-only contract suite after changing these inputs:
+Run the focused CPU-only contract suites after changing GLM-5.3 inputs:
 
 ```bash
-python -m pytest scripts/test_glm53_flash_profile.py -q
+python -m pytest \
+  runtime/glm53-flash-jj-r8-gb10 \
+  scripts/test_glm53_flash_profile.py \
+  scripts/test_sparkring_generic_launcher.py -q
 ```
 
 ## GLM-5.3 adaptive MTP with live-tensor B12X KDA
