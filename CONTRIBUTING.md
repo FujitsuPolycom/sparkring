@@ -5,8 +5,9 @@ code are welcome. You do not need DGX Spark hardware or maintainer approval to
 participate. Partial reports are useful; share what you know and maintainers
 can help identify what is missing.
 
-The supported deployments and their maturity are listed in
-[`README.md`](README.md). This guide intentionally does not repeat that matrix.
+Deployment profiles and their evidence scope are listed in the
+[profile registry](docs/profiles/README.md). This guide intentionally does not
+repeat that matrix.
 
 ## Issues and discussions
 

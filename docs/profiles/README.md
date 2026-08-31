@@ -27,6 +27,19 @@ checkpoint hash. Both Qwen base profiles pin
 revision `ab3a91a13813df8096cb4c1d560ed3669035d0cf` and the checkpoint's
 published configuration hash.
 
+## Direct-cable payload descriptors
+
+The generic cable-qualification tool accepts the payload sizes used by the
+profile set. These descriptors validate link integrity; they are not model
+benchmarks.
+
+| Profile family | Payload | Semantic shape |
+|---|---:|---|
+| GLM-5.2 EXL3 | 12,288 bytes | BF16 `[1, 6144]` tensor-parallel row |
+| DeepSeek-V4 Flash | 16,384 bytes | BF16 `[2, 4096]` tensor-parallel rows |
+
+Run both descriptors when qualifying a cable for reuse across profiles.
+
 ## Unsupported integrations
 
 | Integration | Topology | Status |

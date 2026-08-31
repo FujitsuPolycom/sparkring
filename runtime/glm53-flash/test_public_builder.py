@@ -104,7 +104,8 @@ def test_glm_documentation_credits_exact_upstream_sources_and_artifacts() -> Non
         encoding="utf-8"
     )
     runtime = (HERE / "README.md").read_text(encoding="utf-8")
-    for text in (main, routing, runtime):
+    assert "https://github.com/local-inference-lab/" in main
+    for text in (routing, runtime):
         assert JJ_URL in text
         assert B12X_URL in text
         assert TARGET_URL in text

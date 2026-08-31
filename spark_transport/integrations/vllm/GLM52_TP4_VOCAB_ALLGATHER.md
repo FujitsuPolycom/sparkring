@@ -1,5 +1,11 @@
 # GLM-5.2 TP4 vocabulary all-gather
 
+The same profile admits BF16 tensor-parallel all-reduce width 6,144 for query
+rows 1 through 40. `VLLM_SPARK_MAX_QUERY_ROWS=40` and an unset
+`VLLM_SPARK_TP4_EAGER_WIDTHS` select that width in the generic vLLM adapter.
+The profile's direct-cable qualification descriptor is 12,288 bytes, matching
+one BF16 `[1, 6144]` row.
+
 ## Status
 
 Implemented native API and vLLM adapter for the GLM-5.2 tensor-parallel

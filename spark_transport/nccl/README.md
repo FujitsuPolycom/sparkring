@@ -67,13 +67,12 @@ NCCL_SOCKET_IFNAME=<management-interface>
 ```
 
 `NCCL_PROTO` remains unset for the generic fallback so NCCL can select a
-protocol per communicator. A model profile may override it only when the
-profile's environment, recipe, and live evidence bind the same value. The
-DeepSeek and Qwen pair/cycle profiles bind `LL,LL128,Simple`; that setting is
-not a default for other serving objects. On a cycle, the management interface
-is bootstrap-only; collective payloads use the two direct RoCE interfaces.
+protocol per communicator. A profile may override it only when its
+environment, recipe, and live evidence bind the same value. On a cycle, the
+management interface is bootstrap-only; collective payloads use the two direct
+RoCE interfaces.
 
-## Fail-closed requirements
+## Validation requirements
 
 Before serving, validate the patched library identity, read-only mount,
 selected pair/cycle topology, direct-peer subnet mapping, and complete runtime

@@ -3,145 +3,104 @@
 > Repository branches are mutable. Pin an immutable commit when reproducing a
 > deployment.
 
-  
-  SparkRing is a low-latency collective transport and vLLM-based
-inference-serving stack for switchless clusters of NVIDIA DGX 'Spark' systems
-powered by the GB10 Grace Blackwell Superchip.
+SparkRing is a collective-communication and inference-serving stack for
+switchless clusters of NVIDIA DGX Spark systems. It connects each system
+directly to its neighbours and runs distributed workloads without an external
+Ethernet or InfiniBand fabric switch.
 
-SparkRing supports GB10 pairs and four-node rings. Six-node ring work is
-research-only.
+The repository contains:
 
-Models run as tensor-parallel deployments over the direct fabric without an
-external Ethernet or InfiniBand switch. [SIRCL](https://github.com/FujitsuPolycom/sparkring/blob/main/docs/SIRCL.md) provides custom RDMA collectives
-where applicable, CUDA-graph command rings support repeated decode
-work, and [patched NCCL](https://github.com/FujitsuPolycom/sparkring/blob/main/spark_transport/nccl/README.md) handles communication outside SIRCL's supported paths.
+- cluster discovery, configuration, and diagnostics;
+- native RDMA collectives and vLLM integration;
+- patched NCCL support for communication outside the native transport;
+- reproducible runtime builders and deployment profiles; and
+- benchmark methods, records, and sanitized receipts.
 
-The repository provides launch tooling, model profiles, test evidence, and [performance data](https://github.com/FujitsuPolycom/sparkring/tree/main/performance).
+## Get started
 
-## GLM-5.3 upstream credit
+Start on the system that will serve as rank 0:
 
-The GLM-5.3 serving profiles depend primarily on Local Inference Lab's
-[Jovian Judgement vLLM branch](https://github.com/local-inference-lab/vllm/tree/dev/jovian-judgement)
-for GLM runtime performance and correctness, and on
-[B12X](https://github.com/local-inference-lab/b12x) for Blackwell kernels and
-backend integration. Local Inference Lab also publishes the
-[GLM-5.3 Flash NVFP4 target](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4)
-and a separate
-[MXFP8 DFlash2 checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-DFlash2-MXFP8).
+```bash
+curl -fLO \
+  https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/bootstrap.sh
+less bootstrap.sh
+bash bootstrap.sh
+sparkring cluster init --size 4
+sparkring doctor --verify
+```
 
-The published profiles in this README use the NVFP4 target revision and the
-explicitly named external draft. The external
-[`incoai/GLM-5.3-Flash-DFlash2`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2)
-draft is BF16, not MXFP8. Checkpoint formats and revisions are not
-interchangeable.
+The bootstrap workflow enrolls nodes over the management network, discovers
+ConnectX-7 hardware, writes a local cluster inventory, and checks the direct
+fabric before any serving profile is selected.
 
-## Setup
+Read the [bootstrap guide](docs/BOOTSTRAP.md) before applying network changes.
+Then choose a deployment from the [profile registry](docs/profiles/README.md).
 
-Start with ssh to node0 and enough disk space for the intended model weights. 
-Use the [bootstrap guide](docs/BOOTSTRAP.md). The model-independent `sparkring cluster
-init` workflow enrolls nodes, discovers management and ConnectX-7 hardware,
-generates the cluster inventory, and launches Ring Doctor before any model
-profile is selected.
+## Topologies
 
-## Resources
-
-- [Supported models and profiles](#profiles)
-- [Evidence and results](#evidence-and-results)
-- [Deployment prerequisites](docs/PREREQUISITES.md) — then choose a profile quickstart below
-- [GLM-5.3 Flash quickstart routing](docs/GLM53_FLASH_QUICKSTARTS.md)
-
-## Profiles
-
-### GLM-5.3 Flash profiles
-
-| Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
-|---|---|---:|---:|---:|---|---|
-| Published JJ r7-compatible GLM-5.3 Flash base | 4 Sparks · TP4/DCP1 | 512K | 16 | 8,192 | 20 GiB/rank FP8 KV | [Public-image quickstart](docs/GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) |
-| Published JJ r7-compatible GLM-5.3 Flash + SparkCache | 4 Sparks · TP4/DCP1 | 512K | 16 | 8,192 | 20 GiB/rank FP8 KV + 40 GiB/rank SparkCache | [Public-image quickstart](docs/GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) |
-
-The immutable published images are implemented and TP4 smoke-verified for the
-exact C4 cases in their guide. They are not generally qualified.
-
-The operator launcher defaults to a 524,288-token request limit and 8,192
-batched tokens. Those limits are implemented but unqualified; the bounded C4
-smoke used a 262,144-token limit and 4,096 batched tokens.
-
-Historical exact-artifact and source-development records remain available for
-reproducing their named evidence. They are not the default public-image start:
-
-| Runtime path | Status | Start here |
+| Topology | Status | Fabric |
 |---|---|---|
-| Full-snapshot local artifact | Exact historical 131,072-token restore evidence | [Artifact procedure](docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md#shortest-qualified-start) |
-| Split-page local artifact | Exact historical C8 different-root and shared-base evidence | [Artifact procedure](docs/GLM53_SPLIT_PAGE_SPARKCACHE_TP4_QUICKSTART.md) |
-| Adaptive embedded MTP source composition | Implemented source-development path; live SparkCache serving unqualified | [Source procedure](docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md) |
-| Embedded-MTP source composition | Implemented source-development path; live SparkCache serving unqualified | [Source procedure](docs/GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md) |
+| Two-system pair | **implemented** | One direct 200 Gb/s link |
+| Four-system cycle | **implemented** | Four direct links in a closed `0-1-2-3-0` cycle |
+| Six-system cycle | **research-only** for serving | Six direct links in a closed cycle |
 
-The [GLM-5.3 routing guide](docs/GLM53_FLASH_QUICKSTARTS.md) explains source
-ancestry, image construction, immutable registry pulls, local archive fanout,
-profile resolution, and evidence boundaries.
+Each rank also needs a management-network connection for SSH, rendezvous, and
+the rank-0 API. The management network is not an inference-fabric edge.
 
-For the 20 GiB FP8 KV pool, GLM hybrid allocation does not scale linearly from
-the reported 916,676-token capacity. A no-cache C6 × 128K observation admitted
-one request at a time and serialized completions. C2 × 128K is the only
-observed safe candidate pending live CUDA qualification. C8 × 64K and
-C16 × 32K are planned and unqualified; C16 × 128K is unsupported unless GPU
-trunk pages are shared or KV capacity increases.
+## Communication paths
 
-### Other model profiles
+[SIRCL](docs/SIRCL.md) provides persistent RDMA sessions and graph-replayable
+collectives for supported four-rank shapes. [Patched
+NCCL](spark_transport/nccl/README.md) handles other collective shapes and
+phases. A deployment profile states which path it uses.
 
-| Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
-|---|---|---:|---:|---:|---|---|
-| GLM-5.2 EXL3 3.5-bpw | 4 Sparks · TP4/DCP4 | 1M | 16 | 4,096 | NVFP4 DS-MLA · 9.25 GB/rank | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | 2 Sparks · TP2/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA · 16 GiB/rank | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | 4 Sparks · TP4/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA · 16 GiB/rank | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| Qwen3.8-27B EXL3 K5/K6 | 2 Sparks · TP2/DCP1 | 1M | 32 | 8,192 | FP8 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
-| Qwen3.8-27B EXL3 K5/K6 | 4 Sparks · TP4/DCP1 | 1M | 64 | 8,192 | FP8 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
-| GLM-5.2 EXL3 3.5-bpw + SparkCache | 4 Sparks · TP4/DCP4 | 1M | 16 | 4,096 | NVFP4 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 + SparkCache | 2 Sparks · TP2/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 + SparkCache | 4 Sparks · TP4/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
+See [architecture](docs/ARCHITECTURE.md), [deployment
+prerequisites](docs/PREREQUISITES.md), and [cable
+qualification](spark_transport/CABLE_QUALIFICATION.md) for the system
+contracts.
 
-The public BF16 DFlash2 checkpoint is licensed CC BY-NC-ND 4.0 for research
-and evaluation; review its model card before use. Historical artifact records
-retain their exact image identities and evidence boundaries.
-See the [profile registry](docs/profiles/README.md) for recipe identities and evidence scope.
+## Profiles and evidence
 
-## Evidence and results
+Model, runtime, topology, memory, and scheduler settings belong to deployment
+profiles rather than the transport definition:
 
-Evidence records stay beside their methods, exact inputs, and limitations.
-See [results](docs/RESULTS.md) for qualified throughput tables and
-[`performance/records/`](performance/records/) for research-only and
-artifact-specific observations. A runtime status or green CPU-only test does
-not establish throughput, output quality, or live serving behavior.
+- [profile registry](docs/profiles/README.md);
+- [runtime builders](runtime/README.md);
+- [serving configuration templates](scripts/config/README.md);
+- [benchmark results](docs/RESULTS.md); and
+- [methods, records, and receipts](performance/README.md).
 
-## Architecture
-
-Two-Spark profiles use one direct 200 Gb/s cable and patched NCCL. Four-Spark
-profiles use a switchless `0-1-2-3-0` cable cycle. SIRCL serves its tested
-collective paths; patched NCCL handles the remaining paths.
-
-See [architecture](docs/ARCHITECTURE.md), [SIRCL](docs/SIRCL.md), and the
-[deployment prerequisites](docs/PREREQUISITES.md).
+A successful offline test or process start does not establish serving
+correctness, output quality, capacity, or performance. Each profile documents
+its own evidence and limitations.
 
 ## Repository map
 
 | Path | Purpose |
 |---|---|
-| `spark_transport/` | Native transport and vLLM adapters |
-| `runtime/` | Pinned runtime inputs and builders |
-| `scripts/` | Site validation, preflight, launch, and evidence tooling |
-| `recipes/` | Machine-readable serving recipes |
+| `spark_transport/` | Native transport, patched NCCL, and framework adapters |
+| `runtime/` | Pinned runtime inputs and image builders |
+| `scripts/` | Cluster validation, launch, and evidence tooling |
+| `recipes/` | Machine-readable serving compositions |
 | `performance/` | Benchmark methods, records, and sanitized receipts |
-| `docs/` | Profile procedures, architecture, prerequisites, and evidence |
+| `docs/` | Architecture, prerequisites, profiles, and operator procedures |
+
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution and validation
+guidance. Security reports belong in private GitHub security advisories as
+described in [SECURITY.md](SECURITY.md).
 
 ## Acknowledgements
 
-SparkRing builds on work from vLLM, NVIDIA NCCL, B12X, SparkInfer, LMCache,
-ExLlamaV3, and the
-[local inference community](https://github.com/local-inference-lab/).
+SparkRing builds on vLLM, NVIDIA NCCL, B12X, SparkInfer, LMCache, ExLlamaV3,
+and work published by the [Local Inference
+Lab](https://github.com/local-inference-lab/). Model-specific profiles identify
+their exact upstream source, checkpoint, revision, and license.
 
 Detailed third-party attribution is in
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## License
 
-Apache-2.0. See [`LICENSE`](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE).

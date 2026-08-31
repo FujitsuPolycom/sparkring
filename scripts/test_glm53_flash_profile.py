@@ -414,9 +414,9 @@ def test_public_glm53_benchmark_is_sanitized_and_bounded() -> None:
     assert "api_key" not in text.lower()
 
     readme = README_PATH.read_text(encoding="utf-8")
-    assert "## Evidence and results" in readme
-    assert "[results](docs/RESULTS.md)" in readme
-    assert "[`performance/records/`](performance/records/)" in readme
+    assert "## Profiles and evidence" in readme
+    assert "[benchmark results](docs/RESULTS.md)" in readme
+    assert "[methods, records, and receipts](performance/README.md)" in readme
     assert "GLM-5.3 Flash research observation" not in readme
     assert "IN PROGRESS" not in readme
 
@@ -446,14 +446,15 @@ def test_glm53_routing_bounds_concurrency_by_resident_token_capacity() -> None:
     assert receipt["result"]["kv_capacity_tokens"] == 916676
 
     routing = GLM53_ROUTING_PATH.read_text(encoding="utf-8")
+    assert "C2 × 128K" in routing
+    assert "C6 × 128K" in routing
+    assert "C8 × 64K" in routing
+    assert "C16 × 32K" in routing
+    assert "C16 × 128K is unsupported" in routing
+    assert "C8 × 64K" in routing and "unqualified" in routing
     readme = README_PATH.read_text(encoding="utf-8")
-    for text in (routing, readme):
-        assert "C2 × 128K" in text
-        assert "C6 × 128K" in text
-        assert "C8 × 64K" in text
-        assert "C16 × 32K" in text
-        assert "C16 × 128K is unsupported" in text
-        assert "C8 × 64K" in text and "unqualified" in text
+    assert "docs/profiles/README.md" in readme
+    assert "C2 × 128K" not in readme
     assert "Do not estimate GLM hybrid concurrency by dividing" in routing
     assert "39–41% GPU KV use" in routing
     assert "61–313 seconds" in routing

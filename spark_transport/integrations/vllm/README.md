@@ -1,97 +1,70 @@
-# vLLM four-rank transport integration
+# vLLM transport integration
 
-## Status and scope
+The adapter offers SparkRing candidates for selected four-rank tensor-parallel
+collectives. Every operation that does not match an admitted signature remains
+on vLLM's NCCL path.
 
-The adapter installs two custom candidates only:
+## Dispatch contract
 
-- tensor-parallel BF16 all-reduce; and
-- GLM-5.2 tensor-parallel vocabulary all-gather.
+The integration provides two candidate families:
 
-All other collectives retain vLLM's original NCCL dispatch. DCP and
-sparse-indexer collectives require the patched-NCCL fallback in
-[../../nccl/README.md](../../nccl/README.md).
+- contiguous CUDA BF16 tensor-parallel all-reduce; and
+- a dedicated tensor-parallel vocabulary all-gather.
 
-## All-reduce admission
+Admission binds the process group, world size, tensor layout, dtype, shape,
+runtime library, and profile-selected mode. Exact model geometries belong to
+the profile that enables them.
 
-Custom all-reduce requires TP group `tp:0`, world size four, a contiguous
-CUDA BF16 tensor, and an admitted two-dimensional `[Q, W]` shape.
+Any near miss calls the original vLLM/NCCL implementation. Decode-context,
+sparse-indexer, and other non-admitted collectives use the patched-NCCL
+contract in [../../nccl/README.md](../../nccl/README.md).
 
-- **Qualified GLM-5.2 path:** `W=6144`, `Q=1..40`; exact-Q40 serving uses
-  this geometry.
-- **Research-only DeepSeek-V4-Flash-0731 path:** `W=4096`. It has no serving
-  qualification and must remain in shadow mode until a four-rank result is
-  qualified.
-
-Any non-matching collective calls the original vLLM/NCCL implementation.
+## Modes
 
 `shadow` runs the candidate and reference operation, returns the reference
-result, and checks numerical agreement. `custom` returns the native result
-only after the selected signature has passed its required validation. Native
-session creation failure falls back before enqueue. A failure after enqueue
-terminates the worker; an in-process fallback could reuse a CUDA stream with
-an unfulfilled native wait.
+result, and checks agreement. `custom` returns the native result only after the
+selected signature passes its required validation. Disabled or unset modes use
+the original vLLM path.
 
-## Vocabulary all-gather admission
+Native session creation failure returns to the reference path before enqueue.
+A native failure after enqueue terminates the worker because the CUDA stream
+may contain an unfulfilled wait; in-process fallback is unsafe at that point.
 
-The dedicated vocabulary adapter intercepts
-`GroupCoordinator._all_gather_out_place()` rather than the shared NCCL hook.
-It requires group `tp:0`, world size four, gather dimension `-1` or `1`,
-contiguous CUDA BF16 input, and exact input
-`[Q, 38720]` for `Q=1..5`. It produces token-major BF16 `[Q, 154880]`:
+## Environment contract
 
-```text
-output[q] = [rank0[q], rank1[q], rank2[q], rank3[q]]
-```
-
-Shadow comparison is byte-exact. Session creation failure falls back before
-enqueue; a native failure after enqueue terminates the worker.
-
-The ABI, probe, and retained build targets are specified in
-[GLM52_TP4_VOCAB_ALLGATHER.md](GLM52_TP4_VOCAB_ALLGATHER.md).
-
-## Consumed environment variables
-
-Set `PYTHONPATH` to this directory and mount
-`libspark_transport_capi.so` read-only on every rank. The two adapters consume
-the following variables:
+Set `PYTHONPATH` to this integration directory and mount
+`libspark_transport_capi.so` read-only on every rank.
 
 | Variable | Purpose |
 |---|---|
-| `VLLM_SPARK_TP4_MODE` | All-reduce mode: `shadow`, `custom`, `disabled`, or unset. |
-| `VLLM_SPARK_TP4_VOCAB_MODE` | Vocabulary mode: `shadow`, `custom`, or unset. |
-| `SPARK_TP4_LIBRARY` | Required path to `libspark_transport_capi.so` when either custom candidate is enabled. |
-| `SPARK_TP4_PEER0`, `SPARK_TP4_PEER1` | Required site-specific direct-peer addresses; do not use placeholder defaults for serving. |
-| `SPARK_TP4_DEVICE0`, `SPARK_TP4_DEVICE1` | Local RoCE devices; defaults are `rocep1s0f0` and `rocep1s0f1`. |
-| `SPARK_TP4_GID0`, `SPARK_TP4_GID1` | GID indices; default is `3` for each device. |
-| `SPARK_TP4_CONTROL_PORT0`, `SPARK_TP4_CONTROL_PORT1` | All-reduce control-port base pair. |
-| `SPARK_TP4_VOCAB_CONTROL_PORT0`, `SPARK_TP4_VOCAB_CONTROL_PORT1` | Vocabulary control-port pair. |
-| `VLLM_SPARK_MAX_QUERY_ROWS` | Default-width all-reduce row limit. Set to `40` for the qualified GLM geometry. |
-| `VLLM_SPARK_TP4_EAGER_WIDTHS` | Comma-separated all-reduce widths; unset admits only `6144`. Set `4096,6144` only for research shadow validation. |
-| `SPARK_TP4_SHADOW_COLLECTIVES` | All-reduce shadow comparison window. |
-| `SPARK_TP4_SHADOW_PROMOTE` | Promotes an all-reduce shape after its shadow window passes. |
-| `SPARK_TP4_SHADOW_STRICT`, `SPARK_TP4_SHADOW_MAX_ULP` | All-reduce shadow comparison gates. |
-| `SPARK_TP4_VOCAB_SHADOW_COLLECTIVES` | Vocabulary shadow comparison window. |
-| `SPARK_TP4_VOCAB_SHADOW_PROMOTE` | Promotes a vocabulary shape after its byte-exact shadow window passes. |
-| `SPARK_TP4_MAX_INFLIGHT` | Positive bound on native all-reduce and vocabulary submissions. |
-| `SPARK_TP4_VOCAB_EAGER_STAGING_TIMEOUT_SECONDS` | Positive timeout for vocabulary CUDA input staging before the native protocol begins. |
+| `VLLM_SPARK_TP4_MODE` | All-reduce mode: `shadow`, `custom`, `disabled`, or unset |
+| `VLLM_SPARK_TP4_VOCAB_MODE` | Vocabulary mode: `shadow`, `custom`, or unset |
+| `SPARK_TP4_LIBRARY` | Path to the native library when a candidate is enabled |
+| `SPARK_TP4_PEER0`, `SPARK_TP4_PEER1` | Site-specific direct-neighbour addresses |
+| `SPARK_TP4_DEVICE0`, `SPARK_TP4_DEVICE1` | Local RoCE devices |
+| `SPARK_TP4_GID0`, `SPARK_TP4_GID1` | RoCEv2 GID indices |
+| `SPARK_TP4_CONTROL_PORT0`, `SPARK_TP4_CONTROL_PORT1` | All-reduce control-port bases |
+| `SPARK_TP4_VOCAB_CONTROL_PORT0`, `SPARK_TP4_VOCAB_CONTROL_PORT1` | Vocabulary control ports |
+| `VLLM_SPARK_MAX_QUERY_ROWS` | Profile-selected all-reduce row limit |
+| `VLLM_SPARK_TP4_EAGER_WIDTHS` | Profile-selected all-reduce widths |
+| `SPARK_TP4_SHADOW_COLLECTIVES` | All-reduce shadow comparison window |
+| `SPARK_TP4_SHADOW_PROMOTE` | Permit per-signature promotion after the shadow window passes |
+| `SPARK_TP4_SHADOW_STRICT`, `SPARK_TP4_SHADOW_MAX_ULP` | All-reduce comparison checks |
+| `SPARK_TP4_VOCAB_SHADOW_COLLECTIVES` | Vocabulary shadow comparison window |
+| `SPARK_TP4_VOCAB_SHADOW_PROMOTE` | Permit vocabulary promotion after its byte-exact window passes |
+| `SPARK_TP4_MAX_INFLIGHT` | Bound native all-reduce and vocabulary submissions |
+| `SPARK_TP4_VOCAB_EAGER_STAGING_TIMEOUT_SECONDS` | Bound vocabulary CUDA-input staging |
 
-Every rank must use the same mode, admitted all-reduce widths, row limit,
-library bytes, and non-overlapping control-port assignments. Invalid values or
-conflicting port reservations fail installation instead of selecting a
-different transport.
+Every rank must use identical modes, admitted widths, row limit, library bytes,
+and non-overlapping port assignments. Invalid or conflicting values stop
+adapter installation rather than selecting a different configuration.
 
-## Minimal qualified GLM configuration
+## Profile-owned activation
 
-```bash
-PYTHONPATH=/opt/spark-vllm
-VLLM_SPARK_TP4_MODE=shadow
-VLLM_SPARK_TP4_VOCAB_MODE=shadow
-SPARK_TP4_LIBRARY=/opt/spark-transport/libspark_transport_capi.so
-VLLM_SPARK_MAX_QUERY_ROWS=40
-SPARK_TP4_PEER0=<direct-peer-0>
-SPARK_TP4_PEER1=<direct-peer-1>
-```
+A deployment profile must provide the exact admitted signatures, environment,
+probe result, shadow policy, and patched-NCCL fallback. Do not derive those
+values from this generic integration page or enable `custom` based only on
+process health.
 
-Use `custom` only after deterministic four-rank native probes and the relevant
-shadow windows pass. The patched NCCL runtime contract remains mandatory for
-every operation not admitted by these two candidates.
+The model-specific vocabulary adapter contract is documented in
+[GLM52_TP4_VOCAB_ALLGATHER.md](GLM52_TP4_VOCAB_ALLGATHER.md).

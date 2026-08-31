@@ -1,8 +1,8 @@
 # SIRCL
 
 SIRCL is the **Switchless Inference RDMA Collective Layer**. It is SparkRing's
-native collective transport for the directly cabled four-DGX-Spark cycle; it is
-not a separate service or an NCCL fork.
+native collective transport for a directly cabled four-system cycle. It is not
+a separate service or an NCCL fork.
 
 ## Implemented boundary
 
@@ -11,37 +11,30 @@ rings. CUDA graph replay submits pre-established work without Python or host
 control work in the replay path.
 
 A four-rank collective is decomposed into two perfect matchings of the physical
-cycle. This scheduling is specific to the four-Spark topology documented in
-[architecture](ARCHITECTURE.md). SIRCL does not claim a generic multi-node
-collective interface or support beyond that topology.
+cycle. Each step transfers data only between direct neighbours. This schedule
+does not claim a generic multi-node collective interface or support outside the
+four-rank topology documented in [architecture](ARCHITECTURE.md).
 
-## Profile use
+## Admission
 
-The GLM-5.2 EXL3 3.5-bpw profile uses SIRCL for qualified tensor-parallel
-all-reduce and vocabulary collective families. Patched NCCL handles operations
-outside those families; DCP and indexer collectives use stock paths.
+SIRCL admission depends on the collective family, width, dtype, topology, and
+runtime adapter contract. Unsupported work remains on patched NCCL. A profile
+must name its admitted SIRCL families and link the evidence that supports them;
+model identity alone never enables a transport path.
 
-The DeepSeek-V4-Flash-0731 quickstart uses patched NCCL. Its width-4096 SIRCL
-CUDA-graph configuration is research-only and excluded from functional profile
-qualification. A four-rank matched comparison established native replay,
-API health, and zero overflow for the target and DSpark capture path; see the
-[DeepSeek SIRCL evidence record](../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
+The [profile registry](profiles/README.md) records which deployments use SIRCL.
+Artifact-specific comparisons and measurements belong under
+[`performance/records/`](../performance/records/).
 
-The Qwen3.8-27B EXL3 K5/K6 pair and cycle profiles use patched NCCL. Their
-width-5,120 tensor-parallel shape is unsupported by SIRCL, so neither loads a
-custom SparkRing collective adapter.
+## Failure behavior
 
-## Operational invariants
+Initialization rejects incomplete rank membership, incompatible geometry,
+missing peer connectivity, and registration failures. Unsupported or
+unqualified collective work must use the profile's NCCL path rather than being
+silently admitted to SIRCL.
 
-- All four ranks require the same topology, peer ordering, RDMA device mapping,
-  and transport configuration.
-- A collective shape not admitted to the native path must use the NCCL fallback.
-- The management network is not an RDMA cycle edge.
-- Transport evidence does not establish model correctness or performance unless
-  the corresponding profile result states those conditions.
+## Implementation
 
-Deployment commands and profile limits are in the
-[GLM quickstart](GLM52_35BPW_QUICKSTART.md) and
-[DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md), and
-[Qwen3.8-27B pair quickstart](QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md), and
-[Qwen3.8-27B cycle quickstart](QWEN38_27B_EXL3_K5K6_QUICKSTART.md).
+The native source, integration boundary, and tests are under
+[`spark_transport/`](../spark_transport/). Cable and link requirements are in
+[cable qualification](../spark_transport/CABLE_QUALIFICATION.md).

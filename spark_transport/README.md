@@ -1,28 +1,50 @@
 # Spark Transport
 
-## Status
+`spark_transport` is SparkRing's model-independent collective transport for
+directly connected GPU systems. It owns topology validation, peer setup,
+collective protocols, CUDA-stream ordering, and the boundary between custom
+collectives and patched NCCL.
 
-`spark_transport` implements direct-cable, four-rank tensor-parallel
-collectives for the supported GLM-5.2 EXL3 serving configuration:
+It does not define a model, checkpoint, quantization, context length, or
+serving configuration. Model profiles select admitted tensor descriptors and
+bind them to measured evidence outside this subsystem. See the
+[profile registry](../docs/profiles/README.md).
 
-- BF16 TP all-reduce; and
-- BF16 vocabulary all-gather.
+## Implemented surface
 
-Each rank has two directly attached RoCE peers. The native protocol accepts
-only the four-rank topology and fails closed on invalid rank, peer, device,
-GID, tensor, session, or protocol state.
+The transport provides:
 
-The exact-Q40 GLM path has hidden width 6,144 and contiguous BF16 tensors
-`[Q, 6144]`, with `Q` from 1 through 40. It is the only qualified custom
-all-reduce geometry. The width-4,096 DeepSeek-V4-Flash-0731 path is
-research-only: it may use the retained all-reduce admission surface, but has
-no serving qualification. DCP and sparse-indexer collectives remain on the
-patched NCCL fallback described in [nccl/README.md](nccl/README.md).
+- BF16 row-oriented tensor-parallel all-reduce;
+- BF16 tensor-parallel vocabulary all-gather;
+- a C ABI for native callers;
+- a vLLM adapter that admits only supported topology and tensor descriptors;
+- direct-cable qualification tools; and
+- patched NCCL dispatch for collectives outside the custom transport's
+  admitted surface.
+
+The custom protocol currently accepts a four-rank direct-cable cycle. Each
+rank communicates with its two physical neighbors. Supported tensor geometry
+is an explicit descriptor and qualification property, not a model identity.
+
+The C ABI and vLLM adapter are **implemented**. Deployment qualification
+belongs to the exact topology, tensor descriptor, runtime artifact, and model
+profile named by an evidence record.
+
+## Subsystem boundaries
+
+| Concern | Location |
+|---|---|
+| Collective protocol and C ABI | `include/spark_transport/`, `src/` |
+| Native probes and contract tests | `app/`, `tests/` |
+| vLLM integration and descriptor admission | [`integrations/vllm/`](integrations/vllm/) |
+| Patched switchless NCCL | [`nccl/`](nccl/) |
+| Link and payload qualification | [`CABLE_QUALIFICATION.md`](CABLE_QUALIFICATION.md) |
+| Model-specific settings and evidence | [`docs/profiles/`](../docs/profiles/) and [`recipes/`](../recipes/) |
 
 ## Build
 
-Build the native library and its contract tests on an ARM64 CUDA environment
-with CMake, a C++17 compiler, CUDA, and libibverbs development headers:
+Build the library and contract tests on an ARM64 CUDA environment with CMake,
+a C++17 compiler, CUDA, and libibverbs development headers:
 
 ```bash
 cmake -S spark_transport -B build/spark-transport \
@@ -40,35 +62,36 @@ ctest --test-dir build/spark-transport \
   --output-on-failure
 ```
 
-The serving artifact is `libspark_transport_capi.so`. All four ranks must
-receive identical library bytes and identical transport configuration before
-custom mode is selected.
+The serving artifact is `libspark_transport_capi.so`. Every participating
+rank must use identical library bytes and transport configuration.
 
-## Deployment invariants
+## Runtime invariants
 
-- Exactly four tensor-parallel ranks participate.
-- Every rank uses its two direct RoCE peer addresses, devices, GIDs, and
-  control ports consistently with the other ranks.
-- Inputs are CUDA-resident, contiguous BF16 tensors of an admitted shape.
-- Native work begins only after session construction succeeds. A creation or
-  admission failure uses the original vLLM/NCCL collective.
-- A failure after native work is enqueued terminates the worker. In-process
-  fallback is unsafe because the CUDA stream can contain an unfulfilled wait.
+- Every rank agrees on topology, peer addresses, devices, GIDs, ports, and
+  collective sequence.
+- Inputs are CUDA-resident contiguous tensors matching an admitted descriptor.
+- Invalid topology, tensor, session, or protocol state is rejected before
+  custom device work begins; the adapter may use its ordinary NCCL path.
+- An error after custom CUDA work is enqueued terminates the worker. Continuing
+  in-process is unsafe because the stream may contain an unfulfilled wait.
+- Unsupported collective types use patched NCCL instead of being silently
+  interpreted as a supported custom operation.
 
-The vLLM adapter contract, including every consumed transport environment
-variable, is specified in
-[integrations/vllm/README.md](integrations/vllm/README.md).
+The complete adapter environment and fallback contract are documented in
+[`integrations/vllm/README.md`](integrations/vllm/README.md).
 
-## Cable qualification
+## Link qualification
 
-Before serving, qualify each direct physical edge with
-[CABLE_QUALIFICATION.md](CABLE_QUALIFICATION.md). Qualification proves
-bidirectional payload integrity and reports latency under its stated
-conditions; it does not qualify a model-serving result.
+Run [`CABLE_QUALIFICATION.md`](CABLE_QUALIFICATION.md) before model serving.
+The procedure verifies bidirectional payload integrity on each physical edge.
+Its latency result applies only to the payload and conditions named by that
+record; it does not qualify a model profile.
 
-## NCCL fallback
+## Model profiles
 
-Unsupported tensor signatures, DCP, and sparse-indexer collectives use vLLM's
-NCCL dispatch. The patched NCCL configuration is required where the
-switchless direct-cable topology is used; see
-[nccl/README.md](nccl/README.md).
+Profiles map model-specific tensor shapes and serving settings onto the generic
+transport interfaces. A profile may mark a descriptor **qualified**,
+**research-only**, or **unsupported** without changing the transport API.
+
+Start with the [profile registry](../docs/profiles/README.md) and the selected
+profile's recipe and evidence record.

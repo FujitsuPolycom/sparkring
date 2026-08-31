@@ -1,14 +1,9 @@
 # SparkRing prerequisites
 
-Complete this checklist before deploying any supported profile. It defines the
-hardware and operator conditions required by the
-[GLM-5.2 quickstart](GLM52_35BPW_QUICKSTART.md),
-[GLM-5.3 Flash quickstart routing](GLM53_FLASH_QUICKSTARTS.md),
-[DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md),
-[Qwen3.8-27B pair quickstart](QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md), and
-[Qwen3.8-27B four-Spark quickstart](QWEN38_27B_EXL3_K5K6_QUICKSTART.md). The
-GLM, Qwen cycle, and DeepSeek cycle configurations require four Sparks; the
-DeepSeek and Qwen pair profiles require two.
+Complete this checklist before deploying a profile. It defines the shared host,
+network, storage, and safety conditions for SparkRing. The [profile
+registry](profiles/README.md) adds model, topology, runtime, and capacity
+requirements for each deployment.
 
 Ring Doctor, canonical site validation, and fabric preflight support closed
 four- and six-Spark cycles. Six-Spark serving profiles remain `research-only`
@@ -50,15 +45,12 @@ management interface.
 
 Each rank needs Linux ARM64, a Docker-compatible runtime with GPU access,
 `/dev/infiniband`, and enough writable local storage for the selected image,
-model checkpoint, and JIT cache. Model paths mounted into containers must exist
-on every rank at the paths used by the launch command.
+checkpoint, JIT cache, and optional persistent context cache. Paths mounted
+into containers must exist on every rank at the locations named by the profile.
 
-The GLM checkpoint index totals 346,218,639,128 bytes. The DeepSeek checkpoint
-has 48 shards totaling about 167 GB. The Qwen checkpoint has three shards and
-requires about 22 GB before runtime and JIT caches. Budget additional image and
-cache headroom. A Qwen build host also needs temporary space for the pinned
-vLLM, ExLlamaV3, and NCCL source trees and their ARM64 build products; the
-builder is documented in [`runtime/qwen38/`](../runtime/qwen38/README.md).
+Checkpoint sizes, build scratch space, and cache budgets are profile
+properties. Determine them from the selected profile before placing artifacts
+on any rank.
 
 ## Network requirements
 
@@ -151,10 +143,11 @@ generated on the node itself.
 
 ## Local configuration and preflight
 
-The GLM quickstart uses an ignored site file. Copy, complete, and validate it:
+Copy a topology-compatible site template to the ignored canonical path,
+complete its placeholders, and validate it:
 
 ```bash
-cp scripts/config/exl3-r7-site.example.yaml scripts/config/site.yaml
+cp <site-template> scripts/config/site.yaml
 $EDITOR scripts/config/site.yaml
 python scripts/sparkring_site.py scripts/config/site.yaml
 python scripts/preflight.py --site scripts/config/site.yaml --print-plan
@@ -164,14 +157,10 @@ The final command is offline and prints the remote checks. Review it before
 running the same command without `--print-plan`, which contacts configured
 hosts without mutating them.
 
-The DeepSeek quickstart uses one local copy of
-`scripts/config/deepseek-v4-flash-0731.env.example` per rank. Replace only its
-network interface and fabric-address placeholders.
-
-The Qwen quickstarts use one private local copy of their topology-specific
-environment template per rank. Both image-baked launchers accept `--check` to
-validate the complete local rank contract and print the resolved command
-without starting vLLM.
+Profiles that use per-rank environment files document where to copy them and
+which placeholders are site-specific. Keep resolved site files and environment
+files outside version control. The [configuration index](../scripts/config/README.md)
+routes each profile to its templates and validator.
 
 ## Safety boundary
 

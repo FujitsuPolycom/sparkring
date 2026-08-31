@@ -1,131 +1,87 @@
-# SparkRing runtime
+# SparkRing runtime artifacts
 
-`runtime/` contains reviewable runtime inputs for the supported GLM-5.2 EXL3
-3.5-bpw, GLM-5.3 Flash, DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6 serving
-configurations. It does not contain model weights, site configuration, registry
-credentials, or a live-deployment result.
+`runtime/` contains pinned source inputs, image builders, artifact manifests,
+and offline verification for serving profiles. It contains no model weights,
+site configuration, registry credentials, or live-deployment result.
 
-## Components
+## Runtime contract
 
-| Path | Role |
+A runtime artifact is reproducible only when its parent image, source commits,
+patches, dependencies, generated files, platform, and output identity are
+recorded. Builders reject missing inputs and known identity drift rather than
+silently substituting local state.
+
+Building an image changes only the builder's container store. It does not place
+the image on serving ranks or qualify a deployment. Distribution and serving
+require separate operator authorization and evidence.
+
+## Runtime index
+
+The following directories are profile-specific artifacts. Their README files
+define exact inputs, output identities, status, and validation.
+
+| Path | Artifact role |
 |---|---|
-| [`exl3-r7/`](exl3-r7/README.md) | GLM-5.2 EXL3 3.5-bpw R7 ARM64 image builder and its verification tests |
-| [`glm53-flash-jj-r7-gb10/`](glm53-flash-jj-r7-gb10/README.md) | Published JJ r7-compatible base/SparkCache image identities, one configurable launcher, and bounded TP4 smoke evidence |
-| [`glm53-flash/`](glm53-flash/README.md) | Historical published GLM-5.3 artifact identity and attestation contract |
-| [`glm53-flash-split-page-sparkcache/`](glm53-flash-split-page-sparkcache/README.md) | Historical local split-page artifact and bounded C8 evidence |
-| [`glm53-flash-e10536a/`](glm53-flash-e10536a/README.md) | Historical embedded-MTP source-development builder; live serving unqualified |
-| [`glm53-flash-b12x-kda-adaptive-mtp/`](glm53-flash-b12x-kda-adaptive-mtp/README.md) | Historical adaptive-MTP source-development builder; live serving unqualified |
-| [`glm53-flash-dflash7-python-overlay/`](glm53-flash-dflash7-python-overlay/README.md) | Historical external-DFlash source-development builder; live serving unqualified |
-| [`deepseek0731-gb10/`](deepseek0731-gb10/README.md) | DeepSeek-V4-Flash-0731 GB10 parser, K5 sparse-row, and native PR431 image layer |
-| [`qwen38/`](qwen38/README.md) | Public-source ARM64 image builder for the Qwen3.8-27B EXL3 K5/K6 pair and cycle profiles |
-| [`faststart-lock.json`](faststart-lock.json) | Immutable ARM64 base-image and model-identity pins |
+| [`exl3-r7/`](exl3-r7/README.md) | ARM64 EXL3 serving-image builder |
+| [`glm53-flash-jj-r7-gb10/`](glm53-flash-jj-r7-gb10/README.md) | Published GB10 runtime and SparkCache image manifests and launcher |
+| [`glm53-flash/`](glm53-flash/README.md) | Source-built runtime identity and attestation contract |
+| [`glm53-flash-split-page-sparkcache/`](glm53-flash-split-page-sparkcache/README.md) | Split-page SparkCache artifact |
+| [`glm53-flash-e10536a/`](glm53-flash-e10536a/README.md) | Embedded-speculation source composition |
+| [`glm53-flash-b12x-kda-adaptive-mtp/`](glm53-flash-b12x-kda-adaptive-mtp/README.md) | Adaptive-speculation source composition |
+| [`glm53-flash-dflash7-python-overlay/`](glm53-flash-dflash7-python-overlay/README.md) | External-draft source overlay |
+| [`deepseek0731-gb10/`](deepseek0731-gb10/README.md) | GB10 model integration layer |
+| [`qwen38/`](qwen38/README.md) | Public-source ARM64 runtime builder |
+
+The [profile registry](../docs/profiles/README.md) maps operator-facing
+deployments to these artifacts. Historical or research-only artifacts remain
+separate from supported operator starts.
+
+## Shared artifact infrastructure
+
+| Path | Purpose |
+|---|---|
+| [`faststart-lock.json`](faststart-lock.json) | Immutable image, checkpoint, and platform pins |
 | [`build-public-overlay.py`](build-public-overlay.py) | Builds the reviewed Python overlay bundle |
-| [`public-overlay-files.json`](public-overlay-files.json) | Explicit source-file allowlist for the public overlay |
-| [`test_public_overlay.py`](test_public_overlay.py) | Offline contract coverage for allowlisting and manifest generation |
+| [`public-overlay-files.json`](public-overlay-files.json) | Source-file allowlist for the overlay |
+| [`test_public_overlay.py`](test_public_overlay.py) | Offline allowlist and manifest tests |
 
-## GLM-5.3 runtime selection and image placement
-
-Start with the [GLM-5.3 quickstart routing guide](../docs/GLM53_FLASH_QUICKSTARTS.md).
-It selects the immutable published JJ r7-compatible base or SparkCache image through
-`runtime/glm53-flash-jj-r7-gb10/runtime.env.example`. Historical artifact and
-source-development paths are separated from that operator start.
-
-Each builder README provides an executable local build command and receipt
-path. A local build changes only the builder's container store and does not
-place the image on serving ranks. Use
-`scripts/pull_glm53_image_cluster.py` for a published immutable registry
-digest. Use the [direct-fabric archive tool](../docs/DIRECT_FABRIC_IMAGE_ARCHIVE_FANOUT.md)
-for a checksum-bound local archive. Both placement paths require explicit
-confirmation before changing hosts and produce identity receipts; neither
-path qualifies model serving.
-
-## GLM-5.2 EXL3 R7 builder
-
-[`runtime/exl3-r7/`](exl3-r7/README.md) is the supported builder for the
-GLM-5.2 EXL3 3.5-bpw serving image. It consumes pinned inputs, verifies the
-runtime chain, and produces a locally tagged ARM64 image. It is a build
-surface, not evidence that a four-rank appliance has started or served a
-request.
-
-Read the builder README before changing its image inputs, patches, or
-verification code. A changed pin, patch preimage, or build artifact requires a
-test that fails on the corresponding drift.
-
-## Faststart lock
-
-`faststart-lock.json` has schema `sparkring-faststart-lock/v1`. It records:
-
-- the immutable manifest and configuration digests of the ARM64 base image;
-- the GLM-5.2 model repository, immutable revision, and `config.json` hash;
-- the supported serving-image digest and platform.
-
-The builder must use immutable digests rather than mutable image tags. A lock
-entry is a contract: do not replace a failed verification value with a hash
-calculated from an arbitrary local checkout or image.
-
-## Qwen3.8-27B builder
-
-[`runtime/qwen38/`](qwen38/README.md) builds the Qwen runtime from public,
-immutable source inputs over a pinned CUDA ARM64 parent. It produces a local
-image and requires no published Qwen image or maintainer-held runtime archive.
-The image contains no checkpoint or site configuration. Build it once, record
-its image ID, and distribute the same saved OCI archive to every rank before
-running the applicable Qwen pair or cycle quickstart.
-
-## Public overlay
-
-Run the overlay builder from the repository root:
+The public-overlay builder accepts only allowlisted files, places them in a
+fixed runtime layout, and writes `sparkring-overlay-manifest.json` with a
+SHA-256 entry for every admitted file.
 
 ```bash
 python runtime/build-public-overlay.py \
   --output build/public-overlay
 ```
 
-The builder accepts only files named in `public-overlay-files.json`, copies
-them into the fixed runtime layout, and writes
-`sparkring-overlay-manifest.json` with SHA-256 entries for every admitted
-file. It rejects an unsupported source layout, a missing allowlisted source,
-and unsafe relative paths. Add an overlay member only by updating the
-allowlist and validating the generated manifest through the builder.
+Add an overlay member only by updating the allowlist and testing the generated
+manifest.
 
-The builder test suites cover the GLM, DeepSeek, and Qwen runtime contracts:
+## Distribution
+
+Use the distribution method named by the selected profile. The
+[direct-fabric archive tool](../docs/DIRECT_FABRIC_IMAGE_ARCHIVE_FANOUT.md)
+places one checksum-bound archive across a validated cluster. Registry pull
+helpers may provide profile-specific alternatives.
+
+Distribution tools require explicit confirmation before changing hosts and
+produce identity receipts. Artifact placement does not qualify model serving.
+
+## Validation
+
+Run the offline suites for every runtime directory changed. The complete
+runtime contract suite is:
 
 ```bash
-python -m pytest runtime/exl3-r7 runtime/glm53-flash \
-  runtime/glm53-flash-jj-r7-gb10 runtime/deepseek0731-gb10 runtime/qwen38 -q
+python -m pytest runtime -q
 ```
 
-The historical source builder in [`runtime/glm53-flash/`](glm53-flash/README.md)
-retains its exact vLLM, B12X, patched NCCL, InstantTensor, source-receipt,
-image-label, and SBOM inputs. Run the GLM-5.3 public-image, historical builder,
-profile, and launcher contracts with:
+An image build, manifest check, or import test proves only the condition it
+measures. Live serving evidence belongs to the selected profile's evidence
+record.
 
-```bash
-python -m pytest runtime/glm53-flash runtime/glm53-flash-jj-r7-gb10 \
-  runtime/glm53-flash-e10536a \
-  runtime/glm53-flash-b12x-kda-adaptive-mtp \
-  scripts/test_glm53_flash_profile.py \
-  scripts/test_prepare_glm53_e105_profile.py \
-  scripts/test_prepare_glm53_b12x_kda_adaptive_mtp_profile.py \
-  scripts/test_sparkring_generic_launcher.py -q
-```
+## Safety
 
-## DeepSeek-V4-Flash-0731
-
-[`runtime/deepseek0731-gb10/`](deepseek0731-gb10/README.md) builds the
-DeepSeek-specific layer over the generic GB10 serving image. The lock records
-both the hardened image digest and the unchanged generic rollback digest. The
-per-rank container environments are defined by topology:
-[`scripts/config/deepseek-v4-flash-0731-pair.env.example`](../scripts/config/deepseek-v4-flash-0731-pair.env.example)
-for a two-rank pair and
-[`scripts/config/deepseek-v4-flash-0731.env.example`](../scripts/config/deepseek-v4-flash-0731.env.example)
-for a four-rank cycle. The selected environment template and immutable image
-digest must agree. Neither offline validation nor a successful launch on one
-topology qualifies the other topology.
-
-## Scope and safety
-
-Overlay generation and its tests are **OFFLINE**. An image build changes the
-local container store. Pulling, distributing, starting, or replacing images
-on configured hosts is **MUTATES HOST** or **STOPS SERVING** and requires
-explicit authorization for the named hosts and action.
+Overlay generation and tests are **offline**. Building changes the local
+container store. Pulling, distributing, starting, or replacing an image on a
+configured host mutates that host and requires explicit authorization.

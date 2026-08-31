@@ -1,9 +1,9 @@
 # Performance evidence
 
 `performance/` contains reproducible measurement programs and bounded evidence
-records for the supported GLM-5.2 EXL3 3.5-bpw, GLM-5.3 Flash,
-DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6 serving configurations. It
-does not establish a general hardware, model, or production-serving claim.
+records for named SparkRing deployments. Evidence applies only to the exact
+conditions in its record; it does not establish a general hardware, model, or
+production-serving claim.
 
 Public model-throughput summaries link to their evidence records. Normalized
 profile records support qualified summaries; explicitly labeled single-run
@@ -20,12 +20,13 @@ experiments are stored separately and do not feed those summaries.
 | `harnesses/moe_round_floor/` | Routed-expert timing, route reuse, and capture diagnostics |
 | `harnesses/transport/` | Model-loop replay and direct-link payload sweeps |
 | `methodology/` | Measurement definitions, attribution rules, and CUDA-graph correctness requirements |
-| `records/glm-3.5bpw/` | GLM-5.2 EXL3 R7 evidence records |
-| `records/glm53-flash/` | GLM-5.3 Flash functional cache evidence and research-only throughput observations |
-| `records/deepseek-v4-flash/` | DeepSeek-V4-Flash-0731 evidence records |
-| `records/qwen38-27b/` | Qwen3.8-27B EXL3 K5/K6 evidence records |
+| `records/<profile>/` | Model- and runtime-specific evidence, grouped by profile |
 | `records/transport/` | Transport evidence records independent of a model result |
 | `receipts/` | Sanitized benchmark receipts and recorded commands |
+
+Model-specific study designs retain the model and topology in their filename;
+for example,
+[`glm52-tp4-dcp4-collective-attribution.md`](methodology/glm52-tp4-dcp4-collective-attribution.md).
 
 Run harness tests offline from the repository root:
 

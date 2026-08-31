@@ -334,7 +334,6 @@ def test_cudagraph_capture_list_uses_the_exposed_maximum() -> None:
 
 def test_canonical_glm_indexes_route_to_published_images_without_stale_identities() -> None:
     canonical = (
-        ROOT / "README.md",
         ROOT / "AGENTS.md",
         ROOT / "runtime/README.md",
         ROOT / "docs/GLM53_FLASH_QUICKSTARTS.md",
@@ -357,9 +356,14 @@ def test_canonical_glm_indexes_route_to_published_images_without_stale_identitie
         )
         assert not any(identity in text for identity in stale), path
 
+    root_readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "docs/profiles/README.md" in root_readme
+    assert "GLM53_JJ_R7_GB10_TP4_QUICKSTART.md" not in root_readme
+    assert not any(identity in root_readme for identity in stale)
+
     config_index = (ROOT / "scripts/config/README.md").read_text(encoding="utf-8")
     assert "runtime/glm53-flash-jj-r7-gb10/runtime.env.example" in config_index
-    assert "Historical GLM-5.3 profile templates" in config_index
+    assert "## Profile template index" in config_index
 
 
 def test_prior_glm_quickstarts_identify_their_historical_scope() -> None:

@@ -417,7 +417,6 @@ def test_quickstart_has_one_copy_paste_four_rank_start_path() -> None:
         "GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md"
         "#shortest-qualified-start"
     ) in routing
-    assert (
-        "docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md"
-        "#shortest-qualified-start"
-    ) in (ROOT / "README.md").read_text(encoding="utf-8")
+    root_readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "docs/profiles/README.md" in root_readme
+    assert "GLM53_DFLASH7_PYTHON_OVERLAY" not in root_readme
