@@ -40,11 +40,11 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     )
     assert pins["sparkcache"] == {
         "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-        "commit": "65895c87a6d925fcd270fcea202ab847d7fbc2d1",
-        "tree": "80daebdeedae62e444a1bfc71a102848660a04f0",
-        "package_tree": "2636d7eb0de33e82a10bae8322193a9a392070d5",
+        "commit": "c3887f34bcd51788a8ae7d202ab64a9d40348546",
+        "tree": "2372add6defbf67355da4ca40fa7828dcbd45abd",
+        "package_tree": "21450a6e1db7f9136ceff8432c09596f5290dcef",
         "source_tree_sha256": (
-            "40de372dda64dd25f493584b2ba3dae81c4350d424d3cf00cfea92452dac170c"
+            "57ad5bb26c721a6c68c7ab4c135057073e7d34ad86cfd04acdc04331b8f7e213"
         ),
         "cuda_placement_sha256": (
             "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
@@ -72,7 +72,7 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
     for identity in (
         "f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
         "55969c16d4da57da76ee5729f3102d4b2003833c",
-        "65895c87a6d925fcd270fcea202ab847d7fbc2d1",
+        "c3887f34bcd51788a8ae7d202ab64a9d40348546",
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
         "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
     ):
