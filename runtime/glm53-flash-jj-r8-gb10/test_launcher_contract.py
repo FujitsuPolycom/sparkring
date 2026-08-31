@@ -11,7 +11,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 LAUNCHER = HERE / "launch-rank.sh"
 ENVIRONMENT = HERE / "runtime.env.example"
-IMAGE_ID = "sha256:77da063d1d51fa181eb39e519dda7c5ae4eb59a47e169cb4c33bd2cd42120225"
+IMAGE_ID = "sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f"
 
 
 def _defaults() -> dict[str, str]:
@@ -36,7 +36,10 @@ def _bash_path(path: Path) -> str:
 def test_environment_exposes_reproducible_r8_defaults() -> None:
     values = _defaults()
     assert values["IMAGE_ID"] == IMAGE_ID
-    assert values["IMAGE_REF"].startswith("sparkring-glm53-jj-r8-sparkcache:")
+    assert values["IMAGE_REF"] == (
+        "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
+        "sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a"
+    )
     assert values["MAX_MODEL_LEN"] == "1048576"
     assert values["MAX_NUM_BATCHED_TOKENS"] == "8192"
     assert values["PREFILL_SCHEDULE_INTERVAL"] == "8"
@@ -214,6 +217,6 @@ def test_public_r8_documents_use_portable_examples_and_resolving_links() -> None
             assert (document.parent / relative).resolve().exists(), (document, target)
 
     quickstart = documents[-1].read_text(encoding="utf-8")
-    assert "UNAVAILABLE_UNTIL_PUBLICATION" in quickstart
+    assert "sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a" in quickstart
     assert "DECODE_CONTEXT_PARALLEL_SIZE=1  # change to 2 or 4" in quickstart
     assert "fanout_image_archive.py" in quickstart

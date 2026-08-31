@@ -16,17 +16,22 @@ kernels provide the model-specific runtime and performance foundation.
 ## Image identity
 
 ```text
-local tag: sparkring-glm53-jj-r8-sparkcache:d803c6b-55969c-65895c8-arm64
-local image ID: sha256:77da063d1d51fa181eb39e519dda7c5ae4eb59a47e169cb4c33bd2cd42120225
-registry digest: UNAVAILABLE_UNTIL_PUBLICATION
-archive SHA-256: 51b1aece26dad833ac2b2727a88429642d38b8c1b48b00f6d4b28214f7d840fc
-archive bytes: 8467812978
+registry: ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a
+local image ID: sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f
+platform: linux/arm64
 ```
 
-Until a registry digest or archive URL is published, either import a copy of
-the exact archive or build the image from source as described in the
-[`runtime README`](../runtime/glm53-flash-jj-r8-gb10/README.md). Do not replace
-the image ID with the ID of a merely similar image.
+Pull and verify the immutable image on rank 0:
+
+```bash
+image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a'
+expected_image_id='sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f'
+docker pull "${image}"
+test "$(docker image inspect "${image}" --format '{{.Id}}')" = "${expected_image_id}"
+```
+
+The [`runtime README`](../runtime/glm53-flash-jj-r8-gb10/README.md) also
+documents a source build from the pinned public commits.
 
 ## Download the checkpoints once
 
@@ -62,19 +67,37 @@ starting Docker.
 
 ## Distribute one image download through the direct fabric
 
-When the archive has a public URL, replace the single placeholder below. The
-command downloads on rank 0, verifies the archive, forwards it across three
-direct links, imports it on every rank, and verifies the local image ID.
+Create one compressed archive from the verified pull on rank 0:
+
+```bash
+archive_dir=/var/tmp/sparkring-images/glm53-r8
+archive_name=sparkring-glm53-r8-arm64.tar.zst
+mkdir -p "${archive_dir}"
+docker image save "${image}" | zstd -T0 -3 -o "${archive_dir}/${archive_name}"
+archive_sha256=$(sha256sum "${archive_dir}/${archive_name}" | awk '{print $1}')
+```
+
+Serve that directory on a trusted private address reachable from rank 0. Keep
+this process running while the fan-out command executes:
+
+```bash
+python3 -m http.server 18080 \
+  --bind '<rank-0-private-address>' \
+  --directory "${archive_dir}"
+```
+
+In another rank-0 shell, forward the exact archive through the three direct
+links, import it, and verify the image ID on every rank:
 
 ```bash
 python scripts/fanout_image_archive.py \
   --site /secure/site.yaml \
-  --source-url '<ARCHIVE_URL_AFTER_PUBLICATION>' \
-  --archive-name glm53-jj-r8-sparkcache-arm64.tar.zst \
-  --expected-sha256 51b1aece26dad833ac2b2727a88429642d38b8c1b48b00f6d4b28214f7d840fc \
-  --target-directory /var/lib/sparkring/images/glm53-r8 \
-  --image sparkring-glm53-jj-r8-sparkcache:d803c6b-55969c-65895c8-arm64 \
-  --expected-image-id sha256:77da063d1d51fa181eb39e519dda7c5ae4eb59a47e169cb4c33bd2cd42120225 \
+  --source-url "http://<rank-0-private-address>:18080/${archive_name}" \
+  --archive-name "${archive_name}" \
+  --expected-sha256 "${archive_sha256}" \
+  --target-directory /var/tmp/sparkring-images/glm53-r8 \
+  --image "${image}" \
+  --expected-image-id "${expected_image_id}" \
   --execute --confirmation FANOUT_IMAGE_ARCHIVE \
   --output ./glm53-r8-image-fanout.json
 ```
@@ -179,7 +202,7 @@ tokens. The deep-context run published 942,592 tokens but did not replay that
 snapshot after process replacement. The evidence does not establish
 concurrent large-context restore, long-duration behavior, or general
 throughput. See
-[`LIVE_VALIDATION.md`](../runtime/glm53-flash-jj-r8-gb10/LIVE_VALIDATION.md)
+[`PUBLIC_IMAGE_VALIDATION.md`](../runtime/glm53-flash-jj-r8-gb10/PUBLIC_IMAGE_VALIDATION.md)
 and the
 [`deep-context record`](../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md)
 for the exact conditions and results.

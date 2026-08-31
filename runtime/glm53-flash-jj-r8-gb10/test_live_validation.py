@@ -95,3 +95,40 @@ def test_deep_context_record_binds_the_26_gib_result() -> None:
     publication = record["sparkcache_publication"]
     assert publication["aligned_tokens"] == 942592
     assert publication["restart_restore_replayed"] is False
+
+
+def test_public_image_receipt_covers_pull_fanout_and_serving_profiles() -> None:
+    receipt = json.loads(
+        (HERE / "public-image-receipt.json").read_text(encoding="utf-8")
+    )
+    image = receipt["image"]
+    assert image["registry_reference"].endswith(
+        "@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a"
+    )
+    assert image["image_id"] == (
+        "sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f"
+    )
+    assert receipt["sources"]["sparkcache_revision"] == (
+        "c3887f34bcd51788a8ae7d202ab64a9d40348546"
+    )
+    assert receipt["distribution"]["ranks_verified"] == 4
+    assert receipt["distribution"]["direct_hops_verified"] == 3
+    profiles = receipt["profiles"]
+    assert profiles["dcp1_vllm_only"]["kv_transfer_config_present"] is False
+    for name in ("dcp1_sparkcache", "dcp2_sparkcache", "dcp4_sparkcache"):
+        assert profiles[name]["marker_present_after_restart"] is True
+        assert len(profiles[name]["restart_restore_service_ms_by_physical_rank"]) == 4
+    deep = receipt["deep_context"]
+    assert deep["actual_prompt_tokens"] == 942898
+    assert deep["needle_present"] is True
+    assert deep["snapshot"]["aligned_tokens"] == 942592
+    assert deep["snapshot"]["restart_restore_replayed"] is False
+
+
+def test_public_image_validation_states_large_restore_limit() -> None:
+    text = " ".join(
+        (HERE / "PUBLIC_IMAGE_VALIDATION.md").read_text(encoding="utf-8").split()
+    )
+    assert "942,898 prompt tokens" in text
+    assert "was not replayed after process replacement" in text
+    assert "vLLM prefix cache only" in text

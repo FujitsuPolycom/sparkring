@@ -64,15 +64,20 @@ python runtime/glm53-flash-jj-r8-gb10/build_image.py \
 The build does not include model checkpoints, site addresses, SSH
 credentials, or persistent cache data.
 
-## Tested image
+## Published image
 
-The exact local image ID is
-`sha256:77da063d1d51fa181eb39e519dda7c5ae4eb59a47e169cb4c33bd2cd42120225`.
-Its registry digest is **UNAVAILABLE_UNTIL_PUBLICATION**. The local archive,
-source identities, DCP1 deep-context and capacity results, and DCP2/DCP4
-restart-restore results are recorded in
-[`local-image-receipt.json`](local-image-receipt.json),
-[`LIVE_VALIDATION.md`](LIVE_VALIDATION.md), and the
+Pull the immutable Linux/ARM64 image:
+
+```text
+ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a
+```
+
+Its local Docker image ID is
+`sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f`.
+Construction, direct-fabric distribution, profile smoke tests, historical
+deep-context evidence, and limitations are recorded in
+[`public-image-receipt.json`](public-image-receipt.json),
+[`PUBLIC_IMAGE_VALIDATION.md`](PUBLIC_IMAGE_VALIDATION.md), and the
 [`deep-context record`](../../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md).
 
 Run the offline contracts with:

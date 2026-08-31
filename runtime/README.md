@@ -2,8 +2,9 @@
 
 `runtime/` contains reviewable runtime inputs for the supported GLM-5.2 EXL3
 3.5-bpw, GLM-5.3 Flash, DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6 serving
-configurations. It does not contain model weights, site configuration, registry
-credentials, or a live-deployment result.
+configurations. It does not contain model weights, site configuration, or
+registry credentials. Artifact-specific validation records live beside the
+runtime they describe.
 
 ## Components
 
