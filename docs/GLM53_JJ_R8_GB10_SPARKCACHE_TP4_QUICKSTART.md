@@ -127,7 +127,9 @@ SPARKCACHE_ENABLED=0  # vLLM prefix caching only
 ```
 
 Disabling SparkCache omits the external KV connector and all persistent
-publication and restore work. `--enable-prefix-caching` remains enabled.
+publication and restore work. `--enable-prefix-caching` remains enabled. This
+mode has launcher regression coverage but no retained live run for the exact
+image.
 
 `MAX_MODEL_LEN`, `MAX_NUM_SEQS`, `MAX_NUM_BATCHED_TOKENS`,
 `KV_CACHE_MEMORY_BYTES`, speculation depth, ports, SparkCache capacity, and
