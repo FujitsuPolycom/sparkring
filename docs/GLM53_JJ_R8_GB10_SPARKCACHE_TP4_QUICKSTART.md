@@ -1,8 +1,10 @@
-# Run GLM-5.3 Flash R8 with SparkCache on four GB10 systems
+# Run GLM-5.3 Flash R8 on four GB10 systems
 
 This guide starts one TP4 service across four NVIDIA GB10 systems. The same
 Linux/ARM64 image supports DCP1, DCP2, and DCP4. The default request limit is
 1,048,576 tokens and the default prefill scheduler budget is 8,192 tokens.
+The operator can enable persistent SparkCache or use vLLM's GPU prefix cache
+alone without changing the image.
 
 The image does not contain model checkpoints. It mounts the exact
 [`local-inference-lab/GLM-5.3-Flash-NVFP4`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4)
@@ -139,7 +141,7 @@ The launcher selects the matching GLM KV geometry automatically:
 | 2 | 4 tokens | enabled | 30 GiB |
 | 4 | 4 tokens | enabled | 30 GiB |
 
-The DCP1 default completed a 942,767-token needle retrieval under the 1M
+The published image's DCP1 default completed a 942,898-token needle retrieval under the 1M
 request limit. The DCP2 and DCP4 defaults preserve their recorded capacity and
 restart-restore configurations. Set `KV_CACHE_MEMORY_BYTES` to a positive byte
 count to override the topology-aware `auto` policy.
@@ -153,9 +155,8 @@ SPARKCACHE_ENABLED=0  # vLLM prefix caching only
 ```
 
 Disabling SparkCache omits the external KV connector and all persistent
-publication and restore work. `--enable-prefix-caching` remains enabled. This
-mode has launcher regression coverage but no retained live run for the exact
-image.
+publication and restore work. `--enable-prefix-caching` remains enabled. The
+published image passed a live semantic request in this mode.
 
 `MAX_MODEL_LEN`, `MAX_NUM_SEQS`, `MAX_NUM_BATCHED_TOKENS`,
 `KV_CACHE_MEMORY_BYTES`, speculation depth, ports, SparkCache capacity, and
@@ -193,12 +194,11 @@ curl --fail http://rank0.example.net:8015/v1/models
 
 ## Evidence and limits
 
-The exact image completed SparkCache publication and process-replacement
+The published image completed SparkCache publication and process-replacement
 restore checks at DCP1, DCP2, and DCP4. DCP2 and DCP4 used 30 GiB of FP8 KV
 per rank. The DCP1 deep-context profile uses 26 GiB per rank, exposes
-1,303,701 KV tokens, and completed a 942,767-token needle request in 478.1
-seconds while retaining at least 23.7 GiB of available host memory during
-prefill.
+1,303,701 KV tokens, and completed a 942,898-token needle request in 473.4
+seconds.
 
 The retained restart-restore checks stored spans from 8,192 through 14,336
 tokens. The deep-context run published 942,592 tokens but did not replay that

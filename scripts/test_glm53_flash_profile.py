@@ -397,7 +397,7 @@ def test_public_glm53_benchmark_retains_only_valid_run1_cells() -> None:
     )
 
 
-def test_public_glm53_benchmark_is_sanitized_and_bounded() -> None:
+def test_public_glm53_benchmark_is_sanitized_and_front_page_uses_r8() -> None:
     paths = [PERFORMANCE_RECEIPT_PATH, PERFORMANCE_RECORD_PATH]
     text = "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
@@ -412,8 +412,11 @@ def test_public_glm53_benchmark_is_sanitized_and_bounded() -> None:
     assert "api_key" not in text.lower()
 
     readme = README_PATH.read_text(encoding="utf-8")
-    assert "GLM-5.3 Flash research observation" in readme
-    assert "| 2,371 | 36.06 | — | C1: 36.06 | — |" in readme
+    assert "GLM-5.3 Flash NVFP4 + BF16 DFlash2" in readme
+    assert "TP4 with DCP1, DCP2, or DCP4" in readme
+    assert "942,898-token needle" in readme
+    assert "GLM-5.3 Flash research observation" not in readme
+    assert "IN PROGRESS" not in readme
 
 
 def test_twenty_gib_kv_observation_is_research_only_and_sanitized() -> None:

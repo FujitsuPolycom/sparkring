@@ -1,12 +1,9 @@
 # SparkRing
 
-> ALPHA SOFTWARE
-Repository branches are mutable and likely to do so, this message may not survive the next 5 minutes, for example. 
-Pin an immutable commit when reproducing a deployment. Hopefully this repo will find a more stable cadence pattern
-and layout that works for me. 
+> Alpha software. Pin an immutable image digest and repository commit when
+> reproducing a deployment.
 
-  
-  SparkRing is a low-latency collective transport and vLLM-based
+SparkRing is a low-latency collective transport and vLLM-based
 inference-serving stack for switchless clusters of NVIDIA DGX 'Spark' systems
 powered by the GB10 Grace Blackwell Superchip.
 
@@ -14,19 +11,21 @@ SparkRing supports GB10 pairs and four-node rings. Six-node ring work is
 research-only.
 
 Models run as tensor-parallel deployments over the direct fabric without an
-external Ethernet or InfiniBand switch. [SIRCL](https://github.com/FujitsuPolycom/sparkring/blob/main/docs/SIRCL.md) provides custom RDMA collectives
-where applicable, CUDA-graph command rings support repeated decode
-work, and [patched NCCL](https://github.com/FujitsuPolycom/sparkring/blob/main/spark_transport/nccl/README.md) handles communication outside SIRCL's supported paths.
+external Ethernet or InfiniBand switch. [SIRCL](docs/SIRCL.md) provides custom
+RDMA collectives where applicable, CUDA-graph command rings support repeated
+decode work, and [patched NCCL](spark_transport/nccl/README.md) handles
+communication outside SIRCL's supported paths.
 
-The repository provides launch tooling, model profiles, test evidence, and [performance data](https://github.com/FujitsuPolycom/sparkring/tree/main/performance).
+The repository provides launch tooling, model profiles, test evidence, and
+[performance data](performance/).
 
 ## Setup
 
-Start with ssh to node0 and enough disk space for the intended model weights. 
-Use the [bootstrap guide](docs/BOOTSTRAP.md). The model-independent `sparkring cluster
-init` workflow enrolls nodes, discovers management and ConnectX-7 hardware,
-generates the cluster inventory, and launches Ring Doctor before any model
-profile is selected.
+Start with an SSH session on rank 0 and enough disk space for the intended
+model weights. Use the [bootstrap guide](docs/BOOTSTRAP.md). The
+model-independent `sparkring cluster init` workflow enrolls nodes, discovers
+management and ConnectX-7 hardware, generates the cluster inventory, and
+launches Ring Doctor before any model profile is selected.
 
 ## Resources
 
@@ -36,13 +35,17 @@ profile is selected.
 
 ## Profiles
 
-### GLM-5.3 Flash profiles
-> these profiles are still in heavy dev and testing - Aug 30 2026 - new build imminent 
+### GLM-5.3 Flash
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
 |---|---|---:|---:|---:|---|---|
-| GLM-5.3 Flash + BF16 DFlash2 | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 KV | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
-| GLM-5.3 Flash + BF16 DFlash2 + SparkCache | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 KV + 48 GiB nvme/rank SparkCache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md) |
+| GLM-5.3 Flash NVFP4 + BF16 DFlash2 on Jovian Judgement R8 | 4 Sparks · TP4 with DCP1, DCP2, or DCP4 | 1M | 16 | 8,192 | FP8 KV: 26 GiB/rank at DCP1, 30 GiB/rank at DCP2/DCP4; optional SparkCache | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+
+The quickstart uses one Linux/ARM64 image for both caching modes. Set
+`SPARKCACHE_ENABLED=1` for persistent SparkCache plus vLLM prefix caching or
+`SPARKCACHE_ENABLED=0` for vLLM prefix caching alone. The image is published
+at
+`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a`.
 
 ### Other model profiles
 
@@ -58,32 +61,19 @@ profile is selected.
 | DeepSeek-V4-Flash-0731 + SparkCache | 4 Sparks · TP4/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
 
 The public BF16 DFlash2 checkpoint is licensed CC BY-NC-ND 4.0 for research
-and evaluation; review its model card before use. The qualified GLM-5.3 community 
-images are published by immutable digest in the two quickstarts. Both guides also 
-link the complete source-build recipes, SBOM workflow, source commits, applied patches, and license record.
-See the [profile registry](docs/profiles/README.md) for recipe identities and evidence scope.
+and evaluation; review its model card before use. The GLM-5.3 quickstart links
+the source build, exact source revisions, image validation, and license record.
+See the [profile registry](docs/profiles/README.md) for recipe identities and
+evidence scope.
 
 ## Benchmark results
 
-### GLM-5.3 Flash research observation
-
-**Research-only — 16K context, single observation.** The SparkCache-enabled
-profile recorded 2,371 tok/s prefill and 36.06 tok/s sustained
-C1 decode on random tokens. No A/B baseline has been completed.
-
-| Profile | Prefill | C1 decode | C8 decode | Highest valid decode | Coding peak |
-|---|---:|---:|---:|---:|---:|
-| [GLM-5.3 Flash + BF16 DFlash2 + SparkCache · 4 Sparks](performance/records/glm53-flash/sparkcache-dflash2-bf16-tp4-16k-run1-20260829.md) | 2,371 | 36.06 | — | C1: 36.06 | — |
-
-### Other model profiles
-
-**Qualified — 16K context.** All values are tokens per second. Prefill uses a
-cold prompt with caching disabled. Decode uses unique, cold prompt contexts at
+All values are tokens per second. Prefill uses a cold prompt with caching
+disabled. Decode uses unique, cold prompt contexts at
 temperature 1.0; decode values are aggregate throughput across active streams.
 
 | Profile | Prefill | C1 decode | C8 decode | Highest tested decode | Coding peak |
 |---|---:|---:|---:|---:|---:|
-| [GLM-5.3flash NVFP4 · 4 Sparks](IN PROGRESS) | 2300 | 40 | 130 | C8: 130 | 70 |
 | [GLM-5.2 EXL3 3.5-bpw · 4 Sparks](performance/records/glm-3.5bpw/normalized-base-20260822.md) | 671 | 20.15 | 64.13 | C8: 64.13 | 25.39 |
 | [DeepSeek-V4-Flash DSpark · 2 Sparks](performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md) | 1,926 | 58.36 | 162.69 | C32: 307.13 | 59.31 |
 | [DeepSeek-V4-Flash-0731 · 4 Sparks](performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md) | 2,488 | 68.84 | 265.16 | C32: 508.11 | 95.77 |
@@ -92,6 +82,11 @@ temperature 1.0; decode values are aggregate throughput across active streams.
 
 See [benchmark results and throughput tables](docs/RESULTS.md) for full
 matrices, sample counts, exact settings, and limitations.
+
+The published GLM-5.3 image has bounded serving and deep-context evidence,
+not a normalized throughput matrix. It completed a 942,898-token needle
+retrieval under the 1M request limit. See the
+[public image record](runtime/glm53-flash-jj-r8-gb10/PUBLIC_IMAGE_VALIDATION.md).
 
 ## Architecture
 
