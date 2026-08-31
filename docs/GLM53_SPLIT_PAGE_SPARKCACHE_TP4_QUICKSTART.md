@@ -74,19 +74,71 @@ done
 Stop if any rank lacks the tag or reports another ID. Do not replace the image
 reference with a mutable registry tag.
 
-## Launch one rank
+## Configure one rank
 
-Clone the reviewed SparkRing revision on every host. The launcher refuses to
-overwrite an existing container and verifies the image ID before starting.
-Set site-specific values, then run it once per rank:
+Clone the reviewed SparkRing revision on every host. Copy the complete
+environment template to a rank-local file and edit it:
 
 ```bash
-export HOST_IP='REPLACE_WITH_THIS_RANK_ADDRESS'
-export MASTER_ADDR='REPLACE_WITH_RANK0_ADDRESS'
-export TARGET_MODEL_HOST_PATH='/REPLACE/TARGET_MODEL_HOST_PATH'
-export DFLASH_MODEL_HOST_PATH='/REPLACE/DFLASH_MODEL_HOST_PATH'
-export CACHE_HOST_ROOT='/REPLACE/DEDICATED_RANK_LOCAL_CACHE_ROOT'
+cp runtime/glm53-flash-split-page-sparkcache/qualified.env.example \
+  "$HOME/glm53-sparkcache-rank.env"
+${EDITOR:-vi} "$HOME/glm53-sparkcache-rank.env"
+```
 
+Five values describe the site and have no portable default:
+
+- `HOST_IP`: this rank's routable address;
+- `MASTER_ADDR`: rank 0's routable address, identical on all ranks;
+- `TARGET_MODEL_HOST_PATH`: target checkpoint directory;
+- `DFLASH_MODEL_HOST_PATH`: DFlash checkpoint directory;
+- `CACHE_HOST_ROOT`: writable, rank-local cache directory.
+
+The template also exposes the operational settings most often changed by an
+operator:
+
+| Group | Variables |
+|---|---|
+| Image and API | `IMAGE_REF`, `CONTAINER_PREFIX`, `SERVED_MODEL_NAME`, `PORT`, `MASTER_PORT`, `SHM_SIZE` |
+| Topology | `TENSOR_PARALLEL_SIZE`, `PIPELINE_PARALLEL_SIZE`, `DECODE_CONTEXT_PARALLEL_SIZE`, `NODE_COUNT` |
+| Scheduling | `MAX_MODEL_LEN`, `MAX_NUM_SEQS`, `MAX_NUM_BATCHED_TOKENS` |
+| Device memory | `KV_CACHE_MEMORY_BYTES`, `GPU_MEMORY_UTILIZATION`, `KV_CACHE_DTYPE` |
+| Speculation | `SPECULATION_METHOD`, `NUM_SPECULATIVE_TOKENS`, `DRAFT_TENSOR_PARALLEL_SIZE`, `DRAFT_KV_CACHE_DTYPE`, sampling methods |
+| Kernels | `ATTENTION_BACKEND`, `MOE_BACKEND`, `LINEAR_BACKEND`, `KDA_PREFILL_BACKEND`, CUDA-graph settings |
+| SparkCache | `CACHE_NAMESPACE`, capacity and low watermark, TTL, stored-span limits, load threads, pending restores, I/O workers, CUDA arena bytes |
+| Network | `SOCKET_IFNAME`, `NCCL_IB_HCA`, `NCCL_IB_GID_INDEX`, NCCL channel bounds |
+| CPU and loading | `OMP_NUM_THREADS`, `TORCHINDUCTOR_COMPILE_THREADS`, `FASTSAFETENSORS_QUEUE_SIZE` |
+
+Byte values are per rank. The launcher validates numeric ranges, path syntax,
+rank bounds, cache watermarks, and the exact local image ID. It uses Python's
+JSON encoder for the speculative-decoding, compilation, and SparkCache
+configuration objects; values are not interpolated into handwritten JSON.
+
+The defaults reproduce the recorded configuration. Any runtime-setting change
+adds container label
+`org.sparkring.qualification-status=user-modified-unqualified` and records the
+changed variable names in `org.sparkring.modified-settings`. Site addresses,
+bind-mount paths, container names, and an image alias resolving to the same
+verified image ID do not change qualification status. A modified configuration
+may be useful, but it does not inherit the recorded result.
+
+`SPECULATION_METHOD=dflash` is the only method accepted by this qualified
+launcher. Another speculative method needs a launcher whose configuration has
+been exercised with the corresponding image.
+
+## Launch one rank
+
+The launcher refuses to overwrite an existing container and verifies the image
+ID before starting. Run it once per rank, passing that rank's edited file:
+
+```bash
+bash runtime/glm53-flash-split-page-sparkcache/launch-qualified-rank.sh \
+  0 "$HOME/glm53-sparkcache-rank.env"
+```
+
+The same file can instead be selected through `SPARKRING_CONFIG_FILE`:
+
+```bash
+export SPARKRING_CONFIG_FILE="$HOME/glm53-sparkcache-rank.env"
 bash runtime/glm53-flash-split-page-sparkcache/launch-qualified-rank.sh 0
 ```
 

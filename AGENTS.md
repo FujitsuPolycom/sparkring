@@ -72,6 +72,7 @@ choosing one.
 |---|---|
 | GLM-5.2 EXL3 runtime build | `runtime/exl3-r7/README.md` |
 | GLM-5.3 Flash runtime, model, DFlash, NCCL, and SparkCache pins | `runtime/glm53-flash/pins.json` |
+| GLM-5.3 Flash split-page SparkCache qualified artifact | `runtime/glm53-flash-split-page-sparkcache/qualified-artifact.json` |
 | GLM-5.3 Flash four-rank site and runtime profiles | `scripts/config/glm53-flash-tp4-site.example.yaml`, then the selected `scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1*.example.json` |
 | Qwen3.8-27B runtime build | `runtime/qwen38/README.md` |
 | GLM/DeepSeek runtime base and model pins | `runtime/faststart-lock.json` |
@@ -104,7 +105,7 @@ test imports torch:
 python -m pip install -r requirements-dev.txt
 python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.11.0"
 ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance
-python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-adaptive-mtp-python-overlay runtime/glm53-flash-dflash7-python-overlay runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
+python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-split-page-sparkcache runtime/glm53-flash-adaptive-mtp-python-overlay runtime/glm53-flash-dflash7-python-overlay runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
 ```
 
 The test suite is CPU-only contract coverage. It does not validate CUDA,

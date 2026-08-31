@@ -26,8 +26,14 @@ inference before asserting persistent hits.
 
 Operators who already have the qualified image on all four ranks can use
 [`launch-qualified-rank.sh`](launch-qualified-rank.sh). It rejects any image
-whose local image ID differs from the qualified ID and requires site-specific
-addresses and paths through environment variables. The
+whose local image ID differs from the qualified ID. Copy
+[`qualified.env.example`](qualified.env.example), set the five required
+site-specific addresses and paths, and change any documented operational
+setting in that one file. The launcher validates the configuration and builds
+all JSON arguments with a JSON encoder. A setting that differs from the
+recorded runtime receives the container label
+`org.sparkring.qualification-status=user-modified-unqualified`; it does not
+inherit the bounded C8 result. The
 [operator quickstart](../../docs/GLM53_SPLIT_PAGE_SPARKCACHE_TP4_QUICKSTART.md)
 provides copy-paste launch, health, log, and rollback commands.
 
