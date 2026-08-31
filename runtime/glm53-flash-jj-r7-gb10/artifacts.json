@@ -1,0 +1,144 @@
+{
+  "schema": "sparkring-glm53-jj-r7-gb10-artifacts/v1",
+  "status": "implemented-and-tp4-smoke-verified",
+  "release_id": "glm53-jj-r7-gb10-public-r2",
+  "scope": "The two immutable Linux ARM64 images completed the bounded TP4/DCP1 C4 checks named in the linked receipt. This status does not establish general qualification, throughput, soak behavior, or unmeasured workload shapes.",
+  "platform": "linux/arm64",
+  "images": {
+    "base": {
+      "registry_reference": "ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:11922064b342de1fc98f0ef85e6648843c8fa7eb3e4f4353c6ad82d6e457dde0",
+      "manifest_digest": "sha256:11922064b342de1fc98f0ef85e6648843c8fa7eb3e4f4353c6ad82d6e457dde0",
+      "config_digest": "sha256:8cff7a250f16bfb89df23d29f9233dbb1c700a780dcec86a64c535a71aee88be",
+      "local_image_id": "sha256:8cff7a250f16bfb89df23d29f9233dbb1c700a780dcec86a64c535a71aee88be",
+      "entrypoint": ["vllm", "serve"],
+      "sparkcache_connector": false,
+      "required_labels": {
+        "org.sparkring.runtime.status": "tp4-smoke-verified",
+        "org.sparkring.vllm.community-r7": "bb3f9c3a00af522af93478645ad391f51eb0225b",
+        "org.sparkring.vllm.sparkcache-composition": "331573d20bd47e78327ed8d8b4d2e6d350bbb1ab",
+        "org.sparkring.vllm.tree": "927f52a0085bcecfd2ba679e5abebe1a62623daf",
+        "org.sparkring.b12x.composition": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
+        "org.sparkring.b12x.tree": "0bb58d0dcc10e29e00ff9850c0d719fca1aba5ad",
+        "org.sparkring.nccl.sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
+        "org.sparkring.diagnostics": "compact-startup-no-deep-ep",
+        "org.sparkring.cache.default": "disabled",
+        "org.opencontainers.image.revision": "ca91fa72a4cf7e1edaad9875a1a99ab4f71c49af"
+      }
+    },
+    "sparkcache": {
+      "registry_reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
+      "manifest_digest": "sha256:f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
+      "config_digest": "sha256:6af83baabb239db6b05e379401daf93c8f51694f81483c2781f6014c30e31db4",
+      "local_image_id": "sha256:6af83baabb239db6b05e379401daf93c8f51694f81483c2781f6014c30e31db4",
+      "parent_registry_reference": "ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:11922064b342de1fc98f0ef85e6648843c8fa7eb3e4f4353c6ad82d6e457dde0",
+      "parent_local_image_id": "sha256:8cff7a250f16bfb89df23d29f9233dbb1c700a780dcec86a64c535a71aee88be",
+      "entrypoint": ["vllm", "serve"],
+      "sparkcache_connector": true,
+      "required_labels": {
+        "org.sparkring.runtime.status": "tp4-smoke-verified",
+        "org.sparkring.vllm.community-r7": "bb3f9c3a00af522af93478645ad391f51eb0225b",
+        "org.sparkring.vllm.sparkcache-composition": "331573d20bd47e78327ed8d8b4d2e6d350bbb1ab",
+        "org.sparkring.vllm.tree": "927f52a0085bcecfd2ba679e5abebe1a62623daf",
+        "org.sparkring.b12x.composition": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
+        "org.sparkring.b12x.tree": "0bb58d0dcc10e29e00ff9850c0d719fca1aba5ad",
+        "org.sparkring.nccl.sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
+        "org.sparkring.diagnostics": "compact-startup-no-deep-ep",
+        "org.sparkcache.commit": "dcbe040d339f243621163b0c6ed4ce96462403d8",
+        "org.sparkcache.tree": "861562a7f5cb867be4313a2979027bc4f499cb31",
+        "org.sparkcache.source-sha256": "9cf50afd04e385975a487a0129645bd294e0395012424995569a9b50a7c447f1",
+        "org.sparkcache.cuda-placement-sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
+        "org.sparkcache.publication-schema": "page-tail-cow-v1",
+        "org.sparkcache.default": "disabled-until-explicitly-configured",
+        "org.sparkring.parent.image": "sha256:8cff7a250f16bfb89df23d29f9233dbb1c700a780dcec86a64c535a71aee88be",
+        "org.opencontainers.image.revision": "dcbe040d339f243621163b0c6ed4ce96462403d8"
+      }
+    }
+  },
+  "sources": {
+    "sparkring": {
+      "repository": "https://github.com/FujitsuPolycom/sparkring.git",
+      "commit": "ca91fa72a4cf7e1edaad9875a1a99ab4f71c49af",
+      "tree": "0fef36259b57402343a2cff94f46479dc758341b",
+      "scope": "Base image composition and the OCI revision label."
+    },
+    "vllm": {
+      "upstream_repository": "https://github.com/local-inference-lab/vllm.git",
+      "upstream_branch": "dev/jovian-judgement",
+      "community_r7_commit": "bb3f9c3a00af522af93478645ad391f51eb0225b",
+      "composition_repository": "https://github.com/FujitsuPolycom/vllm.git",
+      "composition_commit": "331573d20bd47e78327ed8d8b4d2e6d350bbb1ab",
+      "composition_tree": "927f52a0085bcecfd2ba679e5abebe1a62623daf",
+      "scope": "Community r7 plus the exact vLLM connector seams required by the SparkCache image."
+    },
+    "b12x": {
+      "repository": "https://github.com/local-inference-lab/b12x.git",
+      "commit": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
+      "tree": "0bb58d0dcc10e29e00ff9850c0d719fca1aba5ad"
+    },
+    "nccl_library_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
+    "sparkcache": {
+      "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
+      "commit": "dcbe040d339f243621163b0c6ed4ce96462403d8",
+      "tree": "861562a7f5cb867be4313a2979027bc4f499cb31",
+      "source_digest_sha256": "9cf50afd04e385975a487a0129645bd294e0395012424995569a9b50a7c447f1",
+      "cuda_placement_library_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
+    }
+  },
+  "models": {
+    "target": {
+      "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+      "revision": "520de24eabf507659eaef7c70f14fd584527facc",
+      "cache_identity_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9"
+    },
+    "draft": {
+      "repository": "incoai/GLM-5.3-Flash-DFlash2",
+      "revision": "dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+      "dtype": "bfloat16",
+      "weights_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
+      "speculative_tokens": 7
+    }
+  },
+  "inherited_lower_layer_labels": {
+    "org.glm53.dflash2.checkpoint-revision": {
+      "value": "b6d33aa93fc1ac5b23a88251a1c0ce0bfe2ad17c",
+      "active_mounted_draft_identity": false,
+      "scope": "Inherited image-layer lineage; the launch contract does not mount or identify the active BF16 draft from this label."
+    },
+    "org.glm53.dflash2.mxfp8-quant-plumbing": {
+      "value": "v2",
+      "active_mounted_draft_identity": false,
+      "scope": "Inherited support plumbing; it does not state that the active external draft uses MXFP8 weights."
+    }
+  },
+  "native_extension_provenance": {
+    "compiled_build_environment_commit": "3633d61c3c7b04bb4d598cadbdc342f3be40482d",
+    "compiled_build_environment_field": "VLLM_BUILD_COMMIT",
+    "intermediate_parent_source_label": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+    "intermediate_parent_label_field": "org.sparkring.native-parent.vllm",
+    "active_python_composition_commit": "331573d20bd47e78327ed8d8b4d2e6d350bbb1ab",
+    "scope": "The active Python package comes from the named composition. Compiled vLLM native extensions are retained from lower image layers; this is not a source-built native vLLM 331573d artifact.",
+    "verification": {
+      "status": "verified",
+      "method": "Sorted SHA-256 manifests for every vLLM shared object were compared between the native parent and the composed child image and were byte-identical."
+    }
+  },
+  "serving_defaults": {
+    "topology": "TP4/DCP1/PP1 on four GB10 systems",
+    "served_model_name": "glm-5.3-flash-nvfp4-dflash2-bf16-t7-jj-r7-gb10",
+    "max_model_len": 262144,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 4096,
+    "kv_cache_dtype": "fp8",
+    "kv_cache_bytes_per_rank": 21474836480,
+    "target_page_size_tokens": 512,
+    "recurrent_page_size_tokens": 512,
+    "base_cache_namespace": "jj-r7-gb10-base-v1",
+    "sparkcache_cache_namespace": "jj-r7-gb10-page-tail-cow-v1"
+  },
+  "image_delta": {
+    "scope": "The published images add the tested compact startup logging, registered split-page environment variables, and DeepEP removal to the source-bound compositions.",
+    "focused_tests": 15,
+    "test_environment": "exact Linux ARM64 image dependencies"
+  },
+  "evidence": "performance/receipts/glm53-flash/jj-r7-gb10-tp4-smoke-20260830/validation.json"
+}

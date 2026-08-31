@@ -10,11 +10,12 @@ credentials, or a live-deployment result.
 | Path | Role |
 |---|---|
 | [`exl3-r7/`](exl3-r7/README.md) | GLM-5.2 EXL3 3.5-bpw R7 ARM64 image builder and its verification tests |
-| [`glm53-flash/`](glm53-flash/README.md) | GLM-5.3 Flash target, BF16 DFlash2, vLLM, B12X, patched NCCL, and SparkCache identity and attestation contract |
-| [`glm53-flash-split-page-sparkcache/`](glm53-flash-split-page-sparkcache/README.md) | Exact local GLM-5.3 split-page SparkCache artifact, public input lock, bounded C8 evidence, launch helper, and retained-container rollback helper |
-| [`glm53-flash-e10536a/`](glm53-flash-e10536a/README.md) | Implemented source builder for vLLM e10536a with internal MTP5 and opt-in adaptive depth; live serving unqualified |
-| [`glm53-flash-b12x-kda-adaptive-mtp/`](glm53-flash-b12x-kda-adaptive-mtp/README.md) | Implemented source builder for adaptive MTP and live-tensor B12X KDA at vLLM `0b67266a`; live serving unqualified |
-| [`glm53-flash-dflash7-python-overlay/`](glm53-flash-dflash7-python-overlay/README.md) | Implemented public-base builder for external DFlash7 with vLLM `0b67266a` Python over retained `da4d7be` native extensions; live serving unqualified |
+| [`glm53-flash-jj-r7-gb10/`](glm53-flash-jj-r7-gb10/README.md) | Published JJ r7-compatible base/SparkCache image identities, one configurable launcher, and bounded TP4 smoke evidence |
+| [`glm53-flash/`](glm53-flash/README.md) | Historical published GLM-5.3 artifact identity and attestation contract |
+| [`glm53-flash-split-page-sparkcache/`](glm53-flash-split-page-sparkcache/README.md) | Historical local split-page artifact and bounded C8 evidence |
+| [`glm53-flash-e10536a/`](glm53-flash-e10536a/README.md) | Historical embedded-MTP source-development builder; live serving unqualified |
+| [`glm53-flash-b12x-kda-adaptive-mtp/`](glm53-flash-b12x-kda-adaptive-mtp/README.md) | Historical adaptive-MTP source-development builder; live serving unqualified |
+| [`glm53-flash-dflash7-python-overlay/`](glm53-flash-dflash7-python-overlay/README.md) | Historical external-DFlash source-development builder; live serving unqualified |
 | [`deepseek0731-gb10/`](deepseek0731-gb10/README.md) | DeepSeek-V4-Flash-0731 GB10 parser, K5 sparse-row, and native PR431 image layer |
 | [`qwen38/`](qwen38/README.md) | Public-source ARM64 image builder for the Qwen3.8-27B EXL3 K5/K6 pair and cycle profiles |
 | [`faststart-lock.json`](faststart-lock.json) | Immutable ARM64 base-image and model-identity pins |
@@ -25,15 +26,9 @@ credentials, or a live-deployment result.
 ## GLM-5.3 runtime selection and image placement
 
 Start with the [GLM-5.3 quickstart routing guide](../docs/GLM53_FLASH_QUICKSTARTS.md).
-It separates the published BF16 DFlash2 image from locally built DFlash7,
-adaptive-MTP, and `e10536a` images and states the evidence boundary for each.
-
-The `e10536a` source builder and the `0b67266a` Python-overlay builders are
-different constructions. Commit `e10536a` is nine commits after the retained
-`da4d7be6` base; `0b67266a` is three commits after `e10536a`. The overlay
-builders install 31 exact production Python files from `0b67266a` over
-compiled `da4d7be6` extensions. They do not describe the result as a
-source-built `0b67266a` wheel.
+It selects the immutable published JJ r7-compatible base or SparkCache image through
+`runtime/glm53-flash-jj-r7-gb10/runtime.env.example`. Historical artifact and
+source-development paths are separated from that operator start.
 
 Each builder README provides an executable local build command and receipt
 path. A local build changes only the builder's container store and does not
@@ -96,19 +91,18 @@ allowlist and validating the generated manifest through the builder.
 The builder test suites cover the GLM, DeepSeek, and Qwen runtime contracts:
 
 ```bash
-python -m pytest runtime/exl3-r7 runtime/glm53-flash runtime/deepseek0731-gb10 runtime/qwen38 -q
+python -m pytest runtime/exl3-r7 runtime/glm53-flash \
+  runtime/glm53-flash-jj-r7-gb10 runtime/deepseek0731-gb10 runtime/qwen38 -q
 ```
 
-[`runtime/glm53-flash/`](glm53-flash/README.md) builds the source-pinned
-GLM-5.3 ARM64 parent runtime. It verifies the vLLM, B12X, patched NCCL,
-InstantTensor, source-receipt, image-label, and SBOM inputs recorded in
-`runtime/glm53-flash/pins.json`. SparkCache owns the derived
-`deploy/glm53_flash/Containerfile`; SparkRing validates the published derived
-image through exact labels and an in-container source contract. Run the
-GLM-5.3 builder, publisher, profile, and launcher contracts with:
+The historical source builder in [`runtime/glm53-flash/`](glm53-flash/README.md)
+retains its exact vLLM, B12X, patched NCCL, InstantTensor, source-receipt,
+image-label, and SBOM inputs. Run the GLM-5.3 public-image, historical builder,
+profile, and launcher contracts with:
 
 ```bash
-python -m pytest runtime/glm53-flash runtime/glm53-flash-e10536a \
+python -m pytest runtime/glm53-flash runtime/glm53-flash-jj-r7-gb10 \
+  runtime/glm53-flash-e10536a \
   runtime/glm53-flash-b12x-kda-adaptive-mtp \
   scripts/test_glm53_flash_profile.py \
   scripts/test_prepare_glm53_e105_profile.py \

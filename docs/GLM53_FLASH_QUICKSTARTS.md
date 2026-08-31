@@ -1,8 +1,8 @@
 # Choose a GLM-5.3 Flash quickstart
 
-SparkRing has one published BF16 DFlash2 composition and three source-built
-runtime paths. Select a row by speculator and evidence status before copying a
-profile. A result recorded for one image ID does not qualify another build.
+The published JJ r7-compatible image pair is the operator start for GLM-5.3 on four GB10
+systems. Select `base` or `sparkcache` in one environment file. Historical
+artifact procedures remain linked below for reproducing their exact evidence.
 
 ## Upstream runtime and model artifacts
 
@@ -15,43 +15,36 @@ kernels and backend integration. Local Inference Lab publishes the
 and a separate
 [MXFP8 DFlash2 checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-DFlash2-MXFP8).
 
-Every row below uses
+The published images use
 [`GLM-5.3-Flash-NVFP4@520de24e`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/520de24eabf507659eaef7c70f14fd584527facc).
-Rows named BF16 DFlash2 or external DFlash7 use
+Their external draft is
 [`incoai/GLM-5.3-Flash-DFlash2@dc77ff1c`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2/tree/dc77ff1c99eeb2df044ee3d4f0094eb033fee410),
-which is BF16 and is not the MXFP8 checkpoint. Embedded-MTP rows use the MTP
-state carried by the named target checkpoint and no external DFlash weights.
+which is BF16 and is not the MXFP8 checkpoint.
 
-| Runtime path | Status | Image availability | Procedure |
+| Published variant | Status | Immutable image | Procedure |
 |---|---|---|---|
-| BF16 DFlash2 with SparkCache | **qualified** for the bounded cases in its guide | Published immutable OCI digest | [SparkCache quickstart](GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md) |
-| BF16 DFlash2 without an external KV cache | **qualified** for the bounded cases in its guide | Uses the same published image | [Cache-disabled quickstart](GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
-| External DFlash7 snapshot-v1, fastsafetensors target | **qualified** only for local image ID `sha256:35b58a7bf414059c65b8f74e4e4b17ee6a81b7008e1bffbc9bd298b5e08c739e` and its recorded 131,072-token full-snapshot case | Local image; no published OCI digest | [Shortest qualified start](GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md#shortest-qualified-start) |
-| External DFlash7 with split target/recurrent pages and authenticated shared-base reads | **qualified** only for local image ID `sha256:becf556650dff79a9959aef371ea861187db248bd0f46c3ebfbd26759e458818` and the recorded C8 × 16K case | Local image retained on the qualified ranks; no published OCI digest | [Split-page SparkCache quickstart](GLM53_SPLIT_PAGE_SPARKCACHE_TP4_QUICKSTART.md) |
-| External DFlash7 tail-cow, all-safetensors target | **research-only**, not qualified | Build locally | [DFlash7 Python-overlay quickstart](GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md) |
-| Adaptive embedded MTP with live-tensor B12X KDA | **implemented**, not qualified | Build locally | [Adaptive-MTP quickstart](GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md) |
-| Source-built vLLM `e10536a` profiles | **implemented**, not qualified | Build locally | [e10536a source-build quickstart](GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md) |
+| Cache-disabled base | **implemented and TP4 smoke-verified**, not generally qualified | `ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:11922064b342de1fc98f0ef85e6648843c8fa7eb3e4f4353c6ad82d6e457dde0` | [Public-image quickstart](GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) |
+| SparkCache composition | **implemented and TP4 smoke-verified**, not generally qualified | `ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5` | [Public-image quickstart](GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) |
 
-All rows use the exact target revision named above.
-The external DFlash checkpoints and embedded-MTP policies have distinct cache
-identities. Do not point two speculator policies at the same writable cache
-root.
+The images bind Jovian Judgement community r7 plus vLLM composition
+`331573d20bd47e78327ed8d8b4d2e6d350bbb1ab`, B12X
+`6255090a03b12c3f7d552102a02fac0b542fb8c9`, and the patched NCCL library
+SHA-256 `5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3`.
 
-## vLLM source relationship
+## Historical artifact and source-development procedures
 
-The source-built `e10536a` runtime and the Python-overlay runtimes are separate
-image constructions. Commit
-`e10536aadf02a18fccddda7ec939c33147e8b0b3` is nine commits after
-`da4d7be6c97434f6942292ed8abbf4b32dc44355`; commit
-`0b67266a0f37d6146a8403fb8482403c62f412d5` is three commits after
-`e10536a`.
+| Purpose | Evidence status | Procedure |
+|---|---|---|
+| Published BF16 DFlash2 artifact | Qualified only for its named historical digest and cases | [SparkCache](GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md), [cache-disabled](GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
+| Full-snapshot local artifact | Qualified only for its named 131,072-token case | [Artifact procedure](GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md#shortest-qualified-start) |
+| Split-page local artifact | Qualified only for its named C8 × 16K case | [Artifact procedure](GLM53_SPLIT_PAGE_SPARKCACHE_TP4_QUICKSTART.md) |
+| Adaptive embedded MTP source composition | Implemented; live SparkCache serving unqualified | [Source procedure](GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md) |
+| Embedded-MTP source composition | Implemented; live SparkCache serving unqualified | [Source procedure](GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md) |
 
-The Python-overlay images retain compiled extensions, wheel metadata, version
-metadata, and the console entry point from `da4d7be6`. They overlay exactly 31
-production `vllm/**` Python files from `0b67266a`. The `da4d7be6..0b67266a`
-production-source comparison contains no C, C++, CUDA, or build-source change,
-so the overlay includes the Python developments through `e10536a` and the
-three following commits without claiming a source-built `0b67266a` wheel.
+Historical procedures retain their own source ancestry, cache identities,
+image IDs, and limitations. Do not substitute those identities into the public
+r2 environment.
+
 
 ## Plan resident-token concurrency
 
@@ -87,17 +80,18 @@ metrics as authoritative for each workload shape.
 Use one of these paths. Do not mix a local image ID with a registry digest in
 one evidence record.
 
-For the published BF16 DFlash2 image, copy the immutable reference from its
-quickstart, inspect the offline plan, and then run the confirmed pull:
+For the published JJ r7-compatible SparkCache image, copy the immutable reference from its
+quickstart, inspect the offline plan, and then run the confirmed pull. Replace
+the reference with the base digest when selecting `IMAGE_VARIANT=base`:
 
 ```bash
 python scripts/pull_glm53_image_cluster.py \
   --site site.yaml \
-  --image 'ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943'
+  --image 'ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5'
 
 python scripts/pull_glm53_image_cluster.py \
   --site site.yaml \
-  --image 'ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943' \
+  --image 'ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5' \
   --execute --confirmation PULL_GLM53_IMAGE \
   --output cluster-image.json
 ```

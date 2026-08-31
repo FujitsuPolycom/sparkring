@@ -1,5 +1,10 @@
 # Serve GLM-5.3 with adaptive MTP, live-tensor B12X KDA, and SparkCache
 
+> Historical source-development procedure. Use the
+> [published JJ r7-compatible quickstart](GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) for the
+> smoke-verified external-DFlash images. Embedded MTP with SparkCache remains
+> unqualified.
+
 Use the [GLM-5.3 routing guide](GLM53_FLASH_QUICKSTARTS.md) to compare this
 implemented adaptive-MTP path with the qualified artifact-specific DFlash
 paths before building an image.

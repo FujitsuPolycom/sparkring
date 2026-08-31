@@ -1,5 +1,9 @@
 # GLM-5.3 Flash runtime contract
 
+> Historical exact-artifact contract. The public r2 image identities and
+> operator environment are in
+> [`runtime/glm53-flash-jj-r7-gb10/`](../glm53-flash-jj-r7-gb10/README.md).
+
 Status: **qualified** for the exact source and artifact identities in
 [`pins.json`](pins.json) when used by the SparkCache-enabled TP4/DCP1
 composition. A rebuilt image has **implemented** status until it passes the

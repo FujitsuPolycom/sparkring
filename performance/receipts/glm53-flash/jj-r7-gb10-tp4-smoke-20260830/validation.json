@@ -1,0 +1,87 @@
+{
+  "schema": "sparkring-glm53-jj-r7-gb10-tp4-smoke/v1",
+  "status": {
+    "artifact_identity": "implemented",
+    "base_c4_semantics": "tp4-smoke-verified",
+    "sparkcache_publication": "tp4-smoke-verified",
+    "sparkcache_restart_restore": "tp4-smoke-verified",
+    "general_qualification": "unsupported-by-this-receipt",
+    "latency": "research-only",
+    "soak": "unsupported"
+  },
+  "conditions": {
+    "date_utc": "2026-08-30",
+    "hardware": "four NVIDIA GB10 systems",
+    "topology": {
+      "tensor_parallel_size": 4,
+      "decode_context_parallel_size": 1,
+      "pipeline_parallel_size": 1
+    },
+    "images": {
+      "base": {
+        "registry_reference": "ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:11922064b342de1fc98f0ef85e6648843c8fa7eb3e4f4353c6ad82d6e457dde0",
+        "local_image_id": "sha256:8cff7a250f16bfb89df23d29f9233dbb1c700a780dcec86a64c535a71aee88be"
+      },
+      "sparkcache": {
+        "registry_reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
+        "local_image_id": "sha256:6af83baabb239db6b05e379401daf93c8f51694f81483c2781f6014c30e31db4"
+      }
+    },
+    "vllm_upstream_repository": "https://github.com/local-inference-lab/vllm.git",
+    "vllm_community_r7_commit": "bb3f9c3a00af522af93478645ad391f51eb0225b",
+    "vllm_composition_repository": "https://github.com/FujitsuPolycom/vllm.git",
+    "vllm_composition_commit": "331573d20bd47e78327ed8d8b4d2e6d350bbb1ab",
+    "vllm_native_provenance": {
+      "compiled_build_environment_commit": "3633d61c3c7b04bb4d598cadbdc342f3be40482d",
+      "intermediate_parent_source_label": "da4d7be6c97434f6942292ed8abbf4b32dc44355",
+      "shared_object_hash_set": "verified-byte-identical-between-parent-and-child",
+      "active_python_composition_commit": "331573d20bd47e78327ed8d8b4d2e6d350bbb1ab"
+    },
+    "b12x_commit": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
+    "sparkcache_commit": "dcbe040d339f243621163b0c6ed4ce96462403d8",
+    "target": "local-inference-lab/GLM-5.3-Flash-NVFP4@520de24eabf507659eaef7c70f14fd584527facc",
+    "draft": "incoai/GLM-5.3-Flash-DFlash2@dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+    "draft_dtype": "bfloat16",
+    "speculative_tokens": 7
+  },
+  "measurement": {
+    "base": {
+      "scenario": "four concurrent strong-oracle requests",
+      "expected_and_observed_outputs": ["red", "blue", "green", "black"],
+      "exact_response_count": 4,
+      "client_result_sha256": "48361bf399a7b85d10c5ab8f768f81d4d91fb56a17d8192c09cd4e49b5775c0f",
+      "client_elapsed_seconds": {"minimum": 3.30, "maximum": 7.83}
+    },
+    "sparkcache_publication": {
+      "scenario": "fresh four-request publication",
+      "expected_and_observed_outputs": ["red", "blue", "green", "black"],
+      "exact_response_count": 4,
+      "client_result_sha256": "edb9c082fc6fe1b99004fa4c04d9e4b53d0525fe5410313ba13f18f2dc09ffbc",
+      "manifest_count_per_rank": 4,
+      "clear_marker_present_per_rank": true,
+      "root_bytes_per_rank": 605690671
+    },
+    "sparkcache_restart_restore": {
+      "sequence": "full four-rank process restart, one readiness inference, then four concurrent stored requests",
+      "expected_and_observed_outputs": ["red", "blue", "green", "black"],
+      "exact_response_count": 4,
+      "external_restore_count": 4,
+      "external_hit_ratio": 1.0,
+      "client_result_sha256": "02a0c0fafa95294008cd1b9a8a6269dabc0d161c10c307bc1922f1b9aa20c100",
+      "client_elapsed_seconds": {"minimum": 0.561595, "maximum": 1.582937},
+      "worker_cache_service_ms": {"minimum": 277, "maximum": 394}
+    },
+    "shared_base": {
+      "status": "not-measured",
+      "reason": "The four smoke roots were complete snapshots, so this receipt makes no shared-base read claim."
+    }
+  },
+  "result": "Both immutable images returned the four exact strong-oracle outputs. The SparkCache image also published four full roots, survived a complete process restart, and externally restored all four requests after one readiness inference.",
+  "conclusion": "The two public images are implemented and TP4 smoke-verified for the exact C4 cases in this receipt. The observations do not establish general qualification.",
+  "limitations": [
+    "The C4 checks do not establish throughput, latency variance, long-context capacity, or a production service-level objective.",
+    "No soak, fault injection, or alternate topology was included.",
+    "One real inference was required after restart before asserting persistent hits.",
+    "The SparkCache smoke used complete roots and does not demonstrate shared-base read coalescing."
+  ]
+}

@@ -56,18 +56,21 @@ profile is selected.
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
 |---|---|---:|---:|---:|---|---|
-| GLM-5.3 Flash + BF16 DFlash2 | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 KV | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md) |
-| GLM-5.3 Flash + BF16 DFlash2 + SparkCache | 4 Sparks · TP4/DCP1 | 512K | 32 | 8,192 | 12 GiB/rank FP8 KV + 48 GiB nvme/rank SparkCache | [Quickstart](docs/GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md) |
+| Published JJ r7-compatible GLM-5.3 Flash base | 4 Sparks · TP4/DCP1 | 256K | 16 | 4,096 | 20 GiB/rank FP8 KV | [Public-image quickstart](docs/GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) |
+| Published JJ r7-compatible GLM-5.3 Flash + SparkCache | 4 Sparks · TP4/DCP1 | 256K | 16 | 4,096 | 20 GiB/rank FP8 KV + 40 GiB/rank SparkCache | [Public-image quickstart](docs/GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) |
 
-Source-built GLM-5.3 paths are reviewed separately from the published BF16
-DFlash2 composition:
+The immutable published images are implemented and TP4 smoke-verified for the
+exact C4 cases in their guide. They are not generally qualified.
+
+Historical exact-artifact and source-development records remain available for
+reproducing their named evidence. They are not the default public-image start:
 
 | Runtime path | Status | Start here |
 |---|---|---|
-| External DFlash7 snapshot-v1 with vLLM `0b67266a` Python over retained `da4d7be6` extensions | **qualified** only for one exact local image and its recorded 131,072-token full-snapshot case | [Shortest qualified start](docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md#shortest-qualified-start) |
-| External DFlash7 with split target/recurrent pages and authenticated shared-base reads | **qualified** only for exact local image `sha256:becf556650d...` and one scheduler-ready C8 × 16K cohort; eight external restores and one physical shared-base read per rank | [Split-page SparkCache quickstart](docs/GLM53_SPLIT_PAGE_SPARKCACHE_TP4_QUICKSTART.md) |
-| Adaptive embedded MTP with live-tensor B12X KDA | **implemented**, not qualified | [Adaptive-MTP quickstart](docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md) |
-| Source-built vLLM `e10536a` profiles | **implemented**, not qualified | [e10536a quickstart](docs/GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md) |
+| Full-snapshot local artifact | Exact historical 131,072-token restore evidence | [Artifact procedure](docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md#shortest-qualified-start) |
+| Split-page local artifact | Exact historical C8 different-root and shared-base evidence | [Artifact procedure](docs/GLM53_SPLIT_PAGE_SPARKCACHE_TP4_QUICKSTART.md) |
+| Adaptive embedded MTP source composition | Implemented source-development path; live SparkCache serving unqualified | [Source procedure](docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md) |
+| Embedded-MTP source composition | Implemented source-development path; live SparkCache serving unqualified | [Source procedure](docs/GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md) |
 
 The [GLM-5.3 routing guide](docs/GLM53_FLASH_QUICKSTARTS.md) explains source
 ancestry, image construction, immutable registry pulls, local archive fanout,
@@ -94,9 +97,8 @@ trunk pages are shared or KV capacity increases.
 | DeepSeek-V4-Flash-0731 + SparkCache | 4 Sparks · TP4/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
 
 The public BF16 DFlash2 checkpoint is licensed CC BY-NC-ND 4.0 for research
-and evaluation; review its model card before use. The qualified BF16 DFlash2
-community image is published by immutable digest. The DFlash7 qualification
-belongs to a local image ID and has no published OCI digest.
+and evaluation; review its model card before use. Historical artifact records
+retain their exact image identities and evidence boundaries.
 See the [profile registry](docs/profiles/README.md) for recipe identities and evidence scope.
 
 ## Evidence and results

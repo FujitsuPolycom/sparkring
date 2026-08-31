@@ -1,5 +1,10 @@
 # Run the qualified GLM-5.3 split-page SparkCache image on four DGX Sparks
 
+> Historical local-artifact procedure. Use the
+> [published JJ r7-compatible quickstart](GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) for a public GB10
+> deployment. This procedure remains the record for its exact local C8
+> evidence.
+
 Status: **qualified** for exact output, eight external restores, and
 authenticated shared-base reads in one C8 × 16K cohort. The local image has no
 published OCI digest. These

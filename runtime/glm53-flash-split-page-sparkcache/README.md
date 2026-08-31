@@ -1,5 +1,9 @@
 # GLM-5.3 split-page SparkCache runtime artifact
 
+> Historical local-artifact contract. The public r2 image identities and
+> operator environment are in
+> [`runtime/glm53-flash-jj-r7-gb10/`](../glm53-flash-jj-r7-gb10/README.md).
+
 Status: **qualified** for the exact local image ID and bounded C8 workload in
 [`qualified-artifact.json`](qualified-artifact.json). The artifact combines
 split target and recurrent page geometry, SparkCache CUDA placement, tail-only

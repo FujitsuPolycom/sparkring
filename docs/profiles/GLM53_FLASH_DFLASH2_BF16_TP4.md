@@ -1,5 +1,10 @@
 # GLM-5.3 Flash with BF16 DFlash2 on a four-Spark cycle
 
+> Historical exact-artifact profile. Use the
+> [published JJ r7-compatible quickstart](../GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) and
+> [artifact contract](../../runtime/glm53-flash-jj-r7-gb10/artifacts.json) for
+> a public GB10 deployment.
+
 Status: **qualified** with and without the SparkCache connector for startup,
 semantic generation, runtime health, and the exact OCI image and configuration
 recorded below. SparkCache restore qualification covers one 8,192-token span.

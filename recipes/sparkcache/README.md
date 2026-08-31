@@ -6,11 +6,17 @@ SparkRing recipe and records only the serving values, immutable artifacts,
 cache policy, restart contract, evidence, and limitations qualified with
 SparkCache.
 
+The GLM-5.3 JSON in this directory is a historical exact-artifact recipe. The
+published JJ r7-compatible GLM-5.3 image identities and operator environment are in
+[`runtime/glm53-flash-jj-r7-gb10/`](../../runtime/glm53-flash-jj-r7-gb10/README.md).
+The historical recipe remains here because its qualification evidence is bound
+to its own digest and settings.
+
 | Composition | Status | Parallelism | Published profile context / sequences | Qualified receipt context / sequences | Scheduler budget |
 |---|---|---:|---:|---:|---:|
 | [`deepseek-v4-flash-0731-tp2-dcp1.json`](deepseek-v4-flash-0731-tp2-dcp1.json) | implemented | TP2/DCP1 | 1,048,576 / 32 | 131,072 / 6 | 4,096 |
 | [`deepseek-v4-flash-0731-tp4-dcp1.json`](deepseek-v4-flash-0731-tp4-dcp1.json) | implemented | TP4/DCP1 | 1,048,576 / 32 | 524,288 / 32 | 4,096 |
-| [`glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1.json`](glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1.json) | qualified | TP4/DCP1 | 524,288 / 32 | 524,288 / 32 | 8,192 |
+| [`glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1.json`](glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1.json) | historical qualified artifact | TP4/DCP1 | 524,288 / 32 | 524,288 / 32 | 8,192 |
 | [`glm52-exl3-r7-3.5bpw-tp4-dcp4.json`](glm52-exl3-r7-3.5bpw-tp4-dcp4.json) | implemented | TP4/DCP4 | 1,048,576 / 16 | 262,144 / 8 | 4,096 |
 
 ## Unsupported integrations

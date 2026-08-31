@@ -26,6 +26,19 @@ all active streams.
 The normalized DeepSeek two-Spark profile also completed a
 [three-hour llama-benchy prefix-cache benchmark](../performance/records/deepseek-v4-flash/llama-benchy-normalized-tp2-20260822.md).
 
+## Published JJ r7-compatible GLM-5.3 functional smoke evidence
+
+The published base and SparkCache images are **implemented and TP4
+smoke-verified**, not generally qualified. The base passed one exact C4
+strong-oracle cohort. The SparkCache image passed fresh C4 publication and,
+after full process replacement plus one readiness inference, four exact
+external restores with a 100% measured hit ratio. This is functional evidence,
+not a tokens-per-second benchmark. See the
+[published-image quickstart](GLM53_JJ_R7_GB10_TP4_QUICKSTART.md),
+[record](../performance/records/glm53-flash/jj-r7-gb10-tp4-smoke-20260830.md)
+and
+[machine receipt](../performance/receipts/glm53-flash/jj-r7-gb10-tp4-smoke-20260830/validation.json).
+
 ## GLM-5.2 EXL3 3.5-bpw — four Sparks
 
 | Context | Prefill | C1 decode | C2 decode | C4 decode | C8 decode |

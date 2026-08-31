@@ -1,5 +1,10 @@
 # Serve source-built GLM-5.3 e10536a with SparkCache on four DGX Sparks
 
+> Historical source-development procedure. Use the
+> [published JJ r7-compatible quickstart](GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) for the
+> smoke-verified external-DFlash images. The embedded-MTP compositions below
+> remain unqualified.
+
 Use the [GLM-5.3 routing guide](GLM53_FLASH_QUICKSTARTS.md) before selecting
 this source-built path. Commit `e10536a` is nine commits after `da4d7be6`;
 `0b67266a` is three commits after `e10536a`. The separate Python-overlay

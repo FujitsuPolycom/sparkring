@@ -52,14 +52,22 @@ python -m pytest \
 ## Choose a GLM-5.3 Flash template
 
 Use the [GLM-5.3 quickstart routing guide](../../docs/GLM53_FLASH_QUICKSTARTS.md)
-to select the published BF16 DFlash2 composition, external DFlash7, adaptive
-MTP, or the source-built `e10536a` path. Copy only the selected site and
-profile templates to untracked paths. A template's checked-in status and an
-image's exact evidence must both support the intended claim.
+to select the published JJ r7-compatible base or SparkCache image. Its canonical operator input
+is
+[`runtime/glm53-flash-jj-r7-gb10/runtime.env.example`](../../runtime/glm53-flash-jj-r7-gb10/runtime.env.example),
+not a JSON profile in this directory. The single environment exposes site,
+serving, network, memory, and persistent-cache settings and is consumed by the
+public-image rank launcher.
 
-## GLM-5.3 Flash with BF16 DFlash2
+## Historical GLM-5.3 profile templates
 
-The GLM-5.3 Flash deployment uses three sanitized inputs:
+The following inputs reproduce older exact artifacts or source-development
+paths. They are retained for their named evidence and do not override the
+published-image environment contract.
+
+### Published BF16 DFlash2 artifact profiles
+
+The historical deployment uses three sanitized inputs:
 
 | File | Role |
 |---|---|
@@ -86,7 +94,7 @@ Run the focused CPU-only contract suite after changing these inputs:
 python -m pytest scripts/test_glm53_flash_profile.py -q
 ```
 
-## GLM-5.3 adaptive MTP with live-tensor B12X KDA
+### Adaptive MTP with live-tensor B12X KDA
 
 Status: **implemented, not qualified**. The source-built runtime composition
 uses these sanitized inputs:
@@ -101,13 +109,14 @@ Resolve both templates with
 source, contract, image, loader, adaptive-policy, and cache-identity drift.
 Follow the [executable quickstart](../../docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md).
 
-## GLM-5.3 external DFlash7 Python overlay
+### External DFlash7 Python overlay
 
 Both profiles use external DFlash at depth seven and TP4, FP8 target KV,
 256-token blocks, 32 sequences, and SparkCache CUDA restore. The executable
 fastsafetensors profile uses full snapshot-v1 publication with one load thread
-and one pending restore. The all-safetensors profile retains isolated
-research-only tail-cow publication. Qualification is image-specific.
+and one pending restore. The all-safetensors profile retains isolated,
+implemented tail-cow publication settings; that historical profile has no
+serving qualification. Qualification is image-specific.
 
 | File | Status | Target loader |
 |---|---|---|

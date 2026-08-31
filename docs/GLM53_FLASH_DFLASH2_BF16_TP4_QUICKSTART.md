@@ -1,5 +1,10 @@
 # Serve GLM-5.3 Flash with BF16 DFlash2 without an external KV cache
 
+> Historical exact-artifact procedure. Use the
+> [published JJ r7-compatible quickstart](GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) for a public GB10
+> deployment. The identities below remain valid only for their recorded
+> evidence.
+
 Use the [GLM-5.3 routing guide](GLM53_FLASH_QUICKSTARTS.md) to compare this
 cache-disabled profile with the SparkCache and source-built GLM-5.3 paths.
 

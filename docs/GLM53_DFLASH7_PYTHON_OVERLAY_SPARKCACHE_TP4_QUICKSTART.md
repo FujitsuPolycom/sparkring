@@ -1,5 +1,10 @@
 # Serve GLM-5.3 with external DFlash7 and the exact Python-overlay runtime
 
+> Historical local-artifact and source-development procedure. Use the
+> [published JJ r7-compatible quickstart](GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) for a public GB10
+> deployment. The local identities below remain valid only for their named
+> evidence.
+
 Use the [GLM-5.3 routing guide](GLM53_FLASH_QUICKSTARTS.md) to compare this
 local-image path with the published BF16 DFlash2 composition, adaptive MTP,
 and the source-built `e10536a` path.
@@ -137,15 +142,25 @@ commands for this profile. The controller derives each rank's network and
 collective arguments, verifies the exact image and required labels, and applies
 the profile's guarded rollback behavior.
 
-### Research-only tail publication and concurrent restore
+### Implemented tail publication and concurrent restore
 
-Opaque-page tail copy-on-write deltas, host-base read coalescing, and
-different-root concurrent restore are **research-only**. A C2 delta-restore
-attempt did not complete correctly; one request recomputed and returned its
-correct oracle. That result does not qualify C2 delta restore. The prior
-`ed60...` and `eef...` artifact records remain useful bounded observations,
-but they do not replace the snapshot-v1 default or qualify multi-root
-concurrency. Response quality and public OCI publication are **unsupported**.
+Opaque-page copy-on-write deltas, authenticated host-base read coalescing, and
+different-root concurrent restore are **implemented with bounded exact TP4
+evidence**. The
+[split-page C8 record](../performance/records/glm53-flash/split-page-shared-base-c8-20260830.md)
+records eight exact different-root restores and one physical base read per
+rank. That evidence does not qualify other models, topologies, C16, soak, or
+fault injection. The historical snapshot-v1 artifact described by this guide
+does not inherit the split-page result.
+
+### Research-only historical candidates
+
+An earlier C2 delta-restore candidate recomputed one request and returned its
+correct oracle. That artifact does not qualify C2 delta restore. The rejected
+artifact does not contradict the implemented
+mechanisms or the later exact C8 evidence; it remains useful only as a
+historical failure record. Response quality and public OCI publication are **unsupported**
+for that rejected candidate.
 
 Four-reader flat-page prefetch at SparkCache
 `eabe7fd0c878db7384ef87fe80a1e96b9bedcf67` is also **research-only**. Its
@@ -174,8 +189,8 @@ The serving contract uses seven speculative tokens, draft TP4, target FP8 KV,
 32 sequences, and 256-token vLLM blocks. The executable fastsafetensors
 profile selects `snapshot-v1`, which stores full opaque pages in authenticated
 macro objects. It uses the canonical CUDA restore keys, one load thread, and
-one pending restore. The all-safetensors tail-cow profile is isolated and
-research-only.
+one pending restore. The all-safetensors tail-cow source profile is isolated;
+that historical profile has no serving qualification.
 
 Do not derive concurrency by dividing the reported 916,676-token capacity by
 prompt length. A no-cache C6 × 128K observation admitted one request at a time
@@ -230,7 +245,8 @@ receipt verifies patch SHA-256
 `39b567013ee7aed79f63200ed460129587933dc77fb430decdf19f78178de279` and
 postimage SHA-256
 `98acbae2b3bb4482d83f9637c163ce7c92707ccdf6561b7e431f23337f151cf4`.
-The all-safetensors tail-cow profile remains research-only and unqualified.
+The all-safetensors tail-cow profile remains a source-development profile with
+no serving qualification.
 The fastsafetensors snapshot result belongs only to the image ID and case
 named above; it does not transfer to a rebuild.
 
@@ -328,16 +344,18 @@ prefill/decode tradeoff is measured independently.
 The external DFlash weights SHA-256 is stored as
 `spark_cache_draft_checkpoint_sha256`. It cannot share entries with embedded
 MTP profiles. The executable fastsafetensors profile uses `snapshot-v1`; the
-all-safetensors research profile uses `tail-cow-v1`. The formats, cache roots,
+all-safetensors source profile uses `tail-cow-v1`. The formats, cache roots,
 and one-shot clear tokens are distinct, so their entries cannot alias even
 though loader choice does not change target or draft model state.
 
 The pinned SparkCache source combines canonical CUDA configuration names,
-authenticated restore, full-page snapshots, and research-only page-delta
-paths. Cache identities, digest salts, 256-token chunk geometry, stored wire
+authenticated restore, full-page snapshots, and implemented page-delta paths
+with bounded exact TP4 evidence. Cache identities, digest salts, 256-token
+chunk geometry, stored wire
 bytes, and the CUDA placement ABI are unchanged. Compatible snapshot entries
 remain eligible only under the snapshot-v1 profile, and compatible
-`page-tail-cow-v1` entries remain eligible only under the research profile.
+`page-tail-cow-v1` entries remain eligible only under the isolated source
+profile.
 The vLLM lease-contract bytes do change to accept the recurrent-boundary
 postimages. Missing or malformed boundary evidence is a cache miss and
 recomputation, never an unverified publication.
