@@ -14,6 +14,13 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 PINS = HERE / "pins.json"
 PATCH = ROOT / "spark_transport" / "nccl" / "nccl-2.30.7-switchless-cycle.patch"
+JJ_URL = "https://github.com/local-inference-lab/vllm"
+B12X_URL = "https://github.com/local-inference-lab/b12x"
+TARGET_URL = "https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4"
+MXFP8_DRAFT_URL = (
+    "https://huggingface.co/local-inference-lab/GLM-5.3-Flash-DFlash2-MXFP8"
+)
+BF16_DRAFT_URL = "https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2"
 
 
 def _module(name: str, path: Path):
@@ -89,3 +96,41 @@ def test_builder_uses_public_context_and_source_built_nccl() -> None:
     assert 'ENTRYPOINT ["vllm"]' in containerfile
     assert "COPY bundle/runtime/SparkRing-LICENSE" in containerfile
     assert "COPY bundle/sources/vllm/LICENSE" in containerfile
+
+
+def test_glm_documentation_credits_exact_upstream_sources_and_artifacts() -> None:
+    main = (ROOT / "README.md").read_text(encoding="utf-8")
+    routing = (ROOT / "docs/GLM53_FLASH_QUICKSTARTS.md").read_text(
+        encoding="utf-8"
+    )
+    runtime = (HERE / "README.md").read_text(encoding="utf-8")
+    for text in (main, routing, runtime):
+        assert JJ_URL in text
+        assert B12X_URL in text
+        assert TARGET_URL in text
+        assert MXFP8_DRAFT_URL in text
+    assert BF16_DRAFT_URL in routing
+    assert "which is BF16 and is not the MXFP8 checkpoint" in routing
+
+    quickstarts = (
+        "GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md",
+        "GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md",
+        "GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md",
+        "GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md",
+        "GLM53_SPLIT_PAGE_SPARKCACHE_TP4_QUICKSTART.md",
+    )
+    for name in quickstarts:
+        text = (ROOT / "docs" / name).read_text(encoding="utf-8")
+        assert JJ_URL in text
+        assert B12X_URL in text
+        assert TARGET_URL in text
+        assert BF16_DRAFT_URL in text
+        assert MXFP8_DRAFT_URL in text
+
+    adaptive = (
+        ROOT / "docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md"
+    ).read_text(encoding="utf-8")
+    assert JJ_URL in adaptive
+    assert B12X_URL in adaptive
+    assert TARGET_URL in adaptive
+    assert "does not load an external BF16 or MXFP8 DFlash checkpoint" in adaptive

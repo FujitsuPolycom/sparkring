@@ -5,6 +5,17 @@ Status: **qualified** for the exact local image ID and bounded C8 workload in
 split target and recurrent page geometry, SparkCache CUDA placement, tail-only
 publication, and authenticated shared-base reads for GLM-5.3 Flash TP4/DCP1.
 
+Its GLM runtime derives primarily from Local Inference Lab's Jovian Judgement
+[`vLLM` source at `ead9d8a4`](https://github.com/local-inference-lab/vllm/commit/ead9d8a4e21b3818b21ec6f4d4d94564dd60c3f8),
+with Blackwell backend work from
+[`B12X@b1d541f9`](https://github.com/local-inference-lab/b12x/commit/b1d541f9e71a35f030d45fae437630fff7507c2a).
+The target is
+[`GLM-5.3-Flash-NVFP4@520de24e`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/520de24eabf507659eaef7c70f14fd584527facc).
+The external draft is
+[`incoai/GLM-5.3-Flash-DFlash2@dc77ff1c`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2/tree/dc77ff1c99eeb2df044ee3d4f0094eb033fee410),
+BF16 rather than the separate Local Inference Lab
+[MXFP8 DFlash2 checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-DFlash2-MXFP8).
+
 The image is retained locally and has no published OCI digest. The source
 repositories, immutable revisions, model identities, and serving settings are
 public and machine-readable in [`pins.json`](pins.json), but rebuilding them

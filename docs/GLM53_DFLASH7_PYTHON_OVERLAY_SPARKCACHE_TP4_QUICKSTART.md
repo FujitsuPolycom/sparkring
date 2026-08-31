@@ -4,6 +4,18 @@ Use the [GLM-5.3 routing guide](GLM53_FLASH_QUICKSTARTS.md) to compare this
 local-image path with the published BF16 DFlash2 composition, adaptive MTP,
 and the source-built `e10536a` path.
 
+The runtime combines Local Inference Lab's Jovian Judgement
+[`da4d7be6` native build](https://github.com/local-inference-lab/vllm/commit/da4d7be6c97434f6942292ed8abbf4b32dc44355)
+with its
+[`0b67266a` Python source](https://github.com/local-inference-lab/vllm/commit/0b67266a0f37d6146a8403fb8482403c62f412d5).
+[B12X at `b1d541f9`](https://github.com/local-inference-lab/b12x/commit/b1d541f9e71a35f030d45fae437630fff7507c2a)
+supplies the Blackwell backend. The exact target is
+[`GLM-5.3-Flash-NVFP4@520de24e`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/520de24eabf507659eaef7c70f14fd584527facc);
+the external draft is
+[`incoai/GLM-5.3-Flash-DFlash2@dc77ff1c`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2/tree/dc77ff1c99eeb2df044ee3d4f0094eb033fee410),
+BF16 rather than the separate Local Inference Lab
+[MXFP8 DFlash2 checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-DFlash2-MXFP8).
+
 Status: **implemented** for reproducible image construction, profile
 resolution, and four-rank dry-run planning. The executable fastsafetensors
 profile defaults to full `snapshot-v1` publication, one SparkCache load

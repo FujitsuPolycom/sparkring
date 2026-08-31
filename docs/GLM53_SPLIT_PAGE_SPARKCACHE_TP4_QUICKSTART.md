@@ -12,6 +12,16 @@ are published. Outside operators therefore cannot reconstruct the exact
 qualified image from the repositories yet, and a later rebuild will require
 its own qualification.
 
+The GLM runtime derives primarily from Local Inference Lab's Jovian Judgement
+[`vLLM` PR 535 source at `ead9d8a4`](https://github.com/local-inference-lab/vllm/commit/ead9d8a4e21b3818b21ec6f4d4d94564dd60c3f8).
+[B12X at `b1d541f9`](https://github.com/local-inference-lab/b12x/commit/b1d541f9e71a35f030d45fae437630fff7507c2a)
+supplies the Blackwell backend. This exact recipe uses
+[`GLM-5.3-Flash-NVFP4@520de24e`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/520de24eabf507659eaef7c70f14fd584527facc)
+with the BF16
+[`incoai/GLM-5.3-Flash-DFlash2@dc77ff1c`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2/tree/dc77ff1c99eeb2df044ee3d4f0094eb033fee410).
+The external draft is not Local Inference Lab's separate
+[MXFP8 DFlash2 checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-DFlash2-MXFP8).
+
 ## Configuration
 
 | Setting | Qualified value |

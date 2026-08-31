@@ -18,6 +18,23 @@ work, and [patched NCCL](https://github.com/FujitsuPolycom/sparkring/blob/main/s
 
 The repository provides launch tooling, model profiles, test evidence, and [performance data](https://github.com/FujitsuPolycom/sparkring/tree/main/performance).
 
+## GLM-5.3 upstream credit
+
+The GLM-5.3 serving profiles depend primarily on Local Inference Lab's
+[Jovian Judgement vLLM branch](https://github.com/local-inference-lab/vllm/tree/dev/jovian-judgement)
+for GLM runtime performance and correctness, and on
+[B12X](https://github.com/local-inference-lab/b12x) for Blackwell kernels and
+backend integration. Local Inference Lab also publishes the
+[GLM-5.3 Flash NVFP4 target](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4)
+and a separate
+[MXFP8 DFlash2 checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-DFlash2-MXFP8).
+
+The published profiles in this README use the NVFP4 target revision and the
+explicitly named external draft. The external
+[`incoai/GLM-5.3-Flash-DFlash2`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2)
+draft is BF16, not MXFP8. Checkpoint formats and revisions are not
+interchangeable.
+
 ## Setup
 
 Start with ssh to node0 and enough disk space for the intended model weights. 

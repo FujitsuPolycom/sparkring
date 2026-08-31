@@ -4,6 +4,16 @@ Use the [GLM-5.3 routing guide](GLM53_FLASH_QUICKSTARTS.md) to compare this
 published immutable image with the source-built DFlash7, adaptive-MTP, and
 `e10536a` paths.
 
+Runtime performance and correctness come primarily from Local Inference Lab's
+[Jovian Judgement vLLM branch](https://github.com/local-inference-lab/vllm/tree/dev/jovian-judgement),
+with Blackwell kernels from
+[B12X](https://github.com/local-inference-lab/b12x). This recipe uses
+[`GLM-5.3-Flash-NVFP4@520de24e`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/520de24eabf507659eaef7c70f14fd584527facc)
+and the BF16
+[`incoai/GLM-5.3-Flash-DFlash2@dc77ff1c`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2/tree/dc77ff1c99eeb2df044ee3d4f0094eb033fee410).
+The draft is not the separate Local Inference Lab
+[MXFP8 DFlash2 checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-DFlash2-MXFP8).
+
 Status: **qualified** for startup, semantic generation, runtime health, and one
 8,192-token persistent restore using the immutable image, model revisions, and
 TP4/DCP1 settings in this guide. The configured 524,288-token request limit and

@@ -4,6 +4,16 @@ Use the [GLM-5.3 routing guide](GLM53_FLASH_QUICKSTARTS.md) to compare this
 implemented adaptive-MTP path with the qualified artifact-specific DFlash
 paths before building an image.
 
+The runtime combines Local Inference Lab's Jovian Judgement
+[`da4d7be6` native build](https://github.com/local-inference-lab/vllm/commit/da4d7be6c97434f6942292ed8abbf4b32dc44355)
+with its
+[`0b67266a` adaptive-MTP Python source](https://github.com/local-inference-lab/vllm/commit/0b67266a0f37d6146a8403fb8482403c62f412d5).
+[B12X at `b1d541f9`](https://github.com/local-inference-lab/b12x/commit/b1d541f9e71a35f030d45fae437630fff7507c2a)
+supplies the Blackwell kernels and live-tensor KDA backend. This recipe uses
+embedded MTP from
+[`GLM-5.3-Flash-NVFP4@520de24e`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/520de24eabf507659eaef7c70f14fd584527facc);
+it does not load an external BF16 or MXFP8 DFlash checkpoint.
+
 Status: **implemented, not qualified**. This guide retains vLLM native
 extensions from `da4d7be6c97434f6942292ed8abbf4b32dc44355`, overlays Python
 source `0b67266a0f37d6146a8403fb8482403c62f412d5`, and installs SparkCache

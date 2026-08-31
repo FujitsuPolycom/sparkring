@@ -5,12 +5,17 @@ Status: **qualified** for the exact source and artifact identities in
 composition. A rebuilt image has **implemented** status until it passes the
 recorded live qualification.
 
-The runtime uses the `local-inference-lab/vllm` GLM-5.3 implementation, B12X
-kernels, SparkRing-patched NCCL 2.30.7, the public BF16 Inco DFlash2 drafter,
-and SparkCache's `glm53-flash-hybrid` connector. SparkCache owns the derived
-image recipe at `deploy/glm53_flash/Containerfile` in its source repository.
-SparkRing owns the topology, launch, image-label, and artifact-attestation
-contracts.
+The GLM runtime performance and correctness implementation comes primarily
+from Local Inference Lab's
+[Jovian Judgement vLLM source at `da4d7be6`](https://github.com/local-inference-lab/vllm/commit/da4d7be6c97434f6942292ed8abbf4b32dc44355).
+[B12X at `2fcf23a0`](https://github.com/local-inference-lab/b12x/commit/2fcf23a0ce269be27b2e03fece73d46e90e6aeea)
+supplies the Blackwell kernels and backend integration. The target is Local
+Inference Lab's
+[`GLM-5.3-Flash-NVFP4@520de24e`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/520de24eabf507659eaef7c70f14fd584527facc).
+The external draft is
+[`incoai/GLM-5.3-Flash-DFlash2@dc77ff1c`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2/tree/dc77ff1c99eeb2df044ee3d4f0094eb033fee410),
+whose weights are BF16. It is not Local Inference Lab's separate
+[MXFP8 DFlash2 checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-DFlash2-MXFP8).
 
 The source-complete public builder is documented in [`BUILD.md`](BUILD.md).
 It fetches every source by immutable commit, builds NCCL from the NVIDIA

@@ -7,6 +7,17 @@ runtimes include the production Python changes through `0b67266a` while
 retaining compiled `da4d7be6` extensions. This guide instead builds the exact
 `e10536a` source runtime.
 
+GLM performance, correctness, embedded MTP, and adaptation in this recipe come
+from Local Inference Lab's Jovian Judgement
+[`vLLM@e10536a`](https://github.com/local-inference-lab/vllm/commit/e10536aadf02a18fccddda7ec939c33147e8b0b3).
+[B12X at `2fcf23a0`](https://github.com/local-inference-lab/b12x/commit/2fcf23a0ce269be27b2e03fece73d46e90e6aeea)
+supplies the Blackwell backend. Every profile uses
+[`GLM-5.3-Flash-NVFP4@520de24e`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/520de24eabf507659eaef7c70f14fd584527facc).
+The external-speculator control alone uses
+[`incoai/GLM-5.3-Flash-DFlash2@dc77ff1c`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2/tree/dc77ff1c99eeb2df044ee3d4f0094eb033fee410),
+which is BF16, not the separate Local Inference Lab
+[MXFP8 DFlash2 checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-DFlash2-MXFP8).
+
 Status: **implemented, not qualified**. This guide builds an exact vLLM
 `e10536aadf02a18fccddda7ec939c33147e8b0b3` runtime and a SparkCache overlay.
 Its status is independent of the qualified vLLM `da4d7be6c97434f6942292ed8abbf4b32dc44355`

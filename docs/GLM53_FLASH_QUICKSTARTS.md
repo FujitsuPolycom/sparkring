@@ -4,6 +4,24 @@ SparkRing has one published BF16 DFlash2 composition and three source-built
 runtime paths. Select a row by speculator and evidence status before copying a
 profile. A result recorded for one image ID does not qualify another build.
 
+## Upstream runtime and model artifacts
+
+Local Inference Lab's
+[Jovian Judgement vLLM branch](https://github.com/local-inference-lab/vllm/tree/dev/jovian-judgement)
+is the primary source of GLM-5.3 runtime performance and correctness work.
+[B12X](https://github.com/local-inference-lab/b12x) supplies the Blackwell
+kernels and backend integration. Local Inference Lab publishes the
+[NVFP4 target](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4)
+and a separate
+[MXFP8 DFlash2 checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-DFlash2-MXFP8).
+
+Every row below uses
+[`GLM-5.3-Flash-NVFP4@520de24e`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/520de24eabf507659eaef7c70f14fd584527facc).
+Rows named BF16 DFlash2 or external DFlash7 use
+[`incoai/GLM-5.3-Flash-DFlash2@dc77ff1c`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2/tree/dc77ff1c99eeb2df044ee3d4f0094eb033fee410),
+which is BF16 and is not the MXFP8 checkpoint. Embedded-MTP rows use the MTP
+state carried by the named target checkpoint and no external DFlash weights.
+
 | Runtime path | Status | Image availability | Procedure |
 |---|---|---|---|
 | BF16 DFlash2 with SparkCache | **qualified** for the bounded cases in its guide | Published immutable OCI digest | [SparkCache quickstart](GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md) |
@@ -14,8 +32,7 @@ profile. A result recorded for one image ID does not qualify another build.
 | Adaptive embedded MTP with live-tensor B12X KDA | **implemented**, not qualified | Build locally | [Adaptive-MTP quickstart](GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md) |
 | Source-built vLLM `e10536a` profiles | **implemented**, not qualified | Build locally | [e10536a source-build quickstart](GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md) |
 
-All rows use the target checkpoint
-`local-inference-lab/GLM-5.3-Flash-NVFP4@520de24eabf507659eaef7c70f14fd584527facc`.
+All rows use the exact target revision named above.
 The external DFlash checkpoints and embedded-MTP policies have distinct cache
 identities. Do not point two speculator policies at the same writable cache
 root.
