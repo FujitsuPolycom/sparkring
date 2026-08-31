@@ -122,6 +122,9 @@ Replace these five site values:
 - `DFLASH_MODEL_HOST_PATH`: the BF16 draft directory;
 - `CACHE_HOST_ROOT`: a writable rank-local JIT and SparkCache directory.
 
+The default OpenAI-compatible model name is `glm-5.3-flash`. Override
+`SERVED_MODEL_NAME` only when the site needs a distinct routing name.
+
 Choose the DCP degree with one line:
 
 ```bash

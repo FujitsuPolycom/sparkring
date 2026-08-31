@@ -41,6 +41,7 @@ def test_environment_exposes_reproducible_r8_defaults() -> None:
         "sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a"
     )
     assert values["MAX_MODEL_LEN"] == "1048576"
+    assert values["SERVED_MODEL_NAME"] == "glm-5.3-flash"
     assert values["MAX_NUM_BATCHED_TOKENS"] == "8192"
     assert values["PREFILL_SCHEDULE_INTERVAL"] == "8"
     assert values["KV_CACHE_MEMORY_BYTES"] == "auto"
