@@ -35,9 +35,9 @@ fi
 : "${PIPELINE_PARALLEL_SIZE:=1}"
 : "${DECODE_CONTEXT_PARALLEL_SIZE:=1}"
 : "${NODE_COUNT:=4}"
-: "${MAX_MODEL_LEN:=262144}"
+: "${MAX_MODEL_LEN:=524288}"
 : "${MAX_NUM_SEQS:=16}"
-: "${MAX_NUM_BATCHED_TOKENS:=4096}"
+: "${MAX_NUM_BATCHED_TOKENS:=8192}"
 : "${KV_CACHE_MEMORY_BYTES:=21474836480}"
 : "${GPU_MEMORY_UTILIZATION:=0.80}"
 : "${KV_CACHE_DTYPE:=fp8}"
@@ -61,7 +61,7 @@ fi
 : "${SPARKCACHE_LOW_WATERMARK_BYTES:=34359738368}"
 : "${SPARKCACHE_TTL_SECONDS:=0}"
 : "${SPARKCACHE_MIN_SPAN_TOKENS:=4096}"
-: "${SPARKCACHE_MAX_SPAN_TOKENS:=262144}"
+: "${SPARKCACHE_MAX_SPAN_TOKENS:=524288}"
 : "${SPARKCACHE_LOAD_THREADS:=8}"
 : "${SPARKCACHE_MAX_PENDING_RESTORES:=8}"
 : "${SPARKCACHE_CUDA_RESTORE_IO_WORKERS:=8}"
@@ -259,7 +259,7 @@ else
   mark_if_modified SPARKCACHE_CUDA_ARENA_BYTES 268435456
 fi
 if (( ${#modified_settings[@]} > 0 )); then
-  launch_status='user-modified-unqualified'
+  launch_status='implemented-unqualified-configuration'
   printf 'settings differ from the smoke-verified artifact: %s\n' \
     "$(IFS=,; printf '%s' "${modified_settings[*]}")" >&2
 fi

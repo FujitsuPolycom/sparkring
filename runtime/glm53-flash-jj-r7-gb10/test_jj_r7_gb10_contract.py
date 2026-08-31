@@ -189,11 +189,22 @@ def test_environment_exposes_common_settings_and_matches_artifact_defaults() -> 
     assert values["BASE_IMAGE_REF"].endswith("@" + BASE_DIGEST)
     assert values["SPARKCACHE_IMAGE_REF"].endswith("@" + SPARKCACHE_DIGEST)
     assert values["BASE_CACHE_NAMESPACE"] != values["SPARKCACHE_CACHE_NAMESPACE"]
-    artifacts = _json(ARTIFACTS)["serving_defaults"]
+    artifacts = _json(ARTIFACTS)["operator_defaults"]
     assert int(values["MAX_MODEL_LEN"]) == artifacts["max_model_len"]
     assert int(values["MAX_NUM_SEQS"]) == artifacts["max_num_seqs"]
     assert int(values["MAX_NUM_BATCHED_TOKENS"]) == artifacts["max_num_batched_tokens"]
+    assert int(values["SPARKCACHE_MAX_SPAN_TOKENS"]) == artifacts[
+        "sparkcache_max_span_tokens"
+    ]
     assert values["SERVED_MODEL_NAME"] == artifacts["served_model_name"]
+    smoke = _json(ARTIFACTS)["smoke_configuration"]
+    assert smoke == {
+        "max_model_len": 262144,
+        "max_num_seqs": 16,
+        "max_num_batched_tokens": 4096,
+        "sparkcache_max_span_tokens": 262144,
+        "status": "TP4 C4 smoke-verified for the bounded requests in the evidence receipt",
+    }
 
 
 def test_launcher_selects_both_images_without_duplicate_serve(tmp_path: Path) -> None:
@@ -277,7 +288,19 @@ printf '%s  %s\n' "$hash" "$2"
         image = next(value for value in arguments if value.startswith("ghcr.io/"))
         assert arguments[arguments.index(image) + 1] == "/models/target"
         assert "serve" not in arguments
-        assert "org.sparkring.launch.status=implemented-tp4-smoke-verified" in arguments
+        assert (
+            "org.sparkring.launch.status=implemented-unqualified-configuration"
+            in arguments
+        )
+        modified = next(
+            argument
+            for argument in arguments
+            if argument.startswith("org.sparkring.launch.modified-settings=")
+        )
+        assert "MAX_MODEL_LEN" in modified
+        assert "MAX_NUM_BATCHED_TOKENS" in modified
+        if variant == "sparkcache":
+            assert "SPARKCACHE_MAX_SPAN_TOKENS" in modified
         if variant == "base":
             assert "--kv-transfer-config" not in arguments
         else:

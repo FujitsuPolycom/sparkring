@@ -40,8 +40,13 @@ the container starts.
 Use [`runtime.env.example`](runtime.env.example) and
 [`launch-rank.sh`](launch-rank.sh) for the shortest configurable start. The
 launcher selects `IMAGE_VARIANT=base` or `IMAGE_VARIANT=sparkcache`, verifies
-the exact local image ID after the immutable pull, and marks changed serving
-settings `user-modified-unqualified`.
+the exact local image ID after the immutable pull, and marks settings that
+differ from the smoke configuration `implemented-unqualified-configuration`.
+
+Operator defaults are a 524,288-token request limit, 8,192 batched tokens, and
+a 524,288-token SparkCache publication span. The image smoke used 262,144,
+4,096, and a 262,144-token span. The larger defaults are implemented but have
+no long-context capacity or throughput qualification.
 
 Both images declare `ENTRYPOINT ["vllm", "serve"]`. The launcher therefore
 passes `/models/target` as the first image argument. It does not pass another

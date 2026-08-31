@@ -56,11 +56,15 @@ profile is selected.
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
 |---|---|---:|---:|---:|---|---|
-| Published JJ r7-compatible GLM-5.3 Flash base | 4 Sparks · TP4/DCP1 | 256K | 16 | 4,096 | 20 GiB/rank FP8 KV | [Public-image quickstart](docs/GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) |
-| Published JJ r7-compatible GLM-5.3 Flash + SparkCache | 4 Sparks · TP4/DCP1 | 256K | 16 | 4,096 | 20 GiB/rank FP8 KV + 40 GiB/rank SparkCache | [Public-image quickstart](docs/GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) |
+| Published JJ r7-compatible GLM-5.3 Flash base | 4 Sparks · TP4/DCP1 | 512K | 16 | 8,192 | 20 GiB/rank FP8 KV | [Public-image quickstart](docs/GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) |
+| Published JJ r7-compatible GLM-5.3 Flash + SparkCache | 4 Sparks · TP4/DCP1 | 512K | 16 | 8,192 | 20 GiB/rank FP8 KV + 40 GiB/rank SparkCache | [Public-image quickstart](docs/GLM53_JJ_R7_GB10_TP4_QUICKSTART.md) |
 
 The immutable published images are implemented and TP4 smoke-verified for the
 exact C4 cases in their guide. They are not generally qualified.
+
+The operator launcher defaults to a 524,288-token request limit and 8,192
+batched tokens. Those limits are implemented but unqualified; the bounded C4
+smoke used a 262,144-token limit and 4,096 batched tokens.
 
 Historical exact-artifact and source-development records remain available for
 reproducing their named evidence. They are not the default public-image start:

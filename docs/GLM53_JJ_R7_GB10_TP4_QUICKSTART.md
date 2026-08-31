@@ -4,6 +4,12 @@ Status: **implemented and TP4 smoke-verified**, not generally qualified. This
 guide selects either a cache-disabled base image or its SparkCache composition.
 Both are immutable public Linux ARM64 artifacts.
 
+The launcher defaults to `MAX_MODEL_LEN=524288` and
+`MAX_NUM_BATCHED_TOKENS=8192`. The SparkCache variant also defaults to
+`SPARKCACHE_MAX_SPAN_TOKENS=524288`. These operator limits are implemented but
+unqualified. The bounded C4 smoke used 262,144, 4,096, and a 262,144-token
+SparkCache span, so the launcher labels the 512K/8K configuration accordingly.
+
 | Variant | Immutable image | Local image ID after pull |
 |---|---|---|
 | `base` | `ghcr.io/fujitsupolycom/sparkring-glm53-runtime@sha256:11922064b342de1fc98f0ef85e6648843c8fa7eb3e4f4353c6ad82d6e457dde0` | `sha256:8cff7a250f16bfb89df23d29f9233dbb1c700a780dcec86a64c535a71aee88be` |
@@ -213,8 +219,8 @@ The default namespaces are distinct:
 - base: `jj-r7-gb10-base-v1`;
 - SparkCache: `jj-r7-gb10-page-tail-cow-v1`.
 
-A changed serving setting receives
-`org.sparkring.launch.status=user-modified-unqualified` and a
+A serving configuration that differs from the bounded smoke receives
+`org.sparkring.launch.status=implemented-unqualified-configuration` and a
 comma-separated `org.sparkring.launch.modified-settings` label. Site addresses,
 bind-mount paths, and container names do not alter status. A modified launch
 may work, but it does not inherit the C4 smoke evidence.

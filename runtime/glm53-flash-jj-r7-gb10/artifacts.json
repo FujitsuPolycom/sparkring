@@ -122,18 +122,27 @@
       "method": "Sorted SHA-256 manifests for every vLLM shared object were compared between the native parent and the composed child image and were byte-identical."
     }
   },
-  "serving_defaults": {
+  "operator_defaults": {
     "topology": "TP4/DCP1/PP1 on four GB10 systems",
     "served_model_name": "glm-5.3-flash-nvfp4-dflash2-bf16-t7-jj-r7-gb10",
-    "max_model_len": 262144,
+    "max_model_len": 524288,
     "max_num_seqs": 16,
-    "max_num_batched_tokens": 4096,
+    "max_num_batched_tokens": 8192,
     "kv_cache_dtype": "fp8",
     "kv_cache_bytes_per_rank": 21474836480,
     "target_page_size_tokens": 512,
     "recurrent_page_size_tokens": 512,
+    "sparkcache_max_span_tokens": 524288,
     "base_cache_namespace": "jj-r7-gb10-base-v1",
-    "sparkcache_cache_namespace": "jj-r7-gb10-page-tail-cow-v1"
+    "sparkcache_cache_namespace": "jj-r7-gb10-page-tail-cow-v1",
+    "status": "implemented; long-context capacity and throughput unqualified"
+  },
+  "smoke_configuration": {
+    "max_model_len": 262144,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 4096,
+    "sparkcache_max_span_tokens": 262144,
+    "status": "TP4 C4 smoke-verified for the bounded requests in the evidence receipt"
   },
   "image_delta": {
     "scope": "The published images add the tested compact startup logging, registered split-page environment variables, and DeepEP removal to the source-bound compositions.",
