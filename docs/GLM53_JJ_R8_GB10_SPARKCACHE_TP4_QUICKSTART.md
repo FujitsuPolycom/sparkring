@@ -23,6 +23,10 @@ local image ID: sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c
 platform: linux/arm64
 ```
 
+Use the `sparkring-glm53-sparkcache` package for this procedure. The
+`sparkring-glm53-runtime` and `gb10-vllm-serving` packages are build or
+profile inputs and are not substitutes for the operator image below.
+
 Pull and verify the immutable image on rank 0:
 
 ```bash
