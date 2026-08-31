@@ -124,6 +124,11 @@
   },
   "operator_defaults": {
     "topology": "TP4/DCP1/PP1 on four GB10 systems",
+    "dcp_auto_policy": {
+      "dcp1": {"cp_kv_cache_interleave_size": 1, "b12x_full_ckv_gather": false},
+      "dcp2": {"cp_kv_cache_interleave_size": 4, "b12x_full_ckv_gather": true},
+      "dcp4": {"cp_kv_cache_interleave_size": 4, "b12x_full_ckv_gather": true}
+    },
     "served_model_name": "glm-5.3-flash-nvfp4-dflash2-bf16-t7-jj-r7-gb10",
     "max_model_len": 524288,
     "max_num_seqs": 16,
@@ -143,6 +148,83 @@
     "max_num_batched_tokens": 4096,
     "sparkcache_max_span_tokens": 262144,
     "status": "TP4 C4 smoke-verified for the bounded requests in the evidence receipt"
+  },
+  "cache_disabled_dcp_live_checks": {
+    "status": "implemented",
+    "qualification": "unqualified",
+    "conditions": "Four directly connected GB10 systems used the cache-disabled runtime at TP4 with a 524288-token request limit, 8192 batched tokens, FP8 KV cache, four-token KV interleaving, B12X full-CKV prefill gather, and the pinned target and BF16 DFlash2 draft recorded in this artifact.",
+    "dcp2": {
+      "gpu_kv_cache_tokens": 1800084,
+      "reported_524288_token_request_concurrency": 3.43,
+      "prompt_tokens": 7030,
+      "elapsed_seconds": 5.677,
+      "result": "The request completed without a runtime error. A separate bounded arithmetic request produced the correct answer while the configured reasoning parser retained explanatory text."
+    },
+    "dcp4": {
+      "gpu_kv_cache_tokens": 3167508,
+      "reported_524288_token_request_concurrency": 6.04,
+      "prompt_tokens": 7032,
+      "elapsed_seconds": 4.111,
+      "result": "The request completed with finish reason stop and returned the exact requested answer."
+    },
+    "limitations": "The checks do not qualify throughput, concurrency, full-length 512K requests, sustained serving, fault recovery, or SparkCache with DCP2/DCP4. The published SparkCache image lacks the four-token interleave codec and the launcher restricts it to DCP1."
+  },
+  "sparkcache_source_overlay_dcp_live_checks": {
+    "status": "implemented",
+    "qualification": "unqualified",
+    "distribution": "source-overlay-only",
+    "evidence": "runtime/glm53-flash-jj-r7-gb10/SPARKCACHE_DCP_SOURCE_OVERLAY.md",
+    "sparkcache_source_sha256": "40de372dda64dd25f493584b2ba3dae81c4350d424d3cf00cfea92452dac170c",
+    "runtime": {
+      "vllm_commit": "331573d20bd47e78327ed8d8b4d2e6d350bbb1ab",
+      "b12x_commit": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
+      "nccl_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
+      "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
+      "target_checkpoint_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9",
+      "draft_checkpoint_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
+      "max_model_len": 524288,
+      "max_num_batched_tokens": 8192,
+      "target_kv_cache_dtype": "fp8",
+      "kv_cache_bytes_per_rank": 21474836480,
+      "dflash2_speculative_tokens": 7,
+      "cp_kv_cache_interleave_size": 4,
+      "b12x_full_ckv_gather": true
+    },
+    "semantic_oracle": {
+      "prompt_tokens": 10028,
+      "expected_visible_output": "red"
+    },
+    "dcp2": {
+      "namespace": "jj-r7-dcp2-i4-manager-pages-v2-repl",
+      "aligned_span_tokens": 9216,
+      "digest_prefix": "1b1bb36f670e",
+      "snapshot_ms_by_rank": [130.5, 132.9, 118.7, 129.2],
+      "commit_ms_by_rank": [157.3, 167.2, 165.7, 189.3],
+      "python_restore": {
+        "page_bytes_per_rank": 78751393,
+        "service_ms_by_rank": [234.840, 264.505, 253.430, 263.052],
+        "result": "A full process restart plus scheduler-inventory request restored the stored span and returned the exact expected visible output on every rank."
+      },
+      "cuda_restore": {
+        "page_bytes_per_rank": 78751393,
+        "service_ms_by_rank": [156.599, 174.131, 172.630, 151.086],
+        "result": "A separate full restart restored the stored span through SparkCache CUDA placement and returned the exact expected visible output on every rank."
+      }
+    },
+    "dcp4": {
+      "namespace": "jj-r7-dcp4-i4-manager-pages-v2-repl",
+      "aligned_span_tokens": 8192,
+      "digest_prefix": "616760b4c69d",
+      "dcp_shard_ranks": [0, 1, 2, 3],
+      "snapshot_ms_by_rank": [85.7, 76.7, 94.2, 62.4],
+      "commit_ms_by_rank": [171.4, 180.7, 147.2, 160.9],
+      "cuda_restore": {
+        "page_bytes_per_rank": 62953633,
+        "service_ms_by_rank": [133.709, 130.430, 118.935, 118.781],
+        "result": "A full process restart plus scheduler-inventory request restored the stored span through SparkCache CUDA placement and returned the exact expected visible output on every rank."
+      }
+    },
+    "limitations": "The tested SparkCache bytes were injected as an uncommitted source overlay. No immutable OCI image contains this source digest. A replacement image is required before DCP2/DCP4 can be offered as a pull-only SparkCache route. The checks do not qualify throughput, concurrency, 512K prompts, sustained serving, or fault recovery."
   },
   "image_delta": {
     "scope": "The published images add the tested compact startup logging, registered split-page environment variables, and DeepEP removal to the source-bound compositions.",

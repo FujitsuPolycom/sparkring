@@ -40,8 +40,9 @@ SparkRing supports four model families across ten deployment profiles:
 
 - GLM-5.2 EXL3 3.5-bpw at four-Spark TP4/DCP4, as a base profile and a
   SparkCache composition, using the R7 runtime and site/candidate contracts.
-- GLM-5.3 Flash with the public BF16 DFlash2 drafter at four-Spark TP4/DCP1,
-  as a cache-disabled base profile and a SparkCache composition, using the
+- GLM-5.3 Flash with the public BF16 DFlash2 drafter at four-Spark TP4. The
+  cache-disabled profile supports DCP1, DCP2, and DCP4; the SparkCache
+  composition remains DCP1, using the
   immutable published JJ r7-compatible artifacts and environment contract in
   `runtime/glm53-flash-jj-r7-gb10/`.
 - DeepSeek-V4-Flash-0731 at two-Spark TP2/DCP1 and four-Spark TP4/DCP1, as

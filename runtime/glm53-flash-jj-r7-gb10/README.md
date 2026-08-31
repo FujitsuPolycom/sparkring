@@ -44,9 +44,24 @@ the exact local image ID after the immutable pull, and marks settings that
 differ from the smoke configuration `implemented-unqualified-configuration`.
 
 Operator defaults are a 524,288-token request limit, 8,192 batched tokens, and
-a 524,288-token SparkCache publication span. The image smoke used 262,144,
-4,096, and a 262,144-token span. The larger defaults are implemented but have
-no long-context capacity or throughput qualification.
+a 524,288-token SparkCache publication span. `DECODE_CONTEXT_PARALLEL_SIZE=1`
+remains the default. Automatic DCP settings select one-token KV interleaving
+without full-CKV gather for DCP1, and four-token interleaving with full-CKV
+prefill gather for DCP2 or DCP4.
+
+The cache-disabled image served bounded live requests at TP4/DCP2 and TP4/DCP4
+with the 524,288-token limit and 8,192-token scheduler budget. A 7,030-token
+DCP2 request completed in 5.677 seconds. A 7,032-token DCP4 request returned the
+exact requested answer in 4.111 seconds. These checks establish a working
+launch path, not throughput, concurrency, long-context, or SparkCache
+qualification. The launcher rejects SparkCache with DCP2/DCP4 because the
+published SparkCache image does not include the required four-token interleave
+codec.
+
+The DCP-aware SparkCache source overlay completed exact restart-and-restore
+checks at DCP2 and DCP4 through SparkCache CUDA placement. The tested bytes are
+not in a published image, so the result does not change the pull-only launcher.
+See the [source-overlay evidence](SPARKCACHE_DCP_SOURCE_OVERLAY.md).
 
 Both images declare `ENTRYPOINT ["vllm", "serve"]`. The launcher therefore
 passes `/models/target` as the first image argument. It does not pass another

@@ -18,15 +18,16 @@ RECEIPT = (
     / "performance/receipts/glm53-flash/jj-r7-gb10-tp4-smoke-20260830"
     / "validation.json"
 )
-RECORD = (
-    ROOT
-    / "performance/records/glm53-flash/jj-r7-gb10-tp4-smoke-20260830.md"
-)
+RECORD = ROOT / "performance/records/glm53-flash/jj-r7-gb10-tp4-smoke-20260830.md"
 
 BASE_DIGEST = "sha256:11922064b342de1fc98f0ef85e6648843c8fa7eb3e4f4353c6ad82d6e457dde0"
 BASE_ID = "sha256:8cff7a250f16bfb89df23d29f9233dbb1c700a780dcec86a64c535a71aee88be"
-SPARKCACHE_DIGEST = "sha256:f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5"
-SPARKCACHE_ID = "sha256:6af83baabb239db6b05e379401daf93c8f51694f81483c2781f6014c30e31db4"
+SPARKCACHE_DIGEST = (
+    "sha256:f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5"
+)
+SPARKCACHE_ID = (
+    "sha256:6af83baabb239db6b05e379401daf93c8f51694f81483c2781f6014c30e31db4"
+)
 VLLM_COMMIT = "331573d20bd47e78327ed8d8b4d2e6d350bbb1ab"
 B12X_COMMIT = "6255090a03b12c3f7d552102a02fac0b542fb8c9"
 SPARKCACHE_COMMIT = "dcbe040d339f243621163b0c6ed4ce96462403d8"
@@ -62,9 +63,15 @@ def test_artifacts_bind_public_images_sources_models_and_labels() -> None:
     assert cache["local_image_id"] == SPARKCACHE_ID
     assert cache["parent_local_image_id"] == BASE_ID
     assert base["entrypoint"] == cache["entrypoint"] == ["vllm", "serve"]
-    assert base["required_labels"]["org.sparkring.vllm.sparkcache-composition"] == VLLM_COMMIT
+    assert (
+        base["required_labels"]["org.sparkring.vllm.sparkcache-composition"]
+        == VLLM_COMMIT
+    )
     assert cache["required_labels"]["org.sparkcache.commit"] == SPARKCACHE_COMMIT
-    assert cache["required_labels"]["org.sparkcache.publication-schema"] == "page-tail-cow-v1"
+    assert (
+        cache["required_labels"]["org.sparkcache.publication-schema"]
+        == "page-tail-cow-v1"
+    )
     assert base["required_labels"]["org.opencontainers.image.revision"] == (
         "ca91fa72a4cf7e1edaad9875a1a99ab4f71c49af"
     )
@@ -85,7 +92,10 @@ def test_artifacts_bind_public_images_sources_models_and_labels() -> None:
         "https://github.com/FujitsuPolycom/vllm.git"
     )
     assert sources["vllm"]["composition_commit"] == VLLM_COMMIT
-    assert sources["vllm"]["composition_tree"] == "927f52a0085bcecfd2ba679e5abebe1a62623daf"
+    assert (
+        sources["vllm"]["composition_tree"]
+        == "927f52a0085bcecfd2ba679e5abebe1a62623daf"
+    )
     assert sources["b12x"]["commit"] == B12X_COMMIT
     assert sources["b12x"]["tree"] == "0bb58d0dcc10e29e00ff9850c0d719fca1aba5ad"
     assert sources["sparkcache"]["commit"] == SPARKCACHE_COMMIT
@@ -94,9 +104,12 @@ def test_artifacts_bind_public_images_sources_models_and_labels() -> None:
     )
     assert artifacts["models"]["draft"]["dtype"] == "bfloat16"
     inherited = artifacts["inherited_lower_layer_labels"]
-    assert inherited["org.glm53.dflash2.checkpoint-revision"][
-        "active_mounted_draft_identity"
-    ] is False
+    assert (
+        inherited["org.glm53.dflash2.checkpoint-revision"][
+            "active_mounted_draft_identity"
+        ]
+        is False
+    )
     native = artifacts["native_extension_provenance"]
     assert native["compiled_build_environment_commit"] == (
         "3633d61c3c7b04bb4d598cadbdc342f3be40482d"
@@ -106,10 +119,35 @@ def test_artifacts_bind_public_images_sources_models_and_labels() -> None:
     )
     assert native["active_python_composition_commit"] == VLLM_COMMIT
     assert native["verification"]["status"] == "verified"
-    assert inherited["org.glm53.dflash2.mxfp8-quant-plumbing"][
-        "active_mounted_draft_identity"
-    ] is False
+    assert (
+        inherited["org.glm53.dflash2.mxfp8-quant-plumbing"][
+            "active_mounted_draft_identity"
+        ]
+        is False
+    )
     assert artifacts["image_delta"]["focused_tests"] == 15
+    dcp_overlay = artifacts["sparkcache_source_overlay_dcp_live_checks"]
+    assert dcp_overlay["status"] == "implemented"
+    assert dcp_overlay["qualification"] == "unqualified"
+    assert dcp_overlay["distribution"] == "source-overlay-only"
+    assert dcp_overlay["sparkcache_source_sha256"] == (
+        "40de372dda64dd25f493584b2ba3dae81c4350d424d3cf00cfea92452dac170c"
+    )
+    assert dcp_overlay["runtime"]["cp_kv_cache_interleave_size"] == 4
+    assert dcp_overlay["dcp2"]["aligned_span_tokens"] == 9216
+    assert dcp_overlay["dcp2"]["cuda_restore"]["service_ms_by_rank"] == [
+        156.599,
+        174.131,
+        172.630,
+        151.086,
+    ]
+    assert dcp_overlay["dcp4"]["aligned_span_tokens"] == 8192
+    assert dcp_overlay["dcp4"]["cuda_restore"]["service_ms_by_rank"] == [
+        133.709,
+        130.430,
+        118.935,
+        118.781,
+    ]
 
 
 def test_receipt_records_exact_c4_smoke_boundaries() -> None:
@@ -150,7 +188,9 @@ def test_receipt_records_exact_c4_smoke_boundaries() -> None:
 def test_environment_exposes_common_settings_and_matches_artifact_defaults() -> None:
     template = ENV_TEMPLATE.read_text(encoding="utf-8")
     values = dict(
-        re.findall(r"^([A-Z][A-Z0-9_]*)=['\"]?([^'\"\n]*)['\"]?$", template, re.MULTILINE)
+        re.findall(
+            r"^([A-Z][A-Z0-9_]*)=['\"]?([^'\"\n]*)['\"]?$", template, re.MULTILINE
+        )
     )
     required = {
         "HOST_IP",
@@ -173,6 +213,8 @@ def test_environment_exposes_common_settings_and_matches_artifact_defaults() -> 
         "ATTENTION_BACKEND",
         "MOE_BACKEND",
         "LINEAR_BACKEND",
+        "CP_KV_CACHE_INTERLEAVE_SIZE",
+        "B12X_MLA_CKV_GATHER",
         "BASE_CACHE_NAMESPACE",
         "SPARKCACHE_CACHE_NAMESPACE",
         "SPARKCACHE_MAX_BYTES",
@@ -193,10 +235,27 @@ def test_environment_exposes_common_settings_and_matches_artifact_defaults() -> 
     assert int(values["MAX_MODEL_LEN"]) == artifacts["max_model_len"]
     assert int(values["MAX_NUM_SEQS"]) == artifacts["max_num_seqs"]
     assert int(values["MAX_NUM_BATCHED_TOKENS"]) == artifacts["max_num_batched_tokens"]
-    assert int(values["SPARKCACHE_MAX_SPAN_TOKENS"]) == artifacts[
-        "sparkcache_max_span_tokens"
-    ]
+    assert (
+        int(values["SPARKCACHE_MAX_SPAN_TOKENS"])
+        == artifacts["sparkcache_max_span_tokens"]
+    )
     assert values["SERVED_MODEL_NAME"] == artifacts["served_model_name"]
+    assert values["CP_KV_CACHE_INTERLEAVE_SIZE"] == "auto"
+    assert values["B12X_MLA_CKV_GATHER"] == "auto"
+    assert artifacts["dcp_auto_policy"] == {
+        "dcp1": {
+            "cp_kv_cache_interleave_size": 1,
+            "b12x_full_ckv_gather": False,
+        },
+        "dcp2": {
+            "cp_kv_cache_interleave_size": 4,
+            "b12x_full_ckv_gather": True,
+        },
+        "dcp4": {
+            "cp_kv_cache_interleave_size": 4,
+            "b12x_full_ckv_gather": True,
+        },
+    }
     smoke = _json(ARTIFACTS)["smoke_configuration"]
     assert smoke == {
         "max_model_len": 262144,
@@ -207,7 +266,7 @@ def test_environment_exposes_common_settings_and_matches_artifact_defaults() -> 
     }
 
 
-def test_launcher_selects_both_images_without_duplicate_serve(tmp_path: Path) -> None:
+def test_launcher_selects_images_and_resolves_dcp_geometry(tmp_path: Path) -> None:
     subprocess.run(
         ["bash", "-n", LAUNCHER.relative_to(ROOT).as_posix()],
         check=True,
@@ -259,9 +318,99 @@ printf '%s  %s\n' "$hash" "$2"
     ):
         path.write_bytes(b"test fixture")
 
-    for variant in ("base", "sparkcache"):
-        capture = tmp_path / f"{variant}-arguments.txt"
-        config = tmp_path / f"{variant}.env"
+    for dcp, expected_interleave, expected_gather in (
+        (1, "1", "0"),
+        (2, "4", "1"),
+        (4, "4", "1"),
+    ):
+        variants = ("base", "sparkcache") if dcp == 1 else ("base",)
+        for variant in variants:
+            capture = tmp_path / f"{variant}-dcp{dcp}-arguments.txt"
+            config = tmp_path / f"{variant}-dcp{dcp}.env"
+            config.write_bytes(
+                "\n".join(
+                    (
+                        "HOST_IP=rank0.example.net",
+                        "MASTER_ADDR=rank0.example.net",
+                        f"TARGET_MODEL_HOST_PATH={_bash_path(directories['target'])}",
+                        f"DFLASH_MODEL_HOST_PATH={_bash_path(directories['draft'])}",
+                        f"CACHE_HOST_ROOT={_bash_path(directories['cache'])}",
+                        f"PATH={_bash_path(fake_bin)}:$PATH",
+                        f"export CAPTURE_PATH={_bash_path(capture)}",
+                        f"IMAGE_VARIANT={variant}",
+                        f"DECODE_CONTEXT_PARALLEL_SIZE={dcp}",
+                    )
+                ).encode("utf-8")
+            )
+            result = subprocess.run(
+                [
+                    "bash",
+                    LAUNCHER.relative_to(ROOT).as_posix(),
+                    "0",
+                    _bash_path(config),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            assert result.returncode == 0, result.stderr
+            arguments = capture.read_text(encoding="utf-8").splitlines()
+            image = next(value for value in arguments if value.startswith("ghcr.io/"))
+            assert arguments[arguments.index(image) + 1] == "/models/target"
+            assert "serve" not in arguments
+            dcp_index = arguments.index("--decode-context-parallel-size")
+            assert arguments[dcp_index + 1] == str(dcp)
+            interleave_index = arguments.index("--cp-kv-cache-interleave-size")
+            assert arguments[interleave_index + 1] == expected_interleave
+            assert f"VLLM_B12X_MLA_CKV_GATHER={expected_gather}" in arguments
+            assert "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS=524288" in arguments
+            assert (
+                "org.sparkring.launch.status=implemented-unqualified-configuration"
+                in arguments
+            )
+            modified = next(
+                argument
+                for argument in arguments
+                if argument.startswith("org.sparkring.launch.modified-settings=")
+            )
+            assert "MAX_MODEL_LEN" in modified
+            assert "MAX_NUM_BATCHED_TOKENS" in modified
+            if dcp == 1:
+                assert "CP_KV_CACHE_INTERLEAVE_SIZE" not in modified
+                assert "B12X_MLA_CKV_GATHER" not in modified
+            else:
+                assert "DECODE_CONTEXT_PARALLEL_SIZE" in modified
+                assert "CP_KV_CACHE_INTERLEAVE_SIZE" in modified
+                assert "B12X_MLA_CKV_GATHER" in modified
+            if variant == "sparkcache":
+                assert "SPARKCACHE_MAX_SPAN_TOKENS" in modified
+            if variant == "base":
+                assert "--kv-transfer-config" not in arguments
+            else:
+                encoded = arguments[arguments.index("--kv-transfer-config") + 1]
+                connector = json.loads(encoded)
+                extra = connector["kv_connector_extra_config"]
+                assert extra["spark_cache_publication_schema"] == "page-tail-cow-v1"
+                assert extra["spark_cache_load_threads"] == 8
+
+    invalid = (
+        ("DECODE_CONTEXT_PARALLEL_SIZE=3", "must be 1, 2, or 4"),
+        (
+            "DECODE_CONTEXT_PARALLEL_SIZE=4\nTENSOR_PARALLEL_SIZE=2",
+            "must divide TENSOR_PARALLEL_SIZE",
+        ),
+        (
+            "DECODE_CONTEXT_PARALLEL_SIZE=2\nCP_KV_CACHE_INTERLEAVE_SIZE=1",
+            "requires CP_KV_CACHE_INTERLEAVE_SIZE divisible by 4",
+        ),
+        (
+            "DECODE_CONTEXT_PARALLEL_SIZE=2\nIMAGE_VARIANT=sparkcache",
+            "published SparkCache image supports DCP1",
+        ),
+    )
+    for index, (topology, expected_error) in enumerate(invalid):
+        config = tmp_path / f"invalid-{index}.env"
         config.write_bytes(
             "\n".join(
                 (
@@ -271,8 +420,7 @@ printf '%s  %s\n' "$hash" "$2"
                     f"DFLASH_MODEL_HOST_PATH={_bash_path(directories['draft'])}",
                     f"CACHE_HOST_ROOT={_bash_path(directories['cache'])}",
                     f"PATH={_bash_path(fake_bin)}:$PATH",
-                    f"export CAPTURE_PATH={_bash_path(capture)}",
-                    f"IMAGE_VARIANT={variant}",
+                    topology,
                 )
             ).encode("utf-8")
         )
@@ -283,32 +431,8 @@ printf '%s  %s\n' "$hash" "$2"
             capture_output=True,
             check=False,
         )
-        assert result.returncode == 0, result.stderr
-        arguments = capture.read_text(encoding="utf-8").splitlines()
-        image = next(value for value in arguments if value.startswith("ghcr.io/"))
-        assert arguments[arguments.index(image) + 1] == "/models/target"
-        assert "serve" not in arguments
-        assert (
-            "org.sparkring.launch.status=implemented-unqualified-configuration"
-            in arguments
-        )
-        modified = next(
-            argument
-            for argument in arguments
-            if argument.startswith("org.sparkring.launch.modified-settings=")
-        )
-        assert "MAX_MODEL_LEN" in modified
-        assert "MAX_NUM_BATCHED_TOKENS" in modified
-        if variant == "sparkcache":
-            assert "SPARKCACHE_MAX_SPAN_TOKENS" in modified
-        if variant == "base":
-            assert "--kv-transfer-config" not in arguments
-        else:
-            encoded = arguments[arguments.index("--kv-transfer-config") + 1]
-            connector = json.loads(encoded)
-            extra = connector["kv_connector_extra_config"]
-            assert extra["spark_cache_publication_schema"] == "page-tail-cow-v1"
-            assert extra["spark_cache_load_threads"] == 8
+        assert result.returncode == 78
+        assert expected_error in result.stderr
 
 
 def test_launcher_verifies_identity_files_before_starting_docker() -> None:
@@ -332,7 +456,9 @@ def test_cudagraph_capture_list_uses_the_exposed_maximum() -> None:
     assert '"cudagraph_capture_sizes": capture_sizes' in launcher
 
 
-def test_canonical_glm_indexes_route_to_published_images_without_stale_identities() -> None:
+def test_canonical_glm_indexes_route_to_published_images_without_stale_identities() -> (
+    None
+):
     canonical = (
         ROOT / "AGENTS.md",
         ROOT / "runtime/README.md",
@@ -399,6 +525,9 @@ def test_public_docs_state_evidence_and_unqualified_boundaries() -> None:
     assert 'docker image save "${image}" | zstd' in quickstart
     assert "'zstd -d | docker image load'" in quickstart
     assert "codex/glm53-readme-quickstart-consolidation" in quickstart
+    assert "DCP2 reported 1,800,084 KV" in quickstart
+    assert "DCP4 reported" in quickstart
+    assert "SparkCache compatibility" in quickstart
     for term in (
         "Other models and topologies",
         "embedded MTP with SparkCache",
@@ -408,11 +537,19 @@ def test_public_docs_state_evidence_and_unqualified_boundaries() -> None:
     ):
         assert term in quickstart
     assert re.search(r"(?i)\b[A-Z]:\\", quickstart) is None
-    assert re.search(r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)", quickstart) is None
+    assert (
+        re.search(r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)", quickstart)
+        is None
+    )
 
 
 def test_published_image_relative_document_links_resolve() -> None:
-    documents = (QUICKSTART, RECORD, HERE / "README.md")
+    documents = (
+        QUICKSTART,
+        RECORD,
+        HERE / "README.md",
+        HERE / "SPARKCACHE_DCP_SOURCE_OVERLAY.md",
+    )
     link = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
     for document in documents:
         for target in link.findall(document.read_text(encoding="utf-8")):

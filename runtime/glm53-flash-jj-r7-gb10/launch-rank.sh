@@ -34,6 +34,8 @@ fi
 : "${TENSOR_PARALLEL_SIZE:=4}"
 : "${PIPELINE_PARALLEL_SIZE:=1}"
 : "${DECODE_CONTEXT_PARALLEL_SIZE:=1}"
+: "${CP_KV_CACHE_INTERLEAVE_SIZE:=auto}"
+: "${B12X_MLA_CKV_GATHER:=auto}"
 : "${NODE_COUNT:=4}"
 : "${MAX_MODEL_LEN:=524288}"
 : "${MAX_NUM_SEQS:=16}"
@@ -107,6 +109,39 @@ require_uint SPARKCACHE_LOW_WATERMARK_BYTES
 require_uint SPARKCACHE_TTL_SECONDS
 require_uint NCCL_IB_GID_INDEX
 
+case "${DECODE_CONTEXT_PARALLEL_SIZE}" in
+  1|2|4) ;;
+  *) die 'DECODE_CONTEXT_PARALLEL_SIZE must be 1, 2, or 4 for this profile' ;;
+esac
+(( TENSOR_PARALLEL_SIZE % DECODE_CONTEXT_PARALLEL_SIZE == 0 )) || \
+  die 'DECODE_CONTEXT_PARALLEL_SIZE must divide TENSOR_PARALLEL_SIZE'
+
+if [[ "${CP_KV_CACHE_INTERLEAVE_SIZE}" == auto ]]; then
+  if (( DECODE_CONTEXT_PARALLEL_SIZE == 1 )); then
+    CP_KV_CACHE_INTERLEAVE_SIZE=1
+  else
+    CP_KV_CACHE_INTERLEAVE_SIZE=4
+  fi
+else
+  require_positive_uint CP_KV_CACHE_INTERLEAVE_SIZE
+fi
+(( CP_KV_CACHE_INTERLEAVE_SIZE <= 256 && 256 % CP_KV_CACHE_INTERLEAVE_SIZE == 0 )) || \
+  die 'CP_KV_CACHE_INTERLEAVE_SIZE must divide the 256-token scheduler block size'
+if (( DECODE_CONTEXT_PARALLEL_SIZE > 1 && CP_KV_CACHE_INTERLEAVE_SIZE % 4 != 0 )); then
+  die 'GLM-5.3 DCP2/DCP4 requires CP_KV_CACHE_INTERLEAVE_SIZE divisible by 4'
+fi
+if [[ "${B12X_MLA_CKV_GATHER}" == auto ]]; then
+  if (( DECODE_CONTEXT_PARALLEL_SIZE == 1 )); then
+    B12X_MLA_CKV_GATHER=0
+  else
+    B12X_MLA_CKV_GATHER=1
+  fi
+fi
+case "${B12X_MLA_CKV_GATHER}" in
+  0|1) ;;
+  *) die 'B12X_MLA_CKV_GATHER must be auto, 0, or 1' ;;
+esac
+
 [[ "${rank}" =~ ^[0-9]+$ ]] || die 'rank must be an unsigned integer'
 (( rank < NODE_COUNT )) || die "rank must be between 0 and $((NODE_COUNT - 1))"
 (( PORT <= 65535 && MASTER_PORT <= 65535 )) || die 'ports must be at most 65535'
@@ -153,6 +188,8 @@ case "${IMAGE_VARIANT}" in
     cache_namespace="${BASE_CACHE_NAMESPACE}"
     ;;
   sparkcache)
+    (( DECODE_CONTEXT_PARALLEL_SIZE == 1 )) || \
+      die 'the published SparkCache image supports DCP1; use IMAGE_VARIANT=base for DCP2/DCP4'
     image_ref="${SPARKCACHE_IMAGE_REF}"
     expected_image_id='sha256:6af83baabb239db6b05e379401daf93c8f51694f81483c2781f6014c30e31db4'
     cache_namespace="${SPARKCACHE_CACHE_NAMESPACE}"
@@ -214,6 +251,8 @@ SHM_SIZE=32g
 TENSOR_PARALLEL_SIZE=4
 PIPELINE_PARALLEL_SIZE=1
 DECODE_CONTEXT_PARALLEL_SIZE=1
+CP_KV_CACHE_INTERLEAVE_SIZE=1
+B12X_MLA_CKV_GATHER=0
 NODE_COUNT=4
 MAX_MODEL_LEN=262144
 MAX_NUM_SEQS=16
@@ -373,6 +412,8 @@ exec docker run -d \
   -e "VLLM_HOST_IP=${HOST_IP}" \
   -e VLLM_GLM53_SPLIT_TARGET_BLOCK_SIZE=512 \
   -e VLLM_GLM53_SPLIT_MAMBA_BLOCK_SIZE=512 \
+  -e "VLLM_B12X_MLA_CKV_GATHER=${B12X_MLA_CKV_GATHER}" \
+  -e "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS=${MAX_MODEL_LEN}" \
   -e "VLLM_CACHE_ROOT=/cache/jit/vllm/${cache_namespace}" \
   -e "B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x/6255090a/${cache_namespace}" \
   -e "TRITON_CACHE_DIR=/cache/jit/triton/${cache_namespace}" \
@@ -409,6 +450,7 @@ exec docker run -d \
   --tensor-parallel-size "${TENSOR_PARALLEL_SIZE}" \
   --pipeline-parallel-size "${PIPELINE_PARALLEL_SIZE}" \
   --decode-context-parallel-size "${DECODE_CONTEXT_PARALLEL_SIZE}" \
+  --cp-kv-cache-interleave-size "${CP_KV_CACHE_INTERLEAVE_SIZE}" \
   --distributed-executor-backend mp --nnodes "${NODE_COUNT}" --node-rank "${rank}" \
   --master-addr "${MASTER_ADDR}" --master-port "${MASTER_PORT}" \
   --disable-custom-all-reduce --mamba-cache-mode align --language-model-only \

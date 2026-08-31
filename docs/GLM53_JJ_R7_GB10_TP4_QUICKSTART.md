@@ -209,7 +209,8 @@ site values:
 - `CACHE_HOST_ROOT` — writable rank-local cache and compilation directory.
 
 The same file exposes image/container names, API and rendezvous ports,
-TP/DCP/PP topology, maximum model length, sequence and batched-token limits,
+TP/DCP/PP topology, DCP KV interleaving and full-CKV gather policy, maximum
+model length, sequence and batched-token limits,
 KV bytes/utilization/dtype, speculative depth, kernel backends, load format,
 CUDA graphs, per-variant namespaces, SparkCache capacity/TTL/restore workers,
 network interfaces, NCCL channels, and CPU/loader threads.
@@ -224,6 +225,21 @@ A serving configuration that differs from the bounded smoke receives
 comma-separated `org.sparkring.launch.modified-settings` label. Site addresses,
 bind-mount paths, and container names do not alter status. A modified launch
 may work, but it does not inherit the C4 smoke evidence.
+
+For this GLM profile, keep `CP_KV_CACHE_INTERLEAVE_SIZE=auto` and
+`B12X_MLA_CKV_GATHER=auto` unless isolating one DCP mechanism. Automatic mode
+resolves to interleave 1 and gather disabled for DCP1. It resolves to
+interleave 4 and gather enabled for DCP2 or DCP4. The launcher rejects other
+DCP degrees and requires DCP to divide TP.
+
+The immutable SparkCache image is restricted to DCP1. Its source does not
+contain the four-token interleave codec required by this GLM runtime, so the
+launcher rejects SparkCache with DCP2 or DCP4 before starting Docker.
+
+A source overlay containing the DCP-aware SparkCache codec completed bounded
+DCP2 and DCP4 restart-and-restore checks. It is implemented but unqualified,
+and it has no pullable image. See the
+[source-overlay evidence](../runtime/glm53-flash-jj-r7-gb10/SPARKCACHE_DCP_SOURCE_OVERLAY.md).
 
 ## Start one rank
 
@@ -278,6 +294,21 @@ bounded exact TP4 evidence in the
 [split-page record](../performance/records/glm53-flash/split-page-shared-base-c8-20260830.md).
 The public-image C4 smoke used complete roots, so it makes no shared-base claim
 and did not exercise a page delta.
+
+The cache-disabled image also completed bounded TP4 tests at DCP2 and DCP4
+with a 524,288-token request limit, 8,192 batched tokens, four-token KV
+interleaving, and B12X full-CKV prefill gather. DCP2 reported 1,800,084 KV
+tokens and completed a 7,030-token prompt in 5.677 seconds. DCP4 reported
+3,167,508 KV tokens and returned the exact requested answer after a 7,032-token
+prompt in 4.111 seconds. These checks are **implemented but unqualified**:
+they do not establish throughput, concurrency, 512K-request behavior, or
+SparkCache compatibility.
+
+The separate SparkCache source-overlay check restored 9,216 tokens at DCP2
+and 8,192 tokens at DCP4 after full process restarts. Every rank returned the
+exact expected output. SparkCache CUDA service time was 151.086–174.131 ms for
+DCP2 and 118.781–133.709 ms for DCP4. A replacement image is required before
+these modes become pull-only launcher options.
 
 Other models and topologies, embedded MTP with SparkCache, C16 serving, soak,
 and fault injection are unqualified by this procedure. The exact source and
