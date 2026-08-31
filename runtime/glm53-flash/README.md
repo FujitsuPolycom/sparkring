@@ -1,7 +1,7 @@
 # GLM-5.3 Flash runtime contract
 
-> Historical exact-artifact contract. The public r2 image identities and
-> operator environment are in
+> Historical exact-artifact contract. The published Jovian Judgement
+> r7-compatible image identities and operator environment are in
 > [`runtime/glm53-flash-jj-r7-gb10/`](../glm53-flash-jj-r7-gb10/README.md).
 
 Status: **qualified** for the exact source and artifact identities in

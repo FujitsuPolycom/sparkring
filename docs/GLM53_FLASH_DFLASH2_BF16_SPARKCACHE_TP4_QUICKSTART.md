@@ -189,6 +189,9 @@ not a particular progress line, defines readiness.
 
 Use SparkCache's deterministic request program:
 
+The historical served-model alias below uses `dflash7` to mean DFlash2 with a
+proposal depth of seven. It does not identify a separate DFlash7 checkpoint.
+
 ```bash
 qualification_script="${sparkcache_root}/deploy/glm53_flash/qualification_request.py"
 served_model='glm-5.3-flash-nvfp4-dflash7-bf16-tp4'

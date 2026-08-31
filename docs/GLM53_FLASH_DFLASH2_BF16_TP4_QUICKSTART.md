@@ -91,6 +91,9 @@ ssh operator@rank0.example.net \
 
 Wait for health and run the deterministic semantic canary:
 
+The historical served-model alias below uses `dflash7` to mean DFlash2 with a
+proposal depth of seven. It does not identify a separate DFlash7 checkpoint.
+
 ```bash
 api_endpoint='http://rank0.example.net:8015'
 served_model='glm-5.3-flash-nvfp4-dflash7-bf16-tp4'
