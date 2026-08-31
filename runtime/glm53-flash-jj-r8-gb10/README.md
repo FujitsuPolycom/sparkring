@@ -1,0 +1,78 @@
+# GLM-5.3 Flash R8 runtime for GB10
+
+This directory builds and runs one Linux/ARM64 image for GLM-5.3 Flash on four
+NVIDIA GB10 systems. The image combines the Jovian Judgement R8 scheduler,
+BF16 DFlash2 speculation, B12X kernels, switchless NCCL, fastsafetensors, and
+SparkCache. One image supports TP4 with DCP1, DCP2, or DCP4.
+
+Local Inference Lab supplies the model quantization and the primary runtime
+work that makes this profile practical:
+
+- [`local-inference-lab/GLM-5.3-Flash-NVFP4`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4)
+  is the target checkpoint;
+- [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm/tree/dev/jovian-judgement)
+  is the source of the Jovian Judgement GLM runtime and scheduler work;
+- [`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x)
+  supplies the GB10 kernel integration.
+
+The external BF16 draft is
+[`incoai/GLM-5.3-Flash-DFlash2`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2).
+Exact revisions and source-tree hashes are in [`pins.json`](pins.json).
+
+## Use the runtime
+
+Follow the
+[`GLM-5.3 R8 GB10 quickstart`](../../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)
+to obtain or build the image, distribute it once through the direct fabric,
+and start four ranks. [`runtime.env.example`](runtime.env.example) exposes the
+model paths, image identity, DCP degree, context limit, scheduler budget, KV
+allocation, speculation, cache limits, network interfaces, and ports.
+
+The launcher defaults to:
+
+| Setting | Value |
+|---|---:|
+| topology | TP4/DCP1 |
+| maximum model length | 1,048,576 tokens |
+| batched-token budget | 8,192 tokens |
+| sequences | 16 |
+| FP8 KV allocation | 30 GiB per rank |
+| DFlash2 depth | 7 |
+| SparkCache publication | complete `snapshot-v1` objects |
+
+DCP1 resolves to one-token KV interleaving without full-CKV gather. DCP2 and
+DCP4 resolve to four-token KV interleaving with full-CKV gather. Operators can
+change every value in the environment file without rebuilding the image.
+
+## Build from pinned source
+
+The builder accepts clean checkouts at the exact vLLM and SparkCache commits
+recorded in `pins.json`. It verifies the commits, trees, package subtrees,
+runtime files, parent image, native extensions, and SparkCache CUDA placement
+library before producing an image.
+
+```bash
+python runtime/glm53-flash-jj-r8-gb10/build_image.py \
+  --vllm-source /source/vllm \
+  --sparkcache-source /source/sparkcache \
+  --output-image sparkring-glm53-jj-r8-sparkcache:local-arm64 \
+  --receipt ./glm53-r8-build-receipt.json
+```
+
+The build does not include model checkpoints, site addresses, SSH
+credentials, or persistent cache data.
+
+## Tested image
+
+The exact local image ID is
+`sha256:77da063d1d51fa181eb39e519dda7c5ae4eb59a47e169cb4c33bd2cd42120225`.
+Its registry digest is **UNAVAILABLE_UNTIL_PUBLICATION**. The local archive,
+source identities, DCP1 capacity sweep, and DCP2/DCP4 restart-restore results
+are recorded in [`local-image-receipt.json`](local-image-receipt.json) and
+[`LIVE_VALIDATION.md`](LIVE_VALIDATION.md).
+
+Run the offline contracts with:
+
+```bash
+python -m pytest runtime/glm53-flash-jj-r8-gb10 -q
+```

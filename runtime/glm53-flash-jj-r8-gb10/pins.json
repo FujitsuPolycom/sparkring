@@ -1,0 +1,65 @@
+{
+  "schema": "sparkring-glm53-jj-r8-gb10-image/v1",
+  "parent": {
+    "reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
+    "image_id": "sha256:6af83baabb239db6b05e379401daf93c8f51694f81483c2781f6014c30e31db4",
+    "required_labels": {
+      "org.sparkring.runtime.status": "tp4-smoke-verified",
+      "org.sparkring.vllm.sparkcache-composition": "331573d20bd47e78327ed8d8b4d2e6d350bbb1ab",
+      "org.sparkring.vllm.tree": "927f52a0085bcecfd2ba679e5abebe1a62623daf",
+      "org.sparkring.b12x.composition": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
+      "org.sparkring.b12x.tree": "0bb58d0dcc10e29e00ff9850c0d719fca1aba5ad",
+      "org.sparkring.nccl.sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
+      "org.sparkring.diagnostics": "compact-startup-no-deep-ep",
+      "org.sparkcache.cuda-placement-sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
+    }
+  },
+  "vllm": {
+    "repository": "https://github.com/FujitsuPolycom/vllm.git",
+    "commit": "55969c16d4da57da76ee5729f3102d4b2003833c",
+    "tree": "a8d44216d05cbcd4df25f2c269b807275ec2e4ea",
+    "package_tree": "2255ebbbd63c8fe2347e9c742d565f44f4bf2e3d",
+    "delta_patch_id": "171dfb66935731a4944335ce0e74307905ee903d",
+    "proven_base_commit": "331573d20bd47e78327ed8d8b4d2e6d350bbb1ab",
+    "official_r8_component_commit": "f1191b9090cd02ac49238c8e4f371050759703b6",
+    "public_prefill_cadence_pr_head": "2412a6f34ab1412f86ed3e4cdd355271a082d93d",
+    "runtime_file_sha256": {
+      "vllm/config/scheduler.py": "d70698ec13248054248aea0824ffa9661edc9150be124424d0738cc775ecbfd7",
+      "vllm/v1/core/sched/interface.py": "049b1f3cb82d69295d0e642af9f8bb4c07f971168d2e8543de43c29538bd9350",
+      "vllm/v1/core/sched/scheduler.py": "122d9722b48f8cec267d2136a18c184b8901a5a0a46187eab7030d6227f1983d",
+      "vllm/v1/engine/core.py": "8181b9297d5c4a65a98d4a7d716f286dcae10d1a2dbf2f65f80bfa11d517c462"
+    },
+    "retained_native_build_commit": "3633d61c3c7b04bb4d598cadbdc342f3be40482d",
+    "retained_native_parent_source": "da4d7be6c97434f6942292ed8abbf4b32dc44355"
+  },
+  "b12x": {
+    "commit": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
+    "tree": "0bb58d0dcc10e29e00ff9850c0d719fca1aba5ad",
+    "package_tree": "6de9871d15dab093340695518fec0f744289e676"
+  },
+  "sparkcache": {
+    "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
+    "commit": "65895c87a6d925fcd270fcea202ab847d7fbc2d1",
+    "tree": "80daebdeedae62e444a1bfc71a102848660a04f0",
+    "package_tree": "2636d7eb0de33e82a10bae8322193a9a392070d5",
+    "source_tree_sha256": "40de372dda64dd25f493584b2ba3dae81c4350d424d3cf00cfea92452dac170c",
+    "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
+  },
+  "transport": {
+    "nccl_version": "2.30.7",
+    "nccl_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3"
+  },
+  "defaults": {
+    "max_model_len": 1048576,
+    "max_num_batched_tokens": 8192,
+    "prefill_schedule_interval": 8,
+    "kv_cache_bytes_per_rank": 32212254720,
+    "full_ckv_gather_max_tokens": 524288,
+    "dcp": {
+      "1": {"cp_kv_cache_interleave_size": 1, "full_ckv_gather": false},
+      "2": {"cp_kv_cache_interleave_size": 4, "full_ckv_gather": true},
+      "4": {"cp_kv_cache_interleave_size": 4, "full_ckv_gather": true}
+    },
+    "load_format": "fastsafetensors"
+  }
+}

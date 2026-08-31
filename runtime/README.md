@@ -11,6 +11,7 @@ credentials, or a live-deployment result.
 |---|---|
 | [`exl3-r7/`](exl3-r7/README.md) | GLM-5.2 EXL3 3.5-bpw R7 ARM64 image builder and its verification tests |
 | [`glm53-flash/`](glm53-flash/README.md) | GLM-5.3 Flash target, BF16 DFlash2, vLLM, B12X, patched NCCL, and SparkCache identity and attestation contract |
+| [`glm53-flash-jj-r8-gb10/`](glm53-flash-jj-r8-gb10/README.md) | One GLM-5.3 Flash R8 ARM64 image, source builder, and adjustable TP4/DCP1/DCP2/DCP4 launcher with SparkCache |
 | [`glm53-flash-e10536a/`](glm53-flash-e10536a/README.md) | Implemented source builder for vLLM e10536a with internal MTP5 and opt-in adaptive depth; live serving unqualified |
 | [`glm53-flash-b12x-kda-adaptive-mtp/`](glm53-flash-b12x-kda-adaptive-mtp/README.md) | Implemented source builder for adaptive MTP and live-tensor B12X KDA at vLLM `0b67266a`; live serving unqualified |
 | [`deepseek0731-gb10/`](deepseek0731-gb10/README.md) | DeepSeek-V4-Flash-0731 GB10 parser, K5 sparse-row, and native PR431 image layer |
@@ -85,6 +86,7 @@ GLM-5.3 builder, publisher, profile, and launcher contracts with:
 
 ```bash
 python -m pytest runtime/glm53-flash runtime/glm53-flash-e10536a \
+  runtime/glm53-flash-jj-r8-gb10 \
   runtime/glm53-flash-b12x-kda-adaptive-mtp \
   scripts/test_glm53_flash_profile.py \
   scripts/test_prepare_glm53_e105_profile.py \
