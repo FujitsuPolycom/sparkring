@@ -1,0 +1,39 @@
+{
+  "schema": "sparkring-glm53-split-page-sparkcache-input-lock/v1",
+  "status": "implemented",
+  "scope": "These public inputs identify the source composition and model files used by the qualified local artifact. A rebuild is a new image and remains implemented until separately qualified.",
+  "sources": {
+    "vllm": {
+      "repository": "https://github.com/FujitsuPolycom/vllm.git",
+      "upstream_pull_request_head": "ead9d8a4e21b3818b21ec6f4d4d94564dd60c3f8",
+      "sparkcache_composition_commit": "6da4865d440608a46eada50f27b2fff0e698c574",
+      "composition_patch": "patches/010-split-page-sparkcache-contracts.patch",
+      "composition_patch_sha256": "b3747e7e334a040ca8ea0d515e47ed88498fab09f179e10497f1d391c0f914ae"
+    },
+    "sparkcache": {
+      "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
+      "commit": "59ac0b04db6035a9a9d2a52e92405ceaf84daa40"
+    },
+    "b12x": {
+      "repository": "https://github.com/local-inference-lab/b12x.git",
+      "commit": "b1d541f9e71a35f030d45fae437630fff7507c2a"
+    }
+  },
+  "source_digest_sha256": "21035ceeeab514b573dffc9a8b415b246fad8cd11ad83c633717b37f2bf6dd1b",
+  "sparkcache_cuda_placement_library_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
+  "models": {
+    "target": {
+      "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+      "revision": "520de24eabf507659eaef7c70f14fd584527facc",
+      "cache_identity_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9"
+    },
+    "draft": {
+      "repository": "incoai/GLM-5.3-Flash-DFlash2",
+      "revision": "dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+      "dtype": "bfloat16",
+      "weights_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
+      "license": "CC-BY-NC-ND-4.0"
+    }
+  },
+  "qualified_artifact": "qualified-artifact.json"
+}

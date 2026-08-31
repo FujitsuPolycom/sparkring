@@ -1,0 +1,84 @@
+{
+  "schema": "sparkring-glm53-split-page-sparkcache-artifact/v1",
+  "status": "qualified",
+  "scope": "This identity and configuration describe the exact local image that completed the recorded four-rank TP4/DCP1 concurrency check. The image has no published OCI digest. A rebuild from the named public sources is a different artifact and does not inherit this qualification.",
+  "artifact": {
+    "local_tag": "sparkring-glm53-sparkcache:pr535-6da4865-sc59ac0b0-c8-exact-arm64",
+    "image_id": "sha256:becf556650dff79a9959aef371ea861187db248bd0f46c3ebfbd26759e458818",
+    "published_oci_digest": null,
+    "platform": "linux/arm64",
+    "source_digest_sha256": "21035ceeeab514b573dffc9a8b415b246fad8cd11ad83c633717b37f2bf6dd1b",
+    "image_id_on_every_rank": true
+  },
+  "sources": {
+    "vllm": {
+      "repository": "https://github.com/FujitsuPolycom/vllm.git",
+      "upstream_pull_request_head": "ead9d8a4e21b3818b21ec6f4d4d94564dd60c3f8",
+      "sparkcache_composition_commit": "6da4865d440608a46eada50f27b2fff0e698c574"
+    },
+    "sparkcache": {
+      "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
+      "commit": "59ac0b04db6035a9a9d2a52e92405ceaf84daa40",
+      "cache_namespace_change": "none",
+      "cache_identity_geometry_namespace": "manager-pages-v1"
+    },
+    "b12x": {
+      "repository": "https://github.com/local-inference-lab/b12x.git",
+      "commit": "b1d541f9e71a35f030d45fae437630fff7507c2a"
+    },
+    "sparkcache_cuda_placement_library_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
+  },
+  "models": {
+    "target": {
+      "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+      "revision": "520de24eabf507659eaef7c70f14fd584527facc",
+      "cache_identity_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9"
+    },
+    "draft": {
+      "repository": "incoai/GLM-5.3-Flash-DFlash2",
+      "revision": "dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+      "dtype": "bfloat16",
+      "weights_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b"
+    }
+  },
+  "serving": {
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 1,
+    "pipeline_parallel_size": 1,
+    "kv_cache_dtype": "fp8",
+    "kv_cache_bytes_per_rank": 21474836480,
+    "speculation": {
+      "method": "dflash",
+      "tokens": 7,
+      "draft_tensor_parallel_size": 4
+    },
+    "max_model_len": 262144,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 4096,
+    "logical_block_size_tokens": 256,
+    "target_page_size_tokens": 512,
+    "recurrent_page_size_tokens": 512,
+    "sparkcache": {
+      "publication_schema": "tail-cow-v1",
+      "cuda_restore": true,
+      "load_lanes": 8,
+      "max_pending_restores": 8,
+      "cuda_arena_bytes_per_lane": 268435456,
+      "cuda_restore_io_workers": 8
+    }
+  },
+  "containers": {
+    "qualified": "glm53-pr535-sc59ac-c8-01-r{rank}",
+    "retained_rollback": "glm53-pr535-sc78-hotpatch-c8-qualified-r{rank}"
+  },
+  "qualification": {
+    "scheduler_inventory_warmup_required_after_restart": true,
+    "distinct_requests": 8,
+    "external_restores": 8,
+    "physical_base_reads_per_rank": 1,
+    "avoided_base_reads_per_rank": 7,
+    "source_client_result_sha256": "3e437c65dc5c4eb5f8ec0723d9fe10b58c18f3246a265c1f19fd877c2cef89ad",
+    "checked_in_client_result_sha256": "51299fc718935af30d87a1879fc53578acf31934e918899de1e81c2d6324d42d"
+  },
+  "evidence": "performance/receipts/glm53-flash/split-page-shared-base-c8-20260830/validation.json"
+}

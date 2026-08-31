@@ -2,7 +2,9 @@
 *.patch text eol=lf
 runtime/** text eol=lf
 performance/receipts/glm53-flash/dflash7-snapshot-v1-safe/*.json text eol=lf
+performance/receipts/glm53-flash/split-page-shared-base-c8-20260830/*.json text eol=lf
 runtime/exl3/patches/*.patch whitespace=-trailing-space
+runtime/glm53-flash-split-page-sparkcache/patches/*.patch whitespace=-trailing-space
 
 # Runtime receipts hash these source files byte-for-byte before copying them,
 # and the plugin vendors byte-identical copies whose SHA-256 it records in

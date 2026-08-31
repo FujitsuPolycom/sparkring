@@ -1,0 +1,128 @@
+{
+  "schema": "sparkring-glm53-split-page-shared-base-c8-validation/v1",
+  "status": {
+    "artifact_identity": "qualified",
+    "four_rank_distribution": "qualified",
+    "restart_manifest_discovery": "qualified",
+    "scheduler_inventory_readiness": "qualified",
+    "eight_distinct_request_semantics": "qualified",
+    "eight_external_restores": "qualified",
+    "authenticated_shared_base_read": "qualified",
+    "latency": "research-only",
+    "soak": "unsupported"
+  },
+  "artifact": {
+    "image_id": "sha256:becf556650dff79a9959aef371ea861187db248bd0f46c3ebfbd26759e458818",
+    "published_oci_digest": null,
+    "image_id_on_every_rank": true,
+    "source_digest_sha256": "21035ceeeab514b573dffc9a8b415b246fad8cd11ad83c633717b37f2bf6dd1b",
+    "sparkcache_commit": "59ac0b04db6035a9a9d2a52e92405ceaf84daa40",
+    "vllm_upstream_pull_request_head": "ead9d8a4e21b3818b21ec6f4d4d94564dd60c3f8",
+    "vllm_sparkcache_composition_commit": "6da4865d440608a46eada50f27b2fff0e698c574",
+    "b12x_commit": "b1d541f9e71a35f030d45fae437630fff7507c2a",
+    "sparkcache_cuda_placement_library_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
+  },
+  "conditions": {
+    "date_utc": "2026-08-30",
+    "hardware": "four NVIDIA DGX Spark systems",
+    "topology": {
+      "tensor_parallel_size": 4,
+      "decode_context_parallel_size": 1,
+      "pipeline_parallel_size": 1
+    },
+    "target": {
+      "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+      "revision": "520de24eabf507659eaef7c70f14fd584527facc",
+      "cache_identity_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9"
+    },
+    "draft": {
+      "repository": "incoai/GLM-5.3-Flash-DFlash2",
+      "revision": "dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+      "dtype": "bfloat16",
+      "weights_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
+      "speculative_tokens": 7
+    },
+    "kv_cache_dtype": "fp8",
+    "kv_cache_bytes_per_rank": 21474836480,
+    "max_model_len": 262144,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 4096,
+    "target_page_size_tokens": 512,
+    "recurrent_page_size_tokens": 512,
+    "sparkcache_load_lanes": 8,
+    "sparkcache_max_pending_restores": 8,
+    "sparkcache_cuda_arena_bytes_per_lane": 268435456,
+    "cache_namespace_change": "none"
+  },
+  "measurement": {
+    "restart_readiness": {
+      "worker_manifest_count": 20,
+      "http_health_before_warmup": true,
+      "warmup_prompt_tokens": 5,
+      "warmup_completion_tokens": 1,
+      "warmup_role": "Execute one real model step so worker inventory reaches the scheduler before persistent-hit qualification.",
+      "readiness_invariant": "HTTP health proves process readiness but does not prove that the scheduler has received the workers' persistent manifest inventory."
+    },
+    "scenario": "eight distinct 16384-token requests with one stored 8192-token base",
+    "concurrency": 8,
+    "request_tokens_reported_by_client": 16385,
+    "stored_result_tokens": 16384,
+    "shared_base_tokens": 8192,
+    "exact_response_count": 8,
+    "http_200_count": 8,
+    "client_result_path": "client-results.json",
+    "source_client_result_sha256": "3e437c65dc5c4eb5f8ec0723d9fe10b58c18f3246a265c1f19fd877c2cef89ad",
+    "client_result_sha256": "51299fc718935af30d87a1879fc53578acf31934e918899de1e81c2d6324d42d",
+    "client_elapsed_seconds": {
+      "minimum": 1.392026,
+      "maximum": 2.337652
+    },
+    "prompt_sha256": [
+      "3c59e3e27c48662ae4e39ccca340064924975b24469e1d511cfb36eefd5f772c",
+      "b972111fe5fb12142cdcca1db34536d89dddc15dc7b398c9d0630aa7e1bdbd76",
+      "558215d9326e99e64d3d945787e4e7e5380dcebcd6153d012c48b3c8c1560c88",
+      "4cd505a8360a9eb47d6717bba90cd0ae9c99837632c8a2ed705266071642090a",
+      "6f77660f22a30d0ea274014f3ad94197fb37cb8ea821d3dd8d20882f9dabbfe1",
+      "8ea72fa032a5eb89ebc1c9f0ede30151451e8079f40222bf4561e3a555c6458a",
+      "2b67b813207e4fdc8975c9fb82b3d20d36430114517a10e22413ce6638128753",
+      "9431217eab13b7f24041d08f2fb30f1d8fe1ec2a8c123820f5b1809776b7f442"
+    ],
+    "external_restore": {
+      "request_count": 8,
+      "hit_ratio": 1.0,
+      "per_rank": {
+        "participants": 8,
+        "physical_base_reads": 1,
+        "avoided_base_reads": 7,
+        "base_bytes": 100868258,
+        "base_read_ms": {
+          "0": 161.461,
+          "1": 172.076,
+          "2": 188.138,
+          "3": 173.349
+        },
+        "service_restore_seconds": {
+          "0": {"minimum": 0.6082, "maximum": 0.9376},
+          "1": {"minimum": 0.7670, "maximum": 0.9333},
+          "2": {"minimum": 0.6106, "maximum": 0.9905},
+          "3": {"minimum": 0.5160, "maximum": 0.8228}
+        }
+      }
+    },
+    "cold_scheduler_inventory_control": {
+      "status": "diagnostic",
+      "sequence": "The API was healthy after restart, but no model execution had yet delivered worker manifest inventory to the scheduler.",
+      "external_restore_count": 7,
+      "safe_recompute_count": 1,
+      "conclusion": "A health response alone is insufficient readiness for a persistent-hit assertion. The recomputed request did not consume unverified cache state."
+    }
+  },
+  "conclusion": "After a real model execution populated scheduler inventory, the exact image returned the expected result for all eight distinct requests and externally restored all eight. Each rank authenticated and physically read the common stored base once, avoiding seven duplicate reads while preserving independent request tails and placement transactions.",
+  "limitations": [
+    "The latency range comes from one cohort and is not a throughput or variability claim.",
+    "No soak or fault-injection sequence was included.",
+    "HTTP health does not establish scheduler inventory readiness after restart; an actual inference must complete before asserting a persistent hit.",
+    "The image is retained locally and has no published OCI digest.",
+    "A source rebuild is a different artifact and does not inherit this qualification."
+  ]
+}

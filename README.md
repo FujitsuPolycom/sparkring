@@ -48,6 +48,7 @@ DFlash2 composition:
 | Runtime path | Status | Start here |
 |---|---|---|
 | External DFlash7 snapshot-v1 with vLLM `0b67266a` Python over retained `da4d7be6` extensions | **qualified** only for one exact local image and its recorded 131,072-token full-snapshot case | [Shortest qualified start](docs/GLM53_DFLASH7_PYTHON_OVERLAY_SPARKCACHE_TP4_QUICKSTART.md#shortest-qualified-start) |
+| External DFlash7 with split target/recurrent pages and authenticated shared-base reads | **qualified** only for exact local image `sha256:becf556650d...` and one scheduler-ready C8 × 16K cohort; eight external restores and one physical shared-base read per rank | [Split-page SparkCache quickstart](docs/GLM53_SPLIT_PAGE_SPARKCACHE_TP4_QUICKSTART.md) |
 | Adaptive embedded MTP with live-tensor B12X KDA | **implemented**, not qualified | [Adaptive-MTP quickstart](docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md) |
 | Source-built vLLM `e10536a` profiles | **implemented**, not qualified | [e10536a quickstart](docs/GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md) |
 
