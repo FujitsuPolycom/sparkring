@@ -391,7 +391,7 @@ printf '%s  %s\n' "$hash" "$2"
                 encoded = arguments[arguments.index("--kv-transfer-config") + 1]
                 connector = json.loads(encoded)
                 extra = connector["kv_connector_extra_config"]
-                assert extra["spark_cache_publication_schema"] == "page-tail-cow-v1"
+                assert extra["spark_cache_publication_schema"] == "snapshot-v1"
                 assert extra["spark_cache_load_threads"] == 8
 
     invalid = (

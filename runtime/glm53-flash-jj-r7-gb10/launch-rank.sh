@@ -62,6 +62,7 @@ fi
 : "${BASE_CACHE_NAMESPACE:=jj-r7-gb10-base-v1}"
 : "${SPARKCACHE_CACHE_NAMESPACE:=jj-r7-gb10-page-tail-cow-v1}"
 : "${SPARKCACHE_DCP_CACHE_NAMESPACE:=jj-r8-gb10-manager-pages-v2}"
+: "${SPARKCACHE_PUBLICATION_SCHEMA:=snapshot-v1}"
 : "${SPARKCACHE_CLEAR_ONCE:=auto}"
 : "${SPARKCACHE_MAX_BYTES:=42949672960}"
 : "${SPARKCACHE_LOW_WATERMARK_BYTES:=34359738368}"
@@ -160,6 +161,10 @@ esac
   die 'CONTAINER_PREFIX is not a valid Docker container-name prefix'
 [[ "${SPECULATION_METHOD}" == dflash ]] || \
   die 'the smoke-verified images support SPECULATION_METHOD=dflash in this launcher'
+case "${SPARKCACHE_PUBLICATION_SCHEMA}" in
+  snapshot-v1|tail-cow-v1) ;;
+  *) die 'SPARKCACHE_PUBLICATION_SCHEMA must be snapshot-v1 or tail-cow-v1' ;;
+esac
 for name in BASE_CACHE_NAMESPACE SPARKCACHE_CACHE_NAMESPACE \
   SPARKCACHE_DCP_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE
 do
@@ -370,6 +375,7 @@ PY
 variant_args=()
 if [[ "${IMAGE_VARIANT}" == sparkcache ]]; then
   export SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE SPARKCACHE_MAX_BYTES
+  export SPARKCACHE_PUBLICATION_SCHEMA
   export SPARKCACHE_LOW_WATERMARK_BYTES SPARKCACHE_TTL_SECONDS
   export SPARKCACHE_MIN_SPAN_TOKENS SPARKCACHE_MAX_SPAN_TOKENS
   export SPARKCACHE_LOAD_THREADS SPARKCACHE_MAX_PENDING_RESTORES
@@ -384,7 +390,7 @@ def integer(name: str) -> int:
 extra = {
     "spark_cache_root": f"/cache/jit/sparkcache-context/{os.environ['SPARKCACHE_CACHE_NAMESPACE']}",
     "spark_cache_model_profile": "glm53-flash-hybrid",
-    "spark_cache_publication_schema": "page-tail-cow-v1",
+    "spark_cache_publication_schema": os.environ["SPARKCACHE_PUBLICATION_SCHEMA"],
     "spark_cache_target_checkpoint_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9",
     "spark_cache_draft_checkpoint_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
     "spark_cache_draft_policy": "separate",

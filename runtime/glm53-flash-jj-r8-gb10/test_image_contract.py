@@ -73,6 +73,8 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
     ):
         assert identity in recipe
     assert "org.sparkcache.dcp-layouts=\"1,2,4\"" in recipe
+    assert "org.sparkcache.cache-geometry=\"manager-pages-v2\"" in recipe
+    assert "org.sparkcache.publication-schema=\"snapshot-v1\"" in recipe
     assert "compact-startup-no-deep-ep" in recipe
     assert "fastsafetensors" in recipe
 

@@ -104,6 +104,8 @@ def expected_labels(pins: dict[str, Any]) -> dict[str, str]:
         "org.sparkring.vllm.proven-base": pins["vllm"]["proven_base_commit"],
         "org.sparkring.vllm.python-commit": pins["vllm"]["commit"],
         "org.sparkring.vllm.python-tree": pins["vllm"]["tree"],
+        "org.sparkring.vllm.sparkcache-composition": pins["vllm"]["commit"],
+        "org.sparkring.vllm.tree": pins["vllm"]["tree"],
         "org.sparkring.vllm.official-r8-component": pins["vllm"][
             "official_r8_component_commit"
         ],
@@ -125,6 +127,9 @@ def expected_labels(pins: dict[str, Any]) -> dict[str, str]:
         "org.sparkcache.cuda-placement-sha256": pins["sparkcache"][
             "cuda_placement_sha256"
         ],
+        "org.sparkcache.cache-geometry": "manager-pages-v2",
+        "org.sparkcache.publication-schema": "snapshot-v1",
+        "org.sparkcache.tail-publication-schema": "page-tail-cow-v1-opt-in",
         "org.sparkcache.dcp-layouts": "1,2,4",
     }
 
