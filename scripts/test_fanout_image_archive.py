@@ -17,10 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _site() -> SimpleNamespace:
     edges = (
-        (0, 1, "r0-r1", "10.0.1.10", "10.0.1.11"),
-        (1, 2, "r1-r2", "10.0.2.11", "10.0.2.12"),
-        (2, 3, "r2-r3", "10.0.3.12", "10.0.3.13"),
-        (3, 0, "r3-r0", "10.0.4.13", "10.0.4.10"),
+        (0, 1, "r0-r1", "192.0.2.10", "192.0.2.11"),
+        (1, 2, "r1-r2", "192.0.2.21", "192.0.2.22"),
+        (2, 3, "r2-r3", "192.0.2.32", "192.0.2.33"),
+        (3, 0, "r3-r0", "192.0.2.43", "192.0.2.40"),
     )
     ports: dict[int, list[SimpleNamespace]] = {rank: [] for rank in range(4)}
     for first, second, edge, first_address, second_address in edges:
@@ -86,7 +86,7 @@ def test_topology_builds_one_direct_chain_without_management_addresses() -> None
         (2, 3),
     ]
     assert [hop.edge for hop in hops] == ["r0-r1", "r1-r2", "r2-r3"]
-    assert all(hop.destination_address.startswith("10.0.") for hop in hops)
+    assert all(hop.destination_address.startswith("192.0.2.") for hop in hops)
 
 
 def test_command_plan_uses_resumable_rsync_and_binds_direct_source() -> None:
@@ -98,8 +98,8 @@ def test_command_plan_uses_resumable_rsync_and_binds_direct_source() -> None:
     first_command = " ".join(transfers[0]["command"])
     assert "--partial" in first_command
     assert "--append-verify" in first_command
-    assert "10.0.1.10" in first_command
-    assert "10.0.1.11" in first_command
+    assert "192.0.2.10" in first_command
+    assert "192.0.2.11" in first_command
     assert paths.partial in first_command
     assert "management-rank-1.example" not in first_command
     assert not any(action["kind"] == "load-image" for action in plan["actions"])
