@@ -36,13 +36,15 @@ The launcher defaults to:
 | maximum model length | 1,048,576 tokens |
 | batched-token budget | 8,192 tokens |
 | sequences | 16 |
-| FP8 KV allocation | 30 GiB per rank |
+| FP8 KV allocation | 26 GiB for DCP1; 30 GiB for DCP2/DCP4 |
 | DFlash2 depth | 7 |
 | SparkCache publication | complete `snapshot-v1` objects |
 
 DCP1 resolves to one-token KV interleaving without full-CKV gather. DCP2 and
 DCP4 resolve to four-token KV interleaving with full-CKV gather. Operators can
 change every value in the environment file without rebuilding the image.
+`SPARKCACHE_ENABLED=0` omits the persistent connector while retaining vLLM's
+GPU prefix cache; `SPARKCACHE_ENABLED=1` enables both layers.
 
 ## Build from pinned source
 
@@ -67,9 +69,11 @@ credentials, or persistent cache data.
 The exact local image ID is
 `sha256:77da063d1d51fa181eb39e519dda7c5ae4eb59a47e169cb4c33bd2cd42120225`.
 Its registry digest is **UNAVAILABLE_UNTIL_PUBLICATION**. The local archive,
-source identities, DCP1 capacity sweep, and DCP2/DCP4 restart-restore results
-are recorded in [`local-image-receipt.json`](local-image-receipt.json) and
-[`LIVE_VALIDATION.md`](LIVE_VALIDATION.md).
+source identities, DCP1 deep-context and capacity results, and DCP2/DCP4
+restart-restore results are recorded in
+[`local-image-receipt.json`](local-image-receipt.json),
+[`LIVE_VALIDATION.md`](LIVE_VALIDATION.md), and the
+[`deep-context record`](../../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md).
 
 Run the offline contracts with:
 

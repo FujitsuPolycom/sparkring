@@ -24,10 +24,37 @@
     "max_model_len": 1048576,
     "max_num_batched_tokens": 8192,
     "prefill_schedule_interval": 8,
-    "kv_cache_bytes_per_rank": 32212254720,
+    "kv_cache_bytes_per_rank": {
+      "dcp1": 27917287424,
+      "dcp2": 32212254720,
+      "dcp4": 32212254720
+    },
     "full_ckv_gather_max_tokens": 524288,
     "publication_schema": "snapshot-v1",
     "manager_page_identity": "manager-pages-v2"
+  },
+  "dcp1_deep_context": {
+    "status": "research-only",
+    "record": "../../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.json",
+    "kv_cache_bytes_per_rank": 27917287424,
+    "gpu_kv_cache_tokens": 1303701,
+    "reported_1m_request_concurrency": 1.24,
+    "requested_depth": 1000000,
+    "actual_prompt_tokens": 942767,
+    "elapsed_seconds": 478.1,
+    "completion_tokens": 113,
+    "finish_reason": "stop",
+    "needle": "36161615",
+    "needle_present": true,
+    "minimum_mem_available_during_prefill_gib_by_physical_rank": [23.7, 25.3, 25.5, 25.5],
+    "sparkcache_publication": {
+      "aligned_tokens": 942592,
+      "digest_prefix": "28d1ab9295fd",
+      "aggregate_committed_bytes": 23468277760,
+      "snapshot_ms_by_physical_rank": [16642.2, 16670.9, 16960.6, 17894.1],
+      "commit_ms_by_physical_rank": [13320.1, 13069.6, 12031.7, 14509.1],
+      "restart_restore_replayed": false
+    }
   },
   "dcp1_kv_capacity_sweep": {
     "topology": "TP4/DCP1",
@@ -37,10 +64,10 @@
     "speculative_method": "DFlash2",
     "speculative_depth": 7,
     "kv_cache_dtype": "fp8",
-    "selected_kv_cache_bytes_per_rank": 44023414784,
-    "selected_gpu_kv_cache_tokens": 2056272,
-    "selected_reported_1m_request_concurrency": 1.96,
-    "selected_post_restore_mem_available_kib_by_physical_rank": [
+    "largest_healthy_capacity_candidate_kv_cache_bytes_per_rank": 44023414784,
+    "largest_healthy_capacity_candidate_gpu_kv_cache_tokens": 2056272,
+    "largest_healthy_capacity_candidate_reported_1m_request_concurrency": 1.96,
+    "largest_healthy_capacity_candidate_post_restore_mem_available_kib_by_physical_rank": [
       11537212,
       12325456,
       13138388,
@@ -124,7 +151,6 @@
   },
   "not_established": [
     "registry availability",
-    "one-million-token request completion",
     "large-context restore",
     "concurrent restore",
     "fault injection",

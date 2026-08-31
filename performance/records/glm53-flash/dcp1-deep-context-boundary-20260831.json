@@ -1,0 +1,55 @@
+{
+  "schema": "sparkring-glm53-dcp1-deep-context/v1",
+  "status": "research-only",
+  "date": "2026-08-31",
+  "image_id": "sha256:77da063d1d51fa181eb39e519dda7c5ae4eb59a47e169cb4c33bd2cd42120225",
+  "vllm_revision": "55969c16d4da57da76ee5729f3102d4b2003833c",
+  "sparkcache_revision": "65895c87a6d925fcd270fcea202ab847d7fbc2d1",
+  "topology": {"tp": 4, "dcp": 1, "pp": 1, "hosts": 4},
+  "serving": {
+    "max_model_len": 1048576,
+    "max_num_batched_tokens": 8192,
+    "max_num_seqs": 16,
+    "kv_cache_dtype": "fp8",
+    "speculative_method": "dflash2",
+    "speculative_tokens": 7
+  },
+  "probe": {
+    "repository": "https://github.com/FujitsuPolycom/sparkring",
+    "pull_request": 152,
+    "commit": "ee02757809eaa6d9bf3de6f33f7b65d30e4e268f",
+    "needle_fraction": 0.5,
+    "stall_ticks": 0
+  },
+  "results": [
+    {"kv_gib": 41, "requested_depth": 350000, "actual_prompt_tokens": 323575, "elapsed_seconds": 141.0, "result": "pass"},
+    {"kv_gib": 41, "requested_depth": 375000, "actual_prompt_tokens": 347167, "elapsed_seconds": 154.5, "result": "pass"},
+    {"kv_gib": 41, "requested_depth": 400000, "actual_prompt_tokens": 370753, "elapsed_seconds": 103.6, "result": "pass"},
+    {"kv_gib": 41, "requested_depth": 450000, "elapsed_seconds": 263.1, "result": "host-oom"},
+    {"kv_gib": 30, "requested_depth": 450000, "actual_prompt_tokens": 418237, "elapsed_seconds": 189.0, "result": "pass"},
+    {"kv_gib": 30, "requested_depth": 600000, "actual_prompt_tokens": 560292, "elapsed_seconds": 266.4, "result": "pass"},
+    {"kv_gib": 30, "requested_depth": 750000, "actual_prompt_tokens": 703697, "elapsed_seconds": 346.6, "result": "pass"},
+    {"kv_gib": 30, "requested_depth": 900000, "actual_prompt_tokens": 847470, "elapsed_seconds": 430.1, "result": "pass"},
+    {"kv_gib": 30, "requested_depth": 1000000, "computed_prompt_tokens": 936960, "elapsed_seconds": 469.8, "result": "host-oom"},
+    {"kv_gib": 26, "requested_depth": 1000000, "actual_prompt_tokens": 942767, "completion_tokens": 113, "elapsed_seconds": 478.1, "finish_reason": "stop", "needle": "36161615", "result": "pass"}
+  ],
+  "kv26": {
+    "bytes_per_rank": 27917287424,
+    "allocator_capacity_tokens": 1303701,
+    "reported_max_request_concurrency": 1.24,
+    "minimum_mem_available_during_prefill_gib": [23.7, 25.3, 25.5, 25.5]
+  },
+  "sparkcache_publication": {
+    "schema": "snapshot-v1",
+    "aligned_tokens": 942592,
+    "digest_prefix": "28d1ab9295fd",
+    "aggregate_committed_bytes": 23468277760,
+    "restart_restore_replayed": false,
+    "ranks": [
+      {"rank": 0, "snapshot_ms": 16642.2, "commit_ms": 13320.1, "manifest_prefix": "c81f8dc59c77"},
+      {"rank": 1, "snapshot_ms": 16670.9, "commit_ms": 13069.6, "manifest_prefix": "74ccd2ec93d2"},
+      {"rank": 2, "snapshot_ms": 16960.6, "commit_ms": 12031.7, "manifest_prefix": "5c57f20173ec"},
+      {"rank": 3, "snapshot_ms": 17894.1, "commit_ms": 14509.1, "manifest_prefix": "f6b8fd12f693"}
+    ]
+  }
+}

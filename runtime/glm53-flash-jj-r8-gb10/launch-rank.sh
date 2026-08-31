@@ -41,7 +41,7 @@ fi
 : "${MAX_NUM_SEQS:=16}"
 : "${MAX_NUM_BATCHED_TOKENS:=8192}"
 : "${PREFILL_SCHEDULE_INTERVAL:=8}"
-: "${KV_CACHE_MEMORY_BYTES:=32212254720}"
+: "${KV_CACHE_MEMORY_BYTES:=auto}"
 : "${GPU_MEMORY_UTILIZATION:=0.80}"
 : "${KV_CACHE_DTYPE:=fp8}"
 : "${SPECULATION_METHOD:=dflash}"
@@ -58,6 +58,7 @@ fi
 : "${CUDAGRAPH_MODE:=FULL_AND_PIECEWISE}"
 : "${MAX_CUDAGRAPH_CAPTURE_SIZE:=128}"
 : "${SPARKCACHE_CACHE_NAMESPACE:=jj-r8-gb10-manager-pages-v2}"
+: "${SPARKCACHE_ENABLED:=1}"
 : "${SPARKCACHE_PUBLICATION_SCHEMA:=snapshot-v1}"
 : "${SPARKCACHE_CLEAR_ONCE:=auto}"
 : "${SPARKCACHE_MAX_BYTES:=42949672960}"
@@ -96,7 +97,7 @@ require_positive_uint() {
 for name in \
   PORT MASTER_PORT TENSOR_PARALLEL_SIZE PIPELINE_PARALLEL_SIZE \
   DECODE_CONTEXT_PARALLEL_SIZE NODE_COUNT MAX_MODEL_LEN MAX_NUM_SEQS \
-  MAX_NUM_BATCHED_TOKENS PREFILL_SCHEDULE_INTERVAL KV_CACHE_MEMORY_BYTES \
+  MAX_NUM_BATCHED_TOKENS PREFILL_SCHEDULE_INTERVAL \
   NUM_SPECULATIVE_TOKENS \
   DRAFT_TENSOR_PARALLEL_SIZE MAX_CUDAGRAPH_CAPTURE_SIZE \
   B12X_MLA_CKV_GATHER_MAX_TOKENS \
@@ -118,6 +119,18 @@ case "${DECODE_CONTEXT_PARALLEL_SIZE}" in
 esac
 (( TENSOR_PARALLEL_SIZE % DECODE_CONTEXT_PARALLEL_SIZE == 0 )) || \
   die 'DECODE_CONTEXT_PARALLEL_SIZE must divide TENSOR_PARALLEL_SIZE'
+
+if [[ "${KV_CACHE_MEMORY_BYTES}" == auto ]]; then
+  if (( DECODE_CONTEXT_PARALLEL_SIZE == 1 )); then
+    # This reservation completed a 942,767-token request without host OOM.
+    KV_CACHE_MEMORY_BYTES=27917287424
+  else
+    # DCP2 and DCP4 use the recorded 30 GiB capacity configuration.
+    KV_CACHE_MEMORY_BYTES=32212254720
+  fi
+else
+  require_positive_uint KV_CACHE_MEMORY_BYTES
+fi
 
 if [[ "${CP_KV_CACHE_INTERLEAVE_SIZE}" == auto ]]; then
   if (( DECODE_CONTEXT_PARALLEL_SIZE == 1 )); then
@@ -161,6 +174,10 @@ esac
 case "${SPARKCACHE_PUBLICATION_SCHEMA}" in
   snapshot-v1|tail-cow-v1) ;;
   *) die 'SPARKCACHE_PUBLICATION_SCHEMA must be snapshot-v1 or tail-cow-v1' ;;
+esac
+case "${SPARKCACHE_ENABLED}" in
+  0|1) ;;
+  *) die 'SPARKCACHE_ENABLED must be 0 or 1' ;;
 esac
 for name in SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE
 do
@@ -275,13 +292,15 @@ print(json.dumps({
 PY
 )"
 
-export SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE SPARKCACHE_MAX_BYTES
-export SPARKCACHE_PUBLICATION_SCHEMA
-export SPARKCACHE_LOW_WATERMARK_BYTES SPARKCACHE_TTL_SECONDS
-export SPARKCACHE_MIN_SPAN_TOKENS SPARKCACHE_MAX_SPAN_TOKENS
-export SPARKCACHE_LOAD_THREADS SPARKCACHE_MAX_PENDING_RESTORES
-export SPARKCACHE_CUDA_RESTORE_IO_WORKERS SPARKCACHE_CUDA_ARENA_BYTES
-kv_transfer_config="$(python3 - <<'PY'
+kv_transfer_args=()
+if [[ "${SPARKCACHE_ENABLED}" == 1 ]]; then
+  export SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE SPARKCACHE_MAX_BYTES
+  export SPARKCACHE_PUBLICATION_SCHEMA
+  export SPARKCACHE_LOW_WATERMARK_BYTES SPARKCACHE_TTL_SECONDS
+  export SPARKCACHE_MIN_SPAN_TOKENS SPARKCACHE_MAX_SPAN_TOKENS
+  export SPARKCACHE_LOAD_THREADS SPARKCACHE_MAX_PENDING_RESTORES
+  export SPARKCACHE_CUDA_RESTORE_IO_WORKERS SPARKCACHE_CUDA_ARENA_BYTES
+  kv_transfer_config="$(python3 - <<'PY'
 import json
 import os
 
@@ -322,6 +341,8 @@ print(json.dumps({
 }, separators=(",", ":")))
 PY
 )"
+  kv_transfer_args=(--kv-transfer-config "${kv_transfer_config}")
+fi
 
 headless=()
 [[ "${rank}" == 0 ]] || headless=(--headless)
@@ -366,6 +387,7 @@ exec docker run -d \
   -e NCCL_SWITCHLESS_RING_ONLY=1 -e NCCL_CUMEM_ENABLE=0 -e NCCL_IGNORE_CPU_AFFINITY=1 \
   -e "VLLM_FASTSAFETENSORS_QUEUE_SIZE=${FASTSAFETENSORS_QUEUE_SIZE}" \
   --label org.sparkring.runtime=glm53-jj-r8-gb10-sparkcache \
+  --label org.sparkring.sparkcache.enabled="${SPARKCACHE_ENABLED}" \
   --label org.sparkring.rank="${rank}" \
   "${IMAGE_REF}" \
   /models/target \
@@ -392,4 +414,4 @@ exec docker run -d \
   --compilation-config "${compilation_config}" \
   --max-cudagraph-capture-size "${MAX_CUDAGRAPH_CAPTURE_SIZE}" \
   --async-scheduling --enable-prefix-caching --cudagraph-metrics \
-  --kv-transfer-config "${kv_transfer_config}" "${headless[@]}"
+  "${kv_transfer_args[@]}" "${headless[@]}"

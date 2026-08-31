@@ -107,11 +107,27 @@ DECODE_CONTEXT_PARALLEL_SIZE=1  # change to 2 or 4
 
 The launcher selects the matching GLM KV geometry automatically:
 
-| DCP | KV interleave | Full-CKV prefill gather |
-|---:|---:|---:|
-| 1 | 1 token | disabled |
-| 2 | 4 tokens | enabled |
-| 4 | 4 tokens | enabled |
+| DCP | KV interleave | Full-CKV prefill gather | Default FP8 KV per rank |
+|---:|---:|---:|---:|
+| 1 | 1 token | disabled | 26 GiB |
+| 2 | 4 tokens | enabled | 30 GiB |
+| 4 | 4 tokens | enabled | 30 GiB |
+
+The DCP1 default completed a 942,767-token needle retrieval under the 1M
+request limit. The DCP2 and DCP4 defaults preserve their recorded capacity and
+restart-restore configurations. Set `KV_CACHE_MEMORY_BYTES` to a positive byte
+count to override the topology-aware `auto` policy.
+
+Choose persistent SparkCache or vLLM's GPU prefix cache alone without changing
+the image:
+
+```bash
+SPARKCACHE_ENABLED=1  # persistent SparkCache plus vLLM prefix caching
+SPARKCACHE_ENABLED=0  # vLLM prefix caching only
+```
+
+Disabling SparkCache omits the external KV connector and all persistent
+publication and restore work. `--enable-prefix-caching` remains enabled.
 
 `MAX_MODEL_LEN`, `MAX_NUM_SEQS`, `MAX_NUM_BATCHED_TOKENS`,
 `KV_CACHE_MEMORY_BYTES`, speculation depth, ports, SparkCache capacity, and
@@ -151,11 +167,17 @@ curl --fail http://rank0.example.net:8015/v1/models
 
 The exact image completed SparkCache publication and process-replacement
 restore checks at DCP1, DCP2, and DCP4. DCP2 and DCP4 used 30 GiB of FP8 KV
-per rank. A DCP1 capacity sweep selected 41 GiB per rank and reported
-2,056,272 KV tokens while retaining 11–13 GiB of available host memory.
+per rank. The DCP1 deep-context profile uses 26 GiB per rank, exposes
+1,303,701 KV tokens, and completed a 942,767-token needle request in 478.1
+seconds while retaining at least 23.7 GiB of available host memory during
+prefill.
 
-The retained checks stored spans from 8,192 through 14,336 tokens. They do not
-establish one-million-token request completion, concurrent large-context
-restore, long-duration behavior, or general throughput. See
+The retained restart-restore checks stored spans from 8,192 through 14,336
+tokens. The deep-context run published 942,592 tokens but did not replay that
+snapshot after process replacement. The evidence does not establish
+concurrent large-context restore, long-duration behavior, or general
+throughput. See
 [`LIVE_VALIDATION.md`](../runtime/glm53-flash-jj-r8-gb10/LIVE_VALIDATION.md)
+and the
+[`deep-context record`](../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md)
 for the exact conditions and results.

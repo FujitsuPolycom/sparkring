@@ -21,9 +21,9 @@ extensions, switchless NCCL, and the SparkCache CUDA placement library.
 ## Configuration
 
 The DCP2 and DCP4 runs used four GB10 systems at TP4, an 8,192-token scheduler
-budget, 30 GiB of FP8 target KV per rank, DFlash2 depth seven,
-fastsafetensors, and SparkCache CUDA placement. The DCP1 capacity sweep kept
-the same serving settings and varied only FP8 KV bytes per rank.
+budget, and 30 GiB of FP8 target KV per rank. The DCP1 deep-context run used
+26 GiB per rank. Every run used DFlash2 depth seven, fastsafetensors, and
+SparkCache CUDA placement.
 
 The model limit was 1,048,576 tokens. Full-CKV gathering remained capped at
 524,288 tokens. Complete `snapshot-v1` publication used the
@@ -54,9 +54,9 @@ table remains the semantic check.
 
 ## DCP1 KV capacity
 
-The DCP1 sweep used a 1,048,576-token request limit, 8,192 batched tokens, 16
-sequences, DFlash2 depth seven, and SparkCache. The 41 GiB configuration is
-the largest candidate that retained the test's 8 GiB host-memory margin.
+The DCP1 capacity sweep used a 1,048,576-token request limit, 8,192 batched
+tokens, 16 sequences, DFlash2 depth seven, and SparkCache. It measured pool
+capacity separately from deep-request memory requirements.
 
 | FP8 KV per rank | Reported capacity | Result |
 |---:|---:|---|
@@ -69,14 +69,31 @@ the largest candidate that retained the test's 8 GiB host-memory margin.
 At 41 GiB, SparkCache published 8,192 tokens under digest prefix
 `15083199c308`. After replacing all four processes, every rank verified the
 restore in 190.9–215.2 ms. Available host memory after restore was
-11,537,212–13,138,388 KiB. The 41 GiB profile therefore supports a literal
-two-million-token DCP1 pool while retaining recoverable operating headroom.
+11,537,212–13,138,388 KiB. A later 450,000-depth request exhausted host memory,
+so the 41 GiB profile is a capacity result rather than the deep-context
+default.
+
+## DCP1 deep context
+
+The 26 GiB profile exposed 1,303,701 KV tokens and completed the public
+needle-retrieval probe's 1,000,000-depth case. The API reported a 942,767-token
+prompt, a 478.1-second completion time, `finish_reason=stop`, and the exact
+eight-digit needle. Available host memory remained at least 23.7 GiB during
+prefill. No container or kernel OOM record appeared.
+
+SparkCache published the completed request as a 942,592-token `snapshot-v1`
+object. Snapshot capture took 16.6–17.9 seconds per rank and background commits
+took 12.0–14.5 seconds. The snapshot was not replayed after process
+replacement. See the
+[`deep-context record`](../../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md)
+for the boundary walk and exact limitations.
 
 ## Limits
 
-The requests stored only 8,192, 9,216, or 14,336 tokens. This record does not
-prove a complete 1M request, large-context restore, concurrent restore, fault
-recovery, soak behavior, or throughput for this image.
+The image completed one 942,767-token request, but the resulting 942,592-token
+snapshot was not replayed. This record does not prove large-context restore,
+concurrent deep requests, fault recovery, soak behavior, or throughput for
+this image.
 
 The image has no registry digest. Publishing it requires a separate explicit
 operator decision and an immutable registry receipt.

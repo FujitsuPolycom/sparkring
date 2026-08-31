@@ -40,7 +40,8 @@ def test_environment_exposes_reproducible_r8_defaults() -> None:
     assert values["MAX_MODEL_LEN"] == "1048576"
     assert values["MAX_NUM_BATCHED_TOKENS"] == "8192"
     assert values["PREFILL_SCHEDULE_INTERVAL"] == "8"
-    assert values["KV_CACHE_MEMORY_BYTES"] == "32212254720"
+    assert values["KV_CACHE_MEMORY_BYTES"] == "auto"
+    assert values["SPARKCACHE_ENABLED"] == "1"
     assert values["SPARKCACHE_MAX_SPAN_TOKENS"] == "1048576"
     assert values["CP_KV_CACHE_INTERLEAVE_SIZE"] == "auto"
     assert values["B12X_MLA_CKV_GATHER"] == "auto"
@@ -96,7 +97,11 @@ printf '%s  %s\n' "$hash" "$2"
     ):
         path.write_text("fixture", encoding="utf-8")
 
-    for dcp, interleave, gather in ((1, "1", "0"), (2, "4", "1"), (4, "4", "1")):
+    for dcp, interleave, gather, kv_bytes in (
+        (1, "1", "0", "27917287424"),
+        (2, "4", "1", "32212254720"),
+        (4, "4", "1", "32212254720"),
+    ):
         config = tmp_path / f"dcp{dcp}.env"
         config.write_text(
             "\n".join(
@@ -132,11 +137,54 @@ printf '%s  %s\n' "$hash" "$2"
         interleave_index = arguments.index("--cp-kv-cache-interleave-size")
         assert arguments[interleave_index + 1] == interleave
         assert f"VLLM_B12X_MLA_CKV_GATHER={gather}" in arguments
+        kv_index = arguments.index("--kv-cache-memory-bytes")
+        assert arguments[kv_index + 1] == kv_bytes
         assert "--kv-transfer-config" in arguments
         connector = json.loads(arguments[arguments.index("--kv-transfer-config") + 1])
         extra = connector["kv_connector_extra_config"]
         assert extra["spark_cache_publication_schema"] == "snapshot-v1"
         assert extra["spark_cache_model_profile"] == "glm53-flash-hybrid"
+
+    config = tmp_path / "dcp1-vllm-prefix-only.env"
+    config.write_text(
+        "\n".join(
+            (
+                "HOST_IP=rank0.example.net",
+                "MASTER_ADDR=rank0.example.net",
+                f"TARGET_MODEL_HOST_PATH={_bash_path(directories['target'])}",
+                f"DFLASH_MODEL_HOST_PATH={_bash_path(directories['draft'])}",
+                f"CACHE_HOST_ROOT={_bash_path(directories['cache'])}",
+                f"PATH={_bash_path(fake_bin)}:$PATH",
+                f"export CAPTURE_PATH={_bash_path(capture)}",
+                f"export EXPECTED_IMAGE_ID={IMAGE_ID}",
+                "IMAGE_REF=test-image:r8",
+                f"IMAGE_ID={IMAGE_ID}",
+                "DECODE_CONTEXT_PARALLEL_SIZE=1",
+                "SPARKCACHE_ENABLED=0",
+            )
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    result = subprocess.run(
+        ["bash", _bash_path(LAUNCHER), "0", _bash_path(config)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    arguments = capture.read_text(encoding="utf-8").splitlines()
+    assert "--enable-prefix-caching" in arguments
+    assert "--kv-transfer-config" not in arguments
+    assert "org.sparkring.sparkcache.enabled=0" in arguments
+
+
+def test_launcher_can_use_vllm_prefix_cache_without_sparkcache() -> None:
+    launcher = LAUNCHER.read_text(encoding="utf-8")
+    assert "SPARKCACHE_ENABLED must be 0 or 1" in launcher
+    assert "kv_transfer_args=()" in launcher
+    assert "--enable-prefix-caching" in launcher
 
 
 def test_launcher_rejects_unsupported_dcp_geometry() -> None:

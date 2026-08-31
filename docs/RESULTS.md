@@ -26,6 +26,10 @@ all active streams.
 The normalized DeepSeek two-Spark profile also completed a
 [three-hour llama-benchy prefix-cache benchmark](../performance/records/deepseek-v4-flash/llama-benchy-normalized-tp2-20260822.md).
 
+The GLM-5.3 R8 TP4/DCP1 profile completed a
+[942,767-token needle retrieval](../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md)
+with a 1,048,576-token request limit and 26 GiB of FP8 KV per rank.
+
 ## GLM-5.2 EXL3 3.5-bpw — four Sparks
 
 | Context | Prefill | C1 decode | C2 decode | C4 decode | C8 decode |
