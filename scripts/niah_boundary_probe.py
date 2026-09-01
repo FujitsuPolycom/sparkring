@@ -10,11 +10,21 @@ classifies the outcome:
   PASS           needle retrieved, request completed (finish=stop)
   NEEDLE-MISS    prompt processed but needle not retrievable
   TIMEOUT        wall deadline hit first
+  STALL          opt-in watchdog: prompt counter frozen while admitted
 
-The request runs in a background thread while the main thread samples the
-engine's Prometheus counter (`vllm:prompt_tokens_total` on <api>/metrics).
-Probe an IDLE lane: under concurrent load the global counter advances from
-unrelated traffic and the counter signal degrades to the wall deadline.
+The request runs in a background thread. By default the wall deadline is
+the authoritative limiter; the prompt-counter watchdog is opt-in via
+--stall-ticks N: it samples the engine's Prometheus counter
+(`vllm:prompt_tokens_total` on <api>/metrics) from the main thread and
+reports the deep prefill wedge signature only after the counter stays
+frozen for N polls. Trust that signal only on an IDLE lane: under
+concurrent load the global counter advances from unrelated traffic, and
+this vLLM runtime may leave the counter unchanged until a healthy long
+prefill completes, so watchdog-off is the default.
+
+--depth is an approximate prompt-token target: the 4 chars/token archive
+construction is tokenizer-dependent, and the measured prompt size is the
+final `usage.prompt_tokens` value reported with the verdict.
 
 Example:
     DSPARK_API_KEY is read from the environment by default (--api-key to override)
@@ -25,7 +35,7 @@ Multiple boundary walks can be driven by hashing same-seed depths, e.g.:
     for d in 100000 200000 300000 350000 375000 400000 450000; do
         python3 niah_boundary_probe.py --api ... --model ... --depth $d; done
 
-Exit codes: 0 pass, 2 needle miss, 4 timeout, 5 request error.
+Exit codes: 0 pass, 2 needle miss, 3 stall (opt-in watchdog), 4 timeout, 5 request error.
 """
 import argparse
 import json
@@ -86,7 +96,7 @@ def main():
         headers["Authorization"] = "Bearer " + ARGS.api_key
     metrics = ARGS.api.rstrip("/") + "/metrics"
 
-    # background thread for the request; main thread runs the watchdog
+    # background thread for the request; main thread samples the counter (watchdog is opt-in)
     box = {}
 
     def request():
@@ -100,7 +110,7 @@ def main():
             req = urllib.request.Request(
                 ARGS.api.rstrip("/") + "/v1/chat/completions",
                 data=json.dumps(payload).encode(), headers=headers)
-            # generous inner timeout; the watchdog is the effective limiter
+            # generous inner timeout; the wall deadline is the effective limiter by default
             box["data"] = json.load(urllib.request.urlopen(req, timeout=ARGS.deadline + 300))
         except urllib.error.HTTPError as e:
             box["http_error"] = e.code
@@ -162,11 +172,12 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--api", required=True, help="OpenAI-compatible base URL of the rank-0 head")
     ap.add_argument("--model", required=True)
-    ap.add_argument("--depth", type=int, required=True, help="target prompt tokens")
+    ap.add_argument("--depth", type=int, required=True,
+                    help="approximate prompt-token target (tokenizer-dependent; the measured size is the response's usage.prompt_tokens)")
     ap.add_argument("--frac", type=float, default=0.5, help="needle position fraction 0..1")
     ap.add_argument("--deadline", type=int, default=900, help="wall deadline seconds")
-    ap.add_argument("--stall-ticks", type=int, default=4,
-                    help="counter-frozen ticks (polls run at the 20s join cadence) before STALL exit; 0 disables")
+    ap.add_argument("--stall-ticks", type=int, default=0,
+                    help="opt-in stall watchdog: exit 3 after this many prompt-counter polls at the 20s cadence show no advance; 0 (default) disables it and the wall deadline is authoritative")
     ap.add_argument("--seed", type=int, default=424242)
     ap.add_argument("--api-key", default=os.environ.get("DSPARK_API_KEY", ""),
                     help="bearer key (default $DSPARK_API_KEY)")
