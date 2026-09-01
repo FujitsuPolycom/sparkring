@@ -54,9 +54,9 @@ seven, FP8 KV, and the Jovian Judgement R8 runtime.
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
 |---|---|---:|---:|---:|---|---|
-| DCP1 | 4 Sparks · TP4/DCP1 | 1M | 16 | 8,192 | 26 GiB/rank; SparkCache enabled | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
-| DCP2 | 4 Sparks · TP4/DCP2 | 1M | 16 | 8,192 | 30 GiB/rank; SparkCache enabled | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
-| **DCP4 — preferred default** | **4 Sparks · TP4/DCP4** | **1M** | **16** | **8,192** | **24 GiB/rank; SparkCache enabled** | **[Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)** |
+| DCP1 | 4 Sparks · TP4/DCP1 | 1M | 16 | 8,192 | 24 GiB/rank; SparkCache enabled | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| DCP2 | 4 Sparks · TP4/DCP2 | 1M | 16 | 8,192 | 24 GiB/rank; SparkCache enabled | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| **DCP4 preferred** | **4 Sparks · TP4/DCP4** | **1M** | **16** | **8,192** | **24 GiB/rank; SparkCache enabled** | **[Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)** |
 
 DCP4 is preferred because it provides the largest KV capacity while retaining
 host-memory headroom with the 24 GiB reservation. The quickstart uses one
