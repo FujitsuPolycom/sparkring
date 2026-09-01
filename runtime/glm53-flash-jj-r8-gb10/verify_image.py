@@ -114,20 +114,21 @@ def expected_labels(pins: dict[str, Any]) -> dict[str, str]:
         "org.sparkring.vllm.python-tree": pins["vllm"]["tree"],
         "org.sparkring.vllm.sparkcache-composition": pins["vllm"]["commit"],
         "org.sparkring.vllm.tree": pins["vllm"]["tree"],
-        "org.sparkring.vllm.gb10-r10-parent": pins["vllm"][
-            "gb10_r10_parent_commit"
+        "org.sparkring.vllm.community-release": pins["vllm"][
+            "community_release"
         ],
-        "org.sparkring.vllm.gb10-r10-sparse-metadata": pins["vllm"][
-            "gb10_r10_sparse_metadata_head"
+        "org.sparkring.vllm.community-parent": pins["vllm"][
+            "community_parent_commit"
         ],
-        "org.sparkring.vllm.gb10-r10-fwht": pins["vllm"][
-            "gb10_r10_fwht_head"
+        "org.sparkring.vllm.sparse-pooled-index": pins["vllm"][
+            "sparse_pooled_index_commit"
         ],
-        "org.sparkring.vllm.official-r8-component": pins["vllm"][
-            "official_r8_component_commit"
+        "org.sparkring.vllm.fwht-scaling": pins["vllm"]["fwht_scaling_commit"],
+        "org.sparkring.vllm.prefill-cadence-component": pins["vllm"][
+            "scheduler_prefill_cadence_component_commit"
         ],
         "org.sparkring.vllm.prefill-cadence-pr-head": pins["vllm"][
-            "public_prefill_cadence_pr_head"
+            "scheduler_prefill_cadence_pull_request_head"
         ],
         "org.sparkring.vllm.delta-patch-id": pins["vllm"]["delta_patch_id"],
         "org.sparkring.b12x.composition": pins["b12x"]["commit"],
@@ -150,7 +151,6 @@ def expected_labels(pins: dict[str, Any]) -> dict[str, str]:
         "org.sparkcache.startup-inventory": "connector-handshake-all-rank",
         "org.sparkcache.cache-geometry": "manager-pages-v2",
         "org.sparkcache.publication-schema": "snapshot-v1",
-        "org.sparkcache.tail-publication-schema": "page-tail-cow-v1-opt-in",
         "org.sparkcache.dcp-layouts": "1,2,4",
     }
 

@@ -32,24 +32,29 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     assert pins["vllm"]["delta_patch_id"] == (
         "44ad5586548465c002d0195d3739992795233ffe"
     )
-    assert pins["vllm"]["gb10_r10_parent_commit"] == (
+    assert pins["vllm"]["community_release"] == "Jovian Judgement Community R10"
+    assert pins["vllm"]["community_parent_commit"] == (
         "55969c16d4da57da76ee5729f3102d4b2003833c"
     )
-    assert pins["vllm"]["gb10_r10_sparse_metadata_head"] == "adb69eac8"
-    assert pins["vllm"]["gb10_r10_fwht_head"] == "ae37fd6ed"
-    assert pins["vllm"]["official_r8_component_commit"] == (
+    assert pins["vllm"]["sparse_pooled_index_commit"] == (
+        "adb69eac865a1a37081fa4edb9f7599a351f7aac"
+    )
+    assert pins["vllm"]["fwht_scaling_commit"] == (
+        "ae37fd6ed8df72d4bd8cdc067c7c241c93408235"
+    )
+    assert pins["vllm"]["scheduler_prefill_cadence_component_commit"] == (
         "f1191b9090cd02ac49238c8e4f371050759703b6"
     )
-    assert pins["vllm"]["public_prefill_cadence_pr_head"] == (
+    assert pins["vllm"]["scheduler_prefill_cadence_pull_request_head"] == (
         "2412a6f34ab1412f86ed3e4cdd355271a082d93d"
     )
     assert pins["sparkcache"] == {
         "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-        "commit": "6d83c7d8cb6ace96e657b3d0150116d0fe4e011c",
-        "tree": "0bb871bd1e8d3893a11686f0ba404bd4b6240e4d",
-        "package_tree": "24946bfc69e8f0bf9b0a65b0ddfa1b4ccc4178b4",
+        "commit": "6f50517802a96b5427cb2ce662d3fed39b231fcd",
+        "tree": "f0b2f3f35325b45bdc0acc9e13c9851229bdc9d7",
+        "package_tree": "b4a2faa9566aaf77c1741021f175d4f53f041c8c",
         "source_tree_sha256": (
-            "67edb651835b978cbaf2519f92e68251145c1368a22cc0339f706d5c2144f862"
+            "cfd6720b625232df64a36f37ab86e9c8ae353a1915304642d229ab28ea7bd794"
         ),
         "cuda_placement_sha256": (
             "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
@@ -72,7 +77,8 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     }
     assert defaults["full_ckv_gather_max_tokens"] == 524288
     assert defaults["async_page_capture"] == {
-        "enabled": False,
+        "preferred_dcp4_enabled": True,
+        "launcher_fallback_enabled": False,
         "slot_bytes_by_dcp": {
             "dcp1": 8589934592,
             "dcp2": 5368709120,
@@ -92,7 +98,7 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
     for identity in (
         "f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
         "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
-        "6d83c7d8cb6ace96e657b3d0150116d0fe4e011c",
+        "6f50517802a96b5427cb2ce662d3fed39b231fcd",
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
         "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
         "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
@@ -137,7 +143,7 @@ def test_runtime_hashes_are_enforced_inside_image() -> None:
     assert labels["org.sparkring.vllm.delta-patch-id"] == (
         "44ad5586548465c002d0195d3739992795233ffe"
     )
-    assert labels["org.sparkring.vllm.gb10-r10-parent"] == (
+    assert labels["org.sparkring.vllm.community-parent"] == (
         "55969c16d4da57da76ee5729f3102d4b2003833c"
     )
     assert labels["org.sparkring.b12x.package-tree"] == (
@@ -166,7 +172,7 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
         "KV_CACHE_MEMORY_BYTES='auto'",
         "B12X_MLA_CKV_GATHER_MAX_TOKENS=524288",
         "SPARKCACHE_MAX_SPAN_TOKENS=1048576",
-        "SPARKCACHE_ASYNC_PAGE_CAPTURE=0",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE=1",
         "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES='auto'",
         "SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2",
     ):

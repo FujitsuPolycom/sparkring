@@ -1,9 +1,10 @@
-# GLM-5.3 Flash R8 runtime for GB10
+# GLM-5.3 Flash GB10 operator image
 
 This directory builds and runs one Linux/ARM64 image for GLM-5.3 Flash on four
-NVIDIA GB10 systems. The image combines the Jovian Judgement R8 scheduler,
-BF16 DFlash2 speculation, B12X kernels, switchless NCCL, fastsafetensors, and
-SparkCache. One image supports TP4 with DCP1, DCP2, or DCP4.
+NVIDIA GB10 systems. The image combines the Local Inference Lab GLM-5.3 vLLM
+runtime recorded as `Jovian Judgement Community R10`, BF16 DFlash2
+speculation, B12X kernels, switchless NCCL, fastsafetensors, and SparkCache.
+One image supports TP4 with DCP1, DCP2, or DCP4.
 
 Local Inference Lab supplies the model quantization and the primary runtime
 work that makes this profile practical:
@@ -22,7 +23,7 @@ Exact revisions and source-tree hashes are in [`pins.json`](pins.json).
 ## Use the runtime
 
 Follow the
-[`GLM-5.3 R8 GB10 quickstart`](../../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)
+[`GLM-5.3 GB10 quickstart`](../../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)
 to obtain or build the image, distribute it once through the direct fabric,
 and start four ranks. [`runtime.env.example`](runtime.env.example) exposes the
 model paths, image identity, DCP degree, context limit, scheduler budget, KV
@@ -51,17 +52,37 @@ publishes persistent entries. `restore-only` reuses compatible entries but
 does not capture or publish new prompt state. Missing entries are computed by
 vLLM normally. `store-only` and `disabled` are diagnostic modes.
 
+Set `SPARKCACHE_ASYNC_PAGE_CAPTURE=1` to capture complete manager-page
+snapshots through the bounded CUDA ring. `SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES`
+defaults to 8 GiB for DCP1, 5 GiB for DCP2, and 3 GiB for DCP4. DCP4 with two
+3 GiB slots is **qualified** by the recorded 126K interference comparison and
+900K/1M restart restores. DCP1 and DCP2 asynchronous capture is
+**implemented** but has no live qualification record. Asynchronous capture
+requires `snapshot-v1`; page-tail publication is unsupported in this image.
+
 ## Build from pinned source
 
 The builder accepts clean checkouts at the exact vLLM and SparkCache commits
-recorded in `pins.json`. It verifies the commits, trees, package subtrees,
-runtime files, parent image, native extensions, and SparkCache CUDA placement
-library before producing an image.
+recorded in `pins.json`. Build the attested SparkCache snapshot library on an
+ARM64 CUDA 13 host before invoking the image builder:
+
+```bash
+cmake -S /source/sparkcache/sparkcache/native \
+  -B /source/sparkcache/sparkcache/native/build-cuda \
+  -G Ninja -DCMAKE_CUDA_ARCHITECTURES=121
+cmake --build /source/sparkcache/sparkcache/native/build-cuda \
+  --target spark_cache_snapshot
+```
+
+The image builder verifies commits, trees, package subtrees, runtime files,
+the parent image, retained native extensions, and both SparkCache CUDA
+libraries before producing an image.
 
 ```bash
 python runtime/glm53-flash-jj-r8-gb10/build_image.py \
   --vllm-source /source/vllm \
   --sparkcache-source /source/sparkcache \
+  --snapshot-library /source/sparkcache/sparkcache/native/build-cuda/libspark_cache_snapshot.so \
   --output-image sparkring-glm53-jj-r8-sparkcache:local-arm64 \
   --receipt ./glm53-r8-build-receipt.json
 ```
