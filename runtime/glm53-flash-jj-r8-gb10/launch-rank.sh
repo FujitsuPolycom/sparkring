@@ -59,6 +59,7 @@ fi
 : "${MAX_CUDAGRAPH_CAPTURE_SIZE:=128}"
 : "${SPARKCACHE_CACHE_NAMESPACE:=jj-r8-gb10-manager-pages-v2}"
 : "${SPARKCACHE_ENABLED:=1}"
+: "${SPARKCACHE_ACCESS_MODE:=read-write}"
 : "${SPARKCACHE_PUBLICATION_SCHEMA:=snapshot-v1}"
 : "${SPARKCACHE_CLEAR_ONCE:=auto}"
 : "${SPARKCACHE_MAX_BYTES:=42949672960}"
@@ -182,6 +183,10 @@ case "${SPARKCACHE_ENABLED}" in
   0|1) ;;
   *) die 'SPARKCACHE_ENABLED must be 0 or 1' ;;
 esac
+case "${SPARKCACHE_ACCESS_MODE}" in
+  read-write|restore-only|store-only|disabled) ;;
+  *) die 'SPARKCACHE_ACCESS_MODE must be read-write, restore-only, store-only, or disabled' ;;
+esac
 for name in SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE
 do
   [[ "${!name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || \
@@ -298,6 +303,7 @@ PY
 kv_transfer_args=()
 if [[ "${SPARKCACHE_ENABLED}" == 1 ]]; then
   export SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE SPARKCACHE_MAX_BYTES
+  export SPARKCACHE_ACCESS_MODE
   export SPARKCACHE_PUBLICATION_SCHEMA
   export SPARKCACHE_LOW_WATERMARK_BYTES SPARKCACHE_TTL_SECONDS
   export SPARKCACHE_MIN_SPAN_TOKENS SPARKCACHE_MAX_SPAN_TOKENS
@@ -317,8 +323,7 @@ extra = {
     "spark_cache_target_checkpoint_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9",
     "spark_cache_draft_checkpoint_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
     "spark_cache_draft_policy": "separate",
-    "spark_cache_store": True,
-    "spark_cache_restore": True,
+    "spark_cache_access_mode": os.environ["SPARKCACHE_ACCESS_MODE"],
     "spark_cache_scheduler_probe": "none",
     "spark_cache_streaming_snapshots": False,
     "spark_cache_cuda_restore": True,
@@ -391,6 +396,7 @@ exec docker run -d \
   -e "VLLM_FASTSAFETENSORS_QUEUE_SIZE=${FASTSAFETENSORS_QUEUE_SIZE}" \
   --label org.sparkring.runtime=glm53-jj-r8-gb10-sparkcache \
   --label org.sparkring.sparkcache.enabled="${SPARKCACHE_ENABLED}" \
+  --label org.sparkring.sparkcache.access-mode="${SPARKCACHE_ACCESS_MODE}" \
   --label org.sparkring.rank="${rank}" \
   "${IMAGE_REF}" \
   /models/target \
