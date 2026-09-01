@@ -43,7 +43,7 @@
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-    "commit": "6f50517802a96b5427cb2ce662d3fed39b231fcd",
+    "commit": "506cc4a16581b5f62ae343cbd90cdd6bea13a6cd",
     "tree": "f0b2f3f35325b45bdc0acc9e13c9851229bdc9d7",
     "package_tree": "b4a2faa9566aaf77c1741021f175d4f53f041c8c",
     "source_tree_sha256": "cfd6720b625232df64a36f37ab86e9c8ae353a1915304642d229ab28ea7bd794",
