@@ -415,7 +415,7 @@ def test_public_glm53_benchmark_is_sanitized_and_front_page_uses_r8() -> None:
     assert "GLM-5.3 Flash NVFP4 target, BF16 DFlash2" in readme
     assert "| DCP1 | 4 Sparks · TP4/DCP1 |" in readme
     assert "| DCP2 | 4 Sparks · TP4/DCP2 |" in readme
-    assert "| **DCP4 — preferred default** | **4 Sparks · TP4/DCP4** |" in readme
+    assert "| **DCP4 preferred** | **4 Sparks · TP4/DCP4** |" in readme
     assert "| 2,513 | 40.20 | 116.73 | C16: 168.39 | 71.67 |" in readme
     quickstart = (
         ROOT / "docs" / "GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
