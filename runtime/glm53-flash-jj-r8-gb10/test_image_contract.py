@@ -57,7 +57,7 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     assert defaults["kv_cache_bytes_per_rank"] == {
         "dcp1": 27917287424,
         "dcp2": 32212254720,
-        "dcp4": 32212254720,
+        "dcp4": 25769803776,
     }
     assert defaults["full_ckv_gather_max_tokens"] == 524288
     assert defaults["dcp"] == {

@@ -54,9 +54,9 @@ python -m pytest \
 The operator template is
 [`runtime/glm53-flash-jj-r8-gb10/runtime.env.example`](../../runtime/glm53-flash-jj-r8-gb10/runtime.env.example).
 It configures one published Linux/ARM64 image for TP4 with DCP1, DCP2, or
-DCP4. Its defaults are a 1,048,576-token request limit, 16 sequences, an
-8,192-token batched-token budget, and FP8 KV allocations of 26 GiB/rank for
-DCP1 or 30 GiB/rank for DCP2/DCP4.
+DCP4. Its defaults are TP4/DCP4, a 1,048,576-token request limit, 16 sequences,
+an 8,192-token batched-token budget, scheduler interval 8, and a 24 GiB FP8 KV
+allocation per rank.
 
 `SPARKCACHE_ENABLED=1` enables persistent SparkCache plus vLLM prefix caching.
 `SPARKCACHE_ENABLED=0` omits the persistent connector and retains vLLM prefix

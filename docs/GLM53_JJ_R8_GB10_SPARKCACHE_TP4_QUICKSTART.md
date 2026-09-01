@@ -134,7 +134,7 @@ The default OpenAI-compatible model name is `glm-5.3-flash`. Override
 Choose the DCP degree with one line:
 
 ```bash
-DECODE_CONTEXT_PARALLEL_SIZE=1  # change to 2 or 4
+DECODE_CONTEXT_PARALLEL_SIZE=4  # change to 1 or 2
 ```
 
 The launcher selects the matching GLM KV geometry automatically:
@@ -143,12 +143,13 @@ The launcher selects the matching GLM KV geometry automatically:
 |---:|---:|---:|---:|
 | 1 | 1 token | disabled | 26 GiB |
 | 2 | 4 tokens | enabled | 30 GiB |
-| 4 | 4 tokens | enabled | 30 GiB |
+| 4 | 4 tokens | enabled | 24 GiB |
 
-The published image's DCP1 default completed a 942,898-token needle retrieval under the 1M
-request limit. The DCP2 and DCP4 defaults preserve their recorded capacity and
-restart-restore configurations. Set `KV_CACHE_MEMORY_BYTES` to a positive byte
-count to override the topology-aware `auto` policy.
+The published image's DCP1 profile completed a 942,898-token needle retrieval
+under the 1M request limit. The DCP2 and DCP4 validation records used 30 GiB
+per rank. The DCP4 operator default uses 24 GiB per rank to retain more
+host-memory headroom under concurrent serving. Set `KV_CACHE_MEMORY_BYTES` to
+a positive byte count to override the topology-aware `auto` policy.
 
 Choose persistent SparkCache or vLLM's GPU prefix cache alone without changing
 the image:

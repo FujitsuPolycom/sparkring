@@ -51,10 +51,10 @@ guides use immutable digests.
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
 |---|---|---:|---:|---:|---|---|
-| GLM-5.3 Flash NVFP4 + BF16 DFlash2 on Jovian Judgement R8 | 4 Sparks · TP4 with DCP1, DCP2, or DCP4 | 1M | 16 | 8,192 | FP8 KV: 26 GiB/rank at DCP1, 30 GiB/rank at DCP2/DCP4; optional SparkCache | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| GLM-5.3 Flash NVFP4 + BF16 DFlash2 on Jovian Judgement R8 | 4 Sparks · TP4/DCP4 by default; DCP1 and DCP2 available | 1M | 16 | 8,192 | 24 GiB/rank FP8 KV; SparkCache enabled by default | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
 
-The quickstart uses one Linux/ARM64 image for both caching modes. Set
-`SPARKCACHE_ENABLED=1` for persistent SparkCache plus vLLM prefix caching or
+The quickstart uses one Linux/ARM64 image for both caching modes. SparkCache is
+enabled by default. Set `SPARKCACHE_ENABLED=1` for persistent SparkCache plus vLLM prefix caching or
 `SPARKCACHE_ENABLED=0` for vLLM prefix caching alone. The image is published
 at
 `ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a`.

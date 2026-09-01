@@ -32,11 +32,11 @@ The launcher defaults to:
 
 | Setting | Value |
 |---|---:|
-| topology | TP4/DCP1 |
+| topology | TP4/DCP4 |
 | maximum model length | 1,048,576 tokens |
 | batched-token budget | 8,192 tokens |
 | sequences | 16 |
-| FP8 KV allocation | 26 GiB for DCP1; 30 GiB for DCP2/DCP4 |
+| FP8 KV allocation | 24 GiB for the default DCP4 profile; 26 GiB for DCP1; 30 GiB for DCP2 |
 | DFlash2 depth | 7 |
 | SparkCache publication | complete `snapshot-v1` objects |
 
