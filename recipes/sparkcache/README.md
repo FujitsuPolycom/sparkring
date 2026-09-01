@@ -10,7 +10,7 @@ SparkCache.
 |---|---|---:|---:|---:|---:|
 | [`deepseek-v4-flash-0731-tp2-dcp1.json`](deepseek-v4-flash-0731-tp2-dcp1.json) | implemented | TP2/DCP1 | 1,048,576 / 32 | 131,072 / 6 | 4,096 |
 | [`deepseek-v4-flash-0731-tp4-dcp1.json`](deepseek-v4-flash-0731-tp4-dcp1.json) | implemented | TP4/DCP1 | 1,048,576 / 32 | 524,288 / 32 | 4,096 |
-| [`glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1.json`](glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1.json) | qualified | TP4/DCP1 | 524,288 / 32 | 524,288 / 32 | 8,192 |
+| [`glm53-flash-nvfp4-dflash2-bf16-tp4.json`](glm53-flash-nvfp4-dflash2-bf16-tp4.json) | DCP1/DCP2 implemented; DCP4 qualified and preferred | TP4 with DCP1/DCP2/DCP4 | 1,048,576 / 16 | DCP4 publication through 124,928 stored tokens; restores through 999,424 tokens | 8,192 |
 | [`glm52-exl3-r7-3.5bpw-tp4-dcp4.json`](glm52-exl3-r7-3.5bpw-tp4-dcp4.json) | implemented | TP4/DCP4 | 1,048,576 / 16 | 262,144 / 8 | 4,096 |
 
 ## Unsupported integrations
@@ -20,21 +20,27 @@ cache evidence is published for Qwen. The four-Spark base profile disables
 external key-value caching, and the two-Spark base profile explicitly
 omits LMCache to keep its 8,192-token scheduler budget.
 
-The GLM-5.3 Flash recipe records the same 524,288-token and 32-sequence
-geometry used by its qualification. The other three recipes are implemented
-at the published values in the table. Their durable-state receipts qualify
-only the narrower context and sequence limits shown in the receipt column.
+The GLM-5.3 Flash composition uses one operator image for DCP1, DCP2, and
+DCP4. Asynchronous publication is disabled in the DCP1 and DCP2 recipe
+profiles because their capture-ring sizes are not live-qualified. DCP4 is the
+preferred profile and enables two 3 GiB capture slots per rank.
+
+The other three recipes are implemented at the published values in the table.
+Their durable-state receipts qualify only the narrower context and sequence
+limits shown in the receipt column.
 
 The DeepSeek compositions were qualified with SparkCache `0.1.0a1` wheel
 SHA-256
 `87c17d8dab5052f5a7833349dc9b99b76a3b6531ca6f0d3deff812f724fecdcc`.
 The GLM composition was qualified with SparkCache `0.1.0a2` wheel SHA-256
 `3345b8c574951a8204377b0c27f53765c84b96ab4f5a8ec1ac147574dba7568b`.
-The GLM-5.3 Flash composition was qualified from SparkCache commit
-`3860a2250193a6679ac6bac857af53e0757841f8` and source-tree SHA-256
-`6210f439c64e4079ed3304c9cc181174abb3e6045de740ba7b7c2546bcaf6ac2`
-using cache profile `glm53-flash-hybrid` and the vLLM lease contract named by
-its recipe. It did not use a published wheel.
+The GLM-5.3 Flash composition uses SparkCache commit
+`c5dda75ec46bf235f6ece6e0d0174c1e41bd805a` and deployable-source SHA-256
+`dffc2bead0a7c1cebb7a52757d38bd89146305b3ff351353ece9ac464c4c421d`
+inside the immutable image named by its recipe. It uses cache profile
+`glm53-flash-hybrid` and the vLLM ownership contract recorded by the operator
+image.
+
 Use the artifact named by the selected recipe and verify its hash on every rank
 when reproducing a published qualification. Operators may use another
 SparkCache build; the receipts on this page do not describe that artifact. The
@@ -78,7 +84,7 @@ Result:
 |---|---:|---:|---:|---|
 | DeepSeek TP2/DCP1 | 73,774 / 73,728 | 459.8, 517.0 ms | 73,728 | `SPARKCACHE_OK:9540`; canary passed |
 | DeepSeek TP4/DCP1 | 73,774 / 73,728 | 483.9, 413.9, 443.0, 494.6 ms | 73,728 | `SPARKCACHE_OK:9540`; canary passed |
-| GLM-5.3 Flash DFlash2 TP4/DCP1 | 8,215 / 8,192 | 155.6, 147.2, 194.0, 151.8 ms | 8,192 | `SPARKCACHE_GLM53_OK`; canary passed; 301 draft tokens from 43 drafts |
+| GLM-5.3 Flash DFlash2 TP4/DCP4 | 125,999 / 124,928 published; 1,000,000 / 999,424 restored | 2,276.2–2,395.2 ms for the 1M restore | 999,424 | exact 126K publication, 900K restore, and 1M restore needles passed |
 | GLM TP4/DCP4 | 225,555 / 225,536 | 4,171.2, 3,588.4, 3,697.5, 3,172.2 ms | 225,536 | all-rank inventory prime returned `2`; final content `SPARKCACHE_OK:9540`; canary passed; reasoning-trace equality inconclusive |
 
 Conclusion: the four exact compositions restore durable prefix state after
@@ -89,12 +95,16 @@ general vLLM, checkpoint, topology, or production reliability.
 Limitations: The published receipts use a 4,096-token scheduler budget; other
 budgets are operator choices whose performance and capacity behavior is not
 recorded here, except that the GLM-5.3 Flash receipt uses 8,192. The DeepSeek
-receipts cover DCP1, not DCP2 or DCP4. These
-recipes disable streaming snapshots and native restore, so the receipts do not
-cover either mode. Other images, checkpoints, and cache geometries are also
-outside the recorded evidence. The GLM-5.3 Flash receipt covers an 8,192-token
-restored span and does not establish throughput neutrality or larger-span
-restore performance. The GLM-5.2 composition requires the 40-query-row
+receipts cover DCP1, not DCP2 or DCP4. The DeepSeek and GLM-5.2 recipes
+disable streaming snapshots and CUDA restore. The GLM-5.3 recipe enables CUDA
+restore but disables row-streaming snapshots. Other images, checkpoints, and
+cache geometries are outside the recorded evidence.
+
+The GLM-5.3 Flash receipt qualifies asynchronous publication only through
+124,928 stored tokens and 231.8 MiB per rank. DCP1/DCP2 asynchronous capture,
+larger asynchronous publication, page-tail publication, and concurrent
+deep-context publication remain outside that evidence. The GLM-5.2
+composition requires the 40-query-row
 exact-state receipt preservation and regeneration procedure recorded in its
 recipe before every coordinated restart. Full GLM reasoning-trace equality is
 not a qualification condition because repeated requests varied while final

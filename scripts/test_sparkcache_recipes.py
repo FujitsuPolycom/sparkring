@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+BASE_RECIPE_DIR = ROOT / "recipes"
 RECIPE_DIR = ROOT / "recipes" / "sparkcache"
 RECIPE_PATHS = sorted(RECIPE_DIR.glob("*.json"))
 ARTIFACTS = {
@@ -24,8 +25,8 @@ ARTIFACTS = {
     ),
 }
 SOURCE_ARTIFACTS = {
-    "glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1.json": (
-        "6210f439c64e4079ed3304c9cc181174abb3e6045de740ba7b7c2546bcaf6ac2"
+    "glm53-flash-nvfp4-dflash2-bf16-tp4.json": (
+        "dffc2bead0a7c1cebb7a52757d38bd89146305b3ff351353ece9ac464c4c421d"
     ),
 }
 
@@ -34,12 +35,22 @@ def _load(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def test_recipe_indexes_link_every_machine_readable_recipe() -> None:
+    base_index = (BASE_RECIPE_DIR / "README.md").read_text(encoding="utf-8")
+    composition_index = (RECIPE_DIR / "README.md").read_text(encoding="utf-8")
+
+    for path in sorted(BASE_RECIPE_DIR.glob("*.json")):
+        assert f"]({path.name})" in base_index, path.name
+    for path in RECIPE_PATHS:
+        assert f"]({path.name})" in composition_index, path.name
+
+
 def test_composition_registry_has_all_profiles() -> None:
     assert [path.name for path in RECIPE_PATHS] == [
         "deepseek-v4-flash-0731-tp2-dcp1.json",
         "deepseek-v4-flash-0731-tp4-dcp1.json",
         "glm52-exl3-r7-3.5bpw-tp4-dcp4.json",
-        "glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1.json",
+        "glm53-flash-nvfp4-dflash2-bf16-tp4.json",
     ]
 
 
@@ -56,26 +67,32 @@ def test_compositions_pin_artifact_and_fail_closed_policy() -> None:
             assert artifact["wheel_sha256"] == wheel_sha256
             assert recipe["serving"]["max_num_batched_tokens"] == 4096
         else:
-            assert artifact["artifact_kind"] == "OCI image overlay"
+            if "glm53" in path.name:
+                assert artifact["artifact_kind"] == "source-pinned OCI image"
+            else:
+                assert artifact["artifact_kind"] == "OCI image overlay"
             assert artifact["source_sha256"] == SOURCE_ARTIFACTS[path.name]
             assert artifact["source_commit"] == (
-                "3860a2250193a6679ac6bac857af53e0757841f8"
+                "c5dda75ec46bf235f6ece6e0d0174c1e41bd805a"
             )
-            assert recipe["runtime"]["sparkcache_image"].startswith(
-                "ghcr.io/fujitsupolycom/"
-            )
-            assert recipe["serving"]["max_num_batched_tokens"] == 8192
+            assert recipe["runtime"]["image"].startswith("ghcr.io/fujitsupolycom/")
+            assert recipe["serving_common"]["max_num_batched_tokens"] == 8192
         if "deepseek" in path.name:
             assert recipe["serving"]["async_scheduling"] is True
             assert recipe["serving"]["scheduler_reserve_full_isl"] is True
         if "glm53" in path.name:
-            assert recipe["serving"]["async_scheduling"] is True
-            assert recipe["serving"]["native_prefix_caching"] is True
-            assert recipe["serving"]["chunked_prefill"] is True
-        assert recipe["serving"]["scheduler_budget_status"] == "qualified"
+            assert recipe["serving_common"]["async_scheduling"] is True
+            assert recipe["serving_common"]["native_prefix_caching"] is True
+            assert recipe["serving_common"]["chunked_prefill"] is True
+            assert recipe["serving_common"]["scheduler_budget_status"] == "qualified"
+        else:
+            assert recipe["serving"]["scheduler_budget_status"] == "qualified"
         assert recipe["sparkcache"]["kv_load_failure_policy"] == "recompute"
         assert recipe["sparkcache"]["streaming_snapshots"] is False
-        assert recipe["sparkcache"]["native_restore"] is False
+        if "glm53" in path.name:
+            assert recipe["sparkcache"]["cuda_restore"] is True
+        else:
+            assert recipe["sparkcache"]["native_restore"] is False
 
 
 def test_scheduler_budget_records_evidence_without_an_operator_ceiling() -> None:
@@ -93,10 +110,17 @@ def test_scheduler_budget_records_evidence_without_an_operator_ceiling() -> None
 def test_parallelism_matches_physical_rank_count() -> None:
     for path in RECIPE_PATHS:
         recipe = _load(path)
-        serving = recipe["serving"]
+        serving = recipe.get("serving", recipe.get("serving_common"))
+        assert serving is not None
         assert serving["tensor_parallel_size"] == recipe["hardware"]["ranks"]
         assert serving["node_count"] == recipe["hardware"]["ranks"]
-        assert serving["decode_context_parallel_size"] in (1, 4)
+        if "profiles" in recipe:
+            assert {
+                profile["decode_context_parallel_size"]
+                for profile in recipe["profiles"].values()
+            } == {1, 2, 4}
+        else:
+            assert serving["decode_context_parallel_size"] in (1, 4)
 
 
 def test_composition_evidence_has_claim_shape_and_valid_base() -> None:
@@ -110,7 +134,7 @@ def test_composition_evidence_has_claim_shape_and_valid_base() -> None:
         assert evidence["status"] == "qualified"
         if path.name in SOURCE_ARTIFACTS:
             assert recipe["status"] == "qualified"
-            assert "Four directly cabled" in evidence["conditions"]
+            assert "four directly connected" in evidence["conditions"].lower()
         else:
             assert "Historical qualified receipt" in evidence["conditions"]
         assert evidence["conclusion"].strip()
@@ -124,3 +148,57 @@ def test_composition_evidence_has_claim_shape_and_valid_base() -> None:
             assert required <= set(base["evidence"])
         else:
             assert {"status", "evidence"} <= set(base["publication"])
+
+
+def test_glm53_composition_matches_the_operator_contract() -> None:
+    recipe = _load(RECIPE_DIR / "glm53-flash-nvfp4-dflash2-bf16-tp4.json")
+    base = _load(ROOT / "recipes" / "glm53-flash-nvfp4-dflash2-bf16-tp4.json")
+    pins = _load(ROOT / "runtime" / "glm53-flash-jj-r8-gb10" / "pins.json")
+    receipt = _load(
+        ROOT / "runtime" / "glm53-flash-jj-r8-gb10" / "async-capture-image-receipt.json"
+    )
+
+    assert recipe["base_recipe"] == "../glm53-flash-nvfp4-dflash2-bf16-tp4.json"
+    assert recipe["preferred_profile"] == base["preferred_profile"] == "dcp4"
+    assert (
+        set(recipe["profiles"])
+        == set(base["profiles"])
+        == {
+            "dcp1",
+            "dcp2",
+            "dcp4",
+        }
+    )
+    assert recipe["runtime"]["image"] == receipt["artifact"]["registry"]
+    assert recipe["runtime"]["image_id"] == receipt["artifact"]["image_id"]
+    assert (
+        recipe["runtime"]["sparkcache"]["source_commit"] == pins["sparkcache"]["commit"]
+    )
+    assert (
+        recipe["runtime"]["sparkcache"]["source_sha256"]
+        == pins["sparkcache"]["source_tree_sha256"]
+    )
+    assert recipe["runtime"]["vllm"]["commit"] == pins["vllm"]["commit"]
+    assert (
+        recipe["serving_common"]["max_model_len"] == pins["defaults"]["max_model_len"]
+    )
+    assert (
+        recipe["serving_common"]["max_num_batched_tokens"]
+        == pins["defaults"]["max_num_batched_tokens"]
+    )
+
+    expected_bytes = pins["defaults"]["kv_cache_bytes_per_rank"]
+    for name, profile in recipe["profiles"].items():
+        assert profile["kv_cache_memory_bytes_per_rank"] == expected_bytes[name]
+    assert recipe["profiles"]["dcp1"]["async_page_capture"] is False
+    assert recipe["profiles"]["dcp2"]["async_page_capture"] is False
+    assert recipe["profiles"]["dcp4"]["async_page_capture"] is True
+    assert recipe["profiles"]["dcp4"]["status"] == "qualified"
+    assert recipe["profiles"]["dcp4"]["preferred"] is True
+    assert (
+        recipe["profiles"]["dcp4"]["capture_slot_bytes"]
+        == receipt["conditions"]["capture_slot_bytes"]
+    )
+    assert recipe["evidence"]["machine_receipt"] == (
+        "runtime/glm53-flash-jj-r8-gb10/async-capture-image-receipt.json"
+    )

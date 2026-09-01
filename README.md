@@ -121,7 +121,7 @@ See [architecture](docs/ARCHITECTURE.md), [SIRCL](docs/SIRCL.md), and the
 | `spark_transport/` | Native transport and vLLM adapters |
 | `runtime/` | Pinned runtime inputs and builders |
 | `scripts/` | Site validation, preflight, launch, and evidence tooling |
-| `recipes/` | Machine-readable serving recipes |
+| [`recipes/`](recipes/) | Machine-readable serving recipes and their operator-guide index |
 | `performance/` | Benchmark methods, records, and sanitized receipts |
 | `docs/` | Profile procedures, architecture, prerequisites, and evidence |
 

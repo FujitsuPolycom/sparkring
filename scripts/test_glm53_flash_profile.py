@@ -18,10 +18,7 @@ from sparkring_site import load_site  # noqa: E402
 
 PINS_PATH = ROOT / "runtime" / "glm53-flash" / "pins.json"
 CONTRACT_PATH = (
-    ROOT
-    / "runtime"
-    / "glm53-flash"
-    / "vllm-kv-block-lease-contract-da4d7be.json"
+    ROOT / "runtime" / "glm53-flash" / "vllm-kv-block-lease-contract-da4d7be.json"
 )
 SITE_PATH = ROOT / "scripts" / "config" / "glm53-flash-tp4-site.example.yaml"
 CACHE_PROFILE_PATH = (
@@ -31,29 +28,17 @@ CACHE_PROFILE_PATH = (
     / "glm53-flash-dflash2-bf16-tp4-dcp1-sparkcache.example.json"
 )
 BASE_PROFILE_PATH = (
-    ROOT
-    / "scripts"
-    / "config"
-    / "glm53-flash-dflash2-bf16-tp4-dcp1.example.json"
+    ROOT / "scripts" / "config" / "glm53-flash-dflash2-bf16-tp4-dcp1.example.json"
 )
-BASE_RECIPE_PATH = (
-    ROOT / "recipes" / "glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1.json"
-)
+BASE_RECIPE_PATH = ROOT / "recipes" / "glm53-flash-nvfp4-dflash2-bf16-tp4.json"
 CACHE_RECIPE_PATH = (
-    ROOT
-    / "recipes"
-    / "sparkcache"
-    / "glm53-flash-nvfp4-dflash2-bf16-tp4-dcp1.json"
+    ROOT / "recipes" / "sparkcache" / "glm53-flash-nvfp4-dflash2-bf16-tp4.json"
 )
 CACHE_QUICKSTART_PATH = (
     ROOT / "docs" / "GLM53_FLASH_DFLASH2_BF16_SPARKCACHE_TP4_QUICKSTART.md"
 )
-BASE_QUICKSTART_PATH = (
-    ROOT / "docs" / "GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md"
-)
-PROFILE_RECORD_PATH = (
-    ROOT / "docs" / "profiles" / "GLM53_FLASH_DFLASH2_BF16_TP4.md"
-)
+BASE_QUICKSTART_PATH = ROOT / "docs" / "GLM53_FLASH_DFLASH2_BF16_TP4_QUICKSTART.md"
+PROFILE_RECORD_PATH = ROOT / "docs" / "profiles" / "GLM53_FLASH_DFLASH2_BF16_TP4.md"
 PERFORMANCE_RECORD_PATH = (
     ROOT
     / "performance"
@@ -119,8 +104,9 @@ def test_pins_record_complete_provenance_without_inferred_lineage() -> None:
         "0.39.0.dev290+gf9d9a71de.d20260407"
     )
     assert target["quantization"]["base_checkpoint_revision"] is None
-    assert "No base-checkpoint lineage is inferred" in (
-        target["quantization"]["base_checkpoint_limitation"]
+    assert (
+        "No base-checkpoint lineage is inferred"
+        in (target["quantization"]["base_checkpoint_limitation"])
     )
 
     draft = pins["draft_model"]
@@ -145,14 +131,17 @@ def test_pins_record_complete_provenance_without_inferred_lineage() -> None:
         "e7097feb6fcdf57911cd68884420af2d80600dd7",
     }
     assert [entry["number"] for entry in vllm["merged_pull_requests"]] == [
-        486, 489, 493, 494, 497, 499,
+        486,
+        489,
+        493,
+        494,
+        497,
+        499,
     ]
     assert vllm["merged_pull_requests"][-1]["merge_commit"] == vllm["commit"]
     assert "No relationship" in vllm["lineage_scope"]
 
-    assert pins["b12x"]["commit"] == (
-        "2fcf23a0ce269be27b2e03fece73d46e90e6aeea"
-    )
+    assert pins["b12x"]["commit"] == ("2fcf23a0ce269be27b2e03fece73d46e90e6aeea")
     assert pins["b12x"]["pull_request"] is None
     assert pins["patched_nccl"]["qualified_binary_sha256"] == (
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3"
@@ -169,9 +158,7 @@ def test_pins_record_complete_provenance_without_inferred_lineage() -> None:
     assert pins["sparkcache"]["image_build"]["builder_sha256"] == (
         "b72466799e2fe569ecdee3a536cfb4606d2599da0a20cd398ca03aa99e21a3e6"
     )
-    assert pins["sparkcache"]["commit"] == (
-        "3860a2250193a6679ac6bac857af53e0757841f8"
-    )
+    assert pins["sparkcache"]["commit"] == ("3860a2250193a6679ac6bac857af53e0757841f8")
     assert pins["spark_ring_profile"]["runtime_image_source_revision"] == (
         "862db89b1dd905e0ce3197f1d7b64b8a5802dbf1"
     )
@@ -232,9 +219,7 @@ def test_profiles_preserve_scheduler_prefix_and_prefill_contracts() -> None:
             "draft_sample_method": "probabilistic",
             "rejection_sample_method": "standard",
         }
-        compilation = json.loads(
-            _argument_value(arguments, "--compilation-config")
-        )
+        compilation = json.loads(_argument_value(arguments, "--compilation-config"))
         assert compilation["cudagraph_mode"] == "FULL_AND_PIECEWISE"
         assert compilation["cudagraph_capture_sizes"] == [8, 16, 32, 64, 128, 256]
 
@@ -276,8 +261,9 @@ def test_cache_profile_adds_only_the_external_connector_to_serving_arguments() -
         "health_check",
     ):
         assert getattr(base, attribute) == getattr(cache, attribute), attribute
-    assert base.extra_labels["org.sparkring.model-profile"] == (
-        cache.extra_labels["org.sparkring.model-profile"]
+    assert (
+        base.extra_labels["org.sparkring.model-profile"]
+        == (cache.extra_labels["org.sparkring.model-profile"])
     )
     assert set(base.extra_labels) ^ set(cache.extra_labels) == set()
     assert base.extra_labels["org.sparkring.external-cache"] == "disabled"
@@ -292,9 +278,10 @@ def test_profiles_fail_closed_on_image_source_draft_contract_and_nccl() -> None:
         assert profile.required_image_labels["org.jovian.vllm.commit"] == (
             "da4d7be6c97434f6942292ed8abbf4b32dc44355"
         )
-        assert profile.required_image_labels[
-            "org.sparkcache.deployment-profile"
-        ] == "glm53-flash-hybrid"
+        assert (
+            profile.required_image_labels["org.sparkcache.deployment-profile"]
+            == "glm53-flash-hybrid"
+        )
         assert profile.required_image_labels["org.sparkcache.parent-image-id"] == (
             "sha256:7e8c0ebcb2001efb4cdab0ec9d20d53972e62db3688230044e22e61ffb1d35d5"
         )
@@ -303,10 +290,22 @@ def test_profiles_fail_closed_on_image_source_draft_contract_and_nccl() -> None:
         assert "verify_lease_contract.py" in command
         assert "/opt/sparkcache-source-identity.py" in command
         assert "source_tree_sha256" in command
-        assert "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b" in command
-        assert "676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996" in command
-        assert "0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb" in command
-        assert "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3" in command
+        assert (
+            "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b"
+            in command
+        )
+        assert (
+            "676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996"
+            in command
+        )
+        assert (
+            "0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb"
+            in command
+        )
+        assert (
+            "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3"
+            in command
+        )
         assert "VLLM_HOST_IP=198.18.1.10" in command
         assert "--init" in command
         assert "--security-opt label=disable" in command
@@ -315,50 +314,37 @@ def test_profiles_fail_closed_on_image_source_draft_contract_and_nccl() -> None:
 def test_site_and_runtime_profiles_have_one_identity_contract() -> None:
     site = load_site(SITE_PATH)
     for path in (BASE_PROFILE_PATH, CACHE_PROFILE_PATH):
-        launcher._validate_site_profile_alignment(
-            site, launcher.load_profile(path)
-        )
+        launcher._validate_site_profile_alignment(site, launcher.load_profile(path))
 
 
 def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
     base = _json(BASE_RECIPE_PATH)
     cache = _json(CACHE_RECIPE_PATH)
 
-    assert base["status"] == "qualified"
-    assert base["serving"]["external_kv_cache"] is False
-    assert base["evidence"]["status"] == "qualified"
+    assert base["status"] == "implemented"
+    assert base["serving_common"]["external_kv_cache"] is False
+    assert base["evidence"]["status"] == "implemented"
+    assert base["preferred_profile"] == "dcp4"
+    assert set(base["profiles"]) == {"dcp1", "dcp2", "dcp4"}
     assert cache["status"] == "qualified"
     assert cache["evidence"]["status"] == "qualified"
-    assert cache["serving"]["async_scheduling"] is True
-    assert cache["serving"]["native_prefix_caching"] is True
-    assert cache["serving"]["chunked_prefill"] is True
-    assert cache["evidence"]["external_cache_hit_tokens"] == 8192
-    assert cache["evidence"]["restore_request_seconds"] == 1.902
-    assert cache["evidence"]["draft_tokens"] == 7 * cache["evidence"]["drafts"]
-    assert cache["runtime"]["sparkcache_image"].endswith(
-        "@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943"
+    assert cache["serving_common"]["async_scheduling"] is True
+    assert cache["serving_common"]["native_prefix_caching"] is True
+    assert cache["serving_common"]["chunked_prefill"] is True
+    assert cache["profiles"]["dcp4"]["status"] == "qualified"
+    assert cache["profiles"]["dcp4"]["preferred"] is True
+    assert cache["profiles"]["dcp1"]["async_page_capture"] is False
+    assert cache["profiles"]["dcp2"]["async_page_capture"] is False
+    assert cache["profiles"]["dcp4"]["async_page_capture"] is True
+    assert cache["runtime"]["image"].endswith(
+        "@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65"
     )
-    assert cache["runtime"]["sparkcache_image_id"] == (
-        "sha256:7c007cf673c35f5818da7fea8faa343304baed00f489efdcbd027d6616b8a290"
+    assert cache["runtime"]["image_id"] == (
+        "sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f"
     )
-    receipt_dir = (
-        ROOT
-        / "performance"
-        / "receipts"
-        / "glm53-flash"
-        / "sparkcache-dflash2-bf16-tp4-20260828"
+    assert cache["runtime"]["sparkcache"]["source_commit"] == (
+        "c5dda75ec46bf235f6ece6e0d0174c1e41bd805a"
     )
-    receipts = {path.name: _json(path) for path in receipt_dir.glob("*.json")}
-    assert set(receipts) == {
-        "cold.json",
-        "post-restart-prime.json",
-        "post-restart-restore.json",
-        "post-restore-semantic.json",
-        "no-external-cache-semantic.json",
-    }
-    assert receipts["post-restart-restore.json"]["elapsed_seconds"] == 1.902
-    assert receipts["post-restore-semantic.json"]["semantic_match"] is True
-    assert receipts["no-external-cache-semantic.json"]["semantic_match"] is True
 
 
 def test_public_glm53_benchmark_retains_only_valid_run1_cells() -> None:
@@ -392,8 +378,7 @@ def test_public_glm53_benchmark_retains_only_valid_run1_cells() -> None:
         "16K sustained C8 decode",
     ]
     assert all(
-        "tokens_per_second" not in cell
-        for cell in receipt["result"]["excluded_cells"]
+        "tokens_per_second" not in cell for cell in receipt["result"]["excluded_cells"]
     )
 
 
@@ -407,7 +392,9 @@ def test_public_glm53_benchmark_is_sanitized_and_front_page_uses_r8() -> None:
     assert "no A/B baseline" in text
     assert "invalid/excluded: capacity-limited" in text
     assert re.search(r"(?i)\b[A-Z]:\\", text) is None
-    assert re.search(r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)", text) is None
+    assert (
+        re.search(r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)", text) is None
+    )
     assert "DESKTOP-" not in text
     assert "api_key" not in text.lower()
 
@@ -445,11 +432,15 @@ def test_twenty_gib_kv_observation_is_research_only_and_sanitized() -> None:
 
     text = KV20_RECORD_PATH.read_text(encoding="utf-8") + json.dumps(receipt)
     assert re.search(r"(?i)\b[A-Z]:\\", text) is None
-    assert re.search(r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)", text) is None
+    assert (
+        re.search(r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)", text) is None
+    )
     assert "SparkCache storage remains configured for a 48 GiB ceiling" in text
 
 
-def test_public_profile_files_do_not_embed_private_site_values_or_mutable_tags() -> None:
+def test_public_profile_files_do_not_embed_private_site_values_or_mutable_tags() -> (
+    None
+):
     paths = [
         PINS_PATH,
         SITE_PATH,
@@ -463,7 +454,9 @@ def test_public_profile_files_do_not_embed_private_site_values_or_mutable_tags()
     ]
     text = "\n".join(path.read_text(encoding="utf-8") for path in paths)
     assert re.search(r"(?i)\b[A-Z]:\\(?:Users|home)\\", text) is None
-    assert re.search(r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)", text) is None
+    assert (
+        re.search(r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)", text) is None
+    )
     assert "/home/" not in text
     assert "/var/tmp/" not in text
     assert "spark-r0" not in text
@@ -487,7 +480,10 @@ def test_operator_docs_state_status_invariants_and_full_provenance() -> None:
         assert "base-checkpoint revision" in text
         assert "FujitsuPolycom/sparkring/issues" in text
         assert "FujitsuPolycom/sparkcache/issues" in text
-        assert "@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943" in text
+        assert (
+            "@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943"
+            in text
+        )
 
     for path in (CACHE_QUICKSTART_PATH, BASE_QUICKSTART_PATH):
         text = path.read_text(encoding="utf-8")
@@ -500,8 +496,7 @@ def test_operator_docs_state_status_invariants_and_full_provenance() -> None:
     assert "deploy/glm53_flash/build_public_image.py" in cache_text
     assert "runtime/glm53-flash/BUILD.md" in cache_text
     assert (
-        "git -C sparkcache checkout --detach "
-        "3860a2250193a6679ac6bac857af53e0757841f8"
+        "git -C sparkcache checkout --detach 3860a2250193a6679ac6bac857af53e0757841f8"
     ) in cache_text
     assert 'git -C sparkring checkout --detach "${sparkring_revision}"' in cache_text
     assert "checkout codex/glm53-flash-sparkcache-tp4" not in cache_text
@@ -511,11 +506,9 @@ def test_operator_docs_state_status_invariants_and_full_provenance() -> None:
 
     base_text = BASE_QUICKSTART_PATH.read_text(encoding="utf-8")
     assert "qualification-client checkout" in base_text
-    assert '${sparkcache_root}/deploy/glm53_flash/qualification_request.py' in base_text
+    assert "${sparkcache_root}/deploy/glm53_flash/qualification_request.py" in base_text
 
 
 def test_ci_runs_glm53_runtime_contracts() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
-        encoding="utf-8"
-    )
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "runtime/exl3-r7 runtime/glm53-flash runtime/deepseek0731-gb10" in workflow
