@@ -147,6 +147,7 @@ def expected_labels(pins: dict[str, Any]) -> dict[str, str]:
         "org.sparkcache.cuda-snapshot-sha256": pins["sparkcache"][
             "cuda_snapshot_sha256"
         ],
+        "org.sparkcache.startup-inventory": "connector-handshake-all-rank",
         "org.sparkcache.cache-geometry": "manager-pages-v2",
         "org.sparkcache.publication-schema": "snapshot-v1",
         "org.sparkcache.tail-publication-schema": "page-tail-cow-v1-opt-in",
