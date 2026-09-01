@@ -70,6 +70,7 @@ def copy_source(source: Path, destination: Path) -> None:
 
 
 def install(root: Path, site_root: Path) -> None:
+    pins = json.loads((root / "receipts/pins.json").read_text(encoding="utf-8"))
     vllm_manifest = load_manifest(root / "receipts/vllm-source-manifest.json")
     sparkcache_manifest = load_manifest(
         root / "receipts/sparkcache-source-manifest.json"
@@ -106,6 +107,17 @@ def install(root: Path, site_root: Path) -> None:
     copy_source(root / "sources/sparkcache", site_root / "sparkcache")
     copy_source(root / "sources/sparkcache", Path("/opt/sparkcache-src/sparkcache"))
 
+    snapshot_source = root / "native/libspark_cache_snapshot.so"
+    snapshot_destination = Path(
+        "/opt/sparkcache-src/sparkcache/native/build-cuda/"
+        "libspark_cache_snapshot.so"
+    )
+    expected_snapshot = pins["sparkcache"]["cuda_snapshot_sha256"]
+    if file_sha256(snapshot_source) != expected_snapshot:
+        raise RuntimeError("SparkCache CUDA snapshot library input differs")
+    snapshot_destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(snapshot_source, snapshot_destination)
+
     verify_files(site_root, vllm_manifest)
     verify_files(site_root, sparkcache_manifest)
     after_native = native_manifest(vllm_root)
@@ -120,6 +132,8 @@ def install(root: Path, site_root: Path) -> None:
         "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
     ):
         raise RuntimeError("SparkCache CUDA placement library identity changed")
+    if file_sha256(snapshot_destination) != expected_snapshot:
+        raise RuntimeError("SparkCache CUDA snapshot library identity changed")
     nccl = Path("/opt/sparkring/nccl/libnccl.so.2.30.7")
     if file_sha256(nccl) != (
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3"

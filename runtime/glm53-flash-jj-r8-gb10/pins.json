@@ -42,11 +42,13 @@
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-    "commit": "b0186396eb2d73a9cc67b670fdc3e5a39d029ad8",
-    "tree": "9ef6ff392eefb35c74b2afcb4c5347224d9c7720",
-    "package_tree": "e851c4ec42150bf52a6eb1fb54852d70b3238573",
-    "source_tree_sha256": "f7311d5c751c2ebd79d1dc1754af40655e9556bfc610bbb562c73e914923c5df",
-    "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
+    "commit": "62a7f824ccc8e941a4d71aaccf0bfd570dea3f84",
+    "tree": "23225378c7e4fd8e6cdb9e8dd00a5eab1cf1fdd5",
+    "package_tree": "0e19bc33fe099020649df84f4c294c6019f54612",
+    "source_tree_sha256": "ae6a0a15bff6db667597fb4d5eb46b254988f9992e03d60f5889714229d0adac",
+    "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
+    "cuda_snapshot_sha256": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
+    "manager_page_lease_contract_sha256": "480bdc463e3722cf28aa460021da689d12d9049ae9fd8238252fcf1db5544b53"
   },
   "transport": {
     "nccl_version": "2.30.7",
@@ -67,6 +69,11 @@
       "2": {"cp_kv_cache_interleave_size": 4, "full_ckv_gather": true},
       "4": {"cp_kv_cache_interleave_size": 4, "full_ckv_gather": true}
     },
-    "load_format": "fastsafetensors"
+    "load_format": "fastsafetensors",
+    "async_page_capture": {
+      "enabled": false,
+      "slot_bytes": 8589934592,
+      "slot_count": 2
+    }
   }
 }

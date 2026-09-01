@@ -78,6 +78,13 @@ def verify_inside_image() -> dict[str, Any]:
     )
     if file_sha256(placement) != expected_placement:
         raise VerificationError("SparkCache CUDA placement identity changed")
+    expected_snapshot = pins["sparkcache"]["cuda_snapshot_sha256"]
+    snapshot = Path(
+        "/opt/sparkcache-src/sparkcache/native/build-cuda/"
+        "libspark_cache_snapshot.so"
+    )
+    if file_sha256(snapshot) != expected_snapshot:
+        raise VerificationError("SparkCache CUDA snapshot identity changed")
     expected_nccl = pins["transport"]["nccl_sha256"]
     nccl = Path("/opt/sparkring/nccl/libnccl.so.2.30.7")
     if file_sha256(nccl) != expected_nccl:
@@ -93,6 +100,7 @@ def verify_inside_image() -> dict[str, Any]:
         "native_extensions": len(observed_native),
         "nccl_sha256": expected_nccl,
         "cuda_placement_sha256": expected_placement,
+        "cuda_snapshot_sha256": expected_snapshot,
         "live_qualification": "not-established-by-image-verification",
     }
 
@@ -135,6 +143,9 @@ def expected_labels(pins: dict[str, Any]) -> dict[str, str]:
         ],
         "org.sparkcache.cuda-placement-sha256": pins["sparkcache"][
             "cuda_placement_sha256"
+        ],
+        "org.sparkcache.cuda-snapshot-sha256": pins["sparkcache"][
+            "cuda_snapshot_sha256"
         ],
         "org.sparkcache.cache-geometry": "manager-pages-v2",
         "org.sparkcache.publication-schema": "snapshot-v1",
