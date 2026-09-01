@@ -32,7 +32,7 @@ fi
 : "${SHM_SIZE:=32g}"
 : "${TENSOR_PARALLEL_SIZE:=4}"
 : "${PIPELINE_PARALLEL_SIZE:=1}"
-: "${DECODE_CONTEXT_PARALLEL_SIZE:=1}"
+: "${DECODE_CONTEXT_PARALLEL_SIZE:=4}"
 : "${CP_KV_CACHE_INTERLEAVE_SIZE:=auto}"
 : "${B12X_MLA_CKV_GATHER:=auto}"
 : "${B12X_MLA_CKV_GATHER_MAX_TOKENS:=524288}"
@@ -124,9 +124,12 @@ if [[ "${KV_CACHE_MEMORY_BYTES}" == auto ]]; then
   if (( DECODE_CONTEXT_PARALLEL_SIZE == 1 )); then
     # This reservation completed a 942,767-token request without host OOM.
     KV_CACHE_MEMORY_BYTES=27917287424
-  else
-    # DCP2 and DCP4 use the recorded 30 GiB capacity configuration.
+  elif (( DECODE_CONTEXT_PARALLEL_SIZE == 2 )); then
+    # DCP2 retains the recorded 30 GiB capacity configuration.
     KV_CACHE_MEMORY_BYTES=32212254720
+  else
+    # DCP4 uses 24 GiB to retain host-memory headroom under concurrent serving.
+    KV_CACHE_MEMORY_BYTES=25769803776
   fi
 else
   require_positive_uint KV_CACHE_MEMORY_BYTES

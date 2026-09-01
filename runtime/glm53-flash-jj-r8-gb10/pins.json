@@ -56,7 +56,7 @@
     "kv_cache_bytes_per_rank": {
       "dcp1": 27917287424,
       "dcp2": 32212254720,
-      "dcp4": 32212254720
+      "dcp4": 25769803776
     },
     "full_ckv_gather_max_tokens": 524288,
     "dcp": {

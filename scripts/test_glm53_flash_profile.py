@@ -413,7 +413,7 @@ def test_public_glm53_benchmark_is_sanitized_and_front_page_uses_r8() -> None:
 
     readme = README_PATH.read_text(encoding="utf-8")
     assert "GLM-5.3 Flash NVFP4 + BF16 DFlash2" in readme
-    assert "TP4 with DCP1, DCP2, or DCP4" in readme
+    assert "TP4/DCP4 by default; DCP1 and DCP2 available" in readme
     assert "942,898-token needle" in readme
     assert "GLM-5.3 Flash research observation" not in readme
     assert "IN PROGRESS" not in readme

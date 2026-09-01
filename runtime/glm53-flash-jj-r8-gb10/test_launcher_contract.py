@@ -42,6 +42,7 @@ def test_environment_exposes_reproducible_r8_defaults() -> None:
     )
     assert values["MAX_MODEL_LEN"] == "1048576"
     assert values["SERVED_MODEL_NAME"] == "glm-5.3-flash"
+    assert values["DECODE_CONTEXT_PARALLEL_SIZE"] == "4"
     assert values["MAX_NUM_BATCHED_TOKENS"] == "8192"
     assert values["PREFILL_SCHEDULE_INTERVAL"] == "8"
     assert values["KV_CACHE_MEMORY_BYTES"] == "auto"
@@ -104,7 +105,7 @@ printf '%s  %s\n' "$hash" "$2"
     for dcp, interleave, gather, kv_bytes in (
         (1, "1", "0", "27917287424"),
         (2, "4", "1", "32212254720"),
-        (4, "4", "1", "32212254720"),
+        (4, "4", "1", "25769803776"),
     ):
         config = tmp_path / f"dcp{dcp}.env"
         config.write_text(
@@ -219,5 +220,5 @@ def test_public_r8_documents_use_portable_examples_and_resolving_links() -> None
 
     quickstart = documents[-1].read_text(encoding="utf-8")
     assert "sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a" in quickstart
-    assert "DECODE_CONTEXT_PARALLEL_SIZE=1  # change to 2 or 4" in quickstart
+    assert "DECODE_CONTEXT_PARALLEL_SIZE=4  # change to 1 or 2" in quickstart
     assert "fanout_image_archive.py" in quickstart
