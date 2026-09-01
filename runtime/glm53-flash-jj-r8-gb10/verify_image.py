@@ -106,6 +106,15 @@ def expected_labels(pins: dict[str, Any]) -> dict[str, str]:
         "org.sparkring.vllm.python-tree": pins["vllm"]["tree"],
         "org.sparkring.vllm.sparkcache-composition": pins["vllm"]["commit"],
         "org.sparkring.vllm.tree": pins["vllm"]["tree"],
+        "org.sparkring.vllm.gb10-r10-parent": pins["vllm"][
+            "gb10_r10_parent_commit"
+        ],
+        "org.sparkring.vllm.gb10-r10-sparse-metadata": pins["vllm"][
+            "gb10_r10_sparse_metadata_head"
+        ],
+        "org.sparkring.vllm.gb10-r10-fwht": pins["vllm"][
+            "gb10_r10_fwht_head"
+        ],
         "org.sparkring.vllm.official-r8-component": pins["vllm"][
             "official_r8_component_commit"
         ],
