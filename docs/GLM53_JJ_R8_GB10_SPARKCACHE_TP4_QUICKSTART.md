@@ -166,6 +166,17 @@ SPARKCACHE_ENABLED=1  # persistent SparkCache plus vLLM prefix caching
 SPARKCACHE_ENABLED=0  # vLLM prefix caching only
 ```
 
+When SparkCache is enabled, choose whether the connector may publish:
+
+```bash
+SPARKCACHE_ACCESS_MODE=read-write   # restore existing entries and publish new ones
+SPARKCACHE_ACCESS_MODE=restore-only # restore existing entries; never capture new prompts
+```
+
+Restore-only mode is useful for reuse-heavy serving or performance tests where
+one-off prompt publication would add GPU-to-host capture work. A restore miss
+is computed by vLLM normally.
+
 Disabling SparkCache omits the external KV connector and all persistent
 publication and restore work. `--enable-prefix-caching` remains enabled. The
 published image passed a live semantic request in this mode.

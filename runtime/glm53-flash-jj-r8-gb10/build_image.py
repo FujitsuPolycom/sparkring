@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the exact Linux/ARM64 JJ r8 and DCP-aware SparkCache image."""
+"""Build the source-pinned Linux/ARM64 GLM-5.3 and SparkCache image."""
 
 from __future__ import annotations
 

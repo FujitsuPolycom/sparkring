@@ -47,6 +47,7 @@ def test_environment_exposes_reproducible_r8_defaults() -> None:
     assert values["PREFILL_SCHEDULE_INTERVAL"] == "8"
     assert values["KV_CACHE_MEMORY_BYTES"] == "auto"
     assert values["SPARKCACHE_ENABLED"] == "1"
+    assert values["SPARKCACHE_ACCESS_MODE"] == "read-write"
     assert values["SPARKCACHE_MAX_SPAN_TOKENS"] == "1048576"
     assert values["CP_KV_CACHE_INTERLEAVE_SIZE"] == "auto"
     assert values["B12X_MLA_CKV_GATHER"] == "auto"
@@ -149,6 +150,9 @@ printf '%s  %s\n' "$hash" "$2"
         extra = connector["kv_connector_extra_config"]
         assert extra["spark_cache_publication_schema"] == "snapshot-v1"
         assert extra["spark_cache_model_profile"] == "glm53-flash-hybrid"
+        assert extra["spark_cache_access_mode"] == "read-write"
+        assert "spark_cache_store" not in extra
+        assert "spark_cache_restore" not in extra
 
     config = tmp_path / "dcp1-vllm-prefix-only.env"
     config.write_text(
@@ -190,6 +194,14 @@ def test_launcher_can_use_vllm_prefix_cache_without_sparkcache() -> None:
     assert "SPARKCACHE_ENABLED must be 0 or 1" in launcher
     assert "kv_transfer_args=()" in launcher
     assert "--enable-prefix-caching" in launcher
+
+
+def test_launcher_exposes_independent_sparkcache_access_mode() -> None:
+    launcher = LAUNCHER.read_text(encoding="utf-8")
+    assert "SPARKCACHE_ACCESS_MODE must be read-write" in launcher
+    assert '"spark_cache_access_mode": os.environ["SPARKCACHE_ACCESS_MODE"]' in launcher
+    assert '"spark_cache_store": True' not in launcher
+    assert '"spark_cache_restore": True' not in launcher
 
 
 def test_launcher_rejects_unsupported_dcp_geometry() -> None:

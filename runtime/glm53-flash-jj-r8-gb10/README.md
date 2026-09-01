@@ -46,6 +46,11 @@ change every value in the environment file without rebuilding the image.
 `SPARKCACHE_ENABLED=0` omits the persistent connector while retaining vLLM's
 GPU prefix cache; `SPARKCACHE_ENABLED=1` enables both layers.
 
+With the connector enabled, `SPARKCACHE_ACCESS_MODE=read-write` restores and
+publishes persistent entries. `restore-only` reuses compatible entries but
+does not capture or publish new prompt state. Missing entries are computed by
+vLLM normally. `store-only` and `disabled` are diagnostic modes.
+
 ## Build from pinned source
 
 The builder accepts clean checkouts at the exact vLLM and SparkCache commits
