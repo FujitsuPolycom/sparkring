@@ -1,0 +1,122 @@
+{
+  "schema": "sparkring-recipe/v1",
+  "recipe_id": "glm53-flash-nvfp4-dflash2-bf16-tp4",
+  "status": "implemented",
+  "preferred_profile": "dcp4",
+  "hardware": {
+    "platform": "linux/arm64",
+    "cuda_arch": "sm_121",
+    "ranks": 4,
+    "topology": "direct-cycle-4"
+  },
+  "model": {
+    "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+    "revision": "520de24eabf507659eaef7c70f14fd584527facc",
+    "cache_revision_identity_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9",
+    "config_sha256": "676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996",
+    "weight_index_sha256": "0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb",
+    "quantization": "ModelOpt mixed precision with NVFP4 target expert layers"
+  },
+  "draft_model": {
+    "repository": "incoai/GLM-5.3-Flash-DFlash2",
+    "revision": "dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+    "dtype": "bfloat16",
+    "config_sha256": "c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573",
+    "weights_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
+    "license": "CC-BY-NC-ND-4.0"
+  },
+  "runtime": {
+    "operator_contract": "runtime/glm53-flash-jj-r8-gb10/pins.json",
+    "environment_template": "runtime/glm53-flash-jj-r8-gb10/runtime.env.example",
+    "launcher": "runtime/glm53-flash-jj-r8-gb10/launch-rank.sh",
+    "quickstart": "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md",
+    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65",
+    "image_id": "sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f",
+    "sparkring_source_commit": "d2f8911427d64bbb89c275814777fc3f8112fd21",
+    "vllm_repository": "https://github.com/FujitsuPolycom/vllm.git",
+    "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+    "b12x_commit": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
+    "nccl_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3"
+  },
+  "serving_common": {
+    "served_model_name": "glm-5.3-flash",
+    "tensor_parallel_size": 4,
+    "pipeline_parallel_size": 1,
+    "node_count": 4,
+    "distributed_executor_backend": "mp",
+    "dtype": "bfloat16",
+    "quantization": "modelopt_mixed",
+    "max_model_len": 1048576,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "prefill_schedule_interval": 8,
+    "gpu_memory_utilization": 0.8,
+    "kv_cache_dtype": "fp8",
+    "block_size": 256,
+    "mamba_cache_mode": "align",
+    "kda_prefill_backend": "flashkda",
+    "load_format": "fastsafetensors",
+    "async_scheduling": true,
+    "native_prefix_caching": true,
+    "chunked_prefill": true,
+    "external_kv_cache": false,
+    "speculation": {
+      "method": "dflash",
+      "num_speculative_tokens": 7,
+      "draft_tensor_parallel_size": 4,
+      "draft_kv_cache_dtype": "auto",
+      "draft_sample_method": "probabilistic",
+      "rejection_sample_method": "standard"
+    }
+  },
+  "profiles": {
+    "dcp1": {
+      "status": "implemented",
+      "decode_context_parallel_size": 1,
+      "cp_kv_cache_interleave_size": 1,
+      "full_ckv_gather": false,
+      "kv_cache_memory_bytes_per_rank": 27917287424,
+      "approximate_logical_kv_capacity_tokens": 1300000
+    },
+    "dcp2": {
+      "status": "implemented",
+      "decode_context_parallel_size": 2,
+      "cp_kv_cache_interleave_size": 4,
+      "full_ckv_gather": true,
+      "kv_cache_memory_bytes_per_rank": 32212254720,
+      "approximate_logical_kv_capacity_tokens": 2900000
+    },
+    "dcp4": {
+      "status": "implemented",
+      "preferred": true,
+      "decode_context_parallel_size": 4,
+      "cp_kv_cache_interleave_size": 4,
+      "full_ckv_gather": true,
+      "kv_cache_memory_bytes_per_rank": 25769803776,
+      "logical_kv_capacity_tokens": 4321618
+    }
+  },
+  "transport": {
+    "backend": "patched-nccl",
+    "nccl_version": "2.30.7",
+    "topology": "four-rank switchless direct-cable cycle",
+    "subnet_aware_routing": true,
+    "algorithm": "Ring",
+    "channels": 4,
+    "switchless_ring_only": true
+  },
+  "evidence": {
+    "status": "implemented",
+    "conditions": "The exact Linux/ARM64 image and four-rank launcher resolve DCP1, DCP2, and DCP4 from one environment contract. SparkCache is disabled, leaving vLLM's in-memory prefix cache enabled.",
+    "measurement": "GPU-free launcher and image-contract tests resolved each DCP profile and verified the immutable image, source, model, draft, transport, scheduler, and memory settings.",
+    "result": "All three profiles produce complete four-rank launch commands. DCP4 is the preferred profile because it exposes the greatest logical KV capacity among the recorded allocations.",
+    "conclusion": "The image and launcher implement cache-disabled GLM-5.3 Flash serving at TP4 with DCP1, DCP2, or DCP4.",
+    "limitations": [
+      "This base recipe records an implemented launch contract, not a cache-disabled live qualification of the exact image.",
+      "Performance depends on the selected DCP profile and workload.",
+      "The DFlash2 checkpoint license limits use to research and evaluation unless separately licensed."
+    ],
+    "record": "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md",
+    "artifact_scope": "The immutable image, model revisions, four-rank topology, and DCP profile values recorded in this recipe."
+  }
+}
