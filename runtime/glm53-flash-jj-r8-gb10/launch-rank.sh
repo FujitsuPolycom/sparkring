@@ -57,7 +57,7 @@ fi
 : "${LOAD_FORMAT:=fastsafetensors}"
 : "${CUDAGRAPH_MODE:=FULL_AND_PIECEWISE}"
 : "${MAX_CUDAGRAPH_CAPTURE_SIZE:=128}"
-: "${SPARKCACHE_CACHE_NAMESPACE:=jj-r8-gb10-manager-pages-v2}"
+: "${SPARKCACHE_CACHE_NAMESPACE:=glm53-flash-dcp4-snapshot-v1}"
 : "${SPARKCACHE_ENABLED:=1}"
 : "${SPARKCACHE_ACCESS_MODE:=read-write}"
 : "${SPARKCACHE_PUBLICATION_SCHEMA:=snapshot-v1}"

@@ -52,13 +52,21 @@ publishes persistent entries. `restore-only` reuses compatible entries but
 does not capture or publish new prompt state. Missing entries are computed by
 vLLM normally. `store-only` and `disabled` are diagnostic modes.
 
+`SPARKCACHE_CACHE_NAMESPACE` selects rank-local storage and JIT directories.
+The template uses the semantic default `glm53-flash-dcp4-snapshot-v1`. The
+directory name is not part of SparkCache's content identity or stored format;
+changing it selects a different root and therefore discovers a different set
+of stored entries.
+
 Set `SPARKCACHE_ASYNC_PAGE_CAPTURE=1` to capture complete manager-page
 snapshots through the bounded CUDA ring. `SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES`
 defaults to 8 GiB for DCP1, 5 GiB for DCP2, and 3 GiB for DCP4. DCP4 with two
-3 GiB slots is **qualified** by the recorded fresh 126K publication and
-900K/1M restart restores. DCP1 and DCP2 asynchronous capture is
-**implemented** but has no live qualification record. Asynchronous capture
-requires `snapshot-v1`; page-tail publication is unsupported in this image.
+3 GiB slots is **qualified** for asynchronous publication of the recorded
+124,928-token, 231.8 MiB-per-rank snapshot. The image also restored retained
+900K and 1M entries, but did not asynchronously publish entries at those
+sizes. Larger asynchronous publication and DCP1/DCP2 asynchronous capture
+have no live qualification record. Asynchronous capture requires
+`snapshot-v1`; page-tail publication is unsupported in this image.
 
 ## Build from pinned source
 
@@ -95,11 +103,11 @@ credentials, or persistent cache data.
 Pull the immutable Linux/ARM64 image:
 
 ```text
-ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:368973d2e67241479ff49f7898f5026a2a44a37dad78b36f26afa1c6d9684e0e
+ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65
 ```
 
 Its local Docker image ID is
-`sha256:4664bcba054d2cf383d3d7940189e26aa32774e755583652a6e93c0058500029`.
+`sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f`.
 Construction, direct-fabric distribution, profile smoke tests, historical
 deep-context evidence, and limitations are recorded in
 [`async-capture-image-receipt.json`](async-capture-image-receipt.json),

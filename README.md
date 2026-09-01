@@ -63,10 +63,13 @@ to `1` to add persistent SparkCache restoration and publication.
 The DCP1 profile completed a 942,898-token needle request under the 1M request
 limit; the linked quickstart records its exact image and conditions.
 
-**DCP4 is preferred because it provides the best performance at high concurrency decode and the greatest available KVC space.
+**DCP4 is preferred because it provides the greatest available KV-cache
+capacity among these profiles and is the recorded asynchronous SparkCache
+deployment.**
 
- The base image is published at
-`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:368973d2e67241479ff49f7898f5026a2a44a37dad78b36f26afa1c6d9684e0e` and supports both caching methods.
+The operator image is published at
+`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65`
+and supports both caching methods.
 
 ### Other model profiles
 

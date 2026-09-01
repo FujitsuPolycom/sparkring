@@ -178,7 +178,7 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
     ):
         assert value in environment
     for text in (launcher, environment):
-        assert "jj-r8-gb10-manager-pages-v2" in text
+        assert "glm53-flash-dcp4-snapshot-v1" in text
     assert "IMAGE_REF" in launcher
     assert "IMAGE_ID" in launcher
 
@@ -189,15 +189,63 @@ def test_async_capture_image_receipt_binds_public_artifact_and_live_results() ->
     )
     assert receipt["status"] == "qualified"
     assert receipt["artifact"]["registry"].endswith(
-        "@sha256:368973d2e67241479ff49f7898f5026a2a44a37dad78b36f26afa1c6d9684e0e"
+        "@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65"
     )
     assert receipt["artifact"]["image_id"] == (
-        "sha256:4664bcba054d2cf383d3d7940189e26aa32774e755583652a6e93c0058500029"
+        "sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f"
+    )
+    assert receipt["artifact"]["published_tag"].endswith(
+        ":20260901-r10-async-telemetry"
+    )
+    assert receipt["sources"]["sparkring_commit"] == (
+        "d2f8911427d64bbb89c275814777fc3f8112fd21"
     )
     assert receipt["sources"]["sparkcache_commit"] == (
-        "506cc4a16581b5f62ae343cbd90cdd6bea13a6cd"
+        "c5dda75ec46bf235f6ece6e0d0174c1e41bd805a"
     )
     assert receipt["conditions"]["capture_slot_bytes"] == 3 * 1024**3
-    assert receipt["validation"]["live"]["prime_request_before_restore"] is False
+    assert receipt["conditions"]["operator_template_storage_root"] == (
+        "glm53-flash-dcp4-snapshot-v1"
+    )
+    assert receipt["conditions"]["live_validation_storage_root"] == (
+        "jj-r10-async-ab-v1"
+    )
+    assert receipt["conditions"]["operator_template_storage_root_measured"] is False
+    assert receipt["deep_entry_writer"] == {
+        "image_id": (
+            "sha256:8e586e6ad9b4f30a8ccef1bfd8b76194524e156089c958907872d0f8735a09b2"
+        ),
+        "archive_sha256": (
+            "47c800fd73130c1fe26b707caa2c64f81ed43c951fe2019d8836cd0b883dbe48"
+        ),
+        "sparkcache_commit": "6d83c7d8cb6ace96e657b3d0150116d0fe4e011c",
+        "sparkcache_tree": "0bb871bd1e8d3893a11686f0ba404bd4b6240e4d",
+        "sparkcache_source_sha256": (
+            "67edb651835b978cbaf2519f92e68251145c1368a22cc0339f706d5c2144f862"
+        ),
+        "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+        "vllm_tree": "1bb7f10a5838d348ca2fcb0134b05ad768d3340b",
+        "cuda_snapshot_sha256": (
+            "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5"
+        ),
+        "topology": "TP4/DCP4",
+        "publication_schema": "snapshot-v1",
+        "storage_root": "jj-r10-async-ab-v1",
+        "checkpoint_identity": (
+            "same target and draft repositories and revisions recorded in conditions"
+        ),
+    }
+    assert (
+        receipt["validation"]["live"]["identical_prompt_prime_before_restore"]
+        is False
+    )
+    assert receipt["validation"]["live"]["startup_inventory"] == {
+        "checked": 29,
+        "offered": 29,
+        "rejected": 0,
+    }
+    assert receipt["validation"]["live"]["cold_126k_publication"][
+        "capture_completion_observed_ms_by_rank"
+    ] == [408.5, 404.3, 403.7, 404.3]
     assert receipt["validation"]["live"]["900k_restore"]["needle"] == "passed"
     assert receipt["validation"]["live"]["1m_restore"]["needle"] == "passed"
