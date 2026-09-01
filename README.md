@@ -53,12 +53,15 @@ seven, FP8 KV, B12X GB10 kernels, and the same source-pinned ARM64 vLLM image.
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Approx. logical KV capacity | Start here |
 |---|---|---:|---:|---:|---|---:|---|
-| DCP1 | 4 Sparks · TP4/DCP1 | 1M | 16 | 8,192 | 24 GiB/rank; SparkCache enabled* | 1.30M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
-| DCP2 | 4 Sparks · TP4/DCP2 | 1M | 16 | 8,192 | 24 GiB/rank; SparkCache enabled* | 2.90M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
-| **DCP4 preferred**** | **4 Sparks · TP4/DCP4** | **1M** | **16** | **8,192** | **24 GiB/rank; SparkCache enabled*** | **4.32M tokens** | **[Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)** |
+| DCP1 | 4 Sparks · TP4/DCP1 | 1M | 16 | 8,192 | 26 GiB/rank; SparkCache enabled | 1.30M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| DCP2 | 4 Sparks · TP4/DCP2 | 1M | 16 | 8,192 | 30 GiB/rank; SparkCache enabled | 2.90M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| **DCP4 preferred** | **4 Sparks · TP4/DCP4** | **1M** | **16** | **8,192** | **24 GiB/rank; SparkCache enabled** | **4.32M tokens** | **[Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)** |
 
-*Set
-`SPARKCACHE_ENABLED=0` to disable sparkcache, leaving only vLLM prefix caching by default. 1 enable sparkcache and vllm prefix caching 
+Set `SPARKCACHE_ENABLED=0` to use only vLLM's in-memory prefix cache. Set it
+to `1` to add persistent SparkCache restoration and publication.
+
+The DCP1 profile completed a 942,898-token needle request under the 1M request
+limit; the linked quickstart records its exact image and conditions.
 
 **DCP4 is preferred because it provides the best performance at high concurrency decode and the greatest available KVC space.
 
