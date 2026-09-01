@@ -1,7 +1,6 @@
 # SparkRing
 
-> Alpha software. Pin an immutable image digest and repository commit when
-> reproducing a deployment.
+> Alpha software. SparkRing is evolving quickly. For repeatable deployments, use the immutable image digest and source revisions listed in each quickstart.
 
 SparkRing is a low-latency collective transport and vLLM-based
 inference-serving stack for switchless clusters of NVIDIA DGX 'Spark' systems
