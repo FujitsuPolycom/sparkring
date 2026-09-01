@@ -56,8 +56,7 @@ seven, FP8 KV, B12X GB10 kernels, and the same source-pinned ARM64 vLLM image.
 | DCP2 | 4 Sparks · TP4/DCP2 | 1M | 16 | 8,192 | 30 GiB/rank; SparkCache enabled | 2.90M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
 | **DCP4 preferred** | **4 Sparks · TP4/DCP4** | **1M** | **16** | **8,192** | **24 GiB/rank; SparkCache enabled** | **4.32M tokens** | **[Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)** |
 
-DCP4 is preferred because it provides the largest KV capacity while retaining
-host-memory headroom with the 24 GiB reservation. The quickstart uses one
+DCP4 is preferred because it provides the best performance at high concurrency decode and the greatest available KVC space. The quickstart uses one
 Linux/ARM64 image for every row and both caching modes. Set
 `SPARKCACHE_ENABLED=0` to use vLLM prefix caching alone. The image is published at
 `ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a`.
@@ -79,10 +78,7 @@ already sharded across the four ranks and must not be multiplied by four.
 | DeepSeek-V4-Flash-0731 + SparkCache | 4 Sparks · TP4/DCP1 | 1M | 32 | 4,096 | FP8 DS-MLA + SparkCache | [SparkCache compositions](recipes/sparkcache/README.md) |
 
 The public BF16 DFlash2 checkpoint is licensed CC BY-NC-ND 4.0 for research
-and evaluation; review its model card before use. The GLM-5.3 quickstart links
-the source build, exact source revisions, image validation, and license record.
-See the [profile registry](docs/profiles/README.md) for recipe identities and
-evidence scope.
+and evaluation; review its model card before use.
 
 ## Benchmark results
 
@@ -101,11 +97,6 @@ temperature 1.0; decode values are aggregate throughput across active streams.
 
 See [benchmark results and throughput tables](docs/RESULTS.md) for full
 matrices, sample counts, exact settings, and limitations.
-
-The published GLM-5.3 image has bounded serving and deep-context evidence,
-not a normalized throughput matrix. It completed a 942,898-token needle
-retrieval under the 1M request limit. See the
-[public image record](runtime/glm53-flash-jj-r8-gb10/PUBLIC_IMAGE_VALIDATION.md).
 
 ## Architecture
 
@@ -130,7 +121,7 @@ See [architecture](docs/ARCHITECTURE.md), [SIRCL](docs/SIRCL.md), and the
 ## Acknowledgements
 
 SparkRing builds on work from vLLM, NVIDIA NCCL, B12X, SparkInfer, LMCache,
-ExLlamaV3, and the
+ExLlamaV3, and most importantly, the endless work by the 
 [local inference community](https://github.com/local-inference-lab/).
 
 Detailed third-party attribution is in
