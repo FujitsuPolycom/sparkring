@@ -181,3 +181,23 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
         assert "jj-r8-gb10-manager-pages-v2" in text
     assert "IMAGE_REF" in launcher
     assert "IMAGE_ID" in launcher
+
+
+def test_async_capture_image_receipt_binds_public_artifact_and_live_results() -> None:
+    receipt = json.loads(
+        (HERE / "async-capture-image-receipt.json").read_text(encoding="utf-8")
+    )
+    assert receipt["status"] == "qualified"
+    assert receipt["artifact"]["registry"].endswith(
+        "@sha256:a72f943bc16c31cdde205f4a23fbc0e10d0a3d023469849ec19ccc727e24f98a"
+    )
+    assert receipt["artifact"]["image_id"] == (
+        "sha256:de27d92e57e731151879ee75c122a828dd0d83eaa30f714a9cd9aa6844051fa9"
+    )
+    assert receipt["sources"]["sparkcache_commit"] == (
+        "6f50517802a96b5427cb2ce662d3fed39b231fcd"
+    )
+    assert receipt["conditions"]["capture_slot_bytes"] == 3 * 1024**3
+    assert receipt["validation"]["live"]["prime_request_before_restore"] is False
+    assert receipt["validation"]["live"]["900k_restore"]["needle"] == "passed"
+    assert receipt["validation"]["live"]["1m_restore"]["needle"] == "passed"
