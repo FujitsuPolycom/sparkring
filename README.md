@@ -61,9 +61,6 @@ Linux/ARM64 image for every row and both caching modes. Set
 `SPARKCACHE_ENABLED=0` to use vLLM prefix caching alone. The image is published at
 `ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a`.
 
-KV capacity is the model-wide logical token capacity reported by vLLM. It is
-already sharded across the four ranks and must not be multiplied by four.
-
 ### Other model profiles
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
