@@ -45,11 +45,11 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     )
     assert pins["sparkcache"] == {
         "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-        "commit": "62a7f824ccc8e941a4d71aaccf0bfd570dea3f84",
-        "tree": "23225378c7e4fd8e6cdb9e8dd00a5eab1cf1fdd5",
-        "package_tree": "0e19bc33fe099020649df84f4c294c6019f54612",
+        "commit": "6d83c7d8cb6ace96e657b3d0150116d0fe4e011c",
+        "tree": "0bb871bd1e8d3893a11686f0ba404bd4b6240e4d",
+        "package_tree": "24946bfc69e8f0bf9b0a65b0ddfa1b4ccc4178b4",
         "source_tree_sha256": (
-            "ae6a0a15bff6db667597fb4d5eb46b254988f9992e03d60f5889714229d0adac"
+            "67edb651835b978cbaf2519f92e68251145c1368a22cc0339f706d5c2144f862"
         ),
         "cuda_placement_sha256": (
             "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
@@ -73,7 +73,11 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     assert defaults["full_ckv_gather_max_tokens"] == 524288
     assert defaults["async_page_capture"] == {
         "enabled": False,
-        "slot_bytes": 8589934592,
+        "slot_bytes_by_dcp": {
+            "dcp1": 8589934592,
+            "dcp2": 5368709120,
+            "dcp4": 3221225472,
+        },
         "slot_count": 2,
     }
     assert defaults["dcp"] == {
@@ -88,7 +92,7 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
     for identity in (
         "f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
         "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
-        "62a7f824ccc8e941a4d71aaccf0bfd570dea3f84",
+        "6d83c7d8cb6ace96e657b3d0150116d0fe4e011c",
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
         "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
         "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
@@ -151,7 +155,7 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
     assert 'B12X_MLA_CKV_GATHER_MAX_TOKENS:=524288' in launcher
     assert 'SPARKCACHE_MAX_SPAN_TOKENS:=1048576' in launcher
     assert 'SPARKCACHE_ASYNC_PAGE_CAPTURE:=0' in launcher
-    assert 'SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES:=8589934592' in launcher
+    assert 'SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES:=auto' in launcher
     assert 'SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT:=2' in launcher
     assert "spark_cache_async_page_capture_library" in launcher
     assert "vllm-manager-page-async-contract-55969c16.json" in launcher
@@ -163,7 +167,7 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
         "B12X_MLA_CKV_GATHER_MAX_TOKENS=524288",
         "SPARKCACHE_MAX_SPAN_TOKENS=1048576",
         "SPARKCACHE_ASYNC_PAGE_CAPTURE=0",
-        "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES=8589934592",
+        "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES='auto'",
         "SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2",
     ):
         assert value in environment
