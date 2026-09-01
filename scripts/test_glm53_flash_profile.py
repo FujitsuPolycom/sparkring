@@ -412,8 +412,15 @@ def test_public_glm53_benchmark_is_sanitized_and_front_page_uses_r8() -> None:
     assert "api_key" not in text.lower()
 
     readme = README_PATH.read_text(encoding="utf-8")
-    assert "GLM-5.3 Flash NVFP4 + BF16 DFlash2" in readme
-    assert "TP4/DCP4 by default; DCP1 and DCP2 available" in readme
+    assert "GLM-5.3 Flash NVFP4 target, BF16 DFlash2" in readme
+    assert "| DCP1 | 4 Sparks · TP4/DCP1 |" in readme
+    assert "| DCP2 | 4 Sparks · TP4/DCP2 |" in readme
+    assert "| **DCP4 — preferred default** | **4 Sparks · TP4/DCP4** |" in readme
+    assert "| 2,513 | 40.20 | 116.73 | C16: 168.39 | 71.67 |" in readme
+    quickstart = (
+        ROOT / "docs" / "GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
+    ).read_text(encoding="utf-8")
+    assert "The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV" in quickstart
     assert "942,898-token needle" in readme
     assert "GLM-5.3 Flash research observation" not in readme
     assert "IN PROGRESS" not in readme

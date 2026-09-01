@@ -7,6 +7,7 @@ all active streams.
 
 | Profile | Prefill | C1 decode | C8 decode | Highest tested concurrency | Coding Peak |
 |---|---:|---:|---:|---:|---:|
+| GLM-5.3 Flash DCP4 preferred default, four Sparks | 2,513 | 40.20 | 116.73 | C16: 168.39 | 71.67 |
 | GLM-5.2 EXL3 3.5-bpw, four Sparks | 671 | 20.15 | 64.13 | C8: 64.13 | 25.39 |
 | DeepSeek-V4-Flash DSpark, two Sparks | 1,926 | 58.36 | 162.69 | C32: 307.13 | 59.31 |
 | DeepSeek-V4-Flash-0731, four Sparks | 2,488 | 68.84 | 265.16 | C32: 508.11 | 95.77 |
@@ -17,6 +18,7 @@ all active streams.
 
 | Profile | Results | Green matrix | Receipts |
 |---|---|---|---|
+| GLM-5.3 Flash DCP4 preferred default, four Sparks | [Bounded record](../performance/records/glm53-flash/dcp4-24g-default-20260901.md) | — | [Sanitized summary](../performance/receipts/glm53-flash/dcp4-24g-default-20260901/summary.json) |
 | GLM-5.2 EXL3 3.5-bpw, four Sparks | [Full record](../performance/records/glm-3.5bpw/normalized-base-20260822.md) | [Matrix image](../performance/records/glm-3.5bpw/normalized-base-20260822.png) | [Receipts](../performance/receipts/glm-3.5bpw/temp1/) |
 | DeepSeek-V4-Flash DSpark, two Sparks | [Full record](../performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md) | [Matrix image](../performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.png) | [Receipts](../performance/receipts/deepseek-v4-flash/temp1/) |
 | DeepSeek-V4-Flash-0731, four Sparks | [Full record](../performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md) | [Matrix image](../performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.png) | [Receipts](../performance/receipts/deepseek-v4-flash/temp1/20260823-tp4/) |
