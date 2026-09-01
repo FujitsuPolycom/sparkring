@@ -57,7 +57,7 @@ seven, FP8 KV, B12X GB10 kernels, and the same source-pinned ARM64 vLLM image.
 | **DCP4 preferred**** | **4 Sparks · TP4/DCP4** | **1M** | **16** | **8,192** | **24 GiB/rank; SparkCache enabled*** | **4.32M tokens** | **[Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)** |
 
 *Set
-`SPARKCACHE_ENABLED=0` to use disable sparkcache, leaving only vLLM prefix caching by default. 1 = both. 
+`SPARKCACHE_ENABLED=0` to disable sparkcache, leaving only vLLM prefix caching by default. 1 enable sparkcache and vllm prefix caching 
 
 **DCP4 is preferred because it provides the best performance at high concurrency decode and the greatest available KVC space.
 
