@@ -11,7 +11,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 LAUNCHER = HERE / "launch-rank.sh"
 ENVIRONMENT = HERE / "runtime.env.example"
-IMAGE_ID = "sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f"
+IMAGE_ID = "sha256:de27d92e57e731151879ee75c122a828dd0d83eaa30f714a9cd9aa6844051fa9"
 
 
 def _defaults() -> dict[str, str]:
@@ -33,12 +33,12 @@ def _bash_path(path: Path) -> str:
     return f"/mnt/{drive[0].lower()}/{normalized}"
 
 
-def test_environment_exposes_reproducible_r8_defaults() -> None:
+def test_environment_exposes_reproducible_operator_defaults() -> None:
     values = _defaults()
     assert values["IMAGE_ID"] == IMAGE_ID
     assert values["IMAGE_REF"] == (
         "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
-        "sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a"
+        "sha256:a72f943bc16c31cdde205f4a23fbc0e10d0a3d023469849ec19ccc727e24f98a"
     )
     assert values["MAX_MODEL_LEN"] == "1048576"
     assert values["SERVED_MODEL_NAME"] == "glm-5.3-flash"
@@ -211,7 +211,7 @@ def test_launcher_rejects_unsupported_dcp_geometry() -> None:
     assert "IMAGE_ID must be an immutable local image ID" in launcher
 
 
-def test_public_r8_documents_use_portable_examples_and_resolving_links() -> None:
+def test_public_operator_documents_use_portable_examples_and_resolving_links() -> None:
     documents = (
         HERE / "README.md",
         HERE / "LIVE_VALIDATION.md",
@@ -231,6 +231,6 @@ def test_public_r8_documents_use_portable_examples_and_resolving_links() -> None
             assert (document.parent / relative).resolve().exists(), (document, target)
 
     quickstart = documents[-1].read_text(encoding="utf-8")
-    assert "sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a" in quickstart
+    assert "sha256:a72f943bc16c31cdde205f4a23fbc0e10d0a3d023469849ec19ccc727e24f98a" in quickstart
     assert "DECODE_CONTEXT_PARALLEL_SIZE=4  # change to 1 or 2" in quickstart
     assert "fanout_image_archive.py" in quickstart

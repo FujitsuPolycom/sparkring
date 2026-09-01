@@ -1,0 +1,82 @@
+{
+  "schema": "sparkring-glm53-async-capture-image/v1",
+  "status": "qualified",
+  "artifact": {
+    "registry": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:a72f943bc16c31cdde205f4a23fbc0e10d0a3d023469849ec19ccc727e24f98a",
+    "published_tag": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260901-r10-async",
+    "image_id": "sha256:de27d92e57e731151879ee75c122a828dd0d83eaa30f714a9cd9aa6844051fa9",
+    "platform": "linux/arm64",
+    "image_bytes": 21051951658,
+    "archive_bytes": 8470291869,
+    "archive_sha256": "bd4300aa6efa76891f7c6125900a6535201728496658515fd10fcfe9a9306258"
+  },
+  "sources": {
+    "sparkring_commit": "20625a0e3e557cbde83a7049e5e06e9216107dba",
+    "sparkring_tree": "e9a30a9ed97538c0b5ee86abf7a38bdc53447874",
+    "sparkcache_commit": "6f50517802a96b5427cb2ce662d3fed39b231fcd",
+    "sparkcache_tree": "f0b2f3f35325b45bdc0acc9e13c9851229bdc9d7",
+    "sparkcache_source_sha256": "cfd6720b625232df64a36f37ab86e9c8ae353a1915304642d229ab28ea7bd794",
+    "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+    "cuda_snapshot_sha256": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
+    "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
+    "nccl_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3"
+  },
+  "conditions": {
+    "hardware": "four NVIDIA GB10 systems",
+    "topology": "TP4/DCP4",
+    "target": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+    "draft": "incoai/GLM-5.3-Flash-DFlash2 BF16",
+    "speculative_tokens": 7,
+    "kv_cache_dtype": "fp8",
+    "kv_cache_bytes_per_rank": 25769803776,
+    "logical_kv_capacity_tokens": 4321618,
+    "max_model_len": 1048576,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "prefill_schedule_interval": 8,
+    "sparkcache_access_mode": "read-write",
+    "publication_schema": "snapshot-v1",
+    "capture_slot_bytes": 3221225472,
+    "capture_slot_count": 2
+  },
+  "validation": {
+    "offline": {
+      "sparkcache": "915 passed, 7 skipped",
+      "sparkring": "1961 passed, 9 skipped",
+      "image_contract": "16 passed",
+      "startup_handshake": "5 passed inside the image",
+      "gpu_probes": "producer ordering, multigroup byte equality, drain, saturation, slot reuse, and mapped-ring matrix passed with zero mismatches"
+    },
+    "live": {
+      "prime_request_before_restore": false,
+      "cold_126k_publication": {
+        "prompt_tokens": 125998,
+        "stored_tokens": 124928,
+        "end_to_end_seconds": 49.2137,
+        "commit_ms_by_rank": [573.4, 595.9, 492.5, 550.1],
+        "needle": "passed"
+      },
+      "900k_restore": {
+        "prompt_tokens": 899998,
+        "restored_tokens": 899072,
+        "end_to_end_seconds": 6.2916,
+        "restore_ms_by_rank": [2047.7, 2101.0, 2159.4, 2189.8],
+        "needle": "passed"
+      },
+      "1m_restore": {
+        "prompt_tokens": 1000000,
+        "restored_tokens": 999424,
+        "end_to_end_seconds": 6.5039,
+        "restore_ms_by_rank": [2280.7, 2396.1, 2288.7, 2326.7],
+        "needle": "passed"
+      }
+    }
+  },
+  "conclusion": "The exact registry artifact supports bounded asynchronous complete-snapshot publication and automatic all-rank startup inventory for the recorded DCP4 profile. The first request after API readiness restored the 900K entry without a prime request; the following request restored the 1M entry.",
+  "limitations": [
+    "DCP1 and DCP2 asynchronous capture settings are implemented but not live-qualified by this receipt.",
+    "Asynchronous page-tail publication is not included in this image.",
+    "The 900K and 1M entries were written by a namespace-compatible source composition; this artifact performed their process-replacement restores and separately published a fresh 126K entry.",
+    "The receipt does not establish long-duration serving or concurrent deep-context publication."
+  ]
+}

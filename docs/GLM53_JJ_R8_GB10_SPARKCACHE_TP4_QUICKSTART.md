@@ -23,8 +23,8 @@ kernels provide the model-specific runtime and performance foundation.
 ## Image identity
 
 ```text
-registry: ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a
-local image ID: sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f
+registry: ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:a72f943bc16c31cdde205f4a23fbc0e10d0a3d023469849ec19ccc727e24f98a
+local image ID: sha256:de27d92e57e731151879ee75c122a828dd0d83eaa30f714a9cd9aa6844051fa9
 platform: linux/arm64
 ```
 
@@ -35,8 +35,8 @@ profile inputs and are not substitutes for the operator image below.
 Pull and verify the immutable image on rank 0:
 
 ```bash
-image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a'
-expected_image_id='sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f'
+image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:a72f943bc16c31cdde205f4a23fbc0e10d0a3d023469849ec19ccc727e24f98a'
+expected_image_id='sha256:de27d92e57e731151879ee75c122a828dd0d83eaa30f714a9cd9aa6844051fa9'
 docker pull "${image}"
 test "$(docker image inspect "${image}" --format '{{.Id}}')" = "${expected_image_id}"
 ```
@@ -81,8 +81,8 @@ starting Docker.
 Create one compressed archive from the verified pull on rank 0:
 
 ```bash
-archive_dir=/var/tmp/sparkring-images/glm53-r8
-archive_name=sparkring-glm53-r8-arm64.tar.zst
+archive_dir=/var/tmp/sparkring-images/glm53-flash
+archive_name=sparkring-glm53-flash-arm64.tar.zst
 mkdir -p "${archive_dir}"
 docker image save "${image}" | zstd -T0 -3 -o "${archive_dir}/${archive_name}"
 archive_sha256=$(sha256sum "${archive_dir}/${archive_name}" | awk '{print $1}')
@@ -106,11 +106,11 @@ python scripts/fanout_image_archive.py \
   --source-url "http://<rank-0-private-address>:18080/${archive_name}" \
   --archive-name "${archive_name}" \
   --expected-sha256 "${archive_sha256}" \
-  --target-directory /var/tmp/sparkring-images/glm53-r8 \
+  --target-directory /var/tmp/sparkring-images/glm53-flash \
   --image "${image}" \
   --expected-image-id "${expected_image_id}" \
   --execute --confirmation FANOUT_IMAGE_ARCHIVE \
-  --output ./glm53-r8-image-fanout.json
+  --output ./glm53-flash-image-fanout.json
 ```
 
 See the [fan-out reference](DIRECT_FABRIC_IMAGE_ARCHIVE_FANOUT.md) for site
@@ -121,8 +121,8 @@ format, planning, resumption, verification, and interruption behavior.
 Copy the environment template on every rank:
 
 ```bash
-cp runtime/glm53-flash-jj-r8-gb10/runtime.env.example "$HOME/glm53-r8.env"
-${EDITOR:-vi} "$HOME/glm53-r8.env"
+cp runtime/glm53-flash-jj-r8-gb10/runtime.env.example "$HOME/glm53-flash.env"
+${EDITOR:-vi} "$HOME/glm53-flash.env"
 ```
 
 Replace these five site values:
@@ -187,8 +187,8 @@ SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2
 ```
 
 The `auto` slot policy selects 8 GiB for DCP1, 5 GiB for DCP2, or 3 GiB for
-DCP4. Two 3 GiB slots are **qualified** for DCP4 by the recorded 126K
-publication comparison and 900K/1M restart restores. DCP1 and DCP2
+DCP4. Two 3 GiB slots are **qualified** for DCP4 by the recorded fresh 126K
+publication and 900K/1M restart restores. DCP1 and DCP2
 asynchronous capture is **implemented** but not live-qualified; set
 `SPARKCACHE_ASYNC_PAGE_CAPTURE=0` for those topologies. Asynchronous capture
 supports complete `snapshot-v1` publication only.
@@ -207,22 +207,22 @@ require an image rebuild.
 Start all four ranks within the rendezvous timeout. Rank 0 uses argument `0`:
 
 ```bash
-bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 0 "$HOME/glm53-r8.env"
+bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 0 "$HOME/glm53-flash.env"
 ```
 
 Use arguments `1`, `2`, and `3` on the corresponding follower systems:
 
 ```bash
-bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 1 "$HOME/glm53-r8.env"
-bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 2 "$HOME/glm53-r8.env"
-bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 3 "$HOME/glm53-r8.env"
+bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 1 "$HOME/glm53-flash.env"
+bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 2 "$HOME/glm53-flash.env"
+bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 3 "$HOME/glm53-flash.env"
 ```
 
 The launcher expands to the complete `docker run` invocation and verifies the
 configured local image ID before it creates a container. Tail rank 0 with:
 
 ```bash
-docker logs --follow --tail 120 glm53-jj-r8-gb10-r0
+docker logs --follow --tail 120 glm53-flash-gb10-r0
 ```
 
 Check the OpenAI-compatible API after rank 0 reports readiness:

@@ -55,7 +55,7 @@ vLLM normally. `store-only` and `disabled` are diagnostic modes.
 Set `SPARKCACHE_ASYNC_PAGE_CAPTURE=1` to capture complete manager-page
 snapshots through the bounded CUDA ring. `SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES`
 defaults to 8 GiB for DCP1, 5 GiB for DCP2, and 3 GiB for DCP4. DCP4 with two
-3 GiB slots is **qualified** by the recorded 126K interference comparison and
+3 GiB slots is **qualified** by the recorded fresh 126K publication and
 900K/1M restart restores. DCP1 and DCP2 asynchronous capture is
 **implemented** but has no live qualification record. Asynchronous capture
 requires `snapshot-v1`; page-tail publication is unsupported in this image.
@@ -83,8 +83,8 @@ python runtime/glm53-flash-jj-r8-gb10/build_image.py \
   --vllm-source /source/vllm \
   --sparkcache-source /source/sparkcache \
   --snapshot-library /source/sparkcache/sparkcache/native/build-cuda/libspark_cache_snapshot.so \
-  --output-image sparkring-glm53-jj-r8-sparkcache:local-arm64 \
-  --receipt ./glm53-r8-build-receipt.json
+  --output-image sparkring-glm53-sparkcache:local-arm64 \
+  --receipt ./glm53-build-receipt.json
 ```
 
 The build does not include model checkpoints, site addresses, SSH
@@ -95,15 +95,15 @@ credentials, or persistent cache data.
 Pull the immutable Linux/ARM64 image:
 
 ```text
-ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a
+ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:a72f943bc16c31cdde205f4a23fbc0e10d0a3d023469849ec19ccc727e24f98a
 ```
 
 Its local Docker image ID is
-`sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f`.
+`sha256:de27d92e57e731151879ee75c122a828dd0d83eaa30f714a9cd9aa6844051fa9`.
 Construction, direct-fabric distribution, profile smoke tests, historical
 deep-context evidence, and limitations are recorded in
-[`public-image-receipt.json`](public-image-receipt.json),
-[`PUBLIC_IMAGE_VALIDATION.md`](PUBLIC_IMAGE_VALIDATION.md), and the
+[`async-capture-image-receipt.json`](async-capture-image-receipt.json),
+[`ASYNC_CAPTURE_IMAGE_VALIDATION.md`](ASYNC_CAPTURE_IMAGE_VALIDATION.md), and the
 [`deep-context record`](../../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md).
 
 Run the offline contracts with:
