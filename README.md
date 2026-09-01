@@ -52,14 +52,17 @@ seven, FP8 KV, B12X GB10 kernels, and the same source-pinned ARM64 vLLM image.
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Approx. logical KV capacity | Start here |
 |---|---|---:|---:|---:|---|---:|---|
-| DCP1 | 4 Sparks · TP4/DCP1 | 1M | 16 | 8,192 | 26 GiB/rank; SparkCache enabled | 1.30M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
-| DCP2 | 4 Sparks · TP4/DCP2 | 1M | 16 | 8,192 | 30 GiB/rank; SparkCache enabled | 2.90M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
-| **DCP4 preferred** | **4 Sparks · TP4/DCP4** | **1M** | **16** | **8,192** | **24 GiB/rank; SparkCache enabled** | **4.32M tokens** | **[Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)** |
+| DCP1 | 4 Sparks · TP4/DCP1 | 1M | 16 | 8,192 | 26 GiB/rank; SparkCache enabled* | 1.30M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| DCP2 | 4 Sparks · TP4/DCP2 | 1M | 16 | 8,192 | 30 GiB/rank; SparkCache enabled* | 2.90M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| **DCP4 preferred**** | **4 Sparks · TP4/DCP4** | **1M** | **16** | **8,192** | **24 GiB/rank; SparkCache enabled*** | **4.32M tokens** | **[Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)** |
 
-DCP4 is preferred because it provides the best performance at high concurrency decode and the greatest available KVC space. The quickstart uses one
-Linux/ARM64 image for every row and both caching modes. Set
-`SPARKCACHE_ENABLED=0` to use vLLM prefix caching alone. The image is published at
-`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a`.
+*Set
+`SPARKCACHE_ENABLED=0` to use disable sparkcache, leaving only vLLM prefix caching by default. 1 = both. 
+
+**DCP4 is preferred because it provides the best performance at high concurrency decode and the greatest available KVC space.
+
+ The base image is published at
+`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a` and supports both caching methods.
 
 ### Other model profiles
 
