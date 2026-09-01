@@ -6,6 +6,10 @@ Linux/ARM64 image supports DCP1, DCP2, and DCP4. The default request limit is
 The operator can enable persistent SparkCache or use vLLM's GPU prefix cache
 alone without changing the image.
 
+The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV per rank, scheduler
+interval eight, BF16 DFlash2 at depth seven, and SparkCache enabled. The
+environment template selects these values without additional overrides.
+
 The image does not contain model checkpoints. It mounts the exact
 [`local-inference-lab/GLM-5.3-Flash-NVFP4`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4)
 target and the

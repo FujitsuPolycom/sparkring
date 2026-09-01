@@ -1,0 +1,56 @@
+{
+  "schema": "sparkring-benchmark-summary/v1",
+  "status": "research-only",
+  "conditions": {
+    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a",
+    "image_id": "sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f",
+    "target": "local-inference-lab/GLM-5.3-Flash-NVFP4@520de24eabf507659eaef7c70f14fd584527facc",
+    "draft": "incoai/GLM-5.3-Flash-DFlash2@dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 4,
+    "kv_cache_dtype": "fp8",
+    "kv_cache_memory_bytes_per_rank": 25769803776,
+    "kv_capacity_tokens": 4321618,
+    "max_model_len": 1048576,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "prefill_schedule_interval": 8,
+    "speculative_method": "dflash",
+    "num_speculative_tokens": 7,
+    "sparkcache_enabled": true,
+    "sparkcache_publication_schema": "snapshot-v1"
+  },
+  "source_receipts": {
+    "matrix_sha256": "c725ee942ecd55fcfed85fe2abe8b7e62e613702c3f830e7a233d60fd40fbcb6",
+    "coding_sha256": "91d4e21323bcd6f8c1c323fae4be1a682a85d268fc7a2b41cd09e32a6eeaa122"
+  },
+  "prefill_c1": {
+    "8192": {"ttft_seconds": 3.516, "tokens_per_second": 2337.0, "samples": 1},
+    "16384": {"ttft_seconds": 6.531, "tokens_per_second": 2513.0, "samples": 1},
+    "32768": {"ttft_seconds": 12.796, "tokens_per_second": 2563.0, "samples": 1},
+    "65536": {"ttft_seconds": 25.469, "tokens_per_second": 2574.0, "samples": 1},
+    "131072": {"ttft_seconds": 51.109, "tokens_per_second": 2565.0, "samples": 1}
+  },
+  "aggregate_decode_tokens_per_second": {
+    "8192": {"1": 36.76, "2": 58.48, "4": 84.46, "8": 123.45, "16": 170.22},
+    "16384": {"1": 40.20, "2": 53.80, "4": 84.51, "8": 116.73, "16": 168.39},
+    "32768": {"1": 35.29, "2": 54.99, "4": 84.73, "8": 114.44},
+    "65536": {"1": 45.94},
+    "131072": {"1": 33.28}
+  },
+  "coding_peak": {
+    "runs": 3,
+    "median_tokens_per_second": 71.67,
+    "mean_tokens_per_second": 70.70,
+    "maximum_tokens_per_second": 78.95,
+    "minimum_tokens_per_second": 61.48,
+    "cjk_runs": 0
+  },
+  "limitations": [
+    "Prefill cells contain one observation each.",
+    "Decode cells use one 40-second measured window with unique prompt contexts.",
+    "The 32768-token C16 cell was omitted because the benchmark marked it capacity-limited.",
+    "The benchmark client did not record DCP size; DCP4 and the 24 GiB KV reservation were verified from the server launch and allocator logs.",
+    "Client hardware telemetry was not used as server hardware evidence."
+  ]
+}

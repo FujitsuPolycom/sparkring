@@ -49,14 +49,19 @@ guides use immutable digests.
 
 ### GLM-5.3 Flash
 
+All three profiles use the GLM-5.3 Flash NVFP4 target, BF16 DFlash2 at depth
+seven, FP8 KV, and the Jovian Judgement R8 runtime.
+
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
 |---|---|---:|---:|---:|---|---|
-| GLM-5.3 Flash NVFP4 + BF16 DFlash2 on Jovian Judgement R8 | 4 Sparks · TP4/DCP4 by default; DCP1 and DCP2 available | 1M | 16 | 8,192 | 24 GiB/rank FP8 KV; SparkCache enabled by default | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| DCP1 | 4 Sparks · TP4/DCP1 | 1M | 16 | 8,192 | 26 GiB/rank; SparkCache enabled | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| DCP2 | 4 Sparks · TP4/DCP2 | 1M | 16 | 8,192 | 30 GiB/rank; SparkCache enabled | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| **DCP4 — preferred default** | **4 Sparks · TP4/DCP4** | **1M** | **16** | **8,192** | **24 GiB/rank; SparkCache enabled** | **[Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)** |
 
-The quickstart uses one Linux/ARM64 image for both caching modes. SparkCache is
-enabled by default. Set `SPARKCACHE_ENABLED=1` for persistent SparkCache plus vLLM prefix caching or
-`SPARKCACHE_ENABLED=0` for vLLM prefix caching alone. The image is published
-at
+DCP4 is preferred because it provides the largest KV capacity while retaining
+host-memory headroom with the 24 GiB reservation. The quickstart uses one
+Linux/ARM64 image for every row and both caching modes. Set
+`SPARKCACHE_ENABLED=0` to use vLLM prefix caching alone. The image is published at
 `ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a`.
 
 ### Other model profiles
@@ -86,6 +91,7 @@ temperature 1.0; decode values are aggregate throughput across active streams.
 
 | Profile | Prefill | C1 decode | C8 decode | Highest tested decode | Coding peak |
 |---|---:|---:|---:|---:|---:|
+| [GLM-5.3 Flash DCP4 preferred default · 4 Sparks](performance/records/glm53-flash/dcp4-24g-default-20260901.md) | 2,513 | 40.20 | 116.73 | C16: 168.39 | 71.67 |
 | [GLM-5.2 EXL3 3.5-bpw · 4 Sparks](performance/records/glm-3.5bpw/normalized-base-20260822.md) | 671 | 20.15 | 64.13 | C8: 64.13 | 25.39 |
 | [DeepSeek-V4-Flash DSpark · 2 Sparks](performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md) | 1,926 | 58.36 | 162.69 | C32: 307.13 | 59.31 |
 | [DeepSeek-V4-Flash-0731 · 4 Sparks](performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md) | 2,488 | 68.84 | 265.16 | C32: 508.11 | 95.77 |
