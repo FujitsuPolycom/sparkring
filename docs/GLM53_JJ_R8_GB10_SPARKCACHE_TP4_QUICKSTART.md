@@ -143,11 +143,14 @@ DECODE_CONTEXT_PARALLEL_SIZE=4  # change to 1 or 2
 
 The launcher selects the matching GLM KV geometry automatically:
 
-| DCP | KV interleave | Full-CKV prefill gather | Default FP8 KV per rank |
-|---:|---:|---:|---:|
-| 1 | 1 token | disabled | 26 GiB |
-| 2 | 4 tokens | enabled | 30 GiB |
-| 4 | 4 tokens | enabled | 24 GiB |
+| DCP | KV interleave | Full-CKV prefill gather | Default FP8 KV per rank | Approx. logical KV capacity |
+|---:|---:|---:|---:|---:|
+| 1 | 1 token | disabled | 26 GiB | 1.30M tokens |
+| 2 | 4 tokens | enabled | 30 GiB | 2.90M tokens |
+| 4 | 4 tokens | enabled | 24 GiB | 4.32M tokens |
+
+The capacity column is the model-wide value reported by vLLM. Do not multiply
+it by the four physical ranks.
 
 The published image's DCP1 profile completed a 942,898-token needle retrieval
 under the 1M request limit. The DCP2 and DCP4 validation records used 30 GiB

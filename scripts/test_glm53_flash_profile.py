@@ -416,6 +416,9 @@ def test_public_glm53_benchmark_is_sanitized_and_front_page_uses_r8() -> None:
     assert "| DCP1 | 4 Sparks · TP4/DCP1 |" in readme
     assert "| DCP2 | 4 Sparks · TP4/DCP2 |" in readme
     assert "| **DCP4 preferred** | **4 Sparks · TP4/DCP4** |" in readme
+    assert "| 1.30M tokens |" in readme
+    assert "| 2.90M tokens |" in readme
+    assert "| **4.32M tokens** |" in readme
     assert "| 2,513 | 40.20 | 116.73 | C16: 168.39 | 71.67 |" in readme
     quickstart = (
         ROOT / "docs" / "GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"

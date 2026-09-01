@@ -52,17 +52,20 @@ guides use immutable digests.
 All three profiles use the GLM-5.3 Flash NVFP4 target, BF16 DFlash2 at depth
 seven, FP8 KV, B12X GB10 kernels, and the same source-pinned ARM64 vLLM image.
 
-| Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
-|---|---|---:|---:|---:|---|---|
-| DCP1 | 4 Sparks · TP4/DCP1 | 1M | 16 | 8,192 | 24 GiB/rank; SparkCache enabled | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
-| DCP2 | 4 Sparks · TP4/DCP2 | 1M | 16 | 8,192 | 24 GiB/rank; SparkCache enabled | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
-| **DCP4 preferred** | **4 Sparks · TP4/DCP4** | **1M** | **16** | **8,192** | **24 GiB/rank; SparkCache enabled** | **[Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)** |
+| Profile | Deployment | Context | Seqs | Batch | KV / cache | Approx. logical KV capacity | Start here |
+|---|---|---:|---:|---:|---|---:|---|
+| DCP1 | 4 Sparks · TP4/DCP1 | 1M | 16 | 8,192 | 26 GiB/rank; SparkCache enabled | 1.30M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| DCP2 | 4 Sparks · TP4/DCP2 | 1M | 16 | 8,192 | 30 GiB/rank; SparkCache enabled | 2.90M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| **DCP4 preferred** | **4 Sparks · TP4/DCP4** | **1M** | **16** | **8,192** | **24 GiB/rank; SparkCache enabled** | **4.32M tokens** | **[Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)** |
 
 DCP4 is preferred because it provides the largest KV capacity while retaining
 host-memory headroom with the 24 GiB reservation. The quickstart uses one
 Linux/ARM64 image for every row and both caching modes. Set
 `SPARKCACHE_ENABLED=0` to use vLLM prefix caching alone. The image is published at
 `ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a`.
+
+KV capacity is the model-wide logical token capacity reported by vLLM. It is
+already sharded across the four ranks and must not be multiplied by four.
 
 ### Other model profiles
 
