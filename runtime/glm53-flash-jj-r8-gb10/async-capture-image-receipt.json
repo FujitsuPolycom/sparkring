@@ -1,0 +1,119 @@
+{
+  "schema": "sparkring-glm53-async-capture-image/v1",
+  "status": "qualified",
+  "artifact": {
+    "registry": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65",
+    "published_tag": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260901-r10-async-telemetry",
+    "image_id": "sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f",
+    "platform": "linux/arm64",
+    "image_bytes": 21051962617,
+    "archive_bytes": 8470524424,
+    "archive_sha256": "5f3e02b85ace893e5f9ced34ffe7a6dacfe896bd026137e9486517b8e490db8d"
+  },
+  "sources": {
+    "sparkring_commit": "d2f8911427d64bbb89c275814777fc3f8112fd21",
+    "sparkring_tree": "695c4cc8c4edcd4c6749460f0a416c1008d582ed",
+    "sparkcache_commit": "c5dda75ec46bf235f6ece6e0d0174c1e41bd805a",
+    "sparkcache_tree": "f08661f05e31157e5473b3f7743e92b8f0fa78d2",
+    "sparkcache_source_sha256": "dffc2bead0a7c1cebb7a52757d38bd89146305b3ff351353ece9ac464c4c421d",
+    "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+    "cuda_snapshot_sha256": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
+    "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
+    "nccl_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3"
+  },
+  "conditions": {
+    "hardware": "four NVIDIA GB10 systems",
+    "topology": "TP4/DCP4",
+    "target": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+    "target_revision": "520de24eabf507659eaef7c70f14fd584527facc",
+    "draft": "incoai/GLM-5.3-Flash-DFlash2 BF16",
+    "draft_revision": "dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+    "speculative_tokens": 7,
+    "kv_cache_dtype": "fp8",
+    "kv_cache_bytes_per_rank": 25769803776,
+    "logical_kv_capacity_tokens": 4321618,
+    "max_model_len": 1048576,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "prefill_schedule_interval": 8,
+    "sparkcache_access_mode": "read-write",
+    "publication_schema": "snapshot-v1",
+    "operator_template_storage_root": "glm53-flash-dcp4-snapshot-v1",
+    "live_validation_storage_root": "jj-r10-async-ab-v1",
+    "storage_root_semantics": "selects rank-local storage and JIT directories; does not alter CacheIdentity or stored format",
+    "operator_template_storage_root_measured": false,
+    "capture_slot_bytes": 3221225472,
+    "capture_slot_count": 2
+  },
+  "deep_entry_writer": {
+    "image_id": "sha256:8e586e6ad9b4f30a8ccef1bfd8b76194524e156089c958907872d0f8735a09b2",
+    "archive_sha256": "47c800fd73130c1fe26b707caa2c64f81ed43c951fe2019d8836cd0b883dbe48",
+    "sparkcache_commit": "6d83c7d8cb6ace96e657b3d0150116d0fe4e011c",
+    "sparkcache_tree": "0bb871bd1e8d3893a11686f0ba404bd4b6240e4d",
+    "sparkcache_source_sha256": "67edb651835b978cbaf2519f92e68251145c1368a22cc0339f706d5c2144f862",
+    "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+    "vllm_tree": "1bb7f10a5838d348ca2fcb0134b05ad768d3340b",
+    "cuda_snapshot_sha256": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
+    "topology": "TP4/DCP4",
+    "publication_schema": "snapshot-v1",
+    "storage_root": "jj-r10-async-ab-v1",
+    "checkpoint_identity": "same target and draft repositories and revisions recorded in conditions"
+  },
+  "validation": {
+    "offline": {
+      "sparkcache": "pull request CI passed for commit c5dda75ec46bf235f6ece6e0d0174c1e41bd805a",
+      "sparkring": "12 focused image and launcher tests passed before the artifact build; 1962 passed and 9 skipped after the receipt update",
+      "image_contract": "builder, independent verifier, source contract, native ABI, and label read-back passed",
+      "startup_handshake": "5 passed inside the image",
+      "gpu_probes": "producer ordering, multigroup byte equality, drain, saturation, slot reuse, and mapped-ring matrix passed with zero mismatches"
+    },
+    "live": {
+      "startup_inventory": {
+        "checked": 29,
+        "offered": 29,
+        "rejected": 0
+      },
+      "identical_prompt_prime_before_restore": false,
+      "cold_126k_publication": {
+        "prompt_tokens": 125999,
+        "stored_tokens": 124928,
+        "end_to_end_seconds": 48.4260,
+        "capture_completion_observed_ms_by_rank": [408.5, 404.3, 403.7, 404.3],
+        "capture_rate_kilo_tokens_per_second_by_rank": [306, 309, 309, 309],
+        "payload_mib_per_rank": 231.8,
+        "commit_ms_by_rank": [520.6, 528.6, 526.3, 567.6],
+        "needle": "passed"
+      },
+      "900k_restore": {
+        "prompt_tokens": 899998,
+        "restored_tokens": 899072,
+        "end_to_end_seconds": 6.4745,
+        "restore_ms_by_rank": [2123.1, 2156.0, 2179.8, 2153.1],
+        "restore_rate_kilo_tokens_per_second_by_rank": [423, 417, 412, 418],
+        "needle": "passed"
+      },
+      "1m_restore": {
+        "prompt_tokens": 1000000,
+        "restored_tokens": 999424,
+        "end_to_end_seconds": 6.7254,
+        "restore_ms_by_rank": [2318.8, 2395.2, 2376.9, 2276.2],
+        "restore_rate_kilo_tokens_per_second_by_rank": [431, 417, 420, 439],
+        "needle": "passed"
+      },
+      "final_health": {
+        "running_ranks": 4,
+        "oom_killed_ranks": 0,
+        "nonzero_exit_ranks": 0,
+        "api": "healthy"
+      }
+    }
+  },
+  "conclusion": "The exact registry artifact supports asynchronous complete-snapshot publication at 124928 stored tokens and 231.8 MiB per rank, automatic all-rank startup inventory, and persistent restore for the recorded DCP4 profile. It restored the 900K and 1M entries written by deep_entry_writer without either prompt being sent after startup to prime them.",
+  "limitations": [
+    "DCP1 and DCP2 asynchronous capture settings are implemented but not live-qualified by this receipt.",
+    "Asynchronous publication above 124928 stored tokens per entry is not live-qualified by this receipt.",
+    "Asynchronous page-tail publication is not included in this image.",
+    "The public artifact restored the 900K and 1M entries written by deep_entry_writer; it did not asynchronously publish entries at those sizes.",
+    "The receipt does not establish long-duration serving or concurrent deep-context publication."
+  ]
+}

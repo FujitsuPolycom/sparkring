@@ -1,9 +1,10 @@
-# GLM-5.3 Flash R8 runtime for GB10
+# GLM-5.3 Flash GB10 operator image
 
 This directory builds and runs one Linux/ARM64 image for GLM-5.3 Flash on four
-NVIDIA GB10 systems. The image combines the Jovian Judgement R8 scheduler,
-BF16 DFlash2 speculation, B12X kernels, switchless NCCL, fastsafetensors, and
-SparkCache. One image supports TP4 with DCP1, DCP2, or DCP4.
+NVIDIA GB10 systems. The image combines the Local Inference Lab GLM-5.3 vLLM
+runtime recorded as `Jovian Judgement Community R10`, BF16 DFlash2
+speculation, B12X kernels, switchless NCCL, fastsafetensors, and SparkCache.
+One image supports TP4 with DCP1, DCP2, or DCP4.
 
 Local Inference Lab supplies the model quantization and the primary runtime
 work that makes this profile practical:
@@ -22,7 +23,7 @@ Exact revisions and source-tree hashes are in [`pins.json`](pins.json).
 ## Use the runtime
 
 Follow the
-[`GLM-5.3 R8 GB10 quickstart`](../../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)
+[`GLM-5.3 GB10 quickstart`](../../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)
 to obtain or build the image, distribute it once through the direct fabric,
 and start four ranks. [`runtime.env.example`](runtime.env.example) exposes the
 model paths, image identity, DCP degree, context limit, scheduler budget, KV
@@ -46,19 +47,52 @@ change every value in the environment file without rebuilding the image.
 `SPARKCACHE_ENABLED=0` omits the persistent connector while retaining vLLM's
 GPU prefix cache; `SPARKCACHE_ENABLED=1` enables both layers.
 
+With the connector enabled, `SPARKCACHE_ACCESS_MODE=read-write` restores and
+publishes persistent entries. `restore-only` reuses compatible entries but
+does not capture or publish new prompt state. Missing entries are computed by
+vLLM normally. `store-only` and `disabled` are diagnostic modes.
+
+`SPARKCACHE_CACHE_NAMESPACE` selects rank-local storage and JIT directories.
+The template uses the semantic default `glm53-flash-dcp4-snapshot-v1`. The
+directory name is not part of SparkCache's content identity or stored format;
+changing it selects a different root and therefore discovers a different set
+of stored entries.
+
+Set `SPARKCACHE_ASYNC_PAGE_CAPTURE=1` to capture complete manager-page
+snapshots through the bounded CUDA ring. `SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES`
+defaults to 8 GiB for DCP1, 5 GiB for DCP2, and 3 GiB for DCP4. DCP4 with two
+3 GiB slots is **qualified** for asynchronous publication of the recorded
+124,928-token, 231.8 MiB-per-rank snapshot. The image also restored retained
+900K and 1M entries, but did not asynchronously publish entries at those
+sizes. Larger asynchronous publication and DCP1/DCP2 asynchronous capture
+have no live qualification record. Asynchronous capture requires
+`snapshot-v1`; page-tail publication is unsupported in this image.
+
 ## Build from pinned source
 
 The builder accepts clean checkouts at the exact vLLM and SparkCache commits
-recorded in `pins.json`. It verifies the commits, trees, package subtrees,
-runtime files, parent image, native extensions, and SparkCache CUDA placement
-library before producing an image.
+recorded in `pins.json`. Build the attested SparkCache snapshot library on an
+ARM64 CUDA 13 host before invoking the image builder:
+
+```bash
+cmake -S /source/sparkcache/sparkcache/native \
+  -B /source/sparkcache/sparkcache/native/build-cuda \
+  -G Ninja -DCMAKE_CUDA_ARCHITECTURES=121
+cmake --build /source/sparkcache/sparkcache/native/build-cuda \
+  --target spark_cache_snapshot
+```
+
+The image builder verifies commits, trees, package subtrees, runtime files,
+the parent image, retained native extensions, and both SparkCache CUDA
+libraries before producing an image.
 
 ```bash
 python runtime/glm53-flash-jj-r8-gb10/build_image.py \
   --vllm-source /source/vllm \
   --sparkcache-source /source/sparkcache \
-  --output-image sparkring-glm53-jj-r8-sparkcache:local-arm64 \
-  --receipt ./glm53-r8-build-receipt.json
+  --snapshot-library /source/sparkcache/sparkcache/native/build-cuda/libspark_cache_snapshot.so \
+  --output-image sparkring-glm53-sparkcache:local-arm64 \
+  --receipt ./glm53-build-receipt.json
 ```
 
 The build does not include model checkpoints, site addresses, SSH
@@ -69,15 +103,15 @@ credentials, or persistent cache data.
 Pull the immutable Linux/ARM64 image:
 
 ```text
-ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a
+ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65
 ```
 
 Its local Docker image ID is
-`sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f`.
+`sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f`.
 Construction, direct-fabric distribution, profile smoke tests, historical
 deep-context evidence, and limitations are recorded in
-[`public-image-receipt.json`](public-image-receipt.json),
-[`PUBLIC_IMAGE_VALIDATION.md`](PUBLIC_IMAGE_VALIDATION.md), and the
+[`async-capture-image-receipt.json`](async-capture-image-receipt.json),
+[`ASYNC_CAPTURE_IMAGE_VALIDATION.md`](ASYNC_CAPTURE_IMAGE_VALIDATION.md), and the
 [`deep-context record`](../../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md).
 
 Run the offline contracts with:

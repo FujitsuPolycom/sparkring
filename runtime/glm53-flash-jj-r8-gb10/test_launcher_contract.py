@@ -11,7 +11,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 LAUNCHER = HERE / "launch-rank.sh"
 ENVIRONMENT = HERE / "runtime.env.example"
-IMAGE_ID = "sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f"
+IMAGE_ID = "sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f"
 
 
 def _defaults() -> dict[str, str]:
@@ -33,12 +33,12 @@ def _bash_path(path: Path) -> str:
     return f"/mnt/{drive[0].lower()}/{normalized}"
 
 
-def test_environment_exposes_reproducible_r8_defaults() -> None:
+def test_environment_exposes_reproducible_operator_defaults() -> None:
     values = _defaults()
     assert values["IMAGE_ID"] == IMAGE_ID
     assert values["IMAGE_REF"] == (
         "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
-        "sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a"
+        "sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65"
     )
     assert values["MAX_MODEL_LEN"] == "1048576"
     assert values["SERVED_MODEL_NAME"] == "glm-5.3-flash"
@@ -47,6 +47,7 @@ def test_environment_exposes_reproducible_r8_defaults() -> None:
     assert values["PREFILL_SCHEDULE_INTERVAL"] == "8"
     assert values["KV_CACHE_MEMORY_BYTES"] == "auto"
     assert values["SPARKCACHE_ENABLED"] == "1"
+    assert values["SPARKCACHE_ACCESS_MODE"] == "read-write"
     assert values["SPARKCACHE_MAX_SPAN_TOKENS"] == "1048576"
     assert values["CP_KV_CACHE_INTERLEAVE_SIZE"] == "auto"
     assert values["B12X_MLA_CKV_GATHER"] == "auto"
@@ -149,6 +150,9 @@ printf '%s  %s\n' "$hash" "$2"
         extra = connector["kv_connector_extra_config"]
         assert extra["spark_cache_publication_schema"] == "snapshot-v1"
         assert extra["spark_cache_model_profile"] == "glm53-flash-hybrid"
+        assert extra["spark_cache_access_mode"] == "read-write"
+        assert "spark_cache_store" not in extra
+        assert "spark_cache_restore" not in extra
 
     config = tmp_path / "dcp1-vllm-prefix-only.env"
     config.write_text(
@@ -192,6 +196,14 @@ def test_launcher_can_use_vllm_prefix_cache_without_sparkcache() -> None:
     assert "--enable-prefix-caching" in launcher
 
 
+def test_launcher_exposes_independent_sparkcache_access_mode() -> None:
+    launcher = LAUNCHER.read_text(encoding="utf-8")
+    assert "SPARKCACHE_ACCESS_MODE must be read-write" in launcher
+    assert '"spark_cache_access_mode": os.environ["SPARKCACHE_ACCESS_MODE"]' in launcher
+    assert '"spark_cache_store": True' not in launcher
+    assert '"spark_cache_restore": True' not in launcher
+
+
 def test_launcher_rejects_unsupported_dcp_geometry() -> None:
     launcher = LAUNCHER.read_text(encoding="utf-8")
     assert "DECODE_CONTEXT_PARALLEL_SIZE must be 1, 2, or 4" in launcher
@@ -199,7 +211,7 @@ def test_launcher_rejects_unsupported_dcp_geometry() -> None:
     assert "IMAGE_ID must be an immutable local image ID" in launcher
 
 
-def test_public_r8_documents_use_portable_examples_and_resolving_links() -> None:
+def test_public_operator_documents_use_portable_examples_and_resolving_links() -> None:
     documents = (
         HERE / "README.md",
         HERE / "LIVE_VALIDATION.md",
@@ -219,6 +231,6 @@ def test_public_r8_documents_use_portable_examples_and_resolving_links() -> None
             assert (document.parent / relative).resolve().exists(), (document, target)
 
     quickstart = documents[-1].read_text(encoding="utf-8")
-    assert "sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a" in quickstart
+    assert "sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65" in quickstart
     assert "DECODE_CONTEXT_PARALLEL_SIZE=4  # change to 1 or 2" in quickstart
     assert "fanout_image_archive.py" in quickstart

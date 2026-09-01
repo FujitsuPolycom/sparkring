@@ -40,10 +40,11 @@ SparkRing supports four model families across ten deployment profiles:
 
 - GLM-5.2 EXL3 3.5-bpw at four-Spark TP4/DCP4, as a base profile and a
   SparkCache composition, using the R7 runtime and site/candidate contracts.
-- GLM-5.3 Flash with the public BF16 DFlash2 drafter at four-Spark TP4/DCP1,
-  as a cache-disabled base profile and a SparkCache composition, using the
-  immutable source contract in `runtime/glm53-flash/` and the sanitized site
-  and runtime templates in `scripts/config/`.
+- GLM-5.3 Flash with the public BF16 DFlash2 drafter at four-Spark TP4 with
+  DCP1, DCP2, or DCP4. `runtime/glm53-flash/` defines the source-built base;
+  `runtime/glm53-flash-jj-r8-gb10/` defines the adjustable operator image with
+  optional SparkCache; sanitized site and runtime templates live in
+  `scripts/config/`.
 - DeepSeek-V4-Flash-0731 at two-Spark TP2/DCP1 and four-Spark TP4/DCP1, as
   base profiles and SparkCache compositions, using the published serving image
   and per-rank environment contracts.
@@ -71,7 +72,8 @@ choosing one.
 | Subject | Canonical source |
 |---|---|
 | GLM-5.2 EXL3 runtime build | `runtime/exl3-r7/README.md` |
-| GLM-5.3 Flash runtime, model, DFlash, NCCL, and SparkCache pins | `runtime/glm53-flash/pins.json` |
+| GLM-5.3 Flash source-built base, model, DFlash, and NCCL pins | `runtime/glm53-flash/pins.json` |
+| GLM-5.3 Flash DCP1/DCP2/DCP4 operator image, vLLM composition, and SparkCache pins | `runtime/glm53-flash-jj-r8-gb10/pins.json` |
 | GLM-5.3 Flash four-rank site and runtime profiles | `scripts/config/glm53-flash-tp4-site.example.yaml`, then the selected `scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1*.example.json` |
 | Qwen3.8-27B runtime build | `runtime/qwen38/README.md` |
 | GLM/DeepSeek runtime base and model pins | `runtime/faststart-lock.json` |
@@ -115,6 +117,8 @@ RDMA, live pair/cycle serving, or a performance result.
 `runtime/exl3-r7/` builds the GLM-5.2 EXL3 R7 image.
 `runtime/glm53-flash/` records the GLM-5.3 Flash runtime, model, public BF16
 DFlash2, patched NCCL, SparkCache, and vLLM lease-contract identities.
+`runtime/glm53-flash-jj-r8-gb10/` composes the source-pinned GB10 operator
+image and exposes the DCP1, DCP2, and DCP4 launch contract.
 `runtime/deepseek0731-gb10/` builds the hardened DeepSeek-V4-Flash-0731 image,
 and `runtime/qwen38/` builds the Qwen3.8-27B ARM64 image.
 `runtime/faststart-lock.json` pins the generic GLM/rollback image, the hardened

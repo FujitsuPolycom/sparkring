@@ -1,4 +1,4 @@
-# Run GLM-5.3 Flash R8 on four GB10 systems
+# Run GLM-5.3 Flash on four GB10 systems
 
 This guide starts one TP4 service across four NVIDIA GB10 systems. The same
 Linux/ARM64 image supports DCP1, DCP2, and DCP4. The default request limit is
@@ -8,7 +8,8 @@ alone without changing the image.
 
 The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV per rank, scheduler
 interval eight, BF16 DFlash2 at depth seven, and SparkCache enabled. The
-environment template selects these values without additional overrides.
+environment template selects these values and enables bounded asynchronous
+SparkCache capture without additional overrides.
 
 The image does not contain model checkpoints. It mounts the exact
 [`local-inference-lab/GLM-5.3-Flash-NVFP4`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4)
@@ -22,8 +23,8 @@ kernels provide the model-specific runtime and performance foundation.
 ## Image identity
 
 ```text
-registry: ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a
-local image ID: sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f
+registry: ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65
+local image ID: sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f
 platform: linux/arm64
 ```
 
@@ -34,8 +35,8 @@ profile inputs and are not substitutes for the operator image below.
 Pull and verify the immutable image on rank 0:
 
 ```bash
-image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a'
-expected_image_id='sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f'
+image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65'
+expected_image_id='sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f'
 docker pull "${image}"
 test "$(docker image inspect "${image}" --format '{{.Id}}')" = "${expected_image_id}"
 ```
@@ -80,8 +81,8 @@ starting Docker.
 Create one compressed archive from the verified pull on rank 0:
 
 ```bash
-archive_dir=/var/tmp/sparkring-images/glm53-r8
-archive_name=sparkring-glm53-r8-arm64.tar.zst
+archive_dir=/var/tmp/sparkring-images/glm53-flash
+archive_name=sparkring-glm53-flash-arm64.tar.zst
 mkdir -p "${archive_dir}"
 docker image save "${image}" | zstd -T0 -3 -o "${archive_dir}/${archive_name}"
 archive_sha256=$(sha256sum "${archive_dir}/${archive_name}" | awk '{print $1}')
@@ -105,11 +106,11 @@ python scripts/fanout_image_archive.py \
   --source-url "http://<rank-0-private-address>:18080/${archive_name}" \
   --archive-name "${archive_name}" \
   --expected-sha256 "${archive_sha256}" \
-  --target-directory /var/tmp/sparkring-images/glm53-r8 \
+  --target-directory /var/tmp/sparkring-images/glm53-flash \
   --image "${image}" \
   --expected-image-id "${expected_image_id}" \
   --execute --confirmation FANOUT_IMAGE_ARCHIVE \
-  --output ./glm53-r8-image-fanout.json
+  --output ./glm53-flash-image-fanout.json
 ```
 
 See the [fan-out reference](DIRECT_FABRIC_IMAGE_ARCHIVE_FANOUT.md) for site
@@ -120,8 +121,8 @@ format, planning, resumption, verification, and interruption behavior.
 Copy the environment template on every rank:
 
 ```bash
-cp runtime/glm53-flash-jj-r8-gb10/runtime.env.example "$HOME/glm53-r8.env"
-${EDITOR:-vi} "$HOME/glm53-r8.env"
+cp runtime/glm53-flash-jj-r8-gb10/runtime.env.example "$HOME/glm53-flash.env"
+${EDITOR:-vi} "$HOME/glm53-flash.env"
 ```
 
 Replace these five site values:
@@ -152,11 +153,10 @@ The launcher selects the matching GLM KV geometry automatically:
 The capacity column is the model-wide value reported by vLLM. Do not multiply
 it by the four physical ranks.
 
-The published image's DCP1 profile completed a 942,898-token needle retrieval
-under the 1M request limit. The DCP2 and DCP4 validation records used 30 GiB
-per rank. The DCP4 operator default uses 24 GiB per rank to retain more
-host-memory headroom under concurrent serving. Set `KV_CACHE_MEMORY_BYTES` to
-a positive byte count to override the topology-aware `auto` policy.
+The recorded DCP4 deployment used 24 GiB per rank and completed exact 900K and
+1M needle restores. The DCP1 profile completed a 942,898-token needle
+retrieval under the 1M request limit. Set `KV_CACHE_MEMORY_BYTES` to a positive
+byte count to override the topology-aware `auto` policy.
 
 Choose persistent SparkCache or vLLM's GPU prefix cache alone without changing
 the image:
@@ -165,6 +165,38 @@ the image:
 SPARKCACHE_ENABLED=1  # persistent SparkCache plus vLLM prefix caching
 SPARKCACHE_ENABLED=0  # vLLM prefix caching only
 ```
+
+When SparkCache is enabled, choose whether the connector may publish:
+
+```bash
+SPARKCACHE_ACCESS_MODE=read-write   # restore existing entries and publish new ones
+SPARKCACHE_ACCESS_MODE=restore-only # restore existing entries; never capture new prompts
+```
+
+Restore-only mode is useful for reuse-heavy serving or performance tests where
+one-off prompt publication would add GPU-to-host capture work. A restore miss
+is computed by vLLM normally.
+
+The template's `SPARKCACHE_CACHE_NAMESPACE` value selects rank-local storage
+and JIT directories. It is not part of SparkCache's content identity or stored
+format. Changing it selects a different root and therefore a different set of
+discoverable entries.
+
+The preferred DCP4 profile enables complete-snapshot CUDA capture:
+
+```bash
+SPARKCACHE_ASYNC_PAGE_CAPTURE=1
+SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES=auto
+SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2
+```
+
+The `auto` slot policy selects 8 GiB for DCP1, 5 GiB for DCP2, or 3 GiB for
+DCP4. Two 3 GiB slots are **qualified** for asynchronous DCP4 publication of
+the recorded 124,928-token, 231.8 MiB-per-rank snapshot. The same image also
+restored retained 900K and 1M entries. Larger asynchronous publication and
+DCP1/DCP2 asynchronous capture are not live-qualified; set
+`SPARKCACHE_ASYNC_PAGE_CAPTURE=0` outside the recorded publication scope.
+Asynchronous capture supports complete `snapshot-v1` publication only.
 
 Disabling SparkCache omits the external KV connector and all persistent
 publication and restore work. `--enable-prefix-caching` remains enabled. The
@@ -180,22 +212,22 @@ require an image rebuild.
 Start all four ranks within the rendezvous timeout. Rank 0 uses argument `0`:
 
 ```bash
-bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 0 "$HOME/glm53-r8.env"
+bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 0 "$HOME/glm53-flash.env"
 ```
 
 Use arguments `1`, `2`, and `3` on the corresponding follower systems:
 
 ```bash
-bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 1 "$HOME/glm53-r8.env"
-bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 2 "$HOME/glm53-r8.env"
-bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 3 "$HOME/glm53-r8.env"
+bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 1 "$HOME/glm53-flash.env"
+bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 2 "$HOME/glm53-flash.env"
+bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh 3 "$HOME/glm53-flash.env"
 ```
 
 The launcher expands to the complete `docker run` invocation and verifies the
 configured local image ID before it creates a container. Tail rank 0 with:
 
 ```bash
-docker logs --follow --tail 120 glm53-jj-r8-gb10-r0
+docker logs --follow --tail 120 glm53-flash-gb10-r0
 ```
 
 Check the OpenAI-compatible API after rank 0 reports readiness:
@@ -206,18 +238,30 @@ curl --fail http://rank0.example.net:8015/v1/models
 
 ## Evidence and limits
 
-The published image completed SparkCache publication and process-replacement
-restore checks at DCP1, DCP2, and DCP4. DCP2 and DCP4 used 30 GiB of FP8 KV
-per rank. The DCP1 deep-context profile uses 26 GiB per rank, exposes
-1,303,701 KV tokens, and completed a 942,898-token needle request in 473.4
-seconds.
+The immutable image above completed a fresh 125,999-token publication with
+bounded asynchronous CUDA capture. Every rank stored the 124,928-token,
+231.8 MiB boundary. Capture completion was observed 403.7–408.5 ms after
+submission per rank, and durable commit took 520.6–567.6 ms per rank.
 
-The retained restart-restore checks stored spans from 8,192 through 14,336
-tokens. The deep-context run published 942,592 tokens but did not replay that
-snapshot after process replacement. The evidence does not establish
-concurrent large-context restore, long-duration behavior, or general
-throughput. See
-[`PUBLIC_IMAGE_VALIDATION.md`](../runtime/glm53-flash-jj-r8-gb10/PUBLIC_IMAGE_VALIDATION.md)
+The same DCP4 service restored 899,072 tokens from an exact 899,998-token
+prompt in 2.123–2.180 seconds per rank, then restored 999,424 tokens from an
+exact 1,000,000-token prompt in 2.276–2.395 seconds per rank. Both requests
+returned their exact needles without an identical prompt being sent after
+startup to prime either entry. Startup inventory checked 29 manifests and
+rejected none.
+
+The live checks overrode the template's semantic storage-root name with the
+durable evidence identifier `jj-r10-async-ab-v1`. The operator default
+`glm53-flash-dcp4-snapshot-v1` was not measured. The name difference changes
+which directory is searched; it does not change `CacheIdentity` or the stored
+snapshot format.
+
+This evidence covers asynchronous complete-snapshot publication at the
+124,928-token boundary and persistent restore for the recorded DCP4 profile.
+It does not establish larger asynchronous publication, long-duration serving,
+concurrent deep-context publication, or asynchronous capture at DCP1 or DCP2.
+See the
+[`asynchronous capture validation`](../runtime/glm53-flash-jj-r8-gb10/ASYNC_CAPTURE_IMAGE_VALIDATION.md)
 and the
-[`deep-context record`](../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md)
-for the exact conditions and results.
+[`DCP1 deep-context record`](../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md)
+for exact conditions and limitations.

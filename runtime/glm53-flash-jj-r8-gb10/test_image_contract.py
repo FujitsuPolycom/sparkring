@@ -23,31 +23,47 @@ verify = load_module("jj_r8_verify_image", HERE / "verify_image.py")
 def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     pins = json.loads((HERE / "pins.json").read_text(encoding="utf-8"))
     assert pins["vllm"]["commit"] == (
-        "55969c16d4da57da76ee5729f3102d4b2003833c"
+        "22ffe1401ca9bd3e4503e62de7b414deca7661a1"
     )
-    assert pins["vllm"]["tree"] == "a8d44216d05cbcd4df25f2c269b807275ec2e4ea"
+    assert pins["vllm"]["tree"] == "1bb7f10a5838d348ca2fcb0134b05ad768d3340b"
     assert pins["vllm"]["package_tree"] == (
-        "2255ebbbd63c8fe2347e9c742d565f44f4bf2e3d"
+        "e5ed1db6292c7312571419e101ba719bb5ebb393"
     )
     assert pins["vllm"]["delta_patch_id"] == (
-        "171dfb66935731a4944335ce0e74307905ee903d"
+        "44ad5586548465c002d0195d3739992795233ffe"
     )
-    assert pins["vllm"]["official_r8_component_commit"] == (
+    assert pins["vllm"]["community_release"] == "Jovian Judgement Community R10"
+    assert pins["vllm"]["community_parent_commit"] == (
+        "55969c16d4da57da76ee5729f3102d4b2003833c"
+    )
+    assert pins["vllm"]["sparse_pooled_index_commit"] == (
+        "adb69eac865a1a37081fa4edb9f7599a351f7aac"
+    )
+    assert pins["vllm"]["fwht_scaling_commit"] == (
+        "ae37fd6ed8df72d4bd8cdc067c7c241c93408235"
+    )
+    assert pins["vllm"]["scheduler_prefill_cadence_component_commit"] == (
         "f1191b9090cd02ac49238c8e4f371050759703b6"
     )
-    assert pins["vllm"]["public_prefill_cadence_pr_head"] == (
+    assert pins["vllm"]["scheduler_prefill_cadence_pull_request_head"] == (
         "2412a6f34ab1412f86ed3e4cdd355271a082d93d"
     )
     assert pins["sparkcache"] == {
         "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-        "commit": "c3887f34bcd51788a8ae7d202ab64a9d40348546",
-        "tree": "2372add6defbf67355da4ca40fa7828dcbd45abd",
-        "package_tree": "21450a6e1db7f9136ceff8432c09596f5290dcef",
+        "commit": "c5dda75ec46bf235f6ece6e0d0174c1e41bd805a",
+        "tree": "f08661f05e31157e5473b3f7743e92b8f0fa78d2",
+        "package_tree": "c34e87530fe71c0dfb5b6c452e7b8e3b7866f42f",
         "source_tree_sha256": (
-            "57ad5bb26c721a6c68c7ab4c135057073e7d34ad86cfd04acdc04331b8f7e213"
+            "dffc2bead0a7c1cebb7a52757d38bd89146305b3ff351353ece9ac464c4c421d"
         ),
         "cuda_placement_sha256": (
             "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
+        ),
+        "cuda_snapshot_sha256": (
+            "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5"
+        ),
+        "manager_page_lease_contract_sha256": (
+            "480bdc463e3722cf28aa460021da689d12d9049ae9fd8238252fcf1db5544b53"
         ),
     }
     defaults = pins["defaults"]
@@ -60,6 +76,16 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
         "dcp4": 25769803776,
     }
     assert defaults["full_ckv_gather_max_tokens"] == 524288
+    assert defaults["async_page_capture"] == {
+        "preferred_dcp4_enabled": True,
+        "launcher_fallback_enabled": False,
+        "slot_bytes_by_dcp": {
+            "dcp1": 8589934592,
+            "dcp2": 5368709120,
+            "dcp4": 3221225472,
+        },
+        "slot_count": 2,
+    }
     assert defaults["dcp"] == {
         "1": {"cp_kv_cache_interleave_size": 1, "full_ckv_gather": False},
         "2": {"cp_kv_cache_interleave_size": 4, "full_ckv_gather": True},
@@ -71,10 +97,11 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
     recipe = (HERE / "Dockerfile").read_text(encoding="utf-8")
     for identity in (
         "f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
-        "55969c16d4da57da76ee5729f3102d4b2003833c",
-        "c3887f34bcd51788a8ae7d202ab64a9d40348546",
+        "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+        "c5dda75ec46bf235f6ece6e0d0174c1e41bd805a",
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
         "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
+        "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
     ):
         assert identity in recipe
     assert "org.sparkcache.dcp-layouts=\"1,2,4\"" in recipe
@@ -114,7 +141,10 @@ def test_runtime_hashes_are_enforced_inside_image() -> None:
     }
     labels = verify.expected_labels(pins)
     assert labels["org.sparkring.vllm.delta-patch-id"] == (
-        "171dfb66935731a4944335ce0e74307905ee903d"
+        "44ad5586548465c002d0195d3739992795233ffe"
+    )
+    assert labels["org.sparkring.vllm.community-parent"] == (
+        "55969c16d4da57da76ee5729f3102d4b2003833c"
     )
     assert labels["org.sparkring.b12x.package-tree"] == (
         "6de9871d15dab093340695518fec0f744289e676"
@@ -130,6 +160,11 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
     assert 'KV_CACHE_MEMORY_BYTES:=auto' in launcher
     assert 'B12X_MLA_CKV_GATHER_MAX_TOKENS:=524288' in launcher
     assert 'SPARKCACHE_MAX_SPAN_TOKENS:=1048576' in launcher
+    assert 'SPARKCACHE_ASYNC_PAGE_CAPTURE:=0' in launcher
+    assert 'SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES:=auto' in launcher
+    assert 'SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT:=2' in launcher
+    assert "spark_cache_async_page_capture_library" in launcher
+    assert "vllm-manager-page-async-contract-55969c16.json" in launcher
     for value in (
         "MAX_MODEL_LEN=1048576",
         "MAX_NUM_BATCHED_TOKENS=8192",
@@ -137,9 +172,80 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
         "KV_CACHE_MEMORY_BYTES='auto'",
         "B12X_MLA_CKV_GATHER_MAX_TOKENS=524288",
         "SPARKCACHE_MAX_SPAN_TOKENS=1048576",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE=1",
+        "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES='auto'",
+        "SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2",
     ):
         assert value in environment
     for text in (launcher, environment):
-        assert "jj-r8-gb10-manager-pages-v2" in text
+        assert "glm53-flash-dcp4-snapshot-v1" in text
     assert "IMAGE_REF" in launcher
     assert "IMAGE_ID" in launcher
+
+
+def test_async_capture_image_receipt_binds_public_artifact_and_live_results() -> None:
+    receipt = json.loads(
+        (HERE / "async-capture-image-receipt.json").read_text(encoding="utf-8")
+    )
+    assert receipt["status"] == "qualified"
+    assert receipt["artifact"]["registry"].endswith(
+        "@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65"
+    )
+    assert receipt["artifact"]["image_id"] == (
+        "sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f"
+    )
+    assert receipt["artifact"]["published_tag"].endswith(
+        ":20260901-r10-async-telemetry"
+    )
+    assert receipt["sources"]["sparkring_commit"] == (
+        "d2f8911427d64bbb89c275814777fc3f8112fd21"
+    )
+    assert receipt["sources"]["sparkcache_commit"] == (
+        "c5dda75ec46bf235f6ece6e0d0174c1e41bd805a"
+    )
+    assert receipt["conditions"]["capture_slot_bytes"] == 3 * 1024**3
+    assert receipt["conditions"]["operator_template_storage_root"] == (
+        "glm53-flash-dcp4-snapshot-v1"
+    )
+    assert receipt["conditions"]["live_validation_storage_root"] == (
+        "jj-r10-async-ab-v1"
+    )
+    assert receipt["conditions"]["operator_template_storage_root_measured"] is False
+    assert receipt["deep_entry_writer"] == {
+        "image_id": (
+            "sha256:8e586e6ad9b4f30a8ccef1bfd8b76194524e156089c958907872d0f8735a09b2"
+        ),
+        "archive_sha256": (
+            "47c800fd73130c1fe26b707caa2c64f81ed43c951fe2019d8836cd0b883dbe48"
+        ),
+        "sparkcache_commit": "6d83c7d8cb6ace96e657b3d0150116d0fe4e011c",
+        "sparkcache_tree": "0bb871bd1e8d3893a11686f0ba404bd4b6240e4d",
+        "sparkcache_source_sha256": (
+            "67edb651835b978cbaf2519f92e68251145c1368a22cc0339f706d5c2144f862"
+        ),
+        "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+        "vllm_tree": "1bb7f10a5838d348ca2fcb0134b05ad768d3340b",
+        "cuda_snapshot_sha256": (
+            "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5"
+        ),
+        "topology": "TP4/DCP4",
+        "publication_schema": "snapshot-v1",
+        "storage_root": "jj-r10-async-ab-v1",
+        "checkpoint_identity": (
+            "same target and draft repositories and revisions recorded in conditions"
+        ),
+    }
+    assert (
+        receipt["validation"]["live"]["identical_prompt_prime_before_restore"]
+        is False
+    )
+    assert receipt["validation"]["live"]["startup_inventory"] == {
+        "checked": 29,
+        "offered": 29,
+        "rejected": 0,
+    }
+    assert receipt["validation"]["live"]["cold_126k_publication"][
+        "capture_completion_observed_ms_by_rank"
+    ] == [408.5, 404.3, 403.7, 404.3]
+    assert receipt["validation"]["live"]["900k_restore"]["needle"] == "passed"
+    assert receipt["validation"]["live"]["1m_restore"]["needle"] == "passed"

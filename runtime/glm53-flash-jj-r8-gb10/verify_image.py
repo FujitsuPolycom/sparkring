@@ -78,6 +78,13 @@ def verify_inside_image() -> dict[str, Any]:
     )
     if file_sha256(placement) != expected_placement:
         raise VerificationError("SparkCache CUDA placement identity changed")
+    expected_snapshot = pins["sparkcache"]["cuda_snapshot_sha256"]
+    snapshot = Path(
+        "/opt/sparkcache-src/sparkcache/native/build-cuda/"
+        "libspark_cache_snapshot.so"
+    )
+    if file_sha256(snapshot) != expected_snapshot:
+        raise VerificationError("SparkCache CUDA snapshot identity changed")
     expected_nccl = pins["transport"]["nccl_sha256"]
     nccl = Path("/opt/sparkring/nccl/libnccl.so.2.30.7")
     if file_sha256(nccl) != expected_nccl:
@@ -93,6 +100,7 @@ def verify_inside_image() -> dict[str, Any]:
         "native_extensions": len(observed_native),
         "nccl_sha256": expected_nccl,
         "cuda_placement_sha256": expected_placement,
+        "cuda_snapshot_sha256": expected_snapshot,
         "live_qualification": "not-established-by-image-verification",
     }
 
@@ -106,11 +114,21 @@ def expected_labels(pins: dict[str, Any]) -> dict[str, str]:
         "org.sparkring.vllm.python-tree": pins["vllm"]["tree"],
         "org.sparkring.vllm.sparkcache-composition": pins["vllm"]["commit"],
         "org.sparkring.vllm.tree": pins["vllm"]["tree"],
-        "org.sparkring.vllm.official-r8-component": pins["vllm"][
-            "official_r8_component_commit"
+        "org.sparkring.vllm.community-release": pins["vllm"][
+            "community_release"
+        ],
+        "org.sparkring.vllm.community-parent": pins["vllm"][
+            "community_parent_commit"
+        ],
+        "org.sparkring.vllm.sparse-pooled-index": pins["vllm"][
+            "sparse_pooled_index_commit"
+        ],
+        "org.sparkring.vllm.fwht-scaling": pins["vllm"]["fwht_scaling_commit"],
+        "org.sparkring.vllm.prefill-cadence-component": pins["vllm"][
+            "scheduler_prefill_cadence_component_commit"
         ],
         "org.sparkring.vllm.prefill-cadence-pr-head": pins["vllm"][
-            "public_prefill_cadence_pr_head"
+            "scheduler_prefill_cadence_pull_request_head"
         ],
         "org.sparkring.vllm.delta-patch-id": pins["vllm"]["delta_patch_id"],
         "org.sparkring.b12x.composition": pins["b12x"]["commit"],
@@ -127,9 +145,12 @@ def expected_labels(pins: dict[str, Any]) -> dict[str, str]:
         "org.sparkcache.cuda-placement-sha256": pins["sparkcache"][
             "cuda_placement_sha256"
         ],
+        "org.sparkcache.cuda-snapshot-sha256": pins["sparkcache"][
+            "cuda_snapshot_sha256"
+        ],
+        "org.sparkcache.startup-inventory": "connector-handshake-all-rank",
         "org.sparkcache.cache-geometry": "manager-pages-v2",
         "org.sparkcache.publication-schema": "snapshot-v1",
-        "org.sparkcache.tail-publication-schema": "page-tail-cow-v1-opt-in",
         "org.sparkcache.dcp-layouts": "1,2,4",
     }
 

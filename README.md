@@ -1,6 +1,7 @@
 # SparkRing
 
-> Alpha software. SparkRing is evolving quickly. For repeatable deployments, use the immutable image digest and source revisions listed in each quickstart.
+> SparkRing is experimental. Use the immutable image digest and source
+> revisions in each quickstart when you need a repeatable deployment.
 
 SparkRing is a low-latency collective transport and vLLM-based
 inference-serving stack for switchless clusters of NVIDIA DGX 'Spark' systems
@@ -52,17 +53,23 @@ seven, FP8 KV, B12X GB10 kernels, and the same source-pinned ARM64 vLLM image.
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Approx. logical KV capacity | Start here |
 |---|---|---:|---:|---:|---|---:|---|
-| DCP1 | 4 Sparks · TP4/DCP1 | 1M | 16 | 8,192 | 24 GiB/rank; SparkCache enabled* | 1.30M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
-| DCP2 | 4 Sparks · TP4/DCP2 | 1M | 16 | 8,192 | 24 GiB/rank; SparkCache enabled* | 2.90M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
-| **DCP4 preferred**** | **4 Sparks · TP4/DCP4** | **1M** | **16** | **8,192** | **24 GiB/rank; SparkCache enabled*** | **4.32M tokens** | **[Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)** |
+| DCP1 | 4 Sparks · TP4/DCP1 | 1M | 16 | 8,192 | 26 GiB/rank; SparkCache enabled | 1.30M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| DCP2 | 4 Sparks · TP4/DCP2 | 1M | 16 | 8,192 | 30 GiB/rank; SparkCache enabled | 2.90M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| **DCP4 preferred** | **4 Sparks · TP4/DCP4** | **1M** | **16** | **8,192** | **24 GiB/rank; SparkCache enabled** | **4.32M tokens** | **[Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)** |
 
-*Set
-`SPARKCACHE_ENABLED=0` to disable sparkcache, leaving only vLLM prefix caching by default. 1 enable sparkcache and vllm prefix caching 
+Set `SPARKCACHE_ENABLED=0` to use only vLLM's in-memory prefix cache. Set it
+to `1` to add persistent SparkCache restoration and publication.
 
-**DCP4 is preferred because it provides the best performance at high concurrency decode and the greatest available KVC space.
+The DCP1 profile completed a 942,898-token needle request under the 1M request
+limit; the linked quickstart records its exact image and conditions.
 
- The base image is published at
-`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a` and supports both caching methods.
+**DCP4 is preferred because it provides the greatest available KV-cache
+capacity among these profiles and is the recorded asynchronous SparkCache
+deployment.**
+
+The operator image is published at
+`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65`
+and supports both caching methods.
 
 ### Other model profiles
 
