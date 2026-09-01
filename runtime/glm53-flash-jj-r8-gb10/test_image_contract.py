@@ -45,14 +45,20 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     )
     assert pins["sparkcache"] == {
         "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-        "commit": "b0186396eb2d73a9cc67b670fdc3e5a39d029ad8",
-        "tree": "9ef6ff392eefb35c74b2afcb4c5347224d9c7720",
-        "package_tree": "e851c4ec42150bf52a6eb1fb54852d70b3238573",
+        "commit": "62a7f824ccc8e941a4d71aaccf0bfd570dea3f84",
+        "tree": "23225378c7e4fd8e6cdb9e8dd00a5eab1cf1fdd5",
+        "package_tree": "0e19bc33fe099020649df84f4c294c6019f54612",
         "source_tree_sha256": (
-            "f7311d5c751c2ebd79d1dc1754af40655e9556bfc610bbb562c73e914923c5df"
+            "ae6a0a15bff6db667597fb4d5eb46b254988f9992e03d60f5889714229d0adac"
         ),
         "cuda_placement_sha256": (
             "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
+        ),
+        "cuda_snapshot_sha256": (
+            "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5"
+        ),
+        "manager_page_lease_contract_sha256": (
+            "480bdc463e3722cf28aa460021da689d12d9049ae9fd8238252fcf1db5544b53"
         ),
     }
     defaults = pins["defaults"]
@@ -65,6 +71,11 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
         "dcp4": 25769803776,
     }
     assert defaults["full_ckv_gather_max_tokens"] == 524288
+    assert defaults["async_page_capture"] == {
+        "enabled": False,
+        "slot_bytes": 8589934592,
+        "slot_count": 2,
+    }
     assert defaults["dcp"] == {
         "1": {"cp_kv_cache_interleave_size": 1, "full_ckv_gather": False},
         "2": {"cp_kv_cache_interleave_size": 4, "full_ckv_gather": True},
@@ -77,9 +88,10 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
     for identity in (
         "f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
         "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
-        "b0186396eb2d73a9cc67b670fdc3e5a39d029ad8",
+        "62a7f824ccc8e941a4d71aaccf0bfd570dea3f84",
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
         "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
+        "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
     ):
         assert identity in recipe
     assert "org.sparkcache.dcp-layouts=\"1,2,4\"" in recipe
@@ -138,6 +150,11 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
     assert 'KV_CACHE_MEMORY_BYTES:=auto' in launcher
     assert 'B12X_MLA_CKV_GATHER_MAX_TOKENS:=524288' in launcher
     assert 'SPARKCACHE_MAX_SPAN_TOKENS:=1048576' in launcher
+    assert 'SPARKCACHE_ASYNC_PAGE_CAPTURE:=0' in launcher
+    assert 'SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES:=8589934592' in launcher
+    assert 'SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT:=2' in launcher
+    assert "spark_cache_async_page_capture_library" in launcher
+    assert "vllm-manager-page-async-contract-55969c16.json" in launcher
     for value in (
         "MAX_MODEL_LEN=1048576",
         "MAX_NUM_BATCHED_TOKENS=8192",
@@ -145,6 +162,9 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
         "KV_CACHE_MEMORY_BYTES='auto'",
         "B12X_MLA_CKV_GATHER_MAX_TOKENS=524288",
         "SPARKCACHE_MAX_SPAN_TOKENS=1048576",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE=0",
+        "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES=8589934592",
+        "SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2",
     ):
         assert value in environment
     for text in (launcher, environment):

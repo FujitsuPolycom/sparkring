@@ -71,6 +71,9 @@ fi
 : "${SPARKCACHE_MAX_PENDING_RESTORES:=8}"
 : "${SPARKCACHE_CUDA_RESTORE_IO_WORKERS:=8}"
 : "${SPARKCACHE_CUDA_ARENA_BYTES:=268435456}"
+: "${SPARKCACHE_ASYNC_PAGE_CAPTURE:=0}"
+: "${SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES:=8589934592}"
+: "${SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT:=2}"
 : "${SOCKET_IFNAME:=enP7s7}"
 : "${NCCL_IB_HCA:=rocep1s0f0,rocep1s0f1}"
 : "${NCCL_IB_GID_INDEX:=3}"
@@ -105,6 +108,7 @@ for name in \
   SPARKCACHE_MAX_BYTES SPARKCACHE_MIN_SPAN_TOKENS SPARKCACHE_MAX_SPAN_TOKENS \
   SPARKCACHE_LOAD_THREADS SPARKCACHE_MAX_PENDING_RESTORES \
   SPARKCACHE_CUDA_RESTORE_IO_WORKERS SPARKCACHE_CUDA_ARENA_BYTES \
+  SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT \
   NCCL_MIN_NCHANNELS NCCL_MAX_NCHANNELS OMP_NUM_THREADS \
   TORCHINDUCTOR_COMPILE_THREADS FASTSAFETENSORS_QUEUE_SIZE
 do
@@ -183,10 +187,24 @@ case "${SPARKCACHE_ENABLED}" in
   0|1) ;;
   *) die 'SPARKCACHE_ENABLED must be 0 or 1' ;;
 esac
+case "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" in
+  0|1) ;;
+  *) die 'SPARKCACHE_ASYNC_PAGE_CAPTURE must be 0 or 1' ;;
+esac
 case "${SPARKCACHE_ACCESS_MODE}" in
   read-write|restore-only|store-only|disabled) ;;
   *) die 'SPARKCACHE_ACCESS_MODE must be read-write, restore-only, store-only, or disabled' ;;
 esac
+if [[ "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 ]]; then
+  [[ "${SPARKCACHE_ENABLED}" == 1 ]] || \
+    die 'asynchronous page capture requires SPARKCACHE_ENABLED=1'
+  [[ "${SPARKCACHE_PUBLICATION_SCHEMA}" == snapshot-v1 ]] || \
+    die 'asynchronous page capture supports snapshot-v1 publication only'
+  case "${SPARKCACHE_ACCESS_MODE}" in
+    read-write|store-only) ;;
+    *) die 'asynchronous page capture requires a publication-capable access mode' ;;
+  esac
+fi
 for name in SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE
 do
   [[ "${!name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || \
@@ -309,6 +327,8 @@ if [[ "${SPARKCACHE_ENABLED}" == 1 ]]; then
   export SPARKCACHE_MIN_SPAN_TOKENS SPARKCACHE_MAX_SPAN_TOKENS
   export SPARKCACHE_LOAD_THREADS SPARKCACHE_MAX_PENDING_RESTORES
   export SPARKCACHE_CUDA_RESTORE_IO_WORKERS SPARKCACHE_CUDA_ARENA_BYTES
+  export SPARKCACHE_ASYNC_PAGE_CAPTURE
+  export SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT
   kv_transfer_config="$(python3 - <<'PY'
 import json
 import os
@@ -339,6 +359,13 @@ extra = {
     "spark_cache_load_threads": integer("SPARKCACHE_LOAD_THREADS"),
     "spark_cache_max_pending_restores": integer("SPARKCACHE_MAX_PENDING_RESTORES"),
     "spark_cache_clear_once": os.environ["SPARKCACHE_CLEAR_ONCE"],
+    "spark_cache_async_page_capture": os.environ["SPARKCACHE_ASYNC_PAGE_CAPTURE"] == "1",
+    "spark_cache_async_page_capture_library": "/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_snapshot.so",
+    "spark_cache_async_page_capture_library_sha256": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
+    "spark_cache_async_page_capture_slot_bytes": integer("SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES"),
+    "spark_cache_async_page_capture_slot_count": integer("SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT"),
+    "spark_cache_async_page_capture_vllm_root": "/usr/local/lib/python3.12/dist-packages",
+    "spark_cache_async_page_capture_lease_contract": "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-manager-page-async-contract-55969c16.json",
 }
 print(json.dumps({
     "kv_connector": "SparkContextCacheConnector",

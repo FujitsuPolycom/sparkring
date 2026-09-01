@@ -251,6 +251,7 @@ def prepare_context(
     *,
     vllm_source: Path,
     sparkcache_source: Path,
+    snapshot_library: Path,
     native_extensions: dict[str, Any],
     pins: dict[str, Any],
 ) -> dict[str, Any]:
@@ -268,6 +269,14 @@ def prepare_context(
         "sparkcache",
         sparkcache_output,
     )
+    expected_snapshot = pins["sparkcache"]["cuda_snapshot_sha256"]
+    if not snapshot_library.is_file():
+        raise BuildError(f"SparkCache CUDA snapshot library is missing: {snapshot_library}")
+    if file_sha256(snapshot_library) != expected_snapshot:
+        raise BuildError("SparkCache CUDA snapshot library digest mismatch")
+    bundled_snapshot = context / "bundle/native/libspark_cache_snapshot.so"
+    bundled_snapshot.parent.mkdir(parents=True)
+    shutil.copy2(snapshot_library, bundled_snapshot)
     observed_source = sparkcache_source_sha256(sparkcache_output)
     if observed_source != pins["sparkcache"]["source_tree_sha256"]:
         raise BuildError(
@@ -321,6 +330,7 @@ def prepare_context(
                 "bundle/receipts/vllm-source-manifest.json",
                 "bundle/receipts/sparkcache-source-manifest.json",
                 "bundle/receipts/native-extension-manifest.json",
+                "bundle/native/libspark_cache_snapshot.so",
             )
         },
         "limitation": "This receipt verifies source preparation, not a built image.",
@@ -338,6 +348,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--vllm-source", type=Path, required=True)
     parser.add_argument("--sparkcache-source", type=Path, required=True)
+    parser.add_argument("--snapshot-library", type=Path, required=True)
     parser.add_argument("--output-image", required=True)
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--engine", default="docker")
@@ -378,6 +389,7 @@ def main() -> int:
             context,
             vllm_source=args.vllm_source.resolve(),
             sparkcache_source=args.sparkcache_source.resolve(),
+            snapshot_library=args.snapshot_library.resolve(),
             native_extensions=native_extensions,
             pins=pins,
         )
