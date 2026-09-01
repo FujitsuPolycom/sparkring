@@ -1,4 +1,4 @@
-# Run GLM-5.3 Flash R8 on four GB10 systems
+# Run GLM-5.3 Flash on four GB10 systems
 
 This guide starts one TP4 service across four NVIDIA GB10 systems. The same
 Linux/ARM64 image supports DCP1, DCP2, and DCP4. The default request limit is
@@ -8,7 +8,8 @@ alone without changing the image.
 
 The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV per rank, scheduler
 interval eight, BF16 DFlash2 at depth seven, and SparkCache enabled. The
-environment template selects these values without additional overrides.
+environment template selects these values and enables bounded asynchronous
+SparkCache capture without additional overrides.
 
 The image does not contain model checkpoints. It mounts the exact
 [`local-inference-lab/GLM-5.3-Flash-NVFP4`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4)
@@ -176,6 +177,21 @@ SPARKCACHE_ACCESS_MODE=restore-only # restore existing entries; never capture ne
 Restore-only mode is useful for reuse-heavy serving or performance tests where
 one-off prompt publication would add GPU-to-host capture work. A restore miss
 is computed by vLLM normally.
+
+The preferred DCP4 profile enables complete-snapshot CUDA capture:
+
+```bash
+SPARKCACHE_ASYNC_PAGE_CAPTURE=1
+SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES=auto
+SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2
+```
+
+The `auto` slot policy selects 8 GiB for DCP1, 5 GiB for DCP2, or 3 GiB for
+DCP4. Two 3 GiB slots are **qualified** for DCP4 by the recorded 126K
+publication comparison and 900K/1M restart restores. DCP1 and DCP2
+asynchronous capture is **implemented** but not live-qualified; set
+`SPARKCACHE_ASYNC_PAGE_CAPTURE=0` for those topologies. Asynchronous capture
+supports complete `snapshot-v1` publication only.
 
 Disabling SparkCache omits the external KV connector and all persistent
 publication and restore work. `--enable-prefix-caching` remains enabled. The

@@ -21,11 +21,12 @@
     "package_tree": "e5ed1db6292c7312571419e101ba719bb5ebb393",
     "delta_patch_id": "44ad5586548465c002d0195d3739992795233ffe",
     "proven_base_commit": "331573d20bd47e78327ed8d8b4d2e6d350bbb1ab",
-    "gb10_r10_parent_commit": "55969c16d4da57da76ee5729f3102d4b2003833c",
-    "gb10_r10_sparse_metadata_head": "adb69eac8",
-    "gb10_r10_fwht_head": "ae37fd6ed",
-    "official_r8_component_commit": "f1191b9090cd02ac49238c8e4f371050759703b6",
-    "public_prefill_cadence_pr_head": "2412a6f34ab1412f86ed3e4cdd355271a082d93d",
+    "community_release": "Jovian Judgement Community R10",
+    "community_parent_commit": "55969c16d4da57da76ee5729f3102d4b2003833c",
+    "sparse_pooled_index_commit": "adb69eac865a1a37081fa4edb9f7599a351f7aac",
+    "fwht_scaling_commit": "ae37fd6ed8df72d4bd8cdc067c7c241c93408235",
+    "scheduler_prefill_cadence_component_commit": "f1191b9090cd02ac49238c8e4f371050759703b6",
+    "scheduler_prefill_cadence_pull_request_head": "2412a6f34ab1412f86ed3e4cdd355271a082d93d",
     "runtime_file_sha256": {
       "vllm/config/scheduler.py": "d70698ec13248054248aea0824ffa9661edc9150be124424d0738cc775ecbfd7",
       "vllm/v1/core/sched/interface.py": "049b1f3cb82d69295d0e642af9f8bb4c07f971168d2e8543de43c29538bd9350",
@@ -42,10 +43,10 @@
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-    "commit": "6d83c7d8cb6ace96e657b3d0150116d0fe4e011c",
-    "tree": "0bb871bd1e8d3893a11686f0ba404bd4b6240e4d",
-    "package_tree": "24946bfc69e8f0bf9b0a65b0ddfa1b4ccc4178b4",
-    "source_tree_sha256": "67edb651835b978cbaf2519f92e68251145c1368a22cc0339f706d5c2144f862",
+    "commit": "6f50517802a96b5427cb2ce662d3fed39b231fcd",
+    "tree": "f0b2f3f35325b45bdc0acc9e13c9851229bdc9d7",
+    "package_tree": "b4a2faa9566aaf77c1741021f175d4f53f041c8c",
+    "source_tree_sha256": "cfd6720b625232df64a36f37ab86e9c8ae353a1915304642d229ab28ea7bd794",
     "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
     "cuda_snapshot_sha256": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
     "manager_page_lease_contract_sha256": "480bdc463e3722cf28aa460021da689d12d9049ae9fd8238252fcf1db5544b53"
@@ -71,7 +72,8 @@
     },
     "load_format": "fastsafetensors",
     "async_page_capture": {
-      "enabled": false,
+      "preferred_dcp4_enabled": true,
+      "launcher_fallback_enabled": false,
       "slot_bytes_by_dcp": {
         "dcp1": 8589934592,
         "dcp2": 5368709120,
