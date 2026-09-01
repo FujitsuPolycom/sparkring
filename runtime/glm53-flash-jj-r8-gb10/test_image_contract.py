@@ -23,15 +23,20 @@ verify = load_module("jj_r8_verify_image", HERE / "verify_image.py")
 def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     pins = json.loads((HERE / "pins.json").read_text(encoding="utf-8"))
     assert pins["vllm"]["commit"] == (
-        "55969c16d4da57da76ee5729f3102d4b2003833c"
+        "22ffe1401ca9bd3e4503e62de7b414deca7661a1"
     )
-    assert pins["vllm"]["tree"] == "a8d44216d05cbcd4df25f2c269b807275ec2e4ea"
+    assert pins["vllm"]["tree"] == "1bb7f10a5838d348ca2fcb0134b05ad768d3340b"
     assert pins["vllm"]["package_tree"] == (
-        "2255ebbbd63c8fe2347e9c742d565f44f4bf2e3d"
+        "e5ed1db6292c7312571419e101ba719bb5ebb393"
     )
     assert pins["vllm"]["delta_patch_id"] == (
-        "171dfb66935731a4944335ce0e74307905ee903d"
+        "44ad5586548465c002d0195d3739992795233ffe"
     )
+    assert pins["vllm"]["gb10_r10_parent_commit"] == (
+        "55969c16d4da57da76ee5729f3102d4b2003833c"
+    )
+    assert pins["vllm"]["gb10_r10_sparse_metadata_head"] == "adb69eac8"
+    assert pins["vllm"]["gb10_r10_fwht_head"] == "ae37fd6ed"
     assert pins["vllm"]["official_r8_component_commit"] == (
         "f1191b9090cd02ac49238c8e4f371050759703b6"
     )
@@ -71,7 +76,7 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
     recipe = (HERE / "Dockerfile").read_text(encoding="utf-8")
     for identity in (
         "f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
-        "55969c16d4da57da76ee5729f3102d4b2003833c",
+        "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
         "b0186396eb2d73a9cc67b670fdc3e5a39d029ad8",
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
         "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
@@ -114,7 +119,10 @@ def test_runtime_hashes_are_enforced_inside_image() -> None:
     }
     labels = verify.expected_labels(pins)
     assert labels["org.sparkring.vllm.delta-patch-id"] == (
-        "171dfb66935731a4944335ce0e74307905ee903d"
+        "44ad5586548465c002d0195d3739992795233ffe"
+    )
+    assert labels["org.sparkring.vllm.gb10-r10-parent"] == (
+        "55969c16d4da57da76ee5729f3102d4b2003833c"
     )
     assert labels["org.sparkring.b12x.package-tree"] == (
         "6de9871d15dab093340695518fec0f744289e676"

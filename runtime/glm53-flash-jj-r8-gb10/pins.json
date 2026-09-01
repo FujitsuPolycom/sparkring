@@ -16,11 +16,14 @@
   },
   "vllm": {
     "repository": "https://github.com/FujitsuPolycom/vllm.git",
-    "commit": "55969c16d4da57da76ee5729f3102d4b2003833c",
-    "tree": "a8d44216d05cbcd4df25f2c269b807275ec2e4ea",
-    "package_tree": "2255ebbbd63c8fe2347e9c742d565f44f4bf2e3d",
-    "delta_patch_id": "171dfb66935731a4944335ce0e74307905ee903d",
+    "commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+    "tree": "1bb7f10a5838d348ca2fcb0134b05ad768d3340b",
+    "package_tree": "e5ed1db6292c7312571419e101ba719bb5ebb393",
+    "delta_patch_id": "44ad5586548465c002d0195d3739992795233ffe",
     "proven_base_commit": "331573d20bd47e78327ed8d8b4d2e6d350bbb1ab",
+    "gb10_r10_parent_commit": "55969c16d4da57da76ee5729f3102d4b2003833c",
+    "gb10_r10_sparse_metadata_head": "adb69eac8",
+    "gb10_r10_fwht_head": "ae37fd6ed",
     "official_r8_component_commit": "f1191b9090cd02ac49238c8e4f371050759703b6",
     "public_prefill_cadence_pr_head": "2412a6f34ab1412f86ed3e4cdd355271a082d93d",
     "runtime_file_sha256": {
