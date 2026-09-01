@@ -66,7 +66,7 @@ limit; the linked quickstart records its exact image and conditions.
 **DCP4 is preferred because it provides the best performance at high concurrency decode and the greatest available KVC space.
 
  The base image is published at
-`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:a72f943bc16c31cdde205f4a23fbc0e10d0a3d023469849ec19ccc727e24f98a` and supports both caching methods.
+`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:368973d2e67241479ff49f7898f5026a2a44a37dad78b36f26afa1c6d9684e0e` and supports both caching methods.
 
 ### Other model profiles
 

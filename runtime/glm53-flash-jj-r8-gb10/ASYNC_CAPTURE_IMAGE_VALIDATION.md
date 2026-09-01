@@ -11,10 +11,10 @@ SparkCache's bounded CUDA publication and restore paths.
 
 | Item | Identity |
 |---|---|
-| Registry image | `ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:a72f943bc16c31cdde205f4a23fbc0e10d0a3d023469849ec19ccc727e24f98a` |
-| Image ID | `sha256:de27d92e57e731151879ee75c122a828dd0d83eaa30f714a9cd9aa6844051fa9` |
-| SparkRing source | commit `20625a0e3e557cbde83a7049e5e06e9216107dba` |
-| SparkCache source | commit `6f50517802a96b5427cb2ce662d3fed39b231fcd` |
+| Registry image | `ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:368973d2e67241479ff49f7898f5026a2a44a37dad78b36f26afa1c6d9684e0e` |
+| Image ID | `sha256:4664bcba054d2cf383d3d7940189e26aa32774e755583652a6e93c0058500029` |
+| SparkRing source | commit `897b566fa69671b804451b47404ef4f298d655e9` |
+| SparkCache source | commit `506cc4a16581b5f62ae343cbd90cdd6bea13a6cd` |
 | vLLM source | commit `22ffe1401ca9bd3e4503e62de7b414deca7661a1` |
 
 The archive and image IDs were identical on all four ranks. Registry pull
@@ -30,14 +30,14 @@ slots per rank.
 
 ## Result
 
-The artifact published a fresh 125,998-token prompt. Every rank committed the
-124,928-token reusable boundary in 492.5–595.9 ms, and the exact needle was
+The artifact published a fresh 125,999-token prompt. Every rank committed the
+124,928-token reusable boundary in 528.1–545.1 ms, and the exact needle was
 returned.
 
 After startup discovered three retained entries, no prime request was sent.
 The first user request restored 899,072 of 899,998 prompt tokens in
-2.05–2.19 seconds per rank and returned the exact 900K needle. The following
-request restored 999,424 of 1,000,000 prompt tokens in 2.28–2.40 seconds per
+2.05–2.35 seconds per rank and returned the exact 900K needle. The following
+request restored 999,424 of 1,000,000 prompt tokens in 2.24–2.46 seconds per
 rank and returned the exact 1M needle.
 
 The result qualifies bounded asynchronous complete-snapshot publication,

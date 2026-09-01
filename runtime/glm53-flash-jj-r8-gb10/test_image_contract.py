@@ -189,13 +189,13 @@ def test_async_capture_image_receipt_binds_public_artifact_and_live_results() ->
     )
     assert receipt["status"] == "qualified"
     assert receipt["artifact"]["registry"].endswith(
-        "@sha256:a72f943bc16c31cdde205f4a23fbc0e10d0a3d023469849ec19ccc727e24f98a"
+        "@sha256:368973d2e67241479ff49f7898f5026a2a44a37dad78b36f26afa1c6d9684e0e"
     )
     assert receipt["artifact"]["image_id"] == (
-        "sha256:de27d92e57e731151879ee75c122a828dd0d83eaa30f714a9cd9aa6844051fa9"
+        "sha256:4664bcba054d2cf383d3d7940189e26aa32774e755583652a6e93c0058500029"
     )
     assert receipt["sources"]["sparkcache_commit"] == (
-        "6f50517802a96b5427cb2ce662d3fed39b231fcd"
+        "506cc4a16581b5f62ae343cbd90cdd6bea13a6cd"
     )
     assert receipt["conditions"]["capture_slot_bytes"] == 3 * 1024**3
     assert receipt["validation"]["live"]["prime_request_before_restore"] is False

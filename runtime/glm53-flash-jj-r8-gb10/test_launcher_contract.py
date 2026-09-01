@@ -11,7 +11,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 LAUNCHER = HERE / "launch-rank.sh"
 ENVIRONMENT = HERE / "runtime.env.example"
-IMAGE_ID = "sha256:de27d92e57e731151879ee75c122a828dd0d83eaa30f714a9cd9aa6844051fa9"
+IMAGE_ID = "sha256:4664bcba054d2cf383d3d7940189e26aa32774e755583652a6e93c0058500029"
 
 
 def _defaults() -> dict[str, str]:
@@ -38,7 +38,7 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["IMAGE_ID"] == IMAGE_ID
     assert values["IMAGE_REF"] == (
         "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
-        "sha256:a72f943bc16c31cdde205f4a23fbc0e10d0a3d023469849ec19ccc727e24f98a"
+        "sha256:368973d2e67241479ff49f7898f5026a2a44a37dad78b36f26afa1c6d9684e0e"
     )
     assert values["MAX_MODEL_LEN"] == "1048576"
     assert values["SERVED_MODEL_NAME"] == "glm-5.3-flash"
@@ -231,6 +231,6 @@ def test_public_operator_documents_use_portable_examples_and_resolving_links() -
             assert (document.parent / relative).resolve().exists(), (document, target)
 
     quickstart = documents[-1].read_text(encoding="utf-8")
-    assert "sha256:a72f943bc16c31cdde205f4a23fbc0e10d0a3d023469849ec19ccc727e24f98a" in quickstart
+    assert "sha256:368973d2e67241479ff49f7898f5026a2a44a37dad78b36f26afa1c6d9684e0e" in quickstart
     assert "DECODE_CONTEXT_PARALLEL_SIZE=4  # change to 1 or 2" in quickstart
     assert "fanout_image_archive.py" in quickstart

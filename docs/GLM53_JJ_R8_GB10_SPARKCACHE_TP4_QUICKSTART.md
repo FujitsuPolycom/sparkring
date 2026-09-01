@@ -23,8 +23,8 @@ kernels provide the model-specific runtime and performance foundation.
 ## Image identity
 
 ```text
-registry: ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:a72f943bc16c31cdde205f4a23fbc0e10d0a3d023469849ec19ccc727e24f98a
-local image ID: sha256:de27d92e57e731151879ee75c122a828dd0d83eaa30f714a9cd9aa6844051fa9
+registry: ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:368973d2e67241479ff49f7898f5026a2a44a37dad78b36f26afa1c6d9684e0e
+local image ID: sha256:4664bcba054d2cf383d3d7940189e26aa32774e755583652a6e93c0058500029
 platform: linux/arm64
 ```
 
@@ -35,8 +35,8 @@ profile inputs and are not substitutes for the operator image below.
 Pull and verify the immutable image on rank 0:
 
 ```bash
-image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:a72f943bc16c31cdde205f4a23fbc0e10d0a3d023469849ec19ccc727e24f98a'
-expected_image_id='sha256:de27d92e57e731151879ee75c122a828dd0d83eaa30f714a9cd9aa6844051fa9'
+image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:368973d2e67241479ff49f7898f5026a2a44a37dad78b36f26afa1c6d9684e0e'
+expected_image_id='sha256:4664bcba054d2cf383d3d7940189e26aa32774e755583652a6e93c0058500029'
 docker pull "${image}"
 test "$(docker image inspect "${image}" --format '{{.Id}}')" = "${expected_image_id}"
 ```

@@ -2,18 +2,18 @@
   "schema": "sparkring-glm53-async-capture-image/v1",
   "status": "qualified",
   "artifact": {
-    "registry": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:a72f943bc16c31cdde205f4a23fbc0e10d0a3d023469849ec19ccc727e24f98a",
-    "published_tag": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260901-r10-async",
-    "image_id": "sha256:de27d92e57e731151879ee75c122a828dd0d83eaa30f714a9cd9aa6844051fa9",
+    "registry": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:368973d2e67241479ff49f7898f5026a2a44a37dad78b36f26afa1c6d9684e0e",
+    "published_tag": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260901-r10-async-reviewed",
+    "image_id": "sha256:4664bcba054d2cf383d3d7940189e26aa32774e755583652a6e93c0058500029",
     "platform": "linux/arm64",
     "image_bytes": 21051951658,
-    "archive_bytes": 8470291869,
-    "archive_sha256": "bd4300aa6efa76891f7c6125900a6535201728496658515fd10fcfe9a9306258"
+    "archive_bytes": 8468571410,
+    "archive_sha256": "8ec769dd57ee26d0cf8470fb50aa8831cd02e6c751914e804fb28b2108b5a60a"
   },
   "sources": {
-    "sparkring_commit": "20625a0e3e557cbde83a7049e5e06e9216107dba",
-    "sparkring_tree": "e9a30a9ed97538c0b5ee86abf7a38bdc53447874",
-    "sparkcache_commit": "6f50517802a96b5427cb2ce662d3fed39b231fcd",
+    "sparkring_commit": "897b566fa69671b804451b47404ef4f298d655e9",
+    "sparkring_tree": "f593f6295f55847ea36c8fc17dfe31949973d1ee",
+    "sparkcache_commit": "506cc4a16581b5f62ae343cbd90cdd6bea13a6cd",
     "sparkcache_tree": "f0b2f3f35325b45bdc0acc9e13c9851229bdc9d7",
     "sparkcache_source_sha256": "cfd6720b625232df64a36f37ab86e9c8ae353a1915304642d229ab28ea7bd794",
     "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
@@ -50,24 +50,24 @@
     "live": {
       "prime_request_before_restore": false,
       "cold_126k_publication": {
-        "prompt_tokens": 125998,
+        "prompt_tokens": 125999,
         "stored_tokens": 124928,
-        "end_to_end_seconds": 49.2137,
-        "commit_ms_by_rank": [573.4, 595.9, 492.5, 550.1],
+        "end_to_end_seconds": 48.7128,
+        "commit_ms_by_rank": [528.1, 542.0, 543.5, 545.1],
         "needle": "passed"
       },
       "900k_restore": {
         "prompt_tokens": 899998,
         "restored_tokens": 899072,
-        "end_to_end_seconds": 6.2916,
-        "restore_ms_by_rank": [2047.7, 2101.0, 2159.4, 2189.8],
+        "end_to_end_seconds": 7.3720,
+        "restore_ms_by_rank": [2154.4, 2053.0, 2226.8, 2350.3],
         "needle": "passed"
       },
       "1m_restore": {
         "prompt_tokens": 1000000,
         "restored_tokens": 999424,
-        "end_to_end_seconds": 6.5039,
-        "restore_ms_by_rank": [2280.7, 2396.1, 2288.7, 2326.7],
+        "end_to_end_seconds": 6.7426,
+        "restore_ms_by_rank": [2413.0, 2235.2, 2351.2, 2457.6],
         "needle": "passed"
       }
     }
