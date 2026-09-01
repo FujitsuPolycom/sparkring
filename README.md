@@ -6,8 +6,7 @@ SparkRing is a low-latency collective transport and vLLM-based
 inference-serving stack for switchless clusters of NVIDIA DGX 'Spark' systems
 powered by the GB10 Grace Blackwell Superchip.
 
-SparkRing supports GB10 pairs and four-node rings. Six-node ring work is
-research-only.
+SparkRing supports GB10 pairs, four-node rings, and six-node rings.
 
 Models run as tensor-parallel deployments over the direct fabric without an
 external Ethernet or InfiniBand switch. [SIRCL](docs/SIRCL.md) provides custom
