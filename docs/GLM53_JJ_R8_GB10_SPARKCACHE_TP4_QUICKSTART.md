@@ -207,6 +207,25 @@ published image passed a live semantic request in this mode.
 network settings are ordinary environment values. Changing them does not
 require an image rebuild.
 
+### Modalities
+
+The service is text-only by default. Image content in a chat request returns
+HTTP 400 (`At most 0 image(s) may be provided in one prompt`). The checkpoint
+contains the GLM-5.3 vision tower, and the runtime can load it:
+
+```bash
+MULTIMODAL_INPUTS=1        # load the BF16 vision tower; admit images
+MAX_IMAGES_PER_PROMPT=4    # images per request; video stays disabled
+```
+
+Image serving is implemented, not qualified. With this image it also requires
+`SPARKCACHE_ENABLED=0` or `SPARKCACHE_ACCESS_MODE=disabled`: the installed
+SparkCache connector identifies a prompt by its token ids, and every image is
+represented by the same repeated placeholder id, so two prompts with different
+images in the same layout would restore each other's cached state. The
+launcher refuses `MULTIMODAL_INPUTS=1` with a publishing or restoring
+connector. vLLM's own GPU prefix cache keys blocks by image hash and stays on.
+
 ## Start TP4
 
 Start all four ranks within the rendezvous timeout. Rank 0 uses argument `0`:

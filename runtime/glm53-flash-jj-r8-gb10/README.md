@@ -40,12 +40,26 @@ The launcher defaults to:
 | FP8 KV allocation | 24 GiB for the default DCP4 profile; 26 GiB for DCP1; 30 GiB for DCP2 |
 | DFlash2 depth | 7 |
 | SparkCache publication | complete `snapshot-v1` objects |
+| modalities | text only (`MULTIMODAL_INPUTS=0`) |
 
 DCP1 resolves to one-token KV interleaving without full-CKV gather. DCP2 and
 DCP4 resolve to four-token KV interleaving with full-CKV gather. Operators can
 change every value in the environment file without rebuilding the image.
 `SPARKCACHE_ENABLED=0` omits the persistent connector while retaining vLLM's
 GPU prefix cache; `SPARKCACHE_ENABLED=1` enables both layers.
+
+The launcher serves text only by default. The target checkpoint ships the
+GLM-5.3 vision tower (`Glm5NextForConditionalGeneration`, 347 BF16 tensors,
+1.05 GiB), and the runtime registers it, but `MULTIMODAL_INPUTS=0` passes
+`--language-model-only`: the tower is not loaded and image content is
+rejected with HTTP 400 `At most 0 image(s) may be provided in one prompt`.
+`MULTIMODAL_INPUTS=1` loads the tower and admits up to `MAX_IMAGES_PER_PROMPT`
+images per request; video stays disabled. Image serving is implemented, not
+qualified: no throughput or long-context record exists for it. With this
+image, `MULTIMODAL_INPUTS=1` requires `SPARKCACHE_ENABLED=0` or
+`SPARKCACHE_ACCESS_MODE=disabled`, because the installed SparkCache connector
+digests prompt token ids only and cannot distinguish two images that occupy
+the same placeholder layout; the launcher refuses the other access modes.
 
 With the connector enabled, `SPARKCACHE_ACCESS_MODE=read-write` restores and
 publishes persistent entries. `restore-only` reuses compatible entries but

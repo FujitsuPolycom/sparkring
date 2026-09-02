@@ -234,3 +234,167 @@ def test_public_operator_documents_use_portable_examples_and_resolving_links() -
     assert "sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65" in quickstart
     assert "DECODE_CONTEXT_PARALLEL_SIZE=4  # change to 1 or 2" in quickstart
     assert "fanout_image_archive.py" in quickstart
+
+
+def _launcher_fixture(tmp_path: Path) -> tuple[Path, Path, dict[str, Path]]:
+    """Return (fake_bin, capture, directories) for a launcher dry run."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir(parents=True)
+    capture = tmp_path / "docker-arguments.txt"
+    docker = fake_bin / "docker"
+    docker.write_text(
+        """#!/bin/sh
+if [ "$1" = image ] && [ "$2" = inspect ]; then
+  printf '%s\n' "$EXPECTED_IMAGE_ID"
+elif [ "$1" = container ] && [ "$2" = inspect ]; then
+  exit 1
+elif [ "$1" = run ]; then
+  printf '%s\n' "$@" > "$CAPTURE_PATH"
+else
+  exit 97
+fi
+        """,
+        encoding="utf-8",
+        newline="\n",
+    )
+    os.chmod(docker, 0o755)
+    sha256sum = fake_bin / "sha256sum"
+    sha256sum.write_text(
+        """#!/bin/sh
+case "$2" in
+  */target/config.json) hash=676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996 ;;
+  */target/model.safetensors.index.json) hash=0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb ;;
+  */draft/config.json) hash=c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573 ;;
+  */draft/model.safetensors) hash=b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b ;;
+  *) exit 95 ;;
+esac
+printf '%s  %s\n' "$hash" "$2"
+        """,
+        encoding="utf-8",
+        newline="\n",
+    )
+    os.chmod(sha256sum, 0o755)
+    directories = {name: tmp_path / name for name in ("target", "draft", "cache")}
+    for directory in directories.values():
+        directory.mkdir()
+    for path in (
+        directories["target"] / "config.json",
+        directories["target"] / "model.safetensors.index.json",
+        directories["draft"] / "config.json",
+        directories["draft"] / "model.safetensors",
+    ):
+        path.write_text("fixture", encoding="utf-8")
+    return fake_bin, capture, directories
+
+
+def _run_launcher(
+    tmp_path: Path, name: str, *extra_lines: str
+) -> tuple[subprocess.CompletedProcess[str], list[str]]:
+    fake_bin, capture, directories = _launcher_fixture(tmp_path / name)
+    config = tmp_path / f"{name}.env"
+    config.write_text(
+        "\n".join(
+            (
+                "HOST_IP=rank0.example.net",
+                "MASTER_ADDR=rank0.example.net",
+                f"TARGET_MODEL_HOST_PATH={_bash_path(directories['target'])}",
+                f"DFLASH_MODEL_HOST_PATH={_bash_path(directories['draft'])}",
+                f"CACHE_HOST_ROOT={_bash_path(directories['cache'])}",
+                f"PATH={_bash_path(fake_bin)}:$PATH",
+                f"export CAPTURE_PATH={_bash_path(capture)}",
+                f"export EXPECTED_IMAGE_ID={IMAGE_ID}",
+                "IMAGE_REF=test-image:r8",
+                f"IMAGE_ID={IMAGE_ID}",
+                *extra_lines,
+            )
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    result = subprocess.run(
+        ["bash", _bash_path(LAUNCHER), "0", _bash_path(config)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    arguments = (
+        capture.read_text(encoding="utf-8").splitlines() if capture.exists() else []
+    )
+    return result, arguments
+
+
+def test_launcher_serves_text_only_unless_multimodal_inputs_is_enabled(
+    tmp_path: Path,
+) -> None:
+    values = _defaults()
+    assert values["MULTIMODAL_INPUTS"] == "0"
+    assert values["MAX_IMAGES_PER_PROMPT"] == "4"
+
+    result, arguments = _run_launcher(tmp_path, "text-only")
+    assert result.returncode == 0, result.stderr
+    assert "--language-model-only" in arguments
+    assert arguments[arguments.index("--load-format") + 1] == "fastsafetensors"
+    assert "--limit-mm-per-prompt" not in arguments
+    assert "org.sparkring.multimodal-inputs=0" in arguments
+
+    result, arguments = _run_launcher(
+        tmp_path,
+        "images-without-sparkcache",
+        "MULTIMODAL_INPUTS=1",
+        "MAX_IMAGES_PER_PROMPT=2",
+        "SPARKCACHE_ENABLED=0",
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--language-model-only" not in arguments
+    limit = json.loads(arguments[arguments.index("--limit-mm-per-prompt") + 1])
+    assert limit == {"image": 2, "video": 0}
+    assert "org.sparkring.multimodal-inputs=1" in arguments
+    assert "--kv-transfer-config" not in arguments
+    assert arguments[arguments.index("--load-format") + 1] == "fastsafetensors"
+
+    result, arguments = _run_launcher(
+        tmp_path,
+        "images-with-disabled-connector",
+        "MULTIMODAL_INPUTS=1",
+        "SPARKCACHE_ACCESS_MODE=disabled",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE=0",
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--limit-mm-per-prompt" in arguments
+
+
+def test_launcher_refuses_images_with_a_publishing_or_restoring_connector(
+    tmp_path: Path,
+) -> None:
+    for name, mode in (
+        ("read-write", "read-write"),
+        ("restore-only", "restore-only"),
+        ("store-only", "store-only"),
+    ):
+        result, arguments = _run_launcher(
+            tmp_path,
+            f"images-{name}",
+            "MULTIMODAL_INPUTS=1",
+            f"SPARKCACHE_ACCESS_MODE={mode}",
+            "SPARKCACHE_ASYNC_PAGE_CAPTURE=0",
+        )
+        assert result.returncode != 0
+        assert "MULTIMODAL_INPUTS=1 requires" in result.stderr
+        assert arguments == []
+
+    result, arguments = _run_launcher(
+        tmp_path, "bad-multimodal-value", "MULTIMODAL_INPUTS=yes"
+    )
+    assert result.returncode != 0
+    assert "MULTIMODAL_INPUTS must be 0" in result.stderr
+
+    result, arguments = _run_launcher(
+        tmp_path,
+        "bad-image-count",
+        "MULTIMODAL_INPUTS=1",
+        "SPARKCACHE_ENABLED=0",
+        "MAX_IMAGES_PER_PROMPT=0",
+    )
+    assert result.returncode != 0
+    assert "MAX_IMAGES_PER_PROMPT must be a positive integer" in result.stderr

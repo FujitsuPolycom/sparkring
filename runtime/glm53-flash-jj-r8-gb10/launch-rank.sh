@@ -54,7 +54,6 @@ fi
 : "${MOE_BACKEND:=b12x}"
 : "${LINEAR_BACKEND:=b12x}"
 : "${KDA_PREFILL_BACKEND:=flashkda}"
-: "${LOAD_FORMAT:=fastsafetensors}"
 : "${CUDAGRAPH_MODE:=FULL_AND_PIECEWISE}"
 : "${MAX_CUDAGRAPH_CAPTURE_SIZE:=128}"
 : "${SPARKCACHE_CACHE_NAMESPACE:=glm53-flash-dcp4-snapshot-v1}"
@@ -74,6 +73,9 @@ fi
 : "${SPARKCACHE_ASYNC_PAGE_CAPTURE:=0}"
 : "${SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES:=auto}"
 : "${SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT:=2}"
+: "${MULTIMODAL_INPUTS:=0}"
+: "${MAX_IMAGES_PER_PROMPT:=4}"
+: "${LOAD_FORMAT:=fastsafetensors}"
 : "${SOCKET_IFNAME:=enP7s7}"
 : "${NCCL_IB_HCA:=rocep1s0f0,rocep1s0f1}"
 : "${NCCL_IB_GID_INDEX:=3}"
@@ -216,6 +218,20 @@ if [[ "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 ]]; then
     read-write|store-only) ;;
     *) die 'asynchronous page capture requires a publication-capable access mode' ;;
   esac
+fi
+case "${MULTIMODAL_INPUTS}" in
+  0|1) ;;
+  *) die 'MULTIMODAL_INPUTS must be 0 (text-only serving) or 1 (image inputs)' ;;
+esac
+[[ "${MAX_IMAGES_PER_PROMPT}" =~ ^[1-9][0-9]*$ ]] || \
+  die 'MAX_IMAGES_PER_PROMPT must be a positive integer'
+if [[ "${MULTIMODAL_INPUTS}" == 1 && "${SPARKCACHE_ENABLED}" == 1 && \
+      "${SPARKCACHE_ACCESS_MODE}" != disabled ]]; then
+  # The SparkCache connector in this image digests prompt token ids only.
+  # Multimodal placeholders repeat one token id, so two prompts with different
+  # images in the same layout share a digest and would restore each other's
+  # KV state. Serve images without the persistent connector.
+  die 'MULTIMODAL_INPUTS=1 requires SPARKCACHE_ENABLED=0 or SPARKCACHE_ACCESS_MODE=disabled with this image'
 fi
 for name in SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE
 do
@@ -391,6 +407,14 @@ PY
   kv_transfer_args=(--kv-transfer-config "${kv_transfer_config}")
 fi
 
+# Text-only serving skips the vision tower and rejects image content with
+# HTTP 400. Image inputs load the BF16 vision tower from the target checkpoint
+# and admit at most MAX_IMAGES_PER_PROMPT images per request; video stays off.
+multimodal_args=(--language-model-only)
+if [[ "${MULTIMODAL_INPUTS}" == 1 ]]; then
+  multimodal_args=(--limit-mm-per-prompt "{\"image\":${MAX_IMAGES_PER_PROMPT},\"video\":0}")
+fi
+
 headless=()
 [[ "${rank}" == 0 ]] || headless=(--headless)
 
@@ -437,6 +461,7 @@ exec docker run -d \
   --label org.sparkring.sparkcache.enabled="${SPARKCACHE_ENABLED}" \
   --label org.sparkring.sparkcache.access-mode="${SPARKCACHE_ACCESS_MODE}" \
   --label org.sparkring.rank="${rank}" \
+  --label org.sparkring.multimodal-inputs="${MULTIMODAL_INPUTS}" \
   "${IMAGE_REF}" \
   /models/target \
   --served-model-name "${SERVED_MODEL_NAME}" --host 0.0.0.0 --port "${PORT}" \
@@ -446,7 +471,7 @@ exec docker run -d \
   --cp-kv-cache-interleave-size "${CP_KV_CACHE_INTERLEAVE_SIZE}" \
   --distributed-executor-backend mp --nnodes "${NODE_COUNT}" --node-rank "${rank}" \
   --master-addr "${MASTER_ADDR}" --master-port "${MASTER_PORT}" \
-  --disable-custom-all-reduce --mamba-cache-mode align --language-model-only \
+  --disable-custom-all-reduce --mamba-cache-mode align "${multimodal_args[@]}" \
   --enable-chunked-prefill --dtype bfloat16 --kv-cache-dtype "${KV_CACHE_DTYPE}" \
   --quantization modelopt_mixed --attention-backend "${ATTENTION_BACKEND}" \
   --block-size 256 --moe-backend "${MOE_BACKEND}" --linear-backend "${LINEAR_BACKEND}" \
