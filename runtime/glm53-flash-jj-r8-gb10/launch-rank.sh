@@ -77,6 +77,7 @@ fi
 : "${SPARKCACHE_ASYNC_PAGE_CAPTURE:=0}"
 : "${SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES:=auto}"
 : "${SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT:=2}"
+: "${MULTIMODAL_INPUTS:=1}"
 : "${SOCKET_IFNAME:=enP7s7}"
 : "${NCCL_IB_HCA:=rocep1s0f0,rocep1s0f1}"
 : "${NCCL_IB_GID_INDEX:=3}"
@@ -230,6 +231,10 @@ if [[ "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 ]]; then
     *) die 'asynchronous page capture requires a publication-capable access mode' ;;
   esac
 fi
+case "${MULTIMODAL_INPUTS}" in
+  0|1) ;;
+  *) die 'MULTIMODAL_INPUTS must be 0 (text only) or 1 (images and video)' ;;
+esac
 for name in SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE
 do
   [[ "${!name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || \
@@ -408,6 +413,16 @@ PY
   kv_transfer_args=(--kv-transfer-config "${kv_transfer_config}")
 fi
 
+# Text-only mode avoids loading the vision tower. Multimodal mode uses the
+# independently configurable image and video request limits.
+multimodal_args=(--language-model-only)
+if [[ "${MULTIMODAL_INPUTS}" == 1 ]]; then
+  multimodal_args=(
+    --limit-mm-per-prompt
+    "{\"image\":${MAX_IMAGES_PER_PROMPT},\"video\":${MAX_VIDEOS_PER_PROMPT}}"
+  )
+fi
+
 headless=()
 [[ "${rank}" == 0 ]] || headless=(--headless)
 
@@ -415,8 +430,6 @@ prompt_tokens_details=()
 if [[ "${ENABLE_PROMPT_TOKENS_DETAILS}" == 1 ]]; then
   prompt_tokens_details=(--enable-prompt-tokens-details)
 fi
-
-multimodal_limits="{\"image\":${MAX_IMAGES_PER_PROMPT},\"video\":${MAX_VIDEOS_PER_PROMPT}}"
 
 exec docker run -d \
   --name "${container}" \
@@ -462,6 +475,7 @@ exec docker run -d \
   --label org.sparkring.sparkcache.access-mode="${SPARKCACHE_ACCESS_MODE}" \
   --label org.sparkring.sparkcache.shared-prefix-lease-seconds="${SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS}" \
   --label org.sparkring.rank="${rank}" \
+  --label org.sparkring.multimodal-inputs="${MULTIMODAL_INPUTS}" \
   "${IMAGE_REF}" \
   /models/target \
   --served-model-name "${SERVED_MODEL_NAME}" --host 0.0.0.0 --port "${PORT}" \
@@ -471,8 +485,7 @@ exec docker run -d \
   --cp-kv-cache-interleave-size "${CP_KV_CACHE_INTERLEAVE_SIZE}" \
   --distributed-executor-backend mp --nnodes "${NODE_COUNT}" --node-rank "${rank}" \
   --master-addr "${MASTER_ADDR}" --master-port "${MASTER_PORT}" \
-  --disable-custom-all-reduce --mamba-cache-mode align \
-  --limit-mm-per-prompt "${multimodal_limits}" \
+  --disable-custom-all-reduce --mamba-cache-mode align "${multimodal_args[@]}" \
   --enable-chunked-prefill --dtype bfloat16 --kv-cache-dtype "${KV_CACHE_DTYPE}" \
   --quantization modelopt_mixed --attention-backend "${ATTENTION_BACKEND}" \
   --block-size 256 --moe-backend "${MOE_BACKEND}" --linear-backend "${LINEAR_BACKEND}" \
