@@ -26,7 +26,7 @@ ARTIFACTS = {
 }
 SOURCE_ARTIFACTS = {
     "glm53-flash-nvfp4-dflash2-bf16-tp4.json": (
-        "e04b73d4cffa6f468632c4a0b81da5ff5b433468070d8ffb8aced53e3309396e"
+        "b08b517bd798d30cadccd0b58a18df4ac7acf8f352ecffe846b38efedda46795"
     ),
 }
 
@@ -73,7 +73,7 @@ def test_compositions_pin_artifact_and_fail_closed_policy() -> None:
                 assert artifact["artifact_kind"] == "OCI image overlay"
             assert artifact["source_sha256"] == SOURCE_ARTIFACTS[path.name]
             assert artifact["source_commit"] == (
-                "4792231c1c6c4cbcb5799148e7a4faa459433990"
+                "b7d1c188a3f9e78595e6e7b649f3751131e269ea"
             )
             assert recipe["runtime"]["image"].startswith("ghcr.io/fujitsupolycom/")
             assert recipe["serving_common"]["max_num_batched_tokens"] == 8192

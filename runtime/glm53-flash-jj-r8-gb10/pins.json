@@ -43,10 +43,10 @@
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-    "commit": "4792231c1c6c4cbcb5799148e7a4faa459433990",
-    "tree": "43c0a3134f298095f02bd5c4a2f944f8b470708b",
-    "package_tree": "0a21c6aba5bcb9d45086d6ea3f8626f928c9e32d",
-    "source_tree_sha256": "e04b73d4cffa6f468632c4a0b81da5ff5b433468070d8ffb8aced53e3309396e",
+    "commit": "b7d1c188a3f9e78595e6e7b649f3751131e269ea",
+    "tree": "8ea2e7b18d1ef198b061764842f006663634ebb7",
+    "package_tree": "8fe5cb44cabea255f55aa2c9d2417db0e04cdbf5",
+    "source_tree_sha256": "b08b517bd798d30cadccd0b58a18df4ac7acf8f352ecffe846b38efedda46795",
     "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
     "cuda_snapshot_sha256": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
     "manager_page_lease_contract_sha256": "480bdc463e3722cf28aa460021da689d12d9049ae9fd8238252fcf1db5544b53"
