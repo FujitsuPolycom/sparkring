@@ -56,6 +56,11 @@ def test_image_packages_dflash_warmup_and_rank_zero_waits_for_it() -> None:
     assert '"${rank}" == 0 && "${DFLASH_WARMUP}" == 1' in launcher
     assert "--entrypoint /opt/sparkring/bin/serve-with-warmup.py" in launcher
     assert "rank-0 engine readiness timed out" in launcher
+    wrapper = (HERE / "serve_with_warmup.py").read_text(encoding="utf-8")
+    main_source = wrapper.split("def main() -> int:", 1)[1]
+    assert main_source.index("READY_PATH.unlink(missing_ok=True)") < main_source.index(
+        'subprocess.Popen(["vllm", "serve"'
+    )
 
 
 def test_pins_bind_effective_sources_and_operator_defaults() -> None:

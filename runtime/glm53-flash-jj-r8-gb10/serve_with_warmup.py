@@ -60,6 +60,7 @@ def complete_readiness(
 
 
 def main() -> int:
+    READY_PATH.unlink(missing_ok=True)
     child = subprocess.Popen(["vllm", "serve", *sys.argv[1:]])
 
     def forward(signum, _frame):
