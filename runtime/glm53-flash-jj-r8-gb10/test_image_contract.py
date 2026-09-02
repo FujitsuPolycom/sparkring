@@ -188,6 +188,47 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
     assert "IMAGE_ID" in launcher
 
 
+def test_multimodal_lease_image_receipt_binds_public_artifact_and_smoke() -> None:
+    receipt = json.loads(
+        (HERE / "multimodal-lease300-image-receipt.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert receipt["status"] == "live-smoke-verified"
+    assert receipt["artifact"] == {
+        "registry": (
+            "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
+            "sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762"
+        ),
+        "published_tag": (
+            "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:"
+            "20260902-r10-multimodal-lease300"
+        ),
+        "image_id": (
+            "sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9"
+        ),
+        "platform": "linux/arm64",
+        "archive_sha256": (
+            "a88cd040bb38ed0092d8de8fc00aa2ac7e15a4352258a73394fb876fea3756a4"
+        ),
+        "archive_bytes": 8469866878,
+    }
+    assert receipt["sources"]["sparkcache_commit"] == (
+        "b7d1c188a3f9e78595e6e7b649f3751131e269ea"
+    )
+    assert receipt["launch"]["shared_prefix_lease_ttl_seconds"] == 300
+    assert receipt["launch"]["max_images_per_prompt"] == 4
+    assert receipt["launch"]["max_videos_per_prompt"] == 1
+    assert receipt["verification"]["physical_ranks"] == 4
+    assert receipt["verification"]["running_image_ids_equal"] is True
+    assert receipt["verification"]["sparkcache_source_bind_mounts"] == 0
+    assert receipt["verification"]["image_probe"] == {
+        "input": "448x448 solid-red PNG",
+        "multimodal_image_tokens": 256,
+        "dominant_color_identified": "red",
+    }
+
+
 def test_async_capture_image_receipt_binds_public_artifact_and_live_results() -> None:
     receipt = json.loads(
         (HERE / "async-capture-image-receipt.json").read_text(encoding="utf-8")

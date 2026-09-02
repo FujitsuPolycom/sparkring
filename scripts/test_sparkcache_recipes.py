@@ -155,7 +155,10 @@ def test_glm53_composition_matches_the_operator_contract() -> None:
     base = _load(ROOT / "recipes" / "glm53-flash-nvfp4-dflash2-bf16-tp4.json")
     pins = _load(ROOT / "runtime" / "glm53-flash-jj-r8-gb10" / "pins.json")
     receipt = _load(
-        ROOT / "runtime" / "glm53-flash-jj-r8-gb10" / "async-capture-image-receipt.json"
+        ROOT
+        / "runtime"
+        / "glm53-flash-jj-r8-gb10"
+        / "multimodal-lease300-image-receipt.json"
     )
 
     assert recipe["base_recipe"] == "../glm53-flash-nvfp4-dflash2-bf16-tp4.json"
@@ -197,8 +200,9 @@ def test_glm53_composition_matches_the_operator_contract() -> None:
     assert recipe["profiles"]["dcp4"]["preferred"] is True
     assert (
         recipe["profiles"]["dcp4"]["capture_slot_bytes"]
-        == receipt["conditions"]["capture_slot_bytes"]
+        == receipt["launch"]["async_capture_slot_bytes"]
     )
     assert recipe["evidence"]["machine_receipt"] == (
-        "runtime/glm53-flash-jj-r8-gb10/async-capture-image-receipt.json"
+        "runtime/glm53-flash-jj-r8-gb10/"
+        "multimodal-lease300-image-receipt.json"
     )

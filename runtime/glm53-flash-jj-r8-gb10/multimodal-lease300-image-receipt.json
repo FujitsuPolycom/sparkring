@@ -1,0 +1,64 @@
+{
+  "schema": "sparkring-glm53-multimodal-lease300-image/v1",
+  "status": "live-smoke-verified",
+  "artifact": {
+    "registry": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762",
+    "published_tag": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260902-r10-multimodal-lease300",
+    "image_id": "sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9",
+    "platform": "linux/arm64",
+    "archive_sha256": "a88cd040bb38ed0092d8de8fc00aa2ac7e15a4352258a73394fb876fea3756a4",
+    "archive_bytes": 8469866878
+  },
+  "sources": {
+    "sparkring_image_revision": "a150c98ccfdc4b655679860121f24712490dd9ee",
+    "sparkcache_commit": "b7d1c188a3f9e78595e6e7b649f3751131e269ea",
+    "sparkcache_source_sha256": "b08b517bd798d30cadccd0b58a18df4ac7acf8f352ecffe846b38efedda46795",
+    "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+    "b12x_commit": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
+    "nccl_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
+    "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
+    "cuda_snapshot_sha256": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5"
+  },
+  "launch": {
+    "topology": "TP4/DCP4",
+    "max_model_len": 1048576,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "prefill_schedule_interval": 8,
+    "kv_cache_dtype": "fp8",
+    "kv_cache_bytes_per_rank": 25769803776,
+    "gpu_kv_cache_tokens": 4321618,
+    "dflash_tokens": 7,
+    "sparkcache_access_mode": "read-write",
+    "sparkcache_publication_schema": "snapshot-v1",
+    "async_capture_slot_bytes": 3221225472,
+    "async_capture_slot_count": 2,
+    "shared_prefix_lease_ttl_seconds": 300,
+    "max_images_per_prompt": 4,
+    "max_videos_per_prompt": 1
+  },
+  "verification": {
+    "physical_ranks": 4,
+    "loaded_image_ids_equal": true,
+    "running_image_ids_equal": true,
+    "sparkcache_source_bind_mounts": 0,
+    "api_model": "glm-5.3-flash",
+    "api_max_model_len": 1048576,
+    "image_probe": {
+      "input": "448x448 solid-red PNG",
+      "multimodal_image_tokens": 256,
+      "dominant_color_identified": "red"
+    },
+    "sparkcache_manifest_discovery": {
+      "checked_per_rank": 9,
+      "offered_per_rank": 9,
+      "rejected_per_rank": 0
+    }
+  },
+  "limitations": [
+    "The built image received an image-input smoke test; video identity was established by the exact SparkCache source in pull request 52 but was not repeated after image construction.",
+    "The built image smoke did not repeat persistent multimodal restoration after a process restart.",
+    "Open WebUI video forwarding was not established by this test.",
+    "The external DFlash2 draft does not consume multimodal embeddings; vLLM uses text-only draft inputs while the target model verifies output."
+  ]
+}

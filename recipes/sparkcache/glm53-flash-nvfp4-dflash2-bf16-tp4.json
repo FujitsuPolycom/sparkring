@@ -29,8 +29,8 @@
     "operator_contract": "runtime/glm53-flash-jj-r8-gb10/pins.json",
     "environment_template": "runtime/glm53-flash-jj-r8-gb10/runtime.env.example",
     "launcher": "runtime/glm53-flash-jj-r8-gb10/launch-rank.sh",
-    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65",
-    "image_id": "sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f",
+    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762",
+    "image_id": "sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9",
     "sparkcache": {
       "artifact_kind": "source-pinned OCI image",
       "source_repository": "https://github.com/FujitsuPolycom/sparkcache.git",
@@ -129,18 +129,18 @@
   },
   "evidence": {
     "status": "qualified",
-    "conditions": "The immutable Linux/ARM64 image ran on four directly connected NVIDIA GB10 systems at TP4/DCP4 with FP8 KV, 24 GiB per rank, a 1,048,576-token request limit, 8,192 scheduler tokens, interval eight, BF16 DFlash2 depth seven, SparkCache read-write access, and two 3 GiB asynchronous capture slots per rank.",
-    "measurement": "A deterministic 125,999-token prompt published a reusable boundary. Two retained deep-context entries were restored without either identical prompt being sent after startup. Capture completion, durable commit, restore timing, semantic output, startup inventory, process health, and error logs were recorded on every rank.",
-    "result": "The image published 124,928 tokens with capture completion observed in 403.7–408.5 milliseconds and durable commit in 520.6–567.6 milliseconds per rank. It restored 899,072 tokens in 6.47 seconds end-to-end and 999,424 tokens in 6.73 seconds end-to-end. All exact needle checks passed, and all four containers remained healthy.",
-    "conclusion": "The DCP4 profile restores persistent context and asynchronously publishes complete snapshots through the recorded 124,928-token and 231.8-MiB-per-rank boundary.",
+    "conditions": "The immutable Linux/ARM64 image ran on four directly connected NVIDIA GB10 systems at TP4/DCP4 with FP8 KV, 24 GiB per rank, a 1,048,576-token request limit, 8,192 scheduler tokens, interval eight, BF16 DFlash2 depth seven, SparkCache read-write access, a 300-second shared-prefix lease, and image and video request support.",
+    "measurement": "All ranks ran the registry image without a SparkCache source bind mount. API model discovery, image identity, connector configuration, startup inventory, process health, and one 448-by-448 solid-red PNG request were checked.",
+    "result": "The service exposed 4,321,618 logical KV tokens, accepted the GLM-5.3 API route, represented the PNG as 256 multimodal tokens, and identified its dominant color as red. All four ranks used the same image ID and reported the 300-second shared-prefix lease.",
+    "conclusion": "The registry artifact starts the preferred DCP4 profile and serves text and image requests with media-aware SparkCache source embedded in the image.",
     "limitations": [
-      "DCP1 and DCP2 are implemented profiles, but asynchronous capture is disabled because those slot sizes lack live qualification.",
-      "Asynchronous publication above 124,928 stored tokens is not qualified by this evidence.",
-      "The public image restored the 900K and 1M entries; the exact earlier writer identity is recorded in the machine receipt.",
-      "Page-tail publication, long-duration serving, active-load admission, and concurrent deep-context publication are not qualified."
+      "The built-image smoke did not repeat video input or persistent multimodal restore after a process restart.",
+      "The 900K and 1M restore measurements belong to an earlier SparkCache source composition with unchanged vLLM, B12X, NCCL, and CUDA components.",
+      "DCP1 and DCP2 are implemented profiles, but asynchronous capture is disabled because those slot sizes lack matching live evidence.",
+      "Page-tail publication, long-duration serving, active-load admission, and concurrent deep-context publication were not tested on this artifact."
     ],
-    "record": "runtime/glm53-flash-jj-r8-gb10/ASYNC_CAPTURE_IMAGE_VALIDATION.md",
-    "machine_receipt": "runtime/glm53-flash-jj-r8-gb10/async-capture-image-receipt.json",
+    "record": "runtime/glm53-flash-jj-r8-gb10/README.md",
+    "machine_receipt": "runtime/glm53-flash-jj-r8-gb10/multimodal-lease300-image-receipt.json",
     "artifact_scope": "The immutable image, target and draft revisions, TP4/DCP4 topology, scheduler settings, cache configuration, source identities, and live limits recorded here."
   }
 }
