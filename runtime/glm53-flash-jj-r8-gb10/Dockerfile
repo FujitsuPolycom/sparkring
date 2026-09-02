@@ -14,6 +14,7 @@ COPY serve_with_warmup.py /opt/sparkring/bin/serve-with-warmup.py
 
 RUN python3 /opt/sparkring/bin/install-jj-r8-sparkcache-overlay.py \
       --root /opt/sparkring/overlays/jj-r8-sparkcache-arm64 && \
+    chmod 0755 /opt/sparkring/bin/serve-with-warmup.py && \
     mkdir -p /opt/sparkring/receipts/jj-r8-sparkcache-arm64 && \
     cp /opt/sparkring/overlays/jj-r8-sparkcache-arm64/receipts/* \
       /opt/sparkring/receipts/jj-r8-sparkcache-arm64/ && \
