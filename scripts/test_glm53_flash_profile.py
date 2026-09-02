@@ -511,4 +511,10 @@ def test_operator_docs_state_status_invariants_and_full_provenance() -> None:
 
 def test_ci_runs_glm53_runtime_contracts() -> None:
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "runtime/exl3-r7 runtime/glm53-flash runtime/deepseek0731-gb10" in workflow
+    pytest_command = next(
+        line for line in workflow.splitlines() if "python -m pytest spark_transport" in line
+    )
+    assert "runtime/exl3-r7" in pytest_command
+    assert "runtime/glm53-flash" in pytest_command
+    assert "runtime/glm53-flash-jj-r8-gb10" in pytest_command
+    assert "runtime/deepseek0731-gb10" in pytest_command

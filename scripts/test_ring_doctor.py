@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from scripts.ring_doctor import (
     discover_nodes,
     discovery_sufficient,
     docker_user_accepts,
+    emit_units,
     infer_adjacency,
     infer_topology,
     enforce_controller_location,
@@ -288,15 +290,17 @@ class DiagnosticReceiptAdapterTests(unittest.TestCase):
 
 
 class ManagementRepairSafetyTests(unittest.TestCase):
-    def guarded_observation(self) -> NodeObservation:
+    def guarded_observation(
+        self, name: str = "r0", management_address: str = "192.0.2.10"
+    ) -> NodeObservation:
         return observation(
-            "r0",
+            name,
             f"{IF0} UP 10.0.1.10/24\n{IF1} UP 10.0.4.10/24",
             socket_interfaces=("eth0",),
             host_addresses=(
                 f"{IF0} UP 10.0.1.10/24\n"
                 f"{IF1} UP 10.0.4.10/24\n"
-                "eth0 UP 192.0.2.10/24"
+                f"eth0 UP {management_address}/24"
             ),
         )
 
@@ -361,14 +365,70 @@ class ManagementRepairSafetyTests(unittest.TestCase):
                 return CommandResult(True)
 
         runner = ApplyRunner()
-        findings = apply_plans(
+        application = apply_plans(
             {"r0": guarded}, {"r0": plan}, {"r0": guard}, runner
         )
 
-        self.assertEqual(findings, [])
-        self.assertEqual(len(runner.commands), 1)
-        self.assertGreaterEqual(runner.commands[0].count("192.0.2.10/24"), 2)
-        self.assertIn("ip route replace 10.0.2.0/24", runner.commands[0])
+        self.assertTrue(application.executed)
+        self.assertEqual(application.findings, ())
+        self.assertEqual(len(runner.commands), 2)
+        self.assertEqual(runner.commands[0], "sudo -n true")
+        self.assertGreaterEqual(runner.commands[1].count("192.0.2.10/24"), 2)
+        self.assertIn("ip route replace 10.0.2.0/24", runner.commands[1])
+
+    def test_apply_withholds_every_plan_when_any_node_lacks_noninteractive_sudo(
+        self,
+    ) -> None:
+        rank0 = self.guarded_observation()
+        rank1 = self.guarded_observation("r1", "192.0.2.11")
+        observations = {"r0": rank0, "r1": rank1}
+        plans = {
+            name: NodePlan(
+                name,
+                routes=[
+                    ProposedRoute(
+                        ipaddress.ip_network("10.0.2.0/24"),
+                        ipaddress.ip_address("10.0.1.11"),
+                        IF0,
+                        (name, "peer"),
+                    )
+                ],
+            )
+            for name in observations
+        }
+        guards = {
+            name: ManagementGuard(name, (item.host_interfaces["eth0"],))
+            for name, item in observations.items()
+        }
+
+        class PrivilegeRunner:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, str]] = []
+
+            def run(self, target, command, proxy_jump=None):
+                self.calls.append((target, command))
+                if command != "sudo -n true":
+                    raise AssertionError(f"repair command executed on {target}")
+                if target == "operator@r0":
+                    return CommandResult(False, stderr="sudo: a password is required")
+                return CommandResult(True)
+
+        runner = PrivilegeRunner()
+        application = apply_plans(observations, plans, guards, runner)
+
+        self.assertFalse(application.executed)
+        self.assertEqual(
+            [(finding.node, finding.code) for finding in application.findings],
+            [("r0", "apply-failed")],
+        )
+        self.assertIn("non-interactive sudo", application.findings[0].message)
+        self.assertEqual(
+            runner.calls,
+            [
+                ("operator@r0", "sudo -n true"),
+                ("operator@r1", "sudo -n true"),
+            ],
+        )
 
     def test_boot_program_checks_management_after_every_change(self) -> None:
         guarded = self.guarded_observation()
@@ -390,6 +450,55 @@ class ManagementRepairSafetyTests(unittest.TestCase):
 
         self.assertIn("EXPECTED_MANAGEMENT = {'eth0': ['192.0.2.10/24']}", program)
         self.assertGreaterEqual(program.count("require_management()"), 5)
+
+    def test_emitted_unit_restarts_after_program_failure(self) -> None:
+        guarded = self.guarded_observation()
+        guard = ManagementGuard("r0", (guarded.host_interfaces["eth0"],))
+        plan = NodePlan("r0")
+
+        with tempfile.TemporaryDirectory() as directory:
+            emit_units(
+                Path(directory),
+                {"r0": guarded},
+                {"r0": plan},
+                {"r0": guard},
+            )
+            unit = Path(directory, "ring-doctor-r0.service").read_text(
+                encoding="utf-8"
+            )
+
+        self.assertIn(
+            "[Service]\n"
+            "Type=oneshot\n"
+            "Restart=on-failure\n"
+            "RestartSec=10\n"
+            "ExecStart=",
+            unit,
+        )
+
+    def test_emitted_unit_restores_firewall_plan_after_docker_startup(self) -> None:
+        guarded = self.guarded_observation()
+        guard = ManagementGuard("r0", (guarded.host_interfaces["eth0"],))
+        plan = NodePlan("r0", relay_directions={(IF0, IF1)})
+
+        with tempfile.TemporaryDirectory() as directory:
+            emit_units(
+                Path(directory),
+                {"r0": guarded},
+                {"r0": plan},
+                {"r0": guard},
+            )
+            root = Path(directory)
+            unit = root.joinpath("ring-doctor-r0.service").read_text(
+                encoding="utf-8"
+            )
+            program = root.joinpath("ring-doctor-r0.py").read_text(
+                encoding="utf-8"
+            )
+
+        self.assertIn("After=network-online.target docker.service", unit)
+        self.assertIn(f"RELAY_DIRECTIONS = [['{IF0}', '{IF1}']]", program)
+        self.assertIn('["iptables", "-I", "DOCKER-USER", "1", *rule]', program)
 
 
 class AddressAndTopologyTests(unittest.TestCase):

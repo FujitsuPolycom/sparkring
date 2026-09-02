@@ -395,6 +395,14 @@ class Finding:
 
 
 @dataclasses.dataclass(frozen=True)
+class RepairApplication:
+    """Outcome of the all-rank repair preflight and mutation commands."""
+
+    executed: bool
+    findings: tuple[Finding, ...] = ()
+
+
+@dataclasses.dataclass(frozen=True)
 class ProposedRoute:
     """A route whose gateway is an address observed on an adjacent node."""
 
@@ -2130,9 +2138,10 @@ def apply_plans(
     plans: Mapping[str, NodePlan],
     guards: Mapping[str, ManagementGuard],
     runner: Runner,
-) -> list[Finding]:
-    """Apply one fabric change at a time while management stays invariant."""
+) -> RepairApplication:
+    """Validate every target, then apply fabric changes with management guards."""
     findings: list[Finding] = []
+    prepared: list[tuple[str, NodeObservation, list[str], str]] = []
     for name, plan in sorted(plans.items()):
         commands = plan.commands()
         if not commands:
@@ -2163,7 +2172,32 @@ def apply_plans(
                 )
             )
             continue
-        guard_command = guard.shell_command()
+        prepared.append((name, observation, commands, guard.shell_command()))
+
+    if findings:
+        return RepairApplication(False, tuple(findings))
+
+    for name, observation, _commands, _guard_command in prepared:
+        result = runner.run(observation.spec.target, "sudo -n true", None)
+        if result.ok:
+            continue
+        findings.append(
+            Finding(
+                "error",
+                "apply-failed",
+                name,
+                "No repair was applied because non-interactive sudo is unavailable "
+                "on this node.",
+                result.detail
+                or result.stderr.strip()
+                or "sudo -n true failed without diagnostic output",
+            )
+        )
+
+    if findings:
+        return RepairApplication(False, tuple(findings))
+
+    for name, observation, commands, guard_command in prepared:
         for index, command in enumerate(commands, start=1):
             result = runner.run(
                 observation.spec.target,
@@ -2184,7 +2218,7 @@ def apply_plans(
                 )
             )
             break
-    return findings
+    return RepairApplication(True, tuple(findings))
 
 
 def _unit_program(
@@ -2325,6 +2359,8 @@ After=network-online.target docker.service
 
 [Service]
 Type=oneshot
+Restart=on-failure
+RestartSec=10
 ExecStart=/usr/bin/python3 {program_path}
 RemainAfterExit=yes
 
@@ -2873,15 +2909,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     repair_safe = enough and fabric_preflight_ok and management_repair_safe
     if args.apply:
         if repair_safe:
-            apply_executed = True
-            apply_findings.extend(
-                apply_plans(observations, plans, management_guards, runner)
+            application = apply_plans(
+                observations, plans, management_guards, runner
             )
-            observations, topology, plans, findings = _probe_by_name(
-                specs, runner, interfaces, rendezvous_address
-            )
-            enough = discovery_sufficient(specs, observations, topology)
-            repair_safe = enough and fabric_preflight_ok and management_repair_safe
+            apply_executed = application.executed
+            apply_findings.extend(application.findings)
+            if application.executed:
+                observations, topology, plans, findings = _probe_by_name(
+                    specs, runner, interfaces, rendezvous_address
+                )
+                enough = discovery_sufficient(specs, observations, topology)
+                repair_safe = (
+                    enough and fabric_preflight_ok and management_repair_safe
+                )
         else:
             if not enough:
                 reason = topology.reason

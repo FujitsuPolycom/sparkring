@@ -138,6 +138,52 @@ def test_generated_netplan_contains_only_fabric_interfaces():
     assert "ip -4 -o addr show dev enP7s7" in apply_script
 
 
+def test_network_apply_waits_for_the_recorded_management_address():
+    cluster = validate_cluster(
+        build_cluster_document(
+            facts(4), name="management-wait", fabric_supernet="198.18.0.0/21"
+        )
+    )
+
+    apply_script = _network_apply_script(cluster, 0)
+
+    assert (
+        "# Netplan may reload the management connection. Accept only the recorded "
+        "IPv4 address and fail after five seconds.\n"
+        "management_ready=0\n"
+        "management_attempt=0\n"
+        'while test "$management_attempt" -lt 50; do\n'
+        "  if ip -4 -o addr show dev enP7s7 | "
+        "grep -F -q -- ' 192.0.2.10/'; then\n"
+        "    management_ready=1\n"
+        "    break\n"
+        "  fi\n"
+        '  management_attempt=$((management_attempt + 1))\n'
+        "  sleep 0.1\n"
+        "done"
+    ) in apply_script
+
+
+def test_network_apply_rolls_back_when_management_wait_expires():
+    cluster = validate_cluster(
+        build_cluster_document(
+            facts(4), name="management-timeout", fabric_supernet="198.18.0.0/21"
+        )
+    )
+
+    apply_script = _network_apply_script(cluster, 0)
+
+    assert (
+        'if test "$management_ready" -ne 1; then\n'
+        "  rollback\n"
+        "  netplan generate\n"
+        "  netplan apply\n"
+        "  echo 'management invariant failed; fabric netplan rolled back' >&2\n"
+        "  exit 91\n"
+        "fi"
+    ) in apply_script
+
+
 def test_head_self_authorization_is_idempotent_and_preserves_existing_keys(tmp_path):
     public = tmp_path / "bootstrap.pub"
     key = "ssh-ed25519 QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI= bootstrap@spark"

@@ -82,6 +82,7 @@ fi
 : "${OMP_NUM_THREADS:=16}"
 : "${TORCHINDUCTOR_COMPILE_THREADS:=1}"
 : "${FASTSAFETENSORS_QUEUE_SIZE:=1}"
+: "${ENABLE_PROMPT_TOKENS_DETAILS:=1}"
 : "${API_KEYS_FILE:=}"
 
 die() {
@@ -199,6 +200,10 @@ esac
 case "${SPARKCACHE_ENABLED}" in
   0|1) ;;
   *) die 'SPARKCACHE_ENABLED must be 0 or 1' ;;
+esac
+case "${ENABLE_PROMPT_TOKENS_DETAILS}" in
+  0|1) ;;
+  *) die 'ENABLE_PROMPT_TOKENS_DETAILS must be 0 or 1' ;;
 esac
 case "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" in
   0|1) ;;
@@ -413,6 +418,11 @@ fi
 headless=()
 [[ "${rank}" == 0 ]] || headless=(--headless)
 
+prompt_tokens_details=()
+if [[ "${ENABLE_PROMPT_TOKENS_DETAILS}" == 1 ]]; then
+  prompt_tokens_details=(--enable-prompt-tokens-details)
+fi
+
 exec docker run -d \
   --name "${container}" \
   --network host --ipc host --shm-size "${SHM_SIZE}" --gpus all \
@@ -482,4 +492,5 @@ exec docker run -d \
   --compilation-config "${compilation_config}" \
   --max-cudagraph-capture-size "${MAX_CUDAGRAPH_CAPTURE_SIZE}" \
   --async-scheduling --enable-prefix-caching --cudagraph-metrics \
+  "${prompt_tokens_details[@]}" \
   "${kv_transfer_args[@]}" "${headless[@]}"

@@ -122,7 +122,10 @@ records when worker recovery mode was used.
 Require zero `ERROR` findings, a passing canonical fabric preflight, and a
 reachability matrix in which every pair passes. `--apply` executes the printed
 plan only after both the discovered cycle and canonical fabric checks pass. It
-is idempotent and needs passwordless `sudo` on each node.
+is idempotent and needs non-interactive `sudo` on each node. Before any repair
+command runs, Ring Doctor executes `sudo -n true` on every node whose plan has
+commands. If any node fails that check, Ring Doctor reports each failing node
+and executes no route, forwarding, or firewall repair command on any node.
 
 ### Management safety during repair
 
@@ -144,12 +147,20 @@ recorded management addresses before and after every change. If a legacy
 `--node` invocation is used instead of `--site`, name the management interface
 for every node with `--socket-interface`; otherwise all mutation is withheld.
 
-The repairs are runtime state and do not survive a reboot. `--emit-unit DIR`
-writes a per-node program and systemd unit that revalidate the addresses and
-reapply the plan at boot. Install the program at a path that exists **on the
-node**, and set the unit's `ExecStart` to that path: the emitted unit names the
-directory the files were generated in, which is only correct when they are
-generated on the node itself.
+The repairs are runtime state and do not survive a reboot. Do not use a cron
+`@reboot` job to restore `DOCKER-USER` rules: cron can run before Docker creates
+its firewall chains, and Docker can replace rules installed that early.
+
+`--emit-unit DIR` writes a per-node program and systemd unit that revalidate the
+addresses and reapply the complete route, forwarding, and `DOCKER-USER` plan at
+boot. The unit orders itself after `network-online.target` and `docker.service`
+when those units are active. A missing management address or firewall chain
+fails closed, and systemd retries the program after ten seconds.
+
+The generated files are not installed automatically. Install the program at a
+path that exists **on the node**, and set the unit's `ExecStart` to that path:
+the emitted unit names the directory the files were generated in, which is only
+correct when they are generated on the node itself.
 
 ## Local configuration and preflight
 

@@ -493,6 +493,10 @@ def _network_apply_script(cluster: ClusterConfig, rank_id: int) -> str:
     timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     backup = f"{target}.before-sparkring-{timestamp}"
     management_cidr_fragment = f" {rank.management.address}/"
+    management_check = (
+        f"ip -4 -o addr show dev {rank.management.interface} | "
+        f"grep -F -q -- '{management_cidr_fragment}'"
+    )
     return "\n".join(
         [
             "set -eu",
@@ -514,8 +518,19 @@ def _network_apply_script(cluster: ClusterConfig, rank_id: int) -> str:
             "  echo 'netplan apply failed; prior fabric netplan restored' >&2",
             "  exit 1",
             "fi",
-            f"if ! ip -4 -o addr show dev {rank.management.interface} | "
-            f"grep -F -q -- '{management_cidr_fragment}'; then",
+            "# Netplan may reload the management connection. Accept only the recorded "
+            "IPv4 address and fail after five seconds.",
+            "management_ready=0",
+            "management_attempt=0",
+            'while test "$management_attempt" -lt 50; do',
+            f"  if {management_check}; then",
+            "    management_ready=1",
+            "    break",
+            "  fi",
+            '  management_attempt=$((management_attempt + 1))',
+            "  sleep 0.1",
+            "done",
+            'if test "$management_ready" -ne 1; then',
             "  rollback",
             "  netplan generate",
             "  netplan apply",
