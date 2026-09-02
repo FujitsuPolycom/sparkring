@@ -343,7 +343,7 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
         "sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f"
     )
     assert cache["runtime"]["sparkcache"]["source_commit"] == (
-        "c5dda75ec46bf235f6ece6e0d0174c1e41bd805a"
+        "4792231c1c6c4cbcb5799148e7a4faa459433990"
     )
 
 

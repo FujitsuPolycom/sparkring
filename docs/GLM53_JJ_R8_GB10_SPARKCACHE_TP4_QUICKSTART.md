@@ -173,6 +173,17 @@ SPARKCACHE_ACCESS_MODE=read-write   # restore existing entries and publish new o
 SPARKCACHE_ACCESS_MODE=restore-only # restore existing entries; never capture new prompts
 ```
 
+The GLM-5.3 profile retains a verified shared GPU prefix for up to five
+minutes so one restore can serve an extended request queue:
+
+```bash
+SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS=300
+```
+
+vLLM may release the prefix earlier when active requests need its KV blocks.
+Reduce the value when large retained prefixes compete with the required
+context length or concurrency.
+
 Restore-only mode is useful for reuse-heavy serving or performance tests where
 one-off prompt publication would add GPU-to-host capture work. A restore miss
 is computed by vLLM normally.

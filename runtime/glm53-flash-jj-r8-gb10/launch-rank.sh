@@ -60,6 +60,7 @@ fi
 : "${SPARKCACHE_CACHE_NAMESPACE:=glm53-flash-dcp4-snapshot-v1}"
 : "${SPARKCACHE_ENABLED:=1}"
 : "${SPARKCACHE_ACCESS_MODE:=read-write}"
+: "${SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS:=300}"
 : "${SPARKCACHE_PUBLICATION_SCHEMA:=snapshot-v1}"
 : "${SPARKCACHE_CLEAR_ONCE:=auto}"
 : "${SPARKCACHE_MAX_BYTES:=42949672960}"
@@ -108,6 +109,7 @@ for name in \
   B12X_MLA_CKV_GATHER_MAX_TOKENS \
   SPARKCACHE_MAX_BYTES SPARKCACHE_MIN_SPAN_TOKENS SPARKCACHE_MAX_SPAN_TOKENS \
   SPARKCACHE_LOAD_THREADS SPARKCACHE_MAX_PENDING_RESTORES \
+  SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS \
   SPARKCACHE_CUDA_RESTORE_IO_WORKERS SPARKCACHE_CUDA_ARENA_BYTES \
   SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT \
   NCCL_MIN_NCHANNELS NCCL_MAX_NCHANNELS OMP_NUM_THREADS \
@@ -118,6 +120,8 @@ done
 require_uint SPARKCACHE_LOW_WATERMARK_BYTES
 require_uint SPARKCACHE_TTL_SECONDS
 require_uint NCCL_IB_GID_INDEX
+(( SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS <= 300 )) || \
+  die 'SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS must be between 1 and 300'
 
 case "${DECODE_CONTEXT_PARALLEL_SIZE}" in
   1|2|4) ;;
@@ -339,6 +343,7 @@ kv_transfer_args=()
 if [[ "${SPARKCACHE_ENABLED}" == 1 ]]; then
   export SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE SPARKCACHE_MAX_BYTES
   export SPARKCACHE_ACCESS_MODE
+  export SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS
   export SPARKCACHE_PUBLICATION_SCHEMA
   export SPARKCACHE_LOW_WATERMARK_BYTES SPARKCACHE_TTL_SECONDS
   export SPARKCACHE_MIN_SPAN_TOKENS SPARKCACHE_MAX_SPAN_TOKENS
@@ -361,6 +366,9 @@ extra = {
     "spark_cache_draft_checkpoint_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
     "spark_cache_draft_policy": "separate",
     "spark_cache_access_mode": os.environ["SPARKCACHE_ACCESS_MODE"],
+    "spark_cache_shared_prefix_lease_ttl_seconds": integer(
+        "SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS"
+    ),
     "spark_cache_scheduler_probe": "none",
     "spark_cache_streaming_snapshots": False,
     "spark_cache_cuda_restore": True,
@@ -446,6 +454,7 @@ exec docker run -d \
   --label org.sparkring.runtime=glm53-jj-r8-gb10-sparkcache \
   --label org.sparkring.sparkcache.enabled="${SPARKCACHE_ENABLED}" \
   --label org.sparkring.sparkcache.access-mode="${SPARKCACHE_ACCESS_MODE}" \
+  --label org.sparkring.sparkcache.shared-prefix-lease-seconds="${SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS}" \
   --label org.sparkring.rank="${rank}" \
   "${IMAGE_REF}" \
   /models/target \

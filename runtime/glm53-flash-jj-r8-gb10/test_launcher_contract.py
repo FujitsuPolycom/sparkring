@@ -49,6 +49,7 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["SPARKCACHE_ENABLED"] == "1"
     assert values["ENABLE_PROMPT_TOKENS_DETAILS"] == "1"
     assert values["SPARKCACHE_ACCESS_MODE"] == "read-write"
+    assert values["SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS"] == "300"
     assert values["SPARKCACHE_MAX_SPAN_TOKENS"] == "1048576"
     assert values["CP_KV_CACHE_INTERLEAVE_SIZE"] == "auto"
     assert values["B12X_MLA_CKV_GATHER"] == "auto"
@@ -155,6 +156,7 @@ printf '%s  %s\n' "$hash" "$2"
         assert extra["spark_cache_publication_schema"] == "snapshot-v1"
         assert extra["spark_cache_model_profile"] == "glm53-flash-hybrid"
         assert extra["spark_cache_access_mode"] == "read-write"
+        assert extra["spark_cache_shared_prefix_lease_ttl_seconds"] == 300
         assert "spark_cache_store" not in extra
         assert "spark_cache_restore" not in extra
 
@@ -231,6 +233,29 @@ def test_launcher_rejects_invalid_prompt_tokens_details_setting(tmp_path: Path) 
     assert "ENABLE_PROMPT_TOKENS_DETAILS must be 0 or 1" in result.stderr
 
 
+def test_launcher_rejects_shared_prefix_retention_above_five_minutes(
+    tmp_path: Path,
+) -> None:
+    config = tmp_path / "shared-prefix-retention-invalid.env"
+    config.write_text(
+        f"source '{_bash_path(ENVIRONMENT)}'\n"
+        "SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS=301\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    result = subprocess.run(
+        ["bash", _bash_path(LAUNCHER), "0", _bash_path(config)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 78
+    assert "must be between 1 and 300" in result.stderr
+
+
 def test_launcher_can_use_vllm_prefix_cache_without_sparkcache() -> None:
     launcher = LAUNCHER.read_text(encoding="utf-8")
     assert "SPARKCACHE_ENABLED must be 0 or 1" in launcher
@@ -244,6 +269,16 @@ def test_launcher_exposes_independent_sparkcache_access_mode() -> None:
     assert '"spark_cache_access_mode": os.environ["SPARKCACHE_ACCESS_MODE"]' in launcher
     assert '"spark_cache_store": True' not in launcher
     assert '"spark_cache_restore": True' not in launcher
+
+
+def test_launcher_bounds_shared_prefix_retention() -> None:
+    launcher = LAUNCHER.read_text(encoding="utf-8")
+    assert "SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS:=300" in launcher
+    assert "SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS must be between 1 and 300" in launcher
+    assert (
+        '"spark_cache_shared_prefix_lease_ttl_seconds": integer('
+        in launcher
+    )
 
 
 def test_launcher_rejects_unsupported_dcp_geometry() -> None:

@@ -50,11 +50,11 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     )
     assert pins["sparkcache"] == {
         "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-        "commit": "c5dda75ec46bf235f6ece6e0d0174c1e41bd805a",
-        "tree": "f08661f05e31157e5473b3f7743e92b8f0fa78d2",
-        "package_tree": "c34e87530fe71c0dfb5b6c452e7b8e3b7866f42f",
+        "commit": "4792231c1c6c4cbcb5799148e7a4faa459433990",
+        "tree": "43c0a3134f298095f02bd5c4a2f944f8b470708b",
+        "package_tree": "0a21c6aba5bcb9d45086d6ea3f8626f928c9e32d",
         "source_tree_sha256": (
-            "dffc2bead0a7c1cebb7a52757d38bd89146305b3ff351353ece9ac464c4c421d"
+            "e04b73d4cffa6f468632c4a0b81da5ff5b433468070d8ffb8aced53e3309396e"
         ),
         "cuda_placement_sha256": (
             "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
@@ -70,6 +70,7 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     assert defaults["max_model_len"] == 1048576
     assert defaults["max_num_batched_tokens"] == 8192
     assert defaults["prefill_schedule_interval"] == 8
+    assert defaults["shared_prefix_lease_ttl_seconds"] == 300
     assert defaults["kv_cache_bytes_per_rank"] == {
         "dcp1": 27917287424,
         "dcp2": 32212254720,
@@ -98,7 +99,7 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
     for identity in (
         "f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
         "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
-        "c5dda75ec46bf235f6ece6e0d0174c1e41bd805a",
+        "4792231c1c6c4cbcb5799148e7a4faa459433990",
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
         "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
         "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
@@ -163,6 +164,7 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
     assert 'SPARKCACHE_ASYNC_PAGE_CAPTURE:=0' in launcher
     assert 'SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES:=auto' in launcher
     assert 'SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT:=2' in launcher
+    assert 'SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS:=300' in launcher
     assert "spark_cache_async_page_capture_library" in launcher
     assert "vllm-manager-page-async-contract-55969c16.json" in launcher
     for value in (
@@ -175,6 +177,7 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
         "SPARKCACHE_ASYNC_PAGE_CAPTURE=1",
         "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES='auto'",
         "SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2",
+        "SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS=300",
     ):
         assert value in environment
     for text in (launcher, environment):

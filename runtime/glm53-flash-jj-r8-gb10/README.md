@@ -40,6 +40,7 @@ The launcher defaults to:
 | FP8 KV allocation | 24 GiB for the default DCP4 profile; 26 GiB for DCP1; 30 GiB for DCP2 |
 | DFlash2 depth | 7 |
 | SparkCache publication | complete `snapshot-v1` objects |
+| shared GPU-prefix retention | up to 300 seconds |
 
 DCP1 resolves to one-token KV interleaving without full-CKV gather. DCP2 and
 DCP4 resolve to four-token KV interleaving with full-CKV gather. Operators can
