@@ -7,7 +7,7 @@ The operator can enable persistent SparkCache or use vLLM's GPU prefix cache
 alone without changing the image.
 
 The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV per rank, scheduler
-interval eight, BF16 DFlash2 at depth seven, and SparkCache enabled. The
+interval two, BF16 DFlash2 at depth seven, and SparkCache enabled. The
 environment template selects these values and enables bounded asynchronous
 SparkCache capture without additional overrides.
 
@@ -273,6 +273,7 @@ from an earlier SparkCache source composition. That deployment captured a
 124,928-token boundary and restored 899,072-token and 999,424-token entries.
 Those measurements support the unchanged runtime components; they are not
 performance qualification of the registry artifact above. See the
+[`scheduler-cadence record`](../performance/records/glm53-flash/scheduler-cadence-20260902.md),
 [`asynchronous capture validation`](../runtime/glm53-flash-jj-r8-gb10/ASYNC_CAPTURE_IMAGE_VALIDATION.md)
 and the
 [`DCP1 deep-context record`](../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md)

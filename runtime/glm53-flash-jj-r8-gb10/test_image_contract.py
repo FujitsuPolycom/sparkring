@@ -69,7 +69,7 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     defaults = pins["defaults"]
     assert defaults["max_model_len"] == 1048576
     assert defaults["max_num_batched_tokens"] == 8192
-    assert defaults["prefill_schedule_interval"] == 8
+    assert defaults["prefill_schedule_interval"] == 2
     assert defaults["shared_prefix_lease_ttl_seconds"] == 300
     assert defaults["kv_cache_bytes_per_rank"] == {
         "dcp1": 27917287424,
@@ -157,7 +157,7 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
     environment = (HERE / "runtime.env.example").read_text(encoding="utf-8")
     assert 'MAX_MODEL_LEN:=1048576' in launcher
     assert 'MAX_NUM_BATCHED_TOKENS:=8192' in launcher
-    assert 'PREFILL_SCHEDULE_INTERVAL:=8' in launcher
+    assert 'PREFILL_SCHEDULE_INTERVAL:=2' in launcher
     assert 'KV_CACHE_MEMORY_BYTES:=auto' in launcher
     assert 'B12X_MLA_CKV_GATHER_MAX_TOKENS:=524288' in launcher
     assert 'SPARKCACHE_MAX_SPAN_TOKENS:=1048576' in launcher
@@ -170,7 +170,7 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
     for value in (
         "MAX_MODEL_LEN=1048576",
         "MAX_NUM_BATCHED_TOKENS=8192",
-        "PREFILL_SCHEDULE_INTERVAL=8",
+        "PREFILL_SCHEDULE_INTERVAL=2",
         "MAX_IMAGES_PER_PROMPT=4",
         "MAX_VIDEOS_PER_PROMPT=1",
         "KV_CACHE_MEMORY_BYTES='auto'",

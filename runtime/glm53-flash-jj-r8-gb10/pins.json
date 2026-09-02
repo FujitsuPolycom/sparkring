@@ -58,7 +58,7 @@
   "defaults": {
     "max_model_len": 1048576,
     "max_num_batched_tokens": 8192,
-    "prefill_schedule_interval": 8,
+    "prefill_schedule_interval": 2,
     "shared_prefix_lease_ttl_seconds": 300,
     "kv_cache_bytes_per_rank": {
       "dcp1": 27917287424,
