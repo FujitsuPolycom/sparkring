@@ -337,13 +337,13 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
     assert cache["profiles"]["dcp2"]["async_page_capture"] is False
     assert cache["profiles"]["dcp4"]["async_page_capture"] is True
     assert cache["runtime"]["image"].endswith(
-        "@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65"
+        "@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762"
     )
     assert cache["runtime"]["image_id"] == (
-        "sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f"
+        "sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9"
     )
     assert cache["runtime"]["sparkcache"]["source_commit"] == (
-        "c5dda75ec46bf235f6ece6e0d0174c1e41bd805a"
+        "b7d1c188a3f9e78595e6e7b649f3751131e269ea"
     )
 
 

@@ -50,11 +50,11 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     )
     assert pins["sparkcache"] == {
         "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-        "commit": "c5dda75ec46bf235f6ece6e0d0174c1e41bd805a",
-        "tree": "f08661f05e31157e5473b3f7743e92b8f0fa78d2",
-        "package_tree": "c34e87530fe71c0dfb5b6c452e7b8e3b7866f42f",
+        "commit": "b7d1c188a3f9e78595e6e7b649f3751131e269ea",
+        "tree": "8ea2e7b18d1ef198b061764842f006663634ebb7",
+        "package_tree": "8fe5cb44cabea255f55aa2c9d2417db0e04cdbf5",
         "source_tree_sha256": (
-            "dffc2bead0a7c1cebb7a52757d38bd89146305b3ff351353ece9ac464c4c421d"
+            "b08b517bd798d30cadccd0b58a18df4ac7acf8f352ecffe846b38efedda46795"
         ),
         "cuda_placement_sha256": (
             "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
@@ -70,6 +70,7 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     assert defaults["max_model_len"] == 1048576
     assert defaults["max_num_batched_tokens"] == 8192
     assert defaults["prefill_schedule_interval"] == 8
+    assert defaults["shared_prefix_lease_ttl_seconds"] == 300
     assert defaults["kv_cache_bytes_per_rank"] == {
         "dcp1": 27917287424,
         "dcp2": 32212254720,
@@ -98,7 +99,7 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
     for identity in (
         "f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
         "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
-        "c5dda75ec46bf235f6ece6e0d0174c1e41bd805a",
+        "b7d1c188a3f9e78595e6e7b649f3751131e269ea",
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
         "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
         "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
@@ -163,24 +164,69 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
     assert 'SPARKCACHE_ASYNC_PAGE_CAPTURE:=0' in launcher
     assert 'SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES:=auto' in launcher
     assert 'SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT:=2' in launcher
+    assert 'SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS:=300' in launcher
     assert "spark_cache_async_page_capture_library" in launcher
     assert "vllm-manager-page-async-contract-55969c16.json" in launcher
     for value in (
         "MAX_MODEL_LEN=1048576",
         "MAX_NUM_BATCHED_TOKENS=8192",
         "PREFILL_SCHEDULE_INTERVAL=8",
+        "MAX_IMAGES_PER_PROMPT=4",
+        "MAX_VIDEOS_PER_PROMPT=1",
         "KV_CACHE_MEMORY_BYTES='auto'",
         "B12X_MLA_CKV_GATHER_MAX_TOKENS=524288",
         "SPARKCACHE_MAX_SPAN_TOKENS=1048576",
         "SPARKCACHE_ASYNC_PAGE_CAPTURE=1",
         "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES='auto'",
         "SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2",
+        "SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS=300",
     ):
         assert value in environment
     for text in (launcher, environment):
         assert "glm53-flash-dcp4-snapshot-v1" in text
     assert "IMAGE_REF" in launcher
     assert "IMAGE_ID" in launcher
+
+
+def test_multimodal_lease_image_receipt_binds_public_artifact_and_smoke() -> None:
+    receipt = json.loads(
+        (HERE / "multimodal-lease300-image-receipt.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert receipt["status"] == "live-smoke-verified"
+    assert receipt["artifact"] == {
+        "registry": (
+            "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
+            "sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762"
+        ),
+        "published_tag": (
+            "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:"
+            "20260902-r10-multimodal-lease300"
+        ),
+        "image_id": (
+            "sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9"
+        ),
+        "platform": "linux/arm64",
+        "archive_sha256": (
+            "a88cd040bb38ed0092d8de8fc00aa2ac7e15a4352258a73394fb876fea3756a4"
+        ),
+        "archive_bytes": 8469866878,
+    }
+    assert receipt["sources"]["sparkcache_commit"] == (
+        "b7d1c188a3f9e78595e6e7b649f3751131e269ea"
+    )
+    assert receipt["launch"]["shared_prefix_lease_ttl_seconds"] == 300
+    assert receipt["launch"]["max_images_per_prompt"] == 4
+    assert receipt["launch"]["max_videos_per_prompt"] == 1
+    assert receipt["verification"]["physical_ranks"] == 4
+    assert receipt["verification"]["running_image_ids_equal"] is True
+    assert receipt["verification"]["sparkcache_source_bind_mounts"] == 0
+    assert receipt["verification"]["image_probe"] == {
+        "input": "448x448 solid-red PNG",
+        "multimodal_image_tokens": 256,
+        "dominant_color_identified": "red",
+    }
 
 
 def test_async_capture_image_receipt_binds_public_artifact_and_live_results() -> None:

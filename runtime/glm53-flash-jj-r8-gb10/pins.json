@@ -43,10 +43,10 @@
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-    "commit": "c5dda75ec46bf235f6ece6e0d0174c1e41bd805a",
-    "tree": "f08661f05e31157e5473b3f7743e92b8f0fa78d2",
-    "package_tree": "c34e87530fe71c0dfb5b6c452e7b8e3b7866f42f",
-    "source_tree_sha256": "dffc2bead0a7c1cebb7a52757d38bd89146305b3ff351353ece9ac464c4c421d",
+    "commit": "b7d1c188a3f9e78595e6e7b649f3751131e269ea",
+    "tree": "8ea2e7b18d1ef198b061764842f006663634ebb7",
+    "package_tree": "8fe5cb44cabea255f55aa2c9d2417db0e04cdbf5",
+    "source_tree_sha256": "b08b517bd798d30cadccd0b58a18df4ac7acf8f352ecffe846b38efedda46795",
     "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
     "cuda_snapshot_sha256": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
     "manager_page_lease_contract_sha256": "480bdc463e3722cf28aa460021da689d12d9049ae9fd8238252fcf1db5544b53"
@@ -59,6 +59,7 @@
     "max_model_len": 1048576,
     "max_num_batched_tokens": 8192,
     "prefill_schedule_interval": 8,
+    "shared_prefix_lease_ttl_seconds": 300,
     "kv_cache_bytes_per_rank": {
       "dcp1": 27917287424,
       "dcp2": 32212254720,

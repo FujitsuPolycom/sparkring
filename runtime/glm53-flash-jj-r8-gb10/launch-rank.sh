@@ -23,8 +23,8 @@ fi
 : "${DFLASH_MODEL_HOST_PATH:?set DFLASH_MODEL_HOST_PATH to the pinned BF16 draft checkpoint}"
 : "${CACHE_HOST_ROOT:?set CACHE_HOST_ROOT to a dedicated rank-local directory}"
 
-: "${IMAGE_REF:=ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a}"
-: "${IMAGE_ID:=sha256:b3a13d8003e7de30d7737fd33c8307404e506ba570240819ec7eb4f5c611400f}"
+: "${IMAGE_REF:=ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762}"
+: "${IMAGE_ID:=sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9}"
 : "${CONTAINER_PREFIX:=glm53-jj-r8-gb10}"
 : "${SERVED_MODEL_NAME:=glm-5.3-flash}"
 : "${PORT:=8015}"
@@ -41,6 +41,8 @@ fi
 : "${MAX_NUM_SEQS:=16}"
 : "${MAX_NUM_BATCHED_TOKENS:=8192}"
 : "${PREFILL_SCHEDULE_INTERVAL:=8}"
+: "${MAX_IMAGES_PER_PROMPT:=4}"
+: "${MAX_VIDEOS_PER_PROMPT:=1}"
 : "${KV_CACHE_MEMORY_BYTES:=auto}"
 : "${GPU_MEMORY_UTILIZATION:=0.80}"
 : "${KV_CACHE_DTYPE:=fp8}"
@@ -60,6 +62,7 @@ fi
 : "${SPARKCACHE_CACHE_NAMESPACE:=glm53-flash-dcp4-snapshot-v1}"
 : "${SPARKCACHE_ENABLED:=1}"
 : "${SPARKCACHE_ACCESS_MODE:=read-write}"
+: "${SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS:=300}"
 : "${SPARKCACHE_PUBLICATION_SCHEMA:=snapshot-v1}"
 : "${SPARKCACHE_CLEAR_ONCE:=auto}"
 : "${SPARKCACHE_MAX_BYTES:=42949672960}"
@@ -108,6 +111,7 @@ for name in \
   B12X_MLA_CKV_GATHER_MAX_TOKENS \
   SPARKCACHE_MAX_BYTES SPARKCACHE_MIN_SPAN_TOKENS SPARKCACHE_MAX_SPAN_TOKENS \
   SPARKCACHE_LOAD_THREADS SPARKCACHE_MAX_PENDING_RESTORES \
+  SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS \
   SPARKCACHE_CUDA_RESTORE_IO_WORKERS SPARKCACHE_CUDA_ARENA_BYTES \
   SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT \
   NCCL_MIN_NCHANNELS NCCL_MAX_NCHANNELS OMP_NUM_THREADS \
@@ -118,6 +122,10 @@ done
 require_uint SPARKCACHE_LOW_WATERMARK_BYTES
 require_uint SPARKCACHE_TTL_SECONDS
 require_uint NCCL_IB_GID_INDEX
+require_uint MAX_IMAGES_PER_PROMPT
+require_uint MAX_VIDEOS_PER_PROMPT
+(( SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS <= 300 )) || \
+  die 'SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS must be between 1 and 300'
 
 case "${DECODE_CONTEXT_PARALLEL_SIZE}" in
   1|2|4) ;;
@@ -339,6 +347,7 @@ kv_transfer_args=()
 if [[ "${SPARKCACHE_ENABLED}" == 1 ]]; then
   export SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE SPARKCACHE_MAX_BYTES
   export SPARKCACHE_ACCESS_MODE
+  export SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS
   export SPARKCACHE_PUBLICATION_SCHEMA
   export SPARKCACHE_LOW_WATERMARK_BYTES SPARKCACHE_TTL_SECONDS
   export SPARKCACHE_MIN_SPAN_TOKENS SPARKCACHE_MAX_SPAN_TOKENS
@@ -361,6 +370,9 @@ extra = {
     "spark_cache_draft_checkpoint_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
     "spark_cache_draft_policy": "separate",
     "spark_cache_access_mode": os.environ["SPARKCACHE_ACCESS_MODE"],
+    "spark_cache_shared_prefix_lease_ttl_seconds": integer(
+        "SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS"
+    ),
     "spark_cache_scheduler_probe": "none",
     "spark_cache_streaming_snapshots": False,
     "spark_cache_cuda_restore": True,
@@ -404,6 +416,8 @@ if [[ "${ENABLE_PROMPT_TOKENS_DETAILS}" == 1 ]]; then
   prompt_tokens_details=(--enable-prompt-tokens-details)
 fi
 
+multimodal_limits="{\"image\":${MAX_IMAGES_PER_PROMPT},\"video\":${MAX_VIDEOS_PER_PROMPT}}"
+
 exec docker run -d \
   --name "${container}" \
   --network host --ipc host --shm-size "${SHM_SIZE}" --gpus all \
@@ -446,6 +460,7 @@ exec docker run -d \
   --label org.sparkring.runtime=glm53-jj-r8-gb10-sparkcache \
   --label org.sparkring.sparkcache.enabled="${SPARKCACHE_ENABLED}" \
   --label org.sparkring.sparkcache.access-mode="${SPARKCACHE_ACCESS_MODE}" \
+  --label org.sparkring.sparkcache.shared-prefix-lease-seconds="${SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS}" \
   --label org.sparkring.rank="${rank}" \
   "${IMAGE_REF}" \
   /models/target \
@@ -456,7 +471,8 @@ exec docker run -d \
   --cp-kv-cache-interleave-size "${CP_KV_CACHE_INTERLEAVE_SIZE}" \
   --distributed-executor-backend mp --nnodes "${NODE_COUNT}" --node-rank "${rank}" \
   --master-addr "${MASTER_ADDR}" --master-port "${MASTER_PORT}" \
-  --disable-custom-all-reduce --mamba-cache-mode align --language-model-only \
+  --disable-custom-all-reduce --mamba-cache-mode align \
+  --limit-mm-per-prompt "${multimodal_limits}" \
   --enable-chunked-prefill --dtype bfloat16 --kv-cache-dtype "${KV_CACHE_DTYPE}" \
   --quantization modelopt_mixed --attention-backend "${ATTENTION_BACKEND}" \
   --block-size 256 --moe-backend "${MOE_BACKEND}" --linear-backend "${LINEAR_BACKEND}" \

@@ -11,7 +11,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 LAUNCHER = HERE / "launch-rank.sh"
 ENVIRONMENT = HERE / "runtime.env.example"
-IMAGE_ID = "sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f"
+IMAGE_ID = "sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9"
 
 
 def _defaults() -> dict[str, str]:
@@ -38,17 +38,20 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["IMAGE_ID"] == IMAGE_ID
     assert values["IMAGE_REF"] == (
         "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
-        "sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65"
+        "sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762"
     )
     assert values["MAX_MODEL_LEN"] == "1048576"
     assert values["SERVED_MODEL_NAME"] == "glm-5.3-flash"
     assert values["DECODE_CONTEXT_PARALLEL_SIZE"] == "4"
     assert values["MAX_NUM_BATCHED_TOKENS"] == "8192"
     assert values["PREFILL_SCHEDULE_INTERVAL"] == "8"
+    assert values["MAX_IMAGES_PER_PROMPT"] == "4"
+    assert values["MAX_VIDEOS_PER_PROMPT"] == "1"
     assert values["KV_CACHE_MEMORY_BYTES"] == "auto"
     assert values["SPARKCACHE_ENABLED"] == "1"
     assert values["ENABLE_PROMPT_TOKENS_DETAILS"] == "1"
     assert values["SPARKCACHE_ACCESS_MODE"] == "read-write"
+    assert values["SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS"] == "300"
     assert values["SPARKCACHE_MAX_SPAN_TOKENS"] == "1048576"
     assert values["CP_KV_CACHE_INTERLEAVE_SIZE"] == "auto"
     assert values["B12X_MLA_CKV_GATHER"] == "auto"
@@ -149,12 +152,16 @@ printf '%s  %s\n' "$hash" "$2"
         kv_index = arguments.index("--kv-cache-memory-bytes")
         assert arguments[kv_index + 1] == kv_bytes
         assert "--enable-prompt-tokens-details" in arguments
+        assert "--language-model-only" not in arguments
+        mm_index = arguments.index("--limit-mm-per-prompt")
+        assert json.loads(arguments[mm_index + 1]) == {"image": 4, "video": 1}
         assert "--kv-transfer-config" in arguments
         connector = json.loads(arguments[arguments.index("--kv-transfer-config") + 1])
         extra = connector["kv_connector_extra_config"]
         assert extra["spark_cache_publication_schema"] == "snapshot-v1"
         assert extra["spark_cache_model_profile"] == "glm53-flash-hybrid"
         assert extra["spark_cache_access_mode"] == "read-write"
+        assert extra["spark_cache_shared_prefix_lease_ttl_seconds"] == 300
         assert "spark_cache_store" not in extra
         assert "spark_cache_restore" not in extra
 
@@ -231,6 +238,29 @@ def test_launcher_rejects_invalid_prompt_tokens_details_setting(tmp_path: Path) 
     assert "ENABLE_PROMPT_TOKENS_DETAILS must be 0 or 1" in result.stderr
 
 
+def test_launcher_rejects_shared_prefix_retention_above_five_minutes(
+    tmp_path: Path,
+) -> None:
+    config = tmp_path / "shared-prefix-retention-invalid.env"
+    config.write_text(
+        f"source '{_bash_path(ENVIRONMENT)}'\n"
+        "SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS=301\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    result = subprocess.run(
+        ["bash", _bash_path(LAUNCHER), "0", _bash_path(config)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 78
+    assert "must be between 1 and 300" in result.stderr
+
+
 def test_launcher_can_use_vllm_prefix_cache_without_sparkcache() -> None:
     launcher = LAUNCHER.read_text(encoding="utf-8")
     assert "SPARKCACHE_ENABLED must be 0 or 1" in launcher
@@ -244,6 +274,16 @@ def test_launcher_exposes_independent_sparkcache_access_mode() -> None:
     assert '"spark_cache_access_mode": os.environ["SPARKCACHE_ACCESS_MODE"]' in launcher
     assert '"spark_cache_store": True' not in launcher
     assert '"spark_cache_restore": True' not in launcher
+
+
+def test_launcher_bounds_shared_prefix_retention() -> None:
+    launcher = LAUNCHER.read_text(encoding="utf-8")
+    assert "SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS:=300" in launcher
+    assert "SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS must be between 1 and 300" in launcher
+    assert (
+        '"spark_cache_shared_prefix_lease_ttl_seconds": integer('
+        in launcher
+    )
 
 
 def test_launcher_rejects_unsupported_dcp_geometry() -> None:
@@ -273,6 +313,6 @@ def test_public_operator_documents_use_portable_examples_and_resolving_links() -
             assert (document.parent / relative).resolve().exists(), (document, target)
 
     quickstart = documents[-1].read_text(encoding="utf-8")
-    assert "sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65" in quickstart
+    assert "sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762" in quickstart
     assert "DECODE_CONTEXT_PARALLEL_SIZE=4  # change to 1 or 2" in quickstart
     assert "fanout_image_archive.py" in quickstart
