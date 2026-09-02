@@ -84,11 +84,17 @@ flat descriptors onto the authenticated base, which keeps lookup depth
 bounded as the conversation grows. A damaged or incompatible object is
 rejected and vLLM computes the missing prompt state normally.
 
-`SPARKCACHE_CACHE_NAMESPACE` selects rank-local storage and JIT directories.
+`SPARKCACHE_CACHE_NAMESPACE` selects rank-local persistent-context storage.
 Use `glm53-flash-dcp4-page-tail-cow-v2` with the recommended profile and
 `glm53-flash-dcp4-snapshot-v1` with the published rollback. The directory name
 is not part of SparkCache's content identity or stored format, but separate
 directories make rollback and inspection unambiguous.
+
+Compilation artifacts use the independent, source-bound
+`JIT_CACHE_NAMESPACE`. Changing or clearing a SparkCache data namespace does
+not discard Triton, TorchInductor, B12X, or vLLM compilation caches. Each rank
+keeps its own persistent copy under `CACHE_HOST_ROOT`; the four ranks do not
+write to one network-shared compilation directory.
 
 Set `SPARKCACHE_ASYNC_PAGE_CAPTURE=1` to capture manager pages through the
 bounded CUDA ring. `SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES` defaults to 8 GiB for
@@ -98,6 +104,13 @@ while a later capture uses the other. Restore separately pipelines bounded
 NVMe reads and CUDA placement through two 256 MiB mapped arenas. A third arena
 is not part of the profile because the two-stage pipeline has no measured
 arena wait that would justify more unified-memory pressure.
+
+The rank-0 launcher can run `warmup-glm53-dflash.py` before it returns success.
+The default environment template enables C1/C2/C4/C8/C16 warmup and prompt
+spans covering the DFlash Triton `BLOCK_SIZE` specializations through 256.
+Do not admit normal traffic until the rank-0 launcher returns. A failed or
+timed-out warmup makes launch fail instead of leaving an apparently healthy
+API in front of a wedged engine.
 
 The published registry image below contains the complete-snapshot
 implementation. It does not contain `tail-cow-v2`. Build the pinned source in

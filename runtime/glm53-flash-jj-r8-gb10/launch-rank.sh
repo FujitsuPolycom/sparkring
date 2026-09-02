@@ -60,6 +60,13 @@ fi
 : "${CUDAGRAPH_MODE:=FULL_AND_PIECEWISE}"
 : "${MAX_CUDAGRAPH_CAPTURE_SIZE:=128}"
 : "${SPARKCACHE_CACHE_NAMESPACE:=glm53-flash-dcp4-snapshot-v1}"
+: "${JIT_CACHE_NAMESPACE:=glm53-flash-sm121-vllm-22ffe140-b12x-6255090a}"
+: "${JIT_MONITOR_VERBOSE:=0}"
+: "${DFLASH_WARMUP:=0}"
+: "${DFLASH_WARMUP_CONCURRENCIES:=1,2,4,8,16}"
+: "${DFLASH_WARMUP_SHAPE_WORDS:=8,24,56,120,248}"
+: "${DFLASH_WARMUP_MAX_TOKENS:=16}"
+: "${DFLASH_WARMUP_TIMEOUT_SECONDS:=600}"
 : "${SPARKCACHE_ENABLED:=1}"
 : "${SPARKCACHE_ACCESS_MODE:=read-write}"
 : "${SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS:=300}"
@@ -236,12 +243,21 @@ case "${MULTIMODAL_INPUTS}" in
   0|1) ;;
   *) die 'MULTIMODAL_INPUTS must be 0 (text only) or 1 (images and video)' ;;
 esac
-for name in SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE
+case "${JIT_MONITOR_VERBOSE}" in
+  0|1) ;;
+  *) die 'JIT_MONITOR_VERBOSE must be 0 or 1' ;;
+esac
+case "${DFLASH_WARMUP}" in
+  0|1) ;;
+  *) die 'DFLASH_WARMUP must be 0 or 1' ;;
+esac
+for name in SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE JIT_CACHE_NAMESPACE
 do
   [[ "${!name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || \
     die "${name} must contain only letters, digits, dot, underscore, or hyphen"
 done
 api_key_args=()
+api_keys=()
 if [[ -n "${API_KEYS_FILE}" ]]; then
   [[ -f "${API_KEYS_FILE}" && -r "${API_KEYS_FILE}" ]] || \
     die "API_KEYS_FILE is not a readable regular file: ${API_KEYS_FILE}"
@@ -258,6 +274,10 @@ if [[ -n "${API_KEYS_FILE}" ]]; then
   # vLLM parses --api-key with nargs="+"; keep every key in one occurrence so a
   # later option cannot truncate the accepted set.
   api_key_args=(--api-key "${api_keys[@]}")
+fi
+warmup_api_key_args=()
+if (( ${#api_keys[@]} > 0 )); then
+  warmup_api_key_args=(--api-key "${api_keys[0]}")
 fi
 for name in TARGET_MODEL_HOST_PATH DFLASH_MODEL_HOST_PATH CACHE_HOST_ROOT; do
   value="${!name}"
@@ -471,8 +491,12 @@ prompt_tokens_details=()
 if [[ "${ENABLE_PROMPT_TOKENS_DETAILS}" == 1 ]]; then
   prompt_tokens_details=(--enable-prompt-tokens-details)
 fi
+jit_monitor_args=()
+if [[ "${JIT_MONITOR_VERBOSE}" == 1 ]]; then
+  jit_monitor_args=(--jit-monitor-verbose)
+fi
 
-exec docker run -d \
+container_id="$(docker run -d \
   --name "${container}" \
   --network host --ipc host --shm-size "${SHM_SIZE}" --gpus all \
   --ulimit memlock=-1:-1 --cap-add IPC_LOCK --device /dev/infiniband \
@@ -487,10 +511,10 @@ exec docker run -d \
   -e VLLM_GLM53_SPLIT_MAMBA_BLOCK_SIZE=512 \
   -e "VLLM_B12X_MLA_CKV_GATHER=${B12X_MLA_CKV_GATHER}" \
   -e "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS=${B12X_MLA_CKV_GATHER_MAX_TOKENS}" \
-  -e "VLLM_CACHE_ROOT=/cache/jit/vllm/${SPARKCACHE_CACHE_NAMESPACE}" \
-  -e "B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x/6255090a/${SPARKCACHE_CACHE_NAMESPACE}" \
-  -e "TRITON_CACHE_DIR=/cache/jit/triton/${SPARKCACHE_CACHE_NAMESPACE}" \
-  -e "TORCHINDUCTOR_CACHE_DIR=/cache/jit/torchinductor/${SPARKCACHE_CACHE_NAMESPACE}" \
+  -e "VLLM_CACHE_ROOT=/cache/jit/vllm/${JIT_CACHE_NAMESPACE}" \
+  -e "B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x/${JIT_CACHE_NAMESPACE}" \
+  -e "TRITON_CACHE_DIR=/cache/jit/triton/${JIT_CACHE_NAMESPACE}" \
+  -e "TORCHINDUCTOR_CACHE_DIR=/cache/jit/torchinductor/${JIT_CACHE_NAMESPACE}" \
   -e XDG_CACHE_HOME=/cache/jit -e HF_HUB_OFFLINE=1 -e TRANSFORMERS_OFFLINE=1 \
   -e VLLM_NO_USAGE_STATS=1 -e VLLM_PLUGINS= \
   -e "OMP_NUM_THREADS=${OMP_NUM_THREADS}" \
@@ -545,5 +569,18 @@ exec docker run -d \
   --compilation-config "${compilation_config}" \
   --max-cudagraph-capture-size "${MAX_CUDAGRAPH_CAPTURE_SIZE}" \
   --async-scheduling --enable-prefix-caching --cudagraph-metrics \
+  "${jit_monitor_args[@]}" \
   "${prompt_tokens_details[@]}" \
-  "${kv_transfer_args[@]}" "${headless[@]}"
+  "${kv_transfer_args[@]}" "${headless[@]}")"
+
+if [[ "${rank}" == 0 && "${DFLASH_WARMUP}" == 1 ]]; then
+  docker exec "${container}" python3 /opt/sparkring/bin/warmup-glm53-dflash.py \
+    --endpoint "http://127.0.0.1:${PORT}" \
+    --model "${SERVED_MODEL_NAME}" \
+    --concurrencies "${DFLASH_WARMUP_CONCURRENCIES}" \
+    --shape-words "${DFLASH_WARMUP_SHAPE_WORDS}" \
+    --max-tokens "${DFLASH_WARMUP_MAX_TOKENS}" \
+    --timeout-seconds "${DFLASH_WARMUP_TIMEOUT_SECONDS}" \
+    "${warmup_api_key_args[@]}"
+fi
+printf '%s\n' "${container_id}"

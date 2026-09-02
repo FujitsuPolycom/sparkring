@@ -57,6 +57,9 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["SPARKCACHE_MAX_SPAN_TOKENS"] == "1048576"
     assert values["CP_KV_CACHE_INTERLEAVE_SIZE"] == "auto"
     assert values["B12X_MLA_CKV_GATHER"] == "auto"
+    assert values["JIT_CACHE_NAMESPACE"] == (
+        "glm53-flash-sm121-vllm-22ffe140-b12x-6255090a"
+    )
 
 
 def test_launcher_resolves_dcp_profiles_and_prompt_token_details(
@@ -158,6 +161,17 @@ printf '%s  %s\n' "$hash" "$2"
         mm_index = arguments.index("--limit-mm-per-prompt")
         assert json.loads(arguments[mm_index + 1]) == {"image": 4, "video": 1}
         assert "--kv-transfer-config" in arguments
+        jit_namespace = "glm53-flash-sm121-vllm-22ffe140-b12x-6255090a"
+        assert f"VLLM_CACHE_ROOT=/cache/jit/vllm/{jit_namespace}" in arguments
+        assert (
+            f"B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x/{jit_namespace}"
+            in arguments
+        )
+        assert f"TRITON_CACHE_DIR=/cache/jit/triton/{jit_namespace}" in arguments
+        assert (
+            f"TORCHINDUCTOR_CACHE_DIR=/cache/jit/torchinductor/{jit_namespace}"
+            in arguments
+        )
         connector = json.loads(arguments[arguments.index("--kv-transfer-config") + 1])
         extra = connector["kv_connector_extra_config"]
         assert extra["spark_cache_publication_schema"] == "snapshot-v1"

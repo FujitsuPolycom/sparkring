@@ -9,6 +9,7 @@ ARG SOURCE_RECEIPT_SHA256
 COPY bundle/ /opt/sparkring/overlays/jj-r8-sparkcache-arm64/
 COPY install_overlay.py /opt/sparkring/bin/install-jj-r8-sparkcache-overlay.py
 COPY verify_image.py /opt/sparkring/bin/verify-jj-r8-sparkcache-image.py
+COPY warmup_dflash.py /opt/sparkring/bin/warmup-glm53-dflash.py
 
 RUN python3 /opt/sparkring/bin/install-jj-r8-sparkcache-overlay.py \
       --root /opt/sparkring/overlays/jj-r8-sparkcache-arm64 && \

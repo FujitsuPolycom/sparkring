@@ -229,10 +229,15 @@ Restore-only mode is useful for reuse-heavy serving or performance tests where
 one-off prompt publication would add GPU-to-host capture work. A restore miss
 is computed by vLLM normally.
 
-The template's `SPARKCACHE_CACHE_NAMESPACE` value selects rank-local storage
-and JIT directories. It is not part of SparkCache's content identity or stored
-format. Changing it selects a different root and therefore a different set of
-discoverable entries.
+The template's `SPARKCACHE_CACHE_NAMESPACE` value selects rank-local
+persistent-context storage. It is not part of SparkCache's content identity or
+stored format. Changing it selects a different root and therefore a different
+set of discoverable entries.
+
+`JIT_CACHE_NAMESPACE` independently selects persistent Triton,
+TorchInductor, B12X, and vLLM compilation data. Keep its source-bound default
+when changing or clearing SparkCache storage. Every rank keeps a local copy;
+do not point all four ranks at one network-shared compilation directory.
 
 The image supports three persistent publication formats:
 
@@ -279,6 +284,11 @@ restore arenas are not part of this profile because measured arena waits did
 not justify the additional unified-memory pressure. DCP1 and DCP2 page-tail
 capture have no matching live record; use complete snapshots or test those
 layouts separately.
+
+The environment template enables `DFLASH_WARMUP=1`. Rank 0 waits for the API,
+then exercises C1/C2/C4/C8/C16 and scheduled prompt spans covering DFlash's
+Triton block-size specializations. Treat completion of the rank-0 launch
+command—not an early `/health` response—as service readiness.
 
 Disabling SparkCache omits the external KV connector and all persistent
 publication and restore work. `--enable-prefix-caching` remains enabled. The

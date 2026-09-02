@@ -310,7 +310,12 @@ def prepare_context(
             encoding="utf-8",
             newline="\n",
         )
-    for name in ("Dockerfile", "install_overlay.py", "verify_image.py"):
+    for name in (
+        "Dockerfile",
+        "install_overlay.py",
+        "verify_image.py",
+        "warmup_dflash.py",
+    ):
         shutil.copy2(HERE / name, context / name)
     receipt = {
         "schema": "sparkring-glm53-jj-r8-gb10-build-context/v1",
@@ -335,6 +340,7 @@ def prepare_context(
                 "Dockerfile",
                 "install_overlay.py",
                 "verify_image.py",
+                "warmup_dflash.py",
                 "bundle/receipts/pins.json",
                 "bundle/receipts/vllm-source-manifest.json",
                 "bundle/receipts/sparkcache-source-manifest.json",

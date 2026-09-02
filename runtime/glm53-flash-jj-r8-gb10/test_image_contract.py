@@ -42,6 +42,19 @@ def test_metrics_patch_uses_connector_owned_compact_lines(tmp_path: Path) -> Non
     assert 'log_fn("KV Transfer metrics: %s", xfer_metrics_str)' in result
 
 
+def test_image_packages_dflash_warmup_and_rank_zero_waits_for_it() -> None:
+    recipe = (HERE / "Dockerfile").read_text(encoding="utf-8")
+    builder = (HERE / "build_image.py").read_text(encoding="utf-8")
+    launcher = (HERE / "launch-rank.sh").read_text(encoding="utf-8")
+
+    assert "COPY warmup_dflash.py /opt/sparkring/bin/warmup-glm53-dflash.py" in recipe
+    assert '"warmup_dflash.py"' in builder
+    assert 'container_id="$(docker run -d' in launcher
+    assert '"${rank}" == 0 && "${DFLASH_WARMUP}" == 1' in launcher
+    assert "docker exec \"${container}\" python3" in launcher
+    assert "/opt/sparkring/bin/warmup-glm53-dflash.py" in launcher
+
+
 def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     pins = json.loads((HERE / "pins.json").read_text(encoding="utf-8"))
     assert pins["vllm"]["commit"] == (
