@@ -145,7 +145,28 @@ sparkring doctor --verify --apply
 Ring Doctor can change only observed fabric routes, IPv4 forwarding, and
 fabric-to-fabric `DOCKER-USER` accepts. It checks the active management address
 and return route before and after every individual operation and stops at the
-first mismatch.
+first mismatch. Before any repair operation, it checks `sudo -n true` on every
+rank whose plan has commands. If any check fails, Ring Doctor identifies the
+rank and applies no repair command anywhere in the ring.
+
+## 8. Persist routing and firewall state across boots
+
+Routes, IPv4 forwarding, and `DOCKER-USER` rules applied by Ring Doctor are
+runtime state. Do not restore the firewall rules with a cron `@reboot` job.
+Cron can run before Docker creates its firewall chains, and Docker can replace
+rules installed that early.
+
+Use `sparkring doctor --emit-unit DIR` after reviewing the complete repair plan.
+The command writes one fail-closed repair program and systemd service per rank.
+Each program contains the complete idempotent route, forwarding, and
+fabric-to-fabric firewall plan. The service declares
+`After=network-online.target docker.service` and retries after ten seconds when
+the recorded management address or Docker firewall chain is not ready.
+
+The command writes files but does not install or enable them. The absolute
+program path recorded in `ExecStart` must exist on the corresponding rank
+before its service is installed. The installation requirements and management
+safety checks are described in [SparkRing prerequisites](PREREQUISITES.md#management-safety-during-repair).
 
 ## Worker-controller recovery
 
