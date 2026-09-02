@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from scripts.ring_doctor import (
     discover_nodes,
     discovery_sufficient,
     docker_user_accepts,
+    emit_units,
     infer_adjacency,
     infer_topology,
     enforce_controller_location,
@@ -390,6 +392,31 @@ class ManagementRepairSafetyTests(unittest.TestCase):
 
         self.assertIn("EXPECTED_MANAGEMENT = {'eth0': ['192.0.2.10/24']}", program)
         self.assertGreaterEqual(program.count("require_management()"), 5)
+
+    def test_emitted_unit_restarts_after_program_failure(self) -> None:
+        guarded = self.guarded_observation()
+        guard = ManagementGuard("r0", (guarded.host_interfaces["eth0"],))
+        plan = NodePlan("r0")
+
+        with tempfile.TemporaryDirectory() as directory:
+            emit_units(
+                Path(directory),
+                {"r0": guarded},
+                {"r0": plan},
+                {"r0": guard},
+            )
+            unit = Path(directory, "ring-doctor-r0.service").read_text(
+                encoding="utf-8"
+            )
+
+        self.assertIn(
+            "[Service]\n"
+            "Type=oneshot\n"
+            "Restart=on-failure\n"
+            "RestartSec=10\n"
+            "ExecStart=",
+            unit,
+        )
 
 
 class AddressAndTopologyTests(unittest.TestCase):
