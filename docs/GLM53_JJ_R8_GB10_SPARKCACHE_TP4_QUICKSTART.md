@@ -23,8 +23,8 @@ kernels provide the model-specific runtime and performance foundation.
 ## Image identity
 
 ```text
-registry: ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65
-local image ID: sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f
+registry: ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762
+local image ID: sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9
 platform: linux/arm64
 ```
 
@@ -35,8 +35,8 @@ profile inputs and are not substitutes for the operator image below.
 Pull and verify the immutable image on rank 0:
 
 ```bash
-image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65'
-expected_image_id='sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f'
+image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762'
+expected_image_id='sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9'
 docker pull "${image}"
 test "$(docker image inspect "${image}" --format '{{.Id}}')" = "${expected_image_id}"
 ```
@@ -136,6 +136,12 @@ Replace these five site values:
 The default OpenAI-compatible model name is `glm-5.3-flash`. Override
 `SERVED_MODEL_NAME` only when the site needs a distinct routing name.
 
+The profile accepts up to four images and one video per request. Set
+`MAX_IMAGES_PER_PROMPT` or `MAX_VIDEOS_PER_PROMPT` to zero to disable that
+modality. SparkCache binds media identity and placeholder geometry into the
+persistent context digest, so different media cannot share an entry merely
+because their placeholder tokens have the same shape.
+
 The server binds `0.0.0.0` and serves without authentication by default. To
 require an OpenAI-compatible bearer token, point `API_KEYS_FILE` at a mode-0600
 rank-local file holding one accepted key per line; the launcher refuses to
@@ -178,6 +184,17 @@ When SparkCache is enabled, choose whether the connector may publish:
 SPARKCACHE_ACCESS_MODE=read-write   # restore existing entries and publish new ones
 SPARKCACHE_ACCESS_MODE=restore-only # restore existing entries; never capture new prompts
 ```
+
+The GLM-5.3 profile retains a verified shared GPU prefix for up to five
+minutes so one restore can serve an extended request queue:
+
+```bash
+SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS=300
+```
+
+vLLM may release the prefix earlier when active requests need its KV blocks.
+Reduce the value when large retained prefixes compete with the required
+context length or concurrency.
 
 Restore-only mode is useful for reuse-heavy serving or performance tests where
 one-off prompt publication would add GPU-to-host capture work. A restore miss
@@ -244,29 +261,24 @@ curl --fail http://rank0.example.net:8015/v1/models
 
 ## Evidence and limits
 
-The immutable image above completed a fresh 125,999-token publication with
-bounded asynchronous CUDA capture. Every rank stored the 124,928-token,
-231.8 MiB boundary. Capture completion was observed 403.7–408.5 ms after
-submission per rank, and durable commit took 520.6–567.6 ms per rank.
+The registry artifact above passed four-rank TP4/DCP4 startup and API checks
+with 24 GiB of FP8 KV per rank, 4,321,618 logical KV tokens, a 300-second
+shared-prefix lease, and no SparkCache source bind mounts. A 448×448 solid-red
+PNG used 256 multimodal tokens and was identified as red. All ranks loaded and
+ran image ID `sha256:d1a07147…`. See the
+[`artifact receipt`](../runtime/glm53-flash-jj-r8-gb10/multimodal-lease300-image-receipt.json)
+for complete identities and limitations.
 
-The same DCP4 service restored 899,072 tokens from an exact 899,998-token
-prompt in 2.123–2.180 seconds per rank, then restored 999,424 tokens from an
-exact 1,000,000-token prompt in 2.276–2.395 seconds per rank. Both requests
-returned their exact needles without an identical prompt being sent after
-startup to prime either entry. Startup inventory checked 29 manifests and
-rejected none.
+SparkCache pull request 52 separately tested the exact embedded SparkCache
+source with different image and video contents, persistent publication, and
+restart restore. The built-image smoke did not repeat video input or
+persistent multimodal restoration after another process restart.
 
-The live checks overrode the template's semantic storage-root name with the
-durable evidence identifier `jj-r10-async-ab-v1`. The operator default
-`glm53-flash-dcp4-snapshot-v1` was not measured. The name difference changes
-which directory is searched; it does not change `CacheIdentity` or the stored
-snapshot format.
-
-This evidence covers asynchronous complete-snapshot publication at the
-124,928-token boundary and persistent restore for the recorded DCP4 profile.
-It does not establish larger asynchronous publication, long-duration serving,
-concurrent deep-context publication, or asynchronous capture at DCP1 or DCP2.
-See the
+The retained vLLM, B12X, NCCL, and CUDA components also have DCP4 evidence
+from an earlier SparkCache source composition. That deployment captured a
+124,928-token boundary and restored 899,072-token and 999,424-token entries.
+Those measurements support the unchanged runtime components; they are not
+performance qualification of the registry artifact above. See the
 [`asynchronous capture validation`](../runtime/glm53-flash-jj-r8-gb10/ASYNC_CAPTURE_IMAGE_VALIDATION.md)
 and the
 [`DCP1 deep-context record`](../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md)

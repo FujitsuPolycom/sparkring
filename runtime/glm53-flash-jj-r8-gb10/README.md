@@ -37,9 +37,11 @@ The launcher defaults to:
 | maximum model length | 1,048,576 tokens |
 | batched-token budget | 8,192 tokens |
 | sequences | 16 |
+| multimodal requests | up to four images and one video per request |
 | FP8 KV allocation | 24 GiB for the default DCP4 profile; 26 GiB for DCP1; 30 GiB for DCP2 |
 | DFlash2 depth | 7 |
 | SparkCache publication | complete `snapshot-v1` objects |
+| shared GPU-prefix retention | up to 300 seconds |
 
 DCP1 resolves to one-token KV interleaving without full-CKV gather. DCP2 and
 DCP4 resolve to four-token KV interleaving with full-CKV gather. Operators can
@@ -103,13 +105,14 @@ credentials, or persistent cache data.
 Pull the immutable Linux/ARM64 image:
 
 ```text
-ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65
+ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762
 ```
 
 Its local Docker image ID is
-`sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f`.
+`sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9`.
 Construction, direct-fabric distribution, profile smoke tests, historical
 deep-context evidence, and limitations are recorded in
+[`multimodal-lease300-image-receipt.json`](multimodal-lease300-image-receipt.json),
 [`async-capture-image-receipt.json`](async-capture-image-receipt.json),
 [`ASYNC_CAPTURE_IMAGE_VALIDATION.md`](ASYNC_CAPTURE_IMAGE_VALIDATION.md), and the
 [`deep-context record`](../../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md).
