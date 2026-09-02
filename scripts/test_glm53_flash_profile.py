@@ -320,6 +320,12 @@ def test_site_and_runtime_profiles_have_one_identity_contract() -> None:
 def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
     base = _json(BASE_RECIPE_PATH)
     cache = _json(CACHE_RECIPE_PATH)
+    image_receipt = _json(
+        ROOT
+        / "runtime"
+        / "glm53-flash-jj-r8-gb10"
+        / "multimodal-lease300-image-receipt.json"
+    )
 
     assert base["status"] == "implemented"
     assert base["serving_common"]["external_kv_cache"] is False
@@ -345,6 +351,22 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
     assert cache["runtime"]["sparkcache"]["source_commit"] == (
         "b7d1c188a3f9e78595e6e7b649f3751131e269ea"
     )
+    assert base["runtime"]["sparkring_source_commit"] == (
+        image_receipt["sources"]["sparkring_image_revision"]
+    )
+
+
+def test_historical_async_capture_record_discloses_unavailable_source() -> None:
+    record = (
+        ROOT
+        / "runtime"
+        / "glm53-flash-jj-r8-gb10"
+        / "ASYNC_CAPTURE_IMAGE_VALIDATION.md"
+    ).read_text(encoding="utf-8")
+    assert "d2f8911427d64bbb89c275814777fc3f8112fd21" in record
+    assert "not reachable from the public repository" in record
+    assert "history." in record
+    assert "cannot be independently reconstructed" in record
 
 
 def test_public_glm53_benchmark_retains_only_valid_run1_cells() -> None:
