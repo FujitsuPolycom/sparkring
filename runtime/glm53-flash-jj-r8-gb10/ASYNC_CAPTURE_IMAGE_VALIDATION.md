@@ -5,6 +5,15 @@ of the recorded 124,928-token, 231.8 MiB-per-rank snapshot under the immutable
 Linux/ARM64 image and DCP4 conditions recorded in
 [`async-capture-image-receipt.json`](async-capture-image-receipt.json).
 
+> [!WARNING]
+> SparkRing commit `d2f8911427d64bbb89c275814777fc3f8112fd21`
+> is recorded by the image but is not reachable from the public repository
+> history. The measurements below remain evidence for the immutable image
+> digest, but the SparkRing source layer cannot be independently reconstructed.
+> Use the maintained operator image and public source contract in
+> [`multimodal-lease300-image-receipt.json`](multimodal-lease300-image-receipt.json)
+> for reproducible deployment.
+
 The image combines the Local Inference Lab GLM-5.3 runtime, BF16 DFlash2 at
 depth seven, B12X GB10 kernels, switchless NCCL, fastsafetensors, and
 SparkCache's bounded CUDA publication and restore paths.
@@ -16,7 +25,7 @@ SparkCache's bounded CUDA publication and restore paths.
 | Registry image | `ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:bc7d079f16ff4a418669c58c5250f2da52e989a0c5805569ba9429d41b765f65` |
 | Published tag | `ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260901-r10-async-telemetry` |
 | Image ID | `sha256:35f397668c01075d0bdd28bbdb3398afd3744df6086646c6f68bcf7ebe7f918f` |
-| SparkRing image source | commit `d2f8911427d64bbb89c275814777fc3f8112fd21` |
+| SparkRing image source | commit `d2f8911427d64bbb89c275814777fc3f8112fd21` (not available in public history) |
 | SparkCache source | commit `c5dda75ec46bf235f6ece6e0d0174c1e41bd805a` |
 | vLLM source | commit `22ffe1401ca9bd3e4503e62de7b414deca7661a1` |
 

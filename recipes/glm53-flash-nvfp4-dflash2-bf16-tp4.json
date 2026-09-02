@@ -32,7 +32,7 @@
     "quickstart": "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md",
     "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762",
     "image_id": "sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9",
-    "sparkring_source_commit": "d2f8911427d64bbb89c275814777fc3f8112fd21",
+    "sparkring_source_commit": "a150c98ccfdc4b655679860121f24712490dd9ee",
     "vllm_repository": "https://github.com/FujitsuPolycom/vllm.git",
     "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
     "b12x_commit": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
