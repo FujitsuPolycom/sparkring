@@ -9,7 +9,8 @@ ARG SOURCE_RECEIPT_SHA256
 COPY bundle/ /opt/sparkring/overlays/jj-r8-sparkcache-arm64/
 COPY install_overlay.py /opt/sparkring/bin/install-jj-r8-sparkcache-overlay.py
 COPY verify_image.py /opt/sparkring/bin/verify-jj-r8-sparkcache-image.py
-COPY warmup_dflash.py /opt/sparkring/bin/warmup-glm53-dflash.py
+COPY warmup_dflash.py /opt/sparkring/bin/warmup_dflash.py
+COPY serve_with_warmup.py /opt/sparkring/bin/serve-with-warmup.py
 
 RUN python3 /opt/sparkring/bin/install-jj-r8-sparkcache-overlay.py \
       --root /opt/sparkring/overlays/jj-r8-sparkcache-arm64 && \
@@ -17,6 +18,9 @@ RUN python3 /opt/sparkring/bin/install-jj-r8-sparkcache-overlay.py \
     cp /opt/sparkring/overlays/jj-r8-sparkcache-arm64/receipts/* \
       /opt/sparkring/receipts/jj-r8-sparkcache-arm64/ && \
     python3 /opt/sparkring/bin/verify-jj-r8-sparkcache-image.py --inside-image
+
+HEALTHCHECK --interval=2s --timeout=1s --start-period=600s --retries=1 \
+  CMD test -f /tmp/sparkring-engine-ready || exit 1
 
 ENV VLLM_B12X_MOE_FP4_FORCE_A16=0 \
     CUTE_DSL_ARCH=sm_121a \

@@ -275,9 +275,9 @@ if [[ -n "${API_KEYS_FILE}" ]]; then
   # later option cannot truncate the accepted set.
   api_key_args=(--api-key "${api_keys[@]}")
 fi
-warmup_api_key_args=()
+warmup_api_key_env=()
 if (( ${#api_keys[@]} > 0 )); then
-  warmup_api_key_args=(--api-key "${api_keys[0]}")
+  warmup_api_key_env=(-e "SPARKRING_WARMUP_API_KEY=${api_keys[0]}")
 fi
 for name in TARGET_MODEL_HOST_PATH DFLASH_MODEL_HOST_PATH CACHE_HOST_ROOT; do
   value="${!name}"
@@ -498,6 +498,7 @@ fi
 
 container_id="$(docker run -d \
   --name "${container}" \
+  --entrypoint /opt/sparkring/bin/serve-with-warmup.py \
   --network host --ipc host --shm-size "${SHM_SIZE}" --gpus all \
   --ulimit memlock=-1:-1 --cap-add IPC_LOCK --device /dev/infiniband \
   --security-opt label=disable --init \
@@ -506,6 +507,14 @@ container_id="$(docker run -d \
   -v "${CACHE_HOST_ROOT}:/cache/jit" \
   "${sparkcache_source_args[@]}" \
   "${vllm_metrics_args[@]}" \
+  -e "SPARKRING_NODE_RANK=${rank}" \
+  -e "PORT=${PORT}" -e "SERVED_MODEL_NAME=${SERVED_MODEL_NAME}" \
+  -e "DFLASH_WARMUP=${DFLASH_WARMUP}" \
+  -e "DFLASH_WARMUP_CONCURRENCIES=${DFLASH_WARMUP_CONCURRENCIES}" \
+  -e "DFLASH_WARMUP_SHAPE_WORDS=${DFLASH_WARMUP_SHAPE_WORDS}" \
+  -e "DFLASH_WARMUP_MAX_TOKENS=${DFLASH_WARMUP_MAX_TOKENS}" \
+  -e "DFLASH_WARMUP_TIMEOUT_SECONDS=${DFLASH_WARMUP_TIMEOUT_SECONDS}" \
+  "${warmup_api_key_env[@]}" \
   -e "VLLM_HOST_IP=${HOST_IP}" \
   -e VLLM_GLM53_SPLIT_TARGET_BLOCK_SIZE=512 \
   -e VLLM_GLM53_SPLIT_MAMBA_BLOCK_SIZE=512 \
@@ -574,13 +583,17 @@ container_id="$(docker run -d \
   "${kv_transfer_args[@]}" "${headless[@]}")"
 
 if [[ "${rank}" == 0 && "${DFLASH_WARMUP}" == 1 ]]; then
-  docker exec "${container}" python3 /opt/sparkring/bin/warmup-glm53-dflash.py \
-    --endpoint "http://127.0.0.1:${PORT}" \
-    --model "${SERVED_MODEL_NAME}" \
-    --concurrencies "${DFLASH_WARMUP_CONCURRENCIES}" \
-    --shape-words "${DFLASH_WARMUP_SHAPE_WORDS}" \
-    --max-tokens "${DFLASH_WARMUP_MAX_TOKENS}" \
-    --timeout-seconds "${DFLASH_WARMUP_TIMEOUT_SECONDS}" \
-    "${warmup_api_key_args[@]}"
+  readiness_deadline=$((SECONDS + DFLASH_WARMUP_TIMEOUT_SECONDS + 120))
+  while true; do
+    health="$(docker inspect --format '{{.State.Health.Status}}' "${container}" 2>/dev/null || true)"
+    [[ "${health}" == healthy ]] && break
+    state="$(docker inspect --format '{{.State.Status}}' "${container}" 2>/dev/null || true)"
+    if [[ "${health}" == unhealthy || "${state}" == exited || "${state}" == dead ]]; then
+      die "rank-0 engine readiness failed: state=${state:-unknown} health=${health:-unknown}"
+    fi
+    (( SECONDS < readiness_deadline )) || \
+      die 'rank-0 engine readiness timed out'
+    sleep 1
+  done
 fi
 printf '%s\n' "${container_id}"

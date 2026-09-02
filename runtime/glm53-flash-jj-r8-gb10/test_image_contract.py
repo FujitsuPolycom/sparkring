@@ -47,12 +47,14 @@ def test_image_packages_dflash_warmup_and_rank_zero_waits_for_it() -> None:
     builder = (HERE / "build_image.py").read_text(encoding="utf-8")
     launcher = (HERE / "launch-rank.sh").read_text(encoding="utf-8")
 
-    assert "COPY warmup_dflash.py /opt/sparkring/bin/warmup-glm53-dflash.py" in recipe
+    assert "COPY warmup_dflash.py /opt/sparkring/bin/warmup_dflash.py" in recipe
+    assert "COPY serve_with_warmup.py /opt/sparkring/bin/serve-with-warmup.py" in recipe
     assert '"warmup_dflash.py"' in builder
+    assert '"serve_with_warmup.py"' in builder
     assert 'container_id="$(docker run -d' in launcher
     assert '"${rank}" == 0 && "${DFLASH_WARMUP}" == 1' in launcher
-    assert "docker exec \"${container}\" python3" in launcher
-    assert "/opt/sparkring/bin/warmup-glm53-dflash.py" in launcher
+    assert "--entrypoint /opt/sparkring/bin/serve-with-warmup.py" in launcher
+    assert "rank-0 engine readiness timed out" in launcher
 
 
 def test_pins_bind_effective_sources_and_operator_defaults() -> None:

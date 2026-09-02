@@ -315,6 +315,7 @@ def prepare_context(
         "install_overlay.py",
         "verify_image.py",
         "warmup_dflash.py",
+        "serve_with_warmup.py",
     ):
         shutil.copy2(HERE / name, context / name)
     receipt = {
@@ -341,6 +342,7 @@ def prepare_context(
                 "install_overlay.py",
                 "verify_image.py",
                 "warmup_dflash.py",
+                "serve_with_warmup.py",
                 "bundle/receipts/pins.json",
                 "bundle/receipts/vllm-source-manifest.json",
                 "bundle/receipts/sparkcache-source-manifest.json",

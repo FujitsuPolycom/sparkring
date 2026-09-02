@@ -105,7 +105,8 @@ NVMe reads and CUDA placement through two 256 MiB mapped arenas. A third arena
 is not part of the profile because the two-stage pipeline has no measured
 arena wait that would justify more unified-memory pressure.
 
-The rank-0 launcher can run `warmup-glm53-dflash.py` before it returns success.
+The image entrypoint runs `warmup_dflash.py` before Docker reports rank 0 as
+healthy.
 The default environment template enables C1/C2/C4/C8/C16 warmup and prompt
 spans covering the DFlash Triton `BLOCK_SIZE` specializations through 256.
 Do not admit normal traffic until the rank-0 launcher returns. A failed or
