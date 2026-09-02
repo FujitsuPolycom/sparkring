@@ -304,14 +304,36 @@ def test_page_tail_v2_receipt_binds_the_local_image() -> None:
     assert receipt["status"] == "implemented"
     assert receipt["platform"] == "linux/arm64"
     assert receipt["image_id"] == (
-        "sha256:7df364ed1bb0036d2514e36d5e40cfa1721c7fb9d841b0d9c4b519b53f5680c8"
+        "sha256:1c98731de7e3963a609aa7e30582cabbaf59c7d3a59e88d704f21319fa3e0daa"
     )
     assert receipt["inside_image"]["sparkcache_commit"] == (
-        "fb03fd4f007f492608ebef01954365627ab2a2d6"
+        "737ed1399f559ba036fb0e358541744011afd47d"
     )
     assert receipt["labels"]["org.sparkcache.publication-schema"] == (
         "snapshot-v1,page-tail-cow-v1,page-tail-cow-v2"
     )
+
+
+def test_dflash_readiness_receipt_records_engine_level_recovery() -> None:
+    receipt = json.loads(
+        (HERE / "dflash-jit-readiness-validation.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert receipt["status"] == "qualified"
+    assert receipt["failure_observation"]["api_health_status"] == 200
+    assert receipt["failure_observation"]["requests_running_after_timeout"] == 2
+    assert receipt["readiness"]["triton_block_sizes_covered"] == [
+        16,
+        32,
+        64,
+        128,
+        256,
+    ]
+    assert receipt["validation"]["concurrent_restored_prefix_tokens"] == 921600
+    assert receipt["validation"]["jit_events_after_readiness"] == 0
+    assert receipt["validation"]["cuda_or_cublas_errors_after_readiness"] == 0
+    assert receipt["validation"]["requests_running_after_validation"] == 0
 
 
 def test_async_capture_image_receipt_binds_public_artifact_and_live_results() -> None:

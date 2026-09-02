@@ -1,0 +1,40 @@
+{
+  "schema": "sparkring-glm53-dflash-jit-readiness/v1",
+  "status": "qualified",
+  "failure_observation": {
+    "time": "2026-09-02T22:47:14Z",
+    "image_id": "sha256:7df364ed1bb0036d2514e36d5e40cfa1721c7fb9d841b0d9c4b519b53f5680c8",
+    "symptom": "rank 0 raised CUBLAS_STATUS_INTERNAL_ERROR after a DFlash Triton specialization compiled during two active requests",
+    "api_health_status": 200,
+    "chat_probe_timeout_seconds": 20,
+    "requests_running_after_timeout": 2,
+    "requests_waiting_after_timeout": 0,
+    "kernel_oom_or_xid_observed": false
+  },
+  "runtime": {
+    "image_id": "sha256:1c98731de7e3963a609aa7e30582cabbaf59c7d3a59e88d704f21319fa3e0daa",
+    "sparkcache_commit": "737ed1399f559ba036fb0e358541744011afd47d",
+    "sparkring_commit": "8485cffa99d5a7d6c427e90d2070031e8e422e33",
+    "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+    "topology": "TP4/DCP4",
+    "jit_cache_namespace": "glm53-flash-sm121-vllm-22ffe140-b12x-6255090a-readiness-v1"
+  },
+  "readiness": {
+    "concurrencies": [1, 2, 4, 8, 16],
+    "prompt_words": [8, 24, 56, 120, 248],
+    "dflash_max_tokens": 16,
+    "triton_block_sizes_covered": [16, 32, 64, 128, 256],
+    "rank_zero_launcher_waited_for_warmup": true
+  },
+  "validation": {
+    "concurrent_restored_prefix_tokens": 921600,
+    "response_codewords": ["PACKAGED900A", "PACKAGED900B"],
+    "response_seconds": [11.032, 12.835],
+    "jit_events_after_readiness": 0,
+    "cuda_or_cublas_errors_after_readiness": 0,
+    "requests_running_after_validation": 0,
+    "requests_waiting_after_validation": 0,
+    "image_transfer_pressure_replay_passed": true
+  },
+  "limitation": "The original cuBLAS failure was observed once. The readiness warmup removes the reproduced first-use JIT condition and passed the failure-shaped replay, but it does not establish that runtime JIT was the only possible cause of a cuBLAS internal error."
+}

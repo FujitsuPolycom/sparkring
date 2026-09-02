@@ -111,6 +111,8 @@ spans covering the DFlash Triton `BLOCK_SIZE` specializations through 256.
 Do not admit normal traffic until the rank-0 launcher returns. A failed or
 timed-out warmup makes launch fail instead of leaving an apparently healthy
 API in front of a wedged engine.
+The failure-shaped replay and remaining causal limitation are recorded in
+[`dflash-jit-readiness-validation.json`](dflash-jit-readiness-validation.json).
 
 The published registry image below contains the complete-snapshot
 implementation. It does not contain `tail-cow-v2`. Build the pinned source in
@@ -179,7 +181,7 @@ docker image inspect sparkring-glm53-sparkcache:page-tail-v2-local \
 ```
 
 The locally built page-tail image has ID
-`sha256:7df364ed1bb0036d2514e36d5e40cfa1721c7fb9d841b0d9c4b519b53f5680c8`.
+`sha256:1c98731de7e3963a609aa7e30582cabbaf59c7d3a59e88d704f21319fa3e0daa`.
 Its embedded-source and native-library checks are recorded in
 [`page-tail-v2-local-image-receipt.json`](page-tail-v2-local-image-receipt.json).
 This is a local image identity, not a pullable registry digest.

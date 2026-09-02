@@ -289,6 +289,8 @@ The environment template enables `DFLASH_WARMUP=1`. Rank 0 waits for the API,
 then exercises C1/C2/C4/C8/C16 and scheduled prompt spans covering DFlash's
 Triton block-size specializations. Treat completion of the rank-0 launch
 command—not an early `/health` response—as service readiness.
+The engine-level failure and readiness replay are recorded in the
+[`DFlash readiness validation`](../runtime/glm53-flash-jj-r8-gb10/dflash-jit-readiness-validation.json).
 
 Disabling SparkCache omits the external KV connector and all persistent
 publication and restore work. `--enable-prefix-caching` remains enabled. The
@@ -388,7 +390,7 @@ long-context evidence belongs in a revision-bound receipt before any registry
 artifact is described as qualified.
 
 The local Linux/ARM64 image
-`sha256:7df364ed1bb0036d2514e36d5e40cfa1721c7fb9d841b0d9c4b519b53f5680c8`
+`sha256:1c98731de7e3963a609aa7e30582cabbaf59c7d3a59e88d704f21319fa3e0daa`
 completed an exact 131,072 → 262,144 → 524,288 → 921,600-token DCP4
 growth sequence. Every extension remained a page delta. The 921,600-token
 root used a 7,459-byte flat manifest with three delta stages; after all four
