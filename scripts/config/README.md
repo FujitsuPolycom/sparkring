@@ -49,23 +49,23 @@ python -m pytest \
   runtime/exl3-r7/test_exl3_r7_verify_runtime.py -q
 ```
 
-## GLM-5.3 Flash R8 with BF16 DFlash2
+## GLM-5.3 Flash with BF16 DFlash2
 
 The operator template is
 [`runtime/glm53-flash-jj-r8-gb10/runtime.env.example`](../../runtime/glm53-flash-jj-r8-gb10/runtime.env.example).
 It configures one published Linux/ARM64 image for TP4 with DCP1, DCP2, or
 DCP4. Its defaults are TP4/DCP4, a 1,048,576-token request limit, 16 sequences,
-an 8,192-token batched-token budget, scheduler interval 8, and a 24 GiB FP8 KV
+an 8,192-token batched-token budget, scheduler interval 2, and a 24 GiB FP8 KV
 allocation per rank.
 
 `SPARKCACHE_ENABLED=1` enables persistent SparkCache plus vLLM prefix caching.
 `SPARKCACHE_ENABLED=0` omits the persistent connector and retains vLLM prefix
 caching. Both modes use the same image and
-[`GLM-5.3 R8 quickstart`](../../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md).
+[`GLM-5.3 quickstart`](../../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md).
 
 The `glm53-flash-*.example.json` and `glm53-flash-tp4-site.example.yaml` files
 describe source-bound TP4/DCP1 profiles at other vLLM revisions. They are not
-the operator inputs for the published R8 image.
+the operator inputs for this adjustable DCP1/DCP2/DCP4 image.
 
 Run the focused CPU-only contract suites after changing GLM-5.3 inputs:
 

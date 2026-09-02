@@ -150,7 +150,9 @@ def expected_labels(pins: dict[str, Any]) -> dict[str, str]:
         ],
         "org.sparkcache.startup-inventory": "connector-handshake-all-rank",
         "org.sparkcache.cache-geometry": "manager-pages-v2",
-        "org.sparkcache.publication-schema": "snapshot-v1",
+        "org.sparkcache.publication-schema": (
+            "snapshot-v1,page-tail-cow-v1,page-tail-cow-v2"
+        ),
         "org.sparkcache.dcp-layouts": "1,2,4",
     }
 

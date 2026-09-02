@@ -404,7 +404,7 @@ def test_public_glm53_benchmark_retains_only_valid_run1_cells() -> None:
     )
 
 
-def test_public_glm53_benchmark_is_sanitized_and_front_page_uses_r8() -> None:
+def test_public_glm53_benchmark_is_sanitized_and_front_page_lists_dcp_profiles() -> None:
     paths = [PERFORMANCE_RECEIPT_PATH, PERFORMANCE_RECORD_PATH]
     text = "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
@@ -432,7 +432,10 @@ def test_public_glm53_benchmark_is_sanitized_and_front_page_uses_r8() -> None:
     quickstart = (
         ROOT / "docs" / "GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
     ).read_text(encoding="utf-8")
-    assert "The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV" in quickstart
+    assert (
+        "The preferred source-built launch is TP4/DCP4 with 24 GiB of FP8 KV"
+        in quickstart
+    )
     assert "942,898-token needle" in readme
     assert "GLM-5.3 Flash research observation" not in readme
     assert "IN PROGRESS" not in readme

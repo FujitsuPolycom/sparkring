@@ -77,6 +77,8 @@ fi
 : "${SPARKCACHE_ASYNC_PAGE_CAPTURE:=0}"
 : "${SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES:=auto}"
 : "${SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT:=2}"
+: "${SPARKCACHE_SOURCE_OVERLAY:=}"
+: "${VLLM_KV_METRICS_OVERLAY:=}"
 : "${MULTIMODAL_INPUTS:=1}"
 : "${SOCKET_IFNAME:=enP7s7}"
 : "${NCCL_IB_HCA:=rocep1s0f0,rocep1s0f1}"
@@ -203,8 +205,8 @@ esac
 [[ "${SPECULATION_METHOD}" == dflash ]] || \
   die 'this runtime launcher supports SPECULATION_METHOD=dflash'
 case "${SPARKCACHE_PUBLICATION_SCHEMA}" in
-  snapshot-v1|tail-cow-v1) ;;
-  *) die 'SPARKCACHE_PUBLICATION_SCHEMA must be snapshot-v1 or tail-cow-v1' ;;
+  snapshot-v1|tail-cow-v1|tail-cow-v2) ;;
+  *) die 'SPARKCACHE_PUBLICATION_SCHEMA must be snapshot-v1, tail-cow-v1, or tail-cow-v2' ;;
 esac
 case "${SPARKCACHE_ENABLED}" in
   0|1) ;;
@@ -225,8 +227,6 @@ esac
 if [[ "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 ]]; then
   [[ "${SPARKCACHE_ENABLED}" == 1 ]] || \
     die 'asynchronous page capture requires SPARKCACHE_ENABLED=1'
-  [[ "${SPARKCACHE_PUBLICATION_SCHEMA}" == snapshot-v1 ]] || \
-    die 'asynchronous page capture supports snapshot-v1 publication only'
   case "${SPARKCACHE_ACCESS_MODE}" in
     read-write|store-only) ;;
     *) die 'asynchronous page capture requires a publication-capable access mode' ;;
@@ -265,6 +265,28 @@ for name in TARGET_MODEL_HOST_PATH DFLASH_MODEL_HOST_PATH CACHE_HOST_ROOT; do
   [[ "${value}" != *:* && "${value}" != *$'\n'* ]] || \
     die "${name} cannot be represented safely as a Docker bind mount"
 done
+sparkcache_source_args=()
+if [[ -n "${SPARKCACHE_SOURCE_OVERLAY}" ]]; then
+  [[ "${SPARKCACHE_SOURCE_OVERLAY}" == /* ]] || \
+    die 'SPARKCACHE_SOURCE_OVERLAY must be an absolute host path'
+  [[ -d "${SPARKCACHE_SOURCE_OVERLAY}" ]] || \
+    die 'SPARKCACHE_SOURCE_OVERLAY must be a directory'
+  sparkcache_source_args=(
+    -v
+    "${SPARKCACHE_SOURCE_OVERLAY}:/usr/local/lib/python3.12/dist-packages/sparkcache:ro"
+  )
+fi
+vllm_metrics_args=()
+if [[ -n "${VLLM_KV_METRICS_OVERLAY}" ]]; then
+  [[ "${VLLM_KV_METRICS_OVERLAY}" == /* ]] || \
+    die 'VLLM_KV_METRICS_OVERLAY must be an absolute host path'
+  [[ -f "${VLLM_KV_METRICS_OVERLAY}" ]] || \
+    die 'VLLM_KV_METRICS_OVERLAY must be a regular file'
+  vllm_metrics_args=(
+    -v
+    "${VLLM_KV_METRICS_OVERLAY}:/usr/local/lib/python3.12/dist-packages/vllm/distributed/kv_transfer/kv_connector/v1/metrics.py:ro"
+  )
+fi
 command -v python3 >/dev/null 2>&1 || die 'python3 is required to encode JSON configuration safely'
 command -v sha256sum >/dev/null 2>&1 || die 'sha256sum is required to verify model inputs'
 python3 - "${GPU_MEMORY_UTILIZATION}" <<'PY' || exit 78
@@ -458,6 +480,8 @@ exec docker run -d \
   -v "${TARGET_MODEL_HOST_PATH}:/models/target:ro" \
   -v "${DFLASH_MODEL_HOST_PATH}:/dflash-draft:ro" \
   -v "${CACHE_HOST_ROOT}:/cache/jit" \
+  "${sparkcache_source_args[@]}" \
+  "${vllm_metrics_args[@]}" \
   -e "VLLM_HOST_IP=${HOST_IP}" \
   -e VLLM_GLM53_SPLIT_TARGET_BLOCK_SIZE=512 \
   -e VLLM_GLM53_SPLIT_MAMBA_BLOCK_SIZE=512 \

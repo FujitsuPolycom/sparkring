@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 from pathlib import Path, PurePosixPath
@@ -263,6 +264,14 @@ def prepare_context(
     vllm_output = context / "bundle/sources/vllm"
     sparkcache_output = context / "bundle/sources/sparkcache"
     extract_git_subtree(vllm_source, pins["vllm"]["commit"], "vllm", vllm_output)
+    run(
+        (
+            sys.executable,
+            HERE / "patch_kv_metrics_logging.py",
+            vllm_output
+            / "distributed/kv_transfer/kv_connector/v1/metrics.py",
+        )
+    )
     extract_git_subtree(
         sparkcache_source,
         pins["sparkcache"]["commit"],
@@ -335,6 +344,9 @@ def prepare_context(
         },
         "limitation": "This receipt verifies source preparation, not a built image.",
     }
+    receipt["inputs"]["source_transform/kv_metrics_logging"] = file_sha256(
+        HERE / "patch_kv_metrics_logging.py"
+    )
     receipt_path = context / "bundle/receipts/source-receipt.json"
     receipt_path.write_text(
         json.dumps(receipt, indent=2, sort_keys=True) + "\n",

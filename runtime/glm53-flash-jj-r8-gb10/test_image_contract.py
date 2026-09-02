@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[1]
 
 
 def load_module(name: str, path: Path):
@@ -18,6 +19,27 @@ def load_module(name: str, path: Path):
 
 build = load_module("jj_r8_build_image", HERE / "build_image.py")
 verify = load_module("jj_r8_verify_image", HERE / "verify_image.py")
+metrics_patch = load_module(
+    "jj_r8_metrics_patch",
+    HERE / "patch_kv_metrics_logging.py",
+)
+
+
+def test_metrics_patch_uses_connector_owned_compact_lines(tmp_path: Path) -> None:
+    target = tmp_path / "metrics.py"
+    target.write_text(
+        "            xfer_metrics = self.transfer_stats_accumulator.reduce()\n"
+        "            xfer_metrics_str = \", \".join(f\"{k}={v}\" for k, v in xfer_metrics.items())\n"
+        "            log_fn(\"KV Transfer metrics: %s\", xfer_metrics_str)\n",
+        encoding="utf-8",
+    )
+
+    metrics_patch.apply_patch(target)
+
+    result = target.read_text(encoding="utf-8")
+    assert "format_log_lines" in result
+    assert 'log_fn("%s", line)' in result
+    assert 'log_fn("KV Transfer metrics: %s", xfer_metrics_str)' in result
 
 
 def test_pins_bind_effective_sources_and_operator_defaults() -> None:
@@ -50,11 +72,11 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     )
     assert pins["sparkcache"] == {
         "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-        "commit": "b7d1c188a3f9e78595e6e7b649f3751131e269ea",
-        "tree": "8ea2e7b18d1ef198b061764842f006663634ebb7",
-        "package_tree": "8fe5cb44cabea255f55aa2c9d2417db0e04cdbf5",
+        "commit": "fb03fd4f007f492608ebef01954365627ab2a2d6",
+        "tree": "0b37c0c21c7892a7fcc2ee6fe6893fe3865cbb84",
+        "package_tree": "e6035ca12a637238d8808d90fb0788ded479f410",
         "source_tree_sha256": (
-            "b08b517bd798d30cadccd0b58a18df4ac7acf8f352ecffe846b38efedda46795"
+            "e3ce4c246fc17fdcb0d091888c95290ab6670d35a132fd7dd06c92b1036b0e3c"
         ),
         "cuda_placement_sha256": (
             "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
@@ -99,7 +121,7 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
     for identity in (
         "f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
         "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
-        "b7d1c188a3f9e78595e6e7b649f3751131e269ea",
+        "fb03fd4f007f492608ebef01954365627ab2a2d6",
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
         "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
         "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
@@ -107,7 +129,11 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
         assert identity in recipe
     assert "org.sparkcache.dcp-layouts=\"1,2,4\"" in recipe
     assert "org.sparkcache.cache-geometry=\"manager-pages-v2\"" in recipe
-    assert "org.sparkcache.publication-schema=\"snapshot-v1\"" in recipe
+    assert (
+        "org.sparkcache.publication-schema="
+        '\"snapshot-v1,page-tail-cow-v1,page-tail-cow-v2\"'
+        in recipe
+    )
     assert "compact-startup-no-deep-ep" in recipe
     assert "fastsafetensors" in recipe
 
@@ -188,6 +214,32 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
     assert "IMAGE_ID" in launcher
 
 
+def test_operator_docs_distinguish_page_tails_from_published_rollback() -> None:
+    runtime_readme = (HERE / "README.md").read_text(encoding="utf-8")
+    quickstart = (
+        ROOT / "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
+    ).read_text(encoding="utf-8")
+    runtime_index = (ROOT / "runtime/README.md").read_text(encoding="utf-8")
+
+    for document in (runtime_readme, quickstart):
+        for schema in ("snapshot-v1", "tail-cow-v1", "tail-cow-v2"):
+            assert schema in document
+        assert "sparkring-glm53-sparkcache:page-tail-v2-local" in document
+        assert "no published registry digest" in document
+        assert "sparkcache: capacity" in document
+        assert "sparkcache: publications" in document
+        assert "sparkcache: writes" in document
+
+    published_digest = (
+        "3c377f1e4136285ebf66c32c36c3d01f"
+        "d929f8aba0836cd0a16ed63cfd7e1762"
+    )
+    assert published_digest in runtime_readme
+    assert published_digest in quickstart
+    assert published_digest in runtime_index
+    assert "380283a506aeb8f9" not in runtime_index
+
+
 def test_multimodal_lease_image_receipt_binds_public_artifact_and_smoke() -> None:
     receipt = json.loads(
         (HERE / "multimodal-lease300-image-receipt.json").read_text(
@@ -227,6 +279,26 @@ def test_multimodal_lease_image_receipt_binds_public_artifact_and_smoke() -> Non
         "multimodal_image_tokens": 256,
         "dominant_color_identified": "red",
     }
+
+
+def test_page_tail_v2_receipt_binds_the_local_image() -> None:
+    receipt = json.loads(
+        (HERE / "page-tail-v2-local-image-receipt.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert receipt["schema"] == "sparkring-glm53-jj-r8-gb10-image-receipt/v1"
+    assert receipt["status"] == "implemented"
+    assert receipt["platform"] == "linux/arm64"
+    assert receipt["image_id"] == (
+        "sha256:7df364ed1bb0036d2514e36d5e40cfa1721c7fb9d841b0d9c4b519b53f5680c8"
+    )
+    assert receipt["inside_image"]["sparkcache_commit"] == (
+        "fb03fd4f007f492608ebef01954365627ab2a2d6"
+    )
+    assert receipt["labels"]["org.sparkcache.publication-schema"] == (
+        "snapshot-v1,page-tail-cow-v1,page-tail-cow-v2"
+    )
 
 
 def test_async_capture_image_receipt_binds_public_artifact_and_live_results() -> None:
