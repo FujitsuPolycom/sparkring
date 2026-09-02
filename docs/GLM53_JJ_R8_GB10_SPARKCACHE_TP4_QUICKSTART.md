@@ -136,6 +136,12 @@ Replace these five site values:
 The default OpenAI-compatible model name is `glm-5.3-flash`. Override
 `SERVED_MODEL_NAME` only when the site needs a distinct routing name.
 
+The profile accepts up to four images and one video per request. Set
+`MAX_IMAGES_PER_PROMPT` or `MAX_VIDEOS_PER_PROMPT` to zero to disable that
+modality. SparkCache binds media identity and placeholder geometry into the
+persistent context digest, so different media cannot share an entry merely
+because their placeholder tokens have the same shape.
+
 Choose the DCP degree with one line:
 
 ```bash

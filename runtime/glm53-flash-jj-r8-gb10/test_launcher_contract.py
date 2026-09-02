@@ -45,6 +45,8 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["DECODE_CONTEXT_PARALLEL_SIZE"] == "4"
     assert values["MAX_NUM_BATCHED_TOKENS"] == "8192"
     assert values["PREFILL_SCHEDULE_INTERVAL"] == "8"
+    assert values["MAX_IMAGES_PER_PROMPT"] == "4"
+    assert values["MAX_VIDEOS_PER_PROMPT"] == "1"
     assert values["KV_CACHE_MEMORY_BYTES"] == "auto"
     assert values["SPARKCACHE_ENABLED"] == "1"
     assert values["ENABLE_PROMPT_TOKENS_DETAILS"] == "1"
@@ -150,6 +152,9 @@ printf '%s  %s\n' "$hash" "$2"
         kv_index = arguments.index("--kv-cache-memory-bytes")
         assert arguments[kv_index + 1] == kv_bytes
         assert "--enable-prompt-tokens-details" in arguments
+        assert "--language-model-only" not in arguments
+        mm_index = arguments.index("--limit-mm-per-prompt")
+        assert json.loads(arguments[mm_index + 1]) == {"image": 4, "video": 1}
         assert "--kv-transfer-config" in arguments
         connector = json.loads(arguments[arguments.index("--kv-transfer-config") + 1])
         extra = connector["kv_connector_extra_config"]

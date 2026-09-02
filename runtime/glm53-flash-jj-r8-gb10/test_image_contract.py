@@ -171,6 +171,8 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
         "MAX_MODEL_LEN=1048576",
         "MAX_NUM_BATCHED_TOKENS=8192",
         "PREFILL_SCHEDULE_INTERVAL=8",
+        "MAX_IMAGES_PER_PROMPT=4",
+        "MAX_VIDEOS_PER_PROMPT=1",
         "KV_CACHE_MEMORY_BYTES='auto'",
         "B12X_MLA_CKV_GATHER_MAX_TOKENS=524288",
         "SPARKCACHE_MAX_SPAN_TOKENS=1048576",

@@ -41,6 +41,8 @@ fi
 : "${MAX_NUM_SEQS:=16}"
 : "${MAX_NUM_BATCHED_TOKENS:=8192}"
 : "${PREFILL_SCHEDULE_INTERVAL:=8}"
+: "${MAX_IMAGES_PER_PROMPT:=4}"
+: "${MAX_VIDEOS_PER_PROMPT:=1}"
 : "${KV_CACHE_MEMORY_BYTES:=auto}"
 : "${GPU_MEMORY_UTILIZATION:=0.80}"
 : "${KV_CACHE_DTYPE:=fp8}"
@@ -120,6 +122,8 @@ done
 require_uint SPARKCACHE_LOW_WATERMARK_BYTES
 require_uint SPARKCACHE_TTL_SECONDS
 require_uint NCCL_IB_GID_INDEX
+require_uint MAX_IMAGES_PER_PROMPT
+require_uint MAX_VIDEOS_PER_PROMPT
 (( SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS <= 300 )) || \
   die 'SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS must be between 1 and 300'
 
@@ -412,6 +416,8 @@ if [[ "${ENABLE_PROMPT_TOKENS_DETAILS}" == 1 ]]; then
   prompt_tokens_details=(--enable-prompt-tokens-details)
 fi
 
+multimodal_limits="{\"image\":${MAX_IMAGES_PER_PROMPT},\"video\":${MAX_VIDEOS_PER_PROMPT}}"
+
 exec docker run -d \
   --name "${container}" \
   --network host --ipc host --shm-size "${SHM_SIZE}" --gpus all \
@@ -465,7 +471,8 @@ exec docker run -d \
   --cp-kv-cache-interleave-size "${CP_KV_CACHE_INTERLEAVE_SIZE}" \
   --distributed-executor-backend mp --nnodes "${NODE_COUNT}" --node-rank "${rank}" \
   --master-addr "${MASTER_ADDR}" --master-port "${MASTER_PORT}" \
-  --disable-custom-all-reduce --mamba-cache-mode align --language-model-only \
+  --disable-custom-all-reduce --mamba-cache-mode align \
+  --limit-mm-per-prompt "${multimodal_limits}" \
   --enable-chunked-prefill --dtype bfloat16 --kv-cache-dtype "${KV_CACHE_DTYPE}" \
   --quantization modelopt_mixed --attention-backend "${ATTENTION_BACKEND}" \
   --block-size 256 --moe-backend "${MOE_BACKEND}" --linear-backend "${LINEAR_BACKEND}" \
