@@ -47,6 +47,7 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["PREFILL_SCHEDULE_INTERVAL"] == "8"
     assert values["KV_CACHE_MEMORY_BYTES"] == "auto"
     assert values["SPARKCACHE_ENABLED"] == "1"
+    assert values["ENABLE_PROMPT_TOKENS_DETAILS"] == "1"
     assert values["SPARKCACHE_ACCESS_MODE"] == "read-write"
     assert values["SPARKCACHE_MAX_SPAN_TOKENS"] == "1048576"
     assert values["CP_KV_CACHE_INTERLEAVE_SIZE"] == "auto"
@@ -145,6 +146,7 @@ printf '%s  %s\n' "$hash" "$2"
         assert f"VLLM_B12X_MLA_CKV_GATHER={gather}" in arguments
         kv_index = arguments.index("--kv-cache-memory-bytes")
         assert arguments[kv_index + 1] == kv_bytes
+        assert "--enable-prompt-tokens-details" in arguments
         assert "--kv-transfer-config" in arguments
         connector = json.loads(arguments[arguments.index("--kv-transfer-config") + 1])
         extra = connector["kv_connector_extra_config"]
@@ -187,6 +189,13 @@ printf '%s  %s\n' "$hash" "$2"
     assert "--enable-prefix-caching" in arguments
     assert "--kv-transfer-config" not in arguments
     assert "org.sparkring.sparkcache.enabled=0" in arguments
+
+
+def test_launcher_gates_prompt_tokens_details_on_a_validated_flag() -> None:
+    launcher = LAUNCHER.read_text(encoding="utf-8")
+    assert ': "${ENABLE_PROMPT_TOKENS_DETAILS:=1}"' in launcher
+    assert "ENABLE_PROMPT_TOKENS_DETAILS must be 0 or 1" in launcher
+    assert "prompt_tokens_details=(--enable-prompt-tokens-details)" in launcher
 
 
 def test_launcher_can_use_vllm_prefix_cache_without_sparkcache() -> None:
