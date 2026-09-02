@@ -87,6 +87,7 @@ fi
 : "${TORCHINDUCTOR_COMPILE_THREADS:=1}"
 : "${FASTSAFETENSORS_QUEUE_SIZE:=1}"
 : "${ENABLE_PROMPT_TOKENS_DETAILS:=1}"
+: "${API_KEYS_FILE:=}"
 
 die() {
   printf '%s\n' "$*" >&2
@@ -240,6 +241,24 @@ do
   [[ "${!name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || \
     die "${name} must contain only letters, digits, dot, underscore, or hyphen"
 done
+api_key_args=()
+if [[ -n "${API_KEYS_FILE}" ]]; then
+  [[ -f "${API_KEYS_FILE}" && -r "${API_KEYS_FILE}" ]] || \
+    die "API_KEYS_FILE is not a readable regular file: ${API_KEYS_FILE}"
+  api_keys_file_mode="$(stat -c %a -- "${API_KEYS_FILE}" 2>/dev/null \
+    || stat -f %Lp -- "${API_KEYS_FILE}" 2>/dev/null || true)"
+  [[ "${api_keys_file_mode}" == 600 ]] || \
+    die "API_KEYS_FILE must be mode 0600, got 0${api_keys_file_mode:-???}"
+  mapfile -t api_keys < <(awk 'NF {print}' "${API_KEYS_FILE}")
+  (( ${#api_keys[@]} > 0 )) || die 'API_KEYS_FILE contains no non-empty keys'
+  for api_key in "${api_keys[@]}"; do
+    [[ "${api_key}" != *[[:space:]]* ]] || \
+      die 'API_KEYS_FILE contains whitespace in a key'
+  done
+  # vLLM parses --api-key with nargs="+"; keep every key in one occurrence so a
+  # later option cannot truncate the accepted set.
+  api_key_args=(--api-key "${api_keys[@]}")
+fi
 for name in TARGET_MODEL_HOST_PATH DFLASH_MODEL_HOST_PATH CACHE_HOST_ROOT; do
   value="${!name}"
   [[ "${value}" == /* ]] || die "${name} must be an absolute host path"
@@ -478,7 +497,8 @@ exec docker run -d \
   --label org.sparkring.multimodal-inputs="${MULTIMODAL_INPUTS}" \
   "${IMAGE_REF}" \
   /models/target \
-  --served-model-name "${SERVED_MODEL_NAME}" --host 0.0.0.0 --port "${PORT}" \
+  --served-model-name "${SERVED_MODEL_NAME}" "${api_key_args[@]}" \
+  --host 0.0.0.0 --port "${PORT}" \
   --tensor-parallel-size "${TENSOR_PARALLEL_SIZE}" \
   --pipeline-parallel-size "${PIPELINE_PARALLEL_SIZE}" \
   --decode-context-parallel-size "${DECODE_CONTEXT_PARALLEL_SIZE}" \

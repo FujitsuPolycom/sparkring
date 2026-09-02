@@ -6,6 +6,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -259,6 +261,127 @@ def test_launcher_rejects_shared_prefix_retention_above_five_minutes(
 
     assert result.returncode == 78
     assert "must be between 1 and 300" in result.stderr
+
+
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="WSL DrvFS reports Windows temporary files as mode 0777",
+)
+def test_launcher_renders_optional_multi_key_authentication(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    capture = tmp_path / "docker-arguments.txt"
+    docker = fake_bin / "docker"
+    docker.write_text(
+        """#!/bin/sh
+if [ "$1" = image ] && [ "$2" = inspect ]; then
+  printf '%s\n' "$EXPECTED_IMAGE_ID"
+elif [ "$1" = container ] && [ "$2" = inspect ]; then
+  exit 1
+elif [ "$1" = run ]; then
+  printf '%s\n' "$@" > "$CAPTURE_PATH"
+else
+  exit 97
+fi
+        """,
+        encoding="utf-8",
+        newline="\n",
+    )
+    os.chmod(docker, 0o755)
+    sha256sum = fake_bin / "sha256sum"
+    sha256sum.write_text(
+        """#!/bin/sh
+case "$2" in
+  */target/config.json) hash=676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996 ;;
+  */target/model.safetensors.index.json) hash=0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb ;;
+  */draft/config.json) hash=c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573 ;;
+  */draft/model.safetensors) hash=b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b ;;
+  *) exit 95 ;;
+esac
+printf '%s  %s\n' "$hash" "$2"
+        """,
+        encoding="utf-8",
+        newline="\n",
+    )
+    os.chmod(sha256sum, 0o755)
+
+    directories = {name: tmp_path / name for name in ("target", "draft", "cache")}
+    for directory in directories.values():
+        directory.mkdir()
+    for path in (
+        directories["target"] / "config.json",
+        directories["target"] / "model.safetensors.index.json",
+        directories["draft"] / "config.json",
+        directories["draft"] / "model.safetensors",
+    ):
+        path.write_text("fixture", encoding="utf-8")
+
+    def launch(name: str, *overrides: str) -> subprocess.CompletedProcess[str]:
+        config = tmp_path / f"{name}.env"
+        config.write_text(
+            "\n".join(
+                (
+                    "HOST_IP=rank0.example.net",
+                    "MASTER_ADDR=rank0.example.net",
+                    f"TARGET_MODEL_HOST_PATH={_bash_path(directories['target'])}",
+                    f"DFLASH_MODEL_HOST_PATH={_bash_path(directories['draft'])}",
+                    f"CACHE_HOST_ROOT={_bash_path(directories['cache'])}",
+                    f"PATH={_bash_path(fake_bin)}:$PATH",
+                    f"export CAPTURE_PATH={_bash_path(capture)}",
+                    f"export EXPECTED_IMAGE_ID={IMAGE_ID}",
+                    "IMAGE_REF=test-image:r8",
+                    f"IMAGE_ID={IMAGE_ID}",
+                )
+                + overrides
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
+        return subprocess.run(
+            ["bash", _bash_path(LAUNCHER), "0", _bash_path(config)],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    # Unset is the default and must render exactly the keyless command.
+    result = launch("auth-unset")
+    assert result.returncode == 0, result.stderr
+    keyless = capture.read_text(encoding="utf-8").splitlines()
+    assert "--api-key" not in keyless
+
+    # A two-key file renders one --api-key option carrying both keys.
+    keys = tmp_path / "api-keys"
+    keys.write_text("k1\n\nk2\n", encoding="utf-8", newline="\n")
+    os.chmod(keys, 0o600)
+    result = launch("auth-set", f"API_KEYS_FILE={_bash_path(keys)}")
+    assert result.returncode == 0, result.stderr
+    keyed = capture.read_text(encoding="utf-8").splitlines()
+    assert keyed.count("--api-key") == 1
+    index = keyed.index("--api-key")
+    assert keyed[index + 1 : index + 3] == ["k1", "k2"]
+    assert keyed[index + 3] == "--host"
+    assert [
+        argument for argument in keyed if argument not in ("--api-key", "k1", "k2")
+    ] == keyless
+
+    # A file readable beyond its owner is refused before the container starts.
+    loose = tmp_path / "api-keys-loose"
+    loose.write_text("k1\n", encoding="utf-8", newline="\n")
+    os.chmod(loose, 0o644)
+    result = launch("auth-loose", f"API_KEYS_FILE={_bash_path(loose)}")
+    assert result.returncode == 78, result.stdout + result.stderr
+    assert "API_KEYS_FILE must be mode 0600" in result.stderr
+
+
+def test_launcher_fails_closed_on_unusable_api_key_files() -> None:
+    launcher = LAUNCHER.read_text(encoding="utf-8")
+    assert ': "${API_KEYS_FILE:=}"' in launcher
+    assert "API_KEYS_FILE is not a readable regular file" in launcher
+    assert "API_KEYS_FILE contains no non-empty keys" in launcher
+    assert "API_KEYS_FILE contains whitespace in a key" in launcher
+    assert "API_KEYS_FILE must be mode 0600" in launcher
 
 
 def test_launcher_can_use_vllm_prefix_cache_without_sparkcache() -> None:

@@ -142,6 +142,16 @@ modality. SparkCache binds media identity and placeholder geometry into the
 persistent context digest, so different media cannot share an entry merely
 because their placeholder tokens have the same shape.
 
+The server binds `0.0.0.0` and serves without authentication by default. To
+require an OpenAI-compatible bearer token, point `API_KEYS_FILE` at a mode-0600
+rank-local file holding one accepted key per line; the launcher refuses to
+start if the file is missing, empty, world- or group-readable, or contains
+whitespace in a key.
+
+This is host-level access control, not secret management. vLLM receives the
+keys in its process arguments, which remain visible to an administrator who
+can inspect the container or host process.
+
 Choose the DCP degree with one line:
 
 ```bash
