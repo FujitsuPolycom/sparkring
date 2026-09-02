@@ -2325,6 +2325,8 @@ After=network-online.target docker.service
 
 [Service]
 Type=oneshot
+Restart=on-failure
+RestartSec=10
 ExecStart=/usr/bin/python3 {program_path}
 RemainAfterExit=yes
 
