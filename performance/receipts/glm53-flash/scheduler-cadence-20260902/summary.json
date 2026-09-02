@@ -1,0 +1,60 @@
+{
+  "schema": "sparkring-glm53-scheduler-cadence/v1",
+  "status": "qualified",
+  "artifact": {
+    "registry": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762",
+    "image_id": "sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9",
+    "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+    "sparkcache_commit": "b7d1c188a3f9e78595e6e7b649f3751131e269ea"
+  },
+  "conditions": {
+    "topology": "TP4/DCP4",
+    "kv_cache_dtype": "fp8",
+    "kv_cache_bytes_per_rank": 25769803776,
+    "max_model_len": 1048576,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "dflash_tokens": 7,
+    "concurrency": 8,
+    "requests_per_sample": 8,
+    "unique_context_percent": 100,
+    "input_tokens_average_range": [6167.375, 6170.125],
+    "output_tokens_per_request": 300,
+    "temperature": 0.7,
+    "reasoning_effort": "low"
+  },
+  "jit_policy": {
+    "rule": "A sample with a monitored JIT compilation between its start and completion is excluded.",
+    "excluded_warmup_samples": 1,
+    "retained_samples_jit_free": true
+  },
+  "interval_2": {
+    "samples": [
+      {"aggregate_tokens_per_second": 56.5331072009, "average_ttft_seconds": 15.12825, "maximum_ttft_seconds": 21.296, "p90_latency_seconds": 42.0324, "dflash_acceptance": 0.1507936508, "completed": 8, "errors": 0},
+      {"aggregate_tokens_per_second": 58.2043944319, "average_ttft_seconds": 14.132875, "maximum_ttft_seconds": 20.344, "p90_latency_seconds": 40.9982, "dflash_acceptance": 0.2304147465, "completed": 8, "errors": 0},
+      {"aggregate_tokens_per_second": 57.613366301, "average_ttft_seconds": 14.14675, "maximum_ttft_seconds": 20.328, "p90_latency_seconds": 41.4707, "dflash_acceptance": 0.2333333333, "completed": 8, "errors": 0},
+      {"aggregate_tokens_per_second": 55.2715213486, "average_ttft_seconds": 15.144125, "maximum_ttft_seconds": 21.312, "p90_latency_seconds": 42.7901, "dflash_acceptance": 0.1607142857, "completed": 8, "errors": 0}
+    ],
+    "median": {"aggregate_tokens_per_second": 57.073236751, "average_ttft_seconds": 14.6375, "maximum_ttft_seconds": 20.82, "p90_latency_seconds": 41.75155}
+  },
+  "interval_8": {
+    "samples": [
+      {"aggregate_tokens_per_second": 56.1600561601, "average_ttft_seconds": 15.324625, "maximum_ttft_seconds": 21.86, "p90_latency_seconds": 42.625, "dflash_acceptance": 0.2857142857, "completed": 8, "errors": 0},
+      {"aggregate_tokens_per_second": 54.9941568709, "average_ttft_seconds": 14.203125, "maximum_ttft_seconds": 21.234, "p90_latency_seconds": 43.387, "dflash_acceptance": 0.1304347826, "completed": 8, "errors": 0},
+      {"aggregate_tokens_per_second": 56.5118086134, "average_ttft_seconds": 15.158375, "maximum_ttft_seconds": 21.656, "p90_latency_seconds": 42.422, "dflash_acceptance": 0.2813852814, "completed": 8, "errors": 0}
+    ],
+    "median": {"aggregate_tokens_per_second": 56.1600561601, "average_ttft_seconds": 15.158375, "maximum_ttft_seconds": 21.656, "p90_latency_seconds": 42.625}
+  },
+  "interval_2_delta_percent": {
+    "aggregate_tokens_per_second": 1.626038,
+    "average_ttft_seconds": -3.435594,
+    "maximum_ttft_seconds": -3.860362,
+    "p90_latency_seconds": -2.049971
+  },
+  "conclusion": "Use interval 2 as the GLM-5.3 general-serving default. Interval 8 remains an operator override for workloads that explicitly prefer protecting established decode streams over burst admission latency.",
+  "limitations": [
+    "The repeated artifact comparison covers simultaneous C8 requests with approximately 6K input tokens and 300 output tokens.",
+    "DFlash acceptance varied between samples; medians, zero-error completion, and matching request geometry are used for the decision.",
+    "Interval 1 was not repeated on this artifact. Issue 164 records an earlier campaign in which interval 1 provided no material improvement over interval 2."
+  ]
+}

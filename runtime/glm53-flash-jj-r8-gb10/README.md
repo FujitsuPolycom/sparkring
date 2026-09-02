@@ -36,6 +36,7 @@ The launcher defaults to:
 | topology | TP4/DCP4 |
 | maximum model length | 1,048,576 tokens |
 | batched-token budget | 8,192 tokens |
+| prefill scheduler interval | 2 |
 | sequences | 16 |
 | multimodal requests | up to four images and one video per request |
 | FP8 KV allocation | 24 GiB for the default DCP4 profile; 26 GiB for DCP1; 30 GiB for DCP2 |
@@ -116,6 +117,9 @@ deep-context evidence, and limitations are recorded in
 [`async-capture-image-receipt.json`](async-capture-image-receipt.json),
 [`ASYNC_CAPTURE_IMAGE_VALIDATION.md`](ASYNC_CAPTURE_IMAGE_VALIDATION.md), and the
 [`deep-context record`](../../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md).
+The
+[`scheduler-cadence record`](../../performance/records/glm53-flash/scheduler-cadence-20260902.md)
+compares intervals two and eight on simultaneous 6K-token requests.
 
 Run the offline contracts with:
 

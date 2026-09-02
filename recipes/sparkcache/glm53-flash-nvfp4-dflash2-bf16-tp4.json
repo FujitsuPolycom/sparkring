@@ -55,7 +55,7 @@
     "max_model_len": 1048576,
     "max_num_seqs": 16,
     "max_num_batched_tokens": 8192,
-    "prefill_schedule_interval": 8,
+    "prefill_schedule_interval": 2,
     "kv_cache_dtype": "fp8",
     "block_size": 256,
     "async_scheduling": true,
@@ -129,9 +129,9 @@
   },
   "evidence": {
     "status": "qualified",
-    "conditions": "The immutable Linux/ARM64 image ran on four directly connected NVIDIA GB10 systems at TP4/DCP4 with FP8 KV, 24 GiB per rank, a 1,048,576-token request limit, 8,192 scheduler tokens, interval eight, BF16 DFlash2 depth seven, SparkCache read-write access, a 300-second shared-prefix lease, and image and video request support.",
-    "measurement": "All ranks ran the registry image without a SparkCache source bind mount. API model discovery, image identity, connector configuration, startup inventory, process health, and one 448-by-448 solid-red PNG request were checked.",
-    "result": "The service exposed 4,321,618 logical KV tokens, accepted the GLM-5.3 API route, represented the PNG as 256 multimodal tokens, and identified its dominant color as red. All four ranks used the same image ID and reported the 300-second shared-prefix lease.",
+    "conditions": "The immutable Linux/ARM64 image ran on four directly connected NVIDIA GB10 systems at TP4/DCP4 with FP8 KV, 24 GiB per rank, a 1,048,576-token request limit, 8,192 scheduler tokens, interval two, BF16 DFlash2 depth seven, SparkCache read-write access, a 300-second shared-prefix lease, and image and video request support.",
+    "measurement": "All ranks ran the registry image without a SparkCache source bind mount. API model discovery, image identity, connector configuration, startup inventory, process health, one 448-by-448 solid-red PNG request, and repeated interval-two versus interval-eight 6K-token C8 bursts were checked.",
+    "result": "The service exposed 4,321,618 logical KV tokens, accepted the GLM-5.3 API route, represented the PNG as 256 multimodal tokens, and identified its dominant color as red. Interval two improved median C8 output by 1.6 percent and reduced median maximum TTFT by 3.9 percent. All four ranks used the same image ID and reported the 300-second shared-prefix lease.",
     "conclusion": "The registry artifact starts the preferred DCP4 profile and serves text and image requests with media-aware SparkCache source embedded in the image.",
     "limitations": [
       "The built-image smoke did not repeat video input or persistent multimodal restore after a process restart.",
@@ -141,6 +141,7 @@
     ],
     "record": "runtime/glm53-flash-jj-r8-gb10/README.md",
     "machine_receipt": "runtime/glm53-flash-jj-r8-gb10/multimodal-lease300-image-receipt.json",
+    "scheduler_receipt": "performance/receipts/glm53-flash/scheduler-cadence-20260902/summary.json",
     "artifact_scope": "The immutable image, target and draft revisions, TP4/DCP4 topology, scheduler settings, cache configuration, source identities, and live limits recorded here."
   }
 }

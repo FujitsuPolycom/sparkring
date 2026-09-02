@@ -49,7 +49,7 @@
     "max_model_len": 1048576,
     "max_num_seqs": 16,
     "max_num_batched_tokens": 8192,
-    "prefill_schedule_interval": 8,
+    "prefill_schedule_interval": 2,
     "gpu_memory_utilization": 0.8,
     "kv_cache_dtype": "fp8",
     "block_size": 256,
