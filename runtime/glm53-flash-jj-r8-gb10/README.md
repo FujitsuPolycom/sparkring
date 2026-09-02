@@ -43,12 +43,21 @@ The launcher defaults to:
 | DFlash2 depth | 7 |
 | SparkCache publication | complete `snapshot-v1` objects |
 | shared GPU-prefix retention | up to 300 seconds |
+| modalities | images and video (`MULTIMODAL_INPUTS=1`); text-only mode available |
 
 DCP1 resolves to one-token KV interleaving without full-CKV gather. DCP2 and
 DCP4 resolve to four-token KV interleaving with full-CKV gather. Operators can
 change every value in the environment file without rebuilding the image.
 `SPARKCACHE_ENABLED=0` omits the persistent connector while retaining vLLM's
 GPU prefix cache; `SPARKCACHE_ENABLED=1` enables both layers.
+
+The launcher accepts images and video by default. The target checkpoint ships the
+GLM-5.3 vision tower (`Glm5NextForConditionalGeneration`, 347 BF16 tensors,
+1.05 GiB), and the runtime registers it. `MULTIMODAL_INPUTS=1` admits up to
+`MAX_IMAGES_PER_PROMPT` images and `MAX_VIDEOS_PER_PROMPT` videos per request.
+SparkCache binds media identity and placeholder geometry into persistent
+context digests. `MULTIMODAL_INPUTS=0` passes `--language-model-only`, so the
+vision tower is not loaded and media content is rejected before inference.
 
 With the connector enabled, `SPARKCACHE_ACCESS_MODE=read-write` restores and
 publishes persistent entries. `restore-only` reuses compatible entries but

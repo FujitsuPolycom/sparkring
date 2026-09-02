@@ -224,6 +224,15 @@ published image passed a live semantic request in this mode.
 network settings are ordinary environment values. Changing them does not
 require an image rebuild.
 
+To avoid loading the vision tower for a text-only deployment, set:
+
+```bash
+MULTIMODAL_INPUTS=0
+```
+
+Text-only mode passes `--language-model-only` and rejects media content before
+inference. It does not change SparkCache identity or stored entries.
+
 ## Start TP4
 
 Start all four ranks within the rendezvous timeout. Rank 0 uses argument `0`:
