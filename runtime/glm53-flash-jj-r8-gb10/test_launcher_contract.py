@@ -54,7 +54,9 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["B12X_MLA_CKV_GATHER"] == "auto"
 
 
-def test_launcher_resolves_dcp1_dcp2_and_dcp4(tmp_path: Path) -> None:
+def test_launcher_resolves_dcp_profiles_and_prompt_token_details(
+    tmp_path: Path,
+) -> None:
     subprocess.run(["bash", "-n", _bash_path(LAUNCHER)], check=True, cwd=ROOT)
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -190,12 +192,43 @@ printf '%s  %s\n' "$hash" "$2"
     assert "--kv-transfer-config" not in arguments
     assert "org.sparkring.sparkcache.enabled=0" in arguments
 
+    disabled = tmp_path / "prompt-token-details-disabled.env"
+    disabled.write_text(
+        config.read_text(encoding="utf-8")
+        + "\nENABLE_PROMPT_TOKENS_DETAILS=0\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    result = subprocess.run(
+        ["bash", _bash_path(LAUNCHER), "0", _bash_path(disabled)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    arguments = capture.read_text(encoding="utf-8").splitlines()
+    assert "--enable-prompt-tokens-details" not in arguments
 
-def test_launcher_gates_prompt_tokens_details_on_a_validated_flag() -> None:
-    launcher = LAUNCHER.read_text(encoding="utf-8")
-    assert ': "${ENABLE_PROMPT_TOKENS_DETAILS:=1}"' in launcher
-    assert "ENABLE_PROMPT_TOKENS_DETAILS must be 0 or 1" in launcher
-    assert "prompt_tokens_details=(--enable-prompt-tokens-details)" in launcher
+
+def test_launcher_rejects_invalid_prompt_tokens_details_setting(tmp_path: Path) -> None:
+    config = tmp_path / "prompt-token-details-invalid.env"
+    config.write_text(
+        f"source '{_bash_path(ENVIRONMENT)}'\nENABLE_PROMPT_TOKENS_DETAILS=invalid\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    result = subprocess.run(
+        ["bash", _bash_path(LAUNCHER), "0", _bash_path(config)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 78
+    assert "ENABLE_PROMPT_TOKENS_DETAILS must be 0 or 1" in result.stderr
 
 
 def test_launcher_can_use_vllm_prefix_cache_without_sparkcache() -> None:
