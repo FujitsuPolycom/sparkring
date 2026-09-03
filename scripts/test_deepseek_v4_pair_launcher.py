@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "scripts" / "deepseek_v4_pair_serve.sh"
 TEMPLATE = ROOT / "scripts" / "config" / "deepseek-v4-flash-0731-pair.env.example"
@@ -152,6 +151,7 @@ def test_cycle_env_defaults_match_recipe() -> None:
     assert int(values["MAX_NUM_BATCHED_TOKENS"]) == serving[
         "max_num_batched_tokens"
     ]
+    assert values["SERVED_MODEL_NAME"] == serving["served_model_name"]
 
 
 def test_launchers_pin_the_hardened_image_from_the_runtime_lock() -> None:
@@ -273,3 +273,94 @@ def test_launcher_uses_host_ipc_and_16g_shm_declaration() -> None:
     source = LAUNCHER.read_text(encoding="utf-8")
     assert "--ipc host" in source
     assert "--shm-size 16g" in source
+
+
+def _cycle_env_for_model(tmp_path: Path, model_dir: Path) -> Path:
+    """Fill the cycle template for one host model directory."""
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    content = CYCLE_TEMPLATE.read_text(encoding="utf-8")
+    replacements = {
+        "<NODE_RANK_0_TO_3>": "0",
+        "<RANK0_FABRIC_IP>": "10.43.0.1",
+        "<ABSOLUTE_MODEL_DIRECTORY>": _bash_path(model_dir),
+        "<ABSOLUTE_CACHE_DIRECTORY>": _bash_path(cache),
+        "<NCCL_SOCKET_IFNAME>": "fabric0",
+        "<RANK_FABRIC_IP>": "10.43.0.1",
+    }
+    for placeholder, value in replacements.items():
+        content = content.replace(placeholder, value)
+    env_file = tmp_path / "rank-0.env"
+    env_file.write_text(content, encoding="utf-8", newline="\n")
+    return env_file
+
+
+def _hub_snapshot(root: Path) -> tuple[Path, Path]:
+    """HF hub cache layout: <repo>/snapshots/<rev> beside <repo>/blobs."""
+    snapshot = root / "snapshots" / ("a1" * 20)
+    blobs = root / "blobs"
+    snapshot.mkdir(parents=True)
+    blobs.mkdir()
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    (blobs / "payload.bin").write_bytes(b"x")
+    return snapshot, blobs
+
+
+def test_cycle_served_model_name_defaults_to_recipe_name(cycle_env: Path) -> None:
+    result = _run_launcher(cycle_env, launcher=CYCLE_LAUNCHER)
+
+    assert result.returncode == 0, result.stderr
+    assert "served model: deepseek-v4-flash-0731" in result.stdout
+    assert "--served-model-name deepseek-v4-flash-0731" in result.stdout
+
+
+def test_cycle_served_model_name_override_reaches_the_command(
+    cycle_env: Path,
+) -> None:
+    content = cycle_env.read_text(encoding="utf-8").replace(
+        "SERVED_MODEL_NAME=deepseek-v4-flash-0731",
+        "SERVED_MODEL_NAME=deepseek-v4-flash-alias",
+    )
+    cycle_env.write_text(content, encoding="utf-8", newline="\n")
+
+    result = _run_launcher(cycle_env, launcher=CYCLE_LAUNCHER)
+
+    assert result.returncode == 0, result.stderr
+    assert "served model: deepseek-v4-flash-alias" in result.stdout
+    assert "--served-model-name deepseek-v4-flash-alias" in result.stdout
+
+
+def test_cycle_hf_snapshot_model_binds_the_sibling_blobs_dir(
+    tmp_path: Path,
+) -> None:
+    snapshot, blobs = _hub_snapshot(
+        tmp_path / "hub" / "models--drowzeys--keys-DeepSeekV4-Flash"
+    )
+    env_file = _cycle_env_for_model(tmp_path, snapshot)
+
+    result = _run_launcher(env_file, launcher=CYCLE_LAUNCHER)
+
+    assert result.returncode == 0, result.stderr
+    assert f"{_bash_path(blobs)}:/blobs:ro" in result.stdout
+    assert _bash_path(snapshot) in result.stdout
+
+
+def test_cycle_plain_model_dir_gains_no_blobs_mount(cycle_env: Path) -> None:
+    result = _run_launcher(cycle_env, launcher=CYCLE_LAUNCHER)
+
+    assert result.returncode == 0, result.stderr
+    assert "/blobs:ro" not in result.stdout
+
+
+def test_cycle_hf_snapshot_without_sibling_blobs_fails(tmp_path: Path) -> None:
+    snapshot = tmp_path / "hub" / "models--drowzeys--keys" / "snapshots" / (
+        "a1" * 20
+    )
+    snapshot.mkdir(parents=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    env_file = _cycle_env_for_model(tmp_path, snapshot)
+
+    result = _run_launcher(env_file, launcher=CYCLE_LAUNCHER)
+
+    assert result.returncode != 0
+    assert "no sibling blobs dir" in result.stderr
