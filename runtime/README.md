@@ -12,7 +12,7 @@ runtime they describe.
 |---|---|
 | [`exl3-r7/`](exl3-r7/README.md) | GLM-5.2 EXL3 3.5-bpw R7 ARM64 image builder and its verification tests |
 | [`glm53-flash/`](glm53-flash/README.md) | GLM-5.3 Flash target, BF16 DFlash2, vLLM, B12X, patched NCCL, and SparkCache identity and attestation contract |
-| [`glm53-flash-jj-r8-gb10/`](glm53-flash-jj-r8-gb10/README.md) | Published GLM-5.3 Flash R8 ARM64 image, source builder, and adjustable TP4/DCP1/DCP2/DCP4 launcher with optional SparkCache |
+| [`glm53-flash-jj-r8-gb10/`](glm53-flash-jj-r8-gb10/README.md) | GLM-5.3 Flash ARM64 image builder and adjustable TP4/DCP1/DCP2/DCP4 launcher with optional SparkCache; the source pin derives from Local Inference Lab's vLLM work |
 | [`glm53-flash-e10536a/`](glm53-flash-e10536a/README.md) | Implemented source builder for vLLM e10536a with internal MTP5 and opt-in adaptive depth; live serving unqualified |
 | [`glm53-flash-b12x-kda-adaptive-mtp/`](glm53-flash-b12x-kda-adaptive-mtp/README.md) | Implemented source builder for adaptive MTP and live-tensor B12X KDA at vLLM `0b67266a`; live serving unqualified |
 | [`deepseek0731-gb10/`](deepseek0731-gb10/README.md) | DeepSeek-V4-Flash-0731 GB10 parser, K5 sparse-row, and native PR431 image layer |
@@ -22,20 +22,27 @@ runtime they describe.
 | [`public-overlay-files.json`](public-overlay-files.json) | Explicit source-file allowlist for the public overlay |
 | [`test_public_overlay.py`](test_public_overlay.py) | Offline contract coverage for allowlisting and manifest generation |
 
-## Published GLM-5.3 Flash image
+## GLM-5.3 Flash operator image
 
-The [`GLM-5.3 R8 GB10 runtime`](glm53-flash-jj-r8-gb10/README.md) is the
-operator path for four-system TP4 serving. One image supports DCP1, DCP2, and
-DCP4 with persistent SparkCache enabled or disabled at launch:
+The [`GLM-5.3 GB10 runtime`](glm53-flash-jj-r8-gb10/README.md) is the operator
+path for four-system TP4 serving. One image supports DCP1, DCP2, and DCP4 with
+persistent SparkCache enabled or disabled at launch. The recommended DCP4
+page-tail image is:
 
 ```text
-ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:380283a506aeb8f9d486a3c64cd738e44268c3cc21590913ea9e4685869f256a
+ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f
 ```
 
-Follow the
-[`GLM-5.3 R8 quickstart`](../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)
-for checkpoint download, one-pull image distribution, configuration, and
-launch commands.
+The complete-snapshot rollback remains:
+
+```text
+ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762
+```
+
+The same directory builds the published `tail-cow-v2` page-tail image. Follow the
+[`GLM-5.3 quickstart`](../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)
+for checkpoint download, image pulling or source building, one-image
+distribution, configuration, and launch commands.
 
 ## GLM-5.2 EXL3 R7 builder
 

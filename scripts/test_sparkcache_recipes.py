@@ -26,7 +26,7 @@ ARTIFACTS = {
 }
 SOURCE_ARTIFACTS = {
     "glm53-flash-nvfp4-dflash2-bf16-tp4.json": (
-        "b08b517bd798d30cadccd0b58a18df4ac7acf8f352ecffe846b38efedda46795"
+        "3cfb8d66db3a437a8b3a886633e64b7006af4c50cccb3ddbf75eb8d73eda5de6"
     ),
 }
 
@@ -73,7 +73,7 @@ def test_compositions_pin_artifact_and_fail_closed_policy() -> None:
                 assert artifact["artifact_kind"] == "OCI image overlay"
             assert artifact["source_sha256"] == SOURCE_ARTIFACTS[path.name]
             assert artifact["source_commit"] == (
-                "b7d1c188a3f9e78595e6e7b649f3751131e269ea"
+                "737ed1399f559ba036fb0e358541744011afd47d"
             )
             assert recipe["runtime"]["image"].startswith("ghcr.io/fujitsupolycom/")
             assert recipe["serving_common"]["max_num_batched_tokens"] == 8192
@@ -158,7 +158,7 @@ def test_glm53_composition_matches_the_operator_contract() -> None:
         ROOT
         / "runtime"
         / "glm53-flash-jj-r8-gb10"
-        / "multimodal-lease300-image-receipt.json"
+        / "page-tail-v2-public-image-receipt.json"
     )
 
     assert recipe["base_recipe"] == "../glm53-flash-nvfp4-dflash2-bf16-tp4.json"
@@ -200,9 +200,9 @@ def test_glm53_composition_matches_the_operator_contract() -> None:
     assert recipe["profiles"]["dcp4"]["preferred"] is True
     assert (
         recipe["profiles"]["dcp4"]["capture_slot_bytes"]
-        == receipt["launch"]["async_capture_slot_bytes"]
+        == receipt["configuration"]["async_capture_slot_bytes"]
     )
     assert recipe["evidence"]["machine_receipt"] == (
         "runtime/glm53-flash-jj-r8-gb10/"
-        "multimodal-lease300-image-receipt.json"
+        "page-tail-v2-public-image-receipt.json"
     )

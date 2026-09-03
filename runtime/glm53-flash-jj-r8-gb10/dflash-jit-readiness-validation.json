@@ -1,0 +1,44 @@
+{
+  "schema": "sparkring-glm53-dflash-jit-readiness/v1",
+  "status": "qualified",
+  "failure_observation": {
+    "time": "2026-09-02T22:47:14Z",
+    "image_id": "sha256:7df364ed1bb0036d2514e36d5e40cfa1721c7fb9d841b0d9c4b519b53f5680c8",
+    "symptom": "rank 0 raised CUBLAS_STATUS_INTERNAL_ERROR after a DFlash Triton specialization compiled during two active requests",
+    "api_health_status": 200,
+    "chat_probe_timeout_seconds": 20,
+    "requests_running_after_timeout": 2,
+    "requests_waiting_after_timeout": 0,
+    "kernel_oom_or_xid_observed": false
+  },
+  "runtime": {
+    "image_id": "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0",
+    "sparkcache_commit": "737ed1399f559ba036fb0e358541744011afd47d",
+    "sparkring_commit": "649e8ebe45f097f13062275964c5401cde98cb0c",
+    "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+    "topology": "TP4/DCP4",
+    "jit_cache_namespace": "glm53-flash-sm121-vllm-22ffe140-b12x-6255090a-entrypoint-v3"
+  },
+  "readiness": {
+    "concurrencies": [1, 2, 4, 8, 16],
+    "prompt_words": [8, 24, 56, 120, 248],
+    "dflash_max_tokens": 16,
+    "triton_block_sizes_covered": [16, 32, 64, 128, 256],
+    "rank_zero_launcher_waited_for_warmup": true
+  },
+  "validation": {
+    "concurrent_restored_prefix_tokens": 921600,
+    "response_codewords": ["RESTART900A", "RESTART900B"],
+    "response_seconds": [11.833, 12.827],
+    "docker_restart_initial_health": "starting",
+    "docker_restart_ready_seconds": 143.7,
+    "warmup_repeated_after_docker_restart": true,
+    "jit_events_after_readiness": 0,
+    "cuda_or_cublas_errors_after_readiness": 0,
+    "requests_running_after_validation": 0,
+    "requests_waiting_after_validation": 0,
+    "image_transfer_pressure_replay_passed": true,
+    "image_transfer_pressure_response_seconds": [7.031, 10.266]
+  },
+  "limitation": "The original cuBLAS failure was observed once. The readiness warmup removes the reproduced first-use JIT condition and passed the failure-shaped replay, but it does not establish that runtime JIT was the only possible cause of a cuBLAS internal error."
+}

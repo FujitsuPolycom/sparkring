@@ -23,8 +23,8 @@ fi
 : "${DFLASH_MODEL_HOST_PATH:?set DFLASH_MODEL_HOST_PATH to the pinned BF16 draft checkpoint}"
 : "${CACHE_HOST_ROOT:?set CACHE_HOST_ROOT to a dedicated rank-local directory}"
 
-: "${IMAGE_REF:=ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762}"
-: "${IMAGE_ID:=sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9}"
+: "${IMAGE_REF:=ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f}"
+: "${IMAGE_ID:=sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0}"
 : "${CONTAINER_PREFIX:=glm53-jj-r8-gb10}"
 : "${SERVED_MODEL_NAME:=glm-5.3-flash}"
 : "${PORT:=8015}"
@@ -59,11 +59,18 @@ fi
 : "${LOAD_FORMAT:=fastsafetensors}"
 : "${CUDAGRAPH_MODE:=FULL_AND_PIECEWISE}"
 : "${MAX_CUDAGRAPH_CAPTURE_SIZE:=128}"
-: "${SPARKCACHE_CACHE_NAMESPACE:=glm53-flash-dcp4-snapshot-v1}"
+: "${SPARKCACHE_CACHE_NAMESPACE:=glm53-flash-dcp4-page-tail-cow-v2}"
+: "${JIT_CACHE_NAMESPACE:=glm53-flash-sm121-vllm-22ffe140-b12x-6255090a}"
+: "${JIT_MONITOR_VERBOSE:=0}"
+: "${DFLASH_WARMUP:=0}"
+: "${DFLASH_WARMUP_CONCURRENCIES:=1,2,4,8,16}"
+: "${DFLASH_WARMUP_SHAPE_WORDS:=8,24,56,120,248}"
+: "${DFLASH_WARMUP_MAX_TOKENS:=16}"
+: "${DFLASH_WARMUP_TIMEOUT_SECONDS:=600}"
 : "${SPARKCACHE_ENABLED:=1}"
 : "${SPARKCACHE_ACCESS_MODE:=read-write}"
 : "${SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS:=300}"
-: "${SPARKCACHE_PUBLICATION_SCHEMA:=snapshot-v1}"
+: "${SPARKCACHE_PUBLICATION_SCHEMA:=tail-cow-v2}"
 : "${SPARKCACHE_CLEAR_ONCE:=auto}"
 : "${SPARKCACHE_MAX_BYTES:=42949672960}"
 : "${SPARKCACHE_LOW_WATERMARK_BYTES:=34359738368}"
@@ -77,6 +84,8 @@ fi
 : "${SPARKCACHE_ASYNC_PAGE_CAPTURE:=0}"
 : "${SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES:=auto}"
 : "${SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT:=2}"
+: "${SPARKCACHE_SOURCE_OVERLAY:=}"
+: "${VLLM_KV_METRICS_OVERLAY:=}"
 : "${MULTIMODAL_INPUTS:=1}"
 : "${SOCKET_IFNAME:=enP7s7}"
 : "${NCCL_IB_HCA:=rocep1s0f0,rocep1s0f1}"
@@ -203,8 +212,8 @@ esac
 [[ "${SPECULATION_METHOD}" == dflash ]] || \
   die 'this runtime launcher supports SPECULATION_METHOD=dflash'
 case "${SPARKCACHE_PUBLICATION_SCHEMA}" in
-  snapshot-v1|tail-cow-v1) ;;
-  *) die 'SPARKCACHE_PUBLICATION_SCHEMA must be snapshot-v1 or tail-cow-v1' ;;
+  snapshot-v1|tail-cow-v1|tail-cow-v2) ;;
+  *) die 'SPARKCACHE_PUBLICATION_SCHEMA must be snapshot-v1, tail-cow-v1, or tail-cow-v2' ;;
 esac
 case "${SPARKCACHE_ENABLED}" in
   0|1) ;;
@@ -225,8 +234,6 @@ esac
 if [[ "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 ]]; then
   [[ "${SPARKCACHE_ENABLED}" == 1 ]] || \
     die 'asynchronous page capture requires SPARKCACHE_ENABLED=1'
-  [[ "${SPARKCACHE_PUBLICATION_SCHEMA}" == snapshot-v1 ]] || \
-    die 'asynchronous page capture supports snapshot-v1 publication only'
   case "${SPARKCACHE_ACCESS_MODE}" in
     read-write|store-only) ;;
     *) die 'asynchronous page capture requires a publication-capable access mode' ;;
@@ -236,12 +243,21 @@ case "${MULTIMODAL_INPUTS}" in
   0|1) ;;
   *) die 'MULTIMODAL_INPUTS must be 0 (text only) or 1 (images and video)' ;;
 esac
-for name in SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE
+case "${JIT_MONITOR_VERBOSE}" in
+  0|1) ;;
+  *) die 'JIT_MONITOR_VERBOSE must be 0 or 1' ;;
+esac
+case "${DFLASH_WARMUP}" in
+  0|1) ;;
+  *) die 'DFLASH_WARMUP must be 0 or 1' ;;
+esac
+for name in SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE JIT_CACHE_NAMESPACE
 do
   [[ "${!name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || \
     die "${name} must contain only letters, digits, dot, underscore, or hyphen"
 done
 api_key_args=()
+api_keys=()
 if [[ -n "${API_KEYS_FILE}" ]]; then
   [[ -f "${API_KEYS_FILE}" && -r "${API_KEYS_FILE}" ]] || \
     die "API_KEYS_FILE is not a readable regular file: ${API_KEYS_FILE}"
@@ -259,12 +275,38 @@ if [[ -n "${API_KEYS_FILE}" ]]; then
   # later option cannot truncate the accepted set.
   api_key_args=(--api-key "${api_keys[@]}")
 fi
+warmup_api_key_env=()
+if (( ${#api_keys[@]} > 0 )); then
+  warmup_api_key_env=(-e "SPARKRING_WARMUP_API_KEY=${api_keys[0]}")
+fi
 for name in TARGET_MODEL_HOST_PATH DFLASH_MODEL_HOST_PATH CACHE_HOST_ROOT; do
   value="${!name}"
   [[ "${value}" == /* ]] || die "${name} must be an absolute host path"
   [[ "${value}" != *:* && "${value}" != *$'\n'* ]] || \
     die "${name} cannot be represented safely as a Docker bind mount"
 done
+sparkcache_source_args=()
+if [[ -n "${SPARKCACHE_SOURCE_OVERLAY}" ]]; then
+  [[ "${SPARKCACHE_SOURCE_OVERLAY}" == /* ]] || \
+    die 'SPARKCACHE_SOURCE_OVERLAY must be an absolute host path'
+  [[ -d "${SPARKCACHE_SOURCE_OVERLAY}" ]] || \
+    die 'SPARKCACHE_SOURCE_OVERLAY must be a directory'
+  sparkcache_source_args=(
+    -v
+    "${SPARKCACHE_SOURCE_OVERLAY}:/usr/local/lib/python3.12/dist-packages/sparkcache:ro"
+  )
+fi
+vllm_metrics_args=()
+if [[ -n "${VLLM_KV_METRICS_OVERLAY}" ]]; then
+  [[ "${VLLM_KV_METRICS_OVERLAY}" == /* ]] || \
+    die 'VLLM_KV_METRICS_OVERLAY must be an absolute host path'
+  [[ -f "${VLLM_KV_METRICS_OVERLAY}" ]] || \
+    die 'VLLM_KV_METRICS_OVERLAY must be a regular file'
+  vllm_metrics_args=(
+    -v
+    "${VLLM_KV_METRICS_OVERLAY}:/usr/local/lib/python3.12/dist-packages/vllm/distributed/kv_transfer/kv_connector/v1/metrics.py:ro"
+  )
+fi
 command -v python3 >/dev/null 2>&1 || die 'python3 is required to encode JSON configuration safely'
 command -v sha256sum >/dev/null 2>&1 || die 'sha256sum is required to verify model inputs'
 python3 - "${GPU_MEMORY_UTILIZATION}" <<'PY' || exit 78
@@ -449,24 +491,39 @@ prompt_tokens_details=()
 if [[ "${ENABLE_PROMPT_TOKENS_DETAILS}" == 1 ]]; then
   prompt_tokens_details=(--enable-prompt-tokens-details)
 fi
+jit_monitor_args=()
+if [[ "${JIT_MONITOR_VERBOSE}" == 1 ]]; then
+  jit_monitor_args=(--jit-monitor-verbose)
+fi
 
-exec docker run -d \
+container_id="$(docker run -d \
   --name "${container}" \
+  --entrypoint /opt/sparkring/bin/serve-with-warmup.py \
   --network host --ipc host --shm-size "${SHM_SIZE}" --gpus all \
   --ulimit memlock=-1:-1 --cap-add IPC_LOCK --device /dev/infiniband \
   --security-opt label=disable --init \
   -v "${TARGET_MODEL_HOST_PATH}:/models/target:ro" \
   -v "${DFLASH_MODEL_HOST_PATH}:/dflash-draft:ro" \
   -v "${CACHE_HOST_ROOT}:/cache/jit" \
+  "${sparkcache_source_args[@]}" \
+  "${vllm_metrics_args[@]}" \
+  -e "SPARKRING_NODE_RANK=${rank}" \
+  -e "PORT=${PORT}" -e "SERVED_MODEL_NAME=${SERVED_MODEL_NAME}" \
+  -e "DFLASH_WARMUP=${DFLASH_WARMUP}" \
+  -e "DFLASH_WARMUP_CONCURRENCIES=${DFLASH_WARMUP_CONCURRENCIES}" \
+  -e "DFLASH_WARMUP_SHAPE_WORDS=${DFLASH_WARMUP_SHAPE_WORDS}" \
+  -e "DFLASH_WARMUP_MAX_TOKENS=${DFLASH_WARMUP_MAX_TOKENS}" \
+  -e "DFLASH_WARMUP_TIMEOUT_SECONDS=${DFLASH_WARMUP_TIMEOUT_SECONDS}" \
+  "${warmup_api_key_env[@]}" \
   -e "VLLM_HOST_IP=${HOST_IP}" \
   -e VLLM_GLM53_SPLIT_TARGET_BLOCK_SIZE=512 \
   -e VLLM_GLM53_SPLIT_MAMBA_BLOCK_SIZE=512 \
   -e "VLLM_B12X_MLA_CKV_GATHER=${B12X_MLA_CKV_GATHER}" \
   -e "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS=${B12X_MLA_CKV_GATHER_MAX_TOKENS}" \
-  -e "VLLM_CACHE_ROOT=/cache/jit/vllm/${SPARKCACHE_CACHE_NAMESPACE}" \
-  -e "B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x/6255090a/${SPARKCACHE_CACHE_NAMESPACE}" \
-  -e "TRITON_CACHE_DIR=/cache/jit/triton/${SPARKCACHE_CACHE_NAMESPACE}" \
-  -e "TORCHINDUCTOR_CACHE_DIR=/cache/jit/torchinductor/${SPARKCACHE_CACHE_NAMESPACE}" \
+  -e "VLLM_CACHE_ROOT=/cache/jit/vllm/${JIT_CACHE_NAMESPACE}" \
+  -e "B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x/${JIT_CACHE_NAMESPACE}" \
+  -e "TRITON_CACHE_DIR=/cache/jit/triton/${JIT_CACHE_NAMESPACE}" \
+  -e "TORCHINDUCTOR_CACHE_DIR=/cache/jit/torchinductor/${JIT_CACHE_NAMESPACE}" \
   -e XDG_CACHE_HOME=/cache/jit -e HF_HUB_OFFLINE=1 -e TRANSFORMERS_OFFLINE=1 \
   -e VLLM_NO_USAGE_STATS=1 -e VLLM_PLUGINS= \
   -e "OMP_NUM_THREADS=${OMP_NUM_THREADS}" \
@@ -521,5 +578,22 @@ exec docker run -d \
   --compilation-config "${compilation_config}" \
   --max-cudagraph-capture-size "${MAX_CUDAGRAPH_CAPTURE_SIZE}" \
   --async-scheduling --enable-prefix-caching --cudagraph-metrics \
+  "${jit_monitor_args[@]}" \
   "${prompt_tokens_details[@]}" \
-  "${kv_transfer_args[@]}" "${headless[@]}"
+  "${kv_transfer_args[@]}" "${headless[@]}")"
+
+if [[ "${rank}" == 0 && "${DFLASH_WARMUP}" == 1 ]]; then
+  readiness_deadline=$((SECONDS + DFLASH_WARMUP_TIMEOUT_SECONDS + 120))
+  while true; do
+    health="$(docker inspect --format '{{.State.Health.Status}}' "${container}" 2>/dev/null || true)"
+    [[ "${health}" == healthy ]] && break
+    state="$(docker inspect --format '{{.State.Status}}' "${container}" 2>/dev/null || true)"
+    if [[ "${health}" == unhealthy || "${state}" == exited || "${state}" == dead ]]; then
+      die "rank-0 engine readiness failed: state=${state:-unknown} health=${health:-unknown}"
+    fi
+    (( SECONDS < readiness_deadline )) || \
+      die 'rank-0 engine readiness timed out'
+    sleep 1
+  done
+fi
+printf '%s\n' "${container_id}"

@@ -13,7 +13,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 LAUNCHER = HERE / "launch-rank.sh"
 ENVIRONMENT = HERE / "runtime.env.example"
-IMAGE_ID = "sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9"
+IMAGE_ID = "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0"
 
 
 def _defaults() -> dict[str, str]:
@@ -40,7 +40,7 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["IMAGE_ID"] == IMAGE_ID
     assert values["IMAGE_REF"] == (
         "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
-        "sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762"
+        "sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f"
     )
     assert values["MAX_MODEL_LEN"] == "1048576"
     assert values["SERVED_MODEL_NAME"] == "glm-5.3-flash"
@@ -57,6 +57,9 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["SPARKCACHE_MAX_SPAN_TOKENS"] == "1048576"
     assert values["CP_KV_CACHE_INTERLEAVE_SIZE"] == "auto"
     assert values["B12X_MLA_CKV_GATHER"] == "auto"
+    assert values["JIT_CACHE_NAMESPACE"] == (
+        "glm53-flash-sm121-vllm-22ffe140-b12x-6255090a"
+    )
 
 
 def test_launcher_resolves_dcp_profiles_and_prompt_token_details(
@@ -158,9 +161,20 @@ printf '%s  %s\n' "$hash" "$2"
         mm_index = arguments.index("--limit-mm-per-prompt")
         assert json.loads(arguments[mm_index + 1]) == {"image": 4, "video": 1}
         assert "--kv-transfer-config" in arguments
+        jit_namespace = "glm53-flash-sm121-vllm-22ffe140-b12x-6255090a"
+        assert f"VLLM_CACHE_ROOT=/cache/jit/vllm/{jit_namespace}" in arguments
+        assert (
+            f"B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x/{jit_namespace}"
+            in arguments
+        )
+        assert f"TRITON_CACHE_DIR=/cache/jit/triton/{jit_namespace}" in arguments
+        assert (
+            f"TORCHINDUCTOR_CACHE_DIR=/cache/jit/torchinductor/{jit_namespace}"
+            in arguments
+        )
         connector = json.loads(arguments[arguments.index("--kv-transfer-config") + 1])
         extra = connector["kv_connector_extra_config"]
-        assert extra["spark_cache_publication_schema"] == "snapshot-v1"
+        assert extra["spark_cache_publication_schema"] == "tail-cow-v2"
         assert extra["spark_cache_model_profile"] == "glm53-flash-hybrid"
         assert extra["spark_cache_access_mode"] == "read-write"
         assert extra["spark_cache_shared_prefix_lease_ttl_seconds"] == 300
@@ -362,8 +376,16 @@ printf '%s  %s\n' "$hash" "$2"
     index = keyed.index("--api-key")
     assert keyed[index + 1 : index + 3] == ["k1", "k2"]
     assert keyed[index + 3] == "--host"
+    warmup_credential = "SPARKRING_WARMUP_API_KEY=k1"
+    warmup_index = keyed.index(warmup_credential)
+    assert keyed[warmup_index - 1] == "-e"
+    command_without_warmup_credential = (
+        keyed[: warmup_index - 1] + keyed[warmup_index + 1 :]
+    )
     assert [
-        argument for argument in keyed if argument not in ("--api-key", "k1", "k2")
+        argument
+        for argument in command_without_warmup_credential
+        if argument not in ("--api-key", "k1", "k2")
     ] == keyless
 
     # A file readable beyond its owner is refused before the container starts.
@@ -436,6 +458,7 @@ def test_public_operator_documents_use_portable_examples_and_resolving_links() -
             assert (document.parent / relative).resolve().exists(), (document, target)
 
     quickstart = documents[-1].read_text(encoding="utf-8")
+    assert "sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f" in quickstart
     assert "sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762" in quickstart
     assert "DECODE_CONTEXT_PARALLEL_SIZE=4  # change to 1 or 2" in quickstart
     assert "fanout_image_archive.py" in quickstart

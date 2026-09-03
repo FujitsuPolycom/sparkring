@@ -324,11 +324,12 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
         ROOT
         / "runtime"
         / "glm53-flash-jj-r8-gb10"
-        / "multimodal-lease300-image-receipt.json"
+        / "page-tail-v2-public-image-receipt.json"
     )
 
     assert base["status"] == "implemented"
     assert base["serving_common"]["external_kv_cache"] is False
+    assert base["runtime"]["environment_overrides"] == {"SPARKCACHE_ENABLED": "0"}
     assert base["evidence"]["status"] == "implemented"
     assert base["preferred_profile"] == "dcp4"
     assert set(base["profiles"]) == {"dcp1", "dcp2", "dcp4"}
@@ -342,17 +343,29 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
     assert cache["profiles"]["dcp1"]["async_page_capture"] is False
     assert cache["profiles"]["dcp2"]["async_page_capture"] is False
     assert cache["profiles"]["dcp4"]["async_page_capture"] is True
+    assert cache["profiles"]["dcp1"]["publication_schema"] == "snapshot-v1"
+    assert cache["profiles"]["dcp1"]["cache_namespace_default"] == (
+        "glm53-flash-dcp1-snapshot-v1"
+    )
+    assert cache["profiles"]["dcp2"]["publication_schema"] == "snapshot-v1"
+    assert cache["profiles"]["dcp2"]["cache_namespace_default"] == (
+        "glm53-flash-dcp2-snapshot-v1"
+    )
+    assert cache["profiles"]["dcp4"]["publication_schema"] == "tail-cow-v2"
+    assert cache["profiles"]["dcp4"]["cache_namespace_default"] == (
+        "glm53-flash-dcp4-page-tail-cow-v2"
+    )
     assert cache["runtime"]["image"].endswith(
-        "@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762"
+        "@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f"
     )
     assert cache["runtime"]["image_id"] == (
-        "sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9"
+        "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0"
     )
     assert cache["runtime"]["sparkcache"]["source_commit"] == (
-        "b7d1c188a3f9e78595e6e7b649f3751131e269ea"
+        "737ed1399f559ba036fb0e358541744011afd47d"
     )
     assert base["runtime"]["sparkring_source_commit"] == (
-        image_receipt["sources"]["sparkring_image_revision"]
+        image_receipt["sources"]["sparkring_image_commit"]
     )
 
 
@@ -404,7 +417,7 @@ def test_public_glm53_benchmark_retains_only_valid_run1_cells() -> None:
     )
 
 
-def test_public_glm53_benchmark_is_sanitized_and_front_page_uses_r8() -> None:
+def test_public_glm53_benchmark_is_sanitized_and_front_page_lists_dcp_profiles() -> None:
     paths = [PERFORMANCE_RECEIPT_PATH, PERFORMANCE_RECORD_PATH]
     text = "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
@@ -432,7 +445,10 @@ def test_public_glm53_benchmark_is_sanitized_and_front_page_uses_r8() -> None:
     quickstart = (
         ROOT / "docs" / "GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
     ).read_text(encoding="utf-8")
-    assert "The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV" in quickstart
+    assert (
+        "The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV"
+        in quickstart
+    )
     assert "942,898-token needle" in readme
     assert "GLM-5.3 Flash research observation" not in readme
     assert "IN PROGRESS" not in readme

@@ -68,8 +68,11 @@ capacity among these profiles and is the recorded asynchronous SparkCache
 deployment.**
 
 The operator image is published at
-`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762`
+`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f`
 and supports both caching methods.
+
+The previous complete-snapshot image remains available as the rollback named
+in the quickstart.
 
 ### Other model profiles
 

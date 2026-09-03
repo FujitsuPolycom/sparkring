@@ -9,13 +9,19 @@ ARG SOURCE_RECEIPT_SHA256
 COPY bundle/ /opt/sparkring/overlays/jj-r8-sparkcache-arm64/
 COPY install_overlay.py /opt/sparkring/bin/install-jj-r8-sparkcache-overlay.py
 COPY verify_image.py /opt/sparkring/bin/verify-jj-r8-sparkcache-image.py
+COPY warmup_dflash.py /opt/sparkring/bin/warmup_dflash.py
+COPY serve_with_warmup.py /opt/sparkring/bin/serve-with-warmup.py
 
 RUN python3 /opt/sparkring/bin/install-jj-r8-sparkcache-overlay.py \
       --root /opt/sparkring/overlays/jj-r8-sparkcache-arm64 && \
+    chmod 0755 /opt/sparkring/bin/serve-with-warmup.py && \
     mkdir -p /opt/sparkring/receipts/jj-r8-sparkcache-arm64 && \
     cp /opt/sparkring/overlays/jj-r8-sparkcache-arm64/receipts/* \
       /opt/sparkring/receipts/jj-r8-sparkcache-arm64/ && \
     python3 /opt/sparkring/bin/verify-jj-r8-sparkcache-image.py --inside-image
+
+HEALTHCHECK --interval=2s --timeout=1s --start-period=600s --retries=1 \
+  CMD test -f /tmp/sparkring-engine-ready || exit 1
 
 ENV VLLM_B12X_MOE_FP4_FORCE_A16=0 \
     CUTE_DSL_ARCH=sm_121a \
@@ -51,13 +57,13 @@ LABEL org.opencontainers.image.title="SparkRing GLM-5.3 ARM64 operator image wit
       org.sparkring.nccl.sha256="5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3" \
       org.sparkring.loader="fastsafetensors" \
       org.sparkring.diagnostics="compact-startup-no-deep-ep" \
-      org.sparkcache.commit="b7d1c188a3f9e78595e6e7b649f3751131e269ea" \
-      org.sparkcache.tree="8ea2e7b18d1ef198b061764842f006663634ebb7" \
-      org.sparkcache.source-sha256="b08b517bd798d30cadccd0b58a18df4ac7acf8f352ecffe846b38efedda46795" \
+      org.sparkcache.commit="737ed1399f559ba036fb0e358541744011afd47d" \
+      org.sparkcache.tree="decc0e042a4b1807e960551ffa3ef12c8c9114a7" \
+      org.sparkcache.source-sha256="3cfb8d66db3a437a8b3a886633e64b7006af4c50cccb3ddbf75eb8d73eda5de6" \
       org.sparkcache.cuda-placement-sha256="d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c" \
       org.sparkcache.cuda-snapshot-sha256="4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5" \
       org.sparkcache.startup-inventory="connector-handshake-all-rank" \
       org.sparkcache.cache-geometry="manager-pages-v2" \
-      org.sparkcache.publication-schema="snapshot-v1" \
+      org.sparkcache.publication-schema="snapshot-v1,page-tail-cow-v1,page-tail-cow-v2" \
       org.sparkcache.dcp-layouts="1,2,4" \
       org.sparkcache.default="disabled-until-explicitly-configured"
