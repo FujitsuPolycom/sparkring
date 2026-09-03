@@ -45,7 +45,28 @@
     "post_readiness_cuda_or_cublas_errors": 0,
     "requests_running_after_validation": 0,
     "requests_waiting_after_validation": 0,
-    "image_transfer_pressure_replay_passed": true
+    "image_transfer_pressure_replay_passed": true,
+    "clean_checkout_operator_test": {
+      "sparkring_commit": "6b674c55ad3ec7d90723a02975c62d1cdf128e11",
+      "runtime_env_template": "runtime/glm53-flash-jj-r8-gb10/runtime.env.example",
+      "site_and_isolation_overrides": [
+        "HOST_IP",
+        "MASTER_ADDR",
+        "TARGET_MODEL_HOST_PATH",
+        "DFLASH_MODEL_HOST_PATH",
+        "CACHE_HOST_ROOT",
+        "CONTAINER_PREFIX",
+        "SPARKCACHE_DCP_CACHE_NAMESPACE"
+      ],
+      "source_bind_mounts": 0,
+      "initial_codewords": ["STRANGER32", "STRANGER64"],
+      "initial_cached_prefix_tokens": [0, 32768],
+      "restart_codeword": "STRANGER64",
+      "restart_cached_prefix_tokens": 65536,
+      "restart_created_cache_tokens": 0,
+      "restart_response_seconds": 3.858,
+      "rank_restore_milliseconds": [439.2, 586.0, 477.9, 539.4]
+    }
   },
   "rollback": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762",
   "limitations": [
