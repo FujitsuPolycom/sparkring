@@ -37,7 +37,8 @@
     "cuda_or_cublas_errors_after_readiness": 0,
     "requests_running_after_validation": 0,
     "requests_waiting_after_validation": 0,
-    "image_transfer_pressure_replay_passed": true
+    "image_transfer_pressure_replay_passed": true,
+    "image_transfer_pressure_response_seconds": [7.031, 10.266]
   },
   "limitation": "The original cuBLAS failure was observed once. The readiness warmup removes the reproduced first-use JIT condition and passed the failure-shaped replay, but it does not establish that runtime JIT was the only possible cause of a cuBLAS internal error."
 }

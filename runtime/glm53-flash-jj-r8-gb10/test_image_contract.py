@@ -342,6 +342,7 @@ def test_dflash_readiness_receipt_records_engine_level_recovery() -> None:
     assert receipt["validation"]["jit_events_after_readiness"] == 0
     assert receipt["validation"]["cuda_or_cublas_errors_after_readiness"] == 0
     assert receipt["validation"]["requests_running_after_validation"] == 0
+    assert receipt["validation"]["image_transfer_pressure_replay_passed"] is True
 
 
 def test_async_capture_image_receipt_binds_public_artifact_and_live_results() -> None:
