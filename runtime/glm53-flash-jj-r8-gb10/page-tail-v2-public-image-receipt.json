@@ -56,7 +56,7 @@
         "DFLASH_MODEL_HOST_PATH",
         "CACHE_HOST_ROOT",
         "CONTAINER_PREFIX",
-        "SPARKCACHE_DCP_CACHE_NAMESPACE"
+        "SPARKCACHE_CACHE_NAMESPACE"
       ],
       "source_bind_mounts": 0,
       "initial_codewords": ["STRANGER32", "STRANGER64"],

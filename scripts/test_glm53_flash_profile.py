@@ -329,6 +329,7 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
 
     assert base["status"] == "implemented"
     assert base["serving_common"]["external_kv_cache"] is False
+    assert base["runtime"]["environment_overrides"] == {"SPARKCACHE_ENABLED": "0"}
     assert base["evidence"]["status"] == "implemented"
     assert base["preferred_profile"] == "dcp4"
     assert set(base["profiles"]) == {"dcp1", "dcp2", "dcp4"}
@@ -342,6 +343,18 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
     assert cache["profiles"]["dcp1"]["async_page_capture"] is False
     assert cache["profiles"]["dcp2"]["async_page_capture"] is False
     assert cache["profiles"]["dcp4"]["async_page_capture"] is True
+    assert cache["profiles"]["dcp1"]["publication_schema"] == "snapshot-v1"
+    assert cache["profiles"]["dcp1"]["cache_namespace_default"] == (
+        "glm53-flash-dcp1-snapshot-v1"
+    )
+    assert cache["profiles"]["dcp2"]["publication_schema"] == "snapshot-v1"
+    assert cache["profiles"]["dcp2"]["cache_namespace_default"] == (
+        "glm53-flash-dcp2-snapshot-v1"
+    )
+    assert cache["profiles"]["dcp4"]["publication_schema"] == "tail-cow-v2"
+    assert cache["profiles"]["dcp4"]["cache_namespace_default"] == (
+        "glm53-flash-dcp4-page-tail-cow-v2"
+    )
     assert cache["runtime"]["image"].endswith(
         "@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f"
     )
