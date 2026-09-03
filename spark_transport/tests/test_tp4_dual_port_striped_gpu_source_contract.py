@@ -37,7 +37,7 @@ def test_striped_graph_launches_the_reviewed_eight_node_dag() -> None:
         "if (schedule_ == Tp4AllreduceSchedule::kDualPortStriped)"
     )
     sequential_start = enqueue.index(
-        "if (tp4_graph_kernel_uses_split(graph_kernel_strategy_, q))"
+        "if (tp4_graph_kernel_uses_split(graph_kernel_strategy_,"
     )
     striped = enqueue[striped_start:sequential_start]
     expected = [

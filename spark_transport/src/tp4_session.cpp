@@ -14,6 +14,7 @@
 
 #include <cuda_runtime.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -31,6 +32,7 @@
 #include <stdexcept>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #if defined(__linux__)
 #include <pthread.h>
@@ -110,6 +112,19 @@ std::chrono::seconds eager_protocol_timeout() {
       "SPARK_TP4_EAGER_PROTOCOL_TIMEOUT_SECONDS");
 }
 
+bool graph_direct_doorbell_enabled() {
+  const char* value = std::getenv("SPARK_TP4_GRAPH_DIRECT_DOORBELL");
+  if (value == nullptr || value[0] == '\0' ||
+      std::strcmp(value, "0") == 0) {
+    return false;
+  }
+  if (std::strcmp(value, "1") == 0) {
+    return true;
+  }
+  throw std::invalid_argument(
+      "SPARK_TP4_GRAPH_DIRECT_DOORBELL must be 0 or 1");
+}
+
 std::uint64_t load_sequence(const std::uint64_t* address) {
   return __atomic_load_n(address, __ATOMIC_ACQUIRE);
 }
@@ -150,7 +165,7 @@ void exchange_and_connect_endpoint(
     ControlChannel& channel, VerbsEndpoint& endpoint,
     Tp4AllreduceProtocol protocol, Tp4AllreduceSchedule schedule,
     bool graph_session, std::uint32_t elements_per_row,
-    std::uint32_t bytes_per_row) {
+    std::uint32_t bytes_per_row, bool graph_direct_doorbell) {
   EndpointInfo local = endpoint.local_info();
   if (schedule == Tp4AllreduceSchedule::kDualPortStriped) {
     local.version = detail::kTp4DualPortStripedEndpointVersion;
@@ -179,6 +194,7 @@ void exchange_and_connect_endpoint(
   }
   if (graph_session) {
     GraphGeometryInfo local_geometry{};
+    local_geometry.reserved = graph_direct_doorbell ? 1U : 0U;
     local_geometry.elements_per_row = elements_per_row;
     local_geometry.bytes_per_row = bytes_per_row;
     const GraphGeometryInfo remote_geometry =
@@ -332,9 +348,12 @@ void adaptive_graph_poll_pause(std::uint32_t& misses) noexcept {
 #else
   std::atomic_signal_fence(std::memory_order_seq_cst);
 #endif
-  if (misses >= 4096) {
-    misses = 1024;
-    std::this_thread::yield();
+  if (misses == std::numeric_limits<std::uint32_t>::max()) {
+    // The graph progress thread owns an exclusively pinned CPU. Entering the
+    // scheduler between model-layer collectives adds exposed wake latency to
+    // every replay; retain only the architecture pause hint and wrap the
+    // diagnostic counter without yielding that dedicated core.
+    misses = 0;
   }
 }
 
@@ -399,6 +418,7 @@ class Tp4AllreduceSession::Impl {
  public:
   explicit Impl(Tp4AllreduceOptions options)
       : options_(std::move(options)),
+        graph_direct_doorbell_(graph_direct_doorbell_enabled()),
         max_inflight_(max_inflight_collectives()) {
     if (options_.rank >= 4 || options_.peer0.empty() ||
         options_.peer1.empty() || options_.device0.empty() ||
@@ -425,6 +445,13 @@ class Tp4AllreduceSession::Impl {
     }
     if (!tp4_allreduce_schedule_valid(options_.schedule)) {
       throw std::invalid_argument("invalid TP4 all-reduce schedule");
+    }
+    if (graph_direct_doorbell_ &&
+        (options_.schedule != Tp4AllreduceSchedule::kSequential ||
+         !tp4_protocol_uses_deferred_ack(options_.protocol))) {
+      throw std::invalid_argument(
+          "direct-doorbell graph TP4 requires sequential two-slot "
+          "deferred ACK");
     }
     const bool submit_cpu_set = options_.graph_submit_cpu.has_value();
     const bool progress_cpu_set = options_.graph_progress_cpu.has_value();
@@ -495,7 +522,8 @@ class Tp4AllreduceSession::Impl {
     exchange_and_connect_endpoint(*channel0_, *endpoint0_,
                                   options_.protocol, options_.schedule,
                                   submit_cpu_set, options_.elements_per_row,
-                                  options_.bytes_per_row);
+                                  options_.bytes_per_row,
+                                  graph_direct_doorbell_);
 
     channel1_.emplace(
         open_channel(plan1, options_.peer1, options_.control_port1));
@@ -506,7 +534,8 @@ class Tp4AllreduceSession::Impl {
     exchange_and_connect_endpoint(*channel1_, *endpoint1_,
                                   options_.protocol, options_.schedule,
                                   submit_cpu_set, options_.elements_per_row,
-                                  options_.bytes_per_row);
+                                  options_.bytes_per_row,
+                                  graph_direct_doorbell_);
 
     if (graph_capacity_supported(options_.payload_bytes,
                                  options_.bytes_per_row)) {
@@ -531,7 +560,8 @@ class Tp4AllreduceSession::Impl {
         options_.payload_bytes, options_.bytes_per_row,
         buffer0_->device_data(), layout_,
         buffer1_->device_data(), layout_, options_.protocol,
-        options_.graph_kernel_strategy, options_.schedule);
+        options_.graph_kernel_strategy, options_.schedule,
+        graph_direct_doorbell_);
     channel0_->barrier();
     channel1_->barrier();
     start_progress_thread();
@@ -541,9 +571,15 @@ class Tp4AllreduceSession::Impl {
     // Graph kernels publish work only when replay reaches them. Keep the
     // verbs progress thread alive while draining the caller stream so a
     // queued replay cannot strand its GPU kernel waiting for RDMA.
-    if (caller_stream_set_) {
-      const auto result =
-          cudaStreamSynchronize(static_cast<cudaStream_t>(caller_stream_));
+    for (cudaStream_t stream : graph_capture_streams_) {
+      const auto result = cudaStreamSynchronize(stream);
+      if (result != cudaSuccess) {
+        fatal_async_failure(cudaGetErrorString(result));
+      }
+    }
+    if (graph_capture_streams_.empty() && caller_stream_set_) {
+      const auto result = cudaStreamSynchronize(
+          static_cast<cudaStream_t>(caller_stream_));
       if (result != cudaSuccess) {
         fatal_async_failure(cudaGetErrorString(result));
       }
@@ -675,8 +711,11 @@ class Tp4AllreduceSession::Impl {
 
     const auto caller_stream = static_cast<cudaStream_t>(cuda_stream);
     cudaStreamCaptureStatus capture_status{};
-    check_cuda(cudaStreamIsCapturing(caller_stream, &capture_status),
-               "cudaStreamIsCapturing graph TP4");
+    unsigned long long capture_id{};
+    check_cuda(
+        cudaStreamGetCaptureInfo(caller_stream, &capture_status,
+                                 &capture_id),
+        "cudaStreamGetCaptureInfo graph TP4");
     if (capture_status != cudaStreamCaptureStatusActive) {
       throw std::logic_error(
           "graph TP4 setup requires an active CUDA stream capture");
@@ -692,9 +731,18 @@ class Tp4AllreduceSession::Impl {
         throw std::logic_error(
             "graph TP4 capture must precede eager submissions");
       }
-      if (caller_stream_set_ && caller_stream_ != cuda_stream) {
+      const auto capture_record = std::find_if(
+          graph_capture_records_.begin(), graph_capture_records_.end(),
+          [capture_id](const auto& record) {
+            return record.first == capture_id;
+          });
+      if (capture_record != graph_capture_records_.end() &&
+          capture_record->second != caller_stream) {
         throw std::invalid_argument(
-            "TP4 session requires one stable caller CUDA stream");
+            "graph TP4 capture record reused a different CUDA stream");
+      }
+      if (capture_record == graph_capture_records_.end()) {
+        graph_capture_records_.emplace_back(capture_id, caller_stream);
       }
       if (tp4_graph_command_published(graph_commands_host_) != 0 ||
           tp4_graph_command_consumed(graph_commands_host_) != 0 ||
@@ -706,8 +754,11 @@ class Tp4AllreduceSession::Impl {
       if (!graph_capture_configured_) {
         graph_trace_ = std::getenv("SPARK_TRANSPORT_TRACE") != nullptr;
         graph_capture_configured_ = true;
-        caller_stream_ = cuda_stream;
-        caller_stream_set_ = true;
+      }
+      if (std::find(graph_capture_streams_.begin(),
+                    graph_capture_streams_.end(), caller_stream) ==
+          graph_capture_streams_.end()) {
+        graph_capture_streams_.push_back(caller_stream);
       }
     }
 
@@ -718,8 +769,6 @@ class Tp4AllreduceSession::Impl {
       std::lock_guard<std::mutex> lock(submission_mutex_);
       if (graph_capture_nodes_ == 0) {
         graph_capture_configured_ = false;
-        caller_stream_ = nullptr;
-        caller_stream_set_ = false;
       }
       throw;
     }
@@ -741,6 +790,7 @@ class Tp4AllreduceSession::Impl {
         submit_affinity_verified_,
         progress_affinity_verified_.load(std::memory_order_acquire),
         tp4_protocol_uses_deferred_ack(options_.protocol),
+        graph_direct_doorbell_,
         options_.graph_submit_cpu.has_value()
             ? static_cast<int>(*options_.graph_submit_cpu)
             : -1,
@@ -900,6 +950,10 @@ class Tp4AllreduceSession::Impl {
   }
 
   void progress_graph_commands() noexcept {
+    if (graph_direct_doorbell_) {
+      progress_direct_graph_doorbells();
+      return;
+    }
     std::uint32_t poll_misses{};
     while (!stop_requested_.load(std::memory_order_acquire)) {
       if (tp4_graph_command_overflow(graph_commands_host_) != 0) {
@@ -932,6 +986,62 @@ class Tp4AllreduceSession::Impl {
         fatal_async_failure("unknown error");
       }
       tp4_graph_command_complete(graph_commands_host_, command.sequence);
+    }
+  }
+
+  void progress_direct_graph_doorbells() noexcept {
+    std::uint32_t poll_misses{};
+    while (!stop_requested_.load(std::memory_order_acquire)) {
+      if (tp4_graph_command_overflow(graph_commands_host_) != 0) {
+        fatal_async_failure("direct-doorbell graph TP4 overflow");
+      }
+
+      const std::uint64_t expected = graph_consumed_sequence_ + 1;
+      const std::size_t slot =
+          tp4_payload_slot_index(expected, options_.protocol);
+      DoorbellControl* const control0 =
+          slot_control(*buffer0_, layout_, slot);
+      const std::uint64_t doorbell_token =
+          load_sequence(&control0->producer_sequence);
+      const std::uint64_t observed_sequence =
+          doorbell_token >> kTp4GraphDoorbellQBits;
+      if (observed_sequence < expected) {
+        adaptive_graph_poll_pause(poll_misses);
+        continue;
+      }
+      poll_misses = 0;
+      if (observed_sequence != expected) {
+        fatal_async_failure(
+            "direct-doorbell graph TP4 skipped a slot generation");
+      }
+      const std::uint32_t q = static_cast<std::uint32_t>(
+          doorbell_token & kTp4GraphDoorbellQMask);
+      if (!tp4_graph_doorbell_token_valid(expected, q)) {
+        fatal_async_failure("invalid direct-doorbell graph TP4 token");
+      }
+      const std::uint32_t payload_bytes =
+          tp4_graph_payload_bytes(q, options_.bytes_per_row);
+      if (payload_bytes == 0 || payload_bytes > options_.payload_bytes) {
+        fatal_async_failure(
+            "direct-doorbell graph TP4 payload exceeds session capacity");
+      }
+
+      graph_consumed_sequence_ = expected;
+      store_sequence(
+          &graph_commands_host_->producer.claimed_sequence, expected);
+      store_sequence(
+          &graph_commands_host_->producer.published_sequence, expected);
+      store_sequence(
+          &graph_commands_host_->consumer.consumed_sequence, expected);
+      try {
+        progress(expected, graph_trace_, payload_bytes, doorbell_token,
+                 true);
+      } catch (const std::exception& error) {
+        fatal_async_failure(error.what());
+      } catch (...) {
+        fatal_async_failure("unknown direct-doorbell graph TP4 error");
+      }
+      tp4_graph_command_complete(graph_commands_host_, expected);
     }
   }
 
@@ -1139,6 +1249,7 @@ class Tp4AllreduceSession::Impl {
   }
 
   Tp4AllreduceOptions options_;
+  const bool graph_direct_doorbell_{};
   ExchangeBufferLayout layout_{};
   Tp4StripedEndpointLayout striped_layout_{};
   std::size_t arena_bytes_{};
@@ -1173,6 +1284,9 @@ class Tp4AllreduceSession::Impl {
   std::uint64_t last_credit_sequence1_{};
   void* caller_stream_{};
   bool caller_stream_set_{};
+  std::vector<std::pair<unsigned long long, cudaStream_t>>
+      graph_capture_records_;
+  std::vector<cudaStream_t> graph_capture_streams_;
   std::atomic<bool> graph_capture_configured_{false};
   std::atomic<std::uint64_t> graph_capture_nodes_{0};
   bool graph_host_native_atomics_supported_{};

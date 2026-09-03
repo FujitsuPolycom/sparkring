@@ -34,11 +34,20 @@ The recommended profile uses:
 
 | Setting | Value |
 |---|---:|
+| operator image ID | `sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0` |
 | topology | TP4/DCP4 |
+| compute and quantization | BF16 compute with ModelOpt mixed quantization |
 | maximum model length | 1,048,576 tokens |
 | batched-token budget | 8,192 tokens |
 | prefill scheduler interval | 2 |
 | sequences | 16 |
+| scheduler | asynchronous with chunked prefill and prefix caching |
+| graph mode | `FULL_AND_PIECEWISE` |
+| CUDA graph capture sizes | 8, 16, 32, 64, and 128 |
+| model kernels | B12X attention, MoE, and linear; FlashKDA prefill |
+| collective/RMSNorm fusion | disabled |
+| FlashInfer autotuning | disabled |
+| model loader | fastsafetensors with queue size 1 |
 | multimodal requests | up to four images and one video per request |
 | FP8 KV allocation | 24 GiB for the default DCP4 profile; 26 GiB for DCP1; 30 GiB for DCP2 |
 | DFlash2 depth | 7 |
@@ -51,6 +60,110 @@ DCP4 resolve to four-token KV interleaving with full-CKV gather. Operators can
 change every value in the environment file without rebuilding the image.
 `SPARKCACHE_ENABLED=0` omits the persistent connector while retaining vLLM's
 GPU prefix cache; `SPARKCACHE_ENABLED=1` enables both layers.
+
+### Implemented SIRCL performance-testing lane
+
+**Status: implemented.** `runtime.env.example` keeps the portable NCCL profile
+enabled by default. The sanitized
+[`sircl-fused.env.example`](sircl-fused.env.example) overlay enables
+the graph-native and fused eager paths with the same non-site settings on every
+rank. Peer addresses, device names, and the bundle path remain site inputs.
+
+#### Build the source-bound bundle
+
+An enabled rank mounts one bundle containing the allowlisted Python overlay,
+its generated manifest, and `libspark_transport_capi.so`. Build all three from
+one clean SparkRing revision on an ARM64 CUDA host:
+
+```bash
+python runtime/build-public-overlay.py \
+  --repo . \
+  --spec runtime/public-overlay-files.json \
+  --output build/sircl-bundle
+cmake -S spark_transport -B build/spark-transport \
+  -G Ninja \
+  -DBUILD_TESTING=ON \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CUDA_ARCHITECTURES=121 \
+  -DSPARK_TP4_ENABLE_FUSED_STREAM_SWITCH_SMOKE=ON
+cmake --build build/spark-transport --parallel
+ctest --test-dir build/spark-transport --output-on-failure
+cp build/spark-transport/libspark_transport_capi.so build/sircl-bundle/
+```
+
+The
+[`sircl-public-build-receipt.json`](sircl-public-build-receipt.json) receipt
+binds the public `spark_transport` Git tree, overlay specification, generated
+manifest, native-library SHA-256, toolchain, and native test result. It
+establishes a content-addressed native build, not a four-rank serving result.
+
+Copy byte-identical bundles to every rank. The launcher records the native
+library and overlay-manifest hashes as container labels.
+
+#### Configure the four ranks
+
+Start with the base runtime environment, then append the fused SIRCL overlay:
+
+```bash
+cp runtime/glm53-flash-jj-r8-gb10/runtime.env.example "$HOME/glm53-flash.env"
+cat runtime/glm53-flash-jj-r8-gb10/sircl-fused.env.example >> "$HOME/glm53-flash.env"
+${EDITOR:-vi} "$HOME/glm53-flash.env"
+```
+
+Replace every `REPLACE` value in the combined file. The secondary values select
+the second RDMA device function on each existing cabled ring edge; the topology
+requires neither additional cables nor diagonal rank links. The launcher
+rejects incomplete or repeated peer/device assignments, inconsistent modes,
+invalid GIDs, invalid port ranges, and a missing or incomplete bundle before
+Docker starts.
+
+The launcher sets `VLLM_SPARK_TP4_MODE=custom`, enables the width-4096 graph
+adapter and shared capture stream, and disables the width-6144 Q1/Q40 graph
+paths. It fixes `SPARK_TP4_FLIGHT_RECORDER=0`. Effective collective routing is:
+
+| Collective | Implementation |
+|---|---|
+| Captured contiguous TP4 BF16 `[Q, 4096]`, Q=8/16/32/64/128 | graph-native SIRCL with direct doorbells |
+| Eager contiguous TP4 BF16 `[Q, 4096]`, Q128 through Q8192 | fused dual-rail SIRCL |
+| Eager contiguous TP4 BF16 `[Q, 4096]`, Q1 through Q127 | NCCL |
+| Unsupported signatures, DCP, and non-TP collectives | NCCL |
+
+The launcher passes `--disable-custom-all-reduce` to disable vLLM's built-in
+custom all-reduce. SIRCL is installed independently from the mounted bundle and
+remains active when `SIRCL_ENABLED=1`.
+
+The fused session owns four persistent QPs and two operation slots. Each slot
+has a 67,109,888-byte mapped arena (64 MiB plus 1 KiB of control storage), for
+134,219,776 mapped bytes per rank. Per-slot CUDA completion events permit
+successive operations to use different caller streams. The fused proxy is
+pinned to CPU 12; graph submission and progress are pinned to CPUs 10 and 11.
+
+The Q8192 session derives its ports from the configured base pairs: primary
+ports 19006/19007 and secondary ports 19106/19107. The derivation reserves two
+ports for each admitted capacity Q1024/Q2048/Q4096/Q8192.
+
+SIRCL's two transport slots are independent from SparkCache's two 3-GiB
+asynchronous page-capture slots and two 256-MiB restore arenas.
+
+#### Qualification boundary
+
+The SIRCL performance-testing lane is implemented but not qualified as the
+recommended dual-rail profile. Qualification requires a four-rank deployment
+of the exact public bundle, cold-start and restart checks, deterministic native
+and model-output correctness, a receipt-backed NCCL/SIRCL comparison with
+transport counters, and fault containment. Rank-wide capability voting and a
+post-step health gate are specified in
+[`FujitsuPolycom/sparkring#198`](https://github.com/FujitsuPolycom/sparkring/issues/198).
+
+### NCCL fallback
+
+Patched NCCL 2.30.7 handles every collective outside the SIRCL admission
+table. The launcher selects the ring algorithm over RoCE/IB, the
+`LL,LL128,Simple` protocol set, four minimum and maximum channels, cross-NIC
+routing, and subnet-aware routing. `NCCL_SWITCHLESS_RING_ONLY=1` rejects a
+topology that cannot use the direct cycle. cuMem is disabled, and the P2P level
+is `SYS`. The default HCA pair is `rocep1s0f0,rocep1s0f1` with GID index 3;
+operators replace those defaults when their primary interface names differ.
 
 The launcher accepts images and video by default. The target checkpoint ships the
 GLM-5.3 vision tower (`Glm5NextForConditionalGeneration`, 347 BF16 tensors,

@@ -271,6 +271,9 @@ extern "C" int spark_tp4_get_graph_status(
     if (snapshot.two_slot_deferred_ack) {
       result.flags |= SPARK_TP4_GRAPH_STATUS_TWO_SLOT_DEFERRED_ACK;
     }
+    if (snapshot.direct_doorbell) {
+      result.flags |= SPARK_TP4_GRAPH_STATUS_DIRECT_DOORBELL;
+    }
     if (c_handle->graph_kernel_strategy ==
         spark_transport::Tp4GraphKernelStrategy::kSplit64KiB) {
       result.flags |= SPARK_TP4_GRAPH_STATUS_SPLIT_64K;

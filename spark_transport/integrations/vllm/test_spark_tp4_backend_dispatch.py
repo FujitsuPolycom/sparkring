@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import ctypes
 import sys
 import types
 import unittest
@@ -124,6 +125,11 @@ class _FailingNative:
         raise RuntimeError("injected native failure")
 
 
+class _FakeFusedNative:
+    def all_reduce(self, tensor: object) -> tuple[str, int, object]:
+        return ("candidate", tensor.shape[0] * tensor.shape[1] * 2, tensor)
+
+
 class _FakeBackend:
     created: list["_FakeBackend"] = []
 
@@ -133,6 +139,8 @@ class _FakeBackend:
         self.graph_q1_session: _FakeNative | None = None
         self.graph_dual_port_q40_session: _FakeNative | None = None
         self.graph_width4096_session: _FakeNative | None = None
+        self.bidirectional_prefill_sessions: dict[tuple[int, ...], _FakeNative] = {}
+        self.fused_prefill_sessions: dict[tuple[int, ...], _FakeNative] = {}
         self.shadow_stats: dict[object, _FakeShadowStats] = {}
         self.created.append(self)
 
@@ -141,6 +149,21 @@ class _FakeBackend:
         if native is None:
             native = _FakeNative(payload_bytes)
             self.native_sessions[payload_bytes] = native
+        return native
+
+    def bidirectional_prefill_for(self, shape: tuple[int, ...]) -> _FakeNative:
+        native = self.bidirectional_prefill_sessions.get(shape)
+        if native is None:
+            native = _FakeNative(shape[0] * shape[1] * 2)
+            self.bidirectional_prefill_sessions[shape] = native
+        return native
+
+    def fused_prefill_for(self) -> _FakeFusedNative:
+        shape = (8192, 4096)
+        native = self.fused_prefill_sessions.get(shape)
+        if native is None:
+            native = _FakeFusedNative()
+            self.fused_prefill_sessions[shape] = native
         return native
 
     def prepare_graph_q1(self) -> _FakeNative:
@@ -309,6 +332,8 @@ class _FakeLibrary:
             status.flags |= (
                 spark_tp4_backend._GRAPH_STATUS_DUAL_PORT_STRIPED
             )
+        if os.getenv("SPARK_TP4_GRAPH_DIRECT_DOORBELL") == "1":
+            status.flags |= spark_tp4_backend._GRAPH_STATUS_DIRECT_DOORBELL
         status.captured_nodes = 128
         status.published_sequence = 1024
         status.consumed_sequence = 1024
@@ -346,6 +371,10 @@ class SparkTp4BackendDispatchTest(unittest.TestCase):
             patch.dict(os.environ, environment, clear=True),
             patch.dict(sys.modules, self.modules),
             patch.object(spark_tp4_backend, "_Backend", _FakeBackend),
+            patch.object(
+                spark_tp4_backend,
+                "_validate_fused_prefill_native_api",
+            ),
         )
         for patcher in patchers:
             patcher.start()
@@ -367,6 +396,159 @@ class SparkTp4BackendDispatchTest(unittest.TestCase):
 
         self.assertIs(self.communicator_type.all_reduce, self.original_all_reduce)
         self.assertFalse(spark_tp4_backend._installed)
+
+    def test_bidirectional_prefill_gate_is_strict_and_requires_active_mode(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            ValueError, "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL"
+        ):
+            self._install(
+                "custom", {"VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL": "yes"}
+            )
+        spark_tp4_backend._installed = False
+        with self.assertRaisesRegex(ValueError, "requires"):
+            self._install(
+                None, {"VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL": "1"}
+            )
+
+    def test_custom_bidirectional_prefill_is_shape_gated_and_cached(self) -> None:
+        self._install(
+            "custom", {"VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL": "1"}
+        )
+        communicator = self.communicator_type()
+        eligible = [_FakeTensor(shape=(rows, 4096)) for rows in (1024, 2048)]
+        results = [communicator.all_reduce(tensor) for tensor in eligible]
+        backend = _FakeBackend.created[0]
+
+        self.assertEqual(
+            results,
+            [
+                ("candidate", 1024 * 4096 * 2, eligible[0]),
+                ("candidate", 2048 * 4096 * 2, eligible[1]),
+            ],
+        )
+        self.assertEqual(
+            set(backend.bidirectional_prefill_sessions),
+            {(1024, 4096), (2048, 4096)},
+        )
+        communicator.all_reduce(eligible[0])
+        self.assertEqual(len(backend.bidirectional_prefill_sessions), 2)
+
+        wrong_q = _FakeTensor(shape=(512, 4096))
+        wrong_width = _FakeTensor(shape=(1024, 6144))
+        self.assertEqual(
+            communicator.all_reduce(wrong_q), ("reference", wrong_q)
+        )
+        self.assertEqual(
+            communicator.all_reduce(wrong_width), ("reference", wrong_width)
+        )
+
+    def test_fused_exposure_routes_dynamic_large_eager_shapes_and_caches(self) -> None:
+        self._install(
+            "custom",
+            {
+                "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL": "1",
+                "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE": "fused",
+                "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE": "dual",
+                "SPARK_TP4_PEER0": "p0",
+                "SPARK_TP4_PEER1": "p1",
+                "SPARK_TP4_DEVICE0": "d0",
+                "SPARK_TP4_DEVICE1": "d1",
+                "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0": "s0",
+                "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1": "s1",
+                "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0": "sd0",
+                "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1": "sd1",
+                "SPARK_TP4_LIBRARY": "libspark_transport_capi.so",
+            },
+        )
+        communicator = self.communicator_type()
+        for rows in (128, 512, 1024, 2048, 2064, 4096, 6144, 6656, 7680, 8192):
+            tensor = _FakeTensor(shape=(rows, 4096))
+            self.assertEqual(
+                communicator.all_reduce(tensor),
+                ("candidate", rows * 4096 * 2, tensor),
+            )
+        backend = _FakeBackend.created[0]
+        self.assertEqual(set(backend.fused_prefill_sessions), {(8192, 4096)})
+        self.assertEqual(backend.bidirectional_prefill_sessions, {})
+
+        for rows in (64, 127, 8193):
+            tensor = _FakeTensor(shape=(rows, 4096))
+            self.assertEqual(
+                communicator.all_reduce(tensor), ("reference", tensor)
+            )
+        self.assertEqual(backend.bidirectional_prefill_sessions, {})
+
+    def test_fused_exposure_captured_q8192_stays_on_nccl(self) -> None:
+        self._install(
+            "custom",
+            {
+                "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL": "1",
+                "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE": "fused",
+                "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE": "dual",
+                "SPARK_TP4_PEER0": "p0",
+                "SPARK_TP4_PEER1": "p1",
+                "SPARK_TP4_DEVICE0": "d0",
+                "SPARK_TP4_DEVICE1": "d1",
+                "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0": "s0",
+                "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1": "s1",
+                "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0": "sd0",
+                "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1": "sd1",
+                "SPARK_TP4_LIBRARY": "libspark_transport_capi.so",
+            },
+        )
+        self.torch_module.cuda.capturing = True
+        communicator = self.communicator_type()
+        tensor = _FakeTensor(shape=(8192, 4096))
+
+        self.assertEqual(communicator.all_reduce(tensor), ("reference", tensor))
+        self.assertEqual(_FakeBackend.created, [])
+
+    def test_fused_exposure_is_strict_and_requires_dual_rail(self) -> None:
+        with self.assertRaisesRegex(ValueError, "EXPOSURE"):
+            self._install(
+                "custom",
+                {
+                    "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE": "async"
+                },
+            )
+        spark_tp4_backend._installed = False
+        with self.assertRaisesRegex(ValueError, "strict dual-rail"):
+            self._install(
+                "custom",
+                {
+                    "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL": "1",
+                    "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE": "fused",
+                },
+            )
+
+    def test_captured_bidirectional_prefill_shape_stays_on_stock_path(self) -> None:
+        self._install(
+            "custom", {"VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL": "1"}
+        )
+        self.torch_module.cuda.capturing = True
+        communicator = self.communicator_type()
+        tensor = _FakeTensor(shape=(1024, 4096))
+
+        self.assertEqual(communicator.all_reduce(tensor), ("reference", tensor))
+        self.assertEqual(_FakeBackend.created, [])
+
+    def test_shadow_bidirectional_prefill_compares_and_returns_nccl(self) -> None:
+        self._install(
+            "shadow", {"VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL": "1"}
+        )
+        communicator = self.communicator_type()
+        tensor = _FakeTensor(shape=(4096, 4096))
+
+        result = communicator.all_reduce(tensor)
+        backend = _FakeBackend.created[0]
+        signature = (4096 * 4096 * 2, (4096, 4096), "torch.bfloat16")
+        self.assertEqual(result, ("reference", tensor))
+        self.assertEqual(
+            backend.shadow_stats[signature].observations,
+            [(("candidate", 4096 * 4096 * 2, tensor), ("reference", tensor))],
+        )
 
     def test_deferred_ack_protocol_requires_custom_graph_transport(self) -> None:
         with self.assertRaisesRegex(
@@ -1182,6 +1364,35 @@ class SparkTp4NativeSessionConfigTest(unittest.TestCase):
                 12288,
                 allreduce_protocol="two_slot_deferred_ack",
             )
+
+    def test_direct_doorbell_is_attested_in_graph_status(self) -> None:
+        library = _FakeLibrary()
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "SPARK_TP4_LIBRARY": "fake.dll",
+                    "SPARK_TP4_GRAPH_DIRECT_DOORBELL": "1",
+                },
+                clear=True,
+            ),
+            patch.object(
+                spark_tp4_backend.ctypes,
+                "CDLL",
+                return_value=library,
+            ),
+        ):
+            session = spark_tp4_backend._NativeSession(
+                0,
+                73728,
+                control_ports=(14000, 14001),
+                graph_only=True,
+                graph_cpu_affinity=(10, 11),
+                allreduce_protocol="two_slot_deferred_ack",
+            )
+            status = session.graph_status()
+
+        self.assertTrue(status.direct_doorbell)
 
     def test_dual_port_schedule_uses_additive_create_symbol(self) -> None:
         library = _FakeLibrary()
@@ -2324,6 +2535,289 @@ class SparkTp4ResearchWidth4096Test(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "worker terminated"):
                 communicator.all_reduce(tensor)
         self.assertEqual(communicator.original_inputs, [])
+
+
+class BidirectionalPrefillDualRailConfigTest(unittest.TestCase):
+    def test_ctypes_layout_matches_versioned_native_struct(self) -> None:
+        config = spark_tp4_backend._BidirectionalPrefillConfigV1
+        self.assertEqual(ctypes.sizeof(config), 144)
+        expected = {
+            "primary": 8,
+            "rail_count": 88,
+            "query_rows": 92,
+            "secondary_peer0": 96,
+            "secondary_peer1": 104,
+            "secondary_device0": 112,
+            "secondary_device1": 120,
+            "secondary_gid0": 128,
+            "secondary_gid1": 129,
+            "secondary_control_port0": 130,
+            "secondary_control_port1": 132,
+            "timeout_seconds": 136,
+        }
+        self.assertEqual(
+            {name: getattr(config, name).offset for name in expected},
+            expected,
+        )
+
+    def test_dual_mode_requires_secondary_identity_before_loading_library(
+        self,
+    ) -> None:
+        environment = {
+            "VLLM_SPARK_TP4_MODE": "custom",
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL": "1",
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE": "dual",
+            "SPARK_TP4_LIBRARY": "unused.so",
+        }
+        with (
+            patch.dict(os.environ, environment, clear=True),
+            patch.object(spark_tp4_backend.ctypes, "CDLL") as loader,
+            self.assertRaisesRegex(ValueError, "requires"),
+        ):
+            spark_tp4_backend._BidirectionalPrefillNativeSession(
+                0, (1024, 4096)
+            )
+        loader.assert_not_called()
+
+    def test_dual_mode_passes_explicit_versioned_config(self) -> None:
+        captured: dict[str, object] = {}
+
+        def create(config_pointer, error, error_bytes):
+            del error, error_bytes
+            config = ctypes.cast(
+                config_pointer,
+                ctypes.POINTER(
+                    spark_tp4_backend._BidirectionalPrefillConfigV1
+                ),
+            ).contents
+            captured.update(
+                rail_count=config.rail_count,
+                query_rows=config.query_rows,
+                peer0=config.secondary_peer0,
+                device0=config.secondary_device0,
+                port0=config.secondary_control_port0,
+                timeout=config.timeout_seconds,
+            )
+            return 1
+
+        library = types.SimpleNamespace(
+            spark_tp4_bidirectional_prefill_create=_FakeFunction(create),
+            spark_tp4_bidirectional_prefill_all_reduce=_FakeFunction(),
+            spark_tp4_bidirectional_prefill_destroy=_FakeFunction(),
+        )
+        environment = {
+            "VLLM_SPARK_TP4_MODE": "custom",
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL": "1",
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE": "dual",
+            "SPARK_TP4_LIBRARY": "libspark_transport_capi.so",
+            "SPARK_TP4_PEER0": "192.0.2.10",
+            "SPARK_TP4_PEER1": "192.0.2.11",
+            "SPARK_TP4_DEVICE0": "primary0",
+            "SPARK_TP4_DEVICE1": "primary1",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0": "192.0.2.12",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1": "192.0.2.13",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0": "secondary0",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1": "secondary1",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS": "77",
+        }
+        with (
+            patch.dict(os.environ, environment, clear=True),
+            patch.object(
+                spark_tp4_backend.ctypes, "CDLL", return_value=library
+            ),
+        ):
+            session = spark_tp4_backend._BidirectionalPrefillNativeSession(
+                0, (1024, 4096)
+            )
+            session.close()
+        self.assertEqual(
+            captured,
+            {
+                "rail_count": 2,
+                "query_rows": 1024,
+                "peer0": b"192.0.2.12",
+                "device0": b"secondary0",
+                "port0": 19100,
+                "timeout": 77,
+            },
+        )
+
+    def test_dual_mode_rejects_duplicate_identity_before_create(self) -> None:
+        environment = {
+            "VLLM_SPARK_TP4_MODE": "custom",
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL": "1",
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE": "dual",
+            "SPARK_TP4_LIBRARY": "unused.so",
+            "SPARK_TP4_PEER0": "p0",
+            "SPARK_TP4_PEER1": "p1",
+            "SPARK_TP4_DEVICE0": "d0",
+            "SPARK_TP4_DEVICE1": "d1",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0": "p1",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1": "s1",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0": "s0",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1": "s1",
+        }
+        with (
+            patch.dict(os.environ, environment, clear=True),
+            patch.object(spark_tp4_backend.ctypes, "CDLL") as loader,
+            self.assertRaisesRegex(ValueError, "peer addresses"),
+        ):
+            spark_tp4_backend._BidirectionalPrefillNativeSession(
+                0, (1024, 4096)
+            )
+        loader.assert_not_called()
+
+    def test_fused_binding_uses_dedicated_symbols_and_exact_signature(self) -> None:
+        create = _FakeFunction()
+        all_reduce = _FakeFunction()
+        destroy = _FakeFunction()
+        library = types.SimpleNamespace(
+            spark_tp4_fused_prefill_create=create,
+            spark_tp4_fused_prefill_all_reduce_rows=all_reduce,
+            spark_tp4_fused_prefill_destroy=destroy,
+        )
+
+        bound = spark_tp4_backend._bind_fused_prefill_native_api(library)
+
+        self.assertEqual(bound, (create, all_reduce, destroy))
+        self.assertEqual(
+            create.argtypes,
+            [
+                ctypes.POINTER(
+                    spark_tp4_backend._BidirectionalPrefillConfigV1
+                ),
+                ctypes.c_char_p,
+                ctypes.c_size_t,
+            ],
+        )
+        self.assertEqual(
+            all_reduce.argtypes,
+            [
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_uint32,
+                ctypes.c_void_p,
+                ctypes.c_char_p,
+                ctypes.c_size_t,
+            ],
+        )
+        self.assertEqual(destroy.argtypes, [ctypes.c_void_p])
+
+    def test_fused_session_has_q8192_capacity_and_closes_dedicated_handle(self) -> None:
+        captured: dict[str, object] = {}
+        submissions: list[
+            tuple[int | None, int | None, int, int | None]
+        ] = []
+
+        def create(config_pointer, error, error_bytes):
+            del error, error_bytes
+            config = ctypes.cast(
+                config_pointer,
+                ctypes.POINTER(
+                    spark_tp4_backend._BidirectionalPrefillConfigV1
+                ),
+            ).contents
+            captured["rail_count"] = config.rail_count
+            captured["query_rows"] = config.query_rows
+            return 37
+
+        def all_reduce(
+            handle, input_pointer, output_pointer, query_rows, stream,
+            error, error_bytes
+        ):
+            del handle, error, error_bytes
+            submissions.append(
+                (input_pointer.value, output_pointer.value,
+                 query_rows.value, stream.value)
+            )
+            return 0
+
+        destroyed: list[object] = []
+        library = types.SimpleNamespace(
+            spark_tp4_fused_prefill_create=_FakeFunction(create),
+            spark_tp4_fused_prefill_all_reduce_rows=_FakeFunction(all_reduce),
+            spark_tp4_fused_prefill_destroy=_FakeFunction(destroyed.append),
+        )
+        input_tensor = types.SimpleNamespace(
+            shape=(6144, 4096),
+            device="cuda:0",
+            data_ptr=lambda: 101,
+        )
+        output_tensor = types.SimpleNamespace(data_ptr=lambda: 202)
+        torch_module = types.ModuleType("torch")
+        torch_module.empty_like = lambda tensor: output_tensor
+        torch_module.cuda = types.SimpleNamespace(
+            current_stream=lambda device: types.SimpleNamespace(cuda_stream=303)
+        )
+        environment = {
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE": "dual",
+            "SPARK_TP4_LIBRARY": "libspark_transport_capi.so",
+            "SPARK_TP4_PEER0": "p0",
+            "SPARK_TP4_PEER1": "p1",
+            "SPARK_TP4_DEVICE0": "d0",
+            "SPARK_TP4_DEVICE1": "d1",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0": "s0",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1": "s1",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0": "sd0",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1": "sd1",
+        }
+        with (
+            patch.dict(os.environ, environment, clear=True),
+            patch.object(
+                spark_tp4_backend.ctypes, "CDLL", return_value=library
+            ),
+            patch.dict(sys.modules, {"torch": torch_module}),
+        ):
+            session = spark_tp4_backend._FusedPrefillNativeSession(
+                0, (8192, 4096)
+            )
+            self.assertIs(session.all_reduce(input_tensor), output_tensor)
+            self.assertFalse(hasattr(session, "_pending_refs"))
+            session.close()
+            session.close()
+            with self.assertRaisesRegex(ValueError, "invalid"):
+                spark_tp4_backend._FusedPrefillNativeSession(
+                    0, (4096, 4096)
+                )
+
+        self.assertEqual(captured, {"rail_count": 2, "query_rows": 8192})
+        self.assertEqual(submissions, [(101, 202, 6144, 303)])
+        self.assertEqual(destroyed, [37])
+
+    def test_fused_missing_symbol_fails_before_vllm_patch(self) -> None:
+        library = types.SimpleNamespace()
+        environment = {
+            "VLLM_SPARK_TP4_MODE": "custom",
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL": "1",
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE": "fused",
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE": "dual",
+            "SPARK_TP4_LIBRARY": "libspark_transport_capi.so",
+            "SPARK_TP4_PEER0": "p0",
+            "SPARK_TP4_PEER1": "p1",
+            "SPARK_TP4_DEVICE0": "d0",
+            "SPARK_TP4_DEVICE1": "d1",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0": "s0",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1": "s1",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0": "sd0",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1": "sd1",
+        }
+        communicator_type = _make_communicator_type()
+        modules = _fake_vllm_modules(communicator_type)
+        spark_tp4_backend._installed = False
+        with (
+            patch.dict(os.environ, environment, clear=True),
+            patch.dict(sys.modules, modules),
+            patch.object(
+                spark_tp4_backend.ctypes, "CDLL", return_value=library
+            ),
+            self.assertRaisesRegex(RuntimeError, "lacks the fused prefill ABI"),
+        ):
+            spark_tp4_backend.install()
+        self.assertFalse(spark_tp4_backend._installed)
+        self.assertFalse(
+            getattr(communicator_type.all_reduce, "_spark_tp4_backend", False)
+        )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,44 @@
+{
+  "schema": "sparkring-glm53-sircl-public-build/v1",
+  "status": "implemented",
+  "validation_scope": "native-built-tested",
+  "date": "2026-09-03",
+  "source": {
+    "repository": "https://github.com/FujitsuPolycom/sparkring.git",
+    "spark_transport_tree": "8051e4e432d24d62bb3ee79573b5adde4e36f5fb",
+    "public_overlay_spec_sha256": "440f954a7ec485bf17adaecc7c28a22965bd32eadca76438f310501c57514bc7"
+  },
+  "overlay": {
+    "schema": "sparkring-public-overlay/v1",
+    "files": 12,
+    "manifest": "sparkring-overlay-manifest.json",
+    "manifest_sha256": "8a48ba85afcea3959aadfd715c0ed4c55f1e3e95ac62dc362890b6efa0bb210f"
+  },
+  "native": {
+    "artifact": "libspark_transport_capi.so",
+    "sha256": "f7cf0170acbbae550affb8d4df14ac442f885d334945908d60b32051dea94e4a",
+    "host_architecture": "aarch64",
+    "gpu": "NVIDIA GB10",
+    "cuda": "13.0.88",
+    "cmake": "3.28.3",
+    "cxx": "GNU 13.3.0",
+    "generator": "Ninja",
+    "build_type": "Release",
+    "cuda_architectures": [121],
+    "build_testing": true,
+    "fused_stream_switch_smoke": true
+  },
+  "validation": {
+    "cmake_build_exit_code": 0,
+    "ctest_total": 28,
+    "ctest_passed": 28,
+    "ctest_failed": 0,
+    "alternating_stream_cuda_smoke": "passed"
+  },
+  "limitations": [
+    "The native build and CTest run used one GB10 system; they do not establish four-rank RDMA behavior.",
+    "The public native artifact has not been deployed in a four-rank model-serving run.",
+    "The native SHA-256 identifies this build artifact; byte-for-byte reproducibility across build paths has not been established.",
+    "The receipt does not support a throughput or latency claim."
+  ]
+}

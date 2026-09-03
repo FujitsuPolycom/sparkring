@@ -49,6 +49,16 @@ if os.getenv("VLLM_SPARK_TP4_VOCAB_MODE"):
         install_tp4_vocab_allgather,
     )
 
+if os.getenv("SPARK_CUDAGRAPH_REPLAY_TIMING") == "1":
+    from spark_cudagraph_replay_timing import (
+        install as install_cudagraph_replay_timing,
+    )
+
+    _install_required(
+        "CUDA graph replay timing",
+        install_cudagraph_replay_timing,
+    )
+
 if os.getenv("SPARK_TP4_DCP_COLLECTIVE_AUDIT") == "1":
     from spark_dcp_collective_audit import (
         install as install_dcp_collective_audit,
