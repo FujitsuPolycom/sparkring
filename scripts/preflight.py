@@ -115,6 +115,10 @@ CHECK_DESCRIPTIONS: dict[str, str] = {
         "cache/JIT directory exists on this rank",
     "DISK.FREE":
         "cache/JIT directory has at least the configured free space",
+    "HOST.MEMORY_AVAILABLE":
+        "the rank has the configured available RAM before model launch",
+    "HOST.MEMORY_CONTIGUITY":
+        "the Normal memory zone has enough configured high-order free blocks",
     "IMAGE.PRESENT":
         "the configured container image exists in the local image store",
     "IMAGE.DIGEST":
@@ -432,6 +436,21 @@ def build_probe_script(
                 f"df -Pk {quoted} 2>/dev/null | sed 's/^/DFROW /'"
             )
 
+        if site.preflight.memory is not None:
+            lines.extend([
+                'echo "MEM_PAGE_SIZE $(getconf PAGESIZE 2>/dev/null || '
+                "printf '-')\"",
+                "awk '$1 == \"MemAvailable:\" "
+                "{print \"MEM_AVAILABLE_KIB\", $2}' "
+                "/proc/meminfo 2>/dev/null",
+                "awk '{printf \"BUDDY %s\", $4; "
+                "for (i = 5; i <= NF; i++) printf \" %s\", $i; "
+                "printf \"\\n\"}' /proc/buddyinfo 2>/dev/null",
+                "awk '$1 == \"compact_stall\" || "
+                "$1 == \"compact_fail\" || $1 == \"compact_success\" "
+                "{print \"VMSTAT\", $1, $2}' /proc/vmstat 2>/dev/null",
+            ])
+
         image = _shell_quote(site.runtime.container_image)
         lines.append(
             f"_iid=$(docker image inspect {image} "
@@ -470,6 +489,10 @@ class ProbeState:
     listening_ports: set[int] = field(default_factory=set)
     directories: dict[int, str] = field(default_factory=dict)
     available_kib: dict[int, int] = field(default_factory=dict)
+    memory_page_size: int | None = None
+    memory_available_kib: int | None = None
+    buddy_orders: dict[str, list[int]] = field(default_factory=dict)
+    vmstat: dict[str, int] = field(default_factory=dict)
     image_id: str = "-"
     image_repo_digests: tuple[str, ...] = ()
 
@@ -551,6 +574,25 @@ def parse_probe_output(text: str) -> ProbeState:
                 if all(item.isdigit() for item in triple):
                     state.available_kib[current_df] = int(triple[2])
                     break
+        elif key == "MEM_PAGE_SIZE" and len(tokens) >= 2:
+            if tokens[1].isdigit():
+                state.memory_page_size = int(tokens[1])
+        elif key == "MEM_AVAILABLE_KIB" and len(tokens) >= 2:
+            if tokens[1].isdigit():
+                state.memory_available_kib = int(tokens[1])
+        elif key == "BUDDY" and len(tokens) >= 3:
+            counts = tokens[2:]
+            if all(item.isdigit() for item in counts):
+                zone = tokens[1]
+                observed = [int(item) for item in counts]
+                aggregate = state.buddy_orders.setdefault(zone, [])
+                if len(aggregate) < len(observed):
+                    aggregate.extend([0] * (len(observed) - len(aggregate)))
+                for index, count in enumerate(observed):
+                    aggregate[index] += count
+        elif key == "VMSTAT" and len(tokens) >= 3:
+            if tokens[2].isdigit():
+                state.vmstat[tokens[1]] = int(tokens[2])
         elif key == "IMAGE_ID" and len(tokens) >= 2:
             state.image_id = tokens[1]
         elif key == "IMAGE_REPODIGESTS" and len(tokens) >= 2:
@@ -570,6 +612,34 @@ def parse_probe_output(text: str) -> ProbeState:
 def _normalise_digest(value: str) -> str:
     """``repo/name@sha256:abcd`` -> ``sha256:abcd``; otherwise unchanged."""
     return value.rsplit("@", 1)[-1].strip()
+
+
+def _equivalent_buddy_blocks(
+    state: ProbeState, block_bytes: int, zone: str = "Normal"
+) -> tuple[int, int] | None:
+    """Return ``(target_order, equivalent_blocks)`` for one buddy zone.
+
+    Larger free blocks are expressed as the number of target-sized blocks they
+    can provide. The calculation uses the rank's reported base page size, so it
+    remains correct for both 4 KiB and 64 KiB kernels.
+    """
+    page_size = state.memory_page_size
+    counts = state.buddy_orders.get(zone)
+    if page_size is None or counts is None or page_size <= 0:
+        return None
+    if block_bytes % page_size:
+        return None
+    pages = block_bytes // page_size
+    if pages <= 0 or pages & (pages - 1):
+        return None
+    target_order = pages.bit_length() - 1
+    if target_order >= len(counts):
+        return target_order, 0
+    equivalent = sum(
+        count << (order - target_order)
+        for order, count in enumerate(counts[target_order:], target_order)
+    )
+    return target_order, equivalent
 
 
 def evaluate_rank(
@@ -624,6 +694,58 @@ def evaluate_rank(
 
     if scope == "fabric":
         return results
+
+    memory = site.preflight.memory
+    if memory is not None:
+        available = (
+            None if state.memory_available_kib is None
+            else state.memory_available_kib * 1024
+        )
+        record(
+            "HOST.MEMORY_AVAILABLE",
+            "host RAM before model launch",
+            available is not None
+            and available >= memory.minimum_available_bytes,
+            (
+                "MemAvailable unavailable; "
+                f"want >= {memory.minimum_available_bytes} bytes"
+                if available is None else
+                f"MemAvailable={available} bytes "
+                f"({available / (1 << 30):.1f} GiB), want >= "
+                f"{memory.minimum_available_bytes} bytes "
+                f"({memory.minimum_available_bytes / (1 << 30):.1f} GiB)"
+            ),
+        )
+        contiguous = _equivalent_buddy_blocks(
+            state, memory.contiguous_block_bytes
+        )
+        compact_stall = state.vmstat.get("compact_stall", "unavailable")
+        compact_fail = state.vmstat.get("compact_fail", "unavailable")
+        compact_success = state.vmstat.get("compact_success", "unavailable")
+        if contiguous is None:
+            detail = (
+                "Normal-zone buddy information or page size unavailable; "
+                f"compact_stall={compact_stall} compact_fail={compact_fail} "
+                f"compact_success={compact_success}"
+            )
+            contiguous_passed = False
+        else:
+            target_order, equivalent = contiguous
+            block_mib = memory.contiguous_block_bytes // (1 << 20)
+            detail = (
+                f"page_size={state.memory_page_size} target_order={target_order} "
+                f"equivalent_{block_mib}MiB_blocks={equivalent}, want >= "
+                f"{memory.minimum_contiguous_blocks}; "
+                f"compact_stall={compact_stall} compact_fail={compact_fail} "
+                f"compact_success={compact_success}"
+            )
+            contiguous_passed = equivalent >= memory.minimum_contiguous_blocks
+        record(
+            "HOST.MEMORY_CONTIGUITY",
+            "Normal-zone contiguous memory before model launch",
+            contiguous_passed,
+            detail,
+        )
 
     for index, artifact in enumerate(site.artifacts):
         observed = state.artifacts.get(index, {})

@@ -69,9 +69,17 @@ secondary device names as explicit placeholders.
 caching. Both modes use the same image and
 [`GLM-5.3 quickstart`](../../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md).
 
-The `glm53-flash-*.example.json` and `glm53-flash-tp4-site.example.yaml` files
+`glm53-flash-dflash2-bf16-tp4-dcp4-site.example.yaml` is the companion
+topology and preflight input. Its image identity and DCP4 memory settings match
+the adjustable operator image. Its `preflight.memory` block requires at least
+96 GiB of available RAM and 64 equivalent free blocks of at least 16 MiB before
+model loading. Larger buddy blocks count as multiple 16 MiB blocks. These are
+pre-launch thresholds; do not interpret them while a model is already using
+unified memory.
+
+The `glm53-flash-tp4-site.example.yaml` and `glm53-flash-*.example.json` files
 describe source-bound TP4/DCP1 profiles at other vLLM revisions. They are not
-the operator inputs for this adjustable DCP1/DCP2/DCP4 image.
+launch inputs for the adjustable DCP1/DCP2/DCP4 image.
 
 Run the focused CPU-only contract suites after changing GLM-5.3 inputs:
 

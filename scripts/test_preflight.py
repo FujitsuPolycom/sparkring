@@ -113,6 +113,28 @@ def healthy_transcript(site, rank) -> str:
     return "\n".join(healthy_lines(site, rank)) + "\n"
 
 
+def memory_site():
+    document = yaml.safe_load(EXAMPLE_PATH.read_text(encoding="utf-8"))
+    document["preflight"]["memory"] = {
+        "minimum_available_bytes": 103079215104,
+        "contiguous_block_bytes": 16777216,
+        "minimum_contiguous_blocks": 64,
+    }
+    return validate_site(document)
+
+
+def memory_lines(*, available_kib: int, order12: int, order13: int) -> list[str]:
+    return [
+        "MEM_PAGE_SIZE 4096",
+        f"MEM_AVAILABLE_KIB {available_kib}",
+        "BUDDY Normal "
+        + " ".join(["0"] * 12 + [str(order12), str(order13)]),
+        "VMSTAT compact_stall 2700000",
+        "VMSTAT compact_fail 1350000",
+        "VMSTAT compact_success 1350000",
+    ]
+
+
 def healthy_fabric_transcript(site, rank) -> str:
     allowed = (
         preflight.PROBE_SENTINEL,
@@ -316,6 +338,21 @@ def test_probe_script_is_deterministic(site):
     assert first == second
 
 
+def test_memory_probe_reads_page_size_buddyinfo_and_compaction_counters():
+    site = memory_site()
+    script = build_probe_script(site, site.rank(0))
+
+    assert "getconf PAGESIZE" in script
+    assert "/proc/meminfo" in script
+    assert "/proc/buddyinfo" in script
+    assert "/proc/vmstat" in script
+    assert (
+        "awk '$1 == \"MemAvailable:\" "
+        "{print \"MEM_AVAILABLE_KIB\", $2}' /proc/meminfo"
+    ) in script
+    assert_read_only(script)
+
+
 def test_probe_script_differs_per_rank(site):
     assert build_probe_script(site, site.rank(0)) != build_probe_script(
         site, site.rank(1)
@@ -378,6 +415,23 @@ def test_parse_extracts_ports_from_ipv6_socket_rows():
     assert state.listening_ports == {29500, 8000}
 
 
+def test_parse_accumulates_normal_zone_buddy_orders_across_nodes():
+    state = parse_probe_output(
+        "MEM_PAGE_SIZE 4096\n"
+        "MEM_AVAILABLE_KIB 120000000\n"
+        "BUDDY Normal 0 0 0 0 0 0 0 0 0 0 0 0 40 10\n"
+        "BUDDY Normal 0 0 0 0 0 0 0 0 0 0 0 0 24 2\n"
+        "BUDDY DMA 0 0 0 0 0 0 0 0 0 0 0 0 999 999\n"
+        "VMSTAT compact_stall 2700000\n"
+        "VMSTAT compact_fail 1350000\n"
+    )
+
+    assert state.memory_page_size == 4096
+    assert state.memory_available_kib == 120000000
+    assert state.buddy_orders["Normal"][12:] == [64, 12]
+    assert state.vmstat["compact_fail"] == 1350000
+
+
 # ==========================================================================
 # Evaluation: happy path
 # ==========================================================================
@@ -392,6 +446,84 @@ def test_every_check_passes_on_a_healthy_transcript(site):
             (result.check_id, result.subject, result.detail)
             for result in failures
         ]
+
+
+def test_memory_headroom_accepts_rebooted_gb10_geometry():
+    site = memory_site()
+    rank = site.rank(0)
+    lines = healthy_lines(site, rank) + memory_lines(
+        available_kib=120_000_000,
+        order12=1417,
+        order13=782,
+    )
+
+    results = evaluate_rank(site, rank, parse_probe_output("\n".join(lines)))
+    by_id = {result.check_id: result for result in results}
+
+    assert by_id["HOST.MEMORY_AVAILABLE"].passed
+    assert by_id["HOST.MEMORY_CONTIGUITY"].passed
+    assert "equivalent_16MiB_blocks=2981" in (
+        by_id["HOST.MEMORY_CONTIGUITY"].detail
+    )
+
+
+def test_memory_headroom_rejects_highly_fragmented_gb10_geometry():
+    site = memory_site()
+    rank = site.rank(0)
+    lines = healthy_lines(site, rank) + memory_lines(
+        available_kib=120_000_000,
+        order12=27,
+        order13=0,
+    )
+
+    results = evaluate_rank(site, rank, parse_probe_output("\n".join(lines)))
+    by_id = {result.check_id: result for result in results}
+
+    assert by_id["HOST.MEMORY_AVAILABLE"].passed
+    assert not by_id["HOST.MEMORY_CONTIGUITY"].passed
+    assert "equivalent_16MiB_blocks=27" in (
+        by_id["HOST.MEMORY_CONTIGUITY"].detail
+    )
+    assert "compact_fail=1350000" in by_id["HOST.MEMORY_CONTIGUITY"].detail
+
+
+def test_memory_headroom_derives_buddy_order_from_64k_pages():
+    site = memory_site()
+    rank = site.rank(0)
+    lines = healthy_lines(site, rank) + [
+        "MEM_PAGE_SIZE 65536",
+        "MEM_AVAILABLE_KIB 120000000",
+        "BUDDY Normal 0 0 0 0 0 0 0 0 64 10",
+        "VMSTAT compact_stall 20",
+        "VMSTAT compact_fail 5",
+        "VMSTAT compact_success 15",
+    ]
+
+    results = evaluate_rank(site, rank, parse_probe_output("\n".join(lines)))
+    contiguous = next(
+        result for result in results
+        if result.check_id == "HOST.MEMORY_CONTIGUITY"
+    )
+
+    assert contiguous.passed
+    assert "target_order=8" in contiguous.detail
+    assert "equivalent_16MiB_blocks=84" in contiguous.detail
+
+
+def test_memory_headroom_rejects_missing_kernel_evidence():
+    site = memory_site()
+    rank = site.rank(0)
+
+    results = evaluate_rank(
+        site,
+        rank,
+        parse_probe_output(healthy_transcript(site, rank)),
+    )
+    by_id = {result.check_id: result for result in results}
+
+    assert not by_id["HOST.MEMORY_AVAILABLE"].passed
+    assert not by_id["HOST.MEMORY_CONTIGUITY"].passed
+    assert "unavailable" in by_id["HOST.MEMORY_CONTIGUITY"].detail
 
 
 def test_evaluation_emits_only_documented_check_ids(site):
@@ -412,6 +544,11 @@ def test_healthy_evaluation_covers_the_expected_check_ids(site):
             "ARTIFACT.PRESENT",
             "ARTIFACT.SHA256",
             "ARTIFACT.EXECUTABLE",
+        }
+    if site.preflight.memory is None:
+        expected -= {
+            "HOST.MEMORY_AVAILABLE",
+            "HOST.MEMORY_CONTIGUITY",
         }
     assert emitted == expected
 

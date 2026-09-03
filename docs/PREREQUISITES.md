@@ -164,10 +164,11 @@ correct when they are generated on the node itself.
 
 ## Local configuration and preflight
 
-The GLM quickstart uses an ignored site file. Copy, complete, and validate it:
+The GLM-5.3 quickstart uses an ignored site file for topology, artifact, disk,
+port, and launch-memory checks. Copy, complete, and validate it:
 
 ```bash
-cp scripts/config/exl3-r7-site.example.yaml scripts/config/site.yaml
+cp scripts/config/glm53-flash-dflash2-bf16-tp4-dcp4-site.example.yaml scripts/config/site.yaml
 $EDITOR scripts/config/site.yaml
 python scripts/sparkring_site.py scripts/config/site.yaml
 python scripts/preflight.py --site scripts/config/site.yaml --print-plan
@@ -175,7 +176,8 @@ python scripts/preflight.py --site scripts/config/site.yaml --print-plan
 
 The final command is offline and prints the remote checks. Review it before
 running the same command without `--print-plan`, which contacts configured
-hosts without mutating them.
+hosts without mutating them. Run the full preflight only while the model ports
+are free; its memory thresholds describe a rank before model loading.
 
 The DeepSeek quickstart uses one local copy of
 `scripts/config/deepseek-v4-flash-0731.env.example` per rank. Replace only its
