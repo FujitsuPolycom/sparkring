@@ -36,7 +36,7 @@ def complete_readiness(
     shape_words: tuple[int, ...],
     max_tokens: int,
     timeout_seconds: float,
-    api_key: str | None,
+    credential: str | None,
     ready_path: Path = READY_PATH,
 ) -> None:
     """Create the readiness marker after the rank's required work completes."""
@@ -53,7 +53,7 @@ def complete_readiness(
                 max_tokens,
                 timeout_seconds,
                 shape_words,
-                api_key,
+                credential,
             )
         print(json.dumps({"dflash_warmup": result}, separators=(",", ":")))
     ready_path.touch()
@@ -89,7 +89,7 @@ def main() -> int:
             ),
             max_tokens=int(os.environ.get("DFLASH_WARMUP_MAX_TOKENS", "16")),
             timeout_seconds=timeout_seconds,
-            api_key=os.environ.get("SPARKRING_WARMUP_API_KEY") or None,
+            credential=os.environ.get("SPARKRING_WARMUP_CREDENTIAL") or None,
         )
     except BaseException:
         READY_PATH.unlink(missing_ok=True)

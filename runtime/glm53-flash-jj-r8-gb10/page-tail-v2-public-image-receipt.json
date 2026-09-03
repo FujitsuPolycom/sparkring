@@ -26,6 +26,8 @@
     "kv_cache_dtype": "fp8",
     "kv_cache_bytes_per_rank": 25769803776,
     "publication_schema": "tail-cow-v2",
+    "async_capture_slot_bytes": 3221225472,
+    "async_capture_slot_count": 2,
     "dflash_speculative_tokens": 7,
     "dflash_warmup_concurrencies": [1, 2, 4, 8, 16],
     "dflash_warmup_prompt_words": [8, 24, 56, 120, 248]

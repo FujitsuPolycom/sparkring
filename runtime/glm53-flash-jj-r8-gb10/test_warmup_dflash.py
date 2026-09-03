@@ -31,7 +31,7 @@ def test_warmup_exercises_each_concurrency_as_one_batch(monkeypatch) -> None:
         _max_tokens,
         _timeout,
         _prompt_words,
-        _api_key,
+        _credential,
     ):
         nonlocal active
         concurrency = int(nonce.split("-", 1)[0][1:])

@@ -34,7 +34,7 @@ def send_warmup_request(
     max_tokens: int,
     timeout_seconds: float,
     prompt_words: int,
-    api_key: str | None = None,
+    credential: str | None = None,
 ) -> None:
     body = {
         "model": model,
@@ -52,8 +52,8 @@ def send_warmup_request(
         "chat_template_kwargs": {"enable_thinking": False},
     }
     headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+    if credential:
+        headers["Authorization"] = f"Bearer {credential}"
     request = urllib.request.Request(
         endpoint.rstrip("/") + "/v1/chat/completions",
         data=json.dumps(body).encode(),
@@ -73,7 +73,7 @@ def run_warmup(
     max_tokens: int,
     timeout_seconds: float,
     shape_words: tuple[int, ...],
-    api_key: str | None = None,
+    credential: str | None = None,
 ) -> tuple[dict[str, float | int], ...]:
     results: list[dict[str, float | int]] = []
 
@@ -89,7 +89,7 @@ def run_warmup(
                 max_tokens,
                 timeout_seconds,
                 prompt_words,
-                api_key,
+                credential,
             )
 
         started = time.perf_counter()

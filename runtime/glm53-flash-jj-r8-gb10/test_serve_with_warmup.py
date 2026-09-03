@@ -51,7 +51,7 @@ def test_rank_zero_marks_ready_only_after_warmup(tmp_path: Path, monkeypatch) ->
         shape_words=(8, 24),
         max_tokens=16,
         timeout_seconds=10,
-        api_key=None,
+        credential=None,
         ready_path=ready,
     )
 
@@ -77,7 +77,7 @@ def test_headless_rank_does_not_call_http_warmup(tmp_path: Path, monkeypatch) ->
         shape_words=(8,),
         max_tokens=16,
         timeout_seconds=10,
-        api_key=None,
+        credential=None,
         ready_path=ready,
     )
 

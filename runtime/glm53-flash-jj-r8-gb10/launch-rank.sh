@@ -277,7 +277,7 @@ if [[ -n "${API_KEYS_FILE}" ]]; then
 fi
 warmup_api_key_env=()
 if (( ${#api_keys[@]} > 0 )); then
-  warmup_api_key_env=(-e "SPARKRING_WARMUP_API_KEY=${api_keys[0]}")
+  warmup_api_key_env=(-e "SPARKRING_WARMUP_CREDENTIAL=${api_keys[0]}")
 fi
 for name in TARGET_MODEL_HOST_PATH DFLASH_MODEL_HOST_PATH CACHE_HOST_ROOT; do
   value="${!name}"
