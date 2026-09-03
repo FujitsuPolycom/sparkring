@@ -89,7 +89,7 @@ def main() -> int:
             ),
             max_tokens=int(os.environ.get("DFLASH_WARMUP_MAX_TOKENS", "16")),
             timeout_seconds=timeout_seconds,
-            credential=os.environ.get("SPARKRING_WARMUP_CREDENTIAL") or None,
+            credential=os.environ.get("SPARKRING_WARMUP_API_KEY") or None,
         )
     except BaseException:
         READY_PATH.unlink(missing_ok=True)

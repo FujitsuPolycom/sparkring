@@ -376,7 +376,7 @@ printf '%s  %s\n' "$hash" "$2"
     index = keyed.index("--api-key")
     assert keyed[index + 1 : index + 3] == ["k1", "k2"]
     assert keyed[index + 3] == "--host"
-    warmup_credential = "SPARKRING_WARMUP_CREDENTIAL=k1"
+    warmup_credential = "SPARKRING_WARMUP_API_KEY=k1"
     warmup_index = keyed.index(warmup_credential)
     assert keyed[warmup_index - 1] == "-e"
     command_without_warmup_credential = (

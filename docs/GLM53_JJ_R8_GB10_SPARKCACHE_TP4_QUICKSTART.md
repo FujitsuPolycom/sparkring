@@ -9,8 +9,8 @@ alone without changing the image.
 The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV per rank,
 scheduler interval two, BF16 DFlash2 at depth seven, and SparkCache's flat
 copy-on-write page tails. Growing conversations write changed pages instead
-of another complete cached context. The pullable image remains available as a
-complete-snapshot rollback.
+of another complete cached context. An earlier complete-snapshot image remains
+available as a recovery artifact.
 
 The image does not contain model checkpoints. It mounts the exact
 [`local-inference-lab/GLM-5.3-Flash-NVFP4`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4)
@@ -42,7 +42,7 @@ Use the digest above for reproducible deployment.
 The exact source composition and local build command remain in
 [`runtime/glm53-flash-jj-r8-gb10/`](../runtime/glm53-flash-jj-r8-gb10/README.md).
 
-### Pullable complete-snapshot rollback
+### Complete-snapshot recovery artifact
 
 The rollback uses complete `snapshot-v1` publication:
 
@@ -52,22 +52,12 @@ local image ID: sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc5
 platform: linux/arm64
 ```
 
-Use the `sparkring-glm53-sparkcache` package for the rollback. The
-`sparkring-glm53-runtime` and `gb10-vllm-serving` packages are build or
-profile inputs and are not substitutes for this operator image.
-
-Pull and verify the immutable image on rank 0:
-
-```bash
-image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762'
-expected_image_id='sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9'
-docker pull "${image}"
-test "$(docker image inspect "${image}" --format '{{.Id}}')" = "${expected_image_id}"
-```
-
-The page-tail and rollback images use the same checkpoint mounts, topology,
-and launcher. Keep the `image` and `expected_image_id` shell variables from
-the selected path for the distribution commands below.
+The recovery image predates the readiness entrypoint used by this guide and is
+not compatible with the launcher in this checkout. Its matching SparkRing
+source revision is `a150c98ccfdc4b655679860121f24712490dd9ee`; the
+[`recovery image receipt`](../runtime/glm53-flash-jj-r8-gb10/multimodal-lease300-image-receipt.json)
+records its exact launch contract. The remaining commands in this guide use
+the page-tail image selected above.
 
 ## Download the checkpoints once
 
@@ -143,8 +133,8 @@ format, planning, resumption, verification, and interruption behavior.
 
 ## Configure each rank
 
-Copy the environment template on every rank. It contains the pullable
-complete-snapshot identity so rollback remains one clean copy operation:
+Copy the environment template on every rank. It contains the page-tail image,
+DCP4 geometry, and persistent-cache defaults used by this guide:
 
 ```bash
 cp runtime/glm53-flash-jj-r8-gb10/runtime.env.example "$HOME/glm53-flash.env"
@@ -178,11 +168,24 @@ This is host-level access control, not secret management. vLLM receives the
 keys in its process arguments, which remain visible to an administrator who
 can inspect the container or host process.
 
-Choose the DCP degree with one line:
+Choose the DCP degree with one line. DCP4 uses the environment template as
+written:
 
 ```bash
 DECODE_CONTEXT_PARALLEL_SIZE=4  # change to 1 or 2
 ```
+
+When SparkCache is enabled with DCP1 or DCP2, use complete snapshots until
+those layouts have matching asynchronous page-capture evidence:
+
+```bash
+DECODE_CONTEXT_PARALLEL_SIZE=1  # or 2
+SPARKCACHE_PUBLICATION_SCHEMA='snapshot-v1'
+SPARKCACHE_CACHE_NAMESPACE='glm53-flash-dcp1-snapshot-v1'  # use dcp2 for DCP2
+SPARKCACHE_ASYNC_PAGE_CAPTURE=0
+```
+
+When `SPARKCACHE_ENABLED=0`, only the DCP value needs to change.
 
 The launcher selects the matching GLM KV geometry automatically:
 
@@ -244,7 +247,7 @@ The image supports three persistent publication formats:
 
 | Value | Stored state | Intended use |
 |---|---|---|
-| `snapshot-v1` | A complete immutable context for every publication | Pullable rollback and simple storage inspection |
+| `snapshot-v1` | A complete immutable context for every publication | DCP1/DCP2 persistent-cache profile and simple storage inspection |
 | `tail-cow-v1` | An immutable base with changed page objects | Compatibility testing for the first page-tail format |
 | `tail-cow-v2` | An authenticated base with a flat chain of changed-page descriptors | Recommended DCP4 profile for growing conversations |
 
@@ -340,21 +343,14 @@ The `/metrics` endpoint retains the individual counters. `payload` is the
 logical state represented by committed entries; `unique` and `staged` make
 the physical storage cost visible.
 
-## Roll back to complete snapshots
+## Recover with the complete-snapshot image
 
-Stop the page-tail containers without removing them, then copy a fresh
-environment file and restore the five site values:
-
-```bash
-# Use r1, r2, or r3 on the corresponding follower.
-docker stop glm53-flash-page-tail-v2-r0
-cp runtime/glm53-flash-jj-r8-gb10/runtime.env.example "$HOME/glm53-flash.env"
-${EDITOR:-vi} "$HOME/glm53-flash.env"
-```
-
-Start the rank again with the commands below. The rollback selects
-`glm53-flash-dcp4-snapshot-v1`, so it does not alter or discover the page-tail
-directory.
+The complete-snapshot artifact listed above requires SparkRing source revision
+`a150c98ccfdc4b655679860121f24712490dd9ee` and the launch values in its
+receipt. Do not combine it with this checkout's launcher: the page-tail image
+adds a readiness entrypoint that the recovery artifact does not contain.
+Its `glm53-flash-dcp4-snapshot-v1` cache directory remains separate from the
+page-tail directory, so recovery does not modify page-tail entries.
 
 ## Evidence and limits
 

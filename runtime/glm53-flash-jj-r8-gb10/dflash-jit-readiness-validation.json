@@ -14,7 +14,7 @@
   "runtime": {
     "image_id": "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0",
     "sparkcache_commit": "737ed1399f559ba036fb0e358541744011afd47d",
-    "sparkring_commit": "649e8ebe589a1be4b45e7ff21ad71ac30b828ec5",
+    "sparkring_commit": "649e8ebe45f097f13062275964c5401cde98cb0c",
     "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
     "topology": "TP4/DCP4",
     "jit_cache_namespace": "glm53-flash-sm121-vllm-22ffe140-b12x-6255090a-entrypoint-v3"

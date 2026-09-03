@@ -11,7 +11,7 @@
   },
   "sources": {
     "sparkcache_commit": "737ed1399f559ba036fb0e358541744011afd47d",
-    "sparkring_image_commit": "649e8ebe589a1be4b45e7ff21ad71ac30b828ec5",
+    "sparkring_image_commit": "649e8ebe45f097f13062275964c5401cde98cb0c",
     "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
     "b12x_commit": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
     "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
