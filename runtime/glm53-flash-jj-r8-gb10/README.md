@@ -115,9 +115,8 @@ API in front of a wedged engine.
 The failure-shaped replay and remaining causal limitation are recorded in
 [`dflash-jit-readiness-validation.json`](dflash-jit-readiness-validation.json).
 
-The published registry image below contains the complete-snapshot
-implementation. It does not contain `tail-cow-v2`. Build the pinned source in
-this directory before selecting `tail-cow-v2`.
+The page-tail registry image contains `tail-cow-v2`. The complete-snapshot
+image remains available in the rollback section below.
 
 ### Read SparkCache telemetry
 

@@ -28,7 +28,7 @@ all active streams.
 The normalized DeepSeek two-Spark profile also completed a
 [three-hour llama-benchy prefix-cache benchmark](../performance/records/deepseek-v4-flash/llama-benchy-normalized-tp2-20260822.md).
 
-The published Linux/ARM64 GLM-5.3 operator image completed a TP4/DCP1
+The complete-snapshot Linux/ARM64 GLM-5.3 rollback image completed a TP4/DCP1
 [942,898-token needle retrieval](../runtime/glm53-flash-jj-r8-gb10/PUBLIC_IMAGE_VALIDATION.md)
 with a 1,048,576-token request limit and 26 GiB of FP8 KV per rank.
 
