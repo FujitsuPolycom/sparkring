@@ -29,15 +29,15 @@
     "operator_contract": "runtime/glm53-flash-jj-r8-gb10/pins.json",
     "environment_template": "runtime/glm53-flash-jj-r8-gb10/runtime.env.example",
     "launcher": "runtime/glm53-flash-jj-r8-gb10/launch-rank.sh",
-    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f",
-    "image_id": "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0",
+    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34",
+    "image_id": "sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4",
     "sparkcache": {
       "artifact_kind": "source-pinned OCI image",
       "source_repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-      "source_commit": "737ed1399f559ba036fb0e358541744011afd47d",
-      "source_tree": "decc0e042a4b1807e960551ffa3ef12c8c9114a7",
-      "package_tree": "fef9ac1c59526dec49b0c3346cbf7bdb6f22a620",
-      "source_sha256": "3cfb8d66db3a437a8b3a886633e64b7006af4c50cccb3ddbf75eb8d73eda5de6",
+      "source_commit": "9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4",
+      "source_tree": "3bbc72b04c1d6c4a381bd660d189ca7a54277b0f",
+      "package_tree": "3099c80be66ffb9c7ab690509f768dbf32babdd0",
+      "source_sha256": "f8adb4ecdadd524e79cf1ef14e7f3d83d1f20ff07c79333b2c7c0d9ea12919d5",
       "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
       "cuda_snapshot_sha256": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5"
     },
@@ -145,7 +145,7 @@
       "The original cuBLAS failure was observed once; readiness warmup removes the reproduced first-use JIT condition but does not prove it was the only possible cause."
     ],
     "record": "runtime/glm53-flash-jj-r8-gb10/README.md",
-    "machine_receipt": "runtime/glm53-flash-jj-r8-gb10/page-tail-v2-public-image-receipt.json",
+    "machine_receipt": "runtime/glm53-flash-jj-r8-gb10/async-store-completion-public-image-receipt.json",
     "scheduler_receipt": "performance/receipts/glm53-flash/scheduler-cadence-20260902/summary.json",
     "artifact_scope": "The immutable image, target and draft revisions, TP4/DCP4 topology, scheduler settings, cache configuration, source identities, and live limits recorded here."
   }

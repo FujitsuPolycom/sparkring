@@ -23,8 +23,8 @@ fi
 : "${DFLASH_MODEL_HOST_PATH:?set DFLASH_MODEL_HOST_PATH to the pinned BF16 draft checkpoint}"
 : "${CACHE_HOST_ROOT:?set CACHE_HOST_ROOT to a dedicated rank-local directory}"
 
-: "${IMAGE_REF:=ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f}"
-: "${IMAGE_ID:=sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0}"
+: "${IMAGE_REF:=ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34}"
+: "${IMAGE_ID:=sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4}"
 : "${CONTAINER_PREFIX:=glm53-jj-r8-gb10}"
 : "${SERVED_MODEL_NAME:=glm-5.3-flash}"
 : "${PORT:=8015}"

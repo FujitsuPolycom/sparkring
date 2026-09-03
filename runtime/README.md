@@ -30,7 +30,7 @@ persistent SparkCache enabled or disabled at launch. The recommended DCP4
 page-tail image is:
 
 ```text
-ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f
+ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34
 ```
 
 The complete-snapshot rollback remains:
