@@ -1,6 +1,6 @@
 {
-  "image": "sparkring-glm53-sparkcache:page-tail-v2-jit-warmup-737ed13",
-  "image_id": "sha256:1c98731de7e3963a609aa7e30582cabbaf59c7d3a59e88d704f21319fa3e0daa",
+  "image": "sparkring-glm53-sparkcache:page-tail-v2-restart-ready3-737ed13",
+  "image_id": "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0",
   "inside_image": {
     "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
     "cuda_snapshot_sha256": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
@@ -37,7 +37,7 @@
     "org.jovian.vllm.commit": "3633d61c3c7b04bb4d598cadbdc342f3be40482d",
     "org.opencontainers.image.base.name": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
     "org.opencontainers.image.description": "Source-pinned vLLM and B12X runtime for four GB10 systems with DFlash2 and DCP-aware SparkCache",
-    "org.opencontainers.image.revision": "8485cffa99d5a7d6c427e90d2070031e8e422e33",
+    "org.opencontainers.image.revision": "649e8ebe45f097f13062275964c5401cde98cb0c",
     "org.opencontainers.image.source": "https://github.com/FujitsuPolycom/sparkring",
     "org.opencontainers.image.title": "SparkRing GLM-5.3 ARM64 operator image with optional SparkCache",
     "org.opencontainers.image.url": "",
@@ -66,7 +66,7 @@
     "org.sparkring.parent.image": "sha256:6af83baabb239db6b05e379401daf93c8f51694f81483c2781f6014c30e31db4",
     "org.sparkring.platform": "linux-arm64-sm121",
     "org.sparkring.runtime.status": "implemented-live-verification-required",
-    "org.sparkring.source-receipt-sha256": "4ae33002d5f8c7634ee6f3fe73a003d5b0a82a6040584bcdfc0552ca80394267",
+    "org.sparkring.source-receipt-sha256": "7e4e7c8a9097e4b1e8836bfcd95496f72549c328fb7b7ca0bdc006cc060db52a",
     "org.sparkring.vllm.community-parent": "55969c16d4da57da76ee5729f3102d4b2003833c",
     "org.sparkring.vllm.community-r7": "bb3f9c3a00af522af93478645ad391f51eb0225b",
     "org.sparkring.vllm.community-release": "Jovian Judgement Community R10",

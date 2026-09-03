@@ -390,7 +390,7 @@ long-context evidence belongs in a revision-bound receipt before any registry
 artifact is described as qualified.
 
 The local Linux/ARM64 image
-`sha256:1c98731de7e3963a609aa7e30582cabbaf59c7d3a59e88d704f21319fa3e0daa`
+`sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0`
 completed an exact 131,072 → 262,144 → 524,288 → 921,600-token DCP4
 growth sequence. Every extension remained a page delta. The 921,600-token
 root used a 7,459-byte flat manifest with three delta stages; after all four

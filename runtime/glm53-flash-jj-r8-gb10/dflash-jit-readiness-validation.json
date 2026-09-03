@@ -12,12 +12,12 @@
     "kernel_oom_or_xid_observed": false
   },
   "runtime": {
-    "image_id": "sha256:1c98731de7e3963a609aa7e30582cabbaf59c7d3a59e88d704f21319fa3e0daa",
+    "image_id": "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0",
     "sparkcache_commit": "737ed1399f559ba036fb0e358541744011afd47d",
-    "sparkring_commit": "8485cffa99d5a7d6c427e90d2070031e8e422e33",
+    "sparkring_commit": "649e8ebe589a1be4b45e7ff21ad71ac30b828ec5",
     "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
     "topology": "TP4/DCP4",
-    "jit_cache_namespace": "glm53-flash-sm121-vllm-22ffe140-b12x-6255090a-readiness-v1"
+    "jit_cache_namespace": "glm53-flash-sm121-vllm-22ffe140-b12x-6255090a-entrypoint-v3"
   },
   "readiness": {
     "concurrencies": [1, 2, 4, 8, 16],
@@ -28,8 +28,11 @@
   },
   "validation": {
     "concurrent_restored_prefix_tokens": 921600,
-    "response_codewords": ["PACKAGED900A", "PACKAGED900B"],
-    "response_seconds": [11.032, 12.835],
+    "response_codewords": ["RESTART900A", "RESTART900B"],
+    "response_seconds": [11.833, 12.827],
+    "docker_restart_initial_health": "starting",
+    "docker_restart_ready_seconds": 143.7,
+    "warmup_repeated_after_docker_restart": true,
     "jit_events_after_readiness": 0,
     "cuda_or_cublas_errors_after_readiness": 0,
     "requests_running_after_validation": 0,

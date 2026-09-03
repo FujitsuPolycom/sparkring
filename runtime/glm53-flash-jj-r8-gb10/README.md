@@ -182,7 +182,7 @@ docker image inspect sparkring-glm53-sparkcache:page-tail-v2-local \
 ```
 
 The locally built page-tail image has ID
-`sha256:1c98731de7e3963a609aa7e30582cabbaf59c7d3a59e88d704f21319fa3e0daa`.
+`sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0`.
 Its embedded-source and native-library checks are recorded in
 [`page-tail-v2-local-image-receipt.json`](page-tail-v2-local-image-receipt.json).
 This is a local image identity, not a pullable registry digest.

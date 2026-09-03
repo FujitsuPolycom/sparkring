@@ -312,7 +312,7 @@ def test_page_tail_v2_receipt_binds_the_local_image() -> None:
     assert receipt["status"] == "implemented"
     assert receipt["platform"] == "linux/arm64"
     assert receipt["image_id"] == (
-        "sha256:1c98731de7e3963a609aa7e30582cabbaf59c7d3a59e88d704f21319fa3e0daa"
+        "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0"
     )
     assert receipt["inside_image"]["sparkcache_commit"] == (
         "737ed1399f559ba036fb0e358541744011afd47d"
