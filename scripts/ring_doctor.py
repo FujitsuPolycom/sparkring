@@ -484,13 +484,24 @@ class ManagementGuard:
                 )
         server_cases = "|".join(shlex.quote(value) for value in guarded_addresses)
         route_devices = "|".join(re.escape(value) for value in guarded_interfaces)
+        # A controller may SSH to its own guarded management address. Linux
+        # routes that same-host connection through loopback; every other client
+        # must retain a return route through a guarded management interface.
         checks.extend(
             (
                 'set -- $SSH_CONNECTION; test "$#" -ge 4',
+                "ssh_client=$1",
                 f'case "$3" in {server_cases}) ;; *) exit 91 ;; esac',
-                'management_route=$(ip -4 route get "$1")',
-                f"printf '%s\\n' \"$management_route\" | "
+                'management_route=$(ip -4 route get "$ssh_client")',
+                "set -- $management_route",
+                'if [ "$#" -ge 4 ] && [ "$1" = local ] '
+                '&& [ "$2" = "$ssh_client" ] && [ "$3" = dev ] '
+                '&& [ "$4" = lo ]; then',
+                f'  case "$ssh_client" in {server_cases}) ;; *) exit 92 ;; esac',
+                "else",
+                f"  printf '%s\\n' \"$management_route\" | "
                 f"grep -E -q -- ' dev ({route_devices})( |$)'",
+                "fi",
             )
         )
         return "\n".join(checks)

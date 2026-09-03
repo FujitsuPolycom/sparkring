@@ -66,6 +66,8 @@ enum {
   SPARK_TP4_GRAPH_STATUS_TIERED_64K = 1U << 9,
   /* The session counter-rotates tensor halves across both physical links. */
   SPARK_TP4_GRAPH_STATUS_DUAL_PORT_STRIPED = 1U << 10,
+  /* Replay uses a device ticket and round-0 payload doorbell notification. */
+  SPARK_TP4_GRAPH_STATUS_DIRECT_DOORBELL = 1U << 11,
 };
 
 enum {

@@ -127,17 +127,18 @@ def test_tiered_worker_rejects_eager_but_accepts_both_graph_protocols() -> None:
     )
     sequential_graph = enqueue_graph[
         enqueue_graph.index(
-            "if (tp4_graph_kernel_uses_split(graph_kernel_strategy_, q))"
+            "if (tp4_graph_kernel_uses_split(graph_kernel_strategy_,"
         ) :
     ]
     assert "tp4_protocol_uses_deferred_ack" not in sequential_graph
-    assert "tp4_graph_kernel_uses_split(graph_kernel_strategy_, q)" in enqueue_graph
+    assert "tp4_graph_kernel_uses_split(graph_kernel_strategy_," in enqueue_graph
+    assert "active_payload_bytes" in enqueue_graph
     assert "q >= 1 && q <= kTp4GraphAllreduceMaximumQ" in worker
     assert "tp4_graph_kernel_strategy_is_graph_only" in session
     assert "graph_capacity_supported(options_.payload_bytes," in session
     assert "options_.bytes_per_row" in session
-    assert "kTp4TieredSplitMinimumQ = 7" in strategy
-    assert "q >= kTp4TieredSplitMinimumQ" in strategy
+    assert "kTp4TieredFusedMaximumBytes = 64U * 1024U" in strategy
+    assert "active_payload_bytes > kTp4TieredFusedMaximumBytes" in strategy
 
 
 def test_deferred_split_waits_for_exact_prior_slot_generations() -> None:
@@ -266,3 +267,91 @@ def test_mixed_graph_restages_and_validates_each_node_epoch() -> None:
         epochs[index] % 7 != epochs[index - 2] % 7
         for index in range(2, len(epochs))
     )
+
+
+def test_graph_session_tracks_and_drains_every_capture_stream() -> None:
+    source = _read("src/tp4_session.cpp")
+    capture = _function(
+        source,
+        "void capture_all_reduce(",
+        "Tp4GraphReplayStatus graph_replay_status()",
+    )
+    destructor = _function(source, "~Impl()", "void all_reduce(")
+
+    assert "TP4 session requires one stable caller CUDA stream" not in capture
+    assert "cudaStreamGetCaptureInfo" in capture
+    assert "graph_capture_records_" in capture
+    assert "capture record reused a different CUDA stream" in capture
+    assert "graph_capture_streams_" in capture
+    assert "graph_capture_streams_.push_back(caller_stream)" in capture
+    assert "for (cudaStream_t stream : graph_capture_streams_)" in destructor
+    assert "cudaStreamSynchronize(stream)" in destructor
+
+
+def test_dedicated_graph_progress_cpu_never_enters_scheduler() -> None:
+    source = _read("src/tp4_session.cpp")
+    pause = _function(
+        source,
+        "void adaptive_graph_poll_pause(",
+        "void require_exclusive_current_cpu(",
+    )
+
+    assert '"yield"' in pause
+    assert "std::this_thread::yield" not in pause
+    assert "std::numeric_limits<std::uint32_t>::max()" in pause
+
+
+def test_direct_doorbell_bypasses_mapped_command_publication() -> None:
+    session = _read("src/tp4_session.cpp")
+    worker = _read("src/gpu_tp4_tensor.cu")
+    header = _read("include/spark_transport/gpu_tp4_tensor.hpp")
+
+    assert 'std::getenv("SPARK_TP4_GRAPH_DIRECT_DOORBELL")' in session
+    assert "local_geometry.reserved = graph_direct_doorbell ? 1U : 0U" in session
+    direct_loop = _function(
+        session,
+        "void progress_direct_graph_doorbells()",
+        "void progress(std::uint64_t sequence, bool trace)",
+    )
+    assert "control0->producer_sequence" in direct_loop
+    assert "doorbell_token >> kTp4GraphDoorbellQBits" in direct_loop
+    assert "doorbell_token & kTp4GraphDoorbellQMask" in direct_loop
+    assert "progress(expected, graph_trace_, payload_bytes" in direct_loop
+    assert "tp4_graph_command_try_consume" not in direct_loop
+
+    assert "graph_claim_direct_sequence" in worker
+    assert "atomicAdd(" in worker
+    assert "direct_graph_sequence == nullptr" in worker
+    assert "direct_graph_sequence_" in header
+
+    multiblock = _function(
+        worker,
+        "__global__ void tp4_direct_multiblock_all_reduce(",
+        "__global__ void tp4_tensor_all_reduce(",
+    )
+    assert "cg::this_grid()" in multiblock
+    assert multiblock.count("grid.sync()") >= 5
+    assert "graph_claim_direct_sequence(state, graph_commands)" in multiblock
+    assert "graph_release_direct_sequence(state)" in multiblock
+    assert "control0->producer_sequence" in multiblock
+    assert "control0->consumer_sequence" in multiblock
+    assert "control1->consumer_sequence" in multiblock
+    assert "state->active_sequence" in multiblock
+    assert "int blocks = 8" in worker
+    assert "blocks = 16" in worker
+    assert "active_payload_bytes <= 512U * 1024U" in worker
+    enqueue = _function(
+        worker,
+        "void GpuTp4TensorWorker::enqueue_graph(",
+        "}  // namespace spark_transport",
+    )
+    direct_enqueue = enqueue[
+        enqueue.index("if (graph_direct_doorbell_ &&") :
+        enqueue.index(
+            "if (schedule_ == Tp4AllreduceSchedule::kDualPortStriped)"
+        )
+    ]
+    assert "active_payload_bytes <= 512U * 1024U" in direct_enqueue
+    assert "cudaLaunchCooperativeKernel(" in direct_enqueue
+    assert "cudaDevAttrCooperativeLaunch" in worker
+    assert "ld.acquire.sys.global.u64" in worker

@@ -25,6 +25,7 @@ experiments are stored separately and do not feed those summaries.
 | `records/deepseek-v4-flash/` | DeepSeek-V4-Flash-0731 evidence records |
 | `records/qwen38-27b/` | Qwen3.8-27B EXL3 K5/K6 evidence records |
 | `records/transport/` | Transport evidence records independent of a model result |
+| `records/research-material/` | Incomplete observations without model or transport attribution |
 | `receipts/` | Sanitized benchmark receipts and recorded commands |
 
 Run harness tests offline from the repository root:
@@ -74,6 +75,13 @@ sections:
 A record without all five sections is research material, not a published model
 benchmark. Do not describe a number from one model configuration as a result
 for another model configuration.
+
+Research material whose source summary does not identify the compared arms is
+kept separate from transport or model claims:
+
+- [`Prefill Arm A/B single-observation comparison`](records/research-material/prefill-arm-ab-single-observation-20260903.md)
+  preserves five context-size observations and their limitations without
+  assigning either arm to a collective implementation.
 
 ## Status and retention
 

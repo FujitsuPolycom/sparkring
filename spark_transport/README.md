@@ -3,7 +3,8 @@
 ## Status
 
 `spark_transport` implements direct-cable, four-rank tensor-parallel
-collectives for the supported GLM-5.2 EXL3 serving configuration:
+collectives for the supported GLM-5.2 EXL3 serving configuration and
+implemented GLM-5.3 performance-testing paths:
 
 - BF16 TP all-reduce; and
 - BF16 vocabulary all-gather.
@@ -12,12 +13,19 @@ Each rank has two directly attached RoCE peers. The native protocol accepts
 only the four-rank topology and fails closed on invalid rank, peer, device,
 GID, tensor, session, or protocol state.
 
-The exact-Q40 GLM path has hidden width 6,144 and contiguous BF16 tensors
+The exact-Q40 GLM-5.2 path has hidden width 6,144 and contiguous BF16 tensors
 `[Q, 6144]`, with `Q` from 1 through 40. It is the only qualified custom
 all-reduce geometry. The width-4,096 DeepSeek-V4-Flash-0731 path is
 research-only: it may use the retained all-reduce admission surface, but has
-no serving qualification. DCP and sparse-indexer collectives remain on the
-patched NCCL fallback described in [nccl/README.md](nccl/README.md).
+no serving qualification.
+
+The GLM-5.3 research path combines a captured width-4,096 transport with an
+eager fused-prefill session. Fused prefill accepts contiguous BF16
+`[Q, 4096]` tensors from Q128 through Q8192 and counter-rotates tensor halves
+over both RDMA device functions on each existing cabled cycle edge. It requires
+neither additional cables nor diagonal links. DCP, sparse-indexer, and every
+unsupported signature remain on the patched NCCL fallback described in
+[nccl/README.md](nccl/README.md).
 
 ## Build
 
@@ -31,6 +39,7 @@ cmake -S spark_transport -B build/spark-transport \
   -DCMAKE_CUDA_ARCHITECTURES=121
 cmake --build build/spark-transport --target \
   spark_transport_capi \
+  spark_tp4_bidirectional_prefill_probe \
   spark_tp4_vocab_allgather_probe \
   tp4_c_api_test \
   tp4_vocab_allgather_c_api_test \
@@ -49,6 +58,9 @@ custom mode is selected.
 - Exactly four tensor-parallel ranks participate.
 - Every rank uses its two direct RoCE peer addresses, devices, GIDs, and
   control ports consistently with the other ranks.
+- Dual-rail prefill configures both RDMA device functions on each cabled ring
+  edge. Its primary and secondary addresses, devices, GIDs, and control ports
+  must be complete and non-overlapping.
 - Inputs are CUDA-resident, contiguous BF16 tensors of an admitted shape.
 - Native work begins only after session construction succeeds. A creation or
   admission failure uses the original vLLM/NCCL collective.

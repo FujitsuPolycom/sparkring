@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -65,6 +66,19 @@ def test_image_packages_dflash_warmup_and_rank_zero_waits_for_it() -> None:
 
 def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     pins = json.loads((HERE / "pins.json").read_text(encoding="utf-8"))
+    assert pins["operator_image"] == {
+        "reference": (
+            "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
+            "sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f"
+        ),
+        "image_id": (
+            "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0"
+        ),
+        "platform": "linux/arm64",
+        "status": "qualified",
+        "qualification_scope": "published TP4/DCP4 operator image",
+        "receipt": "page-tail-v2-public-image-receipt.json",
+    }
     assert pins["vllm"]["commit"] == (
         "22ffe1401ca9bd3e4503e62de7b414deca7661a1"
     )
@@ -374,6 +388,50 @@ def test_page_tail_v2_public_receipt_binds_registry_and_runtime() -> None:
     )
     assert receipt["validation"]["post_readiness_jit_events"] == 0
     assert receipt["validation"]["requests_running_after_validation"] == 0
+    pins = json.loads((HERE / "pins.json").read_text(encoding="utf-8"))
+    assert pins["operator_image"]["reference"] == receipt["artifact"]["registry"]
+    assert pins["operator_image"]["image_id"] == receipt["artifact"]["image_id"]
+
+
+def test_sircl_public_build_receipt_binds_overlay_and_native_test(
+    tmp_path: Path,
+) -> None:
+    receipt = json.loads(
+        (HERE / "sircl-public-build-receipt.json").read_text(encoding="utf-8")
+    )
+    assert receipt["schema"] == "sparkring-glm53-sircl-public-build/v1"
+    assert receipt["status"] == "implemented"
+    assert receipt["validation_scope"] == "native-built-tested"
+    assert receipt["source"] == {
+        "repository": "https://github.com/FujitsuPolycom/sparkring.git",
+        "spark_transport_tree": "8051e4e432d24d62bb3ee79573b5adde4e36f5fb",
+        "public_overlay_spec_sha256": (
+            "440f954a7ec485bf17adaecc7c28a22965bd32eadca76438f310501c57514bc7"
+        ),
+    }
+    overlay_spec = ROOT / "runtime" / "public-overlay-files.json"
+    assert hashlib.sha256(overlay_spec.read_bytes()).hexdigest() == (
+        receipt["source"]["public_overlay_spec_sha256"]
+    )
+    overlay_builder = load_module(
+        "sircl_public_overlay", ROOT / "runtime" / "build-public-overlay.py"
+    )
+    output = tmp_path / "sircl-overlay"
+    manifest = overlay_builder.build(ROOT, overlay_spec, output)
+    assert len(manifest["files"]) == receipt["overlay"]["files"]
+    manifest_path = output / receipt["overlay"]["manifest"]
+    assert hashlib.sha256(manifest_path.read_bytes()).hexdigest() == (
+        receipt["overlay"]["manifest_sha256"]
+    )
+    assert len(receipt["native"]["sha256"]) == 64
+    int(receipt["native"]["sha256"], 16)
+    assert receipt["validation"] == {
+        "cmake_build_exit_code": 0,
+        "ctest_total": 28,
+        "ctest_passed": 28,
+        "ctest_failed": 0,
+        "alternating_stream_cuda_smoke": "passed",
+    }
 
 
 def test_async_capture_image_receipt_binds_public_artifact_and_live_results() -> None:

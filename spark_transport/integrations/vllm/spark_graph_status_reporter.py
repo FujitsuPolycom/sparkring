@@ -22,11 +22,20 @@ def collect_graph_status() -> dict[str, object]:
         vocab_graph_diagnostic_snapshot,
     )
 
-    return {
+    snapshot: dict[str, object] = {
         "all_reduce": graph_q1_diagnostic_snapshot(),
         "vocabulary": vocab_graph_diagnostic_snapshot(),
         "stock_collectives": stock_collective_snapshot(),
     }
+    if os.getenv("SPARK_CUDAGRAPH_REPLAY_TIMING") == "1":
+        from spark_cudagraph_replay_timing import (
+            graph_replay_timing_snapshot,
+        )
+
+        snapshot["cudagraph_replay_timing"] = (
+            graph_replay_timing_snapshot()
+        )
+    return snapshot
 
 
 class GraphStatusReporter:

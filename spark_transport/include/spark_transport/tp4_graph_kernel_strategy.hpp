@@ -16,7 +16,9 @@ enum class Tp4GraphKernelStrategy : std::uint8_t {
   kTiered64KiB = 2,
 };
 
-constexpr std::uint32_t kTp4TieredSplitMinimumQ = 7;
+// The fused kernel is the measured latency path through one 64-KiB tile.
+// Selecting by bytes keeps the crossover stable when row width changes.
+constexpr std::uint32_t kTp4TieredFusedMaximumBytes = 64U * 1024U;
 
 constexpr bool tp4_graph_kernel_strategy_valid(
     Tp4GraphKernelStrategy strategy) noexcept {
@@ -36,14 +38,15 @@ constexpr bool tp4_graph_kernel_strategy_is_graph_only(
 }
 
 constexpr bool tp4_graph_kernel_uses_split(
-    Tp4GraphKernelStrategy strategy, std::uint32_t q) noexcept {
+    Tp4GraphKernelStrategy strategy,
+    std::uint32_t active_payload_bytes) noexcept {
   switch (strategy) {
     case Tp4GraphKernelStrategy::kFused:
       return false;
     case Tp4GraphKernelStrategy::kSplit64KiB:
       return true;
     case Tp4GraphKernelStrategy::kTiered64KiB:
-      return q >= kTp4TieredSplitMinimumQ;
+      return active_payload_bytes > kTp4TieredFusedMaximumBytes;
   }
   return false;
 }

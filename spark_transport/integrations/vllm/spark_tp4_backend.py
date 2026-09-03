@@ -11,6 +11,8 @@ from typing import Any
 
 from spark_persistent_output_ring import PersistentOutputRing
 from spark_tp4_port_namespace import (
+    bidirectional_prefill_control_ports,
+    bidirectional_prefill_secondary_control_ports,
     eager_allreduce_admitted_widths,
     eager_allreduce_ports_for_payload,
     graph_allreduce_control_ports,
@@ -46,6 +48,21 @@ _RESEARCH_GRAPH_MAX_QUERY_ROWS = 512
 _RESEARCH_GRAPH_CAPACITY_BYTES = (
     _RESEARCH_GRAPH_MAX_QUERY_ROWS * _RESEARCH_GRAPH_ROW_BYTES
 )
+_BIDIRECTIONAL_PREFILL_WIDTH = 4096
+_BIDIRECTIONAL_PREFILL_ROW_BYTES = _BIDIRECTIONAL_PREFILL_WIDTH * _BF16_BYTES
+_BIDIRECTIONAL_PREFILL_QUERY_ROWS = frozenset({1024, 2048, 4096, 8192})
+# Keep these research C ABI names synchronized with tp4_c_api.h; no dispatch
+# code embeds a symbol name directly.
+_BIDIRECTIONAL_PREFILL_C_ABI_SYMBOLS = {
+    "create": "spark_tp4_bidirectional_prefill_create",
+    "all_reduce": "spark_tp4_bidirectional_prefill_all_reduce",
+    "destroy": "spark_tp4_bidirectional_prefill_destroy",
+}
+_FUSED_PREFILL_C_ABI_SYMBOLS = {
+    "create": "spark_tp4_fused_prefill_create",
+    "all_reduce": "spark_tp4_fused_prefill_all_reduce_rows",
+    "destroy": "spark_tp4_fused_prefill_destroy",
+}
 _GRAPH_STATUS_CAPTURE_CONFIGURED = 1 << 0
 _GRAPH_STATUS_POLLING_ENABLED = 1 << 1
 _GRAPH_STATUS_HOST_NATIVE_ATOMICS = 1 << 2
@@ -56,6 +73,7 @@ _GRAPH_STATUS_TWO_SLOT_DEFERRED_ACK = 1 << 7
 _GRAPH_STATUS_SPLIT_64K = 1 << 8
 _GRAPH_STATUS_TIERED_64K = 1 << 9
 _GRAPH_STATUS_DUAL_PORT_STRIPED = 1 << 10
+_GRAPH_STATUS_DIRECT_DOORBELL = 1 << 11
 _SERIAL_ACK_PROTOCOL = "serial_ack"
 _TWO_SLOT_DEFERRED_ACK_PROTOCOL = "two_slot_deferred_ack"
 _ALLREDUCE_PROTOCOL_WIRE = {
@@ -124,6 +142,24 @@ class _NativeConfigV2(ctypes.Structure):
     ]
 
 
+class _BidirectionalPrefillConfigV1(ctypes.Structure):
+    _fields_ = [
+        ("struct_size", ctypes.c_uint32),
+        ("primary", _NativeConfigV2),
+        ("rail_count", ctypes.c_uint32),
+        ("query_rows", ctypes.c_uint32),
+        ("secondary_peer0", ctypes.c_char_p),
+        ("secondary_peer1", ctypes.c_char_p),
+        ("secondary_device0", ctypes.c_char_p),
+        ("secondary_device1", ctypes.c_char_p),
+        ("secondary_gid0", ctypes.c_uint8),
+        ("secondary_gid1", ctypes.c_uint8),
+        ("secondary_control_port0", ctypes.c_uint16),
+        ("secondary_control_port1", ctypes.c_uint16),
+        ("timeout_seconds", ctypes.c_uint32),
+    ]
+
+
 class _NativeGraphStatus(ctypes.Structure):
     _fields_ = [
         ("struct_size", ctypes.c_uint32),
@@ -153,6 +189,7 @@ class GraphReplayStatus:
     submit_cpu: int | None
     progress_cpu: int | None
     two_slot_deferred_ack: bool = False
+    direct_doorbell: bool = False
     graph_kernel_strategy: str = _FUSED_GRAPH_KERNEL
     wire_schedule: str = _SEQUENTIAL_WIRE_SCHEDULE
 
@@ -239,6 +276,123 @@ def _prefill_q512_enabled() -> bool:
             "VLLM_SPARK_TP4_PREFILL_Q512 must be '0', '1', or unset"
         )
     return value == "1"
+
+
+def _bidirectional_prefill_enabled() -> bool:
+    value = os.getenv("VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL", "0")
+    if value not in {"0", "1"}:
+        raise ValueError(
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL must be '0', '1', or unset"
+        )
+    return value == "1"
+
+
+def _bidirectional_prefill_rail_mode() -> str:
+    value = os.getenv(
+        "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE", "single"
+    ).lower()
+    if value not in {"single", "dual"}:
+        raise ValueError(
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE must be "
+            "'single', 'dual', or unset"
+        )
+    return value
+
+
+def _bidirectional_prefill_exposure() -> str:
+    value = os.getenv(
+        "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE", "sync"
+    ).lower()
+    if value not in {"sync", "fused"}:
+        raise ValueError(
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE must be "
+            "'sync', 'fused', or unset"
+        )
+    return value
+
+
+def _validate_bidirectional_prefill_dual_environment() -> None:
+    if _bidirectional_prefill_rail_mode() != "dual":
+        return
+    names = (
+        "SPARK_TP4_PEER0",
+        "SPARK_TP4_PEER1",
+        "SPARK_TP4_DEVICE0",
+        "SPARK_TP4_DEVICE1",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1",
+    )
+    values = tuple(os.getenv(name, "").strip() for name in names)
+    if not all(values):
+        missing = [name for name, value in zip(names, values) if not value]
+        raise ValueError(
+            "dual-rail bidirectional prefill requires: "
+            + ", ".join(missing)
+        )
+    if len(set(values[:2] + values[4:6])) != 4:
+        raise ValueError(
+            "dual-rail primary/secondary peer addresses must be distinct"
+        )
+    if len(set(values[2:4] + values[6:8])) != 4:
+        raise ValueError(
+            "dual-rail primary/secondary devices must be distinct"
+        )
+
+
+def _bidirectional_prefill_eligible(
+    communicator: Any,
+    tensor: Any,
+    *,
+    mode: str,
+    capturing: bool,
+) -> bool:
+    """Rank-invariant admission for the eager width-4096 research lane.
+
+    The decision uses only configuration and tensor properties shared by TP
+    ranks. Pointer values and rank-local allocator state are deliberately not
+    consulted, so an ineligible call falls through to NCCL on every rank.
+    """
+
+    shape = _tensor_shape(tensor)
+    return (
+        _bidirectional_prefill_enabled()
+        and mode in {"custom", "shadow"}
+        and not capturing
+        and getattr(communicator, "world_size", None) == 4
+        and getattr(communicator, "unique_name", "") == "tp:0"
+        and len(shape) == 2
+        and shape[0] in _BIDIRECTIONAL_PREFILL_QUERY_ROWS
+        and shape[1] == _BIDIRECTIONAL_PREFILL_WIDTH
+        and str(tensor.dtype) == "torch.bfloat16"
+        and bool(tensor.is_cuda)
+        and bool(tensor.is_contiguous())
+    )
+
+
+def _fused_prefill_eligible(
+    communicator: Any,
+    tensor: Any,
+    *,
+    mode: str,
+    capturing: bool,
+) -> bool:
+    shape = _tensor_shape(tensor)
+    return (
+        _bidirectional_prefill_exposure() == "fused"
+        and _bidirectional_prefill_enabled()
+        and mode in {"custom", "shadow"}
+        and not capturing
+        and getattr(communicator, "world_size", None) == 4
+        and getattr(communicator, "unique_name", "") == "tp:0"
+        and len(shape) == 2
+        and 128 <= shape[0] <= 8192
+        and shape[1] == _BIDIRECTIONAL_PREFILL_WIDTH
+        and str(tensor.dtype) == "torch.bfloat16"
+        and bool(tensor.is_cuda)
+        and bool(tensor.is_contiguous())
+    )
 
 
 def _maximum_allreduce_query_rows() -> int:
@@ -643,6 +797,309 @@ def _record_graph_event(communicator: Any, event: str) -> int:
     return count
 
 
+def _bind_bidirectional_prefill_native_api(library: Any) -> tuple[Any, Any, Any]:
+    """Bind the isolated bidirectional-prefill research ABI."""
+
+    try:
+        create = getattr(
+            library, _BIDIRECTIONAL_PREFILL_C_ABI_SYMBOLS["create"]
+        )
+        all_reduce = getattr(
+            library, _BIDIRECTIONAL_PREFILL_C_ABI_SYMBOLS["all_reduce"]
+        )
+        destroy = getattr(
+            library, _BIDIRECTIONAL_PREFILL_C_ABI_SYMBOLS["destroy"]
+        )
+    except AttributeError as error:
+        raise RuntimeError(
+            "Spark TP4 native library lacks the bidirectional prefill "
+            "research ABI; rebuild and deploy a matching native library"
+        ) from error
+    create.argtypes = [
+        ctypes.POINTER(_BidirectionalPrefillConfigV1),
+        ctypes.c_char_p,
+        ctypes.c_size_t,
+    ]
+    create.restype = ctypes.c_void_p
+    all_reduce.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.c_size_t,
+    ]
+    all_reduce.restype = ctypes.c_int
+    destroy.argtypes = [ctypes.c_void_p]
+    destroy.restype = None
+    return create, all_reduce, destroy
+
+
+def _bind_fused_prefill_native_api(library: Any) -> tuple[Any, Any, Any]:
+    """Bind the caller-stream fused Q8192 ABI."""
+
+    try:
+        create = getattr(library, _FUSED_PREFILL_C_ABI_SYMBOLS["create"])
+        all_reduce = getattr(
+            library, _FUSED_PREFILL_C_ABI_SYMBOLS["all_reduce"]
+        )
+        destroy = getattr(library, _FUSED_PREFILL_C_ABI_SYMBOLS["destroy"])
+    except AttributeError as error:
+        raise RuntimeError(
+            "Spark TP4 native library lacks the fused prefill ABI; "
+            "rebuild and deploy a matching native library"
+        ) from error
+    create.argtypes = [
+        ctypes.POINTER(_BidirectionalPrefillConfigV1),
+        ctypes.c_char_p,
+        ctypes.c_size_t,
+    ]
+    create.restype = ctypes.c_void_p
+    all_reduce.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_uint32,
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.c_size_t,
+    ]
+    all_reduce.restype = ctypes.c_int
+    destroy.argtypes = [ctypes.c_void_p]
+    destroy.restype = None
+    return create, all_reduce, destroy
+
+
+def _validate_fused_prefill_native_api() -> None:
+    library_path = os.getenv("SPARK_TP4_LIBRARY", "").strip()
+    if not library_path:
+        raise ValueError(
+            "fused prefill requires SPARK_TP4_LIBRARY before installation"
+        )
+    _bind_fused_prefill_native_api(ctypes.CDLL(library_path))
+
+
+class _BidirectionalPrefillNativeSession:
+    """Lazy one-shape binding for the research-only eager prefill C ABI."""
+
+    _valid_query_rows = _BIDIRECTIONAL_PREFILL_QUERY_ROWS
+    _bind_native_api = staticmethod(_bind_bidirectional_prefill_native_api)
+    _session_label = "bidirectional prefill"
+    _exposure = "sync"
+
+    def __init__(self, rank: int, shape: tuple[int, ...]) -> None:
+        if (
+            rank not in _DEFAULT_PEERS
+            or len(shape) != 2
+            or shape[0] not in self._valid_query_rows
+            or shape[1] != _BIDIRECTIONAL_PREFILL_WIDTH
+        ):
+            raise ValueError("invalid bidirectional prefill session shape")
+        query_rows = shape[0]
+        payload_bytes = query_rows * _BIDIRECTIONAL_PREFILL_ROW_BYTES
+        control_port0, control_port1 = bidirectional_prefill_control_ports(
+            query_rows
+        )
+        default_peer0, default_peer1 = _DEFAULT_PEERS[rank]
+        peer0 = os.getenv("SPARK_TP4_PEER0", default_peer0)
+        peer1 = os.getenv("SPARK_TP4_PEER1", default_peer1)
+        device0 = os.getenv("SPARK_TP4_DEVICE0", "rocep1s0f0")
+        device1 = os.getenv("SPARK_TP4_DEVICE1", "rocep1s0f1")
+        base = _NativeConfig(
+            rank=rank,
+            peer0=peer0.encode(),
+            peer1=peer1.encode(),
+            device0=device0.encode(),
+            device1=device1.encode(),
+            gid0=int(os.getenv("SPARK_TP4_GID0", "3")),
+            gid1=int(os.getenv("SPARK_TP4_GID1", "3")),
+            control_port0=control_port0,
+            control_port1=control_port1,
+            payload_bytes=payload_bytes,
+            graph_submit_cpu_plus_one=0,
+            graph_progress_cpu_plus_one=0,
+        )
+        primary = _NativeConfigV2(
+            struct_size=ctypes.sizeof(_NativeConfigV2),
+            base=base,
+            elements_per_row=_BIDIRECTIONAL_PREFILL_WIDTH,
+            bytes_per_row=_BIDIRECTIONAL_PREFILL_ROW_BYTES,
+        )
+        rail_mode = _bidirectional_prefill_rail_mode()
+        rail_count = 2 if rail_mode == "dual" else 1
+        secondary_peer0 = secondary_peer1 = None
+        secondary_device0 = secondary_device1 = None
+        secondary_gid0 = secondary_gid1 = 0
+        secondary_port0 = secondary_port1 = 0
+        if rail_count == 2:
+            names = (
+                "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0",
+                "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1",
+                "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0",
+                "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1",
+            )
+            values = tuple(os.getenv(name, "").strip() for name in names)
+            if not all(values):
+                missing = [name for name, value in zip(names, values) if not value]
+                raise ValueError(
+                    "dual-rail bidirectional prefill requires: "
+                    + ", ".join(missing)
+                )
+            secondary_peer0, secondary_peer1, secondary_device0, secondary_device1 = values
+            if len({peer0, peer1, secondary_peer0, secondary_peer1}) != 4:
+                raise ValueError(
+                    "dual-rail primary/secondary peer addresses must be distinct"
+                )
+            if len({device0, device1, secondary_device0, secondary_device1}) != 4:
+                raise ValueError(
+                    "dual-rail primary/secondary devices must be distinct"
+                )
+            try:
+                secondary_gid0 = int(os.getenv(
+                    "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0", "3"
+                ))
+                secondary_gid1 = int(os.getenv(
+                    "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1", "3"
+                ))
+            except ValueError as error:
+                raise ValueError("dual-rail secondary GIDs must be integers") from error
+            if not (0 <= secondary_gid0 <= 255 and 0 <= secondary_gid1 <= 255):
+                raise ValueError("dual-rail secondary GIDs must be in [0, 255]")
+            secondary_port0, secondary_port1 = (
+                bidirectional_prefill_secondary_control_ports(query_rows)
+            )
+        try:
+            timeout_seconds = int(os.getenv(
+                "SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS", "120"
+            ))
+        except ValueError as error:
+            raise ValueError("bidirectional prefill timeout must be an integer") from error
+        if not (1 <= timeout_seconds <= 0xFFFFFFFF):
+            raise ValueError("bidirectional prefill timeout must be in [1, 4294967295]")
+        config = _BidirectionalPrefillConfigV1(
+            struct_size=ctypes.sizeof(_BidirectionalPrefillConfigV1),
+            primary=primary,
+            rail_count=rail_count,
+            query_rows=query_rows,
+            secondary_peer0=(None if secondary_peer0 is None else secondary_peer0.encode()),
+            secondary_peer1=(None if secondary_peer1 is None else secondary_peer1.encode()),
+            secondary_device0=(None if secondary_device0 is None else secondary_device0.encode()),
+            secondary_device1=(None if secondary_device1 is None else secondary_device1.encode()),
+            secondary_gid0=secondary_gid0,
+            secondary_gid1=secondary_gid1,
+            secondary_control_port0=secondary_port0,
+            secondary_control_port1=secondary_port1,
+            timeout_seconds=timeout_seconds,
+        )
+        self._library = ctypes.CDLL(os.environ["SPARK_TP4_LIBRARY"])
+        create, self._all_reduce, self._destroy = (
+            self._bind_native_api(self._library)
+        )
+        error = ctypes.create_string_buffer(512)
+        self._handle = create(ctypes.byref(config), error, len(error))
+        if not self._handle:
+            message = error.value.decode(errors="replace")
+            raise RuntimeError(
+                f"failed to create Spark TP4 {self._session_label} session: "
+                f"{message}"
+            )
+        self.rank = rank
+        self.shape = shape
+        self.payload_bytes = payload_bytes
+        logger.warning(
+            "Spark TP4 %s session ready: rank=%d shape=%s rails=%d "
+            "exposure=%s primary_ports=%s secondary_ports=%s",
+            self._session_label,
+            rank,
+            shape,
+            rail_count,
+            self._exposure,
+            (control_port0, control_port1),
+            (
+                None
+                if rail_count == 1
+                else (secondary_port0, secondary_port1)
+            ),
+        )
+
+    def all_reduce(self, tensor: Any) -> Any:
+        import torch
+
+        if _tensor_shape(tensor) != self.shape:
+            raise ValueError("bidirectional prefill tensor shape changed")
+        output = torch.empty_like(tensor)
+        stream = torch.cuda.current_stream(device=tensor.device)
+        error = ctypes.create_string_buffer(512)
+        result = self._all_reduce(
+            self._handle,
+            ctypes.c_void_p(tensor.data_ptr()),
+            ctypes.c_void_p(output.data_ptr()),
+            ctypes.c_void_p(stream.cuda_stream),
+            error,
+            len(error),
+        )
+        if result != 0:
+            message = error.value.decode(errors="replace")
+            raise RuntimeError(
+                f"Spark TP4 {self._session_label} all-reduce failed: {message}"
+            )
+        return output
+
+    def close(self) -> None:
+        if self._handle:
+            self._destroy(self._handle)
+            self._handle = None
+
+    def __del__(self) -> None:  # pragma: no cover - defensive teardown
+        try:
+            self.close()
+        except Exception:
+            pass
+
+
+class _FusedPrefillNativeSession(_BidirectionalPrefillNativeSession):
+    """One-launch caller-stream fused session with Q8192 capacity."""
+
+    _valid_query_rows = frozenset({8192})
+    _bind_native_api = staticmethod(_bind_fused_prefill_native_api)
+    _session_label = "fused prefill"
+    _exposure = "fused"
+
+    def __init__(self, rank: int, shape: tuple[int, ...]) -> None:
+        if _bidirectional_prefill_rail_mode() != "dual":
+            raise ValueError("fused prefill requires strict dual-rail mode")
+        super().__init__(rank, shape)
+
+    def all_reduce(self, tensor: Any) -> Any:
+        import torch
+
+        shape = _tensor_shape(tensor)
+        if (
+            len(shape) != 2
+            or not 128 <= shape[0] <= 8192
+            or shape[1] != _BIDIRECTIONAL_PREFILL_WIDTH
+        ):
+            raise ValueError("fused prefill tensor exceeds session capacity")
+        output = torch.empty_like(tensor)
+        stream = torch.cuda.current_stream(device=tensor.device)
+        error = ctypes.create_string_buffer(512)
+        result = self._all_reduce(
+            self._handle,
+            ctypes.c_void_p(tensor.data_ptr()),
+            ctypes.c_void_p(output.data_ptr()),
+            ctypes.c_uint32(shape[0]),
+            ctypes.c_void_p(stream.cuda_stream),
+            error,
+            len(error),
+        )
+        if result != 0:
+            message = error.value.decode(errors="replace")
+            raise RuntimeError(
+                f"Spark TP4 fused prefill all-reduce failed: {message}"
+            )
+        return output
+
+
 class _NativeSession:
     def __init__(
         self,
@@ -1041,6 +1498,18 @@ class _NativeSession:
                 f"requested={self._wire_schedule} "
                 f"native={native_wire_schedule}"
             )
+        native_direct_doorbell = bool(
+            flags & _GRAPH_STATUS_DIRECT_DOORBELL
+        )
+        requested_direct_doorbell = (
+            os.getenv("SPARK_TP4_GRAPH_DIRECT_DOORBELL", "0") == "1"
+        )
+        if native_direct_doorbell != requested_direct_doorbell:
+            raise RuntimeError(
+                "Spark TP4 direct-doorbell attestation mismatch: "
+                f"requested={requested_direct_doorbell} "
+                f"native={native_direct_doorbell}"
+            )
         return GraphReplayStatus(
             captured_nodes=int(native.captured_nodes),
             published_sequence=int(native.published_sequence),
@@ -1071,6 +1540,7 @@ class _NativeSession:
                 else None
             ),
             two_slot_deferred_ack=native_deferred,
+            direct_doorbell=native_direct_doorbell,
             graph_kernel_strategy=native_graph_kernel,
             wire_schedule=native_wire_schedule,
         )
@@ -1239,6 +1709,12 @@ class _Backend:
         self.graph_q1_session: _NativeSession | None = None
         self.graph_dual_port_q40_session: _NativeSession | None = None
         self.graph_width4096_session: _NativeSession | None = None
+        self.bidirectional_prefill_sessions: dict[
+            tuple[int, ...], _BidirectionalPrefillNativeSession
+        ] = {}
+        self.fused_prefill_sessions: dict[
+            tuple[int, ...], _FusedPrefillNativeSession
+        ] = {}
         self.shadow_stats: dict[tuple[int, tuple[int, ...], str], _ShadowStats] = {}
 
     def native_for(self, payload_bytes: int) -> _NativeSession:
@@ -1246,6 +1722,23 @@ class _Backend:
         if session is None:
             session = _NativeSession(self.rank, payload_bytes)
             self.native_sessions[payload_bytes] = session
+        return session
+
+    def bidirectional_prefill_for(
+        self, shape: tuple[int, ...]
+    ) -> _BidirectionalPrefillNativeSession:
+        session = self.bidirectional_prefill_sessions.get(shape)
+        if session is None:
+            session = _BidirectionalPrefillNativeSession(self.rank, shape)
+            self.bidirectional_prefill_sessions[shape] = session
+        return session
+
+    def fused_prefill_for(self) -> _FusedPrefillNativeSession:
+        capacity_shape = (8192, _BIDIRECTIONAL_PREFILL_WIDTH)
+        session = self.fused_prefill_sessions.get(capacity_shape)
+        if session is None:
+            session = _FusedPrefillNativeSession(self.rank, capacity_shape)
+            self.fused_prefill_sessions[capacity_shape] = session
         return session
 
     def prepare_graph_q1(self) -> _NativeSession:
@@ -1370,6 +1863,30 @@ def graph_q1_diagnostic_snapshot() -> dict[str, object]:
 def install() -> None:
     global _installed
     mode = _mode()
+    bidirectional_prefill = _bidirectional_prefill_enabled()
+    bidirectional_rail_mode = _bidirectional_prefill_rail_mode()
+    bidirectional_exposure = _bidirectional_prefill_exposure()
+    if bidirectional_exposure == "fused" and not bidirectional_prefill:
+        raise ValueError(
+            "fused prefill exposure requires "
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL=1"
+        )
+    if bidirectional_exposure == "fused" and bidirectional_rail_mode != "dual":
+        raise ValueError("fused prefill exposure requires strict dual-rail mode")
+    if bidirectional_rail_mode == "dual" and not bidirectional_prefill:
+        raise ValueError(
+            "dual-rail bidirectional prefill requires "
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL=1"
+        )
+    if bidirectional_prefill:
+        _validate_bidirectional_prefill_dual_environment()
+    if bidirectional_exposure == "fused":
+        _validate_fused_prefill_native_api()
+    if bidirectional_prefill and mode not in {"custom", "shadow"}:
+        raise ValueError(
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL requires "
+            "VLLM_SPARK_TP4_MODE=custom or shadow"
+        )
     graph_protocol = _graph_allreduce_protocol()
     graph_kernel = _graph_kernel_strategy()
     graph_dual_port_q40 = _graph_dual_port_q40_enabled()
@@ -1427,28 +1944,38 @@ def install() -> None:
 
     def spark_all_reduce(self: Any, input_: Any) -> Any:
         mode = _mode()
-        if mode == "custom" and _graph_width4096_research_enabled():
-            import torch
+        import torch
 
+        capturing = _is_stream_capturing(torch)
+        bidirectional_exposure = _bidirectional_prefill_exposure()
+        bidirectional_eligible = _bidirectional_prefill_eligible(
+            self, input_, mode=mode, capturing=capturing
+        )
+        use_fused_prefill = _fused_prefill_eligible(
+            self, input_, mode=mode, capturing=capturing
+        )
+        use_bidirectional_prefill = (
+            bidirectional_exposure == "sync" and bidirectional_eligible
+        )
+        if mode == "custom" and _graph_width4096_research_enabled():
             handled = _research_graph_all_reduce(
-                self, input_, _is_stream_capturing(torch)
+                self, input_, capturing
             )
             if handled is not None:
                 return handled
-        if not _eligible(self, input_, mode):
-            import torch
-
+        if (
+            not use_fused_prefill
+            and not use_bidirectional_prefill
+            and not _eligible(self, input_, mode)
+        ):
             _record_stock_path(
-                capturing=_is_stream_capturing(torch),
+                capturing=capturing,
                 reason="ineligible_signature",
                 communicator=self,
                 tensor=input_,
             )
             return original(self, input_)
 
-        import torch
-
-        capturing = _is_stream_capturing(torch)
         if capturing:
             if (
                 mode == "custom"
@@ -1511,7 +2038,14 @@ def install() -> None:
         try:
             if mode == "custom" and _graph_q1_enabled():
                 backend.prepare_graph_q1()
-            native_session = backend.native_for(payload_bytes)
+            if use_fused_prefill:
+                native_session = backend.fused_prefill_for()
+            elif use_bidirectional_prefill:
+                native_session = backend.bidirectional_prefill_for(
+                    _tensor_shape(input_)
+                )
+            else:
+                native_session = backend.native_for(payload_bytes)
             candidate = native_session.all_reduce(input_)
         except BaseException:
             logger.exception(
@@ -1582,4 +2116,9 @@ def install() -> None:
     spark_all_reduce._spark_original = original  # type: ignore[attr-defined]
     CudaCommunicator.all_reduce = spark_all_reduce
     _installed = True
-    logger.warning("installed Spark TP4 vLLM backend in %s mode", _mode())
+    logger.warning(
+        "installed Spark TP4 vLLM backend in %s mode: "
+        "bidirectional_prefill_exposure=%s",
+        _mode(),
+        bidirectional_exposure,
+    )

@@ -14,6 +14,14 @@
       "org.sparkcache.cuda-placement-sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
     }
   },
+  "operator_image": {
+    "reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f",
+    "image_id": "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0",
+    "platform": "linux/arm64",
+    "status": "qualified",
+    "qualification_scope": "published TP4/DCP4 operator image",
+    "receipt": "page-tail-v2-public-image-receipt.json"
+  },
   "vllm": {
     "repository": "https://github.com/FujitsuPolycom/vllm.git",
     "commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",

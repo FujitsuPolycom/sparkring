@@ -67,6 +67,38 @@ fi
 : "${DFLASH_WARMUP_SHAPE_WORDS:=8,24,56,120,248}"
 : "${DFLASH_WARMUP_MAX_TOKENS:=16}"
 : "${DFLASH_WARMUP_TIMEOUT_SECONDS:=600}"
+: "${SIRCL_ENABLED:=0}"
+: "${SIRCL_BUNDLE_HOST_ROOT:=}"
+: "${SPARK_TP4_PEER0:=}"
+: "${SPARK_TP4_PEER1:=}"
+: "${SPARK_TP4_DEVICE0:=rocep1s0f0}"
+: "${SPARK_TP4_DEVICE1:=rocep1s0f1}"
+: "${SPARK_TP4_GID0:=3}"
+: "${SPARK_TP4_GID1:=3}"
+: "${SPARK_TP4_GRAPH_CONTROL_PORT0:=9970}"
+: "${SPARK_TP4_GRAPH_CONTROL_PORT1:=9971}"
+: "${SPARK_TP4_GRAPH_SUBMIT_CPU:=10}"
+: "${SPARK_TP4_GRAPH_PROGRESS_CPU:=11}"
+: "${SPARK_TP4_MAX_INFLIGHT:=64}"
+: "${SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS:=10}"
+: "${SPARK_TP4_GRAPH_DIRECT_DOORBELL:=0}"
+: "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL:=0}"
+: "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE:=single}"
+: "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE:=sync}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT0:=19000}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT1:=19001}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0:=}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1:=}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0:=}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1:=}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0:=3}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1:=3}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0:=19100}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1:=19101}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS:=120}"
+: "${SPARK_CUDAGRAPH_REPLAY_TIMING:=0}"
+: "${SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES:=512}"
+: "${SPARK_CUDAGRAPH_REPLAY_TIMING_BUNDLE_HOST_ROOT:=}"
 : "${SPARKCACHE_ENABLED:=1}"
 : "${SPARKCACHE_ACCESS_MODE:=read-write}"
 : "${SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS:=300}"
@@ -251,6 +283,42 @@ case "${DFLASH_WARMUP}" in
   0|1) ;;
   *) die 'DFLASH_WARMUP must be 0 or 1' ;;
 esac
+case "${SIRCL_ENABLED}" in
+  0|1) ;;
+  *) die 'SIRCL_ENABLED must be 0 or 1' ;;
+esac
+case "${SPARK_TP4_GRAPH_DIRECT_DOORBELL}" in
+  0|1) ;;
+  *) die 'SPARK_TP4_GRAPH_DIRECT_DOORBELL must be 0 or 1' ;;
+esac
+case "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL}" in
+  0|1) ;;
+  *) die 'VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL must be 0 or 1' ;;
+esac
+case "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE}" in
+  single|dual) ;;
+  *) die 'VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE must be single or dual' ;;
+esac
+case "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE}" in
+  sync|fused) ;;
+  *) die 'VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE must be sync or fused' ;;
+esac
+if [[ "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL}" == 1 && "${SIRCL_ENABLED}" != 1 ]]; then
+  die 'bidirectional prefill requires SIRCL_ENABLED=1'
+fi
+if [[ "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE}" == dual && "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL}" != 1 ]]; then
+  die 'dual-rail bidirectional prefill requires VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL=1'
+fi
+if [[ "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE}" == fused ]]; then
+  [[ "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL}" == 1 ]] || \
+    die 'fused prefill exposure requires VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL=1'
+  [[ "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE}" == dual ]] || \
+    die 'fused prefill exposure requires dual rail mode'
+fi
+case "${SPARK_CUDAGRAPH_REPLAY_TIMING}" in
+  0|1) ;;
+  *) die 'SPARK_CUDAGRAPH_REPLAY_TIMING must be 0 or 1' ;;
+esac
 for name in SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE JIT_CACHE_NAMESPACE
 do
   [[ "${!name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || \
@@ -309,6 +377,181 @@ if [[ -n "${VLLM_KV_METRICS_OVERLAY}" ]]; then
 fi
 command -v python3 >/dev/null 2>&1 || die 'python3 is required to encode JSON configuration safely'
 command -v sha256sum >/dev/null 2>&1 || die 'sha256sum is required to verify model inputs'
+sircl_args=()
+sircl_native_sha256='disabled'
+sircl_manifest_sha256='disabled'
+if [[ "${SIRCL_ENABLED}" == 1 ]]; then
+  [[ "${TENSOR_PARALLEL_SIZE}" == 4 ]] || \
+    die 'SIRCL width-4096 mode requires TENSOR_PARALLEL_SIZE=4'
+  [[ -n "${SPARK_TP4_PEER0}" && -n "${SPARK_TP4_PEER1}" ]] || \
+    die 'SIRCL requires SPARK_TP4_PEER0 and SPARK_TP4_PEER1'
+  [[ -n "${SPARK_TP4_DEVICE0}" && -n "${SPARK_TP4_DEVICE1}" ]] || \
+    die 'SIRCL requires SPARK_TP4_DEVICE0 and SPARK_TP4_DEVICE1'
+  for name in \
+    SPARK_TP4_GID0 SPARK_TP4_GID1 \
+    SPARK_TP4_GRAPH_CONTROL_PORT0 SPARK_TP4_GRAPH_CONTROL_PORT1 \
+    SPARK_TP4_GRAPH_SUBMIT_CPU SPARK_TP4_GRAPH_PROGRESS_CPU \
+    SPARK_TP4_MAX_INFLIGHT SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS
+  do
+    require_positive_uint "${name}"
+  done
+  (( SPARK_TP4_GRAPH_CONTROL_PORT0 <= 65535 && SPARK_TP4_GRAPH_CONTROL_PORT1 <= 65535 )) || \
+    die 'SIRCL graph control ports must be at most 65535'
+  (( SPARK_TP4_GRAPH_SUBMIT_CPU != SPARK_TP4_GRAPH_PROGRESS_CPU )) || \
+    die 'SIRCL graph submit and progress CPUs must be distinct'
+  if [[ "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL}" == 1 ]]; then
+    for name in \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT0 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT1 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS
+    do
+      require_positive_uint "${name}"
+    done
+    for name in \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT0 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT1 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1
+    do
+      (( ${!name} <= 65529 )) || \
+        die "${name} must be at most 65529 to reserve the complete prefill port range"
+    done
+  fi
+  if [[ "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE}" == dual ]]; then
+    for name in \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1
+    do
+      [[ -n "${!name}" ]] || die "dual-rail bidirectional prefill requires ${name}"
+    done
+    for name in \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1
+    do
+      require_uint "${name}"
+      (( ${!name} <= 255 )) || die "${name} must be at most 255"
+    done
+    [[ "${SPARK_TP4_PEER0}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0}" && \
+       "${SPARK_TP4_PEER0}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1}" && \
+       "${SPARK_TP4_PEER1}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0}" && \
+       "${SPARK_TP4_PEER1}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1}" && \
+       "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1}" ]] || \
+      die 'dual-rail primary and secondary peer addresses must be distinct'
+    [[ "${SPARK_TP4_DEVICE0}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0}" && \
+       "${SPARK_TP4_DEVICE0}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1}" && \
+       "${SPARK_TP4_DEVICE1}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0}" && \
+       "${SPARK_TP4_DEVICE1}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1}" && \
+       "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1}" ]] || \
+      die 'dual-rail primary and secondary devices must be distinct'
+  fi
+  [[ "${SIRCL_BUNDLE_HOST_ROOT}" == /* ]] || \
+    die 'SIRCL_BUNDLE_HOST_ROOT must be an absolute host path'
+  [[ "${SIRCL_BUNDLE_HOST_ROOT}" != *:* && "${SIRCL_BUNDLE_HOST_ROOT}" != *$'\n'* ]] || \
+    die 'SIRCL_BUNDLE_HOST_ROOT cannot be represented safely as a Docker bind mount'
+  [[ -d "${SIRCL_BUNDLE_HOST_ROOT}" ]] || \
+    die 'SIRCL_BUNDLE_HOST_ROOT must be a directory'
+  for required in \
+    sitecustomize.py \
+    spark_collective_audit.py \
+    spark_graph_status_reporter.py \
+    spark_persistent_output_ring.py \
+    spark_tp4_backend.py \
+    spark_tp4_port_namespace.py \
+    spark_tp4_query_contract.py \
+    spark_tp4_query_row_provider.py \
+    sparkring-overlay-manifest.json \
+    libspark_transport_capi.so
+  do
+    [[ -f "${SIRCL_BUNDLE_HOST_ROOT}/${required}" ]] || \
+      die "SIRCL bundle is missing ${required}"
+  done
+  sircl_native_sha256="$(
+    sha256sum -- "${SIRCL_BUNDLE_HOST_ROOT}/libspark_transport_capi.so" |
+      cut -d' ' -f1
+  )"
+  sircl_manifest_sha256="$(
+    sha256sum -- "${SIRCL_BUNDLE_HOST_ROOT}/sparkring-overlay-manifest.json" |
+      cut -d' ' -f1
+  )"
+  sircl_args=(
+    -v "${SIRCL_BUNDLE_HOST_ROOT}:/opt/spark-sircl:ro"
+    -e PYTHONPATH=/opt/spark-sircl
+    -e SPARK_TP4_LIBRARY=/opt/spark-sircl/libspark_transport_capi.so
+    -e VLLM_SPARK_TP4_MODE=custom
+    -e VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH=1
+    -e VLLM_SPARK_SHARED_CAPTURE_STREAM=1
+    -e VLLM_SPARK_TP4_GRAPH_Q1=0
+    -e VLLM_SPARK_TP4_GRAPH_DUAL_PORT_Q40=0
+    -e "SPARK_TP4_PEER0=${SPARK_TP4_PEER0}"
+    -e "SPARK_TP4_PEER1=${SPARK_TP4_PEER1}"
+    -e "SPARK_TP4_DEVICE0=${SPARK_TP4_DEVICE0}"
+    -e "SPARK_TP4_DEVICE1=${SPARK_TP4_DEVICE1}"
+    -e "SPARK_TP4_GID0=${SPARK_TP4_GID0}"
+    -e "SPARK_TP4_GID1=${SPARK_TP4_GID1}"
+    -e "SPARK_TP4_GRAPH_CONTROL_PORT0=${SPARK_TP4_GRAPH_CONTROL_PORT0}"
+    -e "SPARK_TP4_GRAPH_CONTROL_PORT1=${SPARK_TP4_GRAPH_CONTROL_PORT1}"
+    -e "SPARK_TP4_GRAPH_SUBMIT_CPU=${SPARK_TP4_GRAPH_SUBMIT_CPU}"
+    -e "SPARK_TP4_GRAPH_PROGRESS_CPU=${SPARK_TP4_GRAPH_PROGRESS_CPU}"
+    -e "SPARK_TP4_MAX_INFLIGHT=${SPARK_TP4_MAX_INFLIGHT}"
+    -e "SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS=${SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS}"
+    -e "SPARK_TP4_GRAPH_DIRECT_DOORBELL=${SPARK_TP4_GRAPH_DIRECT_DOORBELL}"
+    -e "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL=${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL}"
+    -e "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE=${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE}"
+    -e "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE=${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT0=${SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT0}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT1=${SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT1}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS=${SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS}"
+    -e SPARK_TP4_FLIGHT_RECORDER=0
+    -e "SPARK_TP4_GRAPH_STATUS_PATH=/cache/jit/sircl-graph-rank${rank}.json"
+  )
+fi
+replay_timing_args=()
+if [[ "${SPARK_CUDAGRAPH_REPLAY_TIMING}" == 1 ]]; then
+  require_positive_uint SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES
+  replay_timing_bundle="${SPARK_CUDAGRAPH_REPLAY_TIMING_BUNDLE_HOST_ROOT}"
+  replay_timing_container_root='/opt/spark-replay-timing'
+  if [[ "${SIRCL_ENABLED}" == 1 ]]; then
+    replay_timing_bundle="${SIRCL_BUNDLE_HOST_ROOT}"
+    replay_timing_container_root='/opt/spark-sircl'
+  else
+    [[ "${replay_timing_bundle}" == /* ]] || \
+      die 'SPARK_CUDAGRAPH_REPLAY_TIMING_BUNDLE_HOST_ROOT must be an absolute host path'
+    [[ "${replay_timing_bundle}" != *:* && "${replay_timing_bundle}" != *$'\n'* ]] || \
+      die 'SPARK_CUDAGRAPH_REPLAY_TIMING_BUNDLE_HOST_ROOT cannot be represented safely as a Docker bind mount'
+    [[ -d "${replay_timing_bundle}" ]] || \
+      die 'SPARK_CUDAGRAPH_REPLAY_TIMING_BUNDLE_HOST_ROOT must be a directory'
+    replay_timing_args+=(
+      -v "${replay_timing_bundle}:${replay_timing_container_root}:ro"
+      -e "PYTHONPATH=${replay_timing_container_root}"
+    )
+    [[ -f "${replay_timing_bundle}/spark_graph_status_reporter.py" ]] || \
+      die 'CUDA graph replay timing bundle is missing spark_graph_status_reporter.py'
+    replay_timing_args+=(
+      -e "SPARK_CUDAGRAPH_REPLAY_TIMING_STATUS_PATH=/cache/jit/cudagraph-replay-rank${rank}.json"
+    )
+  fi
+  for required in sitecustomize.py spark_cudagraph_replay_timing.py; do
+    [[ -f "${replay_timing_bundle}/${required}" ]] || \
+      die "CUDA graph replay timing bundle is missing ${required}"
+  done
+  replay_timing_args+=(
+    -e SPARK_CUDAGRAPH_REPLAY_TIMING=1
+    -e "SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES=${SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES}"
+    -e SPARK_CUDAGRAPH_REPLAY_TIMING_ARM_PATH=/cache/jit/sircl-replay-timing.arm
+  )
+fi
 python3 - "${GPU_MEMORY_UTILIZATION}" <<'PY' || exit 78
 import math
 import sys
@@ -507,6 +750,8 @@ container_id="$(docker run -d \
   -v "${CACHE_HOST_ROOT}:/cache/jit" \
   "${sparkcache_source_args[@]}" \
   "${vllm_metrics_args[@]}" \
+  "${sircl_args[@]}" \
+  "${replay_timing_args[@]}" \
   -e "SPARKRING_NODE_RANK=${rank}" \
   -e "PORT=${PORT}" -e "SERVED_MODEL_NAME=${SERVED_MODEL_NAME}" \
   -e "DFLASH_WARMUP=${DFLASH_WARMUP}" \
@@ -552,6 +797,12 @@ container_id="$(docker run -d \
   --label org.sparkring.sparkcache.shared-prefix-lease-seconds="${SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS}" \
   --label org.sparkring.rank="${rank}" \
   --label org.sparkring.multimodal-inputs="${MULTIMODAL_INPUTS}" \
+  --label org.sparkring.sircl.enabled="${SIRCL_ENABLED}" \
+  --label org.sparkring.sircl.direct-doorbell="${SPARK_TP4_GRAPH_DIRECT_DOORBELL}" \
+  --label org.sparkring.sircl.prefill-exposure="${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE}" \
+  --label org.sparkring.sircl.prefill-rail-mode="${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE}" \
+  --label org.sparkring.sircl.native-sha256="${sircl_native_sha256}" \
+  --label org.sparkring.sircl.manifest-sha256="${sircl_manifest_sha256}" \
   "${IMAGE_REF}" \
   /models/target \
   --served-model-name "${SERVED_MODEL_NAME}" "${api_key_args[@]}" \
