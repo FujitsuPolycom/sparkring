@@ -58,3 +58,56 @@ def test_warmup_exercises_each_concurrency_as_one_batch(monkeypatch) -> None:
     assert [item["concurrency"] for item in result] == [1, 2, 4, 2]
     assert [item["prompt_words"] for item in result] == [8, 8, 8, 24]
     assert peaks["4"] == 4
+
+
+def test_wait_for_api_sends_bearer_credential(monkeypatch) -> None:
+    warmup = _load_module()
+    seen: list[dict[str, str]] = []
+
+    class _Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+    def urlopen(request, timeout):
+        assert timeout == 3
+        seen.append(dict(request.header_items()))
+        if request.get_header("Authorization") != "Bearer secret":
+            raise warmup.urllib.error.HTTPError(
+                request.full_url, 401, "Unauthorized", {}, None
+            )
+        return _Response()
+
+    monkeypatch.setattr(warmup.urllib.request, "urlopen", urlopen)
+
+    warmup.wait_for_api("http://127.0.0.1:8015", 5, "secret")
+
+    assert seen == [{"Authorization": "Bearer secret"}]
+
+
+def test_wait_for_api_without_credential_stays_anonymous(monkeypatch) -> None:
+    warmup = _load_module()
+    seen: list[dict[str, str]] = []
+
+    class _Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+    def urlopen(request, timeout):
+        seen.append(dict(request.header_items()))
+        return _Response()
+
+    monkeypatch.setattr(warmup.urllib.request, "urlopen", urlopen)
+
+    warmup.wait_for_api("http://127.0.0.1:8015", 5)
+
+    assert seen == [{}]
