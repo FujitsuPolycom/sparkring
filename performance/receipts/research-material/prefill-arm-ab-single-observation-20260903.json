@@ -1,0 +1,67 @@
+{
+  "schema": "sparkring-research-prefill-arm-comparison/v1",
+  "status": "research-only",
+  "scope": "model-neutral",
+  "date": "2026-09-03",
+  "source": {
+    "kind": "manual transcription of benchmark summary output",
+    "arm_labels": ["arm_a", "arm_b"],
+    "recorded_labels": {
+      "workload": "PREFILL",
+      "concurrency": 1,
+      "observations_per_cell": 1
+    }
+  },
+  "units": {
+    "ttft": "seconds",
+    "throughput": "tokens/second"
+  },
+  "matched_observations": [
+    {
+      "context_label": "8k",
+      "arm_a": {"ttft": 3.45, "throughput": 2372},
+      "arm_b": {"ttft": 3.33, "throughput": 2464},
+      "ttft_delta_percent": -3.5,
+      "throughput_delta_percent": 3.9
+    },
+    {
+      "context_label": "16k",
+      "arm_a": {"ttft": 6.62, "throughput": 2477},
+      "arm_b": {"ttft": 6.25, "throughput": 2597},
+      "ttft_delta_percent": -5.6,
+      "throughput_delta_percent": 4.8
+    },
+    {
+      "context_label": "32k",
+      "arm_a": {"ttft": 12.75, "throughput": 2572},
+      "arm_b": {"ttft": 11.69, "throughput": 2765},
+      "ttft_delta_percent": -8.3,
+      "throughput_delta_percent": 7.5
+    },
+    {
+      "context_label": "64k",
+      "arm_a": {"ttft": 25.02, "throughput": 2620},
+      "arm_b": {"ttft": 23.52, "throughput": 2743},
+      "ttft_delta_percent": -6.0,
+      "throughput_delta_percent": 4.7
+    },
+    {
+      "context_label": "128k",
+      "arm_a": {"ttft": 50.44, "throughput": 2599},
+      "arm_b": {"ttft": 46.64, "throughput": 2763},
+      "ttft_delta_percent": -7.5,
+      "throughput_delta_percent": 6.3
+    }
+  ],
+  "unknown_conditions": [
+    "model and checkpoint identity",
+    "serving image and source revisions",
+    "hardware and network topology",
+    "tensor- and decode-context-parallel configuration",
+    "cache state and warm-up policy",
+    "benchmark command and timing implementation",
+    "arm order",
+    "proof that the transport setting was the only changed variable",
+    "semantic identity of each recorded arm"
+  ]
+}

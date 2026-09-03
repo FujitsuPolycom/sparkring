@@ -121,6 +121,18 @@ class Tp4PortNamespaceTest(unittest.TestCase):
                 (9972, 9973),
             )
             self.assertEqual(
+                namespace.bidirectional_prefill_control_ports(1024),
+                (19000, 19001),
+            )
+            self.assertEqual(
+                namespace.bidirectional_prefill_control_ports(8192),
+                (19006, 19007),
+            )
+            self.assertEqual(
+                namespace.bidirectional_prefill_secondary_control_ports(1024),
+                (19100, 19101),
+            )
+            self.assertEqual(
                 spark_tp4_vocab_allgather_backend._eager_control_ports(),
                 (9990, 9991),
             )
@@ -128,6 +140,54 @@ class Tp4PortNamespaceTest(unittest.TestCase):
                 spark_tp4_vocab_allgather_backend._graph_control_ports(),
                 (10110, 10111),
             )
+
+    def test_bidirectional_prefill_ports_are_reserved_and_collisions_fail(
+        self,
+    ) -> None:
+        environment = {
+            "VLLM_SPARK_TP4_MODE": "custom",
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL": "1",
+        }
+        reservations = namespace.validate_active_port_namespace(environment)
+        by_owner = {
+            reservation.owner: reservation.ports
+            for reservation in reservations
+        }
+        self.assertEqual(
+            by_owner["bidirectional_prefill:q=1024"], (19000, 19001)
+        )
+        self.assertEqual(
+            by_owner["bidirectional_prefill:q=8192"], (19006, 19007)
+        )
+
+        collision = {
+            **environment,
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT0": "11000",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT1": "11001",
+        }
+        with self.assertRaisesRegex(ValueError, "namespaces collide"):
+            namespace.validate_active_port_namespace(collision)
+
+        dual = {
+            **environment,
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE": "dual",
+        }
+        dual_reservations = namespace.validate_active_port_namespace(dual)
+        dual_by_owner = {
+            reservation.owner: reservation.ports
+            for reservation in dual_reservations
+        }
+        self.assertEqual(
+            dual_by_owner["bidirectional_prefill_secondary:q=1024"],
+            (19100, 19101),
+        )
+        dual_collision = {
+            **dual,
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0": "19000",
+            "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1": "19001",
+        }
+        with self.assertRaisesRegex(ValueError, "namespaces collide"):
+            namespace.validate_active_port_namespace(dual_collision)
 
     def test_eager_admitted_widths_default_and_empty(self) -> None:
         self.assertEqual(

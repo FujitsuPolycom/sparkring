@@ -149,6 +149,24 @@ Replace these five site values:
 - `DFLASH_MODEL_HOST_PATH`: the BF16 draft directory;
 - `CACHE_HOST_ROOT`: a writable rank-local JIT and SparkCache directory.
 
+This configuration leaves SIRCL disabled and uses patched NCCL. To enable the
+implemented graph-native and fused eager SIRCL performance-testing paths,
+build the source-bound bundle in the
+[runtime SIRCL instructions](../runtime/glm53-flash-jj-r8-gb10/README.md#implemented-sircl-performance-testing-lane),
+then append the sanitized transport overlay:
+
+```bash
+cat runtime/glm53-flash-jj-r8-gb10/sircl-fused.env.example >> "$HOME/glm53-flash.env"
+${EDITOR:-vi} "$HOME/glm53-flash.env"
+```
+
+Replace every additional `REPLACE` value with that rank's bundle path, primary
+and secondary peer addresses, and RDMA devices. The overlay sets
+`SIRCL_ENABLED=1`, direct graph doorbells, dual-rail fused exposure, the graph
+CPU assignments, control-port bases, and timeouts. Use byte-identical bundles
+on all four ranks. The runtime guide specifies the resulting SIRCL/NCCL routing
+and mapped-memory allocation.
+
 The default OpenAI-compatible model name is `glm-5.3-flash`. Override
 `SERVED_MODEL_NAME` only when the site needs a distinct routing name.
 

@@ -4,6 +4,7 @@
   "spark_transport/integrations/vllm/sitecustomize.py",
   "spark_transport/integrations/vllm/spark_collective_audit.py",
   "spark_transport/integrations/vllm/spark_cudagraph_bucket_contract.py",
+  "spark_transport/integrations/vllm/spark_cudagraph_replay_timing.py",
   "spark_transport/integrations/vllm/spark_dcp_collective_audit.py",
   "spark_transport/integrations/vllm/spark_graph_status_reporter.py",
   "spark_transport/integrations/vllm/spark_persistent_output_ring.py",

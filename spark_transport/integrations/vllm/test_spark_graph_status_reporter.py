@@ -117,7 +117,12 @@ class GraphStatusReporterTest(unittest.TestCase):
             },
         )
 
-    def test_retained_snapshot_excludes_unsupported_families(self) -> None:
+    def test_replay_timing_is_retained_only_when_enabled(self) -> None:
+        replay_timing = types.ModuleType("spark_cudagraph_replay_timing")
+        replay_timing.graph_replay_timing_snapshot = lambda: {
+            "enabled": True,
+            "completed": 17,
+        }
         with patch.dict(
             os.environ,
             {
@@ -127,12 +132,26 @@ class GraphStatusReporterTest(unittest.TestCase):
                 "SPARK_ADAPTIVE_MTP_CONTROL": "1",
             },
             clear=False,
+        ), patch.dict(
+            "sys.modules",
+            {"spark_cudagraph_replay_timing": replay_timing},
         ):
-            snapshot = spark_graph_status_reporter.collect_graph_status()
+            enabled_snapshot = (
+                spark_graph_status_reporter.collect_graph_status()
+            )
 
         self.assertEqual(
-            set(snapshot),
-            {"all_reduce", "vocabulary", "stock_collectives"},
+            enabled_snapshot["cudagraph_replay_timing"],
+            {"enabled": True, "completed": 17},
+        )
+
+        with patch.dict(os.environ, {}, clear=True):
+            disabled_snapshot = (
+                spark_graph_status_reporter.collect_graph_status()
+            )
+        self.assertNotIn(
+            "cudagraph_replay_timing",
+            disabled_snapshot,
         )
 
     def test_opt_in_process_reporter_is_idempotent(self) -> None:

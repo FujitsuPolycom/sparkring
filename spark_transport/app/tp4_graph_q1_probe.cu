@@ -754,7 +754,9 @@ int main(int argc, char** argv) {
     for (std::size_t index = 0; index < q_histogram.size(); ++index) {
       if (spark_transport::tp4_graph_kernel_uses_split(
               options.transport.graph_kernel_strategy,
-              static_cast<std::uint32_t>(index + 1))) {
+              spark_transport::tp4_graph_payload_bytes(
+                  static_cast<std::uint32_t>(index + 1),
+                  options.transport.bytes_per_row))) {
         kernel_split_nodes += q_histogram[index];
       }
     }
