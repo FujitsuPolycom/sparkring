@@ -26,17 +26,22 @@ runtime they describe.
 
 The [`GLM-5.3 GB10 runtime`](glm53-flash-jj-r8-gb10/README.md) is the operator
 path for four-system TP4 serving. One image supports DCP1, DCP2, and DCP4 with
-persistent SparkCache enabled or disabled at launch. The pullable rollback
-uses complete-snapshot publication:
+persistent SparkCache enabled or disabled at launch. The recommended DCP4
+page-tail image is:
+
+```text
+ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f
+```
+
+The complete-snapshot rollback remains:
 
 ```text
 ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762
 ```
 
-The same directory builds the locally tested `tail-cow-v2` page-tail image.
-No registry digest is published for that source composition. Follow the
+The same directory builds the published `tail-cow-v2` page-tail image. Follow the
 [`GLM-5.3 quickstart`](../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)
-for checkpoint download, source building or rollback pulling, one-image
+for checkpoint download, image pulling or source building, one-image
 distribution, configuration, and launch commands.
 
 ## GLM-5.2 EXL3 R7 builder

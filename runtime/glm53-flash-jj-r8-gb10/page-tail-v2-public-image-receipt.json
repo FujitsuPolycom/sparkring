@@ -1,0 +1,53 @@
+{
+  "schema": "sparkring-glm53-page-tail-v2-public-image/v1",
+  "status": "published-live-verified",
+  "artifact": {
+    "registry": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f",
+    "published_tag": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260902-r10-page-tail-v2",
+    "image_id": "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0",
+    "platform": "linux/arm64",
+    "distribution_archive_sha256": "841c6da413dbb5983c1b1051598a1015bdafb33f096463b3b276aae85c976578",
+    "distribution_archive_bytes": 9224799706
+  },
+  "sources": {
+    "sparkcache_commit": "737ed1399f559ba036fb0e358541744011afd47d",
+    "sparkring_image_commit": "649e8ebe589a1be4b45e7ff21ad71ac30b828ec5",
+    "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+    "b12x_commit": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
+    "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
+    "cuda_snapshot_sha256": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5"
+  },
+  "configuration": {
+    "topology": "TP4/DCP4",
+    "max_model_tokens": 1048576,
+    "max_sequences": 16,
+    "max_batched_tokens": 8192,
+    "prefill_schedule_interval": 2,
+    "kv_cache_dtype": "fp8",
+    "kv_cache_bytes_per_rank": 25769803776,
+    "publication_schema": "tail-cow-v2",
+    "dflash_speculative_tokens": 7,
+    "dflash_warmup_concurrencies": [1, 2, 4, 8, 16],
+    "dflash_warmup_prompt_words": [8, 24, 56, 120, 248]
+  },
+  "validation": {
+    "physical_ranks": 4,
+    "running_image_ids_equal": true,
+    "source_bind_mounts": 0,
+    "docker_restart_initial_health": "starting",
+    "docker_restart_ready_seconds": 143.7,
+    "concurrent_restored_prefix_tokens": 921600,
+    "post_restart_codewords": ["RESTART900A", "RESTART900B"],
+    "post_restart_response_seconds": [11.833, 12.827],
+    "post_readiness_jit_events": 0,
+    "post_readiness_cuda_or_cublas_errors": 0,
+    "requests_running_after_validation": 0,
+    "requests_waiting_after_validation": 0,
+    "image_transfer_pressure_replay_passed": true
+  },
+  "rollback": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762",
+  "limitations": [
+    "The original cuBLAS failure was observed once; readiness warmup removes the reproduced first-use JIT condition but does not prove it was the only possible cause.",
+    "DCP1 and DCP2 support the image and launcher but do not have matching page-tail-v2 live qualification."
+  ]
+}

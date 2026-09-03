@@ -13,7 +13,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 LAUNCHER = HERE / "launch-rank.sh"
 ENVIRONMENT = HERE / "runtime.env.example"
-IMAGE_ID = "sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc568e39a9"
+IMAGE_ID = "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0"
 
 
 def _defaults() -> dict[str, str]:
@@ -40,7 +40,7 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["IMAGE_ID"] == IMAGE_ID
     assert values["IMAGE_REF"] == (
         "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
-        "sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762"
+        "sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f"
     )
     assert values["MAX_MODEL_LEN"] == "1048576"
     assert values["SERVED_MODEL_NAME"] == "glm-5.3-flash"
@@ -174,7 +174,7 @@ printf '%s  %s\n' "$hash" "$2"
         )
         connector = json.loads(arguments[arguments.index("--kv-transfer-config") + 1])
         extra = connector["kv_connector_extra_config"]
-        assert extra["spark_cache_publication_schema"] == "snapshot-v1"
+        assert extra["spark_cache_publication_schema"] == "tail-cow-v2"
         assert extra["spark_cache_model_profile"] == "glm53-flash-hybrid"
         assert extra["spark_cache_access_mode"] == "read-write"
         assert extra["spark_cache_shared_prefix_lease_ttl_seconds"] == 300
@@ -450,6 +450,7 @@ def test_public_operator_documents_use_portable_examples_and_resolving_links() -
             assert (document.parent / relative).resolve().exists(), (document, target)
 
     quickstart = documents[-1].read_text(encoding="utf-8")
+    assert "sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f" in quickstart
     assert "sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762" in quickstart
     assert "DECODE_CONTEXT_PARALLEL_SIZE=4  # change to 1 or 2" in quickstart
     assert "fanout_image_archive.py" in quickstart

@@ -230,7 +230,7 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
     ):
         assert value in environment
     for text in (launcher, environment):
-        assert "glm53-flash-dcp4-snapshot-v1" in text
+        assert "glm53-flash-dcp4-page-tail-cow-v2" in text
     assert "IMAGE_REF" in launcher
     assert "IMAGE_ID" in launcher
 
@@ -245,19 +245,18 @@ def test_operator_docs_distinguish_page_tails_from_published_rollback() -> None:
     for document in (runtime_readme, quickstart):
         for schema in ("snapshot-v1", "tail-cow-v1", "tail-cow-v2"):
             assert schema in document
-        assert "sparkring-glm53-sparkcache:page-tail-v2-local" in document
-        assert "no published registry digest" in document
+        assert "sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f" in document
         assert "sparkcache: capacity" in document
         assert "sparkcache: publications" in document
         assert "sparkcache: writes" in document
 
-    published_digest = (
+    rollback_digest = (
         "3c377f1e4136285ebf66c32c36c3d01f"
         "d929f8aba0836cd0a16ed63cfd7e1762"
     )
-    assert published_digest in runtime_readme
-    assert published_digest in quickstart
-    assert published_digest in runtime_index
+    assert rollback_digest in runtime_readme
+    assert rollback_digest in quickstart
+    assert rollback_digest in runtime_index
     assert "380283a506aeb8f9" not in runtime_index
 
 
@@ -343,6 +342,38 @@ def test_dflash_readiness_receipt_records_engine_level_recovery() -> None:
     assert receipt["validation"]["cuda_or_cublas_errors_after_readiness"] == 0
     assert receipt["validation"]["requests_running_after_validation"] == 0
     assert receipt["validation"]["image_transfer_pressure_replay_passed"] is True
+
+
+def test_page_tail_v2_public_receipt_binds_registry_and_runtime() -> None:
+    receipt = json.loads(
+        (HERE / "page-tail-v2-public-image-receipt.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert receipt["status"] == "published-live-verified"
+    assert receipt["artifact"] == {
+        "registry": (
+            "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
+            "sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f"
+        ),
+        "published_tag": (
+            "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:"
+            "20260902-r10-page-tail-v2"
+        ),
+        "image_id": (
+            "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0"
+        ),
+        "platform": "linux/arm64",
+        "distribution_archive_sha256": (
+            "841c6da413dbb5983c1b1051598a1015bdafb33f096463b3b276aae85c976578"
+        ),
+        "distribution_archive_bytes": 9224799706,
+    }
+    assert receipt["sources"]["sparkcache_commit"] == (
+        "737ed1399f559ba036fb0e358541744011afd47d"
+    )
+    assert receipt["validation"]["post_readiness_jit_events"] == 0
+    assert receipt["validation"]["requests_running_after_validation"] == 0
 
 
 def test_async_capture_image_receipt_binds_public_artifact_and_live_results() -> None:

@@ -30,7 +30,7 @@ and start four ranks. [`runtime.env.example`](runtime.env.example) exposes the
 model paths, image identity, DCP degree, context limit, scheduler budget, KV
 allocation, speculation, cache limits, network interfaces, and ports.
 
-The recommended source-built profile uses:
+The recommended profile uses:
 
 | Setting | Value |
 |---|---:|
@@ -172,9 +172,9 @@ python runtime/glm53-flash-jj-r8-gb10/build_image.py \
   --receipt ./glm53-build-receipt.json
 ```
 
-The source-built image has no published registry digest. The build does not
-include model checkpoints, site addresses, SSH credentials, or persistent
-cache data. Record its local image ID with:
+Building from source produces a local image without publishing it. The build
+does not include model checkpoints, site addresses, SSH credentials, or
+persistent cache data. Record its local image ID with:
 
 ```bash
 docker image inspect sparkring-glm53-sparkcache:page-tail-v2-local \
@@ -185,7 +185,24 @@ The locally built page-tail image has ID
 `sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0`.
 Its embedded-source and native-library checks are recorded in
 [`page-tail-v2-local-image-receipt.json`](page-tail-v2-local-image-receipt.json).
-This is a local image identity, not a pullable registry digest.
+The independently built image identity is also the local image ID of the
+published artifact below.
+
+## Page-tail operator image
+
+Pull the immutable Linux/ARM64 image used by the recommended DCP4 profile:
+
+```text
+ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f
+```
+
+Its published tag is
+`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260902-r10-page-tail-v2`,
+and its local image ID is
+`sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0`.
+See the
+[`public image receipt`](page-tail-v2-public-image-receipt.json)
+for source identities, live conditions, restart readiness, and limitations.
 
 ## Complete-snapshot rollback image
 

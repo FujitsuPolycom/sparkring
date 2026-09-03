@@ -6,7 +6,7 @@ Linux/ARM64 image supports DCP1, DCP2, and DCP4. The default request limit is
 The operator can enable persistent SparkCache or use vLLM's GPU prefix cache
 alone without changing the image.
 
-The preferred source-built launch is TP4/DCP4 with 24 GiB of FP8 KV per rank,
+The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV per rank,
 scheduler interval two, BF16 DFlash2 at depth seven, and SparkCache's flat
 copy-on-write page tails. Growing conversations write changed pages instead
 of another complete cached context. The pullable image remains available as a
@@ -24,22 +24,23 @@ line is named `Jovian Judgement Community R10` in the image contract.
 
 ## Choose the image
 
-### Source-built page-tail image
+### Pullable page-tail image
 
-The recommended DCP4 profile uses the source composition in
-[`runtime/glm53-flash-jj-r8-gb10/`](../runtime/glm53-flash-jj-r8-gb10/README.md).
-Build it on an ARM64 CUDA 13 system with the exact source revisions in
-[`pins.json`](../runtime/glm53-flash-jj-r8-gb10/pins.json), then record the
-local image identity:
+The recommended DCP4 profile uses this immutable Linux/ARM64 image:
 
 ```bash
-image='sparkring-glm53-sparkcache:page-tail-v2-local'
-expected_image_id=$(docker image inspect "${image}" --format '{{.Id}}')
-test -n "${expected_image_id}"
+image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f'
+expected_image_id='sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0'
+docker pull "${image}"
+test "$(docker image inspect "${image}" --format '{{.Id}}')" = "${expected_image_id}"
 ```
 
-This source-built image has no published registry digest. Do not substitute a
-mutable registry tag or describe the local image ID as a published artifact.
+The published tag is
+`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260902-r10-page-tail-v2`.
+Use the digest above for reproducible deployment.
+
+The exact source composition and local build command remain in
+[`runtime/glm53-flash-jj-r8-gb10/`](../runtime/glm53-flash-jj-r8-gb10/README.md).
 
 ### Pullable complete-snapshot rollback
 
@@ -64,7 +65,7 @@ docker pull "${image}"
 test "$(docker image inspect "${image}" --format '{{.Id}}')" = "${expected_image_id}"
 ```
 
-The source-built and pullable images use the same checkpoint mounts, topology,
+The page-tail and rollback images use the same checkpoint mounts, topology,
 and launcher. Keep the `image` and `expected_image_id` shell variables from
 the selected path for the distribution commands below.
 
@@ -245,28 +246,15 @@ The image supports three persistent publication formats:
 |---|---|---|
 | `snapshot-v1` | A complete immutable context for every publication | Pullable rollback and simple storage inspection |
 | `tail-cow-v1` | An immutable base with changed page objects | Compatibility testing for the first page-tail format |
-| `tail-cow-v2` | An authenticated base with a flat chain of changed-page descriptors | Recommended source-built DCP4 profile for growing conversations |
+| `tail-cow-v2` | An authenticated base with a flat chain of changed-page descriptors | Recommended DCP4 profile for growing conversations |
 
 The publication format is part of cache identity. An incompatible entry is a
 miss, and vLLM computes the prompt normally. Keep each format in a separately
 named directory so storage inspection and rollback remain obvious.
 
-After distributing the source-built image, append its identity and the
-recommended page-tail settings to each rank's environment file:
-
-```bash
-image='sparkring-glm53-sparkcache:page-tail-v2-local'
-expected_image_id=$(docker image inspect "${image}" --format '{{.Id}}')
-cat >> "$HOME/glm53-flash.env" <<EOF
-
-# Source-built DCP4 page-tail profile.
-IMAGE_REF='${image}'
-IMAGE_ID='${expected_image_id}'
-CONTAINER_PREFIX='glm53-flash-page-tail-v2'
-SPARKCACHE_CACHE_NAMESPACE='glm53-flash-dcp4-page-tail-cow-v2'
-SPARKCACHE_PUBLICATION_SCHEMA='tail-cow-v2'
-EOF
-```
+The environment template already selects `tail-cow-v2` and its separate DCP4
+storage directory. To use a locally rebuilt image, override only `IMAGE_REF`
+and `IMAGE_ID`; keep the page-tail settings unchanged.
 
 The recommended DCP4 profile enables bounded asynchronous page capture:
 
@@ -383,21 +371,17 @@ source with different image and video contents, persistent publication, and
 restart restore. The built-image smoke did not repeat video input or
 persistent multimodal restoration after another process restart.
 
-The source-built page-tail composition is implemented and locally live-tested
-for chained growth, exact restart restore, corrupt-object rejection, and
-simultaneous serving during publication. It is not a published image. Its
-long-context evidence belongs in a revision-bound receipt before any registry
-artifact is described as qualified.
-
-The local Linux/ARM64 image
-`sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0`
-completed an exact 131,072 → 262,144 → 524,288 → 921,600-token DCP4
-growth sequence. Every extension remained a page delta. The 921,600-token
-root used a 7,459-byte flat manifest with three delta stages; after all four
-ranks restarted, SparkCache restored it in 4,747.3 ms on rank 0 and returned
-the exact response with all 921,600 prompt tokens cached. The image identity
-and embedded source checks are recorded in the
-[`local image receipt`](../runtime/glm53-flash-jj-r8-gb10/page-tail-v2-local-image-receipt.json).
+SparkCache source commit `737ed139` completed an exact
+131,072 → 262,144 → 524,288 → 921,600-token DCP4 growth sequence. Every
+extension remained a page delta, and the final root used a 7,459-byte flat
+manifest with three stages. The published page-tail image embeds that source.
+After `docker restart`, it withheld readiness until DFlash warmup completed,
+then served two concurrent requests over the 921,600-token stored prefix with
+exact responses and no post-readiness JIT or CUDA error. The same replay
+passed during image-transfer pressure. See the
+[`public image receipt`](../runtime/glm53-flash-jj-r8-gb10/page-tail-v2-public-image-receipt.json)
+and
+[`DFlash readiness validation`](../runtime/glm53-flash-jj-r8-gb10/dflash-jit-readiness-validation.json).
 
 The retained vLLM, B12X, NCCL, and CUDA components also have DCP4 evidence
 from an earlier SparkCache source composition. That deployment captured a
