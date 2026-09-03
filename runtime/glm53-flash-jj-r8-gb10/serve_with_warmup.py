@@ -43,7 +43,7 @@ def complete_readiness(
 
     ready_path.unlink(missing_ok=True)
     if rank == 0:
-        warmup_dflash.wait_for_api(endpoint, timeout_seconds)
+        warmup_dflash.wait_for_api(endpoint, timeout_seconds, credential)
         result = ()
         if warmup_enabled:
             result = warmup_dflash.run_warmup(

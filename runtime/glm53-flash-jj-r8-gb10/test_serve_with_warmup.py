@@ -82,3 +82,33 @@ def test_headless_rank_does_not_call_http_warmup(tmp_path: Path, monkeypatch) ->
     )
 
     assert ready.is_file()
+
+
+def test_rank_zero_probes_api_with_warmup_credential(tmp_path: Path, monkeypatch) -> None:
+    wrapper, warmup = _load_module(monkeypatch)
+    ready = tmp_path / "ready"
+    probes = []
+    monkeypatch.setattr(
+        warmup,
+        "wait_for_api",
+        lambda endpoint, timeout, credential=None: probes.append(
+            (endpoint, timeout, credential)
+        ),
+    )
+    monkeypatch.setattr(warmup, "run_warmup", lambda *_args: ())
+
+    wrapper.complete_readiness(
+        rank=0,
+        endpoint="http://127.0.0.1:8015",
+        model="glm-5.3-flash",
+        warmup_enabled=False,
+        concurrencies=(1,),
+        shape_words=(8,),
+        max_tokens=16,
+        timeout_seconds=10,
+        credential="secret",
+        ready_path=ready,
+    )
+
+    assert probes == [("http://127.0.0.1:8015", 10, "secret")]
+    assert ready.is_file()

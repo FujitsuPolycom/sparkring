@@ -12,12 +12,25 @@ import urllib.error
 import urllib.request
 
 
-def wait_for_api(endpoint: str, timeout_seconds: float) -> None:
+def wait_for_api(
+    endpoint: str,
+    timeout_seconds: float,
+    credential: str | None = None,
+) -> None:
+    """Block until ``/v1/models`` answers 200, sending the bearer key if given.
+
+    When vLLM runs with ``--api-key`` the model list requires authentication,
+    so an anonymous probe receives 401 until the deadline and readiness never
+    completes. The same credential the warmup requests use is sent here.
+    """
+
     deadline = time.monotonic() + timeout_seconds
     url = endpoint.rstrip("/") + "/v1/models"
+    headers = {"Authorization": f"Bearer {credential}"} if credential else {}
     while True:
         try:
-            with urllib.request.urlopen(url, timeout=3) as response:
+            request = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(request, timeout=3) as response:
                 if response.status == 200:
                     return
         except (OSError, urllib.error.URLError):
@@ -139,7 +152,7 @@ def main() -> int:
         or args.max_tokens <= 0
     ):
         raise SystemExit("warmup concurrencies and max tokens must be positive")
-    wait_for_api(args.endpoint, args.timeout_seconds)
+    wait_for_api(args.endpoint, args.timeout_seconds, args.api_key)
     result = run_warmup(
         args.endpoint,
         args.model,
