@@ -376,8 +376,16 @@ printf '%s  %s\n' "$hash" "$2"
     index = keyed.index("--api-key")
     assert keyed[index + 1 : index + 3] == ["k1", "k2"]
     assert keyed[index + 3] == "--host"
+    warmup_credential = "SPARKRING_WARMUP_CREDENTIAL=k1"
+    warmup_index = keyed.index(warmup_credential)
+    assert keyed[warmup_index - 1] == "-e"
+    command_without_warmup_credential = (
+        keyed[: warmup_index - 1] + keyed[warmup_index + 1 :]
+    )
     assert [
-        argument for argument in keyed if argument not in ("--api-key", "k1", "k2")
+        argument
+        for argument in command_without_warmup_credential
+        if argument not in ("--api-key", "k1", "k2")
     ] == keyless
 
     # A file readable beyond its owner is refused before the container starts.
