@@ -14,7 +14,7 @@ ROOT = HERE.parents[1]
 LAUNCHER = HERE / "launch-rank.sh"
 ENVIRONMENT = HERE / "runtime.env.example"
 SIRCL_ENVIRONMENT = HERE / "sircl-fused.env.example"
-IMAGE_ID = "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0"
+IMAGE_ID = "sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4"
 
 
 def _defaults(path: Path = ENVIRONMENT) -> dict[str, str]:
@@ -41,7 +41,7 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["IMAGE_ID"] == IMAGE_ID
     assert values["IMAGE_REF"] == (
         "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
-        "sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f"
+        "sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34"
     )
     assert values["MAX_MODEL_LEN"] == "1048576"
     assert values["SERVED_MODEL_NAME"] == "glm-5.3-flash"
@@ -465,7 +465,7 @@ def test_public_operator_documents_use_portable_examples_and_resolving_links() -
 
     quickstart = documents[-1].read_text(encoding="utf-8")
     runtime_readme = documents[0].read_text(encoding="utf-8")
-    assert "sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f" in quickstart
+    assert "sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34" in quickstart
     assert "sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762" in quickstart
     assert "DECODE_CONTEXT_PARALLEL_SIZE=4  # change to 1 or 2" in quickstart
     assert "fanout_image_archive.py" in quickstart

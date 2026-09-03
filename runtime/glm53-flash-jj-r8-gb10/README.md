@@ -34,7 +34,7 @@ The recommended profile uses:
 
 | Setting | Value |
 |---|---:|
-| operator image ID | `sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0` |
+| operator image ID | `sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4` |
 | topology | TP4/DCP4 |
 | compute and quantization | BF16 compute with ModelOpt mixed quantization |
 | maximum model length | 1,048,576 tokens |
@@ -293,28 +293,26 @@ docker image inspect sparkring-glm53-sparkcache:page-tail-v2-local \
   --format '{{.Id}}'
 ```
 
-The locally built page-tail image has ID
-`sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0`.
-Its embedded-source and native-library checks are recorded in
-[`page-tail-v2-local-image-receipt.json`](page-tail-v2-local-image-receipt.json).
-The independently built image identity is also the local image ID of the
-published artifact below.
+The public image below was produced from this builder. Its embedded-source,
+native-library, and registry-pull checks are recorded in
+[`async-store-completion-public-image-receipt.json`](async-store-completion-public-image-receipt.json).
 
 ## Page-tail operator image
 
 Pull the immutable Linux/ARM64 image used by the recommended DCP4 profile:
 
 ```text
-ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f
+ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34
 ```
 
 Its published tag is
-`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260902-r10-page-tail-v2`,
+`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260903-async-store-completion`,
 and its local image ID is
-`sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0`.
+`sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4`.
 See the
-[`public image receipt`](page-tail-v2-public-image-receipt.json)
-for source identities, live conditions, restart readiness, and limitations.
+[`public image receipt`](async-store-completion-public-image-receipt.json)
+for source identities, construction checks, source-composition validation, and
+limitations.
 
 ## Complete-snapshot rollback image
 

@@ -69,15 +69,18 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     assert pins["operator_image"] == {
         "reference": (
             "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
-            "sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f"
+            "sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34"
         ),
         "image_id": (
-            "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0"
+            "sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4"
         ),
         "platform": "linux/arm64",
-        "status": "qualified",
-        "qualification_scope": "published TP4/DCP4 operator image",
-        "receipt": "page-tail-v2-public-image-receipt.json",
+        "status": "implemented",
+        "qualification_scope": (
+            "published and registry-pull verified; the embedded source "
+            "composition passed TP4/DCP4 live validation"
+        ),
+        "receipt": "async-store-completion-public-image-receipt.json",
     }
     assert pins["vllm"]["commit"] == (
         "22ffe1401ca9bd3e4503e62de7b414deca7661a1"
@@ -107,11 +110,11 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     )
     assert pins["sparkcache"] == {
         "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-        "commit": "737ed1399f559ba036fb0e358541744011afd47d",
-        "tree": "decc0e042a4b1807e960551ffa3ef12c8c9114a7",
-        "package_tree": "fef9ac1c59526dec49b0c3346cbf7bdb6f22a620",
+        "commit": "9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4",
+        "tree": "3bbc72b04c1d6c4a381bd660d189ca7a54277b0f",
+        "package_tree": "3099c80be66ffb9c7ab690509f768dbf32babdd0",
         "source_tree_sha256": (
-            "3cfb8d66db3a437a8b3a886633e64b7006af4c50cccb3ddbf75eb8d73eda5de6"
+            "f8adb4ecdadd524e79cf1ef14e7f3d83d1f20ff07c79333b2c7c0d9ea12919d5"
         ),
         "cuda_placement_sha256": (
             "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
@@ -156,7 +159,7 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
     for identity in (
         "f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
         "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
-        "737ed1399f559ba036fb0e358541744011afd47d",
+        "9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4",
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
         "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
         "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
@@ -259,7 +262,7 @@ def test_operator_docs_distinguish_page_tails_from_published_rollback() -> None:
     for document in (runtime_readme, quickstart):
         for schema in ("snapshot-v1", "tail-cow-v1", "tail-cow-v2"):
             assert schema in document
-        assert "sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f" in document
+        assert "sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34" in document
         assert "sparkcache: capacity" in document
         assert "sparkcache: publications" in document
         assert "sparkcache: writes" in document
@@ -388,9 +391,33 @@ def test_page_tail_v2_public_receipt_binds_registry_and_runtime() -> None:
     )
     assert receipt["validation"]["post_readiness_jit_events"] == 0
     assert receipt["validation"]["requests_running_after_validation"] == 0
+
+
+def test_async_store_completion_receipt_binds_registry_and_runtime() -> None:
+    receipt = json.loads(
+        (HERE / "async-store-completion-public-image-receipt.json").read_text(
+            encoding="utf-8"
+        )
+    )
     pins = json.loads((HERE / "pins.json").read_text(encoding="utf-8"))
-    assert pins["operator_image"]["reference"] == receipt["artifact"]["registry"]
-    assert pins["operator_image"]["image_id"] == receipt["artifact"]["image_id"]
+    assert receipt["status"] == "implemented"
+    assert receipt["artifact"]["registry"] == pins["operator_image"]["reference"]
+    assert receipt["artifact"]["image_id"] == pins["operator_image"]["image_id"]
+    assert receipt["sources"]["sparkcache_commit"] == pins["sparkcache"]["commit"]
+    assert receipt["construction_verification"] == {
+        "inside_image_verification": "passed",
+        "retained_native_extensions": 15,
+        "registry_pull_image_id_matched": True,
+        "registry_pull_sparkcache_commit_matched": True,
+        "registry_pull_sparkring_commit_matched": True,
+    }
+    assert receipt["source_composition_validation"]["busy_saver_skips_per_rank"] == [
+        12,
+        12,
+        12,
+        12,
+    ]
+    assert receipt["source_composition_validation"]["idle_kv_cache_usage_percent"] == 0.0
 
 
 def test_sircl_public_build_receipt_binds_overlay_and_native_test(

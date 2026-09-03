@@ -29,14 +29,14 @@ line is named `Jovian Judgement Community R10` in the image contract.
 The recommended DCP4 profile uses this immutable Linux/ARM64 image:
 
 ```bash
-image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f'
-expected_image_id='sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0'
+image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34'
+expected_image_id='sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4'
 docker pull "${image}"
 test "$(docker image inspect "${image}" --format '{{.Id}}')" = "${expected_image_id}"
 ```
 
 The published tag is
-`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260902-r10-page-tail-v2`.
+`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260903-async-store-completion`.
 Use the digest above for reproducible deployment.
 
 The exact source composition and local build command remain in
@@ -385,15 +385,26 @@ source with different image and video contents, persistent publication, and
 restart restore. The built-image smoke did not repeat video input or
 persistent multimodal restoration after another process restart.
 
-SparkCache source commit `737ed139` completed an exact
+The operator image embeds SparkCache merge commit `9c6218c`. Asynchronous
+manager-page publication reports terminal completion when a worker skips a
+store before CUDA submission, allowing vLLM to reclaim the finished request's
+KV blocks. A TP4/DCP4 test forced 12 busy-saver skips per rank and one
+already-present skip per rank. All requests completed, idle KV usage returned
+to 0.0%, three explicit cache resets succeeded, and no preemption, CUDA error,
+or NCCL error occurred. See the
+[`operator image receipt`](../runtime/glm53-flash-jj-r8-gb10/async-store-completion-public-image-receipt.json)
+and the
+[`SparkCache validation record`](https://github.com/FujitsuPolycom/sparkcache/blob/9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4/evidence/glm53-flash-dcp4-page-tail-v2/async-store-completion.json).
+
+The unchanged page-tail storage schema completed an exact
 131,072 → 262,144 → 524,288 → 921,600-token DCP4 growth sequence. Every
 extension remained a page delta, and the final root used a 7,459-byte flat
-manifest with three stages. The published page-tail image embeds that source.
-After `docker restart`, it withheld readiness until DFlash warmup completed,
-then served two concurrent requests over the 921,600-token stored prefix with
-exact responses and no post-readiness JIT or CUDA error. The same replay
-passed during image-transfer pressure. See the
-[`public image receipt`](../runtime/glm53-flash-jj-r8-gb10/page-tail-v2-public-image-receipt.json)
+manifest with three stages. After `docker restart`, the runtime withheld
+readiness until DFlash warmup completed, then served two concurrent requests
+over the 921,600-token stored prefix with exact responses and no
+post-readiness JIT or CUDA error. The same replay passed during image-transfer
+pressure. See the
+[`page-tail behavior record`](../runtime/glm53-flash-jj-r8-gb10/page-tail-v2-public-image-receipt.json)
 and
 [`DFlash readiness validation`](../runtime/glm53-flash-jj-r8-gb10/dflash-jit-readiness-validation.json).
 

@@ -324,7 +324,7 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
         ROOT
         / "runtime"
         / "glm53-flash-jj-r8-gb10"
-        / "page-tail-v2-public-image-receipt.json"
+        / "async-store-completion-public-image-receipt.json"
     )
 
     assert base["status"] == "implemented"
@@ -356,13 +356,13 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
         "glm53-flash-dcp4-page-tail-cow-v2"
     )
     assert cache["runtime"]["image"].endswith(
-        "@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f"
+        "@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34"
     )
     assert cache["runtime"]["image_id"] == (
-        "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0"
+        "sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4"
     )
     assert cache["runtime"]["sparkcache"]["source_commit"] == (
-        "737ed1399f559ba036fb0e358541744011afd47d"
+        "9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4"
     )
     assert base["runtime"]["sparkring_source_commit"] == (
         image_receipt["sources"]["sparkring_image_commit"]
