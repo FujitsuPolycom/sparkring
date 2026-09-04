@@ -42,6 +42,7 @@
     "prefill_schedule_interval": 2,
     "kv_cache_dtype": "fp8",
     "kv_cache_bytes_per_rank": 25769803776,
+    "kda_prefill_backend": "b12x",
     "speculative_method": "dflash",
     "speculative_tokens": 7,
     "sparkcache_access_mode": "read-write",

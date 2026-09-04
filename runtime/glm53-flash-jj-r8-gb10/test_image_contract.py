@@ -604,6 +604,19 @@ def test_async_store_completion_receipt_keeps_published_source_identity() -> Non
     assert receipt["source_composition_validation"]["idle_kv_cache_usage_percent"] == 0.0
 
 
+def test_dcp4_public_image_receipt_records_b12x_kda() -> None:
+    receipt = json.loads(
+        (HERE / "glm53-dcp4-sircl-public-image-receipt.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert receipt["status"] == "qualified"
+    assert receipt["configuration"]["kda_prefill_backend"] == "b12x"
+    assert receipt["sources"]["b12x"] == (
+        "9ae41c5cb9935d740456479954b0089f80bd2ef2"
+    )
+
+
 def test_sircl_public_build_receipt_binds_overlay_and_native_test(
     tmp_path: Path,
 ) -> None:

@@ -57,7 +57,7 @@
     "kv_cache_dtype": "fp8",
     "block_size": 256,
     "mamba_cache_mode": "align",
-    "kda_prefill_backend": "flashkda",
+    "kda_prefill_backend": "b12x",
     "load_format": "fastsafetensors",
     "async_scheduling": true,
     "native_prefix_caching": true,

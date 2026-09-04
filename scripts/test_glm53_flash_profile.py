@@ -338,6 +338,8 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
     assert cache["serving_common"]["async_scheduling"] is True
     assert cache["serving_common"]["native_prefix_caching"] is True
     assert cache["serving_common"]["chunked_prefill"] is True
+    assert base["serving_common"]["kda_prefill_backend"] == "b12x"
+    assert cache["serving_common"]["kda_prefill_backend"] == "b12x"
     assert cache["profiles"]["dcp4"]["status"] == "qualified"
     assert cache["profiles"]["dcp4"]["preferred"] is True
     assert cache["profiles"]["dcp1"]["async_page_capture"] is False
