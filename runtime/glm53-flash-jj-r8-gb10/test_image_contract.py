@@ -50,9 +50,14 @@ def test_image_packages_dflash_warmup_and_rank_zero_waits_for_it() -> None:
 
     assert "COPY warmup_dflash.py /opt/sparkring/bin/warmup_dflash.py" in recipe
     assert "COPY serve_with_warmup.py /opt/sparkring/bin/serve-with-warmup.py" in recipe
+    assert (
+        "COPY scheduler_liveness.py /opt/sparkring/bin/scheduler_liveness.py"
+        in recipe
+    )
     assert "chmod 0755 /opt/sparkring/bin/serve-with-warmup.py" in recipe
     assert '"warmup_dflash.py"' in builder
     assert '"serve_with_warmup.py"' in builder
+    assert '"scheduler_liveness.py"' in builder
     assert 'container_id="$(docker run -d' in launcher
     assert '"${rank}" == 0 && "${DFLASH_WARMUP}" == 1' in launcher
     assert "--entrypoint /opt/sparkring/bin/serve-with-warmup.py" in launcher
