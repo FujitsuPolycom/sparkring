@@ -158,7 +158,7 @@ def test_glm53_composition_matches_the_operator_contract() -> None:
         ROOT
         / "runtime"
         / "glm53-flash-jj-r8-gb10"
-        / "async-store-completion-public-image-receipt.json"
+        / "glm53-dcp4-sircl-public-image-receipt.json"
     )
 
     assert recipe["base_recipe"] == "../glm53-flash-nvfp4-dflash2-bf16-tp4.json"
@@ -172,7 +172,7 @@ def test_glm53_composition_matches_the_operator_contract() -> None:
             "dcp4",
         }
     )
-    assert recipe["runtime"]["image"] == receipt["artifact"]["registry"]
+    assert recipe["runtime"]["image"] == receipt["artifact"]["registry_reference"]
     assert recipe["runtime"]["image_id"] == receipt["artifact"]["image_id"]
     assert (
         recipe["runtime"]["sparkcache"]["source_commit"] == pins["sparkcache"]["commit"]
@@ -216,5 +216,5 @@ def test_glm53_composition_matches_the_operator_contract() -> None:
     )
     assert recipe["evidence"]["machine_receipt"] == (
         "runtime/glm53-flash-jj-r8-gb10/"
-        "async-store-completion-public-image-receipt.json"
+        "glm53-dcp4-sircl-public-image-receipt.json"
     )

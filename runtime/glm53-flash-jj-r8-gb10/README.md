@@ -36,7 +36,7 @@ The recommended profile uses:
 
 | Setting | Value |
 |---|---:|
-| operator image ID | `sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4` |
+| operator image ID | `sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075` |
 | topology | TP4/DCP4 |
 | collective transport | SIRCL with capability and health checks; patched NCCL fallback |
 | compute and quantization | BF16 compute with ModelOpt mixed quantization |
@@ -66,7 +66,7 @@ GPU prefix cache; `SPARKCACHE_ENABLED=1` enables both layers.
 
 ### Preferred DCP4 transport: SIRCL with capability and health checks
 
-**Status: implemented; live four-rank qualification is pending.** The base
+**Status: four-rank functionally qualified.** The base
 [`runtime.env.example`](runtime.env.example) keeps patched NCCL enabled because
 SIRCL requires rank-specific peer addresses and RDMA devices. For DCP4, append
 [`sircl-fused.env.example`](sircl-fused.env.example) to select the preferred
@@ -156,12 +156,15 @@ asynchronous page-capture slots and two 256-MiB restore arenas.
 
 #### Current evidence
 
-The capability and health checks and both SIRCL paths are implemented. The
-public build receipt proves the bundle identity and its single-node native
-tests; it does not prove a four-rank serving result. Live qualification of the
-exact bundle still requires a four-rank start and restart, native and model
-output checks, a recorded NCCL/SIRCL comparison with transport counters, and
-fault injection.
+The exact public image passed four-rank DCP4 startup with the embedded bundle.
+Every rank accepted the capability vote; a 32,768-token SparkCache entry
+restored after restart; a 129K-class request followed by eight concurrent
+4K-class requests returned scheduler and cache ownership to idle. Test-only
+builds also forced fused-device poison and a rank-2 proxy exit: no API became
+ready and all four worker groups stopped without a later collective hang. The
+[`public-image receipt`](glm53-dcp4-sircl-public-image-receipt.json) records
+these checks and their limits. They establish functional qualification, not a
+broad transport-performance comparison.
 
 The launcher enables a rank-wide capability vote before native construction.
 Every rank reports the native and overlay identities, shared protocol geometry,
@@ -353,29 +356,25 @@ docker image inspect sparkring-glm53-sparkcache:page-tail-v2-local \
   --format '{{.Id}}'
 ```
 
-The public image below was produced before the SIRCL bundle became an embedded
-builder input. Its SparkCache embedded-source, native-library, and registry-pull
-checks are recorded in
-[`async-store-completion-public-image-receipt.json`](async-store-completion-public-image-receipt.json).
-It requires `SIRCL_ENABLED=0` or an external developer bundle. Publish and
-verify a new immutable digest before using embedded SIRCL from a registry image.
+The older image recorded by
+[`async-store-completion-public-image-receipt.json`](async-store-completion-public-image-receipt.json)
+predates the embedded SIRCL bundle. That immutable receipt remains historical
+evidence for its own artifact and is not the canonical operator-image record.
 
 ## Page-tail operator image
 
 Pull the immutable Linux/ARM64 image used by the recommended DCP4 profile:
 
 ```text
-ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34
+ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f
 ```
 
-Its published tag is
-`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260903-async-store-completion`,
-and its local image ID is
-`sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4`.
+Its local image ID is
+`sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075`.
 See the
-[`public image receipt`](async-store-completion-public-image-receipt.json)
-for source identities, construction checks, source-composition validation, and
-limitations.
+[`public image receipt`](glm53-dcp4-sircl-public-image-receipt.json)
+for source identities, registry-pull verification, DCP4 startup and restore,
+concurrent ownership drain, failure containment, and limitations.
 
 ## Complete-snapshot rollback image
 

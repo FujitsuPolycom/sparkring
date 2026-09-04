@@ -29,8 +29,8 @@
     "operator_contract": "runtime/glm53-flash-jj-r8-gb10/pins.json",
     "environment_template": "runtime/glm53-flash-jj-r8-gb10/runtime.env.example",
     "launcher": "runtime/glm53-flash-jj-r8-gb10/launch-rank.sh",
-    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34",
-    "image_id": "sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4",
+    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f",
+    "image_id": "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075",
     "sparkcache": {
       "artifact_kind": "source-pinned OCI image",
       "source_repository": "https://github.com/FujitsuPolycom/sparkcache.git",
@@ -72,6 +72,13 @@
     "kda_prefill_backend": "flashkda",
     "load_format": "fastsafetensors",
     "scheduler_budget_status": "qualified"
+  },
+  "transport": {
+    "backend": "dual-rail-sircl-with-patched-nccl-fallback",
+    "capability_vote": true,
+    "output_health_gate": true,
+    "embedded_bundle": true,
+    "nccl_version": "2.30.7"
   },
   "sparkcache": {
     "kv_connector": "SparkContextCacheConnector",
@@ -142,17 +149,17 @@
   },
   "evidence": {
     "status": "qualified",
-    "conditions": "The immutable Linux/ARM64 image ran on four directly connected NVIDIA GB10 systems at TP4/DCP4 with FP8 KV, 24 GiB per rank, a 1,048,576-token request limit, 8,192 scheduler tokens, interval two, BF16 DFlash2 depth seven, SparkCache tail-cow-v2 publication, and a 300-second shared-prefix lease.",
-    "measurement": "The page-tail source completed exact 131,072, 262,144, 524,288, and 921,600-token growth. The registry image then repeated DFlash warmup after docker restart and served concurrent requests over the 921,600-token stored prefix, including during image-transfer pressure.",
-    "result": "Every growth step returned its exact codeword and remained a page delta. The 921,600-token root used a 7,459-byte manifest with three delta stages. After restart, two concurrent requests returned exact responses with no post-readiness JIT, CUDA error, or stuck request.",
-    "conclusion": "The registry artifact starts the preferred DCP4 profile, incrementally publishes growing contexts, restores them after restart, and withholds Docker readiness until DFlash warmup completes.",
+    "conditions": "The immutable Linux/ARM64 image ran on four directly connected NVIDIA GB10 systems at TP4/DCP4 with the embedded dual-rail SIRCL bundle, rank-wide capability and output-health checks, patched NCCL fallback, FP8 KV, 24 GiB per rank, a 1,048,576-token request limit, 8,192 scheduler tokens, interval two, BF16 DFlash2 depth seven, SparkCache tail-cow-v2 publication, and a 300-second shared-prefix lease.",
+    "measurement": "All four ranks pulled the immutable digest and resolved the recorded image ID. The exact registry image started with SIRCL, restored a 32,768-token entry after restart, completed one 129K-class request followed by eight concurrent 4K-class requests, and underwent separate test-only fused-device-poison and rank-2 proxy-exit injections.",
+    "result": "Every rank accepted the capability vote; startup, persistent restore, and concurrent stores completed; running requests, waiting requests, delayed ownership, retained pages, and uncertain ranks returned to zero. During both injected SIRCL failures, no API became ready and all four worker groups stopped without a post-failure collective hang.",
+    "conclusion": "The registry artifact functionally qualifies the preferred DCP4 profile with embedded SIRCL, patched NCCL fallback, persistent restart restore, and fail-stop transport health handling.",
     "limitations": [
-      "The built-image smoke did not repeat video input or persistent multimodal restore after a process restart.",
+      "The receipt records functional checks, not a broad transport-performance benchmark.",
       "DCP1 and DCP2 are implemented profiles, but asynchronous capture is disabled because those slot sizes lack matching live evidence.",
-      "The original cuBLAS failure was observed once; readiness warmup removes the reproduced first-use JIT condition but does not prove it was the only possible cause."
+      "The failure-injection builds are test-only artifacts and are not included in the published image."
     ],
     "record": "runtime/glm53-flash-jj-r8-gb10/README.md",
-    "machine_receipt": "runtime/glm53-flash-jj-r8-gb10/async-store-completion-public-image-receipt.json",
+    "machine_receipt": "runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json",
     "scheduler_receipt": "performance/receipts/glm53-flash/scheduler-cadence-20260902/summary.json",
     "artifact_scope": "The immutable image, target and draft revisions, TP4/DCP4 topology, scheduler settings, cache configuration, source identities, and live limits recorded here."
   }

@@ -15,12 +15,12 @@
     }
   },
   "operator_image": {
-    "reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34",
-    "image_id": "sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4",
+    "reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f",
+    "image_id": "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075",
     "platform": "linux/arm64",
     "status": "implemented",
-    "qualification_scope": "published and registry-pull verified; the embedded source composition passed TP4/DCP4 live validation",
-    "receipt": "async-store-completion-public-image-receipt.json"
+    "qualification_scope": "registry-pull verified on four ranks; GLM-5.3 Flash TP4/DCP4 passed embedded dual-rail SIRCL startup, concurrent SparkCache ownership drain, and persistent restart restore",
+    "receipt": "glm53-dcp4-sircl-public-image-receipt.json"
   },
   "vllm": {
     "repository": "https://github.com/FujitsuPolycom/vllm.git",

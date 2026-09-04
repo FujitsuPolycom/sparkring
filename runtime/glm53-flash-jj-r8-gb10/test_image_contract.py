@@ -75,18 +75,19 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     assert pins["operator_image"] == {
         "reference": (
             "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
-            "sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34"
+            "sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f"
         ),
         "image_id": (
-            "sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4"
+            "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075"
         ),
         "platform": "linux/arm64",
         "status": "implemented",
         "qualification_scope": (
-            "published and registry-pull verified; the embedded source "
-            "composition passed TP4/DCP4 live validation"
+            "registry-pull verified on four ranks; GLM-5.3 Flash TP4/DCP4 "
+            "passed embedded dual-rail SIRCL startup, concurrent SparkCache "
+            "ownership drain, and persistent restart restore"
         ),
-        "receipt": "async-store-completion-public-image-receipt.json",
+        "receipt": "glm53-dcp4-sircl-public-image-receipt.json",
     }
     assert pins["vllm"]["commit"] == (
         "e02b174693e13859de61811b5e8cd13d5308e259"
@@ -439,7 +440,7 @@ def test_operator_docs_distinguish_page_tails_from_published_rollback() -> None:
     for document in (runtime_readme, quickstart):
         for schema in ("snapshot-v1", "tail-cow-v1", "tail-cow-v2"):
             assert schema in document
-        assert "sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34" in document
+        assert "sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f" in document
         assert "sparkcache: capacity" in document
         assert "sparkcache: publications" in document
         assert "sparkcache: writes" in document
@@ -578,8 +579,8 @@ def test_async_store_completion_receipt_keeps_published_source_identity() -> Non
     )
     pins = json.loads((HERE / "pins.json").read_text(encoding="utf-8"))
     assert receipt["status"] == "implemented"
-    assert receipt["artifact"]["registry"] == pins["operator_image"]["reference"]
-    assert receipt["artifact"]["image_id"] == pins["operator_image"]["image_id"]
+    assert receipt["artifact"]["registry"] != pins["operator_image"]["reference"]
+    assert receipt["artifact"]["image_id"] != pins["operator_image"]["image_id"]
     assert receipt["sources"]["sparkcache_commit"] == (
         "9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4"
     )
