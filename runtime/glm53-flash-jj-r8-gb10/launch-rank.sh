@@ -476,6 +476,8 @@ if [[ "${SIRCL_ENABLED}" == 1 ]]; then
     spark_graph_status_reporter.py \
     spark_persistent_output_ring.py \
     spark_tp4_backend.py \
+    spark_tp4_capability.py \
+    spark_tp4_health_gate.py \
     spark_tp4_port_namespace.py \
     spark_tp4_query_contract.py \
     spark_tp4_query_row_provider.py \
@@ -502,6 +504,10 @@ if [[ "${SIRCL_ENABLED}" == 1 ]]; then
     -e VLLM_SPARK_SHARED_CAPTURE_STREAM=1
     -e VLLM_SPARK_TP4_GRAPH_Q1=0
     -e VLLM_SPARK_TP4_GRAPH_DUAL_PORT_Q40=0
+    -e SPARK_TP4_CAPABILITY_VOTE=1
+    -e SPARK_TP4_HEALTH_GATE=1
+    -e "SPARKRING_SIRCL_NATIVE_SHA256=${sircl_native_sha256}"
+    -e "SPARKRING_SIRCL_MANIFEST_SHA256=${sircl_manifest_sha256}"
     -e "SPARK_TP4_PEER0=${SPARK_TP4_PEER0}"
     -e "SPARK_TP4_PEER1=${SPARK_TP4_PEER1}"
     -e "SPARK_TP4_DEVICE0=${SPARK_TP4_DEVICE0}"

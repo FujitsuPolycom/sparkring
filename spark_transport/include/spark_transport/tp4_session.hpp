@@ -56,6 +56,17 @@ struct Tp4GraphReplayStatus {
   int graph_progress_cpu{-1};
 };
 
+struct Tp4HealthStatus {
+  bool healthy{};
+  bool poisoned{};
+  bool progress_thread_running{};
+  bool stopping{};
+  std::uint64_t submitted_sequence{};
+  std::uint64_t completed_sequence{};
+  std::uint64_t failing_sequence{};
+  std::int32_t error_code{};
+};
+
 class Tp4AllreduceSession {
  public:
   Tp4AllreduceSession(const Tp4AllreduceSession&) = delete;
@@ -91,6 +102,7 @@ class Tp4AllreduceSession {
                           void* cuda_stream);
 
   Tp4GraphReplayStatus graph_replay_status() const noexcept;
+  Tp4HealthStatus health_status();
 
  private:
   class Impl;

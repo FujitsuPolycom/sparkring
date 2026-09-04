@@ -312,6 +312,46 @@ extern "C" int spark_tp4_get_graph_status(
   }
 }
 
+extern "C" int spark_tp4_get_health_status(
+    spark_tp4_handle handle, spark_tp4_health_status* status,
+    std::size_t status_bytes, char* error, std::size_t error_bytes) {
+  try {
+    if (handle == nullptr) {
+      throw std::invalid_argument("TP4 C API handle is null");
+    }
+    if (status == nullptr) {
+      throw std::invalid_argument("TP4 health status is null");
+    }
+    if (status_bytes < sizeof(*status)) {
+      throw std::invalid_argument("TP4 health status buffer is too small");
+    }
+    const auto snapshot = tp4_allreduce_handle(handle)->session.health_status();
+    spark_tp4_health_status result{};
+    result.struct_size = sizeof(result);
+    if (snapshot.healthy) result.flags |= SPARK_TP4_HEALTHY;
+    if (snapshot.poisoned) result.flags |= SPARK_TP4_HEALTH_POISONED;
+    if (snapshot.progress_thread_running) {
+      result.flags |= SPARK_TP4_HEALTH_PROGRESS_THREAD_RUNNING;
+    }
+    if (snapshot.stopping) result.flags |= SPARK_TP4_HEALTH_STOPPING;
+    result.submitted_sequence = snapshot.submitted_sequence;
+    result.completed_sequence = snapshot.completed_sequence;
+    result.failing_sequence = snapshot.failing_sequence;
+    result.error_code = snapshot.error_code;
+    result.failing_stage = -1;
+    result.failing_rail = -1;
+    result.failing_peer = -1;
+    *status = result;
+    return 0;
+  } catch (const std::exception& exception) {
+    copy_error(exception.what(), error, error_bytes);
+    return 1;
+  } catch (...) {
+    copy_error("unknown TP4 health status failure", error, error_bytes);
+    return 1;
+  }
+}
+
 extern "C" void spark_tp4_destroy(spark_tp4_handle handle) {
   delete tp4_allreduce_handle(handle);
 }

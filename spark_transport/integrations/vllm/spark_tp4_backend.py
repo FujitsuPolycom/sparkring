@@ -25,6 +25,7 @@ from spark_tp4_query_contract import (
     ABSOLUTE_MAX_QUERY_ROWS,
     MAX_QUERY_ROWS,
 )
+from spark_tp4_capability import ensure_capability_vote
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,10 @@ _GRAPH_STATUS_SPLIT_64K = 1 << 8
 _GRAPH_STATUS_TIERED_64K = 1 << 9
 _GRAPH_STATUS_DUAL_PORT_STRIPED = 1 << 10
 _GRAPH_STATUS_DIRECT_DOORBELL = 1 << 11
+_HEALTHY = 1 << 0
+_HEALTH_POISONED = 1 << 1
+_HEALTH_PROGRESS_THREAD_RUNNING = 1 << 2
+_HEALTH_STOPPING = 1 << 3
 _SERIAL_ACK_PROTOCOL = "serial_ack"
 _TWO_SLOT_DEFERRED_ACK_PROTOCOL = "two_slot_deferred_ack"
 _ALLREDUCE_PROTOCOL_WIRE = {
@@ -98,6 +103,7 @@ _MAX_PERSISTENT_OUTPUT_SLOTS = 4096
 _graph_q1_sessions: dict[int, "_NativeSession"] = {}
 _graph_dual_port_q40_sessions: dict[int, "_NativeSession"] = {}
 _graph_width4096_sessions: dict[int, "_NativeSession"] = {}
+_backends: dict[int, "_Backend"] = {}
 _graph_event_counts: dict[str, int] = {}
 # PLACEHOLDER ring peers (RFC 5737 TEST-NET-1): 192.0.2.N stands in for
 # rank N-1's direct-cable address. These are NOT routable and MUST be
@@ -172,6 +178,35 @@ class _NativeGraphStatus(ctypes.Structure):
         ("graph_submit_cpu_plus_one", ctypes.c_uint32),
         ("graph_progress_cpu_plus_one", ctypes.c_uint32),
     ]
+
+
+class _NativeHealthStatus(ctypes.Structure):
+    _fields_ = [
+        ("struct_size", ctypes.c_uint32),
+        ("flags", ctypes.c_uint32),
+        ("submitted_sequence", ctypes.c_uint64),
+        ("completed_sequence", ctypes.c_uint64),
+        ("failing_sequence", ctypes.c_uint64),
+        ("error_code", ctypes.c_int32),
+        ("failing_stage", ctypes.c_int32),
+        ("failing_rail", ctypes.c_int32),
+        ("failing_peer", ctypes.c_int32),
+    ]
+
+
+@dataclass(frozen=True)
+class NativeHealthStatus:
+    healthy: bool
+    poisoned: bool
+    progress_thread_running: bool
+    stopping: bool
+    submitted_sequence: int
+    completed_sequence: int
+    failing_sequence: int
+    error_code: int
+    failing_stage: int
+    failing_rail: int
+    failing_peer: int
 
 
 @dataclass(frozen=True)
@@ -545,6 +580,8 @@ def _research_graph_all_reduce(
         or getattr(communicator, "unique_name", "") != "tp:0"
     ):
         return None
+    if os.getenv("SPARK_TP4_CAPABILITY_VOTE", "0") == "1":
+        ensure_capability_vote(communicator)
     backend = getattr(communicator, "_spark_tp4_native", None)
     if backend is None:
         backend = _Backend(int(communicator.rank_in_group))
@@ -1069,6 +1106,19 @@ class _FusedPrefillNativeSession(_BidirectionalPrefillNativeSession):
         if _bidirectional_prefill_rail_mode() != "dual":
             raise ValueError("fused prefill requires strict dual-rail mode")
         super().__init__(rank, shape)
+        health = getattr(
+            self._library,
+            "spark_tp4_fused_prefill_get_health_status",
+        )
+        health.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(_NativeHealthStatus),
+            ctypes.c_size_t,
+            ctypes.c_char_p,
+            ctypes.c_size_t,
+        ]
+        health.restype = ctypes.c_int
+        self._health = health
 
     def all_reduce(self, tensor: Any) -> Any:
         import torch
@@ -1098,6 +1148,36 @@ class _FusedPrefillNativeSession(_BidirectionalPrefillNativeSession):
                 f"Spark TP4 fused prefill all-reduce failed: {message}"
             )
         return output
+
+    def health_status(self) -> NativeHealthStatus:
+        native = _NativeHealthStatus()
+        error = ctypes.create_string_buffer(512)
+        result = self._health(
+            self._handle,
+            ctypes.byref(native),
+            ctypes.sizeof(native),
+            error,
+            len(error),
+        )
+        if result != 0:
+            message = error.value.decode(errors="replace")
+            raise RuntimeError(f"Spark fused prefill health failed: {message}")
+        flags = int(native.flags)
+        return NativeHealthStatus(
+            healthy=bool(flags & _HEALTHY),
+            poisoned=bool(flags & _HEALTH_POISONED),
+            progress_thread_running=bool(
+                flags & _HEALTH_PROGRESS_THREAD_RUNNING
+            ),
+            stopping=bool(flags & _HEALTH_STOPPING),
+            submitted_sequence=int(native.submitted_sequence),
+            completed_sequence=int(native.completed_sequence),
+            failing_sequence=int(native.failing_sequence),
+            error_code=int(native.error_code),
+            failing_stage=int(native.failing_stage),
+            failing_rail=int(native.failing_rail),
+            failing_peer=int(native.failing_peer),
+        )
 
 
 class _NativeSession:
@@ -1306,6 +1386,14 @@ class _NativeSession:
                 ctypes.c_size_t,
             ]
             self._library.spark_tp4_get_graph_status.restype = ctypes.c_int
+        self._library.spark_tp4_get_health_status.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(_NativeHealthStatus),
+            ctypes.c_size_t,
+            ctypes.c_char_p,
+            ctypes.c_size_t,
+        ]
+        self._library.spark_tp4_get_health_status.restype = ctypes.c_int
         self._library.spark_tp4_destroy.argtypes = [ctypes.c_void_p]
         self._library.spark_tp4_destroy.restype = None
         self._graph_only = graph_only
@@ -1545,6 +1633,42 @@ class _NativeSession:
             wire_schedule=native_wire_schedule,
         )
 
+    def health_status(self) -> NativeHealthStatus:
+        native = _NativeHealthStatus()
+        error = ctypes.create_string_buffer(512)
+        result = self._library.spark_tp4_get_health_status(
+            self._handle,
+            ctypes.byref(native),
+            ctypes.sizeof(native),
+            error,
+            len(error),
+        )
+        if result != 0:
+            message = error.value.decode(errors="replace")
+            raise RuntimeError(f"Spark TP4 health snapshot failed: {message}")
+        if native.struct_size != ctypes.sizeof(_NativeHealthStatus):
+            raise RuntimeError(
+                "Spark TP4 health status ABI mismatch: "
+                f"native={native.struct_size} python="
+                f"{ctypes.sizeof(_NativeHealthStatus)}"
+            )
+        flags = int(native.flags)
+        return NativeHealthStatus(
+            healthy=bool(flags & _HEALTHY),
+            poisoned=bool(flags & _HEALTH_POISONED),
+            progress_thread_running=bool(
+                flags & _HEALTH_PROGRESS_THREAD_RUNNING
+            ),
+            stopping=bool(flags & _HEALTH_STOPPING),
+            submitted_sequence=int(native.submitted_sequence),
+            completed_sequence=int(native.completed_sequence),
+            failing_sequence=int(native.failing_sequence),
+            error_code=int(native.error_code),
+            failing_stage=int(native.failing_stage),
+            failing_rail=int(native.failing_rail),
+            failing_peer=int(native.failing_peer),
+        )
+
     def capture(self, tensor: Any) -> Any:
         if not self._graph_only:
             raise RuntimeError("Spark TP4 eager session cannot define graph nodes")
@@ -1705,6 +1829,7 @@ class _ShadowStats:
 class _Backend:
     def __init__(self, rank: int) -> None:
         self.rank = rank
+        _backends[rank] = self
         self.native_sessions: dict[int, _NativeSession] = {}
         self.graph_q1_session: _NativeSession | None = None
         self.graph_dual_port_q40_session: _NativeSession | None = None
@@ -1858,6 +1983,44 @@ def graph_q1_diagnostic_snapshot() -> dict[str, object]:
         "width4096_sessions": graph_width4096_status_snapshot(),
         "events": dict(sorted(_graph_event_counts.items())),
     }
+
+
+def native_health_snapshot() -> dict[str, NativeHealthStatus]:
+    """Read process-local native graph-session health without CUDA sync."""
+
+    sessions = {
+        **{f"graph-q1-rank-{rank}": session for rank, session in _graph_q1_sessions.items()},
+        **{
+            f"graph-q40-rank-{rank}": session
+            for rank, session in _graph_dual_port_q40_sessions.items()
+        },
+        **{
+            f"graph-width4096-rank-{rank}": session
+            for rank, session in _graph_width4096_sessions.items()
+        },
+        **{
+            f"fused-prefill-rank-{rank}": session
+            for rank, backend in _backends.items()
+            for session in backend.fused_prefill_sessions.values()
+        },
+    }
+    return {name: session.health_status() for name, session in sessions.items()}
+
+
+def require_native_health() -> None:
+    failures = [
+        (name, status)
+        for name, status in native_health_snapshot().items()
+        if not status.healthy
+    ]
+    if failures:
+        name, status = failures[0]
+        raise RuntimeError(
+            "SIRCL native session is unhealthy before model output publication: "
+            f"session={name} submitted={status.submitted_sequence} "
+            f"completed={status.completed_sequence} "
+            f"failing={status.failing_sequence} error={status.error_code}"
+        )
 
 
 def install() -> None:
@@ -2022,6 +2185,8 @@ def install() -> None:
 
         payload_bytes = _payload_bytes(input_)
         signature = _collective_signature(input_)
+        if os.getenv("SPARK_TP4_CAPABILITY_VOTE", "0") == "1":
+            ensure_capability_vote(self)
         backend = getattr(self, "_spark_tp4_native", None)
         if backend is None:
             backend = _Backend(int(self.rank_in_group))
