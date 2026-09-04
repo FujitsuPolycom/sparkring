@@ -26,7 +26,7 @@ ARTIFACTS = {
 }
 SOURCE_ARTIFACTS = {
     "glm53-flash-nvfp4-dflash2-bf16-tp4.json": (
-        "f8adb4ecdadd524e79cf1ef14e7f3d83d1f20ff07c79333b2c7c0d9ea12919d5"
+        "80b049c647bc28fdc039021d08a7eb3276846c1616b77b9ba18ba2bc38da8d99"
     ),
 }
 
@@ -73,7 +73,7 @@ def test_compositions_pin_artifact_and_fail_closed_policy() -> None:
                 assert artifact["artifact_kind"] == "OCI image overlay"
             assert artifact["source_sha256"] == SOURCE_ARTIFACTS[path.name]
             assert artifact["source_commit"] == (
-                "9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4"
+                "66057174301a4759ca3a45207ea41016689449cb"
             )
             assert recipe["runtime"]["image"].startswith("ghcr.io/fujitsupolycom/")
             assert recipe["serving_common"]["max_num_batched_tokens"] == 8192
@@ -158,7 +158,7 @@ def test_glm53_composition_matches_the_operator_contract() -> None:
         ROOT
         / "runtime"
         / "glm53-flash-jj-r8-gb10"
-        / "async-store-completion-public-image-receipt.json"
+        / "glm53-dcp4-sircl-public-image-receipt.json"
     )
 
     assert recipe["base_recipe"] == "../glm53-flash-nvfp4-dflash2-bf16-tp4.json"
@@ -172,7 +172,7 @@ def test_glm53_composition_matches_the_operator_contract() -> None:
             "dcp4",
         }
     )
-    assert recipe["runtime"]["image"] == receipt["artifact"]["registry"]
+    assert recipe["runtime"]["image"] == receipt["artifact"]["registry_reference"]
     assert recipe["runtime"]["image_id"] == receipt["artifact"]["image_id"]
     assert (
         recipe["runtime"]["sparkcache"]["source_commit"] == pins["sparkcache"]["commit"]
@@ -181,7 +181,11 @@ def test_glm53_composition_matches_the_operator_contract() -> None:
         recipe["runtime"]["sparkcache"]["source_sha256"]
         == pins["sparkcache"]["source_tree_sha256"]
     )
-    assert recipe["runtime"]["vllm"]["commit"] == pins["vllm"]["commit"]
+    for component in ("vllm", "b12x"):
+        assert recipe["runtime"][component] == {
+            key: pins[component][key]
+            for key in ("repository", "commit", "tree", "package_tree")
+        }
     assert (
         recipe["serving_common"]["max_model_len"] == pins["defaults"]["max_model_len"]
     )
@@ -191,8 +195,16 @@ def test_glm53_composition_matches_the_operator_contract() -> None:
     )
 
     expected_bytes = pins["defaults"]["kv_cache_bytes_per_rank"]
+    source_prefix = "glm53-flash-vllm-e02b1746-b12x-9ae41c5c"
+    expected_namespaces = {
+        "dcp1": f"{source_prefix}-dcp1-snapshot-v1",
+        "dcp2": f"{source_prefix}-dcp2-snapshot-v1",
+        "dcp4": f"{source_prefix}-dcp4-page-tail-cow-v2",
+    }
     for name, profile in recipe["profiles"].items():
         assert profile["kv_cache_memory_bytes_per_rank"] == expected_bytes[name]
+        assert profile["cache_namespace_default"] == expected_namespaces[name]
+    assert recipe["sparkcache"]["cache_namespace_default"] == expected_namespaces["dcp4"]
     assert recipe["profiles"]["dcp1"]["async_page_capture"] is False
     assert recipe["profiles"]["dcp2"]["async_page_capture"] is False
     assert recipe["profiles"]["dcp4"]["async_page_capture"] is True
@@ -204,5 +216,5 @@ def test_glm53_composition_matches_the_operator_contract() -> None:
     )
     assert recipe["evidence"]["machine_receipt"] == (
         "runtime/glm53-flash-jj-r8-gb10/"
-        "async-store-completion-public-image-receipt.json"
+        "glm53-dcp4-sircl-public-image-receipt.json"
     )

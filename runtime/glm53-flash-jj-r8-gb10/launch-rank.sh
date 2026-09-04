@@ -23,8 +23,8 @@ fi
 : "${DFLASH_MODEL_HOST_PATH:?set DFLASH_MODEL_HOST_PATH to the pinned BF16 draft checkpoint}"
 : "${CACHE_HOST_ROOT:?set CACHE_HOST_ROOT to a dedicated rank-local directory}"
 
-: "${IMAGE_REF:=ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34}"
-: "${IMAGE_ID:=sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4}"
+: "${IMAGE_REF:=ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f}"
+: "${IMAGE_ID:=sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075}"
 : "${CONTAINER_PREFIX:=glm53-jj-r8-gb10}"
 : "${SERVED_MODEL_NAME:=glm-5.3-flash}"
 : "${PORT:=8015}"
@@ -59,8 +59,8 @@ fi
 : "${LOAD_FORMAT:=fastsafetensors}"
 : "${CUDAGRAPH_MODE:=FULL_AND_PIECEWISE}"
 : "${MAX_CUDAGRAPH_CAPTURE_SIZE:=128}"
-: "${SPARKCACHE_CACHE_NAMESPACE:=glm53-flash-dcp4-page-tail-cow-v2}"
-: "${JIT_CACHE_NAMESPACE:=glm53-flash-sm121-vllm-22ffe140-b12x-6255090a}"
+: "${SPARKCACHE_CACHE_NAMESPACE:=glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp4-page-tail-cow-v2}"
+: "${JIT_CACHE_NAMESPACE:=glm53-flash-sm121-vllm-e02b1746-b12x-9ae41c5c}"
 : "${JIT_MONITOR_VERBOSE:=0}"
 : "${DFLASH_WARMUP:=0}"
 : "${DFLASH_WARMUP_CONCURRENCIES:=1,2,4,8,16}"
@@ -396,6 +396,8 @@ command -v sha256sum >/dev/null 2>&1 || die 'sha256sum is required to verify mod
 sircl_args=()
 sircl_native_sha256='disabled'
 sircl_manifest_sha256='disabled'
+sircl_container_root='/opt/spark-sircl'
+sircl_bundle_is_external=0
 if [[ "${SIRCL_ENABLED}" == 1 ]]; then
   [[ "${TENSOR_PARALLEL_SIZE}" == 4 ]] || \
     die 'SIRCL width-4096 mode requires TENSOR_PARALLEL_SIZE=4'
@@ -464,41 +466,61 @@ if [[ "${SIRCL_ENABLED}" == 1 ]]; then
        "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1}" ]] || \
       die 'dual-rail primary and secondary devices must be distinct'
   fi
-  [[ "${SIRCL_BUNDLE_HOST_ROOT}" == /* ]] || \
-    die 'SIRCL_BUNDLE_HOST_ROOT must be an absolute host path'
-  [[ "${SIRCL_BUNDLE_HOST_ROOT}" != *:* && "${SIRCL_BUNDLE_HOST_ROOT}" != *$'\n'* ]] || \
-    die 'SIRCL_BUNDLE_HOST_ROOT cannot be represented safely as a Docker bind mount'
-  [[ -d "${SIRCL_BUNDLE_HOST_ROOT}" ]] || \
-    die 'SIRCL_BUNDLE_HOST_ROOT must be a directory'
-  for required in \
-    sitecustomize.py \
-    spark_collective_audit.py \
-    spark_graph_status_reporter.py \
-    spark_persistent_output_ring.py \
-    spark_tp4_backend.py \
-    spark_tp4_capability.py \
-    spark_tp4_health_gate.py \
-    spark_tp4_port_namespace.py \
-    spark_tp4_query_contract.py \
-    spark_tp4_query_row_provider.py \
-    sparkring-overlay-manifest.json \
-    libspark_transport_capi.so
-  do
-    [[ -f "${SIRCL_BUNDLE_HOST_ROOT}/${required}" ]] || \
-      die "SIRCL bundle is missing ${required}"
-  done
-  sircl_native_sha256="$(
-    sha256sum -- "${SIRCL_BUNDLE_HOST_ROOT}/libspark_transport_capi.so" |
-      cut -d' ' -f1
-  )"
-  sircl_manifest_sha256="$(
-    sha256sum -- "${SIRCL_BUNDLE_HOST_ROOT}/sparkring-overlay-manifest.json" |
-      cut -d' ' -f1
-  )"
+  if [[ -n "${SIRCL_BUNDLE_HOST_ROOT}" ]]; then
+    [[ "${SIRCL_BUNDLE_HOST_ROOT}" == /* ]] || \
+      die 'SIRCL_BUNDLE_HOST_ROOT must be an absolute host path when set'
+    [[ "${SIRCL_BUNDLE_HOST_ROOT}" != *:* && "${SIRCL_BUNDLE_HOST_ROOT}" != *$'\n'* ]] || \
+      die 'SIRCL_BUNDLE_HOST_ROOT cannot be represented safely as a Docker bind mount'
+    [[ -d "${SIRCL_BUNDLE_HOST_ROOT}" ]] || \
+      die 'SIRCL_BUNDLE_HOST_ROOT must be a directory'
+    for required in \
+      sitecustomize.py \
+      spark_collective_audit.py \
+      spark_graph_status_reporter.py \
+      spark_persistent_output_ring.py \
+      spark_tp4_backend.py \
+      spark_tp4_capability.py \
+      spark_tp4_health_gate.py \
+      spark_tp4_port_namespace.py \
+      spark_tp4_query_contract.py \
+      spark_tp4_query_row_provider.py \
+      sparkring-overlay-manifest.json \
+      libspark_transport_capi.so
+    do
+      [[ -f "${SIRCL_BUNDLE_HOST_ROOT}/${required}" ]] || \
+        die "SIRCL bundle is missing ${required}"
+    done
+    sircl_native_sha256="$(
+      sha256sum -- "${SIRCL_BUNDLE_HOST_ROOT}/libspark_transport_capi.so" |
+        cut -d' ' -f1
+    )"
+    sircl_manifest_sha256="$(
+      sha256sum -- "${SIRCL_BUNDLE_HOST_ROOT}/sparkring-overlay-manifest.json" |
+        cut -d' ' -f1
+    )"
+    sircl_args+=(
+      -v "${SIRCL_BUNDLE_HOST_ROOT}:${sircl_container_root}:ro"
+    )
+    sircl_bundle_is_external=1
+  else
+    sircl_native_sha256="$(
+      docker image inspect --format \
+        '{{index .Config.Labels "org.sparkring.sircl.native-sha256"}}' \
+        "${IMAGE_REF}"
+    )"
+    sircl_manifest_sha256="$(
+      docker image inspect --format \
+        '{{index .Config.Labels "org.sparkring.sircl.manifest-sha256"}}' \
+        "${IMAGE_REF}"
+    )"
+    [[ "${sircl_native_sha256}" =~ ^[0-9a-f]{64}$ && \
+       "${sircl_manifest_sha256}" =~ ^[0-9a-f]{64}$ ]] || \
+      die 'image has no receipt-bound embedded SIRCL bundle; set SIRCL_BUNDLE_HOST_ROOT or disable SIRCL'
+  fi
   sircl_args=(
-    -v "${SIRCL_BUNDLE_HOST_ROOT}:/opt/spark-sircl:ro"
-    -e PYTHONPATH=/opt/spark-sircl
-    -e SPARK_TP4_LIBRARY=/opt/spark-sircl/libspark_transport_capi.so
+    "${sircl_args[@]}"
+    -e "PYTHONPATH=${sircl_container_root}"
+    -e "SPARK_TP4_LIBRARY=${sircl_container_root}/libspark_transport_capi.so"
     -e VLLM_SPARK_TP4_MODE=custom
     -e VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH=1
     -e VLLM_SPARK_SHARED_CAPTURE_STREAM=1
@@ -544,9 +566,11 @@ if [[ "${SPARK_CUDAGRAPH_REPLAY_TIMING}" == 1 ]]; then
   require_positive_uint SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES
   replay_timing_bundle="${SPARK_CUDAGRAPH_REPLAY_TIMING_BUNDLE_HOST_ROOT}"
   replay_timing_container_root='/opt/spark-replay-timing'
+  replay_timing_bundle_is_external=1
   if [[ "${SIRCL_ENABLED}" == 1 ]]; then
     replay_timing_bundle="${SIRCL_BUNDLE_HOST_ROOT}"
-    replay_timing_container_root='/opt/spark-sircl'
+    replay_timing_container_root="${sircl_container_root}"
+    replay_timing_bundle_is_external="${sircl_bundle_is_external}"
   else
     [[ "${replay_timing_bundle}" == /* ]] || \
       die 'SPARK_CUDAGRAPH_REPLAY_TIMING_BUNDLE_HOST_ROOT must be an absolute host path'
@@ -558,17 +582,17 @@ if [[ "${SPARK_CUDAGRAPH_REPLAY_TIMING}" == 1 ]]; then
       -v "${replay_timing_bundle}:${replay_timing_container_root}:ro"
       -e "PYTHONPATH=${replay_timing_container_root}"
     )
+  fi
+  if [[ "${replay_timing_bundle_is_external}" == 1 ]]; then
     [[ -f "${replay_timing_bundle}/spark_graph_status_reporter.py" ]] || \
       die 'CUDA graph replay timing bundle is missing spark_graph_status_reporter.py'
-    replay_timing_args+=(
-      -e "SPARK_CUDAGRAPH_REPLAY_TIMING_STATUS_PATH=/cache/jit/cudagraph-replay-rank${rank}.json"
-    )
+    for required in sitecustomize.py spark_cudagraph_replay_timing.py; do
+      [[ -f "${replay_timing_bundle}/${required}" ]] || \
+        die "CUDA graph replay timing bundle is missing ${required}"
+    done
   fi
-  for required in sitecustomize.py spark_cudagraph_replay_timing.py; do
-    [[ -f "${replay_timing_bundle}/${required}" ]] || \
-      die "CUDA graph replay timing bundle is missing ${required}"
-  done
   replay_timing_args+=(
+    -e "SPARK_CUDAGRAPH_REPLAY_TIMING_STATUS_PATH=/cache/jit/cudagraph-replay-rank${rank}.json"
     -e SPARK_CUDAGRAPH_REPLAY_TIMING=1
     -e "SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES=${SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES}"
     -e SPARK_CUDAGRAPH_REPLAY_TIMING_ARM_PATH=/cache/jit/sircl-replay-timing.arm

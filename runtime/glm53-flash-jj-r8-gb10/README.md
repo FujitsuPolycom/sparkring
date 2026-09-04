@@ -1,11 +1,13 @@
 # GLM-5.3 Flash GB10 operator image
 
 This directory builds and runs one Linux/ARM64 image for GLM-5.3 Flash on four
-NVIDIA GB10 systems. The image combines Local Inference Lab's GLM-specific
-vLLM work, BF16 DFlash2 speculation, B12X kernels, switchless NCCL,
-fastsafetensors, and SparkCache. The pinned Local Inference Lab source line is
-named `Jovian Judgement Community R10` in [`pins.json`](pins.json). One image
-supports TP4 with DCP1, DCP2, or DCP4.
+NVIDIA GB10 systems. The runtime combines Local Inference Lab's GLM-specific
+vLLM work, BF16 DFlash2 speculation, B12X kernels, patched NCCL,
+fastsafetensors, and SparkCache. The current composition also embeds the
+source-bound SIRCL Python overlay and ARM64 native library. The pinned Local
+Inference Lab source line is named
+`Jovian Judgement Community R10` in [`pins.json`](pins.json). One image supports
+TP4 with DCP1, DCP2, or DCP4.
 
 Local Inference Lab supplies the model quantization and the primary runtime
 work that makes this profile practical:
@@ -14,8 +16,8 @@ work that makes this profile practical:
   is the target checkpoint;
 - [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm/tree/dev/jovian-judgement)
   supplies the GLM runtime and scheduler work;
-- [`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x)
-  supplies the GB10 kernel integration.
+- [`voipmonitor/b12x`](https://github.com/voipmonitor/b12x)
+  supplies the source-pinned GB10 kernel package installed by this builder.
 
 The external BF16 draft is
 [`incoai/GLM-5.3-Flash-DFlash2`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2).
@@ -34,8 +36,9 @@ The recommended profile uses:
 
 | Setting | Value |
 |---|---:|
-| operator image ID | `sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4` |
+| operator image ID | `sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075` |
 | topology | TP4/DCP4 |
+| collective transport | SIRCL with capability and health checks; patched NCCL fallback |
 | compute and quantization | BF16 compute with ModelOpt mixed quantization |
 | maximum model length | 1,048,576 tokens |
 | batched-token budget | 8,192 tokens |
@@ -61,25 +64,24 @@ change every value in the environment file without rebuilding the image.
 `SPARKCACHE_ENABLED=0` omits the persistent connector while retaining vLLM's
 GPU prefix cache; `SPARKCACHE_ENABLED=1` enables both layers.
 
-### Implemented SIRCL performance-testing lane
+### Preferred DCP4 transport: SIRCL with capability and health checks
 
-**Status: implemented.** `runtime.env.example` keeps the portable NCCL profile
-enabled by default. The sanitized
-[`sircl-fused.env.example`](sircl-fused.env.example) overlay enables
-the graph-native and fused eager paths with the same non-site settings on every
-rank. Peer addresses, device names, and the bundle path remain site inputs.
+**Status: four-rank functionally qualified.** The base
+[`runtime.env.example`](runtime.env.example) keeps patched NCCL enabled because
+SIRCL requires rank-specific peer addresses and RDMA devices. For DCP4, append
+[`sircl-fused.env.example`](sircl-fused.env.example) to select the preferred
+SIRCL graph-native and fused eager paths. The image supplies the Python and
+native bundle, so only the fabric inputs vary by rank.
 
-#### Build the source-bound bundle
+#### Embedded bundle identity
 
-An enabled rank mounts one bundle containing the allowlisted Python overlay,
-its generated manifest, and `libspark_transport_capi.so`. Build all three from
-one clean SparkRing revision on an ARM64 CUDA host:
+The image builder regenerates the allowlisted Python overlay from the checked
+out SparkRing revision. It accepts only the ARM64
+`libspark_transport_capi.so` whose SHA-256 is recorded by
+[`sircl-public-build-receipt.json`](sircl-public-build-receipt.json). Build that
+native input from the same clean revision on an ARM64 CUDA host:
 
 ```bash
-python runtime/build-public-overlay.py \
-  --repo . \
-  --spec runtime/public-overlay-files.json \
-  --output build/sircl-bundle
 cmake -S spark_transport -B build/spark-transport \
   -G Ninja \
   -DBUILD_TESTING=ON \
@@ -88,7 +90,6 @@ cmake -S spark_transport -B build/spark-transport \
   -DSPARK_TP4_ENABLE_FUSED_STREAM_SWITCH_SMOKE=ON
 cmake --build build/spark-transport --parallel
 ctest --test-dir build/spark-transport --output-on-failure
-cp build/spark-transport/libspark_transport_capi.so build/sircl-bundle/
 ```
 
 The
@@ -96,9 +97,19 @@ The
 binds the public `spark_transport` Git tree, overlay specification, generated
 manifest, native-library SHA-256, toolchain, and native test result. It
 establishes a content-addressed native build, not a four-rank serving result.
+The image builder does not compile this library. Byte-for-byte reproducibility
+has not been established, so `--sircl-library` must name the preserved artifact
+from the receipt or a rebuild that happens to match its recorded SHA-256.
 
-Copy byte-identical bundles to every rank. The launcher records the native
-library and overlay-manifest hashes as container labels.
+The builder rejects a different SparkRing transport tree, overlay
+specification, generated manifest, build receipt, or native-library digest.
+The resulting image carries the complete bundle at `/opt/spark-sircl` and the
+launcher records its native-library and overlay-manifest hashes as container
+labels.
+
+Developers can set `SIRCL_BUNDLE_HOST_ROOT` to an absolute directory containing
+a complete bundle. The launcher validates it and mounts it read-only over the
+embedded bundle. Normal deployments leave that setting empty.
 
 #### Configure the four ranks
 
@@ -114,8 +125,7 @@ Replace every `REPLACE` value in the combined file. The secondary values select
 the second RDMA device function on each existing cabled ring edge; the topology
 requires neither additional cables nor diagonal rank links. The launcher
 rejects incomplete or repeated peer/device assignments, inconsistent modes,
-invalid GIDs, invalid port ranges, and a missing or incomplete bundle before
-Docker starts.
+invalid GIDs, and invalid port ranges before Docker starts.
 
 The launcher sets `VLLM_SPARK_TP4_MODE=custom`, enables the width-4096 graph
 adapter and shared capture stream, and disables the width-6144 Q1/Q40 graph
@@ -129,8 +139,7 @@ paths. It fixes `SPARK_TP4_FLIGHT_RECORDER=0`. Effective collective routing is:
 | Unsupported signatures, DCP, and non-TP collectives | NCCL |
 
 The launcher passes `--disable-custom-all-reduce` to disable vLLM's built-in
-custom all-reduce. SIRCL is installed independently from the mounted bundle and
-remains active when `SIRCL_ENABLED=1`.
+custom all-reduce. SIRCL remains active when `SIRCL_ENABLED=1`.
 
 The fused session owns four persistent QPs and two operation slots. Each slot
 has a 67,109,888-byte mapped arena (64 MiB plus 1 KiB of control storage), for
@@ -145,13 +154,17 @@ ports for each admitted capacity Q1024/Q2048/Q4096/Q8192.
 SIRCL's two transport slots are independent from SparkCache's two 3-GiB
 asynchronous page-capture slots and two 256-MiB restore arenas.
 
-#### Qualification boundary
+#### Current evidence
 
-The SIRCL performance-testing lane is implemented but not qualified as the
-recommended dual-rail profile. Qualification requires a four-rank deployment
-of the exact public bundle, cold-start and restart checks, deterministic native
-and model-output correctness, a receipt-backed NCCL/SIRCL comparison with
-transport counters, and fault containment.
+The exact public image passed four-rank DCP4 startup with the embedded bundle.
+Every rank accepted the capability vote; a 32,768-token SparkCache entry
+restored after restart; a 129K-class request followed by eight concurrent
+4K-class requests returned scheduler and cache ownership to idle. Test-only
+builds also forced fused-device poison and a rank-2 proxy exit: no API became
+ready and all four worker groups stopped without a later collective hang. The
+[`public-image receipt`](glm53-dcp4-sircl-public-image-receipt.json) records
+these checks and their limits. They establish functional qualification, not a
+broad transport-performance comparison.
 
 The launcher enables a rank-wide capability vote before native construction.
 Every rank reports the native and overlay identities, shared protocol geometry,
@@ -161,10 +174,10 @@ is created.
 
 After vLLM's existing output synchronization, a host-only native health check
 prevents synchronous or asynchronous model output from leaving an unhealthy
-worker. The check does not synchronize CUDA. Live fault injection remains
-required before this lane becomes the recommended profile. Worker failure is
-fail-stop; four-rank evidence must still show that vLLM's multiprocess monitor
-tears down the peer workers without a collective hang.
+worker. The check does not synchronize CUDA. Worker failure is fail-stop:
+vLLM's multiprocess monitor terminates the peer workers. Four-rank fault
+injection must verify that teardown completes without a collective hang before
+the transport is marked qualified.
 
 ### NCCL fallback
 
@@ -209,10 +222,23 @@ bounded as the conversation grows. A damaged or incompatible object is
 rejected and vLLM computes the missing prompt state normally.
 
 `SPARKCACHE_CACHE_NAMESPACE` selects rank-local persistent-context storage.
-Use `glm53-flash-dcp4-page-tail-cow-v2` with the recommended profile and
-`glm53-flash-dcp4-snapshot-v1` with the published rollback. The directory name
-is not part of SparkCache's content identity or stored format, but separate
-directories make rollback and inspection unambiguous.
+The directory name is not part of SparkCache's content identity, so the
+source-built defaults include the runtime sources that determine manager-page
+meaning. Use these complete values:
+
+| Profile | Source-bound namespace |
+|---|---|
+| DCP1 snapshot | `glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp1-snapshot-v1` |
+| DCP2 snapshot | `glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp2-snapshot-v1` |
+| DCP4 page tails | `glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp4-page-tail-cow-v2` |
+
+These names prevent vLLM `e02b1746` with B12X `9ae41c5c` from discovering
+entries through an older runtime's default directory. Existing directories
+remain on disk, but operators must not rename or copy them into a new
+source-bound root. Recompute the prompt with the current runtime to populate
+the new root. The published complete-snapshot rollback retains its historical
+`glm53-flash-dcp4-snapshot-v1` directory and must use the launcher named by its
+receipt.
 
 Compilation artifacts use the independent, source-bound
 `JIT_CACHE_NAMESPACE`. Changing or clearing a SparkCache data namespace does
@@ -276,17 +302,22 @@ lease is not treated as a dead scheduler.
 
 ## Build from pinned source
 
-The builder accepts clean checkouts at the exact vLLM and SparkCache commits
-recorded in `pins.json`. It rejects a different commit, Git tree, package tree,
-parent image, retained runtime file, or CUDA library. Build the SparkCache
-snapshot library on an ARM64 CUDA 13 host before invoking the image builder:
+The builder accepts clean checkouts at the exact vLLM, B12X, and SparkCache
+commits recorded in `pins.json`. It rejects a different commit, Git tree,
+package tree, parent image, retained runtime file, or CUDA library. The B12X
+checkout replaces the inherited Python package as a complete tree; its source
+manifest is verified inside the image. Build the SparkCache snapshot library
+on an ARM64 CUDA 13 host before invoking the image builder:
 
 | Input | Source of truth |
 |---|---|
 | ARM64 parent image and retained compiled extensions | `pins.json` `parent` and `vllm` records |
 | vLLM source checkout | `pins.json` `vllm.commit`, tree, and package tree |
+| B12X source checkout | `pins.json` `b12x.repository`, commit, tree, and package tree |
 | SparkCache source checkout | `pins.json` `sparkcache.commit`, tree, package tree, and source hash |
 | CUDA placement and snapshot libraries | SparkCache source plus the SHA-256 values in `pins.json` |
+| SIRCL Python overlay | This checkout plus `runtime/public-overlay-files.json` |
+| SIRCL ARM64 native library | This checkout plus `sircl-public-build-receipt.json` and `pins.json` `sircl` hashes |
 | Short KV-metrics logger transform | [`patch_kv_metrics_logging.py`](patch_kv_metrics_logging.py) and its exact vLLM preimage |
 
 ```bash
@@ -297,16 +328,21 @@ cmake --build /source/sparkcache/sparkcache/native/build-cuda \
   --target spark_cache_snapshot
 ```
 
-The image builder verifies commits, trees, package subtrees, runtime files,
-the parent image, retained compiled extensions, and both SparkCache CUDA
-libraries before producing an image. It also applies the exact-preimage vLLM
-metrics formatter and records that transform in the source receipt.
+The image builder verifies commits, trees, package subtrees, runtime files, the
+parent image, retained compiled extensions, both SparkCache CUDA libraries, and
+the SIRCL overlay and native identities before producing an image. It records
+the public vLLM commits that supply the B12X KDA prefill path, workspace
+isolation, sparse MLA and DSA backends, C4 indexer binding, and replay-safe
+per-token cache lengths. It also applies the exact-preimage vLLM metrics
+formatter and records that transform in the source receipt.
 
 ```bash
 python runtime/glm53-flash-jj-r8-gb10/build_image.py \
   --vllm-source /source/vllm \
+  --b12x-source /source/b12x \
   --sparkcache-source /source/sparkcache \
   --snapshot-library /source/sparkcache/sparkcache/native/build-cuda/libspark_cache_snapshot.so \
+  --sircl-library ./build/spark-transport/libspark_transport_capi.so \
   --output-image sparkring-glm53-sparkcache:page-tail-v2-local \
   --receipt ./glm53-build-receipt.json
 ```
@@ -320,26 +356,25 @@ docker image inspect sparkring-glm53-sparkcache:page-tail-v2-local \
   --format '{{.Id}}'
 ```
 
-The public image below was produced from this builder. Its embedded-source,
-native-library, and registry-pull checks are recorded in
-[`async-store-completion-public-image-receipt.json`](async-store-completion-public-image-receipt.json).
+The older image recorded by
+[`async-store-completion-public-image-receipt.json`](async-store-completion-public-image-receipt.json)
+predates the embedded SIRCL bundle. That immutable receipt remains historical
+evidence for its own artifact and is not the canonical operator-image record.
 
 ## Page-tail operator image
 
 Pull the immutable Linux/ARM64 image used by the recommended DCP4 profile:
 
 ```text
-ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34
+ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f
 ```
 
-Its published tag is
-`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260903-async-store-completion`,
-and its local image ID is
-`sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4`.
+Its local image ID is
+`sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075`.
 See the
-[`public image receipt`](async-store-completion-public-image-receipt.json)
-for source identities, construction checks, source-composition validation, and
-limitations.
+[`public image receipt`](glm53-dcp4-sircl-public-image-receipt.json)
+for source identities, registry-pull verification, DCP4 startup and restore,
+concurrent ownership drain, failure containment, and limitations.
 
 ## Complete-snapshot rollback image
 
