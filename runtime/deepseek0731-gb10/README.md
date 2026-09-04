@@ -30,6 +30,9 @@ The GB10 contract:
   native two-dimensional Python producer;
 - semantically ports malformed-DSML recovery from vLLM pull request 52645,
   preserving the GB10 streaming parser's drop-token and skip-tool behavior;
+- accepts `reasoning.effort: "max"` on the Responses API while preserving the
+  other fields and validation supplied by the OpenAI-compatible reasoning
+  object;
 - patches the same Python/parser bytes in the installed package and retained
   source tree; and
 - by default rebuilds only `_C_stable_libtorch` from retained vLLM commit
