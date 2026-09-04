@@ -326,6 +326,11 @@ read-only memory checks. Reboot a rank if the configured headroom does not
 recover. Neither preflight nor the model launcher performs this host mutation
 automatically.
 
+The
+[`GLM-5.3 memory-preflight validation`](glm53-memory-preflight-live-validation.json)
+records the configured rejection, unsuccessful online compaction, post-reboot
+recovery, complete preflight pass, and public-image relaunch on four GB10 ranks.
+
 ### Distinguish readiness from scheduler liveness
 
 Rank zero exposes scheduler liveness on the configured

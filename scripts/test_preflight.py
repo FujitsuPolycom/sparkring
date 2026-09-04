@@ -45,6 +45,12 @@ from test_sparkring_site import six_ring_document  # noqa: E402
 EXAMPLE_PATH = (
     Path(__file__).resolve().parent / "config" / "exl3-r7-site.example.yaml"
 )
+MEMORY_LIVE_RECEIPT = (
+    Path(__file__).resolve().parents[1]
+    / "runtime"
+    / "glm53-flash-jj-r8-gb10"
+    / "glm53-memory-preflight-live-validation.json"
+)
 
 
 @pytest.fixture(scope="session")
@@ -1189,3 +1195,42 @@ def test_cli_no_evidence_writes_nothing(site, tmp_path, monkeypatch, capsys):
     ]) == 0
     assert not (tmp_path / "evidence").exists()
     assert "evidence=" not in capsys.readouterr().out
+
+
+def test_glm53_memory_preflight_receipt_records_rejection_recovery_and_launch():
+    receipt_text = MEMORY_LIVE_RECEIPT.read_text(encoding="utf-8")
+    receipt = json.loads(receipt_text)
+
+    assert receipt["schema"] == "sparkring-glm53-memory-preflight-live/v1"
+    assert receipt["status"] == "qualified"
+    assert receipt["thresholds"] == {
+        "minimum_available_bytes": 103079215104,
+        "contiguous_block_bytes": 33554432,
+        "minimum_equivalent_contiguous_blocks": 200,
+    }
+    before = receipt["inspection_before_preparation"]
+    assert before["checks_passed"] == 120
+    assert before["checks_total"] == 124
+    assert before["failed_check_ids"] == ["HOST.MEMORY_CONTIGUITY"]
+    assert before["failed_ranks"] == [0, 1, 2, 3]
+    assert before["equivalent_32mib_blocks_by_rank"] == [0, 0, 0, 0]
+
+    preparation = receipt["memory_preparation"]
+    assert preparation["status"] == "reboot-required"
+    assert preparation["equivalent_32mib_blocks_after_compaction_by_rank"] == [
+        1,
+        0,
+        1,
+        0,
+    ]
+
+    after = receipt["inspection_after_reboot"]
+    assert after["checks_passed"] == after["checks_total"] == 124
+    assert min(after["equivalent_32mib_blocks_by_rank"]) == 3686
+    assert after["result"] == "passed"
+    assert receipt["model_relaunch"]["sircl_capability_agreement_on_every_rank"]
+    assert receipt["model_relaunch"]["semantic_request"]["answer"] == "4"
+    assert receipt["model_relaunch"]["result"] == "passed"
+    assert "192.168." not in receipt_text
+    assert '"ssh_target"' not in receipt_text
+    assert '"hostname"' not in receipt_text

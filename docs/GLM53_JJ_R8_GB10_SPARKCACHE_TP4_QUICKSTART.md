@@ -409,6 +409,15 @@ then repeats the read-only checks. A `reboot-required` result means the failed
 rank should be rebooted before launching the model. SparkRing does not perform
 cache dropping, compaction, or reboot automatically.
 
+The
+[`GLM-5.3 memory-preflight validation`](../runtime/glm53-flash-jj-r8-gb10/glm53-memory-preflight-live-validation.json)
+records an eight-day four-rank GB10 deployment with 115.6–116.5 GiB available
+per rank but zero equivalent 32 MiB blocks. Online compaction recovered only
+zero or one block, so the preparation command required reboot. Reboot restored
+3,686–3,703 blocks per rank; all 124 preflight checks then passed, and the
+exact public image completed SIRCL capability agreement, API startup, and a
+semantic request.
+
 ## Start TP4
 
 Start all four ranks within the rendezvous timeout. Rank 0 uses argument `0`:
