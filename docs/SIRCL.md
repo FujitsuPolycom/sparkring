@@ -117,6 +117,15 @@ also rejects a rail interface that is identical to the declared management
 interface. Verify both ends of every direct link and rerun `--verify` after a
 host reboot before starting a four-rank service.
 
+The
+[`secondary-rail persistence validation`](../runtime/glm53-flash-jj-r8-gb10/sircl-secondary-rail-persistence-live-validation.json)
+records eight successful live rail verifications on four GB10 ranks after a
+reboot exposed non-persistent addresses. Each rail passed 23 profile, route,
+link, RDMA, GID, and peer-path checks while the public GLM-5.3 image remained
+healthy. The helper's confirmed `--execute` path has CPU-only regression
+coverage; the recorded profiles were created with equivalent NetworkManager
+commands before the helper was available.
+
 The Qwen3.8-27B EXL3 K5/K6 pair and cycle profiles use patched NCCL. Their
 width-5,120 tensor-parallel shape is unsupported by SIRCL, so neither loads a
 custom SparkRing collective adapter.

@@ -193,6 +193,10 @@ the [persistent SIRCL rail procedure](SIRCL.md#persistent-host-rail-configuratio
 for both secondary interfaces on every rank. The verifier checks the exact
 GID, associated Ethernet device, and a jumbo peer ping. Rerun its `--verify`
 mode after reboot and before starting TP4/DCP4.
+The
+[`secondary-rail persistence validation`](../runtime/glm53-flash-jj-r8-gb10/sircl-secondary-rail-persistence-live-validation.json)
+records the missing-GID startup rejection and eight successful live
+verifications after persistent profiles were configured.
 
 Before constructing native sessions, all ranks exchange the SIRCL artifact and
 protocol identities and report their local RDMA device and GID availability. A

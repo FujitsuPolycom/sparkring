@@ -14,6 +14,12 @@ import configure_sircl_rail as rail  # noqa: E402
 
 
 SCRIPT = Path(__file__).with_name("configure_sircl_rail.py")
+LIVE_RECEIPT = (
+    Path(__file__).resolve().parents[1]
+    / "runtime"
+    / "glm53-flash-jj-r8-gb10"
+    / "sircl-secondary-rail-persistence-live-validation.json"
+)
 
 
 def _base_args() -> list[str]:
@@ -412,3 +418,34 @@ def test_verification_rejects_inactive_or_non_ethernet_rdma_port(
     assert result["passed"] is False
     check = next(item for item in result["checks"] if item["id"] == check_id)
     assert check["ok"] is False
+
+
+def test_live_receipt_records_all_secondary_rails_without_site_identity() -> None:
+    receipt_text = LIVE_RECEIPT.read_text(encoding="utf-8")
+    receipt = json.loads(receipt_text)
+
+    assert receipt["schema"] == (
+        "sparkring-sircl-secondary-rail-persistence-live/v1"
+    )
+    assert receipt["status"] == "qualified"
+    assert receipt["implementation"]["helper_commit"] == (
+        "72a399031095b5ea3291c664552e84059dd74e74"
+    )
+    assert receipt["implementation"]["helper_sha256"] == (
+        "4ee947eb1f14351dc59071646f7ed381ff094abecbcde9d8c920366068d4278e"
+    )
+    assert receipt["reboot_observation"]["model_start_result"] == (
+        "rejected before API readiness"
+    )
+    verification = receipt["live_verification"]
+    assert verification["ranks"] == 4
+    assert verification["rails_per_rank"] == 2
+    assert verification["checks_per_rail"] == 23
+    assert verification["checks_passed"] == 184
+    assert verification["checks_failed"] == 0
+    assert verification["result"] == "passed"
+    assert receipt["serving_observation"]["result"] == "passed"
+    assert "192.168." not in receipt_text
+    assert "198.19." not in receipt_text
+    assert '"hostname"' not in receipt_text
+    assert '"ssh_target"' not in receipt_text
