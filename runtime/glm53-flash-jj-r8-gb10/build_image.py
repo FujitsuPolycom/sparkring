@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the source-pinned Linux/ARM64 GLM-5.3 and SparkCache image."""
+"""Build the source-pinned Linux/ARM64 GLM-5.3 operator image."""
 
 from __future__ import annotations
 
@@ -20,6 +20,9 @@ from typing import Any, Iterable
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 PINS = HERE / "pins.json"
+SIRCL_BUILD_RECEIPT = HERE / "sircl-public-build-receipt.json"
+PUBLIC_OVERLAY_BUILDER = ROOT / "runtime/build-public-overlay.py"
+PUBLIC_OVERLAY_SPEC = ROOT / "runtime/public-overlay-files.json"
 
 
 class BuildError(RuntimeError):
@@ -196,6 +199,59 @@ def sparkcache_source_sha256(root: Path) -> str:
     return digest.hexdigest()
 
 
+def prepare_sircl_bundle(
+    output: Path,
+    *,
+    native_library: Path,
+    pins: dict[str, Any],
+    build_receipt: Path = SIRCL_BUILD_RECEIPT,
+) -> dict[str, Any]:
+    """Create the embedded public overlay around one receipt-bound ARM64 library."""
+    record = pins["sircl"]
+    observed_tree = str(
+        run(("git", "-C", str(ROOT), "rev-parse", "HEAD:spark_transport"))
+    ).strip()
+    if observed_tree != record["spark_transport_tree"]:
+        raise BuildError(
+            "SIRCL source tree mismatch: "
+            f"{observed_tree} != {record['spark_transport_tree']}"
+        )
+    if file_sha256(PUBLIC_OVERLAY_SPEC) != record["public_overlay_spec_sha256"]:
+        raise BuildError("SIRCL public overlay specification digest mismatch")
+    if not build_receipt.is_file():
+        raise BuildError(f"SIRCL native build receipt is missing: {build_receipt}")
+    if file_sha256(build_receipt) != record["build_receipt_sha256"]:
+        raise BuildError("SIRCL native build receipt digest mismatch")
+    if not native_library.is_file():
+        raise BuildError(f"SIRCL native library is missing: {native_library}")
+    if file_sha256(native_library) != record["native_sha256"]:
+        raise BuildError("SIRCL native library digest mismatch")
+
+    run(
+        (
+            sys.executable,
+            PUBLIC_OVERLAY_BUILDER,
+            "--repo",
+            ROOT,
+            "--spec",
+            PUBLIC_OVERLAY_SPEC,
+            "--output",
+            output,
+        )
+    )
+    manifest = output / "sparkring-overlay-manifest.json"
+    if file_sha256(manifest) != record["overlay_manifest_sha256"]:
+        raise BuildError("generated SIRCL public overlay manifest digest mismatch")
+    shutil.copy2(native_library, output / "libspark_transport_capi.so")
+    return {
+        "spark_transport_tree": observed_tree,
+        "public_overlay_spec_sha256": record["public_overlay_spec_sha256"],
+        "overlay_manifest_sha256": record["overlay_manifest_sha256"],
+        "native_sha256": record["native_sha256"],
+        "build_receipt_sha256": record["build_receipt_sha256"],
+    }
+
+
 def inspect_image(engine: str, image: str) -> dict[str, Any]:
     documents = json.loads(str(run((engine, "image", "inspect", image))))
     if not isinstance(documents, list) or len(documents) != 1:
@@ -251,8 +307,10 @@ def prepare_context(
     context: Path,
     *,
     vllm_source: Path,
+    b12x_source: Path,
     sparkcache_source: Path,
     snapshot_library: Path,
+    sircl_library: Path,
     native_extensions: dict[str, Any],
     pins: dict[str, Any],
 ) -> dict[str, Any]:
@@ -260,10 +318,13 @@ def prepare_context(
         raise BuildError(f"build context already exists: {context}")
     (context / "bundle/sources").mkdir(parents=True)
     verify_git_source(vllm_source, pins["vllm"], "vllm")
+    verify_git_source(b12x_source, pins["b12x"], "b12x")
     verify_git_source(sparkcache_source, pins["sparkcache"], "sparkcache")
     vllm_output = context / "bundle/sources/vllm"
+    b12x_output = context / "bundle/sources/b12x"
     sparkcache_output = context / "bundle/sources/sparkcache"
     extract_git_subtree(vllm_source, pins["vllm"]["commit"], "vllm", vllm_output)
+    extract_git_subtree(b12x_source, pins["b12x"]["commit"], "b12x", b12x_output)
     run(
         (
             sys.executable,
@@ -292,11 +353,20 @@ def prepare_context(
             "SparkCache source digest mismatch: "
             f"{observed_source} != {pins['sparkcache']['source_tree_sha256']}"
         )
+    sircl = prepare_sircl_bundle(
+        context / "bundle/sircl",
+        native_library=sircl_library,
+        pins=pins,
+    )
     receipts = context / "bundle/receipts"
     receipts.mkdir(parents=True)
+    shutil.copy2(SIRCL_BUILD_RECEIPT, receipts / "sircl-build-receipt.json")
     manifests = {
         "vllm-source-manifest.json": source_manifest(
             vllm_output, "vllm", pins["vllm"]["commit"]
+        ),
+        "b12x-source-manifest.json": source_manifest(
+            b12x_output, "b12x", pins["b12x"]["commit"]
         ),
         "sparkcache-source-manifest.json": source_manifest(
             sparkcache_output, "sparkcache", pins["sparkcache"]["commit"]
@@ -316,6 +386,7 @@ def prepare_context(
         "verify_image.py",
         "warmup_dflash.py",
         "serve_with_warmup.py",
+        "scheduler_liveness.py",
     ):
         shutil.copy2(HERE / name, context / name)
     receipt = {
@@ -323,17 +394,43 @@ def prepare_context(
         "status": "implemented",
         "sources": {
             "vllm": {
+                "repository": pins["vllm"]["repository"],
                 "commit": pins["vllm"]["commit"],
                 "tree": pins["vllm"]["tree"],
+                "package_tree": pins["vllm"]["package_tree"],
+                "b12x_kda_prefill_upstream_commit": pins["vllm"][
+                    "b12x_kda_prefill_upstream_commit"
+                ],
+                "b12x_kda_workspace_isolation_upstream_commit": pins["vllm"][
+                    "b12x_kda_workspace_isolation_upstream_commit"
+                ],
+                "b12x_sparse_mla_dsa_upstream_commit": pins["vllm"][
+                    "b12x_sparse_mla_dsa_upstream_commit"
+                ],
+                "b12x_c4_indexer_binding_upstream_commit": pins["vllm"][
+                    "b12x_c4_indexer_binding_upstream_commit"
+                ],
+                "b12x_sparse_mla_cache_lengths_upstream_commit": pins["vllm"][
+                    "b12x_sparse_mla_cache_lengths_upstream_commit"
+                ],
                 "files": len(manifests["vllm-source-manifest.json"]["files"]),
             },
+            "b12x": {
+                "repository": pins["b12x"]["repository"],
+                "commit": pins["b12x"]["commit"],
+                "tree": pins["b12x"]["tree"],
+                "package_tree": pins["b12x"]["package_tree"],
+                "files": len(manifests["b12x-source-manifest.json"]["files"]),
+            },
             "sparkcache": {
+                "repository": pins["sparkcache"]["repository"],
                 "commit": pins["sparkcache"]["commit"],
                 "tree": pins["sparkcache"]["tree"],
                 "source_tree_sha256": observed_source,
                 "files": len(manifests["sparkcache-source-manifest.json"]["files"]),
             },
             "native_extensions": len(native_extensions["files"]),
+            "sircl": sircl,
         },
         "inputs": {
             relative: file_sha256(context / relative)
@@ -343,11 +440,16 @@ def prepare_context(
                 "verify_image.py",
                 "warmup_dflash.py",
                 "serve_with_warmup.py",
+                "scheduler_liveness.py",
                 "bundle/receipts/pins.json",
                 "bundle/receipts/vllm-source-manifest.json",
+                "bundle/receipts/b12x-source-manifest.json",
                 "bundle/receipts/sparkcache-source-manifest.json",
                 "bundle/receipts/native-extension-manifest.json",
+                "bundle/receipts/sircl-build-receipt.json",
                 "bundle/native/libspark_cache_snapshot.so",
+                "bundle/sircl/sparkring-overlay-manifest.json",
+                "bundle/sircl/libspark_transport_capi.so",
             )
         },
         "limitation": "This receipt verifies source preparation, not a built image.",
@@ -367,8 +469,18 @@ def prepare_context(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--vllm-source", type=Path, required=True)
+    parser.add_argument("--b12x-source", type=Path, required=True)
     parser.add_argument("--sparkcache-source", type=Path, required=True)
     parser.add_argument("--snapshot-library", type=Path, required=True)
+    parser.add_argument(
+        "--sircl-library",
+        type=Path,
+        required=True,
+        help=(
+            "ARM64 libspark_transport_capi.so matching "
+            "sircl-public-build-receipt.json"
+        ),
+    )
     parser.add_argument("--output-image", required=True)
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--engine", default="docker")
@@ -382,6 +494,12 @@ def main() -> int:
     validate_parent(parent, pins)
     native_extensions = record_native_extensions(engine, parent_ref)
     sparkring_revision = str(run(("git", "-C", str(ROOT), "rev-parse", "HEAD"))).strip()
+    tracked_inputs = (
+        str(HERE.relative_to(ROOT)),
+        "spark_transport",
+        "runtime/build-public-overlay.py",
+        "runtime/public-overlay-files.json",
+    )
     dirty = str(
         run(
             (
@@ -391,7 +509,7 @@ def main() -> int:
                 "status",
                 "--porcelain",
                 "--",
-                str(HERE.relative_to(ROOT)),
+                *tracked_inputs,
             )
         )
     ).strip()
@@ -408,8 +526,10 @@ def main() -> int:
         prepare_context(
             context,
             vllm_source=args.vllm_source.resolve(),
+            b12x_source=args.b12x_source.resolve(),
             sparkcache_source=args.sparkcache_source.resolve(),
             snapshot_library=args.snapshot_library.resolve(),
+            sircl_library=args.sircl_library.resolve(),
             native_extensions=native_extensions,
             pins=pins,
         )

@@ -9,6 +9,8 @@
   "spark_transport/integrations/vllm/spark_graph_status_reporter.py",
   "spark_transport/integrations/vllm/spark_persistent_output_ring.py",
   "spark_transport/integrations/vllm/spark_tp4_backend.py",
+  "spark_transport/integrations/vllm/spark_tp4_capability.py",
+  "spark_transport/integrations/vllm/spark_tp4_health_gate.py",
   "spark_transport/integrations/vllm/spark_tp4_port_namespace.py",
   "spark_transport/integrations/vllm/spark_tp4_query_contract.py",
   "spark_transport/integrations/vllm/spark_tp4_query_row_provider.py",

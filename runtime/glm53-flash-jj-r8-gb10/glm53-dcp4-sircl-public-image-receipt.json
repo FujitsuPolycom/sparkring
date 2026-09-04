@@ -1,0 +1,90 @@
+{
+  "schema": "sparkring-glm53-dcp4-sircl-public-image/v1",
+  "status": "qualified",
+  "date": "2026-09-03",
+  "artifact": {
+    "registry_reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f",
+    "image_id": "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075",
+    "platform": "linux/arm64",
+    "source_receipt_sha256": "6ef1ddd37fda9b797a8c71473db284c7d79f206207e43b38adc1ba5a1faa4359"
+  },
+  "sources": {
+    "sparkring_image_commit": "b358a818786d8506086aaaabb9afe464fa2ccb49",
+    "vllm_composition": "e02b174693e13859de61811b5e8cd13d5308e259",
+    "vllm_base": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+    "vllm_upstream_commits": [
+      "54371894ecaa77f2725a1c99e018f3fe93d358dd",
+      "57a6169a5c229a5ca8c24791762b1fc51c89e58d",
+      "d662a1b0890271915c25439f22247ee22234739a",
+      "d6687475a3f2dbe7848663fd3e5174d90921a3da",
+      "83cb22a0e3f7ec4d2fb43f6ead34ba4d4a87a634"
+    ],
+    "b12x": "9ae41c5cb9935d740456479954b0089f80bd2ef2",
+    "sparkcache": "66057174301a4759ca3a45207ea41016689449cb",
+    "sircl_source_tree": "2aac02232a9115037723aa1dd40483a5693a3e1e",
+    "sircl_native_sha256": "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc",
+    "sircl_overlay_manifest_sha256": "85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4"
+  },
+  "model": {
+    "target_repository": "local-inference-lab/GLM-5.3-Flash-NVFP4",
+    "target_revision": "520de24eabf507659eaef7c70f14fd584527facc",
+    "draft_repository": "incoai/GLM-5.3-Flash-DFlash2",
+    "draft_revision": "dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+    "served_name": "glm-5.3-flash"
+  },
+  "configuration": {
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 4,
+    "cp_kv_cache_interleave_size": 4,
+    "max_model_len": 1048576,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "prefill_schedule_interval": 2,
+    "kv_cache_dtype": "fp8",
+    "kv_cache_bytes_per_rank": 25769803776,
+    "kda_prefill_backend": "b12x",
+    "speculative_method": "dflash",
+    "speculative_tokens": 7,
+    "sparkcache_access_mode": "read-write",
+    "sparkcache_publication_schema": "page-tail-cow-v2",
+    "sparkcache_shared_prefix_lease_seconds": 300,
+    "async_capture_slot_bytes": 3221225472,
+    "transport": "dual-rail SIRCL for admitted TP collectives; patched NCCL 2.30.7 otherwise"
+  },
+  "validation": {
+    "image_construction": {
+      "result": "passed",
+      "details": "The in-image verifier matched 374 B12X source files, the vLLM and SparkCache manifests, 15 retained vLLM native extensions, the SparkCache CUDA libraries, the embedded SIRCL bundle, and patched NCCL."
+    },
+    "registry_pull": {
+      "result": "passed",
+      "details": "All four ranks pulled the immutable registry digest and resolved it to image ID sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075."
+    },
+    "tp4_start": {
+      "result": "passed",
+      "details": "Every rank accepted the SIRCL capability vote; B12X KDA, sparse MLA, NVFP4 MoE, CUDA graphs, DFlash2, and SparkCache initialized; rank zero served HTTP health successfully."
+    },
+    "persistent_restore": {
+      "result": "passed",
+      "tokens": 32768,
+      "worker_restore_ms": 185.3,
+      "worker_rate_tokens_per_second": 177000,
+      "client_seconds": 0.520,
+      "details": "The deterministic prompt entry was written before restart and restored by the exact registry image after restart."
+    },
+    "concurrent_store_ownership": {
+      "result": "passed",
+      "details": "One 129K-class request followed by eight concurrent 4K-class requests completed. Running requests, waiting requests, delayed ownership, retained pages, and uncertain ranks returned to zero."
+    },
+    "sircl_failure_containment": {
+      "result": "passed",
+      "record": "sircl-capability-health-live-validation.json",
+      "details": "Separate test-only builds forced fused device poison and rank-2 proxy exit. No API became ready and the four worker groups stopped without a post-failure collective hang."
+    }
+  },
+  "limitations": [
+    "The recorded latency samples are functional evidence, not a broad performance benchmark.",
+    "The failure-injection builds are test-only artifacts and are not included in the published image.",
+    "DCP1 and DCP2 use the same image but require their own launch and cache namespaces; this receipt records DCP4 serving."
+  ]
+}

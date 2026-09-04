@@ -15,20 +15,25 @@
     }
   },
   "operator_image": {
-    "reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34",
-    "image_id": "sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4",
+    "reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f",
+    "image_id": "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075",
     "platform": "linux/arm64",
     "status": "implemented",
-    "qualification_scope": "published and registry-pull verified; the embedded source composition passed TP4/DCP4 live validation",
-    "receipt": "async-store-completion-public-image-receipt.json"
+    "qualification_scope": "registry-pull verified on four ranks; GLM-5.3 Flash TP4/DCP4 passed embedded dual-rail SIRCL startup, concurrent SparkCache ownership drain, and persistent restart restore",
+    "receipt": "glm53-dcp4-sircl-public-image-receipt.json"
   },
   "vllm": {
     "repository": "https://github.com/FujitsuPolycom/vllm.git",
-    "commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
-    "tree": "1bb7f10a5838d348ca2fcb0134b05ad768d3340b",
-    "package_tree": "e5ed1db6292c7312571419e101ba719bb5ebb393",
-    "delta_patch_id": "44ad5586548465c002d0195d3739992795233ffe",
-    "proven_base_commit": "331573d20bd47e78327ed8d8b4d2e6d350bbb1ab",
+    "commit": "e02b174693e13859de61811b5e8cd13d5308e259",
+    "tree": "6caadd392ddea2dc90441d0a078da67f38d2fd3a",
+    "package_tree": "c91299c2303dc05abc85aa2133224a749657a583",
+    "delta_patch_id": "f3978963e81ccf3f932696e48079434223c365e3",
+    "proven_base_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+    "b12x_kda_prefill_upstream_commit": "54371894ecaa77f2725a1c99e018f3fe93d358dd",
+    "b12x_kda_workspace_isolation_upstream_commit": "57a6169a5c229a5ca8c24791762b1fc51c89e58d",
+    "b12x_sparse_mla_dsa_upstream_commit": "d662a1b0890271915c25439f22247ee22234739a",
+    "b12x_c4_indexer_binding_upstream_commit": "d6687475a3f2dbe7848663fd3e5174d90921a3da",
+    "b12x_sparse_mla_cache_lengths_upstream_commit": "83cb22a0e3f7ec4d2fb43f6ead34ba4d4a87a634",
     "community_release": "Jovian Judgement Community R10",
     "community_parent_commit": "55969c16d4da57da76ee5729f3102d4b2003833c",
     "sparse_pooled_index_commit": "adb69eac865a1a37081fa4edb9f7599a351f7aac",
@@ -45,16 +50,17 @@
     "retained_native_parent_source": "da4d7be6c97434f6942292ed8abbf4b32dc44355"
   },
   "b12x": {
-    "commit": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
-    "tree": "0bb58d0dcc10e29e00ff9850c0d719fca1aba5ad",
-    "package_tree": "6de9871d15dab093340695518fec0f744289e676"
+    "repository": "https://github.com/voipmonitor/b12x.git",
+    "commit": "9ae41c5cb9935d740456479954b0089f80bd2ef2",
+    "tree": "6e77441fe99f6ead7ff2cc2b6a8a37fa4e93e30b",
+    "package_tree": "12029e19da6543c5d225395f6da199d946b0972e"
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-    "commit": "9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4",
-    "tree": "3bbc72b04c1d6c4a381bd660d189ca7a54277b0f",
-    "package_tree": "3099c80be66ffb9c7ab690509f768dbf32babdd0",
-    "source_tree_sha256": "f8adb4ecdadd524e79cf1ef14e7f3d83d1f20ff07c79333b2c7c0d9ea12919d5",
+    "commit": "66057174301a4759ca3a45207ea41016689449cb",
+    "tree": "2448cf08d155ba90c95699c02c46863bbf9ce301",
+    "package_tree": "1fe4c76203be99c6a32640d8e2916889330d429b",
+    "source_tree_sha256": "80b049c647bc28fdc039021d08a7eb3276846c1616b77b9ba18ba2bc38da8d99",
     "cuda_placement_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
     "cuda_snapshot_sha256": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
     "manager_page_lease_contract_sha256": "480bdc463e3722cf28aa460021da689d12d9049ae9fd8238252fcf1db5544b53"
@@ -62,6 +68,14 @@
   "transport": {
     "nccl_version": "2.30.7",
     "nccl_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3"
+  },
+  "sircl": {
+    "repository": "https://github.com/FujitsuPolycom/sparkring.git",
+    "spark_transport_tree": "2aac02232a9115037723aa1dd40483a5693a3e1e",
+    "public_overlay_spec_sha256": "bc93d5069f2b3faaa7e87d2f24aadd9f7878bff67abd93eeec3a0975da46f6fd",
+    "overlay_manifest_sha256": "85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4",
+    "native_sha256": "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc",
+    "build_receipt_sha256": "2384e3fd6b9dc38735f0eb55c8ab03186583dec475fbc88b89ea3a3c51a13844"
   },
   "defaults": {
     "max_model_len": 1048576,

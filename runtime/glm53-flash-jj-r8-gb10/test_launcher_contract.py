@@ -14,7 +14,7 @@ ROOT = HERE.parents[1]
 LAUNCHER = HERE / "launch-rank.sh"
 ENVIRONMENT = HERE / "runtime.env.example"
 SIRCL_ENVIRONMENT = HERE / "sircl-fused.env.example"
-IMAGE_ID = "sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4"
+IMAGE_ID = "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075"
 
 
 def _defaults(path: Path = ENVIRONMENT) -> dict[str, str]:
@@ -41,12 +41,13 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["IMAGE_ID"] == IMAGE_ID
     assert values["IMAGE_REF"] == (
         "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
-        "sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34"
+        "sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f"
     )
     assert values["MAX_MODEL_LEN"] == "1048576"
     assert values["SERVED_MODEL_NAME"] == "glm-5.3-flash"
     assert values["DECODE_CONTEXT_PARALLEL_SIZE"] == "4"
     assert values["MAX_NUM_BATCHED_TOKENS"] == "8192"
+    assert values["KDA_PREFILL_BACKEND"] == "b12x"
     assert values["PREFILL_SCHEDULE_INTERVAL"] == "2"
     assert values["MAX_IMAGES_PER_PROMPT"] == "4"
     assert values["MAX_VIDEOS_PER_PROMPT"] == "1"
@@ -55,6 +56,10 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["ENABLE_PROMPT_TOKENS_DETAILS"] == "1"
     assert values["SPARKCACHE_ACCESS_MODE"] == "read-write"
     assert values["SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS"] == "300"
+    assert values["SPARKCACHE_CACHE_NAMESPACE"] == (
+        "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-"
+        "dcp4-page-tail-cow-v2"
+    )
     assert values["SPARKCACHE_MAX_SPAN_TOKENS"] == "1048576"
     assert values["CP_KV_CACHE_INTERLEAVE_SIZE"] == "auto"
     assert values["B12X_MLA_CKV_GATHER"] == "auto"
@@ -62,7 +67,7 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE"] == "single"
     assert values["VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE"] == "sync"
     assert values["JIT_CACHE_NAMESPACE"] == (
-        "glm53-flash-sm121-vllm-22ffe140-b12x-6255090a"
+        "glm53-flash-sm121-vllm-e02b1746-b12x-9ae41c5c"
     )
 
 
@@ -167,7 +172,7 @@ printf '%s  %s\n' "$hash" "$2"
         mm_index = arguments.index("--limit-mm-per-prompt")
         assert json.loads(arguments[mm_index + 1]) == {"image": 4, "video": 1}
         assert "--kv-transfer-config" in arguments
-        jit_namespace = "glm53-flash-sm121-vllm-22ffe140-b12x-6255090a"
+        jit_namespace = "glm53-flash-sm121-vllm-e02b1746-b12x-9ae41c5c"
         assert f"VLLM_CACHE_ROOT=/cache/jit/vllm/{jit_namespace}" in arguments
         assert (
             f"B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x/{jit_namespace}"
@@ -465,7 +470,7 @@ def test_public_operator_documents_use_portable_examples_and_resolving_links() -
 
     quickstart = documents[-1].read_text(encoding="utf-8")
     runtime_readme = documents[0].read_text(encoding="utf-8")
-    assert "sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34" in quickstart
+    assert "sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f" in quickstart
     assert "sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762" in quickstart
     assert "DECODE_CONTEXT_PARALLEL_SIZE=4  # change to 1 or 2" in quickstart
     assert "fanout_image_archive.py" in quickstart
@@ -489,7 +494,11 @@ def _launcher_fixture(tmp_path: Path) -> tuple[Path, Path, dict[str, Path]]:
     docker.write_text(
         """#!/bin/sh
 if [ "$1" = image ] && [ "$2" = inspect ]; then
-  printf '%s\n' "$EXPECTED_IMAGE_ID"
+  case "$4" in
+    *sircl.native-sha256*) printf '%s\n' "$EXPECTED_SIRCL_NATIVE_SHA256" ;;
+    *sircl.manifest-sha256*) printf '%s\n' "$EXPECTED_SIRCL_MANIFEST_SHA256" ;;
+    *) printf '%s\n' "$EXPECTED_IMAGE_ID" ;;
+  esac
 elif [ "$1" = container ] && [ "$2" = inspect ]; then
   exit 1
 elif [ "$1" = run ]; then
@@ -549,6 +558,14 @@ def _run_launcher(
                 f"PATH={_bash_path(fake_bin)}:$PATH",
                 f"export CAPTURE_PATH={_bash_path(capture)}",
                 f"export EXPECTED_IMAGE_ID={IMAGE_ID}",
+                (
+                    "export EXPECTED_SIRCL_NATIVE_SHA256="
+                    "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc"
+                ),
+                (
+                    "export EXPECTED_SIRCL_MANIFEST_SHA256="
+                    "85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4"
+                ),
                 "IMAGE_REF=test-image:r8",
                 f"IMAGE_ID={IMAGE_ID}",
                 *extra_lines,
@@ -635,7 +652,7 @@ def test_fused_sircl_overlay_is_complete_and_sanitized() -> None:
     values = _defaults(SIRCL_ENVIRONMENT)
     assert values == {
         "SIRCL_ENABLED": "1",
-        "SIRCL_BUNDLE_HOST_ROOT": "/REPLACE/ABSOLUTE/SIRCL_BUNDLE_PATH",
+        "SIRCL_BUNDLE_HOST_ROOT": None,
         "SPARK_TP4_PEER0": "REPLACE_WITH_PRIMARY_PEER_0_ADDRESS",
         "SPARK_TP4_PEER1": "REPLACE_WITH_PRIMARY_PEER_1_ADDRESS",
         "SPARK_TP4_DEVICE0": "rocep1s0f0",
@@ -677,6 +694,53 @@ def test_fused_sircl_overlay_is_complete_and_sanitized() -> None:
         assert forbidden not in raw
 
 
+def test_launcher_uses_the_image_embedded_sircl_bundle_by_default(
+    tmp_path: Path,
+) -> None:
+    result, arguments = _run_launcher(
+        tmp_path,
+        "sircl-embedded",
+        f"source '{_bash_path(SIRCL_ENVIRONMENT)}'",
+        "SPARK_TP4_PEER0=192.0.2.11",
+        "SPARK_TP4_PEER1=192.0.2.13",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0=192.0.2.12",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1=192.0.2.14",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0=rocep2s0f0",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1=rocep2s0f1",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not any(argument.endswith(":/opt/spark-sircl:ro") for argument in arguments)
+    assert "PYTHONPATH=/opt/spark-sircl" in arguments
+    assert "SPARK_TP4_LIBRARY=/opt/spark-sircl/libspark_transport_capi.so" in arguments
+    assert (
+        "org.sparkring.sircl.native-sha256="
+        "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc"
+    ) in arguments
+    assert (
+        "org.sparkring.sircl.manifest-sha256="
+        "85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4"
+    ) in arguments
+
+
+def test_launcher_rejects_an_image_without_embedded_sircl_labels(
+    tmp_path: Path,
+) -> None:
+    result, arguments = _run_launcher(
+        tmp_path,
+        "sircl-not-embedded",
+        "SIRCL_ENABLED=1",
+        "SPARK_TP4_PEER0=192.0.2.11",
+        "SPARK_TP4_PEER1=192.0.2.13",
+        "export EXPECTED_SIRCL_NATIVE_SHA256=",
+        "export EXPECTED_SIRCL_MANIFEST_SHA256=",
+    )
+
+    assert result.returncode == 78
+    assert "image has no receipt-bound embedded SIRCL bundle" in result.stderr
+    assert arguments == []
+
+
 def _sircl_bundle(tmp_path: Path) -> Path:
     bundle = tmp_path / "sircl-bundle"
     bundle.mkdir()
@@ -687,6 +751,8 @@ def _sircl_bundle(tmp_path: Path) -> Path:
         "spark_graph_status_reporter.py",
         "spark_persistent_output_ring.py",
         "spark_tp4_backend.py",
+        "spark_tp4_capability.py",
+        "spark_tp4_health_gate.py",
         "spark_tp4_port_namespace.py",
         "spark_tp4_query_contract.py",
         "spark_tp4_query_row_provider.py",
@@ -697,7 +763,7 @@ def _sircl_bundle(tmp_path: Path) -> Path:
     return bundle
 
 
-def test_launcher_mounts_and_configures_width4096_sircl(tmp_path: Path) -> None:
+def test_launcher_accepts_read_only_external_sircl_override(tmp_path: Path) -> None:
     bundle = _sircl_bundle(tmp_path)
 
     result, arguments = _run_launcher(

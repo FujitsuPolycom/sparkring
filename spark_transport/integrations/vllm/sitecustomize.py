@@ -38,6 +38,11 @@ if os.getenv("VLLM_SPARK_TP4_MODE"):
 
     _install_required("TP4 all-reduce backend", install_tp4)
 
+if os.getenv("SPARK_TP4_HEALTH_GATE") == "1":
+    from spark_tp4_health_gate import install as install_tp4_health_gate
+
+    _install_required("TP4 post-output health gate", install_tp4_health_gate)
+
 
 if os.getenv("VLLM_SPARK_TP4_VOCAB_MODE"):
     from spark_tp4_vocab_allgather_backend import (
