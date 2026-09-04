@@ -6,13 +6,13 @@
   "source": {
     "repository": "https://github.com/FujitsuPolycom/sparkring.git",
     "spark_transport_tree": "8051e4e432d24d62bb3ee79573b5adde4e36f5fb",
-    "public_overlay_spec_sha256": "440f954a7ec485bf17adaecc7c28a22965bd32eadca76438f310501c57514bc7"
+    "public_overlay_spec_sha256": "bc93d5069f2b3faaa7e87d2f24aadd9f7878bff67abd93eeec3a0975da46f6fd"
   },
   "overlay": {
     "schema": "sparkring-public-overlay/v1",
-    "files": 12,
+    "files": 14,
     "manifest": "sparkring-overlay-manifest.json",
-    "manifest_sha256": "8a48ba85afcea3959aadfd715c0ed4c55f1e3e95ac62dc362890b6efa0bb210f"
+    "manifest_sha256": "a50dc6097b721c9c813033a7ba9bee6fffa425fa87c3660a40d475f8e58dda50"
   },
   "native": {
     "artifact": "libspark_transport_capi.so",
