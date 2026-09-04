@@ -22,6 +22,13 @@ runtime they describe.
 | [`public-overlay-files.json`](public-overlay-files.json) | Explicit source-file allowlist for the public overlay |
 | [`test_public_overlay.py`](test_public_overlay.py) | Offline contract coverage for allowlisting and manifest generation |
 
+The path `runtime/glm53-flash-jj-r8-gb10/` and JSON schema names beginning
+with `sparkring-glm53-jj-r8-gb10` are stable filesystem and interface
+locators. Their `r8` component does not identify the embedded vLLM sources.
+The directory's [`pins.json`](glm53-flash-jj-r8-gb10/pins.json) records the
+GLM source composition, including the vLLM commit associated with the Local
+Inference Lab community release named `Jovian Judgement Community R10`.
+
 ## GLM-5.3 Flash operator image
 
 The [`GLM-5.3 GB10 runtime`](glm53-flash-jj-r8-gb10/README.md) is the operator

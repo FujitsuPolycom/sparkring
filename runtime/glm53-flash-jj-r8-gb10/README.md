@@ -3,11 +3,18 @@
 This directory builds and runs one Linux/ARM64 image for GLM-5.3 Flash on four
 NVIDIA GB10 systems. The runtime combines Local Inference Lab's GLM-specific
 vLLM work, BF16 DFlash2 speculation, B12X kernels, patched NCCL,
-fastsafetensors, and SparkCache. The current composition also embeds the
-source-bound SIRCL Python overlay and ARM64 native library. The pinned Local
-Inference Lab source line is named
+fastsafetensors, and SparkCache. The operator image also embeds the source-bound
+SIRCL Python overlay and ARM64 native library. The pinned Local Inference Lab
+source line is named
 `Jovian Judgement Community R10` in [`pins.json`](pins.json). One image supports
 TP4 with DCP1, DCP2, or DCP4.
+
+The path `runtime/glm53-flash-jj-r8-gb10/` and JSON schema names beginning
+with `sparkring-glm53-jj-r8-gb10` are stable compatibility locators. Their
+`r8` component identifies the filesystem and JSON interface family; it does
+not identify the embedded vLLM source composition. The exact vLLM commit and
+the `community_release` field in [`pins.json`](pins.json) define that source
+composition.
 
 Local Inference Lab supplies the model quantization and the primary runtime
 work that makes this profile practical:
@@ -15,9 +22,15 @@ work that makes this profile practical:
 - [`local-inference-lab/GLM-5.3-Flash-NVFP4`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4)
   is the target checkpoint;
 - [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm/tree/dev/jovian-judgement)
-  supplies the GLM runtime and scheduler work;
-- [`voipmonitor/b12x`](https://github.com/voipmonitor/b12x)
-  supplies the source-pinned GB10 kernel package installed by this builder.
+  supplies the upstream GLM runtime and scheduler work. The builder consumes
+  the public
+  [`sparkring-glm53-flash-gb10-e02b1746`](https://github.com/FujitsuPolycom/vllm/tree/sparkring-glm53-flash-gb10-e02b1746)
+  tag in the FujitsuPolycom vLLM fork; that tag resolves to commit
+  `e02b174693e13859de61811b5e8cd13d5308e259` in `pins.json`;
+- [`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x)
+  is the upstream B12X project. The builder installs commit `9ae41c5c` from the
+  exact source fork recorded as
+  [`voipmonitor/b12x`](https://github.com/voipmonitor/b12x) in `pins.json`.
 
 The external BF16 draft is
 [`incoai/GLM-5.3-Flash-DFlash2`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2).
@@ -154,14 +167,14 @@ ports for each admitted capacity Q1024/Q2048/Q4096/Q8192.
 SIRCL's two transport slots are independent from SparkCache's two 3-GiB
 asynchronous page-capture slots and two 256-MiB restore arenas.
 
-#### Current evidence
+#### Recorded functional evidence
 
 The exact public image passed four-rank DCP4 startup with the embedded bundle.
 Every rank accepted the capability vote; a 32,768-token SparkCache entry
 restored after restart; a 129K-class request followed by eight concurrent
 4K-class requests returned scheduler and cache ownership to idle. Test-only
 builds also forced fused-device poison and a rank-2 proxy exit: no API became
-ready and all four worker groups stopped without a later collective hang. The
+ready and all four worker groups stopped without a collective hang. The
 [`public-image receipt`](glm53-dcp4-sircl-public-image-receipt.json) records
 these checks and their limits. They establish functional qualification, not a
 broad transport-performance comparison.
@@ -174,15 +187,16 @@ is created.
 
 After vLLM's existing output synchronization, a host-only native health check
 prevents synchronous or asynchronous model output from leaving an unhealthy
-worker. The check does not synchronize CUDA. Worker failure is fail-stop:
-vLLM's multiprocess monitor terminates the peer workers. Four-rank fault
-injection must verify that teardown completes without a collective hang before
-the transport is marked qualified.
+worker. The check does not synchronize CUDA. When one worker reports a SIRCL
+error, vLLM's multiprocess monitor terminates every peer worker. Four-rank
+fault injection must show that every worker terminates without a collective
+hang before that image and profile receive functional qualification.
 
 ### NCCL fallback
 
-Patched NCCL 2.30.7 handles every collective outside the SIRCL admission
-table. The launcher selects the ring algorithm over RoCE/IB, the
+Patched NCCL 2.30.7 handles every collective outside the SIRCL
+supported-signature table. The launcher selects the ring algorithm over
+RoCE/IB, the
 `LL,LL128,Simple` protocol set, four minimum and maximum channels, cross-NIC
 routing, and subnet-aware routing. `NCCL_SWITCHLESS_RING_ONLY=1` rejects a
 topology that cannot use the direct cycle. cuMem is disabled, and the P2P level
@@ -215,6 +229,10 @@ format cannot be mistaken for entries from another.
 | `tail-cow-v2` | One authenticated base plus a flat descriptor chain of changed page objects | Recommended source-built TP4/DCP4 profile for growing conversations |
 
 `tail-cow-v2` captures only the changed physical pages after a reusable base.
+SparkCache translates the operator setting `tail-cow-v2` to the cache-identity
+wire value `page-tail-cow-v2`; the longer name appears in the DCP4
+storage-directory name so an operator can see which stored identity it
+contains.
 The publication worker encodes those sparse pages directly instead of
 reconstructing and comparing another complete snapshot. Restore resolves the
 flat descriptors onto the authenticated base, which keeps lookup depth
@@ -233,10 +251,10 @@ meaning. Use these complete values:
 | DCP4 page tails | `glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp4-page-tail-cow-v2` |
 
 These names prevent vLLM `e02b1746` with B12X `9ae41c5c` from discovering
-entries through an older runtime's default directory. Existing directories
-remain on disk, but operators must not rename or copy them into a new
-source-bound root. Recompute the prompt with the current runtime to populate
-the new root. The published complete-snapshot rollback retains its historical
+entries written by a different source composition. Other directories remain
+on disk, but operators must not rename or copy them into this source-bound
+root. Recompute the prompt with vLLM `e02b1746` and B12X `9ae41c5c` to populate
+the matching root. The complete-snapshot recovery image retains its assigned
 `glm53-flash-dcp4-snapshot-v1` directory and must use the launcher named by its
 receipt.
 
@@ -356,10 +374,11 @@ docker image inspect sparkring-glm53-sparkcache:page-tail-v2-local \
   --format '{{.Id}}'
 ```
 
-The older image recorded by
+The image recorded by
 [`async-store-completion-public-image-receipt.json`](async-store-completion-public-image-receipt.json)
-predates the embedded SIRCL bundle. That immutable receipt remains historical
-evidence for its own artifact and is not the canonical operator-image record.
+does not contain the embedded SIRCL bundle. That immutable receipt describes
+only its named artifact; `glm53-dcp4-sircl-public-image-receipt.json` describes
+the DCP4 operator image documented here.
 
 ## Page-tail operator image
 

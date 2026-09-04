@@ -102,7 +102,7 @@
   "transport": {
     "backend": "dual-rail-sircl-with-patched-nccl-fallback",
     "capability_vote": true,
-    "output_health_gate": true,
+    "output_health_check": true,
     "embedded_bundle": true,
     "nccl_version": "2.30.7",
     "topology": "four-rank switchless direct-cable cycle",

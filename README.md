@@ -38,7 +38,7 @@ launches Ring Doctor before any model profile is selected.
 | Package | Purpose | When to use it |
 |---|---|---|
 | [`sparkring-glm53-sparkcache`](https://github.com/users/FujitsuPolycom/packages/container/package/sparkring-glm53-sparkcache) | Published Linux/ARM64 GLM-5.3 operator image with source-pinned vLLM, B12X GB10 kernels, DFlash2, and optional SparkCache. | Use the immutable digest from the [GLM-5.3 quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md). |
-| [`sparkring-glm53-runtime`](https://github.com/users/FujitsuPolycom/packages/container/package/sparkring-glm53-runtime) | Source-pinned GLM-5.3 runtime bases used to construct later operator images. | Use only when a source-build procedure names an exact digest. |
+| [`sparkring-glm53-runtime`](https://github.com/users/FujitsuPolycom/packages/container/package/sparkring-glm53-runtime) | Source-pinned GLM-5.3 runtime bases used as operator-image construction inputs. | Use only when a source-build procedure names an exact digest. |
 | [`gb10-vllm-serving`](https://github.com/users/FujitsuPolycom/packages/container/package/gb10-vllm-serving) | Profile-specific GB10 serving images, including published DeepSeek inputs. | Use only when a model profile names an exact digest. |
 
 Package tags are convenient labels, not reproducible identities. Deployment
@@ -85,8 +85,8 @@ The [public-image receipt](runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-publi
 records the image ID, source identities, registry-pull verification, and exact
 functional scope.
 
-The previous complete-snapshot image remains available as the rollback named
-in the quickstart.
+The quickstart also identifies a complete-snapshot recovery image by immutable
+digest and names the source revision required by its launcher.
 
 ### Other model profiles
 
@@ -112,7 +112,7 @@ temperature 1.0; decode values are aggregate throughput across active streams.
 
 | Profile | Prefill | C1 decode | C8 decode | Highest tested decode | Coding peak |
 |---|---:|---:|---:|---:|---:|
-| [GLM-5.3 Flash DCP4 preferred default · 4 Sparks](performance/records/glm53-flash/dcp4-24g-default-20260901.md) | 2,513 | 40.20 | 116.73 | C16: 168.39 | 71.67 |
+| [GLM-5.3 Flash B12X-KDA DCP4 public image · 4 Sparks](performance/records/glm53-flash/b12x-kda-dcp4-20260903.md) | 2,649 | 37.97 | — | C4: 90.36 | — |
 | [GLM-5.2 EXL3 3.5-bpw · 4 Sparks](performance/records/glm-3.5bpw/normalized-base-20260822.md) | 671 | 20.15 | 64.13 | C8: 64.13 | 25.39 |
 | [DeepSeek-V4-Flash DSpark · 2 Sparks](performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md) | 1,926 | 58.36 | 162.69 | C32: 307.13 | 59.31 |
 | [DeepSeek-V4-Flash-0731 · 4 Sparks](performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md) | 2,488 | 68.84 | 265.16 | C32: 508.11 | 95.77 |

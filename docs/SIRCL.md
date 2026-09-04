@@ -27,11 +27,15 @@ qualification. A four-rank matched comparison established native replay,
 API health, and zero overflow for the target and DSpark capture path; see the
 [DeepSeek SIRCL evidence record](../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
 
-The current GLM-5.3 Flash GB10 image composition embeds a source-bound SIRCL
-bundle for its implemented performance-testing lane. A developer can replace
-that bundle with a read-only host mount. Its captured width-4096 path and eager
-fused-prefill path have separate
-admission gates. The fused path accepts contiguous TP4 BF16 `[Q, 4096]`
+The GLM-5.3 Flash GB10 operator image embeds a source-bound SIRCL bundle. The
+exact public image is **qualified** for the recorded four-rank TP4/DCP4
+functional checks: capability agreement, startup, semantic inference,
+persistent SparkCache restore, concurrent store-ownership drain, and injected
+failure containment. Its artifact-bound throughput matrix is
+**research-only**; no broad SIRCL-versus-NCCL performance comparison has been
+established. A developer can replace the embedded bundle with a read-only host
+mount. Its captured width-4096 path and eager fused-prefill path use separate
+signature checks. The fused path accepts contiguous TP4 BF16 `[Q, 4096]`
 tensors from Q128 through Q8192 and uses two operation slots. Unsupported
 signatures remain on NCCL. The GLM-5.3 profile captures Q8/Q16/Q32/Q64/Q128;
 those captured collectives use graph-native SIRCL with direct doorbells. The
@@ -41,7 +45,9 @@ arenas. See the
 [vLLM adapter contract](../spark_transport/integrations/vllm/README.md). The
 [public SIRCL build receipt](../runtime/glm53-flash-jj-r8-gb10/sircl-public-build-receipt.json)
 binds the native build and single-node test identity; it does not establish a
-four-rank serving result.
+four-rank serving result. The
+[operator-image receipt](../runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json)
+records the four-rank functional result and its limits.
 
 Before native construction, the GLM-5.3 adapter exchanges a capability record
 over the CPU process group. Shared protocol and artifact identities must match,
