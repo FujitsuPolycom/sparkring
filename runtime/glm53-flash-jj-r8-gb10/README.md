@@ -1,11 +1,12 @@
 # GLM-5.3 Flash GB10 operator image
 
 This directory builds and runs one Linux/ARM64 image for GLM-5.3 Flash on four
-NVIDIA GB10 systems. The image combines Local Inference Lab's GLM-specific
-vLLM work, BF16 DFlash2 speculation, B12X kernels, switchless NCCL,
-fastsafetensors, and SparkCache. The pinned Local Inference Lab source line is
-named `Jovian Judgement Community R10` in [`pins.json`](pins.json). One image
-supports TP4 with DCP1, DCP2, or DCP4.
+NVIDIA GB10 systems. The runtime combines Local Inference Lab's GLM-specific
+vLLM work, BF16 DFlash2 speculation, B12X kernels, patched NCCL,
+fastsafetensors, and SparkCache. It adds SIRCL when the separately built bundle
+is mounted. The pinned Local Inference Lab source line is named
+`Jovian Judgement Community R10` in [`pins.json`](pins.json). One image supports
+TP4 with DCP1, DCP2, or DCP4.
 
 Local Inference Lab supplies the model quantization and the primary runtime
 work that makes this profile practical:
@@ -36,6 +37,7 @@ The recommended profile uses:
 |---|---:|
 | operator image ID | `sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4` |
 | topology | TP4/DCP4 |
+| collective transport | SIRCL with capability and health checks; patched NCCL fallback |
 | compute and quantization | BF16 compute with ModelOpt mixed quantization |
 | maximum model length | 1,048,576 tokens |
 | batched-token budget | 8,192 tokens |
@@ -61,15 +63,16 @@ change every value in the environment file without rebuilding the image.
 `SPARKCACHE_ENABLED=0` omits the persistent connector while retaining vLLM's
 GPU prefix cache; `SPARKCACHE_ENABLED=1` enables both layers.
 
-### Implemented SIRCL performance-testing lane
+### Preferred DCP4 transport: SIRCL with capability and health checks
 
-**Status: implemented.** `runtime.env.example` keeps the portable NCCL profile
-enabled by default. The sanitized
-[`sircl-fused.env.example`](sircl-fused.env.example) overlay enables
-the graph-native and fused eager paths with the same non-site settings on every
-rank. Peer addresses, device names, and the bundle path remain site inputs.
+**Status: implemented; live four-rank qualification is pending.** The base
+[`runtime.env.example`](runtime.env.example) keeps patched NCCL enabled because
+SIRCL requires a rank-specific bundle, peer addresses, and RDMA devices. For
+DCP4, append [`sircl-fused.env.example`](sircl-fused.env.example) to select the
+preferred SIRCL graph-native and fused eager paths. The overlay uses the same
+non-site settings on every rank; only the bundle path and fabric inputs vary.
 
-#### Build the source-bound bundle
+#### Build the bundle
 
 An enabled rank mounts one bundle containing the allowlisted Python overlay,
 its generated manifest, and `libspark_transport_capi.so`. Build all three from
@@ -145,13 +148,14 @@ ports for each admitted capacity Q1024/Q2048/Q4096/Q8192.
 SIRCL's two transport slots are independent from SparkCache's two 3-GiB
 asynchronous page-capture slots and two 256-MiB restore arenas.
 
-#### Qualification boundary
+#### Current evidence
 
-The SIRCL performance-testing lane is implemented but not qualified as the
-recommended dual-rail profile. Qualification requires a four-rank deployment
-of the exact public bundle, cold-start and restart checks, deterministic native
-and model-output correctness, a receipt-backed NCCL/SIRCL comparison with
-transport counters, and fault containment.
+The capability and health checks and both SIRCL paths are implemented. The
+public build receipt proves the bundle identity and its single-node native
+tests; it does not prove a four-rank serving result. Live qualification of the
+exact bundle still requires a four-rank start and restart, native and model
+output checks, a recorded NCCL/SIRCL comparison with transport counters, and
+fault injection.
 
 The launcher enables a rank-wide capability vote before native construction.
 Every rank reports the native and overlay identities, shared protocol geometry,
@@ -161,8 +165,7 @@ is created.
 
 After vLLM's existing output synchronization, a host-only native health check
 prevents synchronous or asynchronous model output from leaving an unhealthy
-worker. The check does not synchronize CUDA. Live fault injection remains
-required before this lane becomes the recommended profile.
+worker. The check does not synchronize CUDA.
 
 ### NCCL fallback
 

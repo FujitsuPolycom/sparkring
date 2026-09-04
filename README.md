@@ -67,6 +67,15 @@ limit; the linked quickstart records its exact image and conditions.
 capacity among these profiles and is the recorded asynchronous SparkCache
 deployment.**
 
+The preferred DCP4 transport is **SIRCL with capability and health checks**.
+Before native sessions are created, the four ranks must agree on the SIRCL
+artifacts and protocol and prove their local RDMA inputs. Native health is
+checked after vLLM's existing output synchronization. Patched NCCL remains the
+explicit fallback and handles collective signatures that SIRCL does not admit.
+This SIRCL configuration is implemented, but live qualification of the exact
+four-rank bundle is still pending; the benchmark below records the existing
+patched-NCCL deployment rather than a SIRCL result.
+
 The operator image is published at
 `ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34`
 and supports both caching methods.

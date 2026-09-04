@@ -6,11 +6,13 @@ Linux/ARM64 image supports DCP1, DCP2, and DCP4. The default request limit is
 The operator can enable persistent SparkCache or use vLLM's GPU prefix cache
 alone without changing the image.
 
-The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV per rank,
-scheduler interval two, BF16 DFlash2 at depth seven, and SparkCache's flat
-copy-on-write page tails. Growing conversations write changed pages instead
-of another complete cached context. An earlier complete-snapshot image remains
-available as a recovery artifact.
+The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV per rank, SIRCL with
+capability and health checks, scheduler interval two, BF16 DFlash2 at depth
+seven, and SparkCache's flat copy-on-write page tails. Patched NCCL is the
+fallback transport and handles collective signatures outside SIRCL's admission
+rules. Growing conversations write changed pages instead of another complete
+cached context. An earlier complete-snapshot image remains available as a
+recovery artifact.
 
 The image does not contain model checkpoints. It mounts the exact
 [`local-inference-lab/GLM-5.3-Flash-NVFP4`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4)
@@ -149,11 +151,11 @@ Replace these five site values:
 - `DFLASH_MODEL_HOST_PATH`: the BF16 draft directory;
 - `CACHE_HOST_ROOT`: a writable rank-local JIT and SparkCache directory.
 
-This configuration leaves SIRCL disabled and uses patched NCCL. To enable the
-implemented graph-native and fused eager SIRCL performance-testing paths,
-build the source-bound bundle in the
-[runtime SIRCL instructions](../runtime/glm53-flash-jj-r8-gb10/README.md#implemented-sircl-performance-testing-lane),
-then append the sanitized transport overlay:
+The base environment leaves SIRCL disabled because the bundle, peer addresses,
+and RDMA devices are rank-specific. In that form, patched NCCL is the complete
+fallback. For the preferred DCP4 transport, build the SIRCL bundle in the
+[runtime SIRCL instructions](../runtime/glm53-flash-jj-r8-gb10/README.md#preferred-dcp4-transport-sircl-with-capability-and-health-checks),
+then append the transport overlay:
 
 ```bash
 cat runtime/glm53-flash-jj-r8-gb10/sircl-fused.env.example >> "$HOME/glm53-flash.env"
@@ -166,6 +168,18 @@ and secondary peer addresses, and RDMA devices. The overlay sets
 CPU assignments, control-port bases, and timeouts. Use byte-identical bundles
 on all four ranks. The runtime guide specifies the resulting SIRCL/NCCL routing
 and mapped-memory allocation.
+
+Before constructing native sessions, all ranks exchange the SIRCL artifact and
+protocol identities and report their local RDMA device and GID availability. A
+missing capability or shared mismatch stops all ranks. After vLLM synchronizes
+model output, a host-only check stops output from an unhealthy SIRCL session;
+the check does not synchronize CUDA.
+
+**Status:** the capability and health checks are implemented, but live
+qualification of the exact public bundle on four ranks is still pending. The
+published DCP4 results in this guide used patched NCCL and are not SIRCL
+performance evidence. To use the fallback, do not append the overlay and keep
+`SIRCL_ENABLED=0`; patched NCCL then handles every collective.
 
 The default OpenAI-compatible model name is `glm-5.3-flash`. Override
 `SERVED_MODEL_NAME` only when the site needs a distinct routing name.
