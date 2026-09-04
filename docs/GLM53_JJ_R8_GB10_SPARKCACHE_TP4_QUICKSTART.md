@@ -348,6 +348,39 @@ Check the OpenAI-compatible API after rank 0 reports readiness:
 curl --fail http://rank0.example.net:8015/v1/models
 ```
 
+API `/health` is a readiness check. It can remain healthy when the scheduler
+cannot admit waiting requests. Use the separate rank-zero liveness endpoint
+for routing and operator alerts:
+
+```bash
+curl --fail http://rank0.example.net:8016/liveness
+curl --fail http://rank0.example.net:8016/metrics
+```
+
+The liveness endpoint returns HTTP 503 when zero running requests and one or
+more waiting requests persist for 60 seconds, when its vLLM metrics sample is
+stale, or when SparkCache cannot prove capture-page ownership. Nonzero idle KV
+is warning-only until it remains unchanged beyond the configured 330-second
+interval.
+
+Before directing normal traffic to the service, run a concurrent prompt gate.
+The requests disable model thinking, put a unique nonce at the front of every
+prompt, and require request, capture, and KV usage to return to their measured
+idle baseline:
+
+```bash
+python scripts/glm53_liveness_gate.py \
+  --endpoint http://rank0.example.net:8015 \
+  --model glm-5.3-flash \
+  --concurrency 4 \
+  --prompt-words 100000 \
+  --cycles 3 \
+  --output ./glm53-liveness-gate.json
+```
+
+Add `--api-key-file /secure/api-keys` when the API requires authentication.
+Use `--duration-seconds 900` for a 15-minute soak.
+
 When SparkCache is enabled, INFO logs summarize the four ranks in three short
 lines:
 
