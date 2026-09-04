@@ -113,6 +113,10 @@ Tp4CAllreduceHandle* tp4_allreduce_handle(spark_tp4_handle handle) {
 
 }  // namespace
 
+extern "C" std::uint32_t spark_tp4_get_abi_version() {
+  return SPARK_TP4_C_ABI_VERSION;
+}
+
 extern "C" spark_tp4_handle spark_tp4_create(
     const spark_tp4_config* config, char* error, std::size_t error_bytes) {
   return spark_tp4_create_with_protocol_and_graph_kernel(

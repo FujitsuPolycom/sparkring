@@ -57,11 +57,13 @@ _BIDIRECTIONAL_PREFILL_QUERY_ROWS = frozenset({1024, 2048, 4096, 8192})
 _BIDIRECTIONAL_PREFILL_C_ABI_SYMBOLS = {
     "create": "spark_tp4_bidirectional_prefill_create",
     "all_reduce": "spark_tp4_bidirectional_prefill_all_reduce",
+    "health": "spark_tp4_bidirectional_prefill_get_health_status",
     "destroy": "spark_tp4_bidirectional_prefill_destroy",
 }
 _FUSED_PREFILL_C_ABI_SYMBOLS = {
     "create": "spark_tp4_fused_prefill_create",
     "all_reduce": "spark_tp4_fused_prefill_all_reduce_rows",
+    "health": "spark_tp4_fused_prefill_get_health_status",
     "destroy": "spark_tp4_fused_prefill_destroy",
 }
 _GRAPH_STATUS_CAPTURE_CONFIGURED = 1 << 0
@@ -834,7 +836,9 @@ def _record_graph_event(communicator: Any, event: str) -> int:
     return count
 
 
-def _bind_bidirectional_prefill_native_api(library: Any) -> tuple[Any, Any, Any]:
+def _bind_bidirectional_prefill_native_api(
+    library: Any,
+) -> tuple[Any, Any, Any, Any]:
     """Bind the isolated bidirectional-prefill research ABI."""
 
     try:
@@ -844,6 +848,7 @@ def _bind_bidirectional_prefill_native_api(library: Any) -> tuple[Any, Any, Any]
         all_reduce = getattr(
             library, _BIDIRECTIONAL_PREFILL_C_ABI_SYMBOLS["all_reduce"]
         )
+        health = getattr(library, _BIDIRECTIONAL_PREFILL_C_ABI_SYMBOLS["health"])
         destroy = getattr(
             library, _BIDIRECTIONAL_PREFILL_C_ABI_SYMBOLS["destroy"]
         )
@@ -867,12 +872,20 @@ def _bind_bidirectional_prefill_native_api(library: Any) -> tuple[Any, Any, Any]
         ctypes.c_size_t,
     ]
     all_reduce.restype = ctypes.c_int
+    health.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(_NativeHealthStatus),
+        ctypes.c_size_t,
+        ctypes.c_char_p,
+        ctypes.c_size_t,
+    ]
+    health.restype = ctypes.c_int
     destroy.argtypes = [ctypes.c_void_p]
     destroy.restype = None
-    return create, all_reduce, destroy
+    return create, all_reduce, health, destroy
 
 
-def _bind_fused_prefill_native_api(library: Any) -> tuple[Any, Any, Any]:
+def _bind_fused_prefill_native_api(library: Any) -> tuple[Any, Any, Any, Any]:
     """Bind the caller-stream fused Q8192 ABI."""
 
     try:
@@ -880,6 +893,7 @@ def _bind_fused_prefill_native_api(library: Any) -> tuple[Any, Any, Any]:
         all_reduce = getattr(
             library, _FUSED_PREFILL_C_ABI_SYMBOLS["all_reduce"]
         )
+        health = getattr(library, _FUSED_PREFILL_C_ABI_SYMBOLS["health"])
         destroy = getattr(library, _FUSED_PREFILL_C_ABI_SYMBOLS["destroy"])
     except AttributeError as error:
         raise RuntimeError(
@@ -902,9 +916,17 @@ def _bind_fused_prefill_native_api(library: Any) -> tuple[Any, Any, Any]:
         ctypes.c_size_t,
     ]
     all_reduce.restype = ctypes.c_int
+    health.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(_NativeHealthStatus),
+        ctypes.c_size_t,
+        ctypes.c_char_p,
+        ctypes.c_size_t,
+    ]
+    health.restype = ctypes.c_int
     destroy.argtypes = [ctypes.c_void_p]
     destroy.restype = None
-    return create, all_reduce, destroy
+    return create, all_reduce, health, destroy
 
 
 def _validate_fused_prefill_native_api() -> None:
@@ -1029,7 +1051,7 @@ class _BidirectionalPrefillNativeSession:
             timeout_seconds=timeout_seconds,
         )
         self._library = ctypes.CDLL(os.environ["SPARK_TP4_LIBRARY"])
-        create, self._all_reduce, self._destroy = (
+        create, self._all_reduce, self._health, self._destroy = (
             self._bind_native_api(self._library)
         )
         error = ctypes.create_string_buffer(512)
@@ -1082,6 +1104,44 @@ class _BidirectionalPrefillNativeSession:
             )
         return output
 
+    def health_status(self) -> NativeHealthStatus:
+        native = _NativeHealthStatus()
+        error = ctypes.create_string_buffer(512)
+        result = self._health(
+            self._handle,
+            ctypes.byref(native),
+            ctypes.sizeof(native),
+            error,
+            len(error),
+        )
+        if result != 0:
+            message = error.value.decode(errors="replace")
+            raise RuntimeError(
+                f"Spark TP4 {self._session_label} health failed: {message}"
+            )
+        if native.struct_size != ctypes.sizeof(_NativeHealthStatus):
+            raise RuntimeError(
+                f"Spark TP4 {self._session_label} health status ABI mismatch: "
+                f"native={native.struct_size} python="
+                f"{ctypes.sizeof(_NativeHealthStatus)}"
+            )
+        flags = int(native.flags)
+        return NativeHealthStatus(
+            healthy=bool(flags & _HEALTHY),
+            poisoned=bool(flags & _HEALTH_POISONED),
+            progress_thread_running=bool(
+                flags & _HEALTH_PROGRESS_THREAD_RUNNING
+            ),
+            stopping=bool(flags & _HEALTH_STOPPING),
+            submitted_sequence=int(native.submitted_sequence),
+            completed_sequence=int(native.completed_sequence),
+            failing_sequence=int(native.failing_sequence),
+            error_code=int(native.error_code),
+            failing_stage=int(native.failing_stage),
+            failing_rail=int(native.failing_rail),
+            failing_peer=int(native.failing_peer),
+        )
+
     def close(self) -> None:
         if self._handle:
             self._destroy(self._handle)
@@ -1106,19 +1166,6 @@ class _FusedPrefillNativeSession(_BidirectionalPrefillNativeSession):
         if _bidirectional_prefill_rail_mode() != "dual":
             raise ValueError("fused prefill requires strict dual-rail mode")
         super().__init__(rank, shape)
-        health = getattr(
-            self._library,
-            "spark_tp4_fused_prefill_get_health_status",
-        )
-        health.argtypes = [
-            ctypes.c_void_p,
-            ctypes.POINTER(_NativeHealthStatus),
-            ctypes.c_size_t,
-            ctypes.c_char_p,
-            ctypes.c_size_t,
-        ]
-        health.restype = ctypes.c_int
-        self._health = health
 
     def all_reduce(self, tensor: Any) -> Any:
         import torch
@@ -1148,37 +1195,6 @@ class _FusedPrefillNativeSession(_BidirectionalPrefillNativeSession):
                 f"Spark TP4 fused prefill all-reduce failed: {message}"
             )
         return output
-
-    def health_status(self) -> NativeHealthStatus:
-        native = _NativeHealthStatus()
-        error = ctypes.create_string_buffer(512)
-        result = self._health(
-            self._handle,
-            ctypes.byref(native),
-            ctypes.sizeof(native),
-            error,
-            len(error),
-        )
-        if result != 0:
-            message = error.value.decode(errors="replace")
-            raise RuntimeError(f"Spark fused prefill health failed: {message}")
-        flags = int(native.flags)
-        return NativeHealthStatus(
-            healthy=bool(flags & _HEALTHY),
-            poisoned=bool(flags & _HEALTH_POISONED),
-            progress_thread_running=bool(
-                flags & _HEALTH_PROGRESS_THREAD_RUNNING
-            ),
-            stopping=bool(flags & _HEALTH_STOPPING),
-            submitted_sequence=int(native.submitted_sequence),
-            completed_sequence=int(native.completed_sequence),
-            failing_sequence=int(native.failing_sequence),
-            error_code=int(native.error_code),
-            failing_stage=int(native.failing_stage),
-            failing_rail=int(native.failing_rail),
-            failing_peer=int(native.failing_peer),
-        )
-
 
 class _NativeSession:
     def __init__(
@@ -1999,9 +2015,19 @@ def native_health_snapshot() -> dict[str, NativeHealthStatus]:
             for rank, session in _graph_width4096_sessions.items()
         },
         **{
-            f"fused-prefill-rank-{rank}": session
+            f"eager-rank-{rank}-bytes-{payload_bytes}": session
             for rank, backend in _backends.items()
-            for session in backend.fused_prefill_sessions.values()
+            for payload_bytes, session in backend.native_sessions.items()
+        },
+        **{
+            f"bidirectional-prefill-rank-{rank}-q{shape[0]}x{shape[1]}": session
+            for rank, backend in _backends.items()
+            for shape, session in backend.bidirectional_prefill_sessions.items()
+        },
+        **{
+            f"fused-prefill-rank-{rank}-q{shape[0]}x{shape[1]}": session
+            for rank, backend in _backends.items()
+            for shape, session in backend.fused_prefill_sessions.items()
         },
     }
     return {name: session.health_status() for name, session in sessions.items()}

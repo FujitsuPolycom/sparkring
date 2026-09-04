@@ -2613,6 +2613,7 @@ class BidirectionalPrefillDualRailConfigTest(unittest.TestCase):
         library = types.SimpleNamespace(
             spark_tp4_bidirectional_prefill_create=_FakeFunction(create),
             spark_tp4_bidirectional_prefill_all_reduce=_FakeFunction(),
+            spark_tp4_bidirectional_prefill_get_health_status=_FakeFunction(),
             spark_tp4_bidirectional_prefill_destroy=_FakeFunction(),
         )
         environment = {
@@ -2680,16 +2681,18 @@ class BidirectionalPrefillDualRailConfigTest(unittest.TestCase):
     def test_fused_binding_uses_dedicated_symbols_and_exact_signature(self) -> None:
         create = _FakeFunction()
         all_reduce = _FakeFunction()
+        health = _FakeFunction()
         destroy = _FakeFunction()
         library = types.SimpleNamespace(
             spark_tp4_fused_prefill_create=create,
             spark_tp4_fused_prefill_all_reduce_rows=all_reduce,
+            spark_tp4_fused_prefill_get_health_status=health,
             spark_tp4_fused_prefill_destroy=destroy,
         )
 
         bound = spark_tp4_backend._bind_fused_prefill_native_api(library)
 
-        self.assertEqual(bound, (create, all_reduce, destroy))
+        self.assertEqual(bound, (create, all_reduce, health, destroy))
         self.assertEqual(
             create.argtypes,
             [

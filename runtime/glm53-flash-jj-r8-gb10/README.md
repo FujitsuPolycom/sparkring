@@ -162,7 +162,9 @@ is created.
 After vLLM's existing output synchronization, a host-only native health check
 prevents synchronous or asynchronous model output from leaving an unhealthy
 worker. The check does not synchronize CUDA. Live fault injection remains
-required before this lane becomes the recommended profile.
+required before this lane becomes the recommended profile. Worker failure is
+fail-stop; four-rank evidence must still show that vLLM's multiprocess monitor
+tears down the peer workers without a collective hang.
 
 ### NCCL fallback
 

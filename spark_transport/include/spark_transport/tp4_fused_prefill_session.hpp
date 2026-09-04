@@ -8,9 +8,13 @@ namespace spark_transport {
 
 struct Tp4FusedPrefillHealthStatus {
   bool healthy{};
+  bool poisoned{};
   bool proxy_thread_running{};
   std::uint64_t submitted_sequence{};
   std::uint64_t completed_sequence{};
+  std::uint64_t failing_sequence{};
+  std::int32_t error_code{};
+  std::int32_t failing_stage{-1};
 };
 
 class Tp4FusedPrefillSession {
