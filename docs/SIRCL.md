@@ -37,8 +37,9 @@ established. A developer can replace the embedded bundle with a read-only host
 mount. Its captured width-4096 path and eager fused-prefill path use separate
 signature checks. The fused path accepts contiguous TP4 BF16 `[Q, 4096]`
 tensors from Q128 through Q8192 and uses two operation slots. Unsupported
-signatures remain on NCCL. The GLM-5.3 profile captures Q8/Q16/Q32/Q64/Q128;
-those captured collectives use graph-native SIRCL with direct doorbells. The
+signatures remain on NCCL. The GLM-5.3 profile captures every eight-row DFlash
+request-batch shape from Q8 through Q128; those captured collectives use
+graph-native SIRCL with direct doorbells. The
 fused session uses four persistent QPs and two 67,109,888-byte operation
 arenas. See the
 [GLM-5.3 runtime guide](../runtime/glm53-flash-jj-r8-gb10/README.md) and the

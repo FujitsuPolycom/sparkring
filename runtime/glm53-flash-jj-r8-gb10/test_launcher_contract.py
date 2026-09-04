@@ -48,6 +48,9 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["DECODE_CONTEXT_PARALLEL_SIZE"] == "4"
     assert values["MAX_NUM_BATCHED_TOKENS"] == "8192"
     assert values["KDA_PREFILL_BACKEND"] == "b12x"
+    assert values["DFLASH_WARMUP_CONCURRENCIES"] == (
+        "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16"
+    )
     assert values["PREFILL_SCHEDULE_INTERVAL"] == "2"
     assert values["MAX_IMAGES_PER_PROMPT"] == "4"
     assert values["MAX_VIDEOS_PER_PROMPT"] == "1"
@@ -172,6 +175,15 @@ printf '%s  %s\n' "$hash" "$2"
         mm_index = arguments.index("--limit-mm-per-prompt")
         assert json.loads(arguments[mm_index + 1]) == {"image": 4, "video": 1}
         assert "--kv-transfer-config" in arguments
+        compilation = json.loads(
+            arguments[arguments.index("--compilation-config") + 1]
+        )
+        assert compilation["cudagraph_capture_sizes"] == list(
+            range(8, 129, 8)
+        )
+        assert "DFLASH_WARMUP_CONCURRENCIES=" + ",".join(
+            str(value) for value in range(1, 17)
+        ) in arguments
         jit_namespace = "glm53-flash-sm121-vllm-e02b1746-b12x-9ae41c5c"
         assert f"VLLM_CACHE_ROOT=/cache/jit/vllm/{jit_namespace}" in arguments
         assert (
@@ -476,7 +488,9 @@ def test_public_operator_documents_use_portable_examples_and_resolving_links() -
     assert "fanout_image_archive.py" in quickstart
     assert "sircl-fused.env.example" in quickstart
     assert "SIRCL_ENABLED=1" in quickstart
-    assert "Q=8/16/32/64/128" in runtime_readme
+    assert "every eight-row DFlash request-batch shape from 8 through 128" in (
+        runtime_readme
+    )
     assert "Q128 through Q8192" in runtime_readme
     assert re.search(r"primary\s+ports 19006/19007", runtime_readme)
     assert "67,109,888-byte mapped arena" in runtime_readme

@@ -63,7 +63,7 @@ fi
 : "${JIT_CACHE_NAMESPACE:=glm53-flash-sm121-vllm-e02b1746-b12x-9ae41c5c}"
 : "${JIT_MONITOR_VERBOSE:=0}"
 : "${DFLASH_WARMUP:=0}"
-: "${DFLASH_WARMUP_CONCURRENCIES:=1,2,4,8,16}"
+: "${DFLASH_WARMUP_CONCURRENCIES:=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}"
 : "${DFLASH_WARMUP_SHAPE_WORDS:=8,24,56,120,248}"
 : "${DFLASH_WARMUP_MAX_TOKENS:=16}"
 : "${DFLASH_WARMUP_TIMEOUT_SECONDS:=600}"
@@ -677,18 +677,19 @@ print(json.dumps({
 PY
 )"
 
-export CUDAGRAPH_MODE MAX_CUDAGRAPH_CAPTURE_SIZE
+export CUDAGRAPH_MODE MAX_CUDAGRAPH_CAPTURE_SIZE NUM_SPECULATIVE_TOKENS
 compilation_config="$(python3 - <<'PY'
 import json
 import os
 
 maximum = int(os.environ["MAX_CUDAGRAPH_CAPTURE_SIZE"])
-capture_sizes = []
-size = 8
-while size < maximum:
-    capture_sizes.append(size)
-    size *= 2
-capture_sizes.append(maximum)
+rows_per_request = int(os.environ["NUM_SPECULATIVE_TOKENS"]) + 1
+if maximum % rows_per_request:
+    raise SystemExit(
+        "MAX_CUDAGRAPH_CAPTURE_SIZE must be divisible by "
+        "NUM_SPECULATIVE_TOKENS + 1"
+    )
+capture_sizes = list(range(rows_per_request, maximum + 1, rows_per_request))
 print(json.dumps({
     "cudagraph_mode": os.environ["CUDAGRAPH_MODE"],
     "cudagraph_capture_sizes": capture_sizes,

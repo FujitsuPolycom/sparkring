@@ -59,7 +59,7 @@ The recommended profile uses:
 | sequences | 16 |
 | scheduler | asynchronous with chunked prefill and prefix caching |
 | graph mode | `FULL_AND_PIECEWISE` |
-| CUDA graph capture sizes | 8, 16, 32, 64, and 128 |
+| CUDA graph capture sizes | every eight-row DFlash request-batch shape from 8 through 128 |
 | model kernels | B12X attention, KDA prefill, MoE, and linear |
 | collective/RMSNorm fusion | disabled |
 | FlashInfer autotuning | disabled |
@@ -275,13 +275,19 @@ arena wait that would justify more unified-memory pressure.
 
 The image entrypoint runs `warmup_dflash.py` before Docker reports rank 0 as
 healthy.
-The default environment template enables C1/C2/C4/C8/C16 warmup and prompt
-spans covering the DFlash Triton `BLOCK_SIZE` specializations through 256.
+The default environment template warms every concurrency from C1 through C16
+and prompt spans covering the DFlash Triton `BLOCK_SIZE` specializations
+through 256. DFlash depth seven verifies eight target rows per active request,
+so the launcher captures every eight-row request-batch shape from 8 through
+128. Each supported concurrency therefore has an exact CUDA graph instead of
+padding intermediate request counts to a larger graph.
 Do not admit normal traffic until the rank-0 launcher returns. A failed or
 timed-out warmup makes launch fail instead of leaving an apparently healthy
 API in front of a wedged engine.
 The failure-shaped replay and remaining causal limitation are recorded in
 [`dflash-jit-readiness-validation.json`](dflash-jit-readiness-validation.json).
+The measured effect of exact request-batch graphs is recorded in
+[`dflash2-exact-concurrency-graphs-20260904.md`](../../performance/records/glm53-flash/dflash2-exact-concurrency-graphs-20260904.md).
 
 The page-tail registry image contains `tail-cow-v2`. The complete-snapshot
 image remains available in the rollback section below.
