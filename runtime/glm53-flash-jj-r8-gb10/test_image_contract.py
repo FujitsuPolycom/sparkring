@@ -19,6 +19,7 @@ def load_module(name: str, path: Path):
 
 
 build = load_module("jj_r8_build_image", HERE / "build_image.py")
+install = load_module("jj_r8_install_overlay", HERE / "install_overlay.py")
 verify = load_module("jj_r8_verify_image", HERE / "verify_image.py")
 metrics_patch = load_module(
     "jj_r8_metrics_patch",
@@ -88,14 +89,23 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
         "receipt": "async-store-completion-public-image-receipt.json",
     }
     assert pins["vllm"]["commit"] == (
-        "22ffe1401ca9bd3e4503e62de7b414deca7661a1"
+        "dc098463bcfa86ef49e565c567363a95cb6e46aa"
     )
-    assert pins["vllm"]["tree"] == "1bb7f10a5838d348ca2fcb0134b05ad768d3340b"
+    assert pins["vllm"]["tree"] == "a291f30128dca9dc2362c0dd1b3d04d89a669a0f"
     assert pins["vllm"]["package_tree"] == (
-        "e5ed1db6292c7312571419e101ba719bb5ebb393"
+        "e0490bd0cfabbe8fee302d54e2bf7898af154877"
     )
     assert pins["vllm"]["delta_patch_id"] == (
-        "44ad5586548465c002d0195d3739992795233ffe"
+        "7c0e57fa95fe54bd930f23d3fc051504ee805eae"
+    )
+    assert pins["vllm"]["proven_base_commit"] == (
+        "22ffe1401ca9bd3e4503e62de7b414deca7661a1"
+    )
+    assert pins["vllm"]["b12x_kda_prefill_upstream_commit"] == (
+        "54371894ecaa77f2725a1c99e018f3fe93d358dd"
+    )
+    assert pins["vllm"]["b12x_kda_workspace_isolation_upstream_commit"] == (
+        "57a6169a5c229a5ca8c24791762b1fc51c89e58d"
     )
     assert pins["vllm"]["community_release"] == "Jovian Judgement Community R10"
     assert pins["vllm"]["community_parent_commit"] == (
@@ -113,6 +123,12 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     assert pins["vllm"]["scheduler_prefill_cadence_pull_request_head"] == (
         "2412a6f34ab1412f86ed3e4cdd355271a082d93d"
     )
+    assert pins["b12x"] == {
+        "repository": "https://github.com/voipmonitor/b12x.git",
+        "commit": "9ae41c5cb9935d740456479954b0089f80bd2ef2",
+        "tree": "6e77441fe99f6ead7ff2cc2b6a8a37fa4e93e30b",
+        "package_tree": "12029e19da6543c5d225395f6da199d946b0972e",
+    }
     assert pins["sparkcache"] == {
         "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
         "commit": "66057174301a4759ca3a45207ea41016689449cb",
@@ -163,7 +179,13 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
     recipe = (HERE / "Dockerfile").read_text(encoding="utf-8")
     for identity in (
         "f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
-        "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+        "dc098463bcfa86ef49e565c567363a95cb6e46aa",
+        "a291f30128dca9dc2362c0dd1b3d04d89a669a0f",
+        "54371894ecaa77f2725a1c99e018f3fe93d358dd",
+        "57a6169a5c229a5ca8c24791762b1fc51c89e58d",
+        "9ae41c5cb9935d740456479954b0089f80bd2ef2",
+        "6e77441fe99f6ead7ff2cc2b6a8a37fa4e93e30b",
+        "12029e19da6543c5d225395f6da199d946b0972e",
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
         "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
         "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
@@ -227,13 +249,21 @@ def test_runtime_hashes_are_enforced_inside_image() -> None:
     }
     labels = verify.expected_labels(pins)
     assert labels["org.sparkring.vllm.delta-patch-id"] == (
-        "44ad5586548465c002d0195d3739992795233ffe"
+        "7c0e57fa95fe54bd930f23d3fc051504ee805eae"
     )
     assert labels["org.sparkring.vllm.community-parent"] == (
         "55969c16d4da57da76ee5729f3102d4b2003833c"
     )
     assert labels["org.sparkring.b12x.package-tree"] == (
-        "6de9871d15dab093340695518fec0f744289e676"
+        "12029e19da6543c5d225395f6da199d946b0972e"
+    )
+    assert labels["org.sparkring.vllm.b12x-kda-prefill-upstream"] == (
+        "54371894ecaa77f2725a1c99e018f3fe93d358dd"
+    )
+    assert labels[
+        "org.sparkring.vllm.b12x-kda-workspace-isolation-upstream"
+    ] == (
+        "57a6169a5c229a5ca8c24791762b1fc51c89e58d"
     )
     assert labels["org.sparkring.sircl.source-tree"] == (
         pins["sircl"]["spark_transport_tree"]
@@ -247,6 +277,13 @@ def test_runtime_hashes_are_enforced_inside_image() -> None:
     assert "verify_public_overlay(SIRCL_ROOT, sircl_manifest)" in verifier
 
 
+def test_builder_requires_source_pinned_b12x_checkout() -> None:
+    builder = (HERE / "build_image.py").read_text(encoding="utf-8")
+    assert '"--b12x-source"' in builder
+    assert 'pins["b12x"], "b12x"' in builder
+    assert '"b12x-source-manifest.json"' in builder
+
+
 def test_builder_requires_the_receipt_bound_prebuilt_sircl_library() -> None:
     builder = (HERE / "build_image.py").read_text(encoding="utf-8")
     assert '"--sircl-library"' in builder
@@ -254,6 +291,76 @@ def test_builder_requires_the_receipt_bound_prebuilt_sircl_library() -> None:
     assert '"HEAD:spark_transport"' in builder
     assert 'context / "bundle/sircl"' in builder
     assert '"runtime/public-overlay-files.json"' in builder
+
+
+def test_b12x_source_overlay_replaces_the_complete_inherited_package(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source" / "b12x"
+    source_module = source / "sequence" / "kda_prefill.py"
+    source_module.parent.mkdir(parents=True)
+    source_module.write_text("SOURCE_IDENTITY = '9ae41c5c'\n", encoding="utf-8")
+    (source / "__init__.py").write_text("", encoding="utf-8")
+
+    installed = tmp_path / "site-packages" / "b12x"
+    (installed / "sequence").mkdir(parents=True)
+    (installed / "stale_parent_module.py").write_text("stale\n", encoding="utf-8")
+    (installed / "sequence" / "kda_prefill.py").write_text(
+        "SOURCE_IDENTITY = 'parent'\n", encoding="utf-8"
+    )
+    (installed / "__pycache__").mkdir()
+    (installed / "__pycache__" / "stale.pyc").write_bytes(b"stale")
+
+    install.replace_python_package(source, installed)
+
+    installed_files = {
+        path.relative_to(installed).as_posix()
+        for path in installed.rglob("*")
+        if path.is_file()
+    }
+    assert installed_files == {"__init__.py", "sequence/kda_prefill.py"}
+    manifest = tmp_path / "b12x-source-manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "commit": "9ae41c5cb9935d740456479954b0089f80bd2ef2",
+                "files": {
+                    "b12x/__init__.py": install.file_sha256(
+                        installed / "__init__.py"
+                    ),
+                    "b12x/sequence/kda_prefill.py": install.file_sha256(
+                        installed / "sequence" / "kda_prefill.py"
+                    ),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert verify.verify_manifest(
+        tmp_path / "site-packages",
+        manifest,
+        "9ae41c5cb9935d740456479954b0089f80bd2ef2",
+    ) == 2
+    install.verify_package_file_set(
+        installed,
+        install.load_manifest(
+            manifest, "9ae41c5cb9935d740456479954b0089f80bd2ef2"
+        ),
+        "b12x",
+    )
+
+    source_module = installed / "sequence" / "kda_prefill.py"
+    source_module.write_text("changed\n", encoding="utf-8")
+    try:
+        verify.verify_manifest(
+            tmp_path / "site-packages",
+            manifest,
+            "9ae41c5cb9935d740456479954b0089f80bd2ef2",
+        )
+    except verify.VerificationError as error:
+        assert "source identity mismatch: b12x/sequence/kda_prefill.py" in str(error)
+    else:
+        raise AssertionError("changed B12X source was accepted")
 
 
 def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:

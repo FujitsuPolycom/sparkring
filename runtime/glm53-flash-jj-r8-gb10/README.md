@@ -16,8 +16,8 @@ work that makes this profile practical:
   is the target checkpoint;
 - [`local-inference-lab/vllm`](https://github.com/local-inference-lab/vllm/tree/dev/jovian-judgement)
   supplies the GLM runtime and scheduler work;
-- [`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x)
-  supplies the GB10 kernel integration.
+- [`voipmonitor/b12x`](https://github.com/voipmonitor/b12x)
+  supplies the source-pinned GB10 kernel package installed by this builder.
 
 The external BF16 draft is
 [`incoai/GLM-5.3-Flash-DFlash2`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2).
@@ -286,15 +286,18 @@ lease is not treated as a dead scheduler.
 
 ## Build from pinned source
 
-The builder accepts clean checkouts at the exact vLLM and SparkCache commits
-recorded in `pins.json`. It rejects a different commit, Git tree, package tree,
-parent image, retained runtime file, or CUDA library. Build the SparkCache
-snapshot library on an ARM64 CUDA 13 host before invoking the image builder:
+The builder accepts clean checkouts at the exact vLLM, B12X, and SparkCache
+commits recorded in `pins.json`. It rejects a different commit, Git tree,
+package tree, parent image, retained runtime file, or CUDA library. The B12X
+checkout replaces the inherited Python package as a complete tree; its source
+manifest is verified inside the image. Build the SparkCache snapshot library
+on an ARM64 CUDA 13 host before invoking the image builder:
 
 | Input | Source of truth |
 |---|---|
 | ARM64 parent image and retained compiled extensions | `pins.json` `parent` and `vllm` records |
 | vLLM source checkout | `pins.json` `vllm.commit`, tree, and package tree |
+| B12X source checkout | `pins.json` `b12x.repository`, commit, tree, and package tree |
 | SparkCache source checkout | `pins.json` `sparkcache.commit`, tree, package tree, and source hash |
 | CUDA placement and snapshot libraries | SparkCache source plus the SHA-256 values in `pins.json` |
 | SIRCL Python overlay | This checkout plus `runtime/public-overlay-files.json` |
@@ -309,15 +312,17 @@ cmake --build /source/sparkcache/sparkcache/native/build-cuda \
   --target spark_cache_snapshot
 ```
 
-The image builder verifies commits, trees, package subtrees, runtime files,
-the parent image, retained compiled extensions, both SparkCache CUDA libraries,
-and the SIRCL overlay and native identities before producing an image. It also
-applies the exact-preimage vLLM metrics formatter and records that transform in
-the source receipt.
+The image builder verifies commits, trees, package subtrees, runtime files, the
+parent image, retained compiled extensions, both SparkCache CUDA libraries, and
+the SIRCL overlay and native identities before producing an image. It records
+the public vLLM commits that supply the B12X KDA prefill integration and
+workspace-isolation correction. It also applies the exact-preimage vLLM
+metrics formatter and records that transform in the source receipt.
 
 ```bash
 python runtime/glm53-flash-jj-r8-gb10/build_image.py \
   --vllm-source /source/vllm \
+  --b12x-source /source/b12x \
   --sparkcache-source /source/sparkcache \
   --snapshot-library /source/sparkcache/sparkcache/native/build-cuda/libspark_cache_snapshot.so \
   --sircl-library ./build/spark-transport/libspark_transport_capi.so \

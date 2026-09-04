@@ -38,14 +38,20 @@ def load_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def verify_manifest(root: Path, path: Path) -> None:
-    files = load_json(path).get("files")
+def verify_manifest(
+    root: Path, path: Path, expected_commit: str | None = None
+) -> int:
+    document = load_json(path)
+    if expected_commit is not None and document.get("commit") != expected_commit:
+        raise VerificationError(f"source manifest commit mismatch: {path}")
+    files = document.get("files")
     if not isinstance(files, dict) or not files:
         raise VerificationError(f"source manifest is empty: {path}")
     for relative, expected in files.items():
         candidate = root / relative
         if not candidate.is_file() or file_sha256(candidate) != expected:
             raise VerificationError(f"source identity mismatch: {relative}")
+    return len(files)
 
 
 def verify_public_overlay(root: Path, path: Path) -> int:
@@ -78,10 +84,19 @@ def native_manifest(root: Path) -> dict[str, str]:
 def verify_inside_image() -> dict[str, Any]:
     pins = load_json(IMAGE_RECEIPTS / "pins.json")
     verify_manifest(
-        SITE_ROOT, IMAGE_RECEIPTS / "vllm-source-manifest.json"
+        SITE_ROOT,
+        IMAGE_RECEIPTS / "vllm-source-manifest.json",
+        pins["vllm"]["commit"],
+    )
+    b12x_files = verify_manifest(
+        SITE_ROOT,
+        IMAGE_RECEIPTS / "b12x-source-manifest.json",
+        pins["b12x"]["commit"],
     )
     verify_manifest(
-        SITE_ROOT, IMAGE_RECEIPTS / "sparkcache-source-manifest.json"
+        SITE_ROOT,
+        IMAGE_RECEIPTS / "sparkcache-source-manifest.json",
+        pins["sparkcache"]["commit"],
     )
     for relative, expected in pins["vllm"]["runtime_file_sha256"].items():
         if file_sha256(SITE_ROOT / relative) != expected:
@@ -122,11 +137,25 @@ def verify_inside_image() -> dict[str, Any]:
         raise VerificationError("SIRCL native build receipt identity changed")
     if importlib.util.find_spec("fastsafetensors") is None:
         raise VerificationError("fastsafetensors is unavailable")
+    b12x_spec = importlib.util.find_spec("b12x")
+    expected_b12x_root = (SITE_ROOT / "b12x").resolve()
+    if (
+        b12x_spec is None
+        or b12x_spec.origin is None
+        or not Path(b12x_spec.origin).resolve().is_relative_to(expected_b12x_root)
+    ):
+        raise VerificationError("B12X does not resolve from the source overlay")
     if tuple(SITE_ROOT.glob("deep_ep*")):
         raise VerificationError("unused DeepEP files are installed")
     return {
         "status": "implemented",
         "vllm_commit": pins["vllm"]["commit"],
+        "vllm_tree": pins["vllm"]["tree"],
+        "vllm_package_tree": pins["vllm"]["package_tree"],
+        "b12x_commit": pins["b12x"]["commit"],
+        "b12x_tree": pins["b12x"]["tree"],
+        "b12x_package_tree": pins["b12x"]["package_tree"],
+        "b12x_source_files": b12x_files,
         "sparkcache_commit": pins["sparkcache"]["commit"],
         "native_extensions": len(observed_native),
         "nccl_sha256": expected_nccl,
@@ -165,6 +194,12 @@ def expected_labels(pins: dict[str, Any]) -> dict[str, str]:
         "org.sparkring.vllm.prefill-cadence-pr-head": pins["vllm"][
             "scheduler_prefill_cadence_pull_request_head"
         ],
+        "org.sparkring.vllm.b12x-kda-prefill-upstream": pins["vllm"][
+            "b12x_kda_prefill_upstream_commit"
+        ],
+        "org.sparkring.vllm.b12x-kda-workspace-isolation-upstream": pins[
+            "vllm"
+        ]["b12x_kda_workspace_isolation_upstream_commit"],
         "org.sparkring.vllm.delta-patch-id": pins["vllm"]["delta_patch_id"],
         "org.sparkring.b12x.composition": pins["b12x"]["commit"],
         "org.sparkring.b12x.tree": pins["b12x"]["tree"],

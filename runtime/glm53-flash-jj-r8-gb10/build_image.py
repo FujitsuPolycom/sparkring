@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the source-pinned Linux/ARM64 GLM-5.3 and SparkCache image."""
+"""Build the source-pinned Linux/ARM64 GLM-5.3 operator image."""
 
 from __future__ import annotations
 
@@ -307,6 +307,7 @@ def prepare_context(
     context: Path,
     *,
     vllm_source: Path,
+    b12x_source: Path,
     sparkcache_source: Path,
     snapshot_library: Path,
     sircl_library: Path,
@@ -317,10 +318,13 @@ def prepare_context(
         raise BuildError(f"build context already exists: {context}")
     (context / "bundle/sources").mkdir(parents=True)
     verify_git_source(vllm_source, pins["vllm"], "vllm")
+    verify_git_source(b12x_source, pins["b12x"], "b12x")
     verify_git_source(sparkcache_source, pins["sparkcache"], "sparkcache")
     vllm_output = context / "bundle/sources/vllm"
+    b12x_output = context / "bundle/sources/b12x"
     sparkcache_output = context / "bundle/sources/sparkcache"
     extract_git_subtree(vllm_source, pins["vllm"]["commit"], "vllm", vllm_output)
+    extract_git_subtree(b12x_source, pins["b12x"]["commit"], "b12x", b12x_output)
     run(
         (
             sys.executable,
@@ -361,6 +365,9 @@ def prepare_context(
         "vllm-source-manifest.json": source_manifest(
             vllm_output, "vllm", pins["vllm"]["commit"]
         ),
+        "b12x-source-manifest.json": source_manifest(
+            b12x_output, "b12x", pins["b12x"]["commit"]
+        ),
         "sparkcache-source-manifest.json": source_manifest(
             sparkcache_output, "sparkcache", pins["sparkcache"]["commit"]
         ),
@@ -387,11 +394,27 @@ def prepare_context(
         "status": "implemented",
         "sources": {
             "vllm": {
+                "repository": pins["vllm"]["repository"],
                 "commit": pins["vllm"]["commit"],
                 "tree": pins["vllm"]["tree"],
+                "package_tree": pins["vllm"]["package_tree"],
+                "b12x_kda_prefill_upstream_commit": pins["vllm"][
+                    "b12x_kda_prefill_upstream_commit"
+                ],
+                "b12x_kda_workspace_isolation_upstream_commit": pins["vllm"][
+                    "b12x_kda_workspace_isolation_upstream_commit"
+                ],
                 "files": len(manifests["vllm-source-manifest.json"]["files"]),
             },
+            "b12x": {
+                "repository": pins["b12x"]["repository"],
+                "commit": pins["b12x"]["commit"],
+                "tree": pins["b12x"]["tree"],
+                "package_tree": pins["b12x"]["package_tree"],
+                "files": len(manifests["b12x-source-manifest.json"]["files"]),
+            },
             "sparkcache": {
+                "repository": pins["sparkcache"]["repository"],
                 "commit": pins["sparkcache"]["commit"],
                 "tree": pins["sparkcache"]["tree"],
                 "source_tree_sha256": observed_source,
@@ -411,6 +434,7 @@ def prepare_context(
                 "scheduler_liveness.py",
                 "bundle/receipts/pins.json",
                 "bundle/receipts/vllm-source-manifest.json",
+                "bundle/receipts/b12x-source-manifest.json",
                 "bundle/receipts/sparkcache-source-manifest.json",
                 "bundle/receipts/native-extension-manifest.json",
                 "bundle/receipts/sircl-build-receipt.json",
@@ -436,6 +460,7 @@ def prepare_context(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--vllm-source", type=Path, required=True)
+    parser.add_argument("--b12x-source", type=Path, required=True)
     parser.add_argument("--sparkcache-source", type=Path, required=True)
     parser.add_argument("--snapshot-library", type=Path, required=True)
     parser.add_argument(
@@ -492,6 +517,7 @@ def main() -> int:
         prepare_context(
             context,
             vllm_source=args.vllm_source.resolve(),
+            b12x_source=args.b12x_source.resolve(),
             sparkcache_source=args.sparkcache_source.resolve(),
             snapshot_library=args.snapshot_library.resolve(),
             sircl_library=args.sircl_library.resolve(),

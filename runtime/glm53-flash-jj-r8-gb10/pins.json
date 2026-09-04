@@ -24,11 +24,13 @@
   },
   "vllm": {
     "repository": "https://github.com/FujitsuPolycom/vllm.git",
-    "commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
-    "tree": "1bb7f10a5838d348ca2fcb0134b05ad768d3340b",
-    "package_tree": "e5ed1db6292c7312571419e101ba719bb5ebb393",
-    "delta_patch_id": "44ad5586548465c002d0195d3739992795233ffe",
-    "proven_base_commit": "331573d20bd47e78327ed8d8b4d2e6d350bbb1ab",
+    "commit": "dc098463bcfa86ef49e565c567363a95cb6e46aa",
+    "tree": "a291f30128dca9dc2362c0dd1b3d04d89a669a0f",
+    "package_tree": "e0490bd0cfabbe8fee302d54e2bf7898af154877",
+    "delta_patch_id": "7c0e57fa95fe54bd930f23d3fc051504ee805eae",
+    "proven_base_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
+    "b12x_kda_prefill_upstream_commit": "54371894ecaa77f2725a1c99e018f3fe93d358dd",
+    "b12x_kda_workspace_isolation_upstream_commit": "57a6169a5c229a5ca8c24791762b1fc51c89e58d",
     "community_release": "Jovian Judgement Community R10",
     "community_parent_commit": "55969c16d4da57da76ee5729f3102d4b2003833c",
     "sparse_pooled_index_commit": "adb69eac865a1a37081fa4edb9f7599a351f7aac",
@@ -45,9 +47,10 @@
     "retained_native_parent_source": "da4d7be6c97434f6942292ed8abbf4b32dc44355"
   },
   "b12x": {
-    "commit": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
-    "tree": "0bb58d0dcc10e29e00ff9850c0d719fca1aba5ad",
-    "package_tree": "6de9871d15dab093340695518fec0f744289e676"
+    "repository": "https://github.com/voipmonitor/b12x.git",
+    "commit": "9ae41c5cb9935d740456479954b0089f80bd2ef2",
+    "tree": "6e77441fe99f6ead7ff2cc2b6a8a37fa4e93e30b",
+    "package_tree": "12029e19da6543c5d225395f6da199d946b0972e"
   },
   "sparkcache": {
     "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
