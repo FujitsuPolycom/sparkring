@@ -1,0 +1,231 @@
+{
+  "schema": "sparkring-glm53-sircl-capability-health-live/v1",
+  "status": "passed",
+  "date": "2026-09-03",
+  "purpose": "Record the normal TP4/DCP4 serving result and two deliberate SIRCL fail-stop runs for issue 198 without relying on conversation history.",
+  "system": {
+    "model": "GLM-5.3-Flash NVFP4 with DFlash2 BF16 draft",
+    "hosts": [
+      {"rank": 0, "hostname": "spark-edfd"},
+      {"rank": 1, "hostname": "spark-ebb8"},
+      {"rank": 2, "hostname": "spark-ebee"},
+      {"rank": 3, "hostname": "spark-4a87"}
+    ],
+    "hardware": "four NVIDIA DGX Spark systems with one GB10 GPU each",
+    "topology": {
+      "tensor_parallel_size": 4,
+      "decode_context_parallel_size": 4,
+      "pipeline_parallel_size": 1,
+      "nodes": 4,
+      "distributed_executor": "mp"
+    },
+    "serving": {
+      "served_model_name": "glm-5.3-flash",
+      "port": 8015,
+      "max_model_len": 1048576,
+      "max_num_seqs": 16,
+      "max_num_batched_tokens": 8192,
+      "async_scheduling": true
+    },
+    "sircl": {
+      "mode": "custom",
+      "capability_vote": true,
+      "post_output_health_gate": true,
+      "graph_width4096": true,
+      "graph_direct_doorbell": true,
+      "fused_prefill": true,
+      "fused_prefill_rail_mode": "dual",
+      "fused_prefill_exposure": "fused",
+      "post_output_rank_collective": false,
+      "failure_convergence": "native bounded waits and the vLLM multiprocessing worker monitor"
+    }
+  },
+  "implementation": {
+    "repository": "https://github.com/FujitsuPolycom/sparkring.git",
+    "implementation_commit": "dcc5a6ad928a63c76ca7b6499693952ed8e5293d",
+    "validated_branch_head": "19733eac8e9bf8b42783d73eade037bf33b61532",
+    "spark_transport_tree": "2aac02232a9115037723aa1dd40483a5693a3e1e",
+    "public_overlay_spec_sha256": "bc93d5069f2b3faaa7e87d2f24aadd9f7878bff67abd93eeec3a0975da46f6fd",
+    "build_receipt": "runtime/glm53-flash-jj-r8-gb10/sircl-public-build-receipt.json",
+    "native_build": {
+      "architecture": "aarch64",
+      "cuda": "13.0.88",
+      "cuda_architecture": 121,
+      "cmake": "3.28.3",
+      "cxx": "GNU 13.3.0",
+      "build_type": "Release",
+      "ctest_passed": 28,
+      "ctest_failed": 0,
+      "alternating_stream_cuda_smoke": "passed"
+    }
+  },
+  "reproduction": {
+    "bundle_build": [
+      "python runtime/build-public-overlay.py --repo . --spec runtime/public-overlay-files.json --output build/sircl-bundle",
+      "cmake -S spark_transport -B build/spark-transport -G Ninja -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=121 -DSPARK_TP4_ENABLE_FUSED_STREAM_SWITCH_SMOKE=ON",
+      "cmake --build build/spark-transport --parallel",
+      "ctest --test-dir build/spark-transport --output-on-failure",
+      "cp build/spark-transport/libspark_transport_capi.so build/sircl-bundle/"
+    ],
+    "launch": "On each physical rank, set SIRCL_BUNDLE_HOST_ROOT to that rank's byte-identical deployed bundle and run bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh <rank> <rank-local-environment>.",
+    "normal_checks": [
+      "curl --fail http://<rank-0-management-address>:8015/health",
+      "curl --fail http://<rank-0-management-address>:8015/v1/models",
+      "POST an OpenAI-compatible chat-completions request to http://<rank-0-management-address>:8015/v1/chat/completions"
+    ],
+    "fault_condition": "Use the named test-only native bundle on all four ranks, set SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS=5 identically, and launch with the same TP4/DCP4 arguments. Both injected faults activate on fused operation sequence 0 during vLLM determine_available_memory, before API readiness."
+  },
+  "normal": {
+    "bundle": {
+      "deployed_path_on_each_rank": "/var/tmp/sircl-capability-health-61aa0ec5-85a231e6",
+      "native_sha256": "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc",
+      "manifest_sha256": "85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4",
+      "hashes_verified_on_all_four_ranks": true
+    },
+    "image": {
+      "reference": "sparkring-glm53-sparkcache:sircl-health-61aa0ec5",
+      "local_image_ids": {
+        "0": "sha256:d7b1154b9a60f3efb094cf8dac59feb23e154310d48eb6eeaf3bd1cba0ce0dd6",
+        "1": "sha256:f869ef7ffab866e32025976850e6569c70451e1e5121d31d21e116eb9885b60c",
+        "2": "sha256:fc927ec5626d56d5f0d6daddc22e960ee27d8a6dcc9312a70562867ee5ce8c0c",
+        "3": "sha256:d8fe2b10fef71a1250947c17703d8a8baccbd4db68b3a304262a50dd90dd77ab"
+      }
+    },
+    "containers": [
+      {"rank": 0, "name": "glm53-sircl-health-85a231e6-r0", "started_at": "2026-09-04T03:09:18.788334607Z"},
+      {"rank": 1, "name": "glm53-sircl-health-85a231e6-r1", "started_at": "2026-09-04T03:09:13.425701108Z"},
+      {"rank": 2, "name": "glm53-sircl-health-85a231e6-r2", "started_at": "2026-09-04T03:09:13.561602302Z"},
+      {"rank": 3, "name": "glm53-sircl-health-85a231e6-r3", "started_at": "2026-09-04T03:09:13.279847424Z"}
+    ],
+    "observation": {
+      "observed_at": "2026-09-04T03:21:39.0562485Z",
+      "all_containers_running_and_healthy": true,
+      "capability_votes_accepted": 4,
+      "capability_vote_physical_ranks": 4,
+      "fatal_log_count": 0,
+      "api_startup_at": "2026-09-04T03:13:13.860540292Z",
+      "rank0_container_to_api_ready_seconds": 235.072,
+      "http_200": {
+        "health": 1,
+        "models": 4,
+        "chat_completions": 66,
+        "chat_completions_loopback_warmup": 39,
+        "chat_completions_external": 27
+      },
+      "last_observed_chat_success_at": "2026-09-04T03:20:41.059189722Z",
+      "graph_status_per_rank": {
+        "captured_nodes": 955,
+        "published_sequence": 23984,
+        "consumed_sequence": 23984,
+        "completed_sequence": 23984,
+        "overflow_sequence": 0,
+        "fatal": false,
+        "command_caught_up": true,
+        "replay_caught_up": true
+      }
+    },
+    "conclusion": "The exact normal bundle passed capability agreement on all four physical ranks, reached API readiness, served successful requests, and retained caught-up graph progress with no overflow or fatal transport state."
+  },
+  "fault_tests": [
+    {
+      "name": "fused-device-poison",
+      "publishable": false,
+      "source": {
+        "base_commit": "a1a4d83a46e3d06e80542fafec9402495f33e772",
+        "test_only_commit": "2f22dd7436b215f4b6a637c7b4c821b2c22e87f8",
+        "test_only_branch": "codex/test-only-sircl-device-poison",
+        "spark_transport_tree": "6a7d9bb4ac1e87e44d525e1cbf589b7f69a7cb0e",
+        "fused_session_blob": "4f13a08b97884138763d49632aa54399828132bd"
+      },
+      "bundle": {
+        "build_path": "/home/dooner/sircl-fault-builds/2f22dd7-device/build/sircl-bundle",
+        "archive_path": "/home/dooner/sircl-fault-builds/2f22dd7-device/sircl-bundle.tar.gz",
+        "archive_sha256": "ef256eb617d17413d45b3a20fcf5ffdd23b473a7128e38f1d62d8ba1d958de70",
+        "deployed_path_on_each_rank": "/var/tmp/sircl-test-device-c09af595",
+        "native_sha256": "c09af595640ef470ba62be9dfe328deaad172fac37391f405f5c57671a0090c9",
+        "manifest_sha256": "96e1d31e6de93539b677d87a9537673976f3b7cb9c69e447957a7417847be0dd",
+        "hashes_verified_on_all_four_ranks": true
+      },
+      "injection": {
+        "descriptor_spin_limit": 1,
+        "fault_rank": "all ranks",
+        "startup_marker": "SIRCL_TEST_ONLY_FAULT variant=device_poison rank=<rank> spin_limit=1",
+        "mechanism": "Every serving-path fused descriptor uses a one-iteration wait limit, causing the fused kernel to publish poison into mapped host control state."
+      },
+      "containers": [
+        {"rank": 0, "name": "glm53-sircl-test-device-c09af595-r0", "image_id": "sha256:d7b1154b9a60f3efb094cf8dac59feb23e154310d48eb6eeaf3bd1cba0ce0dd6", "marker_at": "2026-09-04T03:04:45.054309352Z", "fatal_at": "2026-09-04T03:04:50.429941700Z", "finished_at": "2026-09-04T03:05:31.146497600Z", "container_exit_code": 137, "oom_killed": false},
+        {"rank": 1, "name": "glm53-sircl-test-device-c09af595-r1", "image_id": "sha256:f869ef7ffab866e32025976850e6569c70451e1e5121d31d21e116eb9885b60c", "marker_at": "2026-09-04T03:04:45.039542431Z", "fatal_at": "2026-09-04T03:04:50.422324587Z", "finished_at": "2026-09-04T03:04:57.382542417Z", "container_exit_code": 0, "oom_killed": false},
+        {"rank": 2, "name": "glm53-sircl-test-device-c09af595-r2", "image_id": "sha256:fc927ec5626d56d5f0d6daddc22e960ee27d8a6dcc9312a70562867ee5ce8c0c", "marker_at": "2026-09-04T03:04:45.069548367Z", "fatal_at": "2026-09-04T03:04:50.420165985Z", "finished_at": "2026-09-04T03:04:57.172373006Z", "container_exit_code": 0, "oom_killed": false},
+        {"rank": 3, "name": "glm53-sircl-test-device-c09af595-r3", "image_id": "sha256:d8fe2b10fef71a1250947c17703d8a8baccbd4db68b3a304262a50dd90dd77ab", "marker_at": "2026-09-04T03:04:45.069989501Z", "fatal_at": "2026-09-04T03:04:50.432181854Z", "finished_at": "2026-09-04T03:04:58.072798553Z", "container_exit_code": 0, "oom_killed": false}
+      ],
+      "result": {
+        "application_startup_completed": false,
+        "http_200_count": 0,
+        "fatal_log": "SIRCL_FUSED_FATAL sequence=0 stage=proxy",
+        "worker_monitors_observed_failure": 4,
+        "marker_to_fatal_seconds_range": [5.351, 5.383],
+        "fatal_timestamp_spread_seconds": 0.012,
+        "all_containers_finished": true,
+        "last_container_finished_seconds_after_first_fatal": 40.726
+      },
+      "conclusion": "The deliberately poisoned sequence did not reach API readiness or expose model output. All four native proxies fail-stopped and every worker monitor initiated shutdown without an unbounded collective wait. Because the fault fired during startup, this run establishes containment and convergence, not direct observation of the Python post-output gate."
+    },
+    {
+      "name": "rank-2-fused-proxy-exit",
+      "publishable": false,
+      "source": {
+        "base_commit": "a1a4d83a46e3d06e80542fafec9402495f33e772",
+        "test_only_commit": "8d75ad517fc65c159dd03df345e77eea82753da5",
+        "test_only_branch": "codex/test-only-sircl-proxy-exit",
+        "spark_transport_tree": "cfc95094ec892cd57824f57ed879b8db64eacf4c",
+        "fused_session_blob": "788169e5070444e9cfe46ce6350d2b1d786d70a9"
+      },
+      "bundle": {
+        "build_path": "/home/dooner/sircl-fault-builds/8d75ad5-proxy/build/sircl-bundle",
+        "archive_path": "/home/dooner/sircl-fault-builds/8d75ad5-proxy/sircl-bundle.tar.gz",
+        "archive_sha256": "de1c398d3c6caf8f28dad97d64828bbdd4d9deacc4dd2e61665b1de3cc759f90",
+        "deployed_path_on_each_rank": "/var/tmp/sircl-test-proxy-d8c5deef",
+        "native_sha256": "d8c5deefb9e17fc72ae921db64c10b6618870bc7af2d45fdc57719ad7c3e510d",
+        "manifest_sha256": "96e1d31e6de93539b677d87a9537673976f3b7cb9c69e447957a7417847be0dd",
+        "hashes_verified_on_all_four_ranks": true
+      },
+      "injection": {
+        "fault_rank": 2,
+        "fault_value": "zero proxy rail bytes",
+        "peer_descriptor_spin_limit": 16777216,
+        "proxy_timeout_seconds": 5,
+        "startup_marker": "SIRCL_TEST_ONLY_FAULT variant=rank2_proxy_exit rank=<rank> fault_rank=2 spin_limit=16777216",
+        "mechanism": "Rank 2 submits invalid fused proxy geometry, causing the real proxy exception and process-fatal path; peer device waits remain finite."
+      },
+      "containers": [
+        {"rank": 0, "name": "glm53-sircl-test-proxy-d8c5deef-r0", "image_id": "sha256:d7b1154b9a60f3efb094cf8dac59feb23e154310d48eb6eeaf3bd1cba0ce0dd6", "marker_at": "2026-09-04T03:07:41.926883260Z", "fatal_at": "2026-09-04T03:07:47.309012621Z", "finished_at": "2026-09-04T03:08:47.275819064Z", "container_exit_code": 137, "oom_killed": false},
+        {"rank": 1, "name": "glm53-sircl-test-proxy-d8c5deef-r1", "image_id": "sha256:f869ef7ffab866e32025976850e6569c70451e1e5121d31d21e116eb9885b60c", "marker_at": "2026-09-04T03:07:41.930220445Z", "fatal_at": "2026-09-04T03:07:47.305791009Z", "finished_at": "2026-09-04T03:07:54.174321935Z", "container_exit_code": 0, "oom_killed": false},
+        {"rank": 2, "name": "glm53-sircl-test-proxy-d8c5deef-r2", "image_id": "sha256:fc927ec5626d56d5f0d6daddc22e960ee27d8a6dcc9312a70562867ee5ce8c0c", "marker_at": "2026-09-04T03:07:41.941630267Z", "fatal_at": "2026-09-04T03:07:42.305969910Z", "finished_at": "2026-09-04T03:07:49.505979337Z", "container_exit_code": 0, "oom_killed": false},
+        {"rank": 3, "name": "glm53-sircl-test-proxy-d8c5deef-r3", "image_id": "sha256:d8fe2b10fef71a1250947c17703d8a8baccbd4db68b3a304262a50dd90dd77ab", "marker_at": "2026-09-04T03:07:41.944926516Z", "fatal_at": "2026-09-04T03:07:47.310298527Z", "finished_at": "2026-09-04T03:07:54.371861394Z", "container_exit_code": 0, "oom_killed": false}
+      ],
+      "result": {
+        "application_startup_completed": false,
+        "http_200_count": 0,
+        "fatal_log": "SIRCL_FUSED_FATAL sequence=0 stage=proxy",
+        "worker_monitors_observed_failure": 4,
+        "rank2_marker_to_fatal_seconds": 0.364,
+        "peer_fatal_delay_after_rank2_seconds_range": [5.000, 5.004],
+        "all_containers_finished": true,
+        "last_container_finished_seconds_after_rank2_fatal": 64.970
+      },
+      "conclusion": "Rank 2 entered the intended real proxy-fatal path first. The other three ranks starved, reached their configured five-second proxy timeout, and fail-stopped locally; all worker monitors initiated shutdown. No model output or fallback escaped, and no post-output Gloo collective was used."
+    }
+  ],
+  "publication_boundary": {
+    "normal_bundle_publishable": true,
+    "fault_bundles_test_only": true,
+    "fault_bundles_publishable": false,
+    "reason": "The fault libraries intentionally corrupt fused wait/proxy behavior. They are disposable validation artifacts, must not be embedded in an operator image, and must not replace the normal source-bound SIRCL library."
+  },
+  "limitations": [
+    "The normal observation records functional serving and transport progress, not a throughput comparison.",
+    "Both injected faults occurred during determine_available_memory before API readiness, so they validate fail-stop convergence but do not directly exercise an already-running request's post-output Python gate.",
+    "Container exit codes are launcher-level outcomes: rank 0 ended with 137 and OOMKilled=false in both injected runs, while follower containers ended with 0. Native fatal logs and worker-monitor logs are the failure evidence.",
+    "Normal HTTP counts are cumulative at the stated observation timestamp and include 39 loopback warmup requests plus 27 external chat requests."
+  ]
+}

@@ -5,18 +5,18 @@
   "date": "2026-09-03",
   "source": {
     "repository": "https://github.com/FujitsuPolycom/sparkring.git",
-    "spark_transport_tree": "8051e4e432d24d62bb3ee79573b5adde4e36f5fb",
-    "public_overlay_spec_sha256": "440f954a7ec485bf17adaecc7c28a22965bd32eadca76438f310501c57514bc7"
+    "spark_transport_tree": "2aac02232a9115037723aa1dd40483a5693a3e1e",
+    "public_overlay_spec_sha256": "bc93d5069f2b3faaa7e87d2f24aadd9f7878bff67abd93eeec3a0975da46f6fd"
   },
   "overlay": {
     "schema": "sparkring-public-overlay/v1",
-    "files": 12,
+    "files": 14,
     "manifest": "sparkring-overlay-manifest.json",
-    "manifest_sha256": "8a48ba85afcea3959aadfd715c0ed4c55f1e3e95ac62dc362890b6efa0bb210f"
+    "manifest_sha256": "85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4"
   },
   "native": {
     "artifact": "libspark_transport_capi.so",
-    "sha256": "f7cf0170acbbae550affb8d4df14ac442f885d334945908d60b32051dea94e4a",
+    "sha256": "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc",
     "host_architecture": "aarch64",
     "gpu": "NVIDIA GB10",
     "cuda": "13.0.88",

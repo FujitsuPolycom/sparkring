@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -609,12 +610,14 @@ class Tp4BidirectionalPrefillSession::Impl {
     if (input == nullptr || output == nullptr) {
       throw std::invalid_argument("bidirectional prefill tensor is null");
     }
-    if (poisoned_) {
+    if (poisoned_.load(std::memory_order_acquire)) {
       throw std::runtime_error("bidirectional prefill session is poisoned");
     }
     // A null cudaStream_t is CUDA's valid legacy/default stream. The C ABI
     // transports the handle as void*, so it must not be treated as missing.
     auto stream = static_cast<cudaStream_t>(stream_pointer);
+    const std::uint64_t sequence =
+        submitted_sequence_.fetch_add(1, std::memory_order_acq_rel) + 1U;
     try {
       bulk_->bind(input, output, stream);
       executor_->begin();
@@ -633,8 +636,11 @@ class Tp4BidirectionalPrefillSession::Impl {
         }
         std::this_thread::yield();
       }
+      completed_sequence_.store(sequence, std::memory_order_release);
     } catch (...) {
-      poisoned_ = true;
+      failing_sequence_.store(sequence, std::memory_order_release);
+      error_code_.store(1, std::memory_order_release);
+      poisoned_.store(true, std::memory_order_release);
       // Every launched bulk kernel is finite once its host-observed doorbell
       // is handed to the device acquire gate. Quiesce this call's stream and
       // reap any posted CQ work before stack unwinding can release arenas.
@@ -644,6 +650,17 @@ class Tp4BidirectionalPrefillSession::Impl {
       (void)drain_edge(cleanup_deadline);
       throw;
     }
+  }
+
+  Tp4BidirectionalPrefillHealthStatus health_status() const noexcept {
+    const bool poisoned = poisoned_.load(std::memory_order_acquire);
+    return {
+        !poisoned,
+        poisoned,
+        submitted_sequence_.load(std::memory_order_acquire),
+        completed_sequence_.load(std::memory_order_acquire),
+        failing_sequence_.load(std::memory_order_acquire),
+        error_code_.load(std::memory_order_acquire)};
   }
 
  private:
@@ -671,7 +688,11 @@ class Tp4BidirectionalPrefillSession::Impl {
   std::unique_ptr<research::BidirectionalRingEdgePort> edge_;
   std::unique_ptr<research::BidirectionalRingExecutor> executor_;
   std::mutex mutex_;
-  bool poisoned_{};
+  std::atomic<bool> poisoned_{false};
+  std::atomic<std::uint64_t> submitted_sequence_{};
+  std::atomic<std::uint64_t> completed_sequence_{};
+  std::atomic<std::uint64_t> failing_sequence_{};
+  std::atomic<std::int32_t> error_code_{};
 };
 
 Tp4BidirectionalPrefillSession::Tp4BidirectionalPrefillSession(
@@ -683,6 +704,11 @@ Tp4BidirectionalPrefillSession::~Tp4BidirectionalPrefillSession() = default;
 void Tp4BidirectionalPrefillSession::all_reduce(
     const void* input, void* output, void* cuda_stream) {
   impl_->all_reduce(input, output, cuda_stream);
+}
+
+Tp4BidirectionalPrefillHealthStatus
+Tp4BidirectionalPrefillSession::health_status() const noexcept {
+  return impl_->health_status();
 }
 
 }  // namespace spark_transport

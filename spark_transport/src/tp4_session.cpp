@@ -598,6 +598,7 @@ class Tp4AllreduceSession::Impl {
     {
       std::lock_guard<std::mutex> lock(submission_mutex_);
       stopping_ = true;
+      health_stopping_.store(true, std::memory_order_release);
       stop_requested_.store(true, std::memory_order_release);
     }
     progress_cv_.notify_one();
@@ -659,6 +660,9 @@ class Tp4AllreduceSession::Impl {
           caller_stream_set_ = true;
         } catch (...) {
           poisoned_ = true;
+          health_poisoned_.store(true, std::memory_order_release);
+          health_failing_sequence_.store(sequence_ + 1U,
+                                         std::memory_order_release);
           completion_cv_.notify_all();
           throw;
         }
@@ -676,10 +680,15 @@ class Tp4AllreduceSession::Impl {
       } catch (...) {
         submissions_.pop_back();
         poisoned_ = true;
+        health_poisoned_.store(true, std::memory_order_release);
+        health_failing_sequence_.store(next_sequence,
+                                       std::memory_order_release);
         completion_cv_.notify_all();
         throw;
       }
       sequence_ = next_sequence;
+      health_submitted_sequence_.store(next_sequence,
+                                       std::memory_order_release);
       caller_stream_ = cuda_stream;
       caller_stream_set_ = true;
     }
@@ -799,6 +808,22 @@ class Tp4AllreduceSession::Impl {
             : -1};
   }
 
+  Tp4HealthStatus health_status() const noexcept {
+    const bool progress_running =
+        progress_thread_running_.load(std::memory_order_acquire);
+    const bool poisoned = health_poisoned_.load(std::memory_order_acquire);
+    const bool stopping = health_stopping_.load(std::memory_order_acquire);
+    return Tp4HealthStatus{
+        !poisoned && !stopping && progress_running,
+        poisoned,
+        progress_running,
+        stopping,
+        health_submitted_sequence_.load(std::memory_order_acquire),
+        health_completed_sequence_.load(std::memory_order_acquire),
+        health_failing_sequence_.load(std::memory_order_acquire),
+        poisoned ? 1 : 0};
+  }
+
  private:
   struct Submission {
     std::uint64_t sequence;
@@ -898,7 +923,9 @@ class Tp4AllreduceSession::Impl {
             promise.set_value("unknown graph progress affinity failure");
             return;
           }
+          progress_thread_running_.store(true, std::memory_order_release);
           progress_loop();
+          progress_thread_running_.store(false, std::memory_order_release);
         });
     const std::string startup_error = startup.get();
     if (!startup_error.empty()) {
@@ -944,6 +971,8 @@ class Tp4AllreduceSession::Impl {
       {
         std::lock_guard<std::mutex> lock(submission_mutex_);
         completed_sequence_ = submission.sequence;
+        health_completed_sequence_.store(submission.sequence,
+                                         std::memory_order_release);
       }
       completion_cv_.notify_all();
     }
@@ -1270,6 +1299,12 @@ class Tp4AllreduceSession::Impl {
   std::condition_variable completion_cv_;
   std::deque<Submission> submissions_;
   std::thread progress_thread_;
+  std::atomic<bool> progress_thread_running_{false};
+  std::atomic<bool> health_stopping_{false};
+  std::atomic<bool> health_poisoned_{false};
+  std::atomic<std::uint64_t> health_submitted_sequence_{};
+  std::atomic<std::uint64_t> health_completed_sequence_{};
+  std::atomic<std::uint64_t> health_failing_sequence_{};
   const std::uint64_t max_inflight_;
   std::chrono::seconds eager_protocol_timeout_{
       kGraphProtocolTimeout};
@@ -1320,6 +1355,10 @@ void Tp4AllreduceSession::capture_all_reduce(
 Tp4GraphReplayStatus Tp4AllreduceSession::graph_replay_status()
     const noexcept {
   return impl_->graph_replay_status();
+}
+
+Tp4HealthStatus Tp4AllreduceSession::health_status() const noexcept {
+  return impl_->health_status();
 }
 
 }  // namespace spark_transport

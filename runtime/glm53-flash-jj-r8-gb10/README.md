@@ -151,9 +151,20 @@ The SIRCL performance-testing lane is implemented but not qualified as the
 recommended dual-rail profile. Qualification requires a four-rank deployment
 of the exact public bundle, cold-start and restart checks, deterministic native
 and model-output correctness, a receipt-backed NCCL/SIRCL comparison with
-transport counters, and fault containment. Rank-wide capability voting and a
-post-step health gate are specified in
-[`FujitsuPolycom/sparkring#198`](https://github.com/FujitsuPolycom/sparkring/issues/198).
+transport counters, and fault containment.
+
+The launcher enables a rank-wide capability vote before native construction.
+Every rank reports the native and overlay identities, shared protocol geometry,
+and local RDMA device/GID availability over vLLM's CPU process group. Any
+rank-specific failure or shared mismatch stops all ranks before a SIRCL session
+is created.
+
+After vLLM's existing output synchronization, a host-only native health check
+prevents synchronous or asynchronous model output from leaving an unhealthy
+worker. The check does not synchronize CUDA. Live fault injection remains
+required before this lane becomes the recommended profile. Worker failure is
+fail-stop; four-rank evidence must still show that vLLM's multiprocess monitor
+tears down the peer workers without a collective hang.
 
 ### NCCL fallback
 
