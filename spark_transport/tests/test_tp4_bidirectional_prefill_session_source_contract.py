@@ -38,6 +38,7 @@ def test_c_api_is_separate_and_uses_v2_exact_geometry() -> None:
     for symbol in (
         "spark_tp4_bidirectional_prefill_create",
         "spark_tp4_bidirectional_prefill_all_reduce",
+        "spark_tp4_bidirectional_prefill_get_health_status",
         "spark_tp4_bidirectional_prefill_destroy",
     ):
         assert symbol in header

@@ -30,15 +30,15 @@
     "environment_template": "runtime/glm53-flash-jj-r8-gb10/runtime.env.example",
     "launcher": "runtime/glm53-flash-jj-r8-gb10/launch-rank.sh",
     "quickstart": "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md",
-    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34",
-    "image_id": "sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4",
-    "sparkring_source_commit": "eb18df3027b2d7e2197e33288282e2cdd36edb08",
+    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f",
+    "image_id": "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075",
+    "sparkring_source_commit": "b358a818786d8506086aaaabb9afe464fa2ccb49",
     "environment_overrides": {
       "SPARKCACHE_ENABLED": "0"
     },
     "vllm_repository": "https://github.com/FujitsuPolycom/vllm.git",
-    "vllm_commit": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
-    "b12x_commit": "6255090a03b12c3f7d552102a02fac0b542fb8c9",
+    "vllm_commit": "e02b174693e13859de61811b5e8cd13d5308e259",
+    "b12x_commit": "9ae41c5cb9935d740456479954b0089f80bd2ef2",
     "nccl_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3"
   },
   "serving_common": {
@@ -57,7 +57,7 @@
     "kv_cache_dtype": "fp8",
     "block_size": 256,
     "mamba_cache_mode": "align",
-    "kda_prefill_backend": "flashkda",
+    "kda_prefill_backend": "b12x",
     "load_format": "fastsafetensors",
     "async_scheduling": true,
     "native_prefix_caching": true,
@@ -100,7 +100,10 @@
     }
   },
   "transport": {
-    "backend": "patched-nccl",
+    "backend": "dual-rail-sircl-with-patched-nccl-fallback",
+    "capability_vote": true,
+    "output_health_gate": true,
+    "embedded_bundle": true,
     "nccl_version": "2.30.7",
     "topology": "four-rank switchless direct-cable cycle",
     "subnet_aware_routing": true,
@@ -110,7 +113,7 @@
   },
   "evidence": {
     "status": "implemented",
-    "conditions": "The exact Linux/ARM64 image and four-rank launcher resolve DCP1, DCP2, and DCP4 from one environment contract. SparkCache is disabled, leaving vLLM's in-memory prefix cache enabled.",
+    "conditions": "The exact Linux/ARM64 image and four-rank launcher resolve DCP1, DCP2, and DCP4 from one environment contract. The preferred DCP4 transport is the embedded dual-rail SIRCL bundle with rank-wide capability and output-health checks; patched NCCL handles non-admitted collectives. SparkCache is disabled in this base recipe, leaving vLLM's in-memory prefix cache enabled.",
     "measurement": "GPU-free launcher and image-contract tests resolved each DCP profile and verified the immutable image, source, model, draft, transport, scheduler, and memory settings.",
     "result": "All three profiles produce complete four-rank launch commands. DCP4 is the preferred profile because it exposes the greatest logical KV capacity among the recorded allocations.",
     "conclusion": "The image and launcher implement cache-disabled GLM-5.3 Flash serving at TP4 with DCP1, DCP2, or DCP4.",
@@ -120,6 +123,7 @@
       "The DFlash2 checkpoint license limits use to research and evaluation unless separately licensed."
     ],
     "record": "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md",
+    "machine_receipt": "runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json",
     "artifact_scope": "The immutable image, model revisions, four-rank topology, and DCP profile values recorded in this recipe."
   }
 }

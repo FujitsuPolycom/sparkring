@@ -67,9 +67,23 @@ limit; the linked quickstart records its exact image and conditions.
 capacity among these profiles and is the recorded asynchronous SparkCache
 deployment.**
 
+The preferred DCP4 transport is **SIRCL with capability and health checks**.
+Before native sessions are created, the four ranks must agree on the SIRCL
+artifacts and protocol and prove their local RDMA inputs. Native health is
+checked after vLLM's existing output synchronization. Patched NCCL remains the
+explicit fallback and handles collective signatures that SIRCL does not admit.
+The published image passed four-rank DCP4 startup with the embedded dual-rail
+SIRCL bundle, capability voting, output-health checks, persistent restore, and
+failure containment. This is functional qualification, not a broad SIRCL/NCCL
+performance comparison.
+
 The operator image is published at
-`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34`
+`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f`
 and supports both caching methods.
+
+The [public-image receipt](runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json)
+records the image ID, source identities, registry-pull verification, and exact
+functional scope.
 
 The previous complete-snapshot image remains available as the rollback named
 in the quickstart.

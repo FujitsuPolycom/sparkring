@@ -6,11 +6,13 @@ Linux/ARM64 image supports DCP1, DCP2, and DCP4. The default request limit is
 The operator can enable persistent SparkCache or use vLLM's GPU prefix cache
 alone without changing the image.
 
-The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV per rank,
-scheduler interval two, BF16 DFlash2 at depth seven, and SparkCache's flat
-copy-on-write page tails. Growing conversations write changed pages instead
-of another complete cached context. An earlier complete-snapshot image remains
-available as a recovery artifact.
+The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV per rank, SIRCL with
+capability and health checks, scheduler interval two, BF16 DFlash2 at depth
+seven, and SparkCache's flat copy-on-write page tails. Patched NCCL is the
+fallback transport and handles collective signatures outside SIRCL's admission
+rules. Growing conversations write changed pages instead of another complete
+cached context. An earlier complete-snapshot image remains available as a
+recovery artifact.
 
 The image does not contain model checkpoints. It mounts the exact
 [`local-inference-lab/GLM-5.3-Flash-NVFP4`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4)
@@ -29,18 +31,24 @@ line is named `Jovian Judgement Community R10` in the image contract.
 The recommended DCP4 profile uses this immutable Linux/ARM64 image:
 
 ```bash
-image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34'
-expected_image_id='sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4'
+image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f'
+expected_image_id='sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075'
 docker pull "${image}"
 test "$(docker image inspect "${image}" --format '{{.Id}}')" = "${expected_image_id}"
 ```
 
-The published tag is
-`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260903-async-store-completion`.
-Use the digest above for reproducible deployment.
+Use the digest above for reproducible deployment. All four validation ranks
+pulled that digest and resolved image ID
+`sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075`.
 
 The exact source composition and local build command remain in
 [`runtime/glm53-flash-jj-r8-gb10/`](../runtime/glm53-flash-jj-r8-gb10/README.md).
+
+This published digest contains the receipt-bound SIRCL Python overlay,
+generated manifest, and ARM64 native library. The preferred deployment leaves
+`SIRCL_BUNDLE_HOST_ROOT` empty and therefore requires no host bundle mount.
+The environment template selects B12X KDA prefill, matching the vLLM and B12X
+source revisions embedded in the image.
 
 ### Complete-snapshot recovery artifact
 
@@ -149,23 +157,39 @@ Replace these five site values:
 - `DFLASH_MODEL_HOST_PATH`: the BF16 draft directory;
 - `CACHE_HOST_ROOT`: a writable rank-local JIT and SparkCache directory.
 
-This configuration leaves SIRCL disabled and uses patched NCCL. To enable the
-implemented graph-native and fused eager SIRCL performance-testing paths,
-build the source-bound bundle in the
-[runtime SIRCL instructions](../runtime/glm53-flash-jj-r8-gb10/README.md#implemented-sircl-performance-testing-lane),
-then append the sanitized transport overlay:
+The base environment leaves SIRCL disabled because RoCE peer addresses and
+device names are rank-specific. In that form, patched NCCL is the complete
+fallback. For the preferred DCP4 path, append the dual-rail transport settings:
 
 ```bash
 cat runtime/glm53-flash-jj-r8-gb10/sircl-fused.env.example >> "$HOME/glm53-flash.env"
 ${EDITOR:-vi} "$HOME/glm53-flash.env"
 ```
 
-Replace every additional `REPLACE` value with that rank's bundle path, primary
-and secondary peer addresses, and RDMA devices. The overlay sets
+Replace every additional `REPLACE` value with that rank's primary and secondary
+peer addresses and RDMA devices. Leave `SIRCL_BUNDLE_HOST_ROOT` empty to use
+the bundle inside the image. The overlay sets
 `SIRCL_ENABLED=1`, direct graph doorbells, dual-rail fused exposure, the graph
-CPU assignments, control-port bases, and timeouts. Use byte-identical bundles
-on all four ranks. The runtime guide specifies the resulting SIRCL/NCCL routing
-and mapped-memory allocation.
+CPU assignments, control-port bases, and timeouts. The runtime guide specifies
+the resulting SIRCL/NCCL routing and mapped-memory allocation.
+
+Developers can point `SIRCL_BUNDLE_HOST_ROOT` at an absolute directory that
+contains the complete Python overlay, generated manifest, and native library.
+The launcher validates the files and mounts that override read-only.
+
+Before constructing native sessions, all ranks exchange the SIRCL artifact and
+protocol identities and report their local RDMA device and GID availability. A
+missing capability or shared mismatch stops all ranks. After vLLM synchronizes
+model output, a host-only check stops output from an unhealthy SIRCL session;
+the check does not synchronize CUDA.
+
+**Status:** the exact public image is four-rank qualified for functional DCP4
+serving. Every rank accepted the SIRCL capability vote, the service became
+healthy, a 32,768-token entry restored after restart, concurrent stores drained
+all delayed ownership, and test-only SIRCL failures stopped all worker groups
+before any API became ready. These checks establish functional behavior, not a
+broad performance comparison. To use the fallback, do not append the overlay
+and keep `SIRCL_ENABLED=0`; patched NCCL then handles every collective.
 
 The default OpenAI-compatible model name is `glm-5.3-flash`. Override
 `SERVED_MODEL_NAME` only when the site needs a distinct routing name.
@@ -199,9 +223,14 @@ those layouts have matching asynchronous page-capture evidence:
 ```bash
 DECODE_CONTEXT_PARALLEL_SIZE=1  # or 2
 SPARKCACHE_PUBLICATION_SCHEMA='snapshot-v1'
-SPARKCACHE_CACHE_NAMESPACE='glm53-flash-dcp1-snapshot-v1'  # use dcp2 for DCP2
+SPARKCACHE_CACHE_NAMESPACE='glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp1-snapshot-v1'
 SPARKCACHE_ASYNC_PAGE_CAPTURE=0
 ```
+
+For DCP2, use
+`glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp2-snapshot-v1`. The DCP4
+template uses
+`glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp4-page-tail-cow-v2`.
 
 When `SPARKCACHE_ENABLED=0`, only the DCP value needs to change.
 
@@ -255,6 +284,13 @@ The template's `SPARKCACHE_CACHE_NAMESPACE` value selects rank-local
 persistent-context storage. It is not part of SparkCache's content identity or
 stored format. Changing it selects a different root and therefore a different
 set of discoverable entries.
+
+The three documented defaults name vLLM `e02b1746` and B12X `9ae41c5c`
+because those sources determine the manager-page state being persisted. This
+keeps state written by the current runtime out of the generic directories used
+by earlier source compositions. Existing entries are not migrated or deleted.
+Do not rename or copy an old directory into a source-bound root; allow a cache
+miss to recompute and publish current state.
 
 `JIT_CACHE_NAMESPACE` independently selects persistent Triton,
 TorchInductor, B12X, and vLLM compilation data. Keep its source-bound default
@@ -390,6 +426,39 @@ Check the OpenAI-compatible API after rank 0 reports readiness:
 curl --fail http://rank0.example.net:8015/v1/models
 ```
 
+API `/health` is a readiness check. It can remain healthy when the scheduler
+cannot admit waiting requests. Use the separate rank-zero liveness endpoint
+for routing and operator alerts:
+
+```bash
+curl --fail http://rank0.example.net:8016/liveness
+curl --fail http://rank0.example.net:8016/metrics
+```
+
+The liveness endpoint returns HTTP 503 when zero running requests and one or
+more waiting requests persist for 60 seconds, when its vLLM metrics sample is
+stale, or when SparkCache cannot prove capture-page ownership. Nonzero idle KV
+is warning-only until it remains unchanged beyond the configured 330-second
+interval.
+
+Before directing normal traffic to the service, run a concurrent prompt gate.
+The requests disable model thinking, put a unique nonce at the front of every
+prompt, and require request, capture, and KV usage to return to their measured
+idle baseline:
+
+```bash
+python scripts/glm53_liveness_gate.py \
+  --endpoint http://rank0.example.net:8015 \
+  --model glm-5.3-flash \
+  --concurrency 4 \
+  --prompt-words 100000 \
+  --cycles 3 \
+  --output ./glm53-liveness-gate.json
+```
+
+Add `--api-key-file /secure/api-keys` when the API requires authentication.
+Use `--duration-seconds 900` for a 15-minute soak.
+
 When SparkCache is enabled, INFO logs summarize the four ranks in three short
 lines:
 
@@ -427,16 +496,16 @@ source with different image and video contents, persistent publication, and
 restart restore. The built-image smoke did not repeat video input or
 persistent multimodal restoration after another process restart.
 
-The operator image embeds SparkCache merge commit `9c6218c`. Asynchronous
-manager-page publication reports terminal completion when a worker skips a
-store before CUDA submission, allowing vLLM to reclaim the finished request's
-KV blocks. A TP4/DCP4 test forced 12 busy-saver skips per rank and one
-already-present skip per rank. All requests completed, idle KV usage returned
-to 0.0%, three explicit cache resets succeeded, and no preemption, CUDA error,
-or NCCL error occurred. See the
-[`operator image receipt`](../runtime/glm53-flash-jj-r8-gb10/async-store-completion-public-image-receipt.json)
+The operator image embeds SparkCache merge commit `6605717`. Asynchronous
+manager-page publication retains each finished request until every physical
+rank reports a terminal store outcome, and it bounds optional publication
+ownership before worker capture begins. A 90-minute replay completed 393
+growing-conversation turns and processed 54.0 million prompt tokens without a
+request failure or preemption. Delayed ownership and retained pages returned
+to zero. See the
+[`operator image receipt`](../runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json)
 and the
-[`SparkCache validation record`](https://github.com/FujitsuPolycom/sparkcache/blob/9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4/evidence/glm53-flash-dcp4-page-tail-v2/async-store-completion.json).
+[`SparkCache validation record`](https://github.com/FujitsuPolycom/sparkcache/blob/66057174301a4759ca3a45207ea41016689449cb/evidence/glm53-flash-dcp4-page-tail-v2/asymmetric-async-store-completion.json).
 
 The unchanged page-tail storage schema completed an exact
 131,072 → 262,144 → 524,288 → 921,600-token DCP4 growth sequence. Every
