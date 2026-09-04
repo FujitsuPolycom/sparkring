@@ -489,7 +489,11 @@ def _launcher_fixture(tmp_path: Path) -> tuple[Path, Path, dict[str, Path]]:
     docker.write_text(
         """#!/bin/sh
 if [ "$1" = image ] && [ "$2" = inspect ]; then
-  printf '%s\n' "$EXPECTED_IMAGE_ID"
+  case "$4" in
+    *sircl.native-sha256*) printf '%s\n' "$EXPECTED_SIRCL_NATIVE_SHA256" ;;
+    *sircl.manifest-sha256*) printf '%s\n' "$EXPECTED_SIRCL_MANIFEST_SHA256" ;;
+    *) printf '%s\n' "$EXPECTED_IMAGE_ID" ;;
+  esac
 elif [ "$1" = container ] && [ "$2" = inspect ]; then
   exit 1
 elif [ "$1" = run ]; then
@@ -549,6 +553,14 @@ def _run_launcher(
                 f"PATH={_bash_path(fake_bin)}:$PATH",
                 f"export CAPTURE_PATH={_bash_path(capture)}",
                 f"export EXPECTED_IMAGE_ID={IMAGE_ID}",
+                (
+                    "export EXPECTED_SIRCL_NATIVE_SHA256="
+                    "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc"
+                ),
+                (
+                    "export EXPECTED_SIRCL_MANIFEST_SHA256="
+                    "85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4"
+                ),
                 "IMAGE_REF=test-image:r8",
                 f"IMAGE_ID={IMAGE_ID}",
                 *extra_lines,
@@ -635,7 +647,7 @@ def test_fused_sircl_overlay_is_complete_and_sanitized() -> None:
     values = _defaults(SIRCL_ENVIRONMENT)
     assert values == {
         "SIRCL_ENABLED": "1",
-        "SIRCL_BUNDLE_HOST_ROOT": "/REPLACE/ABSOLUTE/SIRCL_BUNDLE_PATH",
+        "SIRCL_BUNDLE_HOST_ROOT": None,
         "SPARK_TP4_PEER0": "REPLACE_WITH_PRIMARY_PEER_0_ADDRESS",
         "SPARK_TP4_PEER1": "REPLACE_WITH_PRIMARY_PEER_1_ADDRESS",
         "SPARK_TP4_DEVICE0": "rocep1s0f0",
@@ -677,6 +689,53 @@ def test_fused_sircl_overlay_is_complete_and_sanitized() -> None:
         assert forbidden not in raw
 
 
+def test_launcher_uses_the_image_embedded_sircl_bundle_by_default(
+    tmp_path: Path,
+) -> None:
+    result, arguments = _run_launcher(
+        tmp_path,
+        "sircl-embedded",
+        f"source '{_bash_path(SIRCL_ENVIRONMENT)}'",
+        "SPARK_TP4_PEER0=192.0.2.11",
+        "SPARK_TP4_PEER1=192.0.2.13",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0=192.0.2.12",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1=192.0.2.14",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0=rocep2s0f0",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1=rocep2s0f1",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not any(argument.endswith(":/opt/spark-sircl:ro") for argument in arguments)
+    assert "PYTHONPATH=/opt/spark-sircl" in arguments
+    assert "SPARK_TP4_LIBRARY=/opt/spark-sircl/libspark_transport_capi.so" in arguments
+    assert (
+        "org.sparkring.sircl.native-sha256="
+        "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc"
+    ) in arguments
+    assert (
+        "org.sparkring.sircl.manifest-sha256="
+        "85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4"
+    ) in arguments
+
+
+def test_launcher_rejects_an_image_without_embedded_sircl_labels(
+    tmp_path: Path,
+) -> None:
+    result, arguments = _run_launcher(
+        tmp_path,
+        "sircl-not-embedded",
+        "SIRCL_ENABLED=1",
+        "SPARK_TP4_PEER0=192.0.2.11",
+        "SPARK_TP4_PEER1=192.0.2.13",
+        "export EXPECTED_SIRCL_NATIVE_SHA256=",
+        "export EXPECTED_SIRCL_MANIFEST_SHA256=",
+    )
+
+    assert result.returncode == 78
+    assert "image has no receipt-bound embedded SIRCL bundle" in result.stderr
+    assert arguments == []
+
+
 def _sircl_bundle(tmp_path: Path) -> Path:
     bundle = tmp_path / "sircl-bundle"
     bundle.mkdir()
@@ -699,7 +758,7 @@ def _sircl_bundle(tmp_path: Path) -> Path:
     return bundle
 
 
-def test_launcher_mounts_and_configures_width4096_sircl(tmp_path: Path) -> None:
+def test_launcher_accepts_read_only_external_sircl_override(tmp_path: Path) -> None:
     bundle = _sircl_bundle(tmp_path)
 
     result, arguments = _run_launcher(

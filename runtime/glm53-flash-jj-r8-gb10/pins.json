@@ -63,6 +63,14 @@
     "nccl_version": "2.30.7",
     "nccl_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3"
   },
+  "sircl": {
+    "repository": "https://github.com/FujitsuPolycom/sparkring.git",
+    "spark_transport_tree": "2aac02232a9115037723aa1dd40483a5693a3e1e",
+    "public_overlay_spec_sha256": "bc93d5069f2b3faaa7e87d2f24aadd9f7878bff67abd93eeec3a0975da46f6fd",
+    "overlay_manifest_sha256": "85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4",
+    "native_sha256": "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc",
+    "build_receipt_sha256": "2384e3fd6b9dc38735f0eb55c8ab03186583dec475fbc88b89ea3a3c51a13844"
+  },
   "defaults": {
     "max_model_len": 1048576,
     "max_num_batched_tokens": 8192,

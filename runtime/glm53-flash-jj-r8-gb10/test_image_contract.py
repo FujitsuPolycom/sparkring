@@ -168,8 +168,12 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
         "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
         "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
+        "2aac02232a9115037723aa1dd40483a5693a3e1e",
+        "85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4",
+        "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc",
     ):
         assert identity in recipe
+    assert "COPY bundle/sircl/ /opt/spark-sircl/" in recipe
     assert "org.sparkcache.dcp-layouts=\"1,2,4\"" in recipe
     assert "org.sparkcache.cache-geometry=\"manager-pages-v2\"" in recipe
     assert (
@@ -219,6 +223,25 @@ def test_runtime_hashes_are_enforced_inside_image() -> None:
     assert labels["org.sparkring.b12x.package-tree"] == (
         "6de9871d15dab093340695518fec0f744289e676"
     )
+    assert labels["org.sparkring.sircl.source-tree"] == (
+        pins["sircl"]["spark_transport_tree"]
+    )
+    assert labels["org.sparkring.sircl.manifest-sha256"] == (
+        pins["sircl"]["overlay_manifest_sha256"]
+    )
+    assert labels["org.sparkring.sircl.native-sha256"] == (
+        pins["sircl"]["native_sha256"]
+    )
+    assert "verify_public_overlay(SIRCL_ROOT, sircl_manifest)" in verifier
+
+
+def test_builder_requires_the_receipt_bound_prebuilt_sircl_library() -> None:
+    builder = (HERE / "build_image.py").read_text(encoding="utf-8")
+    assert '"--sircl-library"' in builder
+    assert "SIRCL native library digest mismatch" in builder
+    assert '"HEAD:spark_transport"' in builder
+    assert 'context / "bundle/sircl"' in builder
+    assert '"runtime/public-overlay-files.json"' in builder
 
 
 def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
@@ -428,8 +451,11 @@ def test_async_store_completion_receipt_binds_registry_and_runtime() -> None:
 def test_sircl_public_build_receipt_binds_overlay_and_native_test(
     tmp_path: Path,
 ) -> None:
-    receipt = json.loads(
-        (HERE / "sircl-public-build-receipt.json").read_text(encoding="utf-8")
+    receipt_path = HERE / "sircl-public-build-receipt.json"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    pins = build.load_pins()
+    assert hashlib.sha256(receipt_path.read_bytes()).hexdigest() == (
+        pins["sircl"]["build_receipt_sha256"]
     )
     assert receipt["schema"] == "sparkring-glm53-sircl-public-build/v1"
     assert receipt["status"] == "implemented"
@@ -455,6 +481,14 @@ def test_sircl_public_build_receipt_binds_overlay_and_native_test(
     assert hashlib.sha256(manifest_path.read_bytes()).hexdigest() == (
         receipt["overlay"]["manifest_sha256"]
     )
+    assert verify.verify_public_overlay(output, manifest_path) == 14
+    (output / "sitecustomize.py").write_text("changed", encoding="utf-8")
+    try:
+        verify.verify_public_overlay(output, manifest_path)
+    except verify.VerificationError as error:
+        assert "SIRCL source identity mismatch" in str(error)
+    else:
+        raise AssertionError("changed SIRCL Python source was accepted")
     assert len(receipt["native"]["sha256"]) == 64
     int(receipt["native"]["sha256"], 16)
     assert receipt["validation"] == {

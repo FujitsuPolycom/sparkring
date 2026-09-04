@@ -20,6 +20,9 @@ from typing import Any, Iterable
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 PINS = HERE / "pins.json"
+SIRCL_BUILD_RECEIPT = HERE / "sircl-public-build-receipt.json"
+PUBLIC_OVERLAY_BUILDER = ROOT / "runtime/build-public-overlay.py"
+PUBLIC_OVERLAY_SPEC = ROOT / "runtime/public-overlay-files.json"
 
 
 class BuildError(RuntimeError):
@@ -196,6 +199,59 @@ def sparkcache_source_sha256(root: Path) -> str:
     return digest.hexdigest()
 
 
+def prepare_sircl_bundle(
+    output: Path,
+    *,
+    native_library: Path,
+    pins: dict[str, Any],
+    build_receipt: Path = SIRCL_BUILD_RECEIPT,
+) -> dict[str, Any]:
+    """Create the embedded public overlay around one receipt-bound ARM64 library."""
+    record = pins["sircl"]
+    observed_tree = str(
+        run(("git", "-C", str(ROOT), "rev-parse", "HEAD:spark_transport"))
+    ).strip()
+    if observed_tree != record["spark_transport_tree"]:
+        raise BuildError(
+            "SIRCL source tree mismatch: "
+            f"{observed_tree} != {record['spark_transport_tree']}"
+        )
+    if file_sha256(PUBLIC_OVERLAY_SPEC) != record["public_overlay_spec_sha256"]:
+        raise BuildError("SIRCL public overlay specification digest mismatch")
+    if not build_receipt.is_file():
+        raise BuildError(f"SIRCL native build receipt is missing: {build_receipt}")
+    if file_sha256(build_receipt) != record["build_receipt_sha256"]:
+        raise BuildError("SIRCL native build receipt digest mismatch")
+    if not native_library.is_file():
+        raise BuildError(f"SIRCL native library is missing: {native_library}")
+    if file_sha256(native_library) != record["native_sha256"]:
+        raise BuildError("SIRCL native library digest mismatch")
+
+    run(
+        (
+            sys.executable,
+            PUBLIC_OVERLAY_BUILDER,
+            "--repo",
+            ROOT,
+            "--spec",
+            PUBLIC_OVERLAY_SPEC,
+            "--output",
+            output,
+        )
+    )
+    manifest = output / "sparkring-overlay-manifest.json"
+    if file_sha256(manifest) != record["overlay_manifest_sha256"]:
+        raise BuildError("generated SIRCL public overlay manifest digest mismatch")
+    shutil.copy2(native_library, output / "libspark_transport_capi.so")
+    return {
+        "spark_transport_tree": observed_tree,
+        "public_overlay_spec_sha256": record["public_overlay_spec_sha256"],
+        "overlay_manifest_sha256": record["overlay_manifest_sha256"],
+        "native_sha256": record["native_sha256"],
+        "build_receipt_sha256": record["build_receipt_sha256"],
+    }
+
+
 def inspect_image(engine: str, image: str) -> dict[str, Any]:
     documents = json.loads(str(run((engine, "image", "inspect", image))))
     if not isinstance(documents, list) or len(documents) != 1:
@@ -253,6 +309,7 @@ def prepare_context(
     vllm_source: Path,
     sparkcache_source: Path,
     snapshot_library: Path,
+    sircl_library: Path,
     native_extensions: dict[str, Any],
     pins: dict[str, Any],
 ) -> dict[str, Any]:
@@ -292,8 +349,14 @@ def prepare_context(
             "SparkCache source digest mismatch: "
             f"{observed_source} != {pins['sparkcache']['source_tree_sha256']}"
         )
+    sircl = prepare_sircl_bundle(
+        context / "bundle/sircl",
+        native_library=sircl_library,
+        pins=pins,
+    )
     receipts = context / "bundle/receipts"
     receipts.mkdir(parents=True)
+    shutil.copy2(SIRCL_BUILD_RECEIPT, receipts / "sircl-build-receipt.json")
     manifests = {
         "vllm-source-manifest.json": source_manifest(
             vllm_output, "vllm", pins["vllm"]["commit"]
@@ -335,6 +398,7 @@ def prepare_context(
                 "files": len(manifests["sparkcache-source-manifest.json"]["files"]),
             },
             "native_extensions": len(native_extensions["files"]),
+            "sircl": sircl,
         },
         "inputs": {
             relative: file_sha256(context / relative)
@@ -349,7 +413,10 @@ def prepare_context(
                 "bundle/receipts/vllm-source-manifest.json",
                 "bundle/receipts/sparkcache-source-manifest.json",
                 "bundle/receipts/native-extension-manifest.json",
+                "bundle/receipts/sircl-build-receipt.json",
                 "bundle/native/libspark_cache_snapshot.so",
+                "bundle/sircl/sparkring-overlay-manifest.json",
+                "bundle/sircl/libspark_transport_capi.so",
             )
         },
         "limitation": "This receipt verifies source preparation, not a built image.",
@@ -371,6 +438,15 @@ def main() -> int:
     parser.add_argument("--vllm-source", type=Path, required=True)
     parser.add_argument("--sparkcache-source", type=Path, required=True)
     parser.add_argument("--snapshot-library", type=Path, required=True)
+    parser.add_argument(
+        "--sircl-library",
+        type=Path,
+        required=True,
+        help=(
+            "ARM64 libspark_transport_capi.so matching "
+            "sircl-public-build-receipt.json"
+        ),
+    )
     parser.add_argument("--output-image", required=True)
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--engine", default="docker")
@@ -384,6 +460,12 @@ def main() -> int:
     validate_parent(parent, pins)
     native_extensions = record_native_extensions(engine, parent_ref)
     sparkring_revision = str(run(("git", "-C", str(ROOT), "rev-parse", "HEAD"))).strip()
+    tracked_inputs = (
+        str(HERE.relative_to(ROOT)),
+        "spark_transport",
+        "runtime/build-public-overlay.py",
+        "runtime/public-overlay-files.json",
+    )
     dirty = str(
         run(
             (
@@ -393,7 +475,7 @@ def main() -> int:
                 "status",
                 "--porcelain",
                 "--",
-                str(HERE.relative_to(ROOT)),
+                *tracked_inputs,
             )
         )
     ).strip()
@@ -412,6 +494,7 @@ def main() -> int:
             vllm_source=args.vllm_source.resolve(),
             sparkcache_source=args.sparkcache_source.resolve(),
             snapshot_library=args.snapshot_library.resolve(),
+            sircl_library=args.sircl_library.resolve(),
             native_extensions=native_extensions,
             pins=pins,
         )

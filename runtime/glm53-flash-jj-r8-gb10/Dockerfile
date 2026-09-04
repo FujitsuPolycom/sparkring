@@ -6,7 +6,10 @@ ARG PARENT_IMAGE_ID
 ARG SPARKRING_REVISION
 ARG SOURCE_RECEIPT_SHA256
 
-COPY bundle/ /opt/sparkring/overlays/jj-r8-sparkcache-arm64/
+COPY bundle/sources/ /opt/sparkring/overlays/jj-r8-sparkcache-arm64/sources/
+COPY bundle/native/ /opt/sparkring/overlays/jj-r8-sparkcache-arm64/native/
+COPY bundle/receipts/ /opt/sparkring/overlays/jj-r8-sparkcache-arm64/receipts/
+COPY bundle/sircl/ /opt/spark-sircl/
 COPY install_overlay.py /opt/sparkring/bin/install-jj-r8-sparkcache-overlay.py
 COPY verify_image.py /opt/sparkring/bin/verify-jj-r8-sparkcache-image.py
 COPY warmup_dflash.py /opt/sparkring/bin/warmup_dflash.py
@@ -57,6 +60,9 @@ LABEL org.opencontainers.image.title="SparkRing GLM-5.3 ARM64 operator image wit
       org.sparkring.b12x.tree="0bb58d0dcc10e29e00ff9850c0d719fca1aba5ad" \
       org.sparkring.b12x.package-tree="6de9871d15dab093340695518fec0f744289e676" \
       org.sparkring.nccl.sha256="5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3" \
+      org.sparkring.sircl.source-tree="2aac02232a9115037723aa1dd40483a5693a3e1e" \
+      org.sparkring.sircl.manifest-sha256="85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4" \
+      org.sparkring.sircl.native-sha256="61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc" \
       org.sparkring.loader="fastsafetensors" \
       org.sparkring.diagnostics="compact-startup-no-deep-ep" \
       org.sparkcache.commit="9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4" \

@@ -44,6 +44,12 @@ Use the digest above for reproducible deployment.
 The exact source composition and local build command remain in
 [`runtime/glm53-flash-jj-r8-gb10/`](../runtime/glm53-flash-jj-r8-gb10/README.md).
 
+This published digest predates the embedded SIRCL bundle. Keep
+`SIRCL_ENABLED=0` with this exact digest, or set `SIRCL_BUNDLE_HOST_ROOT` to a
+complete developer bundle. An image built from the current source composition
+contains the receipt-bound bundle and needs no host bundle path. This repository
+does not yet record a published, verified digest for that derived composition.
+
 ### Complete-snapshot recovery artifact
 
 The rollback uses complete `snapshot-v1` publication:
@@ -151,23 +157,26 @@ Replace these five site values:
 - `DFLASH_MODEL_HOST_PATH`: the BF16 draft directory;
 - `CACHE_HOST_ROOT`: a writable rank-local JIT and SparkCache directory.
 
-The base environment leaves SIRCL disabled because the bundle, peer addresses,
-and RDMA devices are rank-specific. In that form, patched NCCL is the complete
-fallback. For the preferred DCP4 transport, build the SIRCL bundle in the
-[runtime SIRCL instructions](../runtime/glm53-flash-jj-r8-gb10/README.md#preferred-dcp4-transport-sircl-with-capability-and-health-checks),
-then append the transport overlay:
+The base environment leaves SIRCL disabled because RoCE peer addresses and
+device names are rank-specific. In that form, patched NCCL is the complete
+fallback. For an image built from the current source composition, append the
+transport settings for the preferred DCP4 path:
 
 ```bash
 cat runtime/glm53-flash-jj-r8-gb10/sircl-fused.env.example >> "$HOME/glm53-flash.env"
 ${EDITOR:-vi} "$HOME/glm53-flash.env"
 ```
 
-Replace every additional `REPLACE` value with that rank's bundle path, primary
-and secondary peer addresses, and RDMA devices. The overlay sets
+Replace every additional `REPLACE` value with that rank's primary and secondary
+peer addresses and RDMA devices. Leave `SIRCL_BUNDLE_HOST_ROOT` empty to use
+the bundle inside the image. The overlay sets
 `SIRCL_ENABLED=1`, direct graph doorbells, dual-rail fused exposure, the graph
-CPU assignments, control-port bases, and timeouts. Use byte-identical bundles
-on all four ranks. The runtime guide specifies the resulting SIRCL/NCCL routing
-and mapped-memory allocation.
+CPU assignments, control-port bases, and timeouts. The runtime guide specifies
+the resulting SIRCL/NCCL routing and mapped-memory allocation.
+
+Developers can point `SIRCL_BUNDLE_HOST_ROOT` at an absolute directory that
+contains the complete Python overlay, generated manifest, and native library.
+The launcher validates the files and mounts that override read-only.
 
 Before constructing native sessions, all ranks exchange the SIRCL artifact and
 protocol identities and report their local RDMA device and GID availability. A

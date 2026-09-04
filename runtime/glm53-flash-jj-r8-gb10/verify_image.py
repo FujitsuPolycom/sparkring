@@ -16,6 +16,7 @@ HERE = Path(__file__).resolve().parent
 PINS = HERE / "pins.json"
 SITE_ROOT = Path("/usr/local/lib/python3.12/dist-packages")
 IMAGE_RECEIPTS = Path("/opt/sparkring/receipts/jj-r8-sparkcache-arm64")
+SIRCL_ROOT = Path("/opt/spark-sircl")
 
 
 class VerificationError(RuntimeError):
@@ -45,6 +46,26 @@ def verify_manifest(root: Path, path: Path) -> None:
         candidate = root / relative
         if not candidate.is_file() or file_sha256(candidate) != expected:
             raise VerificationError(f"source identity mismatch: {relative}")
+
+
+def verify_public_overlay(root: Path, path: Path) -> int:
+    document = load_json(path)
+    if document.get("schema") != "sparkring-public-overlay/v1":
+        raise VerificationError("SIRCL public overlay uses an unsupported schema")
+    files = document.get("files")
+    if not isinstance(files, list) or not files:
+        raise VerificationError("SIRCL public overlay manifest is empty")
+    for record in files:
+        if not isinstance(record, dict):
+            raise VerificationError("SIRCL public overlay record is invalid")
+        relative = record.get("path")
+        expected = record.get("sha256")
+        if not isinstance(relative, str) or not isinstance(expected, str):
+            raise VerificationError("SIRCL public overlay record is incomplete")
+        candidate = root / relative
+        if not candidate.is_file() or file_sha256(candidate) != expected:
+            raise VerificationError(f"SIRCL source identity mismatch: {relative}")
+    return len(files)
 
 
 def native_manifest(root: Path) -> dict[str, str]:
@@ -89,6 +110,16 @@ def verify_inside_image() -> dict[str, Any]:
     nccl = Path("/opt/sparkring/nccl/libnccl.so.2.30.7")
     if file_sha256(nccl) != expected_nccl:
         raise VerificationError("switchless NCCL identity changed")
+    sircl_manifest = SIRCL_ROOT / "sparkring-overlay-manifest.json"
+    if file_sha256(sircl_manifest) != pins["sircl"]["overlay_manifest_sha256"]:
+        raise VerificationError("SIRCL public overlay manifest identity changed")
+    sircl_files = verify_public_overlay(SIRCL_ROOT, sircl_manifest)
+    sircl_native = SIRCL_ROOT / "libspark_transport_capi.so"
+    if file_sha256(sircl_native) != pins["sircl"]["native_sha256"]:
+        raise VerificationError("SIRCL native library identity changed")
+    sircl_receipt = IMAGE_RECEIPTS / "sircl-build-receipt.json"
+    if file_sha256(sircl_receipt) != pins["sircl"]["build_receipt_sha256"]:
+        raise VerificationError("SIRCL native build receipt identity changed")
     if importlib.util.find_spec("fastsafetensors") is None:
         raise VerificationError("fastsafetensors is unavailable")
     if tuple(SITE_ROOT.glob("deep_ep*")):
@@ -101,6 +132,10 @@ def verify_inside_image() -> dict[str, Any]:
         "nccl_sha256": expected_nccl,
         "cuda_placement_sha256": expected_placement,
         "cuda_snapshot_sha256": expected_snapshot,
+        "sircl_source_tree": pins["sircl"]["spark_transport_tree"],
+        "sircl_overlay_files": sircl_files,
+        "sircl_manifest_sha256": pins["sircl"]["overlay_manifest_sha256"],
+        "sircl_native_sha256": pins["sircl"]["native_sha256"],
         "live_qualification": "not-established-by-image-verification",
     }
 
@@ -135,6 +170,13 @@ def expected_labels(pins: dict[str, Any]) -> dict[str, str]:
         "org.sparkring.b12x.tree": pins["b12x"]["tree"],
         "org.sparkring.b12x.package-tree": pins["b12x"]["package_tree"],
         "org.sparkring.nccl.sha256": pins["transport"]["nccl_sha256"],
+        "org.sparkring.sircl.source-tree": pins["sircl"][
+            "spark_transport_tree"
+        ],
+        "org.sparkring.sircl.manifest-sha256": pins["sircl"][
+            "overlay_manifest_sha256"
+        ],
+        "org.sparkring.sircl.native-sha256": pins["sircl"]["native_sha256"],
         "org.sparkring.loader": "fastsafetensors",
         "org.sparkring.diagnostics": "compact-startup-no-deep-ep",
         "org.sparkcache.commit": pins["sparkcache"]["commit"],
