@@ -47,6 +47,8 @@ The exact source composition and local build command remain in
 This published digest contains the receipt-bound SIRCL Python overlay,
 generated manifest, and ARM64 native library. The preferred deployment leaves
 `SIRCL_BUNDLE_HOST_ROOT` empty and therefore requires no host bundle mount.
+The environment template selects B12X KDA prefill, matching the vLLM and B12X
+source revisions embedded in the image.
 
 ### Complete-snapshot recovery artifact
 
