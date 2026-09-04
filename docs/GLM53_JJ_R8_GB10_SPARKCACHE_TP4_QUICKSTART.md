@@ -184,6 +184,20 @@ Developers can point `SIRCL_BUNDLE_HOST_ROOT` at an absolute directory that
 contains the complete Python overlay, generated manifest, and native library.
 The launcher validates the files and mounts that override read-only.
 
+SIRCL does not assign host addresses or MTUs. Each secondary Ethernet
+interface must have a persistent NetworkManager profile with its local address,
+MTU 9000, and autoconnect enabled. A same-boot `ip address add` command is not
+sufficient because the address and its RoCEv2 GID disappear after a reboot.
+Run the plan, confirmed application, and read-only verification described in
+the [persistent SIRCL rail procedure](SIRCL.md#persistent-host-rail-configuration)
+for both secondary interfaces on every rank. The verifier checks the exact
+GID, associated Ethernet device, and a jumbo peer ping. Rerun its `--verify`
+mode after reboot and before starting TP4/DCP4.
+The
+[`secondary-rail persistence validation`](../runtime/glm53-flash-jj-r8-gb10/sircl-secondary-rail-persistence-live-validation.json)
+records the missing-GID startup rejection and eight successful live
+verifications after persistent profiles were configured.
+
 Before constructing native sessions, all ranks exchange the SIRCL artifact and
 protocol identities and report their local RDMA device and GID availability. A
 missing capability or shared mismatch stops all ranks. After vLLM synchronizes
