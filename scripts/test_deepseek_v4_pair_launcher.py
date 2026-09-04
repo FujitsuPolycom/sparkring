@@ -499,6 +499,33 @@ def test_selector_ignores_entries_after_nccls_32_entry_cap(pair_env: Path) -> No
     assert "matched no active RDMA HCA/port" in result.stderr
 
 
+def test_selector_caps_selected_members_at_nccls_32_device_limit(
+    pair_env: Path,
+) -> None:
+    for index in range(33):
+        _write_gid(
+            pair_env.parent / "infiniband",
+            hca=f"rocecap{index:02d}",
+            port=1,
+            index=3,
+            address=f"10.60.{index}.1",
+            netdev=f"cap{index:02d}",
+        )
+    content = pair_env.read_text(encoding="utf-8").replace(
+        "NCCL_IB_HCA=rocep1s0f0", "NCCL_IB_HCA=rocecap"
+    )
+    pair_env.write_text(content, encoding="utf-8", newline="\n")
+
+    result = _run_launcher(pair_env)
+
+    assert result.returncode != 0
+    assert (
+        "NCCL ignores selected member rocecap32:1 after its 32-device cap"
+        in result.stderr
+    )
+    assert "must resolve to exactly one active HCA/port; resolved 32" in result.stderr
+
+
 def test_env_file_alone_defaults_to_check(pair_env: Path) -> None:
     result = _run_launcher(pair_env, mode=None)
 

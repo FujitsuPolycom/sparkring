@@ -234,3 +234,36 @@ SparkRing records these identities and validates compatible image content; it
 does not redistribute the model weights, vLLM source, or B12X source. Operators
 must obtain each artifact under its own terms. The complete profile provenance
 and known lineage limitations are in `runtime/glm53-flash/pins.json`.
+
+## 11. MiaAI DeepSeek DGX Spark launcher (adapted GID policy)
+
+The NCCL host-channel-adapter selector handling, per-member RoCEv2 GID
+validation, and automatic unset-index policy in
+`scripts/nccl_ib_gid_policy.sh`, together with the corresponding CPU-only test
+cases in `scripts/test_deepseek_v4_pair_launcher.py`, adapt the behavior and
+test approach from
+`MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark` at commit
+`d3d48f5c49a627ea29ba465d29854228a8e6ee91`. SparkRing's implementation is
+tailored to its one-rank-per-host pair and cycle launchers.
+
+The upstream project is distributed under the MIT License:
+
+> Copyright (c) 2026 Tony Deangelo
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all
+> copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+> SOFTWARE.
