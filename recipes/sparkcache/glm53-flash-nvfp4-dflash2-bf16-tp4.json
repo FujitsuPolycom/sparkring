@@ -69,7 +69,7 @@
     "native_prefix_caching": true,
     "chunked_prefill": true,
     "mamba_cache_mode": "align",
-    "kda_prefill_backend": "flashkda",
+    "kda_prefill_backend": "b12x",
     "load_format": "fastsafetensors",
     "scheduler_budget_status": "qualified"
   },

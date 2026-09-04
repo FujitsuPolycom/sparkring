@@ -47,6 +47,7 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["SERVED_MODEL_NAME"] == "glm-5.3-flash"
     assert values["DECODE_CONTEXT_PARALLEL_SIZE"] == "4"
     assert values["MAX_NUM_BATCHED_TOKENS"] == "8192"
+    assert values["KDA_PREFILL_BACKEND"] == "b12x"
     assert values["PREFILL_SCHEDULE_INTERVAL"] == "2"
     assert values["MAX_IMAGES_PER_PROMPT"] == "4"
     assert values["MAX_VIDEOS_PER_PROMPT"] == "1"

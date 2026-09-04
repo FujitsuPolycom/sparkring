@@ -47,7 +47,7 @@ The recommended profile uses:
 | scheduler | asynchronous with chunked prefill and prefix caching |
 | graph mode | `FULL_AND_PIECEWISE` |
 | CUDA graph capture sizes | 8, 16, 32, 64, and 128 |
-| model kernels | B12X attention, MoE, and linear; FlashKDA prefill |
+| model kernels | B12X attention, KDA prefill, MoE, and linear |
 | collective/RMSNorm fusion | disabled |
 | FlashInfer autotuning | disabled |
 | model loader | fastsafetensors with queue size 1 |
