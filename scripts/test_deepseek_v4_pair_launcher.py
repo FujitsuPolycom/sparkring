@@ -139,6 +139,34 @@ def test_pair_env_explains_host_cache_mapping() -> None:
     assert "configure the host location only through" in source
 
 
+@pytest.mark.parametrize("template", [TEMPLATE, CYCLE_TEMPLATE])
+def test_deepseek_templates_persist_native_jit_and_flight_recorder_data(
+    template: Path,
+) -> None:
+    values = _env_values(template)
+
+    assert values["TILELANG_CACHE_DIR"] == "/cache/jit/tilelang"
+    assert values["B12X_CUTE_COMPILE_CACHE_DIR"] == "/cache/jit/b12x-cute"
+    assert values["TORCH_FR_BUFFER_SIZE"] == "2000"
+    assert values["TORCH_NCCL_DUMP_ON_TIMEOUT"] == "1"
+    assert values["TORCH_NCCL_ENABLE_MONITORING"] == "1"
+    assert values["TORCH_FR_DUMP_TEMP_FILE"] == (
+        "/cache/nccl-fr/comm_lib_trace_rank_"
+    )
+    assert values["TORCH_NCCL_DEBUG_INFO_PIPE_FILE"] == "/tmp/fr_dump_pipe_"
+
+
+@pytest.mark.parametrize("launcher", [LAUNCHER, CYCLE_LAUNCHER])
+def test_deepseek_launchers_prepare_persistent_cache_directories(
+    launcher: Path,
+) -> None:
+    source = launcher.read_text(encoding="utf-8")
+
+    assert '"$CACHE_HOST_PATH/jit/tilelang"' in source
+    assert '"$CACHE_HOST_PATH/jit/b12x-cute"' in source
+    assert '"$CACHE_HOST_PATH/nccl-fr"' in source
+
+
 def test_cycle_env_defaults_match_recipe() -> None:
     values = _env_values(CYCLE_TEMPLATE)
     recipe = json.loads(CYCLE_RECIPE.read_text(encoding="utf-8"))

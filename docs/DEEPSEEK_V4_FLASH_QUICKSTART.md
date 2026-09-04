@@ -312,6 +312,21 @@ metrics. `Mean acceptance length` above one confirms speculative decoding is
 active, and `GPU KV cache size` reports the token capacity the reservation
 bought.
 
+## Preserve JIT and collective-hang evidence
+
+The environment templates keep TileLang, Triton, vLLM, and B12X CuTeDSL
+compilation data under the persistent `CACHE_HOST_PATH` mount. Recreating a
+container therefore does not discard those caches.
+
+PyTorch's NCCL flight recorder writes each rank's timeout dump beneath
+`CACHE_HOST_PATH/nccl-fr`. Archive every rank's `comm_lib_trace_rank_*` file
+together after a timeout; a later dump overwrites the static per-rank name.
+
+An on-demand pipe request is asynchronous. After writing to
+`/tmp/fr_dump_pipe_<rank>.pipe` inside a container, wait for the rank log to
+report that flight-recorder output finished, or wait until the dump file size
+stops changing, before stopping the container.
+
 ## Measured
 
 Both cache-disabled base setups were measured with the sampling settings in

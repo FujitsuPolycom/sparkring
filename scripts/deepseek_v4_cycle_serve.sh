@@ -207,4 +207,12 @@ docker image inspect "$image" >/dev/null 2>&1 \
 if docker container inspect "$container_name" >/dev/null 2>&1; then
     die "container already exists; remove it intentionally before relaunch: $container_name"
 fi
+for cache_directory in \
+    "$CACHE_HOST_PATH/jit/tilelang" \
+    "$CACHE_HOST_PATH/jit/b12x-cute" \
+    "$CACHE_HOST_PATH/nccl-fr"; do
+    if ! mkdir -p "$cache_directory"; then
+        echo "deepseek cycle launcher: warning: could not create $cache_directory" >&2
+    fi
+done
 exec "${command[@]}"
