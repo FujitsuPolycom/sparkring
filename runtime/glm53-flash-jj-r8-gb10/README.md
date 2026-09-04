@@ -315,9 +315,10 @@ cmake --build /source/sparkcache/sparkcache/native/build-cuda \
 The image builder verifies commits, trees, package subtrees, runtime files, the
 parent image, retained compiled extensions, both SparkCache CUDA libraries, and
 the SIRCL overlay and native identities before producing an image. It records
-the public vLLM commits that supply the B12X KDA prefill integration and
-workspace-isolation correction. It also applies the exact-preimage vLLM
-metrics formatter and records that transform in the source receipt.
+the public vLLM commits that supply the B12X KDA prefill path, workspace
+isolation, sparse MLA and DSA backends, C4 indexer binding, and replay-safe
+per-token cache lengths. It also applies the exact-preimage vLLM metrics
+formatter and records that transform in the source receipt.
 
 ```bash
 python runtime/glm53-flash-jj-r8-gb10/build_image.py \

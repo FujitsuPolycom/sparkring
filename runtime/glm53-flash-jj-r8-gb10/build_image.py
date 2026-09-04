@@ -404,6 +404,15 @@ def prepare_context(
                 "b12x_kda_workspace_isolation_upstream_commit": pins["vllm"][
                     "b12x_kda_workspace_isolation_upstream_commit"
                 ],
+                "b12x_sparse_mla_dsa_upstream_commit": pins["vllm"][
+                    "b12x_sparse_mla_dsa_upstream_commit"
+                ],
+                "b12x_c4_indexer_binding_upstream_commit": pins["vllm"][
+                    "b12x_c4_indexer_binding_upstream_commit"
+                ],
+                "b12x_sparse_mla_cache_lengths_upstream_commit": pins["vllm"][
+                    "b12x_sparse_mla_cache_lengths_upstream_commit"
+                ],
                 "files": len(manifests["vllm-source-manifest.json"]["files"]),
             },
             "b12x": {

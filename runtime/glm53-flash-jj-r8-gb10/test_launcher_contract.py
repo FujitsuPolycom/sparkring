@@ -62,7 +62,7 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE"] == "single"
     assert values["VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE"] == "sync"
     assert values["JIT_CACHE_NAMESPACE"] == (
-        "glm53-flash-sm121-vllm-dc098463-b12x-9ae41c5c"
+        "glm53-flash-sm121-vllm-e02b1746-b12x-9ae41c5c"
     )
 
 
@@ -167,7 +167,7 @@ printf '%s  %s\n' "$hash" "$2"
         mm_index = arguments.index("--limit-mm-per-prompt")
         assert json.loads(arguments[mm_index + 1]) == {"image": 4, "video": 1}
         assert "--kv-transfer-config" in arguments
-        jit_namespace = "glm53-flash-sm121-vllm-dc098463-b12x-9ae41c5c"
+        jit_namespace = "glm53-flash-sm121-vllm-e02b1746-b12x-9ae41c5c"
         assert f"VLLM_CACHE_ROOT=/cache/jit/vllm/{jit_namespace}" in arguments
         assert (
             f"B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x/{jit_namespace}"

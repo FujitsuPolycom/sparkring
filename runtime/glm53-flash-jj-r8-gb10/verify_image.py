@@ -176,6 +176,7 @@ def expected_labels(pins: dict[str, Any]) -> dict[str, str]:
         "org.sparkring.vllm.proven-base": pins["vllm"]["proven_base_commit"],
         "org.sparkring.vllm.python-commit": pins["vllm"]["commit"],
         "org.sparkring.vllm.python-tree": pins["vllm"]["tree"],
+        "org.sparkring.vllm.package-tree": pins["vllm"]["package_tree"],
         "org.sparkring.vllm.sparkcache-composition": pins["vllm"]["commit"],
         "org.sparkring.vllm.tree": pins["vllm"]["tree"],
         "org.sparkring.vllm.community-release": pins["vllm"][
@@ -200,6 +201,15 @@ def expected_labels(pins: dict[str, Any]) -> dict[str, str]:
         "org.sparkring.vllm.b12x-kda-workspace-isolation-upstream": pins[
             "vllm"
         ]["b12x_kda_workspace_isolation_upstream_commit"],
+        "org.sparkring.vllm.b12x-sparse-mla-dsa-upstream": pins["vllm"][
+            "b12x_sparse_mla_dsa_upstream_commit"
+        ],
+        "org.sparkring.vllm.b12x-c4-indexer-binding-upstream": pins["vllm"][
+            "b12x_c4_indexer_binding_upstream_commit"
+        ],
+        "org.sparkring.vllm.b12x-sparse-mla-cache-lengths-upstream": pins[
+            "vllm"
+        ]["b12x_sparse_mla_cache_lengths_upstream_commit"],
         "org.sparkring.vllm.delta-patch-id": pins["vllm"]["delta_patch_id"],
         "org.sparkring.b12x.composition": pins["b12x"]["commit"],
         "org.sparkring.b12x.tree": pins["b12x"]["tree"],

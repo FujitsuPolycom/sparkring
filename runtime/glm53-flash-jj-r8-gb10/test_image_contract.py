@@ -89,14 +89,14 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
         "receipt": "async-store-completion-public-image-receipt.json",
     }
     assert pins["vllm"]["commit"] == (
-        "dc098463bcfa86ef49e565c567363a95cb6e46aa"
+        "e02b174693e13859de61811b5e8cd13d5308e259"
     )
-    assert pins["vllm"]["tree"] == "a291f30128dca9dc2362c0dd1b3d04d89a669a0f"
+    assert pins["vllm"]["tree"] == "6caadd392ddea2dc90441d0a078da67f38d2fd3a"
     assert pins["vllm"]["package_tree"] == (
-        "e0490bd0cfabbe8fee302d54e2bf7898af154877"
+        "c91299c2303dc05abc85aa2133224a749657a583"
     )
     assert pins["vllm"]["delta_patch_id"] == (
-        "7c0e57fa95fe54bd930f23d3fc051504ee805eae"
+        "f3978963e81ccf3f932696e48079434223c365e3"
     )
     assert pins["vllm"]["proven_base_commit"] == (
         "22ffe1401ca9bd3e4503e62de7b414deca7661a1"
@@ -106,6 +106,15 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     )
     assert pins["vllm"]["b12x_kda_workspace_isolation_upstream_commit"] == (
         "57a6169a5c229a5ca8c24791762b1fc51c89e58d"
+    )
+    assert pins["vllm"]["b12x_sparse_mla_dsa_upstream_commit"] == (
+        "d662a1b0890271915c25439f22247ee22234739a"
+    )
+    assert pins["vllm"]["b12x_c4_indexer_binding_upstream_commit"] == (
+        "d6687475a3f2dbe7848663fd3e5174d90921a3da"
+    )
+    assert pins["vllm"]["b12x_sparse_mla_cache_lengths_upstream_commit"] == (
+        "83cb22a0e3f7ec4d2fb43f6ead34ba4d4a87a634"
     )
     assert pins["vllm"]["community_release"] == "Jovian Judgement Community R10"
     assert pins["vllm"]["community_parent_commit"] == (
@@ -179,10 +188,14 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
     recipe = (HERE / "Dockerfile").read_text(encoding="utf-8")
     for identity in (
         "f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
-        "dc098463bcfa86ef49e565c567363a95cb6e46aa",
-        "a291f30128dca9dc2362c0dd1b3d04d89a669a0f",
+        "e02b174693e13859de61811b5e8cd13d5308e259",
+        "6caadd392ddea2dc90441d0a078da67f38d2fd3a",
+        "c91299c2303dc05abc85aa2133224a749657a583",
         "54371894ecaa77f2725a1c99e018f3fe93d358dd",
         "57a6169a5c229a5ca8c24791762b1fc51c89e58d",
+        "d662a1b0890271915c25439f22247ee22234739a",
+        "d6687475a3f2dbe7848663fd3e5174d90921a3da",
+        "83cb22a0e3f7ec4d2fb43f6ead34ba4d4a87a634",
         "9ae41c5cb9935d740456479954b0089f80bd2ef2",
         "6e77441fe99f6ead7ff2cc2b6a8a37fa4e93e30b",
         "12029e19da6543c5d225395f6da199d946b0972e",
@@ -248,8 +261,11 @@ def test_runtime_hashes_are_enforced_inside_image() -> None:
         "vllm/v1/engine/core.py",
     }
     labels = verify.expected_labels(pins)
+    assert labels["org.sparkring.vllm.package-tree"] == (
+        "c91299c2303dc05abc85aa2133224a749657a583"
+    )
     assert labels["org.sparkring.vllm.delta-patch-id"] == (
-        "7c0e57fa95fe54bd930f23d3fc051504ee805eae"
+        "f3978963e81ccf3f932696e48079434223c365e3"
     )
     assert labels["org.sparkring.vllm.community-parent"] == (
         "55969c16d4da57da76ee5729f3102d4b2003833c"
@@ -264,6 +280,17 @@ def test_runtime_hashes_are_enforced_inside_image() -> None:
         "org.sparkring.vllm.b12x-kda-workspace-isolation-upstream"
     ] == (
         "57a6169a5c229a5ca8c24791762b1fc51c89e58d"
+    )
+    assert labels["org.sparkring.vllm.b12x-sparse-mla-dsa-upstream"] == (
+        "d662a1b0890271915c25439f22247ee22234739a"
+    )
+    assert labels["org.sparkring.vllm.b12x-c4-indexer-binding-upstream"] == (
+        "d6687475a3f2dbe7848663fd3e5174d90921a3da"
+    )
+    assert labels[
+        "org.sparkring.vllm.b12x-sparse-mla-cache-lengths-upstream"
+    ] == (
+        "83cb22a0e3f7ec4d2fb43f6ead34ba4d4a87a634"
     )
     assert labels["org.sparkring.sircl.source-tree"] == (
         pins["sircl"]["spark_transport_tree"]
