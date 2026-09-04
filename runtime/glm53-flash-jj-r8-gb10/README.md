@@ -258,6 +258,22 @@ stored immutable bytes. `writes` reports submitted storage traffic,
 deduplication, and bytes from aborted or failed attempts. The `/metrics`
 endpoint retains the individual numeric counters for monitoring and analysis.
 
+### Distinguish readiness from scheduler liveness
+
+Rank zero exposes scheduler liveness on the configured
+`SPARKRING_LIVENESS_PORT`, which defaults to 8016. API `/health` proves that
+the HTTP process is ready; it does not prove that the scheduler can admit a
+waiting request.
+
+`GET /liveness` returns HTTP 503 after the scheduler has zero running requests
+and at least one waiting request for 60 seconds. It also returns 503 when
+SparkCache reports uncertain capture-page ownership. `GET /metrics` on the
+same port exports the liveness state and blocked duration.
+
+Idle KV retention is warning-only. The default 330-second warning interval is
+longer than the GLM profile's 300-second shared-prefix lease, so an intentional
+lease is not treated as a dead scheduler.
+
 ## Build from pinned source
 
 The builder accepts clean checkouts at the exact vLLM and SparkCache commits
