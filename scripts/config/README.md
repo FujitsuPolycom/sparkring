@@ -61,8 +61,10 @@ allocation per rank.
 The implemented SIRCL performance-testing composition appends
 [`sircl-fused.env.example`](../../runtime/glm53-flash-jj-r8-gb10/sircl-fused.env.example)
 to a rank-local copy of the operator template. The overlay contains every
-non-site transport setting and leaves the bundle path, peer addresses, and
-secondary device names as explicit placeholders.
+non-site transport setting and leaves the peer addresses and secondary device
+names as explicit placeholders. The current source-built image contains the
+SIRCL bundle; `SIRCL_BUNDLE_HOST_ROOT` is an optional read-only developer
+override.
 
 `SPARKCACHE_ENABLED=1` enables persistent SparkCache plus vLLM prefix caching.
 `SPARKCACHE_ENABLED=0` omits the persistent connector and retains vLLM prefix

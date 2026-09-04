@@ -6,7 +6,10 @@ ARG PARENT_IMAGE_ID
 ARG SPARKRING_REVISION
 ARG SOURCE_RECEIPT_SHA256
 
-COPY bundle/ /opt/sparkring/overlays/jj-r8-sparkcache-arm64/
+COPY bundle/sources/ /opt/sparkring/overlays/jj-r8-sparkcache-arm64/sources/
+COPY bundle/native/ /opt/sparkring/overlays/jj-r8-sparkcache-arm64/native/
+COPY bundle/receipts/ /opt/sparkring/overlays/jj-r8-sparkcache-arm64/receipts/
+COPY bundle/sircl/ /opt/spark-sircl/
 COPY install_overlay.py /opt/sparkring/bin/install-jj-r8-sparkcache-overlay.py
 COPY verify_image.py /opt/sparkring/bin/verify-jj-r8-sparkcache-image.py
 COPY warmup_dflash.py /opt/sparkring/bin/warmup_dflash.py
@@ -39,29 +42,38 @@ LABEL org.opencontainers.image.title="SparkRing GLM-5.3 ARM64 operator image wit
       org.sparkring.runtime.status="implemented-live-verification-required" \
       org.sparkring.parent.image="${PARENT_IMAGE_ID}" \
       org.sparkring.source-receipt-sha256="${SOURCE_RECEIPT_SHA256}" \
-      org.sparkring.vllm.proven-base="331573d20bd47e78327ed8d8b4d2e6d350bbb1ab" \
-      org.sparkring.vllm.python-commit="22ffe1401ca9bd3e4503e62de7b414deca7661a1" \
-      org.sparkring.vllm.python-tree="1bb7f10a5838d348ca2fcb0134b05ad768d3340b" \
-      org.sparkring.vllm.sparkcache-composition="22ffe1401ca9bd3e4503e62de7b414deca7661a1" \
-      org.sparkring.vllm.tree="1bb7f10a5838d348ca2fcb0134b05ad768d3340b" \
+      org.sparkring.vllm.proven-base="22ffe1401ca9bd3e4503e62de7b414deca7661a1" \
+      org.sparkring.vllm.python-commit="e02b174693e13859de61811b5e8cd13d5308e259" \
+      org.sparkring.vllm.python-tree="6caadd392ddea2dc90441d0a078da67f38d2fd3a" \
+      org.sparkring.vllm.package-tree="c91299c2303dc05abc85aa2133224a749657a583" \
+      org.sparkring.vllm.sparkcache-composition="e02b174693e13859de61811b5e8cd13d5308e259" \
+      org.sparkring.vllm.tree="6caadd392ddea2dc90441d0a078da67f38d2fd3a" \
       org.sparkring.vllm.community-release="Jovian Judgement Community R10" \
       org.sparkring.vllm.community-parent="55969c16d4da57da76ee5729f3102d4b2003833c" \
       org.sparkring.vllm.sparse-pooled-index="adb69eac865a1a37081fa4edb9f7599a351f7aac" \
       org.sparkring.vllm.fwht-scaling="ae37fd6ed8df72d4bd8cdc067c7c241c93408235" \
       org.sparkring.vllm.prefill-cadence-component="f1191b9090cd02ac49238c8e4f371050759703b6" \
       org.sparkring.vllm.prefill-cadence-pr-head="2412a6f34ab1412f86ed3e4cdd355271a082d93d" \
-      org.sparkring.vllm.delta-patch-id="44ad5586548465c002d0195d3739992795233ffe" \
+      org.sparkring.vllm.b12x-kda-prefill-upstream="54371894ecaa77f2725a1c99e018f3fe93d358dd" \
+      org.sparkring.vllm.b12x-kda-workspace-isolation-upstream="57a6169a5c229a5ca8c24791762b1fc51c89e58d" \
+      org.sparkring.vllm.b12x-sparse-mla-dsa-upstream="d662a1b0890271915c25439f22247ee22234739a" \
+      org.sparkring.vllm.b12x-c4-indexer-binding-upstream="d6687475a3f2dbe7848663fd3e5174d90921a3da" \
+      org.sparkring.vllm.b12x-sparse-mla-cache-lengths-upstream="83cb22a0e3f7ec4d2fb43f6ead34ba4d4a87a634" \
+      org.sparkring.vllm.delta-patch-id="f3978963e81ccf3f932696e48079434223c365e3" \
       org.sparkring.vllm.retained-native-build="3633d61c3c7b04bb4d598cadbdc342f3be40482d" \
       org.sparkring.vllm.retained-native-parent="da4d7be6c97434f6942292ed8abbf4b32dc44355" \
-      org.sparkring.b12x.composition="6255090a03b12c3f7d552102a02fac0b542fb8c9" \
-      org.sparkring.b12x.tree="0bb58d0dcc10e29e00ff9850c0d719fca1aba5ad" \
-      org.sparkring.b12x.package-tree="6de9871d15dab093340695518fec0f744289e676" \
+      org.sparkring.b12x.composition="9ae41c5cb9935d740456479954b0089f80bd2ef2" \
+      org.sparkring.b12x.tree="6e77441fe99f6ead7ff2cc2b6a8a37fa4e93e30b" \
+      org.sparkring.b12x.package-tree="12029e19da6543c5d225395f6da199d946b0972e" \
       org.sparkring.nccl.sha256="5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3" \
+      org.sparkring.sircl.source-tree="2aac02232a9115037723aa1dd40483a5693a3e1e" \
+      org.sparkring.sircl.manifest-sha256="85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4" \
+      org.sparkring.sircl.native-sha256="61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc" \
       org.sparkring.loader="fastsafetensors" \
       org.sparkring.diagnostics="compact-startup-no-deep-ep" \
-      org.sparkcache.commit="9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4" \
-      org.sparkcache.tree="3bbc72b04c1d6c4a381bd660d189ca7a54277b0f" \
-      org.sparkcache.source-sha256="f8adb4ecdadd524e79cf1ef14e7f3d83d1f20ff07c79333b2c7c0d9ea12919d5" \
+      org.sparkcache.commit="66057174301a4759ca3a45207ea41016689449cb" \
+      org.sparkcache.tree="2448cf08d155ba90c95699c02c46863bbf9ce301" \
+      org.sparkcache.source-sha256="80b049c647bc28fdc039021d08a7eb3276846c1616b77b9ba18ba2bc38da8d99" \
       org.sparkcache.cuda-placement-sha256="d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c" \
       org.sparkcache.cuda-snapshot-sha256="4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5" \
       org.sparkcache.startup-inventory="connector-handshake-all-rank" \

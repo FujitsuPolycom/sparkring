@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install and verify exact vLLM and SparkCache Python source overlays."""
+"""Install and verify exact vLLM, B12X, and SparkCache source overlays."""
 
 from __future__ import annotations
 
@@ -19,8 +19,10 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def load_manifest(path: Path) -> dict[str, str]:
+def load_manifest(path: Path, expected_commit: str | None = None) -> dict[str, str]:
     document = json.loads(path.read_text(encoding="utf-8"))
+    if expected_commit is not None and document.get("commit") != expected_commit:
+        raise RuntimeError(f"source manifest commit mismatch: {path}")
     files = document.get("files")
     if not isinstance(files, dict) or not files:
         raise RuntimeError(f"source manifest is empty: {path}")
@@ -37,6 +39,24 @@ def verify_files(root: Path, files: dict[str, str]) -> None:
             raise RuntimeError(
                 f"installed source mismatch: {relative}: {actual} != {expected}"
             )
+
+
+def verify_package_file_set(
+    package_root: Path, files: dict[str, str], package: str
+) -> None:
+    expected: set[str] = set()
+    for relative in files:
+        path = Path(relative)
+        if not path.parts or path.parts[0] != package:
+            raise RuntimeError(f"source manifest escaped {package}: {relative}")
+        expected.add(Path(*path.parts[1:]).as_posix())
+    observed = {
+        path.relative_to(package_root).as_posix()
+        for path in package_root.rglob("*")
+        if path.is_file()
+    }
+    if observed != expected:
+        raise RuntimeError(f"installed {package} package file set differs from manifest")
 
 
 def native_manifest(root: Path) -> dict[str, str]:
@@ -69,11 +89,26 @@ def copy_source(source: Path, destination: Path) -> None:
             shutil.copyfile(path, target)
 
 
+def replace_python_package(source: Path, destination: Path) -> None:
+    """Replace one inherited package tree so no stale module can survive."""
+    if destination.is_symlink() or destination.is_file():
+        destination.unlink()
+    elif destination.exists():
+        shutil.rmtree(destination)
+    copy_source(source, destination)
+
+
 def install(root: Path, site_root: Path) -> None:
     pins = json.loads((root / "receipts/pins.json").read_text(encoding="utf-8"))
-    vllm_manifest = load_manifest(root / "receipts/vllm-source-manifest.json")
+    vllm_manifest = load_manifest(
+        root / "receipts/vllm-source-manifest.json", pins["vllm"]["commit"]
+    )
+    b12x_manifest = load_manifest(
+        root / "receipts/b12x-source-manifest.json", pins["b12x"]["commit"]
+    )
     sparkcache_manifest = load_manifest(
-        root / "receipts/sparkcache-source-manifest.json"
+        root / "receipts/sparkcache-source-manifest.json",
+        pins["sparkcache"]["commit"],
     )
     vllm_root = site_root / "vllm"
     before_native = native_manifest(vllm_root)
@@ -104,6 +139,7 @@ def install(root: Path, site_root: Path) -> None:
         "sparkcache",
     )
     copy_source(root / "sources/vllm", vllm_root)
+    replace_python_package(root / "sources/b12x", site_root / "b12x")
     copy_source(root / "sources/sparkcache", site_root / "sparkcache")
     copy_source(root / "sources/sparkcache", Path("/opt/sparkcache-src/sparkcache"))
 
@@ -119,6 +155,8 @@ def install(root: Path, site_root: Path) -> None:
     shutil.copyfile(snapshot_source, snapshot_destination)
 
     verify_files(site_root, vllm_manifest)
+    verify_files(site_root, b12x_manifest)
+    verify_package_file_set(site_root / "b12x", b12x_manifest, "b12x")
     verify_files(site_root, sparkcache_manifest)
     after_native = native_manifest(vllm_root)
     if after_native != before_native:

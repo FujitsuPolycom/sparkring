@@ -27,8 +27,9 @@ qualification. A four-rank matched comparison established native replay,
 API health, and zero overflow for the target and DSpark capture path; see the
 [DeepSeek SIRCL evidence record](../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
 
-The GLM-5.3 Flash GB10 runtime can mount a source-built SIRCL bundle for its
-implemented performance-testing lane. Its captured width-4096 path and eager
+The current GLM-5.3 Flash GB10 image composition embeds a source-bound SIRCL
+bundle for its implemented performance-testing lane. A developer can replace
+that bundle with a read-only host mount. Its captured width-4096 path and eager
 fused-prefill path have separate
 admission gates. The fused path accepts contiguous TP4 BF16 `[Q, 4096]`
 tensors from Q128 through Q8192 and uses two operation slots. Unsupported
