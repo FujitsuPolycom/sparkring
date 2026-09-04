@@ -115,11 +115,11 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     )
     assert pins["sparkcache"] == {
         "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-        "commit": "9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4",
-        "tree": "3bbc72b04c1d6c4a381bd660d189ca7a54277b0f",
-        "package_tree": "3099c80be66ffb9c7ab690509f768dbf32babdd0",
+        "commit": "66057174301a4759ca3a45207ea41016689449cb",
+        "tree": "2448cf08d155ba90c95699c02c46863bbf9ce301",
+        "package_tree": "1fe4c76203be99c6a32640d8e2916889330d429b",
         "source_tree_sha256": (
-            "f8adb4ecdadd524e79cf1ef14e7f3d83d1f20ff07c79333b2c7c0d9ea12919d5"
+            "80b049c647bc28fdc039021d08a7eb3276846c1616b77b9ba18ba2bc38da8d99"
         ),
         "cuda_placement_sha256": (
             "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
@@ -164,7 +164,6 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
     for identity in (
         "f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
         "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
-        "9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4",
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
         "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
         "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
@@ -173,6 +172,19 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
         "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc",
     ):
         assert identity in recipe
+    assert (
+        'org.sparkcache.commit="66057174301a4759ca3a45207ea41016689449cb"'
+        in recipe
+    )
+    assert (
+        'org.sparkcache.tree="2448cf08d155ba90c95699c02c46863bbf9ce301"'
+        in recipe
+    )
+    assert (
+        "org.sparkcache.source-sha256="
+        '"80b049c647bc28fdc039021d08a7eb3276846c1616b77b9ba18ba2bc38da8d99"'
+        in recipe
+    )
     assert "COPY bundle/sircl/ /opt/spark-sircl/" in recipe
     assert "org.sparkcache.dcp-layouts=\"1,2,4\"" in recipe
     assert "org.sparkcache.cache-geometry=\"manager-pages-v2\"" in recipe
@@ -421,7 +433,7 @@ def test_page_tail_v2_public_receipt_binds_registry_and_runtime() -> None:
     assert receipt["validation"]["requests_running_after_validation"] == 0
 
 
-def test_async_store_completion_receipt_binds_registry_and_runtime() -> None:
+def test_async_store_completion_receipt_keeps_published_source_identity() -> None:
     receipt = json.loads(
         (HERE / "async-store-completion-public-image-receipt.json").read_text(
             encoding="utf-8"
@@ -431,7 +443,13 @@ def test_async_store_completion_receipt_binds_registry_and_runtime() -> None:
     assert receipt["status"] == "implemented"
     assert receipt["artifact"]["registry"] == pins["operator_image"]["reference"]
     assert receipt["artifact"]["image_id"] == pins["operator_image"]["image_id"]
-    assert receipt["sources"]["sparkcache_commit"] == pins["sparkcache"]["commit"]
+    assert receipt["sources"]["sparkcache_commit"] == (
+        "9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4"
+    )
+    assert receipt["sources"]["sparkcache_source_sha256"] == (
+        "f8adb4ecdadd524e79cf1ef14e7f3d83d1f20ff07c79333b2c7c0d9ea12919d5"
+    )
+    assert receipt["sources"]["sparkcache_commit"] != pins["sparkcache"]["commit"]
     assert receipt["construction_verification"] == {
         "inside_image_verification": "passed",
         "retained_native_extensions": 15,
