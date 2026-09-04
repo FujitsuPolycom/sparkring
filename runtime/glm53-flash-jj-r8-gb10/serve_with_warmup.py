@@ -83,7 +83,7 @@ def start_rank_liveness(
             os.environ.get("SPARKRING_LIVENESS_STALE_SECONDS", "15")
         ),
         sample_interval_seconds=float(
-            os.environ.get("SPARKRING_LIVENESS_SAMPLE_SECONDS", "2")
+os.environ.get("SPARKRING_LIVENESS_SAMPLE_SECONDS", "10")
         ),
         credential=credential,
     )
