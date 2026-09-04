@@ -50,6 +50,8 @@ guides use immutable digests.
 
 All three profiles use the GLM-5.3 Flash NVFP4 target, BF16 DFlash2 at depth
 seven, FP8 KV, B12X GB10 kernels, and the same source-pinned ARM64 vLLM image.
+The launcher captures one exact CUDA graph for every supported concurrency
+from C1 through C16.
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Approx. logical KV capacity | Start here |
 |---|---|---:|---:|---:|---|---:|---|
@@ -107,11 +109,13 @@ and evaluation; review its model card before use.
 ## Benchmark results
 
 All values are tokens per second. Prefill uses a cold prompt with caching
-disabled. Decode uses unique, cold prompt contexts at
-temperature 1.0; decode values are aggregate throughput across active streams.
+disabled. Decode reports sustained generation after the prompt context is
+available; each linked record states its context-sharing conditions. Decode
+values are aggregate throughput across active streams at temperature 1.0.
 
 | Profile | Prefill | C1 decode | C8 decode | Highest tested decode | Coding peak |
 |---|---:|---:|---:|---:|---:|
+| [GLM-5.3 Flash NVFP4-Spark exact request-batch graphs · 4 Sparks](performance/records/glm53-flash/dflash2-exact-concurrency-graphs-20260904.md) | 2,717 | 43.05 | 134.3 | C16: 187.0 | — |
 | [GLM-5.3 Flash B12X-KDA DCP4 public image · 4 Sparks](performance/records/glm53-flash/b12x-kda-dcp4-20260903.md) | 2,649 | 37.97 | — | C4: 90.36 | — |
 | [GLM-5.2 EXL3 3.5-bpw · 4 Sparks](performance/records/glm-3.5bpw/normalized-base-20260822.md) | 671 | 20.15 | 64.13 | C8: 64.13 | 25.39 |
 | [DeepSeek-V4-Flash DSpark · 2 Sparks](performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md) | 1,926 | 58.36 | 162.69 | C32: 307.13 | 59.31 |

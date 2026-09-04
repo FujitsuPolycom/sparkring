@@ -356,9 +356,11 @@ capture have no matching live record; use complete snapshots or test those
 layouts separately.
 
 The environment template enables `DFLASH_WARMUP=1`. Rank 0 waits for the API,
-then exercises C1/C2/C4/C8/C16 and scheduled prompt spans covering DFlash's
-Triton block-size specializations. Treat completion of the rank-0 launch
-command—not an early `/health` response—as service readiness.
+then exercises every concurrency from C1 through C16 and scheduled prompt
+spans covering DFlash's Triton block-size specializations. DFlash depth seven
+verifies eight target rows per active request, so the launcher captures every
+eight-row request-batch shape from 8 through 128. Treat completion of the
+rank-0 launch command—not an early `/health` response—as service readiness.
 The engine-level failure and readiness replay are recorded in the
 [`DFlash readiness validation`](../runtime/glm53-flash-jj-r8-gb10/dflash-jit-readiness-validation.json).
 

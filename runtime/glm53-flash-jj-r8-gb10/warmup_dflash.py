@@ -129,7 +129,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--endpoint", required=True)
     parser.add_argument("--model", default="glm-5.3-flash")
-    parser.add_argument("--concurrencies", default="1,2,4,8,16")
+    parser.add_argument(
+        "--concurrencies",
+        default="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16",
+    )
     parser.add_argument("--max-tokens", type=int, default=16)
     parser.add_argument("--shape-words", default="8,24,56,120,248")
     parser.add_argument("--timeout-seconds", type=float, default=600.0)
