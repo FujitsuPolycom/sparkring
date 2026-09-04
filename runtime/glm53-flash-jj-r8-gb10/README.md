@@ -295,7 +295,7 @@ GPU utilization with unusually low power and falling decode throughput.
 
 Run the read-only cluster preflight before starting the four ranks. The
 companion
-`scripts/config/glm53-flash-dflash2-bf16-tp4-dcp4-site.example.yaml` profile
+`scripts/config/glm53-flash-tp4-site.example.yaml` profile
 checks both total available RAM and Normal-zone buddy blocks using the page
 size reported by each kernel. It reports cumulative compaction counters for
 diagnosis but does not use lifetime totals as a pass/fail threshold.

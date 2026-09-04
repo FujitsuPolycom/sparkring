@@ -38,7 +38,7 @@ obtain it under Inco AI's published terms.
 
 - Four Linux/ARM64 DGX Spark systems with Docker, NVIDIA Container Toolkit,
   passwordless SSH from the operator host, and the direct-cycle RoCE network
-  described by `scripts/config/glm53-flash-tp4-site.example.yaml`.
+  described by `scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-site.example.yaml`.
 - At least 13 GiB of free GPU memory per rank for the configured KV slab and
   runtime overhead.
 - At least 48 GiB of dedicated free local storage per rank for SparkCache,
@@ -100,7 +100,7 @@ git clone https://github.com/FujitsuPolycom/sparkring.git
 sparkring_revision=REPLACE_WITH_REVIEWED_40_CHARACTER_COMMIT
 git -C sparkring checkout --detach "${sparkring_revision}"
 sparkring_root="$PWD/sparkring"
-cp "${sparkring_root}/scripts/config/glm53-flash-tp4-site.example.yaml" site.yaml
+cp "${sparkring_root}/scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-site.example.yaml" site.yaml
 cp "${sparkring_root}/scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-sparkcache.example.json" profile.json
 ```
 

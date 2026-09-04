@@ -25,8 +25,8 @@ def _site():
             required_free_ports=(8015, 29775),
             memory=SimpleNamespace(
                 minimum_available_bytes=96 * (1 << 30),
-                contiguous_block_bytes=16 * (1 << 20),
-                minimum_contiguous_blocks=64,
+                contiguous_block_bytes=32 * (1 << 20),
+                minimum_contiguous_blocks=200,
             ),
         ),
     )

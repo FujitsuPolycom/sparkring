@@ -1,8 +1,8 @@
-# Sanitized site template for the GLM-5.3 Flash TP4/DCP4 operator image.
+# Sanitized four-rank site template for the source-bound GLM-5.3 Flash
+# TP4/DCP1 profiles.
 #
 # Copy this file outside version control and replace every documentation-only
-# address, SSH target, interface, RDMA device, GID index, and host path. Keep
-# the image and model identities when following the published-image quickstart.
+# address, SSH target, interface, RDMA device, GID index, and image identity.
 # The serving values are shared by the SparkCache-enabled and cache-disabled
 # runtime profiles. The runtime profile owns the target and draft host mounts.
 
@@ -10,7 +10,7 @@ schema_version: 1
 
 site:
   name: glm53-flash-four-rank-cycle
-  description: Four directly cabled NVIDIA DGX Spark systems serving GLM-5.3 Flash with BF16 DFlash2 at TP4/DCP4.
+  description: Four directly cabled NVIDIA DGX Spark systems serving GLM-5.3 Flash with BF16 DFlash2 at TP4/DCP1.
 
 topology:
   mtu: 9000
@@ -127,11 +127,11 @@ ranks:
         address: 198.18.1.10
 
 runtime:
-  # The quickstart distributes this immutable image to every rank. Replace both
-  # values only when selecting another image with independently verified source
-  # labels, vLLM contract, model files, draft hashes, and NCCL.
-  container_image: ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f
-  container_image_digest: sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0
+  # Replace both values with one immutable image distributed to every rank.
+  # The generic runtime profile independently verifies the local image ID,
+  # source labels, vLLM lease contract, model files, draft hashes, and NCCL.
+  container_image: ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:cd4045bba2a0f3dc55361560f8c3a3f171939854db28d48dfdae58eed9c44943
+  container_image_digest: sha256:7c007cf673c35f5818da7fea8faa343304baed00f489efdcbd027d6616b8a290
   model_path: /models/target
   model_repo: local-inference-lab/GLM-5.3-Flash-NVFP4
   model_revision: "520de24eabf507659eaef7c70f14fd584527facc"
@@ -142,15 +142,15 @@ runtime:
 
 serving:
   tensor_parallel_size: 4
-  decode_context_parallel_size: 4
+  decode_context_parallel_size: 1
   mtp_mode: "off"
   mtp_tokens: 0
-  max_model_len: 1048576
-  kv_cache_bytes_per_rank: 25769803776
-  max_num_seqs: 16
+  max_model_len: 524288
+  kv_cache_bytes_per_rank: 12884901888
+  max_num_seqs: 32
   master_rank: 0
   api_port: 8015
-  master_port: 29775
+  master_port: 29755
 
 paths:
   jit_cache_dir: /var/lib/sparkring/glm53-flash/jit
@@ -158,16 +158,10 @@ paths:
   evidence_dir: ./evidence/glm53-flash
   min_free_bytes:
     jit_cache: 34359738368
-    context_cache: 68719476736
+    context_cache: 214748364800
 
 artifacts: []
 
 preflight:
   ssh_timeout_seconds: 45
-  required_free_ports: [8015, 29775]
-  # Evaluate this only while the serving ports are free, before model loading.
-  # Larger buddy orders count as multiple 16 MiB blocks.
-  memory:
-    minimum_available_bytes: 103079215104
-    contiguous_block_bytes: 16777216
-    minimum_contiguous_blocks: 64
+  required_free_ports: [8015, 29755]

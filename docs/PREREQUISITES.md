@@ -168,7 +168,7 @@ The GLM-5.3 quickstart uses an ignored site file for topology, artifact, disk,
 port, and launch-memory checks. Copy, complete, and validate it:
 
 ```bash
-cp scripts/config/glm53-flash-dflash2-bf16-tp4-dcp4-site.example.yaml scripts/config/site.yaml
+cp scripts/config/glm53-flash-tp4-site.example.yaml scripts/config/site.yaml
 $EDITOR scripts/config/site.yaml
 python scripts/sparkring_site.py scripts/config/site.yaml
 python scripts/preflight.py --site scripts/config/site.yaml --print-plan

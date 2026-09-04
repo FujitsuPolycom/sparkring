@@ -20,7 +20,12 @@ PINS_PATH = ROOT / "runtime" / "glm53-flash" / "pins.json"
 CONTRACT_PATH = (
     ROOT / "runtime" / "glm53-flash" / "vllm-kv-block-lease-contract-da4d7be.json"
 )
-SITE_PATH = ROOT / "scripts" / "config" / "glm53-flash-tp4-site.example.yaml"
+SITE_PATH = (
+    ROOT
+    / "scripts"
+    / "config"
+    / "glm53-flash-dflash2-bf16-tp4-dcp1-site.example.yaml"
+)
 CACHE_PROFILE_PATH = (
     ROOT
     / "scripts"

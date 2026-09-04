@@ -361,21 +361,22 @@ Create one ignored site file on the operator machine and replace its rank
 addresses, interfaces, paths, and artifact identities:
 
 ```bash
-cp scripts/config/glm53-flash-dflash2-bf16-tp4-dcp4-site.example.yaml scripts/config/site.yaml
+cp scripts/config/glm53-flash-tp4-site.example.yaml scripts/config/site.yaml
 ${EDITOR:-vi} scripts/config/site.yaml
 python scripts/sparkring_site.py scripts/config/site.yaml
 python scripts/preflight.py --site scripts/config/site.yaml --print-plan
 python scripts/preflight.py --site scripts/config/site.yaml
 ```
 
-The GLM-5.3 site template requires 96 GiB of available RAM and 64 equivalent
-free blocks of at least 16 MiB on every rank. The check derives the Linux buddy
+The GLM-5.3 site template requires 96 GiB of available RAM and 200 equivalent
+free blocks of at least 32 MiB on every rank. The check derives the Linux buddy
 order from the kernel's page size and counts larger blocks proportionally. Run
 it only before model launch, while the configured API and rendezvous ports are
 free.
 
-A failure with abundant available RAM but few 16 MiB blocks indicates memory
-fragmentation. Inspect the recovery plan before allowing host mutation:
+A failure with abundant available RAM but fewer than 200 equivalent 32 MiB
+blocks indicates memory fragmentation. Inspect the recovery plan before
+allowing host mutation:
 
 ```bash
 python scripts/prepare_launch_memory.py --site scripts/config/site.yaml

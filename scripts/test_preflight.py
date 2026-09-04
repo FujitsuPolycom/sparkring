@@ -117,18 +117,22 @@ def memory_site():
     document = yaml.safe_load(EXAMPLE_PATH.read_text(encoding="utf-8"))
     document["preflight"]["memory"] = {
         "minimum_available_bytes": 103079215104,
-        "contiguous_block_bytes": 16777216,
-        "minimum_contiguous_blocks": 64,
+        "contiguous_block_bytes": 33554432,
+        "minimum_contiguous_blocks": 200,
     }
     return validate_site(document)
 
 
-def memory_lines(*, available_kib: int, order12: int, order13: int) -> list[str]:
+def memory_lines(
+    *, available_kib: int, order12: int, order13: int, order14: int = 0
+) -> list[str]:
     return [
         "MEM_PAGE_SIZE 4096",
         f"MEM_AVAILABLE_KIB {available_kib}",
         "BUDDY Normal "
-        + " ".join(["0"] * 12 + [str(order12), str(order13)]),
+        + " ".join(
+            ["0"] * 12 + [str(order12), str(order13), str(order14)]
+        ),
         "VMSTAT compact_stall 2700000",
         "VMSTAT compact_fail 1350000",
         "VMSTAT compact_success 1350000",
@@ -462,7 +466,7 @@ def test_memory_headroom_accepts_rebooted_gb10_geometry():
 
     assert by_id["HOST.MEMORY_AVAILABLE"].passed
     assert by_id["HOST.MEMORY_CONTIGUITY"].passed
-    assert "equivalent_16MiB_blocks=2981" in (
+    assert "equivalent_32MiB_blocks=782" in (
         by_id["HOST.MEMORY_CONTIGUITY"].detail
     )
 
@@ -481,10 +485,29 @@ def test_memory_headroom_rejects_highly_fragmented_gb10_geometry():
 
     assert by_id["HOST.MEMORY_AVAILABLE"].passed
     assert not by_id["HOST.MEMORY_CONTIGUITY"].passed
-    assert "equivalent_16MiB_blocks=27" in (
+    assert "equivalent_32MiB_blocks=0" in (
         by_id["HOST.MEMORY_CONTIGUITY"].detail
     )
     assert "compact_fail=1350000" in by_id["HOST.MEMORY_CONTIGUITY"].detail
+
+
+def test_memory_headroom_rejects_82_equivalent_32mib_blocks():
+    site = memory_site()
+    rank = site.rank(0)
+    lines = healthy_lines(site, rank) + memory_lines(
+        available_kib=120_000_000,
+        order12=1_000,
+        order13=82,
+    )
+
+    results = evaluate_rank(site, rank, parse_probe_output("\n".join(lines)))
+    contiguous = next(
+        result for result in results
+        if result.check_id == "HOST.MEMORY_CONTIGUITY"
+    )
+
+    assert not contiguous.passed
+    assert "equivalent_32MiB_blocks=82, want >= 200" in contiguous.detail
 
 
 def test_memory_headroom_derives_buddy_order_from_64k_pages():
@@ -493,7 +516,7 @@ def test_memory_headroom_derives_buddy_order_from_64k_pages():
     lines = healthy_lines(site, rank) + [
         "MEM_PAGE_SIZE 65536",
         "MEM_AVAILABLE_KIB 120000000",
-        "BUDDY Normal 0 0 0 0 0 0 0 0 64 10",
+        "BUDDY Normal 0 0 0 0 0 0 0 0 64 250",
         "VMSTAT compact_stall 20",
         "VMSTAT compact_fail 5",
         "VMSTAT compact_success 15",
@@ -506,8 +529,8 @@ def test_memory_headroom_derives_buddy_order_from_64k_pages():
     )
 
     assert contiguous.passed
-    assert "target_order=8" in contiguous.detail
-    assert "equivalent_16MiB_blocks=84" in contiguous.detail
+    assert "target_order=9" in contiguous.detail
+    assert "equivalent_32MiB_blocks=250" in contiguous.detail
 
 
 def test_memory_headroom_rejects_missing_kernel_evidence():

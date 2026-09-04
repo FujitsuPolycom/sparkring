@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SparkRing public preflight: a read-only, fail-closed cluster checker.
+"""SparkRing public preflight: a read-only cluster checker.
 
 Everything this tool knows about your cluster comes from the site
 configuration (``scripts/config/site.yaml``, see
@@ -35,7 +35,8 @@ Usage::
     python scripts/preflight.py --site scripts/config/site.yaml --print-plan
     python scripts/preflight.py --list-checks
 
-Exit status is 0 only when every check passes on every rank.
+Exit status is 0 only when every check passes on every rank. Missing or
+malformed evidence makes the affected check fail.
 """
 
 from __future__ import annotations
