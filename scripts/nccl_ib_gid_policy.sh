@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
 # Validate the local NCCL RoCE GID policy before a launcher constructs Docker
-# arguments. The caller provides die(), NCCL_IB_HCA, VLLM_HOST_IP, and the two
-# GID policy variables. Automatic mode validates the same HCA/port members that
-# NCCL selects, then unsets NCCL_IB_GID_INDEX so NCCL 2.21+ chooses an IPv4
-# RoCEv2 GID independently for each member.
+# arguments. The caller provides die(), NCCL_IB_HCA, VLLM_HOST_IP,
+# NCCL_IB_GID_AUTO, and NCCL_IB_GID_INDEX. Automatic mode validates the
+# HCA/port members selected by NCCL_IB_HCA, then unsets NCCL_IB_GID_INDEX so
+# NCCL 2.21+ chooses an IPv4 RoCEv2 GID independently for each member.
+#
+# The fixture roots are a pytest-only seam. Capture them before the launcher
+# sources an operator env file so tests can replace sysfs without making the
+# override part of the deployment interface. Validation rejects the roots
+# unless the process inherited both pytest's marker and an explicit opt-in.
+readonly _SPARKRING_GID_TEST_SYSFS_ROOT=${SPARKRING_TEST_INFINIBAND_SYSFS_ROOT-}
+readonly _SPARKRING_GID_TEST_NETDEV_ROOT=${SPARKRING_TEST_NETDEV_IPV4_ROOT-}
+readonly _SPARKRING_GID_TEST_OPT_IN=${SPARKRING_TEST_ONLY_GID_FIXTURES-}
+readonly _SPARKRING_GID_PYTEST_CONTEXT=${PYTEST_CURRENT_TEST-}
 
 _sparkring_ipv4_gid_suffix() {
     local address=$1 octet1 octet2 octet3 octet4 octet
@@ -24,9 +33,7 @@ EOF
 }
 
 _sparkring_netdev_ipv4s() {
-    local netdev=$1 fixture_root=${SPARKRING_NETDEV_IPV4_ROOT-}
-    # The root override is an offline-test seam. Deployment templates omit it,
-    # so normal launches inspect addresses reported by the local ip command.
+    local netdev=$1 fixture_root=$_SPARKRING_GID_TEST_NETDEV_ROOT
     if [ -n "$fixture_root" ]; then
         [ -r "$fixture_root/$netdev" ] || return 0
         tr '[:space:]' '\n' < "$fixture_root/$netdev" | sed '/^$/d'
@@ -58,7 +65,7 @@ _sparkring_nccl_atoi_port() {
 }
 
 _sparkring_validate_selected_gids() {
-    local sysfs_root=${SPARKRING_INFINIBAND_SYSFS_ROOT:-/sys/class/infiniband}
+    local sysfs_root=${_SPARKRING_GID_TEST_SYSFS_ROOT:-/sys/class/infiniband}
     local selector=$NCCL_IB_HCA selector_text=$NCCL_IB_HCA
     local exclude=0 exact=0 selector_truncated=0 token_count=0
     local token name port_text port candidate_match selected_count=0
@@ -101,15 +108,10 @@ _sparkring_validate_selected_gids() {
         for port_dir in "$dev_dir"/ports/*; do
             [ -d "$port_dir" ] || continue
             port=${port_dir##*/}
-            state=
-            if [ -r "$port_dir/state" ]; then
-                state=$(<"$port_dir/state")
-                state=${state#*: }
-            fi
-            case "$state" in
-                ''|ACTIVE) ;;
-                *) continue ;;
-            esac
+            [ -r "$port_dir/state" ] || continue
+            state=$(<"$port_dir/state")
+            state=${state#*: }
+            [ "$state" = ACTIVE ] || continue
             link_layer=
             [ ! -r "$port_dir/link_layer" ] || link_layer=$(<"$port_dir/link_layer")
             case "$link_layer" in
@@ -139,9 +141,9 @@ _sparkring_validate_selected_gids() {
             fi
             [ "$candidate_match" -ne "$exclude" ] || continue
             if [ "$selected_count" -ge 32 ]; then
-                printf '  GID policy note: NCCL ignores selected member %s:%s after its 32-device cap.\n' \
-                    "$dev" "$port" >&2
-                continue
+                printf "  GID policy: selector %s resolves to more than NCCL's 32-device cap; refusing validation because sysfs order does not prove NCCL device enumeration order.\n" \
+                    "$selector_text" >&2
+                return 1
             fi
             selected_devs+=("$dev")
             selected_ports+=("$port")
@@ -214,6 +216,12 @@ _sparkring_validate_selected_gids() {
 }
 
 sparkring_validate_nccl_gid_policy() {
+    if [ -n "$_SPARKRING_GID_TEST_SYSFS_ROOT" ] \
+        || [ -n "$_SPARKRING_GID_TEST_NETDEV_ROOT" ]; then
+        [ "$_SPARKRING_GID_TEST_OPT_IN" = 1 ] \
+            && [ -n "$_SPARKRING_GID_PYTEST_CONTEXT" ] \
+            || die 'SPARKRING_TEST_INFINIBAND_SYSFS_ROOT and SPARKRING_TEST_NETDEV_IPV4_ROOT are test-only and unavailable to operator env files'
+    fi
     NCCL_IB_GID_AUTO=${NCCL_IB_GID_AUTO:-1}
     case "$NCCL_IB_GID_AUTO" in
         0)

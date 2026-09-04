@@ -157,9 +157,12 @@ NCCL_IB_GID_INDEX=
 During `--check` and before `--run`, the launcher reads the local
 `/sys/class/infiniband` GID table. It applies `NCCL_IB_HCA` with NCCL's
 comma-list, `^` exclusion, `=` exact-name, prefix-name, and
-`name[:port[:rail[:plane]]]` rules. Only active RDMA ports are candidates, and
-the first 32 selector entries and selected members are considered. The pair
-selector must resolve to one HCA/port; the cycle selector must resolve to two.
+`name[:port[:rail[:plane]]]` rules. Only ports with a readable active state are
+candidates, and only the first 32 non-empty selector entries are considered.
+The pair selector must resolve to one HCA/port; the cycle selector must resolve
+to two. A selector that resolves to more than NCCL's 32-device cap fails
+preflight because sysfs traversal order cannot prove the order returned by
+`ibv_get_device_list()`.
 
 Every selected member must have a RoCE v2, IPv4-mapped GID that matches the
 member's current netdev address or `VLLM_HOST_IP`. The check prints the usable
@@ -190,9 +193,9 @@ recompiles its just-in-time kernels from scratch.
 
 The pair launcher checks the resolved environment, host paths, API and
 rendezvous ports, direct-pair NCCL settings, current local GID table, and
-positive serving limits before constructing Docker arguments. `--check` is
-offline and prints the exact command without creating a container. Run it on
-both hosts:
+positive serving limits before constructing Docker arguments. `--check` reads
+local host state but does not change it, and prints the exact command without
+creating a container. Run it on both hosts:
 
 ```bash
 scripts/deepseek_v4_pair_serve.sh --check /path/to/rank-0.env

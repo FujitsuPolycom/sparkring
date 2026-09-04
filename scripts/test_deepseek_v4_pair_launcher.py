@@ -35,6 +35,7 @@ def _run_launcher(
     env_file: Path,
     mode: str | None = "--check",
     launcher: Path = LAUNCHER,
+    allow_test_fixtures: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     arguments = [str(env_file)] if mode is None else [mode, str(env_file)]
     environment = os.environ.copy()
@@ -42,15 +43,23 @@ def _run_launcher(
     netdev_ipv4_root = env_file.parent / "netdev-ipv4"
     fixture_assignments: list[str] = []
     if sysfs_root.exists():
-        environment["SPARKRING_INFINIBAND_SYSFS_ROOT"] = _bash_path(sysfs_root)
+        environment["SPARKRING_TEST_INFINIBAND_SYSFS_ROOT"] = _bash_path(sysfs_root)
         fixture_assignments.append(
-            f"SPARKRING_INFINIBAND_SYSFS_ROOT={_bash_path(sysfs_root)}"
+            f"SPARKRING_TEST_INFINIBAND_SYSFS_ROOT={_bash_path(sysfs_root)}"
         )
     if netdev_ipv4_root.exists():
-        environment["SPARKRING_NETDEV_IPV4_ROOT"] = _bash_path(netdev_ipv4_root)
+        environment["SPARKRING_TEST_NETDEV_IPV4_ROOT"] = _bash_path(netdev_ipv4_root)
         fixture_assignments.append(
-            f"SPARKRING_NETDEV_IPV4_ROOT={_bash_path(netdev_ipv4_root)}"
+            f"SPARKRING_TEST_NETDEV_IPV4_ROOT={_bash_path(netdev_ipv4_root)}"
         )
+    if fixture_assignments and allow_test_fixtures:
+        environment["SPARKRING_TEST_ONLY_GID_FIXTURES"] = "1"
+        fixture_assignments.append("SPARKRING_TEST_ONLY_GID_FIXTURES=1")
+        pytest_context = environment.get(
+            "PYTEST_CURRENT_TEST", "sparkring GID fixture test"
+        )
+        environment["PYTEST_CURRENT_TEST"] = pytest_context
+        fixture_assignments.append(f"PYTEST_CURRENT_TEST={pytest_context}")
     if os.name != "nt":
         command = ["bash", str(launcher), *arguments]
     else:
@@ -341,6 +350,24 @@ def test_auto_gid_mode_is_the_default_when_switch_is_omitted(pair_env: Path) -> 
     assert "automatic validation passed" in result.stdout
 
 
+def test_operator_env_file_cannot_enable_test_fixture_roots(pair_env: Path) -> None:
+    content = pair_env.read_text(encoding="utf-8")
+    pair_env.write_text(
+        content + "SPARKRING_TEST_ONLY_GID_FIXTURES=1\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    result = _run_launcher(pair_env, allow_test_fixtures=False)
+
+    assert result.returncode != 0
+    assert (
+        "SPARKRING_TEST_INFINIBAND_SYSFS_ROOT and "
+        "SPARKRING_TEST_NETDEV_IPV4_ROOT are test-only"
+        in result.stderr
+    )
+
+
 def test_pinned_gid_escape_hatch_preserves_the_configured_index(pair_env: Path) -> None:
     content = pair_env.read_text(encoding="utf-8")
     content = content.replace("NCCL_IB_GID_AUTO=1", "NCCL_IB_GID_AUTO=0")
@@ -383,6 +410,30 @@ def test_auto_gid_mode_rejects_a_selected_member_without_rocev2(cycle_env: Path)
     assert result.returncode != 0
     assert "rocep1s0f0:1 usable RoCEv2/IPv4 indexes: 3" in result.stdout
     assert "rocep1s0f1:1 usable RoCEv2/IPv4 indexes: none" in result.stderr
+    assert "automatic RoCEv2 GID validation failed" in result.stderr
+
+
+@pytest.mark.parametrize("port_state", ["1: DOWN", None], ids=["inactive", "missing"])
+def test_auto_gid_mode_rejects_a_port_without_active_state(
+    pair_env: Path, port_state: str | None
+) -> None:
+    state_path = (
+        pair_env.parent
+        / "infiniband"
+        / "rocep1s0f0"
+        / "ports"
+        / "1"
+        / "state"
+    )
+    if port_state is None:
+        state_path.unlink()
+    else:
+        state_path.write_text(port_state + "\n", encoding="utf-8", newline="\n")
+
+    result = _run_launcher(pair_env)
+
+    assert result.returncode != 0
+    assert "matched no active RDMA HCA/port" in result.stderr
     assert "automatic RoCEv2 GID validation failed" in result.stderr
 
 
@@ -499,9 +550,7 @@ def test_selector_ignores_entries_after_nccls_32_entry_cap(pair_env: Path) -> No
     assert "matched no active RDMA HCA/port" in result.stderr
 
 
-def test_selector_caps_selected_members_at_nccls_32_device_limit(
-    pair_env: Path,
-) -> None:
+def test_selector_fails_when_more_than_32_devices_match(pair_env: Path) -> None:
     for index in range(33):
         _write_gid(
             pair_env.parent / "infiniband",
@@ -519,11 +568,9 @@ def test_selector_caps_selected_members_at_nccls_32_device_limit(
     result = _run_launcher(pair_env)
 
     assert result.returncode != 0
-    assert (
-        "NCCL ignores selected member rocecap32:1 after its 32-device cap"
-        in result.stderr
-    )
-    assert "must resolve to exactly one active HCA/port; resolved 32" in result.stderr
+    assert "resolves to more than NCCL's 32-device cap" in result.stderr
+    assert "sysfs order does not prove NCCL device enumeration order" in result.stderr
+    assert "automatic RoCEv2 GID validation failed" in result.stderr
 
 
 def test_env_file_alone_defaults_to_check(pair_env: Path) -> None:
