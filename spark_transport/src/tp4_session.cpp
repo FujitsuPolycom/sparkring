@@ -799,6 +799,21 @@ class Tp4AllreduceSession::Impl {
             : -1};
   }
 
+  Tp4HealthStatus health_status() {
+    std::lock_guard<std::mutex> lock(submission_mutex_);
+    const bool progress_running =
+        progress_thread_running_.load(std::memory_order_acquire);
+    return Tp4HealthStatus{
+        !poisoned_ && !stopping_ && progress_running,
+        poisoned_,
+        progress_running,
+        stopping_,
+        sequence_,
+        completed_sequence_,
+        poisoned_ ? sequence_ : 0,
+        poisoned_ ? 1 : 0};
+  }
+
  private:
   struct Submission {
     std::uint64_t sequence;
@@ -898,7 +913,9 @@ class Tp4AllreduceSession::Impl {
             promise.set_value("unknown graph progress affinity failure");
             return;
           }
+          progress_thread_running_.store(true, std::memory_order_release);
           progress_loop();
+          progress_thread_running_.store(false, std::memory_order_release);
         });
     const std::string startup_error = startup.get();
     if (!startup_error.empty()) {
@@ -1270,6 +1287,7 @@ class Tp4AllreduceSession::Impl {
   std::condition_variable completion_cv_;
   std::deque<Submission> submissions_;
   std::thread progress_thread_;
+  std::atomic<bool> progress_thread_running_{false};
   const std::uint64_t max_inflight_;
   std::chrono::seconds eager_protocol_timeout_{
       kGraphProtocolTimeout};
@@ -1320,6 +1338,10 @@ void Tp4AllreduceSession::capture_all_reduce(
 Tp4GraphReplayStatus Tp4AllreduceSession::graph_replay_status()
     const noexcept {
   return impl_->graph_replay_status();
+}
+
+Tp4HealthStatus Tp4AllreduceSession::health_status() {
+  return impl_->health_status();
 }
 
 }  // namespace spark_transport

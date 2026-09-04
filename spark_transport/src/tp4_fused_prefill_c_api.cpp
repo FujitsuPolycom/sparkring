@@ -80,4 +80,29 @@ extern "C" int spark_tp4_fused_prefill_all_reduce_rows(
   try { if(!handle) throw std::invalid_argument("fused handle is null"); static_cast<Handle*>(handle)->session.all_reduce_fused(input,output,stream,query_rows); return 0; }
   catch(const std::exception& e){error_copy(e.what(),error,bytes);return -1;}
 }
+extern "C" int spark_tp4_fused_prefill_get_health_status(
+    spark_tp4_fused_prefill_handle handle, spark_tp4_health_status* status,
+    std::size_t status_bytes, char* error, std::size_t error_bytes) {
+  try {
+    if (!handle) throw std::invalid_argument("fused handle is null");
+    if (!status || status_bytes < sizeof(*status))
+      throw std::invalid_argument("fused health status buffer is invalid");
+    const auto snapshot = static_cast<Handle*>(handle)->session.health_status();
+    spark_tp4_health_status result{};
+    result.struct_size = sizeof(result);
+    if (snapshot.healthy) result.flags |= SPARK_TP4_HEALTHY;
+    if (snapshot.proxy_thread_running)
+      result.flags |= SPARK_TP4_HEALTH_PROGRESS_THREAD_RUNNING;
+    result.submitted_sequence = snapshot.submitted_sequence;
+    result.completed_sequence = snapshot.completed_sequence;
+    result.failing_stage = -1;
+    result.failing_rail = -1;
+    result.failing_peer = -1;
+    *status = result;
+    return 0;
+  } catch (const std::exception& e) {
+    error_copy(e.what(), error, error_bytes);
+    return -1;
+  }
+}
 extern "C" void spark_tp4_fused_prefill_destroy(spark_tp4_fused_prefill_handle h){delete static_cast<Handle*>(h);}

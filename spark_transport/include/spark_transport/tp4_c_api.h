@@ -98,6 +98,25 @@ typedef struct spark_tp4_graph_status {
   uint32_t graph_progress_cpu_plus_one;
 } spark_tp4_graph_status;
 
+enum {
+  SPARK_TP4_HEALTHY = 1U << 0,
+  SPARK_TP4_HEALTH_POISONED = 1U << 1,
+  SPARK_TP4_HEALTH_PROGRESS_THREAD_RUNNING = 1U << 2,
+  SPARK_TP4_HEALTH_STOPPING = 1U << 3,
+};
+
+typedef struct spark_tp4_health_status {
+  uint32_t struct_size;
+  uint32_t flags;
+  uint64_t submitted_sequence;
+  uint64_t completed_sequence;
+  uint64_t failing_sequence;
+  int32_t error_code;
+  int32_t failing_stage;
+  int32_t failing_rail;
+  int32_t failing_peer;
+} spark_tp4_health_status;
+
 spark_tp4_handle spark_tp4_create(const spark_tp4_config* config,
                                   char* error, size_t error_bytes);
 
@@ -180,6 +199,11 @@ int spark_tp4_capture_q1_all_reduce(
  */
 int spark_tp4_get_graph_status(
     spark_tp4_handle handle, spark_tp4_graph_status* status,
+    size_t status_bytes, char* error, size_t error_bytes);
+
+/* Copies host state only. This function never synchronizes a CUDA stream. */
+int spark_tp4_get_health_status(
+    spark_tp4_handle handle, spark_tp4_health_status* status,
     size_t status_bytes, char* error, size_t error_bytes);
 
 void spark_tp4_destroy(spark_tp4_handle handle);
