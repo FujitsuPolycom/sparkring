@@ -213,8 +213,9 @@ notices and license texts.
 
 ## 10. GLM-5.3 Flash profile artifacts (referenced; not included)
 
-The GLM-5.3 Flash TP4/DCP1 recipes reference model and runtime artifacts that
-are not distributed in this repository:
+The qualified GLM-5.3 Flash TP4/DCP4 operator image identified by
+`runtime/glm53-flash-jj-r8-gb10/pins.json` references model and runtime
+artifacts that are not distributed in this repository:
 
 - `local-inference-lab/GLM-5.3-Flash-NVFP4` revision
   `520de24eabf507659eaef7c70f14fd584527facc`, MIT, used as the ModelOpt
@@ -223,17 +224,37 @@ are not distributed in this repository:
   `dc77ff1c99eeb2df044ee3d4f0094eb033fee410`, CC BY-NC-ND 4.0, used as
   the BF16 speculative drafter; its model card limits use to research and
   evaluation and directs commercial licensing inquiries to Inco AI;
+- `FujitsuPolycom/vllm` commit
+  `e02b174693e13859de61811b5e8cd13d5308e259`, Apache-2.0, used as the
+  active Python serving runtime. That composition includes public B12X KDA
+  prefill commit `54371894ecaa77f2725a1c99e018f3fe93d358dd`, per-process KDA
+  workspace-isolation commit `57a6169a5c229a5ca8c24791762b1fc51c89e58d`,
+  sparse-MLA DSA commit `d662a1b0890271915c25439f22247ee22234739a`,
+  C4 indexer-binding commit `d6687475a3f2dbe7848663fd3e5174d90921a3da`,
+  and sparse-MLA cache-length commit
+  `83cb22a0e3f7ec4d2fb43f6ead34ba4d4a87a634`;
 - `local-inference-lab/vllm` commit
   `da4d7be6c97434f6942292ed8abbf4b32dc44355`, Apache-2.0, used as the
-  serving runtime; and
-- `local-inference-lab/b12x` commit
-  `2fcf23a0ce269be27b2e03fece73d46e90e6aeea`, used as the GB10 kernel
-  implementation under Apache-2.0 and its repository notices.
+  source parent for retained ARM64 native extensions built at
+  `3633d61c3c7b04bb4d598cadbdc342f3be40482d`; and
+- `voipmonitor/b12x` commit
+  `9ae41c5cb9935d740456479954b0089f80bd2ef2`, used as the GB10 attention,
+  KDA, linear, and MoE kernel implementation under Apache-2.0 and its
+  repository notices.
 
 SparkRing records these identities and validates compatible image content; it
 does not redistribute the model weights, vLLM source, or B12X source. Operators
-must obtain each artifact under its own terms. The complete profile provenance
-and known lineage limitations are in `runtime/glm53-flash/pins.json`.
+must obtain each artifact under its own terms. The exact operator-image
+composition is in `runtime/glm53-flash-jj-r8-gb10/pins.json` and
+`runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json`.
+
+The separate source-complete TP4/DCP1 builder under `runtime/glm53-flash/`
+remains bound to `local-inference-lab/vllm` commit
+`da4d7be6c97434f6942292ed8abbf4b32dc44355` and
+`local-inference-lab/b12x` commit
+`2fcf23a0ce269be27b2e03fece73d46e90e6aeea`. Its identities are recorded in
+`runtime/glm53-flash/pins.json`; they do not identify the qualified TP4/DCP4
+operator image above.
 
 ## 11. MiaAI DeepSeek DGX Spark launcher (adapted GID policy)
 
