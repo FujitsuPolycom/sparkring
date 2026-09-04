@@ -33,6 +33,12 @@ int spark_tp4_bidirectional_prefill_all_reduce(
     spark_tp4_bidirectional_prefill_handle handle, const void* input,
     void* output, void* cuda_stream, char* error, size_t error_bytes);
 
+/* Copies host state only. This function never synchronizes a CUDA stream. */
+int spark_tp4_bidirectional_prefill_get_health_status(
+    spark_tp4_bidirectional_prefill_handle handle,
+    spark_tp4_health_status* status, size_t status_bytes,
+    char* error, size_t error_bytes);
+
 void spark_tp4_bidirectional_prefill_destroy(
     spark_tp4_bidirectional_prefill_handle handle);
 

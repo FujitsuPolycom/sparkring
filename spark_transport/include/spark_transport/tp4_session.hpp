@@ -102,7 +102,7 @@ class Tp4AllreduceSession {
                           void* cuda_stream);
 
   Tp4GraphReplayStatus graph_replay_status() const noexcept;
-  Tp4HealthStatus health_status();
+  Tp4HealthStatus health_status() const noexcept;
 
  private:
   class Impl;

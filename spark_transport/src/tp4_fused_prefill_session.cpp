@@ -31,6 +31,10 @@ constexpr std::uint16_t kVersion = 9;
 constexpr std::uint16_t kTag = 0xf804;
 constexpr std::uint32_t kOperationSlots = 2;
 
+std::uint64_t load_mapped_poison(const std::uint64_t* address) noexcept {
+  return __atomic_load_n(address, __ATOMIC_ACQUIRE);
+}
+
 void check_cuda(cudaError_t value, const char* operation) {
   if (value != cudaSuccess)
     throw std::runtime_error(std::string(operation) + ": " +
@@ -144,9 +148,11 @@ class ProxyWorker {
     cv_.notify_one();
   }
   Tp4FusedPrefillHealthStatus health_status() const noexcept {
+    const bool running = thread_running_.load(std::memory_order_acquire);
     return {
-        thread_running_.load(std::memory_order_acquire),
-        thread_running_.load(std::memory_order_acquire),
+        running,
+        false,
+        running,
         submitted_sequence_.load(std::memory_order_acquire),
         completed_sequence_.load(std::memory_order_acquire)};
   }
@@ -347,7 +353,30 @@ class Tp4FusedPrefillSession::Impl {
   }
 
   Tp4FusedPrefillHealthStatus health_status() const noexcept {
-    return worker_ ? worker_->health_status() : Tp4FusedPrefillHealthStatus{};
+    auto status =
+        worker_ ? worker_->health_status() : Tp4FusedPrefillHealthStatus{};
+    std::uint64_t poison_token{};
+    for (const auto& arena : arenas_) {
+      for (std::uint32_t flow = 0; flow < research::kFusedPrefillFlows;
+           ++flow) {
+        const std::uint64_t observed =
+            load_mapped_poison(&arena.host_control(flow)->poison_sequence);
+        if (observed != 0 &&
+            (poison_token == 0 || observed < poison_token)) {
+          poison_token = observed;
+        }
+      }
+    }
+    if (poison_token != 0) {
+      status.healthy = false;
+      status.poisoned = true;
+      status.failing_sequence =
+          (poison_token - 1U) / research::kFusedPrefillStages;
+      status.failing_stage = static_cast<std::int32_t>(
+          (poison_token - 1U) % research::kFusedPrefillStages);
+      status.error_code = 1;
+    }
+    return status;
   }
 
  private:

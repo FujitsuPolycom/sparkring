@@ -117,6 +117,10 @@ typedef struct spark_tp4_health_status {
   int32_t failing_peer;
 } spark_tp4_health_status;
 
+enum { SPARK_TP4_C_ABI_VERSION = 1U };
+
+uint32_t spark_tp4_get_abi_version(void);
+
 spark_tp4_handle spark_tp4_create(const spark_tp4_config* config,
                                   char* error, size_t error_bytes);
 

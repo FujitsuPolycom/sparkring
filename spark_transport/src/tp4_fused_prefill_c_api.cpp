@@ -91,11 +91,14 @@ extern "C" int spark_tp4_fused_prefill_get_health_status(
     spark_tp4_health_status result{};
     result.struct_size = sizeof(result);
     if (snapshot.healthy) result.flags |= SPARK_TP4_HEALTHY;
+    if (snapshot.poisoned) result.flags |= SPARK_TP4_HEALTH_POISONED;
     if (snapshot.proxy_thread_running)
       result.flags |= SPARK_TP4_HEALTH_PROGRESS_THREAD_RUNNING;
     result.submitted_sequence = snapshot.submitted_sequence;
     result.completed_sequence = snapshot.completed_sequence;
-    result.failing_stage = -1;
+    result.failing_sequence = snapshot.failing_sequence;
+    result.error_code = snapshot.error_code;
+    result.failing_stage = snapshot.failing_stage;
     result.failing_rail = -1;
     result.failing_peer = -1;
     *status = result;

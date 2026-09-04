@@ -132,6 +132,42 @@ extern "C" int spark_tp4_bidirectional_prefill_all_reduce(
   }
 }
 
+extern "C" int spark_tp4_bidirectional_prefill_get_health_status(
+    spark_tp4_bidirectional_prefill_handle handle,
+    spark_tp4_health_status* status, std::size_t status_bytes,
+    char* error, std::size_t error_bytes) {
+  try {
+    if (handle == nullptr) {
+      throw std::invalid_argument("bidirectional prefill handle is null");
+    }
+    if (status == nullptr || status_bytes < sizeof(*status)) {
+      throw std::invalid_argument(
+          "bidirectional prefill health status buffer is invalid");
+    }
+    const auto snapshot = static_cast<Handle*>(handle)->session.health_status();
+    spark_tp4_health_status result{};
+    result.struct_size = sizeof(result);
+    if (snapshot.healthy) result.flags |= SPARK_TP4_HEALTHY;
+    if (snapshot.poisoned) result.flags |= SPARK_TP4_HEALTH_POISONED;
+    result.submitted_sequence = snapshot.submitted_sequence;
+    result.completed_sequence = snapshot.completed_sequence;
+    result.failing_sequence = snapshot.failing_sequence;
+    result.error_code = snapshot.error_code;
+    result.failing_stage = -1;
+    result.failing_rail = -1;
+    result.failing_peer = -1;
+    *status = result;
+    return 0;
+  } catch (const std::exception& exception) {
+    copy_error(exception.what(), error, error_bytes);
+    return -1;
+  } catch (...) {
+    copy_error("unknown bidirectional prefill health failure", error,
+               error_bytes);
+    return -1;
+  }
+}
+
 extern "C" void spark_tp4_bidirectional_prefill_destroy(
     spark_tp4_bidirectional_prefill_handle handle) {
   delete static_cast<Handle*>(handle);

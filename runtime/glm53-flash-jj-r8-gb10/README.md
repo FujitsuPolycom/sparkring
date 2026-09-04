@@ -165,7 +165,10 @@ is created.
 
 After vLLM's existing output synchronization, a host-only native health check
 prevents synchronous or asynchronous model output from leaving an unhealthy
-worker. The check does not synchronize CUDA.
+worker. The check does not synchronize CUDA. Worker failure is fail-stop:
+vLLM's multiprocess monitor terminates the peer workers. Four-rank fault
+injection must verify that teardown completes without a collective hang before
+the transport is marked qualified.
 
 ### NCCL fallback
 

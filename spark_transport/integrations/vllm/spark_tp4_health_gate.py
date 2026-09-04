@@ -35,19 +35,20 @@ def wrap_get_output(
     output_type.get_output = get_output
 
 
-def wrap_execute_model(
-    runner_type: type,
+def wrap_worker_output(
+    worker_type: type,
+    method_name: str,
     *,
     check: Callable[[], None] = require_native_health,
     abort: Callable[[int], Any] = os._exit,
 ) -> None:
-    original = runner_type.execute_model
+    original = getattr(worker_type, method_name)
     if getattr(original, "_sparkring_health_gate", False):
         return
 
-    def execute_model(self, *args, **kwargs):
+    def worker_output(self, *args, **kwargs):
         output = original(self, *args, **kwargs)
-        if hasattr(output, "get_output"):
+        if output is None or hasattr(output, "get_output"):
             return output
         try:
             check()
@@ -56,8 +57,8 @@ def wrap_execute_model(
             raise RuntimeError("SIRCL health abort unexpectedly returned")
         return output
 
-    execute_model._sparkring_health_gate = True
-    runner_type.execute_model = execute_model
+    worker_output._sparkring_health_gate = True
+    setattr(worker_type, method_name, worker_output)
 
 
 def install() -> None:
@@ -81,19 +82,17 @@ def install() -> None:
             if output_type is not None:
                 wrap_get_output(output_type)
                 wrapped += 1
-    runners = 0
-    for module_name in (
-        "vllm.v1.worker.gpu.model_runner",
-        "vllm.v1.worker.gpu_model_runner",
-    ):
-        try:
-            module = importlib.import_module(module_name)
-        except ImportError:
-            continue
-        runner_type = getattr(module, "GPUModelRunner", None)
-        if runner_type is not None:
-            wrap_execute_model(runner_type)
-            runners += 1
-    if not wrapped or not runners:
-        raise RuntimeError("SIRCL health gate found no vLLM asynchronous output type")
+    try:
+        worker_module = importlib.import_module("vllm.v1.worker.gpu_worker")
+        worker_type = worker_module.Worker
+    except (AttributeError, ImportError) as error:
+        raise RuntimeError("SIRCL health gate found no pinned vLLM GPU Worker") from error
+    for method_name in ("execute_model", "sample_tokens"):
+        if not hasattr(worker_type, method_name):
+            raise RuntimeError(
+                f"SIRCL health gate found no Worker.{method_name} output boundary"
+            )
+        wrap_worker_output(worker_type, method_name)
+    if not wrapped:
+        raise RuntimeError("SIRCL health gate found no asynchronous output type")
     _installed = True

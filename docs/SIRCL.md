@@ -45,8 +45,9 @@ four-rank serving result.
 Before native construction, the GLM-5.3 adapter exchanges a capability record
 over the CPU process group. Shared protocol and artifact identities must match,
 while each rank proves its own RDMA device and GID availability. Model output
-is checked against a host-only native health snapshot after vLLM's existing
-output synchronization. Neither check adds a CUDA synchronization.
+is checked against every process-local native session after vLLM's existing
+output synchronization. Fused kernels publish poison into mapped host control
+state so this check can reject their output without adding CUDA synchronization.
 
 The Qwen3.8-27B EXL3 K5/K6 pair and cycle profiles use patched NCCL. Their
 width-5,120 tensor-parallel shape is unsupported by SIRCL, so neither loads a
