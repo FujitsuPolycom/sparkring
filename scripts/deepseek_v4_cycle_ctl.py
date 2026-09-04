@@ -45,6 +45,7 @@ Operational notes
 from __future__ import annotations
 
 import argparse
+import shlex
 import subprocess
 import sys
 import time
@@ -61,6 +62,10 @@ DEFAULT_CONTAINER_PREFIX = "deepseek-v4-flash-r"
 LAUNCH_REL = "scripts/deepseek_v4_cycle_serve.sh"
 ENV_REL = "rank-{rank}.env"  # per-rank env file inside --repo
 API_PATH = "/v1/models"
+
+
+class SSHTransportError(RuntimeError):
+    """The controller could not determine remote state over SSH."""
 
 
 def _run_ssh(
@@ -101,13 +106,44 @@ def _container_running(ssh_target: str, name: str) -> bool:
         f"docker ps --format '{{{{.Names}}}}' | grep -qx '{name}'"
     )
     result = _run_ssh(ssh_target, probe, timeout=30.0)
+    if result.returncode == 255:
+        raise SSHTransportError(f"SSH failed for {ssh_target}")
     return result.returncode == 0
 
 
-def _head_api_ready(ssh_target: str, port: int) -> bool:
-    probe = f"curl -fsS -m 5 -o /dev/null http://127.0.0.1:{port}{API_PATH}"
+def _head_api_ready(
+    ssh_target: str,
+    port: int,
+    api_key_file: str | None = None,
+) -> bool:
+    if api_key_file:
+        path = shlex.quote(api_key_file)
+        probe = (
+            f"key=$(sed -n '/^[^[:space:]]/ {{p;q;}}' {path}) && "
+            "test -n \"${key}\" && "
+            "curl -fsS -m 5 -H \"Authorization: Bearer ${key}\" "
+            f"-o /dev/null http://127.0.0.1:{port}{API_PATH}"
+        )
+    else:
+        probe = f"curl -fsS -m 5 -o /dev/null http://127.0.0.1:{port}{API_PATH}"
     result = _run_ssh(ssh_target, probe, timeout=20.0)
+    if result.returncode == 255:
+        raise SSHTransportError(f"SSH failed for {ssh_target}")
     return result.returncode == 0
+
+
+def _rollback_started(ranks: Sequence, container_prefix: str) -> None:
+    """Remove only containers started by the failed controller invocation."""
+
+    for rank in reversed(tuple(ranks)):
+        name = _container_name(container_prefix, rank.id)
+        command = f"docker rm -f {name} 2>/dev/null || true"
+        result = _run_ssh(rank.ssh_target, command, timeout=60.0)
+        if result.returncode != 0:
+            print(
+                f"  rollback FAILED for rank{rank.id} "
+                f"({rank.ssh_target}, ssh rc={result.returncode})"
+            )
 
 
 def start_ranks(
@@ -120,9 +156,11 @@ def start_ranks(
     wait_container: int = 12,
     wait_api_minutes: int = 40,
     api_port: int = 8888,
+    api_key_file: str | None = None,
 ) -> int:
     """Start workers first, then the head, then wait for the API."""
     ordered = sorted(ranks, key=lambda r: (r.id == 0, r.id))  # head (id 0) last
+    started = []
     for rank in ordered:
         name = _container_name(container_prefix, rank.id)
         log_path = f"{log_dir}/ctl-start-rank{rank.id}.log"
@@ -132,25 +170,39 @@ def start_ranks(
             print(f"  [dry-run] ssh {rank.ssh_target} {command}")
             continue
         print(f"[start] rank{rank.id} ({rank.ssh_target}) container={name}")
-        if _container_running(rank.ssh_target, name):
+        try:
+            running = _container_running(rank.ssh_target, name)
+        except SSHTransportError as error:
+            print(f"  FAILED: {error}")
+            _rollback_started(started, container_prefix)
+            return 1
+        if running:
             print("  already running; skip")
             continue
         print(f"  launch: {command}")
         launched = _run_ssh(rank.ssh_target, command, timeout=60.0)
         if launched.returncode != 0:
             print(f"  FAILED to launch rank{rank.id} (ssh rc={launched.returncode})")
+            _rollback_started(started, container_prefix)
             return 1
+        started.append(rank)
         up = False
         for _ in range(wait_container):
             time.sleep(2)
-            if _container_running(rank.ssh_target, name):
-                up = True
-                break
+            try:
+                if _container_running(rank.ssh_target, name):
+                    up = True
+                    break
+            except SSHTransportError as error:
+                print(f"  FAILED: {error}")
+                _rollback_started(started, container_prefix)
+                return 1
         if not up:
             print(
                 f"  FAILED: container {name} did not appear; "
                 f"see remote {log_path}"
             )
+            _rollback_started(started, container_prefix)
             return 1
         print(f"  container {name} is up")
     if dry_run:
@@ -164,11 +216,17 @@ def start_ranks(
           f"(up to {wait_api_minutes} min)")
     deadline = time.monotonic() + wait_api_minutes * 60
     while time.monotonic() < deadline:
-        if _head_api_ready(head.ssh_target, api_port):
-            print("[start] API ready")
-            return 0
+        try:
+            if _head_api_ready(head.ssh_target, api_port, api_key_file):
+                print("[start] API ready")
+                return 0
+        except SSHTransportError as error:
+            print(f"[start] FAILED: {error}")
+            _rollback_started(started, container_prefix)
+            return 1
         time.sleep(15)
     print(f"[start] TIMEOUT: API not ready after {wait_api_minutes} minutes")
+    _rollback_started(started, container_prefix)
     return 1
 
 
@@ -180,17 +238,28 @@ def stop_ranks(
 ) -> int:
     """Remove serving containers, workers first, then the head."""
     ordered = sorted(ranks, key=lambda r: (r.id == 0, r.id))
+    failed = False
     for rank in ordered:
         name = _container_name(container_prefix, rank.id)
         command = f"docker rm -f {name} 2>/dev/null || true"
         if dry_run:
             print(f"[stop] [dry-run] ssh {rank.ssh_target} {command}")
             continue
-        _run_ssh(rank.ssh_target, command, timeout=60.0)
-        gone = not _container_running(rank.ssh_target, name)
+        result = _run_ssh(rank.ssh_target, command, timeout=60.0)
+        if result.returncode == 255:
+            print(f"[stop] rank{rank.id} ({rank.ssh_target}) {name}: SSH ERROR")
+            failed = True
+            continue
+        try:
+            gone = not _container_running(rank.ssh_target, name)
+        except SSHTransportError:
+            print(f"[stop] rank{rank.id} ({rank.ssh_target}) {name}: SSH ERROR")
+            failed = True
+            continue
         status = "stopped" if gone else "STILL RUNNING"
         print(f"[stop] rank{rank.id} ({rank.ssh_target}) {name}: {status}")
-    return 0
+        failed |= not gone
+    return int(failed)
 
 
 def status_ranks(
@@ -201,6 +270,7 @@ def status_ranks(
     dry_run: bool = False,
 ) -> int:
     """Print one status line per rank and the head API health."""
+    failed = False
     for rank in sorted(ranks, key=lambda r: r.id):
         name = _container_name(container_prefix, rank.id)
         if dry_run:
@@ -209,18 +279,28 @@ def status_ranks(
                 f"(dry-run, not probed)"
             )
             continue
-        running = _container_running(rank.ssh_target, name)
+        try:
+            running = _container_running(rank.ssh_target, name)
+        except SSHTransportError:
+            print(f"[status] rank{rank.id} ({rank.ssh_target}) {name}: SSH ERROR")
+            failed = True
+            continue
         state = "UP" if running else "down"
         print(f"[status] rank{rank.id} ({rank.ssh_target}) {name}: {state}")
     head = next(r for r in ranks if r.id == 0)
     if dry_run:
         return 0
-    if _head_api_ready(head.ssh_target, api_port):
+    try:
+        ready = _head_api_ready(head.ssh_target, api_port)
+    except SSHTransportError:
+        print(f"[status] head API on {head.ssh_target}: SSH ERROR")
+        return 1
+    if ready:
         print(f"[status] head API http://127.0.0.1:{api_port}{API_PATH}: 200 OK")
     else:
         print(f"[status] head API http://127.0.0.1:{api_port}{API_PATH}: not reachable")
         return 1
-    return 0
+    return int(failed)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -252,6 +332,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="rank-0 API port (default: 8888)")
     parser.add_argument("--wait-api-minutes", type=int, default=40,
                         help="head API wait budget for start (default: 40)")
+    parser.add_argument(
+        "--api-key-file",
+        help="rank-0 path containing a bearer accepted by the model API",
+    )
     parser.add_argument("--dry-run", action="store_true",
                         help="print the SSH commands without executing them")
     args = parser.parse_args(argv)
@@ -271,6 +355,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             dry_run=args.dry_run,
             wait_api_minutes=args.wait_api_minutes,
             api_port=args.api_port,
+            api_key_file=args.api_key_file,
         )
     if args.action == "stop":
         return stop_ranks(ranks, args.container_prefix, dry_run=args.dry_run)

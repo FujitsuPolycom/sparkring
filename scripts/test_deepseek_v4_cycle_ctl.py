@@ -237,9 +237,21 @@ def test_start_waits_for_api(monkeypatch, fake_ranks):
 
 
 def test_start_aborts_when_container_never_appears(monkeypatch, fake_ranks):
+    calls = []
+
     def never_up(ssh_target, command, timeout=None, capture=False):
+        calls.append((ssh_target, command))
         if "docker ps" in command and "grep -qx" in command:
-            return subprocess.CompletedProcess(["ssh"], 1, "", "")
+            rank = _rank_of(ssh_target)
+            appeared = rank == 1 and any(
+                target == ssh_target and "nohup" in prior
+                for target, prior in calls
+            )
+            return subprocess.CompletedProcess(
+                ["ssh"], 0 if appeared else 1, "", ""
+            )
+        if "docker rm -f" in command:
+            return subprocess.CompletedProcess(["ssh"], 0, "", "")
         if "nohup" in command:
             return subprocess.CompletedProcess(["ssh"], 0, "", "")
         return subprocess.CompletedProcess(["ssh"], 0, "", "")
@@ -250,6 +262,49 @@ def test_start_aborts_when_container_never_appears(monkeypatch, fake_ranks):
                          "/tmp", dry_run=False, wait_container=2,
                          wait_api_minutes=0)
     assert rc == 1
+    assert any(
+        _rank_of(target) == 1 and "docker rm -f" in command
+        for target, command in calls
+    )
+
+
+def test_authenticated_api_probe_reads_key_on_head(monkeypatch):
+    commands = []
+
+    def probe(_ssh_target, command, timeout=None, capture=False):
+        commands.append(command)
+        return subprocess.CompletedProcess(["ssh"], 0, "", "")
+
+    monkeypatch.setattr(ctl, "_run_ssh", probe)
+
+    assert ctl._head_api_ready("operator@head", 8888, "/secure/api-keys")
+    assert "/secure/api-keys" in commands[0]
+    assert "Authorization: Bearer" in commands[0]
+
+
+def test_status_reports_ssh_transport_failure(monkeypatch, fake_ranks, capsys):
+    monkeypatch.setattr(
+        ctl,
+        "_run_ssh",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["ssh"], 255, "", "connection refused"
+        ),
+    )
+
+    assert ctl.status_ranks(fake_ranks, "deepseek-v4-flash-r", 8888) == 1
+    assert "SSH ERROR" in capsys.readouterr().out
+
+
+def test_stop_returns_failure_when_ssh_transport_fails(monkeypatch, fake_ranks):
+    monkeypatch.setattr(
+        ctl,
+        "_run_ssh",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["ssh"], 255, "", "connection refused"
+        ),
+    )
+
+    assert ctl.stop_ranks(fake_ranks, "deepseek-v4-flash-r") == 1
 
 
 def test_stop_removes_workers_first(monkeypatch, fake_ranks):
