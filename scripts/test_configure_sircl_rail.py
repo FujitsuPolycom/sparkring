@@ -171,6 +171,9 @@ def _verification_runner(
                 }],
             }]
             return subprocess.CompletedProcess(arguments, 0, json.dumps(payload), "")
+        if arguments[:6] == ["ip", "-j", "-4", "route", "show", "default"]:
+            payload = [{"dst": "default", "dev": config.management_interface}]
+            return subprocess.CompletedProcess(arguments, 0, json.dumps(payload), "")
         if arguments[:4] == ["ip", "-j", "link", "show"]:
             payload = [{
                 "ifname": config.interface,
@@ -235,6 +238,8 @@ def test_verification_covers_profile_live_link_gid_and_jumbo_peer(
         "profile.ipv6.method",
         "profile.802-3-ethernet.mtu",
         "live.active_connection",
+        "safety.rail_not_default_route",
+        "safety.management_default_route",
         "live.address",
         "live.mtu",
         "live.link",
@@ -322,6 +327,55 @@ def test_execute_checks_both_rail_and_management_interfaces_before_mutation(
         )
 
     assert commands == []
+
+
+@pytest.mark.parametrize(
+    ("declared_management", "default_device", "message"),
+    [
+        ("enp3s0", "enp2s0f1", "owns an IPv4 default route"),
+        ("enp3s0", "enp1s0", "does not own an IPv4 default route"),
+    ],
+)
+def test_execute_proves_the_live_management_route_before_nmcli(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    declared_management: str,
+    default_device: str,
+    message: str,
+) -> None:
+    config = rail.rail_config(
+        interface="enp2s0f1",
+        management_interface=declared_management,
+        address_cidr="198.51.100.1/30",
+        peer_address="198.51.100.2",
+        rdma_device="mlx5_1",
+    )
+    net_root = tmp_path / "net"
+    for name in {config.interface, config.management_interface, default_device}:
+        (net_root / name).mkdir(parents=True, exist_ok=True)
+    commands: list[list[str]] = []
+
+    def runner(arguments: list[str], **_kwargs) -> subprocess.CompletedProcess[str]:
+        commands.append(arguments)
+        if arguments[:6] == ["ip", "-j", "-4", "route", "show", "default"]:
+            return subprocess.CompletedProcess(
+                arguments,
+                0,
+                json.dumps([{"dst": "default", "dev": default_device}]),
+                "",
+            )
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(rail.shutil, "which", lambda name: f"/usr/bin/{name}")
+    with pytest.raises(rail.RailConfigError, match=message):
+        rail.apply_rail(
+            config,
+            runner=runner,
+            sys_net_root=net_root,
+            sys_rdma_root=tmp_path / "infiniband",
+        )
+
+    assert commands == [["ip", "-j", "-4", "route", "show", "default"]]
 
 
 @pytest.mark.parametrize(

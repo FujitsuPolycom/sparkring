@@ -73,7 +73,8 @@ then verifies:
 
 - profile autoconnect, manual IPv4, no default route, disabled IPv6, and MTU;
 - the active connection, live address, link state, and live MTU;
-- both the rail and declared management interfaces exist before any mutation;
+- both interfaces exist, the declared management interface owns the active
+  IPv4 default route, and the rail interface does not, before any mutation;
 - the configured RDMA port is active in Ethernet mode and exposes the expected
   GID value, RoCEv2 type, and Ethernet device; and
 - a don't-fragment peer ping whose payload exercises the configured MTU.

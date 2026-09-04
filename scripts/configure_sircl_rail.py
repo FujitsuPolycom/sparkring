@@ -288,6 +288,27 @@ def _check(check_id: str, expected: Any, observed: Any, ok: bool) -> dict[str, A
     }
 
 
+def _default_route_devices(
+    *,
+    runner: Runner,
+) -> tuple[bool, list[str], str]:
+    result = _run(("ip", "-j", "-4", "route", "show", "default"), runner=runner)
+    if result.returncode != 0:
+        return False, [], (result.stderr or result.stdout).strip()
+    try:
+        routes = json.loads(result.stdout)
+        devices = sorted({
+            str(route["dev"])
+            for route in routes
+            if isinstance(route, dict) and route.get("dev")
+        })
+    except (json.JSONDecodeError, TypeError, KeyError):
+        return False, [], "default-route output was not valid JSON"
+    if not devices:
+        return False, [], "no IPv4 default-route interface was reported"
+    return True, devices, ""
+
+
 def verify_rail(
     config: RailConfig,
     *,
@@ -332,6 +353,25 @@ def verify_rail(
             config.connection_name,
             active_name,
             active_ok and active_name == config.connection_name,
+        )
+    )
+
+    route_ok, route_devices, route_detail = _default_route_devices(runner=runner)
+    observed_routes: Any = route_devices if route_ok else route_detail
+    checks.append(
+        _check(
+            "safety.rail_not_default_route",
+            "absent",
+            observed_routes,
+            route_ok and config.interface not in route_devices,
+        )
+    )
+    checks.append(
+        _check(
+            "safety.management_default_route",
+            config.management_interface,
+            observed_routes,
+            route_ok and config.management_interface in route_devices,
         )
     )
 
@@ -485,6 +525,22 @@ def apply_rail(
         raise RailConfigError(
             "interface(s) not present; no NetworkManager changes were made: "
             + ", ".join(missing_interfaces)
+        )
+    route_ok, route_devices, route_detail = _default_route_devices(runner=runner)
+    if not route_ok:
+        raise RailConfigError(
+            "IPv4 default route could not be verified; no NetworkManager changes "
+            f"were made: {route_detail}"
+        )
+    if config.interface in route_devices:
+        raise RailConfigError(
+            f"rail interface {config.interface!r} owns an IPv4 default route; "
+            "no NetworkManager changes were made"
+        )
+    if config.management_interface not in route_devices:
+        raise RailConfigError(
+            f"declared management interface {config.management_interface!r} does "
+            "not own an IPv4 default route; no NetworkManager changes were made"
         )
 
     profile_probe = _run(
