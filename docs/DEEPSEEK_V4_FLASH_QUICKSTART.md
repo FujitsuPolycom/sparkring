@@ -243,6 +243,37 @@ docker logs -f deepseek-v4-flash-r0
 model's MLA key-value geometry and matches the allocated layout. Do not
 substitute generic `fp8`.
 
+## 2.5 Optional: one-command cluster lifecycle
+
+The four-Spark cycle launches one rank per host by hand. If you keep a
+SparkRing cluster inventory YAML (the `scripts/sparkring_cluster.py` schema,
+the same format `ring_doctor.py` reads), `scripts/deepseek_v4_cycle_ctl.py`
+runs the same per-rank launcher from one node over SSH:
+
+```bash
+# Hosts come from your cluster inventory; nothing is hard-coded to a site.
+# --repo is the SparkRing checkout path on every rank (parent of scripts/
+# and of the rank-<N>.env files).
+python3 scripts/deepseek_v4_cycle_ctl.py --cluster /path/to/cluster.yaml \
+    --repo /srv/sparkring status
+python3 scripts/deepseek_v4_cycle_ctl.py --cluster /path/to/cluster.yaml \
+    --repo /srv/sparkring start     # workers first, then rank 0, then wait for the API
+python3 scripts/deepseek_v4_cycle_ctl.py --cluster /path/to/cluster.yaml \
+    --repo /srv/sparkring stop      # remove containers, workers first
+```
+
+`--dry-run` prints every SSH command without executing it. `start` skips a
+rank whose container is already running (matching the launcher's own guard)
+and removes only the containers it started if a rank or the API fails to come
+up. An SSH transport failure is reported as an error rather than as a stopped
+container.
+
+For an authenticated API, add `--api-key-file /secure/api-keys`. The path is
+read on rank 0; the controller does not copy the bearer into its own process
+arguments. Containers are removed with `docker rm -f`; there is no persistent
+service state. This controller only orchestrates the existing per-rank
+launcher and does not change the launch contract.
+
 ## 3. Sizing: four coupled parameters, and one inactive guard
 
 `--max-model-len`, `--kv-cache-memory-bytes`, `--max-num-seqs` and
