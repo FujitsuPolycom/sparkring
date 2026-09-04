@@ -55,6 +55,10 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["ENABLE_PROMPT_TOKENS_DETAILS"] == "1"
     assert values["SPARKCACHE_ACCESS_MODE"] == "read-write"
     assert values["SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS"] == "300"
+    assert values["SPARKCACHE_CACHE_NAMESPACE"] == (
+        "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-"
+        "dcp4-page-tail-cow-v2"
+    )
     assert values["SPARKCACHE_MAX_SPAN_TOKENS"] == "1048576"
     assert values["CP_KV_CACHE_INTERLEAVE_SIZE"] == "auto"
     assert values["B12X_MLA_CKV_GATHER"] == "auto"

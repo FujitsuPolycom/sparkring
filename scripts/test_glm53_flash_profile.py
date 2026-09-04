@@ -345,15 +345,15 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
     assert cache["profiles"]["dcp4"]["async_page_capture"] is True
     assert cache["profiles"]["dcp1"]["publication_schema"] == "snapshot-v1"
     assert cache["profiles"]["dcp1"]["cache_namespace_default"] == (
-        "glm53-flash-dcp1-snapshot-v1"
+        "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp1-snapshot-v1"
     )
     assert cache["profiles"]["dcp2"]["publication_schema"] == "snapshot-v1"
     assert cache["profiles"]["dcp2"]["cache_namespace_default"] == (
-        "glm53-flash-dcp2-snapshot-v1"
+        "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp2-snapshot-v1"
     )
     assert cache["profiles"]["dcp4"]["publication_schema"] == "tail-cow-v2"
     assert cache["profiles"]["dcp4"]["cache_namespace_default"] == (
-        "glm53-flash-dcp4-page-tail-cow-v2"
+        "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp4-page-tail-cow-v2"
     )
     assert cache["runtime"]["image"].endswith(
         "@sha256:e34aa58fda32c2cc63bc70de680b50c5f2bb69c1e0ad3c5bce0782c6501f7d34"
@@ -362,7 +362,7 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
         "sha256:058b17b49ee3b5ffd805fa4a17e4d9efcb885f92349b98a8c8623bd7f0f96dd4"
     )
     assert cache["runtime"]["sparkcache"]["source_commit"] == (
-        "9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4"
+        "66057174301a4759ca3a45207ea41016689449cb"
     )
     assert base["runtime"]["sparkring_source_commit"] == (
         image_receipt["sources"]["sparkring_image_commit"]

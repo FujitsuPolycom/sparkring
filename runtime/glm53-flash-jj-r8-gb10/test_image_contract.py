@@ -421,7 +421,10 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
     ):
         assert value in environment
     for text in (launcher, environment):
-        assert "glm53-flash-dcp4-page-tail-cow-v2" in text
+        assert (
+            "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-"
+            "dcp4-page-tail-cow-v2"
+        ) in text
     assert "IMAGE_REF" in launcher
     assert "IMAGE_ID" in launcher
 

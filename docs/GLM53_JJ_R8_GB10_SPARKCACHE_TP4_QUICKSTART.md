@@ -222,9 +222,14 @@ those layouts have matching asynchronous page-capture evidence:
 ```bash
 DECODE_CONTEXT_PARALLEL_SIZE=1  # or 2
 SPARKCACHE_PUBLICATION_SCHEMA='snapshot-v1'
-SPARKCACHE_CACHE_NAMESPACE='glm53-flash-dcp1-snapshot-v1'  # use dcp2 for DCP2
+SPARKCACHE_CACHE_NAMESPACE='glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp1-snapshot-v1'
 SPARKCACHE_ASYNC_PAGE_CAPTURE=0
 ```
+
+For DCP2, use
+`glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp2-snapshot-v1`. The DCP4
+template uses
+`glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp4-page-tail-cow-v2`.
 
 When `SPARKCACHE_ENABLED=0`, only the DCP value needs to change.
 
@@ -278,6 +283,13 @@ The template's `SPARKCACHE_CACHE_NAMESPACE` value selects rank-local
 persistent-context storage. It is not part of SparkCache's content identity or
 stored format. Changing it selects a different root and therefore a different
 set of discoverable entries.
+
+The three documented defaults name vLLM `e02b1746` and B12X `9ae41c5c`
+because those sources determine the manager-page state being persisted. This
+keeps state written by the current runtime out of the generic directories used
+by earlier source compositions. Existing entries are not migrated or deleted.
+Do not rename or copy an old directory into a source-bound root; allow a cache
+miss to recompute and publish current state.
 
 `JIT_CACHE_NAMESPACE` independently selects persistent Triton,
 TorchInductor, B12X, and vLLM compilation data. Keep its source-bound default

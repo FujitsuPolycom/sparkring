@@ -219,10 +219,23 @@ bounded as the conversation grows. A damaged or incompatible object is
 rejected and vLLM computes the missing prompt state normally.
 
 `SPARKCACHE_CACHE_NAMESPACE` selects rank-local persistent-context storage.
-Use `glm53-flash-dcp4-page-tail-cow-v2` with the recommended profile and
-`glm53-flash-dcp4-snapshot-v1` with the published rollback. The directory name
-is not part of SparkCache's content identity or stored format, but separate
-directories make rollback and inspection unambiguous.
+The directory name is not part of SparkCache's content identity, so the
+source-built defaults include the runtime sources that determine manager-page
+meaning. Use these complete values:
+
+| Profile | Source-bound namespace |
+|---|---|
+| DCP1 snapshot | `glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp1-snapshot-v1` |
+| DCP2 snapshot | `glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp2-snapshot-v1` |
+| DCP4 page tails | `glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp4-page-tail-cow-v2` |
+
+These names prevent vLLM `e02b1746` with B12X `9ae41c5c` from discovering
+entries through an older runtime's default directory. Existing directories
+remain on disk, but operators must not rename or copy them into a new
+source-bound root. Recompute the prompt with the current runtime to populate
+the new root. The published complete-snapshot rollback retains its historical
+`glm53-flash-dcp4-snapshot-v1` directory and must use the launcher named by its
+receipt.
 
 Compilation artifacts use the independent, source-bound
 `JIT_CACHE_NAMESPACE`. Changing or clearing a SparkCache data namespace does
