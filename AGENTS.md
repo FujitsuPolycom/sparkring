@@ -74,7 +74,8 @@ choosing one.
 | GLM-5.2 EXL3 runtime build | `runtime/exl3-r7/README.md` |
 | GLM-5.3 Flash source-built base, model, DFlash, and NCCL pins | `runtime/glm53-flash/pins.json` |
 | GLM-5.3 Flash DCP1/DCP2/DCP4 operator image, vLLM composition, and SparkCache pins | `runtime/glm53-flash-jj-r8-gb10/pins.json` |
-| GLM-5.3 Flash four-rank site and runtime profiles | `scripts/config/glm53-flash-tp4-site.example.yaml`, then the selected `scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1*.example.json` |
+| GLM-5.3 Flash DCP4 operator site and adjustable runtime | `scripts/config/glm53-flash-tp4-site.example.yaml`, then `runtime/glm53-flash-jj-r8-gb10/runtime.env.example` |
+| GLM-5.3 Flash source-bound TP4/DCP1 site and runtime profiles | `scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-site.example.yaml`, then the selected `scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1*.example.json` |
 | Qwen3.8-27B runtime build | `runtime/qwen38/README.md` |
 | GLM/DeepSeek runtime base and model pins | `runtime/faststart-lock.json` |
 | Qwen runtime/source pins and model identities | `runtime/qwen38/pins.json`, then `recipes/qwen38-27b-exl3-k5k6{,-pair}.json` |
@@ -133,11 +134,15 @@ version control. Use `scripts/config/deepseek-v4-flash-0731-pair.env.example`
 for a two-rank pair and `scripts/config/deepseek-v4-flash-0731.env.example` for
 a four-rank cycle.
 
-Use `scripts/config/glm53-flash-tp4-site.example.yaml` with exactly one of the
-two GLM-5.3 runtime-profile templates. Keep resolved site addresses, host
-paths, image IDs, and credentials outside version control. Both GLM-5.3
-profiles use the same SparkCache-capable image and preserve asynchronous
-scheduling, native prefix caching, and chunked prefill; only the
+Use `scripts/config/glm53-flash-tp4-site.example.yaml` for preflight of the
+DCP4 operator image documented by `runtime/glm53-flash-jj-r8-gb10/`. Its
+launch settings come from that runtime's `runtime.env.example`; the site file
+supplies topology and host-health checks.
+
+Use `scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-site.example.yaml` with
+exactly one of the source-bound DCP1 runtime-profile templates. Keep resolved
+site addresses, host paths, image IDs, and credentials outside version
+control. Both DCP1 profiles use the same SparkCache-capable image; only the
 SparkCache-named profile enables the external connector.
 
 Use the topology-specific Qwen environment in `scripts/config/` with the image
