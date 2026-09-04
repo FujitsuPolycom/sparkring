@@ -89,9 +89,9 @@ profiles is pinned by the `serving_image` key in
 Copy the environment template for your topology to one local file per rank.
 
 For a pair, fill the rank, rank-0 rendezvous address, model/cache host paths,
-fabric interface, rank fabric address, and GID index. Both ranks normally name
-the same interface when the pair is cabled cage 0 to cage 0. Keep the serving
-defaults unchanged for the first launch:
+fabric interface, and rank fabric address. Both ranks normally name the same
+interface when the pair is cabled cage 0 to cage 0. Keep the serving defaults
+unchanged for the first launch:
 
 ```bash
 # Run on the rank 0 / API host.
@@ -147,9 +147,38 @@ Use these rank-specific values; keep the serving values below them identical:
 | `MODEL_HOST_PATH` | local model directory | local directory with identical model bytes |
 | `CACHE_HOST_PATH` | local writable cache directory | local writable cache directory |
 
-The `<GID_INDEX>` placeholder is the RoCE GID index for that interface's IPv4
-address. `show_gids` lists them. Do not copy a value from another deployment;
-the correct index depends on the RoCE version and host address.
+Both templates default to automatic GID policy:
+
+```text
+NCCL_IB_GID_AUTO=1
+NCCL_IB_GID_INDEX=
+```
+
+During `--check` and before `--run`, the launcher reads the local
+`/sys/class/infiniband` GID table. It applies `NCCL_IB_HCA` with NCCL's
+comma-list, `^` exclusion, `=` exact-name, prefix-name, and
+`name[:port[:rail[:plane]]]` rules. Only active RDMA ports are candidates, and
+the first 32 selector entries and selected members are considered. The pair
+selector must resolve to one HCA/port; the cycle selector must resolve to two.
+
+Every selected member must have a RoCE v2, IPv4-mapped GID that matches the
+member's current netdev address or `VLLM_HOST_IP`. The check prints the usable
+index set for every member and fails before Docker if any set is empty. The
+sets do not need a common index. After validation, the launch command removes
+`NCCL_IB_GID_INDEX` from the container so the pinned NCCL 2.30 runtime selects
+an appropriate RoCEv2/IPv4 index independently for each HCA.
+
+Use a pin only as an intentional escape hatch:
+
+```text
+NCCL_IB_GID_AUTO=0
+NCCL_IB_GID_INDEX=<locally verified decimal index>
+```
+
+Pinned mode preserves the configured value and does not validate sysfs. On a
+cycle, that one rank-global index must be valid for both selected members.
+Re-run `show_gids` on the affected host before pinning; an index from another
+host or an earlier link/firmware state is not evidence for the current node.
 
 ## 2. Launch one rank per host
 
@@ -160,9 +189,10 @@ recompiles its just-in-time kernels from scratch.
 ### Two-Spark pair
 
 The pair launcher checks the resolved environment, host paths, API and
-rendezvous ports, direct-pair NCCL settings, and positive serving limits before
-constructing Docker arguments. `--check` is offline and prints the exact
-command without creating a container. Run it on both hosts:
+rendezvous ports, direct-pair NCCL settings, current local GID table, and
+positive serving limits before constructing Docker arguments. `--check` is
+offline and prints the exact command without creating a container. Run it on
+both hosts:
 
 ```bash
 scripts/deepseek_v4_pair_serve.sh --check /path/to/rank-0.env
@@ -196,6 +226,8 @@ defaults recorded in
 | `MODEL_HOST_PATH` | required | Read-only host model directory mounted at the fixed container model path |
 | `CACHE_HOST_PATH` | required | Writable parent for persistent JIT/compiler caches mounted at `/cache` |
 | `API_PORT` | 8000 | Rank-0 OpenAI-compatible API port |
+| `NCCL_IB_GID_AUTO` | 1 | Validate each selected HCA/port and leave GID selection to NCCL |
+| `NCCL_IB_GID_INDEX` | empty | Rank-global index used only when automatic policy is disabled |
 | `NUM_SPECULATIVE_TOKENS` | 5 | DSpark proposal depth |
 | `MAX_MODEL_LEN` | 1048576 | Per-request token limit |
 | `MAX_NUM_SEQS` | 32 | Scheduler admission ceiling |
