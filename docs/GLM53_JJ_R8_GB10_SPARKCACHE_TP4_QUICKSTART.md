@@ -9,9 +9,9 @@ alone without changing the image.
 The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV per rank, SIRCL with
 capability and health checks, scheduler interval two, BF16 DFlash2 at depth
 seven, and SparkCache's flat copy-on-write page tails. Patched NCCL is the
-fallback transport and handles collective signatures outside SIRCL's admission
-rules. Growing conversations write changed pages instead of another complete
-cached context. An earlier complete-snapshot image remains available as a
+fallback transport and handles collective signatures that SIRCL does not
+support. Growing conversations write changed pages instead of another complete
+cached context. A complete-snapshot image remains available as a
 recovery artifact.
 
 The image does not contain model checkpoints. It mounts the exact
@@ -22,7 +22,14 @@ BF16 draft. Local Inference Lab's
 [`vLLM GLM development`](https://github.com/local-inference-lab/vllm/tree/dev/jovian-judgement)
 and [`B12X`](https://github.com/local-inference-lab/b12x) GB10 kernels provide
 the model-specific runtime and performance foundation. The pinned vLLM source
-line is named `Jovian Judgement Community R10` in the image contract.
+line is named `Jovian Judgement Community R10` in the image contract. For an
+exact public checkout, the
+[`sparkring-glm53-flash-gb10-e02b1746`](https://github.com/FujitsuPolycom/vllm/tree/sparkring-glm53-flash-gb10-e02b1746)
+tag resolves to commit `e02b174693e13859de61811b5e8cd13d5308e259`.
+The image installs B12X commit `9ae41c5c` from the `voipmonitor/b12x` fork
+recorded in
+[`pins.json`](../runtime/glm53-flash-jj-r8-gb10/pins.json); Local Inference Lab
+remains the upstream B12X project.
 
 ## Choose the image
 
@@ -60,8 +67,8 @@ local image ID: sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc5
 platform: linux/arm64
 ```
 
-The recovery image predates the readiness entrypoint used by this guide and is
-not compatible with the launcher in this checkout. Its matching SparkRing
+The recovery image does not contain the readiness entrypoint required by this
+guide and is not compatible with the launcher in this checkout. Its matching SparkRing
 source revision is `a150c98ccfdc4b655679860121f24712490dd9ee`; the
 [`recovery image receipt`](../runtime/glm53-flash-jj-r8-gb10/multimodal-lease300-image-receipt.json)
 records its exact launch contract. The remaining commands in this guide use
@@ -287,10 +294,10 @@ set of discoverable entries.
 
 The three documented defaults name vLLM `e02b1746` and B12X `9ae41c5c`
 because those sources determine the manager-page state being persisted. This
-keeps state written by the current runtime out of the generic directories used
-by earlier source compositions. Existing entries are not migrated or deleted.
-Do not rename or copy an old directory into a source-bound root; allow a cache
-miss to recompute and publish current state.
+keeps state written by that exact composition separate from entries written by
+other source compositions. Existing entries are not migrated or deleted. Do
+not rename or copy an incompatible directory into a source-bound root; allow a
+cache miss to recompute and publish state with the named sources.
 
 `JIT_CACHE_NAMESPACE` independently selects persistent Triton,
 TorchInductor, B12X, and vLLM compilation data. Keep its source-bound default
@@ -304,6 +311,10 @@ The image supports three persistent publication formats:
 | `snapshot-v1` | A complete immutable context for every publication | DCP1/DCP2 persistent-cache profile and simple storage inspection |
 | `tail-cow-v1` | An immutable base with changed page objects | Compatibility testing for the first page-tail format |
 | `tail-cow-v2` | An authenticated base with a flat chain of changed-page descriptors | Recommended DCP4 profile for growing conversations |
+
+SparkCache translates the operator setting `tail-cow-v2` to the cache-identity
+wire value `page-tail-cow-v2`. The DCP4 storage directory includes that wire
+value, which explains why the setting and directory use different strings.
 
 The publication format is part of cache identity. An incompatible entry is a
 miss, and vLLM computes the prompt normally. Keep each format in a separately
@@ -442,8 +453,9 @@ stale, or when SparkCache cannot prove capture-page ownership. Nonzero idle KV
 is warning-only until it remains unchanged beyond the configured 330-second
 interval.
 
-Before directing normal traffic to the service, run a concurrent prompt gate.
-The requests disable model thinking, put a unique nonce at the front of every
+Before directing normal traffic to the service, run the concurrent scheduler
+and cache-ownership check implemented by `scripts/glm53_liveness_gate.py`.
+Its requests disable model thinking, put a unique nonce at the front of every
 prompt, and require request, capture, and KV usage to return to their measured
 idle baseline:
 
@@ -454,7 +466,7 @@ python scripts/glm53_liveness_gate.py \
   --concurrency 4 \
   --prompt-words 100000 \
   --cycles 3 \
-  --output ./glm53-liveness-gate.json
+  --output ./glm53-scheduler-liveness.json
 ```
 
 Add `--api-key-file /secure/api-keys` when the API requires authentication.
@@ -520,8 +532,9 @@ pressure. See the
 and
 [`DFlash readiness validation`](../runtime/glm53-flash-jj-r8-gb10/dflash-jit-readiness-validation.json).
 
-The retained vLLM, B12X, NCCL, and CUDA components also have DCP4 evidence
-from an earlier SparkCache source composition. That deployment captured a
+The retained vLLM, B12X, NCCL, and CUDA components also have DCP4 evidence in
+`ASYNC_CAPTURE_IMAGE_VALIDATION.md`, which records a different SparkCache
+source composition. That deployment captured a
 124,928-token boundary and restored 899,072-token and 999,424-token entries.
 Those measurements support the unchanged runtime components; they are not
 performance qualification of the registry artifact above. See the

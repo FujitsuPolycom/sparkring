@@ -2,6 +2,11 @@
   "schema": "sparkring-glm53-dcp4-sircl-public-image/v1",
   "status": "qualified",
   "date": "2026-09-03",
+  "compatibility_locator": {
+    "directory": "runtime/glm53-flash-jj-r8-gb10",
+    "schema_prefix": "sparkring-glm53-jj-r8-gb10",
+    "meaning": "Stable filesystem and JSON interface locator. The r8 text does not identify the embedded vLLM source composition."
+  },
   "artifact": {
     "registry_reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f",
     "image_id": "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075",
@@ -10,6 +15,10 @@
   },
   "sources": {
     "sparkring_image_commit": "b358a818786d8506086aaaabb9afe464fa2ccb49",
+    "vllm_repository": "https://github.com/FujitsuPolycom/vllm.git",
+    "vllm_public_tag": "sparkring-glm53-flash-gb10-e02b1746",
+    "vllm_public_tag_object": "2ac6883ac5156db713493fe9683bea99ecf928a4",
+    "vllm_public_tag_commit": "e02b174693e13859de61811b5e8cd13d5308e259",
     "vllm_composition": "e02b174693e13859de61811b5e8cd13d5308e259",
     "vllm_base": "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
     "vllm_upstream_commits": [
@@ -19,6 +28,8 @@
       "d6687475a3f2dbe7848663fd3e5174d90921a3da",
       "83cb22a0e3f7ec4d2fb43f6ead34ba4d4a87a634"
     ],
+    "b12x_upstream_repository": "https://github.com/local-inference-lab/b12x.git",
+    "b12x_source_repository": "https://github.com/voipmonitor/b12x.git",
     "b12x": "9ae41c5cb9935d740456479954b0089f80bd2ef2",
     "sparkcache": "66057174301a4759ca3a45207ea41016689449cb",
     "sircl_source_tree": "2aac02232a9115037723aa1dd40483a5693a3e1e",
@@ -81,6 +92,11 @@
       "result": "passed",
       "record": "sircl-capability-health-live-validation.json",
       "details": "Separate test-only builds forced fused device poison and rank-2 proxy exit. No API became ready and the four worker groups stopped without a post-failure collective hang."
+    },
+    "sircl_scope": {
+      "functional_status": "qualified",
+      "performance_status": "research-only",
+      "details": "The exact image passed the recorded embedded dual-rail SIRCL TP4/DCP4 functional checks. The receipt does not establish a broad SIRCL-versus-NCCL performance result."
     }
   },
   "performance_observation": {

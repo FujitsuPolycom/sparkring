@@ -395,6 +395,9 @@ def prepare_context(
         "sources": {
             "vllm": {
                 "repository": pins["vllm"]["repository"],
+                "public_tag": pins["vllm"]["public_tag"],
+                "public_tag_object": pins["vllm"]["public_tag_object"],
+                "public_tag_commit": pins["vllm"]["public_tag_commit"],
                 "commit": pins["vllm"]["commit"],
                 "tree": pins["vllm"]["tree"],
                 "package_tree": pins["vllm"]["package_tree"],
@@ -417,6 +420,7 @@ def prepare_context(
             },
             "b12x": {
                 "repository": pins["b12x"]["repository"],
+                "upstream_repository": pins["b12x"]["upstream_repository"],
                 "commit": pins["b12x"]["commit"],
                 "tree": pins["b12x"]["tree"],
                 "package_tree": pins["b12x"]["package_tree"],

@@ -72,6 +72,14 @@ def test_image_packages_dflash_warmup_and_rank_zero_waits_for_it() -> None:
 
 def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     pins = json.loads((HERE / "pins.json").read_text(encoding="utf-8"))
+    assert pins["compatibility_locator"] == {
+        "directory": "runtime/glm53-flash-jj-r8-gb10",
+        "schema_prefix": "sparkring-glm53-jj-r8-gb10",
+        "meaning": (
+            "Stable filesystem and JSON interface locator. The r8 text identifies "
+            "the interface family, not the embedded vLLM source composition."
+        ),
+    }
     assert pins["operator_image"] == {
         "reference": (
             "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
@@ -81,7 +89,8 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
             "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075"
         ),
         "platform": "linux/arm64",
-        "status": "implemented",
+        "status": "qualified",
+        "performance_status": "research-only",
         "qualification_scope": (
             "registry-pull verified on four ranks; GLM-5.3 Flash TP4/DCP4 "
             "passed embedded dual-rail SIRCL startup, concurrent SparkCache "
@@ -92,6 +101,11 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     assert pins["vllm"]["commit"] == (
         "e02b174693e13859de61811b5e8cd13d5308e259"
     )
+    assert pins["vllm"]["public_tag"] == "sparkring-glm53-flash-gb10-e02b1746"
+    assert pins["vllm"]["public_tag_object"] == (
+        "2ac6883ac5156db713493fe9683bea99ecf928a4"
+    )
+    assert pins["vllm"]["public_tag_commit"] == pins["vllm"]["commit"]
     assert pins["vllm"]["tree"] == "6caadd392ddea2dc90441d0a078da67f38d2fd3a"
     assert pins["vllm"]["package_tree"] == (
         "c91299c2303dc05abc85aa2133224a749657a583"
@@ -135,6 +149,7 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     )
     assert pins["b12x"] == {
         "repository": "https://github.com/voipmonitor/b12x.git",
+        "upstream_repository": "https://github.com/local-inference-lab/b12x.git",
         "commit": "9ae41c5cb9935d740456479954b0089f80bd2ef2",
         "tree": "6e77441fe99f6ead7ff2cc2b6a8a37fa4e93e30b",
         "package_tree": "12029e19da6543c5d225395f6da199d946b0972e",
@@ -305,11 +320,14 @@ def test_runtime_hashes_are_enforced_inside_image() -> None:
     assert "verify_public_overlay(SIRCL_ROOT, sircl_manifest)" in verifier
 
 
-def test_builder_requires_source_pinned_b12x_checkout() -> None:
+def test_builder_requires_source_pinned_b12x_and_records_public_sources() -> None:
     builder = (HERE / "build_image.py").read_text(encoding="utf-8")
     assert '"--b12x-source"' in builder
     assert 'pins["b12x"], "b12x"' in builder
     assert '"b12x-source-manifest.json"' in builder
+    assert '"public_tag": pins["vllm"]["public_tag"]' in builder
+    assert '"public_tag_object": pins["vllm"]["public_tag_object"]' in builder
+    assert '"upstream_repository": pins["b12x"]["upstream_repository"]' in builder
 
 
 def test_builder_requires_the_receipt_bound_prebuilt_sircl_library() -> None:
@@ -453,6 +471,47 @@ def test_operator_docs_distinguish_page_tails_from_published_rollback() -> None:
     assert rollback_digest in quickstart
     assert rollback_digest in runtime_index
     assert "380283a506aeb8f9" not in runtime_index
+
+
+def test_operator_docs_name_public_sources_and_explain_stable_locators() -> None:
+    runtime_readme = (HERE / "README.md").read_text(encoding="utf-8")
+    quickstart = (
+        ROOT / "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
+    ).read_text(encoding="utf-8")
+    sircl_readme = (ROOT / "docs/SIRCL.md").read_text(encoding="utf-8")
+    runtime_index = (ROOT / "runtime/README.md").read_text(encoding="utf-8")
+    root_readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    for document in (runtime_readme, quickstart):
+        assert "sparkring-glm53-flash-gb10-e02b1746" in document
+        assert "e02b174693e13859de61811b5e8cd13d5308e259" in document
+        assert "local-inference-lab/b12x" in document
+        assert "voipmonitor/b12x" in document
+        assert "`tail-cow-v2` to the cache-identity\nwire value `page-tail-cow-v2`" in document
+
+    for document in (runtime_readme, runtime_index):
+        assert "stable compatibility locator" in document or (
+            "stable filesystem and interface\nlocators" in document
+        )
+        assert "does not identify the embedded vLLM source" in " ".join(
+            document.split()
+        )
+
+    assert "four-rank TP4/DCP4\nfunctional checks" in sircl_readme
+    assert "**research-only**" in sircl_readme
+    assert "b12x-kda-dcp4-20260903.md" in root_readme
+    assert "C4: 90.36" in root_readme
+
+    active_docs = "\n".join((runtime_readme, quickstart, sircl_readme))
+    for ambiguous in (
+        "Current evidence",
+        "current composition",
+        "fail-stop",
+        "concurrent prompt gate",
+        "earlier SparkCache source composition",
+        "older runtime's default directory",
+    ):
+        assert ambiguous not in active_docs
 
 
 def test_multimodal_lease_image_receipt_binds_public_artifact_and_smoke() -> None:
@@ -612,9 +671,40 @@ def test_dcp4_public_image_receipt_records_b12x_kda() -> None:
     )
     assert receipt["status"] == "qualified"
     assert receipt["configuration"]["kda_prefill_backend"] == "b12x"
+    assert receipt["sources"]["vllm_public_tag"] == (
+        "sparkring-glm53-flash-gb10-e02b1746"
+    )
+    assert receipt["sources"]["vllm_composition"] == (
+        "e02b174693e13859de61811b5e8cd13d5308e259"
+    )
+    assert receipt["sources"]["vllm_public_tag_commit"] == receipt["sources"][
+        "vllm_composition"
+    ]
+    assert receipt["sources"]["b12x_upstream_repository"] == (
+        "https://github.com/local-inference-lab/b12x.git"
+    )
+    assert receipt["sources"]["b12x_source_repository"] == (
+        "https://github.com/voipmonitor/b12x.git"
+    )
     assert receipt["sources"]["b12x"] == (
         "9ae41c5cb9935d740456479954b0089f80bd2ef2"
     )
+    health_receipt = json.loads(
+        (HERE / "sircl-capability-health-live-validation.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert health_receipt["system"]["sircl"]["post_output_health_check"] is True
+    assert "post_output_health_gate" not in health_receipt["system"]["sircl"]
+    assert receipt["validation"]["sircl_scope"] == {
+        "functional_status": "qualified",
+        "performance_status": "research-only",
+        "details": (
+            "The exact image passed the recorded embedded dual-rail SIRCL "
+            "TP4/DCP4 functional checks. The receipt does not establish a broad "
+            "SIRCL-versus-NCCL performance result."
+        ),
+    }
 
 
 def test_sircl_public_build_receipt_binds_overlay_and_native_test(

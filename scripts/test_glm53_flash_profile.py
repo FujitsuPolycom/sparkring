@@ -345,6 +345,10 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
     assert cache["serving_common"]["chunked_prefill"] is True
     assert base["serving_common"]["kda_prefill_backend"] == "b12x"
     assert cache["serving_common"]["kda_prefill_backend"] == "b12x"
+    assert base["transport"]["output_health_check"] is True
+    assert cache["transport"]["output_health_check"] is True
+    assert "output_health_gate" not in base["transport"]
+    assert "output_health_gate" not in cache["transport"]
     assert cache["profiles"]["dcp4"]["status"] == "qualified"
     assert cache["profiles"]["dcp4"]["preferred"] is True
     assert cache["profiles"]["dcp1"]["async_page_capture"] is False
@@ -448,7 +452,8 @@ def test_public_glm53_benchmark_is_sanitized_and_front_page_lists_dcp_profiles()
     assert "| 1.30M tokens |" in readme
     assert "| 2.90M tokens |" in readme
     assert "| **4.32M tokens** |" in readme
-    assert "| 2,513 | 40.20 | 116.73 | C16: 168.39 | 71.67 |" in readme
+    assert "b12x-kda-dcp4-20260903.md" in readme
+    assert "| 2,649 | 37.97 | — | C4: 90.36 | — |" in readme
     quickstart = (
         ROOT / "docs" / "GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
     ).read_text(encoding="utf-8")

@@ -76,7 +76,7 @@
   "transport": {
     "backend": "dual-rail-sircl-with-patched-nccl-fallback",
     "capability_vote": true,
-    "output_health_gate": true,
+    "output_health_check": true,
     "embedded_bundle": true,
     "nccl_version": "2.30.7"
   },
@@ -152,7 +152,7 @@
     "conditions": "The immutable Linux/ARM64 image ran on four directly connected NVIDIA GB10 systems at TP4/DCP4 with the embedded dual-rail SIRCL bundle, rank-wide capability and output-health checks, patched NCCL fallback, FP8 KV, 24 GiB per rank, a 1,048,576-token request limit, 8,192 scheduler tokens, interval two, BF16 DFlash2 depth seven, SparkCache tail-cow-v2 publication, and a 300-second shared-prefix lease.",
     "measurement": "All four ranks pulled the immutable digest and resolved the recorded image ID. The exact registry image started with SIRCL, restored a 32,768-token entry after restart, completed one 129K-class request followed by eight concurrent 4K-class requests, and underwent separate test-only fused-device-poison and rank-2 proxy-exit injections.",
     "result": "Every rank accepted the capability vote; startup, persistent restore, and concurrent stores completed; running requests, waiting requests, delayed ownership, retained pages, and uncertain ranks returned to zero. During both injected SIRCL failures, no API became ready and all four worker groups stopped without a post-failure collective hang.",
-    "conclusion": "The registry artifact functionally qualifies the preferred DCP4 profile with embedded SIRCL, patched NCCL fallback, persistent restart restore, and fail-stop transport health handling.",
+    "conclusion": "The registry artifact functionally qualifies the preferred DCP4 profile with embedded SIRCL, patched NCCL fallback, persistent restart restore, and worker termination after a transport error.",
     "limitations": [
       "The receipt records functional checks, not a broad transport-performance benchmark.",
       "DCP1 and DCP2 are implemented profiles, but asynchronous capture is disabled because those slot sizes lack matching live evidence.",
