@@ -110,6 +110,13 @@ rank/rendezvous inputs, API and master ports, speculative depth, context,
 sequence count, scheduler budget, and pair transport before rendering or
 running Docker. Keep one resolved copy per rank outside version control.
 
+Both DeepSeek templates default to `NCCL_IB_GID_AUTO=1`. Each launcher checks
+the active HCA/port members selected by `NCCL_IB_HCA` against the local sysfs
+GID table. Every selected member must expose a RoCE v2 entry for its own IPv4
+address. The launcher then removes `NCCL_IB_GID_INDEX` from the container so
+NCCL selects an index independently for each HCA. Set `NCCL_IB_GID_AUTO=0`
+and a decimal `NCCL_IB_GID_INDEX` only for an intentional pinned override.
+
 `deepseek-v4-flash-0731.env.example` is the corresponding host launch contract
 and container environment for the four-Spark cycle. It is consumed by
 `scripts/deepseek_v4_cycle_serve.sh`. Copy it once per rank and resolve:

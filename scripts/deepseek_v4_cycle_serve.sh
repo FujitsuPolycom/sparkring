@@ -13,6 +13,10 @@ die() {
     exit 20
 }
 
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=scripts/nccl_ib_gid_policy.sh
+. "$script_dir/nccl_ib_gid_policy.sh"
+
 case "$#" in
     1) mode=--check; env_file=$1 ;;
     2) mode=$1; env_file=$2 ;;
@@ -74,7 +78,7 @@ for name in \
     NUM_SPECULATIVE_TOKENS MAX_MODEL_LEN MAX_NUM_SEQS MAX_NUM_BATCHED_TOKENS \
     LD_PRELOAD VLLM_NCCL_SO_PATH NCCL_SOCKET_IFNAME GLOO_SOCKET_IFNAME \
     VLLM_HOST_IP NCCL_NET NCCL_NET_PLUGIN NCCL_IB_DISABLE NCCL_IB_HCA \
-    NCCL_IB_GID_INDEX NCCL_IB_SUBNET_PREFIX_LEN \
+    NCCL_IB_SUBNET_PREFIX_LEN \
     NCCL_IB_SUBNET_AWARE_ROUTING NCCL_IB_MERGE_NICS NCCL_ALGO NCCL_PROTO \
     NCCL_P2P_LEVEL NCCL_MIN_NCHANNELS NCCL_MAX_NCHANNELS NCCL_CROSS_NIC \
     NCCL_CUMEM_ENABLE NCCL_SKIP_TREE_CONNECT NCCL_IGNORE_CPU_AFFINITY; do
@@ -126,14 +130,22 @@ esac
 [ "$NODE_RANK" != 0 ] || [ "$MASTER_ADDR" = "$VLLM_HOST_IP" ] \
     || die "rank-0 MASTER_ADDR must equal rank-0 VLLM_HOST_IP"
 
-IFS=',' read -r -a hca_specs <<< "$NCCL_IB_HCA"
-[ "${#hca_specs[@]}" = 2 ] \
-    || die "the cycle environment must name exactly two RoCE devices"
-[ "${hca_specs[0]}" != "${hca_specs[1]}" ] \
-    || die "the cycle environment must name two distinct RoCE devices"
-case "$NCCL_IB_GID_INDEX" in
-    ''|*[!0-9]*) die "NCCL_IB_GID_INDEX must be a decimal integer" ;;
-esac
+sparkring_validate_nccl_gid_policy
+if [ "$NCCL_IB_GID_AUTO" = 1 ]; then
+    [ "$SPARKRING_NCCL_SELECTED_COUNT" = 2 ] \
+        || die "the cycle NCCL_IB_HCA selector must resolve to exactly two active HCA/ports; resolved $SPARKRING_NCCL_SELECTED_COUNT"
+    # A bare --env overrides the env-file entry. Automatic policy unsets the
+    # host NCCL_IB_GID_INDEX, so Docker omits it instead of treating an empty
+    # value as NCCL's index 0.
+    gid_env_args=(--env NCCL_IB_GID_INDEX)
+else
+    IFS=',' read -r -a hca_specs <<< "$NCCL_IB_HCA"
+    [ "${#hca_specs[@]}" = 2 ] \
+        || die "the cycle environment must name exactly two RoCE devices"
+    [ "${hca_specs[0]}" != "${hca_specs[1]}" ] \
+        || die "the cycle environment must name two distinct RoCE devices"
+    gid_env_args=()
+fi
 
 image=ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd
 container_name="deepseek-v4-flash-r$NODE_RANK"
@@ -155,6 +167,7 @@ command=(
     -v "$MODEL_HOST_PATH:$model_container_path:ro"
     -v "$CACHE_HOST_PATH:/cache"
     --env-file "$env_file"
+    "${gid_env_args[@]}"
     --entrypoint /opt/venv/bin/vllm
     "$image"
     serve "$model_container_path"
