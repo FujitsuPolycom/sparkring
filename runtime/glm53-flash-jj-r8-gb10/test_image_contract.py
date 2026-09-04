@@ -433,7 +433,7 @@ def test_sircl_public_build_receipt_binds_overlay_and_native_test(
         "repository": "https://github.com/FujitsuPolycom/sparkring.git",
         "spark_transport_tree": "8051e4e432d24d62bb3ee79573b5adde4e36f5fb",
         "public_overlay_spec_sha256": (
-            "440f954a7ec485bf17adaecc7c28a22965bd32eadca76438f310501c57514bc7"
+            "bc93d5069f2b3faaa7e87d2f24aadd9f7878bff67abd93eeec3a0975da46f6fd"
         ),
     }
     overlay_spec = ROOT / "runtime" / "public-overlay-files.json"

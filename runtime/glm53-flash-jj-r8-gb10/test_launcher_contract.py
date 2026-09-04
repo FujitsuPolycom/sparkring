@@ -687,6 +687,8 @@ def _sircl_bundle(tmp_path: Path) -> Path:
         "spark_graph_status_reporter.py",
         "spark_persistent_output_ring.py",
         "spark_tp4_backend.py",
+        "spark_tp4_capability.py",
+        "spark_tp4_health_gate.py",
         "spark_tp4_port_namespace.py",
         "spark_tp4_query_contract.py",
         "spark_tp4_query_row_provider.py",
