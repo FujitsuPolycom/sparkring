@@ -164,10 +164,11 @@ to two. A selector that resolves to more than NCCL's 32-device cap fails
 preflight because sysfs traversal order cannot prove the order returned by
 `ibv_get_device_list()`.
 
-Every selected member must have a RoCE v2, IPv4-mapped GID that matches the
-member's current netdev address or `VLLM_HOST_IP`. The check prints the usable
-index set for every member and fails before Docker if any set is empty. The
-sets do not need a common index. After validation, the launch command removes
+Every selected member must have a RoCE v2, IPv4-mapped GID that matches an IPv4
+address reported for the member's netdev at preflight time or `VLLM_HOST_IP`.
+The check prints the usable index set for every member and fails before Docker
+if any set is empty. The sets do not need a common index. After validation,
+the launch command removes
 `NCCL_IB_GID_INDEX` from the container so the pinned NCCL 2.30 runtime selects
 an appropriate RoCEv2/IPv4 index independently for each HCA.
 
@@ -180,8 +181,9 @@ NCCL_IB_GID_INDEX=<locally verified decimal index>
 
 Pinned mode preserves the configured value and does not validate sysfs. On a
 cycle, that one rank-global index must be valid for both selected members.
-Re-run `show_gids` on the affected host before pinning; an index from another
-host or an earlier link/firmware state is not evidence for the current node.
+Re-run `show_gids` on the affected host before pinning. A pin from another host
+or from before a link or firmware change does not prove the host state read by
+this preflight.
 
 ## 2. Launch one rank per host
 
@@ -192,10 +194,10 @@ recompiles its just-in-time kernels from scratch.
 ### Two-Spark pair
 
 The pair launcher checks the resolved environment, host paths, API and
-rendezvous ports, direct-pair NCCL settings, current local GID table, and
-positive serving limits before constructing Docker arguments. `--check` reads
-local host state but does not change it, and prints the exact command without
-creating a container. Run it on both hosts:
+rendezvous ports, direct-pair NCCL settings, the local GID table read during
+the check, and positive serving limits before constructing Docker arguments.
+`--check` reads local host state but does not change it, and prints the exact
+command without creating a container. Run it on both hosts:
 
 ```bash
 scripts/deepseek_v4_pair_serve.sh --check /path/to/rank-0.env

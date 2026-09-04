@@ -437,7 +437,7 @@ def test_auto_gid_mode_rejects_a_port_without_active_state(
     assert "automatic RoCEv2 GID validation failed" in result.stderr
 
 
-def test_auto_gid_mode_rejects_a_rocev2_gid_without_a_current_ipv4_match(
+def test_auto_gid_mode_rejects_a_rocev2_gid_without_a_reported_ipv4_match(
     pair_env: Path,
 ) -> None:
     (pair_env.parent / "netdev-ipv4" / "fabric0").write_text(
