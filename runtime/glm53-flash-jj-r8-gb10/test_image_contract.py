@@ -50,9 +50,14 @@ def test_image_packages_dflash_warmup_and_rank_zero_waits_for_it() -> None:
 
     assert "COPY warmup_dflash.py /opt/sparkring/bin/warmup_dflash.py" in recipe
     assert "COPY serve_with_warmup.py /opt/sparkring/bin/serve-with-warmup.py" in recipe
+    assert (
+        "COPY scheduler_liveness.py /opt/sparkring/bin/scheduler_liveness.py"
+        in recipe
+    )
     assert "chmod 0755 /opt/sparkring/bin/serve-with-warmup.py" in recipe
     assert '"warmup_dflash.py"' in builder
     assert '"serve_with_warmup.py"' in builder
+    assert '"scheduler_liveness.py"' in builder
     assert 'container_id="$(docker run -d' in launcher
     assert '"${rank}" == 0 && "${DFLASH_WARMUP}" == 1' in launcher
     assert "--entrypoint /opt/sparkring/bin/serve-with-warmup.py" in launcher
@@ -431,9 +436,9 @@ def test_sircl_public_build_receipt_binds_overlay_and_native_test(
     assert receipt["validation_scope"] == "native-built-tested"
     assert receipt["source"] == {
         "repository": "https://github.com/FujitsuPolycom/sparkring.git",
-        "spark_transport_tree": "8051e4e432d24d62bb3ee79573b5adde4e36f5fb",
+        "spark_transport_tree": "2aac02232a9115037723aa1dd40483a5693a3e1e",
         "public_overlay_spec_sha256": (
-            "440f954a7ec485bf17adaecc7c28a22965bd32eadca76438f310501c57514bc7"
+            "bc93d5069f2b3faaa7e87d2f24aadd9f7878bff67abd93eeec3a0975da46f6fd"
         ),
     }
     overlay_spec = ROOT / "runtime" / "public-overlay-files.json"

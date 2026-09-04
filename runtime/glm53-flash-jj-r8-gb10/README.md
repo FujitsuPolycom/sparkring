@@ -151,9 +151,20 @@ The SIRCL performance-testing lane is implemented but not qualified as the
 recommended dual-rail profile. Qualification requires a four-rank deployment
 of the exact public bundle, cold-start and restart checks, deterministic native
 and model-output correctness, a receipt-backed NCCL/SIRCL comparison with
-transport counters, and fault containment. Rank-wide capability voting and a
-post-step health gate are specified in
-[`FujitsuPolycom/sparkring#198`](https://github.com/FujitsuPolycom/sparkring/issues/198).
+transport counters, and fault containment.
+
+The launcher enables a rank-wide capability vote before native construction.
+Every rank reports the native and overlay identities, shared protocol geometry,
+and local RDMA device/GID availability over vLLM's CPU process group. Any
+rank-specific failure or shared mismatch stops all ranks before a SIRCL session
+is created.
+
+After vLLM's existing output synchronization, a host-only native health check
+prevents synchronous or asynchronous model output from leaving an unhealthy
+worker. The check does not synchronize CUDA. Live fault injection remains
+required before this lane becomes the recommended profile. Worker failure is
+fail-stop; four-rank evidence must still show that vLLM's multiprocess monitor
+tears down the peer workers without a collective hang.
 
 ### NCCL fallback
 
@@ -246,6 +257,22 @@ compares the logical state represented by committed manifests with newly
 stored immutable bytes. `writes` reports submitted storage traffic,
 deduplication, and bytes from aborted or failed attempts. The `/metrics`
 endpoint retains the individual numeric counters for monitoring and analysis.
+
+### Distinguish readiness from scheduler liveness
+
+Rank zero exposes scheduler liveness on the configured
+`SPARKRING_LIVENESS_PORT`, which defaults to 8016. API `/health` proves that
+the HTTP process is ready; it does not prove that the scheduler can admit a
+waiting request.
+
+`GET /liveness` returns HTTP 503 after the scheduler has zero running requests
+and at least one waiting request for 60 seconds. It also returns 503 when
+SparkCache reports uncertain capture-page ownership. `GET /metrics` on the
+same port exports the liveness state and blocked duration.
+
+Idle KV retention is warning-only. The default 330-second warning interval is
+longer than the GLM profile's 300-second shared-prefix lease, so an intentional
+lease is not treated as a dead scheduler.
 
 ## Build from pinned source
 

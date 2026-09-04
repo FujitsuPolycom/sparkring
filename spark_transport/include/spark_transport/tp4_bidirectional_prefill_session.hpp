@@ -31,6 +31,15 @@ struct Tp4BidirectionalPrefillOptions {
   std::int32_t fused_proxy_cpu{12};
 };
 
+struct Tp4BidirectionalPrefillHealthStatus {
+  bool healthy{};
+  bool poisoned{};
+  std::uint64_t submitted_sequence{};
+  std::uint64_t completed_sequence{};
+  std::uint64_t failing_sequence{};
+  std::int32_t error_code{};
+};
+
 class Tp4BidirectionalPrefillSession {
  public:
   Tp4BidirectionalPrefillSession(
@@ -47,6 +56,7 @@ class Tp4BidirectionalPrefillSession {
   // retirement. Any partial native failure poisons this session permanently;
   // callers must not fall back for that collective.
   void all_reduce(const void* input, void* output, void* cuda_stream);
+  Tp4BidirectionalPrefillHealthStatus health_status() const noexcept;
 
  private:
   class Impl;

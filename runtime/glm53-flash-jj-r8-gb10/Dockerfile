@@ -11,10 +11,12 @@ COPY install_overlay.py /opt/sparkring/bin/install-jj-r8-sparkcache-overlay.py
 COPY verify_image.py /opt/sparkring/bin/verify-jj-r8-sparkcache-image.py
 COPY warmup_dflash.py /opt/sparkring/bin/warmup_dflash.py
 COPY serve_with_warmup.py /opt/sparkring/bin/serve-with-warmup.py
+COPY scheduler_liveness.py /opt/sparkring/bin/scheduler_liveness.py
 
 RUN python3 /opt/sparkring/bin/install-jj-r8-sparkcache-overlay.py \
       --root /opt/sparkring/overlays/jj-r8-sparkcache-arm64 && \
-    chmod 0755 /opt/sparkring/bin/serve-with-warmup.py && \
+    chmod 0755 /opt/sparkring/bin/serve-with-warmup.py \
+      /opt/sparkring/bin/scheduler_liveness.py && \
     mkdir -p /opt/sparkring/receipts/jj-r8-sparkcache-arm64 && \
     cp /opt/sparkring/overlays/jj-r8-sparkcache-arm64/receipts/* \
       /opt/sparkring/receipts/jj-r8-sparkcache-arm64/ && \
