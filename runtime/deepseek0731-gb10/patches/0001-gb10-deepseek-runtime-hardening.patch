@@ -7,6 +7,9 @@ onto Fujitsu GB10 vLLM source e2666d9a65f41fc376607531453cbd57c4c71016.
 The streaming-parser port retains the GB10 drop-token and skip-tool control
 flow while adding provisional orphan-invoke recovery.
 
+The Responses API keeps the OpenAI-compatible reasoning object but widens its
+effort field to the max tier already accepted by the other vLLM API surfaces.
+
 --- a/vllm/v1/attention/backends/mla/indexer.py
 +++ b/vllm/v1/attention/backends/mla/indexer.py
 @@ -63,9 +63,10 @@
@@ -1175,3 +1178,25 @@ flow while adding provisional orphan-invoke recovery.
                  )
              )
  
+--- a/vllm/entrypoints/openai/responses/protocol.py
++++ b/vllm/entrypoints/openai/responses/protocol.py
+@@ -136 +136,10 @@
++class ResponsesReasoning(Reasoning):
++    """Reasoning options accepted by vLLM's Responses API."""
++
++    effort: (
++        Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
++        | None
++    ) = None
++
++
+ class ResponsesRequest(OpenAIBaseModel):
+@@ -160,7 +169,7 @@
+     parallel_tool_calls: bool | None = True
+     previous_response_id: str | None = None
+     prompt: ResponsePrompt | None = None
+-    reasoning: Reasoning | None = None
++    reasoning: ResponsesReasoning | None = None
+     include_reasoning: bool = Field(
+         default=True,
+         description=(

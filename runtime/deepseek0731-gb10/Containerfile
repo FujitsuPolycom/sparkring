@@ -27,14 +27,14 @@ RUN python3 /opt/sparkring-deepseek-gb10/parser_replay.py \
       --contract /opt/sparkring-deepseek-gb10/runtime-contract.json
 
 LABEL org.opencontainers.image.title="SparkRing hardened DeepSeek V4 GB10 runtime" \
-      org.opencontainers.image.description="Fujitsu GB10 runtime with exact-preimage sparse-row and malformed-DSML hardening" \
+      org.opencontainers.image.description="Fujitsu GB10 runtime with exact-preimage sparse-row, malformed-DSML, and Responses reasoning compatibility fixes" \
       org.opencontainers.image.source="https://github.com/FujitsuPolycom/sparkring" \
       org.opencontainers.image.revision="${SPARKRING_SOURCE_REVISION}" \
       org.sparkring.profile="deepseek-v4-flash-0731-gb10-hardened" \
       org.sparkring.maturity="research-only" \
       org.sparkring.base-manifest="sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028" \
       org.sparkring.vllm-source="e2666d9a65f41fc376607531453cbd57c4c71016" \
-      local-inference.vllm.gb10-runtime-overlay="sparse-row-clamp+dsml-recovery-v1" \
+      local-inference.vllm.gb10-runtime-overlay="sparse-row-clamp+dsml-recovery+responses-max-v1" \
       local-inference.vllm.dsml-recovery="vllm-project/vllm#52645@3df9776b0d423dd3124ee9ae80d9d92aef92013a"
 
 

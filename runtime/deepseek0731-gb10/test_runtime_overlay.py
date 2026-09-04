@@ -5,8 +5,11 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from typing import Literal
 
 import pytest
+from openai.types.shared import Reasoning
+from pydantic import ValidationError
 
 
 HERE = Path(__file__).resolve().parent
@@ -34,9 +37,9 @@ def test_runtime_patch_and_contract_are_content_addressed() -> None:
     assert module.sha256_file(patch) == record["sha256"]
     parsed = module.parse_unified_patch(patch.read_text(encoding="utf-8"))
     assert set(parsed) == {value["path"] for value in record["files"]}
-    assert len(parsed) == 10
-    assert len({value["preimage_sha256"] for value in record["files"]}) == 10
-    assert len({value["result_sha256"] for value in record["files"]}) == 10
+    assert len(parsed) == 11
+    assert len({value["preimage_sha256"] for value in record["files"]}) == 11
+    assert len({value["result_sha256"] for value in record["files"]}) == 11
 
 
 def test_unified_patch_engine_applies_exact_context() -> None:
@@ -101,3 +104,50 @@ def test_runtime_patch_preserves_gb10_streaming_control_flow() -> None:
     assert "self._recovery_hold_active or not self.skip_tool_parsing" in text
     assert "tl.maximum(seq_len - max_decode_len + local_idx + 1, 0)" in text
     assert ").clamp_(min=0)" in text
+
+
+def _responses_protocol_replay() -> str:
+    module = _module()
+    patch = module.parse_unified_patch(
+        (HERE / "patches/0001-gb10-deepseek-runtime-hardening.patch").read_text(
+            encoding="utf-8"
+        )
+    )["vllm/entrypoints/openai/responses/protocol.py"]
+
+    line_count = max(hunk.old_start - 1 + hunk.old_count for hunk in patch.hunks)
+    preimage = ["# unchanged\n"] * line_count
+    for hunk in patch.hunks:
+        start = hunk.old_start - 1
+        preimage[start : start + hunk.old_count] = hunk.old_lines
+    return module.apply_file_patch("".join(preimage).encode("utf-8"), patch).decode(
+        "utf-8"
+    )
+
+
+def _responses_reasoning_model():
+    replay = _responses_protocol_replay()
+    class_start = replay.index("class ResponsesReasoning(Reasoning):")
+    class_end = replay.index("\n\nclass ResponsesRequest", class_start)
+    namespace = {"Literal": Literal, "Reasoning": Reasoning}
+    exec(replay[class_start:class_end], namespace)
+    namespace["ResponsesReasoning"].model_rebuild(_types_namespace=namespace)
+    return namespace["ResponsesReasoning"], replay
+
+
+def test_responses_reasoning_contract_accepts_max_and_existing_values() -> None:
+    responses_reasoning, replay = _responses_reasoning_model()
+
+    with pytest.raises(ValidationError):
+        Reasoning.model_validate({"effort": "max"})
+
+    for effort in ("none", "minimal", "low", "medium", "high", "xhigh", "max"):
+        reasoning = responses_reasoning.model_validate(
+            {"effort": effort, "summary": "concise"}
+        )
+        assert reasoning.effort == effort
+        assert reasoning.summary == "concise"
+
+    with pytest.raises(ValidationError):
+        responses_reasoning.model_validate({"effort": "unsupported"})
+
+    assert "reasoning: ResponsesReasoning | None = None" in replay
