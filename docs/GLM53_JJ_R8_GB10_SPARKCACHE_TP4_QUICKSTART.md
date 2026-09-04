@@ -366,6 +366,58 @@ MULTIMODAL_INPUTS=0
 Text-only mode passes `--language-model-only` and rejects media content before
 inference. It does not change SparkCache identity or stored entries.
 
+## Check host memory before launch
+
+Create one ignored site file on the operator machine and replace its rank
+addresses, interfaces, paths, and artifact identities:
+
+```bash
+cp scripts/config/glm53-flash-tp4-site.example.yaml scripts/config/site.yaml
+${EDITOR:-vi} scripts/config/site.yaml
+python scripts/sparkring_site.py scripts/config/site.yaml
+python scripts/preflight.py --site scripts/config/site.yaml --print-plan
+python scripts/preflight.py --site scripts/config/site.yaml
+```
+
+The GLM-5.3 site template requires 96 GiB of available RAM and 200 equivalent
+free blocks of at least 32 MiB on every rank. The check derives the Linux buddy
+order from the kernel's page size and counts larger blocks proportionally. Run
+it only before model launch, while the configured API and rendezvous ports are
+free.
+
+A failure with abundant available RAM but fewer than 200 equivalent 32 MiB
+blocks indicates memory fragmentation. Inspect the recovery plan before
+allowing host mutation:
+
+```bash
+python scripts/prepare_launch_memory.py --site scripts/config/site.yaml
+```
+
+After confirming that no model is serving on those ranks, execute the printed
+plan and save its before/after evidence:
+
+```bash
+python scripts/prepare_launch_memory.py \
+  --site scripts/config/site.yaml \
+  --execute --confirmation PREPARE_GB10_LAUNCH_MEMORY \
+  --output ./glm53-launch-memory-recovery.json
+```
+
+The recovery command refuses to run while a configured serving port has a
+listener. It releases clean page-cache pages, requests kernel compaction, and
+then repeats the read-only checks. A `reboot-required` result means the failed
+rank should be rebooted before launching the model. SparkRing does not perform
+cache dropping, compaction, or reboot automatically.
+
+The
+[`GLM-5.3 memory-preflight validation`](../runtime/glm53-flash-jj-r8-gb10/glm53-memory-preflight-live-validation.json)
+records an eight-day four-rank GB10 deployment with 115.6–116.5 GiB available
+per rank but zero equivalent 32 MiB blocks. Online compaction recovered only
+zero or one block, so the preparation command required reboot. Reboot restored
+3,686–3,703 blocks per rank; all 124 preflight checks then passed, and the
+exact public image completed SIRCL capability agreement, API startup, and a
+semantic request.
+
 ## Start TP4
 
 Start all four ranks within the rendezvous timeout. Rank 0 uses argument `0`:

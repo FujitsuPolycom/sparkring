@@ -62,18 +62,26 @@ The implemented SIRCL performance-testing composition appends
 [`sircl-fused.env.example`](../../runtime/glm53-flash-jj-r8-gb10/sircl-fused.env.example)
 to a rank-local copy of the operator template. The overlay contains every
 non-site transport setting and leaves the peer addresses and secondary device
-names as explicit placeholders. The current source-built image contains the
-SIRCL bundle; `SIRCL_BUNDLE_HOST_ROOT` is an optional read-only developer
-override.
+names as explicit placeholders. The image identified by the operator template
+contains the SIRCL bundle; `SIRCL_BUNDLE_HOST_ROOT` is an optional read-only
+developer override.
 
 `SPARKCACHE_ENABLED=1` enables persistent SparkCache plus vLLM prefix caching.
 `SPARKCACHE_ENABLED=0` omits the persistent connector and retains vLLM prefix
 caching. Both modes use the same image and
 [`GLM-5.3 quickstart`](../../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md).
 
-The `glm53-flash-*.example.json` and `glm53-flash-tp4-site.example.yaml` files
-describe source-bound TP4/DCP1 profiles at other vLLM revisions. They are not
-the operator inputs for this adjustable DCP1/DCP2/DCP4 image.
+`glm53-flash-tp4-site.example.yaml` is the companion topology and preflight
+input. Its image identity and DCP4 memory settings match the operator image.
+Its `preflight.memory` block requires at least 96 GiB of available RAM and 200
+equivalent free blocks of at least 32 MiB before model loading. Larger buddy
+blocks count as multiple 32 MiB blocks. These thresholds describe a rank before
+model loading; they do not describe memory headroom while a model is serving.
+
+The `glm53-flash-dflash2-bf16-tp4-dcp1-site.example.yaml` and
+`glm53-flash-dflash2-bf16-tp4-dcp1*.example.json` files describe separate
+source-bound TP4/DCP1 profiles. They are not launch inputs for the DCP4
+operator profile.
 
 Run the focused CPU-only contract suites after changing GLM-5.3 inputs:
 

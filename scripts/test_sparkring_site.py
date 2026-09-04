@@ -38,6 +38,11 @@ from sparkring_site import (  # noqa: E402
 EXAMPLE_PATH = (
     Path(__file__).resolve().parent / "config" / "exl3-r7-site.example.yaml"
 )
+GLM53_EXAMPLE_PATH = (
+    Path(__file__).resolve().parent
+    / "config"
+    / "glm53-flash-tp4-site.example.yaml"
+)
 
 
 @pytest.fixture(scope="session")
@@ -976,6 +981,68 @@ def test_empty_required_free_ports_is_accepted(document):
     document["preflight"]["required_free_ports"] = []
     site = validate_site(document)
     assert site.preflight.required_free_ports == ()
+
+
+def test_memory_launch_headroom_is_optional_and_validated(document):
+    assert validate_site(document).preflight.memory is None
+
+    document["preflight"]["memory"] = {
+        "minimum_available_bytes": 103079215104,
+        "contiguous_block_bytes": 33554432,
+        "minimum_contiguous_blocks": 200,
+    }
+    memory = validate_site(document).preflight.memory
+
+    assert memory is not None
+    assert memory.minimum_available_bytes == 103079215104
+    assert memory.contiguous_block_bytes == 33554432
+    assert memory.minimum_contiguous_blocks == 200
+
+
+def test_glm53_site_enables_memory_launch_headroom():
+    site = load_site(GLM53_EXAMPLE_PATH)
+    memory = site.preflight.memory
+
+    assert memory is not None
+    assert site.serving.decode_context_parallel_size == 4
+    assert site.runtime.container_image.endswith(
+        "@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f"
+    )
+    assert memory.minimum_available_bytes == 96 * (1 << 30)
+    assert memory.contiguous_block_bytes == 32 * (1 << 20)
+    assert memory.minimum_contiguous_blocks == 200
+
+    document = yaml.safe_load(GLM53_EXAMPLE_PATH.read_text(encoding="utf-8"))
+    document["preflight"] = json.loads(
+        json.dumps(site.to_dict()["preflight"])
+    )
+    round_tripped = validate_site(document)
+    assert round_tripped.preflight.memory == memory
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        ("minimum_available_bytes", 0, "out of range"),
+        ("contiguous_block_bytes", 12_000_000, "power of two"),
+        ("minimum_contiguous_blocks", 0, "out of range"),
+    ),
+)
+def test_invalid_memory_launch_headroom_is_rejected(
+    document, field, value, message
+):
+    document["preflight"]["memory"] = {
+        "minimum_available_bytes": 103079215104,
+        "contiguous_block_bytes": 16777216,
+        "minimum_contiguous_blocks": 64,
+    }
+    document["preflight"]["memory"][field] = value
+
+    with pytest.raises(SiteConfigError) as excinfo:
+        validate_site(document)
+
+    assert excinfo.value.field == f"preflight.memory.{field}"
+    assert message in str(excinfo.value)
 
 
 # ==========================================================================
