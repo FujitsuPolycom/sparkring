@@ -46,7 +46,8 @@
     "speculative_method": "dflash",
     "speculative_tokens": 7,
     "sparkcache_access_mode": "read-write",
-    "sparkcache_publication_schema": "page-tail-cow-v2",
+    "sparkcache_publication_schema": "tail-cow-v2",
+    "sparkcache_cache_namespace_default": "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp4-page-tail-cow-v2",
     "sparkcache_shared_prefix_lease_seconds": 300,
     "async_capture_slot_bytes": 3221225472,
     "transport": "dual-rail SIRCL for admitted TP collectives; patched NCCL 2.30.7 otherwise"
@@ -81,6 +82,15 @@
       "record": "sircl-capability-health-live-validation.json",
       "details": "Separate test-only builds forced fused device poison and rank-2 proxy exit. No API became ready and the four worker groups stopped without a post-failure collective hang."
     }
+  },
+  "performance_observation": {
+    "status": "research-only",
+    "record": "performance/records/glm53-flash/b12x-kda-dcp4-20260903.md",
+    "summary": "performance/receipts/glm53-flash/b12x-kda-dcp4-20260903/summary.json",
+    "source_result_sha256": "893a731ec34361f23d72f3cc2c0d43fb20b8771719c7b16568bcceffd9e6ffcf",
+    "conditions": "The exact registry image ran at TP4/DCP4 with B12X KDA prefill, embedded dual-rail SIRCL, patched NCCL fallback, scheduler interval two, DFlash2 depth seven, and read-write SparkCache. The cache namespace differed from the source-bound profile default.",
+    "result": "One bounded matrix recorded 2,463-2,837 client prefill tok/s from 8K through 128K and 35.851-90.363 aggregate decode tok/s for C1, C2, and C4 at 8K, 16K, and 32K. All nine decode cells completed without an error, readiness timeout, or capacity-limit marker.",
+    "scope": "Artifact-bound observation only. The 64K and 128K prefill cells lack server validation, and the exact benchmark-harness commit was not public at measurement time."
   },
   "limitations": [
     "The recorded latency samples are functional evidence, not a broad performance benchmark.",
