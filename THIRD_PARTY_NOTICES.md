@@ -55,7 +55,14 @@ two compatibility patches. The public GLM-5.3 builder does not consume them;
 its `NCCL_SWITCHLESS_RING_ONLY` parameter and diagnostics are an independent
 SparkRing implementation.
 
-## 3. vLLM (referenced and patched)
+## 3. vLLM (referenced, patched, and selected source included)
+
+`runtime/glm53-spark-mtp3-mesh/compute/vllm-compute-files.tar.gz` includes
+fourteen vLLM Python files for GLM metadata reuse, dense-kernel integration,
+and the NVFP4 proposal head. The adjacent patch provides a readable diff;
+`source-lock.json` records the base, donor revisions, and exact file hashes.
+These files derive from Local Inference Lab's vLLM fork at `3512b066` and
+`a8c796f3`, under Apache-2.0 with their contributor notices retained.
 
 The unified diffs under `runtime/deepseek0731-gb10/patches/` contain context
 and removed lines from vLLM, pinned to the source revision recorded by that
@@ -245,8 +252,10 @@ artifacts that are not distributed in this repository:
   repository notices.
 
 SparkRing records these identities and validates compatible image content; it
-does not redistribute the model weights, vLLM source, or B12X model-kernel
-package. The selected B12X communication source in Section 11 is included. Operators
+does not include model weights or the complete vLLM/B12X source trees in this
+Git repository. The selected vLLM files in Section 3 and B12X communication
+source in Section 11 are included. Published runtime images contain the
+pinned vLLM and B12X packages under their respective licenses. Operators
 must obtain each artifact under its own terms. The exact operator-image
 composition is in `runtime/glm53-flash-jj-r8-gb10/pins.json` and
 `runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json`.

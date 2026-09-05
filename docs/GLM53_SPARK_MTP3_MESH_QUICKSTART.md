@@ -35,6 +35,9 @@ DFlash model is used.
 
 The [profile contract](../runtime/glm53-spark-mtp3-mesh/README.md) and
 [pins](../runtime/glm53-spark-mtp3-mesh/pins.json) are the canonical inputs.
+The packaged RoCEnante runtime orders shared staging buffers across streams
+and preserves its one-stream-per-CUDA-capture guard. These fixes have CPU
+regression coverage; four-rank GPU fault and stream tests remain required.
 The [proposal-head throughput record](../performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md)
 reports observations, not a general performance guarantee.
 
@@ -391,8 +394,8 @@ That proves build/content equivalence, not a fresh serving, restart, or
 persistent-cache qualification for the public image ID.
 
 ```bash
-mtp_image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:1b97e1dc9cb93c39f887f40bab24359a9b6ec998c28d2417b160f2103cd5fd86'
-mtp_image_id='sha256:dd6c51efaf4127df863ac85c3be3fe46f260b34c7ab2deb384669fffdbe857df'
+mtp_image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:b65d427f9be49c97d57e404ad1a6118769c1119df876a8944c1f186a6b380c5d'
+mtp_image_id='sha256:69c794bf0704e89aa8e2364fb65b972618cf55a665cd3a8ff80a76a1d3280766'
 docker pull "${mtp_image}"
 test "$(docker image inspect "${mtp_image}" --format '{{.Id}}')" = "${mtp_image_id}"
 
@@ -443,7 +446,7 @@ docker rm sparkring-mtp3-extract
 cp runtime/glm53-spark-mtp3-mesh/image-receipt.json /srv/sparkring/verified-image-receipt.json
 
 printf '%s  %s\n' \
-  '4204fabc93303226b9a120b094ef3c82ed4aadd1d7f97cfbe291204c027ed45f' \
+  '69313e19e881ec93e9ed3bd150d2f24fc6b444488ac729a69f45d038e2243500' \
   '/srv/sparkring/artifacts/mtp3-mesh-bundle/sparkring-overlay-manifest.json' \
   '2828c07e4255c4962c77425be2c88969e7eb7dd4b1bf9e36485bc705bb5d6d64' \
   '/srv/sparkring/artifacts/mlx5-rdma-tx-marker' | sha256sum --check

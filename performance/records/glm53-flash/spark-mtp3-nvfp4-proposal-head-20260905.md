@@ -58,6 +58,29 @@ restart, and persistent-cache checks were not repeated on the public image ID.
 
 ## Measurement
 
+[Sanitized per-run samples](spark-mtp3-nvfp4-proposal-samples-20260905.json)
+include all decode windows, token counts, per-context prefill scouts, and
+recorded settings for the two control and three proposal repetitions.
+Each decode cell requests five seconds of warmup, allows 900 seconds to reach
+the requested concurrency, and measures a 20-second client wall-clock window.
+The harness version is 0.4.32; its exact historical source commit was not
+captured. The recorded equivalent command is:
+
+```bash
+python llm_decode_bench.py --host http://RANK0 --port 8015 \
+  --model glm-5.3-flash-spark --temperature 1.0 --token-targeting exact \
+  --display-mode live --no-hw-monitor --dcp-size 4 \
+  --concurrency 1,2,4,8 --contexts 8k,16k --max-tokens 2048 \
+  --duration 20 --decode-warmup-seconds 5 \
+  --cell-warmup-timeout-seconds 900 --output result.json
+```
+
+Variability is reported as the minimum and maximum across repetitions, not
+as a confidence interval. At 8K/C1, control output throughput spans
+46.61–48.84 tok/s and proposal throughput spans 49.35–52.80 tok/s;
+normalized throughput spans 17.94–18.01 and 18.70–19.05 respectively.
+The sample file contains the same ranges for every measured 8K concurrency.
+
 Raw throughput is aggregate output tokens per second. Normalized throughput is
 the harness's aggregate sequence steps per second, computed from drafted and
 non-speculative request work. It is not a count of batched engine iterations.

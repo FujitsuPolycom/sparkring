@@ -127,6 +127,21 @@ def load_image_receipt(path: Path) -> dict:
         "helper_sha256": sha(BASE / "warmup_dflash.py"), "temperature": 1.0,
     }:
         raise ValueError("Image receipt does not verify the sampling warmup helper")
+    compute = inside.get("compute")
+    required = PINS.get("compute", {})
+    if required:
+        if not isinstance(compute, dict):
+            raise ValueError("Image receipt lacks the required compute attestation")
+        for field in ("source_lock_sha256", "b12x_revision", "b12x_tree", "cuda_version"):
+            if compute.get(field) != required[field]:
+                raise ValueError(f"Image receipt compute identity differs: {field}")
+        lock = json.loads((HERE / required["source_lock"]).read_text())
+        environment = compute.get("environment", {})
+        if (not isinstance(environment, dict)
+                or any(environment.get(k) != v for k, v in lock["environment"].items())
+                or compute.get("proposal_head_nvfp4") is not True
+                or compute.get("target_head_quantization") is not False):
+            raise ValueError("Image receipt does not attest the required proposal and verifier paths")
     return document
 
 

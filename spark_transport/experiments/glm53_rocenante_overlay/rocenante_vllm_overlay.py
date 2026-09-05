@@ -435,8 +435,7 @@ class VirtualDiagonalAdapter:
         try:
             if capturing:
                 stream = torch.cuda.current_stream(self.device)
-                with self._runtime.capture(stream=stream):
-                    result = self._runtime.all_reduce(tensor, stream=stream)
+                result = self._runtime.all_reduce(tensor, stream=stream)
                 self._captured_nodes += 1
             else:
                 result = self._runtime.all_reduce(tensor)

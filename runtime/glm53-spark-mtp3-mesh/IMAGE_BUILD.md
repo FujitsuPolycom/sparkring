@@ -30,14 +30,14 @@ to the tested Linux/ARM64 image. Pull before using its local image ID:
 
 ```bash
 set -euo pipefail
-mtp_image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:1b97e1dc9cb93c39f887f40bab24359a9b6ec998c28d2417b160f2103cd5fd86'
-mtp_image_id='sha256:dd6c51efaf4127df863ac85c3be3fe46f260b34c7ab2deb384669fffdbe857df'
+mtp_image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:b65d427f9be49c97d57e404ad1a6118769c1119df876a8944c1f186a6b380c5d'
+mtp_image_id='sha256:69c794bf0704e89aa8e2364fb65b972618cf55a665cd3a8ff80a76a1d3280766'
 docker pull "$mtp_image"
 test "$(docker image inspect "$mtp_image" --format '{{.Id}}')" = "$mtp_image_id"
 ```
 
 The immutable reference is also published as tag
-`glm53-spark-mtp3-nvfp4-a16-2a444f7c`; use the digest above for deployment.
+`glm53-spark-mtp3-stream69313e19`; use the digest above for deployment.
 The [compute-image equivalence record](compute-image-equivalence.json) verifies
 that all 4,891 vLLM, 385 B12X, and 150 SparkCache package files and the selected
 environment match tested private image `sha256:04d5a35b03e99f68c37a05514d221988a3eb70a5b8fdcfa859025ca1cbc25e74`.

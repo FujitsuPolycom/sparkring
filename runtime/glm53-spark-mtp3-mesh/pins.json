@@ -20,9 +20,9 @@
   "speculation": {"method": "mtp", "num_speculative_tokens": 3, "attention_backend": "B12X", "draft_tensor_parallel_size": 4, "draft_sample_method": "probabilistic", "rejection_sample_method": "standard"},
   "capture_sizes": [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64],
   "captured_sircl_query_rows": [16, 20, 24, 28, 32],
-  "canonical_bundle_manifest_sha256": "4204fabc93303226b9a120b094ef3c82ed4aadd1d7f97cfbe291204c027ed45f",
+  "canonical_bundle_manifest_sha256": "69313e19e881ec93e9ed3bd150d2f24fc6b444488ac729a69f45d038e2243500",
   "measured_bundle_manifest_sha256": "701bdc42069a97492981b8f34e006ebfa9e68c2160472cba631b56965efae226",
-  "bundle_difference": "Configuration/manifest line endings differ; parsed configuration and every executable file are identical.",
+  "bundle_difference": "The serving measurements use the recorded measured bundle. The canonical bundle additionally preserves capture-ID stream guards and orders shared staging/output copies across streams; routing and collective algorithms are unchanged.",
   "marker": {
     "source": "../../spark_transport/experiments/cx7_hairpin_diagonal/native/mlx5_rdma_tx_rewrite_probe.c",
     "source_sha256": "8684a6961b8e86aa474fa2310ff71e4cdf219a63a72ceb5593b2f95e54812792",

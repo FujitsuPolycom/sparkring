@@ -2,7 +2,7 @@
   "schema": "sparkring-compute-image-equivalence/v1",
   "checks_passed": true,
   "tested_serving_image": "sha256:04d5a35b03e99f68c37a05514d221988a3eb70a5b8fdcfa859025ca1cbc25e74",
-  "published_image": "sha256:dd6c51efaf4127df863ac85c3be3fe46f260b34c7ab2deb384669fffdbe857df",
+  "published_image": "sha256:69c794bf0704e89aa8e2364fb65b972618cf55a665cd3a8ff80a76a1d3280766",
   "package_files": {
     "b12x": 385,
     "sparkcache": 150,
@@ -22,5 +22,5 @@
     "VLLM_MTP_NVFP4_LM_HEAD": "1",
     "VLLM_MXFP8_LM_HEAD": "0"
   },
-  "scope": "Installed package files excluding Python bytecode and selected environment. Public image construction and native-marker verification passed. Full-model serving was measured on the tested serving image; no claim of a separate four-rank serving run on the published image."
+  "scope": "Installed compute package files excluding Python bytecode and selected environment. The mounted RoCEnante transport overlay additionally contains capture-guard and shared-staging ordering fixes; it is not included in compute package equivalence. Public image construction and native-marker verification passed. Full-model serving was measured on the tested serving image; no separate four-rank serving run is claimed for this published image."
 }

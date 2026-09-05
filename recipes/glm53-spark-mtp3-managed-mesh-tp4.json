@@ -36,8 +36,8 @@
     "image_receipt": "runtime/glm53-spark-mtp3-mesh/image-receipt.json",
     "compute_contract": "runtime/glm53-spark-mtp3-mesh/compute/source-lock.json",
     "compute_contract_sha256": "2a444f7c1ad4319f64afbffb16403491a4863934372cf818f18c510d58c0d00e",
-    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:1b97e1dc9cb93c39f887f40bab24359a9b6ec998c28d2417b160f2103cd5fd86",
-    "image_id": "sha256:dd6c51efaf4127df863ac85c3be3fe46f260b34c7ab2deb384669fffdbe857df",
+    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:b65d427f9be49c97d57e404ad1a6118769c1119df876a8944c1f186a6b380c5d",
+    "image_id": "sha256:69c794bf0704e89aa8e2364fb65b972618cf55a665cd3a8ff80a76a1d3280766",
     "site_template": "runtime/glm53-spark-mtp3-mesh/site.example.json",
     "fabric_template": "runtime/glm53-spark-mtp3-mesh/fabric.example.json",
     "renderer": "runtime/glm53-spark-mtp3-mesh/profile.py",
@@ -104,7 +104,7 @@
     "identity_contract": "runtime/glm53-spark-mtp3-mesh/pins.json#/cache_identity"
   },
   "transport": {
-    "bundle_manifest_sha256": "4204fabc93303226b9a120b094ef3c82ed4aadd1d7f97cfbe291204c027ed45f",
+    "bundle_manifest_sha256": "69313e19e881ec93e9ed3bd150d2f24fc6b444488ac729a69f45d038e2243500",
     "routing_contract": "spark_transport/experiments/glm53_rocenante_overlay/overlay_contract.json",
     "captured_sircl_query_rows": [16, 20, 24, 28, 32],
     "large_eager_prefill": "dual-rail fused SIRCL",

@@ -1,15 +1,15 @@
 {
   "added_layers": 8,
-  "bundle_manifest_sha256": "4204fabc93303226b9a120b094ef3c82ed4aadd1d7f97cfbe291204c027ed45f",
+  "bundle_manifest_sha256": "69313e19e881ec93e9ed3bd150d2f24fc6b444488ac729a69f45d038e2243500",
   "checks_passed": true,
-  "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:glm53-spark-mtp3-nvfp4-a16-2a444f7c",
-  "image_id": "sha256:dd6c51efaf4127df863ac85c3be3fe46f260b34c7ab2deb384669fffdbe857df",
-  "image_reference": "sha256:dd6c51efaf4127df863ac85c3be3fe46f260b34c7ab2deb384669fffdbe857df",
-  "image_size_bytes": 22107698916,
+  "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:glm53-spark-mtp3-stream69313e19",
+  "image_id": "sha256:69c794bf0704e89aa8e2364fb65b972618cf55a665cd3a8ff80a76a1d3280766",
+  "image_reference": "sha256:69c794bf0704e89aa8e2364fb65b972618cf55a665cd3a8ff80a76a1d3280766",
+  "image_size_bytes": 22107699822,
   "inside_image": {
     "b12x_commit": "b58f34eaf978277621efced6678e6713fd7122e4",
     "bundle_files": 28,
-    "bundle_manifest_sha256": "4204fabc93303226b9a120b094ef3c82ed4aadd1d7f97cfbe291204c027ed45f",
+    "bundle_manifest_sha256": "69313e19e881ec93e9ed3bd150d2f24fc6b444488ac729a69f45d038e2243500",
     "checks_passed": true,
     "compute": {
       "b12x_files": 385,
@@ -50,7 +50,7 @@
     },
     "rocenante_lazy_import": "/opt/spark-sircl/b12x_overlay/b12x/comm/roce/__init__.py",
     "sircl_native_sha256": "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc",
-    "source_receipt_sha256": "79dedb68ef65f51d99d66f8664e9235aa6fe8444205bb4c223e5046d076ab3c6",
+    "source_receipt_sha256": "09f3d010db1e15d8c5bb414cd75a7aebbcdf4e6a73d2224e65933cfc3348e3c4",
     "sparkcache_commit": "66057174301a4759ca3a45207ea41016689449cb",
     "status": "research-only",
     "vllm_commit": "e02b174693e13859de61811b5e8cd13d5308e259",
@@ -61,7 +61,7 @@
   "parent_layers_retained": 81,
   "platform": "linux/arm64",
   "schema": "sparkring-mtp3-mesh-image-receipt/v1",
-  "source_receipt_sha256": "79dedb68ef65f51d99d66f8664e9235aa6fe8444205bb4c223e5046d076ab3c6",
+  "source_receipt_sha256": "09f3d010db1e15d8c5bb414cd75a7aebbcdf4e6a73d2224e65933cfc3348e3c4",
   "status": "research-only",
   "verification_command": [
     "docker",
@@ -86,7 +86,7 @@
     "PYTHONDONTWRITEBYTECODE=1",
     "--entrypoint",
     "python3",
-    "sha256:dd6c51efaf4127df863ac85c3be3fe46f260b34c7ab2deb384669fffdbe857df",
+    "sha256:69c794bf0704e89aa8e2364fb65b972618cf55a665cd3a8ff80a76a1d3280766",
     "-I",
     "/opt/sparkring/bin/verify-mtp3-mesh-image.py",
     "--inside-image"
