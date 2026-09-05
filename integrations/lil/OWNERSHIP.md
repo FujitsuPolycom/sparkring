@@ -2,6 +2,11 @@
 
 Status: implemented locally; no upstream maintenance commitment is assumed.
 
+Companion implementation: local lil commit `8917660`, based on
+`11df08a793596b0a5b09e72e90d9a1ece51c9306`. The companion commit is not published
+and is not included in this SparkRing change. Upstream lil cannot execute these
+bundles yet; the schema below is supplied for interface discussion.
+
 | Owner | Responsibility |
 | --- | --- |
 | SparkRing | Images, model profiles, canonical argument export, SIRCL settings, SparkCache identities, native checks, distribution and support |
