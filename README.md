@@ -126,10 +126,11 @@ four-row increments through 64 rows.
 The image composition uses CUDA 13.3, the native-MTP3 metadata port derived
 from Local Inference Lab vLLM revision `3512b066`, and the complete B12X tree at
 `b58f34ea` with vLLM integration based on `a8c796f3`. The complete B12X update
-also includes MoE and dense-precision work, so comparisons against the previous
-public image cannot attribute a gain to dense kernels alone. The
+also includes MoE and dense-precision work, so comparisons across different
+compute configurations cannot attribute a gain to dense kernels alone. The
 [head-specific comparison](performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md)
-uses a control with the same metadata+dense+B12X composition.
+uses a control with the same CUDA version, B12X kernels, metadata reuse, and
+dense-kernel integration; only the proposal-head configuration differs.
 
 The [profile package](runtime/glm53-spark-mtp3-mesh/README.md) provides the
 public image, transport files, and temperature-one warmup. The
@@ -180,7 +181,7 @@ The native-MTP3 proposal-head row uses three observations per decode cell and
 three prefill scouts per listed context. Relative to two shared-BF16-head
 controls with the same compute composition, C1 changed by +8.22% raw output
 throughput and +4.90% normalized sequence steps/s; C2/C4/C8 were mixed and
-prefill was flat within 0.36%. The previous image's
+prefill was flat within 0.36%. The image-specific
 [consolidated report](performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
 retains the 32K/64K matrix, Estonia **30/30** at C8, and **4/4** needle-hunt
 checks through 507,367 prompt tokens, with the image identity recorded for

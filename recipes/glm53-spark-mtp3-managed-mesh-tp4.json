@@ -121,7 +121,7 @@
     "record": "performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md",
     "proposal_head_performance_record": "performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md",
     "status": "research-only",
-    "scope": "The proposal-head performance screen covers the recorded private image. Managed lifecycle and persistent-recall qualification remain bound to the previous published image.",
+    "scope": "Proposal-head performance was measured on serving image 04d5a35b, identified by the full digest in the proposal-head record. Managed lifecycle and persistent-recall results qualify only the image digests and cache namespaces in their linked functional records.",
     "limitations": [
       "This opt-in profile does not replace the recommended DFlash/SIRCL profile.",
       "The published compute image has build/content equivalence to the tested private image but requires fresh native, startup, restart and persistent-cache receipts before those qualifications transfer.",
