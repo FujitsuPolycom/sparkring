@@ -29,6 +29,10 @@ contains the bounded throughput observations and their limitations.
 
 ## Operator benchmark observations
 
+The [consolidated validation report](../../performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
+collects the completed tests, three-pass prefill measurements, and remaining
+work. Use that report to avoid repeating checks already covered by receipts.
+
 Status: **research-only** measurements, not general performance guarantees.
 The [throughput record](../../performance/records/glm53-flash/spark-mtp3-mesh-20260905.md)
 identifies the measured source configuration and its differences from the

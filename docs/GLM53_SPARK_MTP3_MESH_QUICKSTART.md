@@ -48,6 +48,9 @@ identifies the included code and retained license.
 
 ## Recorded benchmark observations
 
+See the [consolidated validation report](../performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
+for completed checks, repeat counts, and the remaining test plan.
+
 The [profile results table](../runtime/glm53-spark-mtp3-mesh/README.md#operator-benchmark-observations)
 shows the full concurrency matrix: aggregate decode reached **231.3 tok/s at
 8K/C16**, and concurrency-one prefill scouts measured **2,703–2,787 prompt
