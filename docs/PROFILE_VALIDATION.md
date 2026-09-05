@@ -4,10 +4,9 @@ Use this runbook to measure a deployed profile's speed, long-context
 accuracy, concurrency behavior, and restart/cache behavior. Keep the results
 with the recipe so another operator can repeat the same workload.
 
-Status: **implemented** procedure and test tooling. Each completed report
-identifies which checks are **qualified** for that exact profile. The operator
-decides whether to recommend or promote it; these commands do not change
-deployment defaults or automatically approve a profile.
+Status: **implemented**—the test tools are ready to use. Record which checks
+pass and how the profile performs, then use those results to decide whether
+it is ready for your workload.
 
 ## Required test card
 
