@@ -1,9 +1,9 @@
 # Launch SparkRing images with lil
 
-Status: implemented on a local lil branch, with a bounded DGX4 MTP3 startup and
+Status: implemented with the FujitsuPolycom/lil integration branch, with MTP3 startup on four NVIDIA DGX Sparks and a
 persistent-recall trial. See [hardware evidence](HARDWARE_VALIDATION.md).
 Fresh-host mesh installation and unattended lifecycle remain untested.
-These commands require the companion lil `codex/image-runtime-adapter` branch;
+These commands require the companion [lil fork draft PR #1](https://github.com/FujitsuPolycom/lil/pull/1) at branch `codex/image-runtime-adapter`;
 they are not available in upstream lil.
 
 SparkRing supplies model settings and the Docker arguments. lil starts ranks,
@@ -13,12 +13,26 @@ vLLM, B12X, SIRCL, and SparkCache; hosts do not need those source checkouts.
 ## Prepare locally
 
 Use Linux or WSL with Python 3.11+, Bash, and a lil binary built from the companion
-branch (`go build -o lil ./cmd/lil`, Go 1.26). Copy `site-mtp3.example.json` and
+branch (Go 1.26):
+
+```bash
+git clone --branch codex/image-runtime-adapter --single-branch https://github.com/FujitsuPolycom/lil.git
+cd lil
+git checkout 8a3e86c096e8dae2d1e7055a7f55070141653125
+go build -o lil ./cmd/lil
+install -D lil "$HOME/.local/bin/lil"
+```
+
+Ensure `$HOME/.local/bin` is on `PATH`, then return to the SparkRing checkout.
+See [ownership and dependency](OWNERSHIP.md) for the fork boundary.
+Copy `site-mtp3.example.json` and
 `fabric.example.json` to private files and enter your hosts, directories, peer
 addresses, and RDMA devices. Example addresses are documentation placeholders;
 they do not describe a wired cluster. Fabric routing must be verified on hardware.
 Preserve each rank's device and peer ordering from a working launch. The two
 connection slots need not use the same physical port numbers on every rank.
+Optional `NCCL_IB_GID_INDEX` and secondary-rail GID indices default to `3`;
+set them explicitly when the working fabric uses different indices.
 
 `site.settings` overrides context, sequences, batching, KV bytes, and port.
 The default profile is the published NVFP4-Spark native-MTP3 mesh at TP4/DCP4,
@@ -102,7 +116,8 @@ The hardware record covers a 12,288-token persistent restore on the named
 image/topology. It does not establish every profile or context size.
 The separate `plan.py` command remains a non-executable summary.
 
-Runtime and model pins are read from canonical files named in `glm53.json`; a
+Runtime and model pins come from the selected descriptor: `glm53-mtp3.json` for
+the MTP3 mesh default, or `glm53.json` for the DFlash profile. A
 normalized UTF-8 SHA-256 detects changes requiring descriptor review. Source
 baseline: SparkRing `f78d3b1b06b1bd57c2d660bbd3838f91db244a09`, lil
 `11df08a793596b0a5b09e72e90d9a1ece51c9306`. See [ownership](OWNERSHIP.md).

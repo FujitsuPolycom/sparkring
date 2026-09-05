@@ -28,6 +28,11 @@ FABRIC_KEYS = {
     "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0",
     "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1",
 }
+OPTIONAL_FABRIC_KEYS = {
+    "NCCL_IB_GID_INDEX",
+    "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0",
+    "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1",
+}
 
 
 def export(descriptor, site, fabric, bundle_id):
@@ -45,7 +50,7 @@ def export(descriptor, site, fabric, bundle_id):
     runtime = plan["resolved_runtime"]
     ranks = []
     for rank, network in zip(plan["ranks"], fabric["ranks"], strict=True):
-        keys(network, FABRIC_KEYS)
+        keys(network, FABRIC_KEYS, OPTIONAL_FABRIC_KEYS)
         require(
             all(
                 isinstance(v, str) and v and not any(c in v for c in "\r\n\x00")

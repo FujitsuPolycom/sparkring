@@ -28,7 +28,6 @@ unattended managed lifecycle are not established by this test.
 | Rank 0 / 1 / 2 / 3 restore | 109.1 / 131.5 / 126.3 / 119.0 ms |
 | lil status, logs and stop | Commands completed successfully against the trial containers |
 | Direct-fabric copy | A 1 MiB fixture crossed three rank-to-rank edges with matching SHA-256 at every destination |
-| Preserved deployment restoration | All four original container IDs, image IDs, configurations and mount definitions matched; all ranks healthy; arithmetic probe returned exact `4` |
 
 Initial and replay request SHA-256:
 `a12d997b749171a19ef13afd4419e5e2abf027256fa7515967645f0f36741362`.

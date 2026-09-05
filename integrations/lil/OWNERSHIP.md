@@ -1,11 +1,14 @@
 # Integration ownership
 
-Status: implemented locally; no upstream maintenance commitment is assumed.
+Status: implemented in the FujitsuPolycom integration fork; no upstream maintenance commitment is assumed.
 
-Companion implementation: local lil commit `8917660`, based on
-`11df08a793596b0a5b09e72e90d9a1ece51c9306`. The companion commit is not published
-and is not included in this SparkRing change. Upstream lil cannot execute these
-bundles yet; the schema below is supplied for interface discussion.
+Companion implementation: [FujitsuPolycom/lil, `codex/image-runtime-adapter`](https://github.com/FujitsuPolycom/lil/tree/codex/image-runtime-adapter),
+based on upstream revision `11df08a793596b0a5b09e72e90d9a1ece51c9306`.
+Tested companion revision: `8a3e86c096e8dae2d1e7055a7f55070141653125`;
+[fork draft PR #1](https://github.com/FujitsuPolycom/lil/pull/1).
+The extension is maintained separately from this SparkRing change. Upstream lil
+cannot execute these bundles; the fork provides the implementation for testing
+and interface discussion.
 
 | Owner | Responsibility |
 | --- | --- |
@@ -13,7 +16,7 @@ bundles yet; the schema below is supplied for interface discussion.
 | lil extension | Generic bundle validation, command execution, lifecycle order, ownership checks, status and logs |
 | Operator | Trusted bundle review, host access, fabric wiring and storage paths |
 
-The local lil command consumes `lil-image-bundle/v1`: a bundle ID and ordered
+The fork's lil command consumes `lil-image-bundle/v1`: a bundle ID and ordered
 rank records containing a host, container name, Docker argument array, and optional
 preflight commands with exact expected output. It has no SparkRing imports or
 model-specific conditionals. Image-owned code replaces the source-checkout

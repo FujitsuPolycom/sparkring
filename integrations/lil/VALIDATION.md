@@ -7,7 +7,7 @@ files and fake command runners. No serving hosts or model endpoints are involved
 
 | Check | Result |
 | --- | --- |
-| Integration and canonical launcher tests, including MTP3 and direct-copy routing | 70 passed |
+| Integration and canonical launcher tests, including MTP3, direct-copy routing, and configurable GID indices | 74 passed |
 | Companion lil `go test ./...` | all packages passed |
 | Python lint | passed |
 | Exported four-rank bundle consumed by built lil CLI | validate and render passed |

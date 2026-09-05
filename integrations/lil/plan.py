@@ -342,12 +342,12 @@ def render(descriptor, site):
             "execute": False,
             "verify_each_rank": True,
         },
-        "remaining_integration": [
-            "lil image-owned code validation and startup wrapper",
-            "per-rank SIRCL device/peer configuration and fabric validation",
-            "translate reviewed SparkCache profile into kv-transfer-config",
-            "artifact distribution over selected fabric",
-            "live image and topology validation",
+        "limitations": [
+            "This summary does not execute commands; export.py creates a launch bundle.",
+            "Image lifecycle commands require the companion lil integration branch.",
+            "Managed mesh installation and ownership remain outside this adapter.",
+            "Fabric routes and SSH access must be supplied by the operator.",
+            "Hardware evidence covers only the image, topology, and workload in HARDWARE_VALIDATION.md.",
         ],
     }
 

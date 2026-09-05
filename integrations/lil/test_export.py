@@ -63,6 +63,33 @@ def test_canonical_export_without_docker(cache):
         assert graph["cudagraph_capture_sizes"] == list(range(8, 129, 8))
 
 
+@pytest.mark.skipif(os.name != "posix", reason="canonical Bash launcher")
+@pytest.mark.parametrize("explicit", [False, True])
+@pytest.mark.parametrize(
+    "descriptor_file,site_file",
+    [("glm53.json", "site.example.json"), ("glm53-mtp3.json", "site-mtp3.example.json")],
+)
+def test_fabric_gid_indices_reach_container_environment(
+    explicit, descriptor_file, site_file
+):
+    descriptor = module.read_json(HERE / descriptor_file)
+    site = module.read_json(HERE / site_file)
+    network = fabric()
+    for index, row in enumerate(network["ranks"]):
+        if explicit:
+            row.update(
+                {
+                    "NCCL_IB_GID_INDEX": str(index + 1),
+                    "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0": str(index + 4),
+                    "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1": str(index + 8),
+                }
+            )
+    bundle = module.export(descriptor, site, network, "gid-fixture")
+    for row, rank in zip(network["ranks"], bundle["ranks"], strict=True):
+        for key in module.OPTIONAL_FABRIC_KEYS:
+            assert f"{key}={row.get(key, '3')}" in rank["argv"]
+
+
 @pytest.mark.skipif(
     not os.environ.get("LIL_TEST_BINARY"),
     reason="set LIL_TEST_BINARY to the locally built companion CLI",
