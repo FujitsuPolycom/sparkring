@@ -46,6 +46,20 @@ managed deployment. It does not claim to originate RoCEnante or install both
 complete PRs unchanged. The [vendored-source provenance](../third_party/b12x_roce/README.md)
 identifies the included code and retained license.
 
+## Recorded benchmark observations
+
+The [profile results table](../runtime/glm53-spark-mtp3-mesh/README.md#operator-benchmark-observations)
+shows the full concurrency matrix: aggregate decode reached **231.3 tok/s at
+8K/C16**, and concurrency-one prefill scouts measured **2,703–2,787 prompt
+tokens/s** across 8K–128K contexts. These are single-run observations with
+their measured configuration documented, not a universal performance claim
+for the packaged image.
+
+A separate [long-context country-recall test](../performance/records/glm53-flash/spark-mtp3-country-recall-20260905.md)
+completed **30/30 correct answers at C8** on one repeated 133,208-token prompt,
+with no output-budget hits. The records include both operator screenshots,
+numeric results, and distinct throughput definitions.
+
 ## Preparation order and command locations
 
 Use one management shell to prepare the shared site and coordinate all four

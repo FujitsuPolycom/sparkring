@@ -27,6 +27,30 @@ commands. Keep private site files and the health key outside this repository.
 The [measurement record](../../performance/records/glm53-flash/spark-mtp3-mesh-20260905.md)
 contains the bounded throughput observations and their limitations.
 
+## Operator benchmark observations
+
+Status: **research-only** measurements, not general performance guarantees.
+The [throughput record](../../performance/records/glm53-flash/spark-mtp3-mesh-20260905.md)
+identifies the measured source configuration and its differences from the
+packaged image. C denotes concurrent requests; decode values are aggregate
+output tokens per second across those requests.
+
+| Context | C1 | C2 | C4 | C8 | C12 | C16 |
+|---:|---:|---:|---:|---:|---:|---:|
+| 8K | 48.2 | 75.8 | 112.2 | 168.8 | 193.4 | 231.3 |
+| 32K | 49.9 | 76.8 | 119.0 | 164.6 | 197.3 | 222.7 |
+| 64K | 43.0 | 76.4 | 119.0 | 165.8 | 192.3 | 220.9 |
+
+Concurrency-one prefill scouts measured **2,703–2,787 prompt tokens/s** over
+8K–128K contexts, with one observation per context. They are not a repeated
+cold-cache benchmark.
+
+The separate [country-recall record](../../performance/records/glm53-flash/spark-mtp3-country-recall-20260905.md)
+reports **30/30 correct** at C8 on one repeated 133,208-token prompt, no
+output-limit hits, and 1.96 s mean cache-primed TTFT. Its 23.8 tok/s figure
+uses summed request times, not cluster wall time. Both records retain the
+operator screenshots and metric definitions.
+
 ## Composition
 
 | Input | Contract |

@@ -60,6 +60,11 @@ confidence interval can be calculated from one sample per cell.
 
 ## Result
 
+![Native-MTP3 hybrid mesh prefill and concurrency results](assets/mtp3-mesh-throughput.png)
+
+The screenshot's MTP-normalized rates are derived token/acceptance ratios,
+not directly measured GPU forward-pass counts. Numeric tables follow.
+
 Aggregate decode throughput, output tokens per second:
 
 | Context tokens | C1 | C2 | C4 | C8 | C12 | C16 |
