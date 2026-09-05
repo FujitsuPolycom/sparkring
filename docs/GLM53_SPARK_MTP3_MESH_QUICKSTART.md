@@ -8,6 +8,11 @@ readiness, and one persistent-cache recall case for the published managed
 image identified below.
 Broader cache/failure coverage and unattended serving remain unqualified.
 
+The [public application-install record](../performance/records/glm53-flash/spark-mtp3-public-application-install-20260905.md)
+covers fresh public checkouts, extracted image artifacts, empty application
+caches, installation, native correctness, and model-restart cache restoration
+on four prepared hosts. It does not qualify a factory-reset OS/network setup.
+
 **Starting with four stock Sparks and no image?** Follow
 [the managed-mesh prerequisite section](PREREQUISITES.md#four-spark-managed-hardware-forwarded-mesh)
 first. It reuses the shared blank-cluster bootstrap and adds the secondary
