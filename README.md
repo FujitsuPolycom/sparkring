@@ -69,18 +69,24 @@ together. In the tables, 1M means 1,048,576 tokens.
 
 ### GLM-5.3 Flash
 
-These three **DFlash2/SIRCL profiles** use the GLM-5.3 Flash NVFP4 target,
-an external BF16 DFlash2 predictor at depth seven, FP8 KV, B12X kernels, and
-the same ARM64 image. Target verification captures use rows 8 through 128 in
-eight-row increments, covering full request batches from C1 through C16.
+Choose native MTP3 with hardware-forwarded mesh for the NVFP4-Spark
+checkpoint, or an external DFlash2 predictor with SIRCL for the NVFP4
+checkpoint. Each quickstart supplies its own pinned image and setup steps.
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Approx. recorded KV capacity | Start here |
 |---|---|---:|---:|---:|---|---:|---|
-| DCP1 | 4 Sparks · TP4/DCP1 | 1M | 16 | 8,192 | FP8 · 24 GiB/rank; SparkCache enabled | ~1.30M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
-| DCP2 | 4 Sparks · TP4/DCP2 | 1M | 16 | 8,192 | FP8 · 24 GiB/rank; SparkCache enabled | ~2.90M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
-| **DCP4 preferred** | **4 Sparks · TP4/DCP4** | **1M** | **16** | **8,192** | **FP8 · 24 GiB/rank; SparkCache enabled** | **~4.32M tokens** | **[Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md)** |
+| **NVFP4-Spark · native MTP3 · mesh** (research-only) | **4 Sparks · TP4/DCP4** | **1M** | **16** | **8,192** | **FP8 · 24 GiB/rank; SparkCache enabled** | Reported at startup | **[Mesh quickstart](docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md)** |
+| DFlash2/SIRCL · DCP1 | 4 Sparks · TP4/DCP1 | 1M | 16 | 8,192 | FP8 · 24 GiB/rank; SparkCache enabled | ~1.30M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| DFlash2/SIRCL · DCP2 | 4 Sparks · TP4/DCP2 | 1M | 16 | 8,192 | FP8 · 24 GiB/rank; SparkCache enabled | ~2.90M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| DFlash2/SIRCL · DCP4 (preferred DFlash2 profile) | 4 Sparks · TP4/DCP4 | 1M | 16 | 8,192 | FP8 · 24 GiB/rank; SparkCache enabled | ~4.32M tokens | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
 
-All three default to 24 GiB of KV memory per rank. The reference capacities
+#### DFlash2/SIRCL configuration
+
+The three DFlash2 profiles use an external BF16 predictor at depth seven,
+FP8 KV, B12X kernels, and the same ARM64 image. Target verification captures
+use rows 8 through 128 in eight-row increments, covering C1 through C16.
+
+All profiles above default to 24 GiB of KV memory per rank. The DFlash2 reference capacities
 were measured at 26/30/24 GiB for DCP1/2/4 respectively; vLLM reports the
 actual model-wide capacity at startup. That capacity is shared across requests.
 **DCP4 is the preferred DFlash2 profile** and the documented asynchronous
@@ -108,10 +114,6 @@ for research and evaluation. See the
 for its terms. The native-MTP3 profile below does not require these weights.
 
 ### GLM-5.3 Flash Spark with native MTP3 and mesh transport
-
-| Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
-|---|---|---:|---:|---:|---|---|
-| NVFP4-Spark + native MTP3 + NVFP4/BF16 proposal head + mesh · research-only | 4 Sparks · TP4/DCP4 | 1M | 16 | 8,192 | FP8 · 24 GiB/rank; SparkCache enabled | [Quickstart](docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md) |
 
 This profile uses the NVFP4-Spark checkpoint's built-in three-token predictor;
 no external draft checkpoint or DFlash model is required. A separate runtime-
