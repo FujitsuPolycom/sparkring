@@ -35,10 +35,14 @@ def _run_launcher(
     env_file: Path,
     mode: str | None = "--check",
     launcher: Path = LAUNCHER,
+    path_prefix: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     arguments = [str(env_file)] if mode is None else [mode, str(env_file)]
     if os.name != "nt":
         command = ["bash", str(launcher), *arguments]
+        environment = os.environ.copy()
+        if path_prefix is not None:
+            environment["PATH"] = f"{path_prefix}{os.pathsep}{environment['PATH']}"
     else:
         rendered = " ".join(
             shlex.quote(value)
@@ -48,8 +52,20 @@ def _run_launcher(
                 *([_bash_path(env_file)] if mode is None else [mode, _bash_path(env_file)]),
             )
         )
-        command = ["bash", "-lc", f"exec {rendered}"]
-    return subprocess.run(command, text=True, capture_output=True, check=False)
+        path_assignment = (
+            f"export PATH={shlex.quote(_bash_path(path_prefix))}:$PATH; "
+            if path_prefix is not None
+            else ""
+        )
+        command = ["bash", "-lc", f"{path_assignment}exec {rendered}"]
+        environment = os.environ.copy()
+    return subprocess.run(
+        command,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
 
 
 def _env_values(path: Path) -> dict[str, str]:
@@ -135,8 +151,89 @@ def test_pair_env_explains_host_cache_mapping() -> None:
     source = TEMPLATE.read_text(encoding="utf-8")
     assert "CACHE_HOST_PATH=/cache/test" in source
     assert "/cache/test/jit/triton" in source
-    assert "Leave XDG_CACHE_HOME, TRITON_CACHE_DIR, and VLLM_CACHE_ROOT unchanged" in source
+    assert "/cache/test/jit/tilelang" in source
+    assert "/cache/test/jit/b12x-cute" in source
+    assert "/cache/test/nccl-fr" in source
+    assert "Leave the container-internal cache and recorder paths" in source
     assert "configure the host location only through" in source
+
+
+@pytest.mark.parametrize("template", [TEMPLATE, CYCLE_TEMPLATE])
+def test_deepseek_templates_persist_native_jit_and_flight_recorder_data(
+    template: Path,
+) -> None:
+    values = _env_values(template)
+
+    assert values["TILELANG_CACHE_DIR"] == "/cache/jit/tilelang"
+    assert values["B12X_CUTE_COMPILE_CACHE_DIR"] == "/cache/jit/b12x-cute"
+    assert values["TORCH_NCCL_TRACE_BUFFER_SIZE"] == "2000"
+    assert values["TORCH_NCCL_DUMP_ON_TIMEOUT"] == "1"
+    assert values["TORCH_NCCL_ENABLE_MONITORING"] == "1"
+    assert values["TORCH_FR_DUMP_TEMP_FILE"] == (
+        "/cache/nccl-fr/comm_lib_trace_rank_"
+    )
+    assert values["TORCH_NCCL_DEBUG_INFO_PIPE_FILE"] == "/tmp/fr_dump_pipe_"
+
+
+@pytest.mark.parametrize("launcher", [LAUNCHER, CYCLE_LAUNCHER])
+def test_deepseek_launchers_prepare_persistent_cache_directories(
+    launcher: Path,
+) -> None:
+    source = launcher.read_text(encoding="utf-8")
+
+    assert '"$CACHE_HOST_PATH/jit/tilelang"' in source
+    assert '"$CACHE_HOST_PATH/jit/b12x-cute"' in source
+    assert '"$CACHE_HOST_PATH/nccl-fr"' in source
+
+
+@pytest.mark.parametrize(
+    ("launcher", "environment_fixture"),
+    [(LAUNCHER, "pair_env"), (CYCLE_LAUNCHER, "cycle_env")],
+)
+def test_deepseek_launchers_create_persistent_cache_directories_before_run(
+    launcher: Path,
+    environment_fixture: str,
+    request: pytest.FixtureRequest,
+    tmp_path: Path,
+) -> None:
+    env_file = request.getfixturevalue(environment_fixture)
+    cache = tmp_path / "cache"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    docker = fake_bin / "docker"
+    cache_for_bash = shlex.quote(_bash_path(cache))
+    docker.write_text(
+        f"""#!/bin/sh
+case "$1 $2" in
+  "image inspect") exit 0 ;;
+  "container inspect") exit 1 ;;
+  "run -d")
+    cache={cache_for_bash}
+    test -d "$cache/jit/tilelang" || exit 91
+    test -d "$cache/jit/b12x-cute" || exit 92
+    test -d "$cache/nccl-fr" || exit 93
+    printf '%s\n' fake-container-id
+    ;;
+  *) exit 94 ;;
+esac
+""",
+        encoding="utf-8",
+        newline="\n",
+    )
+    docker.chmod(0o755)
+
+    result = _run_launcher(
+        env_file,
+        mode="--run",
+        launcher=launcher,
+        path_prefix=fake_bin,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "fake-container-id" in result.stdout
+    assert (cache / "jit" / "tilelang").is_dir()
+    assert (cache / "jit" / "b12x-cute").is_dir()
+    assert (cache / "nccl-fr").is_dir()
 
 
 def test_cycle_env_defaults_match_recipe() -> None:
