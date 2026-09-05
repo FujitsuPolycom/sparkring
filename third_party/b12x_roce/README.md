@@ -13,8 +13,7 @@ the upstream Apache-2.0 license; source copyright notices are retained.
 ## Attribution and design origins
 
 RoCEnante originates with Local Inference Lab's contributors, not SparkRing.
-Credit includes Luke (`lukealonso`), the Local Inference Lab community, and
-PR author `original-el8`. The implementation derives from
+Credit includes Luke (`lukealonso`), the Local Inference Lab community. The implementation derives from
 [B12X PR 295](https://github.com/local-inference-lab/b12x/pull/295), with
 the six-QP two-path peer mapping and hardware-forwarded opposite-peer path
 used by the SparkRing mesh profile. It is not an unmodified installation of
