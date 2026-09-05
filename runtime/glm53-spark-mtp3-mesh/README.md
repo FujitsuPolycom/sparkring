@@ -51,6 +51,10 @@ output-limit hits, and 1.96 s mean cache-primed TTFT. Its 23.8 tok/s figure
 uses summed request times, not cluster wall time. Both records retain the
 operator screenshots and metric definitions.
 
+The [long-context needle hunt](../../performance/records/glm53-flash/spark-mtp3-needle-20260905.md)
+passed **4/4** exact-value, revision, and cross-reference checks, reaching
+**507,367 actual prompt tokens** on the published image.
+
 ## Composition
 
 | Input | Contract |

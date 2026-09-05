@@ -215,3 +215,5 @@ namespaces. A same-namespace restart currently fails before model startup when
 the exact-Q40 producer finds its existing receipt. Keep the receipt and use a
 fresh namespace until the launcher can safely reuse a matching receipt. This is
 a restart problem, not a model-performance failure.
+
+[Profile validation: performance, accuracy, and restart checks](PROFILE_VALIDATION.md).

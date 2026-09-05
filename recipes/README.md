@@ -47,3 +47,5 @@ Status applies to the exact profile and evidence named by each file:
 - `research-only`: the file records exploratory behavior that is not an
   operator default.
 - `unsupported`: no working integration is published.
+
+[Profile validation: performance, accuracy, and restart checks](../docs/PROFILE_VALIDATION.md).

@@ -28,6 +28,7 @@ launches Ring Doctor before any model profile is selected.
 
 ## Resources
 
+- [Profile validation: performance, accuracy, and restart checks](docs/PROFILE_VALIDATION.md)
 - [Supported models and profiles](#profiles)
 - [Container image roles](#container-images)
 - [Benchmark results](#benchmark-results)

@@ -88,3 +88,5 @@ kept separate from transport or model claims:
 Evidence applies only to the conditions written in its record. Preserve raw
 machine-readable records when changing summaries so reviewers can verify the
 aggregation.
+
+[Profile validation: performance, accuracy, and restart checks](../docs/PROFILE_VALIDATION.md).

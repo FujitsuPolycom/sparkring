@@ -693,3 +693,5 @@ seed does not guarantee identical generated sequences at temperature one.
 Visible-output equality is diagnostic, not a restart pass criterion. A
 single failed semantic canary is inconclusive and requires repeated controls;
 it must not be erased or replaced by a passing workload.
+
+[Profile validation: performance, accuracy, and restart checks](PROFILE_VALIDATION.md).

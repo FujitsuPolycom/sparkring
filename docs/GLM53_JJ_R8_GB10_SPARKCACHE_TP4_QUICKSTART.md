@@ -585,3 +585,5 @@ performance qualification of the registry artifact above. See the
 and the
 [`DCP1 deep-context record`](../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md)
 for exact conditions and limitations.
+
+[Profile validation: performance, accuracy, and restart checks](PROFILE_VALIDATION.md).

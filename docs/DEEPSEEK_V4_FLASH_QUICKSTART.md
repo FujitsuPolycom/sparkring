@@ -402,3 +402,5 @@ recipe, applies a 4,096-token batch budget to both arms, and uses the same
 model, memory, scheduler mode, and five-token DSpark
 contract. The plan has no execution mode and does not promote SIRCL into this
 quickstart.
+
+[Profile validation: performance, accuracy, and restart checks](PROFILE_VALIDATION.md).

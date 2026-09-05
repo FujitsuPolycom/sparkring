@@ -116,3 +116,5 @@ topologies, and other model revisions are unsupported by this image record.
 Report runtime or transport problems at
 <https://github.com/FujitsuPolycom/sparkring/issues> and SparkCache-specific
 problems at <https://github.com/FujitsuPolycom/sparkcache/issues>.
+
+[Profile validation: performance, accuracy, and restart checks](PROFILE_VALIDATION.md).

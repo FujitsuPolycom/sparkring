@@ -32,3 +32,5 @@ published configuration hash.
 |---|---|---|
 | Qwen3.8-27B EXL3 K5/K6 + SparkCache | four-Spark cycle, TP4/DCP1 | **unsupported.** No composition recipe or live cache evidence is published. |
 | Qwen3.8-27B EXL3 K5/K6 + SparkCache | two-Spark pair, TP2/DCP1 | **unsupported.** No composition recipe or live cache evidence is published. |
+
+[Profile validation: performance, accuracy, and restart checks](../PROFILE_VALIDATION.md).
