@@ -1,0 +1,14 @@
+{
+  "schema": "sparkring-lil-descriptor/v1",
+  "profile": "glm53-spark-mtp3-mesh",
+  "transport": {"provider": "sircl", "rail_mode": "dual"},
+  "lil_revision": "11df08a793596b0a5b09e72e90d9a1ece51c9306",
+  "sources": {
+    "runtime": {"path": "runtime/glm53-flash-jj-r8-gb10/pins.json", "sha256": "dc49370d911ecc32f1c7ea7656f41837334a8e5ed800db263174781bee2b2313"},
+    "models": {"path": "runtime/glm53-flash/pins.json", "sha256": "d8e48252bad6dfebe152f14c91e6e1e4eb01a811231e1142b65ce7b25f7f75dd"},
+    "mesh": {"path": "runtime/glm53-spark-mtp3-mesh/pins.json", "sha256": "400b190cc66b32a6c3d0707d763c55d9814f1d5dc8be9adabf2e437168258a6c"},
+    "public_image": {"path": "runtime/glm53-spark-mtp3-mesh/public-image.json", "sha256": "1399d2db292791475420775132dde8978019c7a31bffc411a458686385a2340e"}
+  },
+  "defaults": {"tp": 4, "dcp": 4, "max_model_len": 1048576, "max_num_seqs": 16, "max_num_batched_tokens": 8192, "kv_cache_memory_bytes": 25769803776, "speculator": "mtp", "speculative_tokens": 3, "port": 8015},
+  "supported": {"tp": [4], "dcp": [4], "speculator": ["mtp"], "speculative_tokens": [3], "max_num_seqs": 16, "max_model_len": 1048576}
+}
