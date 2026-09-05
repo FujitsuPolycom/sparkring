@@ -83,12 +83,23 @@ target_model=/srv/models/glm53-target
 draft_model=/srv/models/glm53-dflash2-bf16
 
 hf download local-inference-lab/GLM-5.3-Flash-NVFP4 \
-  --revision 520de24eabf507659eaef7c70f14fd584527facc \
+  --revision 46aaae8a82032f77100f2f03e9cc11b391df3b4d \
   --local-dir "${target_model}"
 hf download incoai/GLM-5.3-Flash-DFlash2 \
   --revision dc77ff1c99eeb2df044ee3d4f0094eb033fee410 \
   --local-dir "${draft_model}"
 ```
+
+Revision `46aaae8a` differs from the previously documented `520de24e` only in
+`README.md` and `chat_template.jinja`: it carries zai-org's 2026-09-04 GLM-5.3
+chat-template update (tool-result reordering exits early; a `content is not
+none` guard on assistant text). The weights, `config.json`, and
+`model.safetensors.index.json` are byte-identical, so the launcher's identity
+checks accept either revision. A site that already holds `520de24e` can adopt
+the template alone by pointing `CHAT_TEMPLATE_HOST_PATH` at the new
+`chat_template.jinja` (SHA-256
+`0c4099f3382d6c92700dfb99725025360966fd73032f0ecf32377c0d9e6309c5`) instead of
+re-downloading the checkpoint.
 
 Copy each immutable directory to the same absolute path on the three follower
 ranks. Use direct-link addresses where the site permits SSH over the 200 Gb/s
@@ -230,6 +241,12 @@ whitespace in a key.
 This is host-level access control, not secret management. vLLM receives the
 keys in its process arguments, which remain visible to an administrator who
 can inspect the container or host process.
+
+`CHAT_TEMPLATE_HOST_PATH` (empty by default) bind-mounts one host file
+read-only and passes it as `--chat-template`, replacing the template shipped
+inside the target checkpoint directory. Use it to adopt a template-only
+checkpoint update without re-staging weights; leave it empty to serve the
+checkpoint's own `chat_template.jinja`.
 
 Choose the DCP degree with one line. DCP4 uses the environment template as
 written:

@@ -43,7 +43,10 @@ Follow the
 to obtain or build the image, distribute it once through the direct fabric,
 and start four ranks. [`runtime.env.example`](runtime.env.example) exposes the
 model paths, image identity, DCP degree, context limit, scheduler budget, KV
-allocation, speculation, cache limits, network interfaces, and ports.
+allocation, speculation, cache limits, network interfaces, ports, and an
+optional chat-template override (`CHAT_TEMPLATE_HOST_PATH`, bind-mounted
+read-only and passed as `--chat-template`; empty serves the checkpoint's own
+template).
 
 The recommended profile uses:
 

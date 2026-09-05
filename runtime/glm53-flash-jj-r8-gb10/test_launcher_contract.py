@@ -420,6 +420,20 @@ printf '%s  %s\n' "$hash" "$2"
     assert "API_KEYS_FILE must be mode 0600" in result.stderr
 
 
+def test_launcher_exposes_optional_chat_template_override() -> None:
+    launcher = LAUNCHER.read_text(encoding="utf-8")
+    assert ': "${CHAT_TEMPLATE_HOST_PATH:=}"' in launcher
+    assert "CHAT_TEMPLATE_HOST_PATH must be an absolute host path when set" in launcher
+    assert "CHAT_TEMPLATE_HOST_PATH is not a readable regular file" in launcher
+    assert "CHAT_TEMPLATE_HOST_PATH is empty" in launcher
+    assert (
+        '-v "${CHAT_TEMPLATE_HOST_PATH}:/opt/sparkring/chat_template.jinja:ro"'
+        in launcher
+    )
+    assert "--chat-template /opt/sparkring/chat_template.jinja" in launcher
+    assert "CHAT_TEMPLATE_HOST_PATH=''" in ENVIRONMENT.read_text(encoding="utf-8")
+
+
 def test_launcher_fails_closed_on_unusable_api_key_files() -> None:
     launcher = LAUNCHER.read_text(encoding="utf-8")
     assert ': "${API_KEYS_FILE:=}"' in launcher

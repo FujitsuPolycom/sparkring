@@ -135,6 +135,7 @@ fi
 : "${FASTSAFETENSORS_QUEUE_SIZE:=1}"
 : "${ENABLE_PROMPT_TOKENS_DETAILS:=1}"
 : "${API_KEYS_FILE:=}"
+: "${CHAT_TEMPLATE_HOST_PATH:=}"
 
 die() {
   printf '%s\n' "$*" >&2
@@ -282,6 +283,16 @@ if [[ "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 ]]; then
     read-write|store-only) ;;
     *) die 'asynchronous page capture requires a publication-capable access mode' ;;
   esac
+fi
+if [[ -n "${CHAT_TEMPLATE_HOST_PATH}" ]]; then
+  [[ "${CHAT_TEMPLATE_HOST_PATH}" == /* ]] || \
+    die 'CHAT_TEMPLATE_HOST_PATH must be an absolute host path when set'
+  [[ "${CHAT_TEMPLATE_HOST_PATH}" != *:* && "${CHAT_TEMPLATE_HOST_PATH}" != *$'\n'* ]] || \
+    die 'CHAT_TEMPLATE_HOST_PATH cannot be represented safely as a Docker bind mount'
+  [[ -f "${CHAT_TEMPLATE_HOST_PATH}" && -r "${CHAT_TEMPLATE_HOST_PATH}" ]] || \
+    die 'CHAT_TEMPLATE_HOST_PATH is not a readable regular file'
+  [[ -s "${CHAT_TEMPLATE_HOST_PATH}" ]] || \
+    die 'CHAT_TEMPLATE_HOST_PATH is empty'
 fi
 case "${MULTIMODAL_INPUTS}" in
   0|1) ;;
@@ -766,6 +777,12 @@ fi
 
 # Text-only mode avoids loading the vision tower. Multimodal mode uses the
 # independently configurable image and video request limits.
+chat_template_mount=()
+chat_template_args=()
+if [[ -n "${CHAT_TEMPLATE_HOST_PATH}" ]]; then
+  chat_template_mount=(-v "${CHAT_TEMPLATE_HOST_PATH}:/opt/sparkring/chat_template.jinja:ro")
+  chat_template_args=(--chat-template /opt/sparkring/chat_template.jinja)
+fi
 multimodal_args=(--language-model-only)
 if [[ "${MULTIMODAL_INPUTS}" == 1 ]]; then
   multimodal_args=(
@@ -795,6 +812,7 @@ container_id="$(docker run -d \
   -v "${TARGET_MODEL_HOST_PATH}:/models/target:ro" \
   -v "${DFLASH_MODEL_HOST_PATH}:/dflash-draft:ro" \
   -v "${CACHE_HOST_ROOT}:/cache/jit" \
+  "${chat_template_mount[@]}" \
   "${sparkcache_source_args[@]}" \
   "${vllm_metrics_args[@]}" \
   "${sircl_args[@]}" \
@@ -867,6 +885,7 @@ container_id="$(docker run -d \
   --distributed-executor-backend mp --nnodes "${NODE_COUNT}" --node-rank "${rank}" \
   --master-addr "${MASTER_ADDR}" --master-port "${MASTER_PORT}" \
   --disable-custom-all-reduce --mamba-cache-mode align "${multimodal_args[@]}" \
+  "${chat_template_args[@]}" \
   --enable-chunked-prefill --dtype bfloat16 --kv-cache-dtype "${KV_CACHE_DTYPE}" \
   --quantization modelopt_mixed --attention-backend "${ATTENTION_BACKEND}" \
   --block-size 256 --moe-backend "${MOE_BACKEND}" --linear-backend "${LINEAR_BACKEND}" \
