@@ -75,6 +75,34 @@ def _normalize_b12x_bytes(root: Path) -> None:
             path.write_bytes(data.replace(b"\n", b"\r\n"))
 
 
+def _apply_b12x_overrides(root: Path, archive: Path, contract: dict) -> None:
+    """Apply checksum-bound selector files only over their expected source bytes."""
+    if _sha256(archive) != contract["archive_sha256"]:
+        raise ValueError("B12X override archive hash mismatch")
+    entries = contract["files"]
+    expected = {name for name, _, _ in entries}
+    if len(expected) != len(entries):
+        raise ValueError("Duplicate B12X override path")
+    with tarfile.open(archive) as source:
+        members = source.getmembers()
+        if (len(members) != len(expected) or {item.name for item in members} != expected
+                or any(not item.isfile() for item in members)):
+            raise ValueError("B12X override archive has an unexpected file set")
+        replacements = {}
+        for name, base_hash, result_hash in entries:
+            path = root / name
+            if not name.startswith("b12x/") or not path.resolve().is_relative_to((root / "b12x").resolve()):
+                raise ValueError("B12X override escapes package directory")
+            if _sha256(path) != base_hash:
+                raise ValueError(f"B12X override base hash mismatch: {name}")
+            data = source.extractfile(name).read()
+            if hashlib.sha256(data).hexdigest() != result_hash:
+                raise ValueError(f"B12X override result hash mismatch: {name}")
+            replacements[path] = data
+        for path, data in replacements.items():
+            path.write_bytes(data)
+
+
 def prepare(destination: Path, cache: Path | None = None) -> Path:
     """Create a complete, checksum-bound context for a network-disabled build."""
     destination = destination.resolve()
@@ -110,6 +138,11 @@ def prepare(destination: Path, cache: Path | None = None) -> Path:
     shutil.move(str(source_root), b12x_destination)
     shutil.rmtree(unpack)
     _normalize_b12x_bytes(b12x_destination)
+    if b12x.get("overrides"):
+        overrides = b12x["overrides"]
+        archive = destination / overrides["archive"]
+        shutil.copy2(HERE / overrides["archive"], archive)
+        _apply_b12x_overrides(b12x_destination, archive, overrides)
     b12x_files = _package_map(b12x_destination, "b12x")
     if _map_sha256(b12x_files) != b12x["package_files_sha256"]:
         raise ValueError("normalized B12X package does not match source-lock.json")

@@ -1,4 +1,5 @@
 import hashlib
+import io
 import importlib.util
 import json
 import tarfile
@@ -22,6 +23,43 @@ prepare_compute_source = _module("prepare_compute_source")
 verify_compute = _module("verify_compute")
 
 
+@pytest.mark.parametrize("fault", [None, "base", "result", "archive", "extra", "duplicate"])
+def test_b12x_selector_overrides_fail_closed(tmp_path: Path, fault: str | None) -> None:
+    root = tmp_path / "source"
+    path = root / "b12x" / "selector.py"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"base")
+    archive = tmp_path / "selector.tar.gz"
+    with tarfile.open(archive, "w:gz") as output:
+        names = ["b12x/selector.py"]
+        if fault == "extra":
+            names.append("b12x/unexpected.py")
+        for name in names:
+            member = tarfile.TarInfo(name)
+            member.size = len(b"result")
+            output.addfile(member, io.BytesIO(b"result"))
+    contract = {
+        "archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+        "files": [["b12x/selector.py", hashlib.sha256(b"base").hexdigest(),
+                   hashlib.sha256(b"result").hexdigest()]],
+    }
+    if fault == "base":
+        contract["files"][0][1] = "wrong"
+    elif fault == "result":
+        contract["files"][0][2] = "wrong"
+    elif fault == "archive":
+        contract["archive_sha256"] = "wrong"
+    elif fault == "duplicate":
+        contract["files"].append(contract["files"][0])
+    if fault:
+        with pytest.raises(ValueError):
+            prepare_compute_source._apply_b12x_overrides(root, archive, contract)
+        assert path.read_bytes() == b"base"
+    else:
+        prepare_compute_source._apply_b12x_overrides(root, archive, contract)
+        assert path.read_bytes() == b"result"
+
+
 def test_source_lock_binds_patch_routes_and_environment() -> None:
     lock = json.loads((HERE / "source-lock.json").read_text())
     patch = HERE / lock["vllm"]["patch"]
@@ -33,10 +71,13 @@ def test_source_lock_binds_patch_routes_and_environment() -> None:
         "replacement_archive_sha256"
     ]
     files = lock["vllm"]["files"]
-    assert len(files) == 14
+    assert len(files) == 24
     assert len({entry[0] for entry in files}) == len(files)
     assert all(base != result for _, base, result in files)
-    assert lock["b12x"]["revision"] == "b58f34eaf978277621efced6678e6713fd7122e4"
+    assert lock["b12x"]["revision"] == "ef308bac0f3b3eb8fea63e4013afc0c2ea1c6301"
+    assert len(lock["b12x"]["overrides"]["files"]) == 3
+    assert lock["vllm"]["loader_donor_revision"] == "17e341b9ede04269f81fcac69a29951a0668a94a"
+    assert lock["vllm"]["rng_donor_revision"] == "44e6766e3397e8fe8ed9c1fa8a8d2783bb4a2ae8"
     assert lock["environment"] == {
         "VLLM_B12X_DENSE_ACTIVATION_MODE": "auto",
         "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",

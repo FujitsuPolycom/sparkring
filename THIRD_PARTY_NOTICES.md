@@ -58,11 +58,14 @@ SparkRing implementation.
 ## 3. vLLM (referenced, patched, and selected source included)
 
 `runtime/glm53-spark-mtp3-mesh/compute/vllm-compute-files.tar.gz` includes
-fourteen vLLM Python files for GLM metadata reuse, dense-kernel integration,
-and the NVFP4 proposal head. The adjacent patch provides a readable diff;
+24 vLLM Python files for GLM metadata reuse, dense-kernel integration,
+the NVFP4 proposal head, deferred-weight ownership, and independent draft
+and rejection-sampling randomness. The adjacent patch provides a readable diff;
 `source-lock.json` records the base, donor revisions, and exact file hashes.
 These files derive from Local Inference Lab's vLLM fork at `3512b066` and
-`a8c796f3`, under Apache-2.0 with their contributor notices retained.
+`a8c796f3`, loader correction `17e341b9`, and independent-RNG backport
+`44e6766e` from [PR 653](https://github.com/local-inference-lab/vllm/pull/653),
+under Apache-2.0 with their contributor notices retained.
 
 The unified diffs under `runtime/deepseek0731-gb10/patches/` contain context
 and removed lines from vLLM, pinned to the source revision recorded by that
@@ -296,3 +299,16 @@ The native-MTP3 profile references
 Operators must obtain and use that checkpoint under its own license and
 notices. Native MTP uses its included prediction layer and does not require
 an external DFlash checkpoint.
+
+## 12. B12X selector source and MoE scale sharing
+
+The native-MTP3 compute package downloads B12X revision
+`ef308bac0f3b3eb8fea63e4013afc0c2ea1c6301`, including its shared native NVFP4
+scales for A4/A16 MoE paths. Three selector Python files are included in
+`runtime/glm53-spark-mtp3-mesh/compute/b12x-selector-files.tar.gz` from
+[B12X PR 316](https://github.com/local-inference-lab/b12x/pull/316), revision
+`9ac142824b4edb750892a0fb63d914230086495d`. They implement the top-k-512
+candidate buffer, exact overflow handling, and omission of unused terminal
+scores. These files are licensed under Apache-2.0; source notices are retained
+and the downloaded B12X archive supplies the license. The compute source lock
+binds the source archive and each base/result file hash.

@@ -60,13 +60,22 @@ The proposal-head and metadata implementation is derived from
 [Local Inference Lab vLLM revision `3512b066`](https://github.com/local-inference-lab/vllm/commit/3512b066e7796128c0c380ccc558182960f2f0ea),
 as retained in
 [revision `a8c796f3`](https://github.com/local-inference-lab/vllm/commit/a8c796f3af74106b2d8d441e9ec54588936a5388).
-The packaged compute source uses the complete Local Inference Lab B12X tree at
-[revision `b58f34ea`](https://github.com/local-inference-lab/b12x/commit/b58f34eaf978277621efced6678e6713fd7122e4).
-That tree includes MoE and
-dense-precision changes in addition to the head kernel. SparkRing does not
-claim an isolated dense-kernel result for this composition.
+The compute source uses Local Inference Lab B12X
+[revision `ef308bac`](https://github.com/local-inference-lab/b12x/commit/ef308bac0f3b3eb8fea63e4013afc0c2ea1c6301)
+for shared native MoE scale storage, with three source-checked selector files
+from [PR 316](https://github.com/local-inference-lab/b12x/pull/316). The vLLM
+composition also includes deferred-weight ownership from `17e341b9` and
+independent draft/rejection randomness from
+[PR 653](https://github.com/local-inference-lab/vllm/pull/653). Exact source and
+file identities are in the compute source lock.
 
 ## Recorded benchmark observations
+
+The [compute matrices](../performance/records/glm53-flash/spark-mtp3-compute-matrices-20260905.md)
+compare proposal-head, loader/RNG, scale-sharing, and selector configurations
+at C1/C2/C4/C8/C12/C16. They include averages across 8K/32K/64K context rows
+and source-hashed individual cells. Their compute images and transport bundle
+are identified separately from the combined image requiring qualification.
 
 See the [consolidated validation report](../performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
 for completed checks, repeat counts, and the remaining test plan.

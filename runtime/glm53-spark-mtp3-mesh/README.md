@@ -36,6 +36,12 @@ their limitations.
 
 ## Operator benchmark observations
 
+The [compute matrices](../../performance/records/glm53-flash/spark-mtp3-compute-matrices-20260905.md)
+record full C1/C2/C4/C8/C12/C16 results for the proposal head, loader/RNG fixes,
+shared MoE scales, and top-k selector. Column averages give each of the
+8K/32K/64K contexts equal weight. The records identify their measured images;
+they do not substitute for validation of the combined stream-safety image.
+
 The [consolidated validation report](../../performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
 collects the completed tests, three-pass prefill measurements, and remaining
 work. Use that report to avoid repeating checks already covered by receipts.

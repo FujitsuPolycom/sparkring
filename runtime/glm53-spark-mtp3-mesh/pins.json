@@ -4,10 +4,10 @@
   "image_pins": "../glm53-flash-jj-r8-gb10/pins.json",
   "compute": {
     "source_lock": "compute/source-lock.json",
-    "source_lock_sha256": "2a444f7c1ad4319f64afbffb16403491a4863934372cf818f18c510d58c0d00e",
+    "source_lock_sha256": "9a9568bc9f6bc34f4ee2ac5ebe881c3b8a6de289b26aabdc4056ea2852e49fd9",
     "vllm_base_revision": "e02b174693e13859de61811b5e8cd13d5308e259",
-    "b12x_revision": "b58f34eaf978277621efced6678e6713fd7122e4",
-    "b12x_tree": "7637fe5fb4d88882e0d18cdacc68c493f478499d",
+    "b12x_revision": "ef308bac0f3b3eb8fea63e4013afc0c2ea1c6301",
+    "b12x_tree": "dcf039e5e754136275835ea997e6b9abbb6b15ae",
     "cuda_version": "13.3"
   },
   "target": {
@@ -17,9 +17,39 @@
     "index_sha256": "db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544",
     "checkpoint_identity": "357f6a86160ebd5caff25d9a10d9f29e8547b16c6c73e78751fa69fde11ac4e4"
   },
-  "speculation": {"method": "mtp", "num_speculative_tokens": 3, "attention_backend": "B12X", "draft_tensor_parallel_size": 4, "draft_sample_method": "probabilistic", "rejection_sample_method": "standard"},
-  "capture_sizes": [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64],
-  "captured_sircl_query_rows": [16, 20, 24, 28, 32],
+  "speculation": {
+    "method": "mtp",
+    "num_speculative_tokens": 3,
+    "attention_backend": "B12X",
+    "draft_tensor_parallel_size": 4,
+    "draft_sample_method": "probabilistic",
+    "rejection_sample_method": "standard"
+  },
+  "capture_sizes": [
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    28,
+    32,
+    36,
+    40,
+    44,
+    48,
+    52,
+    56,
+    60,
+    64
+  ],
+  "captured_sircl_query_rows": [
+    16,
+    20,
+    24,
+    28,
+    32
+  ],
   "canonical_bundle_manifest_sha256": "69313e19e881ec93e9ed3bd150d2f24fc6b444488ac729a69f45d038e2243500",
   "measured_bundle_manifest_sha256": "701bdc42069a97492981b8f34e006ebfa9e68c2160472cba631b56965efae226",
   "bundle_difference": "The serving measurements use the recorded measured bundle. The canonical bundle additionally preserves capture-ID stream guards and orders shared staging/output copies across streams; routing and collective algorithms are unchanged.",

@@ -363,7 +363,7 @@ def test_profile_pins_exact_compute_source_and_quantization_environment():
         "VLLM_LM_HEAD_A16": "1",
         "VLLM_MXFP8_LM_HEAD": "0",
     }
-    assert len(lock["vllm"]["files"]) == 14
+    assert len(lock["vllm"]["files"]) == 24
 
 
 def test_schema_accepts_research_only_status():
