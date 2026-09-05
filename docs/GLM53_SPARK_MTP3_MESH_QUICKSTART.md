@@ -4,18 +4,18 @@ Status: **research-only**. The profile's composition, managed host service,
 and CPU checks are **implemented**. The
 [managed functional record](../performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md)
 qualifies bounded installer, policy-scoped fault/recovery, post-recovery
-readiness, and one persistent-cache recall case for the published managed
-image identified below.
+readiness, and one persistent-cache recall case for the image digest recorded
+in that report.
 Broader cache/failure coverage and unattended serving remain unqualified.
 
 The [public application-install record](../performance/records/glm53-flash/spark-mtp3-public-application-install-20260905.md)
 covers fresh public checkouts, extracted image artifacts, empty application
 caches, installation, native correctness, and model-restart cache restoration
 on four prepared hosts. It does not qualify a factory-reset OS/network setup.
-Both functional records are image-specific to the earlier published
-composition. The NVFP4/BF16 proposal-head performance record does not transfer
-their restart, cache, or failure-containment qualification to the current
-public image ID; repeat those checks before describing it as qualified.
+These functional records qualify only their recorded image digests. Restart,
+cache restoration, and failure containment require validation for the image
+pinned in `runtime/glm53-spark-mtp3-mesh/public-image.json`; proposal-head
+throughput measurements do not establish those properties.
 
 **Starting with four stock Sparks and no image?** Follow
 [the managed-mesh prerequisite section](PREREQUISITES.md#four-spark-managed-hardware-forwarded-mesh)
@@ -83,7 +83,8 @@ for completed checks, repeat counts, and the remaining test plan.
 The [profile results table](../runtime/glm53-spark-mtp3-mesh/README.md#operator-benchmark-observations)
 shows the completed three-run C1/C2/C4/C8 screen. At 8K, aggregate decode means
 were **51.6, 76.9, 120.8, and 168.8 tok/s**. Against two shared-BF16-head
-controls using the same metadata+dense+B12X base, C1 improved **8.22% raw** and
+controls using the same CUDA version, B12X kernels, metadata reuse, and dense-kernel
+integration, C1 improved **8.22% raw** and
 **4.90% in normalized sequence steps/s**. Higher concurrency was mixed and
 prefill means were flat within 0.36% over 8K–128K. The linked record provides
 the receipt hashes, exact settings, and limitations.
@@ -377,18 +378,19 @@ the dedicated namespace
 `glm53-spark-df116c4f-mtp3-nvfp4-a16-b58f34ea-mesh4204fabc-tail-cow-v2`;
 shared-BF16-head and external-DFlash entries must not be renamed into it. The
 `draft_policy=separate` field describes cache registration layout, not an
-external draft model. The linked functional record
-includes an uncached publication and stopped-container restoration under the
-previous image's identity. Persistent restoration under the new namespace is
-unqualified until the same stopped-container check passes. The earlier record
-covers one recall prompt and does not qualify other checkpoints, all context
-lengths, or concurrent cache workloads.
+external draft model. The
+[managed functional record](../performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md)
+includes an uncached publication and stopped-container restoration for its
+recorded image and namespace. Restoration under the NVFP4-proposal-head
+namespace named above is research-only until a stopped-container restore test
+passes for that configuration. The linked record covers one recall prompt,
+not all context lengths or concurrent cache workloads.
 
 ## Obtain the image and target
 
 Pull the published Linux/ARM64 managed image on every Spark. No local build
 is required. The [registry receipt](../runtime/glm53-spark-mtp3-mesh/public-image.json)
-records anonymous access and its match to the tested image. The separate
+records anonymous access and the published image's manifest/config identities. The separate
 [content receipt](../runtime/glm53-spark-mtp3-mesh/image-receipt.json) is the
 input accepted by the renderer, installer, and native qualification runner.
 Keep both with the checkout; do not substitute `public-image.json` for the

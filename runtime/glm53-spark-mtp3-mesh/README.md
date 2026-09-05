@@ -56,34 +56,40 @@ mean aggregate output tokens per second across those requests.
 |---:|---:|---:|---:|---:|
 | 8K | 51.6 | 76.9 | 120.8 | 168.8 |
 
-Relative to the same metadata+dense+B12X composition with a shared BF16
-proposal head, C1 improved 8.22% in raw output throughput and 4.90% in
+Relative to a shared-BF16-proposal-head control with the same CUDA version,
+B12X kernels, metadata reuse, and dense-kernel integration, C1 improved 8.22%
+in raw output throughput and 4.90% in
 acceptance-normalized sequence steps/s. C2/C4/C8 results were mixed. Repeated
 prefill means moved by no more than 0.36% over 8K–128K contexts, so no prefill
-gain is claimed. The earlier
+gain is claimed. The
 [broader matrix](../../performance/records/glm53-flash/spark-mtp3-mesh-20260905.md)
-belongs to the previous image configuration and remains historical context.
+records measurements for its explicitly identified image and serving settings.
 The head-specific control preserves the verifier implementation; the complete
 CUDA 13.3/B12X `b58f34ea` image changes other target computation relative to
-the previous public image, so cross-image gains cannot be assigned only to the
+the configuration recorded in that matrix, so cross-image gains cannot be assigned only to the
 proposal head or dense kernels.
 
 The published image's
 [compute-equivalence record](compute-image-equivalence.json) matches every
 vLLM, B12X, and SparkCache package file and selected environment entry to the
-tested private image. That supports applying the recorded compute result to the
-published bytes. Native transport, model startup, restart, and persistent-cache
-checks remain image-ID-specific and have not been repeated on the public image.
+serving image identified in that record. This establishes compute-package
+content equivalence, not end-to-end performance equivalence: the mounted
+transport differs outside that comparison. Throughput belongs to measured
+serving image `04d5a35b`; the full digest is in the equivalence record. Native
+transport, model startup, restart, and persistent-cache checks remain
+image-specific and have not been repeated on published image `69c794bf`.
 
 The separate [Estonia accuracy record](../../performance/records/glm53-flash/spark-mtp3-country-recall-20260905.md)
 reports **30/30 correct** at C8 on one repeated 133,208-token prompt, no
 output-limit hits, and 1.96 s mean cache-primed TTFT. Its 23.8 tok/s figure
-uses summed request times, not cluster wall time. Both records retain the
-operator screenshots and metric definitions.
+uses summed request times, not cluster wall time. The Estonia record includes
+the operator screenshot and metric definitions.
 
 The [long-context needle hunt](../../performance/records/glm53-flash/spark-mtp3-needle-20260905.md)
 passed **4/4** exact-value, revision, and cross-reference checks, reaching
-**507,367 actual prompt tokens** on the published image.
+**507,367 actual prompt tokens** on serving image
+`sha256:26273b8e358df139ae913610a5d43084ff0fd08aafe282ef633a3bc74afefe47`,
+as recorded in that report. It is not a measurement of image `69c794bf`.
 
 ## Composition
 
@@ -169,7 +175,7 @@ serving lifecycle. Use authenticated managed readiness for serving.
 Native MTP uses the target checkpoint as the draft identity. The profile sets
 SparkCache's `draft_policy=separate` because that describes the registered
 state layout; it does not request an external model. A dedicated namespace
-includes `mtp3-nvfp4-a16-b58f34ea` so the new compute and proposal-head
+includes `mtp3-nvfp4-a16-b58f34ea` so the NVFP4-proposal-head compute
 composition cannot restore shared-BF16-head or external-DFlash entries.
 Do not relabel those entries to avoid cache misses. Persistent restore under
 the native-MTP identity requires its own qualification.

@@ -135,14 +135,14 @@ def test_layered_file_map_rejects_unbound_or_wrong_base_override(tmp_path):
         )
 
 
-def test_complete_package_file_map_rejects_stale_parent_module(tmp_path):
+def test_complete_package_file_map_rejects_unmanifested_module(tmp_path):
     package = tmp_path / "b12x"
     package.mkdir()
-    current = package / "current.py"
-    current.write_text("VALUE = 1\n", encoding="utf-8")
-    records = {"b12x/current.py": verifier.sha256(current)}
+    declared = package / "declared.py"
+    declared.write_text("VALUE = 1\n", encoding="utf-8")
+    records = {"b12x/declared.py": verifier.sha256(declared)}
     assert verifier.verify_complete_package_file_map(tmp_path, "b12x", records) == 1
-    (package / "stale_parent.py").write_text("VALUE = 0\n", encoding="utf-8")
+    (package / "unmanifested.py").write_text("VALUE = 0\n", encoding="utf-8")
     with pytest.raises(ValueError, match="complete manifest"):
         verifier.verify_complete_package_file_map(tmp_path, "b12x", records)
 

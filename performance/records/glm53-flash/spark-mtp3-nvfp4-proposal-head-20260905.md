@@ -26,7 +26,7 @@ which records CUDA 13.3.33, complete B12X revision
 port from Local Inference Lab vLLM revision
 `3512b066e7796128c0c380ccc558182960f2f0ea`, and dense wrapper changes from
 revision `a8c796f3af74106b2d8d441e9ec54588936a5388`. The complete B12X tree also
-contains MoE and other September changes, so these runs do not isolate a dense
+contains MoE and other package changes in B12X revision `b58f34ea`, so these runs do not isolate a dense
 kernel contribution.
 
 The changed variable was a separate runtime-NVFP4 proposal head with BF16
@@ -34,11 +34,12 @@ activations. The target/verifier head kept its BF16 checkpoint representation.
 The proposal head adds 85.08 MiB of persistent packed weight and scale storage
 per rank while the retained BF16 target head remains allocated. It is not a net
 85.08 MiB model-memory reduction. The shared-BF16-head control used the same
-metadata+dense+B12X base without the separate proposal allocation.
-Thus the proposal-head comparison preserves the verifier implementation. The
-complete compute image still differs from the previous public image in CUDA,
-metadata, dense, MoE, and B12X code; “BF16 verifier retained” is not a claim
-that every target-side kernel is unchanged across those images.
+CUDA version, B12X kernels, metadata reuse, and dense-kernel integration without
+the separate proposal allocation. Thus the proposal-head comparison preserves
+the verifier implementation. Comparisons against the separate
+[mesh matrix](spark-mtp3-mesh-20260905.md) also differ in CUDA, metadata,
+dense-kernel integration, MoE, and B12X code; retaining a BF16 verifier head
+does not imply that every target-side kernel matches between those configurations.
 
 The benchmark used harness version 0.4.32, temperature 1.0, ignored EOS, a
 20-second sustained-decode window, 8,192-token decode context, and concurrency

@@ -26,7 +26,7 @@ The site plan and native-MTP3 launch configuration remain separate inputs.
 ## Published image
 
 The [public registry receipt](public-image.json) binds the published manifest
-to the tested Linux/ARM64 image. Pull before using its local image ID:
+to its Linux/ARM64 config-image identity. Pull before using its local image ID:
 
 ```bash
 set -euo pipefail

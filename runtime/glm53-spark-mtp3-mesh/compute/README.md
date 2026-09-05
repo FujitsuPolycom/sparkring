@@ -35,7 +35,7 @@ while network access is available. The prepared directory contains the pinned
 B12X source and CUDA archives. Docker copies that directory into the build and
 runs `apply_compute.py` with network access disabled. The installer verifies
 the parent hashes before extracting the replacement archive; this preserves the
-mixed line endings of the tested source without requiring Git in the image.
+mixed line endings bound by the source lock without requiring Git in the image.
 `verify_compute.py`
 requires exact installed hashes and rejects missing or partial source maps.
 
@@ -48,8 +48,7 @@ revision `3512b066e7796128c0c380ccc558182960f2f0ea`, with dense-kernel integrati
 from revision `a8c796f3af74106b2d8d441e9ec54588936a5388`; vLLM is licensed under
 Apache License 2.0.
 
-B12X source archives use LF endings. The tested ARM64 image was assembled from
-a Windows checkout and contains CRLF bytes for Python, C, and package Markdown files. The
-preparation step performs that deterministic byte conversion so the public
-image can be compared exactly with the tested image. Compressed profile data
-retain the archive bytes.
+B12X source archives use LF endings. Source preparation converts Python, C,
+and package Markdown files to CRLF to reproduce the package hashes in
+`source-lock.json`. Compressed profile data retain the archive bytes. This byte-level
+contract makes package-content verification independent of checkout settings.
