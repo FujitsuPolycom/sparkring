@@ -92,11 +92,11 @@ def test_container_spec_rejects_configuration_drift(exact_container_spec, change
 
 def test_environment_drift_does_not_disclose_values(exact_container_spec):
     _, _, expected, actual = exact_container_spec
-    actual['Config']['Env'].append('API_KEY=do-not-disclose-this-value')
+    actual['Config']['Env'].append('API_KEY=dummy')
     with pytest.raises(ValueError) as captured:
         managed_install.validate_container_spec(actual, expected)
     assert 'API_KEY' in str(captured.value)
-    assert 'do-not-disclose-this-value' not in str(captured.value)
+    assert 'dummy' not in str(captured.value)
 
 
 @pytest.mark.parametrize('change', ['unknown_flag', 'duplicate_env', 'inherited_env', 'duplicate_mount', 'anonymous_volume'])
