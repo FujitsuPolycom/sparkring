@@ -138,6 +138,30 @@ esac
 image=ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd
 container_name="deepseek-v4-flash-r$NODE_RANK"
 model_container_path=/models/deepseek-v4-flash-0731
+served_model_name=${SERVED_MODEL_NAME:-deepseek-v4-flash-0731}
+
+# HuggingFace hub snapshot support: when MODEL_HOST_PATH points into an HF
+# hub cache (`<repo>/snapshots/<revision>/`), every model file inside is a
+# symlink whose relative target ../../blobs/<sha> resolves above the mounted
+# snapshot tree. Bind the sibling blobs directory read-only so the container
+# resolves those targets to the real weight payloads. Plain checkpoint
+# directories are unaffected and gain no extra mount.
+model_blobs_path=
+case "/$MODEL_HOST_PATH/" in
+    */snapshots/*/)
+        model_blobs_path=${MODEL_HOST_PATH%/snapshots/*}/blobs
+        ;;
+    *) ;;
+esac
+if [ -n "$model_blobs_path" ]; then
+    [ -d "$model_blobs_path" ] \
+        || die "HF snapshot MODEL_HOST_PATH has no sibling blobs dir: $model_blobs_path"
+    [ -r "$model_blobs_path" ] \
+        || die "MODEL_HOST_PATH sibling blobs dir is not readable: $model_blobs_path"
+    blobs_mount=(-v "$model_blobs_path:/blobs:ro")
+else
+    blobs_mount=()
+fi
 speculative_config=$(printf \
     '{"method":"dspark","num_speculative_tokens":%s,"moe_backend":"b12x"}' \
     "$NUM_SPECULATIVE_TOKENS")
@@ -153,6 +177,7 @@ command=(
     --ulimit memlock=-1:-1
     --device /dev/infiniband
     -v "$MODEL_HOST_PATH:$model_container_path:ro"
+    "${blobs_mount[@]}"
     -v "$CACHE_HOST_PATH:/cache"
     --env-file "$env_file"
     --entrypoint /opt/venv/bin/vllm
@@ -179,7 +204,7 @@ command=(
     --enable-auto-tool-choice
     --tool-call-parser deepseek_v4
     --speculative-config "$speculative_config"
-    --served-model-name deepseek-v4-flash-0731
+    --served-model-name "$served_model_name"
 )
 
 if [ "$NODE_RANK" = 0 ]; then
@@ -191,6 +216,7 @@ fi
 printf "Local rank input checks passed.\n"
 printf '  rank: %s\n' "$NODE_RANK"
 printf '  model: %s\n' "$MODEL_HOST_PATH"
+printf '  served model: %s\n' "$served_model_name"
 printf '  cache: %s\n' "$CACHE_HOST_PATH"
 printf '  MAX_MODEL_LEN: %s\n' "$MAX_MODEL_LEN"
 printf '  MAX_NUM_SEQS: %s\n' "$MAX_NUM_SEQS"
