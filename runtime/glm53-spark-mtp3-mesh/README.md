@@ -55,11 +55,11 @@ operator image, including its native library. For the published-image
 quickstart, skip composition and render using its extracted canonical bundle.
 
 ```bash
-python runtime/glm53-spark-mtp3-mesh/profile.py bundle \
+python3 runtime/glm53-spark-mtp3-mesh/profile.py bundle \
   --base-sircl build/base-sircl \
   --output build/mtp3-mesh-bundle
 
-python runtime/glm53-spark-mtp3-mesh/profile.py render \
+python3 runtime/glm53-spark-mtp3-mesh/profile.py render \
   --site /srv/sparkring/site/mtp3-mesh.json \
   --bundle /srv/sparkring/artifacts/mtp3-mesh-bundle \
   --image-receipt runtime/glm53-spark-mtp3-mesh/image-receipt.json \
@@ -115,7 +115,7 @@ the native-MTP identity requires its own qualification.
 ## Tests
 
 ```bash
-python -m pytest runtime/glm53-spark-mtp3-mesh \
+python3 -m pytest runtime/glm53-spark-mtp3-mesh \
   spark_transport/experiments/glm53_rocenante_overlay \
   spark_transport/experiments/cx7_hairpin_diagonal -q
 ```

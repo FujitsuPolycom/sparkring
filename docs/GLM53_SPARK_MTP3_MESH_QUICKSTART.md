@@ -441,7 +441,7 @@ to zero to request persistent serving. The managed service supplies
 `--managed` itself and does not execute the bounded marker argument arrays.
 
 ```bash
-python runtime/glm53-spark-mtp3-mesh/profile.py render \
+python3 runtime/glm53-spark-mtp3-mesh/profile.py render \
   --site /srv/sparkring/site/mtp3-mesh.json \
   --bundle /srv/sparkring/artifacts/mtp3-mesh-bundle \
   --image-receipt runtime/glm53-spark-mtp3-mesh/image-receipt.json \
@@ -553,7 +553,7 @@ child image before starting any model containers. The following
 command prints a plan without contacting hosts:
 
 ```bash
-python runtime/glm53-spark-mtp3-mesh/qualification/run_native.py \
+python3 runtime/glm53-spark-mtp3-mesh/qualification/run_native.py \
   --launch build/mtp3-mesh-launch \
   --image-receipt runtime/glm53-spark-mtp3-mesh/image-receipt.json \
   --output /path/to/private-receipts/native
@@ -589,13 +589,13 @@ management address:
 ```bash
 export MTP_ENDPOINT='http://RANK0_MANAGEMENT_ADDRESS:8015'
 mkdir -p /path/to/private-receipts
-python runtime/glm53-spark-mtp3-mesh/qualification/recall_prompt.py \
+python3 runtime/glm53-spark-mtp3-mesh/qualification/recall_prompt.py \
   --output /path/to/private-receipts/recall.txt
-python runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
+python3 runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
   --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark \
   --kind semantic --output /path/to/private-receipts/semantic-before \
   --execute-authorized
-python runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
+python3 runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
   --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark \
   --kind persistent --phase before-restart \
   --prompt-file /path/to/private-receipts/recall.txt \
@@ -639,14 +639,14 @@ process cannot prove disk restoration. Wait for compatible inventory discovery
 on all ranks, then run:
 
 ```bash
-python runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
+python3 runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
   --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark \
   --kind persistent --phase after-restart \
   --prompt-file /path/to/private-receipts/recall.txt \
   --expected-text 'cobalt orchard lantern' --max-tokens 512 --temperature 1 \
   --reference /path/to/private-receipts/prefix-before \
   --output /path/to/private-receipts/prefix-after --execute-authorized
-python runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
+python3 runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py \
   --endpoint "$MTP_ENDPOINT" --model glm-5.3-flash-spark \
   --kind semantic --output /path/to/private-receipts/semantic-after \
   --execute-authorized
