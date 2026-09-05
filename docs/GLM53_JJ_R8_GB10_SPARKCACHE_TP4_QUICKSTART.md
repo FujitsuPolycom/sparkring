@@ -274,19 +274,21 @@ When `SPARKCACHE_ENABLED=0`, only the DCP value needs to change.
 
 The launcher selects the matching GLM KV geometry automatically:
 
-| DCP | KV interleave | Full-CKV prefill gather | Default FP8 KV per rank | Approx. logical KV capacity |
+| DCP | KV interleave | Full-CKV prefill gather | Default FP8 KV per rank | Approx. recorded logical KV capacity |
 |---:|---:|---:|---:|---:|
-| 1 | 1 token | disabled | 26 GiB | 1.30M tokens |
-| 2 | 4 tokens | enabled | 30 GiB | 2.90M tokens |
-| 4 | 4 tokens | enabled | 24 GiB | 4.32M tokens |
+| 1 | 1 token | disabled | 24 GiB | ~1.30M tokens |
+| 2 | 4 tokens | enabled | 24 GiB | ~2.90M tokens |
+| 4 | 4 tokens | enabled | 24 GiB | ~4.32M tokens |
 
-The capacity column is the model-wide value reported by vLLM. Do not multiply
-it by the four physical ranks.
+The capacity figures are model-wide reference measurements at 26/30/24 GiB
+per rank for DCP1/2/4 respectively; do not multiply them by four. All three
+profiles default to 25,769,803,776 bytes (24 GiB). Read the actual available
+capacity from vLLM's startup output.
 
 The recorded DCP4 deployment used 24 GiB per rank and completed exact 900K and
-1M needle restores. The DCP1 profile completed a 942,898-token needle
-retrieval under the 1M request limit. Set `KV_CACHE_MEMORY_BYTES` to a positive
-byte count to override the topology-aware `auto` policy.
+1M needle restores. The DCP1 942,898-token needle retrieval used 26 GiB per rank.
+Set `KV_CACHE_MEMORY_BYTES` to a positive byte count to override `auto`;
+for example, `27917287424` explicitly requests 26 GiB.
 
 Choose persistent SparkCache or vLLM's GPU prefix cache alone without changing
 the image:

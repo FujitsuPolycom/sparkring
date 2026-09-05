@@ -181,8 +181,8 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     assert defaults["prefill_schedule_interval"] == 2
     assert defaults["shared_prefix_lease_ttl_seconds"] == 300
     assert defaults["kv_cache_bytes_per_rank"] == {
-        "dcp1": 27917287424,
-        "dcp2": 32212254720,
+        "dcp1": 25769803776,
+        "dcp2": 25769803776,
         "dcp4": 25769803776,
     }
     assert defaults["full_ckv_gather_max_tokens"] == 524288

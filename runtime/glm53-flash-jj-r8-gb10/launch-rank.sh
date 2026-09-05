@@ -196,16 +196,8 @@ esac
   die 'DECODE_CONTEXT_PARALLEL_SIZE must divide TENSOR_PARALLEL_SIZE'
 
 if [[ "${KV_CACHE_MEMORY_BYTES}" == auto ]]; then
-  if (( DECODE_CONTEXT_PARALLEL_SIZE == 1 )); then
-    # This reservation completed a 942,767-token request without host OOM.
-    KV_CACHE_MEMORY_BYTES=27917287424
-  elif (( DECODE_CONTEXT_PARALLEL_SIZE == 2 )); then
-    # DCP2 retains the recorded 30 GiB capacity configuration.
-    KV_CACHE_MEMORY_BYTES=32212254720
-  else
-    # DCP4 uses 24 GiB to retain host-memory headroom under concurrent serving.
-    KV_CACHE_MEMORY_BYTES=25769803776
-  fi
+  # Keep the per-rank allocation uniform while DCP controls cache geometry.
+  KV_CACHE_MEMORY_BYTES=25769803776
 else
   require_positive_uint KV_CACHE_MEMORY_BYTES
 fi

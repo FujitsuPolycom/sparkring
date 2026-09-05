@@ -129,8 +129,8 @@ printf '%s  %s\n' "$hash" "$2"
         path.write_text("fixture", encoding="utf-8")
 
     for dcp, interleave, gather, kv_bytes in (
-        (1, "1", "0", "27917287424"),
-        (2, "4", "1", "32212254720"),
+        (1, "1", "0", "25769803776"),
+        (2, "4", "1", "25769803776"),
         (4, "4", "1", "25769803776"),
     ):
         config = tmp_path / f"dcp{dcp}.env"
@@ -203,6 +203,28 @@ printf '%s  %s\n' "$hash" "$2"
         assert extra["spark_cache_shared_prefix_lease_ttl_seconds"] == 300
         assert "spark_cache_store" not in extra
         assert "spark_cache_restore" not in extra
+
+        # Explicit byte counts override auto without changing other arguments.
+        original_config = config.read_text(encoding="utf-8")
+        config.write_text(original_config + "\nKV_CACHE_MEMORY_BYTES=21474836480\n",
+                          encoding="utf-8", newline="\n")
+        override = subprocess.run(
+            ["bash", _bash_path(LAUNCHER), "0", _bash_path(config)],
+            cwd=ROOT, text=True, capture_output=True, check=False,
+        )
+        assert override.returncode == 0, override.stderr
+        expected_override = arguments.copy()
+        expected_override[kv_index + 1] = "21474836480"
+        assert capture.read_text(encoding="utf-8").splitlines() == expected_override
+        if dcp == 4:
+            config.write_text(original_config + "\nKV_CACHE_MEMORY_BYTES=25769803776\n",
+                              encoding="utf-8", newline="\n")
+            unchanged = subprocess.run(
+                ["bash", _bash_path(LAUNCHER), "0", _bash_path(config)],
+                cwd=ROOT, text=True, capture_output=True, check=False,
+            )
+            assert unchanged.returncode == 0, unchanged.stderr
+            assert capture.read_text(encoding="utf-8").splitlines() == arguments
 
     config = tmp_path / "dcp1-vllm-prefix-only.env"
     config.write_text(
