@@ -42,8 +42,8 @@ does not delete model weights or persistent SparkCache data. Stop unrelated
 containers and GPU workloads before invoking this host-wide operation.
 
 Direct systemd model startup checks the memory thresholds but does not compact
-memory. Model arming and compaction share a host-local lock, so the managed
-model cannot start while compaction is in progress. Use one cluster coordinator
+memory. A host-local lock prevents compaction from overlapping the step that
+authorizes managed model startup. Use one cluster coordinator
 at a time; direct `docker start` bypasses the managed startup contract.
 
 ## Prerequisites and identities
