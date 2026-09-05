@@ -58,6 +58,18 @@ evidence is published for that combination.
 Six-Spark GLM and KIMI work is research-only and is not part of the supported
 repository surface.
 
+The four-Spark GLM-5.3 NVFP4-Spark native-MTP3 hardware-forwarded mesh profile
+is research-only. `runtime/glm53-spark-mtp3-mesh/` owns its pins, bundle
+composition, site rendering, image packaging, and managed host lifecycle.
+`MANAGED_MESH.md` defines installation, authenticated startup gates,
+non-expiring marker ownership, and coordinated stop/recovery. Managed
+lifecycle evidence qualifies only the bounded cases in
+`performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md`;
+hot replacement beneath live QPs and unattended high availability are
+unsupported. Do not treat the base
+image's SIRCL-only qualification or a different child image's functional
+record as qualification of this managed mesh deployment.
+
 Maintained Python trees are `spark_transport/`, `runtime/`, `scripts/`, and
 `performance/`. The GLM-5.2, GLM-5.3, and Qwen runtime builders are
 `runtime/exl3-r7/`, `runtime/glm53-flash/`, and `runtime/qwen38/`. Do not add
@@ -75,6 +87,7 @@ choosing one.
 | GLM-5.3 Flash source-built base, model, DFlash, and NCCL pins | `runtime/glm53-flash/pins.json` |
 | GLM-5.3 Flash DCP1/DCP2/DCP4 operator image, vLLM composition, and SparkCache pins | `runtime/glm53-flash-jj-r8-gb10/pins.json` |
 | GLM-5.3 Flash DCP4 operator site and adjustable runtime | `scripts/config/glm53-flash-tp4-site.example.yaml`, then `runtime/glm53-flash-jj-r8-gb10/runtime.env.example` |
+| GLM-5.3 NVFP4-Spark native-MTP3 mesh profile | `runtime/glm53-spark-mtp3-mesh/pins.json`, then its private site/fabric inputs; `docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md` describes the supervised host boundary |
 | GLM-5.3 Flash source-bound TP4/DCP1 site and runtime profiles | `scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-site.example.yaml`, then the selected `scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1*.example.json` |
 | Qwen3.8-27B runtime build | `runtime/qwen38/README.md` |
 | GLM/DeepSeek runtime base and model pins | `runtime/faststart-lock.json` |
@@ -107,7 +120,7 @@ test imports torch:
 python -m pip install -r requirements-dev.txt
 python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.11.0"
 ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance
-python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
+python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
 ```
 
 The test suite is CPU-only contract coverage. It does not validate CUDA,
@@ -120,6 +133,10 @@ RDMA, live pair/cycle serving, or a performance result.
 DFlash2, patched NCCL, SparkCache, and vLLM lease-contract identities.
 `runtime/glm53-flash-jj-r8-gb10/` composes the source-pinned GB10 operator
 image and exposes the DCP1, DCP2, and DCP4 launch contract.
+`runtime/glm53-spark-mtp3-mesh/` composes the research-only native-MTP3 mesh
+profile using that operator image. The selected communication source and
+license are in `third_party/b12x_roce/`; the source-bound routing and host
+fabric planner are in `spark_transport/experiments/`.
 `runtime/deepseek0731-gb10/` builds the hardened DeepSeek-V4-Flash-0731 image,
 and `runtime/qwen38/` builds the Qwen3.8-27B ARM64 image.
 `runtime/faststart-lock.json` pins the generic GLM/rollback image, the hardened

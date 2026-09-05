@@ -36,6 +36,14 @@ The external BF16 draft is
 [`incoai/GLM-5.3-Flash-DFlash2`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2).
 Exact revisions and source-tree hashes are in [`pins.json`](pins.json).
 
+The launcher also accepts `TARGET_MODEL_VARIANT=nvfp4-spark` and
+`SPECULATION_METHOD=mtp`. The separate
+[native-MTP3 mesh profile](../glm53-spark-mtp3-mesh/README.md) supplies its
+target revision, depth-three graph sizes, transport bundle, and cache identity.
+That profile requires no external draft checkpoint. Its hardware-forwarded
+mesh and native-MTP cache namespace are research-only, not covered by the
+DFlash/SIRCL functional qualification described below.
+
 ## Use the runtime
 
 Follow the
@@ -68,7 +76,7 @@ The recommended profile uses:
 | FlashInfer autotuning | disabled |
 | model loader | fastsafetensors with queue size 1 |
 | multimodal requests | up to four images and one video per request |
-| FP8 KV allocation | 24 GiB for the default DCP4 profile; 26 GiB for DCP1; 30 GiB for DCP2 |
+| FP8 KV allocation | 24 GiB per rank for DCP1, DCP2, and DCP4; explicit byte override supported |
 | DFlash2 depth | 7 |
 | SparkCache publication | flat copy-on-write page tails (`tail-cow-v2`) |
 | shared GPU-prefix retention | up to 300 seconds |
@@ -77,6 +85,8 @@ The recommended profile uses:
 DCP1 resolves to one-token KV interleaving without full-CKV gather. DCP2 and
 DCP4 resolve to four-token KV interleaving with full-CKV gather. Operators can
 change every value in the environment file without rebuilding the image.
+Read model-wide KV capacity from vLLM's startup output. The quickstart lists
+the reference capacity measurements and their memory allocations.
 `SPARKCACHE_ENABLED=0` omits the persistent connector while retaining vLLM's
 GPU prefix cache; `SPARKCACHE_ENABLED=1` enables both layers.
 

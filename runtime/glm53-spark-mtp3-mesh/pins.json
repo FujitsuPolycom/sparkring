@@ -1,0 +1,34 @@
+{
+  "schema": "sparkring-glm53-spark-mtp3-mesh/v1",
+  "status": "research-only",
+  "image_pins": "../glm53-flash-jj-r8-gb10/pins.json",
+  "target": {
+    "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+    "revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "config_sha256": "e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23",
+    "index_sha256": "db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544",
+    "checkpoint_identity": "357f6a86160ebd5caff25d9a10d9f29e8547b16c6c73e78751fa69fde11ac4e4"
+  },
+  "speculation": {"method": "mtp", "num_speculative_tokens": 3, "attention_backend": "B12X", "draft_tensor_parallel_size": 4, "draft_sample_method": "probabilistic", "rejection_sample_method": "standard"},
+  "capture_sizes": [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64],
+  "captured_sircl_query_rows": [16, 20, 24, 28, 32],
+  "canonical_bundle_manifest_sha256": "4204fabc93303226b9a120b094ef3c82ed4aadd1d7f97cfbe291204c027ed45f",
+  "measured_bundle_manifest_sha256": "701bdc42069a97492981b8f34e006ebfa9e68c2160472cba631b56965efae226",
+  "bundle_difference": "Configuration/manifest line endings differ; parsed configuration and every executable file are identical.",
+  "marker": {
+    "source": "../../spark_transport/experiments/cx7_hairpin_diagonal/native/mlx5_rdma_tx_rewrite_probe.c",
+    "source_sha256": "8684a6961b8e86aa474fa2310ff71e4cdf219a63a72ceb5593b2f95e54812792",
+    "observed_source_sha256": "8f553cfa4c0fd702760897a2e1a5a745387e53f6e2c8edb3379a970395c9c033",
+    "source_difference": "The marker supports explicit supervised managed lifetime as well as bounded diagnostic runs. Managed execution requires the four-rank service contract. Binary identity must be recorded separately.",
+    "observed_binary_sha256": "e4403012ee0e15cd0e474c689398833868d5596b99e0d396254b6ff06bba5072",
+    "lifetime_seconds": 7200,
+    "reserved_udp_source_port": 65535,
+    "ethertype": "0x88b5"
+  },
+  "cache_identity": {
+    "draft_policy": "separate",
+    "draft_checkpoint_source": "target.checkpoint_identity",
+    "namespace": "glm53-spark-df116c4f-native-mtp3-mesh-4204fabc-tail-cow-v2",
+    "compatibility": "The native predictor is identified by its target checkpoint. This intentionally misses the measured deployment's external-draft-tagged entries. Cold-start and persistent-restore qualification of this namespace remain required."
+  }
+}

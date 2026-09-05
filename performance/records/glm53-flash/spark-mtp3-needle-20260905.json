@@ -1,0 +1,137 @@
+{
+  "schema": "sparkring-needle-observation/v1",
+  "started_utc": "2026-09-05T14:26:31.304035+00:00",
+  "fixture_source_sha256": "0f3d2ff9d47bae66657da883c978bd0074e87e592e4d1c0b177e6e58084238e4",
+  "wrapper_sha256": "58c05c48a59b77cd5a90d8d2e4dd98335be1bdbf8b527cf7e820b402f1530618",
+  "model": "glm-5.3-flash-spark",
+  "image_id": "sha256:26273b8e358df139ae913610a5d43084ff0fd08aafe282ef633a3bc74afefe47",
+  "temperature": 1,
+  "top_p": 1,
+  "max_tokens": 2048,
+  "request_seed": 20260905,
+  "concurrency": 1,
+  "cases": [
+    {
+      "mode": "exact",
+      "position_percent": 5,
+      "target_tokens": 262144,
+      "tokenized_prompt_tokens": 252125,
+      "fixture_seed": 20260905,
+      "prompt_sha256": "efb2147456736ef9d89103147b7f08955e643f311f40535f3c5f7d3ffef07dc0",
+      "expected": "KESTREL-RIVET-WILLOW-8226",
+      "response": "KESTREL-RIVET-WILLOW-8226",
+      "usage": {
+        "prompt_tokens": 252125,
+        "total_tokens": 252219,
+        "completion_tokens": 94,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 251904,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 79
+        }
+      },
+      "finish_reason": "stop",
+      "passed": true,
+      "exact_text_match": true,
+      "elapsed_seconds": 97.43799999996554
+    },
+    {
+      "mode": "revision",
+      "position_percent": 50,
+      "target_tokens": 262144,
+      "tokenized_prompt_tokens": 252188,
+      "fixture_seed": 20260906,
+      "prompt_sha256": "6b061bfa1f93e6dd34ee54faa05a9fc3238b335b0f1647f46aa4e3eceab557c1",
+      "expected": "FERN-RIVET-BASALT-B4FF",
+      "response": "FERN-RIVET-BASALT-B4FF",
+      "usage": {
+        "prompt_tokens": 252188,
+        "total_tokens": 253102,
+        "completion_tokens": 914,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 251904,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 901
+        }
+      },
+      "finish_reason": "stop",
+      "passed": true,
+      "exact_text_match": true,
+      "elapsed_seconds": 113.09299999999348
+    },
+    {
+      "mode": "join",
+      "position_percent": 95,
+      "target_tokens": 262144,
+      "tokenized_prompt_tokens": 252176,
+      "fixture_seed": 20260907,
+      "prompt_sha256": "d9cb15f9c294e023d16a6c44445cb9cde1f270091fc75c52f97e21747553adbe",
+      "expected": "LANTERN-YARROW-JUNIPER-E24F",
+      "response": "LANTERN-YARROW-JUNIPER-E24F",
+      "usage": {
+        "prompt_tokens": 252176,
+        "total_tokens": 252322,
+        "completion_tokens": 146,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 251904,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 131
+        }
+      },
+      "finish_reason": "stop",
+      "passed": true,
+      "exact_text_match": true,
+      "elapsed_seconds": 98.34299999999348
+    },
+    {
+      "mode": "join",
+      "position_percent": 50,
+      "target_tokens": 524288,
+      "tokenized_prompt_tokens": 507367,
+      "fixture_seed": 20260908,
+      "prompt_sha256": "37c063e3a3400f1115c5dc3cd01081c4b0f788e3926afc0859069ba85ef5313c",
+      "expected": "RIVET-BASALT-QUARTZ-4483",
+      "response": "RIVET-BASALT-QUARTZ-4483",
+      "usage": {
+        "prompt_tokens": 507367,
+        "total_tokens": 507515,
+        "completion_tokens": 148,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 505856,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 132
+        }
+      },
+      "finish_reason": "stop",
+      "passed": true,
+      "exact_text_match": true,
+      "elapsed_seconds": 202.90599999995902
+    }
+  ],
+  "complete": true,
+  "passed": 4,
+  "status": "research-only",
+  "conditions": {
+    "target_revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "speculation": "native MTP3",
+    "hardware": "Four DGX Spark GB10 systems",
+    "layout": "TP4/DCP4/PP1",
+    "batch_tokens": 8192,
+    "max_sequences": 16,
+    "serving_source": "91c313d028877ada5fb1f04610f83c6465428657",
+    "transport": "Hybrid SIRCL/RoCEnante over hardware-forwarded opposite-rank paths",
+    "cache": "SparkCache enabled; server reported zero cached prompt tokens for these four requests"
+  }
+}

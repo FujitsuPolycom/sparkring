@@ -20,12 +20,18 @@ fi
 : "${HOST_IP:?set HOST_IP to this rank's routable address}"
 : "${MASTER_ADDR:?set MASTER_ADDR to rank 0's routable address}"
 : "${TARGET_MODEL_HOST_PATH:?set TARGET_MODEL_HOST_PATH to the pinned target checkpoint}"
-: "${DFLASH_MODEL_HOST_PATH:?set DFLASH_MODEL_HOST_PATH to the pinned BF16 draft checkpoint}"
+: "${DFLASH_MODEL_HOST_PATH:=}"
 : "${CACHE_HOST_ROOT:?set CACHE_HOST_ROOT to a dedicated rank-local directory}"
 
 : "${IMAGE_REF:=ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f}"
 : "${IMAGE_ID:=sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075}"
 : "${CONTAINER_PREFIX:=glm53-jj-r8-gb10}"
+: "${SPARKRING_CREATE_ONLY:=0}"
+: "${SPARKRING_PRINT_CONTAINER_SPEC:=0}"
+case "${SPARKRING_PRINT_CONTAINER_SPEC}" in
+  0|1) ;;
+  *) printf 'SPARKRING_PRINT_CONTAINER_SPEC must be 0 or 1\n' >&2; exit 78 ;;
+esac
 : "${SERVED_MODEL_NAME:=glm-5.3-flash}"
 : "${PORT:=8015}"
 : "${MASTER_PORT:=29775}"
@@ -47,6 +53,7 @@ fi
 : "${GPU_MEMORY_UTILIZATION:=0.80}"
 : "${KV_CACHE_DTYPE:=fp8}"
 : "${SPECULATION_METHOD:=dflash}"
+: "${TARGET_MODEL_VARIANT:=nvfp4}"
 : "${NUM_SPECULATIVE_TOKENS:=7}"
 : "${DRAFT_TENSOR_PARALLEL_SIZE:=4}"
 : "${DRAFT_KV_CACHE_DTYPE:=auto}"
@@ -67,6 +74,7 @@ fi
 : "${DFLASH_WARMUP_SHAPE_WORDS:=8,24,56,120,248}"
 : "${DFLASH_WARMUP_MAX_TOKENS:=16}"
 : "${DFLASH_WARMUP_TIMEOUT_SECONDS:=600}"
+: "${SPARKRING_WARMUP_TEMPERATURE:=0}"
 : "${SPARKRING_LIVENESS_ENABLED:=1}"
 : "${SPARKRING_LIVENESS_PORT:=8016}"
 : "${SPARKRING_LIVENESS_BLOCKED_SECONDS:=60}"
@@ -188,16 +196,8 @@ esac
   die 'DECODE_CONTEXT_PARALLEL_SIZE must divide TENSOR_PARALLEL_SIZE'
 
 if [[ "${KV_CACHE_MEMORY_BYTES}" == auto ]]; then
-  if (( DECODE_CONTEXT_PARALLEL_SIZE == 1 )); then
-    # This reservation completed a 942,767-token request without host OOM.
-    KV_CACHE_MEMORY_BYTES=27917287424
-  elif (( DECODE_CONTEXT_PARALLEL_SIZE == 2 )); then
-    # DCP2 retains the recorded 30 GiB capacity configuration.
-    KV_CACHE_MEMORY_BYTES=32212254720
-  else
-    # DCP4 uses 24 GiB to retain host-memory headroom under concurrent serving.
-    KV_CACHE_MEMORY_BYTES=25769803776
-  fi
+  # Keep the per-rank allocation uniform while DCP controls cache geometry.
+  KV_CACHE_MEMORY_BYTES=25769803776
 else
   require_positive_uint KV_CACHE_MEMORY_BYTES
 fi
@@ -254,8 +254,30 @@ esac
   die 'NCCL_MIN_NCHANNELS cannot exceed NCCL_MAX_NCHANNELS'
 [[ "${CONTAINER_PREFIX}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || \
   die 'CONTAINER_PREFIX is not a valid Docker container-name prefix'
-[[ "${SPECULATION_METHOD}" == dflash ]] || \
-  die 'this runtime launcher supports SPECULATION_METHOD=dflash'
+case "${SPECULATION_METHOD}" in
+  dflash) : "${DFLASH_MODEL_HOST_PATH:?set DFLASH_MODEL_HOST_PATH to the pinned BF16 draft checkpoint}" ;;
+  mtp) ;;
+  *) die 'SPECULATION_METHOD must be dflash or mtp' ;;
+esac
+case "${TARGET_MODEL_VARIANT}" in
+  nvfp4)
+    target_config_sha256=676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996
+    target_index_sha256=0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb
+    TARGET_CHECKPOINT_FINGERPRINT=a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9
+    ;;
+  nvfp4-spark)
+    target_config_sha256=e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23
+    target_index_sha256=db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544
+    TARGET_CHECKPOINT_FINGERPRINT=357f6a86160ebd5caff25d9a10d9f29e8547b16c6c73e78751fa69fde11ac4e4
+    ;;
+  *) die 'TARGET_MODEL_VARIANT must be nvfp4 or nvfp4-spark' ;;
+esac
+# Native MTP loads its predictor from the target checkpoint. The separate
+# cache policy describes registered layer roles, not separate weight files.
+DRAFT_CHECKPOINT_FINGERPRINT=b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b
+if [[ "${SPECULATION_METHOD}" == mtp ]]; then
+  DRAFT_CHECKPOINT_FINGERPRINT="${TARGET_CHECKPOINT_FINGERPRINT}"
+fi
 case "${SPARKCACHE_PUBLICATION_SCHEMA}" in
   snapshot-v1|tail-cow-v1|tail-cow-v2) ;;
   *) die 'SPARKCACHE_PUBLICATION_SCHEMA must be snapshot-v1, tail-cow-v1, or tail-cow-v2' ;;
@@ -374,7 +396,11 @@ warmup_api_key_env=()
 if (( ${#api_keys[@]} > 0 )); then
   warmup_api_key_env=(-e "SPARKRING_WARMUP_API_KEY=${api_keys[0]}")
 fi
-for name in TARGET_MODEL_HOST_PATH DFLASH_MODEL_HOST_PATH CACHE_HOST_ROOT; do
+model_path_names=(TARGET_MODEL_HOST_PATH CACHE_HOST_ROOT)
+if [[ "${SPECULATION_METHOD}" == dflash ]]; then
+  model_path_names+=(DFLASH_MODEL_HOST_PATH)
+fi
+for name in "${model_path_names[@]}"; do
   value="${!name}"
   [[ "${value}" == /* ]] || die "${name} must be an absolute host path"
   [[ "${value}" != *:* && "${value}" != *$'\n'* ]] || \
@@ -634,7 +660,8 @@ fi
 actual_image_id="$(docker image inspect --format '{{.Id}}' "${IMAGE_REF}")"
 [[ "${actual_image_id}" == "${IMAGE_ID}" ]] || \
   die "image identity mismatch: expected ${IMAGE_ID}, got ${actual_image_id}"
-for directory in "${TARGET_MODEL_HOST_PATH}" "${DFLASH_MODEL_HOST_PATH}" "${CACHE_HOST_ROOT}"; do
+for name in "${model_path_names[@]}"; do
+  directory="${!name}"
   [[ -d "${directory}" ]] || die "required directory is missing: ${directory}"
 done
 
@@ -649,11 +676,13 @@ verify_file_sha256() {
 verify_file_sha256 \
   'target config.json' \
   "${TARGET_MODEL_HOST_PATH}/config.json" \
-  '676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996'
+  "${target_config_sha256}"
 verify_file_sha256 \
   'target model.safetensors.index.json' \
   "${TARGET_MODEL_HOST_PATH}/model.safetensors.index.json" \
-  '0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb'
+  "${target_index_sha256}"
+draft_mount_args=()
+if [[ "${SPECULATION_METHOD}" == dflash ]]; then
 verify_file_sha256 \
   'draft config.json' \
   "${DFLASH_MODEL_HOST_PATH}/config.json" \
@@ -662,29 +691,35 @@ verify_file_sha256 \
   'draft model.safetensors' \
   "${DFLASH_MODEL_HOST_PATH}/model.safetensors" \
   'b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b'
+  draft_mount_args=(-v "${DFLASH_MODEL_HOST_PATH}:/dflash-draft:ro")
+fi
 
 container="${CONTAINER_PREFIX}-r${rank}"
-if docker container inspect "${container}" >/dev/null 2>&1; then
+if [[ "${SPARKRING_PRINT_CONTAINER_SPEC}" == 0 ]] && docker container inspect "${container}" >/dev/null 2>&1; then
   printf 'container already exists: %s\n' "${container}" >&2
   exit 3
 fi
 
 export NUM_SPECULATIVE_TOKENS DRAFT_TENSOR_PARALLEL_SIZE DRAFT_KV_CACHE_DTYPE
-export DRAFT_SAMPLE_METHOD REJECTION_SAMPLE_METHOD
+export DRAFT_SAMPLE_METHOD REJECTION_SAMPLE_METHOD SPECULATION_METHOD
 speculative_config="$(python3 - <<'PY'
 import json
 import os
 
-print(json.dumps({
-    "method": "dflash",
-    "model": "/dflash-draft",
+config = {
+    "method": os.environ["SPECULATION_METHOD"],
     "num_speculative_tokens": int(os.environ["NUM_SPECULATIVE_TOKENS"]),
     "draft_tensor_parallel_size": int(os.environ["DRAFT_TENSOR_PARALLEL_SIZE"]),
     "kv_cache_dtype": os.environ["DRAFT_KV_CACHE_DTYPE"],
     "draft_sample_method": os.environ["DRAFT_SAMPLE_METHOD"],
     "rejection_sample_method": os.environ["REJECTION_SAMPLE_METHOD"],
     "draft_load_config": {"load_format": "safetensors"},
-}, separators=(",", ":")))
+}
+if config["method"] == "dflash":
+    config["model"] = "/dflash-draft"
+else:
+    config["attention_backend"] = "B12X"
+print(json.dumps(config, separators=(",", ":")))
 PY
 )"
 
@@ -722,6 +757,7 @@ if [[ "${SPARKCACHE_ENABLED}" == 1 ]]; then
   export SPARKCACHE_CUDA_RESTORE_IO_WORKERS SPARKCACHE_CUDA_ARENA_BYTES
   export SPARKCACHE_ASYNC_PAGE_CAPTURE
   export SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT
+  export TARGET_CHECKPOINT_FINGERPRINT DRAFT_CHECKPOINT_FINGERPRINT
   kv_transfer_config="$(python3 - <<'PY'
 import json
 import os
@@ -733,8 +769,8 @@ extra = {
     "spark_cache_root": f"/cache/jit/sparkcache-context/{os.environ['SPARKCACHE_CACHE_NAMESPACE']}",
     "spark_cache_model_profile": "glm53-flash-hybrid",
     "spark_cache_publication_schema": os.environ["SPARKCACHE_PUBLICATION_SCHEMA"],
-    "spark_cache_target_checkpoint_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9",
-    "spark_cache_draft_checkpoint_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
+    "spark_cache_target_checkpoint_sha256": os.environ["TARGET_CHECKPOINT_FINGERPRINT"],
+    "spark_cache_draft_checkpoint_sha256": os.environ["DRAFT_CHECKPOINT_FINGERPRINT"],
     "spark_cache_draft_policy": "separate",
     "spark_cache_access_mode": os.environ["SPARKCACHE_ACCESS_MODE"],
     "spark_cache_shared_prefix_lease_ttl_seconds": integer(
@@ -803,14 +839,20 @@ if [[ "${JIT_MONITOR_VERBOSE}" == 1 ]]; then
   jit_monitor_args=(--jit-monitor-verbose)
 fi
 
-container_id="$(docker run -d \
+case "${SPARKRING_CREATE_ONLY}" in
+  0) container_action=(run -d) ;;
+  1) container_action=(create) ;;
+  *) die 'SPARKRING_CREATE_ONLY must be 0 or 1' ;;
+esac
+
+container_command=(docker "${container_action[@]}" \
   --name "${container}" \
   --entrypoint /opt/sparkring/bin/serve-with-warmup.py \
   --network host --ipc host --shm-size "${SHM_SIZE}" --gpus all \
   --ulimit memlock=-1:-1 --cap-add IPC_LOCK --device /dev/infiniband \
   --security-opt label=disable --init \
   -v "${TARGET_MODEL_HOST_PATH}:/models/target:ro" \
-  -v "${DFLASH_MODEL_HOST_PATH}:/dflash-draft:ro" \
+  "${draft_mount_args[@]}" \
   -v "${CACHE_HOST_ROOT}:/cache/jit" \
   "${chat_template_mount[@]}" \
   "${sparkcache_source_args[@]}" \
@@ -824,6 +866,7 @@ container_id="$(docker run -d \
   -e "DFLASH_WARMUP_SHAPE_WORDS=${DFLASH_WARMUP_SHAPE_WORDS}" \
   -e "DFLASH_WARMUP_MAX_TOKENS=${DFLASH_WARMUP_MAX_TOKENS}" \
   -e "DFLASH_WARMUP_TIMEOUT_SECONDS=${DFLASH_WARMUP_TIMEOUT_SECONDS}" \
+  -e "SPARKRING_WARMUP_TEMPERATURE=${SPARKRING_WARMUP_TEMPERATURE}" \
   -e "SPARKRING_LIVENESS_ENABLED=${SPARKRING_LIVENESS_ENABLED}" \
   -e "SPARKRING_LIVENESS_PORT=${SPARKRING_LIVENESS_PORT}" \
   -e "SPARKRING_LIVENESS_BLOCKED_SECONDS=${SPARKRING_LIVENESS_BLOCKED_SECONDS}" \
@@ -903,9 +946,21 @@ container_id="$(docker run -d \
   --async-scheduling --enable-prefix-caching --cudagraph-metrics \
   "${jit_monitor_args[@]}" \
   "${prompt_tokens_details[@]}" \
-  "${kv_transfer_args[@]}" "${headless[@]}")"
+  "${kv_transfer_args[@]}" "${headless[@]}")
 
-if [[ "${rank}" == 0 && "${DFLASH_WARMUP}" == 1 ]]; then
+# The inspection path emits the same argument array used for execution. It
+# performs identity checks above, but never creates a container or waits for a model.
+if [[ "${SPARKRING_PRINT_CONTAINER_SPEC}" == 1 ]]; then
+  python3 - "${container_command[@]}" <<'PY'
+import json
+import sys
+print(json.dumps({"schema": "sparkring-container-command/v1", "argv": sys.argv[1:]}))
+PY
+  exit 0
+fi
+container_id="$("${container_command[@]}")"
+
+if [[ "${SPARKRING_CREATE_ONLY}" == 0 && "${rank}" == 0 && "${DFLASH_WARMUP}" == 1 ]]; then
   readiness_deadline=$((SECONDS + DFLASH_WARMUP_TIMEOUT_SECONDS + 120))
   while true; do
     health="$(docker inspect --format '{{.State.Health.Status}}' "${container}" 2>/dev/null || true)"

@@ -111,8 +111,12 @@
       "decode_context_parallel_size": 1,
       "cp_kv_cache_interleave_size": 1,
       "full_ckv_gather": false,
-      "kv_cache_memory_bytes_per_rank": 27917287424,
-      "approximate_logical_kv_capacity_tokens": 1300000,
+      "kv_cache_memory_bytes_per_rank": 25769803776,
+      "logical_kv_capacity_status": "unmeasured at the 24 GiB per-rank default",
+      "recorded_capacity_reference": {
+        "approximate_logical_kv_tokens": 1300000,
+        "kv_cache_memory_bytes_per_rank": 27917287424
+      },
       "publication_schema": "snapshot-v1",
       "cache_namespace_default": "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp1-snapshot-v1",
       "async_page_capture": false,
@@ -124,8 +128,12 @@
       "decode_context_parallel_size": 2,
       "cp_kv_cache_interleave_size": 4,
       "full_ckv_gather": true,
-      "kv_cache_memory_bytes_per_rank": 32212254720,
-      "approximate_logical_kv_capacity_tokens": 2900000,
+      "kv_cache_memory_bytes_per_rank": 25769803776,
+      "logical_kv_capacity_status": "unmeasured at the 24 GiB per-rank default",
+      "recorded_capacity_reference": {
+        "approximate_logical_kv_tokens": 2900000,
+        "kv_cache_memory_bytes_per_rank": 32212254720
+      },
       "publication_schema": "snapshot-v1",
       "cache_namespace_default": "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp2-snapshot-v1",
       "async_page_capture": false,

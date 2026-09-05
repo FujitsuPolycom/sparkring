@@ -233,3 +233,5 @@ run proceeded after vLLM selected `/opt/sparkring/nccl/libnccl.so.2` through
 `VLLM_NCCL_SO_PATH`. Treat an engine initialization failure, NCCL runtime
 error, OOM, container restart, or semantic failure as fatal; do not classify
 the documented import warning alone as a service failure.
+
+[Profile validation: performance, accuracy, and restart checks](PROFILE_VALIDATION.md).

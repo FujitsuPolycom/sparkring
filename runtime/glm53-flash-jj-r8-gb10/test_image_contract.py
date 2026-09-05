@@ -59,7 +59,10 @@ def test_image_packages_dflash_warmup_and_rank_zero_waits_for_it() -> None:
     assert '"warmup_dflash.py"' in builder
     assert '"serve_with_warmup.py"' in builder
     assert '"scheduler_liveness.py"' in builder
-    assert 'container_id="$(docker run -d' in launcher
+    assert '0) container_action=(run -d)' in launcher
+    assert '1) container_action=(create)' in launcher
+    assert 'container_command=(docker "${container_action[@]}"' in launcher
+    assert 'container_id="$("${container_command[@]}")"' in launcher
     assert '"${rank}" == 0 && "${DFLASH_WARMUP}" == 1' in launcher
     assert "--entrypoint /opt/sparkring/bin/serve-with-warmup.py" in launcher
     assert "rank-0 engine readiness timed out" in launcher
@@ -178,8 +181,8 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     assert defaults["prefill_schedule_interval"] == 2
     assert defaults["shared_prefix_lease_ttl_seconds"] == 300
     assert defaults["kv_cache_bytes_per_rank"] == {
-        "dcp1": 27917287424,
-        "dcp2": 32212254720,
+        "dcp1": 25769803776,
+        "dcp2": 25769803776,
         "dcp4": 25769803776,
     }
     assert defaults["full_ckv_gather_max_tokens"] == 524288

@@ -261,3 +261,5 @@ recorded launch specification rather than reconstructing it from memory.
 
 See the [full benchmark result](../performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md) and
 [sanitized command receipts](../performance/receipts/qwen38-27b/temp1/20260823-tp2/).
+
+[Profile validation: performance, accuracy, and restart checks](PROFILE_VALIDATION.md).

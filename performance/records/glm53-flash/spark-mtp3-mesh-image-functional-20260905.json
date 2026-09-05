@@ -1,0 +1,235 @@
+{
+  "schema": "sparkring-functional-qualification/v1",
+  "status": "research-only",
+  "record_kind": "functional checks; not a throughput benchmark",
+  "date_utc": "2026-09-05",
+  "conditions": {
+    "image_id": "sha256:8450c1a88d28359bc96748f024d1cd6140deb76818e58e099bae1015e0ef09c6",
+    "bundle_manifest_sha256": "4204fabc93303226b9a120b094ef3c82ed4aadd1d7f97cfbe291204c027ed45f",
+    "marker_sha256": "0b92cd88be564e92a147d9bf981214151a12eb14a6bc8d9d7867ae8a63b21c9c",
+    "model": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+    "model_revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "hardware": "four DGX Spark GB10 nodes; switchless physical ring with ConnectX-7 hardware-forwarded diagonals",
+    "tensor_parallel": 4,
+    "decode_context_parallel": 4,
+    "pipeline_parallel": 1,
+    "speculation": "native MTP, three speculative tokens, explicit B12X draft attention",
+    "scheduled_token_limit": 8192,
+    "maximum_sequences": 16,
+    "graph_capture_rows": [
+      4,
+      8,
+      12,
+      16,
+      20,
+      24,
+      28,
+      32,
+      36,
+      40,
+      44,
+      48,
+      52,
+      56,
+      60,
+      64
+    ],
+    "kv_cache_bytes_per_rank": 25769803776,
+    "cache_identity": "target checkpoint fingerprint also identifies the native MTP predictor; fresh persistent-cache namespace",
+    "changed_variables": [
+      "child image",
+      "canonical bundle serialization",
+      "native-MTP persistent-cache identity and namespace"
+    ]
+  },
+  "measurement": {
+    "native_output_check": "byte-exact BF16 sums using exactly representable integer inputs, including changed graph inputs and poisoned outputs",
+    "native_warmups": 2,
+    "native_timing_samples": 3,
+    "timing_use": "diagnostic only; not used to claim transport or serving performance",
+    "startup_clock": "operator elapsed wall clock for rank-0 launch command returning ready",
+    "startup_repetitions": 1,
+    "model_requests": "Harness sends one request at a time; independent client traffic also occurred, so deployment concurrency was not controlled.",
+    "raw_evidence": "Private operational receipts retained by the operator; this record retains selected non-site fields and source receipt hashes.",
+    "uncertainty": "No variability estimate; bounded functional checks and one startup observation."
+  },
+  "gates": {
+    "image_import_and_host_abi": {
+      "result": "passed",
+      "ranks": 4,
+      "bundle_files_verified_per_rank": 28
+    },
+    "fabric_inspection": {
+      "result": "passed",
+      "ranks": 4,
+      "hardware_rules": 8,
+      "marker_processes": 8
+    },
+    "launch_configuration": {
+      "result": "passed",
+      "ranks": 4,
+      "unexpected_differences": 0,
+      "parsed_routing_identical": true
+    },
+    "native_rc_correctness": {
+      "result": "passed",
+      "checks_passed": 80
+    },
+    "initial_startup": {
+      "result": "passed",
+      "rank0_ready_seconds": 278.5780000000959
+    },
+    "semantic_request": {
+      "result": "passed",
+      "prompt_tokens": 27,
+      "completion_tokens": 117,
+      "content": "SPARKCACHE_GLM53_OK",
+      "prompt_sha256": "2db5eec56761ff3e65d2ffac7831166072631322bae9f6535c20766cc518f70c"
+    },
+    "prefix_request": {
+      "result": "passed",
+      "prompt_tokens": 8220,
+      "completion_tokens": 120,
+      "content": "SPARKCACHE_GLM53_OK",
+      "prompt_sha256": "5f15061aec2681d56c53acfece39d952bb1861606dfb5829f0886c9f0247232d"
+    },
+    "persistent_publication": {
+      "result": "passed",
+      "ranks": [
+        {
+          "rank": 0,
+          "committed_tokens": 8192
+        },
+        {
+          "rank": 1,
+          "committed_tokens": 8192
+        },
+        {
+          "rank": 2,
+          "committed_tokens": 8192
+        },
+        {
+          "rank": 3,
+          "committed_tokens": 8192
+        }
+      ]
+    },
+    "serving_restart": {
+      "result": "passed",
+      "ranks": 4,
+      "api_request_completed": true
+    },
+    "persistent_transfer_observation": {
+      "result": "passed",
+      "external_hit_tokens": 8192,
+      "ranks": [
+        {
+          "rank": 0,
+          "tokens": 8192,
+          "reported_ms": 94.3,
+          "reported_MiB": 49.5
+        },
+        {
+          "rank": 1,
+          "tokens": 8192,
+          "reported_ms": 110.1,
+          "reported_MiB": 49.5
+        },
+        {
+          "rank": 2,
+          "tokens": 8192,
+          "reported_ms": 115.2,
+          "reported_MiB": 49.5
+        },
+        {
+          "rank": 3,
+          "tokens": 8192,
+          "reported_ms": 98.3,
+          "reported_MiB": 49.5
+        }
+      ]
+    },
+    "persistent_restore_output": {
+      "result": "failed",
+      "semantic_passed": false,
+      "finish_reason": "length",
+      "completion_tokens": 256,
+      "observation": "Refusal instead of required marker; output reached 256-token limit.",
+      "cause": "unresolved"
+    }
+  },
+  "native_cells": [
+    {
+      "rows": 4,
+      "width": 4096,
+      "payload_bytes": 32768,
+      "checks_passed": 20,
+      "origin_qps": 24,
+      "direct_qps": 16,
+      "forwarded_qps": 8,
+      "completion_errors": 0
+    },
+    {
+      "rows": 20,
+      "width": 4096,
+      "payload_bytes": 163840,
+      "checks_passed": 20,
+      "origin_qps": 24,
+      "direct_qps": 16,
+      "forwarded_qps": 8,
+      "completion_errors": 0
+    },
+    {
+      "rows": 28,
+      "width": 4096,
+      "payload_bytes": 229376,
+      "checks_passed": 20,
+      "origin_qps": 24,
+      "direct_qps": 16,
+      "forwarded_qps": 8,
+      "completion_errors": 0
+    },
+    {
+      "rows": 64,
+      "width": 4096,
+      "payload_bytes": 524288,
+      "checks_passed": 20,
+      "origin_qps": 24,
+      "direct_qps": 16,
+      "forwarded_qps": 8,
+      "completion_errors": 0
+    }
+  ],
+  "source_receipt_sha256": {
+    "image-import-r0.json": "e8d2f08e6edfd8f7f715d4630a655b007846100e8998bf34780d781021013259",
+    "image-import-r1.json": "27e60fd8f802502957a6eb659e7f1e312cb30133629565961e4addba87306bf7",
+    "image-import-r2.json": "3be97e820a3cf7baaff9290990510b96bfca664601363f78e6038f064e418eb6",
+    "image-import-r3.json": "472f03f1d656740f792c0ad847f07761a81746dca87dfb6b5fdc7bbc1644e07a",
+    "inspect-20260905-060256.json": "2c30bf6e82f410f926816cb601141c001c5c66bc3ea76385e54af387d0ef1a08",
+    "launched-config-comparison.json": "fcde322d5b6e2c2d17d30c94749348ad1acca8bec5a684d2af6c28f9c8edea7e",
+    "native-public-runner:q4.json": "1ef3f8d6bc1c618b36a5bec5c207742ddcf6a6699bbd66704a0dcf81b5daa9d4",
+    "native-public-runner:q20.json": "049ab565cee6b63e75ea58ecddab2ff95766e5ab55f017e64b5b9a58686e324c",
+    "native-public-runner:q28.json": "b49b43064a5cbab12a73dce3a0c0fc4027204e0be68f160de5b6f5a0c34b9101",
+    "native-public-runner:q64.json": "90b2a825581bebdf5df3f98bc40a7b965366bc924eb2cb70eccfe8bfff4f35c9",
+    "launch-20260905-060808.json": "faf51d3df2bfb2694c63e135f82515006ddc7541b5a1612d33552cee13b97dab",
+    "semantic-before:receipt.json": "250bdcaed4d0c2885f2cd55aaa5fe924c9ae622662d6c7952a3aa0a82721441e",
+    "prefix-before:receipt.json": "9ab5408696d7be6d319dbf3d3be1b6aab106772e47dcbbb25f0c94078b6425cb",
+    "before-restart.json": "5f3f9eadb3b708da410d3fcb909336d449487a47fd02e25d89187416778bcc35",
+    "start-20260905-061101.json": "e88d13da31f84d046e2eb270d0af6b010561cef28adb90ed5ad93ecfc3bb09a7",
+    "prefix-after:receipt.json": "bbd4048f1e538b24635363b87e4711403b12ee20d57f0d2139da4f49c0dbea01",
+    "after-restart-canary-failure.json": "754419171beb3640fbfed785c0a58adae41d4e813df5bdd5e3f5f2cf58c035f7"
+  },
+  "limitations": [
+    "No performance comparison.",
+    "No prolonged stress or failure-containment qualification.",
+    "No automatic host-fabric provisioning or hot renewal; marker lifetime remains bounded.",
+    "Persistent cache output gate failed after restart; cause unresolved.",
+    "Independent client traffic overlapped the model checks; timings are not clean performance measurements."
+  ],
+  "conclusion": "The image starts and restarts across four ranks. Native communication checks and persistent publication pass, and external restoration transfers are observed. The post-restore semantic output gate fails; persistent cache correctness is not qualified.",
+  "harness_sha256": {
+    "runtime/glm53-spark-mtp3-mesh/qualification/native_roce.py": "c17fdf70d1a163d4ee7c47d585a2580db58f82e751fb92ac1bf6309ccdde4466",
+    "runtime/glm53-spark-mtp3-mesh/qualification/run_native.py": "d018e12f7a6ea7c47ff881d76646a9627bf731f1080762ff8707f5ec52e00f98",
+    "runtime/glm53-spark-mtp3-mesh/qualification/model_cache.py": "3a11c919c7e71e3b5293cbfbf31f1671b0a091e77d0843bc8f106cd9d008efe5"
+  }
+}

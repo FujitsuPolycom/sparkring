@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
+import io
+import json
 import threading
 from pathlib import Path
+
+import pytest
 
 
 HERE = Path(__file__).resolve().parent
@@ -32,6 +36,7 @@ def test_warmup_exercises_each_concurrency_as_one_batch(monkeypatch) -> None:
         _timeout,
         _prompt_words,
         _credential,
+        _temperature,
     ):
         nonlocal active
         concurrency = int(nonce.split("-", 1)[0][1:])
@@ -111,3 +116,51 @@ def test_wait_for_api_without_credential_stays_anonymous(monkeypatch) -> None:
     warmup.wait_for_api("http://127.0.0.1:8015", 5)
 
     assert seen == [{}]
+
+
+def test_temperature_defaults_preserve_parent_greedy_mode(monkeypatch):
+    warmup = _load_module()
+    monkeypatch.delenv("SPARKRING_WARMUP_TEMPERATURE", raising=False)
+    assert warmup.resolve_temperature() == 0
+    monkeypatch.setenv("SPARKRING_WARMUP_TEMPERATURE", "1")
+    assert warmup.resolve_temperature() == 1
+    assert warmup.resolve_temperature(0) == 0
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "no", "-0.1", "2.1", True])
+def test_invalid_temperature_rejected(value):
+    with pytest.raises(ValueError):
+        _load_module().resolve_temperature(value)
+
+
+def test_imported_warmup_resolves_environment_and_records_sampling(monkeypatch):
+    warmup = _load_module()
+    monkeypatch.setenv("SPARKRING_WARMUP_TEMPERATURE", "1")
+    seen = []
+    monkeypatch.setattr(warmup, "send_warmup_request", lambda *args: seen.append(args[-1]))
+    results = warmup.run_warmup("http://localhost", "model", (1, 2), 16, 2, (8, 24))
+    assert seen == [1.0] * 5
+    assert all(item["temperature"] == 1 for item in results)
+
+
+def test_invalid_environment_fails_before_requests(monkeypatch):
+    warmup = _load_module()
+    monkeypatch.setenv("SPARKRING_WARMUP_TEMPERATURE", "NaN")
+    monkeypatch.setattr(warmup, "send_warmup_request", lambda *args: pytest.fail("Unexpected request"))
+    with pytest.raises(ValueError):
+        warmup.run_warmup("http://localhost", "model", (1,), 16, 2, (8,))
+
+
+def test_request_uses_sampling_temperature_without_changing_thinking(monkeypatch):
+    warmup = _load_module()
+    monkeypatch.setenv("SPARKRING_WARMUP_TEMPERATURE", "1")
+    seen = []
+
+    def urlopen(request, timeout):
+        seen.append(json.loads(request.data))
+        return io.BytesIO(b'{"choices":[{"message":{"content":"ok"}}]}')
+
+    monkeypatch.setattr(warmup.urllib.request, "urlopen", urlopen)
+    warmup.send_warmup_request("http://localhost", "model", "sample", 16, 2, 8)
+    assert seen[0]["temperature"] == 1
+    assert seen[0]["chat_template_kwargs"] == {"enable_thinking": False}
