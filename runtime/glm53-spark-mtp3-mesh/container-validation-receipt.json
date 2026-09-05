@@ -1,0 +1,76 @@
+{
+  "schema": "sparkring-container-validation/v1",
+  "status": "implemented",
+  "scope": "Read-only installer-plan checks against four retained stopped model containers; mutations applied to in-memory Docker inspection records. No installation or model restart.",
+  "guard_source_sha256": "4e44ced36d211f8900ffdd67d64debb9c444561e76d64b7eac129f45aff6234c",
+  "launcher_sha256": "a66d9d9411854312cd950867112c745ffd53578b4c010f75dce43dc274b43a6d",
+  "cpu_tests": {
+    "passed": 430,
+    "skipped": 21
+  },
+  "positive_host_checks": 4,
+  "rejected_mutations": 20,
+  "ranks": [
+    {
+      "rank": 0,
+      "positive_plan_passed": true,
+      "negative_controls": {
+        "model_argument": "Container model arguments differ from the canonical launch",
+        "extra_environment": "Container environment differs for names: VLLM_UNREVIEWED",
+        "writable_model": "Container bind mounts or access modes differ from the canonical launch",
+        "wrong_cache": "Container bind mounts or access modes differ from the canonical launch",
+        "writable_bundle": "Container bind mounts or access modes differ from the canonical launch"
+      },
+      "installed": false,
+      "live_container_unchanged": true,
+      "guard_sha256": "4e44ced36d211f8900ffdd67d64debb9c444561e76d64b7eac129f45aff6234c",
+      "receipt_sha256": "6928dbabbb15e933dd590ed8cd975094e32a1ee32fb8f9abe9d4aee7ef40d5bd"
+    },
+    {
+      "rank": 1,
+      "positive_plan_passed": true,
+      "negative_controls": {
+        "model_argument": "Container model arguments differ from the canonical launch",
+        "extra_environment": "Container environment differs for names: VLLM_UNREVIEWED",
+        "writable_model": "Container bind mounts or access modes differ from the canonical launch",
+        "wrong_cache": "Container bind mounts or access modes differ from the canonical launch",
+        "writable_bundle": "Container bind mounts or access modes differ from the canonical launch"
+      },
+      "installed": false,
+      "live_container_unchanged": true,
+      "guard_sha256": "4e44ced36d211f8900ffdd67d64debb9c444561e76d64b7eac129f45aff6234c",
+      "receipt_sha256": "88d7966883669a9faf524bbdcf0cd8de8ff6a7766c2eaccf638acc28ba841788"
+    },
+    {
+      "rank": 2,
+      "positive_plan_passed": true,
+      "negative_controls": {
+        "model_argument": "Container model arguments differ from the canonical launch",
+        "extra_environment": "Container environment differs for names: VLLM_UNREVIEWED",
+        "writable_model": "Container bind mounts or access modes differ from the canonical launch",
+        "wrong_cache": "Container bind mounts or access modes differ from the canonical launch",
+        "writable_bundle": "Container bind mounts or access modes differ from the canonical launch"
+      },
+      "installed": false,
+      "live_container_unchanged": true,
+      "guard_sha256": "4e44ced36d211f8900ffdd67d64debb9c444561e76d64b7eac129f45aff6234c",
+      "receipt_sha256": "690b8927385829d57d233f49d052921c9a50dfcee4ae1462045989e241950f15"
+    },
+    {
+      "rank": 3,
+      "positive_plan_passed": true,
+      "negative_controls": {
+        "model_argument": "Container model arguments differ from the canonical launch",
+        "extra_environment": "Container environment differs for names: VLLM_UNREVIEWED",
+        "writable_model": "Container bind mounts or access modes differ from the canonical launch",
+        "wrong_cache": "Container bind mounts or access modes differ from the canonical launch",
+        "writable_bundle": "Container bind mounts or access modes differ from the canonical launch"
+      },
+      "installed": false,
+      "live_container_unchanged": true,
+      "guard_sha256": "4e44ced36d211f8900ffdd67d64debb9c444561e76d64b7eac129f45aff6234c",
+      "receipt_sha256": "462d68978e11ffac7a378298a8fb73b6ef85413177b75b0776766be0b868956a"
+    }
+  ],
+  "limitation": "Tests cover canonical managed-profile settings. Generated launch files must be regenerated using the installer checkout."
+}

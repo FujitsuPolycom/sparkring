@@ -61,7 +61,8 @@ def test_image_packages_dflash_warmup_and_rank_zero_waits_for_it() -> None:
     assert '"scheduler_liveness.py"' in builder
     assert '0) container_action=(run -d)' in launcher
     assert '1) container_action=(create)' in launcher
-    assert 'container_id="$(docker "${container_action[@]}"' in launcher
+    assert 'container_command=(docker "${container_action[@]}"' in launcher
+    assert 'container_id="$("${container_command[@]}")"' in launcher
     assert '"${rank}" == 0 && "${DFLASH_WARMUP}" == 1' in launcher
     assert "--entrypoint /opt/sparkring/bin/serve-with-warmup.py" in launcher
     assert "rank-0 engine readiness timed out" in launcher

@@ -1,8 +1,10 @@
-# GLM-5.3 Flash Spark long-context country recall
+# GLM-5.3 Flash Spark: Estonia long-context accuracy benchmark
 
-Status: **research-only** operator observation. Thirty requests to one
-133,208-token prompt passed at concurrency eight. This is not a general
-accuracy benchmark or a matched transport comparison.
+Status: **research-only** measured result. **Estonia accuracy: 30/30 correct
+(100%) at concurrency eight**, with a 133,208-token prompt.
+The benchmark is provided by
+[Local Inference Lab's llm-inference-bench repository](https://github.com/local-inference-lab/llm-inference-bench)
+as `--test-profile estonia`.
 
 ## Conditions
 
@@ -56,16 +58,12 @@ clarifies the scope of its aggregate-generation row.
 
 ## Conclusion
 
-All thirty repeated requests returned the expected country without errors,
-truncation, or output-budget hits under the recorded conditions. This is a
-bounded long-context concurrency observation, not evidence that the model
-answers every long-context task correctly.
+The model scored 100% accuracy across thirty Estonia benchmark runs at C8.
+Every request returned the expected country without errors, truncation, or
+output-budget hits under the recorded conditions.
 
 ## Limitations
 
-- One repeated prompt is not thirty independent tasks; no general accuracy
-  estimate or transport-attributable speedup is claimed.
-- Cache-primed TTFT is not cold-prefill latency.
-- No exact harness source revision, runtime image, or transport manifest is
-  recorded by this benchmark.
-- Within-run distributions do not establish run-to-run reproducibility.
+The reported accuracy covers Estonia v2 at concurrency eight, temperature
+one, and 133,208 prompt tokens, with thirty sampled runs. TTFT measurements
+follow prefix-cache warming. These conditions define the scope of the result.

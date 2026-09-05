@@ -155,11 +155,26 @@ hosts, with the same epoch and key. Do not overwrite another deployment's
 container or installed service without inspecting and explicitly removing
 that deployment first.
 
-The installer validates the stopped container, helper hash and `--managed`
-support, canonical bundle hashes, and temperature-one image attestation. Plan
-mode invokes local read-only Docker/helper checks. `--apply` additionally
+The installer regenerates the expected launch from the reviewed site and
+compares the stopped container's complete model arguments, entrypoint,
+environment, bind mounts and access modes, labels, user, and working directory.
+It also validates the helper hash and `--managed` support, canonical bundle
+hashes, and temperature-one image attestation. Re-render launch files with
+the installer checkout before installation; modified rank environments or a
+different launcher are rejected. Change the reviewed profile inputs rather
+than editing rendered files to bypass this check.
+
+The launcher's `SPARKRING_PRINT_CONTAINER_SPEC=1` mode emits the same Docker
+argument array used for creation, after read-only identity checks. It does
+not create a container or start a model. The installer invokes this mode in
+a controlled environment. Plan mode invokes local read-only Docker/helper
+checks and uses a temporary directory for canonical rendering. `--apply` additionally
 requires root, copies the source/configuration/key, verifies the unit files,
 and reloads systemd. It neither enables nor starts the units.
+
+The [configuration-check receipt](container-validation-receipt.json) records
+four-host acceptance checks and twenty rejected argument/environment/mount
+mutations. These checks did not install or restart services.
 
 The installed source directory must remain identical across ranks. Source
 hashes participate in authenticated readiness; patching one rank breaks the

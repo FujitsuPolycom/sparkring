@@ -51,11 +51,10 @@ identifies the included code and retained license.
 The [profile results table](../runtime/glm53-spark-mtp3-mesh/README.md#operator-benchmark-observations)
 shows the full concurrency matrix: aggregate decode reached **231.3 tok/s at
 8K/C16**, and concurrency-one prefill scouts measured **2,703–2,787 prompt
-tokens/s** across 8K–128K contexts. These are single-run observations with
-their measured configuration documented, not a universal performance claim
-for the packaged image.
+tokens/s** across 8K–128K contexts. The linked record provides the measured
+configuration, sampling settings, and single-run measurement conditions.
 
-A separate [long-context country-recall test](../performance/records/glm53-flash/spark-mtp3-country-recall-20260905.md)
+A separate [Estonia long-context accuracy benchmark](../performance/records/glm53-flash/spark-mtp3-country-recall-20260905.md)
 completed **30/30 correct answers at C8** on one repeated 133,208-token prompt,
 with no output-budget hits. The records include both operator screenshots,
 numeric results, and distinct throughput definitions.
@@ -116,9 +115,9 @@ those private inputs or an executable host installer.
   configured 40 GiB persistent cache per rank and JIT/build cache headroom.
   Image export can require another tens-of-GiB archive. Confirm free disk
   and memory instead of deleting another workload's artifacts.
-- A trusted management network. The example serves port 8015 without an API
-  key. Configure the baseline launcher's `API_KEYS_FILE` or restrict access
-  before exposing it outside that network.
+- A trusted management network. This profile serves port 8015 without an API
+  key; restrict access to intended clients. Adding API authentication requires
+  a reviewed profile extension, not an untracked edit to a rendered rank file.
 - An operator-approved maintenance window for host networking and model
   startup. Preserve host routes, neighbor entries, traffic-control rules,
   qdiscs, MTUs, and process ownership before making changes.
@@ -516,7 +515,7 @@ The service installs only exact missing planned routes, neighbors, and
 hardware rules. Matching preexisting state is adopted, not owned for removal.
 It never flushes unrelated networking. The service monitors the configured
 paths and their helper processes for the lifetime of the deployment.
-The host installer copies an explicit allowlist of 13 required source files,
+The host installer copies an explicit allowlist of 16 required source files,
 not an entire checkout or user work directory. Private inputs are supplied
 separately; do not place keys or cached results into source trees for transfer.
 

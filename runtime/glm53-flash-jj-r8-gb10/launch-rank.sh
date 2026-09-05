@@ -27,6 +27,11 @@ fi
 : "${IMAGE_ID:=sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075}"
 : "${CONTAINER_PREFIX:=glm53-jj-r8-gb10}"
 : "${SPARKRING_CREATE_ONLY:=0}"
+: "${SPARKRING_PRINT_CONTAINER_SPEC:=0}"
+case "${SPARKRING_PRINT_CONTAINER_SPEC}" in
+  0|1) ;;
+  *) printf 'SPARKRING_PRINT_CONTAINER_SPEC must be 0 or 1\n' >&2; exit 78 ;;
+esac
 : "${SERVED_MODEL_NAME:=glm-5.3-flash}"
 : "${PORT:=8015}"
 : "${MASTER_PORT:=29775}"
@@ -698,7 +703,7 @@ verify_file_sha256 \
 fi
 
 container="${CONTAINER_PREFIX}-r${rank}"
-if docker container inspect "${container}" >/dev/null 2>&1; then
+if [[ "${SPARKRING_PRINT_CONTAINER_SPEC}" == 0 ]] && docker container inspect "${container}" >/dev/null 2>&1; then
   printf 'container already exists: %s\n' "${container}" >&2
   exit 3
 fi
@@ -848,7 +853,7 @@ case "${SPARKRING_CREATE_ONLY}" in
   *) die 'SPARKRING_CREATE_ONLY must be 0 or 1' ;;
 esac
 
-container_id="$(docker "${container_action[@]}" \
+container_command=(docker "${container_action[@]}" \
   --name "${container}" \
   --entrypoint /opt/sparkring/bin/serve-with-warmup.py \
   --network host --ipc host --shm-size "${SHM_SIZE}" --gpus all \
@@ -949,7 +954,19 @@ container_id="$(docker "${container_action[@]}" \
   --async-scheduling --enable-prefix-caching --cudagraph-metrics \
   "${jit_monitor_args[@]}" \
   "${prompt_tokens_details[@]}" \
-  "${kv_transfer_args[@]}" "${headless[@]}")"
+  "${kv_transfer_args[@]}" "${headless[@]}")
+
+# The inspection path emits the same argument array used for execution. It
+# performs identity checks above, but never creates a container or waits for a model.
+if [[ "${SPARKRING_PRINT_CONTAINER_SPEC}" == 1 ]]; then
+  python3 - "${container_command[@]}" <<'PY'
+import json
+import sys
+print(json.dumps({"schema": "sparkring-container-command/v1", "argv": sys.argv[1:]}))
+PY
+  exit 0
+fi
+container_id="$("${container_command[@]}")"
 
 if [[ "${SPARKRING_CREATE_ONLY}" == 0 && "${rank}" == 0 && "${DFLASH_WARMUP}" == 1 ]]; then
   readiness_deadline=$((SECONDS + DFLASH_WARMUP_TIMEOUT_SECONDS + 120))

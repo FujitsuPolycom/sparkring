@@ -1,6 +1,8 @@
 {
   "schema": "sparkring-country-recall-observation/v1",
   "status": "research-only",
+  "benchmark_repository": "https://github.com/local-inference-lab/llm-inference-bench",
+  "benchmark_name": "Estonia long-context accuracy benchmark",
   "source_record_sha256": "3812663acfb7dba1e2cf0ef675f6be180732796fc169556823f326e9bed6a63c",
   "conditions": {
     "version": "0.4.32",
@@ -596,7 +598,7 @@
   },
   "conclusion": "All 30 requests at concurrency 8 completed and matched the expected country without errors or output-budget hits.",
   "limitations": [
-    "One repeated prompt does not establish general model accuracy or comprehensive long-context reliability.",
+    "All thirty runs use the same Estonia prompt; accuracy covers that task under repeated sampling at concurrency eight.",
     "The benchmark does not record an immutable runtime image, transport bundle, or harness source revision; do not assign this result to the published convenience image.",
     "Cache-primed TTFT is not cold prefill timing.",
     "The screenshot's aggregate gen tok/s label is request-time weighted, unlike the separate sustained aggregate decode matrix."

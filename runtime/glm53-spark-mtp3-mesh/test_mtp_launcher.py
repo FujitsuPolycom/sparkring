@@ -147,6 +147,38 @@ def test_prepare_only_rejects_invalid_switch(launch_fixture):
     assert not arguments
 
 
+@pytest.mark.parametrize('rank', range(4))
+def test_spec_mode_matches_create_argv_without_creating_container(launch_fixture, rank, monkeypatch):
+    launch, _, _ = launch_fixture
+    result, arguments, hashes = launch(rank, {
+        'SPARKRING_CREATE_ONLY': '1', 'SPARKRING_PRINT_CONTAINER_SPEC': '1',
+        'IMAGE_REF': profile.IMAGE['operator_image']['image_id']},
+        {'FIXTURE_HEALTH_STATE': 'unhealthy'})
+    assert result.returncode == 0, result.stderr
+    assert not arguments
+    assert hashes
+    spec = json.loads(result.stdout)
+    assert spec['schema'] == 'sparkring-container-command/v1'
+    created, arguments, _ = launch(rank, {'SPARKRING_CREATE_ONLY': '1',
+                                          'IMAGE_REF': profile.IMAGE['operator_image']['image_id']})
+    assert created.returncode == 0, created.stderr
+    assert spec['argv'] == ['docker', *arguments]
+    monkeypatch.syspath_prepend(str(HERE))
+    import managed_install
+    expected = managed_install.expected_container_spec(spec['argv'], {
+        'Id': profile.IMAGE['operator_image']['image_id'], 'Config': {'Env': [], 'Labels': {}}})
+    assert expected['cmd'][0] == '/models/target'
+    assert expected['mounts']['/models/target']['RW'] is False
+    assert expected['mounts']['/opt/spark-sircl']['RW'] is False
+
+
+def test_spec_mode_rejects_invalid_switch(launch_fixture):
+    launch, _, _ = launch_fixture
+    result, arguments, _ = launch(0, {'SPARKRING_PRINT_CONTAINER_SPEC': 'invalid'})
+    assert result.returncode != 0
+    assert not arguments
+
+
 @pytest.mark.parametrize("rank", range(4))
 def test_rendered_mtp_launcher_runs_without_external_draft(launch_fixture, rank):
     launch, site, output = launch_fixture

@@ -45,7 +45,7 @@ Concurrency-one prefill scouts measured **2,703–2,787 prompt tokens/s** over
 8K–128K contexts, with one observation per context. They are not a repeated
 cold-cache benchmark.
 
-The separate [country-recall record](../../performance/records/glm53-flash/spark-mtp3-country-recall-20260905.md)
+The separate [Estonia accuracy record](../../performance/records/glm53-flash/spark-mtp3-country-recall-20260905.md)
 reports **30/30 correct** at C8 on one repeated 133,208-token prompt, no
 output-limit hits, and 1.96 s mean cache-primed TTFT. Its 23.8 tok/s figure
 uses summed request times, not cluster wall time. Both records retain the
