@@ -19,6 +19,33 @@ intermediate packets traverse the ConnectX-7 ASIC. Endpoint
 posting still uses CPU-side transport machinery and GPU-mapped host memory;
 this does not add GPUDirect RDMA to DGX Spark.
 
+## Automatic startup memory preparation
+
+Status: implemented, with CPU contract tests and
+[four-host startup evidence](../../performance/records/glm53-flash/spark-mtp3-startup-memory-gate-20260905.json).
+
+`managed_cluster.py start-model` checks memory before starting any model rank.
+Each host must have at least 96 GiB available and 200 equivalent free blocks
+of 32 MiB or larger. Plenty of available RAM does not guarantee that the large
+contiguous allocations needed by the loader can succeed.
+
+The coordinator first verifies that all model ranks are stopped, no containers
+or GPU workloads are running, and the configured serving and rendezvous ports
+are free. Hosts that pass the memory thresholds skip repair. Hosts that fail
+flush pending writes, release clean page-cache pages, and request kernel memory
+compaction. Every rank must pass the subsequent memory check before model
+startup proceeds. Before/after measurements are saved in the coordinator receipt.
+
+If repair is insufficient, startup stops with `reboot-required`; reboot the
+affected hosts and rerun startup. No host is rebooted automatically. Preparation
+does not delete model weights or persistent SparkCache data. Stop unrelated
+containers and GPU workloads before invoking this host-wide operation.
+
+Direct systemd model startup checks the memory thresholds but does not compact
+memory. Model arming and compaction share a host-local lock, so the managed
+model cannot start while compaction is in progress. Use one cluster coordinator
+at a time; direct `docker start` bypasses the managed startup contract.
+
 ## Prerequisites and identities
 
 Prepare the target, verified transport bundle, image receipt, and rendered
