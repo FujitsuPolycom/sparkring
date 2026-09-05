@@ -8,14 +8,14 @@ persistent-cache recall under the connection-grace policy. Broader lifecycle
 qualification remains pending. This guide does not claim
 unattended high availability or complete failure coverage.
 
-The hardware-forwarded mesh has no scheduled expiry when its native markers
-run under `managed_service.py`. Each marker uses `--managed`, remains attached
-until signaled or failed, and reports `lifetime_seconds: null`. The service
-owns two marker processes per rank, checks the local network and authenticated
-peers, and stops dependent serving when readiness is lost.
+The mesh service configures and monitors paths that allow opposite Sparks
+to communicate through an intermediate NIC in the ring. It requires all
+four ranks to be ready before model startup and stops dependent serving
+when the fabric is unhealthy. The operator explicitly initiates recovery.
 
-Marker processes keep hardware steering objects alive. They are **not packet
-forwarders**: intermediate packets traverse the ConnectX-7 ASIC. Endpoint
+Small native helper programs, called source markers, install the packet-header
+rewrite rules needed by these paths. They are **not packet forwarders**:
+intermediate packets traverse the ConnectX-7 ASIC. Endpoint
 posting still uses CPU-side transport machinery and GPU-mapped host memory;
 this does not add GPUDirect RDMA to DGX Spark.
 
@@ -304,6 +304,17 @@ It does **not** restart the model. Inspect readiness, then explicitly use
 `start-model` when ready to load it.
 
 ## Detection limits and supervisor loss
+
+### Native helper lifetime contract
+
+`managed_service.py` starts two source-marker processes per rank with
+`--managed`. They remain attached until signaled or failed and report
+`lifetime_seconds: null`. The service units report `RuntimeMaxUSec=infinity`.
+The supervisor, model-stop barrier, and explicit recovery procedure govern
+their lifetime; a periodic timer is not used to remove forwarding rules.
+The bounded `--run-seconds` mode is for isolated diagnostics only.
+
+### Readiness checks
 
 | Check | Configured interval or bound |
 |---|---|

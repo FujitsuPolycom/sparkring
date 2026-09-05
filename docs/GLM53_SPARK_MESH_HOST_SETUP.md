@@ -521,7 +521,7 @@ Finish these steps in order using the linked command sections:
    `glm-5.3-flash-spark` on rank zero's management IP, port 8015.
 
 Use [managed stop/recovery](../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md#planned-stop-restart-and-recovery)
-for subsequent maintenance. The mesh has no scheduled two-hour expiry; do
-not restart individual marker processes beneath live model QPs. Keep this
+for subsequent maintenance. Do not change forwarding helpers beneath live
+model RDMA connections. Keep this
 as a supervised research deployment until the broader reliability gates
 are qualified for your hosts and workload.

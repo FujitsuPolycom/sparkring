@@ -104,12 +104,13 @@ No external draft checkpoint is required. Verification graphs in four-row
 increments combine graph-native SIRCL, fused dual-rail prefill, and modified RoCEnante
 all-reduces over hardware-forwarded opposite-peer paths.
 
-The [profile package](runtime/glm53-spark-mtp3-mesh/README.md) composes a
-verified host bundle and a locally built child image with managed markers
-and temperature-one warmup. The
-[managed mesh service](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md) provides
-non-expiring marker ownership, authenticated four-rank startup gates, and
-explicit recovery. The
+The [profile package](runtime/glm53-spark-mtp3-mesh/README.md) supplies a
+published runtime image, verified transport files, and temperature-one warmup.
+The [mesh service](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md) configures and
+monitors hardware-forwarded paths between opposite Sparks in the ring. It
+requires all four ranks to be ready before model startup and stops dependent
+serving when the fabric is unhealthy. Recovery is an explicit operator action.
+The
 [managed functional record](performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md)
 qualifies bounded installer, fault/recovery, model reload, and persistent
 recall cases. Broader fault/soak coverage remains research-only; hot marker

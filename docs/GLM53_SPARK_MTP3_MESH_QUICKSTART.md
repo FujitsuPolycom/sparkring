@@ -26,6 +26,21 @@ The [profile contract](../runtime/glm53-spark-mtp3-mesh/README.md) and
 The [throughput record](../performance/records/glm53-flash/spark-mtp3-mesh-20260905.md)
 reports observations, not a general performance guarantee.
 
+## Attribution and design origins
+
+RoCEnante originates with Local Inference Lab's contributors, not SparkRing.
+Credit goes to Luke (`lukealonso`) and the Local Inference Lab community,
+including PR author `original-el8`, for the communication implementation in
+[B12X #295](https://github.com/local-inference-lab/b12x/pull/295) and its
+[vLLM integration in #597](https://github.com/local-inference-lab/vllm/pull/597).
+
+Those PRs motivated SparkRing's investigation of hardware-forwarded paths
+between opposite ranks on a four-node ring. SparkRing adapts the donor
+communication package to those paths and combines it with SIRCL routing and
+managed deployment. It does not claim to originate RoCEnante or install both
+complete PRs unchanged. The [vendored-source provenance](../third_party/b12x_roce/README.md)
+identifies the included code and retained license.
+
 ## Preparation order and command locations
 
 Use one management shell to prepare the shared site and coordinate all four
@@ -89,7 +104,9 @@ those private inputs or an executable host installer.
   startup. Preserve host routes, neighbor entries, traffic-control rules,
   qdiscs, MTUs, and process ownership before making changes.
 
-The source marker selects **every RDMA-TX packet with UDP source port 65535
+A small native helper, called the source marker, installs the source NIC's
+packet-header rewrite used by the hardware-forwarded paths. It selects
+**every RDMA-TX packet with UDP source port 65535
 on its selected device**. It is not scoped to a particular IP or QP number.
 Reserve that source port for the mesh and exclude unrelated users of the
 selected functions during testing.
@@ -214,11 +231,12 @@ the native all-rank RC correctness checks before model startup. The managed
 installer intentionally does not reload NIC drivers or perform this bootstrap.
 
 Use the [managed mesh service](../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md)
-for this profile. Its source markers remain attached until signaled or failed;
-there is no scheduled expiry. Authenticated four-rank readiness gates model
-startup, and loss of readiness stops dependent serving. Hot replacement of
-markers beneath live RC QPs is unsupported. Bounded marker mode is reserved
-for isolated diagnostics, not the serving procedure.
+to configure and monitor the hardware-forwarded paths between opposite
+Sparks. Model startup requires authenticated readiness from all four ranks;
+unhealthy fabric stops dependent serving, and the operator explicitly
+initiates recovery. Changing forwarding helpers beneath live RDMA connections
+is unsupported. The bounded diagnostic mode is separate from this serving
+procedure.
 
 ## Exact serving settings
 
@@ -477,8 +495,8 @@ It is the executable host-operations procedure for this profile:
 
 The service installs only exact missing planned routes, neighbors, and
 hardware rules. Matching preexisting state is adopted, not owned for removal.
-It never flushes unrelated networking. Managed markers have no time limit;
-the network and process supervision contract replaces lease renewal.
+It never flushes unrelated networking. The service monitors the configured
+paths and their helper processes for the lifetime of the deployment.
 The host installer copies an explicit allowlist of 13 required source files,
 not an entire checkout or user work directory. Private inputs are supplied
 separately; do not place keys or cached results into source trees for transfer.

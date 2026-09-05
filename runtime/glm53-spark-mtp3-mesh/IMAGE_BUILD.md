@@ -51,8 +51,9 @@ recorded in the image receipt; it is not assumed to match a binary built with
 another toolchain. Merely extracting or invoking its `--help` command does not
 install forwarding rules. Actual use requires the separately authorized,
 device-scoped fabric plan and the [managed host service](MANAGED_MESH.md).
-Its managed marker has no scheduled expiry. The bounded marker mode is for
-isolated diagnostics, not the serving lifecycle.
+That service configures the hardware-forwarded ring paths, gates model
+startup on four-rank readiness, and coordinates shutdown or recovery.
+The bounded helper mode is for isolated diagnostics, not the serving lifecycle.
 
 ## Optional source reproduction
 

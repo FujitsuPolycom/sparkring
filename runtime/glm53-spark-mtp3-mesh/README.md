@@ -84,11 +84,13 @@ installs root-owned source, private authentication inputs, and systemd units.
 `managed_cluster.py` coordinates four-rank readiness, model startup,
 model-stop barriers, cleanup, and explicit recovery.
 
-The service owns two source-marker processes per rank. They run until
-signaled or failed, with no scheduled expiry. Marker processes own hardware
-steering objects; they do not forward packets on the CPU. A shared key and
-epoch authenticate peers, while process-generation agreement gates model
-startup. Model and mesh units do not restart automatically.
+The service configures and monitors paths that let opposite Sparks
+communicate through an intermediate NIC in the ring. Model startup requires
+all four ranks to agree that the fabric is ready. An unhealthy fabric stops
+dependent serving; recovery is an explicit operator action. The intermediate
+NIC forwards packets in hardware, not through a helper's CPU loop. A shared
+key and deployment identifier authenticate peers. Model and mesh units do
+not restart automatically.
 
 Network cleanup removes only exact created-and-owned artifacts. Existing
 matching objects are adopted and preserved; conflicting state fails closed.

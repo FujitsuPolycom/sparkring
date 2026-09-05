@@ -63,9 +63,11 @@ The tests cover source identity, signature routing, bundle manifests,
 capability voting, and the Python health boundary. Live CUDA graphs, RDMA,
 cache correctness, and fault containment require separate hardware tests.
 
-## Attribution
+## Attribution and design origins
 
-The communication implementation derives from Local Inference Lab's
+RoCEnante is Local Inference Lab's communication implementation, not a
+SparkRing invention. Credit includes Luke (`lukealonso`), the project's
+contributors, and PR author `original-el8`. The included implementation derives from
 [B12X PR 295](https://github.com/local-inference-lab/b12x/pull/295).
 [`third_party/b12x_roce`](../../../third_party/b12x_roce/README.md) contains
 the selected modified source, provenance, and retained Apache-2.0 license.
@@ -73,3 +75,7 @@ the selected modified source, provenance, and retained Apache-2.0 license.
 integration ideas, including rank-wide agreement and post-step health checks;
 the adapter here is bound to the separately pinned serving runtime. Neither
 link implies that the complete PR is installed unchanged.
+
+The two upstream PRs motivated SparkRing's hardware-forwarded diagonal
+exploration on a physical ring. The topology adaptation, hybrid SIRCL
+dispatch, and managed deployment are SparkRing's integration work.
