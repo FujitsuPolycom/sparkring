@@ -36,6 +36,14 @@ The external BF16 draft is
 [`incoai/GLM-5.3-Flash-DFlash2`](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2).
 Exact revisions and source-tree hashes are in [`pins.json`](pins.json).
 
+The launcher also accepts `TARGET_MODEL_VARIANT=nvfp4-spark` and
+`SPECULATION_METHOD=mtp`. The separate
+[native-MTP3 mesh profile](../glm53-spark-mtp3-mesh/README.md) supplies its
+target revision, depth-three graph sizes, transport bundle, and cache identity.
+That profile requires no external draft checkpoint. Its hardware-forwarded
+mesh and native-MTP cache namespace are research-only, not covered by the
+DFlash/SIRCL functional qualification described below.
+
 ## Use the runtime
 
 Follow the

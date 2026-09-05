@@ -37,6 +37,7 @@ launches Ring Doctor before any model profile is selected.
 
 | Package | Purpose | When to use it |
 |---|---|---|
+| [`sparkring-glm53-sparkcache` managed-mesh image](runtime/glm53-spark-mtp3-mesh/public-image.json) | Published Linux/ARM64 image for NVFP4-Spark, native MTP3, temperature-one warmup, managed virtual diagonals and SparkCache. Research-only profile. | Use the immutable digest and complete host setup in the [managed-mesh quickstart](docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md). |
 | [`sparkring-glm53-sparkcache`](https://github.com/users/FujitsuPolycom/packages/container/package/sparkring-glm53-sparkcache) | Published Linux/ARM64 GLM-5.3 operator image with source-pinned vLLM, B12X GB10 kernels, DFlash2, and optional SparkCache. | Use the immutable digest from the [GLM-5.3 quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md). |
 | [`sparkring-glm53-runtime`](https://github.com/users/FujitsuPolycom/packages/container/package/sparkring-glm53-runtime) | Source-pinned GLM-5.3 runtime bases used as operator-image construction inputs. | Use only when a source-build procedure names an exact digest. |
 | [`gb10-vllm-serving`](https://github.com/users/FujitsuPolycom/packages/container/package/gb10-vllm-serving) | Profile-specific GB10 serving images, including published DeepSeek inputs. | Use only when a model profile names an exact digest. |
@@ -90,6 +91,33 @@ functional scope.
 The quickstart also identifies a complete-snapshot recovery image by immutable
 digest and names the source revision required by its launcher.
 
+### GLM-5.3 Flash Spark with native MTP3 and mesh transport
+
+| Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
+|---|---|---:|---:|---:|---|---|
+| NVFP4-Spark + native MTP3 + mesh · research-only | 4 Sparks · TP4/DCP4 | 1M | 16 | 8,192 | FP8 · 24 GiB/rank; SparkCache enabled | [Quickstart](docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md) |
+
+The [native-MTP3 mesh profile](docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md) is
+**research-only**. It serves the NVFP4-Spark checkpoint with its built-in
+three-token predictor, TP4/DCP4, 16 sequences, and an 8,192-token batch budget.
+No external draft checkpoint is required. Verification graphs in four-row
+increments combine graph-native SIRCL, fused dual-rail prefill, and modified RoCEnante
+all-reduces over hardware-forwarded opposite-peer paths.
+
+The [profile package](runtime/glm53-spark-mtp3-mesh/README.md) composes a
+verified host bundle and a locally built child image with managed markers
+and temperature-one warmup. The
+[managed mesh service](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md) provides
+non-expiring marker ownership, authenticated four-rank startup gates, and
+explicit recovery. The
+[managed functional record](performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md)
+qualifies bounded installer, fault/recovery, model reload, and persistent
+recall cases. Broader fault/soak coverage remains research-only; hot marker
+replacement and unattended high availability are unsupported.
+This profile does not replace the qualified DFlash/SIRCL deployment above.
+Its [measurement record](performance/records/glm53-flash/spark-mtp3-mesh-20260905.md)
+states workload conditions, raw counts, acceptance, and qualification limits.
+
 ### Other model profiles
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
@@ -109,12 +137,13 @@ and evaluation; review its model card before use.
 ## Benchmark results
 
 All values are tokens per second. Prefill uses a cold prompt with caching
-disabled. Decode reports sustained generation after the prompt context is
+disabled except for the explicitly labeled integrated scout. Decode reports sustained generation after the prompt context is
 available; each linked record states its context-sharing conditions. Decode
 values are aggregate throughput across active streams at temperature 1.0.
 
 | Profile | Prefill | C1 decode | C8 decode | Highest tested decode | Coding peak |
 |---|---:|---:|---:|---:|---:|
+| [GLM-5.3 Flash NVFP4-Spark native MTP3 + mesh · 4 Sparks · research-only](performance/records/glm53-flash/spark-mtp3-mesh-20260905.md) | 2,703 (8K scout) | 48.2 | 168.8 | C16: 231.3 | — |
 | [GLM-5.3 Flash NVFP4-Spark exact request-batch graphs · 4 Sparks](performance/records/glm53-flash/dflash2-exact-concurrency-graphs-20260904.md) | 2,717 | 43.05 | 134.3 | C16: 187.0 | — |
 | [GLM-5.3 Flash B12X-KDA DCP4 public image · 4 Sparks](performance/records/glm53-flash/b12x-kda-dcp4-20260903.md) | 2,649 | 37.97 | — | C4: 90.36 | — |
 | [GLM-5.2 EXL3 3.5-bpw · 4 Sparks](performance/records/glm-3.5bpw/normalized-base-20260822.md) | 671 | 20.15 | 64.13 | C8: 64.13 | 25.39 |
@@ -122,6 +151,10 @@ values are aggregate throughput across active streams at temperature 1.0.
 | [DeepSeek-V4-Flash-0731 · 4 Sparks](performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md) | 2,488 | 68.84 | 265.16 | C32: 508.11 | 95.77 |
 | [Qwen3.8-27B EXL3 K5/K6 · 2 Sparks](performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md) | 1,367 | 29.50 | 142.20 | C8: 142.20 | 39.95 |
 | [Qwen3.8-27B EXL3 K5/K6 · 4 Sparks](performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md) | 1,964 | 35.07 | 191.02 | C8: 191.02 | 48.46 |
+
+The native-MTP3 mesh row uses 8,192-token contexts and one observation per
+cell, with caching enabled. Its prefill scout is not a strict cold-cache
+qualification. The linked record contains the 32K and 64K decode matrices.
 
 See [benchmark results and throughput tables](docs/RESULTS.md) for full
 matrices, sample counts, exact settings, and limitations.

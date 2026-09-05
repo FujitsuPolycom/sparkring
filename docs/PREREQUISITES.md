@@ -4,6 +4,7 @@ Complete this checklist before deploying any supported profile. It defines the
 hardware and operator conditions required by the
 [GLM-5.2 quickstart](GLM52_35BPW_QUICKSTART.md),
 [GLM-5.3 Flash R8 quickstart](GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md),
+[GLM-5.3 Spark native-MTP3 managed-mesh quickstart](GLM53_SPARK_MTP3_MESH_QUICKSTART.md),
 [source-built GLM-5.3 e10536a quickstart](GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md),
 [GLM-5.3 adaptive-MTP and live-tensor KDA quickstart](GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md),
 [DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md),
@@ -71,6 +72,57 @@ builder is documented in [`runtime/qwen38/`](../runtime/qwen38/README.md).
 - It must also permit a profile's rendezvous and control traffic when that
   profile configures management addresses for those channels.
 - Rank 0 must expose the configured API port to intended clients.
+
+### Four-Spark managed hardware-forwarded mesh
+
+For four initially stock Sparks, begin with [shared bootstrap](BOOTSTRAP.md)
+for account/SSH enrollment, host checks, the two primary data interfaces,
+and ordinary routed-fabric prerequisites. Then follow the detailed
+[managed-mesh host extension](GLM53_SPARK_MESH_HOST_SETUP.md). It covers
+first-boot/update references, four-cable port orientation, public runtime
+downloads, and the additional host configuration that this profile needs.
+This extends the shared procedure; it does not replace it with a separate
+cluster installer.
+
+The managed profile adds these requirements:
+
+- Four physical cables in the cycle `0-1-2-3-0`, with each rank's port 0/f0
+  connected to the next rank's port 1/f1; management stays on a separate LAN.
+- Four configured RDMA functions per host: primary and Socket Direct
+  secondary functions on each physical port. Shared bootstrap configures the
+  two primary interfaces, not the two secondary interfaces.
+- Ethernet MTU 9,000, active RoCE MTU 4,096, and the intended IPv4-mapped
+  RoCE-v2 GID at index 3 on every function. Preserve IPv6 link-local support;
+  disabling IPv6 can move the IPv4 GID to another index.
+- The tested ConnectX-7 profile: four hairpin queues, queue size 1,024,
+  `hmfs` steering, legacy eSwitch, and hardware TC offload. Driverinit
+  provisioning requires all affected RDMA users stopped and independent
+  management/console access. It is not performed by model installation.
+- A host /24 subnet for each direct link/function. The mesh JSON separately
+  records each endpoint as **/32**; those locators are not interface masks.
+- The public managed-marker, temperature-one image and matching content
+  receipt; a private image cache or local build is not required.
+- Roughly 175 GiB for the complete target checkpoint, approximately 20 GiB
+  image content, and 40 GiB persistent cache per host. Plan for at least
+  300 GiB free before downloading, including workspace headroom; this is
+  not a measured minimum.
+- A common root-only health key, authenticated management port 9975,
+  reviewed noninteractive root authorization, and the managed four-rank
+  startup/stop/recovery procedure.
+
+Keep the shared kernel-routing and scoped Docker firewall requirements for
+ordinary routed traffic and fallback paths. The virtual diagonal's marked
+packets traverse the intermediate ASIC rather than its kernel forwarding
+path; this does not make the baseline kernel configuration obsolete. After
+a NIC reload, restore and verify primary addresses/MTUs before asking Ring
+Doctor to inspect or repair routing. Never run repair commands blindly
+against interfaces whose identities changed.
+
+The [managed functional record](../performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md)
+qualifies bounded tests on the documented prepared hosts. A complete
+four-factory-reset bootstrap has not been performed. Different factory
+driver versions require prerequisite checks, not an assumption that every
+driver exposes the tested steering features.
 
 ### Routing and forwarding across the fabric
 

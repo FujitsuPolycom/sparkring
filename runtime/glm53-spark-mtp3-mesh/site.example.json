@@ -1,0 +1,27 @@
+{
+  "schema": "sparkring-glm53-mtp3-mesh-site/v1",
+  "topology_file": "fabric.example.json",
+  "management_addresses": [
+    "192.0.2.10",
+    "192.0.2.11",
+    "192.0.2.12",
+    "192.0.2.13"
+  ],
+  "model_roots": [
+    "/srv/models/GLM-5.3-Flash-NVFP4-Spark/df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "/srv/models/GLM-5.3-Flash-NVFP4-Spark/df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "/srv/models/GLM-5.3-Flash-NVFP4-Spark/df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "/srv/models/GLM-5.3-Flash-NVFP4-Spark/df116c4fb16b1d37ae43d2cfd624de26ffbc832e"
+  ],
+  "cache_roots": [
+    "/srv/sparkring/glm53-mtp3-cache",
+    "/srv/sparkring/glm53-mtp3-cache",
+    "/srv/sparkring/glm53-mtp3-cache",
+    "/srv/sparkring/glm53-mtp3-cache"
+  ],
+  "bundle_root": "/opt/sparkring/mtp3-mesh-bundle",
+  "container_prefix": "glm53-spark-mtp3-mesh",
+  "marker_binary": "/opt/sparkring/bin/mlx5-rdma-tx-rewrite-probe",
+  "marker_binary_sha256": "e4403012ee0e15cd0e474c689398833868d5596b99e0d396254b6ff06bba5072",
+  "state_root": "/run/sparkring-mtp3-mesh"
+}

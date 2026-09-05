@@ -9,6 +9,10 @@ runtime/exl3/patches/*.patch whitespace=-trailing-space
 # host. Both comparisons are over raw bytes, so every one of these paths must
 # check out identically on Windows and POSIX hosts.
 spark_transport/integrations/vllm/*.py text eol=lf
+spark_transport/experiments/glm53_rocenante_overlay/** text eol=lf
+spark_transport/experiments/cx7_hairpin_diagonal/** text eol=lf
+# Preserve the vendored package's supplied bytes for its canonical tree digest.
+third_party/b12x_roce/** -text whitespace=cr-at-eol
 sparkring_plugin/src/sparkring/_vendor/*.py text eol=lf
 
 # Named individually as well as covered above: these are the sources the

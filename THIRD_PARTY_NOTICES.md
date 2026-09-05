@@ -69,13 +69,15 @@ vLLM is licensed under the Apache License, Version 2.0, Copyright the vLLM team
 and contributors. Obtaining and running vLLM is subject to its own license and
 notices. SparkRing is not a fork of vLLM.
 
-## 4. B12X / Eldritch vLLM fork (not included)
+## 4. B12X / Eldritch vLLM fork (referenced runtime)
 
 The deployed runtime these adapters were validated against was built from a
 private vLLM-derivative fork ("B12X" / "Eldritch"), pinned in this repository
 by the version string
 `0.11.2.dev279+eldritch.final.fcc6141.b12x284a2ea.fi25dd814.cu132.20260626`.
 That fork is not included in, and not published from, this repository.
+The separate vendored RoCEnante communication package is described in Section
+11; it is not the complete B12X model-kernel package or the Eldritch runtime.
 
 ## 5. eugr/spark-vllm-docker (acknowledgment; no code included)
 
@@ -104,9 +106,9 @@ notices.
 
 ## 8. License headers
 
-After the exclusions described above, no file in this snapshot carries a
-third-party SPDX identifier or copyright header. Any file that bears such a
-header must retain it verbatim.
+Third-party SPDX identifiers and copyright headers must be retained verbatim.
+The vendored communication source described in Section 11 retains its
+upstream headers and license text.
 
 ## 9. EXL3 R7 runtime builder components
 
@@ -243,7 +245,8 @@ artifacts that are not distributed in this repository:
   repository notices.
 
 SparkRing records these identities and validates compatible image content; it
-does not redistribute the model weights, vLLM source, or B12X source. Operators
+does not redistribute the model weights, vLLM source, or B12X model-kernel
+package. The selected B12X communication source in Section 11 is included. Operators
 must obtain each artifact under its own terms. The exact operator-image
 composition is in `runtime/glm53-flash-jj-r8-gb10/pins.json` and
 `runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json`.
@@ -255,3 +258,32 @@ remains bound to `local-inference-lab/vllm` commit
 `2fcf23a0ce269be27b2e03fece73d46e90e6aeea`. Its identities are recorded in
 `runtime/glm53-flash/pins.json`; they do not identify the qualified TP4/DCP4
 operator image above.
+
+## 11. B12X RoCEnante communication source (included)
+
+`third_party/b12x_roce/b12x/comm/roce/` contains the selected RoCEnante
+communication package derived from
+[`local-inference-lab/b12x` PR 295](https://github.com/local-inference-lab/b12x/pull/295),
+whose recorded upstream base commit is
+`ffb7442d04a9f50b950df1fb17280acad881b7d5`. The included source is modified
+for the six-QP, two-path peer mapping used by SparkRing's hardware-forwarded
+mesh. It does not include the other B12X modules or model kernels.
+
+The complete selected package, canonical tree digest, and source revision
+are recorded in `third_party/b12x_roce/provenance.json`. Its upstream
+Apache-2.0 license is retained as `third_party/b12x_roce/LICENSE`, and
+copyright notices remain in the source files. Distribution must preserve
+those notices and that license.
+
+The SparkRing vLLM adapter also draws integration ideas from
+[`local-inference-lab/vllm` PR 597](https://github.com/local-inference-lab/vllm/pull/597),
+including capability agreement and the synchronized output-health boundary.
+It is an independently source-bound adapter, not redistribution of the
+complete PR or a claim that both PRs are installed unchanged.
+
+The native-MTP3 profile references
+`local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` revision
+`df116c4fb16b1d37ae43d2cfd624de26ffbc832e`. Its weights are not included.
+Operators must obtain and use that checkpoint under its own license and
+notices. Native MTP uses its included prediction layer and does not require
+an external DFlash checkpoint.

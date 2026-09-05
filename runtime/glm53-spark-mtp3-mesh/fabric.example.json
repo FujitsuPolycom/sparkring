@@ -1,0 +1,226 @@
+{
+  "schema": "sparkring-cx7-hardware-diagonal-fabric/v1",
+  "status": "research-only",
+  "group_id": 77,
+  "socket_direct_functions": 2,
+  "flow_label_base": 16383,
+  "shared_diagonal_flow_label": true,
+  "endpoint_route_strategy": "adjacent_gateway",
+  "standard_ether_type": 2048,
+  "marked_ether_type": 34997,
+  "standard_udp_destination_port": 4791,
+  "roce_gid_index": 3,
+  "bounded_runtime_seconds": 7200,
+  "expected_ethernet_mtu": 9000,
+  "expected_roce_mtu": 4096,
+  "orchestration": {
+    "host_helper_path": "/UNSUPPORTED/external-fabric-orchestrator",
+    "remote_state_root": "/run/sparkring-mtp3-mesh"
+  },
+  "ranks": [
+    {
+      "rank": 0,
+      "ssh_alias": "spark-r0",
+      "management_netdev": "enP7s7",
+      "ports": {
+        "clockwise": [
+          {
+            "function": 0,
+            "netdev": "enp1s0f0np0",
+            "rdma_device": "rocep1s0f0",
+            "ipv4_cidr": "198.18.1.1/32",
+            "mac": "02:00:00:00:00:01",
+            "peer_rank": 1,
+            "peer_direction": "counter_clockwise",
+            "peer_function": 0
+          },
+          {
+            "function": 1,
+            "netdev": "enP2p1s0f0np0",
+            "rdma_device": "roceP2p1s0f0",
+            "ipv4_cidr": "198.18.101.1/32",
+            "mac": "02:00:00:01:00:01",
+            "peer_rank": 1,
+            "peer_direction": "counter_clockwise",
+            "peer_function": 1
+          }
+        ],
+        "counter_clockwise": [
+          {
+            "function": 0,
+            "netdev": "enp1s0f1np1",
+            "rdma_device": "rocep1s0f1",
+            "ipv4_cidr": "198.18.4.2/32",
+            "mac": "02:00:01:00:00:01",
+            "peer_rank": 3,
+            "peer_direction": "clockwise",
+            "peer_function": 0
+          },
+          {
+            "function": 1,
+            "netdev": "enP2p1s0f1np1",
+            "rdma_device": "roceP2p1s0f1",
+            "ipv4_cidr": "198.18.104.2/32",
+            "mac": "02:00:01:01:00:01",
+            "peer_rank": 3,
+            "peer_direction": "clockwise",
+            "peer_function": 1
+          }
+        ]
+      }
+    },
+    {
+      "rank": 1,
+      "ssh_alias": "spark-r1",
+      "management_netdev": "enP7s7",
+      "ports": {
+        "clockwise": [
+          {
+            "function": 0,
+            "netdev": "enp1s0f0np0",
+            "rdma_device": "rocep1s0f0",
+            "ipv4_cidr": "198.18.2.1/32",
+            "mac": "02:01:00:00:00:01",
+            "peer_rank": 2,
+            "peer_direction": "counter_clockwise",
+            "peer_function": 0
+          },
+          {
+            "function": 1,
+            "netdev": "enP2p1s0f0np0",
+            "rdma_device": "roceP2p1s0f0",
+            "ipv4_cidr": "198.18.102.1/32",
+            "mac": "02:01:00:01:00:01",
+            "peer_rank": 2,
+            "peer_direction": "counter_clockwise",
+            "peer_function": 1
+          }
+        ],
+        "counter_clockwise": [
+          {
+            "function": 0,
+            "netdev": "enp1s0f1np1",
+            "rdma_device": "rocep1s0f1",
+            "ipv4_cidr": "198.18.1.2/32",
+            "mac": "02:01:01:00:00:01",
+            "peer_rank": 0,
+            "peer_direction": "clockwise",
+            "peer_function": 0
+          },
+          {
+            "function": 1,
+            "netdev": "enP2p1s0f1np1",
+            "rdma_device": "roceP2p1s0f1",
+            "ipv4_cidr": "198.18.101.2/32",
+            "mac": "02:01:01:01:00:01",
+            "peer_rank": 0,
+            "peer_direction": "clockwise",
+            "peer_function": 1
+          }
+        ]
+      }
+    },
+    {
+      "rank": 2,
+      "ssh_alias": "spark-r2",
+      "management_netdev": "enP7s7",
+      "ports": {
+        "clockwise": [
+          {
+            "function": 0,
+            "netdev": "enp1s0f0np0",
+            "rdma_device": "rocep1s0f0",
+            "ipv4_cidr": "198.18.3.1/32",
+            "mac": "02:02:00:00:00:01",
+            "peer_rank": 3,
+            "peer_direction": "counter_clockwise",
+            "peer_function": 0
+          },
+          {
+            "function": 1,
+            "netdev": "enP2p1s0f0np0",
+            "rdma_device": "roceP2p1s0f0",
+            "ipv4_cidr": "198.18.103.1/32",
+            "mac": "02:02:00:01:00:01",
+            "peer_rank": 3,
+            "peer_direction": "counter_clockwise",
+            "peer_function": 1
+          }
+        ],
+        "counter_clockwise": [
+          {
+            "function": 0,
+            "netdev": "enp1s0f1np1",
+            "rdma_device": "rocep1s0f1",
+            "ipv4_cidr": "198.18.2.2/32",
+            "mac": "02:02:01:00:00:01",
+            "peer_rank": 1,
+            "peer_direction": "clockwise",
+            "peer_function": 0
+          },
+          {
+            "function": 1,
+            "netdev": "enP2p1s0f1np1",
+            "rdma_device": "roceP2p1s0f1",
+            "ipv4_cidr": "198.18.102.2/32",
+            "mac": "02:02:01:01:00:01",
+            "peer_rank": 1,
+            "peer_direction": "clockwise",
+            "peer_function": 1
+          }
+        ]
+      }
+    },
+    {
+      "rank": 3,
+      "ssh_alias": "spark-r3",
+      "management_netdev": "enP7s7",
+      "ports": {
+        "clockwise": [
+          {
+            "function": 0,
+            "netdev": "enp1s0f0np0",
+            "rdma_device": "rocep1s0f0",
+            "ipv4_cidr": "198.18.4.1/32",
+            "mac": "02:03:00:00:00:01",
+            "peer_rank": 0,
+            "peer_direction": "counter_clockwise",
+            "peer_function": 0
+          },
+          {
+            "function": 1,
+            "netdev": "enP2p1s0f0np0",
+            "rdma_device": "roceP2p1s0f0",
+            "ipv4_cidr": "198.18.104.1/32",
+            "mac": "02:03:00:01:00:01",
+            "peer_rank": 0,
+            "peer_direction": "counter_clockwise",
+            "peer_function": 1
+          }
+        ],
+        "counter_clockwise": [
+          {
+            "function": 0,
+            "netdev": "enp1s0f1np1",
+            "rdma_device": "rocep1s0f1",
+            "ipv4_cidr": "198.18.3.2/32",
+            "mac": "02:03:01:00:00:01",
+            "peer_rank": 2,
+            "peer_direction": "clockwise",
+            "peer_function": 0
+          },
+          {
+            "function": 1,
+            "netdev": "enP2p1s0f1np1",
+            "rdma_device": "roceP2p1s0f1",
+            "ipv4_cidr": "198.18.103.2/32",
+            "mac": "02:03:01:01:00:01",
+            "peer_rank": 2,
+            "peer_direction": "clockwise",
+            "peer_function": 1
+          }
+        ]
+      }
+    }
+  ]
+}

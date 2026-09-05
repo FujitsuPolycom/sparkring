@@ -1,15 +1,29 @@
 #!/usr/bin/env python3
-"""Compile DFlash request-batch shapes before a service is declared ready."""
+"""Exercise speculative request shapes and sampling before readiness."""
 
 from __future__ import annotations
 
 import argparse
 import concurrent.futures
 import json
+import math
+import os
 import threading
 import time
 import urllib.error
 import urllib.request
+
+
+def resolve_temperature(value: float | str | None = None) -> float:
+    """Resolve a finite warmup temperature while preserving the greedy default."""
+    if value is None:
+        value = os.environ.get("SPARKRING_WARMUP_TEMPERATURE", "0")
+    if isinstance(value, bool):
+        raise ValueError("Warmup temperature must be a finite number from 0 to 2")
+    temperature = float(value)
+    if not math.isfinite(temperature) or not 0 <= temperature <= 2:
+        raise ValueError("Warmup temperature must be a finite number from 0 to 2")
+    return temperature
 
 
 def wait_for_api(
@@ -48,7 +62,9 @@ def send_warmup_request(
     timeout_seconds: float,
     prompt_words: int,
     credential: str | None = None,
+    temperature: float | None = None,
 ) -> None:
+    temperature = resolve_temperature(temperature)
     body = {
         "model": model,
         "messages": [
@@ -60,7 +76,7 @@ def send_warmup_request(
                 ),
             }
         ],
-        "temperature": 0.0,
+        "temperature": temperature,
         "max_tokens": max_tokens,
         "chat_template_kwargs": {"enable_thinking": False},
     }
@@ -87,7 +103,9 @@ def run_warmup(
     timeout_seconds: float,
     shape_words: tuple[int, ...],
     credential: str | None = None,
+    temperature: float | None = None,
 ) -> tuple[dict[str, float | int], ...]:
+    temperature = resolve_temperature(temperature)
     results: list[dict[str, float | int]] = []
 
     def run_batch(concurrency: int, prompt_words: int) -> None:
@@ -103,6 +121,7 @@ def run_warmup(
                 timeout_seconds,
                 prompt_words,
                 credential,
+                temperature,
             )
 
         started = time.perf_counter()
@@ -114,6 +133,7 @@ def run_warmup(
             {
                 "concurrency": concurrency,
                 "prompt_words": prompt_words,
+                "temperature": temperature,
                 "elapsed_seconds": round(time.perf_counter() - started, 3),
             }
         )
@@ -137,7 +157,12 @@ def main() -> int:
     parser.add_argument("--shape-words", default="8,24,56,120,248")
     parser.add_argument("--timeout-seconds", type=float, default=600.0)
     parser.add_argument("--api-key")
+    parser.add_argument("--temperature", type=resolve_temperature, default=None)
     args = parser.parse_args()
+    try:
+        temperature = resolve_temperature(args.temperature)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     try:
         concurrencies = tuple(
             int(value) for value in args.concurrencies.split(",")
@@ -164,6 +189,7 @@ def main() -> int:
         args.timeout_seconds,
         shape_words,
         args.api_key,
+        temperature,
     )
     print(json.dumps({"dflash_warmup": result}, separators=(",", ":")))
     return 0
