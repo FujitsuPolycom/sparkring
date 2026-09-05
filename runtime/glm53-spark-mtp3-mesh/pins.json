@@ -2,6 +2,14 @@
   "schema": "sparkring-glm53-spark-mtp3-mesh/v1",
   "status": "research-only",
   "image_pins": "../glm53-flash-jj-r8-gb10/pins.json",
+  "compute": {
+    "source_lock": "compute/source-lock.json",
+    "source_lock_sha256": "2a444f7c1ad4319f64afbffb16403491a4863934372cf818f18c510d58c0d00e",
+    "vllm_base_revision": "e02b174693e13859de61811b5e8cd13d5308e259",
+    "b12x_revision": "b58f34eaf978277621efced6678e6713fd7122e4",
+    "b12x_tree": "7637fe5fb4d88882e0d18cdacc68c493f478499d",
+    "cuda_version": "13.3"
+  },
   "target": {
     "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
     "revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
@@ -28,7 +36,7 @@
   "cache_identity": {
     "draft_policy": "separate",
     "draft_checkpoint_source": "target.checkpoint_identity",
-    "namespace": "glm53-spark-df116c4f-native-mtp3-mesh-4204fabc-tail-cow-v2",
-    "compatibility": "The native predictor is identified by its target checkpoint. This intentionally misses the measured deployment's external-draft-tagged entries. Cold-start and persistent-restore qualification of this namespace remain required."
+    "namespace": "glm53-spark-df116c4f-mtp3-nvfp4-a16-b58f34ea-mesh4204fabc-tail-cow-v2",
+    "compatibility": "The namespace separates the NVFP4/BF16 proposal head and B12X b58f34ea computation from cache entries produced with a shared BF16 head. The target checkpoint remains df116c4f; persistent restore requires this profile's matching compute and cache geometry."
   }
 }

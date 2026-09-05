@@ -51,7 +51,7 @@ by that profile.
 | Image family / profile | Purpose | Start here |
 |---|---|---|
 | [GLM-5.3 DFlash2/SIRCL](runtime/glm53-flash-jj-r8-gb10/README.md) | Linux/ARM64 vLLM image with B12X kernels, DFlash2, SIRCL, and optional SparkCache. | [DFlash2 quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
-| [GLM-5.3 native-MTP3 mesh](runtime/glm53-spark-mtp3-mesh/public-image.json) | Linux/ARM64 image for NVFP4-Spark, native MTP3, hybrid mesh transport, and SparkCache. | [Mesh quickstart](docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md) |
+| [GLM-5.3 native-MTP3 mesh](runtime/glm53-spark-mtp3-mesh/public-image.json) | Linux/ARM64 image for NVFP4-Spark, CUDA 13.3, native MTP3 with an NVFP4/BF16 proposal head, hybrid mesh transport, and SparkCache. | [Mesh quickstart](docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md) |
 | [`sparkring-glm53-runtime`](https://github.com/users/FujitsuPolycom/packages/container/package/sparkring-glm53-runtime) | Pinned GLM-5.3 bases used to build serving images. | Use the digest named by the source-build guide. |
 | [`gb10-vllm-serving`](https://github.com/users/FujitsuPolycom/packages/container/package/gb10-vllm-serving) | Profile-specific GB10 images, including DeepSeek. | Use the image named by the selected model quickstart. |
 
@@ -111,13 +111,23 @@ for its terms. The native-MTP3 profile below does not require these weights.
 
 | Profile | Deployment | Context | Seqs | Batch | KV / cache | Start here |
 |---|---|---:|---:|---:|---|---|
-| NVFP4-Spark + native MTP3 + mesh · research-only | 4 Sparks · TP4/DCP4 | 1M | 16 | 8,192 | FP8 · 24 GiB/rank; SparkCache enabled | [Quickstart](docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md) |
+| NVFP4-Spark + native MTP3 + NVFP4/BF16 proposal head + mesh · research-only | 4 Sparks · TP4/DCP4 | 1M | 16 | 8,192 | FP8 · 24 GiB/rank; SparkCache enabled | [Quickstart](docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md) |
 
 This profile uses the NVFP4-Spark checkpoint's built-in three-token predictor;
-no external draft checkpoint is required. It combines graph-native SIRCL for
+no external draft checkpoint or DFlash model is required. A separate runtime-
+NVFP4 proposal head uses BF16 activations while the target/verifier head retains
+its BF16 checkpoint representation. The profile combines graph-native SIRCL for
 selected decode shapes, dual-rail SIRCL for large prefill collectives, and
 RoCEnante for selected small all-reduces. Target verification captures use
 four-row increments through 64 rows.
+
+The image composition uses CUDA 13.3, the native-MTP3 metadata port derived
+from Local Inference Lab vLLM revision `3512b066`, and the complete B12X tree at
+`b58f34ea` with vLLM integration based on `a8c796f3`. The complete B12X update
+also includes MoE and dense-precision work, so comparisons against the previous
+public image cannot attribute a gain to dense kernels alone. The
+[head-specific comparison](performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md)
+uses a control with the same metadata+dense+B12X composition.
 
 The [profile package](runtime/glm53-spark-mtp3-mesh/README.md) provides the
 public image, transport files, and temperature-one warmup. The
@@ -155,7 +165,7 @@ prompt. Each linked record gives its sampling, cache settings, and repeat counts
 
 | Profile | Decode context | Prefill | C1 decode | C8 decode | Highest C at this context | Coding peak |
 |---|---:|---:|---:|---:|---:|---:|
-| [GLM-5.3 NVFP4-Spark · native MTP3 + mesh · 4 Sparks](performance/records/glm53-flash/spark-mtp3-mesh-20260905.md) | 8K | 2,703 (8K scout) | 48.2 | 168.8 | C16: 231.3 | — |
+| [GLM-5.3 NVFP4-Spark · native MTP3 + NVFP4/BF16 proposal head + mesh · 4 Sparks](performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md) | 8K | 2,670 (8K scout mean) | 51.6 | 168.8 | C8: 168.8 | — |
 | [GLM-5.3 NVFP4-Spark · DFlash2 exact request-batch graphs · 4 Sparks](performance/records/glm53-flash/dflash2-exact-concurrency-graphs-20260904.md) | 16K | 2,717 (16K scout) | 43.05 | 134.3 | C16: 187.0 | — |
 | [GLM-5.3 NVFP4 · DFlash2/B12X-KDA DCP4 · 4 Sparks](performance/records/glm53-flash/b12x-kda-dcp4-20260903.md) | 16K | 2,649 (16K scout) | 37.97 | — | C4: 90.36 | — |
 | [GLM-5.2 EXL3 3.5-bpw · 4 Sparks](performance/records/glm-3.5bpw/normalized-base-20260822.md) | 16K | 671 (16K) | 20.15 | 64.13 | C8: 64.13 | 25.39 |
@@ -164,11 +174,15 @@ prompt. Each linked record gives its sampling, cache settings, and repeat counts
 | [Qwen3.8-27B EXL3 K5/K6 · 2 Sparks](performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md) | 16K | 1,367 (16K) | 29.50 | 142.20 | C16: 184.39 | 39.95 |
 | [Qwen3.8-27B EXL3 K5/K6 · 4 Sparks](performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md) | 16K | 1,964 (16K) | 35.07 | 191.02 | C8: 191.02 | 48.46 |
 
-The native-MTP3 mesh row uses one observation per cell with caching enabled.
-Its [consolidated report](performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
-also includes three-pass cold-prefix prefill results, the 32K/64K decode
-matrices, Estonia **30/30** at C8, and **4/4** needle-hunt checks through
-507,367 prompt tokens.
+The native-MTP3 proposal-head row uses three observations per decode cell and
+three prefill scouts per listed context. Relative to two shared-BF16-head
+controls with the same compute composition, C1 changed by +8.22% raw output
+throughput and +4.90% normalized sequence steps/s; C2/C4/C8 were mixed and
+prefill was flat within 0.36%. The previous image's
+[consolidated report](performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
+retains the 32K/64K matrix, Estonia **30/30** at C8, and **4/4** needle-hunt
+checks through 507,367 prompt tokens, with the image identity recorded for
+each test.
 
 See [benchmark results and throughput tables](docs/RESULTS.md) for full
 matrices, sample counts, exact settings, and limitations.

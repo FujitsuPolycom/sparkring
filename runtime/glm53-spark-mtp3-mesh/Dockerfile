@@ -5,6 +5,18 @@ ARG PARENT_IMAGE
 ARG PARENT_IMAGE_ID
 ARG BUNDLE_MANIFEST_SHA256
 ARG SOURCE_RECEIPT_SHA256
+ARG COMPUTE_SOURCE_LOCK_SHA256
+
+COPY compute/ /opt/sparkring-compute/
+ENV CUDA_HOME=/opt/cuda-13.3 CUDA_PATH=/opt/cuda-13.3
+ENV PATH="/opt/cuda-13.3/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/opt/cuda-13.3/lib:/opt/cuda-13.3/lib64:${LD_LIBRARY_PATH}"
+ENV TRITON_PTXAS_PATH=/opt/cuda-13.3/bin/ptxas
+ENV VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH=1 VLLM_B12X_DENSE_ACTIVATION_MODE=auto
+ENV VLLM_MTP_NVFP4_LM_HEAD=1 VLLM_LM_HEAD_A16=1 VLLM_MXFP8_LM_HEAD=0
+RUN python3 /opt/sparkring-compute/apply_compute.py \
+      --prepared /opt/sparkring-compute \
+      --site-packages /usr/local/lib/python3.12/dist-packages
 
 COPY bundle/ /opt/spark-sircl/
 COPY receipts/ /opt/sparkring/receipts/glm53-spark-mtp3-mesh/
@@ -27,4 +39,8 @@ LABEL org.opencontainers.image.title="SparkRing GLM-5.3 Spark MTP3 mesh runtime"
       org.sparkring.mesh.bundle-manifest-sha256="${BUNDLE_MANIFEST_SHA256}" \
       org.sparkring.mesh.source-receipt-sha256="${SOURCE_RECEIPT_SHA256}" \
       org.sparkring.mesh.default-speculation="mtp3" \
+      org.sparkring.compute.source-lock-sha256="${COMPUTE_SOURCE_LOCK_SHA256}" \
+      org.sparkring.b12x.composition="b58f34eaf978277621efced6678e6713fd7122e4" \
+      org.sparkring.vllm.compute-source="${COMPUTE_SOURCE_LOCK_SHA256}" \
+      org.sparkring.mesh.proposal-head="nvfp4-a16" \
       org.sparkring.sircl.manifest-sha256="${BUNDLE_MANIFEST_SHA256}"

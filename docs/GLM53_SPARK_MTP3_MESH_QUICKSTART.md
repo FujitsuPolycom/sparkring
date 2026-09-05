@@ -12,6 +12,10 @@ The [public application-install record](../performance/records/glm53-flash/spark
 covers fresh public checkouts, extracted image artifacts, empty application
 caches, installation, native correctness, and model-restart cache restoration
 on four prepared hosts. It does not qualify a factory-reset OS/network setup.
+Both functional records are image-specific to the earlier published
+composition. The NVFP4/BF16 proposal-head performance record does not transfer
+their restart, cache, or failure-containment qualification to the current
+public image ID; repeat those checks before describing it as qualified.
 
 **Starting with four stock Sparks and no image?** Follow
 [the managed-mesh prerequisite section](PREREQUISITES.md#four-spark-managed-hardware-forwarded-mesh)
@@ -20,15 +24,18 @@ data interfaces, GID/MTU checks, and driver configuration required below.
 Return here to pull the published image and deploy the model.
 
 The profile uses the `GLM-5.3-Flash-NVFP4-Spark` target's built-in multi-token
-predictor with three speculative tokens. Graph-native SIRCL handles most
+predictor with three speculative tokens. Its separate proposal head is packed
+to NVFP4 at model load and uses BF16 activations. The target/verifier head
+retains its BF16 checkpoint representation. Graph-native SIRCL handles most
 captured target verification, fused SIRCL handles large eager prefill, and
 RoCEnante handles selected small all-reduces. Patched NCCL retains the other
 collectives. The host fabric supplies hardware-forwarded paths between
-opposite ranks without extra diagonal cables.
+opposite ranks without extra diagonal cables. No external draft checkpoint or
+DFlash model is used.
 
 The [profile contract](../runtime/glm53-spark-mtp3-mesh/README.md) and
 [pins](../runtime/glm53-spark-mtp3-mesh/pins.json) are the canonical inputs.
-The [throughput record](../performance/records/glm53-flash/spark-mtp3-mesh-20260905.md)
+The [proposal-head throughput record](../performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md)
 reports observations, not a general performance guarantee.
 
 ## Attribution and design origins
@@ -46,16 +53,28 @@ managed deployment. It does not claim to originate RoCEnante or install both
 complete PRs unchanged. The [vendored-source provenance](../third_party/b12x_roce/README.md)
 identifies the included code and retained license.
 
+The proposal-head and metadata implementation is derived from
+[Local Inference Lab vLLM revision `3512b066`](https://github.com/local-inference-lab/vllm/commit/3512b066e7796128c0c380ccc558182960f2f0ea),
+as retained in
+[revision `a8c796f3`](https://github.com/local-inference-lab/vllm/commit/a8c796f3af74106b2d8d441e9ec54588936a5388).
+The packaged compute source uses the complete Local Inference Lab B12X tree at
+[revision `b58f34ea`](https://github.com/local-inference-lab/b12x/commit/b58f34eaf978277621efced6678e6713fd7122e4).
+That tree includes MoE and
+dense-precision changes in addition to the head kernel. SparkRing does not
+claim an isolated dense-kernel result for this composition.
+
 ## Recorded benchmark observations
 
 See the [consolidated validation report](../performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
 for completed checks, repeat counts, and the remaining test plan.
 
 The [profile results table](../runtime/glm53-spark-mtp3-mesh/README.md#operator-benchmark-observations)
-shows the full concurrency matrix: aggregate decode reached **231.3 tok/s at
-8K/C16**, and concurrency-one prefill scouts measured **2,703–2,787 prompt
-tokens/s** across 8K–128K contexts. The linked record provides the measured
-configuration, sampling settings, and single-run measurement conditions.
+shows the completed three-run C1/C2/C4/C8 screen. At 8K, aggregate decode means
+were **51.6, 76.9, 120.8, and 168.8 tok/s**. Against two shared-BF16-head
+controls using the same metadata+dense+B12X base, C1 improved **8.22% raw** and
+**4.90% in normalized sequence steps/s**. Higher concurrency was mixed and
+prefill means were flat within 0.36% over 8K–128K. The linked record provides
+the receipt hashes, exact settings, and limitations.
 
 A separate [Estonia long-context accuracy benchmark](../performance/records/glm53-flash/spark-mtp3-country-recall-20260905.md)
 completed **30/30 correct answers at C8** on one repeated 133,208-token prompt,
@@ -70,7 +89,7 @@ assume a Linux Bash shell and a checkout containing this guide:
 
 ```bash
 set -euo pipefail
-git clone --branch codex/glm53-spark-mtp3-mesh https://github.com/FujitsuPolycom/sparkring.git
+git clone --branch main https://github.com/FujitsuPolycom/sparkring.git
 cd sparkring
 git rev-parse HEAD
 test -f runtime/glm53-spark-mtp3-mesh/managed_install.py
@@ -293,6 +312,15 @@ This addresses the greedy-only warmup gap tracked in
 Completed warmup establishes that its requests ran, not comprehensive
 sampling correctness or thinking-enabled generation coverage.
 
+The pinned image supplies the defaults
+`VLLM_MTP_NVFP4_LM_HEAD=1`, `VLLM_LM_HEAD_A16=1`, and
+`VLLM_MXFP8_LM_HEAD=0`. The target checkpoint's unquantized `lm_head.weight`
+initializes a distinct proposal-head copy on each tensor-parallel rank. For
+154,880 vocabulary rows, width 4,096, and TP4, the packed NVFP4 values and
+scales add approximately 85.08 MiB per rank. The retained BF16 target head
+remains allocated, so 85.08 MiB is an added proposal allocation, not a net
+model-memory reduction.
+
 For a full MTP3 verification batch, target rows are approximately
 `Q = 4 × active requests`. Draft execution and partial batches can use
 different shapes. A capture list is not proof that every live step replays a
@@ -333,12 +361,16 @@ uses eight I/O workers, eight load threads, eight pending operations, and two
 separate from SIRCL's two 64 MiB transport arenas.
 
 Native MTP's cache draft identity is the target checkpoint. The profile uses
-the dedicated namespace in `pins.json`; external-draft-tagged entries must
-not be renamed into it. The `draft_policy=separate` field describes cache
-registration layout, not an external draft model. The linked functional record
-includes an uncached publication and stopped-container restoration under this
-identity. It covers one recall prompt and does not qualify other checkpoints,
-all context lengths, or concurrent cache workloads.
+the dedicated namespace
+`glm53-spark-df116c4f-mtp3-nvfp4-a16-b58f34ea-mesh4204fabc-tail-cow-v2`;
+shared-BF16-head and external-DFlash entries must not be renamed into it. The
+`draft_policy=separate` field describes cache registration layout, not an
+external draft model. The linked functional record
+includes an uncached publication and stopped-container restoration under the
+previous image's identity. Persistent restoration under the new namespace is
+unqualified until the same stopped-container check passes. The earlier record
+covers one recall prompt and does not qualify other checkpoints, all context
+lengths, or concurrent cache workloads.
 
 ## Obtain the image and target
 
@@ -350,9 +382,17 @@ input accepted by the renderer, installer, and native qualification runner.
 Keep both with the checkout; do not substitute `public-image.json` for the
 content receipt.
 
+The content and registry receipts identify the same public image. The
+[compute-image equivalence record](../runtime/glm53-spark-mtp3-mesh/compute-image-equivalence.json)
+verifies all 4,891 vLLM, 385 B12X, and 150 SparkCache package files plus the
+selected environment against tested private image
+`sha256:04d5a35b03e99f68c37a05514d221988a3eb70a5b8fdcfa859025ca1cbc25e74`.
+That proves build/content equivalence, not a fresh serving, restart, or
+persistent-cache qualification for the public image ID.
+
 ```bash
-mtp_image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:23f00af873ccc784cfb742b7be2a29c6d3c20ebec9741843c025320bb9c04685'
-mtp_image_id='sha256:26273b8e358df139ae913610a5d43084ff0fd08aafe282ef633a3bc74afefe47'
+mtp_image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:1b97e1dc9cb93c39f887f40bab24359a9b6ec998c28d2417b160f2103cd5fd86'
+mtp_image_id='sha256:dd6c51efaf4127df863ac85c3be3fe46f260b34c7ab2deb384669fffdbe857df'
 docker pull "${mtp_image}"
 test "$(docker image inspect "${mtp_image}" --format '{{.Id}}')" = "${mtp_image_id}"
 

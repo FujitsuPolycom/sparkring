@@ -1,0 +1,59 @@
+{
+  "schema": "sparkring-glm53-compute-source/v1",
+  "status": "research-only",
+  "vllm": {
+    "base_revision": "e02b174693e13859de61811b5e8cd13d5308e259",
+    "donor_revision": "3512b066e7796128c0c380ccc558182960f2f0ea",
+    "dense_donor_revision": "a8c796f3af74106b2d8d441e9ec54588936a5388",
+    "patch": "vllm-e02-to-compute.patch",
+    "patch_sha256": "a41df4b7a6f2ab4c73157349cb2c66e9d89ccff05af124eb66783b849ae98e8a",
+    "replacement_archive": "vllm-compute-files.tar.gz",
+    "replacement_archive_sha256": "cefc8e7924404280e8ae024392d326fac3262a77d260af514d981921fdc93f90",
+    "files": [
+      ["vllm/envs.py", "22069819122e630dd5131627c6bb8752820be2b66178d7f445eeb6ce93e03d32", "1fbac28f1a763f9d27845a8e09d59f71ba1740b4491a74d0097a7e9d63763804"],
+      ["vllm/model_executor/kernels/linear/mxfp8/b12x.py", "7abc42bccf03114e880871fa2ffd67d11466483b2ea636d466e762c17417f3d9", "1b4448f7dbaadcf9ef93b59a6aa54a016653a1019ffa31605722d828ea3d80af"],
+      ["vllm/model_executor/kernels/linear/nvfp4/b12x.py", "4c59ca2067e78a731598a47d146b9e8ddb1b8270f54f6ab19b72c30561f9d53d", "7a7036e6d0254a0ee6e3265b18685128fc42cb1b896efffdf27c9de038d69fc4"],
+      ["vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py", "efb07f928463fcf12a3c079f4da2ffa330d697a98a6afca3bea94a0a21825f58", "4a83c1eb9ea9c47c34e8a87b07f087a4cf1384428e74d800e0bdbd667abbb63e"],
+      ["vllm/model_executor/layers/quantization/online/nvfp4.py", "52ce69a32611d8eb00fa2a27cb9b2ec46b8836f34f0a1f8b4834990c3ea228a9", "8f85d00e6ef0effa873605e506c5c678228cba1459c2245a0770e2a3d0f74450"],
+      ["vllm/model_executor/layers/vocab_parallel_embedding.py", "e86d37bc50b5171e2bc02a8e6428feed34309807f63d20bead6bc5db4ac7fddf", "0f958f55912dd1f6bf1f902110404018263afd9c0aa34ebb66236780c73b9243"],
+      ["vllm/model_executor/models/deepseek_mtp.py", "e9270724c39a0152dc0a66b94622ebddd384c592534cbbf38d2f43c0ba1592d0", "ed5b247d014207e81d7d2ddf88e62e82afba70427798428b1b770a4f687ee869"],
+      ["vllm/models/glm5next/model_state.py", "8c66d55da1bcad63f703b1a5463b6969dfa1d3308d3d14abfea778f6c5e34b7f", "4f884f713335d55fafd729fa4cc9bcd88389ba005323eb79a3f9b02cf5662f36"],
+      ["vllm/models/glm5next/nvidia/mtp.py", "cbff653af56b3589a1ff3d52b5fea660e718cbdb1b278c4fa5dcd8eac0908ee9", "71e88e3a25d829d52d90a394f7306e29759d3951fb8f912d1279fa0f30496099"],
+      ["vllm/utils/b12x.py", "f610dc19b4dc10d27361b075ff7e8a97a63244f09f770dfc2ff04aeceed4dce1", "63e7fef8c75f5cd01678b338b9154fc1204b875794d0356904c461f4e9db3076"],
+      ["vllm/v1/attention/backends/gdn_attn.py", "7c325bbcb612aacd2411b3305ee6d068b013f8b6c4445eaea59059ac45881a3d", "fd75fb72efeb762ec558d332364e889df44a9ea483026bd5ded8f77f42be9b7f"],
+      ["vllm/v1/worker/gpu/attn_utils.py", "012399dde8910deec550df260c132338d20e20543acc7433ace60fec1229814b", "80108d185a996e52466f2348d6157398248acfd05b735e4a5792949034b70b9d"],
+      ["vllm/v1/worker/gpu/model_states/mamba_hybrid.py", "f2bc9ef85896df2508557bfbbcf2c682f82414595e8a562efdee6ed3dd0515c2", "b34cb130e233f4d322390acf7fec01a3a368090c7f79da1fa7770c622a2f0dde"],
+      ["vllm/v1/worker/mamba_utils.py", "b5bcf2c170daefb858b0668b032dd252a379c78332efc91d87c34d7fed2e9373", "826f30b8719f0c715e9743a71dfe48f2ab60f7e0de97e2d542ccbe867b6f68d3"]
+    ]
+  },
+  "b12x": {
+    "repository": "https://github.com/local-inference-lab/b12x",
+    "revision": "b58f34eaf978277621efced6678e6713fd7122e4",
+    "tree": "7637fe5fb4d88882e0d18cdacc68c493f478499d",
+    "archive_url": "https://github.com/local-inference-lab/b12x/archive/b58f34eaf978277621efced6678e6713fd7122e4.tar.gz",
+    "archive_sha256": "8cfd2d8bf09169d00a669f72f179c54bdfc49af35b05214a5e5f0fdb1d5779d8",
+    "package_files_sha256": "8e5418509749db21c5cec933ac5c476fae4f0fb89355987390dc0a424261ade6",
+    "installed_text_line_endings": "crlf",
+    "normalized_text_suffixes": [".c", ".py"]
+  },
+  "cuda": {
+    "version": "13.3",
+    "base_url": "https://developer.download.nvidia.com/compute/cuda/redist/",
+    "components": {
+      "cuda_nvcc/linux-sbsa/cuda_nvcc-linux-sbsa-13.3.33-archive.tar.xz": "b5dde44aadd52234af3944ae3b2e74e811ad8e71fb600bcc9dfe6d8540353499",
+      "cuda_cudart/linux-sbsa/cuda_cudart-linux-sbsa-13.3.29-archive.tar.xz": "0cdd73d11885062daf3aa98ad4d7b8bd84f89b398be11f7054edea9ed31f597d",
+      "cuda_nvrtc/linux-sbsa/cuda_nvrtc-linux-sbsa-13.3.33-archive.tar.xz": "d0502b25799be62a50b743c640e94a1722d20b1ee4ab70d697d71750f04d3b8a",
+      "cuda_crt/linux-sbsa/cuda_crt-linux-sbsa-13.3.33-archive.tar.xz": "6f6194918c00b980d8fd2111bf0aa004977760855c6e1528e0653bf4c889fbef",
+      "libnvvm/linux-sbsa/libnvvm-linux-sbsa-13.3.33-archive.tar.xz": "5f8ca5c9a10c3c9804b045960ee6192281efec4c7d83d5f3245ec2de8612118e",
+      "cccl/linux-sbsa/cccl-linux-sbsa-13.3.3.3.1-archive.tar.xz": "37e9024c5e24a9e9d1618c4fb7b36e74a0a68fac91d589867676952204ecde5b",
+      "libnvjitlink/linux-sbsa/libnvjitlink-linux-sbsa-13.3.33-archive.tar.xz": "6ed3a14646bd53e25ccf03a52586cdd12b07ad48cf81fe79deac49b5d64c2ce6"
+    }
+  },
+  "environment": {
+    "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+    "VLLM_B12X_DENSE_ACTIVATION_MODE": "auto",
+    "VLLM_MTP_NVFP4_LM_HEAD": "1",
+    "VLLM_LM_HEAD_A16": "1",
+    "VLLM_MXFP8_LM_HEAD": "0"
+  }
+}

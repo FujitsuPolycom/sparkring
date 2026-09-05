@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-compute-image-equivalence/v1",
+  "checks_passed": true,
+  "tested_serving_image": "sha256:04d5a35b03e99f68c37a05514d221988a3eb70a5b8fdcfa859025ca1cbc25e74",
+  "published_image": "sha256:dd6c51efaf4127df863ac85c3be3fe46f260b34c7ab2deb384669fffdbe857df",
+  "package_files": {
+    "b12x": 385,
+    "sparkcache": 150,
+    "vllm": 4891
+  },
+  "package_files_identical": true,
+  "selected_environment_identical": true,
+  "tested_snapshot_sha256": "54a975edcb68df32b6520f7070b21e0b88e280f847d5039c81bb1f2f99f7cc51",
+  "published_snapshot_sha256": "54a975edcb68df32b6520f7070b21e0b88e280f847d5039c81bb1f2f99f7cc51",
+  "environment": {
+    "CUDA_HOME": "/opt/cuda-13.3",
+    "SPARKRING_WARMUP_TEMPERATURE": "1",
+    "TRITON_PTXAS_PATH": "/opt/cuda-13.3/bin/ptxas",
+    "VLLM_B12X_DENSE_ACTIVATION_MODE": "auto",
+    "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+    "VLLM_LM_HEAD_A16": "1",
+    "VLLM_MTP_NVFP4_LM_HEAD": "1",
+    "VLLM_MXFP8_LM_HEAD": "0"
+  },
+  "scope": "Installed package files excluding Python bytecode and selected environment. Public image construction and native-marker verification passed. Full-model serving was measured on the tested serving image; no claim of a separate four-rank serving run on the published image."
+}

@@ -34,8 +34,10 @@
     "operator_contract": "runtime/glm53-spark-mtp3-mesh/pins.json",
     "public_image_contract": "runtime/glm53-spark-mtp3-mesh/public-image.json",
     "image_receipt": "runtime/glm53-spark-mtp3-mesh/image-receipt.json",
-    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:23f00af873ccc784cfb742b7be2a29c6d3c20ebec9741843c025320bb9c04685",
-    "image_id": "sha256:26273b8e358df139ae913610a5d43084ff0fd08aafe282ef633a3bc74afefe47",
+    "compute_contract": "runtime/glm53-spark-mtp3-mesh/compute/source-lock.json",
+    "compute_contract_sha256": "2a444f7c1ad4319f64afbffb16403491a4863934372cf818f18c510d58c0d00e",
+    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:1b97e1dc9cb93c39f887f40bab24359a9b6ec998c28d2417b160f2103cd5fd86",
+    "image_id": "sha256:dd6c51efaf4127df863ac85c3be3fe46f260b34c7ab2deb384669fffdbe857df",
     "site_template": "runtime/glm53-spark-mtp3-mesh/site.example.json",
     "fabric_template": "runtime/glm53-spark-mtp3-mesh/fabric.example.json",
     "renderer": "runtime/glm53-spark-mtp3-mesh/profile.py",
@@ -63,7 +65,23 @@
     "linear_backend": "B12X",
     "kda_prefill_backend": "b12x",
     "cudagraph_capture_sizes": [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64],
-    "speculation": {"method": "mtp", "num_speculative_tokens": 3, "draft_tensor_parallel_size": 4},
+    "speculation": {
+      "method": "mtp",
+      "num_speculative_tokens": 3,
+      "draft_tensor_parallel_size": 4,
+      "proposal_head": {
+        "weight_quantization": "runtime_nvfp4",
+        "activation_dtype": "bfloat16",
+        "checkpoint_source": "target lm_head.weight",
+        "persistent_allocation_bytes_per_rank": 89210880,
+        "target_verifier_head": "retained BF16 checkpoint representation",
+        "environment": {
+          "VLLM_MTP_NVFP4_LM_HEAD": "1",
+          "VLLM_LM_HEAD_A16": "1",
+          "VLLM_MXFP8_LM_HEAD": "0"
+        }
+      }
+    },
     "readiness_warmup_temperature": 1.0,
     "readiness_warmup_thinking": false
   },
@@ -82,6 +100,7 @@
     "async_page_capture": true,
     "capture_slots_per_rank": 2,
     "capture_slot_bytes": 3221225472,
+    "namespace": "glm53-spark-df116c4f-mtp3-nvfp4-a16-b58f34ea-mesh4204fabc-tail-cow-v2",
     "identity_contract": "runtime/glm53-spark-mtp3-mesh/pins.json#/cache_identity"
   },
   "transport": {
@@ -100,10 +119,12 @@
   },
   "evidence": {
     "record": "performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md",
-    "status": "qualified",
-    "scope": "Bounded native correctness, managed lifecycle, model startup and persistent recall checks for the recorded image and conditions",
+    "proposal_head_performance_record": "performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md",
+    "status": "research-only",
+    "scope": "The proposal-head performance screen covers the recorded private image. Managed lifecycle and persistent-recall qualification remain bound to the previous published image.",
     "limitations": [
       "This opt-in profile does not replace the recommended DFlash/SIRCL profile.",
+      "The published compute image has build/content equivalence to the tested private image but requires fresh native, startup, restart and persistent-cache receipts before those qualifications transfer.",
       "No host-reboot, prolonged-soak, unattended high-availability or general cache/model-quality qualification is claimed.",
       "Fault detection has a bounded observation window; partial streamed output can precede shutdown.",
       "Readiness warmup covers temperature-one sampling with thinking disabled, not all mixed-prefill/decode shapes."

@@ -1,0 +1,4587 @@
+diff --git a/vllm/envs.py b/vllm/envs.py
+index 4bde607287b72e2617c8fed730ab31be4d443738..fbf2ad74dedf420b2e94aefd8ef03955aeabd670 100755
+--- a/vllm/envs.py
++++ b/vllm/envs.py
+@@ -190,6 +190,10 @@ if TYPE_CHECKING:
+     VLLM_HUMMING_USE_F16_ACCUM: bool = False
+     VLLM_HUMMING_MOE_GEMM_TYPE: Literal["indexed", "grouped", "auto"] | None = None
+     VLLM_B12X_MOE_FP4_FORCE_A16: bool = False
++    VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH: bool = False
++    VLLM_MTP_NVFP4_LM_HEAD: bool = False
++    VLLM_LM_HEAD_A16: bool = True
++    VLLM_MXFP8_LM_HEAD: bool = False
+     VLLM_B12X_MLA_CKV_GATHER: bool = False
+     VLLM_B12X_MLA_CKV_GATHER_MIN_TOKENS: int = 16
+     VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS: int = 524288
+@@ -1641,6 +1645,36 @@ environment_variables: dict[str, Callable[[], Any]] = {
+     # Gather DCP-sharded C4 records before B12X sparse-MLA prefill. This avoids
+     # query replication plus the per-rank LSE combine and is opt-in while the
+     # path is being qualified on GLM5Next.
++    "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": lambda: bool(
++        int(os.getenv("VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH", "0"))
++    ),
++    # Quantize only a GLM5Next native-MTP proposal head at load time.
++    "VLLM_MTP_NVFP4_LM_HEAD": lambda: bool(
++        int(os.getenv("VLLM_MTP_NVFP4_LM_HEAD", "0"))
++    ),
++    # Preserve BF16 activations for a runtime-quantized proposal head.
++    "VLLM_LM_HEAD_A16": lambda: bool(
++        int(os.getenv("VLLM_LM_HEAD_A16", "1"))
++    ),
++    # Reserved for a separate target-head experiment; this arm keeps it off.
++    "VLLM_MXFP8_LM_HEAD": lambda: bool(
++        int(os.getenv("VLLM_MXFP8_LM_HEAD", "0"))
++    ),
++    "VLLM_B12X_DENSE_ACTIVATION_MODE": env_with_choices(
++        "VLLM_B12X_DENSE_ACTIVATION_MODE",
++        "auto",
++        ["auto", "a16", "quantized"],
++    ),
++    "VLLM_B12X_NVFP4_ACTIVATION_MODE": env_with_choices(
++        "VLLM_B12X_NVFP4_ACTIVATION_MODE",
++        None,
++        ["auto", "a16", "quantized"],
++    ),
++    "VLLM_B12X_MXFP8_ACTIVATION_MODE": env_with_choices(
++        "VLLM_B12X_MXFP8_ACTIVATION_MODE",
++        None,
++        ["auto", "a16", "quantized"],
++    ),
+     "VLLM_B12X_MLA_CKV_GATHER": lambda: (
+         os.getenv("VLLM_B12X_MLA_CKV_GATHER", "0").lower() in ("1", "true", "yes", "on")
+     ),
+diff --git a/vllm/model_executor/kernels/linear/mxfp8/b12x.py b/vllm/model_executor/kernels/linear/mxfp8/b12x.py
+index 48343f3d694b8fe2e5ea85e3e173c05f23b01c0d..7ed0b0344008374c9e00199730601230314f1f4c 100644
+--- a/vllm/model_executor/kernels/linear/mxfp8/b12x.py
++++ b/vllm/model_executor/kernels/linear/mxfp8/b12x.py
+@@ -12,11 +12,14 @@ from vllm.model_executor.layers.quantization.utils.mxfp8_utils import (
+ )
+ from vllm.model_executor.utils import replace_parameter
+ from vllm.platforms import current_platform
+-from vllm.utils.b12x import B12xWarmupUnit, reuse_packed_weight_storage
+ from vllm.utils.b12x import (
+-    get_b12x_mxfp8_linear as _import_b12x_mxfp8,
++    B12xWarmupUnit,
++    get_b12x_dense_activation_mode,
++    reuse_packed_weight_storage,
++)
++from vllm.utils.b12x import (
++    get_b12x_blockscaled as _import_b12x_blockscaled,
+ )
+-from vllm.utils.torch_utils import current_stream
+ 
+ from .Mxfp8LinearKernel import Mxfp8LinearKernel, Mxfp8LinearLayerConfig
+ 
+@@ -31,13 +34,23 @@ def _apply_b12x_mxfp8_packed_linear(
+     input_2d = x.reshape(-1, x.shape[-1]).contiguous()
+     output_shape = [*x.shape[:-1], int(packed_weight.out_features)]
+ 
+-    mxfp8 = _import_b12x_mxfp8()
++    mode = layer.b12x_activation_mode
++    options = {}
++    if x.dtype == torch.bfloat16 and layer.b12x_bf16_input_supported:
++        options["mode"] = mode
++    else:
++        if mode == "a16":
++            raise ValueError(
++                "b12x MXFP8 A16 requires BF16 on SM120/SM121 with K%128=N%8=0"
++            )
++    mxfp8 = _import_b12x_blockscaled()
+     assert mxfp8 is not None
+     output = mxfp8.mm(
+         input_2d,
+         packed_weight,
+         bias=bias,
+         expected_m=max(1, int(input_2d.shape[0])),
++        **options,
+     )
+     return output.view(*output_shape)
+ 
+@@ -55,11 +68,16 @@ class B12xMxfp8LinearKernel(Mxfp8LinearKernel):
+             return False, "b12x MXFP8 kernels are only available on CUDA"
+         if not current_platform.is_device_capability_family(120):
+             return False, "b12x MXFP8 kernels require a Blackwell 12x device"
+-        mxfp8 = _import_b12x_mxfp8()
++        mxfp8 = _import_b12x_blockscaled()
+         if mxfp8 is None:
+             return False, "Install the B12X backend with `pip install vllm[b12x]`"
+         if not mxfp8.is_supported():
+-            return False, "b12x.gemm.mxfp8_linear is not supported"
++            return False, "b12x.gemm.blockscaled is not supported"
++        if not hasattr(mxfp8, "w8a16"):
++            return (
++                False,
++                "b12x MXFP8 requires a source build with dense precision selection",
++            )
+         return True, None
+ 
+     @classmethod
+@@ -89,7 +107,7 @@ class B12xMxfp8LinearKernel(Mxfp8LinearKernel):
+             f"b12x MXFP8 weight_scale must be 2D, got {weight_scale.ndim}D"
+         )
+ 
+-        mxfp8 = _import_b12x_mxfp8()
++        mxfp8 = _import_b12x_blockscaled()
+         assert mxfp8 is not None
+         scale_k = in_features // MXFP8_BLOCK_SIZE
+         packed_weight = mxfp8.pack_weight(
+@@ -100,6 +118,12 @@ class B12xMxfp8LinearKernel(Mxfp8LinearKernel):
+             getattr(layer, "b12x_mxfp8_packed_weight", None),
+             packed_weight,
+         )
++        layer.b12x_activation_mode = get_b12x_dense_activation_mode("mxfp8")
++        layer.b12x_bf16_input_supported = (
++            current_platform.is_device_capability_family(120)
++            and in_features % 128 == 0
++            and out_features % 8 == 0
++        )
+         replace_parameter(layer, "weight", weight.new_empty((0,)))
+         replace_parameter(layer, "weight_scale", weight_scale.new_empty((0,)))
+         layer.b12x_warmup_provider = self
+@@ -114,20 +138,13 @@ class B12xMxfp8LinearKernel(Mxfp8LinearKernel):
+         device = torch.device(packed_weight.weight.values.device)
+ 
+         def compile() -> None:
+-            mxfp8 = _import_b12x_mxfp8()
+-            assert mxfp8 is not None
+             for tokens in token_counts:
+                 source = torch.zeros(
+                     (tokens, int(packed_weight.in_features)),
+                     dtype=output_dtype,
+                     device=device,
+                 )
+-                mxfp8.mm(
+-                    source,
+-                    packed_weight,
+-                    expected_m=max(1, int(tokens)),
+-                    stream=current_stream().cuda_stream,
+-                )
++                _apply_b12x_mxfp8_packed_linear(layer, source, None)
+ 
+         return B12xWarmupUnit(
+             name="MXFP8",
+@@ -137,6 +154,8 @@ class B12xMxfp8LinearKernel(Mxfp8LinearKernel):
+                 int(packed_weight.in_features),
+                 int(packed_weight.padded_in_features),
+                 int(packed_weight.out_features),
++                layer.b12x_activation_mode,
++                layer.b12x_bf16_input_supported,
+                 output_dtype,
+             ),
+             compile=compile,
+diff --git a/vllm/model_executor/kernels/linear/nvfp4/b12x.py b/vllm/model_executor/kernels/linear/nvfp4/b12x.py
+index 4ff531dd48be9ec7808872847d9665e1b893d7a6..aee238b3f30fb5a871f3b212b58dcd37916c0fed 100644
+--- a/vllm/model_executor/kernels/linear/nvfp4/b12x.py
++++ b/vllm/model_executor/kernels/linear/nvfp4/b12x.py
+@@ -8,7 +8,7 @@ import torch
+ from vllm._custom_ops import scaled_fp4_quant
+ from vllm.model_executor.utils import replace_parameter
+ from vllm.platforms import current_platform
+-from vllm.utils.b12x import B12xWarmupUnit
++from vllm.utils.b12x import B12xWarmupUnit, get_b12x_dense_activation_mode
+ from vllm.utils.b12x import (
+     get_b12x_blockscaled as _import_b12x_blockscaled,
+ )
+@@ -18,30 +18,40 @@ from .base import NvFp4LinearKernel, NvFp4LinearLayerConfig
+ 
+ 
+ def _apply_b12x_nvfp4_linear(
++    layer: torch.nn.Module,
+     x: torch.Tensor,
+-    weight: torch.Tensor,
+-    weight_scale_storage: torch.Tensor,
+-    input_global_scale_inv: torch.Tensor,
+-    alpha: torch.Tensor,
+     bias: torch.Tensor | None,
+ ) -> torch.Tensor:
+     blockscaled = _import_b12x_blockscaled()
+     assert blockscaled is not None
+ 
+-    output_size = int(weight.shape[0])
++    output_size = int(layer.weight.shape[0])
+     output_shape = [*x.shape[:-1], output_size]
+     x_2d = x.reshape(-1, x.shape[-1])
++    mode = layer.b12x_activation_mode
++    if x.dtype == torch.bfloat16 and layer.b12x_bf16_input_supported:
++        output = blockscaled.mm(
++            x_2d.contiguous(),
++            layer.b12x_nvfp4_packed_weight,
++            mode=mode,
++            activation_global_scale=layer.input_global_scale_inv,
++            bias=bias,
++            expected_m=max(1, int(x_2d.shape[0])),
++        )
++        return output.view(*output_shape)
++    if mode == "a16":
++        raise ValueError("b12x NVFP4 A16 requires BF16 on SM120/SM121 with K%128=N%8=0")
+     x_packed, x_scale_swizzled = scaled_fp4_quant(
+         x_2d,
+-        input_global_scale_inv,
++        layer.input_global_scale_inv,
+         is_sf_swizzled_layout=True,
+     )
+     output = blockscaled.mm_nvfp4(
+         x_packed,
+         x_scale_swizzled,
+-        weight,
+-        weight_scale_storage,
+-        alpha,
++        layer.weight,
++        layer.weight_scale,
++        layer.alpha,
+         out_dtype=x.dtype,
+     )
+     if bias is not None:
+@@ -66,6 +76,11 @@ class B12xNvFp4LinearKernel(NvFp4LinearKernel):
+             return False, "Install the B12X backend with `pip install vllm[b12x]`"
+         if not blockscaled.is_supported():
+             return False, "b12x native NVFP4 GEMM is not supported"
++        if not hasattr(blockscaled, "w4a16"):
++            return (
++                False,
++                "b12x NVFP4 requires a source build with dense precision selection",
++            )
+         return True, None
+ 
+     @classmethod
+@@ -81,6 +96,21 @@ class B12xNvFp4LinearKernel(NvFp4LinearKernel):
+             "weight_scale",
+             intrinsics.swizzle_block_scale(layer.weight_scale.data),
+         )
++        blockscaled = _import_b12x_blockscaled()
++        assert blockscaled is not None
++        layer.b12x_nvfp4_packed_weight = blockscaled.pack_weight(
++            layer.weight.data,
++            layer.weight_scale.data,
++            recipe="nvfp4",
++            global_scale=layer.weight_global_scale,
++        )
++        layer.b12x_activation_mode = get_b12x_dense_activation_mode("nvfp4")
++        n, packed_k = layer.weight.shape
++        layer.b12x_bf16_input_supported = (
++            current_platform.is_device_capability_family(120)
++            and (packed_k * 2) % 128 == 0
++            and n % 8 == 0
++        )
+         layer.b12x_warmup_provider = self
+ 
+     def get_b12x_warmup_unit(
+@@ -100,11 +130,8 @@ class B12xNvFp4LinearKernel(NvFp4LinearKernel):
+                     (tokens, k), dtype=output_dtype, device=weight.device
+                 )
+                 _apply_b12x_nvfp4_linear(
++                    layer,
+                     source,
+-                    weight,
+-                    weight_scale,
+-                    layer.input_global_scale_inv,
+-                    layer.alpha,
+                     None,
+                 )
+ 
+@@ -117,6 +144,8 @@ class B12xNvFp4LinearKernel(NvFp4LinearKernel):
+                 k,
+                 weight.dtype,
+                 weight_scale.dtype,
++                layer.b12x_activation_mode,
++                layer.b12x_bf16_input_supported,
+                 output_dtype,
+             ),
+             compile=compile,
+@@ -129,11 +158,8 @@ class B12xNvFp4LinearKernel(NvFp4LinearKernel):
+         bias: torch.Tensor | None = None,
+     ) -> torch.Tensor:
+         return _apply_b12x_nvfp4_linear(
++            layer,
+             x,
+-            layer.weight,
+-            layer.weight_scale,
+-            layer.input_global_scale_inv,
+-            layer.alpha,
+             bias,
+         )
+ 
+diff --git a/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py b/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py
+index aacfb1dc59bac0507c4ad2b743b3be1137ad054e..9fe6ab86c26d4685fb07d9407ea67fad1e01e872 100644
+--- a/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py
++++ b/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py
+@@ -991,8 +991,7 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+         """Execute B12X KDA after the convolution projection.
+ 
+         Args:
+-            metadata: Forward-context metadata used to share runtime-owned
+-                packed metadata tensors across compatible layers.
++            metadata: Describes whether packed query boundaries are uniform.
+             mixed_qkv: Live packed query, key, and value projection.
+             raw_g: Live unactivated forget gate.
+             raw_beta: Live unactivated update gate.
+@@ -1032,17 +1031,16 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+         cache = forward_context.additional_kwargs.setdefault(
+             "b12x_kda_metadata_tensors", {}
+         )
++        # Uniform builders own separate buffers with identical fixed boundaries.
+         cache_key = (
+-            id(metadata),
++            None if metadata.is_uniform_spec_decode else query_start_loc.data_ptr(),
++            num_accepted_tokens.data_ptr() if num_accepted_tokens is not None else None,
+             num_tokens,
+             num_requests,
+-            state_columns,
+-            plan.caps.max_state_slots,
+         )
+         bound_metadata = cache.get(cache_key)
+         if bound_metadata is None:
+             query_start_loc = query_start_loc[: num_requests + 1]
+-            state_indices = state_indices[:num_requests, :state_columns]
+             if num_accepted_tokens is None:
+                 accepted_tokens = self._b12x_kda_num_accepted_tokens[:num_requests]
+                 accepted_tokens.fill_(1)
+@@ -1055,7 +1053,6 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+             bound_metadata = (
+                 query_start_loc,
+                 accepted_tokens,
+-                state_indices,
+                 self._b12x_kda_num_seqs,
+                 self._b12x_kda_num_tokens,
+             )
+@@ -1063,7 +1060,6 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+         (
+             query_start_loc,
+             accepted_tokens,
+-            state_indices,
+             num_seqs,
+             num_tokens_tensor,
+         ) = bound_metadata
+@@ -1081,7 +1077,7 @@ class KimiGatedDeltaNetAttention(GatedDeltaNetAttention):
+             recurrent_state=self.kv_cache[1],
+             query_start_loc=query_start_loc,
+             num_accepted_tokens=accepted_tokens,
+-            state_indices=state_indices,
++            state_indices=state_indices[:num_requests, :state_columns],
+             num_seqs=num_seqs,
+             num_tokens=num_tokens_tensor,
+             output=output,
+diff --git a/vllm/model_executor/layers/quantization/online/nvfp4.py b/vllm/model_executor/layers/quantization/online/nvfp4.py
+index de920db901aa695d2a0eb3798c4ae67d64bd181c..3d36f872b0fb87482cdc48051ff7d3adeab959d7 100644
+--- a/vllm/model_executor/layers/quantization/online/nvfp4.py
++++ b/vllm/model_executor/layers/quantization/online/nvfp4.py
+@@ -1,192 +1,261 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-
+-import torch
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++
++import torch
+ from torch.nn import Module
+ 
+ from vllm._custom_ops import scaled_fp4_quant
+-from vllm.model_executor.layers.fused_moe import RoutedExperts
+-from vllm.model_executor.layers.fused_moe.config import FusedMoEQuantConfig
+-from vllm.model_executor.layers.fused_moe.oracle.nvfp4 import (
+-    convert_to_nvfp4_moe_kernel_format,
+-    make_nvfp4_moe_kernel,
+-    make_nvfp4_moe_quant_config,
+-    select_nvfp4_moe_backend,
++from vllm.model_executor.kernels.linear.nvfp4.b12x import (
++    B12xNvFp4LinearKernel,
+ )
++from vllm.model_executor.kernels.linear.nvfp4.base import NvFp4LinearLayerConfig
++from vllm.model_executor.layers.fused_moe import RoutedExperts
++from vllm.model_executor.layers.fused_moe.config import FusedMoEQuantConfig
++from vllm.model_executor.layers.fused_moe.oracle.nvfp4 import (
++    convert_to_nvfp4_moe_kernel_format,
++    make_nvfp4_moe_kernel,
++    make_nvfp4_moe_quant_config,
++    select_nvfp4_moe_backend,
++)
++from vllm.model_executor.layers.quantization.online.fp8 import _Fp8OnlineLinearBase
+ from vllm.model_executor.layers.quantization.online.moe_base import (
+     OnlineMoEMethodBase,
+ )
+-from vllm.model_executor.layers.quantization.utils.nvfp4_emulation_utils import (
+-    FLOAT4_E2M1_MAX,
+-)
+-from vllm.model_executor.layers.quantization.utils.quant_utils import (
+-    amax_for_moe_weight_quant,
+-    kNvfp4Dynamic,
+-    kNvfp4Static,
+-    weight_amax,
+-)
+-from vllm.model_executor.utils import replace_parameter
++from vllm.model_executor.layers.quantization.utils.nvfp4_emulation_utils import (
++    FLOAT4_E2M1_MAX,
++)
++from vllm.model_executor.layers.quantization.utils.quant_utils import (
++    amax_for_moe_weight_quant,
++    kNvfp4Dynamic,
++    kNvfp4Static,
++    weight_amax,
++)
++from vllm.model_executor.utils import replace_parameter
+ from vllm.platforms import current_platform
+-
++from vllm.utils.b12x import get_b12x_blockscaled
++
+ FLOAT8_E4M3_MAX = torch.finfo(torch.float8_e4m3fn).max
+ 
+ 
+-def _quantize_moe_weight_to_nvfp4(
+-    weight: torch.Tensor,
+-    moe_tp_size: int = 1,
+-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+-    """Quantize stacked MoE expert weights ``(E, N, K)`` to NVFP4.
+-
+-    One FP32 global scale per expert plus per-block (group-16) FP8 scales,
+-    matching the ModelOpt NVFP4 checkpoint layout. Returns packed FP4 weights
+-    ``(E, N, K // 2)``, block scales ``(E, N, K // 16)``, and the per-expert
+-    global scale ``(E,)`` stored as ``amax / (fp4_max * fp8_max)``.
+-    """
+-    assert weight.dim() == 3, f"expected 3D expert weights, got {weight.shape}"
+-    k = weight.shape[-1]
+-    assert k % 16 == 0, f"last dim must be a multiple of 16, got {k}"
+-
+-    amax = weight_amax(weight.flatten(1), dim=-1).to(torch.float32)
+-    amax = amax_for_moe_weight_quant(amax, moe_tp_size).clamp_min(1e-8)
+-    global_scale = (FLOAT4_E2M1_MAX * FLOAT8_E4M3_MAX) / amax
+-    weight_scale_2 = (1.0 / global_scale).to(torch.float32)
++class Nvfp4OnlineLinearMethod(_Fp8OnlineLinearBase):
++    """Load a BF16 linear weight as NVFP4 for the proposal head."""
+ 
+-    # Keep the original BF16/FP16 values as the quantizer input. Folding each
+-    # expert's FP32 global scale into the weight would add a BF16/FP16 rounding
+-    # before the group-16 scale and E2M1 values are selected.
+-    weight = weight.contiguous()
+-    quantized_experts = [
+-        scaled_fp4_quant(
+-            expert_weight,
+-            expert_scale,
+-            is_sf_swizzled_layout=False,
+-        )
+-        for expert_weight, expert_scale in zip(
+-            weight,
+-            global_scale,
+-            strict=True,
+-        )
+-    ]
+-    qweight = torch.stack([quantized for quantized, _ in quantized_experts])
+-    block_scale = torch.stack([block_scale for _, block_scale in quantized_experts])
+-    return (
+-        qweight,
+-        block_scale,
+-        weight_scale_2,
+-    )
+-
+-
+-class Nvfp4OnlineMoEMethod(OnlineMoEMethodBase):
+-    """Online NVFP4 MoE quantization with per-token activation scales.
++    def __init__(self, *, use_a16: bool = False):
++        super().__init__()
++        supported, reason = B12xNvFp4LinearKernel.is_supported()
++        if not supported:
++            raise ValueError(f"Online NVFP4 proposal head requires b12x: {reason}")
++        self.kernel = B12xNvFp4LinearKernel(NvFp4LinearLayerConfig())
++        self.use_a16 = use_a16
++        if use_a16 and self.input_dtype != torch.bfloat16:
++            raise ValueError("A16 proposal heads require BF16 activations")
+ 
+-    Quantizes fp16/bf16 expert weights to NVFP4 at load time; the FlashInfer
+-    TRTLLM kernel computes per-token activation scales at runtime. Blackwell
+-    (SM100) only.
+-    """
+-
+-    def __init__(
+-        self,
+-        *,
+-        layer: torch.nn.Module,
+-    ):
+-        if not current_platform.is_device_capability_family(100):
+-            raise ValueError(
+-                "nvfp4_per_token online quantization requires a Blackwell (SM100) GPU."
+-            )
+-        super().__init__(layer.moe_config)
+-        self.nvfp4_backend, self.experts_cls = select_nvfp4_moe_backend(
+-            config=self.moe,
+-            weight_key=kNvfp4Static,
+-            activation_key=kNvfp4Dynamic,
+-        )
+-
+-    def process_weights_after_loading(self, layer: Module) -> None:
++    def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
+         if getattr(layer, "_already_called_process_weights_after_loading", False):
+             return
+-
+-        self._quantize_weights(layer)
+-        self._setup_kernel(layer)
+-
+-        layer._already_called_process_weights_after_loading = True
+-
+-    def _quantize_weights(self, layer: Module) -> None:
+-        moe_tp_size = self.moe.tp_size
+-        w13, w13_scale, w13_scale_2 = _quantize_moe_weight_to_nvfp4(
+-            layer.w13_weight, moe_tp_size
+-        )
+-        w2, w2_scale, w2_scale_2 = _quantize_moe_weight_to_nvfp4(
+-            layer.w2_weight, moe_tp_size
++        weight = layer.weight.contiguous()
++        if weight.shape[1] % 16:
++            raise ValueError("Online NVFP4 proposal head requires K divisible by 16")
++        amax = weight.abs().amax().float().clamp_min(1e-8)
++        global_scale = (FLOAT4_E2M1_MAX * FLOAT8_E4M3_MAX) / amax
++        packed, scales = scaled_fp4_quant(
++            weight, global_scale, is_sf_swizzled_layout=False
+         )
++        replace_parameter(layer, "weight", packed)
++        replace_parameter(layer, "weight_scale", scales)
++        replace_parameter(layer, "weight_global_scale", global_scale.reciprocal())
++        replace_parameter(layer, "input_global_scale_inv", torch.ones_like(amax))
++        replace_parameter(layer, "alpha", layer.weight_global_scale.clone())
++        self.kernel.process_weights_after_loading(layer)
++        layer.b12x_activation_mode = "a16" if self.use_a16 else "quantized"
++        layer._already_called_process_weights_after_loading = True
+ 
+-        replace_parameter(layer, "w13_weight", w13)
+-        replace_parameter(layer, "w13_weight_scale", w13_scale)
+-        replace_parameter(layer, "w13_weight_scale_2", w13_scale_2)
+-        replace_parameter(layer, "w2_weight", w2)
+-        replace_parameter(layer, "w2_weight_scale", w2_scale)
+-        replace_parameter(layer, "w2_weight_scale_2", w2_scale_2)
+-
+-        # Neutral (1.0) activation global scales: the kernel derives per-token
+-        # scales at runtime, so the output scalars reduce to the weight scales.
+-        ones = torch.ones(layer.num_experts, device=w13.device, dtype=torch.float32)
+-        replace_parameter(layer, "w13_input_scale", ones)
+-        replace_parameter(layer, "w2_input_scale", ones.clone())
+-
+-    def _setup_kernel(self, layer: RoutedExperts) -> None:
+-        (
+-            w13,
+-            w13_scale,
+-            w13_scale_2,
+-            a13_scale,
+-            w2,
+-            w2_scale,
+-            w2_scale_2,
+-            a2_scale,
+-        ) = convert_to_nvfp4_moe_kernel_format(
+-            nvfp4_backend=self.nvfp4_backend,
+-            layer=layer,
+-            w13=layer.w13_weight,
+-            w13_scale=layer.w13_weight_scale,
+-            w13_scale_2=layer.w13_weight_scale_2,
+-            a13_scale=layer.w13_input_scale,
+-            w2=layer.w2_weight,
+-            w2_scale=layer.w2_weight_scale,
+-            w2_scale_2=layer.w2_weight_scale_2,
+-            a2_scale=layer.w2_input_scale,
+-            is_act_and_mul=self.moe.is_act_and_mul,
++    def apply(
++        self,
++        layer: torch.nn.Module,
++        x: torch.Tensor,
++        bias: torch.Tensor | None = None,
++    ) -> torch.Tensor:
++        if self.use_a16:
++            return self.kernel.apply_weights(layer, x, bias)
++        amax = x.abs().amax().float().clamp_min(1e-8)
++        input_scale = amax / (FLOAT4_E2M1_MAX * FLOAT8_E4M3_MAX)
++        x_packed, x_scale = scaled_fp4_quant(
++            x.reshape(-1, x.shape[-1]),
++            input_scale.reciprocal(),
++            is_sf_swizzled_layout=True,
+         )
+-
+-        replace_parameter(layer, "w13_weight", w13)
+-        replace_parameter(layer, "w13_weight_scale", w13_scale)
+-        replace_parameter(layer, "w13_weight_scale_2", w13_scale_2)
+-        replace_parameter(layer, "w13_input_scale", a13_scale)
+-        replace_parameter(layer, "w2_weight", w2)
+-        replace_parameter(layer, "w2_weight_scale", w2_scale)
+-        replace_parameter(layer, "w2_weight_scale_2", w2_scale_2)
+-        replace_parameter(layer, "w2_input_scale", a2_scale)
+-
+-        if self.moe_kernel is None:
+-            self.moe_quant_config = self.get_fused_moe_quant_config(layer)
+-            assert self.experts_cls is not None
+-            self.moe_kernel = make_nvfp4_moe_kernel(
+-                moe_quant_config=self.moe_quant_config,
+-                moe_config=self.moe,
+-                experts_cls=self.experts_cls,
+-                backend=self.nvfp4_backend,
+-                routing_tables=layer._expert_routing_tables(),
+-                per_token_activation=True,
+-            )
+-
+-        self.moe_kernel.fused_experts.process_weights_after_loading(layer)
+-
+-    def get_fused_moe_quant_config(self, layer: torch.nn.Module) -> FusedMoEQuantConfig:
+-        return make_nvfp4_moe_quant_config(
+-            backend=self.nvfp4_backend,
+-            w13_scale=layer.w13_weight_scale,
+-            w2_scale=layer.w2_weight_scale,
+-            w13_scale_2=layer.w13_weight_scale_2,
+-            w2_scale_2=layer.w2_weight_scale_2,
+-            a13_scale=layer.w13_input_scale,
+-            a2_scale=layer.w2_input_scale,
+-            swiglu_limit=getattr(layer, "swiglu_limit", None),
+-            layer=layer,
++        blockscaled = get_b12x_blockscaled()
++        assert blockscaled is not None
++        output = blockscaled.mm_nvfp4(
++            x_packed,
++            x_scale,
++            layer.weight,
++            layer.weight_scale,
++            input_scale * layer.weight_global_scale,
++            out_dtype=x.dtype,
+         )
++        if bias is not None:
++            output = output + bias
++        return output.view(*x.shape[:-1], layer.weight.shape[0])
++
++
++def _quantize_moe_weight_to_nvfp4(
++    weight: torch.Tensor,
++    moe_tp_size: int = 1,
++) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
++    """Quantize stacked MoE expert weights ``(E, N, K)`` to NVFP4.
++
++    One FP32 global scale per expert plus per-block (group-16) FP8 scales,
++    matching the ModelOpt NVFP4 checkpoint layout. Returns packed FP4 weights
++    ``(E, N, K // 2)``, block scales ``(E, N, K // 16)``, and the per-expert
++    global scale ``(E,)`` stored as ``amax / (fp4_max * fp8_max)``.
++    """
++    assert weight.dim() == 3, f"expected 3D expert weights, got {weight.shape}"
++    k = weight.shape[-1]
++    assert k % 16 == 0, f"last dim must be a multiple of 16, got {k}"
++
++    amax = weight_amax(weight.flatten(1), dim=-1).to(torch.float32)
++    amax = amax_for_moe_weight_quant(amax, moe_tp_size).clamp_min(1e-8)
++    global_scale = (FLOAT4_E2M1_MAX * FLOAT8_E4M3_MAX) / amax
++    weight_scale_2 = (1.0 / global_scale).to(torch.float32)
++
++    # Keep the original BF16/FP16 values as the quantizer input. Folding each
++    # expert's FP32 global scale into the weight would add a BF16/FP16 rounding
++    # before the group-16 scale and E2M1 values are selected.
++    weight = weight.contiguous()
++    quantized_experts = [
++        scaled_fp4_quant(
++            expert_weight,
++            expert_scale,
++            is_sf_swizzled_layout=False,
++        )
++        for expert_weight, expert_scale in zip(
++            weight,
++            global_scale,
++            strict=True,
++        )
++    ]
++    qweight = torch.stack([quantized for quantized, _ in quantized_experts])
++    block_scale = torch.stack([block_scale for _, block_scale in quantized_experts])
++    return (
++        qweight,
++        block_scale,
++        weight_scale_2,
++    )
++
++
++class Nvfp4OnlineMoEMethod(OnlineMoEMethodBase):
++    """Online NVFP4 MoE quantization with per-token activation scales.
++
++    Quantizes fp16/bf16 expert weights to NVFP4 at load time; the FlashInfer
++    TRTLLM kernel computes per-token activation scales at runtime. Blackwell
++    (SM100) only.
++    """
++
++    def __init__(
++        self,
++        *,
++        layer: torch.nn.Module,
++    ):
++        if not current_platform.is_device_capability_family(100):
++            raise ValueError(
++                "nvfp4_per_token online quantization requires a Blackwell (SM100) GPU."
++            )
++        super().__init__(layer.moe_config)
++        self.nvfp4_backend, self.experts_cls = select_nvfp4_moe_backend(
++            config=self.moe,
++            weight_key=kNvfp4Static,
++            activation_key=kNvfp4Dynamic,
++        )
++
++    def process_weights_after_loading(self, layer: Module) -> None:
++        if getattr(layer, "_already_called_process_weights_after_loading", False):
++            return
++
++        self._quantize_weights(layer)
++        self._setup_kernel(layer)
++
++        layer._already_called_process_weights_after_loading = True
++
++    def _quantize_weights(self, layer: Module) -> None:
++        moe_tp_size = self.moe.tp_size
++        w13, w13_scale, w13_scale_2 = _quantize_moe_weight_to_nvfp4(
++            layer.w13_weight, moe_tp_size
++        )
++        w2, w2_scale, w2_scale_2 = _quantize_moe_weight_to_nvfp4(
++            layer.w2_weight, moe_tp_size
++        )
++
++        replace_parameter(layer, "w13_weight", w13)
++        replace_parameter(layer, "w13_weight_scale", w13_scale)
++        replace_parameter(layer, "w13_weight_scale_2", w13_scale_2)
++        replace_parameter(layer, "w2_weight", w2)
++        replace_parameter(layer, "w2_weight_scale", w2_scale)
++        replace_parameter(layer, "w2_weight_scale_2", w2_scale_2)
++
++        # Neutral (1.0) activation global scales: the kernel derives per-token
++        # scales at runtime, so the output scalars reduce to the weight scales.
++        ones = torch.ones(layer.num_experts, device=w13.device, dtype=torch.float32)
++        replace_parameter(layer, "w13_input_scale", ones)
++        replace_parameter(layer, "w2_input_scale", ones.clone())
++
++    def _setup_kernel(self, layer: RoutedExperts) -> None:
++        (
++            w13,
++            w13_scale,
++            w13_scale_2,
++            a13_scale,
++            w2,
++            w2_scale,
++            w2_scale_2,
++            a2_scale,
++        ) = convert_to_nvfp4_moe_kernel_format(
++            nvfp4_backend=self.nvfp4_backend,
++            layer=layer,
++            w13=layer.w13_weight,
++            w13_scale=layer.w13_weight_scale,
++            w13_scale_2=layer.w13_weight_scale_2,
++            a13_scale=layer.w13_input_scale,
++            w2=layer.w2_weight,
++            w2_scale=layer.w2_weight_scale,
++            w2_scale_2=layer.w2_weight_scale_2,
++            a2_scale=layer.w2_input_scale,
++            is_act_and_mul=self.moe.is_act_and_mul,
++        )
++
++        replace_parameter(layer, "w13_weight", w13)
++        replace_parameter(layer, "w13_weight_scale", w13_scale)
++        replace_parameter(layer, "w13_weight_scale_2", w13_scale_2)
++        replace_parameter(layer, "w13_input_scale", a13_scale)
++        replace_parameter(layer, "w2_weight", w2)
++        replace_parameter(layer, "w2_weight_scale", w2_scale)
++        replace_parameter(layer, "w2_weight_scale_2", w2_scale_2)
++        replace_parameter(layer, "w2_input_scale", a2_scale)
++
++        if self.moe_kernel is None:
++            self.moe_quant_config = self.get_fused_moe_quant_config(layer)
++            assert self.experts_cls is not None
++            self.moe_kernel = make_nvfp4_moe_kernel(
++                moe_quant_config=self.moe_quant_config,
++                moe_config=self.moe,
++                experts_cls=self.experts_cls,
++                backend=self.nvfp4_backend,
++                routing_tables=layer._expert_routing_tables(),
++                per_token_activation=True,
++            )
++
++        self.moe_kernel.fused_experts.process_weights_after_loading(layer)
++
++    def get_fused_moe_quant_config(self, layer: torch.nn.Module) -> FusedMoEQuantConfig:
++        return make_nvfp4_moe_quant_config(
++            backend=self.nvfp4_backend,
++            w13_scale=layer.w13_weight_scale,
++            w2_scale=layer.w2_weight_scale,
++            w13_scale_2=layer.w13_weight_scale_2,
++            w2_scale_2=layer.w2_weight_scale_2,
++            a13_scale=layer.w13_input_scale,
++            a2_scale=layer.w2_input_scale,
++            swiglu_limit=getattr(layer, "swiglu_limit", None),
++            layer=layer,
++        )
+diff --git a/vllm/model_executor/layers/vocab_parallel_embedding.py b/vllm/model_executor/layers/vocab_parallel_embedding.py
+index 3057270c62185e767cfd48f63593c2705a1b1b79..2adf622d9372d36013e16ba591738ecbc78d77c0 100644
+--- a/vllm/model_executor/layers/vocab_parallel_embedding.py
++++ b/vllm/model_executor/layers/vocab_parallel_embedding.py
+@@ -1,581 +1,604 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++
+ from collections.abc import Sequence
+ from dataclasses import dataclass
+-
+-import torch
+-import torch.nn.functional as F
+-from torch.nn.parameter import Parameter
+-
+-import vllm.envs as envs
+-from vllm.distributed import (
+-    divide,
+-    get_tensor_model_parallel_rank,
+-    get_tensor_model_parallel_world_size,
+-    tensor_model_parallel_all_reduce,
+-)
+-from vllm.model_executor.custom_op import PluggableLayer
+-from vllm.model_executor.determinism.batch_invariant import (
+-    linear_batch_invariant,
+-)
+-from vllm.model_executor.layers.quantization.base_config import (
+-    QuantizationConfig,
+-    QuantizeMethodBase,
+-    method_has_implemented_embedding,
+-)
+-from vllm.model_executor.layers.utils import dispatch_unquantized_gemm
+-from vllm.model_executor.parameter import BasevLLMParameter
+-from vllm.model_executor.utils import set_weight_attrs
+-from vllm.platforms import current_platform
+-
+-DEFAULT_VOCAB_PADDING_SIZE = 64
+-
+-
+-class UnquantizedEmbeddingMethod(QuantizeMethodBase):
+-    """Unquantized method for embeddings."""
+-
+-    def create_weights(
+-        self,
+-        layer: torch.nn.Module,
+-        input_size_per_partition: int,
+-        output_partition_sizes: list[int],
+-        input_size: int,
+-        output_size: int,
+-        params_dtype: torch.dtype,
+-        **extra_weight_attrs,
+-    ):
+-        """Create weights for embedding layer."""
+-        weight = Parameter(
+-            torch.empty(
+-                sum(output_partition_sizes),
+-                input_size_per_partition,
+-                dtype=params_dtype,
+-            ),
+-            requires_grad=False,
+-        )
+-        set_weight_attrs(weight, {"input_dim": 1, "output_dim": 0})
+-        layer.register_parameter("weight", weight)
+-        set_weight_attrs(weight, extra_weight_attrs)
+-
+-    def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
+-        if current_platform.is_cpu():
+-            from vllm.model_executor.layers.utils import dispatch_cpu_unquantized_gemm
+-
+-            dispatch_cpu_unquantized_gemm(layer, remove_weight=False)
+-
+-    def apply(
+-        self,
+-        layer: torch.nn.Module,
+-        x: torch.Tensor,
+-        bias: torch.Tensor | None = None,
+-    ) -> torch.Tensor:
+-        if envs.VLLM_BATCH_INVARIANT and current_platform.is_cuda_alike():
+-            return linear_batch_invariant(x, layer.weight, bias)
+-        return dispatch_unquantized_gemm()(layer, x, layer.weight, bias)
+-
+-    def embedding(self, layer: torch.nn.Module, input_: torch.Tensor) -> torch.Tensor:
+-        return F.embedding(input_, layer.weight)
+-
+-    def tie_weights(
+-        self, layer: torch.nn.Module, embed_tokens: "VocabParallelEmbedding"
+-    ):
+-        layer.weight = embed_tokens.weight
+-        return layer
+-
+-
+-def pad_vocab_size(vocab_size: int, pad_to: int = DEFAULT_VOCAB_PADDING_SIZE) -> int:
+-    """Pad the vocab size to the given value."""
+-    return ((vocab_size + pad_to - 1) // pad_to) * pad_to
+-
+-
+-def vocab_range_from_per_partition_vocab_size(
+-    per_partition_vocab_size: int, rank: int, offset: int = 0
+-) -> Sequence[int]:
+-    index_f = rank * per_partition_vocab_size
+-    index_l = index_f + per_partition_vocab_size
+-    return index_f + offset, index_l + offset
+-
+-
+-def vocab_range_from_global_vocab_size(
+-    global_vocab_size: int, rank: int, world_size: int, offset: int = 0
+-) -> Sequence[int]:
+-    per_partition_vocab_size = divide(global_vocab_size, world_size)
+-    return vocab_range_from_per_partition_vocab_size(
+-        per_partition_vocab_size, rank, offset=offset
+-    )
+-
+-
+-@dataclass
+-class VocabParallelEmbeddingShardIndices:
+-    """Indices for a shard of a vocab parallel embedding."""
+-
+-    padded_org_vocab_start_index: int
+-    padded_org_vocab_end_index: int
+-    padded_added_vocab_start_index: int
+-    padded_added_vocab_end_index: int
+-
+-    org_vocab_start_index: int
+-    org_vocab_end_index: int
+-    added_vocab_start_index: int
+-    added_vocab_end_index: int
+-
+-    @property
+-    def num_org_elements(self) -> int:
+-        return self.org_vocab_end_index - self.org_vocab_start_index
+-
+-    @property
+-    def num_added_elements(self) -> int:
+-        return self.added_vocab_end_index - self.added_vocab_start_index
+-
+-    @property
+-    def num_org_elements_padded(self) -> int:
+-        return self.padded_org_vocab_end_index - self.padded_org_vocab_start_index
+-
+-    @property
+-    def num_added_elements_padded(self) -> int:
+-        return self.padded_added_vocab_end_index - self.padded_added_vocab_start_index
+-
+-    @property
+-    def num_org_vocab_padding(self) -> int:
+-        return self.num_org_elements_padded - self.num_org_elements
+-
+-    @property
+-    def num_added_vocab_padding(self) -> int:
+-        return self.num_added_elements_padded - self.num_added_elements
+-
+-    @property
+-    def num_elements_padded(self) -> int:
+-        return self.num_org_elements_padded + self.num_added_elements_padded
+-
+-    def __post_init__(self):
+-        # sanity checks
+-        assert self.padded_org_vocab_start_index <= self.padded_org_vocab_end_index
+-        assert self.padded_added_vocab_start_index <= self.padded_added_vocab_end_index
+-
+-        assert self.org_vocab_start_index <= self.org_vocab_end_index
+-        assert self.added_vocab_start_index <= self.added_vocab_end_index
+-
+-        assert self.org_vocab_start_index <= self.padded_org_vocab_start_index
+-        assert self.added_vocab_start_index <= self.padded_added_vocab_start_index
+-        assert self.org_vocab_end_index <= self.padded_org_vocab_end_index
+-        assert self.added_vocab_end_index <= self.padded_added_vocab_end_index
+-
+-        assert self.num_org_elements <= self.num_org_elements_padded
+-        assert self.num_added_elements <= self.num_added_elements_padded
+-
+-
+-@torch.compile(dynamic=True, backend=current_platform.simple_compile_backend)
+-def get_masked_input_and_mask(
+-    input_: torch.Tensor,
+-    org_vocab_start_index: int,
+-    org_vocab_end_index: int,
+-    num_org_vocab_padding: int,
+-    added_vocab_start_index: int,
+-    added_vocab_end_index: int,
+-) -> tuple[torch.Tensor, torch.Tensor]:
+-    # torch.compile will fuse all of the pointwise ops below
+-    # into a single kernel, making it very fast
+-    org_vocab_mask = (input_ >= org_vocab_start_index) & (input_ < org_vocab_end_index)
+-    added_vocab_mask = (input_ >= added_vocab_start_index) & (
+-        input_ < added_vocab_end_index
+-    )
+-    added_offset = (
+-        added_vocab_start_index
+-        - (org_vocab_end_index - org_vocab_start_index)
+-        - num_org_vocab_padding
+-    )
+-    valid_offset = (org_vocab_start_index * org_vocab_mask) + (
+-        added_offset * added_vocab_mask
+-    )
+-    vocab_mask = org_vocab_mask | added_vocab_mask
+-    input_ = vocab_mask * (input_ - valid_offset)
+-    return input_, ~vocab_mask
+-
+-
+-# --8<-- [start:vocab_parallel_embedding]
+-@PluggableLayer.register("vocab_parallel_embedding")
+-class VocabParallelEmbedding(PluggableLayer):
+-    """Embedding parallelized in the vocabulary dimension.
+-
+-    Adapted from torch.nn.Embedding, note that we pad the vocabulary size to
+-    make sure it is divisible by the number of model parallel GPUs.
+-
+-    In order to support various loading methods, we ensure that LoRA-added
+-    embeddings are always at the end of TP-sharded tensors. In other words,
+-    we shard base embeddings and LoRA embeddings separately (both padded),
+-    and place them in the same tensor.
+-    In this example, we will have the original vocab size = 1010,
+-    added vocab size = 16 and padding to 64. Therefore, the total
+-    vocab size with padding will be 1088 (because we first pad 1010 to
+-    1024, add 16, and then pad to 1088).
+-    Therefore, the tensor format looks like the following:
+-    TP1, rank 0 (no sharding):
+-                            |< --------BASE-------- >|< -BASE PADDING-- >|< -----LORA------ >|< -LORA PADDING-- >|
+-    corresponding token_id: |  0  |  1  | ... | 1009 |  -1  | ... |  -1  | 1010 | ... | 1025 |  -1  | ... |  -1  |
+-                     index: |  0  |  1  | ... | 1009 | 1010 | ... | 1023 | 1024 | ... | 1039 | 1040 | ... | 1087 |
+-
+-    TP2, rank 0:
+-                            |< --------------------BASE--------------------- >|< -----LORA------ >|< -LORA PADDING- >|
+-    corresponding token_id: |  0  |  1  |  2  | ... | 497  | 498 | ...  | 511 | 1010 | ... | 1025 |  -1  | ... |  -1 |
+-                     index: |  0  |  1  |  2  | ... | 497  | 498 | ...  | 511 | 512  | ... | 527  |  528 | ... | 543 |
+-    TP2, rank 1:
+-                            |< -----------BASE----------- >|< -BASE PADDING- >|< -----------LORA PADDING----------- >|
+-    corresponding token_id: | 512 | 513 | 514 | ... | 1009 | -1  | ...  | -1  |  -1  | ... |  -1  | -1  | ... |   -1 |
+-                     index: |  0  |  1  |  2  | ... | 497  | 498 | ...  | 511 | 512  | ... | 527  | 528 | ... |  543 |
+-
+-    Args:
+-        num_embeddings: vocabulary size.
+-        embedding_dim: size of hidden state.
+-        params_dtype: type of the parameters.
+-        org_num_embeddings: original vocabulary size (without LoRA).
+-        padding_size: padding size for the vocabulary.
+-        quant_config: quant config for the layer
+-        prefix: full name of the layer in the state dict
+-        disable_tp: If true, tensor parallelism will be disabled for this layer.
+-    """  # noqa: E501
+-
+-    # --8<-- [end:vocab_parallel_embedding]
+-
+-    def __init__(
+-        self,
+-        num_embeddings: int,
+-        embedding_dim: int,
+-        params_dtype: torch.dtype | None = None,
+-        org_num_embeddings: int | None = None,
+-        padding_size: int = DEFAULT_VOCAB_PADDING_SIZE,
+-        quant_config: QuantizationConfig | None = None,
+-        prefix: str = "",
++from typing import Literal
++
++import torch
++import torch.nn.functional as F
++from torch.nn.parameter import Parameter
++
++import vllm.envs as envs
++from vllm.distributed import (
++    divide,
++    get_tensor_model_parallel_rank,
++    get_tensor_model_parallel_world_size,
++    tensor_model_parallel_all_reduce,
++)
++from vllm.model_executor.custom_op import PluggableLayer
++from vllm.model_executor.determinism.batch_invariant import (
++    linear_batch_invariant,
++)
++from vllm.model_executor.layers.quantization.base_config import (
++    QuantizationConfig,
++    QuantizeMethodBase,
++    method_has_implemented_embedding,
++)
++from vllm.model_executor.layers.utils import dispatch_unquantized_gemm
++from vllm.model_executor.parameter import BasevLLMParameter
++from vllm.model_executor.utils import set_weight_attrs
++from vllm.platforms import current_platform
++
++DEFAULT_VOCAB_PADDING_SIZE = 64
++
++
++class UnquantizedEmbeddingMethod(QuantizeMethodBase):
++    """Unquantized method for embeddings."""
++
++    def create_weights(
++        self,
++        layer: torch.nn.Module,
++        input_size_per_partition: int,
++        output_partition_sizes: list[int],
++        input_size: int,
++        output_size: int,
++        params_dtype: torch.dtype,
++        **extra_weight_attrs,
++    ):
++        """Create weights for embedding layer."""
++        weight = Parameter(
++            torch.empty(
++                sum(output_partition_sizes),
++                input_size_per_partition,
++                dtype=params_dtype,
++            ),
++            requires_grad=False,
++        )
++        set_weight_attrs(weight, {"input_dim": 1, "output_dim": 0})
++        layer.register_parameter("weight", weight)
++        set_weight_attrs(weight, extra_weight_attrs)
++
++    def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
++        if current_platform.is_cpu():
++            from vllm.model_executor.layers.utils import dispatch_cpu_unquantized_gemm
++
++            dispatch_cpu_unquantized_gemm(layer, remove_weight=False)
++
++    def apply(
++        self,
++        layer: torch.nn.Module,
++        x: torch.Tensor,
++        bias: torch.Tensor | None = None,
++    ) -> torch.Tensor:
++        if envs.VLLM_BATCH_INVARIANT and current_platform.is_cuda_alike():
++            return linear_batch_invariant(x, layer.weight, bias)
++        return dispatch_unquantized_gemm()(layer, x, layer.weight, bias)
++
++    def embedding(self, layer: torch.nn.Module, input_: torch.Tensor) -> torch.Tensor:
++        return F.embedding(input_, layer.weight)
++
++    def tie_weights(
++        self, layer: torch.nn.Module, embed_tokens: "VocabParallelEmbedding"
++    ):
++        layer.weight = embed_tokens.weight
++        return layer
++
++
++def pad_vocab_size(vocab_size: int, pad_to: int = DEFAULT_VOCAB_PADDING_SIZE) -> int:
++    """Pad the vocab size to the given value."""
++    return ((vocab_size + pad_to - 1) // pad_to) * pad_to
++
++
++def vocab_range_from_per_partition_vocab_size(
++    per_partition_vocab_size: int, rank: int, offset: int = 0
++) -> Sequence[int]:
++    index_f = rank * per_partition_vocab_size
++    index_l = index_f + per_partition_vocab_size
++    return index_f + offset, index_l + offset
++
++
++def vocab_range_from_global_vocab_size(
++    global_vocab_size: int, rank: int, world_size: int, offset: int = 0
++) -> Sequence[int]:
++    per_partition_vocab_size = divide(global_vocab_size, world_size)
++    return vocab_range_from_per_partition_vocab_size(
++        per_partition_vocab_size, rank, offset=offset
++    )
++
++
++@dataclass
++class VocabParallelEmbeddingShardIndices:
++    """Indices for a shard of a vocab parallel embedding."""
++
++    padded_org_vocab_start_index: int
++    padded_org_vocab_end_index: int
++    padded_added_vocab_start_index: int
++    padded_added_vocab_end_index: int
++
++    org_vocab_start_index: int
++    org_vocab_end_index: int
++    added_vocab_start_index: int
++    added_vocab_end_index: int
++
++    @property
++    def num_org_elements(self) -> int:
++        return self.org_vocab_end_index - self.org_vocab_start_index
++
++    @property
++    def num_added_elements(self) -> int:
++        return self.added_vocab_end_index - self.added_vocab_start_index
++
++    @property
++    def num_org_elements_padded(self) -> int:
++        return self.padded_org_vocab_end_index - self.padded_org_vocab_start_index
++
++    @property
++    def num_added_elements_padded(self) -> int:
++        return self.padded_added_vocab_end_index - self.padded_added_vocab_start_index
++
++    @property
++    def num_org_vocab_padding(self) -> int:
++        return self.num_org_elements_padded - self.num_org_elements
++
++    @property
++    def num_added_vocab_padding(self) -> int:
++        return self.num_added_elements_padded - self.num_added_elements
++
++    @property
++    def num_elements_padded(self) -> int:
++        return self.num_org_elements_padded + self.num_added_elements_padded
++
++    def __post_init__(self):
++        # sanity checks
++        assert self.padded_org_vocab_start_index <= self.padded_org_vocab_end_index
++        assert self.padded_added_vocab_start_index <= self.padded_added_vocab_end_index
++
++        assert self.org_vocab_start_index <= self.org_vocab_end_index
++        assert self.added_vocab_start_index <= self.added_vocab_end_index
++
++        assert self.org_vocab_start_index <= self.padded_org_vocab_start_index
++        assert self.added_vocab_start_index <= self.padded_added_vocab_start_index
++        assert self.org_vocab_end_index <= self.padded_org_vocab_end_index
++        assert self.added_vocab_end_index <= self.padded_added_vocab_end_index
++
++        assert self.num_org_elements <= self.num_org_elements_padded
++        assert self.num_added_elements <= self.num_added_elements_padded
++
++
++@torch.compile(dynamic=True, backend=current_platform.simple_compile_backend)
++def get_masked_input_and_mask(
++    input_: torch.Tensor,
++    org_vocab_start_index: int,
++    org_vocab_end_index: int,
++    num_org_vocab_padding: int,
++    added_vocab_start_index: int,
++    added_vocab_end_index: int,
++) -> tuple[torch.Tensor, torch.Tensor]:
++    # torch.compile will fuse all of the pointwise ops below
++    # into a single kernel, making it very fast
++    org_vocab_mask = (input_ >= org_vocab_start_index) & (input_ < org_vocab_end_index)
++    added_vocab_mask = (input_ >= added_vocab_start_index) & (
++        input_ < added_vocab_end_index
++    )
++    added_offset = (
++        added_vocab_start_index
++        - (org_vocab_end_index - org_vocab_start_index)
++        - num_org_vocab_padding
++    )
++    valid_offset = (org_vocab_start_index * org_vocab_mask) + (
++        added_offset * added_vocab_mask
++    )
++    vocab_mask = org_vocab_mask | added_vocab_mask
++    input_ = vocab_mask * (input_ - valid_offset)
++    return input_, ~vocab_mask
++
++
++# --8<-- [start:vocab_parallel_embedding]
++@PluggableLayer.register("vocab_parallel_embedding")
++class VocabParallelEmbedding(PluggableLayer):
++    """Embedding parallelized in the vocabulary dimension.
++
++    Adapted from torch.nn.Embedding, note that we pad the vocabulary size to
++    make sure it is divisible by the number of model parallel GPUs.
++
++    In order to support various loading methods, we ensure that LoRA-added
++    embeddings are always at the end of TP-sharded tensors. In other words,
++    we shard base embeddings and LoRA embeddings separately (both padded),
++    and place them in the same tensor.
++    In this example, we will have the original vocab size = 1010,
++    added vocab size = 16 and padding to 64. Therefore, the total
++    vocab size with padding will be 1088 (because we first pad 1010 to
++    1024, add 16, and then pad to 1088).
++    Therefore, the tensor format looks like the following:
++    TP1, rank 0 (no sharding):
++                            |< --------BASE-------- >|< -BASE PADDING-- >|< -----LORA------ >|< -LORA PADDING-- >|
++    corresponding token_id: |  0  |  1  | ... | 1009 |  -1  | ... |  -1  | 1010 | ... | 1025 |  -1  | ... |  -1  |
++                     index: |  0  |  1  | ... | 1009 | 1010 | ... | 1023 | 1024 | ... | 1039 | 1040 | ... | 1087 |
++
++    TP2, rank 0:
++                            |< --------------------BASE--------------------- >|< -----LORA------ >|< -LORA PADDING- >|
++    corresponding token_id: |  0  |  1  |  2  | ... | 497  | 498 | ...  | 511 | 1010 | ... | 1025 |  -1  | ... |  -1 |
++                     index: |  0  |  1  |  2  | ... | 497  | 498 | ...  | 511 | 512  | ... | 527  |  528 | ... | 543 |
++    TP2, rank 1:
++                            |< -----------BASE----------- >|< -BASE PADDING- >|< -----------LORA PADDING----------- >|
++    corresponding token_id: | 512 | 513 | 514 | ... | 1009 | -1  | ...  | -1  |  -1  | ... |  -1  | -1  | ... |   -1 |
++                     index: |  0  |  1  |  2  | ... | 497  | 498 | ...  | 511 | 512  | ... | 527  | 528 | ... |  543 |
++
++    Args:
++        num_embeddings: vocabulary size.
++        embedding_dim: size of hidden state.
++        params_dtype: type of the parameters.
++        org_num_embeddings: original vocabulary size (without LoRA).
++        padding_size: padding size for the vocabulary.
++        quant_config: quant config for the layer
++        prefix: full name of the layer in the state dict
++        disable_tp: If true, tensor parallelism will be disabled for this layer.
++    """  # noqa: E501
++
++    # --8<-- [end:vocab_parallel_embedding]
++
++    def __init__(
++        self,
++        num_embeddings: int,
++        embedding_dim: int,
++        params_dtype: torch.dtype | None = None,
++        org_num_embeddings: int | None = None,
++        padding_size: int = DEFAULT_VOCAB_PADDING_SIZE,
++        quant_config: QuantizationConfig | None = None,
++        prefix: str = "",
+         *,
+         disable_tp: bool = False,
+-    ):
+-        super().__init__()
+-
+-        # Keep the input dimensions.
+-        self.disable_tp = disable_tp
+-        if disable_tp:
+-            tp_rank, self.tp_size = 0, 1
+-        else:
+-            tp_rank = get_tensor_model_parallel_rank()
+-            self.tp_size = get_tensor_model_parallel_world_size()
+-        self.tp_rank = tp_rank
+-        self.num_embeddings = num_embeddings
+-        self.padding_size = padding_size
+-        self.org_vocab_size = org_num_embeddings or num_embeddings
+-        num_added_embeddings = num_embeddings - self.org_vocab_size
+-        self.org_vocab_size_padded = pad_vocab_size(
+-            self.org_vocab_size, self.padding_size
+-        )
+-        self.num_embeddings_padded = pad_vocab_size(
+-            self.org_vocab_size_padded + num_added_embeddings, self.padding_size
+-        )
+-        assert self.org_vocab_size_padded <= self.num_embeddings_padded
+-
+-        self.shard_indices = self._get_indices(
+-            self.num_embeddings_padded,
+-            self.org_vocab_size_padded,
+-            self.num_embeddings,
+-            self.org_vocab_size,
+-            tp_rank,
+-            self.tp_size,
+-        )
+-        self.embedding_dim = embedding_dim
+-
+-        quant_method = None
+-        if quant_config is not None:
+-            quant_method = quant_config.get_quant_method(self, prefix=prefix)
+-        if quant_method is None:
+-            quant_method = UnquantizedEmbeddingMethod()
+-
+-        # If we are making an embedding layer, then our quantization linear
+-        # method must implement the embedding operation. If we are another
++        lm_head_quantization: Literal["nvfp4"] | None = None,
++    ):
++        super().__init__()
++
++        # Keep the input dimensions.
++        self.disable_tp = disable_tp
++        if disable_tp:
++            tp_rank, self.tp_size = 0, 1
++        else:
++            tp_rank = get_tensor_model_parallel_rank()
++            self.tp_size = get_tensor_model_parallel_world_size()
++        self.tp_rank = tp_rank
++        self.num_embeddings = num_embeddings
++        self.padding_size = padding_size
++        self.org_vocab_size = org_num_embeddings or num_embeddings
++        num_added_embeddings = num_embeddings - self.org_vocab_size
++        self.org_vocab_size_padded = pad_vocab_size(
++            self.org_vocab_size, self.padding_size
++        )
++        self.num_embeddings_padded = pad_vocab_size(
++            self.org_vocab_size_padded + num_added_embeddings, self.padding_size
++        )
++        assert self.org_vocab_size_padded <= self.num_embeddings_padded
++
++        self.shard_indices = self._get_indices(
++            self.num_embeddings_padded,
++            self.org_vocab_size_padded,
++            self.num_embeddings,
++            self.org_vocab_size,
++            tp_rank,
++            self.tp_size,
++        )
++        self.embedding_dim = embedding_dim
++
++        quant_method = None
++        if quant_config is not None:
++            quant_method = quant_config.get_quant_method(self, prefix=prefix)
++        if quant_method is None:
++            quant_method = UnquantizedEmbeddingMethod()
++
++        # If we are making an embedding layer, then our quantization linear
++        # method must implement the embedding operation. If we are another
+         # layer type like ParallelLMHead, this is not important.
+         is_embedding_layer = not isinstance(self, ParallelLMHead)
+-        quant_method_implements_embedding = method_has_implemented_embedding(
+-            type(quant_method)
+-        )
+-        if is_embedding_layer and not quant_method_implements_embedding:
+-            raise NotImplementedError(
+-                f"The class {type(quant_method).__name__} must implement "
+-                "the 'embedding' method, see UnquantizedEmbeddingMethod."
++        self.runtime_lm_head_quantization: Literal["nvfp4"] | None = None
++        if not is_embedding_layer and lm_head_quantization is not None:
++            from vllm.model_executor.layers.linear import UnquantizedLinearMethod
++            from vllm.model_executor.layers.quantization.online.nvfp4 import (
++                Nvfp4OnlineLinearMethod,
+             )
+ 
+-        self.quant_method: QuantizeMethodBase = quant_method
+-
+-        if params_dtype is None:
+-            params_dtype = torch.get_default_dtype()
+-        self.params_dtype = params_dtype
+-        # Divide the weight matrix along the vocabulary dimension.
+-        self.num_added_embeddings = self.num_embeddings - self.org_vocab_size
+-        self.num_embeddings_per_partition = divide(
+-            self.num_embeddings_padded, self.tp_size
+-        )
+-        assert (
+-            self.shard_indices.num_elements_padded == self.num_embeddings_per_partition
+-        )
+-        self.num_org_embeddings_per_partition = (
+-            self.shard_indices.org_vocab_end_index
+-            - self.shard_indices.org_vocab_start_index
+-        )
+-        self.num_added_embeddings_per_partition = (
+-            self.shard_indices.added_vocab_end_index
+-            - self.shard_indices.added_vocab_start_index
+-        )
+-
+-        self.quant_method.create_weights(
+-            self,
+-            self.embedding_dim,
+-            [self.num_embeddings_per_partition],
+-            self.embedding_dim,
+-            self.num_embeddings_padded,
+-            params_dtype=params_dtype,
+-            weight_loader=self.weight_loader,
+-        )
+-        self.update_param_tp_status()
+-
+-    def update_param_tp_status(self):
+-        for param in self.parameters():
+-            if isinstance(param, BasevLLMParameter):
+-                param.tp_rank = self.tp_rank
+-                param.tp_size = self.tp_size
+-
+-    @classmethod
+-    def _get_indices(
+-        cls,
+-        vocab_size_padded: int,
+-        org_vocab_size_padded: int,
+-        vocab_size: int,
+-        org_vocab_size: int,
+-        tp_rank: int,
+-        tp_size: int,
+-    ) -> VocabParallelEmbeddingShardIndices:
+-        """Get start and end indices for vocab parallel embedding, following the
+-        layout outlined in the class docstring, based on the given tp_rank and
+-        tp_size."""
+-        num_added_embeddings_padded = vocab_size_padded - org_vocab_size_padded
+-        padded_org_vocab_start_index, padded_org_vocab_end_index = (
+-            vocab_range_from_global_vocab_size(org_vocab_size_padded, tp_rank, tp_size)
+-        )
+-        padded_added_vocab_start_index, padded_added_vocab_end_index = (
+-            vocab_range_from_global_vocab_size(
+-                num_added_embeddings_padded, tp_rank, tp_size, offset=org_vocab_size
+-            )
+-        )
+-        # remove padding
+-        org_vocab_start_index = min(padded_org_vocab_start_index, org_vocab_size)
+-        org_vocab_end_index = min(padded_org_vocab_end_index, org_vocab_size)
+-        added_vocab_start_index = min(padded_added_vocab_start_index, vocab_size)
+-        added_vocab_end_index = min(padded_added_vocab_end_index, vocab_size)
+-        return VocabParallelEmbeddingShardIndices(
+-            padded_org_vocab_start_index,
+-            padded_org_vocab_end_index,
+-            padded_added_vocab_start_index,
+-            padded_added_vocab_end_index,
+-            org_vocab_start_index,
+-            org_vocab_end_index,
+-            added_vocab_start_index,
+-            added_vocab_end_index,
+-        )
+-
+-    def get_sharded_to_full_mapping(self) -> list[int] | None:
+-        """Get a mapping that can be used to reindex the gathered
+-        logits for sampling.
+-
+-        During sampling, we gather logits from all ranks. The relationship
+-        of index->token_id will follow the same format as outlined in the class
+-        docstring. However, after the gather, we want to reindex the final
+-        logits tensor to map index->token_id one-to-one (the index is always
+-        equal the token_id it corresponds to). The indices returned by this
+-        method allow us to do that.
+-        """
+-        if self.tp_size < 2:
+-            return None
+-
+-        base_embeddings: list[int] = []
+-        added_embeddings: list[int] = []
+-        padding: list[int] = []
+-        for tp_rank in range(self.tp_size):
+-            shard_indices = self._get_indices(
+-                self.num_embeddings_padded,
+-                self.org_vocab_size_padded,
+-                self.num_embeddings,
+-                self.org_vocab_size,
+-                tp_rank,
+-                self.tp_size,
+-            )
+-            range_start = self.num_embeddings_per_partition * tp_rank
+-            range_end = self.num_embeddings_per_partition * (tp_rank + 1)
+-            base_embeddings.extend(
+-                range(range_start, range_start + shard_indices.num_org_elements)
+-            )
+-            padding.extend(
+-                range(
+-                    range_start + shard_indices.num_org_elements,
+-                    range_start + shard_indices.num_org_elements_padded,
+-                )
+-            )
+-            added_embeddings.extend(
+-                range(
+-                    range_start + shard_indices.num_org_elements_padded,
+-                    range_start
+-                    + shard_indices.num_org_elements_padded
+-                    + shard_indices.num_added_elements,
+-                )
+-            )
+-            padding.extend(
+-                range(
+-                    range_start
+-                    + shard_indices.num_org_elements_padded
+-                    + shard_indices.num_added_elements,
+-                    range_start
+-                    + shard_indices.num_org_elements_padded
+-                    + shard_indices.num_added_elements_padded,
+-                )
+-            )
+-            assert (
+-                range_start
+-                + shard_indices.num_org_elements_padded
+-                + shard_indices.num_added_elements_padded
+-                == range_end
+-            )
+-        ret = base_embeddings + added_embeddings + padding
+-        assert len(ret) == self.num_embeddings_padded
+-        return ret
+-
+-    def weight_loader(self, param: Parameter, loaded_weight: torch.Tensor):
+-        output_dim = getattr(param, "output_dim", None)
+-        packed_dim = getattr(param, "packed_dim", None)
+-
+-        # If parameter does not have output dim, then it should
+-        # be copied onto all gpus (e.g. g_idx for act_order gptq).
+-        if output_dim is None:
+-            if (
+-                loaded_weight.ndim == 0
+-                and param.data.ndim == 1
+-                and param.data.numel() == 1
++            if not isinstance(
++                quant_method,
++                (UnquantizedEmbeddingMethod, UnquantizedLinearMethod),
+             ):
+-                loaded_weight = loaded_weight.reshape(1)
+-            assert param.data.shape == loaded_weight.shape
+-            param.data.copy_(loaded_weight)
+-            return
+-
+-        # Shard indexes for loading the weight
+-        start_idx = self.shard_indices.org_vocab_start_index
+-        shard_size = self.shard_indices.org_vocab_end_index - start_idx
+-
+-        # If param packed on the same dim we are sharding on, then
+-        # need to adjust offsets of loaded weight by pack_factor.
+-        if packed_dim is not None and packed_dim == output_dim:
+-            packed_factor = (
+-                param.packed_factor
+-                if isinstance(param, BasevLLMParameter)
+-                else param.pack_factor
+-            )
+-            assert loaded_weight.shape[output_dim] == (
+-                self.org_vocab_size // param.packed_factor
+-            )
+-            start_idx = start_idx // packed_factor
+-            shard_size = shard_size // packed_factor
+-        else:
+-            assert loaded_weight.shape[output_dim] == self.org_vocab_size
+-
+-        # Copy the data. Select chunk corresponding to current shard.
+-        loaded_weight = loaded_weight.narrow(output_dim, start_idx, shard_size)
+-        param[: loaded_weight.shape[0]].data.copy_(loaded_weight)
+-        param[loaded_weight.shape[0] :].data.fill_(0)
+-
+-    def forward(self, input_):
+-        if self.tp_size > 1:
+-            # Build the mask.
+-            masked_input, input_mask = get_masked_input_and_mask(
+-                input_,
+-                self.shard_indices.org_vocab_start_index,
+-                self.shard_indices.org_vocab_end_index,
+-                self.shard_indices.num_org_vocab_padding,
+-                self.shard_indices.added_vocab_start_index,
+-                self.shard_indices.added_vocab_end_index,
++                raise ValueError(
++                    "Runtime NVFP4 proposal-head quantization requires an "
++                    "unquantized checkpoint head"
++                )
++            quant_method = Nvfp4OnlineLinearMethod(
++                use_a16=envs.VLLM_LM_HEAD_A16
+             )
+-        else:
+-            masked_input = input_
+-        # Get the embeddings.
+-        output_parallel = self.quant_method.embedding(self, masked_input.long())
+-        # Mask the output embedding.
+-        if self.tp_size > 1:
+-            output_parallel.masked_fill_(input_mask.unsqueeze(-1), 0)
+-            # Reduce across all the model parallel GPUs.
+-            return tensor_model_parallel_all_reduce(output_parallel)
+-        return output_parallel
+-
+-    def extra_repr(self) -> str:
+-        s = f"num_embeddings={self.num_embeddings}"
+-        s += f", num_embeddings_per_partition={self.num_embeddings_per_partition}"
+-        s += f", embedding_dim={self.embedding_dim}"
+-        s += f", org_vocab_size={self.org_vocab_size}"
+-        s += f", num_embeddings_padded={self.num_embeddings_padded}"
+-        s += f", tp_size={self.tp_size}"
+-        return s
+-
+-
+-# --8<-- [start:parallel_lm_head]
+-@PluggableLayer.register("parallel_lm_head")
+-class ParallelLMHead(VocabParallelEmbedding):
+-    """Parallelized LM head.
+-
+-    Output logits weight matrices used in the Sampler. The weight and bias
+-    tensors are padded to make sure they are divisible by the number of
+-    model parallel GPUs.
+-
+-    Args:
+-        num_embeddings: vocabulary size.
+-        embedding_dim: size of hidden state.
+-        bias: whether to use bias.
+-        params_dtype: type of the parameters.
+-        org_num_embeddings: original vocabulary size (without LoRA).
+-        padding_size: padding size for the vocabulary.
+-        disable_tp: If true, tensor parallelism will be disabled for this layer.
+-    """
+-
+-    # --8<-- [end:parallel_lm_head]
+-
+-    def __init__(
+-        self,
+-        num_embeddings: int,
+-        embedding_dim: int,
+-        bias: bool = False,
+-        params_dtype: torch.dtype | None = None,
+-        org_num_embeddings: int | None = None,
+-        padding_size: int = DEFAULT_VOCAB_PADDING_SIZE,
+-        quant_config: QuantizationConfig | None = None,
+-        prefix: str = "",
++            self.runtime_lm_head_quantization = "nvfp4"
++        quant_method_implements_embedding = method_has_implemented_embedding(
++            type(quant_method)
++        )
++        if is_embedding_layer and not quant_method_implements_embedding:
++            raise NotImplementedError(
++                f"The class {type(quant_method).__name__} must implement "
++                "the 'embedding' method, see UnquantizedEmbeddingMethod."
++            )
++
++        self.quant_method: QuantizeMethodBase = quant_method
++
++        if params_dtype is None:
++            params_dtype = torch.get_default_dtype()
++        self.params_dtype = params_dtype
++        # Divide the weight matrix along the vocabulary dimension.
++        self.num_added_embeddings = self.num_embeddings - self.org_vocab_size
++        self.num_embeddings_per_partition = divide(
++            self.num_embeddings_padded, self.tp_size
++        )
++        assert (
++            self.shard_indices.num_elements_padded == self.num_embeddings_per_partition
++        )
++        self.num_org_embeddings_per_partition = (
++            self.shard_indices.org_vocab_end_index
++            - self.shard_indices.org_vocab_start_index
++        )
++        self.num_added_embeddings_per_partition = (
++            self.shard_indices.added_vocab_end_index
++            - self.shard_indices.added_vocab_start_index
++        )
++
++        self.quant_method.create_weights(
++            self,
++            self.embedding_dim,
++            [self.num_embeddings_per_partition],
++            self.embedding_dim,
++            self.num_embeddings_padded,
++            params_dtype=params_dtype,
++            weight_loader=self.weight_loader,
++        )
++        self.update_param_tp_status()
++
++    def update_param_tp_status(self):
++        for param in self.parameters():
++            if isinstance(param, BasevLLMParameter):
++                param.tp_rank = self.tp_rank
++                param.tp_size = self.tp_size
++
++    @classmethod
++    def _get_indices(
++        cls,
++        vocab_size_padded: int,
++        org_vocab_size_padded: int,
++        vocab_size: int,
++        org_vocab_size: int,
++        tp_rank: int,
++        tp_size: int,
++    ) -> VocabParallelEmbeddingShardIndices:
++        """Get start and end indices for vocab parallel embedding, following the
++        layout outlined in the class docstring, based on the given tp_rank and
++        tp_size."""
++        num_added_embeddings_padded = vocab_size_padded - org_vocab_size_padded
++        padded_org_vocab_start_index, padded_org_vocab_end_index = (
++            vocab_range_from_global_vocab_size(org_vocab_size_padded, tp_rank, tp_size)
++        )
++        padded_added_vocab_start_index, padded_added_vocab_end_index = (
++            vocab_range_from_global_vocab_size(
++                num_added_embeddings_padded, tp_rank, tp_size, offset=org_vocab_size
++            )
++        )
++        # remove padding
++        org_vocab_start_index = min(padded_org_vocab_start_index, org_vocab_size)
++        org_vocab_end_index = min(padded_org_vocab_end_index, org_vocab_size)
++        added_vocab_start_index = min(padded_added_vocab_start_index, vocab_size)
++        added_vocab_end_index = min(padded_added_vocab_end_index, vocab_size)
++        return VocabParallelEmbeddingShardIndices(
++            padded_org_vocab_start_index,
++            padded_org_vocab_end_index,
++            padded_added_vocab_start_index,
++            padded_added_vocab_end_index,
++            org_vocab_start_index,
++            org_vocab_end_index,
++            added_vocab_start_index,
++            added_vocab_end_index,
++        )
++
++    def get_sharded_to_full_mapping(self) -> list[int] | None:
++        """Get a mapping that can be used to reindex the gathered
++        logits for sampling.
++
++        During sampling, we gather logits from all ranks. The relationship
++        of index->token_id will follow the same format as outlined in the class
++        docstring. However, after the gather, we want to reindex the final
++        logits tensor to map index->token_id one-to-one (the index is always
++        equal the token_id it corresponds to). The indices returned by this
++        method allow us to do that.
++        """
++        if self.tp_size < 2:
++            return None
++
++        base_embeddings: list[int] = []
++        added_embeddings: list[int] = []
++        padding: list[int] = []
++        for tp_rank in range(self.tp_size):
++            shard_indices = self._get_indices(
++                self.num_embeddings_padded,
++                self.org_vocab_size_padded,
++                self.num_embeddings,
++                self.org_vocab_size,
++                tp_rank,
++                self.tp_size,
++            )
++            range_start = self.num_embeddings_per_partition * tp_rank
++            range_end = self.num_embeddings_per_partition * (tp_rank + 1)
++            base_embeddings.extend(
++                range(range_start, range_start + shard_indices.num_org_elements)
++            )
++            padding.extend(
++                range(
++                    range_start + shard_indices.num_org_elements,
++                    range_start + shard_indices.num_org_elements_padded,
++                )
++            )
++            added_embeddings.extend(
++                range(
++                    range_start + shard_indices.num_org_elements_padded,
++                    range_start
++                    + shard_indices.num_org_elements_padded
++                    + shard_indices.num_added_elements,
++                )
++            )
++            padding.extend(
++                range(
++                    range_start
++                    + shard_indices.num_org_elements_padded
++                    + shard_indices.num_added_elements,
++                    range_start
++                    + shard_indices.num_org_elements_padded
++                    + shard_indices.num_added_elements_padded,
++                )
++            )
++            assert (
++                range_start
++                + shard_indices.num_org_elements_padded
++                + shard_indices.num_added_elements_padded
++                == range_end
++            )
++        ret = base_embeddings + added_embeddings + padding
++        assert len(ret) == self.num_embeddings_padded
++        return ret
++
++    def weight_loader(self, param: Parameter, loaded_weight: torch.Tensor):
++        output_dim = getattr(param, "output_dim", None)
++        packed_dim = getattr(param, "packed_dim", None)
++
++        # If parameter does not have output dim, then it should
++        # be copied onto all gpus (e.g. g_idx for act_order gptq).
++        if output_dim is None:
++            if (
++                loaded_weight.ndim == 0
++                and param.data.ndim == 1
++                and param.data.numel() == 1
++            ):
++                loaded_weight = loaded_weight.reshape(1)
++            assert param.data.shape == loaded_weight.shape
++            param.data.copy_(loaded_weight)
++            return
++
++        # Shard indexes for loading the weight
++        start_idx = self.shard_indices.org_vocab_start_index
++        shard_size = self.shard_indices.org_vocab_end_index - start_idx
++
++        # If param packed on the same dim we are sharding on, then
++        # need to adjust offsets of loaded weight by pack_factor.
++        if packed_dim is not None and packed_dim == output_dim:
++            packed_factor = (
++                param.packed_factor
++                if isinstance(param, BasevLLMParameter)
++                else param.pack_factor
++            )
++            assert loaded_weight.shape[output_dim] == (
++                self.org_vocab_size // param.packed_factor
++            )
++            start_idx = start_idx // packed_factor
++            shard_size = shard_size // packed_factor
++        else:
++            assert loaded_weight.shape[output_dim] == self.org_vocab_size
++
++        # Copy the data. Select chunk corresponding to current shard.
++        loaded_weight = loaded_weight.narrow(output_dim, start_idx, shard_size)
++        param[: loaded_weight.shape[0]].data.copy_(loaded_weight)
++        param[loaded_weight.shape[0] :].data.fill_(0)
++
++    def forward(self, input_):
++        if self.tp_size > 1:
++            # Build the mask.
++            masked_input, input_mask = get_masked_input_and_mask(
++                input_,
++                self.shard_indices.org_vocab_start_index,
++                self.shard_indices.org_vocab_end_index,
++                self.shard_indices.num_org_vocab_padding,
++                self.shard_indices.added_vocab_start_index,
++                self.shard_indices.added_vocab_end_index,
++            )
++        else:
++            masked_input = input_
++        # Get the embeddings.
++        output_parallel = self.quant_method.embedding(self, masked_input.long())
++        # Mask the output embedding.
++        if self.tp_size > 1:
++            output_parallel.masked_fill_(input_mask.unsqueeze(-1), 0)
++            # Reduce across all the model parallel GPUs.
++            return tensor_model_parallel_all_reduce(output_parallel)
++        return output_parallel
++
++    def extra_repr(self) -> str:
++        s = f"num_embeddings={self.num_embeddings}"
++        s += f", num_embeddings_per_partition={self.num_embeddings_per_partition}"
++        s += f", embedding_dim={self.embedding_dim}"
++        s += f", org_vocab_size={self.org_vocab_size}"
++        s += f", num_embeddings_padded={self.num_embeddings_padded}"
++        s += f", tp_size={self.tp_size}"
++        return s
++
++
++# --8<-- [start:parallel_lm_head]
++@PluggableLayer.register("parallel_lm_head")
++class ParallelLMHead(VocabParallelEmbedding):
++    """Parallelized LM head.
++
++    Output logits weight matrices used in the Sampler. The weight and bias
++    tensors are padded to make sure they are divisible by the number of
++    model parallel GPUs.
++
++    Args:
++        num_embeddings: vocabulary size.
++        embedding_dim: size of hidden state.
++        bias: whether to use bias.
++        params_dtype: type of the parameters.
++        org_num_embeddings: original vocabulary size (without LoRA).
++        padding_size: padding size for the vocabulary.
++        disable_tp: If true, tensor parallelism will be disabled for this layer.
++    """
++
++    # --8<-- [end:parallel_lm_head]
++
++    def __init__(
++        self,
++        num_embeddings: int,
++        embedding_dim: int,
++        bias: bool = False,
++        params_dtype: torch.dtype | None = None,
++        org_num_embeddings: int | None = None,
++        padding_size: int = DEFAULT_VOCAB_PADDING_SIZE,
++        quant_config: QuantizationConfig | None = None,
++        prefix: str = "",
+         *,
+         disable_tp: bool = False,
+-    ):
+-        super().__init__(
+-            num_embeddings,
+-            embedding_dim,
+-            params_dtype,
+-            org_num_embeddings,
+-            padding_size,
+-            quant_config,
++        lm_head_quantization: Literal["nvfp4"] | None = None,
++    ):
++        super().__init__(
++            num_embeddings,
++            embedding_dim,
++            params_dtype,
++            org_num_embeddings,
++            padding_size,
++            quant_config,
+             prefix,
+             disable_tp=disable_tp,
++            lm_head_quantization=lm_head_quantization,
+         )
+-        self.quant_config = quant_config
+-        if bias:
+-            self._register_bias()
+-        else:
+-            self.register_parameter("bias", None)
+-
+-    def _register_bias(self):
+-        data = torch.empty(self.num_embeddings_per_partition, dtype=self.params_dtype)
+-        self.bias = Parameter(data, requires_grad=False)
+-        weight_attrs = dict(output_dim=0, weight_loader=self.weight_loader)
+-        set_weight_attrs(weight=self.bias, weight_attrs=weight_attrs)
+-
+-    def tie_weights(self, embed_tokens: VocabParallelEmbedding):
+-        """Tie the weights with word embeddings."""
+-        return self.quant_method.tie_weights(self, embed_tokens)
+-
+-    def forward(self, input_):
+-        del input_
+-        raise RuntimeError("LMHead's weights should be used in the sampler.")
++        self.quant_config = quant_config
++        if bias:
++            self._register_bias()
++        else:
++            self.register_parameter("bias", None)
++
++    def _register_bias(self):
++        data = torch.empty(self.num_embeddings_per_partition, dtype=self.params_dtype)
++        self.bias = Parameter(data, requires_grad=False)
++        weight_attrs = dict(output_dim=0, weight_loader=self.weight_loader)
++        set_weight_attrs(weight=self.bias, weight_attrs=weight_attrs)
++
++    def tie_weights(self, embed_tokens: VocabParallelEmbedding):
++        """Tie the weights with word embeddings."""
++        return self.quant_method.tie_weights(self, embed_tokens)
++
++    def forward(self, input_):
++        del input_
++        raise RuntimeError("LMHead's weights should be used in the sampler.")
+diff --git a/vllm/model_executor/models/deepseek_mtp.py b/vllm/model_executor/models/deepseek_mtp.py
+index 8ac43e0bb2a17957ac3f013c4da75d030fae0502..e200fd64483419ee72adc107be580519fbfb38f8 100644
+--- a/vllm/model_executor/models/deepseek_mtp.py
++++ b/vllm/model_executor/models/deepseek_mtp.py
+@@ -1,547 +1,550 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-import typing
+-from collections.abc import Callable, Iterable
+-
+-import torch
+-import torch.nn as nn
+-from transformers import PretrainedConfig
+-
+-from vllm.compilation.decorators import support_torch_compile
+-from vllm.config import VllmConfig
+-from vllm.distributed import tensor_model_parallel_all_gather
+-from vllm.model_executor.layers.fused_moe import (
+-    fused_moe_make_expert_params_mapping,
+-)
+-from vllm.model_executor.layers.fused_moe.utils import (
+-    is_model_fused_shared_expert_compatible,
+-)
+-from vllm.model_executor.layers.layernorm import RMSNorm
+-from vllm.model_executor.layers.logits_processor import LogitsProcessor
+-from vllm.model_executor.layers.quantization import QuantizationConfig
+-from vllm.model_executor.layers.vocab_parallel_embedding import (
+-    ParallelLMHead,
+-    VocabParallelEmbedding,
+-)
+-from vllm.model_executor.model_loader.mtp_validation import (
+-    is_mtp_completeness_check_enabled,
+-)
+-from vllm.model_executor.model_loader.weight_utils import (
+-    default_weight_loader,
+-    maybe_remap_kv_scale_name,
+-)
+-from vllm.platforms import current_platform
+-from vllm.sequence import IntermediateTensors
+-
+-from .deepseek_v2 import (
+-    DeepseekV2DecoderLayer,
+-    DeepseekV2MixtureOfExperts,
+-    DeepseekV2MoE,
+-    _try_load_fp8_indexer_wk,
+-)
+-from .utils import (
+-    get_pp_missing_layer_names,
+-    get_spec_layer_idx_from_weight_name,
+-    maybe_prefix,
+-)
+-
+-
+-class SharedHead(nn.Module):
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++import typing
++from collections.abc import Callable, Iterable
++
++import torch
++import torch.nn as nn
++from transformers import PretrainedConfig
++
++from vllm.compilation.decorators import support_torch_compile
++from vllm.config import VllmConfig
++from vllm.distributed import tensor_model_parallel_all_gather
++from vllm.model_executor.layers.fused_moe import (
++    fused_moe_make_expert_params_mapping,
++)
++from vllm.model_executor.layers.fused_moe.utils import (
++    is_model_fused_shared_expert_compatible,
++)
++from vllm.model_executor.layers.layernorm import RMSNorm
++from vllm.model_executor.layers.logits_processor import LogitsProcessor
++from vllm.model_executor.layers.quantization import QuantizationConfig
++from vllm.model_executor.layers.vocab_parallel_embedding import (
++    ParallelLMHead,
++    VocabParallelEmbedding,
++)
++from vllm.model_executor.model_loader.mtp_validation import (
++    is_mtp_completeness_check_enabled,
++)
++from vllm.model_executor.model_loader.weight_utils import (
++    default_weight_loader,
++    maybe_remap_kv_scale_name,
++)
++from vllm.platforms import current_platform
++from vllm.sequence import IntermediateTensors
++
++from .deepseek_v2 import (
++    DeepseekV2DecoderLayer,
++    DeepseekV2MixtureOfExperts,
++    DeepseekV2MoE,
++    _try_load_fp8_indexer_wk,
++)
++from .utils import (
++    get_pp_missing_layer_names,
++    get_spec_layer_idx_from_weight_name,
++    maybe_prefix,
++)
++
++
++class SharedHead(nn.Module):
+     def __init__(
+         self,
+         config: PretrainedConfig,
+         prefix: str,
+         quant_config: QuantizationConfig | None = None,
++        *,
++        lm_head_quantization: typing.Literal["nvfp4"] | None = None,
+     ) -> None:
+-        super().__init__()
+-        self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+-        self.head = ParallelLMHead(
+-            config.vocab_size,
++        super().__init__()
++        self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
++        self.head = ParallelLMHead(
++            config.vocab_size,
+             config.hidden_size,
+             quant_config=quant_config,
+             prefix=maybe_prefix(prefix, "head"),
++            lm_head_quantization=lm_head_quantization,
+         )
+-
+-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+-        return self.norm(hidden_states)
+-
+-
+-class DeepSeekMultiTokenPredictorLayer(nn.Module):
+-    def __init__(self, vllm_config: VllmConfig, prefix: str) -> None:
+-        super().__init__()
+-
+-        assert vllm_config.speculative_config is not None
+-        config = vllm_config.speculative_config.draft_model_config.hf_config
+-        self.config = config
+-        quant_config = vllm_config.quant_config
+-
+-        self.enorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+-        self.hnorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+-        self.eh_proj = nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False)
+-
+-        self.device = current_platform.device_type
+-
+-        self.is_v32 = hasattr(config, "index_topk")
+-        if self.is_v32:
+-            topk_tokens = config.index_topk
+-            topk_indices_buffer = torch.empty(
+-                vllm_config.scheduler_config.max_num_batched_tokens,
+-                topk_tokens,
+-                dtype=torch.int32,
+-                device=self.device,
+-            )
+-        else:
+-            topk_indices_buffer = None
+-
+-        self.shared_head = SharedHead(
+-            config=config, prefix=prefix, quant_config=quant_config
+-        )
+-        self.mtp_block = DeepseekV2DecoderLayer(
+-            vllm_config,
+-            prefix,
+-            config=self.config,
+-            topk_indices_buffer=topk_indices_buffer,
+-        )
+-
+-    def forward(
+-        self,
+-        input_ids: torch.Tensor,
+-        positions: torch.Tensor,
+-        previous_hidden_states: torch.Tensor,
+-        inputs_embeds: torch.Tensor | None = None,
+-        spec_step_index: int = 0,
+-    ) -> torch.Tensor:
+-        assert inputs_embeds is not None
+-        # masking inputs at position 0, as not needed by MTP
+-        inputs_embeds = torch.where(positions.unsqueeze(-1) == 0, 0, inputs_embeds)
+-        inputs_embeds = self.enorm(inputs_embeds)
+-        previous_hidden_states = self.hnorm(previous_hidden_states)
+-
+-        hidden_states = self.eh_proj(
+-            torch.cat([inputs_embeds, previous_hidden_states], dim=-1)
+-        )
+-
+-        hidden_states, residual = self.mtp_block(
+-            positions=positions,
+-            hidden_states=hidden_states,
+-            residual=None,
+-        )
+-        hidden_states = residual + hidden_states  # pre-final-norm (logits hidden)
+-        if self.mtp_block.use_sequence_parallel_moe:
+-            hidden_states = tensor_model_parallel_all_gather(hidden_states, 0)
+-            hidden_states = hidden_states[: positions.shape[0]]
+-        # Recycle the post-final-norm hidden into the next draft step.
+-        # compute_logits applies shared_head (== final norm) to the pre-norm
+-        # element, so logits and the recycle each get exactly one final-norm.
+-        # Matches SGLang's deepseek_nextn.
+-        return hidden_states, self.shared_head(hidden_states)
+-
+-
+-class DeepSeekMultiTokenPredictor(nn.Module):
+-    def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
+-        super().__init__()
+-        config = vllm_config.model_config.hf_config
+-        self.mtp_start_layer_idx = config.num_hidden_layers
+-        self.num_mtp_layers = config.num_nextn_predict_layers
+-        # to map the exact layer index from weights
+-
+-        self.layers = torch.nn.ModuleDict(
+-            {
+-                str(idx): DeepSeekMultiTokenPredictorLayer(
+-                    vllm_config, f"{prefix}.layers.{idx}"
+-                )
+-                for idx in range(
+-                    self.mtp_start_layer_idx,
+-                    self.mtp_start_layer_idx + self.num_mtp_layers,
+-                )
+-            }
+-        )
+-        self.embed_tokens = VocabParallelEmbedding(
+-            config.vocab_size,
+-            config.hidden_size,
+-            prefix=maybe_prefix(prefix, "embed_tokens"),
+-        )
+-        self.logits_processor = LogitsProcessor(config.vocab_size)
+-
+-    def set_skip_topk(self, skip: bool):
+-        """Toggle skip_topk on all MTP layers with sparse attention.
+-
+-        Called by the proposer to implement index_share_for_mtp_iteration:
+-        step 0 sets skip=False (compute own indices), steps 1+ set skip=True
+-        (reuse step 0's indices).
+-        """
+-        for layer in self.layers.values():
+-            mtp_block = getattr(layer, "mtp_block", None)
+-            if mtp_block is not None:
+-                self_attn = getattr(mtp_block, "self_attn", None)
+-                if self_attn is not None:
+-                    mla_attn = getattr(self_attn, "mla_attn", None)
+-                    if mla_attn is not None and hasattr(mla_attn, "skip_topk"):
+-                        mla_attn.skip_topk = skip
+-
+-    def compact_topk_indices(self, slot_ids: torch.Tensor):
+-        """Gather the top-k index rows at ``slot_ids`` to the front of the buffer."""
+-        num_slots = slot_ids.numel()
+-        for layer in self.layers.values():
+-            mtp_block = getattr(layer, "mtp_block", None)
+-            if mtp_block is not None:
+-                self_attn = getattr(mtp_block, "self_attn", None)
+-                if self_attn is not None:
+-                    mla_attn = getattr(self_attn, "mla_attn", None)
+-                    if mla_attn is not None and hasattr(
+-                        mla_attn, "topk_indices_buffer"
+-                    ):
+-                        topk_indices_buffer = mla_attn.topk_indices_buffer
+-                        topk_indices_buffer[:num_slots] = topk_indices_buffer[slot_ids]
+-
+-    def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
+-        return self.embed_tokens(input_ids)
+-
+-    def forward(
+-        self,
+-        input_ids: torch.Tensor,
+-        positions: torch.Tensor,
+-        previous_hidden_states: torch.Tensor,
+-        inputs_embeds: torch.Tensor | None = None,
+-        spec_step_idx: int = 0,
+-    ) -> torch.Tensor:
+-        if inputs_embeds is None:
+-            inputs_embeds = self.embed_tokens(input_ids)
+-        current_step_idx = spec_step_idx % self.num_mtp_layers
+-        return self.layers[str(self.mtp_start_layer_idx + current_step_idx)](
+-            input_ids,
+-            positions,
+-            previous_hidden_states,
+-            inputs_embeds,
+-            current_step_idx,
+-        )
+-
+-    def compute_logits(
+-        self,
+-        hidden_states: torch.Tensor,
+-        spec_step_idx: int = 0,
+-    ) -> torch.Tensor:
+-        current_step_idx = spec_step_idx % self.num_mtp_layers
+-        mtp_layer = self.layers[str(self.mtp_start_layer_idx + current_step_idx)]
+-        logits = self.logits_processor(
+-            mtp_layer.shared_head.head, mtp_layer.shared_head(hidden_states)
+-        )
+-        return logits
+-
+-
+-@support_torch_compile
+-class DeepSeekMTP(nn.Module, DeepseekV2MixtureOfExperts):
+-    def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
+-        super().__init__()
+-        self.config = vllm_config.model_config.hf_config
+-        self.quant_config = vllm_config.quant_config
+-        self.model = DeepSeekMultiTokenPredictor(
+-            vllm_config=vllm_config, prefix=maybe_prefix(prefix, "model")
+-        )
+-        # Set MoE hyperparameters
+-        self.set_moe_parameters()
+-
+-    def set_moe_parameters(self):
+-        self.num_moe_layers = self.config.num_nextn_predict_layers
+-        self.num_expert_groups = self.config.n_group
+-
+-        self.moe_layers = []
+-        self.moe_mlp_layers = []
+-        example_moe = None
+-        for layer in self.model.layers.values():
+-            assert isinstance(layer, DeepSeekMultiTokenPredictorLayer)
+-            layer = layer.mtp_block
+-            assert isinstance(layer, DeepseekV2DecoderLayer)
+-            if isinstance(layer.mlp, DeepseekV2MoE):
+-                example_moe = layer.mlp
+-                self.moe_mlp_layers.append(layer.mlp)
+-                self.moe_layers.append(layer.mlp.experts)
+-        self.extract_moe_parameters(example_moe)
+-        self.is_fused_shared_expert_enabled = is_model_fused_shared_expert_compatible(
+-            self.model.layers.values(),
+-            DeepseekV2MoE,
+-            "mtp_block.mlp",
+-        )
+-
+-    def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
+-        return self.model.embed_input_ids(input_ids)
+-
+-    def forward(
+-        self,
+-        input_ids: torch.Tensor | None,
+-        positions: torch.Tensor,
+-        hidden_states: torch.Tensor,
+-        intermediate_tensors: IntermediateTensors | None = None,
+-        inputs_embeds: torch.Tensor | None = None,
+-        spec_step_idx: int = 0,
+-    ) -> torch.Tensor:
+-        hidden_states = self.model(
+-            input_ids,
+-            positions,
+-            hidden_states,
+-            inputs_embeds,
+-            spec_step_idx,
+-        )
+-        return hidden_states
+-
+-    def compute_logits(
+-        self,
+-        hidden_states: torch.Tensor,
+-        spec_step_idx: int = 0,
+-    ) -> torch.Tensor | None:
+-        return self.model.compute_logits(hidden_states, spec_step_idx)
+-
+-    def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
+-        stacked_params_mapping = [
+-            ("gate_up_proj", "gate_proj", 0),
+-            ("gate_up_proj", "up_proj", 1),
+-            ("fused_qkv_a_proj", "q_a_proj", 0),
+-            ("fused_qkv_a_proj", "kv_a_proj_with_mqa", 1),
+-        ]
+-
+-        # Fused indexer wk + weights_proj (shard 0 = wk, shard 1 = weights_proj)
+-        indexer_fused_mapping = [
+-            ("wk_weights_proj", "wk", 0),
+-            ("wk_weights_proj", "weights_proj", 1),
+-        ]
+-        stacked_params_mapping.extend(indexer_fused_mapping)
+-
+-        expert_params_mapping = fused_moe_make_expert_params_mapping(
+-            self,
+-            ckpt_gate_proj_name="gate_proj",
+-            ckpt_down_proj_name="down_proj",
+-            ckpt_up_proj_name="up_proj",
+-            num_experts=self.config.n_routed_experts
+-            + (
+-                self.config.n_shared_experts
+-                if self.is_fused_shared_expert_enabled
+-                else 0
+-            ),
+-        )
+-
+-        pp_missing_layer_names = get_pp_missing_layer_names(self)
+-        params_dict = dict(self.named_parameters())
+-        loaded_params: set[str] = set()
+-        _pending_wk_fp8: dict = {}  # FP8 indexer wk dequant buffer
+-        for name, loaded_weight in weights:
+-            if "rotary_emb.inv_freq" in name:
+-                continue
+-            spec_layer = get_spec_layer_idx_from_weight_name(self.config, name)
+-            if spec_layer is None:
+-                continue
+-            is_fusion_moe_shared_experts_layer = (
+-                self.is_fused_shared_expert_enabled and ("mlp.shared_experts" in name)
+-            )
+-            name = self._rewrite_spec_layer_name(spec_layer, name)
+-
+-            if _try_load_fp8_indexer_wk(
+-                name,
+-                loaded_weight,
+-                _pending_wk_fp8,
+-                params_dict,
+-                loaded_params,
+-                pp_missing_layer_names,
+-            ):
+-                continue
+-
+-            for param_name, weight_name, shard_id in stacked_params_mapping:
+-                # Skip non-stacked layers and experts (experts handled below).
+-                if weight_name not in name:
+-                    continue
+-                # We have mlp.experts[0].gate_proj in the checkpoint.
+-                # Since we handle the experts below in expert_params_mapping,
+-                # we need to skip here BEFORE we update the name, otherwise
+-                # name will be updated to mlp.experts[0].gate_up_proj, which
+-                # will then be updated below in expert_params_mapping
+-                # for mlp.experts[0].gate_gate_up_proj, which breaks load.
+-                if ("mlp.experts." in name) and name not in params_dict:
+-                    continue
+-                if is_fusion_moe_shared_experts_layer:
+-                    continue
+-                name_mapped = name.replace(weight_name, param_name)
+-
+-                # QKV fusion is optional, fall back to normal
+-                # weight loading if it's not enabled
+-                if (
+-                    param_name == "fused_qkv_a_proj"
+-                ) and name_mapped not in params_dict:
+-                    continue
+-                else:
+-                    name = name_mapped
+-
+-                # Skip loading extra bias for GPTQ models.
+-                if name.endswith(".bias") and name not in params_dict:
+-                    continue
+-
+-                param = params_dict[name]
+-                weight_loader = param.weight_loader
+-                weight_loader(param, loaded_weight, shard_id)
+-                break
+-            else:
+-                # Special handling: when AITER fusion_shared_experts is enabled,
+-                # checkpoints may provide a single widened shared_experts tensor
+-                # without explicit expert indices
+-                # (e.g. ...mlp.shared_experts.gate_proj.weight).
+-                # For models with multiple shared experts, split that tensor
+-                # evenly into per-shared-expert slices and load them into
+-                # appended expert slots mlp.experts.{n_routed_experts + j}.*
+-                # accordingly.
+-                num_chunks = 1
+-                if is_fusion_moe_shared_experts_layer:
+-                    num_chunks = getattr(self.config, "n_shared_experts", 1) or 1
+-                    # Determine split axis based on op type
+-                    # gate/up: ColumnParallel → split along dim 0
+-                    # down: RowParallel → split along dim 1
+-                    split_dim = (
+-                        1
+-                        if ("down_proj.weight" in name and loaded_weight.ndim > 1)
+-                        else 0
+-                    )
+-                    total = loaded_weight.shape[split_dim]
+-                    assert total % num_chunks == 0, (
+-                        f"Shared expert weight dim {total} "
+-                        f"not divisible by num_chunks {num_chunks}"
+-                    )
+-                    chunk_size = total // num_chunks
+-
+-                for j in range(num_chunks):
+-                    chunk_name = name
+-                    weight_to_load = loaded_weight
+-
+-                    if is_fusion_moe_shared_experts_layer:
+-                        chunk_slice = slice(j * chunk_size, (j + 1) * chunk_size)
+-                        if loaded_weight.ndim == 1:
+-                            weight_to_load = loaded_weight[chunk_slice]
+-                        elif split_dim == 0:
+-                            weight_to_load = loaded_weight[chunk_slice, :]
+-                        else:
+-                            weight_to_load = loaded_weight[:, chunk_slice]
+-                        # Synthesize an expert-style name so expert mapping
+-                        # can route it
+-                        chunk_name = name.replace(
+-                            "mlp.shared_experts",
+-                            f"mlp.experts.{self.config.n_routed_experts + j}",
+-                        )
+-
+-                    # Use expert_params_mapping to locate the destination
+-                    # param and delegate to its expert-aware weight_loader
+-                    # with expert_id.
+-                    is_expert_weight = False
+-                    for mapping in expert_params_mapping:
+-                        param_name, weight_name, expert_id, expert_shard_id = mapping
+-                        if weight_name not in chunk_name:
+-                            continue
+-
+-                        # Anyway, this is an expert weight and should not be
+-                        # attempted to load as other weights later
+-                        is_expert_weight = True
+-
+-                        # Do not modify `name` since the loop may continue here
+-                        # Instead, create a new variable
+-                        name_mapped = chunk_name.replace(weight_name, param_name)
+-
+-                        param = params_dict[name_mapped]
+-                        # We should ask the weight loader to return success or
+-                        # not here since otherwise we may skip experts with
+-                        # other available replicas.
+-                        weight_loader = typing.cast(
+-                            Callable[..., bool], param.weight_loader
+-                        )
+-                        success = weight_loader(
+-                            param,
+-                            weight_to_load,
+-                            name_mapped,
+-                            shard_id=expert_shard_id,
+-                            expert_id=expert_id,
+-                            return_success=True,
+-                        )
+-                        if success:
+-                            if not is_fusion_moe_shared_experts_layer:
+-                                name = name_mapped
+-                            else:
+-                                loaded_params.add(name_mapped)
+-                            break
+-                    else:
+-                        if is_expert_weight:
+-                            # We've checked that this is an expert weight
+-                            # However it's not mapped locally to this rank
+-                            # So we simply skip it
+-                            continue
+-
+-                        # Skip loading extra bias for GPTQ models.
+-                        if name.endswith(".bias") and name not in params_dict:
+-                            continue
+-
+-                        remapped_name = maybe_remap_kv_scale_name(name, params_dict)
+-                        if remapped_name is None:
+-                            continue
+-                        name = remapped_name
+-
+-                        # According to DeepSeek-V3 Technical Report, MTP modules
+-                        # shares embedding layer. We only load the first weights.
+-                        if (
+-                            spec_layer != self.model.mtp_start_layer_idx
+-                            and ".layers" not in name
+-                        ):
+-                            continue
+-
+-                        param = params_dict[name]
+-                        weight_loader = getattr(
+-                            param, "weight_loader", default_weight_loader
+-                        )
+-                        weight_loader(param, loaded_weight)
+-            if not is_fusion_moe_shared_experts_layer:
+-                loaded_params.add(name)
+-
+-        # Validate that weights were loaded for each expected MTP layer.
+-        loaded_layers: set[int] = set()
+-        for param_name in loaded_params:
+-            spec_layer = get_spec_layer_idx_from_weight_name(self.config, param_name)
+-            if spec_layer is not None:
+-                loaded_layers.add(spec_layer)
+-        for layer_idx in range(
+-            self.model.mtp_start_layer_idx,
+-            self.model.mtp_start_layer_idx + self.model.num_mtp_layers,
+-        ):
+-            if layer_idx not in loaded_layers and is_mtp_completeness_check_enabled():
+-                raise ValueError(
+-                    f"MTP speculative decoding layer {layer_idx} weights "
+-                    f"missing from checkpoint. The checkpoint may have "
+-                    f"been quantized without including the MTP layers. "
+-                    f"Use a checkpoint that includes MTP layer weights, "
+-                    f"or disable speculative decoding."
+-                )
+-
+-        return loaded_params
+-
+-    def _rewrite_spec_layer_name(self, spec_layer: int, name: str) -> str:
+-        """
+-        Rewrite the weight name to match the format of the original model.
+-        Add .mtp_block for modules in transformer layer block for spec layer
+-        and rename shared layer weights to be top level.
+-        """
+-        spec_layer_weight_names = [
+-            "embed_tokens",
+-            "enorm",
+-            "hnorm",
+-            "eh_proj",
+-            "shared_head",
+-        ]
+-        shared_weight_names = ["embed_tokens"]
+-        spec_layer_weight = False
+-        shared_weight = False
+-        for weight_name in spec_layer_weight_names:
+-            if weight_name in name:
+-                spec_layer_weight = True
+-                if weight_name in shared_weight_names:
+-                    shared_weight = True
+-                break
+-        if not spec_layer_weight:
+-            # treat rest weights as weights for transformer layer block
+-            name = name.replace(
+-                f"model.layers.{spec_layer}.", f"model.layers.{spec_layer}.mtp_block."
+-            )
+-        elif shared_weight:
+-            # treat shared weights as top level weights
+-            name = name.replace(f"model.layers.{spec_layer}.", "model.")
+-        return name
++
++    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
++        return self.norm(hidden_states)
++
++
++class DeepSeekMultiTokenPredictorLayer(nn.Module):
++    def __init__(self, vllm_config: VllmConfig, prefix: str) -> None:
++        super().__init__()
++
++        assert vllm_config.speculative_config is not None
++        config = vllm_config.speculative_config.draft_model_config.hf_config
++        self.config = config
++        quant_config = vllm_config.quant_config
++
++        self.enorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
++        self.hnorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
++        self.eh_proj = nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False)
++
++        self.device = current_platform.device_type
++
++        self.is_v32 = hasattr(config, "index_topk")
++        if self.is_v32:
++            topk_tokens = config.index_topk
++            topk_indices_buffer = torch.empty(
++                vllm_config.scheduler_config.max_num_batched_tokens,
++                topk_tokens,
++                dtype=torch.int32,
++                device=self.device,
++            )
++        else:
++            topk_indices_buffer = None
++
++        self.shared_head = SharedHead(
++            config=config, prefix=prefix, quant_config=quant_config
++        )
++        self.mtp_block = DeepseekV2DecoderLayer(
++            vllm_config,
++            prefix,
++            config=self.config,
++            topk_indices_buffer=topk_indices_buffer,
++        )
++
++    def forward(
++        self,
++        input_ids: torch.Tensor,
++        positions: torch.Tensor,
++        previous_hidden_states: torch.Tensor,
++        inputs_embeds: torch.Tensor | None = None,
++        spec_step_index: int = 0,
++    ) -> torch.Tensor:
++        assert inputs_embeds is not None
++        # masking inputs at position 0, as not needed by MTP
++        inputs_embeds = torch.where(positions.unsqueeze(-1) == 0, 0, inputs_embeds)
++        inputs_embeds = self.enorm(inputs_embeds)
++        previous_hidden_states = self.hnorm(previous_hidden_states)
++
++        hidden_states = self.eh_proj(
++            torch.cat([inputs_embeds, previous_hidden_states], dim=-1)
++        )
++
++        hidden_states, residual = self.mtp_block(
++            positions=positions,
++            hidden_states=hidden_states,
++            residual=None,
++        )
++        hidden_states = residual + hidden_states  # pre-final-norm (logits hidden)
++        if self.mtp_block.use_sequence_parallel_moe:
++            hidden_states = tensor_model_parallel_all_gather(hidden_states, 0)
++            hidden_states = hidden_states[: positions.shape[0]]
++        # Recycle the post-final-norm hidden into the next draft step.
++        # compute_logits applies shared_head (== final norm) to the pre-norm
++        # element, so logits and the recycle each get exactly one final-norm.
++        # Matches SGLang's deepseek_nextn.
++        return hidden_states, self.shared_head(hidden_states)
++
++
++class DeepSeekMultiTokenPredictor(nn.Module):
++    def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
++        super().__init__()
++        config = vllm_config.model_config.hf_config
++        self.mtp_start_layer_idx = config.num_hidden_layers
++        self.num_mtp_layers = config.num_nextn_predict_layers
++        # to map the exact layer index from weights
++
++        self.layers = torch.nn.ModuleDict(
++            {
++                str(idx): DeepSeekMultiTokenPredictorLayer(
++                    vllm_config, f"{prefix}.layers.{idx}"
++                )
++                for idx in range(
++                    self.mtp_start_layer_idx,
++                    self.mtp_start_layer_idx + self.num_mtp_layers,
++                )
++            }
++        )
++        self.embed_tokens = VocabParallelEmbedding(
++            config.vocab_size,
++            config.hidden_size,
++            prefix=maybe_prefix(prefix, "embed_tokens"),
++        )
++        self.logits_processor = LogitsProcessor(config.vocab_size)
++
++    def set_skip_topk(self, skip: bool):
++        """Toggle skip_topk on all MTP layers with sparse attention.
++
++        Called by the proposer to implement index_share_for_mtp_iteration:
++        step 0 sets skip=False (compute own indices), steps 1+ set skip=True
++        (reuse step 0's indices).
++        """
++        for layer in self.layers.values():
++            mtp_block = getattr(layer, "mtp_block", None)
++            if mtp_block is not None:
++                self_attn = getattr(mtp_block, "self_attn", None)
++                if self_attn is not None:
++                    mla_attn = getattr(self_attn, "mla_attn", None)
++                    if mla_attn is not None and hasattr(mla_attn, "skip_topk"):
++                        mla_attn.skip_topk = skip
++
++    def compact_topk_indices(self, slot_ids: torch.Tensor):
++        """Gather the top-k index rows at ``slot_ids`` to the front of the buffer."""
++        num_slots = slot_ids.numel()
++        for layer in self.layers.values():
++            mtp_block = getattr(layer, "mtp_block", None)
++            if mtp_block is not None:
++                self_attn = getattr(mtp_block, "self_attn", None)
++                if self_attn is not None:
++                    mla_attn = getattr(self_attn, "mla_attn", None)
++                    if mla_attn is not None and hasattr(
++                        mla_attn, "topk_indices_buffer"
++                    ):
++                        topk_indices_buffer = mla_attn.topk_indices_buffer
++                        topk_indices_buffer[:num_slots] = topk_indices_buffer[slot_ids]
++
++    def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
++        return self.embed_tokens(input_ids)
++
++    def forward(
++        self,
++        input_ids: torch.Tensor,
++        positions: torch.Tensor,
++        previous_hidden_states: torch.Tensor,
++        inputs_embeds: torch.Tensor | None = None,
++        spec_step_idx: int = 0,
++    ) -> torch.Tensor:
++        if inputs_embeds is None:
++            inputs_embeds = self.embed_tokens(input_ids)
++        current_step_idx = spec_step_idx % self.num_mtp_layers
++        return self.layers[str(self.mtp_start_layer_idx + current_step_idx)](
++            input_ids,
++            positions,
++            previous_hidden_states,
++            inputs_embeds,
++            current_step_idx,
++        )
++
++    def compute_logits(
++        self,
++        hidden_states: torch.Tensor,
++        spec_step_idx: int = 0,
++    ) -> torch.Tensor:
++        current_step_idx = spec_step_idx % self.num_mtp_layers
++        mtp_layer = self.layers[str(self.mtp_start_layer_idx + current_step_idx)]
++        logits = self.logits_processor(
++            mtp_layer.shared_head.head, mtp_layer.shared_head(hidden_states)
++        )
++        return logits
++
++
++@support_torch_compile
++class DeepSeekMTP(nn.Module, DeepseekV2MixtureOfExperts):
++    def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
++        super().__init__()
++        self.config = vllm_config.model_config.hf_config
++        self.quant_config = vllm_config.quant_config
++        self.model = DeepSeekMultiTokenPredictor(
++            vllm_config=vllm_config, prefix=maybe_prefix(prefix, "model")
++        )
++        # Set MoE hyperparameters
++        self.set_moe_parameters()
++
++    def set_moe_parameters(self):
++        self.num_moe_layers = self.config.num_nextn_predict_layers
++        self.num_expert_groups = self.config.n_group
++
++        self.moe_layers = []
++        self.moe_mlp_layers = []
++        example_moe = None
++        for layer in self.model.layers.values():
++            assert isinstance(layer, DeepSeekMultiTokenPredictorLayer)
++            layer = layer.mtp_block
++            assert isinstance(layer, DeepseekV2DecoderLayer)
++            if isinstance(layer.mlp, DeepseekV2MoE):
++                example_moe = layer.mlp
++                self.moe_mlp_layers.append(layer.mlp)
++                self.moe_layers.append(layer.mlp.experts)
++        self.extract_moe_parameters(example_moe)
++        self.is_fused_shared_expert_enabled = is_model_fused_shared_expert_compatible(
++            self.model.layers.values(),
++            DeepseekV2MoE,
++            "mtp_block.mlp",
++        )
++
++    def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
++        return self.model.embed_input_ids(input_ids)
++
++    def forward(
++        self,
++        input_ids: torch.Tensor | None,
++        positions: torch.Tensor,
++        hidden_states: torch.Tensor,
++        intermediate_tensors: IntermediateTensors | None = None,
++        inputs_embeds: torch.Tensor | None = None,
++        spec_step_idx: int = 0,
++    ) -> torch.Tensor:
++        hidden_states = self.model(
++            input_ids,
++            positions,
++            hidden_states,
++            inputs_embeds,
++            spec_step_idx,
++        )
++        return hidden_states
++
++    def compute_logits(
++        self,
++        hidden_states: torch.Tensor,
++        spec_step_idx: int = 0,
++    ) -> torch.Tensor | None:
++        return self.model.compute_logits(hidden_states, spec_step_idx)
++
++    def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
++        stacked_params_mapping = [
++            ("gate_up_proj", "gate_proj", 0),
++            ("gate_up_proj", "up_proj", 1),
++            ("fused_qkv_a_proj", "q_a_proj", 0),
++            ("fused_qkv_a_proj", "kv_a_proj_with_mqa", 1),
++        ]
++
++        # Fused indexer wk + weights_proj (shard 0 = wk, shard 1 = weights_proj)
++        indexer_fused_mapping = [
++            ("wk_weights_proj", "wk", 0),
++            ("wk_weights_proj", "weights_proj", 1),
++        ]
++        stacked_params_mapping.extend(indexer_fused_mapping)
++
++        expert_params_mapping = fused_moe_make_expert_params_mapping(
++            self,
++            ckpt_gate_proj_name="gate_proj",
++            ckpt_down_proj_name="down_proj",
++            ckpt_up_proj_name="up_proj",
++            num_experts=self.config.n_routed_experts
++            + (
++                self.config.n_shared_experts
++                if self.is_fused_shared_expert_enabled
++                else 0
++            ),
++        )
++
++        pp_missing_layer_names = get_pp_missing_layer_names(self)
++        params_dict = dict(self.named_parameters())
++        loaded_params: set[str] = set()
++        _pending_wk_fp8: dict = {}  # FP8 indexer wk dequant buffer
++        for name, loaded_weight in weights:
++            if "rotary_emb.inv_freq" in name:
++                continue
++            spec_layer = get_spec_layer_idx_from_weight_name(self.config, name)
++            if spec_layer is None:
++                continue
++            is_fusion_moe_shared_experts_layer = (
++                self.is_fused_shared_expert_enabled and ("mlp.shared_experts" in name)
++            )
++            name = self._rewrite_spec_layer_name(spec_layer, name)
++
++            if _try_load_fp8_indexer_wk(
++                name,
++                loaded_weight,
++                _pending_wk_fp8,
++                params_dict,
++                loaded_params,
++                pp_missing_layer_names,
++            ):
++                continue
++
++            for param_name, weight_name, shard_id in stacked_params_mapping:
++                # Skip non-stacked layers and experts (experts handled below).
++                if weight_name not in name:
++                    continue
++                # We have mlp.experts[0].gate_proj in the checkpoint.
++                # Since we handle the experts below in expert_params_mapping,
++                # we need to skip here BEFORE we update the name, otherwise
++                # name will be updated to mlp.experts[0].gate_up_proj, which
++                # will then be updated below in expert_params_mapping
++                # for mlp.experts[0].gate_gate_up_proj, which breaks load.
++                if ("mlp.experts." in name) and name not in params_dict:
++                    continue
++                if is_fusion_moe_shared_experts_layer:
++                    continue
++                name_mapped = name.replace(weight_name, param_name)
++
++                # QKV fusion is optional, fall back to normal
++                # weight loading if it's not enabled
++                if (
++                    param_name == "fused_qkv_a_proj"
++                ) and name_mapped not in params_dict:
++                    continue
++                else:
++                    name = name_mapped
++
++                # Skip loading extra bias for GPTQ models.
++                if name.endswith(".bias") and name not in params_dict:
++                    continue
++
++                param = params_dict[name]
++                weight_loader = param.weight_loader
++                weight_loader(param, loaded_weight, shard_id)
++                break
++            else:
++                # Special handling: when AITER fusion_shared_experts is enabled,
++                # checkpoints may provide a single widened shared_experts tensor
++                # without explicit expert indices
++                # (e.g. ...mlp.shared_experts.gate_proj.weight).
++                # For models with multiple shared experts, split that tensor
++                # evenly into per-shared-expert slices and load them into
++                # appended expert slots mlp.experts.{n_routed_experts + j}.*
++                # accordingly.
++                num_chunks = 1
++                if is_fusion_moe_shared_experts_layer:
++                    num_chunks = getattr(self.config, "n_shared_experts", 1) or 1
++                    # Determine split axis based on op type
++                    # gate/up: ColumnParallel → split along dim 0
++                    # down: RowParallel → split along dim 1
++                    split_dim = (
++                        1
++                        if ("down_proj.weight" in name and loaded_weight.ndim > 1)
++                        else 0
++                    )
++                    total = loaded_weight.shape[split_dim]
++                    assert total % num_chunks == 0, (
++                        f"Shared expert weight dim {total} "
++                        f"not divisible by num_chunks {num_chunks}"
++                    )
++                    chunk_size = total // num_chunks
++
++                for j in range(num_chunks):
++                    chunk_name = name
++                    weight_to_load = loaded_weight
++
++                    if is_fusion_moe_shared_experts_layer:
++                        chunk_slice = slice(j * chunk_size, (j + 1) * chunk_size)
++                        if loaded_weight.ndim == 1:
++                            weight_to_load = loaded_weight[chunk_slice]
++                        elif split_dim == 0:
++                            weight_to_load = loaded_weight[chunk_slice, :]
++                        else:
++                            weight_to_load = loaded_weight[:, chunk_slice]
++                        # Synthesize an expert-style name so expert mapping
++                        # can route it
++                        chunk_name = name.replace(
++                            "mlp.shared_experts",
++                            f"mlp.experts.{self.config.n_routed_experts + j}",
++                        )
++
++                    # Use expert_params_mapping to locate the destination
++                    # param and delegate to its expert-aware weight_loader
++                    # with expert_id.
++                    is_expert_weight = False
++                    for mapping in expert_params_mapping:
++                        param_name, weight_name, expert_id, expert_shard_id = mapping
++                        if weight_name not in chunk_name:
++                            continue
++
++                        # Anyway, this is an expert weight and should not be
++                        # attempted to load as other weights later
++                        is_expert_weight = True
++
++                        # Do not modify `name` since the loop may continue here
++                        # Instead, create a new variable
++                        name_mapped = chunk_name.replace(weight_name, param_name)
++
++                        param = params_dict[name_mapped]
++                        # We should ask the weight loader to return success or
++                        # not here since otherwise we may skip experts with
++                        # other available replicas.
++                        weight_loader = typing.cast(
++                            Callable[..., bool], param.weight_loader
++                        )
++                        success = weight_loader(
++                            param,
++                            weight_to_load,
++                            name_mapped,
++                            shard_id=expert_shard_id,
++                            expert_id=expert_id,
++                            return_success=True,
++                        )
++                        if success:
++                            if not is_fusion_moe_shared_experts_layer:
++                                name = name_mapped
++                            else:
++                                loaded_params.add(name_mapped)
++                            break
++                    else:
++                        if is_expert_weight:
++                            # We've checked that this is an expert weight
++                            # However it's not mapped locally to this rank
++                            # So we simply skip it
++                            continue
++
++                        # Skip loading extra bias for GPTQ models.
++                        if name.endswith(".bias") and name not in params_dict:
++                            continue
++
++                        remapped_name = maybe_remap_kv_scale_name(name, params_dict)
++                        if remapped_name is None:
++                            continue
++                        name = remapped_name
++
++                        # According to DeepSeek-V3 Technical Report, MTP modules
++                        # shares embedding layer. We only load the first weights.
++                        if (
++                            spec_layer != self.model.mtp_start_layer_idx
++                            and ".layers" not in name
++                        ):
++                            continue
++
++                        param = params_dict[name]
++                        weight_loader = getattr(
++                            param, "weight_loader", default_weight_loader
++                        )
++                        weight_loader(param, loaded_weight)
++            if not is_fusion_moe_shared_experts_layer:
++                loaded_params.add(name)
++
++        # Validate that weights were loaded for each expected MTP layer.
++        loaded_layers: set[int] = set()
++        for param_name in loaded_params:
++            spec_layer = get_spec_layer_idx_from_weight_name(self.config, param_name)
++            if spec_layer is not None:
++                loaded_layers.add(spec_layer)
++        for layer_idx in range(
++            self.model.mtp_start_layer_idx,
++            self.model.mtp_start_layer_idx + self.model.num_mtp_layers,
++        ):
++            if layer_idx not in loaded_layers and is_mtp_completeness_check_enabled():
++                raise ValueError(
++                    f"MTP speculative decoding layer {layer_idx} weights "
++                    f"missing from checkpoint. The checkpoint may have "
++                    f"been quantized without including the MTP layers. "
++                    f"Use a checkpoint that includes MTP layer weights, "
++                    f"or disable speculative decoding."
++                )
++
++        return loaded_params
++
++    def _rewrite_spec_layer_name(self, spec_layer: int, name: str) -> str:
++        """
++        Rewrite the weight name to match the format of the original model.
++        Add .mtp_block for modules in transformer layer block for spec layer
++        and rename shared layer weights to be top level.
++        """
++        spec_layer_weight_names = [
++            "embed_tokens",
++            "enorm",
++            "hnorm",
++            "eh_proj",
++            "shared_head",
++        ]
++        shared_weight_names = ["embed_tokens"]
++        spec_layer_weight = False
++        shared_weight = False
++        for weight_name in spec_layer_weight_names:
++            if weight_name in name:
++                spec_layer_weight = True
++                if weight_name in shared_weight_names:
++                    shared_weight = True
++                break
++        if not spec_layer_weight:
++            # treat rest weights as weights for transformer layer block
++            name = name.replace(
++                f"model.layers.{spec_layer}.", f"model.layers.{spec_layer}.mtp_block."
++            )
++        elif shared_weight:
++            # treat shared weights as top level weights
++            name = name.replace(f"model.layers.{spec_layer}.", "model.")
++        return name
+diff --git a/vllm/models/glm5next/model_state.py b/vllm/models/glm5next/model_state.py
+index edeae144563c42df7bf55b7147ea7fdd3951fbf4..316332cb3f695d76705743d9b44629680fe582ab 100644
+--- a/vllm/models/glm5next/model_state.py
++++ b/vllm/models/glm5next/model_state.py
+@@ -310,25 +310,13 @@ class Glm5NextModelState(MambaHybridModelState):
+             num_decode_draft_tokens_cpu = torch.from_numpy(num_decode_draft_tokens_np)
+ 
+         if self._align_mode:
+-            mamba_group_ids, _ = self._get_mamba_group_info(kv_cache_config)
+-            aligned_index_builders = []
+-            for group_idx, group_id in enumerate(mamba_group_ids):
+-                for group in attn_groups[group_id]:
+-                    builder = group.get_metadata_builder(0)
+-                    if hasattr(builder, "mamba_aligned_state_indices"):
+-                        aligned_index_builders.append((group_idx, builder))
+-            if aligned_index_builders:
+-                ctx = self._ensure_align_ctx(
+-                    kv_cache_config,
+-                    mamba_group_ids,
+-                    block_tables,
+-                )
+-                all_group_indices = ctx.compute_aligned_state_indices(
+-                    input_batch.seq_lens,
+-                    num_reqs,
+-                )
+-                for group_idx, builder in aligned_index_builders:
+-                    builder.mamba_aligned_state_indices = all_group_indices[group_idx]
++            self._prepare_aligned_state_indices(
++                input_batch.seq_lens,
++                num_reqs,
++                attn_groups,
++                kv_cache_config,
++                block_tables,
++            )
+ 
+         model_metadata = Glm5NextAttnMetadata(
+             is_prefilling=is_prefilling,
+diff --git a/vllm/models/glm5next/nvidia/mtp.py b/vllm/models/glm5next/nvidia/mtp.py
+index 90bdb5b642144d2e5a29b9d2e7cb8d8c9277c71c..407ed1f21a72923fd000d564ab7d66f26015d538 100644
+--- a/vllm/models/glm5next/nvidia/mtp.py
++++ b/vllm/models/glm5next/nvidia/mtp.py
+@@ -1,475 +1,515 @@
+-# SPDX-License-Identifier: Apache-2.0
+-# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+-import typing
+-from collections.abc import Callable, Iterable
+-
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++import typing
++from collections.abc import Callable, Iterable
++
+ import torch
+ import torch.nn as nn
+ 
++import vllm.envs as envs
+ from vllm.config import VllmConfig
+-from vllm.model_executor.layers.fused_moe import (
+-    fused_moe_make_expert_params_mapping,
+-)
+-from vllm.model_executor.layers.layernorm import RMSNorm
+-from vllm.model_executor.layers.logits_processor import LogitsProcessor
+-from vllm.model_executor.layers.vocab_parallel_embedding import (
+-    VocabParallelEmbedding,
+-)
+-from vllm.model_executor.model_loader.weight_utils import (
+-    default_weight_loader,
+-    maybe_remap_kv_scale_name,
+-)
+-from vllm.model_executor.models.deepseek_mtp import SharedHead
+-from vllm.model_executor.models.deepseek_v2 import DeepseekV2MixtureOfExperts
+-from vllm.model_executor.models.utils import WeightsMapper, maybe_prefix
+-from vllm.platforms import current_platform
+-from vllm.sequence import IntermediateTensors
+-
+-from .model import (
+-    GLM5NEXT_PACKED_MODULES_MAPPING,
+-    Glm5NextDecoderLayer,
+-    Glm5NextMoE,
+-    _try_load_fp8_attn_proj,
+-    _try_load_mxfp8_bf16_attn_proj,
+-    get_spec_layer_idx_from_weight_name,
+-)
+-from .pooled_indexer import Glm5NextPooledIndexer
+-
+-
+-class Glm5NextMultiTokenPredictorLayer(nn.Module):
+-    def __init__(self, vllm_config: VllmConfig, prefix: str) -> None:
+-        super().__init__()
+-        assert vllm_config.speculative_config is not None
+-        config = vllm_config.speculative_config.draft_model_config.hf_config
+-        self.config = config
+-        quant_config = vllm_config.quant_config
+-
+-        self.enorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+-        self.hnorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+-        self.eh_proj = nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False)
+-
+-        topk_tokens = config.index_topk
+-        kpool = getattr(config, "index_kpool", 1) or 1
+-        buffer_width = topk_tokens + (kpool - 1 if kpool > 1 else 0)
+-        topk_indices_buffer = torch.empty(
+-            vllm_config.scheduler_config.max_num_batched_tokens,
+-            buffer_width,
+-            dtype=torch.int32,
+-            device=current_platform.device_type,
+-        )
+-        pool_topk_indices_buffer = torch.empty(
+-            vllm_config.scheduler_config.max_num_batched_tokens,
+-            topk_tokens // kpool,
+-            dtype=torch.int32,
+-            device=current_platform.device_type,
+-        )
++from vllm.model_executor.layers.fused_moe import (
++    fused_moe_make_expert_params_mapping,
++)
++from vllm.model_executor.layers.layernorm import RMSNorm
++from vllm.model_executor.layers.logits_processor import LogitsProcessor
++from vllm.model_executor.layers.vocab_parallel_embedding import (
++    VocabParallelEmbedding,
++)
++from vllm.model_executor.model_loader.weight_utils import (
++    default_weight_loader,
++    maybe_remap_kv_scale_name,
++)
++from vllm.model_executor.models.deepseek_mtp import SharedHead
++from vllm.model_executor.models.deepseek_v2 import DeepseekV2MixtureOfExperts
++from vllm.model_executor.models.utils import WeightsMapper, maybe_prefix
++from vllm.platforms import current_platform
++from vllm.sequence import IntermediateTensors
++
++from .model import (
++    GLM5NEXT_PACKED_MODULES_MAPPING,
++    Glm5NextDecoderLayer,
++    Glm5NextMoE,
++    _try_load_fp8_attn_proj,
++    _try_load_mxfp8_bf16_attn_proj,
++    get_spec_layer_idx_from_weight_name,
++)
++from .pooled_indexer import Glm5NextPooledIndexer
++
++
++class Glm5NextMultiTokenPredictorLayer(nn.Module):
++    def __init__(self, vllm_config: VllmConfig, prefix: str) -> None:
++        super().__init__()
++        assert vllm_config.speculative_config is not None
++        config = vllm_config.speculative_config.draft_model_config.hf_config
++        self.config = config
++        quant_config = vllm_config.quant_config
++
++        self.enorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
++        self.hnorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
++        self.eh_proj = nn.Linear(config.hidden_size * 2, config.hidden_size, bias=False)
++
++        topk_tokens = config.index_topk
++        kpool = getattr(config, "index_kpool", 1) or 1
++        buffer_width = topk_tokens + (kpool - 1 if kpool > 1 else 0)
++        topk_indices_buffer = torch.empty(
++            vllm_config.scheduler_config.max_num_batched_tokens,
++            buffer_width,
++            dtype=torch.int32,
++            device=current_platform.device_type,
++        )
++        pool_topk_indices_buffer = torch.empty(
++            vllm_config.scheduler_config.max_num_batched_tokens,
++            topk_tokens // kpool,
++            dtype=torch.int32,
++            device=current_platform.device_type,
++        )
+         self.shared_head = SharedHead(
+-            config=config, prefix=prefix, quant_config=quant_config
+-        )
+-        # MTP layers sit past the base model's hidden layers; parse the index
+-        # from the prefix (e.g. "...layers.32") so the decoder builds an MLA
+-        # (DSA) layer rather than KDA for the MTP path.
+-        layer_idx = int(prefix.rsplit(".", 1)[-1])
+-        self.mtp_block = Glm5NextDecoderLayer(
+-            vllm_config=vllm_config,
+             config=config,
+-            layer_idx=layer_idx,
+             prefix=prefix,
+-            topk_indices_buffer=topk_indices_buffer,
+-            pool_topk_indices_buffer=pool_topk_indices_buffer,
+-            is_mtp_layer=True,
+-        )
+-
+-    def forward(
+-        self,
+-        input_ids: torch.Tensor,
+-        positions: torch.Tensor,
+-        previous_hidden_states: torch.Tensor,
+-        inputs_embeds: torch.Tensor | None = None,
+-        spec_step_index: int = 0,
+-        output_indices: torch.Tensor | None = None,
+-    ) -> torch.Tensor:
+-        assert inputs_embeds is not None
+-        eh_input = torch.cat(
+-            (self.enorm(inputs_embeds), self.hnorm(previous_hidden_states)),
+-            dim=-1,
++            quant_config=quant_config,
++            lm_head_quantization="nvfp4" if envs.VLLM_MTP_NVFP4_LM_HEAD else None,
+         )
+-        hidden_states = self.eh_proj(eh_input)
+-        # Fuse the residual add and final RMSNorm. Glm5NextMoE already performs
+-        # its all-reduce, so no collective is needed here. The post-norm result
+-        # feeds both draft logits and the next recycled hidden state.
+-        hidden_states, residual, _, _ = self.mtp_block(
+-            positions=positions,
+-            hidden_states=hidden_states,
+-            residual=None,
+-            output_indices=output_indices,
+-        )
+-        hidden_states, _ = self.shared_head.norm(hidden_states, residual=residual)
+-        return hidden_states, hidden_states
+-
+-
+-class Glm5NextMultiTokenPredictor(nn.Module):
+-    def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
+-        super().__init__()
+-        config = vllm_config.model_config.hf_config
+-        self.mtp_start_layer_idx = config.num_hidden_layers
+-        self.num_mtp_layers = config.num_nextn_predict_layers
+-        self.layers = torch.nn.ModuleDict(
+-            {
+-                str(idx): Glm5NextMultiTokenPredictorLayer(
+-                    vllm_config, f"{prefix}.layers.{idx}"
+-                )
+-                for idx in range(
+-                    self.mtp_start_layer_idx,
+-                    self.mtp_start_layer_idx + self.num_mtp_layers,
+-                )
+-            }
+-        )
+-        self.embed_tokens = VocabParallelEmbedding(
+-            config.vocab_size,
+-            config.hidden_size,
+-            prefix=maybe_prefix(prefix, "embed_tokens"),
+-        )
+-        # Plain list for the per-propose lookup: ModuleDict[str(...)] builds a
+-        # string and hashes it on every draft step.
+-        self._mtp_layers = list(self.layers.values())
+-        self._prefill_output_indices: torch.Tensor | None = None
+-        self.logits_processor = LogitsProcessor(config.vocab_size)
+-
+-    def update_max_model_len(self, max_model_len: int) -> None:
+-        for module in self.modules():
+-            if isinstance(module, Glm5NextPooledIndexer):
+-                module.update_max_model_len(max_model_len)
+-
+-    def set_skip_topk(self, skip: bool):
+-        # index_share_for_mtp_iteration: step 0 computes top-k, steps 1+ reuse.
+-        for layer in self.layers.values():
+-            self_attn = getattr(layer.mtp_block, "self_attn", None)
+-            mla_attn = getattr(self_attn, "mla_attn", None)
+-            if mla_attn is not None and hasattr(mla_attn, "skip_topk"):
+-                mla_attn.skip_topk = skip
+-
+-    def compact_topk_indices(self, slot_ids: torch.Tensor):
+-        """Gather the top-k index rows at ``slot_ids`` to the front of the buffer."""
+-        num_slots = slot_ids.numel()
+-        for layer in self.layers.values():
+-            self_attn = getattr(layer.mtp_block, "self_attn", None)
+-            mla_attn = getattr(self_attn, "mla_attn", None)
+-            if mla_attn is not None and hasattr(mla_attn, "topk_indices_buffer"):
+-                topk_indices_buffer = mla_attn.topk_indices_buffer
+-                topk_indices_buffer[:num_slots] = topk_indices_buffer[slot_ids]
+-
+-    def snapshot_qsa_interval_starts(self) -> None:
+-        for layer in self.layers.values():
+-            self_attn = getattr(layer.mtp_block, "self_attn", None)
+-            indexer = getattr(self_attn, "indexer", None)
+-            snapshot = getattr(indexer, "snapshot_speculative_interval_starts", None)
+-            if snapshot is not None:
+-                snapshot()
+-
+-    def restore_qsa_interval_starts(self) -> None:
+-        for layer in self.layers.values():
+-            self_attn = getattr(layer.mtp_block, "self_attn", None)
+-            indexer = getattr(self_attn, "indexer", None)
+-            restore = getattr(indexer, "restore_speculative_interval_starts", None)
+-            if restore is not None:
+-                restore()
+-
+-    def set_prefill_output_indices(self, output_indices: torch.Tensor | None) -> None:
+-        """Select request-tail outputs after populating all MTP attention caches."""
+-        self._prefill_output_indices = output_indices
+-
+-    def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
+-        return self.embed_tokens(input_ids)
+-
+-    def forward(
+-        self,
+-        input_ids: torch.Tensor,
+-        positions: torch.Tensor,
+-        previous_hidden_states: torch.Tensor,
+-        inputs_embeds: torch.Tensor | None = None,
+-        spec_step_idx: int = 0,
+-    ) -> torch.Tensor:
+-        if inputs_embeds is None:
+-            inputs_embeds = self.embed_tokens(input_ids)
+-        current_step_idx = spec_step_idx % self.num_mtp_layers
+-        return self._mtp_layers[current_step_idx](
+-            input_ids,
+-            positions,
+-            previous_hidden_states,
+-            inputs_embeds,
+-            current_step_idx,
+-            self._prefill_output_indices,
+-        )
+-
+-    def compute_logits(
+-        self,
+-        hidden_states: torch.Tensor,
+-        spec_step_idx: int = 0,
+-    ) -> torch.Tensor:
+-        current_step_idx = spec_step_idx % self.num_mtp_layers
+-        mtp_layer = self._mtp_layers[current_step_idx]
+-        # hidden_states is already post-final-norm (produced in the layer
+-        # forward and recycled as-is); apply the LM head only, without a
+-        # second RMSNorm.
+-        return self.logits_processor(mtp_layer.shared_head.head, hidden_states)
+-
+-    def get_top_tokens(
+-        self,
+-        hidden_states: torch.Tensor,
+-        spec_step_idx: int = 0,
+-    ) -> torch.Tensor:
+-        current_step_idx = spec_step_idx % self.num_mtp_layers
+-        mtp_layer = self._mtp_layers[current_step_idx]
+-        # Vocab-parallel argmax for the greedy draft: per-rank head projection
+-        # + local argmax + a [batch, 2*tp] (value, index) reduce, instead of
+-        # materializing and all-gathering full [N, vocab] logits per draft
+-        # step. Tie-breaking matches the full argmax (shards are contiguous
+-        # and rank-ordered, so the lowest-rank winner is the lowest global
+-        # index), so greedy draft tokens are unchanged.
+-        return self.logits_processor.get_top_tokens(
+-            mtp_layer.shared_head.head, hidden_states
+-        )
+-
+-
+-class Glm5NextMTP(nn.Module, DeepseekV2MixtureOfExperts):
+-    packed_modules_mapping = GLM5NEXT_PACKED_MODULES_MAPPING
+-    hf_to_vllm_mapper = WeightsMapper(
+-        orig_to_new_prefix={
+-            "model.language_model.": "model.",
+-            "language_model.model.": "model.",
+-        }
+-    )
+-
+-    def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
++        # MTP layers sit past the base model's hidden layers; parse the index
++        # from the prefix (e.g. "...layers.32") so the decoder builds an MLA
++        # (DSA) layer rather than KDA for the MTP path.
++        layer_idx = int(prefix.rsplit(".", 1)[-1])
++        self.mtp_block = Glm5NextDecoderLayer(
++            vllm_config=vllm_config,
++            config=config,
++            layer_idx=layer_idx,
++            prefix=prefix,
++            topk_indices_buffer=topk_indices_buffer,
++            pool_topk_indices_buffer=pool_topk_indices_buffer,
++            is_mtp_layer=True,
++        )
++
++    def forward(
++        self,
++        input_ids: torch.Tensor,
++        positions: torch.Tensor,
++        previous_hidden_states: torch.Tensor,
++        inputs_embeds: torch.Tensor | None = None,
++        spec_step_index: int = 0,
++        output_indices: torch.Tensor | None = None,
++    ) -> torch.Tensor:
++        assert inputs_embeds is not None
++        eh_input = torch.cat(
++            (self.enorm(inputs_embeds), self.hnorm(previous_hidden_states)),
++            dim=-1,
++        )
++        hidden_states = self.eh_proj(eh_input)
++        # Fuse the residual add and final RMSNorm. Glm5NextMoE already performs
++        # its all-reduce, so no collective is needed here. The post-norm result
++        # feeds both draft logits and the next recycled hidden state.
++        hidden_states, residual, _, _ = self.mtp_block(
++            positions=positions,
++            hidden_states=hidden_states,
++            residual=None,
++            output_indices=output_indices,
++        )
++        hidden_states, _ = self.shared_head.norm(hidden_states, residual=residual)
++        return hidden_states, hidden_states
++
++
++class Glm5NextMultiTokenPredictor(nn.Module):
++    def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
++        super().__init__()
++        config = vllm_config.model_config.hf_config
++        self.mtp_start_layer_idx = config.num_hidden_layers
++        self.num_mtp_layers = config.num_nextn_predict_layers
++        self.layers = torch.nn.ModuleDict(
++            {
++                str(idx): Glm5NextMultiTokenPredictorLayer(
++                    vllm_config, f"{prefix}.layers.{idx}"
++                )
++                for idx in range(
++                    self.mtp_start_layer_idx,
++                    self.mtp_start_layer_idx + self.num_mtp_layers,
++                )
++            }
++        )
++        self.embed_tokens = VocabParallelEmbedding(
++            config.vocab_size,
++            config.hidden_size,
++            prefix=maybe_prefix(prefix, "embed_tokens"),
++        )
++        # Plain list for the per-propose lookup: ModuleDict[str(...)] builds a
++        # string and hashes it on every draft step.
++        self._mtp_layers = list(self.layers.values())
++        self._prefill_output_indices: torch.Tensor | None = None
++        self.logits_processor = LogitsProcessor(config.vocab_size)
++
++    def update_max_model_len(self, max_model_len: int) -> None:
++        for module in self.modules():
++            if isinstance(module, Glm5NextPooledIndexer):
++                module.update_max_model_len(max_model_len)
++
++    def set_skip_topk(self, skip: bool):
++        # index_share_for_mtp_iteration: step 0 computes top-k, steps 1+ reuse.
++        for layer in self.layers.values():
++            self_attn = getattr(layer.mtp_block, "self_attn", None)
++            mla_attn = getattr(self_attn, "mla_attn", None)
++            if mla_attn is not None and hasattr(mla_attn, "skip_topk"):
++                mla_attn.skip_topk = skip
++
++    def compact_topk_indices(self, slot_ids: torch.Tensor):
++        """Gather the top-k index rows at ``slot_ids`` to the front of the buffer."""
++        num_slots = slot_ids.numel()
++        for layer in self.layers.values():
++            self_attn = getattr(layer.mtp_block, "self_attn", None)
++            mla_attn = getattr(self_attn, "mla_attn", None)
++            if mla_attn is not None and hasattr(mla_attn, "topk_indices_buffer"):
++                topk_indices_buffer = mla_attn.topk_indices_buffer
++                topk_indices_buffer[:num_slots] = topk_indices_buffer[slot_ids]
++
++    def snapshot_qsa_interval_starts(self) -> None:
++        for layer in self.layers.values():
++            self_attn = getattr(layer.mtp_block, "self_attn", None)
++            indexer = getattr(self_attn, "indexer", None)
++            snapshot = getattr(indexer, "snapshot_speculative_interval_starts", None)
++            if snapshot is not None:
++                snapshot()
++
++    def restore_qsa_interval_starts(self) -> None:
++        for layer in self.layers.values():
++            self_attn = getattr(layer.mtp_block, "self_attn", None)
++            indexer = getattr(self_attn, "indexer", None)
++            restore = getattr(indexer, "restore_speculative_interval_starts", None)
++            if restore is not None:
++                restore()
++
++    def set_prefill_output_indices(self, output_indices: torch.Tensor | None) -> None:
++        """Select request-tail outputs after populating all MTP attention caches."""
++        self._prefill_output_indices = output_indices
++
++    def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
++        return self.embed_tokens(input_ids)
++
++    def forward(
++        self,
++        input_ids: torch.Tensor,
++        positions: torch.Tensor,
++        previous_hidden_states: torch.Tensor,
++        inputs_embeds: torch.Tensor | None = None,
++        spec_step_idx: int = 0,
++    ) -> torch.Tensor:
++        if inputs_embeds is None:
++            inputs_embeds = self.embed_tokens(input_ids)
++        current_step_idx = spec_step_idx % self.num_mtp_layers
++        return self._mtp_layers[current_step_idx](
++            input_ids,
++            positions,
++            previous_hidden_states,
++            inputs_embeds,
++            current_step_idx,
++            self._prefill_output_indices,
++        )
++
++    def compute_logits(
++        self,
++        hidden_states: torch.Tensor,
++        spec_step_idx: int = 0,
++    ) -> torch.Tensor:
++        current_step_idx = spec_step_idx % self.num_mtp_layers
++        mtp_layer = self._mtp_layers[current_step_idx]
++        # hidden_states is already post-final-norm (produced in the layer
++        # forward and recycled as-is); apply the LM head only, without a
++        # second RMSNorm.
++        return self.logits_processor(mtp_layer.shared_head.head, hidden_states)
++
++    def get_top_tokens(
++        self,
++        hidden_states: torch.Tensor,
++        spec_step_idx: int = 0,
++    ) -> torch.Tensor:
++        current_step_idx = spec_step_idx % self.num_mtp_layers
++        mtp_layer = self._mtp_layers[current_step_idx]
++        # Vocab-parallel argmax for the greedy draft: per-rank head projection
++        # + local argmax + a [batch, 2*tp] (value, index) reduce, instead of
++        # materializing and all-gathering full [N, vocab] logits per draft
++        # step. Tie-breaking matches the full argmax (shards are contiguous
++        # and rank-ordered, so the lowest-rank winner is the lowest global
++        # index), so greedy draft tokens are unchanged.
++        return self.logits_processor.get_top_tokens(
++            mtp_layer.shared_head.head, hidden_states
++        )
++
++
++class Glm5NextMTP(nn.Module, DeepseekV2MixtureOfExperts):
++    packed_modules_mapping = GLM5NEXT_PACKED_MODULES_MAPPING
++    hf_to_vllm_mapper = WeightsMapper(
++        orig_to_new_prefix={
++            "model.language_model.": "model.",
++            "language_model.model.": "model.",
++        }
++    )
++
++    def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
+         super().__init__()
+         self.config = vllm_config.model_config.hf_config
+         self.quant_config = vllm_config.quant_config
+-        self.checkpoint_weight_name_prefixes = self._checkpoint_weight_name_prefixes()
++        if envs.VLLM_MTP_NVFP4_LM_HEAD and self.config.tie_word_embeddings:
++            raise ValueError("NVFP4 proposal head requires untied word embeddings")
+         self.model = Glm5NextMultiTokenPredictor(
+             vllm_config=vllm_config, prefix=maybe_prefix(prefix, "model")
+         )
++        head = self.model._mtp_layers[0].shared_head.head
++        self.has_own_lm_head = head.runtime_lm_head_quantization == "nvfp4"
++        self.checkpoint_weight_name_prefixes = self._checkpoint_weight_name_prefixes()
++        if self.has_own_lm_head:
++            self.lm_head = head
+         self.set_moe_parameters()
+-
+-    def _checkpoint_weight_name_prefixes(self) -> tuple[str, ...]:
+-        return tuple(
++
++    def _checkpoint_weight_name_prefixes(self) -> tuple[str, ...]:
++        prefixes = tuple(
+             prefix
+-            for layer_idx in range(
+-                self.config.num_hidden_layers,
+-                self.config.num_hidden_layers + self.config.num_nextn_predict_layers,
+-            )
+-            for prefix in (
+-                f"model.language_model.layers.{layer_idx}.",
+-                f"language_model.model.layers.{layer_idx}.",
+-                f"model.layers.{layer_idx}.",
++            for layer_idx in range(
++                self.config.num_hidden_layers,
++                self.config.num_hidden_layers + self.config.num_nextn_predict_layers,
++            )
++            for prefix in (
++                f"model.language_model.layers.{layer_idx}.",
++                f"language_model.model.layers.{layer_idx}.",
++                f"model.layers.{layer_idx}.",
+                 f"layers.{layer_idx}.",
+             )
+         )
+-
+-    def set_moe_parameters(self):
+-        self.num_moe_layers = self.config.num_nextn_predict_layers
+-        self.num_expert_groups = self.config.n_group
+-        self.moe_layers = []
+-        self.moe_mlp_layers = []
+-        example_moe = None
+-        for layer in self.model.layers.values():
+-            mlp = layer.mtp_block.mlp
+-            if isinstance(mlp, Glm5NextMoE):
+-                example_moe = mlp
+-                self.moe_mlp_layers.append(mlp)
+-                self.moe_layers.append(mlp.experts)
+-        self.extract_moe_parameters(example_moe)
+-
+-    def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
+-        return self.model.embed_input_ids(input_ids)
+-
+-    def update_max_model_len(self, max_model_len: int) -> None:
+-        self.model.update_max_model_len(max_model_len)
+-
+-    def forward(
+-        self,
+-        input_ids: torch.Tensor | None,
+-        positions: torch.Tensor,
+-        hidden_states: torch.Tensor,
+-        intermediate_tensors: IntermediateTensors | None = None,
+-        inputs_embeds: torch.Tensor | None = None,
+-        spec_step_idx: int = 0,
+-    ) -> torch.Tensor:
+-        return self.model(
+-            input_ids, positions, hidden_states, inputs_embeds, spec_step_idx
+-        )
+-
+-    def compute_logits(
+-        self,
+-        hidden_states: torch.Tensor,
+-        spec_step_idx: int = 0,
+-    ) -> torch.Tensor | None:
+-        return self.model.compute_logits(hidden_states, spec_step_idx)
+-
+-    def get_top_tokens(
+-        self,
+-        hidden_states: torch.Tensor,
+-        spec_step_idx: int = 0,
+-    ) -> torch.Tensor:
+-        # Greedy-draft path used when use_local_argmax_reduction is enabled:
+-        # vocab-parallel argmax, no full-vocab logits.
+-        return self.model.get_top_tokens(hidden_states, spec_step_idx)
+-
+-    def _rewrite_spec_layer_name(self, spec_layer: int, name: str) -> str:
+-        spec_layer_weight_names = [
+-            "embed_tokens",
+-            "enorm",
+-            "hnorm",
+-            "eh_proj",
+-            "shared_head",
+-        ]
+-        shared_weight_names = ["embed_tokens"]
+-        spec_layer_weight = False
+-        shared_weight = False
+-        for weight_name in spec_layer_weight_names:
+-            if weight_name in name:
+-                spec_layer_weight = True
+-                if weight_name in shared_weight_names:
+-                    shared_weight = True
+-                break
+-        if not spec_layer_weight:
+-            name = name.replace(
+-                f"model.layers.{spec_layer}.", f"model.layers.{spec_layer}.mtp_block."
++        if self.has_own_lm_head:
++            prefixes += (
++                "lm_head.",
++                "model.lm_head.",
++                "model.language_model.lm_head.",
++                "language_model.lm_head.",
+             )
+-        elif shared_weight:
+-            name = name.replace(f"model.layers.{spec_layer}.", "model.")
+-        return name
+-
+-    def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
+-        stacked_params_mapping = [
+-            ("gate_up_proj", "gate_proj", 0),
+-            ("gate_up_proj", "up_proj", 1),
+-            ("fused_qkv_a_proj", "q_a_proj", 0),
+-            ("fused_qkv_a_proj", "kv_a_proj_with_mqa", 1),
+-        ]
+-        expert_params_mapping = fused_moe_make_expert_params_mapping(
+-            self,
+-            ckpt_gate_proj_name="gate_proj",
+-            ckpt_down_proj_name="down_proj",
+-            ckpt_up_proj_name="up_proj",
+-            num_experts=self.config.n_routed_experts,
+-        )
+-
+-        params_dict = dict(self.named_parameters())
+-        loaded_params: set[str] = set()
+-        pending_attn_weights: dict = {}
+-        # GLM-5.3-Flash NoPE checkpoints omit the RoPE rows from
+-        # ``kv_a_proj_with_mqa``; the FP8-to-BF16 path pads them for the model.
+-        kv_a_pad_size = 0
+-        if self.config.mla_nope and self.config.qk_rope_head_dim > 0:
+-            kv_a_pad_size = self.config.qk_rope_head_dim
+-        for name, loaded_weight in weights:
+-            if "rotary_emb.inv_freq" in name:
+-                continue
+-            # Multimodal (Glm5NextForConditionalGeneration) checkpoints prefix
+-            # the text-tower weights with "model.language_model."; the MTP head
+-            # is built as a text-only model (model.layers.*), so strip the
+-            # prefix to match.
++        return prefixes
++
++    def set_moe_parameters(self):
++        self.num_moe_layers = self.config.num_nextn_predict_layers
++        self.num_expert_groups = self.config.n_group
++        self.moe_layers = []
++        self.moe_mlp_layers = []
++        example_moe = None
++        for layer in self.model.layers.values():
++            mlp = layer.mtp_block.mlp
++            if isinstance(mlp, Glm5NextMoE):
++                example_moe = mlp
++                self.moe_mlp_layers.append(mlp)
++                self.moe_layers.append(mlp.experts)
++        self.extract_moe_parameters(example_moe)
++
++    def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
++        return self.model.embed_input_ids(input_ids)
++
++    def update_max_model_len(self, max_model_len: int) -> None:
++        self.model.update_max_model_len(max_model_len)
++
++    def forward(
++        self,
++        input_ids: torch.Tensor | None,
++        positions: torch.Tensor,
++        hidden_states: torch.Tensor,
++        intermediate_tensors: IntermediateTensors | None = None,
++        inputs_embeds: torch.Tensor | None = None,
++        spec_step_idx: int = 0,
++    ) -> torch.Tensor:
++        return self.model(
++            input_ids, positions, hidden_states, inputs_embeds, spec_step_idx
++        )
++
++    def compute_logits(
++        self,
++        hidden_states: torch.Tensor,
++        spec_step_idx: int = 0,
++    ) -> torch.Tensor | None:
++        return self.model.compute_logits(hidden_states, spec_step_idx)
++
++    def get_top_tokens(
++        self,
++        hidden_states: torch.Tensor,
++        spec_step_idx: int = 0,
++    ) -> torch.Tensor:
++        # Greedy-draft path used when use_local_argmax_reduction is enabled:
++        # vocab-parallel argmax, no full-vocab logits.
++        return self.model.get_top_tokens(hidden_states, spec_step_idx)
++
++    def _rewrite_spec_layer_name(self, spec_layer: int, name: str) -> str:
++        spec_layer_weight_names = [
++            "embed_tokens",
++            "enorm",
++            "hnorm",
++            "eh_proj",
++            "shared_head",
++        ]
++        shared_weight_names = ["embed_tokens"]
++        spec_layer_weight = False
++        shared_weight = False
++        for weight_name in spec_layer_weight_names:
++            if weight_name in name:
++                spec_layer_weight = True
++                if weight_name in shared_weight_names:
++                    shared_weight = True
++                break
++        if not spec_layer_weight:
++            name = name.replace(
++                f"model.layers.{spec_layer}.", f"model.layers.{spec_layer}.mtp_block."
++            )
++        elif shared_weight:
++            name = name.replace(f"model.layers.{spec_layer}.", "model.")
++        return name
++
++    def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
++        stacked_params_mapping = [
++            ("gate_up_proj", "gate_proj", 0),
++            ("gate_up_proj", "up_proj", 1),
++            ("fused_qkv_a_proj", "q_a_proj", 0),
++            ("fused_qkv_a_proj", "kv_a_proj_with_mqa", 1),
++        ]
++        expert_params_mapping = fused_moe_make_expert_params_mapping(
++            self,
++            ckpt_gate_proj_name="gate_proj",
++            ckpt_down_proj_name="down_proj",
++            ckpt_up_proj_name="up_proj",
++            num_experts=self.config.n_routed_experts,
++        )
++
++        params_dict = dict(self.named_parameters())
++        loaded_params: set[str] = set()
++        pending_attn_weights: dict = {}
++        # GLM-5.3-Flash NoPE checkpoints omit the RoPE rows from
++        # ``kv_a_proj_with_mqa``; the FP8-to-BF16 path pads them for the model.
++        kv_a_pad_size = 0
++        if self.config.mla_nope and self.config.qk_rope_head_dim > 0:
++            kv_a_pad_size = self.config.qk_rope_head_dim
++        for name, loaded_weight in weights:
++            if "rotary_emb.inv_freq" in name:
++                continue
++            # Multimodal (Glm5NextForConditionalGeneration) checkpoints prefix
++            # the text-tower weights with "model.language_model."; the MTP head
++            # is built as a text-only model (model.layers.*), so strip the
++            # prefix to match.
+             if name.startswith("model.language_model."):
+                 name = name.replace("model.language_model.", "model.", 1)
+-            spec_layer = get_spec_layer_idx_from_weight_name(self.config, name)
+-            if spec_layer is None:
+-                continue
+-            name = self._rewrite_spec_layer_name(spec_layer, name)
+-
+-            if _try_load_mxfp8_bf16_attn_proj(
+-                name,
+-                loaded_weight,
+-                pending_attn_weights,
+-                params_dict,
+-                loaded_params,
++            if name in (
++                "lm_head.weight",
++                "model.lm_head.weight",
++                "language_model.lm_head.weight",
+             ):
++                if self.has_own_lm_head:
++                    for layer_idx in self.model.layers:
++                        head_name = f"model.layers.{layer_idx}.shared_head.head.weight"
++                        if head_name not in loaded_params:
++                            param = params_dict[head_name]
++                            param.weight_loader(param, loaded_weight)
++                            loaded_params.add(head_name)
+                 continue
+-
+-            # Dequantize legacy block-FP8 projections kept in BF16.
+-            if _try_load_fp8_attn_proj(
+-                name,
+-                loaded_weight,
+-                pending_attn_weights,
+-                params_dict,
+-                loaded_params,
+-                kv_a_pad_size,
+-            ):
+-                continue
+-
+-            for param_name, weight_name, shard_id in stacked_params_mapping:
+-                if weight_name not in name:
+-                    continue
+-                if ("mlp.experts." in name) and name not in params_dict:
+-                    continue
+-                name_mapped = name.replace(weight_name, param_name)
+-                if (
+-                    param_name == "fused_qkv_a_proj"
+-                ) and name_mapped not in params_dict:
+-                    continue
+-                else:
+-                    name = name_mapped
+-                if name.endswith(".bias") and name not in params_dict:
+-                    continue
+-                param = params_dict[name]
+-                weight_loader = param.weight_loader
+-                weight_loader(param, loaded_weight, shard_id)
+-                break
+-            else:
+-                is_expert_weight = False
+-                for mapping in expert_params_mapping:
+-                    param_name, weight_name, expert_id, shard_id = mapping  # type: ignore[assignment]
+-                    if weight_name not in name:
+-                        continue
+-                    is_expert_weight = True
+-                    name_mapped = name.replace(weight_name, param_name)
+-                    param = params_dict[name_mapped]
+-                    weight_loader = typing.cast(
+-                        Callable[..., bool], param.weight_loader
+-                    )
+-                    success = weight_loader(
+-                        param,
+-                        loaded_weight,
+-                        name_mapped,
+-                        shard_id=shard_id,
+-                        expert_id=expert_id,
+-                        return_success=True,
+-                    )
+-                    if success:
+-                        name = name_mapped
+-                        break
+-                else:
+-                    if is_expert_weight:
+-                        continue
+-                    if name.endswith(".bias") and name not in params_dict:
+-                        continue
+-                    name = maybe_remap_kv_scale_name(name, params_dict)  # type: ignore[assignment]
+-                    if name is None:
+-                        continue
+-                    if (
+-                        spec_layer != self.model.mtp_start_layer_idx
+-                        and ".layers" not in name
+-                    ):
+-                        continue
+-                    param = params_dict[name]
+-                    weight_loader = getattr(
+-                        param, "weight_loader", default_weight_loader
+-                    )
+-                    weight_loader(param, loaded_weight)
+-            loaded_params.add(name)
+-
++            spec_layer = get_spec_layer_idx_from_weight_name(self.config, name)
++            if spec_layer is None:
++                continue
++            name = self._rewrite_spec_layer_name(spec_layer, name)
++
++            if _try_load_mxfp8_bf16_attn_proj(
++                name,
++                loaded_weight,
++                pending_attn_weights,
++                params_dict,
++                loaded_params,
++            ):
++                continue
++
++            # Dequantize legacy block-FP8 projections kept in BF16.
++            if _try_load_fp8_attn_proj(
++                name,
++                loaded_weight,
++                pending_attn_weights,
++                params_dict,
++                loaded_params,
++                kv_a_pad_size,
++            ):
++                continue
++
++            for param_name, weight_name, shard_id in stacked_params_mapping:
++                if weight_name not in name:
++                    continue
++                if ("mlp.experts." in name) and name not in params_dict:
++                    continue
++                name_mapped = name.replace(weight_name, param_name)
++                if (
++                    param_name == "fused_qkv_a_proj"
++                ) and name_mapped not in params_dict:
++                    continue
++                else:
++                    name = name_mapped
++                if name.endswith(".bias") and name not in params_dict:
++                    continue
++                param = params_dict[name]
++                weight_loader = param.weight_loader
++                weight_loader(param, loaded_weight, shard_id)
++                break
++            else:
++                is_expert_weight = False
++                for mapping in expert_params_mapping:
++                    param_name, weight_name, expert_id, shard_id = mapping  # type: ignore[assignment]
++                    if weight_name not in name:
++                        continue
++                    is_expert_weight = True
++                    name_mapped = name.replace(weight_name, param_name)
++                    param = params_dict[name_mapped]
++                    weight_loader = typing.cast(
++                        Callable[..., bool], param.weight_loader
++                    )
++                    success = weight_loader(
++                        param,
++                        loaded_weight,
++                        name_mapped,
++                        shard_id=shard_id,
++                        expert_id=expert_id,
++                        return_success=True,
++                    )
++                    if success:
++                        name = name_mapped
++                        break
++                else:
++                    if is_expert_weight:
++                        continue
++                    if name.endswith(".bias") and name not in params_dict:
++                        continue
++                    name = maybe_remap_kv_scale_name(name, params_dict)  # type: ignore[assignment]
++                    if name is None:
++                        continue
++                    if (
++                        spec_layer != self.model.mtp_start_layer_idx
++                        and ".layers" not in name
++                    ):
++                        continue
++                    param = params_dict[name]
++                    weight_loader = getattr(
++                        param, "weight_loader", default_weight_loader
++                    )
++                    weight_loader(param, loaded_weight)
++            loaded_params.add(name)
++
+         loaded_layers: set[int] = set()
+         for param_name in loaded_params:
++            if param_name.endswith(".shared_head.head.weight"):
++                continue
+             spec_layer = get_spec_layer_idx_from_weight_name(self.config, param_name)
+-            if spec_layer is not None:
+-                loaded_layers.add(spec_layer)
+-        for layer_idx in range(
+-            self.model.mtp_start_layer_idx,
+-            self.model.mtp_start_layer_idx + self.model.num_mtp_layers,
++            if spec_layer is not None:
++                loaded_layers.add(spec_layer)
++        for layer_idx in range(
++            self.model.mtp_start_layer_idx,
++            self.model.mtp_start_layer_idx + self.model.num_mtp_layers,
+         ):
++            if self.has_own_lm_head:
++                head_name = f"model.layers.{layer_idx}.shared_head.head.weight"
++                if head_name not in loaded_params:
++                    raise ValueError(
++                        f"NVFP4 MTP head {layer_idx} requires an unquantized "
++                        "proposal head or target lm_head.weight in the checkpoint."
++                    )
+             if layer_idx not in loaded_layers:
+-                raise ValueError(
+-                    f"MTP speculative decoding layer {layer_idx} weights "
+-                    f"missing from checkpoint."
+-                )
+-        return loaded_params
++                raise ValueError(
++                    f"MTP speculative decoding layer {layer_idx} weights "
++                    f"missing from checkpoint."
++                )
++        return loaded_params
+diff --git a/vllm/utils/b12x.py b/vllm/utils/b12x.py
+index aef960a475a5a8cee7f7ca27d70735af55265ba6..e6c794a84a4f48ed277de3e04203e71bae8827d4 100644
+--- a/vllm/utils/b12x.py
++++ b/vllm/utils/b12x.py
+@@ -7,10 +7,12 @@ import importlib.util
+ from collections.abc import Callable, Hashable, Iterable
+ from dataclasses import dataclass, fields, is_dataclass
+ from types import ModuleType
+-from typing import Any
++from typing import Any, Literal
+ 
+ import torch
+ 
++import vllm.envs as envs
++
+ 
+ @dataclass(frozen=True)
+ class B12xWarmupUnit:
+@@ -19,6 +21,12 @@ class B12xWarmupUnit:
+     compile: Callable[[], None]
+ 
+ 
++def get_b12x_dense_activation_mode(recipe: Literal["nvfp4", "mxfp8"]) -> str:
++    """Resolve the dense precision override once when loading a layer."""
++    override = getattr(envs, f"VLLM_B12X_{recipe.upper()}_ACTIVATION_MODE")
++    return override if override is not None else envs.VLLM_B12X_DENSE_ACTIVATION_MODE
++
++
+ _HAS_B12X = importlib.util.find_spec("b12x") is not None
+ 
+ 
+diff --git a/vllm/v1/attention/backends/gdn_attn.py b/vllm/v1/attention/backends/gdn_attn.py
+index c6ccbd353ad762af98a3a476f1760a2abcdb5066..d28a3d9e5f6bbff8e7f79ae7196f99ae9275d456 100644
+--- a/vllm/v1/attention/backends/gdn_attn.py
++++ b/vllm/v1/attention/backends/gdn_attn.py
+@@ -2,11 +2,13 @@
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ """Backend for GatedDeltaNet attention."""
+ 
++from copy import copy
+ from dataclasses import dataclass, replace
+ from typing import Literal
+ 
+ import torch
+ 
++import vllm.envs as envs
+ from vllm.config import VllmConfig
+ from vllm.utils.torch_utils import async_tensor_h2d
+ from vllm.v1.attention.backend import (
+@@ -101,6 +103,7 @@ class GDNAttentionMetadata:
+     seq_lens: torch.Tensor | None = None
+ 
+     prefill_checkpoint: GDNPrefillCheckpointMetadata | None = None
++    is_uniform_spec_decode: bool = False
+ 
+ 
+ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]):
+@@ -108,7 +111,9 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
+     _cudagraph_support = AttentionCGSupport.UNIFORM_BATCH
+     supports_update_block_table: bool = True
+ 
++    # Runner-owned stable storage, with NULL_BLOCK_ID in padded request rows.
+     mamba_aligned_state_indices: torch.Tensor | None = None
++    mamba_spec_accepted_tokens: torch.Tensor | None = None
+ 
+     reorder_batch_threshold: int = 1
+ 
+@@ -190,6 +195,84 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
+             dtype=torch.int32,
+             device=device,
+         )
++        self._decode_state_indices_source: torch.Tensor | None = None
++        self._decode_state_indices_view: torch.Tensor | None = None
++        self._reuse_spec_decode_inputs = envs.VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH
++        self._uniform_spec_masks = torch.ones(
++            self.decode_cudagraph_max_bs, dtype=torch.bool, device=device
++        )
++        self._uniform_spec_masks_cpu = torch.ones(
++            self.decode_cudagraph_max_bs, dtype=torch.bool
++        )
++        self._uniform_spec_tokens = torch.arange(
++            self.decode_cudagraph_max_bs, dtype=torch.int32, device=device
++        )
++        self._uniform_spec_query_start = torch.arange(
++            self.decode_cudagraph_max_bs + 1, dtype=torch.int32, device=device
++        ) * (self.num_spec + 1)
++        self._spec_state_indices_source: torch.Tensor | None = None
++        self._spec_state_indices_view: torch.Tensor | None = None
++
++    def _can_reuse_spec_inputs(
++        self,
++        m: CommonAttentionMetadata,
++        num_accepted_tokens: torch.Tensor | None,
++        num_decode_draft_tokens_cpu: torch.Tensor | None,
++    ) -> bool:
++        return (
++            self._reuse_spec_decode_inputs
++            and self.use_spec_decode
++            and self.use_full_cuda_graph
++            and self.vllm_config.cache_config.mamba_cache_mode == "align"
++            and self.mamba_aligned_state_indices is not None
++            and self.mamba_spec_accepted_tokens is not None
++            and num_accepted_tokens is not None
++            and num_decode_draft_tokens_cpu is not None
++            and 0 < m.num_actual_tokens <= self.decode_cudagraph_max_bs
++            and m.num_actual_tokens == m.num_reqs * (self.num_spec + 1)
++            and bool(torch.all(num_decode_draft_tokens_cpu == self.num_spec))
++            and bool(torch.all(torch.diff(m.query_start_loc_cpu) == self.num_spec + 1))
++            and (m.is_prefilling is None or not bool(torch.any(m.is_prefilling)))
++        )
++
++    def _get_spec_state_indices_view(self, num_reqs: int) -> torch.Tensor:
++        source = self.mamba_aligned_state_indices
++        assert source is not None
++        if (
++            self._spec_state_indices_source is not source
++            or self._spec_state_indices_view is None
++            or self._spec_state_indices_view.shape[0] != num_reqs
++        ):
++            self._spec_state_indices_source = source
++            self._spec_state_indices_view = source[:num_reqs, : self.num_spec + 1]
++        return self._spec_state_indices_view
++
++    def _build_uniform_spec_decode(
++        self, m: CommonAttentionMetadata, num_accepted_tokens: torch.Tensor
++    ) -> GDNAttentionMetadata:
++        num_reqs = m.num_reqs
++        assert self.mamba_spec_accepted_tokens is not None
++        accepted = self.mamba_spec_accepted_tokens[:num_reqs]
++        accepted.copy_(num_accepted_tokens[:num_reqs], non_blocking=True)
++        return GDNAttentionMetadata(
++            num_prefills=0,
++            num_prefill_tokens=0,
++            num_decodes=0,
++            num_decode_tokens=0,
++            num_spec_decodes=num_reqs,
++            num_spec_decode_tokens=m.num_actual_tokens,
++            num_actual_tokens=m.num_actual_tokens,
++            spec_query_start_loc=self._uniform_spec_query_start[: num_reqs + 1],
++            spec_state_indices_tensor=self._get_spec_state_indices_view(num_reqs),
++            spec_sequence_masks=self._uniform_spec_masks[:num_reqs],
++            spec_sequence_masks_cpu=self._uniform_spec_masks_cpu[:num_reqs],
++            spec_token_indx=self._uniform_spec_tokens[: m.num_actual_tokens],
++            non_spec_token_indx=self._uniform_spec_tokens[:0],
++            num_accepted_tokens=accepted,
++            num_reqs=num_reqs,
++            seq_lens=m.seq_lens,
++            is_uniform_spec_decode=True,
++        )
+ 
+     def _get_state_indices(
+         self,
+@@ -209,6 +292,13 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
+             self.vllm_config.cache_config.mamba_cache_mode,
+         )
+ 
++    def _can_reuse_decode_inputs(self) -> bool:
++        return (
++            not self.use_spec_decode
++            and self.vllm_config.cache_config.mamba_cache_mode == "align"
++            and self.mamba_aligned_state_indices is not None
++        )
++
+     def _build_chunk_metadata(
+         self,
+         prefill_query_start_loc: torch.Tensor,
+@@ -260,6 +350,11 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
+         fast_build: bool = False,
+     ) -> GDNAttentionMetadata:
+         m = common_attn_metadata
++        if self._can_reuse_spec_inputs(
++            m, num_accepted_tokens, num_decode_draft_tokens_cpu
++        ):
++            assert num_accepted_tokens is not None
++            return self._build_uniform_spec_decode(m, num_accepted_tokens)
+ 
+         query_start_loc = m.query_start_loc
+         query_start_loc_cpu = m.query_start_loc_cpu
+@@ -599,6 +694,7 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
+             and num_prefills == 0
+             and num_spec_decodes == 0
+             and num_decodes <= self.decode_cudagraph_max_bs
++            and not self._can_reuse_decode_inputs()
+         ):
+             self.non_spec_state_indices_tensor[:num_decodes].copy_(
+                 non_spec_state_indices_tensor, non_blocking=True
+@@ -657,6 +753,41 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
+         assert metadata.num_reqs > 0
+         assert metadata.seq_lens is not None
+ 
++        if (
++            metadata.is_uniform_spec_decode
++            and self._reuse_spec_decode_inputs
++            and self.mamba_aligned_state_indices is not None
++            and self.mamba_spec_accepted_tokens is not None
++        ):
++            updated = copy(metadata)
++            updated.spec_state_indices_tensor = self._get_spec_state_indices_view(
++                metadata.num_reqs
++            )
++            accepted = self.mamba_spec_accepted_tokens[: metadata.num_reqs]
++            assert metadata.num_accepted_tokens is not None
++            if accepted.data_ptr() != metadata.num_accepted_tokens.data_ptr():
++                accepted.copy_(metadata.num_accepted_tokens, non_blocking=True)
++            updated.num_accepted_tokens = accepted
++            return updated
++
++        if (
++            metadata.num_prefills == 0
++            and metadata.num_spec_decodes == 0
++            and self._can_reuse_decode_inputs()
++        ):
++            source = self.mamba_aligned_state_indices
++            assert source is not None
++            if (
++                self._decode_state_indices_source is not source
++                or self._decode_state_indices_view is None
++                or self._decode_state_indices_view.shape[0] != metadata.num_reqs
++            ):
++                self._decode_state_indices_source = source
++                self._decode_state_indices_view = source[: metadata.num_reqs, 0]
++            updated = copy(metadata)
++            updated.non_spec_state_indices_tensor = self._decode_state_indices_view
++            return updated
++
+         state_indices = self._get_state_indices(
+             blk_table,
+             metadata.seq_lens,
+@@ -753,6 +884,7 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
+             and metadata.num_prefills == 0
+             and metadata.num_spec_decodes == 0
+             and metadata.num_decodes <= self.decode_cudagraph_max_bs
++            and not self._can_reuse_decode_inputs()
+         ):
+             self.non_spec_state_indices_tensor[: metadata.num_decodes].copy_(
+                 non_spec_state_indices[: metadata.num_decodes], non_blocking=True
+diff --git a/vllm/v1/worker/gpu/attn_utils.py b/vllm/v1/worker/gpu/attn_utils.py
+index e225c78ffe1989bffaf33a4b3a4da3feab19bf75..cbecda1e6c33b2c0a7298eb01ed38d2bb11b1ed7 100644
+--- a/vllm/v1/worker/gpu/attn_utils.py
++++ b/vllm/v1/worker/gpu/attn_utils.py
+@@ -293,43 +293,11 @@ def build_attn_metadata(
+     attn_metadata: dict[str, Any] = {}
+     cached_attn_metadata: dict[tuple[KVCacheSpec, type], Any] = {}
+     num_kv_cache_groups = len(kv_cache_config.kv_cache_groups)
++    group_slot_mappings = slot_mappings[:num_kv_cache_groups].unbind(0)
+     for i in range(num_kv_cache_groups):
+         block_table = block_tables[i]
+-        slot_mapping = slot_mappings[i]
+-        # Per-group causal for hybrid drafters (mixed SWA/full attention).
+-        group_causal = (
+-            causal if isinstance(causal, (bool, torch.Tensor)) else causal.get(i, True)
+-        )
+-
+-        common_attn_metadata_extra_kwargs = (
+-            model_specific_attn_metadata.get_extra_common_attn_kwargs(i, num_reqs)
+-            if model_specific_attn_metadata is not None
+-            else {}
+-        )
+-        # Model-specific metadata (e.g. Mamba hybrid) may supply its own
+-        # padding-aware is_prefilling, which takes precedence over the default.
+-        group_is_prefilling = common_attn_metadata_extra_kwargs.pop(
+-            "is_prefilling", is_prefilling
+-        )
+-        common_attn_metadata = CommonAttentionMetadata(
+-            query_start_loc=query_start_loc_gpu,
+-            query_start_loc_cpu=query_start_loc_cpu,
+-            seq_lens=seq_lens,
+-            seq_lens_cpu_upper_bound=seq_lens_cpu_upper_bound,
+-            max_seq_len=max_seq_len,
+-            num_reqs=num_reqs,
+-            num_actual_tokens=num_tokens,
+-            max_query_len=max_query_len,
+-            block_table_tensor=block_table,
+-            slot_mapping=slot_mapping,
+-            causal=group_causal,
+-            dcp_local_seq_lens=dcp_local_seq_lens,
+-            positions=positions,
+-            is_prefilling=group_is_prefilling,
+-            mm_req_doc_ranges=mm_req_doc_ranges,
+-            rswa_prefix_lens=rswa_prefix_lens,
+-            **common_attn_metadata_extra_kwargs,
+-        )
++        slot_mapping = group_slot_mappings[i]
++        common_attn_metadata = None
+ 
+         for attn_group in attn_groups[i]:
+             attn_metadata_builder = attn_group.get_metadata_builder(0)
+@@ -337,35 +305,74 @@ def build_attn_metadata(
+             if isinstance(kv_cache_spec, UniformTypeKVCacheSpecs):
+                 kv_cache_spec = kv_cache_spec.kv_cache_specs[attn_group.layer_names[0]]
+             cache_key = (kv_cache_spec, type(attn_metadata_builder))
+-            if for_cudagraph_capture:
+-                metadata = attn_metadata_builder.build_for_cudagraph_capture(
+-                    common_attn_metadata
+-                )
+-            elif (
+-                cache_key in cached_attn_metadata
++            if (
++                not for_cudagraph_capture
++                and cache_key in cached_attn_metadata
+                 and attn_metadata_builder.supports_update_block_table
+             ):
+                 metadata = attn_metadata_builder.update_block_table(
+-                    cached_attn_metadata[cache_key],
+-                    common_attn_metadata.block_table_tensor,
+-                    common_attn_metadata.slot_mapping,
++                    cached_attn_metadata[cache_key], block_table, slot_mapping
+                 )
+             else:
+-                attn_metadata_extra_kwargs = (
+-                    model_specific_attn_metadata.get_extra_attn_kwargs(
+-                        attn_metadata_builder,
+-                        num_reqs,
++                if common_attn_metadata is None:
++                    # Per-group causal for hybrid drafters (mixed SWA/full attention).
++                    group_causal = (
++                        causal
++                        if isinstance(causal, (bool, torch.Tensor))
++                        else causal.get(i, True)
+                     )
+-                    if model_specific_attn_metadata is not None
+-                    else {}
+-                )
+-                metadata = attn_metadata_builder.build(
+-                    common_prefix_len=0,
+-                    common_attn_metadata=common_attn_metadata,
+-                    **attn_metadata_extra_kwargs,
+-                )
+-                if attn_metadata_builder.supports_update_block_table:
+-                    cached_attn_metadata[cache_key] = metadata
++
++                    common_attn_metadata_extra_kwargs = (
++                        model_specific_attn_metadata.get_extra_common_attn_kwargs(
++                            i, num_reqs
++                        )
++                        if model_specific_attn_metadata is not None
++                        else {}
++                    )
++                    # Model-specific padding takes precedence over the default.
++                    group_is_prefilling = common_attn_metadata_extra_kwargs.pop(
++                        "is_prefilling", is_prefilling
++                    )
++                    common_attn_metadata = CommonAttentionMetadata(
++                        query_start_loc=query_start_loc_gpu,
++                        query_start_loc_cpu=query_start_loc_cpu,
++                        seq_lens=seq_lens,
++                        seq_lens_cpu_upper_bound=seq_lens_cpu_upper_bound,
++                        max_seq_len=max_seq_len,
++                        num_reqs=num_reqs,
++                        num_actual_tokens=num_tokens,
++                        max_query_len=max_query_len,
++                        block_table_tensor=block_table,
++                        slot_mapping=slot_mapping,
++                        causal=group_causal,
++                        dcp_local_seq_lens=dcp_local_seq_lens,
++                        positions=positions,
++                        is_prefilling=group_is_prefilling,
++                        mm_req_doc_ranges=mm_req_doc_ranges,
++                        rswa_prefix_lens=rswa_prefix_lens,
++                        **common_attn_metadata_extra_kwargs,
++                    )
++
++                if for_cudagraph_capture:
++                    metadata = attn_metadata_builder.build_for_cudagraph_capture(
++                        common_attn_metadata
++                    )
++                else:
++                    attn_metadata_extra_kwargs = (
++                        model_specific_attn_metadata.get_extra_attn_kwargs(
++                            attn_metadata_builder,
++                            num_reqs,
++                        )
++                        if model_specific_attn_metadata is not None
++                        else {}
++                    )
++                    metadata = attn_metadata_builder.build(
++                        common_prefix_len=0,
++                        common_attn_metadata=common_attn_metadata,
++                        **attn_metadata_extra_kwargs,
++                    )
++                    if attn_metadata_builder.supports_update_block_table:
++                        cached_attn_metadata[cache_key] = metadata
+             for layer_name in attn_group.layer_names:
+                 attn_metadata[layer_name] = metadata
+     return attn_metadata
+diff --git a/vllm/v1/worker/gpu/model_states/mamba_hybrid.py b/vllm/v1/worker/gpu/model_states/mamba_hybrid.py
+index 7f4219288bb402703200e0edfbe55d43ff7b1dd0..532ce32e16f740f069731720ba0840312a96137d 100644
+--- a/vllm/v1/worker/gpu/model_states/mamba_hybrid.py
++++ b/vllm/v1/worker/gpu/model_states/mamba_hybrid.py
+@@ -7,6 +7,7 @@ import numpy as np
+ import torch
+ import torch.nn as nn
+ 
++from vllm import envs
+ from vllm.config import VllmConfig
+ from vllm.config.compilation import CUDAGraphMode
+ from vllm.triton_utils import tl, triton
+@@ -84,6 +85,11 @@ class MambaHybridModelState(DefaultModelState):
+         self.num_accepted_tokens_gpu = torch.ones(
+             self.max_num_reqs, dtype=torch.int32, device=self.device
+         )
++        self._gdn_spec_accepted_tokens = (
++            torch.ones_like(self.num_accepted_tokens_gpu)
++            if envs.VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH
++            else None
++        )
+         # Pre-copy "align" prefix-cache state (V2). The migration of each
+         # request's mamba state across block boundaries runs as a fused GPU
+         # kernel reusing the postprocess copy machinery, so the per-step src
+@@ -106,6 +112,9 @@ class MambaHybridModelState(DefaultModelState):
+             self._mamba_group_ids: list[int] = []
+             self._mamba_spec: MambaSpec | None = None
+             self._mamba_copy_funcs_by_type: MambaStateCopyFuncsByType | None = None
++            self._aligned_metadata_groups: list[list[AttentionGroup]] | None = None
++            self._aligned_metadata_builders: list[tuple[int, Any]] = []
++            self._aligned_metadata_ctx: MambaSpecDecodeGPUContext | None = None
+ 
+     def add_request(self, req_index: int, new_req_data: NewRequestData) -> None:
+         super().add_request(req_index, new_req_data)
+@@ -122,6 +131,9 @@ class MambaHybridModelState(DefaultModelState):
+         if self._align_mode:
+             self._mamba_ctx = None
+             self._mamba_copy_funcs_by_type = None
++            self._aligned_metadata_ctx = None
++            self._aligned_metadata_groups = None
++            self._aligned_metadata_builders = []
+         if self.recoverssm is not None:
+             self.recoverssm.reset()
+ 
+@@ -171,6 +183,40 @@ class MambaHybridModelState(DefaultModelState):
+             )
+         return ctx
+ 
++    def _prepare_aligned_state_indices(
++        self,
++        seq_lens: torch.Tensor,
++        num_reqs: int,
++        attn_groups: list[list[AttentionGroup]],
++        kv_cache_config: KVCacheConfig,
++        block_tables: tuple[torch.Tensor, ...],
++    ) -> None:
++        mamba_group_ids, _ = self._get_mamba_group_info(kv_cache_config)
++        if self._aligned_metadata_groups is not attn_groups:
++            self._aligned_metadata_builders = []
++            for group_idx, group_id in enumerate(mamba_group_ids):
++                for group in attn_groups[group_id]:
++                    builder = group.get_metadata_builder(0)
++                    if hasattr(builder, "mamba_aligned_state_indices"):
++                        self._aligned_metadata_builders.append((group_idx, builder))
++                    if hasattr(builder, "mamba_spec_accepted_tokens"):
++                        builder.mamba_spec_accepted_tokens = (
++                            self._gdn_spec_accepted_tokens
++                        )
++            self._aligned_metadata_groups = attn_groups
++            self._aligned_metadata_ctx = None
++        if not self._aligned_metadata_builders:
++            return
++
++        ctx = self._ensure_align_ctx(kv_cache_config, mamba_group_ids, block_tables)
++        if self._aligned_metadata_ctx is not ctx:
++            assert ctx.aligned_state_indices is not None
++            group_views = ctx.aligned_state_indices.unbind(0)
++            for group_idx, builder in self._aligned_metadata_builders:
++                builder.mamba_aligned_state_indices = group_views[group_idx]
++            self._aligned_metadata_ctx = ctx
++        ctx.compute_aligned_state_indices(seq_lens, num_reqs)
++
+     def preprocess_state(
+         self,
+         input_batch: InputBatch,
+@@ -277,22 +323,13 @@ class MambaHybridModelState(DefaultModelState):
+             num_decode_draft_tokens_cpu = torch.from_numpy(num_decode_draft_tokens_np)
+ 
+         if self._align_mode:
+-            mamba_group_ids, _ = self._get_mamba_group_info(kv_cache_config)
+-            aligned_index_builders = []
+-            for group_idx, group_id in enumerate(mamba_group_ids):
+-                for group in attn_groups[group_id]:
+-                    builder = group.get_metadata_builder(0)
+-                    if hasattr(builder, "mamba_aligned_state_indices"):
+-                        aligned_index_builders.append((group_idx, builder))
+-            if aligned_index_builders:
+-                ctx = self._ensure_align_ctx(
+-                    kv_cache_config, mamba_group_ids, block_tables
+-                )
+-                all_group_indices = ctx.compute_aligned_state_indices(
+-                    input_batch.seq_lens, num_reqs
+-                )
+-                for group_idx, builder in aligned_index_builders:
+-                    builder.mamba_aligned_state_indices = all_group_indices[group_idx]
++            self._prepare_aligned_state_indices(
++                input_batch.seq_lens,
++                num_reqs,
++                attn_groups,
++                kv_cache_config,
++                block_tables,
++            )
+ 
+         mamba_attn_metadata = MambaHybridAttnMetadata(
+             is_prefilling=is_prefilling,
+diff --git a/vllm/v1/worker/mamba_utils.py b/vllm/v1/worker/mamba_utils.py
+index 4857795fab43ff2daedec18d6acec301a376f825..3e92514f68a6a19a3bb1f91a631f429450226414 100644
+--- a/vllm/v1/worker/mamba_utils.py
++++ b/vllm/v1/worker/mamba_utils.py
+@@ -85,8 +85,10 @@ def get_aligned_state_indices_multi_group_kernel(
+         mask=(
+             valid_group[:, None, None]
+             & valid_row[None, :, None]
++            & (seq_lens[None, :, None] > 0)
+             & valid_state_slot[None, None, :]
+         ),
++        other=-1,
+     )
+     tl.store(
+         state_indices_ptr

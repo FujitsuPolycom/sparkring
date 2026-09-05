@@ -3,6 +3,7 @@
 import importlib.util
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -84,6 +85,239 @@ def test_file_map_rejects_parent_traversal(tmp_path):
         verifier.verify_file_map(tmp_path, {"../test": "0" * 64})
 
 
+def test_layered_file_map_checks_unchanged_parent_and_exact_overrides(tmp_path):
+    (tmp_path / "vllm").mkdir()
+    unchanged = tmp_path / "vllm" / "unchanged.py"
+    replaced = tmp_path / "vllm" / "replaced.py"
+    unchanged.write_text("parent\n", encoding="utf-8")
+    replaced.write_text("result\n", encoding="utf-8")
+    parent = {
+        "vllm/unchanged.py": verifier.sha256(unchanged),
+        "vllm/replaced.py": "0" * 64,
+    }
+    overrides = {
+        "vllm/replaced.py": {
+            "base_sha256": "0" * 64,
+            "result_sha256": verifier.sha256(replaced),
+        }
+    }
+    assert verifier.verify_layered_file_map(tmp_path, parent, overrides) == {
+        "parent_files": 2,
+        "overrides": 1,
+    }
+    unchanged.write_text("changed\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="content pin"):
+        verifier.verify_layered_file_map(tmp_path, parent, overrides)
+
+
+def test_layered_file_map_rejects_unbound_or_wrong_base_override(tmp_path):
+    (tmp_path / "vllm").mkdir()
+    source = tmp_path / "vllm" / "source.py"
+    source.write_text("result\n", encoding="utf-8")
+    parent = {"vllm/source.py": "1" * 64}
+    with pytest.raises(ValueError, match="base identity"):
+        verifier.verify_layered_file_map(
+            tmp_path,
+            parent,
+            {"vllm/source.py": {
+                "base_sha256": "2" * 64,
+                "result_sha256": verifier.sha256(source),
+            }},
+        )
+    with pytest.raises(ValueError, match="absent from the parent"):
+        verifier.verify_layered_file_map(
+            tmp_path,
+            parent,
+            {"vllm/other.py": {
+                "base_sha256": "1" * 64,
+                "result_sha256": verifier.sha256(source),
+            }},
+        )
+
+
+def test_complete_package_file_map_rejects_stale_parent_module(tmp_path):
+    package = tmp_path / "b12x"
+    package.mkdir()
+    current = package / "current.py"
+    current.write_text("VALUE = 1\n", encoding="utf-8")
+    records = {"b12x/current.py": verifier.sha256(current)}
+    assert verifier.verify_complete_package_file_map(tmp_path, "b12x", records) == 1
+    (package / "stale_parent.py").write_text("VALUE = 0\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="complete manifest"):
+        verifier.verify_complete_package_file_map(tmp_path, "b12x", records)
+
+
+def test_compute_environment_requires_cuda_and_quantization_contract():
+    expected = {
+        "CUDA_HOME": "/opt/cuda-13.3",
+        "TRITON_PTXAS_PATH": "/opt/cuda-13.3/bin/ptxas",
+        "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+        "VLLM_B12X_DENSE_ACTIVATION_MODE": "auto",
+        "VLLM_MTP_NVFP4_LM_HEAD": "1",
+        "VLLM_LM_HEAD_A16": "1",
+        "VLLM_MXFP8_LM_HEAD": "0",
+    }
+    assert verifier.verify_required_environment(expected, expected) == expected
+    for name in expected:
+        changed = dict(expected)
+        changed[name] = "wrong"
+        with pytest.raises(ValueError, match=name):
+            verifier.verify_required_environment(changed, expected)
+
+
+def test_compute_verifier_composes_parent_vllm_and_complete_b12x(tmp_path):
+    compute = tmp_path / "compute"
+    receipts = tmp_path / "receipts"
+    site = tmp_path / "site"
+    cuda = tmp_path / "cuda"
+    for path in (compute, receipts, site / "vllm", site / "b12x", cuda / "bin"):
+        path.mkdir(parents=True, exist_ok=True)
+    unchanged = site / "vllm" / "unchanged.py"
+    override = site / "vllm" / "override.py"
+    b12x_python = site / "b12x" / "__init__.py"
+    b12x_notice = site / "b12x" / "README.md"
+    unchanged.write_text("unchanged\n", encoding="utf-8")
+    override.write_text("result\n", encoding="utf-8")
+    b12x_python.write_text("", encoding="utf-8")
+    b12x_notice.write_text("source\n", encoding="utf-8")
+    (cuda / "bin" / "ptxas").write_text("tool\n", encoding="utf-8")
+    components = {"cuda_nvcc/archive.tar.xz": "a" * 64}
+    (cuda / "sparkring-component-manifest.json").write_text(
+        json.dumps(components), encoding="utf-8"
+    )
+    base_hash = "b" * 64
+    lock = {
+        "schema": "sparkring-glm53-compute-source/v1",
+        "vllm": {
+            "base_revision": "e02",
+            "files": [["vllm/override.py", base_hash, verifier.sha256(override)]],
+        },
+        "b12x": {
+            "revision": "b58",
+            "tree": "tree",
+            "package_files_sha256": verifier.file_map_sha256({
+                "b12x/__init__.py": verifier.sha256(b12x_python),
+                "b12x/README.md": verifier.sha256(b12x_notice),
+            }),
+        },
+        "cuda": {"version": "13.3", "components": components},
+        "environment": {
+            "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+            "VLLM_B12X_DENSE_ACTIVATION_MODE": "auto",
+            "VLLM_MTP_NVFP4_LM_HEAD": "1",
+            "VLLM_LM_HEAD_A16": "1",
+            "VLLM_MXFP8_LM_HEAD": "0",
+        },
+    }
+    lock_path = compute / "source-lock.json"
+    lock_path.write_text(json.dumps(lock), encoding="utf-8")
+    lock_hash = verifier.sha256(lock_path)
+    (receipts / "vllm-source-manifest.json").write_text(
+        json.dumps({
+            "commit": "e02",
+            "files": {
+                "vllm/unchanged.py": verifier.sha256(unchanged),
+                "vllm/override.py": base_hash,
+            },
+        }),
+        encoding="utf-8",
+    )
+    b12x_files = {
+        "b12x/__init__.py": verifier.sha256(b12x_python),
+        "b12x/README.md": verifier.sha256(b12x_notice),
+    }
+    installed_path = tmp_path / "installed.json"
+    installed_path.write_text(
+        json.dumps({
+            "schema": "sparkring-glm53-compute-installed/v1",
+            "source_lock_sha256": lock_hash,
+            "vllm_revision": "e02",
+            "vllm_overrides": {"vllm/override.py": verifier.sha256(override)},
+            "b12x_revision": "b58",
+            "b12x_tree": "tree",
+            "b12x_files": b12x_files,
+            "cuda_components": components,
+            "environment": lock["environment"],
+            "target_head_quantization": False,
+        }),
+        encoding="utf-8",
+    )
+    profile = {"compute": {
+        "source_lock": "compute/source-lock.json",
+        "source_lock_sha256": lock_hash,
+        "vllm_base_revision": "e02",
+        "b12x_revision": "b58",
+        "b12x_tree": "tree",
+        "cuda_version": "13.3",
+    }}
+    source = {"files": {
+        "compute/source-lock.json": lock_hash,
+        "compute/b12x-source/b12x/__init__.py": verifier.sha256(b12x_python),
+        "compute/b12x-source/b12x/README.md": verifier.sha256(b12x_notice),
+        "compute/b12x-source/pyproject.toml": "a" * 64,
+        "compute/b12x-source/tests/test_example.py": "b" * 64,
+    }}
+    environment = {
+        **lock["environment"],
+        "CUDA_HOME": "/opt/cuda-13.3",
+        "TRITON_PTXAS_PATH": "/opt/cuda-13.3/bin/ptxas",
+    }
+    result = verifier.verify_compute(
+        profile,
+        {"vllm": {"commit": "e02"}},
+        source,
+        environment,
+        compute_root=compute,
+        receipt_path=installed_path,
+        site=site,
+        base_receipts=receipts,
+        cuda_root_override=cuda,
+        ptxas_runner=lambda *args, **kwargs: SimpleNamespace(
+            stdout="ptxas release 13.3", stderr=""
+        ),
+    )
+    assert result["vllm_parent_files"] == 2
+    assert result["vllm_overrides"] == 1
+    assert result["b12x_files"] == 2
+    assert result["proposal_head_nvfp4"] is True
+    assert result["target_head_quantization"] is False
+
+    changed_source = json.loads(json.dumps(source))
+    changed_source["files"]["compute/b12x-source/b12x/README.md"] = "f" * 64
+    with pytest.raises(ValueError, match="source-receipt-bound"):
+        verifier.verify_compute(
+            profile,
+            {"vllm": {"commit": "e02"}},
+            changed_source,
+            environment,
+            compute_root=compute,
+            receipt_path=installed_path,
+            site=site,
+            base_receipts=receipts,
+            cuda_root_override=cuda,
+            ptxas_runner=lambda *args, **kwargs: SimpleNamespace(
+                stdout="ptxas release 13.3", stderr=""
+            ),
+        )
+
+    unchanged.write_text("changed\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="content pin"):
+        verifier.verify_compute(
+            profile,
+            {"vllm": {"commit": "e02"}},
+            source,
+            environment,
+            compute_root=compute,
+            receipt_path=installed_path,
+            site=site,
+            base_receipts=receipts,
+            cuda_root_override=cuda,
+            ptxas_runner=lambda *args, **kwargs: SimpleNamespace(
+                stdout="ptxas release 13.3", stderr=""
+            ),
+        )
+
+
 def test_container_verification_has_no_device_or_network_access():
     source = (HERE / "verify_mesh_image.py").read_text(encoding="utf-8")
     assert '"--network", "none"' in source
@@ -109,6 +343,27 @@ def test_pins_use_native_mtp_only():
     assert pins["speculation"]["method"] == "mtp"
     assert pins["speculation"]["num_speculative_tokens"] == 3
     assert pins["target"]["repository"].endswith("-Spark")
+
+
+def test_profile_pins_exact_compute_source_and_quantization_environment():
+    pins = json.loads((HERE / "pins.json").read_text(encoding="utf-8"))
+    compute = pins["compute"]
+    lock_path = HERE / compute["source_lock"]
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    assert verifier.sha256(lock_path) == compute["source_lock_sha256"]
+    assert lock["schema"] == "sparkring-glm53-compute-source/v1"
+    assert lock["vllm"]["base_revision"] == compute["vllm_base_revision"]
+    assert lock["b12x"]["revision"] == compute["b12x_revision"]
+    assert lock["b12x"]["tree"] == compute["b12x_tree"]
+    assert lock["cuda"]["version"] == compute["cuda_version"] == "13.3"
+    assert lock["environment"] == {
+        "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+        "VLLM_B12X_DENSE_ACTIVATION_MODE": "auto",
+        "VLLM_MTP_NVFP4_LM_HEAD": "1",
+        "VLLM_LM_HEAD_A16": "1",
+        "VLLM_MXFP8_LM_HEAD": "0",
+    }
+    assert len(lock["vllm"]["files"]) == 14
 
 
 def test_schema_accepts_research_only_status():
