@@ -1,21 +1,22 @@
 # GLM-5.3 Flash Spark with native MTP3 and hardware-forwarded mesh
 
-Status: **research-only**. Bundle composition, site rendering, managed
-host-fabric installation/supervision, and CPU checks are **implemented**.
-The [managed functional record](../../performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md)
-qualifies bounded installer, policy-scoped fault/recovery, post-recovery
-readiness, and one persistent-cache recall case. Broader coverage remains
-unqualified. The
-[sampling-warmup image functional record](../../performance/records/glm53-flash/spark-mtp3-mesh-temperature-one-functional-20260905.md)
-qualifies bounded native checks, four-rank startup/restart, and one persistent
-recall restoration for its exact image. Broader cache/workload coverage and
-failure containment remain unqualified.
+Status: **research-only** profile. Bundle composition, site rendering, managed
+host services, and CPU checks are **implemented**. The published image has
+[qualified bounded GPU, serving, restart, and persistent-cache checks](../../performance/records/glm53-flash/spark-mtp3-compute-stream-safety-20260906.md).
+The record identifies the exact image, measurements, and scope; it does not
+establish in-flight collective failure containment or unattended availability.
 
 This profile serves the `GLM-5.3-Flash-NVFP4-Spark` checkpoint with its built-in
-multi-token predictor at depth three. It combines graph-native SIRCL,
-dual-rail fused SIRCL, and a modified RoCEnante all-reduce over a four-node
-physical ring. Opposite ranks communicate through hardware forwarding in an
-intermediate ConnectX-7. No external draft checkpoint is required.
+multi-token predictor at depth three. The predictor uses a separate runtime-
+NVFP4 proposal head with BF16 activations; the target/verifier head retains its
+BF16 checkpoint representation. It combines graph-native SIRCL, dual-rail
+fused SIRCL, and a modified RoCEnante all-reduce over a four-node physical
+ring. Opposite ranks communicate through hardware forwarding in an intermediate
+ConnectX-7. No external draft checkpoint or DFlash model is required.
+
+At TP4, the proposal head adds approximately 85.08 MiB of packed NVFP4 values
+and scales per rank. The BF16 target/verifier head remains allocated. The
+proposal-head figure is an added allocation, not a net memory reduction.
 
 Follow the [operator quickstart](../../docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md).
 It starts from a public checkout and image/model artifacts, explains the
@@ -24,56 +25,87 @@ installation commands. No private experiment checkout or existing cache is
 required. The [managed operations guide](MANAGED_MESH.md) creates the shared
 authentication inputs and provides model-start, readiness, stop, and recovery
 commands. Keep private site files and the health key outside this repository.
-The [measurement record](../../performance/records/glm53-flash/spark-mtp3-mesh-20260905.md)
-contains the bounded throughput observations and their limitations.
+The [proposal-head comparison](../../performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md)
+contains the bounded throughput observations for this head configuration and
+their limitations.
 
 ## Operator benchmark observations
+
+The [compute matrices](../../performance/records/glm53-flash/spark-mtp3-compute-matrices-20260905.md)
+record full C1/C2/C4/C8/C12/C16 results for the proposal head, loader/RNG fixes,
+shared MoE scales, and top-k selector. Column averages give each of the
+8K/32K/64K contexts equal weight. The records identify their measured images;
+they do not substitute for validation of the combined stream-safety image.
 
 The [consolidated validation report](../../performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
 collects the completed tests, three-pass prefill measurements, and remaining
 work. Use that report to avoid repeating checks already covered by receipts.
 
 Status: **research-only** measurements, not general performance guarantees.
-The [throughput record](../../performance/records/glm53-flash/spark-mtp3-mesh-20260905.md)
-identifies the measured source configuration and its differences from the
-packaged image. C denotes concurrent requests; decode values are aggregate
-output tokens per second across those requests.
+The [proposal-head comparison](../../performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md)
+reports three proposal-head repetitions and two controls at 8K. C denotes
+concurrent requests; decode values are
+mean aggregate output tokens per second across those requests.
 
-| Context | C1 | C2 | C4 | C8 | C12 | C16 |
-|---:|---:|---:|---:|---:|---:|---:|
-| 8K | 48.2 | 75.8 | 112.2 | 168.8 | 193.4 | 231.3 |
-| 32K | 49.9 | 76.8 | 119.0 | 164.6 | 197.3 | 222.7 |
-| 64K | 43.0 | 76.4 | 119.0 | 165.8 | 192.3 | 220.9 |
+| Context | C1 | C2 | C4 | C8 |
+|---:|---:|---:|---:|---:|
+| 8K | 51.6 | 76.9 | 120.8 | 168.8 |
 
-Concurrency-one prefill scouts measured **2,703–2,787 prompt tokens/s** over
-8K–128K contexts, with one observation per context. They are not a repeated
-cold-cache benchmark.
+Relative to a shared-BF16-proposal-head control with the same CUDA version,
+B12X kernels, metadata reuse, and dense-kernel integration, C1 improved 8.22%
+in raw output throughput and 4.90% in
+acceptance-normalized sequence steps/s. C2/C4/C8 results were mixed. Repeated
+prefill means moved by no more than 0.36% over 8K–128K contexts, so no prefill
+gain is claimed. The
+[broader matrix](../../performance/records/glm53-flash/spark-mtp3-mesh-20260905.md)
+records measurements for its explicitly identified image and serving settings.
+The head-specific control preserves the verifier implementation; the complete
+CUDA 13.3/B12X `b58f34ea` image changes other target computation relative to
+the configuration recorded in that matrix, so cross-image gains cannot be assigned only to the
+proposal head or dense kernels.
+
+The published image's
+[compute-equivalence record](compute-image-equivalence.json) matches every
+vLLM, B12X, and SparkCache package file and selected environment entry to the
+serving image identified in that record. This establishes compute-package
+content equivalence, not end-to-end performance equivalence: the mounted
+transport differs outside that comparison. The published image's separate
+[runtime validation](../../performance/records/glm53-flash/spark-mtp3-compute-stream-safety-20260906.md)
+includes an 18-cell matrix, two focused repetitions, native and GPU stream
+checks, an idle rank-loss test, restart, and a verified persistent-prefix restore.
 
 The separate [Estonia accuracy record](../../performance/records/glm53-flash/spark-mtp3-country-recall-20260905.md)
 reports **30/30 correct** at C8 on one repeated 133,208-token prompt, no
 output-limit hits, and 1.96 s mean cache-primed TTFT. Its 23.8 tok/s figure
-uses summed request times, not cluster wall time. Both records retain the
-operator screenshots and metric definitions.
+uses summed request times, not cluster wall time. The Estonia record includes
+the operator screenshot and metric definitions.
 
 The [long-context needle hunt](../../performance/records/glm53-flash/spark-mtp3-needle-20260905.md)
 passed **4/4** exact-value, revision, and cross-reference checks, reaching
-**507,367 actual prompt tokens** on the published image.
+**507,367 actual prompt tokens** on serving image
+`sha256:26273b8e358df139ae913610a5d43084ff0fd08aafe282ef633a3bc74afefe47`,
+as recorded in that report. It does not identify the image pinned by
+`public-image.json`.
 
 ## Composition
 
 | Input | Contract |
 |---|---|
 | Model, MTP depth, graph shapes, mesh bundle, marker identity, cache identity | [`pins.json`](pins.json) |
-| Linux/ARM64 image, vLLM, B12X kernels, SparkCache, native SIRCL | [`../glm53-flash-jj-r8-gb10/pins.json`](../glm53-flash-jj-r8-gb10/pins.json) |
+| Linux/ARM64 parent image, SparkCache, and native SIRCL | [`../glm53-flash-jj-r8-gb10/pins.json`](../glm53-flash-jj-r8-gb10/pins.json) |
+| CUDA 13.3, GLM metadata/loader/RNG integration, B12X scale sharing and selector overrides, NVFP4/BF16 proposal head | [`pins.json`](pins.json), [`IMAGE_BUILD.md`](IMAGE_BUILD.md) |
 | Topology and rank-local filesystem inputs | [`site.example.json`](site.example.json), [`fabric.example.json`](fabric.example.json) |
 | Source-bound collective dispatch and health checks | [`glm53_rocenante_overlay`](../../spark_transport/experiments/glm53_rocenante_overlay/README.md) |
 | Hardware-forwarding plan and native source marker | [`cx7_hairpin_diagonal`](../../spark_transport/experiments/cx7_hairpin_diagonal/README.md) |
 | Modified RoCEnante communication package | [`third_party/b12x_roce`](../../third_party/b12x_roce/README.md) |
 
-The model runtime and kernels come from the pinned parent image. The managed
-profile requires the [published child image](IMAGE_BUILD.md), which adds
-the verified transport bundle, managed source marker, and temperature-one
-readiness helper. Pull the immutable reference in [public-image.json](public-image.json)
+The managed profile requires the [published child image](IMAGE_BUILD.md). It
+retains the parent runtime while adding CUDA 13.3, the uniform native-MTP3
+metadata and loader/RNG integration, B12X revision `ef308bac` with selector
+overrides, the runtime-NVFP4/BF16
+proposal head, the verified transport bundle, the managed source marker, and
+the temperature-one readiness helper. The verifier remains BF16. Pull the
+immutable reference in [public-image.json](public-image.json)
 and use [image-receipt.json](image-receipt.json) for rendering and installation.
 Local source reproduction is optional; distribute identical verified bytes
 to all ranks. The canonical transport bundle remains mounted read-only.
@@ -140,7 +172,8 @@ serving lifecycle. Use authenticated managed readiness for serving.
 Native MTP uses the target checkpoint as the draft identity. The profile sets
 SparkCache's `draft_policy=separate` because that describes the registered
 state layout; it does not request an external model. A dedicated namespace
-prevents restoration of entries tagged for an external DFlash checkpoint.
+binds compute lock `139f3670` and transport bundle `69313e19` so the
+NVFP4-proposal-head composition cannot restore entries from another computation.
 Do not relabel those entries to avoid cache misses. Persistent restore under
 the native-MTP identity requires its own qualification.
 

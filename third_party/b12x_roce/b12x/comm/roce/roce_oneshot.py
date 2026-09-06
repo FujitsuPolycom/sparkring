@@ -563,12 +563,14 @@ class RoceOneshotAllReduce:
                 launcher = get_launcher(*key)
                 if out is None:
                     out = torch.empty_like(inp)
+                # Shared staging buffers belong to the preceding operation until
+                # its completion event, including its output copy, has fired.
+                self._order_stream(capturing)
                 src = inp
                 if inp.data_ptr() % PACK_BYTES != 0:
                     src = self._aligned_scratch(0, inp)
                     src.copy_(inp)
                 dst = out if out.data_ptr() % PACK_BYTES == 0 else self._aligned_scratch(1, out)
-                self._order_stream(capturing)
                 launcher(
                     src.data_ptr(),
                     dst.data_ptr(),
@@ -761,12 +763,11 @@ class RoceOneshotAllReduce:
                 nbytes = inp.numel() * inp.element_size()
                 padded = _align_up(nbytes, PACK_BYTES)
                 staged, gathered = self._gather_scratch(padded)
-                staged[:nbytes].copy_(inp.reshape(-1).view(torch.uint8))
                 self._order_stream(capturing)
+                staged[:nbytes].copy_(inp.reshape(-1).view(torch.uint8))
                 self._launch_gather(
                     staged.data_ptr(), gathered.data_ptr(), padded, padded // PACK_BYTES
                 )
-                self._mark_stream(capturing)
                 stacked = (
                     gathered.view(self.world_size, padded)[:, :nbytes]
                     .reshape(-1)
@@ -775,9 +776,12 @@ class RoceOneshotAllReduce:
                 )
                 result = stacked.movedim(0, dim).reshape(shape)
                 if out is None:
-                    return result.contiguous()
-                out.copy_(result)
-                return out
+                    result = result.contiguous()
+                else:
+                    out.copy_(result)
+                    result = out
+                self._mark_stream(capturing)
+                return result
 
     def _gather_scratch(self, padded: int) -> tuple[torch.Tensor, torch.Tensor]:
         """Fixed device scratch for the padded all-gather path, allocated once.
@@ -839,13 +843,11 @@ class RoceOneshotAllReduce:
         """
 
         self._last_stream = None
-        self._capture_stream = None
-        self._capture_id = 0
+        # CUDA's capture ID owns stream admission, not this Python context.
+        # Nested or per-call contexts must retain the same-capture guard.
         try:
             yield self
         finally:
-            self._capture_stream = None
-            self._capture_id = 0
             self._last_stream = None
 
     # -- diagnostics / lifecycle --------------------------------------------------

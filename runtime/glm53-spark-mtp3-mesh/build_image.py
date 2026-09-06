@@ -67,11 +67,15 @@ def verify_bundle(bundle: Path, expected: str) -> list[dict]:
     return records
 
 
-def prepare(bundle: Path, context: Path) -> dict:
+def prepare(bundle: Path, context: Path, compute: Path | None = None) -> dict:
     """Copy only content-verified inputs into a directory that does not exist."""
     if context.exists():
         raise ValueError(f"Build context already exists: {context}")
+    if compute is None or not compute.is_dir() or compute.is_symlink():
+        raise ValueError("A prepared compute source directory is required; see compute/README.md")
     profile = read_json(HERE / "pins.json")
+    if sha256(compute / "source-lock.json") != profile["compute"]["source_lock_sha256"]:
+        raise ValueError("Prepared compute source lock differs from the mesh profile pin")
     base_path = (HERE / profile["image_pins"]).resolve()
     base = read_json(base_path)
     records = verify_bundle(bundle, profile["canonical_bundle_manifest_sha256"])
@@ -95,6 +99,11 @@ def prepare(bundle: Path, context: Path) -> dict:
         f"bundle/{MANIFEST}": bundle / MANIFEST,
     }
     files.update({f"bundle/{record['path']}": bundle / record["path"] for record in records})
+    for source in compute.rglob('*'):
+        if source.is_symlink():
+            raise ValueError(f"Compute inputs cannot contain symlinks: {source}")
+        if source.is_file():
+            files[f"compute/{source.relative_to(compute).as_posix()}"] = source
     for relative, source in files.items():
         destination = context / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -109,7 +118,7 @@ def prepare(bundle: Path, context: Path) -> dict:
                              "helper_sha256": sha256(context / "warmup_dflash.py"),
                              "temperature_environment": "SPARKRING_WARMUP_TEMPERATURE",
                              "default_temperature": 1.0},
-        "scope": "Embedded transport bundle, compiled host marker, and readiness warmup helper with temperature one; target weights are not image contents.",
+        "scope": "Compute source and CUDA components, embedded transport bundle, compiled host marker, and temperature-one readiness warmup; target weights are not image contents.",
     }
     write_json(context / "receipts/source-receipt.json", receipt)
     return receipt
@@ -162,6 +171,7 @@ def build(context: Path, image: str, receipt_path: Path, engine: str, pull: bool
         "PARENT_IMAGE_ID": parent["image_id"],
         "BUNDLE_MANIFEST_SHA256": source["bundle_manifest_sha256"],
         "SOURCE_RECEIPT_SHA256": source_sha,
+        "COMPUTE_SOURCE_LOCK_SHA256": source["files"]["compute/source-lock.json"],
     }.items():
         argv.extend(["--build-arg", f"{name}={value}"])
     argv.extend(["--file", str(context / "Dockerfile"), "--tag", image, str(context)])
@@ -180,6 +190,8 @@ def main() -> int:
     prepare_parser = sub.add_parser("prepare", help="OFFLINE: construct a content-verified build directory")
     prepare_parser.add_argument("--bundle", type=Path, required=True)
     prepare_parser.add_argument("--context", type=Path, required=True)
+    prepare_parser.add_argument("--compute-context", type=Path, required=True,
+                                help="Prepared, source-pinned compute directory from compute/prepare_compute_source.py")
     build_parser = sub.add_parser("build", help="MUTATES HOST: build and CPU-check an image; no GPU or fabric access")
     build_parser.add_argument("--context", type=Path, required=True)
     build_parser.add_argument("--image", required=True)
@@ -188,7 +200,7 @@ def main() -> int:
     build_parser.add_argument("--pull-parent", action="store_true")
     args = parser.parse_args()
     if args.command == "prepare":
-        result = prepare(args.bundle.resolve(), args.context.resolve())
+        result = prepare(args.bundle.resolve(), args.context.resolve(), args.compute_context.resolve())
         print(json.dumps({"context": str(args.context.resolve()), "bundle_manifest_sha256": result["bundle_manifest_sha256"]}, indent=2))
     else:
         build(args.context.resolve(), args.image, args.receipt.resolve(), args.engine, args.pull_parent)
