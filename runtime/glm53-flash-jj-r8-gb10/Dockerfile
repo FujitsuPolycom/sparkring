@@ -12,6 +12,7 @@ COPY bundle/receipts/ /opt/sparkring/overlays/jj-r8-sparkcache-arm64/receipts/
 COPY bundle/sircl/ /opt/spark-sircl/
 COPY install_overlay.py /opt/sparkring/bin/install-jj-r8-sparkcache-overlay.py
 COPY verify_image.py /opt/sparkring/bin/verify-jj-r8-sparkcache-image.py
+COPY startup_admission.py /opt/sparkring/bin/startup_admission.py
 COPY warmup_dflash.py /opt/sparkring/bin/warmup_dflash.py
 COPY serve_with_warmup.py /opt/sparkring/bin/serve-with-warmup.py
 COPY scheduler_liveness.py /opt/sparkring/bin/scheduler_liveness.py
