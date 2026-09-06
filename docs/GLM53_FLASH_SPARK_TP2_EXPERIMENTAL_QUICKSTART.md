@@ -5,6 +5,11 @@ two DGX Spark computers, with native multi-token prediction and persistent
 key/value cache storage provided by SparkCache. Each profile has its own
 qualification boundary; this guide does not qualify the four-node profiles.
 
+> **Known video issue:** a solid-blue video can be labeled black even though
+> decoded frames are blue. Still-image, chat and persistent-cache checks do
+> not qualify video color recognition. See [issue #229](https://github.com/FujitsuPolycom/sparkring/issues/229)
+> for the image digest, fixture, observations and investigation criteria.
+
 ## Requirements and pinned inputs
 
 Two ARM64 DGX Spark/GB10 nodes with a verified direct RoCE data path, Docker
@@ -50,15 +55,12 @@ profile. Its measurements do not transfer automatically to the published image.
 
 ## Launch contract
 
-The installation scripts and profile are distributed through
-[pull request 228](https://github.com/FujitsuPolycom/sparkring/pull/228).
-Obtain its head revision on each node and record the resolved commit:
+Obtain the installation scripts and profile on each node and record the
+resolved repository commit. The runtime image is independently pinned by digest:
 
 ```bash
 git clone https://github.com/FujitsuPolycom/sparkring.git
 cd sparkring
-git fetch origin pull/228/head
-git checkout --detach FETCH_HEAD
 git rev-parse HEAD
 ```
 
