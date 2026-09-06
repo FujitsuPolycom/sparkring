@@ -163,6 +163,8 @@ printf '%s  %s\n' "$hash" "$2"
         assert result.returncode == 0, result.stderr
         arguments = capture.read_text(encoding="utf-8").splitlines()
         assert "test-image:r8" in arguments
+        assert "SPARKRING_LIVENESS_OUTPUT_SECONDS=300" in arguments
+        assert "B12X_FUSED_INDEXER=1" in arguments
         dcp_index = arguments.index("--decode-context-parallel-size")
         assert arguments[dcp_index + 1] == str(dcp)
         interleave_index = arguments.index("--cp-kv-cache-interleave-size")
@@ -225,6 +227,17 @@ printf '%s  %s\n' "$hash" "$2"
             )
             assert unchanged.returncode == 0, unchanged.stderr
             assert capture.read_text(encoding="utf-8").splitlines() == arguments
+            config.write_text(original_config + "\nB12X_FUSED_INDEXER=0\n",
+                              encoding="utf-8", newline="\n")
+            indexer_override = subprocess.run(
+                ["bash", _bash_path(LAUNCHER), "0", _bash_path(config)],
+                cwd=ROOT, text=True, capture_output=True, check=False,
+            )
+            assert indexer_override.returncode == 0, indexer_override.stderr
+            expected_indexer_override = arguments.copy()
+            indexer_env = expected_indexer_override.index("B12X_FUSED_INDEXER=1")
+            expected_indexer_override[indexer_env] = "B12X_FUSED_INDEXER=0"
+            assert capture.read_text(encoding="utf-8").splitlines() == expected_indexer_override
 
     config = tmp_path / "dcp1-vllm-prefix-only.env"
     config.write_text(
