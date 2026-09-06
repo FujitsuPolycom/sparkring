@@ -13,7 +13,7 @@ unattended managed lifecycle are not established by this test.
 - FP8 KV, 24 GiB per rank, 8,192 batched tokens, 16 sequences, 1,048,576-token
   configured limit; CUDA graph sizes 4 through 64 in steps of 4.
 - Local lil image-command extension and SparkRing canonical argument exporter.
-  Image, checkpoint, native library and managed-fabric preflight checks passed.
+  Image, target metadata, native-library and managed-fabric preflight checks passed.
 - The lookup request contained 12,848 tokens, used temperature zero and default
   reasoning settings, and requested the exact code `LIL-7391`.
 
@@ -39,9 +39,9 @@ differed. They are not an isolated prefill-speed comparison. Restore timings are
 worker-reported durations. The copy fixture validates routing and integrity, not
 bulk transfer throughput.
 
-The operator supervised trial containers while the existing mesh supervisors
-retained network ownership. lil did not install the mesh or retarget its systemd
-model units. Per-rank connection ordering must match the physical fabric; uniform
+The operator supervised trial containers while the mesh supervisors retained
+network ownership. lil did not install the mesh or create systemd model units
+for the trial containers. Per-rank connection ordering must match the physical fabric; uniform
 device ordering is not valid for every rank. Existing containers and caches were
 retained throughout the trial.
 

@@ -31,5 +31,10 @@ Reviewed lil baseline `11df08a793596b0a5b09e72e90d9a1ece51c9306` normally clears
 Docker entrypoints and mounts vLLM/B12X source directories in
 `internal/launcher/builder.go`. Its source parity check in `checks.go` excludes
 native extensions. The image command instead preserves the adapter's canonical
-arguments and executes its explicit checks. This is a separate local command,
+arguments and executes its explicit checks. This is a separate fork command,
 not a claim that upstream supports `--runtime sparkring`.
+
+The selected descriptor lists canonical runtime/model pin files and their
+normalized UTF-8 SHA-256 values. Changed inputs require a descriptor review.
+Preflight checks target configuration and index metadata; it does not hash all
+target weight shards. Verify model files during staging.

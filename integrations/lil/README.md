@@ -1,19 +1,24 @@
 # Launch SparkRing images with lil
 
-Status: implemented with the FujitsuPolycom/lil integration branch, with MTP3 startup on four NVIDIA DGX Sparks and a
-persistent-recall trial. See [hardware evidence](HARDWARE_VALIDATION.md).
-Fresh-host mesh installation and unattended lifecycle remain untested.
-These commands require the companion [lil fork draft PR #1](https://github.com/FujitsuPolycom/lil/pull/1) at branch `codex/image-runtime-adapter`;
-they are not available in upstream lil.
+Start and stop a prepared SparkRing model across four hosts with the `lil image`
+commands. SparkRing turns model and network settings into one JSON launch file;
+lil checks that file and runs its per-rank container commands. vLLM and B12X run
+from the image, so hosts do not need those source checkouts.
 
-SparkRing supplies model settings and the Docker arguments. lil starts ranks,
-checks their ownership, shows status and logs, and stops them. The image contains
-vLLM, B12X, SIRCL, and SparkCache; hosts do not need those source checkouts.
+Status: **implemented** in the [FujitsuPolycom/lil fork](https://github.com/FujitsuPolycom/lil/pull/1).
+The MTP3 profile passed startup and cached-context restore after a restart on
+four NVIDIA DGX Sparks. See the [bounded test results](HARDWARE_VALIDATION.md).
+Upstream lil does not provide these commands.
 
-## Prepare locally
+## Before starting
 
-Use Linux or WSL with Python 3.11+, Bash, and a lil binary built from the companion
-branch (Go 1.26):
+The default is GLM-5.3 Flash NVFP4-Spark with built-in MTP3 speculation, TP4/DCP4,
+and optional SparkCache. **Install and verify the managed mesh separately** using
+the [MTP3 mesh quickstart](../../docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md).
+This adapter does not install the mesh or take over its systemd model units.
+Use it for supervised trials on a prepared fabric.
+
+Use Linux or WSL with Python 3.11+, Bash, and Go 1.26. Build the tested lil fork:
 
 ```bash
 git clone --branch codex/image-runtime-adapter --single-branch https://github.com/FujitsuPolycom/lil.git
@@ -23,29 +28,20 @@ go build -o lil ./cmd/lil
 install -D lil "$HOME/.local/bin/lil"
 ```
 
-Ensure `$HOME/.local/bin` is on `PATH`, then return to the SparkRing checkout.
-See [ownership and dependency](OWNERSHIP.md) for the fork boundary.
-Copy `site-mtp3.example.json` and
-`fabric.example.json` to private files and enter your hosts, directories, peer
-addresses, and RDMA devices. Example addresses are documentation placeholders;
-they do not describe a wired cluster. Fabric routing must be verified on hardware.
-Preserve each rank's device and peer ordering from a working launch. The two
-connection slots need not use the same physical port numbers on every rank.
-Optional `NCCL_IB_GID_INDEX` and secondary-rail GID indices default to `3`;
-set them explicitly when the working fabric uses different indices.
+Put `$HOME/.local/bin` on `PATH`, then return to the SparkRing checkout.
+Copy `integrations/lil/site-mtp3.example.json` to `site.json` and
+`integrations/lil/fabric.example.json` to `fabric.json`. Enter your hosts,
+directories, peer addresses, and RDMA devices. The examples contain placeholders,
+not a usable cable map. Preserve the device/peer ordering from your working mesh;
+it can differ by rank. Optional NCCL and secondary-rail GID indices default to `3`.
 
-`site.settings` overrides context, sequences, batching, KV bytes, and port.
-The default profile is the published NVFP4-Spark native-MTP3 mesh at TP4/DCP4,
-pinned by `runtime/glm53-spark-mtp3-mesh/public-image.json`. It requires the
-managed mesh fabric to be installed and healthy. This adapter does not install
-or transfer ownership of that host service. DFlash7 remains an explicit alternative
-in `glm53.json` with `site.example.json`; it is not the default trial profile.
-Set `cache` to
-`{"enabled": false}` for vLLM caching alone, or select `read-write`, `restore-only`,
-or `store-only` with a namespace. Target, draft, JIT, and cache directories must
-not overlap. Directory paths are interpreted independently on each rank.
+In `site.json`, `settings` overrides context, sequences, batching, KV bytes, and
+port. Use `"cache": {"enabled": false}` for vLLM caching alone. To use SparkCache,
+set `enabled: true`, a namespace, and `access_mode` to `read-write`, `restore-only`,
+or `store-only`. Mount source directories must exist on each host and not overlap.
+Model files must come from the pinned snapshot. See [file distribution](DISTRIBUTION.md).
 
-From the SparkRing checkout:
+## Create and inspect the launch file
 
 ```bash
 python integrations/lil/export.py --site site.json --fabric fabric.json --id glm53-local > bundle.json
@@ -53,35 +49,12 @@ lil image validate bundle.json
 lil image render bundle.json
 ```
 
-These commands do not contact hosts. Export calls the canonical operator launcher
-in its execution-disabled rendering mode, preserving its image entrypoint and
-model arguments. It adds a separate persistent cache mount when enabled. The
-bundle contains image, checkpoint, directory, and native-library preflight checks.
-Declared hashes are not proof that remote files exist or match.
+These commands only run locally. The exporter uses SparkRing's canonical launcher
+to preserve its image entrypoint, model arguments, and mounts. It adds a separate
+persistent cache mount when enabled. Review `bundle.json` before running it:
+the file contains trusted commands and host mounts, not sandboxed configuration.
 
-## Prepare files and run when hardware is available
-
-Make model files and the pinned image available on every node, and create the
-mount source directories shown in the bundle. `distribute.py` can stage model
-files or an image archive once on the controller and copy them to explicit SSH
-destinations. Its manifest format is:
-
-```json
-{"schema":"sparkring-artifacts/v1","artifacts":[{"path":"target/config.json","source":"/absolute/local/config.json","sha256":"REPLACE_WITH_FILE_SHA256"}],"destinations":[{"host":"spark0.example.invalid","root":"/srv/models"}]}
-```
-
-List every file and destination. HTTPS sources are also accepted. Preview with
-`python integrations/lil/distribute.py artifacts.json --cache /local/downloads`.
-Add `--execute` to transfer. Verified downloads and matching destinations are
-reused; different destination contents are refused. Transfers run from the
-controller through SCP. Select reachable fabric endpoints to use that network;
-`fanout.py:copy_edge` also supports explicit rank-to-rank push or pull routes with
-source and destination checksum verification. Pull is useful when SSH access is
-authorized in only one direction. The caller supplies the authenticated route;
-the helper does not provision keys or discover connectivity. Image archives need
-`docker load --input ARCHIVE` on each rank before lil's image check succeeds.
-
-The following commands contact the configured hosts:
+## Run on the configured hosts
 
 ```bash
 lil image check bundle.json
@@ -91,35 +64,36 @@ lil image logs bundle.json
 lil image stop bundle.json
 ```
 
-`start` performs all preflight checks, starts workers before the head, and returns
-after Docker accepts the launches. This is not an API-readiness guarantee; use
-`status` to inspect the image health state. `logs` prints the last 100 lines per
-rank. `stop` retains containers, logs, models, and caches. Existing container names
-are refused on start; inspect and remove stopped containers explicitly before
-reusing names. A partial launch failure reports the failed rank and leaves started
-containers available for inspection and coordinated stop.
+Preflight checks the pinned image, target metadata, native libraries, directories,
+and managed-mesh readiness. It does **not** hash every target weight shard.
+`start` checks all ranks, launches workers, then launches rank zero. It returns
+after Docker accepts the containers; use `status` and a model request to confirm
+serving readiness. `logs` prints the last 100 lines per rank.
 
-Bundles are trusted operator programs containing commands and host mounts. Review
-them before execution. lil validates their shape and checks ownership labels; it
-does not sandbox them or interpret SparkRing's model-specific checks.
+`stop` retains containers, logs, models, and caches. To start again with the same
+names, inspect and remove or rename the stopped containers first. Partial launch
+failures leave containers available for inspection and stop. Automatic recovery
+after a failed launch or host restart is not implemented.
 
-## Validation and maintenance
+The optional DFlash7 profile uses `--descriptor integrations/lil/glm53.json` and
+`site.example.json`. The default MTP3 descriptor is `glm53-mtp3.json`.
 
-```bash
-python -m pytest integrations/lil -q
-```
+## Planned additions
 
-Tests exercise canonical launch rendering, cache toggles, graph sizes, identity
-drift, invalid mounts/ranks, artifact checksums, resume, and fake SSH failures.
-The companion Go tests exercise lifecycle order, ownership, and failure reporting.
-The hardware record covers a 12,288-token persistent restore on the named
-image/topology. It does not establish every profile or context size.
-The separate `plan.py` command remains a non-executable summary.
+- A SparkRing-owned setup command for fresh hosts.
+- Model-readiness waiting and integration with managed model lifecycle.
+- An operator command for direct rank-to-rank distribution, plus large-file and
+  interrupted-transfer tests.
+- Broader serving and failure-recovery tests before unattended use.
 
-Runtime and model pins come from the selected descriptor: `glm53-mtp3.json` for
-the MTP3 mesh default, or `glm53.json` for the DFlash profile. A
-normalized UTF-8 SHA-256 detects changes requiring descriptor review. Source
-baseline: SparkRing `f78d3b1b06b1bd57c2d660bbd3838f91db244a09`, lil
-`11df08a793596b0a5b09e72e90d9a1ece51c9306`. See [ownership](OWNERSHIP.md).
+## Evidence and ownership
+
+Run offline tests with `python -m pytest integrations/lil -q`.
+[Offline checks](VALIDATION.md) and [hardware results](HARDWARE_VALIDATION.md)
+describe their coverage. The hardware result covers a 12,288-token restore,
+not every context size or concurrency. `plan.py` remains a summary-only command.
+
+SparkRing owns profiles, networking, caching, and support; the lil fork extension
+owns generic container operations. See [interface ownership and pins](OWNERSHIP.md).
 Local Inference Lab supplies the vLLM/B12X performance work and target quantization;
-the pin files identify the component and draft-checkpoint sources.
+the profile pin files identify all component and draft-checkpoint sources.
