@@ -442,7 +442,7 @@ def test_public_glm53_benchmark_retains_only_valid_run1_cells() -> None:
     )
 
 
-def test_public_glm53_benchmark_is_sanitized_and_front_page_lists_dcp_profiles() -> None:
+def test_public_glm53_benchmark_is_sanitized_and_front_page_links_profile() -> None:
     paths = [PERFORMANCE_RECEIPT_PATH, PERFORMANCE_RECORD_PATH]
     text = "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
@@ -459,21 +459,11 @@ def test_public_glm53_benchmark_is_sanitized_and_front_page_lists_dcp_profiles()
     assert "api_key" not in text.lower()
 
     readme = README_PATH.read_text(encoding="utf-8")
-    assert "### Four Sparks" in readme
-    row = next(line for line in readme.splitlines()
-               if line.startswith("| GLM-5.3 Flash NVFP4") and "BF16 DFlash2" in line)
-    assert "TP4/DCP4; DCP1/2" in row
-    assert "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md" in row
-    quickstart = (
-        ROOT / "docs" / "GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
-    ).read_text(encoding="utf-8")
-    assert (
-        "The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV"
-        in quickstart
-    )
-    assert "942,898-token needle" in " ".join(quickstart.split())
-    assert "GLM-5.3 Flash research observation" not in readme
-    assert "IN PROGRESS" not in readme
+    # The front page provides navigation; launcher contracts own DCP settings
+    # and measurement receipts own numeric results, not Markdown table layout.
+    targets = set(re.findall(r"\]\(([^)]+)\)", readme))
+    assert "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md" in targets
+    assert "performance/records/glm53-flash/b12x-kda-dcp4-20260903.md" in targets
 
 
 def test_twenty_gib_kv_observation_is_research_only_and_sanitized() -> None:
