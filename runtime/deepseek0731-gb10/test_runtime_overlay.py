@@ -37,9 +37,9 @@ def test_runtime_patch_and_contract_are_content_addressed() -> None:
     assert module.sha256_file(patch) == record["sha256"]
     parsed = module.parse_unified_patch(patch.read_text(encoding="utf-8"))
     assert set(parsed) == {value["path"] for value in record["files"]}
-    assert len(parsed) == 11
-    assert len({value["preimage_sha256"] for value in record["files"]}) == 11
-    assert len({value["result_sha256"] for value in record["files"]}) == 11
+    assert len(parsed) == 12
+    assert len({value["preimage_sha256"] for value in record["files"]}) == 12
+    assert len({value["result_sha256"] for value in record["files"]}) == 12
 
 
 def test_unified_patch_engine_applies_exact_context() -> None:

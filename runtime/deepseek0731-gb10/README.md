@@ -1,5 +1,40 @@
 # Hardened DeepSeek V4 runtime for Fujitsu GB10
 
+## API reasoning and required-tool policies
+
+Status: implemented in the source overlay; rebuilt-image qualification is
+outstanding. The published native derivative at digest
+`sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd`
+does not contain these API changes.
+
+The Responses request model accepts `reasoning.effort: "max"` in addition to
+`none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. It retains the OpenAI
+SDK reasoning model's other fields and validation. Unknown effort values remain
+invalid. This request-model compatibility change addresses issue #184 and does
+not change model sampling or generation behavior.
+
+Set `SPARKRING_REJECT_EMPTY_REQUIRED_TOOL_CALLS=1` in the API container
+environment to reject nonstreaming Chat Completions whose named or required
+tool choice produces no parsed tool calls. The response is an HTTP 500
+`ToolChoiceContractError`, rather than a successful empty tool-call array.
+The default remains disabled. Valid nonempty parser results retain their
+serialization, and automatic tool choice is unaffected.
+
+This check covers the empty-result failure in SparkRing issue #217. It does
+not validate argument JSON, function names, schemas, or streaming results.
+A streaming HTTP response may already have started before a missing tool
+call is detectable; streaming requires a separate event-level policy.
+Clients should bound retries and may increase the output-token budget when
+reasoning exhausts the available generation length.
+
+The runtime patch and per-file hashes are bound by `runtime-contract.json`.
+The image overlay label is
+`sparse-row-clamp+dsml-recovery+responses-max+empty-required-tool-error-v1`. No model,
+cache-identity, or transport setting changes. Enabling the variable in an
+image without this overlay has no effect.
+
+## Published native runtime
+
 Status: **research-only; builder implemented with a TP4/K5 diagnostic run**.
 This directory derives one ARM64 image from the exact published runtime
 `ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028`.
@@ -18,7 +53,7 @@ The published derivative includes this repository's `LICENSE`,
 combined OCI license expression for every inherited component; that label
 requires a separate audit of the exact base image.
 
-## What changes
+## Runtime contracts
 
 The GB10 contract:
 
