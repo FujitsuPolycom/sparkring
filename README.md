@@ -1,28 +1,19 @@
 # SparkRing
 
 SparkRing is a vLLM-based inference-serving stack with low-latency collective
-communication for switchless clusters of NVIDIA DGX Spark systems, powered
-by the GB10 Grace Blackwell Superchip.
+communication for switchless clusters of NVIDIA GB10-based devices. 
 
-SparkRing supports GB10 pairs and four-node rings; six-node configurations
-are research-only. Models run across multiple systems using tensor parallelism.
+SparkRing supports pairs, four-node rings, and six-node rings (in dev).
 
-Depending on the profile, communication uses [SIRCL](docs/SIRCL.md),
-[RoCEnante](third_party/b12x_roce/README.md), and
-[patched NCCL](spark_transport/nccl/README.md). The high-speed data fabric
-needs no external Ethernet or InfiniBand switch; administration uses a
-separate management network.
+The collective communication stack combines [SIRCL](docs/SIRCL.md), [RoCEnante](third_party/b12x_roce/README.md), and [patched NCCL](spark_transport/nccl/README.md). The high-speed data fabric
+needs no external Ethernet or InfiniBand switch; administration and vLLM api serving occur over a node/s 10Gbe NIC.
 
-The four-node virtual-mesh profile adds hardware-forwarded paths between
-opposite nodes over the existing ring cables. This lets the communication
-topology extend beyond directly connected neighbors without adding a switch
-or changing the cabling.
+Four- and six-node rings use a virtual mesh built on custom RoCE RDMA routing and hardware forwarding in the ConnectX network ASICs. This creates paths between nodes that aren’t directly connected, carrying traffic over the existing ring cables without routing it through host CPUs. The result is mesh connectivity over a physical ring. 
 
 The repository provides setup guides, launch tooling, model profiles,
 reproducible benchmarks, and [test results](performance/).
 
-> SparkRing is experimental. Use the image digest and source revisions in
-> your profile's quickstart. Qualification applies only to its documented tests.
+> SparkRing is experimental. This repo is changing rapidly.
 
 ## Setup
 
@@ -31,40 +22,33 @@ reproducible benchmarks, and [test results](performance/).
    Two-node profiles include their own direct-link setup.
 3. Follow the profile's quickstart, then run the
    [validation checks](docs/PROFILE_VALIDATION.md).
+   
+   *more streamlined installation methods are pending validation; 'lil', sparkrun, etc*
 
 ## Profiles
-
-Context is the per-request token limit; sequences are active requests; batch
-is the scheduled-token budget per model step. KV memory also constrains which requests fit together.
-512K means 524,288 tokens; 1M means 1,048,576.
-
-### Two Sparks
-
-| Model / predictor | Layout | Context | Sequences | Batch | Guide |
-|---|---|---:|---:|---:|---|
-| GLM-5.3 Flash NVFP4-Spark · native MTP3 | TP2/DCP1 | 512K | 8 | 8,192 | [Quickstart](docs/GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | TP2/DCP1 | 1M | 32 | 4,096 | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| Qwen3.8-27B EXL3 K5/K6 | TP2/DCP1 | 1M | 32 | 8,192 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
-
-The GLM pair is **research-only**, uses 5 GiB KV per rank, and has a
-[known video-color issue](https://github.com/FujitsuPolycom/sparkring/issues/229).
-Its configured context limit is not a full-context qualification.
 
 ### Four Sparks
 
 | Model / predictor | Layout | Context | Sequences | Batch | Guide |
 |---|---|---:|---:|---:|---|
-| GLM-5.3 Flash NVFP4 · BF16 DFlash2 | TP4/DCP4 preferred; DCP1/2 available | 1M | 16 | 8,192 | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
-| GLM-5.3 Flash NVFP4-Spark · native MTP3 mesh | TP4/DCP4 | 1M | 16 | 8,192 | [Quickstart](docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md) |
+| **GLM-5.3 Flash NVFP4-Spark · MTP3 mesh** | TP4/DCP4 | 1M | 16 | 8,192 | [Quickstart](docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md) |
+| GLM-5.3 Flash NVFP4 · BF16 DFlash2 | TP4/DCP4; DCP1/2 | 1M | 16 | 8,192 | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
 | GLM-5.2 EXL3 3.5-bpw | TP4/DCP4 | 1M | 16 | 4,096 | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
 | DeepSeek-V4-Flash-0731 | TP4/DCP1 | 1M | 32 | 4,096 | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | TP4/DCP1 | 1M | 64 | 8,192 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
+* The GLM5.3 Flash MTP3 profile uses the new virtual meshing feature. *All profiles will be transitioned to said mesh.*
+* Requires:[managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md). *Refined images in testing*
+* DFlash2 profiles will be replaced by more consistently performing, native-MTP. Also avoids: [separate CC BY-NC-ND 4.0 terms](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2#license).
 
-The native-MTP3 mesh profile is **research-only** and requires
-[managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
-DFlash2 remains the preferred four-node GLM profile; its external draft
-weights have [separate CC BY-NC-ND 4.0 terms](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2#license).
+### Two Sparks
 
+| Model / predictor | Layout | Context | Sequences | Batch | Guide |
+|---|---|---:|---:|---:|---|
+| **GLM-5.3 Flash NVFP4-Spark · native MTP3** | TP2/DCP1 | 512K | 8 | 8,192 | [Quickstart](docs/GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md) |
+| DeepSeek-V4-Flash-0731 | TP2/DCP1 | 1M | 32 | 4,096 | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| Qwen3.8-27B EXL3 K5/K6 | TP2/DCP1 | 1M | 32 | 8,192 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
+* GLM5.3 pair is **research-only**, uses 5 GiB KV per rank, and has a
+[known video-color issue](https://github.com/FujitsuPolycom/sparkring/issues/229). In testing. 
 See the [profile index](docs/profiles/README.md) for evidence scopes and
 [SparkCache compositions](recipes/sparkcache/README.md) for persistent-cache
 support. Qwen with SparkCache is unsupported; six-node profiles are research-only.
@@ -80,14 +64,14 @@ support. Qwen with SparkCache is unsupported; six-node profiles are research-onl
 | `gb10-vllm-serving` | Profile-specific images, including DeepSeek | [Packages](https://github.com/users/FujitsuPolycom/packages/container/package/gb10-vllm-serving) |
 
 Use the exact digest in the selected quickstart. Images sharing a package
-name are not interchangeable; a model-neutral name does not qualify every profile.
+name are not interchangeable; a model-neutral name does not qualify every profile. Images will be condensed and homogenized in future releases. 
 
 ## Benchmark results
 
 Recorded tokens per second; C1/C8 mean one/eight concurrent requests.
 Decode is sustained aggregate output at temperature 1.0.
-Decode context is shown separately from prefill context. These results
-describe the linked workloads, not guaranteed performance.
+Decode context is shown separately from prefill context. Results attempt to reflect real world use-case numbers in ALL instances unless otherwise noted.
+*structured data sweeps*,*temperature 0 and/or other out-of-spec configurations are not provided or recommended*
 
 | Profile | Decode context | Prefill | C1 decode | C8 decode | Highest C at this context | Coding peak |
 |---|---:|---:|---:|---:|---:|---:|
@@ -100,17 +84,11 @@ describe the linked workloads, not guaranteed performance.
 | [Qwen3.8-27B EXL3 K5/K6 · 2 Sparks](performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md) | 16K | 1,367 (16K) | 29.50 | 142.20 | C16: 184.39 | 39.95 |
 | [Qwen3.8-27B EXL3 K5/K6 · 4 Sparks](performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md) | 16K | 1,964 (16K) | 35.07 | 191.02 | C8: 191.02 | 48.46 |
 
-The native-MTP3 mesh row is a single observation per cell with caching enabled.
-Prefill scouts are integrated measurements, not isolated prefill benchmarks.
 See [full results](docs/RESULTS.md) and the
 [mesh validation report](performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
 for repeat counts, accuracy checks, settings, and limitations.
 
 ## Architecture
-
-Pairs use a direct 200 Gb/s link. Four-node deployments use a cable ring;
-the managed mesh adds hardware-forwarded paths without diagonal cables.
-Profiles select patched NCCL, SIRCL, or RoCEnante for eligible operations.
 
 [Architecture](docs/ARCHITECTURE.md) · [SIRCL](docs/SIRCL.md) ·
 [RoCEnante](third_party/b12x_roce/README.md) ·
@@ -135,7 +113,7 @@ Profiles select patched NCCL, SIRCL, or RoCEnante for eligible operations.
 
 ## Acknowledgements
 
-Built on vLLM, NVIDIA NCCL, B12X, SparkInfer, LMCache, ExLlamaV3, and the
+Built on vLLM, NVIDIA NCCL, B12X, ExLlamaV3, and the
 [local inference community](https://github.com/local-inference-lab/).
 Luke and Local Inference Lab's [RoCEnante implementation](https://github.com/local-inference-lab/b12x/pull/295)
 and [vLLM integration](https://github.com/local-inference-lab/vllm/pull/597)
