@@ -5,6 +5,8 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
+
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -25,6 +27,38 @@ metrics_patch = load_module(
     "jj_r8_metrics_patch",
     HERE / "patch_kv_metrics_logging.py",
 )
+indexer_patch = load_module("indexer_barrier_patch", HERE / "patch_indexer_barrier.py")
+
+
+def test_indexer_transform_rejects_unknown_source_without_writing(tmp_path):
+    target = tmp_path / "fused_indexer.py"
+    target.write_bytes(b"unknown source\n")
+    with pytest.raises(RuntimeError, match="unsupported B12X"):
+        indexer_patch.apply_patch(target)
+    assert target.read_bytes() == b"unknown source\n"
+
+
+def test_indexer_transform_applies_both_changes_and_is_idempotent(tmp_path, monkeypatch):
+    before = (indexer_patch._BEFORE + indexer_patch._OLD_CACHE).encode()
+    after = (indexer_patch._AFTER + indexer_patch._NEW_CACHE).encode()
+    monkeypatch.setattr(indexer_patch, "BEFORE_SHA256", hashlib.sha256(before).hexdigest())
+    monkeypatch.setattr(indexer_patch, "AFTER_SHA256", hashlib.sha256(after).hexdigest())
+    target = tmp_path / "fused_indexer.py"
+    target.write_bytes(before)
+    indexer_patch.apply_patch(target)
+    assert target.read_bytes() == after
+    indexer_patch.apply_patch(target)
+    assert target.read_bytes() == after
+
+
+def test_indexer_transform_rejects_wrong_postimage_without_writing(tmp_path, monkeypatch):
+    before = (indexer_patch._BEFORE + indexer_patch._OLD_CACHE).encode()
+    monkeypatch.setattr(indexer_patch, "BEFORE_SHA256", hashlib.sha256(before).hexdigest())
+    target = tmp_path / "fused_indexer.py"
+    target.write_bytes(before)
+    with pytest.raises(RuntimeError, match="GPU-tested source"):
+        indexer_patch.apply_patch(target)
+    assert target.read_bytes() == before
 
 
 def test_metrics_patch_uses_connector_owned_compact_lines(tmp_path: Path) -> None:

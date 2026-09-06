@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import threading
 import time
@@ -17,6 +18,7 @@ _METRICS = {
     "waiting": "vllm:num_requests_waiting",
     "kv_usage": "vllm:kv_cache_usage_perc",
     "uncertain_ranks": "vllm:sparkcache_capture_ownership_uncertain_ranks",
+    "output_iterations": "vllm:iteration_tokens_total_count",
 }
 
 
@@ -27,6 +29,8 @@ def _metric_sum(text: str, name: str, *, required: bool = True) -> float:
     values = [float(match.group(1)) for match in pattern.finditer(text)]
     if not values and required:
         raise ValueError(f"metrics response does not contain {name}")
+    if any(not math.isfinite(value) or value < 0 for value in values):
+        raise ValueError(f"metrics response contains invalid {name}")
     return sum(values)
 
 
@@ -39,21 +43,26 @@ class SchedulerLiveness:
         blocked_timeout_seconds: float,
         idle_kv_warn_seconds: float,
         stale_sample_seconds: float,
+        output_timeout_seconds: float = 300.0,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         for name, value in (
             ("blocked timeout", blocked_timeout_seconds),
             ("idle KV warning", idle_kv_warn_seconds),
             ("stale sample timeout", stale_sample_seconds),
+            ("output timeout", output_timeout_seconds),
         ):
-            if value <= 0:
+            if not math.isfinite(value) or value <= 0:
                 raise ValueError(f"{name} must be positive")
         self._blocked_timeout = float(blocked_timeout_seconds)
         self._idle_kv_warn = float(idle_kv_warn_seconds)
         self._stale_sample = float(stale_sample_seconds)
+        self._output_timeout = float(output_timeout_seconds)
         self._clock = clock
         self._lock = threading.Lock()
         self._blocked_since: float | None = None
+        self._output_stalled_since: float | None = None
+        self._last_output_iterations: float | None = None
         self._idle_nonfall_since: float | None = None
         self._last_idle_kv: float | None = None
         self._last_success: float | None = None
@@ -77,7 +86,23 @@ class SchedulerLiveness:
             ),
         }
         now = self._clock()
+        # This histogram counts output-bearing batches received by the API,
+        # not HTTP scrapes. It can stay flat during a legitimate long prefill.
+        output_iterations = _metric_sum(
+            metrics_text, _METRICS["output_iterations"],
+            required=values["running"] > 0,
+        )
         with self._lock:
+            if values["running"] > 0:
+                if (
+                    self._output_stalled_since is None
+                    or output_iterations != self._last_output_iterations
+                ):
+                    # A decrease starts a new window after an engine restart.
+                    self._output_stalled_since = now
+            else:
+                self._output_stalled_since = None
+            self._last_output_iterations = output_iterations
             if values["running"] == 0 and values["waiting"] > 0:
                 if self._blocked_since is None:
                     self._blocked_since = now
@@ -106,6 +131,11 @@ class SchedulerLiveness:
     def snapshot(self) -> dict[str, object]:
         now = self._clock()
         with self._lock:
+            output_stalled_seconds = (
+                max(0.0, now - self._output_stalled_since)
+                if self._output_stalled_since is not None
+                else 0.0
+            )
             blocked_seconds = (
                 max(0.0, now - self._blocked_since)
                 if self._blocked_since is not None
@@ -132,6 +162,9 @@ class SchedulerLiveness:
             elif blocked_seconds >= self._blocked_timeout:
                 healthy = False
                 reason = "scheduler_capacity_stall"
+            elif output_stalled_seconds >= self._output_timeout:
+                healthy = False
+                reason = "engine_output_stall"
             warnings = []
             if idle_kv_seconds >= self._idle_kv_warn:
                 warnings.append("idle_kv_not_falling")
@@ -147,6 +180,8 @@ class SchedulerLiveness:
                     "uncertain_ranks"
                 ],
                 "blocked_seconds": blocked_seconds,
+                "output_stalled_seconds": output_stalled_seconds,
+                "output_iterations": self._last_output_iterations,
                 "idle_kv_nonfall_seconds": idle_kv_seconds,
                 "sample_age_seconds": sample_age,
                 "last_sample_error": self._last_error,
@@ -160,6 +195,9 @@ class SchedulerLiveness:
         values = {
             "sparkring:scheduler_liveness": int(bool(snapshot["healthy"])),
             "sparkring:scheduler_blocked_seconds": snapshot["blocked_seconds"],
+            "sparkring:engine_output_stalled_seconds": snapshot[
+                "output_stalled_seconds"
+            ],
             "sparkring:idle_kv_nonfall_seconds": snapshot[
                 "idle_kv_nonfall_seconds"
             ],
@@ -279,11 +317,13 @@ def start_liveness_service(
     stale_sample_seconds: float,
     sample_interval_seconds: float,
     credential: str | None,
+    output_timeout_seconds: float = 300.0,
 ) -> SchedulerLivenessService:
     monitor = SchedulerLiveness(
         blocked_timeout_seconds=blocked_timeout_seconds,
         idle_kv_warn_seconds=idle_kv_warn_seconds,
         stale_sample_seconds=stale_sample_seconds,
+        output_timeout_seconds=output_timeout_seconds,
     )
     service = SchedulerLivenessService(
         metrics_url=metrics_url,

@@ -21,6 +21,7 @@ CODE_DIR = Path('/opt/sparkring/managed-mesh')
 CONFIG_DIR = Path('/etc/sparkring/managed-mesh')
 UNIT_DIR = Path('/etc/systemd/system')
 SOURCE_FILES = (
+    'runtime/glm53-spark-mtp3-mesh/managed_memory.py',
     'runtime/glm53-spark-mtp3-mesh/managed_service.py',
     'runtime/glm53-spark-mtp3-mesh/managed_network.py',
     'runtime/glm53-spark-mtp3-mesh/managed_units.py',
