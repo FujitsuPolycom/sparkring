@@ -50,7 +50,7 @@ def prepare(cache, placement, transport, output):
                 path = output / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(bundle.extractfile(member).read())
-    for name in ("checkpoints", "reasoning"):
+    for name in ("checkpoints", "reasoning", "attribution"):
         shutil.copytree(
             HERE / name,
             output / name,

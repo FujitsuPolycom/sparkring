@@ -84,3 +84,12 @@ The build context includes the wrapper, warmup client, and admission module;
 the image receipt verifies all three files. Published image receipts describe
 immutable artifacts and do not claim this behavior until an image containing
 these sources has been built and recorded.
+
+## Request reuse accounting
+
+The image build includes [scheduler attribution hooks](attribution/README.md)
+for the connector's opt-in request ledger. These hooks distinguish admitted
+local reuse, finalized persistent restoration, and accepted prompt work across
+preemption attempts. They are inactive unless the connector enables request
+cache events. Source availability does not change a published image receipt;
+a rebuilt image must be validated before serving evidence is claimed.
