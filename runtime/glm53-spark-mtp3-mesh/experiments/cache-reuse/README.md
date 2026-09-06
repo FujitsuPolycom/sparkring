@@ -21,6 +21,15 @@ geometries and images require separate evidence.
 The supported source input is local image ID
 `sha256:2e41b1e934a85ff7c21b780532db2f0a0e978df081e52f4ae2bf11f8992fb24f`.
 This is a local immutable image identity, not a registry pull reference.
+
+This composer and the [indexer-barrier image in PR #226](https://github.com/FujitsuPolycom/sparkring/pull/226)
+are separate derivatives of that input. Both add histogram synchronization, but
+their indexer output bytes and hashes differ. Do not apply this composer to the
+barrier child: its preimage checks reject that source. A combined image needs
+one selected indexer output, matching source receipts and cache namespace, and
+validation of the complete composition. A source-branch merge alone does not
+perform that integration.
+
 `fixtures/manifest.json` lists the ten input Python files, their paths in
 that image, byte counts and SHA-256 values. The 155 KiB fixture archive contains
 only those files. Source bytes and their existing SPDX/copyright headers are
