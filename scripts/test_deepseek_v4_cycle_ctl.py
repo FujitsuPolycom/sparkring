@@ -13,6 +13,7 @@ import subprocess
 from types import SimpleNamespace
 
 import pytest
+import shlex
 
 import deepseek_v4_cycle_ctl as ctl
 
@@ -180,10 +181,10 @@ class FakeSSH:
             if "docker rm -f" in command:
                 self.containers_up[rank] = False
                 return subprocess.CompletedProcess(["ssh"], 0, "", "")
-            if "grep -qx" in command and "docker ps" in command:
+            if "docker ps" in command:
                 up = self.containers_up.get(rank, False)
                 return subprocess.CompletedProcess(
-                    ["ssh"], 0 if up else 1, "up\n" if up else "", ""
+                    ["ssh"], 0, f"deepseek-v4-flash-r{rank}\n" if up else "", ""
                 )
             if "curl -fsS" in command and "/v1/models" in command:
                 return subprocess.CompletedProcess(
@@ -241,14 +242,14 @@ def test_start_aborts_when_container_never_appears(monkeypatch, fake_ranks):
 
     def never_up(ssh_target, command, timeout=None, capture=False):
         calls.append((ssh_target, command))
-        if "docker ps" in command and "grep -qx" in command:
+        if "docker ps" in command:
             rank = _rank_of(ssh_target)
             appeared = rank == 1 and any(
                 target == ssh_target and "nohup" in prior
                 for target, prior in calls
             )
             return subprocess.CompletedProcess(
-                ["ssh"], 0 if appeared else 1, "", ""
+                ["ssh"], 0, f"deepseek-v4-flash-r{rank}\n" if appeared else "", ""
             )
         if "docker rm -f" in command:
             return subprocess.CompletedProcess(["ssh"], 0, "", "")
@@ -370,3 +371,18 @@ def test_main_dry_run_status(monkeypatch, sample_cluster, capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert "dry-run" in out
+def test_launch_paths_are_single_shell_arguments():
+    repo = "/srv/model files;not-a-command"
+    log = "/tmp/model log;not-a-command"
+    command = ctl._launch_command(repo, 2, log)
+    words = shlex.split(command)
+    assert words[1] == repo
+    assert f"{repo}/{ctl.LAUNCH_REL}" in words
+    assert f"{repo}/rank-2.env" in words
+    assert ">" + log in words
+
+
+def test_docker_failure_is_not_an_absent_container(monkeypatch):
+    monkeypatch.setattr(ctl, "_run_ssh", lambda *a, **kw: subprocess.CompletedProcess([], 1, "", "daemon unavailable"))
+    with pytest.raises(ctl.SSHTransportError):
+        ctl._container_running("fixture-host", "model-r0")

@@ -65,7 +65,7 @@ API_PATH = "/v1/models"
 
 
 class SSHTransportError(RuntimeError):
-    """The controller could not determine remote state over SSH."""
+    """SSH or Docker failed to establish remote state."""
 
 
 def _run_ssh(
@@ -92,8 +92,8 @@ def _launch_command(repo: str, rank: int, log_path: str) -> str:
     launcher = f"{repo}/{LAUNCH_REL}"
     env_file = _rank_env_file(repo, rank)
     return (
-        f"cd {repo} && nohup {launcher} --run {env_file} "
-        f">{log_path} 2>&1 </dev/null &"
+        f"cd {shlex.quote(repo)} && nohup {shlex.quote(launcher)} --run {shlex.quote(env_file)} "
+        f">{shlex.quote(log_path)} 2>&1 </dev/null &"
     )
 
 
@@ -102,13 +102,10 @@ def _container_name(prefix: str, rank: int) -> str:
 
 
 def _container_running(ssh_target: str, name: str) -> bool:
-    probe = (
-        f"docker ps --format '{{{{.Names}}}}' | grep -qx '{name}'"
-    )
-    result = _run_ssh(ssh_target, probe, timeout=30.0)
-    if result.returncode == 255:
-        raise SSHTransportError(f"SSH failed for {ssh_target}")
-    return result.returncode == 0
+    result = _run_ssh(ssh_target, "docker ps --format '{{.Names}}'", timeout=30.0, capture=True)
+    if result.returncode != 0:
+        raise SSHTransportError(f"Container inventory failed for {ssh_target} (exit {result.returncode})")
+    return name in (result.stdout or "").splitlines()
 
 
 def _head_api_ready(
@@ -137,7 +134,7 @@ def _rollback_started(ranks: Sequence, container_prefix: str) -> None:
 
     for rank in reversed(tuple(ranks)):
         name = _container_name(container_prefix, rank.id)
-        command = f"docker rm -f {name} 2>/dev/null || true"
+        command = f"docker rm -f {shlex.quote(name)} 2>/dev/null || true"
         result = _run_ssh(rank.ssh_target, command, timeout=60.0)
         if result.returncode != 0:
             print(
@@ -241,7 +238,7 @@ def stop_ranks(
     failed = False
     for rank in ordered:
         name = _container_name(container_prefix, rank.id)
-        command = f"docker rm -f {name} 2>/dev/null || true"
+        command = f"docker rm -f {shlex.quote(name)} 2>/dev/null || true"
         if dry_run:
             print(f"[stop] [dry-run] ssh {rank.ssh_target} {command}")
             continue
