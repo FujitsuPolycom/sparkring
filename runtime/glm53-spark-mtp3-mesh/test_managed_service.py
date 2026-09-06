@@ -300,6 +300,16 @@ def test_monitor_keeps_fabric_checks_live_when_docker_is_unknown(tmp_path, monke
         'generation': 'g', 'active': True, 'deadline_monotonic': 0,
     }))
     monkeypatch.setattr(service.os, 'geteuid', lambda: 0, raising=False)
+    original_lstat = type(tmp_path).lstat
+
+    def fixture_lstat(path):
+        info = original_lstat(path)
+        if path == tmp_path:
+            return SimpleNamespace(st_mode=info.st_mode, st_uid=0)
+        return info
+
+    # Model the root-owned service directory without changing host ownership.
+    monkeypatch.setattr(type(tmp_path), 'lstat', fixture_lstat)
     monkeypatch.setattr(service.signal, 'signal', lambda *args: None)
     monkeypatch.setitem(service.sys.modules, 'fcntl', SimpleNamespace(
         flock=lambda *args: None, LOCK_EX=1, LOCK_NB=2,
