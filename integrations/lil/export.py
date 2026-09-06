@@ -10,6 +10,7 @@ import sys
 import tempfile
 
 from plan import ROOT, keys, read_json, render, require
+import mesh_check
 
 LAUNCHER = ROOT / "runtime/glm53-flash-jj-r8-gb10/launch-rank.sh"
 FABRIC_KEYS = {
@@ -191,14 +192,12 @@ def export(descriptor, site, fabric, bundle_id):
             )
         if s["speculator"] == "mtp":
             checks.append(
-                {
-                    "argv": [
-                        "sh",
-                        "-c",
-                        "sudo -n python3 /opt/sparkring/managed-mesh/runtime/glm53-spark-mtp3-mesh/managed_service.py gate --config /etc/sparkring/managed-mesh/service.json --timeout 60 >/dev/null",
-                    ],
-                    "expected": "",
-                }
+                mesh_check.command(
+                    rank["rank"],
+                    rank["host"],
+                    runtime["operator_image"]["image_id"],
+                    network,
+                )
             )
         ranks.append(
             {

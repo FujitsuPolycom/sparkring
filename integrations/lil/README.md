@@ -17,6 +17,14 @@ and optional SparkCache. **Install and verify the managed mesh separately** usin
 the [MTP3 mesh quickstart](../../docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md).
 This adapter does not install the mesh or take over its systemd model units.
 Use it for supervised trials on a prepared fabric.
+Its preflight compares the proposed rank, image, peer addresses, devices and
+GID settings to the installed mesh and requires the managed model to be stopped.
+Keep that model unit stopped during the trial. The mesh supervisor does not
+automatically monitor the separately named LIL trial containers.
+
+For SparkRing-owned preparation and managed operation, see the
+[standalone deployment suite](../../docs/DEPLOYMENT_SUITE.md). It is locally
+implemented and offline-tested; it does not establish unattended fresh-host support.
 
 Use Linux or WSL with Python 3.11+, Bash, and Go 1.26. Build the tested lil fork:
 
@@ -80,8 +88,9 @@ The optional DFlash7 profile uses `--descriptor integrations/lil/glm53.json` and
 
 ## Planned additions
 
-- A SparkRing-owned setup command for fresh hosts.
-- Model-readiness waiting and integration with managed model lifecycle.
+- Finish hardware testing and integration of the SparkRing-owned setup command.
+- Connect LIL to one managed model-lifecycle owner; do not independently control
+  the same containers through both LIL and systemd.
 - An operator command for direct rank-to-rank distribution, plus large-file and
   interrupted-transfer tests.
 - Broader serving and failure-recovery tests before unattended use.

@@ -67,7 +67,10 @@ def test_canonical_export_without_docker(cache):
 @pytest.mark.parametrize("explicit", [False, True])
 @pytest.mark.parametrize(
     "descriptor_file,site_file",
-    [("glm53.json", "site.example.json"), ("glm53-mtp3.json", "site-mtp3.example.json")],
+    [
+        ("glm53.json", "site.example.json"),
+        ("glm53-mtp3.json", "site-mtp3.example.json"),
+    ],
 )
 def test_fabric_gid_indices_reach_container_environment(
     explicit, descriptor_file, site_file
@@ -129,7 +132,9 @@ def test_mtp3_uses_published_mesh_image_and_target_identity():
         graph = json.loads(argv[argv.index("--compilation-config") + 1])
         assert graph["cudagraph_capture_sizes"] == list(range(4, 65, 4))
         assert any(
-            "managed_service.py gate" in " ".join(c["argv"]) for c in r["checks"]
+            "verify_installed_mesh" in " ".join(c["argv"])
+            and "supervised trial only" in c["expected"]
+            for c in r["checks"]
         )
         cache = json.loads(argv[argv.index("--kv-transfer-config") + 1])[
             "kv_connector_extra_config"
