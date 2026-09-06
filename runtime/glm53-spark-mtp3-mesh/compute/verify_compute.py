@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 def _sha256(path: Path) -> str:
@@ -18,8 +18,8 @@ def _map_sha256(files: dict[str, str]) -> str:
 
 
 def verify(site_packages: Path, receipt: Path, source_lock: Path) -> dict:
-    lock = json.loads(source_lock.read_text())
-    installed = json.loads(receipt.read_text())
+    lock = json.loads(source_lock.read_text(encoding="utf-8"))
+    installed = json.loads(receipt.read_text(encoding="utf-8"))
     lock_hash = _sha256(source_lock)
     if installed["source_lock_sha256"] != lock_hash:
         raise ValueError("installed receipt uses a different compute source lock")
@@ -27,7 +27,15 @@ def verify(site_packages: Path, receipt: Path, source_lock: Path) -> dict:
     if installed["vllm_overrides"] != expected_vllm:
         raise ValueError("installed receipt omits or changes vLLM overrides")
     for relative, expected in expected_vllm.items():
-        actual = _sha256(site_packages / relative)
+        path = PurePosixPath(relative)
+        target = site_packages / path
+        if (path.is_absolute() or str(path) != relative or ".." in path.parts
+                or "\\" in relative or not relative.startswith("vllm/")
+                or not target.resolve().is_relative_to((site_packages / "vllm").resolve())
+                or any((site_packages / Path(*path.parts[:index])).is_symlink()
+                       for index in range(1, len(path.parts) + 1))):
+            raise ValueError(f"Unsafe vLLM override path: {relative}")
+        actual = _sha256(target)
         if actual != expected:
             raise ValueError(f"installed vLLM hash mismatch for {relative}: {actual}")
     expected_b12x = installed.get("b12x_files")

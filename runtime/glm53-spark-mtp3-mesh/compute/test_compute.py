@@ -1,4 +1,5 @@
 import hashlib
+import ast
 import io
 import importlib.util
 import json
@@ -21,6 +22,30 @@ def _module(name: str):
 apply_compute = _module("apply_compute")
 prepare_compute_source = _module("prepare_compute_source")
 verify_compute = _module("verify_compute")
+
+
+def test_compute_json_io_declares_utf8():
+    for name in ("apply_compute.py", "prepare_compute_source.py", "verify_compute.py"):
+        tree = ast.parse((HERE / name).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("read_text", "write_text"):
+                values = {arg.arg: arg.value for arg in node.keywords}
+                assert ast.literal_eval(values["encoding"]) == "utf-8", (name, node.lineno)
+                if node.func.attr == "write_text":
+                    assert ast.literal_eval(values["newline"]) == "\n", (name, node.lineno)
+
+
+@pytest.mark.parametrize("relative", ["../outside.py", "/tmp/outside.py", "vllm/../../outside.py", "b12x/not-vllm.py", "vllm\\outside.py"])
+def test_verify_rejects_uncontained_override_paths(tmp_path, relative):
+    lock = tmp_path / "source-lock.json"
+    lock.write_text(json.dumps({"vllm": {"files": [[relative, "base", "result"]]}}), encoding="utf-8")
+    receipt = tmp_path / "receipt.json"
+    receipt.write_text(json.dumps({
+        "source_lock_sha256": hashlib.sha256(lock.read_bytes()).hexdigest(),
+        "vllm_overrides": {relative: "result"},
+    }), encoding="utf-8")
+    with pytest.raises(ValueError, match="Unsafe vLLM override path"):
+        verify_compute.verify(tmp_path, receipt, lock)
 
 
 @pytest.mark.parametrize("fault", [None, "base", "result", "archive", "extra", "duplicate"])

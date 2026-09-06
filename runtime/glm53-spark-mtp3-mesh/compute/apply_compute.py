@@ -23,8 +23,8 @@ def _map_sha256(files: dict[str, str]) -> str:
 
 def _load(prepared: Path) -> tuple[dict, dict]:
     lock_path = prepared / "source-lock.json"
-    lock = json.loads(lock_path.read_text())
-    manifest = json.loads((prepared / "prepared-manifest.json").read_text())
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    manifest = json.loads((prepared / "prepared-manifest.json").read_text(encoding="utf-8"))
     if hashlib.sha256(lock_path.read_bytes()).hexdigest() != manifest[
         "source_lock_sha256"
     ]:
@@ -49,7 +49,8 @@ def _install_cuda(prepared: Path, lock: dict, destination: Path) -> None:
                 raise ValueError(f"invalid CUDA archive root: {archive.name}")
             shutil.copytree(entries[0], destination, dirs_exist_ok=True, symlinks=True)
     (destination / "sparkring-component-manifest.json").write_text(
-        json.dumps(lock["cuda"]["components"], indent=2, sort_keys=True) + "\n"
+        json.dumps(lock["cuda"]["components"], indent=2, sort_keys=True) + "\n",
+        encoding="utf-8", newline="\n",
     )
 
 
@@ -145,7 +146,7 @@ def apply(
         "target_head_quantization": False,
     }
     receipt.parent.mkdir(parents=True, exist_ok=True)
-    receipt.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n")
+    receipt.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     return receipt
 
 

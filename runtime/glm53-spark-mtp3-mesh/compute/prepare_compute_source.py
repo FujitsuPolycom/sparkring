@@ -12,7 +12,7 @@ import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-LOCK = json.loads((HERE / "source-lock.json").read_text())
+LOCK = json.loads((HERE / "source-lock.json").read_text(encoding="utf-8"))
 
 
 def _sha256(path: Path) -> str:
@@ -172,7 +172,7 @@ def prepare(destination: Path, cache: Path | None = None) -> Path:
         "cuda_archives": cuda_archives,
     }
     manifest = destination / "prepared-manifest.json"
-    manifest.write_text(json.dumps(prepared, indent=2, sort_keys=True) + "\n")
+    manifest.write_text(json.dumps(prepared, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     return manifest
 
 
