@@ -305,6 +305,11 @@ SPARKCACHE_ACCESS_MODE=read-write   # restore existing entries and publish new o
 SPARKCACHE_ACCESS_MODE=restore-only # restore existing entries; never capture new prompts
 ```
 
+Keep `SPARKCACHE_ASYNC_PAGE_CAPTURE=auto` from the environment template to
+disable capture automatically in restore-only mode or when SparkCache is off.
+An explicit `1` with either setting is rejected. Explicit `0` in read-write
+mode selects synchronous publication.
+
 The GLM-5.3 profile retains a verified shared GPU prefix for up to five
 minutes so one restore can serve an extended request queue:
 
@@ -360,7 +365,7 @@ and `IMAGE_ID`; keep the page-tail settings unchanged.
 The recommended DCP4 profile enables bounded asynchronous page capture:
 
 ```bash
-SPARKCACHE_ASYNC_PAGE_CAPTURE=1
+SPARKCACHE_ASYNC_PAGE_CAPTURE=auto
 SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES=auto
 SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2
 ```
@@ -368,11 +373,25 @@ SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2
 The `auto` slot policy selects 8 GiB for DCP1, 5 GiB for DCP2, or 3 GiB for
 DCP4. Two capture slots let the background publisher consume one completed
 capture while a later capture uses the other. Restore separately overlaps
-bounded NVMe reads and CUDA placement through two 256 MiB mapped arenas. More
-restore arenas are not part of this profile because measured arena waits did
-not justify the additional unified-memory pressure. DCP1 and DCP2 page-tail
+bounded NVMe reads and CUDA placement through two 256 MiB mapped arenas per
+load lane. Eight lanes reserve 4 GiB per rank; adding the DCP4 capture slots
+gives 10 GiB per rank (40 GiB across TP4) of configured payload capacity,
+before KV, models, metadata, retained objects and transport. Restore-only
+omits the 6 GiB capture ring. DCP1 and DCP2 page-tail
 capture have no matching live record; use complete snapshots or test those
 layouts separately.
+
+Print the resolved memory plan without host or GPU access before launching:
+
+```bash
+SPARKRING_PRINT_MEMORY_PLAN=1 bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh \
+  0 /path/to/rank.env
+```
+
+Set `SPARKCACHE_BUFFER_BUDGET_BYTES` in that configuration to enforce a
+per-rank restore-plus-capture payload ceiling; zero disables it. The report
+shows KV separately and names excluded memory. It does not predict total
+resident memory or replace a hardware capacity test.
 
 The environment template enables `DFLASH_WARMUP=1`. Rank 0 waits for the API,
 then exercises every concurrency from C1 through C16 and scheduled prompt

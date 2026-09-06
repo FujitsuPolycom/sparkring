@@ -20,8 +20,10 @@ def tokens(value):
     return result
 
 
-def request(url, payload, key, timeout):
+def request(url, payload, key, timeout, request_id=None):
     headers = {'Content-Type': 'application/json'}
+    if request_id:
+        headers['X-Request-ID'] = request_id
     if key:
         headers['Authorization'] = 'Bearer ' + key
     class NoRedirect(urllib.request.HTTPRedirectHandler):
