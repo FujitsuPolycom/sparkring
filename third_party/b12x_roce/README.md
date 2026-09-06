@@ -10,6 +10,10 @@ unpublished Git ref because the complete selected source is included here.
 The bundle builder verifies its digest before copying it. `LICENSE` contains
 the upstream Apache-2.0 license; source copyright notices are retained.
 
+Local stream-safety modifications preserve CUDA capture-ID admission across
+Python context boundaries. Eager calls wait for the preceding operation before
+writing shared staging buffers, and record completion after output copies.
+
 ## Attribution and design origins
 
 RoCEnante originates with Local Inference Lab's contributors, not SparkRing.

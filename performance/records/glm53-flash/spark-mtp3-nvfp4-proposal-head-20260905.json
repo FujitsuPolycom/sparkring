@@ -1,0 +1,74 @@
+{
+  "schema": "sparkring-saved-proposal-head-comparison/v1",
+  "status": "research-only",
+  "conditions": {
+    "hardware": "4 NVIDIA DGX Spark GB10 systems",
+    "topology": "TP4/DCP4/PP1 direct-cycle mesh",
+    "model": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark@df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "speculation": "native MTP3; no external DFlash model",
+    "sampling": {"temperature": 1.0, "ignore_eos": true},
+    "measurement_seconds": 20.0,
+    "decode_context_tokens": 8192,
+    "concurrency": [1, 2, 4, 8],
+    "proposal_head": "runtime NVFP4 weights with BF16 activations",
+    "target_verifier_head": "retained BF16 checkpoint representation",
+    "cuda_toolchain": "13.3.33",
+    "b12x_revision": "b58f34eaf978277621efced6678e6713fd7122e4",
+    "vllm_head_donor_revision": "3512b066e7796128c0c380ccc558182960f2f0ea",
+    "vllm_complete_donor_revision": "a8c796f3af74106b2d8d441e9ec54588936a5388",
+    "metadata_dense_base_image_id": "sha256:f35ed3d1df1ee57f66ba571a491d6dd5575d1a2e619cbc63d065008894777ffe",
+    "tested_private_image_id": "sha256:04d5a35b03e99f68c37a05514d221988a3eb70a5b8fdcfa859025ca1cbc25e74",
+    "published_image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:1b97e1dc9cb93c39f887f40bab24359a9b6ec998c28d2417b160f2103cd5fd86",
+    "published_image_id": "sha256:dd6c51efaf4127df863ac85c3be3fe46f260b34c7ab2deb384669fffdbe857df",
+    "published_source_lock_sha256": "2a444f7c1ad4319f64afbffb16403491a4863934372cf818f18c510d58c0d00e",
+    "published_compute_equivalence": "all 4891 vLLM, 385 B12X, and 150 SparkCache package files plus selected environment match the tested private image",
+    "published_exact_image_serving_repeated": false,
+    "tested_image_receipt_sha256": "aa8f1bf3d892af7b0a8059626ec91a83e2dbc5a39c8d58c0fb82c614e88dbaba",
+    "model_ready_receipt_sha256": "fe786299a6459cd57dcf5362591b56d94569dd473b0d1fefb47ca374399983f3",
+    "live_control_receipt_sha256": "b0ebcf65be43998791f66da819ebaa98aa4b4323b9b76cc1e363d977750e3341",
+    "proposal_head_manifest_sha256": "9408c82bcb5a47ce0cb580d6835b23924b1d40a29352ac97f72d2fd8a77b9fb1",
+    "final_private_image_identity_available_in_receipts": true
+  },
+  "receipts": {
+    "proposal_head": [
+      {
+        "basename": "glm-5.3-flash-spark-dcp4-MTP3-SIRCL-and-MESH-r2420260905-122857.json",
+        "sha256": "05d846465153230f4312a59aefef12c499d81634855f3c84cb6757baf653c0e4"
+      },
+      {
+        "basename": "glm-5.3-flash-spark-dcp4-MTP3-SIRCL-and-MESH-r2420260905-123541.json",
+        "sha256": "9664bc0410db423d3edc759106f10bc24a0fe1d15952102cdd74913ff96c2149"
+      },
+      {
+        "basename": "glm-5.3-flash-spark-dcp4-MTP3-SIRCL-and-MESH-r2420260905-124222.json",
+        "sha256": "4213df0fc47ba53308ea7dc076e3e1c77e9097e5eaef95db4e09ca4cd404e434"
+      }
+    ],
+    "shared_bf16_proposal_head_control": [
+      {
+        "basename": "glm-5.3-flash-spark-dcp4-MTP3-SIRCL-and-MESH-r2420260905-114306.json",
+        "sha256": "f7ae32cef4c9ea606477a28ff0465403e78f9519e2d771e4af0f13017b671677"
+      },
+      {
+        "basename": "glm-5.3-flash-spark-dcp4-MTP3-SIRCL-and-MESH-r2420260905-115629.json",
+        "sha256": "7c3ff3210e805b8a801d4e8ea49152d0545a982707cc9010a174f77ff3d4e673"
+      }
+    ],
+    "published_context_only": {
+      "basename": "glm-5.3-flash-spark-dcp4-dflash7-bf16-SIRCL-and-MESH-20260904-233405.json",
+      "sha256": "f0916f6b72cb8256225169b44c4f11e3ca764a5dd854977b8963686197b843fa"
+    }
+  },
+  "decode_8k": [
+    {"concurrency": 1, "control_raw_tps": [48.839071256871314, 46.61270983199115], "proposal_raw_tps": [49.35, 52.7922337868845, 52.8], "control_steps_per_s": [18.014411529173845, 17.93565147876187], "proposal_steps_per_s": [18.7, 18.8150520415816, 19.05], "raw_mean_delta_percent": 8.21675755680824, "steps_mean_delta_percent": 4.8956011177602},
+    {"concurrency": 2, "control_raw_tps": [74.55964771796953, 77.1430004517391], "proposal_raw_tps": [74.6559919940477, 77.0811406806786, 78.9], "control_steps_per_s": [28.122497998321393, 28.93488271324153], "proposal_steps_per_s": [28.2211658744255, 29.2687816368766, 29.600000000000005], "raw_mean_delta_percent": 1.35491390882609, "steps_mean_delta_percent": 1.75715093028919},
+    {"concurrency": 4, "control_raw_tps": [120.7303004461975, 118.67889540432174], "proposal_raw_tps": [123.991379741799, 115.25, 123.18949531411437], "control_steps_per_s": [43.336510006445636, 43.30175913400928], "proposal_steps_per_s": [43.9031724550588, 41.8, 44.10364356241686], "raw_mean_delta_percent": 0.923685287957832, "steps_mean_delta_percent": -0.115874655007697},
+    {"concurrency": 8, "control_raw_tps": [163.50687130131578, 171.3898781157694], "proposal_raw_tps": [164.267442443414, 173.45, 168.77003205133715], "control_steps_per_s": [59.384090681214076, 60.189597231174496], "proposal_steps_per_s": [61.393389175798, 61.0767548906789, 60.89743589745578], "raw_mean_delta_percent": 0.824602483468539, "steps_mean_delta_percent": 2.23407460582565}
+  ],
+  "prefill_prompt_tps_means": [
+    {"context_tokens": 8192, "control": 2668.0, "proposal_head": 2670.33333333333, "delta_percent": 0.0874562718640837},
+    {"context_tokens": 16384, "control": 2709.0, "proposal_head": 2707.0, "delta_percent": -0.0738279808047304},
+    {"context_tokens": 65536, "control": 2782.5, "proposal_head": 2778.33333333333, "delta_percent": -0.149745432764292},
+    {"context_tokens": 131072, "control": 2749.0, "proposal_head": 2739.33333333333, "delta_percent": -0.351643021704862}
+  ]
+}

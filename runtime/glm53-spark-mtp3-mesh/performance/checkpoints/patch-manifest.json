@@ -1,0 +1,182 @@
+{
+  "attestation_reference_hashes": {
+    "/opt/sparkring/receipts/sparkcache-mtp3-candidate.json": "5d71b421449424d6ec4f3c3f2dee7987a451f338844c5ff844a56cb368e8a4ca",
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-manager-page-async-contract-55969c16.json": "9fbd8e2596287fd4e12aaf042e189bccfee2ea92126de42f58da8e44fb4d9c55"
+  },
+  "base_image": "sha256:3882eccf0b42e26dad399a3ea89a45988e04413802fccfb146d1486f8bb2fc13",
+  "native_hashes": {
+    "/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so": "2657cdd2e54a097c9544e4c79ae62c0646db6db123ff24e4f0c384238c3a1e8d",
+    "/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_snapshot.so": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5"
+  },
+  "parent_requirement": "The runtime filesystem must satisfy every preimage. The base image digest identifies the measured composition; a rebuilt parent with identical runtime preimages is accepted. The composition builder must regenerate SparkCache ownership attestations and verify them after applying the runtime files.",
+  "preimages": {
+    "/usr/local/lib/python3.12/dist-packages/b12x/sequence/kda_prefill/__init__.py": "2517a96e9674631eeada5a29ad694f36d771ae495fd0f1480b5090185fbbc8f0",
+    "/usr/local/lib/python3.12/dist-packages/b12x/sequence/kda_prefill/_cute_kernels.py": "d8c6887bcd2ffb3e95b78b4db82fdb1aeb105a97545fe9848fada9640dbf184f",
+    "/usr/local/lib/python3.12/dist-packages/b12x/sequence/kda_prefill/_impl.py": "1d10706f43abdc0521ee1ee3cbbf934d80c9c398585a57087ddb9ce38caf31b2",
+    "/usr/local/lib/python3.12/dist-packages/b12x/sequence/kda_prefill/_policy.py": "3113d0694170ff1175eff930dcb65a8fbc10e21a06701aa72ec7e57c49c861c5",
+    "/usr/local/lib/python3.12/dist-packages/b12x/sequence/kda_prefill/api.py": "56665da32751056b22c57d9f3995fb828a051377185ce80b812ba1f5e1fbb830",
+    "/usr/local/lib/python3.12/dist-packages/b12x/sequence/kda_prefill/metadata.py": null,
+    "/usr/local/lib/python3.12/dist-packages/b12x/sequence/kda_prefill/reference.py": "3f9db6d995d92cbf1ede446344d16fc42221d6f13585dcaf8955f71a51b4e91e",
+    "/usr/local/lib/python3.12/dist-packages/vllm/distributed/kv_transfer/kv_connector/utils.py": "115512dca36b0711223f55f5ff304abffccc6d078923ba4c6bbb3cdb7fdd39a2",
+    "/usr/local/lib/python3.12/dist-packages/vllm/distributed/kv_transfer/kv_connector/v1/base.py": "7460e0638c0c81808dbdbbad7114db2e840e531e9ce83360c55b9171fcc872b1",
+    "/usr/local/lib/python3.12/dist-packages/vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py": "8741b86b0f3e91af06d01a52240cdc988e3073bf049f72b506f56d6ceebb1ac0",
+    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py": "4a83c1eb9ea9c47c34e8a87b07f087a4cf1384428e74d800e0bdbd667abbb63e",
+    "/usr/local/lib/python3.12/dist-packages/vllm/models/glm5next/model_state.py": "4f884f713335d55fafd729fa4cc9bcd88389ba005323eb79a3f9b02cf5662f36",
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/attention/backend.py": "7be97ede36b98e571f9608207cbed8def0ae425c3e5246d50d7ada40d3c3d016",
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/attention/backends/gdn_attn.py": "fd75fb72efeb762ec558d332364e889df44a9ea483026bd5ded8f77f42be9b7f",
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/block_pool.py": "ddee56dccb2208411b3a035918e917ce8f56a9858471e9ca12b420d5d79bc69c",
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/kv_cache_coordinator.py": "149222b2b1de1ee3714c7c4e0843b9c38c730a605740ce7dc913308df906f20f",
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/kv_cache_manager.py": "417664f0709b6d432d8eed42c15efdb438be06316ae16224caa34b0870dff5ae",
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/recurrent_prefill_checkpoint.py": null,
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/sched/output.py": "9911b3f9d21815a185285852b5a6176e5484e1ab0ff5c30f7caaa68ea0fab543",
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/sched/scheduler.py": "75efa57e7ff5a77c76714b85e2e4d8e1d7f456d9a9eec6c67ebb11ca382942f9",
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/single_type_kv_cache_manager.py": "d2e35b012e0cf45ab3771f545c35ca48f2a5858549c574a352975607369124e2",
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/model_runner.py": "f232398c93cf3193166136e823343840a41ebde8669253f56ce63a0023930cb4",
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/model_states/mamba_hybrid.py": "b34cb130e233f4d322390acf7fec01a3a368090c7f79da1fa7770c622a2f0dde",
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_model_runner.py": "5ac63bf43acc6b254282426a8a9b989cc07fcdbd07223101bdc99f91f4e4ce5f",
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/kv_connector_model_runner_mixin.py": "3a3fa444f671956600c864f3eb82fbdd76b606535f1fdb651222dd1a8f9016d1"
+  },
+  "replacements": {
+    "/usr/local/lib/python3.12/dist-packages/b12x/sequence/kda_prefill/__init__.py": {
+      "payload": "payload-by-sha/d415d6262885da11437e4a343da5ae04447273e529195b87547507f941fac0b8/__init__.py",
+      "required_symbols": [],
+      "sha256": "d415d6262885da11437e4a343da5ae04447273e529195b87547507f941fac0b8"
+    },
+    "/usr/local/lib/python3.12/dist-packages/b12x/sequence/kda_prefill/_cute_kernels.py": {
+      "payload": "payload-by-sha/df12ee84e1677ce1a200d1aab488c9ce5ae774d21f70b7f15b39c636623ab753/_cute_kernels.py",
+      "required_symbols": [
+        "_PrologueKernel.kernel",
+        "_RecurrenceKernel.kernel"
+      ],
+      "sha256": "df12ee84e1677ce1a200d1aab488c9ce5ae774d21f70b7f15b39c636623ab753"
+    },
+    "/usr/local/lib/python3.12/dist-packages/b12x/sequence/kda_prefill/_impl.py": {
+      "payload": "payload-by-sha/0d0fc64b5fddd269d823a57f14c09a9e0a1b38a4f802c39df07353f34873a270/_impl.py",
+      "required_symbols": [
+        "Caps.max_checkpoints",
+        "bind",
+        "run"
+      ],
+      "sha256": "0d0fc64b5fddd269d823a57f14c09a9e0a1b38a4f802c39df07353f34873a270"
+    },
+    "/usr/local/lib/python3.12/dist-packages/b12x/sequence/kda_prefill/_policy.py": {
+      "payload": "payload-by-sha/ec64f07f841675501ff279bae3074d374ca8015a982ab12dc837ea2d03720a8e/_policy.py",
+      "required_symbols": [
+        "KdaPrefillQuery.max_checkpoints"
+      ],
+      "sha256": "ec64f07f841675501ff279bae3074d374ca8015a982ab12dc837ea2d03720a8e"
+    },
+    "/usr/local/lib/python3.12/dist-packages/b12x/sequence/kda_prefill/metadata.py": {
+      "payload": "payload-by-sha/7a9ef9ef3c59c88e4816bea6c9a74ebadd91a85632b42e221a5dd4009c5bb65c/metadata.py",
+      "required_symbols": [
+        "validate_metadata"
+      ],
+      "sha256": "7a9ef9ef3c59c88e4816bea6c9a74ebadd91a85632b42e221a5dd4009c5bb65c"
+    },
+    "/usr/local/lib/python3.12/dist-packages/b12x/sequence/kda_prefill/reference.py": {
+      "payload": "payload-by-sha/daa8e63b76bbbe2acf0b71954958523d6771e84fb5a932c838d88f81110e3816/reference.py",
+      "required_symbols": [],
+      "sha256": "daa8e63b76bbbe2acf0b71954958523d6771e84fb5a932c838d88f81110e3816"
+    },
+    "/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py": {
+      "payload": "payload-by-sha/347a15ec42368b0c2b35b31cef7c9f58da97814a53ee76d0ee5526aac6b15c1c/kimi_gdn_linear_attn.py",
+      "required_symbols": [
+        "KimiGatedDeltaNetAttention._run_b12x_kda_prefill",
+        "KimiGatedDeltaNetAttention._store_kda_conv_checkpoint"
+      ],
+      "sha256": "347a15ec42368b0c2b35b31cef7c9f58da97814a53ee76d0ee5526aac6b15c1c"
+    },
+    "/usr/local/lib/python3.12/dist-packages/vllm/models/glm5next/model_state.py": {
+      "payload": "payload-by-sha/dc627424cd5814db0945b4c787e33fb6d035c2a2dd3d0a4ade4dadce61697810/model_state.py",
+      "required_symbols": [
+        "Glm5NextModelState.prepare_attn",
+        "Glm5NextAttnMetadata.get_extra_attn_kwargs"
+      ],
+      "sha256": "dc627424cd5814db0945b4c787e33fb6d035c2a2dd3d0a4ade4dadce61697810"
+    },
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/attention/backend.py": {
+      "payload": "payload-by-sha/c79f0f62c92963959131fa47ac63002b3109a379abbccabd26834d224ccb044d/backend.py",
+      "required_symbols": [
+        "CommonAttentionMetadata.recurrent_prefill_checkpoint_plans_cpu"
+      ],
+      "sha256": "c79f0f62c92963959131fa47ac63002b3109a379abbccabd26834d224ccb044d"
+    },
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/attention/backends/gdn_attn.py": {
+      "payload": "payload-by-sha/54707b0b7669642a55af60bdba0d9be5b5715cd3e0a68ca44021f11e4b8e9c9f/gdn_attn.py",
+      "required_symbols": [
+        "GDNPrefillCheckpointMetadata.required_mask",
+        "GDNAttentionMetadataBuilder.build"
+      ],
+      "sha256": "54707b0b7669642a55af60bdba0d9be5b5715cd3e0a68ca44021f11e4b8e9c9f"
+    },
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/kv_cache_manager.py": {
+      "payload": "payload-by-sha/f4ccf9da197eb68fd21b23e8c03615cd0d4c2f871da0dc32a9c6ec82e44d3931/kv_cache_manager.py",
+      "required_symbols": [
+        "KVCacheManager.allocate_slots"
+      ],
+      "sha256": "f4ccf9da197eb68fd21b23e8c03615cd0d4c2f871da0dc32a9c6ec82e44d3931"
+    },
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/recurrent_prefill_checkpoint.py": {
+      "payload": "payload-by-sha/51ef011d11bb374d61840f1ff819759b6e3dd325da41856b7b0f01b013b54713/recurrent_prefill_checkpoint.py",
+      "required_symbols": [
+        "validate_plan",
+        "fresh_prompt_plan",
+        "checkpoint_metadata"
+      ],
+      "sha256": "51ef011d11bb374d61840f1ff819759b6e3dd325da41856b7b0f01b013b54713"
+    },
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/sched/output.py": {
+      "payload": "payload-by-sha/0e1d3e4e1284fc2ad5b0cde9be9884eec61186e7731750f22ec25d828bb4e0f1/output.py",
+      "required_symbols": [
+        "SchedulerOutput.recurrent_prefill_checkpoint_plans"
+      ],
+      "sha256": "0e1d3e4e1284fc2ad5b0cde9be9884eec61186e7731750f22ec25d828bb4e0f1"
+    },
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/sched/scheduler.py": {
+      "payload": "payload-by-sha/ce9460834e08f97dbbfeb3f1238b78ee6a3363dd59a2aef8ceeb715857385895/scheduler.py",
+      "required_symbols": [
+        "Scheduler.schedule",
+        "Scheduler._recurrent_checkpoint_plan"
+      ],
+      "sha256": "ce9460834e08f97dbbfeb3f1238b78ee6a3363dd59a2aef8ceeb715857385895"
+    },
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/single_type_kv_cache_manager.py": {
+      "payload": "payload-by-sha/10a6a60f31c67b59825aa827084f3d25416128ba5dc7c14a774675d64bbec40b/single_type_kv_cache_manager.py",
+      "required_symbols": [
+        "MambaManager.allocate_new_blocks"
+      ],
+      "sha256": "10a6a60f31c67b59825aa827084f3d25416128ba5dc7c14a774675d64bbec40b"
+    },
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/model_runner.py": {
+      "payload": "payload-by-sha/5ba22653a26444a989ce0942b5fbdb12cda4fa2722f818c8e199cd50843e6565/model_runner.py",
+      "required_symbols": [
+        "GPUModelRunner.execute_model"
+      ],
+      "sha256": "5ba22653a26444a989ce0942b5fbdb12cda4fa2722f818c8e199cd50843e6565"
+    },
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu/model_states/mamba_hybrid.py": {
+      "payload": "payload-by-sha/90ae5dd89e808c9b13fd24f203feebd56e728b2928c13547e131d1ac7ca35965/mamba_hybrid.py",
+      "required_symbols": [
+        "_checkpoint_plan_rows",
+        "MambaHybridAttnMetadata.get_extra_common_attn_kwargs",
+        "MambaHybridModelState.prepare_attn"
+      ],
+      "sha256": "90ae5dd89e808c9b13fd24f203feebd56e728b2928c13547e131d1ac7ca35965"
+    },
+    "/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_model_runner.py": {
+      "payload": "payload-by-sha/6888b3c5e16b4ef56ddc6d7bb02aa9736894a758574abeebe7e4ff6e9a4ef295/gpu_model_runner.py",
+      "required_symbols": [
+        "GPUModelRunner._update_states",
+        "GPUModelRunner.execute_model"
+      ],
+      "sha256": "6888b3c5e16b4ef56ddc6d7bb02aa9736894a758574abeebe7e4ff6e9a4ef295"
+    }
+  },
+  "runtime_enablement": {
+    "SPARK_GDN_PREFILL_CHECKPOINTS": "2"
+  },
+  "runtime_environment_changed": false,
+  "schema": "sparkring-prefill-two-checkpoint-image-patch/v1",
+  "source_manifest_sha256": "d183057ad4f4579ab2c264cc21c5ce4d3140b2f8052c0be51f7070e09d567b06",
+  "status": "research-only"
+}

@@ -126,7 +126,8 @@ def validate_group(rows):
     generations = {str(row['rank']): row['generation'] for row in rows}
     view = digest(generations)
     if any(row.get('phase') != 'armed' or row.get('view_digest') != view
-           or row.get('peer_health_degraded', False) for row in rows):
+           or row.get('peer_health_degraded', False)
+           or row.get('docker_status_degraded', False) for row in rows):
         raise RuntimeError('Mesh ranks have not armed the same process generation set')
     return view
 
@@ -167,10 +168,41 @@ def docker_running(name):
     result = subprocess.run(['docker', 'inspect', '--format', '{{.State.Running}}', name],
                             capture_output=True, text=True, timeout=3)
     if result.returncode:
-        if 'No such' in result.stderr:
+        if re.search(r'No such (?:object|container): ' + re.escape(name) + r'(?:\s|$)', result.stderr):
             return False
         raise RuntimeError('Cannot establish the dependent container state')
-    return result.stdout.strip() == 'true'
+    state = result.stdout.strip()
+    if state not in ('true', 'false'):
+        raise RuntimeError('Docker returned an unknown dependent container state')
+    return state == 'true'
+
+
+class DockerStatePoll:
+    """One bounded background query; unknown state never proves model exit."""
+
+    def __init__(self, name):
+        self.name = name
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        self.pending = None
+        self.error = None
+
+    def poll(self):
+        running = None
+        if self.pending is not None and self.pending.done():
+            try:
+                running = self.pending.result()
+                self.error = None
+            except (subprocess.TimeoutExpired, OSError, RuntimeError) as error:
+                self.error = str(error)
+            self.pending = None
+        if self.pending is None:
+            self.pending = self.executor.submit(docker_running, self.name)
+        # Do not reuse a previous False while a query is pending: a container
+        # can start between samples. Cleanup uses a separate synchronous proof.
+        return running
+
+    def close(self):
+        self.executor.shutdown(wait=False, cancel_futures=True)
 
 
 def stop_model(name):
@@ -405,6 +437,7 @@ class MeshService:
         fcntl.flock(service_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         for sig in (signal.SIGTERM, signal.SIGINT):
             signal.signal(sig, lambda *_: self.stop.set())
+        docker_watch = None
         try:
             if docker_running(self.model):
                 raise RuntimeError('Stop the dependent model before starting mesh ownership')
@@ -420,6 +453,7 @@ class MeshService:
             peer_watch = PeerWatch()
             last_network = time.monotonic()
             last_full_network = last_network
+            docker_watch = DockerStatePoll(self.model)
             while not self.stop.is_set():
                 if any(child.poll() is not None for child in self.children):
                     raise RuntimeError('A managed source marker exited')
@@ -429,6 +463,9 @@ class MeshService:
                     if full:
                         last_full_network = time.monotonic()
                     last_network = time.monotonic()
+                model_running = docker_watch.poll()
+                self.publish(docker_status_degraded=model_running is None,
+                             docker_status_error=docker_watch.error)
                 try:
                     rows = group_check(self.site, self.config, self.key, self.identity)
                     view = peer_watch.observe(rows)
@@ -436,21 +473,22 @@ class MeshService:
                 except OSError:
                     if peer_watch.generations is not None:
                         peer_watch.transport_error(time.monotonic())
-                    elif docker_running(self.model):
+                    elif model_running is True:
                         raise
                     self.publish(peer_health_degraded=True)
                 except Exception:
-                    if peer_watch.generations is not None or docker_running(self.model):
+                    if peer_watch.generations is not None or model_running is True:
                         raise
-                if self.state['phase'] != 'armed' and docker_running(self.model):
+                if self.state['phase'] != 'armed' and model_running is True:
                     raise RuntimeError('Dependent model started before four-rank readiness')
                 intent_path = self.state_dir / 'model-intent.json'
                 if intent_path.exists():
                     intent = json.loads(intent_path.read_text())
                     if intent.get('generation') == self.generation and intent.get('active') is True:
-                        if docker_running(self.model):
+                        if model_running is True:
                             self.model_seen = True
-                        elif self.model_seen or time.monotonic() > intent['deadline_monotonic']:
+                        elif model_running is False and (
+                                self.model_seen or time.monotonic() > intent['deadline_monotonic']):
                             raise RuntimeError('Dependent model exited or failed to start')
                     else:
                         self.model_seen = False
@@ -462,6 +500,8 @@ class MeshService:
             self.publish(best_effort=True, local_ready=False, phase='failed', error=str(error))
             print(json.dumps({'event': 'mesh_failure', 'rank': self.rank, 'error': str(error)}), flush=True)
         finally:
+            if docker_watch is not None:
+                docker_watch.close()
             self.publish(best_effort=True, local_ready=False, phase='failed' if self.failed else 'stopping')
             while self.owns_guard:
                 try:
@@ -534,7 +574,8 @@ def model_intent(config_path, active):
             raise RuntimeError('Mesh service has no readiness state')
         return
     status = json.loads(status_path.read_text())
-    if active and (status.get('phase') != 'armed' or status.get('local_ready') is not True):
+    if active and (status.get('phase') != 'armed' or status.get('local_ready') is not True
+                   or status.get('docker_status_degraded', False)):
         raise RuntimeError('Mesh is not armed for model startup')
     record = {'generation': status['generation'], 'active': active,
               'deadline_monotonic': time.monotonic() + 15}

@@ -470,7 +470,7 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
         "KV_CACHE_MEMORY_BYTES='auto'",
         "B12X_MLA_CKV_GATHER_MAX_TOKENS=524288",
         "SPARKCACHE_MAX_SPAN_TOKENS=1048576",
-        "SPARKCACHE_ASYNC_PAGE_CAPTURE=1",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE='auto'",
         "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES='auto'",
         "SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2",
         "SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS=300",

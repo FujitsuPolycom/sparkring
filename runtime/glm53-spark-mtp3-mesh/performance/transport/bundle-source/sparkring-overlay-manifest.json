@@ -1,0 +1,157 @@
+{
+  "b12x_git": {
+    "commit": "eac260a8257cc6b14e7d4ad674f51e9a09b8790f",
+    "roce_source_dirty": true,
+    "roce_status": [
+      " M b12x/comm/roce/_oneshot_cute.py",
+      " M b12x/comm/roce/roce_oneshot.py"
+    ]
+  },
+  "b12x_roce_tree_sha256": "8a64063506c9c96d3fd3b004c3ab51dda88408f7246f5c89d0a0b6713065fca6",
+  "base_sircl_manifest_name": "sparkring-overlay-manifest.json",
+  "base_sircl_manifest_sha256": "85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4",
+  "files": [
+    {
+      "path": "b12x_overlay/b12x/comm/roce/__init__.py",
+      "role": "b12x_comm_roce",
+      "sha256": "d1eabaa9395bbdc568d503c79cc1a57ab74626feed0c67851a00be0ba2718a7e"
+    },
+    {
+      "path": "b12x_overlay/b12x/comm/roce/_allgather_cute.py",
+      "role": "b12x_comm_roce",
+      "sha256": "e26ab2e7cce1cff334452ea237b1c0db8ab11ecba8e0a933f5cad35075a37f0f"
+    },
+    {
+      "path": "b12x_overlay/b12x/comm/roce/_cute_intrinsics.py",
+      "role": "b12x_comm_roce",
+      "sha256": "ff0847d986243bf92444cd4c3db9156a6fc10d8c2e1a16d54761375e6aa7a78e"
+    },
+    {
+      "path": "b12x_overlay/b12x/comm/roce/_oneshot_cute.py",
+      "role": "b12x_comm_roce",
+      "sha256": "1dd563020d15e50c7b391aac8bbee2e2760e66ced1bb891de7e59da5cc477173"
+    },
+    {
+      "path": "b12x_overlay/b12x/comm/roce/_path_config.py",
+      "role": "b12x_comm_roce",
+      "sha256": "7c5550b16a70d74216970cd08a8d969a9928a975d1efcb9fb70e247eb0322e3a"
+    },
+    {
+      "path": "b12x_overlay/b12x/comm/roce/_proxy.py",
+      "role": "b12x_comm_roce",
+      "sha256": "3ace33c00f64ce43317a00b19879bbc6562bb3e466aa94683ed95ce211ec25c0"
+    },
+    {
+      "path": "b12x_overlay/b12x/comm/roce/_roce_proxy.c",
+      "role": "b12x_comm_roce",
+      "sha256": "b208f07d4bb12613a6aef3e8e59ac334b53028655b76f3f5c6e531bd354b369e"
+    },
+    {
+      "path": "b12x_overlay/b12x/comm/roce/api.py",
+      "role": "b12x_comm_roce",
+      "sha256": "02becd3757e71c917a71e98ab3f779d52bb18e6801b8efebd792ab186277ea46"
+    },
+    {
+      "path": "b12x_overlay/b12x/comm/roce/roce_oneshot.py",
+      "role": "b12x_comm_roce",
+      "sha256": "2e431e7c5ef714636247b81602fdc1b85b38ebe1cef7665bc8d486f7841a65e1"
+    },
+    {
+      "path": "libspark_transport_capi.so",
+      "role": "base_sircl",
+      "sha256": "056243fad27d224b82e437925ffa2aed42037e6bd29f239f56076a832f6ca5cb"
+    },
+    {
+      "path": "rocenante-overlay-config.json",
+      "role": "generated_contract",
+      "sha256": "69535f64b484699695cea587b24343af9346149223b50e17b28a8c56d9ad3dee"
+    },
+    {
+      "path": "rocenante_health_gate.py",
+      "role": "glm53_rocenante_overlay",
+      "sha256": "aac0ad50f2065f596e8173ddb4d07984a644fbd786d38604ab5f0b4a042feade"
+    },
+    {
+      "path": "rocenante_vllm_overlay.py",
+      "role": "glm53_rocenante_overlay",
+      "sha256": "0cf6c21cc0baa06dd141fe9660081fbbf8aa56821fc2fe43e393f8b5c8877b82"
+    },
+    {
+      "path": "sircl_sitecustomize.py",
+      "role": "base_sircl",
+      "sha256": "4efc3fdfe4874820064dbcb713c02271df4ca41f4f2bbcf4683a1548ca02f2b1"
+    },
+    {
+      "path": "sitecustomize.py",
+      "role": "glm53_rocenante_overlay",
+      "sha256": "ebd7f5e23de68ee0062c1c2c022a7d4332aa3c998a835e7aff91fdd6be954211"
+    },
+    {
+      "path": "spark_collective_audit.py",
+      "role": "base_sircl",
+      "sha256": "8fa7aa9747845a84b40e8d3a0d72c39f8a562d6490764b777e5dcbe1cbe47721"
+    },
+    {
+      "path": "spark_cudagraph_bucket_contract.py",
+      "role": "base_sircl",
+      "sha256": "e7411ff9cde9d5ed4a7ecd6e78a3158512c188c254baad10554b72229f14d272"
+    },
+    {
+      "path": "spark_cudagraph_replay_timing.py",
+      "role": "base_sircl",
+      "sha256": "dc3ee0fd5da52e79b097e9edc6191a880ca5a3f4e6d83add2a4acd30966b2175"
+    },
+    {
+      "path": "spark_dcp_collective_audit.py",
+      "role": "base_sircl",
+      "sha256": "077a234e4edff8b8dd44784953aef713884b4dd7a3f7c46589b14c6bb8b40745"
+    },
+    {
+      "path": "spark_graph_status_reporter.py",
+      "role": "base_sircl",
+      "sha256": "4bd50d1be42e2ac750b382825bec8a49564ce288d376852ee7c51e33a303f277"
+    },
+    {
+      "path": "spark_persistent_output_ring.py",
+      "role": "base_sircl",
+      "sha256": "03220c78ed87651f93c3165f1eedb843ffcad6a116126e2a9b89beab299bd2f3"
+    },
+    {
+      "path": "spark_tp4_backend.py",
+      "role": "base_sircl",
+      "sha256": "5999814740ddfa1c35e925ed0f3bf43edd8335b30c9b4fe9b78006c618d18cb9"
+    },
+    {
+      "path": "spark_tp4_capability.py",
+      "role": "base_sircl",
+      "sha256": "d90f6fc07ff5255b2df25b3ffc1c52c83f9eb866ca68666bc0f273db1c5e83b7"
+    },
+    {
+      "path": "spark_tp4_health_gate.py",
+      "role": "base_sircl",
+      "sha256": "7651b88e9bff40193891a0810ee8a920e3548a17de3a0dc477a30db779738930"
+    },
+    {
+      "path": "spark_tp4_port_namespace.py",
+      "role": "base_sircl",
+      "sha256": "c789739811def9722753bb128e69e7bd5342bab827b2cfd99cd8a4e847d18d4f"
+    },
+    {
+      "path": "spark_tp4_query_contract.py",
+      "role": "base_sircl",
+      "sha256": "978df868fd83a6a780111092e99de2a3f07a5df375cf52d4b2358ccf4dcd0c31"
+    },
+    {
+      "path": "spark_tp4_query_row_provider.py",
+      "role": "base_sircl",
+      "sha256": "09c9e7af5d14b5c6930e15c999ada2231d639eb59609d705aadecdd7497ddec7"
+    },
+    {
+      "path": "spark_tp4_vocab_allgather_backend.py",
+      "role": "base_sircl",
+      "sha256": "fd44dea558c115b17f17bb129033345af4543702fbbdaf1fa4f186b8f242e697"
+    }
+  ],
+  "schema": "sparkring.glm53-rocenante-private-bundle/v1",
+  "status": "research-only"
+}

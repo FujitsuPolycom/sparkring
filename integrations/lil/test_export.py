@@ -212,9 +212,12 @@ def test_mtp3_uses_published_mesh_image_and_target_identity():
     descriptor = module.read_json(HERE / "glm53-mtp3.json")
     site = module.read_json(HERE / "site-mtp3.example.json")
     bundle = module.export(descriptor, site, fabric(), "mtp-fixture")
+    public_image = module.read_json(
+        HERE.parents[1] / descriptor["sources"]["public_image"]["path"]
+    )
     for r in bundle["ranks"]:
         argv = r["argv"]
-        assert any("sha256:23f00af8" in a for a in argv)
+        assert public_image["public_reference"] in argv
         assert not any("/dflash-draft" in a for a in argv)
         speculation = json.loads(argv[argv.index("--speculative-config") + 1])
         assert (

@@ -330,8 +330,22 @@ def _image_receipt_document():
         "image_id": "sha256:" + "a" * 64, "image_reference": "sha256:" + "a" * 64,
         "bundle_manifest_sha256": bundle_sha, "source_receipt_sha256": source_sha,
         "inside_image": {"checks_passed": True, "bundle_manifest_sha256": bundle_sha,
-                         "source_receipt_sha256": source_sha, "cuda_initialized": False, "model_loaded": False},
+                         "source_receipt_sha256": source_sha, "cuda_initialized": False, "model_loaded": False,
+                         "compute": json.loads((mesh_profile.HERE / "image-receipt.json").read_text())["inside_image"]["compute"]},
     }
+
+
+@pytest.mark.parametrize('field', ['compute', 'source_lock_sha256', 'b12x_revision', 'environment', 'proposal_head_nvfp4', 'target_head_quantization'])
+def test_receipt_requires_profile_compute(tmp_path, field):
+    document = _image_receipt_document()
+    if field == 'compute':
+        del document['inside_image']['compute']
+    else:
+        document['inside_image']['compute'][field] = None
+    path = tmp_path / 'wrong-compute.json'
+    path.write_text(json.dumps(document))
+    with pytest.raises(ValueError):
+        mesh_profile.load_image_receipt(path)
 
 
 def test_verified_image_receipt_changes_only_image_selection(tmp_path, manifest_bundle):

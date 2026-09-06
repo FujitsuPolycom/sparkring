@@ -33,7 +33,8 @@ def inputs(tmp_path):
                "image_id": "sha256:" + "a" * 64, "image_reference": "sha256:" + "a" * 64,
                "bundle_manifest_sha256": bundle_sha, "source_receipt_sha256": "b" * 64,
                "inside_image": {"checks_passed": True, "bundle_manifest_sha256": bundle_sha,
-                                "source_receipt_sha256": "b" * 64, "cuda_initialized": False, "model_loaded": False}}
+                                "source_receipt_sha256": "b" * 64, "cuda_initialized": False, "model_loaded": False,
+                                "compute": json.loads((HERE.parent / "image-receipt.json").read_text())["inside_image"]["compute"]}}
     receipt_path = tmp_path / "image.json"
     receipt_path.write_text(json.dumps(receipt))
     plan = {"schema": "sparkring-mtp3-mesh-render/v1", "image": receipt,

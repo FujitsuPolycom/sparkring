@@ -10,6 +10,7 @@ installation guides.
 
 | Model profile | Status | Topology | Recipe | Operator guide |
 |---|---|---|---|---|
+| GLM-5.3 native MTP3 with recurrent checkpoints and optimized SparkCache | research-only | four Sparks, TP4/DCP4 mesh | [Cache/checkpoint recipe](glm53-mtp3-cache-checkpoints-tp4.json) | [Cache/checkpoint quickstart](../docs/GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md) |
 | GLM-5.3 Flash NVFP4-Spark + native MTP3 + managed mesh + SparkCache | research-only | four Sparks, TP4/DCP4, hardware-forwarded opposite peers | [`glm53-spark-mtp3-managed-mesh-tp4.json`](glm53-spark-mtp3-managed-mesh-tp4.json) | [Managed-mesh quickstart](../docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md) |
 | GLM-5.3 Flash NVFP4 + BF16 DFlash2 | implemented; DCP4 preferred | four Sparks, TP4 with DCP1/DCP2/DCP4 | [`glm53-flash-nvfp4-dflash2-bf16-tp4.json`](glm53-flash-nvfp4-dflash2-bf16-tp4.json) | [GLM-5.3 quickstart](../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
 | GLM-5.2 EXL3 3.5-bpw | implemented | four Sparks, TP4/DCP4 | [`glm52-exl3-r7-3.5bpw.json`](glm52-exl3-r7-3.5bpw.json) | [GLM-5.2 quickstart](../docs/GLM52_35BPW_QUICKSTART.md) |
