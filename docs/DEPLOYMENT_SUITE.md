@@ -108,6 +108,16 @@ download helper runs without GPUs under the staging login user's UID/GID;
 no serving process starts. Destination trees are checked for symlinks,
 hard-linked files, and special files before writing or mounting them.
 
+The prepared document pins source and rendered launch-file hashes. All four
+hosts must produce matching launch files. Runtime commands verify these hashes
+with controller-supplied code before importing staged Python; changing a launch
+file and its local manifest does not authorize that change. Preparation files
+without pinned launch hashes must be staged again before runtime use.
+Controller readiness and native checks use a verified source copy in the staging
+directory, not imports from a separately edited checkout. Python execution
+ignores existing bytecode caches without deleting them. These checks detect
+changed inputs; they are not a sandbox against a compromised host administrator.
+
 Host models, caches, source, and artifacts live under the dedicated workspace.
 The shared key and receipts are private. Use the same staging directory for a
 retry with unchanged inputs; different inputs require a separate directory.

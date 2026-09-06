@@ -13,8 +13,10 @@ import sys
 
 try:
     from .deploy_engine import plan_digest, seal_plan
+    from .deploy_trust import trusted_check, trusted_script
 except ImportError:
     from deploy_engine import plan_digest, seal_plan
+    from deploy_trust import trusted_check, trusted_script
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = ROOT / "runtime/glm53-spark-mtp3-mesh"
@@ -111,7 +113,6 @@ def build_runtime_plan(preparation, action):
     source = workspace + "/source"
     launch = workspace + "/launch"
     receipt = source + "/runtime/glm53-spark-mtp3-mesh/image-receipt.json"
-    managed = source + "/runtime/glm53-spark-mtp3-mesh"
     installed = (
         "/opt/sparkring/managed-mesh/runtime/glm53-spark-mtp3-mesh/managed_service.py"
     )
@@ -255,23 +256,25 @@ def build_runtime_plan(preparation, action):
                 "actions": [
                     _action(
                         h["host"],
-                        [
-                            "sudo",
-                            "-n",
-                            "python3",
-                            managed + "/managed_install.py",
-                            "--launch",
-                            launch,
-                            "--image-receipt",
-                            receipt,
-                            "--rank",
-                            str(h["rank"]),
-                            "--epoch",
-                            epoch,
-                            "--key-file",
-                            workspace + "/private/health.key",
-                            "--apply",
-                        ],
+                        ["sudo", "-n"]
+                        + trusted_script(
+                            workspace,
+                            plan_digest(preparation),
+                            "runtime/glm53-spark-mtp3-mesh/managed_install.py",
+                            [
+                                "--launch",
+                                launch,
+                                "--image-receipt",
+                                receipt,
+                                "--rank",
+                                str(h["rank"]),
+                                "--epoch",
+                                epoch,
+                                "--key-file",
+                                workspace + "/private/health.key",
+                                "--apply",
+                            ],
+                        ),
                         "mutates-host",
                         {
                             "argv": [
@@ -485,29 +488,44 @@ def build_runtime_plan(preparation, action):
         controller_launch = preparation.get("controller_launch")
         if not controller_launch or not Path(controller_launch).is_absolute():
             raise ValueError("A staged controller launch copy is required")
+        controller_source = preparation.get("controller_source")
+        if not controller_source or not Path(controller_source).is_absolute():
+            raise ValueError("A staged controller source copy is required")
         output = str(Path(controller_launch).parent / (action + "-receipt.json"))
+        trust_options = {
+            "source_root": controller_source,
+            "launch_root": controller_launch,
+            "preparation_path": str(Path(controller_launch).parent / "prepared.json"),
+            "python": sys.executable,
+        }
         if action == "ready":
-            argv = [
-                sys.executable,
-                "-c",
-                "import sys; sys.path.insert(0,sys.argv[1]); from scripts.deploy_runtime import probe_readiness; result=probe_readiness(sys.argv[2],sys.argv[3]); raise SystemExit(0 if result.get('ready') is True else 1)",
-                str(ROOT),
-                controller_launch,
-                str(Path(controller_launch).parent / "ready-results"),
-            ]
+            argv = trusted_check(
+                workspace,
+                plan_digest(preparation),
+                **trust_options,
+                after="from scripts.deploy_runtime import probe_readiness\nresult=probe_readiness(launch_root,arguments[0])\nraise SystemExit(0 if result.get('ready') is True else 1)",
+                after_args=[str(Path(controller_launch).parent / "ready-results")],
+            )
             risk = "read-only"
         else:
-            argv = [
-                sys.executable,
-                str(PROFILE / "qualification/run_native.py"),
-                "--launch",
-                controller_launch,
-                "--image-receipt",
-                str(PROFILE / "image-receipt.json"),
-                "--output",
-                output,
-                "--execute-authorized",
-            ]
+            argv = trusted_script(
+                workspace,
+                plan_digest(preparation),
+                "runtime/glm53-spark-mtp3-mesh/qualification/run_native.py",
+                [
+                    "--launch",
+                    controller_launch,
+                    "--image-receipt",
+                    str(
+                        Path(controller_source)
+                        / "runtime/glm53-spark-mtp3-mesh/image-receipt.json"
+                    ),
+                    "--output",
+                    output,
+                    "--execute-authorized",
+                ],
+                **trust_options,
+            )
             risk = "hardware-test"
         phases.append(
             {
@@ -520,14 +538,13 @@ def build_runtime_plan(preparation, action):
                         {}
                         if action == "ready"
                         else {
-                            "argv": [
-                                sys.executable,
-                                "-c",
-                                "import sys; sys.path.insert(0, sys.argv[1]); from scripts.deploy_runtime import verify_test_receipt; import json; print(json.dumps(verify_test_receipt(sys.argv[2], sys.argv[3])))",
-                                str(ROOT),
-                                output,
-                                action,
-                            ],
+                            "argv": trusted_check(
+                                workspace,
+                                plan_digest(preparation),
+                                **trust_options,
+                                after="from scripts.deploy_runtime import verify_test_receipt\nprint(json.dumps(verify_test_receipt(*arguments)))",
+                                after_args=[output, action],
+                            ),
                             "json": {"passed": True},
                         },
                         timeout=1800,
@@ -577,15 +594,7 @@ def build_runtime_plan(preparation, action):
                 item["checks"].insert(
                     0,
                     {
-                        "argv": [
-                            "python3",
-                            source + "/scripts/deploy_stage.py",
-                            "verify-host",
-                            "--workspace",
-                            workspace,
-                            "--preparation-sha256",
-                            plan_digest(preparation),
-                        ],
+                        "argv": trusted_check(workspace, plan_digest(preparation)),
                         "json": {"verified": True},
                     },
                 )

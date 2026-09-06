@@ -60,7 +60,9 @@ def test_archive_traversal_rejected(tmp_path):
 
 
 @pytest.mark.skipif(os.name != "posix", reason="staging controller targets Linux/WSL")
-@pytest.mark.parametrize("failure", [None, "ownership", "copy"])
+@pytest.mark.parametrize(
+    "failure", [None, "ownership", "copy", "canonical", "launch", "source"]
+)
 def test_stage_sequence_uses_one_download_and_never_starts_model(
     tmp_path, monkeypatch, failure
 ):
@@ -69,7 +71,10 @@ def test_stage_sequence_uses_one_download_and_never_starts_model(
     (source / "scripts/deploy_stage.py").write_text("# fixture")
 
     def pack(root, output):
-        output.write_bytes(b"source archive")
+        with tarfile.open(output, "w:gz") as archive:
+            archive.add(
+                source / "scripts/deploy_stage.py", arcname="scripts/deploy_stage.py"
+            )
         return {
             "sha256": module.sha(output),
             "files": {
@@ -89,10 +94,21 @@ def test_stage_sequence_uses_one_download_and_never_starts_model(
     }
     preparation = prepared()
     facts = configured_inventory(preparation["spec"])["hosts"]
-    launch_content = b"{}"
-    launch_manifest = json.dumps(
-        {"files": {"site.json": hashlib.sha256(launch_content).hexdigest()}}
+    launch_content = {
+        name: b"{}" for name in module.LAUNCH_FILES - {"fabric-plan.json"}
+    }
+    launch_content["fabric-plan.json"] = json.dumps(
+        {
+            "files": {
+                name: hashlib.sha256(value).hexdigest()
+                for name, value in launch_content.items()
+            }
+        }
     ).encode()
+    expected_launch = {
+        name: hashlib.sha256(value).hexdigest()
+        for name, value in launch_content.items()
+    }
 
     class Fake:
         def __init__(self):
@@ -115,13 +131,26 @@ def test_stage_sequence_uses_one_download_and_never_starts_model(
                 return json.dumps({"checked": True, "uid": 1000, "gid": 1000})
             if input is not None:
                 self.keys.append(input)
+            if "finish-host" in " ".join(argv) and "--workspace" in " ".join(argv):
+                expected = dict(expected_launch)
+                if failure == "canonical" and host == "spark-r2":
+                    expected["rank2.env"] = "0" * 64
+                return json.dumps({"canonical_launch_files": expected})
             if argv[:2] == ["python3", "-c"] and "def _collect_local" in argv[2]:
                 return json.dumps(facts[host])
-            if argv[:2] == ["python3", "-c"] and "base64.b64encode" in argv[2]:
+            if "base64.b64encode" in " ".join(argv):
+                values = dict(launch_content)
+                if failure == "launch" and host == "spark-r3":
+                    values["rank3.env"] = b"changed"
+                    record = json.loads(values["fabric-plan.json"])
+                    record["files"]["rank3.env"] = hashlib.sha256(
+                        values["rank3.env"]
+                    ).hexdigest()
+                    values["fabric-plan.json"] = json.dumps(record).encode()
                 return json.dumps(
                     {
-                        "site.json": base64.b64encode(launch_content).decode(),
-                        "fabric-plan.json": base64.b64encode(launch_manifest).decode(),
+                        name: base64.b64encode(value).decode()
+                        for name, value in values.items()
                     }
                 )
             if argv[:2] == ["sha256sum", "/srv/sparkring/test-mesh/image.tar"]:
@@ -141,6 +170,11 @@ def test_stage_sequence_uses_one_download_and_never_starts_model(
             self.files.setdefault(host, {})[Path(destination).name] = digest
 
     fake = Fake()
+    if failure == "source":
+        snapshot = tmp_path / "state/source"
+        (snapshot / "scripts").mkdir(parents=True)
+        (snapshot / "scripts/deploy_stage.py").write_text("# fixture")
+        (snapshot / "runpy.py").write_text("unreviewed shadow module")
     if failure:
         with pytest.raises((ValueError, TimeoutError)):
             module.stage(preparation, tmp_path / "state", run=fake, source_root=source)
@@ -165,6 +199,13 @@ def test_stage_sequence_uses_one_download_and_never_starts_model(
     assert not any(a[:2] == ["docker", "start"] for _, a in fake.calls)
     assert len(fake.keys) == 4 and len(set(fake.keys)) == 1 and len(fake.keys[0]) == 32
     assert result["model_files"] == files
+    assert result["launch_files"] == expected_launch
+    assert (
+        Path(result["controller_source"])
+        .joinpath("scripts/deploy_stage.py")
+        .read_text()
+        == "# fixture"
+    )
     assert all(fake.files[h["host"]] == files for h in result["spec"]["hosts"])
     assert runs[0][runs[0].index("--user") + 1] == "1000:1000"
     assert "HF_HUB_OFFLINE=0" in runs[0]
@@ -228,10 +269,12 @@ def test_workspace_rejects_symlinked_ancestor_and_shared_hardlink(tmp_path):
 @pytest.mark.skipif(os.name != "posix", reason="POSIX ownership and locks")
 def test_remote_workspace_lock_requires_exact_owner_and_survives_other_tokens(tmp_path):
     root = tmp_path / "mesh"
+
     def call(operation, token=None):
         return module._workspace_local(
             str(root), "mesh", operation, token, base=str(tmp_path)
         )
+
     assert call("check")["checked"]
     assert not root.exists()
     call("acquire", "a" * 32)
@@ -287,12 +330,10 @@ def test_staging_rejects_changed_lifecycle_before_remote_work(tmp_path, monkeypa
 def test_launch_copy_rejects_traversal_or_bad_hash(tmp_path):
     with pytest.raises(ValueError, match="filename"):
         module.install_launch_copy(tmp_path / "launch", {"../secret": "YQ=="})
-    data = {
-        "site.json": "YQ==",
-        "fabric-plan.json": base64.b64encode(
-            json.dumps({"files": {"site.json": "f" * 64}}).encode()
-        ).decode(),
-    }
+    data = {name: "YQ==" for name in module.LAUNCH_FILES - {"fabric-plan.json"}}
+    data["fabric-plan.json"] = base64.b64encode(
+        json.dumps({"files": {name: "f" * 64 for name in data}}).encode()
+    ).decode()
     with pytest.raises(ValueError, match="checksum"):
         module.install_launch_copy(tmp_path / "launch", data)
 
@@ -331,16 +372,22 @@ def verified_workspace(path):
     for name, value in (("site.json", site), ("fabric.json", fabric)):
         (path / name).write_text(json.dumps(value))
         (launch / name).write_text(json.dumps(value))
-    (path / "preparation.json").write_text(json.dumps(document))
+    for name in module.LAUNCH_FILES - {"site.json", "fabric.json", "fabric-plan.json"}:
+        (launch / name).write_text("reviewed source\n")
     record = {
         "files": {
-            name: module.sha(launch / name) for name in ("site.json", "fabric.json")
+            name: module.sha(launch / name)
+            for name in module.LAUNCH_FILES - {"fabric-plan.json"}
         },
         "site_sha256": module.sha(path / "site.json"),
         "topology_sha256": module.sha(path / "fabric.json"),
         "image_receipt_sha256": module.sha(source),
     }
     (launch / "fabric-plan.json").write_text(json.dumps(record))
+    document["launch_files"] = {
+        name: module.sha(launch / name) for name in module.LAUNCH_FILES
+    }
+    (path / "preparation.json").write_text(json.dumps(document))
     return document, record
 
 
@@ -355,8 +402,31 @@ def test_host_verification_binds_render_to_reviewed_inputs(tmp_path):
         module.verify_host(tmp_path)
     record["site_sha256"] = module.sha(tmp_path / "site.json")
     (tmp_path / "launch/fabric-plan.json").write_text(json.dumps(record))
-    with pytest.raises(ValueError, match="Rendered site differs"):
+    with pytest.raises(ValueError, match="approved preparation"):
         module.verify_host(tmp_path)
+
+
+@pytest.mark.parametrize("attack", ["rewrite", "omit", "extra", "unanchored"])
+def test_approved_launch_rejects_mutated_environment_and_self_consistent_manifest(
+    tmp_path, attack
+):
+    document, record = verified_workspace(tmp_path)
+    approved = (tmp_path / "preparation.json").read_bytes()
+    if attack == "rewrite":
+        (tmp_path / "launch/rank0.env").write_text("EXECUTE_UNREVIEWED=1\n")
+        record["files"]["rank0.env"] = module.sha(tmp_path / "launch/rank0.env")
+    elif attack == "omit":
+        del record["files"]["rank0.env"]
+    elif attack == "extra":
+        (tmp_path / "launch/injected.py").write_text("unreviewed\n")
+    else:
+        del document["launch_files"]
+        (tmp_path / "preparation.json").write_text(json.dumps(document))
+    (tmp_path / "launch/fabric-plan.json").write_text(json.dumps(record))
+    with pytest.raises(ValueError, match="launch"):
+        module.verify_host(tmp_path)
+    if attack != "unanchored":
+        assert (tmp_path / "preparation.json").read_bytes() == approved
 
 
 def test_host_verification_rejects_source_manifest_escape(tmp_path):
@@ -365,3 +435,15 @@ def test_host_verification_rejects_source_manifest_escape(tmp_path):
     (tmp_path / "preparation.json").write_text(json.dumps(document))
     with pytest.raises(ValueError, match="manifest path"):
         module.verify_host(tmp_path)
+
+
+def test_render_rejects_changed_site_before_extracting_artifacts(tmp_path, monkeypatch):
+    verified_workspace(tmp_path)
+    (tmp_path / "site.json").write_text(json.dumps({"unreviewed": True}))
+    monkeypatch.setattr(
+        module.subprocess,
+        "check_output",
+        lambda *a, **k: pytest.fail("Docker ran before checking render inputs"),
+    )
+    with pytest.raises(ValueError, match="render inputs"):
+        module.finish_host(tmp_path)

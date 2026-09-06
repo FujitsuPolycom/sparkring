@@ -16,11 +16,21 @@ import sys
 import tarfile
 import base64
 import inspect
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 PROFILE = ROOT / "runtime/glm53-spark-mtp3-mesh"
+LAUNCH_FILES = frozenset(
+    {
+        "site.json",
+        "fabric.json",
+        "launch-rank.sh",
+        "fabric-plan.json",
+        *(f"rank{rank}.env" for rank in range(4)),
+    }
+)
 
 
 def sha(path):
@@ -453,6 +463,17 @@ def _stage(preparation, local_state, *, run=None, source_root=ROOT):
     else:
         source = source_archive(source_root, archive)
         receipt.write_text(json.dumps(source, indent=2))
+    controller_source = local_state / "source"
+    if not controller_source.exists():
+        extract_source(archive, controller_source, source["files"])
+    _validate_staging_tree(controller_source)
+    controller_files = {
+        path.relative_to(controller_source).as_posix(): sha(path)
+        for path in controller_source.rglob("*")
+        if path.is_file()
+    }
+    if controller_files != source["files"]:
+        raise ValueError("Controller source snapshot differs from the staged archive")
     source_remote = workspace + "/source"
     bootstrap = """import hashlib,json,pathlib,sys,tarfile
 a=pathlib.Path(sys.argv[1]);out=pathlib.Path(sys.argv[2]);manifest=json.loads(pathlib.Path(sys.argv[3]).read_text())
@@ -635,6 +656,7 @@ print(json.dumps(rows))
     preparation["source"] = source
     preparation["model_files"] = model_files
     preparation["controller_launch"] = str(local_state / "launch")
+    preparation["controller_source"] = str(controller_source)
     for name, value in [
         ("preparation.json", preparation),
         ("site.json", spec["site"]),
@@ -644,29 +666,54 @@ print(json.dumps(rows))
         file.write_text(json.dumps(value, indent=2))
         for h in hosts:
             run.copy(file, h["host"] + ":" + workspace + "/" + name)
+    from scripts.deploy_engine import plan_digest
+    from scripts.deploy_trust import trusted_check, trusted_script
+
+    canonical_files = None
+    staging_digest = plan_digest(preparation)
     for h in hosts:
-        run.remote(
-            h["host"],
-            [
-                "python3",
-                source_remote + "/scripts/deploy_stage.py",
-                "finish-host",
-                "--workspace",
-                workspace,
-            ],
-            timeout=180,
+        result = json.loads(
+            run.remote(
+                h["host"],
+                trusted_script(
+                    workspace,
+                    staging_digest,
+                    script="scripts/deploy_stage.py",
+                    args=["finish-host", "--workspace", workspace],
+                    require_launch=False,
+                ),
+                timeout=180,
+            )
         )
+        expected_files = result["canonical_launch_files"]
+        if set(expected_files) != LAUNCH_FILES or (
+            canonical_files is not None and expected_files != canonical_files
+        ):
+            raise ValueError("Canonical launch differs across hosts")
+        canonical_files = expected_files
     # Read back the rendered launch, so controller-side readiness and native tests
     # use the same hashed inputs as the four hosts.
     pack_launch = """import base64,json,pathlib,sys
-p=pathlib.Path(sys.argv[1]);r=json.loads((p/'fabric-plan.json').read_text())
-names=set(r['files'])|{'fabric-plan.json'}
+p=pathlib.Path(sys.argv[1]);names={'rank0.env','rank1.env','rank2.env','rank3.env','site.json','fabric.json','launch-rank.sh','fabric-plan.json'}
+if {f.name for f in p.iterdir()}!=names:raise SystemExit('Unexpected launch file list')
 print(json.dumps({n:base64.b64encode((p/n).read_bytes()).decode() for n in names}))
 """
-    launch_files = json.loads(
-        run.remote(seed, ["python3", "-c", pack_launch, workspace + "/launch"])
-    )
-    install_launch_copy(local_state / "launch", launch_files)
+    for h in hosts:
+        launch_files = json.loads(
+            run.remote(
+                h["host"], ["python3", "-I", "-c", pack_launch, workspace + "/launch"]
+            )
+        )
+        install_launch_copy(
+            local_state / "launch", launch_files, expected=canonical_files
+        )
+    preparation["launch_files"] = canonical_files
+    final_input = local_state / "preparation.json"
+    final_input.write_text(json.dumps(preparation, indent=2))
+    for h in hosts:
+        run.copy(final_input, h["host"] + ":" + workspace + "/preparation.json")
+    for h in hosts:
+        run.remote(h["host"], trusted_check(workspace, plan_digest(preparation)))
     (local_state / "prepared.json").write_text(json.dumps(preparation, indent=2))
     for host in hosts:
         workspace_operation(
@@ -676,7 +723,7 @@ print(json.dumps({n:base64.b64encode((p/n).read_bytes()).decode() for n in names
     return preparation
 
 
-def install_launch_copy(output, files):
+def install_launch_copy(output, files, *, expected=None):
     """Keep a verified controller copy without overwriting different launch inputs."""
     output = Path(output)
     _validate_staging_tree(output)
@@ -686,11 +733,20 @@ def install_launch_copy(output, files):
             raise ValueError("Invalid rendered launch filename")
         decoded[name] = base64.b64decode(value, validate=True)
     record = json.loads(decoded["fabric-plan.json"])
-    if set(decoded) != set(record["files"]) | {"fabric-plan.json"}:
+    if set(decoded) != LAUNCH_FILES or set(record["files"]) != LAUNCH_FILES - {
+        "fabric-plan.json"
+    }:
         raise ValueError("Rendered launch file list mismatch")
     for name, digest in record["files"].items():
         if hashlib.sha256(decoded[name]).hexdigest() != digest:
             raise ValueError("Rendered launch checksum mismatch")
+    actual = {
+        name: hashlib.sha256(value).hexdigest() for name, value in decoded.items()
+    }
+    if expected is not None and actual != expected:
+        raise ValueError("Rendered launch differs from canonical source output")
+    if output.exists() and {p.name for p in output.iterdir()} != LAUNCH_FILES:
+        raise ValueError("Controller launch file list changed")
     output.mkdir(exist_ok=True, mode=0o700)
     for name, value in decoded.items():
         target = output / name
@@ -700,6 +756,7 @@ def install_launch_copy(output, files):
             with target.open("xb") as stream:
                 stream.write(value)
             target.chmod(0o600)
+    return actual
 
 
 def finish_host(workspace):
@@ -710,6 +767,13 @@ def finish_host(workspace):
     _validate_staging_tree(workspace / "launch")
     preparation = json.loads((workspace / "preparation.json").read_text())
     spec = preparation["spec"]
+    for name, expected in (
+        ("site.json", spec["site"]),
+        ("fabric.json", spec["fabric"]),
+    ):
+        path = workspace / name
+        if path.is_symlink() or json.loads(path.read_text()) != expected:
+            raise ValueError("Staging render inputs differ from approved preparation")
     public = json.loads((PROFILE / "public-image.json").read_text())
     pins = json.loads((PROFILE / "pins.json").read_text())
     artifact = Path(spec["site"]["bundle_root"])
@@ -758,14 +822,25 @@ def finish_host(workspace):
     profile = importlib.util.module_from_spec(module_spec)
     module_spec.loader.exec_module(profile)
     output = workspace / "launch"
-    if not output.exists():
+    with tempfile.TemporaryDirectory(
+        prefix=".canonical-render-", dir=workspace / "artifacts"
+    ) as directory:
+        canonical = Path(directory) / "launch"
         profile.render(
-            workspace / "site.json", artifact, output, PROFILE / "image-receipt.json"
+            workspace / "site.json", artifact, canonical, PROFILE / "image-receipt.json"
         )
-    verify_host(workspace)
+        files = {
+            p.name: base64.b64encode(p.read_bytes()).decode()
+            for p in canonical.iterdir()
+        }
+        launch_files = install_launch_copy(output, files)
+    verify_host(workspace, allow_unanchored=True, quiet=True)
+    print(json.dumps({"canonical_launch_files": launch_files}))
 
 
-def verify_host(workspace, preparation_sha256=None):
+def verify_host(
+    workspace, preparation_sha256=None, *, allow_unanchored=False, quiet=False
+):
     """Bind staged source and launch files to the controller's preparation document."""
     from scripts.deploy_engine import plan_digest
 
@@ -783,7 +858,22 @@ def verify_host(workspace, preparation_sha256=None):
         if any(v.is_symlink() for v in (p, *p.parents)) or sha(p) != digest:
             raise ValueError("Host source changed: " + name)
     output = workspace / "launch"
+    expected = document.get("launch_files")
+    if expected is None and not allow_unanchored:
+        raise ValueError("Preparation does not bind rendered launch files")
+    if {p.name for p in output.iterdir()} != LAUNCH_FILES:
+        raise ValueError("Rendered launch file list changed")
+    if expected is not None and (
+        set(expected) != LAUNCH_FILES
+        or any(
+            (output / name).is_symlink() or sha(output / name) != digest
+            for name, digest in expected.items()
+        )
+    ):
+        raise ValueError("Rendered launch differs from approved preparation")
     record = json.loads((output / "fabric-plan.json").read_text())
+    if set(record["files"]) != LAUNCH_FILES - {"fabric-plan.json"}:
+        raise ValueError("Rendered launch manifest omits required files")
     for name, digest in record["files"].items():
         if (
             PurePosixPath(name).name != name
@@ -812,7 +902,8 @@ def verify_host(workspace, preparation_sha256=None):
         != document["spec"]["fabric"]
     ):
         raise ValueError("Rendered site differs from reviewed deployment inputs")
-    print(json.dumps({"verified": True}))
+    if not quiet:
+        print(json.dumps({"verified": True}))
 
 
 def main(argv=None):

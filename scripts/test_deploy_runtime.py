@@ -23,6 +23,7 @@ def prepared():
         "network_plan": {"requires_hardware_validation": True},
         "source": {"files": {}},
         "controller_launch": str(Path(".private/deploy-fixture/launch").resolve()),
+        "controller_source": str(Path(".private/deploy-fixture/source").resolve()),
     }
     result["network_verification"] = {
         "ready": True,

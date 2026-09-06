@@ -8,6 +8,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+from spark_transport.experiments.cx7_hairpin_diagonal.fabric import Port, Rank
 
 spec = importlib.util.spec_from_file_location(
     "lil_mesh_check", Path(__file__).with_name("mesh_check.py")
@@ -25,20 +26,25 @@ def fixture(monkeypatch, rank=0):
             ("counter_clockwise", (i - 1) % 4),
         ):
             for function in (0, 1):
-                ports[direction, function] = SimpleNamespace(
+                ports[direction, function] = Port(
+                    direction=direction,
+                    function=function,
+                    netdev=f"eth{function}",
+                    mac=f"02:00:00:00:0{i}:0{function}",
                     peer_rank=other,
                     peer_direction="counter_clockwise"
                     if direction == "clockwise"
                     else "clockwise",
                     peer_function=function,
                     rdma_device=f"dev-{direction}-{function}",
-                    ipv4_cidr=f"198.18.{i}.{1 + function * 2 + (direction == 'clockwise')}/32",
+                    ipv4=f"198.18.{i}.{1 + function * 2 + (direction == 'clockwise')}",
                 )
         nodes.append(
-            SimpleNamespace(
+            Rank(
+                rank=i,
                 ssh_alias=f"spark{i}",
                 management_netdev="mgmt0",
-                port=lambda d, f, p=ports: p[d, f],
+                ports=tuple(ports.values()),
             )
         )
     topology = SimpleNamespace(rank=lambda i: nodes[i])
@@ -89,7 +95,7 @@ def fixture(monkeypatch, rank=0):
             network.update(
                 {
                     prefix + f"DEVICE{slot}": port.rdma_device,
-                    prefix + f"PEER{slot}": peer.ipv4_cidr.split("/")[0],
+                    prefix + f"PEER{slot}": peer.ipv4,
                     prefix + f"GID{slot}": "3",
                 }
             )

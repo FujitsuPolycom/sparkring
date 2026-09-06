@@ -52,7 +52,7 @@ def verify_installed_mesh(expected):
                 else "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_"
             )
             actual[prefix + f"DEVICE{slot}"] = local.rdma_device
-            actual[prefix + f"PEER{slot}"] = peer.ipv4_cidr.split("/")[0]
+            actual[prefix + f"PEER{slot}"] = peer.ipv4
             actual[prefix + f"GID{slot}"] = "3"
     if actual != expected["network"]:
         raise ValueError(
