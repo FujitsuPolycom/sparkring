@@ -1,8 +1,8 @@
 # Model-neutral SparkRing runtime packaging
 
-Status: **research-only — testing in progress**. The candidate packages the
-working ARM64/SM121 runtime and its three externally mounted code/library
-files into a model-neutral image. Models and site-specific serving settings
+Status: **research-only — testing in progress**. The published ARM64/SM121
+runtime image includes a model attention module and two native cache libraries,
+identified by hashes in manifest.json. Models and site-specific serving settings
 belong in profiles; model weights are not included.
 
 Repository: `ghcr.io/fujitsupolycom/sparkring`. The verified release reference
@@ -12,8 +12,8 @@ unchanged. A neutral name does not qualify all profiles against this runtime.
 
 | Profile | Evidence scope |
 |---|---|
-| GLM-5.3 Flash NVFP4-Spark, TP2/DCP1, native MTP3 | Bounded source-deployment checks; child image still requires serving qualification |
-| Other SparkRing profiles | Not qualified against this candidate; use their existing pinned images |
+| GLM-5.3 Flash NVFP4-Spark, TP2/DCP1, native MTP3 | [Reference-runtime checks](../../performance/records/glm53-flash/tp2-reference-runtime-20260906.md); published image requires its own serving qualification |
+| Other SparkRing profiles | Not qualified against this image; use their profile-specific pinned images |
 
 ## Build locally
 
@@ -35,11 +35,12 @@ profile's actual API endpoint and then test inference.
 The build receipt identifies the child and manifest. The publication receipt
 records distribution status separately from the embedded pre-publication
 manifest. The manifest, not
-inherited historical parent labels, defines the candidate support scope.
+inherited historical parent labels, defines the package support scope.
 This packager is not yet a source-complete replacement for existing builders.
-The matching source pin is public; see [distribution notes](DISTRIBUTION.md).
-Before image publication: audit inherited layer provenance
-and redistribution licenses, produce the SBOM, and qualify the child image.
-Do not replace missing registry pins with local image IDs in public pull commands.
+The source pin, image digest and filesystem SBOM are public; see
+[distribution notes](DISTRIBUTION.md) for the audit scope. File/contract
+verification is distinct from GPU serving qualification. Qualification of
+each model/topology/workload remains required before relying on that profile.
+Use the registry digest, not a local Docker image ID, in pull commands.
 
-See the [draft TP2 quickstart](../../docs/GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md).
+See the [GLM-5.3 Flash TP2 quickstart](../../docs/GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md).

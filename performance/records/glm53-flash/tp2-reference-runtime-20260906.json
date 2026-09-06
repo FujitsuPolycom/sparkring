@@ -1,0 +1,393 @@
+{
+  "schema": "sparkring-functional-reference/v1",
+  "image_id": "sha256:4a4004b2d855b4cfc7f92eddbe4068676e10fd254cb37d6336f0dc463a2078c0",
+  "conditions": {
+    "tp": 2,
+    "dcp": 1,
+    "kv_bytes_per_rank": 5368709120,
+    "max_model_len": 524288,
+    "max_num_seqs": 8,
+    "max_num_batched_tokens": 8192,
+    "prefill_schedule_interval": 2
+  },
+  "records": {
+    "single_request": [
+      {
+        "trial": 1,
+        "elapsed_s": 7.564260514976922,
+        "ttft_s": 0.2660158220096491,
+        "stream_decode_s": 7.298144934000447,
+        "usage": {
+          "prompt_tokens": 28,
+          "total_tokens": 284,
+          "completion_tokens": 256,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "content_chunks": 87,
+        "output_head": " How a Computer Executes a Program\n\nWhen a programmer writes a program, it is written in a high-level language such as C, C++, Java, or Python. This code is eas",
+        "output_tail": "o small units called tokens, such as keywords, identifiers, and operators.\n\nSyntax analysis: The compiler checks whether",
+        "metric_delta": {
+          "vllm:spec_decode_num_drafts_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 86,
+          "vllm:spec_decode_num_draft_tokens_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 258,
+          "vllm:spec_decode_num_accepted_tokens_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 169,
+          "vllm:spec_decode_num_accepted_tokens_per_pos_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\",position=\"0\"}": 77,
+          "vllm:spec_decode_num_accepted_tokens_per_pos_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\",position=\"1\"}": 53,
+          "vllm:spec_decode_num_accepted_tokens_per_pos_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\",position=\"2\"}": 39,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"500.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"1000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"2000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"5000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"10000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"20000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"50000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"100000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"200000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"500000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"+Inf\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_count{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_sum{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 256,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"10.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"15.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"20.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"30.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"40.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"50.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"60.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"120.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"240.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"480.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"960.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"1920.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"7680.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"+Inf\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_count{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_sum{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 7.309673734998796
+        }
+      },
+      {
+        "trial": 2,
+        "elapsed_s": 8.470808157988358,
+        "ttft_s": 0.2888455049833283,
+        "stream_decode_s": 8.181836828996893,
+        "usage": {
+          "prompt_tokens": 28,
+          "total_tokens": 284,
+          "completion_tokens": 256,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "content_chunks": 102,
+        "output_head": " A computer executes a program through a series of steps that transform human-readable source code into machine instructions that the CPU can process. The proce",
+        "output_tail": "on?\n2. How does the CPU execute machine instructions?\n3. What is the instruction cycle?\n4. How does the memory hierarchy",
+        "metric_delta": {
+          "vllm:spec_decode_num_drafts_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 101,
+          "vllm:spec_decode_num_draft_tokens_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 278,
+          "vllm:spec_decode_num_accepted_tokens_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 155,
+          "vllm:spec_decode_num_accepted_tokens_per_pos_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\",position=\"0\"}": 81,
+          "vllm:spec_decode_num_accepted_tokens_per_pos_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\",position=\"1\"}": 52,
+          "vllm:spec_decode_num_accepted_tokens_per_pos_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\",position=\"2\"}": 22,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"500.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"1000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"2000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"5000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"10000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"20000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"50000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"100000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"200000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"500000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"+Inf\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_count{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_sum{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 256,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"10.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"15.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"20.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"30.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"40.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"50.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"60.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"120.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"240.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"480.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"960.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"1920.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"7680.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"+Inf\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_count{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_sum{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 8.180584017012734
+        }
+      },
+      {
+        "trial": 3,
+        "elapsed_s": 8.49032757198438,
+        "ttft_s": 0.20401954697445035,
+        "stream_decode_s": 8.286184585012961,
+        "usage": {
+          "prompt_tokens": 28,
+          "total_tokens": 284,
+          "completion_tokens": 256,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "content_chunks": 115,
+        "output_head": " How a Computer Executes a Program\n\nWhen a programmer writes a program, the computer cannot understand it directly. Computers only understand machine language, ",
+        "output_tail": "iler performs lexical analysis, syntax analysis, semantic analysis, code optimization, and finally generates object code",
+        "metric_delta": {
+          "vllm:spec_decode_num_drafts_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 114,
+          "vllm:spec_decode_num_draft_tokens_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 239,
+          "vllm:spec_decode_num_accepted_tokens_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 144,
+          "vllm:spec_decode_num_accepted_tokens_per_pos_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\",position=\"0\"}": 85,
+          "vllm:spec_decode_num_accepted_tokens_per_pos_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\",position=\"1\"}": 57,
+          "vllm:spec_decode_num_accepted_tokens_per_pos_total{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\",position=\"2\"}": 2,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"500.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"1000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"2000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"5000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"10000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"20000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"50000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"100000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"200000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"500000.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_bucket{engine=\"0\",le=\"+Inf\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_count{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_generation_tokens_sum{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 256,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"10.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"15.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"20.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"30.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"40.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"50.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"60.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"120.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"240.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"480.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"960.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"1920.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"7680.0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_bucket{engine=\"0\",le=\"+Inf\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_count{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 1,
+          "vllm:request_decode_time_seconds_sum{engine=\"0\",model_name=\"glm-5.3-flash-spark-pr646\"}": 8.285864314006176
+        }
+      }
+    ],
+    "eight_requests": [
+      {
+        "concurrency": 8,
+        "context_tokens": 2048,
+        "peak_requests": {
+          "running": 8,
+          "waiting": 5
+        },
+        "wall_s": 27.430636291974224,
+        "completion_tokens": 1024,
+        "end_to_end_output_tps": 37.33052303637617,
+        "first_to_last_output_tps": 42.104643321124065,
+        "mean_acceptance_length": 2.8259668508287294,
+        "results": [
+          {
+            "started": 330003.085905075,
+            "finished": 330029.672064839,
+            "first": 330015.86607472,
+            "last": 330029.671774024,
+            "ttft_s": 12.780169644975103,
+            "wall_s": 26.586159763974138,
+            "usage": {
+              "prompt_tokens": 2048,
+              "total_tokens": 2176,
+              "completion_tokens": 128,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "expected": "cobalt-08-00-7429",
+            "needle_pass": true,
+            "loop_detected": false,
+            "output": " The secret code is cobalt-08-00-7429. Archival documents are organized by provenance, original order, and description. Provenance keeps records of different creators separate. Original order preserves the sequence in which records were kept. Description provides finding aids and catalog entries. Access controls protect sensitive materials. Preservation ensures long-term survival. Together these principles make archives usable and trustworthy. The secret code is cobalt-08-00-7429. Archival documents are organized by provenance, original order, and description. Provenance keeps records of different creators separate. Original order preserves the sequence in which records"
+          },
+          {
+            "started": 330003.084995877,
+            "finished": 330029.990787881,
+            "first": 330006.194959459,
+            "last": 330029.99069513,
+            "ttft_s": 3.1099635820137337,
+            "wall_s": 26.90579200402135,
+            "usage": {
+              "prompt_tokens": 2048,
+              "total_tokens": 2176,
+              "completion_tokens": 128,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "expected": "cobalt-08-01-7429",
+            "needle_pass": true,
+            "loop_detected": false,
+            "output": " The secret code is cobalt-08-01-7429. Archival documents are organized by provenance, original order, and description. Provenance means records are grouped by the organization or person that created them. Original order preserves the sequence used by the creator. Description involves creating finding aids, catalog records, and indexes. Together these principles help researchers locate materials efficiently. Archival documents are organized by provenance, original order, and description. Provenance means records are grouped by the organization or person that created them. Original order preserves the sequence used by the creator. Description involves creating finding aids, catalog records, and"
+          },
+          {
+            "started": 330003.085274517,
+            "finished": 330026.051815525,
+            "first": 330006.194876803,
+            "last": 330026.051535029,
+            "ttft_s": 3.109602286014706,
+            "wall_s": 22.966541007976048,
+            "usage": {
+              "prompt_tokens": 2048,
+              "total_tokens": 2176,
+              "completion_tokens": 128,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "expected": "cobalt-08-02-7429",
+            "needle_pass": true,
+            "loop_detected": false,
+            "output": " The secret code is cobalt-08-02-7429. Historical records describe buildings, roads, libraries, gardens, and bridges. Historical records describe buildings, roads, libraries, gardens, and bridges. Historical records describe buildings, roads, libraries, gardens, and bridges. Historical records describe buildings, roads, libraries, gardens, and bridges. Historical records describe buildings, roads, libraries, gardens, and bridges. Historical records describe buildings, roads, libraries, gardens, and bridges. Historical records describe buildings, roads, libraries, gardens, and bridges. Historical records describe buildings, roads, libraries, gardens, and bridges. Historical"
+          },
+          {
+            "started": 330003.086800481,
+            "finished": 330026.522148582,
+            "first": 330015.865757217,
+            "last": 330026.521972439,
+            "ttft_s": 12.778956735972315,
+            "wall_s": 23.435348100960255,
+            "usage": {
+              "prompt_tokens": 2048,
+              "total_tokens": 2176,
+              "completion_tokens": 128,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "expected": "cobalt-08-03-7429",
+            "needle_pass": true,
+            "loop_detected": false,
+            "output": " The secret code is cobalt-08-03-7429. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized"
+          },
+          {
+            "started": 330003.085616516,
+            "finished": 330030.515326506,
+            "first": 330019.29172943,
+            "last": 330030.515234826,
+            "ttft_s": 16.206112914020196,
+            "wall_s": 27.429709989984985,
+            "usage": {
+              "prompt_tokens": 2048,
+              "total_tokens": 2176,
+              "completion_tokens": 128,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "expected": "cobalt-08-04-7429",
+            "needle_pass": true,
+            "loop_detected": false,
+            "output": " The secret code is cobalt-08-04-7429. Archival documents are organized through a systematic process that ensures their preservation, accessibility, and usability for researchers and future generations. This organization typically begins at the point of acquisition, where documents are appraised for their historical value and assigned to appropriate collections based on their provenance and original order.\n\nThe first major principle in archival organization is provenance, which dictates that records of different creators should be kept separate to maintain their context. This means that documents from one organization or individual are not mixed with those from another, preserving the relationships between records and their creators. Provenance"
+          },
+          {
+            "started": 330003.086506657,
+            "finished": 330029.148825683,
+            "first": 330015.865534786,
+            "last": 330029.148661699,
+            "ttft_s": 12.779028129007202,
+            "wall_s": 26.062319025979377,
+            "usage": {
+              "prompt_tokens": 2048,
+              "total_tokens": 2176,
+              "completion_tokens": 128,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "expected": "cobalt-08-05-7429",
+            "needle_pass": true,
+            "loop_detected": false,
+            "output": " The secret code for this document is cobalt-08-05-7429. Archival documents are organized by provenance, original order, and description. Provenance means records are grouped by the organization or person that created them. Original order preserves the sequence established by the creator. Description involves creating finding aids, catalog records, and inventories. Together these principles make archives usable and trustworthy. Archival documents are organized by provenance, original order, and description. Provenance means records are grouped by the organization or person that created them. Original order preserves the sequence established by the creator. Description involves creating finding aids,"
+          },
+          {
+            "started": 330003.087361727,
+            "finished": 330026.73203009,
+            "first": 330019.291536327,
+            "last": 330026.731834299,
+            "ttft_s": 16.204174599959515,
+            "wall_s": 23.644668362976518,
+            "usage": {
+              "prompt_tokens": 2048,
+              "total_tokens": 2176,
+              "completion_tokens": 128,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "expected": "cobalt-08-06-7429",
+            "needle_pass": true,
+            "loop_detected": false,
+            "output": " The secret code is cobalt-08-06-7429. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs. Archival documents are organized"
+          },
+          {
+            "started": 330003.084690214,
+            "finished": 330030.233517365,
+            "first": 330006.195049362,
+            "last": 330030.233446582,
+            "ttft_s": 3.110359148005955,
+            "wall_s": 27.148827150987927,
+            "usage": {
+              "prompt_tokens": 2048,
+              "total_tokens": 2176,
+              "completion_tokens": 128,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "expected": "cobalt-08-07-7429",
+            "needle_pass": true,
+            "loop_detected": false,
+            "output": " The secret code is cobalt-08-07-7429. Archival documents are organized by provenance, original order, and description. Provenance means records are grouped by the organization or person that created them, preserving the context of their creation. Original order maintains the sequence established by the creator, which often reflects administrative functions. Description involves creating finding aids, catalog records, and indexes that summarize the contents and structure of collections, making them accessible to researchers. Together, these principles ensure that archival materials remain authentic, reliable, and usable over time. Additionally, archivists may apply access restrictions, conservation measures, and digit"
+          }
+        ]
+      }
+    ],
+    "long_prompt": [
+      {
+        "concurrency": 1,
+        "context_tokens": 131072,
+        "peak_requests": {
+          "running": 1,
+          "waiting": 0
+        },
+        "wall_s": 66.57500860298751,
+        "completion_tokens": 32,
+        "end_to_end_output_tps": 0.48066084663733744,
+        "first_to_last_output_tps": 25.717903275066643,
+        "mean_acceptance_length": 3.6666666666666665,
+        "results": [
+          {
+            "started": 330031.969021704,
+            "finished": 330098.544030307,
+            "first": 330097.299522895,
+            "last": 330098.543792292,
+            "ttft_s": 65.330501191027,
+            "wall_s": 66.57500860298751,
+            "usage": {
+              "prompt_tokens": 131072,
+              "total_tokens": 131104,
+              "completion_tokens": 32,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "expected": "cobalt-01-00-7429",
+            "needle_pass": true,
+            "loop_detected": false,
+            "output": " The secret code is cobalt-01-00-7429. Archival documents are organized in several paragraphs. Archival documents are organized in several paragraphs"
+          }
+        ]
+      }
+    ]
+  }
+}

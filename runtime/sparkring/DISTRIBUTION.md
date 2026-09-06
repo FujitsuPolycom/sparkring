@@ -11,17 +11,20 @@ The public SparkCache pin is
 Its deployable source hash is
 `433a75f4f558aa7192eceba61dfae44e9b9823d5be714f054c3568efed88a0ce`, identical
 to the deployed development source. The publication branch includes runtime
-code, tests, and companion commit-bound vLLM patches without private site
-records or development history. Full GPU-free suite:1049 passed,7 skipped.
+code, tests, and companion commit-bound vLLM patches. The deployable file set
+is defined by deploy/deployment_contract/source.py: paths beneath sparkcache/,
+excluding build and Python cache files, with canonical LF source bytes.
+The validation command python -m pytest sparkcache -q reported 1,049 passed
+and 7 skipped in that source checkout on Windows Python 3.12.
 
-The old development commit in inherited image labels is historical provenance,
+The development revision in inherited image labels is historical provenance,
 not the public checkout pin. Runtime changes are bound to vLLM815f839 and
 the patch preimages. The complete inherited image build is not reconstructed
 solely by that vLLM commit: it contains native binaries and earlier overlays.
 
 ## NVIDIA terms
 
-The image preserves `/NGC-DL-CONTAINER-LICENSE`, version September14,2021.
+The image preserves `/NGC-DL-CONTAINER-LICENSE`, version September 14, 2021.
 The [official license](https://developer.download.nvidia.com/licenses/NVIDIA_Deep_Learning_Container_License.pdf)
 provides a conditional derived-container distribution grant, not unrestricted
 redistribution of a standalone NVIDIA container. Distribution must preserve
@@ -41,25 +44,27 @@ expression with only Apache-2.0 when changing the repository name.
 
 ## Audit scope
 
-The experimental packaging child contains the exact three hashed files from
-the tested source deployment. Hash verification does not qualify runtime
+The published image contains three hashed files matching the
+[reference runtime](../../performance/records/glm53-flash/tp2-reference-runtime-20260906.md).
+Hash verification does not qualify runtime
 behavior, prove inherited source provenance, or establish license compliance.
 Inherited metadata includes obsolete model/topology claims; the runtime
 manifest is authoritative for this child's limited support scope.
 
-The final-filesystem SPDX inventory is generated with checksum-verified Syft1.51.1
+The final-filesystem SPDX inventory is generated with checksum-verified Syft 1.51.1
 (Linux arm64 archive SHA256
 `a7fd2b784e6664acd44719270574f6cd8c6864fc2b1700bf9099bd1cccda7d7f`).
 SBOM packages must be reviewed for unexpected model weights, private content,
 noncommercial terms, unknown origins, and missing notices before release.
 An SBOM alone is not a security or redistribution approval.
 
-The all-layers SBOM attempt exceeded the serving host's intended audit memory
-budget and was stopped. A separate streaming inspection covered107 inherited
-layers and160613 regular-file entries, checking credential-like filenames
-and selected token/private-key patterns in small root/opt/tmp files. It found
-no matches. It does not scan every byte or prove the absence of secrets.
-The completed filesystem inventory must not be described as an all-layer SBOM.
+The SPDX inventory covers the final filesystem, not every inherited layer.
+A separate streaming inspection covered 107 inherited layers and 160,613
+regular-file entries. Filename checks covered credential-like paths in every
+layer. Token/private-key pattern checks covered regular files no larger than
+1 MiB beneath root/, opt/ and tmp/ in the layer archives. No matches were
+found within that scope. This is not a complete secret scan or security
+certification; the filesystem inventory is not an all-layer SBOM.
 
 Directly checked core licenses: vLLM, B12X, FlashInfer, Transformers,
 Humming kernels and InstantTensor include Apache2.0 terms; PyTorch metadata
