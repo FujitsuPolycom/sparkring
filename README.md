@@ -22,8 +22,6 @@ reproducible benchmarks, and [test results](performance/).
    Two-node profiles include their own direct-link setup.
 3. Follow the profile's quickstart, then run the
    [validation checks](docs/PROFILE_VALIDATION.md).
-   
-   *more streamlined installation methods are pending validation; 'lil', sparkrun, etc*
 
 ## Profiles
 
@@ -36,9 +34,9 @@ reproducible benchmarks, and [test results](performance/).
 | GLM-5.2 EXL3 3.5-bpw | TP4/DCP4 | 1M | 16 | 4,096 | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
 | DeepSeek-V4-Flash-0731 | TP4/DCP1 | 1M | 32 | 4,096 | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | TP4/DCP1 | 1M | 64 | 8,192 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
-* The GLM5.3 Flash MTP3 profile uses the new virtual meshing feature. *All profiles will be transitioned to said mesh.*
-* Requires:[managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md). *Refined images in testing*
-* DFlash2 profiles will be replaced by more consistently performing, native-MTP. Also avoids: [separate CC BY-NC-ND 4.0 terms](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2#license).
+* The GLM5.3 Flash MTP3 profile uses the new virtual meshing feature.
+* Requires:[managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md). 
+* DFlash2 profiles will be replaced by native-MTP. Also avoids: [separate CC BY-NC-ND 4.0 terms](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2#license).
 
 ### Two Sparks
 
@@ -68,9 +66,8 @@ name are not interchangeable; a model-neutral name does not qualify every profil
 
 ## Benchmark results
 
-Recorded tokens per second; C1/C8 mean one/eight concurrent requests.
 Decode is sustained aggregate output at temperature 1.0.
-Decode context is shown separately from prefill context. Results attempt to reflect real world use-case numbers in ALL instances unless otherwise noted.
+Results attempt to reflect real world use-case numbers in all instances unless otherwise noted.
 *structured data sweeps*,*temperature 0 and/or other out-of-spec configurations are not provided or recommended*
 
 | Profile | Decode context | Prefill | C1 decode | C8 decode | Highest C at this context | Coding peak |
