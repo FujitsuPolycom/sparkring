@@ -28,6 +28,12 @@ fi
 : "${CONTAINER_PREFIX:=glm53-jj-r8-gb10}"
 : "${SPARKRING_CREATE_ONLY:=0}"
 : "${SPARKRING_PRINT_CONTAINER_SPEC:=0}"
+: "${SPARKRING_OFFLINE_SPEC:=0}"
+case "${SPARKRING_OFFLINE_SPEC}" in
+  0) ;;
+  1) [[ "${SPARKRING_PRINT_CONTAINER_SPEC}" == 1 ]] || { printf 'offline rendering requires SPARKRING_PRINT_CONTAINER_SPEC=1\n' >&2; exit 78; } ;;
+  *) printf 'SPARKRING_OFFLINE_SPEC must be 0 or 1\n' >&2; exit 78 ;;
+esac
 case "${SPARKRING_PRINT_CONTAINER_SPEC}" in
   0|1) ;;
   *) printf 'SPARKRING_PRINT_CONTAINER_SPEC must be 0 or 1\n' >&2; exit 78 ;;
@@ -545,6 +551,10 @@ if [[ "${SIRCL_ENABLED}" == 1 ]]; then
       -v "${SIRCL_BUNDLE_HOST_ROOT}:${sircl_container_root}:ro"
     )
     sircl_bundle_is_external=1
+  elif [[ "${SPARKRING_OFFLINE_SPEC}" == 1 ]]; then
+    sircl_native_sha256="${SPARKRING_DECLARED_SIRCL_NATIVE_SHA256:?offline rendering requires declared native identity}"
+    sircl_manifest_sha256="${SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256:?offline rendering requires declared manifest identity}"
+    [[ "${sircl_native_sha256}" =~ ^[0-9a-f]{64}$ && "${sircl_manifest_sha256}" =~ ^[0-9a-f]{64}$ ]] || die 'invalid declared SIRCL identity'
   else
     sircl_native_sha256="$(
       docker image inspect --format \
@@ -663,6 +673,7 @@ if [[ "${SPARKCACHE_CLEAR_ONCE}" == auto ]]; then
   SPARKCACHE_CLEAR_ONCE="${SPARKCACHE_CACHE_NAMESPACE}"
 fi
 
+if [[ "${SPARKRING_OFFLINE_SPEC}" == 0 ]]; then
 actual_image_id="$(docker image inspect --format '{{.Id}}' "${IMAGE_REF}")"
 [[ "${actual_image_id}" == "${IMAGE_ID}" ]] || \
   die "image identity mismatch: expected ${IMAGE_ID}, got ${actual_image_id}"
@@ -670,9 +681,13 @@ for name in "${model_path_names[@]}"; do
   directory="${!name}"
   [[ -d "${directory}" ]] || die "required directory is missing: ${directory}"
 done
+fi
 
 verify_file_sha256() {
   local role="$1" path="$2" expected="$3" actual
+  # Offline output records intended arguments; image and file checks belong to
+  # the consumer's preflight before it starts any rank.
+  [[ "${SPARKRING_OFFLINE_SPEC}" == 0 ]] || return 0
   [[ -f "${path}" ]] || die "${role} is missing: ${path}"
   actual="$(sha256sum -- "${path}")"
   actual="${actual%% *}"

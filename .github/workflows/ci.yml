@@ -28,7 +28,7 @@ jobs:
       - name: Install development tools
         run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
       - name: Lint maintained Python trees
-        run: ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance
+        run: ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance integrations/lil
 
   tests:
     name: tests
@@ -53,7 +53,40 @@ jobs:
             --index-url https://download.pytorch.org/whl/cpu \
             "torch==${TORCH_VERSION}"
       - name: Test maintained Python trees
-        run: python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
+        run: python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts integrations/lil -q -rs
+
+  lil-bridge:
+    name: pinned LIL bridge
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: FujitsuPolycom/lil
+          ref: 329cde801b847294005cb16765692032a6cdf206
+          path: .lil-companion
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+          cache-dependency-path: .lil-companion/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Build and test companion lifecycle
+        working-directory: .lil-companion
+        run: |
+          go test ./...
+          go vet ./...
+          go build -o "$RUNNER_TEMP/lil" ./cmd/lil
+      - name: Test both SparkRing profiles against the pinned CLI
+        env:
+          LIL_TEST_BINARY: ${{ runner.temp }}/lil
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-dev.txt
+          test -x "$LIL_TEST_BINARY"
+          python -m pytest integrations/lil -q -rs
 
   docs-links:
     name: docs links

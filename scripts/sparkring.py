@@ -163,6 +163,7 @@ def _parser() -> argparse.ArgumentParser:
     doctor.add_argument("--cluster", default=str(DEFAULT_CLUSTER_PATH))
 
     host = subcommands.add_parser("host", help="diagnose one blank DGX Spark")
+    subcommands.add_parser("deploy", help="standalone deployment discovery and preparation")
     host_commands = host.add_subparsers(dest="host_command", required=True)
     host_check = host_commands.add_parser("check", help="run read-only host checks")
     host_check.add_argument("--json", action="store_true")
@@ -172,6 +173,12 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     raw = list(argv if argv is not None else sys.argv[1:])
+    if raw and raw[0] == "deploy":
+        try:
+            from .deploy_suite import main as deploy_main
+        except ImportError:
+            from deploy_suite import main as deploy_main
+        return deploy_main(raw[1:])
     parser = _parser()
     if raw and raw[0] == "doctor":
         known, remainder = parser.parse_known_args(raw)

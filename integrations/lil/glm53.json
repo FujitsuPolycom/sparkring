@@ -1,0 +1,35 @@
+{
+  "schema": "sparkring-lil-descriptor/v1",
+  "profile": "glm53-flash-tp4-dflash7",
+  "transport": {"provider": "sircl", "rail_mode": "dual"},
+  "lil_revision": "329cde801b847294005cb16765692032a6cdf206",
+  "sources": {
+    "runtime": {
+      "path": "runtime/glm53-flash-jj-r8-gb10/pins.json",
+      "sha256": "dc49370d911ecc32f1c7ea7656f41837334a8e5ed800db263174781bee2b2313"
+    },
+    "models": {
+      "path": "runtime/glm53-flash/pins.json",
+      "sha256": "d8e48252bad6dfebe152f14c91e6e1e4eb01a811231e1142b65ce7b25f7f75dd"
+    }
+  },
+  "defaults": {
+    "tp": 4,
+    "dcp": 4,
+    "max_model_len": 1048576,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "kv_cache_memory_bytes": 25769803776,
+    "speculator": "dflash",
+    "speculative_tokens": 7,
+    "port": 8015
+  },
+  "supported": {
+    "tp": [4],
+    "dcp": [4],
+    "speculator": ["dflash"],
+    "speculative_tokens": [7],
+    "max_num_seqs": 16,
+    "max_model_len": 1048576
+  }
+}
