@@ -14,7 +14,7 @@ spec.loader.exec_module(soak)
 
 def config(**overrides):
     return {"endpoint": "http://192.0.2.1:8015", "model": "glm-5.3-flash-spark",
-            "api_key": "secret-not-for-receipts", "timeout": 1, "context_limit": 8192,
+            "api_key": "test-key", "timeout": 1, "context_limit": 8192,
             "temperature": 1, "seed": 20260906, "arm": "mtp3-test", "reasoning_effort": "low",
             "probe_reasoning_effort": "low", "chat_template_kwargs": {"enable_thinking": True},
             "probe_tokens": 300, "probe_output_tokens": 64, "probe_repeats": 1,
@@ -44,7 +44,7 @@ def fake_http(calls, *, cached=0, missing_usage=False, error=False):
         if url.endswith("/tokenize"):
             return io.BytesIO(json.dumps({"count": count}).encode())
         if error:
-            raise ValueError("credential echoed by server: secret-not-for-receipts")
+            raise ValueError("credential echoed by server: test-key")
         records = [
             {"id": "chatcmpl-fixture", "choices": [{"delta": {"reasoning_content": "think"}}]},
             {"choices": [{"delta": {"content": "answer"}, "finish_reason": "length"}]},
@@ -112,7 +112,7 @@ def test_bounded_conversations_and_before_after_probes(monkeypatch, tmp_path):
     assert len({record["prompt_sha256"] for record in turns}) == 8
     assert records[-1]["soak_turns"] == 6
     assert records[-1]["fraction_below_half_cached"] == 1
-    assert "secret-not-for-receipts" not in path.read_text()
+    assert "test-key" not in path.read_text()
     with pytest.raises(FileExistsError):
         soak.execute(config(), path)
 
@@ -136,7 +136,7 @@ def test_failure_stops_before_soak_and_redacts_error(monkeypatch, tmp_path):
     errors = [record for record in records if record["type"] == "error"]
     assert len(errors) == 1 and errors[0]["request_id"]
     assert records[-1]["soak_turns"] == 0
-    assert "secret-not-for-receipts" not in path.read_text()
+    assert "test-key" not in path.read_text()
     assert sum(url.endswith("/v1/chat/completions") for url, _, _ in calls) == 1
 
 
