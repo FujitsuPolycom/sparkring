@@ -86,6 +86,15 @@ cluster installer.
 
 The managed profile adds these requirements:
 
+Before installation and the first model start, consider rebooting hosts that
+have run large models or repeated GPU workloads. Stop active workloads first.
+A reboot can reduce unified-memory fragmentation and restore large contiguous
+free blocks; a high total-free-memory reading alone does not establish loader
+readiness. This is a recommendation, not a requirement for every installation.
+The [managed startup memory check](../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md#automatic-startup-memory-preparation)
+still applies after reboot and attempts compaction before requiring further
+recovery. Reboots interrupt all workloads on the affected host.
+
 - Four physical cables in the cycle `0-1-2-3-0`, with each rank's port 0/f0
   connected to the next rank's port 1/f1; management stays on a separate LAN.
 - Four configured RDMA functions per host: primary and Socket Direct
