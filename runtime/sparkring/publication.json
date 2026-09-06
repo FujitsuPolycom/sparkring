@@ -24,10 +24,13 @@
     "streaming_layer_count": 107,
     "streaming_regular_file_entries": 160613,
     "credential_pattern_findings": 0,
-    "gpu_serving_qualified_child": false
+    "gpu_serving_qualified_child": false,
+    "bounded_install_chat_image_restore_passed": true,
+    "blue_video_recognition_passed": false,
+    "serving_evidence": "../../performance/records/glm53-flash/tp2-public-image-install-20260906.md"
   },
   "limitations": [
-    "The child image has not replaced or been serving-tested as the production deployment.",
+    "Bounded public-image installation, chat, still-image and persistent-restore checks passed; blue-video recognition failed. General serving qualification is not claimed.",
     "The public source snapshot matches deployed SparkCache files but is not a source-complete rebuild of every inherited native layer.",
     "License review covers retained NVIDIA terms and core runtime notices; SBOM NOASSERTION entries are not license clearance.",
     "Streaming credential checks were bounded; no full security certification is claimed.",

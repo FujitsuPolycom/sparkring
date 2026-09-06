@@ -12,7 +12,7 @@ unchanged. A neutral name does not qualify all profiles against this runtime.
 
 | Profile | Evidence scope |
 |---|---|
-| GLM-5.3 Flash NVFP4-Spark, TP2/DCP1, native MTP3 | [Reference-runtime checks](../../performance/records/glm53-flash/tp2-reference-runtime-20260906.md); published image requires its own serving qualification |
+| GLM-5.3 Flash NVFP4-Spark, TP2/DCP1, native MTP3 | [Public-image installation, chat, still-image and restore checks](../../performance/records/glm53-flash/tp2-public-image-install-20260906.md) passed; blue-video recognition failed |
 | Other SparkRing profiles | Not qualified against this image; use their profile-specific pinned images |
 
 ## Build locally

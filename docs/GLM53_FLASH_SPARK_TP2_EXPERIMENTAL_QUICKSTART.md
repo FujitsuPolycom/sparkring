@@ -159,7 +159,10 @@ python3 "$profile/smoke.py" --phase image
 python3 "$profile/smoke.py" --phase long-prompt
 ```
 
-The text check submits eight distinct codeword requests. The image check
+The text check submits eight chat requests and requires the exact codeword in
+each final JSON answer; Markdown fences are accepted. Raw completion prompts
+do not apply the chat template and are not used for this instruction check.
+The image check
 generates a solid-blue PNG. For the video check, create a solid-blue MP4 with
 FFmpeg, then submit that file:
 
@@ -169,6 +172,22 @@ ffmpeg -f lavfi -i 'color=c=blue:s=224x224:r=8:d=1' \
 python3 "$profile/smoke.py" --phase video --video-file blue-smoke.mp4
 ```
 
+If FFmpeg is unavailable on the host, use the binary in the serving container:
+
+```bash
+docker exec sparkring-glm53-tp2-r0 ffmpeg -hide_banner -loglevel error \
+  -f lavfi -i 'color=c=blue:s=224x224:r=8:d=1' \
+  -c:v libx264 -pix_fmt yuv420p /tmp/blue-smoke.mp4
+docker cp sparkring-glm53-tp2-r0:/tmp/blue-smoke.mp4 ./blue-smoke.mp4
+python3 "$profile/smoke.py" --phase video --video-file blue-smoke.mp4
+```
+
+Known failing check: the published image has labeled this blue-video fixture
+as black while recognizing a blue still image correctly. Red and green video
+fixtures were recognized. Video input processing is implemented, but this
+color-recognition check is not qualified. Do not treat a successful HTTP
+response or a recognized different color as proof that the blue-video check passes.
+
 A correct long-prompt response proves only answer correctness. To verify
 persistence, observe successful capture and commit logs on both ranks, stop
 both model containers, and start rank1 then rank0 with the same cache mounts.
@@ -177,6 +196,12 @@ restore completion on both ranks and nonzero cached prompt tokens; do not
 infer an external-cache hit from answer correctness or response speed alone.
 
 ## Evidence and limits
+
+The [public-image installation record](../performance/records/glm53-flash/tp2-public-image-install-20260906.md)
+covers installation with fresh cache directories, eight exact chat responses,
+still-image recognition, and native disk-cache restoration across a process
+restart. It also records the failing blue-video recognition check. Reused
+model weights and an existing configured fabric are explicit test conditions.
 
 The [reference-runtime evidence record](../performance/records/glm53-flash/tp2-reference-runtime-20260906.md)
 identifies the tested image, workload, raw observations and limits. It covers
