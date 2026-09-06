@@ -113,7 +113,10 @@ def main() -> int:
             model=os.environ.get("SERVED_MODEL_NAME", "glm-5.3-flash"),
             warmup_enabled=os.environ.get("DFLASH_WARMUP", "0") == "1",
             concurrencies=_positive_csv(
-                os.environ.get("DFLASH_WARMUP_CONCURRENCIES", "1,2,4,8,16"),
+                os.environ.get(
+                    "DFLASH_WARMUP_CONCURRENCIES",
+                    "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16",
+                ),
                 "DFLASH_WARMUP_CONCURRENCIES",
             ),
             shape_words=_positive_csv(

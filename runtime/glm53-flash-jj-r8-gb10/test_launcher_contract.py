@@ -48,6 +48,9 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["DECODE_CONTEXT_PARALLEL_SIZE"] == "4"
     assert values["MAX_NUM_BATCHED_TOKENS"] == "8192"
     assert values["KDA_PREFILL_BACKEND"] == "b12x"
+    assert values["DFLASH_WARMUP_CONCURRENCIES"] == (
+        "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16"
+    )
     assert values["PREFILL_SCHEDULE_INTERVAL"] == "2"
     assert values["MAX_IMAGES_PER_PROMPT"] == "4"
     assert values["MAX_VIDEOS_PER_PROMPT"] == "1"
@@ -126,8 +129,8 @@ printf '%s  %s\n' "$hash" "$2"
         path.write_text("fixture", encoding="utf-8")
 
     for dcp, interleave, gather, kv_bytes in (
-        (1, "1", "0", "27917287424"),
-        (2, "4", "1", "32212254720"),
+        (1, "1", "0", "25769803776"),
+        (2, "4", "1", "25769803776"),
         (4, "4", "1", "25769803776"),
     ):
         config = tmp_path / f"dcp{dcp}.env"
@@ -172,6 +175,15 @@ printf '%s  %s\n' "$hash" "$2"
         mm_index = arguments.index("--limit-mm-per-prompt")
         assert json.loads(arguments[mm_index + 1]) == {"image": 4, "video": 1}
         assert "--kv-transfer-config" in arguments
+        compilation = json.loads(
+            arguments[arguments.index("--compilation-config") + 1]
+        )
+        assert compilation["cudagraph_capture_sizes"] == list(
+            range(8, 129, 8)
+        )
+        assert "DFLASH_WARMUP_CONCURRENCIES=" + ",".join(
+            str(value) for value in range(1, 17)
+        ) in arguments
         jit_namespace = "glm53-flash-sm121-vllm-e02b1746-b12x-9ae41c5c"
         assert f"VLLM_CACHE_ROOT=/cache/jit/vllm/{jit_namespace}" in arguments
         assert (
@@ -191,6 +203,28 @@ printf '%s  %s\n' "$hash" "$2"
         assert extra["spark_cache_shared_prefix_lease_ttl_seconds"] == 300
         assert "spark_cache_store" not in extra
         assert "spark_cache_restore" not in extra
+
+        # Explicit byte counts override auto without changing other arguments.
+        original_config = config.read_text(encoding="utf-8")
+        config.write_text(original_config + "\nKV_CACHE_MEMORY_BYTES=21474836480\n",
+                          encoding="utf-8", newline="\n")
+        override = subprocess.run(
+            ["bash", _bash_path(LAUNCHER), "0", _bash_path(config)],
+            cwd=ROOT, text=True, capture_output=True, check=False,
+        )
+        assert override.returncode == 0, override.stderr
+        expected_override = arguments.copy()
+        expected_override[kv_index + 1] = "21474836480"
+        assert capture.read_text(encoding="utf-8").splitlines() == expected_override
+        if dcp == 4:
+            config.write_text(original_config + "\nKV_CACHE_MEMORY_BYTES=25769803776\n",
+                              encoding="utf-8", newline="\n")
+            unchanged = subprocess.run(
+                ["bash", _bash_path(LAUNCHER), "0", _bash_path(config)],
+                cwd=ROOT, text=True, capture_output=True, check=False,
+            )
+            assert unchanged.returncode == 0, unchanged.stderr
+            assert capture.read_text(encoding="utf-8").splitlines() == arguments
 
     config = tmp_path / "dcp1-vllm-prefix-only.env"
     config.write_text(
@@ -408,6 +442,20 @@ printf '%s  %s\n' "$hash" "$2"
     assert "API_KEYS_FILE must be mode 0600" in result.stderr
 
 
+def test_launcher_exposes_optional_chat_template_override() -> None:
+    launcher = LAUNCHER.read_text(encoding="utf-8")
+    assert ': "${CHAT_TEMPLATE_HOST_PATH:=}"' in launcher
+    assert "CHAT_TEMPLATE_HOST_PATH must be an absolute host path when set" in launcher
+    assert "CHAT_TEMPLATE_HOST_PATH is not a readable regular file" in launcher
+    assert "CHAT_TEMPLATE_HOST_PATH is empty" in launcher
+    assert (
+        '-v "${CHAT_TEMPLATE_HOST_PATH}:/opt/sparkring/chat_template.jinja:ro"'
+        in launcher
+    )
+    assert "--chat-template /opt/sparkring/chat_template.jinja" in launcher
+    assert "CHAT_TEMPLATE_HOST_PATH=''" in ENVIRONMENT.read_text(encoding="utf-8")
+
+
 def test_launcher_fails_closed_on_unusable_api_key_files() -> None:
     launcher = LAUNCHER.read_text(encoding="utf-8")
     assert ': "${API_KEYS_FILE:=}"' in launcher
@@ -476,7 +524,9 @@ def test_public_operator_documents_use_portable_examples_and_resolving_links() -
     assert "fanout_image_archive.py" in quickstart
     assert "sircl-fused.env.example" in quickstart
     assert "SIRCL_ENABLED=1" in quickstart
-    assert "Q=8/16/32/64/128" in runtime_readme
+    assert "every eight-row DFlash request-batch shape from 8 through 128" in (
+        runtime_readme
+    )
     assert "Q128 through Q8192" in runtime_readme
     assert re.search(r"primary\s+ports 19006/19007", runtime_readme)
     assert "67,109,888-byte mapped arena" in runtime_readme

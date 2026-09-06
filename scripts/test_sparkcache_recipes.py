@@ -214,7 +214,46 @@ def test_glm53_composition_matches_the_operator_contract() -> None:
         recipe["profiles"]["dcp4"]["capture_slot_bytes"]
         == receipt["configuration"]["async_capture_slot_bytes"]
     )
+    assert (
+        receipt["configuration"]["sparkcache_publication_schema"]
+        == recipe["sparkcache"]["publication_schema"]
+        == "tail-cow-v2"
+    )
+    assert (
+        receipt["configuration"]["sparkcache_cache_namespace_default"]
+        == recipe["sparkcache"]["cache_namespace_default"]
+        == "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp4-page-tail-cow-v2"
+    )
     assert recipe["evidence"]["machine_receipt"] == (
         "runtime/glm53-flash-jj-r8-gb10/"
         "glm53-dcp4-sircl-public-image-receipt.json"
     )
+
+
+def test_glm53_b12x_performance_observation_is_artifact_bound() -> None:
+    pins = _load(ROOT / "runtime" / "glm53-flash-jj-r8-gb10" / "pins.json")
+    receipt = _load(
+        ROOT
+        / "runtime"
+        / "glm53-flash-jj-r8-gb10"
+        / "glm53-dcp4-sircl-public-image-receipt.json"
+    )
+    observation = receipt["performance_observation"]
+    summary_path = ROOT / observation["summary"]
+    summary = _load(summary_path)
+
+    assert summary["status"] == observation["status"] == "research-only"
+    assert summary["source_result"]["sha256"] == observation[
+        "source_result_sha256"
+    ]
+    assert summary["artifact"]["image"] == receipt["artifact"][
+        "registry_reference"
+    ]
+    assert summary["artifact"]["image_id"] == receipt["artifact"]["image_id"]
+    assert summary["artifact"]["vllm_composition"] == pins["vllm"]["commit"]
+    assert summary["artifact"]["b12x"] == pins["b12x"]["commit"]
+    assert summary["artifact"]["sparkcache"] == pins["sparkcache"]["commit"]
+    assert summary["conditions"]["kda_prefill_backend"] == "b12x"
+    assert summary["runtime_correlation"]["b12x_kda_warmup_on_every_rank"] is True
+    assert summary["runtime_correlation"]["b12x_full_ckv_gather_on_every_rank"] is True
+    assert (ROOT / observation["record"]).is_file()

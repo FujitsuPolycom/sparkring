@@ -1,0 +1,181 @@
+{
+  "schema": "sparkring-benchmark-summary/v1",
+  "status": "research-only",
+  "maturity_scope": "artifact-bound bounded performance observation; not repeated-sample performance qualification",
+  "benchmark_window": {
+    "started_at_local": "2026-09-03T23:45:01-05:00",
+    "ended_at_local": "2026-09-03T23:52:59-05:00",
+    "completed_at_local": "2026-09-03T23:53:01.920850-05:00",
+    "started_at_utc": "2026-09-04T04:45:01Z",
+    "ended_at_utc": "2026-09-04T04:52:59Z",
+    "completed_at_utc": "2026-09-04T04:53:01.920850Z"
+  },
+  "source_result": {
+    "filename": "glm-5.3-flash-long-matrix-022.json",
+    "bytes": 63601,
+    "sha256": "893a731ec34361f23d72f3cc2c0d43fb20b8771719c7b16568bcceffd9e6ffcf",
+    "publication": "omitted because the raw result contains a client hostname and private site address"
+  },
+  "harness": {
+    "repository": "https://github.com/local-inference-lab/llm-inference-bench.git",
+    "version": "0.4.32",
+    "commit": "a3a24a6631f011716be732bbf148f95e1d0cf716",
+    "public_origin_main_at_measurement": "d115feee75095081bda2520aa046986a8885f449",
+    "script": "llm_decode_bench.py",
+    "script_git_blob_sha1": "3bbb4eac59970b5c6393ef6cea8d96b3e97ea880",
+    "script_sha256": "53104c0cde0a67c1278279e933bc344eb7be7cd4cfef8364c6d93b82a9eab03c",
+    "public_reproduction_status": "The measured commit was one local commit ahead of public origin/main, so the exact harness source cannot yet be fetched from the public repository."
+  },
+  "artifact": {
+    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f",
+    "image_id": "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075",
+    "platform": "linux/arm64",
+    "sparkring_image_commit": "b358a818786d8506086aaaabb9afe464fa2ccb49",
+    "vllm_composition": "e02b174693e13859de61811b5e8cd13d5308e259",
+    "vllm_b12x_kda_prefill_upstream": "54371894ecaa77f2725a1c99e018f3fe93d358dd",
+    "vllm_b12x_kda_workspace_isolation_upstream": "57a6169a5c229a5ca8c24791762b1fc51c89e58d",
+    "b12x": "9ae41c5cb9935d740456479954b0089f80bd2ef2",
+    "sparkcache": "66057174301a4759ca3a45207ea41016689449cb",
+    "sircl_source_tree": "2aac02232a9115037723aa1dd40483a5693a3e1e",
+    "sircl_native_sha256": "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc"
+  },
+  "conditions": {
+    "target": "local-inference-lab/GLM-5.3-Flash-NVFP4@520de24eabf507659eaef7c70f14fd584527facc",
+    "draft": "incoai/GLM-5.3-Flash-DFlash2@dc77ff1c99eeb2df044ee3d4f0094eb033fee410",
+    "ranks": 4,
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 4,
+    "cp_kv_cache_interleave_size": 4,
+    "attention_backend": "B12X",
+    "moe_backend": "b12x",
+    "linear_backend": "b12x",
+    "kda_prefill_backend": "b12x",
+    "full_ckv_gather": true,
+    "max_model_len": 1048576,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "prefill_schedule_interval": 2,
+    "kv_cache_dtype": "fp8",
+    "kv_cache_memory_bytes_per_rank": 25769803776,
+    "speculative_method": "dflash",
+    "num_speculative_tokens": 7,
+    "async_scheduling": true,
+    "sparkcache_access_mode": "read-write",
+    "sparkcache_publication_schema": "tail-cow-v2",
+    "sparkcache_shared_prefix_lease_seconds": 300,
+    "sparkcache_async_capture_slot_bytes": 3221225472,
+    "sparkcache_async_capture_slot_count": 2,
+    "cache_namespace": "glm53-issue55-followups-0c8ad7b-dcp4-page-tail-cow-v2",
+    "cache_namespace_matches_profile_default": false,
+    "transport": "dual-rail SIRCL for admitted TP collectives; patched NCCL 2.30.7 otherwise"
+  },
+  "runtime_correlation": {
+    "observed_at_utc": "2026-09-04T05:06:27.209Z",
+    "rank_count": 4,
+    "same_image_id_on_every_rank": true,
+    "container_started_at_utc": {
+      "0": "2026-09-04T04:39:47.591917193Z",
+      "1": "2026-09-04T04:39:40.779695891Z",
+      "2": "2026-09-04T04:39:40.960833751Z",
+      "3": "2026-09-04T04:39:40.620877287Z"
+    },
+    "status_on_every_rank": "running and healthy",
+    "restart_count_on_every_rank": 0,
+    "sircl_capability_vote_on_every_rank": true,
+    "b12x_kda_warmup_on_every_rank": true,
+    "b12x_full_ckv_gather_on_every_rank": true,
+    "runtime_log_window_utc": "2026-09-04T04:41:44Z/2026-09-04T04:43:22Z"
+  },
+  "benchmark": {
+    "engine": "vllm",
+    "reported_engine_version": "v0.1.dev1+gd377796e8",
+    "model": "glm-5.3-flash",
+    "decode_mode": "duration",
+    "duration_per_cell_seconds": 30.0,
+    "request_count": 0,
+    "run_burst": false,
+    "max_output_tokens": 2048,
+    "temperature": 1.0,
+    "ignore_eos": true,
+    "decode_warmup_seconds": 3.0,
+    "decode_concurrency": [1, 2, 4],
+    "decode_contexts": [8192, 16384, 32768],
+    "prefill_contexts": [8192, 16384, 32768, 65536, 131072],
+    "prefill_mode": "integrated_decode_scout",
+    "standalone_prefill": false,
+    "prefill_metric": "client",
+    "client_dcp_size_override": 0,
+    "client_kv_budget_override": 0,
+    "auto_detected_max_total_tokens": 1251328
+  },
+  "prefill": {
+    "8192": {
+      "prompt_tokens": 8197,
+      "method": "integrated_scout",
+      "client_ttft_seconds": 3.328,
+      "client_tokens_per_second": 2463.0,
+      "server_validation": {"method": "prometheus:kv_computed", "seconds": 3.303, "tokens_per_second": 2482.0, "cached_tokens": 0}
+    },
+    "16384": {
+      "prompt_tokens": 16227,
+      "method": "integrated_scout",
+      "client_ttft_seconds": 6.125,
+      "client_tokens_per_second": 2649.0,
+      "server_validation": {"method": "prometheus:kv_computed", "seconds": 6.096, "tokens_per_second": 2662.0, "cached_tokens": 0}
+    },
+    "32768": {
+      "prompt_tokens": 32318,
+      "method": "integrated_scout",
+      "client_ttft_seconds": 11.391,
+      "client_tokens_per_second": 2837.0,
+      "server_validation": {"method": "prometheus:kv_computed", "seconds": 11.327, "tokens_per_second": 2853.0, "cached_tokens": 0}
+    },
+    "65536": {
+      "prompt_tokens": 64508,
+      "method": "scout_only",
+      "client_ttft_seconds": 22.938,
+      "client_tokens_per_second": 2812.0,
+      "server_validation": null
+    },
+    "131072": {
+      "prompt_tokens": 128877,
+      "method": "scout_only",
+      "client_ttft_seconds": 45.453,
+      "client_tokens_per_second": 2835.0,
+      "server_validation": null
+    }
+  },
+  "aggregate_decode": {
+    "8192": {
+      "1": {"tokens_per_second": 37.439, "target_steps_per_second": 14.682, "effective_accept_length": 2.550, "output_tokens": 1122},
+      "2": {"tokens_per_second": 63.601, "target_steps_per_second": 22.290, "effective_accept_length": 2.853, "output_tokens": 1906},
+      "4": {"tokens_per_second": 85.901, "target_steps_per_second": 30.345, "effective_accept_length": 2.831, "output_tokens": 2593}
+    },
+    "16384": {
+      "1": {"tokens_per_second": 37.967, "target_steps_per_second": 14.600, "effective_accept_length": 2.600, "output_tokens": 1139},
+      "2": {"tokens_per_second": 61.500, "target_steps_per_second": 22.000, "effective_accept_length": 2.795, "output_tokens": 1845},
+      "4": {"tokens_per_second": 90.363, "target_steps_per_second": 32.034, "effective_accept_length": 2.821, "output_tokens": 2708}
+    },
+    "32768": {
+      "1": {"tokens_per_second": 35.851, "target_steps_per_second": 14.541, "effective_accept_length": 2.466, "output_tokens": 1075},
+      "2": {"tokens_per_second": 57.793, "target_steps_per_second": 21.556, "effective_accept_length": 2.681, "output_tokens": 1732},
+      "4": {"tokens_per_second": 87.441, "target_steps_per_second": 30.897, "effective_accept_length": 2.830, "output_tokens": 2615}
+    }
+  },
+  "result": {
+    "decode_cells": 9,
+    "request_errors": 0,
+    "readiness_timeouts": 0,
+    "capacity_limited_cells": 0
+  },
+  "limitations": [
+    "Each prefill cell contains one observation and each decode cell contains one 30-second measured window.",
+    "The 65536-token and 131072-token prefill cells have client TTFT timing but no server-side prefill or cached-token validation.",
+    "The run did not use standalone cold-prefill mode or finite-request burst mode.",
+    "Decode beyond 32768 tokens, concurrency above four, repeated-sample variance, output quality, and long-duration stability were not measured.",
+    "The measured benchmark-harness commit was not on the public remote at measurement time.",
+    "The raw result is omitted because it contains a client hostname and private site address.",
+    "The cache namespace differs from the source-bound profile default, so the observation must not be presented as a clean-cache measurement.",
+    "Client hardware telemetry describes the benchmark client, not the four GB10 serving ranks."
+  ]
+}

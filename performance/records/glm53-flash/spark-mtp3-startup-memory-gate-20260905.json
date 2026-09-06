@@ -1,0 +1,358 @@
+{
+  "schema": "sparkring-managed-startup-memory-validation/v1",
+  "status": "qualified",
+  "scope": "Four stopped DGX Spark hosts: guarded repair refusal, explicitly authorized reboot, memory-gated startup, and model readiness.",
+  "hardware": "Four NVIDIA DGX Spark GB10 hosts, 4096-byte kernel pages",
+  "serving_image": "sha256:3b4768e5ba31cadcc882dffa06d7b667af44abdf157d5c11b7ac7fe962e80c43",
+  "model": "GLM-5.3-Flash-NVFP4-Spark, TP4/DCP4, native MTP3, SparkCache and hardware-forwarded mesh",
+  "source_hashes": {
+    "runtime/glm53-spark-mtp3-mesh/managed_memory.py": "a338586470ebcae67df13bb30d4f6707d2b10da0f67eecaf6c3b5c1fcc22a367",
+    "runtime/glm53-spark-mtp3-mesh/managed_service.py": "e75dcd5394951a5801f6c5f742d1aef69f91d9fbfbd324be012667b893c4ed08",
+    "runtime/glm53-spark-mtp3-mesh/managed_network.py": "f2c9538e356537f6e9c63fcbd6ee086d4641491b034b07b8b86860be7c678877",
+    "runtime/glm53-spark-mtp3-mesh/managed_units.py": "4a8f47de02e2acba28a4a6a0847f95ed9877ee8cf9ad15e040bd82ef7540e786",
+    "runtime/glm53-spark-mtp3-mesh/managed_cluster.py": "c772836f208f24e8bedb5c6b57c8818146dade2a46b88bc18f974fd1f16b023f",
+    "runtime/glm53-spark-mtp3-mesh/managed_install.py": "99c080788a8810a06a0aa96f3ddeac7647ff9cc8228ddca86903171d8d8f7080",
+    "runtime/glm53-spark-mtp3-mesh/profile.py": "5860e8a986f404965f77713b528ea69ea31d16161e653c63e6f01f531e180f12",
+    "runtime/glm53-spark-mtp3-mesh/inspect_fabric.py": "def378fea0534c4302c14b0b22be5d40f7bfe456880748e3ee6c7b7237203cc6",
+    "runtime/glm53-spark-mtp3-mesh/pins.json": "400b190cc66b32a6c3d0707d763c55d9814f1d5dc8be9adabf2e437168258a6c",
+    "runtime/glm53-flash-jj-r8-gb10/pins.json": "dc49370d911ecc32f1c7ea7656f41837334a8e5ed800db263174781bee2b2313",
+    "runtime/glm53-flash-jj-r8-gb10/warmup_dflash.py": "f41c38eef41d15d63dcfc49cd6643357ca1a3ae18200ddbe4f8692d0b767ee79",
+    "runtime/glm53-flash-jj-r8-gb10/launch-rank.sh": "8a4511eb80e3d12d9daccfc9c1d2e6305c67926e24017f4e90528cc3be6c3ba7",
+    "runtime/glm53-flash-jj-r8-gb10/runtime.env.example": "707e0568d0410e8911efbb15f2d4e97e779ef1ac81712de70265f4e7769cc911",
+    "runtime/glm53-flash-jj-r8-gb10/sircl-fused.env.example": "f47619ad2aaece7425e1958ddf19fa9b6508fbe0964fb66fe88aee0f864c3038",
+    "spark_transport/experiments/cx7_hairpin_diagonal/__init__.py": "67fd1b48093286b47f2cf32c7fcd69d3e6d29bf6484abc7216a82da0e10e7b41",
+    "spark_transport/experiments/cx7_hairpin_diagonal/fabric.py": "cbf2f596e744ab50caac66db41e91c1cd3a5625f3cc6ba77ffbd1d667147d544",
+    "spark_transport/experiments/glm53_rocenante_overlay/build_bundle.py": "ca5f5502b55fbe095bdcdf1283b1f5df85b0f9727873970df727475d5f305a3b"
+  },
+  "repair": [
+    {
+      "rank": 0,
+      "status": "reboot-required",
+      "reclaimed": true,
+      "before": {
+        "available_bytes": 125128163328,
+        "equivalent_32mib_blocks": 21,
+        "minimum_available_bytes": 103079215104,
+        "minimum_blocks": 200,
+        "passed": false
+      },
+      "after": {
+        "available_bytes": 125560930304,
+        "equivalent_32mib_blocks": 80,
+        "minimum_available_bytes": 103079215104,
+        "minimum_blocks": 200,
+        "passed": false
+      },
+      "passed": false
+    },
+    {
+      "rank": 1,
+      "status": "reboot-required",
+      "reclaimed": true,
+      "before": {
+        "available_bytes": 125293953024,
+        "equivalent_32mib_blocks": 97,
+        "minimum_available_bytes": 103079215104,
+        "minimum_blocks": 200,
+        "passed": false
+      },
+      "after": {
+        "available_bytes": 125651247104,
+        "equivalent_32mib_blocks": 175,
+        "minimum_available_bytes": 103079215104,
+        "minimum_blocks": 200,
+        "passed": false
+      },
+      "passed": false
+    },
+    {
+      "rank": 2,
+      "status": "reboot-required",
+      "reclaimed": true,
+      "before": {
+        "available_bytes": 125426774016,
+        "equivalent_32mib_blocks": 119,
+        "minimum_available_bytes": 103079215104,
+        "minimum_blocks": 200,
+        "passed": false
+      },
+      "after": {
+        "available_bytes": 125619617792,
+        "equivalent_32mib_blocks": 185,
+        "minimum_available_bytes": 103079215104,
+        "minimum_blocks": 200,
+        "passed": false
+      },
+      "passed": false
+    },
+    {
+      "rank": 3,
+      "status": "reboot-required",
+      "reclaimed": true,
+      "before": {
+        "available_bytes": 125443579904,
+        "equivalent_32mib_blocks": 25,
+        "minimum_available_bytes": 103079215104,
+        "minimum_blocks": 200,
+        "passed": false
+      },
+      "after": {
+        "available_bytes": 125687177216,
+        "equivalent_32mib_blocks": 57,
+        "minimum_available_bytes": 103079215104,
+        "minimum_blocks": 200,
+        "passed": false
+      },
+      "passed": false
+    }
+  ],
+  "automatic_reboots": 0,
+  "operator_authorized_reboots": 4,
+  "post_reboot_blocks": [
+    3671,
+    3685,
+    3687,
+    3683
+  ],
+  "startup_phases": [
+    {
+      "name": "model-stop-barrier",
+      "ranks": [
+        {
+          "rank": 0,
+          "returncode": 0
+        },
+        {
+          "rank": 1,
+          "returncode": 0
+        },
+        {
+          "rank": 2,
+          "returncode": 0
+        },
+        {
+          "rank": 3,
+          "returncode": 0
+        }
+      ]
+    },
+    {
+      "name": "memory-idle-barrier",
+      "ranks": [
+        {
+          "rank": 0,
+          "returncode": 0
+        },
+        {
+          "rank": 1,
+          "returncode": 0
+        },
+        {
+          "rank": 2,
+          "returncode": 0
+        },
+        {
+          "rank": 3,
+          "returncode": 0
+        }
+      ]
+    },
+    {
+      "name": "prepare-launch-memory",
+      "ranks": [
+        {
+          "rank": 0,
+          "returncode": 0,
+          "measurement": {
+            "status": "ready",
+            "reclaimed": false,
+            "before": {
+              "available_bytes": 125142220800,
+              "equivalent_32mib_blocks": 3601,
+              "minimum_available_bytes": 103079215104,
+              "minimum_blocks": 200,
+              "passed": true
+            },
+            "after": {
+              "available_bytes": 125142220800,
+              "equivalent_32mib_blocks": 3601,
+              "minimum_available_bytes": 103079215104,
+              "minimum_blocks": 200,
+              "passed": true
+            },
+            "passed": true
+          }
+        },
+        {
+          "rank": 1,
+          "returncode": 0,
+          "measurement": {
+            "status": "ready",
+            "reclaimed": false,
+            "before": {
+              "available_bytes": 125358505984,
+              "equivalent_32mib_blocks": 3617,
+              "minimum_available_bytes": 103079215104,
+              "minimum_blocks": 200,
+              "passed": true
+            },
+            "after": {
+              "available_bytes": 125358505984,
+              "equivalent_32mib_blocks": 3617,
+              "minimum_available_bytes": 103079215104,
+              "minimum_blocks": 200,
+              "passed": true
+            },
+            "passed": true
+          }
+        },
+        {
+          "rank": 2,
+          "returncode": 0,
+          "measurement": {
+            "status": "ready",
+            "reclaimed": false,
+            "before": {
+              "available_bytes": 125268967424,
+              "equivalent_32mib_blocks": 3620,
+              "minimum_available_bytes": 103079215104,
+              "minimum_blocks": 200,
+              "passed": true
+            },
+            "after": {
+              "available_bytes": 125268967424,
+              "equivalent_32mib_blocks": 3620,
+              "minimum_available_bytes": 103079215104,
+              "minimum_blocks": 200,
+              "passed": true
+            },
+            "passed": true
+          }
+        },
+        {
+          "rank": 3,
+          "returncode": 0,
+          "measurement": {
+            "status": "ready",
+            "reclaimed": false,
+            "before": {
+              "available_bytes": 125365452800,
+              "equivalent_32mib_blocks": 3605,
+              "minimum_available_bytes": 103079215104,
+              "minimum_blocks": 200,
+              "passed": true
+            },
+            "after": {
+              "available_bytes": 125365452800,
+              "equivalent_32mib_blocks": 3605,
+              "minimum_available_bytes": 103079215104,
+              "minimum_blocks": 200,
+              "passed": true
+            },
+            "passed": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "memory-ready-barrier",
+      "ranks": [
+        {
+          "rank": 0,
+          "returncode": 0,
+          "measurement": {
+            "available_bytes": 125124636672,
+            "equivalent_32mib_blocks": 3601,
+            "minimum_available_bytes": 103079215104,
+            "minimum_blocks": 200,
+            "passed": true
+          }
+        },
+        {
+          "rank": 1,
+          "returncode": 0,
+          "measurement": {
+            "available_bytes": 125357621248,
+            "equivalent_32mib_blocks": 3617,
+            "minimum_available_bytes": 103079215104,
+            "minimum_blocks": 200,
+            "passed": true
+          }
+        },
+        {
+          "rank": 2,
+          "returncode": 0,
+          "measurement": {
+            "available_bytes": 125272875008,
+            "equivalent_32mib_blocks": 3620,
+            "minimum_available_bytes": 103079215104,
+            "minimum_blocks": 200,
+            "passed": true
+          }
+        },
+        {
+          "rank": 3,
+          "returncode": 0,
+          "measurement": {
+            "available_bytes": 125357641728,
+            "equivalent_32mib_blocks": 3605,
+            "minimum_available_bytes": 103079215104,
+            "minimum_blocks": 200,
+            "passed": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "four-rank-ready",
+      "ranks": [
+        {
+          "rank": 0,
+          "returncode": 0
+        },
+        {
+          "rank": 1,
+          "returncode": 0
+        },
+        {
+          "rank": 2,
+          "returncode": 0
+        },
+        {
+          "rank": 3,
+          "returncode": 0
+        }
+      ]
+    },
+    {
+      "name": "start-model-units",
+      "ranks": [
+        {
+          "rank": 0,
+          "returncode": 0
+        },
+        {
+          "rank": 1,
+          "returncode": 0
+        },
+        {
+          "rank": 2,
+          "returncode": 0
+        },
+        {
+          "rank": 3,
+          "returncode": 0
+        }
+      ]
+    }
+  ],
+  "readiness_elapsed_seconds": 439.7970000000205,
+  "raw_receipt_sha256": {
+    "preparation.jsonl": "d3e4ae42ff26c3c34c83a7a403b13e18a20b3bb1000ed3a3060256f263ddc5c3",
+    "model-start.json": "84456b195141dfb1f58d11b95373ea93bddf8c72942e2b4f69a5a9b73d7b48b7",
+    "source-manifest.json": "ac0fe7cbf732d30ffca7009b4f9ef1ceceabf63f1ba315cbe9eda0c8c51d0395"
+  },
+  "readiness_receipt_sha256": "d47e8eea7010ad82a8593946aeb8a10824be121dafab9bbd94380ebbfea7118c",
+  "validation": "324 CPU tests passed, three platform-dependent tests skipped. Four-rank native Q4/Q20/Q28/Q64 checks passed after reboot.",
+  "limits": "This validates refusal and healthy startup, not automatic reboot, recovery beneath live model work, or a serving speedup."
+}

@@ -1,0 +1,257 @@
+{
+  "schema": "sparkring-public-application-install-evidence/v1",
+  "status": "research-only",
+  "date": "2026-09-05",
+  "conditions": {
+    "source_commit": "91c313d028877ada5fb1f04610f83c6465428657",
+    "public_image_reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:23f00af873ccc784cfb742b7be2a29c6d3c20ebec9741843c025320bb9c04685",
+    "image_id": "sha256:26273b8e358df139ae913610a5d43084ff0fd08aafe282ef633a3bc74afefe47",
+    "model_repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+    "model_revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "ranks": 4,
+    "topology": "physical ring with hardware-forwarded opposite-peer paths",
+    "tp": 4,
+    "dcp": 4,
+    "pp": 1,
+    "speculation": "native MTP3",
+    "temperature": 1,
+    "max_sequences": 16,
+    "batch_tokens": 8192,
+    "fresh_components": [
+      "public source checkouts",
+      "image-extracted transport artifacts",
+      "rendered launch directories",
+      "empty cache roots",
+      "health key and common epoch",
+      "model containers",
+      "managed installation targets",
+      "owned mesh routes, qdiscs, and hardware rules"
+    ],
+    "reused_components": [
+      "model checkpoint files",
+      "Docker image layers",
+      "OS and driver installation",
+      "firmware",
+      "physical cabling",
+      "IP configuration",
+      "MTU and GID configuration",
+      "hairpin driver prerequisites"
+    ],
+    "model_download_repeated": false,
+    "indexed_shards_per_rank": 44,
+    "weight_validation": "configuration and index hashes, indexed file presence, safetensors headers; no full independent weight-file hashing",
+    "repetitions": 1
+  },
+  "measurement": {
+    "readiness_metric": "controller polling elapsed until all four containers healthy plus rank-zero API and scheduler liveness HTTP 200",
+    "readiness_clock": "time.monotonic",
+    "whole_install_duration_measured": false,
+    "native_measurement": "five correctness cases per rank at Q4,Q20,Q28,Q64; counters checked against per-rank/per-path expectations",
+    "performance_comparison": false,
+    "raw_receipts_private": true,
+    "raw_receipt_sha256": {
+      "model-ready.json": "a1db39e2120f8ad666326a6b117b38d019d557428254bd6782f9f432a96730a4",
+      "semantic-before/receipt.json": "93bc615bdcea2133ffd9952e018907c1e8fdecbf7574c7d427dcd743aca89d71",
+      "prefix-before/receipt.json": "dbd7514460c1ef6a3439e8bf1b5eb51f8db531a997220a185078dfc0ec9e3c0d",
+      "prepare/rank0.json": "8c435ce69acf4f236dc42e1ed3051510d38f0363cf071b6869393b8f14fdb17d",
+      "install/rank0.json": "568031256910a0d6043fc2cd727561b54978616d9e442ba477a67b02e593c537",
+      "archive/rank0.json": "86a28bba7723761fac9116d419a557878a8abfae9e955772cb22888c5d13f581",
+      "inventory/rank0.json": "25238c41811593e1e481da6d992e6d6be6c8b5f8859c965cf4345cfd9041da71",
+      "publication-before-restart/rank0.json": "4210a84cb3863aac758090f828d8d9431fb2ddf01f50b4b6cc620099beed596c",
+      "prepare/rank1.json": "0fb78cd048606aa0e364f826b7542e4f83525fc230bb667d1066ec5507e84354",
+      "install/rank1.json": "cd8ba80d031c83e17a837d33f215b65697b4276a7d9da8a6a689ecff503a9a80",
+      "archive/rank1.json": "624a935095bce2c7037bb9dce5b1642e670bb2b88120aaa442b81ddca4e67ae8",
+      "inventory/rank1.json": "df8b75b460e6c8907d7788630a426d9a2fef6a22dc3d980852d4d4f9b916f145",
+      "publication-before-restart/rank1.json": "f089635a6f1b1ff9d3b6bc48ec7b0d24d20d300b689bfe8d610c6289ae159b2d",
+      "prepare/rank2.json": "f0cdd3adb021eae85bd705f613f8c13d14a8a48cdfef7f050004684d1ff1f3f9",
+      "install/rank2.json": "1a64016ea99c9996f12f9d5f895fdc2bdb4e44ddc6e69e157fd8ed739219c354",
+      "archive/rank2.json": "ed0bf9c199298b7a574bb90bf3d5500ff9d6062221e86a5c56bee9fbf7350a78",
+      "inventory/rank2.json": "a556fbba80053050572f7ddccfe6fdb21ac8a12af079b44c44cb8cc119655ecd",
+      "publication-before-restart/rank2.json": "c5681c7b51ac6793313dd412d36a34b9f3160bf194ba8fc68f88c48487b0bd13",
+      "prepare/rank3.json": "06cb7ae735c7f8427e07913e5c61c7f15844bbdd15b2c5bc58409a9d74aea0b8",
+      "install/rank3.json": "f648ff4ff927d855dcf71bf25ed04bd71c4d4a17b2d104228b6290c8740b97e0",
+      "archive/rank3.json": "fd5e2777f1c0dfaf50bdd4c01d5b849bc3327dc7da33f809f440e14a59f6fc3d",
+      "inventory/rank3.json": "15481657352ec0dbea521b3ae49bacde8f47a348fcc7da217d8a609f3a256e12",
+      "publication-before-restart/rank3.json": "6f29381ba2d0eb858db36d1693fa35789bf4a0ba3a9b9b44eea0267768fd99d8",
+      "native/q4.json": "cffbf221c5c29eee68065c455ecef24f42a2298b7162b078e8d846c100a17d22",
+      "native/q20.json": "64ac311ce4a239713068b5dee2ec81fac85f8e380dc533a013227d69ef6738ee",
+      "native/q28.json": "0b43545bf89c050c5b7885f0b9ac4ff0ae88f88632d563991945b92920d6e86d",
+      "native/q64.json": "413fec715945df332a0c55291b9b21b904357df9c26ca63ae91f2388e9c5ae5c",
+      "restart-ready.json": "d733bd256dc26a5df6018ac4f6ff03b625f463609ddb9ec817f6385437150ace",
+      "prefix-after/receipt.json": "195a8fc2e737f96efc2439f88dfd50d9e8d2d8e33def85ef87fb12e18279106f",
+      "semantic-after/receipt.json": "c3a86df833c76be36876e9e976ae95c5985678d47e414ac707276fef1dccb458",
+      "cache-model-stop.json": "3b392dac4b2f3020ffee842c692dba1e901206e11facc297ec74f919e38e750c",
+      "cache-model-restart.json": "ef18f92687859c448f4bcf5c31036908261bead6ccbca7bd0dfef0889442c201",
+      "first-ready/rank0.json": "1e9fc727d87922721337c218d5d2e87d4f1ef18448bd76a2f75bbe59dfe36ad7",
+      "final-ready/rank0.json": "17bf2622a94faba05292d16851f667f41bdb4210ec35c76c8f08fdf67cd9fe81",
+      "first-ready/rank1.json": "07ed4bc8d2cc3c6821e73e9eb8eb7604273bf0c2aa648fc1f499ec4e78930db6",
+      "final-ready/rank1.json": "a73883076f5d496d11f47b58154fd604384047fec5637ce0e68f2f631e4813f1",
+      "first-ready/rank2.json": "8372beb1678269dc28d87ee9b2b512031b125911f82e0f526fe5faff552126ca",
+      "final-ready/rank2.json": "c38e1fe585f6379a5cd6c187945ddd6cfc6e428c119fca2d6600a5aa934ff8f5",
+      "first-ready/rank3.json": "7ace944fdf28b636272a619c095060baebf172ea77209da4c9e0af6f9faf82ac",
+      "final-ready/rank3.json": "d9d1d3b80c6c3118ac3f15827f4b92f9fd5aec28cee68cb7a7a8a2f6ac679c01"
+    }
+  },
+  "results": {
+    "fresh_public_checkout_ranks": 4,
+    "anonymous_registry_resolution_ranks": 4,
+    "extracted_bundle_manifest_sha256": "4204fabc93303226b9a120b094ef3c82ed4aadd1d7f97cfbe291204c027ed45f",
+    "extracted_marker_sha256": "2828c07e4255c4962c77425be2c88969e7eb7dd4b1bf9e36485bc705bb5d6d64",
+    "fresh_empty_cache_ranks": 4,
+    "absent_install_target_ranks": 4,
+    "baseline_container_ids_retained": 4,
+    "installed_source_files_per_rank": 13,
+    "source_hash_comparisons_passed": 52,
+    "source_hash_mismatches": 0,
+    "container_command_environment_entrypoint_image_equal_to_baseline": true,
+    "intended_container_changes": [
+      "container name",
+      "transport-artifact source mount",
+      "fresh-cache source mount"
+    ],
+    "other_container_metadata_change": {
+      "field": "HostConfig.OomKillDisable",
+      "before": null,
+      "after": false,
+      "oom_killer_disabled": false
+    },
+    "model_mount_changed": false,
+    "model_create_only_stopped_ranks": 4,
+    "installer_started_or_enabled_services": false,
+    "owned_mesh_objects": {
+      "routes_per_rank": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "qdiscs_per_rank": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "rules_per_rank": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "adopted_objects": 0
+    },
+    "native": {
+      "query_rows": [
+        4,
+        20,
+        28,
+        64
+      ],
+      "correctness_passed": 80,
+      "correctness_total": 80,
+      "origin_paths_per_shape": 24,
+      "operations_per_rank_per_shape": 33,
+      "payload_writes": 3168,
+      "flag_writes": 3168,
+      "send_completions": 3168,
+      "completion_errors": 0,
+      "counter_mismatches": 0
+    },
+    "initial_readiness": {
+      "passed": true,
+      "polling_elapsed_seconds": 407.609,
+      "samples": 95,
+      "container_ranks_healthy": 4,
+      "api_health_http": 200,
+      "scheduler_liveness_http": 200
+    },
+    "semantic_before": {
+      "passed": true,
+      "temperature": 1,
+      "expected_text": "SPARKCACHE_GLM53_OK",
+      "finish_reason": "stop"
+    },
+    "prefix_before": {
+      "passed": true,
+      "temperature": 1,
+      "prompt_tokens": 27274,
+      "external_prefix_hit_tokens": 0,
+      "ram_prefix_hit_tokens": 0,
+      "expected_text": "cobalt orchard lantern",
+      "prompt_sha256": "3d2bc5228895566b1497e6f35f6c5aa051685f99438f27226134dfcfab15c277",
+      "committed_tokens_per_rank": [
+        26624,
+        26624,
+        26624,
+        26624
+      ]
+    },
+    "restart_restoration": {
+      "status": "passed",
+      "restart_issued": true,
+      "restoration_verified": true,
+      "raw_request_tool_persistent_restore_proven": false,
+      "qualification_basis": "same request and pinned container IDs, all-rank restore logs, external-prefix-hit counter deltas, expected semantic output",
+      "restart_readiness": {
+        "passed": true,
+        "polling_elapsed_seconds": 299.344,
+        "samples": 68,
+        "container_ranks_healthy": 4,
+        "api_health_http": 200,
+        "scheduler_liveness_http": 200
+      },
+      "prefix_after": {
+        "semantic_passed": true,
+        "temperature": 1,
+        "prompt_tokens": 27274,
+        "cached_tokens": 26624,
+        "external_prefix_hit_tokens": 26624,
+        "ram_prefix_hit_tokens": 0,
+        "elapsed_request_seconds": 2.718,
+        "expected_text": "cobalt orchard lantern",
+        "finish_reason": "stop"
+      },
+      "semantic_after": {
+        "passed": true,
+        "temperature": 1,
+        "expected_text": "SPARKCACHE_GLM53_OK"
+      },
+      "per_rank_restored_tokens": [
+        26624,
+        26624,
+        26624,
+        26624
+      ],
+      "per_rank_restore_milliseconds": [
+        153.7,
+        163.9,
+        184.2,
+        178
+      ],
+      "per_rank_restored_mib": [
+        79.1,
+        79.1,
+        79.1,
+        79.1
+      ],
+      "supervisor_generations_unchanged": true,
+      "supervisor_identity_and_view_unchanged": true,
+      "marker_processes_unchanged": true,
+      "container_ids_unchanged": true,
+      "final_supervisors": {
+        "ranks": 4,
+        "local_ready": true,
+        "phase": "armed",
+        "peer_health_degraded": false,
+        "markers_per_rank": 2
+      }
+    }
+  },
+  "conclusion": "The public application artifacts installed and reached serving readiness on four prepared hosts with fresh application/cache state. Selected native and semantic checks, fresh cache publication, coordinated model restart, and one persistent restoration recall passed.",
+  "limitations": [
+    "Not a factory-reset, cold-network, or new-driver installation test.",
+    "Docker layers and existing checkpoint files were reused; full checkpoint content authentication was not repeated.",
+    "One deployment and bounded stochastic canaries do not establish general model correctness, availability, or performance.",
+    "407.609 seconds is readiness polling elapsed, not download time or total installation duration.",
+    "Restoration qualification covers one temperature-one request and its per-rank logs; it does not establish general cache correctness."
+  ]
+}

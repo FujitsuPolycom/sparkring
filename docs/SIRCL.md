@@ -27,21 +27,28 @@ qualification. A four-rank matched comparison established native replay,
 API health, and zero overflow for the target and DSpark capture path; see the
 [DeepSeek SIRCL evidence record](../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
 
-The current GLM-5.3 Flash GB10 image composition embeds a source-bound SIRCL
-bundle for its implemented performance-testing lane. A developer can replace
-that bundle with a read-only host mount. Its captured width-4096 path and eager
-fused-prefill path have separate
-admission gates. The fused path accepts contiguous TP4 BF16 `[Q, 4096]`
+The GLM-5.3 Flash GB10 operator image embeds a source-bound SIRCL bundle. The
+exact public image is **qualified** for the recorded four-rank TP4/DCP4
+functional checks: capability agreement, startup, semantic inference,
+persistent SparkCache restore, concurrent store-ownership drain, and injected
+failure containment. Its artifact-bound throughput matrix is
+**research-only**; no broad SIRCL-versus-NCCL performance comparison has been
+established. A developer can replace the embedded bundle with a read-only host
+mount. Its captured width-4096 path and eager fused-prefill path use separate
+signature checks. The fused path accepts contiguous TP4 BF16 `[Q, 4096]`
 tensors from Q128 through Q8192 and uses two operation slots. Unsupported
-signatures remain on NCCL. The GLM-5.3 profile captures Q8/Q16/Q32/Q64/Q128;
-those captured collectives use graph-native SIRCL with direct doorbells. The
+signatures remain on NCCL. The GLM-5.3 profile captures every eight-row DFlash
+request-batch shape from Q8 through Q128; those captured collectives use
+graph-native SIRCL with direct doorbells. The
 fused session uses four persistent QPs and two 67,109,888-byte operation
 arenas. See the
 [GLM-5.3 runtime guide](../runtime/glm53-flash-jj-r8-gb10/README.md) and the
 [vLLM adapter contract](../spark_transport/integrations/vllm/README.md). The
 [public SIRCL build receipt](../runtime/glm53-flash-jj-r8-gb10/sircl-public-build-receipt.json)
 binds the native build and single-node test identity; it does not establish a
-four-rank serving result.
+four-rank serving result. The
+[operator-image receipt](../runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json)
+records the four-rank functional result and its limits.
 
 Before native construction, the GLM-5.3 adapter exchanges a capability record
 over the CPU process group. Shared protocol and artifact identities must match,
@@ -49,6 +56,76 @@ while each rank proves its own RDMA device and GID availability. Model output
 is checked against every process-local native session after vLLM's existing
 output synchronization. Fused kernels publish poison into mapped host control
 state so this check can reject their output without adding CUDA synchronization.
+
+## Persistent host rail configuration
+
+SIRCL reads host networking but does not configure it. Every Ethernet interface
+named by a SIRCL profile must retain its IPv4 address and MTU after a reboot.
+The corresponding RoCEv2 GID must encode that IPv4 address. A transient
+`ip address add` or `ip link set` command can satisfy a same-boot check but does
+not meet this requirement.
+
+[`configure_sircl_rail.py`](../scripts/configure_sircl_rail.py) creates one
+dedicated NetworkManager profile at a time. Its default mode only validates the
+arguments and prints the complete plan. `--verify` performs read-only checks.
+`--execute` requires root plus the exact confirmation
+`CONFIGURE_SIRCL_RAIL`; it creates or updates the named profile, activates it,
+then verifies:
+
+- profile autoconnect, manual IPv4, no default route, disabled IPv6, and MTU;
+- the active connection, live address, link state, and live MTU;
+- both interfaces exist, the declared management interface owns the active
+  IPv4 default route, and the rail interface does not, before any mutation;
+- the configured RDMA port is active in Ethernet mode and exposes the expected
+  GID value, RoCEv2 type, and Ethernet device; and
+- a don't-fragment peer ping whose payload exercises the configured MTU.
+
+Run the helper locally on each rank. Replace every value below before running
+the plan. Repeat the procedure for every dedicated secondary-rail interface:
+
+```bash
+management_netdev='REPLACE_MANAGEMENT_NETDEV'
+rail_netdev='REPLACE_SECONDARY_NETDEV'
+rail_cidr='REPLACE_LOCAL_SECONDARY_ADDRESS/PREFIX'
+rail_peer='REPLACE_SECONDARY_PEER_ADDRESS'
+rail_rdma_device='REPLACE_SECONDARY_RDMA_DEVICE'
+
+rail_args=(
+  --management-interface "${management_netdev}"
+  --interface "${rail_netdev}"
+  --address-cidr "${rail_cidr}"
+  --peer-address "${rail_peer}"
+  --rdma-device "${rail_rdma_device}"
+  --rdma-port 1
+  --gid-index 3
+  --mtu 9000
+)
+
+# Offline plan: validates values and prints the exact profile contract.
+python scripts/configure_sircl_rail.py "${rail_args[@]}"
+
+# Host mutation: inspect the plan before supplying the confirmation.
+sudo python scripts/configure_sircl_rail.py "${rail_args[@]}" \
+  --execute --confirmation CONFIGURE_SIRCL_RAIL
+
+# Read-only validation, including the peer path.
+python scripts/configure_sircl_rail.py "${rail_args[@]}" --verify
+```
+
+The default connection name is `sparkring-sircl-<interface>`. The helper will
+not change a profile with that name when it belongs to another interface. It
+also rejects a rail interface that is identical to the declared management
+interface. Verify both ends of every direct link and rerun `--verify` after a
+host reboot before starting a four-rank service.
+
+The
+[`secondary-rail persistence validation`](../runtime/glm53-flash-jj-r8-gb10/sircl-secondary-rail-persistence-live-validation.json)
+records eight successful live rail verifications on four GB10 ranks after a
+reboot exposed non-persistent addresses. Each rail passed 23 profile, route,
+link, RDMA, GID, and peer-path checks while the public GLM-5.3 image remained
+healthy. The helper's confirmed `--execute` path has CPU-only regression
+coverage; the recorded profiles were created with equivalent NetworkManager
+commands before the helper was available.
 
 The Qwen3.8-27B EXL3 K5/K6 pair and cycle profiles use patched NCCL. Their
 width-5,120 tensor-parallel shape is unsupported by SIRCL, so neither loads a

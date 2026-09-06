@@ -1,0 +1,94 @@
+{
+  "schema": "sparkring-glm53-memory-preflight-live/v1",
+  "status": "qualified",
+  "date": "2026-09-04",
+  "implementation": {
+    "repository": "https://github.com/FujitsuPolycom/sparkring.git",
+    "pull_request": 202,
+    "memory_preflight_commit": "fcf009259d1226fc93028aa7f36563673e771434",
+    "tested_checkout_commit": "915398338ea37a9447e1ee01b09d21f6192bd321"
+  },
+  "system": {
+    "hardware": "four NVIDIA DGX Spark systems with one GB10 GPU each",
+    "rank_count": 4,
+    "topology": "four-rank switchless direct-cable cycle",
+    "model": "local-inference-lab/GLM-5.3-Flash-NVFP4@520de24eabf507659eaef7c70f14fd584527facc",
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 4,
+    "max_model_len": 1048576,
+    "kv_cache_bytes_per_rank": 25769803776
+  },
+  "artifact": {
+    "registry_reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f",
+    "image_id": "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075",
+    "platform": "linux/arm64"
+  },
+  "thresholds": {
+    "minimum_available_bytes": 103079215104,
+    "contiguous_block_bytes": 33554432,
+    "minimum_equivalent_contiguous_blocks": 200
+  },
+  "preparation_conditions": {
+    "host_uptime": "approximately eight days on every rank",
+    "model_containers": "stopped and preserved",
+    "serving_and_rendezvous_ports": "free on every rank",
+    "inspection_behavior": "read-only"
+  },
+  "inspection_before_preparation": {
+    "generated_at": "2026-09-04T06:02:36Z",
+    "checks_passed": 120,
+    "checks_total": 124,
+    "failed_check_ids": ["HOST.MEMORY_CONTIGUITY"],
+    "failed_ranks": [0, 1, 2, 3],
+    "memory_available_bytes_by_rank": [124082053120, 125065207808, 125102858240, 125017255936],
+    "equivalent_32mib_blocks_by_rank": [0, 0, 0, 0],
+    "compact_fail_lifetime_by_rank": [3012445, 1794449, 2022418, 2019179],
+    "conclusion": "Available memory exceeded 96 GiB on every rank, but no rank met the 200-block physical-contiguity threshold. The preflight rejected model launch."
+  },
+  "memory_preparation": {
+    "generated_at": "2026-09-04T06:02:52Z",
+    "operation": "release clean page-cache pages and request kernel memory compaction",
+    "confirmation": "the exact confirmation token required by the command was supplied",
+    "status": "reboot-required",
+    "equivalent_32mib_blocks_after_compaction_by_rank": [1, 0, 1, 0],
+    "conclusion": "Online compaction did not restore the configured contiguous-memory floor. The command recommended rebooting every rank before another launch attempt."
+  },
+  "inspection_after_reboot": {
+    "generated_at": "2026-09-04T06:07:25Z",
+    "checks_passed": 124,
+    "checks_total": 124,
+    "memory_available_bytes_by_rank": [126124208128, 126105399296, 126104199168, 126294839296],
+    "equivalent_32mib_blocks_by_rank": [3686, 3701, 3703, 3688],
+    "compact_fail_lifetime_by_rank": [0, 0, 0, 0],
+    "image_id_matched_on_every_rank": true,
+    "registry_digest_matched_on_every_rank": true,
+    "result": "passed"
+  },
+  "secondary_sircl_rail_observation": {
+    "initial_restart_result": "rejected before API readiness",
+    "cause": "The secondary RDMA interfaces had no persistent NetworkManager profiles. Reboot removed their addresses and restored MTU 1500, so GID index 3 was unavailable.",
+    "safety_result": "SIRCL capability agreement rejected every rank before model output or API readiness.",
+    "remediation": "Each secondary interface received a persistent rank-local NetworkManager profile with its point-to-point address, MTU 9000, no default route, and autoconnect enabled.",
+    "verification": "Both secondary interfaces on every rank exposed the expected RoCEv2 GID at index 3, and both 8,972-byte don't-fragment neighbor pings passed per rank."
+  },
+  "model_relaunch": {
+    "container_started_at_utc_by_rank": ["2026-09-04T06:11:47.393643042Z", "2026-09-04T06:11:47.830599035Z", "2026-09-04T06:11:47.843415162Z", "2026-09-04T06:11:47.377553189Z"],
+    "model_load_seconds_by_rank": [100.789711, 98.721397, 107.525011, 100.092998],
+    "sircl_capability_agreement_on_every_rank": true,
+    "api_startup_completed_at": "2026-09-04T06:15:29Z",
+    "container_health_on_every_rank": "healthy",
+    "semantic_request": {
+      "request": "What is 2 plus 2? Answer with one numeral.",
+      "http_status": 200,
+      "answer": "4",
+      "finish_reason": "stop"
+    },
+    "result": "passed"
+  },
+  "conclusion": "The 200-equivalent-32-MiB-block check distinguished an eight-day fragmented state from the post-reboot state on every rank. The preparation command correctly required reboot when online compaction could not recover the threshold, and the exact public image launched successfully only after the complete preflight passed.",
+  "limitations": [
+    "This is one four-rank GB10 observation. The threshold separates the recorded states but is not a universal capacity guarantee for every model or host workload.",
+    "Lifetime compaction counters are diagnostic context, not pass or fail thresholds.",
+    "The secondary SIRCL rail configuration is a separate persistent-network requirement. The model's capability agreement detects missing GIDs before serving; a dedicated operator helper and documentation are tracked separately."
+  ]
+}

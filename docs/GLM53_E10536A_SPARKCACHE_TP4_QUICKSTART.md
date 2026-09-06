@@ -156,3 +156,5 @@ Embedded MTP identities are SHA-256 over
 either policy string `static` or `adaptive:3:32`, separated by zero bytes.
 The checked-in CPU contract recomputes both values instead of accepting
 unexplained constants.
+
+[Profile validation: performance, accuracy, and restart checks](PROFILE_VALIDATION.md).

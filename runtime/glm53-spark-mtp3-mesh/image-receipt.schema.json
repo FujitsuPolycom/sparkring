@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SparkRing MTP3 mesh image verification receipt",
+  "type": "object",
+  "required": ["schema", "status", "checks_passed", "image", "image_id", "image_reference", "parent_image_id", "platform", "source_receipt_sha256", "bundle_manifest_sha256", "inside_image", "limitation"],
+  "properties": {
+    "schema": {"const": "sparkring-mtp3-mesh-image-receipt/v1"},
+    "status": {"const": "research-only"},
+    "checks_passed": {"type": "boolean"},
+    "image": {"type": "string"},
+    "image_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "image_reference": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "parent_image_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "platform": {"const": "linux/arm64"},
+    "source_receipt_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "bundle_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "inside_image": {"type": "object"},
+    "limitation": {"type": "string"}
+  }
+}

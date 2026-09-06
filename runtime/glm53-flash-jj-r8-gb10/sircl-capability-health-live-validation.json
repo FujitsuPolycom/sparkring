@@ -2,7 +2,7 @@
   "schema": "sparkring-glm53-sircl-capability-health-live/v1",
   "status": "passed",
   "date": "2026-09-03",
-  "purpose": "Record the normal TP4/DCP4 serving result and two deliberate SIRCL fail-stop runs for issue 198 without relying on conversation history.",
+  "purpose": "Record the TP4/DCP4 serving result and two deliberate SIRCL failure-injection runs for issue 198 without relying on conversation history.",
   "system": {
     "model": "GLM-5.3-Flash NVFP4 with DFlash2 BF16 draft",
     "hosts": [
@@ -30,7 +30,7 @@
     "sircl": {
       "mode": "custom",
       "capability_vote": true,
-      "post_output_health_gate": true,
+      "post_output_health_check": true,
       "graph_width4096": true,
       "graph_direct_doorbell": true,
       "fused_prefill": true,
@@ -168,7 +168,7 @@
         "all_containers_finished": true,
         "last_container_finished_seconds_after_first_fatal": 40.726
       },
-      "conclusion": "The deliberately poisoned sequence did not reach API readiness or expose model output. All four native proxies fail-stopped and every worker monitor initiated shutdown without an unbounded collective wait. Because the fault fired during startup, this run establishes containment and convergence, not direct observation of the Python post-output gate."
+      "conclusion": "The deliberately poisoned sequence did not reach API readiness or expose model output. All four native proxies reported fatal errors, and every worker monitor initiated shutdown without an unbounded collective wait. Because the fault occurred during startup, this result establishes containment and convergence, not direct observation of the Python post-output health check."
     },
     {
       "name": "rank-2-fused-proxy-exit",
@@ -213,7 +213,7 @@
         "all_containers_finished": true,
         "last_container_finished_seconds_after_rank2_fatal": 64.970
       },
-      "conclusion": "Rank 2 entered the intended real proxy-fatal path first. The other three ranks starved, reached their configured five-second proxy timeout, and fail-stopped locally; all worker monitors initiated shutdown. No model output or fallback escaped, and no post-output Gloo collective was used."
+      "conclusion": "Rank 2 entered the intended proxy-fatal path first. The other three ranks received no peer progress, reached their configured five-second proxy timeout, reported errors, and stopped locally; every worker monitor initiated shutdown. No model output or fallback escaped, and no post-output Gloo collective was used."
     }
   ],
   "publication_boundary": {
@@ -224,7 +224,7 @@
   },
   "limitations": [
     "The normal observation records functional serving and transport progress, not a throughput comparison.",
-    "Both injected faults occurred during determine_available_memory before API readiness, so they validate fail-stop convergence but do not directly exercise an already-running request's post-output Python gate.",
+    "Both injected faults occurred during determine_available_memory before API readiness, so they validate bounded worker termination but do not directly exercise an already-running request's post-output Python health check.",
     "Container exit codes are launcher-level outcomes: rank 0 ended with 137 and OOMKilled=false in both injected runs, while follower containers ended with 0. Native fatal logs and worker-monitor logs are the failure evidence.",
     "Normal HTTP counts are cumulative at the stated observation timestamp and include 39 loopback warmup requests plus 27 external chat requests."
   ]

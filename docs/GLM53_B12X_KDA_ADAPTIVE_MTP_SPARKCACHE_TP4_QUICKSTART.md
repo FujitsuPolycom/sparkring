@@ -132,3 +132,5 @@ Including the vLLM revision gives this runtime a distinct draft-state cache
 identity from the e105 adaptive-MTP profile. Stored entries therefore
 recompute instead of crossing the KDA source boundary without byte-equivalence
 evidence.
+
+[Profile validation: performance, accuracy, and restart checks](PROFILE_VALIDATION.md).
