@@ -53,6 +53,15 @@ profile. Its measurements do not transfer automatically to the published image.
 | SparkCache | Native capture/restore, one pending restore, one 3.5 GiB managed capture slot |
 | Cache disk limit | 12 GiB/rank, low watermark 8 GiB/rank |
 
+This profile incorporates [original-el8's KV-cache work in vLLM PR #646](https://github.com/local-inference-lab/vllm/pull/646),
+which decouples GLM-5.3's target and recurrent block sizes. It enables
+2,048-token target pages while retaining 256-token recurrent checkpoints and
+prefix-cache matching, improving cache-memory efficiency without coarsening
+prefix reuse. SparkCache provides the separate persistent-cache capture and
+restore integration. The runtime package manifest above identifies the
+packaged source revisions and overlays; the PR link credits the originating
+work rather than specifying the complete image contents.
+
 ## Launch contract
 
 Obtain the installation scripts and profile on each node and record the
