@@ -1,0 +1,220 @@
+{
+  "artifacts": {
+    "b12x_git": {
+      "commit": "eac260a8257cc6b14e7d4ad674f51e9a09b8790f",
+      "roce_source_dirty": true,
+      "roce_status": [
+        " M b12x/comm/roce/_oneshot_cute.py",
+        " M b12x/comm/roce/roce_oneshot.py"
+      ]
+    },
+    "b12x_roce_tree_sha256": "8a64063506c9c96d3fd3b004c3ab51dda88408f7246f5c89d0a0b6713065fca6",
+    "base_sircl_manifest": {
+      "files": [
+        {
+          "path": "sitecustomize.py",
+          "sha256": "4efc3fdfe4874820064dbcb713c02271df4ca41f4f2bbcf4683a1548ca02f2b1",
+          "source": "spark_transport/integrations/vllm/sitecustomize.py"
+        },
+        {
+          "path": "spark_collective_audit.py",
+          "sha256": "8fa7aa9747845a84b40e8d3a0d72c39f8a562d6490764b777e5dcbe1cbe47721",
+          "source": "spark_transport/integrations/vllm/spark_collective_audit.py"
+        },
+        {
+          "path": "spark_cudagraph_bucket_contract.py",
+          "sha256": "e7411ff9cde9d5ed4a7ecd6e78a3158512c188c254baad10554b72229f14d272",
+          "source": "spark_transport/integrations/vllm/spark_cudagraph_bucket_contract.py"
+        },
+        {
+          "path": "spark_cudagraph_replay_timing.py",
+          "sha256": "dc3ee0fd5da52e79b097e9edc6191a880ca5a3f4e6d83add2a4acd30966b2175",
+          "source": "spark_transport/integrations/vllm/spark_cudagraph_replay_timing.py"
+        },
+        {
+          "path": "spark_dcp_collective_audit.py",
+          "sha256": "077a234e4edff8b8dd44784953aef713884b4dd7a3f7c46589b14c6bb8b40745",
+          "source": "spark_transport/integrations/vllm/spark_dcp_collective_audit.py"
+        },
+        {
+          "path": "spark_graph_status_reporter.py",
+          "sha256": "4bd50d1be42e2ac750b382825bec8a49564ce288d376852ee7c51e33a303f277",
+          "source": "spark_transport/integrations/vllm/spark_graph_status_reporter.py"
+        },
+        {
+          "path": "spark_persistent_output_ring.py",
+          "sha256": "03220c78ed87651f93c3165f1eedb843ffcad6a116126e2a9b89beab299bd2f3",
+          "source": "spark_transport/integrations/vllm/spark_persistent_output_ring.py"
+        },
+        {
+          "path": "spark_tp4_backend.py",
+          "sha256": "5999814740ddfa1c35e925ed0f3bf43edd8335b30c9b4fe9b78006c618d18cb9",
+          "source": "spark_transport/integrations/vllm/spark_tp4_backend.py"
+        },
+        {
+          "path": "spark_tp4_capability.py",
+          "sha256": "d90f6fc07ff5255b2df25b3ffc1c52c83f9eb866ca68666bc0f273db1c5e83b7",
+          "source": "spark_transport/integrations/vllm/spark_tp4_capability.py"
+        },
+        {
+          "path": "spark_tp4_health_gate.py",
+          "sha256": "7651b88e9bff40193891a0810ee8a920e3548a17de3a0dc477a30db779738930",
+          "source": "spark_transport/integrations/vllm/spark_tp4_health_gate.py"
+        },
+        {
+          "path": "spark_tp4_port_namespace.py",
+          "sha256": "c789739811def9722753bb128e69e7bd5342bab827b2cfd99cd8a4e847d18d4f",
+          "source": "spark_transport/integrations/vllm/spark_tp4_port_namespace.py"
+        },
+        {
+          "path": "spark_tp4_query_contract.py",
+          "sha256": "978df868fd83a6a780111092e99de2a3f07a5df375cf52d4b2358ccf4dcd0c31",
+          "source": "spark_transport/integrations/vllm/spark_tp4_query_contract.py"
+        },
+        {
+          "path": "spark_tp4_query_row_provider.py",
+          "sha256": "09c9e7af5d14b5c6930e15c999ada2231d639eb59609d705aadecdd7497ddec7",
+          "source": "spark_transport/integrations/vllm/spark_tp4_query_row_provider.py"
+        },
+        {
+          "path": "spark_tp4_vocab_allgather_backend.py",
+          "sha256": "fd44dea558c115b17f17bb129033345af4543702fbbdaf1fa4f186b8f242e697",
+          "source": "spark_transport/integrations/vllm/spark_tp4_vocab_allgather_backend.py"
+        }
+      ],
+      "schema": "sparkring-public-overlay/v1"
+    },
+    "base_sircl_manifest_name": "sparkring-overlay-manifest.json",
+    "base_sircl_manifest_sha256": "85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4"
+  },
+  "canonical_hca_order": [
+    "rocep1s0f0",
+    "rocep1s0f1",
+    "roceP2p1s0f0",
+    "roceP2p1s0f1"
+  ],
+  "dispatch": {
+    "candidate": {
+      "contiguous": true,
+      "cuda": true,
+      "dtype": "bfloat16",
+      "group_name_prefix": "tp",
+      "maximum_query_rows": 32,
+      "minimum_query_rows": 1,
+      "tensor_dimensions": 2,
+      "width": 4096,
+      "world_size": 4
+    },
+    "fallback": "Call the already-installed SIRCL wrapper, which retains its own graph, fused eager, and NCCL routing rules.",
+    "known_sircl_graph_query_rows": [
+      64,
+      128
+    ]
+  },
+  "excluded_performance_arms": {
+    "four_opposite_paths_mesh32": {
+      "disposition": "rejected",
+      "status": "research-only"
+    },
+    "hardware_qos": {
+      "disposition": "rejected",
+      "status": "research-only"
+    }
+  },
+  "hca_index_semantics": {
+    "0": "physical port f0 through PCIe-domain-0",
+    "1": "physical port f1 through PCIe-domain-0",
+    "2": "physical port f0 through PCIe-domain-2",
+    "3": "physical port f1 through PCIe-domain-2"
+  },
+  "health": {
+    "check_boundary": "after vLLM's synchronized synchronous output or asynchronous get_output",
+    "post_publication_fallback": false,
+    "worker_exit_code": 70
+  },
+  "metadata": {
+    "create_device_process_group": false,
+    "create_nccl_communicator": false,
+    "process_group": "the TP GroupCoordinator cpu_group",
+    "rank_wide_vote": true,
+    "required_backend": "gloo"
+  },
+  "peer_hca_maps": {
+    "0": "1=0/2,2=0/3,3=1/3",
+    "1": "0=1/3,2=0/2,3=0/3",
+    "2": "0=1/2,1=1/3,3=0/2",
+    "3": "0=0/2,1=1/2,2=1/3"
+  },
+  "purpose": "Route eligible GLM-5.3-Flash TP4 all-reduces through the six-QP B12X virtual-diagonal runtime while preserving the mounted SIRCL and NCCL dispatch chain for every rejected signature.",
+  "runtime": {
+    "all_gather_enabled": false,
+    "captured_sircl_query_rows": [
+      16,
+      20,
+      24,
+      28,
+      32
+    ],
+    "decode_context_parallel_size": 4,
+    "direct_then_diagonal_threshold_bytes": 196608,
+    "dtype": "bfloat16",
+    "execution_mode": "both",
+    "forbidden_proxy_cpus": [
+      10,
+      11
+    ],
+    "gid_index": 3,
+    "maximum_candidate_payload_bytes": 262144,
+    "maximum_candidate_query_rows": 32,
+    "opposite_rank_paths": 2,
+    "origin_queue_pairs_per_rank": 6,
+    "origin_queue_pairs_total": 24,
+    "proxy_cpu": 13,
+    "target_shape": "[Q,4096]",
+    "tensor_parallel_size": 4,
+    "transport_slots": 2,
+    "wave_mode": "two",
+    "world_size": 4
+  },
+  "schema": "sparkring.glm53-rocenante-overlay-contract/v1",
+  "sidecars": {
+    "automatic_cleanup_on_apply_failure": true,
+    "automatic_cleanup_on_exit": true,
+    "cleanup_order": [
+      "source_markers",
+      "intermediate_rules",
+      "intermediate_qdiscs",
+      "endpoint_neighbors",
+      "endpoint_routes",
+      "mtu_restore",
+      "mtu_verify"
+    ],
+    "intermediate_rules": 8,
+    "qualified_topology_gate_required": true,
+    "source_marker_ether_type": "0x88b5",
+    "source_marker_match_udp_port": 65535,
+    "source_marker_runtime_seconds": 7200,
+    "source_marker_source": "spark_transport/experiments/cx7_hairpin_diagonal/native/mlx5_rdma_tx_rewrite_probe.c"
+  },
+  "source_references": {
+    "b12x_rocenante_pull_request": {
+      "base_commit": "ffb7442d04a9f50b950df1fb17280acad881b7d5",
+      "url": "https://github.com/local-inference-lab/b12x/pull/295"
+    },
+    "published_glm_runtime": {
+      "b12x_commit": "9ae41c5c",
+      "runtime_path": "runtime/glm53-flash-jj-r8-gb10",
+      "vllm_commit": "e02b174693e13859de61811b5e8cd13d5308e259",
+      "vllm_python_blobs": {
+        "vllm/distributed/device_communicators/cuda_communicator.py": "260dda5d899a319c767970c25a53c6ba2e2c0715",
+        "vllm/distributed/parallel_state.py": "9353dbfe36097fc12348cb055127e0caf798e2ac",
+        "vllm/v1/worker/gpu_worker.py": "1f6336478c3456138e37fd007917a25afab22b49"
+      }
+    },
+    "vllm_rocenante_pull_request": {
+      "commit": "a7935eb1d8fa51400cd13452b1d988197deef3b8",
+      "url": "https://github.com/local-inference-lab/vllm/pull/597"
+    }
+  },
+  "status": "research-only"
+}

@@ -104,6 +104,11 @@ def load_site(path: Path):
 
 def load_image_receipt(path: Path) -> dict:
     document = json.loads(path.read_text())
+    if document.get("schema") == "sparkring-mtp3-performance-public-image/v1":
+        pinned = json.loads((HERE / "performance/public-image.json").read_text())
+        if document != pinned or not document.get("anonymous_manifest_verified"):
+            raise ValueError("Performance image receipt differs from the repository pin")
+        return dict(document, inside_image=document["verification"])
     expected = PINS["canonical_bundle_manifest_sha256"]
     image_id = document.get("image_id", "")
     inside = document.get("inside_image", {})
@@ -160,7 +165,9 @@ def manifest_file(root: Path, value: object) -> Path:
 def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | None = None) -> dict:
     if output.exists():
         raise ValueError("Output directory exists; use an absent directory")
-    if sha(bundle / "sparkring-overlay-manifest.json") != PINS["canonical_bundle_manifest_sha256"]:
+    image_record = load_image_receipt(image_receipt) if image_receipt else None
+    expected_bundle = image_record["bundle_manifest_sha256"] if image_record else PINS["canonical_bundle_manifest_sha256"]
+    if sha(bundle / "sparkring-overlay-manifest.json") != expected_bundle:
         raise ValueError("Bundle manifest does not match the MTP3 mesh profile")
     manifest = json.loads((bundle / "sparkring-overlay-manifest.json").read_text())
     for item in manifest["files"]:
@@ -181,12 +188,14 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
         "MASTER_ADDR": site["management_addresses"][0], "DFLASH_WARMUP": "1",
         "SPARKRING_WARMUP_TEMPERATURE": "0",
     })
-    image_record = load_image_receipt(image_receipt) if image_receipt else None
     if image_record is not None:
         values["IMAGE_ID"] = image_record["image_id"]
         values["IMAGE_REF"] = image_record["image_reference"]
         if image_record["inside_image"].get("readiness_warmup") is not None:
             values["SPARKRING_WARMUP_TEMPERATURE"] = "1"
+        if image_record.get("schema") == "sparkring-mtp3-performance-public-image/v1":
+            values["SPARKCACHE_PLACEMENT_LIBRARY_SHA256"] = image_record["native_placement_sha256"]
+            values["SPARKCACHE_CACHE_NAMESPACE"] = image_record["cache_namespace"]
     output.mkdir(parents=True)
     ranks = []
     for rank in range(4):
@@ -231,7 +240,7 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
     shutil.copyfile(topology.source_path, output / "fabric.json")
     result = {"schema": "sparkring-mtp3-mesh-render/v1", "status": "research-only", "execution_authorized": False,
               "site_sha256": sha(site_path), "topology_sha256": topology.sha256,
-              "bundle_manifest_sha256": PINS["canonical_bundle_manifest_sha256"],
+              "bundle_manifest_sha256": expected_bundle,
               "image": IMAGE["operator_image"], "marker_binary": site["marker_binary"],
               "marker_binary_sha256": site["marker_binary_sha256"], "state_root": site["state_root"],
               "marker_scope": "All RDMA-TX packets with reserved UDP source port 65535 on each selected function; not an IP/QPN-scoped rule.",

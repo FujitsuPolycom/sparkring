@@ -31,7 +31,7 @@ reproducible benchmarks, and [test results](performance/).
 
 | Model / predictor | Layout | Context | Sequences | Batch | Guide |
 |---|---|---:|---:|---:|---|
-| **GLM-5.3 Flash NVFP4-Spark · MTP3 mesh** | TP4/DCP4 | 1M | 16 | 8,192 | [Quickstart](docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md) |
+| **GLM-5.3 Flash NVFP4-Spark · MTP3 cache/checkpoint mesh** | TP4/DCP4 | 1M | 16 | 8,192 | [Quickstart](docs/GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md) |
 | GLM-5.3 Flash NVFP4 · BF16 DFlash2 | TP4/DCP4; DCP1/2 | 1M | 16 | 8,192 | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
 | GLM-5.2 EXL3 3.5-bpw | TP4/DCP4 | 1M | 16 | 4,096 | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
 | DeepSeek-V4-Flash-0731 | TP4/DCP1 | 1M | 32 | 4,096 | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |

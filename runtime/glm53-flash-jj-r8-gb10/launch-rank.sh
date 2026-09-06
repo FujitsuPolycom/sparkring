@@ -848,6 +848,8 @@ kv_transfer_args=()
 if [[ "${SPARKCACHE_ENABLED}" == 1 ]]; then
   export SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE SPARKCACHE_MAX_BYTES
   export SPARKCACHE_ACCESS_MODE
+  export SPARKCACHE_PLACEMENT_LIBRARY_SHA256="${SPARKCACHE_PLACEMENT_LIBRARY_SHA256:-d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c}"
+  [[ "${SPARKCACHE_PLACEMENT_LIBRARY_SHA256}" =~ ^[0-9a-f]{64}$ ]] || die 'SPARKCACHE_PLACEMENT_LIBRARY_SHA256 must be a SHA-256 digest'
   export SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS
   export SPARKCACHE_PUBLICATION_SCHEMA
   export SPARKCACHE_LOW_WATERMARK_BYTES SPARKCACHE_TTL_SECONDS
@@ -884,7 +886,7 @@ extra = {
     "spark_cache_min_span_tokens": integer("SPARKCACHE_MIN_SPAN_TOKENS"),
     "spark_cache_max_span_tokens": integer("SPARKCACHE_MAX_SPAN_TOKENS"),
     "spark_cache_cuda_placement_library": "/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so",
-    "spark_cache_cuda_placement_library_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
+    "spark_cache_cuda_placement_library_sha256": os.environ["SPARKCACHE_PLACEMENT_LIBRARY_SHA256"],
     "spark_cache_cuda_placement_arena_bytes": integer("SPARKCACHE_CUDA_ARENA_BYTES"),
     "spark_cache_cuda_restore_io_workers": integer("SPARKCACHE_CUDA_RESTORE_IO_WORKERS"),
     "spark_cache_load_threads": integer("SPARKCACHE_LOAD_THREADS"),

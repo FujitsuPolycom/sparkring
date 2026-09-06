@@ -1,0 +1,35 @@
+{
+  "schema": "sparkring-mtp3-performance-public-image/v1",
+  "status": "research-only",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:11a556a54041fd823d152a7f051ac4f7c617dc539030df26e93008392fee0746",
+  "image_id": "sha256:6921a6c163ea40b603e19a0332330efe3dbccbf4dce9f6cbbf6b756c9231835a",
+  "platform": "linux/arm64",
+  "anonymous_manifest_verified": true,
+  "sparkcache_commit": "48bbd2be4a7b972e56632a2d7b934bac5460f272",
+  "bundle_manifest_sha256": "c0fd5567442b08b908cc193f36d0864e262573c7e5d232509479a823cface742",
+  "native_placement_sha256": "2657cdd2e54a097c9544e4c79ae62c0646db6db123ff24e4f0c384238c3a1e8d",
+  "source_equivalence": {
+    "checked_files": 5308,
+    "different_files": 0,
+    "comparison_image_id": "sha256:84c4546d37e8504fc98a359435b262a5d8e7bfe9c892af7429e876db5bc98422",
+    "scope": "vLLM, B12X, transport bundle, and warmup files; excludes SparkCache main source changes"
+  },
+  "verification": {
+    "files": 5472,
+    "model_loaded": false,
+    "cuda_initialized": false,
+    "marker_source_sha256": "8684a6961b8e86aa474fa2310ff71e4cdf219a63a72ceb5593b2f95e54812792",
+    "marker_binary_sha256": "2828c07e4255c4962c77425be2c88969e7eb7dd4b1bf9e36485bc705bb5d6d64",
+    "readiness_warmup": {
+      "helper_sha256": "959cd1601f9a8c16124957aa03a94e2f3df2efab431a0779b46df1f8a868609c",
+      "temperature": 1.0,
+      "reasoning_effort": "low"
+    },
+    "independent_host_file_check": true
+  },
+  "limits": [
+    "Image file verification and source equivalence do not constitute a serving soak of this rebuilt image"
+  ],
+  "cache_namespace": "glm53-spark-mtp3-cache-checkpoints-c0fd5567-tail-cow-v2",
+  "registry_pull_verified": true
+}

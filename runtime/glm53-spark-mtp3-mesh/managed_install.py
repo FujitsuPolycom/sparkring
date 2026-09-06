@@ -255,7 +255,7 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file):
     if '--managed' not in help_result.stdout + help_result.stderr:
         raise ValueError('Extracted helper does not expose managed lifetime')
     bundle = Path(site['bundle_root'])
-    if profile.sha(bundle / 'sparkring-overlay-manifest.json') != profile.PINS['canonical_bundle_manifest_sha256']:
+    if profile.sha(bundle / 'sparkring-overlay-manifest.json') != receipt['bundle_manifest_sha256']:
         raise ValueError('Host transport bundle manifest differs')
     manifest = json.loads((bundle / 'sparkring-overlay-manifest.json').read_text())
     for item in manifest['files']:

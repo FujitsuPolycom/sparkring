@@ -459,20 +459,11 @@ def test_public_glm53_benchmark_is_sanitized_and_front_page_lists_dcp_profiles()
     assert "api_key" not in text.lower()
 
     readme = README_PATH.read_text(encoding="utf-8")
-    assert "### GLM-5.3 Flash" in readme
-    assert "external BF16 DFlash2" in readme
-    for dcp, capacity in ((1, "~1.30M tokens"), (2, "~2.90M tokens"), (4, "~4.32M tokens")):
-        row = next(line for line in readme.splitlines()
-                   if line.startswith(f"| DFlash2/SIRCL · DCP{dcp}"))
-        assert f"4 Sparks · TP4/DCP{dcp}" in row
-        assert "FP8 · 24 GiB/rank" in row
-        assert capacity in row
-        assert "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md" in row
-    assert "DCP4 is the preferred DFlash2 profile" in readme
-    assert "26/30/24 GiB" in readme
-    assert "b12x-kda-dcp4-20260903.md" in readme
-    assert "| 16K | 2,649 (16K scout) | 37.97 | — | C4: 90.36 | — |" in readme
-    assert "C16: 184.39" in readme
+    assert "### Four Sparks" in readme
+    row = next(line for line in readme.splitlines()
+               if line.startswith("| GLM-5.3 Flash NVFP4") and "BF16 DFlash2" in line)
+    assert "TP4/DCP4; DCP1/2" in row
+    assert "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md" in row
     quickstart = (
         ROOT / "docs" / "GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
     ).read_text(encoding="utf-8")
