@@ -294,8 +294,9 @@ warmup completion. This request contract is implemented and tested in the
 [published child image](hotfix/README.md), whose
 [receipt](hotfix/public-image.json) records 22 installed readiness/liveness
 tests. Cold-cache full-model sampling, mixed long/short prefill coverage, and
-all recurrent KDA specializations remain unqualified. The default pinned
-operator image predates this additional readiness request.
+all recurrent KDA specializations remain unqualified. The operator image
+referenced by `pins.json` at `operator_image.reference` does not include this
+additional readiness request.
 The default environment template warms every concurrency from C1 through C16
 and prompt spans covering the DFlash Triton `BLOCK_SIZE` specializations
 through 256. DFlash depth seven verifies eight target rows per active request,
