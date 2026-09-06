@@ -35,9 +35,9 @@
     "public_image_contract": "runtime/glm53-spark-mtp3-mesh/public-image.json",
     "image_receipt": "runtime/glm53-spark-mtp3-mesh/image-receipt.json",
     "compute_contract": "runtime/glm53-spark-mtp3-mesh/compute/source-lock.json",
-    "compute_contract_sha256": "2a444f7c1ad4319f64afbffb16403491a4863934372cf818f18c510d58c0d00e",
-    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:b65d427f9be49c97d57e404ad1a6118769c1119df876a8944c1f186a6b380c5d",
-    "image_id": "sha256:69c794bf0704e89aa8e2364fb65b972618cf55a665cd3a8ff80a76a1d3280766",
+    "compute_contract_sha256": "139f36701e0e47f45bf99fba2cc2fa59b417f2ee801dad3a064455d5b464a459",
+    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:67dc0ae453baaae6831ccec1d259b4ef8b236a8b0dc9f747d901b95c66ec1987",
+    "image_id": "sha256:2e41b1e934a85ff7c21b780532db2f0a0e978df081e52f4ae2bf11f8992fb24f",
     "site_template": "runtime/glm53-spark-mtp3-mesh/site.example.json",
     "fabric_template": "runtime/glm53-spark-mtp3-mesh/fabric.example.json",
     "renderer": "runtime/glm53-spark-mtp3-mesh/profile.py",
@@ -64,7 +64,24 @@
     "moe_backend": "B12X",
     "linear_backend": "B12X",
     "kda_prefill_backend": "b12x",
-    "cudagraph_capture_sizes": [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64],
+    "cudagraph_capture_sizes": [
+      4,
+      8,
+      12,
+      16,
+      20,
+      24,
+      28,
+      32,
+      36,
+      40,
+      44,
+      48,
+      52,
+      56,
+      60,
+      64
+    ],
     "speculation": {
       "method": "mtp",
       "num_speculative_tokens": 3,
@@ -100,13 +117,19 @@
     "async_page_capture": true,
     "capture_slots_per_rank": 2,
     "capture_slot_bytes": 3221225472,
-    "namespace": "glm53-spark-df116c4f-mtp3-nvfp4-a16-b58f34ea-mesh4204fabc-tail-cow-v2",
+    "namespace": "glm53-spark-df116c4f-mtp3-nvfp4-a16-c139f3670-mesh69313e19-tail-cow-v2",
     "identity_contract": "runtime/glm53-spark-mtp3-mesh/pins.json#/cache_identity"
   },
   "transport": {
     "bundle_manifest_sha256": "69313e19e881ec93e9ed3bd150d2f24fc6b444488ac729a69f45d038e2243500",
     "routing_contract": "spark_transport/experiments/glm53_rocenante_overlay/overlay_contract.json",
-    "captured_sircl_query_rows": [16, 20, 24, 28, 32],
+    "captured_sircl_query_rows": [
+      16,
+      20,
+      24,
+      28,
+      32
+    ],
     "large_eager_prefill": "dual-rail fused SIRCL",
     "small_collectives": "RoCEnante on admitted rows; other captured rows use SIRCL",
     "fallback": "patched NCCL",
@@ -118,16 +141,14 @@
     "management_guide": "runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md"
   },
   "evidence": {
-    "record": "performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md",
+    "record": "performance/records/glm53-flash/spark-mtp3-compute-stream-safety-20260906.md",
     "proposal_head_performance_record": "performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md",
     "status": "research-only",
-    "scope": "Proposal-head performance was measured on serving image 04d5a35b, identified by the full digest in the proposal-head record. Managed lifecycle and persistent-recall results qualify only the image digests and cache namespaces in their linked functional records.",
+    "scope": "Exact-image native all-reduce, selected GPU stream invariants, bounded serving matrix, idle rank-loss shutdown, restart and one persistent-prefix recall.",
     "limitations": [
-      "This opt-in profile does not replace the recommended DFlash/SIRCL profile.",
-      "The published compute image has build/content equivalence to the tested private image but requires fresh native, startup, restart and persistent-cache receipts before those qualifications transfer.",
-      "No host-reboot, prolonged-soak, unattended high-availability or general cache/model-quality qualification is claimed.",
-      "Fault detection has a bounded observation window; partial streamed output can precede shutdown.",
-      "Readiness warmup covers temperature-one sampling with thinking disabled, not all mixed-prefill/decode shapes."
+      "Idle rank-loss containment does not establish in-flight GPU failure containment or resolve upstream RoCEnante #313.",
+      "One persistent recall fixture does not establish all cache boundaries or model accuracy.",
+      "Serving measurements are observations, not a guaranteed speedup."
     ]
   }
 }

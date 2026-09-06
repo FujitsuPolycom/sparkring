@@ -1,21 +1,11 @@
 # Run GLM-5.3 Flash Spark with native MTP3 and hardware-forwarded mesh
 
-Status: **research-only**. The profile's composition, managed host service,
-and CPU checks are **implemented**. The
-[managed functional record](../performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md)
-qualifies bounded installer, policy-scoped fault/recovery, post-recovery
-readiness, and one persistent-cache recall case for the image digest recorded
-in that report.
-Broader cache/failure coverage and unattended serving remain unqualified.
-
-The [public application-install record](../performance/records/glm53-flash/spark-mtp3-public-application-install-20260905.md)
-covers fresh public checkouts, extracted image artifacts, empty application
-caches, installation, native correctness, and model-restart cache restoration
-on four prepared hosts. It does not qualify a factory-reset OS/network setup.
-These functional records qualify only their recorded image digests. Restart,
-cache restoration, and failure containment require validation for the image
-pinned in `runtime/glm53-spark-mtp3-mesh/public-image.json`; proposal-head
-throughput measurements do not establish those properties.
+Status: **research-only** profile with **implemented** source packaging and
+managed host services. The published image passed the native, GPU stream,
+serving, idle rank-loss, restart, and persistent-recall checks in its
+[exact-image validation record](../performance/records/glm53-flash/spark-mtp3-compute-stream-safety-20260906.md).
+That record defines the qualified conditions; in-flight collective failure
+containment and unattended availability are not established.
 
 **Starting with four stock Sparks and no image?** Follow
 [the managed-mesh prerequisite section](PREREQUISITES.md#four-spark-managed-hardware-forwarded-mesh)
@@ -36,8 +26,9 @@ DFlash model is used.
 The [profile contract](../runtime/glm53-spark-mtp3-mesh/README.md) and
 [pins](../runtime/glm53-spark-mtp3-mesh/pins.json) are the canonical inputs.
 The packaged RoCEnante runtime orders shared staging buffers across streams
-and preserves its one-stream-per-CUDA-capture guard. These fixes have CPU
-regression coverage; four-rank GPU fault and stream tests remain required.
+and preserves its one-stream-per-CUDA-capture guard. CPU regressions and
+four-rank GPU tests cover alternating streams, misaligned buffers,
+changed-input graph replay, and second-stream capture rejection.
 The [proposal-head throughput record](../performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md)
 reports observations, not a general performance guarantee.
 
@@ -375,16 +366,15 @@ separate from SIRCL's two 64 MiB transport arenas.
 
 Native MTP's cache draft identity is the target checkpoint. The profile uses
 the dedicated namespace
-`glm53-spark-df116c4f-mtp3-nvfp4-a16-b58f34ea-mesh4204fabc-tail-cow-v2`;
+`glm53-spark-df116c4f-mtp3-nvfp4-a16-c139f3670-mesh69313e19-tail-cow-v2`;
 shared-BF16-head and external-DFlash entries must not be renamed into it. The
 `draft_policy=separate` field describes cache registration layout, not an
 external draft model. The
-[managed functional record](../performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md)
-includes an uncached publication and stopped-container restoration for its
-recorded image and namespace. Restoration under the NVFP4-proposal-head
-namespace named above is research-only until a stopped-container restore test
-passes for that configuration. The linked record covers one recall prompt,
-not all context lengths or concurrent cache workloads.
+[exact-image validation record](../performance/records/glm53-flash/spark-mtp3-compute-stream-safety-20260906.md)
+includes publication and restoration of a 26,624-token prefix after all model
+containers stopped and restarted under this namespace. The answer, external-hit
+counters, and all four restore logs agree. This qualifies the recorded recall
+case, not every context length or concurrent cache workload.
 
 ## Obtain the image and target
 
@@ -400,13 +390,13 @@ The content and registry receipts identify the same public image. The
 [compute-image equivalence record](../runtime/glm53-spark-mtp3-mesh/compute-image-equivalence.json)
 verifies all 4,891 vLLM, 385 B12X, and 150 SparkCache package files plus the
 selected environment against tested private image
-`sha256:04d5a35b03e99f68c37a05514d221988a3eb70a5b8fdcfa859025ca1cbc25e74`.
-That proves build/content equivalence, not a fresh serving, restart, or
-persistent-cache qualification for the public image ID.
+`sha256:3b4768e5ba31cadcc882dffa06d7b667af44abdf157d5c11b7ac7fe962e80c43`.
+The mounted transport is checked separately. The published config-image ID
+below is also the exact image used for the linked runtime validation.
 
 ```bash
-mtp_image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:b65d427f9be49c97d57e404ad1a6118769c1119df876a8944c1f186a6b380c5d'
-mtp_image_id='sha256:69c794bf0704e89aa8e2364fb65b972618cf55a665cd3a8ff80a76a1d3280766'
+mtp_image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:67dc0ae453baaae6831ccec1d259b4ef8b236a8b0dc9f747d901b95c66ec1987'
+mtp_image_id='sha256:2e41b1e934a85ff7c21b780532db2f0a0e978df081e52f4ae2bf11f8992fb24f'
 docker pull "${mtp_image}"
 test "$(docker image inspect "${mtp_image}" --format '{{.Id}}')" = "${mtp_image_id}"
 
@@ -656,6 +646,21 @@ model loading and qualification; the test runner does not own or stop the
 mesh service.
 
 ### Model output and persistent-cache restoration
+
+For the selected stream-safety cases, use the same stopped-model test window
+and rendered image receipt as the native check:
+
+```bash
+python3 runtime/glm53-spark-mtp3-mesh/qualification/run_native.py \
+  --launch /srv/sparkring/mtp3-mesh-launch \
+  --image-receipt /srv/sparkring/verified-image-receipt.json \
+  --mode streams --rows 4 64 --port 30140 \
+  --output /path/to/private-receipts/stream-checks --execute-authorized
+```
+
+This checks alternating caller streams with misaligned buffers, changed-input
+graph replay, and rejection of a second stream in one CUDA capture. It does
+not inject in-flight link or GPU failures.
 
 Start the four-rank model through `managed_cluster.py start-model` and wait
 for completed speculation warmup. Set the endpoint to the rank-zero

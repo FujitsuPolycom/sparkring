@@ -125,7 +125,9 @@ four-row increments through 64 rows.
 
 The image composition uses CUDA 13.3, the native-MTP3 metadata port derived
 from Local Inference Lab vLLM revision `3512b066`, and the complete B12X tree at
-`b58f34ea` with vLLM integration based on `a8c796f3`. The complete B12X update
+`ef308bac` with source-checked top-k selector files and vLLM integration based
+on `a8c796f3`. Deferred weights own their storage, and draft/rejection sampling
+uses independent randomness. The complete B12X update
 also includes MoE and dense-precision work, so comparisons across different
 compute configurations cannot attribute a gain to dense kernels alone. The
 [head-specific comparison](performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md)

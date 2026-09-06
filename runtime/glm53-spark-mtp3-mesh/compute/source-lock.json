@@ -141,12 +141,11 @@
     "tree": "dcf039e5e754136275835ea997e6b9abbb6b15ae",
     "archive_url": "https://github.com/local-inference-lab/b12x/archive/ef308bac0f3b3eb8fea63e4013afc0c2ea1c6301.tar.gz",
     "archive_sha256": "029a6047d80f759e964eb302803df3dc5d2ee324b0a0725d38694b5057ed69a6",
-    "package_files_sha256": "9c33a4ef28eb83c81af446e3c02672b7e3318dc434f16a54f304fccf7c2de0f4",
+    "package_files_sha256": "a212d449381174fabfe681c48cde16b22e3b9f9fa7942ab071b0c7384dc78abd",
     "installed_text_line_endings": "crlf",
     "normalized_text_suffixes": [
       ".c",
-      ".py",
-      ".md"
+      ".py"
     ],
     "overrides": {
       "archive": "b12x-selector-files.tar.gz",

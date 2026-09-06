@@ -1,8 +1,8 @@
 {
   "schema": "sparkring-compute-image-equivalence/v1",
   "checks_passed": true,
-  "tested_serving_image": "sha256:04d5a35b03e99f68c37a05514d221988a3eb70a5b8fdcfa859025ca1cbc25e74",
-  "published_image": "sha256:69c794bf0704e89aa8e2364fb65b972618cf55a665cd3a8ff80a76a1d3280766",
+  "tested_serving_image": "sha256:3b4768e5ba31cadcc882dffa06d7b667af44abdf157d5c11b7ac7fe962e80c43",
+  "published_image": "sha256:2e41b1e934a85ff7c21b780532db2f0a0e978df081e52f4ae2bf11f8992fb24f",
   "package_files": {
     "b12x": 385,
     "sparkcache": 150,
@@ -10,8 +10,6 @@
   },
   "package_files_identical": true,
   "selected_environment_identical": true,
-  "tested_snapshot_sha256": "54a975edcb68df32b6520f7070b21e0b88e280f847d5039c81bb1f2f99f7cc51",
-  "published_snapshot_sha256": "54a975edcb68df32b6520f7070b21e0b88e280f847d5039c81bb1f2f99f7cc51",
   "environment": {
     "CUDA_HOME": "/opt/cuda-13.3",
     "SPARKRING_WARMUP_TEMPERATURE": "1",
@@ -22,5 +20,8 @@
     "VLLM_MTP_NVFP4_LM_HEAD": "1",
     "VLLM_MXFP8_LM_HEAD": "0"
   },
-  "scope": "Installed compute package files excluding Python bytecode and selected environment. The mounted RoCEnante transport overlay additionally contains capture-guard and shared-staging ordering fixes; it is not included in compute package equivalence. Public image construction and native-marker verification passed. Full-model serving was measured on the tested serving image; no separate four-rank serving run is claimed for this published image."
+  "tested_snapshot_sha256": "7d2413eea1f2da3163f40f2a7cf937aeacb1bca44bdc5477fac87b94594b92b0",
+  "published_snapshot_sha256": "7d2413eea1f2da3163f40f2a7cf937aeacb1bca44bdc5477fac87b94594b92b0",
+  "scope": "All installed compute package files except Python bytecode. Mounted transport differs and is validated separately in the linked exact-image record.",
+  "functional_record": "../../performance/records/glm53-flash/spark-mtp3-compute-stream-safety-20260906.md"
 }

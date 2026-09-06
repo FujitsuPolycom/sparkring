@@ -48,7 +48,7 @@ revision `3512b066e7796128c0c380ccc558182960f2f0ea`, with dense-kernel integrati
 from revision `a8c796f3af74106b2d8d441e9ec54588936a5388`; vLLM is licensed under
 Apache License 2.0.
 
-B12X source archives use LF endings. Source preparation converts Python, C,
-and package Markdown files to CRLF to reproduce the package hashes in
-`source-lock.json`. Compressed profile data retain the archive bytes. This byte-level
+B12X source archives use LF endings. Source preparation converts Python and C
+files to CRLF to reproduce the installed package hashes in `source-lock.json`.
+Markdown and compressed profile data retain the archive bytes. This byte-level
 contract makes package-content verification independent of checkout settings.

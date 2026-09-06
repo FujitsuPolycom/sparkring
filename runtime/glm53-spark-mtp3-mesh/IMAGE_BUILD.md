@@ -3,7 +3,8 @@
 Status: **research-only**. This child image packages the complete compute and
 transport composition used by the GLM-5.3 Spark native-MTP3 profile. On top of
 the pinned parent, it installs CUDA 13.3, the checksum-bound vLLM metadata and
-proposal-head patch, complete B12X revision `b58f34ea`, the transport bundle,
+proposal-head and loader/RNG patches, B12X revision `ef308bac` with the
+source-checked top-k selector, the transport bundle,
 the managed marker, and the readiness helper. The proposal head uses runtime
 NVFP4 weights with BF16 activations; the target/verifier head retains its BF16
 checkpoint representation. SparkCache and patched NCCL remain inherited.
@@ -30,19 +31,19 @@ to its Linux/ARM64 config-image identity. Pull before using its local image ID:
 
 ```bash
 set -euo pipefail
-mtp_image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:b65d427f9be49c97d57e404ad1a6118769c1119df876a8944c1f186a6b380c5d'
-mtp_image_id='sha256:69c794bf0704e89aa8e2364fb65b972618cf55a665cd3a8ff80a76a1d3280766'
+mtp_image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:67dc0ae453baaae6831ccec1d259b4ef8b236a8b0dc9f747d901b95c66ec1987'
+mtp_image_id='sha256:2e41b1e934a85ff7c21b780532db2f0a0e978df081e52f4ae2bf11f8992fb24f'
 docker pull "$mtp_image"
 test "$(docker image inspect "$mtp_image" --format '{{.Id}}')" = "$mtp_image_id"
 ```
 
 The immutable reference is also published as tag
-`glm53-spark-mtp3-stream69313e19`; use the digest above for deployment.
+`glm53-spark-mtp3-c139f3670-mesh69313e19`; use the digest above for deployment.
 The [compute-image equivalence record](compute-image-equivalence.json) verifies
 that all 4,891 vLLM, 385 B12X, and 150 SparkCache package files and the selected
-environment match tested private image `sha256:04d5a35b03e99f68c37a05514d221988a3eb70a5b8fdcfa859025ca1cbc25e74`.
-This is build/content equivalence, not a fresh serving, restart, or persistent-
-cache qualification of the public image ID.
+environment match compute-tested image `sha256:3b4768e5ba31cadcc882dffa06d7b667af44abdf157d5c11b7ac7fe962e80c43`.
+The published config-image ID also passed its own
+[GPU, serving, restart, and persistent-cache checks](../../performance/records/glm53-flash/spark-mtp3-compute-stream-safety-20260906.md).
 
 Use the repository's [content receipt](image-receipt.json) for the renderer,
 installer, and native qualification runner. This default deployment requires
@@ -143,7 +144,7 @@ Image construction has networking disabled. Verification runs with no host
 device mounts, no Linux capabilities, no network, a read-only root filesystem,
 two CPUs, and a 2 GiB memory limit. It checks the complete parent layer prefix,
 package source and native-library hashes, CUDA 13.3 components, the complete
-B12X `b58f34ea` package, vLLM input/output hashes and proposal-head environment,
+B12X `ef308bac` package with selector overrides, vLLM input/output hashes and proposal-head environment,
 bundle hashes, Python syntax, readiness warmup helper hash and temperature, lazy
 RoCEnante import, and marker linkage. CUDA must remain uninitialized.
 

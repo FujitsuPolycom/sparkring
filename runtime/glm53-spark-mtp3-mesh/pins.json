@@ -4,7 +4,7 @@
   "image_pins": "../glm53-flash-jj-r8-gb10/pins.json",
   "compute": {
     "source_lock": "compute/source-lock.json",
-    "source_lock_sha256": "9a9568bc9f6bc34f4ee2ac5ebe881c3b8a6de289b26aabdc4056ea2852e49fd9",
+    "source_lock_sha256": "139f36701e0e47f45bf99fba2cc2fa59b417f2ee801dad3a064455d5b464a459",
     "vllm_base_revision": "e02b174693e13859de61811b5e8cd13d5308e259",
     "b12x_revision": "ef308bac0f3b3eb8fea63e4013afc0c2ea1c6301",
     "b12x_tree": "dcf039e5e754136275835ea997e6b9abbb6b15ae",
@@ -66,7 +66,7 @@
   "cache_identity": {
     "draft_policy": "separate",
     "draft_checkpoint_source": "target.checkpoint_identity",
-    "namespace": "glm53-spark-df116c4f-mtp3-nvfp4-a16-b58f34ea-mesh4204fabc-tail-cow-v2",
-    "compatibility": "The namespace separates the NVFP4/BF16 proposal head and B12X b58f34ea computation from cache entries produced with a shared BF16 head. The target checkpoint remains df116c4f; persistent restore requires this profile's matching compute and cache geometry."
+    "namespace": "glm53-spark-df116c4f-mtp3-nvfp4-a16-c139f3670-mesh69313e19-tail-cow-v2",
+    "compatibility": "The namespace binds the NVFP4/BF16 proposal head, compute source lock139f3670, and mesh bundle69313e19. Do not relabel cache entries from another compute composition. Persistent restore requires matching checkpoint, computation, and cache geometry."
   }
 }
