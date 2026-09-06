@@ -24,7 +24,8 @@ class GpuTp4TensorWorker {
                      const ExchangeBufferLayout& round1_layout,
                      Tp4AllreduceProtocol protocol,
                      Tp4GraphKernelStrategy graph_kernel_strategy,
-                     Tp4AllreduceSchedule schedule);
+                     Tp4AllreduceSchedule schedule,
+                     bool graph_direct_doorbell);
   ~GpuTp4TensorWorker();
 
   // Enqueues one fused all-reduce kernel on the caller stream. The kernel
@@ -32,12 +33,11 @@ class GpuTp4TensorWorker {
   void enqueue(const void* external_input, void* external_output,
                void* cuda_stream, std::uint64_t sequence);
 
-  // Enqueues the graph-replay kernel. The kernel atomically claims and
-  // publishes a fresh replay sequence through command_ring before using that
-  // same sequence for its transport doorbells. Research graph strategies may
-  // expand the logical operation into an ordered graph-node chain without
-  // changing the host progress protocol. The tiered strategy makes that
-  // choice independently for every captured q.
+  // Enqueues the graph-replay kernel. The default path atomically claims and
+  // publishes a replay descriptor through command_ring. The opt-in direct
+  // path claims a device ticket and uses the round-0 payload doorbell as the
+  // host notification. Research graph strategies may expand the operation
+  // into an ordered graph-node chain; the tiered choice is per captured q.
   void enqueue_graph(const void* external_input, void* external_output,
                      std::uint32_t q, void* cuda_stream,
                      Tp4GraphCommandRing* command_ring, bool trace);
@@ -53,6 +53,8 @@ class GpuTp4TensorWorker {
   Tp4GraphKernelStrategy graph_kernel_strategy_{
       Tp4GraphKernelStrategy::kFused};
   Tp4AllreduceSchedule schedule_{Tp4AllreduceSchedule::kSequential};
+  bool graph_direct_doorbell_{};
+  void* direct_graph_sequence_{};
   void* split_graph_state_{};
   void* striped_graph_state_{};
 };

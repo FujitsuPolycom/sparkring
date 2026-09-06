@@ -34,7 +34,7 @@ Copy and edit the sanitized inputs:
 ```bash
 sparkring_root="$PWD/sparkring"
 sparkcache_root="$PWD/sparkcache"
-cp "${sparkring_root}/scripts/config/glm53-flash-tp4-site.example.yaml" site.yaml
+cp "${sparkring_root}/scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1-site.example.yaml" site.yaml
 cp "${sparkring_root}/scripts/config/glm53-flash-dflash2-bf16-tp4-dcp1.example.json" profile.json
 ```
 
@@ -116,3 +116,5 @@ topologies, and other model revisions are unsupported by this image record.
 Report runtime or transport problems at
 <https://github.com/FujitsuPolycom/sparkring/issues> and SparkCache-specific
 problems at <https://github.com/FujitsuPolycom/sparkcache/issues>.
+
+[Profile validation: performance, accuracy, and restart checks](PROFILE_VALIDATION.md).

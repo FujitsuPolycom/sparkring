@@ -1,0 +1,250 @@
+{
+  "schema": "sparkring-managed-mesh-functional-evidence/v1",
+  "status": "research-only",
+  "date": "2026-09-05",
+  "conditions": {
+    "image_id": "sha256:26273b8e358df139ae913610a5d43084ff0fd08aafe282ef633a3bc74afefe47",
+    "model_revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "ranks": 4,
+    "tp": 4,
+    "dcp": 4,
+    "pp": 1,
+    "speculation": "native-mtp",
+    "speculative_tokens": 3,
+    "batch_tokens": 8192,
+    "max_sequences": 16,
+    "marker_source_sha256": "8684a6961b8e86aa474fa2310ff71e4cdf219a63a72ceb5593b2f95e54812792",
+    "marker_binary_sha256": "2828c07e4255c4962c77425be2c88969e7eb7dd4b1bf9e36485bc705bb5d6d64",
+    "monitor_policies": {
+      "single_miss": {
+        "peer_timeout_seconds": 1,
+        "transport_error_grace_seconds": 0
+      },
+      "connection_grace": {
+        "peer_timeout_seconds": 2,
+        "transport_error_grace_seconds": 4,
+        "grace_origin": "first observed peer transport failure",
+        "degraded_blocks_model_start": true,
+        "explicit_negative_or_generation_change_grace": false,
+        "managed_service_sha256": "dbe8bb19255a87deaf4dd7bdec31531cd42866f5b863d8061192dcef333191ad"
+      }
+    }
+  },
+  "measurement": {
+    "raw_receipts_private": true,
+    "clock": "controller time.monotonic",
+    "fault_timer_origin": "after injection SSH command returned",
+    "fault_repetitions": 1,
+    "variability_estimate": null,
+    "fault_harness_sha256": "f3bc0464bffe2ceda7b6ae4389d3018b475952d2cbf2fd481f55fd19cd4fb202"
+  },
+  "results": {
+    "native": {
+      "shapes": [
+        4,
+        20,
+        28,
+        64
+      ],
+      "correctness_cases_passed": 80,
+      "correctness_cases_total": 80,
+      "completion_errors": 0
+    },
+    "recall": {
+      "temperature": 1,
+      "seed": 9046500,
+      "max_tokens": 512,
+      "thinking_enabled": true,
+      "prompt_tokens": 27274,
+      "external_hit_tokens": 26624,
+      "ram_prefix_hit_tokens": 0,
+      "semantic_passed": true,
+      "finish_reason": "stop",
+      "persistent_restore_proven": false
+    },
+    "helper_fault": {
+      "signal": "SIGKILL",
+      "rank": 0,
+      "active_requests": 1,
+      "temperature": 1,
+      "max_tokens": 4096,
+      "thinking_enabled": false,
+      "all_models_stopped": true,
+      "first_all_stopped_poll_seconds": 5.984,
+      "injection_ssh_duration_seconds": 0.438,
+      "polls": [
+        {
+          "seconds": 1.687,
+          "running": [
+            true,
+            true,
+            true,
+            true
+          ]
+        },
+        {
+          "seconds": 2.718,
+          "running": [
+            true,
+            true,
+            true,
+            true
+          ]
+        },
+        {
+          "seconds": 3.781,
+          "running": [
+            true,
+            true,
+            true,
+            true
+          ]
+        },
+        {
+          "seconds": 4.937,
+          "running": [
+            false,
+            false,
+            false,
+            true
+          ]
+        },
+        {
+          "seconds": 5.984,
+          "running": [
+            false,
+            false,
+            false,
+            false
+          ]
+        }
+      ],
+      "stream_http_status": 200,
+      "stream_lines": 22,
+      "stream_done": false,
+      "zero_output_after_fault_proven": false,
+      "monitor_policy": "single_miss"
+    },
+    "cpu_network_service_tests_passed": 48,
+    "combined_cpu_suite": {
+      "passed": 389,
+      "skipped": 19,
+      "skip_scope": "Windows: 18 POSIX-only native CLI cases and one permission-mode case",
+      "separate_dgx2_native_cli_passed": 18
+    },
+    "supervisor_main_fault": {
+      "monitor_policy": "connection_grace",
+      "all_models_stopped": true,
+      "first_all_stopped_poll_seconds": 11.156,
+      "retained_owned_marker_processes": 2,
+      "packet_delivery_during_retention_measured": false
+    },
+    "helper_fault_recovery": "pending",
+    "warmup_public_receipt": "pending",
+    "single_miss_supervisor_fault": {
+      "monitor_policy": "single_miss",
+      "all_models_stopped": true,
+      "first_all_stopped_poll_seconds": 1.844
+    },
+    "single_miss_rule_fault": {
+      "monitor_policy": "single_miss",
+      "all_models_stopped": true,
+      "first_all_stopped_poll_seconds": 4.016,
+      "exact_rule_restored": true
+    },
+    "single_miss_loading_regression": {
+      "monitor_policy": "single_miss",
+      "result": "false stop",
+      "cause": "one 1-second peer health timeout during model loading",
+      "retained": true
+    },
+    "short_supervisor_pause": {
+      "monitor_policy": "connection_grace",
+      "signal": "SIGSTOP then SIGCONT",
+      "paused_seconds": 3.000193658997887,
+      "all_models_remained_running": true,
+      "repetitions": 1
+    },
+    "supervisor_fault_recovery": {
+      "monitor_policy": "connection_grace",
+      "all_phases_passed": true,
+      "phase_count": 9,
+      "rank_count": 4,
+      "model_restarted_by_recover": false
+    },
+    "public_installer": {
+      "ranks": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "apply_passed": true,
+      "clean_targets": true,
+      "prior_installation_backed_up": true
+    },
+    "post_connection_grace_recovery_model_output": {
+      "semantic_passed": true,
+      "temperature": 1,
+      "prompt_tokens": 27274,
+      "external_hit_tokens": 26624,
+      "ram_prefix_hit_tokens": 0,
+      "per_rank_restore_logs": [
+        26624,
+        26624,
+        26624,
+        26624
+      ],
+      "per_rank_restore_ms": [152.1, 166.4, 161.1, 173.1],
+      "per_rank_restored_mib": [79.1, 79.1, 79.1, 79.1],
+      "raw_tool_persistent_restore_proven": false,
+      "combined_bounded_restore_gate_passed": true,
+      "scope": "one post-reload recall request"
+    },
+    "post_recovery_readiness": {
+      "public_wait_tool_ready": true,
+      "containers_running": 4,
+      "containers_healthy": 4,
+      "api_health_http": 200,
+      "scheduler_liveness_http": 200,
+      "supervisors_armed": 4,
+      "peer_health_degraded": false,
+      "markers_per_rank": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "graph_status_caught_up": true,
+      "systemd_runtime_max_usec": "infinity"
+    }
+  },
+  "raw_receipt_sha256": {
+    "image-build/image-receipt.json": "ad85be15800abfff8406fe8bfea517aa12ca53e82b178e7bcaf96d44534e2a08",
+    "helper-fault.json": "f5523d884b7bf7bfe61d8f7eadb1393fc3c15952eccc10e2c5570d9169146e99",
+    "recall-managed-before-fault/receipt.json": "b582333c49986c2b78dfb2309fd94bc0e794105a1fe44ea23a3a283c4587cdad",
+    "native-managed/q4.json": "316e4cf0a08bd2842337a92e9e3175cf9a5076336aefe3ca049b93a43e9fa15a",
+    "native-managed/q20.json": "d66d26af70c27da3089e6ceb2270b4066d4f8dbdd6d0d43b42e92734f6f5c30f",
+    "native-managed/q28.json": "5779c8c7bdee9cad2b5041ed9936a965c239c19fc4b193cf102a22b246e9994c",
+    "native-managed/q64.json": "bb9e19ab207f866c5944377f6594740862f6f93d88cf6c70a6313754c9cfa1a8",
+    "short-health-pause.json": "4be7dfe807a98c74c4761f05ba6091833283d537e636835cbe7799d35c17154b",
+    "supervisor-fault-health-grace.json": "ad136e74737a6e0e33f40ca8b5cf50dadd8f7644183413ab8b25cf001bd5ef41",
+    "public-install/recover-supervisor-health-grace.json": "42276db38838484ae227922ca8e6edc46418a3f78a9deb5d93c74e0f37a295f3",
+    "supervisor-fault.json": "a5cb4f040f558c104e8005cd82eed7ef298e5c4bfd5a9224e264feccaf7298a4",
+    "rule-fault.json": "7735355777db07b24ca29dfe598135ec42a29bbb8c3b356b898a1ac9aec6cca0",
+    "public-install/rank0.json": "8c93bcccbc44fe694d3a1a08ad088f5623d48bd586b912d539381b787e0349bd",
+    "public-install/rank1.json": "827c09c7543e452260c672db2e3ca30816c83d547d80d65730c4390db08c4697",
+    "public-install/rank2.json": "9b4ba40ade3e27986062b70e226a6505fb2e56544ccf18c52948d7832da54483",
+    "public-install/rank3.json": "ef22f5f36c12f10939b7f690d59f1b5071f2d0bc3cd9df11ca411f337584d18e",
+    "final-snapshot.json": "d4c9c941561bc9776daa7a20ca31ba4e654d42fb0c45cd83ef0a80c826533de7",
+    "recall-final/receipt.json": "a67b00443756cebf16d7237d34a43babd58fe2425c9c1e9f1596d7a4c7372a67",
+    "public-install/final-ready-public.json": "c1afb1e261158ef0b6f83bcb23e01a8e2f4776f41c1f17071278fc50e562ddb7"
+  },
+  "conclusion": "Selected native checks, policy-scoped fault observations, installer execution, connection-grace supervisor recovery, post-recovery model readiness, and one persistent recall passed. Broader qualification remains pending.",
+  "limitations": [
+    "One fault observation; poll interval and SSH overhead prevent exact stop-time inference.",
+    "Partial stream output occurred; no per-token fault-relative timing is available.",
+    "Per-rank logs qualify only the identified post-recovery recall; broader cache correctness is unmeasured.",
+    "No throughput or unattended-availability claim."
+  ]
+}

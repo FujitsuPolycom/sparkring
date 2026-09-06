@@ -13,12 +13,13 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 LAUNCHER = HERE / "launch-rank.sh"
 ENVIRONMENT = HERE / "runtime.env.example"
-IMAGE_ID = "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0"
+SIRCL_ENVIRONMENT = HERE / "sircl-fused.env.example"
+IMAGE_ID = "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075"
 
 
-def _defaults() -> dict[str, str]:
+def _defaults(path: Path = ENVIRONMENT) -> dict[str, str]:
     values: dict[str, str] = {}
-    for line in ENVIRONMENT.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         match = re.fullmatch(r"([A-Z0-9_]+)=(?:'([^']*)'|([^#\s]+))", line)
         if match:
             values[match.group(1)] = match.group(2) or match.group(3)
@@ -40,12 +41,16 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["IMAGE_ID"] == IMAGE_ID
     assert values["IMAGE_REF"] == (
         "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
-        "sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f"
+        "sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f"
     )
     assert values["MAX_MODEL_LEN"] == "1048576"
     assert values["SERVED_MODEL_NAME"] == "glm-5.3-flash"
     assert values["DECODE_CONTEXT_PARALLEL_SIZE"] == "4"
     assert values["MAX_NUM_BATCHED_TOKENS"] == "8192"
+    assert values["KDA_PREFILL_BACKEND"] == "b12x"
+    assert values["DFLASH_WARMUP_CONCURRENCIES"] == (
+        "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16"
+    )
     assert values["PREFILL_SCHEDULE_INTERVAL"] == "2"
     assert values["MAX_IMAGES_PER_PROMPT"] == "4"
     assert values["MAX_VIDEOS_PER_PROMPT"] == "1"
@@ -54,11 +59,18 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["ENABLE_PROMPT_TOKENS_DETAILS"] == "1"
     assert values["SPARKCACHE_ACCESS_MODE"] == "read-write"
     assert values["SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS"] == "300"
+    assert values["SPARKCACHE_CACHE_NAMESPACE"] == (
+        "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-"
+        "dcp4-page-tail-cow-v2"
+    )
     assert values["SPARKCACHE_MAX_SPAN_TOKENS"] == "1048576"
     assert values["CP_KV_CACHE_INTERLEAVE_SIZE"] == "auto"
     assert values["B12X_MLA_CKV_GATHER"] == "auto"
+    assert values["VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL"] == "0"
+    assert values["VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE"] == "single"
+    assert values["VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE"] == "sync"
     assert values["JIT_CACHE_NAMESPACE"] == (
-        "glm53-flash-sm121-vllm-22ffe140-b12x-6255090a"
+        "glm53-flash-sm121-vllm-e02b1746-b12x-9ae41c5c"
     )
 
 
@@ -94,6 +106,8 @@ case "$2" in
   */target/model.safetensors.index.json) hash=0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb ;;
   */draft/config.json) hash=c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573 ;;
   */draft/model.safetensors) hash=b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b ;;
+  */libspark_transport_capi.so) hash=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;
+  */sparkring-overlay-manifest.json) hash=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ;;
   *) exit 95 ;;
 esac
 printf '%s  %s\n' "$hash" "$2"
@@ -115,8 +129,8 @@ printf '%s  %s\n' "$hash" "$2"
         path.write_text("fixture", encoding="utf-8")
 
     for dcp, interleave, gather, kv_bytes in (
-        (1, "1", "0", "27917287424"),
-        (2, "4", "1", "32212254720"),
+        (1, "1", "0", "25769803776"),
+        (2, "4", "1", "25769803776"),
         (4, "4", "1", "25769803776"),
     ):
         config = tmp_path / f"dcp{dcp}.env"
@@ -161,7 +175,16 @@ printf '%s  %s\n' "$hash" "$2"
         mm_index = arguments.index("--limit-mm-per-prompt")
         assert json.loads(arguments[mm_index + 1]) == {"image": 4, "video": 1}
         assert "--kv-transfer-config" in arguments
-        jit_namespace = "glm53-flash-sm121-vllm-22ffe140-b12x-6255090a"
+        compilation = json.loads(
+            arguments[arguments.index("--compilation-config") + 1]
+        )
+        assert compilation["cudagraph_capture_sizes"] == list(
+            range(8, 129, 8)
+        )
+        assert "DFLASH_WARMUP_CONCURRENCIES=" + ",".join(
+            str(value) for value in range(1, 17)
+        ) in arguments
+        jit_namespace = "glm53-flash-sm121-vllm-e02b1746-b12x-9ae41c5c"
         assert f"VLLM_CACHE_ROOT=/cache/jit/vllm/{jit_namespace}" in arguments
         assert (
             f"B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x/{jit_namespace}"
@@ -180,6 +203,28 @@ printf '%s  %s\n' "$hash" "$2"
         assert extra["spark_cache_shared_prefix_lease_ttl_seconds"] == 300
         assert "spark_cache_store" not in extra
         assert "spark_cache_restore" not in extra
+
+        # Explicit byte counts override auto without changing other arguments.
+        original_config = config.read_text(encoding="utf-8")
+        config.write_text(original_config + "\nKV_CACHE_MEMORY_BYTES=21474836480\n",
+                          encoding="utf-8", newline="\n")
+        override = subprocess.run(
+            ["bash", _bash_path(LAUNCHER), "0", _bash_path(config)],
+            cwd=ROOT, text=True, capture_output=True, check=False,
+        )
+        assert override.returncode == 0, override.stderr
+        expected_override = arguments.copy()
+        expected_override[kv_index + 1] = "21474836480"
+        assert capture.read_text(encoding="utf-8").splitlines() == expected_override
+        if dcp == 4:
+            config.write_text(original_config + "\nKV_CACHE_MEMORY_BYTES=25769803776\n",
+                              encoding="utf-8", newline="\n")
+            unchanged = subprocess.run(
+                ["bash", _bash_path(LAUNCHER), "0", _bash_path(config)],
+                cwd=ROOT, text=True, capture_output=True, check=False,
+            )
+            assert unchanged.returncode == 0, unchanged.stderr
+            assert capture.read_text(encoding="utf-8").splitlines() == arguments
 
     config = tmp_path / "dcp1-vllm-prefix-only.env"
     config.write_text(
@@ -397,6 +442,20 @@ printf '%s  %s\n' "$hash" "$2"
     assert "API_KEYS_FILE must be mode 0600" in result.stderr
 
 
+def test_launcher_exposes_optional_chat_template_override() -> None:
+    launcher = LAUNCHER.read_text(encoding="utf-8")
+    assert ': "${CHAT_TEMPLATE_HOST_PATH:=}"' in launcher
+    assert "CHAT_TEMPLATE_HOST_PATH must be an absolute host path when set" in launcher
+    assert "CHAT_TEMPLATE_HOST_PATH is not a readable regular file" in launcher
+    assert "CHAT_TEMPLATE_HOST_PATH is empty" in launcher
+    assert (
+        '-v "${CHAT_TEMPLATE_HOST_PATH}:/opt/sparkring/chat_template.jinja:ro"'
+        in launcher
+    )
+    assert "--chat-template /opt/sparkring/chat_template.jinja" in launcher
+    assert "CHAT_TEMPLATE_HOST_PATH=''" in ENVIRONMENT.read_text(encoding="utf-8")
+
+
 def test_launcher_fails_closed_on_unusable_api_key_files() -> None:
     launcher = LAUNCHER.read_text(encoding="utf-8")
     assert ': "${API_KEYS_FILE:=}"' in launcher
@@ -458,10 +517,22 @@ def test_public_operator_documents_use_portable_examples_and_resolving_links() -
             assert (document.parent / relative).resolve().exists(), (document, target)
 
     quickstart = documents[-1].read_text(encoding="utf-8")
-    assert "sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f" in quickstart
+    runtime_readme = documents[0].read_text(encoding="utf-8")
+    assert "sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f" in quickstart
     assert "sha256:3c377f1e4136285ebf66c32c36c3d01fd929f8aba0836cd0a16ed63cfd7e1762" in quickstart
     assert "DECODE_CONTEXT_PARALLEL_SIZE=4  # change to 1 or 2" in quickstart
     assert "fanout_image_archive.py" in quickstart
+    assert "sircl-fused.env.example" in quickstart
+    assert "SIRCL_ENABLED=1" in quickstart
+    assert "every eight-row DFlash request-batch shape from 8 through 128" in (
+        runtime_readme
+    )
+    assert "Q128 through Q8192" in runtime_readme
+    assert re.search(r"primary\s+ports 19006/19007", runtime_readme)
+    assert "67,109,888-byte mapped arena" in runtime_readme
+    assert re.search(
+        r"independent from SparkCache's two 3-GiB\s+asynchronous", runtime_readme
+    )
 
 
 def _launcher_fixture(tmp_path: Path) -> tuple[Path, Path, dict[str, Path]]:
@@ -473,7 +544,11 @@ def _launcher_fixture(tmp_path: Path) -> tuple[Path, Path, dict[str, Path]]:
     docker.write_text(
         """#!/bin/sh
 if [ "$1" = image ] && [ "$2" = inspect ]; then
-  printf '%s\n' "$EXPECTED_IMAGE_ID"
+  case "$4" in
+    *sircl.native-sha256*) printf '%s\n' "$EXPECTED_SIRCL_NATIVE_SHA256" ;;
+    *sircl.manifest-sha256*) printf '%s\n' "$EXPECTED_SIRCL_MANIFEST_SHA256" ;;
+    *) printf '%s\n' "$EXPECTED_IMAGE_ID" ;;
+  esac
 elif [ "$1" = container ] && [ "$2" = inspect ]; then
   exit 1
 elif [ "$1" = run ]; then
@@ -494,6 +569,8 @@ case "$2" in
   */target/model.safetensors.index.json) hash=0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb ;;
   */draft/config.json) hash=c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573 ;;
   */draft/model.safetensors) hash=b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b ;;
+  */libspark_transport_capi.so) hash=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;
+  */sparkring-overlay-manifest.json) hash=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ;;
   *) exit 95 ;;
 esac
 printf '%s  %s\n' "$hash" "$2"
@@ -531,6 +608,14 @@ def _run_launcher(
                 f"PATH={_bash_path(fake_bin)}:$PATH",
                 f"export CAPTURE_PATH={_bash_path(capture)}",
                 f"export EXPECTED_IMAGE_ID={IMAGE_ID}",
+                (
+                    "export EXPECTED_SIRCL_NATIVE_SHA256="
+                    "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc"
+                ),
+                (
+                    "export EXPECTED_SIRCL_MANIFEST_SHA256="
+                    "85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4"
+                ),
                 "IMAGE_REF=test-image:r8",
                 f"IMAGE_ID={IMAGE_ID}",
                 *extra_lines,
@@ -601,4 +686,333 @@ def test_launcher_rejects_invalid_multimodal_mode(
     )
     assert result.returncode != 0
     assert "MULTIMODAL_INPUTS must be 0" in result.stderr
+    assert arguments == []
+
+
+def test_launcher_keeps_sircl_disabled_by_default(tmp_path: Path) -> None:
+    assert _defaults()["SIRCL_ENABLED"] == "0"
+    result, arguments = _run_launcher(tmp_path, "sircl-disabled")
+    assert result.returncode == 0, result.stderr
+    assert "org.sparkring.sircl.enabled=0" in arguments
+    assert "PYTHONPATH=/opt/spark-sircl" not in arguments
+    assert not any("SPARK_TP4_LIBRARY=" in argument for argument in arguments)
+
+
+def test_fused_sircl_overlay_is_complete_and_sanitized() -> None:
+    values = _defaults(SIRCL_ENVIRONMENT)
+    assert values == {
+        "SIRCL_ENABLED": "1",
+        "SIRCL_BUNDLE_HOST_ROOT": None,
+        "SPARK_TP4_PEER0": "REPLACE_WITH_PRIMARY_PEER_0_ADDRESS",
+        "SPARK_TP4_PEER1": "REPLACE_WITH_PRIMARY_PEER_1_ADDRESS",
+        "SPARK_TP4_DEVICE0": "rocep1s0f0",
+        "SPARK_TP4_DEVICE1": "rocep1s0f1",
+        "SPARK_TP4_GID0": "3",
+        "SPARK_TP4_GID1": "3",
+        "SPARK_TP4_GRAPH_CONTROL_PORT0": "9970",
+        "SPARK_TP4_GRAPH_CONTROL_PORT1": "9971",
+        "SPARK_TP4_GRAPH_SUBMIT_CPU": "10",
+        "SPARK_TP4_GRAPH_PROGRESS_CPU": "11",
+        "SPARK_TP4_MAX_INFLIGHT": "64",
+        "SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS": "10",
+        "SPARK_TP4_GRAPH_DIRECT_DOORBELL": "1",
+        "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL": "1",
+        "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE": "dual",
+        "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE": "fused",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT0": "19000",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT1": "19001",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0": (
+            "REPLACE_WITH_SECONDARY_PEER_0_ADDRESS"
+        ),
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1": (
+            "REPLACE_WITH_SECONDARY_PEER_1_ADDRESS"
+        ),
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0": (
+            "REPLACE_WITH_SECONDARY_DEVICE_0"
+        ),
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1": (
+            "REPLACE_WITH_SECONDARY_DEVICE_1"
+        ),
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0": "3",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1": "3",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0": "19100",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1": "19101",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS": "120",
+    }
+    raw = SIRCL_ENVIRONMENT.read_text(encoding="utf-8").lower()
+    for forbidden in ("192.168.", "10.0.", "172.16.", "@"):
+        assert forbidden not in raw
+
+
+def test_launcher_uses_the_image_embedded_sircl_bundle_by_default(
+    tmp_path: Path,
+) -> None:
+    result, arguments = _run_launcher(
+        tmp_path,
+        "sircl-embedded",
+        f"source '{_bash_path(SIRCL_ENVIRONMENT)}'",
+        "SPARK_TP4_PEER0=192.0.2.11",
+        "SPARK_TP4_PEER1=192.0.2.13",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0=192.0.2.12",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1=192.0.2.14",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0=rocep2s0f0",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1=rocep2s0f1",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not any(argument.endswith(":/opt/spark-sircl:ro") for argument in arguments)
+    assert "PYTHONPATH=/opt/spark-sircl" in arguments
+    assert "SPARK_TP4_LIBRARY=/opt/spark-sircl/libspark_transport_capi.so" in arguments
+    assert (
+        "org.sparkring.sircl.native-sha256="
+        "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc"
+    ) in arguments
+    assert (
+        "org.sparkring.sircl.manifest-sha256="
+        "85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4"
+    ) in arguments
+
+
+def test_launcher_rejects_an_image_without_embedded_sircl_labels(
+    tmp_path: Path,
+) -> None:
+    result, arguments = _run_launcher(
+        tmp_path,
+        "sircl-not-embedded",
+        "SIRCL_ENABLED=1",
+        "SPARK_TP4_PEER0=192.0.2.11",
+        "SPARK_TP4_PEER1=192.0.2.13",
+        "export EXPECTED_SIRCL_NATIVE_SHA256=",
+        "export EXPECTED_SIRCL_MANIFEST_SHA256=",
+    )
+
+    assert result.returncode == 78
+    assert "image has no receipt-bound embedded SIRCL bundle" in result.stderr
+    assert arguments == []
+
+
+def _sircl_bundle(tmp_path: Path) -> Path:
+    bundle = tmp_path / "sircl-bundle"
+    bundle.mkdir()
+    for name in (
+        "sitecustomize.py",
+        "spark_collective_audit.py",
+        "spark_cudagraph_replay_timing.py",
+        "spark_graph_status_reporter.py",
+        "spark_persistent_output_ring.py",
+        "spark_tp4_backend.py",
+        "spark_tp4_capability.py",
+        "spark_tp4_health_gate.py",
+        "spark_tp4_port_namespace.py",
+        "spark_tp4_query_contract.py",
+        "spark_tp4_query_row_provider.py",
+        "sparkring-overlay-manifest.json",
+        "libspark_transport_capi.so",
+    ):
+        (bundle / name).write_text("fixture", encoding="utf-8")
+    return bundle
+
+
+def test_launcher_accepts_read_only_external_sircl_override(tmp_path: Path) -> None:
+    bundle = _sircl_bundle(tmp_path)
+
+    result, arguments = _run_launcher(
+        tmp_path,
+        "sircl-enabled",
+        "SIRCL_ENABLED=1",
+        f"SIRCL_BUNDLE_HOST_ROOT={_bash_path(bundle)}",
+        "SPARK_TP4_PEER0=192.0.2.11",
+        "SPARK_TP4_PEER1=192.0.2.13",
+        "SPARK_TP4_DEVICE0=rocep1s0f0",
+        "SPARK_TP4_DEVICE1=rocep1s0f1",
+    )
+    assert result.returncode == 0, result.stderr
+    assert (
+        f"{_bash_path(bundle)}:/opt/spark-sircl:ro" in arguments
+    )
+    for setting in (
+        "PYTHONPATH=/opt/spark-sircl",
+        "SPARK_TP4_LIBRARY=/opt/spark-sircl/libspark_transport_capi.so",
+        "VLLM_SPARK_TP4_MODE=custom",
+        "VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH=1",
+        "VLLM_SPARK_SHARED_CAPTURE_STREAM=1",
+        "SPARK_TP4_PEER0=192.0.2.11",
+        "SPARK_TP4_PEER1=192.0.2.13",
+        "SPARK_TP4_GRAPH_SUBMIT_CPU=10",
+        "SPARK_TP4_GRAPH_PROGRESS_CPU=11",
+        "SPARK_TP4_GRAPH_DIRECT_DOORBELL=0",
+        "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL=0",
+        "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE=single",
+        "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE=sync",
+        "SPARK_TP4_GRAPH_STATUS_PATH=/cache/jit/sircl-graph-rank0.json",
+        "org.sparkring.sircl.enabled=1",
+        "org.sparkring.sircl.direct-doorbell=0",
+        "org.sparkring.sircl.prefill-exposure=sync",
+        "org.sparkring.sircl.prefill-rail-mode=single",
+        "org.sparkring.sircl.native-sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "org.sparkring.sircl.manifest-sha256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    ):
+        assert setting in arguments
+    assert "SPARK_CUDAGRAPH_REPLAY_TIMING=1" not in arguments
+
+
+def test_launcher_configures_fused_dual_rail_prefill(tmp_path: Path) -> None:
+    bundle = _sircl_bundle(tmp_path)
+    result, arguments = _run_launcher(
+        tmp_path,
+        "sircl-fused-prefill",
+        f"source '{_bash_path(SIRCL_ENVIRONMENT)}'",
+        f"SIRCL_BUNDLE_HOST_ROOT={_bash_path(bundle)}",
+        "SPARK_TP4_PEER0=192.0.2.11",
+        "SPARK_TP4_PEER1=192.0.2.13",
+        "SPARK_TP4_DEVICE0=rocep1s0f0",
+        "SPARK_TP4_DEVICE1=rocep1s0f1",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0=192.0.2.12",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1=192.0.2.14",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0=rocep2s0f0",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1=rocep2s0f1",
+    )
+
+    assert result.returncode == 0, result.stderr
+    for setting in (
+        "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL=1",
+        "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE=dual",
+        "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE=fused",
+        "SPARK_TP4_GRAPH_DIRECT_DOORBELL=1",
+        "SPARK_TP4_GRAPH_CONTROL_PORT0=9970",
+        "SPARK_TP4_GRAPH_CONTROL_PORT1=9971",
+        "SPARK_TP4_GRAPH_SUBMIT_CPU=10",
+        "SPARK_TP4_GRAPH_PROGRESS_CPU=11",
+        "SPARK_TP4_MAX_INFLIGHT=64",
+        "SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS=10",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT0=19000",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT1=19001",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0=192.0.2.12",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1=192.0.2.14",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0=rocep2s0f0",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1=rocep2s0f1",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0=3",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1=3",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0=19100",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1=19101",
+        "SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS=120",
+        "org.sparkring.sircl.prefill-exposure=fused",
+        "org.sparkring.sircl.prefill-rail-mode=dual",
+        "org.sparkring.sircl.direct-doorbell=1",
+    ):
+        assert setting in arguments
+
+
+@pytest.mark.parametrize(
+    ("name", "lines", "message"),
+    (
+        (
+            "prefill-without-sircl",
+            ("VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL=1",),
+            "bidirectional prefill requires SIRCL_ENABLED=1",
+        ),
+        (
+            "dual-without-prefill",
+            ("VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE=dual",),
+            "dual-rail bidirectional prefill requires",
+        ),
+        (
+            "fused-with-single-rail",
+            (
+                "SIRCL_ENABLED=1",
+                "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL=1",
+                "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE=fused",
+            ),
+            "fused prefill exposure requires dual rail mode",
+        ),
+        (
+            "invalid-exposure",
+            ("VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE=async",),
+            "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE must be",
+        ),
+    ),
+)
+def test_launcher_rejects_incoherent_prefill_configuration(
+    tmp_path: Path, name: str, lines: tuple[str, ...], message: str
+) -> None:
+    result, arguments = _run_launcher(tmp_path, name, *lines)
+    assert result.returncode == 78
+    assert message in result.stderr
+    assert arguments == []
+
+
+def test_launcher_replay_timing_is_explicitly_opt_in(
+    tmp_path: Path,
+) -> None:
+    bundle = _sircl_bundle(tmp_path)
+
+    result, arguments = _run_launcher(
+        tmp_path,
+        "sircl-timing",
+        "SIRCL_ENABLED=1",
+        f"SIRCL_BUNDLE_HOST_ROOT={_bash_path(bundle)}",
+        "SPARK_TP4_PEER0=192.0.2.11",
+        "SPARK_TP4_PEER1=192.0.2.13",
+        "SPARK_TP4_DEVICE0=rocep1s0f0",
+        "SPARK_TP4_DEVICE1=rocep1s0f1",
+        "SPARK_CUDAGRAPH_REPLAY_TIMING=1",
+        "SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES=257",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "SPARK_CUDAGRAPH_REPLAY_TIMING=1" in arguments
+    assert "SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES=257" in arguments
+    assert (
+        "SPARK_CUDAGRAPH_REPLAY_TIMING_ARM_PATH="
+        "/cache/jit/sircl-replay-timing.arm"
+    ) in arguments
+
+
+def test_launcher_can_time_stock_nccl_without_enabling_sircl(
+    tmp_path: Path,
+) -> None:
+    bundle = tmp_path / "timing-bundle"
+    bundle.mkdir()
+    for name in (
+        "sitecustomize.py",
+        "spark_cudagraph_replay_timing.py",
+        "spark_graph_status_reporter.py",
+    ):
+        (bundle / name).write_text("fixture", encoding="utf-8")
+
+    result, arguments = _run_launcher(
+        tmp_path,
+        "nccl-timing",
+        "SPARK_CUDAGRAPH_REPLAY_TIMING=1",
+        "SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES=513",
+        (
+            "SPARK_CUDAGRAPH_REPLAY_TIMING_BUNDLE_HOST_ROOT="
+            f"{_bash_path(bundle)}"
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (
+        f"{_bash_path(bundle)}:/opt/spark-replay-timing:ro"
+        in arguments
+    )
+    assert "PYTHONPATH=/opt/spark-replay-timing" in arguments
+    assert "SPARK_CUDAGRAPH_REPLAY_TIMING=1" in arguments
+    assert "SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES=513" in arguments
+    assert (
+        "SPARK_CUDAGRAPH_REPLAY_TIMING_STATUS_PATH="
+        "/cache/jit/cudagraph-replay-rank0.json"
+    ) in arguments
+    assert "VLLM_SPARK_TP4_MODE=custom" not in arguments
+    assert "org.sparkring.sircl.enabled=0" in arguments
+
+
+def test_launcher_rejects_incomplete_sircl_configuration(tmp_path: Path) -> None:
+    result, arguments = _run_launcher(
+        tmp_path,
+        "sircl-incomplete",
+        "SIRCL_ENABLED=1",
+    )
+    assert result.returncode != 0
+    assert "SIRCL requires" in result.stderr
     assert arguments == []

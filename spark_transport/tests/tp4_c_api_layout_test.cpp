@@ -60,6 +60,7 @@ static_assert(SPARK_TP4_GRAPH_STATUS_TWO_SLOT_DEFERRED_ACK == (1U << 7));
 static_assert(SPARK_TP4_GRAPH_STATUS_SPLIT_64K == (1U << 8));
 static_assert(SPARK_TP4_GRAPH_STATUS_TIERED_64K == (1U << 9));
 static_assert(SPARK_TP4_GRAPH_STATUS_DUAL_PORT_STRIPED == (1U << 10));
+static_assert(SPARK_TP4_GRAPH_STATUS_DIRECT_DOORBELL == (1U << 11));
 static_assert(SPARK_TP4_WIRE_SCHEDULE_SEQUENTIAL == 0);
 static_assert(SPARK_TP4_WIRE_SCHEDULE_DUAL_PORT_STRIPED == 1);
 static_assert(

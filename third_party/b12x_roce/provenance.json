@@ -1,0 +1,14 @@
+{
+  "schema": "sparkring-vendored-rocenante-source/v1",
+  "upstream_repository": "https://github.com/local-inference-lab/b12x",
+  "upstream_pull_request": "https://github.com/local-inference-lab/b12x/pull/295",
+  "upstream_base_commit": "ffb7442d04a9f50b950df1fb17280acad881b7d5",
+  "license": "Apache-2.0",
+  "scope": "Only b12x.comm.roce; no model kernels or other B12X package modules",
+  "roce_tree_sha256": "3acb9c3cda49931f7988b9b426bd1304df029de95d868a90346df2d09ed8f627",
+  "git_state": {
+    "commit": "eac260a8257cc6b14e7d4ad674f51e9a09b8790f",
+    "roce_source_dirty": false,
+    "roce_status": []
+  }
+}

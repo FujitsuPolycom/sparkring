@@ -34,12 +34,14 @@ SHA-256
 `87c17d8dab5052f5a7833349dc9b99b76a3b6531ca6f0d3deff812f724fecdcc`.
 The GLM composition was qualified with SparkCache `0.1.0a2` wheel SHA-256
 `3345b8c574951a8204377b0c27f53765c84b96ab4f5a8ec1ac147574dba7568b`.
-The GLM-5.3 Flash composition uses SparkCache commit
-`c5dda75ec46bf235f6ece6e0d0174c1e41bd805a` and deployable-source SHA-256
-`dffc2bead0a7c1cebb7a52757d38bd89146305b3ff351353ece9ac464c4c421d`
-inside the immutable image named by its recipe. It uses cache profile
-`glm53-flash-hybrid` and the vLLM ownership contract recorded by the operator
-image.
+The current GLM-5.3 Flash source composition pins SparkCache merge
+`66057174301a4759ca3a45207ea41016689449cb`, deployable-source SHA-256
+`80b049c647bc28fdc039021d08a7eb3276846c1616b77b9ba18ba2bc38da8d99`,
+vLLM `e02b174693e13859de61811b5e8cd13d5308e259`, and B12X
+`9ae41c5cb9935d740456479954b0089f80bd2ef2`. It uses cache profile
+`glm53-flash-hybrid`. The recipe retains the last published image reference;
+the immutable receipt for that artifact remains historical evidence and is
+not a receipt for a locally rebuilt source candidate.
 
 Use the artifact named by the selected recipe and verify its hash on every rank
 when reproducing a published qualification. Operators may use another

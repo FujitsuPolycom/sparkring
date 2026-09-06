@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 570" role="img" aria-labelledby="title description">
+  <title id="title">Prefill Arm A and Arm B single-observation comparison</title>
+  <desc id="description">Two line charts compare time to first token and prefill throughput at five context sizes. Every Arm B observation has lower time to first token and higher throughput than Arm A. Each cell contains one observation, and the semantic identities of both arms are unknown.</desc>
+  <style>
+    svg { color-scheme: light dark; }
+    .background { fill: light-dark(#ffffff, #07110d); }
+    text { fill: light-dark(#111827, #ecfdf5); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; }
+    .title { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 24px; font-weight: 600; }
+    .panel-title { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 17px; font-weight: 600; }
+    .muted { fill: light-dark(#4b5563, #9ca3af); }
+    .grid { stroke: light-dark(#d1d5db, #374151); stroke-width: 1; }
+    .frame { fill: none; stroke: light-dark(#9ca3af, #6b7280); stroke-width: 1; }
+    .arm-a-line { fill: none; stroke: light-dark(#6b7280, #9ca3af); stroke-width: 3; stroke-dasharray: 7 5; }
+    .arm-b-line { fill: none; stroke: light-dark(#059669, #34d399); stroke-width: 4; }
+    .arm-a-mark { fill: light-dark(#6b7280, #9ca3af); }
+    .arm-b-mark { fill: light-dark(#059669, #34d399); stroke: light-dark(#ecfdf5, #064e3b); stroke-width: 2; }
+    .delta { fill: light-dark(#047857, #6ee7b7); font-weight: 600; }
+  </style>
+
+  <rect class="background" width="1000" height="570"/>
+
+  <text class="title" x="50" y="38">Prefill Arm A/B single-observation comparison</text>
+  <text class="muted" x="50" y="66">Concurrency 1 · N=1 per cell · five matched context sizes</text>
+
+  <line class="arm-a-line" x1="650" y1="55" x2="690" y2="55"/>
+  <circle class="arm-a-mark" cx="670" cy="55" r="5"/>
+  <text x="700" y="60">Arm A</text>
+  <line class="arm-b-line" x1="795" y1="55" x2="835" y2="55"/>
+  <circle class="arm-b-mark" cx="815" cy="55" r="6"/>
+  <text x="845" y="60">Arm B</text>
+
+  <text class="panel-title" x="50" y="108">Time to first token</text>
+  <text class="muted" x="450" y="108" text-anchor="end">seconds · lower is better</text>
+  <rect class="frame" x="90" y="135" width="370" height="295"/>
+  <line class="grid" x1="90" y1="430" x2="460" y2="430"/>
+  <line class="grid" x1="90" y1="376.4" x2="460" y2="376.4"/>
+  <line class="grid" x1="90" y1="322.7" x2="460" y2="322.7"/>
+  <line class="grid" x1="90" y1="269.1" x2="460" y2="269.1"/>
+  <line class="grid" x1="90" y1="215.5" x2="460" y2="215.5"/>
+  <line class="grid" x1="90" y1="161.8" x2="460" y2="161.8"/>
+  <text class="muted" x="78" y="435" text-anchor="end">0</text>
+  <text class="muted" x="78" y="381" text-anchor="end">10</text>
+  <text class="muted" x="78" y="328" text-anchor="end">20</text>
+  <text class="muted" x="78" y="274" text-anchor="end">30</text>
+  <text class="muted" x="78" y="221" text-anchor="end">40</text>
+  <text class="muted" x="78" y="167" text-anchor="end">50</text>
+  <path class="arm-a-line" d="M110 411.5 L190 394.5 L270 361.6 L350 295.8 L430 159.5"/>
+  <path class="arm-b-line" d="M110 412.1 L190 396.5 L270 367.3 L350 303.8 L430 179.8"/>
+  <g class="arm-a-mark">
+    <circle cx="110" cy="411.5" r="5"/><circle cx="190" cy="394.5" r="5"/><circle cx="270" cy="361.6" r="5"/><circle cx="350" cy="295.8" r="5"/><circle cx="430" cy="159.5" r="5"/>
+  </g>
+  <g class="arm-b-mark">
+    <circle cx="110" cy="412.1" r="6"/><circle cx="190" cy="396.5" r="6"/><circle cx="270" cy="367.3" r="6"/><circle cx="350" cy="303.8" r="6"/><circle cx="430" cy="179.8" r="6"/>
+  </g>
+  <text x="110" y="454" text-anchor="middle">8k</text><text class="delta" x="110" y="477" text-anchor="middle">−3.5%</text>
+  <text x="190" y="454" text-anchor="middle">16k</text><text class="delta" x="190" y="477" text-anchor="middle">−5.6%</text>
+  <text x="270" y="454" text-anchor="middle">32k</text><text class="delta" x="270" y="477" text-anchor="middle">−8.3%</text>
+  <text x="350" y="454" text-anchor="middle">64k</text><text class="delta" x="350" y="477" text-anchor="middle">−6.0%</text>
+  <text x="430" y="454" text-anchor="middle">128k</text><text class="delta" x="430" y="477" text-anchor="middle">−7.5%</text>
+
+  <text class="panel-title" x="540" y="108">Prefill throughput</text>
+  <text class="muted" x="950" y="108" text-anchor="end">tokens/second · higher is better</text>
+  <rect class="frame" x="580" y="135" width="370" height="295"/>
+  <line class="grid" x1="580" y1="430" x2="950" y2="430"/>
+  <line class="grid" x1="580" y1="376.4" x2="950" y2="376.4"/>
+  <line class="grid" x1="580" y1="322.7" x2="950" y2="322.7"/>
+  <line class="grid" x1="580" y1="269.1" x2="950" y2="269.1"/>
+  <line class="grid" x1="580" y1="215.5" x2="950" y2="215.5"/>
+  <line class="grid" x1="580" y1="161.8" x2="950" y2="161.8"/>
+  <text class="muted" x="568" y="435" text-anchor="end">2300</text>
+  <text class="muted" x="568" y="381" text-anchor="end">2400</text>
+  <text class="muted" x="568" y="328" text-anchor="end">2500</text>
+  <text class="muted" x="568" y="274" text-anchor="end">2600</text>
+  <text class="muted" x="568" y="221" text-anchor="end">2700</text>
+  <text class="muted" x="568" y="167" text-anchor="end">2800</text>
+  <path class="arm-a-line" d="M600 391.4 L680 335.1 L760 284.1 L840 258.4 L920 269.7"/>
+  <path class="arm-b-line" d="M600 342.1 L680 270.7 L760 180.6 L840 192.4 L920 181.7"/>
+  <g class="arm-a-mark">
+    <circle cx="600" cy="391.4" r="5"/><circle cx="680" cy="335.1" r="5"/><circle cx="760" cy="284.1" r="5"/><circle cx="840" cy="258.4" r="5"/><circle cx="920" cy="269.7" r="5"/>
+  </g>
+  <g class="arm-b-mark">
+    <circle cx="600" cy="342.1" r="6"/><circle cx="680" cy="270.7" r="6"/><circle cx="760" cy="180.6" r="6"/><circle cx="840" cy="192.4" r="6"/><circle cx="920" cy="181.7" r="6"/>
+  </g>
+  <text x="600" y="454" text-anchor="middle">8k</text><text class="delta" x="600" y="477" text-anchor="middle">+3.9%</text>
+  <text x="680" y="454" text-anchor="middle">16k</text><text class="delta" x="680" y="477" text-anchor="middle">+4.8%</text>
+  <text x="760" y="454" text-anchor="middle">32k</text><text class="delta" x="760" y="477" text-anchor="middle">+7.5%</text>
+  <text x="840" y="454" text-anchor="middle">64k</text><text class="delta" x="840" y="477" text-anchor="middle">+4.7%</text>
+  <text x="920" y="454" text-anchor="middle">128k</text><text class="delta" x="920" y="477" text-anchor="middle">+6.3%</text>
+
+  <text class="muted" x="500" y="525" text-anchor="middle">Deltas use values recorded at the displayed precision.</text>
+  <text class="muted" x="500" y="550" text-anchor="middle">Research-only: configuration identity, arm order, and repeated samples are not recorded.</text>
+</svg>

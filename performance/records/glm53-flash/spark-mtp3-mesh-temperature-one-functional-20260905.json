@@ -1,0 +1,404 @@
+{
+  "schema": "sparkring-functional-qualification/v1",
+  "status": "research-only",
+  "record_kind": "functional checks; not a throughput benchmark",
+  "date_utc": "2026-09-05",
+  "conditions": {
+    "image_id": "sha256:2b650e432d4d08e1999c276bd9b55032fceb89836a0c3c045da39d98a289acaf",
+    "bundle_manifest_sha256": "4204fabc93303226b9a120b094ef3c82ed4aadd1d7f97cfbe291204c027ed45f",
+    "marker_sha256": "0b92cd88be564e92a147d9bf981214151a12eb14a6bc8d9d7867ae8a63b21c9c",
+    "model": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+    "model_revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "hardware": "four DGX Spark GB10 nodes; switchless physical ring with ConnectX-7 hardware-forwarded diagonals",
+    "tensor_parallel": 4,
+    "decode_context_parallel": 4,
+    "pipeline_parallel": 1,
+    "speculation": "native MTP, three speculative tokens, explicit B12X draft attention",
+    "scheduled_token_limit": 8192,
+    "maximum_sequences": 16,
+    "graph_capture_rows": [
+      4,
+      8,
+      12,
+      16,
+      20,
+      24,
+      28,
+      32,
+      36,
+      40,
+      44,
+      48,
+      52,
+      56,
+      60,
+      64
+    ],
+    "kv_cache_bytes_per_rank": 25769803776,
+    "cache_identity": "target checkpoint fingerprint also identifies the native MTP predictor; fresh persistent-cache namespace",
+    "changed_variables": [
+      "source-attested readiness helper and temperature-one readiness default"
+    ],
+    "readiness_temperature": 1.0,
+    "readiness_thinking_enabled": false,
+    "warmup_helper_sha256": "f41c38eef41d15d63dcfc49cd6643357ca1a3ae18200ddbe4f8692d0b767ee79",
+    "source_receipt_sha256": "9656542cc5b2d37f847925442733702c98d7fdf66ef162bfddcfaab345dff401"
+  },
+  "gates": {
+    "image_and_sampling_warmup_configuration": {
+      "result": "passed",
+      "ranks": 4,
+      "temperature": 1.0
+    },
+    "native_rc_correctness": {
+      "result": "passed",
+      "checks_passed": 80
+    },
+    "initial_startup": {
+      "result": "passed",
+      "rank0_ready_seconds": 319.68799999996554
+    },
+    "uncached_recall": {
+      "result": "passed",
+      "temperature": 1.0,
+      "prompt_sha256": "3d2bc5228895566b1497e6f35f6c5aa051685f99438f27226134dfcfab15c277",
+      "prompt_tokens": 27274,
+      "cached_tokens": 0,
+      "expected_text": "cobalt orchard lantern",
+      "observed_text": "cobalt orchard lantern"
+    },
+    "persistent_publication": {
+      "result": "passed",
+      "ranks": [
+        {
+          "rank": 0,
+          "committed_tokens": 26624,
+          "reported_digest_prefix": "4817a6506878"
+        },
+        {
+          "rank": 1,
+          "committed_tokens": 26624,
+          "reported_digest_prefix": "4817a6506878"
+        },
+        {
+          "rank": 2,
+          "committed_tokens": 26624,
+          "reported_digest_prefix": "4817a6506878"
+        },
+        {
+          "rank": 3,
+          "committed_tokens": 26624,
+          "reported_digest_prefix": "4817a6506878"
+        }
+      ]
+    },
+    "sampling_arithmetic": {
+      "result": "passed",
+      "cells": [
+        {
+          "requested_concurrency": 5,
+          "passed": 5,
+          "total": 5,
+          "temperature": 1.0,
+          "thinking_enabled": true
+        },
+        {
+          "requested_concurrency": 7,
+          "passed": 7,
+          "total": 7,
+          "temperature": 1.0,
+          "thinking_enabled": true
+        },
+        {
+          "requested_concurrency": 16,
+          "passed": 16,
+          "total": 16,
+          "temperature": 1.0,
+          "thinking_enabled": true
+        }
+      ],
+      "passed": 28
+    },
+    "readiness_sampling_execution": {
+      "result": "passed",
+      "batches": 20,
+      "shapes": [
+        {
+          "concurrency": 1,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 2,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 3,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 4,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 5,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 6,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 7,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 8,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 9,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 10,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 11,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 12,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 13,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 14,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 15,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 16,
+          "prompt_words": 8,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 2,
+          "prompt_words": 24,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 2,
+          "prompt_words": 56,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 2,
+          "prompt_words": 120,
+          "temperature": 1.0
+        },
+        {
+          "concurrency": 2,
+          "prompt_words": 248,
+          "temperature": 1.0
+        }
+      ],
+      "receipt_visibility": "Buffered helper receipt recovered from rank-zero logs after serving stop; not treated as available during startup."
+    },
+    "post_restore_transport_progress": {
+      "result": "passed",
+      "ranks": [
+        {
+          "rank": 0,
+          "fatal": false,
+          "command_caught_up": true,
+          "published_sequence": 8182,
+          "completed_sequence": 8182,
+          "sircl_captured_nodes": 2399,
+          "rocenante_captured_nodes": 568
+        },
+        {
+          "rank": 1,
+          "fatal": false,
+          "command_caught_up": true,
+          "published_sequence": 8182,
+          "completed_sequence": 8182,
+          "sircl_captured_nodes": 2399,
+          "rocenante_captured_nodes": 568
+        },
+        {
+          "rank": 2,
+          "fatal": false,
+          "command_caught_up": true,
+          "published_sequence": 8182,
+          "completed_sequence": 8182,
+          "sircl_captured_nodes": 2399,
+          "rocenante_captured_nodes": 568
+        },
+        {
+          "rank": 3,
+          "fatal": false,
+          "command_caught_up": true,
+          "published_sequence": 8182,
+          "completed_sequence": 8182,
+          "sircl_captured_nodes": 2399,
+          "rocenante_captured_nodes": 568
+        }
+      ],
+      "scope": "single post-restore status snapshot, not a throughput or failure-containment test"
+    },
+    "serving_restart": {
+      "result": "passed",
+      "ranks_healthy": 4,
+      "api_and_liveness_ready_utc": "2026-09-05T06:42:57Z",
+      "start_utc": "2026-09-05T06:38:09Z"
+    },
+    "persistent_restore_output": {
+      "result": "passed",
+      "status": "qualified",
+      "scope": "one 27274-token recall prompt, one stopped-container restart, temperature one",
+      "requests_identical": true,
+      "external_hit_tokens": 26624.0,
+      "computed_prompt_tokens": 650.0,
+      "expected_text": "cobalt orchard lantern",
+      "observed_text": "cobalt orchard lantern",
+      "semantic_status": "passed",
+      "finish_reason": "stop",
+      "ranks": [
+        {
+          "rank": 0,
+          "tokens": 26624,
+          "reported_ms": 150.8,
+          "reported_MiB": 79.1
+        },
+        {
+          "rank": 1,
+          "tokens": 26624,
+          "reported_ms": 175.4,
+          "reported_MiB": 79.1
+        },
+        {
+          "rank": 2,
+          "tokens": 26624,
+          "reported_ms": 180.1,
+          "reported_MiB": 79.1
+        },
+        {
+          "rank": 3,
+          "tokens": 26624,
+          "reported_ms": 170.6,
+          "reported_MiB": 79.1
+        }
+      ]
+    }
+  },
+  "native_cells": [
+    {
+      "rows": 4,
+      "width": 4096,
+      "checks_passed": 20,
+      "origin_qps": 24,
+      "direct_qps": 16,
+      "forwarded_qps": 8,
+      "completion_errors": 0
+    },
+    {
+      "rows": 20,
+      "width": 4096,
+      "checks_passed": 20,
+      "origin_qps": 24,
+      "direct_qps": 16,
+      "forwarded_qps": 8,
+      "completion_errors": 0
+    },
+    {
+      "rows": 28,
+      "width": 4096,
+      "checks_passed": 20,
+      "origin_qps": 24,
+      "direct_qps": 16,
+      "forwarded_qps": 8,
+      "completion_errors": 0
+    },
+    {
+      "rows": 64,
+      "width": 4096,
+      "checks_passed": 20,
+      "origin_qps": 24,
+      "direct_qps": 16,
+      "forwarded_qps": 8,
+      "completion_errors": 0
+    }
+  ],
+  "source_receipt_sha256": {
+    "temperature-one:containers.json": "edfe4828bd965dc2e0edd9f0d5cee037551ae62868c498ffbfc0eeac7c2352b1",
+    "temperature-one:native:q4.json": "0b1a8160bfe5d313519b137505fde3c1ec37ae20d9407488bd7c6d35a68af8f9",
+    "temperature-one:native:q20.json": "007e4ca0052be5d7188e2ce45a00c833608a349f3ef6272abdde5626470f528f",
+    "temperature-one:native:q28.json": "4dd933f6f35106edac75150e258b61a7c7720cc8550674d11c1934713717213c",
+    "temperature-one:native:q64.json": "807c29365b9f9b9b59a25a295ab93221cab360e5226db703763b75d165ab38a4",
+    "launch-glm53-spark-mtp3-mesh-t1-20260905-063451.json": "b93fa78ac78a83ca0ecf13db97059962f94f0e60ca7d0a96d06193e7303293a9",
+    "temperature-one:recall-before:receipt.json": "4cef857768a4d6b86952783a38861c5cf2ae75cec9b1e2a969c3c570dd671d39",
+    "temperature-one:before-restart.json": "225f404b31bc585b6a5f75658a9f6004395c6aaef8bbb02fb14d8f18648bc906",
+    "temperature-one:sampling-unambiguous.json": "26cd59ae0d4aab110068182c9a85cfa90baf44f3b6e9ea43a83271a0a1d4a1bc",
+    "temperature-one:stopped-before-restore.json": "e972bb0566bce6f5a2863225eb03fe76e8713a43e85ec5ac0463d1ffcf51b2e3",
+    "temperature-one:sampling-smoke.json": "9ab98de0df33e402d604cdc6172cda3f4616582d76172dc0b925564d16bc018b",
+    "temperature-one:recall-after:receipt.json": "73bf050245aafa947eaf7709b0b57f7d21e08baaa3b64eb9104bfb87d564cae7",
+    "temperature-one:recall-before:request.json": "2c746af284ff70415f0dd35c4d16b01392dee05d600cfd402d2a442395279bef",
+    "temperature-one:recall-after:request.json": "2c746af284ff70415f0dd35c4d16b01392dee05d600cfd402d2a442395279bef",
+    "temperature-one:after-restore.json": "f1990e27ab0bbf2e02b352969a574e8bbbd402a051400f320b05d797753c43fa",
+    "status-glm53-spark-mtp3-mesh-t1-20260905-064325.json": "2f166312a3856bd3ebdbaed006cdf330db9313179ce9dbea82287d0934899752"
+  },
+  "measurement": {
+    "startup_clock": "operator elapsed wall clock for rank-zero launch command returning ready",
+    "startup_repetitions": 1,
+    "native_warmups": 2,
+    "native_timing_samples": 3,
+    "timing_use": "diagnostic only; no performance comparison or variability estimate",
+    "raw_evidence": "Private operational receipts; selected fields and receipt hashes retained here."
+  },
+  "limitations": [
+    "Persistent restoration evidence covers one recall prompt and one restart only.",
+    "No mixed-prefill/decode, prolonged-stress, or fault-containment qualification.",
+    "Thinking-enabled model checks do not add thinking-enabled readiness warmup.",
+    "Prompt semantics and stochastic output limit conclusions from individual canaries."
+  ],
+  "prompt_control_observation": {
+    "prefixed_prompt_cells": [
+      {
+        "requested_concurrency": 5,
+        "failed_output_checks": 0
+      },
+      {
+        "requested_concurrency": 7,
+        "failed_output_checks": 0
+      },
+      {
+        "requested_concurrency": 16,
+        "failed_output_checks": 1
+      }
+    ],
+    "limitation": "One C16 output reached its 512-token reasoning limit. The request prefix Check 16-7 was interpreted as subtraction; an unprefixed arithmetic prompt passed all 28 checks without model changes. This is a prompt change, not an exact-prompt repeat."
+  },
+  "conclusion": "The exact sampling-warmup image passes bounded native communication, startup, temperature-one arithmetic, publication, stopped-container restart, and one external-restoration recall check. This is not general cache, mixed-workload, or failure-containment qualification."
+}

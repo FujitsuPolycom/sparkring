@@ -56,6 +56,21 @@ int main() {
                              .poll_send_through(std::uint64_t{})),
                 spark_transport::SendCompletionPollState>);
   static_assert(std::is_same_v<
+                decltype(std::declval<spark_transport::VerbsEndpoint&>()
+                             .poll_send_completions(
+                                 static_cast<spark_transport::SendCompletion*>(
+                                     nullptr),
+                                 std::size_t{})),
+                std::size_t>);
+  static_assert(std::is_same_v<
+                decltype(std::declval<const spark_transport::VerbsEndpoint&>()
+                             .active_mtu_bytes()),
+                std::uint32_t>);
+  static_assert(std::is_same_v<
+                decltype(std::declval<const spark_transport::VerbsEndpoint&>()
+                             .maximum_send_work_requests()),
+                std::uint32_t>);
+  static_assert(std::is_same_v<
                 decltype(&spark_transport::VerbsEndpoint::wait_for_send),
                 void (spark_transport::VerbsEndpoint::*)(std::uint64_t)>);
   static_assert(std::is_same_v<

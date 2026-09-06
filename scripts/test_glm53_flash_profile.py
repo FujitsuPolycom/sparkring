@@ -20,7 +20,12 @@ PINS_PATH = ROOT / "runtime" / "glm53-flash" / "pins.json"
 CONTRACT_PATH = (
     ROOT / "runtime" / "glm53-flash" / "vllm-kv-block-lease-contract-da4d7be.json"
 )
-SITE_PATH = ROOT / "scripts" / "config" / "glm53-flash-tp4-site.example.yaml"
+SITE_PATH = (
+    ROOT
+    / "scripts"
+    / "config"
+    / "glm53-flash-dflash2-bf16-tp4-dcp1-site.example.yaml"
+)
 CACHE_PROFILE_PATH = (
     ROOT
     / "scripts"
@@ -324,7 +329,7 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
         ROOT
         / "runtime"
         / "glm53-flash-jj-r8-gb10"
-        / "page-tail-v2-public-image-receipt.json"
+        / "glm53-dcp4-sircl-public-image-receipt.json"
     )
 
     assert base["status"] == "implemented"
@@ -333,11 +338,31 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
     assert base["evidence"]["status"] == "implemented"
     assert base["preferred_profile"] == "dcp4"
     assert set(base["profiles"]) == {"dcp1", "dcp2", "dcp4"}
+    for recipe in (base, cache):
+        for name in ("dcp1", "dcp2", "dcp4"):
+            assert recipe["profiles"][name]["kv_cache_memory_bytes_per_rank"] == 24 * 1024**3
+        for name in ("dcp1", "dcp2"):
+            assert "approximate_logical_kv_capacity_tokens" not in recipe["profiles"][name]
+            assert "unmeasured" in recipe["profiles"][name]["logical_kv_capacity_status"]
+        assert recipe["profiles"]["dcp1"]["recorded_capacity_reference"] == {
+            "approximate_logical_kv_tokens": 1300000,
+            "kv_cache_memory_bytes_per_rank": 26 * 1024**3,
+        }
+        assert recipe["profiles"]["dcp2"]["recorded_capacity_reference"] == {
+            "approximate_logical_kv_tokens": 2900000,
+            "kv_cache_memory_bytes_per_rank": 30 * 1024**3,
+        }
     assert cache["status"] == "qualified"
     assert cache["evidence"]["status"] == "qualified"
     assert cache["serving_common"]["async_scheduling"] is True
     assert cache["serving_common"]["native_prefix_caching"] is True
     assert cache["serving_common"]["chunked_prefill"] is True
+    assert base["serving_common"]["kda_prefill_backend"] == "b12x"
+    assert cache["serving_common"]["kda_prefill_backend"] == "b12x"
+    assert base["transport"]["output_health_check"] is True
+    assert cache["transport"]["output_health_check"] is True
+    assert "output_health_gate" not in base["transport"]
+    assert "output_health_gate" not in cache["transport"]
     assert cache["profiles"]["dcp4"]["status"] == "qualified"
     assert cache["profiles"]["dcp4"]["preferred"] is True
     assert cache["profiles"]["dcp1"]["async_page_capture"] is False
@@ -345,24 +370,24 @@ def test_recipes_record_qualified_cached_and_cache_disabled_evidence() -> None:
     assert cache["profiles"]["dcp4"]["async_page_capture"] is True
     assert cache["profiles"]["dcp1"]["publication_schema"] == "snapshot-v1"
     assert cache["profiles"]["dcp1"]["cache_namespace_default"] == (
-        "glm53-flash-dcp1-snapshot-v1"
+        "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp1-snapshot-v1"
     )
     assert cache["profiles"]["dcp2"]["publication_schema"] == "snapshot-v1"
     assert cache["profiles"]["dcp2"]["cache_namespace_default"] == (
-        "glm53-flash-dcp2-snapshot-v1"
+        "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp2-snapshot-v1"
     )
     assert cache["profiles"]["dcp4"]["publication_schema"] == "tail-cow-v2"
     assert cache["profiles"]["dcp4"]["cache_namespace_default"] == (
-        "glm53-flash-dcp4-page-tail-cow-v2"
+        "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp4-page-tail-cow-v2"
     )
     assert cache["runtime"]["image"].endswith(
-        "@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f"
+        "@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f"
     )
     assert cache["runtime"]["image_id"] == (
-        "sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0"
+        "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075"
     )
     assert cache["runtime"]["sparkcache"]["source_commit"] == (
-        "737ed1399f559ba036fb0e358541744011afd47d"
+        "66057174301a4759ca3a45207ea41016689449cb"
     )
     assert base["runtime"]["sparkring_source_commit"] == (
         image_receipt["sources"]["sparkring_image_commit"]
@@ -434,14 +459,18 @@ def test_public_glm53_benchmark_is_sanitized_and_front_page_lists_dcp_profiles()
     assert "api_key" not in text.lower()
 
     readme = README_PATH.read_text(encoding="utf-8")
-    assert "GLM-5.3 Flash NVFP4 target, BF16 DFlash2" in readme
+    assert "GLM-5.3 Flash NVFP4 target" in readme
+    assert "external BF16 DFlash2" in readme
     assert "| DCP1 | 4 Sparks · TP4/DCP1 |" in readme
     assert "| DCP2 | 4 Sparks · TP4/DCP2 |" in readme
     assert "| **DCP4 preferred** | **4 Sparks · TP4/DCP4** |" in readme
-    assert "| 1.30M tokens |" in readme
-    assert "| 2.90M tokens |" in readme
-    assert "| **4.32M tokens** |" in readme
-    assert "| 2,513 | 40.20 | 116.73 | C16: 168.39 | 71.67 |" in readme
+    assert "| ~1.30M tokens |" in readme
+    assert "| ~2.90M tokens |" in readme
+    assert "| **~4.32M tokens** |" in readme
+    assert "26/30/24 GiB" in readme
+    assert "b12x-kda-dcp4-20260903.md" in readme
+    assert "| 16K | 2,649 (16K scout) | 37.97 | — | C4: 90.36 | — |" in readme
+    assert "C16: 184.39" in readme
     quickstart = (
         ROOT / "docs" / "GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
     ).read_text(encoding="utf-8")
@@ -449,7 +478,7 @@ def test_public_glm53_benchmark_is_sanitized_and_front_page_lists_dcp_profiles()
         "The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV"
         in quickstart
     )
-    assert "942,898-token needle" in readme
+    assert "942,898-token needle" in " ".join(quickstart.split())
     assert "GLM-5.3 Flash research observation" not in readme
     assert "IN PROGRESS" not in readme
 

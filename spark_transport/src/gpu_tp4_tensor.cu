@@ -2,6 +2,7 @@
 
 #include "spark_transport/gpu_doorbell.hpp"
 
+#include <cooperative_groups.h>
 #include <cuda_bf16.h>
 #include <cuda_runtime.h>
 
@@ -10,6 +11,8 @@
 
 namespace spark_transport {
 namespace {
+
+namespace cg = cooperative_groups;
 
 void check_cuda(cudaError_t result, const char* operation) {
   if (result != cudaSuccess) {
@@ -36,6 +39,13 @@ struct StripedGraphOperationState {
   std::size_t payload_bytes{};
   std::size_t stripe_bytes{};
   std::size_t generation{};
+};
+
+struct DirectGraphOperationState {
+  std::uint64_t epoch{};
+  std::uint64_t active_sequence{};
+  std::uint32_t lock{};
+  std::uint32_t reserved{};
 };
 
 // Every split node is captured on the session's one stable caller stream.
@@ -145,14 +155,43 @@ __device__ std::uint64_t graph_publish_command(
   }
 }
 
+__device__ std::uint64_t graph_claim_direct_sequence(
+    DirectGraphOperationState* state,
+    Tp4GraphCommandRing* graph_commands) {
+  while (atomicCAS(&state->lock, 0U, 1U) != 0U) {
+    __nanosleep(64);
+  }
+  const std::uint64_t current = atomicAdd(
+      reinterpret_cast<unsigned long long*>(&state->epoch), 0ULL);
+  if (current >= kTp4GraphMaximumDoorbellSequence) {
+    graph_publish_overflow(graph_commands, current);
+    graph_fatal_wait();
+  }
+  const std::uint64_t sequence = current + 1ULL;
+  atomicExch(
+      reinterpret_cast<unsigned long long*>(&state->epoch), sequence);
+  state->active_sequence = sequence;
+  __threadfence();
+  return sequence;
+}
+
+__device__ void graph_release_direct_sequence(
+    DirectGraphOperationState* state) {
+  __threadfence();
+  atomicExch(&state->lock, 0U);
+}
+
 __device__ void wait_for_sequence_block(const std::uint64_t* address,
                                         std::uint64_t sequence,
                                         Tp4GraphCommandRing* graph_commands,
                                         std::uint64_t graph_sequence) {
   if (threadIdx.x == 0) {
     while (true) {
-      const std::uint64_t observed =
-          reinterpret_cast<const volatile std::uint64_t*>(address)[0];
+      std::uint64_t observed{};
+      asm volatile("ld.acquire.sys.global.u64 %0, [%1];"
+                   : "=l"(observed)
+                   : "l"(address)
+                   : "memory");
       if (observed == sequence ||
           (graph_commands == nullptr && observed > sequence)) {
         break;
@@ -177,20 +216,138 @@ __device__ void publish_sequence_block(std::uint64_t* address,
   __syncthreads();
 }
 
+__device__ void publish_sequence_thread(std::uint64_t* address,
+                                        std::uint64_t sequence) {
+  asm volatile("st.release.sys.global.u64 [%0], %1;"
+               :
+               : "l"(address), "l"(sequence)
+               : "memory");
+}
+
+__global__ void tp4_direct_multiblock_all_reduce(
+    std::uint8_t* round0_buffer, ExchangeBufferLayout round0_layout,
+    std::uint8_t* round1_buffer, ExchangeBufferLayout round1_layout,
+    const __nv_bfloat16* input, __nv_bfloat16* output,
+    std::size_t payload_bytes, Tp4GraphCommandRing* graph_commands,
+    DirectGraphOperationState* state, std::uint32_t graph_q,
+    Tp4AllreduceProtocol protocol) {
+  const cg::grid_group grid = cg::this_grid();
+  if (blockIdx.x == 0 && threadIdx.x == 0) {
+    graph_claim_direct_sequence(state, graph_commands);
+  }
+  grid.sync();
+  const std::uint64_t sequence = state->active_sequence;
+  const std::uint64_t doorbell_sequence =
+      (sequence << kTp4GraphDoorbellQBits) | graph_q;
+  const std::size_t slot = tp4_payload_slot_index(sequence, protocol);
+  round0_buffer += slot * round0_layout.total_bytes;
+  round1_buffer += slot * round1_layout.total_bytes;
+
+  auto* send0 = reinterpret_cast<__nv_bfloat16*>(
+      round0_buffer + round0_layout.send_offset);
+  const auto* receive0 = reinterpret_cast<const __nv_bfloat16*>(
+      round0_buffer + round0_layout.receive_offset);
+  auto* control0 = reinterpret_cast<DoorbellControl*>(
+      round0_buffer + round0_layout.control_offset);
+  auto* send1 = reinterpret_cast<__nv_bfloat16*>(
+      round1_buffer + round1_layout.send_offset);
+  const auto* receive1 = reinterpret_cast<const __nv_bfloat16*>(
+      round1_buffer + round1_layout.receive_offset);
+  auto* control1 = reinterpret_cast<DoorbellControl*>(
+      round1_buffer + round1_layout.control_offset);
+  const std::size_t elements = payload_bytes / sizeof(__nv_bfloat16);
+  const std::size_t pairs = elements / 2;
+  const std::size_t linear_thread =
+      static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const std::size_t linear_stride =
+      static_cast<std::size_t>(gridDim.x) * blockDim.x;
+  const std::uint64_t prior_sequence =
+      tp4_expected_reuse_credit(sequence, protocol);
+
+  wait_for_sequence_block(&control0->acknowledgement_sequence,
+                          prior_sequence, graph_commands, sequence);
+  for (std::size_t index = linear_thread; index < elements;
+       index += linear_stride) {
+    send0[index] = input[index];
+  }
+  __threadfence_system();
+  grid.sync();
+  if (blockIdx.x == 0 && threadIdx.x == 0) {
+    publish_sequence_thread(&control0->producer_sequence,
+                            doorbell_sequence);
+  }
+  grid.sync();
+
+  wait_for_sequence_block(&control0->remote_sequence,
+                          doorbell_sequence, graph_commands, sequence);
+  wait_for_sequence_block(&control1->acknowledgement_sequence,
+                          prior_sequence, graph_commands, sequence);
+  const auto* send0_pairs =
+      reinterpret_cast<const __nv_bfloat162*>(send0);
+  const auto* receive0_pairs =
+      reinterpret_cast<const __nv_bfloat162*>(receive0);
+  auto* send1_pairs = reinterpret_cast<__nv_bfloat162*>(send1);
+  for (std::size_t index = linear_thread; index < pairs;
+       index += linear_stride) {
+    send1_pairs[index] = __hadd2(send0_pairs[index], receive0_pairs[index]);
+  }
+  if (elements % 2 != 0 && linear_thread == 0) {
+    send1[elements - 1] =
+        __hadd(send0[elements - 1], receive0[elements - 1]);
+  }
+  __threadfence_system();
+  grid.sync();
+  if (blockIdx.x == 0 && threadIdx.x == 0) {
+    publish_sequence_thread(&control0->consumer_sequence,
+                            doorbell_sequence);
+  }
+  grid.sync();
+
+  wait_for_sequence_block(&control1->remote_sequence,
+                          doorbell_sequence, graph_commands, sequence);
+  const auto* send1_read =
+      reinterpret_cast<const __nv_bfloat162*>(send1);
+  const auto* receive1_pairs =
+      reinterpret_cast<const __nv_bfloat162*>(receive1);
+  auto* output_pairs = reinterpret_cast<__nv_bfloat162*>(output);
+  for (std::size_t index = linear_thread; index < pairs;
+       index += linear_stride) {
+    output_pairs[index] =
+        __hadd2(send1_read[index], receive1_pairs[index]);
+  }
+  if (elements % 2 != 0 && linear_thread == 0) {
+    output[elements - 1] =
+        __hadd(send1[elements - 1], receive1[elements - 1]);
+  }
+  __threadfence_system();
+  grid.sync();
+  if (blockIdx.x == 0 && threadIdx.x == 0) {
+    publish_sequence_thread(&control1->consumer_sequence,
+                            doorbell_sequence);
+    publish_sequence_thread(&control1->observed_sequence,
+                            doorbell_sequence);
+    graph_release_direct_sequence(state);
+  }
+}
+
 __global__ void tp4_tensor_all_reduce(
     std::uint8_t* round0_buffer, ExchangeBufferLayout round0_layout,
     std::uint8_t* round1_buffer, ExchangeBufferLayout round1_layout,
     const __nv_bfloat16* input, __nv_bfloat16* output,
     std::size_t payload_bytes, std::uint64_t fixed_sequence,
-    Tp4GraphCommandRing* graph_commands, std::uint32_t graph_q,
+    Tp4GraphCommandRing* graph_commands,
+    DirectGraphOperationState* direct_graph_sequence,
+    std::uint32_t graph_q,
     bool graph_trace, Tp4AllreduceProtocol protocol) {
   __shared__ std::uint64_t graph_sequence;
   if (graph_commands != nullptr) {
     if (threadIdx.x == 0) {
-      graph_sequence =
-          graph_publish_command(
-              graph_commands, graph_trace, graph_q,
-              static_cast<std::uint32_t>(payload_bytes));
+      graph_sequence = direct_graph_sequence == nullptr
+                           ? graph_publish_command(
+                                 graph_commands, graph_trace, graph_q,
+                                 static_cast<std::uint32_t>(payload_bytes))
+                           : graph_claim_direct_sequence(
+                                 direct_graph_sequence, graph_commands);
     }
     __syncthreads();
   }
@@ -286,17 +443,25 @@ __global__ void tp4_tensor_all_reduce(
   }
   publish_sequence_block(&control1->observed_sequence,
                          doorbell_sequence);
+  if (direct_graph_sequence != nullptr && threadIdx.x == 0) {
+    graph_release_direct_sequence(direct_graph_sequence);
+  }
 }
 
 __global__ void tp4_split_claim_command(
     Tp4GraphCommandRing* graph_commands,
+    DirectGraphOperationState* direct_graph_sequence,
     std::uint8_t* round0_buffer, ExchangeBufferLayout round0_layout,
     SplitGraphOperationState* state, std::uint32_t graph_q,
     std::uint32_t payload_bytes, bool graph_trace,
     Tp4AllreduceProtocol protocol) {
   if (threadIdx.x == 0) {
-    const std::uint64_t sequence = graph_publish_command(
-        graph_commands, graph_trace, graph_q, payload_bytes);
+    const std::uint64_t sequence =
+        direct_graph_sequence == nullptr
+            ? graph_publish_command(
+                  graph_commands, graph_trace, graph_q, payload_bytes)
+            : graph_claim_direct_sequence(
+                  direct_graph_sequence, graph_commands);
     state->sequence = sequence;
     state->doorbell_sequence =
         (sequence << kTp4GraphDoorbellQBits) | graph_q;
@@ -461,6 +626,7 @@ __global__ void tp4_split_finish(
     std::uint8_t* round1_buffer, ExchangeBufferLayout round1_layout,
     const SplitGraphOperationState* state,
     Tp4GraphCommandRing* graph_commands,
+    DirectGraphOperationState* direct_graph_sequence,
     Tp4AllreduceProtocol protocol) {
   round1_buffer += state->slot * round1_layout.total_bytes;
   auto* control1 = reinterpret_cast<DoorbellControl*>(
@@ -474,6 +640,9 @@ __global__ void tp4_split_finish(
   }
   publish_sequence_block(&control1->observed_sequence,
                          state->doorbell_sequence);
+  if (direct_graph_sequence != nullptr && threadIdx.x == 0) {
+    graph_release_direct_sequence(direct_graph_sequence);
+  }
 }
 
 __device__ std::size_t tp4_striped_lane_offset(
@@ -754,7 +923,7 @@ GpuTp4TensorWorker::GpuTp4TensorWorker(
     const ExchangeBufferLayout& round1_layout,
     Tp4AllreduceProtocol protocol,
     Tp4GraphKernelStrategy graph_kernel_strategy,
-    Tp4AllreduceSchedule schedule)
+    Tp4AllreduceSchedule schedule, bool graph_direct_doorbell)
     : round0_buffer_(round0_mapped_device_buffer),
       round1_buffer_(round1_mapped_device_buffer),
       round0_layout_(round0_layout),
@@ -763,7 +932,8 @@ GpuTp4TensorWorker::GpuTp4TensorWorker(
       bytes_per_row_(bytes_per_row),
       protocol_(protocol),
       graph_kernel_strategy_(graph_kernel_strategy),
-      schedule_(schedule) {
+      schedule_(schedule),
+      graph_direct_doorbell_(graph_direct_doorbell) {
   if (payload_bytes_ == 0 || bytes_per_row_ == 0 ||
       payload_bytes_ % sizeof(__nv_bfloat16) != 0) {
     throw std::invalid_argument(
@@ -777,6 +947,32 @@ GpuTp4TensorWorker::GpuTp4TensorWorker(
   }
   if (!tp4_allreduce_schedule_valid(schedule_)) {
     throw std::invalid_argument("invalid TP4 all-reduce schedule");
+  }
+  if (graph_direct_doorbell_) {
+    if (schedule_ != Tp4AllreduceSchedule::kSequential ||
+        !tp4_protocol_uses_deferred_ack(protocol_)) {
+      throw std::invalid_argument(
+          "direct-doorbell graph TP4 requires sequential two-slot "
+          "deferred ACK");
+    }
+    int device{};
+    int cooperative_launch{};
+    check_cuda(cudaGetDevice(&device),
+               "cudaGetDevice direct-doorbell graph TP4");
+    check_cuda(
+        cudaDeviceGetAttribute(
+            &cooperative_launch, cudaDevAttrCooperativeLaunch, device),
+        "cudaDeviceGetAttribute cooperative launch");
+    if (cooperative_launch == 0) {
+      throw std::runtime_error(
+          "direct-doorbell graph TP4 requires cooperative launch");
+    }
+    check_cuda(cudaMalloc(&direct_graph_sequence_,
+                          sizeof(DirectGraphOperationState)),
+               "cudaMalloc direct-doorbell graph sequence");
+    check_cuda(cudaMemset(direct_graph_sequence_, 0,
+                          sizeof(DirectGraphOperationState)),
+               "cudaMemset direct-doorbell graph sequence");
   }
   if (schedule_ == Tp4AllreduceSchedule::kDualPortStriped) {
     if (!tp4_protocol_uses_deferred_ack(protocol_) ||
@@ -799,6 +995,9 @@ GpuTp4TensorWorker::GpuTp4TensorWorker(
 }
 
 GpuTp4TensorWorker::~GpuTp4TensorWorker() {
+  if (direct_graph_sequence_ != nullptr) {
+    (void)cudaFree(direct_graph_sequence_);
+  }
   if (split_graph_state_ != nullptr) {
     (void)cudaFree(split_graph_state_);
   }
@@ -836,7 +1035,7 @@ void GpuTp4TensorWorker::enqueue(const void* external_input,
       static_cast<std::uint8_t*>(round1_buffer_), round1_layout_,
       static_cast<const __nv_bfloat16*>(external_input),
       static_cast<__nv_bfloat16*>(external_output), payload_bytes_, sequence,
-      nullptr, 0, false, protocol_);
+      nullptr, nullptr, 0, false, protocol_);
   check_cuda(cudaGetLastError(), "tp4_tensor_all_reduce launch");
 }
 
@@ -859,6 +1058,37 @@ void GpuTp4TensorWorker::enqueue_graph(
     throw std::invalid_argument("invalid graph TP4 tensor operation");
   }
   const auto caller_stream = static_cast<cudaStream_t>(cuda_stream);
+  if (graph_direct_doorbell_ &&
+      active_payload_bytes <= 512U * 1024U) {
+    int blocks = 8;
+    if (active_payload_bytes > 256U * 1024U) {
+      blocks = 16;
+    }
+    constexpr int threads = 256;
+    auto* round0 = static_cast<std::uint8_t*>(round0_buffer_);
+    auto* round1 = static_cast<std::uint8_t*>(round1_buffer_);
+    const auto* input =
+        static_cast<const __nv_bfloat16*>(external_input);
+    auto* output = static_cast<__nv_bfloat16*>(external_output);
+    auto* direct_state =
+        static_cast<DirectGraphOperationState*>(direct_graph_sequence_);
+    std::size_t payload_bytes = active_payload_bytes;
+    std::uint32_t graph_q = q;
+    Tp4AllreduceProtocol protocol = protocol_;
+    void* arguments[] = {
+        &round0,        &round0_layout_, &round1, &round1_layout_,
+        &input,         &output,         &payload_bytes,
+        &command_ring,  &direct_state,   &graph_q, &protocol,
+    };
+    check_cuda(
+        cudaLaunchCooperativeKernel(
+            reinterpret_cast<const void*>(
+                tp4_direct_multiblock_all_reduce),
+            dim3(static_cast<unsigned int>(blocks)), dim3(threads),
+            arguments, 0, caller_stream),
+               "direct-doorbell multiblock graph TP4 launch");
+    return;
+  }
   if (schedule_ == Tp4AllreduceSchedule::kDualPortStriped) {
     if (active_payload_bytes != payload_bytes_ ||
         !tp4_protocol_uses_deferred_ack(protocol_) ||
@@ -914,7 +1144,8 @@ void GpuTp4TensorWorker::enqueue_graph(
     check_cuda(cudaGetLastError(), "striped graph TP4 finish launch");
     return;
   }
-  if (tp4_graph_kernel_uses_split(graph_kernel_strategy_, q)) {
+  if (tp4_graph_kernel_uses_split(graph_kernel_strategy_,
+                                  active_payload_bytes)) {
     if (!split_graph_q_supported(q) || split_graph_state_ == nullptr) {
       throw std::invalid_argument(
           "split_64k graph TP4 requires Q1 through Q512 and initialized "
@@ -931,7 +1162,9 @@ void GpuTp4TensorWorker::enqueue_graph(
     auto* const round1 = static_cast<std::uint8_t*>(round1_buffer_);
 
     tp4_split_claim_command<<<1, control_threads, 0, caller_stream>>>(
-        command_ring, round0, round0_layout_, state, q,
+        command_ring,
+        static_cast<DirectGraphOperationState*>(direct_graph_sequence_), round0,
+        round0_layout_, state, q,
         active_payload_bytes, trace, protocol_);
     check_cuda(cudaGetLastError(), "split graph TP4 claim launch");
     tp4_split_stage_round0<<<bulk_blocks, bulk_threads, 0, caller_stream>>>(
@@ -957,7 +1190,9 @@ void GpuTp4TensorWorker::enqueue_graph(
         static_cast<__nv_bfloat16*>(external_output), state);
     check_cuda(cudaGetLastError(), "split graph TP4 round-1 reduce launch");
     tp4_split_finish<<<1, control_threads, 0, caller_stream>>>(
-        round1, round1_layout_, state, command_ring, protocol_);
+        round1, round1_layout_, state, command_ring,
+        static_cast<DirectGraphOperationState*>(direct_graph_sequence_),
+        protocol_);
     check_cuda(cudaGetLastError(), "split graph TP4 finish launch");
     return;
   }
@@ -967,7 +1202,10 @@ void GpuTp4TensorWorker::enqueue_graph(
       static_cast<std::uint8_t*>(round1_buffer_), round1_layout_,
       static_cast<const __nv_bfloat16*>(external_input),
       static_cast<__nv_bfloat16*>(external_output), active_payload_bytes, 0,
-      command_ring, q, trace, protocol_);
+      command_ring,
+      static_cast<DirectGraphOperationState*>(direct_graph_sequence_), q,
+      trace,
+      protocol_);
   check_cuda(cudaGetLastError(), "graph tp4_tensor_all_reduce launch");
 }
 

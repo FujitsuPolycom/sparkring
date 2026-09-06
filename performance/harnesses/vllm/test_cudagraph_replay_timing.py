@@ -133,6 +133,22 @@ def test_descriptor_key_separates_q1_and_q5() -> None:
     assert timing._descriptor_key(q1) != timing._descriptor_key(q5)
 
 
+def test_descriptor_key_supports_optional_glm53_fields() -> None:
+    descriptor = SimpleNamespace(
+        cg_mode=SimpleNamespace(name="FULL"),
+        num_tokens=8,
+        num_reqs=1,
+        uniform_token_count=None,
+        max_query_len=8,
+        num_active_loras=0,
+    )
+
+    assert timing._descriptor_key(descriptor) == (
+        "mode=FULL,num_tokens=8,num_reqs=1,"
+        "uniform_token_count=none,max_query_len=8,num_active_loras=0"
+    )
+
+
 @pytest.mark.parametrize("sample_limit", [0, 65537])
 def test_collector_rejects_unbounded_sample_counts(
     tmp_path: Path,

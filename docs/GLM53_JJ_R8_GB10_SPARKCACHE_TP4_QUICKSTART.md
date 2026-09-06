@@ -6,11 +6,13 @@ Linux/ARM64 image supports DCP1, DCP2, and DCP4. The default request limit is
 The operator can enable persistent SparkCache or use vLLM's GPU prefix cache
 alone without changing the image.
 
-The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV per rank,
-scheduler interval two, BF16 DFlash2 at depth seven, and SparkCache's flat
-copy-on-write page tails. Growing conversations write changed pages instead
-of another complete cached context. An earlier complete-snapshot image remains
-available as a recovery artifact.
+The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV per rank, SIRCL with
+capability and health checks, scheduler interval two, BF16 DFlash2 at depth
+seven, and SparkCache's flat copy-on-write page tails. Patched NCCL is the
+fallback transport and handles collective signatures that SIRCL does not
+support. Growing conversations write changed pages instead of another complete
+cached context. A complete-snapshot image remains available as a
+recovery artifact.
 
 The image does not contain model checkpoints. It mounts the exact
 [`local-inference-lab/GLM-5.3-Flash-NVFP4`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4)
@@ -20,7 +22,14 @@ BF16 draft. Local Inference Lab's
 [`vLLM GLM development`](https://github.com/local-inference-lab/vllm/tree/dev/jovian-judgement)
 and [`B12X`](https://github.com/local-inference-lab/b12x) GB10 kernels provide
 the model-specific runtime and performance foundation. The pinned vLLM source
-line is named `Jovian Judgement Community R10` in the image contract.
+line is named `Jovian Judgement Community R10` in the image contract. For an
+exact public checkout, the
+[`sparkring-glm53-flash-gb10-e02b1746`](https://github.com/FujitsuPolycom/vllm/tree/sparkring-glm53-flash-gb10-e02b1746)
+tag resolves to commit `e02b174693e13859de61811b5e8cd13d5308e259`.
+The image installs B12X commit `9ae41c5c` from the `voipmonitor/b12x` fork
+recorded in
+[`pins.json`](../runtime/glm53-flash-jj-r8-gb10/pins.json); Local Inference Lab
+remains the upstream B12X project.
 
 ## Choose the image
 
@@ -29,18 +38,24 @@ line is named `Jovian Judgement Community R10` in the image contract.
 The recommended DCP4 profile uses this immutable Linux/ARM64 image:
 
 ```bash
-image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f'
-expected_image_id='sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0'
+image='ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f'
+expected_image_id='sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075'
 docker pull "${image}"
 test "$(docker image inspect "${image}" --format '{{.Id}}')" = "${expected_image_id}"
 ```
 
-The published tag is
-`ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260902-r10-page-tail-v2`.
-Use the digest above for reproducible deployment.
+Use the digest above for reproducible deployment. All four validation ranks
+pulled that digest and resolved image ID
+`sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075`.
 
 The exact source composition and local build command remain in
 [`runtime/glm53-flash-jj-r8-gb10/`](../runtime/glm53-flash-jj-r8-gb10/README.md).
+
+This published digest contains the receipt-bound SIRCL Python overlay,
+generated manifest, and ARM64 native library. The preferred deployment leaves
+`SIRCL_BUNDLE_HOST_ROOT` empty and therefore requires no host bundle mount.
+The environment template selects B12X KDA prefill, matching the vLLM and B12X
+source revisions embedded in the image.
 
 ### Complete-snapshot recovery artifact
 
@@ -52,8 +67,8 @@ local image ID: sha256:d1a07147c9e25f3d3e0af6b1499c4988b1ae61138e327aa05c9ad9dc5
 platform: linux/arm64
 ```
 
-The recovery image predates the readiness entrypoint used by this guide and is
-not compatible with the launcher in this checkout. Its matching SparkRing
+The recovery image does not contain the readiness entrypoint required by this
+guide and is not compatible with the launcher in this checkout. Its matching SparkRing
 source revision is `a150c98ccfdc4b655679860121f24712490dd9ee`; the
 [`recovery image receipt`](../runtime/glm53-flash-jj-r8-gb10/multimodal-lease300-image-receipt.json)
 records its exact launch contract. The remaining commands in this guide use
@@ -68,12 +83,23 @@ target_model=/srv/models/glm53-target
 draft_model=/srv/models/glm53-dflash2-bf16
 
 hf download local-inference-lab/GLM-5.3-Flash-NVFP4 \
-  --revision 520de24eabf507659eaef7c70f14fd584527facc \
+  --revision 46aaae8a82032f77100f2f03e9cc11b391df3b4d \
   --local-dir "${target_model}"
 hf download incoai/GLM-5.3-Flash-DFlash2 \
   --revision dc77ff1c99eeb2df044ee3d4f0094eb033fee410 \
   --local-dir "${draft_model}"
 ```
+
+Revision `46aaae8a` differs from the previously documented `520de24e` only in
+`README.md` and `chat_template.jinja`: it carries zai-org's 2026-09-04 GLM-5.3
+chat-template update (tool-result reordering exits early; a `content is not
+none` guard on assistant text). The weights, `config.json`, and
+`model.safetensors.index.json` are byte-identical, so the launcher's identity
+checks accept either revision. A site that already holds `520de24e` can adopt
+the template alone by pointing `CHAT_TEMPLATE_HOST_PATH` at the new
+`chat_template.jinja` (SHA-256
+`0c4099f3382d6c92700dfb99725025360966fd73032f0ecf32377c0d9e6309c5`) instead of
+re-downloading the checkpoint.
 
 Copy each immutable directory to the same absolute path on the three follower
 ranks. Use direct-link addresses where the site permits SSH over the 200 Gb/s
@@ -149,6 +175,54 @@ Replace these five site values:
 - `DFLASH_MODEL_HOST_PATH`: the BF16 draft directory;
 - `CACHE_HOST_ROOT`: a writable rank-local JIT and SparkCache directory.
 
+The base environment leaves SIRCL disabled because RoCE peer addresses and
+device names are rank-specific. In that form, patched NCCL is the complete
+fallback. For the preferred DCP4 path, append the dual-rail transport settings:
+
+```bash
+cat runtime/glm53-flash-jj-r8-gb10/sircl-fused.env.example >> "$HOME/glm53-flash.env"
+${EDITOR:-vi} "$HOME/glm53-flash.env"
+```
+
+Replace every additional `REPLACE` value with that rank's primary and secondary
+peer addresses and RDMA devices. Leave `SIRCL_BUNDLE_HOST_ROOT` empty to use
+the bundle inside the image. The overlay sets
+`SIRCL_ENABLED=1`, direct graph doorbells, dual-rail fused exposure, the graph
+CPU assignments, control-port bases, and timeouts. The runtime guide specifies
+the resulting SIRCL/NCCL routing and mapped-memory allocation.
+
+Developers can point `SIRCL_BUNDLE_HOST_ROOT` at an absolute directory that
+contains the complete Python overlay, generated manifest, and native library.
+The launcher validates the files and mounts that override read-only.
+
+SIRCL does not assign host addresses or MTUs. Each secondary Ethernet
+interface must have a persistent NetworkManager profile with its local address,
+MTU 9000, and autoconnect enabled. A same-boot `ip address add` command is not
+sufficient because the address and its RoCEv2 GID disappear after a reboot.
+Run the plan, confirmed application, and read-only verification described in
+the [persistent SIRCL rail procedure](SIRCL.md#persistent-host-rail-configuration)
+for both secondary interfaces on every rank. The verifier checks the exact
+GID, associated Ethernet device, and a jumbo peer ping. Rerun its `--verify`
+mode after reboot and before starting TP4/DCP4.
+The
+[`secondary-rail persistence validation`](../runtime/glm53-flash-jj-r8-gb10/sircl-secondary-rail-persistence-live-validation.json)
+records the missing-GID startup rejection and eight successful live
+verifications after persistent profiles were configured.
+
+Before constructing native sessions, all ranks exchange the SIRCL artifact and
+protocol identities and report their local RDMA device and GID availability. A
+missing capability or shared mismatch stops all ranks. After vLLM synchronizes
+model output, a host-only check stops output from an unhealthy SIRCL session;
+the check does not synchronize CUDA.
+
+**Status:** the exact public image is four-rank qualified for functional DCP4
+serving. Every rank accepted the SIRCL capability vote, the service became
+healthy, a 32,768-token entry restored after restart, concurrent stores drained
+all delayed ownership, and test-only SIRCL failures stopped all worker groups
+before any API became ready. These checks establish functional behavior, not a
+broad performance comparison. To use the fallback, do not append the overlay
+and keep `SIRCL_ENABLED=0`; patched NCCL then handles every collective.
+
 The default OpenAI-compatible model name is `glm-5.3-flash`. Override
 `SERVED_MODEL_NAME` only when the site needs a distinct routing name.
 
@@ -168,6 +242,12 @@ This is host-level access control, not secret management. vLLM receives the
 keys in its process arguments, which remain visible to an administrator who
 can inspect the container or host process.
 
+`CHAT_TEMPLATE_HOST_PATH` (empty by default) bind-mounts one host file
+read-only and passes it as `--chat-template`, replacing the template shipped
+inside the target checkpoint directory. Use it to adopt a template-only
+checkpoint update without re-staging weights; leave it empty to serve the
+checkpoint's own `chat_template.jinja`.
+
 Choose the DCP degree with one line. DCP4 uses the environment template as
 written:
 
@@ -181,27 +261,34 @@ those layouts have matching asynchronous page-capture evidence:
 ```bash
 DECODE_CONTEXT_PARALLEL_SIZE=1  # or 2
 SPARKCACHE_PUBLICATION_SCHEMA='snapshot-v1'
-SPARKCACHE_CACHE_NAMESPACE='glm53-flash-dcp1-snapshot-v1'  # use dcp2 for DCP2
+SPARKCACHE_CACHE_NAMESPACE='glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp1-snapshot-v1'
 SPARKCACHE_ASYNC_PAGE_CAPTURE=0
 ```
+
+For DCP2, use
+`glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp2-snapshot-v1`. The DCP4
+template uses
+`glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp4-page-tail-cow-v2`.
 
 When `SPARKCACHE_ENABLED=0`, only the DCP value needs to change.
 
 The launcher selects the matching GLM KV geometry automatically:
 
-| DCP | KV interleave | Full-CKV prefill gather | Default FP8 KV per rank | Approx. logical KV capacity |
+| DCP | KV interleave | Full-CKV prefill gather | Default FP8 KV per rank | Approx. recorded logical KV capacity |
 |---:|---:|---:|---:|---:|
-| 1 | 1 token | disabled | 26 GiB | 1.30M tokens |
-| 2 | 4 tokens | enabled | 30 GiB | 2.90M tokens |
-| 4 | 4 tokens | enabled | 24 GiB | 4.32M tokens |
+| 1 | 1 token | disabled | 24 GiB | ~1.30M tokens |
+| 2 | 4 tokens | enabled | 24 GiB | ~2.90M tokens |
+| 4 | 4 tokens | enabled | 24 GiB | ~4.32M tokens |
 
-The capacity column is the model-wide value reported by vLLM. Do not multiply
-it by the four physical ranks.
+The capacity figures are model-wide reference measurements at 26/30/24 GiB
+per rank for DCP1/2/4 respectively; do not multiply them by four. All three
+profiles default to 25,769,803,776 bytes (24 GiB). Read the actual available
+capacity from vLLM's startup output.
 
 The recorded DCP4 deployment used 24 GiB per rank and completed exact 900K and
-1M needle restores. The DCP1 profile completed a 942,898-token needle
-retrieval under the 1M request limit. Set `KV_CACHE_MEMORY_BYTES` to a positive
-byte count to override the topology-aware `auto` policy.
+1M needle restores. The DCP1 942,898-token needle retrieval used 26 GiB per rank.
+Set `KV_CACHE_MEMORY_BYTES` to a positive byte count to override `auto`;
+for example, `27917287424` explicitly requests 26 GiB.
 
 Choose persistent SparkCache or vLLM's GPU prefix cache alone without changing
 the image:
@@ -238,6 +325,13 @@ persistent-context storage. It is not part of SparkCache's content identity or
 stored format. Changing it selects a different root and therefore a different
 set of discoverable entries.
 
+The three documented defaults name vLLM `e02b1746` and B12X `9ae41c5c`
+because those sources determine the manager-page state being persisted. This
+keeps state written by that exact composition separate from entries written by
+other source compositions. Existing entries are not migrated or deleted. Do
+not rename or copy an incompatible directory into a source-bound root; allow a
+cache miss to recompute and publish state with the named sources.
+
 `JIT_CACHE_NAMESPACE` independently selects persistent Triton,
 TorchInductor, B12X, and vLLM compilation data. Keep its source-bound default
 when changing or clearing SparkCache storage. Every rank keeps a local copy;
@@ -250,6 +344,10 @@ The image supports three persistent publication formats:
 | `snapshot-v1` | A complete immutable context for every publication | DCP1/DCP2 persistent-cache profile and simple storage inspection |
 | `tail-cow-v1` | An immutable base with changed page objects | Compatibility testing for the first page-tail format |
 | `tail-cow-v2` | An authenticated base with a flat chain of changed-page descriptors | Recommended DCP4 profile for growing conversations |
+
+SparkCache translates the operator setting `tail-cow-v2` to the cache-identity
+wire value `page-tail-cow-v2`. The DCP4 storage directory includes that wire
+value, which explains why the setting and directory use different strings.
 
 The publication format is part of cache identity. An incompatible entry is a
 miss, and vLLM computes the prompt normally. Keep each format in a separately
@@ -277,9 +375,11 @@ capture have no matching live record; use complete snapshots or test those
 layouts separately.
 
 The environment template enables `DFLASH_WARMUP=1`. Rank 0 waits for the API,
-then exercises C1/C2/C4/C8/C16 and scheduled prompt spans covering DFlash's
-Triton block-size specializations. Treat completion of the rank-0 launch
-command—not an early `/health` response—as service readiness.
+then exercises every concurrency from C1 through C16 and scheduled prompt
+spans covering DFlash's Triton block-size specializations. DFlash depth seven
+verifies eight target rows per active request, so the launcher captures every
+eight-row request-batch shape from 8 through 128. Treat completion of the
+rank-0 launch command—not an early `/health` response—as service readiness.
 The engine-level failure and readiness replay are recorded in the
 [`DFlash readiness validation`](../runtime/glm53-flash-jj-r8-gb10/dflash-jit-readiness-validation.json).
 
@@ -300,6 +400,58 @@ MULTIMODAL_INPUTS=0
 
 Text-only mode passes `--language-model-only` and rejects media content before
 inference. It does not change SparkCache identity or stored entries.
+
+## Check host memory before launch
+
+Create one ignored site file on the operator machine and replace its rank
+addresses, interfaces, paths, and artifact identities:
+
+```bash
+cp scripts/config/glm53-flash-tp4-site.example.yaml scripts/config/site.yaml
+${EDITOR:-vi} scripts/config/site.yaml
+python scripts/sparkring_site.py scripts/config/site.yaml
+python scripts/preflight.py --site scripts/config/site.yaml --print-plan
+python scripts/preflight.py --site scripts/config/site.yaml
+```
+
+The GLM-5.3 site template requires 96 GiB of available RAM and 200 equivalent
+free blocks of at least 32 MiB on every rank. The check derives the Linux buddy
+order from the kernel's page size and counts larger blocks proportionally. Run
+it only before model launch, while the configured API and rendezvous ports are
+free.
+
+A failure with abundant available RAM but fewer than 200 equivalent 32 MiB
+blocks indicates memory fragmentation. Inspect the recovery plan before
+allowing host mutation:
+
+```bash
+python scripts/prepare_launch_memory.py --site scripts/config/site.yaml
+```
+
+After confirming that no model is serving on those ranks, execute the printed
+plan and save its before/after evidence:
+
+```bash
+python scripts/prepare_launch_memory.py \
+  --site scripts/config/site.yaml \
+  --execute --confirmation PREPARE_GB10_LAUNCH_MEMORY \
+  --output ./glm53-launch-memory-recovery.json
+```
+
+The recovery command refuses to run while a configured serving port has a
+listener. It releases clean page-cache pages, requests kernel compaction, and
+then repeats the read-only checks. A `reboot-required` result means the failed
+rank should be rebooted before launching the model. SparkRing does not perform
+cache dropping, compaction, or reboot automatically.
+
+The
+[`GLM-5.3 memory-preflight validation`](../runtime/glm53-flash-jj-r8-gb10/glm53-memory-preflight-live-validation.json)
+records an eight-day four-rank GB10 deployment with 115.6–116.5 GiB available
+per rank but zero equivalent 32 MiB blocks. Online compaction recovered only
+zero or one block, so the preparation command required reboot. Reboot restored
+3,686–3,703 blocks per rank; all 124 preflight checks then passed, and the
+exact public image completed SIRCL capability agreement, API startup, and a
+semantic request.
 
 ## Start TP4
 
@@ -329,6 +481,40 @@ Check the OpenAI-compatible API after rank 0 reports readiness:
 ```bash
 curl --fail http://rank0.example.net:8015/v1/models
 ```
+
+API `/health` is a readiness check. It can remain healthy when the scheduler
+cannot admit waiting requests. Use the separate rank-zero liveness endpoint
+for routing and operator alerts:
+
+```bash
+curl --fail http://rank0.example.net:8016/liveness
+curl --fail http://rank0.example.net:8016/metrics
+```
+
+The liveness endpoint returns HTTP 503 when zero running requests and one or
+more waiting requests persist for 60 seconds, when its vLLM metrics sample is
+stale, or when SparkCache cannot prove capture-page ownership. Nonzero idle KV
+is warning-only until it remains unchanged beyond the configured 330-second
+interval.
+
+Before directing normal traffic to the service, run the concurrent scheduler
+and cache-ownership check implemented by `scripts/glm53_liveness_gate.py`.
+Its requests disable model thinking, put a unique nonce at the front of every
+prompt, and require request, capture, and KV usage to return to their measured
+idle baseline:
+
+```bash
+python scripts/glm53_liveness_gate.py \
+  --endpoint http://rank0.example.net:8015 \
+  --model glm-5.3-flash \
+  --concurrency 4 \
+  --prompt-words 100000 \
+  --cycles 3 \
+  --output ./glm53-scheduler-liveness.json
+```
+
+Add `--api-key-file /secure/api-keys` when the API requires authentication.
+Use `--duration-seconds 900` for a 15-minute soak.
 
 When SparkCache is enabled, INFO logs summarize the four ranks in three short
 lines:
@@ -367,20 +553,32 @@ source with different image and video contents, persistent publication, and
 restart restore. The built-image smoke did not repeat video input or
 persistent multimodal restoration after another process restart.
 
-SparkCache source commit `737ed139` completed an exact
+The operator image embeds SparkCache merge commit `6605717`. Asynchronous
+manager-page publication retains each finished request until every physical
+rank reports a terminal store outcome, and it bounds optional publication
+ownership before worker capture begins. A 90-minute replay completed 393
+growing-conversation turns and processed 54.0 million prompt tokens without a
+request failure or preemption. Delayed ownership and retained pages returned
+to zero. See the
+[`operator image receipt`](../runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json)
+and the
+[`SparkCache validation record`](https://github.com/FujitsuPolycom/sparkcache/blob/66057174301a4759ca3a45207ea41016689449cb/evidence/glm53-flash-dcp4-page-tail-v2/asymmetric-async-store-completion.json).
+
+The unchanged page-tail storage schema completed an exact
 131,072 → 262,144 → 524,288 → 921,600-token DCP4 growth sequence. Every
 extension remained a page delta, and the final root used a 7,459-byte flat
-manifest with three stages. The published page-tail image embeds that source.
-After `docker restart`, it withheld readiness until DFlash warmup completed,
-then served two concurrent requests over the 921,600-token stored prefix with
-exact responses and no post-readiness JIT or CUDA error. The same replay
-passed during image-transfer pressure. See the
-[`public image receipt`](../runtime/glm53-flash-jj-r8-gb10/page-tail-v2-public-image-receipt.json)
+manifest with three stages. After `docker restart`, the runtime withheld
+readiness until DFlash warmup completed, then served two concurrent requests
+over the 921,600-token stored prefix with exact responses and no
+post-readiness JIT or CUDA error. The same replay passed during image-transfer
+pressure. See the
+[`page-tail behavior record`](../runtime/glm53-flash-jj-r8-gb10/page-tail-v2-public-image-receipt.json)
 and
 [`DFlash readiness validation`](../runtime/glm53-flash-jj-r8-gb10/dflash-jit-readiness-validation.json).
 
-The retained vLLM, B12X, NCCL, and CUDA components also have DCP4 evidence
-from an earlier SparkCache source composition. That deployment captured a
+The retained vLLM, B12X, NCCL, and CUDA components also have DCP4 evidence in
+`ASYNC_CAPTURE_IMAGE_VALIDATION.md`, which records a different SparkCache
+source composition. That deployment captured a
 124,928-token boundary and restored 899,072-token and 999,424-token entries.
 Those measurements support the unchanged runtime components; they are not
 performance qualification of the registry artifact above. See the
@@ -389,3 +587,5 @@ performance qualification of the registry artifact above. See the
 and the
 [`DCP1 deep-context record`](../performance/records/glm53-flash/dcp1-deep-context-boundary-20260831.md)
 for exact conditions and limitations.
+
+[Profile validation: performance, accuracy, and restart checks](PROFILE_VALIDATION.md).

@@ -36,6 +36,10 @@ enum class SendCompletionPollState : std::uint8_t {
   kComplete,
 };
 
+struct SendCompletion {
+  std::uint64_t work_id{};
+};
+
 namespace detail {
 
 enum class SendCompletionDisposition : std::uint8_t {
@@ -71,6 +75,10 @@ class VerbsEndpoint {
                 std::uint8_t gid_index, MemoryBuffer& buffer);
 
   EndpointInfo local_info() const;
+  // Returns the currently active link MTU in bytes. Probe-only multi-rail
+  // callers use this before connecting heterogeneous rails.
+  std::uint32_t active_mtu_bytes() const;
+  std::uint32_t maximum_send_work_requests() const noexcept;
   void connect(const EndpointInfo& remote,
                std::uint16_t expected_version = kEndpointVersion);
 
@@ -90,6 +98,10 @@ class VerbsEndpoint {
   // again after kComplete.
   SendCompletionPollState poll_send_through(
       std::uint64_t expected_work_id);
+  // Drains up to capacity successful CQEs without imposing a per-operation
+  // wait. One single-owner progress engine must consume every returned ID.
+  std::size_t poll_send_completions(SendCompletion* completions,
+                                    std::size_t capacity);
 
  private:
   void cleanup() noexcept;
@@ -109,6 +121,7 @@ class VerbsEndpoint {
   ibv_cq* completion_queue_{};
   ibv_qp* queue_pair_{};
   std::uint32_t max_inline_data_{};
+  std::uint32_t maximum_send_work_requests_{};
 };
 
 }  // namespace spark_transport

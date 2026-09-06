@@ -25,6 +25,11 @@ SUPPORTED_HOOKS = (
         "1",
         "spark_dcp_collective_audit",
     ),
+    (
+        "SPARK_CUDAGRAPH_REPLAY_TIMING",
+        "1",
+        "spark_cudagraph_replay_timing",
+    ),
 )
 
 FEATURE_FLAGS = tuple(flag for flag, _value, _module in SUPPORTED_HOOKS)
