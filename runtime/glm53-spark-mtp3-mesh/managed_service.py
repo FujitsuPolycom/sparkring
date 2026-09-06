@@ -77,7 +77,7 @@ def load_config(path):
         mesh_profile.absolute(document[name], name)
     site, topology, plan = mesh_profile.load_site(Path(document['site_path']))
     sources = {name: mesh_profile.sha(Path(__file__).with_name(name))
-               for name in ('managed_service.py', 'managed_network.py', 'profile.py', 'inspect_fabric.py')}
+               for name in ('managed_service.py', 'managed_network.py', 'managed_memory.py', 'profile.py', 'inspect_fabric.py')}
     identity = digest({'protocol': PROTOCOL, 'site': site, 'topology': topology.sha256,
                        'epoch': document['epoch'], 'port': document['health_port'], 'sources': sources,
                        'image': document['container_image']})
@@ -558,7 +558,8 @@ def reset_units():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('run', 'gate', 'stop-model', 'cleanup', 'model-arm',
-                                         'model-quiesce', 'model-stopped', 'reset-units'))
+                                         'model-quiesce', 'model-stopped', 'reset-units',
+                                         'memory-idle', 'memory-prepare', 'memory-check'))
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--timeout', type=float, default=60)
     args = parser.parse_args()
@@ -570,8 +571,27 @@ def main():
         gate(args.config, args.timeout)
     elif args.action == 'cleanup':
         cleanup_orphans(args.config)
-    elif args.action in ('model-arm', 'model-quiesce'):
-        model_intent(args.config, args.action == 'model-arm')
+    elif args.action in ('memory-idle', 'memory-prepare', 'memory-check', 'model-arm'):
+        import managed_memory
+        config, *_ = load_config(args.config)
+        if args.action == 'memory-idle':
+            managed_memory.assert_idle(config)
+            print(json.dumps({'idle': True}))
+        elif args.action == 'memory-prepare':
+            receipt = managed_memory.prepare(config)
+            print(json.dumps(receipt), flush=True)
+            if not receipt['passed']:
+                raise SystemExit('Memory remains below startup thresholds; reboot this rank and rerun startup.')
+        elif args.action == 'memory-check':
+            receipt = managed_memory.snapshot()
+            print(json.dumps(receipt), flush=True)
+            managed_memory.require_ready(receipt)
+        else:
+            with managed_memory.start_lock(config):
+                managed_memory.require_ready(managed_memory.snapshot())
+                model_intent(args.config, True)
+    elif args.action == 'model-quiesce':
+        model_intent(args.config, False)
     elif args.action == 'model-stopped':
         config, *_ = load_config(args.config)
         if docker_running(config['container_id']):

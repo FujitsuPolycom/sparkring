@@ -645,7 +645,7 @@ not performance claims. Managed markers remain under supervision throughout
 model loading and qualification; the test runner does not own or stop the
 mesh service.
 
-### Model output and persistent-cache restoration
+### GPU stream safety
 
 For the selected stream-safety cases, use the same stopped-model test window
 and rendered image receipt as the native check:
@@ -661,6 +661,14 @@ python3 runtime/glm53-spark-mtp3-mesh/qualification/run_native.py \
 This checks alternating caller streams with misaligned buffers, changed-input
 graph replay, and rejection of a second stream in one CUDA capture. It does
 not inject in-flight link or GPU failures.
+### Model output and persistent-cache restoration
+
+The managed startup command checks available and contiguous memory on all four
+hosts. With serving stopped, it automatically reclaims clean page cache and
+compacts memory only where required. If a rank still fails, startup stops and
+identifies the host requiring a reboot; it never reboots automatically. Stop
+unrelated containers and GPU workloads first. See
+[startup memory preparation](../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md#automatic-startup-memory-preparation).
 
 Start the four-rank model through `managed_cluster.py start-model` and wait
 for completed speculation warmup. Set the endpoint to the rank-zero
