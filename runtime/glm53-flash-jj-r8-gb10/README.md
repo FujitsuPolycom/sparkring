@@ -362,6 +362,36 @@ and at least one waiting request for 60 seconds. It also returns 503 when
 SparkCache reports uncertain capture-page ownership. `GET /metrics` on the
 same port exports the liveness state and blocked duration.
 
+Status: implemented; the output-stall detector has offline regression coverage
+and still needs validation under live TP4 cache-restore traffic.
+Running requests with no change in `vllm:iteration_tokens_total_count` for
+`SPARKRING_LIVENESS_OUTPUT_SECONDS` (default 300 seconds) return HTTP 503 with
+reason `engine_output_stall`. Fresh HTTP scrapes do not reset that timer.
+Output progress, counter reset, or an observed idle period starts a new window.
+Missing output metrics while requests are running eventually report
+`metrics_unavailable`, rather than certifying progress.
+
+This is an output-progress heuristic, not an engine-step heartbeat. The pinned
+vLLM increments the histogram when the API receives output-bearing batches;
+prefill and external-cache restores can legitimately leave it unchanged.
+Set the timeout above the longest measured prefill, restore, or output gap,
+with margin. The monitor sums metrics for the single-engine TP4 deployment;
+it does not detect one stalled engine hidden by another progressing engine.
+The JSON includes `output_stalled_seconds` and `output_iterations`, and the
+monitor's metrics include `sparkring:engine_output_stalled_seconds`.
+
+An unhealthy result does not restart the cluster. Use the deployment's
+coordinated stop/recovery procedure after collecting all worker-thread stacks.
+See [the executor-stall investigation](../../docs/ISSUE224_ENGINE_STALL.md).
+For isolation of the pinned B12X indexer's histogram-publication race, the
+launcher accepts `B12X_FUSED_INDEXER=0` and forwards it to the container. Use a
+separate JIT cache namespace and coordinated restart on all ranks. This bypass
+can change throughput and has not been qualified on the affected cluster.
+The image builder applies the GPU-tested publication barrier and compile-cache
+revision through `patch_indexer_barrier.py` before generating the B12X source
+manifest. This requires rebuilding the image; published image pins remain
+unchanged. See [the source trace and fix](../../docs/ISSUE224_INDEXER_BARRIER.md).
+
 Idle KV retention is warning-only. The default 330-second warning interval is
 longer than the GLM profile's 300-second shared-prefix lease, so an intentional
 lease is not treated as a dead scheduler.
@@ -385,6 +415,7 @@ on an ARM64 CUDA 13 host before invoking the image builder:
 | SIRCL Python overlay | This checkout plus `runtime/public-overlay-files.json` |
 | SIRCL ARM64 native library | This checkout plus `sircl-public-build-receipt.json` and `pins.json` `sircl` hashes |
 | Short KV-metrics logger transform | [`patch_kv_metrics_logging.py`](patch_kv_metrics_logging.py) and its exact vLLM preimage |
+| B12X histogram publication barrier | [`patch_indexer_barrier.py`](patch_indexer_barrier.py), with checked source and result hashes |
 
 ```bash
 cmake -S /source/sparkcache/sparkcache/native \

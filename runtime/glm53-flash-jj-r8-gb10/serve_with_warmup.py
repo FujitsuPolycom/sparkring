@@ -76,6 +76,9 @@ def start_rank_liveness(
         blocked_timeout_seconds=float(
             os.environ.get("SPARKRING_LIVENESS_BLOCKED_SECONDS", "60")
         ),
+        output_timeout_seconds=float(
+            os.environ.get("SPARKRING_LIVENESS_OUTPUT_SECONDS", "300")
+        ),
         idle_kv_warn_seconds=float(
             os.environ.get("SPARKRING_IDLE_KV_WARN_SECONDS", "330")
         ),

@@ -134,6 +134,7 @@ def test_rank_zero_starts_scheduler_liveness_service(monkeypatch) -> None:
     monkeypatch.setenv("SPARKRING_LIVENESS_ENABLED", "1")
     monkeypatch.setenv("SPARKRING_LIVENESS_PORT", "9016")
     monkeypatch.setenv("SPARKRING_LIVENESS_BLOCKED_SECONDS", "75")
+    monkeypatch.setenv("SPARKRING_LIVENESS_OUTPUT_SECONDS", "900")
     monkeypatch.setenv("SPARKRING_IDLE_KV_WARN_SECONDS", "360")
     monkeypatch.setenv("SPARKRING_LIVENESS_STALE_SECONDS", "20")
     monkeypatch.setenv("SPARKRING_LIVENESS_SAMPLE_SECONDS", "3")
@@ -150,6 +151,7 @@ def test_rank_zero_starts_scheduler_liveness_service(monkeypatch) -> None:
             "metrics_url": "http://127.0.0.1:8015/metrics",
             "port": 9016,
             "blocked_timeout_seconds": 75.0,
+            "output_timeout_seconds": 900.0,
             "idle_kv_warn_seconds": 360.0,
             "stale_sample_seconds": 20.0,
             "sample_interval_seconds": 3.0,
