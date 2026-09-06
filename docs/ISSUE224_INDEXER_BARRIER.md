@@ -164,8 +164,9 @@ unexpected source rather than applying a speculative replacement. The output
 uses LF line endings; the original GPU test file used mixed line endings.
 Both have identical Python source after newline normalization.
 
-Existing published image digests are unchanged. Rebuild with this change to
-include the fix; restarting an existing image alone does not install it.
+The [published child image](../runtime/glm53-flash-jj-r8-gb10/hotfix/README.md)
+includes the fix; users do not need to rebuild it. Existing image digests are
+unchanged, so restarting an old image alone does not install the update.
 
 For a targeted A/B run, pass `B12X_FUSED_INDEXER=0` inside every worker container
 before startup. The pinned `dsa_indexer/scratch.py` recognizes this switch and

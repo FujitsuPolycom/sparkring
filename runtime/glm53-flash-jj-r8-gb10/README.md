@@ -396,8 +396,9 @@ separate JIT cache namespace and coordinated restart on all ranks. This bypass
 can change throughput and has not been qualified on the affected cluster.
 The image builder applies the GPU-tested publication barrier and compile-cache
 revision through `patch_indexer_barrier.py` before generating the B12X source
-manifest. This requires rebuilding the image; published image pins remain
-unchanged. See [the source trace and fix](../../docs/ISSUE224_INDEXER_BARRIER.md).
+manifest. A [published child image](hotfix/README.md) includes this correction,
+sampling/reasoning readiness warmup, and output-stall detection. The default
+image pins remain unchanged. See [the source trace and fix](../../docs/ISSUE224_INDEXER_BARRIER.md).
 
 Idle KV retention is warning-only. The default 330-second warning interval is
 longer than the GLM profile's 300-second shared-prefix lease, so an intentional
