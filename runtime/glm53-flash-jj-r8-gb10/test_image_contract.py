@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
+
+import pytest
 
 
 HERE = Path(__file__).resolve().parent
@@ -18,11 +21,44 @@ def load_module(name: str, path: Path):
 
 
 build = load_module("jj_r8_build_image", HERE / "build_image.py")
+install = load_module("jj_r8_install_overlay", HERE / "install_overlay.py")
 verify = load_module("jj_r8_verify_image", HERE / "verify_image.py")
 metrics_patch = load_module(
     "jj_r8_metrics_patch",
     HERE / "patch_kv_metrics_logging.py",
 )
+indexer_patch = load_module("indexer_barrier_patch", HERE / "patch_indexer_barrier.py")
+
+
+def test_indexer_transform_rejects_unknown_source_without_writing(tmp_path):
+    target = tmp_path / "fused_indexer.py"
+    target.write_bytes(b"unknown source\n")
+    with pytest.raises(RuntimeError, match="unsupported B12X"):
+        indexer_patch.apply_patch(target)
+    assert target.read_bytes() == b"unknown source\n"
+
+
+def test_indexer_transform_applies_both_changes_and_is_idempotent(tmp_path, monkeypatch):
+    before = (indexer_patch._BEFORE + indexer_patch._OLD_CACHE).encode()
+    after = (indexer_patch._AFTER + indexer_patch._NEW_CACHE).encode()
+    monkeypatch.setattr(indexer_patch, "BEFORE_SHA256", hashlib.sha256(before).hexdigest())
+    monkeypatch.setattr(indexer_patch, "AFTER_SHA256", hashlib.sha256(after).hexdigest())
+    target = tmp_path / "fused_indexer.py"
+    target.write_bytes(before)
+    indexer_patch.apply_patch(target)
+    assert target.read_bytes() == after
+    indexer_patch.apply_patch(target)
+    assert target.read_bytes() == after
+
+
+def test_indexer_transform_rejects_wrong_postimage_without_writing(tmp_path, monkeypatch):
+    before = (indexer_patch._BEFORE + indexer_patch._OLD_CACHE).encode()
+    monkeypatch.setattr(indexer_patch, "BEFORE_SHA256", hashlib.sha256(before).hexdigest())
+    target = tmp_path / "fused_indexer.py"
+    target.write_bytes(before)
+    with pytest.raises(RuntimeError, match="GPU-tested source"):
+        indexer_patch.apply_patch(target)
+    assert target.read_bytes() == before
 
 
 def test_metrics_patch_uses_connector_owned_compact_lines(tmp_path: Path) -> None:
@@ -49,10 +85,18 @@ def test_image_packages_dflash_warmup_and_rank_zero_waits_for_it() -> None:
 
     assert "COPY warmup_dflash.py /opt/sparkring/bin/warmup_dflash.py" in recipe
     assert "COPY serve_with_warmup.py /opt/sparkring/bin/serve-with-warmup.py" in recipe
+    assert (
+        "COPY scheduler_liveness.py /opt/sparkring/bin/scheduler_liveness.py"
+        in recipe
+    )
     assert "chmod 0755 /opt/sparkring/bin/serve-with-warmup.py" in recipe
     assert '"warmup_dflash.py"' in builder
     assert '"serve_with_warmup.py"' in builder
-    assert 'container_id="$(docker run -d' in launcher
+    assert '"scheduler_liveness.py"' in builder
+    assert '0) container_action=(run -d)' in launcher
+    assert '1) container_action=(create)' in launcher
+    assert 'container_command=(docker "${container_action[@]}"' in launcher
+    assert 'container_id="$("${container_command[@]}")"' in launcher
     assert '"${rank}" == 0 && "${DFLASH_WARMUP}" == 1' in launcher
     assert "--entrypoint /opt/sparkring/bin/serve-with-warmup.py" in launcher
     assert "rank-0 engine readiness timed out" in launcher
@@ -65,15 +109,64 @@ def test_image_packages_dflash_warmup_and_rank_zero_waits_for_it() -> None:
 
 def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     pins = json.loads((HERE / "pins.json").read_text(encoding="utf-8"))
+    assert pins["compatibility_locator"] == {
+        "directory": "runtime/glm53-flash-jj-r8-gb10",
+        "schema_prefix": "sparkring-glm53-jj-r8-gb10",
+        "meaning": (
+            "Stable filesystem and JSON interface locator. The r8 text identifies "
+            "the interface family, not the embedded vLLM source composition."
+        ),
+    }
+    assert pins["operator_image"] == {
+        "reference": (
+            "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@"
+            "sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f"
+        ),
+        "image_id": (
+            "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075"
+        ),
+        "platform": "linux/arm64",
+        "status": "qualified",
+        "performance_status": "research-only",
+        "qualification_scope": (
+            "registry-pull verified on four ranks; GLM-5.3 Flash TP4/DCP4 "
+            "passed embedded dual-rail SIRCL startup, concurrent SparkCache "
+            "ownership drain, and persistent restart restore"
+        ),
+        "receipt": "glm53-dcp4-sircl-public-image-receipt.json",
+    }
     assert pins["vllm"]["commit"] == (
-        "22ffe1401ca9bd3e4503e62de7b414deca7661a1"
+        "e02b174693e13859de61811b5e8cd13d5308e259"
     )
-    assert pins["vllm"]["tree"] == "1bb7f10a5838d348ca2fcb0134b05ad768d3340b"
+    assert pins["vllm"]["public_tag"] == "sparkring-glm53-flash-gb10-e02b1746"
+    assert pins["vllm"]["public_tag_object"] == (
+        "2ac6883ac5156db713493fe9683bea99ecf928a4"
+    )
+    assert pins["vllm"]["public_tag_commit"] == pins["vllm"]["commit"]
+    assert pins["vllm"]["tree"] == "6caadd392ddea2dc90441d0a078da67f38d2fd3a"
     assert pins["vllm"]["package_tree"] == (
-        "e5ed1db6292c7312571419e101ba719bb5ebb393"
+        "c91299c2303dc05abc85aa2133224a749657a583"
     )
     assert pins["vllm"]["delta_patch_id"] == (
-        "44ad5586548465c002d0195d3739992795233ffe"
+        "f3978963e81ccf3f932696e48079434223c365e3"
+    )
+    assert pins["vllm"]["proven_base_commit"] == (
+        "22ffe1401ca9bd3e4503e62de7b414deca7661a1"
+    )
+    assert pins["vllm"]["b12x_kda_prefill_upstream_commit"] == (
+        "54371894ecaa77f2725a1c99e018f3fe93d358dd"
+    )
+    assert pins["vllm"]["b12x_kda_workspace_isolation_upstream_commit"] == (
+        "57a6169a5c229a5ca8c24791762b1fc51c89e58d"
+    )
+    assert pins["vllm"]["b12x_sparse_mla_dsa_upstream_commit"] == (
+        "d662a1b0890271915c25439f22247ee22234739a"
+    )
+    assert pins["vllm"]["b12x_c4_indexer_binding_upstream_commit"] == (
+        "d6687475a3f2dbe7848663fd3e5174d90921a3da"
+    )
+    assert pins["vllm"]["b12x_sparse_mla_cache_lengths_upstream_commit"] == (
+        "83cb22a0e3f7ec4d2fb43f6ead34ba4d4a87a634"
     )
     assert pins["vllm"]["community_release"] == "Jovian Judgement Community R10"
     assert pins["vllm"]["community_parent_commit"] == (
@@ -91,13 +184,20 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     assert pins["vllm"]["scheduler_prefill_cadence_pull_request_head"] == (
         "2412a6f34ab1412f86ed3e4cdd355271a082d93d"
     )
+    assert pins["b12x"] == {
+        "repository": "https://github.com/voipmonitor/b12x.git",
+        "upstream_repository": "https://github.com/local-inference-lab/b12x.git",
+        "commit": "9ae41c5cb9935d740456479954b0089f80bd2ef2",
+        "tree": "6e77441fe99f6ead7ff2cc2b6a8a37fa4e93e30b",
+        "package_tree": "12029e19da6543c5d225395f6da199d946b0972e",
+    }
     assert pins["sparkcache"] == {
         "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
-        "commit": "737ed1399f559ba036fb0e358541744011afd47d",
-        "tree": "decc0e042a4b1807e960551ffa3ef12c8c9114a7",
-        "package_tree": "fef9ac1c59526dec49b0c3346cbf7bdb6f22a620",
+        "commit": "66057174301a4759ca3a45207ea41016689449cb",
+        "tree": "2448cf08d155ba90c95699c02c46863bbf9ce301",
+        "package_tree": "1fe4c76203be99c6a32640d8e2916889330d429b",
         "source_tree_sha256": (
-            "3cfb8d66db3a437a8b3a886633e64b7006af4c50cccb3ddbf75eb8d73eda5de6"
+            "80b049c647bc28fdc039021d08a7eb3276846c1616b77b9ba18ba2bc38da8d99"
         ),
         "cuda_placement_sha256": (
             "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c"
@@ -115,8 +215,8 @@ def test_pins_bind_effective_sources_and_operator_defaults() -> None:
     assert defaults["prefill_schedule_interval"] == 2
     assert defaults["shared_prefix_lease_ttl_seconds"] == 300
     assert defaults["kv_cache_bytes_per_rank"] == {
-        "dcp1": 27917287424,
-        "dcp2": 32212254720,
+        "dcp1": 25769803776,
+        "dcp2": 25769803776,
         "dcp4": 25769803776,
     }
     assert defaults["full_ckv_gather_max_tokens"] == 524288
@@ -141,13 +241,39 @@ def test_dockerfile_preserves_native_components_and_binds_overlays() -> None:
     recipe = (HERE / "Dockerfile").read_text(encoding="utf-8")
     for identity in (
         "f012dd915c0fff0be384820c2d72cd015b83b9b33c3f980445dd718a807cd0c5",
-        "22ffe1401ca9bd3e4503e62de7b414deca7661a1",
-        "737ed1399f559ba036fb0e358541744011afd47d",
+        "e02b174693e13859de61811b5e8cd13d5308e259",
+        "6caadd392ddea2dc90441d0a078da67f38d2fd3a",
+        "c91299c2303dc05abc85aa2133224a749657a583",
+        "54371894ecaa77f2725a1c99e018f3fe93d358dd",
+        "57a6169a5c229a5ca8c24791762b1fc51c89e58d",
+        "d662a1b0890271915c25439f22247ee22234739a",
+        "d6687475a3f2dbe7848663fd3e5174d90921a3da",
+        "83cb22a0e3f7ec4d2fb43f6ead34ba4d4a87a634",
+        "9ae41c5cb9935d740456479954b0089f80bd2ef2",
+        "6e77441fe99f6ead7ff2cc2b6a8a37fa4e93e30b",
+        "12029e19da6543c5d225395f6da199d946b0972e",
         "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
         "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
         "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
+        "2aac02232a9115037723aa1dd40483a5693a3e1e",
+        "85a231e6d2a290f7d6cccbc2cc6b1ccad7a6adbefc7ce4dde05b158f249aadd4",
+        "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc",
     ):
         assert identity in recipe
+    assert (
+        'org.sparkcache.commit="66057174301a4759ca3a45207ea41016689449cb"'
+        in recipe
+    )
+    assert (
+        'org.sparkcache.tree="2448cf08d155ba90c95699c02c46863bbf9ce301"'
+        in recipe
+    )
+    assert (
+        "org.sparkcache.source-sha256="
+        '"80b049c647bc28fdc039021d08a7eb3276846c1616b77b9ba18ba2bc38da8d99"'
+        in recipe
+    )
+    assert "COPY bundle/sircl/ /opt/spark-sircl/" in recipe
     assert "org.sparkcache.dcp-layouts=\"1,2,4\"" in recipe
     assert "org.sparkcache.cache-geometry=\"manager-pages-v2\"" in recipe
     assert (
@@ -188,15 +314,136 @@ def test_runtime_hashes_are_enforced_inside_image() -> None:
         "vllm/v1/engine/core.py",
     }
     labels = verify.expected_labels(pins)
+    assert labels["org.sparkring.vllm.package-tree"] == (
+        "c91299c2303dc05abc85aa2133224a749657a583"
+    )
     assert labels["org.sparkring.vllm.delta-patch-id"] == (
-        "44ad5586548465c002d0195d3739992795233ffe"
+        "f3978963e81ccf3f932696e48079434223c365e3"
     )
     assert labels["org.sparkring.vllm.community-parent"] == (
         "55969c16d4da57da76ee5729f3102d4b2003833c"
     )
     assert labels["org.sparkring.b12x.package-tree"] == (
-        "6de9871d15dab093340695518fec0f744289e676"
+        "12029e19da6543c5d225395f6da199d946b0972e"
     )
+    assert labels["org.sparkring.vllm.b12x-kda-prefill-upstream"] == (
+        "54371894ecaa77f2725a1c99e018f3fe93d358dd"
+    )
+    assert labels[
+        "org.sparkring.vllm.b12x-kda-workspace-isolation-upstream"
+    ] == (
+        "57a6169a5c229a5ca8c24791762b1fc51c89e58d"
+    )
+    assert labels["org.sparkring.vllm.b12x-sparse-mla-dsa-upstream"] == (
+        "d662a1b0890271915c25439f22247ee22234739a"
+    )
+    assert labels["org.sparkring.vllm.b12x-c4-indexer-binding-upstream"] == (
+        "d6687475a3f2dbe7848663fd3e5174d90921a3da"
+    )
+    assert labels[
+        "org.sparkring.vllm.b12x-sparse-mla-cache-lengths-upstream"
+    ] == (
+        "83cb22a0e3f7ec4d2fb43f6ead34ba4d4a87a634"
+    )
+    assert labels["org.sparkring.sircl.source-tree"] == (
+        pins["sircl"]["spark_transport_tree"]
+    )
+    assert labels["org.sparkring.sircl.manifest-sha256"] == (
+        pins["sircl"]["overlay_manifest_sha256"]
+    )
+    assert labels["org.sparkring.sircl.native-sha256"] == (
+        pins["sircl"]["native_sha256"]
+    )
+    assert "verify_public_overlay(SIRCL_ROOT, sircl_manifest)" in verifier
+
+
+def test_builder_requires_source_pinned_b12x_and_records_public_sources() -> None:
+    builder = (HERE / "build_image.py").read_text(encoding="utf-8")
+    assert '"--b12x-source"' in builder
+    assert 'pins["b12x"], "b12x"' in builder
+    assert '"b12x-source-manifest.json"' in builder
+    assert '"public_tag": pins["vllm"]["public_tag"]' in builder
+    assert '"public_tag_object": pins["vllm"]["public_tag_object"]' in builder
+    assert '"upstream_repository": pins["b12x"]["upstream_repository"]' in builder
+
+
+def test_builder_requires_the_receipt_bound_prebuilt_sircl_library() -> None:
+    builder = (HERE / "build_image.py").read_text(encoding="utf-8")
+    assert '"--sircl-library"' in builder
+    assert "SIRCL native library digest mismatch" in builder
+    assert '"HEAD:spark_transport"' in builder
+    assert 'context / "bundle/sircl"' in builder
+    assert '"runtime/public-overlay-files.json"' in builder
+
+
+def test_b12x_source_overlay_replaces_the_complete_inherited_package(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source" / "b12x"
+    source_module = source / "sequence" / "kda_prefill.py"
+    source_module.parent.mkdir(parents=True)
+    source_module.write_text("SOURCE_IDENTITY = '9ae41c5c'\n", encoding="utf-8")
+    (source / "__init__.py").write_text("", encoding="utf-8")
+
+    installed = tmp_path / "site-packages" / "b12x"
+    (installed / "sequence").mkdir(parents=True)
+    (installed / "stale_parent_module.py").write_text("stale\n", encoding="utf-8")
+    (installed / "sequence" / "kda_prefill.py").write_text(
+        "SOURCE_IDENTITY = 'parent'\n", encoding="utf-8"
+    )
+    (installed / "__pycache__").mkdir()
+    (installed / "__pycache__" / "stale.pyc").write_bytes(b"stale")
+
+    install.replace_python_package(source, installed)
+
+    installed_files = {
+        path.relative_to(installed).as_posix()
+        for path in installed.rglob("*")
+        if path.is_file()
+    }
+    assert installed_files == {"__init__.py", "sequence/kda_prefill.py"}
+    manifest = tmp_path / "b12x-source-manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "commit": "9ae41c5cb9935d740456479954b0089f80bd2ef2",
+                "files": {
+                    "b12x/__init__.py": install.file_sha256(
+                        installed / "__init__.py"
+                    ),
+                    "b12x/sequence/kda_prefill.py": install.file_sha256(
+                        installed / "sequence" / "kda_prefill.py"
+                    ),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert verify.verify_manifest(
+        tmp_path / "site-packages",
+        manifest,
+        "9ae41c5cb9935d740456479954b0089f80bd2ef2",
+    ) == 2
+    install.verify_package_file_set(
+        installed,
+        install.load_manifest(
+            manifest, "9ae41c5cb9935d740456479954b0089f80bd2ef2"
+        ),
+        "b12x",
+    )
+
+    source_module = installed / "sequence" / "kda_prefill.py"
+    source_module.write_text("changed\n", encoding="utf-8")
+    try:
+        verify.verify_manifest(
+            tmp_path / "site-packages",
+            manifest,
+            "9ae41c5cb9935d740456479954b0089f80bd2ef2",
+        )
+    except verify.VerificationError as error:
+        assert "source identity mismatch: b12x/sequence/kda_prefill.py" in str(error)
+    else:
+        raise AssertionError("changed B12X source was accepted")
 
 
 def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
@@ -230,7 +477,10 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
     ):
         assert value in environment
     for text in (launcher, environment):
-        assert "glm53-flash-dcp4-page-tail-cow-v2" in text
+        assert (
+            "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-"
+            "dcp4-page-tail-cow-v2"
+        ) in text
     assert "IMAGE_REF" in launcher
     assert "IMAGE_ID" in launcher
 
@@ -245,7 +495,7 @@ def test_operator_docs_distinguish_page_tails_from_published_rollback() -> None:
     for document in (runtime_readme, quickstart):
         for schema in ("snapshot-v1", "tail-cow-v1", "tail-cow-v2"):
             assert schema in document
-        assert "sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f" in document
+        assert "sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f" in document
         assert "sparkcache: capacity" in document
         assert "sparkcache: publications" in document
         assert "sparkcache: writes" in document
@@ -258,6 +508,47 @@ def test_operator_docs_distinguish_page_tails_from_published_rollback() -> None:
     assert rollback_digest in quickstart
     assert rollback_digest in runtime_index
     assert "380283a506aeb8f9" not in runtime_index
+
+
+def test_operator_docs_name_public_sources_and_explain_stable_locators() -> None:
+    runtime_readme = (HERE / "README.md").read_text(encoding="utf-8")
+    quickstart = (
+        ROOT / "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
+    ).read_text(encoding="utf-8")
+    sircl_readme = (ROOT / "docs/SIRCL.md").read_text(encoding="utf-8")
+    runtime_index = (ROOT / "runtime/README.md").read_text(encoding="utf-8")
+    root_readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    for document in (runtime_readme, quickstart):
+        assert "sparkring-glm53-flash-gb10-e02b1746" in document
+        assert "e02b174693e13859de61811b5e8cd13d5308e259" in document
+        assert "local-inference-lab/b12x" in document
+        assert "voipmonitor/b12x" in document
+        assert "`tail-cow-v2` to the cache-identity\nwire value `page-tail-cow-v2`" in document
+
+    for document in (runtime_readme, runtime_index):
+        assert "stable compatibility locator" in document or (
+            "stable filesystem and interface\nlocators" in document
+        )
+        assert "does not identify the embedded vLLM source" in " ".join(
+            document.split()
+        )
+
+    assert "four-rank TP4/DCP4\nfunctional checks" in sircl_readme
+    assert "**research-only**" in sircl_readme
+    assert "b12x-kda-dcp4-20260903.md" in root_readme
+    assert "C4: 90.36" in root_readme
+
+    active_docs = "\n".join((runtime_readme, quickstart, sircl_readme))
+    for ambiguous in (
+        "Current evidence",
+        "current composition",
+        "fail-stop",
+        "concurrent prompt gate",
+        "earlier SparkCache source composition",
+        "older runtime's default directory",
+    ):
+        assert ambiguous not in active_docs
 
 
 def test_multimodal_lease_image_receipt_binds_public_artifact_and_smoke() -> None:
@@ -374,6 +665,135 @@ def test_page_tail_v2_public_receipt_binds_registry_and_runtime() -> None:
     )
     assert receipt["validation"]["post_readiness_jit_events"] == 0
     assert receipt["validation"]["requests_running_after_validation"] == 0
+
+
+def test_async_store_completion_receipt_keeps_published_source_identity() -> None:
+    receipt = json.loads(
+        (HERE / "async-store-completion-public-image-receipt.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    pins = json.loads((HERE / "pins.json").read_text(encoding="utf-8"))
+    assert receipt["status"] == "implemented"
+    assert receipt["artifact"]["registry"] != pins["operator_image"]["reference"]
+    assert receipt["artifact"]["image_id"] != pins["operator_image"]["image_id"]
+    assert receipt["sources"]["sparkcache_commit"] == (
+        "9c6218c96f1db233c0d17691dbc32a7d9fb2c0e4"
+    )
+    assert receipt["sources"]["sparkcache_source_sha256"] == (
+        "f8adb4ecdadd524e79cf1ef14e7f3d83d1f20ff07c79333b2c7c0d9ea12919d5"
+    )
+    assert receipt["sources"]["sparkcache_commit"] != pins["sparkcache"]["commit"]
+    assert receipt["construction_verification"] == {
+        "inside_image_verification": "passed",
+        "retained_native_extensions": 15,
+        "registry_pull_image_id_matched": True,
+        "registry_pull_sparkcache_commit_matched": True,
+        "registry_pull_sparkring_commit_matched": True,
+    }
+    assert receipt["source_composition_validation"]["busy_saver_skips_per_rank"] == [
+        12,
+        12,
+        12,
+        12,
+    ]
+    assert receipt["source_composition_validation"]["idle_kv_cache_usage_percent"] == 0.0
+
+
+def test_dcp4_public_image_receipt_records_b12x_kda() -> None:
+    receipt = json.loads(
+        (HERE / "glm53-dcp4-sircl-public-image-receipt.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert receipt["status"] == "qualified"
+    assert receipt["configuration"]["kda_prefill_backend"] == "b12x"
+    assert receipt["sources"]["vllm_public_tag"] == (
+        "sparkring-glm53-flash-gb10-e02b1746"
+    )
+    assert receipt["sources"]["vllm_composition"] == (
+        "e02b174693e13859de61811b5e8cd13d5308e259"
+    )
+    assert receipt["sources"]["vllm_public_tag_commit"] == receipt["sources"][
+        "vllm_composition"
+    ]
+    assert receipt["sources"]["b12x_upstream_repository"] == (
+        "https://github.com/local-inference-lab/b12x.git"
+    )
+    assert receipt["sources"]["b12x_source_repository"] == (
+        "https://github.com/voipmonitor/b12x.git"
+    )
+    assert receipt["sources"]["b12x"] == (
+        "9ae41c5cb9935d740456479954b0089f80bd2ef2"
+    )
+    health_receipt = json.loads(
+        (HERE / "sircl-capability-health-live-validation.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert health_receipt["system"]["sircl"]["post_output_health_check"] is True
+    assert "post_output_health_gate" not in health_receipt["system"]["sircl"]
+    assert receipt["validation"]["sircl_scope"] == {
+        "functional_status": "qualified",
+        "performance_status": "research-only",
+        "details": (
+            "The exact image passed the recorded embedded dual-rail SIRCL "
+            "TP4/DCP4 functional checks. The receipt does not establish a broad "
+            "SIRCL-versus-NCCL performance result."
+        ),
+    }
+
+
+def test_sircl_public_build_receipt_binds_overlay_and_native_test(
+    tmp_path: Path,
+) -> None:
+    receipt_path = HERE / "sircl-public-build-receipt.json"
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    pins = build.load_pins()
+    assert hashlib.sha256(receipt_path.read_bytes()).hexdigest() == (
+        pins["sircl"]["build_receipt_sha256"]
+    )
+    assert receipt["schema"] == "sparkring-glm53-sircl-public-build/v1"
+    assert receipt["status"] == "implemented"
+    assert receipt["validation_scope"] == "native-built-tested"
+    assert receipt["source"] == {
+        "repository": "https://github.com/FujitsuPolycom/sparkring.git",
+        "spark_transport_tree": "2aac02232a9115037723aa1dd40483a5693a3e1e",
+        "public_overlay_spec_sha256": (
+            "bc93d5069f2b3faaa7e87d2f24aadd9f7878bff67abd93eeec3a0975da46f6fd"
+        ),
+    }
+    overlay_spec = ROOT / "runtime" / "public-overlay-files.json"
+    assert hashlib.sha256(overlay_spec.read_bytes()).hexdigest() == (
+        receipt["source"]["public_overlay_spec_sha256"]
+    )
+    overlay_builder = load_module(
+        "sircl_public_overlay", ROOT / "runtime" / "build-public-overlay.py"
+    )
+    output = tmp_path / "sircl-overlay"
+    manifest = overlay_builder.build(ROOT, overlay_spec, output)
+    assert len(manifest["files"]) == receipt["overlay"]["files"]
+    manifest_path = output / receipt["overlay"]["manifest"]
+    assert hashlib.sha256(manifest_path.read_bytes()).hexdigest() == (
+        receipt["overlay"]["manifest_sha256"]
+    )
+    assert verify.verify_public_overlay(output, manifest_path) == 14
+    (output / "sitecustomize.py").write_text("changed", encoding="utf-8")
+    try:
+        verify.verify_public_overlay(output, manifest_path)
+    except verify.VerificationError as error:
+        assert "SIRCL source identity mismatch" in str(error)
+    else:
+        raise AssertionError("changed SIRCL Python source was accepted")
+    assert len(receipt["native"]["sha256"]) == 64
+    int(receipt["native"]["sha256"], 16)
+    assert receipt["validation"] == {
+        "cmake_build_exit_code": 0,
+        "ctest_total": 28,
+        "ctest_passed": 28,
+        "ctest_failed": 0,
+        "alternating_stream_cuda_smoke": "passed",
+    }
 
 
 def test_async_capture_image_receipt_binds_public_artifact_and_live_results() -> None:

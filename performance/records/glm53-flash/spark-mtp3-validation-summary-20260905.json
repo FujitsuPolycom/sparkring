@@ -1,0 +1,302 @@
+{
+  "schema": "sparkring-consolidated-profile-validation/v1",
+  "status": "research-only",
+  "conditions": {
+    "profile": "GLM-5.3 Flash NVFP4-Spark native MTP3, TP4/DCP4, hybrid SIRCL/RoCEnante hardware-forwarded mesh",
+    "target_revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "published_image_id": "sha256:26273b8e358df139ae913610a5d43084ff0fd08aafe282ef633a3bc74afefe47",
+    "batch_tokens": 8192,
+    "max_sequences": 16,
+    "runbook_revision": "49cb4e9656664b509234642bd46c7f07251d7f41",
+    "aggregation": "Measurement groups retain their own source/runtime identities; only the three matching prefill samples per context are pooled here."
+  },
+  "measurement": {
+    "prefill_receipt": "../../receipts/glm53-flash/mtp3-prefill-temperature1-20260905.jsonl",
+    "prefill_receipt_sha256": "5cc465864ab5d746b0aa854e4e002fe09abac2a0da3cb14b4bef6fd754fdf175",
+    "prefill_controller": "Separate Linux DGX2 benchmark client",
+    "prefill_temperature": 1,
+    "prefill_repetitions": 3,
+    "prefill_formula": "server prompt_tokens / client time to first content or reasoning delta",
+    "prefill_cache_gate": "All 15 samples report zero cached_tokens"
+  },
+  "result": {
+    "prefill": [
+      {
+        "target_tokens": 8192,
+        "samples": 3,
+        "ttft_median": 2.974258677015314,
+        "ttft_min": 2.966516570013482,
+        "ttft_max": 2.9770857529947534,
+        "tps_median": 2757.661955694706,
+        "tps_min": 2755.043247158509,
+        "tps_max": 2764.8589874428794
+      },
+      {
+        "target_tokens": 16384,
+        "samples": 3,
+        "ttft_median": 5.9802077889908105,
+        "ttft_min": 5.969608607003465,
+        "ttft_max": 5.99382771999808,
+        "tps_median": 2741.376316418358,
+        "tps_min": 2735.3138538331646,
+        "tps_max": 2746.2436952343537
+      },
+      {
+        "target_tokens": 32768,
+        "samples": 3,
+        "ttft_median": 11.980316752014915,
+        "ttft_min": 11.97658108198084,
+        "ttft_max": 11.981000269006472,
+        "tps_median": 2736.7389926886285,
+        "tps_min": 2736.582861517528,
+        "tps_max": 2737.5926214309293
+      },
+      {
+        "target_tokens": 65536,
+        "samples": 3,
+        "ttft_median": 24.452358378999634,
+        "ttft_min": 24.447876241989434,
+        "ttft_max": 24.48073934900458,
+        "tps_median": 2673.320871010165,
+        "tps_min": 2670.466731743469,
+        "tps_max": 2674.0973061584864
+      },
+      {
+        "target_tokens": 131072,
+        "samples": 3,
+        "ttft_median": 48.78285418401356,
+        "ttft_min": 48.760338949010475,
+        "ttft_max": 48.79652530999738,
+        "tps_median": 2686.2716868859206,
+        "tps_min": 2685.5190849654996,
+        "tps_max": 2687.5120810180374
+      }
+    ],
+    "operator_8k_supplement": {
+      "source_sha256": "9fb53740db22990f3f17d316a7f48ec3a52e22a494f598c5b9fc31adb0887e29",
+      "metadata": {
+        "version": "0.4.32",
+        "model": "glm-5.3-flash-spark",
+        "timestamp": "2026-09-05T08:30:46.675991",
+        "concurrency_levels": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "context_lengths": [
+          8192
+        ],
+        "duration_per_test": 20,
+        "temperature": 1
+      },
+      "results": [
+        {
+          "concurrency": 1,
+          "context_tokens": 8192,
+          "aggregate_tps": 47.924282638270085,
+          "measurement_seconds": 19.969,
+          "num_errors": 0,
+          "effective_concurrency": 1,
+          "underfilled": false,
+          "warmup_timed_out": false,
+          "capacity_limited": false,
+          "server_spec_accept_length": 2.695774647887324
+        },
+        {
+          "concurrency": 2,
+          "context_tokens": 8192,
+          "aggregate_tps": 75.06004803822437,
+          "measurement_seconds": 19.984,
+          "num_errors": 0,
+          "effective_concurrency": 2,
+          "underfilled": false,
+          "warmup_timed_out": false,
+          "capacity_limited": false,
+          "server_spec_accept_length": 2.697841726618705
+        },
+        {
+          "concurrency": 3,
+          "context_tokens": 8192,
+          "aggregate_tps": 94.39631428695137,
+          "measurement_seconds": 19.969,
+          "num_errors": 0,
+          "effective_concurrency": 3,
+          "underfilled": false,
+          "warmup_timed_out": false,
+          "capacity_limited": false,
+          "server_spec_accept_length": 2.6624293785310735
+        },
+        {
+          "concurrency": 4,
+          "context_tokens": 8192,
+          "aggregate_tps": 118.02736430624059,
+          "measurement_seconds": 19.953,
+          "num_errors": 0,
+          "effective_concurrency": 4,
+          "underfilled": false,
+          "warmup_timed_out": false,
+          "capacity_limited": false,
+          "server_spec_accept_length": 2.7511682242990654
+        },
+        {
+          "concurrency": 5,
+          "context_tokens": 8192,
+          "aggregate_tps": 141.2077706944337,
+          "measurement_seconds": 19.921,
+          "num_errors": 0,
+          "effective_concurrency": 5,
+          "underfilled": false,
+          "warmup_timed_out": false,
+          "capacity_limited": false,
+          "server_spec_accept_length": 2.8129999999999997
+        },
+        {
+          "concurrency": 6,
+          "context_tokens": 8192,
+          "aggregate_tps": 149.78415821689242,
+          "measurement_seconds": 19.922,
+          "num_errors": 0,
+          "effective_concurrency": 6,
+          "underfilled": false,
+          "warmup_timed_out": false,
+          "capacity_limited": false,
+          "server_spec_accept_length": 2.7783985102420856
+        },
+        {
+          "concurrency": 7,
+          "context_tokens": 8192,
+          "aggregate_tps": 159.84776403392507,
+          "measurement_seconds": 19.969,
+          "num_errors": 0,
+          "effective_concurrency": 7,
+          "underfilled": false,
+          "warmup_timed_out": false,
+          "capacity_limited": false,
+          "server_spec_accept_length": 2.85
+        },
+        {
+          "concurrency": 8,
+          "context_tokens": 8192,
+          "aggregate_tps": 177.30817610062894,
+          "measurement_seconds": 19.875,
+          "num_errors": 0,
+          "effective_concurrency": 8,
+          "underfilled": false,
+          "warmup_timed_out": false,
+          "capacity_limited": false,
+          "server_spec_accept_length": 2.85241935483871
+        }
+      ]
+    },
+    "coverage": [
+      {
+        "check": "Startup, installation and restart",
+        "outcome": "passed",
+        "record": "spark-mtp3-public-application-install-20260905.md"
+      },
+      {
+        "check": "Native correctness",
+        "outcome": "passed",
+        "cases": 80,
+        "record": "spark-mtp3-public-application-install-20260905.md"
+      },
+      {
+        "check": "Full decode matrix",
+        "outcome": "recorded",
+        "cells": 18,
+        "full_sweeps": 1,
+        "record": "spark-mtp3-mesh-20260905.md"
+      },
+      {
+        "check": "Additional final-route 8K observations",
+        "outcome": "recorded",
+        "operator_cells": 8,
+        "targeted_followup_cells": 10
+      },
+      {
+        "check": "Estonia accuracy",
+        "outcome": "passed",
+        "correct": 30,
+        "attempted": 30,
+        "concurrency": 8,
+        "record": "spark-mtp3-country-recall-20260905.md"
+      },
+      {
+        "check": "Long-context retrieval",
+        "outcome": "passed",
+        "cases": 4,
+        "max_prompt_tokens": 507367,
+        "record": "spark-mtp3-needle-20260905.md"
+      },
+      {
+        "check": "Persistent cache restoration",
+        "outcome": "passed",
+        "verified_runs": 3,
+        "distinct_fixtures": 1,
+        "distinct_seeds": 1
+      },
+      {
+        "check": "Coding peak",
+        "outcome": "reference available",
+        "variant": "Native-MTP3 routing predecessor",
+        "samples": 5,
+        "median_tok_s": 56.687735608466966,
+        "peak_tok_s": 57.16993051173292,
+        "normal_stops": 1,
+        "output_limit_hits": 4,
+        "empty_visible_outputs": 3
+      },
+      {
+        "check": "Controlled mixed traffic",
+        "outcome": "pending"
+      },
+      {
+        "check": "Controlled 30-minute sustained load",
+        "outcome": "pending"
+      }
+    ],
+    "additional_source_groups": [
+      {
+        "role": "Native-MTP3 predecessor coding peak",
+        "source_sha256": "f5c06ca8657957f3a3e93c06d3520d9f38dd46092fbb77155d95ecf3e18adb9d"
+      },
+      {
+        "role": "Native-MTP3 predecessor 32K screen, repetition 1",
+        "cells": 5,
+        "source_sha256": "63e494fe8b256a1b9a8a5ed322f3f25fe3607c624b2025c1a3a385b98612e466"
+      },
+      {
+        "role": "Native-MTP3 predecessor 32K screen, repetition 2",
+        "cells": 5,
+        "source_sha256": "38d6159aaf303f4f16c7443ea6899c33d5c885a81082ae432c9bc6d7be1c9835"
+      },
+      {
+        "role": "Q20/Q28 SIRCL-routing 8K follow-up, repetition 1",
+        "cells": 5,
+        "source_sha256": "ed563f96072ac3ba6bbbaeb4afb8177bf794667f64c4a187d8a59c719134b675"
+      },
+      {
+        "role": "Q20/Q28 SIRCL-routing 8K follow-up, repetition 2",
+        "cells": 5,
+        "source_sha256": "04e1e3d1646c39e849c1a11d3d5c63d83064ce21e72d9e98604b99bd1b24f9b2"
+      }
+    ]
+  },
+  "conclusion": "Existing results cover the main speed, long-context accuracy, installation, and restoration categories. Controlled mixed traffic and sustained load are the main unmeasured categories.",
+  "limitations": [
+    "The full decode matrix has one sweep plus partial repeats, rather than three matching complete sweeps.",
+    "The needle set covers four selected cases through 507367 tokens; the wider depth/context grid and near-1M cases are additional coverage.",
+    "Three cache-restoration passes reuse one 27274-token fixture and seed; three independent 128K fixtures remain broader coverage.",
+    "Coding throughput samples use a predecessor routing configuration and are speed measurements, not scored executable-code accuracy."
+  ],
+  "execution": {
+    "new_estonia_requests": false,
+    "additional_large_tests_started": false,
+    "waiting_for_operator_selection": true
+  }
+}

@@ -72,6 +72,9 @@ MTP_TOKENS_RANGE = (0, 16)
 PORT_RANGE = (1, 65535)
 SSH_TIMEOUT_RANGE = (1, 3600)
 MIN_FREE_BYTES_RANGE = (0, 1 << 60)
+MEMORY_AVAILABLE_BYTES_RANGE = (1, 1 << 60)
+CONTIGUOUS_BLOCK_BYTES_RANGE = (4096, 1 << 30)
+CONTIGUOUS_BLOCK_COUNT_RANGE = (1, 1 << 20)
 
 MTP_MODES = ("off", "static", "adaptive")
 
@@ -439,9 +442,19 @@ class Artifact:
 
 
 @dataclass(frozen=True)
+class MemoryPreflightOptions:
+    """Minimum host-memory headroom required before a model launch."""
+
+    minimum_available_bytes: int
+    contiguous_block_bytes: int
+    minimum_contiguous_blocks: int
+
+
+@dataclass(frozen=True)
 class PreflightOptions:
     ssh_timeout_seconds: int
     required_free_ports: tuple[int, ...]
+    memory: MemoryPreflightOptions | None = None
 
 
 @dataclass
@@ -559,6 +572,19 @@ class SiteConfig:
                 "ssh_timeout_seconds": self.preflight.ssh_timeout_seconds,
                 "required_free_ports":
                     list(self.preflight.required_free_ports),
+                **(
+                    {
+                        "memory": {
+                            "minimum_available_bytes":
+                                self.preflight.memory.minimum_available_bytes,
+                            "contiguous_block_bytes":
+                                self.preflight.memory.contiguous_block_bytes,
+                            "minimum_contiguous_blocks":
+                                self.preflight.memory.minimum_contiguous_blocks,
+                        }
+                    }
+                    if self.preflight.memory is not None else {}
+                ),
             },
         }
 
@@ -671,6 +697,15 @@ class SiteConfig:
             f"required-free ports "
             f"{list(self.preflight.required_free_ports) or 'none'}",
         ])
+        if self.preflight.memory is not None:
+            memory = self.preflight.memory
+            lines.append(
+                "              memory before launch: "
+                f"{memory.minimum_available_bytes / (1 << 30):.1f} GiB "
+                "available, "
+                f"{memory.minimum_contiguous_blocks} blocks of at least "
+                f"{memory.contiguous_block_bytes / (1 << 20):.0f} MiB"
+            )
         return lines
 
     def _port_for(self, rank_id: int, edge_id: str) -> RingPort:
@@ -1351,7 +1386,12 @@ def _validate_artifacts(raw: Any) -> tuple[Artifact, ...]:
 
 def _validate_preflight(raw: Any) -> PreflightOptions:
     data = _mapping(raw, "preflight")
-    _keys(data, "preflight", ("ssh_timeout_seconds", "required_free_ports"))
+    _keys(
+        data,
+        "preflight",
+        ("ssh_timeout_seconds", "required_free_ports"),
+        ("memory",),
+    )
     timeout = _integer(
         data, "preflight", "ssh_timeout_seconds", SSH_TIMEOUT_RANGE
     )
@@ -1374,8 +1414,50 @@ def _validate_preflight(raw: Any) -> PreflightOptions:
         if value in ports:
             raise SiteConfigError(where, f"duplicate port {value}")
         ports.append(value)
+    memory = None
+    if "memory" in data:
+        raw_memory = _mapping(data["memory"], "preflight.memory")
+        _keys(
+            raw_memory,
+            "preflight.memory",
+            (
+                "minimum_available_bytes",
+                "contiguous_block_bytes",
+                "minimum_contiguous_blocks",
+            ),
+        )
+        minimum_available_bytes = _integer(
+            raw_memory,
+            "preflight.memory",
+            "minimum_available_bytes",
+            MEMORY_AVAILABLE_BYTES_RANGE,
+        )
+        contiguous_block_bytes = _integer(
+            raw_memory,
+            "preflight.memory",
+            "contiguous_block_bytes",
+            CONTIGUOUS_BLOCK_BYTES_RANGE,
+        )
+        if contiguous_block_bytes & (contiguous_block_bytes - 1):
+            raise SiteConfigError(
+                "preflight.memory.contiguous_block_bytes",
+                "expected a power of two",
+            )
+        minimum_contiguous_blocks = _integer(
+            raw_memory,
+            "preflight.memory",
+            "minimum_contiguous_blocks",
+            CONTIGUOUS_BLOCK_COUNT_RANGE,
+        )
+        memory = MemoryPreflightOptions(
+            minimum_available_bytes=minimum_available_bytes,
+            contiguous_block_bytes=contiguous_block_bytes,
+            minimum_contiguous_blocks=minimum_contiguous_blocks,
+        )
     return PreflightOptions(
-        ssh_timeout_seconds=timeout, required_free_ports=tuple(ports)
+        ssh_timeout_seconds=timeout,
+        required_free_ports=tuple(ports),
+        memory=memory,
     )
 
 

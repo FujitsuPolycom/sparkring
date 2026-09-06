@@ -1,0 +1,112 @@
+{
+  "schema": "sparkring-recipe/v1",
+  "recipe_id": "glm53-spark-mtp3-managed-mesh-tp4",
+  "status": "research-only",
+  "hardware": {
+    "platform": "linux/arm64",
+    "cuda_arch": "sm_121",
+    "ranks": 4,
+    "topology": "direct-cycle-4",
+    "physical_ports_per_rank": 2,
+    "socket_direct_functions_per_port": 2,
+    "ethernet_mtu": 9000,
+    "roce_mtu": 4096,
+    "gid_index": 3,
+    "tested_nic_configuration": {
+      "firmware": "28.45.4028",
+      "eswitch_mode": "legacy",
+      "flow_steering_mode": "hmfs",
+      "hairpin_num_queues_per_function": 4,
+      "hairpin_queue_size_packets": 1024,
+      "hw_tc_offload": true
+    },
+    "requirements": "Verified direct-neighbor RoCE and the canonical HCA/peer map; hardware-only ConnectX-7 source marking and intermediate forwarding. No physical diagonal cables are required."
+  },
+  "model": {
+    "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+    "revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "config_sha256": "e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23",
+    "weight_index_sha256": "db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544",
+    "quantization": "ModelOpt mixed NVFP4 routed experts and MXFP8 projections",
+    "external_draft_required": false
+  },
+  "runtime": {
+    "operator_contract": "runtime/glm53-spark-mtp3-mesh/pins.json",
+    "public_image_contract": "runtime/glm53-spark-mtp3-mesh/public-image.json",
+    "image_receipt": "runtime/glm53-spark-mtp3-mesh/image-receipt.json",
+    "image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:23f00af873ccc784cfb742b7be2a29c6d3c20ebec9741843c025320bb9c04685",
+    "image_id": "sha256:26273b8e358df139ae913610a5d43084ff0fd08aafe282ef633a3bc74afefe47",
+    "site_template": "runtime/glm53-spark-mtp3-mesh/site.example.json",
+    "fabric_template": "runtime/glm53-spark-mtp3-mesh/fabric.example.json",
+    "renderer": "runtime/glm53-spark-mtp3-mesh/profile.py",
+    "installer": "runtime/glm53-spark-mtp3-mesh/managed_install.py",
+    "lifecycle_controller": "runtime/glm53-spark-mtp3-mesh/managed_cluster.py",
+    "quickstart": "docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md"
+  },
+  "serving_common": {
+    "served_model_name": "glm-5.3-flash-spark",
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 4,
+    "pipeline_parallel_size": 1,
+    "dtype": "bfloat16",
+    "max_model_len": 1048576,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "prefill_schedule_interval": 2,
+    "kv_cache_dtype": "fp8",
+    "kv_cache_memory_bytes_per_rank": 25769803776,
+    "async_scheduling": true,
+    "chunked_prefill": true,
+    "native_prefix_caching": true,
+    "attention_backend": "B12X",
+    "moe_backend": "B12X",
+    "linear_backend": "B12X",
+    "kda_prefill_backend": "b12x",
+    "cudagraph_capture_sizes": [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64],
+    "speculation": {"method": "mtp", "num_speculative_tokens": 3, "draft_tensor_parallel_size": 4},
+    "readiness_warmup_temperature": 1.0,
+    "readiness_warmup_thinking": false
+  },
+  "sparkcache": {
+    "enabled": true,
+    "commit": "66057174301a4759ca3a45207ea41016689449cb",
+    "access_mode": "read-write",
+    "publication": "tail-cow-v2",
+    "capacity_bytes_per_rank": 42949672960,
+    "low_watermark_bytes": 34359738368,
+    "minimum_span_tokens": 4096,
+    "maximum_span_tokens": 1048576,
+    "shared_gpu_prefix_lease_seconds": 300,
+    "ttl_seconds": 0,
+    "cuda_restore": true,
+    "async_page_capture": true,
+    "capture_slots_per_rank": 2,
+    "capture_slot_bytes": 3221225472,
+    "identity_contract": "runtime/glm53-spark-mtp3-mesh/pins.json#/cache_identity"
+  },
+  "transport": {
+    "bundle_manifest_sha256": "4204fabc93303226b9a120b094ef3c82ed4aadd1d7f97cfbe291204c027ed45f",
+    "routing_contract": "spark_transport/experiments/glm53_rocenante_overlay/overlay_contract.json",
+    "captured_sircl_query_rows": [16, 20, 24, 28, 32],
+    "large_eager_prefill": "dual-rail fused SIRCL",
+    "small_collectives": "RoCEnante on admitted rows; other captured rows use SIRCL",
+    "fallback": "patched NCCL",
+    "rocenante_all_gather": false,
+    "managed_marker_expiry": null,
+    "reserved_rdma_udp_source_port": 65535,
+    "management_health_port": 9975,
+    "automatic_failure_restart": false,
+    "management_guide": "runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md"
+  },
+  "evidence": {
+    "record": "performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md",
+    "status": "qualified",
+    "scope": "Bounded native correctness, managed lifecycle, model startup and persistent recall checks for the recorded image and conditions",
+    "limitations": [
+      "This opt-in profile does not replace the recommended DFlash/SIRCL profile.",
+      "No host-reboot, prolonged-soak, unattended high-availability or general cache/model-quality qualification is claimed.",
+      "Fault detection has a bounded observation window; partial streamed output can precede shutdown.",
+      "Readiness warmup covers temperature-one sampling with thinking disabled, not all mixed-prefill/decode shapes."
+    ]
+  }
+}

@@ -556,3 +556,5 @@ and 138–202 aggregate tok/s at C8. Coding Peak completed 15/15 requests with a
 
 SparkCache is not included in this Qwen setup. External key-value caching is
 disabled and is not required to run this quickstart.
+
+[Profile validation: performance, accuracy, and restart checks](PROFILE_VALIDATION.md).

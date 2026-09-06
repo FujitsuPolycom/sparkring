@@ -77,6 +77,7 @@ VerbsEndpoint::VerbsEndpoint(const std::string& device_name, std::uint8_t port,
       throw std::runtime_error("ibv_create_qp failed");
     }
     max_inline_data_ = initialization.cap.max_inline_data;
+    maximum_send_work_requests_ = initialization.cap.max_send_wr;
 
     ibv_qp_attr attributes{};
     attributes.qp_state = IBV_QPS_INIT;
@@ -241,6 +242,46 @@ void VerbsEndpoint::wait_for_send_through(
 SendCompletionPollState VerbsEndpoint::poll_send_through(
     std::uint64_t expected_work_id) {
   return poll_send_completion(expected_work_id, true);
+}
+
+std::uint32_t VerbsEndpoint::active_mtu_bytes() const {
+  ibv_port_attr attributes{};
+  check_verbs(ibv_query_port(context_, port_, &attributes), "ibv_query_port");
+  switch (attributes.active_mtu) {
+    case IBV_MTU_256: return 256;
+    case IBV_MTU_512: return 512;
+    case IBV_MTU_1024: return 1024;
+    case IBV_MTU_2048: return 2048;
+    case IBV_MTU_4096: return 4096;
+    default: throw std::runtime_error("unsupported active RDMA MTU");
+  }
+}
+
+std::uint32_t VerbsEndpoint::maximum_send_work_requests() const noexcept {
+  return maximum_send_work_requests_;
+}
+
+std::size_t VerbsEndpoint::poll_send_completions(
+    SendCompletion* completions, std::size_t capacity) {
+  if (completions == nullptr || capacity == 0 || capacity > 32) {
+    throw std::invalid_argument(
+        "send completion batch capacity must be in [1, 32]");
+  }
+  ibv_wc work_completions[32]{};
+  const int count = ibv_poll_cq(
+      completion_queue_, static_cast<int>(capacity), work_completions);
+  if (count < 0) {
+    throw std::runtime_error("ibv_poll_cq failed");
+  }
+  for (int index = 0; index < count; ++index) {
+    if (work_completions[index].status != IBV_WC_SUCCESS) {
+      throw std::runtime_error(
+          std::string("RDMA completion failed: ") +
+          ibv_wc_status_str(work_completions[index].status));
+    }
+    completions[index].work_id = work_completions[index].wr_id;
+  }
+  return static_cast<std::size_t>(count);
 }
 
 SendCompletionPollState VerbsEndpoint::poll_send_completion(

@@ -12,7 +12,8 @@ runtime they describe.
 |---|---|
 | [`exl3-r7/`](exl3-r7/README.md) | GLM-5.2 EXL3 3.5-bpw R7 ARM64 image builder and its verification tests |
 | [`glm53-flash/`](glm53-flash/README.md) | GLM-5.3 Flash target, BF16 DFlash2, vLLM, B12X, patched NCCL, and SparkCache identity and attestation contract |
-| [`glm53-flash-jj-r8-gb10/`](glm53-flash-jj-r8-gb10/README.md) | GLM-5.3 Flash ARM64 image builder and adjustable TP4/DCP1/DCP2/DCP4 launcher with optional SparkCache; the source pin derives from Local Inference Lab's vLLM work |
+| [`glm53-flash-jj-r8-gb10/`](glm53-flash-jj-r8-gb10/README.md) | GLM-5.3 Flash ARM64 image builder and adjustable TP4/DCP1/DCP2/DCP4 launcher with optional SparkCache; the preferred DCP4 path uses the embedded, four-rank-qualified dual-rail SIRCL bundle with patched NCCL fallback |
+| [`glm53-spark-mtp3-mesh/`](glm53-spark-mtp3-mesh/README.md) | Research-only NVFP4-Spark native-MTP3 profile, verified SIRCL/RoCEnante bundle, supervised hardware-forwarded mesh plan, and optional local image packaging |
 | [`glm53-flash-e10536a/`](glm53-flash-e10536a/README.md) | Implemented source builder for vLLM e10536a with internal MTP5 and opt-in adaptive depth; live serving unqualified |
 | [`glm53-flash-b12x-kda-adaptive-mtp/`](glm53-flash-b12x-kda-adaptive-mtp/README.md) | Implemented source builder for adaptive MTP and live-tensor B12X KDA at vLLM `0b67266a`; live serving unqualified |
 | [`deepseek0731-gb10/`](deepseek0731-gb10/README.md) | DeepSeek-V4-Flash-0731 GB10 parser, K5 sparse-row, and native PR431 image layer |
@@ -22,6 +23,13 @@ runtime they describe.
 | [`public-overlay-files.json`](public-overlay-files.json) | Explicit source-file allowlist for the public overlay |
 | [`test_public_overlay.py`](test_public_overlay.py) | Offline contract coverage for allowlisting and manifest generation |
 
+The path `runtime/glm53-flash-jj-r8-gb10/` and JSON schema names beginning
+with `sparkring-glm53-jj-r8-gb10` are stable filesystem and interface
+locators. Their `r8` component does not identify the embedded vLLM sources.
+The directory's [`pins.json`](glm53-flash-jj-r8-gb10/pins.json) records the
+GLM source composition, including the vLLM commit associated with the Local
+Inference Lab community release named `Jovian Judgement Community R10`.
+
 ## GLM-5.3 Flash operator image
 
 The [`GLM-5.3 GB10 runtime`](glm53-flash-jj-r8-gb10/README.md) is the operator
@@ -30,8 +38,13 @@ persistent SparkCache enabled or disabled at launch. The recommended DCP4
 page-tail image is:
 
 ```text
-ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f
+ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f
 ```
+
+Its image ID is
+`sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075`.
+The [public-image receipt](glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json)
+records four-rank registry-pull verification and functional DCP4 qualification.
 
 The complete-snapshot rollback remains:
 

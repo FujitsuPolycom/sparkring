@@ -38,6 +38,11 @@ if os.getenv("VLLM_SPARK_TP4_MODE"):
 
     _install_required("TP4 all-reduce backend", install_tp4)
 
+if os.getenv("SPARK_TP4_HEALTH_GATE") == "1":
+    from spark_tp4_health_gate import install as install_tp4_health_gate
+
+    _install_required("TP4 post-output health gate", install_tp4_health_gate)
+
 
 if os.getenv("VLLM_SPARK_TP4_VOCAB_MODE"):
     from spark_tp4_vocab_allgather_backend import (
@@ -47,6 +52,16 @@ if os.getenv("VLLM_SPARK_TP4_VOCAB_MODE"):
     _install_required(
         "TP4 vocabulary all-gather backend",
         install_tp4_vocab_allgather,
+    )
+
+if os.getenv("SPARK_CUDAGRAPH_REPLAY_TIMING") == "1":
+    from spark_cudagraph_replay_timing import (
+        install as install_cudagraph_replay_timing,
+    )
+
+    _install_required(
+        "CUDA graph replay timing",
+        install_cudagraph_replay_timing,
     )
 
 if os.getenv("SPARK_TP4_DCP_COLLECTIVE_AUDIT") == "1":

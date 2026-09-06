@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import ipaddress
+import os
+import shlex
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -304,6 +307,110 @@ class ManagementRepairSafetyTests(unittest.TestCase):
             ),
         )
 
+    def run_management_guard(
+        self,
+        route: str | None,
+        *,
+        client: str = "192.0.2.10",
+        server: str = "192.0.2.10",
+        ssh_connection: str | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        if os.name == "nt":
+            self.skipTest("behavioral shell guard tests require a native POSIX shell")
+        guarded = self.guarded_observation()
+        guard = ManagementGuard("r0", (guarded.host_interfaces["eth0"],))
+        connection = ssh_connection or f"{client} 47254 {server} 22"
+        route_case = (
+            "return 1"
+            if route is None
+            else f"printf '%s\\n' {shlex.quote(route)}"
+        )
+        script = "\n".join(
+            (
+                "set -e",
+                "ip() {",
+                '  case "$*" in',
+                '    "link show dev eth0") return 0 ;;',
+                '    "-4 -o addr show dev eth0") '
+                "printf '%s\\n' '2: eth0 inet 192.0.2.10/24 scope global eth0' ;;",
+                f'    "-4 route get {client}") {route_case} ;;',
+                "    *) return 1 ;;",
+                "  esac",
+                "}",
+                f"export SSH_CONNECTION={shlex.quote(connection)}",
+                guard.shell_command(),
+            )
+        )
+        return subprocess.run(
+            ["bash", "-c", script],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    def test_management_guard_distinguishes_guarded_local_client(self) -> None:
+        guarded = self.guarded_observation()
+        command = ManagementGuard(
+            "r0", (guarded.host_interfaces["eth0"],)
+        ).shell_command()
+
+        self.assertIn("ssh_client=$1", command)
+        self.assertIn('[ "$1" = local ]', command)
+        self.assertIn('case "$ssh_client" in 192.0.2.10)', command)
+
+    def test_management_guard_accepts_self_ssh_on_guarded_address(self) -> None:
+        result = self.run_management_guard(
+            "local 192.0.2.10 dev lo src 192.0.2.10 uid 1000"
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_management_guard_accepts_remote_management_route(self) -> None:
+        result = self.run_management_guard(
+            "192.0.2.20 dev eth0 src 192.0.2.10 uid 1000",
+            client="192.0.2.20",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_management_guard_rejects_self_ssh_from_unrecognized_address(self) -> None:
+        result = self.run_management_guard(
+            "local 192.0.2.99 dev lo src 192.0.2.99 uid 1000",
+            client="192.0.2.99",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_management_guard_rejects_remote_route_over_fabric(self) -> None:
+        result = self.run_management_guard(
+            f"10.0.1.20 dev {IF0} src 10.0.1.10 uid 1000",
+            client="10.0.1.20",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_management_guard_rejects_unrecognized_server_address(self) -> None:
+        result = self.run_management_guard(
+            "192.0.2.20 dev eth0 src 192.0.2.10 uid 1000",
+            client="192.0.2.20",
+            server="192.0.2.99",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_management_guard_rejects_malformed_ssh_connection(self) -> None:
+        result = self.run_management_guard(
+            "192.0.2.20 dev eth0 src 192.0.2.10 uid 1000",
+            ssh_connection="malformed",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_management_guard_rejects_missing_route_evidence(self) -> None:
+        result = self.run_management_guard(None, client="192.0.2.20")
+
+        self.assertNotEqual(result.returncode, 0)
+
     def test_management_guard_requires_distinct_addressed_interface(self) -> None:
         guarded = self.guarded_observation()
         guards, findings = build_management_guards([guarded.spec], {"r0": guarded})
@@ -375,6 +482,71 @@ class ManagementRepairSafetyTests(unittest.TestCase):
         self.assertEqual(runner.commands[0], "sudo -n true")
         self.assertGreaterEqual(runner.commands[1].count("192.0.2.10/24"), 2)
         self.assertIn("ip route replace 10.0.2.0/24", runner.commands[1])
+
+    def test_apply_executes_repair_between_self_ssh_guards(self) -> None:
+        if os.name == "nt":
+            self.skipTest("behavioral shell guard tests require a native POSIX shell")
+        guarded = self.guarded_observation()
+        guard = ManagementGuard("r0", (guarded.host_interfaces["eth0"],))
+
+        class RecordedPlan:
+            routes = ()
+            relay_directions = set()
+
+            @staticmethod
+            def commands():
+                return ("printf 'REPAIR_EXECUTED\\n'",)
+
+        class ShellRunner:
+            def __init__(self) -> None:
+                self.results: list[subprocess.CompletedProcess[str]] = []
+
+            def run(self, _target, command, proxy_jump=None):
+                del proxy_jump
+                if command == "sudo -n true":
+                    return CommandResult(True)
+                prefix = "\n".join(
+                    (
+                        "ip() {",
+                        '  case "$*" in',
+                        '    "link show dev eth0") return 0 ;;',
+                        '    "-4 -o addr show dev eth0") '
+                        "printf '%s\\n' "
+                        "'2: eth0 inet 192.0.2.10/24 scope global eth0' ;;",
+                        '    "-4 route get 192.0.2.10") '
+                        "printf '%s\\n' "
+                        "'local 192.0.2.10 dev lo src 192.0.2.10 uid 1000' ;;",
+                        "    *) return 1 ;;",
+                        "  esac",
+                        "}",
+                        "export SSH_CONNECTION='192.0.2.10 47254 192.0.2.10 22'",
+                    )
+                )
+                completed = subprocess.run(
+                    ["bash", "-c", prefix + "\n" + command],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.results.append(completed)
+                return CommandResult(
+                    completed.returncode == 0,
+                    completed.stdout,
+                    completed.stderr,
+                )
+
+        runner = ShellRunner()
+        application = apply_plans(
+            {"r0": guarded},
+            {"r0": RecordedPlan()},  # type: ignore[dict-item]
+            {"r0": guard},
+            runner,
+        )
+
+        self.assertTrue(application.executed)
+        self.assertEqual(application.findings, ())
+        self.assertEqual(len(runner.results), 1)
+        self.assertEqual(runner.results[0].stdout, "REPAIR_EXECUTED\n")
 
     def test_apply_withholds_every_plan_when_any_node_lacks_noninteractive_sudo(
         self,

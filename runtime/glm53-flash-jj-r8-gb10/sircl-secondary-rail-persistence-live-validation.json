@@ -1,0 +1,89 @@
+{
+  "schema": "sparkring-sircl-secondary-rail-persistence-live/v1",
+  "status": "qualified",
+  "date": "2026-09-04",
+  "implementation": {
+    "repository": "https://github.com/FujitsuPolycom/sparkring.git",
+    "pull_request": 212,
+    "helper_commit": "72a399031095b5ea3291c664552e84059dd74e74",
+    "helper_sha256": "4ee947eb1f14351dc59071646f7ed381ff094abecbcde9d8c920366068d4278e"
+  },
+  "system": {
+    "hardware": "four NVIDIA DGX Spark systems with one GB10 GPU each",
+    "rank_count": 4,
+    "topology": "four-rank switchless direct-cable cycle with two dedicated SIRCL rails per rank",
+    "secondary_rail_count": 8,
+    "secondary_rail_mtu": 9000,
+    "secondary_rail_prefix_length": 30,
+    "gid_index": 3
+  },
+  "artifact": {
+    "registry_reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f",
+    "image_id": "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075",
+    "platform": "linux/arm64"
+  },
+  "reboot_observation": {
+    "initial_secondary_profile_state": "no persistent NetworkManager profiles",
+    "state_after_reboot": "secondary interfaces had no IPv4 address, MTU 1500, zero GID value at index 3, and no GID type",
+    "model_start_result": "rejected before API readiness",
+    "model_start_error": "SIRCL capability agreement reported every secondary RDMA device and GID as unavailable",
+    "safety_result": "No API became ready and no model output was exposed."
+  },
+  "persistent_profile_contract": {
+    "network_manager": true,
+    "manual_ipv4": true,
+    "autoconnect": true,
+    "autoconnect_priority": 100,
+    "autoconnect_retries": "forever",
+    "default_route": false,
+    "ipv6": "disabled",
+    "mtu": 9000
+  },
+  "live_verification": {
+    "mode": "read-only --verify",
+    "helper_sha256_matched_on_every_rank": true,
+    "ranks": 4,
+    "rails_per_rank": 2,
+    "checks_per_rail": 23,
+    "checks_passed": 184,
+    "checks_failed": 0,
+    "verified_properties": [
+      "persistent profile interface",
+      "autoconnect",
+      "autoconnect priority",
+      "unbounded autoconnect retries",
+      "manual IPv4 address",
+      "no default route",
+      "disabled IPv6",
+      "profile MTU",
+      "active profile",
+      "rail excluded from the default route",
+      "management interface owns the default route",
+      "live address",
+      "live MTU",
+      "live link state",
+      "RoCEv2 GID",
+      "GID type",
+      "GID Ethernet device",
+      "rail interface presence",
+      "management interface presence",
+      "RDMA port ACTIVE state",
+      "RDMA Ethernet link layer",
+      "8,972-byte don't-fragment peer ping"
+    ],
+    "result": "passed"
+  },
+  "serving_observation": {
+    "container_health_on_every_rank": "healthy",
+    "rank_zero_api_health": "passed",
+    "sircl_capability_agreement_on_every_rank": true,
+    "error_scan_after_profile_policy_update": "no Python, CUDA, NCCL, SIRCL capability, or proxy-fatal error",
+    "result": "passed"
+  },
+  "conclusion": "Persistent secondary-rail profiles retained the required address and MTU contract, and the helper verified all eight live RoCEv2 paths while the exact public image remained healthy.",
+  "limitations": [
+    "The helper's read-only verification path is live-qualified. Persistent profiles were created with equivalent NetworkManager commands before the helper was available, so the helper's confirmed --execute path has CPU-only regression coverage rather than a separate live invocation.",
+    "This receipt covers one four-rank GB10 topology. Operators must supply addresses, interfaces, RDMA devices, and peers for their own cabling.",
+    "The SIRCL capability agreement remains the authoritative startup check inside the model process."
+  ]
+}

@@ -20,12 +20,18 @@ fi
 : "${HOST_IP:?set HOST_IP to this rank's routable address}"
 : "${MASTER_ADDR:?set MASTER_ADDR to rank 0's routable address}"
 : "${TARGET_MODEL_HOST_PATH:?set TARGET_MODEL_HOST_PATH to the pinned target checkpoint}"
-: "${DFLASH_MODEL_HOST_PATH:?set DFLASH_MODEL_HOST_PATH to the pinned BF16 draft checkpoint}"
+: "${DFLASH_MODEL_HOST_PATH:=}"
 : "${CACHE_HOST_ROOT:?set CACHE_HOST_ROOT to a dedicated rank-local directory}"
 
-: "${IMAGE_REF:=ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:4ce98659c30d9e9c313b1018a2675e5f135a0404e7cc00951b4ade161c0a711f}"
-: "${IMAGE_ID:=sha256:c3f85b2350609b6ff1201b8c5998f881ff4cef8b671d6783b543f841040915c0}"
+: "${IMAGE_REF:=ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f}"
+: "${IMAGE_ID:=sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075}"
 : "${CONTAINER_PREFIX:=glm53-jj-r8-gb10}"
+: "${SPARKRING_CREATE_ONLY:=0}"
+: "${SPARKRING_PRINT_CONTAINER_SPEC:=0}"
+case "${SPARKRING_PRINT_CONTAINER_SPEC}" in
+  0|1) ;;
+  *) printf 'SPARKRING_PRINT_CONTAINER_SPEC must be 0 or 1\n' >&2; exit 78 ;;
+esac
 : "${SERVED_MODEL_NAME:=glm-5.3-flash}"
 : "${PORT:=8015}"
 : "${MASTER_PORT:=29775}"
@@ -35,6 +41,7 @@ fi
 : "${DECODE_CONTEXT_PARALLEL_SIZE:=4}"
 : "${CP_KV_CACHE_INTERLEAVE_SIZE:=auto}"
 : "${B12X_MLA_CKV_GATHER:=auto}"
+: "${B12X_FUSED_INDEXER:=1}"
 : "${B12X_MLA_CKV_GATHER_MAX_TOKENS:=524288}"
 : "${NODE_COUNT:=4}"
 : "${MAX_MODEL_LEN:=1048576}"
@@ -47,6 +54,7 @@ fi
 : "${GPU_MEMORY_UTILIZATION:=0.80}"
 : "${KV_CACHE_DTYPE:=fp8}"
 : "${SPECULATION_METHOD:=dflash}"
+: "${TARGET_MODEL_VARIANT:=nvfp4}"
 : "${NUM_SPECULATIVE_TOKENS:=7}"
 : "${DRAFT_TENSOR_PARALLEL_SIZE:=4}"
 : "${DRAFT_KV_CACHE_DTYPE:=auto}"
@@ -55,18 +63,58 @@ fi
 : "${ATTENTION_BACKEND:=B12X}"
 : "${MOE_BACKEND:=b12x}"
 : "${LINEAR_BACKEND:=b12x}"
-: "${KDA_PREFILL_BACKEND:=flashkda}"
+: "${KDA_PREFILL_BACKEND:=b12x}"
 : "${LOAD_FORMAT:=fastsafetensors}"
 : "${CUDAGRAPH_MODE:=FULL_AND_PIECEWISE}"
 : "${MAX_CUDAGRAPH_CAPTURE_SIZE:=128}"
-: "${SPARKCACHE_CACHE_NAMESPACE:=glm53-flash-dcp4-page-tail-cow-v2}"
-: "${JIT_CACHE_NAMESPACE:=glm53-flash-sm121-vllm-22ffe140-b12x-6255090a}"
+: "${SPARKCACHE_CACHE_NAMESPACE:=glm53-flash-vllm-e02b1746-b12x-9ae41c5c-dcp4-page-tail-cow-v2}"
+: "${JIT_CACHE_NAMESPACE:=glm53-flash-sm121-vllm-e02b1746-b12x-9ae41c5c}"
 : "${JIT_MONITOR_VERBOSE:=0}"
 : "${DFLASH_WARMUP:=0}"
-: "${DFLASH_WARMUP_CONCURRENCIES:=1,2,4,8,16}"
+: "${DFLASH_WARMUP_CONCURRENCIES:=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}"
 : "${DFLASH_WARMUP_SHAPE_WORDS:=8,24,56,120,248}"
 : "${DFLASH_WARMUP_MAX_TOKENS:=16}"
 : "${DFLASH_WARMUP_TIMEOUT_SECONDS:=600}"
+: "${SPARKRING_WARMUP_TEMPERATURE:=0}"
+: "${SPARKRING_LIVENESS_ENABLED:=1}"
+: "${SPARKRING_LIVENESS_PORT:=8016}"
+: "${SPARKRING_LIVENESS_BLOCKED_SECONDS:=60}"
+: "${SPARKRING_LIVENESS_OUTPUT_SECONDS:=300}"
+: "${SPARKRING_IDLE_KV_WARN_SECONDS:=330}"
+: "${SPARKRING_LIVENESS_STALE_SECONDS:=15}"
+: "${SPARKRING_LIVENESS_SAMPLE_SECONDS:=10}"
+: "${SIRCL_ENABLED:=0}"
+: "${SIRCL_BUNDLE_HOST_ROOT:=}"
+: "${SPARK_TP4_PEER0:=}"
+: "${SPARK_TP4_PEER1:=}"
+: "${SPARK_TP4_DEVICE0:=rocep1s0f0}"
+: "${SPARK_TP4_DEVICE1:=rocep1s0f1}"
+: "${SPARK_TP4_GID0:=3}"
+: "${SPARK_TP4_GID1:=3}"
+: "${SPARK_TP4_GRAPH_CONTROL_PORT0:=9970}"
+: "${SPARK_TP4_GRAPH_CONTROL_PORT1:=9971}"
+: "${SPARK_TP4_GRAPH_SUBMIT_CPU:=10}"
+: "${SPARK_TP4_GRAPH_PROGRESS_CPU:=11}"
+: "${SPARK_TP4_MAX_INFLIGHT:=64}"
+: "${SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS:=10}"
+: "${SPARK_TP4_GRAPH_DIRECT_DOORBELL:=0}"
+: "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL:=0}"
+: "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE:=single}"
+: "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE:=sync}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT0:=19000}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT1:=19001}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0:=}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1:=}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0:=}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1:=}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0:=3}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1:=3}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0:=19100}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1:=19101}"
+: "${SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS:=120}"
+: "${SPARK_CUDAGRAPH_REPLAY_TIMING:=0}"
+: "${SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES:=512}"
+: "${SPARK_CUDAGRAPH_REPLAY_TIMING_BUNDLE_HOST_ROOT:=}"
 : "${SPARKCACHE_ENABLED:=1}"
 : "${SPARKCACHE_ACCESS_MODE:=read-write}"
 : "${SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS:=300}"
@@ -97,6 +145,7 @@ fi
 : "${FASTSAFETENSORS_QUEUE_SIZE:=1}"
 : "${ENABLE_PROMPT_TOKENS_DETAILS:=1}"
 : "${API_KEYS_FILE:=}"
+: "${CHAT_TEMPLATE_HOST_PATH:=}"
 
 die() {
   printf '%s\n' "$*" >&2
@@ -126,7 +175,10 @@ for name in \
   SPARKCACHE_CUDA_RESTORE_IO_WORKERS SPARKCACHE_CUDA_ARENA_BYTES \
   SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT \
   NCCL_MIN_NCHANNELS NCCL_MAX_NCHANNELS OMP_NUM_THREADS \
-  TORCHINDUCTOR_COMPILE_THREADS FASTSAFETENSORS_QUEUE_SIZE
+  TORCHINDUCTOR_COMPILE_THREADS FASTSAFETENSORS_QUEUE_SIZE \
+  SPARKRING_LIVENESS_PORT SPARKRING_LIVENESS_BLOCKED_SECONDS SPARKRING_LIVENESS_OUTPUT_SECONDS \
+  SPARKRING_IDLE_KV_WARN_SECONDS SPARKRING_LIVENESS_STALE_SECONDS \
+  SPARKRING_LIVENESS_SAMPLE_SECONDS
 do
   require_positive_uint "${name}"
 done
@@ -146,16 +198,8 @@ esac
   die 'DECODE_CONTEXT_PARALLEL_SIZE must divide TENSOR_PARALLEL_SIZE'
 
 if [[ "${KV_CACHE_MEMORY_BYTES}" == auto ]]; then
-  if (( DECODE_CONTEXT_PARALLEL_SIZE == 1 )); then
-    # This reservation completed a 942,767-token request without host OOM.
-    KV_CACHE_MEMORY_BYTES=27917287424
-  elif (( DECODE_CONTEXT_PARALLEL_SIZE == 2 )); then
-    # DCP2 retains the recorded 30 GiB capacity configuration.
-    KV_CACHE_MEMORY_BYTES=32212254720
-  else
-    # DCP4 uses 24 GiB to retain host-memory headroom under concurrent serving.
-    KV_CACHE_MEMORY_BYTES=25769803776
-  fi
+  # Keep the per-rank allocation uniform while DCP controls cache geometry.
+  KV_CACHE_MEMORY_BYTES=25769803776
 else
   require_positive_uint KV_CACHE_MEMORY_BYTES
 fi
@@ -197,10 +241,17 @@ case "${B12X_MLA_CKV_GATHER}" in
   0|1) ;;
   *) die 'B12X_MLA_CKV_GATHER must be auto, 0, or 1' ;;
 esac
+case "${B12X_FUSED_INDEXER}" in
+  0|1) ;;
+  *) die 'B12X_FUSED_INDEXER must be 0 or 1' ;;
+esac
 
 [[ "${rank}" =~ ^[0-9]+$ ]] || die 'rank must be an unsigned integer'
 (( rank < NODE_COUNT )) || die "rank must be between 0 and $((NODE_COUNT - 1))"
-(( PORT <= 65535 && MASTER_PORT <= 65535 )) || die 'ports must be at most 65535'
+(( PORT <= 65535 && MASTER_PORT <= 65535 && SPARKRING_LIVENESS_PORT <= 65535 )) || \
+  die 'ports must be at most 65535'
+(( PORT != SPARKRING_LIVENESS_PORT )) || \
+  die 'SPARKRING_LIVENESS_PORT must differ from PORT'
 (( SPARKCACHE_LOW_WATERMARK_BYTES <= SPARKCACHE_MAX_BYTES )) || \
   die 'SPARKCACHE_LOW_WATERMARK_BYTES cannot exceed SPARKCACHE_MAX_BYTES'
 (( SPARKCACHE_MIN_SPAN_TOKENS <= SPARKCACHE_MAX_SPAN_TOKENS )) || \
@@ -209,8 +260,30 @@ esac
   die 'NCCL_MIN_NCHANNELS cannot exceed NCCL_MAX_NCHANNELS'
 [[ "${CONTAINER_PREFIX}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || \
   die 'CONTAINER_PREFIX is not a valid Docker container-name prefix'
-[[ "${SPECULATION_METHOD}" == dflash ]] || \
-  die 'this runtime launcher supports SPECULATION_METHOD=dflash'
+case "${SPECULATION_METHOD}" in
+  dflash) : "${DFLASH_MODEL_HOST_PATH:?set DFLASH_MODEL_HOST_PATH to the pinned BF16 draft checkpoint}" ;;
+  mtp) ;;
+  *) die 'SPECULATION_METHOD must be dflash or mtp' ;;
+esac
+case "${TARGET_MODEL_VARIANT}" in
+  nvfp4)
+    target_config_sha256=676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996
+    target_index_sha256=0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb
+    TARGET_CHECKPOINT_FINGERPRINT=a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9
+    ;;
+  nvfp4-spark)
+    target_config_sha256=e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23
+    target_index_sha256=db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544
+    TARGET_CHECKPOINT_FINGERPRINT=357f6a86160ebd5caff25d9a10d9f29e8547b16c6c73e78751fa69fde11ac4e4
+    ;;
+  *) die 'TARGET_MODEL_VARIANT must be nvfp4 or nvfp4-spark' ;;
+esac
+# Native MTP loads its predictor from the target checkpoint. The separate
+# cache policy describes registered layer roles, not separate weight files.
+DRAFT_CHECKPOINT_FINGERPRINT=b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b
+if [[ "${SPECULATION_METHOD}" == mtp ]]; then
+  DRAFT_CHECKPOINT_FINGERPRINT="${TARGET_CHECKPOINT_FINGERPRINT}"
+fi
 case "${SPARKCACHE_PUBLICATION_SCHEMA}" in
   snapshot-v1|tail-cow-v1|tail-cow-v2) ;;
   *) die 'SPARKCACHE_PUBLICATION_SCHEMA must be snapshot-v1, tail-cow-v1, or tail-cow-v2' ;;
@@ -239,6 +312,16 @@ if [[ "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 ]]; then
     *) die 'asynchronous page capture requires a publication-capable access mode' ;;
   esac
 fi
+if [[ -n "${CHAT_TEMPLATE_HOST_PATH}" ]]; then
+  [[ "${CHAT_TEMPLATE_HOST_PATH}" == /* ]] || \
+    die 'CHAT_TEMPLATE_HOST_PATH must be an absolute host path when set'
+  [[ "${CHAT_TEMPLATE_HOST_PATH}" != *:* && "${CHAT_TEMPLATE_HOST_PATH}" != *$'\n'* ]] || \
+    die 'CHAT_TEMPLATE_HOST_PATH cannot be represented safely as a Docker bind mount'
+  [[ -f "${CHAT_TEMPLATE_HOST_PATH}" && -r "${CHAT_TEMPLATE_HOST_PATH}" ]] || \
+    die 'CHAT_TEMPLATE_HOST_PATH is not a readable regular file'
+  [[ -s "${CHAT_TEMPLATE_HOST_PATH}" ]] || \
+    die 'CHAT_TEMPLATE_HOST_PATH is empty'
+fi
 case "${MULTIMODAL_INPUTS}" in
   0|1) ;;
   *) die 'MULTIMODAL_INPUTS must be 0 (text only) or 1 (images and video)' ;;
@@ -250,6 +333,46 @@ esac
 case "${DFLASH_WARMUP}" in
   0|1) ;;
   *) die 'DFLASH_WARMUP must be 0 or 1' ;;
+esac
+case "${SPARKRING_LIVENESS_ENABLED}" in
+  0|1) ;;
+  *) die 'SPARKRING_LIVENESS_ENABLED must be 0 or 1' ;;
+esac
+case "${SIRCL_ENABLED}" in
+  0|1) ;;
+  *) die 'SIRCL_ENABLED must be 0 or 1' ;;
+esac
+case "${SPARK_TP4_GRAPH_DIRECT_DOORBELL}" in
+  0|1) ;;
+  *) die 'SPARK_TP4_GRAPH_DIRECT_DOORBELL must be 0 or 1' ;;
+esac
+case "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL}" in
+  0|1) ;;
+  *) die 'VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL must be 0 or 1' ;;
+esac
+case "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE}" in
+  single|dual) ;;
+  *) die 'VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE must be single or dual' ;;
+esac
+case "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE}" in
+  sync|fused) ;;
+  *) die 'VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE must be sync or fused' ;;
+esac
+if [[ "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL}" == 1 && "${SIRCL_ENABLED}" != 1 ]]; then
+  die 'bidirectional prefill requires SIRCL_ENABLED=1'
+fi
+if [[ "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE}" == dual && "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL}" != 1 ]]; then
+  die 'dual-rail bidirectional prefill requires VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL=1'
+fi
+if [[ "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE}" == fused ]]; then
+  [[ "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL}" == 1 ]] || \
+    die 'fused prefill exposure requires VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL=1'
+  [[ "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE}" == dual ]] || \
+    die 'fused prefill exposure requires dual rail mode'
+fi
+case "${SPARK_CUDAGRAPH_REPLAY_TIMING}" in
+  0|1) ;;
+  *) die 'SPARK_CUDAGRAPH_REPLAY_TIMING must be 0 or 1' ;;
 esac
 for name in SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE JIT_CACHE_NAMESPACE
 do
@@ -279,7 +402,11 @@ warmup_api_key_env=()
 if (( ${#api_keys[@]} > 0 )); then
   warmup_api_key_env=(-e "SPARKRING_WARMUP_API_KEY=${api_keys[0]}")
 fi
-for name in TARGET_MODEL_HOST_PATH DFLASH_MODEL_HOST_PATH CACHE_HOST_ROOT; do
+model_path_names=(TARGET_MODEL_HOST_PATH CACHE_HOST_ROOT)
+if [[ "${SPECULATION_METHOD}" == dflash ]]; then
+  model_path_names+=(DFLASH_MODEL_HOST_PATH)
+fi
+for name in "${model_path_names[@]}"; do
   value="${!name}"
   [[ "${value}" == /* ]] || die "${name} must be an absolute host path"
   [[ "${value}" != *:* && "${value}" != *$'\n'* ]] || \
@@ -309,6 +436,211 @@ if [[ -n "${VLLM_KV_METRICS_OVERLAY}" ]]; then
 fi
 command -v python3 >/dev/null 2>&1 || die 'python3 is required to encode JSON configuration safely'
 command -v sha256sum >/dev/null 2>&1 || die 'sha256sum is required to verify model inputs'
+sircl_args=()
+sircl_native_sha256='disabled'
+sircl_manifest_sha256='disabled'
+sircl_container_root='/opt/spark-sircl'
+sircl_bundle_is_external=0
+if [[ "${SIRCL_ENABLED}" == 1 ]]; then
+  [[ "${TENSOR_PARALLEL_SIZE}" == 4 ]] || \
+    die 'SIRCL width-4096 mode requires TENSOR_PARALLEL_SIZE=4'
+  [[ -n "${SPARK_TP4_PEER0}" && -n "${SPARK_TP4_PEER1}" ]] || \
+    die 'SIRCL requires SPARK_TP4_PEER0 and SPARK_TP4_PEER1'
+  [[ -n "${SPARK_TP4_DEVICE0}" && -n "${SPARK_TP4_DEVICE1}" ]] || \
+    die 'SIRCL requires SPARK_TP4_DEVICE0 and SPARK_TP4_DEVICE1'
+  for name in \
+    SPARK_TP4_GID0 SPARK_TP4_GID1 \
+    SPARK_TP4_GRAPH_CONTROL_PORT0 SPARK_TP4_GRAPH_CONTROL_PORT1 \
+    SPARK_TP4_GRAPH_SUBMIT_CPU SPARK_TP4_GRAPH_PROGRESS_CPU \
+    SPARK_TP4_MAX_INFLIGHT SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS
+  do
+    require_positive_uint "${name}"
+  done
+  (( SPARK_TP4_GRAPH_CONTROL_PORT0 <= 65535 && SPARK_TP4_GRAPH_CONTROL_PORT1 <= 65535 )) || \
+    die 'SIRCL graph control ports must be at most 65535'
+  (( SPARK_TP4_GRAPH_SUBMIT_CPU != SPARK_TP4_GRAPH_PROGRESS_CPU )) || \
+    die 'SIRCL graph submit and progress CPUs must be distinct'
+  if [[ "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL}" == 1 ]]; then
+    for name in \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT0 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT1 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS
+    do
+      require_positive_uint "${name}"
+    done
+    for name in \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT0 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT1 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1
+    do
+      (( ${!name} <= 65529 )) || \
+        die "${name} must be at most 65529 to reserve the complete prefill port range"
+    done
+  fi
+  if [[ "${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE}" == dual ]]; then
+    for name in \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1
+    do
+      [[ -n "${!name}" ]] || die "dual-rail bidirectional prefill requires ${name}"
+    done
+    for name in \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0 \
+      SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1
+    do
+      require_uint "${name}"
+      (( ${!name} <= 255 )) || die "${name} must be at most 255"
+    done
+    [[ "${SPARK_TP4_PEER0}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0}" && \
+       "${SPARK_TP4_PEER0}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1}" && \
+       "${SPARK_TP4_PEER1}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0}" && \
+       "${SPARK_TP4_PEER1}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1}" && \
+       "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1}" ]] || \
+      die 'dual-rail primary and secondary peer addresses must be distinct'
+    [[ "${SPARK_TP4_DEVICE0}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0}" && \
+       "${SPARK_TP4_DEVICE0}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1}" && \
+       "${SPARK_TP4_DEVICE1}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0}" && \
+       "${SPARK_TP4_DEVICE1}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1}" && \
+       "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0}" != "${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1}" ]] || \
+      die 'dual-rail primary and secondary devices must be distinct'
+  fi
+  if [[ -n "${SIRCL_BUNDLE_HOST_ROOT}" ]]; then
+    [[ "${SIRCL_BUNDLE_HOST_ROOT}" == /* ]] || \
+      die 'SIRCL_BUNDLE_HOST_ROOT must be an absolute host path when set'
+    [[ "${SIRCL_BUNDLE_HOST_ROOT}" != *:* && "${SIRCL_BUNDLE_HOST_ROOT}" != *$'\n'* ]] || \
+      die 'SIRCL_BUNDLE_HOST_ROOT cannot be represented safely as a Docker bind mount'
+    [[ -d "${SIRCL_BUNDLE_HOST_ROOT}" ]] || \
+      die 'SIRCL_BUNDLE_HOST_ROOT must be a directory'
+    for required in \
+      sitecustomize.py \
+      spark_collective_audit.py \
+      spark_graph_status_reporter.py \
+      spark_persistent_output_ring.py \
+      spark_tp4_backend.py \
+      spark_tp4_capability.py \
+      spark_tp4_health_gate.py \
+      spark_tp4_port_namespace.py \
+      spark_tp4_query_contract.py \
+      spark_tp4_query_row_provider.py \
+      sparkring-overlay-manifest.json \
+      libspark_transport_capi.so
+    do
+      [[ -f "${SIRCL_BUNDLE_HOST_ROOT}/${required}" ]] || \
+        die "SIRCL bundle is missing ${required}"
+    done
+    sircl_native_sha256="$(
+      sha256sum -- "${SIRCL_BUNDLE_HOST_ROOT}/libspark_transport_capi.so" |
+        cut -d' ' -f1
+    )"
+    sircl_manifest_sha256="$(
+      sha256sum -- "${SIRCL_BUNDLE_HOST_ROOT}/sparkring-overlay-manifest.json" |
+        cut -d' ' -f1
+    )"
+    sircl_args+=(
+      -v "${SIRCL_BUNDLE_HOST_ROOT}:${sircl_container_root}:ro"
+    )
+    sircl_bundle_is_external=1
+  else
+    sircl_native_sha256="$(
+      docker image inspect --format \
+        '{{index .Config.Labels "org.sparkring.sircl.native-sha256"}}' \
+        "${IMAGE_REF}"
+    )"
+    sircl_manifest_sha256="$(
+      docker image inspect --format \
+        '{{index .Config.Labels "org.sparkring.sircl.manifest-sha256"}}' \
+        "${IMAGE_REF}"
+    )"
+    [[ "${sircl_native_sha256}" =~ ^[0-9a-f]{64}$ && \
+       "${sircl_manifest_sha256}" =~ ^[0-9a-f]{64}$ ]] || \
+      die 'image has no receipt-bound embedded SIRCL bundle; set SIRCL_BUNDLE_HOST_ROOT or disable SIRCL'
+  fi
+  sircl_args=(
+    "${sircl_args[@]}"
+    -e "PYTHONPATH=${sircl_container_root}"
+    -e "SPARK_TP4_LIBRARY=${sircl_container_root}/libspark_transport_capi.so"
+    -e VLLM_SPARK_TP4_MODE=custom
+    -e VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH=1
+    -e VLLM_SPARK_SHARED_CAPTURE_STREAM=1
+    -e VLLM_SPARK_TP4_GRAPH_Q1=0
+    -e VLLM_SPARK_TP4_GRAPH_DUAL_PORT_Q40=0
+    -e SPARK_TP4_CAPABILITY_VOTE=1
+    -e SPARK_TP4_HEALTH_GATE=1
+    -e "SPARKRING_SIRCL_NATIVE_SHA256=${sircl_native_sha256}"
+    -e "SPARKRING_SIRCL_MANIFEST_SHA256=${sircl_manifest_sha256}"
+    -e "SPARK_TP4_PEER0=${SPARK_TP4_PEER0}"
+    -e "SPARK_TP4_PEER1=${SPARK_TP4_PEER1}"
+    -e "SPARK_TP4_DEVICE0=${SPARK_TP4_DEVICE0}"
+    -e "SPARK_TP4_DEVICE1=${SPARK_TP4_DEVICE1}"
+    -e "SPARK_TP4_GID0=${SPARK_TP4_GID0}"
+    -e "SPARK_TP4_GID1=${SPARK_TP4_GID1}"
+    -e "SPARK_TP4_GRAPH_CONTROL_PORT0=${SPARK_TP4_GRAPH_CONTROL_PORT0}"
+    -e "SPARK_TP4_GRAPH_CONTROL_PORT1=${SPARK_TP4_GRAPH_CONTROL_PORT1}"
+    -e "SPARK_TP4_GRAPH_SUBMIT_CPU=${SPARK_TP4_GRAPH_SUBMIT_CPU}"
+    -e "SPARK_TP4_GRAPH_PROGRESS_CPU=${SPARK_TP4_GRAPH_PROGRESS_CPU}"
+    -e "SPARK_TP4_MAX_INFLIGHT=${SPARK_TP4_MAX_INFLIGHT}"
+    -e "SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS=${SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS}"
+    -e "SPARK_TP4_GRAPH_DIRECT_DOORBELL=${SPARK_TP4_GRAPH_DIRECT_DOORBELL}"
+    -e "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL=${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL}"
+    -e "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE=${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE}"
+    -e "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE=${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT0=${SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT0}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT1=${SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT1}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER0}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_PEER1}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE0}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_DEVICE1}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID0}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1=${SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1}"
+    -e "SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS=${SPARK_TP4_BIDIRECTIONAL_PREFILL_TIMEOUT_SECONDS}"
+    -e SPARK_TP4_FLIGHT_RECORDER=0
+    -e "SPARK_TP4_GRAPH_STATUS_PATH=/cache/jit/sircl-graph-rank${rank}.json"
+  )
+fi
+replay_timing_args=()
+if [[ "${SPARK_CUDAGRAPH_REPLAY_TIMING}" == 1 ]]; then
+  require_positive_uint SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES
+  replay_timing_bundle="${SPARK_CUDAGRAPH_REPLAY_TIMING_BUNDLE_HOST_ROOT}"
+  replay_timing_container_root='/opt/spark-replay-timing'
+  replay_timing_bundle_is_external=1
+  if [[ "${SIRCL_ENABLED}" == 1 ]]; then
+    replay_timing_bundle="${SIRCL_BUNDLE_HOST_ROOT}"
+    replay_timing_container_root="${sircl_container_root}"
+    replay_timing_bundle_is_external="${sircl_bundle_is_external}"
+  else
+    [[ "${replay_timing_bundle}" == /* ]] || \
+      die 'SPARK_CUDAGRAPH_REPLAY_TIMING_BUNDLE_HOST_ROOT must be an absolute host path'
+    [[ "${replay_timing_bundle}" != *:* && "${replay_timing_bundle}" != *$'\n'* ]] || \
+      die 'SPARK_CUDAGRAPH_REPLAY_TIMING_BUNDLE_HOST_ROOT cannot be represented safely as a Docker bind mount'
+    [[ -d "${replay_timing_bundle}" ]] || \
+      die 'SPARK_CUDAGRAPH_REPLAY_TIMING_BUNDLE_HOST_ROOT must be a directory'
+    replay_timing_args+=(
+      -v "${replay_timing_bundle}:${replay_timing_container_root}:ro"
+      -e "PYTHONPATH=${replay_timing_container_root}"
+    )
+  fi
+  if [[ "${replay_timing_bundle_is_external}" == 1 ]]; then
+    [[ -f "${replay_timing_bundle}/spark_graph_status_reporter.py" ]] || \
+      die 'CUDA graph replay timing bundle is missing spark_graph_status_reporter.py'
+    for required in sitecustomize.py spark_cudagraph_replay_timing.py; do
+      [[ -f "${replay_timing_bundle}/${required}" ]] || \
+        die "CUDA graph replay timing bundle is missing ${required}"
+    done
+  fi
+  replay_timing_args+=(
+    -e "SPARK_CUDAGRAPH_REPLAY_TIMING_STATUS_PATH=/cache/jit/cudagraph-replay-rank${rank}.json"
+    -e SPARK_CUDAGRAPH_REPLAY_TIMING=1
+    -e "SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES=${SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES}"
+    -e SPARK_CUDAGRAPH_REPLAY_TIMING_ARM_PATH=/cache/jit/sircl-replay-timing.arm
+  )
+fi
 python3 - "${GPU_MEMORY_UTILIZATION}" <<'PY' || exit 78
 import math
 import sys
@@ -334,7 +666,8 @@ fi
 actual_image_id="$(docker image inspect --format '{{.Id}}' "${IMAGE_REF}")"
 [[ "${actual_image_id}" == "${IMAGE_ID}" ]] || \
   die "image identity mismatch: expected ${IMAGE_ID}, got ${actual_image_id}"
-for directory in "${TARGET_MODEL_HOST_PATH}" "${DFLASH_MODEL_HOST_PATH}" "${CACHE_HOST_ROOT}"; do
+for name in "${model_path_names[@]}"; do
+  directory="${!name}"
   [[ -d "${directory}" ]] || die "required directory is missing: ${directory}"
 done
 
@@ -349,11 +682,13 @@ verify_file_sha256() {
 verify_file_sha256 \
   'target config.json' \
   "${TARGET_MODEL_HOST_PATH}/config.json" \
-  '676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996'
+  "${target_config_sha256}"
 verify_file_sha256 \
   'target model.safetensors.index.json' \
   "${TARGET_MODEL_HOST_PATH}/model.safetensors.index.json" \
-  '0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb'
+  "${target_index_sha256}"
+draft_mount_args=()
+if [[ "${SPECULATION_METHOD}" == dflash ]]; then
 verify_file_sha256 \
   'draft config.json' \
   "${DFLASH_MODEL_HOST_PATH}/config.json" \
@@ -362,44 +697,51 @@ verify_file_sha256 \
   'draft model.safetensors' \
   "${DFLASH_MODEL_HOST_PATH}/model.safetensors" \
   'b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b'
+  draft_mount_args=(-v "${DFLASH_MODEL_HOST_PATH}:/dflash-draft:ro")
+fi
 
 container="${CONTAINER_PREFIX}-r${rank}"
-if docker container inspect "${container}" >/dev/null 2>&1; then
+if [[ "${SPARKRING_PRINT_CONTAINER_SPEC}" == 0 ]] && docker container inspect "${container}" >/dev/null 2>&1; then
   printf 'container already exists: %s\n' "${container}" >&2
   exit 3
 fi
 
 export NUM_SPECULATIVE_TOKENS DRAFT_TENSOR_PARALLEL_SIZE DRAFT_KV_CACHE_DTYPE
-export DRAFT_SAMPLE_METHOD REJECTION_SAMPLE_METHOD
+export DRAFT_SAMPLE_METHOD REJECTION_SAMPLE_METHOD SPECULATION_METHOD
 speculative_config="$(python3 - <<'PY'
 import json
 import os
 
-print(json.dumps({
-    "method": "dflash",
-    "model": "/dflash-draft",
+config = {
+    "method": os.environ["SPECULATION_METHOD"],
     "num_speculative_tokens": int(os.environ["NUM_SPECULATIVE_TOKENS"]),
     "draft_tensor_parallel_size": int(os.environ["DRAFT_TENSOR_PARALLEL_SIZE"]),
     "kv_cache_dtype": os.environ["DRAFT_KV_CACHE_DTYPE"],
     "draft_sample_method": os.environ["DRAFT_SAMPLE_METHOD"],
     "rejection_sample_method": os.environ["REJECTION_SAMPLE_METHOD"],
     "draft_load_config": {"load_format": "safetensors"},
-}, separators=(",", ":")))
+}
+if config["method"] == "dflash":
+    config["model"] = "/dflash-draft"
+else:
+    config["attention_backend"] = "B12X"
+print(json.dumps(config, separators=(",", ":")))
 PY
 )"
 
-export CUDAGRAPH_MODE MAX_CUDAGRAPH_CAPTURE_SIZE
+export CUDAGRAPH_MODE MAX_CUDAGRAPH_CAPTURE_SIZE NUM_SPECULATIVE_TOKENS
 compilation_config="$(python3 - <<'PY'
 import json
 import os
 
 maximum = int(os.environ["MAX_CUDAGRAPH_CAPTURE_SIZE"])
-capture_sizes = []
-size = 8
-while size < maximum:
-    capture_sizes.append(size)
-    size *= 2
-capture_sizes.append(maximum)
+rows_per_request = int(os.environ["NUM_SPECULATIVE_TOKENS"]) + 1
+if maximum % rows_per_request:
+    raise SystemExit(
+        "MAX_CUDAGRAPH_CAPTURE_SIZE must be divisible by "
+        "NUM_SPECULATIVE_TOKENS + 1"
+    )
+capture_sizes = list(range(rows_per_request, maximum + 1, rows_per_request))
 print(json.dumps({
     "cudagraph_mode": os.environ["CUDAGRAPH_MODE"],
     "cudagraph_capture_sizes": capture_sizes,
@@ -421,6 +763,7 @@ if [[ "${SPARKCACHE_ENABLED}" == 1 ]]; then
   export SPARKCACHE_CUDA_RESTORE_IO_WORKERS SPARKCACHE_CUDA_ARENA_BYTES
   export SPARKCACHE_ASYNC_PAGE_CAPTURE
   export SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT
+  export TARGET_CHECKPOINT_FINGERPRINT DRAFT_CHECKPOINT_FINGERPRINT
   kv_transfer_config="$(python3 - <<'PY'
 import json
 import os
@@ -432,8 +775,8 @@ extra = {
     "spark_cache_root": f"/cache/jit/sparkcache-context/{os.environ['SPARKCACHE_CACHE_NAMESPACE']}",
     "spark_cache_model_profile": "glm53-flash-hybrid",
     "spark_cache_publication_schema": os.environ["SPARKCACHE_PUBLICATION_SCHEMA"],
-    "spark_cache_target_checkpoint_sha256": "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9",
-    "spark_cache_draft_checkpoint_sha256": "b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b",
+    "spark_cache_target_checkpoint_sha256": os.environ["TARGET_CHECKPOINT_FINGERPRINT"],
+    "spark_cache_draft_checkpoint_sha256": os.environ["DRAFT_CHECKPOINT_FINGERPRINT"],
     "spark_cache_draft_policy": "separate",
     "spark_cache_access_mode": os.environ["SPARKCACHE_ACCESS_MODE"],
     "spark_cache_shared_prefix_lease_ttl_seconds": integer(
@@ -476,6 +819,12 @@ fi
 
 # Text-only mode avoids loading the vision tower. Multimodal mode uses the
 # independently configurable image and video request limits.
+chat_template_mount=()
+chat_template_args=()
+if [[ -n "${CHAT_TEMPLATE_HOST_PATH}" ]]; then
+  chat_template_mount=(-v "${CHAT_TEMPLATE_HOST_PATH}:/opt/sparkring/chat_template.jinja:ro")
+  chat_template_args=(--chat-template /opt/sparkring/chat_template.jinja)
+fi
 multimodal_args=(--language-model-only)
 if [[ "${MULTIMODAL_INPUTS}" == 1 ]]; then
   multimodal_args=(
@@ -496,17 +845,26 @@ if [[ "${JIT_MONITOR_VERBOSE}" == 1 ]]; then
   jit_monitor_args=(--jit-monitor-verbose)
 fi
 
-container_id="$(docker run -d \
+case "${SPARKRING_CREATE_ONLY}" in
+  0) container_action=(run -d) ;;
+  1) container_action=(create) ;;
+  *) die 'SPARKRING_CREATE_ONLY must be 0 or 1' ;;
+esac
+
+container_command=(docker "${container_action[@]}" \
   --name "${container}" \
   --entrypoint /opt/sparkring/bin/serve-with-warmup.py \
   --network host --ipc host --shm-size "${SHM_SIZE}" --gpus all \
   --ulimit memlock=-1:-1 --cap-add IPC_LOCK --device /dev/infiniband \
   --security-opt label=disable --init \
   -v "${TARGET_MODEL_HOST_PATH}:/models/target:ro" \
-  -v "${DFLASH_MODEL_HOST_PATH}:/dflash-draft:ro" \
+  "${draft_mount_args[@]}" \
   -v "${CACHE_HOST_ROOT}:/cache/jit" \
+  "${chat_template_mount[@]}" \
   "${sparkcache_source_args[@]}" \
   "${vllm_metrics_args[@]}" \
+  "${sircl_args[@]}" \
+  "${replay_timing_args[@]}" \
   -e "SPARKRING_NODE_RANK=${rank}" \
   -e "PORT=${PORT}" -e "SERVED_MODEL_NAME=${SERVED_MODEL_NAME}" \
   -e "DFLASH_WARMUP=${DFLASH_WARMUP}" \
@@ -514,11 +872,20 @@ container_id="$(docker run -d \
   -e "DFLASH_WARMUP_SHAPE_WORDS=${DFLASH_WARMUP_SHAPE_WORDS}" \
   -e "DFLASH_WARMUP_MAX_TOKENS=${DFLASH_WARMUP_MAX_TOKENS}" \
   -e "DFLASH_WARMUP_TIMEOUT_SECONDS=${DFLASH_WARMUP_TIMEOUT_SECONDS}" \
+  -e "SPARKRING_WARMUP_TEMPERATURE=${SPARKRING_WARMUP_TEMPERATURE}" \
+  -e "SPARKRING_LIVENESS_ENABLED=${SPARKRING_LIVENESS_ENABLED}" \
+  -e "SPARKRING_LIVENESS_PORT=${SPARKRING_LIVENESS_PORT}" \
+  -e "SPARKRING_LIVENESS_BLOCKED_SECONDS=${SPARKRING_LIVENESS_BLOCKED_SECONDS}" \
+  -e "SPARKRING_LIVENESS_OUTPUT_SECONDS=${SPARKRING_LIVENESS_OUTPUT_SECONDS}" \
+  -e "SPARKRING_IDLE_KV_WARN_SECONDS=${SPARKRING_IDLE_KV_WARN_SECONDS}" \
+  -e "SPARKRING_LIVENESS_STALE_SECONDS=${SPARKRING_LIVENESS_STALE_SECONDS}" \
+  -e "SPARKRING_LIVENESS_SAMPLE_SECONDS=${SPARKRING_LIVENESS_SAMPLE_SECONDS}" \
   "${warmup_api_key_env[@]}" \
   -e "VLLM_HOST_IP=${HOST_IP}" \
   -e VLLM_GLM53_SPLIT_TARGET_BLOCK_SIZE=512 \
   -e VLLM_GLM53_SPLIT_MAMBA_BLOCK_SIZE=512 \
   -e "VLLM_B12X_MLA_CKV_GATHER=${B12X_MLA_CKV_GATHER}" \
+  -e "B12X_FUSED_INDEXER=${B12X_FUSED_INDEXER}" \
   -e "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS=${B12X_MLA_CKV_GATHER_MAX_TOKENS}" \
   -e "VLLM_CACHE_ROOT=/cache/jit/vllm/${JIT_CACHE_NAMESPACE}" \
   -e "B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x/${JIT_CACHE_NAMESPACE}" \
@@ -552,6 +919,12 @@ container_id="$(docker run -d \
   --label org.sparkring.sparkcache.shared-prefix-lease-seconds="${SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS}" \
   --label org.sparkring.rank="${rank}" \
   --label org.sparkring.multimodal-inputs="${MULTIMODAL_INPUTS}" \
+  --label org.sparkring.sircl.enabled="${SIRCL_ENABLED}" \
+  --label org.sparkring.sircl.direct-doorbell="${SPARK_TP4_GRAPH_DIRECT_DOORBELL}" \
+  --label org.sparkring.sircl.prefill-exposure="${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_EXPOSURE}" \
+  --label org.sparkring.sircl.prefill-rail-mode="${VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE}" \
+  --label org.sparkring.sircl.native-sha256="${sircl_native_sha256}" \
+  --label org.sparkring.sircl.manifest-sha256="${sircl_manifest_sha256}" \
   "${IMAGE_REF}" \
   /models/target \
   --served-model-name "${SERVED_MODEL_NAME}" "${api_key_args[@]}" \
@@ -563,6 +936,7 @@ container_id="$(docker run -d \
   --distributed-executor-backend mp --nnodes "${NODE_COUNT}" --node-rank "${rank}" \
   --master-addr "${MASTER_ADDR}" --master-port "${MASTER_PORT}" \
   --disable-custom-all-reduce --mamba-cache-mode align "${multimodal_args[@]}" \
+  "${chat_template_args[@]}" \
   --enable-chunked-prefill --dtype bfloat16 --kv-cache-dtype "${KV_CACHE_DTYPE}" \
   --quantization modelopt_mixed --attention-backend "${ATTENTION_BACKEND}" \
   --block-size 256 --moe-backend "${MOE_BACKEND}" --linear-backend "${LINEAR_BACKEND}" \
@@ -580,9 +954,21 @@ container_id="$(docker run -d \
   --async-scheduling --enable-prefix-caching --cudagraph-metrics \
   "${jit_monitor_args[@]}" \
   "${prompt_tokens_details[@]}" \
-  "${kv_transfer_args[@]}" "${headless[@]}")"
+  "${kv_transfer_args[@]}" "${headless[@]}")
 
-if [[ "${rank}" == 0 && "${DFLASH_WARMUP}" == 1 ]]; then
+# The inspection path emits the same argument array used for execution. It
+# performs identity checks above, but never creates a container or waits for a model.
+if [[ "${SPARKRING_PRINT_CONTAINER_SPEC}" == 1 ]]; then
+  python3 - "${container_command[@]}" <<'PY'
+import json
+import sys
+print(json.dumps({"schema": "sparkring-container-command/v1", "argv": sys.argv[1:]}))
+PY
+  exit 0
+fi
+container_id="$("${container_command[@]}")"
+
+if [[ "${SPARKRING_CREATE_ONLY}" == 0 && "${rank}" == 0 && "${DFLASH_WARMUP}" == 1 ]]; then
   readiness_deadline=$((SECONDS + DFLASH_WARMUP_TIMEOUT_SECONDS + 120))
   while true; do
     health="$(docker inspect --format '{{.State.Health.Status}}' "${container}" 2>/dev/null || true)"

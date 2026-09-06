@@ -1,6 +1,6 @@
 # Patched NCCL fallback
 
-Status: implemented patched-NCCL fallback for direct pairs and four-rank
+Status: implemented patched-NCCL fallback for direct pairs, four-rank and six-rank
 direct-cable cycles.
 
 ## Status and scope

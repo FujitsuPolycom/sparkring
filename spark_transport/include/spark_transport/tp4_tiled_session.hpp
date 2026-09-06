@@ -18,6 +18,7 @@ constexpr std::uint32_t kTp4TiledLatencyMaximumQ = 40;
 constexpr std::uint32_t kTp4TiledMediumMaximumQ = 512;
 constexpr std::uint32_t kTp4TiledLargeMaximumQ = 1024;
 constexpr std::uint32_t kTp4TiledStreamingMaximumQ = 4096;
+constexpr std::uint32_t kTp4TiledExtendedMaximumQ = 8192;
 constexpr std::uint32_t kTp4TiledBf16ElementsPerQueryRow = 6144;
 constexpr std::size_t kTp4TiledBytesPerBf16 = 2;
 constexpr std::size_t kTp4TiledBytesPerQueryRow =
@@ -47,6 +48,7 @@ enum class Tp4TiledCapacityClass : std::uint8_t {
   kMediumQ512 = 2,
   kLargeQ1024 = 3,
   kStreamingQ4096 = 4,
+  kExtendedQ8192 = 5,
 };
 
 struct Tp4SessionStorageOptions {
@@ -58,6 +60,8 @@ struct Tp4SessionStorageOptions {
   std::size_t tile_payload_bytes{};
   std::uint32_t slots_per_edge{};
   std::uint32_t lanes_per_edge{};
+  std::uint32_t elements_per_row{};
+  std::size_t bytes_per_row{};
 };
 
 constexpr bool operator==(const Tp4SessionStorageOptions& left,
@@ -67,7 +71,9 @@ constexpr bool operator==(const Tp4SessionStorageOptions& left,
          left.maximum_query_rows == right.maximum_query_rows &&
          left.tile_payload_bytes == right.tile_payload_bytes &&
          left.slots_per_edge == right.slots_per_edge &&
-         left.lanes_per_edge == right.lanes_per_edge;
+         left.lanes_per_edge == right.lanes_per_edge &&
+         left.elements_per_row == right.elements_per_row &&
+         left.bytes_per_row == right.bytes_per_row;
 }
 
 constexpr bool operator!=(const Tp4SessionStorageOptions& left,
@@ -86,6 +92,8 @@ constexpr std::uint32_t tp4_tiled_capacity_maximum_query_rows(
       return kTp4TiledLargeMaximumQ;
     case Tp4TiledCapacityClass::kStreamingQ4096:
       return kTp4TiledStreamingMaximumQ;
+    case Tp4TiledCapacityClass::kExtendedQ8192:
+      return kTp4TiledExtendedMaximumQ;
     case Tp4TiledCapacityClass::kUnspecified:
       return 0;
   }
@@ -94,8 +102,8 @@ constexpr std::uint32_t tp4_tiled_capacity_maximum_query_rows(
 
 constexpr Tp4TiledCapacityClass tp4_select_tiled_capacity_class(
     std::uint32_t query_rows) {
-  if (query_rows == 0 || query_rows > kTp4TiledStreamingMaximumQ) {
-    throw std::out_of_range("tiled TP4 query rows must be in [1, 4096]");
+  if (query_rows == 0 || query_rows > kTp4TiledExtendedMaximumQ) {
+    throw std::out_of_range("tiled TP4 query rows must be in [1, 8192]");
   }
   if (query_rows <= kTp4TiledLatencyMaximumQ) {
     return Tp4TiledCapacityClass::kLatencyQ40;
@@ -109,11 +117,24 @@ constexpr Tp4TiledCapacityClass tp4_select_tiled_capacity_class(
   if (query_rows <= kTp4TiledStreamingMaximumQ) {
     return Tp4TiledCapacityClass::kStreamingQ4096;
   }
+  if (query_rows <= kTp4TiledExtendedMaximumQ) {
+    return Tp4TiledCapacityClass::kExtendedQ8192;
+  }
   throw std::out_of_range("tiled TP4 capacity selector is inconsistent");
 }
 
 constexpr Tp4SessionStorageOptions
-make_tp4_tiled_session_storage_options(std::uint32_t query_rows) {
+make_tp4_tiled_session_storage_options(
+    std::uint32_t query_rows,
+    std::uint32_t elements_per_row =
+        kTp4TiledBf16ElementsPerQueryRow) {
+  if (elements_per_row == 0 ||
+      elements_per_row >
+          std::numeric_limits<std::size_t>::max() /
+              kTp4TiledBytesPerBf16) {
+    throw std::invalid_argument(
+        "tiled TP4 row geometry must contain BF16 elements");
+  }
   const auto capacity_class =
       tp4_select_tiled_capacity_class(query_rows);
   return {Tp4SessionStorageSelector::kCapacityTieredTiles,
@@ -121,7 +142,10 @@ make_tp4_tiled_session_storage_options(std::uint32_t query_rows) {
           tp4_tiled_capacity_maximum_query_rows(capacity_class),
           kTp4TiledDefaultTilePayloadBytes,
           kTp4TiledDefaultSlotsPerEdge,
-          kTp4TiledDefaultLanesPerEdge};
+          kTp4TiledDefaultLanesPerEdge,
+          elements_per_row,
+          static_cast<std::size_t>(elements_per_row) *
+              kTp4TiledBytesPerBf16};
 }
 
 constexpr bool tp4_session_storage_options_valid(
@@ -131,7 +155,8 @@ constexpr bool tp4_session_storage_options_valid(
                Tp4TiledCapacityClass::kUnspecified &&
            options.maximum_query_rows == 0 &&
            options.tile_payload_bytes == 0 &&
-           options.slots_per_edge == 0 && options.lanes_per_edge == 0;
+           options.slots_per_edge == 0 && options.lanes_per_edge == 0 &&
+           options.elements_per_row == 0 && options.bytes_per_row == 0;
   }
   if (options.selector !=
       Tp4SessionStorageSelector::kCapacityTieredTiles) {
@@ -143,7 +168,11 @@ constexpr bool tp4_session_storage_options_valid(
          options.tile_payload_bytes ==
              kTp4TiledDefaultTilePayloadBytes &&
          options.slots_per_edge == kTp4TiledDefaultSlotsPerEdge &&
-         options.lanes_per_edge == kTp4TiledDefaultLanesPerEdge;
+         options.lanes_per_edge == kTp4TiledDefaultLanesPerEdge &&
+         options.elements_per_row != 0 &&
+         options.bytes_per_row ==
+             static_cast<std::size_t>(options.elements_per_row) *
+                 kTp4TiledBytesPerBf16;
 }
 
 struct Tp4TiledPoolLayout {
@@ -341,6 +370,7 @@ struct Tp4TiledOperationDescriptor {
       Tp4TiledCapacityClass::kUnspecified};
   std::uint32_t query_rows{};
   std::uint32_t tile_count{};
+  std::size_t bytes_per_row{};
   std::uint64_t active_bytes{};
 };
 
@@ -351,24 +381,41 @@ struct Tp4TiledTileDescriptor {
 };
 
 constexpr Tp4TiledOperationDescriptor
-make_tp4_tiled_bf16_allreduce_operation(std::uint32_t query_rows) {
+make_tp4_tiled_bf16_allreduce_operation(
+    std::uint32_t query_rows,
+    std::size_t bytes_per_row = kTp4TiledBytesPerQueryRow) {
+  if (bytes_per_row == 0 ||
+      bytes_per_row % kTp4TiledBytesPerBf16 != 0) {
+    throw std::invalid_argument(
+        "tiled TP4 row geometry must contain whole BF16 elements");
+  }
   const auto capacity_class =
       tp4_select_tiled_capacity_class(query_rows);
+  if (query_rows >
+      std::numeric_limits<std::uint64_t>::max() / bytes_per_row) {
+    throw std::overflow_error("tiled TP4 active byte count overflow");
+  }
   const std::uint64_t active_bytes =
-      static_cast<std::uint64_t>(query_rows) * kTp4TiledBytesPerQueryRow;
+      static_cast<std::uint64_t>(query_rows) * bytes_per_row;
   const std::uint64_t tile_count =
       (active_bytes + kTp4TiledDefaultTilePayloadBytes - 1U) /
       kTp4TiledDefaultTilePayloadBytes;
+  if (tile_count > std::numeric_limits<std::uint32_t>::max()) {
+    throw std::overflow_error("tiled TP4 tile count exceeds uint32");
+  }
   return {capacity_class,
           query_rows,
           static_cast<std::uint32_t>(tile_count),
+          bytes_per_row,
           active_bytes};
 }
 
 constexpr bool tp4_tiled_operation_descriptor_valid(
     const Tp4TiledOperationDescriptor& operation) noexcept {
   if (operation.query_rows == 0 ||
-      operation.query_rows > kTp4TiledStreamingMaximumQ) {
+      operation.query_rows > kTp4TiledExtendedMaximumQ ||
+      operation.bytes_per_row == 0 ||
+      operation.bytes_per_row % kTp4TiledBytesPerBf16 != 0) {
     return false;
   }
   const Tp4TiledCapacityClass expected_capacity =
@@ -378,10 +425,13 @@ constexpr bool tp4_tiled_operation_descriptor_valid(
                 ? Tp4TiledCapacityClass::kMediumQ512
                 : operation.query_rows <= kTp4TiledLargeMaximumQ
                       ? Tp4TiledCapacityClass::kLargeQ1024
-                      : Tp4TiledCapacityClass::kStreamingQ4096;
+                      : operation.query_rows <=
+                                kTp4TiledStreamingMaximumQ
+                            ? Tp4TiledCapacityClass::kStreamingQ4096
+                            : Tp4TiledCapacityClass::kExtendedQ8192;
   const std::uint64_t expected_active_bytes =
       static_cast<std::uint64_t>(operation.query_rows) *
-      kTp4TiledBytesPerQueryRow;
+      operation.bytes_per_row;
   const std::uint64_t expected_tile_count =
       (expected_active_bytes + kTp4TiledDefaultTilePayloadBytes - 1U) /
       kTp4TiledDefaultTilePayloadBytes;

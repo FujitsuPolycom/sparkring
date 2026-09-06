@@ -51,8 +51,20 @@ struct Tp4GraphReplayStatus {
   bool submit_affinity_verified{};
   bool progress_affinity_verified{};
   bool two_slot_deferred_ack{};
+  bool direct_doorbell{};
   int graph_submit_cpu{-1};
   int graph_progress_cpu{-1};
+};
+
+struct Tp4HealthStatus {
+  bool healthy{};
+  bool poisoned{};
+  bool progress_thread_running{};
+  bool stopping{};
+  std::uint64_t submitted_sequence{};
+  std::uint64_t completed_sequence{};
+  std::uint64_t failing_sequence{};
+  std::int32_t error_code{};
 };
 
 class Tp4AllreduceSession {
@@ -74,8 +86,8 @@ class Tp4AllreduceSession {
   // Adds a Q1 BF16 [1, elements_per_row] all-reduce to capture.
   // The captured graph is tied to these stable input/output addresses and
   // must be replayed on the same stream. This session must outlive every
-  // graph replay. Replay sequences are device-published through mapped host
-  // memory and require host-native GPU atomics. This may be called repeatedly
+  // graph replay. Replay sequences use either the mapped command ring or the
+  // opt-in device-ticket/direct-doorbell lane. This may be called repeatedly
   // on the same active capture stream to define the many Q1 nodes in one or
   // more graphs, but always before any eager submission or graph replay.
   void capture_q1_all_reduce(const void* input, void* output,
@@ -90,6 +102,7 @@ class Tp4AllreduceSession {
                           void* cuda_stream);
 
   Tp4GraphReplayStatus graph_replay_status() const noexcept;
+  Tp4HealthStatus health_status() const noexcept;
 
  private:
   class Impl;

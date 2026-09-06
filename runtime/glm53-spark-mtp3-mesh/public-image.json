@@ -1,0 +1,18 @@
+{
+  "checks_passed": true,
+  "anonymous_manifest_read": true,
+  "anonymous_config_read": true,
+  "anonymous_pull": true,
+  "public_reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:23f00af873ccc784cfb742b7be2a29c6d3c20ebec9741843c025320bb9c04685",
+  "tag": "glm53-spark-mtp3-managed-8684a696",
+  "manifest_digest": "sha256:23f00af873ccc784cfb742b7be2a29c6d3c20ebec9741843c025320bb9c04685",
+  "config_image_id": "sha256:26273b8e358df139ae913610a5d43084ff0fd08aafe282ef633a3bc74afefe47",
+  "platform": "linux/arm64",
+  "layer_count": 87,
+  "all_layer_diff_ids_match_tested_image": true,
+  "package_url": "https://github.com/FujitsuPolycom/sparkring/pkgs/container/sparkring-glm53-sparkcache",
+  "schema": "sparkring-managed-mesh-public-image/v1",
+  "status": "research-only",
+  "content_receipt": "image-receipt.json",
+  "functional_record": "../../performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md"
+}

@@ -8,12 +8,54 @@ import os
 import signal
 import subprocess
 import sys
+import time
+import urllib.request
 from pathlib import Path
 
 import warmup_dflash
+import scheduler_liveness
 
 
 READY_PATH = Path("/tmp/sparkring-engine-ready")
+
+
+def warmup_sampling(
+    endpoint: str,
+    model: str,
+    max_tokens: int,
+    timeout_seconds: float,
+    credential: str | None,
+) -> dict[str, object]:
+    """Exercise stochastic sampling and reasoning before declaring readiness."""
+    body = {
+        "model": model,
+        "messages": [{
+            "role": "user",
+            "content": f"Sampling warmup {time.monotonic_ns()}. Reply briefly.",
+        }],
+        "temperature": 1.0,
+        "max_tokens": max_tokens,
+        "chat_template_kwargs": {"enable_thinking": True},
+    }
+    headers = {"Content-Type": "application/json"}
+    if credential:
+        headers["Authorization"] = f"Bearer {credential}"
+    request = urllib.request.Request(
+        endpoint.rstrip("/") + "/v1/chat/completions",
+        data=json.dumps(body).encode(),
+        headers=headers,
+    )
+    started = time.monotonic()
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+        result = json.load(response)
+    choices = result.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise RuntimeError("Sampling warmup response has no completion")
+    return {
+        "temperature": 1.0,
+        "enable_thinking": True,
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+    }
 
 
 def _positive_csv(value: str, name: str) -> tuple[int, ...]:
@@ -43,7 +85,7 @@ def complete_readiness(
 
     ready_path.unlink(missing_ok=True)
     if rank == 0:
-        warmup_dflash.wait_for_api(endpoint, timeout_seconds)
+        warmup_dflash.wait_for_api(endpoint, timeout_seconds, credential)
         result = ()
         if warmup_enabled:
             result = warmup_dflash.run_warmup(
@@ -55,13 +97,50 @@ def complete_readiness(
                 shape_words,
                 credential,
             )
+            sampling = warmup_sampling(
+                endpoint, model, max_tokens, timeout_seconds, credential
+            )
+            print(json.dumps({"sampling_warmup": sampling}, separators=(",", ":")))
         print(json.dumps({"dflash_warmup": result}, separators=(",", ":")))
     ready_path.touch()
+
+
+def start_rank_liveness(
+    *,
+    rank: int,
+    endpoint: str,
+    credential: str | None,
+):
+    """Start the rank-zero scheduler monitor when the profile enables it."""
+
+    if rank != 0 or os.environ.get("SPARKRING_LIVENESS_ENABLED", "1") != "1":
+        return None
+    return scheduler_liveness.start_liveness_service(
+        metrics_url=f"{endpoint}/metrics",
+        port=int(os.environ.get("SPARKRING_LIVENESS_PORT", "8016")),
+        blocked_timeout_seconds=float(
+            os.environ.get("SPARKRING_LIVENESS_BLOCKED_SECONDS", "60")
+        ),
+        output_timeout_seconds=float(
+            os.environ.get("SPARKRING_LIVENESS_OUTPUT_SECONDS", "300")
+        ),
+        idle_kv_warn_seconds=float(
+            os.environ.get("SPARKRING_IDLE_KV_WARN_SECONDS", "330")
+        ),
+        stale_sample_seconds=float(
+            os.environ.get("SPARKRING_LIVENESS_STALE_SECONDS", "15")
+        ),
+        sample_interval_seconds=float(
+os.environ.get("SPARKRING_LIVENESS_SAMPLE_SECONDS", "10")
+        ),
+        credential=credential,
+    )
 
 
 def main() -> int:
     READY_PATH.unlink(missing_ok=True)
     child = subprocess.Popen(["vllm", "serve", *sys.argv[1:]])
+    liveness_service = None
 
     def forward(signum, _frame):
         if child.poll() is None:
@@ -74,13 +153,18 @@ def main() -> int:
         timeout_seconds = float(
             os.environ.get("DFLASH_WARMUP_TIMEOUT_SECONDS", "600")
         )
+        endpoint = f"http://127.0.0.1:{os.environ.get('PORT', '8015')}"
+        credential = os.environ.get("SPARKRING_WARMUP_API_KEY") or None
         complete_readiness(
             rank=rank,
-            endpoint=f"http://127.0.0.1:{os.environ.get('PORT', '8015')}",
+            endpoint=endpoint,
             model=os.environ.get("SERVED_MODEL_NAME", "glm-5.3-flash"),
             warmup_enabled=os.environ.get("DFLASH_WARMUP", "0") == "1",
             concurrencies=_positive_csv(
-                os.environ.get("DFLASH_WARMUP_CONCURRENCIES", "1,2,4,8,16"),
+                os.environ.get(
+                    "DFLASH_WARMUP_CONCURRENCIES",
+                    "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16",
+                ),
                 "DFLASH_WARMUP_CONCURRENCIES",
             ),
             shape_words=_positive_csv(
@@ -89,15 +173,23 @@ def main() -> int:
             ),
             max_tokens=int(os.environ.get("DFLASH_WARMUP_MAX_TOKENS", "16")),
             timeout_seconds=timeout_seconds,
-            credential=os.environ.get("SPARKRING_WARMUP_API_KEY") or None,
+            credential=credential,
         )
+        liveness_service = start_rank_liveness(
+            rank=rank,
+            endpoint=endpoint,
+            credential=credential,
+        )
+        return child.wait()
     except BaseException:
         READY_PATH.unlink(missing_ok=True)
         if child.poll() is None:
             child.terminate()
             child.wait(timeout=30)
         raise
-    return child.wait()
+    finally:
+        if liveness_service is not None:
+            liveness_service.close()
 
 
 if __name__ == "__main__":

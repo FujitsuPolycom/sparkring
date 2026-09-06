@@ -28,6 +28,10 @@ _GRAPH_ALLREDUCE_DEFAULT_PORTS = (9970, 9971)
 _GRAPH_DUAL_PORT_Q40_DEFAULT_PORTS = (9972, 9973)
 _EAGER_VOCAB_DEFAULT_PORTS = (9990, 9991)
 _GRAPH_VOCAB_DEFAULT_PORTS = (10110, 10111)
+_BIDIRECTIONAL_PREFILL_DEFAULT_PORTS = (19000, 19001)
+_BIDIRECTIONAL_PREFILL_SECONDARY_DEFAULT_PORTS = (19100, 19101)
+_BIDIRECTIONAL_PREFILL_PORT_STRIDE = 2
+_BIDIRECTIONAL_PREFILL_QUERY_ROWS = (1024, 2048, 4096, 8192)
 
 
 @dataclass(frozen=True)
@@ -332,6 +336,56 @@ def _graph_dual_port_q40_pair(
     )
 
 
+def _bidirectional_prefill_pair(
+    query_rows: int, environ: Mapping[str, str]
+) -> tuple[int, int]:
+    if query_rows not in _BIDIRECTIONAL_PREFILL_QUERY_ROWS:
+        raise ValueError(
+            "Spark TP4 bidirectional prefill Q must be one of "
+            f"{_BIDIRECTIONAL_PREFILL_QUERY_ROWS}: {query_rows}"
+        )
+    base = _configured_pair(
+        environ,
+        owner="bidirectional prefill base",
+        name0="SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT0",
+        name1="SPARK_TP4_BIDIRECTIONAL_PREFILL_CONTROL_PORT1",
+        defaults=_BIDIRECTIONAL_PREFILL_DEFAULT_PORTS,
+    )
+    offset = (
+        _BIDIRECTIONAL_PREFILL_QUERY_ROWS.index(query_rows)
+        * _BIDIRECTIONAL_PREFILL_PORT_STRIDE
+    )
+    return validate_control_port_pair(
+        (base[0] + offset, base[1] + offset),
+        owner=f"bidirectional prefill q={query_rows}",
+    )
+
+
+def _bidirectional_prefill_secondary_pair(
+    query_rows: int, environ: Mapping[str, str]
+) -> tuple[int, int]:
+    if query_rows not in _BIDIRECTIONAL_PREFILL_QUERY_ROWS:
+        raise ValueError(
+            "Spark TP4 bidirectional prefill Q must be one of "
+            f"{_BIDIRECTIONAL_PREFILL_QUERY_ROWS}: {query_rows}"
+        )
+    base = _configured_pair(
+        environ,
+        owner="bidirectional prefill secondary base",
+        name0="SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT0",
+        name1="SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_CONTROL_PORT1",
+        defaults=_BIDIRECTIONAL_PREFILL_SECONDARY_DEFAULT_PORTS,
+    )
+    offset = (
+        _BIDIRECTIONAL_PREFILL_QUERY_ROWS.index(query_rows)
+        * _BIDIRECTIONAL_PREFILL_PORT_STRIDE
+    )
+    return validate_control_port_pair(
+        (base[0] + offset, base[1] + offset),
+        owner=f"bidirectional prefill secondary q={query_rows}",
+    )
+
+
 
 
 def _eager_vocab_pair(environ: Mapping[str, str]) -> tuple[int, int]:
@@ -367,6 +421,11 @@ def active_port_reservations(
         "VLLM_SPARK_TP4_MODE",
         frozenset({"custom", "disabled", "shadow"}),
     )
+    bidirectional_rail_mode = _mode(
+        environment,
+        "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE",
+        frozenset({"single", "dual"}),
+    ) or "single"
     if allreduce_mode in {"custom", "shadow"}:
         for query_rows in _supported_allreduce_query_rows(environment):
             reservations.append(
@@ -402,6 +461,23 @@ def active_port_reservations(
                         _graph_dual_port_q40_pair(environment),
                     )
                 )
+        if _flag(environment, "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL"):
+            for query_rows in _BIDIRECTIONAL_PREFILL_QUERY_ROWS:
+                reservations.append(
+                    PortReservation(
+                        f"bidirectional_prefill:q={query_rows}",
+                        _bidirectional_prefill_pair(query_rows, environment),
+                    )
+                )
+                if bidirectional_rail_mode == "dual":
+                    reservations.append(
+                        PortReservation(
+                            f"bidirectional_prefill_secondary:q={query_rows}",
+                            _bidirectional_prefill_secondary_pair(
+                                query_rows, environment
+                            ),
+                        )
+                    )
 
     vocab_mode = _mode(
         environment,
@@ -475,6 +551,24 @@ def graph_dual_port_q40_control_ports(
 ) -> tuple[int, int]:
     environment = _environment(environ)
     ports = _graph_dual_port_q40_pair(environment)
+    validate_active_port_namespace(environment)
+    return ports
+
+
+def bidirectional_prefill_control_ports(
+    query_rows: int, environ: Mapping[str, str] | None = None
+) -> tuple[int, int]:
+    environment = _environment(environ)
+    ports = _bidirectional_prefill_pair(query_rows, environment)
+    validate_active_port_namespace(environment)
+    return ports
+
+
+def bidirectional_prefill_secondary_control_ports(
+    query_rows: int, environ: Mapping[str, str] | None = None
+) -> tuple[int, int]:
+    environment = _environment(environ)
+    ports = _bidirectional_prefill_secondary_pair(query_rows, environment)
     validate_active_port_namespace(environment)
     return ports
 
