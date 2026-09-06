@@ -28,7 +28,11 @@ def phases(action, code_root, config_root):
         'up': [('model-stop-barrier', command('model-stopped')),
                ('start-mesh-units', [*systemctl, 'start', 'sparkring-mesh.service']),
                ('four-rank-ready', [*command('gate'), '--timeout', '60'])],
-        'start-model': [('four-rank-ready', [*command('gate'), '--timeout', '60']),
+        'start-model': [('model-stop-barrier', command('model-stopped')),
+                        ('memory-idle-barrier', command('memory-idle')),
+                        ('prepare-launch-memory', command('memory-prepare')),
+                        ('memory-ready-barrier', command('memory-check')),
+                        ('four-rank-ready', [*command('gate'), '--timeout', '60']),
                         ('start-model-units', [*systemctl, 'start', 'sparkring-mesh-model.service'])],
         'stop-model': stop,
         'down': down,
@@ -44,7 +48,7 @@ def execute(host, argv):
     started = time.monotonic()
     try:
         result = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host, shlex.join(argv)],
-                                capture_output=True, text=True, timeout=120)
+                                capture_output=True, text=True, timeout=240)
         return {'host': host, 'argv': argv, 'returncode': result.returncode,
                 'stdout': result.stdout, 'stderr': result.stderr, 'seconds': time.monotonic() - started}
     except subprocess.TimeoutExpired:
