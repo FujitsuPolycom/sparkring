@@ -8,6 +8,8 @@ import os
 import signal
 import subprocess
 import sys
+import time
+import urllib.request
 from pathlib import Path
 
 import warmup_dflash
@@ -15,6 +17,45 @@ import scheduler_liveness
 
 
 READY_PATH = Path("/tmp/sparkring-engine-ready")
+
+
+def warmup_sampling(
+    endpoint: str,
+    model: str,
+    max_tokens: int,
+    timeout_seconds: float,
+    credential: str | None,
+) -> dict[str, object]:
+    """Exercise stochastic sampling and reasoning before declaring readiness."""
+    body = {
+        "model": model,
+        "messages": [{
+            "role": "user",
+            "content": f"Sampling warmup {time.monotonic_ns()}. Reply briefly.",
+        }],
+        "temperature": 1.0,
+        "max_tokens": max_tokens,
+        "chat_template_kwargs": {"enable_thinking": True},
+    }
+    headers = {"Content-Type": "application/json"}
+    if credential:
+        headers["Authorization"] = f"Bearer {credential}"
+    request = urllib.request.Request(
+        endpoint.rstrip("/") + "/v1/chat/completions",
+        data=json.dumps(body).encode(),
+        headers=headers,
+    )
+    started = time.monotonic()
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+        result = json.load(response)
+    choices = result.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise RuntimeError("Sampling warmup response has no completion")
+    return {
+        "temperature": 1.0,
+        "enable_thinking": True,
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+    }
 
 
 def _positive_csv(value: str, name: str) -> tuple[int, ...]:
@@ -56,6 +97,10 @@ def complete_readiness(
                 shape_words,
                 credential,
             )
+            sampling = warmup_sampling(
+                endpoint, model, max_tokens, timeout_seconds, credential
+            )
+            print(json.dumps({"sampling_warmup": sampling}, separators=(",", ":")))
         print(json.dumps({"dflash_warmup": result}, separators=(",", ":")))
     ready_path.touch()
 

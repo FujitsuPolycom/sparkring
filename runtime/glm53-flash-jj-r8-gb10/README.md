@@ -288,6 +288,13 @@ arena wait that would justify more unified-memory pressure.
 
 The image entrypoint runs `warmup_dflash.py` before Docker reports rank 0 as
 healthy.
+The readiness wrapper `serve_with_warmup.py` includes a final temperature-one request with thinking
+enabled, in addition to the configured shape batches. Failure of that request
+prevents warmup completion. This sampling coverage is implemented with CPU
+request-contract tests; kernel coverage requires a rebuilt image and GPU
+validation. It does not establish coverage of mixed long/short prefill batches
+or all recurrent KDA specializations. The published image receipt does not
+qualify the additional request.
 The default environment template warms every concurrency from C1 through C16
 and prompt spans covering the DFlash Triton `BLOCK_SIZE` specializations
 through 256. DFlash depth seven verifies eight target rows per active request,

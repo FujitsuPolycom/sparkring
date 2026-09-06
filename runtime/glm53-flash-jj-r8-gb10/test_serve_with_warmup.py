@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import io
+import json
 import sys
 from pathlib import Path
 
@@ -48,6 +50,10 @@ def test_rank_zero_marks_ready_only_after_warmup(tmp_path: Path, monkeypatch) ->
         return ({"concurrency": 2},)
 
     monkeypatch.setattr(warmup, "run_warmup", run)
+    monkeypatch.setattr(
+        wrapper, "warmup_sampling",
+        lambda *_args: events.append("sampling") or {},
+    )
 
     wrapper.complete_readiness(
         rank=0,
@@ -62,8 +68,47 @@ def test_rank_zero_marks_ready_only_after_warmup(tmp_path: Path, monkeypatch) ->
         ready_path=ready,
     )
 
-    assert events == ["api", "warmup"]
+    assert events == ["api", "warmup", "sampling"]
     assert ready.is_file()
+
+
+def test_sampling_request_uses_auth_temperature_and_reasoning(monkeypatch):
+    wrapper, _ = _load_module(monkeypatch)
+    observed = []
+
+    def urlopen(request, timeout):
+        observed.append(request)
+        assert timeout == 10
+        return io.BytesIO(b'{"choices":[{"message":{"reasoning":"ok"}}]}')
+
+    monkeypatch.setattr(wrapper.urllib.request, "urlopen", urlopen)
+    result = wrapper.warmup_sampling("http://localhost/", "model", 16, 10, "secret")
+    body = json.loads(observed[0].data)
+    assert observed[0].full_url == "http://localhost/v1/chat/completions"
+    assert observed[0].get_header("Authorization") == "Bearer secret"
+    assert body["temperature"] == 1.0
+    assert body["chat_template_kwargs"] == {"enable_thinking": True}
+    assert body["max_tokens"] == 16
+    assert result["enable_thinking"] is True
+
+
+def test_sampling_failure_withholds_readiness_marker(tmp_path, monkeypatch):
+    import pytest
+
+    wrapper, warmup = _load_module(monkeypatch)
+    ready = tmp_path / "ready"
+    ready.touch()
+    monkeypatch.setattr(warmup, "wait_for_api", lambda *_args: None)
+    monkeypatch.setattr(warmup, "run_warmup", lambda *_args: ())
+    monkeypatch.setattr(wrapper.urllib.request, "urlopen",
+                        lambda *_args, **_kwargs: io.BytesIO(b'{"choices":[]}'))
+    with pytest.raises(RuntimeError, match="Sampling warmup response has no completion"):
+        wrapper.complete_readiness(
+            rank=0, endpoint="http://localhost", model="model",
+            warmup_enabled=True, concurrencies=(1,), shape_words=(8,),
+            max_tokens=16, timeout_seconds=10, credential=None, ready_path=ready,
+        )
+    assert not ready.exists()
 
 
 def test_headless_rank_does_not_call_http_warmup(tmp_path: Path, monkeypatch) -> None:
