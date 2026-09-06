@@ -7,7 +7,7 @@ The recipe preserves the parent model weights and does not change host fabric.
 
 ## Build inputs
 
-Use a clean SparkCache checkout at `19873f697c1ebdaf2b11d2013f2411b31f9e0f81`.
+Use a clean SparkCache checkout at `b5aca7cd3d3f7e7a14636bf6e5fa1f50a9650168`.
 It contains the merged restore/publication improvements, periodic-capture
 option, and backlog gauges. Periodic full capture defaults off; enabling it
 trades more writes for shorter history reconstruction.
