@@ -43,8 +43,10 @@ the composition without private workspace paths.
 
 ## Limitations
 
-No serving soak was run on this exact rebuilt image. Source equivalence does not
-transfer every measurement from the comparison image. Earlier cache-pressure
+This file-comparison record does not measure serving behavior. The exact image
+also passed a separate [bounded serving smoke](mtp3-cache-checkpoints-serving-smoke-20260906.md);
+no long-duration serving soak of this exact image is claimed. Source equivalence
+does not transfer every measurement from the comparison image. Earlier cache-pressure
 tests used a 2 GiB/rank namespace; 40 GiB multimodal stress behavior remains
 unqualified. Native binary rebuilds can differ with toolchains and require
 separate verification. This record does not establish unattended availability.
