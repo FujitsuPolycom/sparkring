@@ -31,7 +31,7 @@ Use Linux or WSL with Python 3.11+, Bash, and Go 1.26. Build the tested lil fork
 ```bash
 git clone --branch codex/image-runtime-adapter --single-branch https://github.com/FujitsuPolycom/lil.git
 cd lil
-git checkout 8a3e86c096e8dae2d1e7055a7f55070141653125
+git checkout 329cde801b847294005cb16765692032a6cdf206
 go build -o lil ./cmd/lil
 install -D lil "$HOME/.local/bin/lil"
 ```
@@ -82,6 +82,21 @@ serving readiness. `logs` prints the last 100 lines per rank.
 names, inspect and remove or rename the stopped containers first. Partial launch
 failures leave containers available for inspection and stop. Automatic recovery
 after a failed launch or host restart is not implemented.
+
+Keep the original `bundle.json` for the deployment. Ownership labels bind its
+contents, including checks; regenerating it after changing settings or exporter
+code can prevent inspection or stop. For containers created without content-digest
+labels, explicitly allow legacy ownership:
+
+```bash
+lil image status --allow-legacy-owner original-bundle.json
+lil image logs --allow-legacy-owner original-bundle.json
+lil image stop --allow-legacy-owner original-bundle.json
+```
+
+This accepts a missing digest, never a conflicting one. Status, logs, and stop
+continue on reachable, verified ranks when another rank fails. An error therefore
+does not mean nothing happened; inspect the reported results before retrying.
 
 The optional DFlash7 profile uses `--descriptor integrations/lil/glm53.json` and
 `site.example.json`. The default MTP3 descriptor is `glm53-mtp3.json`.

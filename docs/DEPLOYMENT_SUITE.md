@@ -25,9 +25,9 @@ ordering; this complete workflow has not been tested on factory-reset Sparks.
 The preparation document records the lifecycle capabilities found in the
 staged source. When that source implements all three memory operations,
 startup checks idle hosts, prepares memory, and checks memory readiness before
-model arming. Partial memory-operation support is rejected. This checkout's
-pinned profile predates those operations; capability negotiation does not add
-them to an older image or installer. Match source, image receipt, and installed
+model arming. Partial memory-operation support is rejected. The managed lifecycle
+source includes those operations; capability negotiation does not add
+them to an image or installer that lacks them. Match source, image receipt, and installed
 lifecycle before replacement. This is not a drop-in upgrade command.
 
 ## Discover and review

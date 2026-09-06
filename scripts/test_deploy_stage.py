@@ -93,6 +93,9 @@ def test_stage_sequence_uses_one_download_and_never_starts_model(
         "weights.bin": "b" * 64,
     }
     preparation = prepared()
+    from scripts.deploy_suite import lifecycle_capabilities
+
+    preparation["lifecycle_capabilities"] = lifecycle_capabilities(module.PROFILE)
     facts = configured_inventory(preparation["spec"])["hosts"]
     launch_content = {
         name: b"{}" for name in module.LAUNCH_FILES - {"fabric-plan.json"}

@@ -97,9 +97,19 @@ def test_fabric_gid_indices_reach_container_environment(
     not os.environ.get("LIL_TEST_BINARY"),
     reason="set LIL_TEST_BINARY to the locally built companion CLI",
 )
-def test_export_consumed_by_lil_cli(tmp_path):
-    descriptor = module.read_json(HERE / "glm53.json")
-    site = module.read_json(HERE / "site.example.json")
+@pytest.mark.parametrize("cache", [True, False])
+@pytest.mark.parametrize(
+    "descriptor_file,site_file",
+    [
+        ("glm53.json", "site.example.json"),
+        ("glm53-mtp3.json", "site-mtp3.example.json"),
+    ],
+)
+def test_export_consumed_by_lil_cli(tmp_path, cache, descriptor_file, site_file):
+    descriptor = module.read_json(HERE / descriptor_file)
+    site = module.read_json(HERE / site_file)
+    if not cache:
+        site["cache"] = {"enabled": False}
     bundle = module.export(descriptor, site, fabric(), "handoff-fixture")
     filename = tmp_path / "bundle.json"
     filename.write_text(json.dumps(bundle))
@@ -113,6 +123,88 @@ def test_export_consumed_by_lil_cli(tmp_path):
         assert result.returncode == 0, result.stderr
         if action == "render":
             assert json.loads(result.stdout) == bundle
+
+
+def test_companion_revision_matches_instructions_and_ci():
+    revision = module.read_json(HERE / "glm53.json")["lil_revision"]
+    assert module.read_json(HERE / "glm53-mtp3.json")["lil_revision"] == revision
+    for path in (
+        HERE / "README.md",
+        HERE / "OWNERSHIP.md",
+        module.ROOT / ".github/workflows/ci.yml",
+    ):
+        assert revision in path.read_text(), str(path)
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not os.environ.get("LIL_TEST_BINARY"),
+    reason="requires Linux/WSL and the built companion CLI",
+)
+@pytest.mark.parametrize("action", ["status", "logs", "stop"])
+@pytest.mark.parametrize(
+    "mode,allow,expected_actions",
+    [
+        ("legacy", False, 0),
+        ("legacy", True, 4),
+        ("conflict", True, 3),
+        ("unreachable", True, 3),
+    ],
+)
+def test_exported_bundle_lifecycle_with_fake_ssh(
+    tmp_path, action, mode, allow, expected_actions
+):
+    bundle = module.export(
+        module.read_json(HERE / "glm53-mtp3.json"),
+        module.read_json(HERE / "site-mtp3.example.json"),
+        fabric(),
+        "lifecycle-fixture",
+    )
+    filename = tmp_path / "bundle.json"
+    filename.write_text(json.dumps(bundle))
+    calls = tmp_path / "calls.jsonl"
+    fake = tmp_path / "ssh"
+    fake.write_text(
+        "#!"
+        + sys.executable
+        + "\n"
+        + r"""
+import json, os, shlex, sys
+from pathlib import Path
+bundle = json.loads(Path(os.environ["FAKE_BUNDLE"]).read_text())
+rank = next(r for r in bundle["ranks"] if r["host"] == sys.argv[-2])
+args = shlex.split(sys.argv[-1])
+mode = os.environ["FAKE_MODE"]
+if mode == "unreachable" and rank["rank"] == 1:
+    sys.exit(255)
+if args[1] == "inspect" and args[-1] == rank["name"]:
+    labels = {"lil.image_bundle": bundle["id"]}
+    if mode == "conflict" and rank["rank"] == 1:
+        labels["lil.image_bundle_sha256"] = "f" * 64
+    print(json.dumps({"Id": str(rank["rank"] + 1) * 64, "Config": {"Labels": labels}}))
+else:
+    assert args[-1] == str(rank["rank"] + 1) * 64, args
+    with open(os.environ["FAKE_CALLS"], "a") as stream:
+        stream.write(json.dumps(args) + "\n")
+    print("ok")
+"""
+    )
+    fake.chmod(0o755)
+    env = dict(
+        os.environ,
+        PATH=str(tmp_path) + os.pathsep + os.environ["PATH"],
+        FAKE_BUNDLE=str(filename),
+        FAKE_CALLS=str(calls),
+        FAKE_MODE=mode,
+    )
+    argv = [os.environ["LIL_TEST_BINARY"], "image", action]
+    if allow:
+        argv.append("--allow-legacy-owner")
+    result = subprocess.run(
+        [*argv, str(filename)], env=env, capture_output=True, text=True, timeout=20
+    )
+    assert (result.returncode == 0) == (mode == "legacy" and allow), result.stderr
+    observed = calls.read_text().splitlines() if calls.exists() else []
+    assert len(observed) == expected_actions, result.stderr
 
 
 @pytest.mark.skipif(os.name != "posix", reason="canonical Bash launcher")

@@ -2,7 +2,7 @@
   "schema": "sparkring-lil-descriptor/v1",
   "profile": "glm53-flash-tp4-dflash7",
   "transport": {"provider": "sircl", "rail_mode": "dual"},
-  "lil_revision": "11df08a793596b0a5b09e72e90d9a1ece51c9306",
+  "lil_revision": "329cde801b847294005cb16765692032a6cdf206",
   "sources": {
     "runtime": {
       "path": "runtime/glm53-flash-jj-r8-gb10/pins.json",

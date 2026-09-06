@@ -70,8 +70,8 @@ unsupported. Do not treat the base
 image's SIRCL-only qualification or a different child image's functional
 record as qualification of this managed mesh deployment.
 
-Maintained Python trees are `spark_transport/`, `runtime/`, `scripts/`, and
-`performance/`. The GLM-5.2, GLM-5.3, and Qwen runtime builders are
+Maintained Python trees are `spark_transport/`, `runtime/`, `scripts/`,
+`performance/`, and `integrations/lil/`. The GLM-5.2, GLM-5.3, and Qwen runtime builders are
 `runtime/exl3-r7/`, `runtime/glm53-flash/`, and `runtime/qwen38/`. Do not add
 references, CI jobs, or contributor commands for removed native cache,
 plugin, legacy runtime-builder, or deleted configuration-example surfaces.
@@ -119,8 +119,8 @@ test imports torch:
 ```bash
 python -m pip install -r requirements-dev.txt
 python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.11.0"
-ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance
-python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
+ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance integrations/lil
+python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts integrations/lil -q -rs
 ```
 
 The test suite is CPU-only contract coverage. It does not validate CUDA,

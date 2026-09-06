@@ -4,7 +4,7 @@ Status: implemented in the FujitsuPolycom integration fork; no upstream maintena
 
 Companion implementation: [FujitsuPolycom/lil, `codex/image-runtime-adapter`](https://github.com/FujitsuPolycom/lil/tree/codex/image-runtime-adapter),
 based on upstream revision `11df08a793596b0a5b09e72e90d9a1ece51c9306`.
-Tested companion revision: `8a3e86c096e8dae2d1e7055a7f55070141653125`;
+Offline-tested companion revision: `329cde801b847294005cb16765692032a6cdf206`;
 [fork draft PR #1](https://github.com/FujitsuPolycom/lil/pull/1).
 The extension is maintained separately from this SparkRing change. Upstream lil
 cannot execute these bundles; the fork provides the implementation for testing
