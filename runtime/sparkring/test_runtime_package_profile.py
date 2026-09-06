@@ -3,7 +3,7 @@ from pathlib import Path
 import unittest
 
 
-class ProfileTests(unittest.TestCase):
+class RuntimePackageProfileTests(unittest.TestCase):
     def test_profile_matches_final_settings_and_is_sanitized(self):
         root = Path(__file__).resolve().parents[1]
         path = root / 'profiles/glm53-flash-spark-tp2/profile.json'
