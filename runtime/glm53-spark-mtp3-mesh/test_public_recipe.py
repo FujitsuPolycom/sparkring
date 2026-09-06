@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import sys
 
+import pytest
+
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 
@@ -35,3 +37,27 @@ def test_public_content_receipt_is_accepted_by_renderer():
     assert receipt['image_id'] == public['config_image_id']
     assert public['checks_passed'] and public['anonymous_pull']
     assert public['all_layer_diff_ids_match_tested_image']
+
+
+def test_published_warmup_receipt_does_not_follow_checkout_source(monkeypatch):
+    spec = importlib.util.spec_from_file_location('public_warmup_profile', HERE / 'profile.py')
+    profile = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(profile)
+    monkeypatch.setattr(profile, "sha", lambda path: "f" * 64)
+    receipt = profile.load_image_receipt(HERE / 'image-receipt.json')
+    assert receipt['inside_image']['readiness_warmup']['helper_sha256'] != "f" * 64
+
+
+@pytest.mark.parametrize("use_published_identity", [True, False])
+def test_published_identity_cannot_authorize_forged_warmup(tmp_path, use_published_identity):
+    spec = importlib.util.spec_from_file_location('forged_warmup_profile', HERE / 'profile.py')
+    profile = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(profile)
+    document = json.loads((HERE / 'image-receipt.json').read_text())
+    document['inside_image']['readiness_warmup']['helper_sha256'] = "f" * 64
+    if not use_published_identity:
+        document['image_id'] = document['image_reference'] = "sha256:" + "a" * 64
+    path = tmp_path / 'receipt.json'
+    path.write_text(json.dumps(document))
+    with pytest.raises(ValueError, match="Published image receipt|sampling warmup helper"):
+        profile.load_image_receipt(path)

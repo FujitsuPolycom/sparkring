@@ -45,6 +45,12 @@ subprocess.run(
 sys.path.insert(0, str(SOURCE / "reasoning"))
 from patch_contract import apply
 
+for name, target in (
+    ("serve_with_warmup.py", "serve-with-warmup.py"),
+    ("warmup_dflash.py", "warmup_dflash.py"),
+    ("startup_admission.py", "startup_admission.py"),
+):
+    shutil.copyfile(SOURCE / "startup" / name, Path("/opt/sparkring/bin") / target)
 apply(SITE, Path("/opt/sparkring/bin/warmup_dflash.py"))
 shutil.copytree(SOURCE / "sparkcache", SITE / "sparkcache", dirs_exist_ok=True)
 contract = (
@@ -83,6 +89,8 @@ for root in (
             files[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
 for path in (
     Path("/opt/sparkring/bin/warmup_dflash.py"),
+    Path("/opt/sparkring/bin/serve-with-warmup.py"),
+    Path("/opt/sparkring/bin/startup_admission.py"),
     Path(
         "/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so"
     ),

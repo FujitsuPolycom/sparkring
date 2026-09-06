@@ -393,6 +393,7 @@ def prepare_context(
         "verify_image.py",
         "warmup_dflash.py",
         "serve_with_warmup.py",
+        "startup_admission.py",
         "scheduler_liveness.py",
     ):
         shutil.copy2(HERE / name, context / name)
@@ -451,6 +452,7 @@ def prepare_context(
                 "verify_image.py",
                 "warmup_dflash.py",
                 "serve_with_warmup.py",
+                "startup_admission.py",
                 "scheduler_liveness.py",
                 "bundle/receipts/pins.json",
                 "bundle/receipts/vllm-source-manifest.json",

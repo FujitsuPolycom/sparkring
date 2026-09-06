@@ -62,3 +62,25 @@ source or ownership dependency fails the build rather than weakening checks.
 The image verifier establishes file identity, not a throughput result.
 Source equivalence with a serving image and bounded test evidence must be
 recorded separately from any claim that this image completed a serving soak.
+
+## Startup admission
+
+Status: implemented; CPU request-boundary tests cover admission. A rebuilt
+serving image must be validated before hardware qualification is claimed.
+
+The serving wrapper installs vLLM middleware that returns HTTP 503 with
+`Retry-After: 5` until its readiness marker exists. Public requests cannot
+consume scheduler slots during request-shape and sampling warmup. Read-only
+`/health`, `/v1/models`, and `/metrics` probes remain available; `/health` is
+liveness, not completion of warmup. Docker readiness uses the marker.
+
+The wrapper generates a random startup token before launching vLLM and passes
+it to its warmup requests in an internal header. The middleware removes the
+header before forwarding a request. A loopback address alone does not bypass
+the gate. The token changes at every startup, and stopping the wrapper removes
+the marker. Failed warmup keeps public inference blocked.
+
+The build context includes the wrapper, warmup client, and admission module;
+the image receipt verifies all three files. Published image receipts describe
+immutable artifacts and do not claim this behavior until an image containing
+these sources has been built and recorded.

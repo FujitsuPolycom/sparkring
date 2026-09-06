@@ -127,10 +127,19 @@ def load_image_receipt(path: Path) -> dict:
             or inside.get("cuda_initialized") is not False or inside.get("model_loaded") is not False):
         raise ValueError("Image receipt does not verify the pinned parent and mesh bundle")
     warmup = inside.get("readiness_warmup")
-    if warmup is not None and warmup != {
+    expected_warmup = {
         "environment": "SPARKRING_WARMUP_TEMPERATURE",
         "helper_sha256": sha(BASE / "warmup_dflash.py"), "temperature": 1.0,
-    }:
+    }
+    public = json.loads((HERE / "public-image.json").read_text())
+    if image_id == public["config_image_id"]:
+        # Immutable images retain their packaged helper when checkout sources change.
+        # The public identity only authorizes its complete canonical content receipt.
+        canonical = json.loads((HERE / "image-receipt.json").read_text())
+        if canonical["image_id"] != public["config_image_id"] or document != canonical:
+            raise ValueError("Published image receipt differs from the repository pin")
+        expected_warmup = canonical["inside_image"].get("readiness_warmup")
+    if warmup is not None and warmup != expected_warmup:
         raise ValueError("Image receipt does not verify the sampling warmup helper")
     compute = inside.get("compute")
     required = PINS.get("compute", {})
