@@ -26,6 +26,20 @@ checkpoint hash. Both Qwen base profiles pin
 revision `ab3a91a13813df8096cb4c1d560ed3669035d0cf` and the checkpoint's
 published configuration hash.
 
+## Research-only profiles
+
+The [GLM-5.3 native-MTP3 cache/checkpoint mesh](../GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md)
+publishes the integrated compute, recurrent checkpoint, optimized SparkCache,
+and transport composition for TP4/DCP4. Its
+[recipe](../../recipes/glm53-mtp3-cache-checkpoints-tp4.json) pins the image and
+source inputs. File equivalence with the deployed runtime is verified; that
+does not constitute a serving soak of the rebuilt image.
+
+The [GLM-5.3 Flash NVFP4-Spark TP2 profile](../GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md)
+is research-only. Model-neutral image and matching SparkCache source pins are
+public; child-image serving qualification remains pending.
+It does not replace the published TP4 profile.
+
 ## Unsupported integrations
 
 | Integration | Topology | Status |

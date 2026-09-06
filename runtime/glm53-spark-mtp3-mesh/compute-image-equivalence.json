@@ -1,0 +1,27 @@
+{
+  "schema": "sparkring-compute-image-equivalence/v1",
+  "checks_passed": true,
+  "tested_serving_image": "sha256:3b4768e5ba31cadcc882dffa06d7b667af44abdf157d5c11b7ac7fe962e80c43",
+  "published_image": "sha256:2e41b1e934a85ff7c21b780532db2f0a0e978df081e52f4ae2bf11f8992fb24f",
+  "package_files": {
+    "b12x": 385,
+    "sparkcache": 150,
+    "vllm": 4891
+  },
+  "package_files_identical": true,
+  "selected_environment_identical": true,
+  "environment": {
+    "CUDA_HOME": "/opt/cuda-13.3",
+    "SPARKRING_WARMUP_TEMPERATURE": "1",
+    "TRITON_PTXAS_PATH": "/opt/cuda-13.3/bin/ptxas",
+    "VLLM_B12X_DENSE_ACTIVATION_MODE": "auto",
+    "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+    "VLLM_LM_HEAD_A16": "1",
+    "VLLM_MTP_NVFP4_LM_HEAD": "1",
+    "VLLM_MXFP8_LM_HEAD": "0"
+  },
+  "tested_snapshot_sha256": "7d2413eea1f2da3163f40f2a7cf937aeacb1bca44bdc5477fac87b94594b92b0",
+  "published_snapshot_sha256": "7d2413eea1f2da3163f40f2a7cf937aeacb1bca44bdc5477fac87b94594b92b0",
+  "scope": "All installed compute package files except Python bytecode. Mounted transport differs and is validated separately in the linked exact-image record.",
+  "functional_record": "../../performance/records/glm53-flash/spark-mtp3-compute-stream-safety-20260906.md"
+}

@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -28,7 +29,7 @@ jobs:
       - name: Install development tools
         run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
       - name: Lint maintained Python trees
-        run: ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance
+        run: ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance integrations/lil
 
   tests:
     name: tests
@@ -53,7 +54,40 @@ jobs:
             --index-url https://download.pytorch.org/whl/cpu \
             "torch==${TORCH_VERSION}"
       - name: Test maintained Python trees
-        run: python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/test_public_overlay.py performance/harnesses scripts -q -rs
+        run: python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/sparkring runtime/test_public_overlay.py performance/harnesses scripts integrations/lil -q -rs
+
+  lil-bridge:
+    name: pinned LIL bridge
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: FujitsuPolycom/lil
+          ref: 329cde801b847294005cb16765692032a6cdf206
+          path: .lil-companion
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+          cache-dependency-path: .lil-companion/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Build and test companion lifecycle
+        working-directory: .lil-companion
+        run: |
+          go test ./...
+          go vet ./...
+          go build -o "$RUNNER_TEMP/lil" ./cmd/lil
+      - name: Test both SparkRing profiles against the pinned CLI
+        env:
+          LIL_TEST_BINARY: ${{ runner.temp }}/lil
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-dev.txt
+          test -x "$LIL_TEST_BINARY"
+          python -m pytest integrations/lil -q -rs
 
   docs-links:
     name: docs links
@@ -65,74 +99,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Check repo-relative Markdown links and anchors
-        run: |
-          cat > "${RUNNER_TEMP}/mdlinkcheck.py" <<'PYEOF'
-          from __future__ import annotations
-
-          import re
-          import subprocess
-          import sys
-          import unicodedata
-          from pathlib import Path
-
-          LINK = re.compile(r"(?<!\\)\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\s*\)")
-          FENCE = re.compile(r"^\s*(```|~~~)")
-          HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$")
-          SKIP = re.compile(r"^(https?:|mailto:|ftp:|tel:|data:|#!)", re.IGNORECASE)
-
-          def slug(text: str) -> str:
-              text = re.sub(r"`([^`]*)`", r"\1", text)
-              text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
-              text = re.sub(r"[*_~]", "", text)
-              text = unicodedata.normalize("NFKD", text).lower()
-              return re.sub(r"[^\w\- ]+", "", text).strip().replace(" ", "-")
-
-          def anchors(path: Path) -> set[str]:
-              result, fenced = set(), False
-              for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-                  if FENCE.match(line):
-                      fenced = not fenced
-                  elif not fenced and (match := HEADING.match(line)):
-                      result.add(slug(match.group(1)))
-              return result
-
-          def main() -> int:
-              root = Path(sys.argv[1]).resolve()
-              tracked = subprocess.run(
-                  ["git", "ls-files", "-z", "*.md"], cwd=root, check=True,
-                  capture_output=True, text=True,
-              ).stdout.split("\0")
-              cache, failures, checked = {}, [], 0
-              for relative in filter(None, tracked):
-                  source = root / relative
-                  fenced = False
-                  for number, line in enumerate(source.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-                      if FENCE.match(line):
-                          fenced = not fenced
-                          continue
-                      if fenced:
-                          continue
-                      for target in LINK.findall(re.sub(r"`[^`]*`", "", line)):
-                          if SKIP.match(target):
-                              continue
-                          checked += 1
-                          path, _, fragment = target.partition("#")
-                          destination = source if not path else (source.parent / path).resolve()
-                          if not destination.exists():
-                              failures.append(f"{relative}:{number}: missing target {path!r}")
-                          elif fragment and destination.suffix.lower() == ".md":
-                              if destination not in cache:
-                                  cache[destination] = anchors(destination)
-                              if fragment.lower() not in cache[destination]:
-                                  failures.append(f"{relative}:{number}: missing anchor #{fragment} in {destination.relative_to(root)}")
-              for failure in failures:
-                  print(f"::error::{failure}")
-              print(f"checked {checked} repo-relative links")
-              return int(bool(failures))
-
-          raise SystemExit(main())
-          PYEOF
-          python "${RUNNER_TEMP}/mdlinkcheck.py" "${GITHUB_WORKSPACE}"
+        run: python scripts/check_markdown_links.py .
 
   release-safety:
     name: release safety
@@ -140,32 +107,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Scan tracked files for site identities and credentials
-        run: |
-          set -uo pipefail
-          EXCLUDES=(
-            ':(exclude).github/workflows/ci.yml'
-            ':(exclude)docs/RELEASE_SAFETY.md'
-          )
-          PATTERNS=(
-            '192\.168\.[0-9]{1,3}\.[0-9]{1,3}'
-            '(^|[^0-9.])172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3}'
-            '[A-Za-z0-9_.-]+@(192\.168\.|10\.[0-9]|172\.(1[6-9]|2[0-9]|3[01])\.)'
-            'Documents[\\/]sparkring'
-            '-----BEGIN [A-Z ]*PRIVATE KEY-----'
-            'ssh-(rsa|ed25519|dss) AAAA'
-            '(pass(word|wd)|secret|api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|bearer)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9/+_.-]{12,}'
-            'AWS_SECRET_ACCESS_KEY|GITHUB_TOKEN[[:space:]]*[:=]|xox[baprs]-|gh[pousr]_[A-Za-z0-9]{20,}'
-          )
-          status=0
-          for pattern in "${PATTERNS[@]}"; do
-            hits="$(git grep -n -I -E -i -e "$pattern" -- "${EXCLUDES[@]}" || true)"
-            if [ -n "$hits" ]; then
-              status=1
-              printf '%s\n' "$hits"
-            fi
-          done
-          if [ "$status" -ne 0 ]; then
-            echo "::error::tracked content contains a site identity or credential shape"
-            exit 1
-          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Scan tracked files without disclosing matched content
+        run: python scripts/check_release_safety.py .

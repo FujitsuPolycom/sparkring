@@ -28,6 +28,17 @@ fi
 : "${CONTAINER_PREFIX:=glm53-jj-r8-gb10}"
 : "${SPARKRING_CREATE_ONLY:=0}"
 : "${SPARKRING_PRINT_CONTAINER_SPEC:=0}"
+: "${SPARKRING_OFFLINE_SPEC:=0}"
+case "${SPARKRING_OFFLINE_SPEC}" in
+  0) ;;
+  1) [[ "${SPARKRING_PRINT_CONTAINER_SPEC}" == 1 ]] || { printf 'offline rendering requires SPARKRING_PRINT_CONTAINER_SPEC=1\n' >&2; exit 78; } ;;
+  *) printf 'SPARKRING_OFFLINE_SPEC must be 0 or 1\n' >&2; exit 78 ;;
+esac
+: "${SPARKRING_PRINT_MEMORY_PLAN:=0}"
+case "${SPARKRING_PRINT_MEMORY_PLAN}" in
+  0|1) ;;
+  *) printf 'SPARKRING_PRINT_MEMORY_PLAN must be 0 or 1\n' >&2; exit 78 ;;
+esac
 case "${SPARKRING_PRINT_CONTAINER_SPEC}" in
   0|1) ;;
   *) printf 'SPARKRING_PRINT_CONTAINER_SPEC must be 0 or 1\n' >&2; exit 78 ;;
@@ -132,6 +143,7 @@ esac
 : "${SPARKCACHE_ASYNC_PAGE_CAPTURE:=0}"
 : "${SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES:=auto}"
 : "${SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT:=2}"
+: "${SPARKCACHE_BUFFER_BUDGET_BYTES:=0}"
 : "${SPARKCACHE_SOURCE_OVERLAY:=}"
 : "${VLLM_KV_METRICS_OVERLAY:=}"
 : "${MULTIMODAL_INPUTS:=1}"
@@ -184,6 +196,7 @@ do
 done
 require_uint SPARKCACHE_LOW_WATERMARK_BYTES
 require_uint SPARKCACHE_TTL_SECONDS
+require_uint SPARKCACHE_BUFFER_BUDGET_BYTES
 require_uint NCCL_IB_GID_INDEX
 require_uint MAX_IMAGES_PER_PROMPT
 require_uint MAX_VIDEOS_PER_PROMPT
@@ -297,13 +310,21 @@ case "${ENABLE_PROMPT_TOKENS_DETAILS}" in
   *) die 'ENABLE_PROMPT_TOKENS_DETAILS must be 0 or 1' ;;
 esac
 case "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" in
-  0|1) ;;
-  *) die 'SPARKCACHE_ASYNC_PAGE_CAPTURE must be 0 or 1' ;;
+  auto|0|1) ;;
+  *) die 'SPARKCACHE_ASYNC_PAGE_CAPTURE must be auto, 0, or 1' ;;
 esac
 case "${SPARKCACHE_ACCESS_MODE}" in
   read-write|restore-only|store-only|disabled) ;;
   *) die 'SPARKCACHE_ACCESS_MODE must be read-write, restore-only, store-only, or disabled' ;;
 esac
+if [[ "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == auto ]]; then
+  SPARKCACHE_ASYNC_PAGE_CAPTURE=0
+  if [[ "${SPARKCACHE_ENABLED}" == 1 ]]; then
+    case "${SPARKCACHE_ACCESS_MODE}" in
+      read-write|store-only) SPARKCACHE_ASYNC_PAGE_CAPTURE=1 ;;
+    esac
+  fi
+fi
 if [[ "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 ]]; then
   [[ "${SPARKCACHE_ENABLED}" == 1 ]] || \
     die 'asynchronous page capture requires SPARKCACHE_ENABLED=1'
@@ -312,6 +333,69 @@ if [[ "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 ]]; then
     *) die 'asynchronous page capture requires a publication-capable access mode' ;;
   esac
 fi
+
+# Resolve the payload buffers before inspecting checkpoints or contacting Docker.
+# Python integers avoid overflow when comparing operator-supplied byte budgets.
+command -v python3 >/dev/null 2>&1 || die 'python3 is required to resolve the memory plan'
+export SPARKCACHE_ENABLED SPARKCACHE_ACCESS_MODE SPARKCACHE_LOAD_THREADS
+export SPARKCACHE_CUDA_ARENA_BYTES SPARKCACHE_ASYNC_PAGE_CAPTURE
+export SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT
+export SPARKCACHE_BUFFER_BUDGET_BYTES KV_CACHE_MEMORY_BYTES
+export TENSOR_PARALLEL_SIZE PIPELINE_PARALLEL_SIZE DECODE_CONTEXT_PARALLEL_SIZE
+memory_plan="$(python3 - <<'PY'
+import json
+import os
+import sys
+
+def integer(name):
+    return int(os.environ[name])
+
+enabled = os.environ["SPARKCACHE_ENABLED"] == "1"
+mode = os.environ["SPARKCACHE_ACCESS_MODE"]
+# The pinned manager-page connector caps active placement lanes at eight.
+requested_lanes = integer("SPARKCACHE_LOAD_THREADS")
+lanes = min(8, requested_lanes) if enabled and mode in ("read-write", "restore-only") else 0
+slots = integer("SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT") if os.environ["SPARKCACHE_ASYNC_PAGE_CAPTURE"] == "1" else 0
+restore = lanes * 2 * integer("SPARKCACHE_CUDA_ARENA_BYTES")
+capture = slots * integer("SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES")
+buffers = restore + capture
+budget = integer("SPARKCACHE_BUFFER_BUDGET_BYTES")
+ranks = integer("TENSOR_PARALLEL_SIZE") * integer("PIPELINE_PARALLEL_SIZE")
+kv = integer("KV_CACHE_MEMORY_BYTES")
+print(json.dumps({
+    "status": "implemented",
+    "basis": "configured payload capacities; not measured resident memory",
+    "access_mode": mode if enabled else "disabled",
+    "async_page_capture": slots > 0,
+    "dcp_degree": integer("DECODE_CONTEXT_PARALLEL_SIZE"),
+    "rank_count": ranks,
+    "requested_restore_lanes_per_rank": requested_lanes,
+    "restore_lanes_per_rank": lanes,
+    "arenas_per_restore_lane": 2,
+    "capture_slots_per_rank": slots,
+    "restore_payload_bytes_per_rank": restore,
+    "capture_payload_bytes_per_rank": capture,
+    "sparkcache_payload_bytes_per_rank": buffers,
+    "sparkcache_payload_bytes_all_ranks": buffers * ranks,
+    "buffer_budget_bytes_per_rank": budget or None,
+    "within_buffer_budget": budget == 0 or buffers <= budget,
+    "kv_cache_bytes_per_rank": kv,
+    "kv_and_payload_bytes_per_rank": kv + buffers,
+    "kv_and_payload_bytes_all_ranks": (kv + buffers) * ranks,
+    "excluded": ["model weights", "CUDA control arrays", "Python objects and read buffers",
+                 "shared base retention", "transport", "compilation workspaces", "allocator overhead"],
+}, sort_keys=True))
+if budget and buffers > budget:
+    print(f"SparkCache payload buffers require {buffers} bytes per rank, exceeding "
+          f"SPARKCACHE_BUFFER_BUDGET_BYTES={budget}", file=sys.stderr)
+    sys.exit(78)
+PY
+)" || { printf '%s\n' "${memory_plan}"; exit 78; }
+if [[ "${SPARKRING_PRINT_MEMORY_PLAN}" == 1 ]]; then
+  printf '%s\n' "${memory_plan}"
+  exit 0
+fi
+printf 'sparkcache: memory_plan %s\n' "${memory_plan}" >&2
 if [[ -n "${CHAT_TEMPLATE_HOST_PATH}" ]]; then
   [[ "${CHAT_TEMPLATE_HOST_PATH}" == /* ]] || \
     die 'CHAT_TEMPLATE_HOST_PATH must be an absolute host path when set'
@@ -545,6 +629,10 @@ if [[ "${SIRCL_ENABLED}" == 1 ]]; then
       -v "${SIRCL_BUNDLE_HOST_ROOT}:${sircl_container_root}:ro"
     )
     sircl_bundle_is_external=1
+  elif [[ "${SPARKRING_OFFLINE_SPEC}" == 1 ]]; then
+    sircl_native_sha256="${SPARKRING_DECLARED_SIRCL_NATIVE_SHA256:?offline rendering requires declared native identity}"
+    sircl_manifest_sha256="${SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256:?offline rendering requires declared manifest identity}"
+    [[ "${sircl_native_sha256}" =~ ^[0-9a-f]{64}$ && "${sircl_manifest_sha256}" =~ ^[0-9a-f]{64}$ ]] || die 'invalid declared SIRCL identity'
   else
     sircl_native_sha256="$(
       docker image inspect --format \
@@ -663,6 +751,7 @@ if [[ "${SPARKCACHE_CLEAR_ONCE}" == auto ]]; then
   SPARKCACHE_CLEAR_ONCE="${SPARKCACHE_CACHE_NAMESPACE}"
 fi
 
+if [[ "${SPARKRING_OFFLINE_SPEC}" == 0 ]]; then
 actual_image_id="$(docker image inspect --format '{{.Id}}' "${IMAGE_REF}")"
 [[ "${actual_image_id}" == "${IMAGE_ID}" ]] || \
   die "image identity mismatch: expected ${IMAGE_ID}, got ${actual_image_id}"
@@ -670,9 +759,13 @@ for name in "${model_path_names[@]}"; do
   directory="${!name}"
   [[ -d "${directory}" ]] || die "required directory is missing: ${directory}"
 done
+fi
 
 verify_file_sha256() {
   local role="$1" path="$2" expected="$3" actual
+  # Offline output records intended arguments; image and file checks belong to
+  # the consumer's preflight before it starts any rank.
+  [[ "${SPARKRING_OFFLINE_SPEC}" == 0 ]] || return 0
   [[ -f "${path}" ]] || die "${role} is missing: ${path}"
   actual="$(sha256sum -- "${path}")"
   actual="${actual%% *}"
@@ -755,6 +848,8 @@ kv_transfer_args=()
 if [[ "${SPARKCACHE_ENABLED}" == 1 ]]; then
   export SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE SPARKCACHE_MAX_BYTES
   export SPARKCACHE_ACCESS_MODE
+  export SPARKCACHE_PLACEMENT_LIBRARY_SHA256="${SPARKCACHE_PLACEMENT_LIBRARY_SHA256:-d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c}"
+  [[ "${SPARKCACHE_PLACEMENT_LIBRARY_SHA256}" =~ ^[0-9a-f]{64}$ ]] || die 'SPARKCACHE_PLACEMENT_LIBRARY_SHA256 must be a SHA-256 digest'
   export SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS
   export SPARKCACHE_PUBLICATION_SCHEMA
   export SPARKCACHE_LOW_WATERMARK_BYTES SPARKCACHE_TTL_SECONDS
@@ -791,7 +886,7 @@ extra = {
     "spark_cache_min_span_tokens": integer("SPARKCACHE_MIN_SPAN_TOKENS"),
     "spark_cache_max_span_tokens": integer("SPARKCACHE_MAX_SPAN_TOKENS"),
     "spark_cache_cuda_placement_library": "/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so",
-    "spark_cache_cuda_placement_library_sha256": "d57509052b73853bcc8e3c3f47bb81748d87b9cbd8d908fc20d4c79a09aa400c",
+    "spark_cache_cuda_placement_library_sha256": os.environ["SPARKCACHE_PLACEMENT_LIBRARY_SHA256"],
     "spark_cache_cuda_placement_arena_bytes": integer("SPARKCACHE_CUDA_ARENA_BYTES"),
     "spark_cache_cuda_restore_io_workers": integer("SPARKCACHE_CUDA_RESTORE_IO_WORKERS"),
     "spark_cache_load_threads": integer("SPARKCACHE_LOAD_THREADS"),

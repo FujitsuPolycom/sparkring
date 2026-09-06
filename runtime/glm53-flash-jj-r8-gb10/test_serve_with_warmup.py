@@ -217,3 +217,58 @@ def test_headless_rank_does_not_start_scheduler_liveness(monkeypatch) -> None:
         )
         is None
     )
+
+
+def test_wrapper_launches_gate_before_readiness_and_removes_marker(tmp_path, monkeypatch):
+    wrapper, _ = _load_module(monkeypatch)
+    ready = tmp_path / "ready"
+    ready.touch()
+    monkeypatch.setattr(wrapper, "READY_PATH", ready)
+    monkeypatch.setenv("SPARKRING_STARTUP_TOKEN", "stale-token")
+    monkeypatch.setenv("SPARKRING_LIVENESS_ENABLED", "0")
+    monkeypatch.setattr(wrapper.sys, "argv", ["serve-with-warmup.py", "model"])
+    monkeypatch.setattr(wrapper.signal, "signal", lambda *_: None)
+    started = []
+
+    class Child:
+        def wait(self):
+            assert ready.exists()
+            return 0
+
+    def popen(argv, env):
+        assert not ready.exists()
+        assert argv[-2:] == ["--middleware", "startup_admission.StartupAdmission"]
+        assert env["SPARKRING_STARTUP_TOKEN"] != "stale-token"
+        assert len(env["SPARKRING_STARTUP_TOKEN"]) >= 40
+        assert env["SPARKRING_STARTUP_TOKEN"] not in argv
+        assert str(HERE) in env["PYTHONPATH"].split(wrapper.os.pathsep)
+        assert env["SPARKRING_READY_PATH"] == str(ready)
+        started.append(env["SPARKRING_STARTUP_TOKEN"])
+        return Child()
+
+    def complete(**kwargs):
+        assert started == [wrapper.os.environ["SPARKRING_STARTUP_TOKEN"]]
+        ready.touch()
+
+    monkeypatch.setattr(wrapper.subprocess, "Popen", popen)
+    monkeypatch.setattr(wrapper, "complete_readiness", complete)
+    assert wrapper.main() == 0
+    assert not ready.exists()
+
+
+def test_both_warmup_requests_carry_internal_token_and_api_auth(monkeypatch):
+    wrapper, warmup = _load_module(monkeypatch)
+    monkeypatch.setenv("SPARKRING_STARTUP_TOKEN", "internal-secret")
+    observed = []
+
+    def urlopen(request, **kwargs):
+        observed.append(request)
+        return io.BytesIO(b'{"choices":[{"message":{"content":"ok"}}]}')
+
+    monkeypatch.setattr(wrapper.urllib.request, "urlopen", urlopen)
+    wrapper.warmup_sampling("http://localhost", "model", 16, 10, "api-secret")
+    warmup.send_warmup_request("http://localhost", "model", "nonce", 16, 10, 8, "api-secret")
+    assert len(observed) == 2
+    for request in observed:
+        assert request.get_header("X-sparkring-startup-token") == "internal-secret"
+        assert request.get_header("Authorization") == "Bearer api-secret"

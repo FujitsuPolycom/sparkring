@@ -93,6 +93,8 @@ def test_image_packages_dflash_warmup_and_rank_zero_waits_for_it() -> None:
     assert '"warmup_dflash.py"' in builder
     assert '"serve_with_warmup.py"' in builder
     assert '"scheduler_liveness.py"' in builder
+    assert '"startup_admission.py"' in builder
+    assert "COPY startup_admission.py /opt/sparkring/bin/startup_admission.py" in recipe
     assert '0) container_action=(run -d)' in launcher
     assert '1) container_action=(create)' in launcher
     assert 'container_command=(docker "${container_action[@]}"' in launcher
@@ -103,7 +105,7 @@ def test_image_packages_dflash_warmup_and_rank_zero_waits_for_it() -> None:
     wrapper = (HERE / "serve_with_warmup.py").read_text(encoding="utf-8")
     main_source = wrapper.split("def main() -> int:", 1)[1]
     assert main_source.index("READY_PATH.unlink(missing_ok=True)") < main_source.index(
-        'subprocess.Popen(["vllm", "serve"'
+        'subprocess.Popen('
     )
 
 
@@ -470,7 +472,7 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
         "KV_CACHE_MEMORY_BYTES='auto'",
         "B12X_MLA_CKV_GATHER_MAX_TOKENS=524288",
         "SPARKCACHE_MAX_SPAN_TOKENS=1048576",
-        "SPARKCACHE_ASYNC_PAGE_CAPTURE=1",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE='auto'",
         "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES='auto'",
         "SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2",
         "SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS=300",

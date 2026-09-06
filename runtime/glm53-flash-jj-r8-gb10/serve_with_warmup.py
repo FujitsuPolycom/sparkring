@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import secrets
 import subprocess
 import sys
 import time
@@ -38,6 +39,9 @@ def warmup_sampling(
         "chat_template_kwargs": {"enable_thinking": True},
     }
     headers = {"Content-Type": "application/json"}
+    token = os.environ.get("SPARKRING_STARTUP_TOKEN")
+    if token:
+        headers["X-Sparkring-Startup-Token"] = token
     if credential:
         headers["Authorization"] = f"Bearer {credential}"
     request = urllib.request.Request(
@@ -139,7 +143,17 @@ os.environ.get("SPARKRING_LIVENESS_SAMPLE_SECONDS", "10")
 
 def main() -> int:
     READY_PATH.unlink(missing_ok=True)
-    child = subprocess.Popen(["vllm", "serve", *sys.argv[1:]])
+    # Rotate the bypass on every process start, before the public listener exists.
+    os.environ["SPARKRING_STARTUP_TOKEN"] = secrets.token_urlsafe(32)
+    os.environ["SPARKRING_READY_PATH"] = str(READY_PATH)
+    child_env = os.environ.copy()
+    child_env["PYTHONPATH"] = os.pathsep.join(filter(None, (
+        str(Path(__file__).resolve().parent), child_env.get("PYTHONPATH")
+    )))
+    child = subprocess.Popen([
+        "vllm", "serve", *sys.argv[1:],
+        "--middleware", "startup_admission.StartupAdmission",
+    ], env=child_env)
     liveness_service = None
 
     def forward(signum, _frame):
@@ -188,6 +202,7 @@ def main() -> int:
             child.wait(timeout=30)
         raise
     finally:
+        READY_PATH.unlink(missing_ok=True)
         if liveness_service is not None:
             liveness_service.close()
 

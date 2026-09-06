@@ -1,0 +1,408 @@
+{
+  "bundle_manifest_sha256": "69313e19e881ec93e9ed3bd150d2f24fc6b444488ac729a69f45d038e2243500",
+  "cache_namespace": "glm53-spark-df116c4f-mtp3-nvfp4-a16-c57b6438c-mesh69313e19-tail-cow-v2",
+  "indexer": {
+    "path": "b12x/attention/dsa_indexer/fused_indexer.py",
+    "preimage_sha256": "893fbcade135b7e1d146b8fb6530cde0650be515f69bf9a17ced0a9c61a141e2",
+    "result_sha256": "35a7564ec8bf18f1b7dc5562b21616437b65e7b0689c56341b6436c8d202637b",
+    "script_sha256": "70ac64c8e58c448eb2b4184395c55821d371d5654298a4fb7c5f55a76ab884ff"
+  },
+  "installer_sha256": "af89efb28e34b2035f608ca1a2edf20a34d3f397f52a0e5e65d24f9b2b37667f",
+  "parent_image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:67dc0ae453baaae6831ccec1d259b4ef8b236a8b0dc9f747d901b95c66ec1987",
+  "parent_image_id": "sha256:2e41b1e934a85ff7c21b780532db2f0a0e978df081e52f4ae2bf11f8992fb24f",
+  "parent_source_lock_sha256": "139f36701e0e47f45bf99fba2cc2fa59b417f2ee801dad3a064455d5b464a459",
+  "schema": "sparkring-mesh-indexer-barrier/v1",
+  "source_lock_sha256": "57b6438ca014a493380fb874a84977d35b0983e9ee224a62ade3415fd9c7ce46",
+  "source_receipt_sha256": "030e9f3749672d186b66e41336980af1abb5c207f734feafa677ba82456c5d43",
+  "status": "research-only",
+  "artifact": {
+    "reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:7aa57ed1901b83c8581c53cb233db930bb1a133d74be01168d967b9dd56b3e49",
+    "image_id": "sha256:995a42b4b08f525813c5783f78f34571b6bd1c197fccee53617ff8060574a16d"
+  },
+  "verification": {
+    "added_layers": 2,
+    "bundle_manifest_sha256": "69313e19e881ec93e9ed3bd150d2f24fc6b444488ac729a69f45d038e2243500",
+    "checks_passed": true,
+    "image": "sha256:995a42b4b08f525813c5783f78f34571b6bd1c197fccee53617ff8060574a16d",
+    "image_id": "sha256:995a42b4b08f525813c5783f78f34571b6bd1c197fccee53617ff8060574a16d",
+    "image_reference": "sha256:995a42b4b08f525813c5783f78f34571b6bd1c197fccee53617ff8060574a16d",
+    "image_size_bytes": 22108643353,
+    "inside_image": {
+      "b12x_commit": "ef308bac0f3b3eb8fea63e4013afc0c2ea1c6301",
+      "bundle_files": 28,
+      "bundle_manifest_sha256": "69313e19e881ec93e9ed3bd150d2f24fc6b444488ac729a69f45d038e2243500",
+      "checks_passed": true,
+      "compute": {
+        "b12x_files": 385,
+        "b12x_revision": "ef308bac0f3b3eb8fea63e4013afc0c2ea1c6301",
+        "b12x_tree": "dcf039e5e754136275835ea997e6b9abbb6b15ae",
+        "cuda_version": "13.3",
+        "environment": {
+          "CUDA_HOME": "/opt/cuda-13.3",
+          "TRITON_PTXAS_PATH": "/opt/cuda-13.3/bin/ptxas",
+          "VLLM_B12X_DENSE_ACTIVATION_MODE": "auto",
+          "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+          "VLLM_LM_HEAD_A16": "1",
+          "VLLM_MTP_NVFP4_LM_HEAD": "1",
+          "VLLM_MXFP8_LM_HEAD": "0"
+        },
+        "proposal_head_nvfp4": true,
+        "source_lock_sha256": "57b6438ca014a493380fb874a84977d35b0983e9ee224a62ade3415fd9c7ce46",
+        "target_head_quantization": false,
+        "vllm_overrides": 24,
+        "vllm_parent_files": 2905
+      },
+      "cuda_initialized": false,
+      "device_access": false,
+      "limitation": "Content and CPU checks do not qualify CUDA graphs, RDMA forwarding, native MTP, cache restoration, or model performance.",
+      "marker_binary_sha256": "2828c07e4255c4962c77425be2c88969e7eb7dd4b1bf9e36485bc705bb5d6d64",
+      "marker_source_sha256": "8684a6961b8e86aa474fa2310ff71e4cdf219a63a72ceb5593b2f95e54812792",
+      "model_loaded": false,
+      "parent_package_files": {
+        "b12x": 385,
+        "sparkcache": 150,
+        "vllm": 2905
+      },
+      "python_syntax_files": 25,
+      "readiness_warmup": {
+        "environment": "SPARKRING_WARMUP_TEMPERATURE",
+        "helper_sha256": "f41c38eef41d15d63dcfc49cd6643357ca1a3ae18200ddbe4f8692d0b767ee79",
+        "temperature": 1.0
+      },
+      "rocenante_lazy_import": "/opt/spark-sircl/b12x_overlay/b12x/comm/roce/__init__.py",
+      "sircl_native_sha256": "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc",
+      "source_receipt_sha256": "030e9f3749672d186b66e41336980af1abb5c207f734feafa677ba82456c5d43",
+      "sparkcache_commit": "66057174301a4759ca3a45207ea41016689449cb",
+      "status": "research-only",
+      "vllm_commit": "e02b174693e13859de61811b5e8cd13d5308e259",
+      "vllm_native_extensions": 15
+    },
+    "limitation": "Content-verifier scope excludes GPU and model execution; separate GPU evidence follows.",
+    "parent_image_id": "sha256:2e41b1e934a85ff7c21b780532db2f0a0e978df081e52f4ae2bf11f8992fb24f",
+    "parent_layers_retained": 89,
+    "platform": "linux/arm64",
+    "schema": "sparkring-mtp3-mesh-image-receipt/v1",
+    "source_receipt_sha256": "030e9f3749672d186b66e41336980af1abb5c207f734feafa677ba82456c5d43",
+    "status": "research-only",
+    "verification_command": [
+      "docker",
+      "run",
+      "--rm",
+      "--network",
+      "none",
+      "--read-only",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "--cpus",
+      "2",
+      "--memory",
+      "2g",
+      "--pids-limit",
+      "128",
+      "--tmpfs",
+      "/tmp:rw,nosuid,nodev,size=128m",
+      "--env",
+      "PYTHONDONTWRITEBYTECODE=1",
+      "--entrypoint",
+      "python3",
+      "sha256:995a42b4b08f525813c5783f78f34571b6bd1c197fccee53617ff8060574a16d",
+      "-I",
+      "/opt/sparkring/bin/verify-mtp3-mesh-image.py",
+      "--inside-image"
+    ]
+  },
+  "gpu_probe": [
+    {
+      "gpu": "NVIDIA GB10",
+      "sm": [
+        12,
+        1
+      ],
+      "source": "/usr/local/lib/python3.12/dist-packages/b12x/attention/dsa_indexer/fused_indexer.py",
+      "source_sha256": "893fbcade135b7e1d146b8fb6530cde0650be515f69bf9a17ced0a9c61a141e2",
+      "torch": "2.13.0+cu130"
+    },
+    {
+      "entry_sync": false,
+      "eager": [
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ]
+      ],
+      "graph": [
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ],
+        [
+          512,
+          513,
+          512
+        ]
+      ],
+      "incomplete_reads": 20
+    },
+    {
+      "entry_sync": true,
+      "eager": [
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ]
+      ],
+      "graph": [
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ],
+        [
+          513,
+          513,
+          513
+        ]
+      ],
+      "incomplete_reads": 0
+    }
+  ],
+  "stress": [
+    {
+      "source_sha256": "35a7564ec8bf18f1b7dc5562b21616437b65e7b0689c56341b6436c8d202637b",
+      "gpu": "NVIDIA GB10",
+      "torch": "2.13.0+cu130"
+    },
+    {
+      "rows": 3,
+      "heads": 32,
+      "topk": 512,
+      "lengths": [
+        4097,
+        65536
+      ],
+      "graph_replays": 500,
+      "concurrent_copy_bytes": 67108864,
+      "wall_seconds": 0.42007936000300106,
+      "result": "passed"
+    },
+    {
+      "rows": 4,
+      "heads": 32,
+      "topk": 512,
+      "lengths": [
+        4097,
+        200000
+      ],
+      "graph_replays": 500,
+      "concurrent_copy_bytes": 67108864,
+      "wall_seconds": 0.5173187279942795,
+      "result": "passed"
+    },
+    {
+      "rows": 8,
+      "heads": 32,
+      "topk": 512,
+      "lengths": [
+        4097,
+        65536
+      ],
+      "graph_replays": 500,
+      "concurrent_copy_bytes": 67108864,
+      "wall_seconds": 0.5455467720021261,
+      "result": "passed"
+    },
+    {
+      "rows": 16,
+      "heads": 32,
+      "topk": 512,
+      "lengths": [
+        4097,
+        65536
+      ],
+      "graph_replays": 500,
+      "concurrent_copy_bytes": 67108864,
+      "wall_seconds": 0.7676780149995466,
+      "result": "passed"
+    }
+  ],
+  "gpu_tests_passed": 15,
+  "local_tests": {
+    "passed": 348,
+    "skipped": 3
+  }
+}

@@ -64,7 +64,10 @@ serving qualification.
 
 Assemble an empty context with this `Dockerfile` and `install_hotfix.py`, plus
 `patch_indexer_barrier.py`, `serve_with_warmup.py`, and `scheduler_liveness.py`
-from the parent runtime directory. Use LF line endings. Run the installer in
+from the parent runtime directory at source commit
+`ef3c381bd41eef07abcb5daebfc9c81d5928ff88`. This recipe reproduces that
+artifact; wrappers from another revision can require additional installed
+modules and must not be substituted. Use LF line endings. Run the installer in
 an isolated container of the pinned parent with that context mounted at
 `/hotfix`, passing `--output /hotfix/build-input.json`.
 

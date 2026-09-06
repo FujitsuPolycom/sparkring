@@ -1,0 +1,39 @@
+{
+  "schema": "sparkring-runtime-publication/v1",
+  "status": "research-only",
+  "published": true,
+  "visibility": "public",
+  "tag": "ghcr.io/fujitsupolycom/sparkring:experimental-arm64-sm121-20260906",
+  "registry_digest": "ghcr.io/fujitsupolycom/sparkring@sha256:d431841cd9adb75ec40777eeb435f7f72af5995018219fa3556d7b5c7f56c2d5",
+  "image_id": "sha256:7c029aa6f74e46467e9903cad527ff584b3d53682f301cbd2151f046d55c316a",
+  "embedded_manifest_sha256": "df0dbef9ab52429a0f12d7079f07b56e8ed1e822ec3b6cabdcd1a2936bb4ed56",
+  "sparkcache_public_source": "360f97dbd00b62b06fc5e7839b87514c12f2908f",
+  "sparkcache_source_sha256": "433a75f4f558aa7192eceba61dfae44e9b9823d5be714f054c3568efed88a0ce",
+  "sbom": {
+    "path": "sbom.spdx.json.gz",
+    "format": "SPDX-2.3",
+    "uncompressed_sha256": "8c3a66b4b297ab64418e0afb59005a75d33f3c150d34479e08fd7fd3a9b5e7d7",
+    "scope": "final filesystem, excluding audit tools/output and proc/sys/dev",
+    "package_entries": 1823,
+    "entries_without_declared_license": 1263
+  },
+  "checks": {
+    "anonymous_pull": true,
+    "packaged_file_hashes": true,
+    "vllm_lease_contract_files": 15,
+    "streaming_layer_count": 107,
+    "streaming_regular_file_entries": 160613,
+    "credential_pattern_findings": 0,
+    "gpu_serving_qualified_child": false,
+    "bounded_install_chat_image_restore_passed": true,
+    "blue_video_recognition_passed": false,
+    "serving_evidence": "../../performance/records/glm53-flash/tp2-public-image-install-20260906.md"
+  },
+  "limitations": [
+    "Bounded public-image installation, chat, still-image and persistent-restore checks passed; blue-video recognition failed. General serving qualification is not claimed.",
+    "The public source snapshot matches deployed SparkCache files but is not a source-complete rebuild of every inherited native layer.",
+    "License review covers retained NVIDIA terms and core runtime notices; SBOM NOASSERTION entries are not license clearance.",
+    "Streaming credential checks were bounded; no full security certification is claimed.",
+    "The embedded manifest records pre-publication blockers; this receipt records the subsequent distribution state."
+  ]
+}

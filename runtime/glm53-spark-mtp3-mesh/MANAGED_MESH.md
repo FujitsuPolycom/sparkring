@@ -362,6 +362,7 @@ The bounded `--run-seconds` mode is for isolated diagnostics only.
 |---|---|
 | Child-process and peer checks | 1-second loop; peer HTTP timeout 2 seconds |
 | Unavailable peer connection | 4-second grace after the first transport failure; degraded health blocks model startup |
+| Docker container status | One background query at a time, 3-second timeout; unknown status blocks model startup |
 | MAC/IP, Ethernet MTU, sysfs GID/netdev, routes, qdiscs, TC state | 5-second periodic check |
 | Full RDMA active-MTU probe | Startup and approximately every 60 seconds |
 | Health progress freshness | Readiness rejected after 10 seconds without supervisor progress |
@@ -374,6 +375,14 @@ responses clear that interval. Degraded peer health blocks model startup.
 An authentication failure, explicit negative readiness, or changed process
 generation does not receive transport-error grace: it triggers failure when
 observed. Local marker exits also trigger failure without that grace.
+
+Docker status queries run outside the fabric-monitor loop. A slow or failed
+query reports `docker_status_degraded: true`; it does not declare fabric
+failure or interrupt existing serving. Marker, network, and authenticated
+peer checks continue. A completed query reporting that the model stopped
+still enforces the model-exit policy. Pending queries never reuse a previous
+stopped result as proof. Startup and teardown use separate synchronous
+checks: unknown Docker state cannot authorize marker or network removal.
 
 These are polling and timeout settings, not zero-window guarantees. Command
 execution, scheduling, management-network delays, and container-stop time

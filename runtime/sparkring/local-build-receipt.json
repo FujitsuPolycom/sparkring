@@ -1,0 +1,9 @@
+{
+  "schema": "sparkring-package-build/v1",
+  "image_id": "sha256:7c029aa6f74e46467e9903cad527ff584b3d53682f301cbd2151f046d55c316a",
+  "local_tag": "local/sparkring:experimental-arm64-sm121-20260906",
+  "manifest_sha256": "df0dbef9ab52429a0f12d7079f07b56e8ed1e822ec3b6cabdcd1a2936bb4ed56",
+  "status": "research-only",
+  "gpu_qualified": false,
+  "published": false
+}

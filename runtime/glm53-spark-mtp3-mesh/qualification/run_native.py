@@ -85,9 +85,13 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--rows", nargs="+", type=int, default=[4, 20, 28, 64])
     parser.add_argument("--port", type=int, default=29960)
+    parser.add_argument("--mode", choices=("correctness", "streams"), default="correctness")
     parser.add_argument("--execute-authorized", action="store_true")
     args = parser.parse_args()
     plan = make_plan(args.launch, args.image_receipt, args.rows, args.port)
+    source_path = HERE / ("stream_roce.py" if args.mode == "streams" else "native_roce.py")
+    plan["mode"] = args.mode
+    plan["source_sha256"] = profile.sha(source_path)
     if not args.execute_authorized:
         print(json.dumps(plan, indent=2))
         return
@@ -100,7 +104,7 @@ def main() -> None:
         (args.output / f"preflight-r{rank['rank']}.json").write_text(json.dumps({"containers": state, "image": image}, indent=2))
         if state["returncode"] or state["stdout"].strip() or image["returncode"] or image["stdout"].strip() != plan["image"]:
             raise RuntimeError("Require no running containers and the exact image on every rank")
-    source = (HERE / "native_roce.py").read_text()
+    source = source_path.read_text()
     for cell in plan["cells"]:
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
             results = list(pool.map(lambda rank: remote(rank["host"], rank["argv"], source), cell["ranks"]))

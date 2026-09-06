@@ -58,6 +58,7 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     assert values["SPARKCACHE_ENABLED"] == "1"
     assert values["ENABLE_PROMPT_TOKENS_DETAILS"] == "1"
     assert values["SPARKCACHE_ACCESS_MODE"] == "read-write"
+    assert values["SPARKCACHE_ASYNC_PAGE_CAPTURE"] == "auto"
     assert values["SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS"] == "300"
     assert values["SPARKCACHE_CACHE_NAMESPACE"] == (
         "glm53-flash-vllm-e02b1746-b12x-9ae41c5c-"
@@ -74,8 +75,110 @@ def test_environment_exposes_reproducible_operator_defaults() -> None:
     )
 
 
+def _memory_plan(tmp_path: Path, *settings: str) -> subprocess.CompletedProcess[str]:
+    config = tmp_path / "memory-plan.env"
+    # Nonexistent checkpoint and cache paths prove this mode needs no model,
+    # cache directories, Docker daemon, GPU, or serving host.
+    config.write_text(
+        "\n".join((
+            f"source '{_bash_path(ENVIRONMENT)}'",
+            "HOST_IP=rank0.example.net",
+            "MASTER_ADDR=rank0.example.net",
+            "TARGET_MODEL_HOST_PATH=/nonexistent-memory-plan/target",
+            "DFLASH_MODEL_HOST_PATH=/nonexistent-memory-plan/draft",
+            "CACHE_HOST_ROOT=/nonexistent-memory-plan/cache",
+            "SPARKRING_PRINT_MEMORY_PLAN=1",
+            *settings,
+        )),
+        encoding="utf-8",
+        newline="\n",
+    )
+    return subprocess.run(
+        ["bash", _bash_path(LAUNCHER), "0", _bash_path(config)],
+        cwd=ROOT, text=True, capture_output=True, check=False,
+    )
+
+
+@pytest.mark.parametrize("dcp,slot_gib", [(1, 8), (2, 5), (4, 3)])
+def test_memory_plan_resolves_dcp_and_all_lane_allocations(
+    tmp_path: Path, dcp: int, slot_gib: int,
+) -> None:
+    result = _memory_plan(tmp_path, f"DECODE_CONTEXT_PARALLEL_SIZE={dcp}")
+    assert result.returncode == 0, result.stderr
+    plan = json.loads(result.stdout)
+    gib = 1024 ** 3
+    assert plan["restore_payload_bytes_per_rank"] == 4 * gib
+    assert plan["capture_payload_bytes_per_rank"] == 2 * slot_gib * gib
+    assert plan["sparkcache_payload_bytes_all_ranks"] == (4 + 2 * slot_gib) * gib * 4
+    assert plan["kv_and_payload_bytes_all_ranks"] == (24 + 4 + 2 * slot_gib) * gib * 4
+    assert plan["buffer_budget_bytes_per_rank"] is None
+
+
+@pytest.mark.parametrize("mode,enabled,restore_gib,capture_gib", [
+    ("read-write", 1, 4, 6), ("restore-only", 1, 4, 0),
+    ("store-only", 1, 0, 6), ("disabled", 1, 0, 0),
+    ("read-write", 0, 0, 0),
+])
+def test_auto_capture_respects_access_mode(
+    tmp_path: Path, mode: str, enabled: int, restore_gib: int, capture_gib: int,
+) -> None:
+    result = _memory_plan(tmp_path, f"SPARKCACHE_ACCESS_MODE={mode}", f"SPARKCACHE_ENABLED={enabled}")
+    assert result.returncode == 0, result.stderr
+    plan = json.loads(result.stdout)
+    assert plan["restore_payload_bytes_per_rank"] == restore_gib * 1024 ** 3
+    assert plan["capture_payload_bytes_per_rank"] == capture_gib * 1024 ** 3
+    assert plan["async_page_capture"] == bool(capture_gib)
+
+
+@pytest.mark.parametrize("setting,error", [
+    ("SPARKCACHE_ACCESS_MODE=restore-only", "publication-capable access mode"),
+    ("SPARKCACHE_ACCESS_MODE=disabled", "publication-capable access mode"),
+    ("SPARKCACHE_ENABLED=0", "requires SPARKCACHE_ENABLED=1"),
+])
+def test_explicit_capture_contradictions_remain_errors(
+    tmp_path: Path, setting: str, error: str,
+) -> None:
+    result = _memory_plan(tmp_path, setting, "SPARKCACHE_ASYNC_PAGE_CAPTURE=1")
+    assert result.returncode == 78
+    assert error in result.stderr
+
+
+def test_buffer_budget_rejects_overcommit_before_host_checks(tmp_path: Path) -> None:
+    required = 10 * 1024 ** 3
+    result = _memory_plan(tmp_path, f"SPARKCACHE_BUFFER_BUDGET_BYTES={required - 1}")
+    assert result.returncode == 78
+    assert "exceeding SPARKCACHE_BUFFER_BUDGET_BYTES" in result.stderr
+    assert json.loads(result.stdout)["within_buffer_budget"] is False
+    accepted = _memory_plan(tmp_path, f"SPARKCACHE_BUFFER_BUDGET_BYTES={required}")
+    assert accepted.returncode == 0, accepted.stderr
+    assert json.loads(accepted.stdout)["within_buffer_budget"] is True
+
+
+def test_explicit_synchronous_capture_and_custom_lane_sizes(tmp_path: Path) -> None:
+    result = _memory_plan(tmp_path, "SPARKCACHE_ASYNC_PAGE_CAPTURE=0",
+                          "SPARKCACHE_LOAD_THREADS=3", "SPARKCACHE_CUDA_ARENA_BYTES=1048576")
+    assert result.returncode == 0, result.stderr
+    plan = json.loads(result.stdout)
+    assert plan["capture_payload_bytes_per_rank"] == 0
+    assert plan["restore_payload_bytes_per_rank"] == 6 * 1048576
+
+
+def test_memory_plan_uses_connector_lane_limit(tmp_path: Path) -> None:
+    result = _memory_plan(tmp_path, "SPARKCACHE_LOAD_THREADS=64")
+    assert result.returncode == 0, result.stderr
+    plan = json.loads(result.stdout)
+    assert plan["requested_restore_lanes_per_rank"] == 64
+    assert plan["restore_lanes_per_rank"] == 8
+    assert plan["restore_payload_bytes_per_rank"] == 4 * 1024 ** 3
+
+
+@pytest.mark.parametrize("capture_mode,access_mode,capture_enabled", [
+    ("0", "read-write", False),
+    ("auto", "read-write", True),
+    ("auto", "restore-only", False),
+])
 def test_launcher_resolves_dcp_profiles_and_prompt_token_details(
-    tmp_path: Path,
+    tmp_path: Path, capture_mode: str, access_mode: str, capture_enabled: bool,
 ) -> None:
     subprocess.run(["bash", "-n", _bash_path(LAUNCHER)], check=True, cwd=ROOT)
     fake_bin = tmp_path / "bin"
@@ -148,6 +251,8 @@ printf '%s  %s\n' "$hash" "$2"
                     "IMAGE_REF=test-image:r8",
                     f"IMAGE_ID={IMAGE_ID}",
                     f"DECODE_CONTEXT_PARALLEL_SIZE={dcp}",
+                    f"SPARKCACHE_ASYNC_PAGE_CAPTURE={capture_mode}",
+                    f"SPARKCACHE_ACCESS_MODE={access_mode}",
                 )
             ),
             encoding="utf-8",
@@ -201,7 +306,8 @@ printf '%s  %s\n' "$hash" "$2"
         extra = connector["kv_connector_extra_config"]
         assert extra["spark_cache_publication_schema"] == "tail-cow-v2"
         assert extra["spark_cache_model_profile"] == "glm53-flash-hybrid"
-        assert extra["spark_cache_access_mode"] == "read-write"
+        assert extra["spark_cache_access_mode"] == access_mode
+        assert extra["spark_cache_async_page_capture"] is capture_enabled
         assert extra["spark_cache_shared_prefix_lease_ttl_seconds"] == 300
         assert "spark_cache_store" not in extra
         assert "spark_cache_restore" not in extra

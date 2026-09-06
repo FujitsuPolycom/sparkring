@@ -1,0 +1,149 @@
+{
+  "phase": "text",
+  "results": [
+    {
+      "marker": "violet-0-6291",
+      "pass": true,
+      "output": "{\"code\": \"violet-0-6291\"}",
+      "usage": {
+        "prompt_tokens": 37,
+        "total_tokens": 82,
+        "completion_tokens": 45,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 30
+        }
+      }
+    },
+    {
+      "marker": "violet-1-6291",
+      "pass": true,
+      "output": "{\"code\": \"violet-1-6291\"}",
+      "usage": {
+        "prompt_tokens": 37,
+        "total_tokens": 84,
+        "completion_tokens": 47,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 32
+        }
+      }
+    },
+    {
+      "marker": "violet-2-6291",
+      "pass": true,
+      "output": "{\"code\": \"violet-2-6291\"}",
+      "usage": {
+        "prompt_tokens": 37,
+        "total_tokens": 82,
+        "completion_tokens": 45,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 30
+        }
+      }
+    },
+    {
+      "marker": "violet-3-6291",
+      "pass": true,
+      "output": "{\"code\": \"violet-3-6291\"}",
+      "usage": {
+        "prompt_tokens": 37,
+        "total_tokens": 82,
+        "completion_tokens": 45,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 30
+        }
+      }
+    },
+    {
+      "marker": "violet-4-6291",
+      "pass": true,
+      "output": "{\"code\": \"violet-4-6291\"}",
+      "usage": {
+        "prompt_tokens": 37,
+        "total_tokens": 84,
+        "completion_tokens": 47,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 32
+        }
+      }
+    },
+    {
+      "marker": "violet-5-6291",
+      "pass": true,
+      "output": "{\"code\": \"violet-5-6291\"}",
+      "usage": {
+        "prompt_tokens": 37,
+        "total_tokens": 84,
+        "completion_tokens": 47,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 32
+        }
+      }
+    },
+    {
+      "marker": "violet-6-6291",
+      "pass": true,
+      "output": "{\"code\": \"violet-6-6291\"}",
+      "usage": {
+        "prompt_tokens": 37,
+        "total_tokens": 84,
+        "completion_tokens": 47,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 32
+        }
+      }
+    },
+    {
+      "marker": "violet-7-6291",
+      "pass": true,
+      "output": "{\"code\": \"violet-7-6291\"}",
+      "usage": {
+        "prompt_tokens": 37,
+        "total_tokens": 82,
+        "completion_tokens": 45,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 30
+        }
+      }
+    }
+  ]
+}

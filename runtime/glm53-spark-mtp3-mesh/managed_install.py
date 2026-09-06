@@ -30,6 +30,7 @@ SOURCE_FILES = (
     'runtime/glm53-spark-mtp3-mesh/profile.py',
     'runtime/glm53-spark-mtp3-mesh/inspect_fabric.py',
     'runtime/glm53-spark-mtp3-mesh/pins.json',
+    'runtime/glm53-spark-mtp3-mesh/compute/source-lock.json',
     'runtime/glm53-flash-jj-r8-gb10/pins.json',
     'runtime/glm53-flash-jj-r8-gb10/warmup_dflash.py',
     'runtime/glm53-flash-jj-r8-gb10/launch-rank.sh',
@@ -254,7 +255,7 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file):
     if '--managed' not in help_result.stdout + help_result.stderr:
         raise ValueError('Extracted helper does not expose managed lifetime')
     bundle = Path(site['bundle_root'])
-    if profile.sha(bundle / 'sparkring-overlay-manifest.json') != profile.PINS['canonical_bundle_manifest_sha256']:
+    if profile.sha(bundle / 'sparkring-overlay-manifest.json') != receipt['bundle_manifest_sha256']:
         raise ValueError('Host transport bundle manifest differs')
     manifest = json.loads((bundle / 'sparkring-overlay-manifest.json').read_text())
     for item in manifest['files']:

@@ -1,6 +1,9 @@
 *.sh text eol=lf
 *.patch text eol=lf
 runtime/** text eol=lf
+runtime/sparkring/*.gz -text
+runtime/glm53-spark-mtp3-mesh/compute/*.tar.gz -text
+runtime/glm53-spark-mtp3-mesh/compute/*.patch whitespace=-trailing-space
 runtime/exl3/patches/*.patch whitespace=-trailing-space
 
 # Runtime receipts hash these source files byte-for-byte before copying them,

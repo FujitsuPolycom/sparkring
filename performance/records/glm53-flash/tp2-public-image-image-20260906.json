@@ -1,0 +1,28 @@
+{
+  "phase": "image",
+  "pass": true,
+  "message": {
+    "role": "assistant",
+    "content": "Blue",
+    "refusal": null,
+    "annotations": null,
+    "audio": null,
+    "function_call": null,
+    "reasoning": "The image appears to be entirely blue. The user wants just the color name."
+  },
+  "usage": {
+    "prompt_tokens": 90,
+    "total_tokens": 109,
+    "completion_tokens": 19,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "created_cache_tokens": 0,
+      "multimodal_tokens": {
+        "image": 64
+      }
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 16
+    }
+  }
+}
