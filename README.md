@@ -1,24 +1,25 @@
 # SparkRing
 
-SparkRing is a vLLM-based inference-serving stack for running large language
-models across switchless clusters of NVIDIA DGX Spark systems, powered by
-the GB10 Grace Blackwell Superchip. It combines B12X kernels with low-latency
-collective communication so multiple Sparks can serve a model together
-using tensor parallelism.
+SparkRing is a vLLM-based inference-serving stack with low-latency collective
+communication for switchless clusters of NVIDIA DGX Spark systems, powered
+by the GB10 Grace Blackwell Superchip.
 
-Deployment profiles cover two-Spark pairs and four-Spark rings, with
-six-Spark configurations remaining research-only. Depending on the profile,
-communication uses [SIRCL](docs/SIRCL.md),
+SparkRing supports GB10 pairs and four-node rings; six-node configurations
+are research-only. Models run across multiple systems using tensor parallelism.
+
+Depending on the profile, communication uses [SIRCL](docs/SIRCL.md),
 [RoCEnante](third_party/b12x_roce/README.md), and
-[patched NCCL](spark_transport/nccl/README.md). The four-node virtual-mesh
-profile adds hardware-forwarded paths between opposite nodes over the
-existing ring cables. The high-speed data fabric needs no external Ethernet
-or InfiniBand switch; administration uses a separate management network.
+[patched NCCL](spark_transport/nccl/README.md). The high-speed data fabric
+needs no external Ethernet or InfiniBand switch; administration uses a
+separate management network.
+
+The four-node virtual-mesh profile adds hardware-forwarded paths between
+opposite nodes over the existing ring cables. This lets the communication
+topology extend beyond directly connected neighbors without adding a switch
+or changing the cabling.
 
 The repository provides setup guides, launch tooling, model profiles,
-container image definitions, reproducible benchmarks, and
-[test results](performance/). Profile-specific quickstarts tie the hardware,
-runtime, and serving settings together.
+reproducible benchmarks, and [test results](performance/).
 
 > SparkRing is experimental. Use the image digest and source revisions in
 > your profile's quickstart. Qualification applies only to its documented tests.
