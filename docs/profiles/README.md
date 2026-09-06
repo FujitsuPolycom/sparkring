@@ -28,6 +28,17 @@ published configuration hash.
 
 ## Research-only profiles
 
+The [GLM-5.3 Flash NVFP4-Spark native-MTP3 mesh profile](../GLM53_SPARK_MTP3_MESH_QUICKSTART.md)
+uses four Sparks at TP4/DCP4 with hardware-forwarded paths over a physical
+ring. It configures 1,048,576-token context, 16 sequences, and an 8,192-token
+batch. Its [managed deployment contract](../../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md)
+defines host preparation, startup, and recovery. The
+[functional evidence](../../performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md)
+qualifies bounded installation, fault/recovery, readiness, and persistent-cache
+recall checks; broader cache/failure coverage and unattended serving remain
+unqualified. See the [deployment recipe](../../recipes/glm53-spark-mtp3-managed-mesh-tp4.json)
+for configuration and evidence references.
+
 The [GLM-5.3 Flash NVFP4-Spark TP2 profile](../GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md)
 is research-only. Model-neutral image and matching SparkCache source pins are
 public; child-image serving qualification remains pending.
