@@ -12,6 +12,23 @@ import zlib
 MODEL = 'glm-5.3-flash-spark-pr646'
 
 
+def text_payload(index):
+    marker = f'violet-{index}-6291'
+    return marker, {'model': MODEL, 'messages': [{'role': 'user', 'content':
+        f'Return a JSON object with one field named code whose exact string value is {marker}. No explanation.'}],
+        'temperature': 0, 'max_tokens': 256}
+
+
+def correct_code(text, marker):
+    text = text.strip()
+    if text.startswith('```'):
+        text = text.split('\n', 1)[-1].rsplit('```', 1)[0].strip()
+    try:
+        return json.loads(text) == {'code': marker}
+    except (ValueError, TypeError):
+        return False
+
+
 def post(base, path, payload):
     request = urllib.request.Request(base + path, data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'})
     with urllib.request.urlopen(request, timeout=300) as response:
@@ -35,13 +52,11 @@ def main():
     if args.phase == 'text':
         barrier = threading.Barrier(8)
         def one(index):
-            marker = f'violet-{index}-6291'
+            marker, payload = text_payload(index)
             barrier.wait()
-            body = post(base, '/v1/completions', {'model': MODEL,
-                'prompt': f'Record: the verification code is {marker}.\nQuestion: what is the verification code?\nAnswer:',
-                'temperature': 0, 'max_tokens': 64})
-            output = body['choices'][0]['text']
-            return {'marker': marker, 'pass': marker in output, 'output': output, 'usage': body['usage']}
+            body = post(base, '/v1/chat/completions', payload)
+            output = body['choices'][0]['message'].get('content') or ''
+            return {'marker': marker, 'pass': correct_code(output, marker), 'output': output, 'usage': body['usage']}
         with ThreadPoolExecutor(max_workers=8) as executor:
             records = list(executor.map(one, range(8)))
         print(json.dumps({'phase': args.phase, 'results': records}), flush=True)
