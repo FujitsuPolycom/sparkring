@@ -1,0 +1,31 @@
+{
+  "schema": "sparkring-runtime-package/v1",
+  "status": "research-only",
+  "repository": "ghcr.io/fujitsupolycom/sparkring",
+  "candidate_tag": "experimental-arm64-sm121-20260906",
+  "parent_image_id": "sha256:4a4004b2d855b4cfc7f92eddbe4068676e10fd254cb37d6336f0dc463a2078c0",
+  "registry_digest": null,
+  "platform": "linux/arm64",
+  "accelerator": "SM121",
+  "vllm_base_commit": "815f839060c2781f6bcc47c0d584358b400ea0ea",
+  "sparkcache_source_revision": "360f97dbd00b62b06fc5e7839b87514c12f2908f",
+  "sparkcache_source_public": true,
+  "sparkcache_deployed_revision": "5b27132122e7c79fadbaa2aecfa0090d7a28f283",
+  "sparkcache_source_sha256": "433a75f4f558aa7192eceba61dfae44e9b9823d5be714f054c3568efed88a0ce",
+  "files": [
+    {"name": "attention.py", "destination": "/usr/local/lib/python3.12/dist-packages/vllm/models/glm5next/nvidia/attention.py", "sha256": "0a3159972e6424766d9634fb01f2f627aebe737099ef0985d42d7a69fda0f0cb"},
+    {"name": "libspark_cache_placement.so", "destination": "/opt/sparkcache-native/libspark_cache_placement.so", "sha256": "443025baf00c8a7d35ff832411b5109c02a8999e70caf0371ae2f4a02d4aa740"},
+    {"name": "libspark_cache_snapshot.so", "destination": "/opt/sparkcache-native/libspark_cache_snapshot.so", "sha256": "996a2ff60922ff13d5d1d8c3213476352d06330a36b65f65569a29f26671d418"}
+  ],
+  "profiles": {
+    "glm53-flash-spark-tp2-mtp3": {
+      "status": "research-only",
+      "evidence": "Source deployment passed bounded TP2/DCP1 tests; packaged image has not been serving-qualified."
+    }
+  },
+  "publication_blockers": [
+    "Parent is a local image ID, not a publicly reproducible base pin.",
+    "Inherited layer provenance, redistribution licenses and SBOM require review.",
+    "Packaged child requires serving qualification before it replaces the production image."
+  ]
+}

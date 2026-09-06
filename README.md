@@ -23,6 +23,10 @@ reproducible benchmarks, and [test results](performance/).
 
 ## Setup
 
+An [experimental GLM-5.3 Flash TP2 quickstart](docs/GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md)
+uses the [model-neutral runtime package](runtime/sparkring/README.md). It is
+still being tested and does not replace other profiles' qualified image pins.
+
 1. Choose a [model profile](#profiles) for your number of Sparks and review
    the [hardware and software prerequisites](docs/PREREQUISITES.md).
 2. For a ring, follow the [bootstrap guide](docs/BOOTSTRAP.md) from an SSH

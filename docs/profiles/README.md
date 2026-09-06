@@ -26,6 +26,13 @@ checkpoint hash. Both Qwen base profiles pin
 revision `ab3a91a13813df8096cb4c1d560ed3669035d0cf` and the checkpoint's
 published configuration hash.
 
+## Draft profiles
+
+The [GLM-5.3 Flash NVFP4-Spark TP2 draft](../GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md)
+is research-only. Model-neutral image and matching SparkCache source pins are
+public; child-image serving qualification remains pending.
+It does not replace the published TP4 profile.
+
 ## Unsupported integrations
 
 | Integration | Topology | Status |

@@ -1,0 +1,22 @@
+[Unit]
+Description=SparkRing model-container memory guard
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/libexec/sparkring-memory-guard --available-floor-bytes 4294967296 --poll-seconds 1 --consecutive-samples 2 --term-grace-seconds 5
+Restart=always
+RestartSec=1
+OOMScoreAdjust=-1000
+ManagedOOMPreference=avoid
+MemoryMin=32M
+MemoryLow=64M
+Nice=-10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
