@@ -4,6 +4,8 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
+
 
 HERE = Path(__file__).resolve().parent
 
@@ -143,3 +145,102 @@ def test_initial_unavailable_snapshot_is_strict_json() -> None:
     assert snapshot["healthy"] is False
     assert snapshot["sample_age_seconds"] is None
     json.dumps(snapshot, allow_nan=False)
+
+
+def _output_metrics(*, running=3, iterations=10):
+    return _metrics(running=running, waiting=0, kv=0.2) + (
+        f'\nvllm:iteration_tokens_total_count{{engine="0"}} {iterations}'
+    )
+
+
+def test_fresh_scrapes_do_not_hide_running_output_stall() -> None:
+    module = _load_module()
+    now = [100.0]
+    monitor = module.SchedulerLiveness(
+        blocked_timeout_seconds=60, idle_kv_warn_seconds=330,
+        stale_sample_seconds=15, clock=lambda: now[0],
+    )
+    monitor.observe(_output_metrics())
+    for elapsed in range(10, 301, 10):
+        now[0] = 100.0 + elapsed
+        monitor.observe(_output_metrics())
+    assert monitor.http_status() == 503
+    assert monitor.snapshot()["reason"] == "engine_output_stall"
+    assert monitor.snapshot()["output_stalled_seconds"] == 300
+
+
+def test_output_progress_and_idle_restart_the_stall_window() -> None:
+    module = _load_module()
+    now = [0.0]
+    monitor = module.SchedulerLiveness(
+        blocked_timeout_seconds=60, idle_kv_warn_seconds=330,
+        stale_sample_seconds=15, clock=lambda: now[0],
+    )
+    for timestamp, running, iterations in (
+        (0, 3, 10), (290, 3, 11), (580, 3, 12),
+        (870, 0, 12), (2000, 3, 12), (2290, 3, 12),
+        (2300, 3, 1), (2590, 3, 1),
+    ):
+        now[0] = timestamp
+        monitor.observe(_output_metrics(running=running, iterations=iterations))
+        assert monitor.http_status() == 200
+
+
+def test_running_stall_timeout_is_independent_of_capacity_timeout() -> None:
+    module = _load_module()
+    now = [0.0]
+    monitor = module.SchedulerLiveness(
+        blocked_timeout_seconds=60, output_timeout_seconds=900,
+        idle_kv_warn_seconds=330, stale_sample_seconds=15,
+        clock=lambda: now[0],
+    )
+    monitor.observe(_output_metrics())
+    now[0] = 899
+    monitor.observe(_output_metrics())
+    assert monitor.http_status() == 200
+    now[0] = 900
+    monitor.observe(_output_metrics())
+    assert monitor.http_status() == 503
+    assert "sparkring:engine_output_stalled_seconds 900" in monitor.prometheus()
+
+
+def test_missing_progress_metric_does_not_refresh_sample() -> None:
+    module = _load_module()
+    now = [0.0]
+    monitor = module.SchedulerLiveness(
+        blocked_timeout_seconds=60, idle_kv_warn_seconds=330,
+        stale_sample_seconds=15, clock=lambda: now[0],
+    )
+    monitor.observe(_output_metrics())
+    now[0] = 16
+    with pytest.raises(ValueError, match="iteration_tokens_total_count") as error:
+        monitor.observe(_metrics(running=3, waiting=0, kv=0.2))
+    monitor.observe_error(error.value)
+    assert monitor.snapshot()["reason"] == "metrics_unavailable"
+    assert monitor.http_status() == 503
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan")])
+def test_invalid_output_timeout_is_rejected(timeout) -> None:
+    with pytest.raises(ValueError, match="output timeout"):
+        _load_module().SchedulerLiveness(
+            blocked_timeout_seconds=60, output_timeout_seconds=timeout,
+            idle_kv_warn_seconds=330, stale_sample_seconds=15,
+        )
+
+
+def test_progress_recovers_unhealthy_monitor() -> None:
+    module = _load_module()
+    now = [0.0]
+    monitor = module.SchedulerLiveness(
+        blocked_timeout_seconds=60, idle_kv_warn_seconds=330,
+        stale_sample_seconds=15, clock=lambda: now[0],
+    )
+    monitor.observe(_output_metrics())
+    now[0] = 300
+    monitor.observe(_output_metrics())
+    assert monitor.http_status() == 503
+    now[0] += 10
+    monitor.observe(_output_metrics(iterations=11))
+    assert monitor.http_status() == 200
+    assert monitor.snapshot()["output_stalled_seconds"] == 0
