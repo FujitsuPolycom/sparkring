@@ -7,8 +7,8 @@ serving stack and SparkRing's patched NCCL as the transport.
 **Status: implemented, live-benchmarked on one site (2026-09-06), not qualified.** One operator
 site brought the profile up from two production TP2 pairs, gated it (auth, text, image, per-rank
 parity, Ring Doctor), measured it against the pairs, held a 1,048,576-token needle probe exactly at the 10/50/90 % positions (~958K real tokens each,
-681-683 s), and ran a 20-minute c=8 soak with zero preemptions. It has not been reproduced on a second site and has
-no long soak yet. The machine-readable contract is
+681-683 s), and ran a 3-hour c=8 soak while serving production traffic (732 waves, 0 preemptions,
+0 errors, no drift). It has not been reproduced on a second site. The machine-readable contract is
 [`recipes/deepseek-v4-flash-vision-exp-tp4.json`](../recipes/deepseek-v4-flash-vision-exp-tp4.json).
 
 ## Why this profile exists
@@ -159,4 +159,4 @@ and decode −5..−14 % (draft acceptance 0.20 with one MTP layer).
 One failure domain (a wedged rank takes the lane down; pairs gave a replica). No SparkCache or KV
 connector in this stack. Rank 0's API port should be firewall-scoped to the router host. Boot
 ownership needs a rank-0 unit that waits for peers and drives the launcher; the compose policy is
-`restart: no` by design. Not qualified: no second-site reproduction; the multi-hour soak was still running when this was written.
+`restart: no` by design. Not qualified: no second-site reproduction.
