@@ -1,0 +1,30 @@
+{
+  "environment": {
+    "SPARK_GDN_CONTINUATION_CHECKPOINTS": "1",
+    "SPARK_GDN_PREFILL_CHECKPOINTS": "2"
+  },
+  "files": {
+    "vllm/v1/core/kv_cache_manager.py": {
+      "after_sha256": "26da2ce150958b9eb1495badfa5493f2164f8d86b943306b18b6b2abf83189c3",
+      "before_sha256": "f4ccf9da197eb68fd21b23e8c03615cd0d4c2f871da0dc32a9c6ec82e44d3931"
+    },
+    "vllm/v1/core/recurrent_prefill_checkpoint.py": {
+      "after_sha256": "e29068047dbc505df14888f68f56745545873d3665c1db9640a53234c6a420dc",
+      "before_sha256": "51ef011d11bb374d61840f1ff819759b6e3dd325da41856b7b0f01b013b54713"
+    },
+    "vllm/v1/core/sched/scheduler.py": {
+      "after_sha256": "f46c40c1c41daf2bab4566dd185d320f4ec1fb11e8d632c90c47b0f1bb1808fa",
+      "before_sha256": "ce9460834e08f97dbbfeb3f1238b78ee6a3363dd59a2aef8ceeb715857385895"
+    },
+    "vllm/v1/core/single_type_kv_cache_manager.py": {
+      "after_sha256": "198dbd75397903d1e3378ac8af0ac0cd3f6b85fbb0f7bd5c65cd1780b2460a26",
+      "before_sha256": "10a6a60f31c67b59825aa827084f3d25416128ba5dc7c14a774675d64bbec40b"
+    }
+  },
+  "parent_image_id": "sha256:6921a6c163ea40b603e19a0332330efe3dbccbf4dce9f6cbbf6b756c9231835a",
+  "schema": "sparkring-continuation-source/v1",
+  "source_archive_sha256": "91a411772951ef52f38e1d5224cd814e09ab9978d77a8fddcd665c9d5dfebf0c",
+  "source_overlay_manifest_sha256": "9e6b368508c30a4f443cb16da25230c7d982792aea1d99e90dd5f8f21e5c8429",
+  "source_role": "Final-chunk recurrent checkpoints for cold text prefills",
+  "status": "research-only"
+}

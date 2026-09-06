@@ -3,8 +3,8 @@
 Status: **implemented** with CPU scheduler-seam coverage. The MTP3 profile
 remains **research-only**; rebuilt-image validation is required.
 
-`patch_scheduler.py` applies a byte-checked transform after the recurrent
-checkpoint payload has been installed. The payload files and their manifest
+`patch_scheduler.py` applies a byte-checked transform to either the recurrent
+checkpoint scheduler or its explicitly pinned final-chunk continuation variant. The payload files and their manifest
 are immutable inputs. The image installer first verifies every checkpoint
 ownership dependency, applies the transform, and changes only the scheduler
 entry to the transform's expected output hash. The image receipt records both
@@ -60,7 +60,9 @@ subsequent scheduling or counter resets cannot change its endpoints.
 A completed decode step can emit an empty prompt range. This allows the
 connector to commit pending prefix reuse after a resumed request completes
 inference without additional prompt computation. It contributes zero prompt
-compute tokens. Stale, failed, or aborted output earns no completed-work
+compute tokens. After that generation has consumed its admitted reuse, ordinary
+decode steps do not allocate empty prompt-range entries or emit redundant events.
+Stale, failed, or aborted output earns no completed-work
 credit. These counters do not measure discarded GPU execution or kernel time.
 
 Cumulative prompt work and reuse across preemption attempts can exceed the

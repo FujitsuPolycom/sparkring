@@ -7,7 +7,7 @@ The recipe preserves the parent model weights and does not change host fabric.
 
 ## Build inputs
 
-Use a clean SparkCache checkout at `48bbd2be4a7b972e56632a2d7b934bac5460f272`.
+Use a clean SparkCache checkout at `19873f697c1ebdaf2b11d2013f2411b31f9e0f81`.
 It contains the merged restore/publication improvements, periodic-capture
 option, and backlog gauges. Periodic full capture defaults off; enabling it
 trades more writes for shorter history reconstruction.
@@ -93,3 +93,13 @@ local reuse, finalized persistent restoration, and accepted prompt work across
 preemption attempts. They are inactive unless the connector enables request
 cache events. Source availability does not change a published image receipt;
 a rebuilt image must be validated before serving evidence is claimed.
+
+## Continuation checkpoint sources
+
+Source builds preserve the [four continuation checkpoint files](continuation/README.md)
+from the source-attested continuation serving image. Both recurrent checkpoint
+flags are enabled in the build recipe. The installer validates checkpoint
+ownership, applies those four replacements, then applies the matching request
+attribution transform and generates the full image inventory. This source build
+composition requires separate serving validation; it does not change the
+immutable published image contract.

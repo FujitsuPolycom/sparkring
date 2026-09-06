@@ -5,7 +5,14 @@ import hashlib
 from pathlib import Path
 
 BEFORE_SHA256 = "ce9460834e08f97dbbfeb3f1238b78ee6a3363dd59a2aef8ceeb715857385895"
-AFTER_SHA256 = "c32704ef04ef8d04e5d785620437b4a8c01fdf7a2aeb148116b5aa2c259b5d76"
+AFTER_SHA256 = "9500c99fd5f7d82e4c5247c41b64fd4cfc085ca39303db8991f4dcb7e5196a68"
+CONTINUATION_BEFORE_SHA256 = "f46c40c1c41daf2bab4566dd185d320f4ec1fb11e8d632c90c47b0f1bb1808fa"
+CONTINUATION_AFTER_SHA256 = "6c784cb6d30d89a078e386081f650e7249269704f2bea06c063c656c71bd9cf2"
+SOURCE_TRANSFORMS = {
+    BEFORE_SHA256: AFTER_SHA256,
+    CONTINUATION_BEFORE_SHA256: CONTINUATION_AFTER_SHA256,
+}
+
 
 METHODS = '''    def _sparkcache_record_event(self, request, event, **fields):
         connector = self.connector
@@ -26,7 +33,8 @@ METHODS = '''    def _sparkcache_record_event(self, request, event, **fields):
             request = self.requests[req_id]
             start = min(request.num_computed_tokens, request.num_prompt_tokens)
             end = min(request.num_computed_tokens + count, request.num_prompt_tokens)
-            steps[req_id] = (start, end, request.num_preemptions)
+            if end > start or getattr(request, "_sparkcache_consumed_generation", None) != request.num_preemptions:
+                steps[req_id] = (start, end, request.num_preemptions)
         scheduler_output._sparkcache_prompt_steps = steps
 
     def _sparkcache_complete_prompt_step(self, scheduler_output, request, stale):
@@ -35,10 +43,13 @@ METHODS = '''    def _sparkcache_record_event(self, request, event, **fields):
         )
         if step is None or stale or step[2] != request.num_preemptions:
             return
+        if step[0] == step[1] and getattr(request, "_sparkcache_consumed_generation", None) == step[2]:
+            return
         self._sparkcache_record_event(
             request, "prompt_step_completed", start_token=step[0],
             end_token=step[1], preemptions=step[2], stale=False,
         )
+        request._sparkcache_consumed_generation = step[2]
 
 '''
 
@@ -72,6 +83,7 @@ TRANSFORMS = (
                         source="gpu_lease" if cache_trace_lease_attached else "prefix_lookup",
                     )
                     request._sparkcache_pending_lease_generation = None
+                    request._sparkcache_consumed_generation = None
 
                 # Record at admission so unscheduled lookups are not counted.
 '''),
@@ -105,7 +117,7 @@ TRANSFORMS = (
 
 
 def transform(source: bytes) -> bytes:
-    if hashlib.sha256(source).hexdigest() != BEFORE_SHA256:
+    if hashlib.sha256(source).hexdigest() not in SOURCE_TRANSFORMS:
         raise ValueError("Cache-attribution scheduler preimage differs")
     text = source.decode().replace("\r\n", "\n")
     for before, after in TRANSFORMS:
@@ -118,10 +130,13 @@ def transform(source: bytes) -> bytes:
 
 def apply(path: Path) -> dict:
     source = path.read_bytes()
-    if hashlib.sha256(source).hexdigest() == AFTER_SHA256:
-        return {"before_sha256": BEFORE_SHA256, "after_sha256": AFTER_SHA256}
+    before = hashlib.sha256(source).hexdigest()
+    for original, patched in SOURCE_TRANSFORMS.items():
+        if before == patched:
+            return {"before_sha256": original, "after_sha256": patched}
     patched = transform(source)
-    if hashlib.sha256(patched).hexdigest() != AFTER_SHA256:
+    after = SOURCE_TRANSFORMS[before]
+    if hashlib.sha256(patched).hexdigest() != after:
         raise ValueError("Cache-attribution scheduler postimage differs")
     path.write_bytes(patched)
-    return {"before_sha256": BEFORE_SHA256, "after_sha256": AFTER_SHA256}
+    return {"before_sha256": before, "after_sha256": after}

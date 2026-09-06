@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
+import tarfile
 
 import pytest
 
@@ -13,6 +14,16 @@ SPEC = importlib.util.spec_from_file_location("cache_attribution_patch", HERE / 
 PATCH = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PATCH)
 SOURCE = HERE.parent / "checkpoints/payload-by-sha" / PATCH.BEFORE_SHA256 / "scheduler.py"
+
+
+@pytest.fixture(autouse=True, params=["fresh_prompt", "continuation"])
+def scheduler_source(request, monkeypatch, tmp_path):
+    if request.param == "continuation":
+        with tarfile.open(HERE.parent / "continuation/source.tar.gz") as archive:
+            data = archive.extractfile("vllm/v1/core/sched/scheduler.py").read()
+        source = tmp_path / "continuation-scheduler.py"
+        source.write_bytes(data)
+        monkeypatch.setitem(globals(), "SOURCE", source)
 
 
 def runtime():
@@ -59,9 +70,10 @@ def scheduler(req):
 def test_transform_exact_source_and_idempotence(tmp_path):
     target = tmp_path / "scheduler.py"
     target.write_bytes(SOURCE.read_bytes())
+    expected = PATCH.SOURCE_TRANSFORMS[hashlib.sha256(SOURCE.read_bytes()).hexdigest()]
     PATCH.apply(target)
-    assert hashlib.sha256(target.read_bytes()).hexdigest() == PATCH.AFTER_SHA256
-    assert PATCH.apply(target)["after_sha256"] == PATCH.AFTER_SHA256
+    assert hashlib.sha256(target.read_bytes()).hexdigest() == expected
+    assert PATCH.apply(target)["after_sha256"] == expected
     target.write_bytes(target.read_bytes() + b"# unsupported\n")
     with pytest.raises(ValueError, match="preimage"):
         PATCH.apply(target)
@@ -221,3 +233,21 @@ def test_lease_attribution_survives_allocation_deferral_until_accepted_output():
     process_output(obj, methods, output, req)
     assert events[-1] == ("prompt_step_completed", dict(start_token=768, end_token=800,
                                                        preemptions=0, stale=False))
+
+
+def test_ordinary_decode_avoids_repeated_empty_prompt_events():
+    req = request(num_computed_tokens=1000)
+    obj, events, methods = scheduler(req)
+    first = SimpleNamespace(num_scheduled_tokens={req.request_id: 32})
+    queued = SimpleNamespace(num_scheduled_tokens={req.request_id: 32})
+    obj._sparkcache_capture_prompt_steps(first)
+    obj._sparkcache_capture_prompt_steps(queued)
+    process_output(obj, methods, first, req)
+    obj._sparkcache_complete_prompt_step(queued, req, False)
+    assert len(events) == 1
+    following = SimpleNamespace(num_scheduled_tokens={req.request_id: 32})
+    obj._sparkcache_capture_prompt_steps(following)
+    assert following._sparkcache_prompt_steps == {}
+    req.num_preemptions = 1
+    obj._sparkcache_capture_prompt_steps(following)
+    assert following._sparkcache_prompt_steps[req.request_id] == (1000, 1000, 1)

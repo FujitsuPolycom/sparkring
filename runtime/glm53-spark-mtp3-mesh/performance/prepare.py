@@ -10,7 +10,7 @@ import subprocess
 import tarfile
 
 HERE = Path(__file__).resolve().parent
-CACHE_COMMIT = "48bbd2be4a7b972e56632a2d7b934bac5460f272"
+CACHE_COMMIT = "19873f697c1ebdaf2b11d2013f2411b31f9e0f81"
 BASE_IMAGE = "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:67dc0ae453baaae6831ccec1d259b4ef8b236a8b0dc9f747d901b95c66ec1987"
 BASE_ID = "sha256:2e41b1e934a85ff7c21b780532db2f0a0e978df081e52f4ae2bf11f8992fb24f"
 PLACEMENT = "2657cdd2e54a097c9544e4c79ae62c0646db6db123ff24e4f0c384238c3a1e8d"
@@ -50,7 +50,7 @@ def prepare(cache, placement, transport, output):
                 path = output / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(bundle.extractfile(member).read())
-    for name in ("checkpoints", "reasoning", "attribution"):
+    for name in ("checkpoints", "reasoning", "attribution", "continuation"):
         shutil.copytree(
             HERE / name,
             output / name,

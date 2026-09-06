@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from test_patch_scheduler import execute_statements, process_output, request, runtime
+from test_patch_scheduler import scheduler_source  # noqa: F401
 
 
 @pytest.fixture
