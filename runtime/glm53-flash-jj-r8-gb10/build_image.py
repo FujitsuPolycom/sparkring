@@ -328,6 +328,13 @@ def prepare_context(
     run(
         (
             sys.executable,
+            HERE / "patch_indexer_barrier.py",
+            b12x_output / "attention/dsa_indexer/fused_indexer.py",
+        )
+    )
+    run(
+        (
+            sys.executable,
             HERE / "patch_kv_metrics_logging.py",
             vllm_output
             / "distributed/kv_transfer/kv_connector/v1/metrics.py",
@@ -460,6 +467,9 @@ def prepare_context(
     }
     receipt["inputs"]["source_transform/kv_metrics_logging"] = file_sha256(
         HERE / "patch_kv_metrics_logging.py"
+    )
+    receipt["inputs"]["source_transform/indexer_barrier"] = file_sha256(
+        HERE / "patch_indexer_barrier.py"
     )
     receipt_path = context / "bundle/receipts/source-receipt.json"
     receipt_path.write_text(

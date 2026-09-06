@@ -1,0 +1,48 @@
+{
+  "artifact": {
+    "added_layers": 2,
+    "added_uncompressed_bytes": 428386,
+    "image_id": "sha256:d2ba5894bd5499883acbb89ecb496965c44f78aa3a4b4be83c4698b2010ec787",
+    "platform": "linux/arm64",
+    "reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:28e6a9c0dba07cec4852bf21352e5e2f6fc7bd07592a0edc3916d13f849cdcfe",
+    "size_bytes": 21075186765,
+    "source_revision": "ef3c381bd41eef07abcb5daebfc9c81d5928ff88",
+    "tag": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache:20260906-indexer-barrier-warmup"
+  },
+  "installer_sha256": "5597b51f70fcc16c3c1097370fbcf1659aadfd7c5a01f0d4494e814ad48cc368",
+  "limitations": [
+    "Original SIRCL operator parent only; managed-MTP mesh bundle not included.",
+    "DeepSeek issue 217 is a separate runtime and is not included.",
+    "Sampling warmup request contract tested; no full-model cold-cache specialization qualification."
+  ],
+  "parent_image_id": "sha256:5e32aaa1bbe3559e81db7706ed4286248f18d27cfdb186f6b851bf786eb43075",
+  "parent_registry_digest": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:0d4029b3b7023cf32c37ac20279469c9a2ee16a057f25aae3bcfee9ee5fb660f",
+  "parent_source_receipt_sha256": "6ef1ddd37fda9b797a8c71473db284c7d79f206207e43b38adc1ba5a1faa4359",
+  "schema": "sparkring-indexer-barrier-hotfix/v1",
+  "scope": "indexer barrier/compile revision, sampling readiness warmup, output-stall liveness; native libraries unchanged",
+  "source_after_sha256": "49f6fd916fd1ccf94311ee99427551edbd0dc3a5de23aeeb426418370f76f66d",
+  "source_before_sha256": "d3ec6274e142a4e7d1062ea6d2d99b97db0a02e92bb976c6570ae990b836b18d",
+  "source_receipt_sha256": "b27290a28e6d322d37b9cea11b01cd76d18a83f2dd58e6f4e1094cdc83c9b4bc",
+  "transform_sha256": "d4721099070b23ecc80fbaa5de2a378578b039ca5b78d3d83446e295ad3260aa",
+  "verification": {
+    "anonymous_pull": true,
+    "full_model_soak": false,
+    "gpu_correctness_tests_passed": 15,
+    "graph_replays_passed": 2000,
+    "packaged_wrapper_tests_passed": 22,
+    "pulled_image_id_matched": true,
+    "pulled_source_and_native_verification": true,
+    "serving_containers_replaced": false,
+    "source_and_native_manifests": true
+  },
+  "wrapper_changes": {
+    "scheduler_liveness.py": {
+      "after_sha256": "6fe1f8e052577c7a71708236bcd452ca3377f99de776e7edef8881573dac5670",
+      "before_sha256": "507e103f69ea9add095f9c8c0e45baf736ba1a25bf175bf7900eaee3f7f06b2a"
+    },
+    "serve_with_warmup.py": {
+      "after_sha256": "7579c43090dece26792bca6494f48afc9ce6044051426e38e14882d36805d6b2",
+      "before_sha256": "3593e2cf637393e6905a0e37e8bf5a58a718fee01d89892d040d165ffc4c2509"
+    }
+  }
+}

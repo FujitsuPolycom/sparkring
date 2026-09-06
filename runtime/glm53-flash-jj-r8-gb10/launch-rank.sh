@@ -28,6 +28,12 @@ fi
 : "${CONTAINER_PREFIX:=glm53-jj-r8-gb10}"
 : "${SPARKRING_CREATE_ONLY:=0}"
 : "${SPARKRING_PRINT_CONTAINER_SPEC:=0}"
+: "${SPARKRING_OFFLINE_SPEC:=0}"
+case "${SPARKRING_OFFLINE_SPEC}" in
+  0) ;;
+  1) [[ "${SPARKRING_PRINT_CONTAINER_SPEC}" == 1 ]] || { printf 'offline rendering requires SPARKRING_PRINT_CONTAINER_SPEC=1\n' >&2; exit 78; } ;;
+  *) printf 'SPARKRING_OFFLINE_SPEC must be 0 or 1\n' >&2; exit 78 ;;
+esac
 case "${SPARKRING_PRINT_CONTAINER_SPEC}" in
   0|1) ;;
   *) printf 'SPARKRING_PRINT_CONTAINER_SPEC must be 0 or 1\n' >&2; exit 78 ;;
@@ -41,6 +47,7 @@ esac
 : "${DECODE_CONTEXT_PARALLEL_SIZE:=4}"
 : "${CP_KV_CACHE_INTERLEAVE_SIZE:=auto}"
 : "${B12X_MLA_CKV_GATHER:=auto}"
+: "${B12X_FUSED_INDEXER:=1}"
 : "${B12X_MLA_CKV_GATHER_MAX_TOKENS:=524288}"
 : "${NODE_COUNT:=4}"
 : "${MAX_MODEL_LEN:=1048576}"
@@ -78,6 +85,7 @@ esac
 : "${SPARKRING_LIVENESS_ENABLED:=1}"
 : "${SPARKRING_LIVENESS_PORT:=8016}"
 : "${SPARKRING_LIVENESS_BLOCKED_SECONDS:=60}"
+: "${SPARKRING_LIVENESS_OUTPUT_SECONDS:=300}"
 : "${SPARKRING_IDLE_KV_WARN_SECONDS:=330}"
 : "${SPARKRING_LIVENESS_STALE_SECONDS:=15}"
 : "${SPARKRING_LIVENESS_SAMPLE_SECONDS:=10}"
@@ -174,7 +182,7 @@ for name in \
   SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT \
   NCCL_MIN_NCHANNELS NCCL_MAX_NCHANNELS OMP_NUM_THREADS \
   TORCHINDUCTOR_COMPILE_THREADS FASTSAFETENSORS_QUEUE_SIZE \
-  SPARKRING_LIVENESS_PORT SPARKRING_LIVENESS_BLOCKED_SECONDS \
+  SPARKRING_LIVENESS_PORT SPARKRING_LIVENESS_BLOCKED_SECONDS SPARKRING_LIVENESS_OUTPUT_SECONDS \
   SPARKRING_IDLE_KV_WARN_SECONDS SPARKRING_LIVENESS_STALE_SECONDS \
   SPARKRING_LIVENESS_SAMPLE_SECONDS
 do
@@ -238,6 +246,10 @@ fi
 case "${B12X_MLA_CKV_GATHER}" in
   0|1) ;;
   *) die 'B12X_MLA_CKV_GATHER must be auto, 0, or 1' ;;
+esac
+case "${B12X_FUSED_INDEXER}" in
+  0|1) ;;
+  *) die 'B12X_FUSED_INDEXER must be 0 or 1' ;;
 esac
 
 [[ "${rank}" =~ ^[0-9]+$ ]] || die 'rank must be an unsigned integer'
@@ -539,6 +551,10 @@ if [[ "${SIRCL_ENABLED}" == 1 ]]; then
       -v "${SIRCL_BUNDLE_HOST_ROOT}:${sircl_container_root}:ro"
     )
     sircl_bundle_is_external=1
+  elif [[ "${SPARKRING_OFFLINE_SPEC}" == 1 ]]; then
+    sircl_native_sha256="${SPARKRING_DECLARED_SIRCL_NATIVE_SHA256:?offline rendering requires declared native identity}"
+    sircl_manifest_sha256="${SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256:?offline rendering requires declared manifest identity}"
+    [[ "${sircl_native_sha256}" =~ ^[0-9a-f]{64}$ && "${sircl_manifest_sha256}" =~ ^[0-9a-f]{64}$ ]] || die 'invalid declared SIRCL identity'
   else
     sircl_native_sha256="$(
       docker image inspect --format \
@@ -657,6 +673,7 @@ if [[ "${SPARKCACHE_CLEAR_ONCE}" == auto ]]; then
   SPARKCACHE_CLEAR_ONCE="${SPARKCACHE_CACHE_NAMESPACE}"
 fi
 
+if [[ "${SPARKRING_OFFLINE_SPEC}" == 0 ]]; then
 actual_image_id="$(docker image inspect --format '{{.Id}}' "${IMAGE_REF}")"
 [[ "${actual_image_id}" == "${IMAGE_ID}" ]] || \
   die "image identity mismatch: expected ${IMAGE_ID}, got ${actual_image_id}"
@@ -664,9 +681,13 @@ for name in "${model_path_names[@]}"; do
   directory="${!name}"
   [[ -d "${directory}" ]] || die "required directory is missing: ${directory}"
 done
+fi
 
 verify_file_sha256() {
   local role="$1" path="$2" expected="$3" actual
+  # Offline output records intended arguments; image and file checks belong to
+  # the consumer's preflight before it starts any rank.
+  [[ "${SPARKRING_OFFLINE_SPEC}" == 0 ]] || return 0
   [[ -f "${path}" ]] || die "${role} is missing: ${path}"
   actual="$(sha256sum -- "${path}")"
   actual="${actual%% *}"
@@ -870,6 +891,7 @@ container_command=(docker "${container_action[@]}" \
   -e "SPARKRING_LIVENESS_ENABLED=${SPARKRING_LIVENESS_ENABLED}" \
   -e "SPARKRING_LIVENESS_PORT=${SPARKRING_LIVENESS_PORT}" \
   -e "SPARKRING_LIVENESS_BLOCKED_SECONDS=${SPARKRING_LIVENESS_BLOCKED_SECONDS}" \
+  -e "SPARKRING_LIVENESS_OUTPUT_SECONDS=${SPARKRING_LIVENESS_OUTPUT_SECONDS}" \
   -e "SPARKRING_IDLE_KV_WARN_SECONDS=${SPARKRING_IDLE_KV_WARN_SECONDS}" \
   -e "SPARKRING_LIVENESS_STALE_SECONDS=${SPARKRING_LIVENESS_STALE_SECONDS}" \
   -e "SPARKRING_LIVENESS_SAMPLE_SECONDS=${SPARKRING_LIVENESS_SAMPLE_SECONDS}" \
@@ -878,6 +900,7 @@ container_command=(docker "${container_action[@]}" \
   -e VLLM_GLM53_SPLIT_TARGET_BLOCK_SIZE=512 \
   -e VLLM_GLM53_SPLIT_MAMBA_BLOCK_SIZE=512 \
   -e "VLLM_B12X_MLA_CKV_GATHER=${B12X_MLA_CKV_GATHER}" \
+  -e "B12X_FUSED_INDEXER=${B12X_FUSED_INDEXER}" \
   -e "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS=${B12X_MLA_CKV_GATHER_MAX_TOKENS}" \
   -e "VLLM_CACHE_ROOT=/cache/jit/vllm/${JIT_CACHE_NAMESPACE}" \
   -e "B12X_CUTE_COMPILE_CACHE_DIR=/cache/jit/b12x/${JIT_CACHE_NAMESPACE}" \

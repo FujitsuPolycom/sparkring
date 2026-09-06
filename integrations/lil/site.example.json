@@ -1,0 +1,21 @@
+{
+  "schema": "sparkring-lil-site/v1",
+  "nodes": [
+    {"rank": 0, "host": "spark0.example.invalid"},
+    {"rank": 1, "host": "spark1.example.invalid"},
+    {"rank": 2, "host": "spark2.example.invalid"},
+    {"rank": 3, "host": "spark3.example.invalid"}
+  ],
+  "storage": {
+    "target": "/srv/models/glm53-target",
+    "draft": "/srv/models/glm53-draft",
+    "jit": "/srv/sparkring/jit",
+    "cache": "/srv/sparkcache"
+  },
+  "settings": {},
+  "cache": {
+    "enabled": true,
+    "namespace": "glm53-context",
+    "access_mode": "read-write"
+  }
+}
