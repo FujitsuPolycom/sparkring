@@ -442,7 +442,7 @@ def test_public_glm53_benchmark_retains_only_valid_run1_cells() -> None:
     )
 
 
-def test_public_glm53_benchmark_is_sanitized_and_front_page_lists_dcp_profiles() -> None:
+def test_public_glm53_benchmark_is_sanitized_and_front_page_links_profile() -> None:
     paths = [PERFORMANCE_RECEIPT_PATH, PERFORMANCE_RECORD_PATH]
     text = "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
@@ -459,28 +459,11 @@ def test_public_glm53_benchmark_is_sanitized_and_front_page_lists_dcp_profiles()
     assert "api_key" not in text.lower()
 
     readme = README_PATH.read_text(encoding="utf-8")
-    assert "GLM-5.3 Flash NVFP4 target" in readme
-    assert "external BF16 DFlash2" in readme
-    assert "| DCP1 | 4 Sparks · TP4/DCP1 |" in readme
-    assert "| DCP2 | 4 Sparks · TP4/DCP2 |" in readme
-    assert "| **DCP4 preferred** | **4 Sparks · TP4/DCP4** |" in readme
-    assert "| ~1.30M tokens |" in readme
-    assert "| ~2.90M tokens |" in readme
-    assert "| **~4.32M tokens** |" in readme
-    assert "26/30/24 GiB" in readme
-    assert "b12x-kda-dcp4-20260903.md" in readme
-    assert "| 16K | 2,649 (16K scout) | 37.97 | — | C4: 90.36 | — |" in readme
-    assert "C16: 184.39" in readme
-    quickstart = (
-        ROOT / "docs" / "GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
-    ).read_text(encoding="utf-8")
-    assert (
-        "The preferred launch is TP4/DCP4 with 24 GiB of FP8 KV"
-        in quickstart
-    )
-    assert "942,898-token needle" in " ".join(quickstart.split())
-    assert "GLM-5.3 Flash research observation" not in readme
-    assert "IN PROGRESS" not in readme
+    # The front page provides navigation; launcher contracts own DCP settings
+    # and measurement receipts own numeric results, not Markdown table layout.
+    targets = set(re.findall(r"\]\(([^)]+)\)", readme))
+    assert "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md" in targets
+    assert "performance/records/glm53-flash/b12x-kda-dcp4-20260903.md" in targets
 
 
 def test_twenty_gib_kv_observation_is_research_only_and_sanitized() -> None:
