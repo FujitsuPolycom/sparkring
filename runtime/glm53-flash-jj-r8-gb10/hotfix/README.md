@@ -44,6 +44,22 @@ full-model specialization coverage. The long-running TP4/SparkCache workload
 was not repeated. Report recurrence with the image digest, runtime settings,
 EngineCore stack, and all worker-thread stacks.
 
+## Verify the published child image
+
+The parent runtime's `verify_image.py --image` command checks the base builder's
+labels. The child image has different parent and runtime-status labels, so use
+the immutable reference with the installed content verifier:
+
+```bash
+docker run --rm --network none --entrypoint python3 \
+  ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:28e6a9c0dba07cec4852bf21352e5e2f6fc7bd07592a0edc3916d13f849cdcfe \
+  /opt/sparkring/bin/verify-jj-r8-sparkcache-image.py --inside-image
+```
+
+This command verifies the image's source manifests and retained native-library
+hashes without GPU access or a model process. Its result does not establish
+serving qualification.
+
 ## Rebuild
 
 Assemble an empty context with this `Dockerfile` and `install_hotfix.py`, plus

@@ -74,12 +74,13 @@ progress, idle periods, counter reset, recovery, missing metrics, invalid
 timeouts, and independent prefill grace. No GPU race is reproduced by these
 tests.
 
-Rebuild the operator wrapper to deploy the monitor; editing a runtime setting
-alone cannot update an existing image. This patch does not change published
-image pins or qualification receipts. Validate the rebuilt image with both
-long healthy prefills/restores and injected output stalls before using its
-signal for unattended recovery. Follow the managed deployment's coordinated
-stop/recovery procedure; this monitor only reports health.
+The [published operator image](../runtime/glm53-flash-jj-r8-gb10/hotfix/README.md)
+contains the monitor and its source receipt. Install that immutable image with
+the deployment's coordinated stop/start procedure; users do not need to rebuild
+it. Editing a setting alone cannot update an image that lacks the monitor.
+Unattended recovery remains unqualified: the deployment must first establish
+its longest healthy prefill/restore gap and verify its response to an injected
+output stall. The monitor reports health and does not restart the cluster.
 
 Do not automatically replay a timed-out model step. The executor's responses
 are ordered without per-call IDs, and a partially completed step can mutate KV

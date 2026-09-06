@@ -62,18 +62,22 @@ AST-lowered copy of the actual barrier helper; CUDA scheduling and code generati
 are not executed. This is evidence of a reachable protocol failure, not a
 hardware reproduction or a measurement of its production frequency.
 
-The accompanying standalone model uses only Python's standard library. Run it
-against a clean checkout of the affected B12X pin, then apply the candidate patch
+The CPU interleaving harness,
+[`repro_indexer_barrier.py`](../performance/harnesses/indexer_barrier/repro_indexer_barrier.py),
+uses only Python's standard library. From the SparkRing repository root, run it
+against an LF checkout of B12X commit
+`9ae41c5cb9935d740456479954b0089f80bd2ef2`, apply the checked source transform,
 and repeat:
 
 ```bash
-python repro_indexer_barrier.py /path/to/b12x/b12x/attention/dsa_indexer/fused_indexer.py --expect deadlock
-git -C /path/to/b12x apply /path/to/issue224-b12x-barrier.patch
-python repro_indexer_barrier.py /path/to/b12x/b12x/attention/dsa_indexer/fused_indexer.py --expect complete
+python performance/harnesses/indexer_barrier/repro_indexer_barrier.py /path/to/b12x/b12x/attention/dsa_indexer/fused_indexer.py --expect deadlock
+python runtime/glm53-flash-jj-r8-gb10/patch_indexer_barrier.py /path/to/b12x/b12x/attention/dsa_indexer/fused_indexer.py
+python performance/harnesses/indexer_barrier/repro_indexer_barrier.py /path/to/b12x/b12x/attention/dsa_indexer/fused_indexer.py --expect complete
 ```
 
-The evidence JSON records both traces: before the change, arrival is 4 with a
-block waiting for 6; after the change, arrival reaches 6 with no pending actors.
+The harness prints a JSON trace. Without entry synchronization, the modeled
+arrival count is 4 while a block waits for 6. With entry synchronization, the
+count reaches 6 and no actors remain pending.
 
 ## Full response path
 
@@ -132,7 +136,7 @@ and query-row count are not interchangeable, especially with speculation.
 This makes the failure path reachable under the recorded default composition.
 The exact live plan and group shape at each reported hang are not available.
 
-## Corrections to the original diagnosis
+## Executor response deadlines
 
 The exact vLLM comparison from `22ffe140` to `e02b1746` leaves the executor,
 shared-memory queue, and EngineCore files unchanged. Their source already has:

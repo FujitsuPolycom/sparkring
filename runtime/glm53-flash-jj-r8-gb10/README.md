@@ -286,15 +286,16 @@ NVMe reads and CUDA placement through two 256 MiB mapped arenas. A third arena
 is not part of the profile because the two-stage pipeline has no measured
 arena wait that would justify more unified-memory pressure.
 
-The image entrypoint runs `warmup_dflash.py` before Docker reports rank 0 as
-healthy.
-The readiness wrapper `serve_with_warmup.py` includes a final temperature-one request with thinking
-enabled, in addition to the configured shape batches. Failure of that request
-prevents warmup completion. This sampling coverage is implemented with CPU
-request-contract tests; kernel coverage requires a rebuilt image and GPU
-validation. It does not establish coverage of mixed long/short prefill batches
-or all recurrent KDA specializations. The published image receipt does not
-qualify the additional request.
+When `DFLASH_WARMUP=1`, the readiness entrypoint runs `warmup_dflash.py` before
+Docker reports rank 0 as healthy. The readiness wrapper,
+`serve_with_warmup.py`, also sends a temperature-one request with thinking
+enabled after the configured shape batches. Failure of that request prevents
+warmup completion. This request contract is implemented and tested in the
+[published child image](hotfix/README.md), whose
+[receipt](hotfix/public-image.json) records 22 installed readiness/liveness
+tests. Cold-cache full-model sampling, mixed long/short prefill coverage, and
+all recurrent KDA specializations remain unqualified. The default pinned
+operator image predates this additional readiness request.
 The default environment template warms every concurrency from C1 through C16
 and prompt spans covering the DFlash Triton `BLOCK_SIZE` specializations
 through 256. DFlash depth seven verifies eight target rows per active request,
