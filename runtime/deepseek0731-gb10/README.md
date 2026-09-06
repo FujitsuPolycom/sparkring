@@ -33,6 +33,32 @@ The image overlay label is
 cache-identity, or transport setting changes. Enabling the variable in an
 image without this overlay has no effect.
 
+### API source validation
+
+Status: implemented with CPU regression coverage. The
+[source replay receipt](api-contract-source-replay.json) identifies all twelve
+source files at vLLM commit `e2666d9a65f41fc376607531453cbd57c4c71016`.
+The complete patch matches every preimage and result hash, compiles as Python,
+and is a no-op when applied again to the complete result set.
+
+Twelve focused tests pass under Python 3.12 with OpenAI SDK 2.29.0 and Pydantic
+2.12.5. They cover patch identity, request-model validation, and the optional
+empty-tool serialization guard. The
+[full-method probe](tool_choice_method_probe.py) executes the patched
+`chat_completion_full_generator` with fixture engine/parser results and response
+interfaces; its [receipt](api-tool-method-replay.json) records 25 passing cases.
+Run the probe against the patched serving source:
+
+```bash
+python runtime/deepseek0731-gb10/tool_choice_method_probe.py \
+  /path/to/vllm/entrypoints/openai/chat_completion/serving.py
+```
+
+These checks do not execute HTTP routing, a model, streaming generation, or the
+installed ARM64 image. Rebuilt-image qualification requires the named/required
+tool-result and Responses-effort reproductions against an image carrying the
+combined overlay label above. The published native derivative remains unchanged.
+
 ## Published native runtime
 
 Status: **research-only; builder implemented with a TP4/K5 diagnostic run**.
