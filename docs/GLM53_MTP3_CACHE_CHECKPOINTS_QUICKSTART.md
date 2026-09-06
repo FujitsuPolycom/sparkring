@@ -1,9 +1,17 @@
 # GLM-5.3 native MTP3 with verified caching and recurrent checkpoints
 
-Status: **research-only**. The image build and source checks are implemented.
-The published image's vLLM, B12X, transport, and warmup files match the deployed
-composition in 5,308 byte comparisons. It incorporates SparkCache main at the
-revision below. Source equivalence is not a serving soak of this rebuilt image.
+Status: **research-only**. The exact published image passed
+[eight bounded serving checks](../performance/records/glm53-flash/mtp3-cache-checkpoints-serving-smoke-20260906.md):
+text, growing conversation, streaming, reasoning rejection, and image responses.
+Its 5,308 runtime-file comparisons and 5,472-file image verification also passed.
+The smoke test configured 40 GiB of persistent cache per rank but did not fill
+it; no explicit persistent restore was observed. It is not a long-duration soak.
+
+The startup-admission fix in merged
+[SparkRing #237](https://github.com/FujitsuPolycom/sparkring/pull/237) is absent
+from this image. Public traffic can compete with warmup before Docker readiness.
+Keep client traffic off the API until readiness completes. The HTTP 503 startup
+gate requires a rebuilt image and separate startup verification.
 
 ## Prerequisites
 
