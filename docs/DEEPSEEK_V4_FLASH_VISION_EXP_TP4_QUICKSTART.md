@@ -74,6 +74,7 @@ NCCL_SOCKET_IFNAME=<management interface>   TP_SOCKET_IFNAME=<same>   GLOO_SOCKE
 NCCL_IB_HCA=rocep1s0f0,rocep1s0f1   NCCL_IB_GID_INDEX=3   NCCL_IB_MERGE_NICS=0
 NCCL_IB_SUBNET_AWARE_ROUTING=1      NCCL_IB_SUBNET_PREFIX_LEN=24   NCCL_CROSS_NIC=1
 GPU_MEMORY_UTILIZATION=0.80  MAX_NUM_SEQS=48  MAX_NUM_BATCHED_TOKENS=12288  MTP_NUM_TOKENS=5
+DSPARK_ENABLE_SP_INDEXER=1       # recipe's sequence-parallel Lightning indexer: deep prefill 1.41x on TP4
 DSPARK_RESTART_POLICY=no
 ```
 
@@ -140,11 +141,15 @@ speed crosses 10 tok/s at C48; the reference site caps admission at 48 for agent
 Two pairs behind a router can at best sum to ~283 tok/s at fleet C32 (two direct ladders run
 concurrently); the cycle measured 327. Prefill past ~180K context is bound by the DSV4 Lightning
 indexer, which every TP rank runs over the full context (560-660 tok/s on TP4 and TP2 alike); a
-cold 1M prompt takes ~16 min on either topology. NIAH at 958,182 real tokens returned the exact
-needle in 963.9 s.
+cold 1M prompt takes ~16 min on either topology with the stock indexer. NIAH at 958,182 real tokens
+returned the exact needle in 963.9 s stock and in **683.3 s with the recipe's sequence-parallel
+indexer** (`DSPARK_ENABLE_SP_INDEXER=1`: each TP rank scores a quarter of the compressed keys for
+chunks with ≥8,192 keys and the ranks merge candidates exactly; decode and ≤128K prefill unchanged).
+On TP2 the same patch measured only −6 % at 128K; on TP4 the replicated term is quartered, which
+is why it is part of this profile.
 
 Knobs measured neutral or negative on the cycle (one variable per boot): replicated DSpark Markov
-head, 8 NCCL channels, in-flight prefill cap 3, greedy draft sampling. The NVIDIA text-only
+head, 8 NCCL channels, in-flight prefill cap 3, greedy draft sampling, 8,192 batched tokens. The NVIDIA text-only
 `DeepSeek-V4-Flash-0731-NVFP4` checkpoint boots on the same stack only with
 `--moe-backend flashinfer_cutlass` and the recipe's vision hotfix disabled; it measured prefill +6 %
 and decode −5..−14 % (draft acceptance 0.20 with one MTP layer).
