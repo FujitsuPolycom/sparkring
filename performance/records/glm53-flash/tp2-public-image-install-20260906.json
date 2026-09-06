@@ -1,0 +1,322 @@
+{
+  "schema": "sparkring-public-image-functional/v1",
+  "registry_digest": "ghcr.io/fujitsupolycom/sparkring@sha256:d431841cd9adb75ec40777eeb435f7f72af5995018219fa3556d7b5c7f56c2d5",
+  "source_checkout": "d215e4a47aeb3bd1b387a0ee3d3f663858eee6b7",
+  "smoke_checkout": "6095189",
+  "cold_request": {
+    "phase": "long-prompt",
+    "seconds": 8.870045124029275,
+    "answer_correct": true,
+    "cache_restore_verified": false,
+    "output": " amber-73091\nWhat is the verification code at the beginning?\nAnswer: amber-73091\nWhat is the verification code at the beginning?\n",
+    "usage": {
+      "prompt_tokens": 7727,
+      "total_tokens": 7759,
+      "completion_tokens": 32,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "created_cache_tokens": null,
+        "multimodal_tokens": null
+      },
+      "completion_tokens_details": null
+    }
+  },
+  "restored_request": {
+    "phase": "long-prompt",
+    "seconds": 2.4798334310180508,
+    "answer_correct": true,
+    "cache_restore_verified": false,
+    "output": " amber-73091\nWhat is the verification code at the beginning?\nAnswer: amber-73091\nWhat is the verification code at the beginning?\n",
+    "usage": {
+      "prompt_tokens": 7727,
+      "total_tokens": 7759,
+      "completion_tokens": 32,
+      "prompt_tokens_details": {
+        "cached_tokens": 7680,
+        "created_cache_tokens": null,
+        "multimodal_tokens": null
+      },
+      "completion_tokens_details": null
+    }
+  },
+  "restore_logs": [
+    "(Worker_TP0 pid=115) INFO 09-06 19:06:31 [spark_context_cache_connector.py:3691] spark-context-cache: manifest discovery checked=1 offered=1 rejected=0\n(Worker_TP0 pid=115) INFO 09-06 19:08:55 [spark_context_cache_connector.py:3912] sparkcache: restore tokens=7680 total=322.8ms rate=24K tok/s bytes=125.4MiB\n",
+    "(Worker_TP1 pid=92) INFO 09-06 19:06:32 [spark_context_cache_connector.py:3691] spark-context-cache: manifest discovery checked=1 offered=1 rejected=0\n(Worker_TP1 pid=92) INFO 09-06 19:08:54 [spark_context_cache_connector.py:3912] sparkcache: restore tokens=7680 total=225.0ms rate=34K tok/s bytes=125.4MiB\n"
+  ],
+  "raw_completion_test": [
+    {
+      "phase": "text",
+      "results": [
+        {
+          "marker": "violet-0-6291",
+          "pass": true,
+          "output": " 6291\nRecord: the verification code is violet-0-6291.\nQuestion: what is the verification code?\nAnswer: 6291\nRecord: the verification code is violet-0-6291.\nQuestion: what is the verification code?\nAnswer: 6291\nRecord",
+          "usage": {
+            "prompt_tokens": 24,
+            "total_tokens": 88,
+            "completion_tokens": 64,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "created_cache_tokens": null,
+              "multimodal_tokens": null
+            },
+            "completion_tokens_details": null
+          }
+        },
+        {
+          "marker": "violet-1-6291",
+          "pass": true,
+          "output": " violet-1-6291\nQuestion: what is the verification code?\nAnswer: violet-1-6291\nQuestion: what is the verification code?\nAnswer: violet-1-6291\nQuestion: what is the verification code?\nAnswer: violet-1-6291\nQuestion:",
+          "usage": {
+            "prompt_tokens": 24,
+            "total_tokens": 88,
+            "completion_tokens": 64,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "created_cache_tokens": null,
+              "multimodal_tokens": null
+            },
+            "completion_tokens_details": null
+          }
+        },
+        {
+          "marker": "violet-2-6291",
+          "pass": true,
+          "output": " violet-2-6291.\nRecord: the verification code is 8-6-6-8-6-6.\nQuestion: what is the verification code?\nAnswer: 8-6-6-8-6-6.\nRecord: the verification code is 6-6-6-6",
+          "usage": {
+            "prompt_tokens": 24,
+            "total_tokens": 88,
+            "completion_tokens": 64,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "created_cache_tokens": null,
+              "multimodal_tokens": null
+            },
+            "completion_tokens_details": null
+          }
+        },
+        {
+          "marker": "violet-3-6291",
+          "pass": false,
+          "output": " 3-6291\nQuestion: what is the verification code?\nAnswer: 3-6291\nQuestion: what is the verification code?\nAnswer: 3-6291\nQuestion: what is the verification code?\nAnswer: 3-6291\nQuestion: what is the verification",
+          "usage": {
+            "prompt_tokens": 24,
+            "total_tokens": 88,
+            "completion_tokens": 64,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "created_cache_tokens": null,
+              "multimodal_tokens": null
+            },
+            "completion_tokens_details": null
+          }
+        },
+        {
+          "marker": "violet-4-6291",
+          "pass": true,
+          "output": " violet-4-6291.\nQuestion: what is the verification code?\nAnswer: violet-4-6291.\nQuestion: what is the verification code?\nAnswer: violet-4-6291.\nQuestion: what is the verification code?\nAnswer: violet-4-6291.\nQuestion:",
+          "usage": {
+            "prompt_tokens": 24,
+            "total_tokens": 88,
+            "completion_tokens": 64,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "created_cache_tokens": null,
+              "multimodal_tokens": null
+            },
+            "completion_tokens_details": null
+          }
+        },
+        {
+          "marker": "violet-5-6291",
+          "pass": false,
+          "output": " 5-6291.\nThe verification code is 5-6291.\nThe verification code is 5-6291.\nThe verification code is 5-6291.\nThe verification code is 5-6291.\nThe verification code is 5-6291.\nThe verification",
+          "usage": {
+            "prompt_tokens": 24,
+            "total_tokens": 88,
+            "completion_tokens": 64,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "created_cache_tokens": null,
+              "multimodal_tokens": null
+            },
+            "completion_tokens_details": null
+          }
+        },
+        {
+          "marker": "violet-6-6291",
+          "pass": false,
+          "output": " the verification code is 6-6291.\n\nRecord: the verification code is 6-6291.\nQuestion: what is the verification code?\nAnswer: the verification code is 6-6291.\n\nRecord: the verification code is 6-6291.\nQuestion: what is the verification",
+          "usage": {
+            "prompt_tokens": 24,
+            "total_tokens": 88,
+            "completion_tokens": 64,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "created_cache_tokens": null,
+              "multimodal_tokens": null
+            },
+            "completion_tokens_details": null
+          }
+        },
+        {
+          "marker": "violet-7-6291",
+          "pass": true,
+          "output": " violet-7-6291.\nQuestion: what is the verification code?\nAnswer: violet-7-6291.\nQuestion: what is the verification code?\nAnswer: violet-7-6291.\nQuestion: what is the verification code?\nAnswer: violet-7-6291.\nQuestion:",
+          "usage": {
+            "prompt_tokens": 24,
+            "total_tokens": 88,
+            "completion_tokens": 64,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "created_cache_tokens": null,
+              "multimodal_tokens": null
+            },
+            "completion_tokens_details": null
+          }
+        }
+      ]
+    }
+  ],
+  "video_probe": [
+    {
+      "decoded_first_frame_mean_rgb": [
+        0,
+        0,
+        253
+      ]
+    },
+    {
+      "fixture_color": "red",
+      "response": {
+        "id": "chatcmpl-85753ff178de27f4",
+        "object": "chat.completion",
+        "created": 1788720709,
+        "model": "glm-5.3-flash-spark-pr646",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "The video frames provided are entirely filled with a single, solid color. \n\nRed",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": "The user wants to know the dominant color in the video frames.\nI am given two frames, both at 00:00.\nBoth frames are solid red.\nThe dominant color is red.\nI need to provide a short, high-level summary of my reasoning, as per the system prompt.\nReasoning: The frames provided are entirely red.\nResult: Red."
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": 154827,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.1.dev1+pr646-tp2-2509a80d",
+        "usage": {
+          "prompt_tokens": 93,
+          "total_tokens": 183,
+          "completion_tokens": 90,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "created_cache_tokens": 0,
+            "multimodal_tokens": {
+              "video": 72
+            }
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 72
+          }
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": null,
+        "ec_transfer_params": null,
+        "metrics": null
+      }
+    },
+    {
+      "fixture_color": "lime",
+      "response": {
+        "id": "chatcmpl-815189c905804b92",
+        "object": "chat.completion",
+        "created": 1788720712,
+        "model": "glm-5.3-flash-spark-pr646",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "The dominant color in the video frames is green.",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": "The user wants to know the dominant color in the video frames provided.\nI have two frames, both at 00:00.\nThe color in both frames is a solid, bright green.\nThe dominant color is green."
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": 154827,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.1.dev1+pr646-tp2-2509a80d",
+        "usage": {
+          "prompt_tokens": 93,
+          "total_tokens": 149,
+          "completion_tokens": 56,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "created_cache_tokens": 0,
+            "multimodal_tokens": {
+              "video": 72
+            }
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 44
+          }
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": null,
+        "ec_transfer_params": null,
+        "metrics": null
+      }
+    }
+  ],
+  "blue_video_repeat": [
+    {
+      "phase": "video",
+      "pass": false,
+      "message": {
+        "role": "assistant",
+        "content": "Black",
+        "refusal": null,
+        "annotations": null,
+        "audio": null,
+        "function_call": null,
+        "reasoning": "The user wants to know the dominant color in the image at 00:00.\nLooking at the image at 00:00, it is completely black.\nTherefore, the dominant color is black."
+      },
+      "usage": {
+        "prompt_tokens": 96,
+        "total_tokens": 139,
+        "completion_tokens": 43,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0,
+          "multimodal_tokens": {
+            "video": 72
+          }
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 40
+        }
+      }
+    }
+  ]
+}
