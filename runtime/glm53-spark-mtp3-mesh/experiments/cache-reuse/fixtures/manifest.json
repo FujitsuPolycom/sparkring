@@ -1,0 +1,66 @@
+{
+  "schema": "sparkring-mtp3-cache-reuse-fixtures/v1",
+  "status": "research-only",
+  "base_image_id": "sha256:2e41b1e934a85ff7c21b780532db2f0a0e978df081e52f4ae2bf11f8992fb24f",
+  "purpose": "Exact original Python files required by source transforms and extracted CPU tests; not model/runtime assets",
+  "files": {
+    "b12x/attention/dsa_indexer/fused_indexer.py": {
+      "sha256": "893fbcade135b7e1d146b8fb6530cde0650be515f69bf9a17ced0a9c61a141e2",
+      "bytes": 143038,
+      "image_path": "/usr/local/lib/python3.12/dist-packages/b12x/attention/dsa_indexer/fused_indexer.py"
+    },
+    "vllm/entrypoints/openai/chat_completion/serving.py": {
+      "sha256": "9982953285e9df469032a82fffa4095d0e9d86278bede6e2b91d03d02373d182",
+      "bytes": 56414,
+      "image_path": "/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/openai/chat_completion/serving.py"
+    },
+    "vllm/v1/attention/backends/gdn_attn.py": {
+      "sha256": "fd75fb72efeb762ec558d332364e889df44a9ea483026bd5ded8f77f42be9b7f",
+      "bytes": 40208,
+      "image_path": "/usr/local/lib/python3.12/dist-packages/vllm/v1/attention/backends/gdn_attn.py"
+    },
+    "vllm/v1/core/block_pool.py": {
+      "sha256": "ddee56dccb2208411b3a035918e917ce8f56a9858471e9ca12b420d5d79bc69c",
+      "bytes": 33243,
+      "image_path": "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/block_pool.py"
+    },
+    "vllm/v1/core/kv_cache_coordinator.py": {
+      "sha256": "149222b2b1de1ee3714c7c4e0843b9c38c730a605740ce7dc913308df906f20f",
+      "bytes": 41494,
+      "image_path": "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/kv_cache_coordinator.py"
+    },
+    "vllm/v1/core/kv_cache_utils.py": {
+      "sha256": "9b5ec588681252832e322387fc7ecea3b146061305f8abb1b02bb55e219c2a8c",
+      "bytes": 100179,
+      "image_path": "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/kv_cache_utils.py"
+    },
+    "vllm/v1/core/sched/scheduler.py": {
+      "sha256": "122d9722b48f8cec267d2136a18c184b8901a5a0a46187eab7030d6227f1983d",
+      "bytes": 157770,
+      "image_path": "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/sched/scheduler.py"
+    },
+    "vllm/v1/core/single_type_kv_cache_manager.py": {
+      "sha256": "10846c4994e7860deab8b42c8bcd3315ddc96d14a478d4012c398418cc17a04c",
+      "bytes": 89918,
+      "image_path": "/usr/local/lib/python3.12/dist-packages/vllm/v1/core/single_type_kv_cache_manager.py"
+    },
+    "vllm/v1/engine/output_processor.py": {
+      "sha256": "f46abafd45792b4816e75c0702113b510f4b3e15ea33016d155ee00abaa3fb59",
+      "bytes": 33588,
+      "image_path": "/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/output_processor.py"
+    },
+    "vllm/v1/metrics/stats.py": {
+      "sha256": "e8c3cbcfb880e7a2a496a1e499d4e4efccf70ba1eef56f4a1a6ee44cc0bf49bc",
+      "bytes": 22775,
+      "image_path": "/usr/local/lib/python3.12/dist-packages/vllm/v1/metrics/stats.py"
+    }
+  },
+  "archive_sha256": "b54fa2cdde26099905be15a3462144877c2c511299642c744daecbcdcdcf7219",
+  "transform_script_sha256": {
+    "patch_mtp3_barrier.py": "751cb641cfe42ffa7aa907774a8059edcf69c446d0299612d12b13ed7a1230ec",
+    "patch_mtp3_lease_accounting.py": "ece6753aa79571eb0f7a9901ac8be69f3bfbf26d10bbdc315134847977d019ae",
+    "patch_mtp3_local_lease_preference.py": "3489feb646f2b768220422988a6d120a3f82e30972df8c1095d1c4b03fab0bb8",
+    "patch_mtp3_sparse_retention.py": "a6d27c5804fc4a79b01835beaae01d33a8ef495e98c30b655121d620c62d2afa",
+    "patch_mtp3_partial_tail_eligibility.py": "2e0609a62a3028841431e92531ea3b5af958cc863274b8518547ce56da7f2c89"
+  }
+}

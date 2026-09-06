@@ -1,0 +1,3 @@
+# Transform script hashes include their original line endings.
+patch_mtp3_*.py -text whitespace=cr-at-eol
+fixtures/*.zip -text

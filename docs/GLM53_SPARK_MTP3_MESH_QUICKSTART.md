@@ -13,6 +13,13 @@ first. It reuses the shared blank-cluster bootstrap and adds the secondary
 data interfaces, GID/MTU checks, and driver configuration required below.
 Return here to pull the published image and deploy the model.
 
+**Preparing hosts that have already run GPU workloads?** Consider a reboot
+before installation and the first model start, after stopping active workloads.
+It can reduce memory fragmentation even when plenty of RAM appears free.
+The [startup memory gate](../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md#automatic-startup-memory-preparation)
+checks available memory and large contiguous free blocks; rebooting does not
+replace that check. A reboot interrupts every workload on that host.
+
 The profile uses the `GLM-5.3-Flash-NVFP4-Spark` target's built-in multi-token
 predictor with three speculative tokens. Its separate proposal head is packed
 to NVFP4 at model load and uses BF16 activations. The target/verifier head
