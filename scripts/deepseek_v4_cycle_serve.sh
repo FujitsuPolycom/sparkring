@@ -140,12 +140,10 @@ container_name="deepseek-v4-flash-r$NODE_RANK"
 model_container_path=/models/deepseek-v4-flash-0731
 served_model_name=${SERVED_MODEL_NAME:-deepseek-v4-flash-0731}
 
-# HuggingFace hub snapshot support: when MODEL_HOST_PATH points into an HF
-# hub cache (`<repo>/snapshots/<revision>/`), every model file inside is a
-# symlink whose relative target ../../blobs/<sha> resolves above the mounted
-# snapshot tree. Bind the sibling blobs directory read-only so the container
-# resolves those targets to the real weight payloads. Plain checkpoint
-# directories are unaffected and gain no extra mount.
+# Hugging Face snapshot files can link to ../../blobs/<hash>, outside the
+# mounted snapshot directory. Mount the sibling blobs directory read-only at
+# /blobs so those links resolve from /models/deepseek-v4-flash-0731. Plain
+# checkpoint directories do not require the additional mount.
 model_blobs_path=
 case "/$MODEL_HOST_PATH/" in
     */snapshots/*/)
