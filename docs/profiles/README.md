@@ -28,6 +28,10 @@ published configuration hash.
 
 ## Research-only profiles
 
+| Profile | Topology | Serving sources and evidence scope | Documentation |
+|---|---|---|---|
+| DeepSeek-V4-Flash-Vision-Exp with DSpark | four-Spark cycle, TP4 | Anemll image and MiaAI-Lab recipe with SparkRing patched NCCL; contributor-reported observations; independent reproduction is not claimed | [Artifact contract](../../runtime/deepseek-vision-exp/profile.json), [recipe](../../recipes/deepseek-v4-flash-vision-exp-tp4.json), [quickstart](../DEEPSEEK_V4_FLASH_VISION_EXP_TP4_QUICKSTART.md) |
+
 The [GLM-5.3 native-MTP3 cache/checkpoint mesh](../GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md)
 publishes the integrated compute, recurrent checkpoint, optimized SparkCache,
 and transport composition for TP4/DCP4. Its

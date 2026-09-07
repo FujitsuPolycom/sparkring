@@ -1,162 +1,275 @@
-# Run DeepSeek V4 Flash Vision-Exp on four GB10 systems
+# DeepSeek V4 Flash Vision-Exp on a four-Spark cycle
 
-Serve `deepseek-ai/DeepSeek-V4-Flash-Vision-Exp` at TP4 on a four-Spark direct-cable cycle
-(`0-1-2-3-0`, two cables per node, no switch) using the MiaAI-Lab DSpark recipe image as the
-serving stack and SparkRing's patched NCCL as the transport.
+Status: **research-only**. This profile defines a four-rank launch configuration
+for `deepseek-ai/DeepSeek-V4-Flash-Vision-Exp`. Contributor-reported serving
+results are attributed below; independent reproduction is not claimed.
 
-**Status: implemented, live-benchmarked on one site (2026-09-06), not qualified.** One operator
-site brought the profile up from two production TP2 pairs, gated it (auth, text, image, per-rank
-parity, Ring Doctor), measured it against the pairs, held a 1,048,576-token needle probe exactly at the 10/50/90 % positions (~958K real tokens each,
-681-683 s), and ran a 3-hour c=8 soak while serving production traffic (732 waves, 0 preemptions,
-0 errors, no drift). It has not been reproduced on a second site. The machine-readable contract is
-[`recipes/deepseek-v4-flash-vision-exp-tp4.json`](../recipes/deepseek-v4-flash-vision-exp-tp4.json).
+The model and serving hotfixes come from
+[MiaAI-Lab's DSpark recipe](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark/tree/7440c53c1f0352886e47b1909051784879fa0a24)
+and the Anemll serving image identified in the
+[runtime contract](../runtime/deepseek-vision-exp/profile.json).
+SparkRing supplies the four-rank cycle configuration and patched NVIDIA NCCL.
+There is no SparkCache or external KV connector in this profile.
 
-## Why this profile exists
+The [runtime contract](../runtime/deepseek-vision-exp/profile.json) records
+artifact identities. The [serving recipe](../recipes/deepseek-v4-flash-vision-exp-tp4.json)
+summarizes model, topology, and serving settings. Use the
+[rank environment template](../runtime/deepseek-vision-exp/cycle.env.example)
+and [Compose overlay](../runtime/deepseek-vision-exp/compose.override.yml)
+with the exact upstream recipe revision below.
 
-[`DEEPSEEK_V4_FLASH_QUICKSTART.md`](DEEPSEEK_V4_FLASH_QUICKSTART.md) serves the text-only 0731
-checkpoint on `gb10-vllm-serving`. Vision-Exp adds a 32-block ViT, an aligner and image tokens
-under the same `DeepseekV4ForCausalLM` architecture string, moves `num_nextn_predict_layers`
-from 1 to 3, and sets `rms_norm_eps=1e-20`. The community stack that already handles all three on
-GB10 is the MiaAI-Lab recipe on the Anemll `dspark-vllm-gx10` image (native vision hotfix, DSpark
-k=5 with the block-k unlock, FlashInfer 0.6.18.post1). Reusing it for a cycle changes exactly two
-things versus a pair: the rank count, and the NCCL library plus its environment. Nothing in the
-model stack is touched, so pair-validated correctness fixes carry over unchanged.
+## Prepare the four hosts
 
-## Prerequisites
+Connect the ranks in the physical cycle `0-1-2-3-0`, with two directly connected
+neighbors per rank. Verify the cable endpoints and assign ranks in cycle order;
+an existing pair's labels do not establish the cross-pair cable order.
 
-Complete [PREREQUISITES.md](PREREQUISITES.md) for the four-Spark cycle: forwarding, static routes,
-and the `DOCKER-USER` ACCEPT rule between the two fabric interfaces on every node. Then, on every
-node:
+Complete the four-Spark cycle steps in [PREREQUISITES.md](PREREQUISITES.md)
+and the [patched NCCL contract](../spark_transport/nccl/README.md). Each rank
+needs both neighbor-facing RoCE interfaces, persistent addresses and routes,
+and a verified RoCEv2/IPv4 GID on each selected device. Choose the actual device
+names and GID indices from the host inventory.
 
-- Admit the other three ranks' **management** addresses through the host firewall. The cycle
-  bootstraps torch's TCPStore (`MASTER_PORT`) and NCCL/Gloo ephemeral sockets on the management
-  interface; a default-deny inbound policy makes every rank hang silently at
-  `distributed_init_method=tcp://<rank0>:<port>` with no error anywhere.
-- Admit the fabric subnets on the host firewall as well.
-- Reboot a node that has been serving for days if it shows few contiguous 32 MiB blocks
-  (`/proc/buddyinfo`); the memory gate in the GLM quickstart applies here too.
+The management network carries torch rendezvous and NCCL/Gloo bootstrap.
+Allow connectivity between all four management addresses, including the
+configured rendezvous port and bootstrap sockets. Scope the rank-zero API to
+its intended clients. Stop conflicting model workloads before starting this
+profile. A planned reboot before installation can help after memory-intensive
+GPU workloads; it does not replace the host prerequisite checks.
 
-Checkpoint: `deepseek-ai/DeepSeek-V4-Flash-Vision-Exp@86f746b36186f0e567729a5c06a8c918caba82a9`
-(82 files, 161.5 GB) in a standard Hugging Face hub cache on every rank. Weights resident per rank
-at TP4: 41.6 GiB.
+## Pin the serving recipe and model
 
-Serving stack: MiaAI-Lab `DeepSeek-v4-Flash-DSpark-2x-DGX-Spark` at `7440c53` checked out (or
-copied) at the same path on every rank, and its image (`ghcr.io/anemll/dspark-vllm-gx10:0.1.1`,
-optionally with the FlashInfer 0.6.18.post1 overlay used by the reference site) present on every
-rank with an identical image id.
+From the SparkRing checkout on each host, use an unused deployment directory:
 
-Transport: SparkRing's patched NCCL `libnccl.so.2.30.7` (`switchless-cycle`, `skip-tree-pat`,
-`advertise-all-listener-gids`) at a host path on every rank. The library links only
-`GLIBC_2.17/2.18`, so it loads in the Anemll image (glibc 2.35); it carries the same SONAME as
-torch's bundled `libnccl.so.2`, so an `LD_PRELOAD` satisfies torch's `DT_NEEDED` with the patched
-copy, and `VLLM_NCCL_SO_PATH` points pynccl at the same file. The image's own pip NCCL is already
-2.30.7, so the ABI torch 2.11+cu130 expects is the one preloaded.
+```bash
+sparkring_root="$PWD"
+recipe_dir="$PWD/deepseek-vision-exp-runtime"
 
-## Cabling and ranks
+git clone https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark.git "$recipe_dir"
+git -C "$recipe_dir" checkout --detach 7440c53c1f0352886e47b1909051784879fa0a24
+```
 
-Existing pair cables stay on cage 0. The two new cables go cage 1 to cage 1 on the cross edges.
-Which node is at the far end of each new cable must be discovered (temporary addresses, then
-ping), not assumed: both pairings form a valid cycle, but vLLM node ranks must follow the physical
-cycle so NCCL's ring `0-1-2-3-0` is the cable ring. The reference site's pairing was
-a-head(0) — a-worker(1) — b-head(2) — b-worker(3) — a-head, subnets 100/110/102/111 (/24).
+The checkpoint is
+[DeepSeek-V4-Flash-Vision-Exp revision 86f746b3](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp/tree/86f746b36186f0e567729a5c06a8c918caba82a9).
+Download that revision into a standard Hugging Face cache on every rank. For
+example, with the Hugging Face CLI installed:
+
+```bash
+hf download deepseek-ai/DeepSeek-V4-Flash-Vision-Exp \
+  --revision 86f746b36186f0e567729a5c06a8c918caba82a9
+```
+
+Set `HF_CACHE` in each rank environment to the cache root containing `hub/`.
+The template's `DSPARK_REVISION` selects this exact model revision at startup.
+The upstream recipe directory must contain its pinned Compose file and hotfix
+mounts; copying only the Compose file is insufficient.
+
+## Select the image and NCCL library
+
+The profile selects the Anemll 0.1.1 image directly, without an additional
+FlashInfer package overlay. Pull its immutable reference and the NCCL donor
+image from the runtime contract. The donor container is created only to copy
+the library; it is never started.
+
+Run from the SparkRing checkout, retaining `recipe_dir` from the preceding
+section. Choose an unused export-container name before running this block:
+
+```bash
+profile="$sparkring_root/runtime/deepseek-vision-exp/profile.json"
+nccl_library="$recipe_dir/artifacts/nccl/libnccl.so.2.30.7"
+
+profile_value() {
+  python3 - "$profile" "$1" <<'PY'
+import json
+import sys
+with open(sys.argv[1]) as source:
+    value = json.load(source)
+for key in sys.argv[2].split('.'):
+    value = value[key]
+print(value)
+PY
+}
+
+(
+  set -eu
+  image="$(profile_value image.reference)"
+  donor="$(profile_value transport.donor_image)"
+  donor_path="$(profile_value transport.donor_path)"
+  docker pull "$image"
+  test "$(docker image inspect "$image" --format '{{.Id}}')" = "$(profile_value image.config_digest)"
+  docker pull "$donor"
+  test "$(docker image inspect "$donor" --format '{{.Id}}')" = "$(profile_value transport.donor_config_digest)"
+
+  mkdir -p "$(dirname "$nccl_library")"
+  chmod 0755 "$(dirname "$nccl_library")"
+  export_id="$(docker create --name deepseek-vision-nccl-export "$donor")"
+  trap 'docker rm "$export_id" >/dev/null' EXIT
+  docker cp "$export_id:$donor_path" "$nccl_library"
+  printf '%s  %s\n' "$(profile_value transport.library_sha256)" "$nccl_library" | sha256sum --check
+  chmod 0644 "$nccl_library"
+)
+```
+
+The exit trap removes only the export container created by this block, using
+its returned container ID. It also runs if copying or verification fails.
+Set `SPARKRING_NCCL_LIBRARY` in the rank environment to the absolute
+`nccl_library` path above. Use the same verified image and library identities
+on every rank.
+
+The [cycle patch](../spark_transport/nccl/nccl-2.30.7-switchless-cycle.patch)
+uses `NCCL_SWITCHLESS_RING_ONLY=1` to disable Tree/PAT connection setup and
+provides subnet-aware selection with eligible listener GIDs. The Compose
+overlay mounts the library read-only and sets both `LD_PRELOAD` and
+`VLLM_NCCL_SO_PATH`. An unpatched library with the same version number is not
+an equivalent input.
+
+Optionally check library loading and the NCCL version function inside the
+selected serving image before loading a model. This command needs no GPU
+assignment and makes no collective or network connection:
+
+```bash
+docker run --rm --network none --entrypoint python3 \
+  --mount "type=bind,source=$nccl_library,target=/opt/sparkring-nccl.so,readonly" \
+  "$(profile_value image.reference)" -c '
+import ctypes
+library = ctypes.CDLL("/opt/sparkring-nccl.so")
+version = ctypes.c_int()
+assert library.ncclGetVersion(ctypes.byref(version)) == 0
+assert version.value == 23007, version.value
+print("NCCL version:", version.value)
+'
+```
+
+This checks loadability and the reported version, not RDMA operation or
+four-rank serving compatibility. The SHA-256 check identifies the actual patch
+artifact.
 
 ## Configure each rank
 
-One environment file per rank. Start from the pair recipe's `.env.dspark` (keys, hotfix switches,
-k, thinking default) and override:
+Copy the cycle template to a separate file on each rank:
+
+```bash
+cp "$sparkring_root/runtime/deepseek-vision-exp/cycle.env.example" "$recipe_dir/.env.cycle"
+chmod 0600 "$recipe_dir/.env.cycle"
+```
+
+Edit `.env.cycle` for the local rank. Set `NODE_RANK` to 0, 1, 2, or 3;
+`HEADLESS` must be empty on rank zero and `1` on the other ranks. Set the shared
+`MASTER_ADDR` to rank zero's management address, `VLLM_HOST_IP` to the local
+management address, and the NCCL/TP/Gloo socket interfaces to the management
+interface. Set the two RoCE devices and their verified GID index. Configure
+`HF_CACHE` as the model-cache root, `DSPARK_TMP_HOST` as an existing absolute
+compiler-cache directory, `SPARKRING_NCCL_LIBRARY` as the verified library path,
+and `VLLM_API_KEY` as the private API key. For example, create a dedicated
+compiler-cache directory with `mkdir -p "$recipe_dir/compiler-cache"` and
+`chmod 0700 "$recipe_dir/compiler-cache"`, then use that absolute path for
+`DSPARK_TMP_HOST`. Replace every `REPLACE_` value in the copied template.
+
+Keep one assignment per line. These settings must agree across all ranks:
 
 ```text
-NODE_RANK=<0..3>                 HEADLESS=<empty on rank 0, 1 otherwise>
-NNODES=4                         TP_SIZE=4
-MASTER_ADDR=<rank-0 management IP>   MASTER_PORT=25000
-VLLM_HOST_IP=<this rank's management IP>
-NCCL_SOCKET_IFNAME=<management interface>   TP_SOCKET_IFNAME=<same>   GLOO_SOCKET_IFNAME=<same>
-NCCL_IB_HCA=rocep1s0f0,rocep1s0f1   NCCL_IB_GID_INDEX=3   NCCL_IB_MERGE_NICS=0
-NCCL_IB_SUBNET_AWARE_ROUTING=1      NCCL_IB_SUBNET_PREFIX_LEN=24   NCCL_CROSS_NIC=1
-GPU_MEMORY_UTILIZATION=0.80  MAX_NUM_SEQS=48  MAX_NUM_BATCHED_TOKENS=12288  MTP_NUM_TOKENS=5
-DSPARK_ENABLE_SP_INDEXER=1       # recipe's sequence-parallel Lightning indexer: deep prefill 1.41x on TP4
+NNODES=4
+TP_SIZE=4
+DSPARK_MODEL=deepseek-ai/DeepSeek-V4-Flash-Vision-Exp
+DSPARK_REVISION=86f746b36186f0e567729a5c06a8c918caba82a9
+SERVED_MODEL_NAME=deepseek-v4-flash-vision-exp
+MTP_NUM_TOKENS=5
+DSPARK_ENABLE_DSPARK_BLOCK_K=1
+DSPARK_MAX_INFLIGHT_PREFILLS=2
+DSPARK_ENABLE_SP_INDEXER=1
+GPU_MEMORY_UTILIZATION=0.80
+MAX_NUM_SEQS=48
+MAX_NUM_BATCHED_TOKENS=12288
 DSPARK_RESTART_POLICY=no
 ```
 
-Compose overlay (a second `-f` file on top of the recipe's `docker-compose.dspark.yml`):
+Vision-Exp has three MTP stages. The upstream block-k hotfix must be enabled
+for the selected five-token DSpark block; the upstream default leaves that
+hotfix disabled. Two in-flight prefills are also an explicit override of the
+upstream default of one. The served model name above is the API identifier.
+The 48-sequence limit is a configuration choice, not a per-request speed
+or latency guarantee.
 
-```yaml
-services:
-  vllm-dspark:
-    volumes:
-      - /path/to/libnccl.so.2.30.7:/opt/sparkring/nccl/libnccl.so.2:ro
-    environment:
-      LD_PRELOAD: /opt/sparkring/nccl/libnccl.so.2
-      VLLM_NCCL_SO_PATH: /opt/sparkring/nccl/libnccl.so.2
-      NCCL_ALGO: Ring
-      NCCL_PROTO: LL,LL128,Simple
-      NCCL_P2P_LEVEL: SYS
-      NCCL_MIN_NCHANNELS: "4"
-      NCCL_MAX_NCHANNELS: "4"
-      NCCL_SKIP_TREE_CONNECT: "1"
-      NCCL_SWITCHLESS_RING_ONLY: "1"
+## Render and start
+
+Run Compose from the pinned upstream recipe directory so its relative hotfix
+mounts resolve correctly. Validate the merged configuration on every rank:
+
+```bash
+set -euo pipefail
+cd "$recipe_dir"
+rank=REPLACE_WITH_RANK_0_TO_3
+compose_args=(
+  -p deepseek-vision-cycle
+  --env-file "$recipe_dir/.env.cycle"
+  -f "$recipe_dir/docker-compose.dspark.yml"
+  -f "$sparkring_root/runtime/deepseek-vision-exp/compose.override.yml"
+)
+docker compose "${compose_args[@]}" config --format json |
+  python3 "$sparkring_root/runtime/deepseek-vision-exp/check_compose.py" \
+    --rank "$rank" --nccl-library "$nccl_library"
 ```
 
-Verify GID index 3 is the RoCEv2 entry for the fabric IPv4 on **both** devices of every rank from
-sysfs before launching; a netplan apply on a rail can shift the table, and a reboot restores it.
+Exported shell variables take precedence over `--env-file`. The check validates
+the resolved image, model, serving limits, rank, required hotfixes, and NCCL
+mount against the profile, so conflicting exports for those checked settings
+are rejected. It prints a summary without API credentials. The Python check
+reads JSON only and does not contact Docker or any model host. Other optional
+upstream switches and custom hotfix mounts remain outside this check.
 
-## Start TP4
+Review the rank-specific addresses and device/GID choices; the offline check
+does not verify network reachability. Then start ranks 3, 2, and 1 before rank zero:
 
-Workers first (ranks 3, 2, 1), then rank 0, each with
-
-```text
-docker compose -p deepseek-ring --env-file <rank env> \
-  -f docker-compose.dspark.yml -f <overlay> up -d
+```bash
+docker compose "${compose_args[@]}" up -d
+docker compose "${compose_args[@]}" logs --follow vllm-dspark
 ```
 
-run from the recipe checkout directory (its hotfix mounts are relative). Expect in rank 0's log:
-`NCCL version 2.30.7+cuda13.0`, `Tree transport setup disabled by NCCL_SWITCHLESS_RING_ONLY`,
-`PAT transport setup disabled`, `NET/IB: Subnet-aware routing: overriding dev …` for both devices,
-`Using ['PYNCCL'] all-reduce backends`. Weights load in ~125 s from local NVMe; the first boot pays
-JIT compiles for the TP4 shapes (persisted on the recipe's cache volume); healthy in ~260 s on later
-boots.
+The profile uses `restart: no`; automatic cluster recovery is not configured.
 
-## Gates
+## Stop and recover
 
-Keyless `/v1/models` → 401; keyed list carries the served name; a text canary returns exactly and
-`finish_reason=stop`; a generated solid-colour PNG returns the colour; image id identical on all
-ranks; the patched NCCL mapped in every rank's engine processes; `/metrics` open; Ring Doctor
-`--verify` PASS on the site file; 0 preemptions after the ladder.
+Stop application traffic, then run the following on every rank, stopping
+workers before rank zero:
 
-## Measured (reference site, 2026-09-06)
+```bash
+docker compose "${compose_args[@]}" stop --timeout 60
+docker compose "${compose_args[@]}" ps -a
+```
 
-Fresh-prefix prompts, thinking off, temperature 0, 256 pinned decode tokens; prefill single request
-with `max_tokens=1`. Decode is aggregate generated tok/s.
+Confirm all four serving containers are stopped before changing configuration
+or recovering a failed rank. After correcting the cause, repeat configuration
+validation, start workers 3, 2, and 1 before rank zero, and repeat the serving
+checks. Use `up -d --force-recreate` when replacing an exited container with the
+same configuration. Do not restart one participating rank beneath live collectives.
 
-| Profile | C1 | C4 | C8 | C16 | C32 | C48 | C64 | Prefill 16K / 64K / 128K |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| **TP4 cycle**, 48-64 seqs | 49 | 112 | 160-175 | 235 | 327 | 391 | 435 | 2,300 / 2,255 / 2,100 |
-| TP2 pair, same stack, 16 seqs | 31 | 63 | 97 | 141 | queue-bound | — | — | 1,600-1,800 / 1,600-1,685 / 1,410-1,550 |
+## Serving checks
 
-Step rate 22/s single-stream (pair 15/s), 149/s at C32, 200/s at C64; DSpark acceptance 0.23-0.25
-at every rung on both topologies, so the gain is per-step collective cost. KV pool 50-52 GiB per
-rank (`nvfp4_ds_mla`, util 0.80) = 6.2 M tokens; five to six 1M requests resident. Per-request
-speed crosses 10 tok/s at C48; the reference site caps admission at 48 for agent traffic.
+Before directing application traffic to rank zero, check authenticated model
+listing and a small text request using `deepseek-v4-flash-vision-exp`. An
+unauthenticated model-list request should be rejected when an API key is set.
+Verify a known-color image response and a normal completion stop. Confirm the
+selected image identity and mapped patched NCCL library on every rank.
 
-Two pairs behind a router can at best sum to ~283 tok/s at fleet C32 (two direct ladders run
-concurrently); the cycle measured 327. Prefill past ~180K context is bound by the DSV4 Lightning
-indexer, which every TP rank runs over the full context (560-660 tok/s on TP4 and TP2 alike); a
-cold 1M prompt takes ~16 min on either topology with the stock indexer. NIAH at 958,182 real tokens
-returned the exact needle in 963.9 s stock and in **683.3 s with the recipe's sequence-parallel
-indexer** (`DSPARK_ENABLE_SP_INDEXER=1`: each TP rank scores a quarter of the compressed keys for
-chunks with ≥8,192 keys and the ranks merge candidates exactly; decode and ≤128K prefill unchanged).
-On TP2 the same patch measured only −6 % at 128K; on TP4 the replicated term is quartered, which
-is why it is part of this profile.
+Headless workers do not expose an HTTP listener, and the upstream worker
+healthcheck returns success without performing a collective. Container health
+alone therefore does not establish four-rank readiness. Use successful model
+responses and the cycle's fabric checks together. The upstream `/health`
+endpoint does not establish completion of every request-shape compilation.
 
-Knobs measured neutral or negative on the cycle (one variable per boot): replicated DSpark Markov
-head, 8 NCCL channels, in-flight prefill cap 3, greedy draft sampling, 8,192 batched tokens. The NVIDIA text-only
-`DeepSeek-V4-Flash-0731-NVFP4` checkpoint boots on the same stack only with
-`--moe-backend flashinfer_cutlass` and the recipe's vision hotfix disabled; it measured prefill +6 %
-and decode −5..−14 % (draft acceptance 0.20 with one MTP layer).
+## Contributor-reported observations
 
-## Limits
+The contributor to [SparkRing PR #232](https://github.com/FujitsuPolycom/sparkring/pull/232)
+reports one-site TP2/TP4 throughput comparisons, image and text checks,
+long-context needle retrieval, and a three-hour concurrent serving soak.
+The PR records the reported conditions, including its optional FlashInfer
+overlay and sequence-parallel indexer. Those observations describe the
+contributor's measured configuration; they are not independent measurements of
+every artifact combination permitted by this guide. See the PR for detailed
+numbers rather than treating them as throughput or per-request service targets.
 
-One failure domain (a wedged rank takes the lane down; pairs gave a replica). No SparkCache or KV
-connector in this stack. Rank 0's API port should be firewall-scoped to the router host. Boot
-ownership needs a rank-0 unit that waits for peers and drives the launcher; the compose policy is
-`restart: no` by design. Not qualified: no second-site reproduction.
+The sequence-parallel indexer and block-k changes belong to the pinned
+MiaAI-Lab recipe; the serving image belongs to Anemll. SparkRing's integration
+selects the cycle transport and launch settings. This guide does not claim that
+changing rank count alone proves model correctness or performance. A four-rank
+cycle is one failure domain and does not provide the redundancy of two pairs.

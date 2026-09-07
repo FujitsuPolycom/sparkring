@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-recipe/v1",
   "recipe_id": "deepseek-v4-flash-vision-exp-tp4",
-  "status": "implemented",
+  "status": "research-only",
   "hardware": {
     "platform": "linux/arm64",
     "cuda_arch": "sm_121",
@@ -15,13 +15,17 @@
     "identity_note": "Official Vision-Exp release (MIT, 2026-08-31): 32-block ViT + aligner, num_nextn_predict_layers=3, rms_norm_eps=1e-20, same DeepseekV4ForCausalLM architecture string as 0731."
   },
   "runtime": {
-    "serving_stack": "MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark@7440c53 on ghcr.io/anemll/dspark-vllm-gx10:0.1.1 (reference site: + flashinfer-python/cubin/jit-cache 0.6.18.post1 overlay)",
-    "transport": "SparkRing patched NCCL 2.30.7 (switchless-cycle, skip-tree-pat, advertise-all-listener-gids) via LD_PRELOAD + VLLM_NCCL_SO_PATH",
-    "launcher": "recipe docker compose + overlay (docs/DEEPSEEK_V4_FLASH_VISION_EXP_TP4_QUICKSTART.md)",
+    "profile": "runtime/deepseek-vision-exp/profile.json",
+    "image_lock": "runtime/deepseek-vision-exp/profile.json",
+    "image_lock_entry": "image",
+    "environment_template": "runtime/deepseek-vision-exp/cycle.env.example",
+    "compose_overlay": "runtime/deepseek-vision-exp/compose.override.yml",
+    "upstream_recipe_revision": "7440c53c1f0352886e47b1909051784879fa0a24",
+    "launcher": "docker compose",
     "entrypoint": "/usr/local/bin/vllm"
   },
   "serving": {
-    "served_model_name": "deepseek-v4-flash-0731",
+    "served_model_name": "deepseek-v4-flash-vision-exp",
     "tensor_parallel_size": 4,
     "node_count": 4,
     "distributed_executor_backend": "mp",
@@ -49,8 +53,8 @@
       "video": false
     },
     "nccl": {
-      "NCCL_IB_HCA": "rocep1s0f0,rocep1s0f1",
-      "NCCL_IB_GID_INDEX": "3",
+      "NCCL_IB_HCA": "<two selected RoCE devices>",
+      "NCCL_IB_GID_INDEX": "<verified GID index>",
       "NCCL_IB_MERGE_NICS": "0",
       "NCCL_IB_SUBNET_AWARE_ROUTING": "1",
       "NCCL_IB_SUBNET_PREFIX_LEN": "24",
@@ -60,18 +64,30 @@
       "NCCL_P2P_LEVEL": "SYS",
       "NCCL_MIN_NCHANNELS": "4",
       "NCCL_MAX_NCHANNELS": "4",
-      "NCCL_SKIP_TREE_CONNECT": "1",
       "NCCL_SWITCHLESS_RING_ONLY": "1",
       "NCCL_SOCKET_IFNAME": "<management interface>"
     },
-    "sizing_note": "KV pool 50-52 GiB per rank at util 0.80 = ~6.2M nvfp4_ds_mla tokens; weights 41.6 GiB per rank. Admission 48 keeps per-request decode >= 10 tok/s; 64 gives +11% aggregate at 8 tok/s per request.",
-    "sequence_parallel_indexer": true
+    "sizing_note": "The 48-sequence admission limit is a configuration choice, not a per-request throughput guarantee. Configure capacity for the workload and record the resolved settings when measuring.",
+    "sequence_parallel_indexer": true,
+    "default_thinking": "off"
   },
   "evidence": {
-    "status": "implemented",
-    "site": "one operator site, 2026-09-06, clusters re-cabled from two TP2 pairs",
+    "status": "research-only",
+    "source": "https://github.com/FujitsuPolycom/sparkring/pull/232",
+    "record": "performance/records/research-material/deepseek-vision-exp-tp4-contributor-report.json",
     "conditions": "Fresh-prefix prompts, thinking off, temperature 0, 256 pinned decode tokens; prefill single request max_tokens=1; patched NCCL over two direct RoCE devices per rank; management-LAN bootstrap.",
-    "result": "Decode aggregate tok/s C1 49, C4 112, C8 160-175, C16 235, C32 327, C48 391, C64 435 (steps/s 22 -> 200; acceptance 0.23-0.25). Prefill 2,300 / 2,255 / 2,100 tok/s at 16K / 64K / 128K; 560-660 tok/s past 180K (indexer-bound, same on TP2). 8x4K burst TTFT p50 7.8 s. NIAH 958,182 tokens exact in 963.9 s (stock indexer) / 683.3 s (DSPARK_ENABLE_SP_INDEXER=1). 20-min C8 soak: 82 waves, 0 preemptions, 0 errors, 139 tok/s median; 3-hour C8 soak while routed: 732 waves, 0 preemptions, 0 errors, 138.9 tok/s median, no drift. Same-stack TP2 pair: C1 31, C8 97, C16 141; prefill 1,600-1,800 / 1,600-1,685 / 1,410-1,550.",
-    "conclusion": "Live-benchmarked on one site against the same stack at TP2; NIAH 1M exact at 10/50/90 % (681-683 s each with the sequence-parallel indexer); 3-hour soak clean; not reproduced elsewhere; single failure domain."
+    "result": "The contributor reports TP2/TP4 throughput comparisons, image/text checks, long-context needle retrieval, and a three-hour C8 soak; the linked record retains those summaries.",
+    "conclusion": "These are contributor-reported observations, not independent qualification of the immutable artifacts selected by this profile.",
+    "limitations": [
+      "Raw sample files and the exact measured image/FlashInfer-overlay identity are not supplied in the PR.",
+      "The selected plain Anemll image has no separately added FlashInfer overlay.",
+      "No independent hardware validation of this four-rank composition is claimed."
+    ]
+  },
+  "provenance": {
+    "image_publisher": "Anemll",
+    "runtime_recipe_provider": "MiaAI-Lab",
+    "transport_provider": "SparkRing",
+    "transport_implementation": "patched NVIDIA NCCL"
   }
 }
