@@ -505,7 +505,20 @@ Edit those private copies. At minimum, review every field below:
 | `marker_binary_sha256` | `inside_image.marker_binary_sha256` from the verified image receipt, not the template's diagnostic binary hash |
 | `container_prefix` | An unused prefix reserved for this deployment |
 | `state_root` | Retain the schema's planned state path; the managed service separately uses `/run/sparkring-mesh` |
-| `api_keys_file` | Optional. Absolute host path to a mode-0600 file of newline-separated API keys. When present the renderer sets `API_KEYS_FILE` in every rank environment and the launcher serves `--api-key` for each non-empty line; when absent the API is unauthenticated. The keys become container arguments, so treat the rendered plan as sensitive and re-render after rotating the file |
+| `api_keys_file` | Optional. Absolute host path to a readable mode-0600 file of newline-separated API keys, present at the same path on every rank. The renderer sets `API_KEYS_FILE`; the launcher passes one `--api-key` option followed by all non-empty keys. Keys cannot contain whitespace. Omitting this field leaves the API unauthenticated. |
+
+API keys are separate from the managed mesh health key. Container creation
+copies API keys into the model arguments and the first key into the warmup
+environment. Treat Docker command plans and inspection output as sensitive.
+Rendering stores only the key-file path; it does not capture or rotate keys.
+
+To rotate API keys, coordinate a stop across all ranks, update the private key
+files, and recreate the serving containers. Update and revalidate the managed
+container identities before restarting through the
+[managed lifecycle](../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
+Re-render if the key-file path changes. Re-rendering alone or restarting an
+existing container does not change its captured keys. The first-install helper
+is not an in-place deployment updater.
 
 Retain the topology's `bounded_runtime_seconds: 7200` compatibility field.
 It describes diagnostic-plan arguments and is validated by the renderer;
