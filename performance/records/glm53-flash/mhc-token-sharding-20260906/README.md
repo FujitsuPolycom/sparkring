@@ -95,5 +95,7 @@ python performance/harnesses/vllm/prefill_checks/mhc_precise_checks.py prefill \
 ```
 
 This sends inference and reads rank-zero Docker health over SSH. The public
-copy preserves historical timing/request logic but has only offline validation;
-it has not been rerun on a GPU.
+copy preserves historical timing/request logic and additionally rejects missing
+or malformed cache-token accounting. Every retained timing row contains explicit
+integer cache accounting, so this check does not change the record. The public
+copy has only offline validation; it has not been rerun on a GPU.

@@ -17,7 +17,7 @@
   {
     "public_file": "../../../harnesses/vllm/prefill_checks/mhc_precise_checks.py",
     "historical_harness_sha256": "b0f499c4fb5cf6d1f5ce2a58e6ebf2df8204990e7a2338c70381a76ea46a9a40",
-    "public_harness_sha256": "b93030d74af1f3d45282688630e6bf24d0e8c7ebff13053df76fcdcd7ae12f0d",
-    "transformation": "Endpoint/model/SSH alias and container selection parameterized; os import added where required, unused import removed, UTF-8 output made explicit, source formatted. Timing/request logic retained. Public copy has not been rerun on GPU. Historical source digest was computed from a retained copy, not signed at execution time."
+    "public_harness_sha256": "645e00d37704b9ad8f8bda05c355b767bd14d39f039a3ccf6543a51a76ceea50",
+    "transformation": "Endpoint/model/SSH alias and container selection parameterized; os import added where required, unused import removed, UTF-8 output made explicit, source formatted. Timing/request logic retained; missing or malformed cache-token accounting explicitly rejected. All retained timing rows contain explicit integer cached_tokens=0. Public copy has not been rerun on GPU. Historical source digest was computed from a retained copy, not signed at execution time."
   }
 ]

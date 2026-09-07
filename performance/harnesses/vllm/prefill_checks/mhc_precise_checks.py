@@ -15,6 +15,15 @@ BASE = os.environ.get("BENCH_API_BASE", "http://127.0.0.1:8000")
 MODEL = os.environ.get("BENCH_MODEL", "glm-5.3-flash-spark")
 
 
+def cached_prompt_tokens(usage):
+    """Missing accounting cannot establish cold work or successful cache reuse."""
+    details = usage.get("prompt_tokens_details")
+    cached = details.get("cached_tokens") if isinstance(details, dict) else None
+    if type(cached) is not int or cached < 0:
+        raise ValueError("Usage must provide a nonnegative integer cached_tokens")
+    return cached
+
+
 def get(path):
     with urllib.request.urlopen(BASE + path, timeout=10) as r:
         return r.read().decode()
@@ -119,7 +128,7 @@ def semantic(tokens, fact):
         choice = response["choices"][0]
         answer = (choice["message"].get("content") or "").strip()
         usage = response["usage"]
-        cached = usage.get("prompt_tokens_details", {}).get("cached_tokens", 0)
+        cached = cached_prompt_tokens(usage)
         row = {
             "tokens": tokens,
             "phase": phase,
@@ -181,7 +190,7 @@ def prefill(tokens):
     if first is None or usage is None:
         raise RuntimeError("No streamed token or final usage")
     assert usage["prompt_tokens"] == tokens
-    assert usage.get("prompt_tokens_details", {}).get("cached_tokens", 0) == 0
+    assert cached_prompt_tokens(usage) == 0
     return {
         "tokens": tokens,
         "ttft_seconds": first,
