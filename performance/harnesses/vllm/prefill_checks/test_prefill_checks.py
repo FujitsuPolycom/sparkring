@@ -95,3 +95,43 @@ def test_timing_rejects_wrong_prompt_length_or_cached_work(
         result = harness.prefill(8192)
         assert result["ttft_seconds"] == 0.25
         assert result["tokens_per_second"] == 32768
+
+
+@pytest.mark.parametrize(
+    "details",
+    [
+        "omitted",
+        None,
+        {},
+        {"cached_tokens": False},
+        {"cached_tokens": "0"},
+        {"cached_tokens": -1},
+    ],
+)
+def test_timing_rejects_unproven_cache_accounting(harness, monkeypatch, details):
+    clock = iter([10.0, 10.25])
+    clock_name = (
+        "perf_counter"
+        if harness.__name__.endswith("mhc_precise_checks")
+        else "monotonic"
+    )
+    monkeypatch.setattr(harness.time, clock_name, lambda: next(clock))
+    monkeypatch.setattr(
+        harness, "calibrate", lambda *args: [{"role": "user", "content": "test"}]
+    )
+    usage = {"prompt_tokens": 8192}
+    if details != "omitted":
+        usage["prompt_tokens_details"] = details
+    chunks = [
+        {"choices": [{"delta": {"content": "answer"}}]},
+        {"choices": [], "usage": usage},
+    ]
+    stream = (
+        b"".join(b"data: " + json.dumps(chunk).encode() + b"\n" for chunk in chunks)
+        + b"data: [DONE]\n"
+    )
+    monkeypatch.setattr(
+        harness.urllib.request, "urlopen", lambda *a, **kw: io.BytesIO(stream)
+    )
+    with pytest.raises(ValueError, match="cached_tokens"):
+        harness.prefill(8192)

@@ -22,7 +22,7 @@
   {
     "public_file": "../../../harnesses/vllm/prefill_checks/continuation_serve_checks.py",
     "historical_harness_sha256": "f8c8d0f75b13ed833371bbef89c4e47a89ec545dfa39135df4969f39ec0f4f05",
-    "public_harness_sha256": "73ec5e4ad756da7bd6d105f5658bc038d3989f2dbdb699873740426f5572c711",
-    "transformation": "Endpoint/model/SSH alias and container selection parameterized; os import added where required, unused import removed, UTF-8 output made explicit, source formatted. Timing/request logic retained. Public copy has not been rerun on GPU. Historical source digest was computed from a retained copy, not signed at execution time."
+    "public_harness_sha256": "8b7b1cb03a1967317e3d02f21a1a6dbb5b89e29a434a1dff5f7069d50175e962",
+    "transformation": "Endpoint/model/SSH alias and container selection parameterized; os import added where required, unused import removed, UTF-8 output made explicit, source formatted. Timing/request logic retained; missing or malformed cache-token accounting explicitly rejected. All retained timing rows contain explicit integer cached_tokens=0. Public copy has not been rerun on GPU. Historical source digest was computed from a retained copy, not signed at execution time."
   }
 ]
