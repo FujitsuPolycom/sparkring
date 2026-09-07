@@ -35,7 +35,7 @@ reproducible benchmarks, and [test results](performance/).
 | DeepSeek-V4-Flash-0731 | TP4/DCP1 | 1M | 32 | 4,096 | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | TP4/DCP1 | 1M | 64 | 8,192 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
 * The GLM5.3 Flash MTP3 profile uses the new virtual meshing feature.
-* Requires:[managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md). 
+* Requires: [managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md). 
 * DFlash2 profiles will be replaced by native-MTP. Also avoids: [separate CC BY-NC-ND 4.0 terms](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2#license).
 
 ### Two Sparks
@@ -46,10 +46,9 @@ reproducible benchmarks, and [test results](performance/).
 | DeepSeek-V4-Flash-0731 | TP2/DCP1 | 1M | 32 | 4,096 | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | TP2/DCP1 | 1M | 32 | 8,192 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
 * GLM5.3 pair is **research-only**, uses 5 GiB KV per rank, and has a
-[known video-color issue](https://github.com/FujitsuPolycom/sparkring/issues/229). In testing. 
-See the [profile index](docs/profiles/README.md) for evidence scopes and
-[SparkCache compositions](recipes/sparkcache/README.md) for persistent-cache
-support. Qwen with SparkCache is unsupported; six-node profiles are research-only.
+[known video-color issue](https://github.com/FujitsuPolycom/sparkring/issues/229). In testing.
+* [SparkCache compositions](recipes/sparkcache/README.md) for persistent-cache.
+Qwen with SparkCache is unsupported in current release. [SparkCache](https://github.com/FujitsuPolycom/sparkcache)
 
 ## Container images
 
