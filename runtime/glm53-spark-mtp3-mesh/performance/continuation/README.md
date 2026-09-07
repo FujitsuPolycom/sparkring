@@ -4,6 +4,10 @@ Status: **research-only**. The source package preserves the four continuation
 files used by the serving image identified below. CPU tests verify package
 integrity and ownership updates; they do not qualify the combined rebuilt image.
 
+[Bounded serving evidence](../../../../performance/records/glm53-flash/continuation-checkpoints-20260906/README.md)
+records cold 8K–128K timing, GPU state checks, cache-reuse limits, and the exact
+image configuration. Those observations have no paired-control speedup claim.
+
 `source.tar.gz` contains exact vLLM source bytes for:
 
 - `vllm/v1/core/kv_cache_manager.py`
@@ -62,3 +66,7 @@ python -m pytest runtime/glm53-spark-mtp3-mesh/performance/continuation -q
 The tests reject altered packages, unexpected runtime preimages, and ownership
 drift before any source write. Attribution tests execute scheduler boundaries
 against both the fresh-prompt and continuation source variants.
+The runtime regressions execute packaged scheduler/allocator methods to cover
+source retention, speculative-reserve overlap, allocation failure, publication
+pins, worker-visible block IDs, admission provenance, and cleanup. The 6K
+scheduling case is CPU-only coverage, not serving qualification at that size.
