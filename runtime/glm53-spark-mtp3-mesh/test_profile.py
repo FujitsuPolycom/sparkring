@@ -401,3 +401,39 @@ def test_invalid_image_receipt_creates_no_rendered_output(tmp_path, manifest_bun
     with pytest.raises(ValueError, match="Image receipt"):
         mesh_profile.render(_site(tmp_path), manifest_bundle, output, path)
     assert not output.exists()
+
+
+def _site_with_api_keys(tmp_path, value="/srv/sparkring/private/api-keys"):
+    path = _site(tmp_path)
+    data = json.loads(path.read_text())
+    data["api_keys_file"] = value
+    path.write_text(json.dumps(data))
+    return path
+
+
+def test_site_accepts_absolute_api_keys_file(tmp_path):
+    site, _, _ = mesh_profile.load_site(_site_with_api_keys(tmp_path))
+    assert site["api_keys_file"] == "/srv/sparkring/private/api-keys"
+
+
+@pytest.mark.parametrize("value", ["relative/keys", "/srv/../etc/keys", "/srv/a:b", "/srv/a\nexec", "/"])
+def test_site_rejects_unsafe_api_keys_file(tmp_path, value):
+    with pytest.raises(ValueError):
+        mesh_profile.load_site(_site_with_api_keys(tmp_path, value))
+
+
+def test_render_omits_api_keys_file_when_site_is_silent(tmp_path, manifest_bundle):
+    output = tmp_path / "rendered-default"
+    mesh_profile.render(_site(tmp_path), manifest_bundle, output)
+    for rank in range(4):
+        assert "API_KEYS_FILE" not in mesh_profile.defaults(output / f"rank{rank}.env")
+
+
+def test_render_propagates_api_keys_file_to_every_rank(tmp_path, manifest_bundle):
+    path = _site_with_api_keys(tmp_path)
+    output = tmp_path / "rendered-keys"
+    mesh_profile.render(path, manifest_bundle, output)
+    for rank in range(4):
+        values = mesh_profile.defaults(output / f"rank{rank}.env")
+        assert values["API_KEYS_FILE"] == "/srv/sparkring/private/api-keys"
+    mesh_profile.load_site(output / "site.json")
