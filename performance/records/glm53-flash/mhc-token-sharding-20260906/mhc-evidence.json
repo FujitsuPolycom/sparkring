@@ -1,0 +1,112 @@
+{
+  "Conditions": {
+    "hardware": "Four NVIDIA DGX Spark GB10 GPUs, 48 SMs each, virtual mesh over the existing physical ring",
+    "model": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+    "model_revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "tensor_parallel": 4,
+    "decode_context_parallel": 4,
+    "pipeline_parallel": 1,
+    "mtp_steps": 3,
+    "max_num_batched_tokens": 8192,
+    "max_num_seqs": 16,
+    "kv_cache_gib_per_rank": 24,
+    "concurrency": 1,
+    "max_output_tokens": 1,
+    "temperature": 0,
+    "exact_prompt_tokens": true,
+    "cache_state": "Unique prompt prefix for every timing request; cached_tokens=0 required for each sample; periodic full captures off.",
+    "retained_features": "Native virtual mesh, graph-only decode geometry, linked posting, existing B12X compute patches, SparkCache; no dynamic pressure-aware chunk sizing.",
+    "control_image": "sha256:489d1975619e9083d14f14bcd1c6cbb4a96c41e3ab3978af048dc3ed2bb452a8",
+    "candidate_image": "sha256:65f2b9181acd77db660f9c105554c4fca5c4df89d87d1374276e17c6831d1359",
+    "source_manifest_sha256": "5acdbdd6d4aa771791cca3ad5aefb50b50cf48ba74c2a4a1d10c1934f73d8912",
+    "flag": "SPARK_MHC_PREFILL_SHARD=1",
+    "changed_variables": [
+      "Eight existing runtime sources plus one new helper, ownership contract/inventory.",
+      "Candidate uses separate initially empty SparkCache root.",
+      "Rank0 reboot between the historical control and candidate arms to recover launch memory; driver/kernel, CPU governor and reported GPU application/max clocks matched peers afterward.",
+      "One initial candidate startup failed; unchanged candidate passed on retry."
+    ],
+    "comparison": "Sequential control then candidate, not interleaved; exact original source composition only, not rebuilt PR239 attribution+mHC composition."
+  },
+  "Measurement": {
+    "metric": "Seconds from request submission to first nonempty streamed delta; prompt tokens / TTFT, including client/network overhead.",
+    "clock": "Windows time.perf_counter / QueryPerformanceCounter, nominal100ns clock resolution for both arms.",
+    "warmup": "Full startup/API warmup and zero running/waiting requests; one shape-warmup cycle excluded; exact token count and zero cached tokens asserted per request.",
+    "samples_per_shape": 3,
+    "raw_files": [
+      "mhc-control-prefill.json",
+      "mhc-candidate-prefill.json"
+    ],
+    "aggregation": "Median, min and max measured TTFT; throughput = tokens / median TTFT; percent =100*(control_median_TTFT/candidate_median_TTFT-1)."
+  },
+  "Result": [
+    {
+      "tokens": 8192,
+      "samples": 3,
+      "median_ttft_seconds": 2.681907099991804,
+      "median_tokens_per_second": 3054.542791592235,
+      "min_ttft_seconds": 2.677114200007054,
+      "max_ttft_seconds": 2.7065183999948204,
+      "baseline_median_ttft_seconds": 2.822990100001334,
+      "baseline_tokens_per_second": 2901.887612002652,
+      "throughput_gain_percent": 5.260547615909639
+    },
+    {
+      "tokens": 16384,
+      "samples": 3,
+      "median_ttft_seconds": 5.3928174000029685,
+      "median_tokens_per_second": 3038.11510473004,
+      "min_ttft_seconds": 5.387199300006614,
+      "max_ttft_seconds": 5.409671700006584,
+      "baseline_median_ttft_seconds": 5.662423999994644,
+      "baseline_tokens_per_second": 2893.4604685229324,
+      "throughput_gain_percent": 4.9993645249610585
+    },
+    {
+      "tokens": 32768,
+      "samples": 3,
+      "median_ttft_seconds": 10.831708400000934,
+      "median_tokens_per_second": 3025.1922217548963,
+      "min_ttft_seconds": 10.822181600000476,
+      "max_ttft_seconds": 10.857336200002464
+    },
+    {
+      "tokens": 65536,
+      "samples": 3,
+      "median_ttft_seconds": 21.75530429999344,
+      "median_tokens_per_second": 3012.4147700393123,
+      "min_ttft_seconds": 21.730740200000582,
+      "max_ttft_seconds": 21.767232900005183,
+      "baseline_median_ttft_seconds": 22.753877900002408,
+      "baseline_tokens_per_second": 2880.2123439360225,
+      "throughput_gain_percent": 4.5900235925878
+    },
+    {
+      "tokens": 131072,
+      "samples": 3,
+      "median_ttft_seconds": 44.274222899999586,
+      "median_tokens_per_second": 2960.4585109499735,
+      "min_ttft_seconds": 44.02713260000746,
+      "max_ttft_seconds": 44.42650989998947
+    }
+  ],
+  "Conclusion": "In the recorded compositions,8/16/64K prompt throughput was5.26/5.00/4.59 percent higher with sharded mHC;32/128K are candidate-only observations. Existing NCCL RS/AG carries owner-row mHC; no new native split transport was introduced.",
+  "Limitations": [
+    "Sequential runs, three samples per condition, synthetic cold prompts; changed reboot/cache-root/startup history prevents a strictly isolated claim.",
+    "First launch failed in Triton load_binary during MTP W4A16 warmup before completed sharded-mHC activation; unchanged retry passed. Cause remains unresolved; no startup fix is claimed.",
+    "Alternative reduction order changes probabilities; first-token agreement on two prompts and bounded semantic checks do not establish numerical identity or comprehensive quality.",
+    "These measurements do not qualify a rebuilt PR composition that also adds attribution or other changes; that requires separate GPU/serving validation."
+  ],
+  "Correctness": {
+    "semantic_cache_checks": 9,
+    "cpu_tests": 9,
+    "concurrent_smoke": "Two192-token streaming decodes overlapped16K exact-answer prefill; per-step scheduler path not attributed.",
+    "activation": "All4 ranks:8192 full rows,2048 owner rows,90reduce-scatter/90all-gather,zero auxiliary captures in logged calls.",
+    "first_token_agreement_prompts": [
+      8192,
+      16384
+    ],
+    "probabilities_identical": false,
+    "universal_correctness_claim": false
+  }
+}

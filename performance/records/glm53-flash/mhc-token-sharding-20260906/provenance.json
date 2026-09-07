@@ -1,0 +1,23 @@
+[
+  {
+    "public_file": "mhc-control-prefill.json",
+    "sha256": "781ab195ee3d3880b249efd17b3d02ab072a5e7b8d1ce3eac0a4383d793be417",
+    "transformation": "None: exact source bytes; private source location omitted."
+  },
+  {
+    "public_file": "mhc-candidate-prefill.json",
+    "sha256": "2545f0b05480a67203d88fd984460e1f66683b69f418fa57b50cadd35062ef3b",
+    "transformation": "None: exact source bytes; private source location omitted."
+  },
+  {
+    "public_file": "mhc-activation.json",
+    "sha256": "bee5003b7e19543ad827c1c361327f8812519009dce526352f33ddebc9090405",
+    "transformation": "None: exact source bytes; private source location omitted."
+  },
+  {
+    "public_file": "../../../harnesses/vllm/prefill_checks/mhc_precise_checks.py",
+    "historical_harness_sha256": "b0f499c4fb5cf6d1f5ce2a58e6ebf2df8204990e7a2338c70381a76ea46a9a40",
+    "public_harness_sha256": "b93030d74af1f3d45282688630e6bf24d0e8c7ebff13053df76fcdcd7ae12f0d",
+    "transformation": "Endpoint/model/SSH alias and container selection parameterized; os import added where required, unused import removed, UTF-8 output made explicit, source formatted. Timing/request logic retained. Public copy has not been rerun on GPU. Historical source digest was computed from a retained copy, not signed at execution time."
+  }
+]

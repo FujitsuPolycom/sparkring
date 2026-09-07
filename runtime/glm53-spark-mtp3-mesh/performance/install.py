@@ -87,6 +87,12 @@ for row in data["files"]:
         if row["sha256"] != attribution_transform["before_sha256"]:
             raise ValueError("Attribution ownership scheduler preimage differs")
         row["sha256"] = attribution_transform["after_sha256"]
+mhc_spec = importlib.util.spec_from_file_location(
+    "mhc_prefill_install", SOURCE / "mhc-prefill/install.py"
+)
+mhc_prefill = importlib.util.module_from_spec(mhc_spec)
+mhc_spec.loader.exec_module(mhc_prefill)
+mhc_transform = mhc_prefill.apply(SITE, data)
 contract.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 shutil.copytree(SOURCE / "bundle", Path("/opt/spark-sircl"), dirs_exist_ok=True)
 shutil.copyfile(
@@ -124,6 +130,7 @@ receipt.write_text(
             "runtime_transforms": {
                 "continuation_checkpoints": continuation_transform,
                 "request_cache_attribution": attribution_transform,
+                "token_sharded_mhc_prefill": mhc_transform,
             },
             "files": files,
         },

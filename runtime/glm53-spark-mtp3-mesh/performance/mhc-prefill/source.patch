@@ -1,0 +1,580 @@
+--- a/vllm/model_executor/layers/fused_moe/runner/moe_runner.py
++++ b/vllm/model_executor/layers/fused_moe/runner/moe_runner.py
+@@ -466,6 +466,8 @@
+         states: torch.Tensor,
+         trunc_size: int | None,
+         output_is_reduced: bool | None = None,
++        *,
++        defer_tp_reduction: bool = False,
+     ) -> torch.Tensor:
+         """All-reduce the combined output if needed.
+ 
+@@ -487,8 +489,12 @@
+         if output_is_reduced is None:
+             output_is_reduced = self._fused_output_is_reduced
+ 
++        if defer_tp_reduction and (output_is_reduced or self.moe_config.skip_final_all_reduce):
++            raise RuntimeError("Cannot defer an already reduced or disabled MoE reduction")
++
+         if (
+-            not self.moe_config.is_sequence_parallel
++            not defer_tp_reduction
++            and not self.moe_config.is_sequence_parallel
+             and not self.moe_config.skip_final_all_reduce
+             and (self.moe_config.tp_size > 1 or self.moe_config.ep_size > 1)
+             and not output_is_reduced
+@@ -676,6 +682,8 @@
+         router_logits: torch.Tensor,
+         input_ids: torch.Tensor | None = None,
+         shared_experts_input: torch.Tensor | None = None,
++        *,
++        defer_tp_reduction: bool = False,
+     ) -> torch.Tensor:
+         """Invoke the fused moe layer.
+ 
+@@ -696,6 +704,10 @@
+         1. pytorch cannot handle union types in custom op signatures so
+            _moe_forward and _moe_forward_shared must be split.
+         """
++
++        if defer_tp_reduction:
++            from vllm.models.glm5next.nvidia.mhc_prefill_sharding import validate_moe_deferral
++            validate_moe_deferral(self)
+ 
+         # Apply transform for routed experts (e.g., latent projection for
+         # latent MoE). When the caller pre-applies the routed input transform
+@@ -776,9 +788,15 @@
+         else:
+             result = fused_output
+ 
+-        result = self._maybe_reduce_final_output(
+-            result, og_hidden_dim_post_xform, fused_output_is_reduced
+-        )
++        if defer_tp_reduction:
++            result = self._maybe_reduce_final_output(
++                result, og_hidden_dim_post_xform, fused_output_is_reduced,
++                defer_tp_reduction=True,
++            )
++        else:
++            result = self._maybe_reduce_final_output(
++                result, og_hidden_dim_post_xform, fused_output_is_reduced
++            )
+ 
+         return self._maybe_add_zero_expert_output(result)
+ 
+--- a/vllm/model_executor/layers/fused_moe/runner/moe_runner_interface.py
++++ b/vllm/model_executor/layers/fused_moe/runner/moe_runner_interface.py
+@@ -37,6 +37,8 @@
+         router_logits: torch.Tensor,
+         input_ids: torch.Tensor | None = None,
+         shared_experts_input: torch.Tensor | None = None,
++        *,
++        defer_tp_reduction: bool = False,
+     ) -> torch.Tensor:
+         raise NotImplementedError
+ 
+--- a/vllm/model_executor/layers/linear.py
++++ b/vllm/model_executor/layers/linear.py
+@@ -1641,7 +1641,11 @@
+     def forward(
+         self,
+         input_,
++        *,
++        defer_tp_reduction: bool = False,
+     ) -> torch.Tensor | tuple[torch.Tensor, Parameter | None]:
++        if defer_tp_reduction and (self.tp_size != 4 or not self.reduce_results):
++            raise RuntimeError("Explicit TP deferral requires an enabled TP4 reduction")
+         if self.input_is_parallel:
+             input_parallel = input_
+         else:
+@@ -1656,7 +1660,7 @@
+         bias_ = None if (self.tp_rank > 0 or self.skip_bias_add) else self.bias
+         output_parallel = self.quant_method.apply(self, input_parallel, bias_)
+ 
+-        if self.reduce_results and self.tp_size > 1:
++        if self.reduce_results and self.tp_size > 1 and not defer_tp_reduction:
+             output = tensor_model_parallel_all_reduce(output_parallel)
+         else:
+             output = output_parallel
+--- a/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py
++++ b/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py
+@@ -1141,6 +1141,8 @@
+         hidden_states: torch.Tensor,
+         positions: torch.Tensor,
+         output: torch.Tensor,
++        *,
++        defer_tp_reduction: bool = False,
+     ) -> None:
+         num_tokens = hidden_states.size(0)
+         projected_qkvgfab = self.in_proj_qkvgfab(hidden_states)[0]
+@@ -1186,7 +1188,10 @@
+             core_attn_out=core_attn_out,
+         )
+         core_attn_out = rearrange(core_attn_out, "1 n h d -> n (h d)")
+-        output[:] = self.o_proj(core_attn_out)[0]
++        if defer_tp_reduction:
++            output[:] = self.o_proj(core_attn_out, defer_tp_reduction=True)[0]
++        else:
++            output[:] = self.o_proj(core_attn_out)[0]
+ 
+     @eager_break_during_capture
+     def _forward(
+--- a/vllm/model_executor/layers/mla.py
++++ b/vllm/model_executor/layers/mla.py
+@@ -154,6 +154,8 @@
+         positions: torch.Tensor,
+         hidden_states: torch.Tensor,
+         llama_4_scaling: torch.Tensor | None = None,
++        *,
++        defer_tp_reduction: bool = False,
+     ) -> torch.Tensor:
+         q_c = None
+         kv_lora = None
+@@ -225,4 +227,6 @@
+         if self.g_proj is not None:
+             attn_out = attn_out * self.g_proj(hidden_states)[0].sigmoid()
+ 
++        if defer_tp_reduction:
++            return self.o_proj(attn_out, defer_tp_reduction=True)[0]
+         return self.o_proj(attn_out)[0]
+--- a/vllm/models/glm5next/nvidia/attention.py
++++ b/vllm/models/glm5next/nvidia/attention.py
+@@ -208,8 +208,11 @@
+         )
+ 
+     def forward(
+-        self, hidden_states: torch.Tensor, positions: torch.Tensor
++        self, hidden_states: torch.Tensor, positions: torch.Tensor,
++        *, defer_tp_reduction: bool = False,
+     ) -> torch.Tensor:
++        if defer_tp_reduction:
++            return self.mla_attn(positions, hidden_states, defer_tp_reduction=True)
+         return self.mla_attn(positions, hidden_states)
+ 
+ 
+--- a/vllm/models/glm5next/nvidia/kda.py
++++ b/vllm/models/glm5next/nvidia/kda.py
+@@ -19,9 +19,14 @@
+         self,
+         hidden_states: torch.Tensor,
+         positions: torch.Tensor,
++        *,
++        defer_tp_reduction: bool = False,
+     ) -> torch.Tensor:
+         output = torch.empty_like(hidden_states)
+-        super().forward(hidden_states, positions, output)
++        if defer_tp_reduction:
++            super().forward(hidden_states, positions, output, defer_tp_reduction=True)
++        else:
++            super().forward(hidden_states, positions, output)
+         return output
+ 
+ 
+--- a/vllm/models/glm5next/nvidia/mhc_prefill_sharding.py
++++ b/vllm/models/glm5next/nvidia/mhc_prefill_sharding.py
+@@ -0,0 +1,201 @@
++"""Experimental GLM eager-prefill ownership; no persistent decode state."""
++from __future__ import annotations
++
++from dataclasses import dataclass
++import logging
++from typing import Any
++
++_LOG = logging.getLogger(__name__)
++_REPORTS = 0
++
++
++def configure(model: Any, config: Any, enabled: bool) -> None:
++    """Agree on the opt-in during construction, before any graph is captured."""
++    import torch
++    from vllm.distributed import get_tp_group
++    group = get_tp_group()
++    votes = [None] * group.world_size
++    torch.distributed.all_gather_object(votes, enabled, group=group.cpu_group)
++    if any(vote != enabled for vote in votes):
++        raise RuntimeError("All TP ranks must agree on SPARK_MHC_PREFILL_SHARD")
++    if enabled:
++        captures = config.compilation_config.cudagraph_capture_sizes or []
++        if (group.world_size != 4 or config.scheduler_config.max_num_batched_tokens != 8192
++                or any(size >= 8192 for size in captures)):
++            raise RuntimeError("mHC prototype requires TP4, an 8K ceiling, and decode-only graph sizes")
++    model._mhc_prefill_enabled = enabled
++    model._mhc_prefill_parallel_config = config.parallel_config
++
++
++def pure_prefill_metadata(metadata: Any, names: tuple[str, ...], rows: int) -> bool:
++    """Use host counts only; missing or ambiguous metadata cannot opt in."""
++    if not isinstance(metadata, dict) or not names or rows != 8192:
++        return False
++    fields = ("num_decodes", "num_decode_tokens", "num_spec_decodes", "num_spec_decode_tokens")
++    for name in names:
++        item = metadata.get(name)
++        if item is None:
++            return False
++        if type(getattr(item, "num_prefills", None)) is not int or item.num_prefills <= 0:
++            return False
++        if type(getattr(item, "num_prefill_tokens", None)) is not int or item.num_prefill_tokens != rows:
++            return False
++        if any(type(getattr(item, field, None)) is not int or getattr(item, field) != 0 for field in fields):
++            return False
++    return True
++
++
++def validate_moe_deferral(runner: Any) -> None:
++    config = runner.moe_config
++    parallel = config.moe_parallel_config
++    if (config.tp_size != 4 or config.dp_size != 1 or config.ep_size != 1
++            or config.pcp_size != 1 or config.is_sequence_parallel
++            or config.skip_final_all_reduce or parallel.use_all2all_kernels
++            or runner._fused_output_is_reduced
++            or runner.routed_output_transform is not None
++            or runner.routed_input_transform is not None
++            or type(runner.router).__name__ == "ZeroExpertRouter"):
++        raise RuntimeError("mHC prefill requires one unreduced conventional TP4 MoE output")
++
++
++def validate_model(model: Any) -> tuple[str, ...]:
++    from vllm.model_executor.layers.linear import RowParallelLinear
++    from vllm.model_executor.layers.mla import MultiHeadLatentAttentionWrapper
++    from vllm.model_executor.layers.fused_moe.runner.moe_runner import MoERunner
++    from .attention import Glm5NextMLAAttention
++    from .kda import Glm5NextLinearAttention
++
++    config = model._mhc_prefill_parallel_config
++    if (config.tensor_parallel_size != 4 or config.decode_context_parallel_size != 4
++            or config.pipeline_parallel_size != 1 or config.data_parallel_size != 1
++            or config.prefill_context_parallel_size != 1 or config.enable_expert_parallel
++            or config.enable_eplb or model.is_sequence_parallel):
++        raise RuntimeError("mHC prefill requires the qualified TP4/DCP4/PP1/DP1 layout")
++    names = []
++    for layer in model._active_layers:
++        if not layer.mhc or layer.is_mtp_layer or layer._b12x_mhc is None:
++            raise RuntimeError("mHC prefill requires B12X mHC on every base layer")
++        attn = layer.self_attn
++        if type(attn) is Glm5NextLinearAttention:
++            names.append(attn.prefix)
++        elif type(attn) is Glm5NextMLAAttention:
++            if type(attn.mla_attn) is not MultiHeadLatentAttentionWrapper:
++                raise RuntimeError("Unqualified outer MLA wrapper")
++        else:
++            raise RuntimeError("Unqualified GLM attention implementation")
++        projection = attn.o_proj
++        if (type(projection) is not RowParallelLinear or projection.tp_size != 4
++                or not projection.reduce_results or projection.bias is not None):
++            raise RuntimeError("Unqualified attention projection reduction")
++        if layer._mlp_is_moe:
++            if type(layer.mlp.experts) is not MoERunner:
++                raise RuntimeError("Unqualified MoE runner")
++            validate_moe_deferral(layer.mlp.experts)
++        elif (type(layer.mlp.down_proj) is not RowParallelLinear
++                or layer.mlp.down_proj.tp_size != 4
++                or not layer.mlp.down_proj.reduce_results
++                or layer.mlp.down_proj.bias is not None):
++            raise RuntimeError("Unqualified dense FFN reduction")
++    if not names:
++        raise RuntimeError("mHC prefill requires explicit GDN metadata owners")
++    return tuple(names)
++
++
++@dataclass
++class PrefillOwnership:
++    comm: Any
++    rank: int
++    rows: int = 8192
++    rs_count: int = 0
++    ag_count: int = 0
++
++    def local_view(self, tensor: Any) -> Any:
++        if tensor.shape[0] != self.rows:
++            raise RuntimeError("mHC full-to-owner row count mismatch")
++        q = self.rows // 4
++        return tensor.narrow(0, self.rank * q, q)
++
++    def _check(self, tensor: Any, expected_rows: int) -> None:
++        import torch
++        if not self.comm.available or self.comm.disabled:
++            raise RuntimeError("mHC PyNccl communicator became unavailable")
++        if (tensor.shape[0] != expected_rows or not tensor.is_cuda
++                or tensor.device != self.comm.device
++                or tensor.dtype != torch.bfloat16 or not tensor.is_contiguous()):
++            raise RuntimeError("mHC collective requires contiguous BF16 owner/full rows")
++
++    def reduce_scatter(self, partial: Any) -> Any:
++        import torch
++        self._check(partial, self.rows)
++        if tuple(partial.shape) != (self.rows, 4096):
++            raise RuntimeError("mHC reduce-scatter expects a full hidden TP partial")
++        output = partial.new_empty((self.rows // 4, 4096))
++        stream = torch.cuda.current_stream(partial.device)
++        self.comm.reduce_scatter(output, partial, stream=stream)
++        partial.record_stream(stream)
++        output.record_stream(stream)
++        self.rs_count += 1
++        return output
++
++    def all_gather(self, owned: Any) -> Any:
++        import torch
++        self._check(owned, self.rows // 4)
++        output = owned.new_empty((self.rows, *owned.shape[1:]))
++        stream = torch.cuda.current_stream(owned.device)
++        self.comm.all_gather(output, owned, stream=stream)
++        owned.record_stream(stream)
++        output.record_stream(stream)
++        self.ag_count += 1
++        return output
++
++    def finish(self, layers: int, auxiliary_gathers: int) -> None:
++        global _REPORTS
++        if self.rs_count != 2 * layers or self.ag_count != 2 * layers + auxiliary_gathers:
++            raise RuntimeError(f"mHC collective accounting mismatch: RS={self.rs_count} AG={self.ag_count}")
++        if _REPORTS < 8:
++            _LOG.warning("SPARK_MHC_PREFILL rank=%d rows=%d owner_rows=%d rs=%d ag=%d aux=%d",
++                         self.rank, self.rows, self.rows // 4, self.rs_count, self.ag_count, auxiliary_gathers)
++            _REPORTS += 1
++
++
++def maybe_create(model: Any, hidden: Any, positions: Any) -> PrefillOwnership | None:
++    if not model._mhc_prefill_enabled or tuple(hidden.shape) != (8192, 4096):
++        return None
++    import torch
++    if torch.compiler.is_compiling() or torch.cuda.is_current_stream_capturing():
++        return None
++    from vllm.distributed import get_tp_group
++    from vllm.forward_context import get_forward_context, is_forward_context_available
++    if not is_forward_context_available():
++        return None
++    context = get_forward_context()
++    if context.cudagraph_runtime_mode.name != "NONE" or context.ubatch_slices is not None:
++        return None
++    group = get_tp_group()
++    if group.world_size != 4:
++        raise RuntimeError("mHC prefill TP group is not four ranks")
++    comm = getattr(group.device_communicator, "pynccl_comm", None)
++    error = None
++    try:
++        if comm is None or not comm.available or comm.disabled or comm.world_size != 4:
++            raise RuntimeError("mHC prefill requires the enabled TP PyNccl communicator")
++        if comm.rank != group.rank_in_group or comm.device != hidden.device:
++            raise RuntimeError("mHC communicator rank/device ownership mismatch")
++        names = validate_model(model)
++    except (AttributeError, RuntimeError) as exc:
++        names = ()
++        error = str(exc)
++    eligible = (error is None and positions.shape[0] == 8192
++                and hidden.is_cuda and hidden.dtype == torch.bfloat16
++                and pure_prefill_metadata(context.attn_metadata, names, 8192))
++    # Small host vote before changing ownership; no GPU metadata synchronization.
++    # Rank-local capability or metadata differences cannot silently choose
++    # incompatible reduction paths after one rank has produced partial output.
++    votes = [None] * 4
++    torch.distributed.all_gather_object(votes, (eligible, error), group=group.cpu_group)
++    errors = [item[1] for item in votes if item[1] is not None]
++    if errors:
++        raise RuntimeError("mHC prefill capability vote failed: " + repr(errors))
++    if not all(item[0] for item in votes):
++        return None
++    return PrefillOwnership(comm=comm, rank=group.rank_in_group)
+--- a/vllm/models/glm5next/nvidia/model.py
++++ b/vllm/models/glm5next/nvidia/model.py
+@@ -2,6 +2,7 @@
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ 
+ from collections.abc import Iterable
++import os
+ from typing import ClassVar, Literal
+ 
+ import torch
+@@ -89,6 +90,7 @@
+ 
+ from .attention import Glm5NextMLAAttention
+ from .kda import Glm5NextLinearAttention
++from .mhc_prefill_sharding import maybe_create as maybe_create_mhc_prefill_ownership, configure as configure_mhc_prefill
+ from .multimodal import (
+     Glm5NextMultiModalProcessor,
+     Glm5NextProcessingInfo,
+@@ -187,10 +189,13 @@
+         else:
+             self.act_fn = SiluAndMul()
+ 
+-    def forward(self, x):
++    def forward(self, x, *, defer_tp_reduction: bool = False):
+         gate_up, _ = self.gate_up_proj(x)
+         x = self.act_fn(gate_up)
+-        x, _ = self.down_proj(x)
++        if defer_tp_reduction:
++            x, _ = self.down_proj(x, defer_tp_reduction=True)
++        else:
++            x, _ = self.down_proj(x)
+         return x
+ 
+ 
+@@ -296,6 +301,8 @@
+         self,
+         hidden_states: torch.Tensor,
+         already_sequence_parallel: bool = False,
++        *,
++        defer_tp_reduction: bool = False,
+     ) -> torch.Tensor:
+         num_tokens, hidden_dim = hidden_states.shape
+ 
+@@ -305,10 +312,18 @@
+             hidden_states = sequence_parallel_chunk(hidden_states)
+ 
+         router_logits, _ = self.gate(hidden_states)
+-        final_hidden_states = self.experts(
+-            hidden_states=hidden_states,
+-            router_logits=router_logits,
+-        )
++        if defer_tp_reduction:
++            if self.is_sequence_parallel or already_sequence_parallel:
++                raise RuntimeError("mHC deferral preserves full-token conventional TP MoE")
++            final_hidden_states = self.experts(
++                hidden_states=hidden_states, router_logits=router_logits,
++                defer_tp_reduction=True,
++            )
++        else:
++            final_hidden_states = self.experts(
++                hidden_states=hidden_states,
++                router_logits=router_logits,
++            )
+ 
+         if self.is_sequence_parallel and not already_sequence_parallel:
+             final_hidden_states = tensor_model_parallel_all_gather(
+@@ -482,12 +497,16 @@
+         post: torch.Tensor | None = None,
+         comb: torch.Tensor | None = None,
+         output_indices: torch.Tensor | None = None,
++        *,
++        mhc_prefill_ownership=None,
+     ) -> tuple[
+         torch.Tensor,
+         torch.Tensor | None,
+         torch.Tensor | None,
+         torch.Tensor | None,
+     ]:
++        if mhc_prefill_ownership is not None and (not self.mhc or self.is_mtp_layer or output_indices is not None):
++            raise RuntimeError("mHC ownership cannot enter MTP/non-mHC/compacted decode")
+         # 70B or MTP layers: KDA + MoE without HC.
+         if not self.mhc or self.is_mtp_layer:
+             residual = hidden_states
+@@ -525,6 +544,7 @@
+         # hc_post with this layer's attn hc_pre into one kernel (inter-layer
+         # fusion). Layer 0 has no incoming state -> standalone hc_pre.
+         x = hidden_states
++        first_full_pre = post is None
+         if post is None:
+             if self._b12x_mhc is not None:
+                 assert self.hc_attn_fn_broadcast is not None
+@@ -548,6 +568,11 @@
+                     norm_weight=self.input_layernorm.weight,
+                     norm_eps=self.input_layernorm.variance_epsilon,
+                 )
++            if mhc_prefill_ownership is not None:
++                # First pre stays full-sized, avoiding an extra boundary AG.
++                residual = mhc_prefill_ownership.local_view(residual)
++                post = mhc_prefill_ownership.local_view(post)
++                comb = mhc_prefill_ownership.local_view(comb)
+         else:
+             residual, post, comb, x = self.hc_fused_post_pre(
+                 x,
+@@ -563,15 +588,23 @@
+ 
+         # Attention needs the full token sequence; mHC above ran on the SP
+         # shard. Gather for attention, scatter back afterward (DSv4 pattern).
+-        if self.is_sequence_parallel:
++        if mhc_prefill_ownership is not None:
++            if not first_full_pre:
++                x = mhc_prefill_ownership.all_gather(x)
++        elif self.is_sequence_parallel:
+             x = sp_all_gather(x)[: positions.shape[0]]
+ 
+-        x = self.self_attn(
+-            hidden_states=x,
+-            positions=positions,
+-        )
+-
+-        if self.is_sequence_parallel:
++        if mhc_prefill_ownership is not None:
++            x = self.self_attn(hidden_states=x, positions=positions, defer_tp_reduction=True)
++        else:
++            x = self.self_attn(
++                hidden_states=x,
++                positions=positions,
++            )
++
++        if mhc_prefill_ownership is not None:
++            x = mhc_prefill_ownership.reduce_scatter(x)
++        elif self.is_sequence_parallel:
+             x = sp_reduce_scatter(x)
+ 
+         # Fuse post-attn hc_post + pre-FFN hc_pre (+ RMSNorm) into one kernel.
+@@ -588,7 +621,11 @@
+         )
+ 
+         # Fully Connected
+-        if self._mlp_is_moe:
++        if mhc_prefill_ownership is not None:
++            x = mhc_prefill_ownership.all_gather(x)
++            x = self.mlp(x, defer_tp_reduction=True)
++            x = mhc_prefill_ownership.reduce_scatter(x)
++        elif self._mlp_is_moe:
+             x = self.mlp(x, already_sequence_parallel=self.is_sequence_parallel)
+         else:
+             x = self.mlp(x)
+@@ -752,6 +789,7 @@
+         else:
+             self.norm = PPMissingLayer()
+ 
++        configure_mhc_prefill(self, vllm_config, os.environ.get("SPARK_MHC_PREFILL_SHARD", "0") == "1")
+         self.is_sequence_parallel = (
+             vllm_config.parallel_config.use_sequence_parallel_moe
+         )
+@@ -831,6 +869,8 @@
+             comb = None
+ 
+         full_num_tokens = positions.shape[0]
++        mhc_owner = maybe_create_mhc_prefill_ownership(self, hidden_states, positions)
++        mhc_aux_gathers = 0
+         if self.is_sequence_parallel:
+             hidden_states = sp_shard(hidden_states)
+ 
+@@ -839,14 +879,23 @@
+             aux_hidden_states.append(hidden_states)
+ 
+         for layer_idx, layer in enumerate(self._active_layers, start=self.start_layer):
+-            hidden_states, residual, post, comb = layer(
+-                positions, hidden_states, residual, post, comb
+-            )
++            if mhc_owner is not None:
++                hidden_states, residual, post, comb = layer(
++                    positions, hidden_states, residual, post, comb,
++                    mhc_prefill_ownership=mhc_owner,
++                )
++            else:
++                hidden_states, residual, post, comb = layer(
++                    positions, hidden_states, residual, post, comb
++                )
+             if layer_idx + 1 in self.aux_hidden_state_layers:
+                 aux_hidden_state = self._prepare_aux_hidden_state(
+                     layer, hidden_states, residual, post, comb
+                 )
+-                if self.is_sequence_parallel:
++                if mhc_owner is not None:
++                    aux_hidden_state = mhc_owner.all_gather(aux_hidden_state)
++                    mhc_aux_gathers += 1
++                elif self.is_sequence_parallel:
+                     aux_hidden_state = sp_all_gather(aux_hidden_state)[:full_num_tokens]
+                 aux_hidden_states.append(aux_hidden_state)
+ 
+@@ -857,7 +906,10 @@
+                 {"hidden_states": hidden_states, "residual": residual}
+             )
+ 
+-        if self.is_sequence_parallel:
++        if mhc_owner is not None:
++            hidden_states = mhc_owner.all_gather(hidden_states)
++            mhc_owner.finish(len(self._active_layers), mhc_aux_gathers)
++        elif self.is_sequence_parallel:
+             hidden_states = sp_all_gather(hidden_states)[:full_num_tokens]
+ 
+         hidden_states = self.norm(hidden_states)

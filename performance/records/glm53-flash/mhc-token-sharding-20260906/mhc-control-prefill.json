@@ -1,0 +1,233 @@
+{
+  "phase": "prefill",
+  "rows": [
+    {
+      "tokens": 8192,
+      "ttft_seconds": 3.1603418000013335,
+      "tokens_per_second": 2592.1246872716565,
+      "usage": {
+        "prompt_tokens": 8192,
+        "total_tokens": 8193,
+        "completion_tokens": 1,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 7168
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "phase": "warm",
+      "sample": 0
+    },
+    {
+      "tokens": 16384,
+      "ttft_seconds": 5.71361920000345,
+      "tokens_per_second": 2867.5344692187587,
+      "usage": {
+        "prompt_tokens": 16384,
+        "total_tokens": 16385,
+        "completion_tokens": 1,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 15360
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "phase": "warm",
+      "sample": 0
+    },
+    {
+      "tokens": 65536,
+      "ttft_seconds": 22.724000300004263,
+      "tokens_per_second": 2883.9992578237952,
+      "usage": {
+        "prompt_tokens": 65536,
+        "total_tokens": 65537,
+        "completion_tokens": 1,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 64512
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "phase": "warm",
+      "sample": 0
+    },
+    {
+      "tokens": 8192,
+      "ttft_seconds": 2.822990100001334,
+      "tokens_per_second": 2901.887612002652,
+      "usage": {
+        "prompt_tokens": 8192,
+        "total_tokens": 8193,
+        "completion_tokens": 1,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 7168
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "phase": "measured",
+      "sample": 0
+    },
+    {
+      "tokens": 16384,
+      "ttft_seconds": 5.674945399994613,
+      "tokens_per_second": 2887.0762351326857,
+      "usage": {
+        "prompt_tokens": 16384,
+        "total_tokens": 16385,
+        "completion_tokens": 1,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 15360
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "phase": "measured",
+      "sample": 0
+    },
+    {
+      "tokens": 65536,
+      "ttft_seconds": 22.753877900002408,
+      "tokens_per_second": 2880.2123439360225,
+      "usage": {
+        "prompt_tokens": 65536,
+        "total_tokens": 65537,
+        "completion_tokens": 1,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 64512
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "phase": "measured",
+      "sample": 0
+    },
+    {
+      "tokens": 8192,
+      "ttft_seconds": 2.817291400002432,
+      "tokens_per_second": 2907.757429704619,
+      "usage": {
+        "prompt_tokens": 8192,
+        "total_tokens": 8193,
+        "completion_tokens": 1,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 7168
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "phase": "measured",
+      "sample": 1
+    },
+    {
+      "tokens": 16384,
+      "ttft_seconds": 5.6585398000024725,
+      "tokens_per_second": 2895.4466309475883,
+      "usage": {
+        "prompt_tokens": 16384,
+        "total_tokens": 16385,
+        "completion_tokens": 1,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 15360
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "phase": "measured",
+      "sample": 1
+    },
+    {
+      "tokens": 65536,
+      "ttft_seconds": 22.746898299999884,
+      "tokens_per_second": 2881.0961009132543,
+      "usage": {
+        "prompt_tokens": 65536,
+        "total_tokens": 65537,
+        "completion_tokens": 1,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 64512
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "phase": "measured",
+      "sample": 1
+    },
+    {
+      "tokens": 8192,
+      "ttft_seconds": 2.823151399992639,
+      "tokens_per_second": 2901.7218134391796,
+      "usage": {
+        "prompt_tokens": 8192,
+        "total_tokens": 8193,
+        "completion_tokens": 1,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 7168
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "phase": "measured",
+      "sample": 2
+    },
+    {
+      "tokens": 16384,
+      "ttft_seconds": 5.662423999994644,
+      "tokens_per_second": 2893.4604685229324,
+      "usage": {
+        "prompt_tokens": 16384,
+        "total_tokens": 16385,
+        "completion_tokens": 1,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 15360
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "phase": "measured",
+      "sample": 2
+    },
+    {
+      "tokens": 65536,
+      "ttft_seconds": 22.81059940000705,
+      "tokens_per_second": 2873.0503241392134,
+      "usage": {
+        "prompt_tokens": 65536,
+        "total_tokens": 65537,
+        "completion_tokens": 1,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 64512
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "phase": "measured",
+      "sample": 2
+    }
+  ]
+}

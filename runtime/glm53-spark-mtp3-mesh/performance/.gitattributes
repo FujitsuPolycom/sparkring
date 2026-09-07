@@ -4,3 +4,4 @@ checkpoints/payload-by-sha/** -text whitespace=-trailing-space
 checkpoints/ownership-contract.json -text
 transport/bundle-source/** -text whitespace=cr-at-eol
 transport/B12X-LICENSE -text whitespace=cr-at-eol
+mhc-prefill/*.patch whitespace=-trailing-space

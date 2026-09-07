@@ -1,0 +1,50 @@
+{
+  "environment": {
+    "SPARK_MHC_PREFILL_SHARD": "0"
+  },
+  "files": {
+    "vllm/model_executor/layers/fused_moe/runner/moe_runner.py": {
+      "after_sha256": "7f12a8923a80dab5639e6d1324b9c18509960e0d5bde00e74fc234f3b0e247d5",
+      "before_sha256": "80d4b53fdbbbaf2aa9408f22ea476bacbdbb9db5cef0e51fca62c36a4f384d25"
+    },
+    "vllm/model_executor/layers/fused_moe/runner/moe_runner_interface.py": {
+      "after_sha256": "6e57212e46964a5737e2fcea7c29e9bcf88fa7e22886c7c21208ad661b154feb",
+      "before_sha256": "189cad01611124eb44594713cbf5918d16fc70196dc81a525ae0a7a97a5fcc51"
+    },
+    "vllm/model_executor/layers/linear.py": {
+      "after_sha256": "bed47ddb286f5e55a7ffcccf4243d92d7d489db858a6c90e91c81342b0b8e1ae",
+      "before_sha256": "d1e3a10f978e1201371de6aea840203c72bd0ab54dfffc0f85085a7979e425ba"
+    },
+    "vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py": {
+      "after_sha256": "e2c415c0f7a21efc7dfd716418f8012f4c23bbe5175892e8fae222600784dba8",
+      "before_sha256": "347a15ec42368b0c2b35b31cef7c9f58da97814a53ee76d0ee5526aac6b15c1c"
+    },
+    "vllm/model_executor/layers/mla.py": {
+      "after_sha256": "eddc5d57cf39468157300189a12f7a1e440886218444e7a111286c527c9de3bf",
+      "before_sha256": "0d1b61be1547cee3e4af70f805c5df83c950d84bad5be596c52f2509fd908084"
+    },
+    "vllm/models/glm5next/nvidia/attention.py": {
+      "after_sha256": "c04298d14eedcb6cc329d161c182cfccf092113ee7f12e54d27ad233818df083",
+      "before_sha256": "a6a6ea546b168707b5f1a7337b45ba12a7bd957fdbf278adba9cb6c092310b32"
+    },
+    "vllm/models/glm5next/nvidia/kda.py": {
+      "after_sha256": "73da412cbd8d109c676cb6bcf37f5b5148dc72f4c9a4a09796c0cd4f2f4fbbd4",
+      "before_sha256": "a1af9132fcb5a54817670c40f4fd8844043f49c36f5554724318491175506b6e"
+    },
+    "vllm/models/glm5next/nvidia/mhc_prefill_sharding.py": {
+      "after_sha256": "24fd10059e53b0e7f5f4c86c45166cfa0020e14b7794486294b19d26742ad87b",
+      "before_sha256": null
+    },
+    "vllm/models/glm5next/nvidia/model.py": {
+      "after_sha256": "24f63d7c804625b85895bf39d793554db9dd6a8a2a04b8b9b6cfb0a7db1cadb5",
+      "before_sha256": "6ffed6a97bf47af392c7eb89b90e384c80a38a3913794876b1827a1b7f3dec69"
+    }
+  },
+  "parent_image_id": "sha256:489d1975619e9083d14f14bcd1c6cbb4a96c41e3ab3978af048dc3ed2bb452a8",
+  "preimage_archive_sha256": "9c7aceccc33d2a26b680ae3804ba845346e907e290a2afec5b46f80ba14a5f30",
+  "schema": "sparkring-mhc-prefill-source/v1",
+  "source_archive_sha256": "85698147823b11eae159bf8a7771e303e8d1a736baa12abd2bddc7ebcaa8799c",
+  "source_image_id": "sha256:65f2b9181acd77db660f9c105554c4fca5c4df89d87d1374276e17c6831d1359",
+  "source_role": "Token-sharded GLM mHC for eligible eager 8192-token TP4/DCP4 prefills",
+  "status": "research-only"
+}

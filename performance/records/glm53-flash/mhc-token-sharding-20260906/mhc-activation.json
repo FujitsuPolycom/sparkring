@@ -1,0 +1,34 @@
+[
+  {
+    "rank": 0,
+    "lines": [
+      "(Worker_TP0_DCP0 pid=380) WARNING 09-07 01:05:59 [mhc_prefill_sharding.py:156] SPARK_MHC_PREFILL rank=0 rows=8192 owner_rows=2048 rs=90 ag=90 aux=0",
+      "(Worker_TP0_DCP0 pid=380) WARNING 09-07 01:06:02 [mhc_prefill_sharding.py:156] SPARK_MHC_PREFILL rank=0 rows=8192 owner_rows=2048 rs=90 ag=90 aux=0",
+      "(Worker_TP0_DCP0 pid=380) WARNING 09-07 01:06:05 [mhc_prefill_sharding.py:156] SPARK_MHC_PREFILL rank=0 rows=8192 owner_rows=2048 rs=90 ag=90 aux=0"
+    ]
+  },
+  {
+    "rank": 1,
+    "lines": [
+      "(Worker_TP1_DCP1 pid=296) WARNING 09-07 01:05:59 [mhc_prefill_sharding.py:156] SPARK_MHC_PREFILL rank=1 rows=8192 owner_rows=2048 rs=90 ag=90 aux=0",
+      "(Worker_TP1_DCP1 pid=296) WARNING 09-07 01:06:02 [mhc_prefill_sharding.py:156] SPARK_MHC_PREFILL rank=1 rows=8192 owner_rows=2048 rs=90 ag=90 aux=0",
+      "(Worker_TP1_DCP1 pid=296) WARNING 09-07 01:06:05 [mhc_prefill_sharding.py:156] SPARK_MHC_PREFILL rank=1 rows=8192 owner_rows=2048 rs=90 ag=90 aux=0"
+    ]
+  },
+  {
+    "rank": 2,
+    "lines": [
+      "(Worker_TP2_DCP2 pid=302) WARNING 09-07 01:05:59 [mhc_prefill_sharding.py:156] SPARK_MHC_PREFILL rank=2 rows=8192 owner_rows=2048 rs=90 ag=90 aux=0",
+      "(Worker_TP2_DCP2 pid=302) WARNING 09-07 01:06:02 [mhc_prefill_sharding.py:156] SPARK_MHC_PREFILL rank=2 rows=8192 owner_rows=2048 rs=90 ag=90 aux=0",
+      "(Worker_TP2_DCP2 pid=302) WARNING 09-07 01:06:05 [mhc_prefill_sharding.py:156] SPARK_MHC_PREFILL rank=2 rows=8192 owner_rows=2048 rs=90 ag=90 aux=0"
+    ]
+  },
+  {
+    "rank": 3,
+    "lines": [
+      "(Worker_TP3_DCP3 pid=259) WARNING 09-07 01:05:59 [mhc_prefill_sharding.py:156] SPARK_MHC_PREFILL rank=3 rows=8192 owner_rows=2048 rs=90 ag=90 aux=0",
+      "(Worker_TP3_DCP3 pid=259) WARNING 09-07 01:06:02 [mhc_prefill_sharding.py:156] SPARK_MHC_PREFILL rank=3 rows=8192 owner_rows=2048 rs=90 ag=90 aux=0",
+      "(Worker_TP3_DCP3 pid=259) WARNING 09-07 01:06:05 [mhc_prefill_sharding.py:156] SPARK_MHC_PREFILL rank=3 rows=8192 owner_rows=2048 rs=90 ag=90 aux=0"
+    ]
+  }
+]

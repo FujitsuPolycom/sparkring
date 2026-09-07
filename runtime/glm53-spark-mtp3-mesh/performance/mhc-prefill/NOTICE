@@ -1,0 +1,6 @@
+Token-sharded mHC prefill source package
+
+The archived vLLM files retain their upstream copyright and SPDX notices.
+Modifications add explicit per-call TP reduction deferral, eager-prefill
+token ownership, and NCCL reduce-scatter/all-gather around local mHC.
+The new mhc_prefill_sharding.py helper is provided under Apache-2.0.
