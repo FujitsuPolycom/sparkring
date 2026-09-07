@@ -83,6 +83,8 @@ def test_compose_resolves_each_rank_without_launching(tmp_path, rank):
         "VLLM_API_KEY": "test-only",
     })
     assert not any("REPLACE_" in value for value in values.values())
+    library_path = Path(values["SPARKRING_NCCL_LIBRARY"])
+    library_path.write_bytes(b"Offline path fixture; not an executable library")
     env_file = tmp_path / "rank.env"
     env_file.write_text("".join(f"{key}={value}\n" for key, value in values.items()))
     compose = tmp_path / "docker-compose.dspark.yml"
@@ -106,7 +108,7 @@ def test_compose_resolves_each_rank_without_launching(tmp_path, rank):
     assert actual["LD_PRELOAD"] == actual["VLLM_NCCL_SO_PATH"] == PROFILE["transport"]["container_path"]
     mounts = [row for row in service["volumes"] if row["target"] == PROFILE["transport"]["container_path"]]
     assert len(mounts) == 1 and mounts[0]["read_only"]
-    assert mounts[0]["bind"]["create_host_path"] is False
+    assert mounts[0].get("bind", {}).get("create_host_path", False) is False
     command = "\n".join(service["command"])
     assert "--served-model-name deepseek-v4-flash-vision-exp" in command
     assert "--tensor-parallel-size 4" in command and "--nnodes 4" in command
@@ -114,6 +116,19 @@ def test_compose_resolves_each_rank_without_launching(tmp_path, rank):
     assert ("--headless" in command) == (rank != 0)
     document = json.loads(result.stdout)
     assert CHECKER.validate(document, rank, values["SPARKRING_NCCL_LIBRARY"])["configuration_validated"]
+    library_mount = next(row for row in document["services"]["vllm-dspark"]["volumes"]
+                         if row["target"] == PROFILE["transport"]["container_path"])
+    # Legacy Compose omits false; the explicit and omitted forms must agree.
+    library_mount.setdefault("bind", {}).pop("create_host_path", None)
+    assert CHECKER.validate(document, rank, library_path)["configuration_validated"]
+    library_mount["bind"]["create_host_path"] = True
+    with pytest.raises(ValueError, match="NCCL mount differs"):
+        CHECKER.validate(document, rank, library_path)
+    library_mount["bind"].pop("create_host_path")
+    library_path.unlink()
+    with pytest.raises(ValueError, match="existing file"):
+        CHECKER.validate(document, rank, library_path)
+    library_path.write_bytes(b"Offline path fixture; not an executable library")
     # A shell export overrides --env-file before rendering. Validate the
     # resolved result rather than trusting the file alone.
     for key in ("DSPARK_ENABLE_DSPARK_BLOCK_K", "DSPARK_MAX_INFLIGHT_PREFILLS", "NODE_RANK"):

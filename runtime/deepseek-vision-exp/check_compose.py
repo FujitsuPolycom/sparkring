@@ -64,8 +64,13 @@ def validate(document, rank, nccl_library):
         raise ValueError("Headless mode differs from the selected rank")
     mounts = [row for row in service["volumes"]
               if row["target"] == profile["transport"]["container_path"]]
+    # Compose releases omit different default boolean values from JSON.
+    # Require the library file itself so an omitted flag cannot authorize
+    # creation of a missing host path.
+    if not Path(nccl_library).is_file():
+        raise ValueError("The verified NCCL library path must name an existing file")
     if (len(mounts) != 1 or not mounts[0].get("read_only")
-            or mounts[0].get("bind", {}).get("create_host_path") is not False
+            or mounts[0].get("bind", {}).get("create_host_path", False) is not False
             or Path(mounts[0]["source"]).resolve() != Path(nccl_library).resolve()):
         raise ValueError("NCCL mount differs from the verified library path or read-only contract")
     return {"configuration_validated": True, "rank": rank, "image": service["image"],

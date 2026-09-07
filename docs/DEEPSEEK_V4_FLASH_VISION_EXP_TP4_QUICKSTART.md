@@ -214,7 +214,8 @@ Exported shell variables take precedence over `--env-file`. The check validates
 the resolved image, model, serving limits, rank, required hotfixes, and NCCL
 mount against the profile, so conflicting exports for those checked settings
 are rejected. It prints a summary without API credentials. The Python check
-reads JSON only and does not contact Docker or any model host. Other optional
+reads the resolved JSON and requires the verified library path to be an existing
+file; it does not contact Docker or any model host. Other optional
 upstream switches and custom hotfix mounts remain outside this check.
 
 Review the rank-specific addresses and device/GID choices; the offline check
