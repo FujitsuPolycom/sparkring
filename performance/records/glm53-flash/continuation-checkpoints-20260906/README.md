@@ -81,7 +81,10 @@ startup, and serving validation.
 ## Reproduction
 
 The [portable harness](../../../harnesses/vllm/prefill_checks/continuation_serve_checks.py)
-retains the historical timing and request logic. Set `BENCH_API_BASE`,
+retains the historical timing and request logic and additionally rejects
+missing or malformed cache-token accounting. Every retained timing row contains
+explicit integer cache accounting, so this check does not change the record.
+Set `BENCH_API_BASE`,
 `BENCH_MODEL`, `BENCH_RANK0_SSH`, and `BENCH_RANK0_CONTAINER` for an explicitly
 authorized idle deployment, then run:
 
