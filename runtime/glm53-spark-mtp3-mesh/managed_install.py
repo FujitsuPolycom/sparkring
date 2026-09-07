@@ -123,9 +123,17 @@ def expected_container_spec(argv, image):
     # registry reference carrying the manifest digest, so the envelope scan must
     # accept either. The spec still reports the config ID, which is what Docker
     # records as the container's Image.
-    repo_digests = image.get('RepoDigests') or []
+    repo_digests = image.get('RepoDigests')
+    if repo_digests is None:
+        repo_digests = []
+    repository_digest = re.compile(
+        r'(?:[A-Za-z0-9][A-Za-z0-9.-]*(?::[0-9]+)?/)?'
+        r'[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*'
+        r'(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*@sha256:[0-9a-f]{64}'
+    )
     if (not isinstance(repo_digests, list)
-            or any(not isinstance(digest, str) for digest in repo_digests)):
+            or any(not isinstance(digest, str) or not repository_digest.fullmatch(digest)
+                   for digest in repo_digests)):
         raise ValueError('Image inspection returned malformed repository digests')
     image_names = {image_id, *repo_digests}
     config = image.get('Config', {})

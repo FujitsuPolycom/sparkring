@@ -343,7 +343,25 @@ def test_envelope_scan_still_rejects_an_unknown_image_identity():
         managed_install.expected_container_spec(_envelope_argv('ghcr.io/other/image:latest'), image)
 
 
-def test_envelope_scan_rejects_malformed_repository_digests():
-    image = {'Id': 'sha256:' + 'a' * 64, 'RepoDigests': [123], 'Config': {}}
+@pytest.mark.parametrize('value', ['', {}, 0, False, [123], ['mutable:tag'],
+                                  [''], ['repo@sha256:' + 'b' * 63],
+                                  ['repo@sha256:' + 'G' * 64],
+                                  ['bad repo@sha256:' + 'b' * 64]])
+def test_envelope_scan_rejects_malformed_repository_digests(value):
+    image = {'Id': 'sha256:' + 'a' * 64, 'RepoDigests': value, 'Config': {}}
     with pytest.raises(ValueError, match='repository digests'):
         managed_install.expected_container_spec(_envelope_argv('sha256:' + 'a' * 64), image)
+
+
+@pytest.mark.parametrize('value', [None, []])
+def test_envelope_scan_accepts_absent_repository_digests(value):
+    image_id = 'sha256:' + 'a' * 64
+    image = {'Id': image_id, 'RepoDigests': value, 'Config': {}}
+    assert managed_install.expected_container_spec(_envelope_argv(image_id), image)['image'] == image_id
+
+
+def test_envelope_scan_accepts_registry_port_in_repository_digest():
+    image_id = 'sha256:' + 'a' * 64
+    reference = 'registry.example:5000/team/image@sha256:' + 'b' * 64
+    image = {'Id': image_id, 'RepoDigests': [reference], 'Config': {}}
+    assert managed_install.expected_container_spec(_envelope_argv(reference), image)['image'] == image_id
