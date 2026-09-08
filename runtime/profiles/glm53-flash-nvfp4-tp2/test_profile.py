@@ -92,6 +92,7 @@ def test_profile_preserves_tested_model_settings_and_no_cache():
     }
     assert json.loads(value("--compilation-config"))["max_cudagraph_capture_size"] == 32
     assert json.loads(value("--limit-mm-per-prompt")) == {"image": 4, "video": 0}
+    assert json.loads(value("--model-loader-extra-config")) == {"allocation": "managed"}
     assert "--kv-transfer-config" not in args
     assert not profile["sparkcache"]["enabled"]
 
@@ -110,6 +111,8 @@ def test_rank_plan_maps_both_pci_functions_of_one_cage(inputs, rank):
     assert value["command"][:2] == ["docker", "create"]
     assert value["command"][value["command"].index("--restart") + 1] == "no"
     assert value["labels"]["org.sparkring.memory-guard"] == "true"
+    args = value["container_args"]
+    assert json.loads(args[args.index("--model-loader-extra-config") + 1]) == {"allocation": "managed"}
 
 
 def test_jit_cache_paths_match_the_mount_and_separate_ranks(inputs):
@@ -196,3 +199,14 @@ def test_existing_spark_checkpoint_profile_keeps_its_identity():
     spark = json.loads((ROOT.parent / "glm53-flash-spark-tp2/profile.json").read_text())
     assert spark["model"]["repository"].endswith("-NVFP4-Spark")
     assert spark["model"]["revision"] == "df116c4fb16b1d37ae43d2cfd624de26ffbc832e"
+
+
+def test_managed_option_preserves_shared_default_and_reference_evidence():
+    dependencies = json.loads((ROOT / "dependencies.json").read_text())
+    loader = next(item for item in dependencies["shared_image_requirements"]
+                  if item["component"] == "B12X loader")
+    assert loader["model_loader_extra_config"] == {"allocation": "managed"}
+    assert loader["shared_loader_default_allocation"] == "pinned_wc"
+    record = json.loads((ROOT.parents[2] / "performance/records/glm53-flash/tp2-single-dac-source-20260908.json").read_text())
+    assert "--model-loader-extra-config" not in record["conditions"]["serving_arguments"]
+    assert "research-only" in launch.load_profile()["qualification"]["shared_image"]

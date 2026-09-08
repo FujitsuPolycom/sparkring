@@ -157,6 +157,8 @@
     "auto",
     "--load-format",
     "b12x",
+    "--model-loader-extra-config",
+    "{\"allocation\":\"managed\"}",
     "--gpu-memory-utilization",
     "0.87",
     "--speculative-config",
@@ -169,6 +171,7 @@
   "qualification": {
     "source_deployment": "qualified for bounded C1/C8 text workloads and a semantic smoke check",
     "shared_image": "research-only until its exact profile composition is tested",
+    "loader_selection": "The measured loader hardcoded managed allocation. The shared loader selects it with model-loader-extra-config; that source composition requires separate image qualification.",
     "limitations": [
       "Long-duration serving stability is not established.",
       "Image/video accuracy is not established; image count is only a configured limit.",

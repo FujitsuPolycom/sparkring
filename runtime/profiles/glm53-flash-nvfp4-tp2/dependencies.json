@@ -25,6 +25,7 @@
       "base_image_revision": "3eb57addb57b86360e9164467a4459ab964bfcac",
       "two_checkpoint_revision": "cc8f12aa92901066591800f4c9d264f5f0ae192c",
       "managed_loader_revision": "1e099579de46a5185bd8f4dddf19f83a4128aa1b",
+      "managed_loader_selection": "Hardcoded managed allocation in the measured source; no model-loader-extra-config allocation option was used in the reference launch.",
       "archive_name": "b12x-coalescing-managed.tgz",
       "archive_sha256": "f5890965173d2d18deefde6ea7820cedf9362ffcb039765630a20b780154e691",
       "selected_source_sha256": {
@@ -80,7 +81,12 @@
     {
       "component": "B12X loader",
       "interface": "b12x.integration.vllm.loader.B12xModelLoader and vllm.model_executor.weight_transfer",
-      "required_behavior": "Managed persistent CUDA allocation for target and MTP checkpoint tensors, direct checkpoint I/O, and no shared allocation of nonpersistent runtime buffers. VLLM_PLUGINS=b12x_loader and --load-format b12x select the loader; those flags alone do not prove its allocation policy."
+      "required_behavior": "Managed persistent CUDA allocation for target and MTP checkpoint tensors, direct checkpoint I/O, and no shared allocation of nonpersistent runtime buffers. Select VLLM_PLUGINS=b12x_loader, --load-format b12x, and --model-loader-extra-config with allocation=managed. The shared loader retains pinned_wc when the option is absent and records the selected allocation in model._b12x_loader_storage.",
+      "model_loader_extra_config": {
+        "allocation": "managed"
+      },
+      "shared_loader_default_allocation": "pinned_wc",
+      "allowed_allocation_values": ["pinned_wc", "managed"]
     },
     {
       "component": "RoCEnante",
