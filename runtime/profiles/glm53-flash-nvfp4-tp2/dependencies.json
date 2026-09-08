@@ -84,6 +84,11 @@
       "required_behavior": "Use world_size=2 for row ownership, admission votes, and NCCL reduce-scatter/all-gather. Preserve the TP4 implementation and its stream lifetime checks."
     },
     {
+      "component": "vLLM KDA projection scheduling",
+      "interface": "VLLM_GLM53_KDA_GATE_SIDE_STREAM",
+      "required_behavior": "Set 0 for TP2 to preserve the measured sequential KDA adapter behavior. Leave the common TP4 source's default 1 unchanged."
+    },
+    {
       "component": "B12X recurrent export",
       "interface": "b12x.sequence.kda_prefill.Caps and checkpoint offset/index metadata",
       "required_behavior": "The consumer and kernel must agree on export capacity and padded metadata. Preserve four-destination export support; do not overwrite it with the measured two-destination source."

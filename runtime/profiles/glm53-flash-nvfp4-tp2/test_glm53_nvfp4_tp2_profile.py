@@ -114,6 +114,7 @@ def test_rank_plan_maps_both_pci_functions_of_one_cage(inputs, rank):
     for key in ("NCCL_IB_EXTENDED_IPV4_GIDS", "NCCL_IB_PRESERVE_PCI_DOMAIN", "NCCL_IB_ROUTE_DIAGNOSTICS"):
         assert env[key] == "1"
     assert env["SOURCE_IMAGE_PROFILE"] == value["profile"]
+    assert env["VLLM_GLM53_KDA_GATE_SIDE_STREAM"] == "0"
     assert ("--headless" in value["container_args"]) is (rank == 1)
     assert "${NODE_RANK}" not in value["container_args"]
     assert value["command"][:2] == ["docker", "create"]
@@ -132,6 +133,22 @@ def test_jit_cache_paths_match_the_mount_and_separate_ranks(inputs):
             assert value["environment"][key].startswith("/cache/jit/")
             assert value["profile_sha256"] in value["environment"][key]
     assert ranks[0]["environment"]["VLLM_CACHE_ROOT"] != ranks[1]["environment"]["VLLM_CACHE_ROOT"]
+
+
+def test_tp2_clears_inherited_mesh_sitecustomize(inputs, tmp_path):
+    import sys
+
+    (tmp_path / "sitecustomize.py").write_text("raise SystemExit('TP4_HOOK_IMPORTED')\n")
+    inherited = {**os.environ, "PYTHONPATH": str(tmp_path)}
+    command = [sys.executable, "-c", "print('CONSUMER_REACHED')"]
+    trapped = subprocess.run(command, env=inherited, capture_output=True, text=True)
+    assert trapped.returncode != 0 and "TP4_HOOK_IMPORTED" in trapped.stderr
+    environment = plan(inputs)["environment"]
+    assert environment["PYTHONPATH"] == ""
+    selected = subprocess.run(command, env={**inherited, "PYTHONPATH": environment["PYTHONPATH"]},
+                              capture_output=True, text=True)
+    assert selected.returncode == 0, selected.stderr
+    assert "CONSUMER_REACHED" in selected.stdout
 
 
 @pytest.mark.parametrize("assignment", ["B12X_ROCE_PEER_HCA_MAP=1=2/1", "VLLM_PLUGINS=sparkcache", "SPARK_CACHE_ENABLED=1", "VLLM_HOST_IP=duplicate"])

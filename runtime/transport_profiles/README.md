@@ -31,7 +31,9 @@ Prepare an exclusive local staging directory without building an image:
 python3 runtime/transport_profiles/package.py --destination /tmp/tp2-transport-context
 ```
 
-Copy `tp2-rocenante-adaptive/`, `sparkring_transport_selector.py`, and
+The common [source-image recipe](../sparkring/source_image/README.md) packages
+these repository assets and verifies them against its source lock. For an
+equivalent explicit packaging step, copy `tp2-rocenante-adaptive/`, `sparkring_transport_selector.py`, and
 `entrypoint.py` into `/opt/sparkring/transports/`. Install the generated
 `sparkring_transport.pth` in the serving interpreter's `site-packages`
 directory. The hook adds `/opt/sparkring/transports` to Python's search path
@@ -57,20 +59,39 @@ actual Python subprocess with an invalid digest and confirm that its consumer
 is never reached. Tests also start a fresh Python process with a valid digest
 and confirm the selected package origin.
 
-The TP2 launcher uses this container entrypoint:
+The TP2 launcher first uses the common source-verification entrypoint:
+
+```text
+python3 -S -B /opt/sparkcache-jj-runtime/verify_sources.py --serve /models/target ...
+```
+
+The verifier checks common sources and installed assets, then dispatches
+`SOURCE_IMAGE_PROFILE=glm53-flash-nvfp4-tp2-mtp3` through normal Python:
 
 ```text
 python3 /opt/sparkring/transports/entrypoint.py serve /models/target ...
 ```
 
-Before importing vLLM, that entrypoint rechecks source hashes, verifies the
-active import finder, and requires the matching installed `.pth` hook for
-spawned workers. It refuses to activate after an unrelated transport has
-already been imported. These checks establish source selection; they do not
-establish compatibility of the image's remaining vLLM/B12X modules.
+The profile sets `PYTHONPATH` to an empty value to avoid importing the parent
+image's TP4 mesh `sitecustomize`. The installed `.pth` hook supplies the TP2
+selector path. Before importing vLLM, the transport entrypoint rechecks source
+hashes, verifies the active import finder, and requires the matching installed
+`.pth` hook for spawned workers. It refuses to activate after an unrelated
+transport has already been imported. TP4 retains its separate startup path.
+
+Local source-built images use a `sparkring-source-image-receipt/v1` receipt
+with the exact image config ID and installed transport witness. The witness
+binds `manifest_sha256`, the canonical file-map hash `files_sha256`, file
+count, and package name. The TP2 launcher validates those fields against the
+repository bundle and common source lock. Registry manifest digests require
+their matching registry profile receipt; the two image identity types are
+not interchangeable.
 
 The common image must separately satisfy the
 [TP2 dependency matrix](../profiles/glm53-flash-nvfp4-tp2/dependencies.json).
 In particular, keep the public four-checkpoint producer/consumer contract
 while adding TP2 admission. The measured two-checkpoint source is provenance
 for the reference deployment, not a replacement for the shared implementation.
+The prospective shared profile selects NCCL 2.30.7; the measured original
+single-DAC deployment used NCCL 2.30.4. Source and receipt verification do not
+qualify that binary change or the complete shared GPU composition.
