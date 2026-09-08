@@ -429,8 +429,9 @@ KV allocation can keep a long prefill healthy even while both counters stay flat
 Allocation is not proof that GPU computation finished. A fully preallocated
 prefill or restore can also remain flat while doing legitimate work.
 Set the timeout above the longest measured interval without these observable
-signals, with margin; a 1M prompt at 2500 tokens/s needs about 420 seconds before
-its first output, so 300 seconds is insufficient without intermediate signals.
+signals, with margin. At 2500 tokens/s, 1,048,576 prompt tokens take about 420
+seconds before the first output, so 300 seconds is insufficient without
+intermediate signals.
 For example, 900 seconds provides margin for that single-request case; concurrent
 load still requires measurement. The monitor sums metrics for the single-engine TP4 deployment;
 it does not detect one stalled engine hidden by another progressing engine.

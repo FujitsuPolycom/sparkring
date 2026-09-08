@@ -92,11 +92,16 @@ install `scheduler_liveness.py` beside the serving wrapper instead of inheriting
 that module from the parent image. The installed-file inventory records its
 SHA-256. This change does not modify a published image or qualify a deployment.
 
-The module reports `output_iterations` and `output_stalled_seconds` in the
-`sparkring-scheduler-liveness/v1` payload and can return HTTP 503 with
-`reason=engine_output_stall`. The output rule measures output-bearing batches;
-it cannot distinguish an incomplete long prefill from a stalled engine.
-Increasing KV occupancy alone does not prove completed model execution.
+The module preserves the raw output-counter gap in `output_stalled_seconds`
+and tracks inactivity separately in `progress_stalled_seconds`. While requests
+run, output-counter movement, a higher KV allocation maximum, or a higher
+optional prompt-token counter maximum resets inactivity. The maxima belong to
+the interval without output, so falling allocation, allocation oscillation,
+and request-count changes do not repeatedly renew the timer. The
+`sparkring-scheduler-liveness/v1` payload returns HTTP 503 with
+`reason=engine_output_stall` when inactivity reaches the configured timeout.
+Allocation is an activity proxy, not a GPU heartbeat. Fully preallocated work
+or an operation without observable intermediate progress can still exceed it.
 
 **The source-build rule defaults to 300 seconds.** Legitimate long-context
 work can exceed that interval. Installing this module enables a rule absent
@@ -106,7 +111,8 @@ Do not assume that image's observed liveness behavior transfers to a rebuild.
 
 Before enabling router removal or automated recovery from `/liveness`, select
 `SPARKRING_LIVENESS_OUTPUT_SECONDS` above the longest measured legitimate
-prefill, restore, or output gap, including concurrency and a stated margin.
+interval without observable progress, including prefill, restore, concurrency,
+and a stated margin.
 For managed deployments, set the optional site field `liveness_output_seconds`
 to the chosen integer seconds, then regenerate launch inputs and recreate the
 containers through the managed lifecycle. For example, `900` is an explicit
