@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import re
@@ -13,7 +14,9 @@ import subprocess
 ROOT = Path(__file__).resolve().parent
 PROFILE_PATH = ROOT / "profile.json"
 SITE_KEYS = {"VLLM_HOST_IP", "NCCL_SOCKET_IFNAME", "GLOO_SOCKET_IFNAME"}
-IMAGE_PATTERN = r"ghcr\.io/fujitsupolycom/sparkring@sha256:[0-9a-f]{64}"
+REGISTRY_IMAGE_PATTERN = r"ghcr\.io/fujitsupolycom/sparkring@sha256:[0-9a-f]{64}"
+LOCAL_IMAGE_PATTERN = r"sha256:[0-9a-f]{64}"
+SOURCE_IMAGE_ROOT = ROOT.parents[1] / "sparkring/source_image"
 
 
 def load_profile():
@@ -66,8 +69,8 @@ def read_site(path: Path) -> dict[str, str]:
 def render(rank, master, model_dir, cache_dir, env_file, image):
     if rank not in (0, 1) or not re.fullmatch(r"[A-Za-z0-9_.:-]+", master):
         raise ValueError("A valid rank and master address are required")
-    if not re.fullmatch(IMAGE_PATTERN, image):
-        raise ValueError("Select an immutable ghcr.io/fujitsupolycom/sparkring image digest")
+    if not (re.fullmatch(REGISTRY_IMAGE_PATTERN, image) or re.fullmatch(LOCAL_IMAGE_PATTERN, image)):
+        raise ValueError("Select an immutable registry digest or exact local sha256 image config ID")
     if not (model_dir / "config.json").is_file() or not cache_dir.is_dir():
         raise ValueError("An existing checkpoint with config.json and a cache directory are required")
     for path in (model_dir, cache_dir):
@@ -78,7 +81,8 @@ def render(rank, master, model_dir, cache_dir, env_file, image):
     profile = load_profile()
     profile_hash = hashlib.sha256(PROFILE_PATH.read_bytes()).hexdigest()
     environment = {**profile["environment"], **read_site(env_file), **transport_environment(rank)}
-    environment.update(NODE_RANK=str(rank), MASTER_ADDR=master)
+    environment.update(NODE_RANK=str(rank), SPARKRING_NODE_RANK=str(rank),
+                       MASTER_ADDR=master, SOURCE_IMAGE_PROFILE=profile["name"])
     # Keep compilation artifacts in the mounted tree and separate ranks and
     # source identities. This directory is not an external prompt/KV cache.
     jit = f"/cache/jit/{profile_hash}/rank{rank}"
@@ -126,12 +130,13 @@ def render(rank, master, model_dir, cache_dir, env_file, image):
         command.extend(["--label", key + "=" + value])
     for key, value in sorted(environment.items()):
         command.extend(["--env", key + "=" + value])
-    container_args = ["/opt/sparkring/transports/entrypoint.py", "serve", *args]
+    container_args = ["-S", "-B", "/opt/sparkcache-jj-runtime/verify_sources.py", "--serve", *args]
     command.extend([image, *container_args])
     return {
         "schema": "sparkring-profile-launch-plan/v1", "status": "implemented",
         "name": name, "profile": profile["name"], "profile_sha256": profile_hash,
         "image": image, "transport_manifest_sha256": profile["transport"]["manifest_sha256"],
+        "image_identity_kind": "local_config_id" if re.fullmatch(LOCAL_IMAGE_PATTERN, image) else "registry_manifest_digest",
         "labels": labels, "environment": environment, "container_args": container_args,
         "command": command,
         "binds": {"/models/target": str(model_dir.resolve()), "/cache/jit": str(cache_dir.resolve())},
@@ -142,8 +147,55 @@ def render(rank, master, model_dir, cache_dir, env_file, image):
     }
 
 
+def validate_source_image_receipt(receipt, plan, source_root=None):
+    """Validate common-source and transport witnesses against repository inputs."""
+    source_root = SOURCE_IMAGE_ROOT if source_root is None else source_root
+    lock_path = source_root / "glm53-tp4-lock.json"
+    validator_path = source_root / "receipt_contract.py"
+    if not lock_path.is_file() or not validator_path.is_file():
+        raise ValueError("The repository's common source-image lock and receipt validator are required")
+    lock_bytes = lock_path.read_bytes()
+    lock = json.loads(lock_bytes)
+    if receipt.get("source_lock_sha256") != hashlib.sha256(lock_bytes).hexdigest():
+        raise ValueError("The source-image receipt differs from the repository's exact source lock")
+    spec = importlib.util.spec_from_file_location("sparkring_source_image_receipt", validator_path)
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    validator.validate_receipt(receipt, lock)
+    if receipt.get("image_id") != plan["image"] or receipt.get("profile") != plan["profile"]:
+        raise ValueError("The source-image receipt selects a different local image or profile")
+    entry = lock["profiles"].get(plan["profile"], {})
+    for field in ("profile_sha256", "transport_manifest_sha256"):
+        if entry.get(field) != plan[field]:
+            raise ValueError("The locked source-image profile differs: " + field)
+    if entry.get("tp_size") != 2 or entry.get("dcp_size") != 1:
+        raise ValueError("The source lock must select TP2/DCP1 for this profile")
+    transport = load_profile()["transport"]
+    manifest_bytes = (ROOT / transport["manifest"]).read_bytes()
+    if hashlib.sha256(manifest_bytes).hexdigest() != plan["transport_manifest_sha256"]:
+        raise ValueError("The local transport manifest differs from the profile plan")
+    files = json.loads(manifest_bytes)["files"]
+    for name, digest in files.items():
+        path = ROOT / transport["manifest"]
+        if hashlib.sha256((path.parent / name).read_bytes()).hexdigest() != digest:
+            raise ValueError("The repository's transport source differs: " + name)
+    expected = {
+        "manifest_sha256": plan["transport_manifest_sha256"],
+        "files_sha256": validator.file_map_hash(files),
+        "files": len(files), "package": "b12x.comm.roce",
+    }
+    witness = receipt.get("inside_image", {}).get("transport_profiles", {}).get(transport["name"], {})
+    if not isinstance(witness, dict) or any(witness.get(key) != value for key, value in expected.items()):
+        raise ValueError("The installed transport witness differs from the profile bundle")
+
+
 def validate_runtime_receipt(receipt, plan):
     """Require source compatibility evidence for this exact image and profile."""
+    if re.fullmatch(LOCAL_IMAGE_PATTERN, plan["image"]):
+        validate_source_image_receipt(receipt, plan)
+        return
+    if receipt.get("schema") == "sparkring-source-image-receipt/v1":
+        raise ValueError("A local image config receipt is not a registry publication receipt")
     if receipt.get("registry_digest") != plan["image"]:
         raise ValueError("The runtime receipt does not describe the selected image digest")
     entry = receipt.get("profiles", {}).get(plan["profile"], {})
@@ -213,7 +265,7 @@ def main():
     if args.action == "plan":
         return
     if args.runtime_receipt is None:
-        parser.error("create and start require --runtime-receipt with passing source compatibility checks")
+        parser.error("create and start require --runtime-receipt for this exact local image or registry digest")
     execute(plan, args.action, json.loads(args.runtime_receipt.read_text()))
 
 

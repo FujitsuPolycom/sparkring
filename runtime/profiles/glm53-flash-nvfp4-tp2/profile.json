@@ -79,9 +79,12 @@
     "VLLM_WORKER_MULTIPROC_METHOD": "spawn",
     "VLLM_DISABLED_KERNELS": "MarlinFP8ScaledMMLinearKernel",
     "PYTHONDONTWRITEBYTECODE": "1",
-    "NCCL_LOCAL_INFERENCE_PATH": "/opt/libnccl-local-inference.so.2.30.4",
-    "VLLM_NCCL_SO_PATH": "/opt/libnccl-local-inference.so.2.30.4",
-    "LD_PRELOAD": "/usr/local/cuda/compat/libcuda.so.1:/opt/libnccl-local-inference.so.2.30.4"
+    "NCCL_LOCAL_INFERENCE_PATH": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+    "VLLM_NCCL_SO_PATH": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+    "LD_PRELOAD": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+    "NCCL_IB_EXTENDED_IPV4_GIDS": "1",
+    "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+    "NCCL_IB_ROUTE_DIAGNOSTICS": "1"
   },
   "vllm_args": [
     "/models/target",
@@ -172,6 +175,7 @@
     "source_deployment": "qualified for bounded C1/C8 text workloads and a semantic smoke check",
     "shared_image": "research-only until its exact profile composition is tested",
     "loader_selection": "The measured loader hardcoded managed allocation. The shared loader selects it with model-loader-extra-config; that source composition requires separate image qualification.",
+    "nccl_selection": "The prospective shared image uses source-verified NCCL 2.30.7 with dual-domain routing flags. Measured single-DAC evidence used NCCL 2.30.4; it does not qualify this binary or toolchain combination.",
     "limitations": [
       "Long-duration serving stability is not established.",
       "Image/video accuracy is not established; image count is only a configured limit.",

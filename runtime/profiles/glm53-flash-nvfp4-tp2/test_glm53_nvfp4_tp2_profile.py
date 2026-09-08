@@ -1,9 +1,12 @@
 """CPU contracts for original-checkpoint selection and guarded manual lifecycle."""
 
 import copy
+import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
+import shutil
 import subprocess
 
 import pytest
@@ -14,6 +17,7 @@ spec = importlib.util.spec_from_file_location("glm53_nvfp4_tp2_launch", ROOT / "
 launch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(launch)
 IMAGE = "ghcr.io/fujitsupolycom/sparkring@sha256:" + "a" * 64
+LOCAL_IMAGE = "sha256:" + "b" * 64
 
 
 @pytest.fixture
@@ -42,7 +46,7 @@ def receipt(value):
 
 def stopped_container(value):
     return {
-        "Config": {"Image": IMAGE, "Entrypoint": ["python3"], "Cmd": value["container_args"],
+        "Config": {"Image": value["image"], "Entrypoint": ["python3"], "Cmd": value["container_args"],
                    "Labels": value["labels"], "Env": [key + "=" + val for key, val in value["environment"].items()]},
         "HostConfig": {"RestartPolicy": {"Name": "no"}},
         "Mounts": [{"Destination": target, "Source": source, "RW": target != "/models/target"}
@@ -106,12 +110,17 @@ def test_rank_plan_maps_both_pci_functions_of_one_cage(inputs, rank):
     assert env["NCCL_IB_HCA"] == "=rocep1s0f0,roceP2p1s0f0"
     assert env["B12X_ROCE_PAIR_PATHS"] == "2"
     assert env["NCCL_MIN_NCHANNELS"] == env["NCCL_MAX_NCHANNELS"] == "8"
+    assert env["VLLM_NCCL_SO_PATH"] == "/opt/sparkring/nccl-pci/libnccl.so.2.30.7"
+    for key in ("NCCL_IB_EXTENDED_IPV4_GIDS", "NCCL_IB_PRESERVE_PCI_DOMAIN", "NCCL_IB_ROUTE_DIAGNOSTICS"):
+        assert env[key] == "1"
+    assert env["SOURCE_IMAGE_PROFILE"] == value["profile"]
     assert ("--headless" in value["container_args"]) is (rank == 1)
     assert "${NODE_RANK}" not in value["container_args"]
     assert value["command"][:2] == ["docker", "create"]
     assert value["command"][value["command"].index("--restart") + 1] == "no"
     assert value["labels"]["org.sparkring.memory-guard"] == "true"
     args = value["container_args"]
+    assert args[:4] == ["-S", "-B", "/opt/sparkcache-jj-runtime/verify_sources.py", "--serve"]
     assert json.loads(args[args.index("--model-loader-extra-config") + 1]) == {"allocation": "managed"}
 
 
@@ -210,3 +219,97 @@ def test_managed_option_preserves_shared_default_and_reference_evidence():
     record = json.loads((ROOT.parents[2] / "performance/records/glm53-flash/tp2-single-dac-source-20260908.json").read_text())
     assert "--model-loader-extra-config" not in record["conditions"]["serving_arguments"]
     assert "research-only" in launch.load_profile()["qualification"]["shared_image"]
+    assert dependencies["reference_source"]["nccl"]["version"] == "2.30.4"
+    assert dependencies["reference_source"]["nccl"]["library"] == "/opt/libnccl-local-inference.so.2.30.4"
+
+
+@pytest.fixture
+def local_source_receipt(inputs, tmp_path, monkeypatch):
+    # The common recipe lands independently from this profile. Integrated CI
+    # uses its repository copy; a development checkout can name the same files.
+    origin = Path(os.environ.get("SPARKRING_TEST_COMMON_SOURCE_IMAGE", str(launch.SOURCE_IMAGE_ROOT)))
+    if not (origin / "receipt_contract.py").is_file():
+        pytest.skip("Common source-image recipe is required for local receipt integration tests")
+    value = launch.render(0, "master.example", *inputs, LOCAL_IMAGE)
+    lock = json.loads((origin / "glm53-tp4-lock.json").read_bytes())
+    lock["profiles"][value["profile"]] = {
+        "profile_sha256": value["profile_sha256"],
+        "transport_manifest_sha256": value["transport_manifest_sha256"],
+        "tp_size": 2, "dcp_size": 1,
+    }
+    target = tmp_path / "common-source-image"
+    target.mkdir()
+    shutil.copyfile(origin / "receipt_contract.py", target / "receipt_contract.py")
+    lock_path = target / "glm53-tp4-lock.json"
+    lock_path.write_text(json.dumps(lock, indent=2) + "\n")
+    lock_hash = hashlib.sha256(lock_path.read_bytes()).hexdigest()
+    manifest_path = ROOT / launch.load_profile()["transport"]["manifest"]
+    files = json.loads(manifest_path.read_bytes())["files"]
+    inside = {
+        "checks_passed": True, "cuda_initialized": False, "model_loaded": False,
+        "source_lock_sha256": lock_hash,
+        "inherited_runtime": lock["runtime"]["expected_distributions"],
+        "packages": {name: {"revision": row["revision"], "file_map_sha256": row["installed_file_map_sha256"],
+                            "files": row["installed_file_count"]} for name, row in lock["sources"].items()},
+        "transport_profiles": {"tp2-rocenante-adaptive": {
+            "manifest_sha256": value["transport_manifest_sha256"],
+            "files_sha256": hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+            "files": len(files), "package": "b12x.comm.roce",
+        }},
+    }
+    for field in ("bundle_manifest_sha256", "transport_sha256", "marker_source_sha256",
+                  "marker_binary_sha256", "nccl_sha256", "retained_vllm_native_sha256", "readiness_warmup"):
+        inside[field] = lock["runtime"][field]
+    runtime = {
+        "schema": "sparkring-source-image-receipt/v1", "image_id": LOCAL_IMAGE,
+        "image_reference": LOCAL_IMAGE, "platform": "linux/arm64", "checks_passed": True,
+        "profile": value["profile"], "source_lock_sha256": lock_hash, "inside_image": inside,
+    }
+    monkeypatch.setattr(launch, "SOURCE_IMAGE_ROOT", target)
+    return value, runtime, lock_path
+
+
+def test_local_image_requires_complete_source_and_transport_witness(local_source_receipt):
+    value, runtime, _ = local_source_receipt
+    assert value["image_identity_kind"] == "local_config_id"
+    launch.validate_runtime_receipt(runtime, value)
+    host = Host(value)
+    launch.execute(value, "create", runtime, run=host.run)
+    assert host.commands[-1] == value["command"]
+    launch.execute(value, "start", runtime, run=host.run)
+    assert host.commands[-1] == ["docker", "start", value["name"]]
+    assert "registry_digest" not in runtime
+
+
+@pytest.mark.parametrize("damage", ["source_lock", "package_map", "transport_map", "transport_count",
+                                    "image_id", "profile_hash", "world_size"])
+def test_local_witness_drift_stops_before_host_commands(local_source_receipt, damage):
+    value, runtime, lock_path = local_source_receipt
+    if damage == "source_lock":
+        runtime["source_lock_sha256"] = "0" * 64
+        runtime["inside_image"]["source_lock_sha256"] = "0" * 64
+    elif damage == "package_map":
+        runtime["inside_image"]["packages"]["b12x"]["file_map_sha256"] = "0" * 64
+    elif damage in ("transport_map", "transport_count"):
+        key = "files_sha256" if damage == "transport_map" else "files"
+        runtime["inside_image"]["transport_profiles"]["tp2-rocenante-adaptive"][key] = 0
+    elif damage == "image_id":
+        runtime["image_id"] = runtime["image_reference"] = "sha256:" + "c" * 64
+    else:
+        lock = json.loads(lock_path.read_bytes())
+        key, changed = ("profile_sha256", "0" * 64) if damage == "profile_hash" else ("tp_size", 4)
+        lock["profiles"][value["profile"]][key] = changed
+        lock_path.write_text(json.dumps(lock) + "\n")
+        digest = hashlib.sha256(lock_path.read_bytes()).hexdigest()
+        runtime["source_lock_sha256"] = runtime["inside_image"]["source_lock_sha256"] = digest
+    host = Host(value)
+    with pytest.raises(ValueError):
+        launch.execute(value, "create", runtime, run=host.run)
+    assert host.commands == []
+
+
+def test_local_receipt_cannot_claim_a_registry_digest(inputs, local_source_receipt):
+    _, runtime, _ = local_source_receipt
+    runtime["registry_digest"] = IMAGE
+    with pytest.raises(ValueError, match="not a registry"):
+        launch.validate_runtime_receipt(runtime, plan(inputs))

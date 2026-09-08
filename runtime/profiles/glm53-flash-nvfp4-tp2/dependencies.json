@@ -3,6 +3,16 @@
   "status": "implemented",
   "profile": "glm53-flash-nvfp4-tp2-mtp3",
   "shared_image_compatibility": "research-only; no combined image is qualified by this source record",
+  "shared_runtime_receipt": {
+    "source_lock": "../../sparkring/source_image/glm53-tp4-lock.json",
+    "validator": "../../sparkring/source_image/receipt_contract.py",
+    "local_image_schema": "sparkring-source-image-receipt/v1",
+    "local_image_identity": "Exact sha256 image config ID; not a registry manifest digest",
+    "entrypoint": ["python3", "-S", "-B", "/opt/sparkcache-jj-runtime/verify_sources.py", "--serve"],
+    "transport_profile": "tp2-rocenante-adaptive",
+    "transport_witness": ["manifest_sha256", "files_sha256", "files", "package"],
+    "qualification": "CPU source and file witnesses permit an explicit research launch; they do not qualify GPU serving behavior."
+  },
   "reference_source": {
     "vllm": {
       "repository": "https://github.com/local-inference-lab/vllm",
@@ -96,7 +106,9 @@
     {
       "component": "NCCL",
       "interface": "VLLM_NCCL_SO_PATH and LD_PRELOAD",
-      "required_behavior": "Load the pinned NCCL 2.30.4 library, use exact-match p0 device names on both PCI domains, and fix the channel count at eight."
+      "required_behavior": "The shared image selects source-verified NCCL 2.30.7 at /opt/sparkring/nccl-pci/libnccl.so.2.30.7 with extended IPv4 GIDs, preserved PCI domains, and routing diagnostics enabled. Use exact-match p0 device names on both PCI domains and eight channels. This prospective combination needs separate GPU qualification; the reference deployment used NCCL 2.30.4.",
+      "shared_library": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+      "shared_qualification": "research-only"
     },
     {
       "component": "SparkCache",
