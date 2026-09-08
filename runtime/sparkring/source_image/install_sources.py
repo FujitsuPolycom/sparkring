@@ -8,6 +8,7 @@ import sys
 
 from archive_utils import STARTUP_PATHS, WARMUP_SOURCE, extract_checked, inventory, sha, under, transform_warmup
 from profile_assets import install_assets, verify_assets
+import native_files
 
 ROOT = Path(__file__).resolve().parent
 
@@ -47,6 +48,8 @@ def read_manifest(root):
 
 def stage(root=ROOT, rootfs=Path("/")):
     manifest = read_manifest(root)
+    selected_native_mode = native_files.mode(manifest)
+    native_files.validate_inputs(root, manifest)
     if (root / "base-state.json").exists():
         raise RuntimeError("Installation already staged; do not reuse its state")
     verify_map(rootfs, manifest["base_files"])
@@ -78,9 +81,15 @@ def stage(root=ROOT, rootfs=Path("/")):
         if sha(data) != startup["archive_sha256"]:
             raise RuntimeError("Startup archive changed")
         extract_checked(data, root / "startup-source", startup["files"])
+    pinned = native_files.install(root, manifest, rootfs)
+    if pinned is not None:
+        protected.update(pinned["installed_files"])
     state = {"schema": "sparkcache-jj-base-state/v1", "distributions": distributions,
+             "native_mode": selected_native_mode,
              "protected_files": protected, "retained_files": manifest["retained_allowlist"],
              "source_manifest_sha256": sha((root / "manifest.json").read_bytes())}
+    if pinned is not None:
+        state["native_files"] = pinned
     (root / "base-state.json").write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
     return state
 
@@ -121,6 +130,7 @@ def finalize(root=ROOT, rootfs=Path("/")):
         raise RuntimeError("Manifest changed during installation")
     if state["retained_files"] != manifest["retained_allowlist"]:
         raise RuntimeError("Retained allowlist changed during installation")
+    native_files.verify(root, manifest, state, rootfs)
     site = host_path(rootfs, manifest["site_packages"])
     verify_map(rootfs, state["protected_files"])
     for name, source in manifest["sources"].items():
@@ -179,7 +189,7 @@ def finalize(root=ROOT, rootfs=Path("/")):
                                                  manifest["profile_assets"], lock, rootfs)
         state["transport_profiles"] = verify_assets(lock, rootfs)
         state["protected_files"].update(state["profile_assets"])
-    if manifest.get("native_snapshot") is not None:
+    if manifest.get("native_snapshot") is not None and native_files.mode(manifest) == "compile":
         from build_snapshot import LIBRARY, RECIPE
         receipt_bytes = (root / "snapshot-build-receipt.json").read_bytes()
         receipt = json.loads(receipt_bytes)
@@ -212,6 +222,7 @@ def finalize(root=ROOT, rootfs=Path("/")):
     paths.update(host_path(rootfs, p) for p in generated)
     paths.update(host_path(rootfs, p) for p in state.get("startup_files", {}))
     paths.update(host_path(rootfs, p) for p in state.get("profile_assets", {}))
+    paths.update(host_path(rootfs, p) for p in state.get("native_files", {}).get("installed_files", {}))
     if startup is not None:
         paths.add(host_path(rootfs, "/opt/sparkring/bin"))
     paths.update((site, root.parent, host_path(rootfs, "/usr/local/bin")))

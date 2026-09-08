@@ -2,6 +2,7 @@
 import hashlib
 import json
 import re
+from native_files import expected_record
 
 
 def file_map_hash(files):
@@ -28,6 +29,15 @@ def validate_receipt(document, lock):
     if (document.get("checks_passed") is not True or inside.get("checks_passed") is not True
             or inside.get("cuda_initialized") is not False or inside.get("model_loaded") is not False):
         raise ValueError("CPU image verification did not complete")
+    selected_native_mode = document.get("native_mode", "compile")
+    if (selected_native_mode not in ("compile", "pinned")
+            or inside.get("native_mode", "compile") != selected_native_mode):
+        raise ValueError("Receipt native modes disagree")
+    if selected_native_mode == "pinned":
+        if inside.get("native_files") != expected_record(lock):
+            raise ValueError("Receipt native artifact witness differs")
+    elif "native_files" in inside:
+        raise ValueError("Compile receipt cannot claim pinned native artifacts")
     digest = document.get("source_lock_sha256", "")
     if not re.fullmatch(r"[0-9a-f]{64}", digest) or inside.get("source_lock_sha256") != digest:
         raise ValueError("Receipt source-lock witnesses disagree")

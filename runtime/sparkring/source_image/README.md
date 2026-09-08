@@ -104,6 +104,40 @@ The container path `/opt/sparkcache-jj-runtime` and its manifest schema names
 are retained compatibility interfaces for source installation and verification.
 They do not enable SparkCache serving.
 
+## Use pinned native files
+
+To reuse the exact NCCL and snapshot libraries declared by `native_files` in
+the source lock, supply that archive during preparation:
+
+```bash
+python runtime/sparkring/source_image/prepare_image.py \
+  --output /tmp/sparkring-glm-image-context \
+  --source-cache /tmp/sparkring-glm-source-cache \
+  --native-files /tmp/native-runtime-files-20260908.tar
+```
+
+This selects `pinned` native mode. Preparation checks the archive hash and
+size, its exact six-member inventory, every member's bytes and header policy,
+and both libraries' AArch64 ELF headers and existing runtime hashes. The
+retained NCCL archive must match its trusted digest and source tree. SparkCache's
+native Git subtree is recomputed from the actual source bytes and executable
+modes; Python-only changes outside that subtree do not change the native ABI
+proof. The archive's original source-lock reference remains provenance, not
+the identity of the newly prepared composition.
+
+Installation writes only the two fixed runtime library paths and their
+licenses/provenance under `/opt/sparkring/native-files`. All destinations are
+checked before writing. NCCL and snapshot compilation are skipped in this mode;
+their source archives remain available for inspection. The manifest, installed
+state, and CPU image receipt bind the selected mode and exact native artifact.
+Verification rejects changed archives, installed files, metadata, or source
+identities. It makes no byte-identical rebuild claim and does not qualify the
+new shared image's GPU behavior.
+
+Omitting `--native-files` retains `compile` mode, including both native builds
+and their strict output-hash guards. An unsuccessful compile never falls back
+to pinned files automatically.
+
 ## Verify and use the existing installer
 
 Create a CPU-only receipt for the selected profile:

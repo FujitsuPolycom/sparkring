@@ -9,11 +9,12 @@ import tempfile
 
 from archive_utils import read_archive, sha
 from receipt_contract import validate_receipt
+from native_files import mode as native_mode
 
 HERE = Path(__file__).resolve().parent
 IMAGE_ROOT = "/opt/sparkcache-jj-runtime"
 TOOLS = {"archive_utils.py", "install_sources.py", "verify_sources.py",
-         "build_snapshot.py", "build_nccl.py", "receipt_contract.py", "nvcc_deterministic.py", "profile_assets.py"}
+         "build_snapshot.py", "build_nccl.py", "receipt_contract.py", "nvcc_deterministic.py", "profile_assets.py", "native_files.py"}
 
 
 def trusted_closure(context, lock_bytes):
@@ -69,6 +70,7 @@ def verify(image, profile, lock_path, output, context):
     lock_bytes = lock_path.read_bytes()
     lock = json.loads(lock_bytes)
     closure = trusted_closure(context, lock_bytes)
+    selected_native_mode = native_mode(json.loads(closure["manifest.json"]))
     if profile not in lock["profiles"]:
         raise ValueError("Profile is not declared by the source lock")
     inspected = json.loads(subprocess.check_output(["docker", "image", "inspect", image]))[0]
@@ -95,9 +97,12 @@ def verify(image, profile, lock_path, output, context):
     digest = hashlib.sha256(lock_bytes).hexdigest()
     if inside.get("source_lock_sha256") != digest:
         raise ValueError("Built image uses another source lock")
+    if inside.get("native_mode", "compile") != selected_native_mode:
+        raise ValueError("Image native mode differs from trusted context")
     receipt = {"schema": "sparkring-source-image-receipt/v1", "status": "research-only",
                "image_id": inspected["Id"], "image_reference": inspected["Id"], "platform": "linux/arm64",
                "checks_passed": True, "profile": profile, "source_lock_sha256": digest,
+               "native_mode": selected_native_mode,
                "inside_image": inside, "verification_command": argv,
                "limitation": "CPU file and dependency verification does not qualify rebuilt GPU or serving behavior."}
     validate_receipt(receipt, lock)

@@ -22,7 +22,7 @@
       "patch": "patches/vllm.patch",
       "patch_sha256": "9a2e192ddc3fa28159bfb216c5118fc446d764f70ea7507145af9bb638b4d128",
       "publication_status": "Source composition reproduced by the packaged patch over the public base revision.",
-      "installed_file_map_sha256": "a723642d2e90ab199645b9c12b03f2bfd3e5ba3b322c0d35263d1f15474b903e",
+      "installed_file_map_sha256": "98403a64a718a76ffeb4adf441147a520c9d0c3f5e829d6a93a6d83483d42c34",
       "installed_file_count": 4922
     },
     "b12x": {
@@ -34,7 +34,7 @@
       "patch": "patches/b12x.patch",
       "patch_sha256": "9088789eb4a98d93677f2fa0bcfa8cfcc08ac33ef3a7a8d2c749c4a51a5a0d73",
       "publication_status": "Source composition reproduced by the packaged patch over the public base revision.",
-      "installed_file_map_sha256": "170e6fe71de2a44ecabb52b3c4c2d438e33e7973f803fb040549606e70b896d9",
+      "installed_file_map_sha256": "f7817128442fd9343ad02c00545a8a1a277b3aecdf5a04e3b20e9c00282f2475",
       "installed_file_count": 397
     },
     "sparkcache": {
@@ -46,7 +46,7 @@
       "patch": "patches/sparkcache.patch",
       "patch_sha256": "2571b9a80470c6ae1f9317198f1767c64d82bdcec316ade99772f662b0448861",
       "publication_status": "Source composition reproduced by the packaged patch over the public base revision.",
-      "installed_file_map_sha256": "8088457388ca07eed8f3b605b171973d8cd1c93352556a705020118119d762be",
+      "installed_file_map_sha256": "87ae503d732e864203599e285fc46854878534863e0132e91f86eb4f0bcf9dbc",
       "installed_file_count": 174
     }
   },
@@ -502,5 +502,40 @@
       "sha256": "a7522ed8361ac6fa402f1a6f47a663614426aa22a0391cb2590904a46cc85117",
       "destination": "/opt/sparkring/profiles/glm53-flash-spark-tp4-switched/README.md"
     }
+  },
+  "native_files": {
+    "schema": "sparkring-pinned-native-archive/v1",
+    "sha256": "aa8fa11831afaa4539e0b74442fd1ea25dd8cf49ad5edb6fd95e7f05fdf5ce86",
+    "bytes": 63856640,
+    "members": {
+      "licenses/nccl/LICENSE.txt": {
+        "bytes": 13261,
+        "sha256": "c1f53beabe4dbf05bd87c00f7ca6084c0cb541c3f7bf8edab7913f266018b7be"
+      },
+      "licenses/nccl/ThirdPartyNotices.txt": {
+        "bytes": 12482,
+        "sha256": "afc433a3b9262c3266f5e683e017fb6a44687c5098967928e478be6614e77df6"
+      },
+      "licenses/sparkcache/LICENSE": {
+        "bytes": 11358,
+        "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+      },
+      "native/libnccl.so.2.30.7": {
+        "bytes": 63651200,
+        "sha256": "768a450b5eb84bf3d1191795350e43c96de75aeba4783ec314d47672fe6e1fc6"
+      },
+      "native/libspark_cache_snapshot.so": {
+        "bytes": 149496,
+        "sha256": "cc44b69c9e01aaeb6b94f46cd649e2ec5972fc6b29d1a41b7b033a82ce788f39"
+      },
+      "provenance.json": {
+        "bytes": 4597,
+        "sha256": "a36af906154accae66817cd8d5bb3d39c1ec34e850d18372bcf2f5ffe9e2597b"
+      }
+    },
+    "nccl_tree": "01e0e8a3a821ebc92a4d1333981d18ed4eeb96e4",
+    "nccl_archive_sha256": "eec808270fb4435b78a16db25bcdb858e4f804ca0042fe416f77a079988cc27d",
+    "sparkcache_native_tree": "1b0b21f7bc42ad042950c135f677e94b756172b3",
+    "sparkcache_native_file_map_sha256": "37f5009e248b54e626179310f132d2cc3c063c353fc3b6b3f7673f3b3ef7a5ce"
   }
 }

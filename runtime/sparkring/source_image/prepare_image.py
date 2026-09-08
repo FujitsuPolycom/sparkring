@@ -9,6 +9,7 @@ import tempfile
 from archive_utils import make_archive, read_archive, sha
 from prepare_context import prepare
 from profile_assets import prepare_assets
+from native_files import expected_record
 
 HERE = Path(__file__).resolve().parent
 
@@ -48,13 +49,18 @@ def materialize(name, record, cache, inputs=HERE, reuse=False):
     return destination, tree
 
 
-def prepare_locked(output, source_cache, lock_path=HERE / "glm53-tp4-lock.json", reuse=False):
+def prepare_locked(output, source_cache, lock_path=HERE / "glm53-tp4-lock.json", reuse=False, native_files=None):
     lock_bytes = lock_path.read_bytes()
     lock = json.loads(lock_bytes)
     if lock.get("schema") != "sparkring-source-image-lock/v1":
         raise ValueError("Unsupported source-image lock")
     if output.exists() or (source_cache.exists() and not reuse):
         raise ValueError("Build output and source cache must be absent directories")
+    if native_files is not None:
+        native_data = Path(native_files).read_bytes()
+        native_record = expected_record(lock)
+        if sha(native_data) != native_record["archive_sha256"] or len(native_data) != native_record["archive_bytes"]:
+            raise ValueError("Pinned native archive hash/size differs")
     sources = {}
     for name, record in lock["sources"].items():
         checkout, _ = materialize(name, record, source_cache, lock_path.parent, reuse)
@@ -89,6 +95,8 @@ def prepare_locked(output, source_cache, lock_path=HERE / "glm53-tp4-lock.json",
         profile_archive.write_bytes(profile_data)
         spec["profile_assets_archive"] = str(profile_archive)
         spec["profile_assets"] = profile_record
+        if native_files is not None:
+            spec["native_files_archive"] = str(Path(native_files).resolve())
         return prepare(spec, output)
 
 
@@ -98,5 +106,7 @@ if __name__ == "__main__":
     parser.add_argument("--source-cache", type=Path, required=True)
     parser.add_argument("--lock", type=Path, default=HERE / "glm53-tp4-lock.json")
     parser.add_argument("--reuse-source-cache", action="store_true", help="Reuse only complete base and patched-tree matches")
+    parser.add_argument("--native-files", type=Path,
+                        help="Use the exact native archive declared by the source lock instead of compiling its two libraries")
     args = parser.parse_args()
-    print(json.dumps(prepare_locked(args.output.resolve(), args.source_cache.resolve(), args.lock.resolve(), args.reuse_source_cache), indent=2))
+    print(json.dumps(prepare_locked(args.output.resolve(), args.source_cache.resolve(), args.lock.resolve(), args.reuse_source_cache, args.native_files), indent=2))

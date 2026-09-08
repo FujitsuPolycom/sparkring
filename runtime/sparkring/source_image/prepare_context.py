@@ -7,6 +7,7 @@ import subprocess
 import tomllib
 
 from archive_utils import STARTUP_PATHS, WARMUP_SOURCE, make_archive, read_archive, relative_path, sha, transform_warmup
+from native_files import ARCHIVE as NATIVE_ARCHIVE, describe as describe_native_files
 
 HERE = Path(__file__).resolve().parent
 SITE = "/usr/local/lib/python3.12/dist-packages"
@@ -94,7 +95,7 @@ def source_archive(name, spec, epoch):
             if name != "sparkcache" or sha(git(repo, "show", f"{tree}:setup.py")) != reviewed:
                 raise ValueError("Executable setup.py requires a separate build review")
             selected.append("setup.py")
-    raw = git(repo, "-c", "core.autocrlf=false", "archive", "--format=tar", tree, *selected)
+    raw = git(repo, "-c", "core.autocrlf=false", "-c", "core.eol=lf", "archive", "--format=tar", tree, *selected)
     files = read_archive(raw)
     if not any(p.startswith(package + "/") for p in files):
         raise ValueError(f"Missing package: {name}")
@@ -210,10 +211,18 @@ def prepare(spec, output):
         payload["profile-assets.tar"] = (Path(spec["profile_assets_archive"]).read_bytes(), 0o644)
     manifest["nccl_build"] = spec["nccl_build"]
     payload["nccl.tar"] = (Path(spec["nccl_archive"]).read_bytes(), 0o644)
+    manifest["native_mode"] = "compile"
+    if spec.get("native_files_archive") is not None:
+        native_data = Path(spec["native_files_archive"]).read_bytes()
+        manifest["native_files"] = describe_native_files(
+            native_data, lock, manifest,
+            {name: payload[name + ".tar"][0] for name in ("nccl", "sparkcache")})
+        manifest["native_mode"] = "pinned"
+        payload[NATIVE_ARCHIVE] = (native_data, 0o644)
     manifest["critical"][lock["runtime"]["nccl_path"]] = lock["runtime"]["nccl_sha256"]
     for name in ("snapshot", "placement"):
         manifest["critical"][lock["runtime"][name + "_path"]] = lock["runtime"][name + "_sha256"]
-    for name in ("archive_utils.py", "install_sources.py", "verify_sources.py", "build_snapshot.py", "build_nccl.py", "receipt_contract.py", "nvcc_deterministic.py", "profile_assets.py"):
+    for name in ("archive_utils.py", "install_sources.py", "verify_sources.py", "build_snapshot.py", "build_nccl.py", "receipt_contract.py", "nvcc_deterministic.py", "profile_assets.py", "native_files.py"):
         payload[name] = ((HERE / name).read_bytes(), 0o755 if name == "nvcc_deterministic.py" else 0o644)
     manifest["tool_hashes"] = {p: sha(v[0]) for p, v in payload.items() if p.endswith(".py")}
     payload["manifest.json"] = (json.dumps(manifest, indent=2, sort_keys=True).encode() + b"\n", 0o644)
@@ -221,9 +230,9 @@ def prepare(spec, output):
     packed = make_archive({ROOT[1:] + "/" + p: value for p, value in payload.items()}, epoch)
     docker = [f"FROM {PUBLIC_BASE}", "USER root", "ADD payload.tar /",
               f"RUN python3 -S -B {ROOT}/install_sources.py stage && \\",
-              f"    python3 -S -B {ROOT}/build_nccl.py && \\",
+              *([f"    python3 -S -B {ROOT}/build_nccl.py && \\"] if manifest["native_mode"] == "compile" else []),
               f"    env -u PYTHONPATH UV_OFFLINE=1 UV_NO_CACHE=1 uv --no-cache pip install --system --no-deps --no-build-isolation --reinstall {ROOT}/b12x-source {ROOT}/sparkcache-source && \\",
-              *([f"    python3 -S -B {ROOT}/build_snapshot.py && \\"] if manifest.get("native_snapshot") else []),
+              *([f"    python3 -S -B {ROOT}/build_snapshot.py && \\"] if manifest.get("native_snapshot") and manifest["native_mode"] == "compile" else []),
               f"    python3 -S -B {ROOT}/install_sources.py finalize && \\",
               f"    python3 -S -B {ROOT}/verify_sources.py",
               'LABEL org.sparkring.runtime.status="research-only"',

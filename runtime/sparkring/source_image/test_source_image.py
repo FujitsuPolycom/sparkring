@@ -161,7 +161,7 @@ class SourceImageTests(unittest.TestCase):
             self.assertIn("--mount", argv)
             return json.dumps(document["inside_image"]).encode()
         with tempfile.TemporaryDirectory() as temporary, patch("verify_image.subprocess.check_output", output), \
-                patch("verify_image.trusted_closure", return_value={}), \
+                patch("verify_image.trusted_closure", return_value={"manifest.json": b'{}'}), \
                 patch("verify_image.verify_embedded_closure"):
             result = verify(document["image_id"], document["profile"], HERE / "glm53-tp4-lock.json",
                             Path(temporary) / "receipt.json", Path(temporary))

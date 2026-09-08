@@ -9,6 +9,7 @@ from archive_utils import STARTUP_PATHS, inventory, sha
 from install_sources import ROOT, distribution_records, host_path, read_manifest, verify_map
 from receipt_contract import file_map_hash
 from profile_assets import destinations, verify_assets
+import native_files
 
 
 def verify(root=ROOT, rootfs=Path("/")):
@@ -18,10 +19,11 @@ def verify(root=ROOT, rootfs=Path("/")):
         raise RuntimeError("Manifest changed after source installation")
     if state["retained_files"] != manifest["retained_allowlist"]:
         raise RuntimeError("Retained allowlist changed after installation")
+    pinned = native_files.verify(root, manifest, state, rootfs)
     verify_map(rootfs, manifest["critical"])
     verify_map(rootfs, state["protected_files"])
     verify_map(rootfs, state["generated_install_files"])
-    if manifest.get("native_snapshot") is not None:
+    if manifest.get("native_snapshot") is not None and native_files.mode(manifest) == "compile":
         receipt_bytes = (root / "snapshot-build-receipt.json").read_bytes()
         if sha(receipt_bytes) != state.get("snapshot_build_receipt_sha256"):
             raise RuntimeError("Native snapshot build receipt changed")
@@ -60,7 +62,10 @@ def verify(root=ROOT, rootfs=Path("/")):
             "source_revisions": {k: v["revision"] for k, v in manifest["sources"].items()},
             "source_manifest_sha256": state["source_manifest_sha256"],
             "inherited_runtime": {k: v["version"] for k, v in state["installed_distributions"].items()},
-            "r27_binary_parity": False, "gpu_qualified": False}
+            "r27_binary_parity": False, "gpu_qualified": False,
+            "native_mode": native_files.mode(manifest)}
+    if pinned is not None:
+        result["native_files"] = pinned
     if startup is not None:
         result["startup_component"] = {"revision": startup["revision"], "files": startup_expected,
                                        "transform": startup.get("transform")}
