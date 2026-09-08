@@ -80,12 +80,14 @@ def test_all_ranks_select_ordinary_nccl_and_direct_verified_dispatch(inputs, ran
         assert env[key] == ""
     for key in ("VLLM_ENABLE_ROCE_ALLREDUCE", "VLLM_ENABLE_PCIE_ALLREDUCE", "SPARK_TP4_HEALTH_GATE",
                 "VLLM_ALLREDUCE_USE_FLASHINFER", "VLLM_ALLREDUCE_USE_SYMM_MEM", "VLLM_USE_NCCL_SYMM_MEM",
-                "NCCL_SWITCHLESS_RING_ONLY", "NCCL_IB_SUBNET_AWARE_ROUTING", "NCCL_IB_EXTENDED_IPV4_GIDS",
-                "NCCL_IB_PRESERVE_PCI_DOMAIN", "NCCL_IB_ROUTE_DIAGNOSTICS", "SPARKCACHE_ENABLED",
+                "NCCL_SWITCHLESS_RING_ONLY", "NCCL_IB_SUBNET_AWARE_ROUTING",
+                "NCCL_IB_ROUTE_DIAGNOSTICS", "SPARKCACHE_ENABLED",
                 "SPARKCACHE_ASYNC_PAGE_CAPTURE", "VLLM_DCP_TOPK_OWNER_MERGE", "VLLM_DCP_OWNER_FUSED_ENDPOINTS",
                 "VLLM_DCP_COMPACT_INDEX_CACHE_OWNER", "VLLM_DCP_COMPACT_INDEX_TENSOR_VOTE",
                 "VLLM_DCP_COMPACT_INDEX_LOCAL_WIDTHS", "VLLM_DCP_COMPACT_INDEX_PROFILE"):
         assert env[key] == "0", key
+    assert env["NCCL_IB_EXTENDED_IPV4_GIDS"] == "1"
+    assert env["NCCL_IB_PRESERVE_PCI_DOMAIN"] == "1"
     assert env["SOURCE_IMAGE_PROFILE"] == "glm53-flash-spark-tp4-switched-mtp3"
     assert value["container_args"][:4] == ["-S", "-B", "/opt/sparkcache-jj-runtime/verify_sources.py", "--serve"]
     assert ("--headless" in value["container_args"]) == (rank != 0)

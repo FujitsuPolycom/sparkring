@@ -37,11 +37,12 @@
     "routing_flags": {
       "NCCL_SWITCHLESS_RING_ONLY": "0",
       "NCCL_IB_SUBNET_AWARE_ROUTING": "0",
-      "NCCL_IB_EXTENDED_IPV4_GIDS": "0",
-      "NCCL_IB_PRESERVE_PCI_DOMAIN": "0",
+      "NCCL_IB_EXTENDED_IPV4_GIDS": "1",
+      "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
       "NCCL_IB_ROUTE_DIAGNOSTICS": "0"
     },
-    "source_behavior": "These routing extensions default off. Disabled switchless-ring mode does not suppress tree/PAT setup; subnet rewriting and PCI-domain preference are not applied.",
+    "source_behavior": "The extended-IPv4 and PCI-domain options are enabled independently of switchless-ring mode. In the pinned patch, ncclIbListen publishes extended GIDs only inside the subnet-aware gate; ncclIbConnectImpl calls ncclIbFindDevBySubnet only inside that same gate. PCI-root preference is inside ncclIbFindDevBySubnet and retains an already reachable default device. With NCCL_IB_SUBNET_AWARE_ROUTING=0, those advertisement/preference paths are inactive and ordinary L2 topology-selected HCA connections remain unchanged. NCCL_SWITCHLESS_RING_ONLY=0 does not suppress tree/PAT setup.",
+    "audited_routing_source": "runtime/sparkring/source_image/patches/nccl.patch: src/transport/net_ib/connect.cc (ncclIbListen, ncclIbConnectImpl, ncclIbFindDevBySubnet); src/transport/generic.cc (tree/PAT gates)",
     "audited_lock_sha256": "768a450b5eb84bf3d1191795350e43c96de75aeba4783ec314d47672fe6e1fc6",
     "required_library_identity": "Use runtime.nccl_path and runtime.nccl_sha256 from the exact common source lock for the built image."
   },

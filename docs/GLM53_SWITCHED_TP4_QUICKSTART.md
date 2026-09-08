@@ -42,6 +42,9 @@ path and resolve `VLLM_HOST_IP`, `NCCL_SOCKET_IFNAME`, `GLOO_SOCKET_IFNAME`,
 `NCCL_IB_HCA`, and `NCCL_IB_GID_INDEX`. Use the actual switch-connected
 interfaces and exact HCA/port names. This profile assumes neither an uplink
 count nor the direct-ring addressing layout.
+The profile enables the library's extended-IPv4 and PCI-domain options while
+keeping switchless and subnet-aware routing disabled; the source-specific
+behavior is described in the profile README.
 
 Provide the NVFP4-Spark checkpoint at the profile's pinned revision and a
 separate writable cache directory owned by the serving user. Keep site paths,

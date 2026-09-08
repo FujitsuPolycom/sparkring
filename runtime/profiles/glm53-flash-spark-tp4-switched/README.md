@@ -42,6 +42,13 @@ The launcher neither infers those connections nor changes interfaces, GIDs,
 MTU, routes, or switch configuration. Its software `NCCL_ALGO=Ring` setting
 does not enable physical switchless routing.
 
+The extended-IPv4 and PCI-domain capability flags are enabled, while
+`NCCL_SWITCHLESS_RING_ONLY` and `NCCL_IB_SUBNET_AWARE_ROUTING` remain zero.
+In the pinned NCCL patch, extended-GID advertisement and PCI-root preference
+run only inside the subnet-aware path. That path stays inactive here, leaving
+ordinary L2 topology-selected connections unchanged. These flags neither
+choose the operator's HCA list nor imply a number of physical uplinks.
+
 Only the five site fields can be supplied through this file. Model and
 transport feature switches remain in `profile.json`. Checkpoint and cache
 directories are explicit CLI inputs. The cache directory's numeric owner
