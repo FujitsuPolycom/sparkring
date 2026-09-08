@@ -17,6 +17,10 @@ GPU support, sufficient disk for checkpoint and runtime, and independently
 reachable management access. Inspect per-node HCA names and GID indices;
 do not assume interface names or GIDs survive hardware/OS changes unchanged.
 
+The API listens on all rank0 interfaces (`0.0.0.0:8016`) without an API key.
+Use a trusted management network and restrict port 8016 to intended clients
+with network access controls. Do not expose this endpoint to the public Internet.
+
 - [Runtime package manifest](../runtime/sparkring/manifest.json).
 - [Model identity and exact vLLM arguments](../runtime/profiles/glm53-flash-spark-tp2/profile.json).
 - [Site-adjustable environment template](../runtime/profiles/glm53-flash-spark-tp2/runtime.env.example).
@@ -148,6 +152,10 @@ would defeat a guard stop. A guard is not proof against every host OOM.
 
 ## Verify
 
+Run this section from the repository root on **rank0**, where the API and
+`sparkring-glm53-tp2-r0` container run. Replace `RANK0_ADDRESS` below with
+rank0's management address. Docker commands must run on rank0.
+
 ```bash
 curl --fail http://RANK0_ADDRESS:8016/health
 curl --fail http://RANK0_ADDRESS:8016/v1/models
@@ -162,13 +170,19 @@ short completion to model glm-5.3-flash-spark-pr646. Verify actual engine
 occupancy for concurrency tests. Test cold prefill, cache capture and restore
 separately. A healthy API does not prove multimodal or cache correctness.
 
-The included functional smoke client uses Python's standard library:
+The included functional smoke client uses Python's standard library and
+defaults to `http://127.0.0.1:8016`, so these commands run on rank0:
 
 ```bash
+profile=runtime/profiles/glm53-flash-spark-tp2
 python3 "$profile/smoke.py" --phase text
 python3 "$profile/smoke.py" --phase image
 python3 "$profile/smoke.py" --phase long-prompt
 ```
+
+To run the smoke client from another machine with a repository checkout,
+add `--base http://RANK0_ADDRESS:8016` to each invocation. Video fixture
+files must exist on the machine running the client.
 
 The text check submits eight chat requests and requires the exact codeword in
 each final JSON answer; Markdown fences are accepted. Raw completion prompts
@@ -201,10 +215,52 @@ response or a recognized different color as proof that the blue-video check pass
 
 A correct long-prompt response proves only answer correctness. To verify
 persistence, observe successful capture and commit logs on both ranks, stop
-both model containers, and start rank1 then rank0 with the same cache mounts.
+both model containers, and follow [Restart existing containers](#restart-existing-containers)
+to start rank1 then rank0 with the same cache mounts.
 Repeat the identical long-prompt request after engine startup. Confirm native
 restore completion on both ranks and nonzero cached prompt tokens; do not
 infer an external-cache hit from answer correctness or response speed alone.
+
+## Restart existing containers
+
+Use this procedure only to restart the same image and configuration.
+`launch.py` creates containers; rerunning it does not restart an existing
+container. Preserve both containers and their cache directories for a
+persistent-cache test. Drain client requests before stopping.
+
+On rank0:
+
+```bash
+docker stop --time 60 sparkring-glm53-tp2-r0
+docker inspect --format '{{.State.Running}}' sparkring-glm53-tp2-r0
+```
+
+On rank1:
+
+```bash
+docker stop --time 60 sparkring-glm53-tp2-r1
+docker inspect --format '{{.State.Running}}' sparkring-glm53-tp2-r1
+```
+
+Require both inspections to print `false` before starting either rank.
+If the memory guard caused the stop, resolve the memory pressure first;
+do not disable the guard or repeatedly restart into the same failure.
+Ensure no competing GPU workload is running on either node.
+
+Start rank1 first, on rank1:
+
+```bash
+systemctl is-active --quiet sparkring-memory-guard && docker start sparkring-glm53-tp2-r1
+```
+
+After that command succeeds, start rank0 on rank0:
+
+```bash
+systemctl is-active --quiet sparkring-memory-guard && docker start sparkring-glm53-tp2-r0
+```
+
+Do not proceed after a failed command. Docker startup is not API readiness:
+wait for model loading and warmup, then repeat the [verification checks](#verify).
 
 ## Evidence and limits
 

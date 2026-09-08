@@ -28,12 +28,23 @@ published configuration hash.
 
 ## Research-only profiles
 
+| Profile | Topology | Serving sources and evidence scope | Documentation |
+|---|---|---|---|
+| DeepSeek-V4-Flash-Vision-Exp with DSpark | four-Spark cycle, TP4 | Anemll image and MiaAI-Lab recipe with SparkRing patched NCCL; contributor-reported observations; independent reproduction is not claimed | [Artifact contract](../../runtime/deepseek-vision-exp/profile.json), [recipe](../../recipes/deepseek-v4-flash-vision-exp-tp4.json), [quickstart](../DEEPSEEK_V4_FLASH_VISION_EXP_TP4_QUICKSTART.md) |
+
 The [GLM-5.3 native-MTP3 cache/checkpoint mesh](../GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md)
 publishes the integrated compute, recurrent checkpoint, optimized SparkCache,
 and transport composition for TP4/DCP4. Its
 [recipe](../../recipes/glm53-mtp3-cache-checkpoints-tp4.json) pins the image and
 source inputs. File equivalence with the deployed runtime is verified; that
 does not constitute a serving soak of the rebuilt image.
+
+The [managed mesh operations contract](../../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md)
+defines host preparation, startup, and recovery for the four-rank native-MTP3
+profile. Its [functional evidence](../../performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md)
+records bounded installation, fault/recovery, readiness, and cache-recall
+checks for the artifacts identified in that record. Those results do not
+qualify every cache boundary or unattended availability of another image.
 
 The [GLM-5.3 Flash NVFP4-Spark TP2 profile](../GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md)
 is research-only. Model-neutral image and matching SparkCache source pins are
