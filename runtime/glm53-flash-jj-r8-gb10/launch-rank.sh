@@ -145,6 +145,7 @@ esac
 : "${SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT:=2}"
 : "${SPARKCACHE_BUFFER_BUDGET_BYTES:=0}"
 : "${SPARKCACHE_SOURCE_OVERLAY:=}"
+: "${SPARKCACHE_SOURCE_LEASE_CONTRACT:=}"
 : "${VLLM_KV_METRICS_OVERLAY:=}"
 : "${MULTIMODAL_INPUTS:=1}"
 : "${SOCKET_IFNAME:=enP7s7}"
@@ -212,8 +213,34 @@ case "${SOURCE_IMAGE_PROFILE}" in
       die 'DCP size differs from the source-composed profile'
     [[ "${VLLM_B12X_KDA_PREFILL_COALESCING:-0}" == 1 && "${VLLM_GLM53_MHC_PREFILL_SHARD:-0}" == 1 ]] || \
       die 'Source-composed prefill profile requires both coalescing and mHC sharding' ;;
+  tp4-dcp1-mtp3-sparkcache)
+    [[ "${SPECULATION_METHOD}" == mtp && "${NUM_SPECULATIVE_TOKENS}" == 3 && \
+       "${TENSOR_PARALLEL_SIZE}" == 4 && "${DECODE_CONTEXT_PARALLEL_SIZE}" == 1 && \
+       "${PIPELINE_PARALLEL_SIZE}" == 1 && "${NODE_COUNT}" == 4 && \
+       "${DRAFT_TENSOR_PARALLEL_SIZE}" == 4 ]] || \
+      die 'Source SparkCache profile requires TP4/DCP1/PP1 and native MTP3'
+    [[ "${TARGET_MODEL_VARIANT}" == nvfp4-spark && "${VLLM_BLOCK_SIZE}" == 512 ]] || \
+      die 'Source SparkCache profile requires NVFP4-Spark and 512-token blocks'
+    [[ "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" == /usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json ]] || \
+      die 'Source SparkCache profile requires the installed source-image connector-job contract'
+    [[ "${SPARKCACHE_PLACEMENT_LIBRARY_SHA256:-}" == 2657cdd2e54a097c9544e4c79ae62c0646db6db123ff24e4f0c384238c3a1e8d ]] || \
+      die 'Source SparkCache profile requires its receipt-bound placement library'
+    [[ -z "${SPARKCACHE_SOURCE_OVERLAY}" && -z "${VLLM_KV_METRICS_OVERLAY}" ]] || \
+      die 'Source SparkCache profile cannot replace receipt-bound package files'
+    [[ "${VLLM_B12X_KDA_PREFILL_COALESCING:-0}" == 1 && "${VLLM_GLM53_MHC_PREFILL_SHARD:-0}" == 1 && \
+       "${VLLM_DCP_COMPACT_INDEX_CACHE_OWNER:-0}" == 0 ]] || \
+      die 'Source SparkCache profile requires coalescing, mHC sharding, and compact index cache disabled'
+    [[ "${NCCL_LIBRARY_PATH}" == /opt/sparkring/nccl-pci/libnccl.so.2.30.7 && \
+       "${NCCL_IB_EXTENDED_IPV4_GIDS:-0}" == 1 && "${NCCL_IB_PRESERVE_PCI_DOMAIN:-0}" == 1 ]] || \
+      die 'Source SparkCache profile requires its dual-domain NCCL settings' ;;
   *) die 'Unsupported source-composed runtime profile' ;;
 esac
+if [[ -n "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" && "${SOURCE_IMAGE_PROFILE}" != tp4-dcp1-mtp3-sparkcache ]]; then
+  die 'SPARKCACHE_SOURCE_LEASE_CONTRACT requires the source SparkCache profile'
+fi
+if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
+  source_environment+=(-e "SOURCE_IMAGE_PROFILE=${SOURCE_IMAGE_PROFILE}" -e PYTHONUNBUFFERED=1)
+fi
 
 for name in \
   PORT MASTER_PORT TENSOR_PARALLEL_SIZE PIPELINE_PARALLEL_SIZE \
@@ -373,6 +400,23 @@ if [[ "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 ]]; then
     read-write|store-only) ;;
     *) die 'asynchronous page capture requires a publication-capable access mode' ;;
   esac
+fi
+
+if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-mtp3-sparkcache ]]; then
+  # These are the bounded capacities named by the source-image profile. Reject
+  # inherited operator defaults instead of allocating larger unqualified buffers.
+  for setting in SPARKCACHE_ENABLED=1 SPARKCACHE_ACCESS_MODE=read-write \
+    SPARKCACHE_ASYNC_PAGE_CAPTURE=1 SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2 \
+    SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES=536870912 SPARKCACHE_LOAD_THREADS=2 \
+    SPARKCACHE_MAX_PENDING_RESTORES=2 SPARKCACHE_CUDA_RESTORE_IO_WORKERS=2 \
+    SPARKCACHE_CUDA_ARENA_BYTES=67108864 SPARKCACHE_BUFFER_BUDGET_BYTES=1342177280 \
+    SPARKCACHE_MAX_BYTES=8589934592 SPARKCACHE_LOW_WATERMARK_BYTES=6442450944 \
+    SPARKCACHE_MIN_SPAN_TOKENS=4096 SPARKCACHE_MAX_SPAN_TOKENS=65536 \
+    SPARKCACHE_PUBLICATION_SCHEMA=tail-cow-v2 KV_CACHE_MEMORY_BYTES=25769803776 \
+    MAX_MODEL_LEN=1048576; do
+    name="${setting%%=*}"
+    [[ "${!name}" == "${setting#*=}" ]] || die "Source SparkCache profile requires ${setting}"
+  done
 fi
 
 # Resolve the payload buffers before inspecting checkpoints or contacting Docker.
@@ -899,6 +943,7 @@ if [[ "${SPARKCACHE_ENABLED}" == 1 ]]; then
   export SPARKCACHE_CUDA_RESTORE_IO_WORKERS SPARKCACHE_CUDA_ARENA_BYTES
   export SPARKCACHE_ASYNC_PAGE_CAPTURE
   export SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT
+  export SOURCE_IMAGE_PROFILE SPARKCACHE_SOURCE_LEASE_CONTRACT
   export TARGET_CHECKPOINT_FINGERPRINT DRAFT_CHECKPOINT_FINGERPRINT
   kv_transfer_config="$(python3 - <<'PY'
 import json
@@ -941,6 +986,15 @@ extra = {
     "spark_cache_async_page_capture_vllm_root": "/usr/local/lib/python3.12/dist-packages",
     "spark_cache_async_page_capture_lease_contract": "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-manager-page-async-contract-55969c16.json",
 }
+if os.environ["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1-mtp3-sparkcache":
+    extra.update({
+        "spark_cache_async_page_capture_lease_mode": "connector-jobs",
+        "spark_cache_async_page_capture_lease_contract": os.environ["SPARKCACHE_SOURCE_LEASE_CONTRACT"],
+        "spark_cache_async_page_capture_library": "/opt/sparkcache-native/libspark_cache_snapshot.so",
+        "spark_cache_async_page_capture_library_sha256": "cc44b69c9e01aaeb6b94f46cd649e2ec5972fc6b29d1a41b7b033a82ce788f39",
+        "spark_cache_cuda_restore_arena_budget_bytes": 268435456,
+        "spark_cache_page_snapshot_interval_tokens": 0,
+    })
 print(json.dumps({
     "kv_connector": "SparkContextCacheConnector",
     "kv_role": "kv_both",

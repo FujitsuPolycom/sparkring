@@ -297,6 +297,40 @@ control arrays, Python objects, shared bases, transport, model weights and
 allocator overhead require additional memory. `SPARKCACHE_LOAD_THREADS` defaults
 to eight; throughput and memory-pressure effects need hardware measurements.
 
+### Bounded SparkCache source profile
+
+Status: **implemented**, with CPU launcher-contract coverage. The explicit
+`tp4-dcp1-mtp3-sparkcache` source-image profile selects GLM NVFP4-Spark,
+TP4/DCP1/PP1, native MTP3, 512-token blocks, coalescing, and mHC prefill sharding.
+Its image receipt and source lock must identify the installed sources and native
+libraries. Selecting the profile does not qualify a rebuilt image or enable
+SparkCache on a TP2 profile.
+
+The renderer must set `SPARKCACHE_SOURCE_LEASE_CONTRACT` to
+`/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json`.
+The image verifier binds that complete contract to the installed vLLM files.
+The launcher rejects another path and rejects this override outside the named
+profile. Capture uses `connector-jobs`, the snapshot library at
+`/opt/sparkcache-native/libspark_cache_snapshot.so`, and the profile's exact
+snapshot and placement hashes. Cache load failures retain `recompute` behavior.
+
+| Profile capacity | Required value per rank |
+|---|---:|
+| GPU KV allocation | 24 GiB |
+| Capture slots | 2 × 512 MiB |
+| Restore lanes / I/O workers | 2 / 2 |
+| Restore arenas | 2 × 64 MiB per lane; 256 MiB total |
+| Capture plus restore payload budget | 1,280 MiB |
+| Disk budget / low watermark | 8 GiB / 6 GiB |
+| Capture span minimum / maximum | 4,096 / 65,536 tokens |
+| Model context limit | 1,048,576 tokens |
+
+The profile requires read/write asynchronous capture, two pending restores,
+and `tail-cow-v2` publication. Periodic page snapshots are disabled. Larger
+operator-default buffers or alternate package overlays are rejected. Existing
+profiles retain their contract and allocation defaults. All explicit source
+profiles pass their name to the image entrypoint and enable unbuffered logging.
+
 ### Inspect configured memory before launch
 
 Status: **implemented**. The launcher can print a JSON allocation plan without
