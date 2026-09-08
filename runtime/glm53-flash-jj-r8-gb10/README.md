@@ -408,21 +408,38 @@ same port exports the liveness state and blocked duration.
 
 Status: implemented; the output-stall detector has offline regression coverage
 and still needs validation under live TP4 cache-restore traffic.
-Running requests with no change in `vllm:iteration_tokens_total_count` for
-`SPARKRING_LIVENESS_OUTPUT_SECONDS` (default 300 seconds) return HTTP 503 with
-reason `engine_output_stall`. Fresh HTTP scrapes do not reset that timer.
-Output progress, counter reset, or an observed idle period starts a new window.
+The source policy below is not included in the immutable
+[published hotfix image](hotfix/README.md), which uses output-counter movement
+only. Using this source policy requires a rebuilt, source-verified image;
+changing a timeout alone does not install it.
+Running requests return HTTP 503 with reason `engine_output_stall` after
+`SPARKRING_LIVENESS_OUTPUT_SECONDS` (default 300 seconds) without output-counter
+movement, an increase in the optional prompt-token counter, or KV allocation
+above its high-water mark. Fresh HTTP scrapes do not reset that inactivity timer.
+The high-water marks belong to the interval without output; falling KV usage,
+request-count changes, and repeated allocation below the prior maximum do not
+renew it. Output-counter movement or an observed idle period starts a new interval.
 Missing output metrics while requests are running eventually report
 `metrics_unavailable`, rather than certifying progress.
 
-This is an output-progress heuristic, not an engine-step heartbeat. The pinned
-vLLM increments the histogram when the API receives output-bearing batches;
-prefill and external-cache restores can legitimately leave it unchanged.
-Set the timeout above the longest measured prefill, restore, or output gap,
-with margin. The monitor sums metrics for the single-engine TP4 deployment;
+This is an allocation/activity heuristic, not an engine-step heartbeat. The
+pinned vLLM reports output iterations and prompt totals with output-bearing
+batches, so neither is assumed to advance after every prefill chunk. Increasing
+KV allocation can keep a long prefill healthy even while both counters stay flat.
+Allocation is not proof that GPU computation finished. A fully preallocated
+prefill or restore can also remain flat while doing legitimate work.
+Set the timeout above the longest measured interval without these observable
+signals, with margin; a 1M prompt at 2500 tokens/s needs about 420 seconds before
+its first output, so 300 seconds is insufficient without intermediate signals.
+For example, 900 seconds provides margin for that single-request case; concurrent
+load still requires measurement. The monitor sums metrics for the single-engine TP4 deployment;
 it does not detect one stalled engine hidden by another progressing engine.
-The JSON includes `output_stalled_seconds` and `output_iterations`, and the
-monitor's metrics include `sparkring:engine_output_stalled_seconds`.
+The JSON preserves `output_stalled_seconds` and `output_iterations`. It adds
+`progress_stalled_seconds`, `last_progress_signal`, `kv_allocation_high_water`,
+and optional `prompt_tokens`. The raw output gap can exceed the configured
+timeout while allocation progresses. The monitor exports both
+`sparkring:engine_output_stalled_seconds` and
+`sparkring:engine_progress_stalled_seconds`; the latter controls the stall rule.
 
 An unhealthy result does not restart the cluster. Use the deployment's
 coordinated stop/recovery procedure after collecting all worker-thread stacks.
