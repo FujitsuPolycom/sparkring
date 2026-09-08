@@ -343,7 +343,8 @@ branches justify the recipe; they do not prove every speculative execution path
 or compiled kernel was reached by an HTTP request.
 
 Status: **implemented**, with CPU request and readiness tests. Each arm must
-return a completion and positive `usage.completion_tokens`; one failed arm
+return exactly one message-bearing choice with finish reason `stop` or `length`
+and positive integer `usage.completion_tokens`; one failed arm
 withholds readiness. The `sampling_warmup` log records each arm, completed-token
 count and elapsed time with `coverage=request-recipe-complete` and
 `jit_coverage_verified=false`. API readiness, shape batches and sampler requests

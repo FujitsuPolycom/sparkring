@@ -25,7 +25,7 @@ def test_sampling_sweep_covers_filter_and_seed_paths_with_completed_outputs(monk
         assert request.get_header("X-sparkring-startup-token") == "internal-secret"
         observed.append(json.loads(request.data))
         clock[0] += 1
-        return io.BytesIO(b'{"choices":[{"message":{"reasoning":"ok"}}],"usage":{"completion_tokens":2}}')
+        return io.BytesIO(b'{"choices":[{"finish_reason":"stop","message":{"reasoning":"ok"}}],"usage":{"completion_tokens":2}}')
 
     monkeypatch.setattr(wrapper.urllib.request, "urlopen", urlopen)
     result = wrapper.warmup_sampling("http://localhost", "model", 16, 10, "secret")
@@ -51,7 +51,7 @@ def test_every_sampling_arm_must_complete_before_readiness(tmp_path, monkeypatch
     def urlopen(request, timeout):
         calls.append(request)
         count = 0 if len(calls) == failed_index + 1 else 1
-        return io.BytesIO(json.dumps({"choices": [{"message": {"reasoning": "ok"}}], "usage": {"completion_tokens": count}}).encode())
+        return io.BytesIO(json.dumps({"choices": [{"finish_reason": "stop", "message": {"reasoning": "ok"}}], "usage": {"completion_tokens": count}}).encode())
 
     monkeypatch.setattr(wrapper.urllib.request, "urlopen", urlopen)
     ready = tmp_path / "ready"
@@ -64,6 +64,43 @@ def test_every_sampling_arm_must_complete_before_readiness(tmp_path, monkeypatch
         )
     assert not ready.exists()
     assert len(calls) == failed_index + 1
+
+
+@pytest.mark.parametrize("choices", [
+    [None], ["invalid"], [{}],
+    [{"finish_reason": "error", "message": {"content": "partial"}}],
+    [{"finish_reason": None, "message": {"content": "partial"}}],
+    [{"message": {"content": "partial"}}],
+    [{"finish_reason": "tool_calls", "message": {"tool_calls": []}}],
+    [{"finish_reason": "stop"}],
+    [{"finish_reason": "stop", "message": None}],
+    [{"finish_reason": "stop", "message": {}}] * 2,
+])
+def test_invalid_or_unfinished_sampling_choice_withholds_readiness(tmp_path, monkeypatch, choices):
+    wrapper, warmup = _load_module(monkeypatch)
+    monkeypatch.setattr(warmup, "wait_for_api", lambda *_args: None)
+    monkeypatch.setattr(warmup, "run_warmup", lambda *_args: ())
+    response = json.dumps({"choices": choices, "usage": {"completion_tokens": 1}}).encode()
+    monkeypatch.setattr(wrapper.urllib.request, "urlopen", lambda *_args, **_kwargs: io.BytesIO(response))
+    ready = tmp_path / "ready"
+    ready.touch()
+    with pytest.raises(RuntimeError, match="Sampling warmup response"):
+        wrapper.complete_readiness(
+            rank=0, endpoint="http://localhost", model="model", warmup_enabled=True,
+            concurrencies=(1,), shape_words=(8,), max_tokens=16,
+            timeout_seconds=30, credential=None, ready_path=ready,
+        )
+    assert not ready.exists()
+
+
+@pytest.mark.parametrize("finish_reason", ["stop", "length"])
+def test_sampling_accepts_completed_stop_or_token_limit(monkeypatch, finish_reason):
+    wrapper, _ = _load_module(monkeypatch)
+    response = json.dumps({"choices": [{"finish_reason": finish_reason, "message": {"reasoning": "ok"}}], "usage": {"completion_tokens": 1}}).encode()
+    monkeypatch.setattr(wrapper.urllib.request, "urlopen", lambda *_args, **_kwargs: io.BytesIO(response))
+    result = wrapper.warmup_sampling("http://localhost", "model", 16, 30, None)
+    assert result["coverage"] == "request-recipe-complete"
+    assert all(case["finish_reason"] == finish_reason for case in result["cases"])
 
 
 def test_api_shapes_and_sampling_share_one_readiness_budget(tmp_path, monkeypatch):
@@ -169,7 +206,7 @@ def test_sampling_request_uses_auth_temperature_and_reasoning(monkeypatch):
     def urlopen(request, timeout):
         observed.append(request)
         assert 0 < timeout <= 10
-        return io.BytesIO(b'{"choices":[{"message":{"reasoning":"ok"}}],"usage":{"completion_tokens":1}}')
+        return io.BytesIO(b'{"choices":[{"finish_reason":"stop","message":{"reasoning":"ok"}}],"usage":{"completion_tokens":1}}')
 
     monkeypatch.setattr(wrapper.urllib.request, "urlopen", urlopen)
     result = wrapper.warmup_sampling("http://localhost/", "model", 16, 10, "secret")
@@ -356,7 +393,7 @@ def test_both_warmup_requests_carry_internal_token_and_api_auth(monkeypatch):
 
     def urlopen(request, **kwargs):
         observed.append(request)
-        return io.BytesIO(b'{"choices":[{"message":{"content":"ok"}}],"usage":{"completion_tokens":1}}')
+        return io.BytesIO(b'{"choices":[{"finish_reason":"stop","message":{"content":"ok"}}],"usage":{"completion_tokens":1}}')
 
     monkeypatch.setattr(wrapper.urllib.request, "urlopen", urlopen)
     wrapper.warmup_sampling("http://localhost", "model", 16, 10, "api-secret")

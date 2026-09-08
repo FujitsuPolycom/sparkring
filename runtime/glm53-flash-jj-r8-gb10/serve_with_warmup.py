@@ -73,9 +73,16 @@ def warmup_sampling(
             request, timeout=warmup_dflash.remaining_seconds(deadline)
         ) as response:
             result = json.load(response)
-        choices = result.get("choices")
+        choices = result.get("choices") if isinstance(result, dict) else None
         if not isinstance(choices, list) or not choices:
             raise RuntimeError(f"Sampling warmup response has no completion: {name}")
+        if (
+            len(choices) != 1
+            or not isinstance(choices[0], dict)
+            or not isinstance(choices[0].get("message"), dict)
+            or choices[0].get("finish_reason") not in ("stop", "length")
+        ):
+            raise RuntimeError(f"Sampling warmup response is not one completed choice: {name}")
         usage = result.get("usage")
         completion_tokens = usage.get("completion_tokens") if isinstance(usage, dict) else None
         if type(completion_tokens) is not int or completion_tokens <= 0:
@@ -84,6 +91,7 @@ def warmup_sampling(
         cases.append({
             "name": name, "temperature": temperature, "top_k": top_k,
             "top_p": top_p, "seed": seed, "completion_tokens": completion_tokens,
+            "finish_reason": choices[0]["finish_reason"],
             "elapsed_seconds": round(time.monotonic() - case_started, 3),
         })
     return {
