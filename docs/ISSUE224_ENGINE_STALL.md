@@ -61,23 +61,29 @@ and logs together so they can be correlated with the same stall.
 
 ## Detection and recovery
 
-The rank-zero monitor detects sustained running requests without output batches
-using `vllm:iteration_tokens_total_count`. The separate 300-second default
-`SPARKRING_LIVENESS_OUTPUT_SECONDS` must exceed legitimate prefill and restore
-gaps. This standard metric counts output-bearing batches, not every engine
-step. It is a fallback heuristic for the single-engine TP4 profile.
+The rank-zero monitor detects sustained running requests without observable
+output, prompt-counter, or KV-allocation progress. The 300-second default
+`SPARKRING_LIVENESS_OUTPUT_SECONDS` must exceed legitimate gaps without these
+signals. Output batches reset the interval. KV allocation must exceed the
+interval's high-water mark; allocation/release oscillation does not renew it.
+Prompt totals are optional and are not assumed to report every prefill chunk.
+This is a fallback heuristic for the single-engine TP4 profile, not proof of
+GPU execution. Fully preallocated work still needs a suitable timeout override.
 
 The offline regression feeds fresh unchanged metrics with three running
-requests for 300 seconds. Before the change, liveness stays HTTP 200. After
-the change, it returns HTTP 503 with `engine_output_stall`. Other checks cover
-progress, idle periods, counter reset, recovery, missing metrics, invalid
-timeouts, and independent prefill grace. No GPU race is reproduced by these
-tests.
+requests for 300 seconds and requires HTTP 503 with `engine_output_stall`.
+Other checks cover a growing prefill cache for 600 seconds, progress stopping,
+allocation oscillation, idle periods, counter reset, recovery, missing metrics,
+invalid timeouts, and the timeout override. No GPU race is reproduced by these
+tests. Raw output-gap reporting remains available alongside the separate
+inactivity timer.
 
 The [published operator image](../runtime/glm53-flash-jj-r8-gb10/hotfix/README.md)
-contains the monitor and its source receipt. Install that immutable image with
-the deployment's coordinated stop/start procedure; users do not need to rebuild
-it. Editing a setting alone cannot update an image that lacks the monitor.
+contains the output-only monitor and its source receipt. The source policy
+described above also accounts for allocation and prompt-counter progress; it
+requires a rebuilt, source-verified image and live qualification before deployment.
+Editing a timeout cannot install that source change. Preserve the deployment's
+coordinated stop/start procedure when replacing its runtime.
 Unattended recovery remains unqualified: the deployment must first establish
 its longest healthy prefill/restore gap and verify its response to an injected
 output stall. The monitor reports health and does not restart the cluster.

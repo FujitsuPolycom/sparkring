@@ -1,0 +1,257 @@
+{
+  "schema": "sparkring-prefill-aware-liveness-evidence/v1",
+  "status": "qualified",
+  "scope": "One cold exact-answer request and sampled liveness on the stated research-only native-MTP3 configuration.",
+  "conditions": {
+    "hardware": "Four NVIDIA DGX Spark GB10 systems; four-rank SparkRing mesh",
+    "model": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+    "checkpoint_identity_sha256": "357f6a86160ebd5caff25d9a10d9f29e8547b16c6c73e78751fa69fde11ac4e4",
+    "local_image_digest": "sha256:cd92adc4436c61290dbecc35362db447c7ae69e1d03bdb99704af0ed6c517b38",
+    "image_published": false,
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 1,
+    "pipeline_parallel_size": 1,
+    "speculation": {
+      "method": "mtp",
+      "num_speculative_tokens": 3,
+      "draft_tensor_parallel_size": 4,
+      "kv_cache_dtype": "auto",
+      "draft_sample_method": "probabilistic",
+      "rejection_sample_method": "standard",
+      "draft_load_config": {
+        "load_format": "safetensors"
+      },
+      "attention_backend": "B12X"
+    },
+    "max_model_len": 1048576,
+    "max_num_batched_tokens": 8192,
+    "max_num_seqs": 16,
+    "kv_cache_bytes_per_rank": 25769803776,
+    "kv_cache_dtype": "fp8",
+    "block_size_tokens": 512,
+    "prefill_schedule_interval": 2,
+    "chunked_prefill": true,
+    "prefill_coalescing": true,
+    "token_sharded_mhc_prefill": true,
+    "compact_index_cache": false,
+    "sparkcache_access_mode": "read-write",
+    "sparkcache_max_span_tokens": 65536,
+    "concurrency": 1,
+    "repetitions": 1,
+    "matching_cached_prompt_tokens": 0,
+    "liveness_output_timeout_seconds": 300,
+    "liveness_output_timeout_source": "Wrapper default; no environment override on any rank",
+    "metric_scrape_interval_seconds": 10.0,
+    "liveness_poll_wait_seconds": 2
+  },
+  "source": {
+    "isolated_liveness_commit": "aea0e6819e0449a90b7807f41efb51ad4cfdc9df",
+    "base_commit": "e441057e17fb975358ec9f2abb7a23ac7fb2c23e",
+    "scheduler_source_path": "runtime/glm53-flash-jj-r8-gb10/scheduler_liveness.py",
+    "scheduler_source_sha256": "9078d796aeb8ad59e7a78e9739168596abecfb20c043925a0d4e728f3673a53c",
+    "startup_composition_revision": "767522e399ad61d3b3cf02259414b1007becc030",
+    "startup_archive_sha256": "284b47a176ed9426657374e7da458ab2d649e3284d01965064251114f427ca4a",
+    "startup_source_files_sha256": {
+      "runtime/glm53-flash-jj-r8-gb10/scheduler_liveness.py": "9078d796aeb8ad59e7a78e9739168596abecfb20c043925a0d4e728f3673a53c",
+      "runtime/glm53-flash-jj-r8-gb10/serve_with_warmup.py": "018f85037d0ed21f92df889fb294a2de50060edf479c8c79afd07e446e33982f",
+      "runtime/glm53-flash-jj-r8-gb10/startup_admission.py": "1afdc6b2e421465498bde349dff3edb8428ca995a949b2a2f3c6e358a3af7ef4",
+      "runtime/glm53-flash-jj-r8-gb10/warmup_dflash.py": "4d98618a5f58d2991eeb67b9b03ecdd720ac6974f644fa8b5030408a3af0792e"
+    },
+    "startup_installed_files_sha256": {
+      "runtime/glm53-flash-jj-r8-gb10/serve_with_warmup.py": "018f85037d0ed21f92df889fb294a2de50060edf479c8c79afd07e446e33982f",
+      "runtime/glm53-flash-jj-r8-gb10/warmup_dflash.py": "a4737e998ead6206292e0b5e2172ab81ffab8f84435982cbbce2b0af8cb08f2f",
+      "runtime/glm53-flash-jj-r8-gb10/startup_admission.py": "1afdc6b2e421465498bde349dff3edb8428ca995a949b2a2f3c6e358a3af7ef4",
+      "runtime/glm53-flash-jj-r8-gb10/scheduler_liveness.py": "9078d796aeb8ad59e7a78e9739168596abecfb20c043925a0d4e728f3673a53c"
+    },
+    "warmup_transform": "glm53-thinking-low/v1",
+    "serving_revisions": {
+      "b12x": "0b6d61c37c87ae49d2f9d20d38b9da023146e243",
+      "sparkcache": "2bc05bc9e94a4344758e48db36f69a46dafa6946",
+      "vllm": "df62335d8248587f8d3fd1d9a234d1c162a9b84d"
+    },
+    "all_rank_startup_hash_checks": [
+      {
+        "rank": 0,
+        "image_matches": true,
+        "startup_file_hashes_match": true,
+        "source_witness_passed": true,
+        "generation_unchanged_during_request": true,
+        "healthy_before_and_after": true,
+        "restart_count": 0
+      },
+      {
+        "rank": 1,
+        "image_matches": true,
+        "startup_file_hashes_match": true,
+        "source_witness_passed": true,
+        "generation_unchanged_during_request": true,
+        "healthy_before_and_after": true,
+        "restart_count": 0
+      },
+      {
+        "rank": 2,
+        "image_matches": true,
+        "startup_file_hashes_match": true,
+        "source_witness_passed": true,
+        "generation_unchanged_during_request": true,
+        "healthy_before_and_after": true,
+        "restart_count": 0
+      },
+      {
+        "rank": 3,
+        "image_matches": true,
+        "startup_file_hashes_match": true,
+        "source_witness_passed": true,
+        "generation_unchanged_during_request": true,
+        "healthy_before_and_after": true,
+        "restart_count": 0
+      }
+    ]
+  },
+  "request": {
+    "endpoint_path": "/v1/chat/completions",
+    "model": "glm-5.3-flash-spark",
+    "temperature": 0,
+    "max_tokens": 64,
+    "prompt_recipe": {
+      "role": "user",
+      "prefix": "Test 77b3b51acce84f3d9fe8043b4b3a3edb. The project code is RIVER-649271. Remember it.",
+      "filler_unit": "alpha beta gamma delta ",
+      "filler_repetitions": 249983,
+      "filler_remainder": "alpha beta",
+      "suffix": "What is the project code? Reply with just the code.",
+      "join": "prefix + newline + filler + newline + suffix"
+    },
+    "prompt_utf8_sha256": "0d91a4aa848b092cdd0eaf3d9c2906ddef3ece41df0e5b41d0cf98ab02fa542a",
+    "request_canonical_json_sha256": "3a33a31c27049855b2476637d4a5d67a3b23ba1d150a5b1e27387e8bae1ced26",
+    "canonical_json_encoding": "UTF-8, ensure_ascii=False, sort_keys=True, separators=(',', ':')",
+    "tokenizer_count": 1000000,
+    "started_at_utc": "2026-09-08T21:29:43.088266+00:00",
+    "finished_at_utc": "2026-09-08T21:36:34.878257+00:00",
+    "http_status": 200,
+    "usage": {
+      "prompt_tokens": 1000000,
+      "total_tokens": 1000038,
+      "completion_tokens": 38,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "created_cache_tokens": 999424,
+        "multimodal_tokens": null
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 29
+      }
+    },
+    "expected_answer": "RIVER-649271",
+    "answer": "RIVER-649271",
+    "exact_answer": true,
+    "finish_reason": "stop",
+    "request_helper_elapsed_seconds": 411.24637449999864,
+    "outer_request_observation_elapsed_seconds": 412.2820000000065,
+    "timing_scope": "Client time.monotonic; full non-streaming request including generation. Outer observation includes request-receipt handling. TTFT was not separately measured."
+  },
+  "liveness_summary": {
+    "liveness_polls": 206,
+    "active_liveness_polls": 198,
+    "http_200_polls": 206,
+    "active_http_200_and_healthy_polls": 198,
+    "maximum_output_gap_seconds": 398.58192266301194,
+    "maximum_inactivity_seconds": 9.967230486989138,
+    "allocation_signal_active_polls": 193,
+    "observed_poll_interval_seconds": {
+      "minimum": 2.0,
+      "median": 2.0309999999881256,
+      "maximum": 2.047000000005937
+    }
+  },
+  "idle_checks": [
+    [
+      {
+        "at_utc": "2026-09-08T21:29:34.690404+00:00",
+        "num_requests_running": 0.0,
+        "num_requests_waiting": 0.0
+      },
+      {
+        "at_utc": "2026-09-08T21:29:35.222049+00:00",
+        "num_requests_running": 0.0,
+        "num_requests_waiting": 0.0
+      },
+      {
+        "at_utc": "2026-09-08T21:29:35.752120+00:00",
+        "num_requests_running": 0.0,
+        "num_requests_waiting": 0.0
+      }
+    ],
+    [
+      {
+        "at_utc": "2026-09-08T21:36:35.401610+00:00",
+        "num_requests_running": 0.0,
+        "num_requests_waiting": 0.0
+      }
+    ]
+  ],
+  "trace": {
+    "path": "prefill-aware-liveness-20260908.liveness.jsonl",
+    "sha256": "d706edd4ccc88bff981bced60c9560a2ce1285ecd1459370f2f794f36bf497d5",
+    "content": "Every original liveness JSONL row; only CRLF line endings normalized to LF. No polling rows or values omitted."
+  },
+  "cpu_validation": {
+    "passed": 611,
+    "skipped": 5,
+    "base_regression_failures": 2,
+    "command": "python -m pytest runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh scripts/test_glm53_liveness_gate.py -q -rs",
+    "skips": [
+      "One WSL DrvFS mode case",
+      "Two Windows symlink permission cases",
+      "One optional SparkCache source integration",
+      "One optional canonical native bundle"
+    ]
+  },
+  "raw_source_files": {
+    "long_request_receipt": {
+      "sha256": "74e82bd681738a4c8cef48eb3a3e6023057b3034c1625e8103a410c37603dd4c",
+      "bytes": 50561366
+    },
+    "liveness_trace": {
+      "sha256": "4ab128592d1b5e567e2e55f3a99b1891df549b883c383dab3ca79e84f2c9b3da",
+      "bytes": 143869
+    },
+    "startup_source_audit": {
+      "sha256": "bac18dd6e0491b37910001560929cd878de724aa24011a413b6a03096189956c",
+      "bytes": 45534
+    },
+    "startup_source_overlay": {
+      "sha256": "739ad05df9ba3b3862379b7e7a79afcc32038b72232073503b14b7ec91f6df0a",
+      "bytes": 2691
+    },
+    "installed_source_verification": {
+      "sha256": "c2da30c7c82662e8bf96ef6d32bb16df5fd4ea25142b382b6bd7c7acdce6d8dc",
+      "bytes": 18508
+    },
+    "cpu_test_receipt": {
+      "sha256": "25d1d55426f8ad16260498b95d2928ea758b95b317268bed26a421ac1300379b",
+      "bytes": 1409
+    },
+    "base_regression_receipt": {
+      "sha256": "6f2ba4bafed5e64054f9aae5fbb75c846355ad96b7900f067a9c4c0824a494f2",
+      "bytes": 2187
+    }
+  },
+  "harness_source_sha256": {
+    "long_prefill.py": "5367aca38308d92c68b1bee0748f3c9f7d837ccbe8622a766e0506347252c3f5",
+    "serving_checks.py": "f6db2875bfb499aa9ee22e1afec3c135afe8334e5a944446fbd47acb79e59340",
+    "benchmark_arm.py": "67520eda2581803881229eb9a26e43681e21b2a09a3ecc3a6cc1ef0c298f1769",
+    "model_compare.py": "9b051d4886748be8bc30f5bd3afeee4e2051b3efe0332d6be8af3b119156232c",
+    "validate_prefill.py": "6e4bf5ff62379bb2db4dc439d27a85eda0837959e983ef5f92ab3605898e69ac"
+  },
+  "publication_projection": "Request payload is represented by an exact repeat recipe and digest. Rank records retain image/source checks and outcomes; private names, IDs, paths, addresses and environment values are omitted. Raw source hashes identify retained originals.",
+  "limitations": [
+    "Allocation growth is an activity proxy, not proof of GPU progress.",
+    "Fully preallocated work and operations without observable intermediate changes still require a timeout above their measured gap, with margin.",
+    "Aggregated metrics can hide a stalled engine behind another progressing engine.",
+    "One native-MTP3/DCP1 request does not qualify DFlash/DCP4 or broad long-context accuracy.",
+    "No deliberately injected GPU hang; flat-stall and allocation-churn handling are covered by CPU regressions.",
+    "Two-second endpoint polling and ten-second metric scrapes do not measure every instantaneous state. One repetition provides no variability estimate.",
+    "The liveness policy is byte-identical to the isolated fix; the startup composition includes additional startup changes. The tested image is local and unreleased."
+  ]
+}

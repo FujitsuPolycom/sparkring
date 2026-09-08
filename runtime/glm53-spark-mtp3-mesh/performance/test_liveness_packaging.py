@@ -116,6 +116,11 @@ assert observed["credential"] == "test-key"
     snapshot = monitor.snapshot()
     assert snapshot["output_iterations"] == 7
     assert snapshot["output_stalled_seconds"] == 301
+    assert snapshot["progress_stalled_seconds"] == 0
+    assert snapshot["healthy"] is True
+    clock[0] = 601
+    monitor.observe(metrics.format(usage=0.2))
+    snapshot = monitor.snapshot()
     assert snapshot["reason"] == "engine_output_stall"
     assert snapshot["healthy"] is False
     # Growing allocated KV is not treated as verified execution progress.

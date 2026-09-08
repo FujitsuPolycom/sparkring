@@ -19,6 +19,7 @@ _METRICS = {
     "kv_usage": "vllm:kv_cache_usage_perc",
     "uncertain_ranks": "vllm:sparkcache_capture_ownership_uncertain_ranks",
     "output_iterations": "vllm:iteration_tokens_total_count",
+    "prompt_tokens": "vllm:prompt_tokens_total",
 }
 
 
@@ -63,6 +64,11 @@ class SchedulerLiveness:
         self._blocked_since: float | None = None
         self._output_stalled_since: float | None = None
         self._last_output_iterations: float | None = None
+        self._progress_stalled_since: float | None = None
+        self._kv_high_water: float | None = None
+        self._prompt_high_water: float | None = None
+        self._prompt_tokens: float | None = None
+        self._last_progress_signal: str | None = None
         self._idle_nonfall_since: float | None = None
         self._last_idle_kv: float | None = None
         self._last_success: float | None = None
@@ -92,17 +98,57 @@ class SchedulerLiveness:
             metrics_text, _METRICS["output_iterations"],
             required=values["running"] > 0,
         )
+        prompt_name = _METRICS["prompt_tokens"]
+        prompt_tokens = (
+            _metric_sum(metrics_text, prompt_name)
+            if re.search(rf"(?m)^{re.escape(prompt_name)}(?:\{{|\s)", metrics_text)
+            else None
+        )
         with self._lock:
             if values["running"] > 0:
                 if (
                     self._output_stalled_since is None
                     or output_iterations != self._last_output_iterations
                 ):
-                    # A decrease starts a new window after an engine restart.
+                    # Counter decreases also start a fresh observation window.
                     self._output_stalled_since = now
+                    self._progress_stalled_since = now
+                    self._kv_high_water = values["kv_usage"]
+                    self._prompt_high_water = prompt_tokens
+                    self._last_progress_signal = "output_counter_or_window_start"
+                else:
+                    # Allocation growth can corroborate long prefill activity.
+                    # Keep an epoch maximum so release/reallocation churn cannot
+                    # repeatedly postpone a stall. This is not a GPU heartbeat.
+                    kv_growth = (
+                        self._kv_high_water is not None
+                        and values["kv_usage"] > self._kv_high_water + 1e-9
+                    )
+                    prompt_growth = (
+                        prompt_tokens is not None
+                        and self._prompt_high_water is not None
+                        and prompt_tokens > self._prompt_high_water
+                    )
+                    if kv_growth or prompt_growth:
+                        self._progress_stalled_since = now
+                        self._last_progress_signal = (
+                            "prompt_token_counter" if prompt_growth
+                            else "kv_allocation_high_water"
+                        )
+                    if kv_growth:
+                        self._kv_high_water = values["kv_usage"]
+                    if prompt_tokens is not None:
+                        self._prompt_high_water = max(
+                            self._prompt_high_water or 0.0, prompt_tokens
+                        )
             else:
                 self._output_stalled_since = None
+                self._progress_stalled_since = None
+                self._kv_high_water = None
+                self._prompt_high_water = None
+                self._last_progress_signal = None
             self._last_output_iterations = output_iterations
+            self._prompt_tokens = prompt_tokens
             if values["running"] == 0 and values["waiting"] > 0:
                 if self._blocked_since is None:
                     self._blocked_since = now
@@ -136,6 +182,11 @@ class SchedulerLiveness:
                 if self._output_stalled_since is not None
                 else 0.0
             )
+            progress_stalled_seconds = (
+                max(0.0, now - self._progress_stalled_since)
+                if self._progress_stalled_since is not None
+                else 0.0
+            )
             blocked_seconds = (
                 max(0.0, now - self._blocked_since)
                 if self._blocked_since is not None
@@ -162,7 +213,7 @@ class SchedulerLiveness:
             elif blocked_seconds >= self._blocked_timeout:
                 healthy = False
                 reason = "scheduler_capacity_stall"
-            elif output_stalled_seconds >= self._output_timeout:
+            elif progress_stalled_seconds >= self._output_timeout:
                 healthy = False
                 reason = "engine_output_stall"
             warnings = []
@@ -182,6 +233,10 @@ class SchedulerLiveness:
                 "blocked_seconds": blocked_seconds,
                 "output_stalled_seconds": output_stalled_seconds,
                 "output_iterations": self._last_output_iterations,
+                "progress_stalled_seconds": progress_stalled_seconds,
+                "prompt_tokens": self._prompt_tokens,
+                "kv_allocation_high_water": self._kv_high_water,
+                "last_progress_signal": self._last_progress_signal,
                 "idle_kv_nonfall_seconds": idle_kv_seconds,
                 "sample_age_seconds": sample_age,
                 "last_sample_error": self._last_error,
@@ -197,6 +252,9 @@ class SchedulerLiveness:
             "sparkring:scheduler_blocked_seconds": snapshot["blocked_seconds"],
             "sparkring:engine_output_stalled_seconds": snapshot[
                 "output_stalled_seconds"
+            ],
+            "sparkring:engine_progress_stalled_seconds": snapshot[
+                "progress_stalled_seconds"
             ],
             "sparkring:idle_kv_nonfall_seconds": snapshot[
                 "idle_kv_nonfall_seconds"
