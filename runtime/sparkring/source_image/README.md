@@ -79,6 +79,8 @@ docker build --platform linux/arm64 --network none \
 ```
 
 The build compiles NCCL and the native snapshot library without GPU access.
+NCCL uses 16 parallel compile jobs. Its compile-only diagnostic entrypoint
+accepts `--jobs` to select a count from 1 through 64.
 Python packages install offline without dependency resolution. NCCL's
 CPU routing compatibility test runs before compilation. The resulting NCCL
 library must match the measured SHA-256 in the lock. A mismatch stops the

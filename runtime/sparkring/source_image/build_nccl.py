@@ -10,7 +10,15 @@ from install_sources import read_manifest
 from nvcc_deterministic import POLICY
 
 
-def build(root, diagnostic_output=None):
+def compile_jobs(value):
+    jobs = int(value)
+    if not 1 <= jobs <= 64:
+        raise ValueError("NCCL compile jobs must be between 1 and 64")
+    return jobs
+
+
+def build(root, diagnostic_output=None, jobs=16):
+    jobs = compile_jobs(jobs)
     if diagnostic_output is not None and diagnostic_output.exists():
         raise ValueError("Diagnostic receipt output must be absent")
     manifest = read_manifest(root)
@@ -42,7 +50,7 @@ def build(root, diagnostic_output=None):
         ["g++", "-std=c++11", "-O2", "-Wall", "-Wextra", "-Werror",
          str(source / "tests/routing_handle/compat.cc"), "-o", str(build_dir / "compat")],
         [str(build_dir / "compat")],
-        ["make", "-C", str(source), "-j8", "src.build", f"CUDA_HOME={compiler}",
+        ["make", "-C", str(source), f"-j{jobs}", "src.build", f"CUDA_HOME={compiler}",
          f"CUDA_LIB={compiler}/lib", f"BUILDDIR={build_dir}", f"NVCC={wrapper}",
          "NVCC_GENCODE=-gencode=arch=compute_121,code=sm_121"],
     ]
@@ -67,6 +75,7 @@ def build(root, diagnostic_output=None):
                    "library_sha256": sha(data), "library_bytes": len(data),
                    "expected_runtime_sha256": lock["runtime"]["nccl_sha256"],
                    "fresh_source_and_object_directories": True,
+                   "compile_jobs": jobs,
                    "cpu_routing_test_passed": True, "gpu_qualified": False,
                    "installed": False, "runtime_receipt_eligible": False,
                    "build_log_sha256": sha((root / "nccl-build-log.json").read_bytes())}
@@ -86,7 +95,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--diagnostic-output", type=Path,
                         help="Write an unqualified build receipt instead of installing NCCL")
+    parser.add_argument("--jobs", type=compile_jobs, default=16,
+                        help="Concurrent native compile jobs (1-64; default 16)")
     args = parser.parse_args()
-    result = build(Path(__file__).resolve().parent, args.diagnostic_output)
+    result = build(Path(__file__).resolve().parent, args.diagnostic_output, args.jobs)
     if result is not None:
         print(json.dumps(result, indent=2))

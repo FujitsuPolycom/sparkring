@@ -2,9 +2,16 @@
 import unittest
 
 from nvcc_deterministic import seeded_arguments
+from build_nccl import compile_jobs
 
 
 class DeterministicCompilerTests(unittest.TestCase):
+    def test_compile_parallelism_has_explicit_resource_bounds(self):
+        self.assertEqual(compile_jobs("16"), 16)
+        for value in ("0", "65", "-1", "unlimited"):
+            with self.assertRaises(ValueError):
+                compile_jobs(value)
+
     def test_probe_forwarding(self):
         self.assertEqual(seeded_arguments(["--version"], "/"), ["--version"])
         self.assertEqual(seeded_arguments(["--help"], "/"), ["--help"])
