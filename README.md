@@ -41,9 +41,10 @@ identifies the Anemll image, MiaAI-Lab recipe, and SparkRing transport separatel
 Contributor-reported results are linked from the guide; independent reproduction
 of the selected artifacts is not claimed.
 
-* The GLM5.3 Flash MTP3 profile uses hardware-forwarded mesh paths.
-* Requires:[managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md). 
-* DFlash2 profiles will be replaced by native-MTP. Also avoids: [separate CC BY-NC-ND 4.0 terms](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2#license).
+The GLM-5.3 native-MTP3 profile uses hardware-forwarded mesh paths and requires
+[managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
+DFlash2 profiles use a separate draft checkpoint with
+[CC BY-NC-ND 4.0 terms](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2#license).
 
 ### Two Sparks
 
@@ -53,8 +54,9 @@ of the selected artifacts is not claimed.
 | DeepSeek-V4-Flash-0731 | [SparkRing vLLM/B12X image](runtime/deepseek0731-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP2/DCP1 | 1M | 32 | 4,096 | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | [SparkRing vLLM/ExLlamaV3 build](runtime/qwen38/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP2/DCP1 | 1M | 32 | 8,192 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
 
-* GLM5.3 pair is **research-only**, uses 5 GiB KV per rank, and has a
-[known video-color issue](https://github.com/FujitsuPolycom/sparkring/issues/229). In testing. 
+The GLM-5.3 pair is **research-only**, uses 5 GiB KV per rank, and has a
+[known video-color issue](https://github.com/FujitsuPolycom/sparkring/issues/229).
+
 See the [profile index](docs/profiles/README.md) for evidence scopes and
 [SparkCache compositions](recipes/sparkcache/README.md) for persistent-cache
 support. Qwen with SparkCache is unsupported; six-node profiles are research-only.

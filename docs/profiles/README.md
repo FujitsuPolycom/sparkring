@@ -39,6 +39,13 @@ and transport composition for TP4/DCP4. Its
 source inputs. File equivalence with the deployed runtime is verified; that
 does not constitute a serving soak of the rebuilt image.
 
+The [managed mesh operations contract](../../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md)
+defines host preparation, startup, and recovery for the four-rank native-MTP3
+profile. Its [functional evidence](../../performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md)
+records bounded installation, fault/recovery, readiness, and cache-recall
+checks for the artifacts identified in that record. Those results do not
+qualify every cache boundary or unattended availability of another image.
+
 The [GLM-5.3 Flash NVFP4-Spark TP2 profile](../GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md)
 is research-only. Model-neutral image and matching SparkCache source pins are
 public; child-image serving qualification remains pending.
