@@ -1,0 +1,78 @@
+{
+  "schema": "sparkring-deepseek-api-overlay-replay/v1",
+  "status": "implemented",
+  "vllm_commit": "e2666d9a65f41fc376607531453cbd57c4c71016",
+  "patch_sha256": "55fb93d129628344c79b123f84c2fd7e7bc3b682f43cf52a914b31a14e0322a2",
+  "file_count": 12,
+  "files": [
+    {
+      "path": "vllm/v1/attention/backends/mla/indexer.py",
+      "preimage_sha256": "9757e1763137bf25886b1ea90d44d928b310cfba875dc64705596d2134815ecf",
+      "result_sha256": "8124251eba84d0c133d9b7e8617143ef67b047224b3f4270fa9760d8db8c9096"
+    },
+    {
+      "path": "vllm/parser/abstract_parser.py",
+      "preimage_sha256": "54c8ad805cfc8370804e88e2cc18052d8531c2100becb2be6a167dafea2dfab5",
+      "result_sha256": "8551a21c9b671f6c81a8713175f9c68efc00f46dcad34cef7412cb1bc80d817f"
+    },
+    {
+      "path": "vllm/parser/deepseek_v4.py",
+      "preimage_sha256": "97d7cd3c2affb37c29948aba321454090341294756d46fde2bf9f3623c30ee6f",
+      "result_sha256": "4d7f7e9f1f3fbabedeb9054724f4b33ef5d26702c98534ccf9e788c525d08d16"
+    },
+    {
+      "path": "vllm/parser/engine/adapters.py",
+      "preimage_sha256": "8a7bfc1609e3e4ff3fb2a355de48a5105f8452442e7315d8897854724a20e301",
+      "result_sha256": "a8c59db43b1db3905e615c0ef6334596439ac3fac76e1edf2c05bef23f98d7f7"
+    },
+    {
+      "path": "vllm/parser/engine/events.py",
+      "preimage_sha256": "493543e5832b721c67640c09a6ad664823423a98afe0bb53ba78518608047f0a",
+      "result_sha256": "fc094827b5444dd7ec986a430fc26615f0b1a5de4fcd132a4d4e210a4c1c552d"
+    },
+    {
+      "path": "vllm/parser/engine/incremental_lexer.py",
+      "preimage_sha256": "c58797ba16d60a6a4db365dc678b38b756df83eea566c6e34dac2785f55c4cce",
+      "result_sha256": "b0d6446db45259535d6180e6e52d28db6d3a5754512d6317a5fd5ae82d604aab"
+    },
+    {
+      "path": "vllm/parser/engine/parser_engine.py",
+      "preimage_sha256": "67c254570ae1ccfa36f463b004d8cd5b589b0848fa86b9cfea4ab923808a8274",
+      "result_sha256": "d698119ab1ceb073e182d305685e350df564a223b7d0a9a55b7b3d9782c3a720"
+    },
+    {
+      "path": "vllm/parser/engine/parser_engine_config.py",
+      "preimage_sha256": "f7350e0ca9124001684f1f874ee72bf6a34932d3e4b84cc84567bbccf2f3e4b9",
+      "result_sha256": "63e36743a80ae1e49dac0b9ccedaefa18a899b3f1d38c7b0360bcfad0b342b61"
+    },
+    {
+      "path": "vllm/parser/engine/streaming_parser_engine.py",
+      "preimage_sha256": "2eace718fc728b46676cd5d01eee2c893aec396a4551f05c529e83a120d07715",
+      "result_sha256": "da5e9db173979dfa9bea0c3a97c26997f9dda31b5b1c40d6d6cc8a622fc467f4"
+    },
+    {
+      "path": "vllm/parser/engine/token_id_scanner.py",
+      "preimage_sha256": "c9db6d6a29865d65ba1adc523015488aad4d7dbef46b7539041e9efbe81bd034",
+      "result_sha256": "5800a7db3ab9dd505f9f6dbdcdcda5b98a4c530e4417d2e0dfadc3b53a7c972e"
+    },
+    {
+      "path": "vllm/entrypoints/openai/responses/protocol.py",
+      "preimage_sha256": "71a1a69d15949f95bd1f78ab2b26780f0e82c325e2db2188ccd38fda4d291626",
+      "result_sha256": "a4ce22972a81235d2c85e5dda179ccdecb0a66ae1776e28f69a945f918a9b8fd"
+    },
+    {
+      "path": "vllm/entrypoints/openai/chat_completion/serving.py",
+      "preimage_sha256": "6c3e80dd7d2671049eed9fc8ede5038074b8dddac905652ff17a404965a02066",
+      "result_sha256": "4c129414f20ecbb44ea8613d774614e8a66152164a039def7c5c086587a1cc99"
+    }
+  ],
+  "checks": {
+    "preimage_hashes": true,
+    "result_hashes": true,
+    "python_compilation": true,
+    "repeat_application_noop": true
+  },
+  "limitations": [
+    "CPU source replay only; no rebuilt-image or serving validation."
+  ]
+}

@@ -19,6 +19,17 @@ import scheduler_liveness
 
 READY_PATH = Path("/tmp/sparkring-engine-ready")
 
+# Explicit neutral filters avoid checkpoint generation defaults selecting an
+# unintended sampler path. A seed also exercises the non-FlashInfer fallback.
+SAMPLING_CASES = (
+    ("unfiltered", 1.0, -1, 1.0, None),
+    ("temperature", 0.7, -1, 1.0, None),
+    ("top-k", 1.0, 40, 1.0, None),
+    ("top-p", 1.0, -1, 0.9, None),
+    ("top-k-top-p", 1.0, 40, 0.9, None),
+    ("seeded-top-k-top-p", 0.7, 40, 0.9, 0),
+)
+
 
 def warmup_sampling(
     endpoint: str,
@@ -27,37 +38,68 @@ def warmup_sampling(
     timeout_seconds: float,
     credential: str | None,
 ) -> dict[str, object]:
-    """Exercise stochastic sampling and reasoning before declaring readiness."""
-    body = {
-        "model": model,
-        "messages": [{
-            "role": "user",
-            "content": f"Sampling warmup {time.monotonic_ns()}. Reply briefly.",
-        }],
-        "temperature": 1.0,
-        "max_tokens": max_tokens,
-        "chat_template_kwargs": {"enable_thinking": True},
-    }
+    """Complete the explicit sampler request recipe before declaring readiness."""
+    deadline = warmup_dflash.make_deadline(timeout_seconds)
     headers = {"Content-Type": "application/json"}
     token = os.environ.get("SPARKRING_STARTUP_TOKEN")
     if token:
         headers["X-Sparkring-Startup-Token"] = token
     if credential:
         headers["Authorization"] = f"Bearer {credential}"
-    request = urllib.request.Request(
-        endpoint.rstrip("/") + "/v1/chat/completions",
-        data=json.dumps(body).encode(),
-        headers=headers,
-    )
     started = time.monotonic()
-    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-        result = json.load(response)
-    choices = result.get("choices")
-    if not isinstance(choices, list) or not choices:
-        raise RuntimeError("Sampling warmup response has no completion")
+    cases = []
+    for name, temperature, top_k, top_p, seed in SAMPLING_CASES:
+        body = {
+            "model": model,
+            "messages": [{
+                "role": "user",
+                "content": f"Sampling warmup {time.monotonic_ns()} {name}. Reply briefly.",
+            }],
+            "temperature": temperature,
+            "top_k": top_k,
+            "top_p": top_p,
+            "min_p": 0.0,
+            "max_tokens": max_tokens,
+            "chat_template_kwargs": {"enable_thinking": True},
+        }
+        if seed is not None:
+            body["seed"] = seed
+        request = urllib.request.Request(
+            endpoint.rstrip("/") + "/v1/chat/completions",
+            data=json.dumps(body).encode(), headers=headers,
+        )
+        case_started = time.monotonic()
+        with urllib.request.urlopen(
+            request, timeout=warmup_dflash.remaining_seconds(deadline)
+        ) as response:
+            result = json.load(response)
+        choices = result.get("choices") if isinstance(result, dict) else None
+        if not isinstance(choices, list) or not choices:
+            raise RuntimeError(f"Sampling warmup response has no completion: {name}")
+        if (
+            len(choices) != 1
+            or not isinstance(choices[0], dict)
+            or not isinstance(choices[0].get("message"), dict)
+            or choices[0].get("finish_reason") not in ("stop", "length")
+        ):
+            raise RuntimeError(f"Sampling warmup response is not one completed choice: {name}")
+        usage = result.get("usage")
+        completion_tokens = usage.get("completion_tokens") if isinstance(usage, dict) else None
+        if type(completion_tokens) is not int or completion_tokens <= 0:
+            raise RuntimeError(f"Sampling warmup generated no tokens: {name}")
+        warmup_dflash.remaining_seconds(deadline)
+        cases.append({
+            "name": name, "temperature": temperature, "top_k": top_k,
+            "top_p": top_p, "seed": seed, "completion_tokens": completion_tokens,
+            "finish_reason": choices[0]["finish_reason"],
+            "elapsed_seconds": round(time.monotonic() - case_started, 3),
+        })
     return {
-        "temperature": 1.0,
+        "schema": "sparkring-sampler-warmup/v1",
+        "coverage": "request-recipe-complete",
+        "jit_coverage_verified": False,
         "enable_thinking": True,
+        "cases": cases,
         "elapsed_seconds": round(time.monotonic() - started, 3),
     }
 
@@ -89,7 +131,10 @@ def complete_readiness(
 
     ready_path.unlink(missing_ok=True)
     if rank == 0:
-        warmup_dflash.wait_for_api(endpoint, timeout_seconds, credential)
+        deadline = warmup_dflash.make_deadline(timeout_seconds)
+        warmup_dflash.wait_for_api(
+            endpoint, warmup_dflash.remaining_seconds(deadline), credential
+        )
         result = ()
         if warmup_enabled:
             result = warmup_dflash.run_warmup(
@@ -97,15 +142,17 @@ def complete_readiness(
                 model,
                 concurrencies,
                 max_tokens,
-                timeout_seconds,
+                warmup_dflash.remaining_seconds(deadline),
                 shape_words,
                 credential,
             )
             sampling = warmup_sampling(
-                endpoint, model, max_tokens, timeout_seconds, credential
+                endpoint, model, max_tokens,
+                warmup_dflash.remaining_seconds(deadline), credential
             )
             print(json.dumps({"sampling_warmup": sampling}, separators=(",", ":")))
         print(json.dumps({"dflash_warmup": result}, separators=(",", ":")))
+        warmup_dflash.remaining_seconds(deadline)
     ready_path.touch()
 
 
