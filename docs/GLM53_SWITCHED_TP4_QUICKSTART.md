@@ -11,9 +11,13 @@ The common recipe and profile must be published before a model test. From the
 repository root, prepare a new source cache and context using Python 3.12+:
 
 ```bash
+curl --fail --location \
+  https://github.com/FujitsuPolycom/sparkring/releases/download/native-runtime-sm121-aa8fa11831af/native-runtime-files-20260908.tar \
+  --output /tmp/native-runtime-files-20260908.tar
 python3 runtime/sparkring/source_image/prepare_image.py \
   --output /tmp/sparkring-common-context \
-  --source-cache /tmp/sparkring-common-sources
+  --source-cache /tmp/sparkring-common-sources \
+  --native-files /tmp/native-runtime-files-20260908.tar
 ```
 
 The [common recipe](../runtime/sparkring/source_image/README.md) supplies the

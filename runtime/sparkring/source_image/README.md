@@ -61,10 +61,19 @@ Preparation downloads the exact public source bases, verifies patch hashes,
 applies patches to an index, and checks complete resulting Git trees. It
 does not invoke Docker or contact inference hosts.
 
+Download the pinned native input bundle from the
+[SM121 native-files prerelease](https://github.com/FujitsuPolycom/sparkring/releases/tag/native-runtime-sm121-aa8fa11831af).
+Preparation verifies its complete archive and library hashes before creating
+the image context.
+
 ```bash
+curl --fail --location \
+  https://github.com/FujitsuPolycom/sparkring/releases/download/native-runtime-sm121-aa8fa11831af/native-runtime-files-20260908.tar \
+  --output /tmp/native-runtime-files-20260908.tar
 python runtime/sparkring/source_image/prepare_image.py \
   --output /tmp/sparkring-glm-image-context \
-  --source-cache /tmp/sparkring-glm-image-sources
+  --source-cache /tmp/sparkring-glm-image-sources \
+  --native-files /tmp/native-runtime-files-20260908.tar
 ```
 
 Both paths must initially be absent. To prepare another context from the same
@@ -80,7 +89,10 @@ docker build --platform linux/arm64 --network none \
   /tmp/sparkring-glm-image-context
 ```
 
-The build compiles NCCL and the native snapshot library without GPU access.
+The command above reuses the exact pinned native libraries. Omitting
+`--native-files` selects the optional native source-rebuild path, which
+requires separate binary and GPU qualification. That path compiles NCCL and
+the native snapshot library without GPU access.
 NCCL uses 16 parallel compile jobs. Its compile-only diagnostic entrypoint
 accepts `--jobs` to select a count from 1 through 64.
 The compiler wrapper assigns a distinct source-derived random seed and keeps

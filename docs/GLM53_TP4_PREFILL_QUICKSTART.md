@@ -49,9 +49,13 @@ for the source, compiler outputs, image archive, loaded image and model.
 From the SparkRing checkout, choose initially absent writable directories:
 
 ```bash
+curl --fail --location \
+  https://github.com/FujitsuPolycom/sparkring/releases/download/native-runtime-sm121-aa8fa11831af/native-runtime-files-20260908.tar \
+  --output /tmp/native-runtime-files-20260908.tar
 python runtime/sparkring/source_image/prepare_image.py \
   --output "$PWD/.private/glm-tp4-context" \
-  --source-cache "$PWD/.private/glm-tp4-sources"
+  --source-cache "$PWD/.private/glm-tp4-sources" \
+  --native-files /tmp/native-runtime-files-20260908.tar
 
 docker build --platform linux/arm64 --network none \
   -t sparkring-glm53-tp4-source \
@@ -60,9 +64,9 @@ docker build --platform linux/arm64 --network none \
 
 Preparation fetches exact public source commits, applies the packaged patches,
 and verifies complete source trees. The build retains the pinned parent's
-framework/native dependencies and compiles NCCL from the locked source.
-Compiler output must match the recorded library identity; a mismatch requires
-investigation, not replacing the expected hash to make the build pass.
+framework dependencies and installs the exact hash-verified native libraries.
+The optional compiler-rebuild path is described in the common recipe and
+requires separate native-output qualification.
 
 ## Verify the image and select a profile
 

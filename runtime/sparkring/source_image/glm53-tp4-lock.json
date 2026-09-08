@@ -536,6 +536,7 @@
     "nccl_tree": "01e0e8a3a821ebc92a4d1333981d18ed4eeb96e4",
     "nccl_archive_sha256": "eec808270fb4435b78a16db25bcdb858e4f804ca0042fe416f77a079988cc27d",
     "sparkcache_native_tree": "1b0b21f7bc42ad042950c135f677e94b756172b3",
-    "sparkcache_native_file_map_sha256": "37f5009e248b54e626179310f132d2cc3c063c353fc3b6b3f7673f3b3ef7a5ce"
+    "sparkcache_native_file_map_sha256": "37f5009e248b54e626179310f132d2cc3c063c353fc3b6b3f7673f3b3ef7a5ce",
+    "url": "https://github.com/FujitsuPolycom/sparkring/releases/download/native-runtime-sm121-aa8fa11831af/native-runtime-files-20260908.tar"
   }
 }
