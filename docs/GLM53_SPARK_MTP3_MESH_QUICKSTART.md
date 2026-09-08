@@ -506,6 +506,7 @@ Edit those private copies. At minimum, review every field below:
 | `container_prefix` | An unused prefix reserved for this deployment |
 | `state_root` | Retain the schema's planned state path; the managed service separately uses `/run/sparkring-mesh` |
 | `api_keys_file` | Optional. Absolute host path to a readable mode-0600 file of newline-separated API keys, present at the same path on every rank. The renderer sets `API_KEYS_FILE`; the launcher passes one `--api-key` option followed by all non-empty keys. Keys cannot contain whitespace. Omitting this field leaves the API unauthenticated. |
+| `liveness_output_seconds` | Optional integer seconds from 1 through 2,147,483,647. Overrides the output-stall timeout on every rank; omission retains 300 seconds. Select above the longest legitimate measured output gap with margin. Requires an image containing the output-stall liveness rule; regenerate launch inputs and recreate containers after changing it |
 
 API keys are separate from the managed mesh health key. Container creation
 copies API keys into the model arguments and the first key into the warmup
