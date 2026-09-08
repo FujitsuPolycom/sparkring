@@ -49,6 +49,7 @@ for name, target in (
     ("serve_with_warmup.py", "serve-with-warmup.py"),
     ("warmup_dflash.py", "warmup_dflash.py"),
     ("startup_admission.py", "startup_admission.py"),
+    ("scheduler_liveness.py", "scheduler_liveness.py"),
 ):
     shutil.copyfile(SOURCE / "startup" / name, Path("/opt/sparkring/bin") / target)
 apply(SITE, Path("/opt/sparkring/bin/warmup_dflash.py"))
@@ -91,6 +92,7 @@ for path in (
     Path("/opt/sparkring/bin/warmup_dflash.py"),
     Path("/opt/sparkring/bin/serve-with-warmup.py"),
     Path("/opt/sparkring/bin/startup_admission.py"),
+    Path("/opt/sparkring/bin/scheduler_liveness.py"),
     Path(
         "/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so"
     ),
