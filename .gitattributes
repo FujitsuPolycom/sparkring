@@ -6,6 +6,7 @@ runtime/deepseek-vision-exp/upstream/*.gz -text
 runtime/glm53-spark-mtp3-mesh/compute/*.tar.gz -text
 runtime/glm53-spark-mtp3-mesh/compute/*.patch whitespace=-trailing-space
 runtime/exl3/patches/*.patch whitespace=-trailing-space
+runtime/deepseek0731-gb10/patches/*.patch whitespace=-trailing-space
 
 # Runtime receipts hash these source files byte-for-byte before copying them,
 # and the plugin vendors byte-identical copies whose SHA-256 it records in
