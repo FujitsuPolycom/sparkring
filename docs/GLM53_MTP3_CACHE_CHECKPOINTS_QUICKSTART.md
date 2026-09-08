@@ -1,5 +1,10 @@
 # GLM-5.3 native MTP3 with verified caching and recurrent checkpoints
 
+For a source-built TP4/DCP1 prefill profile with coalescing and mHC sharding,
+use the [TP4 prefill image guide](GLM53_TP4_PREFILL_QUICKSTART.md). That profile
+disables the SparkCache connector. This guide describes the separately pinned
+published image with persistent caching enabled.
+
 Status: **research-only**. The exact published image passed
 [eight bounded serving checks](../performance/records/glm53-flash/mtp3-cache-checkpoints-serving-smoke-20260906.md):
 text, growing conversation, streaming, reasoning rejection, and image responses.

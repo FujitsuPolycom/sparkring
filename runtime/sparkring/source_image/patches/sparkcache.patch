@@ -1,0 +1,2374 @@
+diff --git a/deploy/glm52_35bpw/profile.json b/deploy/glm52_35bpw/profile.json
+index 0bbbfb9..2a58e8f 100644
+--- a/deploy/glm52_35bpw/profile.json
++++ b/deploy/glm52_35bpw/profile.json
+@@ -5,7 +5,7 @@
+   "published_runtime_base": "ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028",
+   "base_image_requirement": "exact GLM-5.2 3.5-bpw R7 image recorded by the source container inspection",
+   "sparkcache": {
+-    "source_sha256": "72f33311d1ee5811c2b3e4eefda98c9d17b5afe8d9d015a2e3c26c893f25aabc"
++    "source_sha256": "43b8d878d224dc8823710560212e1d27aeeb735f90b1b8c8a04ab74b1c37a1e7"
+   },
+   "model": {
+     "repository": "brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78",
+diff --git a/docs/jj-connector-read-leases.md b/docs/jj-connector-read-leases.md
+new file mode 100644
+index 0000000..f57c73b
+--- /dev/null
++++ b/docs/jj-connector-read-leases.md
+@@ -0,0 +1,152 @@
++# Asynchronous capture through the generic KV connector API
++
++Status: implemented with CPU conformance coverage. CUDA ordering, eviction under
++GPU load, and full-model restore correctness require GPU qualification.
++
++The connector can persist immutable attention pages and retained recurrent
++checkpoints using JJ's scheduler-local block-state snapshot. The adapter uses
++`bind_gpu_block_pool`, `KVConnectorWorkerMetadata.aggregate`, and
++`has_pending_push_work`; it does not require a SparkCache-specific scheduler hook.
++The versioned compatibility contract is `jj-block-state-read-leases/v1`.
++
++## Capture ownership
++
++1. The scheduler supplies exact block IDs and recurrent boundary offers for one
++   scheduled step. A recurrent offer names its group, physical page, and token
++   boundary. Table position alone cannot establish a checkpoint source.
++2. SparkCache selects complete immutable attention pages and exactly the offered
++   recurrent page at the persisted boundary. It requires every source to be
++   non-null and hashed, then takes one block-pool reference per unique physical
++   page before dispatching connector metadata.
++3. The worker's `wait_for_save` records a CUDA producer event after target and MTP
++   state writes. It queues a capture job without invoking the native ring. The
++   background submitter waits for that event on its CUDA stream and calls the
++   native ring, including any native submission-error recovery.
++4. When the native read-completion event is ready, the worker reports its physical
++   TP rank for that job. The scheduler releases references only after all distinct
++   physical ranks acknowledge the read. Request termination and file commit do
++   not control this read lifetime.
++
++The source pages remain protected across request cleanup. Preemption marks queued
++or submitted capture work abandoned; it does not drain native work on the model
++thread. A job cancelled before submission is acknowledged only after the progress
++thread proves that no read started. A submitted job is acknowledged after its read
++retires. Native errors with uncertain retirement disable optional capture and
++retain a bounded set of source references; they do not fabricate completion or
++keep an otherwise idle engine spinning.
++
++Capture job IDs contain a lowercase UUID epoch and a positive 64-bit sequence.
++Each worker retains one epoch and its highest accepted sequence. Active,
++uncertain, and shutdown-draining ownership is checked before that watermark, so
++a repeated active job cannot release its sources. Retired duplicates, late or
++out-of-order offers, and a different epoch skip optional capture without launching
++another read. The epoch cannot reset within a runtime instance; constructing a
++runtime establishes a separate lifetime. This bounded replay guard deliberately
++permits cache misses for reordered offers.
++
++The native ring's `drain_context` scans native slots by context sequence, including
++quarantined slots for which no valid Python ticket was returned. Submission,
++recovery, and polling run outside the callback bookkeeping lock in job mode.
++Explicit shutdown may wait for background work to retire.
++
++## Restore and checkpoint boundaries
++
++Stored recurrent bytes come only from an exact offer in the producing step.
++Offers are not carried into a later step. If a required group, source hash, or
++complete attention page is missing, the connector declines that optional store.
++Zero-forward steps emit no stores because JJ's `no_forward` callback skips
++`wait_for_save`.
++
++The existing authenticated manifest and asynchronous restore paths remain in use.
++Restore records a caller-stream event before background placement, waits for the
++restore stream before reporting `finished_recving`, and retains all-rank
++completion and failed-load recomputation. The generic adapter does not synthesize
++the separate shared-prefix lease-publication acknowledgement used by the
++request-lifetime adapter.
++
++The four-checkpoint GLM configuration can offer several retained destinations
++within one 8192-token forward. SparkCache selects the exact persisted boundary;
++it does not require storing every offered destination. CPU tests with TP4/DCP4,
++MTP3, physical/lookup blocks of 512 tokens, and scheduler blocks of 2048 tokens
++select persisted spans of 6144, 8192, and 14336 tokens for prompts of 8192, 10240,
++and 16384 tokens respectively. Recomputing the uncached tail is expected.
++
++## Source compatibility
++
++Two source compositions have been reviewed and exercised with the actual CPU
++scheduler, block pool, metadata types, and worker connector callback:
++
++| vLLM composition | Source contract |
++| --- | --- |
++| JJ with four-checkpoint coalescing and token-sharded mHC, `abb715f132bdccb592a34b2596a3d3a8d757ffbc` | `sparkcache/runtime_patches/vllm-connector-jobs-jj-prefill-abb715f.json` |
++| R27 with four-checkpoint coalescing and token-sharded mHC, `5dede5bb7fa04949a02823411f2fdf135e29b3dc` | `sparkcache/runtime_patches/vllm-connector-jobs-r27-prefill-5dede5b.json` |
++
++Each contract identifies ownership semantics, required API symbols, and exact
++SHA-256 values for ten source files. Hashes describe canonical LF source bytes
++used in Linux images. The legacy request-finish source guard is unchanged.
++Connector-job mode rejects a legacy contract even when its source hashes match.
++
++Matching class names in another JJ or R27-derived release are insufficient.
++Qualifying another composition requires source review of the listed semantics,
++CPU conformance, an explicit source fingerprint, and the GPU gates below.
++
++For a reusable upstream contract, the engine could advertise a versioned
++capability set covering immutable boundary offers, pool ownership, post-MTP
++producer readiness, and distinct-rank read retirement. A conformance suite would
++exercise request cleanup and source reuse before/after rank acknowledgements,
++then inject delayed CUDA reads and preemption. SparkCache could select this
++adapter only for a supported capability version that passes that suite. This
++engine-advertised contract is research-only; explicit reviewed source contracts
++remain required until the engine supplies it. The maintained review entry points
++are `REQUIRED_SEMANTICS`, `REQUIRED_SYMBOLS`, and
++`verify_connector_job_contract` in
++`sparkcache/runtime_patches/generic_connector_contract.py`.
++
++## Configuration
++
++Use a single `SparkContextCacheConnector` with its module path
++`sparkcache.spark_context_cache_connector`, `kv_role="kv_both"`, and
++`kv_load_failure_policy="recompute"`. The consumer role preserves JJ's deferred
++free behavior during asynchronous scheduling. Configure these extra fields:
++
++| Field | Value or requirement |
++| --- | --- |
++| `spark_cache_model_profile` | `glm53-flash-hybrid` |
++| `spark_cache_publication_schema` | `tail-cow-v2` |
++| `spark_cache_async_page_capture` | `1` |
++| `spark_cache_async_page_capture_lease_mode` | `connector-jobs` |
++| `spark_cache_async_page_capture_lease_contract` | Absolute installed path to one reviewed contract above |
++| `spark_cache_async_page_capture_vllm_root` | Absolute installed vLLM source root |
++| `spark_cache_async_page_capture_library` / `_sha256` | Absolute native snapshot-library path and its SHA-256 |
++| `spark_cache_async_page_capture_slot_bytes` | Bounded byte capacity sufficient for an accepted page payload |
++| `spark_cache_async_page_capture_slot_count` | `2` or `3` |
++| `spark_cache_cuda_placement_library` / `_sha256` | Absolute native placement-library path and its SHA-256 when CUDA restore is enabled |
++| `spark_cache_root` | Rank-local persistent storage root for the exact serving composition |
++
++Keep row-oriented streaming snapshots and periodic full captures disabled for
++this qualification. Capture backpressure is bounded by the scheduler's delayed
++store limit, one queued or committing store per worker, and native ring capacity.
++A busy or undersized ring skips optional work without a synchronous fallback.
++
++Cache identities include checkpoint hashes, TP/DCP layout, group geometry, and
++checkpoint capacity. These changes do not alter that wire identity. Use a separate
++cache root for a different mHC reduction composition: arithmetic associations are
++not encoded in the identity and cross-composition state equivalence is unqualified.
++
++## Validation scope
++
++GPU-free regressions cover exact boundary selection, refusal to reuse stale
++offers, real block-pool references through request cleanup and allocator reuse,
++four physical-rank acknowledgements, persistent CPU-byte roundtrips, and producer
++event recording before queue admission. Failure tests use the actual Python
++`NativeManagerPageRing` wrapper with a blocked backend to verify callback progress
++during backend submission failure and invalid-ticket recovery. They do not run
++the CUDA implementation.
++
++Before serving qualification, run the native CUDA ring tests and a model check
++with cache misses, persistent hits, continuation, concurrent decode, preemption,
++eviction, and forced capture backpressure. Confirm every rank completes its read
++before source reuse and that failed restores recompute. Compare against a cold
++run with the same model, CP/mHC flags, topology, and retained-state geometry.
++CPU conformance establishes metadata and reference ownership; it does not
++establish model-quality equivalence or a performance gain.
+diff --git a/sparkcache/capture_read_leases.py b/sparkcache/capture_read_leases.py
+new file mode 100644
+index 0000000..a551c9e
+--- /dev/null
++++ b/sparkcache/capture_read_leases.py
+@@ -0,0 +1,83 @@
++"""GPU-free ownership accounting for scheduler-issued capture reads."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from typing import Any, Iterable
++import uuid
++
++
++@dataclass
++class _ReadLease:
++    block_ids: tuple[int, ...]
++    completed_ranks: set[int] = field(default_factory=set)
++    quarantined: bool = False
++
++
++class CaptureReadLeases:
++    """Pin exact source blocks until every physical worker completes its read."""
++
++    def __init__(self, pool: Any, *, ranks: int, max_jobs: int):
++        if ranks <= 0 or max_jobs <= 0:
++            raise ValueError("capture leases require positive rank and job bounds")
++        self.pool = pool
++        self.ranks = ranks
++        self.max_jobs = max_jobs
++        self._epoch = uuid.uuid4().hex
++        self._sequence = 0
++        self._leases: dict[str, _ReadLease] = {}
++        self.disabled = False
++
++    def __bool__(self) -> bool:
++        return any(not lease.quarantined for lease in self._leases.values())
++
++    def reserve(self, block_ids: Iterable[int]) -> str | None:
++        """Take one reference per physical block, or decline optional work."""
++        if self.disabled or len(self._leases) >= self.max_jobs:
++            return None
++        supplied_ids = tuple(block_ids)
++        if not supplied_ids or any(
++            type(bid) is not int or not 0 < bid < len(self.pool.blocks)
++            for bid in supplied_ids
++        ):
++            raise ValueError("capture source contains an invalid or null block")
++        ids = tuple(dict.fromkeys(supplied_ids))
++        blocks = [self.pool.blocks[bid] for bid in ids]
++        if any(block.is_null or block.block_hash is None for block in blocks):
++            raise ValueError("capture sources must be hash-proven immutable blocks")
++        self.pool.touch(blocks)
++        self._sequence += 1
++        job = f"{self._epoch}:{self._sequence}"
++        self._leases[job] = _ReadLease(ids)
++        return job
++
++    def complete(self, job: str, ranks: Iterable[int]) -> bool:
++        """Release after distinct rank acknowledgements; repeated ACKs are inert."""
++        lease = self._leases.get(job)
++        if lease is None:
++            return False
++        supplied_ranks = tuple(ranks)
++        if any(
++            type(rank) is not int or not 0 <= rank < self.ranks
++            for rank in supplied_ranks
++        ):
++            raise ValueError("capture completion names an invalid physical rank")
++        received = set(supplied_ranks)
++        lease.completed_ranks.update(received)
++        if len(lease.completed_ranks) != self.ranks:
++            return False
++        self.pool.free_blocks(
++            self.pool.blocks[bid] for bid in reversed(lease.block_ids)
++        )
++        del self._leases[job]
++        return True
++
++    def quarantine(self, job: str, ranks: Iterable[int]) -> None:
++        """Keep uncertain sources pinned without spinning the idle engine."""
++        lease = self._leases.get(job)
++        if lease is None:
++            return
++        if any(type(rank) is not int or not 0 <= rank < self.ranks for rank in ranks):
++            raise ValueError("capture failure names an invalid physical rank")
++        lease.quarantined = True
++        self.disabled = True
+diff --git a/sparkcache/native/src/spark_cache_snapshot.cu b/sparkcache/native/src/spark_cache_snapshot.cu
+index ab99e02..0f6151f 100644
+--- a/sparkcache/native/src/spark_cache_snapshot.cu
++++ b/sparkcache/native/src/spark_cache_snapshot.cu
+@@ -535,6 +535,19 @@ extern "C" SparkCacheSnapshotStatus spark_cache_snapshot_create(
+     delete snapshot;
+     return status;
+   }
++  // Load capture kernels during ring initialization so the first optional
++  // capture does not trigger CUDA lazy loading beside an active producer.
++  cudaFuncAttributes attributes{};
++  result = cudaFuncGetAttributes(&attributes, gather_snapshot_kernel);
++  if (result == cudaSuccess) {
++    result = cudaFuncGetAttributes(&attributes, gather_manager_pages_kernel);
++  }
++  if (result != cudaSuccess) {
++    const auto status =
++        cuda_failure(snapshot, "cudaFuncGetAttributes(capture preload)", result);
++    delete snapshot;
++    return status;
++  }
+   result = cudaMalloc(
+       reinterpret_cast<void**>(&snapshot->device_sources),
+       static_cast<std::size_t>(config->max_sources) *
+diff --git a/sparkcache/runtime_patches/generic_connector_contract.py b/sparkcache/runtime_patches/generic_connector_contract.py
+new file mode 100644
+index 0000000..3ac88f9
+--- /dev/null
++++ b/sparkcache/runtime_patches/generic_connector_contract.py
+@@ -0,0 +1,98 @@
++"""Source contract for connector-owned reads of immutable KV boundary pages."""
++
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++from .verify_lease_contract import ContractError, verify_contract
++
++
++CONNECTOR_API = "jj-block-state-read-leases/v1"
++REQUIRED_SEMANTICS = (
++    "scheduler-binds-owning-block-pool",
++    "block-state-and-boundary-offers-describe-one-scheduled-step",
++    "offered-recurrent-pages-are-retained-hashed-or-copy-on-write-destinations",
++    "full-attention-prefix-pages-remain-immutable-while-referenced",
++    "connector-metadata-is-built-before-scheduler-dispatch",
++    "worker-post-forward-follows-target-and-mtp-state-writes",
++    "worker-metadata-aggregates-distinct-physical-ranks",
++    "pending-connector-work-keeps-idle-engine-stepping",
++    "no-forward-steps-do-not-call-wait-for-save",
++)
++REQUIRED_SYMBOLS = {
++    "vllm/distributed/kv_transfer/kv_connector/v1/base.py": (
++        "KVConnectorBase_V1.bind_gpu_block_pool",
++        "KVConnectorBase_V1.build_connector_worker_meta",
++        "KVConnectorBase_V1.has_pending_push_work",
++        "KVConnectorWorkerMetadata.aggregate",
++    ),
++    "vllm/distributed/kv_transfer/kv_connector/utils.py": (
++        "KVOutputAggregator.from_connector",
++        "KVOutputAggregator.aggregate",
++    ),
++    "vllm/v1/core/sched/output.py": (
++        "KVConnectorBlockState.block_ids",
++        "KVConnectorBlockState.boundary_state_offloads",
++        "SchedulerOutput.kv_connector_block_state",
++    ),
++    "vllm/v1/core/sched/scheduler.py": (
++        "Scheduler.__init__",
++        "Scheduler.schedule",
++        "Scheduler.has_requests",
++        "Scheduler.update_from_output",
++        "Scheduler._free_request_blocks",
++    ),
++    "vllm/v1/core/kv_cache_manager.py": (
++        "KVCacheManager.take_boundary_state_offloads",
++        "KVCacheManager.free",
++    ),
++    "vllm/v1/core/single_type_kv_cache_manager.py": (
++        "SingleTypeKVCacheManager.take_pending_boundary_state_offloads",
++        "MambaManager.cache_blocks",
++        "MambaManager.allocate_new_blocks",
++        "MambaManager.pop_blocks_for_free",
++    ),
++    "vllm/v1/core/block_pool.py": ("BlockPool.touch", "BlockPool.free_blocks"),
++    "vllm/v1/worker/gpu/model_runner.py": (
++        "GPUModelRunner.update_requests",
++        "GPUModelRunner.sample_tokens",
++    ),
++    "vllm/v1/worker/gpu/kv_connector.py": (
++        "ActiveKVConnector.pre_forward",
++        "ActiveKVConnector.post_forward",
++        "ActiveKVConnector.no_forward",
++    ),
++    # Alignment determines which recurrent page remains a read-only source
++    # when a following step chooses its running-state destination.
++    "vllm/v1/worker/mamba_utils.py": (),
++}
++
++
++def verify_connector_job_contract(root: Path, contract_path: Path) -> list[Path]:
++    """Require the reviewed semantic contract and exact source fingerprints.
++
++    Capability names identify review obligations; they do not establish CUDA
++    correctness. A changed source revision requires conformance review and
++    updated fingerprints, even when its connector class names are unchanged.
++    """
++    try:
++        contract = json.loads(contract_path.read_text(encoding="utf-8"))
++    except (OSError, ValueError) as error:
++        raise ContractError(f"cannot read connector-job contract: {error}") from error
++    if contract.get("connector_api") != CONNECTOR_API:
++        raise ContractError(
++            "source contract does not qualify connector-job read leases"
++        )
++    if not set(REQUIRED_SEMANTICS).issubset(contract.get("required_semantics", ())):
++        raise ContractError("connector-job contract omits required ownership semantics")
++    records = {record.get("path"): record for record in contract.get("files", ())}
++    for path, required in REQUIRED_SYMBOLS.items():
++        record = records.get(path)
++        if record is None or not set(required).issubset(
++            record.get("required_symbols", ())
++        ):
++            raise ContractError(
++                f"connector-job contract omits required capabilities: {path}"
++            )
++    return verify_contract(root, contract_path)
+diff --git a/sparkcache/runtime_patches/test_generic_connector_contract.py b/sparkcache/runtime_patches/test_generic_connector_contract.py
+new file mode 100644
+index 0000000..3ddb4bc
+--- /dev/null
++++ b/sparkcache/runtime_patches/test_generic_connector_contract.py
+@@ -0,0 +1,91 @@
++"""D21: legacy or incomplete contracts cannot enable connector-owned reads."""
++
++import hashlib
++import json
++from collections import defaultdict
++
++import pytest
++
++from sparkcache.runtime_patches.generic_connector_contract import (
++    CONNECTOR_API,
++    REQUIRED_SEMANTICS,
++    REQUIRED_SYMBOLS,
++    verify_connector_job_contract,
++)
++from sparkcache.runtime_patches.verify_lease_contract import ContractError
++
++
++@pytest.fixture
++def contract_tree(tmp_path):
++    files = []
++    for path, symbols in REQUIRED_SYMBOLS.items():
++        classes = defaultdict(list)
++        for symbol in symbols:
++            name, member = symbol.split(".")
++            classes[name].append(member)
++        source = (
++            "\n".join(
++                f"class {name}:\n"
++                + "\n".join(f"    {member} = None" for member in members)
++                for name, members in classes.items()
++            )
++            + "\n"
++        )
++        target = tmp_path / path
++        target.parent.mkdir(parents=True, exist_ok=True)
++        target.write_bytes(source.encode())
++        files.append(
++            {
++                "path": path,
++                "sha256": hashlib.sha256(source.encode()).hexdigest(),
++                "required_symbols": list(symbols),
++            }
++        )
++    record = {
++        "schema": "sparkring-vllm-kv-block-lease-contract/v1",
++        "connector_api": CONNECTOR_API,
++        "required_semantics": list(REQUIRED_SEMANTICS),
++        "files": files,
++    }
++    path = tmp_path / "contract.json"
++    path.write_text(json.dumps(record))
++    return tmp_path, path, record
++
++
++def test_d21_matching_legacy_hashes_do_not_qualify_job_leases(contract_tree):
++    root, path, record = contract_tree
++    record.pop("connector_api")
++    path.write_text(json.dumps(record))
++    with pytest.raises(ContractError, match="does not qualify"):
++        verify_connector_job_contract(root, path)
++
++
++def test_d21_post_mtp_semantics_are_required_even_with_matching_hashes(contract_tree):
++    root, path, record = contract_tree
++    record["required_semantics"].remove(
++        "worker-post-forward-follows-target-and-mtp-state-writes"
++    )
++    path.write_text(json.dumps(record))
++    with pytest.raises(ContractError, match="ownership semantics"):
++        verify_connector_job_contract(root, path)
++
++
++def test_d21_missing_pool_lifetime_source_cannot_be_omitted(contract_tree):
++    root, path, record = contract_tree
++    record["files"] = [
++        r for r in record["files"] if r["path"] != "vllm/v1/core/block_pool.py"
++    ]
++    path.write_text(json.dumps(record))
++    with pytest.raises(ContractError, match="required capabilities"):
++        verify_connector_job_contract(root, path)
++
++
++def test_d21_source_change_cannot_reuse_reviewed_capability_labels(contract_tree):
++    root, path, _record = contract_tree
++    assert len(verify_connector_job_contract(root, path)) == 10
++    source = root / "vllm/v1/worker/gpu/model_runner.py"
++    source.write_text(
++        source.read_text() + "# Different ordering requires source review.\n"
++    )
++    with pytest.raises(ContractError, match="mismatch"):
++        verify_connector_job_contract(root, path)
+diff --git a/sparkcache/runtime_patches/vllm-connector-jobs-jj-prefill-abb715f.json b/sparkcache/runtime_patches/vllm-connector-jobs-jj-prefill-abb715f.json
+new file mode 100644
+index 0000000..2c293b4
+--- /dev/null
++++ b/sparkcache/runtime_patches/vllm-connector-jobs-jj-prefill-abb715f.json
+@@ -0,0 +1,105 @@
++{
++  "schema": "sparkring-vllm-kv-block-lease-contract/v1",
++  "connector_api": "jj-block-state-read-leases/v1",
++  "vllm_commit": "abb715f132bdccb592a34b2596a3d3a8d757ffbc",
++  "required_semantics": [
++    "scheduler-binds-owning-block-pool",
++    "block-state-and-boundary-offers-describe-one-scheduled-step",
++    "offered-recurrent-pages-are-retained-hashed-or-copy-on-write-destinations",
++    "full-attention-prefix-pages-remain-immutable-while-referenced",
++    "connector-metadata-is-built-before-scheduler-dispatch",
++    "worker-post-forward-follows-target-and-mtp-state-writes",
++    "worker-metadata-aggregates-distinct-physical-ranks",
++    "pending-connector-work-keeps-idle-engine-stepping",
++    "no-forward-steps-do-not-call-wait-for-save"
++  ],
++  "qualification": "Source review and CPU conformance only; CUDA/model qualification remains required.",
++  "files": [
++    {
++      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
++      "sha256": "bc1965431087676876f58360cd9cc07ab6c06febe6d747695f10b051fd85c412",
++      "required_symbols": [
++        "KVConnectorBase_V1.bind_gpu_block_pool",
++        "KVConnectorBase_V1.build_connector_worker_meta",
++        "KVConnectorBase_V1.has_pending_push_work",
++        "KVConnectorWorkerMetadata.aggregate"
++      ]
++    },
++    {
++      "path": "vllm/distributed/kv_transfer/kv_connector/utils.py",
++      "sha256": "115512dca36b0711223f55f5ff304abffccc6d078923ba4c6bbb3cdb7fdd39a2",
++      "required_symbols": [
++        "KVOutputAggregator.from_connector",
++        "KVOutputAggregator.aggregate"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/sched/output.py",
++      "sha256": "efa8cdd1e09fb78de4c80c27c3d84c4c6906160994a6a7eaa4bcefd716794bbd",
++      "required_symbols": [
++        "KVConnectorBlockState.block_ids",
++        "KVConnectorBlockState.boundary_state_offloads",
++        "SchedulerOutput.kv_connector_block_state"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/sched/scheduler.py",
++      "sha256": "1a7873ce14040f9e796afa268b84d84b4ec0d3965382615764ea578255c4b120",
++      "required_symbols": [
++        "Scheduler.__init__",
++        "Scheduler.schedule",
++        "Scheduler.has_requests",
++        "Scheduler.update_from_output",
++        "Scheduler._free_request_blocks"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/kv_cache_manager.py",
++      "sha256": "c6a09fc3b4f725fd31ddc2a07a8dd80953df502726534969ad279a504a66122c",
++      "required_symbols": [
++        "KVCacheManager.take_boundary_state_offloads",
++        "KVCacheManager.free"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
++      "sha256": "ee894e24e4bcf3d1b97b876eacd1b8f904772577cde245d568cb13a24b6d5ec1",
++      "required_symbols": [
++        "SingleTypeKVCacheManager.take_pending_boundary_state_offloads",
++        "MambaManager.cache_blocks",
++        "MambaManager.allocate_new_blocks",
++        "MambaManager.pop_blocks_for_free"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/block_pool.py",
++      "sha256": "a0932da63c38487a5fae401c9b43f627e2dcee8e975ec8d6427e00d2796c6239",
++      "required_symbols": [
++        "BlockPool.touch",
++        "BlockPool.free_blocks"
++      ]
++    },
++    {
++      "path": "vllm/v1/worker/gpu/model_runner.py",
++      "sha256": "23932c3f3672f233f9b8405c95b33d7ecd773bfeadc03bdbf104e36e46ea601e",
++      "required_symbols": [
++        "GPUModelRunner.update_requests",
++        "GPUModelRunner.sample_tokens"
++      ]
++    },
++    {
++      "path": "vllm/v1/worker/gpu/kv_connector.py",
++      "sha256": "b50a13e7c4f62fa2c67ee0d40b8ec7a2b62a6f6dab23571227fd56682c24ecf6",
++      "required_symbols": [
++        "ActiveKVConnector.pre_forward",
++        "ActiveKVConnector.post_forward",
++        "ActiveKVConnector.no_forward"
++      ]
++    },
++    {
++      "path": "vllm/v1/worker/mamba_utils.py",
++      "sha256": "fa7b4662fbc08e3865d88ee7350d72dd7f729921e70070ebaafd29ac374eb86b",
++      "required_symbols": []
++    }
++  ]
++}
+diff --git a/sparkcache/runtime_patches/vllm-connector-jobs-r27-prefill-5dede5b.json b/sparkcache/runtime_patches/vllm-connector-jobs-r27-prefill-5dede5b.json
+new file mode 100644
+index 0000000..eba2059
+--- /dev/null
++++ b/sparkcache/runtime_patches/vllm-connector-jobs-r27-prefill-5dede5b.json
+@@ -0,0 +1,105 @@
++{
++  "schema": "sparkring-vllm-kv-block-lease-contract/v1",
++  "connector_api": "jj-block-state-read-leases/v1",
++  "vllm_commit": "5dede5bb7fa04949a02823411f2fdf135e29b3dc",
++  "required_semantics": [
++    "scheduler-binds-owning-block-pool",
++    "block-state-and-boundary-offers-describe-one-scheduled-step",
++    "offered-recurrent-pages-are-retained-hashed-or-copy-on-write-destinations",
++    "full-attention-prefix-pages-remain-immutable-while-referenced",
++    "connector-metadata-is-built-before-scheduler-dispatch",
++    "worker-post-forward-follows-target-and-mtp-state-writes",
++    "worker-metadata-aggregates-distinct-physical-ranks",
++    "pending-connector-work-keeps-idle-engine-stepping",
++    "no-forward-steps-do-not-call-wait-for-save"
++  ],
++  "qualification": "Source review and CPU conformance only; CUDA/model qualification remains required.",
++  "files": [
++    {
++      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
++      "sha256": "bc1965431087676876f58360cd9cc07ab6c06febe6d747695f10b051fd85c412",
++      "required_symbols": [
++        "KVConnectorBase_V1.bind_gpu_block_pool",
++        "KVConnectorBase_V1.build_connector_worker_meta",
++        "KVConnectorBase_V1.has_pending_push_work",
++        "KVConnectorWorkerMetadata.aggregate"
++      ]
++    },
++    {
++      "path": "vllm/distributed/kv_transfer/kv_connector/utils.py",
++      "sha256": "115512dca36b0711223f55f5ff304abffccc6d078923ba4c6bbb3cdb7fdd39a2",
++      "required_symbols": [
++        "KVOutputAggregator.from_connector",
++        "KVOutputAggregator.aggregate"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/sched/output.py",
++      "sha256": "8ea57558c576d80971faf28aba3d093d3d0ca5ad773b79e586255c2695e30846",
++      "required_symbols": [
++        "KVConnectorBlockState.block_ids",
++        "KVConnectorBlockState.boundary_state_offloads",
++        "SchedulerOutput.kv_connector_block_state"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/sched/scheduler.py",
++      "sha256": "6035392edc1854a51f1686a17cb50981c18074f9256b23fb39b38d8874efc5d6",
++      "required_symbols": [
++        "Scheduler.__init__",
++        "Scheduler.schedule",
++        "Scheduler.has_requests",
++        "Scheduler.update_from_output",
++        "Scheduler._free_request_blocks"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/kv_cache_manager.py",
++      "sha256": "c6a09fc3b4f725fd31ddc2a07a8dd80953df502726534969ad279a504a66122c",
++      "required_symbols": [
++        "KVCacheManager.take_boundary_state_offloads",
++        "KVCacheManager.free"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
++      "sha256": "ee894e24e4bcf3d1b97b876eacd1b8f904772577cde245d568cb13a24b6d5ec1",
++      "required_symbols": [
++        "SingleTypeKVCacheManager.take_pending_boundary_state_offloads",
++        "MambaManager.cache_blocks",
++        "MambaManager.allocate_new_blocks",
++        "MambaManager.pop_blocks_for_free"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/block_pool.py",
++      "sha256": "a0932da63c38487a5fae401c9b43f627e2dcee8e975ec8d6427e00d2796c6239",
++      "required_symbols": [
++        "BlockPool.touch",
++        "BlockPool.free_blocks"
++      ]
++    },
++    {
++      "path": "vllm/v1/worker/gpu/model_runner.py",
++      "sha256": "23932c3f3672f233f9b8405c95b33d7ecd773bfeadc03bdbf104e36e46ea601e",
++      "required_symbols": [
++        "GPUModelRunner.update_requests",
++        "GPUModelRunner.sample_tokens"
++      ]
++    },
++    {
++      "path": "vllm/v1/worker/gpu/kv_connector.py",
++      "sha256": "b50a13e7c4f62fa2c67ee0d40b8ec7a2b62a6f6dab23571227fd56682c24ecf6",
++      "required_symbols": [
++        "ActiveKVConnector.pre_forward",
++        "ActiveKVConnector.post_forward",
++        "ActiveKVConnector.no_forward"
++      ]
++    },
++    {
++      "path": "vllm/v1/worker/mamba_utils.py",
++      "sha256": "fa7b4662fbc08e3865d88ee7350d72dd7f729921e70070ebaafd29ac374eb86b",
++      "required_symbols": []
++    }
++  ]
++}
+diff --git a/sparkcache/spark_context_cache_connector.py b/sparkcache/spark_context_cache_connector.py
+index ec00a7f..b4843ed 100644
+--- a/sparkcache/spark_context_cache_connector.py
++++ b/sparkcache/spark_context_cache_connector.py
+@@ -52,6 +52,7 @@ from vllm.distributed.kv_transfer.kv_connector.v1.base import (
+     KVConnectorBase_V1,
+     KVConnectorHandshakeMetadata,
+     KVConnectorMetadata,
++    KVConnectorWorkerMetadata,
+     KVConnectorRole,
+     SupportsHMA,
+ )
+@@ -101,6 +102,7 @@ from sparkcache.page_base_read_flights import (
+     PageBaseReadFlights,
+     PageBaseReadResult,
+ )
++from sparkcache.capture_read_leases import CaptureReadLeases
+ from sparkcache.spark_context_cache_store import (
+     CacheIdentity,
+     CapacityPolicy,
+@@ -249,6 +251,7 @@ class _ReqPlan:
+     # alias and tail derivation cannot reproduce that identity and must not
+     # publish alternative keys for this plan.
+     has_multimodal_identity: bool = False
++    capture_job_id: str = ""
+ 
+     @property
+     def group_block_ids(self) -> tuple[tuple[int, ...], ...]:
+@@ -488,6 +491,23 @@ class SparkCacheConnectorMetadata(KVConnectorMetadata):
+         return self.streaming_snapshot_offers
+ 
+ 
++@dataclass
++class SparkCacheReadCompletionMetadata(KVConnectorWorkerMetadata):
++    """Distinct physical ranks whose capture reads finished for each job."""
++
++    completed_reads: dict[str, set[int]] = field(default_factory=dict)
++    uncertain_reads: dict[str, set[int]] = field(default_factory=dict)
++
++    def aggregate(self, other: "KVConnectorWorkerMetadata"):
++        if not isinstance(other, SparkCacheReadCompletionMetadata):
++            raise TypeError("incompatible SparkCache read-completion metadata")
++        for job, ranks in other.completed_reads.items():
++            self.completed_reads.setdefault(job, set()).update(ranks)
++        for job, ranks in other.uncertain_reads.items():
++            self.uncertain_reads.setdefault(job, set()).update(ranks)
++        return self
++
++
+ @dataclass
+ class SparkCacheHandshakeMetadata(KVConnectorHandshakeMetadata):
+     """One worker's bounded startup manifest inventory.
+@@ -897,6 +917,10 @@ def _multimodal_feature_identities(
+ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+     """Store/restore each rank's DCP shard on rank-local NVMe."""
+ 
++    # Capture/restore kernels use CUDA virtual addresses while the registered
++    # tensors remain owned. No KV physical pages are registered for RDMA.
++    supports_cuda_vmm = True
++
+     @property
+     def _held(self) -> HeldInventory:
+         return self._held_inventory
+@@ -913,6 +937,11 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+     # its completion event or preemption drain proves CUDA stopped reading.
+     supports_recurrent_boundary_blocks = True
+ 
++    @property
++    def requires_kv_delivery(self) -> bool:
++        """Optional persistence failures remain cache misses, not request failures."""
++        return False
++
+     @property
+     def recurrent_boundary_granularity(self) -> int:
+         """Token boundary used for connector-owned recurrent publication."""
+@@ -1020,6 +1049,10 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+         self._async_page_capture_eligible: set[str] = set()
+         self._max_delayed_stores = config.max_delayed_stores
+         self._async_page_capture_reservations: dict[str, int] = {}
++        self._capture_read_leases: CaptureReadLeases | None = None
++        self._capture_read_done: set[str] = set()
++        self._capture_read_uncertain: set[str] = set()
++        self._capture_read_lock = threading.Lock()
+         self._streaming_runtime: Any = None
+         if self._streaming_snapshots_enabled:
+             # An explicit opt-in never falls back to end-of-prefill snapshots.
+@@ -2271,6 +2304,20 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+         if not required_groups:
+             return ()
+         raw = getattr(scheduler_output, "recurrent_boundary_blocks", None)
++        block_state = getattr(scheduler_output, "kv_connector_block_state", None)
++        native_offers = raw is None and block_state is not None
++        if native_offers:
++            # Generic offers belong to this worker step. They do not grant the
++            # request-lifetime lease required to reuse a latched offer later.
++            latched = ()
++            if self._streaming_snapshots_enabled or (
++                self._async_page_capture_enabled
++                and not self._uses_capture_job_leases()
++            ):
++                return reject("generic boundary offers require synchronous or job-leased capture")
++            raw = getattr(block_state, "boundary_state_offloads", None)
++            if raw is None:
++                return reject("generic block state lacks boundary offers")
+         if raw is None:
+             return latched
+         if not isinstance(raw, Mapping):
+@@ -2301,6 +2348,10 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+             if entry_boundary < boundary_tokens:
+                 continue
+             if entry_boundary > boundary_tokens:
++                if native_offers:
++                    # The generic producer offers all retained checkpoints;
++                    # later positions are independent of this store boundary.
++                    continue
+                 return reject(
+                     "entry boundary is ahead of the store plan"
+                     f" observed={entry_boundary} target={boundary_tokens}"
+@@ -2319,6 +2370,31 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+             return reject("entries conflict with the latched recurrent boundary")
+         return validated
+ 
++    def _current_group_blocks(
++        self,
++        scheduler_output: "SchedulerOutput",
++        request_id: str,
++    ) -> tuple[bool, tuple[tuple[int, ...], ...] | None]:
++        """Read generic scheduler tables without reconstructing reused slots."""
++        block_state = getattr(scheduler_output, "kv_connector_block_state", None)
++        if block_state is None:
++            return False, None
++        tables = getattr(block_state, "block_ids", None)
++        groups = tables.get(request_id) if isinstance(tables, Mapping) else None
++        if (
++            not isinstance(groups, (list, tuple))
++            or len(groups) != len(self._group_topology)
++            or any(
++                not isinstance(group, (list, tuple))
++                or not group
++                or any(type(block) is not int or block < 0 for block in group)
++                for group in groups
++            )
++        ):
++            self.counters["recurrent_boundary_metadata_rejected"] += 1
++            return True, None
++        return True, tuple(tuple(group) for group in groups)
++
+     def build_connector_meta(
+         self, scheduler_output: "SchedulerOutput"
+     ) -> KVConnectorMetadata:
+@@ -2374,7 +2450,16 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+                 self.counters["multimodal_bypass"] += 1
+                 continue
+             scheduled = scheduler_output.num_scheduled_tokens.get(req_id, 0)
+-            group_blocks = self._normalize_group_blocks(new_req.block_ids)
++            native_tables, current_groups = self._current_group_blocks(
++                scheduler_output, req_id,
++            )
++            if native_tables and current_groups is None:
++                continue
++            group_blocks = (
++                current_groups if native_tables
++                else self._normalize_group_blocks(new_req.block_ids)
++            )
++            assert group_blocks is not None
+             block_ids = group_blocks[0]
+             span = self._aligned_span(len(token_ids))
+             if self._store_enabled and self._min_span <= span <= self._max_span:
+@@ -2435,6 +2520,22 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+                     )
+                     if recurrent_boundary_blocks is None:
+                         continue
++                    if native_tables and already >= span and recurrent_boundary_blocks:
++                        # Fresh offers are consumed in this step's post-forward
++                        # CPU snapshot, including requests that finish after one
++                        # generated token and never enter scheduled_cached_reqs.
++                        meta.plans.append(
++                            _ReqPlan(
++                                req_id, digest, span, group_blocks[0], True,
++                                block_ids_by_group=group_blocks,
++                                token_ids=exact_token_ids,
++                                base_context_digest=base_digest,
++                                base_span_tokens=base_span,
++                                recurrent_boundary_blocks=recurrent_boundary_blocks,
++                                has_multimodal_identity=has_multimodal_identity,
++                            )
++                        )
++                        continue
+                     # Full-page proof and partial-tail CoW hand-offs can arrive
+                     # after the prefill which began this store. Retain the
+                     # complete request table and any early proof until a later
+@@ -2516,7 +2617,16 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+                 continue
+             if recurrent_boundary_blocks:
+                 self._store_recurrent_boundaries[req_id] = recurrent_boundary_blocks
+-            if done < span or req_id in cached.resumed_req_ids:
++            native_tables, current_groups = self._current_group_blocks(
++                scheduler_output, req_id,
++            )
++            if native_tables and current_groups is None:
++                self._store_recurrent_boundaries.pop(req_id, None)
++                continue
++            if native_tables:
++                assert current_groups is not None
++                blocks_by_group = [list(group) for group in current_groups]
++            elif done < span or req_id in cached.resumed_req_ids:
+                 new_block_ids = cached.new_block_ids[index]
+                 appended = (
+                     [
+@@ -2624,6 +2734,12 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+             # the exact offers sent to workers so it delays block reuse only
+             # for requests whose final gather may still be in flight.
+             runtime.observe_metadata(meta)
++        if (
++            getattr(scheduler_output, "kv_connector_block_state", None) is not None
++            and not any(scheduler_output.num_scheduled_tokens.values())
++        ):
++            # V2 no-forward callbacks do not invoke wait_for_save.
++            meta.plans[:] = [plan for plan in meta.plans if not plan.is_store]
+         self._reserve_async_page_capture_plans(meta)
+         return meta
+ 
+@@ -2638,6 +2754,40 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+             or self._role is not KVConnectorRole.SCHEDULER
+         ):
+             return
++        if self._uses_capture_job_leases():
++            leases = self._capture_read_leases
++            if leases is None:
++                raise RuntimeError("GPU block pool must be bound before capture dispatch")
++            accepted = []
++            for plan in meta.plans:
++                if not plan.is_store:
++                    accepted.append(plan)
++                    continue
++                # Exact recurrent offers and complete attention pages are
++                # immutable sources. Reference counts alone cannot protect a
++                # mutable partial-page or running recurrent slot from writes.
++                if any(
++                    group["reuse_policy"] != "recurrent_align"
++                    and plan.span_tokens % int(group["logical_tokens_per_block"])
++                    for group in self._group_topology
++                ):
++                    self.counters["store_skipped_delayed_limit"] += 1
++                    continue
++                selected = self._select_group_blocks_for_span(
++                    plan.group_block_ids, plan.span_tokens,
++                    recurrent_boundary_blocks=plan.recurrent_boundary_blocks,
++                )
++                try:
++                    job = leases.reserve(bid for group in selected for bid in group)
++                except ValueError:
++                    self.counters["recurrent_boundary_metadata_rejected"] += 1
++                    continue
++                if job is None:
++                    self.counters["store_skipped_delayed_limit"] += 1
++                    continue
++                accepted.append(replace(plan, capture_job_id=job))
++            meta.plans[:] = accepted
++            return
+         accepted: list[_ReqPlan] = []
+         for plan in meta.plans:
+             if not plan.is_store:
+@@ -2657,6 +2807,52 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+             accepted.append(plan)
+         meta.plans[:] = accepted
+ 
++    def _uses_capture_job_leases(self) -> bool:
++        return (
++            self._async_page_capture_enabled
++            and getattr(
++                getattr(self, "_async_page_capture_settings", None), "lease_mode", None,
++            )
++            == "connector-jobs"
++        )
++
++    def bind_gpu_block_pool(self, gpu_block_pool: Any) -> None:
++        """Use the generic connector API to retain exact capture sources."""
++        if self._capture_read_leases is not None:
++            if self._capture_read_leases.pool is not gpu_block_pool:
++                raise RuntimeError("capture source pool cannot change after binding")
++            return
++        self._capture_read_leases = CaptureReadLeases(
++            gpu_block_pool, ranks=self._tp_degree, max_jobs=self._max_delayed_stores,
++        )
++
++    def has_pending_push_work(self) -> bool:
++        return bool(self._capture_read_leases)
++
++    def _capture_read_completed(self, job: str) -> None:
++        if not job:
++            return
++        with self._capture_read_lock:
++            self._capture_read_done.add(job)
++
++    def _capture_read_failed(self, job: str) -> None:
++        with self._capture_read_lock:
++            self._capture_read_uncertain.add(job)
++
++    def build_connector_worker_meta(self):
++        with self._capture_read_lock:
++            completed = self._capture_read_done
++            uncertain = self._capture_read_uncertain
++            self._capture_read_done = set()
++            self._capture_read_uncertain = set()
++        if not completed and not uncertain:
++            return None
++        rank = self._physical_rank()
++        return SparkCacheReadCompletionMetadata(
++            completed_reads={job: {rank} for job in completed},
++            uncertain_reads={job: {rank} for job in uncertain},
++        )
++
+     def _release_async_page_capture_reservations(
+         self,
+         request_ids: Sequence[str],
+@@ -3009,6 +3205,8 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+                 "quiesce",
+                 "shutdown",
+             )
++            if self._uses_capture_job_leases():
++                required += ("finish_failed_job",)
+             missing = [
+                 name for name in required if not callable(getattr(runtime, name, None))
+             ]
+@@ -5020,6 +5218,10 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+         until every worker reports its native read complete. Row-oriented
+         streaming snapshots do not support multiple KV-cache groups.
+         """
++        if self._uses_capture_job_leases():
++            # Per-job references survive ordinary request cleanup and are
++            # released by read-completion metadata, independent of disk commit.
++            return self.request_finished(request, [])
+         if self._async_page_capture_enabled:
+             request_id = request.request_id
+             cleanup_delay, _ = self.request_finished(request, [])
+@@ -5291,6 +5493,9 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+                     self._store_inflight = 1
+                     self._store_pending_started_ns = time.perf_counter_ns()
+             if skipped_before_submit:
++                if plan.capture_job_id:
++                    self._capture_read_completed(plan.capture_job_id)
++                    continue
+                 if self._async_page_capture_enabled:
+                     runtime = self._async_page_capture_runtime
+                     if runtime is None:
+@@ -5308,6 +5513,8 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+             if self._async_page_capture_enabled:
+                 runtime = self._async_page_capture_runtime
+                 if runtime is None:
++                    if plan.capture_job_id:
++                        self._capture_read_completed(plan.capture_job_id)
+                     self._finish_store(
+                         plan.digest,
+                         committed=False,
+@@ -5316,12 +5523,27 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+                         ),
+                     )
+                     continue
+-                producer_stream = int(torch.cuda.current_stream().cuda_stream)
+                 try:
+-                    plan = self._protect_capture_publication_base(plan)
+-                    runtime.submit(plan, producer_stream=producer_stream)
++                    stream = torch.cuda.current_stream()
++                    producer_stream = int(stream.cuda_stream)
++                    if plan.capture_job_id:
++                        # post_forward follows target and MTP state writes.
++                        # The background submitter waits on this event before
++                        # launching reads against connector-owned source pages.
++                        ready = torch.cuda.Event()
++                        ready.record(stream)
++                        runtime.submit(
++                            plan,
++                            producer_stream=producer_stream,
++                            producer_ready=ready,
++                        )
++                    else:
++                        plan = self._protect_capture_publication_base(plan)
++                        runtime.submit(plan, producer_stream=producer_stream)
+                 except Exception as error:  # noqa: BLE001 - serving continues
+                     runtime.preempt(plan.request_id)
++                    if plan.capture_job_id:
++                        runtime.finish_failed_job(plan)
+                     self._finish_store(
+                         plan.digest,
+                         committed=False,
+@@ -6234,6 +6456,16 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+ 
+     def update_connector_output(self, connector_output: Any) -> None:
+         self._absorb_quorum(connector_output)
++        reads = getattr(connector_output, "kv_connector_worker_meta", None)
++        if isinstance(reads, SparkCacheReadCompletionMetadata):
++            leases = self._capture_read_leases
++            if leases is None and reads.completed_reads:
++                raise RuntimeError("capture completion arrived without a source pool")
++            if leases is not None:
++                for job, ranks in reads.uncertain_reads.items():
++                    leases.quarantine(job, ranks)
++                for job, ranks in reads.completed_reads.items():
++                    leases.complete(job, ranks)
+         self._release_async_page_capture_reservations(
+             tuple(getattr(connector_output, "finished_sending", None) or ())
+         )
+diff --git a/sparkcache/streaming/manager_page_factory.py b/sparkcache/streaming/manager_page_factory.py
+index 419ef7d..453154c 100644
+--- a/sparkcache/streaming/manager_page_factory.py
++++ b/sparkcache/streaming/manager_page_factory.py
+@@ -27,6 +27,8 @@ VLLM_ROOT_KEY = "spark_cache_async_page_capture_vllm_root"
+ VLLM_ROOT_ENV = "SPARK_CONTEXT_CACHE_ASYNC_PAGE_CAPTURE_VLLM_ROOT"
+ LEASE_CONTRACT_KEY = "spark_cache_async_page_capture_lease_contract"
+ LEASE_CONTRACT_ENV = "SPARK_CONTEXT_CACHE_ASYNC_PAGE_CAPTURE_LEASE_CONTRACT"
++LEASE_MODE_KEY = "spark_cache_async_page_capture_lease_mode"
++LEASE_MODE_ENV = "SPARK_CONTEXT_CACHE_ASYNC_PAGE_CAPTURE_LEASE_MODE"
+ 
+ 
+ def _absolute(path: Path) -> bool:
+@@ -48,6 +50,7 @@ class ManagerPageCaptureSettings:
+     slot_count: int = 2
+     vllm_root: Path | None = None
+     lease_contract: Path | None = None
++    lease_mode: str = "request-finish"
+ 
+     def __post_init__(self) -> None:
+         if not _absolute(self.library_path):
+@@ -60,6 +63,10 @@ class ManagerPageCaptureSettings:
+             raise RuntimeError("manager-page capture slot bytes must be positive")
+         if self.slot_count not in (2, 3):
+             raise RuntimeError("manager-page capture slot count must be two or three")
++        if self.lease_mode not in ("request-finish", "connector-jobs"):
++            raise RuntimeError("manager-page capture lease mode is unsupported")
++        if self.lease_mode == "connector-jobs" and self.lease_contract is None:
++            raise RuntimeError("connector-job capture requires an explicit source contract")
+         for name in ("vllm_root", "lease_contract"):
+             value = getattr(self, name)
+             if value is not None and not _absolute(value):
+@@ -85,6 +92,7 @@ class ManagerPageCaptureSettings:
+             slot_count=slot_count,
+             vllm_root=Path(vllm_root) if vllm_root else None,
+             lease_contract=Path(lease) if lease else None,
++            lease_mode=_extra(connector, LEASE_MODE_KEY, LEASE_MODE_ENV, "request-finish"),
+         )
+ 
+ 
+@@ -104,6 +112,12 @@ def verify_manager_page_lease_contract(
+         / "runtime_patches"
+         / "vllm-manager-page-async-contract-55969c16.json"
+     )
++    if settings.lease_mode == "connector-jobs":
++        from sparkcache.runtime_patches.generic_connector_contract import (
++            verify_connector_job_contract,
++        )
++
++        return tuple(verify_connector_job_contract(root, contract))
+     return tuple(verify_contract(root, contract))
+ 
+ 
+diff --git a/sparkcache/streaming/manager_page_runtime.py b/sparkcache/streaming/manager_page_runtime.py
+index 120e564..c3ccea2 100644
+--- a/sparkcache/streaming/manager_page_runtime.py
++++ b/sparkcache/streaming/manager_page_runtime.py
+@@ -3,6 +3,7 @@
+ from __future__ import annotations
+ 
+ import logging
++import re
+ import threading
+ import time
+ from dataclasses import dataclass
+@@ -17,6 +18,7 @@ from sparkcache.streaming.manager_page_capture import (
+ )
+ 
+ logger = logging.getLogger("vllm.spark_context_cache")
++_CAPTURE_JOB_ID = re.compile(r"([0-9a-f]{32}):([1-9][0-9]{0,19})\Z")
+ 
+ 
+ def _format_token_rate(token_rate: float) -> str:
+@@ -65,6 +67,16 @@ class _PendingCapture:
+     result_block_counts: tuple[int, ...]
+     reused_pages_by_group: tuple[int, ...]
+     submitted_ns: int
++    abandoned: bool = False
++    producer_ready: Any = None
++
++
++@dataclass(slots=True)
++class _QueuedCapture:
++    plan: Any
++    producer_ready: Any
++    submitted_ns: int
++    abandoned: bool = False
+ 
+ 
+ class PageSnapshotScatter:
+@@ -158,6 +170,7 @@ class ManagerPageCaptureRuntime:
+         ring: Any,
+         progress_poll_seconds: float = 0.005,
+         progress_thread_initializer: Callable[[], None],
++        job_stream_factory: Callable[[Any], int] | None = None,
+     ) -> None:
+         if progress_poll_seconds <= 0:
+             raise ValueError("progress_poll_seconds must be positive")
+@@ -188,6 +201,14 @@ class ManagerPageCaptureRuntime:
+         self._completed_manager_pages: dict[str, int] = {}
+         self._closed = False
+         self._fatal: BaseException | None = None
++        self._queued_jobs: dict[str, _QueuedCapture] = {}
++        self._submitting_jobs: dict[str, _QueuedCapture] = {}
++        self._job_stream_factory = job_stream_factory
++        self._submission_stream: Any = None
++        self._failed_jobs: set[str] = set()
++        self._draining_jobs: set[str] = set()
++        self._job_epoch: str | None = None
++        self._job_high_watermark = 0
+ 
+     def _mark_completed_locked(
+         self,
+@@ -195,7 +216,11 @@ class ManagerPageCaptureRuntime:
+         retained_manager_pages: int,
+         *,
+         started_ns: int | None = None,
++        capture_job_id: str = "",
+     ) -> None:
++        if capture_job_id:
++            self._connector._capture_read_completed(capture_job_id)
++            return
+         self._completed.add(request_id)
+         self._completed_started_ns.setdefault(
+             request_id,
+@@ -206,7 +231,147 @@ class ManagerPageCaptureRuntime:
+             self._completed_manager_pages.get(request_id, 0),
+         )
+ 
+-    def submit(self, plan: Any, *, producer_stream: int) -> bool:
++    def submit(self, plan: Any, *, producer_stream: int, producer_ready: Any = None) -> bool:
++        """Queue job-leased reads after a caller-recorded producer event."""
++        job = getattr(plan, "capture_job_id", "")
++        if not job:
++            return self._submit_request(plan, producer_stream=producer_stream)
++        if producer_ready is None:
++            raise ValueError("job-leased capture requires a recorded producer event")
++        request_id = str(plan.request_id)
++        with self._cv:
++            # Ownership outranks replay filtering. A lower sequence can still
++            # name an active read after a higher sequence has been accepted.
++            if self._job_read_is_owned_locked(job):
++                if self._closed or self._fatal is not None:
++                    return False
++                return any(
++                    getattr(capture.plan, "capture_job_id", "") == job
++                    and str(capture.plan.request_id) == request_id
++                    for capture in (
++                        *self._queued_jobs.values(),
++                        *self._submitting_jobs.values(),
++                        *self._pending.values(),
++                    )
++                )
++            match = _CAPTURE_JOB_ID.fullmatch(job) if isinstance(job, str) else None
++            if match is None or int(match[2]) > 0xFFFFFFFFFFFFFFFF:
++                raise ValueError("capture job must name a lowercase UUID epoch and positive uint64 sequence")
++            epoch, sequence_text = match.groups()
++            sequence = int(sequence_text)
++            if self._closed or self._fatal is not None:
++                self._connector._capture_read_completed(job)
++                self._connector._abort_async_page_capture(plan.digest, "capture runtime unavailable")
++                return False
++            if (
++                self._job_epoch is not None and epoch != self._job_epoch
++            ) or sequence <= self._job_high_watermark:
++                self._connector._capture_read_completed(job)
++                self._connector._abort_async_page_capture(plan.digest, "capture job is outside the accepted epoch or increasing sequence")
++                return False
++            self._job_epoch = epoch
++            self._job_high_watermark = sequence
++            existing = self._queued_jobs.get(request_id) or self._submitting_jobs.get(request_id)
++            if existing is None:
++                existing = self._pending.get(request_id)
++            if existing is not None:
++                self._connector._capture_read_completed(job)
++                self._connector._abort_async_page_capture(plan.digest, "request already has a capture read")
++                return False
++            self._queued_jobs[request_id] = _QueuedCapture(plan, producer_ready, time.perf_counter_ns())
++            try:
++                self._ensure_thread_locked()
++            except Exception:
++                self._queued_jobs.pop(request_id)
++                self._thread = None
++                self._connector._capture_read_completed(job)
++                self._connector._abort_async_page_capture(plan.digest, "capture progress thread unavailable")
++                return False
++            self._wake.set()
++            return True
++
++    def _producer_stream_for_job(self, ready: Any) -> int:
++        if self._job_stream_factory is not None:
++            return self._job_stream_factory(ready)
++        import torch
++        if self._submission_stream is None:
++            self._submission_stream = torch.cuda.Stream()
++        self._submission_stream.wait_event(ready)
++        return int(self._submission_stream.cuda_stream)
++
++    def _submit_queued_job(self, queued: _QueuedCapture) -> None:
++        """Submit and, on failure, drain without holding the callback lock."""
++        plan = queued.plan
++        job = plan.capture_job_id
++        context_sequence = None
++        entered_native = False
++        try:
++            with self._cv:
++                if queued.abandoned or self._closed or self._fatal is not None:
++                    self._connector._capture_read_completed(job)
++                    self._connector._abort_async_page_capture(plan.digest, "capture cancelled before submission")
++                    return
++                context_sequence = self._next_sequence
++                self._next_sequence += 1
++            plan = self._connector._protect_capture_publication_base(plan)
++            groups = self._connector._select_group_blocks_for_span(
++                plan.group_block_ids, plan.span_tokens,
++                recurrent_boundary_blocks=plan.recurrent_boundary_blocks,
++            )
++            capture_groups = groups
++            result_counts = tuple(len(group) for group in groups)
++            reused = tuple(0 for _ in groups)
++            logical_start = 0
++            if plan.base_context_digest:
++                capture_groups, _base, result_counts, reused = select_manager_page_extension_pages(
++                    groups,
++                    base_page_counts=self._connector._group_block_counts_for_span(plan.base_span_tokens),
++                    logical_tokens_per_page=tuple(int(group["logical_tokens_per_block"]) for group in self._connector._group_topology),
++                    reuse_policies=tuple(str(group["reuse_policy"]) for group in self._connector._group_topology),
++                    base_boundary_tokens=plan.base_span_tokens,
++                )
++                logical_start = plan.base_span_tokens
++            stream = self._producer_stream_for_job(queued.producer_ready)
++            with self._cv:
++                if queued.abandoned:
++                    self._connector._capture_read_completed(job)
++                    self._connector._abort_async_page_capture(plan.digest, "capture cancelled before submission")
++                    return
++            entered_native = True
++            ticket = self._ring.submit(
++                context_sequence=context_sequence, logical_start=logical_start,
++                physical_pages_by_group=capture_groups, producer_stream=stream,
++            )
++            if ticket is None:
++                self._connector._capture_read_completed(job)
++                self._connector._abort_async_page_capture(plan.digest, "capture ring rejected optional work")
++                return
++            with self._cv:
++                self._pending[str(plan.request_id)] = _PendingCapture(
++                    str(plan.request_id), context_sequence, plan, ticket,
++                    tuple(len(group) for group in capture_groups), result_counts,
++                    reused, queued.submitted_ns, queued.abandoned, queued.producer_ready,
++                )
++        except Exception as error:
++            retired = not entered_native
++            if entered_native:
++                try:
++                    self._ring.drain_context(context_sequence)
++                    retired = True
++                except Exception as drain_error:
++                    with self._cv:
++                        self._failed_jobs.add(job)
++                        self._fatal = drain_error
++                    self._connector._capture_read_failed(job)
++            if retired:
++                self._connector._capture_read_completed(job)
++            self._connector._abort_async_page_capture(plan.digest, f"capture submission failed: {error}")
++        finally:
++            with self._cv:
++                self._submitting_jobs.pop(str(plan.request_id), None)
++                self._cv.notify_all()
++
++    def _submit_request(self, plan: Any, *, producer_stream: int) -> bool:
+         request_id = str(plan.request_id)
+         groups = self._connector._select_group_blocks_for_span(
+             plan.group_block_ids,
+@@ -294,9 +459,21 @@ class ManagerPageCaptureRuntime:
+ 
+     def preempt(self, request_id: str) -> None:
+         with self._cv:
+-            pending = self._pending.pop(request_id, None)
++            queued = self._queued_jobs.get(request_id) or self._submitting_jobs.get(request_id)
++            if queued is not None:
++                queued.abandoned = True
++                self._wake.set()
++                return
++            pending = self._pending.get(request_id)
+             if pending is None:
+                 return
++            if getattr(pending.plan, "capture_job_id", ""):
++                # Connector-owned references protect the sources while the
++                # background copy drains; preemption does not wait for cache I/O.
++                pending.abandoned = True
++                self._wake.set()
++                return
++            self._pending.pop(request_id)
+             # vLLM may reuse every group page as soon as this callback returns.
+             # The native drain synchronizes only this context's capture event.
+             self._ring.drain_context(pending.context_sequence)
+@@ -310,6 +487,31 @@ class ManagerPageCaptureRuntime:
+             )
+             self._cv.notify_all()
+ 
++    def finish_failed_job(self, plan: Any) -> None:
++        """Acknowledge rejected jobs only when no read has uncertain ownership."""
++        job = getattr(plan, "capture_job_id", "")
++        if not job:
++            return
++        with self._cv:
++            if self._job_read_is_owned_locked(job):
++                return
++            self._connector._capture_read_completed(job)
++
++    def _job_read_is_owned_locked(self, job: str) -> bool:
++        """Include reads detached from the queue while shutdown drains them."""
++        return (
++            job in self._failed_jobs
++            or job in self._draining_jobs
++            or any(
++                getattr(queued.plan, "capture_job_id", "") == job
++                for queued in (*self._queued_jobs.values(), *self._submitting_jobs.values())
++            )
++            or any(
++                getattr(capture.plan, "capture_job_id", "") == job
++                for capture in self._pending.values()
++            )
++        )
++
+     def finish_without_capture(
+         self,
+         request_id: str,
+@@ -382,7 +584,7 @@ class ManagerPageCaptureRuntime:
+                 for request_id in delayed_ids
+             )
+             return {
+-                "pending_requests": len(self._pending),
++                "pending_requests": len(self._pending) + len(self._queued_jobs) + len(self._submitting_jobs),
+                 "completed_notifications": len(self._completed),
+                 "delayed_requests": len(delayed_ids),
+                 "retained_manager_pages": retained_manager_pages,
+@@ -392,7 +594,9 @@ class ManagerPageCaptureRuntime:
+ 
+     def wait_idle(self, timeout: float | None = None) -> bool:
+         with self._cv:
+-            return self._cv.wait_for(lambda: not self._pending, timeout)
++            return self._cv.wait_for(
++                lambda: not self._pending and not self._queued_jobs and not self._submitting_jobs, timeout,
++            )
+ 
+     def shutdown(self) -> bool:
+         self.quiesce()
+@@ -406,18 +610,39 @@ class ManagerPageCaptureRuntime:
+             if self._closed:
+                 return
+             self._closed = True
+-            pending = tuple(self._pending.values())
+-            self._pending.clear()
++            for queued in (*self._queued_jobs.values(), *self._submitting_jobs.values()):
++                queued.abandoned = True
+             self._stop.set()
+             self._wake.set()
+             thread = self._thread
++        # A submit may be inside native recovery. Join before collecting its
++        # ticket or acknowledging a queued job that could otherwise start.
++        if thread is not None and thread is not threading.current_thread():
++            thread.join()
++        with self._cv:
++            pending = tuple(self._pending.values())
++            self._draining_jobs.update(
++                capture.plan.capture_job_id for capture in pending
++                if getattr(capture.plan, "capture_job_id", "")
++            )
++            self._pending.clear()
++            queued_jobs = tuple(self._queued_jobs.values())
++            self._queued_jobs.clear()
++        for queued in queued_jobs:
++            self._connector._capture_read_completed(queued.plan.capture_job_id)
++            self._connector._abort_async_page_capture(
++                queued.plan.digest, "capture runtime shut down before submission"
++            )
+         for capture in pending:
+             self._ring.drain_context(capture.context_sequence)
++            job = getattr(capture.plan, "capture_job_id", "")
++            if job:
++                with self._cv:
++                    self._connector._capture_read_completed(job)
++                    self._draining_jobs.discard(job)
+             self._connector._abort_async_page_capture(
+                 capture.plan.digest, "capture runtime shut down"
+             )
+-        if thread is not None and thread is not threading.current_thread():
+-            thread.join()
+ 
+     def _ensure_thread_locked(self) -> None:
+         if self._thread is not None:
+@@ -448,31 +673,87 @@ class ManagerPageCaptureRuntime:
+                         capture.plan.digest,
+                         f"background capture failed: {error}",
+                     )
++                    job = getattr(capture.plan, "capture_job_id", "")
++                    if job:
++                        self._failed_jobs.add(job)
++                        self._connector._capture_read_failed(job)
++                for queued in self._submitting_jobs.values():
++                    job = queued.plan.capture_job_id
++                    self._failed_jobs.add(job)
++                    self._connector._capture_read_failed(job)
++                for queued in self._queued_jobs.values():
++                    self._connector._capture_read_completed(queued.plan.capture_job_id)
++                    self._connector._abort_async_page_capture(
++                        queued.plan.digest, f"capture progress unavailable: {error}"
++                    )
++                self._queued_jobs.clear()
+                 # Do not report finished_sending. vLLM must retain every page
+                 # until a later drain or worker termination proves ownership.
+                 self._cv.notify_all()
+ 
+     def _progress_once(self) -> None:
++        with self._cv:
++            requests = tuple(self._queued_jobs)
++        for request_id in requests:
++            with self._cv:
++                queued = self._queued_jobs.pop(request_id, None)
++                if queued is None:
++                    continue
++                self._submitting_jobs[request_id] = queued
++            self._submit_queued_job(queued)
++        if self._fatal is not None:
++            with self._cv:
++                for capture in self._pending.values():
++                    job = getattr(capture.plan, "capture_job_id", "")
++                    if job:
++                        self._failed_jobs.add(job)
++                        self._connector._capture_read_failed(job)
++                self._wake.clear()
++            return
+         ready: list[tuple[_PendingCapture, Any, int]] = []
+         with self._cv:
+-            for capture in tuple(self._pending.values()):
++            captures = tuple(self._pending.values())
++        for capture in captures:
++            if getattr(capture.plan, "capture_job_id", ""):
++                # Job preemption only marks the read abandoned. It cannot
++                # retire this ticket while polling runs outside the callback
++                # lock; native recovery may hold the ring's separate lock.
+                 view = self._ring.poll(capture.ticket)
+                 if view is None:
+                     continue
+                 claimed = self._ring.claim(capture.ticket)
++            else:
++                with self._cv:
++                    if capture.request_id not in self._pending:
++                        continue
++                    view = self._ring.poll(capture.ticket)
++                    if view is None:
++                        continue
++                    claimed = self._ring.claim(capture.ticket)
++            with self._cv:
+                 if self._pending.pop(capture.request_id, None) is not None:
+                     self._mark_completed_locked(
+                         capture.request_id,
+                         sum(capture.result_block_counts),
+                         started_ns=capture.submitted_ns,
++                        capture_job_id=getattr(capture.plan, "capture_job_id", ""),
+                     )
+                     ready.append((capture, claimed, time.perf_counter_ns()))
+-                if not self._pending:
++                if not self._pending and not self._queued_jobs and not self._submitting_jobs:
+                     self._wake.clear()
+                 self._cv.notify_all()
++        with self._cv:
++            if not self._pending and not self._queued_jobs and not self._submitting_jobs:
++                self._wake.clear()
+         for capture, claimed, completed_ns in ready:
+             scatter = None
+             try:
++                if capture.abandoned:
++                    self._ring.release(capture.ticket)
++                    self._connector._abort_async_page_capture(
++                        capture.plan.digest, "request was preempted",
++                    )
++                    continue
+                 elapsed_ns = max(0, completed_ns - capture.submitted_ns)
+                 _log_capture_observed(
+                     rank=self._rank,
+diff --git a/sparkcache/test_async_page_capture_connector.py b/sparkcache/test_async_page_capture_connector.py
+index f1c0d16..023aa27 100644
+--- a/sparkcache/test_async_page_capture_connector.py
++++ b/sparkcache/test_async_page_capture_connector.py
+@@ -275,6 +275,72 @@ def test_wait_for_save_submits_native_pages_without_synchronous_snapshot(
+     assert connector._store_inflight == 1
+ 
+ 
++def test_d21_job_capture_records_producer_event_before_queueing(monkeypatch):
++    calls = []
++    stream = types.SimpleNamespace(cuda_stream=91)
++
++    class Event:
++        def record(self, actual_stream):
++            assert actual_stream is stream
++            calls.append(("record", self))
++
++    class JobRuntime(FakeRuntime):
++        def submit(self, plan, *, producer_stream, producer_ready):
++            assert producer_stream == 91
++            assert calls == [("record", producer_ready)]
++            calls.append(("queue", plan.capture_job_id))
++            return True
++
++    plan = _ReqPlan("request", "a" * 64, 512, (2, 5), True,
++                    capture_job_id="epoch:1")
++    connector = _connector(plan, JobRuntime())
++    connector._protect_capture_publication_base = lambda _plan: pytest.fail(
++        "publication-base work ran on the model thread"
++    )
++    monkeypatch.setattr(torch.cuda, "current_stream", lambda: stream)
++    monkeypatch.setattr(torch.cuda, "Event", Event)
++    connector.wait_for_save()
++    assert calls[1] == ("queue", "epoch:1")
++
++
++@pytest.mark.parametrize("skip", ["busy", "present", "runtime-unavailable"])
++def test_d21_job_skipped_before_submission_reports_read_complete(monkeypatch, skip):
++    plan = _ReqPlan("request", "a" * 64, 512, (2, 5), True,
++                    capture_job_id="epoch:1")
++    connector = _connector(plan, FakeRuntime())
++    connector._capture_read_lock = threading.Lock()
++    connector._capture_read_done = set()
++    connector._capture_read_uncertain = set()
++    connector._physical_rank = lambda: 2
++    if skip == "busy":
++        connector._store_inflight = 1
++    elif skip == "present":
++        connector._held.add(plan.digest)
++    else:
++        connector._async_page_capture_runtime = None
++    monkeypatch.setattr(torch.cuda, "current_stream", lambda: pytest.fail(
++        "skipped job inspected a CUDA stream"
++    ))
++    connector.wait_for_save()
++    metadata = connector.build_connector_worker_meta()
++    assert metadata.completed_reads == {"epoch:1": {2}}
++    assert connector.build_connector_worker_meta() is None
++
++
++def test_d21_worker_completion_aggregation_preserves_distinct_ranks():
++    from sparkcache.spark_context_cache_connector import SparkCacheReadCompletionMetadata
++
++    metadata = SparkCacheReadCompletionMetadata(completed_reads={"epoch:1": {0}})
++    metadata.aggregate(SparkCacheReadCompletionMetadata(
++        completed_reads={"epoch:1": {0, 1}}, uncertain_reads={"epoch:2": {2}},
++    ))
++    metadata.aggregate(SparkCacheReadCompletionMetadata(
++        completed_reads={"epoch:1": {3}}, uncertain_reads={"epoch:2": {2}},
++    ))
++    assert metadata.completed_reads == {"epoch:1": {0, 1, 3}}
++    assert metadata.uncertain_reads == {"epoch:2": {2}}
++
++
+ def test_all_group_lifetime_ends_only_after_worker_completion() -> None:
+     plan = _ReqPlan("request", "a" * 64, 512, (2, 5), True)
+     runtime = FakeRuntime()
+diff --git a/sparkcache/test_capture_read_leases.py b/sparkcache/test_capture_read_leases.py
+new file mode 100644
+index 0000000..2a2e55f
+--- /dev/null
++++ b/sparkcache/test_capture_read_leases.py
+@@ -0,0 +1,520 @@
++"""D21: exact source leases survive cleanup until distinct copy acknowledgements."""
++
++from types import SimpleNamespace as NS
++import threading
++
++import pytest
++
++from sparkcache.capture_read_leases import CaptureReadLeases
++from sparkcache.streaming.test_manager_page_runtime import (
++    FakeConnector,
++    FakeRing,
++    _plan,
++)
++from sparkcache.streaming.manager_page_runtime import ManagerPageCaptureRuntime
++
++
++class Pool:
++    def __init__(self):
++        self.blocks = [
++            NS(block_id=i, is_null=i == 0, ref_cnt=1, block_hash=f"hash-{i}")
++            for i in range(128)
++        ]
++
++    def touch(self, blocks):
++        for block in blocks:
++            block.ref_cnt += 1
++
++    def free_blocks(self, blocks):
++        for block in blocks:
++            block.ref_cnt -= 1
++            assert block.ref_cnt >= 0
++
++
++def test_d21_deduplicated_sources_survive_request_free_and_duplicate_rank_ack():
++    pool = Pool()
++    leases = CaptureReadLeases(pool, ranks=4, max_jobs=1)
++    job = leases.reserve([2, 5, 2])
++    assert job and [pool.blocks[i].ref_cnt for i in (2, 5)] == [2, 2]
++    assert leases.reserve([7]) is None
++    pool.free_blocks(pool.blocks[i] for i in (2, 5))
++    assert all(pool.blocks[i].ref_cnt == 1 for i in (2, 5))
++    assert not leases.complete(job, [0])
++    assert not leases.complete(job, [0, 1, 2])
++    assert not leases.complete(
++        "another-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1", [0, 1, 2, 3]
++    )
++    assert leases and all(pool.blocks[i].ref_cnt == 1 for i in (2, 5))
++    assert leases.complete(job, [3])
++    assert not leases and all(pool.blocks[i].ref_cnt == 0 for i in (2, 5))
++    assert not leases.complete(job, [0, 1, 2, 3])
++
++
++@pytest.mark.parametrize("ids", [[0], [-1], [128], [True]])
++def test_d21_bad_source_ids_never_take_references(ids):
++    pool = Pool()
++    leases = CaptureReadLeases(pool, ranks=4, max_jobs=1)
++    with pytest.raises(ValueError):
++        leases.reserve(ids)
++    assert not leases and all(block.ref_cnt == 1 for block in pool.blocks)
++
++
++def test_d21_mutable_unhashed_sources_are_not_capture_candidates():
++    pool = Pool()
++    pool.blocks[5].block_hash = None
++    leases = CaptureReadLeases(pool, ranks=4, max_jobs=1)
++    with pytest.raises(ValueError, match="immutable"):
++        leases.reserve([2, 5])
++    assert not leases and pool.blocks[2].ref_cnt == 1
++
++
++def test_d21_invalid_completion_rank_preserves_all_references():
++    pool = Pool()
++    leases = CaptureReadLeases(pool, ranks=4, max_jobs=1)
++    job = leases.reserve([2])
++    with pytest.raises(ValueError, match="physical rank"):
++        leases.complete(job, [0, 4])
++    assert leases and pool.blocks[2].ref_cnt == 2
++
++
++class JobConnector(FakeConnector):
++    def __init__(self):
++        super().__init__()
++        self.read_jobs = []
++        self.read_done = threading.Event()
++        self.failed_jobs = []
++        self.read_failed = threading.Event()
++
++    @staticmethod
++    def _protect_capture_publication_base(plan):
++        return plan
++
++    def _capture_read_completed(self, job):
++        self.read_jobs.append(job)
++        self.read_done.set()
++
++    def _capture_read_failed(self, job):
++        self.failed_jobs.append(job)
++        self.read_failed.set()
++
++
++def test_d21_job_completes_at_read_fence_before_request_or_file_completion():
++    connector = JobConnector()
++    ring = FakeRing(b"aabbxyz")
++    runtime = ManagerPageCaptureRuntime(
++        connector,
++        ring=ring,
++        progress_poll_seconds=0.001,
++        progress_thread_initializer=lambda: None,
++        job_stream_factory=lambda ready: 19,
++    )
++    plan = _plan()
++    plan.capture_job_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1"
++    try:
++        assert runtime.submit(plan, producer_stream=19, producer_ready=object())
++        assert not connector.read_jobs
++        assert runtime.take_finished({plan.request_id}) == set()
++        ring.ready.set()
++        assert connector.read_done.wait(2)
++        assert connector.read_jobs == ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1"]
++        assert connector.completed_event.wait(2)
++        assert runtime.take_finished({plan.request_id}) == set()
++    finally:
++        runtime.shutdown()
++
++
++def test_d21_preemption_never_waits_for_job_copy_and_discards_publication():
++    connector = JobConnector()
++    ring = FakeRing(b"aabbxyz")
++    runtime = ManagerPageCaptureRuntime(
++        connector,
++        ring=ring,
++        progress_poll_seconds=0.001,
++        progress_thread_initializer=lambda: None,
++        job_stream_factory=lambda ready: 19,
++    )
++    plan = _plan()
++    plan.capture_job_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1"
++    try:
++        assert runtime.submit(plan, producer_stream=19, producer_ready=object())
++        runtime.preempt(plan.request_id)
++        assert ring.drained == []
++        ring.ready.set()
++        assert connector.read_done.wait(2)
++        assert runtime.wait_idle(2)
++        assert not connector.completed
++        assert connector.read_jobs == ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1"]
++    finally:
++        runtime.shutdown()
++
++
++def test_d21_uncertain_submit_drain_withholds_job_acknowledgement():
++    class FailedRing(FakeRing):
++        def submit(self, **kwargs):
++            raise RuntimeError("submission status unavailable")
++
++        def drain_context(self, sequence):
++            raise RuntimeError("copy-event status unavailable")
++
++    connector = JobConnector()
++    runtime = ManagerPageCaptureRuntime(
++        connector,
++        ring=FailedRing(b""),
++        progress_poll_seconds=0.001,
++        progress_thread_initializer=lambda: None,
++        job_stream_factory=lambda ready: 19,
++    )
++    plan = _plan()
++    plan.capture_job_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1"
++    assert runtime.submit(plan, producer_stream=19, producer_ready=object())
++    assert connector.read_failed.wait(2)
++    runtime.finish_failed_job(plan)
++    assert not connector.read_jobs and runtime.status()["ownership_uncertain"]
++    assert not runtime.submit(plan, producer_stream=19, producer_ready=object())
++    assert not connector.read_jobs, "repeated failed job acknowledged an uncertain read"
++
++
++def test_d21_partial_enqueue_failure_drains_off_callback_thread():
++    class DelayedDrain(FakeRing):
++        def __init__(self):
++            super().__init__(b"")
++            self.draining = threading.Event()
++            self.release_drain = threading.Event()
++
++        def submit(self, **kwargs):
++            raise RuntimeError("partial enqueue")
++
++        def drain_context(self, sequence):
++            self.draining.set()
++            assert self.release_drain.wait(2)
++
++    connector = JobConnector()
++    ring = DelayedDrain()
++    runtime = ManagerPageCaptureRuntime(
++        connector,
++        ring=ring,
++        progress_poll_seconds=0.001,
++        progress_thread_initializer=lambda: None,
++        job_stream_factory=lambda ready: 19,
++    )
++    plan = _plan()
++    plan.capture_job_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1"
++    try:
++        assert runtime.submit(plan, producer_stream=19, producer_ready=object())
++        assert ring.draining.wait(2)
++        runtime.finish_failed_job(plan)
++        assert not connector.read_jobs
++        following = _plan("another-request")
++        following.capture_job_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:2"
++        assert runtime.submit(following, producer_stream=19, producer_ready=object())
++        runtime.preempt(following.request_id)
++        assert not connector.read_jobs
++        assert runtime.status()["pending_requests"] == 2
++        ring.release_drain.set()
++        assert runtime.wait_idle(2)
++        assert set(connector.read_jobs) == {
++            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1",
++            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:2",
++        }
++    finally:
++        ring.release_drain.set()
++        runtime.shutdown()
++
++
++def test_d21_uncertain_read_quarantines_refs_without_idle_spin():
++    pool = Pool()
++    leases = CaptureReadLeases(pool, ranks=4, max_jobs=2)
++    job = leases.reserve([2])
++    leases.quarantine(job, [0])
++    assert leases.disabled and not leases
++    assert leases.reserve([3]) is None
++    assert pool.blocks[2].ref_cnt == 2
++    assert not leases.complete(job, [1, 2, 3])
++    assert pool.blocks[2].ref_cnt == 2
++    assert leases.complete(job, [0])
++    assert pool.blocks[2].ref_cnt == 1
++
++
++@pytest.mark.parametrize("failure", ["backend", "invalid-ticket"])
++def test_d21_native_wrapper_submission_and_recovery_cannot_block_callbacks(failure):
++    """Exercise the real Python wrapper while its backend holds the ring lock."""
++    from sparkcache.streaming.manager_page_native_ring import NativeManagerPageRing
++    from sparkcache.streaming.native_ring import NativeStatus, RawTicket
++    from sparkcache.streaming.test_manager_page_native_ring import (
++        FakePageBackend,
++        _config,
++        _sources,
++    )
++
++    class BlockingBackend(FakePageBackend):
++        def __init__(self):
++            super().__init__()
++            self.entered = threading.Event()
++            self.unblock = threading.Event()
++            self.thread_id = None
++
++        def block_recovery(self):
++            self.thread_id = threading.get_ident()
++            self.entered.set()
++            assert self.unblock.wait(3)
++
++        def submit_pages(self, **kwargs):
++            if failure == "backend":
++                # The CUDA implementation can synchronize here before returning
++                # its error status. No Python exception handler has run yet.
++                self.block_recovery()
++                return NativeStatus.CUDA_ERROR, None
++            super().submit_pages(**kwargs)
++            return NativeStatus.OK, RawTicket(0, 0)
++
++        def drain_context(self, context_sequence):
++            if failure == "invalid-ticket":
++                # NativeManagerPageRing calls this before raising about an
++                # invalid ticket, while retaining its own internal lock.
++                self.block_recovery()
++            return super().drain_context(context_sequence)
++
++    backend = BlockingBackend()
++    ring = NativeManagerPageRing(_config(), backend=backend)
++    ring.configure_sources(_sources(), group_count=2)
++    connector = JobConnector()
++    ready = object()
++    observed_events = []
++
++    def stream_after_event(event):
++        observed_events.append(event)
++        return 19
++
++    runtime = ManagerPageCaptureRuntime(
++        connector,
++        ring=ring,
++        progress_poll_seconds=0.001,
++        progress_thread_initializer=lambda: None,
++        job_stream_factory=stream_after_event,
++    )
++    plan = _plan()
++    plan.capture_job_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1"
++    following = _plan("queued")
++    following.capture_job_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:2"
++    callbacks_done = threading.Event()
++    try:
++        assert runtime.submit(plan, producer_stream=19, producer_ready=ready)
++        assert backend.entered.wait(2)
++        assert backend.thread_id != threading.get_ident()
++        assert observed_events == [ready]
++
++        def callbacks():
++            assert runtime.status()["pending_requests"] == 1
++            runtime.preempt(plan.request_id)
++            runtime.finish_failed_job(plan)
++            assert runtime.submit(following, producer_stream=19, producer_ready=ready)
++            runtime.preempt(following.request_id)
++            runtime.finish_failed_job(following)
++            callbacks_done.set()
++
++        caller = threading.Thread(target=callbacks)
++        caller.start()
++        assert callbacks_done.wait(1), "callbacks waited on native submission/recovery"
++        assert not connector.read_jobs
++        backend.unblock.set()
++        caller.join(2)
++        assert runtime.wait_idle(2)
++        assert set(connector.read_jobs) == {
++            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1",
++            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:2",
++        }
++        assert observed_events == [ready], "cancelled queued job reached submission"
++        assert not backend.entries and not connector.completed
++    finally:
++        backend.unblock.set()
++        runtime.shutdown()
++
++
++def test_d21_shutdown_waits_for_submitting_job_before_releasing_sources():
++    initialized = threading.Event()
++    proceed = threading.Event()
++    connector = JobConnector()
++    ring = FakeRing(b"")
++
++    def initialize():
++        initialized.set()
++        assert proceed.wait(3)
++
++    runtime = ManagerPageCaptureRuntime(
++        connector,
++        ring=ring,
++        progress_thread_initializer=initialize,
++        job_stream_factory=lambda ready: 19,
++    )
++    plan = _plan()
++    plan.capture_job_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1"
++    assert runtime.submit(plan, producer_stream=19, producer_ready=object())
++    assert initialized.wait(2)
++    stopped = threading.Event()
++
++    def shutdown():
++        runtime.shutdown()
++        stopped.set()
++
++    thread = threading.Thread(target=shutdown)
++    thread.start()
++    assert not stopped.wait(0.05) and not connector.read_jobs
++    proceed.set()
++    assert stopped.wait(2)
++    thread.join(2)
++    assert not ring.submissions and connector.read_jobs == [
++        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1"
++    ]
++
++
++def test_d21_duplicate_during_shutdown_drain_cannot_acknowledge_owned_read():
++    class BlockingDrain(FakeRing):
++        def __init__(self):
++            super().__init__(b"")
++            self.submitted = threading.Event()
++            self.draining = threading.Event()
++            self.retire = threading.Event()
++
++        def submit(self, **kwargs):
++            ticket = super().submit(**kwargs)
++            self.submitted.set()
++            return ticket
++
++        def drain_context(self, sequence):
++            self.draining.set()
++            assert self.retire.wait(3)
++            super().drain_context(sequence)
++
++    connector = JobConnector()
++    ring = BlockingDrain()
++    runtime = ManagerPageCaptureRuntime(
++        connector,
++        ring=ring,
++        progress_thread_initializer=lambda: None,
++        job_stream_factory=lambda ready: 19,
++    )
++    plan = _plan()
++    plan.capture_job_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1"
++    assert runtime.submit(plan, producer_stream=19, producer_ready=object())
++    assert ring.submitted.wait(2)
++    stopped = threading.Event()
++
++    def shutdown():
++        runtime.shutdown()
++        stopped.set()
++
++    thread = threading.Thread(target=shutdown)
++    thread.start()
++    try:
++        assert ring.draining.wait(2)
++        assert not runtime.submit(plan, producer_stream=19, producer_ready=object())
++        runtime.finish_failed_job(plan)
++        assert not connector.read_jobs
++        unrelated = _plan("unsubmitted")
++        unrelated.capture_job_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:2"
++        assert not runtime.submit(
++            unrelated, producer_stream=19, producer_ready=object()
++        )
++        assert connector.read_jobs == ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:2"]
++        ring.retire.set()
++        assert stopped.wait(2)
++        thread.join(2)
++        assert connector.read_jobs == [
++            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:2",
++            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1",
++        ]
++    finally:
++        ring.retire.set()
++        thread.join(2)
++
++
++def test_d21_retired_job_replay_and_epoch_reset_never_start_native_reads():
++    connector = JobConnector()
++    ring = FakeRing(b"aabbxyz")
++    ring.ready.set()
++    runtime = ManagerPageCaptureRuntime(
++        connector,
++        ring=ring,
++        progress_thread_initializer=lambda: None,
++        job_stream_factory=lambda ready: 19,
++    )
++    plan = _plan()
++    plan.capture_job_id = "a" * 32 + ":3"
++    try:
++        assert runtime.submit(plan, producer_stream=19, producer_ready=object())
++        assert connector.read_done.wait(2) and runtime.wait_idle(2)
++        assert len(ring.submissions) == 1
++        for job in (plan.capture_job_id, "a" * 32 + ":2", "b" * 32 + ":4"):
++            replay = _plan("different-request")
++            replay.capture_job_id = job
++            assert not runtime.submit(
++                replay, producer_stream=19, producer_ready=object()
++            )
++            assert connector.read_jobs[-1] == job
++        assert len(ring.submissions) == 1
++        assert runtime._job_epoch == "a" * 32 and runtime._job_high_watermark == 3
++    finally:
++        runtime.shutdown()
++
++
++def test_d21_watermark_and_wrong_request_do_not_acknowledge_active_job():
++    initialize = threading.Event()
++    connector = JobConnector()
++    ring = FakeRing(b"")
++    runtime = ManagerPageCaptureRuntime(
++        connector,
++        ring=ring,
++        progress_thread_initializer=lambda: initialize.wait(3),
++        job_stream_factory=lambda ready: 19,
++    )
++    lower = _plan("lower")
++    lower.capture_job_id = "a" * 32 + ":1"
++    higher = _plan("higher")
++    higher.capture_job_id = "a" * 32 + ":2"
++    try:
++        assert runtime.submit(lower, producer_stream=19, producer_ready=object())
++        assert runtime.submit(higher, producer_stream=19, producer_ready=object())
++        assert runtime._job_high_watermark == 2
++        assert runtime.submit(lower, producer_stream=19, producer_ready=object())
++        wrong_request = _plan("wrong-request")
++        wrong_request.capture_job_id = lower.capture_job_id
++        assert not runtime.submit(
++            wrong_request, producer_stream=19, producer_ready=object()
++        )
++        assert not connector.read_jobs and not ring.submissions
++        runtime.preempt(lower.request_id)
++        runtime.preempt(higher.request_id)
++        initialize.set()
++        assert runtime.wait_idle(2)
++        assert set(connector.read_jobs) == {lower.capture_job_id, higher.capture_job_id}
++        assert not ring.submissions
++    finally:
++        initialize.set()
++        runtime.shutdown()
++
++
++@pytest.mark.parametrize(
++    "job",
++    [
++        "epoch:1",
++        "a" * 32 + ":0",
++        "a" * 32 + ":01",
++        "A" * 32 + ":1",
++        "a" * 32 + ":18446744073709551616",
++    ],
++)
++def test_d21_invalid_epoch_or_sequence_cannot_submit(job):
++    connector = JobConnector()
++    ring = FakeRing(b"")
++    runtime = ManagerPageCaptureRuntime(
++        connector,
++        ring=ring,
++        progress_thread_initializer=lambda: None,
++        job_stream_factory=lambda ready: 19,
++    )
++    plan = _plan()
++    plan.capture_job_id = job
++    with pytest.raises(ValueError, match="UUID epoch"):
++        runtime.submit(plan, producer_stream=19, producer_ready=object())
++    assert not ring.submissions and not connector.read_jobs
++    runtime.shutdown()
+diff --git a/sparkcache/test_defect_regressions.py b/sparkcache/test_defect_regressions.py
+index 9651024..985ca23 100644
+--- a/sparkcache/test_defect_regressions.py
++++ b/sparkcache/test_defect_regressions.py
+@@ -2684,3 +2684,151 @@ class DefectD19MultimodalPromptAliasingTests(unittest.TestCase):
+                 (0, False),
+             )
+             self.assertEqual(connector.counters["multimodal_bypass"], 3)
++
++
++class DefectD20GenericCheckpointOfferTests(unittest.TestCase):
++    """Consume exact scheduler-local offers without extending their lifetime."""
++
++    @staticmethod
++    def _config():
++        class FullAttentionSpec:
++            block_size = 512
++            storage_block_size = 512
++            page_size_bytes = 64
++
++        class MambaSpec:
++            block_size = 512
++            storage_block_size = 512
++            page_size_bytes = 64
++            mamba_cache_mode = "align"
++            tokens_per_state = 512
++            num_speculative_blocks = 3
++            num_prefill_checkpoint_blocks = 4
++
++        return types.SimpleNamespace(
++            num_blocks=128,
++            kv_cache_groups=tuple(
++                types.SimpleNamespace(
++                    kv_cache_spec=spec,
++                    is_eagle_group=False,
++                    layer_names=(name,),
++                )
++                for name, spec in (
++                    ("full", FullAttentionSpec()),
++                    ("recurrent", MambaSpec()),
++                    ("recurrent_second", MambaSpec()),
++                )
++            ),
++        )
++
++    @staticmethod
++    def _output(request_id="native-checkpoints", start=0, length=8192):
++        groups = ((20, 21, 22, 23), tuple(range(40, 60)), tuple(range(60, 80)))
++        offers = [
++            (group, block + index, position)
++            for group, block in ((1, 90), (2, 100))
++            for index, position in enumerate((4096, 6144, 7168, 7680))
++        ]
++        return types.SimpleNamespace(
++            scheduled_new_reqs=[types.SimpleNamespace(
++                req_id=request_id,
++                prompt_token_ids=list(range(8192)),
++                block_ids=((1, 2, 3, 4), tuple(range(10, 30)), tuple(range(30, 50))),
++                num_computed_tokens=start,
++            )],
++            scheduled_cached_reqs=types.SimpleNamespace(
++                req_ids=[], resumed_req_ids=set(), num_computed_tokens=[], new_block_ids=[],
++            ),
++            num_scheduled_tokens={request_id: length},
++            preempted_req_ids=set(),
++            kv_connector_block_state=types.SimpleNamespace(
++                block_ids={request_id: groups},
++                boundary_state_offloads={request_id: offers},
++            ),
++        )
++
++    def _connector(self, root, rank=0, role=KVConnectorRole.SCHEDULER):
++        result = _make_connector(
++            root, rank, block_size=512, role=role,
++            tp=4, dcp=4, kv_cache_config=self._config(),
++            extra_config={"spark_cache_model_profile": "glm53-flash-hybrid"},
++        )
++        self.addCleanup(result.shutdown)
++        return result
++
++    def test_d20_completed_new_prefill_captures_exact_four_checkpoint_offer(self):
++        with tempfile.TemporaryDirectory() as directory:
++            scheduler = self._connector(Path(directory) / "scheduler")
++            output = self._output()
++            meta = scheduler.build_connector_meta(output)
++            self.assertEqual(len(meta.plans), 1)
++            plan = meta.plans[0]
++            self.assertEqual(plan.span_tokens, 6144)
++            self.assertEqual(plan.recurrent_boundary_blocks, ((1, 91), (2, 101)))
++            self.assertEqual(plan.block_ids_by_group[0], (20, 21, 22, 23))
++            self.assertNotIn("native-checkpoints", scheduler._store_progress)
++            for rank in range(4):
++                worker = self._connector(Path(directory) / f"rank{rank}", rank, KVConnectorRole.WORKER)
++                pools = {
++                    name: ((torch.arange(128 * 64, dtype=torch.int32) + offset + rank)
++                           .remainder(251).to(torch.uint8).reshape(128, 1, 64))
++                    for name, offset in (("full", 0), ("recurrent", 29), ("recurrent_second", 61))
++                }
++                worker.register_kv_caches(pools)
++                expected = {"full": pools["full"][[20, 21, 22]].clone(),
++                            "recurrent": pools["recurrent"][[91]].clone(),
++                            "recurrent_second": pools["recurrent_second"][[101]].clone()}
++                worker._store_one(plan)
++                destination = ((110, 111, 112), tuple([0] * 11 + [113]), tuple([0] * 11 + [114]))
++                for name in pools:
++                    pools[name].zero_()
++                self.assertTrue(worker._load_one(_ReqPlan(
++                    "restored", plan.digest, 6144, destination[0], False,
++                    block_ids_by_group=destination,
++                )))
++                self.assertTrue(torch.equal(pools["full"][[110, 111, 112]], expected["full"]))
++                self.assertTrue(torch.equal(pools["recurrent"][[113]], expected["recurrent"]))
++                self.assertTrue(torch.equal(pools["recurrent_second"][[114]], expected["recurrent_second"]))
++
++    def test_d20_native_offers_cannot_reuse_a_previous_step_latch(self):
++        with tempfile.TemporaryDirectory() as directory:
++            scheduler = self._connector(Path(directory))
++            output = self._output()
++            output.kv_connector_block_state.boundary_state_offloads = {}
++            self.assertEqual(scheduler._validated_recurrent_boundary_blocks(
++                output, "native-checkpoints", 6144, latched=((1, 91), (2, 101)),
++            ), ())
++
++    def test_d20_missing_or_conflicting_required_group_rejects_publication(self):
++        with tempfile.TemporaryDirectory() as directory:
++            for fault in ("missing", "duplicate", "null", "malformed"):
++                with self.subTest(fault=fault):
++                    scheduler = self._connector(Path(directory) / fault)
++                    output = self._output()
++                    offers = output.kv_connector_block_state.boundary_state_offloads["native-checkpoints"]
++                    if fault == "missing":
++                        offers[:] = [entry for entry in offers if entry[0] != 2]
++                    elif fault == "duplicate":
++                        offers.append((1, 92, 6144))
++                    elif fault == "null":
++                        offers[0] = (1, 0, 4096)
++                    else:
++                        offers.append((1, "not-a-block", 7680))
++                    self.assertEqual(scheduler.build_connector_meta(output).plans, [])
++                    self.assertGreater(scheduler.counters["recurrent_boundary_metadata_rejected"], 0)
++
++    def test_d20_generic_offer_rejects_unleased_asynchronous_capture(self):
++        with tempfile.TemporaryDirectory() as directory:
++            scheduler = self._connector(Path(directory))
++            scheduler._async_page_capture_enabled = True
++            self.assertIsNone(scheduler._validated_recurrent_boundary_blocks(
++                self._output(), "native-checkpoints", 6144,
++            ))
++            scheduler._async_page_capture_enabled = False
++
++    def test_d20_missing_current_tables_never_uses_worker_append_history(self):
++        with tempfile.TemporaryDirectory() as directory:
++            scheduler = self._connector(Path(directory))
++            output = self._output()
++            output.kv_connector_block_state.block_ids = {}
++            self.assertEqual(scheduler.build_connector_meta(output).plans, [])
+diff --git a/sparkcache/test_spark_context_cache_connector.py b/sparkcache/test_spark_context_cache_connector.py
+index 6aaade9..3e1182d 100644
+--- a/sparkcache/test_spark_context_cache_connector.py
++++ b/sparkcache/test_spark_context_cache_connector.py
+@@ -119,6 +119,9 @@ def _install_vllm_stubs() -> None:
+     class KVConnectorHandshakeMetadata:
+         pass
+ 
++    class KVConnectorWorkerMetadata:
++        pass
++
+     class SupportsHMA:
+         pass
+ 
+@@ -141,6 +144,7 @@ def _install_vllm_stubs() -> None:
+     base.KVConnectorBase_V1 = KVConnectorBase_V1
+     base.KVConnectorHandshakeMetadata = KVConnectorHandshakeMetadata
+     base.KVConnectorMetadata = KVConnectorMetadata
++    base.KVConnectorWorkerMetadata = KVConnectorWorkerMetadata
+     base.KVConnectorRole = KVConnectorRole
+     base.SupportsHMA = SupportsHMA
+     for name, module in (

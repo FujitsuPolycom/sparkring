@@ -1,0 +1,12 @@
+{
+  "schema": "sparkring-nccl-dual-pci-domain/v1",
+  "status": "research-only",
+  "repository": "https://github.com/NVIDIA/nccl.git",
+  "revision": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
+  "patch": "nccl-2.30.7-dual-pci-domain.patch",
+  "patch_sha256": "8e2b8715d62d2b07a74caca3778da0eff2e7b54caf8a184bb728f179a5d1eba4",
+  "patch_mode": "cumulative against unmodified pinned revision; do not also apply switchless-cycle.patch",
+  "cuda_version": "13.3",
+  "gencode": "arch=compute_121,code=sm_121",
+  "measured_library_sha256": "768a450b5eb84bf3d1191795350e43c96de75aeba4783ec314d47672fe6e1fc6"
+}

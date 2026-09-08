@@ -1,0 +1,189 @@
+{
+  "schema": "sparkring-source-image-lock/v1",
+  "status": "research-only",
+  "parent": {
+    "reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:11a556a54041fd823d152a7f051ac4f7c617dc539030df26e93008392fee0746",
+    "image_id": "sha256:6921a6c163ea40b603e19a0332330efe3dbccbf4dce9f6cbbf6b756c9231835a",
+    "platform": "linux/arm64",
+    "file_receipt": "parent-files.json.gz",
+    "file_receipt_sha256": "a2493fbda9775fe894c1c7a8dd557e12bff86081beba594e46d92690a19df5d0"
+  },
+  "target": {
+    "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+    "revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e"
+  },
+  "sources": {
+    "vllm": {
+      "revision": "8f8ea47be212bbdd91b2172d5958ea2aae2b0e50",
+      "repository": "https://github.com/local-inference-lab/vllm.git",
+      "base_revision": "2a979314dc97b03173a0a76fc15664ec924db32b",
+      "result_tree": "79d74a9997e9eb74bf4af6ad5c4088bfb5e60a3a",
+      "package_tree": "df93657db62ad08f5fdde08c5676efed2087f8c0",
+      "patch": "patches/vllm.patch",
+      "patch_sha256": "b3326b3de68beffa6d2f379b4e279b3b5e7fd16c238017ea391aadba5a4bb399",
+      "publication_status": "Source composition reproduced by the packaged patch over the public base revision.",
+      "installed_file_map_sha256": "3a5dada9ccc89a2a84269c2e1dd69f73e656ff076feab23548fd364ccd380958",
+      "installed_file_count": 4922
+    },
+    "b12x": {
+      "revision": "0b6d61c37c87ae49d2f9d20d38b9da023146e243",
+      "repository": "https://github.com/local-inference-lab/b12x.git",
+      "base_revision": "85a08f47750db333a33ab3eae245a0a08452d04c",
+      "result_tree": "a782c1d4df9f93cc64efb753b7677731576d395d",
+      "package_tree": "e0bf6ef4a58db5ad6836dd304f3dc4feb96c1501",
+      "patch": "patches/b12x.patch",
+      "patch_sha256": "bf4d3db7b1592ed88239d6825fc74fb72e7a67cb082c819c49dcf6ca40b9c919",
+      "publication_status": "Source composition reproduced by the packaged patch over the public base revision.",
+      "installed_file_map_sha256": "4fda7832407257c1a370702e0f2aca3f3ea103179f09958e2eb2f85d069d60e1",
+      "installed_file_count": 397
+    },
+    "sparkcache": {
+      "revision": "48f9eb9432c3db105b174c162c4241b9bb3226fc",
+      "enabled": false,
+      "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
+      "base_revision": "6be08c1fff14d66de6dbbbd60c00dba3816e649a",
+      "result_tree": "adcdecd4732e94fdbf8bfaa330148c1cdf0bb154",
+      "package_tree": "c3ac6aa7af08a8fd325ad59d423de960335bca3b",
+      "patch": "patches/sparkcache.patch",
+      "patch_sha256": "0c9fae2a5993dc7118647fab3469e3baba566db6b035e46e95c873d021a786e1",
+      "publication_status": "Source composition reproduced by the packaged patch over the public base revision.",
+      "installed_file_map_sha256": "2faf699860619a9837bda78ce89ba273bd435c7df764960c3d49cfe7cc91a2b4",
+      "installed_file_count": 169
+    }
+  },
+  "runtime": {
+    "bundle_manifest_sha256": "c0fd5567442b08b908cc193f36d0864e262573c7e5d232509479a823cface742",
+    "transport_sha256": "056243fad27d224b82e437925ffa2aed42037e6bd29f239f56076a832f6ca5cb",
+    "marker_binary_sha256": "2828c07e4255c4962c77425be2c88969e7eb7dd4b1bf9e36485bc705bb5d6d64",
+    "marker_source_sha256": "8684a6961b8e86aa474fa2310ff71e4cdf219a63a72ceb5593b2f95e54812792",
+    "nccl_path": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+    "nccl_sha256": "768a450b5eb84bf3d1191795350e43c96de75aeba4783ec314d47672fe6e1fc6",
+    "expected_distributions": {
+      "torch": "2.13.0+cu130",
+      "triton": "3.7.1",
+      "nvidia-cutlass-dsl": "4.6.2",
+      "transformers": "5.16.1",
+      "flashinfer-python": "0.6.17"
+    },
+    "retained_vllm_native_sha256": "76934f33bbdbd1079470f2d9aabea746807decdc1d33fb59b85ead4b470d4fdf",
+    "retained_vllm_native_files": {
+      "vllm/_C_stable_libtorch.abi3.so": "386fa4d4aae2172527f71447c5ab420100d3ac33acd31fbfde8c8496cc5b5eb5",
+      "vllm/_flashkda_C.abi3.so": "aa49b725d7e9691f5bbba198949aaee7f22363c2212485fd9dd1f2c5a7141bea",
+      "vllm/_moe_C_stable_libtorch.abi3.so": "a7e92ba41d0ee0f79c365c01b8679cc13319dd2b0774964a6114a54f0107c790",
+      "vllm/_qutlass_C.abi3.so": "cbbd7407a14ab3c3618cf99b478561f17b5a9c0ecacbd0da6f8319ec726d32ff",
+      "vllm/_rust_tool_parser.abi3.so": "a00c5ee2eed6d4c5e66e9ccd78643eaeff717dd4116e8abe9feee4b86803251c",
+      "vllm/cumem_allocator.abi3.so": "97bb3bf3d9e83784f3b4af584be130301efdd7803059884b8eda1a9ad224df03",
+      "vllm/fs_io_C.abi3.so": "1a9a51afdbbbe4eac291714044a90ed5d4e4935eba5359ec636d0a3cd98309d7",
+      "vllm/spinloop.abi3.so": "1fcf2416cd7bdf3b4ce3536dc3b6fe4d3c322c2487e2aa4011a0ccaea138b960",
+      "vllm/third_party/deep_gemm/_C.cpython-310-aarch64-linux-gnu.so": "753276592ea9ccbc7ed2559ecb176ae4148d865807ea4e33b0ea062cd339442e",
+      "vllm/third_party/deep_gemm/_C.cpython-311-aarch64-linux-gnu.so": "f07099297d6dcbc9798f2f6b37641cb48e032525158950b8a5d4d0416106a7e1",
+      "vllm/third_party/deep_gemm/_C.cpython-312-aarch64-linux-gnu.so": "0f8e9775f382275489fa4114c3ba47fef8077bff8fb97ef81cebd9173783b949",
+      "vllm/third_party/deep_gemm/_C.cpython-313-aarch64-linux-gnu.so": "43c0ded7ed689bbda312b0cd0e6280b208f079e20f2509b21c90d729fdaea05f",
+      "vllm/third_party/deep_gemm/_C.cpython-314-aarch64-linux-gnu.so": "47aa0a0319b000d7e721d7106ae5af400688ad3312e48dbc52dda557c2ca69d0",
+      "vllm/vllm_flash_attn/_vllm_fa2_C.abi3.so": "5e04fce54873f2cee1bcf04dd1af9a47fdab126e7f615807d540e690af16bf60",
+      "vllm/vllm_flash_attn/_vllm_fa3_C.abi3.so": "2b5ec082ccd7d58edef3a27804a44eefea584f19cfeb04c3ddf047a76e354f34"
+    },
+    "readiness_warmup": {
+      "environment": "SPARKRING_WARMUP_TEMPERATURE",
+      "helper_sha256": "e818bc63ca74511d4250dd5d373b1d7ac7f437a5151f6e09c6bd404ec0bed1bd",
+      "temperature": 1.0
+    }
+  },
+  "profiles": {
+    "tp4-dcp1-mtp3-prefill": {
+      "dcp_size": 1,
+      "host_domains": "dual",
+      "sparkcache": false,
+      "environment": {
+        "SOURCE_IMAGE_PROFILE": "tp4-dcp1-mtp3-prefill",
+        "DECODE_CONTEXT_PARALLEL_SIZE": "1",
+        "CP_KV_CACHE_INTERLEAVE_SIZE": "1",
+        "VLLM_BLOCK_SIZE": "512",
+        "SPARKCACHE_ENABLED": "0",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE": "0",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
+        "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
+        "VLLM_GLM53_MHC_PREFILL_DIAGNOSTICS": "1",
+        "VLLM_GLM53_KDA_GATE_SIDE_STREAM": "1",
+        "VLLM_DCP_TOPK_OWNER_MERGE": "0",
+        "VLLM_DCP_OWNER_FUSED_ENDPOINTS": "0",
+        "VLLM_DCP_COMPACT_INDEX_CACHE_OWNER": "0",
+        "VLLM_DCP_COMPACT_INDEX_TENSOR_VOTE": "0",
+        "VLLM_DCP_COMPACT_INDEX_LOCAL_WIDTHS": "0",
+        "VLLM_DCP_COMPACT_INDEX_PROFILE": "0",
+        "B12X_MLA_CKV_GATHER": "1",
+        "NCCL_IB_EXTENDED_IPV4_GIDS": "1",
+        "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+        "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
+        "NCCL_DEBUG": "INFO",
+        "NCCL_DEBUG_SUBSYS": "NET,INIT,GRAPH",
+        "MAX_NUM_BATCHED_TOKENS": "8192",
+        "MAX_CUDAGRAPH_CAPTURE_SIZE": "64",
+        "KV_CACHE_MEMORY_BYTES": "25769803776",
+        "JIT_CACHE_NAMESPACE": "glm53-vllm-8f8ea47b-b12x-0b6d61c3-dcp1"
+      }
+    },
+    "tp4-dcp4-mtp3-prefill": {
+      "dcp_size": 4,
+      "host_domains": "dual",
+      "sparkcache": false,
+      "environment": {
+        "SOURCE_IMAGE_PROFILE": "tp4-dcp4-mtp3-prefill",
+        "DECODE_CONTEXT_PARALLEL_SIZE": "4",
+        "CP_KV_CACHE_INTERLEAVE_SIZE": "4",
+        "VLLM_BLOCK_SIZE": "512",
+        "SPARKCACHE_ENABLED": "0",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE": "0",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
+        "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
+        "VLLM_GLM53_MHC_PREFILL_DIAGNOSTICS": "1",
+        "VLLM_GLM53_KDA_GATE_SIDE_STREAM": "1",
+        "VLLM_DCP_TOPK_OWNER_MERGE": "1",
+        "VLLM_DCP_OWNER_FUSED_ENDPOINTS": "1",
+        "VLLM_DCP_COMPACT_INDEX_CACHE_OWNER": "0",
+        "VLLM_DCP_COMPACT_INDEX_TENSOR_VOTE": "0",
+        "VLLM_DCP_COMPACT_INDEX_LOCAL_WIDTHS": "0",
+        "VLLM_DCP_COMPACT_INDEX_PROFILE": "0",
+        "B12X_MLA_CKV_GATHER": "1",
+        "NCCL_IB_EXTENDED_IPV4_GIDS": "1",
+        "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+        "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
+        "NCCL_DEBUG": "INFO",
+        "NCCL_DEBUG_SUBSYS": "NET,INIT,GRAPH",
+        "MAX_NUM_BATCHED_TOKENS": "8192",
+        "MAX_CUDAGRAPH_CAPTURE_SIZE": "64",
+        "KV_CACHE_MEMORY_BYTES": "25769803776",
+        "JIT_CACHE_NAMESPACE": "glm53-vllm-8f8ea47b-b12x-0b6d61c3-dcp4"
+      }
+    }
+  },
+  "qualification": {
+    "measured_image_id": "sha256:e585e8b3ebeeea2852011d319f4a4d781bf2ae33388210b7cd16ff16d3765d9b",
+    "rebuilt_image_qualified": false,
+    "sparkcache_enabled_qualified": false
+  },
+  "source_date_epoch": 1788880173,
+  "startup": {
+    "revision": "1c87b4e14054bcb4387ee74d4a45d54b9ba286df",
+    "warmup_transform": "glm53-thinking-low/v1",
+    "files": {
+      "serve_with_warmup.py": "051a9627a5d5254a8c520b59d703db64ba404329e1393f558836dee03a081ca5",
+      "warmup_dflash.py": "f542742394edb3ea7ba9c467dba0ce54d97e6defa5ab27dde25745a0cb0e40b8",
+      "startup_admission.py": "1afdc6b2e421465498bde349dff3edb8428ca995a949b2a2f3c6e358a3af7ef4",
+      "scheduler_liveness.py": "6fe1f8e052577c7a71708236bcd452ca3377f99de776e7edef8881573dac5670"
+    }
+  },
+  "nccl_build": {
+    "repository": "https://github.com/NVIDIA/nccl.git",
+    "base_revision": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
+    "patch": "patches/nccl.patch",
+    "patch_sha256": "8e2b8715d62d2b07a74caca3778da0eff2e7b54caf8a184bb728f179a5d1eba4",
+    "cuda_home": "/opt/cuda-13.3",
+    "architecture": "121",
+    "result_tree": "01e0e8a3a821ebc92a4d1333981d18ed4eeb96e4",
+    "source_directory": "/work/src-lf",
+    "build_directory": "/work/build",
+    "random_seed_policy": "sparkring-nvcc-source-seed/v1",
+    "nvcc_wrapper_sha256": "cf70bcf562edeed7564ab341ac57d2a7c1ce0ebf9d4b8130643fc540ec5e5cfa"
+  }
+}

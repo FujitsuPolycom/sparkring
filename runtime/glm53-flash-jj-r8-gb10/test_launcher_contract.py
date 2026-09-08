@@ -817,6 +817,39 @@ def test_launcher_keeps_sircl_disabled_by_default(tmp_path: Path) -> None:
     assert not any("SPARK_TP4_LIBRARY=" in argument for argument in arguments)
 
 
+def test_source_composition_passes_prefill_flags_and_dual_domain_nccl(tmp_path):
+    result, arguments = _run_launcher(
+        tmp_path, "source-composition",
+        "SOURCE_IMAGE_PROFILE=tp4-dcp1-mtp3-prefill",
+        "DECODE_CONTEXT_PARALLEL_SIZE=1", "SPECULATION_METHOD=mtp",
+        "NUM_SPECULATIVE_TOKENS=3", "SPARKCACHE_ENABLED=0",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE=0", "VLLM_BLOCK_SIZE=512",
+        "VLLM_B12X_KDA_PREFILL_COALESCING=1", "VLLM_GLM53_MHC_PREFILL_SHARD=1",
+        "NCCL_IB_EXTENDED_IPV4_GIDS=1", "NCCL_IB_PRESERVE_PCI_DOMAIN=1",
+        "NCCL_LIBRARY_PATH=/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+        "NCCL_LIBRARY_SHA256=" + "a" * 64,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--kv-transfer-config" not in arguments
+    assert arguments[arguments.index("--block-size") + 1] == "512"
+    for value in ("VLLM_B12X_KDA_PREFILL_COALESCING=1", "VLLM_GLM53_MHC_PREFILL_SHARD=1",
+                  "NCCL_IB_EXTENDED_IPV4_GIDS=1", "NCCL_IB_PRESERVE_PCI_DOMAIN=1",
+                  "VLLM_NCCL_SO_PATH=/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+                  "LD_PRELOAD=/opt/sparkring/nccl-pci/libnccl.so.2.30.7"):
+        assert value in arguments
+
+
+def test_source_composition_rejects_a_different_dcp_size(tmp_path):
+    result, arguments = _run_launcher(
+        tmp_path, "wrong-source-dcp", "SOURCE_IMAGE_PROFILE=tp4-dcp1-mtp3-prefill",
+        "DECODE_CONTEXT_PARALLEL_SIZE=4", "SPECULATION_METHOD=mtp",
+        "NUM_SPECULATIVE_TOKENS=3", "SPARKCACHE_ENABLED=0",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE=0",
+    )
+    assert result.returncode != 0 and not arguments
+    assert "DCP size differs" in result.stderr
+
+
 def test_fused_sircl_overlay_is_complete_and_sanitized() -> None:
     values = _defaults(SIRCL_ENVIRONMENT)
     assert values == {

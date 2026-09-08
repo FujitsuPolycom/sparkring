@@ -152,6 +152,12 @@ esac
 : "${NCCL_IB_GID_INDEX:=3}"
 : "${NCCL_MIN_NCHANNELS:=4}"
 : "${NCCL_MAX_NCHANNELS:=4}"
+: "${NCCL_LIBRARY_PATH:=/opt/sparkring/nccl/libnccl.so.2}"
+: "${NCCL_LIBRARY_SHA256:=}"
+: "${NCCL_DEBUG:=WARN}"
+: "${NCCL_DEBUG_SUBSYS:=NET,INIT,GRAPH}"
+: "${SOURCE_IMAGE_PROFILE:=}"
+: "${VLLM_BLOCK_SIZE:=256}"
 : "${OMP_NUM_THREADS:=16}"
 : "${TORCHINDUCTOR_COMPILE_THREADS:=1}"
 : "${FASTSAFETENSORS_QUEUE_SIZE:=1}"
@@ -173,6 +179,41 @@ require_positive_uint() {
   require_uint "$1"
   (( ${!1} > 0 )) || die "$1 must be greater than zero"
 }
+
+source_environment=()
+for name in VLLM_B12X_KDA_PREFILL_COALESCING VLLM_GLM53_MHC_PREFILL_SHARD \
+  VLLM_GLM53_MHC_PREFILL_DIAGNOSTICS VLLM_GLM53_KDA_GATE_SIDE_STREAM \
+  VLLM_DCP_TOPK_OWNER_MERGE VLLM_DCP_OWNER_FUSED_ENDPOINTS \
+  VLLM_DCP_COMPACT_INDEX_CACHE_OWNER VLLM_DCP_COMPACT_INDEX_TENSOR_VOTE \
+  VLLM_DCP_COMPACT_INDEX_LOCAL_WIDTHS VLLM_DCP_COMPACT_INDEX_PROFILE \
+  NCCL_IB_EXTENDED_IPV4_GIDS NCCL_IB_PRESERVE_PCI_DOMAIN NCCL_IB_ROUTE_DIAGNOSTICS; do
+  value="${!name:-0}"
+  [[ "${value}" == 0 || "${value}" == 1 ]] || die "${name} must be 0 or 1"
+  source_environment+=(-e "${name}=${value}")
+done
+case "${NCCL_LIBRARY_PATH}" in
+  /opt/sparkring/nccl/libnccl.so.2) ;;
+  /opt/sparkring/nccl-pci/libnccl.so.2.30.7)
+    [[ "${NCCL_LIBRARY_SHA256}" =~ ^[0-9a-f]{64}$ && -n "${SOURCE_IMAGE_PROFILE}" ]] || \
+      die 'Source-composed NCCL requires its receipt-bound profile and SHA-256' ;;
+  *) die 'NCCL library path is not supported by this launcher' ;;
+esac
+case "${VLLM_BLOCK_SIZE}" in 256|512) ;; *) die 'VLLM_BLOCK_SIZE must be 256 or 512' ;; esac
+case "${NCCL_DEBUG}" in WARN|INFO) ;; *) die 'NCCL_DEBUG must be WARN or INFO' ;; esac
+[[ "${NCCL_DEBUG_SUBSYS}" == NET,INIT,GRAPH ]] || die 'NCCL_DEBUG_SUBSYS must be NET,INIT,GRAPH'
+case "${SOURCE_IMAGE_PROFILE}" in
+  '') ;;
+  tp4-dcp1-mtp3-prefill|tp4-dcp4-mtp3-prefill)
+    [[ "${SPARKCACHE_ENABLED}" == 0 && "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 0 ]] || \
+      die 'Source-composed prefill profiles require SparkCache and capture disabled'
+    [[ "${SPECULATION_METHOD}" == mtp && "${NUM_SPECULATIVE_TOKENS}" == 3 && "${TENSOR_PARALLEL_SIZE}" == 4 ]] || \
+      die 'Source-composed prefill profiles require TP4 and native MTP3'
+    [[ "${SOURCE_IMAGE_PROFILE}" == "tp4-dcp${DECODE_CONTEXT_PARALLEL_SIZE}-mtp3-prefill" ]] || \
+      die 'DCP size differs from the source-composed profile'
+    [[ "${VLLM_B12X_KDA_PREFILL_COALESCING:-0}" == 1 && "${VLLM_GLM53_MHC_PREFILL_SHARD:-0}" == 1 ]] || \
+      die 'Source-composed prefill profile requires both coalescing and mHC sharding' ;;
+  *) die 'Unsupported source-composed runtime profile' ;;
+esac
 
 for name in \
   PORT MASTER_PORT TENSOR_PARALLEL_SIZE PIPELINE_PARALLEL_SIZE \
@@ -996,9 +1037,11 @@ container_command=(docker "${container_action[@]}" \
   -e VLLM_B12X_MOE_FP4_FORCE_A16=0 \
   -e VLLM_ENABLE_PCIE_ALLREDUCE=0 -e VLLM_ALLREDUCE_USE_FLASHINFER=0 \
   -e VLLM_ALLREDUCE_USE_SYMM_MEM=0 \
-  -e VLLM_NCCL_SO_PATH=/opt/sparkring/nccl/libnccl.so.2 \
-  -e LD_PRELOAD=/opt/sparkring/nccl/libnccl.so.2 \
-  -e NCCL_DEBUG=WARN -e NCCL_NET=IB -e NCCL_NET_PLUGIN=none \
+  "${source_environment[@]}" \
+  -e "VLLM_NCCL_SO_PATH=${NCCL_LIBRARY_PATH}" \
+  -e "LD_PRELOAD=${NCCL_LIBRARY_PATH}" \
+  -e "NCCL_DEBUG=${NCCL_DEBUG}" -e "NCCL_DEBUG_SUBSYS=${NCCL_DEBUG_SUBSYS}" \
+  -e NCCL_NET=IB -e NCCL_NET_PLUGIN=none \
   -e NCCL_IB_DISABLE=0 -e "NCCL_IB_HCA=${NCCL_IB_HCA}" \
   -e "NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX}" \
   -e NCCL_IB_SUBNET_AWARE_ROUTING=1 -e NCCL_IB_MERGE_NICS=0 -e NCCL_CROSS_NIC=1 \
@@ -1034,7 +1077,7 @@ container_command=(docker "${container_action[@]}" \
   "${chat_template_args[@]}" \
   --enable-chunked-prefill --dtype bfloat16 --kv-cache-dtype "${KV_CACHE_DTYPE}" \
   --quantization modelopt_mixed --attention-backend "${ATTENTION_BACKEND}" \
-  --block-size 256 --moe-backend "${MOE_BACKEND}" --linear-backend "${LINEAR_BACKEND}" \
+  --block-size "${VLLM_BLOCK_SIZE}" --moe-backend "${MOE_BACKEND}" --linear-backend "${LINEAR_BACKEND}" \
   --no-enable-flashinfer-autotune --load-format "${LOAD_FORMAT}" \
   --enable-auto-tool-choice --tool-call-parser glm47 --reasoning-parser glm45 \
   --kda-prefill-backend "${KDA_PREFILL_BACKEND}" \

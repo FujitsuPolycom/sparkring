@@ -110,14 +110,14 @@ def build_runtime_plan(preparation, action):
             raise ValueError("Invalid host")
     if len({h["host"] for h in hosts}) != 4:
         raise ValueError("Expected four distinct hosts")
-    source = workspace + "/source"
     launch = workspace + "/launch"
-    receipt = source + "/runtime/glm53-spark-mtp3-mesh/image-receipt.json"
+    from scripts.deploy_selection import selection, receipt_path
+    receipt = str(receipt_path(spec, workspace))
     installed = (
         "/opt/sparkring/managed-mesh/runtime/glm53-spark-mtp3-mesh/managed_service.py"
     )
     config = "/etc/sparkring/managed-mesh/service.json"
-    public = json.loads((PROFILE / "public-image.json").read_text())
+    public = selection(spec, PROFILE)
     image_id = public["config_image_id"]
     phases = []
     capabilities = preparation.get("lifecycle_capabilities", [])
@@ -235,7 +235,7 @@ def build_runtime_plan(preparation, action):
                                     "inspect",
                                     "--format",
                                     "{{.Id}}",
-                                    public["public_reference"],
+                                    public["image_reference"],
                                 ],
                                 "stdout": image_id,
                             },
@@ -516,10 +516,9 @@ def build_runtime_plan(preparation, action):
                     "--launch",
                     controller_launch,
                     "--image-receipt",
-                    str(
-                        Path(controller_source)
-                        / "runtime/glm53-spark-mtp3-mesh/image-receipt.json"
-                    ),
+                    str(receipt_path(spec, Path(controller_launch).parent))
+                    if spec.get("runtime_selection") is not None else str(
+                        Path(controller_source) / "runtime/glm53-spark-mtp3-mesh/image-receipt.json"),
                     "--output",
                     output,
                     "--execute-authorized",
