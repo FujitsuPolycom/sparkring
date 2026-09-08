@@ -6,8 +6,98 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 HERE = Path(__file__).resolve().parent
+
+
+def test_sampling_sweep_covers_filter_and_seed_paths_with_completed_outputs(monkeypatch):
+    wrapper, _ = _load_module(monkeypatch)
+    observed = []
+    clock = [100.0]
+    monkeypatch.setattr(wrapper.time, "monotonic", lambda: clock[0])
+    monkeypatch.setenv("SPARKRING_STARTUP_TOKEN", "internal-secret")
+
+    def urlopen(request, timeout):
+        assert timeout == 10 - len(observed)
+        assert request.get_header("Authorization") == "Bearer secret"
+        assert request.get_header("X-sparkring-startup-token") == "internal-secret"
+        observed.append(json.loads(request.data))
+        clock[0] += 1
+        return io.BytesIO(b'{"choices":[{"message":{"reasoning":"ok"}}],"usage":{"completion_tokens":2}}')
+
+    monkeypatch.setattr(wrapper.urllib.request, "urlopen", urlopen)
+    result = wrapper.warmup_sampling("http://localhost", "model", 16, 10, "secret")
+    assert {(body["top_k"], body["top_p"]) for body in observed} == {
+        (-1, 1.0), (40, 1.0), (-1, 0.9), (40, 0.9),
+    }
+    assert any(body["temperature"] == 0.7 and body["top_k"] == -1 and body["top_p"] == 1.0 for body in observed)
+    assert any(body.get("seed") == 0 and body["top_k"] == 40 and body["top_p"] == 0.9 for body in observed)
+    assert all(body["min_p"] == 0.0 and body["chat_template_kwargs"] == {"enable_thinking": True} for body in observed)
+    assert len({body["messages"][0]["content"] for body in observed}) == len(observed) == 6
+    assert result["coverage"] == "request-recipe-complete"
+    assert result["jit_coverage_verified"] is False
+    assert all(case["completion_tokens"] == 2 for case in result["cases"])
+
+
+@pytest.mark.parametrize("failed_index", range(6))
+def test_every_sampling_arm_must_complete_before_readiness(tmp_path, monkeypatch, failed_index):
+    wrapper, warmup = _load_module(monkeypatch)
+    monkeypatch.setattr(warmup, "wait_for_api", lambda *_args: None)
+    monkeypatch.setattr(warmup, "run_warmup", lambda *_args: ())
+    calls = []
+
+    def urlopen(request, timeout):
+        calls.append(request)
+        count = 0 if len(calls) == failed_index + 1 else 1
+        return io.BytesIO(json.dumps({"choices": [{"message": {"reasoning": "ok"}}], "usage": {"completion_tokens": count}}).encode())
+
+    monkeypatch.setattr(wrapper.urllib.request, "urlopen", urlopen)
+    ready = tmp_path / "ready"
+    ready.touch()
+    with pytest.raises(RuntimeError, match="generated no tokens"):
+        wrapper.complete_readiness(
+            rank=0, endpoint="http://localhost", model="model", warmup_enabled=True,
+            concurrencies=(1,), shape_words=(8,), max_tokens=16,
+            timeout_seconds=30, credential=None, ready_path=ready,
+        )
+    assert not ready.exists()
+    assert len(calls) == failed_index + 1
+
+
+def test_api_shapes_and_sampling_share_one_readiness_budget(tmp_path, monkeypatch):
+    wrapper, warmup = _load_module(monkeypatch)
+    clock = [0.0]
+    monkeypatch.setattr(wrapper.time, "monotonic", lambda: clock[0])
+    observed = []
+
+    def api(_endpoint, timeout, _credential):
+        observed.append(timeout)
+        clock[0] += 3
+
+    def shapes(*args):
+        observed.append(args[4])
+        clock[0] += 4
+        return ()
+
+    def sampling(*args):
+        observed.append(args[3])
+        clock[0] += 4
+        return {}
+
+    monkeypatch.setattr(warmup, "wait_for_api", api)
+    monkeypatch.setattr(warmup, "run_warmup", shapes)
+    monkeypatch.setattr(wrapper, "warmup_sampling", sampling)
+    ready = tmp_path / "ready"
+    with pytest.raises(RuntimeError, match="deadline"):
+        wrapper.complete_readiness(
+            rank=0, endpoint="http://localhost", model="model", warmup_enabled=True,
+            concurrencies=(1,), shape_words=(8,), max_tokens=16,
+            timeout_seconds=10, credential=None, ready_path=ready,
+        )
+    assert observed == [10, 7, 3]
+    assert not ready.exists()
 
 
 def _load_module(monkeypatch):
@@ -78,8 +168,8 @@ def test_sampling_request_uses_auth_temperature_and_reasoning(monkeypatch):
 
     def urlopen(request, timeout):
         observed.append(request)
-        assert timeout == 10
-        return io.BytesIO(b'{"choices":[{"message":{"reasoning":"ok"}}]}')
+        assert 0 < timeout <= 10
+        return io.BytesIO(b'{"choices":[{"message":{"reasoning":"ok"}}],"usage":{"completion_tokens":1}}')
 
     monkeypatch.setattr(wrapper.urllib.request, "urlopen", urlopen)
     result = wrapper.warmup_sampling("http://localhost/", "model", 16, 10, "secret")
@@ -162,7 +252,10 @@ def test_rank_zero_probes_api_with_warmup_credential(tmp_path: Path, monkeypatch
         ready_path=ready,
     )
 
-    assert probes == [("http://127.0.0.1:8015", 10, "secret")]
+    assert len(probes) == 1
+    assert probes[0][0] == "http://127.0.0.1:8015"
+    assert 0 < probes[0][1] <= 10
+    assert probes[0][2] == "secret"
     assert ready.is_file()
 
 
@@ -263,12 +356,12 @@ def test_both_warmup_requests_carry_internal_token_and_api_auth(monkeypatch):
 
     def urlopen(request, **kwargs):
         observed.append(request)
-        return io.BytesIO(b'{"choices":[{"message":{"content":"ok"}}]}')
+        return io.BytesIO(b'{"choices":[{"message":{"content":"ok"}}],"usage":{"completion_tokens":1}}')
 
     monkeypatch.setattr(wrapper.urllib.request, "urlopen", urlopen)
     wrapper.warmup_sampling("http://localhost", "model", 16, 10, "api-secret")
     warmup.send_warmup_request("http://localhost", "model", "nonce", 16, 10, 8, "api-secret")
-    assert len(observed) == 2
+    assert len(observed) == 7
     for request in observed:
         assert request.get_header("X-sparkring-startup-token") == "internal-secret"
         assert request.get_header("Authorization") == "Bearer api-secret"
