@@ -80,7 +80,8 @@ plugin, legacy runtime-builder, or deleted configuration-example surfaces.
 
 The shared GLM source build is defined by
 `runtime/sparkring/source_image/glm53-tp4-lock.json`. It adds explicit TP4/DCP1,
-TP4/DCP4, TP4/DCP1 SparkCache, and original-NVFP4 TP2/DCP1 profiles. Its source
+TP4/DCP4, TP4/DCP1 SparkCache, original-NVFP4 TP2/DCP1, and as-is switched
+TP4/DCP1 profiles. Its source
 and CPU checks do not qualify the assembled image or extend GLM results to
 other model families. TP2 communication assets live separately under
 `runtime/transport_profiles/`; preserve their byte-bound proxy/kernel pairing.

@@ -6,9 +6,10 @@ listed GLM TP2 and TP4 profiles, including optional SparkCache. Building and
 testing that shared image remains required; results from the reference
 deployments do not qualify it.
 
-The recipe extends the existing native-MTP3 mesh deployment. It does not
-replace site rendering, ASIC forwarding configuration, authenticated marker
-ownership, or the managed host lifecycle.
+The ring profiles use the existing native-MTP3 mesh deployment, including
+site rendering, ASIC forwarding, authenticated marker ownership and the
+managed host lifecycle. The switched and TP2 profiles use their dedicated
+launchers described below.
 
 ## Composition
 
@@ -32,8 +33,9 @@ startup helper, and runtime profile. Full hashes in that file are authoritative.
 | `tp4-dcp4-mtp3-prefill` | NVFP4-Spark; TP4/DCP4, MTP3, 1,048,576-token request limit | Mesh owner exchange with fused endpoints and dual-domain NCCL; SparkCache disabled |
 | `tp4-dcp1-mtp3-sparkcache` | NVFP4-Spark; TP4/DCP1, MTP3, 1,048,576-token request limit | Mesh and dual-domain NCCL; bounded asynchronous capture and verified restore |
 | `glm53-flash-nvfp4-tp2-mtp3` | Original NVFP4; TP2/DCP1, MTP3, 262,144-token request limit | One physical DAC using both host domains; managed loading; SparkCache disabled |
+| `glm53-flash-spark-tp4-switched-mtp3` | NVFP4-Spark; TP4/DCP1, MTP3, 1,048,576-token request limit | Ordinary NCCL over operator-selected connected HCAs; custom transports and SparkCache disabled |
 
-All four profiles enable coalescing and mHC prefill sharding. Compact index
+All listed profiles enable coalescing and mHC prefill sharding. Compact index
 cache is disabled. DCP2 is supported by the prefill source but has no declared
 launch profile in this lock. TP2 keeps sequential KDA execution; TP4 retains
 its side-stream setting. The two communication implementations occupy separate
@@ -134,8 +136,12 @@ Use the [TP4 prefill quickstart](../../../docs/GLM53_TP4_PREFILL_QUICKSTART.md)
 for DCP1 or DCP4. To enable the bounded cache configuration, verify and select
 `tp4-dcp1-mtp3-sparkcache` in both the receipt and private mesh site.
 The [original-NVFP4 TP2 guide](../../profiles/glm53-flash-nvfp4-tp2/README.md)
-uses the same image with a separate manual launcher. Both launch paths verify
+uses the same image with a separate manual launcher. Each launch path verifies
 the shared sources before entering their profile-specific startup code.
+
+The [switched TP4 quickstart](../../../docs/GLM53_SWITCHED_TP4_QUICKSTART.md)
+uses ordinary NCCL and the generic sampling warmup. Switched deployments are
+provided as-is. This profile has not been validated on switched hardware.
 
 DeepSeek, Qwen, and EXL3 still use their documented model-family builders.
 This GLM recipe does not establish a universal native runtime for those

@@ -122,6 +122,9 @@ def validate_image_receipt(document: dict) -> dict:
         raise ValueError("Image receipt must be a JSON object")
     if document.get("schema") == "sparkring-source-image-receipt/v1":
         lock = json.loads(SOURCE_LOCK.read_text())
+        selected = lock["profiles"].get(document.get("profile"), {})
+        if selected.get("tp_size", 4) != 4 or selected.get("topology") == "switched":
+            raise ValueError("Use the selected profile's launcher instead of the TP4 mesh renderer")
         contract_path = ROOT / "runtime/sparkring/source_image/receipt_contract.py"
         contract_spec = importlib.util.spec_from_file_location("source_image_receipt_contract", contract_path)
         contract = importlib.util.module_from_spec(contract_spec)

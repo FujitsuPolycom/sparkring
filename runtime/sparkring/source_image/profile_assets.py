@@ -60,6 +60,10 @@ def verify_assets(lock, rootfs):
             raise ValueError(f"Installed profile asset differs: {path}")
     witnesses = {}
     for profile in lock["profiles"].values():
+        if profile.get("installed_profile_path") is not None:
+            profile_path = under(rootfs, profile["installed_profile_path"][1:])
+            if sha(profile_path.read_bytes()) != profile["profile_sha256"]:
+                raise ValueError("Installed serving profile differs from source lock")
         name = profile.get("transport_profile")
         if name is None:
             continue
@@ -76,9 +80,6 @@ def verify_assets(lock, rootfs):
                   and path != bundle / "manifest.json" and "__pycache__" not in path.parts}
         if actual != expected:
             raise ValueError("Installed transport inventory differs from its manifest")
-        profile_path = under(rootfs, profile["installed_profile_path"][1:])
-        if sha(profile_path.read_bytes()) != profile["profile_sha256"]:
-            raise ValueError("Installed serving profile differs from source lock")
         witnesses[name] = {"manifest_sha256": sha(data), "files_sha256": file_map_hash(expected),
                            "files": len(expected), "package": "b12x.comm.roce"}
     return witnesses
