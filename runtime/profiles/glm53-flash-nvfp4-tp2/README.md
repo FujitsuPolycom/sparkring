@@ -130,6 +130,11 @@ TP2 transport selector without activating the parent image's TP4 mesh hooks.
 The transport entrypoint verifies its active source selection before importing
 vLLM, and the `.pth` hook applies in spawned workers.
 
+The TP2 launcher passes `--no-healthcheck` because the parent image's Docker
+healthcheck requires a TP4 readiness marker that this entrypoint does not
+create. TP2 has no TP4 startup-admission gate. Check API health and run a
+semantic smoke request manually before using the server.
+
 Rank 0 serves `GLM-5.3-Flash-NVFP4` on port 8000. This profile binds all
 interfaces and supplies no API authentication; expose it through a trusted
 network or authenticated gateway. There is no automatic model startup after

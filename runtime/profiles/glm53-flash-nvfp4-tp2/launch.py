@@ -121,7 +121,7 @@ def render(rank, master, model_dir, cache_dir, env_file, image):
         "org.sparkring.transport.manifest-sha256": profile["transport"]["manifest_sha256"],
     }
     command = ["docker", "create", "--name", name, "--restart", "no",
-               "--init", "--gpus", "all", "--network", "host", "--ipc", "host",
+               "--init", "--no-healthcheck", "--gpus", "all", "--network", "host", "--ipc", "host",
                "--device", "/dev/infiniband", "--ulimit", "memlock=-1:-1",
                "--mount", f"type=bind,src={model_dir.resolve()},dst=/models/target,readonly",
                "--mount", f"type=bind,src={cache_dir.resolve()},dst=/cache/jit",
@@ -235,6 +235,7 @@ def execute(plan, action, receipt, *, run=subprocess.run):
     matches = (
         config.get("Image") == plan["image"]
         and config.get("Entrypoint") == ["python3"]
+        and config.get("Healthcheck", {}).get("Test") == ["NONE"]
         and config.get("Cmd") == plan["container_args"]
         and all(config.get("Labels", {}).get(key) == value for key, value in plan["labels"].items())
         and all(actual_env.get(key) == value for key, value in plan["environment"].items())

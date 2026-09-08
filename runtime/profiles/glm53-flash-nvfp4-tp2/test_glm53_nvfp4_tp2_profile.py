@@ -47,6 +47,7 @@ def receipt(value):
 def stopped_container(value):
     return {
         "Config": {"Image": value["image"], "Entrypoint": ["python3"], "Cmd": value["container_args"],
+                   "Healthcheck": {"Test": ["NONE"]},
                    "Labels": value["labels"], "Env": [key + "=" + val for key, val in value["environment"].items()]},
         "HostConfig": {"RestartPolicy": {"Name": "no"}},
         "Mounts": [{"Destination": target, "Source": source, "RW": target != "/models/target"}
@@ -119,6 +120,7 @@ def test_rank_plan_maps_both_pci_functions_of_one_cage(inputs, rank):
     assert "${NODE_RANK}" not in value["container_args"]
     assert value["command"][:2] == ["docker", "create"]
     assert value["command"][value["command"].index("--restart") + 1] == "no"
+    assert "--no-healthcheck" in value["command"]
     assert value["labels"]["org.sparkring.memory-guard"] == "true"
     args = value["container_args"]
     assert args[:4] == ["-S", "-B", "/opt/sparkcache-jj-runtime/verify_sources.py", "--serve"]
@@ -189,7 +191,7 @@ def test_start_requires_matching_stopped_container(inputs):
     assert host.commands[-1] == ["docker", "start", value["name"]]
 
 
-@pytest.mark.parametrize("damage", ["restart", "image", "environment", "mount"])
+@pytest.mark.parametrize("damage", ["restart", "image", "environment", "mount", "healthcheck"])
 def test_start_does_not_adopt_changed_container(inputs, damage):
     value = plan(inputs)
     host = Host(value)
@@ -200,6 +202,8 @@ def test_start_does_not_adopt_changed_container(inputs, damage):
     elif damage == "environment":
         host.container["Config"]["Env"] = [item for item in host.container["Config"]["Env"]
                                             if not item.startswith("B12X_ROCE_PEER_HCA_MAP=")]
+    elif damage == "healthcheck":
+        host.container["Config"]["Healthcheck"] = {"Test": ["CMD-SHELL", "test -f /tmp/sparkring-engine-ready"]}
     else:
         host.container["Mounts"][0]["RW"] = True
     with pytest.raises(RuntimeError, match="differs"):
