@@ -327,7 +327,7 @@
     "source_directory": "/work/src-lf",
     "build_directory": "/work/build",
     "random_seed_policy": "sparkring-nvcc-source-seed/v1",
-    "nvcc_wrapper_sha256": "cf70bcf562edeed7564ab341ac57d2a7c1ce0ebf9d4b8130643fc540ec5e5cfa"
+    "nvcc_wrapper_sha256": "41943486d0455355962d0a153e54f540bb2e183d9636a642c0156b74e65e3ce9"
   },
   "profile_assets": {
     "runtime/transport_profiles/tp2-rocenante-adaptive/roce/__init__.py": {

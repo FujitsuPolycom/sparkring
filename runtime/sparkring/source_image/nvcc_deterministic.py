@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assign stable, distinct NVCC random seeds to source and device-link units."""
+"""Bind NVCC symbols and compilation intermediates to stable source paths."""
 import hashlib
 import os
 from pathlib import PurePosixPath
@@ -33,12 +33,14 @@ def path_identity(value, cwd):
 
 
 def seeded_arguments(arguments, cwd):
-    """Return unchanged probe argv or argv with one source-derived seed."""
+    """Preserve probes and assign stable symbols and compilation file names."""
     arguments = list(arguments)
     if len(arguments) == 1 and arguments[0] in PROBES:
         return arguments
     if any("frandom-seed" in value for value in arguments):
         raise ValueError("NVCC random seed is controlled by the source-image recipe")
+    if any(value in ("--objdir-as-tempdir", "-objtemp") for value in arguments):
+        raise ValueError("NVCC intermediate paths are controlled by the source-image recipe")
     if any(value.startswith("@") or value.split("=", 1)[0] in ("-optf", "--options-file")
            for value in arguments):
         raise ValueError("NVCC response files hide seed input identity")
@@ -78,7 +80,17 @@ def seeded_arguments(arguments, cwd):
             raise ValueError("NVCC compilation requires exactly one source input")
         identity = "compile/" + sources[0]
     seed = hashlib.sha256((POLICY + "\n" + identity).encode()).hexdigest()
-    return ["--frandom-seed=" + seed, *arguments]
+    compilation = any(value in ("-c", "--compile", "-dc", "--device-c", "-dw", "--device-w")
+                      for value in arguments)
+    dependency_or_preprocess = any(value in ("-M", "-MM", "-E", "--preprocess",
+        "--generate-dependencies", "--generate-nonsystem-dependencies") for value in arguments)
+    # The pinned Makefile gives every code-producing compilation a distinct
+    # output. Dependency scans and device linking must not share those temporary
+    # paths: NVCC only defines objtemp for -c/-dc/-dw compilation phases.
+    temporary = ["--objdir-as-tempdir"] if (
+        compilation and outputs and not device_link and not dependency_or_preprocess
+    ) else []
+    return ["--frandom-seed=" + seed, *temporary, *arguments]
 
 
 def main():

@@ -6,6 +6,21 @@ from build_nccl import compile_jobs
 
 
 class DeterministicCompilerTests(unittest.TestCase):
+    def test_compiler_temporaries_follow_unique_object_destinations(self):
+        for phase in ("-c", "-dc", "-dw"):
+            argv = [phase, "common.cu", "-o", "/work/build/common.o"]
+            result = seeded_arguments(argv, "/work/src-lf/src/device")
+            self.assertEqual(result[1], "--objdir-as-tempdir")
+            self.assertEqual(result[2:], argv)
+
+    def test_dependency_scans_and_device_link_do_not_share_compile_temporaries(self):
+        for argv in (["-MM", "-dc", "common.cu"],
+                     ["-M", "-dc", "common.cu", "-o", "/work/build/common.d"],
+                     ["-dlink", "/work/build/common.o", "-o", "/work/build/device_glue.o"]):
+            result = seeded_arguments(argv, "/work/src-lf/src/device")
+            self.assertNotIn("--objdir-as-tempdir", result)
+            self.assertEqual(result[1:], argv)
+
     def test_compile_parallelism_has_explicit_resource_bounds(self):
         self.assertEqual(compile_jobs("16"), 16)
         for value in ("0", "65", "-1", "unlimited"):
