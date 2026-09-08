@@ -1,8 +1,11 @@
 # NCCL routing across two host PCIe domains
 
-Status: implemented source patch; research-only deployment profile. Four DGX
-Spark ranks have passed collective correctness and serving measurements with
-this routing, but the public image builder does not consume this patch yet.
+Status: **implemented** source patch; **research-only** shared-image profile.
+Four DGX Spark ranks have passed collective correctness and serving
+measurements with this routing. The
+[shared GLM source builder](../../runtime/sparkring/source_image/README.md)
+consumes the cumulative patch; its rebuilt library requires separate
+qualification.
 
 Each Spark exposes NIC functions through two PCIe root domains. Advertising
 only two listener GIDs can omit reachable secondary-domain functions. A global

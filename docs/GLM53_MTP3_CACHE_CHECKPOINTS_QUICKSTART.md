@@ -88,8 +88,10 @@ Do not use direct `docker start` to bypass the memory and four-rank gates.
 The immutable image above retains its packaged scheduler-liveness implementation.
 Source builds install and attest the liveness module alongside the serving wrapper;
 see [liveness packaging and timeout policy](../runtime/glm53-spark-mtp3-mesh/performance/README.md#scheduler-liveness-packaging-and-timeout-policy).
-That source-build module enables an output-stall rule with a 300-second default.
-Long prefills can exceed this interval. Set the private site
+That source-build module uses output movement or increasing KV allocation
+to detect progress, with a 300-second inactivity default. A raw output gap
+alone does not mark an allocating prefill unhealthy. Fully preallocated work
+can remain flat while progressing. Set the private site
 `liveness_output_seconds` field to an appropriate integer timeout and regenerate
 launch inputs before using its HTTP 503 response for router removal or automatic
 recovery. Omitting the field retains 300 seconds; the override cannot add the

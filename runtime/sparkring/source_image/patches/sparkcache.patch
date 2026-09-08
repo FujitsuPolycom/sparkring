@@ -1,5 +1,48 @@
+diff --git a/README.md b/README.md
+index 54f93288cb498860c0cf5436f6130d63c6220687..1c3ae66eb2edd5a7bf8b90484d83469280ba9948 100644
+--- a/README.md
++++ b/README.md
+@@ -31,6 +31,7 @@ If those checks do not pass, vLLM computes the prompt normally.
+ | Longest exact-prefix selection | Reuse the longest stored part of a prompt, not only a complete prompt match. | **implemented** |
+ | Sparse row-prefix aliases | Point to reusable earlier row boundaries without copying their payloads. | **implemented** |
+ | Complete manager-page snapshots | Preserve model-managed pages whose state is not exposed as ordinary rows. | **implemented** |
++| Asynchronous capture with source leases | Keep source pages allocated until every physical worker finishes reading them, including after request completion or cancellation. | **implemented**; [TP4/DCP1 evidence](docs/evidence/connector-job-gb10-tp4-dcp1.md) |
+ | Copy-on-write publication | Store only changed row tails or changed physical pages when extending a stored context. | **implemented** |
+ | SparkCache CUDA restore | Move verified page data into request-owned GPU blocks through a C++/CUDA path. | **implemented** |
+ | Shared bases and GPU prefixes | Read a common stored base once and let bounded concurrent requests share the restored GPU prefix. | **implemented** |
+@@ -104,6 +105,8 @@ measurements, and known limits out of the generic cache design.
+ |---|---|
+ | Package setup and configuration | [`sparkcache/README.md`](sparkcache/README.md) |
+ | CUDA placement and snapshot libraries | [`sparkcache/native/README.md`](sparkcache/native/README.md) |
++| Generic vLLM capture ownership and source contracts | [`docs/jj-connector-read-leases.md`](docs/jj-connector-read-leases.md) |
++| Whole-prefix restore ownership | [`docs/PRIVATE_RESTORE_SAFETY.md`](docs/PRIVATE_RESTORE_SAFETY.md) |
+ | Interactive prefix explorer | [`docs/sparkcache-prefix-explainer.html`](docs/sparkcache-prefix-explainer.html) |
+ | Research ideas and unsupported designs | [`ROADMAP.md`](ROADMAP.md) |
+ | Open correctness defects | [`DEFECTS.md`](DEFECTS.md) |
+diff --git a/deploy/deepseek_v4/tp4_profile.json b/deploy/deepseek_v4/tp4_profile.json
+index a6a7f0721c4d660be8769e109cbadda64782ff38..d62d666ae1fb4a3a6201bbe9a60c7c286ba994d4 100644
+--- a/deploy/deepseek_v4/tp4_profile.json
++++ b/deploy/deepseek_v4/tp4_profile.json
+@@ -4,7 +4,7 @@
+   "cache_model_profile": "deepseek-v4-fp8-hma",
+   "published_runtime_base": "ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028",
+   "sparkcache": {
+-    "source_sha256": "72f33311d1ee5811c2b3e4eefda98c9d17b5afe8d9d015a2e3c26c893f25aabc"
++    "source_sha256": "e5930ba01d0974896108bbf29bc92913a6a6473ca0bfd913e5e8726fc12f27b3"
+   },
+   "model": {
+     "repository": "deepseek-ai/DeepSeek-V4-Flash-0731",
+@@ -23,7 +23,7 @@
+     "kv_cache_bytes_per_rank": 34359738368,
+     "max_model_len": 524288,
+     "max_num_seqs": 32,
+-    "gpu_memory_utilization": 0.70,
++    "gpu_memory_utilization": 0.7,
+     "tokenizer_mode": "deepseek_v4",
+     "speculation_method": "dspark",
+     "speculation_tokens": 5,
 diff --git a/deploy/glm52_35bpw/profile.json b/deploy/glm52_35bpw/profile.json
-index 0bbbfb9..2a58e8f 100644
+index 0bbbfb92c8bb1b6b062f5c58d9c26a48f6b7af5b..e3d150e4ab4d0fe073f5cd7cc209aee450c67d3f 100644
 --- a/deploy/glm52_35bpw/profile.json
 +++ b/deploy/glm52_35bpw/profile.json
 @@ -5,7 +5,7 @@
@@ -7,20 +50,389 @@ index 0bbbfb9..2a58e8f 100644
    "base_image_requirement": "exact GLM-5.2 3.5-bpw R7 image recorded by the source container inspection",
    "sparkcache": {
 -    "source_sha256": "72f33311d1ee5811c2b3e4eefda98c9d17b5afe8d9d015a2e3c26c893f25aabc"
-+    "source_sha256": "43b8d878d224dc8823710560212e1d27aeeb735f90b1b8c8a04ab74b1c37a1e7"
++    "source_sha256": "e5930ba01d0974896108bbf29bc92913a6a6473ca0bfd913e5e8726fc12f27b3"
    },
    "model": {
      "repository": "brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78",
+diff --git a/docs/PRIVATE_RESTORE_SAFETY.md b/docs/PRIVATE_RESTORE_SAFETY.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..a95aa75dcee167ad2b9eaa5d6de5b139139fa24d
+--- /dev/null
++++ b/docs/PRIVATE_RESTORE_SAFETY.md
+@@ -0,0 +1,28 @@
++# Whole-prefix restore ownership
++
++Status: **implemented**, covered by GPU-free regression tests. GPU qualification
++of these admission and null-block guards remains required.
++
++Whole-prefix placement writes the complete restored snapshot; its load plan
++does not carry a suffix-only write mask. A request with already-computed local
++tokens can reference pages shared with another request. The connector therefore
++declines external restoration for that request and lets vLLM compute its suffix.
++This can replace an external-cache offer with recomputation, but preserves the
++local prefix and avoids writing through unproven page ownership.
++
++If a restore already owns allocated blocks, repeated lookup waits for its
++completion rather than offering another writer or allowing recomputation into
++those blocks. An unallocated offer is retired if a local prefix appears.
++
++Failed restores report only their nonzero block IDs. Block `0` is shared null
++padding in vLLM, not evidence that another request's cache is damaged. The same
++rule applies when shutdown rejects a queued load before execution.
++
++The guards apply to whole-prefix placement independently of the capture mode
++or model parallelism. Cache identities, stored formats, and native ABIs are
++unchanged. Refusing an unproven destination is a cache miss, not a cache-format
++migration.
++
++Tests: `sparkcache/test_restore_private_admission.py` and
++`sparkcache/test_restore_failure_isolation.py`. The failure tests execute the
++shipped HMA recovery method against failed and unrelated request block tables.
+diff --git a/docs/evidence/connector-job-gb10-tp4-dcp1.json b/docs/evidence/connector-job-gb10-tp4-dcp1.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..53e0737bffc9d551fbd8ed644ef873e7220d6641
+--- /dev/null
++++ b/docs/evidence/connector-job-gb10-tp4-dcp1.json
+@@ -0,0 +1,218 @@
++{
++  "schema": "sparkcache-connector-job-live-evidence/v1",
++  "status": "qualified-for-listed-cases",
++  "sparkcache_revision": "2bc05bc9e94a4344758e48db36f69a46dafa6946",
++  "vllm_revision": "df62335d8248587f8d3fd1d9a234d1c162a9b84d",
++  "b12x_revision": "0b6d61c37c87ae49d2f9d20d38b9da023146e243",
++  "image": "sha256:cd92adc4436c61290dbecc35362db447c7ae69e1d03bdb99704af0ed6c517b38",
++  "conditions": {
++    "model": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
++    "model_revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
++    "tensor_parallel_size": 4,
++    "decode_context_parallel_size": 1,
++    "speculative_tokens": 3,
++    "batch_tokens": 8192,
++    "block_tokens": 512,
++    "coalescing": true,
++    "mhc_prefill_sharding": true,
++    "compact_index_cache": false,
++    "capture_slots": 2,
++    "capture_slot_bytes": 536870912
++  },
++  "capture_retirement_cases": [
++    {
++      "kind": "prefill",
++      "index": 0,
++      "native_capture_verified_physical_ranks": [
++        0,
++        1,
++        2,
++        3
++      ],
++      "common_captured_prefixes": [
++        {
++          "tokens": 7680,
++          "context_digest": "5501adf1edc02e57bc007c37d8db64de62032b93d5081f1659fa0506ed2e3cb3"
++        }
++      ],
++      "post_drain_values": {
++        "sparkcache_ranks": 4.0,
++        "sparkcache_capture_pending_rank_slots": 0.0,
++        "sparkcache_capture_completed_rank_slots": 0.0,
++        "sparkcache_capture_delayed_requests": 0.0,
++        "sparkcache_capture_delayed_rank_slots": 0.0,
++        "sparkcache_capture_retained_pages": 0.0,
++        "sparkcache_capture_oldest_delayed_ms": 0.0,
++        "sparkcache_capture_uncertain_ranks": 0.0,
++        "sparkcache_capture_busy_ranks": 0.0,
++        "sparkcache_publication_pending_rank_slots": 0.0
++      }
++    },
++    {
++      "kind": "prefill",
++      "index": 1,
++      "native_capture_verified_physical_ranks": [
++        0,
++        1,
++        2,
++        3
++      ],
++      "common_captured_prefixes": [
++        {
++          "tokens": 15872,
++          "context_digest": "9211bc84d8579ee52822b3d1ef216ca1bc7cdc47e437e069544d8fbcf2682260"
++        }
++      ],
++      "post_drain_values": {
++        "sparkcache_ranks": 4.0,
++        "sparkcache_capture_pending_rank_slots": 0.0,
++        "sparkcache_capture_completed_rank_slots": 0.0,
++        "sparkcache_capture_delayed_requests": 0.0,
++        "sparkcache_capture_delayed_rank_slots": 0.0,
++        "sparkcache_capture_retained_pages": 0.0,
++        "sparkcache_capture_oldest_delayed_ms": 0.0,
++        "sparkcache_capture_uncertain_ranks": 0.0,
++        "sparkcache_capture_busy_ranks": 0.0,
++        "sparkcache_publication_pending_rank_slots": 0.0
++      }
++    },
++    {
++      "kind": "prefill",
++      "index": 2,
++      "native_capture_verified_physical_ranks": [
++        0,
++        1,
++        2,
++        3
++      ],
++      "common_captured_prefixes": [
++        {
++          "tokens": 7680,
++          "context_digest": "340fb240aaeb79c3db0b0bba4eab29c1588ee717c3ee6636b124bfd8c1febf87"
++        }
++      ],
++      "post_drain_values": {
++        "sparkcache_ranks": 4.0,
++        "sparkcache_capture_pending_rank_slots": 0.0,
++        "sparkcache_capture_completed_rank_slots": 0.0,
++        "sparkcache_capture_delayed_requests": 0.0,
++        "sparkcache_capture_delayed_rank_slots": 0.0,
++        "sparkcache_capture_retained_pages": 0.0,
++        "sparkcache_capture_oldest_delayed_ms": 0.0,
++        "sparkcache_capture_uncertain_ranks": 0.0,
++        "sparkcache_capture_busy_ranks": 0.0,
++        "sparkcache_publication_pending_rank_slots": 0.0
++      }
++    },
++    {
++      "kind": "prefill",
++      "index": 3,
++      "native_capture_verified_physical_ranks": [
++        0,
++        1,
++        2,
++        3
++      ],
++      "common_captured_prefixes": [
++        {
++          "tokens": 15872,
++          "context_digest": "b6428e877496ad42b9305eea7368b209171f2c7a9e991c1875a5fe4b30f1409c"
++        }
++      ],
++      "post_drain_values": {
++        "sparkcache_ranks": 4.0,
++        "sparkcache_capture_pending_rank_slots": 0.0,
++        "sparkcache_capture_completed_rank_slots": 0.0,
++        "sparkcache_capture_delayed_requests": 0.0,
++        "sparkcache_capture_delayed_rank_slots": 0.0,
++        "sparkcache_capture_retained_pages": 0.0,
++        "sparkcache_capture_oldest_delayed_ms": 0.0,
++        "sparkcache_capture_uncertain_ranks": 0.0,
++        "sparkcache_capture_busy_ranks": 0.0,
++        "sparkcache_publication_pending_rank_slots": 0.0
++      }
++    },
++    {
++      "kind": "cancellation",
++      "index": 0,
++      "native_capture_verified_physical_ranks": [
++        0,
++        1,
++        2,
++        3
++      ],
++      "common_captured_prefixes": [
++        {
++          "tokens": 16384,
++          "context_digest": "87bb71884a5409ad5a5cfe04bf7fd1a5acd897968514beea97bc09876de55785"
++        }
++      ],
++      "post_drain_values": {
++        "sparkcache_ranks": 4.0,
++        "sparkcache_capture_pending_rank_slots": 0.0,
++        "sparkcache_capture_completed_rank_slots": 0.0,
++        "sparkcache_capture_delayed_requests": 0.0,
++        "sparkcache_capture_delayed_rank_slots": 0.0,
++        "sparkcache_capture_retained_pages": 0.0,
++        "sparkcache_capture_oldest_delayed_ms": 0.0,
++        "sparkcache_capture_uncertain_ranks": 0.0,
++        "sparkcache_capture_busy_ranks": 0.0,
++        "sparkcache_publication_pending_rank_slots": 0.0
++      }
++    },
++    {
++      "kind": "cancellation",
++      "index": 1,
++      "native_capture_verified_physical_ranks": [
++        0,
++        1,
++        2,
++        3
++      ],
++      "common_captured_prefixes": [
++        {
++          "tokens": 16384,
++          "context_digest": "5573a7d3c5cc6914e1e8efe9066f677ecd60cd8cea6f1e1f944defe0cc28a1ec"
++        }
++      ],
++      "post_drain_values": {
++        "sparkcache_ranks": 4.0,
++        "sparkcache_capture_pending_rank_slots": 0.0,
++        "sparkcache_capture_completed_rank_slots": 0.0,
++        "sparkcache_capture_delayed_requests": 0.0,
++        "sparkcache_capture_delayed_rank_slots": 0.0,
++        "sparkcache_capture_retained_pages": 0.0,
++        "sparkcache_capture_oldest_delayed_ms": 0.0,
++        "sparkcache_capture_uncertain_ranks": 0.0,
++        "sparkcache_capture_busy_ranks": 0.0,
++        "sparkcache_publication_pending_rank_slots": 0.0
++      }
++    }
++  ],
++  "persistent_restore_cases": [
++    {
++      "prompt_tokens": 8192,
++      "restored_tokens": 7680,
++      "context_digest": "07eb980ee37d6144707a10511bf39045e8171390eaa0b993302fa46ad78a47ba",
++      "all_four_workers_verified": true,
++      "exact_semantics_passed": true
++    },
++    {
++      "prompt_tokens": 16384,
++      "restored_tokens": 15872,
++      "context_digest": "7fde152f137997bc5636a7c011bfa5db17cd435bbae22fe3fe9a037b4cb01a45",
++      "all_four_workers_verified": true,
++      "exact_semantics_passed": true
++    }
++  ],
++  "raw_receipt_sha256": {
++    "capture_stress": "dd2637e02ccea4601aa5f61534163ea8636e140cd297bba5e363a2a44cdf00f4",
++    "roundtrip": "981a5bc6955fe295280acfe097a4db84e669cbb2eb99fca2218a660aed51e3e5"
++  },
++  "limits": [
++    "Finite text workloads; no direct GPU-timeline or allocator-reference instrumentation.",
++    "The private-restore admission and null-block safeguards added after this tested revision have CPU coverage only.",
++    "The separate standalone JJ recovery head 9b87df5 has CPU/source-contract qualification; this serving run uses df62335.",
++    "No TP2 SparkCache or multimodal qualification is established by these TP4 tests."
++  ]
++}
+diff --git a/docs/evidence/connector-job-gb10-tp4-dcp1.md b/docs/evidence/connector-job-gb10-tp4-dcp1.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..0d31d86db1a8feb3d2120347de7e8aeb46f2eb08
+--- /dev/null
++++ b/docs/evidence/connector-job-gb10-tp4-dcp1.md
+@@ -0,0 +1,49 @@
++# Asynchronous capture and persistent restore on four GB10 GPUs
++
++Status: **qualified** for the cases and revisions below. The
++[machine-readable record](connector-job-gb10-tp4-dcp1.json) contains physical-rank
++capture evidence, post-retirement counters, restored-prefix digests, and source
++receipt hashes.
++
++## Conditions
++
++The model is `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark`, revision
++`df116c4fb16b1d37ae43d2cfd624de26ffbc832e`, served on four GB10 GPUs with TP4,
++DCP1, three speculative tokens, 8192-token forward batches, and 512-token cache
++blocks. Continuation coalescing and token-sharded mHC prefill are enabled.
++Compact index-cache gathering is disabled. SparkCache uses asynchronous
++connector-job capture with two 512-MiB native slots per physical rank and CUDA
++restore into verified destination pages.
++
++| Component | Revision |
++| --- | --- |
++| SparkCache | `2bc05bc9e94a4344758e48db36f69a46dafa6946` |
++| vLLM | `df62335d8248587f8d3fd1d9a234d1c162a9b84d` |
++| B12X | `0b6d61c37c87ae49d2f9d20d38b9da023146e243` |
++| Container image | `sha256:cd92adc4436c61290dbecc35362db447c7ae69e1d03bdb99704af0ed6c517b38` |
++
++## Results
++
++| Check | Measurement | Result |
++| --- | --- | --- |
++| Request completion | Four cold 8K/16K requests with one generated token | All four ranks completed native capture; pending work, delayed work, retained pages, and uncertain reads returned to zero after each case. |
++| Request cancellation | Two active 8K/16K requests cancelled during generation | The engine logged cancellation; all four ranks completed capture retirement and the same ownership counters returned to zero. |
++| Persistent 8K restore | Captured prefix loaded after all model processes restarted | 7680 tokens restored; every rank matched the stored prefix digest; the exact-answer check passed. |
++| Persistent 16K restore | Captured prefix loaded after all model processes restarted | 15872 tokens restored; every rank matched the stored prefix digest; the exact-answer check passed. |
++
++The results establish that capture can outlive request completion or cancellation
++without retaining source pages indefinitely, and that these persisted prefixes
++remain usable across a full model-process restart. Tail recomputation accounts
++for the difference between prompt length and restored length.
++
++## Limits
++
++The additional guards described in [whole-prefix restore
++ownership](../PRIVATE_RESTORE_SAFETY.md) have CPU coverage but were not installed
++in this image. Their integrated GPU validation remains required. The standalone
++JJ recovery revision `9b87df5d47b9c7163d1105ac5ea8c0a088baafc9` has CPU and source-contract
++coverage; this record does not qualify that different composition.
++
++These checks do not qualify SparkCache on TP2, cross-composition state reuse,
++multimodal requests, arbitrary concurrent eviction, or every native failure
++condition. They make no throughput or model-quality claim.
+diff --git a/docs/evidence/connector-job-integration-cpu.json b/docs/evidence/connector-job-integration-cpu.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..673a68eaf60ec082858b0fae8d8a07ac82a0b2ce
+--- /dev/null
++++ b/docs/evidence/connector-job-integration-cpu.json
+@@ -0,0 +1,48 @@
++{
++  "schema": "sparkcache-integration-cpu-validation/v1",
++  "status": "qualified",
++  "conditions": {
++    "platform": "Windows",
++    "python": "3.12",
++    "torch": "2.11.0+cpu",
++    "source_sha256": "e5930ba01d0974896108bbf29bc92913a6a6473ca0bfd913e5e8726fc12f27b3"
++  },
++  "commands": [
++    {
++      "command": "python -m pytest sparkcache research deploy -q -rs",
++      "passed": 1305,
++      "skipped": 9,
++      "seconds": 34.43,
++      "scope": "CPU; platform/compiler/source-fixture skips remain for Linux CI"
++    },
++    {
++      "command": "python -m ruff check .",
++      "result": "passed"
++    },
++    {
++      "command": "python -m build",
++      "result": "wheel and source distribution built"
++    },
++    {
++      "command": "python -m twine check <distributions>",
++      "result": "passed"
++    },
++    {
++      "command": "python tools/verify_distribution.py <wheel> <sdist> --version 0.1.0a3",
++      "result": "passed, including isolated wheel installation and required connector modules/contracts"
++    }
++  ],
++  "standalone_jj_contract": {
++    "vllm_revision": "9b87df5d47b9c7163d1105ac5ea8c0a088baafc9",
++    "matched_committed_source_files": 10,
++    "source_bytes": "Canonical LF Git blobs"
++  },
++  "gpu_qualification": "The additional private-restore admission and null-block guards require integrated GPU qualification; live capture evidence names SparkCache 2bc05bc9e94a4344758e48db36f69a46dafa6946.",
++  "common_glm_contract": {
++    "vllm_revision": "17bd258075f44dda8b405f384732f3c78d03f308",
++    "matched_committed_source_files": 10,
++    "source_bytes": "Canonical LF Git blobs; connector files match df62335 exactly",
++    "vllm_cpu_passed": 162,
++    "gpu_qualified": false
++  }
++}
 diff --git a/docs/jj-connector-read-leases.md b/docs/jj-connector-read-leases.md
 new file mode 100644
-index 0000000..f57c73b
+index 0000000000000000000000000000000000000000..f734c2019fb46e80831e78e9d0cfc31abb93d4d0
 --- /dev/null
 +++ b/docs/jj-connector-read-leases.md
-@@ -0,0 +1,152 @@
+@@ -0,0 +1,171 @@
 +# Asynchronous capture through the generic KV connector API
 +
-+Status: implemented with CPU conformance coverage. CUDA ordering, eviction under
-+GPU load, and full-model restore correctness require GPU qualification.
++Status: **implemented**. Capture retirement and persistent restore are
++**qualified** for the TP4/DCP1 cases and source revisions in the
++[GB10 validation record](evidence/connector-job-gb10-tp4-dcp1.md).
++Other runtime compositions and failure conditions require separate GPU evidence.
 +
 +The connector can persist immutable attention pages and retained recurrent
 +checkpoints using JJ's scheduler-local block-state snapshot. The adapter uses
@@ -92,13 +504,17 @@ index 0000000..f57c73b
 +
 +## Source compatibility
 +
-+Two source compositions have been reviewed and exercised with the actual CPU
-+scheduler, block pool, metadata types, and worker connector callback:
++The source contracts below identify compositions reviewed with the actual CPU
++scheduler, block pool, metadata types, and worker connector callback. A source
++contract verifies compatibility; it does not grant GPU qualification by itself.
 +
 +| vLLM composition | Source contract |
 +| --- | --- |
 +| JJ with four-checkpoint coalescing and token-sharded mHC, `abb715f132bdccb592a34b2596a3d3a8d757ffbc` | `sparkcache/runtime_patches/vllm-connector-jobs-jj-prefill-abb715f.json` |
 +| R27 with four-checkpoint coalescing and token-sharded mHC, `5dede5bb7fa04949a02823411f2fdf135e29b3dc` | `sparkcache/runtime_patches/vllm-connector-jobs-r27-prefill-5dede5b.json` |
++| R27 composition with hybrid failed-restore recovery, `df62335d8248587f8d3fd1d9a234d1c162a9b84d` | `sparkcache/runtime_patches/vllm-connector-jobs-hybrid-recovery-df62335.json` |
++| JJ with standalone hybrid failed-restore recovery, `9b87df5d47b9c7163d1105ac5ea8c0a088baafc9` | `sparkcache/runtime_patches/vllm-connector-jobs-hybrid-recovery-9b87df5.json` |
++| Shared GLM prefill source with TP2 admission and TP4 recovery, `17bd258075f44dda8b405f384732f3c78d03f308` | `sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json` |
 +
 +Each contract identifies ownership semantics, required API symbols, and exact
 +SHA-256 values for ten source files. Hashes describe canonical LF source bytes
@@ -154,6 +570,10 @@ index 0000000..f57c73b
 +
 +## Validation scope
 +
++The [integration CPU record](evidence/connector-job-integration-cpu.json)
++identifies the package-source digest, 1305 passing tests, platform-specific
++skips, source-contract verification, and isolated distribution checks.
++
 +GPU-free regressions cover exact boundary selection, refusal to reuse stale
 +offers, real block-pool references through request cleanup and allocator reuse,
 +four physical-rank acknowledgements, persistent CPU-byte roundtrips, and producer
@@ -162,7 +582,16 @@ index 0000000..f57c73b
 +during backend submission failure and invalid-ticket recovery. They do not run
 +the CUDA implementation.
 +
-+Before serving qualification, run the native CUDA ring tests and a model check
++The GB10 validation record covers four short cold requests, two explicit request
++cancellations, and two exact-answer restores after all model processes restarted.
++All four physical ranks completed native capture; pending work and retained
++source references returned to zero after each retirement case. These results
++apply to SparkCache `2bc05bc9e94a4344758e48db36f69a46dafa6946` and the listed
++vLLM composition. The additional [whole-prefix restore ownership
++guards](PRIVATE_RESTORE_SAFETY.md) have CPU regression coverage and require a
++GPU check at the integrated revision.
++
++For each additional serving composition, run the native CUDA ring tests and a model check
 +with cache misses, persistent hits, continuation, concurrent decode, preemption,
 +eviction, and forced capture backpressure. Confirm every rank completes its read
 +before source reuse and that failed restores recompute. Compare against a cold
@@ -171,7 +600,7 @@ index 0000000..f57c73b
 +establish model-quality equivalence or a performance gain.
 diff --git a/sparkcache/capture_read_leases.py b/sparkcache/capture_read_leases.py
 new file mode 100644
-index 0000000..a551c9e
+index 0000000000000000000000000000000000000000..a551c9e2a3817bc84b58bc6d53eb87bd859b5037
 --- /dev/null
 +++ b/sparkcache/capture_read_leases.py
 @@ -0,0 +1,83 @@
@@ -259,7 +688,7 @@ index 0000000..a551c9e
 +        lease.quarantined = True
 +        self.disabled = True
 diff --git a/sparkcache/native/src/spark_cache_snapshot.cu b/sparkcache/native/src/spark_cache_snapshot.cu
-index ab99e02..0f6151f 100644
+index ab99e0294c275e3b6c150cb79aaf4cf3f3a6664a..0f6151f1a20cd331608815ad5a1b56fbd4afaca7 100644
 --- a/sparkcache/native/src/spark_cache_snapshot.cu
 +++ b/sparkcache/native/src/spark_cache_snapshot.cu
 @@ -535,6 +535,19 @@ extern "C" SparkCacheSnapshotStatus spark_cache_snapshot_create(
@@ -284,7 +713,7 @@ index ab99e02..0f6151f 100644
        static_cast<std::size_t>(config->max_sources) *
 diff --git a/sparkcache/runtime_patches/generic_connector_contract.py b/sparkcache/runtime_patches/generic_connector_contract.py
 new file mode 100644
-index 0000000..3ac88f9
+index 0000000000000000000000000000000000000000..3ac88f94579baec14812f3d0d898dac1c0642f62
 --- /dev/null
 +++ b/sparkcache/runtime_patches/generic_connector_contract.py
 @@ -0,0 +1,98 @@
@@ -388,7 +817,7 @@ index 0000000..3ac88f9
 +    return verify_contract(root, contract_path)
 diff --git a/sparkcache/runtime_patches/test_generic_connector_contract.py b/sparkcache/runtime_patches/test_generic_connector_contract.py
 new file mode 100644
-index 0000000..3ddb4bc
+index 0000000000000000000000000000000000000000..3ddb4bc2e892aec44407aa2b4038d1e93ad13a5e
 --- /dev/null
 +++ b/sparkcache/runtime_patches/test_generic_connector_contract.py
 @@ -0,0 +1,91 @@
@@ -483,9 +912,243 @@ index 0000000..3ddb4bc
 +    )
 +    with pytest.raises(ContractError, match="mismatch"):
 +        verify_connector_job_contract(root, path)
+diff --git a/sparkcache/runtime_patches/vllm-connector-jobs-hybrid-recovery-9b87df5.json b/sparkcache/runtime_patches/vllm-connector-jobs-hybrid-recovery-9b87df5.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..ac4f4630544ca1a3b0b6ac8ae05879725a34188e
+--- /dev/null
++++ b/sparkcache/runtime_patches/vllm-connector-jobs-hybrid-recovery-9b87df5.json
+@@ -0,0 +1,111 @@
++{
++  "schema": "sparkring-vllm-kv-block-lease-contract/v1",
++  "connector_api": "jj-block-state-read-leases/v1",
++  "vllm_commit": "9b87df5d47b9c7163d1105ac5ea8c0a088baafc9",
++  "required_semantics": [
++    "scheduler-binds-owning-block-pool",
++    "block-state-and-boundary-offers-describe-one-scheduled-step",
++    "offered-recurrent-pages-are-retained-hashed-or-copy-on-write-destinations",
++    "full-attention-prefix-pages-remain-immutable-while-referenced",
++    "connector-metadata-is-built-before-scheduler-dispatch",
++    "worker-post-forward-follows-target-and-mtp-state-writes",
++    "worker-metadata-aggregates-distinct-physical-ranks",
++    "pending-connector-work-keeps-idle-engine-stepping",
++    "no-forward-steps-do-not-call-wait-for-save",
++    "hybrid-load-failure-discards-unproven-prefixes",
++    "failed-load-blocks-retire-after-receive-or-write-fences"
++  ],
++  "qualification": "Source semantics review; 33 vLLM recovery/cache-pollution/aggregation CPU tests, 8 cross-project ownership conformance checks, and 75 SparkCache contract/read-lease/runtime/capture-offer tests passed. Standalone GPU ordering and full-model qualification remain pending.",
++  "files": [
++    {
++      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
++      "sha256": "bc1965431087676876f58360cd9cc07ab6c06febe6d747695f10b051fd85c412",
++      "required_symbols": [
++        "KVConnectorBase_V1.bind_gpu_block_pool",
++        "KVConnectorBase_V1.build_connector_worker_meta",
++        "KVConnectorBase_V1.has_pending_push_work",
++        "KVConnectorWorkerMetadata.aggregate"
++      ]
++    },
++    {
++      "path": "vllm/distributed/kv_transfer/kv_connector/utils.py",
++      "sha256": "115512dca36b0711223f55f5ff304abffccc6d078923ba4c6bbb3cdb7fdd39a2",
++      "required_symbols": [
++        "KVOutputAggregator.from_connector",
++        "KVOutputAggregator.aggregate"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/sched/output.py",
++      "sha256": "2335384bca2b2764ea8064ab27e2d056d22e57ffac4fe920e18cfe4262c180b7",
++      "required_symbols": [
++        "KVConnectorBlockState.block_ids",
++        "KVConnectorBlockState.boundary_state_offloads",
++        "SchedulerOutput.kv_connector_block_state"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/sched/scheduler.py",
++      "sha256": "0e1e069e0c72ad5340e692255619fabcdca595fd8a6501f61b4aba0f49974423",
++      "required_symbols": [
++        "Scheduler.__init__",
++        "Scheduler.schedule",
++        "Scheduler.has_requests",
++        "Scheduler.update_from_output",
++        "Scheduler._free_request_blocks",
++        "Scheduler._handle_invalid_blocks",
++        "Scheduler._update_requests_with_invalid_blocks",
++        "Scheduler._update_waiting_for_remote_kv",
++        "Scheduler._preempt_request"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/kv_cache_manager.py",
++      "sha256": "fb1b76f1d4d01ad83e74b225abd76a8b3c92ba776961070c4d614f75ea1e37f1",
++      "required_symbols": [
++        "KVCacheManager.take_boundary_state_offloads",
++        "KVCacheManager.free"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
++      "sha256": "10ede58a1bf4732d92f9ef42b17116a700106838a546e398e6aa178ae2534ecf",
++      "required_symbols": [
++        "SingleTypeKVCacheManager.take_pending_boundary_state_offloads",
++        "MambaManager.cache_blocks",
++        "MambaManager.allocate_new_blocks",
++        "MambaManager.pop_blocks_for_free"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/block_pool.py",
++      "sha256": "a0932da63c38487a5fae401c9b43f627e2dcee8e975ec8d6427e00d2796c6239",
++      "required_symbols": [
++        "BlockPool.touch",
++        "BlockPool.free_blocks"
++      ]
++    },
++    {
++      "path": "vllm/v1/worker/gpu/model_runner.py",
++      "sha256": "9cc9eca1ed3c48f4ceb60ef7b4622ea845da26faef9c17dc54326039d52f6eae",
++      "required_symbols": [
++        "GPUModelRunner.update_requests",
++        "GPUModelRunner.sample_tokens"
++      ]
++    },
++    {
++      "path": "vllm/v1/worker/gpu/kv_connector.py",
++      "sha256": "b50a13e7c4f62fa2c67ee0d40b8ec7a2b62a6f6dab23571227fd56682c24ecf6",
++      "required_symbols": [
++        "ActiveKVConnector.pre_forward",
++        "ActiveKVConnector.post_forward",
++        "ActiveKVConnector.no_forward"
++      ]
++    },
++    {
++      "path": "vllm/v1/worker/mamba_utils.py",
++      "sha256": "fa7b4662fbc08e3865d88ee7350d72dd7f729921e70070ebaafd29ac374eb86b",
++      "required_symbols": []
++    }
++  ]
++}
+diff --git a/sparkcache/runtime_patches/vllm-connector-jobs-hybrid-recovery-df62335.json b/sparkcache/runtime_patches/vllm-connector-jobs-hybrid-recovery-df62335.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..2ca1d367f65c0605d8417e94ea7929ad4b2b56e3
+--- /dev/null
++++ b/sparkcache/runtime_patches/vllm-connector-jobs-hybrid-recovery-df62335.json
+@@ -0,0 +1,111 @@
++{
++  "schema": "sparkring-vllm-kv-block-lease-contract/v1",
++  "connector_api": "jj-block-state-read-leases/v1",
++  "vllm_commit": "df62335d8248587f8d3fd1d9a234d1c162a9b84d",
++  "required_semantics": [
++    "scheduler-binds-owning-block-pool",
++    "block-state-and-boundary-offers-describe-one-scheduled-step",
++    "offered-recurrent-pages-are-retained-hashed-or-copy-on-write-destinations",
++    "full-attention-prefix-pages-remain-immutable-while-referenced",
++    "connector-metadata-is-built-before-scheduler-dispatch",
++    "worker-post-forward-follows-target-and-mtp-state-writes",
++    "worker-metadata-aggregates-distinct-physical-ranks",
++    "pending-connector-work-keeps-idle-engine-stepping",
++    "no-forward-steps-do-not-call-wait-for-save",
++    "hybrid-load-failure-discards-unproven-prefixes",
++    "failed-load-blocks-retire-after-receive-or-write-fences"
++  ],
++  "qualification": "Source review, 34 CPU recovery/cache-pollution tests and three actual SparkCache failed-loader mapping cases; GPU/model fault qualification remains required.",
++  "files": [
++    {
++      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
++      "sha256": "bc1965431087676876f58360cd9cc07ab6c06febe6d747695f10b051fd85c412",
++      "required_symbols": [
++        "KVConnectorBase_V1.bind_gpu_block_pool",
++        "KVConnectorBase_V1.build_connector_worker_meta",
++        "KVConnectorBase_V1.has_pending_push_work",
++        "KVConnectorWorkerMetadata.aggregate"
++      ]
++    },
++    {
++      "path": "vllm/distributed/kv_transfer/kv_connector/utils.py",
++      "sha256": "115512dca36b0711223f55f5ff304abffccc6d078923ba4c6bbb3cdb7fdd39a2",
++      "required_symbols": [
++        "KVOutputAggregator.from_connector",
++        "KVOutputAggregator.aggregate"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/sched/output.py",
++      "sha256": "8ea57558c576d80971faf28aba3d093d3d0ca5ad773b79e586255c2695e30846",
++      "required_symbols": [
++        "KVConnectorBlockState.block_ids",
++        "KVConnectorBlockState.boundary_state_offloads",
++        "SchedulerOutput.kv_connector_block_state"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/sched/scheduler.py",
++      "sha256": "9d5e579fc6ca518f2486fa584b5b13ac54ae1daad21b6c5f68111094ec567866",
++      "required_symbols": [
++        "Scheduler.__init__",
++        "Scheduler.schedule",
++        "Scheduler.has_requests",
++        "Scheduler.update_from_output",
++        "Scheduler._free_request_blocks",
++        "Scheduler._handle_invalid_blocks",
++        "Scheduler._update_requests_with_invalid_blocks",
++        "Scheduler._update_waiting_for_remote_kv",
++        "Scheduler._preempt_request"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/kv_cache_manager.py",
++      "sha256": "c6a09fc3b4f725fd31ddc2a07a8dd80953df502726534969ad279a504a66122c",
++      "required_symbols": [
++        "KVCacheManager.take_boundary_state_offloads",
++        "KVCacheManager.free"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
++      "sha256": "ee894e24e4bcf3d1b97b876eacd1b8f904772577cde245d568cb13a24b6d5ec1",
++      "required_symbols": [
++        "SingleTypeKVCacheManager.take_pending_boundary_state_offloads",
++        "MambaManager.cache_blocks",
++        "MambaManager.allocate_new_blocks",
++        "MambaManager.pop_blocks_for_free"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/block_pool.py",
++      "sha256": "a0932da63c38487a5fae401c9b43f627e2dcee8e975ec8d6427e00d2796c6239",
++      "required_symbols": [
++        "BlockPool.touch",
++        "BlockPool.free_blocks"
++      ]
++    },
++    {
++      "path": "vllm/v1/worker/gpu/model_runner.py",
++      "sha256": "23932c3f3672f233f9b8405c95b33d7ecd773bfeadc03bdbf104e36e46ea601e",
++      "required_symbols": [
++        "GPUModelRunner.update_requests",
++        "GPUModelRunner.sample_tokens"
++      ]
++    },
++    {
++      "path": "vllm/v1/worker/gpu/kv_connector.py",
++      "sha256": "b50a13e7c4f62fa2c67ee0d40b8ec7a2b62a6f6dab23571227fd56682c24ecf6",
++      "required_symbols": [
++        "ActiveKVConnector.pre_forward",
++        "ActiveKVConnector.post_forward",
++        "ActiveKVConnector.no_forward"
++      ]
++    },
++    {
++      "path": "vllm/v1/worker/mamba_utils.py",
++      "sha256": "fa7b4662fbc08e3865d88ee7350d72dd7f729921e70070ebaafd29ac374eb86b",
++      "required_symbols": []
++    }
++  ]
++}
 diff --git a/sparkcache/runtime_patches/vllm-connector-jobs-jj-prefill-abb715f.json b/sparkcache/runtime_patches/vllm-connector-jobs-jj-prefill-abb715f.json
 new file mode 100644
-index 0000000..2c293b4
+index 0000000000000000000000000000000000000000..2c293b4252f50ff4d4f6a4f5ff18d221b91d64ff
 --- /dev/null
 +++ b/sparkcache/runtime_patches/vllm-connector-jobs-jj-prefill-abb715f.json
 @@ -0,0 +1,105 @@
@@ -596,7 +1259,7 @@ index 0000000..2c293b4
 +}
 diff --git a/sparkcache/runtime_patches/vllm-connector-jobs-r27-prefill-5dede5b.json b/sparkcache/runtime_patches/vllm-connector-jobs-r27-prefill-5dede5b.json
 new file mode 100644
-index 0000000..eba2059
+index 0000000000000000000000000000000000000000..eba205906dcc87ff342541871920e75aaa7d0880
 --- /dev/null
 +++ b/sparkcache/runtime_patches/vllm-connector-jobs-r27-prefill-5dede5b.json
 @@ -0,0 +1,105 @@
@@ -705,8 +1368,125 @@ index 0000000..eba2059
 +    }
 +  ]
 +}
+diff --git a/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json b/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..42075d5b1c386d1e7d172e15406e5356b929a7a9
+--- /dev/null
++++ b/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json
+@@ -0,0 +1,111 @@
++{
++  "schema": "sparkring-vllm-kv-block-lease-contract/v1",
++  "connector_api": "jj-block-state-read-leases/v1",
++  "vllm_commit": "17bd258075f44dda8b405f384732f3c78d03f308",
++  "required_semantics": [
++    "scheduler-binds-owning-block-pool",
++    "block-state-and-boundary-offers-describe-one-scheduled-step",
++    "offered-recurrent-pages-are-retained-hashed-or-copy-on-write-destinations",
++    "full-attention-prefix-pages-remain-immutable-while-referenced",
++    "connector-metadata-is-built-before-scheduler-dispatch",
++    "worker-post-forward-follows-target-and-mtp-state-writes",
++    "worker-metadata-aggregates-distinct-physical-ranks",
++    "pending-connector-work-keeps-idle-engine-stepping",
++    "no-forward-steps-do-not-call-wait-for-save",
++    "hybrid-load-failure-discards-unproven-prefixes",
++    "failed-load-blocks-retire-after-receive-or-write-fences"
++  ],
++  "qualification": "Implemented source composition: 162 vLLM CPU geometry, checkpoint, model-oracle and hybrid-recovery tests passed. Ten connector source files match the reviewed df62335 contract exactly. Integrated GPU ordering and full-model qualification remain required.",
++  "files": [
++    {
++      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
++      "sha256": "bc1965431087676876f58360cd9cc07ab6c06febe6d747695f10b051fd85c412",
++      "required_symbols": [
++        "KVConnectorBase_V1.bind_gpu_block_pool",
++        "KVConnectorBase_V1.build_connector_worker_meta",
++        "KVConnectorBase_V1.has_pending_push_work",
++        "KVConnectorWorkerMetadata.aggregate"
++      ]
++    },
++    {
++      "path": "vllm/distributed/kv_transfer/kv_connector/utils.py",
++      "sha256": "115512dca36b0711223f55f5ff304abffccc6d078923ba4c6bbb3cdb7fdd39a2",
++      "required_symbols": [
++        "KVOutputAggregator.from_connector",
++        "KVOutputAggregator.aggregate"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/sched/output.py",
++      "sha256": "8ea57558c576d80971faf28aba3d093d3d0ca5ad773b79e586255c2695e30846",
++      "required_symbols": [
++        "KVConnectorBlockState.block_ids",
++        "KVConnectorBlockState.boundary_state_offloads",
++        "SchedulerOutput.kv_connector_block_state"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/sched/scheduler.py",
++      "sha256": "9d5e579fc6ca518f2486fa584b5b13ac54ae1daad21b6c5f68111094ec567866",
++      "required_symbols": [
++        "Scheduler.__init__",
++        "Scheduler.schedule",
++        "Scheduler.has_requests",
++        "Scheduler.update_from_output",
++        "Scheduler._free_request_blocks",
++        "Scheduler._handle_invalid_blocks",
++        "Scheduler._update_requests_with_invalid_blocks",
++        "Scheduler._update_waiting_for_remote_kv",
++        "Scheduler._preempt_request"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/kv_cache_manager.py",
++      "sha256": "c6a09fc3b4f725fd31ddc2a07a8dd80953df502726534969ad279a504a66122c",
++      "required_symbols": [
++        "KVCacheManager.take_boundary_state_offloads",
++        "KVCacheManager.free"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
++      "sha256": "ee894e24e4bcf3d1b97b876eacd1b8f904772577cde245d568cb13a24b6d5ec1",
++      "required_symbols": [
++        "SingleTypeKVCacheManager.take_pending_boundary_state_offloads",
++        "MambaManager.cache_blocks",
++        "MambaManager.allocate_new_blocks",
++        "MambaManager.pop_blocks_for_free"
++      ]
++    },
++    {
++      "path": "vllm/v1/core/block_pool.py",
++      "sha256": "a0932da63c38487a5fae401c9b43f627e2dcee8e975ec8d6427e00d2796c6239",
++      "required_symbols": [
++        "BlockPool.touch",
++        "BlockPool.free_blocks"
++      ]
++    },
++    {
++      "path": "vllm/v1/worker/gpu/model_runner.py",
++      "sha256": "23932c3f3672f233f9b8405c95b33d7ecd773bfeadc03bdbf104e36e46ea601e",
++      "required_symbols": [
++        "GPUModelRunner.update_requests",
++        "GPUModelRunner.sample_tokens"
++      ]
++    },
++    {
++      "path": "vllm/v1/worker/gpu/kv_connector.py",
++      "sha256": "b50a13e7c4f62fa2c67ee0d40b8ec7a2b62a6f6dab23571227fd56682c24ecf6",
++      "required_symbols": [
++        "ActiveKVConnector.pre_forward",
++        "ActiveKVConnector.post_forward",
++        "ActiveKVConnector.no_forward"
++      ]
++    },
++    {
++      "path": "vllm/v1/worker/mamba_utils.py",
++      "sha256": "fa7b4662fbc08e3865d88ee7350d72dd7f729921e70070ebaafd29ac374eb86b",
++      "required_symbols": []
++    }
++  ]
++}
 diff --git a/sparkcache/spark_context_cache_connector.py b/sparkcache/spark_context_cache_connector.py
-index ec00a7f..b4843ed 100644
+index ec00a7f943f103c4bf90774b89e864ec6c3fb540..488bc57921374bdc27b81b706a1ff4387e1aee5b 100644
 --- a/sparkcache/spark_context_cache_connector.py
 +++ b/sparkcache/spark_context_cache_connector.py
 @@ -52,6 +52,7 @@ from vllm.distributed.kv_transfer.kv_connector.v1.base import (
@@ -791,7 +1571,37 @@ index ec00a7f..b4843ed 100644
          self._streaming_runtime: Any = None
          if self._streaming_snapshots_enabled:
              # An explicit opt-in never falls back to end-of-prefill snapshots.
-@@ -2271,6 +2304,20 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+@@ -2045,12 +2078,12 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+                     # leave the flight and attach through ordinary lookup.
+                     self._retire_restore_flight(leader_digest, outcome="completed")
+                     return 0, False
+-                if flight.dispatched:
++                if flight.dispatched or request_id in self._pending_async_loads:
+                     # The leader cannot legitimately re-enter lookup before
+                     # worker completion, but waiting is safer than creating a
+                     # second writer into its private blocks.
+                     return None, False
+-                if self._has_full_quorum(leader_digest):
++                if num_computed_tokens == 0 and self._has_full_quorum(leader_digest):
+                     self._trace_reuse(
+                         "external_restore_offer", request_id,
+                         digest=leader_digest[:12], selected_span_tokens=flight.span_tokens,
+@@ -2061,6 +2094,14 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+                     return flight.span_tokens - num_computed_tokens, True
+                 self._need_load.pop(request_id, None)
+                 self._retire_restore_flight(leader_digest, outcome="cancelled")
++        if num_computed_tokens > 0:
++            # Whole-prefix placement has no suffix write mask. A local prefix
++            # may share pages with another request, so preserve it and compute
++            # the remaining tokens instead of offering a second writer.
++            self.counters["restore_skip_local_prefix"] = (
++                self.counters.get("restore_skip_local_prefix", 0) + 1
++            )
++            return 0, False
+         aligned_span = self._aligned_span(len(token_ids))
+         span_ceiling = min(
+             aligned_span,
+@@ -2271,6 +2312,20 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
          if not required_groups:
              return ()
          raw = getattr(scheduler_output, "recurrent_boundary_blocks", None)
@@ -812,7 +1622,7 @@ index ec00a7f..b4843ed 100644
          if raw is None:
              return latched
          if not isinstance(raw, Mapping):
-@@ -2301,6 +2348,10 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+@@ -2301,6 +2356,10 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
              if entry_boundary < boundary_tokens:
                  continue
              if entry_boundary > boundary_tokens:
@@ -823,7 +1633,7 @@ index ec00a7f..b4843ed 100644
                  return reject(
                      "entry boundary is ahead of the store plan"
                      f" observed={entry_boundary} target={boundary_tokens}"
-@@ -2319,6 +2370,31 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+@@ -2319,6 +2378,31 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
              return reject("entries conflict with the latched recurrent boundary")
          return validated
  
@@ -855,7 +1665,7 @@ index ec00a7f..b4843ed 100644
      def build_connector_meta(
          self, scheduler_output: "SchedulerOutput"
      ) -> KVConnectorMetadata:
-@@ -2374,7 +2450,16 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+@@ -2374,7 +2458,16 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
                  self.counters["multimodal_bypass"] += 1
                  continue
              scheduled = scheduler_output.num_scheduled_tokens.get(req_id, 0)
@@ -873,7 +1683,7 @@ index ec00a7f..b4843ed 100644
              block_ids = group_blocks[0]
              span = self._aligned_span(len(token_ids))
              if self._store_enabled and self._min_span <= span <= self._max_span:
-@@ -2435,6 +2520,22 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+@@ -2435,6 +2528,22 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
                      )
                      if recurrent_boundary_blocks is None:
                          continue
@@ -896,7 +1706,7 @@ index ec00a7f..b4843ed 100644
                      # Full-page proof and partial-tail CoW hand-offs can arrive
                      # after the prefill which began this store. Retain the
                      # complete request table and any early proof until a later
-@@ -2516,7 +2617,16 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+@@ -2516,7 +2625,16 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
                  continue
              if recurrent_boundary_blocks:
                  self._store_recurrent_boundaries[req_id] = recurrent_boundary_blocks
@@ -914,7 +1724,7 @@ index ec00a7f..b4843ed 100644
                  new_block_ids = cached.new_block_ids[index]
                  appended = (
                      [
-@@ -2624,6 +2734,12 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+@@ -2624,6 +2742,12 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
              # the exact offers sent to workers so it delays block reuse only
              # for requests whose final gather may still be in flight.
              runtime.observe_metadata(meta)
@@ -927,7 +1737,7 @@ index ec00a7f..b4843ed 100644
          self._reserve_async_page_capture_plans(meta)
          return meta
  
-@@ -2638,6 +2754,40 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+@@ -2638,6 +2762,40 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
              or self._role is not KVConnectorRole.SCHEDULER
          ):
              return
@@ -968,7 +1778,7 @@ index ec00a7f..b4843ed 100644
          accepted: list[_ReqPlan] = []
          for plan in meta.plans:
              if not plan.is_store:
-@@ -2657,6 +2807,52 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+@@ -2657,6 +2815,52 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
              accepted.append(plan)
          meta.plans[:] = accepted
  
@@ -1021,7 +1831,7 @@ index ec00a7f..b4843ed 100644
      def _release_async_page_capture_reservations(
          self,
          request_ids: Sequence[str],
-@@ -3009,6 +3205,8 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+@@ -3009,6 +3213,8 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
                  "quiesce",
                  "shutdown",
              )
@@ -1030,7 +1840,23 @@ index ec00a7f..b4843ed 100644
              missing = [
                  name for name in required if not callable(getattr(runtime, name, None))
              ]
-@@ -5020,6 +5218,10 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+@@ -4059,6 +4265,7 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+                     # load errors in one connector-output pass.
+                     self._load_errors.update(
+                         block for group in plan.group_block_ids for block in group
++                        if block != 0  # Shared null padding is not a restore destination.
+                     )
+                     self.counters["load_failed"] += 1
+                 self._finished_load_reqs.add(plan.request_id)
+@@ -4177,6 +4384,7 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+                 self._load_errors.update(
+                     block for plan in load_plans
+                     for group in plan.group_block_ids for block in group
++                    if block != 0
+                 )
+                 self._finished_load_reqs.update(queued)
+                 self.counters["load_failed"] += len(queued)
+@@ -5020,6 +5228,10 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
          until every worker reports its native read complete. Row-oriented
          streaming snapshots do not support multiple KV-cache groups.
          """
@@ -1041,7 +1867,7 @@ index ec00a7f..b4843ed 100644
          if self._async_page_capture_enabled:
              request_id = request.request_id
              cleanup_delay, _ = self.request_finished(request, [])
-@@ -5291,6 +5493,9 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+@@ -5291,6 +5503,9 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
                      self._store_inflight = 1
                      self._store_pending_started_ns = time.perf_counter_ns()
              if skipped_before_submit:
@@ -1051,7 +1877,7 @@ index ec00a7f..b4843ed 100644
                  if self._async_page_capture_enabled:
                      runtime = self._async_page_capture_runtime
                      if runtime is None:
-@@ -5308,6 +5513,8 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+@@ -5308,6 +5523,8 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
              if self._async_page_capture_enabled:
                  runtime = self._async_page_capture_runtime
                  if runtime is None:
@@ -1060,7 +1886,7 @@ index ec00a7f..b4843ed 100644
                      self._finish_store(
                          plan.digest,
                          committed=False,
-@@ -5316,12 +5523,27 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+@@ -5316,12 +5533,27 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
                          ),
                      )
                      continue
@@ -1091,7 +1917,7 @@ index ec00a7f..b4843ed 100644
                      self._finish_store(
                          plan.digest,
                          committed=False,
-@@ -6234,6 +6456,16 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
+@@ -6234,6 +6466,16 @@ class SparkContextCacheConnector(KVConnectorBase_V1, SupportsHMA):
  
      def update_connector_output(self, connector_output: Any) -> None:
          self._absorb_quorum(connector_output)
@@ -1109,7 +1935,7 @@ index ec00a7f..b4843ed 100644
              tuple(getattr(connector_output, "finished_sending", None) or ())
          )
 diff --git a/sparkcache/streaming/manager_page_factory.py b/sparkcache/streaming/manager_page_factory.py
-index 419ef7d..453154c 100644
+index 419ef7df5aeab901cef6a5e800204cc51a83cd13..453154cd8c4556bfeeea8dc4a541076bbcb383b3 100644
 --- a/sparkcache/streaming/manager_page_factory.py
 +++ b/sparkcache/streaming/manager_page_factory.py
 @@ -27,6 +27,8 @@ VLLM_ROOT_KEY = "spark_cache_async_page_capture_vllm_root"
@@ -1162,7 +1988,7 @@ index 419ef7d..453154c 100644
  
  
 diff --git a/sparkcache/streaming/manager_page_runtime.py b/sparkcache/streaming/manager_page_runtime.py
-index 120e564..c3ccea2 100644
+index 120e564201dd870852ea936ce17587dae3e233f9..1daab0d421f96cf04c0e4e2a8c7dbe77f5287d52 100644
 --- a/sparkcache/streaming/manager_page_runtime.py
 +++ b/sparkcache/streaming/manager_page_runtime.py
 @@ -3,6 +3,7 @@
@@ -1437,7 +2263,23 @@ index 120e564..c3ccea2 100644
      def finish_without_capture(
          self,
          request_id: str,
-@@ -382,7 +584,7 @@ class ManagerPageCaptureRuntime:
+@@ -339,8 +541,14 @@ class ManagerPageCaptureRuntime:
+ 
+     def take_finished(self, finished_request_ids: set[str]) -> set[str]:
+         with self._cv:
++            # Read jobs retire through job acknowledgements, not request completion.
+             owned = set(finished_request_ids) & (
+-                self._completed | set(self._pending)
++                self._completed
++                | {
++                    request_id
++                    for request_id, capture in self._pending.items()
++                    if not getattr(capture.plan, "capture_job_id", "")
++                }
+             )
+             self._pending_finished_requests.update(owned)
+             if self._fatal is not None:
+@@ -382,7 +590,7 @@ class ManagerPageCaptureRuntime:
                  for request_id in delayed_ids
              )
              return {
@@ -1446,7 +2288,7 @@ index 120e564..c3ccea2 100644
                  "completed_notifications": len(self._completed),
                  "delayed_requests": len(delayed_ids),
                  "retained_manager_pages": retained_manager_pages,
-@@ -392,7 +594,9 @@ class ManagerPageCaptureRuntime:
+@@ -392,7 +600,9 @@ class ManagerPageCaptureRuntime:
  
      def wait_idle(self, timeout: float | None = None) -> bool:
          with self._cv:
@@ -1457,7 +2299,7 @@ index 120e564..c3ccea2 100644
  
      def shutdown(self) -> bool:
          self.quiesce()
-@@ -406,18 +610,39 @@ class ManagerPageCaptureRuntime:
+@@ -406,18 +616,39 @@ class ManagerPageCaptureRuntime:
              if self._closed:
                  return
              self._closed = True
@@ -1501,7 +2343,7 @@ index 120e564..c3ccea2 100644
  
      def _ensure_thread_locked(self) -> None:
          if self._thread is not None:
-@@ -448,31 +673,87 @@ class ManagerPageCaptureRuntime:
+@@ -448,31 +679,87 @@ class ManagerPageCaptureRuntime:
                          capture.plan.digest,
                          f"background capture failed: {error}",
                      )
@@ -1592,7 +2434,7 @@ index 120e564..c3ccea2 100644
                  _log_capture_observed(
                      rank=self._rank,
 diff --git a/sparkcache/test_async_page_capture_connector.py b/sparkcache/test_async_page_capture_connector.py
-index f1c0d16..023aa27 100644
+index f1c0d167963da860748ecea737377abb0177bc95..023aa27f65400ff3dada98c3c815df2c1debc4b3 100644
 --- a/sparkcache/test_async_page_capture_connector.py
 +++ b/sparkcache/test_async_page_capture_connector.py
 @@ -275,6 +275,72 @@ def test_wait_for_save_submits_native_pages_without_synchronous_snapshot(
@@ -1670,10 +2512,10 @@ index f1c0d16..023aa27 100644
      runtime = FakeRuntime()
 diff --git a/sparkcache/test_capture_read_leases.py b/sparkcache/test_capture_read_leases.py
 new file mode 100644
-index 0000000..2a2e55f
+index 0000000000000000000000000000000000000000..b39eea3e591e3a2d73577a0537ff262885922856
 --- /dev/null
 +++ b/sparkcache/test_capture_read_leases.py
-@@ -0,0 +1,520 @@
+@@ -0,0 +1,576 @@
 +"""D21: exact source leases survive cleanup until distinct copy acknowledgements."""
 +
 +from types import SimpleNamespace as NS
@@ -1795,6 +2637,62 @@ index 0000000..2a2e55f
 +        assert connector.read_jobs == ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:1"]
 +        assert connector.completed_event.wait(2)
 +        assert runtime.take_finished({plan.request_id}) == set()
++    finally:
++        runtime.shutdown()
++
++
++@pytest.mark.parametrize("finish_at", ["queued", "reading", "completed"])
++def test_d22_job_lease_completion_does_not_retain_finished_request_ids(finish_at):
++    pool = Pool()
++    leases = CaptureReadLeases(pool, ranks=4, max_jobs=1)
++
++    class LeaseConnector(JobConnector):
++        def _capture_read_completed(self, job):
++            super()._capture_read_completed(job)
++            assert leases.complete(job, [3])
++
++    connector = LeaseConnector()
++    ring = FakeRing(b"aabbxyz")
++    runtime = ManagerPageCaptureRuntime(
++        connector,
++        ring=ring,
++        progress_poll_seconds=0.001,
++        progress_thread_initializer=lambda: None,
++        job_stream_factory=lambda ready: 19,
++    )
++    # Step the real progress path deterministically around request completion.
++    runtime._ensure_thread_locked = lambda: None
++    try:
++        for sequence in range(3):
++            ring.ready.clear()
++            plan = _plan(f"finished-job-{sequence}")
++            plan.capture_job_id = leases.reserve([2, 5, 7])
++            assert plan.capture_job_id
++            assert runtime.submit(plan, producer_stream=19, producer_ready=object())
++            if finish_at == "queued":
++                assert runtime.take_finished({plan.request_id}) == set()
++            runtime._progress_once()
++            assert plan.request_id in runtime._pending
++            if finish_at == "reading":
++                assert runtime.take_finished({plan.request_id}) == set()
++            assert not leases.complete(plan.capture_job_id, [0, 1, 2])
++            assert [pool.blocks[bid].ref_cnt for bid in (2, 5, 7)] == [2, 2, 2]
++            ring.ready.set()
++            runtime._progress_once()
++            if finish_at == "completed":
++                assert runtime.take_finished({plan.request_id}) == set()
++            assert runtime.take_finished(set()) == set()
++            assert runtime.status() == {
++                "pending_requests": 0,
++                "completed_notifications": 0,
++                "delayed_requests": 0,
++                "retained_manager_pages": 0,
++                "oldest_delayed_ms": 0.0,
++                "ownership_uncertain": False,
++            }
++            assert not runtime._pending_finished_requests
++            assert not leases and ring.active_ticket_count == 0
++            assert [pool.blocks[bid].ref_cnt for bid in (2, 5, 7)] == [1, 1, 1]
 +    finally:
 +        runtime.shutdown()
 +
@@ -2195,7 +3093,7 @@ index 0000000..2a2e55f
 +    assert not ring.submissions and not connector.read_jobs
 +    runtime.shutdown()
 diff --git a/sparkcache/test_defect_regressions.py b/sparkcache/test_defect_regressions.py
-index 9651024..985ca23 100644
+index 96510248c9e8e6b84cca80c9b0e80036cc2813de..985ca23b9576cee2fe2aa8e7bd0d08726c866fa2 100644
 --- a/sparkcache/test_defect_regressions.py
 +++ b/sparkcache/test_defect_regressions.py
 @@ -2684,3 +2684,151 @@ class DefectD19MultimodalPromptAliasingTests(unittest.TestCase):
@@ -2350,8 +3248,188 @@ index 9651024..985ca23 100644
 +            output = self._output()
 +            output.kv_connector_block_state.block_ids = {}
 +            self.assertEqual(scheduler.build_connector_meta(output).plans, [])
+diff --git a/sparkcache/test_restore_failure_isolation.py b/sparkcache/test_restore_failure_isolation.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..a0741655fb8c92fca6be5366795b7a3299bb5b98
+--- /dev/null
++++ b/sparkcache/test_restore_failure_isolation.py
+@@ -0,0 +1,80 @@
++"""Failed external restores must not invalidate another request's null padding."""
++
++from __future__ import annotations
++
++from types import SimpleNamespace
++from unittest import mock
++
++import pytest
++
++from sparkcache.runtime_patches.test_glm53_da4d7be_hma_recovery import (
++    _patched_scheduler_class,
++)
++from sparkcache.test_spark_context_cache_connector import (
++    SparkCacheConnectorMetadata,
++    _ReqPlan,
++    _drain,
++    _make_connector,
++    _make_pools,
++)
++
++
++@pytest.mark.parametrize("raise_failure", [False, True])
++@pytest.mark.parametrize("evict_blocks", [False, True])
++@pytest.mark.parametrize("stopping", [False, True])
++def test_failed_restore_preserves_unrelated_hybrid_request(
++    tmp_path, raise_failure, evict_blocks, stopping
++):
++    connector = _make_connector(tmp_path / "cache", 0, 64)
++    connector.register_kv_caches(_make_pools(32, 64))
++    failed_groups = ((0, 0, 11), (21, 22))
++    unrelated_groups = ((0, 0, 12), (31, 32))
++    connector.bind_connector_metadata(
++        SparkCacheConnectorMetadata(
++            plans=[
++                _ReqPlan(
++                    "failed",
++                    "f" * 64,
++                    8192,
++                    failed_groups[0],
++                    False,
++                    block_ids_by_group=failed_groups,
++                )
++            ]
++        )
++    )
++    loader = mock.Mock(
++        side_effect=RuntimeError("payload checksum mismatch")
++        if raise_failure
++        else None,
++        return_value=False,
++    )
++    try:
++        connector._load_stop_requested = stopping
++        with mock.patch.object(connector, "_load_one", loader):
++            connector.start_load_kv(None)
++            assert _drain(connector) == {"failed"}
++        invalid = connector.get_block_ids_with_load_errors()
++        assert connector.counters["load_failed"] == 1
++        assert connector.get_block_ids_with_load_errors() == set()
++
++        # Execute the shipped HMA recovery method, which compares complete
++        # per-request block tables. Null block 0 occurs in unrelated tables
++        # too, and therefore cannot identify ownership of failed payloads.
++        scheduler = _patched_scheduler_class()()
++        scheduler.block_size = 256
++        tables = {"failed": failed_groups, "unrelated": unrelated_groups}
++        scheduler.kv_cache_manager = SimpleNamespace(get_block_ids=tables.__getitem__)
++        failed = SimpleNamespace(request_id="failed", num_computed_tokens=8192)
++        unrelated = SimpleNamespace(request_id="unrelated", num_computed_tokens=4096)
++        affected, recomputed, _ = scheduler._update_requests_with_invalid_blocks(
++            [failed, unrelated], invalid, {}, evict_blocks
++        )
++
++        assert affected == {"failed"}
++        assert recomputed == 8192
++        assert failed.num_computed_tokens == 0
++        assert unrelated.num_computed_tokens == 4096
++        assert invalid == {11, 21, 22}
++    finally:
++        connector.shutdown()
+diff --git a/sparkcache/test_restore_private_admission.py b/sparkcache/test_restore_private_admission.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..2dcdb77163527f976d9493a4511b72e8af529170
+--- /dev/null
++++ b/sparkcache/test_restore_private_admission.py
+@@ -0,0 +1,64 @@
++"""Whole-prefix placement must not write into already-computed local pages."""
++
++from types import SimpleNamespace
++
++from sparkcache import test_spark_context_cache_connector as fixtures
++
++
++def make_case(tmp_path):
++    fixture = fixtures.AsyncRestoreTests()
++    connector = fixture._cohort_connector(tmp_path)
++    request = SimpleNamespace(
++        request_id="private-owner", prompt_token_ids=list(range(1100))
++    )
++    digest = fixture._offer(connector, request.prompt_token_ids)
++    return connector, request, digest
++
++
++def test_full_restore_declines_nonempty_local_prefix(tmp_path):
++    connector, request, digest = make_case(tmp_path)
++    try:
++        # The worker passes the complete block table to update_state_after_alloc,
++        # including local prefix blocks; whole-prefix placement has no source
++        # offset or write mask to protect those potentially shared pages.
++        assert connector.get_num_new_matched_tokens(request, 256) == (0, False)
++        assert request.request_id not in connector._need_load
++        assert digest not in connector._restore_flights
++    finally:
++        connector.shutdown()
++
++
++def test_unallocated_offer_is_retired_if_local_prefix_appears(tmp_path):
++    connector, request, digest = make_case(tmp_path)
++    try:
++        assert connector.get_num_new_matched_tokens(request, 0) == (1024, True)
++        assert connector.get_num_new_matched_tokens(request, 256) == (0, False)
++        assert request.request_id not in connector._need_load
++        assert digest not in connector._restore_flights
++    finally:
++        connector.shutdown()
++
++
++def test_dispatched_writer_still_prevents_recompute(tmp_path):
++    connector, request, digest = make_case(tmp_path)
++    try:
++        assert connector.get_num_new_matched_tokens(request, 0) == (1024, True)
++        connector._restore_flights[digest].dispatched = True
++        assert connector.get_num_new_matched_tokens(request, 256) == (None, False)
++        assert digest in connector._restore_flights
++    finally:
++        connector.shutdown()
++
++
++def test_allocated_undispatched_restore_still_prevents_recompute(tmp_path):
++    connector, request, digest = make_case(tmp_path)
++    try:
++        assert connector.get_num_new_matched_tokens(request, 0) == (1024, True)
++        connector.update_state_after_alloc(
++            request, SimpleNamespace(get_block_ids=lambda: ((1, 2, 3, 4),)), 1024
++        )
++        assert connector.get_num_new_matched_tokens(request, 256) == (None, False)
++        assert request.request_id in connector._pending_async_loads
++        assert digest in connector._restore_flights
++    finally:
++        connector.shutdown()
+diff --git a/sparkcache/test_reuse_trace.py b/sparkcache/test_reuse_trace.py
+index e143df52debf5f11a06349c04da198659da928d2..94dd9177aa19250f0fe6400c15d9c10703d6b37d 100644
+--- a/sparkcache/test_reuse_trace.py
++++ b/sparkcache/test_reuse_trace.py
+@@ -30,7 +30,7 @@ def test_offer_trace_uses_caller_prefix_and_is_latched_at_construction(tmp_path,
+     digest = fixtures.AsyncRestoreTests._offer(connector, tokens)
+     request = SimpleNamespace(request_id="offer", prompt_token_ids=tokens)
+     try:
+-        assert connector.get_num_new_matched_tokens(request, 256) == (768, True)
++        assert connector.get_num_new_matched_tokens(request, 0) == (1024, True)
+         assert connector.counters["restore_hit"] == 1
+         assert connector._need_load["offer"] == (digest, 1024)
+         if not enabled:
+@@ -39,8 +39,8 @@ def test_offer_trace_uses_caller_prefix_and_is_latched_at_construction(tmp_path,
+         assert len(records) == 1
+         record = records[0]
+         assert record["event"] == "external_restore_offer"
+-        assert record["caller_block_aligned_prefix_tokens"] == 256
+-        assert record["offered_external_tokens"] == 768
++        assert record["caller_block_aligned_prefix_tokens"] == 0
++        assert record["offered_external_tokens"] == 1024
+         assert record["selected_span_tokens"] == 1024
+         assert record["request_id"] == "offer"
+         assert "local_hit_tokens" not in record
 diff --git a/sparkcache/test_spark_context_cache_connector.py b/sparkcache/test_spark_context_cache_connector.py
-index 6aaade9..3e1182d 100644
+index 6aaade915927a45587cf433b057ef67696b65a18..e51d6716644b6fab0fa3be62a328c87b89e93e00 100644
 --- a/sparkcache/test_spark_context_cache_connector.py
 +++ b/sparkcache/test_spark_context_cache_connector.py
 @@ -119,6 +119,9 @@ def _install_vllm_stubs() -> None:
@@ -2372,3 +3450,73 @@ index 6aaade9..3e1182d 100644
      base.KVConnectorRole = KVConnectorRole
      base.SupportsHMA = SupportsHMA
      for name, module in (
+@@ -2755,7 +2759,7 @@ class ConnectorRoundTripTests(unittest.TestCase):
+             self.assertEqual(connector.counters["load_failed"], 1)
+             self.assertEqual(
+                 connector.get_block_ids_with_load_errors(),
+-                set(load_plan.block_ids),
++                set(load_plan.block_ids) - {0},
+             )
+             # errors drain once reported
+             self.assertEqual(connector.get_block_ids_with_load_errors(), set())
+@@ -2785,7 +2789,7 @@ class ConnectorRoundTripTests(unittest.TestCase):
+             self.assertEqual(connector.counters["load_failed"], 1)
+             self.assertEqual(
+                 connector.get_block_ids_with_load_errors(),
+-                set(load_plan.block_ids),
++                set(load_plan.block_ids) - {0},
+             )
+ 
+ 
+@@ -3391,7 +3395,7 @@ class StartupDiscoveryTests(unittest.TestCase):
+             self.assertEqual(_drain(restarted), {"corrupt"})
+             self.assertEqual(
+                 restarted.get_block_ids_with_load_errors(),
+-                set(load_plan.block_ids),
++                set(load_plan.block_ids) - {0},
+             )
+             self.assertNotIn(plan.digest, restarted._held)
+             report = restarted.get_kv_connector_stats().data["reports"][0]
+@@ -5380,7 +5384,7 @@ class AsyncRestoreTests(unittest.TestCase):
+                 self.assertEqual(connector.counters["load_failed"], 1)
+                 self.assertEqual(
+                     connector.get_block_ids_with_load_errors(),
+-                    set(self.BLOCKS),
++                    set(self.BLOCKS) - {0},
+                 )
+             finally:
+                 connector.shutdown()
+@@ -5839,7 +5843,7 @@ class AsyncRestoreTests(unittest.TestCase):
+ 
+             connector.get_num_new_matched_tokens(leader, 0)
+             self.assertEqual(
+-                connector.get_num_new_matched_tokens(partial, 256), (768, True)
++                connector.get_num_new_matched_tokens(partial, 256), (0, False)
+             )
+             self.assertNotIn(partial.request_id, connector._restore_flight_followers)
+ 
+@@ -6521,7 +6525,7 @@ class AsyncRestoreTests(unittest.TestCase):
+             self.assertEqual(_drain(connector), {"bad-restore"})
+             self.assertEqual(connector.get_finished(set()), (None, None))
+             self.assertEqual(
+-                connector.get_block_ids_with_load_errors(), set(self.BLOCKS)
++                connector.get_block_ids_with_load_errors(), set(self.BLOCKS) - {0}
+             )
+             self.assertEqual(connector.counters["load_failed"], 1)
+             self.assertNotIn(digest, connector._held)
+diff --git a/tools/verify_distribution.py b/tools/verify_distribution.py
+index 9d840d0b55c66f9dfb65cc98e1e3b656adaffa3f..a0fa61bfc778833eb072125fca63e89f6a7e63f0 100644
+--- a/tools/verify_distribution.py
++++ b/tools/verify_distribution.py
+@@ -30,6 +30,11 @@ REQUIRED_WHEEL_MEMBERS = frozenset(
+         "sparkcache/streaming/feature_gate.py",
+         "sparkcache/runtime_patches/vllm-kv-block-lease-contract.json",
+         "sparkcache/runtime_patches/vllm-kv-block-lease-contract-e2666d9a6.json",
++        "sparkcache/runtime_patches/generic_connector_contract.py",
++        "sparkcache/capture_read_leases.py",
++        "sparkcache/runtime_patches/vllm-connector-jobs-hybrid-recovery-df62335.json",
++        "sparkcache/runtime_patches/vllm-connector-jobs-hybrid-recovery-9b87df5.json",
++        "sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json",
+     }
+ )
+ 

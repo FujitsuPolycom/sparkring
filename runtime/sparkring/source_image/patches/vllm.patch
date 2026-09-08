@@ -1,6 +1,6 @@
 diff --git a/docs/design/compact_index_cache_owner.md b/docs/design/compact_index_cache_owner.md
 new file mode 100644
-index 0000000000..ef5cc4ba9d
+index 0000000000000000000000000000000000000000..ef5cc4ba9de88cb9a7755446194d58f6590513f4
 --- /dev/null
 +++ b/docs/design/compact_index_cache_owner.md
 @@ -0,0 +1,138 @@
@@ -144,14 +144,14 @@ index 0000000000..ef5cc4ba9d
 +equivalence or claim universal bit exactness.
 diff --git a/docs/design/glm_mhc_prefill_sharding.md b/docs/design/glm_mhc_prefill_sharding.md
 new file mode 100644
-index 0000000000..f92531a3ae
+index 0000000000000000000000000000000000000000..c659bfc268d18b4fe533f8a9e74d4cb50bdfe15b
 --- /dev/null
 +++ b/docs/design/glm_mhc_prefill_sharding.md
-@@ -0,0 +1,147 @@
+@@ -0,0 +1,149 @@
 +# GLM mHC token ownership for GB10 prefill
 +
 +Status: **research-only**. The implementation moves repeated mHC work onto each
-+tensor-parallel rank's token quarter during eligible eager prefills. CPU tests
++tensor-parallel rank's token partition during eligible eager prefills. CPU tests
 +cover admission and actual model/projection/MoE call boundaries; this maintained
 +source port has no GPU or full-model evaluation result.
 +
@@ -163,8 +163,9 @@ index 0000000000..f92531a3ae
 +uses the TP group's existing enabled PyNccl communicator and current CUDA stream.
 +
 +Admission requires 48-SM NVIDIA GB10 GPUs, compute capability 12.1, BF16 model
-+activations, hidden size 4,096, an 8,192-token batch ceiling, and TP4/DCP4 with
-+PP1/DP1/PCP1. Expert parallelism, expert load balancing, and sequence-parallel
++activations, hidden size 4,096, an 8,192-token batch ceiling, and either TP2/DCP1
++or TP4/DCP1,2,4 with PP1/DP1/PCP1. TP2/DCP2 and TP2/DCP4 are excluded.
++Expert parallelism, expert load balancing, and sequence-parallel
 +MoE are excluded. Captured graph sizes must stay below 8,192. Every active base
 +layer must provide the supported GLM attention/projection/MoE and B12X mHC
 +implementations.
@@ -179,12 +180,13 @@ index 0000000000..f92531a3ae
 +## Computation and tensor lifetime
 +
 +The first mHC pre runs on full tokens. Its residual, post, and combine state
-+become views of the owning rank's contiguous quarter. Attention and FFN inputs
++become views of the owning rank's contiguous partition. Attention and FFN inputs
 +remain full-token tensors.
 +
 +For each attention or FFN boundary, an explicit per-call argument defers its
 +normal TP output reduction. NCCL reduce-scatter sums the full TP partial into
-+the owner's 2,048 rows. B12X mHC runs on those rows; an all-gather restores the
++the owner's 4,096 rows at TP2 or 2,048 rows at TP4. B12X mHC runs on those rows;
++an all-gather restores the
 +normalized full-token input before the next attention or FFN. Shared and routed
 +MoE outputs are combined before that single deferred reduction. Already-reduced
 +or unsupported MoE outputs are rejected. Existing pre-reduction L2-prefetch
@@ -206,7 +208,7 @@ index 0000000000..f92531a3ae
 +extension and does not enable continuation coalescing. Scheduler chunk sizes
 +still determine whether an individual forward reaches the 8,192-row gate.
 +
-+CPU execution of the unmodified scheduler and real KV cache manager demonstrates
++At TP4/DCP4, CPU execution of the scheduler and real KV cache manager demonstrates
 +independent eligibility with one B12X checkpoint, MTP3, physical/hash blocks of
 +512 tokens, scheduler blocks of 2,048, and sparse retention interval zero:
 +
@@ -296,7 +298,7 @@ index 0000000000..f92531a3ae
 +the combined setting. No GPU result from a different runtime composition
 +qualifies this source change.
 diff --git a/docs/features/quantization/b12x.md b/docs/features/quantization/b12x.md
-index f636dce054..6837ea3f0a 100644
+index f636dce05422a554cb18a35d179244a4e8d4dbc9..6837ea3f0aa50dce0eaaef49d2d6e91698a17265 100644
 --- a/docs/features/quantization/b12x.md
 +++ b/docs/features/quantization/b12x.md
 @@ -113,3 +113,94 @@ This crossover is topology-dependent; set the variable to `off` when the DMA
@@ -395,7 +397,7 @@ index f636dce054..6837ea3f0a 100644
 +samples and source/device identities, and report component and whole-model
 +results separately. GPU/model evaluation has not been executed for this source.
 diff --git a/tests/distributed/test_dcp_direct_a2a_lse_reduce.py b/tests/distributed/test_dcp_direct_a2a_lse_reduce.py
-index e5764954bd..1519a81668 100644
+index e5764954bd53d12e1f2ea9fdda04ce82e3fafb60..1519a81668d3a47f58b2f9aca6a23524875739f8 100644
 --- a/tests/distributed/test_dcp_direct_a2a_lse_reduce.py
 +++ b/tests/distributed/test_dcp_direct_a2a_lse_reduce.py
 @@ -141,6 +141,70 @@ class _FakeProcessGroup:
@@ -470,7 +472,7 @@ index e5764954bd..1519a81668 100644
          monkeypatch.setenv("VLLM_USE_DIRECT_DCP_A2A", "0")
          dcp.get_direct_dcp_a2a_workspace.cache_clear()
 diff --git a/tests/entrypoints/serve/dev/test_fairness.py b/tests/entrypoints/serve/dev/test_fairness.py
-index 8e7f439fb9..1b3ce1e0d1 100644
+index 8e7f439fb984d2d6cebb45af4ed9991c22f06810..1b3ce1e0d1306193c3f205f6de2a52042ad43c04 100644
 --- a/tests/entrypoints/serve/dev/test_fairness.py
 +++ b/tests/entrypoints/serve/dev/test_fairness.py
 @@ -6,6 +6,7 @@ import json
@@ -596,7 +598,7 @@ index 8e7f439fb9..1b3ce1e0d1 100644
 +        "prefill_compute_half_life": "smooth",
 +    }
 diff --git a/tests/kernels/mamba/test_causal_conv1d.py b/tests/kernels/mamba/test_causal_conv1d.py
-index dad3dec3c9..25a31199b2 100644
+index dad3dec3c9d5b46330000c75dac8f419e80333a4..25a31199b282ff2fd69b67f4e90080ba55a19524 100644
 --- a/tests/kernels/mamba/test_causal_conv1d.py
 +++ b/tests/kernels/mamba/test_causal_conv1d.py
 @@ -516,3 +516,66 @@ def test_causal_conv1d_update_hoisted_spec_decode_is_bitwise(
@@ -668,7 +670,7 @@ index dad3dec3c9..25a31199b2 100644
 +    assert torch.all(state[untouched] == -7.0)
 diff --git a/tests/kernels/test_dflash2_grouped_conv.py b/tests/kernels/test_dflash2_grouped_conv.py
 new file mode 100644
-index 0000000000..82e71e2ec9
+index 0000000000000000000000000000000000000000..82e71e2ec9f8153953896f0258a86fe01af554f6
 --- /dev/null
 +++ b/tests/kernels/test_dflash2_grouped_conv.py
 @@ -0,0 +1,186 @@
@@ -859,7 +861,7 @@ index 0000000000..82e71e2ec9
 +    )
 +    torch.testing.assert_close(captured, expected, rtol=0, atol=0)
 diff --git a/tests/kernels/test_gate_linear_rocm_dispatch.py b/tests/kernels/test_gate_linear_rocm_dispatch.py
-index 648ff7c75b..2d7ac10bde 100644
+index 648ff7c75b0f872839f50443984620cabb993dc7..2d7ac10bdef3df8a9744fa69e75cd8edc0bcbb37 100644
 --- a/tests/kernels/test_gate_linear_rocm_dispatch.py
 +++ b/tests/kernels/test_gate_linear_rocm_dispatch.py
 @@ -7,7 +7,7 @@ run device-free by mocking the platform predicates. The flag decides whether
@@ -960,7 +962,7 @@ index 648ff7c75b..2d7ac10bde 100644
 +    assert captured_allocations == [(32, 64)]
 diff --git a/tests/models/test_glm5next_kda_gate_stream.py b/tests/models/test_glm5next_kda_gate_stream.py
 new file mode 100644
-index 0000000000..727e4014b9
+index 0000000000000000000000000000000000000000..727e4014b92aae098c766bff8563f495ed8b9ee2
 --- /dev/null
 +++ b/tests/models/test_glm5next_kda_gate_stream.py
 @@ -0,0 +1,182 @@
@@ -1148,10 +1150,10 @@ index 0000000000..727e4014b9
 +    assert observed == [("side" if overlap else "shared", defer)]
 diff --git a/tests/models/test_glm5next_mhc_prefill.py b/tests/models/test_glm5next_mhc_prefill.py
 new file mode 100644
-index 0000000000..29f416ec7f
+index 0000000000000000000000000000000000000000..58a2da97c5a8338ba6bd22ecdba3633e6341c1bc
 --- /dev/null
 +++ b/tests/models/test_glm5next_mhc_prefill.py
-@@ -0,0 +1,810 @@
+@@ -0,0 +1,836 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""CPU contracts for GLM mHC admission, reduction, and token ownership."""
@@ -1225,7 +1227,7 @@ index 0000000000..29f416ec7f
 +
 +    def vote(result, value, **kwargs):
 +        votes.append(value)
-+        result[:] = [value] * 4
++        result[:] = [value] * group.world_size
 +
 +    monkeypatch.setattr(distributed, "get_tp_group", lambda: group)
 +    monkeypatch.setattr(torch.distributed, "all_gather_object", vote)
@@ -1296,17 +1298,26 @@ index 0000000000..29f416ec7f
 +        ownership.configure(admission.model, admission.config, True)
 +
 +
-+@pytest.mark.parametrize("dcp", [1, 2, 4])
-+@pytest.mark.parametrize("rank", range(4))
-+def test_dcp_keeps_tp_communicator_and_quarter_token_ownership(
-+    monkeypatch, admission, dcp, rank
++@pytest.mark.parametrize(
++    "tp,dcp,rank",
++    [
++        (tp, dcp, rank)
++        for tp, dcp in ((2, 1), (4, 1), (4, 2), (4, 4))
++        for rank in range(tp)
++    ],
++)
++def test_dcp_keeps_tp_communicator_and_partitioned_token_ownership(
++    monkeypatch, admission, tp, dcp, rank
 +):
 +    """DCP subgroups must not replace TP rank ordering or its collective group."""
 +    from vllm.models.glm5next.nvidia.kda import Glm5NextLinearAttention
 +
 +    admission.config.parallel_config.decode_context_parallel_size = dcp
++    admission.config.parallel_config.tensor_parallel_size = tp
++    admission.group.world_size = tp
 +    admission.group.rank_in_group = rank
 +    comm = admission.group.device_communicator.pynccl_comm
++    comm.world_size = tp
 +    comm.rank = rank
 +    monkeypatch.setattr(
 +        distributed,
@@ -1315,7 +1326,7 @@ index 0000000000..29f416ec7f
 +    )
 +    projection = linear.RowParallelLinear.__new__(linear.RowParallelLinear)
 +    torch.nn.Module.__init__(projection)
-+    projection.tp_size, projection.reduce_results, projection.bias = 4, True, None
++    projection.tp_size, projection.reduce_results, projection.bias = tp, True, None
 +    attn = Glm5NextLinearAttention.__new__(Glm5NextLinearAttention)
 +    torch.nn.Module.__init__(attn)
 +    attn.prefix, attn.o_proj = "gdn", projection
@@ -1344,10 +1355,21 @@ index 0000000000..29f416ec7f
 +    )
 +    owner = ownership.maybe_create(admission.model, hidden, NS(shape=(8192,)))
 +    assert owner is not None and owner.comm is comm and owner.rank == rank
++    assert owner.world_size == tp
 +    values = torch.arange(8192).reshape(8192, 1)
++    owner_rows = 8192 // tp
 +    assert torch.equal(
-+        owner.local_view(values), values[rank * 2048 : (rank + 1) * 2048]
++        owner.local_view(values), values[rank * owner_rows : (rank + 1) * owner_rows]
 +    )
++
++
++@pytest.mark.parametrize("dcp", [2, 4])
++def test_tp2_rejects_unqualified_context_parallelism(admission, dcp):
++    admission.group.world_size = 2
++    admission.config.parallel_config.tensor_parallel_size = 2
++    admission.config.parallel_config.decode_context_parallel_size = dcp
++    with pytest.raises(RuntimeError, match="configuration admission"):
++        ownership.configure(admission.model, admission.config, True)
 +
 +
 +def test_rank_flag_disagreement_rejects_disabled_rank(monkeypatch, admission):
@@ -1412,12 +1434,13 @@ index 0000000000..29f416ec7f
 +    assert ownership.maybe_create(admission.model, hidden, NS(shape=(8192,))) is None
 +
 +
-+def test_row_parallel_deferral_preserves_prefetch_hook_and_bias_tuple(monkeypatch):
++@pytest.mark.parametrize("tp", [2, 4])
++def test_row_parallel_deferral_preserves_prefetch_hook_and_bias_tuple(monkeypatch, tp):
 +    calls = []
 +
 +    def reduce(value):
 +        calls.append("reduce")
-+        return value * 4
++        return value * tp
 +
 +    monkeypatch.setattr(
 +        linear,
@@ -1427,7 +1450,7 @@ index 0000000000..29f416ec7f
 +    obj = NS(
 +        input_is_parallel=True,
 +        tp_rank=0,
-+        tp_size=4,
++        tp_size=tp,
 +        skip_bias_add=False,
 +        bias=None,
 +        quant_method=NS(apply=lambda self, x, bias: x * 2),
@@ -1438,17 +1461,18 @@ index 0000000000..29f416ec7f
 +    x = torch.arange(8).reshape(2, 4)
 +    baseline, _ = linear.RowParallelLinear.forward(obj, x)
 +    partial, bias = linear.RowParallelLinear.forward(obj, x, defer_tp_reduction=True)
-+    assert torch.equal(baseline, x * 8) and torch.equal(partial, x * 2)
++    assert torch.equal(baseline, x * (2 * tp)) and torch.equal(partial, x * 2)
 +    assert bias is None and obj.reduce_results
 +    assert calls == ["prefetch", "reduce", "prefetch"]
 +
 +
-+def test_moe_combines_shared_and_routed_before_deferred_reduction(monkeypatch):
++@pytest.mark.parametrize("tp", [2, 4])
++def test_moe_combines_shared_and_routed_before_deferred_reduction(monkeypatch, tp):
 +    calls = []
 +
 +    def reduce(value):
 +        calls.append("reduce")
-+        return value * 4
++        return value * tp
 +
 +    monkeypatch.setattr(
 +        moe_runner,
@@ -1456,7 +1480,7 @@ index 0000000000..29f416ec7f
 +        reduce,
 +    )
 +    config = NS(
-+        tp_size=4,
++        tp_size=tp,
 +        dp_size=1,
 +        ep_size=1,
 +        pcp_size=1,
@@ -1494,7 +1518,7 @@ index 0000000000..29f416ec7f
 +    baseline = moe_runner.MoERunner.forward(obj, x, x)
 +    partial = moe_runner.MoERunner.forward(obj, x, x, defer_tp_reduction=True)
 +    assert baseline.shape == partial.shape == (2, 3)
-+    assert torch.all(baseline == 20) and torch.all(partial == 5)
++    assert torch.all(baseline == 5 * tp) and torch.all(partial == 5)
 +    assert calls == ["prefetch", "reduce", "prefetch"]
 +    obj._fused_output_is_reduced = True
 +    obj._forward_entry = lambda *a: pytest.fail(
@@ -1505,10 +1529,11 @@ index 0000000000..29f416ec7f
 +
 +
 +class CPUFabric:
-+    def __init__(self):
-+        self.barrier = Barrier(4, timeout=15)
-+        self.values = [None] * 4
-+        self.calls: list[list[str]] = [[] for _ in range(4)]
++    def __init__(self, world_size=4):
++        self.world_size = world_size
++        self.barrier = Barrier(world_size, timeout=15)
++        self.values = [None] * world_size
++        self.calls: list[list[str]] = [[] for _ in range(world_size)]
 +
 +    def exchange(self, rank, kind, value):
 +        self.calls[rank].append(kind)
@@ -1518,7 +1543,7 @@ index 0000000000..29f416ec7f
 +            torch.cat(self.values) if kind == "ag" else torch.stack(self.values).sum(0)
 +        )
 +        if kind == "rs":
-+            result = result.chunk(4)[rank].clone()
++            result = result.chunk(self.world_size)[rank].clone()
 +        self.barrier.wait()
 +        return result
 +
@@ -1529,7 +1554,7 @@ index 0000000000..29f416ec7f
 +        self.mhc_calls = []
 +
 +    def local_view(self, value):
-+        return value.chunk(4)[self.rank]
++        return value.chunk(self.fabric.world_size)[self.rank]
 +
 +    def record_mhc(self, stage, output):
 +        self.mhc_calls.append((stage, output.shape[0]))
@@ -1545,14 +1570,15 @@ index 0000000000..29f416ec7f
 +        assert calls.count("rs") == 2 * layers
 +        assert calls.count("ag") == 2 * layers + auxiliary_gathers
 +        assert self.mhc_calls.count(("first_pre", 8)) == 1
-+        assert self.mhc_calls.count(("attention_post_pre", 2)) == layers - 1
-+        assert self.mhc_calls.count(("ffn_post_pre", 2)) == layers
-+        assert self.mhc_calls.count(("final_post", 2)) == 1
++        owner_rows = 8 // self.fabric.world_size
++        assert self.mhc_calls.count(("attention_post_pre", owner_rows)) == layers - 1
++        assert self.mhc_calls.count(("ffn_post_pre", owner_rows)) == layers
++        assert self.mhc_calls.count(("final_post", owner_rows)) == 1
 +
 +
-+@pytest.mark.parametrize("dcp", [1, 2, 4])
++@pytest.mark.parametrize("tp,dcp", [(2, 1), (4, 1), (4, 2), (4, 4)])
 +def test_model_preserves_full_final_auxiliary_and_owner_residual_boundaries(
-+    monkeypatch, dcp
++    monkeypatch, tp, dcp
 +):
 +    """Completed DCP attention must feed one TP partial into row ownership."""
 +    monkeypatch.setattr(
@@ -1565,7 +1591,7 @@ index 0000000000..29f416ec7f
 +    monkeypatch.setattr(glm._l2pf, "join_all", lambda: None)
 +
 +    def run(sharded):
-+        fabric = CPUFabric()
++        fabric = CPUFabric(tp)
 +
 +        class Layer(NS):
 +            __call__ = glm.Glm5NextDecoderLayer.forward
@@ -1592,7 +1618,8 @@ index 0000000000..29f416ec7f
 +                    )
 +
 +                def post_pre(x, residual, post, comb, *args, **kwargs):
-+                    assert x.shape[0] == residual.shape[0] == (2 if sharded else 8)
++                    expected_rows = 8 // tp if sharded else 8
++                    assert x.shape[0] == residual.shape[0] == expected_rows
 +                    updated = residual * 0.5 + x[:, None]
 +                    return updated, post + 0.25, comb + 0.5, updated.mean(1)
 +
@@ -1649,12 +1676,12 @@ index 0000000000..29f416ec7f
 +                model, None, torch.arange(8), None, inputs_embeds=x
 +            )
 +
-+        with ThreadPoolExecutor(max_workers=4) as pool:
-+            return list(pool.map(rank_forward, range(4))), fabric.calls
++        with ThreadPoolExecutor(max_workers=tp) as pool:
++            return list(pool.map(rank_forward, range(tp))), fabric.calls
 +
 +    baseline, baseline_calls = run(False)
 +    sharded, sharded_calls = run(True)
-+    for rank in range(4):
++    for rank in range(tp):
 +        assert baseline_calls[rank] == ["ar"] * 6
 +        assert sharded_calls[rank][0] == "rs"
 +        assert torch.equal(sharded[rank][0], baseline[rank][0])
@@ -1693,7 +1720,8 @@ index 0000000000..29f416ec7f
 +        ownership.configure(admission.model, admission.config, True)
 +
 +
-+def test_collective_outputs_have_owned_lifetimes_and_explicit_streams(monkeypatch):
++@pytest.mark.parametrize("tp", [2, 4])
++def test_collective_outputs_have_owned_lifetimes_and_explicit_streams(monkeypatch, tp):
 +    """Exercise the actual ownership helper with CPU allocation/stream doubles."""
 +    stream = object()
 +    calls = []
@@ -1724,12 +1752,12 @@ index 0000000000..29f416ec7f
 +        reduce_scatter=lambda out, source, **kw: calls.append(("rs", out, source, kw)),
 +        all_gather=lambda out, source, **kw: calls.append(("ag", out, source, kw)),
 +    )
-+    owner = ownership.PrefillOwnership(comm, 0)
++    owner = ownership.PrefillOwnership(comm, 0, world_size=tp)
 +    partial = Tensor((8192, 4096))
 +    shard = owner.reduce_scatter(partial)
 +    full = owner.all_gather(shard)
 +    other_full = owner.all_gather(shard)
-+    assert shard.shape == (2048, 4096) and full.shape == (8192, 4096)
++    assert shard.shape == (8192 // tp, 4096) and full.shape == (8192, 4096)
 +    assert full is not other_full
 +    assert calls[0] == ("rs", shard, partial, {"stream": stream})
 +    assert all(call[3] == {"stream": stream} for call in calls)
@@ -1963,7 +1991,7 @@ index 0000000000..29f416ec7f
 +        None, config, is_dummy_run=True
 +    ).is_dummy_run
 diff --git a/tests/models/test_glm5next_model.py b/tests/models/test_glm5next_model.py
-index 9c62db66f9..7d0e289336 100644
+index 9c62db66f9c670b17f329bc84b453c7290e2649d..7d0e289336bb1aa53fa7d6edd9d46a5e84b3f21e 100644
 --- a/tests/models/test_glm5next_model.py
 +++ b/tests/models/test_glm5next_model.py
 @@ -23,6 +23,8 @@ from vllm.model_executor.models.glm4_1v import Glm4vForConditionalGeneration
@@ -2053,7 +2081,7 @@ index 9c62db66f9..7d0e289336 100644
      positions = torch.arange(2)
  
 diff --git a/tests/models/test_glm5next_pooled_indexer.py b/tests/models/test_glm5next_pooled_indexer.py
-index ec701f53a2..78972f066b 100644
+index ec701f53a25f8de19ff6fc0582b448f20e30da80..78972f066bd6cdd08e40bacf028c40f94ed30d4e 100644
 --- a/tests/models/test_glm5next_pooled_indexer.py
 +++ b/tests/models/test_glm5next_pooled_indexer.py
 @@ -10,6 +10,7 @@ import torch
@@ -2195,7 +2223,7 @@ index ec701f53a2..78972f066b 100644
      indexer.bind_main_kv_cache(main)
  
 diff --git a/tests/v1/attention/test_b12x_sparse_mla_api.py b/tests/v1/attention/test_b12x_sparse_mla_api.py
-index 81b29c2917..88b1e3bb3c 100644
+index 81b29c2917632d95be1a564129edea9f4f25694e..88b1e3bb3c77e8a0b79aa6251930da278b737a16 100644
 --- a/tests/v1/attention/test_b12x_sparse_mla_api.py
 +++ b/tests/v1/attention/test_b12x_sparse_mla_api.py
 @@ -1468,6 +1468,53 @@ def test_glm_selector_metadata_builder_updates_draft_acceptance() -> None:
@@ -2254,7 +2282,7 @@ index 81b29c2917..88b1e3bb3c 100644
      builder.requires_glm_next_selector_metadata = False
 diff --git a/tests/v1/attention/test_compact_index_owner.py b/tests/v1/attention/test_compact_index_owner.py
 new file mode 100644
-index 0000000000..c45b9b61c9
+index 0000000000000000000000000000000000000000..c45b9b61c9d892eac14adbd5904b09615954bf3d
 --- /dev/null
 +++ b/tests/v1/attention/test_compact_index_owner.py
 @@ -0,0 +1,359 @@
@@ -2619,7 +2647,7 @@ index 0000000000..c45b9b61c9
 +    assert manager.reserve_all.call_args.args[-1] == ((2048, 65536), torch.float32)
 diff --git a/tests/v1/attention/test_dcp_owner_merge.py b/tests/v1/attention/test_dcp_owner_merge.py
 new file mode 100644
-index 0000000000..00dfd2c386
+index 0000000000000000000000000000000000000000..00dfd2c38663c0bdc6aa79f5c7a88637abfda5cd
 --- /dev/null
 +++ b/tests/v1/attention/test_dcp_owner_merge.py
 @@ -0,0 +1,62 @@
@@ -2686,7 +2714,7 @@ index 0000000000..00dfd2c386
 +        with pytest.raises(ValueError):
 +            owner.owner_workspace_shapes(rows, topk, world)
 diff --git a/tests/v1/attention/test_gdn_metadata_builder.py b/tests/v1/attention/test_gdn_metadata_builder.py
-index f1fdc5be4f..7c06d367e6 100644
+index f1fdc5be4f2591afcad8d7ff5a0b11891b7b7ae1..7c06d367e66c6de96b891260e118e7c0f63ec1dc 100644
 --- a/tests/v1/attention/test_gdn_metadata_builder.py
 +++ b/tests/v1/attention/test_gdn_metadata_builder.py
 @@ -3,6 +3,7 @@
@@ -2908,7 +2936,7 @@ index f1fdc5be4f..7c06d367e6 100644
 +    assert len(final_and_reserve) == 4
 +    assert len(set(expected_ids + final_and_reserve)) == 8
 diff --git a/tests/v1/attention/test_indexer_dcp_localize.py b/tests/v1/attention/test_indexer_dcp_localize.py
-index 48f3ffd5ac..533b182906 100644
+index 48f3ffd5ac16baa05885183cf420ef2ea0f4205d..533b1829062e8416d5c4a2e180fee86713802b20 100644
 --- a/tests/v1/attention/test_indexer_dcp_localize.py
 +++ b/tests/v1/attention/test_indexer_dcp_localize.py
 @@ -5,13 +5,22 @@ import pytest
@@ -3092,7 +3120,7 @@ index 48f3ffd5ac..533b182906 100644
  def test_sparse_dcp_attention_matches_global_topk_attention(interleave: int):
      torch.manual_seed(0)
 diff --git a/tests/v1/core/test_compute_fairness.py b/tests/v1/core/test_compute_fairness.py
-index 8f325e36a1..cad4ad4cd2 100644
+index 8f325e36a10586b39b01b712e7c6d85334367791..cad4ad4cd2c09179b01da89a27d85257d20ed2de 100644
 --- a/tests/v1/core/test_compute_fairness.py
 +++ b/tests/v1/core/test_compute_fairness.py
 @@ -5,7 +5,10 @@ from collections import deque
@@ -3376,7 +3404,7 @@ index 8f325e36a1..cad4ad4cd2 100644
 +    assert controller.effective_prefill_compute_share == pytest.approx(0.65)
 diff --git a/tests/v1/core/test_micro_slicing.py b/tests/v1/core/test_micro_slicing.py
 deleted file mode 100644
-index 4c0d3b8ec9..0000000000
+index 4c0d3b8ec9b753048c10d56215a18827775084be..0000000000000000000000000000000000000000
 --- a/tests/v1/core/test_micro_slicing.py
 +++ /dev/null
 @@ -1,480 +0,0 @@
@@ -3861,7 +3889,7 @@ index 4c0d3b8ec9..0000000000
 -        == 1024
 -    )
 diff --git a/tests/v1/core/test_prefill_compute_share_scheduler.py b/tests/v1/core/test_prefill_compute_share_scheduler.py
-index 7c7b7d1957..e8bdb02997 100644
+index 7c7b7d19570044c59a0e50c597afa1c5b3f2983e..e8bdb0299731b11a8c13e8bca1f5d6ed0bf9eb3e 100644
 --- a/tests/v1/core/test_prefill_compute_share_scheduler.py
 +++ b/tests/v1/core/test_prefill_compute_share_scheduler.py
 @@ -7,6 +7,7 @@ from vllm.config import SchedulerConfig
@@ -4535,10 +4563,10 @@ index 7c7b7d1957..e8bdb02997 100644
 +    assert unchanged["prefill_compute_half_life"] == "responsive"
 diff --git a/tests/v1/core/test_recurrent_prefill_checkpoint.py b/tests/v1/core/test_recurrent_prefill_checkpoint.py
 new file mode 100644
-index 0000000000..6ac21f0587
+index 0000000000000000000000000000000000000000..a4408e1bafa8438b4047ff8fae421ff6606e5924
 --- /dev/null
 +++ b/tests/v1/core/test_recurrent_prefill_checkpoint.py
-@@ -0,0 +1,391 @@
+@@ -0,0 +1,402 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""Checkpoint planning, append-only ownership and worker metadata contracts."""
@@ -4661,12 +4689,23 @@ index 0000000000..6ac21f0587
 +    assert not validate_coalescing_config(object())
 +
 +
-+@pytest.mark.parametrize("dcp", [1, 2, 4])
-+def test_coalescing_accepts_context_groups_within_tp4(monkeypatch, dcp):
++@pytest.mark.parametrize("tp,dcp", [(2, 1), (4, 1), (4, 2), (4, 4)])
++def test_coalescing_accepts_supported_tp_context_groups(monkeypatch, tp, dcp):
 +    monkeypatch.setenv("VLLM_B12X_KDA_PREFILL_COALESCING", "1")
 +    config = supported_config()
++    config.parallel_config.tensor_parallel_size = tp
 +    config.parallel_config.decode_context_parallel_size = dcp
 +    assert validate_coalescing_config(config)
++
++
++@pytest.mark.parametrize("dcp", [2, 4])
++def test_coalescing_rejects_unqualified_tp2_context_groups(monkeypatch, dcp):
++    monkeypatch.setenv("VLLM_B12X_KDA_PREFILL_COALESCING", "1")
++    config = supported_config()
++    config.parallel_config.tensor_parallel_size = 2
++    config.parallel_config.decode_context_parallel_size = dcp
++    with pytest.raises(ValueError, match="requires GLM5Next"):
++        validate_coalescing_config(config)
 +
 +
 +@pytest.mark.parametrize(
@@ -4931,7 +4970,7 @@ index 0000000000..6ac21f0587
 +    assert scheduler._recurrent_checkpoint_plan(request, 0, 8192) is None
 +    assert scheduler._mamba_block_aligned_split(request, 8192) == 4096
 diff --git a/tests/v1/core/utils.py b/tests/v1/core/utils.py
-index e71433405d..633c57c4d5 100644
+index e71433405d29bc4fc9f7d46d93ced4692dad20ec..633c57c4d511da9569aff4ee9ab648841e3cae34 100644
 --- a/tests/v1/core/utils.py
 +++ b/tests/v1/core/utils.py
 @@ -18,6 +18,14 @@ from vllm.config import (
@@ -4987,7 +5026,7 @@ index e71433405d..633c57c4d5 100644
          enable_chunked_prefill=enable_chunked_prefill,
          async_scheduling=async_scheduling,
 diff --git a/tests/v1/engine/test_compute_fairness_feedback.py b/tests/v1/engine/test_compute_fairness_feedback.py
-index d4659b98cf..aeff6f9991 100644
+index d4659b98cf62b1e3a05b61cce24ad3fe48d9d531..aeff6f9991e0c0c8a02ac4a5ff7a9ad0627e54e9 100644
 --- a/tests/v1/engine/test_compute_fairness_feedback.py
 +++ b/tests/v1/engine/test_compute_fairness_feedback.py
 @@ -17,9 +17,13 @@ def _scheduler_output(
@@ -5048,7 +5087,7 @@ index d4659b98cf..aeff6f9991 100644
 +        scheduled_tokens=0,
 +    )
 diff --git a/tests/v1/engine/test_prefill_fairness_runtime.py b/tests/v1/engine/test_prefill_fairness_runtime.py
-index 4fa07a06b4..d6632b4003 100644
+index 4fa07a06b439e6829c62d6ca2a040fc299c33a2b..d6632b4003ee97d897d9ddacfbdcdbea8ef04073 100644
 --- a/tests/v1/engine/test_prefill_fairness_runtime.py
 +++ b/tests/v1/engine/test_prefill_fairness_runtime.py
 @@ -6,55 +6,46 @@ from unittest.mock import Mock
@@ -5157,7 +5196,7 @@ index 4fa07a06b4..d6632b4003 100644
 +            {"fairness_engine": "micro_slicing"},
 +        )
 diff --git a/tests/v1/kv_connector/unit/test_config.py b/tests/v1/kv_connector/unit/test_config.py
-index 019b8d1504..6d695729dc 100644
+index 019b8d1504ace3b08b888ffb84052efe01875023..6d695729dc2c53b2a61cdedf855689254895efbc 100644
 --- a/tests/v1/kv_connector/unit/test_config.py
 +++ b/tests/v1/kv_connector/unit/test_config.py
 @@ -101,15 +101,34 @@ def test_kv_connector(
@@ -5251,8 +5290,283 @@ index 019b8d1504..6d695729dc 100644
  def test_kv_connector_allows_expandable_segments_with_sleep_mode(monkeypatch):
      """Sleep mode routes KV allocations through CuMemAllocator's pool, which
      auto-disables expandable_segments (see #40812)."""
+diff --git a/tests/v1/kv_connector/unit/test_kv_load_failure_recovery.py b/tests/v1/kv_connector/unit/test_kv_load_failure_recovery.py
+index 4f35527b0e3fc9fc01c1affecca8b37c56ad4f6f..66b9ab054156b731ca612f98f704761dd6416da0 100644
+--- a/tests/v1/kv_connector/unit/test_kv_load_failure_recovery.py
++++ b/tests/v1/kv_connector/unit/test_kv_load_failure_recovery.py
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ 
++from collections import deque
+ from collections.abc import Callable
+ from unittest.mock import Mock
+ 
+@@ -337,3 +338,262 @@ def test_async_progressive_load_failure(
+         assert request.status == RequestStatus.WAITING_FOR_REMOTE_KVS
+         assert scheduler.failed_recving_kv_req_ids == {request.request_id}
+         assert scheduler.connector.get_num_new_matched_tokens.call_count == 1
++
++
++def _hybrid_scheduler(
++    dcp=1, *, asynchronous=True, policy="recompute", external_span=None
++):
++    from tests.v1.core.test_recurrent_prefill_checkpoint import cache_fixture
++    from vllm.distributed.kv_transfer.kv_connector.v1.base import SupportsHMA
++    from vllm.v1.core.sched.request_queue import FCFSRequestQueue
++
++    class Connector(SupportsHMA):
++        def request_finished_all_groups(self, request, block_ids):
++            return False, None
++
++        def update_connector_output(self, output):
++            pass
++
++    cache, recurrent, scheduler, request = cache_fixture(8192, dcp=dcp)
++    if external_span is None:
++        plan = scheduler._recurrent_checkpoint_plan(request, 0, 8192)
++        assert (
++            cache.allocate_slots(request, 8192, recurrent_checkpoint_plan=plan)
++            is not None
++        )
++    else:
++        assert (
++            cache.allocate_slots(
++                request,
++                0,
++                num_external_computed_tokens=external_span,
++                delay_cache_blocks=True,
++            )
++            is not None
++        )
++    scheduler.kv_cache_config = cache.kv_cache_config
++    scheduler.block_size = 512 * dcp
++    scheduler.recompute_kv_load_failures = policy == "recompute"
++    scheduler.requests = {request.request_id: request}
++    scheduler.running = [] if asynchronous else [request]
++    scheduler.waiting = FCFSRequestQueue()
++    scheduler.skipped_waiting = FCFSRequestQueue([request] if asynchronous else [])
++    scheduler.failed_recving_kv_req_ids = set()
++    scheduler.finished_recving_kv_req_ids = set()
++    scheduler.connector = Connector()
++    scheduler.ec_connector = None
++    scheduler.needs_kv_cache_zeroing = False
++    scheduler.encoder_cache_manager = Mock()
++    scheduler._inflight_prefills = set()
++    scheduler.prefill_interleave_controller = Mock()
++    scheduler.finished_req_ids = set()
++    scheduler.finished_req_ids_dict = None
++    scheduler.defer_block_free = True
++    scheduler.processed_step_seq = 0
++    scheduler.sched_step_seq = 1
++    scheduler.deferred_frees = deque()
++    scheduler.reset_preempted_req_ids = set()
++    scheduler.log_stats = False
++    request.status = (
++        RequestStatus.WAITING_FOR_REMOTE_KVS if asynchronous else RequestStatus.RUNNING
++    )
++    request.num_computed_tokens = 8192 if external_span is None else external_span
++    request.last_sched_seq = 1
++    return scheduler, request, recurrent
++
++
++@pytest.mark.parametrize("dcp,span", [(1, 7680), (2, 7168), (4, 6144)])
++def test_hybrid_external_restore_failure_covers_recurrent_destination(dcp, span):
++    scheduler, request, recurrent = _hybrid_scheduler(dcp, external_span=span)
++    cache = scheduler.kv_cache_manager
++    groups = cache.get_block_ids(request.request_id)
++    state_column = span // recurrent.block_size - 1
++    state = groups[1][state_column]
++    assert state != cache.block_pool.null_block.block_id
++    assert len(groups[1]) == state_column + 1 + recurrent.num_speculative_blocks
++    # A failed connector load reports every block in its allocated plan. The
++    # aligned state is inside the frontier; speculative scratch follows it.
++    reported = {bid for ids in groups for bid in ids}
++    assert state in reported and groups[0][0] in reported
++    assert scheduler._handle_invalid_blocks(reported, {}) == set()
++    assert request.num_computed_tokens == 0
++    assert scheduler.failed_recving_kv_req_ids == {request.request_id}
++
++
++@pytest.mark.parametrize("dcp", [1, 2, 4])
++@pytest.mark.parametrize("group", [0, 1])
++def test_hybrid_failure_invalidates_prefix_but_holds_all_groups_until_receive(
++    dcp, group
++):
++    from vllm.distributed.kv_transfer.kv_connector.utils import KVOutputAggregator
++    from vllm.v1.outputs import KVConnectorOutput, ModelRunnerOutput
++
++    scheduler, request, _ = _hybrid_scheduler(dcp)
++    cache = scheduler.kv_cache_manager
++    groups = cache.get_block_ids(request.request_id)
++    owned = {bid for ids in groups for bid in ids if bid}
++    bad = next(
++        bid
++        for bid in reversed(
++            groups[group][
++                : (8192 // cache.coordinator.single_type_managers[group].block_size)
++            ]
++        )
++        if bid
++    )
++    before = {bid: cache.block_pool.blocks[bid].ref_cnt for bid in owned}
++    assert scheduler._handle_invalid_blocks({bad}, {}) == set()
++    assert request.num_computed_tokens == 0
++    assert request.request_id in scheduler.failed_recving_kv_req_ids
++    assert all(cache.block_pool.blocks[bid].block_hash is None for bid in owned)
++    assert {bid: cache.block_pool.blocks[bid].ref_cnt for bid in owned} == before
++    assert not scheduler._try_promote_blocked_waiting_request(request)
++    assert cache.get_block_ids(request.request_id) == groups
++    aggregator = KVOutputAggregator(expected_finished_count=4)
++
++    def completion(ranks):
++        return aggregator.aggregate(
++            [
++                ModelRunnerOutput(
++                    req_ids=[],
++                    req_id_to_index={},
++                    kv_connector_output=KVConnectorOutput(
++                        finished_recving={request.request_id}
++                        if rank in ranks
++                        else set()
++                    ),
++                )
++                for rank in range(4)
++            ]
++        ).kv_connector_output
++
++    scheduler._update_from_kv_xfer_finished(completion({0, 1, 2}))
++    assert not scheduler._try_promote_blocked_waiting_request(request)
++    assert {bid: cache.block_pool.blocks[bid].ref_cnt for bid in owned} == before
++    scheduler._update_from_kv_xfer_finished(completion({3}))
++    assert scheduler._try_promote_blocked_waiting_request(request)
++    assert request.status == RequestStatus.WAITING
++    assert not any(cache.get_block_ids(request.request_id))
++    assert all(cache.block_pool.blocks[bid].ref_cnt == 0 for bid in owned)
++
++
++def test_hybrid_shared_failed_block_resets_each_owner_but_not_unrelated_request():
++    from tests.v1.core.utils import create_requests
++
++    scheduler, first, _ = _hybrid_scheduler()
++    cache = scheduler.kv_cache_manager
++    second, untouched = create_requests(
++        2, num_tokens=8192, block_size=512, req_ids=["shared", "untouched"]
++    )
++    for request in (second, untouched):
++        plan = scheduler._recurrent_checkpoint_plan(request, 0, 8192)
++        assert (
++            cache.allocate_slots(request, 8192, recurrent_checkpoint_plan=plan)
++            is not None
++        )
++        request.num_computed_tokens = 8192
++        request.status = RequestStatus.WAITING_FOR_REMOTE_KVS
++        scheduler.requests[request.request_id] = request
++        scheduler.skipped_waiting.add_request(request)
++    manager = cache.coordinator.single_type_managers[0]
++    shared = manager.req_to_blocks[first.request_id][1]
++    replaced = manager.req_to_blocks[second.request_id][1]
++    cache.block_pool.touch([shared])
++    manager.req_to_blocks[second.request_id][1] = shared
++    cache.block_pool.free_blocks([replaced])
++    other_blocks = cache.get_blocks(untouched.request_id)
++    other_refs = [[block.ref_cnt for block in group] for group in other_blocks.blocks]
++    scheduler._handle_invalid_blocks({shared.block_id}, {})
++    assert first.num_computed_tokens == second.num_computed_tokens == 0
++    assert untouched.num_computed_tokens == 8192
++    assert scheduler.failed_recving_kv_req_ids == {first.request_id, second.request_id}
++    assert shared.ref_cnt == 2
++    assert [
++        [block.ref_cnt for block in group] for group in other_blocks.blocks
++    ] == other_refs
++    for request, references in ((first, 1), (second, 0)):
++        scheduler.finished_recving_kv_req_ids.add(request.request_id)
++        assert scheduler._try_promote_blocked_waiting_request(request)
++        assert shared.ref_cnt == references
++
++
++@pytest.mark.parametrize("dcp", [1, 2, 4])
++def test_hybrid_failure_ignores_null_unrelated_and_speculative_blocks(dcp):
++    scheduler, request, recurrent = _hybrid_scheduler(dcp)
++    cache = scheduler.kv_cache_manager
++    groups = cache.get_block_ids(request.request_id)
++    speculative = set(groups[1][8192 // recurrent.block_size :])
++    assert speculative and 0 not in speculative
++    refs = [block.ref_cnt for block in cache.block_pool.blocks]
++    assert scheduler._handle_invalid_blocks({0, 999, *speculative}, {}) == set()
++    assert request.num_computed_tokens == 8192
++    assert refs == [block.ref_cnt for block in cache.block_pool.blocks]
++    assert not scheduler.failed_recving_kv_req_ids
++
++
++@pytest.mark.parametrize("dcp", [1, 2, 4])
++def test_hybrid_failure_uses_effective_group_grid_before_scheduled_suffix(dcp):
++    scheduler, request, _ = _hybrid_scheduler(dcp)
++    cache = scheduler.kv_cache_manager
++    attention = cache.get_block_ids(request.request_id)[0]
++    manager = cache.coordinator.single_type_managers[0]
++    assert manager.block_size == 512 * dcp
++    frontier = 4096
++    scheduled = {request.request_id: request.num_computed_tokens - frontier}
++    beyond = attention[frontier // manager.block_size]
++    assert scheduler._update_requests_with_invalid_blocks(
++        [request], {beyond}, scheduled
++    ) == (set(), 0, set())
++    inside = attention[frontier // manager.block_size - 1]
++    affected, tokens, _ = scheduler._update_requests_with_invalid_blocks(
++        [request], {inside}, scheduled
++    )
++    assert affected == {request.request_id} and tokens == frontier
++    assert request.num_computed_tokens == 0
++
++
++def test_hybrid_sync_recompute_preempts_and_respects_inflight_write_fence():
++    scheduler, request, _ = _hybrid_scheduler(asynchronous=False)
++    cache = scheduler.kv_cache_manager
++    groups = cache.get_block_ids(request.request_id)
++    blocks = {bid for ids in groups for bid in ids if bid}
++    request.num_in_flight_tokens = 4
++    request.num_output_placeholders = 1
++    affected = scheduler._handle_invalid_blocks(
++        {groups[1][14]}, {request.request_id: 4}
++    )
++    assert affected == {request.request_id}
++    assert request.status == RequestStatus.PREEMPTED
++    assert request.num_computed_tokens == request.num_output_placeholders == 0
++    assert request.drop_stale_output and request.num_stale_output_tokens == 4
++    assert scheduler.running == [] and scheduler.waiting.peek_request() is request
++    assert not any(cache.get_block_ids(request.request_id))
++    assert all(cache.block_pool.blocks[bid].ref_cnt > 0 for bid in blocks)
++    scheduler._drain_deferred_frees()
++    assert all(cache.block_pool.blocks[bid].ref_cnt > 0 for bid in blocks)
++    scheduler.processed_step_seq = 1
++    scheduler._drain_deferred_frees()
++    assert all(cache.block_pool.blocks[bid].ref_cnt == 0 for bid in blocks)
++
++
++@pytest.mark.parametrize("asynchronous", [False, True])
++def test_hybrid_fail_policy_retires_request_without_early_block_reuse(asynchronous):
++    scheduler, request, _ = _hybrid_scheduler(asynchronous=asynchronous, policy="fail")
++    cache = scheduler.kv_cache_manager
++    groups = cache.get_block_ids(request.request_id)
++    blocks = {bid for ids in groups for bid in ids if bid}
++    failed = scheduler._handle_invalid_blocks({groups[1][14]}, {})
++    assert failed == {request.request_id}
++    assert all(cache.block_pool.blocks[bid].block_hash is None for bid in blocks)
++    scheduler.finish_requests(failed, RequestStatus.FINISHED_ERROR)
++    assert request.is_finished()
++    assert all(cache.block_pool.blocks[bid].ref_cnt > 0 for bid in blocks)
++    if asynchronous:
++        from vllm.v1.outputs import KVConnectorOutput
++
++        scheduler._update_from_kv_xfer_finished(
++            KVConnectorOutput(finished_recving={request.request_id})
++        )
++    scheduler.processed_step_seq = 1
++    scheduler._drain_deferred_frees()
++    assert all(cache.block_pool.blocks[bid].ref_cnt == 0 for bid in blocks)
 diff --git a/tests/v1/sample/test_rejection_sampler.py b/tests/v1/sample/test_rejection_sampler.py
-index b02e53af8d..33eb689eba 100644
+index b02e53af8dac9b511c07ab21a5b0cff37307a535..33eb689ebac9eee5c470b1d5c715ec66991b9fc7 100644
 --- a/tests/v1/sample/test_rejection_sampler.py
 +++ b/tests/v1/sample/test_rejection_sampler.py
 @@ -14,6 +14,8 @@ from vllm.v1.sample.metadata import SamplingMetadata
@@ -5371,7 +5685,7 @@ index b02e53af8d..33eb689eba 100644
  def test_perfect_match(rejection_sampler):
      """Test when output tokens perfectly match speculated tokens"""
 diff --git a/tests/v1/sample/test_topk_topp_sampler.py b/tests/v1/sample/test_topk_topp_sampler.py
-index 55bbd1ec0c..5c0e24880b 100644
+index 55bbd1ec0c6de902cd2a7ee479df68461d934c30..5c0e24880b4ca8710aadf26aeb9cac085876dc35 100644
 --- a/tests/v1/sample/test_topk_topp_sampler.py
 +++ b/tests/v1/sample/test_topk_topp_sampler.py
 @@ -9,6 +9,8 @@ from vllm.platforms import current_platform
@@ -5528,7 +5842,7 @@ index 55bbd1ec0c..5c0e24880b 100644
      set_random_seed(seed)
  
 diff --git a/tests/v1/spec_decode/test_llm_base_proposer_sampling.py b/tests/v1/spec_decode/test_llm_base_proposer_sampling.py
-index 9701a58b5e..1961710ba3 100644
+index 9701a58b5e0137c7dbf7a02c6a797d5aff70713b..1961710ba39dc8ac89c011956a9ad565fa1ffa16 100644
 --- a/tests/v1/spec_decode/test_llm_base_proposer_sampling.py
 +++ b/tests/v1/spec_decode/test_llm_base_proposer_sampling.py
 @@ -1,6 +1,7 @@
@@ -5627,7 +5941,7 @@ index 9701a58b5e..1961710ba3 100644
      ("architecture", "expected"),
      [
 diff --git a/tests/v1/spec_decode/test_rejection_sampler_utils.py b/tests/v1/spec_decode/test_rejection_sampler_utils.py
-index 4dd43503da..77d05be4bb 100644
+index 4dd43503daed7ed18e85361f61da22e51ed81499..77d05be4bb5aad636b6691416c435329a0e3e04c 100644
 --- a/tests/v1/spec_decode/test_rejection_sampler_utils.py
 +++ b/tests/v1/spec_decode/test_rejection_sampler_utils.py
 @@ -6,6 +6,7 @@ import math
@@ -5746,7 +6060,7 @@ index 4dd43503da..77d05be4bb 100644
  def test_greedy_rejection_sample(num_speculative_steps: int):
      """
 diff --git a/tests/v1/worker/test_gpu_autoregressive_speculator.py b/tests/v1/worker/test_gpu_autoregressive_speculator.py
-index 3d88a53548..eb30a38dd9 100644
+index 3d88a5354896c9c0325c08c8de438bc6e7460310..eb30a38dd9b76adcf37bc0239bea50a4f735afbc 100644
 --- a/tests/v1/worker/test_gpu_autoregressive_speculator.py
 +++ b/tests/v1/worker/test_gpu_autoregressive_speculator.py
 @@ -283,6 +283,7 @@ def test_propose_restores_mtp_state_when_draft_decode_raises(monkeypatch) -> Non
@@ -5831,7 +6145,7 @@ index 3d88a53548..eb30a38dd9 100644
  
  
 diff --git a/tests/v1/worker/test_gpu_gumbel_sample.py b/tests/v1/worker/test_gpu_gumbel_sample.py
-index a87c12416e..10a09b9de4 100644
+index a87c12416eb5b00566b3ced62985ef8466033d78..10a09b9de4a6c560cd55f83a73239f9a771563c2 100644
 --- a/tests/v1/worker/test_gpu_gumbel_sample.py
 +++ b/tests/v1/worker/test_gpu_gumbel_sample.py
 @@ -54,6 +54,7 @@ def _sample(
@@ -5969,7 +6283,7 @@ index a87c12416e..10a09b9de4 100644
          )
 diff --git a/tests/v1/worker/test_kda_prefill_checkpoint_binding.py b/tests/v1/worker/test_kda_prefill_checkpoint_binding.py
 new file mode 100644
-index 0000000000..5718ea2b29
+index 0000000000000000000000000000000000000000..5718ea2b29e96f5408b5577647b92cc5b0bc02cf
 --- /dev/null
 +++ b/tests/v1/worker/test_kda_prefill_checkpoint_binding.py
 @@ -0,0 +1,193 @@
@@ -6167,7 +6481,7 @@ index 0000000000..5718ea2b29
 +    assert observed["checkpoint_state_indices"].shape == expected
 +    assert observed["checkpoint_offsets"].shape == expected
 diff --git a/vllm/config/scheduler.py b/vllm/config/scheduler.py
-index a8aaf13b79..b7b0c6827b 100644
+index a8aaf13b79748785134ec1bec632c07ad435d37c..b7b0c6827be484740b8edb3ff1e23bb13a8f2be5 100644
 --- a/vllm/config/scheduler.py
 +++ b/vllm/config/scheduler.py
 @@ -3,7 +3,7 @@
@@ -6376,7 +6690,7 @@ index a8aaf13b79..b7b0c6827b 100644
              self.disable_chunked_mm_input = True
              self.enable_chunked_prefill = False
 diff --git a/vllm/config/vllm.py b/vllm/config/vllm.py
-index 594731a1ed..e8a0178797 100644
+index 594731a1edb475271b93200bac6d7bf661d9f096..e8a0178797c61eb0fb80d4056376572cad98f529 100644
 --- a/vllm/config/vllm.py
 +++ b/vllm/config/vllm.py
 @@ -1115,6 +1115,31 @@ class VllmConfig:
@@ -6426,7 +6740,7 @@ index 594731a1ed..e8a0178797 100644
              )
  
 diff --git a/vllm/engine/arg_utils.py b/vllm/engine/arg_utils.py
-index 6743f79846..de372af08e 100644
+index 6743f79846943b17276bd7494ba86d4ffa2c797f..de372af08e899343f4b5e050473121f0fb2daaa4 100644
 --- a/vllm/engine/arg_utils.py
 +++ b/vllm/engine/arg_utils.py
 @@ -6,6 +6,7 @@ import copy
@@ -6602,7 +6916,7 @@ index 6743f79846..de372af08e 100644
              async_scheduling=self.async_scheduling,
              stream_interval=self.stream_interval,
 diff --git a/vllm/entrypoints/serve/dev/fairness/api_router.py b/vllm/entrypoints/serve/dev/fairness/api_router.py
-index 01998e9699..f53b7f531d 100644
+index 01998e96990b8db108a94e9a29307c99e474c069..f53b7f531d37d315bc87418f685fe7c55d96b79e 100644
 --- a/vllm/entrypoints/serve/dev/fairness/api_router.py
 +++ b/vllm/entrypoints/serve/dev/fairness/api_router.py
 @@ -5,7 +5,7 @@ from typing import Annotated, Literal
@@ -6675,7 +6989,7 @@ index 01998e9699..f53b7f531d 100644
  
  
 diff --git a/vllm/envs.py b/vllm/envs.py
-index 90dafdc751..0400c4455d 100755
+index 90dafdc7517344c36ccbbc999b9474b7718b3d4c..0400c4455d2f4951bb85fe29244263e795ee7b30 100755
 --- a/vllm/envs.py
 +++ b/vllm/envs.py
 @@ -47,6 +47,7 @@ if TYPE_CHECKING:
@@ -6762,7 +7076,7 @@ index 90dafdc751..0400c4455d 100755
      "VLLM_B12X_DENSE_ACTIVATION_MODE": env_with_choices(
          "VLLM_B12X_DENSE_ACTIVATION_MODE", "auto", ["auto", "a16", "quantized"]
 diff --git a/vllm/forward_context.py b/vllm/forward_context.py
-index f57fc2c950..09dc9a2239 100644
+index f57fc2c950bd5d7b8ce4aeacf83e2bc8291f26ea..09dc9a2239afab66ef8bb1f068c7fb3579b45e6d 100644
 --- a/vllm/forward_context.py
 +++ b/vllm/forward_context.py
 @@ -154,6 +154,8 @@ class ForwardContext:
@@ -6807,7 +7121,7 @@ index f57fc2c950..09dc9a2239 100644
  
      try:
 diff --git a/vllm/model_executor/layers/fused_moe/router/gate_linear.py b/vllm/model_executor/layers/fused_moe/router/gate_linear.py
-index c5f334320e..af587ccf76 100644
+index c5f334320e6e70f887933e421671ad761109d5b1..af587ccf76e9c33eaa440f111dc41dad39e341a6 100644
 --- a/vllm/model_executor/layers/fused_moe/router/gate_linear.py
 +++ b/vllm/model_executor/layers/fused_moe/router/gate_linear.py
 @@ -123,14 +123,16 @@ class GateLinear(ReplicatedLinear):
@@ -6873,7 +7187,7 @@ index c5f334320e..af587ccf76 100644
  
          # Tier 6: F.linear (ReplicatedLinear)
 diff --git a/vllm/model_executor/layers/fused_moe/runner/moe_runner.py b/vllm/model_executor/layers/fused_moe/runner/moe_runner.py
-index bafe4da2c8..05fbf2a329 100644
+index bafe4da2c8f12f1143d129bfa30307f1f1552f4e..05fbf2a3299c4e0b7808c0f79428b8606fc3534b 100644
 --- a/vllm/model_executor/layers/fused_moe/runner/moe_runner.py
 +++ b/vllm/model_executor/layers/fused_moe/runner/moe_runner.py
 @@ -466,6 +466,8 @@ class MoERunner(MoERunnerInterface):
@@ -6948,7 +7262,7 @@ index bafe4da2c8..05fbf2a329 100644
          return self._maybe_add_zero_expert_output(result)
  
 diff --git a/vllm/model_executor/layers/fused_moe/runner/moe_runner_interface.py b/vllm/model_executor/layers/fused_moe/runner/moe_runner_interface.py
-index d579b18156..6766a15623 100644
+index d579b181562a9bc988ef4257c1b3e50bdc397fc3..6766a156234453f9a2a4ab079903352fbdf8ea53 100644
 --- a/vllm/model_executor/layers/fused_moe/runner/moe_runner_interface.py
 +++ b/vllm/model_executor/layers/fused_moe/runner/moe_runner_interface.py
 @@ -37,6 +37,8 @@ class MoERunnerInterface(PluggableLayer, ABC):
@@ -6961,22 +7275,26 @@ index d579b18156..6766a15623 100644
          raise NotImplementedError
  
 diff --git a/vllm/model_executor/layers/linear.py b/vllm/model_executor/layers/linear.py
-index b5b01ed423..7c24ccaaf2 100644
+index b5b01ed4232ff046fa3d93a4881b64761c2b45d6..36266bef9a92e02d0b615531b589768c4664734c 100644
 --- a/vllm/model_executor/layers/linear.py
 +++ b/vllm/model_executor/layers/linear.py
-@@ -1649,7 +1649,11 @@ class RowParallelLinear(LinearBase):
+@@ -1649,7 +1649,15 @@ class RowParallelLinear(LinearBase):
      def forward(
          self,
          input_,
 +        *,
 +        defer_tp_reduction: bool = False,
      ) -> torch.Tensor | tuple[torch.Tensor, Parameter | None]:
-+        if defer_tp_reduction and (self.tp_size != 4 or not self.reduce_results):
-+            raise RuntimeError("Explicit TP deferral requires an enabled TP4 reduction")
++        if defer_tp_reduction and (
++            self.tp_size not in (2, 4) or not self.reduce_results
++        ):
++            raise RuntimeError(
++                "Explicit TP deferral requires an enabled TP2/TP4 reduction"
++            )
          if self.input_is_parallel:
              input_parallel = input_
          else:
-@@ -1669,7 +1673,7 @@ class RowParallelLinear(LinearBase):
+@@ -1669,7 +1677,7 @@ class RowParallelLinear(LinearBase):
          _hook = getattr(self, "_l2_prefetch_pre_reduce_hook", None)
          if _hook is not None:
              _hook(output_parallel.shape[0])
@@ -6986,7 +7304,7 @@ index b5b01ed423..7c24ccaaf2 100644
          else:
              output = output_parallel
 diff --git a/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py b/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py
-index c717f7685e..37ef63b805 100644
+index c717f7685e6dc50d09d0a5178f4a4e1c1b6e2693..37ef63b8055c7c233093f71b23e923b384f7bd9a 100644
 --- a/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py
 +++ b/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py
 @@ -157,18 +157,26 @@ def _store_cache_checkpoints_kernel(
@@ -7232,7 +7550,7 @@ index c717f7685e..37ef63b805 100644
                  elif self.kda_prefill_backend == "flashkda":
                      assert initial_state is not None
 diff --git a/vllm/model_executor/layers/mla.py b/vllm/model_executor/layers/mla.py
-index f64fb2b86b..f8816614cc 100644
+index f64fb2b86bb9a0d5dc6e6920cefa4c578ce7fade..f8816614cca25ef712d416550a4455481e0e3ebc 100644
 --- a/vllm/model_executor/layers/mla.py
 +++ b/vllm/model_executor/layers/mla.py
 @@ -154,6 +154,8 @@ class MultiHeadLatentAttentionWrapper(PluggableLayer):
@@ -7252,7 +7570,7 @@ index f64fb2b86b..f8816614cc 100644
 +            return self.o_proj(attn_out, defer_tp_reduction=True)[0]
          return self.o_proj(attn_out)[0]
 diff --git a/vllm/model_executor/models/qwen3_dflash2.py b/vllm/model_executor/models/qwen3_dflash2.py
-index caaedb5578..be49d65f33 100644
+index caaedb5578aca4dc56c70d9553a90225eae9a521..be49d65f33c21983fce6074268f904e2172efb63 100644
 --- a/vllm/model_executor/models/qwen3_dflash2.py
 +++ b/vllm/model_executor/models/qwen3_dflash2.py
 @@ -4,6 +4,7 @@
@@ -7424,7 +7742,7 @@ index caaedb5578..be49d65f33 100644
      coefficients = base.view(1, taps, num_groups, group_size) + delta.unsqueeze(-1)
      output = coefficients[:, 0] * blocks
 diff --git a/vllm/models/glm5next/model_state.py b/vllm/models/glm5next/model_state.py
-index d71219d0c9..851397fbfc 100644
+index d71219d0c9e287a5f579acaae8f611b9066514cb..851397fbfca521edc47704ceb36ea49edeb7a181 100644
 --- a/vllm/models/glm5next/model_state.py
 +++ b/vllm/models/glm5next/model_state.py
 @@ -12,6 +12,7 @@ import torch.nn as nn
@@ -7481,7 +7799,7 @@ index d71219d0c9..851397fbfc 100644
              self.recoverssm.record_step(
                  attn_metadata,
 diff --git a/vllm/models/glm5next/nvidia/attention.py b/vllm/models/glm5next/nvidia/attention.py
-index f3a093a14f..6a40aa9a71 100644
+index f3a093a14ff5d5e6e5cf0e7583d035239a4701d8..6a40aa9a713c32ecb79ac41553023a719a632603 100644
 --- a/vllm/models/glm5next/nvidia/attention.py
 +++ b/vllm/models/glm5next/nvidia/attention.py
 @@ -211,8 +211,14 @@ class Glm5NextMLAAttention(nn.Module):
@@ -7501,7 +7819,7 @@ index f3a093a14f..6a40aa9a71 100644
  
  
 diff --git a/vllm/models/glm5next/nvidia/kda.py b/vllm/models/glm5next/nvidia/kda.py
-index 47f2823fc6..3ad37f498a 100644
+index 47f2823fc6c207e5e4c3383c1549e4bb342f92b6..3ad37f498ad0e24d23a575a694cfd69d3e53ac0a 100644
 --- a/vllm/models/glm5next/nvidia/kda.py
 +++ b/vllm/models/glm5next/nvidia/kda.py
 @@ -1,13 +1,66 @@
@@ -7668,10 +7986,10 @@ index 47f2823fc6..3ad37f498a 100644
  __all__ = ["Glm5NextLinearAttention"]
 diff --git a/vllm/models/glm5next/nvidia/mhc_prefill_sharding.py b/vllm/models/glm5next/nvidia/mhc_prefill_sharding.py
 new file mode 100644
-index 0000000000..798a4293a1
+index 0000000000000000000000000000000000000000..1ee48e07c9eb0bb57e9e4b73c60f127f9aeb9102
 --- /dev/null
 +++ b/vllm/models/glm5next/nvidia/mhc_prefill_sharding.py
-@@ -0,0 +1,491 @@
+@@ -0,0 +1,505 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""Own GLM mHC token rows within an eligible GB10 eager model forward."""
@@ -7783,18 +8101,19 @@ index 0000000000..798a4293a1
 +        try:
 +            captures = config.compilation_config.cudagraph_capture_sizes or []
 +            if (
-+                group.world_size != 4
++                group.world_size not in (2, 4)
 +                or config.scheduler_config.max_num_batched_tokens != 8192
 +                or any(size >= 8192 for size in captures)
 +            ):
 +                raise RuntimeError(
-+                    "GLM mHC row ownership requires TP4, an 8192-token ceiling, "
++                    "GLM mHC row ownership requires TP2 or TP4, an 8192-token ceiling, "
 +                    "and graph capture sizes below 8192"
 +                )
 +            parallel = config.parallel_config
 +            if (
-+                parallel.tensor_parallel_size != 4
-+                or parallel.decode_context_parallel_size not in (1, 2, 4)
++                (parallel.tensor_parallel_size, parallel.decode_context_parallel_size)
++                not in ((2, 1), (4, 1), (4, 2), (4, 4))
++                or group.world_size != parallel.tensor_parallel_size
 +                or parallel.pipeline_parallel_size != 1
 +                or parallel.data_parallel_size != 1
 +                or parallel.prefill_context_parallel_size != 1
@@ -7806,7 +8125,8 @@ index 0000000000..798a4293a1
 +            ):
 +                raise RuntimeError(
 +                    "GLM mHC row ownership requires BF16 H4096 and "
-+                    "TP4/DCP1,2,4/PP1/DP1/PCP1 without expert or sequence parallelism"
++                    "TP2/DCP1 or TP4/DCP1,2,4 with PP1/DP1/PCP1 and no "
++                    "expert or sequence parallelism"
 +                )
 +            properties = torch.cuda.get_device_properties(
 +                torch.accelerator.current_device_index()
@@ -7869,7 +8189,7 @@ index 0000000000..798a4293a1
 +    config = runner.moe_config
 +    parallel = config.moe_parallel_config
 +    if (
-+        config.tp_size != 4
++        config.tp_size not in (2, 4)
 +        or config.dp_size != 1
 +        or config.ep_size != 1
 +        or config.pcp_size != 1
@@ -7882,7 +8202,7 @@ index 0000000000..798a4293a1
 +        or type(runner.router).__name__ == "ZeroExpertRouter"
 +    ):
 +        raise RuntimeError(
-+            "mHC prefill requires one unreduced conventional TP4 MoE output"
++            "mHC prefill requires one unreduced conventional TP2/TP4 MoE output"
 +        )
 +
 +
@@ -7896,8 +8216,8 @@ index 0000000000..798a4293a1
 +
 +    config = model._mhc_prefill_parallel_config
 +    if (
-+        config.tensor_parallel_size != 4
-+        or config.decode_context_parallel_size not in (1, 2, 4)
++        (config.tensor_parallel_size, config.decode_context_parallel_size)
++        not in ((2, 1), (4, 1), (4, 2), (4, 4))
 +        or config.pipeline_parallel_size != 1
 +        or config.data_parallel_size != 1
 +        or config.prefill_context_parallel_size != 1
@@ -7906,7 +8226,8 @@ index 0000000000..798a4293a1
 +        or model.is_sequence_parallel
 +    ):
 +        raise RuntimeError(
-+            "mHC prefill requires TP4/DCP1,2,4/PP1/DP1/PCP1 without EP/EPLB"
++            "mHC prefill requires TP2/DCP1 or TP4/DCP1,2,4 with "
++            "PP1/DP1/PCP1 and no EP/EPLB"
 +        )
 +    names = []
 +    for layer in model._active_layers:
@@ -7927,7 +8248,7 @@ index 0000000000..798a4293a1
 +        projection = attn.o_proj
 +        if (
 +            type(projection) is not RowParallelLinear
-+            or projection.tp_size != 4
++            or projection.tp_size != config.tensor_parallel_size
 +            or not projection.reduce_results
 +            or projection.bias is not None
 +        ):
@@ -7937,10 +8258,12 @@ index 0000000000..798a4293a1
 +        if layer._mlp_is_moe:
 +            if type(layer.mlp.experts) is not MoERunner:
 +                raise RuntimeError("Unsupported MoE runner for mHC row ownership")
++            if layer.mlp.experts.moe_config.tp_size != config.tensor_parallel_size:
++                raise RuntimeError("mHC MoE reduction differs from the TP group")
 +            validate_moe_deferral(layer.mlp.experts)
 +        elif (
 +            type(layer.mlp.down_proj) is not RowParallelLinear
-+            or layer.mlp.down_proj.tp_size != 4
++            or layer.mlp.down_proj.tp_size != config.tensor_parallel_size
 +            or not layer.mlp.down_proj.reduce_results
 +            or layer.mlp.down_proj.bias is not None
 +        ):
@@ -7962,6 +8285,7 @@ index 0000000000..798a4293a1
 +    comm: Any
 +    rank: int
 +    rows: int = 8192
++    world_size: int = 4
 +    rs_count: int = 0
 +    ag_count: int = 0
 +    diagnostics: PrefillDiagnostics | None = None
@@ -7979,7 +8303,7 @@ index 0000000000..798a4293a1
 +    def local_view(self, tensor: Any) -> Any:
 +        if tensor.shape[0] != self.rows:
 +            raise RuntimeError("mHC full-to-owner row count mismatch")
-+        q = self.rows // 4
++        q = self.rows // self.world_size
 +        return tensor.narrow(0, self.rank * q, q)
 +
 +    def _check(self, tensor: Any, expected_rows: int) -> None:
@@ -8004,7 +8328,7 @@ index 0000000000..798a4293a1
 +        self._check(partial, self.rows)
 +        if tuple(partial.shape) != (self.rows, 4096):
 +            raise RuntimeError("mHC reduce-scatter expects a full hidden TP partial")
-+        output = partial.new_empty((self.rows // 4, 4096))
++        output = partial.new_empty((self.rows // self.world_size, 4096))
 +        stream = current_stream()
 +        self.comm.reduce_scatter(output, partial, stream=stream)
 +        partial.record_stream(stream)
@@ -8015,7 +8339,7 @@ index 0000000000..798a4293a1
 +    def all_gather(self, owned: Any) -> Any:
 +        from vllm.utils.torch_utils import current_stream
 +
-+        self._check(owned, self.rows // 4)
++        self._check(owned, self.rows // self.world_size)
 +        output = owned.new_empty((self.rows, *owned.shape[1:]))
 +        stream = current_stream()
 +        self.comm.all_gather(output, owned, stream=stream)
@@ -8043,7 +8367,7 @@ index 0000000000..798a4293a1
 +                        kind=self.diagnostic_kind,
 +                        forward=self.diagnostic_forward,
 +                        rows=self.rows,
-+                        owner_rows=self.rows // 4,
++                        owner_rows=self.rows // self.world_size,
 +                        rs=self.rs_count,
 +                        ag=self.ag_count,
 +                        auxiliary_gathers=auxiliary_gathers,
@@ -8059,7 +8383,7 @@ index 0000000000..798a4293a1
 +                "GLM_MHC_PREFILL rank=%d rows=%d owner_rows=%d rs=%d ag=%d aux=%d",
 +                self.rank,
 +                self.rows,
-+                self.rows // 4,
++                self.rows // self.world_size,
 +                self.rs_count,
 +                self.ag_count,
 +                auxiliary_gathers,
@@ -8106,12 +8430,19 @@ index 0000000000..798a4293a1
 +            )
 +        return None
 +    group = get_tp_group()
-+    if group.world_size != 4:
-+        raise RuntimeError("mHC prefill TP group is not four ranks")
++    if group.world_size not in (2, 4):
++        raise RuntimeError("mHC prefill TP group must contain two or four ranks")
 +    comm = getattr(group.device_communicator, "pynccl_comm", None)
 +    error = None
 +    try:
-+        if comm is None or not comm.available or comm.disabled or comm.world_size != 4:
++        if (
++            comm is None
++            or not comm.available
++            or comm.disabled
++            or comm.world_size != group.world_size
++            or group.world_size
++            != model._mhc_prefill_parallel_config.tensor_parallel_size
++        ):
 +            raise RuntimeError(
 +                "mHC prefill requires the enabled TP PyNccl communicator"
 +            )
@@ -8141,7 +8472,7 @@ index 0000000000..798a4293a1
 +    # Small host vote before changing ownership; no GPU metadata synchronization.
 +    # Rank-local capability or metadata differences cannot silently choose
 +    # incompatible reduction paths after one rank has produced partial output.
-+    votes: list[Any] = [None] * 4
++    votes: list[Any] = [None] * group.world_size
 +    torch.distributed.all_gather_object(votes, (eligible, error), group=group.cpu_group)
 +    errors = [item[1] for item in votes if item[1] is not None]
 +    if errors:
@@ -8159,12 +8490,13 @@ index 0000000000..798a4293a1
 +    return PrefillOwnership(
 +        comm=comm,
 +        rank=group.rank_in_group,
++        world_size=group.world_size,
 +        diagnostics=diagnostics,
 +        diagnostic_kind=kind,
 +        diagnostic_forward=forward,
 +    )
 diff --git a/vllm/models/glm5next/nvidia/model.py b/vllm/models/glm5next/nvidia/model.py
-index 86716abe05..7fd364d4c6 100644
+index 86716abe05a02dc779eb273929259f67dea33767..7fd364d4c62c51eff59dca3421c8a2e0fcb57bd1 100644
 --- a/vllm/models/glm5next/nvidia/model.py
 +++ b/vllm/models/glm5next/nvidia/model.py
 @@ -7,6 +7,7 @@ from typing import ClassVar, Literal
@@ -8402,7 +8734,7 @@ index 86716abe05..7fd364d4c6 100644
  
          hidden_states = self.norm(hidden_states)
 diff --git a/vllm/models/glm5next/nvidia/mtp.py b/vllm/models/glm5next/nvidia/mtp.py
-index 7c42ec36be..82a83e38f0 100644
+index 7c42ec36be50ab686138c4023ee18d3f8d987853..82a83e38f0e96f8339c087217623e787d68942a9 100644
 --- a/vllm/models/glm5next/nvidia/mtp.py
 +++ b/vllm/models/glm5next/nvidia/mtp.py
 @@ -35,6 +35,7 @@ from .model import (
@@ -8471,7 +8803,7 @@ index 7c42ec36be..82a83e38f0 100644
          input_ids: torch.Tensor | None,
 diff --git a/vllm/models/glm5next/nvidia/mtp_draft_head.py b/vllm/models/glm5next/nvidia/mtp_draft_head.py
 new file mode 100644
-index 0000000000..ae662622e9
+index 0000000000000000000000000000000000000000..ae662622e9ebc2cbbc5acc13bb874dc42a00b7d3
 --- /dev/null
 +++ b/vllm/models/glm5next/nvidia/mtp_draft_head.py
 @@ -0,0 +1,151 @@
@@ -8627,7 +8959,7 @@ index 0000000000..ae662622e9
 +    )
 +    return result
 diff --git a/vllm/models/glm5next/nvidia/ops/glm_kpool.py b/vllm/models/glm5next/nvidia/ops/glm_kpool.py
-index aa9e1d7b3a..ba900613bc 100644
+index aa9e1d7b3afb230bfdb6f40b05cf3e9204fb4dc5..ba900613bc964695204a2b59b78669e5a0b5cd37 100644
 --- a/vllm/models/glm5next/nvidia/ops/glm_kpool.py
 +++ b/vllm/models/glm5next/nvidia/ops/glm_kpool.py
 @@ -40,10 +40,13 @@ def _fwht_quant_kernel(
@@ -8696,7 +9028,7 @@ index aa9e1d7b3a..ba900613bc 100644
  
  
 diff --git a/vllm/models/glm5next/nvidia/pooled_indexer.py b/vllm/models/glm5next/nvidia/pooled_indexer.py
-index eb7d2f6cc6..840994379c 100644
+index eb7d2f6cc60158e6cdb1bd70e6f4c67f20f7c3b9..840994379cad2a9771477c1ec5685123ead63d96 100644
 --- a/vllm/models/glm5next/nvidia/pooled_indexer.py
 +++ b/vllm/models/glm5next/nvidia/pooled_indexer.py
 @@ -11,6 +11,7 @@ import torch
@@ -8876,7 +9208,7 @@ index eb7d2f6cc6..840994379c 100644
              if row_start != live_rows:
 diff --git a/vllm/third_party/sparkring_mesh_owner/README.md b/vllm/third_party/sparkring_mesh_owner/README.md
 new file mode 100644
-index 0000000000..259983e521
+index 0000000000000000000000000000000000000000..259983e5210465eef27cb6cb51938276b9c91777
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/README.md
 @@ -0,0 +1,161 @@
@@ -9043,7 +9375,7 @@ index 0000000000..259983e521
 +`outputs/glm53-owner-merge-20260907/transport-plan.md` in the workspace.
 diff --git a/vllm/third_party/sparkring_mesh_owner/__init__.py b/vllm/third_party/sparkring_mesh_owner/__init__.py
 new file mode 100644
-index 0000000000..fdce2f331f
+index 0000000000000000000000000000000000000000..fdce2f331f8bdc18ed1e66ada87680884ea3e285
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/__init__.py
 @@ -0,0 +1,18 @@
@@ -9067,7 +9399,7 @@ index 0000000000..fdce2f331f
 +    raise AttributeError(name)
 diff --git a/vllm/third_party/sparkring_mesh_owner/_allgather_cute.py b/vllm/third_party/sparkring_mesh_owner/_allgather_cute.py
 new file mode 100644
-index 0000000000..d7440b5c69
+index 0000000000000000000000000000000000000000..d7440b5c69a520778a3a1f55d0fcb32e4925b50a
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/_allgather_cute.py
 @@ -0,0 +1,2 @@
@@ -9075,7 +9407,7 @@ index 0000000000..d7440b5c69
 +raise ImportError("mesh_owner only implements owner all_to_all; use _alltoall_cute")
 diff --git a/vllm/third_party/sparkring_mesh_owner/_alltoall_cute.py b/vllm/third_party/sparkring_mesh_owner/_alltoall_cute.py
 new file mode 100644
-index 0000000000..e5e2a45d31
+index 0000000000000000000000000000000000000000..e5e2a45d310d9c533fed4d2e83ef8697d1aade09
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/_alltoall_cute.py
 @@ -0,0 +1,333 @@
@@ -9414,7 +9746,7 @@ index 0000000000..e5e2a45d31
 +__all__ = ["PACK_BYTES", "get_launcher", "is_launcher_prepared"]
 diff --git a/vllm/third_party/sparkring_mesh_owner/_cute_intrinsics.py b/vllm/third_party/sparkring_mesh_owner/_cute_intrinsics.py
 new file mode 100644
-index 0000000000..1e0ac9db55
+index 0000000000000000000000000000000000000000..1e0ac9db55d7347ec8c101fe748e78a219a7ea4a
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/_cute_intrinsics.py
 @@ -0,0 +1,332 @@
@@ -9752,7 +10084,7 @@ index 0000000000..1e0ac9db55
 +    )
 diff --git a/vllm/third_party/sparkring_mesh_owner/_oneshot_cute.py b/vllm/third_party/sparkring_mesh_owner/_oneshot_cute.py
 new file mode 100644
-index 0000000000..0724510479
+index 0000000000000000000000000000000000000000..07245104792d2870fa167ecc65ee7c5860a25991
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/_oneshot_cute.py
 @@ -0,0 +1,2 @@
@@ -9760,7 +10092,7 @@ index 0000000000..0724510479
 +raise ImportError("mesh_owner does not implement all-reduce")
 diff --git a/vllm/third_party/sparkring_mesh_owner/_pack_alltoall_cute.py b/vllm/third_party/sparkring_mesh_owner/_pack_alltoall_cute.py
 new file mode 100644
-index 0000000000..060bf03785
+index 0000000000000000000000000000000000000000..060bf03785bd18777a36aed7b86ae90e991c0ef2
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/_pack_alltoall_cute.py
 @@ -0,0 +1,396 @@
@@ -10162,7 +10494,7 @@ index 0000000000..060bf03785
 +__all__ = ["PACK_BYTES", "get_launcher", "is_launcher_prepared"]
 diff --git a/vllm/third_party/sparkring_mesh_owner/_pack_intrinsics.py b/vllm/third_party/sparkring_mesh_owner/_pack_intrinsics.py
 new file mode 100644
-index 0000000000..2483c55502
+index 0000000000000000000000000000000000000000..2483c555026b173b48bde678f4bee638154e91a4
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/_pack_intrinsics.py
 @@ -0,0 +1,67 @@
@@ -10235,7 +10567,7 @@ index 0000000000..2483c55502
 +    return tuple(Uint32(llvm.extractvalue(T.i32(), result, [i], loc=loc, ip=ip)) for i in range(5))
 diff --git a/vllm/third_party/sparkring_mesh_owner/_path_config.py b/vllm/third_party/sparkring_mesh_owner/_path_config.py
 new file mode 100644
-index 0000000000..f78331ac5f
+index 0000000000000000000000000000000000000000..f78331ac5f1be6064b2e87d6fdad2c0f75ddf19c
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/_path_config.py
 @@ -0,0 +1,71 @@
@@ -10312,7 +10644,7 @@ index 0000000000..f78331ac5f
 +        )
 diff --git a/vllm/third_party/sparkring_mesh_owner/_proxy.py b/vllm/third_party/sparkring_mesh_owner/_proxy.py
 new file mode 100644
-index 0000000000..de3e3aea4e
+index 0000000000000000000000000000000000000000..de3e3aea4ec48406946475b4f320acc268e7fbb4
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/_proxy.py
 @@ -0,0 +1,399 @@
@@ -10717,7 +11049,7 @@ index 0000000000..de3e3aea4e
 +__all__ = ["Layout", "Proxy", "load"]
 diff --git a/vllm/third_party/sparkring_mesh_owner/_roce_proxy.c b/vllm/third_party/sparkring_mesh_owner/_roce_proxy.c
 new file mode 100644
-index 0000000000..cd0547dd5a
+index 0000000000000000000000000000000000000000..cd0547dd5ae32a16b546094b48e4c31081a023af
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/_roce_proxy.c
 @@ -0,0 +1,1161 @@
@@ -11884,7 +12216,7 @@ index 0000000000..cd0547dd5a
 +}
 diff --git a/vllm/third_party/sparkring_mesh_owner/api.py b/vllm/third_party/sparkring_mesh_owner/api.py
 new file mode 100644
-index 0000000000..a955b18fdd
+index 0000000000000000000000000000000000000000..a955b18fdd092135536401b02eafec30b9505c8a
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/api.py
 @@ -0,0 +1,10 @@
@@ -11900,7 +12232,7 @@ index 0000000000..a955b18fdd
 +]
 diff --git a/vllm/third_party/sparkring_mesh_owner/layout.py b/vllm/third_party/sparkring_mesh_owner/layout.py
 new file mode 100644
-index 0000000000..658889b59e
+index 0000000000000000000000000000000000000000..658889b59e6fb5dd2406da3740fc6e79003efcbc
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/layout.py
 @@ -0,0 +1,109 @@
@@ -12015,7 +12347,7 @@ index 0000000000..658889b59e
 +                )
 diff --git a/vllm/third_party/sparkring_mesh_owner/pack_layout.py b/vllm/third_party/sparkring_mesh_owner/pack_layout.py
 new file mode 100644
-index 0000000000..c054e0ae08
+index 0000000000000000000000000000000000000000..c054e0ae081bbe5a3c2251e20f1df70e352ed7d9
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/pack_layout.py
 @@ -0,0 +1,38 @@
@@ -12059,7 +12391,7 @@ index 0000000000..c054e0ae08
 +    return score, float(global_id)
 diff --git a/vllm/third_party/sparkring_mesh_owner/roce_oneshot.py b/vllm/third_party/sparkring_mesh_owner/roce_oneshot.py
 new file mode 100644
-index 0000000000..92d826998b
+index 0000000000000000000000000000000000000000..92d826998b928813c97af7d6e990a56682307e56
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/roce_oneshot.py
 @@ -0,0 +1,2 @@
@@ -12067,7 +12399,7 @@ index 0000000000..92d826998b
 +raise ImportError("mesh_owner does not implement RoceOneshotAllReduce; use MeshOwnerAllToAll")
 diff --git a/vllm/third_party/sparkring_mesh_owner/runtime.py b/vllm/third_party/sparkring_mesh_owner/runtime.py
 new file mode 100644
-index 0000000000..3de1b6af03
+index 0000000000000000000000000000000000000000..3de1b6af032896dd2f0fbf2e2925341118f2f045
 --- /dev/null
 +++ b/vllm/third_party/sparkring_mesh_owner/runtime.py
 @@ -0,0 +1,791 @@
@@ -12863,7 +13195,7 @@ index 0000000000..3de1b6af03
 +        """No-op context exit."""
 +        return False
 diff --git a/vllm/v1/attention/backend.py b/vllm/v1/attention/backend.py
-index 32f7619005..c7829d1ae2 100644
+index 32f76190050f9b331337cc5466e7c88de2d707bd..c7829d1ae22806fdbf87c7cecf50e3d267d8ee39 100644
 --- a/vllm/v1/attention/backend.py
 +++ b/vllm/v1/attention/backend.py
 @@ -423,6 +423,9 @@ class CommonAttentionMetadata:
@@ -12887,7 +13219,7 @@ index 32f7619005..c7829d1ae2 100644
  
  
 diff --git a/vllm/v1/attention/backends/gdn_attn.py b/vllm/v1/attention/backends/gdn_attn.py
-index ac494843b9..99afaa2092 100644
+index ac494843b93c4d6746f4f0fe1c747f766aa88971..99afaa20921df89cb9507752e31bd2549de09733 100644
 --- a/vllm/v1/attention/backends/gdn_attn.py
 +++ b/vllm/v1/attention/backends/gdn_attn.py
 @@ -23,6 +23,10 @@ from vllm.v1.attention.backends.utils import (
@@ -13049,7 +13381,7 @@ index ac494843b9..99afaa2092 100644
                  prefill_checkpoint,
                  state_indices=checkpoint_state_indices,
 diff --git a/vllm/v1/attention/backends/mla/b12x_indexer.py b/vllm/v1/attention/backends/mla/b12x_indexer.py
-index a94d15f531..14bfe681ee 100644
+index a94d15f5312d3c49609a7a64c0b0adc440a8d89e..14bfe681eef889b3b33a0948d6c1371ac436792a 100644
 --- a/vllm/v1/attention/backends/mla/b12x_indexer.py
 +++ b/vllm/v1/attention/backends/mla/b12x_indexer.py
 @@ -249,6 +249,8 @@ def _merge_dcp_topk(
@@ -13122,7 +13454,7 @@ index a94d15f531..14bfe681ee 100644
  
  
 diff --git a/vllm/v1/attention/backends/mla/b12x_mla_sparse.py b/vllm/v1/attention/backends/mla/b12x_mla_sparse.py
-index 0b93b78f1f..0638be7f68 100644
+index 0b93b78f1f0e9c86a7b143e592a1d67ab7000483..0638be7f680585024ce83edb672cc900190ff673 100644
 --- a/vllm/v1/attention/backends/mla/b12x_mla_sparse.py
 +++ b/vllm/v1/attention/backends/mla/b12x_mla_sparse.py
 @@ -37,7 +37,10 @@ from vllm.v1.attention.backends.mla.sparse_utils import (
@@ -13204,7 +13536,7 @@ index 0b93b78f1f..0638be7f68 100644
  class B12xGLM5NextMLASparseMetadataBuilder(B12xMLASparseMetadataBuilder):
 diff --git a/vllm/v1/attention/backends/mla/compact_index_owner.py b/vllm/v1/attention/backends/mla/compact_index_owner.py
 new file mode 100644
-index 0000000000..87a5bf20c1
+index 0000000000000000000000000000000000000000..87a5bf20c105d9473bbadbc0c5e471b17e2c546e
 --- /dev/null
 +++ b/vllm/v1/attention/backends/mla/compact_index_owner.py
 @@ -0,0 +1,443 @@
@@ -13653,7 +13985,7 @@ index 0000000000..87a5bf20c1
 +            )
 diff --git a/vllm/v1/attention/backends/mla/dcp_owner_merge.py b/vllm/v1/attention/backends/mla/dcp_owner_merge.py
 new file mode 100644
-index 0000000000..40234a1f5a
+index 0000000000000000000000000000000000000000..40234a1f5a7a1b24e9a0c074b0356873f4db472b
 --- /dev/null
 +++ b/vllm/v1/attention/backends/mla/dcp_owner_merge.py
 @@ -0,0 +1,50 @@
@@ -13709,7 +14041,7 @@ index 0000000000..40234a1f5a
 +    output.copy_(global_ids)
 diff --git a/vllm/v1/attention/backends/mla/dcp_owner_transport.py b/vllm/v1/attention/backends/mla/dcp_owner_transport.py
 new file mode 100644
-index 0000000000..51c449a710
+index 0000000000000000000000000000000000000000..51c449a7106b7b1c9f2aa3472575a141cb26a39c
 --- /dev/null
 +++ b/vllm/v1/attention/backends/mla/dcp_owner_transport.py
 @@ -0,0 +1,116 @@
@@ -13830,7 +14162,7 @@ index 0000000000..51c449a710
 +        indices, scores, out=out, interleave=interleave
 +    )
 diff --git a/vllm/v1/attention/backends/mla/indexer.py b/vllm/v1/attention/backends/mla/indexer.py
-index d3a81c99d7..d9ef24adf4 100644
+index d3a81c99d7d2ea8ba71de273cc55c51adbd7b6fa..d9ef24adf43c1e178b448409c6bb4ca9b0923f6a 100644
 --- a/vllm/v1/attention/backends/mla/indexer.py
 +++ b/vllm/v1/attention/backends/mla/indexer.py
 @@ -34,6 +34,7 @@ from vllm.v1.attention.backend import (
@@ -13933,7 +14265,7 @@ index d3a81c99d7..d9ef24adf4 100644
  def build_prefill_chunk_metadata(
      start_idx: int,
 diff --git a/vllm/v1/attention/backends/utils.py b/vllm/v1/attention/backends/utils.py
-index d2b1532edd..897e6c2fb3 100644
+index d2b1532edd823d84b13fd129df43730826f77e22..897e6c2fb36d876c4b091b9424bca7ae89d53b98 100644
 --- a/vllm/v1/attention/backends/utils.py
 +++ b/vllm/v1/attention/backends/utils.py
 @@ -31,6 +31,7 @@ from vllm.distributed.kv_transfer.kv_connector.utils import (
@@ -14027,7 +14359,7 @@ index d2b1532edd..897e6c2fb3 100644
      """Convert a base-2 log-sum-exp tensor to natural-log units."""
      return lse * _LN_2
 diff --git a/vllm/v1/attention/ops/cp_common.py b/vllm/v1/attention/ops/cp_common.py
-index 3ee29b93e6..09f0996587 100644
+index 3ee29b93e62efc93d577e3d1dd2dfa84c6b1e9fb..09f0996587b09f0c737424839f24e804f0e32aa6 100644
 --- a/vllm/v1/attention/ops/cp_common.py
 +++ b/vllm/v1/attention/ops/cp_common.py
 @@ -9,6 +9,9 @@ from typing import TYPE_CHECKING, Any
@@ -14124,7 +14456,7 @@ index 3ee29b93e6..09f0996587 100644
      group: GroupCoordinator,
      dtype: torch.dtype,
 diff --git a/vllm/v1/attention/ops/dcp.py b/vllm/v1/attention/ops/dcp.py
-index 89fd611136..b4065bf9a6 100644
+index 89fd6111362970c2ccd443cfbe0bfbc92070ad48..b4065bf9a6991fe2d06bf5edc1d8b4c3ae8926a2 100644
 --- a/vllm/v1/attention/ops/dcp.py
 +++ b/vllm/v1/attention/ops/dcp.py
 @@ -18,8 +18,8 @@ from vllm.logger import init_logger
@@ -14147,7 +14479,7 @@ index 89fd611136..b4065bf9a6 100644
      ):
          return None
 diff --git a/vllm/v1/core/kv_cache_manager.py b/vllm/v1/core/kv_cache_manager.py
-index e68f5458d0..728f6db20e 100644
+index e68f5458d0129158c566ca1ae126c52cecd4792b..728f6db20e47d59de6ca5ff54482d1713acbb03d 100644
 --- a/vllm/v1/core/kv_cache_manager.py
 +++ b/vllm/v1/core/kv_cache_manager.py
 @@ -4,7 +4,7 @@
@@ -14273,10 +14605,10 @@ index e68f5458d0..728f6db20e 100644
          if num_new_tokens == 0 and num_external_computed_tokens == 0:
 diff --git a/vllm/v1/core/recurrent_prefill_checkpoint.py b/vllm/v1/core/recurrent_prefill_checkpoint.py
 new file mode 100644
-index 0000000000..b2d46962ff
+index 0000000000000000000000000000000000000000..601fb8e9980dd3d4b624ed87f11900b59c66a9a1
 --- /dev/null
 +++ b/vllm/v1/core/recurrent_prefill_checkpoint.py
-@@ -0,0 +1,262 @@
+@@ -0,0 +1,263 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""Checkpoint plans and physical ownership for bounded KDA prefill."""
@@ -14457,8 +14789,8 @@ index 0000000000..b2d46962ff
 +        and config.lora_config is None
 +        and not model.enable_sleep_mode
 +        and not model.enable_return_routed_experts
-+        and parallel.tensor_parallel_size == 4
-+        and parallel.decode_context_parallel_size in (1, 2, 4)
++        and (parallel.tensor_parallel_size, parallel.decode_context_parallel_size)
++        in ((2, 1), (4, 1), (4, 2), (4, 4))
 +        and parallel.pipeline_parallel_size == 1
 +        and parallel.data_parallel_size == 1
 +        and parallel.prefill_context_parallel_size == 1
@@ -14489,7 +14821,8 @@ index 0000000000..b2d46962ff
 +    if not supported:
 +        raise ValueError(
 +            "VLLM_B12X_KDA_PREFILL_COALESCING requires GLM5Next BF16, V2, "
-+            "TP4 with DCP1/2/4, PP1/DP1, B12X KDA, an 8192-token scheduler budget, "
++            "TP2/DCP1 or TP4/DCP1,2,4, PP1/DP1, B12X KDA, an "
++            "8192-token scheduler budget, "
 +            "align-mode prefix caching with retention interval 0, and static "
 +            "MTP3 or no speculation; LoRA, EP, PCP and fairness engines are unsupported"
 +        )
@@ -14540,7 +14873,7 @@ index 0000000000..b2d46962ff
 +        rows[row] = (start, end, targets)
 +    return rows
 diff --git a/vllm/v1/core/sched/compute_fairness.py b/vllm/v1/core/sched/compute_fairness.py
-index 61cbbef34c..8e75c14e47 100644
+index 61cbbef34ce3d1e7261aa4d1bfa77d9bf0ef2c3d..8e75c14e47fa8d322bc7f2aa4706eb7229a2dab0 100644
 --- a/vllm/v1/core/sched/compute_fairness.py
 +++ b/vllm/v1/core/sched/compute_fairness.py
 @@ -1,25 +1,207 @@
@@ -14841,7 +15174,7 @@ index 61cbbef34c..8e75c14e47 100644
                  self.prefill_virtual_runtime = self.decode_virtual_runtime - charge
  
 diff --git a/vllm/v1/core/sched/interface.py b/vllm/v1/core/sched/interface.py
-index 748a9769e1..74ae6df3db 100644
+index 748a9769e1756120892b9f925a7f1b847f7dac2c..74ae6df3dbe17cc295cf8e2294a288c2a1670039 100644
 --- a/vllm/v1/core/sched/interface.py
 +++ b/vllm/v1/core/sched/interface.py
 @@ -97,6 +97,7 @@ class SchedulerInterface(ABC):
@@ -14854,7 +15187,7 @@ index 748a9769e1..74ae6df3db 100644
          raise NotImplementedError
 diff --git a/vllm/v1/core/sched/micro_slicing.py b/vllm/v1/core/sched/micro_slicing.py
 deleted file mode 100644
-index b039ce5914..0000000000
+index b039ce59148a2e4621f617a39b9f759d493c9226..0000000000000000000000000000000000000000
 --- a/vllm/v1/core/sched/micro_slicing.py
 +++ /dev/null
 @@ -1,154 +0,0 @@
@@ -15013,7 +15346,7 @@ index b039ce5914..0000000000
 -                "decode_prefill_max_wait_ms requires decode_prefill_min_decode_steps"
 -            )
 diff --git a/vllm/v1/core/sched/output.py b/vllm/v1/core/sched/output.py
-index fec086b92b..c53ffec8a1 100644
+index fec086b92be3539083b92c1097d54b829e2a3751..c53ffec8a1e6bf14bdabc22a2faa493956d1037a 100644
 --- a/vllm/v1/core/sched/output.py
 +++ b/vllm/v1/core/sched/output.py
 @@ -262,6 +262,9 @@ class SchedulerOutput:
@@ -15040,7 +15373,7 @@ index fec086b92b..c53ffec8a1 100644
      def make_empty(cls) -> "SchedulerOutput":
 diff --git a/vllm/v1/core/sched/prefill_interleave.py b/vllm/v1/core/sched/prefill_interleave.py
 new file mode 100644
-index 0000000000..e89e2634ff
+index 0000000000000000000000000000000000000000..e89e2634ff3627c43de216d86b3a6aae86312f2d
 --- /dev/null
 +++ b/vllm/v1/core/sched/prefill_interleave.py
 @@ -0,0 +1,213 @@
@@ -15258,7 +15591,7 @@ index 0000000000..e89e2634ff
 +    def forget(self, request_id: str) -> None:
 +        self.last_scheduled_step.pop(request_id, None)
 diff --git a/vllm/v1/core/sched/scheduler.py b/vllm/v1/core/sched/scheduler.py
-index b5a18109a6..bb9d12ed66 100644
+index b5a18109a647ad23c0c4b14ade90c7aaf260cccd..05c250ab6efbf7fad90c9cfadb58409525741e4b 100644
 --- a/vllm/v1/core/sched/scheduler.py
 +++ b/vllm/v1/core/sched/scheduler.py
 @@ -39,15 +39,18 @@ from vllm.v1.core.encoder_cache_manager import (
@@ -15582,16 +15915,17 @@ index b5a18109a6..bb9d12ed66 100644
 -        )
 -        oldest_arrival = min(arrival_times, default=now)
 -        return max((now - oldest_arrival) * 1000.0, 0.0)
+-
+-    @property
+-    def num_active_local_partial_prefills(self) -> int:
+-        """Count model-compute partials, excluding async KV-only restores."""
+-        return sum(request.is_prefill_chunk for request in self.running)
 +    def _local_prefill_pressure(self, now: float) -> tuple[float, int]:
 +        """Estimate user-visible local-prefill slowdown and queued work."""
 +        controller = self.compute_share_controller
 +        if controller is None:
 +            return 1.0, 0
- 
--    @property
--    def num_active_local_partial_prefills(self) -> int:
--        """Count model-compute partials, excluding async KV-only restores."""
--        return sum(request.is_prefill_chunk for request in self.running)
++
 +        seconds_per_token = controller.prefill_seconds_per_token
 +        quantum_seconds = controller.last_prefill_seconds or 0.0
 +        pressure = 1.0
@@ -16375,28 +16709,28 @@ index b5a18109a6..bb9d12ed66 100644
 +                controller.effective_prefill_compute_half_life
 +                if controller is not None
 +                else None
-+            ),
+             ),
+-            "max_num_partial_prefills": (
+-                self.scheduler_config.max_num_partial_prefills
 +            "effective_prefill_compute_share": (
 +                controller.effective_prefill_compute_share
 +                if controller is not None
 +                else None
              ),
--            "max_num_partial_prefills": (
--                self.scheduler_config.max_num_partial_prefills
+-            "decode_prefill_min_decode_steps": (
+-                self.scheduler_config.decode_prefill_min_decode_steps
 +            "decode_pressure": (
 +                controller.decode_pressure if controller is not None else None
              ),
--            "decode_prefill_min_decode_steps": (
--                self.scheduler_config.decode_prefill_min_decode_steps
+-            "decode_prefill_max_wait_ms": (
+-                self.scheduler_config.decode_prefill_max_wait_ms
 +            "prefill_pressure": (
 +                controller.prefill_pressure if controller is not None else None
              ),
--            "decode_prefill_max_wait_ms": (
--                self.scheduler_config.decode_prefill_max_wait_ms
+-            "prefill_quantum": self.prefill_fairness_quantum,
 +            "local_prefill_backlog_tokens": (
 +                controller.local_prefill_backlog_tokens if controller is not None else 0
-             ),
--            "prefill_quantum": self.prefill_fairness_quantum,
++            ),
 +            "max_parallel_prefills": self.scheduler_config.max_parallel_prefills,
 +            "effective_max_parallel_prefills": self.max_parallel_prefills,
 +            "prefill_policy": self.scheduler_config.prefill_policy,
@@ -16440,30 +16774,13 @@ index b5a18109a6..bb9d12ed66 100644
 +            raise ValueError(
 +                "prefill_compute_share must be null, 'auto', or strictly between "
 +                "zero and one"
-+            )
+             )
 +        prefill_compute_half_life = config.get("prefill_compute_half_life")
 +        valid_half_life = prefill_compute_half_life in (
 +            None,
 +            "smooth",
 +            "responsive",
-+        )
-+        if isinstance(prefill_compute_half_life, (int, float)) and not isinstance(
-+            prefill_compute_half_life, bool
-+        ):
-+            valid_half_life = (
-+                math.isfinite(float(prefill_compute_half_life))
-+                and float(prefill_compute_half_life) > 0.0
-+            )
-+        if not valid_half_life:
-+            raise ValueError(
-+                "prefill_compute_half_life must be null, 'smooth', 'responsive', "
-+                "or a finite number greater than zero"
-+            )
-+        if prefill_compute_half_life is not None and prefill_compute_share != "auto":
-+            raise ValueError(
-+                "prefill_compute_half_life requires prefill_compute_share='auto'"
-             )
--        )
+         )
 -        if fairness_engine is None:
 -            if prefill_compute_share is not None or micro_configured:
 -                raise ValueError(
@@ -16491,6 +16808,22 @@ index b5a18109a6..bb9d12ed66 100644
 -                )
 -            if max_partial_prefills > self.max_num_running_reqs:
 -                raise ValueError("max_num_partial_prefills cannot exceed max_num_seqs")
++        if isinstance(prefill_compute_half_life, (int, float)) and not isinstance(
++            prefill_compute_half_life, bool
++        ):
++            valid_half_life = (
++                math.isfinite(float(prefill_compute_half_life))
++                and float(prefill_compute_half_life) > 0.0
++            )
++        if not valid_half_life:
++            raise ValueError(
++                "prefill_compute_half_life must be null, 'smooth', 'responsive', "
++                "or a finite number greater than zero"
++            )
++        if prefill_compute_half_life is not None and prefill_compute_share != "auto":
++            raise ValueError(
++                "prefill_compute_half_life requires prefill_compute_share='auto'"
++            )
  
 -        if fairness_engine is not None:
 +        if prefill_compute_share is not None:
@@ -16615,8 +16948,112 @@ index b5a18109a6..bb9d12ed66 100644
          )
  
      def make_spec_decoding_stats(
+@@ -3744,6 +3925,8 @@ class Scheduler(SchedulerInterface):
+ 
+         This method scans the given requests, detects those with invalid blocks
+         and adjusts their `num_computed_tokens` to the longest valid prefix.
++        Hybrid requests restart from zero because a failed recurrent state
++        does not identify a valid endpoint shared by every cache group.
+         For observability, it also accumulates the total number of tokens that
+         will need to be recomputed across all affected requests.
+ 
+@@ -3751,8 +3934,9 @@ class Scheduler(SchedulerInterface):
+             requests: The set of requests to scan for invalid blocks.
+             invalid_block_ids: IDs of invalid blocks.
+             num_scheduled_tokens: req_id -> number of scheduled tokens.
+-            evict_blocks: Whether to collect blocks for eviction (False for
+-                async requests which aren't cached yet).
++            evict_blocks: Whether to collect single-group blocks for eviction.
++                Hybrid recovery always discards cached dependencies, including
++                any locally cached prefix preceding an asynchronous load.
+ 
+         Returns:
+             tuple:
+@@ -3774,14 +3958,43 @@ class Scheduler(SchedulerInterface):
+             is_affected = False
+             marked_invalid_block = False
+             req_id = request.request_id
+-            # TODO (davidb): add support for hybrid memory allocator
+-            (req_block_ids,) = self.kv_cache_manager.get_block_ids(req_id)
++            grouped_block_ids = self.kv_cache_manager.get_block_ids(req_id)
+             # We iterate only over blocks that may contain externally computed
+             # tokens
+             req_num_computed_tokens = (
+                 request.num_computed_tokens - num_scheduled_tokens.get(req_id, 0)
+             )
+ 
++            if len(grouped_block_ids) > 1:
++                frontier = max(0, req_num_computed_tokens)
++                managers = self.kv_cache_manager.coordinator.single_type_managers
++                null_block_id = self.kv_cache_manager.block_pool.null_block.block_id
++                used_blocks = {
++                    block_id
++                    for ids, manager in zip(grouped_block_ids, managers, strict=True)
++                    for block_id in ids[
++                        : (frontier + manager.block_size - 1) // manager.block_size
++                    ]
++                    if block_id != null_block_id
++                }
++                if used_blocks.isdisjoint(invalid_block_ids):
++                    continue
++                request.num_computed_tokens = 0
++                affected_req_ids.add(req_id)
++                total_affected_tokens += frontier
++                # Discard cached dependencies even for asynchronous loads:
++                # their local prefix may contain hashed recurrent history.
++                # Eviction removes cache identities, never read/write leases.
++                blocks_to_evict.update(
++                    block_id
++                    for ids in grouped_block_ids
++                    for block_id in ids
++                    if block_id != null_block_id
++                )
++                continue
++
++            (req_block_ids,) = grouped_block_ids
++
+             req_num_computed_blocks = (
+                 req_num_computed_tokens + self.block_size - 1
+             ) // self.block_size
+@@ -3852,7 +4065,7 @@ class Scheduler(SchedulerInterface):
+             for req in self.skipped_waiting
+             if req.status == RequestStatus.WAITING_FOR_REMOTE_KVS
+         )
+-        async_failed_req_ids, num_failed_tokens, _ = (
++        async_failed_req_ids, num_failed_tokens, async_blocks_to_evict = (
+             self._update_requests_with_invalid_blocks(
+                 async_load_reqs,
+                 invalid_block_ids,
+@@ -3877,10 +4090,23 @@ class Scheduler(SchedulerInterface):
+         if not total_failed_requests:
+             return set()
+ 
+-        # evict invalid blocks and downstream dependent blocks from cache
+-        # only when not using recompute policy (where blocks will be recomputed
+-        # and reused by other requests sharing them)
+-        if sync_blocks_to_evict and not self.recompute_kv_load_failures:
++        if self.kv_cache_manager.num_kv_cache_groups > 1:
++            self.kv_cache_manager.evict_blocks(
++                async_blocks_to_evict | sync_blocks_to_evict
++            )
++            if self.recompute_kv_load_failures:
++                # Synchronous callers can share cached pages. Reallocate via
++                # normal preemption instead of overwriting those pages from
++                # token zero. Async callers retain all blocks until every
++                # worker reports receive completion, then free them on retry.
++                for request in list(self.running):
++                    if request.request_id in sync_failed_req_ids:
++                        self.running.remove(request)
++                        self._preempt_request(
++                            request, time.monotonic(), drop_stale_output=True
++                        )
++        elif sync_blocks_to_evict and not self.recompute_kv_load_failures:
++            # Single-group recomputation retains its shared valid prefix.
+             self.kv_cache_manager.evict_blocks(sync_blocks_to_evict)
+ 
+         if should_fail:
 diff --git a/vllm/v1/core/single_type_kv_cache_manager.py b/vllm/v1/core/single_type_kv_cache_manager.py
-index 6d5a5e9808..9cd78ce976 100644
+index 6d5a5e9808efdc8fcf2811cdd5656e7c10c89cb4..9cd78ce976c82c795e3807af391c9f7a62fc5e89 100644
 --- a/vllm/v1/core/single_type_kv_cache_manager.py
 +++ b/vllm/v1/core/single_type_kv_cache_manager.py
 @@ -16,6 +16,11 @@ from vllm.v1.core.kv_cache_utils import (
@@ -16740,7 +17177,7 @@ index 6d5a5e9808..9cd78ce976 100644
              # An offer is only guaranteed to hold committed bytes until the end
              # of the pass that made it. This request's blocks are going back to
 diff --git a/vllm/v1/engine/core.py b/vllm/v1/engine/core.py
-index 1965d4b0b1..5ae3e44ecf 100644
+index 1965d4b0b186eaa7bcce017cad759c1c055a04af..5ae3e44ecf2f22cb7515ca9f6cbae332a242a211 100644
 --- a/vllm/v1/engine/core.py
 +++ b/vllm/v1/engine/core.py
 @@ -650,9 +650,7 @@ class EngineCore:
@@ -16797,7 +17234,7 @@ index 1965d4b0b1..5ae3e44ecf 100644
              updated = self.scheduler.set_prefill_fairness(config)
          except (TypeError, ValueError) as exc:
 diff --git a/vllm/v1/metrics/loggers.py b/vllm/v1/metrics/loggers.py
-index 683629a87e..3992719cef 100644
+index 683629a87e7975191916fad5c370ac4864bcf619..3992719cef045dd9add233b6798c81e7471267fa 100644
 --- a/vllm/v1/metrics/loggers.py
 +++ b/vllm/v1/metrics/loggers.py
 @@ -513,8 +513,8 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
@@ -16934,7 +17371,7 @@ index 683629a87e..3992719cef 100644
                  scheduler_stats.prefix_cache_stats.queries
              )
 diff --git a/vllm/v1/metrics/stats.py b/vllm/v1/metrics/stats.py
-index 712c96237f..55fa6f76a5 100644
+index 712c96237f95fd703cb6022b83043cb3c086da88..55fa6f76a5c6479f2045027048ab7180b3d0d49c 100644
 --- a/vllm/v1/metrics/stats.py
 +++ b/vllm/v1/metrics/stats.py
 @@ -216,10 +216,9 @@ class SchedulerStats:
@@ -16952,7 +17389,7 @@ index 712c96237f..55fa6f76a5 100644
  
  @dataclass
 diff --git a/vllm/v1/sample/ops/topk_topp_sampler.py b/vllm/v1/sample/ops/topk_topp_sampler.py
-index 03716cb3c1..ca56c33a98 100644
+index 03716cb3c13558533c9027503a585296b599bef9..ca56c33a98f3d45d4d07cbe621c5effdb868e21b 100644
 --- a/vllm/v1/sample/ops/topk_topp_sampler.py
 +++ b/vllm/v1/sample/ops/topk_topp_sampler.py
 @@ -2,6 +2,8 @@
@@ -17047,7 +17484,7 @@ index 03716cb3c1..ca56c33a98 100644
      logits: torch.Tensor,
      k: torch.Tensor | None,
 diff --git a/vllm/v1/sample/rejection_sampler.py b/vllm/v1/sample/rejection_sampler.py
-index a1baf0a808..53fff874be 100644
+index a1baf0a80851ae94e4de69aa46c5946a1928c7ab..53fff874be4bd5934003ac2e2b258da540d6f09e 100644
 --- a/vllm/v1/sample/rejection_sampler.py
 +++ b/vllm/v1/sample/rejection_sampler.py
 @@ -18,7 +18,10 @@ from vllm.v1.sample.logits_processor.builtin import MinTokensLogitsProcessor
@@ -17139,7 +17576,7 @@ index a1baf0a808..53fff874be 100644
  
  
 diff --git a/vllm/v1/spec_decode/llm_base_proposer.py b/vllm/v1/spec_decode/llm_base_proposer.py
-index 1556ddb441..23d738343a 100644
+index 1556ddb4411bc54f44df9e2101d8771edc037fa7..23d738343a08e0bb35712dd5d15930ed11584b2c 100644
 --- a/vllm/v1/spec_decode/llm_base_proposer.py
 +++ b/vllm/v1/spec_decode/llm_base_proposer.py
 @@ -45,6 +45,7 @@ from vllm.v1.cudagraph_dispatcher import CudagraphDispatcher
@@ -17201,7 +17638,7 @@ index 1556ddb441..23d738343a 100644
      # TODO(woosuk): Consider seeds.
      q = empty_exponential_noise_like(probs, use_fp64_gumbel)
 diff --git a/vllm/v1/worker/gpu/model_runner.py b/vllm/v1/worker/gpu/model_runner.py
-index 08a828b148..f75e53c45a 100644
+index 08a828b1484f6269846e6527bf40c2c6478ee9bb..f75e53c45a62a78372890d94af372e10a1ff9c6f 100644
 --- a/vllm/v1/worker/gpu/model_runner.py
 +++ b/vllm/v1/worker/gpu/model_runner.py
 @@ -1747,6 +1747,20 @@ class GPUModelRunner(LoRAModelRunnerMixin):
@@ -17242,7 +17679,7 @@ index 08a828b148..f75e53c45a 100644
                  self.kv_connector.pre_forward(scheduler_output)
                  if batch_desc.cg_mode == CUDAGraphMode.PIECEWISE:
 diff --git a/vllm/v1/worker/gpu/model_states/mamba_hybrid.py b/vllm/v1/worker/gpu/model_states/mamba_hybrid.py
-index 622442c59b..637aedf624 100644
+index 622442c59bece5dc968e7addf0194e3131960285..637aedf6247ff8f4f6ef6e6c1273efdeabb67c47 100644
 --- a/vllm/v1/worker/gpu/model_states/mamba_hybrid.py
 +++ b/vllm/v1/worker/gpu/model_states/mamba_hybrid.py
 @@ -13,6 +13,7 @@ from vllm.triton_utils import tl, triton
@@ -17300,7 +17737,7 @@ index 622442c59b..637aedf624 100644
              num_accepted_tokens=num_accepted_tokens,
              num_decode_draft_tokens_cpu=num_decode_draft_tokens_cpu,
 diff --git a/vllm/v1/worker/gpu/sample/gumbel.py b/vllm/v1/worker/gpu/sample/gumbel.py
-index a600ab9bc6..4bf1f47280 100644
+index a600ab9bc6f32e9dac7370a72021384e89b33585..4bf1f47280cfa69d3f66a6d8350cb4e129c37d08 100644
 --- a/vllm/v1/worker/gpu/sample/gumbel.py
 +++ b/vllm/v1/worker/gpu/sample/gumbel.py
 @@ -13,6 +13,12 @@ from vllm.triton_utils import HAS_TRITON, tl, tldevice, triton
@@ -17382,7 +17819,7 @@ index a600ab9bc6..4bf1f47280 100644
          USE_FP64=use_fp64,
          PER_TOKEN_COL=per_token_col,
 diff --git a/vllm/v1/worker/gpu/sample/sampler.py b/vllm/v1/worker/gpu/sample/sampler.py
-index d3205a3dae..3ee2c13294 100644
+index d3205a3dae838ecbb72faa069b44caf269eb42d2..3ee2c132940e5aa7c3ddc4ea831cff2d59843114 100644
 --- a/vllm/v1/worker/gpu/sample/sampler.py
 +++ b/vllm/v1/worker/gpu/sample/sampler.py
 @@ -317,6 +317,7 @@ class Sampler:
@@ -17394,7 +17831,7 @@ index d3205a3dae..3ee2c13294 100644
              )
          return sampled, processed_logits
 diff --git a/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py b/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py
-index 64ba53ce1f..022cc08cf7 100644
+index 64ba53ce1fb945105bf62a10de0202f50f2c7502..022cc08cf7b7d43c2b6c4a09d3320fc0382c0abe 100644
 --- a/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py
 +++ b/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py
 @@ -48,6 +48,9 @@ class AutoRegressiveSpeculator(DraftModelSpeculator):
@@ -17551,7 +17988,7 @@ index 64ba53ce1f..022cc08cf7 100644
          mrope_positions_stride,
          input_buffers.seq_lens,
 diff --git a/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py b/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py
-index 5d04b05253..99df8b984d 100644
+index 5d04b0525338132febf5839738b08f9f02467bc0..99df8b984da53416a2fdd45593c705f3f73cf644 100644
 --- a/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py
 +++ b/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py
 @@ -288,11 +288,11 @@ class DFlashSpeculator(DraftModelSpeculator):
@@ -17570,7 +18007,7 @@ index 5d04b05253..99df8b984d 100644
              self.temperature,
              self.seeds,
 diff --git a/vllm/v1/worker/gpu/spec_decode/dflash2/speculator.py b/vllm/v1/worker/gpu/spec_decode/dflash2/speculator.py
-index 621afc38c7..1cd19acdab 100644
+index 621afc38c716aaa79dde15e365c94e61d0ebb860..1cd19acdab23f10a5567b066b7ab384275c7767e 100644
 --- a/vllm/v1/worker/gpu/spec_decode/dflash2/speculator.py
 +++ b/vllm/v1/worker/gpu/spec_decode/dflash2/speculator.py
 @@ -51,15 +51,17 @@ def _selector_walk_kernel(
@@ -17595,7 +18032,7 @@ index 621afc38c7..1cd19acdab 100644
          )
  
 diff --git a/vllm/v1/worker/gpu/spec_decode/dspark/speculator.py b/vllm/v1/worker/gpu/spec_decode/dspark/speculator.py
-index 19fc452018..e9eca550ca 100644
+index 19fc452018465d0eb8a258eb5dc54ad4461130ed..e9eca550ca9ae04951d1ab86066bfca1a7489e54 100644
 --- a/vllm/v1/worker/gpu/spec_decode/dspark/speculator.py
 +++ b/vllm/v1/worker/gpu/spec_decode/dspark/speculator.py
 @@ -135,8 +135,8 @@ class DSparkSpeculator(DFlashSpeculator):
@@ -17618,7 +18055,7 @@ index 19fc452018..e9eca550ca 100644
              logits_cache_col=self._step_cols[step],
              use_fp64=self.use_fp64_gumbel,
 diff --git a/vllm/v1/worker/gpu/spec_decode/eagle/utils.py b/vllm/v1/worker/gpu/spec_decode/eagle/utils.py
-index eb9362df7e..3c78bd9fa9 100644
+index eb9362df7ecaa765cdb0f2da165978937b7e02a8..3c78bd9fa987e37cda541d263d923aa7844ad635 100644
 --- a/vllm/v1/worker/gpu/spec_decode/eagle/utils.py
 +++ b/vllm/v1/worker/gpu/spec_decode/eagle/utils.py
 @@ -123,6 +123,11 @@ def load_eagle_model(target_model: nn.Module, vllm_config: VllmConfig) -> nn.Mod
@@ -17634,7 +18071,7 @@ index eb9362df7e..3c78bd9fa9 100644
      # every module in the draft that holds a buffer reference so that
      # the per-layer indexer and sparse-attention backends all point to
 diff --git a/vllm/v1/worker/gpu/spec_decode/multi_module_mtp/speculator.py b/vllm/v1/worker/gpu/spec_decode/multi_module_mtp/speculator.py
-index b29a5918cf..87038e5078 100644
+index b29a5918cfdb1f76aaeb389347bbf0fcebfd13a8..87038e5078332d8c0ac7fe498c3fbc29d336dc89 100644
 --- a/vllm/v1/worker/gpu/spec_decode/multi_module_mtp/speculator.py
 +++ b/vllm/v1/worker/gpu/spec_decode/multi_module_mtp/speculator.py
 @@ -377,7 +377,11 @@ class MultiModuleMTPSpeculator(DraftModelSpeculator):
@@ -17670,7 +18107,7 @@ index b29a5918cf..87038e5078 100644
  
  @triton.jit
 diff --git a/vllm/v1/worker/gpu/spec_decode/rejection_sampler_utils.py b/vllm/v1/worker/gpu/spec_decode/rejection_sampler_utils.py
-index abbf0ee96e..29b20afea6 100644
+index abbf0ee96ef4a40e1cd93f79d173a33a102f2c71..29b20afea69a1f89255be3ad91fc0e7995d462c1 100644
 --- a/vllm/v1/worker/gpu/spec_decode/rejection_sampler_utils.py
 +++ b/vllm/v1/worker/gpu/spec_decode/rejection_sampler_utils.py
 @@ -837,6 +837,7 @@ def _resample_kernel(
@@ -17682,7 +18119,7 @@ index abbf0ee96e..29b20afea6 100644
          USE_FP64=USE_FP64,
      )
 diff --git a/vllm/v1/worker/gpu/spec_decode/speculator.py b/vllm/v1/worker/gpu/spec_decode/speculator.py
-index e7c7022281..e8a58857af 100644
+index e7c70222814bfe810cb72432e530f446dfa91078..e8a58857afa1168bce4fc3a39fd6a54391aa186b 100644
 --- a/vllm/v1/worker/gpu/spec_decode/speculator.py
 +++ b/vllm/v1/worker/gpu/spec_decode/speculator.py
 @@ -391,7 +391,7 @@ class DraftModelSpeculator(BaseSpeculator):

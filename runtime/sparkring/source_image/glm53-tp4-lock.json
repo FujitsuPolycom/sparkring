@@ -14,41 +14,40 @@
   },
   "sources": {
     "vllm": {
-      "revision": "8f8ea47be212bbdd91b2172d5958ea2aae2b0e50",
+      "revision": "17bd258075f44dda8b405f384732f3c78d03f308",
       "repository": "https://github.com/local-inference-lab/vllm.git",
       "base_revision": "2a979314dc97b03173a0a76fc15664ec924db32b",
-      "result_tree": "79d74a9997e9eb74bf4af6ad5c4088bfb5e60a3a",
-      "package_tree": "df93657db62ad08f5fdde08c5676efed2087f8c0",
+      "result_tree": "ada34b943c02ffe0626982aab320cb6d4a6ccd70",
+      "package_tree": "23dc471903bb26cda724da58e7d295f0b70623c5",
       "patch": "patches/vllm.patch",
-      "patch_sha256": "b3326b3de68beffa6d2f379b4e279b3b5e7fd16c238017ea391aadba5a4bb399",
+      "patch_sha256": "9a2e192ddc3fa28159bfb216c5118fc446d764f70ea7507145af9bb638b4d128",
       "publication_status": "Source composition reproduced by the packaged patch over the public base revision.",
-      "installed_file_map_sha256": "3a5dada9ccc89a2a84269c2e1dd69f73e656ff076feab23548fd364ccd380958",
+      "installed_file_map_sha256": "a723642d2e90ab199645b9c12b03f2bfd3e5ba3b322c0d35263d1f15474b903e",
       "installed_file_count": 4922
     },
     "b12x": {
-      "revision": "0b6d61c37c87ae49d2f9d20d38b9da023146e243",
+      "revision": "2883a5df65a7ea3cb6e82abb63d1448dd3154887",
       "repository": "https://github.com/local-inference-lab/b12x.git",
       "base_revision": "85a08f47750db333a33ab3eae245a0a08452d04c",
-      "result_tree": "a782c1d4df9f93cc64efb753b7677731576d395d",
-      "package_tree": "e0bf6ef4a58db5ad6836dd304f3dc4feb96c1501",
+      "result_tree": "d9a8ed07fd0bc068920666d9d9c1080e30c8197f",
+      "package_tree": "bd26c8899119bf155c8eaf3f51eb60add04c5ee9",
       "patch": "patches/b12x.patch",
-      "patch_sha256": "bf4d3db7b1592ed88239d6825fc74fb72e7a67cb082c819c49dcf6ca40b9c919",
+      "patch_sha256": "9088789eb4a98d93677f2fa0bcfa8cfcc08ac33ef3a7a8d2c749c4a51a5a0d73",
       "publication_status": "Source composition reproduced by the packaged patch over the public base revision.",
-      "installed_file_map_sha256": "4fda7832407257c1a370702e0f2aca3f3ea103179f09958e2eb2f85d069d60e1",
+      "installed_file_map_sha256": "170e6fe71de2a44ecabb52b3c4c2d438e33e7973f803fb040549606e70b896d9",
       "installed_file_count": 397
     },
     "sparkcache": {
-      "revision": "48f9eb9432c3db105b174c162c4241b9bb3226fc",
-      "enabled": false,
+      "revision": "d0cf7296062ec8b4d17d65cd05a416d509e80bd8",
       "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
       "base_revision": "6be08c1fff14d66de6dbbbd60c00dba3816e649a",
-      "result_tree": "adcdecd4732e94fdbf8bfaa330148c1cdf0bb154",
-      "package_tree": "c3ac6aa7af08a8fd325ad59d423de960335bca3b",
+      "result_tree": "910c07859b180fa9b10238ccbdab80ac5c33c8c6",
+      "package_tree": "6e1a49bae06ab610c0dee6b523fe42ff685551ed",
       "patch": "patches/sparkcache.patch",
-      "patch_sha256": "0c9fae2a5993dc7118647fab3469e3baba566db6b035e46e95c873d021a786e1",
+      "patch_sha256": "2571b9a80470c6ae1f9317198f1767c64d82bdcec316ade99772f662b0448861",
       "publication_status": "Source composition reproduced by the packaged patch over the public base revision.",
-      "installed_file_map_sha256": "2faf699860619a9837bda78ce89ba273bd435c7df764960c3d49cfe7cc91a2b4",
-      "installed_file_count": 169
+      "installed_file_map_sha256": "8088457388ca07eed8f3b605b171973d8cd1c93352556a705020118119d762be",
+      "installed_file_count": 174
     }
   },
   "runtime": {
@@ -85,9 +84,21 @@
     },
     "readiness_warmup": {
       "environment": "SPARKRING_WARMUP_TEMPERATURE",
-      "helper_sha256": "e818bc63ca74511d4250dd5d373b1d7ac7f437a5151f6e09c6bd404ec0bed1bd",
-      "temperature": 1.0
-    }
+      "helper_sha256": "a4737e998ead6206292e0b5e2172ab81ffab8f84435982cbbce2b0af8cb08f2f",
+      "temperature": 1.0,
+      "sampler_cases": [
+        "unfiltered-temperature-1",
+        "unfiltered-temperature-0.7",
+        "top-k",
+        "top-p",
+        "top-k-top-p",
+        "seeded-top-k-top-p"
+      ]
+    },
+    "snapshot_path": "/opt/sparkcache-native/libspark_cache_snapshot.so",
+    "snapshot_sha256": "cc44b69c9e01aaeb6b94f46cd649e2ec5972fc6b29d1a41b7b033a82ce788f39",
+    "placement_path": "/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so",
+    "placement_sha256": "2657cdd2e54a097c9544e4c79ae62c0646db6db123ff24e4f0c384238c3a1e8d"
   },
   "profiles": {
     "tp4-dcp1-mtp3-prefill": {
@@ -120,8 +131,11 @@
         "MAX_NUM_BATCHED_TOKENS": "8192",
         "MAX_CUDAGRAPH_CAPTURE_SIZE": "64",
         "KV_CACHE_MEMORY_BYTES": "25769803776",
-        "JIT_CACHE_NAMESPACE": "glm53-vllm-8f8ea47b-b12x-0b6d61c3-dcp1"
-      }
+        "JIT_CACHE_NAMESPACE": "glm53-vllm-17bd2580-b12x-2883a5df-dcp1",
+        "MAX_MODEL_LEN": "1048576",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "tp_size": 4
     },
     "tp4-dcp4-mtp3-prefill": {
       "dcp_size": 4,
@@ -153,24 +167,153 @@
         "MAX_NUM_BATCHED_TOKENS": "8192",
         "MAX_CUDAGRAPH_CAPTURE_SIZE": "64",
         "KV_CACHE_MEMORY_BYTES": "25769803776",
-        "JIT_CACHE_NAMESPACE": "glm53-vllm-8f8ea47b-b12x-0b6d61c3-dcp4"
+        "JIT_CACHE_NAMESPACE": "glm53-vllm-17bd2580-b12x-2883a5df-dcp4",
+        "MAX_MODEL_LEN": "1048576",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "tp_size": 4
+    },
+    "tp4-dcp1-mtp3-sparkcache": {
+      "dcp_size": 1,
+      "host_domains": "dual",
+      "sparkcache": true,
+      "environment": {
+        "SOURCE_IMAGE_PROFILE": "tp4-dcp1-mtp3-sparkcache",
+        "DECODE_CONTEXT_PARALLEL_SIZE": "1",
+        "CP_KV_CACHE_INTERLEAVE_SIZE": "1",
+        "VLLM_BLOCK_SIZE": "512",
+        "SPARKCACHE_ENABLED": "1",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE": "1",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
+        "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
+        "VLLM_GLM53_MHC_PREFILL_DIAGNOSTICS": "1",
+        "VLLM_GLM53_KDA_GATE_SIDE_STREAM": "1",
+        "VLLM_DCP_TOPK_OWNER_MERGE": "0",
+        "VLLM_DCP_OWNER_FUSED_ENDPOINTS": "0",
+        "VLLM_DCP_COMPACT_INDEX_CACHE_OWNER": "0",
+        "VLLM_DCP_COMPACT_INDEX_TENSOR_VOTE": "0",
+        "VLLM_DCP_COMPACT_INDEX_LOCAL_WIDTHS": "0",
+        "VLLM_DCP_COMPACT_INDEX_PROFILE": "0",
+        "B12X_MLA_CKV_GATHER": "1",
+        "NCCL_IB_EXTENDED_IPV4_GIDS": "1",
+        "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+        "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
+        "NCCL_DEBUG": "INFO",
+        "NCCL_DEBUG_SUBSYS": "NET,INIT,GRAPH",
+        "MAX_NUM_BATCHED_TOKENS": "8192",
+        "MAX_CUDAGRAPH_CAPTURE_SIZE": "64",
+        "KV_CACHE_MEMORY_BYTES": "25769803776",
+        "JIT_CACHE_NAMESPACE": "glm53-vllm-17bd2580-b12x-2883a5df-dcp1",
+        "MAX_MODEL_LEN": "1048576",
+        "PYTHONUNBUFFERED": "1",
+        "SPARKCACHE_SOURCE_LEASE_CONTRACT": "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json",
+        "SPARKCACHE_PLACEMENT_LIBRARY_SHA256": "2657cdd2e54a097c9544e4c79ae62c0646db6db123ff24e4f0c384238c3a1e8d",
+        "SPARKCACHE_ACCESS_MODE": "read-write",
+        "SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT": "2",
+        "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES": "536870912",
+        "SPARKCACHE_LOAD_THREADS": "2",
+        "SPARKCACHE_MAX_PENDING_RESTORES": "2",
+        "SPARKCACHE_CUDA_RESTORE_IO_WORKERS": "2",
+        "SPARKCACHE_CUDA_ARENA_BYTES": "67108864",
+        "SPARKCACHE_BUFFER_BUDGET_BYTES": "1342177280",
+        "SPARKCACHE_MAX_BYTES": "8589934592",
+        "SPARKCACHE_LOW_WATERMARK_BYTES": "6442450944",
+        "SPARKCACHE_MIN_SPAN_TOKENS": "4096",
+        "SPARKCACHE_MAX_SPAN_TOKENS": "65536",
+        "SPARKCACHE_PUBLICATION_SCHEMA": "tail-cow-v2",
+        "TARGET_MODEL_VARIANT": "nvfp4-spark",
+        "TENSOR_PARALLEL_SIZE": "4",
+        "PIPELINE_PARALLEL_SIZE": "1",
+        "NODE_COUNT": "4",
+        "DRAFT_TENSOR_PARALLEL_SIZE": "4",
+        "SPECULATION_METHOD": "mtp",
+        "NUM_SPECULATIVE_TOKENS": "3",
+        "SPARKCACHE_CACHE_NAMESPACE": "glm53-17bd2580-2883a5df-d0cf7296-tp4-dcp1-jobs-mhc-tail-cow-v2"
+      },
+      "tp_size": 4
+    },
+    "glm53-flash-nvfp4-tp2-mtp3": {
+      "tp_size": 2,
+      "dcp_size": 1,
+      "host_domains": "dual",
+      "sparkcache": false,
+      "profile_sha256": "7ff677949c31a37dc955431702c6d032f5db167e242213b9663ae5830f1cb76a",
+      "transport_profile": "tp2-rocenante-adaptive",
+      "transport_manifest_sha256": "eb03cfde826974811be3bfe5d88f36d9de105b73358f3eaa56b9ed44f19127c4",
+      "transport_files_sha256": "2ba62bfb9cf49236d17a8da41b240c2512ceb780559b454969a4ae18de25290f",
+      "transport_file_count": 10,
+      "installed_profile_path": "/opt/sparkring/profiles/glm53-flash-nvfp4-tp2/profile.json",
+      "environment": {
+        "B12X_POLICY_MODE": "auto",
+        "CUDA_DEVICE_MAX_CONNECTIONS": "32",
+        "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+        "CUTE_DSL_ARCH": "sm_121a",
+        "FLASHINFER_CUDA_ARCH_LIST": "12.1f",
+        "FLASHINFER_DISABLE_VERSION_CHECK": "1",
+        "HF_HUB_OFFLINE": "1",
+        "NCCL_CUMEM_ENABLE": "0",
+        "NCCL_DEBUG": "WARN",
+        "NCCL_IB_DISABLE": "0",
+        "NCCL_IB_GID_INDEX": "3",
+        "NCCL_IB_SUBNET_AWARE_ROUTING": "0",
+        "NCCL_IGNORE_CPU_AFFINITY": "1",
+        "NCCL_NET": "IB",
+        "NCCL_NET_PLUGIN": "none",
+        "NCCL_P2P_LEVEL": "SYS",
+        "NCCL_PROTO": "LL,LL128,Simple",
+        "OMP_NUM_THREADS": "2",
+        "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
+        "TORCH_USE_RTLD_GLOBAL": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
+        "VLLM_B12X_MOE_FP4_FORCE_A16": "0",
+        "VLLM_ENABLE_PCIE_ALLREDUCE": "0",
+        "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+        "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
+        "VLLM_GLM53_KDA_GATE_SIDE_STREAM": "0",
+        "VLLM_GLM53_SPLIT_MAMBA_BLOCK_SIZE": "256",
+        "VLLM_GLM53_SPLIT_TARGET_BLOCK_SIZE": "2048",
+        "VLLM_LM_HEAD_A16": "1",
+        "VLLM_MEMORY_PROFILE_INCLUDE_ATTN": "1",
+        "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS": "1",
+        "VLLM_MTP_NVFP4_LM_HEAD": "1",
+        "VLLM_MXFP8_LM_HEAD": "1",
+        "VLLM_NO_USAGE_STATS": "1",
+        "VLLM_PLUGINS": "b12x_loader",
+        "VLLM_WORKER_MULTIPROC_METHOD": "spawn",
+        "VLLM_DISABLED_KERNELS": "MarlinFP8ScaledMMLinearKernel",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPATH": "",
+        "NCCL_LOCAL_INFERENCE_PATH": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+        "VLLM_NCCL_SO_PATH": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+        "LD_PRELOAD": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+        "NCCL_IB_EXTENDED_IPV4_GIDS": "1",
+        "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+        "NCCL_IB_ROUTE_DIAGNOSTICS": "1"
       }
     }
   },
   "qualification": {
     "measured_image_id": "sha256:e585e8b3ebeeea2852011d319f4a4d781bf2ae33388210b7cd16ff16d3765d9b",
     "rebuilt_image_qualified": false,
-    "sparkcache_enabled_qualified": false
+    "sparkcache_enabled_qualified": false,
+    "profile_gpu_qualified": {
+      "tp4-dcp1-mtp3-prefill": false,
+      "tp4-dcp4-mtp3-prefill": false,
+      "tp4-dcp1-mtp3-sparkcache": false,
+      "glm53-flash-nvfp4-tp2-mtp3": false
+    },
+    "reference_image_scope": "Reference measurements do not qualify the shared source build, TP2 source port, or added restore-admission guards."
   },
   "source_date_epoch": 1788880173,
   "startup": {
-    "revision": "1c87b4e14054bcb4387ee74d4a45d54b9ba286df",
+    "revision": "767522e399ad61d3b3cf02259414b1007becc030",
     "warmup_transform": "glm53-thinking-low/v1",
     "files": {
-      "serve_with_warmup.py": "051a9627a5d5254a8c520b59d703db64ba404329e1393f558836dee03a081ca5",
-      "warmup_dflash.py": "f542742394edb3ea7ba9c467dba0ce54d97e6defa5ab27dde25745a0cb0e40b8",
+      "serve_with_warmup.py": "018f85037d0ed21f92df889fb294a2de50060edf479c8c79afd07e446e33982f",
+      "warmup_dflash.py": "4d98618a5f58d2991eeb67b9b03ecdd720ac6974f644fa8b5030408a3af0792e",
       "startup_admission.py": "1afdc6b2e421465498bde349dff3edb8428ca995a949b2a2f3c6e358a3af7ef4",
-      "scheduler_liveness.py": "6fe1f8e052577c7a71708236bcd452ca3377f99de776e7edef8881573dac5670"
+      "scheduler_liveness.py": "9078d796aeb8ad59e7a78e9739168596abecfb20c043925a0d4e728f3673a53c"
     }
   },
   "nccl_build": {
@@ -185,5 +328,75 @@
     "build_directory": "/work/build",
     "random_seed_policy": "sparkring-nvcc-source-seed/v1",
     "nvcc_wrapper_sha256": "cf70bcf562edeed7564ab341ac57d2a7c1ce0ebf9d4b8130643fc540ec5e5cfa"
+  },
+  "profile_assets": {
+    "runtime/transport_profiles/tp2-rocenante-adaptive/roce/__init__.py": {
+      "sha256": "d1eabaa9395bbdc568d503c79cc1a57ab74626feed0c67851a00be0ba2718a7e",
+      "destination": "/opt/sparkring/transports/tp2-rocenante-adaptive/roce/__init__.py"
+    },
+    "runtime/transport_profiles/tp2-rocenante-adaptive/roce/_allgather_cute.py": {
+      "sha256": "52a1ad8d7f3ab3e7a3379f3e471f274cc71a2513f595a5f939eb38df39447e19",
+      "destination": "/opt/sparkring/transports/tp2-rocenante-adaptive/roce/_allgather_cute.py"
+    },
+    "runtime/transport_profiles/tp2-rocenante-adaptive/roce/_cute_intrinsics.py": {
+      "sha256": "ff0847d986243bf92444cd4c3db9156a6fc10d8c2e1a16d54761375e6aa7a78e",
+      "destination": "/opt/sparkring/transports/tp2-rocenante-adaptive/roce/_cute_intrinsics.py"
+    },
+    "runtime/transport_profiles/tp2-rocenante-adaptive/roce/_oneshot_cute.py": {
+      "sha256": "472f771179dc403932caf05734739a978109bfdea136611cf0ddc84dc0f32a57",
+      "destination": "/opt/sparkring/transports/tp2-rocenante-adaptive/roce/_oneshot_cute.py"
+    },
+    "runtime/transport_profiles/tp2-rocenante-adaptive/roce/_path_config.py": {
+      "sha256": "d0ac6f1de1934e74202118a94b4f911001869e3da514bf599ca5ea696e82f0c9",
+      "destination": "/opt/sparkring/transports/tp2-rocenante-adaptive/roce/_path_config.py"
+    },
+    "runtime/transport_profiles/tp2-rocenante-adaptive/roce/_proxy.py": {
+      "sha256": "bba65c20e1a9bd268c8123ca6c2a80eea69b1d8354e63925d761fe576f94e206",
+      "destination": "/opt/sparkring/transports/tp2-rocenante-adaptive/roce/_proxy.py"
+    },
+    "runtime/transport_profiles/tp2-rocenante-adaptive/roce/_roce_proxy.c": {
+      "sha256": "8f5e2f76cb0ba37fdcdfe7c7f85c028a53a3a0441e1cb1b74c6b455cb0355838",
+      "destination": "/opt/sparkring/transports/tp2-rocenante-adaptive/roce/_roce_proxy.c"
+    },
+    "runtime/transport_profiles/tp2-rocenante-adaptive/roce/api.py": {
+      "sha256": "02becd3757e71c917a71e98ab3f779d52bb18e6801b8efebd792ab186277ea46",
+      "destination": "/opt/sparkring/transports/tp2-rocenante-adaptive/roce/api.py"
+    },
+    "runtime/transport_profiles/tp2-rocenante-adaptive/roce/roce_oneshot.py": {
+      "sha256": "6809aa25314b8f2d74f3a748ec43c098bdf9764cc1fbe2d3451f6b8268bea2c0",
+      "destination": "/opt/sparkring/transports/tp2-rocenante-adaptive/roce/roce_oneshot.py"
+    },
+    "runtime/transport_profiles/tp2-rocenante-adaptive/LICENSE": {
+      "sha256": "1eb85fc97224598dad1852b5d6483bbcf0aa8608790dcc657a5a2a761ae9c8c6",
+      "destination": "/opt/sparkring/transports/tp2-rocenante-adaptive/LICENSE"
+    },
+    "runtime/transport_profiles/tp2-rocenante-adaptive/manifest.json": {
+      "sha256": "eb03cfde826974811be3bfe5d88f36d9de105b73358f3eaa56b9ed44f19127c4",
+      "destination": "/opt/sparkring/transports/tp2-rocenante-adaptive/manifest.json"
+    },
+    "runtime/transport_profiles/sparkring_transport_selector.py": {
+      "sha256": "c820cf956d216f0f1e83632121ff3a04c2d743f6f6e2663f1551b27f1cdda50c",
+      "destination": "/opt/sparkring/transports/sparkring_transport_selector.py"
+    },
+    "runtime/transport_profiles/entrypoint.py": {
+      "sha256": "8cd299b488f824f9a2bcd96b04410888f8967402547623bb6c1277267e9c5ab3",
+      "destination": "/opt/sparkring/transports/entrypoint.py"
+    },
+    "runtime/transport_profiles/sparkring_transport.pth": {
+      "sha256": "c4865202d229c0501368f6f31f810d97dda25e50c0afc12cc4edd4bb8a5695a6",
+      "destination": "/usr/local/lib/python3.12/dist-packages/sparkring_transport.pth"
+    },
+    "runtime/profiles/glm53-flash-nvfp4-tp2/profile.json": {
+      "sha256": "7ff677949c31a37dc955431702c6d032f5db167e242213b9663ae5830f1cb76a",
+      "destination": "/opt/sparkring/profiles/glm53-flash-nvfp4-tp2/profile.json"
+    },
+    "runtime/profiles/glm53-flash-nvfp4-tp2/dependencies.json": {
+      "sha256": "277865118c71f074cd7ac3d759c708c7aa45fe38ab1629ad190fe950e289f2cc",
+      "destination": "/opt/sparkring/profiles/glm53-flash-nvfp4-tp2/dependencies.json"
+    },
+    "runtime/profiles/glm53-flash-nvfp4-tp2/memory-guard.conf": {
+      "sha256": "1e81ce0b0cc4aa0818bef707a45786c5f7d541ffc2e9283bb8192ea6080d439e",
+      "destination": "/opt/sparkring/profiles/glm53-flash-nvfp4-tp2/memory-guard.conf"
+    }
   }
 }

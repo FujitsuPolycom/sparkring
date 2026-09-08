@@ -1,6 +1,5 @@
 """CPU-only contract tests for source preparation and image verification."""
 import copy
-import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -8,7 +7,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from archive_utils import make_archive, read_archive, sha, transform_warmup
+from archive_utils import make_archive, sha, transform_warmup
+from build_snapshot import LIBRARY, verify_library
 from prepare_image import materialize
 from receipt_contract import file_map_hash, validate_receipt
 from verify_image import IMAGE_ROOT, TOOLS, trusted_closure, verify, verify_embedded_closure
@@ -37,6 +37,25 @@ def receipt_fixture():
 
 
 class SourceImageTests(unittest.TestCase):
+    def test_cache_profile_requires_the_connectors_exact_native_libraries(self):
+        lock, document = receipt_fixture()
+        document["profile"] = "tp4-dcp1-mtp3-sparkcache"
+        for name in ("snapshot", "placement"):
+            document["inside_image"][name + "_sha256"] = lock["runtime"][name + "_sha256"]
+        validate_receipt(document, lock)
+        for name in ("snapshot", "placement"):
+            altered = copy.deepcopy(document)
+            altered["inside_image"][name + "_sha256"] = "0" * 64
+            with self.assertRaisesRegex(ValueError, "native library witness"):
+                validate_receipt(altered, lock)
+
+    def test_snapshot_build_rejects_unbound_output_before_installation(self):
+        data = b"\x7fELF\x02\x01" + b"\0" * 12 + (183).to_bytes(2, "little") + b"snapshot"
+        lock = {"runtime": {"snapshot_path": LIBRARY, "snapshot_sha256": sha(data)}}
+        verify_library(data, lock)
+        with self.assertRaisesRegex(RuntimeError, "locked library"):
+            verify_library(data + b"changed", lock)
+
     def test_complete_receipt(self):
         lock, document = receipt_fixture()
         self.assertIs(validate_receipt(document, lock), document)

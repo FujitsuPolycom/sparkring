@@ -13,7 +13,7 @@ from receipt_contract import validate_receipt
 HERE = Path(__file__).resolve().parent
 IMAGE_ROOT = "/opt/sparkcache-jj-runtime"
 TOOLS = {"archive_utils.py", "install_sources.py", "verify_sources.py",
-         "build_snapshot.py", "build_nccl.py", "receipt_contract.py", "nvcc_deterministic.py"}
+         "build_snapshot.py", "build_nccl.py", "receipt_contract.py", "nvcc_deterministic.py", "profile_assets.py"}
 
 
 def trusted_closure(context, lock_bytes):

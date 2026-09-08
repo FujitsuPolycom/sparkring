@@ -8,6 +8,7 @@ import tempfile
 
 from archive_utils import make_archive, read_archive, sha
 from prepare_context import prepare
+from profile_assets import prepare_assets
 
 HERE = Path(__file__).resolve().parent
 
@@ -83,6 +84,11 @@ def prepare_locked(output, source_cache, lock_path=HERE / "glm53-tp4-lock.json",
                 "files": {name: sha(value[0]) for name, value in files.items()},
             },
         }
+        profile_data, profile_record = prepare_assets(HERE.parents[2], lock, lock["source_date_epoch"])
+        profile_archive = directory / "profile-assets.tar"
+        profile_archive.write_bytes(profile_data)
+        spec["profile_assets_archive"] = str(profile_archive)
+        spec["profile_assets"] = profile_record
         return prepare(spec, output)
 
 

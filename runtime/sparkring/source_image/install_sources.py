@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 from archive_utils import STARTUP_PATHS, WARMUP_SOURCE, extract_checked, inventory, sha, under, transform_warmup
+from profile_assets import install_assets, verify_assets
 
 ROOT = Path(__file__).resolve().parent
 
@@ -169,6 +170,15 @@ def finalize(root=ROOT, rootfs=Path("/")):
         if observed["entry_points"] != expected:
             raise RuntimeError(f"Installed entry points differ: {name}")
     state["installed_distributions"] = distributions
+    if manifest.get("profile_assets") is not None:
+        lock_bytes = (root / "source-lock.json").read_bytes()
+        if sha(lock_bytes) != manifest["source_lock_sha256"]:
+            raise ValueError("Profile source lock changed during installation")
+        lock = json.loads(lock_bytes)
+        state["profile_assets"] = install_assets((root / "profile-assets.tar").read_bytes(),
+                                                 manifest["profile_assets"], lock, rootfs)
+        state["transport_profiles"] = verify_assets(lock, rootfs)
+        state["protected_files"].update(state["profile_assets"])
     if manifest.get("native_snapshot") is not None:
         from build_snapshot import LIBRARY, RECIPE
         receipt_bytes = (root / "snapshot-build-receipt.json").read_bytes()
@@ -201,6 +211,7 @@ def finalize(root=ROOT, rootfs=Path("/")):
     paths = {p for directory in directories for p in [directory, *directory.rglob("*")]}
     paths.update(host_path(rootfs, p) for p in generated)
     paths.update(host_path(rootfs, p) for p in state.get("startup_files", {}))
+    paths.update(host_path(rootfs, p) for p in state.get("profile_assets", {}))
     if startup is not None:
         paths.add(host_path(rootfs, "/opt/sparkring/bin"))
     paths.update((site, root.parent, host_path(rootfs, "/usr/local/bin")))

@@ -26,6 +26,20 @@ def resolve_temperature(value: float | str | None = None) -> float:
     return temperature
 
 
+def make_deadline(timeout_seconds: float) -> float:
+    """Use one finite budget for a complete warmup operation."""
+    if isinstance(timeout_seconds, bool) or not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+        raise ValueError("Warmup timeout must be finite and positive")
+    return time.monotonic() + timeout_seconds
+
+
+def remaining_seconds(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise RuntimeError("Warmup deadline expired before readiness")
+    return remaining
+
+
 def wait_for_api(
     endpoint: str,
     timeout_seconds: float,
@@ -38,20 +52,21 @@ def wait_for_api(
     completes. The same credential the warmup requests use is sent here.
     """
 
-    deadline = time.monotonic() + timeout_seconds
+    deadline = make_deadline(timeout_seconds)
     url = endpoint.rstrip("/") + "/v1/models"
     headers = {"Authorization": f"Bearer {credential}"} if credential else {}
     while True:
         try:
             request = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(request, timeout=3) as response:
+            with urllib.request.urlopen(request, timeout=min(3, remaining_seconds(deadline))) as response:
                 if response.status == 200:
+                    remaining_seconds(deadline)
                     return
         except (OSError, urllib.error.URLError):
             pass
         if time.monotonic() >= deadline:
             raise RuntimeError("vLLM API did not become ready for DFlash warmup")
-        time.sleep(1)
+        time.sleep(min(1, remaining_seconds(deadline)))
 
 
 def send_warmup_request(
@@ -71,8 +86,9 @@ def send_warmup_request(
             {
                 "role": "user",
                 "content": (
-                    "warmup " * prompt_words
-                    + f"\nDFlash warmup {nonce}. Reply briefly."
+                    f"DFlash warmup {nonce}. "
+                    + "warmup " * prompt_words
+                    + "\nReply briefly."
                 ),
             }
         ],
@@ -109,19 +125,21 @@ def run_warmup(
     temperature: float | None = None,
 ) -> tuple[dict[str, float | int], ...]:
     temperature = resolve_temperature(temperature)
+    deadline = make_deadline(timeout_seconds)
+    run_nonce = time.monotonic_ns()
     results: list[dict[str, float | int]] = []
 
     def run_batch(concurrency: int, prompt_words: int) -> None:
         barrier = threading.Barrier(concurrency)
 
         def run(index: int) -> None:
-            barrier.wait(timeout=timeout_seconds)
+            barrier.wait(timeout=remaining_seconds(deadline))
             send_warmup_request(
                 endpoint,
                 model,
-                f"c{concurrency}-{index}",
+                f"c{concurrency}-{index}-w{prompt_words}-{run_nonce}",
                 max_tokens,
-                timeout_seconds,
+                remaining_seconds(deadline),
                 prompt_words,
                 credential,
                 temperature,
@@ -132,6 +150,7 @@ def run_warmup(
             max_workers=concurrency
         ) as executor:
             tuple(executor.map(run, range(concurrency)))
+        remaining_seconds(deadline)
         results.append(
             {
                 "concurrency": concurrency,
@@ -183,17 +202,19 @@ def main() -> int:
         or args.max_tokens <= 0
     ):
         raise SystemExit("warmup concurrencies and max tokens must be positive")
-    wait_for_api(args.endpoint, args.timeout_seconds, args.api_key)
+    deadline = make_deadline(args.timeout_seconds)
+    wait_for_api(args.endpoint, remaining_seconds(deadline), args.api_key)
     result = run_warmup(
         args.endpoint,
         args.model,
         concurrencies,
         args.max_tokens,
-        args.timeout_seconds,
+        remaining_seconds(deadline),
         shape_words,
         args.api_key,
         temperature,
     )
+    remaining_seconds(deadline)
     print(json.dumps({"dflash_warmup": result}, separators=(",", ":")))
     return 0
 

@@ -10,6 +10,14 @@ LIBRARY = "/opt/sparkcache-native/libspark_cache_snapshot.so"
 RECIPE = {"cuda_architectures": "121", "compiler": "/opt/cuda-13.3/bin/nvcc", "build": "direct-cxx-cuda/v1"}
 
 
+def verify_library(data, lock):
+    if data[:6] != b"\x7fELF\x02\x01" or int.from_bytes(data[18:20], "little") != 183:
+        raise RuntimeError("Snapshot output is not an ARM64 ELF library")
+    if (lock["runtime"]["snapshot_path"] != LIBRARY
+            or sha(data) != lock["runtime"]["snapshot_sha256"]):
+        raise RuntimeError("Snapshot output differs from the serving connector's locked library")
+
+
 def build(root):
     manifest_bytes = (root / "manifest.json").read_bytes()
     manifest = json.loads(manifest_bytes)
@@ -54,8 +62,10 @@ def build(root):
     built = build_dir / "libspark_cache_snapshot.so"
     # ELF64 little-endian AArch64; inspection does not load the shared object.
     data = built.read_bytes()
-    if data[:6] != b"\x7fELF\x02\x01" or int.from_bytes(data[18:20], "little") != 183:
-        raise RuntimeError("Snapshot output is not an ARM64 ELF library")
+    lock_bytes = (root / "source-lock.json").read_bytes()
+    if sha(lock_bytes) != manifest["source_lock_sha256"]:
+        raise RuntimeError("Snapshot source lock changed during compilation")
+    verify_library(data, json.loads(lock_bytes))
     destination = Path(LIBRARY)
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():

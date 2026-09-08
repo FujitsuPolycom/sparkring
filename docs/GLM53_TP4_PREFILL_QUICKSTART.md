@@ -27,6 +27,13 @@ The maximum context is a request-length limit. It is distinct from the total
 KV capacity reported at startup and does not establish a tested concurrency
 at that length.
 
+For asynchronous persistent caching, select `tp4-dcp1-mtp3-sparkcache` in both
+the source-image verifier and private site. That profile retains the same
+prefill and network settings and enables bounded connector-job capture and
+verified restore. Its source configuration is implemented; the shared image
+still requires the cache checks described in the
+[source recipe](../runtime/sparkring/source_image/README.md).
+
 ## Prepare the hosts and source
 
 Complete the [managed mesh host setup](GLM53_SPARK_MESH_HOST_SETUP.md) and read

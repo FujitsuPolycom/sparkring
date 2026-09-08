@@ -36,7 +36,7 @@ conversation or development history.
 
 ## Supported repository surface
 
-SparkRing supports four model families across ten deployment profiles:
+SparkRing maintains four model families with the following deployment profiles:
 
 - GLM-5.2 EXL3 3.5-bpw at four-Spark TP4/DCP4, as a base profile and a
   SparkCache composition, using the R7 runtime and site/candidate contracts.
@@ -77,6 +77,13 @@ references, CI jobs, or contributor commands for removed native cache,
 plugin, legacy runtime-builder, or deleted configuration-example surfaces.
 
 ## Canonical inputs
+
+The shared GLM source build is defined by
+`runtime/sparkring/source_image/glm53-tp4-lock.json`. It adds explicit TP4/DCP1,
+TP4/DCP4, TP4/DCP1 SparkCache, and original-NVFP4 TP2/DCP1 profiles. Its source
+and CPU checks do not qualify the assembled image or extend GLM results to
+other model families. TP2 communication assets live separately under
+`runtime/transport_profiles/`; preserve their byte-bound proxy/kernel pairing.
 
 When prose and executable inputs disagree, report the drift rather than
 choosing one.

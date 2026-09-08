@@ -7,7 +7,8 @@ import sys
 
 from archive_utils import STARTUP_PATHS, inventory, sha
 from install_sources import ROOT, distribution_records, host_path, read_manifest, verify_map
-from receipt_contract import file_map_hash, validate_receipt
+from receipt_contract import file_map_hash
+from profile_assets import destinations, verify_assets
 
 
 def verify(root=ROOT, rootfs=Path("/")):
@@ -67,12 +68,21 @@ def verify(root=ROOT, rootfs=Path("/")):
     if sha(lock_bytes) != manifest["source_lock_sha256"]:
         raise RuntimeError("Source lock differs from prepared context")
     lock = json.loads(lock_bytes)
+    if manifest.get("runtime_profiles") != lock["profiles"]:
+        raise RuntimeError("Runtime profile declarations differ from source lock")
+    if state.get("profile_assets", {}) != destinations(lock):
+        raise RuntimeError("Installed profile asset inventory differs from source lock")
+    result["transport_profiles"] = verify_assets(lock, rootfs)
+    if result["transport_profiles"] != state.get("transport_profiles", {}):
+        raise RuntimeError("Installed transport witness differs from its build record")
     identities = {
         "bundle_manifest_sha256": "/opt/spark-sircl/sparkring-overlay-manifest.json",
         "transport_sha256": "/opt/spark-sircl/libspark_transport_capi.so",
         "marker_source_sha256": "/opt/sparkring/src/mtp3-mesh/mlx5_rdma_tx_rewrite_probe.c",
         "marker_binary_sha256": "/opt/sparkring/bin/mlx5-rdma-tx-marker",
         "nccl_sha256": lock["runtime"]["nccl_path"],
+        "snapshot_sha256": lock["runtime"]["snapshot_path"],
+        "placement_sha256": lock["runtime"]["placement_path"],
     }
     for field, path in identities.items():
         digest = sha(host_path(rootfs, path).read_bytes())
@@ -110,6 +120,15 @@ def check_import_paths(manifest):
             raise RuntimeError(f"Runtime import path shadows verified package: {name}")
 
 
+def serving_argv(manifest, profile, arguments, executable=sys.executable):
+    """Select an attested profile entrypoint after common source verification."""
+    if profile and profile not in manifest.get("runtime_profiles", {}):
+        raise ValueError("Serving profile is absent from the verified image")
+    if profile == "glm53-flash-nvfp4-tp2-mtp3":
+        return [executable, "/opt/sparkring/transports/entrypoint.py", "serve", *arguments]
+    return manifest["warmup_argv"] + arguments
+
+
 if __name__ == "__main__":
     if not sys.flags.no_site:
         raise RuntimeError("Run source verification with python3 -S -B")
@@ -117,5 +136,6 @@ if __name__ == "__main__":
     if "--serve" in sys.argv:
         manifest = read_manifest(ROOT)
         check_import_paths(manifest)
-        argv = manifest["warmup_argv"] + sys.argv[sys.argv.index("--serve") + 1:]
+        argv = serving_argv(manifest, os.environ.get("SOURCE_IMAGE_PROFILE", ""),
+                            sys.argv[sys.argv.index("--serve") + 1:])
         os.execv(argv[0], argv)

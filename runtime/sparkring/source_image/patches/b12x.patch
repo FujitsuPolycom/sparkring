@@ -1,5 +1,5 @@
 diff --git a/b12x/_lib/quant/mxfp8_rows.py b/b12x/_lib/quant/mxfp8_rows.py
-index 9461679d..b901a222 100644
+index 9461679dc610c79e5acfb965cd06a1c2d9e2b2d9..b901a222b084296979c5b9a25291deadb96e9d05 100644
 --- a/b12x/_lib/quant/mxfp8_rows.py
 +++ b/b12x/_lib/quant/mxfp8_rows.py
 @@ -419,20 +419,16 @@ def quantize_mxfp8_rows_cute(
@@ -27,7 +27,7 @@ index 9461679d..b901a222 100644
      )(
          source,
 diff --git a/b12x/attention/_shared/mla/kernel.py b/b12x/attention/_shared/mla/kernel.py
-index d3538ec8..bc60d92b 100644
+index d3538ec8efe7db7494499a412d1ffa40d0412225..bc60d92b4054af0cf97da7ceb3db45a3361d19b1 100644
 --- a/b12x/attention/_shared/mla/kernel.py
 +++ b/b12x/attention/_shared/mla/kernel.py
 @@ -17,7 +17,7 @@ import cutlass
@@ -79,7 +79,7 @@ index d3538ec8..bc60d92b 100644
  
                  # P10f: GLM keeps RAW e4m3 K/V (no S0b dequant+requant -- that
 diff --git a/b12x/attention/_shared/mla/prefill.py b/b12x/attention/_shared/mla/prefill.py
-index 6ca56ee8..b071f4fe 100644
+index 6ca56ee809bb8728f1134a91eb6d2a9b5eb67957..b071f4fe294134b86b9d36d5fa51706f007c3ba2 100644
 --- a/b12x/attention/_shared/mla/prefill.py
 +++ b/b12x/attention/_shared/mla/prefill.py
 @@ -23,7 +23,6 @@ DSV4 + GLM DECODE kernels are untouched and stay byte-identical.
@@ -100,7 +100,7 @@ index 6ca56ee8..b071f4fe 100644
              if extra_kv_cache is not None:
                  kwargs.update(
 diff --git a/b12x/attention/_shared/mla/prefill_mg.py b/b12x/attention/_shared/mla/prefill_mg.py
-index 041f0020..4e687542 100644
+index 041f0020560f5cedd883255a43cd23c94f1a034c..4e687542642e1e411850fb37ce9d56013d04fb99 100644
 --- a/b12x/attention/_shared/mla/prefill_mg.py
 +++ b/b12x/attention/_shared/mla/prefill_mg.py
 @@ -54,7 +54,6 @@ from b12x._lib.intrinsics import (
@@ -151,7 +151,7 @@ index 041f0020..4e687542 100644
                          v_chunk=t.quant_tile,
                          hpb=t.hpb,
 diff --git a/b12x/attention/dsa_indexer/fused_indexer.py b/b12x/attention/dsa_indexer/fused_indexer.py
-index e8ce9ab5..efbb5c9d 100644
+index e8ce9ab51cc8908804543d2bea3b1814576fc14d..efbb5c9d5e3db51602c817b6f52a2e8ee23b44eb 100644
 --- a/b12x/attention/dsa_indexer/fused_indexer.py
 +++ b/b12x/attention/dsa_indexer/fused_indexer.py
 @@ -58,7 +58,6 @@ from b12x.attention.dsa_indexer.persistent_topk import (
@@ -163,7 +163,7 @@ index e8ce9ab5..efbb5c9d 100644
      _THREADS_PER_CTA as _RADIX_THREADS,
      _convert_to_uint8,
 diff --git a/b12x/attention/dsa_indexer/paged.py b/b12x/attention/dsa_indexer/paged.py
-index 02ea6742..3cf67bfa 100644
+index 02ea6742456b3b03774c39efd394e1cc64b62b91..3cf67bfac2b92ef65b784f315075ef751b8e2022 100644
 --- a/b12x/attention/dsa_indexer/paged.py
 +++ b/b12x/attention/dsa_indexer/paged.py
 @@ -908,6 +908,7 @@ def index_topk_fp8(
@@ -191,7 +191,7 @@ index 02ea6742..3cf67bfa 100644
  
      return final_raw_indices
 diff --git a/b12x/attention/dsa_indexer/tiled_topk.py b/b12x/attention/dsa_indexer/tiled_topk.py
-index d6c041fa..74a046f6 100644
+index d6c041fa6fc8b7a9d2924446a0fe1760a266a55e..74a046f6fdbf55cf5ad1c948495d28ba958dfb5d 100644
 --- a/b12x/attention/dsa_indexer/tiled_topk.py
 +++ b/b12x/attention/dsa_indexer/tiled_topk.py
 @@ -47,17 +47,25 @@ _RADIX = 256
@@ -617,7 +617,7 @@ index d6c041fa..74a046f6 100644
      )
      compile_spec = KernelCompileSpec.from_key(
 diff --git a/b12x/attention/paged/_selected_forward.py b/b12x/attention/paged/_selected_forward.py
-index d177b3b5..6926f677 100644
+index d177b3b547296ce01a2cf74ec7ec3d2011f993de..6926f67785868470a95728c4e0f6f4646ebaaa05 100644
 --- a/b12x/attention/paged/_selected_forward.py
 +++ b/b12x/attention/paged/_selected_forward.py
 @@ -61,8 +61,8 @@ _LOG2_E = 1.4426950408889634
@@ -1032,7 +1032,7 @@ index d177b3b5..6926f677 100644
                  ),
              )
 diff --git a/b12x/attention/paged/forward_extend_generic.py b/b12x/attention/paged/forward_extend_generic.py
-index 0232830c..ad79373c 100644
+index 0232830c05de0ac85a082edb5d2004493c5412ca..ad79373cf9f3126266f9be19a680717d85556cf6 100644
 --- a/b12x/attention/paged/forward_extend_generic.py
 +++ b/b12x/attention/paged/forward_extend_generic.py
 @@ -63,7 +63,6 @@ from b12x._lib.intrinsics import (
@@ -1068,7 +1068,7 @@ index 0232830c..ad79373c 100644
  
      def __init__(
 diff --git a/b12x/attention/qsa/__init__.py b/b12x/attention/qsa/__init__.py
-index 2819e121..c0f53789 100644
+index 2819e12169ceca25e09fb607bf01f6eb5b2bcf9f..c0f53789ba8a935f9f07f3394247d9b2c1e66583 100644
 --- a/b12x/attention/qsa/__init__.py
 +++ b/b12x/attention/qsa/__init__.py
 @@ -4,43 +4,16 @@ QSA keeps exact, original-token BF16 or globally scaled FP8 E4M3 GQA K/V and
@@ -1130,7 +1130,7 @@ index 2819e121..c0f53789 100644
  
  from __future__ import annotations
 diff --git a/b12x/attention/qsa/_contract.py b/b12x/attention/qsa/_contract.py
-index 57ff8f97..f607316e 100644
+index 57ff8f97ca4361fd3f03deccb0b4aa17c7187870..f607316eeba6ba8b6c777bfea2446ecf7e601ce1 100644
 --- a/b12x/attention/qsa/_contract.py
 +++ b/b12x/attention/qsa/_contract.py
 @@ -272,7 +272,7 @@ class Caps:
@@ -1812,7 +1812,7 @@ index 57ff8f97..f607316e 100644
  
  
 diff --git a/b12x/attention/qsa/_kernels.py b/b12x/attention/qsa/_kernels.py
-index 5e68c9a8..c8ca44b2 100644
+index 5e68c9a88767ad6353a653064ef4cf8b3937c309..c8ca44b22757f9d87320d4fb70a1db371ed6fc29 100644
 --- a/b12x/attention/qsa/_kernels.py
 +++ b/b12x/attention/qsa/_kernels.py
 @@ -221,9 +221,11 @@ def _materialize_packed_row_errors_kernel(
@@ -1966,7 +1966,7 @@ index 5e68c9a8..c8ca44b2 100644
          RING_CAPACITY=int(caps.raw_ring_capacity),
 diff --git a/b12x/attention/qsa/_score_cute.py b/b12x/attention/qsa/_score_cute.py
 deleted file mode 100644
-index 10170c95..00000000
+index 10170c95b6b1fd7683e3681a4af3016cf3c0caec..0000000000000000000000000000000000000000
 --- a/b12x/attention/qsa/_score_cute.py
 +++ /dev/null
 @@ -1,409 +0,0 @@
@@ -2380,7 +2380,7 @@ index 10170c95..00000000
 -            current_cuda_stream(),
 -        )
 diff --git a/b12x/attention/qsa/_sparse_gqa_cute_config.py b/b12x/attention/qsa/_sparse_gqa_cute_config.py
-index 62d830a4..dcad3518 100644
+index 62d830a41ac6af726feba4bfc7e1c182552d1d48..dcad3518225002ea2a64600b5ee37fd550311f48 100644
 --- a/b12x/attention/qsa/_sparse_gqa_cute_config.py
 +++ b/b12x/attention/qsa/_sparse_gqa_cute_config.py
 @@ -48,7 +48,7 @@ def is_qwen_geometry(
@@ -2393,7 +2393,7 @@ index 62d830a4..dcad3518 100644
          and splits > 0
          and splits <= NUM_SPLITS
 diff --git a/b12x/comm/pcie/_oneshot_cute.py b/b12x/comm/pcie/_oneshot_cute.py
-index d0b5ca09..9ede5505 100644
+index d0b5ca091d1ef824df4ccf207fa6b68b144853c4..9ede5505d1bba09ee720919990fe75ba30ec3971 100644
 --- a/b12x/comm/pcie/_oneshot_cute.py
 +++ b/b12x/comm/pcie/_oneshot_cute.py
 @@ -10,6 +10,7 @@ and fused row barrier retain the CUDA implementation's ordering.
@@ -2423,7 +2423,7 @@ index d0b5ca09..9ede5505 100644
  
  class _FusedOneshotLaunch(_PackedMath):
 diff --git a/b12x/gemm/_shared/block_fp8.py b/b12x/gemm/_shared/block_fp8.py
-index aef30e5d..6d6bd6ba 100644
+index aef30e5dd3e9e18ceb24d86c11300811d129c102..6d6bd6ba295defbd5e896e0b226e4325de570b53 100644
 --- a/b12x/gemm/_shared/block_fp8.py
 +++ b/b12x/gemm/_shared/block_fp8.py
 @@ -312,8 +312,10 @@ def _block_fp8_linear_x_q_from_scratch(
@@ -2440,7 +2440,7 @@ index aef30e5d..6d6bd6ba 100644
          3,
          4,
 diff --git a/b12x/gemm/blockscaled/_linear.py b/b12x/gemm/blockscaled/_linear.py
-index b4bad947..bde31c58 100644
+index b4bad947080dd30d98c3348b618e003e43ab7b89..bde31c588a329fcf3e196b53de230adcc8f7e627 100644
 --- a/b12x/gemm/blockscaled/_linear.py
 +++ b/b12x/gemm/blockscaled/_linear.py
 @@ -551,10 +551,15 @@ def _packed_mxfp8_op(
@@ -2461,31 +2461,83 @@ index b4bad947..bde31c58 100644
      return dense_gemm(
          (x_q.values.reshape(tokens, padded_in_features, 1), x_q.scale_mma),
          (
+diff --git a/b12x/integration/vllm/loader.py b/b12x/integration/vllm/loader.py
+index 72e80ec2810fe79498b6511b22aa61157ad7d7c7..21caba1e6487cdd9ebf4e9d0a7208cd84945ec67 100644
+--- a/b12x/integration/vllm/loader.py
++++ b/b12x/integration/vllm/loader.py
+@@ -21,11 +21,14 @@ logger = init_logger("vllm.model_executor.model_loader.b12x")
+ 
+ 
+ class B12xModelLoader(DefaultModelLoader):
+-    """Route checkpoint metadata, then O_DIRECT-read into final pinned storage."""
++    """Route checkpoint metadata, then O_DIRECT-read into final shared storage."""
+ 
+     def __init__(self, load_config):
+         options = dict(load_config.model_loader_extra_config)
+         self.io_threads = options.pop("io_threads", 8)
++        self.allocation = options.pop("allocation", "pinned_wc")
++        if self.allocation not in ("pinned_wc", "managed"):
++            raise ValueError("b12x loader allocation must be 'pinned_wc' or 'managed'")
+         if options.get("enable_multithread_load"):
+             raise ValueError("b12x currently uses synchronous checkpoint routing")
+         if load_config.safetensors_load_strategy not in (None, "lazy"):
+@@ -53,7 +56,7 @@ class B12xModelLoader(DefaultModelLoader):
+             raise ValueError("the initial b12x loader requires a CUDA device")
+         index = torch.cuda.current_device() if device.index is None else device.index
+         with (
+-            weight_pool(allocation="pinned_wc", device=index) as allocator,
++            weight_pool(allocation=self.allocation, device=index) as allocator,
+             DirectWeightSession(
+                 index, io_threads=self.io_threads, allocation_scope=allocator
+             ) as session,
+@@ -82,7 +85,7 @@ class B12xModelLoader(DefaultModelLoader):
+         parameter_bytes = sum(p.nbytes for p in model.parameters())
+         shared_bytes = sum(p.nbytes for p in model.parameters() if owns_tensor(p))
+         model._b12x_loader_storage = {
+-            "allocation": "pinned_wc",
++            "allocation": self.allocation,
+             "parameter_bytes": parameter_bytes,
+             "shared_parameter_bytes": shared_bytes,
+             "shared_runtime_buffers": shared_runtime_buffers,
+@@ -92,10 +95,11 @@ class B12xModelLoader(DefaultModelLoader):
+         logger.info("b12x O_DIRECT I/O counters: %s", io_stats)
+         logger.info("b12x allocation audit: no shared non-persistent runtime buffers")
+         logger.info(
+-            "b12x final parameters: %.3f / %.3f GiB in write-combined shared storage; "
++            "b12x final parameters: %.3f / %.3f GiB in %s shared storage; "
+             "pool backing %.3f GiB",
+             shared_bytes / 2**30,
+             parameter_bytes / 2**30,
++            self.allocation,
+             storage_stats()["live_bytes"] / 2**30,
+         )
+         return model
 diff --git a/b12x/loader/_checkpoint.py b/b12x/loader/_checkpoint.py
-index 950d3872..a5d07805 100644
+index 950d38720aa6081adf2e04bf5c5823e1f8239bf0..d5fedf9159838e832268c95589d8ae7929109fd0 100644
 --- a/b12x/loader/_checkpoint.py
 +++ b/b12x/loader/_checkpoint.py
-@@ -338,7 +338,7 @@ class DirectWeightSession:
+@@ -336,9 +336,10 @@ class DirectWeightSession:
+                 "checkpoint routing performed an unsupported data transformation"
+             )
          _, entry = item
++        byte_view = {source.dtype, entry.dtype} <= {torch.int8, torch.uint8}
          if (
              source._version != 0
 -            or source.element_size() != entry.dtype.itemsize
-+            or source.dtype != entry.dtype
++            or (source.dtype != entry.dtype and not byte_view)
              or source.is_neg()
              or source.is_conj()
              or destination.is_neg()
-@@ -374,8 +374,7 @@ class DirectWeightSession:
+@@ -374,6 +375,7 @@ class DirectWeightSession:
              expand = (
                  source.dtype == torch.bfloat16 and destination.dtype == torch.float32
              )
--            byte_cast = {source.dtype, destination.dtype} <= {torch.int8, torch.uint8}
--            if destination.dtype == source.dtype or expand or byte_cast:
-+            if destination.dtype == source.dtype or expand:
++            # Packed quantized bytes may be signed or unsigned without conversion.
+             byte_cast = {source.dtype, destination.dtype} <= {torch.int8, torch.uint8}
+             if destination.dtype == source.dtype or expand or byte_cast:
                  elements = 1
-                 axis = source.ndim - 1
-                 while axis >= 0:
 diff --git a/b12x/moe/_shared/kernels/dynamic.py b/b12x/moe/_shared/kernels/dynamic.py
-index 32b7b145..8bdc8699 100644
+index 32b7b1451c108be83b173eff676a080dc77cd1ed..8bdc8699b4428efb6942ddfa2dbe888822b3aed2 100644
 --- a/b12x/moe/_shared/kernels/dynamic.py
 +++ b/b12x/moe/_shared/kernels/dynamic.py
 @@ -161,6 +161,7 @@ _WORK_SOURCES = {
@@ -3499,7 +3551,7 @@ index 32b7b145..8bdc8699 100644
                  if self.is_gated:
 diff --git a/b12x/moe/_shared/kernels/m8_route_pack.py b/b12x/moe/_shared/kernels/m8_route_pack.py
 new file mode 100644
-index 00000000..fa8178d3
+index 0000000000000000000000000000000000000000..fa8178d3f8a12abd788a46cd7ddc8ef6416ada20
 --- /dev/null
 +++ b/b12x/moe/_shared/kernels/m8_route_pack.py
 @@ -0,0 +1,250 @@
@@ -3754,7 +3806,7 @@ index 00000000..fa8178d3
 +                scale_storage[scale_offset] = Uint8(scale_byte)
 +                sf_idx += Int32(self.threads_per_cta)
 diff --git a/b12x/moe/_shared/kernels/silu.py b/b12x/moe/_shared/kernels/silu.py
-index da9b6eee..16b880d7 100644
+index da9b6eeed977c8280f990fe84fdc45376243f229..16b880d70c796ebd01e07fa8e7ccea764dfa51dc 100644
 --- a/b12x/moe/_shared/kernels/silu.py
 +++ b/b12x/moe/_shared/kernels/silu.py
 @@ -95,6 +95,8 @@ class MoEDynamicKernelSilu(MoEDynamicKernelBackend):
@@ -3794,7 +3846,7 @@ index da9b6eee..16b880d7 100644
  
  
 diff --git a/b12x/moe/fused_moe/_impl.py b/b12x/moe/fused_moe/_impl.py
-index 2ebbd5ae..4e939358 100644
+index 2ebbd5aef5f061412e2740f6bf15b098577141f5..4e939358f545c9ed8318bc8b0d3bd463fbbae487 100644
 --- a/b12x/moe/fused_moe/_impl.py
 +++ b/b12x/moe/fused_moe/_impl.py
 @@ -68,6 +68,7 @@ from b12x.moe._shared.kernels.micro import (
@@ -5003,7 +5055,7 @@ index 2ebbd5ae..4e939358 100644
                  (quant_mode == "nvfp4" and a1_gscale.numel() == 1)
                  or (
 diff --git a/b12x/norm/hyperconnection/_cute.py b/b12x/norm/hyperconnection/_cute.py
-index 841ed0bc..b85f8c06 100644
+index 841ed0bc99651601ca9458f635eb0180aff5e408..b85f8c065b9139c3d81a765971c7d8dd6b32e8ea 100644
 --- a/b12x/norm/hyperconnection/_cute.py
 +++ b/b12x/norm/hyperconnection/_cute.py
 @@ -127,9 +127,8 @@ class _GroupedRmsNorm:
@@ -5238,7 +5290,7 @@ index 841ed0bc..b85f8c06 100644
  
  
 diff --git a/b12x/norm/hyperconnection/_cute_config.py b/b12x/norm/hyperconnection/_cute_config.py
-index e56c48c7..e02ceaae 100644
+index e56c48c718796f5ab0374199de5874f259ee1515..e02ceaaee6d0a206c945379fe6c72f8a298c585d 100644
 --- a/b12x/norm/hyperconnection/_cute_config.py
 +++ b/b12x/norm/hyperconnection/_cute_config.py
 @@ -72,13 +72,7 @@ def require_cute_combine_norm(
@@ -5257,7 +5309,7 @@ index e56c48c7..e02ceaae 100644
                  "Qwen3.8 HyperConnection combine+norm tensors must be contiguous"
              )
 diff --git a/b12x/norm/hyperconnection/_impl.py b/b12x/norm/hyperconnection/_impl.py
-index 4820e24b..89d7c9a6 100644
+index 4820e24b5cae862cb58f0a7b8cfa09ddab1a111e..89d7c9a6c1271cc9d8bf70225049efd48fa61a98 100644
 --- a/b12x/norm/hyperconnection/_impl.py
 +++ b/b12x/norm/hyperconnection/_impl.py
 @@ -231,16 +231,7 @@ def _byte_interval(tensor: torch.Tensor) -> tuple[int, int]:
@@ -5315,7 +5367,7 @@ index 4820e24b..89d7c9a6 100644
  
  
 diff --git a/b12x/norm/hyperconnection/_kernels.py b/b12x/norm/hyperconnection/_kernels.py
-index 61efe893..ceece789 100644
+index 61efe893882eee9050ac0f1b16c633805a366fe5..ceece78963d5db1c4388d7b346b189cfed0c09fd 100644
 --- a/b12x/norm/hyperconnection/_kernels.py
 +++ b/b12x/norm/hyperconnection/_kernels.py
 @@ -13,16 +13,7 @@ def _byte_interval(tensor: torch.Tensor) -> tuple[int, int]:
@@ -5369,7 +5421,7 @@ index 61efe893..ceece789 100644
      return combined
  
 diff --git a/b12x/norm/mhc/_impl.py b/b12x/norm/mhc/_impl.py
-index 55beb7be..a80078ad 100644
+index 55beb7be0d56a0a2fcc01d5417b61ed92e9811a8..a80078adfde3962fa47d2bd23fca1c28d2959e5d 100644
 --- a/b12x/norm/mhc/_impl.py
 +++ b/b12x/norm/mhc/_impl.py
 @@ -1282,6 +1282,11 @@ def _b12x_mhc_post_pre_impl(
@@ -5385,7 +5437,7 @@ index 55beb7be..a80078ad 100644
          run_mhc_finalize_gram(
              residual=residual_out,
 diff --git a/b12x/norm/mhc/_kernels.py b/b12x/norm/mhc/_kernels.py
-index 1db00e05..5baa6093 100644
+index 1db00e056637d97f079878d0e4b1d22a7f150730..5baa6093ca8252eeeffb7502b3c15868347292ba 100644
 --- a/b12x/norm/mhc/_kernels.py
 +++ b/b12x/norm/mhc/_kernels.py
 @@ -521,6 +521,7 @@ def _selected_post_pre_partials_per_cta(
@@ -5522,7 +5574,7 @@ index 1db00e05..5baa6093 100644
          projection_tile_n=geometry[1],
          projection_tile_k=geometry[2],
 diff --git a/b12x/norm/mhc/_policy.py b/b12x/norm/mhc/_policy.py
-index fb400791..40dc4416 100644
+index fb400791958f431d306ced8bfccfaccee34ba02e..40dc4416412b8fcbbd46ab4b19311ef2d20ce78a 100644
 --- a/b12x/norm/mhc/_policy.py
 +++ b/b12x/norm/mhc/_policy.py
 @@ -13,6 +13,9 @@ from b12x.policy import (
@@ -16495,7 +16547,7 @@ znLm*~oIlw=T3$>Vi`zY_^m%@8XLW1es}>uG3o4!7$WYuj-*(8bIzDDCHQzir9yp;O
 M>TU{$`Dg+D2aq%I9RL6T
 
 diff --git a/b12x/policy/generation/providers/moe.py b/b12x/policy/generation/providers/moe.py
-index c40190b6..59962022 100644
+index c40190b6c15bec6c2b9b1a522fca5fca127b4180..59962022732ec2c6e9cc24865538f7a18d253311 100644
 --- a/b12x/policy/generation/providers/moe.py
 +++ b/b12x/policy/generation/providers/moe.py
 @@ -52,7 +52,7 @@ _TRITON_ROUTE_MAX_ROWS = 256
@@ -16508,7 +16560,7 @@ index c40190b6..59962022 100644
  
  
 diff --git a/b12x/policy/generation/providers/moe_gpu_worker.py b/b12x/policy/generation/providers/moe_gpu_worker.py
-index 0c364826..512b9c76 100644
+index 0c364826a42456c63cacc7d72b1287cc63b15a9b..512b9c76f983b4b26ddd02ea40f93f21b5fd586c 100644
 --- a/b12x/policy/generation/providers/moe_gpu_worker.py
 +++ b/b12x/policy/generation/providers/moe_gpu_worker.py
 @@ -24,10 +24,6 @@ from .moe import MoeCandidate, MoeMeasurement
@@ -16647,7 +16699,7 @@ index 0c364826..512b9c76 100644
              import torch
  
 diff --git a/b12x/policy/generation/providers/norm_sequence.py b/b12x/policy/generation/providers/norm_sequence.py
-index cabb383e..3f778531 100644
+index cabb383e3d9e61521a725c0a6ba41b63abb8d931..3f778531caad6ae9fdd58dad0a3f69bf26334fd0 100644
 --- a/b12x/policy/generation/providers/norm_sequence.py
 +++ b/b12x/policy/generation/providers/norm_sequence.py
 @@ -94,6 +94,7 @@ def _mhc_cases() -> tuple[SweepCase, ...]:
@@ -16726,7 +16778,7 @@ index cabb383e..3f778531 100644
          )
  
 diff --git a/b12x/sequence/gdn_decode/_cute_kernels.py b/b12x/sequence/gdn_decode/_cute_kernels.py
-index ae3cb8c6..2939e6ae 100644
+index ae3cb8c657482299a80a346037c536c1ce2cdfb7..2939e6ae5200a1f94eb6c6b34b5842d5cade1f6a 100644
 --- a/b12x/sequence/gdn_decode/_cute_kernels.py
 +++ b/b12x/sequence/gdn_decode/_cute_kernels.py
 @@ -411,14 +411,18 @@ class _PackedRecurrentQwenKernel:
@@ -17503,7 +17555,7 @@ index ae3cb8c6..2939e6ae 100644
              current_cuda_stream(),
          )
 diff --git a/b12x/sequence/gdn_decode/_impl.py b/b12x/sequence/gdn_decode/_impl.py
-index a9a319f3..dc4bc85a 100644
+index a9a319f376be3f1830c9bd26ec7a164c82ada9df..dc4bc85af5bb817c969dc56c0d371d027c6b7469 100644
 --- a/b12x/sequence/gdn_decode/_impl.py
 +++ b/b12x/sequence/gdn_decode/_impl.py
 @@ -423,7 +423,7 @@ def bind(
@@ -17638,7 +17690,7 @@ index a9a319f3..dc4bc85a 100644
          dtypes=model,
      )
 diff --git a/b12x/sequence/gdn_decode/_kernels.py b/b12x/sequence/gdn_decode/_kernels.py
-index fa9a8db9..e2838b46 100644
+index fa9a8db96adc2d7340ed3e2d0c87bf192fc78a13..e2838b46ec62f13494178e0dab8e743ab821e2d6 100644
 --- a/b12x/sequence/gdn_decode/_kernels.py
 +++ b/b12x/sequence/gdn_decode/_kernels.py
 @@ -10,110 +10,6 @@ import triton.language as tl
@@ -17847,7 +17899,7 @@ index fa9a8db9..e2838b46 100644
              (triton.cdiv(duplicate_table_size, _VALIDATION_BLOCK),)
          ](
 diff --git a/b12x/sequence/gdn_decode/_policy.py b/b12x/sequence/gdn_decode/_policy.py
-index e7d21fdf..7e15a767 100644
+index e7d21fdf73446e129d386745f27576b41f613f2f..7e15a7673613bd66b5b54000b78fc92632ff59d0 100644
 --- a/b12x/sequence/gdn_decode/_policy.py
 +++ b/b12x/sequence/gdn_decode/_policy.py
 @@ -74,23 +74,17 @@ def _heuristic(
@@ -17876,7 +17928,7 @@ index e7d21fdf..7e15a767 100644
  
  GDN_POLICY = ComponentPolicy(
 diff --git a/b12x/sequence/kda_prefill/__init__.py b/b12x/sequence/kda_prefill/__init__.py
-index ba7859b3..190fb59f 100644
+index ba7859b3822e2153535afb3120b0156c40fe0942..190fb59f08134c4e16304a30dc9ec8c3b8937b3c 100644
 --- a/b12x/sequence/kda_prefill/__init__.py
 +++ b/b12x/sequence/kda_prefill/__init__.py
 @@ -11,9 +11,15 @@ The recurrent-state pool uses the ``gdn_decode`` physical layout
@@ -17910,7 +17962,7 @@ index ba7859b3..190fb59f 100644
  
  from __future__ import annotations
 diff --git a/b12x/sequence/kda_prefill/_cute_kernels.py b/b12x/sequence/kda_prefill/_cute_kernels.py
-index 17be79c6..b830c47b 100644
+index 17be79c695bde8f05178efd2b0fdf11325eb430e..b830c47b0e020eb0acf3f6e2227f173af8d9f04c 100644
 --- a/b12x/sequence/kda_prefill/_cute_kernels.py
 +++ b/b12x/sequence/kda_prefill/_cute_kernels.py
 @@ -294,6 +294,7 @@ class _PrologueKernel:
@@ -18076,7 +18128,7 @@ index 17be79c6..b830c47b 100644
  
      def launch(active: Binding, launched_tiles: int) -> None:
 diff --git a/b12x/sequence/kda_prefill/_impl.py b/b12x/sequence/kda_prefill/_impl.py
-index 4c2731bc..6f42b996 100644
+index 4c2731bca94151851ee05048f38ccc9c06046243..6f42b9960fc64197ac7ce8cd4df4f455dc682465 100644
 --- a/b12x/sequence/kda_prefill/_impl.py
 +++ b/b12x/sequence/kda_prefill/_impl.py
 @@ -53,6 +53,7 @@ class Caps:
@@ -18147,7 +18199,7 @@ index 4c2731bc..6f42b996 100644
      for name, tensor in (("num_seqs", num_seqs), ("num_tokens", num_tokens)):
          require_tensor(name, tensor, shape=(1,), device=device, dtypes=(torch.int32,))
 diff --git a/b12x/sequence/kda_prefill/_policy.py b/b12x/sequence/kda_prefill/_policy.py
-index 96695cdb..551ef977 100644
+index 96695cdbaee4d683688d5b491fcb20282517d265..551ef9775cb4b765a24b94e24d4e0fad56bd198c 100644
 --- a/b12x/sequence/kda_prefill/_policy.py
 +++ b/b12x/sequence/kda_prefill/_policy.py
 @@ -6,7 +6,7 @@ from dataclasses import dataclass
@@ -18226,7 +18278,7 @@ index 96695cdb..551ef977 100644
      config_fields=frozenset({"backend", "v_split", "k_split", "stages", "window_tiles"}),
 diff --git a/b12x/sequence/kda_prefill/metadata.py b/b12x/sequence/kda_prefill/metadata.py
 new file mode 100644
-index 00000000..7d73ed82
+index 0000000000000000000000000000000000000000..7d73ed827b9731f55009152aa3534607ebc34fa2
 --- /dev/null
 +++ b/b12x/sequence/kda_prefill/metadata.py
 @@ -0,0 +1,87 @@
@@ -18318,7 +18370,7 @@ index 00000000..7d73ed82
 +            )
 +    return spans
 diff --git a/b12x/sequence/kda_prefill/reference.py b/b12x/sequence/kda_prefill/reference.py
-index cb7b86f2..c7e17d5a 100644
+index cb7b86f24a4e9fe717d8c046e745f86f19753f2f..c7e17d5a1c6febb021a329f840545b061e4b3acc 100644
 --- a/b12x/sequence/kda_prefill/reference.py
 +++ b/b12x/sequence/kda_prefill/reference.py
 @@ -51,17 +51,21 @@ def recurrent_kda(
@@ -18493,7 +18545,7 @@ index cb7b86f2..c7e17d5a 100644
                  recurrent_state[final].copy_(state.to(recurrent_state.dtype))
      finally:
 diff --git a/b12x/sequence/ple_hash/__init__.py b/b12x/sequence/ple_hash/__init__.py
-index df421bca..d2019b64 100644
+index df421bca2f57cca8ffbdb3ee522bb4f13d543011..d2019b64795e1f755f27b947ab399c5e208e3c70 100644
 --- a/b12x/sequence/ple_hash/__init__.py
 +++ b/b12x/sequence/ple_hash/__init__.py
 @@ -5,11 +5,6 @@ geometry together with serving capacity. ``bind`` maps caller-owned runtime
@@ -18509,7 +18561,7 @@ index df421bca..d2019b64 100644
  :mod:`b12x.sequence.ple_hash.reference` and are never runtime fallbacks.
  """
 diff --git a/b12x/sequence/ple_hash/_kernels.py b/b12x/sequence/ple_hash/_kernels.py
-index 97814926..2645df67 100644
+index 978149268da54e144271c2bdba43e91798d46e0c..2645df67a1f4694eb8a8c1bad11598b11922e267 100644
 --- a/b12x/sequence/ple_hash/_kernels.py
 +++ b/b12x/sequence/ple_hash/_kernels.py
 @@ -183,9 +183,7 @@ def _hash_ids_kernel(
@@ -18524,7 +18576,7 @@ index 97814926..2645df67 100644
          value = _source_token(
              token_ids_ptr,
 diff --git a/b12x/sequence/ple_hash/reference.py b/b12x/sequence/ple_hash/reference.py
-index 479fa271..e33969fe 100644
+index 479fa2717fd8dddeb97824a0a6ecdc25b4c69a5b..e33969fe02931608e11da7a20ffccc23642e2382 100644
 --- a/b12x/sequence/ple_hash/reference.py
 +++ b/b12x/sequence/ple_hash/reference.py
 @@ -161,11 +161,7 @@ def ple_hash_ids_reference(
@@ -18556,7 +18608,7 @@ index 479fa271..e33969fe 100644
          last = first + heads_per_order
 diff --git a/benchmarks/benchmark_hyperconnection_projection_views.py b/benchmarks/benchmark_hyperconnection_projection_views.py
 deleted file mode 100644
-index 1a7251d1..00000000
+index 1a7251d1640385fc0d92f11fa28780fb831ddbde..0000000000000000000000000000000000000000
 --- a/benchmarks/benchmark_hyperconnection_projection_views.py
 +++ /dev/null
 @@ -1,156 +0,0 @@
@@ -18717,7 +18769,7 @@ index 1a7251d1..00000000
 -if __name__ == "__main__":
 -    main()
 diff --git a/benchmarks/benchmark_paged_indexer.py b/benchmarks/benchmark_paged_indexer.py
-index 0631b4b1..4f3bde6c 100644
+index 0631b4b1f1aef4a1090f2994ccdc699b8d7df190..4f3bde6cd2496e2e586cc4dacbbb3b496ae75433 100644
 --- a/benchmarks/benchmark_paged_indexer.py
 +++ b/benchmarks/benchmark_paged_indexer.py
 @@ -13,6 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -19001,7 +19053,7 @@ index 0631b4b1..4f3bde6c 100644
          f"median_us={median_us:.2f} min_us={min_us:.2f}"
 diff --git a/benchmarks/benchmark_qsa_representative_scores.py b/benchmarks/benchmark_qsa_representative_scores.py
 deleted file mode 100644
-index 2e2845db..00000000
+index 2e2845db551d4a7a48e852026501d74c5aa52def..0000000000000000000000000000000000000000
 --- a/benchmarks/benchmark_qsa_representative_scores.py
 +++ /dev/null
 @@ -1,147 +0,0 @@
@@ -19154,7 +19206,7 @@ index 2e2845db..00000000
 -    main()
 diff --git a/benchmarks/benchmark_qsa_split_merge.py b/benchmarks/benchmark_qsa_split_merge.py
 deleted file mode 100644
-index e4d4e670..00000000
+index e4d4e6708877ae06ef6da4ebf988ecb746681795..0000000000000000000000000000000000000000
 --- a/benchmarks/benchmark_qsa_split_merge.py
 +++ /dev/null
 @@ -1,144 +0,0 @@
@@ -19303,10 +19355,10 @@ index e4d4e670..00000000
 -if __name__ == "__main__":
 -    main()
 diff --git a/docs/checkpoint-loading.md b/docs/checkpoint-loading.md
-index 5c0cb1f8..ef7abd03 100644
+index 5c0cb1f8f9c41f19a88421cd0a8cd2a0eaaed44e..51178b609230c68482852968e33b270c5370d2be 100644
 --- a/docs/checkpoint-loading.md
 +++ b/docs/checkpoint-loading.md
-@@ -16,12 +16,8 @@ Preparation may reuse weight storage in place, but shared weights are read-only
+@@ -16,22 +16,29 @@ Preparation may reuse weight storage in place, but shared weights are read-only
  during inference. New preparation outputs use ordinary CUDA storage. A final
  allocation audit rejects shared non-persistent buffers before serving starts.
  
@@ -19321,29 +19373,67 @@ index 5c0cb1f8..ef7abd03 100644
  
  ```sh
  VLLM_PLUGINS=b12x_loader vllm serve MODEL --load-format b12x
-@@ -50,9 +46,7 @@ scale validation, and final weight preparation. A failed batch drains all worker
+ ```
+ 
+ The adapter uses vLLM's standard checkpoint-shard progress format and honors
+-`use_tqdm_on_load` and rank-zero output. The loader always uses write-combined
+-pinned storage for weights; no `allocation` option is needed or accepted.
+-Write combining changes the CPU cache policy, not the ownership or direct-I/O
+-contract.
++`use_tqdm_on_load` and rank-zero output. Weight allocation defaults to
++write-combined pinned storage (`pinned_wc`). A profile that requires managed
++memory selects it explicitly:
++
++```sh
++VLLM_PLUGINS=b12x_loader vllm serve MODEL --load-format b12x \
++  --model-loader-extra-config '{"allocation":"managed"}'
++```
++
++The `allocation` option accepts only `pinned_wc` and `managed`; other values
++fail before model loading. The storage receipt records the selected mode.
++Both modes preserve weight ownership, direct I/O, and the rejection of shared
++non-persistent runtime buffers. CPU tests qualify option routing and receipts;
++changing a serving profile's allocation mode requires live memory, loading,
++and model validation on its exact runtime.
+ 
+ The adapter records destination views and submits packed native descriptors
+ `(fd, offset, row_bytes, destination, operation, rows, source_stride, destination_stride)`
+@@ -50,21 +57,22 @@ scale validation, and final weight preparation. A failed batch drains all worker
  before reporting failure. Arbitrary consumers of queued parameter values require
  an explicit completion fence; this is an initial-load integration contract.
  Numerical loading callbacks use `materialize_weight` to read owned inputs before
 -operating on them, including GLM's paired selector weights and scales and full
 -GLM's fused FP8 indexer projection. DeepSeek V4's model, MTP, and DSpark post-load
 -hooks flush queued reads before deriving packed weights and mHC broadcasts.
+-
+-Weight destinations use `cudaHostAllocMapped | cudaHostAllocWriteCombined` and
+-are explicitly `mlock`ed. Failure to lock final storage fails the allocation.
+-Alternative mappings remain available to the allocation-qualification tools,
+-outside the serving configuration. The initial adapter
 +operating on them, including GLM's paired selector weights and scales.
- 
- Weight destinations use `cudaHostAllocMapped | cudaHostAllocWriteCombined` and
- are explicitly `mlock`ed. Failure to lock final storage fails the allocation.
-@@ -63,8 +57,6 @@ not support vLLM sleep mode. It preserves index/prefix filtering, including
++
++The default weight destinations use `cudaHostAllocMapped | cudaHostAllocWriteCombined`
++and are explicitly `mlock`ed. Failure to lock final storage fails the allocation.
++Managed destinations use the loader's existing managed-memory pool. Other
++mapping types remain available to the allocation-qualification tools.
++The initial adapter
+ requires GPU host page tables and PyTorch's native CUDA allocator, and does
+ not support vLLM sleep mode. It preserves index/prefix filtering, including
  MTP. Byte-preserving contiguous routes read into the CPU alias after synchronizing
  the loading stream. BF16-to-FP32 reads occupy the first half of the final FP32
  allocation, then C99 expands backwards in place, preserving all BF16 bits.
 -DeepSeek's signed FP4 payloads and E8M0 scale views preserve their raw bytes,
 -including strided TP slices; these routes do not numerically cast FP8 values.
++Packed quantized weights may reinterpret `int8` and `uint8` metadata and
++destinations without changing payload bytes. Their direct-copy descriptors
++preserve source offsets and strides, and require no cast scratch. Reinterpreting
++other metadata dtypes still requires an explicit transform.
  Other contiguous casts use one reusable 8 MiB input allocation. Arbitrary
  arithmetic on source descriptors and unsupported layouts fail explicitly.
  
 diff --git a/docs/evidence/glm53_dflash_mxfp8_packed_linear_20260901.md b/docs/evidence/glm53_dflash_mxfp8_packed_linear_20260901.md
 new file mode 100644
-index 00000000..9bfebc85
+index 0000000000000000000000000000000000000000..9bfebc85ef917a13a5eb69205906773e9bb81a60
 --- /dev/null
 +++ b/docs/evidence/glm53_dflash_mxfp8_packed_linear_20260901.md
 @@ -0,0 +1,141 @@
@@ -19490,7 +19580,7 @@ index 00000000..9bfebc85
 +```
 diff --git a/docs/evidence/glm53_m8_parallel_route_pack_20260901.md b/docs/evidence/glm53_m8_parallel_route_pack_20260901.md
 new file mode 100644
-index 00000000..f9192228
+index 0000000000000000000000000000000000000000..f9192228dadf27b2e34d0bedae13cc7b6e8168e6
 --- /dev/null
 +++ b/docs/evidence/glm53_m8_parallel_route_pack_20260901.md
 @@ -0,0 +1,138 @@
@@ -19634,7 +19724,7 @@ index 00000000..f9192228
 +```
 diff --git a/docs/evidence/glm53_pcie_mhc_dependent_launch_20260901.md b/docs/evidence/glm53_pcie_mhc_dependent_launch_20260901.md
 new file mode 100644
-index 00000000..c31fe353
+index 0000000000000000000000000000000000000000..c31fe353eb002106c6d870dd3a26f14e4ab86cc6
 --- /dev/null
 +++ b/docs/evidence/glm53_pcie_mhc_dependent_launch_20260901.md
 @@ -0,0 +1,152 @@
@@ -19792,7 +19882,7 @@ index 00000000..c31fe353
 +under the dependent-launch toggle; their tolerances were not weakened.
 diff --git a/docs/evidence/paged_topk_sm120_prefill.md b/docs/evidence/paged_topk_sm120_prefill.md
 new file mode 100644
-index 00000000..2153bb2e
+index 0000000000000000000000000000000000000000..2153bb2eab5c045a5f6f2bf5e6f8a3c34942cf48
 --- /dev/null
 +++ b/docs/evidence/paged_topk_sm120_prefill.md
 @@ -0,0 +1,182 @@
@@ -19980,7 +20070,7 @@ index 00000000..2153bb2e
 +communication, attention, MoE, and the remaining model work.
 diff --git a/docs/glm53_m8_route_compute_qualification.md b/docs/glm53_m8_route_compute_qualification.md
 new file mode 100644
-index 00000000..aef26f26
+index 0000000000000000000000000000000000000000..aef26f2686ceb2c7ff8425fcbec4557c4261d323
 --- /dev/null
 +++ b/docs/glm53_m8_route_compute_qualification.md
 @@ -0,0 +1,159 @@
@@ -20145,7 +20235,7 @@ index 00000000..aef26f26
 +prefill regression.
 diff --git a/docs/kda-checkpoint-export.md b/docs/kda-checkpoint-export.md
 new file mode 100644
-index 00000000..3f336447
+index 0000000000000000000000000000000000000000..3f33644761e6720c89cd79ff5ac2454bc21788eb
 --- /dev/null
 +++ b/docs/kda-checkpoint-export.md
 @@ -0,0 +1,137 @@
@@ -20287,7 +20377,7 @@ index 00000000..3f336447
 +whole-model coalescing comparison. The CPU results and GPU test collection in
 +this package establish no throughput result.
 diff --git a/tests/attention/test_attention_dsa_indexer_api.py b/tests/attention/test_attention_dsa_indexer_api.py
-index 0e9bdc22..a5ad9ac5 100644
+index 0e9bdc2226bcbe54fd4fa36c34486bb818193460..a5ad9ac5253748cc3215b4716eda34ed97c96742 100644
 --- a/tests/attention/test_attention_dsa_indexer_api.py
 +++ b/tests/attention/test_attention_dsa_indexer_api.py
 @@ -8,6 +8,7 @@ import torch
@@ -20430,7 +20520,7 @@ index 0e9bdc22..a5ad9ac5 100644
      reason="CUDA required for indexer compile-cache coverage",
 diff --git a/tests/attention/test_benchmark_paged_indexer.py b/tests/attention/test_benchmark_paged_indexer.py
 new file mode 100644
-index 00000000..d40cba35
+index 0000000000000000000000000000000000000000..d40cba35c3d08e3e3cec6ba5704042f661b8d095
 --- /dev/null
 +++ b/tests/attention/test_benchmark_paged_indexer.py
 @@ -0,0 +1,32 @@
@@ -20467,7 +20557,7 @@ index 00000000..d40cba35
 +        is None
 +    )
 diff --git a/tests/attention/test_compressed_sparse_mla.py b/tests/attention/test_compressed_sparse_mla.py
-index c9d0612c..dd036ac8 100644
+index c9d0612cd84974c84e0f03383f0344c9adceca42..dd036ac8e0d7f5c3853746d9737e4e5954a9178f 100644
 --- a/tests/attention/test_compressed_sparse_mla.py
 +++ b/tests/attention/test_compressed_sparse_mla.py
 @@ -165,14 +165,13 @@ def _make_compressed_binding(
@@ -20591,7 +20681,7 @@ index c9d0612c..dd036ac8 100644
  def test_compressed_sparse_mla_shared_core_replays_under_cuda_graph() -> None:
      device = require_sm120()
 diff --git a/tests/attention/test_paged_prefill_topk_long_context.py b/tests/attention/test_paged_prefill_topk_long_context.py
-index b8856867..db9adb52 100644
+index b885686719bf390a6295636bd9ec09d01d3fd950..db9adb52d50f5e2143a7e9fb6696aeed0d70adab 100644
 --- a/tests/attention/test_paged_prefill_topk_long_context.py
 +++ b/tests/attention/test_paged_prefill_topk_long_context.py
 @@ -1,19 +1,14 @@
@@ -20716,7 +20806,7 @@ index b8856867..db9adb52 100644
      """output_physical_slots=False routes through the two-level (extent-split + row) fold."""
      device = torch.device("cuda")
 diff --git a/tests/attention/test_qsa_contract.py b/tests/attention/test_qsa_contract.py
-index 1ac383a7..b74fdbe5 100644
+index 1ac383a736a8da2954e55d8f925ee38a59cff9f3..b74fdbe510ac7eae31b796958ee3e4ca266342d3 100644
 --- a/tests/attention/test_qsa_contract.py
 +++ b/tests/attention/test_qsa_contract.py
 @@ -69,7 +69,7 @@ def _allocate_binding(
@@ -21698,7 +21788,7 @@ index 1ac383a7..b74fdbe5 100644
 -    assert torch.all(result == 2)
 -    assert binding.state_errors[0] == 0
 diff --git a/tests/attention/test_qsa_sparse_gqa.py b/tests/attention/test_qsa_sparse_gqa.py
-index 683416bf..17408245 100644
+index 683416bf2f76c7676b9ad3f999d959b0a2a322eb..17408245c7319ec88b4a60a555a1e3605c982235 100644
 --- a/tests/attention/test_qsa_sparse_gqa.py
 +++ b/tests/attention/test_qsa_sparse_gqa.py
 @@ -15,279 +15,6 @@ from b12x.attention.qsa._contract import _target_splits
@@ -21982,7 +22072,7 @@ index 683416bf..17408245 100644
      values = dict(
          device="cuda:0",
 diff --git a/tests/gemm/test_cute_migration_gemm_corpus.py b/tests/gemm/test_cute_migration_gemm_corpus.py
-index 5ceedf39..7043769e 100644
+index 5ceedf394ec6242675356317d687277e21af7883..7043769e2037a255dde57da92dd5ccc60da0042e 100644
 --- a/tests/gemm/test_cute_migration_gemm_corpus.py
 +++ b/tests/gemm/test_cute_migration_gemm_corpus.py
 @@ -291,14 +291,13 @@ def test_cute_migration_dense_grouped_fused_quant_gpu_oracle_and_graph(
@@ -22107,7 +22197,7 @@ index 5ceedf39..7043769e 100644
      """The direct-trellis order permutes bytes only within each K32 group."""
      require_b12x()
 diff --git a/tests/gemm/test_gemm_block_fp8_linear.py b/tests/gemm/test_gemm_block_fp8_linear.py
-index 9d437f14..f3e73b49 100644
+index 9d437f14166cc1b962027ed0a7d209c867c377e3..f3e73b49445a92bbd828f643dd4b81977c112e12 100644
 --- a/tests/gemm/test_gemm_block_fp8_linear.py
 +++ b/tests/gemm/test_gemm_block_fp8_linear.py
 @@ -1,11 +1,7 @@
@@ -22226,7 +22316,7 @@ index 9d437f14..f3e73b49 100644
      require_b12x()
      torch.manual_seed(20260525)
 diff --git a/tests/gemm/test_launch_custom_ops.py b/tests/gemm/test_launch_custom_ops.py
-index 509a9454..2fc9d544 100644
+index 509a94548aa752ab4934adbf727a6d0c194ecf1a..2fc9d54409c0685372cad0d82d732dbe62d9084d 100644
 --- a/tests/gemm/test_launch_custom_ops.py
 +++ b/tests/gemm/test_launch_custom_ops.py
 @@ -1,5 +1,6 @@
@@ -22315,7 +22405,7 @@ index 509a9454..2fc9d544 100644
          torch.ops.b12x.mhc_finalize_gram_launch(
              residual,
 diff --git a/tests/gemm/test_mxfp8_linear.py b/tests/gemm/test_mxfp8_linear.py
-index 311e2bb6..40ba8b12 100644
+index 311e2bb68fa7e1717d34104e0053d145b83c5f32..40ba8b12ea13771eb06ca8b59dec780667c63103 100644
 --- a/tests/gemm/test_mxfp8_linear.py
 +++ b/tests/gemm/test_mxfp8_linear.py
 @@ -218,6 +218,38 @@ def test_mm_default_fused_path_captures_with_k_padding() -> None:
@@ -22358,10 +22448,76 @@ index 311e2bb6..40ba8b12 100644
      require_b12x()
      require_mxf8_mma()
 diff --git a/tests/loader/test_direct.py b/tests/loader/test_direct.py
-index 24302bda..875f22fd 100644
+index 24302bdaa93f4540665a6b630c213455d7aa92ee..58c8b356090bccac04270360f27b141dbf6d4ec3 100644
 --- a/tests/loader/test_direct.py
 +++ b/tests/loader/test_direct.py
-@@ -133,33 +133,6 @@ def test_descriptor_views_read_the_selected_source_into_fused_parameters(tmp_pat
+@@ -1,6 +1,11 @@
+ """Prove O_DIRECT input, final destinations, bounded alignment and ownership."""
+ 
+ import os
++from array import array
++from contextlib import nullcontext
++from importlib import import_module
++from itertools import product
++from types import SimpleNamespace
+ 
+ import pytest
+ import torch
+@@ -10,6 +15,53 @@ from b12x.loader._checkpoint import DirectWeightSession
+ from b12x.loader._pool import shared_pool, weight_pool
+ 
+ 
++@pytest.mark.parametrize(
++    "entry_dtype,source_dtype,destination_dtype",
++    list(product((torch.int8, torch.uint8), repeat=3)),
++)
++def test_cpu_byte_views_queue_exact_strided_direct_copy(
++    monkeypatch, entry_dtype, source_dtype, destination_dtype
++):
++    """Inspect real routing descriptors; native I/O and CUDA remain unexecuted."""
++    checkpoint = import_module("b12x.loader._checkpoint")
++    base = torch.empty((2, 8), dtype=entry_dtype, device="meta")
++    source = base.view(source_dtype)[:, 2:6]
++    destination = torch.empty((2, 4), dtype=destination_dtype)
++    entry = SimpleNamespace(name="packed_weight", dtype=entry_dtype, nbytes=16,
++                            fd=17, offset=4096)
++    storage = base.untyped_storage()
++    session = DirectWeightSession.__new__(DirectWeightSession)
++    session.sources = {storage._cdata: (storage, entry)}
++    session.device = None
++    session.records = array("Q")
++    session.destinations = []
++    session.payload_bytes = session.loaded_tensors = session.transform_bytes = 0
++    session.transform_scratch = None
++    monkeypatch.setattr(checkpoint, "owns_storage", lambda value: value is destination)
++    monkeypatch.setattr(torch.cuda, "device", lambda *args: nullcontext())
++    monkeypatch.setattr(torch.cuda, "current_stream", lambda *args: SimpleNamespace(cuda_stream=0))
++    assert session(destination, source)
++    assert list(session.records) == [17, 4098, 4, destination.data_ptr(), 0, 2, 8, 4]
++    assert session.destinations == [destination]
++    assert session.payload_bytes == 8 and session.loaded_tensors == 1
++    assert session.transform_scratch is None and session.transform_bytes == 0
++
++
++@pytest.mark.parametrize(
++    "entry_dtype,view_dtype", [(torch.float16, torch.int16), (torch.uint8, torch.int16)]
++)
++def test_cpu_non_byte_reinterpretation_requires_explicit_transform(entry_dtype, view_dtype):
++    base = torch.empty(8, dtype=entry_dtype, device="meta")
++    source = base.view(view_dtype)
++    storage = base.untyped_storage()
++    entry = SimpleNamespace(name="weight", dtype=entry_dtype, nbytes=base.nbytes)
++    session = DirectWeightSession.__new__(DirectWeightSession)
++    session.sources = {storage._cdata: (storage, entry)}
++    destination = torch.empty(source.shape, dtype=view_dtype)
++    with pytest.raises(NotImplementedError, match="explicit transform"):
++        session(destination, source)
++
++
+ @pytest.mark.parametrize("rank", [0, 1])
+ @pytest.mark.parametrize("padded", [False, True])
+ @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
+@@ -133,33 +185,6 @@ def test_descriptor_views_read_the_selected_source_into_fused_parameters(tmp_pat
      torch.testing.assert_close(destination[:64].cpu(), torch.full((64, 64), -1.0))
  
  
@@ -22396,10 +22552,78 @@ index 24302bda..875f22fd 100644
      path = tmp_path / "short"
      path.write_bytes(bytes(4096))
 diff --git a/tests/loader/test_vllm.py b/tests/loader/test_vllm.py
-index d924ca02..0f1f5102 100644
+index d924ca029b95cf26ad574be4e09f667348d3a09d..436652b5fbb917fcfc463d87622ab79b4ddc427c 100644
 --- a/tests/loader/test_vllm.py
 +++ b/tests/loader/test_vllm.py
-@@ -202,198 +202,3 @@ def test_kda_convolution_loads_each_tp_shard_into_fused_wc_weights(tmp_path, ran
+@@ -1,6 +1,8 @@
+ """The adapter preserves vLLM's indexed source selection and owned inputs."""
+ 
+ import json
++from contextlib import contextmanager, nullcontext
++from importlib import import_module
+ from types import SimpleNamespace
+ 
+ import pytest
+@@ -17,6 +19,58 @@ from b12x.loader._checkpoint import DirectWeightSession
+ from b12x.loader._pool import owns_tensor, shared_pool, weight_pool
+ 
+ 
++@pytest.mark.parametrize("allocation", [None, "pinned_wc", "managed"])
++def test_allocation_selection_reaches_pool_and_storage_receipt(monkeypatch, allocation):
++    """Exercise loader dispatch and receipt without allocating CUDA storage."""
++    adapter = import_module("b12x.integration.vllm.loader")
++    transfer = import_module("vllm.model_executor.weight_transfer")
++    options = {} if allocation is None else {"allocation": allocation}
++    config = LoadConfig(load_format="b12x", model_loader_extra_config=options)
++    loader = B12xModelLoader(config)
++    expected = allocation or "pinned_wc"
++    calls = []
++    model = torch.nn.Module()
++
++    @contextmanager
++    def pool(**kwargs):
++        calls.append(kwargs)
++        yield object()
++
++    monkeypatch.setattr(adapter, "weight_pool", pool)
++    monkeypatch.setattr(
++        adapter, "DirectWeightSession",
++        lambda *args, **kwargs: nullcontext(SimpleNamespace(stats=lambda: {})),
++    )
++    monkeypatch.setattr(transfer, "weight_transfer", lambda *args, **kwargs: nullcontext())
++    monkeypatch.setattr(DefaultModelLoader, "load_model", lambda *args, **kwargs: model)
++    monkeypatch.setattr(adapter, "storage_stats", lambda: {"live_bytes": 0})
++    monkeypatch.setattr(torch.cuda, "synchronize", lambda *args: None)
++    monkeypatch.setattr(torch.cuda, "empty_cache", lambda: None)
++    result = loader.load_model(
++        SimpleNamespace(device_config=SimpleNamespace(device="cuda:0")),
++        SimpleNamespace(enable_sleep_mode=False),
++    )
++    assert result is model and loader._session is None
++    assert calls == [{"allocation": expected, "device": 0}]
++    assert model._b12x_loader_storage["allocation"] == expected
++    assert config.model_loader_extra_config == options
++    assert config.load_format == "b12x"
++    assert "allocation" not in loader.load_config.model_loader_extra_config
++
++
++@pytest.mark.parametrize("allocation", ["system", "registered", "file", "", None, True, 0])
++def test_invalid_allocation_rejects_before_native_initialization(monkeypatch, allocation):
++    monkeypatch.setattr(
++        DefaultModelLoader, "__init__",
++        lambda *args, **kwargs: pytest.fail("Invalid allocation must reject first"),
++    )
++    config = LoadConfig(
++        load_format="b12x", model_loader_extra_config={"allocation": allocation}
++    )
++    with pytest.raises(ValueError, match="loader allocation"):
++        B12xModelLoader(config)
++
++
+ @pytest.mark.parametrize("show_progress", [True, False])
+ def test_draft_iterator_uses_index_and_retained_tensors_keep_their_bytes(
+     tmp_path, capsys, show_progress
+@@ -202,198 +256,3 @@ def test_kda_convolution_loads_each_tp_shard_into_fused_wc_weights(tmp_path, ran
              loader(param, sources[name], i)
      expected = torch.cat([weights[name][rank * 4 : (rank + 1) * 4] for name in weights])
      torch.testing.assert_close(param.cpu(), expected.float())
@@ -22599,7 +22823,7 @@ index d924ca02..0f1f5102 100644
 -    torch.testing.assert_close(layer.eh_proj.weight.cpu(), expected)
 -    torch.testing.assert_close(result.cpu(), expected.sum(dim=1).unsqueeze(0))
 diff --git a/tests/moe/test_cute_migration_moe_standard_corpus.py b/tests/moe/test_cute_migration_moe_standard_corpus.py
-index 161ca524..1c56438f 100644
+index 161ca524513b5ddb744316ed45cacfc86909c907..1c56438fac0d4a31d02f42aa158b8a2a4c99443c 100644
 --- a/tests/moe/test_cute_migration_moe_standard_corpus.py
 +++ b/tests/moe/test_cute_migration_moe_standard_corpus.py
 @@ -499,6 +499,16 @@ def _reset_dispatch_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -22916,7 +23140,7 @@ index 161ca524..1c56438f 100644
  ) -> None:
 diff --git a/tests/moe/test_dynamic_fc1_fragment_rebind.py b/tests/moe/test_dynamic_fc1_fragment_rebind.py
 new file mode 100644
-index 00000000..e9b40a9a
+index 0000000000000000000000000000000000000000..e9b40a9a809a43710b794fccd8422665ff1e5181
 --- /dev/null
 +++ b/tests/moe/test_dynamic_fc1_fragment_rebind.py
 @@ -0,0 +1,126 @@
@@ -23047,7 +23271,7 @@ index 00000000..e9b40a9a
 +        assert_no_replay_allocations=True,
 +    )
 diff --git a/tests/moe/test_fused_moe_planning.py b/tests/moe/test_fused_moe_planning.py
-index 7a10844c..36376940 100644
+index 7a10844c3b8a4d9fd12bd0ff5fb53385c34374ae..36376940ba10915b59e5882ef2168a038f419dfd 100644
 --- a/tests/moe/test_fused_moe_planning.py
 +++ b/tests/moe/test_fused_moe_planning.py
 @@ -108,9 +108,7 @@ def _preplanned_w4a16_workspace(*, activation: str) -> SimpleNamespace:
@@ -23113,7 +23337,7 @@ index 7a10844c..36376940 100644
      ("num_tokens", "expected"),
      [(4, "micro"), (7, "dynamic")],
 diff --git a/tests/moe/test_tp_moe_scratch_bindings.py b/tests/moe/test_tp_moe_scratch_bindings.py
-index 68972451..92d9651d 100644
+index 689724516e9ee8171c8a12bcf658778ee6539609..92d9651dbab105198565f6b767fc355c08e771d0 100644
 --- a/tests/moe/test_tp_moe_scratch_bindings.py
 +++ b/tests/moe/test_tp_moe_scratch_bindings.py
 @@ -1077,56 +1077,6 @@ def test_tp_moe_fp4_binding_rehydrates_micro_workspace_view(
@@ -23174,7 +23398,7 @@ index 68972451..92d9651d 100644
      monkeypatch: pytest.MonkeyPatch,
  ) -> None:
 diff --git a/tests/moe/test_w4a8_dynamic_kernel.py b/tests/moe/test_w4a8_dynamic_kernel.py
-index fb264517..f39bf623 100644
+index fb264517623eb795402ce13c8fad82a199d158a6..f39bf623551a17a4b582a4366cc77e27bb633fc4 100644
 --- a/tests/moe/test_w4a8_dynamic_kernel.py
 +++ b/tests/moe/test_w4a8_dynamic_kernel.py
 @@ -37,6 +37,17 @@ _TILE_M = 128
@@ -23196,7 +23420,7 @@ index fb264517..f39bf623 100644
      nib = _fp4_encode_nibbles(values)
      pair = nib.view(*values.shape[:-1], values.shape[-1] // 2, 2)
 diff --git a/tests/norm/test_hyperconnection.py b/tests/norm/test_hyperconnection.py
-index e6b4b952..fc935c6f 100644
+index e6b4b9522137458afbcaeaab485ff6ca049a355e..fc935c6f764a237d30ba4ce0c621be71eea6f4fc 100644
 --- a/tests/norm/test_hyperconnection.py
 +++ b/tests/norm/test_hyperconnection.py
 @@ -153,144 +153,6 @@ def test_plan_bind_uses_live_views_and_no_scratch() -> None:
@@ -23354,7 +23578,7 @@ index e6b4b952..fc935c6f 100644
      assert keys_by_name["combine"][2:] == (streams, hidden_size)
      assert keys_by_name["combine_norm"][2:] == (streams, hidden_size)
 diff --git a/tests/norm/test_residual_scratch_bindings.py b/tests/norm/test_residual_scratch_bindings.py
-index e5c16d6b..88037816 100644
+index e5c16d6b4b4ad7894b6afea9a5a9fa3e3c8837c5..88037816364e9295b09a4a4e9e967111240ff2a5 100644
 --- a/tests/norm/test_residual_scratch_bindings.py
 +++ b/tests/norm/test_residual_scratch_bindings.py
 @@ -19,6 +19,7 @@ from b12x.policy import (
@@ -23476,7 +23700,7 @@ index e5c16d6b..88037816 100644
      ("tokens", "tile_m", "stages", "k_splits"),
      (
 diff --git a/tests/policy/test_attention_profile_corpus.py b/tests/policy/test_attention_profile_corpus.py
-index c3d4fe85..12e21c81 100644
+index c3d4fe8513f4f682baf3777de662b3c48d1eb034..12e21c81c5dccc90677dd27cf38ff6de8f789348 100644
 --- a/tests/policy/test_attention_profile_corpus.py
 +++ b/tests/policy/test_attention_profile_corpus.py
 @@ -3,8 +3,6 @@ from __future__ import annotations
@@ -23614,7 +23838,7 @@ index c3d4fe85..12e21c81 100644
      dsa_queries = DsaIndexerGenerator().reviewed_queries()
      sparse_queries = SparseMlaGenerator().reviewed_queries()
 diff --git a/tests/policy/test_moe_profile_generator.py b/tests/policy/test_moe_profile_generator.py
-index 9c908ab0..5a336cf0 100644
+index 9c908ab030fda07c86f38984072a7e9db5e9342e..5a336cf02b5035783f252f6673ce6832cf002c18 100644
 --- a/tests/policy/test_moe_profile_generator.py
 +++ b/tests/policy/test_moe_profile_generator.py
 @@ -60,7 +60,6 @@ from b12x.policy.generation.providers.moe_gpu_worker import (
@@ -23699,7 +23923,7 @@ index 9c908ab0..5a336cf0 100644
      geometry = next(
          geometry
 diff --git a/tests/sequence/test_gdn_decode.py b/tests/sequence/test_gdn_decode.py
-index 4ac7cefa..e743d7bc 100644
+index 4ac7cefa721f249d9b80f8636b01b9fc4694c75f..e743d7bcdeec627afe30775f54e664e645a67729 100644
 --- a/tests/sequence/test_gdn_decode.py
 +++ b/tests/sequence/test_gdn_decode.py
 @@ -92,7 +92,9 @@ def _make_case(
@@ -24098,7 +24322,7 @@ index 4ac7cefa..e743d7bc 100644
      device = require_sm120()
      caps = gdn.Caps(
 diff --git a/tests/sequence/test_gdn_decode_kda.py b/tests/sequence/test_gdn_decode_kda.py
-index ff9f9640..260e55e9 100644
+index ff9f96403b189a6950e61e77abe61432cc3d7025..260e55e97275b293e5f9955390bc4f6d846f3c75 100644
 --- a/tests/sequence/test_gdn_decode_kda.py
 +++ b/tests/sequence/test_gdn_decode_kda.py
 @@ -681,101 +681,6 @@ def test_kda_cuda_graph_replay_preserves_addresses() -> None:
@@ -24204,7 +24428,7 @@ index ff9f9640..260e55e9 100644
      device = require_sm120()
      binding = _make_case(device=device)
 diff --git a/tests/sequence/test_kda_prefill.py b/tests/sequence/test_kda_prefill.py
-index 7593b704..0c1838f8 100644
+index 7593b7043cd36b4e532bbca38fccef5abef25573..0c1838f8b4012f563393110df087a5c724222711 100644
 --- a/tests/sequence/test_kda_prefill.py
 +++ b/tests/sequence/test_kda_prefill.py
 @@ -351,7 +351,7 @@ def make_binding(
@@ -24218,7 +24442,7 @@ index 7593b704..0c1838f8 100644
  
 diff --git a/tests/sequence/test_kda_prefill_two_checkpoints_cpu.py b/tests/sequence/test_kda_prefill_two_checkpoints_cpu.py
 new file mode 100644
-index 00000000..f22511d5
+index 0000000000000000000000000000000000000000..f22511d5d00a8f777d57fd29bfed6ff93c1cf937
 --- /dev/null
 +++ b/tests/sequence/test_kda_prefill_two_checkpoints_cpu.py
 @@ -0,0 +1,470 @@
@@ -24694,7 +24918,7 @@ index 00000000..f22511d5
 +        validate_metadata(**args)
 diff --git a/tests/sequence/test_kda_prefill_two_checkpoints_gpu.py b/tests/sequence/test_kda_prefill_two_checkpoints_gpu.py
 new file mode 100644
-index 00000000..4343c3b4
+index 0000000000000000000000000000000000000000..4343c3b4b079b2a4e710b2fc2887da1baf3c8767
 --- /dev/null
 +++ b/tests/sequence/test_kda_prefill_two_checkpoints_gpu.py
 @@ -0,0 +1,552 @@
@@ -25252,7 +25476,7 @@ index 00000000..4343c3b4
 +        )
 diff --git a/tests/sequence/test_ple_hash_checkpoint_order.py b/tests/sequence/test_ple_hash_checkpoint_order.py
 deleted file mode 100644
-index a27004e3..00000000
+index a27004e3c60eed867ad105d2888b6546c4fa02a7..0000000000000000000000000000000000000000
 --- a/tests/sequence/test_ple_hash_checkpoint_order.py
 +++ /dev/null
 @@ -1,125 +0,0 @@

@@ -1,10 +1,10 @@
-# GLM TP4 source image
+# Shared GLM source image
 
-**Status: research-only.** This recipe prepares an ARM64 image containing
-continuation-prefill coalescing, token-sharded mHC, DCP owner selection, and
-dual-domain NCCL. Source preparation and CPU receipt checks are implemented.
-The image produced by this recipe still requires an ARM64 build and serving
-qualification; measurements from another image do not qualify this build.
+**Status: research-only.** Source preparation, profile selection, and CPU
+verification are implemented. This recipe prepares one ARM64 image for the
+listed GLM TP2 and TP4 profiles, including optional SparkCache. Building and
+testing that shared image remains required; results from the reference
+deployments do not qualify it.
 
 The recipe extends the existing native-MTP3 mesh deployment. It does not
 replace site rendering, ASIC forwarding configuration, authenticated marker
@@ -19,20 +19,36 @@ startup helper, and runtime profile. Full hashes in that file are authoritative.
 | Component | Source and behavior |
 |---|---|
 | ARM64 parent | Digest-pinned `sparkring-glm53-sparkcache` image; supplies the CUDA toolchain, Torch, compiled vLLM dependencies, and native mesh bundle |
-| vLLM | Public source base `2a979314dc97b03173a0a76fc15664ec924db32b` plus `patches/vllm.patch`; reproduces tree for revision `8f8ea47be212bbdd91b2172d5958ea2aae2b0e50` |
-| B12X | Public source base `85a08f47750db333a33ab3eae245a0a08452d04c` plus `patches/b12x.patch`; reproduces checkpoint-export and kernel sources at `0b6d61c37c87ae49d2f9d20d38b9da023146e243` |
+| vLLM | Public base `2a979314dc97b03173a0a76fc15664ec924db32b` plus `patches/vllm.patch`; reproduces `17bd258075f44dda8b405f384732f3c78d03f308`, including four-checkpoint coalescing, TP2/TP4 mHC admission, DCP owner exchange, and hybrid restore recovery |
+| B12X | Public base `85a08f47750db333a33ab3eae245a0a08452d04c` plus `patches/b12x.patch`; reproduces `2883a5df65a7ea3cb6e82abb63d1448dd3154887`, including four-checkpoint kernels and profile-selected managed loading |
 | NCCL | Public NVIDIA source base `73cf112295c33aee2b895f329f592f2a9b4b0f97` plus the cumulative `patches/nccl.patch`; preserves switchless routing and independent PCIe-domain discovery |
-| SparkCache | Source and native snapshot library are installed to reproduce package dependencies; the serving connector is disabled in both declared profiles |
-| Startup | Four source-pinned helpers under `startup/`; the warmup request uses thinking with low reasoning effort and temperature 1 |
+| SparkCache | `d0cf7296062ec8b4d17d65cd05a416d509e80bd8`, reproduced from its public base and packaged patch; includes capture-job read leases, request cleanup, private restore admission, and the exact common-vLLM source contract |
+| Startup | Four source-pinned helpers under `startup/`; six sampler cases, completed-output admission, and allocation-aware scheduler liveness for the TP4 wrapper |
+| TP2 transport | Exact adaptive-grid RoCEnante source under `runtime/transport_profiles/`; selected before B12X import, with independent proxy/kernel and file verification |
 
-The profiles select TP4/DCP1 or TP4/DCP4 with native MTP3, continuation
-coalescing, and mHC prefill sharding. Compact index-cache gathering and the
-SparkCache connector are disabled. DCP2 is not a declared profile.
+| Profile | Checkpoint and parallelism | Communication and cache |
+| --- | --- | --- |
+| `tp4-dcp1-mtp3-prefill` | NVFP4-Spark; TP4/DCP1, MTP3, 1,048,576-token request limit | Weighted mesh and dual-domain NCCL; SparkCache disabled |
+| `tp4-dcp4-mtp3-prefill` | NVFP4-Spark; TP4/DCP4, MTP3, 1,048,576-token request limit | Mesh owner exchange with fused endpoints and dual-domain NCCL; SparkCache disabled |
+| `tp4-dcp1-mtp3-sparkcache` | NVFP4-Spark; TP4/DCP1, MTP3, 1,048,576-token request limit | Mesh and dual-domain NCCL; bounded asynchronous capture and verified restore |
+| `glm53-flash-nvfp4-tp2-mtp3` | Original NVFP4; TP2/DCP1, MTP3, 262,144-token request limit | One physical DAC using both host domains; managed loading; SparkCache disabled |
 
-The parent retains 1,985 generated support files and native libraries after
-source replacement. Their full inventory, including 15 compiled vLLM
-libraries, matches the installed-state evidence for the measured source
-composition. Torch, Triton, CUTLASS DSL, Transformers, and FlashInfer versions
+All four profiles enable coalescing and mHC prefill sharding. Compact index
+cache is disabled. DCP2 is supported by the prefill source but has no declared
+launch profile in this lock. TP2 keeps sequential KDA execution; TP4 retains
+its side-stream setting. The two communication implementations occupy separate
+paths and share the installed model kernels.
+
+The SparkCache profile uses two 512-MiB capture slots, two restore workers,
+256 MiB of restore arenas, and an 8-GiB disk-cache limit per rank. Its maximum
+persisted span is 65,536 tokens; longer prompts remain eligible for ordinary
+inference. The source contract refuses mismatched vLLM ownership semantics.
+SparkCache on the original-NVFP4 TP2 profile is unsupported pending dedicated
+validation.
+
+The parent supplies generated support files and 15 compiled vLLM libraries.
+The source lock records their complete retained inventory. Torch, Triton,
+CUTLASS DSL, Transformers, and FlashInfer versions
 are checked independently. This establishes file identity; a rebuilt NCCL
 library and complete serving behavior still require verification.
 
@@ -58,7 +74,7 @@ Build on an ARM64 Docker host with the parent image available:
 
 ```bash
 docker build --platform linux/arm64 --network none \
-  -t sparkring-glm53-tp4-source \
+  -t sparkring-glm53-source \
   /tmp/sparkring-glm-image-context
 ```
 
@@ -70,6 +86,11 @@ build; do not replace that hash solely to make the check pass. Record compiler
 and linker differences, compare source and binary behavior, and qualify the
 rebuilt library before accepting another binary identity.
 
+The image also installs the TP2 transport bundle, import hook, and profile
+assets. Source preparation verifies their hashes from this checkout; no
+private source archive or running container is needed. The transport hook is
+inactive unless the selected profile enables it.
+
 The container path `/opt/sparkcache-jj-runtime` and its manifest schema names
 are retained compatibility interfaces for source installation and verification.
 They do not enable SparkCache serving.
@@ -80,7 +101,7 @@ Create a CPU-only receipt for the selected profile:
 
 ```bash
 python runtime/sparkring/source_image/verify_image.py \
-  --image sparkring-glm53-tp4-source \
+  --image sparkring-glm53-source \
   --context /tmp/sparkring-glm-image-context \
   --profile tp4-dcp1-mtp3-prefill \
   --output /tmp/sparkring-glm53-tp4-dcp1-receipt.json
@@ -103,13 +124,20 @@ profile. Keep the canonical public image receipt unchanged. Follow
 ownership; replacing a running model remains a separate deployment action.
 
 Use the [TP4 prefill quickstart](../../../docs/GLM53_TP4_PREFILL_QUICKSTART.md)
-for the DCP1 setup sequence and explicit DCP4 alternative.
+for DCP1 or DCP4. To enable the bounded cache configuration, verify and select
+`tp4-dcp1-mtp3-sparkcache` in both the receipt and private mesh site.
+The [original-NVFP4 TP2 guide](../../profiles/glm53-flash-nvfp4-tp2/README.md)
+uses the same image with a separate manual launcher. Both launch paths verify
+the shared sources before entering their profile-specific startup code.
+
+DeepSeek, Qwen, and EXL3 still use their documented model-family builders.
+This GLM recipe does not establish a universal native runtime for those
+families.
 
 ## Validation
 
 ```bash
-python -m unittest discover \
-  -s runtime/sparkring/source_image -p test_source_image.py -v
+python -m pytest runtime/sparkring/source_image runtime/profiles runtime/transport_profiles -q
 ```
 
 The CPU suite rejects altered package counts, hashes, revisions, dependency

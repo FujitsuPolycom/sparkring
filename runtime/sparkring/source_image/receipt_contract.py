@@ -33,6 +33,19 @@ def validate_receipt(document, lock):
         raise ValueError("Receipt source-lock witnesses disagree")
     if document.get("profile") not in lock["profiles"]:
         raise ValueError("Receipt selects an unsupported runtime profile")
+    profile = lock["profiles"][document["profile"]]
+    if profile.get("sparkcache"):
+        for name in ("snapshot", "placement"):
+            field = name + "_sha256"
+            if inside.get(field) != lock["runtime"][field]:
+                raise ValueError(f"SparkCache native library witness differs: {field}")
+    transport = profile.get("transport_profile")
+    if transport is not None:
+        expected_transport = {"manifest_sha256": profile["transport_manifest_sha256"],
+                              "files_sha256": profile["transport_files_sha256"],
+                              "files": profile["transport_file_count"], "package": "b12x.comm.roce"}
+        if inside.get("transport_profiles", {}).get(transport) != expected_transport:
+            raise ValueError("Selected transport witness differs from source lock")
     for name, source in lock["sources"].items():
         witness = inside.get("packages", {}).get(name, {})
         if not isinstance(witness, dict):

@@ -202,12 +202,18 @@ def prepare(spec, output):
         manifest["native_snapshot"] = dict(RECIPE)
     lock_bytes = Path(spec["source_lock"]).read_bytes()
     lock = json.loads(lock_bytes)
+    manifest["runtime_profiles"] = lock["profiles"]
     manifest["source_lock_sha256"] = sha(lock_bytes)
     payload["source-lock.json"] = (lock_bytes, 0o644)
+    if spec.get("profile_assets") is not None:
+        manifest["profile_assets"] = spec["profile_assets"]
+        payload["profile-assets.tar"] = (Path(spec["profile_assets_archive"]).read_bytes(), 0o644)
     manifest["nccl_build"] = spec["nccl_build"]
     payload["nccl.tar"] = (Path(spec["nccl_archive"]).read_bytes(), 0o644)
     manifest["critical"][lock["runtime"]["nccl_path"]] = lock["runtime"]["nccl_sha256"]
-    for name in ("archive_utils.py", "install_sources.py", "verify_sources.py", "build_snapshot.py", "build_nccl.py", "receipt_contract.py", "nvcc_deterministic.py"):
+    for name in ("snapshot", "placement"):
+        manifest["critical"][lock["runtime"][name + "_path"]] = lock["runtime"][name + "_sha256"]
+    for name in ("archive_utils.py", "install_sources.py", "verify_sources.py", "build_snapshot.py", "build_nccl.py", "receipt_contract.py", "nvcc_deterministic.py", "profile_assets.py"):
         payload[name] = ((HERE / name).read_bytes(), 0o755 if name == "nvcc_deterministic.py" else 0o644)
     manifest["tool_hashes"] = {p: sha(v[0]) for p, v in payload.items() if p.endswith(".py")}
     payload["manifest.json"] = (json.dumps(manifest, indent=2, sort_keys=True).encode() + b"\n", 0o644)
