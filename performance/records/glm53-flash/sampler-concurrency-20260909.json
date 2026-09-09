@@ -877,7 +877,8 @@
       ],
       "elapsed_seconds": 13.375
     },
-    "scope": "External helper against the same already-ready API; not installed startup readiness."
+    "scope": "External helper against the same already-ready API; not installed startup readiness.",
+    "helper_commit": "378abab2bac9fe4ea39afe79ed9ff9f16c52cdd3"
   },
   "input_sha256": {
     "c1_receipt": "f611f3e3f1e694421c8e9fae571fce2df3ebb7bafd09ef309a89d2875dfa3a74",

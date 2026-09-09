@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import json
+import concurrent.futures
 import os
 import signal
 import secrets
 import subprocess
 import sys
 import time
+import threading
 import urllib.request
 from pathlib import Path
 
@@ -137,6 +139,7 @@ def warmup_sampling(
     max_tokens: int,
     timeout_seconds: float,
     credential: str | None,
+    concurrencies: tuple[int, ...] = (1,),
 ) -> dict[str, object]:
     """Complete the explicit sampler request recipe before declaring readiness."""
     deadline = warmup_dflash.make_deadline(timeout_seconds)
@@ -147,13 +150,14 @@ def warmup_sampling(
     if credential:
         headers["Authorization"] = f"Bearer {credential}"
     started = time.monotonic()
-    cases = []
-    for name, temperature, top_k, top_p, seed in SAMPLING_CASES:
+    def send_case(case, token_limit, *, peer=None, barrier=None):
+        name, temperature, top_k, top_p, seed = case
+        label = name if peer is None else f"{name} peer={peer}"
         body = {
             "model": model,
             "messages": [{
                 "role": "user",
-                "content": f"Sampling warmup {time.monotonic_ns()} {name}. Reply briefly.",
+                "content": f"Sampling warmup {time.monotonic_ns()} {label}. Reply briefly.",
             }],
             "temperature": temperature,
             "top_k": top_k,
@@ -162,35 +166,70 @@ def warmup_sampling(
             "n": 1,
             "stream": True,
             "stream_options": {"include_usage": True, "continuous_usage_stats": False},
-            "max_tokens": max_tokens,
+            "max_tokens": token_limit,
             "chat_template_kwargs": {"enable_thinking": True},
         }
         if seed is not None:
             body["seed"] = seed
+        if peer is not None:
+            # A fixed decode span prevents EOS from ending a paired request
+            # before the other request can enter the serving scheduler.
+            body.update(ignore_eos=True, min_tokens=token_limit)
         request = urllib.request.Request(
             endpoint.rstrip("/") + "/v1/chat/completions",
             data=json.dumps(body).encode(), headers=headers,
         )
-        case_started = time.monotonic()
+        if barrier is not None:
+            barrier.wait(timeout=warmup_dflash.remaining_seconds(deadline))
+        case_started = time.perf_counter()
         with urllib.request.urlopen(
             request, timeout=warmup_dflash.remaining_seconds(deadline)
         ) as response:
             if response.status != 200 or response.headers.get_content_type() != "text/event-stream":
                 raise RuntimeError(f"Sampling warmup did not return an SSE response: {name}")
-            result = _sampling_stream_result(response, deadline, max_tokens)
+            result = _sampling_stream_result(response, deadline, token_limit)
+        case_finished = time.perf_counter()
+        if peer is not None and (
+            result["completion_tokens"] != token_limit or result["finish_reason"] != "length"
+        ):
+            raise RuntimeError("Concurrent sampling warmup did not complete its fixed token span")
         warmup_dflash.remaining_seconds(deadline)
-        cases.append({
+        return {
             "name": name, "temperature": temperature, "top_k": top_k,
             "top_p": top_p, "seed": seed, **result,
-            "elapsed_seconds": round(time.monotonic() - case_started, 3),
-        })
+            "elapsed_seconds": round(case_finished - case_started, 3),
+        }, case_started, case_finished
+
+    cases = [send_case(case, max_tokens)[0] for case in SAMPLING_CASES]
+    concurrent_cases = []
+    if any(concurrency >= 2 for concurrency in concurrencies):
+        for case in SAMPLING_CASES:
+            if case[0] not in ("top-k", "top-p", "top-k-top-p"):
+                continue
+            barrier = threading.Barrier(2)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                futures = [executor.submit(send_case, case, 128, peer=index, barrier=barrier)
+                           for index in range(2)]
+                results = [future.result(timeout=warmup_dflash.remaining_seconds(deadline))
+                           for future in futures]
+            overlap = min(result[2] for result in results) - max(result[1] for result in results)
+            if overlap <= 0:
+                raise RuntimeError("Concurrent sampling warmup HTTP requests did not overlap")
+            concurrent_cases.append({
+                "name": case[0], "concurrency": 2, "max_tokens": 128,
+                "min_tokens": 128, "ignore_eos": True,
+                "http_overlap_seconds": round(overlap, 6),
+                "requests": [result[0] for result in results],
+            })
+    warmup_dflash.remaining_seconds(deadline)
     return {
         "schema": "sparkring-sampler-warmup/v1",
-        "coverage": "request-recipe-complete",
+        "coverage": "request-recipe-complete" if concurrent_cases else "limited-c1-only",
         "jit_coverage_verified": False,
         "enable_thinking": True,
         "stream": True,
         "cases": cases,
+        "concurrent_cases": concurrent_cases,
         "elapsed_seconds": round(time.monotonic() - started, 3),
     }
 
@@ -239,7 +278,7 @@ def complete_readiness(
             )
             sampling = warmup_sampling(
                 endpoint, model, max_tokens,
-                warmup_dflash.remaining_seconds(deadline), credential
+                warmup_dflash.remaining_seconds(deadline), credential, concurrencies
             )
             print(json.dumps({"sampling_warmup": sampling}, separators=(",", ":")))
         print(json.dumps({"dflash_warmup": result}, separators=(",", ":")))
