@@ -5,6 +5,7 @@ import copy
 import io
 import json
 import sys
+import threading
 from email.message import Message
 from pathlib import Path
 
@@ -72,7 +73,8 @@ def test_sampling_sweep_covers_filter_and_seed_paths_with_completed_outputs(monk
     assert all(body["stream"] is True and body["n"] == 1 and body["stream_options"] == {
         "include_usage": True, "continuous_usage_stats": False} for body in observed)
     assert len({body["messages"][0]["content"] for body in observed}) == len(observed) == 6
-    assert result["coverage"] == "request-recipe-complete"
+    assert result["coverage"] == "limited-c1-only"
+    assert result["concurrent_cases"] == []
     assert result["jit_coverage_verified"] is False
     assert result["stream"] is True
     assert all(case["completion_tokens"] == 2 for case in result["cases"])
@@ -136,7 +138,7 @@ def test_sampling_accepts_completed_stop_or_token_limit(monkeypatch, finish_reas
     monkeypatch.setattr(wrapper.urllib.request, "urlopen",
                         lambda *_args, **_kwargs: _stream(finish_reason=finish_reason))
     result = wrapper.warmup_sampling("http://localhost", "model", 16, 30, None)
-    assert result["coverage"] == "request-recipe-complete"
+    assert result["coverage"] == "limited-c1-only"
     assert all(case["finish_reason"] == finish_reason for case in result["cases"])
 
 
@@ -154,6 +156,96 @@ def test_sampling_accepts_comments_blank_lines_and_multiline_data(monkeypatch):
     # A chunk can contain several tokens or only metadata; usage supplies totals.
     assert all(case["completion_tokens"] == 2 and case["total_tokens"] == 14
                for case in result["cases"])
+
+
+def test_concurrent_filters_follow_c1_cases_with_fixed_decode_and_http_overlap(monkeypatch):
+    wrapper, _ = _load_module(monkeypatch)
+    observed = []
+    both_started = threading.Barrier(2)
+
+    def urlopen(request, **kwargs):
+        body = json.loads(request.data)
+        observed.append(body)
+        if body.get("min_tokens") == 128:
+            both_started.wait(timeout=5)
+            return _stream(completion_tokens=128, finish_reason="length")
+        return _stream()
+
+    monkeypatch.setattr(wrapper.urllib.request, "urlopen", urlopen)
+    result = wrapper.warmup_sampling("http://localhost", "model", 16, 30, None, (1, 3))
+    assert len(observed) == 12
+    assert all("min_tokens" not in body and "ignore_eos" not in body for body in observed[:6])
+    for start, filters in ((6, (40, 1.0)), (8, (-1, 0.9)), (10, (40, 0.9))):
+        for body in observed[start:start + 2]:
+            assert (body["top_k"], body["top_p"]) == filters
+            assert body["temperature"] == 1.0 and body["min_p"] == 0.0
+            assert "seed" not in body
+            assert body["max_tokens"] == body["min_tokens"] == 128
+            assert body["ignore_eos"] is True and body["stream"] is True
+    assert result["coverage"] == "request-recipe-complete"
+    assert result["jit_coverage_verified"] is False
+    assert len(result["concurrent_cases"]) == 3
+    for case in result["concurrent_cases"]:
+        assert case["concurrency"] == 2 and case["http_overlap_seconds"] > 0
+        assert [request["completion_tokens"] for request in case["requests"]] == [128, 128]
+
+
+@pytest.mark.parametrize("filters", [(40, 1.0), (-1, 0.9), (40, 0.9)])
+@pytest.mark.parametrize("peer", [0, 1])
+def test_each_concurrent_peer_must_complete_before_readiness(tmp_path, monkeypatch, filters, peer):
+    wrapper, warmup = _load_module(monkeypatch)
+    monkeypatch.setattr(warmup, "wait_for_api", lambda *_args: None)
+    monkeypatch.setattr(warmup, "run_warmup", lambda *_args: ())
+    both_started = threading.Barrier(2)
+
+    def urlopen(request, **kwargs):
+        body = json.loads(request.data)
+        if body.get("min_tokens") != 128:
+            return _stream()
+        both_started.wait(timeout=5)
+        fail = ((body["top_k"], body["top_p"]) == filters
+                and f"peer={peer}" in body["messages"][0]["content"])
+        return _stream(completion_tokens=127 if fail else 128, finish_reason="length")
+
+    monkeypatch.setattr(wrapper.urllib.request, "urlopen", urlopen)
+    ready = tmp_path / "ready"
+    ready.touch()
+    with pytest.raises(RuntimeError, match="fixed token span"):
+        wrapper.complete_readiness(
+            rank=0, endpoint="http://localhost", model="model", warmup_enabled=True,
+            concurrencies=(1, 2), shape_words=(8,), max_tokens=16,
+            timeout_seconds=30, credential=None, ready_path=ready,
+        )
+    assert not ready.exists()
+
+
+def test_concurrent_stages_do_not_reset_the_startup_deadline(tmp_path, monkeypatch):
+    wrapper, warmup = _load_module(monkeypatch)
+    clock = [0.0]
+    lock = threading.Lock()
+    both_started = threading.Barrier(2)
+    monkeypatch.setattr(wrapper.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(warmup, "wait_for_api", lambda *_args: None)
+    monkeypatch.setattr(warmup, "run_warmup", lambda *_args: ())
+
+    def urlopen(request, **kwargs):
+        paired = json.loads(request.data).get("min_tokens") == 128
+        with lock:
+            clock[0] += 3 if paired else 1
+        if paired:
+            both_started.wait(timeout=5)
+        return _stream(completion_tokens=128 if paired else 2, finish_reason="length")
+
+    monkeypatch.setattr(wrapper.urllib.request, "urlopen", urlopen)
+    ready = tmp_path / "ready"
+    with pytest.raises(RuntimeError, match="deadline"):
+        wrapper.complete_readiness(
+            rank=0, endpoint="http://localhost", model="model", warmup_enabled=True,
+            concurrencies=(1, 2), shape_words=(8,), max_tokens=16,
+            timeout_seconds=10, credential=None, ready_path=ready,
+        )
+    assert clock[0] == 12
+    assert not ready.exists()
 
 
 def _invalid_streams():

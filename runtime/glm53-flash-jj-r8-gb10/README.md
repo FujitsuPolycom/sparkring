@@ -369,6 +369,14 @@ sampler requests through `serve_with_warmup.py`, each with thinking enabled and
 | Top-k and top-p | 1.0 | 40 | 0.9 | absent |
 | Seeded top-k and top-p | 0.7 | 40 | 0.9 | 0 |
 
+If `DFLASH_WARMUP_CONCURRENCIES` includes a value of at least two, the sampler
+recipe then runs three homogeneous pairs: top-k only, top-p only, and both
+filters. Each paired request uses temperature one, no explicit seed,
+`max_tokens=min_tokens=128`, and `ignore_eos=true`. Both requests must complete
+all 128 tokens with finish reason `length`, and their HTTP intervals must
+overlap. The pairs run one stage at a time under the same startup deadline.
+A C1-only configuration skips these pairs and records `coverage=limited-c1-only`.
+
 Explicit neutral filters prevent a checkpoint's generation defaults from choosing
 an unintended arm. In the pinned vLLM source, [sampling state](https://github.com/FujitsuPolycom/vllm/blob/e02b174693e13859de61811b5e8cd13d5308e259/vllm/v1/worker/gpu/sample/states.py#L40-L100)
 normalizes disabled top-k, omits neutral top-k/top-p tensors, and skips temperature
@@ -385,7 +393,7 @@ chunk after the finish is accepted, as are SSE comments and blank lines. Token
 counts come from usage, not the number of chunks. Malformed, failed, truncated,
 oversized or unfinished streams withhold readiness. The `sampling_warmup` log
 records `stream=true`, each arm's usage, finish reason and elapsed time with
-`coverage=request-recipe-complete` and
+`coverage=request-recipe-complete` when all concurrent stages run, and
 `jit_coverage_verified=false`. API readiness, shape batches and sampler requests
 share `DFLASH_WARMUP_TIMEOUT_SECONDS`; each operation receives the remaining
 budget, stream consumption checks the deadline, and an expired budget prevents
@@ -398,10 +406,13 @@ temperature-one/thinking request, not this six-arm recipe. Its
 tests; those results do not qualify a rebuilt image. The operator image in
 `pins.json` also remains unchanged.
 
-Cold-cache full-model sampler coverage, filtered concurrent sampler
-specializations, mixed long/short prefill coverage, and all recurrent KDA
-specializations remain unqualified. The six sequential C1 sampler requests do
-not establish filtered concurrent execution. In particular, the
+Cold-cache full-model sampler coverage, filtered concurrent GPU specializations,
+mixed long/short prefill coverage, and all recurrent KDA specializations remain
+unqualified. The concurrent stages record HTTP overlap, which does not establish
+that both requests shared a GPU batch or identify each worker's sampler path.
+The [bounded sampler observation](../../performance/records/glm53-flash/sampler-concurrency-20260909.md)
+records why C1-only warmup was insufficient on one native-MTP3 runtime.
+In particular, the
 reported several-4K-prefills-behind-long-decode case requires an identified image,
 tokenized request lengths, actual overlapping execution and per-rank JIT evidence.
 The short shape sweep below does not establish that case. Do not gate readiness
