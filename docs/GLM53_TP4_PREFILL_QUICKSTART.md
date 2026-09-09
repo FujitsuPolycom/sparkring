@@ -5,7 +5,7 @@ implemented and CPU-tested. The image built from this recipe still requires
 the serving qualification described below. Measurements from a different image
 do not qualify a rebuild.
 
-This guide builds a source-pinned image and selects it through SparkRing's
+This guide downloads or builds a source-pinned image and selects it through SparkRing's
 existing managed mesh deployment. It uses four NVIDIA Sparks, native MTP depth
 three, continuation-prefill coalescing, token-sharded mHC, and NCCL across both
 host PCIe domains. DCP1 is the selected profile; DCP4 is an explicit alternative.
@@ -57,14 +57,26 @@ python runtime/sparkring/source_image/prepare_image.py \
   --source-cache "$PWD/.private/glm-tp4-sources" \
   --native-files /tmp/native-runtime-files-20260908.tar
 
-docker build --platform linux/arm64 --network none \
-  -t sparkring-glm53-tp4-source \
-  "$PWD/.private/glm-tp4-context"
+SPARKRING_IMAGE=ghcr.io/fujitsupolycom/sparkring@sha256:86516f319b505e94686e0ba59200f91dda4b65599b08b3508c931c1e4e42b2a6
+docker pull "$SPARKRING_IMAGE"
+docker pull ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:11a556a54041fd823d152a7f051ac4f7c617dc539030df26e93008392fee0746
 ```
 
 Preparation fetches exact public source commits, applies the packaged patches,
-and verifies complete source trees. The build retains the pinned parent's
-framework dependencies and installs the exact hash-verified native libraries.
+and verifies complete source trees. The downloaded image retains the pinned
+parent's framework dependencies and exact hash-verified native libraries.
+The parent pull supplies the local parent identity required by verification;
+Docker reuses shared layers. The [publication record](../runtime/sparkring/source_image/publication.json)
+binds the image digest and source lock.
+
+To build the image yourself instead of pulling it:
+
+```bash
+docker build --platform linux/arm64 --network none \
+  -t sparkring-glm53-tp4-source "$PWD/.private/glm-tp4-context"
+SPARKRING_IMAGE=sparkring-glm53-tp4-source
+```
+
 The optional compiler-rebuild path is described in the common recipe and
 requires separate native-output qualification.
 
@@ -72,13 +84,15 @@ requires separate native-output qualification.
 
 Keep the prepared context: verification uses it to check the image's verifier,
 source lock and manifest before executing the CPU verification program.
+Select the cache-disabled DCP1 profile:
 
 ```bash
 python runtime/sparkring/source_image/verify_image.py \
-  --image sparkring-glm53-tp4-source \
+  --image "$SPARKRING_IMAGE" \
   --context "$PWD/.private/glm-tp4-context" \
   --profile tp4-dcp1-mtp3-prefill \
   --output "$PWD/.private/glm-tp4-dcp1-image-receipt.json"
+SPARKRING_RECEIPT="$PWD/.private/glm-tp4-dcp1-image-receipt.json"
 ```
 
 This receipt identifies a local Docker config ID, not a published registry
@@ -89,6 +103,21 @@ To select DCP4, generate a separate receipt with
 `--profile tp4-dcp4-mtp3-prefill`. That profile enables the DCP4 owner exchange
 and fused endpoints. SparkCache and compact index cache remain disabled.
 Do not change individual flags inside a verified receipt.
+
+To enable bounded SparkCache capture and restore, use this profile instead:
+
+```bash
+python runtime/sparkring/source_image/verify_image.py \
+  --image "$SPARKRING_IMAGE" \
+  --context "$PWD/.private/glm-tp4-context" \
+  --profile tp4-dcp1-mtp3-sparkcache \
+  --output "$PWD/.private/glm-tp4-dcp1-sparkcache-receipt.json"
+SPARKRING_RECEIPT="$PWD/.private/glm-tp4-dcp1-sparkcache-receipt.json"
+```
+
+The receipt selects the deployment profile. For DCP4, set `SPARKRING_RECEIPT`
+to the output path from its separate verification command. Pass that selected
+receipt to the deployment plan below.
 
 ## Use the managed deployment suite
 
@@ -101,7 +130,7 @@ STATE="$PWD/.private/glm-tp4-deployment"
 
 sr plan --inventory "$STATE/inventory.json" --name glm-tp4 \
   --workspace /srv/sparkring/glm-tp4 --fabric-range 198.18.0.0/21 \
-  --image-receipt "$PWD/.private/glm-tp4-dcp1-image-receipt.json" \
+  --image-receipt "$SPARKRING_RECEIPT" \
   --output "$STATE/preparation.json"
 ```
 
