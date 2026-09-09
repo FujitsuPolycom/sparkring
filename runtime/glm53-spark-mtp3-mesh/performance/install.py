@@ -70,6 +70,24 @@ for row in data["files"]:
     path = SITE / row["path"]
     if row["sha256"] != hashlib.sha256(path.read_bytes()).hexdigest():
         raise ValueError(f"Ownership dependency differs: {row['path']}")
+# Apply named transforms only after every checkpoint ownership preimage passed.
+import importlib.util
+
+continuation_spec = importlib.util.spec_from_file_location(
+    "continuation_install", SOURCE / "continuation/install.py"
+)
+continuation = importlib.util.module_from_spec(continuation_spec)
+continuation_spec.loader.exec_module(continuation)
+continuation_transform = continuation.apply(SITE, data)
+sys.path.insert(0, str(SOURCE / "attribution"))
+from patch_scheduler import apply as apply_attribution
+
+attribution_transform = apply_attribution(scheduler)
+for row in data["files"]:
+    if row["path"] == "vllm/v1/core/sched/scheduler.py":
+        if row["sha256"] != attribution_transform["before_sha256"]:
+            raise ValueError("Attribution ownership scheduler preimage differs")
+        row["sha256"] = attribution_transform["after_sha256"]
 contract.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 shutil.copytree(SOURCE / "bundle", Path("/opt/spark-sircl"), dirs_exist_ok=True)
 shutil.copyfile(
@@ -105,6 +123,10 @@ receipt.write_text(
             "schema": "sparkring-mtp3-performance-image/v1",
             "status": "research-only",
             "sparkcache_commit": context["sparkcache_commit"],
+            "runtime_transforms": {
+                "continuation_checkpoints": continuation_transform,
+                "request_cache_attribution": attribution_transform,
+            },
             "files": files,
         },
         sort_keys=True,

@@ -1,0 +1,94 @@
+{
+  "Conditions": {
+    "hardware": "Four NVIDIA DGX Spark GB10 GPUs, 48 SMs each, virtual mesh over the existing physical ring",
+    "model": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+    "model_revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "tensor_parallel": 4,
+    "decode_context_parallel": 4,
+    "pipeline_parallel": 1,
+    "mtp_steps": 3,
+    "max_num_batched_tokens": 8192,
+    "max_num_seqs": 16,
+    "kv_cache_gib_per_rank": 24,
+    "concurrency": 1,
+    "max_output_tokens": 1,
+    "temperature": 0,
+    "exact_prompt_tokens": true,
+    "cache_state": "Unique prompt prefix for every timing request; cached_tokens=0 required for each sample; periodic full captures off.",
+    "retained_features": "Native virtual mesh, graph-only decode geometry, linked posting, existing B12X compute patches, SparkCache; no dynamic pressure-aware chunk sizing.",
+    "image": "sha256:489d1975619e9083d14f14bcd1c6cbb4a96c41e3ab3978af048dc3ed2bb452a8",
+    "flag": "SPARK_GDN_CONTINUATION_CHECKPOINTS=1",
+    "comparison": "Single candidate, no restarted paired control. Scheduler/allocator/helper extension only; four runtime sources plus ownership/inventory changed; fresh cache root. Component probes used source-identical61f5817f child before deterministic metadata-only rebuild."
+  },
+  "Measurement": {
+    "metric": "Seconds from request submission to first nonempty streamed content/reasoning delta, including client/network overhead; prompt tokens / TTFT.",
+    "clock": "Windows Python time.monotonic; GetTickCount64, approximately15.625ms granularity. Do not treat reported decimal precision as clock accuracy.",
+    "warmup": "Startup/API warmup complete and running/waiting gauges zero. One warm row per8/16/32/64K shape excluded;128K already warmed by preceding semantic/full-prefill calls.",
+    "samples_per_shape": 3,
+    "raw_files": [
+      "continuation-prefill.json",
+      "continuation-prefill-128k.json"
+    ],
+    "aggregation": "Median TTFT, min/max of three measured TTFTs; tokens divided by median TTFT."
+  },
+  "Result": [
+    {
+      "tokens": 8192,
+      "samples": 3,
+      "median_ttft_seconds": 2.7969999999913853,
+      "prefill_tokens_per_second": 2928.8523418038008,
+      "min_ttft": 2.7819999999919673,
+      "max_ttft": 2.812999999994645
+    },
+    {
+      "tokens": 16384,
+      "samples": 3,
+      "median_ttft_seconds": 5.671999999991385,
+      "prefill_tokens_per_second": 2888.5754583964886,
+      "min_ttft": 5.6560000000026776,
+      "max_ttft": 5.672000000005937
+    },
+    {
+      "tokens": 32768,
+      "samples": 3,
+      "median_ttft_seconds": 11.328000000008615,
+      "prefill_tokens_per_second": 2892.6553672294385,
+      "min_ttft": 11.296999999991385,
+      "max_ttft": 11.343999999997322
+    },
+    {
+      "tokens": 65536,
+      "samples": 3,
+      "median_ttft_seconds": 22.718999999997322,
+      "prefill_tokens_per_second": 2884.6340067788074,
+      "min_ttft": 22.718000000008033,
+      "max_ttft": 22.75
+    },
+    {
+      "tokens": 131072,
+      "samples": 3,
+      "median_ttft_seconds": 45.875,
+      "prefill_tokens_per_second": 2857.1553133514985,
+      "min_ttft": 45.78199999999197,
+      "max_ttft": 45.875
+    }
+  ],
+  "Conclusion": "Fixed8192 continuation completed the stated cases with roughly2857\u20132929 prompt tokens/s at measured8K\u2013128K sizes. No isolated percentage speedup is established by these observations.",
+  "Limitations": [
+    "Three measurements per shape, synthetic fact-retrieval prompts and1 output token; no comprehensive quality, decode, concurrency or arbitrary-length claim.",
+    "Historical screenshots used different harness/compositions and are not matched controls.",
+    "Two128K reuse expectations missed and recomputed safely, including one after worker publication; later full repeated/extended checks reused129024 tokens. Scheduler visibility was not traced, so no attribution as a new continuation regression.",
+    "Rank3 launch memory gate passed on recheck without reboot or threshold change; timestamp-normalized image rebuild recorded separately."
+  ],
+  "Correctness": {
+    "gpu_recurrence_cases": 6,
+    "gpu_convolution_cases": 3,
+    "regular_semantic_cache_cases": 15,
+    "concurrent_cold_requests": 4,
+    "total_exact_answers_across_long_context_attempts": 25,
+    "cache_reuse_expectation_misses_128k": 2,
+    "later_128k_reuse_tokens": 129024,
+    "activation": "All4 workers recorded8192->16384 with checkpoint ends14336/15360 across34GDNlayers.",
+    "universal_correctness_claim": false
+  }
+}

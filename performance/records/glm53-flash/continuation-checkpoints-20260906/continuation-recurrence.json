@@ -1,0 +1,47 @@
+{
+  "gpu_executed": true,
+  "kernel_source_pins": {
+    "b12x.sequence.kda_prefill._impl": "0d0fc64b5fddd269d823a57f14c09a9e0a1b38a4f802c39df07353f34873a270",
+    "b12x.sequence.kda_prefill._cute_kernels": "df12ee84e1677ce1a200d1aab488c9ce5ae774d21f70b7f15b39c636623ab753",
+    "b12x.sequence.kda_prefill._policy": "ec64f07f841675501ff279bae3074d374ca8015a982ab12dc837ea2d03720a8e",
+    "b12x.sequence.kda_prefill.metadata": "7a9ef9ef3c59c88e4816bea6c9a74ebadd91a85632b42e221a5dd4009c5bb65c"
+  },
+  "cases": [
+    {
+      "tail_tokens": 2048,
+      "inplace": false,
+      "pass": true
+    },
+    {
+      "tail_tokens": 2048,
+      "inplace": true,
+      "pass": true
+    },
+    {
+      "tail_tokens": 4096,
+      "inplace": false,
+      "pass": true
+    },
+    {
+      "tail_tokens": 4096,
+      "inplace": true,
+      "pass": true
+    },
+    {
+      "tail_tokens": 8192,
+      "inplace": false,
+      "pass": true
+    },
+    {
+      "tail_tokens": 8192,
+      "inplace": true,
+      "pass": true
+    }
+  ],
+  "pass": true,
+  "limitations": [
+    "no convolution check",
+    "no scheduler/refcount integration",
+    "no full-model correctness or speed result"
+  ]
+}

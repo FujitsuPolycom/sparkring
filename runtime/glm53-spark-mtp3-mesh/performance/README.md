@@ -5,9 +5,14 @@ The build combines GLM-5.3 native MTP3 compute, verified persistent caching,
 explicit recurrent checkpoints, and stream-ordered hardware mesh transport.
 The recipe preserves the parent model weights and does not change host fabric.
 
+This optional research builder uses its own pinned parent and source overlays.
+The shared GLM image and its topology profiles are defined separately in
+[`runtime/sparkring/source_image`](../../sparkring/source_image/README.md).
+This builder does not replace those profiles or their image receipts.
+
 ## Build inputs
 
-Use a clean SparkCache checkout at `48bbd2be4a7b972e56632a2d7b934bac5460f272`.
+Use a clean SparkCache checkout at `b5aca7cd3d3f7e7a14636bf6e5fa1f50a9650168`.
 It contains the merged restore/publication improvements, periodic-capture
 option, and backlog gauges. Periodic full capture defaults off; enabling it
 trades more writes for shorter history reconstruction.
@@ -129,5 +134,24 @@ module that lacks the rule will not gain it merely from an environment override.
 
 This packaging change keeps the existing timeout policy. A workload-aware
 progress signal remains separate work. CPU
-tests demonstrate that frozen output with growing KV occupancy still triggers
-the configured timeout; they do not establish a safe universal timeout.
+tests distinguish allocation progress from a stalled engine; they do not
+establish a safe universal timeout.
+
+## Request reuse accounting
+
+The image build includes [scheduler attribution hooks](attribution/README.md)
+for the connector's opt-in request ledger. These hooks distinguish admitted
+local reuse, finalized persistent restoration, and accepted prompt work across
+preemption attempts. They are inactive unless the connector enables request
+cache events. Source availability does not change a published image receipt;
+a rebuilt image must be validated before serving evidence is claimed.
+
+## Continuation checkpoint sources
+
+Source builds preserve the [four continuation checkpoint files](continuation/README.md)
+from the source-attested continuation serving image. Both recurrent checkpoint
+flags are enabled in the build recipe. The installer validates checkpoint
+ownership, applies those four replacements, then applies the matching request
+attribution transform and generates the full image inventory. This source build
+composition requires separate serving validation; it does not change the
+immutable published image contract.

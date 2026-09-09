@@ -1,0 +1,28 @@
+[
+  {
+    "public_file": "continuation-prefill.json",
+    "sha256": "78a35a51a0b851cba7ad56307e54a2316b8ce2e3ce69a2339919b7d575f5e128",
+    "transformation": "None: exact source bytes; private source location omitted."
+  },
+  {
+    "public_file": "continuation-prefill-128k.json",
+    "sha256": "3ba7cb58ea757905e4e164e390f6409418bf04d5451146190b68fb2dcce9a251",
+    "transformation": "None: exact source bytes; private source location omitted."
+  },
+  {
+    "public_file": "continuation-recurrence.json",
+    "sha256": "5ff46ae9c343e889d7319b7f0db3fafe28bea79762c1571ca64136974ed3cdbf",
+    "transformation": "None: exact source bytes; private source location omitted."
+  },
+  {
+    "public_file": "continuation-convolution.json",
+    "sha256": "42ff4bbf70ce2d649a95af219447b3c5a262539bca8dece06205a7c3ab2dbc36",
+    "transformation": "None: exact source bytes; private source location omitted."
+  },
+  {
+    "public_file": "../../../harnesses/vllm/prefill_checks/continuation_serve_checks.py",
+    "historical_harness_sha256": "f8c8d0f75b13ed833371bbef89c4e47a89ec545dfa39135df4969f39ec0f4f05",
+    "public_harness_sha256": "8b7b1cb03a1967317e3d02f21a1a6dbb5b89e29a434a1dff5f7069d50175e962",
+    "transformation": "Endpoint/model/SSH alias and container selection parameterized; os import added where required, unused import removed, UTF-8 output made explicit, source formatted. Timing/request logic retained; missing or malformed cache-token accounting explicitly rejected. All retained timing rows contain explicit integer cached_tokens=0. Public copy has not been rerun on GPU. Historical source digest was computed from a retained copy, not signed at execution time."
+  }
+]

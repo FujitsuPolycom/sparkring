@@ -1,0 +1,4 @@
+The archived source files derive from vLLM and preserve their Apache-2.0
+SPDX notices and vLLM contributor copyright statements. SparkRing changes
+implement final-chunk recurrent checkpoint planning and allocation.
+The manifest identifies exact source preimages and replacements.

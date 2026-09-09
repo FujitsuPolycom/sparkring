@@ -1,0 +1,29 @@
+{
+  "cases": [
+    {
+      "tail": 2048,
+      "checkpoint_offsets": [
+        1024,
+        0
+      ],
+      "pass": true
+    },
+    {
+      "tail": 4096,
+      "checkpoint_offsets": [
+        2048,
+        3072
+      ],
+      "pass": true
+    },
+    {
+      "tail": 8192,
+      "checkpoint_offsets": [
+        6144,
+        7168
+      ],
+      "pass": true
+    }
+  ],
+  "pass": true
+}

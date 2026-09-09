@@ -1,0 +1,62 @@
+{
+  "prior_warmup": "completed 128K semantic and repeated full-prefill requests",
+  "rows": [
+    {
+      "tokens": 131072,
+      "ttft_seconds": 45.78199999999197,
+      "tokens_per_second": 2862.959241623848,
+      "usage": {
+        "prompt_tokens": 131072,
+        "total_tokens": 131073,
+        "completion_tokens": 1,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 130048
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "phase": "measured",
+      "sample": 0
+    },
+    {
+      "tokens": 131072,
+      "ttft_seconds": 45.875,
+      "tokens_per_second": 2857.1553133514985,
+      "usage": {
+        "prompt_tokens": 131072,
+        "total_tokens": 131073,
+        "completion_tokens": 1,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 130048
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "phase": "measured",
+      "sample": 1
+    },
+    {
+      "tokens": 131072,
+      "ttft_seconds": 45.875,
+      "tokens_per_second": 2857.1553133514985,
+      "usage": {
+        "prompt_tokens": 131072,
+        "total_tokens": 131073,
+        "completion_tokens": 1,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 130048
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      },
+      "phase": "measured",
+      "sample": 2
+    }
+  ]
+}
