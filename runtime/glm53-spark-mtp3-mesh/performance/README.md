@@ -52,6 +52,11 @@ source or ownership dependency fails the build rather than weakening checks.
 
 ## Behavior
 
+- The optional [token-sharded mHC prefill package](mhc-prefill/README.md) runs
+  repeated mHC on each rank's token quarter in supported eager 8K prefills.
+  It is installed with `SPARK_MHC_PREFILL_SHARD=0`. Its original serving evidence
+  does not qualify a rebuild that also contains request attribution.
+
 - Bounded restore memory, authenticated history reconstruction, and protected
   publication lifetimes come from SparkCache's pinned source.
 - Recurrent checkpoints are materialized and retained through the full
