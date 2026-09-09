@@ -129,7 +129,7 @@ def serving_argv(manifest, profile, arguments, executable=sys.executable):
     """Select an attested profile entrypoint after common source verification."""
     if profile and profile not in manifest.get("runtime_profiles", {}):
         raise ValueError("Serving profile is absent from the verified image")
-    if profile == "glm53-flash-nvfp4-tp2-mtp3":
+    if profile == "glm53-flash-spark-tp2-mtp3":
         return [executable, "/opt/sparkring/transports/entrypoint.py", "serve", *arguments]
     return manifest["warmup_argv"] + arguments
 

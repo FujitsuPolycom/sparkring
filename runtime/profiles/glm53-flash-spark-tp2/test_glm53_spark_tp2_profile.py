@@ -1,4 +1,4 @@
-"""CPU contracts for original-checkpoint selection and guarded manual lifecycle."""
+"""CPU contracts for NVFP4-Spark selection and guarded manual lifecycle."""
 
 import copy
 import hashlib
@@ -14,7 +14,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parent
-spec = importlib.util.spec_from_file_location("glm53_nvfp4_tp2_launch", ROOT / "launch.py")
+spec = importlib.util.spec_from_file_location("glm53_spark_tp2_launch", ROOT / "launch.py")
 launch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(launch)
 IMAGE = "ghcr.io/fujitsupolycom/sparkring@sha256:" + "a" * 64
@@ -78,16 +78,17 @@ class Host:
         return subprocess.CompletedProcess(command, 0, stdout, "")
 
 
-def test_profile_preserves_tested_model_settings_and_no_cache():
+def test_profile_selects_spark_kv875_settings_and_no_cache():
     profile = launch.load_profile()
-    assert profile["model"]["repository"] == "local-inference-lab/GLM-5.3-Flash-NVFP4"
-    assert profile["model"]["revision"] == "520de24"
+    assert profile["model"]["repository"] == "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark"
+    assert profile["model"]["revision"] == "df116c4fb16b1d37ae43d2cfd624de26ffbc832e"
     args = profile["vllm_args"]
     def value(flag):
         return args[args.index(flag) + 1]
     for flag, expected in {
         "--tensor-parallel-size": "2", "--decode-context-parallel-size": "1",
-        "--load-format": "b12x", "--kv-cache-memory-bytes": "7247757312",
+        "--load-format": "b12x", "--kv-cache-memory-bytes": "9395240960",
+        "--served-model-name": "GLM-5.3-Flash-NVFP4-Spark",
         "--max-model-len": "262144", "--max-num-seqs": "8",
         "--max-num-batched-tokens": "8192", "--prefill-schedule-interval": "8",
         "--kda-prefill-backend": "b12x", "--recurrent-checkpoint-policy": "aligned",
@@ -96,7 +97,11 @@ def test_profile_preserves_tested_model_settings_and_no_cache():
     assert json.loads(value("--speculative-config")) == {
         "method": "mtp", "num_speculative_tokens": 3, "moe_backend": "humming", "attention_backend": "B12X",
     }
-    assert json.loads(value("--compilation-config"))["max_cudagraph_capture_size"] == 32
+    assert json.loads(value("--compilation-config")) == {
+        "mode": 0, "cudagraph_mode": "FULL_AND_PIECEWISE",
+        "cudagraph_capture_sizes": [1, 2, 4, 8, 12, 16, 20, 24, 28, 32],
+        "max_cudagraph_capture_size": 32,
+    }
     assert json.loads(value("--limit-mm-per-prompt")) == {"image": 4, "video": 0}
     assert json.loads(value("--model-loader-extra-config")) == {"allocation": "managed"}
     assert "--kv-transfer-config" not in args
@@ -226,23 +231,29 @@ def test_runtime_receipt_must_match_before_host_commands(inputs, field):
     assert not host.commands
 
 
-def test_existing_spark_checkpoint_profile_keeps_its_identity():
-    spark = json.loads((ROOT.parent / "glm53-flash-spark-tp2/profile.json").read_text())
-    assert spark["model"]["repository"].endswith("-NVFP4-Spark")
-    assert spark["model"]["revision"] == "df116c4fb16b1d37ae43d2cfd624de26ffbc832e"
+def test_retired_entrypoint_uses_canonical_spark_plan_in_fresh_process(inputs):
+    retired = ROOT.parent / "glm53-flash-nvfp4-tp2/launch.py"
+    model, cache, site = inputs
+    result = subprocess.run([
+        sys.executable, "-I", "-B", str(retired), "plan", "--rank", "1",
+        "--master", "master.example", "--model-dir", str(model),
+        "--cache-dir", str(cache), "--env-file", str(site), "--image", IMAGE,
+    ], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == plan(inputs, 1)
 
 
-def test_managed_option_preserves_shared_default_and_reference_evidence():
+def test_managed_option_and_guard_distinguish_reference_trial():
     dependencies = json.loads((ROOT / "dependencies.json").read_text())
     loader = next(item for item in dependencies["shared_image_requirements"]
                   if item["component"] == "B12X loader")
     assert loader["model_loader_extra_config"] == {"allocation": "managed"}
     assert loader["shared_loader_default_allocation"] == "pinned_wc"
-    record = json.loads((ROOT.parents[2] / "performance/records/glm53-flash/tp2-single-dac-source-20260908.json").read_text())
-    assert "--model-loader-extra-config" not in record["conditions"]["serving_arguments"]
     assert "research-only" in launch.load_profile()["qualification"]["shared_image"]
-    assert dependencies["reference_source"]["nccl"]["version"] == "2.30.4"
-    assert dependencies["reference_source"]["nccl"]["library"] == "/opt/libnccl-local-inference.so.2.30.4"
+    assert dependencies["reference_trial"]["memory_guards_active"] is False
+    assert dependencies["reference_trial"]["kv_pool_tokens_estimate"] == 1050118
+    assert launch.load_profile()["lifecycle"]["memory_guard_floor_bytes"] == 2147483648
+    assert launch.load_profile()["qualification"]["public_guarded_gpu_qualified"] is False
 
 
 @pytest.fixture
@@ -254,11 +265,7 @@ def local_source_receipt(inputs, tmp_path, monkeypatch):
         pytest.skip("Common source-image recipe is required for local receipt integration tests")
     value = launch.render(0, "master.example", *inputs, LOCAL_IMAGE)
     lock = json.loads((origin / "glm53-tp4-lock.json").read_bytes())
-    lock["profiles"][value["profile"]] = {
-        "profile_sha256": value["profile_sha256"],
-        "transport_manifest_sha256": value["transport_manifest_sha256"],
-        "tp_size": 2, "dcp_size": 1,
-    }
+    assert lock["profiles"][value["profile"]]["profile_sha256"] == value["profile_sha256"]
     target = tmp_path / "common-source-image"
     target.mkdir()
     for filename in ("archive_utils.py", "native_files.py", "receipt_contract.py"):

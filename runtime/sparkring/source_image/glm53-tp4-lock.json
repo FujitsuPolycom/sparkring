@@ -232,66 +232,6 @@
       },
       "tp_size": 4
     },
-    "glm53-flash-nvfp4-tp2-mtp3": {
-      "tp_size": 2,
-      "dcp_size": 1,
-      "host_domains": "dual",
-      "sparkcache": false,
-      "profile_sha256": "7ff677949c31a37dc955431702c6d032f5db167e242213b9663ae5830f1cb76a",
-      "transport_profile": "tp2-rocenante-adaptive",
-      "transport_manifest_sha256": "eb03cfde826974811be3bfe5d88f36d9de105b73358f3eaa56b9ed44f19127c4",
-      "transport_files_sha256": "2ba62bfb9cf49236d17a8da41b240c2512ceb780559b454969a4ae18de25290f",
-      "transport_file_count": 10,
-      "installed_profile_path": "/opt/sparkring/profiles/glm53-flash-nvfp4-tp2/profile.json",
-      "environment": {
-        "B12X_POLICY_MODE": "auto",
-        "CUDA_DEVICE_MAX_CONNECTIONS": "32",
-        "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
-        "CUTE_DSL_ARCH": "sm_121a",
-        "FLASHINFER_CUDA_ARCH_LIST": "12.1f",
-        "FLASHINFER_DISABLE_VERSION_CHECK": "1",
-        "HF_HUB_OFFLINE": "1",
-        "NCCL_CUMEM_ENABLE": "0",
-        "NCCL_DEBUG": "WARN",
-        "NCCL_IB_DISABLE": "0",
-        "NCCL_IB_GID_INDEX": "3",
-        "NCCL_IB_SUBNET_AWARE_ROUTING": "0",
-        "NCCL_IGNORE_CPU_AFFINITY": "1",
-        "NCCL_NET": "IB",
-        "NCCL_NET_PLUGIN": "none",
-        "NCCL_P2P_LEVEL": "SYS",
-        "NCCL_PROTO": "LL,LL128,Simple",
-        "OMP_NUM_THREADS": "2",
-        "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
-        "TORCH_USE_RTLD_GLOBAL": "1",
-        "TRANSFORMERS_OFFLINE": "1",
-        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
-        "VLLM_B12X_MOE_FP4_FORCE_A16": "0",
-        "VLLM_ENABLE_PCIE_ALLREDUCE": "0",
-        "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
-        "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
-        "VLLM_GLM53_KDA_GATE_SIDE_STREAM": "0",
-        "VLLM_GLM53_SPLIT_MAMBA_BLOCK_SIZE": "256",
-        "VLLM_GLM53_SPLIT_TARGET_BLOCK_SIZE": "2048",
-        "VLLM_LM_HEAD_A16": "1",
-        "VLLM_MEMORY_PROFILE_INCLUDE_ATTN": "1",
-        "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS": "1",
-        "VLLM_MTP_NVFP4_LM_HEAD": "1",
-        "VLLM_MXFP8_LM_HEAD": "1",
-        "VLLM_NO_USAGE_STATS": "1",
-        "VLLM_PLUGINS": "b12x_loader",
-        "VLLM_WORKER_MULTIPROC_METHOD": "spawn",
-        "VLLM_DISABLED_KERNELS": "MarlinFP8ScaledMMLinearKernel",
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONPATH": "",
-        "NCCL_LOCAL_INFERENCE_PATH": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
-        "VLLM_NCCL_SO_PATH": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
-        "LD_PRELOAD": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
-        "NCCL_IB_EXTENDED_IPV4_GIDS": "1",
-        "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
-        "NCCL_IB_ROUTE_DIAGNOSTICS": "1"
-      }
-    },
     "glm53-flash-spark-tp4-switched-mtp3": {
       "tp_size": 4,
       "dcp_size": 1,
@@ -374,6 +314,66 @@
         "SPARKRING_LIVENESS_ENABLED": "1",
         "SPARKRING_LIVENESS_PORT": "8001"
       }
+    },
+    "glm53-flash-spark-tp2-mtp3": {
+      "tp_size": 2,
+      "dcp_size": 1,
+      "host_domains": "dual",
+      "sparkcache": false,
+      "profile_sha256": "5e2df6f2435c54ce270889753abceec5e01bc4a1a9df5b4ac70d0c91e1264a67",
+      "transport_profile": "tp2-rocenante-adaptive",
+      "transport_manifest_sha256": "eb03cfde826974811be3bfe5d88f36d9de105b73358f3eaa56b9ed44f19127c4",
+      "transport_files_sha256": "2ba62bfb9cf49236d17a8da41b240c2512ceb780559b454969a4ae18de25290f",
+      "transport_file_count": 10,
+      "installed_profile_path": "/opt/sparkring/profiles/glm53-flash-spark-tp2/profile.json",
+      "environment": {
+        "B12X_POLICY_MODE": "auto",
+        "CUDA_DEVICE_MAX_CONNECTIONS": "32",
+        "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+        "CUTE_DSL_ARCH": "sm_121a",
+        "FLASHINFER_CUDA_ARCH_LIST": "12.1f",
+        "FLASHINFER_DISABLE_VERSION_CHECK": "1",
+        "HF_HUB_OFFLINE": "1",
+        "NCCL_CUMEM_ENABLE": "0",
+        "NCCL_DEBUG": "WARN",
+        "NCCL_IB_DISABLE": "0",
+        "NCCL_IB_GID_INDEX": "3",
+        "NCCL_IB_SUBNET_AWARE_ROUTING": "0",
+        "NCCL_IGNORE_CPU_AFFINITY": "1",
+        "NCCL_NET": "IB",
+        "NCCL_NET_PLUGIN": "none",
+        "NCCL_P2P_LEVEL": "SYS",
+        "NCCL_PROTO": "LL,LL128,Simple",
+        "OMP_NUM_THREADS": "2",
+        "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
+        "TORCH_USE_RTLD_GLOBAL": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
+        "VLLM_B12X_MOE_FP4_FORCE_A16": "0",
+        "VLLM_ENABLE_PCIE_ALLREDUCE": "0",
+        "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+        "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
+        "VLLM_GLM53_KDA_GATE_SIDE_STREAM": "0",
+        "VLLM_GLM53_SPLIT_MAMBA_BLOCK_SIZE": "256",
+        "VLLM_GLM53_SPLIT_TARGET_BLOCK_SIZE": "2048",
+        "VLLM_LM_HEAD_A16": "1",
+        "VLLM_MEMORY_PROFILE_INCLUDE_ATTN": "1",
+        "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS": "1",
+        "VLLM_MTP_NVFP4_LM_HEAD": "1",
+        "VLLM_MXFP8_LM_HEAD": "1",
+        "VLLM_NO_USAGE_STATS": "1",
+        "VLLM_PLUGINS": "b12x_loader",
+        "VLLM_WORKER_MULTIPROC_METHOD": "spawn",
+        "VLLM_DISABLED_KERNELS": "MarlinFP8ScaledMMLinearKernel",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPATH": "",
+        "NCCL_LOCAL_INFERENCE_PATH": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+        "VLLM_NCCL_SO_PATH": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+        "LD_PRELOAD": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+        "NCCL_IB_EXTENDED_IPV4_GIDS": "1",
+        "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+        "NCCL_IB_ROUTE_DIAGNOSTICS": "1"
+      }
     }
   },
   "qualification": {
@@ -384,8 +384,8 @@
       "tp4-dcp1-mtp3-prefill": false,
       "tp4-dcp4-mtp3-prefill": false,
       "tp4-dcp1-mtp3-sparkcache": false,
-      "glm53-flash-nvfp4-tp2-mtp3": false,
-      "glm53-flash-spark-tp4-switched-mtp3": false
+      "glm53-flash-spark-tp4-switched-mtp3": false,
+      "glm53-flash-spark-tp2-mtp3": false
     },
     "reference_image_scope": "Reference measurements do not qualify the shared source build, TP2 source port, or added restore-admission guards."
   },
@@ -470,18 +470,6 @@
       "sha256": "c4865202d229c0501368f6f31f810d97dda25e50c0afc12cc4edd4bb8a5695a6",
       "destination": "/usr/local/lib/python3.12/dist-packages/sparkring_transport.pth"
     },
-    "runtime/profiles/glm53-flash-nvfp4-tp2/profile.json": {
-      "sha256": "7ff677949c31a37dc955431702c6d032f5db167e242213b9663ae5830f1cb76a",
-      "destination": "/opt/sparkring/profiles/glm53-flash-nvfp4-tp2/profile.json"
-    },
-    "runtime/profiles/glm53-flash-nvfp4-tp2/dependencies.json": {
-      "sha256": "277865118c71f074cd7ac3d759c708c7aa45fe38ab1629ad190fe950e289f2cc",
-      "destination": "/opt/sparkring/profiles/glm53-flash-nvfp4-tp2/dependencies.json"
-    },
-    "runtime/profiles/glm53-flash-nvfp4-tp2/memory-guard.conf": {
-      "sha256": "1e81ce0b0cc4aa0818bef707a45786c5f7d541ffc2e9283bb8192ea6080d439e",
-      "destination": "/opt/sparkring/profiles/glm53-flash-nvfp4-tp2/memory-guard.conf"
-    },
     "runtime/profiles/glm53-flash-spark-tp4-switched/profile.json": {
       "sha256": "a943cb08e7547165fc90ac87fe9ab8dc3a3b7a59626d88996bf37e21fa5c1fb8",
       "destination": "/opt/sparkring/profiles/glm53-flash-spark-tp4-switched/profile.json"
@@ -501,6 +489,18 @@
     "runtime/profiles/glm53-flash-spark-tp4-switched/README.md": {
       "sha256": "a7522ed8361ac6fa402f1a6f47a663614426aa22a0391cb2590904a46cc85117",
       "destination": "/opt/sparkring/profiles/glm53-flash-spark-tp4-switched/README.md"
+    },
+    "runtime/profiles/glm53-flash-spark-tp2/profile.json": {
+      "sha256": "5e2df6f2435c54ce270889753abceec5e01bc4a1a9df5b4ac70d0c91e1264a67",
+      "destination": "/opt/sparkring/profiles/glm53-flash-spark-tp2/profile.json"
+    },
+    "runtime/profiles/glm53-flash-spark-tp2/dependencies.json": {
+      "sha256": "bb6ca09e8d77d6d15521d18a9b555bf969e33abeed149dda0bb3b56608302266",
+      "destination": "/opt/sparkring/profiles/glm53-flash-spark-tp2/dependencies.json"
+    },
+    "runtime/profiles/glm53-flash-spark-tp2/memory-guard.conf": {
+      "sha256": "1e81ce0b0cc4aa0818bef707a45786c5f7d541ffc2e9283bb8192ea6080d439e",
+      "destination": "/opt/sparkring/profiles/glm53-flash-spark-tp2/memory-guard.conf"
     }
   },
   "native_files": {

@@ -66,7 +66,7 @@ python3 -S -B /opt/sparkcache-jj-runtime/verify_sources.py --serve /models/targe
 ```
 
 The verifier checks common sources and installed assets, then dispatches
-`SOURCE_IMAGE_PROFILE=glm53-flash-nvfp4-tp2-mtp3` through normal Python:
+`SOURCE_IMAGE_PROFILE=glm53-flash-spark-tp2-mtp3` through normal Python:
 
 ```text
 python3 /opt/sparkring/transports/entrypoint.py serve /models/target ...
@@ -88,7 +88,7 @@ their matching registry profile receipt; the two image identity types are
 not interchangeable.
 
 The common image must separately satisfy the
-[TP2 dependency matrix](../profiles/glm53-flash-nvfp4-tp2/dependencies.json).
+[TP2 dependency matrix](../profiles/glm53-flash-spark-tp2/dependencies.json).
 In particular, keep the public four-checkpoint producer/consumer contract
 while adding TP2 admission. The measured two-checkpoint source is provenance
 for the reference deployment, not a replacement for the shared implementation.
