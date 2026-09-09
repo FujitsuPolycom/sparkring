@@ -1,6 +1,6 @@
 # Original GLM-5.3 Flash NVFP4 on two Sparks
 
-Status: **implemented**. This prospective shared-image profile uses the model
+Status: **implemented**. This shared-image profile uses the model
 settings of a bounded TP2/DCP1 text qualification. It requires an explicit
 image identity and a matching verification receipt before creating or starting
 a container. The measured source deployment does not qualify the shared
@@ -56,6 +56,12 @@ inputs from public source bases and repository files. The
 
 For a local source-built image, first produce a CPU verification receipt from
 the exact prepared context:
+
+The [published shared image](../../sparkring/source_image/README.md#download-the-published-image)
+can also be pulled and verified using this path. Prepare its matching source
+context, pull the declared parent for verification, and set
+`SPARKRING_LOCAL_IMAGE_ID` to the result of
+`docker image inspect --format '{{.Id}}' "$SPARKRING_IMAGE"`.
 
 ```bash
 python3 runtime/sparkring/source_image/verify_image.py \
