@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -260,7 +261,8 @@ def local_source_receipt(inputs, tmp_path, monkeypatch):
     }
     target = tmp_path / "common-source-image"
     target.mkdir()
-    shutil.copyfile(origin / "receipt_contract.py", target / "receipt_contract.py")
+    for filename in ("archive_utils.py", "native_files.py", "receipt_contract.py"):
+        shutil.copyfile(origin / filename, target / filename)
     lock_path = target / "glm53-tp4-lock.json"
     lock_path.write_text(json.dumps(lock, indent=2) + "\n")
     lock_hash = hashlib.sha256(lock_path.read_bytes()).hexdigest()
@@ -334,3 +336,35 @@ def test_local_receipt_cannot_claim_a_registry_digest(inputs, local_source_recei
     runtime["registry_digest"] = IMAGE
     with pytest.raises(ValueError, match="not a registry"):
         launch.validate_runtime_receipt(runtime, plan(inputs))
+
+
+@pytest.mark.parametrize("damage", [False, True])
+def test_pinned_receipt_validates_in_fresh_process(local_source_receipt, tmp_path, damage):
+    value, runtime, lock_path = local_source_receipt
+    contract = launch._source_receipt_contract(lock_path.parent)
+    runtime["native_mode"] = runtime["inside_image"]["native_mode"] = "pinned"
+    runtime["inside_image"]["native_files"] = contract.expected_record(json.loads(lock_path.read_bytes()))
+    if damage:
+        runtime["inside_image"]["native_files"]["archive_sha256"] = "0" * 64
+    inputs_path = tmp_path / "receipt-inputs.json"
+    inputs_path.write_text(json.dumps({"plan": value, "receipt": runtime}))
+    script = """
+import importlib.util,json,sys
+from pathlib import Path
+assert 'archive_utils' not in sys.modules and 'native_files' not in sys.modules
+spec=importlib.util.spec_from_file_location('fresh_tp2_launcher',sys.argv[1])
+module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+module.SOURCE_IMAGE_ROOT=Path(sys.argv[2])
+data=json.loads(Path(sys.argv[3]).read_bytes())
+module.validate_runtime_receipt(data['receipt'],data['plan'])
+assert 'archive_utils' not in sys.modules and 'native_files' not in sys.modules
+print('receipt valid')
+"""
+    result = subprocess.run([sys.executable, "-I", "-B", "-c", script, str(ROOT / "launch.py"),
+                             str(lock_path.parent), str(inputs_path)], capture_output=True, text=True)
+    if damage:
+        assert result.returncode != 0
+        assert "native artifact witness differs" in result.stderr
+    else:
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "receipt valid"

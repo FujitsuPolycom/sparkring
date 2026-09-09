@@ -871,6 +871,11 @@ SOURCE_CACHE_CONTRACT = (
 
 
 def _assert_source_verifier_entrypoint(arguments):
+    for flag, value in (("--mamba-block-size", "512"),
+                        ("--recurrent-checkpoint-policy", "aligned"),
+                        ("--prefix-cache-retention-interval", "0")):
+        assert arguments.count(flag) == 1
+        assert arguments[arguments.index(flag) + 1] == value
     assert arguments[arguments.index("--entrypoint") + 1] == "python3"
     index = arguments.index("/opt/sparkcache-jj-runtime/verify_sources.py")
     assert arguments[index - 2:index + 3] == [

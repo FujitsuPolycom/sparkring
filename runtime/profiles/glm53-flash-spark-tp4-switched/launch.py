@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 
 
 ROOT = Path(__file__).resolve().parent
@@ -134,6 +135,25 @@ def render(rank, master, model_dir, cache_dir, env_file, image):
     }
 
 
+def _source_receipt_contract(directory):
+    """Load sibling verifier modules without relying on process import state."""
+    names = ("archive_utils", "native_files", "source_image_receipt_contract")
+    previous = {name: sys.modules.get(name) for name in names}
+    try:
+        for name, filename in zip(names, ("archive_utils.py", "native_files.py", "receipt_contract.py")):
+            spec = importlib.util.spec_from_file_location(name, directory / filename)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+        return module
+    finally:
+        for name, saved in previous.items():
+            if saved is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = saved
+
+
 def validate_source_image_receipt(receipt, plan, source_root=None):
     """Validate common-source witnesses and the switched profile declaration."""
     source_root = SOURCE_IMAGE_ROOT if source_root is None else source_root
@@ -145,9 +165,7 @@ def validate_source_image_receipt(receipt, plan, source_root=None):
     lock = json.loads(lock_bytes)
     if receipt.get("source_lock_sha256") != hashlib.sha256(lock_bytes).hexdigest():
         raise ValueError("The source-image receipt differs from the repository's exact source lock")
-    spec = importlib.util.spec_from_file_location("sparkring_source_image_receipt", validator_path)
-    validator = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(validator)
+    validator = _source_receipt_contract(source_root)
     validator.validate_receipt(receipt, lock)
     if receipt.get("image_id") != plan["image"] or receipt.get("profile") != plan["profile"]:
         raise ValueError("The source-image receipt selects a different local image or profile")

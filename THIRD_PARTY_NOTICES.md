@@ -54,7 +54,7 @@ The lines added by `nccl-2.30.7-advertise-all-listener-gids.patch` and
 image builder under `runtime/glm53-flash/` uses only
 `nccl-2.30.7-switchless-cycle.patch`. The TP4 image recipe under
 `runtime/sparkring/source_image/` uses its separately pinned cumulative
-`patches/nccl.patch`, described in Section 13. For the lines added by the two older
+`patches/nccl.patch`, described in Section 14. For the lines added by the two
 skip-tree patches, see Section 2.
 
 ## 2. josephdrose/nccl-spark-switchless (approach credit)

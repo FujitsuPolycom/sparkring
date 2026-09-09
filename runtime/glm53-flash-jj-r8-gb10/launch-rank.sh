@@ -1043,10 +1043,13 @@ esac
 
 serving_entrypoint=/opt/sparkring/bin/serve-with-warmup.py
 serving_prefix=()
+source_recurrent_args=()
 if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
   # Source-bound profiles must verify installed files before importing serving code.
   serving_entrypoint=python3
   serving_prefix=(-S -B /opt/sparkcache-jj-runtime/verify_sources.py --serve)
+  # Automatic request-boundary checkpoints exclude continuation coalescing.
+  source_recurrent_args=(--mamba-block-size "${VLLM_BLOCK_SIZE}" --recurrent-checkpoint-policy aligned --prefix-cache-retention-interval 0)
 fi
 
 container_command=(docker "${container_action[@]}" \
@@ -1137,6 +1140,7 @@ container_command=(docker "${container_action[@]}" \
   --distributed-executor-backend mp --nnodes "${NODE_COUNT}" --node-rank "${rank}" \
   --master-addr "${MASTER_ADDR}" --master-port "${MASTER_PORT}" \
   --disable-custom-all-reduce --mamba-cache-mode align "${multimodal_args[@]}" \
+  "${source_recurrent_args[@]}" \
   "${chat_template_args[@]}" \
   --enable-chunked-prefill --dtype bfloat16 --kv-cache-dtype "${KV_CACHE_DTYPE}" \
   --quantization modelopt_mixed --attention-backend "${ATTENTION_BACKEND}" \

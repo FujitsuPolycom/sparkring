@@ -33,6 +33,8 @@ SOURCE_FILES = (
     'runtime/glm53-spark-mtp3-mesh/compute/source-lock.json',
     'runtime/sparkring/source_image/glm53-tp4-lock.json',
     'runtime/sparkring/source_image/receipt_contract.py',
+    'runtime/sparkring/source_image/archive_utils.py',
+    'runtime/sparkring/source_image/native_files.py',
     'runtime/glm53-flash-jj-r8-gb10/pins.json',
     'runtime/glm53-flash-jj-r8-gb10/warmup_dflash.py',
     'runtime/glm53-flash-jj-r8-gb10/launch-rank.sh',

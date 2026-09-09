@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -187,7 +188,8 @@ def test_common_local_source_receipt_checks_exact_lock_and_profile(inputs, tmp_p
     } | {"tp_size": 4, "dcp_size": 1, "sparkcache": False, "transport_profile": None}
     copied = tmp_path / "source-image"
     copied.mkdir()
-    shutil.copyfile(common / "receipt_contract.py", copied / "receipt_contract.py")
+    for filename in ("archive_utils.py", "native_files.py", "receipt_contract.py"):
+        shutil.copyfile(common / filename, copied / filename)
     path = copied / "glm53-tp4-lock.json"
     path.write_text(json.dumps(lock) + "\n")
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -203,6 +205,32 @@ def test_common_local_source_receipt_checks_exact_lock_and_profile(inputs, tmp_p
                 "profile": value["profile"], "source_lock_sha256": digest, "inside_image": inside}
     monkeypatch.setattr(launch, "SOURCE_IMAGE_ROOT", copied)
     launch.validate_runtime_receipt(document, value)
+    document["native_mode"] = inside["native_mode"] = "pinned"
+    inside["native_files"] = launch._source_receipt_contract(copied).expected_record(lock)
+    inputs_path = tmp_path / "receipt-inputs.json"
+    inputs_path.write_text(json.dumps({"plan": value, "receipt": document}))
+    script = """
+import importlib.util,json,sys
+from pathlib import Path
+assert 'archive_utils' not in sys.modules and 'native_files' not in sys.modules
+spec=importlib.util.spec_from_file_location('fresh_switched_launcher',sys.argv[1])
+module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+module.SOURCE_IMAGE_ROOT=Path(sys.argv[2])
+data=json.loads(Path(sys.argv[3]).read_bytes())
+module.validate_runtime_receipt(data['receipt'],data['plan'])
+assert 'archive_utils' not in sys.modules and 'native_files' not in sys.modules
+print('receipt valid')
+"""
+    command = [sys.executable, "-I", "-B", "-c", script, str(ROOT / "launch.py"), str(copied), str(inputs_path)]
+    checked = subprocess.run(command, capture_output=True, text=True)
+    assert checked.returncode == 0, checked.stderr
+    assert checked.stdout.strip() == "receipt valid"
+    bad_native = copy.deepcopy(document)
+    bad_native["inside_image"]["native_files"]["archive_sha256"] = "0" * 64
+    inputs_path.write_text(json.dumps({"plan": value, "receipt": bad_native}))
+    rejected = subprocess.run(command, capture_output=True, text=True)
+    assert rejected.returncode != 0
+    assert "native artifact witness differs" in rejected.stderr
     changed = copy.deepcopy(document)
     changed["inside_image"]["packages"]["vllm"]["file_map_sha256"] = "0" * 64
     with pytest.raises(ValueError):

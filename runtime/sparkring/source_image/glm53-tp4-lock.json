@@ -487,7 +487,7 @@
       "destination": "/opt/sparkring/profiles/glm53-flash-spark-tp4-switched/profile.json"
     },
     "runtime/profiles/glm53-flash-spark-tp4-switched/launch.py": {
-      "sha256": "f63df57093cc796bc4dae073fc1f068f436f2d86966ea63436a12b42e556944a",
+      "sha256": "e7e82d881a537aba0ff41883beaf3b38b712e01bbfe457c54956e3755eef2e3b",
       "destination": "/opt/sparkring/profiles/glm53-flash-spark-tp4-switched/launch.py"
     },
     "runtime/profiles/glm53-flash-spark-tp4-switched/dependencies.json": {
