@@ -1,0 +1,151 @@
+{
+  "schema": "sparkring-deepseek-responses-streaming-models/v1",
+  "status": "passed",
+  "python_version": "3.12.10",
+  "openai_version": "2.29.0",
+  "pydantic_version": "2.12.5",
+  "vllm_commit": "e2666d9a65f41fc376607531453cbd57c4c71016",
+  "patch_sha256": "1cd69bdf1e9ced1197b5c7752a4581a7c6512147ddf2f3015fe16bd7978ba350",
+  "source": "vllm/entrypoints/openai/responses/protocol.py",
+  "source_sha256": "f3e4433a8113fe855c2a4aec492eb7a6fdeb62cf3c3e4a8d0c8cd4c0715583f5",
+  "harness_sha256": "7f27690da1bfb9a6f4ce61528b7f672107036919280c91bdc5d19fb1809bf5d1",
+  "cases": [
+    {
+      "reasoning": {
+        "effort": "none",
+        "summary": "concise"
+      },
+      "events": [
+        "response.created",
+        "response.in_progress",
+        "response.completed"
+      ],
+      "passed": true
+    },
+    {
+      "reasoning": {
+        "effort": "minimal",
+        "summary": "concise"
+      },
+      "events": [
+        "response.created",
+        "response.in_progress",
+        "response.completed"
+      ],
+      "passed": true
+    },
+    {
+      "reasoning": {
+        "effort": "low",
+        "summary": "concise"
+      },
+      "events": [
+        "response.created",
+        "response.in_progress",
+        "response.completed"
+      ],
+      "passed": true
+    },
+    {
+      "reasoning": {
+        "effort": "medium",
+        "summary": "concise"
+      },
+      "events": [
+        "response.created",
+        "response.in_progress",
+        "response.completed"
+      ],
+      "passed": true
+    },
+    {
+      "reasoning": {
+        "effort": "high",
+        "summary": "concise"
+      },
+      "events": [
+        "response.created",
+        "response.in_progress",
+        "response.completed"
+      ],
+      "passed": true
+    },
+    {
+      "reasoning": {
+        "effort": "xhigh",
+        "summary": "concise"
+      },
+      "events": [
+        "response.created",
+        "response.in_progress",
+        "response.completed"
+      ],
+      "passed": true
+    },
+    {
+      "reasoning": {
+        "effort": "max",
+        "summary": "concise"
+      },
+      "events": [
+        "response.created",
+        "response.in_progress",
+        "response.completed"
+      ],
+      "passed": true
+    },
+    {
+      "reasoning": {
+        "effort": null,
+        "summary": "concise"
+      },
+      "events": [
+        "response.created",
+        "response.in_progress",
+        "response.completed"
+      ],
+      "passed": true
+    },
+    {
+      "reasoning": null,
+      "events": [
+        "response.created",
+        "response.in_progress",
+        "response.completed"
+      ],
+      "passed": true
+    }
+  ],
+  "invalid_controls": [
+    {
+      "reasoning": {
+        "effort": "off"
+      },
+      "rejections": 5,
+      "passed": true
+    },
+    {
+      "reasoning": {
+        "effort": "unsupported"
+      },
+      "rejections": 5,
+      "passed": true
+    },
+    {
+      "reasoning": {
+        "effort": 3
+      },
+      "rejections": 5,
+      "passed": true
+    },
+    {
+      "reasoning": {
+        "effort": "max",
+        "summary": "unsupported"
+      },
+      "rejections": 5,
+      "passed": true
+    }
+  ],
+  "limits": "Actual protocol models and SDK SSE validation/serialization; renderer/sampling/Harmony interfaces are fixtures. No HTTP, engine, tokenizer, model, image or GPU qualification."
+}

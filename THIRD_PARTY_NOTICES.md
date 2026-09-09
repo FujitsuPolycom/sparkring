@@ -90,6 +90,12 @@ and the vLLM-facing files under `spark_transport/experiments/` remain original
 SparkRing adapters: they verify exact upstream source before installing any
 runtime modification and decline to install when the source differs.
 
+`runtime/deepseek0731-gb10/upstream/` includes two unmodified, compressed vLLM
+protocol files from Local Inference Lab revision
+`e2666d9a65f41fc376607531453cbd57c4c71016`, their source/hash manifest, and the
+upstream Apache-2.0 license. The files retain their contributor notices and
+serve as offline inputs for Responses API model and streaming-event tests.
+
 vLLM is licensed under the Apache License, Version 2.0, Copyright the vLLM team
 and contributors. Obtaining and running vLLM is subject to its own license and
 notices. SparkRing is not a fork of vLLM.

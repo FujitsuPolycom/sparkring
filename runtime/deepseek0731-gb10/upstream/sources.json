@@ -1,0 +1,24 @@
+{
+  "repository": "https://github.com/local-inference-lab/vllm.git",
+  "commit": "e2666d9a65f41fc376607531453cbd57c4c71016",
+  "files": [
+    {
+      "fixture": "responses-protocol.py.gz",
+      "path": "vllm/entrypoints/openai/responses/protocol.py",
+      "sha256": "71a1a69d15949f95bd1f78ab2b26780f0e82c325e2db2188ccd38fda4d291626",
+      "fixture_sha256": "4692230bf0f8e2c9711ab7cad8db8cad7b43e2312fe1c89ec0b15c315a617614"
+    },
+    {
+      "fixture": "engine-protocol.py.gz",
+      "path": "vllm/entrypoints/openai/engine/protocol.py",
+      "sha256": "beab4f1a827b40963762a035bf2a955dc095a918c4293c3f1963f58b5e2562fa",
+      "fixture_sha256": "ff20dc374f7adab96f532693b6756d8c0f11372e9fba1a1444e509a26d8e391c"
+    },
+    {
+      "fixture": "LICENSE",
+      "path": "LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "fixture_sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    }
+  ]
+}

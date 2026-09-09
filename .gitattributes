@@ -3,6 +3,7 @@
 runtime/** text eol=lf
 runtime/sparkring/*.gz -text
 runtime/deepseek-vision-exp/upstream/*.gz -text
+runtime/deepseek0731-gb10/upstream/*.gz -text
 # Build inputs carry byte-level hashes; preserve their stored bytes on every
 # platform. Intentional byte changes require regenerated build receipts.
 runtime/sparkring/source_image/** -text whitespace=cr-at-eol
