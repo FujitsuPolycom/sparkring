@@ -3,6 +3,8 @@ import copy
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -39,6 +41,27 @@ def selected_spec(tmp_path):
     path = tmp_path / "receipt.json"
     path.write_text(json.dumps(local_receipt()))
     return create_spec(inventory(), "test-mesh", "/srv/sparkring/test-mesh", image_receipt=path)
+
+
+def test_source_receipt_loads_in_fresh_process_without_verifier_imports(tmp_path):
+    path = tmp_path / "receipt.json"
+    path.write_text(json.dumps(local_receipt()), encoding="utf-8")
+    script = """
+import sys
+from pathlib import Path
+from scripts.deploy_selection import profile_module
+from scripts.deploy_suite import PROFILE
+assert 'native_files' not in sys.modules
+assert 'archive_utils' not in sys.modules
+result = profile_module(PROFILE).load_image_receipt(Path(sys.argv[1]))
+assert result['image_id'] == 'sha256:' + '7' * 64
+assert 'native_files' not in sys.modules
+assert 'archive_utils' not in sys.modules
+"""
+    result = subprocess.run([sys.executable, "-c", script, str(path)],
+                            cwd=Path(__file__).resolve().parents[1],
+                            text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.parametrize("field,value", [

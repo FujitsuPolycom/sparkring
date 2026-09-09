@@ -117,6 +117,26 @@ def load_image_receipt(path: Path) -> dict:
     return validate_image_receipt(document)
 
 
+def _source_receipt_contract():
+    """Load the verifier's sibling dependencies without depending on caller imports."""
+    directory = ROOT / "runtime/sparkring/source_image"
+    names = ("archive_utils", "native_files", "source_image_receipt_contract")
+    previous = {name: sys.modules.get(name) for name in names}
+    try:
+        for name, filename in zip(names, ("archive_utils.py", "native_files.py", "receipt_contract.py")):
+            spec = importlib.util.spec_from_file_location(name, directory / filename)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+        return module
+    finally:
+        for name, saved in previous.items():
+            if saved is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = saved
+
+
 def validate_image_receipt(document: dict) -> dict:
     if not isinstance(document, dict):
         raise ValueError("Image receipt must be a JSON object")
@@ -125,10 +145,7 @@ def validate_image_receipt(document: dict) -> dict:
         selected = lock["profiles"].get(document.get("profile"), {})
         if selected.get("tp_size", 4) != 4 or selected.get("topology") == "switched":
             raise ValueError("Use the selected profile's launcher instead of the TP4 mesh renderer")
-        contract_path = ROOT / "runtime/sparkring/source_image/receipt_contract.py"
-        contract_spec = importlib.util.spec_from_file_location("source_image_receipt_contract", contract_path)
-        contract = importlib.util.module_from_spec(contract_spec)
-        contract_spec.loader.exec_module(contract)
+        contract = _source_receipt_contract()
         contract.validate_receipt(document, lock)
         inside = document.get("inside_image", {})
         image_id = document.get("image_id", "")

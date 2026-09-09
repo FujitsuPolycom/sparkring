@@ -1041,9 +1041,17 @@ case "${SPARKRING_CREATE_ONLY}" in
   *) die 'SPARKRING_CREATE_ONLY must be 0 or 1' ;;
 esac
 
+serving_entrypoint=/opt/sparkring/bin/serve-with-warmup.py
+serving_prefix=()
+if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
+  # Source-bound profiles must verify installed files before importing serving code.
+  serving_entrypoint=python3
+  serving_prefix=(-S -B /opt/sparkcache-jj-runtime/verify_sources.py --serve)
+fi
+
 container_command=(docker "${container_action[@]}" \
   --name "${container}" \
-  --entrypoint /opt/sparkring/bin/serve-with-warmup.py \
+  --entrypoint "${serving_entrypoint}" \
   --network host --ipc host --shm-size "${SHM_SIZE}" --gpus all \
   --ulimit memlock=-1:-1 --cap-add IPC_LOCK --device /dev/infiniband \
   --security-opt label=disable --init \
@@ -1118,6 +1126,7 @@ container_command=(docker "${container_action[@]}" \
   --label org.sparkring.sircl.native-sha256="${sircl_native_sha256}" \
   --label org.sparkring.sircl.manifest-sha256="${sircl_manifest_sha256}" \
   "${IMAGE_REF}" \
+  "${serving_prefix[@]}" \
   /models/target \
   --served-model-name "${SERVED_MODEL_NAME}" "${api_key_args[@]}" \
   --host 0.0.0.0 --port "${PORT}" \

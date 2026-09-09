@@ -820,16 +820,19 @@ def test_launcher_keeps_sircl_disabled_by_default(tmp_path: Path) -> None:
     assert _defaults()["SIRCL_ENABLED"] == "0"
     result, arguments = _run_launcher(tmp_path, "sircl-disabled")
     assert result.returncode == 0, result.stderr
+    assert arguments[arguments.index("--entrypoint") + 1] == "/opt/sparkring/bin/serve-with-warmup.py"
+    assert "/opt/sparkcache-jj-runtime/verify_sources.py" not in arguments
     assert "org.sparkring.sircl.enabled=0" in arguments
     assert "PYTHONPATH=/opt/spark-sircl" not in arguments
     assert not any("SPARK_TP4_LIBRARY=" in argument for argument in arguments)
 
 
-def test_source_composition_passes_prefill_flags_and_dual_domain_nccl(tmp_path):
+@pytest.mark.parametrize("dcp", [1, 4])
+def test_source_composition_passes_prefill_flags_and_dual_domain_nccl(tmp_path, dcp):
     result, arguments = _run_launcher(
         tmp_path, "source-composition",
-        "SOURCE_IMAGE_PROFILE=tp4-dcp1-mtp3-prefill",
-        "DECODE_CONTEXT_PARALLEL_SIZE=1", "SPECULATION_METHOD=mtp",
+        f"SOURCE_IMAGE_PROFILE=tp4-dcp{dcp}-mtp3-prefill",
+        f"DECODE_CONTEXT_PARALLEL_SIZE={dcp}", "SPECULATION_METHOD=mtp",
         "NUM_SPECULATIVE_TOKENS=3", "SPARKCACHE_ENABLED=0",
         "SPARKCACHE_ASYNC_PAGE_CAPTURE=0", "VLLM_BLOCK_SIZE=512",
         "VLLM_B12X_KDA_PREFILL_COALESCING=1", "VLLM_GLM53_MHC_PREFILL_SHARD=1",
@@ -839,7 +842,8 @@ def test_source_composition_passes_prefill_flags_and_dual_domain_nccl(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     assert "--kv-transfer-config" not in arguments
-    assert "SOURCE_IMAGE_PROFILE=tp4-dcp1-mtp3-prefill" in arguments
+    assert f"SOURCE_IMAGE_PROFILE=tp4-dcp{dcp}-mtp3-prefill" in arguments
+    _assert_source_verifier_entrypoint(arguments)
     assert "PYTHONUNBUFFERED=1" in arguments
     assert arguments[arguments.index("--block-size") + 1] == "512"
     for value in ("VLLM_B12X_KDA_PREFILL_COALESCING=1", "VLLM_GLM53_MHC_PREFILL_SHARD=1",
@@ -864,6 +868,15 @@ SOURCE_CACHE_CONTRACT = (
     "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/"
     "vllm-connector-jobs-source-contract.json"
 )
+
+
+def _assert_source_verifier_entrypoint(arguments):
+    assert arguments[arguments.index("--entrypoint") + 1] == "python3"
+    index = arguments.index("/opt/sparkcache-jj-runtime/verify_sources.py")
+    assert arguments[index - 2:index + 3] == [
+        "-S", "-B", "/opt/sparkcache-jj-runtime/verify_sources.py", "--serve", "/models/target"
+    ]
+    assert arguments.count("--serve") == 1
 
 
 def _source_cache_spec(tmp_path, *overrides):
@@ -904,6 +917,7 @@ def test_source_cache_profile_emits_bounded_connector_jobs_configuration(tmp_pat
     result = _source_cache_spec(tmp_path)
     assert result.returncode == 0, result.stderr
     arguments = json.loads(result.stdout)["argv"]
+    _assert_source_verifier_entrypoint(arguments)
     assert "SOURCE_IMAGE_PROFILE=tp4-dcp1-mtp3-sparkcache" in arguments
     assert "PYTHONUNBUFFERED=1" in arguments
     config = json.loads(arguments[arguments.index("--kv-transfer-config") + 1])
