@@ -1,0 +1,1570 @@
+--- a/vllm/envs.py
++++ b/vllm/envs.py
+@@ -190,6 +190,10 @@
+     VLLM_HUMMING_USE_F16_ACCUM: bool = False
+     VLLM_HUMMING_MOE_GEMM_TYPE: Literal["indexed", "grouped", "auto"] | None = None
+     VLLM_B12X_MOE_FP4_FORCE_A16: bool = False
++    VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH: bool = False
++    VLLM_MTP_NVFP4_LM_HEAD: bool = False
++    VLLM_LM_HEAD_A16: bool = True
++    VLLM_MXFP8_LM_HEAD: bool = False
+     VLLM_B12X_MLA_CKV_GATHER: bool = False
+     VLLM_B12X_MLA_CKV_GATHER_MIN_TOKENS: int = 16
+     VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS: int = 524288
+@@ -1641,6 +1645,36 @@
+     # Gather DCP-sharded C4 records before B12X sparse-MLA prefill. This avoids
+     # query replication plus the per-rank LSE combine and is opt-in while the
+     # path is being qualified on GLM5Next.
++    "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": lambda: bool(
++        int(os.getenv("VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH", "0"))
++    ),
++    # Quantize only a GLM5Next native-MTP proposal head at load time.
++    "VLLM_MTP_NVFP4_LM_HEAD": lambda: bool(
++        int(os.getenv("VLLM_MTP_NVFP4_LM_HEAD", "0"))
++    ),
++    # Preserve BF16 activations for a runtime-quantized proposal head.
++    "VLLM_LM_HEAD_A16": lambda: bool(
++        int(os.getenv("VLLM_LM_HEAD_A16", "1"))
++    ),
++    # Reserved for a separate target-head experiment; this arm keeps it off.
++    "VLLM_MXFP8_LM_HEAD": lambda: bool(
++        int(os.getenv("VLLM_MXFP8_LM_HEAD", "0"))
++    ),
++    "VLLM_B12X_DENSE_ACTIVATION_MODE": env_with_choices(
++        "VLLM_B12X_DENSE_ACTIVATION_MODE",
++        "auto",
++        ["auto", "a16", "quantized"],
++    ),
++    "VLLM_B12X_NVFP4_ACTIVATION_MODE": env_with_choices(
++        "VLLM_B12X_NVFP4_ACTIVATION_MODE",
++        None,
++        ["auto", "a16", "quantized"],
++    ),
++    "VLLM_B12X_MXFP8_ACTIVATION_MODE": env_with_choices(
++        "VLLM_B12X_MXFP8_ACTIVATION_MODE",
++        None,
++        ["auto", "a16", "quantized"],
++    ),
+     "VLLM_B12X_MLA_CKV_GATHER": lambda: (
+         os.getenv("VLLM_B12X_MLA_CKV_GATHER", "0").lower() in ("1", "true", "yes", "on")
+     ),
+--- a/vllm/model_executor/kernels/linear/mxfp8/b12x.py
++++ b/vllm/model_executor/kernels/linear/mxfp8/b12x.py
+@@ -12,11 +12,14 @@
+ )
+ from vllm.model_executor.utils import replace_parameter
+ from vllm.platforms import current_platform
+-from vllm.utils.b12x import B12xWarmupUnit, reuse_packed_weight_storage
+ from vllm.utils.b12x import (
+-    get_b12x_mxfp8_linear as _import_b12x_mxfp8,
++    B12xWarmupUnit,
++    get_b12x_dense_activation_mode,
++    reuse_packed_weight_storage,
+ )
+-from vllm.utils.torch_utils import current_stream
++from vllm.utils.b12x import (
++    get_b12x_blockscaled as _import_b12x_blockscaled,
++)
+ 
+ from .Mxfp8LinearKernel import Mxfp8LinearKernel, Mxfp8LinearLayerConfig
+ 
+@@ -31,13 +34,23 @@
+     input_2d = x.reshape(-1, x.shape[-1]).contiguous()
+     output_shape = [*x.shape[:-1], int(packed_weight.out_features)]
+ 
+-    mxfp8 = _import_b12x_mxfp8()
++    mode = layer.b12x_activation_mode
++    options = {}
++    if x.dtype == torch.bfloat16 and layer.b12x_bf16_input_supported:
++        options["mode"] = mode
++    else:
++        if mode == "a16":
++            raise ValueError(
++                "b12x MXFP8 A16 requires BF16 on SM120/SM121 with K%128=N%8=0"
++            )
++    mxfp8 = _import_b12x_blockscaled()
+     assert mxfp8 is not None
+     output = mxfp8.mm(
+         input_2d,
+         packed_weight,
+         bias=bias,
+         expected_m=max(1, int(input_2d.shape[0])),
++        **options,
+     )
+     return output.view(*output_shape)
+ 
+@@ -55,11 +68,16 @@
+             return False, "b12x MXFP8 kernels are only available on CUDA"
+         if not current_platform.is_device_capability_family(120):
+             return False, "b12x MXFP8 kernels require a Blackwell 12x device"
+-        mxfp8 = _import_b12x_mxfp8()
++        mxfp8 = _import_b12x_blockscaled()
+         if mxfp8 is None:
+             return False, "Install the B12X backend with `pip install vllm[b12x]`"
+         if not mxfp8.is_supported():
+-            return False, "b12x.gemm.mxfp8_linear is not supported"
++            return False, "b12x.gemm.blockscaled is not supported"
++        if not hasattr(mxfp8, "w8a16"):
++            return (
++                False,
++                "b12x MXFP8 requires a source build with dense precision selection",
++            )
+         return True, None
+ 
+     @classmethod
+@@ -89,7 +107,7 @@
+             f"b12x MXFP8 weight_scale must be 2D, got {weight_scale.ndim}D"
+         )
+ 
+-        mxfp8 = _import_b12x_mxfp8()
++        mxfp8 = _import_b12x_blockscaled()
+         assert mxfp8 is not None
+         scale_k = in_features // MXFP8_BLOCK_SIZE
+         packed_weight = mxfp8.pack_weight(
+@@ -99,6 +117,12 @@
+         layer.b12x_mxfp8_packed_weight = reuse_packed_weight_storage(
+             getattr(layer, "b12x_mxfp8_packed_weight", None),
+             packed_weight,
++        )
++        layer.b12x_activation_mode = get_b12x_dense_activation_mode("mxfp8")
++        layer.b12x_bf16_input_supported = (
++            current_platform.is_device_capability_family(120)
++            and in_features % 128 == 0
++            and out_features % 8 == 0
+         )
+         replace_parameter(layer, "weight", weight.new_empty((0,)))
+         replace_parameter(layer, "weight_scale", weight_scale.new_empty((0,)))
+@@ -114,20 +138,13 @@
+         device = torch.device(packed_weight.weight.values.device)
+ 
+         def compile() -> None:
+-            mxfp8 = _import_b12x_mxfp8()
+-            assert mxfp8 is not None
+             for tokens in token_counts:
+                 source = torch.zeros(
+                     (tokens, int(packed_weight.in_features)),
+                     dtype=output_dtype,
+                     device=device,
+                 )
+-                mxfp8.mm(
+-                    source,
+-                    packed_weight,
+-                    expected_m=max(1, int(tokens)),
+-                    stream=current_stream().cuda_stream,
+-                )
++                _apply_b12x_mxfp8_packed_linear(layer, source, None)
+ 
+         return B12xWarmupUnit(
+             name="MXFP8",
+@@ -137,6 +154,8 @@
+                 int(packed_weight.in_features),
+                 int(packed_weight.padded_in_features),
+                 int(packed_weight.out_features),
++                layer.b12x_activation_mode,
++                layer.b12x_bf16_input_supported,
+                 output_dtype,
+             ),
+             compile=compile,
+--- a/vllm/model_executor/kernels/linear/nvfp4/b12x.py
++++ b/vllm/model_executor/kernels/linear/nvfp4/b12x.py
+@@ -8,7 +8,7 @@
+ from vllm._custom_ops import scaled_fp4_quant
+ from vllm.model_executor.utils import replace_parameter
+ from vllm.platforms import current_platform
+-from vllm.utils.b12x import B12xWarmupUnit
++from vllm.utils.b12x import B12xWarmupUnit, get_b12x_dense_activation_mode
+ from vllm.utils.b12x import (
+     get_b12x_blockscaled as _import_b12x_blockscaled,
+ )
+@@ -18,30 +18,40 @@
+ 
+ 
+ def _apply_b12x_nvfp4_linear(
++    layer: torch.nn.Module,
+     x: torch.Tensor,
+-    weight: torch.Tensor,
+-    weight_scale_storage: torch.Tensor,
+-    input_global_scale_inv: torch.Tensor,
+-    alpha: torch.Tensor,
+     bias: torch.Tensor | None,
+ ) -> torch.Tensor:
+     blockscaled = _import_b12x_blockscaled()
+     assert blockscaled is not None
+ 
+-    output_size = int(weight.shape[0])
++    output_size = int(layer.weight.shape[0])
+     output_shape = [*x.shape[:-1], output_size]
+     x_2d = x.reshape(-1, x.shape[-1])
++    mode = layer.b12x_activation_mode
++    if x.dtype == torch.bfloat16 and layer.b12x_bf16_input_supported:
++        output = blockscaled.mm(
++            x_2d.contiguous(),
++            layer.b12x_nvfp4_packed_weight,
++            mode=mode,
++            activation_global_scale=layer.input_global_scale_inv,
++            bias=bias,
++            expected_m=max(1, int(x_2d.shape[0])),
++        )
++        return output.view(*output_shape)
++    if mode == "a16":
++        raise ValueError("b12x NVFP4 A16 requires BF16 on SM120/SM121 with K%128=N%8=0")
+     x_packed, x_scale_swizzled = scaled_fp4_quant(
+         x_2d,
+-        input_global_scale_inv,
++        layer.input_global_scale_inv,
+         is_sf_swizzled_layout=True,
+     )
+     output = blockscaled.mm_nvfp4(
+         x_packed,
+         x_scale_swizzled,
+-        weight,
+-        weight_scale_storage,
+-        alpha,
++        layer.weight,
++        layer.weight_scale,
++        layer.alpha,
+         out_dtype=x.dtype,
+     )
+     if bias is not None:
+@@ -66,6 +76,11 @@
+             return False, "Install the B12X backend with `pip install vllm[b12x]`"
+         if not blockscaled.is_supported():
+             return False, "b12x native NVFP4 GEMM is not supported"
++        if not hasattr(blockscaled, "w4a16"):
++            return (
++                False,
++                "b12x NVFP4 requires a source build with dense precision selection",
++            )
+         return True, None
+ 
+     @classmethod
+@@ -80,6 +95,21 @@
+             layer,
+             "weight_scale",
+             intrinsics.swizzle_block_scale(layer.weight_scale.data),
++        )
++        blockscaled = _import_b12x_blockscaled()
++        assert blockscaled is not None
++        layer.b12x_nvfp4_packed_weight = blockscaled.pack_weight(
++            layer.weight.data,
++            layer.weight_scale.data,
++            recipe="nvfp4",
++            global_scale=layer.weight_global_scale,
++        )
++        layer.b12x_activation_mode = get_b12x_dense_activation_mode("nvfp4")
++        n, packed_k = layer.weight.shape
++        layer.b12x_bf16_input_supported = (
++            current_platform.is_device_capability_family(120)
++            and (packed_k * 2) % 128 == 0
++            and n % 8 == 0
+         )
+         layer.b12x_warmup_provider = self
+ 
+@@ -100,11 +130,8 @@
+                     (tokens, k), dtype=output_dtype, device=weight.device
+                 )
+                 _apply_b12x_nvfp4_linear(
++                    layer,
+                     source,
+-                    weight,
+-                    weight_scale,
+-                    layer.input_global_scale_inv,
+-                    layer.alpha,
+                     None,
+                 )
+ 
+@@ -117,6 +144,8 @@
+                 k,
+                 weight.dtype,
+                 weight_scale.dtype,
++                layer.b12x_activation_mode,
++                layer.b12x_bf16_input_supported,
+                 output_dtype,
+             ),
+             compile=compile,
+@@ -129,11 +158,8 @@
+         bias: torch.Tensor | None = None,
+     ) -> torch.Tensor:
+         return _apply_b12x_nvfp4_linear(
++            layer,
+             x,
+-            layer.weight,
+-            layer.weight_scale,
+-            layer.input_global_scale_inv,
+-            layer.alpha,
+             bias,
+         )
+ 
+--- a/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py
++++ b/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py
+@@ -991,8 +991,7 @@
+         """Execute B12X KDA after the convolution projection.
+ 
+         Args:
+-            metadata: Forward-context metadata used to share runtime-owned
+-                packed metadata tensors across compatible layers.
++            metadata: Describes whether packed query boundaries are uniform.
+             mixed_qkv: Live packed query, key, and value projection.
+             raw_g: Live unactivated forget gate.
+             raw_beta: Live unactivated update gate.
+@@ -1032,17 +1031,16 @@
+         cache = forward_context.additional_kwargs.setdefault(
+             "b12x_kda_metadata_tensors", {}
+         )
++        # Uniform builders own separate buffers with identical fixed boundaries.
+         cache_key = (
+-            id(metadata),
++            None if metadata.is_uniform_spec_decode else query_start_loc.data_ptr(),
++            num_accepted_tokens.data_ptr() if num_accepted_tokens is not None else None,
+             num_tokens,
+             num_requests,
+-            state_columns,
+-            plan.caps.max_state_slots,
+         )
+         bound_metadata = cache.get(cache_key)
+         if bound_metadata is None:
+             query_start_loc = query_start_loc[: num_requests + 1]
+-            state_indices = state_indices[:num_requests, :state_columns]
+             if num_accepted_tokens is None:
+                 accepted_tokens = self._b12x_kda_num_accepted_tokens[:num_requests]
+                 accepted_tokens.fill_(1)
+@@ -1055,7 +1053,6 @@
+             bound_metadata = (
+                 query_start_loc,
+                 accepted_tokens,
+-                state_indices,
+                 self._b12x_kda_num_seqs,
+                 self._b12x_kda_num_tokens,
+             )
+@@ -1063,7 +1060,6 @@
+         (
+             query_start_loc,
+             accepted_tokens,
+-            state_indices,
+             num_seqs,
+             num_tokens_tensor,
+         ) = bound_metadata
+@@ -1081,7 +1077,7 @@
+             recurrent_state=self.kv_cache[1],
+             query_start_loc=query_start_loc,
+             num_accepted_tokens=accepted_tokens,
+-            state_indices=state_indices,
++            state_indices=state_indices[:num_requests, :state_columns],
+             num_seqs=num_seqs,
+             num_tokens=num_tokens_tensor,
+             output=output,
+--- a/vllm/model_executor/layers/quantization/online/nvfp4.py
++++ b/vllm/model_executor/layers/quantization/online/nvfp4.py
+@@ -5,6 +5,10 @@
+ from torch.nn import Module
+ 
+ from vllm._custom_ops import scaled_fp4_quant
++from vllm.model_executor.kernels.linear.nvfp4.b12x import (
++    B12xNvFp4LinearKernel,
++)
++from vllm.model_executor.kernels.linear.nvfp4.base import NvFp4LinearLayerConfig
+ from vllm.model_executor.layers.fused_moe import RoutedExperts
+ from vllm.model_executor.layers.fused_moe.config import FusedMoEQuantConfig
+ from vllm.model_executor.layers.fused_moe.oracle.nvfp4 import (
+@@ -13,6 +17,7 @@
+     make_nvfp4_moe_quant_config,
+     select_nvfp4_moe_backend,
+ )
++from vllm.model_executor.layers.quantization.online.fp8 import _Fp8OnlineLinearBase
+ from vllm.model_executor.layers.quantization.online.moe_base import (
+     OnlineMoEMethodBase,
+ )
+@@ -27,8 +32,72 @@
+ )
+ from vllm.model_executor.utils import replace_parameter
+ from vllm.platforms import current_platform
++from vllm.utils.b12x import get_b12x_blockscaled
+ 
+ FLOAT8_E4M3_MAX = torch.finfo(torch.float8_e4m3fn).max
++
++
++class Nvfp4OnlineLinearMethod(_Fp8OnlineLinearBase):
++    """Load a BF16 linear weight as NVFP4 for the proposal head."""
++
++    def __init__(self, *, use_a16: bool = False):
++        super().__init__()
++        supported, reason = B12xNvFp4LinearKernel.is_supported()
++        if not supported:
++            raise ValueError(f"Online NVFP4 proposal head requires b12x: {reason}")
++        self.kernel = B12xNvFp4LinearKernel(NvFp4LinearLayerConfig())
++        self.use_a16 = use_a16
++        if use_a16 and self.input_dtype != torch.bfloat16:
++            raise ValueError("A16 proposal heads require BF16 activations")
++
++    def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
++        if getattr(layer, "_already_called_process_weights_after_loading", False):
++            return
++        weight = layer.weight.contiguous()
++        if weight.shape[1] % 16:
++            raise ValueError("Online NVFP4 proposal head requires K divisible by 16")
++        amax = weight.abs().amax().float().clamp_min(1e-8)
++        global_scale = (FLOAT4_E2M1_MAX * FLOAT8_E4M3_MAX) / amax
++        packed, scales = scaled_fp4_quant(
++            weight, global_scale, is_sf_swizzled_layout=False
++        )
++        replace_parameter(layer, "weight", packed)
++        replace_parameter(layer, "weight_scale", scales)
++        replace_parameter(layer, "weight_global_scale", global_scale.reciprocal())
++        replace_parameter(layer, "input_global_scale_inv", torch.ones_like(amax))
++        replace_parameter(layer, "alpha", layer.weight_global_scale.clone())
++        self.kernel.process_weights_after_loading(layer)
++        layer.b12x_activation_mode = "a16" if self.use_a16 else "quantized"
++        layer._already_called_process_weights_after_loading = True
++
++    def apply(
++        self,
++        layer: torch.nn.Module,
++        x: torch.Tensor,
++        bias: torch.Tensor | None = None,
++    ) -> torch.Tensor:
++        if self.use_a16:
++            return self.kernel.apply_weights(layer, x, bias)
++        amax = x.abs().amax().float().clamp_min(1e-8)
++        input_scale = amax / (FLOAT4_E2M1_MAX * FLOAT8_E4M3_MAX)
++        x_packed, x_scale = scaled_fp4_quant(
++            x.reshape(-1, x.shape[-1]),
++            input_scale.reciprocal(),
++            is_sf_swizzled_layout=True,
++        )
++        blockscaled = get_b12x_blockscaled()
++        assert blockscaled is not None
++        output = blockscaled.mm_nvfp4(
++            x_packed,
++            x_scale,
++            layer.weight,
++            layer.weight_scale,
++            input_scale * layer.weight_global_scale,
++            out_dtype=x.dtype,
++        )
++        if bias is not None:
++            output = output + bias
++        return output.view(*x.shape[:-1], layer.weight.shape[0])
+ 
+ 
+ def _quantize_moe_weight_to_nvfp4(
+--- a/vllm/model_executor/layers/vocab_parallel_embedding.py
++++ b/vllm/model_executor/layers/vocab_parallel_embedding.py
+@@ -3,6 +3,7 @@
+ 
+ from collections.abc import Sequence
+ from dataclasses import dataclass
++from typing import Literal
+ 
+ import torch
+ import torch.nn.functional as F
+@@ -248,6 +249,7 @@
+         prefix: str = "",
+         *,
+         disable_tp: bool = False,
++        lm_head_quantization: Literal["nvfp4"] | None = None,
+     ):
+         super().__init__()
+ 
+@@ -291,6 +293,25 @@
+         # method must implement the embedding operation. If we are another
+         # layer type like ParallelLMHead, this is not important.
+         is_embedding_layer = not isinstance(self, ParallelLMHead)
++        self.runtime_lm_head_quantization: Literal["nvfp4"] | None = None
++        if not is_embedding_layer and lm_head_quantization is not None:
++            from vllm.model_executor.layers.linear import UnquantizedLinearMethod
++            from vllm.model_executor.layers.quantization.online.nvfp4 import (
++                Nvfp4OnlineLinearMethod,
++            )
++
++            if not isinstance(
++                quant_method,
++                (UnquantizedEmbeddingMethod, UnquantizedLinearMethod),
++            ):
++                raise ValueError(
++                    "Runtime NVFP4 proposal-head quantization requires an "
++                    "unquantized checkpoint head"
++                )
++            quant_method = Nvfp4OnlineLinearMethod(
++                use_a16=envs.VLLM_LM_HEAD_A16
++            )
++            self.runtime_lm_head_quantization = "nvfp4"
+         quant_method_implements_embedding = method_has_implemented_embedding(
+             type(quant_method)
+         )
+@@ -549,6 +570,7 @@
+         prefix: str = "",
+         *,
+         disable_tp: bool = False,
++        lm_head_quantization: Literal["nvfp4"] | None = None,
+     ):
+         super().__init__(
+             num_embeddings,
+@@ -559,6 +581,7 @@
+             quant_config,
+             prefix,
+             disable_tp=disable_tp,
++            lm_head_quantization=lm_head_quantization,
+         )
+         self.quant_config = quant_config
+         if bias:
+--- a/vllm/model_executor/models/deepseek_mtp.py
++++ b/vllm/model_executor/models/deepseek_mtp.py
+@@ -52,6 +52,8 @@
+         config: PretrainedConfig,
+         prefix: str,
+         quant_config: QuantizationConfig | None = None,
++        *,
++        lm_head_quantization: typing.Literal["nvfp4"] | None = None,
+     ) -> None:
+         super().__init__()
+         self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+@@ -60,6 +62,7 @@
+             config.hidden_size,
+             quant_config=quant_config,
+             prefix=maybe_prefix(prefix, "head"),
++            lm_head_quantization=lm_head_quantization,
+         )
+ 
+     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+--- a/vllm/models/glm5next/model_state.py
++++ b/vllm/models/glm5next/model_state.py
+@@ -310,25 +310,13 @@
+             num_decode_draft_tokens_cpu = torch.from_numpy(num_decode_draft_tokens_np)
+ 
+         if self._align_mode:
+-            mamba_group_ids, _ = self._get_mamba_group_info(kv_cache_config)
+-            aligned_index_builders = []
+-            for group_idx, group_id in enumerate(mamba_group_ids):
+-                for group in attn_groups[group_id]:
+-                    builder = group.get_metadata_builder(0)
+-                    if hasattr(builder, "mamba_aligned_state_indices"):
+-                        aligned_index_builders.append((group_idx, builder))
+-            if aligned_index_builders:
+-                ctx = self._ensure_align_ctx(
+-                    kv_cache_config,
+-                    mamba_group_ids,
+-                    block_tables,
+-                )
+-                all_group_indices = ctx.compute_aligned_state_indices(
+-                    input_batch.seq_lens,
+-                    num_reqs,
+-                )
+-                for group_idx, builder in aligned_index_builders:
+-                    builder.mamba_aligned_state_indices = all_group_indices[group_idx]
++            self._prepare_aligned_state_indices(
++                input_batch.seq_lens,
++                num_reqs,
++                attn_groups,
++                kv_cache_config,
++                block_tables,
++            )
+ 
+         model_metadata = Glm5NextAttnMetadata(
+             is_prefilling=is_prefilling,
+--- a/vllm/models/glm5next/nvidia/model.py
++++ b/vllm/models/glm5next/nvidia/model.py
+@@ -1334,7 +1334,7 @@
+         return False
+ 
+     entry = buf.setdefault(layer_prefix, {}).setdefault(key, {})
+-    entry["weight" if is_weight else "scale"] = tensor
++    entry["weight" if is_weight else "scale"] = tensor.clone()
+     if "weight" not in entry or "scale" not in entry:
+         return True
+ 
+@@ -1385,7 +1385,7 @@
+         return False
+ 
+     entry = buf.setdefault(layer_prefix, {}).setdefault("indexer_weights", {})
+-    entry["weight" if is_weight else "scale"] = tensor
++    entry["weight" if is_weight else "scale"] = tensor.clone()
+     if "weight" not in entry or "scale" not in entry:
+         return True
+ 
+--- a/vllm/models/glm5next/nvidia/mtp.py
++++ b/vllm/models/glm5next/nvidia/mtp.py
+@@ -6,6 +6,7 @@
+ import torch
+ import torch.nn as nn
+ 
++import vllm.envs as envs
+ from vllm.config import VllmConfig
+ from vllm.model_executor.layers.fused_moe import (
+     fused_moe_make_expert_params_mapping,
+@@ -64,7 +65,10 @@
+             device=current_platform.device_type,
+         )
+         self.shared_head = SharedHead(
+-            config=config, prefix=prefix, quant_config=quant_config
++            config=config,
++            prefix=prefix,
++            quant_config=quant_config,
++            lm_head_quantization="nvfp4" if envs.VLLM_MTP_NVFP4_LM_HEAD else None,
+         )
+         # MTP layers sit past the base model's hidden layers; parse the index
+         # from the prefix (e.g. "...layers.32") so the decoder builds an MLA
+@@ -245,14 +249,20 @@
+         super().__init__()
+         self.config = vllm_config.model_config.hf_config
+         self.quant_config = vllm_config.quant_config
+-        self.checkpoint_weight_name_prefixes = self._checkpoint_weight_name_prefixes()
++        if envs.VLLM_MTP_NVFP4_LM_HEAD and self.config.tie_word_embeddings:
++            raise ValueError("NVFP4 proposal head requires untied word embeddings")
+         self.model = Glm5NextMultiTokenPredictor(
+             vllm_config=vllm_config, prefix=maybe_prefix(prefix, "model")
+         )
++        head = self.model._mtp_layers[0].shared_head.head
++        self.has_own_lm_head = head.runtime_lm_head_quantization == "nvfp4"
++        self.checkpoint_weight_name_prefixes = self._checkpoint_weight_name_prefixes()
++        if self.has_own_lm_head:
++            self.lm_head = head
+         self.set_moe_parameters()
+ 
+     def _checkpoint_weight_name_prefixes(self) -> tuple[str, ...]:
+-        return tuple(
++        prefixes = tuple(
+             prefix
+             for layer_idx in range(
+                 self.config.num_hidden_layers,
+@@ -265,6 +275,14 @@
+                 f"layers.{layer_idx}.",
+             )
+         )
++        if self.has_own_lm_head:
++            prefixes += (
++                "lm_head.",
++                "model.lm_head.",
++                "model.language_model.lm_head.",
++                "language_model.lm_head.",
++            )
++        return prefixes
+ 
+     def set_moe_parameters(self):
+         self.num_moe_layers = self.config.num_nextn_predict_layers
+@@ -372,6 +390,19 @@
+             # prefix to match.
+             if name.startswith("model.language_model."):
+                 name = name.replace("model.language_model.", "model.", 1)
++            if name in (
++                "lm_head.weight",
++                "model.lm_head.weight",
++                "language_model.lm_head.weight",
++            ):
++                if self.has_own_lm_head:
++                    for layer_idx in self.model.layers:
++                        head_name = f"model.layers.{layer_idx}.shared_head.head.weight"
++                        if head_name not in loaded_params:
++                            param = params_dict[head_name]
++                            param.weight_loader(param, loaded_weight)
++                            loaded_params.add(head_name)
++                continue
+             spec_layer = get_spec_layer_idx_from_weight_name(self.config, name)
+             if spec_layer is None:
+                 continue
+@@ -460,6 +491,8 @@
+ 
+         loaded_layers: set[int] = set()
+         for param_name in loaded_params:
++            if param_name.endswith(".shared_head.head.weight"):
++                continue
+             spec_layer = get_spec_layer_idx_from_weight_name(self.config, param_name)
+             if spec_layer is not None:
+                 loaded_layers.add(spec_layer)
+@@ -467,6 +500,13 @@
+             self.model.mtp_start_layer_idx,
+             self.model.mtp_start_layer_idx + self.model.num_mtp_layers,
+         ):
++            if self.has_own_lm_head:
++                head_name = f"model.layers.{layer_idx}.shared_head.head.weight"
++                if head_name not in loaded_params:
++                    raise ValueError(
++                        f"NVFP4 MTP head {layer_idx} requires an unquantized "
++                        "proposal head or target lm_head.weight in the checkpoint."
++                    )
+             if layer_idx not in loaded_layers:
+                 raise ValueError(
+                     f"MTP speculative decoding layer {layer_idx} weights "
+--- a/vllm/utils/b12x.py
++++ b/vllm/utils/b12x.py
+@@ -7,9 +7,11 @@
+ from collections.abc import Callable, Hashable, Iterable
+ from dataclasses import dataclass, fields, is_dataclass
+ from types import ModuleType
+-from typing import Any
++from typing import Any, Literal
+ 
+ import torch
++
++import vllm.envs as envs
+ 
+ 
+ @dataclass(frozen=True)
+@@ -17,6 +19,12 @@
+     name: str
+     key: Hashable
+     compile: Callable[[], None]
++
++
++def get_b12x_dense_activation_mode(recipe: Literal["nvfp4", "mxfp8"]) -> str:
++    """Resolve the dense precision override once when loading a layer."""
++    override = getattr(envs, f"VLLM_B12X_{recipe.upper()}_ACTIVATION_MODE")
++    return override if override is not None else envs.VLLM_B12X_DENSE_ACTIVATION_MODE
+ 
+ 
+ _HAS_B12X = importlib.util.find_spec("b12x") is not None
+--- a/vllm/v1/attention/backends/gdn_attn.py
++++ b/vllm/v1/attention/backends/gdn_attn.py
+@@ -2,11 +2,13 @@
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ """Backend for GatedDeltaNet attention."""
+ 
++from copy import copy
+ from dataclasses import dataclass, replace
+ from typing import Literal
+ 
+ import torch
+ 
++import vllm.envs as envs
+ from vllm.config import VllmConfig
+ from vllm.utils.torch_utils import async_tensor_h2d
+ from vllm.v1.attention.backend import (
+@@ -101,6 +103,7 @@
+     seq_lens: torch.Tensor | None = None
+ 
+     prefill_checkpoint: GDNPrefillCheckpointMetadata | None = None
++    is_uniform_spec_decode: bool = False
+ 
+ 
+ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]):
+@@ -108,7 +111,9 @@
+     _cudagraph_support = AttentionCGSupport.UNIFORM_BATCH
+     supports_update_block_table: bool = True
+ 
++    # Runner-owned stable storage, with NULL_BLOCK_ID in padded request rows.
+     mamba_aligned_state_indices: torch.Tensor | None = None
++    mamba_spec_accepted_tokens: torch.Tensor | None = None
+ 
+     reorder_batch_threshold: int = 1
+ 
+@@ -189,6 +194,84 @@
+             (self.decode_cudagraph_max_bs,),
+             dtype=torch.int32,
+             device=device,
++        )
++        self._decode_state_indices_source: torch.Tensor | None = None
++        self._decode_state_indices_view: torch.Tensor | None = None
++        self._reuse_spec_decode_inputs = envs.VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH
++        self._uniform_spec_masks = torch.ones(
++            self.decode_cudagraph_max_bs, dtype=torch.bool, device=device
++        )
++        self._uniform_spec_masks_cpu = torch.ones(
++            self.decode_cudagraph_max_bs, dtype=torch.bool
++        )
++        self._uniform_spec_tokens = torch.arange(
++            self.decode_cudagraph_max_bs, dtype=torch.int32, device=device
++        )
++        self._uniform_spec_query_start = torch.arange(
++            self.decode_cudagraph_max_bs + 1, dtype=torch.int32, device=device
++        ) * (self.num_spec + 1)
++        self._spec_state_indices_source: torch.Tensor | None = None
++        self._spec_state_indices_view: torch.Tensor | None = None
++
++    def _can_reuse_spec_inputs(
++        self,
++        m: CommonAttentionMetadata,
++        num_accepted_tokens: torch.Tensor | None,
++        num_decode_draft_tokens_cpu: torch.Tensor | None,
++    ) -> bool:
++        return (
++            self._reuse_spec_decode_inputs
++            and self.use_spec_decode
++            and self.use_full_cuda_graph
++            and self.vllm_config.cache_config.mamba_cache_mode == "align"
++            and self.mamba_aligned_state_indices is not None
++            and self.mamba_spec_accepted_tokens is not None
++            and num_accepted_tokens is not None
++            and num_decode_draft_tokens_cpu is not None
++            and 0 < m.num_actual_tokens <= self.decode_cudagraph_max_bs
++            and m.num_actual_tokens == m.num_reqs * (self.num_spec + 1)
++            and bool(torch.all(num_decode_draft_tokens_cpu == self.num_spec))
++            and bool(torch.all(torch.diff(m.query_start_loc_cpu) == self.num_spec + 1))
++            and (m.is_prefilling is None or not bool(torch.any(m.is_prefilling)))
++        )
++
++    def _get_spec_state_indices_view(self, num_reqs: int) -> torch.Tensor:
++        source = self.mamba_aligned_state_indices
++        assert source is not None
++        if (
++            self._spec_state_indices_source is not source
++            or self._spec_state_indices_view is None
++            or self._spec_state_indices_view.shape[0] != num_reqs
++        ):
++            self._spec_state_indices_source = source
++            self._spec_state_indices_view = source[:num_reqs, : self.num_spec + 1]
++        return self._spec_state_indices_view
++
++    def _build_uniform_spec_decode(
++        self, m: CommonAttentionMetadata, num_accepted_tokens: torch.Tensor
++    ) -> GDNAttentionMetadata:
++        num_reqs = m.num_reqs
++        assert self.mamba_spec_accepted_tokens is not None
++        accepted = self.mamba_spec_accepted_tokens[:num_reqs]
++        accepted.copy_(num_accepted_tokens[:num_reqs], non_blocking=True)
++        return GDNAttentionMetadata(
++            num_prefills=0,
++            num_prefill_tokens=0,
++            num_decodes=0,
++            num_decode_tokens=0,
++            num_spec_decodes=num_reqs,
++            num_spec_decode_tokens=m.num_actual_tokens,
++            num_actual_tokens=m.num_actual_tokens,
++            spec_query_start_loc=self._uniform_spec_query_start[: num_reqs + 1],
++            spec_state_indices_tensor=self._get_spec_state_indices_view(num_reqs),
++            spec_sequence_masks=self._uniform_spec_masks[:num_reqs],
++            spec_sequence_masks_cpu=self._uniform_spec_masks_cpu[:num_reqs],
++            spec_token_indx=self._uniform_spec_tokens[: m.num_actual_tokens],
++            non_spec_token_indx=self._uniform_spec_tokens[:0],
++            num_accepted_tokens=accepted,
++            num_reqs=num_reqs,
++            seq_lens=m.seq_lens,
++            is_uniform_spec_decode=True,
+         )
+ 
+     def _get_state_indices(
+@@ -209,6 +292,13 @@
+             self.vllm_config.cache_config.mamba_cache_mode,
+         )
+ 
++    def _can_reuse_decode_inputs(self) -> bool:
++        return (
++            not self.use_spec_decode
++            and self.vllm_config.cache_config.mamba_cache_mode == "align"
++            and self.mamba_aligned_state_indices is not None
++        )
++
+     def _build_chunk_metadata(
+         self,
+         prefill_query_start_loc: torch.Tensor,
+@@ -260,6 +350,11 @@
+         fast_build: bool = False,
+     ) -> GDNAttentionMetadata:
+         m = common_attn_metadata
++        if self._can_reuse_spec_inputs(
++            m, num_accepted_tokens, num_decode_draft_tokens_cpu
++        ):
++            assert num_accepted_tokens is not None
++            return self._build_uniform_spec_decode(m, num_accepted_tokens)
+ 
+         query_start_loc = m.query_start_loc
+         query_start_loc_cpu = m.query_start_loc_cpu
+@@ -599,6 +694,7 @@
+             and num_prefills == 0
+             and num_spec_decodes == 0
+             and num_decodes <= self.decode_cudagraph_max_bs
++            and not self._can_reuse_decode_inputs()
+         ):
+             self.non_spec_state_indices_tensor[:num_decodes].copy_(
+                 non_spec_state_indices_tensor, non_blocking=True
+@@ -657,6 +753,41 @@
+         assert metadata.num_reqs > 0
+         assert metadata.seq_lens is not None
+ 
++        if (
++            metadata.is_uniform_spec_decode
++            and self._reuse_spec_decode_inputs
++            and self.mamba_aligned_state_indices is not None
++            and self.mamba_spec_accepted_tokens is not None
++        ):
++            updated = copy(metadata)
++            updated.spec_state_indices_tensor = self._get_spec_state_indices_view(
++                metadata.num_reqs
++            )
++            accepted = self.mamba_spec_accepted_tokens[: metadata.num_reqs]
++            assert metadata.num_accepted_tokens is not None
++            if accepted.data_ptr() != metadata.num_accepted_tokens.data_ptr():
++                accepted.copy_(metadata.num_accepted_tokens, non_blocking=True)
++            updated.num_accepted_tokens = accepted
++            return updated
++
++        if (
++            metadata.num_prefills == 0
++            and metadata.num_spec_decodes == 0
++            and self._can_reuse_decode_inputs()
++        ):
++            source = self.mamba_aligned_state_indices
++            assert source is not None
++            if (
++                self._decode_state_indices_source is not source
++                or self._decode_state_indices_view is None
++                or self._decode_state_indices_view.shape[0] != metadata.num_reqs
++            ):
++                self._decode_state_indices_source = source
++                self._decode_state_indices_view = source[: metadata.num_reqs, 0]
++            updated = copy(metadata)
++            updated.non_spec_state_indices_tensor = self._decode_state_indices_view
++            return updated
++
+         state_indices = self._get_state_indices(
+             blk_table,
+             metadata.seq_lens,
+@@ -753,6 +884,7 @@
+             and metadata.num_prefills == 0
+             and metadata.num_spec_decodes == 0
+             and metadata.num_decodes <= self.decode_cudagraph_max_bs
++            and not self._can_reuse_decode_inputs()
+         ):
+             self.non_spec_state_indices_tensor[: metadata.num_decodes].copy_(
+                 non_spec_state_indices[: metadata.num_decodes], non_blocking=True
+--- a/vllm/v1/worker/gpu/attn_utils.py
++++ b/vllm/v1/worker/gpu/attn_utils.py
+@@ -293,43 +293,11 @@
+     attn_metadata: dict[str, Any] = {}
+     cached_attn_metadata: dict[tuple[KVCacheSpec, type], Any] = {}
+     num_kv_cache_groups = len(kv_cache_config.kv_cache_groups)
++    group_slot_mappings = slot_mappings[:num_kv_cache_groups].unbind(0)
+     for i in range(num_kv_cache_groups):
+         block_table = block_tables[i]
+-        slot_mapping = slot_mappings[i]
+-        # Per-group causal for hybrid drafters (mixed SWA/full attention).
+-        group_causal = (
+-            causal if isinstance(causal, (bool, torch.Tensor)) else causal.get(i, True)
+-        )
+-
+-        common_attn_metadata_extra_kwargs = (
+-            model_specific_attn_metadata.get_extra_common_attn_kwargs(i, num_reqs)
+-            if model_specific_attn_metadata is not None
+-            else {}
+-        )
+-        # Model-specific metadata (e.g. Mamba hybrid) may supply its own
+-        # padding-aware is_prefilling, which takes precedence over the default.
+-        group_is_prefilling = common_attn_metadata_extra_kwargs.pop(
+-            "is_prefilling", is_prefilling
+-        )
+-        common_attn_metadata = CommonAttentionMetadata(
+-            query_start_loc=query_start_loc_gpu,
+-            query_start_loc_cpu=query_start_loc_cpu,
+-            seq_lens=seq_lens,
+-            seq_lens_cpu_upper_bound=seq_lens_cpu_upper_bound,
+-            max_seq_len=max_seq_len,
+-            num_reqs=num_reqs,
+-            num_actual_tokens=num_tokens,
+-            max_query_len=max_query_len,
+-            block_table_tensor=block_table,
+-            slot_mapping=slot_mapping,
+-            causal=group_causal,
+-            dcp_local_seq_lens=dcp_local_seq_lens,
+-            positions=positions,
+-            is_prefilling=group_is_prefilling,
+-            mm_req_doc_ranges=mm_req_doc_ranges,
+-            rswa_prefix_lens=rswa_prefix_lens,
+-            **common_attn_metadata_extra_kwargs,
+-        )
++        slot_mapping = group_slot_mappings[i]
++        common_attn_metadata = None
+ 
+         for attn_group in attn_groups[i]:
+             attn_metadata_builder = attn_group.get_metadata_builder(0)
+@@ -337,35 +305,74 @@
+             if isinstance(kv_cache_spec, UniformTypeKVCacheSpecs):
+                 kv_cache_spec = kv_cache_spec.kv_cache_specs[attn_group.layer_names[0]]
+             cache_key = (kv_cache_spec, type(attn_metadata_builder))
+-            if for_cudagraph_capture:
+-                metadata = attn_metadata_builder.build_for_cudagraph_capture(
+-                    common_attn_metadata
+-                )
+-            elif (
+-                cache_key in cached_attn_metadata
++            if (
++                not for_cudagraph_capture
++                and cache_key in cached_attn_metadata
+                 and attn_metadata_builder.supports_update_block_table
+             ):
+                 metadata = attn_metadata_builder.update_block_table(
+-                    cached_attn_metadata[cache_key],
+-                    common_attn_metadata.block_table_tensor,
+-                    common_attn_metadata.slot_mapping,
++                    cached_attn_metadata[cache_key], block_table, slot_mapping
+                 )
+             else:
+-                attn_metadata_extra_kwargs = (
+-                    model_specific_attn_metadata.get_extra_attn_kwargs(
+-                        attn_metadata_builder,
+-                        num_reqs,
+-                    )
+-                    if model_specific_attn_metadata is not None
+-                    else {}
+-                )
+-                metadata = attn_metadata_builder.build(
+-                    common_prefix_len=0,
+-                    common_attn_metadata=common_attn_metadata,
+-                    **attn_metadata_extra_kwargs,
+-                )
+-                if attn_metadata_builder.supports_update_block_table:
+-                    cached_attn_metadata[cache_key] = metadata
++                if common_attn_metadata is None:
++                    # Per-group causal for hybrid drafters (mixed SWA/full attention).
++                    group_causal = (
++                        causal
++                        if isinstance(causal, (bool, torch.Tensor))
++                        else causal.get(i, True)
++                    )
++
++                    common_attn_metadata_extra_kwargs = (
++                        model_specific_attn_metadata.get_extra_common_attn_kwargs(
++                            i, num_reqs
++                        )
++                        if model_specific_attn_metadata is not None
++                        else {}
++                    )
++                    # Model-specific padding takes precedence over the default.
++                    group_is_prefilling = common_attn_metadata_extra_kwargs.pop(
++                        "is_prefilling", is_prefilling
++                    )
++                    common_attn_metadata = CommonAttentionMetadata(
++                        query_start_loc=query_start_loc_gpu,
++                        query_start_loc_cpu=query_start_loc_cpu,
++                        seq_lens=seq_lens,
++                        seq_lens_cpu_upper_bound=seq_lens_cpu_upper_bound,
++                        max_seq_len=max_seq_len,
++                        num_reqs=num_reqs,
++                        num_actual_tokens=num_tokens,
++                        max_query_len=max_query_len,
++                        block_table_tensor=block_table,
++                        slot_mapping=slot_mapping,
++                        causal=group_causal,
++                        dcp_local_seq_lens=dcp_local_seq_lens,
++                        positions=positions,
++                        is_prefilling=group_is_prefilling,
++                        mm_req_doc_ranges=mm_req_doc_ranges,
++                        rswa_prefix_lens=rswa_prefix_lens,
++                        **common_attn_metadata_extra_kwargs,
++                    )
++
++                if for_cudagraph_capture:
++                    metadata = attn_metadata_builder.build_for_cudagraph_capture(
++                        common_attn_metadata
++                    )
++                else:
++                    attn_metadata_extra_kwargs = (
++                        model_specific_attn_metadata.get_extra_attn_kwargs(
++                            attn_metadata_builder,
++                            num_reqs,
++                        )
++                        if model_specific_attn_metadata is not None
++                        else {}
++                    )
++                    metadata = attn_metadata_builder.build(
++                        common_prefix_len=0,
++                        common_attn_metadata=common_attn_metadata,
++                        **attn_metadata_extra_kwargs,
++                    )
++                    if attn_metadata_builder.supports_update_block_table:
++                        cached_attn_metadata[cache_key] = metadata
+             for layer_name in attn_group.layer_names:
+                 attn_metadata[layer_name] = metadata
+     return attn_metadata
+--- a/vllm/v1/worker/gpu/model_states/mamba_hybrid.py
++++ b/vllm/v1/worker/gpu/model_states/mamba_hybrid.py
+@@ -7,6 +7,7 @@
+ import torch
+ import torch.nn as nn
+ 
++from vllm import envs
+ from vllm.config import VllmConfig
+ from vllm.config.compilation import CUDAGraphMode
+ from vllm.triton_utils import tl, triton
+@@ -84,6 +85,11 @@
+         self.num_accepted_tokens_gpu = torch.ones(
+             self.max_num_reqs, dtype=torch.int32, device=self.device
+         )
++        self._gdn_spec_accepted_tokens = (
++            torch.ones_like(self.num_accepted_tokens_gpu)
++            if envs.VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH
++            else None
++        )
+         # Pre-copy "align" prefix-cache state (V2). The migration of each
+         # request's mamba state across block boundaries runs as a fused GPU
+         # kernel reusing the postprocess copy machinery, so the per-step src
+@@ -106,6 +112,9 @@
+             self._mamba_group_ids: list[int] = []
+             self._mamba_spec: MambaSpec | None = None
+             self._mamba_copy_funcs_by_type: MambaStateCopyFuncsByType | None = None
++            self._aligned_metadata_groups: list[list[AttentionGroup]] | None = None
++            self._aligned_metadata_builders: list[tuple[int, Any]] = []
++            self._aligned_metadata_ctx: MambaSpecDecodeGPUContext | None = None
+ 
+     def add_request(self, req_index: int, new_req_data: NewRequestData) -> None:
+         super().add_request(req_index, new_req_data)
+@@ -122,6 +131,9 @@
+         if self._align_mode:
+             self._mamba_ctx = None
+             self._mamba_copy_funcs_by_type = None
++            self._aligned_metadata_ctx = None
++            self._aligned_metadata_groups = None
++            self._aligned_metadata_builders = []
+         if self.recoverssm is not None:
+             self.recoverssm.reset()
+ 
+@@ -170,6 +182,40 @@
+                 [block_tables[gid] for gid in mamba_group_ids],
+             )
+         return ctx
++
++    def _prepare_aligned_state_indices(
++        self,
++        seq_lens: torch.Tensor,
++        num_reqs: int,
++        attn_groups: list[list[AttentionGroup]],
++        kv_cache_config: KVCacheConfig,
++        block_tables: tuple[torch.Tensor, ...],
++    ) -> None:
++        mamba_group_ids, _ = self._get_mamba_group_info(kv_cache_config)
++        if self._aligned_metadata_groups is not attn_groups:
++            self._aligned_metadata_builders = []
++            for group_idx, group_id in enumerate(mamba_group_ids):
++                for group in attn_groups[group_id]:
++                    builder = group.get_metadata_builder(0)
++                    if hasattr(builder, "mamba_aligned_state_indices"):
++                        self._aligned_metadata_builders.append((group_idx, builder))
++                    if hasattr(builder, "mamba_spec_accepted_tokens"):
++                        builder.mamba_spec_accepted_tokens = (
++                            self._gdn_spec_accepted_tokens
++                        )
++            self._aligned_metadata_groups = attn_groups
++            self._aligned_metadata_ctx = None
++        if not self._aligned_metadata_builders:
++            return
++
++        ctx = self._ensure_align_ctx(kv_cache_config, mamba_group_ids, block_tables)
++        if self._aligned_metadata_ctx is not ctx:
++            assert ctx.aligned_state_indices is not None
++            group_views = ctx.aligned_state_indices.unbind(0)
++            for group_idx, builder in self._aligned_metadata_builders:
++                builder.mamba_aligned_state_indices = group_views[group_idx]
++            self._aligned_metadata_ctx = ctx
++        ctx.compute_aligned_state_indices(seq_lens, num_reqs)
+ 
+     def preprocess_state(
+         self,
+@@ -277,22 +323,13 @@
+             num_decode_draft_tokens_cpu = torch.from_numpy(num_decode_draft_tokens_np)
+ 
+         if self._align_mode:
+-            mamba_group_ids, _ = self._get_mamba_group_info(kv_cache_config)
+-            aligned_index_builders = []
+-            for group_idx, group_id in enumerate(mamba_group_ids):
+-                for group in attn_groups[group_id]:
+-                    builder = group.get_metadata_builder(0)
+-                    if hasattr(builder, "mamba_aligned_state_indices"):
+-                        aligned_index_builders.append((group_idx, builder))
+-            if aligned_index_builders:
+-                ctx = self._ensure_align_ctx(
+-                    kv_cache_config, mamba_group_ids, block_tables
+-                )
+-                all_group_indices = ctx.compute_aligned_state_indices(
+-                    input_batch.seq_lens, num_reqs
+-                )
+-                for group_idx, builder in aligned_index_builders:
+-                    builder.mamba_aligned_state_indices = all_group_indices[group_idx]
++            self._prepare_aligned_state_indices(
++                input_batch.seq_lens,
++                num_reqs,
++                attn_groups,
++                kv_cache_config,
++                block_tables,
++            )
+ 
+         mamba_attn_metadata = MambaHybridAttnMetadata(
+             is_prefilling=is_prefilling,
+--- a/vllm/v1/worker/gpu/sample/gumbel.py
++++ b/vllm/v1/worker/gpu/sample/gumbel.py
+@@ -12,6 +12,12 @@
+ # available — on the CPU worker path `tl` is a placeholder whose `constexpr`
+ # attribute is `None`, and `tl.constexpr(...)` would crash at import time.
+ _TL_RAND_MIN = tl.constexpr(4.6566127342e-10) if HAS_TRITON else 4.6566127342e-10
++
++# Offset salt keeping the draft's Gumbel noise disjoint from the target's.
++# Verification is a probability-ratio test, not a Gumbel coupling, so a proposal
++# and the residual it is resampled from must not share a noise vector.
++# Positions are int64 and never approach 2**30, so the streams cannot collide.
++_DRAFT_NOISE_SALT = tl.constexpr(1 << 30) if HAS_TRITON else (1 << 30)
+ 
+ 
+ @triton.jit
+@@ -89,6 +95,7 @@
+     seed,
+     pos,
+     temp,
++    IS_DRAFTING: tl.constexpr,
+     USE_FP64: tl.constexpr,
+     APPLY_TEMPERATURE: tl.constexpr = True,
+ ):
+@@ -108,6 +115,8 @@
+     if USE_FP64:
+         logits = logits.to(tl.float64)
+     if temp != 0.0:
++        if IS_DRAFTING:
++            pos = pos + _DRAFT_NOISE_SALT
+         gumbel_seed = tl.randint(seed, pos)
+         if USE_FP64:
+             u = tl_rand64(gumbel_seed, keys, includes_zero=False)
+@@ -137,6 +146,7 @@
+     logits_cache_stride_1,
+     logits_cache_col_ptr,
+     vocab_size,
++    IS_DRAFTING: tl.constexpr,
+     APPLY_TEMPERATURE: tl.constexpr,
+     USE_FP64: tl.constexpr,
+     PER_TOKEN_COL: tl.constexpr = False,
+@@ -173,6 +183,7 @@
+         seed,
+         pos,
+         temp,
++        IS_DRAFTING=IS_DRAFTING,
+         USE_FP64=USE_FP64,
+         APPLY_TEMPERATURE=APPLY_TEMPERATURE,
+     )
+@@ -197,6 +208,7 @@
+     temp_ptr,
+     vocab_size,
+     BLOCK_SIZE: tl.constexpr,
++    IS_DRAFTING: tl.constexpr,
+     APPLY_TEMPERATURE: tl.constexpr,
+     USE_FP64: tl.constexpr,
+     PER_TOKEN_COL: tl.constexpr,
+@@ -226,6 +238,7 @@
+         logits_cache_stride_1,
+         logits_cache_col_ptr,
+         vocab_size,
++        IS_DRAFTING=IS_DRAFTING,
+         APPLY_TEMPERATURE=APPLY_TEMPERATURE,
+         USE_FP64=USE_FP64,
+         PER_TOKEN_COL=PER_TOKEN_COL,
+@@ -242,6 +255,7 @@
+     seed: torch.Tensor,  # [max_num_reqs]
+     pos: torch.Tensor,  # [num_tokens]
+     apply_temperature: bool,
++    is_drafting: bool,
+     logits_cache: torch.Tensor | None = None,  # [max_num_reqs, num_cols, vocab_size]
+     logits_cache_col: torch.Tensor | None = None,  # scalar or [num_tokens]
+     use_fp64: bool = False,
+@@ -281,6 +295,7 @@
+         temperature,
+         vocab_size,
+         BLOCK_SIZE=BLOCK_SIZE,
++        IS_DRAFTING=is_drafting,
+         APPLY_TEMPERATURE=apply_temperature,
+         USE_FP64=use_fp64,
+         PER_TOKEN_COL=per_token_col,
+--- a/vllm/v1/worker/gpu/sample/sampler.py
++++ b/vllm/v1/worker/gpu/sample/sampler.py
+@@ -317,6 +317,7 @@
+                 self.sampling_states.seeds.gpu,
+                 pos,
+                 apply_temperature=False,
++                is_drafting=False,
+                 use_fp64=self.use_fp64_gumbel,
+             )
+         return sampled, processed_logits
+--- a/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py
++++ b/vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py
+@@ -46,6 +46,9 @@
+         )
+         self.current_draft_step = torch.tensor(0, dtype=torch.int64, device=device)
+         self.last_token_indices = torch.zeros(
++            self.max_num_reqs, dtype=torch.int64, device=device
++        )
++        self.sample_src_positions = torch.zeros(
+             self.max_num_reqs, dtype=torch.int64, device=device
+         )
+ 
+@@ -370,6 +373,7 @@
+             input_batch.seq_lens,
+             num_rejected,
+             self.input_buffers,
++            self.sample_src_positions,
+             self.max_model_len,
+             self.max_num_reqs,
+             advance_draft_positions=self.advance_draft_positions,
+@@ -504,6 +508,8 @@
+     ) -> None:
+         last_token_indices = self.last_token_indices[:num_reqs]
+         positions = self.input_buffers.positions[last_token_indices]
++        # Hidden state P and token P+1 predict P+2; key sampling by P+1.
++        sample_src_positions = positions + 1
+         idx_mapping = self.idx_mapping[:num_reqs]
+ 
+         last_hidden_states, hidden_states = self._run_model(
+@@ -523,7 +529,7 @@
+ 
+         self.draft_tokens[:num_reqs, 0] = self.sample_draft(
+             sample_hidden_states,
+-            positions,
++            sample_src_positions,
+             idx_mapping,
+             self.temperature,
+             self.seeds,
+@@ -543,6 +549,7 @@
+                 num_reqs,
+             )
+         self.input_buffers.positions[:num_reqs] = positions
++        self.sample_src_positions[:num_reqs] = sample_src_positions
+ 
+     def _multi_step_decode(
+         self,
+@@ -698,7 +705,6 @@
+         self._prepare_eplb_forward(num_reqs)
+ 
+         idx_mapping = self.idx_mapping[:num_reqs]
+-        positions = self.input_buffers.positions[:num_reqs]
+         # Run the draft model forward pass.
+         last_hidden_states, hidden_states = self._run_model(
+             num_tokens_padded,
+@@ -707,18 +713,12 @@
+             num_tokens_across_dp,
+             cudagraph_runtime_mode,
+         )
+-        last_hidden_states = last_hidden_states[:num_reqs]
+-
+-        sample_positions = positions
+-        if not self.advance_draft_positions:
+-            # The forward pass holds positions fixed (Q-only, shared target KV),
+-            # but Gumbel sampling still needs the absolute draft position.
+-            sample_positions = positions + self.current_draft_step
+-
+         # Sample the draft tokens.
++        sample_hidden_states = last_hidden_states[:num_reqs]
++        sample_src_positions = self.sample_src_positions[:num_reqs]
+         draft_tokens = self.sample_draft(
+-            last_hidden_states,
+-            sample_positions,
++            sample_hidden_states,
++            sample_src_positions,
+             idx_mapping,
+             self.temperature,
+             self.seeds,
+@@ -734,6 +734,7 @@
+             self.draft_tokens,
+             self.hidden_states,
+             self.input_buffers,
++            self.sample_src_positions,
+             num_reqs,
+             self.max_model_len,
+             self.num_speculative_steps,
+@@ -1003,6 +1004,7 @@
+     num_rejected_ptr,
+     input_ids_ptr,
+     positions_ptr,
++    sample_src_positions_ptr,
+     mrope_positions_ptr,
+     mrope_positions_stride,
+     query_start_loc_ptr,
+@@ -1034,6 +1036,10 @@
+     draft_token = tl.load(draft_tokens_ptr + req_idx * draft_tokens_stride)
+     tl.store(input_ids_ptr + req_idx, draft_token)
+ 
++    # Sampling advances even when forward positions clamp at max_model_len.
++    sample_position = tl.load(sample_src_positions_ptr + req_idx)
++    tl.store(sample_src_positions_ptr + req_idx, sample_position + 1)
++
+     target_seq_len = tl.load(target_seq_lens_ptr + req_idx)
+     num_rejected = tl.load(num_rejected_ptr + req_idx)
+     seq_len = target_seq_len - num_rejected
+@@ -1061,6 +1067,7 @@
+     target_seq_lens: torch.Tensor,
+     num_rejected: torch.Tensor,
+     input_buffers: InputBuffers,
++    sample_src_positions: torch.Tensor,
+     max_model_len: int,
+     max_num_reqs: int,
+     advance_draft_positions: bool = True,
+@@ -1080,6 +1087,7 @@
+         num_rejected,
+         input_buffers.input_ids,
+         input_buffers.positions,
++        sample_src_positions,
+         mrope_positions,
+         mrope_positions_stride,
+         input_buffers.query_start_loc,
+@@ -1100,6 +1108,7 @@
+     next_input_hidden_states_stride,
+     input_ids_ptr,
+     positions_ptr,
++    sample_src_positions_ptr,
+     mrope_positions_ptr,
+     mrope_positions_stride,
+     seq_lens_ptr,
+@@ -1128,6 +1137,10 @@
+         # This is the final step. Skip updating draft forward inputs.
+         return
+ 
++    # Sampling advances even when forward positions clamp at max_model_len.
++    sample_position = tl.load(sample_src_positions_ptr + req_idx)
++    tl.store(sample_src_positions_ptr + req_idx, sample_position + 1)
++
+     # Write the sampled draft token into the input ids tensor for the next
+     # forward pass.
+     tl.store(input_ids_ptr + req_idx, draft_token)
+@@ -1177,6 +1190,7 @@
+     output_draft_tokens: torch.Tensor,
+     next_input_hidden_states: torch.Tensor,
+     input_buffers: InputBuffers,
++    sample_src_positions: torch.Tensor,
+     num_reqs: int,
+     max_model_len: int,
+     num_speculative_steps: int,
+@@ -1197,6 +1211,7 @@
+         next_input_hidden_states.stride(0),
+         input_buffers.input_ids,
+         input_buffers.positions,
++        sample_src_positions,
+         mrope_positions,
+         mrope_positions_stride,
+         input_buffers.seq_lens,
+--- a/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py
++++ b/vllm/v1/worker/gpu/spec_decode/dflash/speculator.py
+@@ -288,11 +288,11 @@
+         )
+         num_sample = num_reqs * self.num_speculative_steps
+         sample_hidden_states = last_hidden_states[self.sample_indices[:num_sample]]
+-        # sample_pos is the predicted token's position Q; verification keys
+-        # Gumbel by the predecessor (Q-1). sample_draft adds +1, so pass Q-2.
++        # sample_pos is the predicted token's position P. Sampling keys a draw
++        # by the position before the sampled token, P-1.
+         draft_tokens = self.sample_draft(
+             sample_hidden_states,
+-            self.sample_pos[:num_sample] - 2,
++            self.sample_pos[:num_sample] - 1,
+             self.sample_idx_mapping[:num_sample],
+             self.temperature,
+             self.seeds,
+--- a/vllm/v1/worker/gpu/spec_decode/dflash2/speculator.py
++++ b/vllm/v1/worker/gpu/spec_decode/dflash2/speculator.py
+@@ -51,15 +51,17 @@
+             other=0,
+         )
+ 
+-        # Candidate ids key the noise, matching the target's own sampling.
+-        position = tl.load(sample_pos_ptr + flat) - 1
++        # sample_pos is the predicted token's position P. Sampling keys a draw
++        # by the position before the sampled token, P-1.
++        sample_pos = tl.load(sample_pos_ptr + flat) - 1
+         _, index = gumbel_noised_argmax(
+             scores,
+             candidates,
+             mask & valid,
+             seed,
+-            position,
++            sample_pos,
+             temperature if SAMPLE_PROBABILISTIC else 0.0,
++            IS_DRAFTING=True,
+             USE_FP64=USE_FP64,
+         )
+ 
+--- a/vllm/v1/worker/gpu/spec_decode/dspark/speculator.py
++++ b/vllm/v1/worker/gpu/spec_decode/dspark/speculator.py
+@@ -135,8 +135,8 @@
+             buf.index_copy_(1, self._d2t_scatter_index, logits.to(buf.dtype))
+             logits = buf
+ 
+-        # sample_pos is the predicted token's position Q; the target verifies
+-        # it with the predecessor's Gumbel key (Q-1). Pass Q-1.
++        # sample_pos is the predicted token's position P. Sampling keys a draw
++        # by the position before the sampled token, P-1.
+         return gumbel_sample(
+             logits,
+             idx_map,
+@@ -144,6 +144,7 @@
+             self.seeds,
+             sample_pos - 1,
+             apply_temperature=True,
++            is_drafting=True,
+             logits_cache=self.draft_logits,
+             logits_cache_col=self._step_cols[step],
+             use_fp64=self.use_fp64_gumbel,
+--- a/vllm/v1/worker/gpu/spec_decode/multi_module_mtp/speculator.py
++++ b/vllm/v1/worker/gpu/spec_decode/multi_module_mtp/speculator.py
+@@ -377,7 +377,11 @@
+         cudagraph_runtime_mode: CUDAGraphMode = CUDAGraphMode.NONE,
+     ) -> None:
+         last_token_indices = self.last_token_indices[:num_reqs]
+-        sample_positions = self.input_buffers.positions[last_token_indices]
++        positions = self.input_buffers.positions[last_token_indices]
++        # The output hidden state at position P (= positions) and the token id
++        # at P+1 are used to draft the token at P+2. Sampling keys a draw by the
++        # position before the sampled token, so the net adjustment is +1.
++        sample_src_positions = positions + 1
+         idx_mapping = self.idx_mapping[:num_reqs]
+ 
+         # Cache the trailing token's ids, hidden states (and embeddings for
+@@ -415,7 +419,7 @@
+             sample_hidden_states = last_hidden_states[last_token_indices]
+             draft_tokens = self.sample_draft(
+                 sample_hidden_states,
+-                sample_positions,
++                sample_src_positions,
+                 idx_mapping,
+                 self.temperature,
+                 self.seeds,
+@@ -446,7 +450,8 @@
+                     idx_mapping,
+                     num_reqs,
+                 )
+-                sample_positions += 1
++                # Advance the draft sampling key.
++                sample_src_positions += 1
+ 
+ 
+ @triton.jit
+--- a/vllm/v1/worker/gpu/spec_decode/rejection_sampler_utils.py
++++ b/vllm/v1/worker/gpu/spec_decode/rejection_sampler_utils.py
+@@ -837,6 +837,7 @@
+         0,  # logits_cache_stride_1
+         None,  # logits_cache_col_ptr
+         vocab_size,
++        IS_DRAFTING=False,
+         APPLY_TEMPERATURE=False,
+         USE_FP64=USE_FP64,
+     )
+--- a/vllm/v1/worker/gpu/spec_decode/speculator.py
++++ b/vllm/v1/worker/gpu/spec_decode/speculator.py
+@@ -391,7 +391,7 @@
+     def sample_draft(
+         self,
+         hidden_states: torch.Tensor,
+-        positions: torch.Tensor,
++        sample_src_positions: torch.Tensor,
+         idx_mapping: torch.Tensor,
+         temperature: torch.Tensor,
+         seeds: torch.Tensor,
+@@ -400,15 +400,14 @@
+     ) -> torch.Tensor:
+         if draft_logits is not None:
+             logits = self.model.compute_logits(hidden_states)
+-            # NOTE(woosuk): We must add 1 to the positions to match the Gumbel noise
+-            # used for draft and target sampling.
+             return gumbel_sample(
+                 logits,
+                 idx_mapping,
+                 temperature,
+                 seeds,
+-                positions + 1,
++                sample_src_positions,
+                 apply_temperature=True,
++                is_drafting=True,
+                 logits_cache=draft_logits,
+                 logits_cache_col=draft_step,
+                 use_fp64=self.use_fp64_gumbel,
+--- a/vllm/v1/worker/mamba_utils.py
++++ b/vllm/v1/worker/mamba_utils.py
+@@ -85,8 +85,10 @@
+         mask=(
+             valid_group[:, None, None]
+             & valid_row[None, :, None]
++            & (seq_lens[None, :, None] > 0)
+             & valid_state_slot[None, None, :]
+         ),
++        other=-1,
+     )
+     tl.store(
+         state_indices_ptr

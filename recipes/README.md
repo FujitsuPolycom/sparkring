@@ -10,6 +10,8 @@ installation guides.
 
 | Model profile | Status | Topology | Recipe | Operator guide |
 |---|---|---|---|---|
+| DeepSeek-V4-Flash-Vision-Exp with DSpark | research-only | four Sparks, TP4 cycle | [`deepseek-v4-flash-vision-exp-tp4.json`](deepseek-v4-flash-vision-exp-tp4.json) | [Vision-Exp quickstart](../docs/DEEPSEEK_V4_FLASH_VISION_EXP_TP4_QUICKSTART.md) |
+| GLM-5.3 native MTP3 with recurrent checkpoints and optimized SparkCache | research-only | four Sparks, TP4/DCP4 mesh | [Cache/checkpoint recipe](glm53-mtp3-cache-checkpoints-tp4.json) | [Cache/checkpoint quickstart](../docs/GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md) |
 | GLM-5.3 Flash NVFP4-Spark + native MTP3 + managed mesh + SparkCache | research-only | four Sparks, TP4/DCP4, hardware-forwarded opposite peers | [`glm53-spark-mtp3-managed-mesh-tp4.json`](glm53-spark-mtp3-managed-mesh-tp4.json) | [Managed-mesh quickstart](../docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md) |
 | GLM-5.3 Flash NVFP4 + BF16 DFlash2 | implemented; DCP4 preferred | four Sparks, TP4 with DCP1/DCP2/DCP4 | [`glm53-flash-nvfp4-dflash2-bf16-tp4.json`](glm53-flash-nvfp4-dflash2-bf16-tp4.json) | [GLM-5.3 quickstart](../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
 | GLM-5.2 EXL3 3.5-bpw | implemented | four Sparks, TP4/DCP4 | [`glm52-exl3-r7-3.5bpw.json`](glm52-exl3-r7-3.5bpw.json) | [GLM-5.2 quickstart](../docs/GLM52_35BPW_QUICKSTART.md) |
@@ -17,6 +19,11 @@ installation guides.
 | DeepSeek-V4-Flash-0731 | implemented | four Sparks, TP4/DCP1 | [`deepseek-v4-flash-0731.json`](deepseek-v4-flash-0731.json) | [DeepSeek quickstart](../docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | implemented | two Sparks, TP2/DCP1 | [`qwen38-27b-exl3-k5k6-pair.json`](qwen38-27b-exl3-k5k6-pair.json) | [Qwen pair quickstart](../docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | implemented | four Sparks, TP4/DCP1 | [`qwen38-27b-exl3-k5k6.json`](qwen38-27b-exl3-k5k6.json) | [Qwen quickstart](../docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
+
+The Vision-Exp [artifact contract](../runtime/deepseek-vision-exp/profile.json)
+records the Anemll serving image, MiaAI-Lab recipe, and SparkRing patched NCCL.
+Contributor-reported observations are retained; independent reproduction of
+the selected composition is not claimed.
 
 [`sparkcache/`](sparkcache/) contains compositions that add persistent,
 rank-local prefix storage to a base recipe. A composition may have a narrower

@@ -5,6 +5,16 @@ text is in the `LICENSE` file at the root of this repository.
 
 Copyright 2026 SparkRing contributors.
 
+## MiaAI-Lab DSpark recipe test fixture
+
+`runtime/deepseek-vision-exp/upstream/docker-compose.dspark.yml.gz` contains an
+unmodified Compose file from
+[MiaAI-Lab's DSpark recipe](https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark)
+at revision `7440c53c1f0352886e47b1909051784879fa0a24`, under the MIT License,
+Copyright (c) 2026 Tony Deangelo. The complete license is preserved in
+`runtime/deepseek-vision-exp/upstream/LICENSE`. The file is an offline test
+fixture; operators use the complete upstream checkout to obtain its hotfixes.
+
 This document identifies third-party material contained in this repository and
 third-party projects that this repository references, patches, or interoperates
 with. Except as stated below, all files in this repository are original
@@ -55,7 +65,17 @@ two compatibility patches. The public GLM-5.3 builder does not consume them;
 its `NCCL_SWITCHLESS_RING_ONLY` parameter and diagnostics are an independent
 SparkRing implementation.
 
-## 3. vLLM (referenced and patched)
+## 3. vLLM (referenced, patched, and selected source included)
+
+`runtime/glm53-spark-mtp3-mesh/compute/vllm-compute-files.tar.gz` includes
+24 vLLM Python files for GLM metadata reuse, dense-kernel integration,
+the NVFP4 proposal head, deferred-weight ownership, and independent draft
+and rejection-sampling randomness. The adjacent patch provides a readable diff;
+`source-lock.json` records the base, donor revisions, and exact file hashes.
+These files derive from Local Inference Lab's vLLM fork at `3512b066` and
+`a8c796f3`, loader correction `17e341b9`, and independent-RNG backport
+`44e6766e` from [PR 653](https://github.com/local-inference-lab/vllm/pull/653),
+under Apache-2.0 with their contributor notices retained.
 
 The unified diffs under `runtime/deepseek0731-gb10/patches/` contain context
 and removed lines from vLLM, pinned to the source revision recorded by that
@@ -245,8 +265,10 @@ artifacts that are not distributed in this repository:
   repository notices.
 
 SparkRing records these identities and validates compatible image content; it
-does not redistribute the model weights, vLLM source, or B12X model-kernel
-package. The selected B12X communication source in Section 11 is included. Operators
+does not include model weights or the complete vLLM/B12X source trees in this
+Git repository. The selected vLLM files in Section 3 and B12X communication
+source in Section 11 are included. Published runtime images contain the
+pinned vLLM and B12X packages under their respective licenses. Operators
 must obtain each artifact under its own terms. The exact operator-image
 composition is in `runtime/glm53-flash-jj-r8-gb10/pins.json` and
 `runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json`.
@@ -287,3 +309,16 @@ The native-MTP3 profile references
 Operators must obtain and use that checkpoint under its own license and
 notices. Native MTP uses its included prediction layer and does not require
 an external DFlash checkpoint.
+
+## 12. B12X selector source and MoE scale sharing
+
+The native-MTP3 compute package downloads B12X revision
+`ef308bac0f3b3eb8fea63e4013afc0c2ea1c6301`, including its shared native NVFP4
+scales for A4/A16 MoE paths. Three selector Python files are included in
+`runtime/glm53-spark-mtp3-mesh/compute/b12x-selector-files.tar.gz` from
+[B12X PR 316](https://github.com/local-inference-lab/b12x/pull/316), revision
+`9ac142824b4edb750892a0fb63d914230086495d`. They implement the top-k-512
+candidate buffer, exact overflow handling, and omission of unused terminal
+scores. These files are licensed under Apache-2.0; source notices are retained
+and the downloaded B12X archive supplies the license. The compute source lock
+binds the source archive and each base/result file hash.

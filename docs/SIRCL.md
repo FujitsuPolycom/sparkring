@@ -1,19 +1,45 @@
 # SIRCL
 
-SIRCL is the **Switchless Inference RDMA Collective Layer**. It is SparkRing's
-native collective transport for the directly cabled four-DGX-Spark cycle; it is
-not a separate service or an NCCL fork.
+SIRCL is the **Switchless Inference RDMA Collective Layer**, SparkRing's native
+collective transport for four participating ranks. It operates on tensor
+buffers and rank groups; runtime adapters select admitted signatures for each
+model profile. The native interfaces and implementations live in
+[`spark_transport/`](../spark_transport/README.md).
+
+Status: **implemented**. Qualification applies to the exact artifacts and
+profile conditions linked below. SIRCL is one component of SparkRing's
+communication stack alongside adapted RoCEnante communication and patched
+NCCL.
 
 ## Implemented boundary
 
 SIRCL maintains RDMA sessions, registered arenas, and device-published command
-rings. CUDA graph replay submits pre-established work without Python or host
-control work in the replay path.
+rings. Captured CUDA graphs submit work to established sessions through device
+command descriptors. Native progress threads perform the host protocol work
+required by the selected transport.
 
-A four-rank collective is decomposed into two perfect matchings of the physical
-cycle. This scheduling is specific to the four-Spark topology documented in
-[architecture](ARCHITECTURE.md). SIRCL does not claim a generic multi-node
-collective interface or support beyond that topology.
+The pairwise-exchange schedule uses two perfect matchings of the physical
+cycle; bidirectional and fused variants use their own ring schedules. These
+native APIs require four ranks. Tensor geometry is validated by
+the native interface and runtime adapter; a model-independent transport does
+not imply arbitrary rank-count, dtype, or shape support. Patched NCCL has its
+own [pair/cycle configurations](../spark_transport/nccl/README.md).
+
+## Composition with hardware-forwarded mesh
+
+The four-rank mesh profile combines SIRCL, an adapted RoCEnante all-reduce,
+and patched NCCL. RoCEnante's selected opposite-peer operations cross two
+physical links through an intermediate ConnectX-7 ASIC. The overlay delegates
+calls outside its admission rules to the saved SIRCL/NCCL backend. It does not
+extend the SIRCL C API to other rank counts.
+
+The [mesh runtime contract](../runtime/glm53-spark-mtp3-mesh/README.md) identifies
+its dispatch configuration, source packages, and evidence. The
+[native-MTP3 cache/checkpoint quickstart](GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md)
+provides one serving composition, while the
+[transport overview](../spark_transport/README.md) describes the shared components.
+RoCEnante's origins and local adaptations are recorded in its
+[source attribution](../third_party/b12x_roce/README.md).
 
 ## Profile use
 
@@ -27,8 +53,8 @@ qualification. A four-rank matched comparison established native replay,
 API health, and zero overflow for the target and DSpark capture path; see the
 [DeepSeek SIRCL evidence record](../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
 
-The GLM-5.3 Flash GB10 operator image embeds a source-bound SIRCL bundle. The
-exact public image is **qualified** for the recorded four-rank TP4/DCP4
+The [GLM-5.3 DFlash2 operator image](../runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json)
+embeds a source-bound SIRCL bundle. Its receipt records **qualified** four-rank TP4/DCP4
 functional checks: capability agreement, startup, semantic inference,
 persistent SparkCache restore, concurrent store-ownership drain, and injected
 failure containment. Its artifact-bound throughput matrix is

@@ -81,6 +81,9 @@ def send_warmup_request(
         "chat_template_kwargs": {"enable_thinking": False},
     }
     headers = {"Content-Type": "application/json"}
+    token = os.environ.get("SPARKRING_STARTUP_TOKEN")
+    if token:
+        headers["X-Sparkring-Startup-Token"] = token
     if credential:
         headers["Authorization"] = f"Bearer {credential}"
     request = urllib.request.Request(

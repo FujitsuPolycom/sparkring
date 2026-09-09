@@ -147,8 +147,8 @@ def test_initial_unavailable_snapshot_is_strict_json() -> None:
     json.dumps(snapshot, allow_nan=False)
 
 
-def _output_metrics(*, running=3, iterations=10):
-    return _metrics(running=running, waiting=0, kv=0.2) + (
+def _output_metrics(*, running=3, iterations=10, kv=0.2):
+    return _metrics(running=running, waiting=0, kv=kv) + (
         f'\nvllm:iteration_tokens_total_count{{engine="0"}} {iterations}'
     )
 
@@ -244,3 +244,130 @@ def test_progress_recovers_unhealthy_monitor() -> None:
     monitor.observe(_output_metrics(iterations=11))
     assert monitor.http_status() == 200
     assert monitor.snapshot()["output_stalled_seconds"] == 0
+
+
+def test_issue231_growing_prefill_cache_does_not_trip_output_stall() -> None:
+    module = _load_module()
+    now = [0.0]
+    monitor = module.SchedulerLiveness(
+        blocked_timeout_seconds=60, idle_kv_warn_seconds=330,
+        stale_sample_seconds=15, clock=lambda: now[0],
+    )
+    for elapsed in range(0, 601, 10):
+        now[0] = float(elapsed)
+        monitor.observe(_output_metrics(running=1, iterations=0, kv=elapsed / 1000))
+        assert monitor.http_status() == 200
+    assert monitor.snapshot()["output_stalled_seconds"] == 600
+
+
+def test_issue231_prefill_progress_stopping_still_detects_a_stall() -> None:
+    module = _load_module()
+    now = [0.0]
+    monitor = module.SchedulerLiveness(
+        blocked_timeout_seconds=60, idle_kv_warn_seconds=330,
+        stale_sample_seconds=15, clock=lambda: now[0],
+    )
+    for elapsed in range(0, 301, 10):
+        now[0] = float(elapsed)
+        monitor.observe(_output_metrics(running=1, iterations=0, kv=elapsed / 1000))
+    assert monitor.http_status() == 200
+    for elapsed in range(310, 601, 10):
+        now[0] = float(elapsed)
+        monitor.observe(_output_metrics(running=1, iterations=0, kv=0.3))
+    assert monitor.snapshot()["reason"] == "engine_output_stall"
+
+
+def test_kv_reallocation_and_request_churn_do_not_renew_progress() -> None:
+    module = _load_module()
+    now = [0.0]
+    monitor = module.SchedulerLiveness(
+        blocked_timeout_seconds=60, idle_kv_warn_seconds=330,
+        stale_sample_seconds=15, clock=lambda: now[0],
+    )
+    for timestamp, running, kv in (
+        (0, 1, 0.4), (100, 1, 0.6), (200, 3, 0.3),
+        (300, 2, 0.59), (399, 1, 0.6000000001),
+    ):
+        now[0] = timestamp
+        monitor.observe(_output_metrics(running=running, kv=kv))
+        assert monitor.http_status() == 200
+    now[0] = 400
+    monitor.observe(_output_metrics(running=2, kv=0.6))
+    snapshot = monitor.snapshot()
+    assert snapshot["reason"] == "engine_output_stall"
+    assert snapshot["progress_stalled_seconds"] == 300
+    assert snapshot["output_stalled_seconds"] == 400
+    assert snapshot["kv_allocation_high_water"] == 0.6
+
+
+def test_optional_prompt_counter_growth_and_loss_have_distinct_meanings() -> None:
+    module = _load_module()
+    now = [0.0]
+    monitor = module.SchedulerLiveness(
+        blocked_timeout_seconds=60, idle_kv_warn_seconds=330,
+        stale_sample_seconds=15, clock=lambda: now[0],
+    )
+    for timestamp, prompt in ((0, 100), (100, 200), (200, None), (300, 0), (399, 200)):
+        now[0] = timestamp
+        metrics = _output_metrics()
+        if prompt is not None:
+            metrics += f'\nvllm:prompt_tokens_total{{engine="0"}} {prompt}'
+        monitor.observe(metrics)
+        assert monitor.http_status() == 200
+    now[0] = 400
+    monitor.observe(_output_metrics() + '\nvllm:prompt_tokens_total{engine="0"} 200')
+    assert monitor.snapshot()["reason"] == "engine_output_stall"
+    now[0] = 401
+    monitor.observe(_output_metrics() + '\nvllm:prompt_tokens_total{engine="0"} 201')
+    snapshot = monitor.snapshot()
+    assert snapshot["healthy"] is True
+    assert snapshot["last_progress_signal"] == "prompt_token_counter"
+    assert snapshot["output_stalled_seconds"] == 401
+    assert snapshot["progress_stalled_seconds"] == 0
+
+
+def test_first_optional_counter_sample_does_not_prove_progress() -> None:
+    module = _load_module()
+    now = [0.0]
+    monitor = module.SchedulerLiveness(
+        blocked_timeout_seconds=60, idle_kv_warn_seconds=330,
+        stale_sample_seconds=15, clock=lambda: now[0],
+    )
+    monitor.observe(_output_metrics())
+    now[0] = 300
+    monitor.observe(_output_metrics() + '\nvllm:prompt_tokens_total{engine="0"} 1000')
+    assert monitor.snapshot()["reason"] == "engine_output_stall"
+
+
+def test_output_or_idle_starts_a_fresh_kv_progress_epoch() -> None:
+    module = _load_module()
+    now = [0.0]
+    monitor = module.SchedulerLiveness(
+        blocked_timeout_seconds=60, idle_kv_warn_seconds=330,
+        stale_sample_seconds=15, clock=lambda: now[0],
+    )
+    for timestamp, running, iterations, kv in (
+        (0, 1, 10, 0.8), (100, 1, 11, 0.2), (390, 1, 11, 0.3),
+        (680, 1, 11, 0.4), (700, 0, 11, 0.4), (1000, 1, 11, 0.1),
+        (1290, 1, 11, 0.2), (1580, 1, 11, 0.3),
+    ):
+        now[0] = timestamp
+        monitor.observe(_output_metrics(running=running, iterations=iterations, kv=kv))
+        assert monitor.http_status() == 200
+    assert 'sparkring:engine_progress_stalled_seconds 0' in monitor.prometheus()
+    assert 'sparkring:engine_output_stalled_seconds 580' in monitor.prometheus()
+
+
+@pytest.mark.parametrize("value", ["-1", "nan", "inf"])
+def test_invalid_optional_prompt_counter_rejects_the_sample(value: str) -> None:
+    module = _load_module()
+    now = [0.0]
+    monitor = module.SchedulerLiveness(
+        blocked_timeout_seconds=60, idle_kv_warn_seconds=330,
+        stale_sample_seconds=15, clock=lambda: now[0],
+    )
+    monitor.observe(_output_metrics())
+    now[0] = 16
+    with pytest.raises(ValueError):
+        monitor.observe(_output_metrics() + f'\nvllm:prompt_tokens_total{{engine="0"}} {value}')
+    assert monitor.snapshot()["reason"] == "metrics_unavailable"

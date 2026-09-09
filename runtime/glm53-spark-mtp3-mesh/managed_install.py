@@ -30,6 +30,7 @@ SOURCE_FILES = (
     'runtime/glm53-spark-mtp3-mesh/profile.py',
     'runtime/glm53-spark-mtp3-mesh/inspect_fabric.py',
     'runtime/glm53-spark-mtp3-mesh/pins.json',
+    'runtime/glm53-spark-mtp3-mesh/compute/source-lock.json',
     'runtime/glm53-flash-jj-r8-gb10/pins.json',
     'runtime/glm53-flash-jj-r8-gb10/warmup_dflash.py',
     'runtime/glm53-flash-jj-r8-gb10/launch-rank.sh',
@@ -116,6 +117,25 @@ def expected_container_spec(argv, image):
     image_id = image.get('Id')
     if not isinstance(image_id, str) or not re.fullmatch('sha256:[0-9a-f]{64}', image_id):
         raise ValueError('Image inspection must provide an immutable identity')
+    # The launcher names the image with whichever identity the receipt supplied.
+    # sparkring-mtp3-mesh-image-receipt/v1 sets image_reference to the config
+    # image ID, but sparkring-mtp3-performance-public-image/v1 sets it to a
+    # registry reference carrying the manifest digest, so the envelope scan must
+    # accept either. The spec still reports the config ID, which is what Docker
+    # records as the container's Image.
+    repo_digests = image.get('RepoDigests')
+    if repo_digests is None:
+        repo_digests = []
+    repository_digest = re.compile(
+        r'(?:[A-Za-z0-9][A-Za-z0-9.-]*(?::[0-9]+)?/)?'
+        r'[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*'
+        r'(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*@sha256:[0-9a-f]{64}'
+    )
+    if (not isinstance(repo_digests, list)
+            or any(not isinstance(digest, str) or not repository_digest.fullmatch(digest)
+                   for digest in repo_digests)):
+        raise ValueError('Image inspection returned malformed repository digests')
+    image_names = {image_id, *repo_digests}
     config = image.get('Config', {})
     if config.get('Volumes'):
         raise ValueError('Managed profile does not support image-declared anonymous volumes')
@@ -126,7 +146,7 @@ def expected_container_spec(argv, image):
     value_options = {'--name', '--entrypoint', '--network', '--ipc', '--shm-size', '--gpus',
                      '--ulimit', '--cap-add', '--device', '--security-opt', '-v', '-e', '--label'}
     index = 2
-    while index < len(argv) and argv[index] != image_id:
+    while index < len(argv) and argv[index] not in image_names:
         flag = argv[index]
         if flag == '--init':
             if flag in options:
@@ -254,7 +274,7 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file):
     if '--managed' not in help_result.stdout + help_result.stderr:
         raise ValueError('Extracted helper does not expose managed lifetime')
     bundle = Path(site['bundle_root'])
-    if profile.sha(bundle / 'sparkring-overlay-manifest.json') != profile.PINS['canonical_bundle_manifest_sha256']:
+    if profile.sha(bundle / 'sparkring-overlay-manifest.json') != receipt['bundle_manifest_sha256']:
         raise ValueError('Host transport bundle manifest differs')
     manifest = json.loads((bundle / 'sparkring-overlay-manifest.json').read_text())
     for item in manifest['files']:

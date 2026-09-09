@@ -178,7 +178,8 @@ ports 19006/19007 and secondary ports 19106/19107. The derivation reserves two
 ports for each admitted capacity Q1024/Q2048/Q4096/Q8192.
 
 SIRCL's two transport slots are independent from SparkCache's two 3-GiB
-asynchronous page-capture slots and two 256-MiB restore arenas.
+asynchronous page-capture slots and sixteen 256-MiB restore arenas (two for
+each of eight load lanes).
 
 #### Recorded functional evidence
 
@@ -228,6 +229,11 @@ With the connector enabled, `SPARKCACHE_ACCESS_MODE=read-write` restores and
 publishes persistent entries. `restore-only` reuses compatible entries but
 does not capture or publish new prompt state. Missing entries are computed by
 vLLM normally. `store-only` and `disabled` are diagnostic modes.
+The environment template sets `SPARKCACHE_ASYNC_PAGE_CAPTURE=auto`: capture
+is enabled for `read-write` and `store-only`, and disabled for `restore-only`,
+`disabled`, or `SPARKCACHE_ENABLED=0`. Explicit `1` still rejects a mode that
+cannot publish. Explicit `0` uses synchronous publication in publishing modes.
+The launcher defaults to `0` when no capture setting is supplied.
 
 ### Choose the persistent publication format
 
@@ -277,14 +283,43 @@ not discard Triton, TorchInductor, B12X, or vLLM compilation caches. Each rank
 keeps its own persistent copy under `CACHE_HOST_ROOT`; the four ranks do not
 write to one network-shared compilation directory.
 
-Set `SPARKCACHE_ASYNC_PAGE_CAPTURE=1` to capture manager pages through the
+Set `SPARKCACHE_ASYNC_PAGE_CAPTURE=auto` to capture manager pages through the
 bounded CUDA ring. `SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES` defaults to 8 GiB for
 DCP1, 5 GiB for DCP2, and 3 GiB for DCP4. The DCP4 profile uses two 3 GiB
 capture slots, so the background publisher can consume one completed capture
 while a later capture uses the other. Restore separately pipelines bounded
-NVMe reads and CUDA placement through two 256 MiB mapped arenas. A third arena
-is not part of the profile because the two-stage pipeline has no measured
-arena wait that would justify more unified-memory pressure.
+NVMe reads and CUDA placement through two 256 MiB mapped arenas **per load
+lane**. Eight lanes reserve 4 GiB per rank for restore payloads. With the 6 GiB
+capture ring, the DCP4 profile configures 10 GiB per rank (40 GiB across TP4),
+in addition to the 24 GiB per-rank KV allocation. Restore-only configures
+4 GiB per rank and no capture slots. These figures describe payload capacities;
+control arrays, Python objects, shared bases, transport, model weights and
+allocator overhead require additional memory. `SPARKCACHE_LOAD_THREADS` defaults
+to eight; throughput and memory-pressure effects need hardware measurements.
+
+### Inspect configured memory before launch
+
+Status: **implemented**. The launcher can print a JSON allocation plan without
+Docker, GPUs, checkpoint files, or cache directories. It sources the same trusted
+shell configuration as a launch and resolves its byte counts and capture mode:
+
+```bash
+SPARKRING_PRINT_MEMORY_PLAN=1 bash runtime/glm53-flash-jj-r8-gb10/launch-rank.sh \
+  0 runtime/glm53-flash-jj-r8-gb10/runtime.env.example
+```
+
+Set `SPARKCACHE_BUFFER_BUDGET_BYTES` in the configuration to reject restore
+and capture payload capacities above that per-rank ceiling before host checks
+or Docker access. Zero, the default, disables the ceiling. For example,
+`10737418240` admits the 10 GiB DCP4 read-write configuration exactly. The
+report includes per-rank and topology totals; DCP shards state but does not
+reduce the physical TP rank count. A normal launch also logs the plan.
+
+This ceiling does not cap total process memory or predict whether serving fits.
+It excludes model weights, KV allocation, transient reads, retained shared bases,
+CUDA control arrays, compilation and transport buffers, and allocator overhead.
+The report lists KV separately. A passing offline plan does not qualify a CUDA
+allocation or a serving performance result.
 
 When `DFLASH_WARMUP=1`, the readiness entrypoint runs `warmup_dflash.py` before
 Docker reports rank 0 as healthy. The readiness wrapper,
@@ -373,21 +408,39 @@ same port exports the liveness state and blocked duration.
 
 Status: implemented; the output-stall detector has offline regression coverage
 and still needs validation under live TP4 cache-restore traffic.
-Running requests with no change in `vllm:iteration_tokens_total_count` for
-`SPARKRING_LIVENESS_OUTPUT_SECONDS` (default 300 seconds) return HTTP 503 with
-reason `engine_output_stall`. Fresh HTTP scrapes do not reset that timer.
-Output progress, counter reset, or an observed idle period starts a new window.
+The source policy below is not included in the immutable
+[published hotfix image](hotfix/README.md), which uses output-counter movement
+only. Using this source policy requires a rebuilt, source-verified image;
+changing a timeout alone does not install it.
+Running requests return HTTP 503 with reason `engine_output_stall` after
+`SPARKRING_LIVENESS_OUTPUT_SECONDS` (default 300 seconds) without output-counter
+movement, an increase in the optional prompt-token counter, or KV allocation
+above its high-water mark. Fresh HTTP scrapes do not reset that inactivity timer.
+The high-water marks belong to the interval without output; falling KV usage,
+request-count changes, and repeated allocation below the prior maximum do not
+renew it. Output-counter movement or an observed idle period starts a new interval.
 Missing output metrics while requests are running eventually report
 `metrics_unavailable`, rather than certifying progress.
 
-This is an output-progress heuristic, not an engine-step heartbeat. The pinned
-vLLM increments the histogram when the API receives output-bearing batches;
-prefill and external-cache restores can legitimately leave it unchanged.
-Set the timeout above the longest measured prefill, restore, or output gap,
-with margin. The monitor sums metrics for the single-engine TP4 deployment;
+This is an allocation/activity heuristic, not an engine-step heartbeat. The
+pinned vLLM reports output iterations and prompt totals with output-bearing
+batches, so neither is assumed to advance after every prefill chunk. Increasing
+KV allocation can keep a long prefill healthy even while both counters stay flat.
+Allocation is not proof that GPU computation finished. A fully preallocated
+prefill or restore can also remain flat while doing legitimate work.
+Set the timeout above the longest measured interval without these observable
+signals, with margin. At 2500 tokens/s, 1,048,576 prompt tokens take about 420
+seconds before the first output, so 300 seconds is insufficient without
+intermediate signals.
+For example, 900 seconds provides margin for that single-request case; concurrent
+load still requires measurement. The monitor sums metrics for the single-engine TP4 deployment;
 it does not detect one stalled engine hidden by another progressing engine.
-The JSON includes `output_stalled_seconds` and `output_iterations`, and the
-monitor's metrics include `sparkring:engine_output_stalled_seconds`.
+The JSON preserves `output_stalled_seconds` and `output_iterations`. It adds
+`progress_stalled_seconds`, `last_progress_signal`, `kv_allocation_high_water`,
+and optional `prompt_tokens`. The raw output gap can exceed the configured
+timeout while allocation progresses. The monitor exports both
+`sparkring:engine_output_stalled_seconds` and
+`sparkring:engine_progress_stalled_seconds`; the latter controls the stall rule.
 
 An unhealthy result does not restart the cluster. Use the deployment's
 coordinated stop/recovery procedure after collecting all worker-thread stacks.

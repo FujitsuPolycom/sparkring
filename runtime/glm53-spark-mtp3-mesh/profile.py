@@ -65,9 +65,11 @@ def absolute(value: object, label: str) -> str:
 
 def load_site(path: Path):
     data = json.loads(path.read_text())
-    expected = {"schema", "topology_file", "management_addresses", "model_roots", "cache_roots",
+    required = {"schema", "topology_file", "management_addresses", "model_roots", "cache_roots",
                 "bundle_root", "container_prefix", "marker_binary", "marker_binary_sha256", "state_root"}
-    if set(data) != expected or data["schema"] != "sparkring-glm53-mtp3-mesh-site/v1":
+    optional = {"api_keys_file", "liveness_output_seconds"}
+    if (not required <= set(data) <= required | optional
+            or data["schema"] != "sparkring-glm53-mtp3-mesh-site/v1"):
         raise ValueError("Site fields do not match sparkring-glm53-mtp3-mesh-site/v1")
     for name in ("management_addresses", "model_roots", "cache_roots"):
         if not isinstance(data[name], list) or len(data[name]) != 4:
@@ -84,6 +86,12 @@ def load_site(path: Path):
             absolute(value, key)
     for key in ("bundle_root", "marker_binary", "state_root"):
         absolute(data[key], key)
+    if "api_keys_file" in data:
+        absolute(data["api_keys_file"], "api_keys_file")
+    if "liveness_output_seconds" in data:
+        timeout = data["liveness_output_seconds"]
+        if type(timeout) is not int or not 0 < timeout <= 2147483647:
+            raise ValueError("liveness_output_seconds must be an integer from 1 to 2147483647")
     topology_path = path.parent / data["topology_file"]
     topology = fabric.load_topology(topology_path)
     for node in topology.ranks:
@@ -104,6 +112,11 @@ def load_site(path: Path):
 
 def load_image_receipt(path: Path) -> dict:
     document = json.loads(path.read_text())
+    if document.get("schema") == "sparkring-mtp3-performance-public-image/v1":
+        pinned = json.loads((HERE / "performance/public-image.json").read_text())
+        if document != pinned or not document.get("anonymous_manifest_verified"):
+            raise ValueError("Performance image receipt differs from the repository pin")
+        return dict(document, inside_image=document["verification"])
     expected = PINS["canonical_bundle_manifest_sha256"]
     image_id = document.get("image_id", "")
     inside = document.get("inside_image", {})
@@ -122,11 +135,35 @@ def load_image_receipt(path: Path) -> dict:
             or inside.get("cuda_initialized") is not False or inside.get("model_loaded") is not False):
         raise ValueError("Image receipt does not verify the pinned parent and mesh bundle")
     warmup = inside.get("readiness_warmup")
-    if warmup is not None and warmup != {
+    expected_warmup = {
         "environment": "SPARKRING_WARMUP_TEMPERATURE",
         "helper_sha256": sha(BASE / "warmup_dflash.py"), "temperature": 1.0,
-    }:
+    }
+    public = json.loads((HERE / "public-image.json").read_text())
+    if image_id == public["config_image_id"]:
+        # Immutable images retain their packaged helper when checkout sources change.
+        # The public identity only authorizes its complete canonical content receipt.
+        canonical = json.loads((HERE / "image-receipt.json").read_text())
+        if canonical["image_id"] != public["config_image_id"] or document != canonical:
+            raise ValueError("Published image receipt differs from the repository pin")
+        expected_warmup = canonical["inside_image"].get("readiness_warmup")
+    if warmup is not None and warmup != expected_warmup:
         raise ValueError("Image receipt does not verify the sampling warmup helper")
+    compute = inside.get("compute")
+    required = PINS.get("compute", {})
+    if required:
+        if not isinstance(compute, dict):
+            raise ValueError("Image receipt lacks the required compute attestation")
+        for field in ("source_lock_sha256", "b12x_revision", "b12x_tree", "cuda_version"):
+            if compute.get(field) != required[field]:
+                raise ValueError(f"Image receipt compute identity differs: {field}")
+        lock = json.loads((HERE / required["source_lock"]).read_text())
+        environment = compute.get("environment", {})
+        if (not isinstance(environment, dict)
+                or any(environment.get(k) != v for k, v in lock["environment"].items())
+                or compute.get("proposal_head_nvfp4") is not True
+                or compute.get("target_head_quantization") is not False):
+            raise ValueError("Image receipt does not attest the required proposal and verifier paths")
     return document
 
 
@@ -145,7 +182,9 @@ def manifest_file(root: Path, value: object) -> Path:
 def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | None = None) -> dict:
     if output.exists():
         raise ValueError("Output directory exists; use an absent directory")
-    if sha(bundle / "sparkring-overlay-manifest.json") != PINS["canonical_bundle_manifest_sha256"]:
+    image_record = load_image_receipt(image_receipt) if image_receipt else None
+    expected_bundle = image_record["bundle_manifest_sha256"] if image_record else PINS["canonical_bundle_manifest_sha256"]
+    if sha(bundle / "sparkring-overlay-manifest.json") != expected_bundle:
         raise ValueError("Bundle manifest does not match the MTP3 mesh profile")
     manifest = json.loads((bundle / "sparkring-overlay-manifest.json").read_text())
     for item in manifest["files"]:
@@ -166,12 +205,18 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
         "MASTER_ADDR": site["management_addresses"][0], "DFLASH_WARMUP": "1",
         "SPARKRING_WARMUP_TEMPERATURE": "0",
     })
-    image_record = load_image_receipt(image_receipt) if image_receipt else None
+    if "liveness_output_seconds" in site:
+        values["SPARKRING_LIVENESS_OUTPUT_SECONDS"] = str(site["liveness_output_seconds"])
+    if site.get("api_keys_file"):
+        values["API_KEYS_FILE"] = site["api_keys_file"]
     if image_record is not None:
         values["IMAGE_ID"] = image_record["image_id"]
         values["IMAGE_REF"] = image_record["image_reference"]
         if image_record["inside_image"].get("readiness_warmup") is not None:
             values["SPARKRING_WARMUP_TEMPERATURE"] = "1"
+        if image_record.get("schema") == "sparkring-mtp3-performance-public-image/v1":
+            values["SPARKCACHE_PLACEMENT_LIBRARY_SHA256"] = image_record["native_placement_sha256"]
+            values["SPARKCACHE_CACHE_NAMESPACE"] = image_record["cache_namespace"]
     output.mkdir(parents=True)
     ranks = []
     for rank in range(4):
@@ -216,7 +261,7 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
     shutil.copyfile(topology.source_path, output / "fabric.json")
     result = {"schema": "sparkring-mtp3-mesh-render/v1", "status": "research-only", "execution_authorized": False,
               "site_sha256": sha(site_path), "topology_sha256": topology.sha256,
-              "bundle_manifest_sha256": PINS["canonical_bundle_manifest_sha256"],
+              "bundle_manifest_sha256": expected_bundle,
               "image": IMAGE["operator_image"], "marker_binary": site["marker_binary"],
               "marker_binary_sha256": site["marker_binary_sha256"], "state_root": site["state_root"],
               "marker_scope": "All RDMA-TX packets with reserved UDP source port 65535 on each selected function; not an IP/QPN-scoped rule.",

@@ -1,0 +1,2 @@
+# Content-addressed upstream inputs are checked byte-for-byte by package tests.
+extend-exclude = ["checkpoints/payload-by-sha", "transport/bundle-source"]

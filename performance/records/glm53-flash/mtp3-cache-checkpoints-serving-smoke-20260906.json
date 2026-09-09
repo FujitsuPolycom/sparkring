@@ -1,0 +1,300 @@
+{
+  "schema": "sparkring-mtp3-bounded-serving-smoke/v1",
+  "status": "qualified",
+  "runtime_status": "research-only",
+  "conditions": {
+    "model_repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+    "model_revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "image_reference": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:11a556a54041fd823d152a7f051ac4f7c617dc539030df26e93008392fee0746",
+    "image_id": "sha256:6921a6c163ea40b603e19a0332330efe3dbccbf4dce9f6cbbf6b756c9231835a",
+    "sparkcache_commit": "48bbd2be4a7b972e56632a2d7b934bac5460f272",
+    "hardware": "four NVIDIA GB10 Sparks",
+    "transport": "managed hardware-forwarded mesh",
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 4,
+    "mtp_depth": 3,
+    "prefill_checkpoints": 2,
+    "kv_gib_per_rank": 24,
+    "max_num_seqs": 16,
+    "max_num_batched_tokens": 8192,
+    "cache_max_gib_per_rank": 40,
+    "cache_low_watermark_gib_per_rank": 32,
+    "periodic_full_capture_interval_tokens": 0,
+    "cache_state": "Warm cache, not filled to configured capacity; one aggregate log sample reported 6.0 GiB used across 160.0 GiB capacity.",
+    "request_concurrency": 1,
+    "repetitions": "one sequence of eight cases; red image repeated once",
+    "temperature": 0,
+    "reasoning_effort": "low, except the deliberate unsupported none request",
+    "max_tokens": 512,
+    "harness_role": "one-off Python urllib chat-completion smoke client",
+    "harness_sha256": "bbebdebe1c2fed61ea04eddb43ee759bace22cfb4ed7b8998b32e91335d4c083",
+    "warmup": "Required request-shape and sampling warmup completed before smoke traffic."
+  },
+  "measurement": {
+    "clock": "Python time.perf_counter for elapsed and streaming latency; time.time for request start timestamps",
+    "elapsed_scope": "request serialization, HTTP response reading and local result checks; no connection-pool reuse",
+    "aggregation": "Individual observations, no repeated-run variance or throughput comparison",
+    "raw_api_observations": "checks",
+    "rank_log_observations": "rank_commits",
+    "request_start_utc": "2026-09-06T22:04:39.212026+00:00",
+    "file_verifier_count_per_rank": 5472
+  },
+  "result": {
+    "passed": 8,
+    "total": 8,
+    "sum_case_elapsed_seconds": 8.012548800019431,
+    "explicit_persistent_restores_observed": 0,
+    "all_four_ranks_running_healthy": true
+  },
+  "conclusion": "The immutable published image passed the eight bounded text, continuation, streaming, reasoning-rejection and image checks and committed a 4096-token context on all four ranks.",
+  "limitations": [
+    "Not a matched reproduction of SparkCache issues 60 or 61.",
+    "Configured 40 GiB per rank was not filled; no near-capacity eviction or sustained-publication qualification.",
+    "API cached-token accounting does not distinguish local retention from persistent restoration.",
+    "Image requests were below the persistent minimum span and did not qualify multimodal persistent restoration.",
+    "Public traffic could compete with startup warmup in this image; the source fix in SparkRing PR 237 requires an image rebuild and separate startup verification.",
+    "No isolated throughput benchmark, repeatability estimate, long-duration soak or unattended-availability qualification.",
+    "The one-off harness source is identified by SHA-256; it is not packaged as a reusable public harness."
+  ],
+  "checks": [
+    {
+      "name": "text",
+      "request_id": "integrated-smoke-a383a7e030014a20b689b2356d6f323d",
+      "started_unix": 1788732279.2120261,
+      "expected": "5",
+      "image_sha256": null,
+      "status": 200,
+      "response_id": "chatcmpl-integrated-smoke-a383a7e030014a20b689b2356d6f323d",
+      "usage": {
+        "prompt_tokens": 26,
+        "total_tokens": 29,
+        "completion_tokens": 3,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "answer": "5",
+      "finish_reason": "stop",
+      "passed": true,
+      "elapsed_seconds": 0.2550358000007691
+    },
+    {
+      "name": "growing-chat-start",
+      "request_id": "integrated-smoke-b9284f450eb848d99be2f76707ed4837",
+      "started_unix": 1788732279.4675455,
+      "expected": "orchid",
+      "image_sha256": null,
+      "status": 200,
+      "response_id": "chatcmpl-integrated-smoke-b9284f450eb848d99be2f76707ed4837",
+      "usage": {
+        "prompt_tokens": 5628,
+        "total_tokens": 5633,
+        "completion_tokens": 5,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 4608,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "answer": "ORCHID",
+      "finish_reason": "stop",
+      "passed": true,
+      "elapsed_seconds": 3.0998375000053784
+    },
+    {
+      "name": "growing-chat-continuation",
+      "request_id": "integrated-smoke-3cb519e9573d478693d51d4668d19b52",
+      "started_unix": 1788732282.567156,
+      "expected": "orchid",
+      "image_sha256": null,
+      "status": 200,
+      "response_id": "chatcmpl-integrated-smoke-3cb519e9573d478693d51d4668d19b52",
+      "usage": {
+        "prompt_tokens": 5650,
+        "total_tokens": 5663,
+        "completion_tokens": 13,
+        "prompt_tokens_details": {
+          "cached_tokens": 4608,
+          "created_cache_tokens": 512,
+          "multimodal_tokens": null
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 8
+        }
+      },
+      "answer": "ORCHID",
+      "finish_reason": "stop",
+      "passed": true,
+      "elapsed_seconds": 1.6567629000055604
+    },
+    {
+      "name": "streamed-text",
+      "request_id": "integrated-smoke-7697428224ff4a22a5ff8e36c3dd897f",
+      "started_unix": 1788732284.223929,
+      "expected": "7",
+      "image_sha256": null,
+      "status": 200,
+      "first_event_seconds": 0.2015294000011636,
+      "first_content_seconds": 0.24906609999015927,
+      "answer": "7",
+      "usage": {
+        "prompt_tokens": 26,
+        "total_tokens": 29,
+        "completion_tokens": 3,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "finish_reason": "stop",
+      "sse_done": true,
+      "events": 3,
+      "passed": true,
+      "elapsed_seconds": 0.24915009998949245
+    },
+    {
+      "name": "reject-disabled-reasoning",
+      "request_id": "integrated-smoke-934ba5e6a888445a8ba472eb4a436e5d",
+      "started_unix": 1788732284.4732332,
+      "expected": null,
+      "image_sha256": null,
+      "status": 400,
+      "error": "{\"error\":{\"message\":\"GLM-5.3-Flash does not support disabling thinking with its chat template. Use reasoning_effort='low', 'high', or 'max'.\",\"type\":\"BadRequestError\",\"param\":null,\"code\":400}}",
+      "passed": true,
+      "elapsed_seconds": 0.017933800001628697
+    },
+    {
+      "name": "image-1-red",
+      "request_id": "integrated-smoke-1694404792ef432883a018abd2487ee1",
+      "started_unix": 1788732284.491566,
+      "expected": "red",
+      "image_sha256": "f2279b67d1a030bc3c0cc285cc70129b8f8bdf1d51423a031c7feccd4d5a2daf",
+      "status": 200,
+      "response_id": "chatcmpl-integrated-smoke-1694404792ef432883a018abd2487ee1",
+      "usage": {
+        "prompt_tokens": 223,
+        "total_tokens": 226,
+        "completion_tokens": 3,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0,
+          "multimodal_tokens": {
+            "image": 196
+          }
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "answer": "red",
+      "finish_reason": "stop",
+      "passed": true,
+      "elapsed_seconds": 0.9791747999988729
+    },
+    {
+      "name": "image-2-blue",
+      "request_id": "integrated-smoke-82f3a27ade9b4294871d45f65a5c668f",
+      "started_unix": 1788732285.4705372,
+      "expected": "blue",
+      "image_sha256": "f65916066f15023a2651638b0755637a1af304200757a6ab78b58c38b6fc5e3c",
+      "status": 200,
+      "response_id": "chatcmpl-integrated-smoke-82f3a27ade9b4294871d45f65a5c668f",
+      "usage": {
+        "prompt_tokens": 223,
+        "total_tokens": 226,
+        "completion_tokens": 3,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0,
+          "multimodal_tokens": {
+            "image": 196
+          }
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "answer": "Blue",
+      "finish_reason": "stop",
+      "passed": true,
+      "elapsed_seconds": 0.8685438000102295
+    },
+    {
+      "name": "image-3-red",
+      "request_id": "integrated-smoke-d3e83f694a424fbdbc9d9951e94ad410",
+      "started_unix": 1788732286.3393188,
+      "expected": "red",
+      "image_sha256": "f2279b67d1a030bc3c0cc285cc70129b8f8bdf1d51423a031c7feccd4d5a2daf",
+      "status": 200,
+      "response_id": "chatcmpl-integrated-smoke-d3e83f694a424fbdbc9d9951e94ad410",
+      "usage": {
+        "prompt_tokens": 223,
+        "total_tokens": 226,
+        "completion_tokens": 3,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "created_cache_tokens": 0,
+          "multimodal_tokens": {
+            "image": 196
+          }
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "answer": "red",
+      "finish_reason": "stop",
+      "passed": true,
+      "elapsed_seconds": 0.8861101000074996
+    }
+  ],
+  "rank_commits": [
+    {
+      "rank": 0,
+      "tokens": 4096,
+      "context_digest_prefix": "5a8faef36b84",
+      "manifest_digest_prefix": "68a43cbd0671",
+      "commit_ms": 164.0,
+      "container_state": "running",
+      "container_health": "healthy"
+    },
+    {
+      "rank": 1,
+      "tokens": 4096,
+      "context_digest_prefix": "5a8faef36b84",
+      "manifest_digest_prefix": "a61e41e9ac88",
+      "commit_ms": 178.0,
+      "container_state": "running",
+      "container_health": "healthy"
+    },
+    {
+      "rank": 2,
+      "tokens": 4096,
+      "context_digest_prefix": "5a8faef36b84",
+      "manifest_digest_prefix": "f973781b91af",
+      "commit_ms": 184.9,
+      "container_state": "running",
+      "container_health": "healthy"
+    },
+    {
+      "rank": 3,
+      "tokens": 4096,
+      "context_digest_prefix": "5a8faef36b84",
+      "manifest_digest_prefix": "74d5b6fe880c",
+      "commit_ms": 182.9,
+      "container_state": "running",
+      "container_health": "healthy"
+    }
+  ]
+}
