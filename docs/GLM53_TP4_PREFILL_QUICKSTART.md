@@ -84,6 +84,7 @@ requires separate native-output qualification.
 
 Keep the prepared context: verification uses it to check the image's verifier,
 source lock and manifest before executing the CPU verification program.
+Select the cache-disabled DCP1 profile:
 
 ```bash
 python runtime/sparkring/source_image/verify_image.py \
@@ -91,6 +92,7 @@ python runtime/sparkring/source_image/verify_image.py \
   --context "$PWD/.private/glm-tp4-context" \
   --profile tp4-dcp1-mtp3-prefill \
   --output "$PWD/.private/glm-tp4-dcp1-image-receipt.json"
+SPARKRING_RECEIPT="$PWD/.private/glm-tp4-dcp1-image-receipt.json"
 ```
 
 This receipt identifies a local Docker config ID, not a published registry
@@ -101,6 +103,21 @@ To select DCP4, generate a separate receipt with
 `--profile tp4-dcp4-mtp3-prefill`. That profile enables the DCP4 owner exchange
 and fused endpoints. SparkCache and compact index cache remain disabled.
 Do not change individual flags inside a verified receipt.
+
+To enable bounded SparkCache capture and restore, use this profile instead:
+
+```bash
+python runtime/sparkring/source_image/verify_image.py \
+  --image "$SPARKRING_IMAGE" \
+  --context "$PWD/.private/glm-tp4-context" \
+  --profile tp4-dcp1-mtp3-sparkcache \
+  --output "$PWD/.private/glm-tp4-dcp1-sparkcache-receipt.json"
+SPARKRING_RECEIPT="$PWD/.private/glm-tp4-dcp1-sparkcache-receipt.json"
+```
+
+The receipt selects the deployment profile. For DCP4, set `SPARKRING_RECEIPT`
+to the output path from its separate verification command. Pass that selected
+receipt to the deployment plan below.
 
 ## Use the managed deployment suite
 
@@ -113,7 +130,7 @@ STATE="$PWD/.private/glm-tp4-deployment"
 
 sr plan --inventory "$STATE/inventory.json" --name glm-tp4 \
   --workspace /srv/sparkring/glm-tp4 --fabric-range 198.18.0.0/21 \
-  --image-receipt "$PWD/.private/glm-tp4-dcp1-image-receipt.json" \
+  --image-receipt "$SPARKRING_RECEIPT" \
   --output "$STATE/preparation.json"
 ```
 

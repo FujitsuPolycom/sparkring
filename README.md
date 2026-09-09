@@ -18,7 +18,8 @@ reproducible benchmarks, and [test results](performance/).
 ## Setup
 
 1. Choose a [profile](#profiles) and check the [prerequisites](docs/PREREQUISITES.md).
-2. For a four-node ring, follow the [mesh host setup guide](docs/GLM53_SPARK_MESH_HOST_SETUP.md).
+2. For a shared-image GLM four-node ring, follow the [mesh host setup guide](docs/GLM53_SPARK_MESH_HOST_SETUP.md).
+   Other four-node profiles use the [bootstrap guide](docs/BOOTSTRAP.md).
    Two-node profiles include their own direct-link setup.
 3. Follow the profile's quickstart, then run the
    [validation checks](docs/PROFILE_VALIDATION.md).
@@ -47,7 +48,7 @@ mHC. Ring profiles use hardware-forwarded mesh paths and NCCL across both host
 PCIe domains. Their source integration is **implemented**; full shared-image
 serving qualification remains **research-only**. Switched deployments are
 provided as-is and have not been validated on switched hardware.
-Ring deployment requires the [managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
+Shared-image GLM ring deployment requires the [managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
 
 ### Two Sparks
 
