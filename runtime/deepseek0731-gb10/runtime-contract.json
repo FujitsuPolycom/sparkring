@@ -26,7 +26,7 @@
   ],
   "runtime_patch": {
     "path": "patches/0001-gb10-deepseek-runtime-hardening.patch",
-    "sha256": "55fb93d129628344c79b123f84c2fd7e7bc3b682f43cf52a914b31a14e0322a2",
+    "sha256": "1cd69bdf1e9ced1197b5c7752a4581a7c6512147ddf2f3015fe16bd7978ba350",
     "upstream_inputs": [
       "https://github.com/local-inference-lab/vllm/pull/431",
       "https://github.com/vllm-project/vllm/pull/52645",
@@ -86,7 +86,7 @@
       {
         "path": "vllm/entrypoints/openai/responses/protocol.py",
         "preimage_sha256": "71a1a69d15949f95bd1f78ab2b26780f0e82c325e2db2188ccd38fda4d291626",
-        "result_sha256": "a4ce22972a81235d2c85e5dda179ccdecb0a66ae1776e28f69a945f918a9b8fd"
+        "result_sha256": "f3e4433a8113fe855c2a4aec492eb7a6fdeb62cf3c3e4a8d0c8cd4c0715583f5"
       },
       {
         "path": "vllm/entrypoints/openai/chat_completion/serving.py",
