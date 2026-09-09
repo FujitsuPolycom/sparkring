@@ -55,11 +55,11 @@ describes the TP4/DCP4 configuration with 1,048,576-token context, 16 sequences,
 and an 8,192-token batch. Its [deployment recipe](../../recipes/glm53-spark-mtp3-managed-mesh-tp4.json)
 links the configuration and bounded evidence.
 
-The [GLM-5.3 Flash NVFP4-Spark TP2 profile](../GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md)
-is research-only. Model-neutral image and matching SparkCache source pins are
-public; child-image serving qualification remains pending.
-The 5 GiB configuration is retained through the historical links in that
-guide. The shared-image NVFP4-Spark pair listed above uses 8.75 GiB per rank.
+The retired 5 GiB NVFP4-Spark TP2 configuration and its pinned image/source
+references remain available through the
+[TP2 guide's retained configuration links](../GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md).
+The shared-image NVFP4-Spark pair listed above uses 8.75 GiB per rank and
+does not enable SparkCache.
 
 ## Unsupported integrations
 

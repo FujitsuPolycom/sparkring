@@ -77,7 +77,7 @@ Qwen with SparkCache is unsupported; six-node profiles are research-only.
 ### Retired GLM-5.3 profiles
 
 These guides retain their pinned configurations and evidence for reproduction.
-For deployment with the shared image, use the four-Spark entries above.
+For deployment with the shared image, use the matching two- or four-Spark entry above.
 
 | Profile | Layout | Retained guide | Replacement |
 |---|---|---|---|
