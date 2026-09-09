@@ -56,6 +56,22 @@ python "${sparkring_root}/scripts/pull_glm53_image_cluster.py" \
 
 ## Start and verify
 
+The generic launcher rejects GLM-5.3 profiles that explicitly select
+`method: "dflash"` with TP4/DCP4 and a non-null
+`num_speculative_tokens_per_batch_size` or `adaptive_speculative_tokens_window`.
+These dynamic-depth settings are unsupported because they can hang CUDA-graph
+capture ([issue #221](https://github.com/FujitsuPolycom/sparkring/issues/221)).
+Use a fixed `num_speculative_tokens` value on that configuration. This guide's
+TP4/DCP1 profile and fixed-depth native-MTP3 profiles retain their settings.
+
+This check runs while building the offline plan, before SSH or container
+creation. It reads explicit speculative JSON and dotted CLI fields, including
+vLLM's last-option precedence. TP/DCP aliases cannot override site-owned
+parallelism. Configuration hidden inside an image entrypoint or external vLLM
+config file, an inferred speculative method, and direct `docker`/`vllm`
+invocations remain outside this host-side check. The guard does not repair the
+underlying DFlash capture path or change an existing image.
+
 ```bash
 python "${sparkring_root}/scripts/sparkring_generic_launcher.py" \
   --site site.yaml --profile profile.json start > start-plan.json
