@@ -1,7 +1,7 @@
 # GLM-5.3 native MTP3 with verified caching and recurrent checkpoints
 
 For a source-built TP4/DCP1 prefill profile with coalescing and mHC sharding,
-use the [TP4 prefill image guide](GLM53_TP4_PREFILL_QUICKSTART.md). That profile
+use the [GLM-5.3 Flash TP4 Ring guide](GLM53_TP4_PREFILL_QUICKSTART.md). That profile
 disables the SparkCache connector. This guide describes the separately pinned
 published image with persistent caching enabled.
 
