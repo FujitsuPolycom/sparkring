@@ -317,18 +317,75 @@ def _validate_extra_vllm_args(args: Any, where: str) -> tuple[str, ...]:
     """Validate extra_vllm_args, rejecting site-owned options."""
     checked = _validate_argv_array(args, where)
     for index, value in enumerate(checked):
-        if value in RESERVED_VLLM_OPTIONS:
+        if not value.startswith("-"):
+            continue
+        # vLLM normalizes option spelling and accepts short TP/DCP aliases.
+        # These must not override the site dimensions used by admission.
+        option = value.partition("=")[0].replace("_", "-")
+        option = {"-tp": "--tensor-parallel-size",
+                  "-dcp": "--decode-context-parallel-size"}.get(option, option)
+        if option in RESERVED_VLLM_OPTIONS:
             raise ProfileError(
-                f"{where}[{index}]: site-owned option {value} "
+                f"{where}[{index}]: site-owned option {option} "
                 "is not allowed in profile"
             )
-        for opt in RESERVED_VLLM_OPTIONS:
-            if value.startswith(opt + "="):
-                raise ProfileError(
-                    f"{where}[{index}]: site-owned option {opt}= "
-                    "is not allowed in profile"
-                )
     return checked
+
+
+def _profile_speculation(args: tuple[str, ...]) -> dict[str, Any]:
+    """Read explicit speculative CLI settings without importing vLLM.
+
+    vLLM takes the last ordinary JSON option. Its dotted fields form a
+    separate dictionary appended after ordinary options, replacing that JSON.
+    Only the top-level method and dynamic-depth controls matter to admission.
+    """
+    ordinary: dict[str, Any] = {}
+    dotted: dict[str, dict[str, Any]] = {}
+    for index, argument in enumerate(args):
+        option, equal, inline = argument.partition("=")
+        base, dot, field = option.partition(".")
+        base = base.replace("_", "-")
+        if base not in ("--speculative-config", "-sc"):
+            continue
+        if not equal and index + 1 == len(args):
+            raise ProfileError("--speculative-config requires a value")
+        raw = inline if equal else args[index + 1]
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            if not dot:
+                raise ProfileError("--speculative-config requires a JSON object or null") from exc
+            value = raw
+        if not dot:
+            if value is not None and not isinstance(value, dict):
+                raise ProfileError("--speculative-config requires a JSON object or null")
+            ordinary = value or {}
+        else:
+            # The '+' spelling appends list entries, which enables the depth
+            # table even when an entry happens to spell the string 'null'.
+            dotted.setdefault(base, {})[field.rstrip("+")] = [raw] if field.endswith("+") else value
+    # vLLM groups dotted fields by option spelling, then appends each group
+    # in insertion order. Long and short aliases can therefore replace one another.
+    return dotted[next(reversed(dotted))] if dotted else ordinary
+
+
+def _validate_glm53_speculation(site: Any, profile: RuntimeProfile,
+                                args: tuple[str, ...]) -> None:
+    """Reject the reported dynamic DFlash/TP4/DCP4 combination before launch."""
+    if (profile.model_family != "glm53-flash"
+            or site.serving.tensor_parallel_size != 4
+            or site.serving.decode_context_parallel_size != 4):
+        return
+    config = _profile_speculation(args)
+    controls = ("num_speculative_tokens_per_batch_size", "adaptive_speculative_tokens_window")
+    enabled = [name for name in controls if config.get(name) is not None]
+    if config.get("method") == "dflash" and enabled:
+        raise ProfileError(
+            "GLM-5.3 DFlash dynamic depth is unsupported with TP4/DCP4 "
+            f"({', '.join(enabled)}): CUDA graph capture can hang. "
+            "Use fixed num_speculative_tokens and remove these dynamic controls. "
+            "See https://github.com/FujitsuPolycom/sparkring/issues/221"
+        )
 
 
 def _validate_extra_volumes(
@@ -714,6 +771,8 @@ def start_actions(
     actions: list[RemoteAction] = []
     for rank in site.ranks:
         context = site_context(site, rank.id)
+        extra_args = tuple(expand(value, context) for value in profile.extra_vllm_args)
+        _validate_glm53_speculation(site, profile, extra_args)
         environment = base_environment(site, rank.id, profile)
         for key, value in profile.environment.items():
             if value is None:
@@ -805,7 +864,7 @@ def start_actions(
 
         image_index = command.index(profile.image_id)
         command[image_index:image_index] = env_args
-        command.extend(expand(value, context) for value in profile.extra_vllm_args)
+        command.extend(extra_args)
 
         if rank.id != site.serving.master_rank:
             command.append("--headless")
