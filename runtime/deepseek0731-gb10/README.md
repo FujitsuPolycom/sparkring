@@ -7,11 +7,13 @@ outstanding. The published native derivative at digest
 `sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd`
 does not contain these API changes.
 
-The Responses request model accepts `reasoning.effort: "max"` in addition to
-`none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. It retains the OpenAI
+The Responses request and response models accept `reasoning.effort: "max"` in addition to
+`none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. They retain the OpenAI
 SDK reasoning model's other fields and validation. Unknown effort values remain
-invalid. This request-model compatibility change addresses issue #184 and does
-not change model sampling or generation behavior.
+invalid. Streaming `response.created`, `response.in_progress`, and
+`response.completed` events preserve the requested effort when validating and
+serializing the response. This compatibility change addresses issue #184 and
+does not change model sampling or generation behavior.
 
 Set `SPARKRING_REJECT_EMPTY_REQUIRED_TOOL_CALLS=1` in the API container
 environment to reject nonstreaming Chat Completions whose named or required
@@ -29,7 +31,7 @@ reasoning exhausts the available generation length.
 
 The runtime patch and per-file hashes are bound by `runtime-contract.json`.
 The image overlay label is
-`sparse-row-clamp+dsml-recovery+responses-max+empty-required-tool-error-v1`. No model,
+`sparse-row-clamp+dsml-recovery+responses-max+empty-required-tool-error-v2`. No model,
 cache-identity, or transport setting changes. Enabling the variable in an
 image without this overlay has no effect.
 
@@ -41,10 +43,25 @@ source files at vLLM commit `e2666d9a65f41fc376607531453cbd57c4c71016`.
 The complete patch matches every preimage and result hash, compiles as Python,
 and is a no-op when applied again to the complete result set.
 
-Twelve focused tests pass under Python 3.12 with OpenAI SDK 2.29.0 and Pydantic
-2.12.5. They cover patch identity, request-model validation, and the optional
-empty-tool serialization guard. The
-[full-method probe](tool_choice_method_probe.py) executes the patched
+The CPU regressions run under Python 3.12 with OpenAI SDK 2.29.0 and Pydantic
+2.12.5. They cover patch identity, request/response validation, all three SSE
+event models, and the optional empty-tool serialization guard. The
+[Responses model probe](responses_streaming_probe.py) applies the packaged
+patch to the complete, hash-verified upstream protocol. It executes the actual
+request, response, SDK event classes, and JSON serialization. Its
+[receipt](api-responses-streaming-replay.json) records 27 serialized events
+and 20 invalid-reasoning rejections. A regression restores the narrow response
+annotation and reproduces the `max` failure while keeping `xhigh` valid.
+The [fixture manifest](upstream/sources.json) pins both upstream protocol files
+to the same vLLM revision; their [license](upstream/LICENSE) is included.
+
+Run this probe without a vLLM installation or network access:
+
+```bash
+python runtime/deepseek0731-gb10/responses_streaming_probe.py
+```
+
+The [full-method probe](tool_choice_method_probe.py) executes the patched
 `chat_completion_full_generator` with fixture engine/parser results and response
 interfaces; its [receipt](api-tool-method-replay.json) records 25 passing cases.
 Run the probe against the patched serving source:
@@ -54,8 +71,10 @@ python runtime/deepseek0731-gb10/tool_choice_method_probe.py \
   /path/to/vllm/entrypoints/openai/chat_completion/serving.py
 ```
 
-These checks do not execute HTTP routing, a model, streaming generation, or the
-installed ARM64 image. Rebuilt-image qualification requires the named/required
+The Responses probe substitutes rendering, sampling, and Harmony interfaces;
+their optional request fields are outside its coverage. These checks do not
+execute HTTP routing, a model, streaming generation, or the installed ARM64
+image. Rebuilt-image qualification requires the named/required
 tool-result and Responses-effort reproductions against an image carrying the
 combined overlay label above. The published native derivative remains unchanged.
 

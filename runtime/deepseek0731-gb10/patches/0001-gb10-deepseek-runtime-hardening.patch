@@ -1204,6 +1204,15 @@ instead of a successful empty array. The default behavior remains unchanged.
      include_reasoning: bool = Field(
          default=True,
          description=(
+@@ -651,7 +660,7 @@
+     max_tool_calls: int | None = None
+     previous_response_id: str | None = None
+     prompt: ResponsePrompt | None = None
+-    reasoning: Reasoning | None = None
++    reasoning: ResponsesReasoning | None = None
+     service_tier: Literal["auto", "default", "flex", "scale", "priority"]
+     status: ResponseStatus
+     text: ResponseTextConfig | None = None
 --- a/vllm/entrypoints/openai/chat_completion/serving.py
 +++ b/vllm/entrypoints/openai/chat_completion/serving.py
 @@ -1,25 +1,26 @@
