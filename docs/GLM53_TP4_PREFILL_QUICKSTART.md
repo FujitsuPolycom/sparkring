@@ -1,4 +1,4 @@
-# GLM-5.3 Flash on four Sparks
+# GLM-5.3 Flash TP4 Ring
 
 Status: **research-only**. The source recipe and managed setup integration are
 implemented and CPU-tested. The image built from this recipe still requires
