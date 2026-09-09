@@ -32,7 +32,7 @@ startup helper, and runtime profile. Full hashes in that file are authoritative.
 | `tp4-dcp1-mtp3-prefill` | NVFP4-Spark; TP4/DCP1, MTP3, 1,048,576-token request limit | Weighted mesh and dual-domain NCCL; SparkCache disabled |
 | `tp4-dcp4-mtp3-prefill` | NVFP4-Spark; TP4/DCP4, MTP3, 1,048,576-token request limit | Mesh owner exchange with fused endpoints and dual-domain NCCL; SparkCache disabled |
 | `tp4-dcp1-mtp3-sparkcache` | NVFP4-Spark; TP4/DCP1, MTP3, 1,048,576-token request limit | Mesh and dual-domain NCCL; bounded asynchronous capture and verified restore |
-| `glm53-flash-nvfp4-tp2-mtp3` | Original NVFP4; TP2/DCP1, MTP3, 262,144-token request limit | One physical DAC using both host domains; managed loading; SparkCache disabled |
+| `glm53-flash-spark-tp2-mtp3` | NVFP4-Spark; TP2/DCP1, MTP3, 262,144-token request limit, 8.75 GiB KV per rank | One physical DAC using both host domains; managed loading; SparkCache disabled |
 | `glm53-flash-spark-tp4-switched-mtp3` | NVFP4-Spark; TP4/DCP1, MTP3, 1,048,576-token request limit | Ordinary NCCL over operator-selected connected HCAs; custom transports and SparkCache disabled |
 
 All listed profiles enable coalescing and mHC prefill sharding. Compact index
@@ -45,7 +45,7 @@ The SparkCache profile uses two 512-MiB capture slots, two restore workers,
 256 MiB of restore arenas, and an 8-GiB disk-cache limit per rank. Its maximum
 persisted span is 65,536 tokens; longer prompts remain eligible for ordinary
 inference. The source contract refuses mismatched vLLM ownership semantics.
-SparkCache on the original-NVFP4 TP2 profile is unsupported pending dedicated
+SparkCache on the NVFP4-Spark TP2 profile is unsupported pending dedicated
 validation.
 
 The parent supplies generated support files and 15 compiled vLLM libraries.
@@ -206,7 +206,7 @@ ownership; replacing a running model remains a separate deployment action.
 Use the [GLM-5.3 Flash TP4 Ring quickstart](../../../docs/GLM53_TP4_PREFILL_QUICKSTART.md)
 for DCP1 or DCP4. To enable the bounded cache configuration, verify and select
 `tp4-dcp1-mtp3-sparkcache` in both the receipt and private mesh site.
-The [original-NVFP4 TP2 guide](../../profiles/glm53-flash-nvfp4-tp2/README.md)
+The [NVFP4-Spark TP2 guide](../../profiles/glm53-flash-spark-tp2/README.md)
 uses the same image with a separate manual launcher. Each launch path verifies
 the shared sources before entering their profile-specific startup code.
 
