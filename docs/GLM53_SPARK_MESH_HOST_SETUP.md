@@ -6,8 +6,9 @@ Use [the shared blank-cluster bootstrap](BOOTSTRAP.md) for SSH enrollment,
 primary-interface netplans, host checks, and kernel routing/firewall setup.
 This extension adds the second Socket Direct functions, mesh-specific driver
 requirements, public model/runtime downloads, and then hands off to
-the [model quickstart](GLM53_SPARK_MTP3_MESH_QUICKSTART.md), which pulls the
-published image and starts GLM-5.3 Flash NVFP4-Spark with native MTP3.
+the [shared-image TP4 quickstart](GLM53_TP4_PREFILL_QUICKSTART.md). That guide
+selects GLM-5.3 Flash NVFP4-Spark with native MTP3 at TP4/DCP1, with explicit
+DCP4 and DCP1 SparkCache alternatives, through a verified image receipt.
 
 Status: **research-only**. The recorded serving deployment passed the bounded
 checks in the [managed functional record](../performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md).
@@ -421,7 +422,7 @@ If index 3 is absent, zero, mapped to another address, or has the wrong type:
    transport paths. Do not write GID sysfs files or claim a different index
    is equivalent without a validated transport change.
 
-Complete the quickstart's
+Complete the retained hardware-reference sections for
 [ConnectX-7 driver configuration](GLM53_SPARK_MTP3_MESH_QUICKSTART.md#connectx-7-driver-configuration-for-hardware-forwarding)
 and [stopped-stack hairpin provisioning](GLM53_SPARK_MTP3_MESH_QUICKSTART.md#optional-stopped-stack-hairpin-provisioning).
 They discover PCI addresses, check the tested `hmfs`/legacy configuration,
@@ -429,6 +430,8 @@ set four hairpin queues of 1,024 packets only if needed, and explain driver
 reload hazards. Do not reload through a data-link-only SSH connection. After
 reload, bring up the four named data profiles, repeat pings/GID/MTU checks,
 and verify management access before proceeding.
+Those links supply hardware instructions; their retired model/image selection
+does not apply to the shared-image deployment in Sections 8 and 9 below.
 
 For primary interfaces managed by the shared bootstrap's netplan, restore
 that configuration rather than creating competing connection profiles.
@@ -444,11 +447,13 @@ opposite-peer routes and hardware TC rules once these prerequisites pass.
 ## 8. Prepare storage and obtain the public runtime
 
 Each host needs the **complete** model checkpoint on disk, not just its
-tensor-parallel share. The inspected target occupies approximately 175 GiB on disk. Budget for
-roughly 21 GB of unpacked image content, at least 40 GiB of persistent
-SparkCache storage, and extra download/JIT/cache workspace; **at least
-300 GiB free per host before downloading** is a practical planning target. The image is
-shared-layer Docker content; archives can require additional tens of GiB.
+tensor-parallel share. The inspected target occupies approximately 175 GiB on
+disk. Budget for roughly 23 GB of unpacked image content and extra
+download/JIT/cache workspace. The optional shared-image SparkCache profile
+has an 8 GiB disk-cache ceiling per rank; the base profiles disable that cache.
+**At least 300 GiB free per host before downloading** is a practical planning
+target. The image is shared-layer Docker content; archives can require
+additional tens of GiB.
 The 300 GiB target is a planning allowance, not a qualified minimum.
 
 The model uses shared CPU/GPU memory on each 128 GB Spark. The configured
@@ -457,38 +462,40 @@ GPU/model workloads and check `free -h`, `df -h`, and `nvidia-smi` before
 loading. Do not disable host memory protection or delete other workloads to
 force the model to fit.
 
-On each dedicated host, provision the named directories for the operator,
-without recursively changing ownership of unrelated paths:
+On each dedicated host, provision the deployment parent directory for the
+operator, without recursively changing ownership of unrelated paths:
 
 ```bash
 MESH_USER=$(id -un)
 MESH_GROUP=$(id -gn)
 sudo install -d -m 0755 -o "$MESH_USER" -g "$MESH_GROUP" \
-  /srv/sparkring /srv/sparkring/site /srv/sparkring/artifacts \
-  /srv/sparkring/receipts /srv/sparkring/glm53-mtp3-cache \
-  /srv/models/GLM-5.3-Flash-NVFP4-Spark/df116c4fb16b1d37ae43d2cfd624de26ffbc832e
-df -h /srv/sparkring /srv/models
+  /srv/sparkring
+df -h /srv/sparkring
 ```
 
+Choose a new workspace beneath that directory in the deployment plan. The
+suite derives its model, cache, artifact, and receipt paths from that workspace.
 Do not create `/opt/sparkring/managed-mesh` or
 `/etc/sparkring/managed-mesh`; the installer requires those targets absent.
-The root-only health-key directory is created separately by the managed guide.
+Health-key setup belongs to the managed installation step.
 
-Use the model quickstart's
-[checkout instructions](GLM53_SPARK_MTP3_MESH_QUICKSTART.md#preparation-order-and-command-locations)
-to obtain the reviewed managed-profile revision; the shared bootstrap's CLI
-checkout alone may not contain a draft-PR profile. Run subsequent repository
-commands from that checkout. Then continue at
-[Obtain the image and target](GLM53_SPARK_MTP3_MESH_QUICKSTART.md#obtain-the-image-and-target).
-The exact image is public and anonymously pullable; no local image build,
-private image cache, or external DFlash model is needed. The quickstart
-provides image-ID verification, checkpoint download and distribution, bundle
-extraction, and model settings. After pulling the image, a device-access
-smoke check on an otherwise idle Spark can use that same immutable image:
+Use the [published shared-image instructions](../runtime/sparkring/source_image/README.md#download-the-published-image)
+and its [publication record](../runtime/sparkring/source_image/publication.json)
+to select a SparkRing checkout with the matching source lock and verifier.
+Run subsequent repository commands from that checkout. The shared bootstrap's
+installed CLI does not replace this source-image verification context.
+
+Follow [Prepare the hosts and source](GLM53_TP4_PREFILL_QUICKSTART.md#prepare-the-hosts-and-source)
+to prepare the matching context, pull the shared image and its declared parent,
+and retain the context for verification. A local image build or external
+DFlash checkpoint is unnecessary when using the published image. The
+deployment suite handles checkpoint distribution and transport extraction.
+After pulling, a device-access smoke check on an otherwise idle Spark uses
+the same immutable image:
 
 ```bash
-docker run --rm --gpus all --entrypoint nvidia-smi \
-  ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:23f00af873ccc784cfb742b7be2a29c6d3c20ebec9741843c025320bb9c04685
+SPARKRING_IMAGE=ghcr.io/fujitsupolycom/sparkring@sha256:86516f319b505e94686e0ba59200f91dda4b65599b08b3508c931c1e4e42b2a6
+docker run --rm --gpus all --entrypoint nvidia-smi "$SPARKRING_IMAGE"
 ```
 
 This initializes GPU access but loads no model. Failure must be resolved
@@ -496,32 +503,46 @@ before creating the four serving containers.
 
 ## 9. Fill the private site and start serving
 
-Copy the public site and fabric examples as described in the quickstart.
-Replace management addresses, real MACs, netdev names, rank-specific model
-and cache paths, and the extracted marker hash. Use each actual data IP with
-a **/32 endpoint locator in the JSON**, while retaining the host's /24 subnet
-mask. Keep the established physical-peer mapping and fixed RDMA
-device roles; do not copy synthetic MACs or assume one host's interface names
-apply to the other three.
+Generate the selected profile's CPU receipt using
+[Verify the image and select a profile](GLM53_TP4_PREFILL_QUICKSTART.md#verify-the-image-and-select-a-profile).
+The guide sets `SPARKRING_RECEIPT` for cache-disabled DCP1, DCP4, or bounded
+DCP1 SparkCache. Pass that receipt to `sr plan` with `--image-receipt` as shown
+in [Use the managed deployment suite](GLM53_TP4_PREFILL_QUICKSTART.md#use-the-managed-deployment-suite).
+The receipt determines the private site's `runtime_profile`; omitting it
+selects a different default runtime.
+
+Review the generated private site and fabric against actual management
+addresses, MACs, netdevs, model/cache paths, and the verified marker hash.
+Use each actual data IP with a **/32 endpoint locator in the JSON**, while
+retaining the host's /24 subnet mask. Keep the physical-peer mapping and fixed
+RDMA device roles. Do not copy synthetic MACs or assume one host's interface
+names apply to the other three.
 
 Finish these steps in order using the linked command sections:
 
-1. [Render and distribute the site](GLM53_SPARK_MTP3_MESH_QUICKSTART.md#describe-and-render-the-site),
-   together with the verified image receipt and public transport artifacts.
-2. [Generate and distribute the shared key and epoch](../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md#prerequisites-and-identities)
-   once; omit the source host from copying if it is rank 0.
-3. [Pre-create stopped containers and install each rank](../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md#install-on-each-host).
-   The installer requires explicit root authorization but starts no model.
-4. Run managed `up`, then the quickstart's native all-rank RC correctness
-   checks. Require zero completion errors and all correctness cases passing.
-5. Run managed `start-model`, then `wait_managed_ready.py`. Wait for all four
-   containers healthy plus rank-zero API/liveness HTTP 200, not merely a
-   successful `systemctl start`.
-6. Tail the model logs and submit a small request to model
-   `glm-5.3-flash-spark` on rank zero's management IP, port 8015.
+1. [Discover and review](DEPLOYMENT_SUITE.md#discover-and-review) the host
+   inventory, using the shared-image quickstart's receipt-bearing `sr plan`
+   command to create the preparation document.
+2. [Apply networking, then verify it](DEPLOYMENT_SUITE.md#apply-networking-then-verify-it).
+   Review changes before execution and preserve the host rollback records.
+3. [Stage the runtime](DEPLOYMENT_SUITE.md#stage-the-runtime-without-starting-a-model).
+   Staging verifies and distributes the selected image, model, source receipt,
+   and transport artifacts, then renders matching launch inputs.
+4. [Create containers, install services, and test the mesh](DEPLOYMENT_SUITE.md#create-containers-install-services-and-test-the-mesh).
+   Require stopped-container verification, authenticated mesh readiness, and
+   all native correctness gates before starting the model.
+5. [Start and inspect serving](DEPLOYMENT_SUITE.md#start-inspect-and-stop-serving).
+   Wait for all four containers healthy plus rank-zero API/liveness HTTP 200,
+   not merely a successful `systemctl start`.
+6. [Qualify the selected deployment](GLM53_TP4_PREFILL_QUICKSTART.md#qualify-the-deployment),
+   including source witnesses, actual prefill activation, and cache checks
+   when SparkCache is selected. Rank zero serves `glm-5.3-flash-spark` on port 8015.
 
 Use [managed stop/recovery](../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md#planned-stop-restart-and-recovery)
 for subsequent maintenance. Do not change forwarding helpers beneath live
 model RDMA connections. Keep this
 as a supervised research deployment until the broader reliability gates
 are qualified for your hosts and workload.
+CPU source/profile receipts do not establish GPU correctness or a complete
+factory-reset hardware setup. This full procedure has not been rerun end to
+end on four factory-reset Sparks.
