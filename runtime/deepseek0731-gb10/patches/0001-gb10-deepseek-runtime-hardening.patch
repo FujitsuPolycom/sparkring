@@ -1,11 +1,18 @@
 From: SparkRing GB10 semantic port
-Subject: [PATCH] Harden DeepSeek V4 sparse rows and malformed DSML recovery
+Subject: [PATCH] Enforce DeepSeek row, parser, reasoning, and optional tool-result contracts
 
 Ports local-inference-lab/vllm PR 431 Python/Triton row clamps and
 vllm-project/vllm PR 52645 at 3df9776b0d423dd3124ee9ae80d9d92aef92013a
 onto Fujitsu GB10 vLLM source e2666d9a65f41fc376607531453cbd57c4c71016.
 The streaming-parser port retains the GB10 drop-token and skip-tool control
 flow while adding provisional orphan-invoke recovery.
+
+The Responses API keeps the OpenAI-compatible reasoning object but widens its
+effort field to the max tier already accepted by the other vLLM API surfaces.
+
+With SPARKRING_REJECT_EMPTY_REQUIRED_TOOL_CALLS=1, nonstreaming named or
+required tool choices that produce no parsed calls return ToolChoiceContractError
+instead of a successful empty array. The default behavior remains unchanged.
 
 --- a/vllm/v1/attention/backends/mla/indexer.py
 +++ b/vllm/v1/attention/backends/mla/indexer.py
@@ -1175,3 +1182,105 @@ flow while adding provisional orphan-invoke recovery.
                  )
              )
  
+--- a/vllm/entrypoints/openai/responses/protocol.py
++++ b/vllm/entrypoints/openai/responses/protocol.py
+@@ -136 +136,10 @@
++class ResponsesReasoning(Reasoning):
++    """Reasoning options accepted by vLLM's Responses API."""
++
++    effort: (
++        Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
++        | None
++    ) = None
++
++
+ class ResponsesRequest(OpenAIBaseModel):
+@@ -160,7 +169,7 @@
+     parallel_tool_calls: bool | None = True
+     previous_response_id: str | None = None
+     prompt: ResponsePrompt | None = None
+-    reasoning: Reasoning | None = None
++    reasoning: ResponsesReasoning | None = None
+     include_reasoning: bool = Field(
+         default=True,
+         description=(
+--- a/vllm/entrypoints/openai/chat_completion/serving.py
++++ b/vllm/entrypoints/openai/chat_completion/serving.py
+@@ -1,25 +1,26 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ 
+ import asyncio
+ import io
++import os
+ import time
+ from collections.abc import AsyncGenerator, AsyncIterator
+ from collections.abc import Sequence as GenericSequence
+ from http import HTTPStatus
+ from typing import Any, Final, cast
+ 
+ import numpy as np
+ import pybase64 as base64
+ from fastapi import Request
+ 
+ from vllm.engine.protocol import EngineClient
+ from vllm.entrypoints.chat_utils import (
+     ChatTemplateContentFormatOption,
+     ConversationMessage,
+     make_tool_call_id,
+ )
+ from vllm.entrypoints.generate.base.serving import (
+     GenerateBaseServing,
+     GenerationError,
+     build_per_request_timing_metrics,
+@@ -898,40 +899,50 @@
+                     logprobs = None
+             else:
+                 reasoning = None
+                 content = output.text
+                 tool_calls = []
+                 suppress_metadata = False
+ 
+             auto_tools_called = False
+             is_named_tool_choice = (
+                 request.tool_choice is not None
+                 and type(request.tool_choice) is ChatCompletionNamedToolChoiceParam
+             )
+             is_required_tool_choice = request.tool_choice == "required"
+ 
+             if (not self.enable_auto_tools or not tool_parser_cls) and (
+                 not is_named_tool_choice and not is_required_tool_choice
+             ):
+                 message = ChatMessage(role=role, reasoning=reasoning, content=content)
+ 
+             elif is_named_tool_choice or is_required_tool_choice:
++                if (
++                    os.environ.get("SPARKRING_REJECT_EMPTY_REQUIRED_TOOL_CALLS") == "1"
++                    and not tool_calls
++                ):
++                    return self.create_error_response(
++                        "Model output contains no tool call for named or required "
++                        "tool_choice. Increase the output-token budget or retry.",
++                        err_type="ToolChoiceContractError",
++                        status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
++                    )
+                 message = ChatMessage(
+                     role=role,
+                     reasoning=reasoning,
+                     content=content or "",
+                     tool_calls=[
+                         ToolCall(id=tc.id or make_tool_call_id(), function=tc)
+                         for tc in (tool_calls or [])
+                     ],
+                 )
+ 
+             # if the request doesn't use tool choice
+             # OR specifies to not use a tool
+             elif not request.tool_choice or request.tool_choice == "none":
+                 message = ChatMessage(role=role, reasoning=reasoning, content=content)
+ 
+             # handle when there are tools and tool choice is auto
+             elif (
+                 request.tools
+                 and (request.tool_choice == "auto" or request.tool_choice is None)
+                 and self.enable_auto_tools

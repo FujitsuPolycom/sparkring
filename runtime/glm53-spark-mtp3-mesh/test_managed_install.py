@@ -17,6 +17,29 @@ import managed_cluster  # noqa: E402
 import managed_install  # noqa: E402
 
 
+def test_installed_source_closure_loads_receipt_without_checkout_imports(tmp_path):
+    for relative, data in managed_install.source_payloads().items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    script = """
+import importlib.util
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+path = root / 'runtime/glm53-spark-mtp3-mesh/profile.py'
+spec = importlib.util.spec_from_file_location('installed_profile', path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+contract = module._source_receipt_contract()
+assert callable(contract.validate_receipt)
+assert 'native_files' not in sys.modules
+"""
+    result = subprocess.run([sys.executable, '-I', '-c', script, str(tmp_path)],
+                            cwd=tmp_path, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
 @pytest.fixture
 def exact_container_spec():
     image_id = 'sha256:' + 'b' * 64
@@ -311,3 +334,57 @@ print('CPU-only installed imports passed')
                             cwd=tmp_path, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     assert 'CPU-only installed imports passed' in result.stdout
+
+
+def _envelope_argv(image_name):
+    """A minimal canonical `docker create` naming the image with `image_name`."""
+    return ['docker', 'create', '--name', 'profile-r0', '--entrypoint', '/bin/bash',
+            image_name, '--model', '/models/target', '--served-model-name', 'glm']
+
+
+@pytest.mark.parametrize('by', ['config_id', 'repo_digest'])
+def test_envelope_scan_accepts_either_receipt_image_identity(by):
+    """sparkring-mtp3-mesh-image-receipt/v1 puts the config image ID in
+    image_reference, but sparkring-mtp3-performance-public-image/v1 puts a
+    registry reference there, and the launcher passes whichever it was given to
+    docker create. Both must terminate the envelope scan; without the registry
+    form the scan runs into the model arguments and dies on the first flag."""
+    image_id = 'sha256:' + 'a' * 64
+    repo_digest = 'ghcr.io/example/image@sha256:' + 'b' * 64
+    image = {'Id': image_id, 'RepoDigests': [repo_digest], 'Config': {}}
+    argv = _envelope_argv(image_id if by == 'config_id' else repo_digest)
+    spec = managed_install.expected_container_spec(argv, image)
+    assert spec['image'] == image_id, 'the spec always reports the config ID'
+    assert spec['name'] == 'profile-r0'
+    assert spec['cmd'] == ['--model', '/models/target', '--served-model-name', 'glm']
+
+
+def test_envelope_scan_still_rejects_an_unknown_image_identity():
+    image = {'Id': 'sha256:' + 'a' * 64, 'RepoDigests': ['ghcr.io/example/image@sha256:' + 'b' * 64],
+             'Config': {}}
+    with pytest.raises(ValueError):
+        managed_install.expected_container_spec(_envelope_argv('ghcr.io/other/image:latest'), image)
+
+
+@pytest.mark.parametrize('value', ['', {}, 0, False, [123], ['mutable:tag'],
+                                  [''], ['repo@sha256:' + 'b' * 63],
+                                  ['repo@sha256:' + 'G' * 64],
+                                  ['bad repo@sha256:' + 'b' * 64]])
+def test_envelope_scan_rejects_malformed_repository_digests(value):
+    image = {'Id': 'sha256:' + 'a' * 64, 'RepoDigests': value, 'Config': {}}
+    with pytest.raises(ValueError, match='repository digests'):
+        managed_install.expected_container_spec(_envelope_argv('sha256:' + 'a' * 64), image)
+
+
+@pytest.mark.parametrize('value', [None, []])
+def test_envelope_scan_accepts_absent_repository_digests(value):
+    image_id = 'sha256:' + 'a' * 64
+    image = {'Id': image_id, 'RepoDigests': value, 'Config': {}}
+    assert managed_install.expected_container_spec(_envelope_argv(image_id), image)['image'] == image_id
+
+
+def test_envelope_scan_accepts_registry_port_in_repository_digest():
+    image_id = 'sha256:' + 'a' * 64
+    reference = 'registry.example:5000/team/image@sha256:' + 'b' * 64
+    image = {'Id': image_id, 'RepoDigests': [reference], 'Config': {}}
+    assert managed_install.expected_container_spec(_envelope_argv(reference), image)['image'] == image_id

@@ -65,6 +65,21 @@ def test_create_four_rank_spec_without_contacting_hosts():
     assert all(len(h["data_interfaces"]) == 4 for h in spec["hosts"])
 
 
+def test_existing_assets_require_explicit_paired_selection():
+    roots = [f"/models/rank{i}/target" for i in range(4)]
+    for reuse, selected in ((True, None), (False, roots), (True, roots[:3])):
+        with pytest.raises(ValueError):
+            create_spec(inventory(), "test-mesh", "/srv/sparkring/test-mesh",
+                        reuse_existing_image=reuse, existing_model_roots=selected)
+    result = create_spec(inventory(), "test-mesh", "/srv/sparkring/test-mesh",
+                         reuse_existing_image=True, existing_model_roots=roots)
+    assert result["existing_assets"] == {
+        "schema": "sparkring-existing-assets/v1", "image": "all-ranks-preinstalled",
+        "model_roots": roots,
+    }
+    assert result["site"]["model_roots"] == roots
+
+
 @pytest.mark.parametrize(
     "change",
     [

@@ -1,36 +1,103 @@
 # Spark Transport
 
-## Status
+`spark_transport` is SparkRing's communication layer for inference over directly
+connected RDMA over Converged Ethernet (RoCE) links. It contains native
+collectives, runtime adapters, patched NCCL integration, and tools for checking
+the fabric and collective protocols.
 
-`spark_transport` implements direct-cable, four-rank tensor-parallel
-collectives for the supported GLM-5.2 EXL3 serving configuration and
-implemented GLM-5.3 performance-testing paths:
+The transport exchanges tensor buffers between ranks. Model profiles select
+the runtime adapter, tensor signatures, topology, and verified artifacts needed
+for their workload. GLM, DeepSeek, and Qwen profiles use different combinations
+of these components; a profile's validation does not establish support for
+every model or tensor shape.
 
-- BF16 TP all-reduce; and
-- BF16 vocabulary all-gather.
+Status: **implemented** components. **Qualified** results apply only to the
+artifacts and conditions in the linked [profile records](../docs/profiles/README.md).
+Hardware-forwarded mesh composition and six-node model profiles remain
+**research-only**.
 
-Each rank has two directly attached RoCE peers. The native protocol accepts
-only the four-rank topology and fails closed on invalid rank, peer, device,
-GID, tensor, session, or protocol state.
+## Communication components
 
-The exact-Q40 GLM-5.2 path has hidden width 6,144 and contiguous BF16 tensors
-`[Q, 6144]`, with `Q` from 1 through 40. It is the only qualified custom
-all-reduce geometry. The width-4,096 DeepSeek-V4-Flash-0731 path is
-research-only: it may use the retained all-reduce admission surface, but has
-no serving qualification.
+| Component | Purpose | Implementation and contract |
+|---|---|---|
+| **SIRCL — Switchless Inference RDMA Collective Layer** | Native four-rank collectives with persistent RDMA sessions, CUDA-graph submission, and eager prefill paths. | [SIRCL overview](../docs/SIRCL.md), [C/C++ interfaces](include/spark_transport/), and [native source](src/) |
+| **RoCEnante integration** | Selected all-reduces over direct and hardware-forwarded opposite-peer paths in the four-rank mesh composition. | [Runtime overlay](experiments/glm53_rocenante_overlay/README.md) and [adapted Local Inference Lab source and attribution](../third_party/b12x_roce/README.md) |
+| **Patched NVIDIA NCCL** | Pair/cycle communication and fallback for collectives outside custom transport admission. Some model profiles use NCCL for all their collectives. | [Library patches, topology-specific environments, and invariants](nccl/README.md) |
+| **Runtime adapters** | Select a collective implementation by process group, tensor geometry, execution mode, and enabled profile capabilities. | [vLLM adapter contract](integrations/vllm/README.md) and [mesh composition](../runtime/glm53-spark-mtp3-mesh/README.md) |
 
-The GLM-5.3 research path combines a captured width-4,096 transport with an
-eager fused-prefill session. Fused prefill accepts contiguous BF16
-`[Q, 4096]` tensors from Q128 through Q8192 and counter-rotates tensor halves
-over both RDMA device functions on each existing cabled cycle edge. It requires
-neither additional cables nor diagonal links. DCP, sparse-indexer, and every
-unsupported signature remain on the patched NCCL fallback described in
-[nccl/README.md](nccl/README.md).
+SIRCL's native library is `libspark_transport_capi.so`. It provides BF16
+all-reduce and specialized vocabulary all-gather interfaces. Its native
+sessions require four participating ranks. The versioned all-reduce API
+accepts tensor geometry, while fused prefill and vocabulary gathering retain
+their own narrower shape contracts. Adapter admission can be narrower than
+the native API.
 
-## Build
+The mesh overlay composes RoCEnante with SIRCL and NCCL rather than replacing
+every collective. It handles selected tensor-parallel all-reduces and delegates
+other calls to the saved backend. Decode-context-parallel and sparse-indexer
+collectives retain their original NCCL dispatch in these maintained adapters.
+The profile's bundle configuration determines the exact dispatch rules.
 
-Build the native library and its contract tests on an ARM64 CUDA environment
-with CMake, a C++17 compiler, CUDA, and libibverbs development headers:
+Patched NCCL has separate configurations for two-rank pairs and four- or
+six-rank direct-cable cycles. That scope does not extend SIRCL's four-rank
+native interfaces to other rank counts. Model support and six-rank research
+limits are recorded by the deployment profiles.
+
+## Physical links and hardware forwarding
+
+The four-rank native cycle uses two direct neighbors per rank. Dual-rail
+prefill uses both RDMA device functions associated with each cabled edge;
+device, address, GID, and control-port assignments must agree across ranks.
+
+The mesh composition adds communication with opposite ranks over the existing
+physical ring. Packets cross two physical links through an intermediate
+ConnectX-7 ASIC. The forwarding hop uses the NIC hardware; endpoints still
+perform CPU posting and use GPU-mapped pinned host buffers. These paths share
+the bandwidth of the physical cables.
+
+See the [hardware-forwarding contract](experiments/cx7_hairpin_diagonal/README.md)
+and [managed mesh operations](../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
+Fabric provisioning and model lifecycle are separate from a collective call.
+
+## Dispatch and failure handling
+
+- All ranks must agree on the selected library identity, protocol, group,
+  tensor signature, and complementary peer configuration.
+- A collective outside custom admission uses its configured NCCL backend.
+  Shadow mode returns the reference result while checking the custom result;
+  custom mode returns the native result only under its admission contract.
+- Ordinary session-construction failures can fall back before work is
+  enqueued. An explicitly selected fused-prefill session has a fail-closed
+  setup contract: its setup failure prevents serving.
+- Failure after native work is enqueued terminates the worker. Retrying
+  through NCCL in that process could reuse a CUDA stream with an unfulfilled
+  wait or unfinished native operation.
+
+The [adapter contract](integrations/vllm/README.md) specifies supported modes,
+tensor geometry, environment variables, and failure boundaries. Serving
+instructions belong to the selected [profile quickstart](../docs/profiles/README.md).
+
+## Directory map
+
+| Path | Contents |
+|---|---|
+| [`include/spark_transport/`](include/spark_transport/) | Public C/C++ interfaces and protocol contracts |
+| [`src/`](src/) | Sessions, verbs endpoints, CUDA operations, command rings, and topology checks |
+| [`integrations/vllm/`](integrations/vllm/) | Tensor admission, dispatch, and native-session checks for vLLM |
+| [`nccl/`](nccl/) | Patched NCCL configuration and compatibility requirements |
+| [`app/`](app/) and [`scripts/`](scripts/) | Collective probes and cable/rank qualification tools |
+| [`tests/`](tests/) | Protocol, ABI, configuration, and source-contract checks |
+| [`experiments/`](experiments/) | Transport variants, hardware-forwarding tools, and integration studies |
+
+Selected kernels under `experiments/tiled_prefill/` are linked into the native
+library by [CMakeLists.txt](CMakeLists.txt). Directory placement alone does not
+identify whether code participates in a serving artifact; use its build
+targets and profile receipts.
+
+## Build and validation
+
+Run these commands from the repository root on an ARM64 CUDA environment with
+CMake, a C++17 compiler, and libibverbs development headers:
 
 ```bash
 cmake -S spark_transport -B build/spark-transport \
@@ -39,8 +106,6 @@ cmake -S spark_transport -B build/spark-transport \
   -DCMAKE_CUDA_ARCHITECTURES=121
 cmake --build build/spark-transport --target \
   spark_transport_capi \
-  spark_tp4_bidirectional_prefill_probe \
-  spark_tp4_vocab_allgather_probe \
   tp4_c_api_test \
   tp4_vocab_allgather_c_api_test \
   --parallel
@@ -49,38 +114,12 @@ ctest --test-dir build/spark-transport \
   --output-on-failure
 ```
 
-The serving artifact is `libspark_transport_capi.so`. All four ranks must
-receive identical library bytes and identical transport configuration before
-custom mode is selected.
+This builds the native sources in this directory. A reproducible serving image
+must use its profile's pinned sources, bundle configuration, and library hashes;
+building the directory alone does not reconstruct every published image.
 
-## Deployment invariants
-
-- Exactly four tensor-parallel ranks participate.
-- Every rank uses its two direct RoCE peer addresses, devices, GIDs, and
-  control ports consistently with the other ranks.
-- Dual-rail prefill configures both RDMA device functions on each cabled ring
-  edge. Its primary and secondary addresses, devices, GIDs, and control ports
-  must be complete and non-overlapping.
-- Inputs are CUDA-resident, contiguous BF16 tensors of an admitted shape.
-- Native work begins only after session construction succeeds. A creation or
-  admission failure uses the original vLLM/NCCL collective.
-- A failure after native work is enqueued terminates the worker. In-process
-  fallback is unsafe because the CUDA stream can contain an unfulfilled wait.
-
-The vLLM adapter contract, including every consumed transport environment
-variable, is specified in
-[integrations/vllm/README.md](integrations/vllm/README.md).
-
-## Cable qualification
-
-Before serving, qualify each direct physical edge with
-[CABLE_QUALIFICATION.md](CABLE_QUALIFICATION.md). Qualification proves
-bidirectional payload integrity and reports latency under its stated
-conditions; it does not qualify a model-serving result.
-
-## NCCL fallback
-
-Unsupported tensor signatures, DCP, and sparse-indexer collectives use vLLM's
-NCCL dispatch. The patched NCCL configuration is required where the
-switchless direct-cable topology is used; see
-[nccl/README.md](nccl/README.md).
+Run [cable qualification](CABLE_QUALIFICATION.md) and the relevant collective
+probes in a stopped-model test window. Probes generate GPU/RDMA traffic.
+Contract tests and cable checks do not establish model correctness or serving
+performance; those require the profile's
+[validation procedure](../docs/PROFILE_VALIDATION.md).

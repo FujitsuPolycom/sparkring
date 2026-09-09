@@ -1,0 +1,2 @@
+/opt/sparkring/transports
+import sparkring_transport_selector; sparkring_transport_selector.install_from_environment()

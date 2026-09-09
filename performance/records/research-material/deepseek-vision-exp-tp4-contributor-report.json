@@ -1,0 +1,22 @@
+{
+  "schema": "sparkring-contributor-observations/v1",
+  "status": "research-only",
+  "source": {
+    "url": "https://github.com/FujitsuPolycom/sparkring/pull/232",
+    "attribution": "Contributor to SparkRing PR #232",
+    "contribution_revision": "32e619647a52b9e73afa49a713ef287afe2776a9"
+  },
+  "conditions": "Fresh-prefix prompts, thinking off, temperature 0, 256 pinned decode tokens; prefill single request max_tokens=1; patched NCCL over two direct RoCE devices per rank; management-LAN bootstrap.",
+  "measurement": {
+    "scope": "Reported aggregate decode tokens per second and single-request prefill; no raw sample files, harness revision, or independently verified timing method supplied.",
+    "raw_samples": null,
+    "independent_reproduction": false
+  },
+  "result": "Decode aggregate tok/s C1 49, C4 112, C8 160-175, C16 235, C32 327, C48 391, C64 435 (steps/s 22 -> 200; acceptance 0.23-0.25). Prefill 2,300 / 2,255 / 2,100 tok/s at 16K / 64K / 128K; 560-660 tok/s past 180K (indexer-bound, same on TP2). 8x4K burst TTFT p50 7.8 s. NIAH 958,182 tokens exact in 963.9 s (stock indexer) / 683.3 s (DSPARK_ENABLE_SP_INDEXER=1). 20-min C8 soak: 82 waves, 0 preemptions, 0 errors, 139 tok/s median; 3-hour C8 soak while routed: 732 waves, 0 preemptions, 0 errors, 138.9 tok/s median, no drift. Same-stack TP2 pair: C1 31, C8 97, C16 141; prefill 1,600-1,800 / 1,600-1,685 / 1,410-1,550.",
+  "conclusion": "Preserves the contributor report without treating it as a measured result for the artifact pins selected by the SparkRing quickstart.",
+  "limitations": [
+    "Reported serving image is identified by a mutable tag with an optional FlashInfer 0.6.18.post1 overlay; an exact measured digest is not supplied.",
+    "The contribution describes one site; no second-site requirement is imposed by this record.",
+    "Concurrency-specific per-request guarantees cannot be derived from the aggregate values without their timing definitions."
+  ]
+}

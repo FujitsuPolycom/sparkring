@@ -80,7 +80,8 @@ def prepare(cache, placement, transport, output):
         shutil.copyfile(HERE / name, output / name)
     startup = output / "startup"
     startup.mkdir()
-    for name in ("serve_with_warmup.py", "warmup_dflash.py", "startup_admission.py"):
+    for name in ("serve_with_warmup.py", "warmup_dflash.py", "startup_admission.py",
+                 "scheduler_liveness.py"):
         shutil.copyfile(HERE.parent.parent / "glm53-flash-jj-r8-gb10" / name,
                         startup / name)
     files = {

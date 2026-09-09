@@ -27,26 +27,36 @@ reproducible benchmarks, and [test results](performance/).
 
 ### Four Sparks
 
-| Model / predictor | Layout | Context | Sequences | Batch | Guide |
-|---|---|---:|---:|---:|---|
-| **GLM-5.3 Flash NVFP4-Spark · MTP3 cache/checkpoint mesh** | TP4/DCP4 | 1M | 16 | 8,192 | [Quickstart](docs/GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md) |
-| GLM-5.3 Flash NVFP4 · BF16 DFlash2 | TP4/DCP4; DCP1/2 | 1M | 16 | 8,192 | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
-| GLM-5.2 EXL3 3.5-bpw | TP4/DCP4 | 1M | 16 | 4,096 | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | TP4/DCP1 | 1M | 32 | 4,096 | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| Qwen3.8-27B EXL3 K5/K6 | TP4/DCP1 | 1M | 64 | 8,192 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
-* The GLM5.3 Flash MTP3 profile uses the new virtual meshing feature.
-* Requires:[managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md). 
-* DFlash2 profiles will be replaced by native-MTP. Also avoids: [separate CC BY-NC-ND 4.0 terms](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2#license).
+| Model / predictor | Serving stack | Transport | Layout | Context | Sequences | Batch | Guide |
+|---|---|---|---|---:|---:|---:|---|
+| **GLM-5.3 Flash NVFP4-Spark · MTP3 cache/checkpoint mesh** | [SparkRing vLLM/B12X image](runtime/glm53-spark-mtp3-mesh/performance/README.md) | [SIRCL + RoCEnante + NCCL](runtime/glm53-spark-mtp3-mesh/README.md) | TP4/DCP4 | 1M | 16 | 8,192 | [Quickstart](docs/GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md) |
+| GLM-5.3 Flash NVFP4 · BF16 DFlash2 | [SparkRing vLLM/B12X image](runtime/glm53-flash-jj-r8-gb10/README.md) | [SIRCL + NCCL](spark_transport/integrations/vllm/README.md) | TP4/DCP4; DCP1/2 | 1M | 16 | 8,192 | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| GLM-5.2 EXL3 3.5-bpw | [SparkRing vLLM/ExLlamaV3 build](runtime/exl3-r7/README.md) | [SIRCL + NCCL](docs/SIRCL.md) | TP4/DCP4 | 1M | 16 | 4,096 | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
+| DeepSeek-V4-Flash-0731 | [SparkRing vLLM/B12X image](runtime/deepseek0731-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 1M | 32 | 4,096 | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| Qwen3.8-27B EXL3 K5/K6 | [SparkRing vLLM/ExLlamaV3 build](runtime/qwen38/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 1M | 64 | 8,192 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
+| DeepSeek-V4-Flash-Vision-Exp with DSpark (research-only) | [Anemll image / MiaAI-Lab recipe](runtime/deepseek-vision-exp/profile.json) | [SparkRing patched NCCL](spark_transport/nccl/README.md) | TP4 | 1M | 48 | 12,288 | [Quickstart](docs/DEEPSEEK_V4_FLASH_VISION_EXP_TP4_QUICKSTART.md) |
+
+The Vision-Exp [artifact contract](runtime/deepseek-vision-exp/profile.json)
+identifies the Anemll image, MiaAI-Lab recipe, and SparkRing transport separately.
+Contributor-reported results are linked from the guide; independent reproduction
+of the selected artifacts is not claimed.
+
+The four-Spark GLM-5.3 native-MTP3 profile uses hardware-forwarded mesh paths and requires
+[managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
+DFlash2 profiles use a separate draft checkpoint with
+[CC BY-NC-ND 4.0 terms](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2#license).
 
 ### Two Sparks
 
-| Model / predictor | Layout | Context | Sequences | Batch | Guide |
-|---|---|---:|---:|---:|---|
-| **GLM-5.3 Flash NVFP4-Spark · native MTP3** | TP2/DCP1 | 512K | 8 | 8,192 | [Quickstart](docs/GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | TP2/DCP1 | 1M | 32 | 4,096 | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| Qwen3.8-27B EXL3 K5/K6 | TP2/DCP1 | 1M | 32 | 8,192 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
-* GLM5.3 pair is **research-only**, uses 5 GiB KV per rank, and has a
-[known video-color issue](https://github.com/FujitsuPolycom/sparkring/issues/229). In testing. 
+| Model / predictor | Serving stack | Transport | Layout | Context | Sequences | Batch | Guide |
+|---|---|---|---|---:|---:|---:|---|
+| **GLM-5.3 Flash NVFP4-Spark · native MTP3** | [SparkRing runtime image](runtime/sparkring/README.md) | [Patched NCCL](runtime/profiles/glm53-flash-spark-tp2/runtime.env.example) | TP2/DCP1 | 512K | 8 | 8,192 | [Quickstart](docs/GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md) |
+| DeepSeek-V4-Flash-0731 | [SparkRing vLLM/B12X image](runtime/deepseek0731-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP2/DCP1 | 1M | 32 | 4,096 | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| Qwen3.8-27B EXL3 K5/K6 | [SparkRing vLLM/ExLlamaV3 build](runtime/qwen38/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP2/DCP1 | 1M | 32 | 8,192 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
+
+The GLM-5.3 pair is **research-only**, uses 5 GiB KV per rank, and has a
+[known video-color issue](https://github.com/FujitsuPolycom/sparkring/issues/229).
+
 See the [profile index](docs/profiles/README.md) for evidence scopes and
 [SparkCache compositions](recipes/sparkcache/README.md) for persistent-cache
 support. Qwen with SparkCache is unsupported; six-node profiles are research-only.
@@ -57,9 +67,10 @@ support. Qwen with SparkCache is unsupported; six-node profiles are research-onl
 |---|---|---|
 | `sparkring` | GLM-5.3 Flash native-MTP3 pair | [Model-neutral package](runtime/sparkring/README.md) |
 | `sparkring-glm53-sparkcache` | GLM-5.3 Flash DFlash2/SIRCL | [Operator image](runtime/glm53-flash-jj-r8-gb10/README.md) |
-| `sparkring-glm53-sparkcache` | GLM-5.3 Flash native-MTP3 mesh | [Mesh image](runtime/glm53-spark-mtp3-mesh/public-image.json) |
+| `sparkring-glm53-sparkcache` | GLM-5.3 Flash native-MTP3 mesh | [Mesh image](runtime/glm53-spark-mtp3-mesh/performance/public-image.json) |
 | `sparkring-glm53-runtime` | GLM source-build bases | [Runtime builder](runtime/glm53-flash/README.md) |
 | `gb10-vllm-serving` | Profile-specific images, including DeepSeek | [Packages](https://github.com/users/FujitsuPolycom/packages/container/package/gb10-vllm-serving) |
+| Anemll `dspark-vllm-gx10` | DeepSeek-V4-Flash-Vision-Exp with the MiaAI-Lab recipe | [Image, recipe, and transport provenance](runtime/deepseek-vision-exp/profile.json) |
 
 Use the exact digest in the selected quickstart. Images sharing a package
 name are not interchangeable; a model-neutral name does not qualify every profile. Images will be condensed and homogenized in future releases. 

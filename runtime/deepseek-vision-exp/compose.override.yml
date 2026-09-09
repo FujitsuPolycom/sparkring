@@ -1,0 +1,18 @@
+services:
+  vllm-dspark:
+    volumes:
+      - type: bind
+        source: ${SPARKRING_NCCL_LIBRARY:?Set SPARKRING_NCCL_LIBRARY to the verified library}
+        target: /opt/sparkring/nccl/libnccl.so.2
+        read_only: true
+        bind:
+          create_host_path: false
+    environment:
+      LD_PRELOAD: /opt/sparkring/nccl/libnccl.so.2
+      VLLM_NCCL_SO_PATH: /opt/sparkring/nccl/libnccl.so.2
+      NCCL_ALGO: Ring
+      NCCL_PROTO: LL,LL128,Simple
+      NCCL_P2P_LEVEL: SYS
+      NCCL_MIN_NCHANNELS: "4"
+      NCCL_MAX_NCHANNELS: "4"
+      NCCL_SWITCHLESS_RING_ONLY: "1"
