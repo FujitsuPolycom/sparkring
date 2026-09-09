@@ -32,7 +32,7 @@ published configuration hash.
 |---|---|---|---|
 | GLM-5.3 Flash NVFP4-Spark with native MTP3 | four-Spark mesh, TP4/DCP1 or DCP4 | Shared source image; coalescing, mHC and dual-domain NCCL; full shared-image qualification incomplete | [Quickstart](../GLM53_TP4_PREFILL_QUICKSTART.md), [image source lock](../../runtime/sparkring/source_image/glm53-tp4-lock.json) |
 | GLM-5.3 Flash NVFP4-Spark with MTP3 and SparkCache | four-Spark mesh, TP4/DCP1 | Bounded connector-job capture and restore profile; full shared-image recovery qualification incomplete | [Profile selection](../GLM53_TP4_PREFILL_QUICKSTART.md#verify-the-image-and-select-a-profile) |
-| GLM-5.3 Flash original NVFP4 with native MTP3 | two Sparks, TP2/DCP1, one DAC and both host PCIe domains | Shared source image, managed loader, adaptive RoCEnante; 256K context and 6.75 GiB KV per rank; SparkCache unsupported | [Quickstart](../../runtime/profiles/glm53-flash-nvfp4-tp2/README.md) |
+| GLM-5.3 Flash NVFP4-Spark with native MTP3 | two Sparks, TP2/DCP1, one DAC and both host PCIe domains | Shared source image, managed loader, adaptive RoCEnante; 256K context and 8.75 GiB KV per rank; about 1M token capacity; SparkCache unsupported | [Quickstart](../../runtime/profiles/glm53-flash-spark-tp2/README.md) |
 | GLM-5.3 Flash NVFP4-Spark with native MTP3 | switched four-Spark TP4/DCP1 | Provided as-is; switched hardware not validated | [Quickstart](../GLM53_SWITCHED_TP4_QUICKSTART.md) |
 | DeepSeek-V4-Flash-Vision-Exp with DSpark | four-Spark cycle, TP4 | Anemll image and MiaAI-Lab recipe with SparkRing patched NCCL; contributor-reported observations; independent reproduction is not claimed | [Artifact contract](../../runtime/deepseek-vision-exp/profile.json), [recipe](../../recipes/deepseek-v4-flash-vision-exp-tp4.json), [quickstart](../DEEPSEEK_V4_FLASH_VISION_EXP_TP4_QUICKSTART.md) |
 
@@ -55,11 +55,11 @@ describes the TP4/DCP4 configuration with 1,048,576-token context, 16 sequences,
 and an 8,192-token batch. Its [deployment recipe](../../recipes/glm53-spark-mtp3-managed-mesh-tp4.json)
 links the configuration and bounded evidence.
 
-The [GLM-5.3 Flash NVFP4-Spark TP2 profile](../GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md)
-is research-only. Model-neutral image and matching SparkCache source pins are
-public; child-image serving qualification remains pending.
-This 5 GiB NVFP4-Spark pair is distinct from the original-NVFP4 shared-image
-pair listed above.
+The retired 5 GiB NVFP4-Spark TP2 configuration and its pinned image/source
+references remain available through the
+[TP2 guide's retained configuration links](../GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md).
+The shared-image NVFP4-Spark pair listed above uses 8.75 GiB per rank and
+does not enable SparkCache.
 
 ## Unsupported integrations
 

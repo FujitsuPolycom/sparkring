@@ -1,0 +1,146 @@
+{
+  "schema": "sparkring-profile-dependencies/v1",
+  "status": "implemented",
+  "profile": "glm53-flash-spark-tp2-mtp3",
+  "shared_image_compatibility": "research-only; a rebuilt image and a matching source receipt are required",
+  "shared_runtime_receipt": {
+    "source_lock": "../../sparkring/source_image/glm53-tp4-lock.json",
+    "validator": "../../sparkring/source_image/receipt_contract.py",
+    "local_image_schema": "sparkring-source-image-receipt/v1",
+    "local_image_identity": "Exact sha256 image config ID; not a registry manifest digest",
+    "entrypoint": [
+      "python3",
+      "-S",
+      "-B",
+      "/opt/sparkcache-jj-runtime/verify_sources.py",
+      "--serve"
+    ],
+    "transport_profile": "tp2-rocenante-adaptive",
+    "transport_witness": [
+      "manifest_sha256",
+      "files_sha256",
+      "files",
+      "package"
+    ],
+    "qualification": "CPU source and file witnesses permit an explicit research launch; they do not qualify GPU serving behavior."
+  },
+  "shared_sources": {
+    "vllm": "17bd258075f44dda8b405f384732f3c78d03f308",
+    "b12x": "2883a5df65a7ea3cb6e82abb63d1448dd3154887",
+    "sparkcache": "d0cf7296062ec8b4d17d65cd05a416d509e80bd8",
+    "source_lock": "../../sparkring/source_image/glm53-tp4-lock.json",
+    "source_publication": "Public source bases plus the common recipe patches; no private source archives are required."
+  },
+  "shared_image_requirements": [
+    {
+      "component": "vLLM coalescing",
+      "interface": "vllm.v1.core.recurrent_prefill_checkpoint.validate_coalescing_config",
+      "required_behavior": "Admit TP2/DCP1 with BF16 GLM5Next, V2 runner, 8192-token chunks, aligned prefix caching, retention interval 0, and static MTP3. Preserve four-checkpoint ownership and continuation in the common source.",
+      "reference_checkpoint_capacity": 2,
+      "common_checkpoint_capacity_minimum": 4
+    },
+    {
+      "component": "vLLM mHC",
+      "interface": "vllm.models.glm5next.nvidia.mhc_prefill_sharding.PrefillOwnership",
+      "required_behavior": "Use world_size=2 for row ownership, admission votes, and NCCL reduce-scatter/all-gather. Preserve the TP4 implementation and its stream lifetime checks."
+    },
+    {
+      "component": "vLLM KDA projection scheduling",
+      "interface": "VLLM_GLM53_KDA_GATE_SIDE_STREAM",
+      "required_behavior": "Set 0 for TP2 to preserve the measured sequential KDA adapter behavior. Leave the common TP4 source's default 1 unchanged."
+    },
+    {
+      "component": "B12X recurrent export",
+      "interface": "b12x.sequence.kda_prefill.Caps and checkpoint offset/index metadata",
+      "required_behavior": "The consumer and kernel must agree on export capacity and padded metadata. Preserve four-destination export support; do not overwrite it with the measured two-destination source."
+    },
+    {
+      "component": "B12X loader",
+      "interface": "b12x.integration.vllm.loader.B12xModelLoader and vllm.model_executor.weight_transfer",
+      "required_behavior": "Managed persistent CUDA allocation for target and MTP checkpoint tensors, direct checkpoint I/O, and no shared allocation of nonpersistent runtime buffers. Select VLLM_PLUGINS=b12x_loader, --load-format b12x, and --model-loader-extra-config with allocation=managed. The shared loader retains pinned_wc when the option is absent and records the selected allocation in model._b12x_loader_storage.",
+      "model_loader_extra_config": {
+        "allocation": "managed"
+      },
+      "shared_loader_default_allocation": "pinned_wc",
+      "allowed_allocation_values": [
+        "pinned_wc",
+        "managed"
+      ]
+    },
+    {
+      "component": "RoCEnante",
+      "interface": "b12x.comm.roce API_VERSION=1 and vllm B12xRoceAllReduce",
+      "required_behavior": "Select the complete content-bound TP2 bundle before B12X imports, use two paths at HCA indices 0/2, and retain size-aware CUDA grids with independent barrier counters. All-reduce limit 16 MiB; all-gather limit 16 MiB per input shard."
+    },
+    {
+      "component": "NCCL",
+      "interface": "VLLM_NCCL_SO_PATH and LD_PRELOAD",
+      "required_behavior": "The shared image selects source-verified NCCL 2.30.7 at /opt/sparkring/nccl-pci/libnccl.so.2.30.7 with extended IPv4 GIDs, preserved PCI domains, and routing diagnostics enabled. Use exact-match p0 device names on both PCI domains and eight channels. This prospective combination needs separate GPU qualification; the reference deployment used NCCL 2.30.4.",
+      "shared_library": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+      "shared_qualification": "research-only"
+    },
+    {
+      "component": "SparkCache",
+      "interface": "external KV connector selection",
+      "required_behavior": "Disabled for this profile. Packaging SparkCache in the shared image must not add --kv-transfer-config. This TP2 checkpoint/source/transport combination needs separate cache qualification."
+    }
+  ],
+  "reference_trial": {
+    "status": "research-only",
+    "model": {
+      "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+      "revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+      "revision_kind": "full Git revision",
+      "variant": "NVFP4-Spark"
+    },
+    "tp_size": 2,
+    "dcp_size": 1,
+    "kv_cache_memory_bytes_per_rank": 9395240960,
+    "kv_pool_tokens_estimate": 1050118,
+    "maximum_request_tokens": 262144,
+    "max_num_seqs": 8,
+    "max_num_batched_tokens": 8192,
+    "prefill_schedule_interval": 8,
+    "graph_capture_sizes": [
+      1,
+      2,
+      4,
+      8,
+      12,
+      16,
+      20,
+      24,
+      28,
+      32
+    ],
+    "memory_guards_active": false,
+    "measurement": "Both ranks completed startup. One arithmetic smoke request returned 17 + 25 = 42 followed by FINAL=42.",
+    "rank0_target_draft_loading_seconds": [
+      35.61,
+      2.33
+    ],
+    "graph_capture_gib_per_rank": [
+      1.68,
+      1.65
+    ],
+    "available_host_memory_mib_after_smoke": [
+      8184,
+      9025
+    ],
+    "conclusion": "The separate reference source image started this bounded configuration and answered one arithmetic request.",
+    "limitations": [
+      "The KV token count is a reference allocator estimate, not a measured request capacity; the per-request context limit remains 262144.",
+      "The reference trial stopped both host memory guards. The public launcher requires an active 2 GiB guard.",
+      "Performance, sustained memory stability, and full-context serving are not qualified for this checkpoint and configuration.",
+      "Four image inputs are admitted, but image accuracy is unqualified; video and SparkCache are disabled.",
+      "Reference model config/index hashes matched and all indexed shards existed; full shard hashes were not recomputed during the checkpoint swap."
+    ]
+  },
+  "required_shared_image_checks": [
+    "Source hashes and transport activation must match the profile receipt before model/GPU initialization, including Python workers.",
+    "CPU coalescing and mHC checks must cover TP2/DCP1 and retained TP4 paths on the exact common source.",
+    "Validate four-checkpoint producer/consumer shapes and managed target/MTP loader ownership on the composed source.",
+    "Verify loaded NCCL identity, B12X API version, selected transport origin, and paired rank settings in the image.",
+    "Run correctness and bounded serving comparisons on the new image before using the measured TP2 result as its qualification."
+  ]
+}

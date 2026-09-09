@@ -494,7 +494,7 @@ After pulling, a device-access smoke check on an otherwise idle Spark uses
 the same immutable image:
 
 ```bash
-SPARKRING_IMAGE=ghcr.io/fujitsupolycom/sparkring@sha256:86516f319b505e94686e0ba59200f91dda4b65599b08b3508c931c1e4e42b2a6
+SPARKRING_IMAGE=ghcr.io/fujitsupolycom/sparkring@sha256:f25cdb6bf7df85754ea5c62445b139dac3143bc6e910a0442d681b6e63c31c4b
 docker run --rm --gpus all --entrypoint nvidia-smi "$SPARKRING_IMAGE"
 ```
 

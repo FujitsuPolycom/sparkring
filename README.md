@@ -27,7 +27,7 @@ reproducible benchmarks, and [test results](performance/).
 ## Profiles
 
 KV is approximate total token capacity. The shared TP4 figure is for DCP1;
-the original-NVFP4 TP2 figure is a reference estimate. `—` means no capacity
+the TP2 figure is a reference estimate. `—` means no capacity
 is recorded. Startup reports the actual capacity, which is separate from the
 per-request Context limit.
 
@@ -39,7 +39,7 @@ per-request Context limit.
 | GLM-5.3 Flash NVFP4-Spark · MTP3 + SparkCache | [Shared SparkRing image](runtime/sparkring/source_image/README.md) | [Mesh + dual-domain NCCL](runtime/glm53-spark-mtp3-mesh/README.md) | TP4/DCP1 | 1M | 16 | ~2.3M | [Cache profile selection](docs/GLM53_TP4_PREFILL_QUICKSTART.md#verify-the-image-and-select-a-profile) |
 | GLM-5.3 Flash NVFP4-Spark · MTP3, switched | [Shared SparkRing image](runtime/sparkring/source_image/README.md) | Operator-selected NCCL links | TP4/DCP1 | 1M | 16 | — | [Switched quickstart](docs/GLM53_SWITCHED_TP4_QUICKSTART.md) |
 | GLM-5.2 EXL3 3.5-bpw | [SparkRing vLLM/ExLlamaV3 build](runtime/exl3-r7/README.md) | [SIRCL + NCCL](docs/SIRCL.md) | TP4/DCP4 | 1M | 16 | ~1.2M | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | [SparkRing vLLM/B12X image](runtime/deepseek0731-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 1M | 32 | — | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| DeepSeek-V4-Flash-0731 | [SparkRing vLLM/B12X image](runtime/deepseek0731-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 1M | 32 | ~1M | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | [SparkRing vLLM/ExLlamaV3 build](runtime/qwen38/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 1M | 64 | — | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
 | DeepSeek-V4-Flash-Vision-Exp with DSpark (research-only) | [Anemll image / MiaAI-Lab recipe](runtime/deepseek-vision-exp/profile.json) | [SparkRing patched NCCL](spark_transport/nccl/README.md) | TP4 | 1M | 48 | — | [Quickstart](docs/DEEPSEEK_V4_FLASH_VISION_EXP_TP4_QUICKSTART.md) |
 
@@ -59,16 +59,14 @@ Shared-image GLM ring deployment requires the [managed-mesh setup](runtime/glm53
 
 | Model / predictor | Serving stack | Transport | Layout | Context | Sequences | KV (tokens) | Guide |
 |---|---|---|---|---:|---:|---:|---|
-| **GLM-5.3 Flash original NVFP4 · native MTP3** | [Shared SparkRing image](runtime/sparkring/source_image/README.md) | [Adaptive RoCEnante + dual-domain NCCL](runtime/profiles/glm53-flash-nvfp4-tp2/README.md) | TP2/DCP1 | 256K | 8 | ~0.81M | [Quickstart](runtime/profiles/glm53-flash-nvfp4-tp2/README.md) |
-| GLM-5.3 Flash NVFP4-Spark · MTP3, 5 GiB KV | [Three-asset SparkRing package](runtime/sparkring/README.md) | [Patched NCCL](runtime/profiles/glm53-flash-spark-tp2/runtime.env.example) | TP2/DCP1 | 512K | 8 | — | [Alternative profile](docs/GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | [SparkRing vLLM/B12X image](runtime/deepseek0731-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP2/DCP1 | 1M | 32 | — | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| **GLM-5.3 Flash NVFP4-Spark · native MTP3** | [Shared SparkRing image](runtime/sparkring/source_image/README.md) | [Adaptive RoCEnante + dual-domain NCCL](runtime/profiles/glm53-flash-spark-tp2/README.md) | TP2/DCP1 | 256K | 8 | ~1M | [Quickstart](runtime/profiles/glm53-flash-spark-tp2/README.md) |
+| DeepSeek-V4-Flash-0731 | [SparkRing vLLM/B12X image](runtime/deepseek0731-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP2/DCP1 | 1M | 32 | ~1M | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | [SparkRing vLLM/ExLlamaV3 build](runtime/qwen38/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP2/DCP1 | 1M | 32 | — | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
 
-The original-NVFP4 shared-image pair uses 6.75 GiB KV per rank, one DAC and
-both host PCIe domains. Coalescing and mHC are enabled; SparkCache is
-unsupported for this TP2 composition. Shared-image GPU qualification remains
-**research-only**. The separate NVFP4-Spark pair uses 5 GiB KV per rank and has a
-[known video-color issue](https://github.com/FujitsuPolycom/sparkring/issues/229).
+The NVFP4-Spark pair uses 8.75 GiB KV per rank, one DAC, both host PCIe
+domains, coalescing and mHC. SparkCache is unsupported for this TP2 composition. Shared-image GPU
+qualification remains **research-only**. The NVFP4-Spark reference deployment
+reported 1,050,118 KV tokens; that is capacity, not a tested maximum workload.
 
 See the [profile index](docs/profiles/README.md) for evidence scopes and
 [SparkCache compositions](recipes/sparkcache/README.md) for persistent-cache
@@ -76,15 +74,20 @@ support.
 
 Qwen with SparkCache is unsupported; six-node profiles are research-only.
 
-### Retired TP4 GLM-5.3 profiles
+### Retired GLM-5.3 profiles
 
 These guides retain their pinned configurations and evidence for reproduction.
-For deployment with the shared image, use the four-Spark entries above.
+For deployment with the shared image, use the matching two- or four-Spark entry above.
 
 | Profile | Layout | Retained guide | Replacement |
 |---|---|---|---|
 | NVFP4-Spark MTP3 cache/checkpoint mesh | TP4/DCP4 | [Pinned cache/checkpoint setup](docs/GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md) | [Shared-image MTP3 profiles](docs/GLM53_TP4_PREFILL_QUICKSTART.md) |
 | NVFP4 with BF16 DFlash2 | TP4/DCP1, DCP2 or DCP4 | [Pinned DFlash2 setup](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) | [Shared-image native MTP3](docs/GLM53_TP4_PREFILL_QUICKSTART.md) |
+| NVFP4-Spark MTP3 with 5 GiB KV per rank | TP2/DCP1 | [Pinned TP2 setup](https://github.com/FujitsuPolycom/sparkring/blob/2f01b6ee8f6173745c4b6b165498bbef82fc03f1/docs/GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md) | [Shared-image NVFP4-Spark TP2](runtime/profiles/glm53-flash-spark-tp2/README.md) |
+| Original NVFP4 MTP3 with 6.75 GiB KV per rank | TP2/DCP1 | [Pinned original-NVFP4 setup](https://github.com/FujitsuPolycom/sparkring/blob/2f01b6ee8f6173745c4b6b165498bbef82fc03f1/runtime/profiles/glm53-flash-nvfp4-tp2/README.md) | [Shared-image NVFP4-Spark TP2](runtime/profiles/glm53-flash-spark-tp2/README.md) |
+
+The retired 5 GiB TP2 configuration has a recorded
+[blue-video recognition issue](https://github.com/FujitsuPolycom/sparkring/issues/229).
 
 DFlash2 uses a separate draft checkpoint with
 [CC BY-NC-ND 4.0 terms](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2#license).

@@ -12,7 +12,7 @@ was 6.75 GiB per node. Context was 262144, maximum sequences eight, batch
 8192, and prefill interval eight. Graph capture maximum was 32. SparkCache
 was disabled and both host-memory guards used a 2 GiB floor.
 
-The [source dependency record](../../../runtime/profiles/glm53-flash-nvfp4-tp2/dependencies.json)
+The [source dependency record](https://github.com/FujitsuPolycom/sparkring/blob/2f01b6ee8f6173745c4b6b165498bbef82fc03f1/runtime/profiles/glm53-flash-nvfp4-tp2/dependencies.json)
 pins the exact source archives and both rank image IDs. The image IDs differ;
 checked source hashes matched. The RoCEnante package is source commit
 `60d8d68486540ce9ddb2702dd545fda6b347c087`. NCCL 2.30.4 used eight channels.

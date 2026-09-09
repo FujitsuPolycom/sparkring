@@ -9,7 +9,7 @@ import time
 import urllib.request
 import zlib
 
-MODEL = 'glm-5.3-flash-spark-pr646'
+MODEL = 'GLM-5.3-Flash-NVFP4-Spark'
 
 
 def text_payload(index):
@@ -44,10 +44,12 @@ def png_blue():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--base', default='http://127.0.0.1:8016')
+    parser.add_argument('--base', default='http://127.0.0.1:8000')
     parser.add_argument('--phase', choices=('text', 'long-prompt', 'image', 'video'), required=True)
     parser.add_argument('--video-file', help='MP4 depicting a solid blue field; checks video decoding and color recognition')
     args = parser.parse_args()
+    if args.phase == 'video':
+        parser.error('The shared-image TP2 profile disables video input')
     base = args.base.rstrip('/')
     if args.phase == 'text':
         barrier = threading.Barrier(8)
@@ -62,7 +64,7 @@ def main():
         print(json.dumps({'phase': args.phase, 'results': records}), flush=True)
         assert all(r['pass'] for r in records), 'Text marker failure'
     elif args.phase == 'long-prompt':
-        prompt = 'Quickstart persistent cache test. The verification code is amber-73091.\n' + 'The archive contains records of buildings, gardens and bridges.\n' * 700
+        prompt = 'Long-prompt recall check. The verification code is amber-73091.\n' + 'The archive contains records of buildings, gardens and bridges.\n' * 700
         prompt += '\nWhat is the verification code at the beginning?\nAnswer:'
         start = time.monotonic()
         body = post(base, '/v1/completions', {'model': MODEL, 'prompt': prompt, 'temperature': 0, 'max_tokens': 32})

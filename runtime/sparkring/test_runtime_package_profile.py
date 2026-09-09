@@ -13,18 +13,18 @@ class RuntimePackageProfileTests(unittest.TestCase):
         def value(flag):
             return args[args.index(flag) + 1]
         self.assertEqual(value('--max-num-batched-tokens'), '8192')
-        self.assertEqual(value('--prefill-schedule-interval'), '2')
-        self.assertEqual(value('--kv-cache-memory-bytes'), '5368709120')
+        self.assertEqual(value('--prefill-schedule-interval'), '8')
+        self.assertEqual(value('--kv-cache-memory-bytes'), '9395240960')
         self.assertEqual(value('--max-num-seqs'), '8')
         self.assertEqual(value('--master-addr'), '${MASTER_ADDR}')
-        self.assertEqual(profile['status'], 'research-only')
+        self.assertEqual(profile['status'], 'implemented')
         self.assertNotIn('192.168.', source)
-        cache = json.loads(value('--kv-transfer-config'))
-        self.assertEqual(cache['kv_load_failure_policy'], 'recompute')
-        self.assertTrue(cache['kv_connector_extra_config']['spark_cache_cuda_restore'])
-        manifest = json.loads((root / 'sparkring/manifest.json').read_text())
-        self.assertIsNone(manifest['registry_digest'])
-        self.assertTrue(manifest['publication_blockers'])
+        self.assertNotIn('--kv-transfer-config', args)
+        self.assertFalse(profile['sparkcache']['enabled'])
+        self.assertEqual(json.loads(value('--model-loader-extra-config')), {'allocation': 'managed'})
+        lock = json.loads((root / 'sparkring/source_image/glm53-tp4-lock.json').read_text())
+        self.assertIn(profile['name'], lock['profiles'])
+        self.assertFalse(lock['qualification']['profile_gpu_qualified'][profile['name']])
 
     def test_publication_and_sbom_are_content_bound(self):
         import gzip

@@ -57,7 +57,7 @@ python runtime/sparkring/source_image/prepare_image.py \
   --source-cache "$PWD/.private/glm-tp4-sources" \
   --native-files /tmp/native-runtime-files-20260908.tar
 
-SPARKRING_IMAGE=ghcr.io/fujitsupolycom/sparkring@sha256:86516f319b505e94686e0ba59200f91dda4b65599b08b3508c931c1e4e42b2a6
+SPARKRING_IMAGE=ghcr.io/fujitsupolycom/sparkring@sha256:f25cdb6bf7df85754ea5c62445b139dac3143bc6e910a0442d681b6e63c31c4b
 docker pull "$SPARKRING_IMAGE"
 docker pull ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:11a556a54041fd823d152a7f051ac4f7c617dc539030df26e93008392fee0746
 ```
