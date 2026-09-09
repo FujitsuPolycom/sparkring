@@ -123,6 +123,16 @@ def replace_package(site, name, source_root, expected, retained):
         target.chmod(original.stat().st_mode & 0o777)
 
 
+def normalize_installed_times(paths, epoch, retained):
+    """Normalize owned outputs without copying unchanged parent files into a layer."""
+    retained = {path.resolve() for path in retained}
+    for path in sorted(paths, key=lambda p: len(p.parts), reverse=True):
+        if path.resolve() in retained:
+            continue
+        if path.exists() and not path.is_symlink():
+            os.utime(path, (epoch, epoch))
+
+
 def finalize(root=ROOT, rootfs=Path("/")):
     manifest = read_manifest(root)
     state = json.loads((root / "base-state.json").read_bytes())
@@ -226,9 +236,8 @@ def finalize(root=ROOT, rootfs=Path("/")):
     if startup is not None:
         paths.add(host_path(rootfs, "/opt/sparkring/bin"))
     paths.update((site, root.parent, host_path(rootfs, "/usr/local/bin")))
-    for path in sorted(paths, key=lambda p: len(p.parts), reverse=True):
-        if path.exists() and not path.is_symlink():
-            os.utime(path, (manifest["source_date_epoch"],) * 2)
+    retained_paths = {under(site, name) for name in state["retained_files"]}
+    normalize_installed_times(paths, manifest["source_date_epoch"], retained_paths)
     return state
 
 
