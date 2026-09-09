@@ -31,6 +31,106 @@ SAMPLING_CASES = (
 )
 
 
+def _sampling_stream_result(response, deadline: float, max_tokens: int) -> dict:
+    """Require one finished choice, final usage and a complete SSE terminator."""
+    finish_reason = None
+    usage = None
+    request_id = None
+    done = False
+    data_lines = []
+    event_type = ""
+    byte_count = 0
+    while True:
+        warmup_dflash.remaining_seconds(deadline)
+        raw = response.readline(65537)
+        warmup_dflash.remaining_seconds(deadline)
+        byte_count += len(raw)
+        if len(raw) > 65536 or byte_count > 4 * 1024 * 1024:
+            raise RuntimeError("Sampling warmup stream exceeds its response bound")
+        if not raw:
+            if data_lines or not done:
+                raise RuntimeError("Sampling warmup stream ended before [DONE]")
+            return {**usage, "finish_reason": finish_reason}
+        try:
+            line = raw.decode("utf-8").rstrip("\r\n")
+        except UnicodeDecodeError as error:
+            raise RuntimeError("Sampling warmup stream is not UTF-8") from error
+        if line.startswith(":"):
+            continue
+        if line:
+            field, _, value = line.partition(":")
+            value = value.removeprefix(" ")
+            if field == "data":
+                data_lines.append(value)
+            elif field == "event":
+                event_type = value
+            continue
+        if event_type == "error":
+            raise RuntimeError("Sampling warmup stream reported an error event")
+        event_type = ""
+        if not data_lines:
+            continue
+        payload = "\n".join(data_lines)
+        data_lines = []
+        if done:
+            raise RuntimeError("Sampling warmup stream contains data after [DONE]")
+        if payload == "[DONE]":
+            if finish_reason is None or usage is None:
+                raise RuntimeError("Sampling warmup stream has no completed choice and usage")
+            done = True
+            continue
+        try:
+            chunk = json.loads(payload)
+        except json.JSONDecodeError as error:
+            raise RuntimeError("Sampling warmup stream contains invalid JSON") from error
+        if not isinstance(chunk, dict) or "error" in chunk:
+            raise RuntimeError("Sampling warmup stream reported an error or invalid chunk")
+        if (
+            chunk.get("object") != "chat.completion.chunk"
+            or not isinstance(chunk.get("id"), str) or not chunk["id"]
+        ):
+            raise RuntimeError("Sampling warmup stream has invalid completion identity")
+        if request_id is None:
+            request_id = chunk["id"]
+        elif request_id != chunk["id"]:
+            raise RuntimeError("Sampling warmup stream changed completion identity")
+        choices = chunk.get("choices")
+        if choices == []:
+            if finish_reason is None or usage is not None:
+                raise RuntimeError("Sampling warmup stream has misplaced or duplicate usage")
+            usage = chunk.get("usage")
+            if not isinstance(usage, dict):
+                raise RuntimeError("Sampling warmup stream has no final usage")
+            completion_tokens = usage.get("completion_tokens")
+            if type(completion_tokens) is not int or completion_tokens <= 0:
+                raise RuntimeError("Sampling warmup generated no tokens")
+            prompt_tokens, total_tokens = usage.get("prompt_tokens"), usage.get("total_tokens")
+            if (
+                type(prompt_tokens) is not int or prompt_tokens <= 0
+                or type(total_tokens) is not int
+                or total_tokens != prompt_tokens + completion_tokens
+                or completion_tokens > max_tokens
+            ):
+                raise RuntimeError("Sampling warmup stream has inconsistent token usage")
+            usage = {key: usage[key] for key in (
+                "prompt_tokens", "completion_tokens", "total_tokens")}
+            continue
+        if (
+            finish_reason is not None or usage is not None
+            or not isinstance(choices, list) or len(choices) != 1
+            or not isinstance(choices[0], dict)
+            or type(choices[0].get("index")) is not int or choices[0]["index"] != 0
+            or not isinstance(choices[0].get("delta"), dict)
+            or chunk.get("usage") is not None
+        ):
+            raise RuntimeError("Sampling warmup stream does not contain one ordered choice")
+        reason = choices[0].get("finish_reason")
+        if reason is not None:
+            if reason not in ("stop", "length"):
+                raise RuntimeError("Sampling warmup stream has an unsuccessful finish reason")
+            finish_reason = reason
+
+
 def warmup_sampling(
     endpoint: str,
     model: str,
@@ -59,6 +159,9 @@ def warmup_sampling(
             "top_k": top_k,
             "top_p": top_p,
             "min_p": 0.0,
+            "n": 1,
+            "stream": True,
+            "stream_options": {"include_usage": True, "continuous_usage_stats": False},
             "max_tokens": max_tokens,
             "chat_template_kwargs": {"enable_thinking": True},
         }
@@ -72,26 +175,13 @@ def warmup_sampling(
         with urllib.request.urlopen(
             request, timeout=warmup_dflash.remaining_seconds(deadline)
         ) as response:
-            result = json.load(response)
-        choices = result.get("choices") if isinstance(result, dict) else None
-        if not isinstance(choices, list) or not choices:
-            raise RuntimeError(f"Sampling warmup response has no completion: {name}")
-        if (
-            len(choices) != 1
-            or not isinstance(choices[0], dict)
-            or not isinstance(choices[0].get("message"), dict)
-            or choices[0].get("finish_reason") not in ("stop", "length")
-        ):
-            raise RuntimeError(f"Sampling warmup response is not one completed choice: {name}")
-        usage = result.get("usage")
-        completion_tokens = usage.get("completion_tokens") if isinstance(usage, dict) else None
-        if type(completion_tokens) is not int or completion_tokens <= 0:
-            raise RuntimeError(f"Sampling warmup generated no tokens: {name}")
+            if response.status != 200 or response.headers.get_content_type() != "text/event-stream":
+                raise RuntimeError(f"Sampling warmup did not return an SSE response: {name}")
+            result = _sampling_stream_result(response, deadline, max_tokens)
         warmup_dflash.remaining_seconds(deadline)
         cases.append({
             "name": name, "temperature": temperature, "top_k": top_k,
-            "top_p": top_p, "seed": seed, "completion_tokens": completion_tokens,
-            "finish_reason": choices[0]["finish_reason"],
+            "top_p": top_p, "seed": seed, **result,
             "elapsed_seconds": round(time.monotonic() - case_started, 3),
         })
     return {
@@ -99,6 +189,7 @@ def warmup_sampling(
         "coverage": "request-recipe-complete",
         "jit_coverage_verified": False,
         "enable_thinking": True,
+        "stream": True,
         "cases": cases,
         "elapsed_seconds": round(time.monotonic() - started, 3),
     }
