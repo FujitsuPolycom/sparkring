@@ -203,7 +203,7 @@ profile. Keep the canonical public image receipt unchanged. Follow
 `runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md` for host lifecycle and startup
 ownership; replacing a running model remains a separate deployment action.
 
-Use the [TP4 prefill quickstart](../../../docs/GLM53_TP4_PREFILL_QUICKSTART.md)
+Use the [four-Spark GLM quickstart](../../../docs/GLM53_TP4_PREFILL_QUICKSTART.md)
 for DCP1 or DCP4. To enable the bounded cache configuration, verify and select
 `tp4-dcp1-mtp3-sparkcache` in both the receipt and private mesh site.
 The [original-NVFP4 TP2 guide](../../profiles/glm53-flash-nvfp4-tp2/README.md)
