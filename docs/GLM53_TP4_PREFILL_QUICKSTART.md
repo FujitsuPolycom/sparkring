@@ -46,6 +46,11 @@ Run the build and verification commands on an ARM64 Docker host with Python
 resulting image to rank 0 with Docker save/load before staging. Allow disk space
 for the source, compiler outputs, image archive, loaded image and model.
 
+The default common source lock and frozen startup files match the published
+image used below. The streaming startup warmup that also covers two concurrent
+filtered requests requires a separate matching image build; it is not part of
+this published image.
+
 From the SparkRing checkout, choose initially absent writable directories:
 
 ```bash

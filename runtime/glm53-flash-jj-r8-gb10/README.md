@@ -355,8 +355,14 @@ CUDA control arrays, compilation and transport buffers, and allocator overhead.
 The report lists KV separately. A passing offline plan does not qualify a CUDA
 allocation or a serving performance result.
 
-When `DFLASH_WARMUP=1`, the readiness entrypoint runs `warmup_dflash.py` before
-Docker reports rank 0 as healthy. Source builds then run six explicit streaming
+The [published shared image](../sparkring/source_image/publication.json) uses
+its own frozen startup component with six nonstreaming single-request (C1) sampler cases.
+The canonical helper described below implements streaming and concurrent
+filter coverage; adopting it in the shared image requires a matching source
+recipe, image build and verification receipt.
+
+When `DFLASH_WARMUP=1`, the canonical readiness entrypoint runs `warmup_dflash.py`
+before Docker reports rank 0 as healthy, followed by six explicit streaming
 sampler requests through `serve_with_warmup.py`, each with thinking enabled and
 `min_p=0`:
 
