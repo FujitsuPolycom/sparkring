@@ -47,6 +47,7 @@ mHC. Ring profiles use hardware-forwarded mesh paths and NCCL across both host
 PCIe domains. Their source integration is **implemented**; full shared-image
 serving qualification remains **research-only**. Switched deployments are
 provided as-is and have not been validated on switched hardware.
+Ring deployment requires the [managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
 
 ### Two Sparks
 
@@ -65,7 +66,9 @@ unsupported for this TP2 composition. Shared-image GPU qualification remains
 
 See the [profile index](docs/profiles/README.md) for evidence scopes and
 [SparkCache compositions](recipes/sparkcache/README.md) for persistent-cache
-support. Qwen with SparkCache is unsupported; six-node profiles are research-only.
+support.
+
+Qwen with SparkCache is unsupported; six-node profiles are research-only.
 
 ### Retired TP4 GLM-5.3 profiles
 
