@@ -91,6 +91,8 @@ DFlash2 uses a separate draft checkpoint with
 Use the exact digest in the selected quickstart. Images sharing a package
 name are not interchangeable; a model-neutral name does not qualify every profile.
 Retired profiles retain their image references in their linked guides.
+The [shared-image publication record](runtime/sparkring/source_image/publication.json)
+contains the download digest and profile verification scope.
 
 ## Benchmark results
 

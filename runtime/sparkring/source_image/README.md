@@ -2,9 +2,9 @@
 
 **Status: research-only.** Source preparation, profile selection, and CPU
 verification are implemented. This recipe prepares one ARM64 image for the
-listed GLM TP2 and TP4 profiles, including optional SparkCache. Building and
-testing that shared image remains required; results from the reference
-deployments do not qualify it.
+listed GLM TP2 and TP4 profiles, including optional SparkCache. The image is
+published with five passing CPU profile receipts. Full GPU serving tests
+remain required; results from reference deployments do not qualify it.
 
 The ring profiles use the existing native-MTP3 mesh deployment, including
 site rendering, ASIC forwarding, authenticated marker ownership and the
@@ -115,6 +115,31 @@ inactive unless the selected profile enables it.
 The container path `/opt/sparkcache-jj-runtime` and its manifest schema names
 are retained compatibility interfaces for source installation and verification.
 They do not enable SparkCache serving.
+
+## Download the published image
+
+The [publication record](publication.json) binds the generic `sparkring`
+repository, immutable image digest, source lock and five CPU profile checks.
+Status: **research-only**; these checks do not establish GPU serving results.
+
+```bash
+SPARKRING_IMAGE=ghcr.io/fujitsupolycom/sparkring@sha256:86516f319b505e94686e0ba59200f91dda4b65599b08b3508c931c1e4e42b2a6
+docker pull "$SPARKRING_IMAGE"
+```
+
+Prepare the matching context with the pinned native files below, then run the
+image verifier with `--image "$SPARKRING_IMAGE"`. Preparation fetches source
+inputs and creates verification artifacts; a downloaded image does not require
+`docker build`. The verifier also inspects the declared parent image locally:
+
+```bash
+docker pull ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:11a556a54041fd823d152a7f051ac4f7c617dc539030df26e93008392fee0746
+```
+
+Use a checkout whose source lock matches `source_lock_sha256` in the
+publication record. The verifier rejects mismatched source or profile assets.
+The publication record is distribution evidence; use the generated profile
+receipt for launch admission.
 
 ## Use pinned native files
 
