@@ -78,6 +78,19 @@ and plan, then follow the managed guide's create-only container, installation,
 and coordinated startup steps with this launch directory and verified receipt.
 Do not use direct `docker start` to bypass the memory and four-rank gates.
 
+## Source-build liveness differences
+
+The immutable image above retains its packaged scheduler-liveness implementation.
+Source builds install and attest the liveness module alongside the serving wrapper;
+see [liveness packaging and timeout policy](../runtime/glm53-spark-mtp3-mesh/performance/README.md#scheduler-liveness-packaging-and-timeout-policy).
+That source-build module enables an output-stall rule with a 300-second default.
+Long prefills can exceed this interval. Set the private site
+`liveness_output_seconds` field to an appropriate integer timeout and regenerate
+launch inputs before using its HTTP 503 response for router removal or automatic
+recovery. Omitting the field retains 300 seconds; the override cannot add the
+rule to an image that lacks it.
+This is a source-build behavior change, not an update to the published image.
+
 ## Runtime behavior and limits
 
 SparkCache revision `48bbd2be4a7b972e56632a2d7b934bac5460f272` provides bounded

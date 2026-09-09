@@ -401,3 +401,74 @@ def test_invalid_image_receipt_creates_no_rendered_output(tmp_path, manifest_bun
     with pytest.raises(ValueError, match="Image receipt"):
         mesh_profile.render(_site(tmp_path), manifest_bundle, output, path)
     assert not output.exists()
+
+
+def _site_with_api_keys(tmp_path, value="/srv/sparkring/private/api-keys"):
+    path = _site(tmp_path)
+    data = json.loads(path.read_text())
+    data["api_keys_file"] = value
+    path.write_text(json.dumps(data))
+    return path
+
+
+def test_site_accepts_absolute_api_keys_file(tmp_path):
+    site, _, _ = mesh_profile.load_site(_site_with_api_keys(tmp_path))
+    assert site["api_keys_file"] == "/srv/sparkring/private/api-keys"
+
+
+@pytest.mark.parametrize("value", ["relative/keys", "/srv/../etc/keys", "/srv/a:b", "/srv/a\nexec", "/"])
+def test_site_rejects_unsafe_api_keys_file(tmp_path, value):
+    with pytest.raises(ValueError):
+        mesh_profile.load_site(_site_with_api_keys(tmp_path, value))
+
+
+def test_render_omits_api_keys_file_when_site_is_silent(tmp_path, manifest_bundle):
+    output = tmp_path / "rendered-default"
+    mesh_profile.render(_site(tmp_path), manifest_bundle, output)
+    for rank in range(4):
+        assert "API_KEYS_FILE" not in mesh_profile.defaults(output / f"rank{rank}.env")
+
+
+def test_render_propagates_api_keys_file_to_every_rank(tmp_path, manifest_bundle):
+    path = _site_with_api_keys(tmp_path)
+    output = tmp_path / "rendered-keys"
+    mesh_profile.render(path, manifest_bundle, output)
+    for rank in range(4):
+        values = mesh_profile.defaults(output / f"rank{rank}.env")
+        assert values["API_KEYS_FILE"] == "/srv/sparkring/private/api-keys"
+    mesh_profile.load_site(output / "site.json")
+
+
+@pytest.mark.parametrize("value", [True, False, None, 0, -1, 0.5, 900.0, "900", float("nan"), float("inf"), 2147483648])
+def test_site_rejects_invalid_liveness_output_seconds(tmp_path, value):
+    path = _site(tmp_path)
+    data = json.loads(path.read_text())
+    data["liveness_output_seconds"] = value
+    path.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="liveness_output_seconds"):
+        mesh_profile.load_site(path)
+
+
+def test_liveness_override_preserves_default_and_canonical_regeneration(tmp_path, manifest_bundle):
+    path = _site(tmp_path)
+    default = tmp_path / "default"
+    mesh_profile.render(path, manifest_bundle, default)
+    data = json.loads(path.read_text())
+    data["liveness_output_seconds"] = 900
+    data["api_keys_file"] = "/srv/sparkring/private/api-keys"
+    path.write_text(json.dumps(data))
+    selected = tmp_path / "selected"
+    repeated = tmp_path / "repeated"
+    mesh_profile.render(path, manifest_bundle, selected)
+    mesh_profile.render(selected / "site.json", manifest_bundle, repeated)
+    for rank in range(4):
+        name = f"rank{rank}.env"
+        baseline = mesh_profile.defaults(default / name)
+        actual = mesh_profile.defaults(selected / name)
+        assert baseline["SPARKRING_LIVENESS_OUTPUT_SECONDS"] == "300"
+        assert actual["SPARKRING_LIVENESS_OUTPUT_SECONDS"] == "900"
+        assert actual["API_KEYS_FILE"] == data["api_keys_file"]
+        assert (selected / name).read_bytes() == (repeated / name).read_bytes()
+        del actual["API_KEYS_FILE"]
+        actual["SPARKRING_LIVENESS_OUTPUT_SECONDS"] = "300"
+        assert actual == baseline

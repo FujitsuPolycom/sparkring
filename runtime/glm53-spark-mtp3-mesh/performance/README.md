@@ -80,7 +80,54 @@ header before forwarding a request. A loopback address alone does not bypass
 the gate. The token changes at every startup, and stopping the wrapper removes
 the marker. Failed warmup keeps public inference blocked.
 
-The build context includes the wrapper, warmup client, and admission module;
-the image receipt verifies all three files. Published image receipts describe
+The build context includes the wrapper, warmup client, admission module, and
+scheduler-liveness module; the image receipt verifies all four files. Published image receipts describe
 immutable artifacts and do not claim this behavior until an image containing
 these sources has been built and recorded.
+
+## Scheduler-liveness packaging and timeout policy
+
+Status: **implemented** with CPU packaging and interface tests. Source builds
+install `scheduler_liveness.py` beside the serving wrapper instead of inheriting
+that module from the parent image. The installed-file inventory records its
+SHA-256. This change does not modify a published image or qualify a deployment.
+
+The module preserves the raw output-counter gap in `output_stalled_seconds`
+and tracks inactivity separately in `progress_stalled_seconds`. While requests
+run, output-counter movement, a higher KV allocation maximum, or a higher
+optional prompt-token counter maximum resets inactivity. The maxima belong to
+the interval without output, so falling allocation, allocation oscillation,
+and request-count changes do not repeatedly renew the timer. The
+`sparkring-scheduler-liveness/v1` payload returns HTTP 503 with
+`reason=engine_output_stall` when inactivity reaches the configured timeout.
+Allocation is an activity proxy, not a GPU heartbeat. Fully preallocated work
+or an operation without observable intermediate progress can still exceed it.
+
+**The source-build rule defaults to 300 seconds.** Legitimate long-context
+work can exceed that interval. Installing this module enables a rule absent
+from the published cache/checkpoint image identified by config ID
+`sha256:6921a6c163ea40b603e19a0332330efe3dbccbf4dce9f6cbbf6b756c9231835a`.
+Do not assume that image's observed liveness behavior transfers to a rebuild.
+
+Before enabling router removal or automated recovery from `/liveness`, select
+`SPARKRING_LIVENESS_OUTPUT_SECONDS` above the longest measured legitimate
+interval without observable progress, including prefill, restore, concurrency,
+and a stated margin.
+For managed deployments, set the optional site field `liveness_output_seconds`
+to the chosen integer seconds, then regenerate launch inputs and recreate the
+containers through the managed lifecycle. For example, `900` is an explicit
+operator selection, not a universal recommended timeout. The accepted range
+is 1 through 2,147,483,647 seconds so the value remains representable by the
+launcher's integer checks; booleans, floating-point values, and strings are
+rejected. Omitting the field retains the existing 300-second default.
+
+The mesh renderer emits `SPARKRING_LIVENESS_OUTPUT_SECONDS` on every rank.
+The shared launcher passes it into the container, and the wrapper passes it
+to the liveness service. Inspect the effective container environment and the
+module's output-stall fields before activating a liveness consumer. An inherited
+module that lacks the rule will not gain it merely from an environment override.
+
+This packaging change keeps the existing timeout policy. A workload-aware
+progress signal remains separate work. CPU
+tests demonstrate that frozen output with growing KV occupancy still triggers
+the configured timeout; they do not establish a safe universal timeout.

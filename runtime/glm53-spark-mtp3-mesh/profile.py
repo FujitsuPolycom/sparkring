@@ -65,9 +65,11 @@ def absolute(value: object, label: str) -> str:
 
 def load_site(path: Path):
     data = json.loads(path.read_text())
-    expected = {"schema", "topology_file", "management_addresses", "model_roots", "cache_roots",
+    required = {"schema", "topology_file", "management_addresses", "model_roots", "cache_roots",
                 "bundle_root", "container_prefix", "marker_binary", "marker_binary_sha256", "state_root"}
-    if set(data) != expected or data["schema"] != "sparkring-glm53-mtp3-mesh-site/v1":
+    optional = {"api_keys_file", "liveness_output_seconds"}
+    if (not required <= set(data) <= required | optional
+            or data["schema"] != "sparkring-glm53-mtp3-mesh-site/v1"):
         raise ValueError("Site fields do not match sparkring-glm53-mtp3-mesh-site/v1")
     for name in ("management_addresses", "model_roots", "cache_roots"):
         if not isinstance(data[name], list) or len(data[name]) != 4:
@@ -84,6 +86,12 @@ def load_site(path: Path):
             absolute(value, key)
     for key in ("bundle_root", "marker_binary", "state_root"):
         absolute(data[key], key)
+    if "api_keys_file" in data:
+        absolute(data["api_keys_file"], "api_keys_file")
+    if "liveness_output_seconds" in data:
+        timeout = data["liveness_output_seconds"]
+        if type(timeout) is not int or not 0 < timeout <= 2147483647:
+            raise ValueError("liveness_output_seconds must be an integer from 1 to 2147483647")
     topology_path = path.parent / data["topology_file"]
     topology = fabric.load_topology(topology_path)
     for node in topology.ranks:
@@ -197,6 +205,10 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
         "MASTER_ADDR": site["management_addresses"][0], "DFLASH_WARMUP": "1",
         "SPARKRING_WARMUP_TEMPERATURE": "0",
     })
+    if "liveness_output_seconds" in site:
+        values["SPARKRING_LIVENESS_OUTPUT_SECONDS"] = str(site["liveness_output_seconds"])
+    if site.get("api_keys_file"):
+        values["API_KEYS_FILE"] = site["api_keys_file"]
     if image_record is not None:
         values["IMAGE_ID"] = image_record["image_id"]
         values["IMAGE_REF"] = image_record["image_reference"]
