@@ -41,8 +41,9 @@ identifies the Anemll image, MiaAI-Lab recipe, and SparkRing transport separatel
 Contributor-reported results are linked from the guide; independent reproduction
 of the selected artifacts is not claimed.
 
-The four-Spark GLM-5.3 native-MTP3 profile uses hardware-forwarded mesh paths and requires
-[managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
+The four-Spark GLM-5.3 native-MTP3 profile uses hardware-forwarded mesh paths
+and requires [managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
+
 DFlash2 profiles use a separate draft checkpoint with
 [CC BY-NC-ND 4.0 terms](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2#license).
 
@@ -59,7 +60,9 @@ The GLM-5.3 pair is **research-only**, uses 5 GiB KV per rank, and has a
 
 See the [profile index](docs/profiles/README.md) for evidence scopes and
 [SparkCache compositions](recipes/sparkcache/README.md) for persistent-cache
-support. Qwen with SparkCache is unsupported; six-node profiles are research-only.
+support.
+
+Qwen with SparkCache is unsupported; six-node profiles are research-only.
 
 ## Container images
 
