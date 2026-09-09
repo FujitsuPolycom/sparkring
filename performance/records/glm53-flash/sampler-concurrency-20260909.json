@@ -1,0 +1,898 @@
+{
+  "schema": "sparkring-sampler-concurrency-observation/v1",
+  "status": "research-only",
+  "date": "2026-09-09",
+  "conditions": {
+    "model_target": {
+      "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+      "revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e"
+    },
+    "image_id": "sha256:db4053abcf1c82ce2da5633abd672abcaa32ca77eef5b03d567b1fa24a04b671",
+    "image_reference_scope": "Local immutable image config digest; no registry availability claim.",
+    "hardware": "Four NVIDIA DGX Spark GB10 systems",
+    "tensor_parallel_size": 4,
+    "decode_context_parallel_size": 1,
+    "speculation": "native MTP3",
+    "model_runner": "V2",
+    "load_format": "instanttensor",
+    "cache_state": "Already-ready process and existing JIT namespace; disk-cache coldness was not controlled.",
+    "source_revisions": {
+      "vllm": "1556c3587ee84cc3c91848893d5079d0a7ff6271",
+      "b12x": "2883a5df65a7ea3cb6e82abb63d1448dd3154887",
+      "sparkcache": "d0cf7296062ec8b4d17d65cd05a416d509e80bd8"
+    },
+    "vllm_base_revision": "2a979314dc97b03173a0a76fc15664ec924db32b",
+    "vllm_patch_sha256": "611c10b3eae3ef1a082e83e24eeada1fc95a989e08dcfdf3f790de77dabc8d32"
+  },
+  "source_capture": {
+    "scope": "Rank-zero installed source; common image identified above.",
+    "source_lock_sha256": "bec7cbcf11a2f1e293fc2be6f263e314fab5198f2c7d8c160d85415c36ea2d5d",
+    "files": {
+      "vllm/v1/worker/gpu/sample/sampler.py": {
+        "sha256": "408b08c4ac66de271f476460490f360ef2a9b73528a346d132a22326e1674369",
+        "bytes": 13049
+      },
+      "vllm/v1/worker/gpu/sample/states.py": {
+        "sha256": "4e3671f93695ba5a48fad7d2d13beb231ac8741034904ed5a15d9f7b9b86662e",
+        "bytes": 4826
+      },
+      "vllm/v1/worker/gpu/spec_decode/rejection_sampler.py": {
+        "sha256": "e20adc9b6c8a62a5be232bae15a1e361e898142966a68ea3ef244b39ffc5ce44",
+        "bytes": 11346
+      },
+      "vllm/v1/sample/ops/topk_topp_sampler.py": {
+        "sha256": "12ae8e19add5a6ed89ba19c2e306db5d9836bc3aa704352252519eb048825458",
+        "bytes": 22701
+      },
+      "vllm/v1/sample/ops/topk_topp_triton.py": {
+        "sha256": "255619f699898ddaaac959d9bef4494294c76d730abb8e90549afac83a9bcbe9",
+        "bytes": 46311
+      },
+      "vllm/utils/jit_monitor.py": {
+        "sha256": "8ba1c1e02472382e986aba2ab583e33c071038d5d24d9ee811f2cfac4555dc98",
+        "bytes": 17851
+      }
+    }
+  },
+  "measurement": {
+    "sampler_validator_commit": "9a3d7e416a5502eac1462aa3c2cf30dca53094ba",
+    "sampler_validator_sha256": "83782b4f9a68eae80aea595e7a996179de6a3379f7240a7f359d6acdc352093c",
+    "concurrent_orchestrator_sha256": "623dbb996d4a575f6448bd190e9b25a949130d23e16bde35465e84893b19a7e2",
+    "clock": "Client time.monotonic seconds for original paired sweeps; paired HTTP overlap = minimum end minus maximum start.",
+    "jit_monitor_verbose": false,
+    "warning_deduplication": true,
+    "warning_scope": "Count observed _topk_topp_kernel warning lines on each rank, not compile events or kernel launches.",
+    "c1_precondition": {
+      "schema": "sparkring-sampler-warmup/v1",
+      "coverage": "request-recipe-complete",
+      "jit_coverage_verified": false,
+      "enable_thinking": true,
+      "stream": true,
+      "cases": [
+        {
+          "name": "unfiltered",
+          "temperature": 1.0,
+          "top_k": -1,
+          "top_p": 1.0,
+          "seed": null,
+          "prompt_tokens": 29,
+          "completion_tokens": 32,
+          "total_tokens": 61,
+          "finish_reason": "length",
+          "elapsed_seconds": 0.61
+        },
+        {
+          "name": "temperature",
+          "temperature": 0.7,
+          "top_k": -1,
+          "top_p": 1.0,
+          "seed": null,
+          "prompt_tokens": 28,
+          "completion_tokens": 32,
+          "total_tokens": 60,
+          "finish_reason": "length",
+          "elapsed_seconds": 0.578
+        },
+        {
+          "name": "top-k",
+          "temperature": 1.0,
+          "top_k": 40,
+          "top_p": 1.0,
+          "seed": null,
+          "prompt_tokens": 28,
+          "completion_tokens": 32,
+          "total_tokens": 60,
+          "finish_reason": "length",
+          "elapsed_seconds": 0.703
+        },
+        {
+          "name": "top-p",
+          "temperature": 1.0,
+          "top_k": -1,
+          "top_p": 0.9,
+          "seed": null,
+          "prompt_tokens": 29,
+          "completion_tokens": 32,
+          "total_tokens": 61,
+          "finish_reason": "length",
+          "elapsed_seconds": 0.672
+        },
+        {
+          "name": "top-k-top-p",
+          "temperature": 1.0,
+          "top_k": 40,
+          "top_p": 0.9,
+          "seed": null,
+          "prompt_tokens": 31,
+          "completion_tokens": 32,
+          "total_tokens": 63,
+          "finish_reason": "length",
+          "elapsed_seconds": 0.609
+        },
+        {
+          "name": "seeded-top-k-top-p",
+          "temperature": 0.7,
+          "top_k": 40,
+          "top_p": 0.9,
+          "seed": 0,
+          "prompt_tokens": 32,
+          "completion_tokens": 32,
+          "total_tokens": 64,
+          "finish_reason": "length",
+          "elapsed_seconds": 0.657
+        }
+      ],
+      "elapsed_seconds": 3.829
+    },
+    "paired_sweeps": [
+      {
+        "sweep": 0,
+        "cases": [
+          {
+            "name": "top-k",
+            "http_overlap_seconds": 4.155999999988126,
+            "requests": [
+              {
+                "index": 0,
+                "body": {
+                  "model": "glm-5.3-flash-spark",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "1788982458011363700 top-k 0: Describe a garden in detail."
+                    }
+                  ],
+                  "temperature": 1.0,
+                  "top_k": 40,
+                  "top_p": 1.0,
+                  "min_p": 0.0,
+                  "max_tokens": 128,
+                  "ignore_eos": true,
+                  "stream": true,
+                  "stream_options": {
+                    "include_usage": true,
+                    "continuous_usage_stats": false
+                  },
+                  "n": 1,
+                  "chat_template_kwargs": {
+                    "enable_thinking": true
+                  }
+                },
+                "result": {
+                  "prompt_tokens": 32,
+                  "completion_tokens": 128,
+                  "total_tokens": 160,
+                  "finish_reason": "length"
+                },
+                "start_monotonic": 189103.64,
+                "end_monotonic": 189107.796
+              },
+              {
+                "index": 1,
+                "body": {
+                  "model": "glm-5.3-flash-spark",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "1788982458011363700 top-k 1: Describe a garden in detail."
+                    }
+                  ],
+                  "temperature": 1.0,
+                  "top_k": 40,
+                  "top_p": 1.0,
+                  "min_p": 0.0,
+                  "max_tokens": 128,
+                  "ignore_eos": true,
+                  "stream": true,
+                  "stream_options": {
+                    "include_usage": true,
+                    "continuous_usage_stats": false
+                  },
+                  "n": 1,
+                  "chat_template_kwargs": {
+                    "enable_thinking": true
+                  }
+                },
+                "result": {
+                  "prompt_tokens": 32,
+                  "completion_tokens": 128,
+                  "total_tokens": 160,
+                  "finish_reason": "length"
+                },
+                "start_monotonic": 189103.64,
+                "end_monotonic": 189108.031
+              }
+            ]
+          },
+          {
+            "name": "top-p",
+            "http_overlap_seconds": 4.1560000000172295,
+            "requests": [
+              {
+                "index": 0,
+                "body": {
+                  "model": "glm-5.3-flash-spark",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "1788982462406047400 top-p 0: Describe a garden in detail."
+                    }
+                  ],
+                  "temperature": 1.0,
+                  "top_k": -1,
+                  "top_p": 0.9,
+                  "min_p": 0.0,
+                  "max_tokens": 128,
+                  "ignore_eos": true,
+                  "stream": true,
+                  "stream_options": {
+                    "include_usage": true,
+                    "continuous_usage_stats": false
+                  },
+                  "n": 1,
+                  "chat_template_kwargs": {
+                    "enable_thinking": true
+                  }
+                },
+                "result": {
+                  "prompt_tokens": 34,
+                  "completion_tokens": 128,
+                  "total_tokens": 162,
+                  "finish_reason": "length"
+                },
+                "start_monotonic": 189108.031,
+                "end_monotonic": 189112.187
+              },
+              {
+                "index": 1,
+                "body": {
+                  "model": "glm-5.3-flash-spark",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "1788982462407046800 top-p 1: Describe a garden in detail."
+                    }
+                  ],
+                  "temperature": 1.0,
+                  "top_k": -1,
+                  "top_p": 0.9,
+                  "min_p": 0.0,
+                  "max_tokens": 128,
+                  "ignore_eos": true,
+                  "stream": true,
+                  "stream_options": {
+                    "include_usage": true,
+                    "continuous_usage_stats": false
+                  },
+                  "n": 1,
+                  "chat_template_kwargs": {
+                    "enable_thinking": true
+                  }
+                },
+                "result": {
+                  "prompt_tokens": 34,
+                  "completion_tokens": 128,
+                  "total_tokens": 162,
+                  "finish_reason": "length"
+                },
+                "start_monotonic": 189108.031,
+                "end_monotonic": 189112.359
+              }
+            ]
+          },
+          {
+            "name": "both",
+            "http_overlap_seconds": 6.828000000008615,
+            "requests": [
+              {
+                "index": 0,
+                "body": {
+                  "model": "glm-5.3-flash-spark",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "1788982466734849800 both 0: Describe a garden in detail."
+                    }
+                  ],
+                  "temperature": 1.0,
+                  "top_k": 40,
+                  "top_p": 0.9,
+                  "min_p": 0.0,
+                  "max_tokens": 128,
+                  "ignore_eos": true,
+                  "stream": true,
+                  "stream_options": {
+                    "include_usage": true,
+                    "continuous_usage_stats": false
+                  },
+                  "n": 1,
+                  "chat_template_kwargs": {
+                    "enable_thinking": true
+                  }
+                },
+                "result": {
+                  "prompt_tokens": 34,
+                  "completion_tokens": 128,
+                  "total_tokens": 162,
+                  "finish_reason": "length"
+                },
+                "start_monotonic": 189112.359,
+                "end_monotonic": 189119.187
+              },
+              {
+                "index": 1,
+                "body": {
+                  "model": "glm-5.3-flash-spark",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "1788982466734849800 both 1: Describe a garden in detail."
+                    }
+                  ],
+                  "temperature": 1.0,
+                  "top_k": 40,
+                  "top_p": 0.9,
+                  "min_p": 0.0,
+                  "max_tokens": 128,
+                  "ignore_eos": true,
+                  "stream": true,
+                  "stream_options": {
+                    "include_usage": true,
+                    "continuous_usage_stats": false
+                  },
+                  "n": 1,
+                  "chat_template_kwargs": {
+                    "enable_thinking": true
+                  }
+                },
+                "result": {
+                  "prompt_tokens": 34,
+                  "completion_tokens": 128,
+                  "total_tokens": 162,
+                  "finish_reason": "length"
+                },
+                "start_monotonic": 189112.359,
+                "end_monotonic": 189119.39
+              }
+            ]
+          }
+        ],
+        "worker_warnings": [
+          {
+            "rank": 0,
+            "warning_count": 1,
+            "kernel_names": [
+              "_topk_topp_kernel"
+            ],
+            "timestamps_utc": [
+              "2026-09-09T19:34:18.837198312Z"
+            ],
+            "original_log_sha256": "d2f7050999c9a65b8a550867d40078275fa4e384401ede921d227e1fd61fa684"
+          },
+          {
+            "rank": 1,
+            "warning_count": 1,
+            "kernel_names": [
+              "_topk_topp_kernel"
+            ],
+            "timestamps_utc": [
+              "2026-09-09T19:34:18.844235980Z"
+            ],
+            "original_log_sha256": "ef1b7cb9c026a14d8573df1f0635c3651c4aee67857fa1feeecb90d38b69362c"
+          },
+          {
+            "rank": 2,
+            "warning_count": 1,
+            "kernel_names": [
+              "_topk_topp_kernel"
+            ],
+            "timestamps_utc": [
+              "2026-09-09T19:34:18.860246006Z"
+            ],
+            "original_log_sha256": "a6815dabe1cce7ca747ba82e1d23ce01eae025d0fbcaca36c880819a7c312895"
+          },
+          {
+            "rank": 3,
+            "warning_count": 1,
+            "kernel_names": [
+              "_topk_topp_kernel"
+            ],
+            "timestamps_utc": [
+              "2026-09-09T19:34:18.872000730Z"
+            ],
+            "original_log_sha256": "11351dabae651aed28f0127a80272f3ad58cf2c68f6cfe27c983ec68f2aab039"
+          }
+        ]
+      },
+      {
+        "sweep": 1,
+        "cases": [
+          {
+            "name": "top-k",
+            "http_overlap_seconds": 2.8589999999967404,
+            "requests": [
+              {
+                "index": 0,
+                "body": {
+                  "model": "glm-5.3-flash-spark",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "1788982475478636200 top-k 0: Describe a garden in detail."
+                    }
+                  ],
+                  "temperature": 1.0,
+                  "top_k": 40,
+                  "top_p": 1.0,
+                  "min_p": 0.0,
+                  "max_tokens": 128,
+                  "ignore_eos": true,
+                  "stream": true,
+                  "stream_options": {
+                    "include_usage": true,
+                    "continuous_usage_stats": false
+                  },
+                  "n": 1,
+                  "chat_template_kwargs": {
+                    "enable_thinking": true
+                  }
+                },
+                "result": {
+                  "prompt_tokens": 35,
+                  "completion_tokens": 128,
+                  "total_tokens": 163,
+                  "finish_reason": "length"
+                },
+                "start_monotonic": 189121.109,
+                "end_monotonic": 189124.234
+              },
+              {
+                "index": 1,
+                "body": {
+                  "model": "glm-5.3-flash-spark",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "1788982475479150300 top-k 1: Describe a garden in detail."
+                    }
+                  ],
+                  "temperature": 1.0,
+                  "top_k": 40,
+                  "top_p": 1.0,
+                  "min_p": 0.0,
+                  "max_tokens": 128,
+                  "ignore_eos": true,
+                  "stream": true,
+                  "stream_options": {
+                    "include_usage": true,
+                    "continuous_usage_stats": false
+                  },
+                  "n": 1,
+                  "chat_template_kwargs": {
+                    "enable_thinking": true
+                  }
+                },
+                "result": {
+                  "prompt_tokens": 35,
+                  "completion_tokens": 128,
+                  "total_tokens": 163,
+                  "finish_reason": "length"
+                },
+                "start_monotonic": 189121.109,
+                "end_monotonic": 189123.968
+              }
+            ]
+          },
+          {
+            "name": "top-p",
+            "http_overlap_seconds": 3.187000000005355,
+            "requests": [
+              {
+                "index": 0,
+                "body": {
+                  "model": "glm-5.3-flash-spark",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "1788982478605940300 top-p 0: Describe a garden in detail."
+                    }
+                  ],
+                  "temperature": 1.0,
+                  "top_k": -1,
+                  "top_p": 0.9,
+                  "min_p": 0.0,
+                  "max_tokens": 128,
+                  "ignore_eos": true,
+                  "stream": true,
+                  "stream_options": {
+                    "include_usage": true,
+                    "continuous_usage_stats": false
+                  },
+                  "n": 1,
+                  "chat_template_kwargs": {
+                    "enable_thinking": true
+                  }
+                },
+                "result": {
+                  "prompt_tokens": 35,
+                  "completion_tokens": 128,
+                  "total_tokens": 163,
+                  "finish_reason": "length"
+                },
+                "start_monotonic": 189124.234,
+                "end_monotonic": 189127.765
+              },
+              {
+                "index": 1,
+                "body": {
+                  "model": "glm-5.3-flash-spark",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "1788982478605940300 top-p 1: Describe a garden in detail."
+                    }
+                  ],
+                  "temperature": 1.0,
+                  "top_k": -1,
+                  "top_p": 0.9,
+                  "min_p": 0.0,
+                  "max_tokens": 128,
+                  "ignore_eos": true,
+                  "stream": true,
+                  "stream_options": {
+                    "include_usage": true,
+                    "continuous_usage_stats": false
+                  },
+                  "n": 1,
+                  "chat_template_kwargs": {
+                    "enable_thinking": true
+                  }
+                },
+                "result": {
+                  "prompt_tokens": 35,
+                  "completion_tokens": 128,
+                  "total_tokens": 163,
+                  "finish_reason": "length"
+                },
+                "start_monotonic": 189124.234,
+                "end_monotonic": 189127.421
+              }
+            ]
+          },
+          {
+            "name": "both",
+            "http_overlap_seconds": 2.640999999974156,
+            "requests": [
+              {
+                "index": 0,
+                "body": {
+                  "model": "glm-5.3-flash-spark",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "1788982482141669400 both 0: Describe a garden in detail."
+                    }
+                  ],
+                  "temperature": 1.0,
+                  "top_k": 40,
+                  "top_p": 0.9,
+                  "min_p": 0.0,
+                  "max_tokens": 128,
+                  "ignore_eos": true,
+                  "stream": true,
+                  "stream_options": {
+                    "include_usage": true,
+                    "continuous_usage_stats": false
+                  },
+                  "n": 1,
+                  "chat_template_kwargs": {
+                    "enable_thinking": true
+                  }
+                },
+                "result": {
+                  "prompt_tokens": 32,
+                  "completion_tokens": 128,
+                  "total_tokens": 160,
+                  "finish_reason": "length"
+                },
+                "start_monotonic": 189127.765,
+                "end_monotonic": 189130.406
+              },
+              {
+                "index": 1,
+                "body": {
+                  "model": "glm-5.3-flash-spark",
+                  "messages": [
+                    {
+                      "role": "user",
+                      "content": "1788982482141669400 both 1: Describe a garden in detail."
+                    }
+                  ],
+                  "temperature": 1.0,
+                  "top_k": 40,
+                  "top_p": 0.9,
+                  "min_p": 0.0,
+                  "max_tokens": 128,
+                  "ignore_eos": true,
+                  "stream": true,
+                  "stream_options": {
+                    "include_usage": true,
+                    "continuous_usage_stats": false
+                  },
+                  "n": 1,
+                  "chat_template_kwargs": {
+                    "enable_thinking": true
+                  }
+                },
+                "result": {
+                  "prompt_tokens": 32,
+                  "completion_tokens": 128,
+                  "total_tokens": 160,
+                  "finish_reason": "length"
+                },
+                "start_monotonic": 189127.765,
+                "end_monotonic": 189130.5
+              }
+            ]
+          }
+        ],
+        "worker_warnings": [
+          {
+            "rank": 0,
+            "warning_count": 0,
+            "kernel_names": [],
+            "timestamps_utc": [],
+            "original_log_sha256": "e89e5159c0ba8c2d3242cd1316b399c06fcd923de6b68dd08530a2622d05bbcd"
+          },
+          {
+            "rank": 1,
+            "warning_count": 0,
+            "kernel_names": [],
+            "timestamps_utc": [],
+            "original_log_sha256": "3a7880194da26fbd0d90915513ebf5ff84538ad2a9ad83d907ae3c64e06b5001"
+          },
+          {
+            "rank": 2,
+            "warning_count": 0,
+            "kernel_names": [],
+            "timestamps_utc": [],
+            "original_log_sha256": "410d3bad9eef44acd2105112c6fec3effc9f85119aa6ae7ba067be60c4026b20"
+          },
+          {
+            "rank": 3,
+            "warning_count": 0,
+            "kernel_names": [],
+            "timestamps_utc": [],
+            "original_log_sha256": "2f3755d60bc1ceaf5d42f50250c9f42cfe9cabafe9612c90bcdf458e69ae1f70"
+          }
+        ]
+      }
+    ]
+  },
+  "complete_recipe_replay": {
+    "helper_sha256": "2104e7d83e84d7e2ccbb19e331b487cafea4515ac75eda2dc0082cfc7187a841",
+    "result": {
+      "schema": "sparkring-sampler-warmup/v1",
+      "coverage": "request-recipe-complete",
+      "jit_coverage_verified": false,
+      "enable_thinking": true,
+      "stream": true,
+      "cases": [
+        {
+          "name": "unfiltered",
+          "temperature": 1.0,
+          "top_k": -1,
+          "top_p": 1.0,
+          "seed": null,
+          "prompt_tokens": 28,
+          "completion_tokens": 32,
+          "total_tokens": 60,
+          "finish_reason": "length",
+          "elapsed_seconds": 0.794
+        },
+        {
+          "name": "temperature",
+          "temperature": 0.7,
+          "top_k": -1,
+          "top_p": 1.0,
+          "seed": null,
+          "prompt_tokens": 28,
+          "completion_tokens": 32,
+          "total_tokens": 60,
+          "finish_reason": "length",
+          "elapsed_seconds": 0.586
+        },
+        {
+          "name": "top-k",
+          "temperature": 1.0,
+          "top_k": 40,
+          "top_p": 1.0,
+          "seed": null,
+          "prompt_tokens": 29,
+          "completion_tokens": 32,
+          "total_tokens": 61,
+          "finish_reason": "length",
+          "elapsed_seconds": 0.709
+        },
+        {
+          "name": "top-p",
+          "temperature": 1.0,
+          "top_k": -1,
+          "top_p": 0.9,
+          "seed": null,
+          "prompt_tokens": 29,
+          "completion_tokens": 32,
+          "total_tokens": 61,
+          "finish_reason": "length",
+          "elapsed_seconds": 0.764
+        },
+        {
+          "name": "top-k-top-p",
+          "temperature": 1.0,
+          "top_k": 40,
+          "top_p": 0.9,
+          "seed": null,
+          "prompt_tokens": 31,
+          "completion_tokens": 32,
+          "total_tokens": 63,
+          "finish_reason": "length",
+          "elapsed_seconds": 0.711
+        },
+        {
+          "name": "seeded-top-k-top-p",
+          "temperature": 0.7,
+          "top_k": 40,
+          "top_p": 0.9,
+          "seed": 0,
+          "prompt_tokens": 32,
+          "completion_tokens": 32,
+          "total_tokens": 64,
+          "finish_reason": "length",
+          "elapsed_seconds": 0.616
+        }
+      ],
+      "concurrent_cases": [
+        {
+          "name": "top-k",
+          "concurrency": 2,
+          "max_tokens": 128,
+          "min_tokens": 128,
+          "ignore_eos": true,
+          "http_overlap_seconds": 2.827955,
+          "requests": [
+            {
+              "name": "top-k",
+              "temperature": 1.0,
+              "top_k": 40,
+              "top_p": 1.0,
+              "seed": null,
+              "prompt_tokens": 32,
+              "completion_tokens": 128,
+              "total_tokens": 160,
+              "finish_reason": "length",
+              "elapsed_seconds": 2.828
+            },
+            {
+              "name": "top-k",
+              "temperature": 1.0,
+              "top_k": 40,
+              "top_p": 1.0,
+              "seed": null,
+              "prompt_tokens": 32,
+              "completion_tokens": 128,
+              "total_tokens": 160,
+              "finish_reason": "length",
+              "elapsed_seconds": 2.887
+            }
+          ]
+        },
+        {
+          "name": "top-p",
+          "concurrency": 2,
+          "max_tokens": 128,
+          "min_tokens": 128,
+          "ignore_eos": true,
+          "http_overlap_seconds": 3.208937,
+          "requests": [
+            {
+              "name": "top-p",
+              "temperature": 1.0,
+              "top_k": -1,
+              "top_p": 0.9,
+              "seed": null,
+              "prompt_tokens": 32,
+              "completion_tokens": 128,
+              "total_tokens": 160,
+              "finish_reason": "length",
+              "elapsed_seconds": 3.258
+            },
+            {
+              "name": "top-p",
+              "temperature": 1.0,
+              "top_k": -1,
+              "top_p": 0.9,
+              "seed": null,
+              "prompt_tokens": 32,
+              "completion_tokens": 128,
+              "total_tokens": 160,
+              "finish_reason": "length",
+              "elapsed_seconds": 3.209
+            }
+          ]
+        },
+        {
+          "name": "top-k-top-p",
+          "concurrency": 2,
+          "max_tokens": 128,
+          "min_tokens": 128,
+          "ignore_eos": true,
+          "http_overlap_seconds": 2.701694,
+          "requests": [
+            {
+              "name": "top-k-top-p",
+              "temperature": 1.0,
+              "top_k": 40,
+              "top_p": 0.9,
+              "seed": null,
+              "prompt_tokens": 34,
+              "completion_tokens": 128,
+              "total_tokens": 162,
+              "finish_reason": "length",
+              "elapsed_seconds": 2.702
+            },
+            {
+              "name": "top-k-top-p",
+              "temperature": 1.0,
+              "top_k": 40,
+              "top_p": 0.9,
+              "seed": null,
+              "prompt_tokens": 34,
+              "completion_tokens": 128,
+              "total_tokens": 162,
+              "finish_reason": "length",
+              "elapsed_seconds": 3.041
+            }
+          ]
+        }
+      ],
+      "elapsed_seconds": 13.375
+    },
+    "scope": "External helper against the same already-ready API; not installed startup readiness.",
+    "helper_commit": "378abab2bac9fe4ea39afe79ed9ff9f16c52cdd3"
+  },
+  "input_sha256": {
+    "c1_receipt": "f611f3e3f1e694421c8e9fae571fce2df3ebb7bafd09ef309a89d2875dfa3a74",
+    "paired_sweeps_receipt": "9aa86b0dc0031d1144c3cc8dacea7bf7a2ee227e1f6831be2276791694ed873e",
+    "complete_recipe_receipt": "00ca0cee6a08703cb407717c316920383f45da2ac43b0ec19d7b947fb902315a",
+    "installed_source_manifest": "59867b65b8b02988d0da996c79a8684dc0d0f8fdd4fc19edcc601900c81addb7"
+  },
+  "limitations": [
+    "The original issue reports DFlash2; this observation uses native MTP3.",
+    "Warnings may represent disk-cache loading or compilation and warning_once can suppress repeats.",
+    "Zero warnings on the repeat is not proof of zero JIT events or complete variant coverage.",
+    "HTTP overlap does not prove a shared GPU batch or every worker sampler path.",
+    "The paired observation omitted min_tokens; the complete recipe replay sets min_tokens=max_tokens=128 for C2.",
+    "No controlled cold-cache, mixed-prefill, arbitrary concurrency, installed-readiness, or rebuilt-image qualification.",
+    "Private orchestration and host metadata are omitted; request bodies, client intervals, usage, and normalized warning observations are retained."
+  ]
+}

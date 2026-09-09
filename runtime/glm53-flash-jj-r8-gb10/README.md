@@ -356,8 +356,9 @@ The report lists KV separately. A passing offline plan does not qualify a CUDA
 allocation or a serving performance result.
 
 When `DFLASH_WARMUP=1`, the readiness entrypoint runs `warmup_dflash.py` before
-Docker reports rank 0 as healthy. Source builds then run six explicit sampler
-requests through `serve_with_warmup.py`, each with thinking enabled and `min_p=0`:
+Docker reports rank 0 as healthy. Source builds then run six explicit streaming
+sampler requests through `serve_with_warmup.py`, each with thinking enabled and
+`min_p=0`:
 
 | Request | Temperature | top_k | top_p | Explicit seed |
 |---|---:|---:|---:|---:|
@@ -368,6 +369,14 @@ requests through `serve_with_warmup.py`, each with thinking enabled and `min_p=0
 | Top-k and top-p | 1.0 | 40 | 0.9 | absent |
 | Seeded top-k and top-p | 0.7 | 40 | 0.9 | 0 |
 
+If `DFLASH_WARMUP_CONCURRENCIES` includes a value of at least two, the sampler
+recipe then runs three homogeneous pairs: top-k only, top-p only, and both
+filters. Each paired request uses temperature one, no explicit seed,
+`max_tokens=min_tokens=128`, and `ignore_eos=true`. Both requests must complete
+all 128 tokens with finish reason `length`, and their HTTP intervals must
+overlap. The pairs run one stage at a time under the same startup deadline.
+A C1-only configuration skips these pairs and records `coverage=limited-c1-only`.
+
 Explicit neutral filters prevent a checkpoint's generation defaults from choosing
 an unintended arm. In the pinned vLLM source, [sampling state](https://github.com/FujitsuPolycom/vllm/blob/e02b174693e13859de61811b5e8cd13d5308e259/vllm/v1/worker/gpu/sample/states.py#L40-L100)
 normalizes disabled top-k, omits neutral top-k/top-p tensors, and skips temperature
@@ -376,14 +385,19 @@ uses its Gumbel fallback for unfiltered or explicitly seeded requests. These
 branches justify the recipe; they do not prove every speculative execution path
 or compiled kernel was reached by an HTTP request.
 
-Status: **implemented**, with CPU request and readiness tests. Each arm must
-return exactly one message-bearing choice with finish reason `stop` or `length`
-and positive integer `usage.completion_tokens`; one failed arm
-withholds readiness. The `sampling_warmup` log records each arm, completed-token
-count and elapsed time with `coverage=request-recipe-complete` and
+Status: **implemented**, with CPU request and readiness tests. Each arm requests
+`stream=true` and final usage. Its SSE stream must contain one choice at index
+zero, finish with `stop` or `length`, report positive integer prompt/completion
+usage with a consistent total, and terminate with `[DONE]`. A final usage-only
+chunk after the finish is accepted, as are SSE comments and blank lines. Token
+counts come from usage, not the number of chunks. Malformed, failed, truncated,
+oversized or unfinished streams withhold readiness. The `sampling_warmup` log
+records `stream=true`, each arm's usage, finish reason and elapsed time with
+`coverage=request-recipe-complete` when all concurrent stages run, and
 `jit_coverage_verified=false`. API readiness, shape batches and sampler requests
 share `DFLASH_WARMUP_TIMEOUT_SECONDS`; each operation receives the remaining
-budget, and an expired budget prevents the readiness marker. Shape-request
+budget, stream consumption checks the deadline, and an expired budget prevents
+the readiness marker. Shape-request
 nonces precede repeated prompt text and vary between runs to avoid prefix reuse.
 
 The [published child image](hotfix/README.md) contains the earlier single
@@ -392,13 +406,22 @@ temperature-one/thinking request, not this six-arm recipe. Its
 tests; those results do not qualify a rebuilt image. The operator image in
 `pins.json` also remains unchanged.
 
-Cold-cache full-model sampler coverage, mixed long/short prefill coverage, and
-all recurrent KDA specializations remain unqualified. In particular, the
+Cold-cache full-model sampler coverage, filtered concurrent GPU specializations,
+mixed long/short prefill coverage, and all recurrent KDA specializations remain
+unqualified. The concurrent stages record HTTP overlap, which does not establish
+that both requests shared a GPU batch or identify each worker's sampler path.
+The [bounded sampler observation](../../performance/records/glm53-flash/sampler-concurrency-20260909.md)
+records why C1-only warmup was insufficient on one native-MTP3 runtime.
+In particular, the
 reported several-4K-prefills-behind-long-decode case requires an identified image,
 tokenized request lengths, actual overlapping execution and per-rank JIT evidence.
 The short shape sweep below does not establish that case. Do not gate readiness
 on guessed Triton cache filenames: cache presence alone does not prove that the
 serving process initialized every required compiled variant.
+The pinned sampler can select FlashInfer, Gumbel or a speculative path. JIT
+monitor events are not per-worker execution receipts for all of those paths.
+A backend coverage gate needs source-bound reports from every worker after its
+required sampler paths complete; this HTTP warmup does not provide them.
 The default environment template warms every concurrency from C1 through C16
 and prompt spans covering the DFlash Triton `BLOCK_SIZE` specializations
 through 256. DFlash depth seven verifies eight target rows per active request,
