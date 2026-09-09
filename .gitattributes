@@ -2,9 +2,16 @@
 *.patch text eol=lf
 runtime/** text eol=lf
 runtime/sparkring/*.gz -text
+runtime/deepseek-vision-exp/upstream/*.gz -text
+# Build inputs carry byte-level hashes; preserve their stored bytes on every
+# platform. Intentional byte changes require regenerated build receipts.
+runtime/sparkring/source_image/** -text whitespace=cr-at-eol
+runtime/sparkring/source_image/patches/*.patch whitespace=cr-at-eol,-trailing-space
+spark_transport/nccl/nccl-2.30.7-dual-pci-domain.patch -text whitespace=cr-at-eol,-trailing-space
 runtime/glm53-spark-mtp3-mesh/compute/*.tar.gz -text
 runtime/glm53-spark-mtp3-mesh/compute/*.patch whitespace=-trailing-space
 runtime/exl3/patches/*.patch whitespace=-trailing-space
+runtime/deepseek0731-gb10/patches/*.patch whitespace=-trailing-space
 
 # Runtime receipts hash these source files byte-for-byte before copying them,
 # and the plugin vendors byte-identical copies whose SHA-256 it records in
@@ -16,6 +23,8 @@ spark_transport/experiments/glm53_rocenante_overlay/** text eol=lf
 spark_transport/experiments/cx7_hairpin_diagonal/** text eol=lf
 # Preserve the vendored package's supplied bytes for its canonical tree digest.
 third_party/b12x_roce/** -text whitespace=cr-at-eol
+runtime/transport_profiles/tp2-rocenante-adaptive/roce/** -text whitespace=cr-at-eol
+runtime/transport_profiles/tp2-rocenante-adaptive/LICENSE -text whitespace=cr-at-eol
 sparkring_plugin/src/sparkring/_vendor/*.py text eol=lf
 
 # Named individually as well as covered above: these are the sources the

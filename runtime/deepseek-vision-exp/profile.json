@@ -1,0 +1,48 @@
+{
+  "schema": "sparkring-deepseek-vision-exp-profile/v1",
+  "status": "research-only",
+  "platform": "linux/arm64",
+  "image": {
+    "publisher": "Anemll",
+    "reference": "ghcr.io/anemll/dspark-vllm-gx10@sha256:a83948492cf13df455170fb42885f5ef4db54fefe0feff0f841ecbff464ac9d8",
+    "config_digest": "sha256:3430d6614a8e2925f34d059af6caf05aff42387326db4d05639a60f10f2654d8",
+    "tag_for_humans": "0.1.1",
+    "registry_metadata_verified": true,
+    "layers_pulled_for_validation": false
+  },
+  "upstream_recipe": {
+    "provider": "MiaAI-Lab",
+    "repository": "https://github.com/MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark",
+    "revision": "7440c53c1f0352886e47b1909051784879fa0a24",
+    "compose_file": "docker-compose.dspark.yml",
+    "compose_sha256": "ea6d2edc011be42f3d211e05908136f7b5081c5a5d64cc0d9bafff65017690eb"
+  },
+  "model": {
+    "repository": "deepseek-ai/DeepSeek-V4-Flash-Vision-Exp",
+    "revision": "86f746b36186f0e567729a5c06a8c918caba82a9"
+  },
+  "transport": {
+    "provider": "SparkRing",
+    "implementation": "patched NVIDIA NCCL",
+    "version": "2.30.7",
+    "donor_image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:67dc0ae453baaae6831ccec1d259b4ef8b236a8b0dc9f747d901b95c66ec1987",
+    "donor_config_digest": "sha256:2e41b1e934a85ff7c21b780532db2f0a0e978df081e52f4ae2bf11f8992fb24f",
+    "donor_path": "/opt/sparkring/nccl/libnccl.so.2.30.7",
+    "container_path": "/opt/sparkring/nccl/libnccl.so.2",
+    "library_sha256": "5f1c3f10d5ace66d4ba584415bbfe42b6ac1a0a9116a3b81dcbe50516ad924b3",
+    "upstream_revision": "73cf112295c33aee2b895f329f592f2a9b4b0f97",
+    "patched_tree": "abdeb053b94c3f6d472cd55ae2b79ca821299009",
+    "patch": "spark_transport/nccl/nccl-2.30.7-switchless-cycle.patch",
+    "patch_sha256": "6709063fa1c25055ae77a9397dea5d89643f8211d25e7990bdd11597d08c0dde",
+    "required_cycle_flag": "NCCL_SWITCHLESS_RING_ONLY=1"
+  },
+  "overlay": {
+    "compose_file": "runtime/deepseek-vision-exp/compose.override.yml",
+    "flashinfer_package_overlay": false
+  },
+  "evidence": {
+    "source": "https://github.com/FujitsuPolycom/sparkring/pull/232",
+    "scope": "Contributor-reported observations; the measured image and optional FlashInfer overlay are not established identical to these selected artifacts.",
+    "independent_hardware_validation": false
+  }
+}

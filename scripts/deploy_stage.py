@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 PROFILE = ROOT / "runtime/glm53-spark-mtp3-mesh"
+from scripts.deploy_selection import selection, validate_selected_file, SELECTED_RECEIPT  # noqa: E402
 LAUNCH_FILES = frozenset(
     {
         "site.json",
@@ -348,6 +349,139 @@ os.chown(p,0,0);p.parent.chmod(0o700)
     run.remote(host, ["sudo", "-n", "python3", "-c", code, path], input=data)
 
 
+def stage_downloaded_assets(run, seed, public, hosts, spec, pins, identities, workspace):
+    """Download and distribute image/model artifacts in the owned workspace."""
+    if public["local"]:
+        if run.remote(seed, ["docker", "image", "inspect", "--format", "{{.Id}}",
+                             public["image_reference"]]).strip() != public["config_image_id"]:
+            raise ValueError("Selected local image is absent from the staging seed")
+    else:
+        run.remote(seed, ["docker", "pull", public["image_reference"]], timeout=14400)
+    run.remote(
+        seed,
+        [
+            "docker",
+            "image",
+            "save",
+            "-o",
+            workspace + "/image.tar",
+            public["image_reference"],
+        ],
+        timeout=3600,
+    )
+    image_sha = run.remote(seed, ["sha256sum", workspace + "/image.tar"]).split()[0]
+    for h in hosts[1:]:
+        run.copy(
+            seed + ":" + workspace + "/image.tar",
+            h["host"] + ":" + workspace + "/image.tar",
+        )
+        if (
+            run.remote(h["host"], ["sha256sum", workspace + "/image.tar"]).split()[0]
+            != image_sha
+        ):
+            raise ValueError("Transferred image archive mismatch")
+        run.remote(
+            h["host"], ["docker", "load", "-i", workspace + "/image.tar"], timeout=3600
+        )
+    for h in hosts:
+        if (
+            run.remote(
+                h["host"],
+                [
+                    "docker",
+                    "image",
+                    "inspect",
+                    "--format",
+                    "{{.Id}}",
+                    public["image_reference"],
+                ],
+            ).strip()
+            != public["config_image_id"]
+        ):
+            raise ValueError("Image identity mismatch")
+    model = spec["site"]["model_roots"][0]
+    run.remote(seed, ["mkdir", "-p", model])
+    download = (
+        "from huggingface_hub import snapshot_download; snapshot_download(repo_id="
+        + repr(pins["target"]["repository"])
+        + ",revision="
+        + repr(pins["target"]["revision"])
+        + ",local_dir='/download')"
+    )
+    run.remote(
+        seed,
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--user",
+            str(identities[seed]["uid"]) + ":" + str(identities[seed]["gid"]),
+            "-e",
+            "HOME=/download",
+            "-e",
+            "HF_HOME=/download/.cache/huggingface",
+            "-e",
+            "NVIDIA_VISIBLE_DEVICES=void",
+            "-e",
+            "HF_HUB_OFFLINE=0",
+            "-e",
+            "TRANSFORMERS_OFFLINE=0",
+            "-v",
+            model + ":/download",
+            "--entrypoint",
+            "python3",
+            public["image_reference"],
+            "-c",
+            download,
+        ],
+        timeout=14400,
+    )
+    manifest_code = """import hashlib,json,pathlib,sys
+root=pathlib.Path(sys.argv[1]);rows={}
+if any(p.is_symlink() for p in (root,*root.parents)):raise SystemExit('Model path contains a symlink')
+for p in root.rglob('*'):
+ if p.is_symlink():raise SystemExit('Model directory contains a symlink')
+ if p.is_file() and '.cache' not in p.relative_to(root).parts:
+  h=hashlib.sha256()
+  with p.open('rb') as f:
+   for b in iter(lambda:f.read(8388608),b''):h.update(b)
+  rows[p.relative_to(root).as_posix()]=h.hexdigest()
+print(json.dumps(rows))
+"""
+    model_files = json.loads(
+        run.remote(seed, ["python3", "-c", manifest_code, model], timeout=7200)
+    )
+    if (
+        model_files.get("config.json") != pins["target"]["config_sha256"]
+        or model_files.get("model.safetensors.index.json")
+        != pins["target"]["index_sha256"]
+    ):
+        raise ValueError("Target metadata mismatch")
+    for h in hosts[1:]:
+        run.remote(h["host"], ["mkdir", "-p", model])
+        present = json.loads(
+            run.remote(h["host"], ["python3", "-c", manifest_code, model], timeout=7200)
+        )
+        if any(model_files.get(n) != digest for n, digest in present.items()):
+            raise ValueError(
+                "Destination model contains different files; refusing overwrite"
+            )
+        for name, digest in model_files.items():
+            if name not in present:
+                run.copy_verified(
+                    seed + ":" + model + "/" + name,
+                    h["host"],
+                    model + "/" + name,
+                    digest,
+                )
+        other = json.loads(
+            run.remote(h["host"], ["python3", "-c", manifest_code, model], timeout=7200)
+        )
+        if other != model_files:
+            raise ValueError("Target weight-file verification failed")
+    return model_files
+
+
 def stage(preparation, local_state, *, run=None, source_root=ROOT):
     """Prepare sources, image, model and canonical launch; no GPU/model is started."""
     state = Path(local_state)
@@ -411,8 +545,8 @@ def _stage(preparation, local_state, *, run=None, source_root=ROOT):
     else:
         with binding.open("x") as stream:
             json.dump(spec, stream)
-    public = json.loads((PROFILE / "public-image.json").read_text())
-    pins = json.loads((PROFILE / "pins.json").read_text())
+    public = selection(spec, PROFILE)
+    pins = public["pins"]
     hosts = spec["hosts"]
     if [h["rank"] for h in hosts] != list(range(4)) or len(
         {h["host"] for h in hosts}
@@ -421,8 +555,12 @@ def _stage(preparation, local_state, *, run=None, source_root=ROOT):
     if any(not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@-]*", h["host"]) for h in hosts):
         raise ValueError("Invalid SSH host")
     expected_model = workspace + "/models/" + pins["target"]["revision"]
+    expected_roots = [expected_model] * 4
+    if "existing_assets" in spec:
+        from scripts.deploy_existing_assets import validate_existing_assets
+        expected_roots = validate_existing_assets(spec["existing_assets"])
     expected_paths = {
-        "model_roots": [expected_model] * 4,
+        "model_roots": expected_roots,
         "cache_roots": [workspace + "/cache"] * 4,
         "bundle_root": workspace + "/artifacts/mtp3-mesh-bundle",
         "marker_binary": workspace + "/artifacts/mlx5-rdma-tx-marker",
@@ -530,138 +668,38 @@ for n,h in manifest['files'].items():
                 workspace + "/receipts",
             ],
         )
-    run.remote(seed, ["docker", "pull", public["public_reference"]], timeout=14400)
-    run.remote(
-        seed,
-        [
-            "docker",
-            "image",
-            "save",
-            "-o",
-            workspace + "/image.tar",
-            public["public_reference"],
-        ],
-        timeout=3600,
-    )
-    image_sha = run.remote(seed, ["sha256sum", workspace + "/image.tar"]).split()[0]
-    for h in hosts[1:]:
-        run.copy(
-            seed + ":" + workspace + "/image.tar",
-            h["host"] + ":" + workspace + "/image.tar",
-        )
-        if (
-            run.remote(h["host"], ["sha256sum", workspace + "/image.tar"]).split()[0]
-            != image_sha
-        ):
-            raise ValueError("Transferred image archive mismatch")
-        run.remote(
-            h["host"], ["docker", "load", "-i", workspace + "/image.tar"], timeout=3600
-        )
-    for h in hosts:
-        if (
-            run.remote(
-                h["host"],
-                [
-                    "docker",
-                    "image",
-                    "inspect",
-                    "--format",
-                    "{{.Id}}",
-                    public["public_reference"],
-                ],
-            ).strip()
-            != public["config_image_id"]
-        ):
-            raise ValueError("Image identity mismatch")
-    model = spec["site"]["model_roots"][0]
-    run.remote(seed, ["mkdir", "-p", model])
-    download = (
-        "from huggingface_hub import snapshot_download; snapshot_download(repo_id="
-        + repr(pins["target"]["repository"])
-        + ",revision="
-        + repr(pins["target"]["revision"])
-        + ",local_dir='/download')"
-    )
-    run.remote(
-        seed,
-        [
-            "docker",
-            "run",
-            "--rm",
-            "--user",
-            str(identities[seed]["uid"]) + ":" + str(identities[seed]["gid"]),
-            "-e",
-            "HOME=/download",
-            "-e",
-            "HF_HOME=/download/.cache/huggingface",
-            "-e",
-            "NVIDIA_VISIBLE_DEVICES=void",
-            "-e",
-            "HF_HUB_OFFLINE=0",
-            "-e",
-            "TRANSFORMERS_OFFLINE=0",
-            "-v",
-            model + ":/download",
-            "--entrypoint",
-            "python3",
-            public["public_reference"],
-            "-c",
-            download,
-        ],
-        timeout=14400,
-    )
-    manifest_code = """import hashlib,json,pathlib,sys
-root=pathlib.Path(sys.argv[1]);rows={}
-if any(p.is_symlink() for p in (root,*root.parents)):raise SystemExit('Model path contains a symlink')
-for p in root.rglob('*'):
- if p.is_symlink():raise SystemExit('Model directory contains a symlink')
- if p.is_file() and '.cache' not in p.relative_to(root).parts:
-  h=hashlib.sha256()
-  with p.open('rb') as f:
-   for b in iter(lambda:f.read(8388608),b''):h.update(b)
-  rows[p.relative_to(root).as_posix()]=h.hexdigest()
-print(json.dumps(rows))
-"""
-    model_files = json.loads(
-        run.remote(seed, ["python3", "-c", manifest_code, model], timeout=7200)
-    )
-    if (
-        model_files.get("config.json") != pins["target"]["config_sha256"]
-        or model_files.get("model.safetensors.index.json")
-        != pins["target"]["index_sha256"]
-    ):
-        raise ValueError("Target metadata mismatch")
-    for h in hosts[1:]:
-        run.remote(h["host"], ["mkdir", "-p", model])
-        present = json.loads(
-            run.remote(h["host"], ["python3", "-c", manifest_code, model], timeout=7200)
-        )
-        if any(model_files.get(n) != digest for n, digest in present.items()):
-            raise ValueError(
-                "Destination model contains different files; refusing overwrite"
-            )
-        for name, digest in model_files.items():
-            if name not in present:
-                run.copy_verified(
-                    seed + ":" + model + "/" + name,
-                    h["host"],
-                    model + "/" + name,
-                    digest,
-                )
-        other = json.loads(
-            run.remote(h["host"], ["python3", "-c", manifest_code, model], timeout=7200)
-        )
-        if other != model_files:
-            raise ValueError("Target weight-file verification failed")
+    if "existing_assets" in spec:
+        from scripts.deploy_existing_assets import verify_existing_models
+        image_rows = []
+        for host in hosts:
+            actual = run.remote(host["host"], ["docker", "image", "inspect", "--format",
+                                "{{.Id}}", public["image_reference"]]).strip()
+            if actual != public["config_image_id"]:
+                raise ValueError("Preinstalled image identity differs on rank " + str(host["rank"]))
+            image_rows.append({"rank": host["rank"], "host": host["host"], "image_id": actual})
+        proof = verify_existing_models(run, hosts, spec["site"]["model_roots"], pins["target"])
+        model_files = proof["model_files"]
+        if (model_files.get("config.json") != pins["target"]["config_sha256"]
+                or model_files.get("model.safetensors.index.json") != pins["target"]["index_sha256"]):
+            raise ValueError("Existing target metadata differs from source pins")
+        preparation["existing_assets_verification"] = {
+            **{key: value for key, value in proof.items() if key != "model_files"},
+            "images": image_rows, "image_transfer_performed": False, "model_writes_performed": False,
+        }
+    else:
+        model_files = stage_downloaded_assets(run, seed, public, hosts, spec, pins, identities, workspace)
     preparation["source"] = source
     preparation["model_files"] = model_files
     preparation["controller_launch"] = str(local_state / "launch")
     preparation["controller_source"] = str(controller_source)
-    for name, value in [
+    staged_documents = [
         ("preparation.json", preparation),
         ("site.json", spec["site"]),
         ("fabric.json", spec["fabric"]),
-    ]:
+    ]
+    if spec.get("runtime_selection") is not None:
+        staged_documents.append((SELECTED_RECEIPT, public["receipt"]))
+    for name, value in staged_documents:
         file = local_state / name
         file.write_text(json.dumps(value, indent=2))
         for h in hosts:
@@ -774,8 +812,9 @@ def finish_host(workspace):
         path = workspace / name
         if path.is_symlink() or json.loads(path.read_text()) != expected:
             raise ValueError("Staging render inputs differ from approved preparation")
-    public = json.loads((PROFILE / "public-image.json").read_text())
-    pins = json.loads((PROFILE / "pins.json").read_text())
+    public = selection(spec, PROFILE)
+    pins = public["pins"]
+    selected_receipt = validate_selected_file(spec, workspace, PROFILE)
     artifact = Path(spec["site"]["bundle_root"])
     marker = Path(spec["site"]["marker_binary"])
     for path in (artifact, marker):
@@ -788,7 +827,7 @@ def finish_host(workspace):
                 "create",
                 "--entrypoint",
                 "/bin/true",
-                public["public_reference"],
+                public["image_reference"],
             ],
             text=True,
         ).strip()
@@ -808,11 +847,10 @@ def finish_host(workspace):
             )
         finally:
             subprocess.run(["docker", "rm", identifier], check=True)
-    image_receipt = json.loads((PROFILE / "image-receipt.json").read_text())
     if (
         sha(artifact / "sparkring-overlay-manifest.json")
         != pins["canonical_bundle_manifest_sha256"]
-        or sha(marker) != image_receipt["inside_image"]["marker_binary_sha256"]
+        or sha(marker) != public["inside_image"]["marker_binary_sha256"]
     ):
         raise ValueError("Extracted artifact mismatch or incomplete extraction")
     sys.path.insert(0, str(PROFILE))
@@ -827,7 +865,7 @@ def finish_host(workspace):
     ) as directory:
         canonical = Path(directory) / "launch"
         profile.render(
-            workspace / "site.json", artifact, canonical, PROFILE / "image-receipt.json"
+            workspace / "site.json", artifact, canonical, selected_receipt
         )
         files = {
             p.name: base64.b64encode(p.read_bytes()).decode()
@@ -892,7 +930,7 @@ def verify_host(
         record.get("site_sha256") != sha(workspace / "site.json")
         or record.get("topology_sha256") != sha(workspace / "fabric.json")
         or record.get("image_receipt_sha256")
-        != sha(workspace / "source/runtime/glm53-spark-mtp3-mesh/image-receipt.json")
+        != sha(validate_selected_file(document["spec"], workspace, PROFILE))
     ):
         raise ValueError("Rendered launch belongs to different deployment inputs")
     if (

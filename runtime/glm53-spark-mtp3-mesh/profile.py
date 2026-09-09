@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import ipaddress
+import importlib.util
 import json
 from pathlib import Path, PurePosixPath
 import re
@@ -22,6 +23,7 @@ PINS = json.loads((HERE / "pins.json").read_text())
 BASE = HERE.parent / "glm53-flash-jj-r8-gb10"
 IMAGE = json.loads((BASE / "pins.json").read_text())
 ASSIGNMENT = re.compile(r"([A-Z][A-Z0-9_]*)=(.*)")
+SOURCE_LOCK = ROOT / "runtime/sparkring/source_image/glm53-tp4-lock.json"
 
 
 def sha(path: Path) -> str:
@@ -65,9 +67,11 @@ def absolute(value: object, label: str) -> str:
 
 def load_site(path: Path):
     data = json.loads(path.read_text())
-    expected = {"schema", "topology_file", "management_addresses", "model_roots", "cache_roots",
+    required = {"schema", "topology_file", "management_addresses", "model_roots", "cache_roots",
                 "bundle_root", "container_prefix", "marker_binary", "marker_binary_sha256", "state_root"}
-    if set(data) != expected or data["schema"] != "sparkring-glm53-mtp3-mesh-site/v1":
+    optional = {"api_keys_file", "liveness_output_seconds", "runtime_profile"}
+    if (not required <= set(data) <= required | optional
+            or data["schema"] != "sparkring-glm53-mtp3-mesh-site/v1"):
         raise ValueError("Site fields do not match sparkring-glm53-mtp3-mesh-site/v1")
     for name in ("management_addresses", "model_roots", "cache_roots"):
         if not isinstance(data[name], list) or len(data[name]) != 4:
@@ -84,6 +88,12 @@ def load_site(path: Path):
             absolute(value, key)
     for key in ("bundle_root", "marker_binary", "state_root"):
         absolute(data[key], key)
+    if "api_keys_file" in data:
+        absolute(data["api_keys_file"], "api_keys_file")
+    if "liveness_output_seconds" in data:
+        timeout = data["liveness_output_seconds"]
+        if type(timeout) is not int or not 0 < timeout <= 2147483647:
+            raise ValueError("liveness_output_seconds must be an integer from 1 to 2147483647")
     topology_path = path.parent / data["topology_file"]
     topology = fabric.load_topology(topology_path)
     for node in topology.ranks:
@@ -104,6 +114,66 @@ def load_site(path: Path):
 
 def load_image_receipt(path: Path) -> dict:
     document = json.loads(path.read_text())
+    return validate_image_receipt(document)
+
+
+def _source_receipt_contract():
+    """Load the verifier's sibling dependencies without depending on caller imports."""
+    directory = ROOT / "runtime/sparkring/source_image"
+    names = ("archive_utils", "native_files", "source_image_receipt_contract")
+    previous = {name: sys.modules.get(name) for name in names}
+    try:
+        for name, filename in zip(names, ("archive_utils.py", "native_files.py", "receipt_contract.py")):
+            spec = importlib.util.spec_from_file_location(name, directory / filename)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+        return module
+    finally:
+        for name, saved in previous.items():
+            if saved is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = saved
+
+
+def validate_image_receipt(document: dict) -> dict:
+    if not isinstance(document, dict):
+        raise ValueError("Image receipt must be a JSON object")
+    if document.get("schema") == "sparkring-source-image-receipt/v1":
+        lock = json.loads(SOURCE_LOCK.read_text())
+        selected = lock["profiles"].get(document.get("profile"), {})
+        if selected.get("tp_size", 4) != 4 or selected.get("topology") == "switched":
+            raise ValueError("Use the selected profile's launcher instead of the TP4 mesh renderer")
+        contract = _source_receipt_contract()
+        contract.validate_receipt(document, lock)
+        inside = document.get("inside_image", {})
+        image_id = document.get("image_id", "")
+        runtime = lock["runtime"]
+        if (lock.get("schema") != "sparkring-source-image-lock/v1"
+                or document.get("source_lock_sha256") != sha(SOURCE_LOCK)
+                or document.get("profile") not in lock["profiles"]
+                or not isinstance(image_id, str)
+                or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id)
+                or document.get("image_reference") != image_id
+                or document.get("platform") != "linux/arm64"
+                or document.get("checks_passed") is not True
+                or not isinstance(inside, dict) or inside.get("checks_passed") is not True
+                or inside.get("source_lock_sha256") != sha(SOURCE_LOCK)
+                or inside.get("cuda_initialized") is not False
+                or inside.get("model_loaded") is not False):
+            raise ValueError("Local image receipt does not match the selected source composition")
+        for key in ("bundle_manifest_sha256", "marker_binary_sha256", "marker_source_sha256",
+                    "nccl_sha256"):
+            if inside.get(key) != runtime[key]:
+                raise ValueError(f"Local image runtime identity differs: {key}")
+        if document.get("bundle_manifest_sha256", inside["bundle_manifest_sha256"]) != inside["bundle_manifest_sha256"]:
+            raise ValueError("Local image bundle identity differs")
+        if inside.get("nccl_path", runtime["nccl_path"]) != runtime["nccl_path"]:
+            raise ValueError("Local image NCCL path contradicts its source lock")
+        if inside.get("readiness_warmup") != runtime.get("readiness_warmup") or not inside.get("readiness_warmup"):
+            raise ValueError("Local image lacks source-bound sampling warmup")
+        return dict(document, bundle_manifest_sha256=inside["bundle_manifest_sha256"])
     if document.get("schema") == "sparkring-mtp3-performance-public-image/v1":
         pinned = json.loads((HERE / "performance/public-image.json").read_text())
         if document != pinned or not document.get("anonymous_manifest_verified"):
@@ -183,6 +253,9 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
         if sha(manifest_file(bundle, item["path"])) != item["sha256"]:
             raise ValueError("Bundle entry is unsafe or differs from its manifest")
     site, topology, plan = load_site(site_path)
+    source_composition = image_record and image_record.get("schema") == "sparkring-source-image-receipt/v1"
+    if site.get("runtime_profile") != (image_record["profile"] if source_composition else None):
+        raise ValueError("Site runtime profile differs from the explicit image receipt")
     values = defaults(BASE / "runtime.env.example")
     values.update(defaults(BASE / "sircl-fused.env.example"))
     values.pop("DFLASH_MODEL_HOST_PATH", None)
@@ -197,6 +270,10 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
         "MASTER_ADDR": site["management_addresses"][0], "DFLASH_WARMUP": "1",
         "SPARKRING_WARMUP_TEMPERATURE": "0",
     })
+    if "liveness_output_seconds" in site:
+        values["SPARKRING_LIVENESS_OUTPUT_SECONDS"] = str(site["liveness_output_seconds"])
+    if site.get("api_keys_file"):
+        values["API_KEYS_FILE"] = site["api_keys_file"]
     if image_record is not None:
         values["IMAGE_ID"] = image_record["image_id"]
         values["IMAGE_REF"] = image_record["image_reference"]
@@ -205,6 +282,12 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
         if image_record.get("schema") == "sparkring-mtp3-performance-public-image/v1":
             values["SPARKCACHE_PLACEMENT_LIBRARY_SHA256"] = image_record["native_placement_sha256"]
             values["SPARKCACHE_CACHE_NAMESPACE"] = image_record["cache_namespace"]
+        if source_composition:
+            lock = json.loads(SOURCE_LOCK.read_text())
+            selected = lock["profiles"][image_record["profile"]]
+            values.update(selected["environment"])
+            values.update(NCCL_LIBRARY_PATH=lock["runtime"]["nccl_path"],
+                          NCCL_LIBRARY_SHA256=lock["runtime"]["nccl_sha256"])
     output.mkdir(parents=True)
     ranks = []
     for rank in range(4):
@@ -213,6 +296,11 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
                    CACHE_HOST_ROOT=site["cache_roots"][rank], SOCKET_IFNAME=topology.rank(rank).management_netdev,
                    NCCL_IB_HCA=",".join(topology.rank(rank).port(direction, 0).rdma_device
                                          for direction in ("clockwise", "counter_clockwise")))
+        if source_composition and selected["host_domains"] == "dual":
+            env["NCCL_IB_HCA"] = "=" + ",".join(
+                topology.rank(rank).port(direction, function).rdma_device + ":1"
+                for function in (0, 1) for direction in ("clockwise", "counter_clockwise")
+            )
         # The native SIRCL endpoint order is rank XOR 1, then rank XOR 3.
         # Odd ranks therefore reverse physical direction order; RoCEnante's
         # HCA inventory remains clockwise f0, counter-clockwise f1.
