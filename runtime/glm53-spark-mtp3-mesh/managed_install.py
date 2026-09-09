@@ -31,6 +31,10 @@ SOURCE_FILES = (
     'runtime/glm53-spark-mtp3-mesh/inspect_fabric.py',
     'runtime/glm53-spark-mtp3-mesh/pins.json',
     'runtime/glm53-spark-mtp3-mesh/compute/source-lock.json',
+    'runtime/sparkring/source_image/glm53-tp4-lock.json',
+    'runtime/sparkring/source_image/receipt_contract.py',
+    'runtime/sparkring/source_image/archive_utils.py',
+    'runtime/sparkring/source_image/native_files.py',
     'runtime/glm53-flash-jj-r8-gb10/pins.json',
     'runtime/glm53-flash-jj-r8-gb10/warmup_dflash.py',
     'runtime/glm53-flash-jj-r8-gb10/launch-rank.sh',
@@ -252,7 +256,10 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file):
     site, _, _ = profile.load_site(launch / 'site.json')
     receipt = profile.load_image_receipt(image_receipt)
     inside = receipt['inside_image']
-    if (inside.get('marker_source_sha256') != profile.PINS['marker']['source_sha256']
+    expected_marker = profile.PINS['marker']['source_sha256']
+    if receipt.get('schema') == 'sparkring-source-image-receipt/v1':
+        expected_marker = json.loads(profile.SOURCE_LOCK.read_text())['runtime']['marker_source_sha256']
+    if (inside.get('marker_source_sha256') != expected_marker
             or inside.get('marker_binary_sha256') != site['marker_binary_sha256']):
         raise ValueError('Managed profile requires the source-pinned image and host marker')
     if not inside.get('readiness_warmup'):

@@ -1,0 +1,634 @@
+diff --git a/src/transport/generic.cc b/src/transport/generic.cc
+index 548d57c..2aeb171 100644
+--- a/src/transport/generic.cc
++++ b/src/transport/generic.cc
+@@ -1,90 +1,99 @@
+-/*************************************************************************
+- * SPDX-FileCopyrightText: Copyright (c) 2015-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+- * SPDX-License-Identifier: Apache-2.0
+- *
+- * See LICENSE.txt for more license information
+- *************************************************************************/
+-
+-#include "comm.h"
+-#include "transport.h"
+-#include "bootstrap.h"
+-
+-NCCL_PARAM(MultiSegmentRegister, "MULTI_SEGMENT_REGISTER", 1);
+-
+-ncclResult_t ncclTransportRingConnect(struct ncclComm* comm) {
+-  struct ringConnInfo {
+-    bool useNetPXN;
+-    bool useGdr;
+-  };
+-  struct ringConnInfo* ringInfo = NULL;
+-  ncclResult_t ret = ncclSuccess;
+-  if (comm && comm->nRanks > 1) {
+-    comm->useGdr = true;
+-    comm->useNetPXN = false;
+-    for (int c = 0; c < comm->nChannels; c++) {
+-      struct ncclChannel* channel = comm->channels + c;
+-      NCCLCHECKGOTO(ncclTransportP2pConnect(comm, c, 1, &channel->ring.prev, 1, &channel->ring.next, 0), ret, fail);
+-    }
+-    NCCLCHECKGOTO(ncclTransportP2pSetup(comm, &comm->graphs[NCCL_ALGO_RING], 0), ret, fail);
+-    if (ncclParamLocalRegister() || ncclParamGraphRegister()) {
+-      NCCLCHECK(ncclCalloc(&ringInfo, comm->nRanks));
+-      ringInfo[comm->rank].useGdr = comm->useGdr;
+-      ringInfo[comm->rank].useNetPXN = comm->useNetPXN;
+-      NCCLCHECKGOTO(bootstrapAllGather(comm->bootstrap, ringInfo, sizeof(struct ringConnInfo)), ret, fail);
+-      for (int i = 0; i < comm->nRanks; ++i) {
+-        if (!ringInfo[i].useGdr) comm->useGdr = false;
+-        if (ringInfo[i].useNetPXN) comm->useNetPXN = true;
+-        if (comm->useGdr == false && comm->useNetPXN == true) break;
+-      }
+-    }
+-    INFO(NCCL_INIT, "Connected all rings, use ring PXN %d GDR %d", comm->useNetPXN, comm->useGdr);
+-  }
+-exit:
+-  free(ringInfo);
+-  return ret;
+-fail:
+-  goto exit;
+-}
+-
+-ncclResult_t ncclTransportTreeConnect(struct ncclComm* comm) {
+-  ncclResult_t ret = ncclSuccess;
+-  if (comm && comm->nRanks > 1) {
+-    // Connect Trees
+-    for (int c = 0; c < comm->nChannels; c++) {
+-      struct ncclChannel* channel = comm->channels + c;
+-      NCCLCHECKGOTO(ncclTransportP2pConnect(comm, c, NCCL_MAX_TREE_ARITY, channel->tree.down, 1, &channel->tree.up, 0),
+-                    ret, fail);
+-      NCCLCHECKGOTO(ncclTransportP2pConnect(comm, c, 1, &channel->tree.up, NCCL_MAX_TREE_ARITY, channel->tree.down, 0),
+-                    ret, fail);
+-    }
+-    NCCLCHECKGOTO(ncclTransportP2pSetup(comm, &comm->graphs[NCCL_ALGO_TREE], 0), ret, fail);
+-    INFO(NCCL_INIT, "Connected all trees");
+-  }
+-exit:
+-  return ret;
+-fail:
+-  goto exit;
+-}
+-
+-ncclResult_t ncclTransportPatConnect(struct ncclComm* comm) {
+-  ncclResult_t ret = ncclSuccess;
+-  if (comm && comm->nRanks > 1) {
+-    for (int mask = 1; mask < comm->nRanks; mask <<= 1) {
+-      int prevPeer = (comm->rank + mask) % comm->nRanks;
+-      int nextPeer = (comm->rank + comm->nRanks - mask) % comm->nRanks;
+-      for (int c = 0; c < comm->nChannels; c++) {
+-        NCCLCHECKGOTO(ncclTransportP2pConnect(comm, c, 1, &prevPeer, 1, &nextPeer, 0), ret, fail); // ReduceScatter
+-      }
+-      NCCLCHECKGOTO(ncclTransportP2pSetup(comm, &comm->graphs[NCCL_ALGO_TREE], 0), ret, fail);
+-      for (int c = 0; c < comm->nChannels; c++) {
+-        NCCLCHECKGOTO(ncclTransportP2pConnect(comm, c, 1, &nextPeer, 1, &prevPeer, 0), ret, fail); // AllGather
+-      }
+-      NCCLCHECKGOTO(ncclTransportP2pSetup(comm, &comm->graphs[NCCL_ALGO_TREE], 0), ret, fail);
+-    }
+-    INFO(NCCL_INIT, "Connected binomial trees");
+-  }
+-exit:
+-  return ret;
+-fail:
+-  goto exit;
+-}
++/*************************************************************************
++ * SPDX-FileCopyrightText: Copyright (c) 2015-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
++ * SPDX-License-Identifier: Apache-2.0
++ *
++ * See LICENSE.txt for more license information
++ *************************************************************************/
++
++#include "comm.h"
++#include "transport.h"
++#include "bootstrap.h"
++
++NCCL_PARAM(MultiSegmentRegister, "MULTI_SEGMENT_REGISTER", 1);
++NCCL_PARAM(SwitchlessRingOnly, "SWITCHLESS_RING_ONLY", 0);
++
++ncclResult_t ncclTransportRingConnect(struct ncclComm* comm) {
++  struct ringConnInfo {
++    bool useNetPXN;
++    bool useGdr;
++  };
++  struct ringConnInfo* ringInfo = NULL;
++  ncclResult_t ret = ncclSuccess;
++  if (comm && comm->nRanks > 1) {
++    comm->useGdr = true;
++    comm->useNetPXN = false;
++    for (int c = 0; c < comm->nChannels; c++) {
++      struct ncclChannel* channel = comm->channels + c;
++      NCCLCHECKGOTO(ncclTransportP2pConnect(comm, c, 1, &channel->ring.prev, 1, &channel->ring.next, 0), ret, fail);
++    }
++    NCCLCHECKGOTO(ncclTransportP2pSetup(comm, &comm->graphs[NCCL_ALGO_RING], 0), ret, fail);
++    if (ncclParamLocalRegister() || ncclParamGraphRegister()) {
++      NCCLCHECK(ncclCalloc(&ringInfo, comm->nRanks));
++      ringInfo[comm->rank].useGdr = comm->useGdr;
++      ringInfo[comm->rank].useNetPXN = comm->useNetPXN;
++      NCCLCHECKGOTO(bootstrapAllGather(comm->bootstrap, ringInfo, sizeof(struct ringConnInfo)), ret, fail);
++      for (int i = 0; i < comm->nRanks; ++i) {
++        if (!ringInfo[i].useGdr) comm->useGdr = false;
++        if (ringInfo[i].useNetPXN) comm->useNetPXN = true;
++        if (comm->useGdr == false && comm->useNetPXN == true) break;
++      }
++    }
++    INFO(NCCL_INIT, "Connected all rings, use ring PXN %d GDR %d", comm->useNetPXN, comm->useGdr);
++  }
++exit:
++  free(ringInfo);
++  return ret;
++fail:
++  goto exit;
++}
++
++ncclResult_t ncclTransportTreeConnect(struct ncclComm* comm) {
++  ncclResult_t ret = ncclSuccess;
++  if (ncclParamSwitchlessRingOnly()) {
++    INFO(NCCL_INIT, "Tree transport setup disabled by NCCL_SWITCHLESS_RING_ONLY");
++    return ncclSuccess;
++  }
++  if (comm && comm->nRanks > 1) {
++    // Connect Trees
++    for (int c = 0; c < comm->nChannels; c++) {
++      struct ncclChannel* channel = comm->channels + c;
++      NCCLCHECKGOTO(ncclTransportP2pConnect(comm, c, NCCL_MAX_TREE_ARITY, channel->tree.down, 1, &channel->tree.up, 0),
++                    ret, fail);
++      NCCLCHECKGOTO(ncclTransportP2pConnect(comm, c, 1, &channel->tree.up, NCCL_MAX_TREE_ARITY, channel->tree.down, 0),
++                    ret, fail);
++    }
++    NCCLCHECKGOTO(ncclTransportP2pSetup(comm, &comm->graphs[NCCL_ALGO_TREE], 0), ret, fail);
++    INFO(NCCL_INIT, "Connected all trees");
++  }
++exit:
++  return ret;
++fail:
++  goto exit;
++}
++
++ncclResult_t ncclTransportPatConnect(struct ncclComm* comm) {
++  ncclResult_t ret = ncclSuccess;
++  if (ncclParamSwitchlessRingOnly()) {
++    INFO(NCCL_INIT, "PAT transport setup disabled by NCCL_SWITCHLESS_RING_ONLY");
++    return ncclSuccess;
++  }
++  if (comm && comm->nRanks > 1) {
++    for (int mask = 1; mask < comm->nRanks; mask <<= 1) {
++      int prevPeer = (comm->rank + mask) % comm->nRanks;
++      int nextPeer = (comm->rank + comm->nRanks - mask) % comm->nRanks;
++      for (int c = 0; c < comm->nChannels; c++) {
++        NCCLCHECKGOTO(ncclTransportP2pConnect(comm, c, 1, &prevPeer, 1, &nextPeer, 0), ret, fail); // ReduceScatter
++      }
++      NCCLCHECKGOTO(ncclTransportP2pSetup(comm, &comm->graphs[NCCL_ALGO_TREE], 0), ret, fail);
++      for (int c = 0; c < comm->nChannels; c++) {
++        NCCLCHECKGOTO(ncclTransportP2pConnect(comm, c, 1, &nextPeer, 1, &prevPeer, 0), ret, fail); // AllGather
++      }
++      NCCLCHECKGOTO(ncclTransportP2pSetup(comm, &comm->graphs[NCCL_ALGO_TREE], 0), ret, fail);
++    }
++    INFO(NCCL_INIT, "Connected binomial trees");
++  }
++exit:
++  return ret;
++fail:
++  goto exit;
++}
+diff --git a/src/transport/net_ib/connect.cc b/src/transport/net_ib/connect.cc
+index e2c8ecb..52539f0 100644
+--- a/src/transport/net_ib/connect.cc
++++ b/src/transport/net_ib/connect.cc
+@@ -8,6 +8,9 @@
+ #include "connect.h"
+ #include "common.h"
+ #include "p2p_resiliency.h"
++#include "routing_handle.h"
++#include "routing_pci_root.h"
++#include <stddef.h>
+ 
+ NCCL_PARAM(IbGidIndex, "IB_GID_INDEX", -1);
+ NCCL_PARAM(IbRoutableFlidIbGidIndex, "IB_ROUTABLE_FLID_GID_INDEX", 1);
+@@ -49,17 +52,58 @@ struct ncclIbCommStage {
+ 
+ struct ncclIbHandle {
+   union ncclSocketAddress connectAddr; // Filled by the target
++  // Occupies the four bytes cleared as padding by the exact legacy producer.
++  uint8_t routingFormat[4];
+   uint64_t magic; // random number to help debugging
+   struct ncclIbCommStage stage; // Used by the other side when connecting
+   // GIDs of the listener's device PFs, used by the connector to find a local
+   // NIC on the same subnet (for multi-subnet RoCE direct-connect topologies).
+   // Zero-valued slots are ignored (validGid() returns false).
+   union ibv_gid listenGids[2];
++  // Network-order IPv4 bytes. Read only after validating routingFormat.
++  uint8_t listenIpv4[4][4];
+ };
+ 
++static_assert(sizeof(void*) == 8 && sizeof(union ncclSocketAddress) == 28 &&
++              alignof(union ncclSocketAddress) == 4, "Unsupported listener address ABI");
++static_assert(sizeof(union ibv_gid) == 16 && sizeof(struct ncclIbCommStage) == 24,
++              "Unsupported listener GID or stage ABI");
++static_assert(offsetof(struct ncclIbHandle, routingFormat) == 28 &&
++              offsetof(struct ncclIbHandle, magic) == 32 &&
++              offsetof(struct ncclIbHandle, stage) == 40 &&
++              offsetof(struct ncclIbHandle, listenGids) == 64 &&
++              offsetof(struct ncclIbHandle, listenIpv4) == 96,
++              "Listener extension must preserve legacy offsets");
++static_assert(sizeof(struct ncclIbHandle) == 112 &&
++              sizeof(struct ncclIbHandle) < NCCL_NET_HANDLE_MAXSIZE,
++              "Listener extension exceeds bounded opaque handle");
++
+ NCCL_PARAM(IbQpsPerConn, "IB_QPS_PER_CONNECTION", 1);
+ NCCL_PARAM(IbSubnetAwareRouting, "IB_SUBNET_AWARE_ROUTING", 0);
+ NCCL_PARAM(IbSubnetPrefixLen, "IB_SUBNET_PREFIX_LEN", 24);
++NCCL_PARAM(IbExtendedIpv4Gids, "IB_EXTENDED_IPV4_GIDS", 0);
++NCCL_PARAM(IbRouteDiagnostics, "IB_ROUTE_DIAGNOSTICS", 0);
++NCCL_PARAM(IbPreservePciDomain, "IB_PRESERVE_PCI_DOMAIN", 0);
++
++// Called only after a connection has completed, never on a polling iteration.
++template <typename Comm>
++static void ncclIbLogFinalRoute(const char* side, int dev, Comm* comm) {
++  if (!ncclParamIbRouteDiagnostics()) return;
++  for (int q = 0; q < comm->base.nqps; q++) {
++    const struct ncclIbQp* qp = &comm->base.qps[q];
++    const int ibDevN = comm->devs[qp->devIndex].base.ibDevN;
++    char local[33], remote[33];
++    for (int b = 0; b < 16; b++) {
++      snprintf(local + 2*b, 3, "%02x", qp->rtrAttr.localGid.raw[b]);
++      snprintf(remote + 2*b, 3, "%02x", qp->rtrAttr.remoteGid.raw[b]);
++    }
++    INFO(NCCL_NET, "NET/IB RouteFinal side=%s comm=%p mergedDev=%d qpIndex=%d qpNum=%u "
++         "devIndex=%d ibDev=%d hca=%s port=%u localGid=%s remoteGid=%s remoteQpNum=%u",
++         side, (void*)comm, dev, q, qp->qp->qp_num, qp->devIndex, ibDevN,
++         ncclIbDevs[ibDevN].devName, (unsigned)qp->rtrAttr.localIbPort,
++         local, remote, qp->rtrAttr.remoteQpNum);
++  }
++}
+ 
+ ncclResult_t ncclIbInitCommDevBase(int ibDevN, struct ncclIbNetCommDevBase* base, void* cq_context, int cqSize) {
+   base->ibDevN = ibDevN;
+@@ -515,6 +559,21 @@ static bool subnetMatchesAny(union ibv_gid* localGid, union ibv_gid* remoteGids,
+   return false;
+ }
+ 
++// Mixed-root or non-RoCE merged devices retain the original global fallback.
++static bool ncclIbMergedPciRoot(int dev, char root[11]) {
++  if (dev < 0 || dev >= ncclNMergedIbDevs) return false;
++  const ncclNetVDeviceProps_t* props = &ncclIbMergedDevs[dev].vProps;
++  if (props->ndevs <= 0 || props->ndevs > NCCL_IB_MAX_DEVS_PER_NIC) return false;
++  const char* paths[NCCL_IB_MAX_DEVS_PER_NIC];
++  for (int i = 0; i < props->ndevs; i++) {
++    const int ibDevN = props->devs[i];
++    if (ibDevN < 0 || ibDevN >= ncclNIbDevs ||
++        ncclIbDevs[ibDevN].portAttr.link_layer != IBV_LINK_LAYER_ETHERNET) return false;
++    paths[i] = ncclIbDevs[ibDevN].pciPath;
++  }
++  return ncclIbRoutingCommonPciRoot(paths, props->ndevs, root);
++}
++
+ // Given remote GIDs (one per PF on the remote side), find a local merged IB
+ // device that shares a subnet with any of them. Writes defaultDev to *foundDev
+ // if no better match is found, preserving existing behavior for single-subnet
+@@ -561,6 +620,38 @@ static ncclResult_t ncclIbFindDevBySubnet(union ibv_gid* remoteGids, int nRemote
+     if (checked > 0 && matched == checked) return ncclSuccess;
+   }
+ 
++  // Preserve the topology-selected PCI root when changing only the reachable
++  // physical port. A failed query or unreachable PF disqualifies the candidate.
++  if (ncclParamIbPreservePciDomain()) {
++    char defaultRoot[11];
++    if (ncclIbMergedPciRoot(defaultDev, defaultRoot)) {
++      for (int devIdx = 0; devIdx < ncclNMergedIbDevs; devIdx++) {
++        char candidateRoot[11];
++        if (devIdx == defaultDev || !ncclIbMergedPciRoot(devIdx, candidateRoot) ||
++            strcmp(defaultRoot, candidateRoot) != 0) continue;
++        struct ncclIbMergedDev* mDev = ncclIbMergedDevs + devIdx;
++        bool reachable = true;
++        for (int i = 0; i < mDev->vProps.ndevs; i++) {
++          ncclIbDev* ibDev = ncclIbDevs + mDev->vProps.devs[i];
++          int gidIndex = 0;
++          union ibv_gid localGid = {};
++          if (ncclIbGetGidIndex(ibDev->context, ibDev->portNum, &ibDev->portAttr, &gidIndex) != ncclSuccess ||
++              wrap_ibv_query_gid(ibDev->context, ibDev->portNum, gidIndex, &localGid) != ncclSuccess ||
++              !validGid(&localGid) || !subnetMatchesAny(&localGid, remoteGids, nRemoteGids, prefixLen)) {
++            reachable = false;
++            break;
++          }
++        }
++        if (reachable) {
++          INFO(NCCL_NET, "NET/IB: Subnet-aware routing: overriding dev %d with dev %d preserving PCI root %s",
++               defaultDev, devIdx, defaultRoot);
++          *foundDev = devIdx;
++          return ncclSuccess;
++        }
++      }
++    }
++  }
++
+   // Default device can't fully reach the peer (e.g., NIC Fusion fused PFs on
+   // different subnets, or the device is on the wrong subnet entirely).
+   // Search for a device whose RoCE PFs all match a remote GID's subnet.
+@@ -605,20 +696,36 @@ ncclResult_t ncclIbListen(void* ctx, int dev, void* opaqueHandle, void** listenC
+   NCCLCHECKGOTO(ncclSocketListen(&comm->sock), ret, fail);
+   NCCLCHECKGOTO(ncclSocketGetAddr(&comm->sock, &handle->connectAddr), ret, fail);
+ 
+-  // Embed GIDs of all PFs in the handle so the connector can find a local NIC
+-  // on the same subnet as any of our ports.
++  // Advertise every eligible local RoCE device. A switchless cycle selects the
++  // physical cable shared with each peer after receiving this handle; limiting
++  // the handle to the topology-selected device can advertise the other cable.
+   if (ncclParamIbSubnetAwareRouting() && dev < ncclNMergedIbDevs) {
+-    struct ncclIbMergedDev* mDev = ncclIbMergedDevs + dev;
+     int gidSlot = 0;
+-    for (int i = 0; i < mDev->vProps.ndevs && gidSlot < 2; i++) {
+-      int ibDevN = mDev->vProps.devs[i];
+-      ncclIbDev* ibDev = ncclIbDevs + ibDevN;
+-      if (ibDev->portAttr.link_layer != IBV_LINK_LAYER_ETHERNET) continue;
+-      int gidIndex;
+-      NCCLCHECKGOTO(ncclIbGetGidIndex(ibDev->context, ibDev->portNum, &ibDev->portAttr, &gidIndex), ret, fail);
+-      NCCLCHECKGOTO(wrap_ibv_query_gid(ibDev->context, ibDev->portNum, gidIndex, &handle->listenGids[gidSlot]), ret,
+-                    fail);
+-      gidSlot++;
++    const bool extended = ncclParamIbExtendedIpv4Gids() != 0;
++    // A fifth candidate detects overflow; never silently publish a truncated v1 list.
++    const int limit = extended ? 5 : 2;
++    uint8_t candidateGids[4][16] = {};
++    for (int devIdx = 0; devIdx < ncclNMergedIbDevs && gidSlot < limit; devIdx++) {
++      struct ncclIbMergedDev* mDev = ncclIbMergedDevs + devIdx;
++      for (int i = 0; i < mDev->vProps.ndevs && gidSlot < limit; i++) {
++        int ibDevN = mDev->vProps.devs[i];
++        ncclIbDev* ibDev = ncclIbDevs + ibDevN;
++        if (ibDev->portAttr.link_layer != IBV_LINK_LAYER_ETHERNET) continue;
++        int gidIndex;
++        union ibv_gid gid;
++        NCCLCHECKGOTO(ncclIbGetGidIndex(ibDev->context, ibDev->portNum, &ibDev->portAttr, &gidIndex), ret, fail);
++        NCCLCHECKGOTO(wrap_ibv_query_gid(ibDev->context, ibDev->portNum, gidIndex, &gid), ret, fail);
++        if (gidSlot < 2) handle->listenGids[gidSlot] = gid;
++        if (gidSlot < 4) memcpy(candidateGids[gidSlot], gid.raw, 16);
++        gidSlot++;
++      }
++    }
++    if (extended) {
++      const int encoded = ncclIbRoutingEncodeIpv4(handle->routingFormat, handle->listenIpv4,
++                                                 candidateGids, gidSlot);
++      if (ncclParamIbRouteDiagnostics())
++        INFO(NCCL_NET, "NET/IB ListenerRouting format=%s advertised=%d observed=%d",
++             encoded ? "ipv4-v1" : "legacy", encoded ? encoded : (gidSlot < 2 ? gidSlot : 2), gidSlot);
+     }
+   }
+ 
+@@ -799,7 +906,17 @@ ncclResult_t ncclIbConnectImpl(void* ctx, int dev, void* opaqueHandle, void** se
+   // Subnet-aware device selection: use the listener's GIDs (embedded in the
+   // handle) to find a local NIC on the same subnet as the remote peer.
+   // For single-subnet or IB deployments, all GIDs are zero → dev stays unchanged.
+-  if (ncclParamIbSubnetAwareRouting()) NCCLCHECK(ncclIbFindDevBySubnet(handle->listenGids, 2, dev, &dev));
++  if (ncclParamIbSubnetAwareRouting()) {
++    union ibv_gid decoded[4];
++    const int count = ncclIbRoutingDecodeIpv4(handle->routingFormat, handle->listenIpv4,
++                                             reinterpret_cast<uint8_t (*)[16]>(decoded));
++    if (count < 0) {
++      WARN("NET/IB: Invalid listener routing format tag=%u version=%u family=%u count=%u",
++           handle->routingFormat[0], handle->routingFormat[1], handle->routingFormat[2], handle->routingFormat[3]);
++      return ncclInvalidArgument;
++    }
++    NCCLCHECK(ncclIbFindDevBySubnet(count ? decoded : handle->listenGids, count ? count : 2, dev, &dev));
++  }
+ 
+   struct ncclIbCommStage* stage = &handle->stage;
+   struct ncclIbSendComm* comm = (struct ncclIbSendComm*)stage->comm;
+@@ -1081,6 +1198,7 @@ ib_send_ready:
+                 ret, fail);
+   if (stage->offset != sizeof(int)) return ncclSuccess;
+ 
++  ncclIbLogFinalRoute("send", dev, comm);
+   *sendComm = comm;
+ exit:
+   if (stage->buffer) free(stage->buffer);
+@@ -1639,6 +1757,7 @@ ib_recv_ready:
+                 ret, fail);
+   if (stage->offset != sizeof(int)) return ncclSuccess;
+ 
++  ncclIbLogFinalRoute("recv", lComm->dev, rComm);
+   *recvComm = rComm;
+ exit:
+   /* reset lComm stage */
+diff --git a/src/transport/net_ib/routing_handle.h b/src/transport/net_ib/routing_handle.h
+new file mode 100644
+index 0000000..a9070ec
+--- /dev/null
++++ b/src/transport/net_ib/routing_handle.h
+@@ -0,0 +1,40 @@
++// SPDX-License-Identifier: Apache-2.0
++#ifndef NCCL_IB_ROUTING_HANDLE_H_
++#define NCCL_IB_ROUTING_HANDLE_H_
++
++#include <stdint.h>
++#include <string.h>
++
++// Byte-oriented format: tag, version, family, count. Legacy padding is all zero.
++static inline int ncclIbRoutingEncodeIpv4(uint8_t format[4], uint8_t ips[4][4],
++                                         const uint8_t gids[4][16], int count) {
++  static const uint8_t mappedPrefix[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff};
++  memset(format, 0, 4);
++  memset(ips, 0, 16);
++  if (count < 1 || count > 4) return 0;
++  for (int i = 0; i < count; i++) {
++    if (memcmp(gids[i], mappedPrefix, 12) != 0) return 0;
++  }
++  for (int i = 0; i < count; i++) memcpy(ips[i], gids[i] + 12, 4);
++  format[0] = 0x4e;
++  format[1] = 1;
++  format[2] = 4;
++  format[3] = (uint8_t)count;
++  return count;
++}
++
++// Returns zero for legacy without reading the extension, -1 for invalid format,
++// or the bounded number of reconstructed IPv4-mapped GIDs.
++static inline int ncclIbRoutingDecodeIpv4(const uint8_t format[4], const uint8_t ips[4][4],
++                                         uint8_t gids[4][16]) {
++  if ((format[0] | format[1] | format[2] | format[3]) == 0) return 0;
++  if (format[0] != 0x4e || format[1] != 1 || format[2] != 4 || format[3] < 1 || format[3] > 4) return -1;
++  if (ips == 0 || gids == 0) return -1;
++  memset(gids, 0, 64);
++  for (int i = 0; i < format[3]; i++) {
++    gids[i][10] = gids[i][11] = 0xff;
++    memcpy(gids[i] + 12, ips[i], 4);
++  }
++  return format[3];
++}
++#endif
+diff --git a/src/transport/net_ib/routing_pci_root.h b/src/transport/net_ib/routing_pci_root.h
+new file mode 100644
+index 0000000..6c24b75
+--- /dev/null
++++ b/src/transport/net_ib/routing_pci_root.h
+@@ -0,0 +1,34 @@
++// SPDX-License-Identifier: Apache-2.0
++#ifndef NCCL_IB_ROUTING_PCI_ROOT_H_
++#define NCCL_IB_ROUTING_PCI_ROOT_H_
++#include <string.h>
++
++static inline bool ncclIbRoutingHex(char c) {
++  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
++}
++
++// A Linux PCI root component is pciDDDD:BB. Unknown/noncanonical paths do not match.
++static inline bool ncclIbRoutingPciRoot(const char* path, char root[11]) {
++  if (path == 0 || root == 0) return false;
++  const char* component = strstr(path, "/pci");
++  if (component == 0) return false;
++  const char* key = component + 1;
++  if (strlen(key) < 11 || key[7] != ':' || key[10] != '/') return false;
++  for (int i = 3; i < 10; i++) {
++    if (i != 7 && !ncclIbRoutingHex(key[i])) return false;
++  }
++  memcpy(root, key, 10);
++  root[10] = 0;
++  return true;
++}
++
++// A merged device is eligible for root preservation only if every PF has the same root.
++static inline bool ncclIbRoutingCommonPciRoot(const char* const* paths, int count, char root[11]) {
++  if (paths == 0 || root == 0 || count <= 0 || !ncclIbRoutingPciRoot(paths[0], root)) return false;
++  for (int i = 1; i < count; i++) {
++    char other[11];
++    if (!ncclIbRoutingPciRoot(paths[i], other) || strcmp(root, other) != 0) return false;
++  }
++  return true;
++}
++#endif
+diff --git a/tests/routing_handle/README.md b/tests/routing_handle/README.md
+new file mode 100644
+index 0000000..b57ddb7
+--- /dev/null
++++ b/tests/routing_handle/README.md
+@@ -0,0 +1,26 @@
++# Four-function IPv4 listener advertisement
++
++Status: implemented locally; build and runtime qualification pending.
++
++The patch applies to NCCL73cf112295c33aee2b895f329f592f2a9b4b0f97 with the declared SparkRing switchless-cycle patch. It retains legacy listener-field offsets and uses a112-byte handle. Production compilation checks actual socket/verbs/stage sizes and offsets.
++
++Set `NCCL_IB_EXTENDED_IPV4_GIDS=1` on listeners to advertise up to four strictly IPv4-mapped GIDs. Default0 preserves two-GID publication. Recognized extended handles are decoded regardless of the publication flag, while a zero format retains the original two-GID path without inspecting uninitialized legacy tail bytes. Unknown/nonzero format metadata is rejected before payload reads. Generic IB and IPv6 use legacy publication; overflow beyond four candidates falls back to legacy rather than truncating a versioned list. Existing subnet matching and device-selection policy are unchanged.
++
++Set `NCCL_IB_ROUTE_DIAGNOSTICS=1` with INFO/NET logging for one record per final QP at completed connection setup. Each record names send/receive side, communicator pointer, effective merged device, QP index/number, actual IB device/HCA/port, local/remote GIDs and remote QP number. No records are emitted per connection-progress poll or timed collective. This is connection identity, not a measurement of byte distribution.
++
++CPU-only codec/compatibility check on Linux:
++
++```sh
++c++ -std=c++11 -O2 -Wall -Wextra -Werror tests/routing_handle/compat.cc -o /tmp/nccl-routing-handle-test
++/tmp/nccl-routing-handle-test
++```
++
++The test exercises1–4 address round trips, byte order, duplicate addresses, zero-format legacy behavior with poisoned trailing bytes, invalid versions/families/counts before payload access, mixed IPv6 fallback and unchanged legacy prefix fields. The full NCCL translation unit must also compile with the actual AArch64 headers; the lightweight test's layout replica does not replace production static assertions.
++
++Before timing, qualify primary-only, secondary-only and both-domain communicators with changing payload correctness and final route records on all four hosts. Compare extension-disabled/enabled using the same candidate binary. Require secondary-domain QP selection and per-HCA traffic deltas before claiming both domains carried useful bytes. Preserve the existing known-good binary and reject failed connection/correctness gates.
++
++## PCI-root-preserving subnet fallback
++
++`NCCL_IB_PRESERVE_PCI_DOMAIN=1` adds a separate default-off selection preference. An already reachable topology default is unchanged. Otherwise, a fully reachable merged device on the same canonical `pciDDDD:BB` root is preferred before the original global first-match fallback. Every PF in both merged devices must have a known identical root and be RoCE; mixed-root, unknown-path and non-RoCE groups retain the existing global fallback. A failed GID query or any unreachable member disqualifies a preferred candidate. This does not alter advertisement, protocols, channel counts or per-collective submission.
++
++The CPU test verifies canonical root parsing, distinct primary/secondary roots, merged-member agreement, malformed/unknown paths and null handling. Full connection correctness and final-QP distribution require the isolated four-rank runtime test. A root key is a PCI root complex, not a promise of measured bandwidth.
+diff --git a/tests/routing_handle/compat.cc b/tests/routing_handle/compat.cc
+new file mode 100644
+index 0000000..2cb2f00
+--- /dev/null
++++ b/tests/routing_handle/compat.cc
+@@ -0,0 +1,98 @@
++// SPDX-License-Identifier: Apache-2.0
++// CPU-only codec and legacy-prefix compatibility test. No CUDA or NIC required.
++#include "../../src/transport/net_ib/routing_handle.h"
++#include "../../src/transport/net_ib/routing_pci_root.h"
++#include <assert.h>
++#include <stddef.h>
++#include <stdio.h>
++#include <netinet/in.h>
++
++union Address { sockaddr sa; sockaddr_in sin; sockaddr_in6 sin6; };
++union Gid { uint8_t raw[16]; uint64_t alignment[2]; };
++struct Stage { int state; int offset; void* buffer; void* comm; };
++struct Legacy { Address address; uint64_t magic; Stage stage; Gid gids[2]; };
++struct Extended { Address address; uint8_t format[4]; uint64_t magic; Stage stage;
++                  Gid gids[2]; uint8_t ips[4][4]; };
++static_assert(sizeof(Legacy) == 96 && sizeof(Extended) == 112, "LP64 layout required");
++static_assert(offsetof(Extended, format) == 28 && offsetof(Extended, magic) == 32 &&
++              offsetof(Extended, stage) == 40 && offsetof(Extended, gids) == 64 &&
++              offsetof(Extended, ips) == 96, "Legacy offsets changed");
++
++int main() {
++  uint8_t gids[4][16] = {};
++  for (int i = 0; i < 4; i++) {
++    gids[i][10] = gids[i][11] = 0xff;
++    gids[i][12] = 192; gids[i][13] = 168; gids[i][14] = (uint8_t)(101+i); gids[i][15] = 10;
++  }
++  for (int count = 1; count <= 4; count++) {
++    Extended handle = {};
++    memcpy(handle.gids, gids, 32);
++    Legacy prefix; memcpy(&prefix, &handle, sizeof(prefix));
++    assert(ncclIbRoutingEncodeIpv4(handle.format, handle.ips, gids, count) == count);
++    uint8_t decoded[4][16]; memset(decoded, 0xa5, sizeof(decoded));
++    assert(ncclIbRoutingDecodeIpv4(handle.format, handle.ips, decoded) == count);
++    assert(memcmp(decoded, gids, count*16) == 0);
++    assert(memcmp(prefix.gids, handle.gids, 32) == 0);
++    assert(handle.magic == prefix.magic && handle.stage.state == prefix.stage.state);
++    // An old consumer retains identical socket/magic/stage/two-GID fields.
++    Legacy old; memcpy(&old, &handle, sizeof(old));
++    assert(memcmp(old.gids, gids, 32) == 0);
++    // The opaque exchange remains bounded by 128 bytes with untouched guards.
++    alignas(8) uint8_t exchange[144]; memset(exchange, 0xa7, sizeof(exchange));
++    memcpy(exchange+8, &handle, sizeof(handle));
++    for (int b = 0; b < 8; b++) assert(exchange[b] == 0xa7);
++    for (int b = 136; b < 144; b++) assert(exchange[b] == 0xa7);
++    Extended received; memcpy(&received, exchange+8, sizeof(received));
++    assert(ncclIbRoutingDecodeIpv4(received.format, received.ips, decoded) == count);
++  }
++  for (int poison = 1; poison < 256; poison++) {
++    alignas(8) uint8_t opaque[128]; memset(opaque, poison, sizeof(opaque));
++    memset(opaque, 0, sizeof(Legacy)); // Exact old producer, unknown trailing bytes.
++    assert(ncclIbRoutingDecodeIpv4(opaque + 28, nullptr, nullptr) == 0);
++  }
++  uint8_t format[4], ips[4][4], decoded[4][16];
++  const int badCounts[] = {-1, 0, 5, 255};
++  for (int badCount : badCounts) {
++    assert(ncclIbRoutingEncodeIpv4(format, ips, nullptr, badCount) == 0);
++    assert(ncclIbRoutingDecodeIpv4(format, nullptr, nullptr) == 0);
++  }
++  for (int field = 0; field < 4; field++) {
++    assert(ncclIbRoutingEncodeIpv4(format, ips, gids, 4) == 4);
++    format[field] = 255;
++    assert(ncclIbRoutingDecodeIpv4(format, nullptr, nullptr) == -1);
++  }
++  assert(ncclIbRoutingEncodeIpv4(format, ips, gids, 4) == 4);
++  assert(ncclIbRoutingDecodeIpv4(format, nullptr, decoded) == -1);
++  assert(ncclIbRoutingDecodeIpv4(format, ips, nullptr) == -1);
++  format[3] = 0;
++  assert(ncclIbRoutingDecodeIpv4(format, nullptr, nullptr) == -1);
++  uint8_t ipv6[4][16]; memcpy(ipv6, gids, sizeof(ipv6)); ipv6[2][0] = 0x20;
++  assert(ncclIbRoutingEncodeIpv4(format, ips, ipv6, 4) == 0);
++  assert(ncclIbRoutingDecodeIpv4(format, nullptr, nullptr) == 0);
++  memcpy(gids[3], gids[0], 16); // Duplicate reachable addresses round-trip unchanged.
++  assert(ncclIbRoutingEncodeIpv4(format, ips, gids, 4) == 4);
++  assert(ncclIbRoutingDecodeIpv4(format, ips, decoded) == 4);
++  assert(memcmp(decoded, gids, 64) == 0);
++  const char* primary[] = {"/sys/devices/pci0000:00/0000:00:00.0/0000:01:00.0",
++                           "/sys/devices/pci0000:00/0000:00:00.0/0000:01:00.1"};
++  const char* secondary[] = {"/sys/devices/pci0002:00/0002:00:00.0/0002:01:00.0",
++                             "/sys/devices/pci0002:00/0002:00:00.0/0002:01:00.1"};
++  char pRoot[11], sRoot[11];
++  assert(ncclIbRoutingCommonPciRoot(primary, 2, pRoot));
++  assert(ncclIbRoutingCommonPciRoot(secondary, 2, sRoot));
++  assert(strcmp(pRoot, "pci0000:00") == 0 && strcmp(sRoot, "pci0002:00") == 0);
++  assert(strcmp(pRoot, sRoot) != 0);
++  const char* mixed[] = {primary[0], secondary[0]};
++  assert(!ncclIbRoutingCommonPciRoot(mixed, 2, pRoot));
++  const char* missing[] = {primary[0], nullptr};
++  assert(!ncclIbRoutingCommonPciRoot(missing, 2, pRoot));
++  assert(!ncclIbRoutingCommonPciRoot(primary, 0, pRoot));
++  assert(!ncclIbRoutingCommonPciRoot(nullptr, 2, pRoot));
++  const char* invalidPaths[] = {"", "pci0000:00/0000:01:00.0", "/pci0000:00",
++                               "/sys/devices/pci00000:00/x", "/sys/devices/pci0000:0g/x",
++                               "/sys/devices/platform/roce0", "/pci/x"};
++  for (const char* path : invalidPaths) assert(!ncclIbRoutingPciRoot(path, pRoot));
++  assert(!ncclIbRoutingPciRoot(nullptr, pRoot));
++  assert(!ncclIbRoutingPciRoot(primary[0], nullptr));
++  puts("routing handle codec, PCI root, and legacy compatibility: passed");
++}

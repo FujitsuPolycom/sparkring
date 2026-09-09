@@ -17,6 +17,29 @@ import managed_cluster  # noqa: E402
 import managed_install  # noqa: E402
 
 
+def test_installed_source_closure_loads_receipt_without_checkout_imports(tmp_path):
+    for relative, data in managed_install.source_payloads().items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    script = """
+import importlib.util
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+path = root / 'runtime/glm53-spark-mtp3-mesh/profile.py'
+spec = importlib.util.spec_from_file_location('installed_profile', path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+contract = module._source_receipt_contract()
+assert callable(contract.validate_receipt)
+assert 'native_files' not in sys.modules
+"""
+    result = subprocess.run([sys.executable, '-I', '-c', script, str(tmp_path)],
+                            cwd=tmp_path, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
 @pytest.fixture
 def exact_container_spec():
     image_id = 'sha256:' + 'b' * 64

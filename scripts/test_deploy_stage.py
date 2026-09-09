@@ -61,10 +61,11 @@ def test_archive_traversal_rejected(tmp_path):
 
 @pytest.mark.skipif(os.name != "posix", reason="staging controller targets Linux/WSL")
 @pytest.mark.parametrize(
-    "failure", [None, "ownership", "copy", "canonical", "launch", "source"]
+    "failure", [None, "ownership", "copy", "canonical", "launch", "source", "image", "weights"]
 )
+@pytest.mark.parametrize("reuse_assets", [False, True])
 def test_stage_sequence_uses_one_download_and_never_starts_model(
-    tmp_path, monkeypatch, failure
+    tmp_path, monkeypatch, failure, reuse_assets
 ):
     source = tmp_path / "source"
     (source / "scripts").mkdir(parents=True)
@@ -93,6 +94,24 @@ def test_stage_sequence_uses_one_download_and_never_starts_model(
         "weights.bin": "b" * 64,
     }
     preparation = prepared()
+    if reuse_assets:
+        from scripts import deploy_existing_assets
+        from scripts.deploy_engine import plan_digest
+        roots = [f"/models/rank{rank}/target" for rank in range(4)]
+        preparation["spec"]["existing_assets"] = {
+            "schema": "sparkring-existing-assets/v1", "image": "all-ranks-preinstalled",
+            "model_roots": roots,
+        }
+        preparation["spec"]["site"]["model_roots"] = roots
+        preparation["network_verification"]["spec_sha256"] = plan_digest(preparation["spec"])
+        def verify_models(run, hosts, actual_roots, target):
+            assert actual_roots == roots and target == pins["target"]
+            checks = {host for host, argv in run.run.calls if argv[:3] == ["docker", "image", "inspect"]}
+            assert checks == {host["host"] for host in hosts}
+            verified = files if failure != "weights" else {**files, "config.json": "0" * 64}
+            return {"model_files": verified, "model_source_receipt": {"revision": target["revision"]},
+                    "ranks": [{"rank": h["rank"], "root": roots[h["rank"]]} for h in hosts]}
+        monkeypatch.setattr(deploy_existing_assets, "verify_existing_models", verify_models)
     from scripts.deploy_suite import lifecycle_capabilities
 
     preparation["lifecycle_capabilities"] = lifecycle_capabilities(module.PROFILE)
@@ -116,7 +135,7 @@ def test_stage_sequence_uses_one_download_and_never_starts_model(
     class Fake:
         def __init__(self):
             self.calls = []
-            self.files = {"spark-r0": files.copy()}
+            self.files = {f"spark-r{i}": files.copy() for i in range(4 if reuse_assets else 1)}
             self.keys = []
 
         def remote(self, host, argv, *, input=None, timeout=0):
@@ -159,8 +178,12 @@ def test_stage_sequence_uses_one_download_and_never_starts_model(
             if argv[:2] == ["sha256sum", "/srv/sparkring/test-mesh/image.tar"]:
                 return "a" * 64 + " image.tar"
             if argv[:3] == ["docker", "image", "inspect"]:
+                if failure == "image" and host == "spark-r2":
+                    return "sha256:" + "0" * 64
                 return pub["config_image_id"]
             if argv[:2] == ["python3", "-c"] and "rows={}" in argv[2]:
+                if failure == "weights":
+                    return json.dumps({**self.files.get(host, {}), "config.json": "0" * 64})
                 return json.dumps(self.files.get(host, {}))
             return ""
 
@@ -192,13 +215,19 @@ def test_stage_sequence_uses_one_download_and_never_starts_model(
             assert (tmp_path / "state/remote-operation.json").is_file()
         return
     result = module.stage(preparation, tmp_path / "state", run=fake, source_root=source)
-    assert len([a for _, a in fake.calls if a[:2] == ["docker", "pull"]]) == 1
+    assert len([a for _, a in fake.calls if a[:2] == ["docker", "pull"]]) == (0 if reuse_assets else 1)
     runs = [a for _, a in fake.calls if a[:2] == ["docker", "run"]]
-    assert (
-        len(runs) == 1
-        and "--gpus" not in runs[0]
-        and "snapshot_download" in runs[0][-1]
-    )
+    if reuse_assets:
+        assert runs == []
+        assert not any(a[:3] == ["docker", "image", "save"] or a[:2] == ["docker", "load"]
+                       for _, a in fake.calls)
+        assert not any("/image.tar" in " ".join(a) for _, a in fake.calls)
+        assert not any(a[:2] == ["mkdir", "-p"] and any(root in a for root in roots)
+                       for _, a in fake.calls)
+        assert len(result["existing_assets_verification"]["images"]) == 4
+        assert not result["existing_assets_verification"]["model_writes_performed"]
+    else:
+        assert len(runs) == 1 and "--gpus" not in runs[0] and "snapshot_download" in runs[0][-1]
     assert not any(a[:2] == ["docker", "start"] for _, a in fake.calls)
     assert len(fake.keys) == 4 and len(set(fake.keys)) == 1 and len(fake.keys[0]) == 32
     assert result["model_files"] == files
@@ -210,9 +239,10 @@ def test_stage_sequence_uses_one_download_and_never_starts_model(
         == "# fixture"
     )
     assert all(fake.files[h["host"]] == files for h in result["spec"]["hosts"])
-    assert runs[0][runs[0].index("--user") + 1] == "1000:1000"
-    assert "HF_HUB_OFFLINE=0" in runs[0]
-    assert "NVIDIA_VISIBLE_DEVICES=void" in runs[0]
+    if not reuse_assets:
+        assert runs[0][runs[0].index("--user") + 1] == "1000:1000"
+        assert "HF_HUB_OFFLINE=0" in runs[0]
+        assert "NVIDIA_VISIBLE_DEVICES=void" in runs[0]
     ownership_checks = [
         (index, host, args[-1])
         for index, (host, args) in enumerate(fake.calls)

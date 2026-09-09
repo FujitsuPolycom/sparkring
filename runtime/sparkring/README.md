@@ -1,5 +1,10 @@
 # Model-neutral SparkRing runtime packaging
 
+For the source-pinned GLM TP2/TP4 image with mesh, dual-domain NCCL, coalescing,
+mHC, and optional SparkCache, use the [shared GLM source recipe](source_image/README.md).
+It downloads public source bases and applies checked-in patches. The asset
+packager below describes the separately published three-asset image.
+
 Status: **research-only — testing in progress**. The published ARM64/SM121
 runtime image includes a model attention module and two native cache libraries,
 identified by hashes in manifest.json. Models and site-specific serving settings
