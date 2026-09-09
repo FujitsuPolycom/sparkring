@@ -24,7 +24,7 @@ startup helper, and runtime profile. Full hashes in that file are authoritative.
 | B12X | Public base `85a08f47750db333a33ab3eae245a0a08452d04c` plus `patches/b12x.patch`; reproduces `2883a5df65a7ea3cb6e82abb63d1448dd3154887`, including four-checkpoint kernels and profile-selected managed loading |
 | NCCL | Public NVIDIA source base `73cf112295c33aee2b895f329f592f2a9b4b0f97` plus the cumulative `patches/nccl.patch`; preserves switchless routing and independent PCIe-domain discovery |
 | SparkCache | `d0cf7296062ec8b4d17d65cd05a416d509e80bd8`, reproduced from its public base and packaged patch; includes capture-job read leases, request cleanup, private restore admission, and the exact common-vLLM source contract |
-| Startup | Four source-pinned helpers under `startup/`; six sampler cases, completed-output admission, and allocation-aware scheduler liveness for the TP4 wrapper |
+| Startup | Four source-pinned helpers under `startup/`; six streamed sampler requests with validated completion and usage, plus allocation-aware scheduler liveness for the TP4 wrapper |
 | TP2 transport | Exact adaptive-grid RoCEnante source under `runtime/transport_profiles/`; selected before B12X import, with independent proxy/kernel and file verification |
 
 | Profile | Checkpoint and parallelism | Communication and cache |
