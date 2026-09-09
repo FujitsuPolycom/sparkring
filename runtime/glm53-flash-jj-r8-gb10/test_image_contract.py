@@ -100,7 +100,8 @@ def test_image_packages_dflash_warmup_and_rank_zero_waits_for_it() -> None:
     assert 'container_command=(docker "${container_action[@]}"' in launcher
     assert 'container_id="$("${container_command[@]}")"' in launcher
     assert '"${rank}" == 0 && "${DFLASH_WARMUP}" == 1' in launcher
-    assert "--entrypoint /opt/sparkring/bin/serve-with-warmup.py" in launcher
+    assert "serving_entrypoint=/opt/sparkring/bin/serve-with-warmup.py" in launcher
+    assert '--entrypoint "${serving_entrypoint}"' in launcher
     assert "rank-0 engine readiness timed out" in launcher
     wrapper = (HERE / "serve_with_warmup.py").read_text(encoding="utf-8")
     main_source = wrapper.split("def main() -> int:", 1)[1]

@@ -1,0 +1,44 @@
+{
+  "schema": "sparkring-transport-bundle/v1",
+  "name": "tp2-rocenante-adaptive",
+  "status": "implemented",
+  "source_repository": "https://github.com/FujitsuPolycom/sparkring",
+  "source_revision": "60d8d68486540ce9ddb2702dd545fda6b347c087",
+  "upstream_repository": "https://github.com/local-inference-lab/b12x",
+  "license": "Apache-2.0",
+  "package": "b12x.comm.roce",
+  "api_version": 1,
+  "files": {
+    "roce/__init__.py": "d1eabaa9395bbdc568d503c79cc1a57ab74626feed0c67851a00be0ba2718a7e",
+    "roce/_allgather_cute.py": "52a1ad8d7f3ab3e7a3379f3e471f274cc71a2513f595a5f939eb38df39447e19",
+    "roce/_cute_intrinsics.py": "ff0847d986243bf92444cd4c3db9156a6fc10d8c2e1a16d54761375e6aa7a78e",
+    "roce/_oneshot_cute.py": "472f771179dc403932caf05734739a978109bfdea136611cf0ddc84dc0f32a57",
+    "roce/_path_config.py": "d0ac6f1de1934e74202118a94b4f911001869e3da514bf599ca5ea696e82f0c9",
+    "roce/_proxy.py": "bba65c20e1a9bd268c8123ca6c2a80eea69b1d8354e63925d761fe576f94e206",
+    "roce/_roce_proxy.c": "8f5e2f76cb0ba37fdcdfe7c7f85c028a53a3a0441e1cb1b74c6b455cb0355838",
+    "roce/api.py": "02becd3757e71c917a71e98ab3f779d52bb18e6801b8efebd792ab186277ea46",
+    "roce/roce_oneshot.py": "6809aa25314b8f2d74f3a748ec43c098bdf9764cc1fbe2d3451f6b8268bea2c0",
+    "LICENSE": "1eb85fc97224598dad1852b5d6483bbcf0aa8608790dcc657a5a2a761ae9c8c6"
+  },
+  "git_blobs": {
+    "roce/__init__.py": "4eff87745dcea06f560706210966685376cd5008",
+    "roce/_allgather_cute.py": "3429f5fa594e60217519961d9c07266d3fcf5a2c",
+    "roce/_cute_intrinsics.py": "b7b639b48796afb30d3fac6de84585da06d771e4",
+    "roce/_oneshot_cute.py": "f93d93f476d90fe9f82d603118a280f247dd6ba8",
+    "roce/_path_config.py": "15d4fc74854e2021c3878a00a89c3372f27ece3a",
+    "roce/_proxy.py": "93b4089cccdf47514d1b032826d2f950929add27",
+    "roce/_roce_proxy.c": "b5ae38ce733d427045c76e5f77e9508c49d332ae",
+    "roce/api.py": "b6be3ef1549dc418df2c98fb758f9343ba280d11",
+    "roce/roce_oneshot.py": "ca9f89d1710eefcdc89f9c7298dae8186f20e15a",
+    "LICENSE": "29f81d812f3e768fa89638d1f72920dbfd1413a8"
+  },
+  "qualification": {
+    "source_deployment": "qualified for bounded TP2/DCP1 text workloads and the recorded collective checks",
+    "shared_image": "research-only; requires serving validation of its exact composition",
+    "default_path_count": 2,
+    "default_peer_hca_indices": [
+      0,
+      2
+    ]
+  }
+}

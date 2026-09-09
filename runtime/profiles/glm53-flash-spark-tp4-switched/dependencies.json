@@ -1,0 +1,101 @@
+{
+  "schema": "sparkring-profile-dependencies/v1",
+  "status": "implemented",
+  "profile": "glm53-flash-spark-tp4-switched-mtp3",
+  "shared_source_lock": "../../sparkring/source_image/glm53-tp4-lock.json",
+  "collective_backend": "nccl",
+  "gpu_serving_qualified": false,
+  "sources": {
+    "vllm": {
+      "repository": "https://github.com/local-inference-lab/vllm.git",
+      "base_revision": "2a979314dc97b03173a0a76fc15664ec924db32b",
+      "revision": "17bd258075f44dda8b405f384732f3c78d03f308",
+      "result_tree": "ada34b943c02ffe0626982aab320cb6d4a6ccd70"
+    },
+    "b12x": {
+      "repository": "https://github.com/local-inference-lab/b12x.git",
+      "base_revision": "85a08f47750db333a33ab3eae245a0a08452d04c",
+      "revision": "2883a5df65a7ea3cb6e82abb63d1448dd3154887",
+      "result_tree": "d9a8ed07fd0bc068920666d9d9c1080e30c8197f"
+    },
+    "sparkcache": {
+      "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
+      "base_revision": "6be08c1fff14d66de6dbbbd60c00dba3816e649a",
+      "revision": "d0cf7296062ec8b4d17d65cd05a416d509e80bd8",
+      "result_tree": "910c07859b180fa9b10238ccbdab80ac5c33c8c6"
+    }
+  },
+  "audited_vllm_files": {
+    "vllm/distributed/device_communicators/cuda_communicator.py": "32c2b0edb40abb61b61ba43e1276bc84cd58064a595663ed202d8aaf4a3c798d",
+    "vllm/distributed/device_communicators/all_reduce_utils.py": "619966972ffec60f3c26d4ac9c91701bbe3c7ce02e404b118b2658a351626042",
+    "vllm/distributed/device_communicators/pynccl.py": "a433441d5de7e2745f582038b4af6d17a84dfbcd75f510979abace10b60d1d6d",
+    "vllm/models/glm5next/nvidia/mhc_prefill_sharding.py": "5057faa97fdcb21d91583d39f4cf29a54e900ca4ce1d07d800854dc0e3b92ee0",
+    "vllm/v1/core/recurrent_prefill_checkpoint.py": "03d6184f221aa645246b5346bfe7fef03b3f2b75fb43b7190587b907b5aeffa4"
+  },
+  "nccl": {
+    "library": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+    "routing_flags": {
+      "NCCL_SWITCHLESS_RING_ONLY": "0",
+      "NCCL_IB_SUBNET_AWARE_ROUTING": "0",
+      "NCCL_IB_EXTENDED_IPV4_GIDS": "1",
+      "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+      "NCCL_IB_ROUTE_DIAGNOSTICS": "0"
+    },
+    "source_behavior": "The extended-IPv4 and PCI-domain options are enabled independently of switchless-ring mode. In the pinned patch, ncclIbListen publishes extended GIDs only inside the subnet-aware gate; ncclIbConnectImpl calls ncclIbFindDevBySubnet only inside that same gate. PCI-root preference is inside ncclIbFindDevBySubnet and retains an already reachable default device. With NCCL_IB_SUBNET_AWARE_ROUTING=0, those advertisement/preference paths are inactive and ordinary L2 topology-selected HCA connections remain unchanged. NCCL_SWITCHLESS_RING_ONLY=0 does not suppress tree/PAT setup.",
+    "audited_routing_source": "runtime/sparkring/source_image/patches/nccl.patch: src/transport/net_ib/connect.cc (ncclIbListen, ncclIbConnectImpl, ncclIbFindDevBySubnet); src/transport/generic.cc (tree/PAT gates)",
+    "audited_lock_sha256": "768a450b5eb84bf3d1191795350e43c96de75aeba4783ec314d47672fe6e1fc6",
+    "required_library_identity": "Use runtime.nccl_path and runtime.nccl_sha256 from the exact common source lock for the built image."
+  },
+  "source_findings": [
+    {
+      "component": "CudaCommunicator",
+      "finding": "PyNcclCommunicator is constructed for world_size > 1. With custom all-reduce, B12X PCIe/RoCE, FlashInfer, and symmetric memory disabled, all_reduce reaches pynccl_comm.all_reduce, and ordinary all_gather/reduce_scatter use PyNccl."
+    },
+    {
+      "component": "mHC prefill",
+      "finding": "PrefillOwnership uses the enabled TP PyNccl communicator directly, independently of RoCEnante. It owns BF16 row shards and invokes NCCL reduce-scatter/all-gather; TP4/DCP1 is admitted. Startup checks and capability votes reject an unavailable communicator."
+    },
+    {
+      "component": "Coalescing",
+      "finding": "The common validator admits TP4/DCP1 with the V2 runner, BF16 GLM5Next, B12X KDA, 8192-token chunks, aligned prefix caching, retention interval 0, and static MTP3. It imposes no physical ring or custom-transport requirement."
+    }
+  ],
+  "required_image_integration": {
+    "profile_row": {
+      "tp_size": 4,
+      "dcp_size": 1,
+      "topology": "switched",
+      "collective_backend": "nccl",
+      "sparkcache": false,
+      "transport_profile": null,
+      "profile_sha256": "compute from profile.json"
+    },
+    "profile_assets": [
+      "profile.json",
+      "launch.py",
+      "dependencies.json",
+      "rank.env.example",
+      "README.md"
+    ],
+    "dispatch_profile": "glm53-flash-spark-tp4-switched-mtp3",
+    "dispatch_argv": [
+      "${MANIFEST_WARMUP_ARGV}",
+      "${VLLM_ARGUMENTS}"
+    ],
+    "dispatch_contract": "Use the existing generic warmup wrapper after common verification. The initially empty PYTHONPATH permits the wrapper to add only /opt/sparkring/bin for startup admission; no ring/mesh hook directory is added."
+  },
+  "operator_requirements": [
+    "Provide exact HCA names/ports that are physically connected to the switch on each rank, plus the correct GID and bootstrap interfaces.",
+    "An HCA function count does not identify the number of physical uplinks. No one-uplink or two-uplink layout is assumed.",
+    "Configure and verify the switch, RoCE links, MTU and peer reachability independently; the launcher does not change host or switch networking."
+  ],
+  "qualification_requirements": [
+    "Verify built image source/file witnesses against the exact source lock and this profile hash.",
+    "Complete bounded shape warmup and all six generic sampler request recipes before rank-zero readiness.",
+    "Keep SparkCache disabled in this profile."
+  ],
+  "limitations": [
+    "Switched deployments are provided as-is. This profile has not been validated on switched hardware."
+  ],
+  "source_audit_base": "17dafa8bed49a3f75eefad116a272d40be4e70fc"
+}
