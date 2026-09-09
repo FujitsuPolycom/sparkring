@@ -145,6 +145,7 @@ esac
 : "${SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT:=2}"
 : "${SPARKCACHE_BUFFER_BUDGET_BYTES:=0}"
 : "${SPARKCACHE_SOURCE_OVERLAY:=}"
+: "${SPARKCACHE_SOURCE_LEASE_CONTRACT:=}"
 : "${VLLM_KV_METRICS_OVERLAY:=}"
 : "${MULTIMODAL_INPUTS:=1}"
 : "${SOCKET_IFNAME:=enP7s7}"
@@ -152,6 +153,12 @@ esac
 : "${NCCL_IB_GID_INDEX:=3}"
 : "${NCCL_MIN_NCHANNELS:=4}"
 : "${NCCL_MAX_NCHANNELS:=4}"
+: "${NCCL_LIBRARY_PATH:=/opt/sparkring/nccl/libnccl.so.2}"
+: "${NCCL_LIBRARY_SHA256:=}"
+: "${NCCL_DEBUG:=WARN}"
+: "${NCCL_DEBUG_SUBSYS:=NET,INIT,GRAPH}"
+: "${SOURCE_IMAGE_PROFILE:=}"
+: "${VLLM_BLOCK_SIZE:=256}"
 : "${OMP_NUM_THREADS:=16}"
 : "${TORCHINDUCTOR_COMPILE_THREADS:=1}"
 : "${FASTSAFETENSORS_QUEUE_SIZE:=1}"
@@ -173,6 +180,67 @@ require_positive_uint() {
   require_uint "$1"
   (( ${!1} > 0 )) || die "$1 must be greater than zero"
 }
+
+source_environment=()
+for name in VLLM_B12X_KDA_PREFILL_COALESCING VLLM_GLM53_MHC_PREFILL_SHARD \
+  VLLM_GLM53_MHC_PREFILL_DIAGNOSTICS VLLM_GLM53_KDA_GATE_SIDE_STREAM \
+  VLLM_DCP_TOPK_OWNER_MERGE VLLM_DCP_OWNER_FUSED_ENDPOINTS \
+  VLLM_DCP_COMPACT_INDEX_CACHE_OWNER VLLM_DCP_COMPACT_INDEX_TENSOR_VOTE \
+  VLLM_DCP_COMPACT_INDEX_LOCAL_WIDTHS VLLM_DCP_COMPACT_INDEX_PROFILE \
+  NCCL_IB_EXTENDED_IPV4_GIDS NCCL_IB_PRESERVE_PCI_DOMAIN NCCL_IB_ROUTE_DIAGNOSTICS; do
+  value="${!name:-0}"
+  [[ "${value}" == 0 || "${value}" == 1 ]] || die "${name} must be 0 or 1"
+  source_environment+=(-e "${name}=${value}")
+done
+case "${NCCL_LIBRARY_PATH}" in
+  /opt/sparkring/nccl/libnccl.so.2) ;;
+  /opt/sparkring/nccl-pci/libnccl.so.2.30.7)
+    [[ "${NCCL_LIBRARY_SHA256}" =~ ^[0-9a-f]{64}$ && -n "${SOURCE_IMAGE_PROFILE}" ]] || \
+      die 'Source-composed NCCL requires its receipt-bound profile and SHA-256' ;;
+  *) die 'NCCL library path is not supported by this launcher' ;;
+esac
+case "${VLLM_BLOCK_SIZE}" in 256|512) ;; *) die 'VLLM_BLOCK_SIZE must be 256 or 512' ;; esac
+case "${NCCL_DEBUG}" in WARN|INFO) ;; *) die 'NCCL_DEBUG must be WARN or INFO' ;; esac
+[[ "${NCCL_DEBUG_SUBSYS}" == NET,INIT,GRAPH ]] || die 'NCCL_DEBUG_SUBSYS must be NET,INIT,GRAPH'
+case "${SOURCE_IMAGE_PROFILE}" in
+  '') ;;
+  tp4-dcp1-mtp3-prefill|tp4-dcp4-mtp3-prefill)
+    [[ "${SPARKCACHE_ENABLED}" == 0 && "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 0 ]] || \
+      die 'Source-composed prefill profiles require SparkCache and capture disabled'
+    [[ "${SPECULATION_METHOD}" == mtp && "${NUM_SPECULATIVE_TOKENS}" == 3 && "${TENSOR_PARALLEL_SIZE}" == 4 ]] || \
+      die 'Source-composed prefill profiles require TP4 and native MTP3'
+    [[ "${SOURCE_IMAGE_PROFILE}" == "tp4-dcp${DECODE_CONTEXT_PARALLEL_SIZE}-mtp3-prefill" ]] || \
+      die 'DCP size differs from the source-composed profile'
+    [[ "${VLLM_B12X_KDA_PREFILL_COALESCING:-0}" == 1 && "${VLLM_GLM53_MHC_PREFILL_SHARD:-0}" == 1 ]] || \
+      die 'Source-composed prefill profile requires both coalescing and mHC sharding' ;;
+  tp4-dcp1-mtp3-sparkcache)
+    [[ "${SPECULATION_METHOD}" == mtp && "${NUM_SPECULATIVE_TOKENS}" == 3 && \
+       "${TENSOR_PARALLEL_SIZE}" == 4 && "${DECODE_CONTEXT_PARALLEL_SIZE}" == 1 && \
+       "${PIPELINE_PARALLEL_SIZE}" == 1 && "${NODE_COUNT}" == 4 && \
+       "${DRAFT_TENSOR_PARALLEL_SIZE}" == 4 ]] || \
+      die 'Source SparkCache profile requires TP4/DCP1/PP1 and native MTP3'
+    [[ "${TARGET_MODEL_VARIANT}" == nvfp4-spark && "${VLLM_BLOCK_SIZE}" == 512 ]] || \
+      die 'Source SparkCache profile requires NVFP4-Spark and 512-token blocks'
+    [[ "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" == /usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json ]] || \
+      die 'Source SparkCache profile requires the installed source-image connector-job contract'
+    [[ "${SPARKCACHE_PLACEMENT_LIBRARY_SHA256:-}" == 2657cdd2e54a097c9544e4c79ae62c0646db6db123ff24e4f0c384238c3a1e8d ]] || \
+      die 'Source SparkCache profile requires its receipt-bound placement library'
+    [[ -z "${SPARKCACHE_SOURCE_OVERLAY}" && -z "${VLLM_KV_METRICS_OVERLAY}" ]] || \
+      die 'Source SparkCache profile cannot replace receipt-bound package files'
+    [[ "${VLLM_B12X_KDA_PREFILL_COALESCING:-0}" == 1 && "${VLLM_GLM53_MHC_PREFILL_SHARD:-0}" == 1 && \
+       "${VLLM_DCP_COMPACT_INDEX_CACHE_OWNER:-0}" == 0 ]] || \
+      die 'Source SparkCache profile requires coalescing, mHC sharding, and compact index cache disabled'
+    [[ "${NCCL_LIBRARY_PATH}" == /opt/sparkring/nccl-pci/libnccl.so.2.30.7 && \
+       "${NCCL_IB_EXTENDED_IPV4_GIDS:-0}" == 1 && "${NCCL_IB_PRESERVE_PCI_DOMAIN:-0}" == 1 ]] || \
+      die 'Source SparkCache profile requires its dual-domain NCCL settings' ;;
+  *) die 'Unsupported source-composed runtime profile' ;;
+esac
+if [[ -n "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" && "${SOURCE_IMAGE_PROFILE}" != tp4-dcp1-mtp3-sparkcache ]]; then
+  die 'SPARKCACHE_SOURCE_LEASE_CONTRACT requires the source SparkCache profile'
+fi
+if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
+  source_environment+=(-e "SOURCE_IMAGE_PROFILE=${SOURCE_IMAGE_PROFILE}" -e PYTHONUNBUFFERED=1)
+fi
 
 for name in \
   PORT MASTER_PORT TENSOR_PARALLEL_SIZE PIPELINE_PARALLEL_SIZE \
@@ -332,6 +400,23 @@ if [[ "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 ]]; then
     read-write|store-only) ;;
     *) die 'asynchronous page capture requires a publication-capable access mode' ;;
   esac
+fi
+
+if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-mtp3-sparkcache ]]; then
+  # These are the bounded capacities named by the source-image profile. Reject
+  # inherited operator defaults instead of allocating larger unqualified buffers.
+  for setting in SPARKCACHE_ENABLED=1 SPARKCACHE_ACCESS_MODE=read-write \
+    SPARKCACHE_ASYNC_PAGE_CAPTURE=1 SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2 \
+    SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES=536870912 SPARKCACHE_LOAD_THREADS=2 \
+    SPARKCACHE_MAX_PENDING_RESTORES=2 SPARKCACHE_CUDA_RESTORE_IO_WORKERS=2 \
+    SPARKCACHE_CUDA_ARENA_BYTES=67108864 SPARKCACHE_BUFFER_BUDGET_BYTES=1342177280 \
+    SPARKCACHE_MAX_BYTES=8589934592 SPARKCACHE_LOW_WATERMARK_BYTES=6442450944 \
+    SPARKCACHE_MIN_SPAN_TOKENS=4096 SPARKCACHE_MAX_SPAN_TOKENS=65536 \
+    SPARKCACHE_PUBLICATION_SCHEMA=tail-cow-v2 KV_CACHE_MEMORY_BYTES=25769803776 \
+    MAX_MODEL_LEN=1048576; do
+    name="${setting%%=*}"
+    [[ "${!name}" == "${setting#*=}" ]] || die "Source SparkCache profile requires ${setting}"
+  done
 fi
 
 # Resolve the payload buffers before inspecting checkpoints or contacting Docker.
@@ -858,6 +943,7 @@ if [[ "${SPARKCACHE_ENABLED}" == 1 ]]; then
   export SPARKCACHE_CUDA_RESTORE_IO_WORKERS SPARKCACHE_CUDA_ARENA_BYTES
   export SPARKCACHE_ASYNC_PAGE_CAPTURE
   export SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT
+  export SOURCE_IMAGE_PROFILE SPARKCACHE_SOURCE_LEASE_CONTRACT
   export TARGET_CHECKPOINT_FINGERPRINT DRAFT_CHECKPOINT_FINGERPRINT
   kv_transfer_config="$(python3 - <<'PY'
 import json
@@ -900,6 +986,15 @@ extra = {
     "spark_cache_async_page_capture_vllm_root": "/usr/local/lib/python3.12/dist-packages",
     "spark_cache_async_page_capture_lease_contract": "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-manager-page-async-contract-55969c16.json",
 }
+if os.environ["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1-mtp3-sparkcache":
+    extra.update({
+        "spark_cache_async_page_capture_lease_mode": "connector-jobs",
+        "spark_cache_async_page_capture_lease_contract": os.environ["SPARKCACHE_SOURCE_LEASE_CONTRACT"],
+        "spark_cache_async_page_capture_library": "/opt/sparkcache-native/libspark_cache_snapshot.so",
+        "spark_cache_async_page_capture_library_sha256": "cc44b69c9e01aaeb6b94f46cd649e2ec5972fc6b29d1a41b7b033a82ce788f39",
+        "spark_cache_cuda_restore_arena_budget_bytes": 268435456,
+        "spark_cache_page_snapshot_interval_tokens": 0,
+    })
 print(json.dumps({
     "kv_connector": "SparkContextCacheConnector",
     "kv_role": "kv_both",
@@ -946,9 +1041,20 @@ case "${SPARKRING_CREATE_ONLY}" in
   *) die 'SPARKRING_CREATE_ONLY must be 0 or 1' ;;
 esac
 
+serving_entrypoint=/opt/sparkring/bin/serve-with-warmup.py
+serving_prefix=()
+source_recurrent_args=()
+if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
+  # Source-bound profiles must verify installed files before importing serving code.
+  serving_entrypoint=python3
+  serving_prefix=(-S -B /opt/sparkcache-jj-runtime/verify_sources.py --serve)
+  # Automatic request-boundary checkpoints exclude continuation coalescing.
+  source_recurrent_args=(--mamba-block-size "${VLLM_BLOCK_SIZE}" --recurrent-checkpoint-policy aligned --prefix-cache-retention-interval 0)
+fi
+
 container_command=(docker "${container_action[@]}" \
   --name "${container}" \
-  --entrypoint /opt/sparkring/bin/serve-with-warmup.py \
+  --entrypoint "${serving_entrypoint}" \
   --network host --ipc host --shm-size "${SHM_SIZE}" --gpus all \
   --ulimit memlock=-1:-1 --cap-add IPC_LOCK --device /dev/infiniband \
   --security-opt label=disable --init \
@@ -996,9 +1102,11 @@ container_command=(docker "${container_action[@]}" \
   -e VLLM_B12X_MOE_FP4_FORCE_A16=0 \
   -e VLLM_ENABLE_PCIE_ALLREDUCE=0 -e VLLM_ALLREDUCE_USE_FLASHINFER=0 \
   -e VLLM_ALLREDUCE_USE_SYMM_MEM=0 \
-  -e VLLM_NCCL_SO_PATH=/opt/sparkring/nccl/libnccl.so.2 \
-  -e LD_PRELOAD=/opt/sparkring/nccl/libnccl.so.2 \
-  -e NCCL_DEBUG=WARN -e NCCL_NET=IB -e NCCL_NET_PLUGIN=none \
+  "${source_environment[@]}" \
+  -e "VLLM_NCCL_SO_PATH=${NCCL_LIBRARY_PATH}" \
+  -e "LD_PRELOAD=${NCCL_LIBRARY_PATH}" \
+  -e "NCCL_DEBUG=${NCCL_DEBUG}" -e "NCCL_DEBUG_SUBSYS=${NCCL_DEBUG_SUBSYS}" \
+  -e NCCL_NET=IB -e NCCL_NET_PLUGIN=none \
   -e NCCL_IB_DISABLE=0 -e "NCCL_IB_HCA=${NCCL_IB_HCA}" \
   -e "NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX}" \
   -e NCCL_IB_SUBNET_AWARE_ROUTING=1 -e NCCL_IB_MERGE_NICS=0 -e NCCL_CROSS_NIC=1 \
@@ -1021,6 +1129,7 @@ container_command=(docker "${container_action[@]}" \
   --label org.sparkring.sircl.native-sha256="${sircl_native_sha256}" \
   --label org.sparkring.sircl.manifest-sha256="${sircl_manifest_sha256}" \
   "${IMAGE_REF}" \
+  "${serving_prefix[@]}" \
   /models/target \
   --served-model-name "${SERVED_MODEL_NAME}" "${api_key_args[@]}" \
   --host 0.0.0.0 --port "${PORT}" \
@@ -1031,10 +1140,11 @@ container_command=(docker "${container_action[@]}" \
   --distributed-executor-backend mp --nnodes "${NODE_COUNT}" --node-rank "${rank}" \
   --master-addr "${MASTER_ADDR}" --master-port "${MASTER_PORT}" \
   --disable-custom-all-reduce --mamba-cache-mode align "${multimodal_args[@]}" \
+  "${source_recurrent_args[@]}" \
   "${chat_template_args[@]}" \
   --enable-chunked-prefill --dtype bfloat16 --kv-cache-dtype "${KV_CACHE_DTYPE}" \
   --quantization modelopt_mixed --attention-backend "${ATTENTION_BACKEND}" \
-  --block-size 256 --moe-backend "${MOE_BACKEND}" --linear-backend "${LINEAR_BACKEND}" \
+  --block-size "${VLLM_BLOCK_SIZE}" --moe-backend "${MOE_BACKEND}" --linear-backend "${LINEAR_BACKEND}" \
   --no-enable-flashinfer-autotune --load-format "${LOAD_FORMAT}" \
   --enable-auto-tool-choice --tool-call-parser glm47 --reasoning-parser glm45 \
   --kda-prefill-backend "${KDA_PREFILL_BACKEND}" \

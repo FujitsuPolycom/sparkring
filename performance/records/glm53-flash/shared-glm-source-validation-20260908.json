@@ -1,0 +1,49 @@
+{
+  "schema": "sparkring-shared-glm-source-validation/v1",
+  "status": "implemented",
+  "source_lock_sha256": "06cd236ed2e62f2c7a878825e72f34784b6780806950d4328c0041a0192afe09",
+  "source_revisions": {
+    "b12x": "2883a5df65a7ea3cb6e82abb63d1448dd3154887",
+    "sparkcache": "d0cf7296062ec8b4d17d65cd05a416d509e80bd8",
+    "vllm": "17bd258075f44dda8b405f384732f3c78d03f308"
+  },
+  "source_preparation": {
+    "public_bases_fetched": 4,
+    "complete_result_trees_verified": 4,
+    "context_sha256": "5d505d3f73f6730292d687c54ccb0224abe75c2d68a3957e08cd66f1b399f6be",
+    "payload_sha256": "2a001cff99941ab4defd118d4c0977038da39ba73cc182fd002527cde1be96a2",
+    "manifest_sha256": "be35a8f4852f2bc4102e8ffa8e7d49f42d5a88489fe3b15caf4c7f69e18e7065",
+    "trusted_tool_closure_files": 10,
+    "profile_assets": 17,
+    "transport_bundle_files": 10
+  },
+  "cpu_validation": {
+    "platform": "Windows",
+    "python": "3.12.10",
+    "openai": "2.29.0",
+    "pydantic": "2.12.5",
+    "pytest": "8.4.2",
+    "command": "python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/sparkring runtime/profiles runtime/transport_profiles runtime/test_public_overlay.py performance/harnesses scripts integrations/lil -q -rs",
+    "passed": 3271,
+    "skipped": 96,
+    "seconds": 120.09,
+    "skip_scope": "POSIX ownership, unavailable native compilers, optional source/bundle inputs, live TP4 environment and companion LIL binary"
+  },
+  "component_cpu_validation": {
+    "vllm_prefill_and_recovery_passed": 162,
+    "b12x_loader_passed": 20,
+    "sparkcache_integration_passed": 1305
+  },
+  "static_checks": {
+    "ruff": "passed",
+    "repository_relative_links": 652,
+    "release_safety_findings": 0
+  },
+  "image_built": false,
+  "shared_image_gpu_qualified": false,
+  "limitations": [
+    "The source context is prepared; no ARM64 shared-image build or model launch is claimed.",
+    "Reference TP4 and TP2 measurements do not qualify this different source and native runtime composition.",
+    "NCCL and snapshot output must match their locked native identities before the strict image recipe can finish."
+  ]
+}

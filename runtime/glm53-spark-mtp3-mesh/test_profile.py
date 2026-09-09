@@ -42,6 +42,39 @@ def test_path_guard(path):
         mesh_profile.absolute(path, "fixture")
 
 
+def test_source_composition_renders_dcp1_dual_domains_and_disables_cache(
+    tmp_path, monkeypatch, manifest_bundle
+):
+    from scripts.test_deploy_selection import local_receipt
+
+    lock = json.loads(mesh_profile.SOURCE_LOCK.read_text())
+    lock["runtime"]["bundle_manifest_sha256"] = mesh_profile.sha(
+        manifest_bundle / "sparkring-overlay-manifest.json")
+    lock_path = tmp_path / "source-lock.json"
+    lock_path.write_text(json.dumps(lock))
+    document = local_receipt()
+    monkeypatch.setattr(mesh_profile, "SOURCE_LOCK", lock_path)
+    document["source_lock_sha256"] = document["inside_image"]["source_lock_sha256"] = mesh_profile.sha(lock_path)
+    document["inside_image"]["bundle_manifest_sha256"] = lock["runtime"]["bundle_manifest_sha256"]
+    receipt = tmp_path / "image.json"
+    receipt.write_text(json.dumps(document))
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data["runtime_profile"] = document["profile"]
+    site.write_text(json.dumps(data))
+    output = tmp_path / "rendered"
+    result = mesh_profile.render(site, manifest_bundle, output, receipt)
+    for rank in range(4):
+        env = mesh_profile.defaults(output / f"rank{rank}.env")
+        assert env["DECODE_CONTEXT_PARALLEL_SIZE"] == "1"
+        assert env["SPARKCACHE_ENABLED"] == env["SPARKCACHE_ASYNC_PAGE_CAPTURE"] == "0"
+        assert env["VLLM_B12X_KDA_PREFILL_COALESCING"] == env["VLLM_GLM53_MHC_PREFILL_SHARD"] == "1"
+        assert env["NCCL_IB_HCA"].startswith("=") and len(env["NCCL_IB_HCA"].split(",")) == 4
+        assert env["NCCL_LIBRARY_PATH"] == lock["runtime"]["nccl_path"]
+        assert env["NCCL_LIBRARY_SHA256"] == lock["runtime"]["nccl_sha256"]
+    assert result["image_receipt_sha256"] == mesh_profile.sha(receipt)
+
+
 @pytest.mark.parametrize("field,value", [("container_prefix", "a;rm"), ("marker_binary_sha256", "x"),
                                         ("management_addresses", ["192.0.2.1"]*4), ("model_roots", [])])
 def test_site_rejects_ambiguous_identity(tmp_path, field, value):

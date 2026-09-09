@@ -94,7 +94,8 @@ def discover(nodes, controller_address, run=None):
     }
 
 
-def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21"):
+def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21", image_receipt=None,
+                *, reuse_existing_image=False, existing_model_roots=None):
     """Derive network and profile inputs from host facts and the documented cable cycle."""
     if (
         inventory.get("schema") != "sparkring-deploy-inventory/v1"
@@ -181,7 +182,7 @@ def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21"):
         ],
         "state_root": "/run/sparkring-mtp3-mesh",
     }
-    return {
+    result = {
         "schema": "sparkring-deploy-spec/v1",
         "owner": name,
         "workspace": workspace,
@@ -198,6 +199,28 @@ def create_spec(inventory, name, workspace, fabric_range="198.18.0.0/21"):
         "fabric": template,
         "profile": "glm53-spark-mtp3-mesh",
     }
+    if image_receipt is not None:
+        from scripts.deploy_selection import selection
+        document = read(image_receipt)
+        if not isinstance(document, dict):
+            raise ValueError("Selected image receipt must be a JSON object")
+        result["runtime_selection"] = {
+            "schema": "sparkring-deploy-runtime-selection/v1", "image_receipt": document}
+        if document.get("profile") is not None:
+            result["site"]["runtime_profile"] = document["profile"]
+        selected = selection(result, PROFILE)
+        result["site"]["marker_binary_sha256"] = selected["inside_image"]["marker_binary_sha256"]
+        result["site"]["model_roots"] = [
+            f"{workspace}/models/{selected['pins']['target']['revision']}"] * 4
+    if reuse_existing_image or existing_model_roots:
+        from scripts.deploy_existing_assets import validate_existing_assets
+        if not reuse_existing_image or not existing_model_roots:
+            raise ValueError("Existing-image reuse and four existing model roots must be selected together")
+        assets = {"schema": "sparkring-existing-assets/v1", "image": "all-ranks-preinstalled",
+                  "model_roots": list(existing_model_roots)}
+        result["site"]["model_roots"] = validate_existing_assets(assets)
+        result["existing_assets"] = assets
+    return result
 
 
 def lifecycle_capabilities(profile=PROFILE):
@@ -262,6 +285,12 @@ def main(argv=None):
     p.add_argument("--name", required=True)
     p.add_argument("--workspace", required=True)
     p.add_argument("--fabric-range", default="198.18.0.0/21")
+    p.add_argument("--image-receipt", type=Path,
+                   help="Explicit verified local source composition or canonical performance receipt; omission retains the base public image")
+    p.add_argument("--reuse-existing-image", action="store_true",
+                   help="Verify the selected image on all four hosts without saving or copying it")
+    p.add_argument("--existing-model-root", type=str, action="append", default=[],
+                   help="Read-only existing model directory; repeat in rank order exactly four times with --reuse-existing-image")
     p.add_argument("--output", type=Path, required=True)
     n = sub.add_parser(
         "network-plan", help="plan network changes from saved host facts"
@@ -318,7 +347,9 @@ def main(argv=None):
                 print(summarise_inventory(item))
         elif args.command == "plan":
             inventory = read(args.inventory)
-            spec = create_spec(inventory, args.name, args.workspace, args.fabric_range)
+            spec = create_spec(inventory, args.name, args.workspace, args.fabric_range, args.image_receipt,
+                               reuse_existing_image=args.reuse_existing_image,
+                               existing_model_roots=args.existing_model_root)
             network = plan_network(spec, inventory["hosts"])
             result = {
                 "schema": "sparkring-deploy-preparation/v1",

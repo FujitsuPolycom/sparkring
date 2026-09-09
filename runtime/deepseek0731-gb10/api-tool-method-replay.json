@@ -1,0 +1,302 @@
+{
+  "status": "passed",
+  "cases_passed": 25,
+  "python": "CPython",
+  "python_version": "3.12.10",
+  "source": "vllm/entrypoints/openai/chat_completion/serving.py",
+  "source_sha256": "4c129414f20ecbb44ea8613d774614e8a66152164a039def7c5c086587a1cc99",
+  "method_start_line": 832,
+  "method_end_line": 1117,
+  "harness_sha256": "fab2eb17c78d9aa15b60fb2d053c3db9300c6ba90645d39158b64ac3306cadbe",
+  "limits": "Fake engine/parser outputs and response/helper interfaces; no HTTP, tokenizer, model, image, GPU, or streaming qualification.",
+  "cases": [
+    {
+      "choice": "named",
+      "flag": null,
+      "parser_present": true,
+      "parser_calls": null,
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "named",
+      "flag": "0",
+      "parser_present": true,
+      "parser_calls": null,
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "named",
+      "flag": "1",
+      "parser_present": true,
+      "parser_calls": null,
+      "outputs": 1,
+      "expected_error": true,
+      "passed": true
+    },
+    {
+      "choice": "named",
+      "flag": null,
+      "parser_present": true,
+      "parser_calls": [],
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "named",
+      "flag": "0",
+      "parser_present": true,
+      "parser_calls": [],
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "named",
+      "flag": "1",
+      "parser_present": true,
+      "parser_calls": [],
+      "outputs": 1,
+      "expected_error": true,
+      "passed": true
+    },
+    {
+      "choice": "named",
+      "flag": null,
+      "parser_present": true,
+      "parser_calls": [
+        {
+          "id": null,
+          "name": "lookup",
+          "arguments": "{\"key\":\"value\"}"
+        }
+      ],
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "named",
+      "flag": null,
+      "parser_present": true,
+      "parser_calls": [
+        {
+          "id": "parser-id",
+          "name": "lookup",
+          "arguments": "{\"key\":\"value\"}"
+        }
+      ],
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "named",
+      "flag": "1",
+      "parser_present": true,
+      "parser_calls": [
+        {
+          "id": null,
+          "name": "lookup",
+          "arguments": "{\"key\":\"value\"}"
+        }
+      ],
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "named",
+      "flag": "1",
+      "parser_present": true,
+      "parser_calls": [
+        {
+          "id": "parser-id",
+          "name": "lookup",
+          "arguments": "{\"key\":\"value\"}"
+        }
+      ],
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "named",
+      "flag": "1",
+      "parser_present": false,
+      "parser_calls": null,
+      "outputs": 1,
+      "expected_error": true,
+      "passed": true
+    },
+    {
+      "choice": "required",
+      "flag": null,
+      "parser_present": true,
+      "parser_calls": null,
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "required",
+      "flag": "0",
+      "parser_present": true,
+      "parser_calls": null,
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "required",
+      "flag": "1",
+      "parser_present": true,
+      "parser_calls": null,
+      "outputs": 1,
+      "expected_error": true,
+      "passed": true
+    },
+    {
+      "choice": "required",
+      "flag": null,
+      "parser_present": true,
+      "parser_calls": [],
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "required",
+      "flag": "0",
+      "parser_present": true,
+      "parser_calls": [],
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "required",
+      "flag": "1",
+      "parser_present": true,
+      "parser_calls": [],
+      "outputs": 1,
+      "expected_error": true,
+      "passed": true
+    },
+    {
+      "choice": "required",
+      "flag": null,
+      "parser_present": true,
+      "parser_calls": [
+        {
+          "id": null,
+          "name": "lookup",
+          "arguments": "{\"key\":\"value\"}"
+        }
+      ],
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "required",
+      "flag": null,
+      "parser_present": true,
+      "parser_calls": [
+        {
+          "id": "parser-id",
+          "name": "lookup",
+          "arguments": "{\"key\":\"value\"}"
+        }
+      ],
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "required",
+      "flag": "1",
+      "parser_present": true,
+      "parser_calls": [
+        {
+          "id": null,
+          "name": "lookup",
+          "arguments": "{\"key\":\"value\"}"
+        }
+      ],
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "required",
+      "flag": "1",
+      "parser_present": true,
+      "parser_calls": [
+        {
+          "id": "parser-id",
+          "name": "lookup",
+          "arguments": "{\"key\":\"value\"}"
+        }
+      ],
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "required",
+      "flag": "1",
+      "parser_present": false,
+      "parser_calls": null,
+      "outputs": 1,
+      "expected_error": true,
+      "passed": true
+    },
+    {
+      "choice": "auto",
+      "flag": "1",
+      "parser_present": true,
+      "parser_calls": null,
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "auto",
+      "flag": "1",
+      "parser_present": true,
+      "parser_calls": [
+        {
+          "id": "parser-id",
+          "name": "lookup",
+          "arguments": "{}"
+        }
+      ],
+      "outputs": 1,
+      "expected_error": false,
+      "passed": true
+    },
+    {
+      "choice": "required",
+      "flag": "1",
+      "parser_present": true,
+      "parser_calls": [
+        [
+          {
+            "id": "parser-id",
+            "name": "lookup",
+            "arguments": "{}"
+          }
+        ],
+        []
+      ],
+      "outputs": 2,
+      "expected_error": true,
+      "passed": true
+    }
+  ]
+}

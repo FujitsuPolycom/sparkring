@@ -32,6 +32,9 @@ NCCL:
   `src/transport/generic.cc`
 - `nccl-2.30.7-advertise-all-listener-gids.patch` — against NCCL v2.30.7-1,
   `src/transport/net_ib/connect.cc`
+- `nccl-2.30.7-dual-pci-domain.patch` — cumulative against NCCL revision
+  `73cf112295c33aee2b895f329f592f2a9b4b0f97`, including connection routing,
+  bounded handle encoding, PCI-root selection, and CPU compatibility tests
 - `nccl-2.30.7-switchless-cycle.patch` — against NCCL v2.30.7-1,
   `src/transport/generic.cc` and `src/transport/net_ib/connect.cc`
 
@@ -48,8 +51,10 @@ including preservation of its copyright notices and license text.
 
 The lines added by `nccl-2.30.7-advertise-all-listener-gids.patch` and
 `nccl-2.30.7-switchless-cycle.patch` are original SparkRing work. The
-source-complete GLM-5.3 image builder uses only
-`nccl-2.30.7-switchless-cycle.patch`. For the lines added by the two older
+image builder under `runtime/glm53-flash/` uses only
+`nccl-2.30.7-switchless-cycle.patch`. The TP4 image recipe under
+`runtime/sparkring/source_image/` uses its separately pinned cumulative
+`patches/nccl.patch`, described in Section 14. For the lines added by the two
 skip-tree patches, see Section 2.
 
 ## 2. josephdrose/nccl-spark-switchless (approach credit)
@@ -322,3 +327,57 @@ candidate buffer, exact overflow handling, and omission of unused terminal
 scores. These files are licensed under Apache-2.0; source notices are retained
 and the downloaded B12X archive supplies the license. The compute source lock
 binds the source archive and each base/result file hash.
+
+## 13. MiaAI DeepSeek DGX Spark launcher (adapted GID policy)
+
+The NCCL host-channel-adapter selector handling, per-member RoCEv2 GID
+validation, and automatic unset-index policy in
+`scripts/nccl_ib_gid_policy.sh`, together with the corresponding CPU-only test
+cases in `scripts/test_deepseek_v4_pair_launcher.py`, adapt the behavior and
+test approach from
+`MiaAI-Lab/DeepSeek-v4-Flash-DSpark-2x-DGX-Spark` at commit
+`d3d48f5c49a627ea29ba465d29854228a8e6ee91`. SparkRing's implementation is
+tailored to its one-rank-per-host pair and cycle launchers.
+
+The upstream project is distributed under the MIT License:
+
+> Copyright (c) 2026 Tony Deangelo
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all
+> copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+> SOFTWARE.
+
+## 14. GLM TP4 source image patches
+
+The unified diffs in `runtime/sparkring/source_image/patches/` contain upstream
+source context and modifications used to reproduce the serving packages and
+NCCL library. `glm53-tp4-lock.json` binds the public base commits, patch hashes,
+resulting source trees, and installed file inventories.
+
+| Patch | Public source base | License and scope |
+|---|---|---|
+| `vllm.patch` | Local Inference Lab vLLM, `2a979314dc97b03173a0a76fc15664ec924db32b` | Apache-2.0; vLLM and contributor notices retained |
+| `b12x.patch` | Local Inference Lab B12X, `85a08f47750db333a33ab3eae245a0a08452d04c` | Apache-2.0; B12X kernel and contributor notices retained |
+| `sparkcache.patch` | FujitsuPolycom SparkCache, `6be08c1fff14d66de6dbbbd60c00dba3816e649a` | Apache-2.0; package and snapshot-library sources; installation does not enable the serving connector |
+| `nccl.patch` | NVIDIA NCCL, `73cf112295c33aee2b895f329f592f2a9b4b0f97` | Apache-2.0 for modified NCCL files; preserves switchless routing and independent PCIe-domain selection |
+
+Preparation downloads the pinned source repositories and retains their license
+files in the build archives. NCCL's complete license and third-party notices
+remain applicable to the built library. Source preparation does not distribute
+model weights. The parent image also contains CUDA, framework and kernel
+dependencies governed by their respective licenses; rebuilding this recipe
+does not replace or remove those obligations.

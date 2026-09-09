@@ -164,3 +164,57 @@ def test_request_uses_sampling_temperature_without_changing_thinking(monkeypatch
     warmup.send_warmup_request("http://localhost", "model", "sample", 16, 2, 8)
     assert seen[0]["temperature"] == 1
     assert seen[0]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert seen[0]["messages"][0]["content"].startswith("DFlash warmup sample. ")
+
+
+def test_shape_batches_share_timeout_and_stop_before_an_unbudgeted_batch(monkeypatch):
+    warmup = _load_module()
+    clock = [0.0]
+    monkeypatch.setattr(warmup.time, "monotonic", lambda: clock[0])
+    observed = []
+
+    def send(*args):
+        observed.append(args[4])
+        clock[0] += 3
+
+    monkeypatch.setattr(warmup, "send_warmup_request", send)
+    with pytest.raises(RuntimeError, match="deadline"):
+        warmup.run_warmup("http://localhost", "model", (1,), 16, 5, (8, 24, 56))
+    assert observed == [5, 2]
+
+
+def test_shape_nonce_changes_between_warmup_runs(monkeypatch):
+    warmup = _load_module()
+    nonces = []
+    timestamps = iter([10, 11])
+    monkeypatch.setattr(warmup.time, "monotonic_ns", lambda: next(timestamps))
+    monkeypatch.setattr(warmup, "send_warmup_request", lambda *args: nonces.append(args[2]))
+    for _ in range(2):
+        warmup.run_warmup("http://localhost", "model", (1,), 16, 5, (8,))
+    assert nonces[0] != nonces[1]
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf"), True])
+def test_invalid_timeout_fails_before_warmup_http(monkeypatch, timeout):
+    warmup = _load_module()
+    monkeypatch.setattr(warmup.urllib.request, "urlopen", lambda *_args, **_kwargs: pytest.fail("unexpected HTTP"))
+    with pytest.raises(ValueError, match="finite and positive"):
+        warmup.wait_for_api("http://localhost", timeout)
+
+
+def test_api_wait_caps_each_attempt_by_remaining_budget(monkeypatch):
+    warmup = _load_module()
+    clock = [0.0]
+    timeouts = []
+    monkeypatch.setattr(warmup.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(warmup.time, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+
+    def urlopen(_request, timeout):
+        timeouts.append(timeout)
+        clock[0] += timeout
+        raise OSError("not ready")
+
+    monkeypatch.setattr(warmup.urllib.request, "urlopen", urlopen)
+    with pytest.raises(RuntimeError, match="did not become ready"):
+        warmup.wait_for_api("http://localhost", 5)
+    assert timeouts == [3, 1]

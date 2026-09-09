@@ -309,6 +309,14 @@ printf '%s  %s\n' "$hash" "$2"
         assert extra["spark_cache_access_mode"] == access_mode
         assert extra["spark_cache_async_page_capture"] is capture_enabled
         assert extra["spark_cache_shared_prefix_lease_ttl_seconds"] == 300
+        assert "spark_cache_async_page_capture_lease_mode" not in extra
+        assert "spark_cache_cuda_restore_arena_budget_bytes" not in extra
+        assert extra["spark_cache_async_page_capture_lease_contract"].endswith(
+            "vllm-manager-page-async-contract-55969c16.json"
+        )
+        assert extra["spark_cache_async_page_capture_library_sha256"] == (
+            "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5"
+        )
         assert "spark_cache_store" not in extra
         assert "spark_cache_restore" not in extra
 
@@ -812,9 +820,163 @@ def test_launcher_keeps_sircl_disabled_by_default(tmp_path: Path) -> None:
     assert _defaults()["SIRCL_ENABLED"] == "0"
     result, arguments = _run_launcher(tmp_path, "sircl-disabled")
     assert result.returncode == 0, result.stderr
+    assert arguments[arguments.index("--entrypoint") + 1] == "/opt/sparkring/bin/serve-with-warmup.py"
+    assert "/opt/sparkcache-jj-runtime/verify_sources.py" not in arguments
     assert "org.sparkring.sircl.enabled=0" in arguments
     assert "PYTHONPATH=/opt/spark-sircl" not in arguments
     assert not any("SPARK_TP4_LIBRARY=" in argument for argument in arguments)
+
+
+@pytest.mark.parametrize("dcp", [1, 4])
+def test_source_composition_passes_prefill_flags_and_dual_domain_nccl(tmp_path, dcp):
+    result, arguments = _run_launcher(
+        tmp_path, "source-composition",
+        f"SOURCE_IMAGE_PROFILE=tp4-dcp{dcp}-mtp3-prefill",
+        f"DECODE_CONTEXT_PARALLEL_SIZE={dcp}", "SPECULATION_METHOD=mtp",
+        "NUM_SPECULATIVE_TOKENS=3", "SPARKCACHE_ENABLED=0",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE=0", "VLLM_BLOCK_SIZE=512",
+        "VLLM_B12X_KDA_PREFILL_COALESCING=1", "VLLM_GLM53_MHC_PREFILL_SHARD=1",
+        "NCCL_IB_EXTENDED_IPV4_GIDS=1", "NCCL_IB_PRESERVE_PCI_DOMAIN=1",
+        "NCCL_LIBRARY_PATH=/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+        "NCCL_LIBRARY_SHA256=" + "a" * 64,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--kv-transfer-config" not in arguments
+    assert f"SOURCE_IMAGE_PROFILE=tp4-dcp{dcp}-mtp3-prefill" in arguments
+    _assert_source_verifier_entrypoint(arguments)
+    assert "PYTHONUNBUFFERED=1" in arguments
+    assert arguments[arguments.index("--block-size") + 1] == "512"
+    for value in ("VLLM_B12X_KDA_PREFILL_COALESCING=1", "VLLM_GLM53_MHC_PREFILL_SHARD=1",
+                  "NCCL_IB_EXTENDED_IPV4_GIDS=1", "NCCL_IB_PRESERVE_PCI_DOMAIN=1",
+                  "VLLM_NCCL_SO_PATH=/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+                  "LD_PRELOAD=/opt/sparkring/nccl-pci/libnccl.so.2.30.7"):
+        assert value in arguments
+
+
+def test_source_composition_rejects_a_different_dcp_size(tmp_path):
+    result, arguments = _run_launcher(
+        tmp_path, "wrong-source-dcp", "SOURCE_IMAGE_PROFILE=tp4-dcp1-mtp3-prefill",
+        "DECODE_CONTEXT_PARALLEL_SIZE=4", "SPECULATION_METHOD=mtp",
+        "NUM_SPECULATIVE_TOKENS=3", "SPARKCACHE_ENABLED=0",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE=0",
+    )
+    assert result.returncode != 0 and not arguments
+    assert "DCP size differs" in result.stderr
+
+
+SOURCE_CACHE_CONTRACT = (
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/"
+    "vllm-connector-jobs-source-contract.json"
+)
+
+
+def _assert_source_verifier_entrypoint(arguments):
+    for flag, value in (("--mamba-block-size", "512"),
+                        ("--recurrent-checkpoint-policy", "aligned"),
+                        ("--prefix-cache-retention-interval", "0")):
+        assert arguments.count(flag) == 1
+        assert arguments[arguments.index(flag) + 1] == value
+    assert arguments[arguments.index("--entrypoint") + 1] == "python3"
+    index = arguments.index("/opt/sparkcache-jj-runtime/verify_sources.py")
+    assert arguments[index - 2:index + 3] == [
+        "-S", "-B", "/opt/sparkcache-jj-runtime/verify_sources.py", "--serve", "/models/target"
+    ]
+    assert arguments.count("--serve") == 1
+
+
+def _source_cache_spec(tmp_path, *overrides):
+    settings = (
+        "HOST_IP=rank0.example.net", "MASTER_ADDR=rank0.example.net",
+        "TARGET_MODEL_HOST_PATH=/nonexistent-source-cache/target",
+        "CACHE_HOST_ROOT=/nonexistent-source-cache/cache",
+        "SOURCE_IMAGE_PROFILE=tp4-dcp1-mtp3-sparkcache",
+        "TARGET_MODEL_VARIANT=nvfp4-spark", "SPECULATION_METHOD=mtp",
+        "NUM_SPECULATIVE_TOKENS=3", "DECODE_CONTEXT_PARALLEL_SIZE=1",
+        "VLLM_BLOCK_SIZE=512", "KV_CACHE_MEMORY_BYTES=25769803776",
+        "VLLM_B12X_KDA_PREFILL_COALESCING=1", "VLLM_GLM53_MHC_PREFILL_SHARD=1",
+        "NCCL_LIBRARY_PATH=/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+        "NCCL_LIBRARY_SHA256=" + "a" * 64,
+        "NCCL_IB_EXTENDED_IPV4_GIDS=1", "NCCL_IB_PRESERVE_PCI_DOMAIN=1",
+        "SPARKCACHE_SOURCE_LEASE_CONTRACT=" + SOURCE_CACHE_CONTRACT,
+        "SPARKCACHE_PLACEMENT_LIBRARY_SHA256=2657cdd2e54a097c9544e4c79ae62c0646db6db123ff24e4f0c384238c3a1e8d",
+        "SPARKCACHE_ENABLED=1", "SPARKCACHE_ACCESS_MODE=read-write",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE=1", "SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2",
+        "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES=536870912",
+        "SPARKCACHE_LOAD_THREADS=2", "SPARKCACHE_MAX_PENDING_RESTORES=2",
+        "SPARKCACHE_CUDA_RESTORE_IO_WORKERS=2", "SPARKCACHE_CUDA_ARENA_BYTES=67108864",
+        "SPARKCACHE_BUFFER_BUDGET_BYTES=1342177280",
+        "SPARKCACHE_MAX_BYTES=8589934592", "SPARKCACHE_LOW_WATERMARK_BYTES=6442450944",
+        "SPARKCACHE_MIN_SPAN_TOKENS=4096", "SPARKCACHE_MAX_SPAN_TOKENS=65536",
+        "SPARKRING_PRINT_CONTAINER_SPEC=1", "SPARKRING_OFFLINE_SPEC=1",
+        *overrides,
+    )
+    config = tmp_path / "source-cache.env"
+    config.write_text("\n".join(settings) + "\n", encoding="utf-8", newline="\n")
+    return subprocess.run(
+        ["bash", _bash_path(LAUNCHER), "0", _bash_path(config)],
+        cwd=ROOT, text=True, capture_output=True, check=False,
+    )
+
+
+def test_source_cache_profile_emits_bounded_connector_jobs_configuration(tmp_path):
+    result = _source_cache_spec(tmp_path)
+    assert result.returncode == 0, result.stderr
+    arguments = json.loads(result.stdout)["argv"]
+    _assert_source_verifier_entrypoint(arguments)
+    assert "SOURCE_IMAGE_PROFILE=tp4-dcp1-mtp3-sparkcache" in arguments
+    assert "PYTHONUNBUFFERED=1" in arguments
+    config = json.loads(arguments[arguments.index("--kv-transfer-config") + 1])
+    assert config["kv_load_failure_policy"] == "recompute"
+    extra = config["kv_connector_extra_config"]
+    assert extra["spark_cache_async_page_capture_lease_mode"] == "connector-jobs"
+    assert extra["spark_cache_async_page_capture_lease_contract"] == SOURCE_CACHE_CONTRACT
+    assert extra["spark_cache_async_page_capture_library"] == "/opt/sparkcache-native/libspark_cache_snapshot.so"
+    assert extra["spark_cache_async_page_capture_library_sha256"] == "cc44b69c9e01aaeb6b94f46cd649e2ec5972fc6b29d1a41b7b033a82ce788f39"
+    assert extra["spark_cache_cuda_placement_library_sha256"] == "2657cdd2e54a097c9544e4c79ae62c0646db6db123ff24e4f0c384238c3a1e8d"
+    assert extra["spark_cache_async_page_capture_slot_bytes"] == 512 * 1024**2
+    assert extra["spark_cache_async_page_capture_slot_count"] == 2
+    assert extra["spark_cache_load_threads"] == extra["spark_cache_cuda_restore_io_workers"] == 2
+    assert extra["spark_cache_cuda_placement_arena_bytes"] == 64 * 1024**2
+    assert extra["spark_cache_cuda_restore_arena_budget_bytes"] == 256 * 1024**2
+    assert extra["spark_cache_max_span_tokens"] == 65536
+    assert extra["spark_cache_max_bytes"] == 8 * 1024**3
+    assert extra["spark_cache_page_snapshot_interval_tokens"] == 0
+    assert arguments[arguments.index("--kv-cache-memory-bytes") + 1] == str(24 * 1024**3)
+    assert arguments[arguments.index("--block-size") + 1] == "512"
+
+
+@pytest.mark.parametrize("setting", [
+    "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES=8589934592",
+    "SPARKCACHE_CUDA_ARENA_BYTES=268435456", "SPARKCACHE_LOAD_THREADS=8",
+    "SPARKCACHE_CUDA_RESTORE_IO_WORKERS=8", "SPARKCACHE_MAX_SPAN_TOKENS=1048576",
+    "SPARKCACHE_MAX_BYTES=42949672960", "SPARKCACHE_BUFFER_BUDGET_BYTES=0",
+    "SPARKCACHE_PLACEMENT_LIBRARY_SHA256=" + "b" * 64,
+    "SPARKCACHE_SOURCE_LEASE_CONTRACT=", "SPARKCACHE_SOURCE_LEASE_CONTRACT=/tmp/untrusted.json",
+    "TARGET_MODEL_VARIANT=nvfp4", "TENSOR_PARALLEL_SIZE=2", "DECODE_CONTEXT_PARALLEL_SIZE=4",
+    "VLLM_DCP_COMPACT_INDEX_CACHE_OWNER=1", "SPARKCACHE_SOURCE_OVERLAY=/tmp/overlay",
+])
+def test_source_cache_profile_rejects_incompatible_contract_or_capacity(tmp_path, setting):
+    result = _source_cache_spec(tmp_path, setting)
+    assert result.returncode == 78
+    assert result.stdout == ""
+
+
+def test_source_cache_memory_plan_has_one_gib_capture_and_256_mib_restore(tmp_path):
+    result = _source_cache_spec(tmp_path, "SPARKRING_PRINT_MEMORY_PLAN=1")
+    assert result.returncode == 0, result.stderr
+    plan = json.loads(result.stdout)
+    assert plan["capture_payload_bytes_per_rank"] == 1024**3
+    assert plan["restore_payload_bytes_per_rank"] == 256 * 1024**2
+    assert plan["sparkcache_payload_bytes_per_rank"] == 1280 * 1024**2
+    assert plan["within_buffer_budget"] is True
+
+
+def test_source_cache_contract_override_is_rejected_for_legacy_profile(tmp_path):
+    result = _source_cache_spec(
+        tmp_path, "SOURCE_IMAGE_PROFILE=", "NCCL_LIBRARY_PATH=/opt/sparkring/nccl/libnccl.so.2"
+    )
+    assert result.returncode == 78
+    assert "SPARKCACHE_SOURCE_LEASE_CONTRACT requires" in result.stderr
 
 
 def test_fused_sircl_overlay_is_complete_and_sanitized() -> None:

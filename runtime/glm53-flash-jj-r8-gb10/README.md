@@ -297,6 +297,40 @@ control arrays, Python objects, shared bases, transport, model weights and
 allocator overhead require additional memory. `SPARKCACHE_LOAD_THREADS` defaults
 to eight; throughput and memory-pressure effects need hardware measurements.
 
+### Bounded SparkCache source profile
+
+Status: **implemented**, with CPU launcher-contract coverage. The explicit
+`tp4-dcp1-mtp3-sparkcache` source-image profile selects GLM NVFP4-Spark,
+TP4/DCP1/PP1, native MTP3, 512-token blocks, coalescing, and mHC prefill sharding.
+Its image receipt and source lock must identify the installed sources and native
+libraries. Selecting the profile does not qualify a rebuilt image or enable
+SparkCache on a TP2 profile.
+
+The renderer must set `SPARKCACHE_SOURCE_LEASE_CONTRACT` to
+`/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json`.
+The image verifier binds that complete contract to the installed vLLM files.
+The launcher rejects another path and rejects this override outside the named
+profile. Capture uses `connector-jobs`, the snapshot library at
+`/opt/sparkcache-native/libspark_cache_snapshot.so`, and the profile's exact
+snapshot and placement hashes. Cache load failures retain `recompute` behavior.
+
+| Profile capacity | Required value per rank |
+|---|---:|
+| GPU KV allocation | 24 GiB |
+| Capture slots | 2 × 512 MiB |
+| Restore lanes / I/O workers | 2 / 2 |
+| Restore arenas | 2 × 64 MiB per lane; 256 MiB total |
+| Capture plus restore payload budget | 1,280 MiB |
+| Disk budget / low watermark | 8 GiB / 6 GiB |
+| Capture span minimum / maximum | 4,096 / 65,536 tokens |
+| Model context limit | 1,048,576 tokens |
+
+The profile requires read/write asynchronous capture, two pending restores,
+and `tail-cow-v2` publication. Periodic page snapshots are disabled. Larger
+operator-default buffers or alternate package overlays are rejected. Existing
+profiles retain their contract and allocation defaults. All explicit source
+profiles pass their name to the image entrypoint and enable unbuffered logging.
+
 ### Inspect configured memory before launch
 
 Status: **implemented**. The launcher can print a JSON allocation plan without
@@ -322,16 +356,49 @@ The report lists KV separately. A passing offline plan does not qualify a CUDA
 allocation or a serving performance result.
 
 When `DFLASH_WARMUP=1`, the readiness entrypoint runs `warmup_dflash.py` before
-Docker reports rank 0 as healthy. The readiness wrapper,
-`serve_with_warmup.py`, also sends a temperature-one request with thinking
-enabled after the configured shape batches. Failure of that request prevents
-warmup completion. This request contract is implemented and tested in the
-[published child image](hotfix/README.md), whose
+Docker reports rank 0 as healthy. Source builds then run six explicit sampler
+requests through `serve_with_warmup.py`, each with thinking enabled and `min_p=0`:
+
+| Request | Temperature | top_k | top_p | Explicit seed |
+|---|---:|---:|---:|---:|
+| Unfiltered | 1.0 | -1 | 1.0 | absent |
+| Temperature scaling | 0.7 | -1 | 1.0 | absent |
+| Top-k only | 1.0 | 40 | 1.0 | absent |
+| Top-p only | 1.0 | -1 | 0.9 | absent |
+| Top-k and top-p | 1.0 | 40 | 0.9 | absent |
+| Seeded top-k and top-p | 0.7 | 40 | 0.9 | 0 |
+
+Explicit neutral filters prevent a checkpoint's generation defaults from choosing
+an unintended arm. In the pinned vLLM source, [sampling state](https://github.com/FujitsuPolycom/vllm/blob/e02b174693e13859de61811b5e8cd13d5308e259/vllm/v1/worker/gpu/sample/states.py#L40-L100)
+normalizes disabled top-k, omits neutral top-k/top-p tensors, and skips temperature
+scaling when every temperature is zero or one. The [sampler](https://github.com/FujitsuPolycom/vllm/blob/e02b174693e13859de61811b5e8cd13d5308e259/vllm/v1/worker/gpu/sample/sampler.py#L298-L321)
+uses its Gumbel fallback for unfiltered or explicitly seeded requests. These
+branches justify the recipe; they do not prove every speculative execution path
+or compiled kernel was reached by an HTTP request.
+
+Status: **implemented**, with CPU request and readiness tests. Each arm must
+return exactly one message-bearing choice with finish reason `stop` or `length`
+and positive integer `usage.completion_tokens`; one failed arm
+withholds readiness. The `sampling_warmup` log records each arm, completed-token
+count and elapsed time with `coverage=request-recipe-complete` and
+`jit_coverage_verified=false`. API readiness, shape batches and sampler requests
+share `DFLASH_WARMUP_TIMEOUT_SECONDS`; each operation receives the remaining
+budget, and an expired budget prevents the readiness marker. Shape-request
+nonces precede repeated prompt text and vary between runs to avoid prefix reuse.
+
+The [published child image](hotfix/README.md) contains the earlier single
+temperature-one/thinking request, not this six-arm recipe. Its
 [receipt](hotfix/public-image.json) records 22 installed readiness/liveness
-tests. Cold-cache full-model sampling, mixed long/short prefill coverage, and
-all recurrent KDA specializations remain unqualified. The operator image
-referenced by `pins.json` at `operator_image.reference` does not include this
-additional readiness request.
+tests; those results do not qualify a rebuilt image. The operator image in
+`pins.json` also remains unchanged.
+
+Cold-cache full-model sampler coverage, mixed long/short prefill coverage, and
+all recurrent KDA specializations remain unqualified. In particular, the
+reported several-4K-prefills-behind-long-decode case requires an identified image,
+tokenized request lengths, actual overlapping execution and per-rank JIT evidence.
+The short shape sweep below does not establish that case. Do not gate readiness
+on guessed Triton cache filenames: cache presence alone does not prove that the
+serving process initialized every required compiled variant.
 The default environment template warms every concurrency from C1 through C16
 and prompt spans covering the DFlash Triton `BLOCK_SIZE` specializations
 through 256. DFlash depth seven verifies eight target rows per active request,
