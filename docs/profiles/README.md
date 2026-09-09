@@ -46,6 +46,11 @@ records bounded installation, fault/recovery, readiness, and cache-recall
 checks for the artifacts identified in that record. Those results do not
 qualify every cache boundary or unattended availability of another image.
 
+The [native-MTP3 mesh quickstart](../GLM53_SPARK_MTP3_MESH_QUICKSTART.md)
+describes the TP4/DCP4 configuration with 1,048,576-token context, 16 sequences,
+and an 8,192-token batch. Its [deployment recipe](../../recipes/glm53-spark-mtp3-managed-mesh-tp4.json)
+links the configuration and bounded evidence.
+
 The [GLM-5.3 Flash NVFP4-Spark TP2 profile](../GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md)
 is research-only. Model-neutral image and matching SparkCache source pins are
 public; child-image serving qualification remains pending.
