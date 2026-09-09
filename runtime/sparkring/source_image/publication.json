@@ -1,0 +1,115 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "status": "research-only",
+  "published": true,
+  "visibility": "public",
+  "published_at_utc": "2026-09-09T00:54:18.170588+00:00",
+  "repository": "ghcr.io/fujitsupolycom/sparkring",
+  "version_tag": "ghcr.io/fujitsupolycom/sparkring:glm53-shared-a8aeff2",
+  "registry_digest": "ghcr.io/fujitsupolycom/sparkring@sha256:86516f319b505e94686e0ba59200f91dda4b65599b08b3508c931c1e4e42b2a6",
+  "manifest_digest": "sha256:86516f319b505e94686e0ba59200f91dda4b65599b08b3508c931c1e4e42b2a6",
+  "config_image_id": "sha256:fffcfdd445110aaaa60db296553ba39d90cb879061c5268ae358cd311c27e721",
+  "platform": "linux/arm64",
+  "source_revision": "a8aeff21e7f53dd87dcea323143c421414ee863e",
+  "merged_main_revision": "4b9b6a0a213456b96400c5e1a1cf59c20ff892c8",
+  "source_lock_sha256": "dd6a14c1724974599535260a25326abf053d01ac998e126498438b5e227ec600",
+  "context_sha256": "c7b63301ba147191320633f859b8621171a6172bf8fca7ff530c1fe4d5f6cb28",
+  "manifest_sha256": "0800675d88841e52a8153448cc74570a440c69ffb4f9bf678e16a78ab78913d4",
+  "native_mode": "pinned",
+  "native_archive_sha256": "aa8fa11831afaa4539e0b74442fd1ea25dd8cf49ad5edb6fd95e7f05fdf5ce86",
+  "source_revisions": {
+    "vllm": "17bd258075f44dda8b405f384732f3c78d03f308",
+    "b12x": "2883a5df65a7ea3cb6e82abb63d1448dd3154887",
+    "sparkcache": "d0cf7296062ec8b4d17d65cd05a416d509e80bd8"
+  },
+  "native_files": {
+    "nccl": {
+      "path": "/opt/sparkring/nccl-pci/libnccl.so.2.30.7",
+      "sha256": "768a450b5eb84bf3d1191795350e43c96de75aeba4783ec314d47672fe6e1fc6"
+    },
+    "snapshot": {
+      "path": "/opt/sparkcache-native/libspark_cache_snapshot.so",
+      "sha256": "cc44b69c9e01aaeb6b94f46cd649e2ec5972fc6b29d1a41b7b033a82ce788f39"
+    },
+    "placement": {
+      "path": "/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so",
+      "sha256": "2657cdd2e54a097c9544e4c79ae62c0646db6db123ff24e4f0c384238c3a1e8d"
+    }
+  },
+  "checks": {
+    "build_completed": true,
+    "build_gpu_devices_supplied": false,
+    "external_cpu_verified_profiles": 5,
+    "anonymous_manifest_download": true,
+    "anonymous_config_download": true,
+    "tag_digest_matches_bytes": true,
+    "all_profiles_cuda_initialized": false,
+    "all_profiles_model_loaded": false,
+    "existing_serving_container_unchanged": true
+  },
+  "profiles": {
+    "tp4-dcp1-mtp3-prefill": {
+      "status": "research-only",
+      "cpu_verification": "passed",
+      "cuda_initialized": false,
+      "model_loaded": false,
+      "source_lock_sha256": "dd6a14c1724974599535260a25326abf053d01ac998e126498438b5e227ec600",
+      "receipt_sha256": "99a785eb608ad9e9cab40f2f7e0ac63988407751b4c8a534354311d1e6bad1e1",
+      "tp_size": 4,
+      "dcp_size": 1,
+      "sparkcache": false
+    },
+    "tp4-dcp4-mtp3-prefill": {
+      "status": "research-only",
+      "cpu_verification": "passed",
+      "cuda_initialized": false,
+      "model_loaded": false,
+      "source_lock_sha256": "dd6a14c1724974599535260a25326abf053d01ac998e126498438b5e227ec600",
+      "receipt_sha256": "f0206db6d6169b84f26e182a5cb1e7d787354ba361c5afde0d2714b109a2ea1b",
+      "tp_size": 4,
+      "dcp_size": 4,
+      "sparkcache": false
+    },
+    "tp4-dcp1-mtp3-sparkcache": {
+      "status": "research-only",
+      "cpu_verification": "passed",
+      "cuda_initialized": false,
+      "model_loaded": false,
+      "source_lock_sha256": "dd6a14c1724974599535260a25326abf053d01ac998e126498438b5e227ec600",
+      "receipt_sha256": "251f0c46f6947b7553be022fa78d0b45ebf02d4bbe88b6a8b0e7e88c72ab66dc",
+      "tp_size": 4,
+      "dcp_size": 1,
+      "sparkcache": true
+    },
+    "glm53-flash-nvfp4-tp2-mtp3": {
+      "status": "research-only",
+      "cpu_verification": "passed",
+      "cuda_initialized": false,
+      "model_loaded": false,
+      "source_lock_sha256": "dd6a14c1724974599535260a25326abf053d01ac998e126498438b5e227ec600",
+      "receipt_sha256": "7a20760017c18a1db42894f2517352f1e938736ca321ac6905c0b62e61b9a933",
+      "tp_size": 2,
+      "dcp_size": 1,
+      "sparkcache": false,
+      "profile_sha256": "7ff677949c31a37dc955431702c6d032f5db167e242213b9663ae5830f1cb76a",
+      "transport_profile": "tp2-rocenante-adaptive",
+      "transport_manifest_sha256": "eb03cfde826974811be3bfe5d88f36d9de105b73358f3eaa56b9ed44f19127c4"
+    },
+    "glm53-flash-spark-tp4-switched-mtp3": {
+      "status": "research-only",
+      "cpu_verification": "passed",
+      "cuda_initialized": false,
+      "model_loaded": false,
+      "source_lock_sha256": "dd6a14c1724974599535260a25326abf053d01ac998e126498438b5e227ec600",
+      "receipt_sha256": "862a975d64392208cc08121a3303501c0b57a296766549e724ed5abaa4257a81",
+      "tp_size": 4,
+      "dcp_size": 1,
+      "topology": "switched",
+      "collective_backend": "nccl",
+      "sparkcache": false,
+      "profile_sha256": "a943cb08e7547165fc90ac87fe9ab8dc3a3b7a59626d88996bf37e21fa5c1fb8"
+    }
+  },
+  "qualification": "External CPU file, source, native and profile verification passed for all five profiles. GPU serving qualification of this image is incomplete; reference deployments retain their own evidence.",
+  "switched_note": "Switched deployments are provided as-is. This profile has not been validated on switched hardware."
+}
