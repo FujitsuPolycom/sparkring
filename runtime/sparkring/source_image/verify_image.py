@@ -87,8 +87,13 @@ def verify(image, profile, lock_path, output, context):
                "from pathlib import Path;import json;from verify_sources import verify;"
                f"print(json.dumps(verify(root=Path('{IMAGE_ROOT}'))))")
     with tempfile.TemporaryDirectory(prefix="sparkring-verifier-") as directory:
+        # The mount contains only verified public code/manifests. A container
+        # without DAC_OVERRIDE may have a different UID from this host process.
+        Path(directory).chmod(0o755)
         for name, data in closure.items():
-            (Path(directory) / name).write_bytes(data)
+            target = Path(directory) / name
+            target.write_bytes(data)
+            target.chmod(0o644)
         argv = ["docker", "run", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
                 "--security-opt", "no-new-privileges", "--mount",
                 f"type=bind,source={Path(directory).resolve()},target=/sparkring-verifier,readonly",

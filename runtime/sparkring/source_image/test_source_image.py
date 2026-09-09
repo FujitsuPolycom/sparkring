@@ -1,7 +1,9 @@
 """CPU-only contract tests for source preparation and image verification."""
 import copy
 import json
+import os
 from pathlib import Path
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -167,6 +169,35 @@ class SourceImageTests(unittest.TestCase):
                             Path(temporary) / "receipt.json", Path(temporary))
             self.assertTrue(result["checks_passed"])
         self.assertEqual(len(calls), 3)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX access modes are required")
+    def test_verified_public_closure_is_readable_with_restrictive_umask(self):
+        _, document = receipt_fixture()
+        closure = {"manifest.json": b"{}", "verify_sources.py": b"# verified public source\n"}
+        def output(argv):
+            if argv[:3] == ["docker", "image", "inspect"]:
+                return json.dumps([{"Id": document["image_id"], "Os": "linux", "Architecture": "arm64",
+                                    "RootFS": {"Layers": ["sha256:parent"]}}]).encode()
+            fields = dict(part.split("=", 1) for part in argv[argv.index("--mount") + 1].split(",") if "=" in part)
+            staged = Path(fields["source"])
+            self.assertEqual(stat.S_IMODE(staged.stat().st_mode), 0o755)
+            self.assertEqual({path.name for path in staged.iterdir()}, set(closure))
+            for name, data in closure.items():
+                self.assertEqual((staged / name).read_bytes(), data)
+                self.assertEqual(stat.S_IMODE((staged / name).stat().st_mode), 0o644)
+            self.assertEqual(argv[argv.index("--cap-drop") + 1], "ALL")
+            self.assertIn("--read-only", argv)
+            return json.dumps(document["inside_image"]).encode()
+        previous = os.umask(0o077)
+        try:
+            with tempfile.TemporaryDirectory() as temporary, patch("verify_image.subprocess.check_output", output), \
+                    patch("verify_image.trusted_closure", return_value=closure), \
+                    patch("verify_image.verify_embedded_closure"):
+                result = verify(document["image_id"], document["profile"], HERE / "glm53-tp4-lock.json",
+                                Path(temporary) / "receipt.json", Path(temporary))
+                self.assertTrue(result["checks_passed"])
+        finally:
+            os.umask(previous)
 
     def test_forged_embedded_verifier_lock_and_manifest_rejected_before_execution(self):
         for changed in ("verify_sources.py", "source-lock.json", "manifest.json"):
