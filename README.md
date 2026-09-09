@@ -18,7 +18,7 @@ reproducible benchmarks, and [test results](performance/).
 ## Setup
 
 1. Choose a [profile](#profiles) and check the [prerequisites](docs/PREREQUISITES.md).
-2. For a four-node ring, follow the [bootstrap guide](docs/BOOTSTRAP.md).
+2. For a four-node ring, follow the [mesh host setup guide](docs/GLM53_SPARK_MESH_HOST_SETUP.md).
    Two-node profiles include their own direct-link setup.
 3. Follow the profile's quickstart, then run the
    [validation checks](docs/PROFILE_VALIDATION.md).
@@ -29,8 +29,9 @@ reproducible benchmarks, and [test results](performance/).
 
 | Model / predictor | Serving stack | Transport | Layout | Context | Sequences | Batch | Guide |
 |---|---|---|---|---:|---:|---:|---|
-| **GLM-5.3 Flash NVFP4-Spark · MTP3 cache/checkpoint mesh** | [SparkRing vLLM/B12X image](runtime/glm53-spark-mtp3-mesh/performance/README.md) | [SIRCL + RoCEnante + NCCL](runtime/glm53-spark-mtp3-mesh/README.md) | TP4/DCP4 | 1M | 16 | 8,192 | [Quickstart](docs/GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md) |
-| GLM-5.3 Flash NVFP4 · BF16 DFlash2 | [SparkRing vLLM/B12X image](runtime/glm53-flash-jj-r8-gb10/README.md) | [SIRCL + NCCL](spark_transport/integrations/vllm/README.md) | TP4/DCP4; DCP1/2 | 1M | 16 | 8,192 | [Quickstart](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) |
+| **GLM-5.3 Flash NVFP4-Spark · native MTP3** | [Shared SparkRing image](runtime/sparkring/source_image/README.md) | [Mesh + dual-domain NCCL](runtime/glm53-spark-mtp3-mesh/README.md) | TP4/DCP1; DCP4 option | 1M | 16 | 8,192 | [Quickstart](docs/GLM53_TP4_PREFILL_QUICKSTART.md) |
+| GLM-5.3 Flash NVFP4-Spark · MTP3 + SparkCache | [Shared SparkRing image](runtime/sparkring/source_image/README.md) | [Mesh + dual-domain NCCL](runtime/glm53-spark-mtp3-mesh/README.md) | TP4/DCP1 | 1M | 16 | 8,192 | [Cache profile selection](docs/GLM53_TP4_PREFILL_QUICKSTART.md#verify-the-image-and-select-a-profile) |
+| GLM-5.3 Flash NVFP4-Spark · MTP3, switched | [Shared SparkRing image](runtime/sparkring/source_image/README.md) | Operator-selected NCCL links | TP4/DCP1 | 1M | 16 | 8,192 | [Switched quickstart](docs/GLM53_SWITCHED_TP4_QUICKSTART.md) |
 | GLM-5.2 EXL3 3.5-bpw | [SparkRing vLLM/ExLlamaV3 build](runtime/exl3-r7/README.md) | [SIRCL + NCCL](docs/SIRCL.md) | TP4/DCP4 | 1M | 16 | 4,096 | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
 | DeepSeek-V4-Flash-0731 | [SparkRing vLLM/B12X image](runtime/deepseek0731-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 1M | 32 | 4,096 | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | [SparkRing vLLM/ExLlamaV3 build](runtime/qwen38/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 1M | 64 | 8,192 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
@@ -41,41 +42,60 @@ identifies the Anemll image, MiaAI-Lab recipe, and SparkRing transport separatel
 Contributor-reported results are linked from the guide; independent reproduction
 of the selected artifacts is not claimed.
 
-The four-Spark GLM-5.3 native-MTP3 profile uses hardware-forwarded mesh paths and requires
-[managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
-DFlash2 profiles use a separate draft checkpoint with
-[CC BY-NC-ND 4.0 terms](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2#license).
+The shared-image GLM profiles enable continuation coalescing and token-sharded
+mHC. Ring profiles use hardware-forwarded mesh paths and NCCL across both host
+PCIe domains. Their source integration is **implemented**; full shared-image
+serving qualification remains **research-only**. Switched deployments are
+provided as-is and have not been validated on switched hardware.
 
 ### Two Sparks
 
 | Model / predictor | Serving stack | Transport | Layout | Context | Sequences | Batch | Guide |
 |---|---|---|---|---:|---:|---:|---|
-| **GLM-5.3 Flash NVFP4-Spark · native MTP3** | [SparkRing runtime image](runtime/sparkring/README.md) | [Patched NCCL](runtime/profiles/glm53-flash-spark-tp2/runtime.env.example) | TP2/DCP1 | 512K | 8 | 8,192 | [Quickstart](docs/GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md) |
+| **GLM-5.3 Flash original NVFP4 · native MTP3** | [Shared SparkRing image](runtime/sparkring/source_image/README.md) | [Adaptive RoCEnante + dual-domain NCCL](runtime/profiles/glm53-flash-nvfp4-tp2/README.md) | TP2/DCP1 | 256K | 8 | 8,192 | [Quickstart](runtime/profiles/glm53-flash-nvfp4-tp2/README.md) |
+| GLM-5.3 Flash NVFP4-Spark · MTP3, 5 GiB KV | [Three-asset SparkRing package](runtime/sparkring/README.md) | [Patched NCCL](runtime/profiles/glm53-flash-spark-tp2/runtime.env.example) | TP2/DCP1 | 512K | 8 | 8,192 | [Alternative profile](docs/GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md) |
 | DeepSeek-V4-Flash-0731 | [SparkRing vLLM/B12X image](runtime/deepseek0731-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP2/DCP1 | 1M | 32 | 4,096 | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | [SparkRing vLLM/ExLlamaV3 build](runtime/qwen38/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP2/DCP1 | 1M | 32 | 8,192 | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
 
-The GLM-5.3 pair is **research-only**, uses 5 GiB KV per rank, and has a
+The original-NVFP4 shared-image pair uses 6.75 GiB KV per rank, one DAC and
+both host PCIe domains. Coalescing and mHC are enabled; SparkCache is
+unsupported for this TP2 composition. Shared-image GPU qualification remains
+**research-only**. The separate NVFP4-Spark pair uses 5 GiB KV per rank and has a
 [known video-color issue](https://github.com/FujitsuPolycom/sparkring/issues/229).
 
 See the [profile index](docs/profiles/README.md) for evidence scopes and
 [SparkCache compositions](recipes/sparkcache/README.md) for persistent-cache
 support. Qwen with SparkCache is unsupported; six-node profiles are research-only.
 
+### Retired TP4 GLM-5.3 profiles
+
+These guides retain their pinned configurations and evidence for reproduction.
+For deployment with the shared image, use the four-Spark entries above.
+
+| Profile | Layout | Retained guide | Replacement |
+|---|---|---|---|
+| NVFP4-Spark MTP3 cache/checkpoint mesh | TP4/DCP4 | [Pinned cache/checkpoint setup](docs/GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md) | [Shared-image MTP3 profiles](docs/GLM53_TP4_PREFILL_QUICKSTART.md) |
+| NVFP4 with BF16 DFlash2 | TP4/DCP1, DCP2 or DCP4 | [Pinned DFlash2 setup](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) | [Shared-image native MTP3](docs/GLM53_TP4_PREFILL_QUICKSTART.md) |
+
+DFlash2 uses a separate draft checkpoint with
+[CC BY-NC-ND 4.0 terms](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2#license).
+
 ## Container images
 
 | Package / runtime | Profile | Details |
 |---|---|---|
-| `sparkring` | GLM-5.3 Flash native-MTP3 pair | [Model-neutral package](runtime/sparkring/README.md) |
-| `sparkring-glm53-sparkcache` | GLM-5.3 Flash DFlash2/SIRCL | [Operator image](runtime/glm53-flash-jj-r8-gb10/README.md) |
-| `sparkring-glm53-sparkcache` | GLM-5.3 Flash native-MTP3 mesh | [Mesh image](runtime/glm53-spark-mtp3-mesh/performance/public-image.json) |
-| `sparkring-glm53-runtime` | GLM source-build bases | [Runtime builder](runtime/glm53-flash/README.md) |
+| `ghcr.io/fujitsupolycom/sparkring` | Shared GLM TP2/TP4 image; profile selects topology and optional cache | [Source build and profile verification](runtime/sparkring/source_image/README.md) |
 | `gb10-vllm-serving` | Profile-specific images, including DeepSeek | [Packages](https://github.com/users/FujitsuPolycom/packages/container/package/gb10-vllm-serving) |
 | Anemll `dspark-vllm-gx10` | DeepSeek-V4-Flash-Vision-Exp with the MiaAI-Lab recipe | [Image, recipe, and transport provenance](runtime/deepseek-vision-exp/profile.json) |
 
 Use the exact digest in the selected quickstart. Images sharing a package
-name are not interchangeable; a model-neutral name does not qualify every profile. Images will be condensed and homogenized in future releases. 
+name are not interchangeable; a model-neutral name does not qualify every profile.
+Retired profiles retain their image references in their linked guides.
 
 ## Benchmark results
+
+Each row links the exact measured configuration. These records include retired
+profiles and are not benchmark results for the shared-image build.
 
 Decode is sustained aggregate output at temperature 1.0.
 Results attempt to reflect real world use-case numbers in all instances unless otherwise noted.
