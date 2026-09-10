@@ -383,12 +383,38 @@ def _r33_image_receipt_document(bundle_sha):
         "source_lock_receipts_match": True, "installed_payload_bytes_match": True,
         "package_checks_passed": True, "bundle_manifest_sha256": bundle_sha,
         "verification": {"checked_files": {
+            "/opt/sparkring/sircl/python/sparkring-overlay-manifest.json": bundle_sha,
             "/opt/local-inference/nccl/lib/libnccl.so.2.31.2": nccl_sha,
             "/opt/sparkring/sircl/libspark_transport_capi.so": "bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246",
             "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so": "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93",
             "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so": "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953",
         }},
     }
+
+
+def test_r33_receipt_accepts_receipt_bound_mesh_manifest():
+    bundle_sha = "c" * 64
+    document = _r33_image_receipt_document(bundle_sha)
+    result = mesh_profile.validate_image_receipt(document)
+    assert result["bundle_manifest_sha256"] == bundle_sha
+    assert result["r33_candidate"] is True
+
+
+@pytest.mark.parametrize("failure", ["missing", "mismatch", "malformed", "invalid-verification"])
+def test_r33_receipt_rejects_unverified_mesh_manifest(failure):
+    bundle_sha = "c" * 64
+    document = _r33_image_receipt_document(bundle_sha)
+    manifest_path = "/opt/sparkring/sircl/python/sparkring-overlay-manifest.json"
+    if failure == "missing":
+        del document["verification"]["checked_files"][manifest_path]
+    elif failure == "mismatch":
+        document["verification"]["checked_files"][manifest_path] = "d" * 64
+    elif failure == "malformed":
+        document["bundle_manifest_sha256"] = "not-a-sha256"
+    else:
+        document["verification"] = None
+    with pytest.raises(ValueError, match="does not bind its mesh manifest"):
+        mesh_profile.validate_image_receipt(document)
 
 
 def test_r33_receipt_renders_canonical_managed_tp4_environment(tmp_path, manifest_bundle, monkeypatch):

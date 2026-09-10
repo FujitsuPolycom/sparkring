@@ -150,9 +150,16 @@ def validate_image_receipt(document: dict) -> dict:
         raise ValueError("Image receipt must be a JSON object")
     if document.get("schema") == "sparkring-r33-image-receipt/v1":
         _r33_profile_verifier().validate_image_receipt(document)
-        expected = PINS["canonical_bundle_manifest_sha256"]
-        if document.get("bundle_manifest_sha256") != expected:
-            raise ValueError("R33 image receipt does not bind the managed mesh bundle")
+        expected = document.get("bundle_manifest_sha256")
+        verification = document.get("verification")
+        checked = verification.get("checked_files") if isinstance(verification, dict) else None
+        manifest_path = "/opt/sparkring/sircl/python/sparkring-overlay-manifest.json"
+        if (not isinstance(expected, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", expected)
+                or not isinstance(checked, dict)
+                or checked.get(manifest_path) != expected):
+            raise ValueError(
+                "R33 image receipt does not bind its mesh manifest to verified image bytes")
         return dict(document, r33_candidate=True)
     if document.get("schema") == "sparkring-source-image-receipt/v1":
         lock = json.loads(SOURCE_LOCK.read_text())
