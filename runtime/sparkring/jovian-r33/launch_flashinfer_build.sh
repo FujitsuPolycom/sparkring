@@ -4,10 +4,15 @@ set -euo pipefail
 
 root=${SPARKRING_R33_ROOT:-/var/tmp/sparkring-r33-20260910}
 name=sparkring-r33-flashinfer-build-20260910
-test ! -e "$root/artifacts/flashinfer"
-mkdir -p "$root/artifacts/flashinfer"
+if [[ ${SPARKRING_FLASHINFER_RESUME:-0} == 1 ]]; then
+  test -d "$root/artifacts/flashinfer"
+  test -f "$root/sources/flashinfer/build/aot/cached_ops/.ninja_log"
+else
+  test ! -e "$root/artifacts/flashinfer"
+  mkdir -p "$root/artifacts/flashinfer"
+fi
 docker run --detach --name "$name" \
-  --cpus 6 --memory 80g --memory-swap 80g -e MAX_JOBS=6 \
+  --cpus 16 --memory 80g --memory-swap 80g -e MAX_JOBS=16 \
   --mount type=bind,src="$root/sources/flashinfer",dst=/source \
   --mount type=bind,src="$root/artifacts/flashinfer",dst=/out \
   --mount type=bind,src="$root/scripts/build_flashinfer.sh",dst=/scripts/build.sh,readonly \
