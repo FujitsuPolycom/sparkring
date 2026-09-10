@@ -107,6 +107,16 @@ def validate(lock: dict, inputs: dict, receipts: Path) -> dict:
                           (package["native_source_tree"], "packaged native tree")):
         check(actual, sources["vllm_native_tree"], label)
     check(package["source_tree"], sources["vllm_integrated_tree"], "packaged integrated tree")
+    check(
+        package["flash_attn_source_commit"],
+        sources["vllm_flash_attn_commit"],
+        "packaged vLLM FlashAttention source commit",
+    )
+    check(
+        package["flash_attn_python_files_byte_checked"],
+        5,
+        "packaged vLLM FlashAttention Python file count",
+    )
     check(package["wheel_sha256"], artifacts["vllm"]["sha256"], "vllm wheel")
     check(package["wheel"], Path(artifacts["vllm"]["source"]).name, "vllm wheel basename")
     check(package["record_valid"], True, "vllm RECORD")

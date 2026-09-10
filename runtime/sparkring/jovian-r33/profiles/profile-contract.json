@@ -4,7 +4,7 @@
   "image": {
     "selection": "external-immutable-receipt",
     "artifact_lock": "../image/artifact-lock.json",
-    "artifact_lock_sha256": "7e2c3c313bf0dabe1cac664488d8e334d84d4b601f018213a52a699cb0ffbb3c",
+    "artifact_lock_sha256": "b08a1923d0fc5247a84c014d8bf5bf96d624e417a8b3d8d6d0d41b496bc0f854",
     "required_platform": "linux/arm64",
     "required_sources": {
       "vllm_head": "ae89131442359dc332d9c46009be3c1f8cdee0b4",
@@ -13,6 +13,7 @@
       "vllm_status_sha256": "f7c5387613e07a4610a2901969e602d4e24d49d34c4ef8aa149fda16f1a1676c",
       "vllm_status_lines": 20,
       "vllm_native_tree": "386191c06df9c4232cb2f48012968f48cfdc6eee",
+      "vllm_flash_attn_commit": "f3e1a4f74c99145c0717709860bf765de1703779",
       "b12x_commit": "59d51a36a942d56a9c36265855cdc7856fa7712e",
       "b12x_tree": "474364a1f7ae3e6d379be88a57ebbe02bb5f9dba",
       "torch_commit": "cf30153c4c131c8164ee7798e5022d810682e2cb",

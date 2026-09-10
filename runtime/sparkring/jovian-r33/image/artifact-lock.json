@@ -24,6 +24,7 @@
     "vllm_status_sha256": "f7c5387613e07a4610a2901969e602d4e24d49d34c4ef8aa149fda16f1a1676c",
     "vllm_status_lines": 20,
     "vllm_native_tree": "386191c06df9c4232cb2f48012968f48cfdc6eee",
+    "vllm_flash_attn_commit": "f3e1a4f74c99145c0717709860bf765de1703779",
     "b12x_commit": "59d51a36a942d56a9c36265855cdc7856fa7712e",
     "b12x_tree": "474364a1f7ae3e6d379be88a57ebbe02bb5f9dba",
     "torch_commit": "cf30153c4c131c8164ee7798e5022d810682e2cb",
@@ -74,7 +75,7 @@
       "name": "vllm",
       "source": "artifacts/vllm-package/vllm-0.26.1rc0+sparkring.r33.ac8e94ae-cp312-cp312-linux_aarch64.whl",
       "destination": "wheelhouse/vllm-0.26.1rc0+sparkring.r33.ac8e94ae-cp312-cp312-linux_aarch64.whl",
-      "sha256": "e8661bc7890cda16762d79102814bf4ff25842d51ad902d672467674d5c02fa4",
+      "sha256": "c1299fe87774a8f05fd2f64b729bf20bfadb2ca168cd6b95ad7779a6e1f90cac",
       "install": true
     },
     {

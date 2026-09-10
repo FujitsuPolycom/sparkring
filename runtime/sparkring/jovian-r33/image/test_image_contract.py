@@ -86,7 +86,11 @@ class CandidateImageContractTests(unittest.TestCase):
         self.assertEqual(lock["foundation"]["image_id"], "sha256:6704db5df61d1110afaba538554abb024c85edb8f37a98e4e631166a10af3217")
         self.assertEqual(lock["media_runtime"]["image_id"], "sha256:a1a72e18ad49d99f6194a2585bfdc5f32d79180cdf2cd015c0d0d451479d6a42")
         artifacts = {item["name"]: item for item in lock["artifacts"]}
-        self.assertEqual(artifacts["vllm"]["sha256"], "e8661bc7890cda16762d79102814bf4ff25842d51ad902d672467674d5c02fa4")
+        self.assertEqual(artifacts["vllm"]["sha256"], "c1299fe87774a8f05fd2f64b729bf20bfadb2ca168cd6b95ad7779a6e1f90cac")
+        self.assertEqual(
+            lock["source_identities"]["vllm_flash_attn_commit"],
+            "f3e1a4f74c99145c0717709860bf765de1703779",
+        )
         self.assertEqual(artifacts["nccl-2.31.2-sparkring-routing"]["sha256"], "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47")
         self.assertEqual(artifacts["sircl"]["sha256"], "bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246")
         self.assertIn("+cu133-", artifacts["torchaudio"]["source"])
