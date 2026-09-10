@@ -21,17 +21,19 @@ values prove admission only; they do not prove that a runtime path executed.
 
 ## Continuation-prefill coalescing
 
-The R33 source composition includes vLLM commit
-`8133d8210f5c8f71389add06e4e0033ee7f13b71`. That commit removes scheduler
-split points when every recurrent cache group can export the required state
-from an 8,192-token forward. The implementation does not read
-`VLLM_B12X_KDA_PREFILL_COALESCING` and does not emit an execution counter or
-diagnostic record.
+The locked R33 source composition does not implement B12X continuation-prefill
+coalescing. Its Kimi GDN cache specification reserves one B12X prefill
+checkpoint, and its B12X API accepts one checkpoint destination per request.
+vLLM commit `8133d8210f5c8f71389add06e4e0033ee7f13b71` removes redundant
+scheduler split points only when every recurrent group already exports a
+multi-checkpoint set. Capacity one makes that branch ineligible. The source
+does not read `VLLM_B12X_KDA_PREFILL_COALESCING`.
 
 The activation verifier field `continuation_coalesced_groups` therefore has no
 valid producer in this source composition. Do not populate it from the
-environment or infer it from aggregate throughput. Qualification requires
-one of these implementations:
+environment or infer it from aggregate throughput. A compatible source port
+requires the four-checkpoint B12X export contract, the vLLM scheduler and
+worker ownership contract, and one of these diagnostics:
 
 1. Add a bounded diagnostic counter at the scheduler branch that removes an
    exported checkpoint from `reuse_stops`, then persist its value in a status
@@ -40,10 +42,10 @@ one of these implementations:
    positions in a bounded diagnostic record, then require an 8,192-token
    continuation chunk whose internal checkpoint avoided an extra split.
 
-Either implementation changes the vLLM source identity and requires a rebuilt
-image receipt. Until one exists, the final activation can qualify the model,
-transport, mHC path, and liveness, but it cannot certify execution of
-continuation-prefill coalescing.
+The B12X and vLLM changes alter both source identities and require a rebuilt
+image receipt. Until that image exists, an activation can qualify the model,
+transport, mHC path, and liveness, but it cannot claim that
+continuation-prefill coalescing is implemented or executed.
 
 ## Collector behavior
 

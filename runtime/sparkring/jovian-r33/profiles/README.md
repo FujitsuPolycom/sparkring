@@ -35,18 +35,20 @@ selects TP4/DCP1, MTP3, the 1,048,576-token request limit, dual-domain NCCL, and
 the exact graph sizes recorded by the mesh profile. Apply
 `tp4-dcp1-sparkcache.env.example` only for the separate bounded cache run.
 
-All profiles enable continuation-prefill coalescing, 2,048-row mHC prefill
-sharding, the native vLLM `instanttensor` load format, and DCP1. The pinned
+All profiles enable 2,048-row mHC prefill sharding, the native vLLM
+`instanttensor` load format, and DCP1. The templates request
+continuation-prefill coalescing, but the locked R33 vLLM and B12X sources do not
+implement its multi-checkpoint B12X path. The pinned
 InstantTensor revision selects its I/O backend automatically; these profiles do
 not require an `INSTANTTENSOR_*` environment override. Configuration is
 only admission evidence. The [activation evidence contract](ACTIVATION_EVIDENCE.md)
 defines the immutable logs, process maps, status snapshots, and request receipts
 required to prove that every rank used the same image and NCCL 2.31.2, both host
 domains carried NCCL, the exact graph set was captured, and InstantTensor, MTP3,
-mHC, and the selected custom transport executed. The R33 continuation-prefill
-implementation has no execution counter, so the activation receipt cannot
-qualify that path until bounded scheduler diagnostics are added and the image is
-rebuilt. TP4 additionally requires two completed
+mHC, and the selected custom transport executed. The activation receipt cannot
+qualify continuation-prefill coalescing until compatible vLLM and B12X sources
+and bounded scheduler diagnostics are built into a new image. TP4 additionally
+requires two completed
 32,768-token-or-longer prompts with no `sample_tokens` timeout or fatal engine
 error. The cache profile also requires successful capture, restore, payload
 comparison, and recovery after an injected fault.
