@@ -29,7 +29,7 @@ _spec.loader.exec_module(mesh_profile)
 PROTOCOL = 'sparkring-managed-mesh/v1'
 POLL_SECONDS = 1.0
 PEER_TIMEOUT = 2.0
-PEER_OUTAGE_GRACE = 4.0
+PEER_OUTAGE_GRACE = 300.0
 NETWORK_POLL_SECONDS = 5.0
 HEALTH_MAX_AGE = 10.0
 

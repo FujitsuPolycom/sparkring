@@ -50,9 +50,9 @@ def test_sustained_peer_connection_loss_latches_failure():
     watch = service.PeerWatch()
     watch.observe(rows())
     watch.transport_error(10.0)
-    watch.transport_error(13.9)
+    watch.transport_error(309.9)
     with pytest.raises(RuntimeError, match='grace'):
-        watch.transport_error(14.0)
+        watch.transport_error(310.0)
 
 
 def test_generation_change_is_not_given_a_transport_grace():
