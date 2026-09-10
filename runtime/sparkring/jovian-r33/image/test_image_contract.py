@@ -93,11 +93,11 @@ class CandidateImageContractTests(unittest.TestCase):
         )
         self.assertEqual(
             lock["source_identities"]["b12x_commit"],
-            "1b8d84a374bd48a770a02d19f850c3983c7f53ad",
+            "68acfc14893c087aa9b3120bb984fde4c4e7a21f",
         )
         self.assertEqual(
             lock["source_identities"]["b12x_tree"],
-            "8e4e10744578db5c85e9d8ca226292f7e67f4bf3",
+            "284e7df8caff930477a314fea20d826256844de4",
         )
         self.assertEqual(artifacts["nccl-2.31.2-sparkring-routing"]["sha256"], "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47")
         self.assertEqual(artifacts["sircl"]["sha256"], "bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246")
@@ -121,10 +121,10 @@ class CandidateImageContractTests(unittest.TestCase):
     def test_b12x_builder_and_context_bind_the_checkpoint_export_port(self):
         build = (HERE.parent / "build_b12x.sh").read_text()
         self.assertIn(
-            "expected_commit=1b8d84a374bd48a770a02d19f850c3983c7f53ad", build
+            "expected_commit=68acfc14893c087aa9b3120bb984fde4c4e7a21f", build
         )
         self.assertIn(
-            "expected_tree=8e4e10744578db5c85e9d8ca226292f7e67f4bf3", build
+            "expected_tree=284e7df8caff930477a314fea20d826256844de4", build
         )
         prepare = (HERE / "prepare_context.py").read_text()
         self.assertIn('sums_path = args.build_root / pending["receipt_sums"]', prepare)
