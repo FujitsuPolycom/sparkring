@@ -21,6 +21,8 @@ modules = [
     "vllm._flashkda_C",
     "vllm.vllm_flash_attn._vllm_fa2_C",
     "vllm.vllm_flash_attn._vllm_fa3_C",
+    "vllm.vllm_flash_attn.layers.rotary",
+    "vllm.vllm_flash_attn.ops.triton.rotary",
     "vllm._rust_tool_parser",
     "b12x",
     "flashinfer",

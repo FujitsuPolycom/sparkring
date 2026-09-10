@@ -13,6 +13,8 @@ version=${VLLM_VERSION_OVERRIDE:-0.26.1rc0+sparkring.r33.ac8e94ae}
 expected_head=ae89131442359dc332d9c46009be3c1f8cdee0b4
 expected_package_tree=ac8e94ae4ae84d6edfffd97b0d60545c9714e62f
 expected_native_tree=386191c06df9c4232cb2f48012968f48cfdc6eee
+flash_attn_source_dir=${VLLM_FLASH_ATTN_SOURCE_DIR:-$root/build/vllm-native/_deps/vllm-flash-attn-src}
+expected_flash_attn_commit=f3e1a4f74c99145c0717709860bf765de1703779
 expected_rust_bin_sha=cd1cdb2539c79793a92292479b4ec6b99d4e3be3e1a2cadb0fc3f592a99fba5d
 expected_rust_parser_sha=b52494b9f599acc71ccf9e63523fa3b2b173cf395d155eca37b0941236e2f28c
 
@@ -22,6 +24,7 @@ test "$(git -C "$source_dir" write-tree)" = "$expected_package_tree"
 test "$(git -C "$source_dir" diff --name-only "$expected_native_tree" "$expected_package_tree")" = requirements/cuda.txt
 test -d "$native_dir/install/vllm"
 test -d "$native_dir/modules"
+test "$(git -c safe.directory="$flash_attn_source_dir" -C "$flash_attn_source_dir" rev-parse HEAD)" = "$expected_flash_attn_commit"
 printf '%s  %s\n' "$expected_rust_bin_sha" "$rust_dir/vllm-rs" | sha256sum --check --strict
 printf '%s  %s\n' "$expected_rust_parser_sha" "$rust_dir/_rust_tool_parser.abi3.so" | sha256sum --check --strict
 
@@ -29,6 +32,18 @@ printf '%s  %s\n' "$expected_rust_parser_sha" "$rust_dir/_rust_tool_parser.abi3.
 test ! -e "$work_root"
 mkdir -p "$work_root/source" "$work_root/dist-initial" "$work_root/dist-final" "$work_root/evidence" "$out_dir"
 git -C "$source_dir" archive "$expected_package_tree" | tar -x -C "$work_root/source"
+
+# vLLM imports the Python helpers built from its commit-pinned FlashAttention
+# dependency. The vLLM repository contains only the package facade, while CMake
+# supplies layers/ and ops/ from this external source. Materialize those exact
+# Python files even when native modules are staged without a full CMake install.
+mkdir -p "$work_root/flash-attn-python"
+git -c safe.directory="$flash_attn_source_dir" -C "$flash_attn_source_dir" \
+  archive "$expected_flash_attn_commit" -- vllm_flash_attn/layers vllm_flash_attn/ops \
+  | tar -x -C "$work_root/flash-attn-python"
+find "$work_root/flash-attn-python/vllm_flash_attn" -type f ! -name '*.py' -delete
+cp -a "$work_root/flash-attn-python/vllm_flash_attn/." \
+  "$work_root/source/vllm/vllm_flash_attn/"
 
 # Start from CMake's install layout, then add every completed native target. Some optional targets have
 # component-only CMake installs, so the all-target build receipt is the authoritative supplement.
@@ -100,6 +115,8 @@ python3 "$(dirname "$0")/verify_vllm_wheel.py" \
   --native-tree "$expected_native_tree" \
   --native-install "$native_dir/install" \
   --native-modules "$native_dir/modules" \
+  --flash-attn-source-dir "$flash_attn_source_dir" \
+  --flash-attn-commit "$expected_flash_attn_commit" \
   --rust-bin-sha256 "$expected_rust_bin_sha" \
   --rust-parser-sha256 "$expected_rust_parser_sha" \
   --output "$work_root/evidence/verification.json"

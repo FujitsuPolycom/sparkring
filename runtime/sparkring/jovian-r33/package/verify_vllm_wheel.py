@@ -34,10 +34,63 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--native-tree", required=True)
     parser.add_argument("--native-install", type=Path, required=True)
     parser.add_argument("--native-modules", type=Path, required=True)
+    parser.add_argument("--flash-attn-source-dir", type=Path, required=True)
+    parser.add_argument("--flash-attn-commit", required=True)
     parser.add_argument("--rust-bin-sha256", required=True)
     parser.add_argument("--rust-parser-sha256", required=True)
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
+
+
+def tracked_flash_attn_python(
+    source_dir: Path, commit: str
+) -> dict[str, tuple[str, bytes]]:
+    """Map commit-pinned external helpers to their vLLM wheel destinations."""
+    output = subprocess.check_output(
+        [
+            "git",
+            "-c",
+            f"safe.directory={source_dir}",
+            "-C",
+            str(source_dir),
+            "ls-tree",
+            "-r",
+            commit,
+            "--",
+            "vllm_flash_attn",
+        ],
+        text=True,
+    )
+    files = {}
+    excluded = {
+        "vllm_flash_attn/__init__.py",
+        "vllm_flash_attn/flash_attn_interface.py",
+    }
+    for line in output.splitlines():
+        metadata_part, source_name = line.split("\t", 1)
+        mode, object_type, _ = metadata_part.split()
+        if (
+            object_type != "blob"
+            or mode == "120000"
+            or not source_name.endswith(".py")
+            or source_name in excluded
+        ):
+            continue
+        relative = source_name.removeprefix("vllm_flash_attn/")
+        destination = f"vllm/vllm_flash_attn/{relative}"
+        data = subprocess.check_output(
+            [
+                "git",
+                "-c",
+                f"safe.directory={source_dir}",
+                "-C",
+                str(source_dir),
+                "show",
+                f"{commit}:{source_name}",
+            ]
+        )
+        files[destination] = (source_name, data)
+    return files
 
 
 def main() -> None:
@@ -64,6 +117,13 @@ def main() -> None:
         assert len(names) == len(member_names), "duplicate wheel members"
         assert expected_modules <= names, sorted(expected_modules - names)
         assert "vllm/vllm-rs" in names
+        flash_attn_python = tracked_flash_attn_python(
+            args.flash_attn_source_dir, args.flash_attn_commit
+        )
+        assert "vllm/vllm_flash_attn/layers/rotary.py" in flash_attn_python
+        for destination, (_, source_data) in flash_attn_python.items():
+            assert destination in names, destination
+            assert archive.read(destination) == source_data, destination
         dist_info = [name for name in names if name.endswith(".dist-info/METADATA")]
         assert len(dist_info) == 1, dist_info
         metadata = BytesParser(policy=default).parsebytes(archive.read(dist_info[0]))
@@ -155,6 +215,8 @@ def main() -> None:
             "version": args.version,
             "source_tree": args.source_tree,
             "native_source_tree": args.native_tree,
+            "flash_attn_source_commit": args.flash_attn_commit,
+            "flash_attn_python_files_byte_checked": len(flash_attn_python),
             "native_to_package_diff": ["requirements/cuda.txt"],
             "tag": "cp312-cp312-linux_aarch64",
             "requires_dist": requirements,
