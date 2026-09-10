@@ -84,7 +84,7 @@ def main() -> None:
 
     runtime = args.repository_root / "runtime"
     required_files = [
-        *(HERE / name for name in ("Dockerfile.candidate", "entrypoint.py", "verify_candidate.py", "verify_context.py", "validate_receipts.py", "capture_installed.py", "finalize_lock.py", "download_report.py")),
+        *(HERE / name for name in ("Dockerfile.candidate", "entrypoint.py", "verify_candidate.py", "verify_context.py", "validate_receipts.py", "capture_installed.py", "finalize_lock.py", "download_report.py", "sitecustomize.py")),
         runtime / "sparkring/jovian-r33/contracts/vllm-connector-jobs-r33-prefill-a2ad36d.json",
         args.build_root / "artifacts/vllm-package/verification.json",
         args.build_root / "artifacts/vllm-package/import-smoke-v2.json",
@@ -214,6 +214,7 @@ def main() -> None:
         runtime / "glm53-spark-mtp3-mesh/performance/transport/bundle-source",
         context / "sircl-python",
     )
+    shutil.copy2(HERE / "sitecustomize.py", context / "sircl-python/sitecustomize.py")
     contract = runtime / "sparkring/jovian-r33/contracts/vllm-connector-jobs-r33-prefill-a2ad36d.json"
     (context / "contracts").mkdir()
     shutil.copy2(contract, context / "contracts" / contract.name)

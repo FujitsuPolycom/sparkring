@@ -36,6 +36,8 @@ COPY --from=verified-context /context/entrypoint.py /opt/sparkring/bin/sparkring
 COPY --from=verified-context /context/verify_candidate.py /opt/sparkring/bin/verify-candidate
 RUN ln -sfn libnccl.so.2.31.2 /opt/local-inference/nccl/lib/libnccl.so.2 \
     && ln -sfn libnccl.so.2 /opt/local-inference/nccl/lib/libnccl.so \
+    && ln -sfn ../libspark_transport_capi.so /opt/sparkring/sircl/python/libspark_transport_capi.so \
+    && ln -sfn /opt/sparkring/sircl/python /opt/spark-sircl \
     && chmod 0755 /opt/sparkring/bin/sparkring-r33 /opt/sparkring/bin/verify-candidate \
     && printf '%s\n' /opt/sparkring/transports > /opt/venv/lib/python3.12/site-packages/sparkring-transports.pth
 RUN VIRTUAL_ENV=/opt/venv \

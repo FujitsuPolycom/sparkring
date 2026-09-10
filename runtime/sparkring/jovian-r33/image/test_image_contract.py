@@ -181,6 +181,74 @@ class CandidateImageContractTests(unittest.TestCase):
                     module = __import__(name)
                     self.assertEqual(module._mode(), "custom")
 
+    def test_embedded_sitecustomize_loads_its_adjacent_sircl_hook(self):
+        bundle_source = (
+            HERE.parents[2]
+            / "glm53-spark-mtp3-mesh/performance/transport/bundle-source"
+        )
+        self.assertTrue((bundle_source / "sircl_sitecustomize.py").is_file())
+        prepare = (HERE / "prepare_context.py").read_text()
+        self.assertIn(
+            'shutil.copy2(HERE / "sitecustomize.py", '
+            'context / "sircl-python/sitecustomize.py")',
+            prepare,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            embedded = Path(directory) / "opt/sparkring/sircl/python"
+            embedded.mkdir(parents=True)
+            shutil.copy2(HERE / "sitecustomize.py", embedded / "sitecustomize.py")
+            (embedded / "sircl_sitecustomize.py").write_text(
+                "from pathlib import Path\n"
+                "import os\n"
+                "Path(os.environ['SIRCL_HOOK_MARKER']).write_text('loaded')\n"
+            )
+            for name in ("rocenante_vllm_overlay", "rocenante_health_gate"):
+                (embedded / f"{name}.py").write_text("def install():\n    return None\n")
+            marker = Path(directory) / "hook-loaded"
+            environment = {
+                **os.environ,
+                "PYTHONPATH": str(embedded),
+                "SPARK_TP4_HEALTH_GATE": "1",
+                "SIRCL_HOOK_MARKER": str(marker),
+            }
+            result = subprocess.run(
+                [sys.executable, "-c", "print('candidate-started')"],
+                env=environment,
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(marker.read_text(), "loaded")
+
+        dockerfile = (HERE / "Dockerfile.candidate").read_text()
+        self.assertIn(
+            "ln -sfn /opt/sparkring/sircl/python /opt/spark-sircl",
+            dockerfile,
+        )
+
+    def test_embedded_sitecustomize_fails_closed_without_sircl_hook(self):
+        with tempfile.TemporaryDirectory() as directory:
+            embedded = Path(directory) / "opt/sparkring/sircl/python"
+            embedded.mkdir(parents=True)
+            shutil.copy2(HERE / "sitecustomize.py", embedded / "sitecustomize.py")
+            result = subprocess.run(
+                [sys.executable, "-c", "print('must-not-start')"],
+                env={
+                    **os.environ,
+                    "PYTHONPATH": str(embedded),
+                    "SPARK_TP4_HEALTH_GATE": "1",
+                },
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(result.returncode, 78)
+            self.assertNotIn("must-not-start", result.stdout)
+            self.assertIn(
+                f"preserved SIRCL sitecustomize is missing: "
+                f"{embedded / 'sircl_sitecustomize.py'}",
+                result.stderr,
+            )
+
     def test_entrypoint_rejects_tp4_without_managed_renderer(self):
         module = load_entrypoint()
         contract = json.loads((CANONICAL_PROFILES / "profile-contract.json").read_text())
