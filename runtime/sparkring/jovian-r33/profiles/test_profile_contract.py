@@ -6,6 +6,7 @@ import pytest
 
 
 HERE = Path(__file__).resolve().parent
+ASSET_ROOT = HERE.parents[2]
 SPEC = importlib.util.spec_from_file_location("r33_profile_verifier", HERE / "verify_profile.py")
 verifier = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(verifier)
@@ -21,8 +22,12 @@ def image_receipt():
         "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:" + "b" * 64,
         "artifact_lock_sha256": contract["image"]["artifact_lock_sha256"],
         "sources": contract["image"]["required_sources"],
+        "component_receipts": {name: "c" * 64 for name in contract["image"]["required_receipts"]},
+        "source_lock_sha256": "d" * 64,
         "nccl_version": "2.31.2",
         "source_locks_match": True,
+        "source_lock_receipts_match": True,
+        "installed_payload_bytes_match": True,
         "package_checks_passed": True,
     }
 
@@ -80,7 +85,7 @@ def activation(name):
 
 @pytest.mark.parametrize("name", ["tp2-dcp1", "tp4-dcp1", "tp4-dcp1-sparkcache"])
 def test_candidate_templates_match_contract_and_pinned_inputs(name):
-    assert verifier.validate_template(name)["checks_passed"] is True
+    assert verifier.validate_template(name, ASSET_ROOT)["checks_passed"] is True
 
 
 def test_tp2_uses_one_dac_across_two_host_domains_and_one_dcp_rank():

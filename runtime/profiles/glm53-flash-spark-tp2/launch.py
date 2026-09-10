@@ -18,6 +18,7 @@ SITE_KEYS = {"VLLM_HOST_IP", "NCCL_SOCKET_IFNAME", "GLOO_SOCKET_IFNAME"}
 REGISTRY_IMAGE_PATTERN = r"ghcr\.io/fujitsupolycom/sparkring@sha256:[0-9a-f]{64}"
 LOCAL_IMAGE_PATTERN = r"sha256:[0-9a-f]{64}"
 SOURCE_IMAGE_ROOT = ROOT.parents[1] / "sparkring/source_image"
+R33_PROFILE_ROOT = ROOT.parents[1] / "sparkring/jovian-r33/profiles"
 
 
 def load_profile():
@@ -67,7 +68,68 @@ def read_site(path: Path) -> dict[str, str]:
     return result
 
 
-def render(rank, master, model_dir, cache_dir, env_file, image):
+def _r33_verifier():
+    spec = importlib.util.spec_from_file_location("sparkring_r33_profile_verifier", R33_PROFILE_ROOT / "verify_profile.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _replace_option(arguments, flag, value):
+    result = list(arguments)
+    result[result.index(flag) + 1] = value
+    return result
+
+
+def adapt_r33_plan(plan, receipt):
+    verifier = _r33_verifier()
+    verifier.validate_image_receipt(receipt)
+    expected_image = receipt["image_id"] if plan["image_identity_kind"] == "local_config_id" else receipt["image_reference"]
+    if plan["image"] != expected_image:
+        raise ValueError("R33 receipt does not identify the selected TP2 image")
+    contract = verifier.load_contract()
+    environment = dict(plan["environment"])
+    environment.update(contract["common_environment"])
+    environment.update({
+        "SOURCE_IMAGE_PROFILE": "tp2-dcp1",
+        "SPARKRING_PROFILE_MODE": "custom",
+        "SPARKCACHE_ENABLED": "0",
+        "VLLM_SPARK_TP4_MODE": "",
+        "VLLM_SPARK_TP4_VOCAB_MODE": "",
+    })
+    arguments = plan["container_args"][4:]
+    arguments = _replace_option(arguments, "--max-model-len", str(contract["model"]["max_model_len"]))
+    arguments = _replace_option(arguments, "--kv-cache-memory-bytes", str(contract["profiles"]["tp2-dcp1"]["kv_cache_memory_bytes"]))
+    container_args = ["serve", *arguments]
+    command = list(plan["command"])
+    command[command.index("--entrypoint") + 1] = "/opt/sparkring/bin/sparkring-r33"
+    labels = dict(plan["labels"])
+    labels["org.sparkring.profile"] = "tp2-dcp1"
+    image_index = len(command) - len(plan["container_args"]) - 1
+    prefix = command[:image_index]
+    for key, value in sorted(environment.items()):
+        assignment = key + "="
+        positions = [index for index in range(len(prefix) - 1) if prefix[index] == "--env" and prefix[index + 1].startswith(assignment)]
+        if positions:
+            prefix[positions[0] + 1] = assignment + value
+        else:
+            prefix.extend(["--env", assignment + value])
+    for key, value in labels.items():
+        assignment = key + "="
+        for index in range(len(prefix) - 1):
+            if prefix[index] == "--label" and prefix[index + 1].startswith(assignment):
+                prefix[index + 1] = assignment + value
+                break
+    command = [*prefix, plan["image"], *container_args]
+    plan.update(
+        profile="tp2-dcp1", environment=environment, container_args=container_args,
+        command=command, labels=labels, entrypoint="/opt/sparkring/bin/sparkring-r33",
+        runtime_kind="r33-candidate",
+    )
+    return plan
+
+
+def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None):
     if rank not in (0, 1) or not re.fullmatch(r"[A-Za-z0-9_.:-]+", master):
         raise ValueError("A valid rank and master address are required")
     if not (re.fullmatch(REGISTRY_IMAGE_PATTERN, image) or re.fullmatch(LOCAL_IMAGE_PATTERN, image)):
@@ -133,7 +195,7 @@ def render(rank, master, model_dir, cache_dir, env_file, image):
         command.extend(["--env", key + "=" + value])
     container_args = ["-S", "-B", "/opt/sparkcache-jj-runtime/verify_sources.py", "--serve", *args]
     command.extend([image, *container_args])
-    return {
+    result = {
         "schema": "sparkring-profile-launch-plan/v1", "status": "implemented",
         "name": name, "profile": profile["name"], "profile_sha256": profile_hash,
         "image": image, "transport_manifest_sha256": profile["transport"]["manifest_sha256"],
@@ -145,7 +207,9 @@ def render(rank, master, model_dir, cache_dir, env_file, image):
         "automatic_restart": False, "automatic_start": False,
         "sparkcache_enabled": False,
         "qualification": profile["qualification"],
+        "entrypoint": "python3", "runtime_kind": "legacy",
     }
+    return adapt_r33_plan(result, r33_receipt) if r33_receipt is not None else result
 
 
 def _source_receipt_contract(directory):
@@ -209,6 +273,12 @@ def validate_source_image_receipt(receipt, plan, source_root=None):
 
 def validate_runtime_receipt(receipt, plan):
     """Require source compatibility evidence for this exact image and profile."""
+    if receipt.get("schema") == "sparkring-r33-image-receipt/v1":
+        _r33_verifier().validate_image_receipt(receipt)
+        expected = receipt["image_id"] if plan["image_identity_kind"] == "local_config_id" else receipt["image_reference"]
+        if plan.get("runtime_kind") != "r33-candidate" or plan["profile"] != "tp2-dcp1" or plan["image"] != expected:
+            raise ValueError("R33 receipt differs from the adapted TP2 plan")
+        return
     if re.fullmatch(LOCAL_IMAGE_PATTERN, plan["image"]):
         validate_source_image_receipt(receipt, plan)
         return
@@ -252,7 +322,7 @@ def execute(plan, action, receipt, *, run=subprocess.run):
     actual_mounts = {item["Destination"]: item for item in container.get("Mounts", [])}
     matches = (
         config.get("Image") == plan["image"]
-        and config.get("Entrypoint") == ["python3"]
+        and config.get("Entrypoint") == [plan["entrypoint"]]
         and config.get("Healthcheck", {}).get("Test") == ["NONE"]
         and config.get("Cmd") == plan["container_args"]
         and all(config.get("Labels", {}).get(key) == value for key, value in plan["labels"].items())
@@ -279,13 +349,15 @@ def main():
     parser.add_argument("--image", required=True)
     parser.add_argument("--runtime-receipt", type=Path)
     args = parser.parse_args()
-    plan = render(args.rank, args.master, args.model_dir, args.cache_dir, args.env_file, args.image)
+    runtime_receipt = json.loads(args.runtime_receipt.read_text()) if args.runtime_receipt else None
+    r33_receipt = runtime_receipt if runtime_receipt and runtime_receipt.get("schema") == "sparkring-r33-image-receipt/v1" else None
+    plan = render(args.rank, args.master, args.model_dir, args.cache_dir, args.env_file, args.image, r33_receipt)
     print(json.dumps(plan, indent=2), flush=True)
     if args.action == "plan":
         return
     if args.runtime_receipt is None:
         parser.error("create and start require --runtime-receipt for this exact local image or registry digest")
-    execute(plan, args.action, json.loads(args.runtime_receipt.read_text()))
+    execute(plan, args.action, runtime_receipt)
 
 
 if __name__ == "__main__":

@@ -22,9 +22,16 @@ Its release source lock has SHA256
 | Build recipe | `local-inference-lab/blackwell-llm-docker` at `11c5c7fc7fc8fcad33994d6608885f646e50e4f2` |
 
 Installed-component identities take precedence over inherited container labels.
-The native audit identifies PyTorch source `cf30153c4c131c8164ee7798e5022d810682e2cb`
-and NCCL 2.31.2 source `fb6f40999a2a9e63104d4ae4a84118bce61528f8`;
-their architecture-specific packaging is still being resolved.
+The ARM64 foundation image
+`sha256:6704db5df61d1110afaba538554abb024c85edb8f37a98e4e631166a10af3217`
+contains CUDA 13.3, PyTorch source
+`cf30153c4c131c8164ee7798e5022d810682e2cb`, and canonical NCCL 2.31.2 source
+`fb6f40999a2a9e63104d4ae4a84118bce61528f8`. The routed NCCL candidate is
+compiled from patched tree `aa7028b2b2a55af4817f8d742e17717dd4509ee7`
+with library SHA-256
+`84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47`.
+The native artifacts and vLLM ARM64 wheel are built; distributed GPU, model,
+TP2/TP4, and cache-recovery qualification remains pending.
 
 ## Integration rules
 

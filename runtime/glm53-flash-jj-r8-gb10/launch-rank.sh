@@ -194,6 +194,9 @@ for name in VLLM_B12X_KDA_PREFILL_COALESCING VLLM_GLM53_MHC_PREFILL_SHARD \
 done
 case "${NCCL_LIBRARY_PATH}" in
   /opt/sparkring/nccl/libnccl.so.2) ;;
+  /opt/local-inference/nccl/lib/libnccl.so.2)
+    [[ "${NCCL_LIBRARY_SHA256}" =~ ^[0-9a-f]{64}$ ]] || \
+      die 'R33 NCCL requires its receipt-bound SHA-256' ;;
   /opt/sparkring/nccl-pci/libnccl.so.2.30.7)
     [[ "${NCCL_LIBRARY_SHA256}" =~ ^[0-9a-f]{64}$ && -n "${SOURCE_IMAGE_PROFILE}" ]] || \
       die 'Source-composed NCCL requires its receipt-bound profile and SHA-256' ;;
@@ -202,6 +205,7 @@ esac
 case "${VLLM_BLOCK_SIZE}" in 256|512) ;; *) die 'VLLM_BLOCK_SIZE must be 256 or 512' ;; esac
 case "${NCCL_DEBUG}" in WARN|INFO) ;; *) die 'NCCL_DEBUG must be WARN or INFO' ;; esac
 [[ "${NCCL_DEBUG_SUBSYS}" == NET,INIT,GRAPH ]] || die 'NCCL_DEBUG_SUBSYS must be NET,INIT,GRAPH'
+r33_profile=0
 case "${SOURCE_IMAGE_PROFILE}" in
   '') ;;
   tp4-dcp1-mtp3-prefill|tp4-dcp4-mtp3-prefill)
@@ -233,6 +237,22 @@ case "${SOURCE_IMAGE_PROFILE}" in
     [[ "${NCCL_LIBRARY_PATH}" == /opt/sparkring/nccl-pci/libnccl.so.2.30.7 && \
        "${NCCL_IB_EXTENDED_IPV4_GIDS:-0}" == 1 && "${NCCL_IB_PRESERVE_PCI_DOMAIN:-0}" == 1 ]] || \
       die 'Source SparkCache profile requires its dual-domain NCCL settings' ;;
+  tp4-dcp1)
+    r33_profile=1
+    [[ "${SPARKRING_PROFILE_MODE:-}" == custom && "${SPARKRING_MANAGED_MESH_RENDERED:-0}" == 1 ]] || \
+      die 'R33 TP4 requires the canonical managed custom profile'
+    [[ "${SPARKCACHE_ENABLED}" == 0 && "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 0 ]] || \
+      die 'R33 tp4-dcp1 requires SparkCache disabled'
+    [[ "${VLLM_SPARK_TP4_MODE}" == custom && "${VLLM_SPARK_TP4_VOCAB_MODE}" == custom ]] || \
+      die 'R33 TP4 requires custom all-reduce and vocabulary transports'
+    [[ "${VLLM_B12X_KDA_PREFILL_COALESCING:-0}" == 1 && \
+       "${VLLM_GLM53_MHC_PREFILL_SHARD:-0}" == 1 && \
+       "${VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH:-0}" == 1 ]] || \
+      die 'R33 TP4 requires coalescing, mHC, and GDN metadata fast path'
+    [[ "${NCCL_LIBRARY_PATH}" == /opt/local-inference/nccl/lib/libnccl.so.2 ]] || \
+      die 'R33 TP4 requires installed NCCL 2.31.2' ;;
+  tp4-dcp1-sparkcache)
+    die 'R33 SparkCache requires receipt-bound /opt/venv placement and snapshot libraries' ;;
   *) die 'Unsupported source-composed runtime profile' ;;
 esac
 if [[ -n "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" && "${SOURCE_IMAGE_PROFILE}" != tp4-dcp1-mtp3-sparkcache ]]; then
@@ -609,6 +629,9 @@ sircl_args=()
 sircl_native_sha256='disabled'
 sircl_manifest_sha256='disabled'
 sircl_container_root='/opt/spark-sircl'
+if [[ "${r33_profile}" == 1 ]]; then
+  sircl_container_root='/opt/sparkring/sircl'
+fi
 sircl_bundle_is_external=0
 if [[ "${SIRCL_ENABLED}" == 1 ]]; then
   [[ "${TENSOR_PARALLEL_SIZE}" == 4 ]] || \
@@ -714,6 +737,11 @@ if [[ "${SIRCL_ENABLED}" == 1 ]]; then
       -v "${SIRCL_BUNDLE_HOST_ROOT}:${sircl_container_root}:ro"
     )
     sircl_bundle_is_external=1
+  elif [[ "${r33_profile}" == 1 ]]; then
+    sircl_native_sha256="${SPARKRING_DECLARED_SIRCL_NATIVE_SHA256:?R33 rendering requires declared native identity}"
+    sircl_manifest_sha256="${SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256:?R33 rendering requires declared manifest identity}"
+    [[ "${sircl_native_sha256}" =~ ^[0-9a-f]{64}$ && "${sircl_manifest_sha256}" =~ ^[0-9a-f]{64}$ ]] || \
+      die 'invalid R33 SIRCL identity'
   elif [[ "${SPARKRING_OFFLINE_SPEC}" == 1 ]]; then
     sircl_native_sha256="${SPARKRING_DECLARED_SIRCL_NATIVE_SHA256:?offline rendering requires declared native identity}"
     sircl_manifest_sha256="${SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256:?offline rendering requires declared manifest identity}"
@@ -776,6 +804,15 @@ if [[ "${SIRCL_ENABLED}" == 1 ]]; then
     -e SPARK_TP4_FLIGHT_RECORDER=0
     -e "SPARK_TP4_GRAPH_STATUS_PATH=/cache/jit/sircl-graph-rank${rank}.json"
   )
+  if [[ "${r33_profile}" == 1 ]]; then
+    sircl_args+=(
+      -e PYTHONPATH=/opt/sparkring/sircl/python
+      -e SPARK_TP4_LIBRARY=/opt/sparkring/sircl/libspark_transport_capi.so
+      -e VLLM_SPARK_TP4_VOCAB_MODE=custom
+      -e "SPARK_TP4_CONTROL_PORT0=${SPARK_TP4_GRAPH_CONTROL_PORT0}"
+      -e "SPARK_TP4_CONTROL_PORT1=${SPARK_TP4_GRAPH_CONTROL_PORT1}"
+    )
+  fi
 fi
 replay_timing_args=()
 if [[ "${SPARK_CUDAGRAPH_REPLAY_TIMING}" == 1 ]]; then
@@ -1046,10 +1083,28 @@ serving_prefix=()
 source_recurrent_args=()
 if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
   # Source-bound profiles must verify installed files before importing serving code.
-  serving_entrypoint=python3
-  serving_prefix=(-S -B /opt/sparkcache-jj-runtime/verify_sources.py --serve)
+  if [[ "${r33_profile}" == 1 ]]; then
+    serving_entrypoint=/opt/sparkring/bin/sparkring-r33
+    serving_prefix=(serve)
+  else
+    serving_entrypoint=python3
+    serving_prefix=(-S -B /opt/sparkcache-jj-runtime/verify_sources.py --serve)
+  fi
   # Automatic request-boundary checkpoints exclude continuation coalescing.
   source_recurrent_args=(--mamba-block-size "${VLLM_BLOCK_SIZE}" --recurrent-checkpoint-policy aligned --prefix-cache-retention-interval 0)
+fi
+r33_environment=()
+if [[ "${r33_profile}" == 1 ]]; then
+  r33_environment=(
+    -e "SIRCL_ENABLED=${SIRCL_ENABLED}"
+    -e "SPARKCACHE_ENABLED=${SPARKCACHE_ENABLED}"
+    -e "NODE_RANK=${rank}"
+    -e "MASTER_ADDR=${MASTER_ADDR}"
+    -e "SPARKRING_PROFILE_MODE=${SPARKRING_PROFILE_MODE}"
+    -e "SPARKRING_MANAGED_MESH_RENDERED=${SPARKRING_MANAGED_MESH_RENDERED}"
+    -e "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH=${VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH}"
+    -e "NCCL_LOCAL_INFERENCE_PATH=${NCCL_LIBRARY_PATH}"
+  )
 fi
 
 container_command=(docker "${container_action[@]}" \
@@ -1103,6 +1158,7 @@ container_command=(docker "${container_action[@]}" \
   -e VLLM_ENABLE_PCIE_ALLREDUCE=0 -e VLLM_ALLREDUCE_USE_FLASHINFER=0 \
   -e VLLM_ALLREDUCE_USE_SYMM_MEM=0 \
   "${source_environment[@]}" \
+  "${r33_environment[@]}" \
   -e "VLLM_NCCL_SO_PATH=${NCCL_LIBRARY_PATH}" \
   -e "LD_PRELOAD=${NCCL_LIBRARY_PATH}" \
   -e "NCCL_DEBUG=${NCCL_DEBUG}" -e "NCCL_DEBUG_SUBSYS=${NCCL_DEBUG_SUBSYS}" \

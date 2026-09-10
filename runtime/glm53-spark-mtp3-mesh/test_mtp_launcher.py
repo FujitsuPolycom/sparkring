@@ -8,6 +8,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import sys
+from unittest import mock
 
 import pytest
 
@@ -128,6 +129,59 @@ printf '%s  %s\n' "$hash" "$2"
 def _option(arguments, name):
     assert arguments.count(name) == 1
     return arguments[arguments.index(name) + 1]
+
+
+def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture):
+    launch, _, _ = launch_fixture
+    nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"
+    result, arguments, _ = launch(0, {
+        "SOURCE_IMAGE_PROFILE": "tp4-dcp1",
+        "SPARKRING_PROFILE_MODE": "custom",
+        "SPARKRING_MANAGED_MESH_RENDERED": "1",
+        "VLLM_SPARK_TP4_MODE": "custom",
+        "VLLM_SPARK_TP4_VOCAB_MODE": "custom",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
+        "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
+        "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+        "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+        "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
+        "SPARKCACHE_ENABLED": "0",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE": "0",
+        "NCCL_LIBRARY_PATH": nccl,
+        "NCCL_LIBRARY_SHA256": "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47",
+        "SIRCL_BUNDLE_HOST_ROOT": "",
+        "SPARKRING_DECLARED_SIRCL_NATIVE_SHA256": "b" * 64,
+        "SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256": "c" * 64,
+    })
+    assert result.returncode == 0, result.stderr
+    assert _option(arguments, "--entrypoint") == "/opt/sparkring/bin/sparkring-r33"
+    image_index = arguments.index(profile.defaults(profile.BASE / "runtime.env.example")["IMAGE_REF"])
+    assert arguments[image_index + 1:image_index + 3] == ["serve", "/models/target"]
+    assert "/opt/sparkcache-jj-runtime/verify_sources.py" not in arguments
+    environment = [arguments[index + 1] for index, value in enumerate(arguments[:-1]) if value == "-e"]
+    for expected in (
+        "SOURCE_IMAGE_PROFILE=tp4-dcp1",
+        "SPARKRING_PROFILE_MODE=custom",
+        "SPARKRING_MANAGED_MESH_RENDERED=1",
+        "VLLM_SPARK_TP4_VOCAB_MODE=custom",
+        f"VLLM_NCCL_SO_PATH={nccl}",
+        f"NCCL_LOCAL_INFERENCE_PATH={nccl}",
+        "SPARK_TP4_LIBRARY=/opt/sparkring/sircl/libspark_transport_capi.so",
+        "PYTHONPATH=/opt/sparkring/sircl/python",
+        "NODE_RANK=0",
+    ):
+        assert expected in environment
+    assert any(value.startswith("MASTER_ADDR=") for value in environment)
+    assert any(value.startswith("SPARK_TP4_CONTROL_PORT0=") for value in environment)
+    assert all("/opt/spark-sircl" not in value for value in arguments)
+    entrypoint_path = HERE.parent / "sparkring/jovian-r33/image/entrypoint.py"
+    spec = importlib.util.spec_from_file_location("r33_tp4_candidate_entrypoint", entrypoint_path)
+    entrypoint = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(entrypoint)
+    environment_map = dict(value.split("=", 1) for value in environment)
+    with mock.patch.dict(os.environ, environment_map, clear=True), mock.patch.object(entrypoint.subprocess, "run"):
+        selected = entrypoint.validate_external_profile(HERE.parent / "sparkring/jovian-r33/profiles")
+    assert selected["tensor_parallel_size"] == 4
 
 
 @pytest.mark.parametrize('rank', range(4))

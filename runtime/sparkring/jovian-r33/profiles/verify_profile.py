@@ -14,6 +14,7 @@ HERE = Path(__file__).resolve().parent
 CONTRACT_PATH = HERE / "profile-contract.json"
 IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}")
 REGISTRY_DIGEST = re.compile(r"[^\s@]+@sha256:[0-9a-f]{64}")
+SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 def load_contract() -> dict:
@@ -46,7 +47,9 @@ def parse_template(path: Path) -> dict[str, str]:
     return result
 
 
-def validate_template(name: str) -> dict:
+def validate_template(name: str, asset_root: Path | None = None) -> dict:
+    if asset_root is None:
+        raise ValueError("Template validation requires an explicit asset root")
     contract, selected = profile(name)
     values = parse_template(HERE / selected["template"])
     if selected.get("inherits"):
@@ -69,7 +72,7 @@ def validate_template(name: str) -> dict:
         if values.get(key) != value:
             raise ValueError(f"{name} requires {key}={value}")
     if name == "tp2-dcp1":
-        manifest = (HERE / selected["transport_manifest"]).resolve()
+        manifest = asset_root / selected["transport_manifest"]
         if hashlib.sha256(manifest.read_bytes()).hexdigest() != selected["transport_manifest_sha256"]:
             raise ValueError("The TP2 RoCEnante manifest differs from the profile contract")
         if values["NCCL_IB_HCA"] != "=rocep1s0f0,roceP2p1s0f0" or values["B12X_ROCE_PAIR_PATHS"] != "2":
@@ -77,7 +80,7 @@ def validate_template(name: str) -> dict:
         if values.get("PYTHONPATH"):
             raise ValueError("TP2 must clear the inherited TP4 mesh overlay")
     else:
-        pins = (HERE / selected["mesh_pins"]).resolve()
+        pins = asset_root / selected["mesh_pins"]
         if hashlib.sha256(pins.read_bytes()).hexdigest() != selected["mesh_pins_sha256"]:
             raise ValueError("The managed TP4 mesh pins differ from the profile contract")
         required = {"SIRCL_ENABLED": "1", "VLLM_SPARK_TP4_MODE": "custom",
@@ -90,6 +93,7 @@ def validate_template(name: str) -> dict:
 def validate_image_receipt(document: dict) -> dict:
     contract = load_contract()
     required = contract["image"]
+    component_receipts = document.get("component_receipts", {})
     if (document.get("schema") != "sparkring-r33-image-receipt/v1"
             or document.get("checks_passed") is not True
             or document.get("platform") != required["required_platform"]
@@ -98,9 +102,15 @@ def validate_image_receipt(document: dict) -> dict:
                     or document.get("image_reference") == document.get("image_id"))
             or document.get("artifact_lock_sha256") != required["artifact_lock_sha256"]
             or document.get("sources") != required["required_sources"]
+            or set(component_receipts) != set(required["required_receipts"])
+            or any(not SHA256.fullmatch(value) for value in component_receipts.values())
+            or not SHA256.fullmatch(document.get("source_lock_sha256", ""))
             or document.get("nccl_version") != required["required_nccl_version"]):
         raise ValueError("Image receipt does not identify the exact qualified R33 ARM64 composition")
-    if document.get("source_locks_match") is not True or document.get("package_checks_passed") is not True:
+    if (document.get("source_locks_match") is not True
+            or document.get("source_lock_receipts_match") is not True
+            or document.get("installed_payload_bytes_match") is not True
+            or document.get("package_checks_passed") is not True):
         raise ValueError("Image receipt lacks passing source-lock and package checks")
     return {"image_id": document["image_id"], "image_reference": document["image_reference"]}
 
@@ -166,11 +176,12 @@ def main() -> None:
     parser.add_argument("kind", choices=("template", "image", "activation"))
     parser.add_argument("--profile", choices=("tp2-dcp1", "tp4-dcp1", "tp4-dcp1-sparkcache"))
     parser.add_argument("--receipt", type=Path)
+    parser.add_argument("--asset-root", type=Path)
     args = parser.parse_args()
     if args.kind == "template":
         if not args.profile:
             parser.error("template validation requires --profile")
-        result = validate_template(args.profile)
+        result = validate_template(args.profile, args.asset_root)
     else:
         if args.receipt is None:
             parser.error(f"{args.kind} validation requires --receipt")

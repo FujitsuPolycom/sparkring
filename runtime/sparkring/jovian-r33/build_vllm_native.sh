@@ -11,7 +11,8 @@ expected_cutlass=e6233cbac5d7c7a865c19c91cd684ceece19513c
 
 git config --global --add safe.directory "$source_dir"
 git config --global --add safe.directory "$cutlass_dir"
-test "$(git -C "$source_dir" write-tree)" = "$expected_tree"
+git -C "$source_dir" cat-file -e "$expected_tree^{tree}"
+git -C "$source_dir" diff --cached --quiet "$expected_tree" --
 test "$(git -C "$cutlass_dir" rev-parse HEAD)" = "$expected_cutlass"
 test -z "$(git -C "$cutlass_dir" status --porcelain)"
 python3 /opt/sparkring-build/verify_torch.py > "$out/foundation-verification.json"
@@ -32,6 +33,8 @@ cmake -S "$source_dir" -B "$build_dir" -G Ninja \
 cmake --build "$build_dir" \
   --target _C_stable_libtorch _flashkda_C \
   --parallel "$MAX_JOBS"
+git -C "$source_dir" diff --cached --quiet "$expected_tree" --
+test -z "$(git -C "$cutlass_dir" status --porcelain)"
 
 install -m755 "$build_dir/_C_stable_libtorch.abi3.so" "$out/"
 install -m755 "$build_dir/_flashkda_C.abi3.so" "$out/"

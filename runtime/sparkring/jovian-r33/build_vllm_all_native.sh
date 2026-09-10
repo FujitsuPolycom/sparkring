@@ -9,12 +9,15 @@ out=/out
 expected_tree=386191c06df9c4232cb2f48012968f48cfdc6eee
 git config --global --add safe.directory "$source_dir"
 git config --global --add safe.directory "$cutlass_dir"
-test "$(git -C "$source_dir" write-tree)" = "$expected_tree"
+git -C "$source_dir" cat-file -e "$expected_tree^{tree}"
+git -C "$source_dir" diff --cached --quiet "$expected_tree" --
 test "$(git -C "$cutlass_dir" rev-parse HEAD)" = e6233cbac5d7c7a865c19c91cd684ceece19513c
 python3 /opt/sparkring-build/verify_torch.py > "$out/foundation-verification-all.json"
 export VLLM_CUTLASS_SRC_DIR="$cutlass_dir"
 export TORCH_CUDA_ARCH_LIST=12.1a CUDA_VISIBLE_DEVICES= NVIDIA_VISIBLE_DEVICES=void
 cmake --build "$build_dir" --parallel "${MAX_JOBS:-14}"
+git -C "$source_dir" diff --cached --quiet "$expected_tree" --
+test -z "$(git -C "$cutlass_dir" status --porcelain)"
 rm -rf "$out/modules"
 mkdir -p "$out/modules"
 cd "$build_dir"

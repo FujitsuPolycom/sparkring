@@ -12,6 +12,13 @@ the registry manifest digest from a receipt that also binds the same config ID.
 Use the same receipt on every TP2 and TP4 rank. Keep the rollback image receipt
 and archive named by `SPARKRING_ROLLBACK_RECEIPT` until qualification completes.
 
+The generic R33 image entrypoint consumes this contract in
+`SPARKRING_PROFILE_MODE=custom`; it does not contain a second profile catalog.
+The external renderer or launcher must provide `SOURCE_IMAGE_PROFILE` and the
+complete rank-local environment before `serve`. TP4 additionally requires the
+managed renderer marker and concrete library, peer, device, GID, control-port,
+HCA, rank, and management values. Placeholder site values are rejected.
+
 `tp2-dcp1.env.example` preserves the existing one-DAC layout: both functions
 of physical cage p0 are addressed through the primary and secondary host PCIe
 domains. It uses the byte-pinned `tp2-rocenante-adaptive` transport, TP2/DCP1,
@@ -43,8 +50,8 @@ Run the offline contract checks with:
 
 ```bash
 python -m pytest runtime/sparkring/jovian-r33/profiles -q
-python runtime/sparkring/jovian-r33/profiles/verify_profile.py template --profile tp2-dcp1
-python runtime/sparkring/jovian-r33/profiles/verify_profile.py template --profile tp4-dcp1
+python runtime/sparkring/jovian-r33/profiles/verify_profile.py template --profile tp2-dcp1 --asset-root runtime
+python runtime/sparkring/jovian-r33/profiles/verify_profile.py template --profile tp4-dcp1 --asset-root runtime
 ```
 
 After a hardware run, validate its independently collected receipt with:

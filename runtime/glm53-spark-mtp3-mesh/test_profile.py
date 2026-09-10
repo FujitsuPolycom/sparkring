@@ -368,6 +368,64 @@ def _image_receipt_document():
     }
 
 
+def _r33_image_receipt_document(bundle_sha):
+    verifier = mesh_profile._r33_profile_verifier()
+    contract = verifier.load_contract()
+    nccl_sha = "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47"
+    return {
+        "schema": "sparkring-r33-image-receipt/v1", "checks_passed": True,
+        "platform": "linux/arm64", "image_id": "sha256:" + "d" * 64,
+        "image_reference": "sha256:" + "d" * 64,
+        "artifact_lock_sha256": contract["image"]["artifact_lock_sha256"],
+        "source_lock_sha256": "e" * 64, "sources": contract["image"]["required_sources"],
+        "component_receipts": {name: "f" * 64 for name in contract["image"]["required_receipts"]},
+        "nccl_version": "2.31.2", "source_locks_match": True,
+        "source_lock_receipts_match": True, "installed_payload_bytes_match": True,
+        "package_checks_passed": True, "bundle_manifest_sha256": bundle_sha,
+        "verification": {"checked_files": {
+            "/opt/local-inference/nccl/lib/libnccl.so.2.31.2": nccl_sha,
+            "/opt/sparkring/sircl/libspark_transport_capi.so": "bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246",
+        }},
+    }
+
+
+def test_r33_receipt_renders_canonical_managed_tp4_environment(tmp_path, manifest_bundle, monkeypatch):
+    manifest_sha = mesh_profile.sha(manifest_bundle / "sparkring-overlay-manifest.json")
+    monkeypatch.setitem(mesh_profile.PINS, "canonical_bundle_manifest_sha256", manifest_sha)
+    document = _r33_image_receipt_document(manifest_sha)
+    receipt = tmp_path / "r33-image.json"
+    receipt.write_text(json.dumps(document))
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data["runtime_profile"] = "tp4-dcp1"
+    site.write_text(json.dumps(data))
+    output = tmp_path / "r33-rendered"
+    mesh_profile.render(site, manifest_bundle, output, receipt)
+    for rank in range(4):
+        env = mesh_profile.defaults(output / f"rank{rank}.env")
+        assert env["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1"
+        assert env["SPARKRING_PROFILE_MODE"] == "custom"
+        assert env["SPARKRING_MANAGED_MESH_RENDERED"] == "1"
+        assert env["VLLM_SPARK_TP4_MODE"] == env["VLLM_SPARK_TP4_VOCAB_MODE"] == "custom"
+        assert env["SPARK_TP4_LIBRARY"] == "/opt/sparkring/sircl/libspark_transport_capi.so"
+        assert env["VLLM_NCCL_SO_PATH"] == env["NCCL_LOCAL_INFERENCE_PATH"] == env["LD_PRELOAD"] == "/opt/local-inference/nccl/lib/libnccl.so.2"
+        assert env["NODE_RANK"] == str(rank)
+        assert env["SPARK_TP4_CONTROL_PORT0"] == env["SPARK_TP4_GRAPH_CONTROL_PORT0"]
+
+
+def test_r33_sparkcache_rejected_without_receipt_bound_native_libraries(tmp_path, manifest_bundle, monkeypatch):
+    manifest_sha = mesh_profile.sha(manifest_bundle / "sparkring-overlay-manifest.json")
+    monkeypatch.setitem(mesh_profile.PINS, "canonical_bundle_manifest_sha256", manifest_sha)
+    receipt = tmp_path / "r33-image.json"
+    receipt.write_text(json.dumps(_r33_image_receipt_document(manifest_sha)))
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data["runtime_profile"] = "tp4-dcp1-sparkcache"
+    site.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="placement and snapshot"):
+        mesh_profile.render(site, manifest_bundle, tmp_path / "rejected", receipt)
+
+
 @pytest.mark.parametrize('field', ['compute', 'source_lock_sha256', 'b12x_revision', 'environment', 'proposal_head_nvfp4', 'target_head_quantization'])
 def test_receipt_requires_profile_compute(tmp_path, field):
     document = _image_receipt_document()

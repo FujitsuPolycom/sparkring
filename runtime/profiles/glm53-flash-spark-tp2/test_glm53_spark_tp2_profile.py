@@ -9,6 +9,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from unittest import mock
 
 import pytest
 
@@ -47,12 +48,27 @@ def receipt(value):
 
 def stopped_container(value):
     return {
-        "Config": {"Image": value["image"], "Entrypoint": ["python3"], "Cmd": value["container_args"],
+        "Config": {"Image": value["image"], "Entrypoint": [value["entrypoint"]], "Cmd": value["container_args"],
                    "Healthcheck": {"Test": ["NONE"]},
                    "Labels": value["labels"], "Env": [key + "=" + val for key, val in value["environment"].items()]},
         "HostConfig": {"RestartPolicy": {"Name": "no"}},
         "Mounts": [{"Destination": target, "Source": source, "RW": target != "/models/target"}
                    for target, source in value["binds"].items()],
+    }
+
+
+def r33_receipt(image=LOCAL_IMAGE):
+    verifier = launch._r33_verifier()
+    contract = verifier.load_contract()
+    return {
+        "schema": "sparkring-r33-image-receipt/v1", "checks_passed": True,
+        "platform": "linux/arm64", "image_id": image,
+        "image_reference": image, "artifact_lock_sha256": contract["image"]["artifact_lock_sha256"],
+        "source_lock_sha256": "d" * 64, "sources": contract["image"]["required_sources"],
+        "component_receipts": {name: "c" * 64 for name in contract["image"]["required_receipts"]},
+        "nccl_version": "2.31.2", "source_locks_match": True,
+        "source_lock_receipts_match": True, "installed_payload_bytes_match": True,
+        "package_checks_passed": True,
     }
 
 
@@ -254,6 +270,44 @@ def test_managed_option_and_guard_distinguish_reference_trial():
     assert dependencies["reference_trial"]["kv_pool_tokens_estimate"] == 1050118
     assert launch.load_profile()["lifecycle"]["memory_guard_floor_bytes"] == 2147483648
     assert launch.load_profile()["qualification"]["public_guarded_gpu_qualified"] is False
+
+
+@pytest.mark.parametrize("rank", [0, 1])
+def test_r33_receipt_adapts_final_tp2_docker_command(inputs, rank):
+    runtime = r33_receipt()
+    value = launch.render(rank, "master.example", *inputs, LOCAL_IMAGE, runtime)
+    assert value["profile"] == "tp2-dcp1"
+    assert value["entrypoint"] == "/opt/sparkring/bin/sparkring-r33"
+    assert value["container_args"][:2] == ["serve", "/models/target"]
+    assert "/opt/sparkcache-jj-runtime/verify_sources.py" not in value["command"]
+    assert value["container_args"][value["container_args"].index("--max-model-len") + 1] == "1048576"
+    environment = value["environment"]
+    assert environment["SOURCE_IMAGE_PROFILE"] == "tp2-dcp1"
+    assert environment["SPARKRING_PROFILE_MODE"] == "custom"
+    assert environment["VLLM_NCCL_SO_PATH"] == "/opt/local-inference/nccl/lib/libnccl.so.2"
+    assert f"SOURCE_IMAGE_PROFILE=tp2-dcp1" in value["command"]
+    entrypoint_path = ROOT.parents[1] / "sparkring/jovian-r33/image/entrypoint.py"
+    spec = importlib.util.spec_from_file_location("r33_tp2_candidate_entrypoint", entrypoint_path)
+    entrypoint = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(entrypoint)
+    with mock.patch.dict(os.environ, environment, clear=True), mock.patch.object(entrypoint.subprocess, "run"):
+        assert entrypoint.validate_external_profile(launch.R33_PROFILE_ROOT)["tensor_parallel_size"] == 2
+    launch.validate_runtime_receipt(runtime, value)
+    host = Host(value)
+    launch.execute(value, "create", runtime, run=host.run)
+    assert host.commands[-1] == value["command"]
+    launch.execute(value, "start", runtime, run=host.run)
+    assert host.commands[-1] == ["docker", "start", value["name"]]
+
+
+def test_changed_r33_receipt_rejected_before_host_action(inputs):
+    runtime = r33_receipt()
+    value = launch.render(0, "master.example", *inputs, LOCAL_IMAGE, runtime)
+    runtime["sources"] = dict(runtime["sources"], vllm_head="0" * 40)
+    host = Host(value)
+    with pytest.raises(ValueError):
+        launch.execute(value, "create", runtime, run=host.run)
+    assert host.commands == []
 
 
 @pytest.fixture
