@@ -261,7 +261,7 @@ def test_mtp_launcher_refuses_nonmatching_image_before_docker_run(launch_fixture
 
 @pytest.mark.parametrize("setting,value,message", [
     ("SPECULATION_METHOD", "unknown", "SPECULATION_METHOD must be dflash or mtp"),
-    ("TARGET_MODEL_VARIANT", "unknown", "TARGET_MODEL_VARIANT must be nvfp4 or nvfp4-spark"),
+    ("TARGET_MODEL_VARIANT", "unknown", "TARGET_MODEL_VARIANT must be nvfp4, nvfp4-spark, or nvidia-nvfp4"),
     ("MAX_CUDAGRAPH_CAPTURE_SIZE", "63", "must be divisible"),
 ])
 def test_mtp_launcher_fails_closed_on_invalid_contract(launch_fixture, setting, value, message):
@@ -269,6 +269,86 @@ def test_mtp_launcher_fails_closed_on_invalid_contract(launch_fixture, setting, 
     result, arguments, _ = launch(0, overrides={setting: value})
     assert result.returncode != 0
     assert message in result.stderr
+    assert arguments == []
+
+
+NVIDIA_NVFP4_CONFIG_SHA = "e23c5d98f53e861d49a51bd3c68591621c5482ce829e42c31724152322fba03d"
+NVIDIA_NVFP4_INDEX_SHA = "26765b2601fd246ef361cfb9f5e10f9fb291a59e05ad0a109062f3a4747c7fd1"
+NVIDIA_NVFP4_FINGERPRINT = "f44cb2423cf316987d1331a3ea45ce1a9ab2901d90b058d760a612c44ed2fb56"
+# Minimal stand-in for nvidia/GLM-5.3-Flash-NVFP4's config.json: a plain
+# ModelOpt NVFP4 quantization_config whose ignore list stops at layer 44.
+NVIDIA_NVFP4_CONFIG = {
+    "architectures": ["Glm5NextForConditionalGeneration"],
+    "text_config": {"num_hidden_layers": 45, "num_nextn_predict_layers": 1},
+    "quantization_config": {
+        "quant_method": "modelopt", "quant_algo": "NVFP4",
+        "kv_cache_scheme": {"dynamic": False, "num_bits": 8, "type": "float"},
+        "ignore": ["lm_head", "model.language_model.layers.44.self_attn*"],
+    },
+}
+
+
+def _nvidia_variant_launch(launch_fixture, config_text, overrides=None):
+    launch, site, _ = launch_fixture
+    for rank in range(4):
+        Path(site["model_roots"][rank], "config.json").write_text(config_text, encoding="utf-8")
+    variables = {"TARGET_MODEL_VARIANT": "nvidia-nvfp4"}
+    variables.update(overrides or {})
+    return launch(0, variables, {"FIXTURE_TARGET_CONFIG_SHA": NVIDIA_NVFP4_CONFIG_SHA,
+                                 "FIXTURE_TARGET_INDEX_SHA": NVIDIA_NVFP4_INDEX_SHA})
+
+
+def test_qualified_variant_passes_no_quantization_override(launch_fixture):
+    launch, _, _ = launch_fixture
+    result, arguments, _ = launch(0)
+    assert result.returncode == 0, result.stderr
+    assert _option(arguments, "--quantization") == "modelopt_mixed"
+    assert "--hf-overrides" not in arguments
+
+
+def test_nvidia_nvfp4_variant_selects_plain_modelopt_and_excludes_mtp_layer(launch_fixture):
+    result, arguments, hashes = _nvidia_variant_launch(launch_fixture, json.dumps(NVIDIA_NVFP4_CONFIG))
+    assert result.returncode == 0, result.stderr
+    assert _option(arguments, "--quantization") == "modelopt"
+    override = json.loads(_option(arguments, "--hf-overrides"))
+    assert set(override) == {"quantization_config"}
+    quantization = override["quantization_config"]
+    expected = NVIDIA_NVFP4_CONFIG["quantization_config"]
+    assert quantization["ignore"] == expected["ignore"] + [
+        "model.language_model.layers.45*", "model.layers.45*"]
+    assert {key: value for key, value in quantization.items() if key != "ignore"} == \
+        {key: value for key, value in expected.items() if key != "ignore"}
+    connector = json.loads(_option(arguments, "--kv-transfer-config"))
+    extra = connector["kv_connector_extra_config"]
+    assert extra["spark_cache_target_checkpoint_sha256"] == NVIDIA_NVFP4_FINGERPRINT
+    assert extra["spark_cache_draft_checkpoint_sha256"] == NVIDIA_NVFP4_FINGERPRINT
+    assert sorted(Path(path).name for path in hashes) == [
+        "config.json", "libspark_transport_capi.so", "model.safetensors.index.json", "sparkring-overlay-manifest.json"]
+
+
+def test_nvidia_nvfp4_variant_rejects_the_qualified_checkpoint_identity(launch_fixture):
+    launch, _, _ = launch_fixture
+    result, arguments, _ = launch(0, {"TARGET_MODEL_VARIANT": "nvidia-nvfp4"})
+    assert result.returncode == 78
+    assert "target config.json identity mismatch" in result.stderr
+    assert arguments == []
+
+
+def test_nvidia_nvfp4_variant_fails_closed_on_undecodable_config(launch_fixture):
+    result, arguments, _ = _nvidia_variant_launch(launch_fixture, "not json")
+    assert result.returncode != 0
+    assert "failed to derive the MTP quantization override" in result.stderr
+    assert arguments == []
+
+
+@pytest.mark.parametrize("config", [
+    dict(NVIDIA_NVFP4_CONFIG, quantization_config=None),
+    dict(NVIDIA_NVFP4_CONFIG, text_config={"num_hidden_layers": 45, "num_nextn_predict_layers": 0}),
+])
+def test_nvidia_nvfp4_variant_fails_closed_without_quantization_or_predictor(launch_fixture, config):
+    result, arguments, _ = _nvidia_variant_launch(launch_fixture, json.dumps(config))
+    assert result.returncode != 0
+    assert "failed to derive the MTP quantization override" in result.stderr
     assert arguments == []
 
 

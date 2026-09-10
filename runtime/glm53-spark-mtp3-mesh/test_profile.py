@@ -472,6 +472,70 @@ def test_render_propagates_api_keys_file_to_every_rank(tmp_path, manifest_bundle
     mesh_profile.load_site(output / "site.json")
 
 
+def _site_with_variant(tmp_path, value="nvidia-nvfp4"):
+    path = _site(tmp_path)
+    data = json.loads(path.read_text())
+    data["target_model_variant"] = value
+    path.write_text(json.dumps(data))
+    return path
+
+
+def test_site_accepts_known_target_model_variant(tmp_path):
+    site, _, _ = mesh_profile.load_site(_site_with_variant(tmp_path))
+    assert site["target_model_variant"] == "nvidia-nvfp4"
+
+
+@pytest.mark.parametrize("value", ["nvfp4", "unknown", "", None, 1, "nvidia-nvfp4 ", ["nvidia-nvfp4"]])
+def test_site_rejects_unknown_target_model_variant(tmp_path, value):
+    with pytest.raises(ValueError):
+        mesh_profile.load_site(_site_with_variant(tmp_path, value))
+
+
+def test_render_defaults_to_qualified_variant_and_namespace(tmp_path, manifest_bundle):
+    output = tmp_path / "rendered-default"
+    mesh_profile.render(_site(tmp_path), manifest_bundle, output)
+    for rank in range(4):
+        values = mesh_profile.defaults(output / f"rank{rank}.env")
+        assert values["TARGET_MODEL_VARIANT"] == "nvfp4-spark"
+        assert values["SPARKCACHE_CACHE_NAMESPACE"] == mesh_profile.PINS["cache_identity"]["namespace"]
+
+
+def test_render_explicit_qualified_variant_matches_default_render(tmp_path, manifest_bundle):
+    default = tmp_path / "default"
+    mesh_profile.render(_site(tmp_path), manifest_bundle, default)
+    explicit = tmp_path / "explicit"
+    mesh_profile.render(_site_with_variant(tmp_path, "nvfp4-spark"), manifest_bundle, explicit)
+    for rank in range(4):
+        assert (explicit / f"rank{rank}.env").read_bytes() == (default / f"rank{rank}.env").read_bytes()
+
+
+def test_render_propagates_target_model_variant_with_separate_namespace(tmp_path, manifest_bundle):
+    default = tmp_path / "default"
+    mesh_profile.render(_site(tmp_path), manifest_bundle, default)
+    selected = tmp_path / "selected"
+    repeated = tmp_path / "repeated"
+    mesh_profile.render(_site_with_variant(tmp_path), manifest_bundle, selected)
+    mesh_profile.render(selected / "site.json", manifest_bundle, repeated)
+    namespace = mesh_profile.PINS["cache_identity"]["namespace"]
+    for rank in range(4):
+        name = f"rank{rank}.env"
+        baseline = mesh_profile.defaults(default / name)
+        actual = mesh_profile.defaults(selected / name)
+        assert actual["TARGET_MODEL_VARIANT"] == "nvidia-nvfp4"
+        assert actual["SPARKCACHE_CACHE_NAMESPACE"] == namespace + "-nvidia-nvfp4"
+        assert actual["LOAD_FORMAT"] == "safetensors"
+        assert actual["DFLASH_WARMUP_TIMEOUT_SECONDS"] == "1500"
+        assert baseline["LOAD_FORMAT"] == "fastsafetensors"
+        assert baseline["DFLASH_WARMUP_TIMEOUT_SECONDS"] == "600"
+        assert (selected / name).read_bytes() == (repeated / name).read_bytes()
+        actual["TARGET_MODEL_VARIANT"] = "nvfp4-spark"
+        actual["SPARKCACHE_CACHE_NAMESPACE"] = namespace
+        actual["LOAD_FORMAT"] = baseline["LOAD_FORMAT"]
+        actual["DFLASH_WARMUP_TIMEOUT_SECONDS"] = baseline["DFLASH_WARMUP_TIMEOUT_SECONDS"]
+        assert actual == baseline
+    assert json.loads((selected / "site.json").read_text())["target_model_variant"] == "nvidia-nvfp4"
+
+
 @pytest.mark.parametrize("value", [True, False, None, 0, -1, 0.5, 900.0, "900", float("nan"), float("inf"), 2147483648])
 def test_site_rejects_invalid_liveness_output_seconds(tmp_path, value):
     path = _site(tmp_path)
