@@ -4,7 +4,7 @@
   "image": {
     "selection": "external-immutable-receipt",
     "artifact_lock": "../image/artifact-lock.json",
-    "artifact_lock_sha256": "d172cf7330baaff78e38d3826798afcb6a18c7d87571c53d37b4db0f86010555",
+    "artifact_lock_sha256": "927a97e300e79b102311ac94824dce4323800538fd6feb54fd937b0aaf98c05b",
     "required_platform": "linux/arm64",
     "required_sources": {
       "vllm_head": "ae89131442359dc332d9c46009be3c1f8cdee0b4",
@@ -60,7 +60,7 @@
       "sircl_source_archive_sha256": "fe3e12de5cb1b392f015a751d7b27b6210c95fa7613113fd7895990e2041db0f",
       "vllm_continuation_port_commit": "b611611a643502542c2d900057eb47e407b8379e",
       "vllm_continuation_port_tree": "afea43a927e1989a9ec4d9d4f28247bcf0feb98a",
-      "vllm_source_manifest_sha256": "ee8fd718e95713f7bec62409a2ad0cc9c805cb280b600e2489b40c2dd8bd9a16"
+      "vllm_source_manifest_sha256": "4e996963617c3c41e2aa32b7d492d3bcda6a0578af0aa23bd21f3fb2c4ace207"
     },
     "required_receipts": [
       "arm-wheels-SHA256SUMS",
