@@ -4,8 +4,8 @@ set -euo pipefail
 
 source_dir=/source
 out=/out
-expected_commit=d95137245253d5c145e4b0700d677ce13b87ebea
-expected_tree=8706b0426aa11483bf0d50a205588382d2d0cfbd
+expected_commit=1b8d84a374bd48a770a02d19f850c3983c7f53ad
+expected_tree=8e4e10744578db5c85e9d8ca226292f7e67f4bf3
 git config --global --add safe.directory "$source_dir"
 test "$(git -C "$source_dir" rev-parse HEAD)" = "$expected_commit"
 test "$(git -C "$source_dir" rev-parse HEAD^{tree})" = "$expected_tree"

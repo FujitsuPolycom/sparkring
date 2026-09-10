@@ -11,7 +11,7 @@ import subprocess
 
 SOURCES = {
     "vllm": ("sources/vllm-sparkring", "ae89131442359dc332d9c46009be3c1f8cdee0b4"),
-    "b12x": ("sources/b12x", "d95137245253d5c145e4b0700d677ce13b87ebea"),
+    "b12x": ("sources/b12x", "1b8d84a374bd48a770a02d19f850c3983c7f53ad"),
     "flashinfer": ("sources/flashinfer", "803c4664f4771ddc418f20a57f752469a237a825"),
     "lmcache": ("sources/lmcache", "29bc5a2efde737c436b04499eb62cd1776cebeec"),
     "instanttensor": ("sources/instanttensor", "49b4010afc1cae0441e71fe0b0bffc24fa05e932"),

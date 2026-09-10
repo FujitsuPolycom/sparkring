@@ -12,11 +12,10 @@ import shutil
 import subprocess
 import tempfile
 
-from validate_receipts import validate as validate_receipts
+from validate_receipts import load_sums, validate as validate_receipts
 
 
 HERE = Path(__file__).resolve().parent
-HEX64 = re.compile(r"[0-9a-f]{64}")
 
 
 def digest(path: Path) -> str:
@@ -44,20 +43,6 @@ def copy_tree(source: Path, destination: Path) -> None:
     if not source.is_dir():
         raise RuntimeError(f"required asset tree is missing: {source}")
     shutil.copytree(source, destination, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".git"))
-
-
-def load_sums(path: Path) -> dict[str, str]:
-    """Read one unambiguous SHA256SUMS receipt by artifact basename."""
-    result = {}
-    for number, raw in enumerate(path.read_text().splitlines(), 1):
-        parts = raw.split(maxsplit=1)
-        if len(parts) != 2 or not HEX64.fullmatch(parts[0]):
-            raise RuntimeError(f"malformed SHA256SUMS line: {path}:{number}")
-        name = Path(parts[1].lstrip("*")).name
-        if not name or name in result:
-            raise RuntimeError(f"ambiguous SHA256SUMS entry: {path}:{number}")
-        result[name] = parts[0]
-    return result
 
 
 def parse_args() -> argparse.Namespace:

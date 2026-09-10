@@ -93,11 +93,11 @@ class CandidateImageContractTests(unittest.TestCase):
         )
         self.assertEqual(
             lock["source_identities"]["b12x_commit"],
-            "d95137245253d5c145e4b0700d677ce13b87ebea",
+            "1b8d84a374bd48a770a02d19f850c3983c7f53ad",
         )
         self.assertEqual(
             lock["source_identities"]["b12x_tree"],
-            "8706b0426aa11483bf0d50a205588382d2d0cfbd",
+            "8e4e10744578db5c85e9d8ca226292f7e67f4bf3",
         )
         self.assertEqual(artifacts["nccl-2.31.2-sparkring-routing"]["sha256"], "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47")
         self.assertEqual(artifacts["sircl"]["sha256"], "bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246")
@@ -121,10 +121,10 @@ class CandidateImageContractTests(unittest.TestCase):
     def test_b12x_builder_and_context_bind_the_checkpoint_export_port(self):
         build = (HERE.parent / "build_b12x.sh").read_text()
         self.assertIn(
-            "expected_commit=d95137245253d5c145e4b0700d677ce13b87ebea", build
+            "expected_commit=1b8d84a374bd48a770a02d19f850c3983c7f53ad", build
         )
         self.assertIn(
-            "expected_tree=8706b0426aa11483bf0d50a205588382d2d0cfbd", build
+            "expected_tree=8e4e10744578db5c85e9d8ca226292f7e67f4bf3", build
         )
         prepare = (HERE / "prepare_context.py").read_text()
         self.assertIn('sums_path = args.build_root / pending["receipt_sums"]', prepare)
@@ -143,7 +143,7 @@ class CandidateImageContractTests(unittest.TestCase):
                 f"{digest}  first/b12x-1.3.0-py3-none-any.whl\n"
                 f"{digest}  second/b12x-1.3.0-py3-none-any.whl\n"
             )
-            with self.assertRaisesRegex(RuntimeError, "ambiguous SHA256SUMS"):
+            with self.assertRaisesRegex(ValueError, "ambiguous SHA256SUMS"):
                 module.load_sums(sums)
 
     def test_dockerfile_verifies_context_and_uses_locked_media_runtime(self):
