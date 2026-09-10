@@ -1,0 +1,50 @@
+{
+  "schema": "sparkring-r33-sircl-source-lock/v1",
+  "status": "implemented",
+  "source": {
+    "repository": "https://github.com/FujitsuPolycom/sparkring.git",
+    "public_commit": "f26895a158f586918b34136367fc63c060af6a60",
+    "spark_transport_tree": "3ea295fb7adc7e8c1823412f9b1cc549679eea77",
+    "cmake_blob": "a1a05d0985bfca4d007616148c8758bfd801247e",
+    "fused_stream_switch_smoke_blob": "b25cc81543e40418ae518cea2ebc0b84042658eb"
+  },
+  "toolchain": {
+    "host_architecture": "aarch64",
+    "cuda_version": "13.3",
+    "cuda_architectures": [121],
+    "build_type": "Release",
+    "generator": "Ninja",
+    "build_testing": true,
+    "fused_prefill_probe": true,
+    "bidirectional_cuda_smoke": true,
+    "fused_stream_switch_smoke": true
+  },
+  "r33_foundation": {
+    "pytorch_commit": "cf30153c4c131c8164ee7798e5022d810682e2cb",
+    "nccl_version": "2.31.2",
+    "nccl_commit": "fb6f40999a2a9e63104d4ae4a84118bce61528f8"
+  },
+  "mesh_profile_inputs": {
+    "runtime/glm53-spark-mtp3-mesh/pins.json": {
+      "blob": "3267552b436bd67f61b8bdc3c0a3e2f7ea0f6596",
+      "sha256": "05fddc68d2e74e00ed29126c09258766aff8a852b67681836023c097234d728b"
+    },
+    "runtime/glm53-spark-mtp3-mesh/performance/transport/source-manifest.json": {
+      "blob": "6da6f3ac05510e4461f49c763816be2882325489",
+      "sha256": "31f9e72c010fbea9cb30a2dc4ad3dd1ca1b304c6a174ffd92614439de7122546"
+    },
+    "runtime/glm53-spark-mtp3-mesh/performance/transport/bundle-source/sparkring-overlay-manifest.json": {
+      "blob": "069c85bd5bc0faeb07ee3e5d58a50578daf44b97",
+      "sha256": "c0fd5567442b08b908cc193f36d0864e262573c7e5d232509479a823cface742"
+    }
+  },
+  "superseded_artifact": {
+    "receipt": "runtime/glm53-flash-jj-r8-gb10/sircl-public-build-receipt.json",
+    "receipt_blob": "68346df39b02ca8876ae819295ba9c1ec0f12b52",
+    "receipt_sha256": "2384e3fd6b9dc38735f0eb55c8ab03186583dec475fbc88b89ea3a3c51a13844",
+    "spark_transport_tree": "2aac02232a9115037723aa1dd40483a5693a3e1e",
+    "cuda_version": "13.0.88",
+    "artifact_sha256": "61aa0ec56a1b438439bed8611dab0353d2c72c10af02bbd917fb77c87b33e5fc",
+    "r33_disposition": "rollback-only-until-rebuilt-and-qualified"
+  }
+}
