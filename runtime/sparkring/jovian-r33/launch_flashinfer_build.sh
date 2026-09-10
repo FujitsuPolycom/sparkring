@@ -13,6 +13,7 @@ else
 fi
 docker run --detach --name "$name" \
   --cpus 16 --memory 80g --memory-swap 80g -e MAX_JOBS=16 \
+  -e SPARKRING_FLASHINFER_RESUME="${SPARKRING_FLASHINFER_RESUME:-0}" \
   --mount type=bind,src="$root/sources/flashinfer",dst=/source \
   --mount type=bind,src="$root/artifacts/flashinfer",dst=/out \
   --mount type=bind,src="$root/scripts/build_flashinfer.sh",dst=/scripts/build.sh,readonly \

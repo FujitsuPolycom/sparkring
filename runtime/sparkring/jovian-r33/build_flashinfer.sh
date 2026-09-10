@@ -11,7 +11,13 @@ git config --global --add safe.directory "$source_dir/3rdparty/cutlass"
 git config --global --add safe.directory "$source_dir/3rdparty/nixl"
 git config --global --add safe.directory "$source_dir/3rdparty/spdlog"
 test "$(git -C "$source_dir" rev-parse HEAD)" = "$expected_commit"
-test -z "$(git -C "$source_dir" status --porcelain)"
+source_status=$(git -C "$source_dir" status --porcelain)
+if [[ ${SPARKRING_FLASHINFER_RESUME:-0} == 1 ]]; then
+  expected_status=$'?? LICENSE.cutlass.txt\n?? LICENSE.flashattention3.txt\n?? LICENSE.fmt.txt\n?? LICENSE.spdlog.txt'
+  test "$source_status" = "$expected_status"
+else
+  test -z "$source_status"
+fi
 python3 /opt/sparkring-build/verify_torch.py > "$out/foundation-verification.json"
 python3 -m pip install --upgrade \
   'setuptools>=77,<81' 'packaging>=24' wheel tqdm ninja requests numpy \
