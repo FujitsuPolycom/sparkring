@@ -131,6 +131,20 @@ def _option(arguments, name):
     return arguments[arguments.index(name) + 1]
 
 
+def _docker_environment(arguments):
+    values = [arguments[index + 1] for index, value in enumerate(arguments[:-1]) if value == "-e"]
+    names = [value.partition("=")[0] for value in values]
+    assert len(names) == len(set(names)), f"duplicate Docker environment names: {names}"
+    return dict(value.split("=", 1) for value in values if "=" in value)
+
+
+def _docker_labels(arguments):
+    values = [arguments[index + 1] for index, value in enumerate(arguments[:-1]) if value == "--label"]
+    names = [value.partition("=")[0] for value in values]
+    assert len(names) == len(set(names)), f"duplicate Docker label names: {names}"
+    return dict(value.split("=", 1) for value in values)
+
+
 def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture):
     launch, _, _ = launch_fixture
     nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"
@@ -157,8 +171,9 @@ def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture)
     assert _option(arguments, "--entrypoint") == "/opt/sparkring/bin/sparkring-r33"
     image_index = arguments.index(profile.defaults(profile.BASE / "runtime.env.example")["IMAGE_REF"])
     assert arguments[image_index + 1:image_index + 3] == ["serve", "/models/target"]
+    assert _option(arguments, "--load-format") == "instanttensor"
     assert "/opt/sparkcache-jj-runtime/verify_sources.py" not in arguments
-    environment = [arguments[index + 1] for index, value in enumerate(arguments[:-1]) if value == "-e"]
+    environment_map = _docker_environment(arguments)
     for expected in (
         "SOURCE_IMAGE_PROFILE=tp4-dcp1",
         "SPARKRING_PROFILE_MODE=custom",
@@ -166,19 +181,22 @@ def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture)
         "VLLM_SPARK_TP4_VOCAB_MODE=custom",
         f"VLLM_NCCL_SO_PATH={nccl}",
         f"NCCL_LOCAL_INFERENCE_PATH={nccl}",
-        "SPARK_TP4_LIBRARY=/opt/sparkring/sircl/libspark_transport_capi.so",
-        "PYTHONPATH=/opt/sparkring/sircl/python",
         "NODE_RANK=0",
     ):
-        assert expected in environment
-    assert any(value.startswith("MASTER_ADDR=") for value in environment)
-    assert any(value.startswith("SPARK_TP4_CONTROL_PORT0=") for value in environment)
+        name, value = expected.split("=", 1)
+        assert environment_map[name] == value
+    assert environment_map["PYTHONPATH"] == "/opt/sparkring/sircl/python"
+    assert environment_map["SPARK_TP4_LIBRARY"] == "/opt/sparkring/sircl/libspark_transport_capi.so"
+    assert environment_map["LOAD_FORMAT"] == "instanttensor"
+    assert environment_map["VLLM_PLUGINS"] == ""
+    assert "MASTER_ADDR" in environment_map
+    assert "SPARK_TP4_CONTROL_PORT0" in environment_map
+    assert _docker_labels(arguments)["org.sparkring.runtime"] == "glm53-flash-spark-jovian-r33-tp4-dcp1"
     assert all("/opt/spark-sircl" not in value for value in arguments)
     entrypoint_path = HERE.parent / "sparkring/jovian-r33/image/entrypoint.py"
     spec = importlib.util.spec_from_file_location("r33_tp4_candidate_entrypoint", entrypoint_path)
     entrypoint = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(entrypoint)
-    environment_map = dict(value.split("=", 1) for value in environment)
     with mock.patch.dict(os.environ, environment_map, clear=True), mock.patch.object(entrypoint.subprocess, "run"):
         selected = entrypoint.validate_external_profile(HERE.parent / "sparkring/jovian-r33/profiles")
     assert selected["tensor_parallel_size"] == 4
@@ -239,10 +257,9 @@ def test_r33_tp4_sparkcache_uses_receipt_bound_installed_libraries(launch_fixtur
     assert connector["spark_cache_async_page_capture_library"] == snapshot
     assert connector["spark_cache_async_page_capture_vllm_root"] == "/opt/venv/lib/python3.12/site-packages"
     assert connector["spark_cache_async_page_capture_lease_contract"] == lease
-    environment = dict(
-        arguments[index + 1].split("=", 1)
-        for index, value in enumerate(arguments[:-1])
-        if value == "-e" and "=" in arguments[index + 1]
+    environment = _docker_environment(arguments)
+    assert _docker_labels(arguments)["org.sparkring.runtime"] == (
+        "glm53-flash-spark-jovian-r33-tp4-dcp1-sparkcache"
     )
     entrypoint_path = HERE.parent / "sparkring/jovian-r33/image/entrypoint.py"
     spec = importlib.util.spec_from_file_location("r33_cache_candidate_entrypoint", entrypoint_path)

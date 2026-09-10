@@ -791,8 +791,6 @@ if [[ "${SIRCL_ENABLED}" == 1 ]]; then
   fi
   sircl_args=(
     "${sircl_args[@]}"
-    -e "PYTHONPATH=${sircl_container_root}"
-    -e "SPARK_TP4_LIBRARY=${sircl_container_root}/libspark_transport_capi.so"
     -e VLLM_SPARK_TP4_MODE=custom
     -e VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH=1
     -e VLLM_SPARK_SHARED_CAPTURE_STREAM=1
@@ -834,11 +832,16 @@ if [[ "${SIRCL_ENABLED}" == 1 ]]; then
   )
   if [[ "${r33_profile}" == 1 ]]; then
     sircl_args+=(
-      -e PYTHONPATH=/opt/sparkring/sircl/python
-      -e SPARK_TP4_LIBRARY=/opt/sparkring/sircl/libspark_transport_capi.so
+      -e "PYTHONPATH=${sircl_container_root}/python"
+      -e "SPARK_TP4_LIBRARY=${sircl_container_root}/libspark_transport_capi.so"
       -e VLLM_SPARK_TP4_VOCAB_MODE=custom
       -e "SPARK_TP4_CONTROL_PORT0=${SPARK_TP4_GRAPH_CONTROL_PORT0}"
       -e "SPARK_TP4_CONTROL_PORT1=${SPARK_TP4_GRAPH_CONTROL_PORT1}"
+    )
+  else
+    sircl_args+=(
+      -e "PYTHONPATH=${sircl_container_root}"
+      -e "SPARK_TP4_LIBRARY=${sircl_container_root}/libspark_transport_capi.so"
     )
   fi
 fi
@@ -1131,7 +1134,9 @@ if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
   source_recurrent_args=(--mamba-block-size "${VLLM_BLOCK_SIZE}" --recurrent-checkpoint-policy aligned --prefix-cache-retention-interval 0)
 fi
 r33_environment=()
+runtime_label=glm53-jj-r8-gb10-sparkcache
 if [[ "${r33_profile}" == 1 ]]; then
+  runtime_label="glm53-flash-spark-jovian-r33-${SOURCE_IMAGE_PROFILE}"
   r33_environment=(
     -e "SIRCL_ENABLED=${SIRCL_ENABLED}"
     -e "SPARKCACHE_ENABLED=${SPARKCACHE_ENABLED}"
@@ -1220,7 +1225,7 @@ container_command=(docker "${container_action[@]}" \
   -e "NCCL_MAX_NCHANNELS=${NCCL_MAX_NCHANNELS}" \
   -e NCCL_SWITCHLESS_RING_ONLY=1 -e NCCL_CUMEM_ENABLE=0 -e NCCL_IGNORE_CPU_AFFINITY=1 \
   -e "VLLM_FASTSAFETENSORS_QUEUE_SIZE=${FASTSAFETENSORS_QUEUE_SIZE}" \
-  --label org.sparkring.runtime=glm53-jj-r8-gb10-sparkcache \
+  --label "org.sparkring.runtime=${runtime_label}" \
   --label org.sparkring.sparkcache.enabled="${SPARKCACHE_ENABLED}" \
   --label org.sparkring.sparkcache.access-mode="${SPARKCACHE_ACCESS_MODE}" \
   --label org.sparkring.sparkcache.shared-prefix-lease-seconds="${SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS}" \
