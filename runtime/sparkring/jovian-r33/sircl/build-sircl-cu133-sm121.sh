@@ -22,6 +22,7 @@ test "$(uname -m)" = aarch64 || fail "host architecture must be aarch64"
 test ! -e "$output_dir" || fail "output directory already exists: $output_dir"
 test -x "$cuda_root/bin/nvcc" || fail "nvcc is missing at $cuda_root/bin/nvcc"
 test -d "$source_repo/.git" || fail "source repository is not a Git checkout"
+git config --global --add safe.directory "$source_repo"
 git -C "$source_repo" cat-file -e "${public_commit}^{commit}" 2>/dev/null || \
   fail "public source commit is unavailable: $public_commit"
 test "$(git -C "$source_repo" rev-parse "$public_commit:spark_transport")" = \
