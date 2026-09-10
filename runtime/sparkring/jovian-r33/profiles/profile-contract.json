@@ -1,0 +1,86 @@
+{
+  "schema": "sparkring-r33-profile-contract/v1",
+  "status": "research-only",
+  "image": {
+    "selection": "external-immutable-receipt",
+    "artifact_lock": "../image/artifact-lock.json",
+    "artifact_lock_sha256": "a3e81805437091e33699a3f61c8e08dbb70c0687f1bfa1c62314f08e91a6080e",
+    "required_platform": "linux/arm64",
+    "required_sources": {
+      "vllm": "ae89131442359dc332d9c46009be3c1f8cdee0b4",
+      "b12x": "59d51a36a942d56a9c36265855cdc7856fa7712e",
+      "torch": "cf30153c4c131c8164ee7798e5022d810682e2cb",
+      "nccl": "fb6f40999a2a9e63104d4ae4a84118bce61528f8"
+    },
+    "required_nccl_version": "2.31.2"
+  },
+  "model": {
+    "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+    "revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "max_model_len": 1048576,
+    "speculation": {
+      "method": "mtp",
+      "num_speculative_tokens": 3,
+      "attention_backend": "B12X",
+      "moe_backend": "humming"
+    }
+  },
+  "common_environment": {
+    "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
+    "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
+    "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+    "VLLM_NCCL_SO_PATH": "/opt/local-inference/nccl/lib/libnccl.so.2",
+    "NCCL_LOCAL_INFERENCE_PATH": "/opt/local-inference/nccl/lib/libnccl.so.2",
+    "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+    "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "VLLM_NO_USAGE_STATS": "1"
+  },
+  "profiles": {
+    "tp2-dcp1": {
+      "template": "tp2-dcp1.env.example",
+      "tensor_parallel_size": 2,
+      "decode_context_parallel_size": 1,
+      "node_count": 2,
+      "transport": "tp2-rocenante-adaptive",
+      "transport_manifest": "../../../transport_profiles/tp2-rocenante-adaptive/manifest.json",
+      "transport_manifest_sha256": "eb03cfde826974811be3bfe5d88f36d9de105b73358f3eaa56b9ed44f19127c4",
+      "host_domains": "dual",
+      "physical_dacs_per_rank": 1,
+      "sparkcache": false,
+      "kv_cache_memory_bytes": 9395240960,
+      "cudagraph_capture_sizes": [1, 2, 4, 8, 12, 16, 20, 24, 28, 32],
+      "lifecycle": "explicit-create-and-start-with-active-memory-guard"
+    },
+    "tp4-dcp1": {
+      "template": "tp4-dcp1.env.example",
+      "tensor_parallel_size": 4,
+      "decode_context_parallel_size": 1,
+      "node_count": 4,
+      "transport": "sparkring-rocenante-mesh",
+      "mesh_pins": "../../../glm53-spark-mtp3-mesh/pins.json",
+      "mesh_pins_sha256": "05fddc68d2e74e00ed29126c09258766aff8a852b67681836023c097234d728b",
+      "host_domains": "dual",
+      "sparkcache": false,
+      "kv_cache_memory_bytes": 25769803776,
+      "cudagraph_capture_sizes": [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64],
+      "lifecycle": "runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md"
+    },
+    "tp4-dcp1-sparkcache": {
+      "template": "tp4-dcp1-sparkcache.env.example",
+      "inherits": "tp4-dcp1",
+      "tensor_parallel_size": 4,
+      "decode_context_parallel_size": 1,
+      "node_count": 4,
+      "transport": "sparkring-rocenante-mesh",
+      "mesh_pins": "../../../glm53-spark-mtp3-mesh/pins.json",
+      "mesh_pins_sha256": "05fddc68d2e74e00ed29126c09258766aff8a852b67681836023c097234d728b",
+      "host_domains": "dual",
+      "sparkcache": true,
+      "kv_cache_memory_bytes": 25769803776,
+      "cudagraph_capture_sizes": [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64],
+      "lifecycle": "runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md"
+    }
+  }
+}
