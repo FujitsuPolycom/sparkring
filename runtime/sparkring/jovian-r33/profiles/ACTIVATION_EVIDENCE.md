@@ -47,6 +47,20 @@ image receipt. Until that image exists, an activation can qualify the model,
 transport, mHC path, and liveness, but it cannot claim that
 continuation-prefill coalescing is implemented or executed.
 
+The compatible feature branches identify these source changes:
+
+| Repository | Commit | Resulting behavior |
+|---|---|---|
+| FujitsuPolycom/b12x | `cc8f12aa` | Adds multiple recurrent checkpoint destinations to the B12X KDA prefill API and kernels. |
+| FujitsuPolycom/b12x | `70fe4197` | Raises the bounded checkpoint capacity to four and validates every destination. |
+| FujitsuPolycom/vllm | `646826e416` | Carries explicit checkpoint plans through scheduling, allocation, worker metadata, and Kimi GDN execution. |
+| FujitsuPolycom/vllm | `19c8d3bad2` | Preserves both DCP4 checkpoint grids within the four-state capacity. |
+| FujitsuPolycom/vllm | `a6c8407` | Admits the same bounded contract for TP4/DCP1 and TP4/DCP2. |
+
+The R33 source contains newer packed FlashKDA checkpoint support. A port must
+preserve that path while adding the B12X matrix-shaped metadata contract; using
+the older files wholesale would remove R33 behavior.
+
 ## Collector behavior
 
 A collector must retain every source artifact beside the generated activation
