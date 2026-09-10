@@ -432,6 +432,7 @@ def test_r33_receipt_renders_canonical_managed_tp4_environment(tmp_path, manifes
     for rank in range(4):
         env = mesh_profile.defaults(output / f"rank{rank}.env")
         assert env["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1"
+        assert env["SPARKCACHE_ENABLED"] == env["SPARKCACHE_ASYNC_PAGE_CAPTURE"] == "0"
         assert env["SPARKRING_PROFILE_MODE"] == "custom"
         assert env["SPARKRING_MANAGED_MESH_RENDERED"] == "1"
         assert env["VLLM_SPARK_TP4_MODE"] == env["VLLM_SPARK_TP4_VOCAB_MODE"] == "custom"

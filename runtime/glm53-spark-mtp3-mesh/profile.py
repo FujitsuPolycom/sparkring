@@ -331,6 +331,11 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
                 profile_values.pop(unresolved, None)
             values.update(contract["common_environment"])
             values.update(profile_values)
+            sparkcache_enabled = "1" if selected["sparkcache"] else "0"
+            values.update({
+                "SPARKCACHE_ENABLED": sparkcache_enabled,
+                "SPARKCACHE_ASYNC_PAGE_CAPTURE": sparkcache_enabled,
+            })
             values.update({
                 "SOURCE_IMAGE_PROFILE": runtime_profile,
                 "SPARKRING_PROFILE_MODE": "custom",
