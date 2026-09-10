@@ -7,7 +7,7 @@ name=sparkring-r33-torchvision-build-20260910
 test ! -e "$root/artifacts/torchvision"
 mkdir -p "$root/artifacts/torchvision"
 docker run --detach --name "$name" \
-  --cpus 12 --memory 48g --memory-swap 48g \
+  --cpus 6 --memory 48g --memory-swap 48g -e MAX_JOBS=6 \
   --mount type=bind,src="$root/sources/vision",dst=/source \
   --mount type=bind,src="$root/artifacts/torchvision",dst=/out \
   --mount type=bind,src="$root/scripts/build_torchvision.sh",dst=/scripts/build.sh,readonly \
