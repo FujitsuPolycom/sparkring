@@ -194,6 +194,19 @@ class CandidateImageContractTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "MANAGED_MESH_RENDERED"):
                     module.validate_external_profile(root)
 
+    def test_entrypoint_rejects_non_instanttensor_r33_loader(self):
+        module = load_entrypoint()
+        contract = json.loads((CANONICAL_PROFILES / "profile-contract.json").read_text())
+        environment = tp4_environment(contract)
+        environment["LOAD_FORMAT"] = "fastsafetensors"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "profile-contract.json").write_text(json.dumps(contract))
+            (root / "verify_profile.py").write_text("# fixture")
+            with mock.patch.dict(os.environ, environment, clear=True), mock.patch.object(module.subprocess, "run"):
+                with self.assertRaisesRegex(RuntimeError, "LOAD_FORMAT=instanttensor"):
+                    module.validate_external_profile(root)
+
     def test_verifier_environment_cannot_activate_a_transport(self):
         module = load_entrypoint()
         with mock.patch.dict(os.environ, {
