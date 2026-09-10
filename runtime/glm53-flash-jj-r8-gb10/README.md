@@ -37,7 +37,15 @@ The external BF16 draft is
 Exact revisions and source-tree hashes are in [`pins.json`](pins.json).
 
 The launcher also accepts `TARGET_MODEL_VARIANT=nvfp4-spark` and
-`SPECULATION_METHOD=mtp`. The separate
+`SPECULATION_METHOD=mtp`. `TARGET_MODEL_VARIANT=nvidia-nvfp4` selects
+[`nvidia/GLM-5.3-Flash-NVFP4`](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4)
+at revision `423acf37`, NVIDIA's official plain-ModelOpt NVFP4 export; the
+launcher switches to `--quantization modelopt` and derives an `--hf-overrides`
+entry that keeps its BF16 native-MTP layer unquantized. Use `LOAD_FORMAT=safetensors`
+and `DFLASH_WARMUP_TIMEOUT_SECONDS=1500` with it (the managed mesh renderer
+sets both): its ~6 GB shards overflow GB10 unified memory under fastsafetensors,
+and the host-mmap load needs ~8 min. That variant is research-only and has no
+published receipt. The separate
 [native-MTP3 mesh profile](../glm53-spark-mtp3-mesh/README.md) supplies its
 target revision, depth-three graph sizes, transport bundle, and cache identity.
 That profile requires no external draft checkpoint. Its hardware-forwarded

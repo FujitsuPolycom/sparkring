@@ -346,18 +346,39 @@ case "${SPECULATION_METHOD}" in
   mtp) ;;
   *) die 'SPECULATION_METHOD must be dflash or mtp' ;;
 esac
+# Each variant pins the checkpoint identity, selects the vLLM quantization
+# loader that matches its serialization, and states whether the native MTP
+# predictor layer must be excluded from quantization by an override.
 case "${TARGET_MODEL_VARIANT}" in
   nvfp4)
     target_config_sha256=676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996
     target_index_sha256=0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb
     TARGET_CHECKPOINT_FINGERPRINT=a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9
+    TARGET_QUANTIZATION=modelopt_mixed
+    TARGET_EXCLUDE_MTP_FROM_QUANTIZATION=0
     ;;
   nvfp4-spark)
     target_config_sha256=e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23
     target_index_sha256=db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544
     TARGET_CHECKPOINT_FINGERPRINT=357f6a86160ebd5caff25d9a10d9f29e8547b16c6c73e78751fa69fde11ac4e4
+    TARGET_QUANTIZATION=modelopt_mixed
+    TARGET_EXCLUDE_MTP_FROM_QUANTIZATION=0
     ;;
-  *) die 'TARGET_MODEL_VARIANT must be nvfp4 or nvfp4-spark' ;;
+  nvidia-nvfp4)
+    # nvidia/GLM-5.3-Flash-NVFP4 @ 423acf37583782c51c142d145aef733d72943d93:
+    # ModelOpt 0.47 plain NVFP4 (quant_algo NVFP4 with an ignore list, FP8 KV
+    # scheme). Routed experts and the three dense MLPs are NVFP4; attention,
+    # shared experts, router gates, embeddings, lm_head and the vision tower
+    # are BF16. The native MTP layer is shipped BF16 but is absent from the
+    # checkpoint's ignore list, so the launcher derives an override for it.
+    target_config_sha256=e23c5d98f53e861d49a51bd3c68591621c5482ce829e42c31724152322fba03d
+    target_index_sha256=26765b2601fd246ef361cfb9f5e10f9fb291a59e05ad0a109062f3a4747c7fd1
+    # SparkCache identity: sha256 of "nvidia/GLM-5.3-Flash-NVFP4@<revision>".
+    TARGET_CHECKPOINT_FINGERPRINT=f44cb2423cf316987d1331a3ea45ce1a9ab2901d90b058d760a612c44ed2fb56
+    TARGET_QUANTIZATION=modelopt
+    TARGET_EXCLUDE_MTP_FROM_QUANTIZATION=1
+    ;;
+  *) die 'TARGET_MODEL_VARIANT must be nvfp4, nvfp4-spark, or nvidia-nvfp4' ;;
 esac
 # Native MTP loads its predictor from the target checkpoint. The separate
 # cache policy describes registered layer roles, not separate weight files.
@@ -865,6 +886,41 @@ verify_file_sha256 \
   'target model.safetensors.index.json' \
   "${TARGET_MODEL_HOST_PATH}/model.safetensors.index.json" \
   "${target_index_sha256}"
+# Checkpoints whose ignore list stops at the last base layer would have their
+# BF16 native-MTP predictor quantized by the loader. Extend the verified
+# config's quantization_config with the predictor layers and pass it as an
+# --hf-overrides replacement. The offline spec omits the override when the
+# checkpoint is not present; the identity check above already fails closed
+# for a live launch.
+hf_overrides_args=()
+if [[ "${TARGET_EXCLUDE_MTP_FROM_QUANTIZATION}" == 1 && -f "${TARGET_MODEL_HOST_PATH}/config.json" ]]; then
+  hf_overrides="$(python3 - "${TARGET_MODEL_HOST_PATH}/config.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    config = json.load(handle)
+text = config.get("text_config") or config
+quantization = config.get("quantization_config") or text.get("quantization_config")
+if not isinstance(quantization, dict):
+    sys.exit("target config.json has no quantization_config to extend")
+layers = int(text["num_hidden_layers"])
+predictors = int(text.get("num_nextn_predict_layers") or 0)
+if predictors < 1:
+    sys.exit("target config.json declares no native MTP predictor layers")
+ignore = list(quantization.get("ignore", []))
+for index in range(layers, layers + predictors):
+    # HF name, plus the loader-side name for models whose weight mapper drops
+    # the language_model prefix; the exclusion matcher applies both.
+    for pattern in (f"model.language_model.layers.{index}*", f"model.layers.{index}*"):
+        if pattern not in ignore:
+            ignore.append(pattern)
+override = {"quantization_config": dict(quantization, ignore=ignore)}
+print(json.dumps(override, separators=(",", ":"), sort_keys=True))
+PY
+)" || die 'failed to derive the MTP quantization override from the target config.json'
+  hf_overrides_args=(--hf-overrides "${hf_overrides}")
+fi
 draft_mount_args=()
 if [[ "${SPECULATION_METHOD}" == dflash ]]; then
 verify_file_sha256 \
@@ -1143,7 +1199,7 @@ container_command=(docker "${container_action[@]}" \
   "${source_recurrent_args[@]}" \
   "${chat_template_args[@]}" \
   --enable-chunked-prefill --dtype bfloat16 --kv-cache-dtype "${KV_CACHE_DTYPE}" \
-  --quantization modelopt_mixed --attention-backend "${ATTENTION_BACKEND}" \
+  --quantization "${TARGET_QUANTIZATION}" "${hf_overrides_args[@]}" --attention-backend "${ATTENTION_BACKEND}" \
   --block-size "${VLLM_BLOCK_SIZE}" --moe-backend "${MOE_BACKEND}" --linear-backend "${LINEAR_BACKEND}" \
   --no-enable-flashinfer-autotune --load-format "${LOAD_FORMAT}" \
   --enable-auto-tool-choice --tool-call-parser glm47 --reasoning-parser glm45 \
