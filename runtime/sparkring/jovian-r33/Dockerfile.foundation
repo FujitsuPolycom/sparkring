@@ -1,0 +1,17 @@
+# syntax=docker/dockerfile:1.7
+ARG FOUNDATION=nvcr.io/nvidia/pytorch@sha256:7531d90bcbe0e43e1f7363029c7e145ce90eebeb494a7b4695fdba0329d7c3c3
+FROM ${FOUNDATION}
+COPY nccl/ /opt/local-inference/nccl/
+COPY torch/*.whl /tmp/sparkring-torch/
+COPY verify_torch.py /opt/sparkring-build/verify_torch.py
+ENV LD_LIBRARY_PATH=/opt/local-inference/nccl/lib:${LD_LIBRARY_PATH} \
+    NCCL_ROOT=/opt/local-inference/nccl \
+    NCCL_INCLUDE_DIR=/opt/local-inference/nccl/include \
+    NCCL_LIB_DIR=/opt/local-inference/nccl/lib
+RUN python3 -m pip install --no-deps --force-reinstall /tmp/sparkring-torch/*.whl \
+    && SPARKRING_TORCH_RECEIPT=/opt/sparkring-build/torch-foundation.json python3 /opt/sparkring-build/verify_torch.py \
+    && rm -rf /tmp/sparkring-torch
+LABEL org.sparkring.foundation.status="build-environment-cpu-import-qualified" \
+    org.sparkring.foundation.torch-source="cf30153c4c131c8164ee7798e5022d810682e2cb" \
+    org.sparkring.foundation.cuda="13.3" \
+    org.sparkring.foundation.nccl-source="fb6f40999a2a9e63104d4ae4a84118bce61528f8"
