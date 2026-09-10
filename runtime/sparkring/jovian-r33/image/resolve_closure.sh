@@ -27,12 +27,13 @@ test ! -e "$probe"
 mkdir -p "$probe"
 docker run --rm --network none \
   -v "$context:/context:ro" \
+  -v "$context/wheelhouse:/wheelhouse:ro" \
   -v "$probe:/opt/venv" \
   "$foundation" \
   bash --noprofile --norc -ceu '
     python3 -m venv /opt/venv
     mapfile -t wheels < /context/closure-install-wheels.txt
-    for index in "${!wheels[@]}"; do wheels[$index]="/context/wheelhouse/${wheels[$index]}"; done
+    for index in "${!wheels[@]}"; do wheels[$index]="/wheelhouse/${wheels[$index]}"; done
     /opt/venv/bin/python -m pip install --no-index --no-cache-dir --no-deps --ignore-installed --no-compile "${wheels[@]}"
     /opt/venv/bin/python -m pip check
     /opt/venv/bin/python /context/capture_installed.py \

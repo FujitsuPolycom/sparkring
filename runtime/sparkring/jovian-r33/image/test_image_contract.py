@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest import mock
 
 
@@ -57,6 +58,28 @@ def tp4_environment(contract: dict) -> dict[str, str]:
 
 
 class CandidateImageContractTests(unittest.TestCase):
+    def test_wheel_metadata_ignores_vendored_dist_info(self):
+        module = load_module("r33_finalize_lock", "finalize_lock.py")
+        with tempfile.TemporaryDirectory() as directory:
+            wheel = Path(directory) / "package.whl"
+            with zipfile.ZipFile(wheel, "w") as archive:
+                archive.writestr(
+                    "package-1.2.3.dist-info/METADATA",
+                    "Metadata-Version: 2.4\nName: package\nVersion: 1.2.3\n",
+                )
+                archive.writestr(
+                    "package/_vendor/helper-9.0.dist-info/METADATA",
+                    "Metadata-Version: 2.4\nName: helper\nVersion: 9.0\n",
+                )
+            self.assertEqual(module.wheel_metadata(wheel), ("package", "1.2.3"))
+
+    def test_payload_probe_uses_the_same_wheel_path_as_docker(self):
+        resolver = (HERE / "resolve_closure.sh").read_text()
+        dockerfile = (HERE / "Dockerfile.candidate").read_text()
+        self.assertIn('-v "$context/wheelhouse:/wheelhouse:ro"', resolver)
+        self.assertIn('wheels[$index]="/wheelhouse/${wheels[$index]}"', resolver)
+        self.assertIn('wheels[$index]="/wheelhouse/${wheels[$index]}"', dockerfile)
+
     def test_artifact_lock_pins_critical_inputs_and_excludes_bad_audio(self):
         lock = json.loads((HERE / "artifact-lock.json").read_text())
         self.assertEqual(lock["foundation"]["cuda"], "13.3")

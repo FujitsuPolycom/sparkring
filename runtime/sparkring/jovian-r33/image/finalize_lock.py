@@ -23,7 +23,13 @@ def digest(path: Path) -> str:
 
 def wheel_metadata(path: Path) -> tuple[str, str]:
     with zipfile.ZipFile(path) as archive:
-        members = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
+        members = [
+            name
+            for name in archive.namelist()
+            if len(Path(name).parts) == 2
+            and Path(name).parts[0].endswith(".dist-info")
+            and Path(name).parts[1] == "METADATA"
+        ]
         if len(members) != 1:
             raise RuntimeError(f"wheel metadata is ambiguous: {path}")
         metadata = BytesParser(policy=default).parsebytes(archive.read(members[0]))
