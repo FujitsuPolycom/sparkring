@@ -30,6 +30,7 @@ SOURCE_FILES = (
     'runtime/glm53-spark-mtp3-mesh/profile.py',
     'runtime/glm53-spark-mtp3-mesh/inspect_fabric.py',
     'runtime/glm53-spark-mtp3-mesh/pins.json',
+    'runtime/glm53-spark-mtp3-mesh/image-receipt.json',
     'runtime/glm53-spark-mtp3-mesh/compute/source-lock.json',
     'runtime/sparkring/source_image/glm53-tp4-lock.json',
     'runtime/sparkring/source_image/receipt_contract.py',
@@ -247,6 +248,45 @@ def canonical_container_spec(launch, image_receipt, rank, image, *, run=subproce
         return expected_container_spec(output.get('argv'), image)
 
 
+def managed_image_attestation(receipt):
+    """Return the managed-mesh facts carried by a validated image receipt."""
+    if receipt.get('schema') != 'sparkring-r33-image-receipt/v1':
+        inside = receipt.get('inside_image')
+        if not isinstance(inside, dict):
+            raise ValueError('Image receipt lacks managed-mesh attestation')
+        return inside
+
+    profile = managed_units.service.mesh_profile
+    verification = receipt.get('verification')
+    if (receipt.get('checks_passed') is not True
+            or not isinstance(verification, dict)
+            or verification.get('schema') != 'sparkring-r33-candidate-verification/v1'
+            or verification.get('status') != 'source-closure-verified-runtime-qualification-pending'
+            or verification.get('cuda_initialized') is not False
+            or verification.get('model_loaded') is not False):
+        raise ValueError('R33 image receipt lacks passing pre-runtime verification')
+    checked = verification.get('checked_files')
+    manifest = receipt.get('bundle_manifest_sha256')
+    required = {
+        '/opt/local-inference/nccl/lib/libnccl.so.2.31.2': None,
+        '/opt/sparkring/sircl/libspark_transport_capi.so': None,
+        '/opt/sparkring/sircl/python/sparkring-overlay-manifest.json': manifest,
+        '/opt/sparkring/runtime/glm53-spark-mtp3-mesh/pins.json': profile.sha(profile.HERE / 'pins.json'),
+    }
+    if (not isinstance(checked, dict)
+            or any(not re.fullmatch(r'[0-9a-f]{64}', checked.get(path, ''))
+                   or (expected is not None and checked[path] != expected)
+                   for path, expected in required.items())):
+        raise ValueError('R33 image receipt does not bind the managed-mesh runtime')
+    managed_marker = json.loads((profile.HERE / 'image-receipt.json').read_text())['inside_image']
+    if managed_marker.get('marker_source_sha256') != profile.PINS['marker']['source_sha256']:
+        raise ValueError('Managed marker receipt differs from the R33 source pin')
+    return {
+        'marker_source_sha256': managed_marker['marker_source_sha256'],
+        'marker_binary_sha256': managed_marker['marker_binary_sha256'],
+    }
+
+
 def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file):
     if rank not in range(4) or not re.fullmatch('[0-9a-f]{32}', epoch):
         raise ValueError('Rank and common 128-bit hexadecimal epoch are required')
@@ -255,14 +295,17 @@ def prepare_plan(launch, image_receipt, rank, epoch, health_port, key_file):
     profile = managed_units.service.mesh_profile
     site, _, _ = profile.load_site(launch / 'site.json')
     receipt = profile.load_image_receipt(image_receipt)
-    inside = receipt['inside_image']
+    inside = managed_image_attestation(receipt)
     expected_marker = profile.PINS['marker']['source_sha256']
     if receipt.get('schema') == 'sparkring-source-image-receipt/v1':
         expected_marker = json.loads(profile.SOURCE_LOCK.read_text())['runtime']['marker_source_sha256']
     if (inside.get('marker_source_sha256') != expected_marker
             or inside.get('marker_binary_sha256') != site['marker_binary_sha256']):
         raise ValueError('Managed profile requires the source-pinned image and host marker')
-    if not inside.get('readiness_warmup'):
+    # R33 records readiness in its post-launch activation receipt. Older mesh
+    # images must carry their pre-launch warmup attestation here.
+    if (receipt.get('schema') != 'sparkring-r33-image-receipt/v1'
+            and not inside.get('readiness_warmup')):
         raise ValueError('Managed MTP3 profile requires the temperature-one readiness image')
     result = subprocess.run(['docker', 'inspect', site['container_prefix'] + f'-r{rank}'],
                             capture_output=True, text=True, check=True, timeout=10)
