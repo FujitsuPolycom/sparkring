@@ -142,7 +142,6 @@
     }
   },
   "native_reuse": {
-    "archive_sha256": "29cdc2dcc079d753acd8ce1b6f470c0cbc6c8a55fe5fe1023271da567c7122a6",
     "changed_paths": [
       "docs/features/quantization/b12x.md",
       "requirements/cuda.txt",
@@ -170,7 +169,8 @@
       "rust"
     ],
     "source_tree": "386191c06df9c4232cb2f48012968f48cfdc6eee",
-    "status": "byte-identical-native-input-archives"
+    "status": "byte-identical-native-input-archives",
+    "git_file_records_sha256": "bf4b2150ac4937b325d9b0ff1b0d676e12405e2f4ca940159b959cc7a4bde9e1"
   },
   "patch": {
     "path": "patches/vllm-r33-sparkring.patch",

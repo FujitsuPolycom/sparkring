@@ -104,7 +104,7 @@ class VllmPackageContractTests(unittest.TestCase):
             f"expected_native_tree={manifest['native_reuse']['source_tree']}", package
         )
         self.assertIn(
-            f"expected_native_inputs_sha={manifest['native_reuse']['archive_sha256']}",
+            f"expected_native_inputs_sha={manifest['native_reuse']['git_file_records_sha256']}",
             package,
         )
 
