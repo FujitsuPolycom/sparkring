@@ -1,0 +1,89 @@
+{
+  "schema": "sparkring-recipe/v1",
+  "recipe_id": "deepseek-v41-flash-cycle",
+  "status": "implemented",
+  "hardware": {
+    "platform": "linux/arm64",
+    "cuda_arch": "sm_121",
+    "ranks": 4,
+    "topology": "direct-cycle-4"
+  },
+  "model": {
+    "repository": "deepseek-ai/DeepSeek-V4.1-Flash",
+    "revision": "dba1be0a40aa45a94ad051997016db3960a90277",
+    "identity_status": "recorded",
+    "identity_note": "Stock checkpoint: 88 files / 510,313,353,565 bytes / 48 safetensors shards; quant_method fp8 (block 32x32, ue8m0) with expert_dtype fp4 (routed experts and MTP already MXFP4), FP8 Engram tables, BF16 embeddings/head/vision. Revision df42c109 differs only in encoding/*.py; all shards and config.json are byte-identical."
+  },
+  "runtime": {
+    "image": "local/sparkring-deepseek-v41:overlay5",
+    "image_builder": "runtime/deepseek-v41-gb10",
+    "image_receipt": "runtime/deepseek-v41-gb10/image-receipt.json",
+    "image_note": "No public image is published. Build with runtime/deepseek-v41-gb10/build-image.sh from vllm/vllm-openai:nightly-8a728663c1c3eeace834a95f5654fa653cc1998c + vllm-project/vllm dsv41-feat@e47aa780bccf59f59dfa2cbb18e17a10b4fe69ba + FlashInfer 07869c61ba581e6d6b8ad8d142f4a6c89b707cc1 (0.7.0rc1), then pin IMAGE_ID in the env file.",
+    "patches": "runtime/deepseek-v41-gb10/patches",
+    "patch_manifest": "runtime/deepseek-v41-gb10/patches/mounts.txt",
+    "patch_md5": "runtime/deepseek-v41-gb10/patches/MD5SUMS",
+    "nccl": "SparkRing patched NCCL 2.30.7 (libnccl.so.2 from any published SparkRing image) bind-mounted from the host and preloaded (LD_PRELOAD + VLLM_NCCL_SO_PATH)",
+    "environment_template": "scripts/config/deepseek-v41-flash-cycle.env.example",
+    "launcher": "scripts/deepseek_v41_cycle_serve.sh",
+    "launcher_preflight_argument": "--check",
+    "launcher_run_argument": "--run",
+    "entrypoint": "image default (vllm serve)"
+  },
+  "serving": {
+    "served_model_name": "deepseek-v4.1-flash",
+    "tensor_parallel_size": 4,
+    "node_count": 4,
+    "distributed_executor_backend": "mp",
+    "load_format": "safetensors",
+    "max_model_len": 300000,
+    "max_num_seqs": 8,
+    "max_num_batched_tokens": 8192,
+    "gpu_memory_utilization": 0.8,
+    "block_size": 128,
+    "engram": {
+      "cpu_offload": false,
+      "tables_on_disk": true,
+      "env": "DSV41_ENGRAM_DISK=1, DSV41_ENGRAM_DISK_THREADS=32, DSV41_ENGRAM_DISK_CHUNK=16",
+      "note": "Engram rows are read from shards 47/48 on the rank's local NVMe at serve time and staged before the forward; every rank needs its own complete local copy of the checkpoint."
+    },
+    "speculation": {
+      "method": "dspark",
+      "num_speculative_tokens": 5,
+      "draft_sample_method": "probabilistic",
+      "rejection_sample_method": "block",
+      "enable_adaptive_verification": false
+    },
+    "cuda_graphs": {
+      "mode": "FULL_AND_PIECEWISE",
+      "capture_sizes": "every multiple of k and k+1 up to MAX_NUM_SEQS*(k+1)",
+      "env": "VLLM_USE_BREAKABLE_CUDAGRAPH=1"
+    },
+    "multimodal": {
+      "images_per_prompt": 4,
+      "mm_processor_cache_gb": 1
+    },
+    "tool_call_parser": "deepseek_v41",
+    "reasoning_parser": "deepseek_v41",
+    "default_chat_template_kwargs": {
+      "thinking": false
+    },
+    "external_kv_cache": false,
+    "sizing_note": "With the Engram tables on NVMe a rank loads 78.79 GiB text-only or 81.6 GiB with the DSpark draft layers and vision encoder; consumed memory at startup 85.71 GiB. At gpu_memory_utilization 0.80 the KV pool measured 8.39 GiB = 1,171,588 tokens (3.91x 300K); 15-16 GiB MemAvailable per rank while serving. block-size 128 is required (an auto-picked 64 fails KV initialization); the patched backends keep 64-state pages internally."
+  },
+  "evidence": {
+    "status": "implemented",
+    "conditions": "Four directly cabled GB10 DGX Sparks (0-1-2-3-0 cycle, two RoCE devices per rank, MTU 9000), SparkRing patched NCCL 2.30.7, image sha256:af86a3d2bb0d267faa7f31777cdbe855addc1348f0b9f8323016ebf17d3dae3c, checkpoint dba1be0a on every rank's local NVMe, all four ranks rebooted before the boot. Serving shape as recorded above. Benchmark: fixed prompt set (eight categories plus a counting ceiling), temperature 0, thinking off, one batch per concurrency level; cold-prefill ladder with unique prompts and a one-token reply.",
+    "result": "Serving 8 minutes after launch. Per-stream decode, eight-category mean: C1 56.2, C2 44.1, C3 37.5, C4 33.8, C5 31.5, C6 31.4 tok/s. Aggregate: C1 49.8, C2 74.7, C3 96.7, C4 115.8, C5 136.2, C6 159.9 tok/s. C1 per stream by category: code 77.3, JSON 58.9, math 76.9, reasoning 60.0, tables 76.4, summary 36.8, prose 33.9, narrative 29.9, counting 90.9. Cold prefill 1,376 / 1,432 / 1,568 / 1,574 tok/s at 2,950 / 11,592 / 46,810 / 93,335 prompt tokens. Needle-in-haystack at depth 0.5: 131K and 262K pass. Vision and tool-calling end-to-end checks 7/7. DSpark mean acceptance 3.77 tokens per step over the benchmark. Text-only eager boot without speculation: 14.5-14.8 tok/s at C1. 20-minute soak at 8 concurrent streams (temperature 1.0, 256-token budgets, eight categories): 81 waves, 648 requests, zero failures, zero hangs, aggregate median 95.0 tok/s with no drift, MemAvailable 14-16 GiB per rank before and after.",
+    "conclusion": "The recorded four-rank settings are live-benchmarked on a locally built image. There is no published image digest to replay, so the profile is implemented, not qualified.",
+    "limitations": [
+      "No public image; every operator builds their own and pins IMAGE_ID.",
+      "Seven upstream-pending patches are bind-mounted over the image (see runtime/deepseek-v41-gb10/README.md); vLLM main has merged the model definitions but not the kernel/config/parser PR at the time of writing.",
+      "1M context has not been run on this profile; 300K is the recorded limit. Others report 1M with graphs on four Sparks at fewer sequences.",
+      "Adaptive verification is off: padded speculative batches can hang the SM120 sparse-MLA kernel (flashinfer #5015).",
+      "One benchmark batch per cell; no repeated-run confidence interval. Output quality beyond needle recall and the end-to-end checks was not evaluated.",
+      "vLLM logs a Duplicate NCCL runtime warning (patched vs pip 2.30.7, path assert); the patched library is the one mapped and loaded by PyNccl."
+    ],
+    "record": "docs/profiles/DEEPSEEK_V41_FLASH.md",
+    "benchmark": "performance/records/deepseek-v41-flash/cycle-tp4-dspark5-graphs-20260910.md"
+  }
+}

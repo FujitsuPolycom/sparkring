@@ -1,0 +1,121 @@
+# DeepSeek-V4.1-Flash on a four-Spark cycle — TP4, DSpark k=5, CUDA graphs (2026-09-10)
+
+Live benchmark of the `deepseek-v41-flash-cycle` recipe on four directly cabled GB10 DGX Sparks
+(`0-1-2-3-0`, two RoCE devices per rank, MTU 9000) with SparkRing's patched NCCL 2.30.7, a locally built
+image (`sha256:af86a3d2bb0d267faa7f31777cdbe855addc1348f0b9f8323016ebf17d3dae3c`, see
+[`runtime/deepseek-v41-gb10/image-receipt.json`](../../../runtime/deepseek-v41-gb10/image-receipt.json)) and the stock
+checkpoint `deepseek-ai/DeepSeek-V4.1-Flash @ dba1be0a` on every rank's local NVMe. Serving shape:
+300,000-token context, 8 sequences, 8,192 batched tokens, `gpu-memory-utilization 0.80`, `block-size 128`,
+Engram tables on NVMe, DSpark k=5 (probabilistic draft, block rejection, adaptive verification off),
+`FULL_AND_PIECEWISE` CUDA graphs with exact capture sizes, tools and vision on, thinking off.
+All four ranks were rebooted before the boot. Raw data: [`cycle-tp4-dspark5-graphs-20260910.json`](cycle-tp4-dspark5-graphs-20260910.json).
+
+## Method
+
+Fixed prompt set of eight categories (code, JSON, math, reasoning, tables, summary, prose, narrative) plus a
+counting ceiling, 30–120-token prompts, 150–256-token budgets, temperature 0, thinking off, streaming. At
+concurrency C, C streams are released together; one batch per cell. Token counts come from the server's
+`usage` block. **Decode** = tokens after the first / time after the first token, per stream. **Aggregate** =
+all streams' tokens / batch wall time (TTFT included). Counting is excluded from the eight-category means.
+Prompt set and harness: `prompts-v1.json` / `v41bench.py` from tonyd2wild/DeepSeek-V4.1-Flash-vLLM-DGX-Spark (MIT).
+
+## Headline
+
+| C | per-stream decode, 8-category mean (tok/s) | aggregate (tok/s) | mean TTFT (s) |
+|---|---:|---:|---:|
+| 1 | 56.2 | 49.8 | 0.32 |
+| 2 | 44.1 | 74.7 | 0.57 |
+| 3 | 37.5 | 96.7 | 0.37 |
+| 4 | 33.8 | 115.8 | 0.39 |
+| 5 | 31.5 | 136.2 | 0.45 |
+| 6 | 31.4 | 159.9 | 0.48 |
+
+## Decode per stream (tok/s, after the first token)
+
+| category | C1 | C2 | C3 | C4 | C5 | C6 |
+|---|---:|---:|---:|---:|---:|---:|
+| Code | 77.3 | 58.0 | 54.4 | 48.3 | 45.7 | 42.9 |
+| JSON | 58.9 | 44.7 | 36.5 | 31.3 | 27.9 | 28.6 |
+| Math | 76.9 | 58.5 | 47.7 | 44.9 | 41.6 | 52.2 |
+| Reasoning | 60.0 | 42.0 | 35.5 | 34.3 | 30.5 | 30.1 |
+| Tables | 76.4 | 70.2 | 63.6 | 54.4 | 52.6 | 49.1 |
+| Summary | 36.8 | 29.8 | 22.6 | 20.4 | 19.0 | 16.8 |
+| Prose | 33.9 | 25.0 | 21.3 | 19.1 | 19.4 | 16.4 |
+| Narrative | 29.9 | 24.2 | 18.7 | 17.4 | 15.4 | 14.7 |
+| Counting (ceiling) | 90.9 | 79.3 | 66.7 | 63.3 | 65.4 | 57.2 |
+
+## Aggregate throughput (tok/s, wall time incl. TTFT)
+
+| category | C1 | C2 | C3 | C4 | C5 | C6 |
+|---|---:|---:|---:|---:|---:|---:|
+| Code | 70.0 | 107.6 | 146.7 | 174.7 | 208.3 | 231.9 |
+| JSON | 49.4 | 72.8 | 85.7 | 92.9 | 121.4 | 131.2 |
+| Math | 69.3 | 103.0 | 126.5 | 157.5 | 184.5 | 279.5 |
+| Reasoning | 56.1 | 76.5 | 94.8 | 125.8 | 134.9 | 161.7 |
+| Tables | 61.6 | 111.5 | 154.2 | 175.5 | 216.4 | 226.5 |
+| Summary | 31.8 | 34.1 | 56.2 | 65.8 | 73.1 | 78.7 |
+| Prose | 31.8 | 47.8 | 58.5 | 71.5 | 82.8 | 90.2 |
+| Narrative | 28.4 | 44.6 | 50.8 | 63.1 | 67.9 | 79.7 |
+| Counting (ceiling) | 83.3 | 147.2 | 184.0 | 233.8 | 303.7 | 315.1 |
+
+## Mean TTFT (s)
+
+| category | C1 | C2 | C3 | C4 | C5 | C6 |
+|---|---:|---:|---:|---:|---:|---:|
+| Code | 0.28 | 0.29 | 0.33 | 0.34 | 0.35 | 0.41 |
+| JSON | 0.29 | 0.36 | 0.34 | 0.38 | 0.40 | 0.41 |
+| Math | 0.30 | 0.34 | 0.34 | 0.35 | 0.38 | 0.39 |
+| Reasoning | 0.25 | 0.31 | 0.33 | 0.35 | 0.37 | 0.39 |
+| Tables | 0.33 | 0.34 | 0.40 | 0.39 | 0.41 | 0.44 |
+| Summary | 0.53 | 2.40 | 0.69 | 0.77 | 1.04 | 1.18 |
+| Prose | 0.27 | 0.27 | 0.28 | 0.29 | 0.30 | 0.31 |
+| Narrative | 0.27 | 0.28 | 0.29 | 0.29 | 0.34 | 0.32 |
+| Counting (ceiling) | 0.25 | 0.24 | 0.29 | 0.27 | 0.29 | 0.29 |
+
+## Cold prefill (unique prompt, one-token reply)
+
+| prompt tokens | TTFT (s) | prefill tok/s |
+|---:|---:|---:|
+| 2,950 | 2.1 | 1376 |
+| 11,592 | 8.1 | 1432 |
+| 46,810 | 29.9 | 1568 |
+| 93,335 | 59.3 | 1574 |
+
+## Other measurements on the same boot
+
+| check | result |
+|---|---|
+| Needle-in-haystack, depth 0.5 (`v41needle.py`) | 131K: pass, 130,258 prompt tokens, TTFT 83.2 s, 1,565 tok/s prefill · 262K: pass, 260,119 tokens, TTFT 180.0 s, 1,445 tok/s |
+| Vision + tool calling end-to-end (`vision_tools_demo.py`) | 7/7: three-stripe image, two images in one message, 2×2 grid; tool call with arguments, full round trip, parallel calls, forced `tool_choice` |
+| DSpark acceptance | mean 3.77 tokens per step over the benchmark (2.00–6.00 across 10 s windows); 6.00 on counting |
+| 20-minute soak, 8 concurrent streams (temperature 1.0, top-p 0.95, 256-token budgets, eight categories rotating) | 81 waves, 648 requests, 0 failures, 0 streams silent for 90 s, aggregate median 95.0 tok/s (65.5 on the warm-up wave, max 102.6), first-five-wave mean 89.5 → last-five 93.9, TTFT ~0.7 s after warm-up; MemAvailable 14–16 GiB per rank before and after |
+| Smoke, cold first request (TTFT included) | counting 68.1 tok/s, code 56.0 tok/s at C1 |
+| Text-only eager boot, no speculation (131K, 8 seqs) | 14.5–14.8 tok/s at C1; `Model loading took 78.79 GiB`; KV 13.74 GiB = 1,687,422 tokens (12.87× 131K) |
+| Serving-shape memory | consumed 85.71 GiB per rank at startup (weights + non-torch); graphs 0.54 GiB; KV 8.39 GiB = 1,171,588 tokens (3.91× 300K); 15–16 GiB MemAvailable per rank while serving |
+| Time to serving | 8 min from launch (weights ~4 min from local NVMe, DSpark draft 57 s, graphs + autotune ~2 min) |
+
+## Fabric probes before the boot (same image and NCCL environment, GPUs idle)
+
+Four-rank all-reduce latency through vLLM's PyNccl wrapper (`nccl_lat.py`, tonyd2wild, MIT), ring `0 1 2 3`
+over both RoCE devices:
+
+| operation | p50 | p90 |
+|---|---:|---:|
+| all-reduce 8 KB | 47 µs | 428 µs (21 % of ops > 1.25× p10) |
+| all-reduce 32 KB | 56 µs | 59 µs |
+| all-reduce 60 KB (decode-shaped) | 64 µs | 68 µs |
+| all-reduce 128 KB | 82 µs | 87 µs |
+| all-reduce 256 KB | 97 µs | 102 µs |
+| all-reduce 1 MB | 185 µs | 194 µs |
+| decode-shaped step: 88 all-reduces + ~0.6 ms compute gaps, eager | 56.6 ms (collective share ~4.0 ms) | |
+| same, CUDA-graphed | 57.5 ms (collective share ~5.0 ms) | |
+| 88 all-reduces back-to-back, graphed | 4.9 ms | |
+
+GPU fast/slow-state probe (`gpuflip.py`): all four GPUs in the fast state for the full 62 s window, 0 slow
+seconds, 2,177–2,190 MHz, 23–25 W under the GEMV. These nodes pin `nvidia-smi -lgc 0,2200` via a systemd unit.
+
+## Limitations
+
+One batch per cell, no repeated-run interval. Output quality beyond needle recall and the end-to-end checks
+was not evaluated. 1M context was not run on this profile. The image is a private local build; the recipe
+records how to reproduce it, not a public digest.

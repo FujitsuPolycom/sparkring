@@ -40,6 +40,7 @@ per-request Context limit.
 | GLM-5.3 Flash NVFP4-Spark · MTP3, switched | [Shared SparkRing image](runtime/sparkring/source_image/README.md) | Operator-selected NCCL links | TP4/DCP1 | 1M | 16 | — | [Switched quickstart](docs/GLM53_SWITCHED_TP4_QUICKSTART.md) |
 | GLM-5.2 EXL3 3.5-bpw | [SparkRing vLLM/ExLlamaV3 build](runtime/exl3-r7/README.md) | [SIRCL + NCCL](docs/SIRCL.md) | TP4/DCP4 | 1M | 16 | ~1.2M | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
 | DeepSeek-V4-Flash-0731 | [SparkRing vLLM/B12X image](runtime/deepseek0731-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 1M | 32 | ~1M | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
+| DeepSeek-V4.1-Flash · Engram on NVMe · DSpark k=5 | [Self-built stock vLLM `dsv41-feat` image](runtime/deepseek-v41-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 300K | 8 | ~1.17M | [Quickstart](docs/DEEPSEEK_V41_FLASH_QUICKSTART.md) |
 | Qwen3.8-27B EXL3 K5/K6 | [SparkRing vLLM/ExLlamaV3 build](runtime/qwen38/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 1M | 64 | — | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
 | DeepSeek-V4-Flash-Vision-Exp with DSpark (research-only) | [Anemll image / MiaAI-Lab recipe](runtime/deepseek-vision-exp/profile.json) | [SparkRing patched NCCL](spark_transport/nccl/README.md) | TP4 | 1M | 48 | — | [Quickstart](docs/DEEPSEEK_V4_FLASH_VISION_EXP_TP4_QUICKSTART.md) |
 
@@ -123,6 +124,7 @@ Results attempt to reflect real world use-case numbers in all instances unless o
 | [GLM-5.2 EXL3 3.5-bpw · 4 Sparks](performance/records/glm-3.5bpw/normalized-base-20260822.md) | 16K | 671 (16K) | 20.15 | 64.13 | C8: 64.13 | 25.39 |
 | [DeepSeek-V4-Flash DSpark · 2 Sparks](performance/records/deepseek-v4-flash/normalized-tp2-base-temp1-n5-20260823.md) | 16K | 1,926 (16K) | 58.36 | 162.69 | C32: 307.13 | 59.31 |
 | [DeepSeek-V4-Flash-0731 · 4 Sparks](performance/records/deepseek-v4-flash/normalized-tp4-base-temp1-n5-20260823.md) | 16K | 2,488 (16K) | 68.84 | 265.16 | C32: 508.11 | 95.77 |
+| [DeepSeek-V4.1-Flash · Engram on NVMe · DSpark k=5 · 4 Sparks](performance/records/deepseek-v41-flash/cycle-tp4-dspark5-graphs-20260910.md) | short prompts, temp 0 | 1,574 (93K cold) | 56.2 | — | C6: 159.9 | 77.3 |
 | [Qwen3.8-27B EXL3 K5/K6 · 2 Sparks](performance/records/qwen38-27b/normalized-tp2-1m-probmtp-temp1-20260823.md) | 16K | 1,367 (16K) | 29.50 | 142.20 | C16: 184.39 | 39.95 |
 | [Qwen3.8-27B EXL3 K5/K6 · 4 Sparks](performance/records/qwen38-27b/normalized-tp4-1m-probmtp-temp1-20260823.md) | 16K | 1,964 (16K) | 35.07 | 191.02 | C8: 191.02 | 48.46 |
 
