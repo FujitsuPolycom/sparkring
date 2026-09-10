@@ -17,6 +17,18 @@ launchers described below.
 resulting Git tree, installed package inventory, retained native library,
 startup helper, and runtime profile. Full hashes in that file are authoritative.
 
+The default lock and frozen `startup/` files reproduce the inputs in
+[publication.json](publication.json), including six nonstreaming single-request
+(C1) sampler cases. Default builds and published-image verification use this
+frozen composition. The [canonical helper](../../glm53-flash-jj-r8-gb10/serve_with_warmup.py)
+also implements streaming validation and two concurrent filtered requests (C2); selecting that
+implementation requires a matching image build and verification receipt.
+
+The complete source-only recipe with that extended startup is preserved at
+[SparkRing `3187e16`](https://github.com/FujitsuPolycom/sparkring/tree/3187e16a1f99348717df4c4ffba4683e19727b61/runtime/sparkring/source_image).
+Build and verify it from its own checkout and use its matching launch inputs.
+It does not describe the published image below.
+
 | Component | Source and behavior |
 |---|---|
 | ARM64 parent | Digest-pinned `sparkring-glm53-sparkcache` image; supplies the CUDA toolchain, Torch, compiled vLLM dependencies, and native mesh bundle |
@@ -24,7 +36,7 @@ startup helper, and runtime profile. Full hashes in that file are authoritative.
 | B12X | Public base `85a08f47750db333a33ab3eae245a0a08452d04c` plus `patches/b12x.patch`; reproduces `2883a5df65a7ea3cb6e82abb63d1448dd3154887`, including four-checkpoint kernels and profile-selected managed loading |
 | NCCL | Public NVIDIA source base `73cf112295c33aee2b895f329f592f2a9b4b0f97` plus the cumulative `patches/nccl.patch`; preserves switchless routing and independent PCIe-domain discovery |
 | SparkCache | `d0cf7296062ec8b4d17d65cd05a416d509e80bd8`, reproduced from its public base and packaged patch; includes capture-job read leases, request cleanup, private restore admission, and the exact common-vLLM source contract |
-| Startup | Four source-pinned helpers under `startup/`; six C1 sampler requests and three C2 filtered pairs when concurrency permits, with validated SSE completion/usage and allocation-aware scheduler liveness |
+| Startup | Frozen composition `767522e399ad61d3b3cf02259414b1007becc030`; six nonstreaming C1 sampler requests, completed-output admission, and allocation-aware scheduler liveness |
 | TP2 transport | Exact adaptive-grid RoCEnante source under `runtime/transport_profiles/`; selected before B12X import, with independent proxy/kernel and file verification |
 
 | Profile | Checkpoint and parallelism | Communication and cache |
@@ -140,6 +152,11 @@ Use a checkout whose source lock matches `source_lock_sha256` in the
 publication record. The verifier rejects mismatched source or profile assets.
 The publication record is distribution evidence; use the generated profile
 receipt for launch admission.
+
+The default recipe is tested against the [published context manifest](fixtures/README.md).
+Default commands prepare matching publication inputs. A source-only
+startup recipe needs its own image and context; changing `--lock` for just the
+verifier does not change the lock used by downstream profile launchers.
 
 ## Use pinned native files
 

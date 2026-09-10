@@ -391,10 +391,10 @@
   },
   "source_date_epoch": 1788880173,
   "startup": {
-    "revision": "378abab2bac9fe4ea39afe79ed9ff9f16c52cdd3",
+    "revision": "767522e399ad61d3b3cf02259414b1007becc030",
     "warmup_transform": "glm53-thinking-low/v1",
     "files": {
-      "serve_with_warmup.py": "2104e7d83e84d7e2ccbb19e331b487cafea4515ac75eda2dc0082cfc7187a841",
+      "serve_with_warmup.py": "018f85037d0ed21f92df889fb294a2de50060edf479c8c79afd07e446e33982f",
       "warmup_dflash.py": "4d98618a5f58d2991eeb67b9b03ecdd720ac6974f644fa8b5030408a3af0792e",
       "startup_admission.py": "1afdc6b2e421465498bde349dff3edb8428ca995a949b2a2f3c6e358a3af7ef4",
       "scheduler_liveness.py": "9078d796aeb8ad59e7a78e9739168596abecfb20c043925a0d4e728f3673a53c"
