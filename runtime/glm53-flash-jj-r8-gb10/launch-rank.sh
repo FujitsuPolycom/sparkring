@@ -1202,6 +1202,7 @@ container_command=(docker "${container_action[@]}" \
   -e "TORCHINDUCTOR_CACHE_DIR=/cache/jit/torchinductor/${JIT_CACHE_NAMESPACE}" \
   -e XDG_CACHE_HOME=/cache/jit -e HF_HUB_OFFLINE=1 -e TRANSFORMERS_OFFLINE=1 \
   -e VLLM_NO_USAGE_STATS=1 -e VLLM_PLUGINS= \
+  -e "LOAD_FORMAT=${LOAD_FORMAT}" \
   -e "OMP_NUM_THREADS=${OMP_NUM_THREADS}" \
   -e "TORCHINDUCTOR_COMPILE_THREADS=${TORCHINDUCTOR_COMPILE_THREADS}" \
   -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \

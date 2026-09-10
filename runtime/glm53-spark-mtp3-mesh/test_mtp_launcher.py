@@ -151,6 +151,7 @@ def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture)
     result, arguments, _ = launch(0, {
         "SOURCE_IMAGE_PROFILE": "tp4-dcp1",
         "SPARKRING_PROFILE_MODE": "custom",
+        "LOAD_FORMAT": "instanttensor",
         "SPARKRING_MANAGED_MESH_RENDERED": "1",
         "VLLM_SPARK_TP4_MODE": "custom",
         "VLLM_SPARK_TP4_VOCAB_MODE": "custom",
@@ -211,6 +212,7 @@ def test_r33_tp4_sparkcache_uses_receipt_bound_installed_libraries(launch_fixtur
     result, arguments, _ = launch(0, {
         "SOURCE_IMAGE_PROFILE": "tp4-dcp1-sparkcache",
         "SPARKRING_PROFILE_MODE": "custom",
+        "LOAD_FORMAT": "instanttensor",
         "SPARKRING_MANAGED_MESH_RENDERED": "1",
         "VLLM_SPARK_TP4_MODE": "custom",
         "VLLM_SPARK_TP4_VOCAB_MODE": "custom",

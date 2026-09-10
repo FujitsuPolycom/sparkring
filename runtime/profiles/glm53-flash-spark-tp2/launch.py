@@ -81,6 +81,13 @@ def _replace_option(arguments, flag, value):
     return result
 
 
+def _remove_option(arguments, flag):
+    result = list(arguments)
+    index = result.index(flag)
+    del result[index:index + 2]
+    return result
+
+
 def adapt_r33_plan(plan, receipt):
     verifier = _r33_verifier()
     verifier.validate_image_receipt(receipt)
@@ -100,6 +107,8 @@ def adapt_r33_plan(plan, receipt):
     arguments = plan["container_args"][4:]
     arguments = _replace_option(arguments, "--max-model-len", str(contract["model"]["max_model_len"]))
     arguments = _replace_option(arguments, "--kv-cache-memory-bytes", str(contract["profiles"]["tp2-dcp1"]["kv_cache_memory_bytes"]))
+    arguments = _replace_option(arguments, "--load-format", contract["model"]["loader"]["load_format"])
+    arguments = _remove_option(arguments, "--model-loader-extra-config")
     container_args = ["serve", *arguments]
     command = list(plan["command"])
     command[command.index("--entrypoint") + 1] = "/opt/sparkring/bin/sparkring-r33"

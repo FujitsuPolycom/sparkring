@@ -63,6 +63,7 @@ def validate_template(name: str, asset_root: Path | None = None) -> dict:
         "MAX_MODEL_LEN": str(contract["model"]["max_model_len"]),
         "KV_CACHE_MEMORY_BYTES": str(selected["kv_cache_memory_bytes"]),
         "NUM_SPECULATIVE_TOKENS": str(contract["model"]["speculation"]["num_speculative_tokens"]),
+        "LOAD_FORMAT": contract["model"]["loader"]["load_format"],
         "CUDAGRAPH_CAPTURE_SIZES": ",".join(map(str, selected["cudagraph_capture_sizes"])),
         "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
         "VLLM_GLM53_MHC_PREFILL_SHARD": "1",

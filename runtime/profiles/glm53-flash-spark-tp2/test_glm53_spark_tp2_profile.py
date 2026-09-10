@@ -281,11 +281,15 @@ def test_r33_receipt_adapts_final_tp2_docker_command(inputs, rank):
     assert value["container_args"][:2] == ["serve", "/models/target"]
     assert "/opt/sparkcache-jj-runtime/verify_sources.py" not in value["command"]
     assert value["container_args"][value["container_args"].index("--max-model-len") + 1] == "1048576"
+    assert value["container_args"][value["container_args"].index("--load-format") + 1] == "instanttensor"
+    assert "--model-loader-extra-config" not in value["container_args"]
     environment = value["environment"]
     assert environment["SOURCE_IMAGE_PROFILE"] == "tp2-dcp1"
     assert environment["SPARKRING_PROFILE_MODE"] == "custom"
     assert environment["VLLM_NCCL_SO_PATH"] == "/opt/local-inference/nccl/lib/libnccl.so.2"
-    assert f"SOURCE_IMAGE_PROFILE=tp2-dcp1" in value["command"]
+    assert environment["LOAD_FORMAT"] == "instanttensor"
+    assert environment["VLLM_PLUGINS"] == ""
+    assert "SOURCE_IMAGE_PROFILE=tp2-dcp1" in value["command"]
     entrypoint_path = ROOT.parents[1] / "sparkring/jovian-r33/image/entrypoint.py"
     spec = importlib.util.spec_from_file_location("r33_tp2_candidate_entrypoint", entrypoint_path)
     entrypoint = importlib.util.module_from_spec(spec)

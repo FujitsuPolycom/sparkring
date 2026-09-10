@@ -104,6 +104,12 @@
     "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
     "revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
     "max_model_len": 1048576,
+    "loader": {
+      "load_format": "instanttensor",
+      "instanttensor_commit": "49b4010afc1cae0441e71fe0b0bffc24fa05e932",
+      "backend_selection": "automatic",
+      "required_environment": {}
+    },
     "speculation": {
       "method": "mtp",
       "num_speculative_tokens": 3,
@@ -132,7 +138,9 @@
     "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
     "HF_HUB_OFFLINE": "1",
     "TRANSFORMERS_OFFLINE": "1",
-    "VLLM_NO_USAGE_STATS": "1"
+    "VLLM_NO_USAGE_STATS": "1",
+    "VLLM_PLUGINS": "",
+    "LOAD_FORMAT": "instanttensor"
   },
   "profiles": {
     "tp2-dcp1": {

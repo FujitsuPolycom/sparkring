@@ -97,6 +97,13 @@ def test_tp2_uses_one_dac_across_two_host_domains_and_one_dcp_rank():
     assert values["NCCL_IB_HCA"] == "=rocep1s0f0,roceP2p1s0f0"
     assert values["B12X_ROCE_PEER_HCA_MAP"] == "<peer-rank>=0/2"
     assert contract["model"]["max_model_len"] == 1048576
+    assert contract["model"]["loader"] == {
+        "load_format": "instanttensor",
+        "instanttensor_commit": "49b4010afc1cae0441e71fe0b0bffc24fa05e932",
+        "backend_selection": "automatic",
+        "required_environment": {},
+    }
+    assert values["LOAD_FORMAT"] == "instanttensor"
 
 
 def test_tp4_profiles_share_mesh_graphs_and_dcp1_baseline():
@@ -106,6 +113,8 @@ def test_tp4_profiles_share_mesh_graphs_and_dcp1_baseline():
     assert baseline["cudagraph_capture_sizes"] == cached["cudagraph_capture_sizes"] == list(range(4, 65, 4))
     assert baseline["mesh_pins_sha256"] == cached["mesh_pins_sha256"]
     assert baseline["sparkcache"] is False and cached["sparkcache"] is True
+    baseline_values = verifier.parse_template(HERE / baseline["template"])
+    assert baseline_values["LOAD_FORMAT"] == "instanttensor"
 
 
 def test_image_selection_has_no_implicit_candidate_identity():

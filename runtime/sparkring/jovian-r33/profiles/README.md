@@ -36,7 +36,9 @@ the exact graph sizes recorded by the mesh profile. Apply
 `tp4-dcp1-sparkcache.env.example` only for the separate bounded cache run.
 
 All profiles enable continuation-prefill coalescing, 2,048-row mHC prefill
-sharding, InstantTensor through the generic image, and DCP1. Configuration is
+sharding, the native vLLM `instanttensor` load format, and DCP1. The pinned
+InstantTensor revision selects its I/O backend automatically; these profiles do
+not require an `INSTANTTENSOR_*` environment override. Configuration is
 only admission evidence. A profile qualifies only when a structured activation
 receipt proves that every rank used the same image and NCCL 2.31.2, both host
 domains carried NCCL, the exact graph set was captured, and nonzero runtime
