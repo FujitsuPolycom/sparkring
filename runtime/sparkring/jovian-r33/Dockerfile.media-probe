@@ -1,5 +1,8 @@
 # syntax=docker/dockerfile:1.7
 FROM local/sparkring:r33-arm64-foundation
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 COPY torchvision/*.whl arm-wheels/*.whl /tmp/media-wheels/
 COPY torchaudio/*.whl /tmp/torchaudio/
 RUN python3 -m pip install --no-deps --force-reinstall /tmp/media-wheels/*.whl \

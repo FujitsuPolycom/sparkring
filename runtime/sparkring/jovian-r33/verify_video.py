@@ -17,11 +17,11 @@ assert cpu_frames.ndim == 4 and cpu_frames.shape[-1] == 3
 cpu_means = cpu_frames.to(torch.float32).mean(dim=(0, 1, 2))
 assert cpu_means[2] > 200 and cpu_means[0] < 30 and cpu_means[1] < 30, cpu_means
 
-gpu_decoder = nvc.CreateSimpleDecoder(
-    data,
-    gpuid=0,
-    useDeviceMemory=False,
-    outputColorType=nvc.OutputColorType.RGB,
+gpu_decoder = nvc.SimpleDecoder(
+    str(path),
+    gpu_id=0,
+    use_device_memory=False,
+    output_color_type=nvc.OutputColorType.RGB,
     bWaitForSessionWarmUp=True,
 )
 assert len(gpu_decoder) >= 1
@@ -29,8 +29,6 @@ gpu_frame = torch.from_dlpack(gpu_decoder[0])
 assert gpu_frame.ndim == 3 and gpu_frame.shape[-1] == 3, gpu_frame.shape
 gpu_means = gpu_frame.to(torch.float32).mean(dim=(0, 1))
 assert gpu_means[2] > 200 and gpu_means[0] < 30 and gpu_means[1] < 30, gpu_means
-gpu_decoder.stop()
-
 print(
     json.dumps(
         {
