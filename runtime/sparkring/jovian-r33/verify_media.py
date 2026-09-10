@@ -11,7 +11,7 @@ import torch
 assert torch.__version__ == "2.13.0"
 versions = {
     "torchvision": "0.28.0",
-    "torchaudio": "2.11.0+cu130",
+    "torchaudio": "2.11.0+cu133",
     "torchcodec": "0.16.0+cu130",
     "PyNvVideoCodec": "2.0.4",
 }

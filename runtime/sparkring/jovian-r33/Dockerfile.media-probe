@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1.7
 FROM local/sparkring:r33-arm64-foundation
 COPY torchvision/*.whl arm-wheels/*.whl /tmp/media-wheels/
+COPY torchaudio/*.whl /tmp/torchaudio/
 RUN python3 -m pip install --no-deps --force-reinstall /tmp/media-wheels/*.whl \
-    && rm -rf /tmp/media-wheels
+    && python3 -m pip install --no-deps --force-reinstall /tmp/torchaudio/*.whl \
+    && rm -rf /tmp/media-wheels /tmp/torchaudio
 COPY verify_media.py /opt/sparkring-build/verify_media.py
