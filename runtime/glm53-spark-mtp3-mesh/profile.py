@@ -273,8 +273,6 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
         runtime_profile = site.get("runtime_profile")
         if runtime_profile not in ("tp4-dcp1", "tp4-dcp1-sparkcache"):
             raise ValueError("R33 managed site must select tp4-dcp1 or tp4-dcp1-sparkcache")
-        if runtime_profile == "tp4-dcp1-sparkcache":
-            raise ValueError("R33 SparkCache rendering requires receipt-bound placement and snapshot libraries")
     elif site.get("runtime_profile") != (image_record["profile"] if source_composition else None):
         raise ValueError("Site runtime profile differs from the explicit image receipt")
     values = defaults(BASE / "runtime.env.example")
@@ -343,6 +341,21 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
                 "LD_PRELOAD": "/opt/local-inference/nccl/lib/libnccl.so.2",
                 "NCCL_LIBRARY_SHA256": image_record["verification"]["checked_files"]["/opt/local-inference/nccl/lib/libnccl.so.2.31.2"],
             })
+            if selected["sparkcache"]:
+                native = contract["sparkcache_native"]
+                checked = image_record.get("verification", {}).get("checked_files", {})
+                if (checked.get(native["placement_path"]) != native["placement_sha256"]
+                        or checked.get(native["snapshot_path"]) != native["snapshot_sha256"]):
+                    raise ValueError("R33 image receipt does not bind SparkCache native libraries")
+                values.update({
+                    "SPARKCACHE_CACHE_NAMESPACE": f"sparkring-r33-{image_record['image_id'][7:19]}-tp4-dcp1",
+                    "SPARKCACHE_PLACEMENT_LIBRARY_PATH": native["placement_path"],
+                    "SPARKCACHE_PLACEMENT_LIBRARY_SHA256": native["placement_sha256"],
+                    "SPARKCACHE_SNAPSHOT_LIBRARY_PATH": native["snapshot_path"],
+                    "SPARKCACHE_SNAPSHOT_LIBRARY_SHA256": native["snapshot_sha256"],
+                    "SPARKCACHE_VLLM_ROOT": native["vllm_root"],
+                    "SPARKCACHE_SOURCE_LEASE_CONTRACT": native["lease_contract"],
+                })
     output.mkdir(parents=True)
     ranks = []
     for rank in range(4):

@@ -4,7 +4,7 @@
   "image": {
     "selection": "external-immutable-receipt",
     "artifact_lock": "../image/artifact-lock.json",
-    "artifact_lock_sha256": "b7a99a92a4b55f9f42862439a552d9b1f5d6bd8d9b510c93d559289c53c782c6",
+    "artifact_lock_sha256": "7e2c3c313bf0dabe1cac664488d8e334d84d4b601f018213a52a699cb0ffbb3c",
     "required_platform": "linux/arm64",
     "required_sources": {
       "vllm_head": "ae89131442359dc332d9c46009be3c1f8cdee0b4",
@@ -41,7 +41,8 @@
       "sparkcache_commit": "f220230a5a85b94af8a296187241b6aacc3ed724",
       "sparkcache_tree": "86ef46de45dd0f4ed776b86109a30df6f83db557",
       "sparkcache_native_commit": "f220230a5a85b94af8a296187241b6aacc3ed724",
-      "sparkcache_native_tree": "PENDING_FROM_R33_SPARKCACHE_NATIVE",
+      "sparkcache_native_tree": "86ef46de45dd0f4ed776b86109a30df6f83db557",
+      "sparkcache_native_source_archive_sha256": "d61bb093bb247c772709a5a25a0751960e31db3052ab0b1830332e03b7b05989",
       "torchvision_commit": "8fb87713a24951e639c494b0f2a8a81b5f8e33a6",
       "torchvision_tree": "7c24608af79802e05d7acfb6a44479fed788545a",
       "torchaudio_commit": "34c52a67e8941bbd8e6adaca0eb0b9eabec11d78",
@@ -109,6 +110,16 @@
       "attention_backend": "B12X",
       "moe_backend": "humming"
     }
+  },
+  "sparkcache_native": {
+    "source_commit": "f220230a5a85b94af8a296187241b6aacc3ed724",
+    "source_tree": "86ef46de45dd0f4ed776b86109a30df6f83db557",
+    "placement_path": "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so",
+    "placement_sha256": "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93",
+    "snapshot_path": "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so",
+    "snapshot_sha256": "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953",
+    "vllm_root": "/opt/venv/lib/python3.12/site-packages",
+    "lease_contract": "/opt/venv/lib/python3.12/site-packages/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json"
   },
   "common_environment": {
     "SPARKRING_PROFILE_MODE": "custom",

@@ -52,7 +52,8 @@
     "sparkcache_commit": "f220230a5a85b94af8a296187241b6aacc3ed724",
     "sparkcache_tree": "86ef46de45dd0f4ed776b86109a30df6f83db557",
     "sparkcache_native_commit": "f220230a5a85b94af8a296187241b6aacc3ed724",
-    "sparkcache_native_tree": "PENDING_FROM_R33_SPARKCACHE_NATIVE",
+    "sparkcache_native_tree": "86ef46de45dd0f4ed776b86109a30df6f83db557",
+    "sparkcache_native_source_archive_sha256": "d61bb093bb247c772709a5a25a0751960e31db3052ab0b1830332e03b7b05989",
     "torchvision_commit": "8fb87713a24951e639c494b0f2a8a81b5f8e33a6",
     "torchvision_tree": "7c24608af79802e05d7acfb6a44479fed788545a",
     "torchaudio_commit": "34c52a67e8941bbd8e6adaca0eb0b9eabec11d78",
@@ -185,6 +186,13 @@
       "destination": "native/libspark_transport_capi.so",
       "sha256": "bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246",
       "install": false
+    },
+    {
+      "name": "sparkcache-native-source-archive",
+      "source": "artifacts/sparkcache-native/sparkcache-f220230a-source.tar.gz",
+      "destination": "receipts/sources/sparkcache-f220230a-source.tar.gz",
+      "sha256": "d61bb093bb247c772709a5a25a0751960e31db3052ab0b1830332e03b7b05989",
+      "install": false
     }
   ],
   "pending_artifacts": [
@@ -208,14 +216,14 @@
       "name": "sparkcache-placement",
       "source": "artifacts/sparkcache-native/libspark_cache_placement.so",
       "destination": "native/libspark_cache_placement.so",
-      "sha256": "PENDING_FROM_R33_SPARKCACHE_NATIVE",
+      "sha256": "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93",
       "required": true
     },
     {
       "name": "sparkcache-snapshot",
       "source": "artifacts/sparkcache-native/libspark_cache_snapshot.so",
       "destination": "native/libspark_cache_snapshot.so",
-      "sha256": "PENDING_FROM_R33_SPARKCACHE_NATIVE",
+      "sha256": "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953",
       "required": true
     }
   ],

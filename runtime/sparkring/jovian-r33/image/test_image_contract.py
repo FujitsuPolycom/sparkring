@@ -255,11 +255,13 @@ class CandidateImageContractTests(unittest.TestCase):
 
             finalizer.finalize(build_root, HERE, True, run=fake_run)
 
-    def test_sparkcache_native_slots_fail_closed_until_hashes_arrive(self):
+    def test_sparkcache_native_slots_are_exact_and_required(self):
         lock = json.loads((HERE / "artifact-lock.json").read_text())
         pending = {item["name"]: item for item in lock["pending_native_artifacts"]}
         self.assertEqual(set(pending), {"sparkcache-placement", "sparkcache-snapshot"})
-        self.assertTrue(all(item["sha256"] == "PENDING_FROM_R33_SPARKCACHE_NATIVE" for item in pending.values()))
+        self.assertEqual(pending["sparkcache-placement"]["sha256"], "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93")
+        self.assertEqual(pending["sparkcache-snapshot"]["sha256"], "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953")
+        self.assertTrue(all(item["required"] for item in pending.values()))
         dockerfile = (HERE / "Dockerfile.candidate").read_text()
         self.assertIn("native/libspark_cache_placement.so", dockerfile)
         self.assertIn("native/libspark_cache_snapshot.so", dockerfile)

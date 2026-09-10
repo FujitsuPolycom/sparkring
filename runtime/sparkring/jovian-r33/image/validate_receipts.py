@@ -218,33 +218,54 @@ def validate(lock: dict, inputs: dict, receipts: Path) -> dict:
 
     sparkcache_native = load_json(receipts / "sparkcache-native-build-receipt.json")
     check(sparkcache_native["schema"], "sparkring-r33-sparkcache-native-build/v1", "SparkCache native schema")
+    check(sparkcache_native["status"], "qualified-native-build", "SparkCache native status")
+    check(sparkcache_native["source"]["repository"], "https://github.com/FujitsuPolycom/sparkcache.git", "SparkCache native repository")
     check(sparkcache_native["source"]["commit"], sources["sparkcache_native_commit"], "SparkCache native head")
     check(sparkcache_native["source"]["tree"], sources["sparkcache_native_tree"], "SparkCache native tree")
+    check(sparkcache_native["source"]["status_porcelain"], "", "SparkCache native source status")
+    check(sparkcache_native["source"]["archive"]["sha256"], sources["sparkcache_native_source_archive_sha256"], "SparkCache native source archive receipt")
+    source_archive = receipts / "sources" / sparkcache_native["source"]["archive"]["filename"]
+    check(hashlib.sha256(source_archive.read_bytes()).hexdigest(), sources["sparkcache_native_source_archive_sha256"], "SparkCache native source archive bytes")
     for component, artifact_name in (("placement", "sparkcache-placement"), ("snapshot", "sparkcache-snapshot")):
         record = sparkcache_native["artifacts"][component]
         check(record["filename"], Path(artifacts[artifact_name]["source"]).name, f"SparkCache {component} filename")
         check(record["sha256"], artifacts[artifact_name]["sha256"], f"SparkCache {component} artifact")
         check(record["elf_machine"], "AArch64", f"SparkCache {component} machine")
-        if 121 not in record["sm_targets"] and "sm_121" not in record["sm_targets"]:
+        if record["sm_targets"] != ["sm_121"]:
             raise ValueError(f"SparkCache {component} lacks SM121 code")
         checks.append(f"SparkCache {component} SM121")
     build = sparkcache_native["build"]
     for actual, expected, label in (
         (build["foundation_reference"], lock["foundation"]["reference"], "SparkCache foundation reference"),
-        (build["image_id"], lock["foundation"]["image_id"], "SparkCache foundation image"),
-        (str(build["cuda_version"]), lock["foundation"]["cuda"], "SparkCache CUDA"),
-        (build["cuda_architectures"], [121], "SparkCache CUDA architecture"),
+        (build["foundation_image_id"], lock["foundation"]["image_id"], "SparkCache foundation image"),
+        (build["cuda_architectures"], ["121"], "SparkCache CUDA architecture"),
         (build["host_arch"], "aarch64", "SparkCache host architecture"),
     ):
         check(actual, expected, label)
     if build["build_type"] != "Release":
         raise ValueError("SparkCache native build is not Release")
     checks.append("SparkCache Release build")
-    for key, value in sparkcache_native["tests"].items():
-        if key.endswith("failed") and value != 0:
-            raise ValueError(f"SparkCache native test failures: {key}={value}")
-        if isinstance(value, bool) and value is not True:
-            raise ValueError(f"SparkCache native check failed: {key}")
+    if "cuda_13.3" not in build["cuda_version"]:
+        raise ValueError("SparkCache native build did not use CUDA 13.3")
+    expected_native_tests = {
+        "ctest": "pass",
+        "hybrid_page_c_api_byte_correctness": "pass",
+        "hybrid_page_gpu_probe": "pass",
+        "native_python": "pass",
+        "placement_ctypes": "pass",
+        "placement_gpu_probe": "pass",
+        "snapshot_compact_matrix": "pass",
+        "snapshot_ctypes_attested": "pass",
+        "snapshot_gpu_probe": "pass",
+    }
+    for key, expected in expected_native_tests.items():
+        check(sparkcache_native["tests"].get(key), expected, f"SparkCache native test {key}")
+    page_copy = sparkcache_native["tests"].get("page_copy_gpu_modes_1_2_3", "")
+    if not (page_copy == "pass" or page_copy.startswith("not_exercised: exact f220230a benchmark self-rejects")):
+        raise ValueError("SparkCache page-copy test has an unrecognized result")
+    checks.append("SparkCache page-copy test disposition")
+    check(sparkcache_native["destinations"]["placement"], "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so", "SparkCache placement destination")
+    check(sparkcache_native["destinations"]["snapshot"], "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so", "SparkCache snapshot destination")
     checks.append("SparkCache native tests")
 
     xgrammar = load_kv(receipts / "xgrammar-source-receipt.txt")

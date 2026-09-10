@@ -385,6 +385,8 @@ def _r33_image_receipt_document(bundle_sha):
         "verification": {"checked_files": {
             "/opt/local-inference/nccl/lib/libnccl.so.2.31.2": nccl_sha,
             "/opt/sparkring/sircl/libspark_transport_capi.so": "bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246",
+            "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so": "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93",
+            "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so": "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953",
         }},
     }
 
@@ -413,7 +415,7 @@ def test_r33_receipt_renders_canonical_managed_tp4_environment(tmp_path, manifes
         assert env["SPARK_TP4_CONTROL_PORT0"] == env["SPARK_TP4_GRAPH_CONTROL_PORT0"]
 
 
-def test_r33_sparkcache_rejected_without_receipt_bound_native_libraries(tmp_path, manifest_bundle, monkeypatch):
+def test_r33_sparkcache_renders_receipt_bound_native_libraries(tmp_path, manifest_bundle, monkeypatch):
     manifest_sha = mesh_profile.sha(manifest_bundle / "sparkring-overlay-manifest.json")
     monkeypatch.setitem(mesh_profile.PINS, "canonical_bundle_manifest_sha256", manifest_sha)
     receipt = tmp_path / "r33-image.json"
@@ -422,7 +424,31 @@ def test_r33_sparkcache_rejected_without_receipt_bound_native_libraries(tmp_path
     data = json.loads(site.read_text())
     data["runtime_profile"] = "tp4-dcp1-sparkcache"
     site.write_text(json.dumps(data))
-    with pytest.raises(ValueError, match="placement and snapshot"):
+    output = tmp_path / "r33-cache"
+    mesh_profile.render(site, manifest_bundle, output, receipt)
+    for rank in range(4):
+        env = mesh_profile.defaults(output / f"rank{rank}.env")
+        assert env["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1-sparkcache"
+        assert env["SPARKCACHE_ENABLED"] == env["SPARKCACHE_ASYNC_PAGE_CAPTURE"] == "1"
+        assert env["SPARKCACHE_PLACEMENT_LIBRARY_PATH"] == "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so"
+        assert env["SPARKCACHE_PLACEMENT_LIBRARY_SHA256"] == "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93"
+        assert env["SPARKCACHE_SNAPSHOT_LIBRARY_PATH"] == "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so"
+        assert env["SPARKCACHE_SNAPSHOT_LIBRARY_SHA256"] == "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953"
+        assert env["SPARKCACHE_SOURCE_LEASE_CONTRACT"].startswith("/opt/venv/")
+
+
+def test_r33_sparkcache_rejects_unbound_native_library(tmp_path, manifest_bundle, monkeypatch):
+    manifest_sha = mesh_profile.sha(manifest_bundle / "sparkring-overlay-manifest.json")
+    monkeypatch.setitem(mesh_profile.PINS, "canonical_bundle_manifest_sha256", manifest_sha)
+    document = _r33_image_receipt_document(manifest_sha)
+    document["verification"]["checked_files"]["/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so"] = "0" * 64
+    receipt = tmp_path / "r33-image.json"
+    receipt.write_text(json.dumps(document))
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data["runtime_profile"] = "tp4-dcp1-sparkcache"
+    site.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="does not bind"):
         mesh_profile.render(site, manifest_bundle, tmp_path / "rejected", receipt)
 
 

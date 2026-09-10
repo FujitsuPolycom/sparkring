@@ -95,6 +95,17 @@ def validate_external_profile(root: Path = PROFILE_ROOT) -> dict:
             concrete(key)
         if profile_name == "tp4-dcp1-sparkcache":
             concrete("SPARKCACHE_CACHE_NAMESPACE")
+            native = contract["sparkcache_native"]
+            for key, expected in {
+                "SPARKCACHE_PLACEMENT_LIBRARY_PATH": native["placement_path"],
+                "SPARKCACHE_PLACEMENT_LIBRARY_SHA256": native["placement_sha256"],
+                "SPARKCACHE_SNAPSHOT_LIBRARY_PATH": native["snapshot_path"],
+                "SPARKCACHE_SNAPSHOT_LIBRARY_SHA256": native["snapshot_sha256"],
+                "SPARKCACHE_VLLM_ROOT": native["vllm_root"],
+                "SPARKCACHE_SOURCE_LEASE_CONTRACT": native["lease_contract"],
+            }.items():
+                if os.environ.get(key) != expected:
+                    raise RuntimeError(f"managed SparkCache profile requires {key}={expected}")
         elif os.environ.get("SPARKCACHE_ENABLED") != "0":
             raise RuntimeError("cache-disabled TP4 profile requires SPARKCACHE_ENABLED=0")
     return selected

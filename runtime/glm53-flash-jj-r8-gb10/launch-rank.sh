@@ -146,6 +146,11 @@ esac
 : "${SPARKCACHE_BUFFER_BUDGET_BYTES:=0}"
 : "${SPARKCACHE_SOURCE_OVERLAY:=}"
 : "${SPARKCACHE_SOURCE_LEASE_CONTRACT:=}"
+: "${SPARKCACHE_PLACEMENT_LIBRARY_PATH:=/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so}"
+: "${SPARKCACHE_PLACEMENT_LIBRARY_SHA256:=}"
+: "${SPARKCACHE_SNAPSHOT_LIBRARY_PATH:=/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_snapshot.so}"
+: "${SPARKCACHE_SNAPSHOT_LIBRARY_SHA256:=4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5}"
+: "${SPARKCACHE_VLLM_ROOT:=/usr/local/lib/python3.12/dist-packages}"
 : "${VLLM_KV_METRICS_OVERLAY:=}"
 : "${MULTIMODAL_INPUTS:=1}"
 : "${SOCKET_IFNAME:=enP7s7}"
@@ -252,10 +257,32 @@ case "${SOURCE_IMAGE_PROFILE}" in
     [[ "${NCCL_LIBRARY_PATH}" == /opt/local-inference/nccl/lib/libnccl.so.2 ]] || \
       die 'R33 TP4 requires installed NCCL 2.31.2' ;;
   tp4-dcp1-sparkcache)
-    die 'R33 SparkCache requires receipt-bound /opt/venv placement and snapshot libraries' ;;
+    r33_profile=1
+    [[ "${SPARKRING_PROFILE_MODE:-}" == custom && "${SPARKRING_MANAGED_MESH_RENDERED:-0}" == 1 ]] || \
+      die 'R33 SparkCache requires the canonical managed custom profile'
+    [[ "${SPARKCACHE_ENABLED}" == 1 && "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 && \
+       "${SPARKCACHE_ACCESS_MODE}" == read-write ]] || \
+      die 'R33 SparkCache requires bounded read-write asynchronous capture'
+    [[ "${VLLM_SPARK_TP4_MODE}" == custom && "${VLLM_SPARK_TP4_VOCAB_MODE}" == custom ]] || \
+      die 'R33 SparkCache requires custom all-reduce and vocabulary transports'
+    [[ "${VLLM_B12X_KDA_PREFILL_COALESCING:-0}" == 1 && \
+       "${VLLM_GLM53_MHC_PREFILL_SHARD:-0}" == 1 && \
+       "${VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH:-0}" == 1 ]] || \
+      die 'R33 SparkCache requires coalescing, mHC, and GDN metadata fast path'
+    [[ "${NCCL_LIBRARY_PATH}" == /opt/local-inference/nccl/lib/libnccl.so.2 ]] || \
+      die 'R33 SparkCache requires installed NCCL 2.31.2'
+    [[ "${SPARKCACHE_PLACEMENT_LIBRARY_PATH}" == /opt/sparkring/sparkcache/lib/libspark_cache_placement.so && \
+       "${SPARKCACHE_PLACEMENT_LIBRARY_SHA256}" == d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93 && \
+       "${SPARKCACHE_SNAPSHOT_LIBRARY_PATH}" == /opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so && \
+       "${SPARKCACHE_SNAPSHOT_LIBRARY_SHA256}" == 7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953 && \
+       "${SPARKCACHE_VLLM_ROOT}" == /opt/venv/lib/python3.12/site-packages && \
+       "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" == /opt/venv/lib/python3.12/site-packages/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json ]] || \
+      die 'R33 SparkCache native and lease paths differ from its receipt' ;;
   *) die 'Unsupported source-composed runtime profile' ;;
 esac
-if [[ -n "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" && "${SOURCE_IMAGE_PROFILE}" != tp4-dcp1-mtp3-sparkcache ]]; then
+if [[ -n "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" && \
+      "${SOURCE_IMAGE_PROFILE}" != tp4-dcp1-mtp3-sparkcache && \
+      "${SOURCE_IMAGE_PROFILE}" != tp4-dcp1-sparkcache ]]; then
   die 'SPARKCACHE_SOURCE_LEASE_CONTRACT requires the source SparkCache profile'
 fi
 if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
@@ -422,7 +449,8 @@ if [[ "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 ]]; then
   esac
 fi
 
-if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-mtp3-sparkcache ]]; then
+if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-mtp3-sparkcache || \
+      "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-sparkcache ]]; then
   # These are the bounded capacities named by the source-image profile. Reject
   # inherited operator defaults instead of allocating larger unqualified buffers.
   for setting in SPARKCACHE_ENABLED=1 SPARKCACHE_ACCESS_MODE=read-write \
@@ -981,6 +1009,8 @@ if [[ "${SPARKCACHE_ENABLED}" == 1 ]]; then
   export SPARKCACHE_ASYNC_PAGE_CAPTURE
   export SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT
   export SOURCE_IMAGE_PROFILE SPARKCACHE_SOURCE_LEASE_CONTRACT
+  export SPARKCACHE_PLACEMENT_LIBRARY_PATH SPARKCACHE_SNAPSHOT_LIBRARY_PATH
+  export SPARKCACHE_SNAPSHOT_LIBRARY_SHA256 SPARKCACHE_VLLM_ROOT
   export TARGET_CHECKPOINT_FINGERPRINT DRAFT_CHECKPOINT_FINGERPRINT
   kv_transfer_config="$(python3 - <<'PY'
 import json
@@ -1008,7 +1038,7 @@ extra = {
     "spark_cache_ttl_seconds": integer("SPARKCACHE_TTL_SECONDS"),
     "spark_cache_min_span_tokens": integer("SPARKCACHE_MIN_SPAN_TOKENS"),
     "spark_cache_max_span_tokens": integer("SPARKCACHE_MAX_SPAN_TOKENS"),
-    "spark_cache_cuda_placement_library": "/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so",
+    "spark_cache_cuda_placement_library": os.environ["SPARKCACHE_PLACEMENT_LIBRARY_PATH"],
     "spark_cache_cuda_placement_library_sha256": os.environ["SPARKCACHE_PLACEMENT_LIBRARY_SHA256"],
     "spark_cache_cuda_placement_arena_bytes": integer("SPARKCACHE_CUDA_ARENA_BYTES"),
     "spark_cache_cuda_restore_io_workers": integer("SPARKCACHE_CUDA_RESTORE_IO_WORKERS"),
@@ -1016,11 +1046,11 @@ extra = {
     "spark_cache_max_pending_restores": integer("SPARKCACHE_MAX_PENDING_RESTORES"),
     "spark_cache_clear_once": os.environ["SPARKCACHE_CLEAR_ONCE"],
     "spark_cache_async_page_capture": os.environ["SPARKCACHE_ASYNC_PAGE_CAPTURE"] == "1",
-    "spark_cache_async_page_capture_library": "/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_snapshot.so",
-    "spark_cache_async_page_capture_library_sha256": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
+    "spark_cache_async_page_capture_library": os.environ["SPARKCACHE_SNAPSHOT_LIBRARY_PATH"],
+    "spark_cache_async_page_capture_library_sha256": os.environ["SPARKCACHE_SNAPSHOT_LIBRARY_SHA256"],
     "spark_cache_async_page_capture_slot_bytes": integer("SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES"),
     "spark_cache_async_page_capture_slot_count": integer("SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT"),
-    "spark_cache_async_page_capture_vllm_root": "/usr/local/lib/python3.12/dist-packages",
+    "spark_cache_async_page_capture_vllm_root": os.environ["SPARKCACHE_VLLM_ROOT"],
     "spark_cache_async_page_capture_lease_contract": "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-manager-page-async-contract-55969c16.json",
 }
 if os.environ["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1-mtp3-sparkcache":
@@ -1029,6 +1059,13 @@ if os.environ["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1-mtp3-sparkcache":
         "spark_cache_async_page_capture_lease_contract": os.environ["SPARKCACHE_SOURCE_LEASE_CONTRACT"],
         "spark_cache_async_page_capture_library": "/opt/sparkcache-native/libspark_cache_snapshot.so",
         "spark_cache_async_page_capture_library_sha256": "cc44b69c9e01aaeb6b94f46cd649e2ec5972fc6b29d1a41b7b033a82ce788f39",
+        "spark_cache_cuda_restore_arena_budget_bytes": 268435456,
+        "spark_cache_page_snapshot_interval_tokens": 0,
+    })
+elif os.environ["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1-sparkcache":
+    extra.update({
+        "spark_cache_async_page_capture_lease_mode": "connector-jobs",
+        "spark_cache_async_page_capture_lease_contract": os.environ["SPARKCACHE_SOURCE_LEASE_CONTRACT"],
         "spark_cache_cuda_restore_arena_budget_bytes": 268435456,
         "spark_cache_page_snapshot_interval_tokens": 0,
     })
@@ -1105,6 +1142,17 @@ if [[ "${r33_profile}" == 1 ]]; then
     -e "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH=${VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH}"
     -e "NCCL_LOCAL_INFERENCE_PATH=${NCCL_LIBRARY_PATH}"
   )
+  if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-sparkcache ]]; then
+    r33_environment+=(
+      -e "SPARKCACHE_CACHE_NAMESPACE=${SPARKCACHE_CACHE_NAMESPACE}"
+      -e "SPARKCACHE_PLACEMENT_LIBRARY_PATH=${SPARKCACHE_PLACEMENT_LIBRARY_PATH}"
+      -e "SPARKCACHE_PLACEMENT_LIBRARY_SHA256=${SPARKCACHE_PLACEMENT_LIBRARY_SHA256}"
+      -e "SPARKCACHE_SNAPSHOT_LIBRARY_PATH=${SPARKCACHE_SNAPSHOT_LIBRARY_PATH}"
+      -e "SPARKCACHE_SNAPSHOT_LIBRARY_SHA256=${SPARKCACHE_SNAPSHOT_LIBRARY_SHA256}"
+      -e "SPARKCACHE_VLLM_ROOT=${SPARKCACHE_VLLM_ROOT}"
+      -e "SPARKCACHE_SOURCE_LEASE_CONTRACT=${SPARKCACHE_SOURCE_LEASE_CONTRACT}"
+    )
+  fi
 fi
 
 container_command=(docker "${container_action[@]}" \

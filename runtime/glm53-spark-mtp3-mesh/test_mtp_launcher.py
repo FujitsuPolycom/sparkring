@@ -184,6 +184,75 @@ def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture)
     assert selected["tensor_parallel_size"] == 4
 
 
+def test_r33_tp4_sparkcache_uses_receipt_bound_installed_libraries(launch_fixture):
+    launch, _, _ = launch_fixture
+    nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"
+    placement = "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so"
+    snapshot = "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so"
+    lease = "/opt/venv/lib/python3.12/site-packages/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json"
+    result, arguments, _ = launch(0, {
+        "SOURCE_IMAGE_PROFILE": "tp4-dcp1-sparkcache",
+        "SPARKRING_PROFILE_MODE": "custom",
+        "SPARKRING_MANAGED_MESH_RENDERED": "1",
+        "VLLM_SPARK_TP4_MODE": "custom",
+        "VLLM_SPARK_TP4_VOCAB_MODE": "custom",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
+        "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
+        "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+        "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+        "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
+        "SPARKCACHE_ENABLED": "1",
+        "SPARKCACHE_ACCESS_MODE": "read-write",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE": "1",
+        "SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT": "2",
+        "SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES": "536870912",
+        "SPARKCACHE_LOAD_THREADS": "2",
+        "SPARKCACHE_MAX_PENDING_RESTORES": "2",
+        "SPARKCACHE_CUDA_RESTORE_IO_WORKERS": "2",
+        "SPARKCACHE_CUDA_ARENA_BYTES": "67108864",
+        "SPARKCACHE_BUFFER_BUDGET_BYTES": "1342177280",
+        "SPARKCACHE_MAX_BYTES": "8589934592",
+        "SPARKCACHE_LOW_WATERMARK_BYTES": "6442450944",
+        "SPARKCACHE_MIN_SPAN_TOKENS": "4096",
+        "SPARKCACHE_MAX_SPAN_TOKENS": "65536",
+        "SPARKCACHE_PUBLICATION_SCHEMA": "tail-cow-v2",
+        "KV_CACHE_MEMORY_BYTES": "25769803776",
+        "MAX_MODEL_LEN": "1048576",
+        "SPARKCACHE_CACHE_NAMESPACE": "r33-cache-fixture",
+        "SPARKCACHE_PLACEMENT_LIBRARY_PATH": placement,
+        "SPARKCACHE_PLACEMENT_LIBRARY_SHA256": "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93",
+        "SPARKCACHE_SNAPSHOT_LIBRARY_PATH": snapshot,
+        "SPARKCACHE_SNAPSHOT_LIBRARY_SHA256": "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953",
+        "SPARKCACHE_VLLM_ROOT": "/opt/venv/lib/python3.12/site-packages",
+        "SPARKCACHE_SOURCE_LEASE_CONTRACT": lease,
+        "NCCL_LIBRARY_PATH": nccl,
+        "NCCL_LIBRARY_SHA256": "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47",
+        "SIRCL_BUNDLE_HOST_ROOT": "",
+        "SPARKRING_DECLARED_SIRCL_NATIVE_SHA256": "b" * 64,
+        "SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256": "c" * 64,
+    })
+    assert result.returncode == 0, result.stderr
+    assert _option(arguments, "--entrypoint") == "/opt/sparkring/bin/sparkring-r33"
+    assert "/opt/sparkcache-jj-runtime/verify_sources.py" not in arguments
+    connector = json.loads(_option(arguments, "--kv-transfer-config"))["kv_connector_extra_config"]
+    assert connector["spark_cache_cuda_placement_library"] == placement
+    assert connector["spark_cache_async_page_capture_library"] == snapshot
+    assert connector["spark_cache_async_page_capture_vllm_root"] == "/opt/venv/lib/python3.12/site-packages"
+    assert connector["spark_cache_async_page_capture_lease_contract"] == lease
+    environment = dict(
+        arguments[index + 1].split("=", 1)
+        for index, value in enumerate(arguments[:-1])
+        if value == "-e" and "=" in arguments[index + 1]
+    )
+    entrypoint_path = HERE.parent / "sparkring/jovian-r33/image/entrypoint.py"
+    spec = importlib.util.spec_from_file_location("r33_cache_candidate_entrypoint", entrypoint_path)
+    entrypoint = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(entrypoint)
+    with mock.patch.dict(os.environ, environment, clear=True), mock.patch.object(entrypoint.subprocess, "run"):
+        selected = entrypoint.validate_external_profile(HERE.parent / "sparkring/jovian-r33/profiles")
+    assert selected["sparkcache"] is True
+
+
 @pytest.mark.parametrize('rank', range(4))
 def test_prepare_only_creates_stopped_container_without_readiness_wait(launch_fixture, rank):
     launch, _, _ = launch_fixture

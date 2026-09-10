@@ -6,7 +6,7 @@ The final image uses content-addressed media runtime `sha256:a1a72e18ad49d99f619
 
 `artifact-lock.json` rejects changed stable inputs and explicitly excludes the CUDA 13.0 TorchAudio wheel. The source-built CUDA 13.3 TorchAudio wheel is required. Context preparation requires the terminal FlashInfer Python and ARM64 JIT-cache wheel pair and verifies both against the completed SHA256SUMS and resume receipts.
 
-The goal-complete image also requires ARM64/SM121 SparkCache placement and snapshot libraries at `artifacts/sparkcache-native/`, with schema `sparkring-r33-sparkcache-native-build/v1`. Their artifact-lock hashes and source tree remain explicit `PENDING_FROM_R33_SPARKCACHE_NATIVE` placeholders until the native build receipt supplies exact values. Context preparation fails before creating its requested destination while either placeholder remains. Do not build the candidate from a cache-disabled context and later treat it as the generic SparkCache-capable image.
+The goal-complete image requires the ARM64/SM121 SparkCache placement and snapshot libraries at `artifacts/sparkcache-native/`, with schema `sparkring-r33-sparkcache-native-build/v1`. The artifact lock binds placement SHA `d89c9fda...`, snapshot SHA `7da9e72f...`, source tree `86ef46de...`, and source archive SHA `d61bb093...`. Context preparation validates these bytes and their native build receipt before admitting the cache profile.
 
 Run the local contract tests from the repository root:
 

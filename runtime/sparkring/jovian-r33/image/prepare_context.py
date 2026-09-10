@@ -219,7 +219,7 @@ def main() -> None:
     shutil.copy2(contract, context / "contracts" / contract.name)
 
     receipts = context / "receipts"
-    receipts.mkdir()
+    receipts.mkdir(exist_ok=True)
     receipt_inputs = {
         "artifact-lock.json": HERE / "artifact-lock.json",
         "flashinfer-SHA256SUMS": args.build_root / "artifacts/flashinfer/SHA256SUMS",
