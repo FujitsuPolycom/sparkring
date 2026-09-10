@@ -21,45 +21,32 @@ values prove admission only; they do not prove that a runtime path executed.
 
 ## Continuation-prefill coalescing
 
-The locked R33 source composition does not implement B12X continuation-prefill
-coalescing. Its Kimi GDN cache specification reserves one B12X prefill
-checkpoint, and its B12X API accepts one checkpoint destination per request.
-vLLM commit `8133d8210f5c8f71389add06e4e0033ee7f13b71` removes redundant
-scheduler split points only when every recurrent group already exports a
-multi-checkpoint set. Capacity one makes that branch ineligible. The source
-does not read `VLLM_B12X_KDA_PREFILL_COALESCING`.
+Status: **implemented, GPU qualification pending**. The vLLM source composition
+identified by tree `6c54193a3e9b842fa381095efa25dbb7f741402d` carries sparse
+checkpoint plans through scheduling, allocation, worker metadata and Kimi GDN
+execution. It preserves R33's packed FlashKDA metadata path. The B12X path uses
+fixed four-column checkpoint metadata and requires a B12X package that supports
+four transactional checkpoint exports.
 
-The activation verifier field `continuation_coalesced_groups` therefore has no
-valid producer in this source composition. Do not populate it from the
-environment or infer it from aggregate throughput. A compatible source port
-requires the four-checkpoint B12X export contract, the vLLM scheduler and
-worker ownership contract, and one of these diagnostics:
+`VLLM_B12X_KDA_PREFILL_COALESCING=1` admits the path only for GLM5Next BF16,
+model runner V2, TP4 with DCP1, DCP2 or DCP4, PP1/DP1, an 8,192-token scheduler
+budget, aligned recurrent caching with retention interval zero, and static MTP3
+or no speculation. Unsupported configurations fail during initialization.
+Cache hits, resumed requests, preempted requests, asynchronous external loads,
+multimodal requests and concurrent service use the ordinary scheduler path.
 
-1. Add a bounded diagnostic counter at the scheduler branch that removes an
-   exported checkpoint from `reuse_stops`, then persist its value in a status
-   file.
-2. Capture the scheduler's chosen chunk boundaries and exported checkpoint
-   positions in a bounded diagnostic record, then require an 8,192-token
-   continuation chunk whose internal checkpoint avoided an extra split.
+Set `VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT` to a positive integer on every
+rank. A qualifying activation must capture a bounded record with the request
+identifier, an 8,192-token span and the checkpoint token positions selected on
+every rank. The default value is zero and produces no per-request records.
+Environment values alone do not prove execution.
 
-The B12X and vLLM changes alter both source identities and require a rebuilt
-image receipt. Until that image exists, an activation can qualify the model,
-transport, mHC path, and liveness, but it cannot claim that
-continuation-prefill coalescing is implemented or executed.
-
-The compatible feature branches identify these source changes:
-
-| Repository | Commit | Resulting behavior |
-|---|---|---|
-| FujitsuPolycom/b12x | `cc8f12aa` | Adds multiple recurrent checkpoint destinations to the B12X KDA prefill API and kernels. |
-| FujitsuPolycom/b12x | `70fe4197` | Raises the bounded checkpoint capacity to four and validates every destination. |
-| FujitsuPolycom/vllm | `646826e416` | Carries explicit checkpoint plans through scheduling, allocation, worker metadata, and Kimi GDN execution. |
-| FujitsuPolycom/vllm | `19c8d3bad2` | Preserves both DCP4 checkpoint grids within the four-state capacity. |
-| FujitsuPolycom/vllm | `a6c8407` | Admits the same bounded contract for TP4/DCP1 and TP4/DCP2. |
-
-The R33 source contains newer packed FlashKDA checkpoint support. A port must
-preserve that path while adding the B12X matrix-shaped metadata contract; using
-the older files wholesale would remove R33 behavior.
+The source patch and complete changed-file manifest are packaged as
+`vllm-source-composition.patch` and
+`vllm-source-composition-manifest.json`. Their hashes must match the image's
+source lock. GPU correctness, long-prefill liveness and throughput remain
+unqualified until a rebuilt ARM64 image supplies matching native, wheel and
+activation receipts.
 
 ## Collector behavior
 

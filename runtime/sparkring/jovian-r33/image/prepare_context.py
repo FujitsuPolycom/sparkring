@@ -86,6 +86,8 @@ def main() -> None:
     required_files = [
         *(HERE / name for name in ("Dockerfile.candidate", "entrypoint.py", "verify_candidate.py", "verify_context.py", "validate_receipts.py", "capture_installed.py", "finalize_lock.py", "download_report.py", "sitecustomize.py")),
         runtime / "sparkring/jovian-r33/contracts/vllm-connector-jobs-r33-prefill-a2ad36d.json",
+        runtime / "sparkring/jovian-r33/patches/vllm-r33-sparkring.patch",
+        runtime / "sparkring/jovian-r33/patches/vllm-r33-sparkring.manifest.json",
         args.build_root / "artifacts/vllm-package/verification.json",
         args.build_root / "artifacts/vllm-package/import-smoke-v2.json",
         args.build_root / "artifacts/flashinfer/SHA256SUMS",
@@ -224,6 +226,8 @@ def main() -> None:
     receipts.mkdir(exist_ok=True)
     receipt_inputs = {
         "artifact-lock.json": HERE / "artifact-lock.json",
+        "vllm-source-composition.patch": runtime / "sparkring/jovian-r33/patches/vllm-r33-sparkring.patch",
+        "vllm-source-composition-manifest.json": runtime / "sparkring/jovian-r33/patches/vllm-r33-sparkring.manifest.json",
         "flashinfer-SHA256SUMS": args.build_root / "artifacts/flashinfer/SHA256SUMS",
         "flashinfer-source-receipt.txt": args.build_root / "artifacts/flashinfer/source-receipt.txt",
         "flashinfer-resume-source-receipt.json": args.build_root / "artifacts/flashinfer/resume-source-receipt.json",

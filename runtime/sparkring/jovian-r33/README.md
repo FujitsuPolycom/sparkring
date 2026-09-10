@@ -14,7 +14,7 @@ Its release source lock has SHA256
 
 | Component | R33 source |
 |---|---|
-| vLLM | `voipmonitor/vllm` at `ae89131442359dc332d9c46009be3c1f8cdee0b4` |
+| vLLM | `voipmonitor/vllm` at `ae89131442359dc332d9c46009be3c1f8cdee0b4` plus [`patches/vllm-r33-sparkring.manifest.json`](patches/vllm-r33-sparkring.manifest.json), producing tree `6c54193a3e9b842fa381095efa25dbb7f741402d` |
 | B12X | `FujitsuPolycom/b12x` at `68acfc14893c087aa9b3120bb984fde4c4e7a21f` |
 | LMCache | `local-inference-lab/LMCache` at `29bc5a2efde737c436b04499eb62cd1776cebeec` |
 | FlashInfer | `803c4664f4771ddc418f20a57f752469a237a825` |
@@ -30,8 +30,9 @@ contains CUDA 13.3, PyTorch source
 compiled from patched tree `aa7028b2b2a55af4817f8d742e17717dd4509ee7`
 with library SHA-256
 `84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47`.
-The native artifacts and vLLM ARM64 wheel are built; distributed GPU, model,
-TP2/TP4, and cache-recovery qualification remains pending.
+The source and package contracts are implemented. Rebuilt vLLM/B12X artifacts,
+distributed GPU execution, model behavior, TP2/TP4, and cache-recovery
+qualification remain pending.
 
 ## Integration rules
 

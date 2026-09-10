@@ -65,7 +65,12 @@ def validate_template(name: str, asset_root: Path | None = None) -> dict:
         "NUM_SPECULATIVE_TOKENS": str(contract["model"]["speculation"]["num_speculative_tokens"]),
         "LOAD_FORMAT": contract["model"]["loader"]["load_format"],
         "CUDAGRAPH_CAPTURE_SIZES": ",".join(map(str, selected["cudagraph_capture_sizes"])),
-        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": (
+            "0" if name == "tp2-dcp1" else "1"
+        ),
+        "VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT": (
+            "0" if name == "tp2-dcp1" else "4"
+        ),
         "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
         "SPARKCACHE_ENABLED": "1" if selected["sparkcache"] else "0",
     }

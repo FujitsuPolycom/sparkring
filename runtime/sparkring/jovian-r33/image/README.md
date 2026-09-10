@@ -4,7 +4,13 @@ This directory assembles a local, model-neutral candidate from the exact R33 ARM
 
 The final image uses content-addressed media runtime `sha256:a1a72e18ad49d99f6194a2585bfdc5f32d79180cdf2cd015c0d0d451479d6a42`. That layer is verified as a child of `local/sparkring:r33-arm64-foundation` and already contains the qualified Ubuntu FFmpeg 6.1.1 runtime and exact media wheels. It inherits CUDA 13.3 and PyTorch `cf30153c4c131c8164ee7798e5022d810682e2cb`. The candidate replaces the canonical NCCL byte with SparkRing routing SHA `84a4b8d8...` at the same single authoritative `/opt/local-inference/nccl/lib` path. SIRCL SHA `bea00f2b...`, the LMCache cuMem interposer, canonical external profile contract, and lease contract are installed separately and content-checked.
 
-`artifact-lock.json` rejects changed stable inputs and explicitly excludes the CUDA 13.0 TorchAudio wheel. The source-built CUDA 13.3 TorchAudio wheel is required. Context preparation requires the terminal FlashInfer Python and ARM64 JIT-cache wheel pair and verifies both against the completed SHA256SUMS and resume receipts.
+`artifact-lock.json` rejects changed stable inputs and explicitly excludes the CUDA 13.0 TorchAudio wheel. The source-built CUDA 13.3 TorchAudio wheel is required. Context preparation requires rebuilt vLLM and B12X wheels plus the terminal FlashInfer Python and ARM64 JIT-cache wheel pair. Each artifact must match its completed SHA256SUMS receipt.
+
+The vLLM source composition is reproduced from
+`patches/vllm-r33-sparkring.patch`; its manifest binds the base commit, the
+continuation port, every changed file, the resulting tree and the required
+B12X checkpoint capability. The package step also materializes the exact
+commit-bound FlashAttention Python helpers before checking the wheel RECORD.
 
 The goal-complete image requires the ARM64/SM121 SparkCache placement and snapshot libraries at `artifacts/sparkcache-native/`, with schema `sparkring-r33-sparkcache-native-build/v1`. The artifact lock binds placement SHA `d89c9fda...`, snapshot SHA `7da9e72f...`, source tree `86ef46de...`, and source archive SHA `d61bb093...`. Context preparation validates these bytes and their native build receipt before admitting the cache profile.
 

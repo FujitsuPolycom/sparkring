@@ -4,14 +4,14 @@
   "image": {
     "selection": "external-immutable-receipt",
     "artifact_lock": "../image/artifact-lock.json",
-    "artifact_lock_sha256": "4d8ebdefc097ce48ae46f9433586598c2aaa666a07ebd3af357e62aadcc0f4ec",
+    "artifact_lock_sha256": "d172cf7330baaff78e38d3826798afcb6a18c7d87571c53d37b4db0f86010555",
     "required_platform": "linux/arm64",
     "required_sources": {
       "vllm_head": "ae89131442359dc332d9c46009be3c1f8cdee0b4",
-      "vllm_integrated_tree": "ac8e94ae4ae84d6edfffd97b0d60545c9714e62f",
-      "vllm_cached_diff_sha256": "950d586949d5cf7f70887b89c5861eca77f817bed4c7a7a5ee939bafdd6fb49a",
-      "vllm_status_sha256": "f7c5387613e07a4610a2901969e602d4e24d49d34c4ef8aa149fda16f1a1676c",
-      "vllm_status_lines": 20,
+      "vllm_integrated_tree": "6c54193a3e9b842fa381095efa25dbb7f741402d",
+      "vllm_cached_diff_sha256": "a0840292894c227036b8a2f12fe9705450c456061cee12e08474e85f34287ab9",
+      "vllm_status_sha256": "0eda60c3efcc6a9fbc65e131f1b0164c582cc7de4783fb284cdfa82df6a6bcfe",
+      "vllm_status_lines": 33,
       "vllm_native_tree": "386191c06df9c4232cb2f48012968f48cfdc6eee",
       "vllm_flash_attn_commit": "f3e1a4f74c99145c0717709860bf765de1703779",
       "b12x_commit": "68acfc14893c087aa9b3120bb984fde4c4e7a21f",
@@ -57,7 +57,10 @@
       "rust_toolchain_sha256": "094c9c36531911c5cc7dd6ab2d3069ab8dcd744d6239b0bda1387b243dfc391e",
       "sircl_commit": "3be025668705a9f72dd08a215230784e3c42c977",
       "sircl_tree": "18e13dad5071b0a153f2c33c9c1720a3eca50318",
-      "sircl_source_archive_sha256": "fe3e12de5cb1b392f015a751d7b27b6210c95fa7613113fd7895990e2041db0f"
+      "sircl_source_archive_sha256": "fe3e12de5cb1b392f015a751d7b27b6210c95fa7613113fd7895990e2041db0f",
+      "vllm_continuation_port_commit": "b611611a643502542c2d900057eb47e407b8379e",
+      "vllm_continuation_port_tree": "afea43a927e1989a9ec4d9d4f28247bcf0feb98a",
+      "vllm_source_manifest_sha256": "ee8fd718e95713f7bec62409a2ad0cc9c805cb280b600e2489b40c2dd8bd9a16"
     },
     "required_receipts": [
       "arm-wheels-SHA256SUMS",
@@ -130,7 +133,6 @@
   },
   "common_environment": {
     "SPARKRING_PROFILE_MODE": "custom",
-    "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
     "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
     "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
     "VLLM_NCCL_SO_PATH": "/opt/local-inference/nccl/lib/libnccl.so.2",
@@ -156,7 +158,18 @@
       "physical_dacs_per_rank": 1,
       "sparkcache": false,
       "kv_cache_memory_bytes": 9395240960,
-      "cudagraph_capture_sizes": [1, 2, 4, 8, 12, 16, 20, 24, 28, 32],
+      "cudagraph_capture_sizes": [
+        1,
+        2,
+        4,
+        8,
+        12,
+        16,
+        20,
+        24,
+        28,
+        32
+      ],
       "lifecycle": "explicit-create-and-start-with-active-memory-guard"
     },
     "tp4-dcp1": {
@@ -170,7 +183,24 @@
       "host_domains": "dual",
       "sparkcache": false,
       "kv_cache_memory_bytes": 25769803776,
-      "cudagraph_capture_sizes": [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64],
+      "cudagraph_capture_sizes": [
+        4,
+        8,
+        12,
+        16,
+        20,
+        24,
+        28,
+        32,
+        36,
+        40,
+        44,
+        48,
+        52,
+        56,
+        60,
+        64
+      ],
       "lifecycle": "runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md"
     },
     "tp4-dcp1-sparkcache": {
@@ -185,7 +215,24 @@
       "host_domains": "dual",
       "sparkcache": true,
       "kv_cache_memory_bytes": 25769803776,
-      "cudagraph_capture_sizes": [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64],
+      "cudagraph_capture_sizes": [
+        4,
+        8,
+        12,
+        16,
+        20,
+        24,
+        28,
+        32,
+        36,
+        40,
+        44,
+        48,
+        52,
+        56,
+        60,
+        64
+      ],
       "lifecycle": "runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md"
     }
   }

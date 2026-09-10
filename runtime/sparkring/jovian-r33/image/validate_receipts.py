@@ -80,6 +80,54 @@ def validate(lock: dict, inputs: dict, receipts: Path) -> dict:
         require_equal(actual, expected, label)
         checks.append(label)
 
+    composition_manifest_path = receipts / "vllm-source-composition-manifest.json"
+    composition_patch_path = receipts / "vllm-source-composition.patch"
+    check(
+        hashlib.sha256(composition_manifest_path.read_bytes()).hexdigest(),
+        sources["vllm_source_manifest_sha256"],
+        "vllm source composition manifest",
+    )
+    composition = load_json(composition_manifest_path)
+    check(composition["base"]["commit"], sources["vllm_head"], "vllm composition base")
+    check(
+        composition["continuation_port"]["commit"],
+        sources["vllm_continuation_port_commit"],
+        "vllm continuation port commit",
+    )
+    check(
+        composition["continuation_port"]["tree"],
+        sources["vllm_continuation_port_tree"],
+        "vllm continuation port tree",
+    )
+    for actual, expected, label in (
+        (composition["result"]["tree"], sources["vllm_integrated_tree"], "tree"),
+        (
+            composition["result"]["cached_diff_sha256"],
+            sources["vllm_cached_diff_sha256"],
+            "cached diff",
+        ),
+        (
+            composition["result"]["status_sha256"],
+            sources["vllm_status_sha256"],
+            "status",
+        ),
+        (
+            composition["result"]["status_lines"],
+            sources["vllm_status_lines"],
+            "status line count",
+        ),
+    ):
+        check(actual, expected, f"vllm composition {label}")
+    dependency = composition["required_b12x_checkpoint_contract"]
+    check(dependency["commit"], sources["b12x_commit"], "vllm composition B12X commit")
+    check(dependency["tree"], sources["b12x_tree"], "vllm composition B12X tree")
+    check(dependency["max_checkpoints"], 4, "vllm composition B12X capacity")
+    check(
+        hashlib.sha256(composition_patch_path.read_bytes()).hexdigest(),
+        composition["patch"]["sha256"],
+        "vllm source composition patch",
+    )
+
     post = load_json(receipts / "post-build-source-identities.json")["sources"]
     post_document = load_json(receipts / "post-build-source-identities.json")
     check(post_document["schema"], "sparkring-r33-post-build-source-identities/v1", "post-build schema")
@@ -120,7 +168,11 @@ def validate(lock: dict, inputs: dict, receipts: Path) -> dict:
     check(package["wheel_sha256"], artifacts["vllm"]["sha256"], "vllm wheel")
     check(package["wheel"], Path(artifacts["vllm"]["source"]).name, "vllm wheel basename")
     check(package["record_valid"], True, "vllm RECORD")
-    check(package["native_to_package_diff"], ["requirements/cuda.txt"], "vllm native/package diff")
+    check(
+        package["native_to_package_diff"],
+        composition["native_reuse"]["changed_paths"],
+        "vllm native/package diff",
+    )
     if any(item.get("machine") != "AArch64" for item in package["native_and_rust_elf"].values()):
         raise ValueError("vLLM package contains a non-AArch64 native payload")
     checks.append("vllm native AArch64 inventory")

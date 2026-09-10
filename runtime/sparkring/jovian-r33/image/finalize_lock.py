@@ -117,7 +117,7 @@ def main() -> None:
         "context_files": context_files,
         "identities": {
             "component_sources": partial["source_identities"],
-            "vllm_source_tree": "ac8e94ae4ae84d6edfffd97b0d60545c9714e62f",
+            "vllm_source_tree": "6c54193a3e9b842fa381095efa25dbb7f741402d",
             "nccl_patched_tree": "aa7028b2b2a55af4817f8d742e17717dd4509ee7",
             "nccl_sha256": "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47",
             "sircl_source_tree": "18e13dad5071b0a153f2c33c9c1720a3eca50318",

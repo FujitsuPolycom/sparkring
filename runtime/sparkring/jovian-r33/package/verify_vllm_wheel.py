@@ -207,6 +207,18 @@ def main() -> None:
             assert archive.read(name) == source_data, name
             source_files_checked += 1
 
+        native_to_package_diff = subprocess.check_output(
+            [
+                "git",
+                "-C",
+                str(args.source_dir),
+                "diff",
+                "--name-only",
+                args.native_tree,
+                args.source_tree,
+            ],
+            text=True,
+        ).splitlines()
         result = {
             "status": "package-structure-and-integrity-qualified-runtime-pending",
             "wheel": args.wheel.name,
@@ -217,7 +229,7 @@ def main() -> None:
             "native_source_tree": args.native_tree,
             "flash_attn_source_commit": args.flash_attn_commit,
             "flash_attn_python_files_byte_checked": len(flash_attn_python),
-            "native_to_package_diff": ["requirements/cuda.txt"],
+            "native_to_package_diff": native_to_package_diff,
             "tag": "cp312-cp312-linux_aarch64",
             "requires_dist": requirements,
             "file_count": len(names),

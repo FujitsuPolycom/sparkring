@@ -27,7 +27,11 @@ def load_module(name: str, filename: str):
     spec = importlib.util.spec_from_file_location(name, HERE / filename)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader
-    spec.loader.exec_module(module)
+    sys.path.insert(0, str(HERE))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.pop(0)
     return module
 
 
@@ -37,6 +41,8 @@ def tp4_environment(contract: dict) -> dict[str, str]:
         "SOURCE_IMAGE_PROFILE": "tp4-dcp1",
         "SPARKRING_PROFILE_MODE": "custom",
         "SPARKRING_MANAGED_MESH_RENDERED": "1",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
+        "VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT": "4",
         "NODE_RANK": "2",
         "MASTER_ADDR": "rank-zero",
         "NCCL_IB_HCA": "=hca0:1,hca1:1,hca2:1,hca3:1",
@@ -86,7 +92,15 @@ class CandidateImageContractTests(unittest.TestCase):
         self.assertEqual(lock["foundation"]["image_id"], "sha256:6704db5df61d1110afaba538554abb024c85edb8f37a98e4e631166a10af3217")
         self.assertEqual(lock["media_runtime"]["image_id"], "sha256:a1a72e18ad49d99f6194a2585bfdc5f32d79180cdf2cd015c0d0d451479d6a42")
         artifacts = {item["name"]: item for item in lock["artifacts"]}
-        self.assertEqual(artifacts["vllm"]["sha256"], "c1299fe87774a8f05fd2f64b729bf20bfadb2ca168cd6b95ad7779a6e1f90cac")
+        self.assertNotIn("vllm", artifacts)
+        self.assertEqual(
+            lock["source_identities"]["vllm_integrated_tree"],
+            "6c54193a3e9b842fa381095efa25dbb7f741402d",
+        )
+        self.assertEqual(
+            lock["source_identities"]["vllm_continuation_port_commit"],
+            "b611611a643502542c2d900057eb47e407b8379e",
+        )
         self.assertEqual(
             lock["source_identities"]["vllm_flash_attn_commit"],
             "f3e1a4f74c99145c0717709860bf765de1703779",
@@ -107,9 +121,13 @@ class CandidateImageContractTests(unittest.TestCase):
             self.assertNotIn(Path(forbidden).name, selected)
         pending = {item["name"]: item for item in lock["pending_artifacts"]}
         self.assertEqual(
-            set(pending), {"b12x", "flashinfer-python", "flashinfer-jit-cache"}
+            set(pending),
+            {"vllm", "b12x", "flashinfer-python", "flashinfer-jit-cache"},
         )
         self.assertTrue(all(item["required"] for item in pending.values()))
+        self.assertEqual(
+            pending["vllm"]["receipt_sums"], "artifacts/vllm-package/SHA256SUMS"
+        )
         self.assertEqual(pending["b12x"]["receipt_sums"], "artifacts/b12x/SHA256SUMS")
         contract = json.loads((CANONICAL_PROFILES / "profile-contract.json").read_text())
         self.assertEqual(contract["image"]["required_sources"], lock["source_identities"])

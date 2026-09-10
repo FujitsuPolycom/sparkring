@@ -66,6 +66,8 @@ def validate_external_profile(root: Path = PROFILE_ROOT) -> dict:
     if profile_name == "tp2-dcp1":
         required = {
             "SPARKRING_TRANSPORT_PROFILE": "tp2-rocenante-adaptive",
+            "VLLM_B12X_KDA_PREFILL_COALESCING": "0",
+            "VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT": "0",
             "VLLM_SPARK_TP4_MODE": "",
             "VLLM_SPARK_TP4_VOCAB_MODE": "",
             "SPARKCACHE_ENABLED": "0",
@@ -77,6 +79,8 @@ def validate_external_profile(root: Path = PROFILE_ROOT) -> dict:
     else:
         required = {
             "SPARKRING_MANAGED_MESH_RENDERED": "1",
+            "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
+            "VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT": "4",
             "SIRCL_ENABLED": "1",
             "VLLM_SPARK_TP4_MODE": "custom",
             "VLLM_SPARK_TP4_VOCAB_MODE": "custom",

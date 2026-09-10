@@ -101,6 +101,8 @@ def adapt_r33_plan(plan, receipt):
         "SOURCE_IMAGE_PROFILE": "tp2-dcp1",
         "SPARKRING_PROFILE_MODE": "custom",
         "SPARKCACHE_ENABLED": "0",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": "0",
+        "VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT": "0",
         "VLLM_SPARK_TP4_MODE": "",
         "VLLM_SPARK_TP4_VOCAB_MODE": "",
     })

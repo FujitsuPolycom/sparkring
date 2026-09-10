@@ -6,13 +6,14 @@ root=${SPARKRING_R33_ROOT:-/var/tmp/sparkring-r33-20260910}
 source_dir=${VLLM_SOURCE_DIR:-$root/sources/vllm-sparkring}
 native_dir=${VLLM_NATIVE_DIR:-$root/artifacts/vllm-native}
 rust_dir=${VLLM_RUST_DIR:-$root/artifacts/rust}
-work_root=${VLLM_PACKAGE_WORK_ROOT:-$root/work/vllm-package-ac8e94ae}
+work_root=${VLLM_PACKAGE_WORK_ROOT:-$root/work/vllm-package-6c54193a}
 out_dir=${VLLM_PACKAGE_OUT_DIR:-$root/artifacts/vllm-package}
 foundation_image=${SPARKRING_R33_FOUNDATION_IMAGE:-local/sparkring:r33-arm64-foundation}
-version=${VLLM_VERSION_OVERRIDE:-0.26.1rc0+sparkring.r33.ac8e94ae}
+version=${VLLM_VERSION_OVERRIDE:-0.26.1rc0+sparkring.r33.6c54193a}
 expected_head=ae89131442359dc332d9c46009be3c1f8cdee0b4
-expected_package_tree=ac8e94ae4ae84d6edfffd97b0d60545c9714e62f
+expected_package_tree=6c54193a3e9b842fa381095efa25dbb7f741402d
 expected_native_tree=386191c06df9c4232cb2f48012968f48cfdc6eee
+expected_native_inputs_sha=29cdc2dcc079d753acd8ce1b6f470c0cbc6c8a55fe5fe1023271da567c7122a6
 flash_attn_source_dir=${VLLM_FLASH_ATTN_SOURCE_DIR:-$root/build/vllm-native/_deps/vllm-flash-attn-src}
 expected_flash_attn_commit=f3e1a4f74c99145c0717709860bf765de1703779
 expected_rust_bin_sha=cd1cdb2539c79793a92292479b4ec6b99d4e3be3e1a2cadb0fc3f592a99fba5d
@@ -21,7 +22,11 @@ expected_rust_parser_sha=b52494b9f599acc71ccf9e63523fa3b2b173cf395d155eca37b0941
 test "$(uname -m)" = aarch64
 test "$(git -C "$source_dir" rev-parse HEAD)" = "$expected_head"
 test "$(git -C "$source_dir" write-tree)" = "$expected_package_tree"
-test "$(git -C "$source_dir" diff --name-only "$expected_native_tree" "$expected_package_tree")" = requirements/cuda.txt
+test "$(git -C "$source_dir" diff --cached --binary | sha256sum | cut -d' ' -f1)" = a0840292894c227036b8a2f12fe9705450c456061cee12e08474e85f34287ab9
+test "$(git -C "$source_dir" status --porcelain=v1 --untracked-files=all | sha256sum | cut -d' ' -f1)" = 0eda60c3efcc6a9fbc65e131f1b0164c582cc7de4783fb284cdfa82df6a6bcfe
+test "$(git -C "$source_dir" status --porcelain=v1 --untracked-files=all | wc -l)" = 33
+test "$(git -C "$source_dir" archive "$expected_package_tree" -- CMakeLists.txt cmake csrc rust | sha256sum | cut -d' ' -f1)" = "$expected_native_inputs_sha"
+test "$(git -C "$source_dir" archive "$expected_native_tree" -- CMakeLists.txt cmake csrc rust | sha256sum | cut -d' ' -f1)" = "$expected_native_inputs_sha"
 test -d "$native_dir/install/vllm"
 test -d "$native_dir/modules"
 test "$(git -c safe.directory="$flash_attn_source_dir" -C "$flash_attn_source_dir" rev-parse HEAD)" = "$expected_flash_attn_commit"
