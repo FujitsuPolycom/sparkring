@@ -85,7 +85,8 @@ def validate_template(name: str, asset_root: Path | None = None) -> dict:
         if hashlib.sha256(pins.read_bytes()).hexdigest() != selected["mesh_pins_sha256"]:
             raise ValueError("The managed TP4 mesh pins differ from the profile contract")
         required = {"SIRCL_ENABLED": "1", "VLLM_SPARK_TP4_MODE": "custom",
-                    "VLLM_SPARK_TP4_VOCAB_MODE": "custom", "NCCL_SWITCHLESS_RING_ONLY": "1"}
+                    "VLLM_SPARK_TP4_VOCAB_MODE": "custom", "NCCL_SWITCHLESS_RING_ONLY": "1",
+                    "VLLM_GLM53_MHC_PREFILL_DIAGNOSTICS": "1"}
         if any(values.get(key) != value for key, value in required.items()):
             raise ValueError("TP4 must select the custom mesh and switchless ring")
     return {"profile": name, "template": selected["template"], "checks_passed": True}

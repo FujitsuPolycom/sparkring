@@ -115,6 +115,7 @@ def test_tp4_profiles_share_mesh_graphs_and_dcp1_baseline():
     assert baseline["sparkcache"] is False and cached["sparkcache"] is True
     baseline_values = verifier.parse_template(HERE / baseline["template"])
     assert baseline_values["LOAD_FORMAT"] == "instanttensor"
+    assert baseline_values["VLLM_GLM53_MHC_PREFILL_DIAGNOSTICS"] == "1"
 
 
 def test_image_selection_has_no_implicit_candidate_identity():
