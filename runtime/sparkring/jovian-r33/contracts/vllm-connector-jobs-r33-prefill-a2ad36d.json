@@ -1,0 +1,112 @@
+{
+  "schema": "sparkring-vllm-kv-block-lease-contract/v1",
+  "connector_api": "jj-block-state-read-leases/v1",
+  "vllm_commit": "a2ad36dbd49ec399b8f2cb485e6053abc5f42803",
+  "base_commit": "ae89131442359dc332d9c46009be3c1f8cdee0b4",
+  "required_semantics": [
+    "scheduler-binds-owning-block-pool",
+    "block-state-and-boundary-offers-describe-one-scheduled-step",
+    "offered-recurrent-pages-are-retained-hashed-or-copy-on-write-destinations",
+    "full-attention-prefix-pages-remain-immutable-while-referenced",
+    "connector-metadata-is-built-before-scheduler-dispatch",
+    "worker-post-forward-follows-target-and-mtp-state-writes",
+    "worker-metadata-aggregates-distinct-physical-ranks",
+    "pending-connector-work-keeps-idle-engine-stepping",
+    "no-forward-steps-do-not-call-wait-for-save",
+    "hybrid-load-failure-discards-unproven-prefixes",
+    "failed-load-blocks-retire-after-receive-or-write-fences"
+  ],
+  "qualification": "Research-only source composition. Static ownership/order review and 108 combined CPU checkpoint, mHC, hybrid recovery, capability and callback tests pass. Tests isolate framework imports and use CPU collectives/reference doubles. Integrated Linux allocator/engine conformance, native CUDA ordering and distributed model qualification remain required.",
+  "files": [
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+      "sha256": "967769b71a54631add51ee4a852e54be2b3895bbf807363e4eba9b0b7681381c",
+      "required_symbols": [
+        "KVConnectorBase_V1.bind_gpu_block_pool",
+        "KVConnectorBase_V1.build_connector_worker_meta",
+        "KVConnectorBase_V1.has_pending_push_work",
+        "KVConnectorWorkerMetadata.aggregate"
+      ]
+    },
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/utils.py",
+      "sha256": "115512dca36b0711223f55f5ff304abffccc6d078923ba4c6bbb3cdb7fdd39a2",
+      "required_symbols": [
+        "KVOutputAggregator.from_connector",
+        "KVOutputAggregator.aggregate"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/sched/output.py",
+      "sha256": "5daf0adf716cf143dd3b6e8aca1c34e4409c20c73801b6d7f7e217a06373772f",
+      "required_symbols": [
+        "KVConnectorBlockState.block_ids",
+        "KVConnectorBlockState.boundary_state_offloads",
+        "SchedulerOutput.kv_connector_block_state"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/sched/scheduler.py",
+      "sha256": "7d1ba53c80a308a7ddcdfaf2b65117922e38f895e2797cec5103cff64f36b31d",
+      "required_symbols": [
+        "Scheduler.__init__",
+        "Scheduler.schedule",
+        "Scheduler.has_requests",
+        "Scheduler.update_from_output",
+        "Scheduler._free_request_blocks",
+        "Scheduler._handle_invalid_blocks",
+        "Scheduler._update_requests_with_invalid_blocks",
+        "Scheduler._update_waiting_for_remote_kv",
+        "Scheduler._preempt_request"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_manager.py",
+      "sha256": "333a089f3eb9c24b6b83494620e61b56812282775a459e1278761b1e5d873482",
+      "required_symbols": [
+        "KVCacheManager.take_boundary_state_offloads",
+        "KVCacheManager.free"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+      "sha256": "2408ac195740e545a030f3c6be5ea625b8d354320a1e8e6515a8e8741fb55d4d",
+      "required_symbols": [
+        "SingleTypeKVCacheManager.take_pending_boundary_state_offloads",
+        "MambaManager.cache_blocks",
+        "MambaManager.allocate_new_blocks",
+        "MambaManager.pop_blocks_for_free"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/block_pool.py",
+      "sha256": "a0932da63c38487a5fae401c9b43f627e2dcee8e975ec8d6427e00d2796c6239",
+      "required_symbols": [
+        "BlockPool.touch",
+        "BlockPool.free_blocks"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_runner.py",
+      "sha256": "960f56e4d8b938c1dd2151582826ab8c59162c162bfbca757907f939a820be0d",
+      "required_symbols": [
+        "GPUModelRunner.update_requests",
+        "GPUModelRunner.sample_tokens"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/gpu/kv_connector.py",
+      "sha256": "bc226eec2b7a5940d4b68976f733e2abb235a2e1db7eb6d37a7e7ffb4f7cb492",
+      "required_symbols": [
+        "ActiveKVConnector.pre_forward",
+        "ActiveKVConnector.post_forward",
+        "ActiveKVConnector.no_forward"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/mamba_utils.py",
+      "sha256": "fa7b4662fbc08e3865d88ee7350d72dd7f729921e70070ebaafd29ac374eb86b",
+      "required_symbols": []
+    }
+  ]
+}
