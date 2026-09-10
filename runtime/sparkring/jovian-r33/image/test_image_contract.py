@@ -91,6 +91,14 @@ class CandidateImageContractTests(unittest.TestCase):
             lock["source_identities"]["vllm_flash_attn_commit"],
             "f3e1a4f74c99145c0717709860bf765de1703779",
         )
+        self.assertEqual(
+            lock["source_identities"]["b12x_commit"],
+            "d95137245253d5c145e4b0700d677ce13b87ebea",
+        )
+        self.assertEqual(
+            lock["source_identities"]["b12x_tree"],
+            "8706b0426aa11483bf0d50a205588382d2d0cfbd",
+        )
         self.assertEqual(artifacts["nccl-2.31.2-sparkring-routing"]["sha256"], "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47")
         self.assertEqual(artifacts["sircl"]["sha256"], "bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246")
         self.assertIn("+cu133-", artifacts["torchaudio"]["source"])
@@ -98,14 +106,45 @@ class CandidateImageContractTests(unittest.TestCase):
         for forbidden in lock["forbidden_inputs"]:
             self.assertNotIn(Path(forbidden).name, selected)
         pending = {item["name"]: item for item in lock["pending_artifacts"]}
-        self.assertEqual(set(pending), {"flashinfer-python", "flashinfer-jit-cache"})
+        self.assertEqual(
+            set(pending), {"b12x", "flashinfer-python", "flashinfer-jit-cache"}
+        )
         self.assertTrue(all(item["required"] for item in pending.values()))
+        self.assertEqual(pending["b12x"]["receipt_sums"], "artifacts/b12x/SHA256SUMS")
         contract = json.loads((CANONICAL_PROFILES / "profile-contract.json").read_text())
         self.assertEqual(contract["image"]["required_sources"], lock["source_identities"])
         self.assertEqual(
             contract["image"]["artifact_lock_sha256"],
             __import__("hashlib").sha256((HERE / "artifact-lock.json").read_bytes()).hexdigest(),
         )
+
+    def test_b12x_builder_and_context_bind_the_checkpoint_export_port(self):
+        build = (HERE.parent / "build_b12x.sh").read_text()
+        self.assertIn(
+            "expected_commit=d95137245253d5c145e4b0700d677ce13b87ebea", build
+        )
+        self.assertIn(
+            "expected_tree=8706b0426aa11483bf0d50a205588382d2d0cfbd", build
+        )
+        prepare = (HERE / "prepare_context.py").read_text()
+        self.assertIn('sums_path = args.build_root / pending["receipt_sums"]', prepare)
+        self.assertNotIn("completed FlashInfer receipt", prepare)
+
+    def test_pending_artifact_receipts_accept_one_exact_basename(self):
+        module = load_module("r33_prepare_context", "prepare_context.py")
+        with tempfile.TemporaryDirectory() as directory:
+            sums = Path(directory) / "SHA256SUMS"
+            digest = "a" * 64
+            sums.write_text(f"{digest}  b12x-1.3.0-py3-none-any.whl\n")
+            self.assertEqual(
+                module.load_sums(sums), {"b12x-1.3.0-py3-none-any.whl": digest}
+            )
+            sums.write_text(
+                f"{digest}  first/b12x-1.3.0-py3-none-any.whl\n"
+                f"{digest}  second/b12x-1.3.0-py3-none-any.whl\n"
+            )
+            with self.assertRaisesRegex(RuntimeError, "ambiguous SHA256SUMS"):
+                module.load_sums(sums)
 
     def test_dockerfile_verifies_context_and_uses_locked_media_runtime(self):
         source = (HERE / "Dockerfile.candidate").read_text()

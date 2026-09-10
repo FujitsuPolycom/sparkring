@@ -4,7 +4,7 @@
   "image": {
     "selection": "external-immutable-receipt",
     "artifact_lock": "../image/artifact-lock.json",
-    "artifact_lock_sha256": "b08a1923d0fc5247a84c014d8bf5bf96d624e417a8b3d8d6d0d41b496bc0f854",
+    "artifact_lock_sha256": "ca46070fde5038d1337bf1b2b88a719dc2aab5bc8075aec47e4d5934d6ebafce",
     "required_platform": "linux/arm64",
     "required_sources": {
       "vllm_head": "ae89131442359dc332d9c46009be3c1f8cdee0b4",
@@ -14,8 +14,8 @@
       "vllm_status_lines": 20,
       "vllm_native_tree": "386191c06df9c4232cb2f48012968f48cfdc6eee",
       "vllm_flash_attn_commit": "f3e1a4f74c99145c0717709860bf765de1703779",
-      "b12x_commit": "59d51a36a942d56a9c36265855cdc7856fa7712e",
-      "b12x_tree": "474364a1f7ae3e6d379be88a57ebbe02bb5f9dba",
+      "b12x_commit": "d95137245253d5c145e4b0700d677ce13b87ebea",
+      "b12x_tree": "8706b0426aa11483bf0d50a205588382d2d0cfbd",
       "torch_commit": "cf30153c4c131c8164ee7798e5022d810682e2cb",
       "nccl_base_commit": "fb6f40999a2a9e63104d4ae4a84118bce61528f8",
       "nccl_patched_tree": "aa7028b2b2a55af4817f8d742e17717dd4509ee7",

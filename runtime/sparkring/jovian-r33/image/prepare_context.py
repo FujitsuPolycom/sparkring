@@ -16,6 +16,7 @@ from validate_receipts import validate as validate_receipts
 
 
 HERE = Path(__file__).resolve().parent
+HEX64 = re.compile(r"[0-9a-f]{64}")
 
 
 def digest(path: Path) -> str:
@@ -43,6 +44,20 @@ def copy_tree(source: Path, destination: Path) -> None:
     if not source.is_dir():
         raise RuntimeError(f"required asset tree is missing: {source}")
     shutil.copytree(source, destination, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".git"))
+
+
+def load_sums(path: Path) -> dict[str, str]:
+    """Read one unambiguous SHA256SUMS receipt by artifact basename."""
+    result = {}
+    for number, raw in enumerate(path.read_text().splitlines(), 1):
+        parts = raw.split(maxsplit=1)
+        if len(parts) != 2 or not HEX64.fullmatch(parts[0]):
+            raise RuntimeError(f"malformed SHA256SUMS line: {path}:{number}")
+        name = Path(parts[1].lstrip("*")).name
+        if not name or name in result:
+            raise RuntimeError(f"ambiguous SHA256SUMS entry: {path}:{number}")
+        result[name] = parts[0]
+    return result
 
 
 def parse_args() -> argparse.Namespace:
@@ -136,17 +151,18 @@ def main() -> None:
         source = args.build_root / item["source"]
         if not source.is_file() or digest(source) != item["sha256"]:
             raise RuntimeError(f"required input missing or changed: {source}")
-    flashinfer_sums = {}
-    for line in (args.build_root / "artifacts/flashinfer/SHA256SUMS").read_text().splitlines():
-        expected, filename = line.split(maxsplit=1)
-        flashinfer_sums[Path(filename).name] = expected
     pending_matches = {}
     for pending in lock["pending_artifacts"]:
         matches = sorted(args.build_root.glob(pending["source_glob"]))
         if len(matches) != 1:
             raise RuntimeError(f"required pending input must resolve exactly once: {pending['source_glob']}: {matches}")
-        if flashinfer_sums.get(matches[0].name) != digest(matches[0]):
-            raise RuntimeError(f"pending input is absent from the completed FlashInfer receipt: {matches[0]}")
+        sums_path = args.build_root / pending["receipt_sums"]
+        if not sums_path.is_file():
+            raise RuntimeError(f"pending input receipt is missing: {sums_path}")
+        if load_sums(sums_path).get(matches[0].name) != digest(matches[0]):
+            raise RuntimeError(
+                f"pending input is absent from its completed SHA256SUMS receipt: {matches[0]}"
+            )
         pending_matches[pending["name"]] = matches[0]
     pending_native = {}
     for item in lock["pending_native_artifacts"]:
