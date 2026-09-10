@@ -2,8 +2,8 @@
 # Build a source-locked SIRCL artifact inside the ARM64 R33 foundation image.
 set -euo pipefail
 
-readonly public_commit=f26895a158f586918b34136367fc63c060af6a60
-readonly transport_tree=3ea295fb7adc7e8c1823412f9b1cc549679eea77
+readonly source_commit=3be025668705a9f72dd08a215230784e3c42c977
+readonly transport_tree=18e13dad5071b0a153f2c33c9c1720a3eca50318
 readonly mesh_pins_blob=3267552b436bd67f61b8bdc3c0a3e2f7ea0f6596
 readonly mesh_source_manifest_blob=6da6f3ac05510e4461f49c763816be2882325489
 readonly mesh_bundle_manifest_blob=069c85bd5bc0faeb07ee3e5d58a50578daf44b97
@@ -23,15 +23,15 @@ test ! -e "$output_dir" || fail "output directory already exists: $output_dir"
 test -x "$cuda_root/bin/nvcc" || fail "nvcc is missing at $cuda_root/bin/nvcc"
 test -d "$source_repo/.git" || fail "source repository is not a Git checkout"
 git config --global --add safe.directory "$source_repo"
-git -C "$source_repo" cat-file -e "${public_commit}^{commit}" 2>/dev/null || \
-  fail "public source commit is unavailable: $public_commit"
-test "$(git -C "$source_repo" rev-parse "$public_commit:spark_transport")" = \
+git -C "$source_repo" cat-file -e "${source_commit}^{commit}" 2>/dev/null || \
+  fail "source commit is unavailable: $source_commit"
+test "$(git -C "$source_repo" rev-parse "$source_commit:spark_transport")" = \
   "$transport_tree" || fail "spark_transport tree does not match the lock"
-test "$(git -C "$source_repo" rev-parse "$public_commit:runtime/glm53-spark-mtp3-mesh/pins.json")" = \
+test "$(git -C "$source_repo" rev-parse "$source_commit:runtime/glm53-spark-mtp3-mesh/pins.json")" = \
   "$mesh_pins_blob" || fail "mesh pins do not match the lock"
-test "$(git -C "$source_repo" rev-parse "$public_commit:runtime/glm53-spark-mtp3-mesh/performance/transport/source-manifest.json")" = \
+test "$(git -C "$source_repo" rev-parse "$source_commit:runtime/glm53-spark-mtp3-mesh/performance/transport/source-manifest.json")" = \
   "$mesh_source_manifest_blob" || fail "mesh source manifest does not match the lock"
-test "$(git -C "$source_repo" rev-parse "$public_commit:runtime/glm53-spark-mtp3-mesh/performance/transport/bundle-source/sparkring-overlay-manifest.json")" = \
+test "$(git -C "$source_repo" rev-parse "$source_commit:runtime/glm53-spark-mtp3-mesh/performance/transport/bundle-source/sparkring-overlay-manifest.json")" = \
   "$mesh_bundle_manifest_blob" || fail "mesh bundle manifest does not match the lock"
 
 nvcc_version=$($cuda_root/bin/nvcc --version)
@@ -41,9 +41,9 @@ printf '%s\n' "$nvcc_version" | grep -Eq 'release 13\.3|V13\.3\.' || \
 mkdir -p "$output_dir/source" "$output_dir/build" "$output_dir/artifacts" \
   "$output_dir/logs" "$output_dir/inspection"
 git -C "$source_repo" archive --format=tar \
-  --output="$output_dir/source/sparkring-${public_commit}.tar" \
-  "$public_commit" LICENSE spark_transport
-tar -xf "$output_dir/source/sparkring-${public_commit}.tar" \
+  --output="$output_dir/source/sparkring-${source_commit}.tar" \
+  "$source_commit" LICENSE spark_transport
+tar -xf "$output_dir/source/sparkring-${source_commit}.tar" \
   -C "$output_dir/source"
 
 cmake -S "$output_dir/source/spark_transport" -B "$output_dir/build" \
@@ -82,11 +82,11 @@ grep -q 'sm_121' "$output_dir/inspection/cuobjdump-list-elf.txt" || \
 grep -Eq 'Machine:[[:space:]]+AArch64' "$output_dir/inspection/readelf.txt" || \
   fail "artifact is not AArch64"
 
-sha256sum "$output_dir/source/sparkring-${public_commit}.tar" \
+sha256sum "$output_dir/source/sparkring-${source_commit}.tar" \
   "$output_dir/artifacts/"* "$output_dir/logs/"* \
   "$output_dir/inspection/"* > "$output_dir/SHA256SUMS"
 
-PUBLIC_COMMIT="$public_commit" TRANSPORT_TREE="$transport_tree" \
+SOURCE_COMMIT="$source_commit" TRANSPORT_TREE="$transport_tree" \
 CUDA_ROOT="$cuda_root" OUTPUT_DIR="$output_dir" python3 -S - <<'PY'
 import hashlib
 import json
@@ -114,10 +114,10 @@ receipt = {
     "status": "native-built-tested",
     "source": {
         "repository": "https://github.com/FujitsuPolycom/sparkring.git",
-        "public_commit": os.environ["PUBLIC_COMMIT"],
+        "source_commit": os.environ["SOURCE_COMMIT"],
         "spark_transport_tree": os.environ["TRANSPORT_TREE"],
         "source_archive_sha256": digest(
-            out / "source" / f"sparkring-{os.environ['PUBLIC_COMMIT']}.tar"
+            out / "source" / f"sparkring-{os.environ['SOURCE_COMMIT']}.tar"
         ),
     },
     "native": {

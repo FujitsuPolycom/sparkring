@@ -3,9 +3,11 @@
   "status": "implemented",
   "source": {
     "repository": "https://github.com/FujitsuPolycom/sparkring.git",
-    "public_commit": "f26895a158f586918b34136367fc63c060af6a60",
-    "spark_transport_tree": "3ea295fb7adc7e8c1823412f9b1cc549679eea77",
-    "cmake_blob": "a1a05d0985bfca4d007616148c8758bfd801247e",
+    "base_public_commit": "f26895a158f586918b34136367fc63c060af6a60",
+    "source_commit": "3be025668705a9f72dd08a215230784e3c42c977",
+    "spark_transport_tree": "18e13dad5071b0a153f2c33c9c1720a3eca50318",
+    "cmake_blob": "75ff78ce646088921664aaa187d66d71fb019c3a",
+    "cmake_change": "The fused prefill probe links kernels and proxy code from libspark_transport exactly once.",
     "fused_stream_switch_smoke_blob": "b25cc81543e40418ae518cea2ebc0b84042658eb"
   },
   "toolchain": {

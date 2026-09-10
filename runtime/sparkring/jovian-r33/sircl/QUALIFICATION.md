@@ -14,10 +14,11 @@ under 13.3, or behavior in the R33 process. The R33 foundation requires CUDA
 Compatibility is therefore unproved even though the compiled SIRCL source
 files have not changed since the old receipt.
 
-The source lock uses public commit
-`f26895a158f586918b34136367fc63c060af6a60` and `spark_transport` tree
-`3ea295fb7adc7e8c1823412f9b1cc549679eea77`. This is the public-main state
-inspected on 2026-09-10 for the R33 integration. It also binds the current
+The source lock uses commit
+`3be025668705a9f72dd08a215230784e3c42c977` and `spark_transport` tree
+`18e13dad5071b0a153f2c33c9c1720a3eca50318`. That commit descends from public
+main `f26895a158f586918b34136367fc63c060af6a60` and removes duplicate fused
+probe objects from the executable link. It also binds the
 native-MTP3 mesh profile and both recorded transport bundle manifests. The
 mesh profile is research-only and specifies CUDA 13.3; its compute pins do not
 replace R33's vLLM, B12X, PyTorch, or NCCL pins.
