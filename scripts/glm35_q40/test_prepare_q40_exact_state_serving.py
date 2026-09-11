@@ -45,7 +45,7 @@ def base_profile() -> dict:
 
 
 class PrepareExactQ40ServingTest(unittest.TestCase):
-    def _prepare(self, root: Path):
+    def _prepare(self, root: Path, exl3_name="exl3.py", runner_name="model_runner.py"):
         base_profile_path = root / "base-profile.json"
         base_profile_path.write_text(
             json.dumps(base_profile(), indent=2) + "\n", encoding="utf-8"
@@ -53,10 +53,10 @@ class PrepareExactQ40ServingTest(unittest.TestCase):
         base_profile_sha256 = hashlib.sha256(
             base_profile_path.read_bytes()
         ).hexdigest()
-        exl3 = root / "source" / "exl3.py"
+        exl3 = root / "source" / exl3_name
         exl3.parent.mkdir()
         exl3.write_bytes(transform_exl3(BASE_EXL3.read_bytes()))
-        runner = root / "source" / "model_runner.py"
+        runner = root / "source" / runner_name
         runner.write_text("# exact q40 attestation fixture\n", encoding="utf-8")
         runner_hash = hashlib.sha256(runner.read_bytes()).hexdigest()
         return prepare_module.prepare(
@@ -67,6 +67,15 @@ class PrepareExactQ40ServingTest(unittest.TestCase):
             expected_model_runner_sha256=runner_hash,
             bundle_path=root / "bundle",
         )
+
+    def test_bundle_names_match_mounts_for_arbitrary_input_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, manifest = self._prepare(root, "input-exl3.txt", "input-runner.txt")
+            self.assertEqual(Path(manifest["files"]["exl3"]["path"]).name, "exl3.py")
+            self.assertEqual(Path(manifest["files"]["model_runner"]["path"]).name, "model_runner.py")
+            self.assertTrue((root / "bundle" / "exl3.py").is_file())
+            self.assertTrue((root / "bundle" / "model_runner.py").is_file())
 
     def test_profile_changes_only_the_narrow_q40_allowlist(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

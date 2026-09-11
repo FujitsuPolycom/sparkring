@@ -17,9 +17,6 @@ from pathlib import Path
 from typing import Any
 
 
-OPERATOR_BASE_PROFILE_SHA256 = (
-    "08686011f6d38f0524f71afb17c450600c525a67e3ffe7a675fc9afe905e1fb8"
-)
 BASE_EXL3_SHA256 = "8e0051faf9b8bac9eefd6f38a5f0133a30bca4c0b5ab41962537e2f13cf968f4"
 EXACT_Q40_EXL3_SHA256 = "8fad5330c88f55dc57e4d8e298f2af23e16390b97153b569a2e572e0fb5065c2"
 OPERATOR_MODEL_RUNNER_SHA256 = (
@@ -234,7 +231,8 @@ def prepare(
     files = {"exl3": exl3_path, "model_runner": model_runner_path}
     bundled: dict[str, dict[str, str | int]] = {}
     for name, source in files.items():
-        destination = bundle_path / source.name
+        # Mount paths use these stable filenames, independent of input names.
+        destination = bundle_path / {"exl3": "exl3.py", "model_runner": "model_runner.py"}[name]
         shutil.copyfile(source, destination)
         bundled[name] = {
             "path": str(destination.resolve()),

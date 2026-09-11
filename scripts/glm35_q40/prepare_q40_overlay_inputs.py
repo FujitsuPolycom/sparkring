@@ -6,7 +6,8 @@ names. Two of that tree's files are not what
 `q40_exact_state_overlay.py` and `q40_exact_state_attestation_overlay.py`
 accept, and both generators reject an unexpected input rather than
 transform it. This applies the two differences, each bound to the SHA-256
-of what it reads and what it writes:
+of the overlay input it reads and writes. The scheduler companion is bound
+to the Git blob identifiers embedded in the pinned patch:
 
 - `exl3.py` reserves W4A16 scratch for every row count. The pinned tree
   returns a single unit below 129 rows, which holds for the cooperative
@@ -21,8 +22,9 @@ The results are the two files
 consume identical bytes.
 
 Safety class: MUTATES the tree named on the command line. It contacts no
-network and no configured Spark, and it refuses to write anything when a
-SHA-256 does not match.
+network and no configured Spark, and it refuses to write anything when an
+input identity does not match. Each transformation validates all its outputs
+before replacing its source files.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import subprocess
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -40,6 +43,14 @@ ROUTE_CAPTURE_PATCH_SHA256 = (
 
 EXL3_RELATIVE = "vllm/model_executor/layers/quantization/exl3.py"
 MODEL_RUNNER_RELATIVE = "vllm/v1/worker/gpu/model_runner.py"
+SCHEDULER_RELATIVE = "vllm/v1/core/sched/scheduler.py"
+# The hash-bound patch records abbreviated Git blob IDs, not full SHA-256s.
+SCHEDULER_INPUT_BLOB_PREFIX = "208b5a679"
+SCHEDULER_OUTPUT_BLOB_PREFIX = "ab5605a4d"
+
+
+def scheduler_blob_id(payload: bytes) -> str:
+    return hashlib.sha1(b"blob " + str(len(payload)).encode() + b"\0" + payload).hexdigest()
 
 EXL3_INPUT_SHA256 = (
     "42c0e9150a065c48e3780eebc8b3c89ea410d82610e2c14bc97546dee6866214"
@@ -104,41 +115,51 @@ def apply_scratch_reservation(tree: Path) -> str:
 def apply_route_capture(tree: Path) -> str:
     """Add the routed-expert capturer, bound to the model-runner hashes."""
 
-    path = tree / MODEL_RUNNER_RELATIVE
-    observed = sha256_bytes(path.read_bytes())
+    paths = {name: tree / name for name in (MODEL_RUNNER_RELATIVE, SCHEDULER_RELATIVE)}
+    try:
+        payloads = {name: path.read_bytes() for name, path in paths.items()}
+    except OSError as error:
+        raise OverlayInputError(f"route-capture input missing: {error}") from error
+    observed = sha256_bytes(payloads[MODEL_RUNNER_RELATIVE])
+    scheduler = scheduler_blob_id(payloads[SCHEDULER_RELATIVE])
     if observed == MODEL_RUNNER_OUTPUT_SHA256:
+        if not scheduler.startswith(SCHEDULER_OUTPUT_BLOB_PREFIX):
+            raise OverlayInputError("scheduler does not match the applied route-capture patch")
         return "already applied"
     if observed != MODEL_RUNNER_INPUT_SHA256:
         raise OverlayInputError(
-            f"{MODEL_RUNNER_RELATIVE}: expected {MODEL_RUNNER_INPUT_SHA256}, "
-            f"read {observed}"
+            f"{MODEL_RUNNER_RELATIVE}: expected {MODEL_RUNNER_INPUT_SHA256}, read {observed}"
         )
+    if not scheduler.startswith(SCHEDULER_INPUT_BLOB_PREFIX):
+        raise OverlayInputError("scheduler input does not match the route-capture patch")
     if not ROUTE_CAPTURE_PATCH.is_file():
         raise OverlayInputError(f"{ROUTE_CAPTURE_PATCH} is absent")
     patch_hash = sha256_bytes(ROUTE_CAPTURE_PATCH.read_bytes())
     if patch_hash != ROUTE_CAPTURE_PATCH_SHA256:
-        raise OverlayInputError(
-            f"{ROUTE_CAPTURE_PATCH.name}: expected "
-            f"{ROUTE_CAPTURE_PATCH_SHA256}, read {patch_hash}"
+        raise OverlayInputError(f"{ROUTE_CAPTURE_PATCH.name}: unexpected patch SHA-256")
+    # git apply runs against copies so a wrong output cannot leave half a patch
+    # in the caller's source tree. No checkout or repository metadata is used.
+    with tempfile.TemporaryDirectory(prefix="sparkring-q40-route-") as temporary:
+        staging = Path(temporary)
+        for name, payload in payloads.items():
+            target = staging / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(payload)
+        result = subprocess.run(
+            ["git", "apply", str(ROUTE_CAPTURE_PATCH.resolve())],
+            cwd=staging, capture_output=True, text=True,
         )
-    result = subprocess.run(
-        ["git", "apply", str(ROUTE_CAPTURE_PATCH)],
-        cwd=tree,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip().splitlines()
-        raise OverlayInputError(
-            "route-capture patch did not apply: "
-            + (detail[-1] if detail else "no detail")
-        )
-    produced = sha256_bytes(path.read_bytes())
-    if produced != MODEL_RUNNER_OUTPUT_SHA256:
-        raise OverlayInputError(
-            f"{MODEL_RUNNER_RELATIVE}: produced {produced}, expected "
-            f"{MODEL_RUNNER_OUTPUT_SHA256}"
-        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout).strip().splitlines()
+            raise OverlayInputError("route-capture patch did not apply: " +
+                                    (detail[-1] if detail else "no detail"))
+        updated = {name: (staging / name).read_bytes() for name in paths}
+        if sha256_bytes(updated[MODEL_RUNNER_RELATIVE]) != MODEL_RUNNER_OUTPUT_SHA256:
+            raise OverlayInputError("model-runner output SHA-256 mismatch")
+        if not scheduler_blob_id(updated[SCHEDULER_RELATIVE]).startswith(SCHEDULER_OUTPUT_BLOB_PREFIX):
+            raise OverlayInputError("scheduler output Git blob mismatch")
+    for name, payload in updated.items():
+        paths[name].write_bytes(payload)
     return "applied"
 
 
@@ -147,7 +168,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="prepare_q40_overlay_inputs",
         description=(
             "Bring a prepared vLLM tree to the inputs the exact-Q40 overlays "
-            "accept, refusing to write when a SHA-256 does not match."
+            "accept, validating input and output identities before replacement."
         ),
     )
     parser.add_argument(

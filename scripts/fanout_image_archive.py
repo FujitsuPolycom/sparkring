@@ -470,6 +470,7 @@ def _run(
     timeout: int,
     runner: Runner,
     action: str,
+    resumable_transfer: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     try:
         completed = runner(
@@ -481,9 +482,11 @@ def _run(
             timeout=timeout,
         )
     except subprocess.TimeoutExpired as error:
-        raise FanoutError(
-            f"{action} was interrupted; the bounded partial file is resumable"
-        ) from error
+        recovery = (
+            "; any bounded partial file is resumable"
+            if resumable_transfer else "; inspect remote state before retrying"
+        )
+        raise FanoutError(f"{action} timed out{recovery}") from error
     if completed.returncode:
         detail = completed.stderr.strip() or completed.stdout.strip()
         raise FanoutError(f"{action} did not complete: {detail}")
@@ -584,6 +587,7 @@ def execute_fanout(
             timeout=timeout,
             runner=runner,
             action=f"rank {seed_rank} archive download",
+            resumable_transfer=True,
         )
         seed_probe = _probe_rank(
             ranks[seed_rank],
@@ -640,6 +644,7 @@ def execute_fanout(
                 timeout=timeout,
                 runner=runner,
                 action=f"hop {hop.index} direct rsync",
+                resumable_transfer=True,
             )
             _run(
                 _remote_argv(

@@ -3,9 +3,8 @@
 
 The public interface accepts a resolved candidate template, a complete site,
 the four hash-bound SIRCL artifacts, and an output directory. Planning is
-dry-run by default. Execution keeps each transformation in-process while
-preserving the staged generators' profile, site, rollback, bundle, and receipt
-bytes.
+dry-run by default. Execution derives profile, site, rollback and artifact-bundle files locally.
+Rollback files retain the exact serialized bytes of their source profiles.
 """
 
 from __future__ import annotations
@@ -24,7 +23,6 @@ ROOT = Path(__file__).resolve().parents[1]
 PINS_PATH = ROOT / "scripts/config/exl3-r7-pins.json"
 RECIPE_PATH = ROOT / "recipes/glm52-exl3-r7-3.5bpw.json"
 TEMPLATE_PATH = ROOT / "scripts/config/exl3-r7-candidate.example.json"
-PROFILE_NAME = "glm52-exl3-3.5bpw-fixed-mtp4-foundation"
 _TEMPLATE_SCHEMA = "sparkring-exl3-r7-candidate-template/v1"
 _PROFILE_SCHEMA = "sparkring-runtime-profile/v1"
 _HEX64 = re.compile(r"[0-9a-f]{64}")
@@ -263,10 +261,10 @@ def _base_profile(
     if template.get("transport", "sircl") not in {
         "sircl",
         "sircl-nccl-ib",
-        "stock-nccl-ib",
     }:
-        raise ProfileError("transport must be a supported profile transport")
-    # The foundation always chooses the qualified hybrid transport.
+        raise ProfileError("this profile requires sircl or sircl-nccl-ib transport")
+    # LD_PRELOAD combines CUDA compatibility with the patched NCCL library.
+    # Attestation requires that library to be the only mapped libnccl.
     runtime_nccl = _PATCHED_NCCL_LIBRARY
     ld_preload = f"{_CUDA_COMPAT_LIBRARY}:{runtime_nccl}"
     model_path = "/models/glm52-exl3-r7-3.5bpw"
@@ -791,7 +789,7 @@ def _validate_ckv_source(profile: dict[str, Any]) -> None:
     """Require the exact MTP4/NVFP4/DCP4 behavior before CKV gather."""
 
     if profile.get("profile_id") != _CKV_SOURCE_PROFILE_ID:
-        raise ProfileError("source profile_id is not the live b4096 profile")
+        raise ProfileError(f"source profile_id must be {_CKV_SOURCE_PROFILE_ID}")
     environment = profile.get("environment")
     arguments = profile.get("extra_vllm_args")
     labels = profile.get("extra_labels")
@@ -1093,15 +1091,7 @@ def plan(
             {"step": "tiered-sircl-tp-all-reduce", "safety": "OFFLINE"},
         )
     )
-    if dry_run:
-        if site and site.exists():
-            receipt["steps"].extend(
-                (
-                    {"step": "site-validation", "safety": "OFFLINE"},
-                    {"step": "read-only-preflight-plan", "safety": "READ-ONLY REMOTE"},
-                )
-            )
-    else:
+    if not dry_run:
         assert site is not None
         assert artifact_paths is not None
         stock = _derive_stock(
@@ -1166,7 +1156,8 @@ def plan(
             "mtp4-kv925-rollback-site.yaml": kv925_site.encode(),
         }
         for name, payload in foundation_outputs.items():
-            # The foundation generators used platform text newlines.
+            # Profile/rollback identity includes platform text newlines;
+            # preserve this serialization before copying rollback bytes.
             (output_dir / name).write_text(payload.decode("utf-8"), encoding="utf-8")
 
         mtp4_profile_bytes = (output_dir / "mtp4-kv925-profile.json").read_bytes()
@@ -1288,8 +1279,12 @@ def plan(
         receipt["steps"].extend(
             (
                 {"step": "site-validation", "safety": "OFFLINE"},
-                {"step": "read-only-preflight-plan", "safety": "READ-ONLY REMOTE"},
             )
+        )
+    for step in receipt["steps"]:
+        step["execution"] = (
+            "performed" if not dry_run or step["step"] in {"profile-recipe", "source-pins"}
+            else "planned"
         )
     receipt.update(
         {

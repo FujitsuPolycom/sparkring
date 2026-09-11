@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import shutil
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from scripts.glm35_q40 import (
@@ -90,6 +91,9 @@ class RouteCaptureTest(unittest.TestCase):
             path = tree / producer.MODEL_RUNNER_RELATIVE
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"unrelated source\n")
+            scheduler = tree / producer.SCHEDULER_RELATIVE
+            scheduler.parent.mkdir(parents=True, exist_ok=True)
+            scheduler.write_bytes(b"scheduler")
             with self.assertRaises(producer.OverlayInputError) as caught:
                 producer.apply_route_capture(tree)
             self.assertIn("expected", str(caught.exception))
@@ -102,7 +106,11 @@ class RouteCaptureTest(unittest.TestCase):
             path = tree / producer.MODEL_RUNNER_RELATIVE
             path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(MODEL_RUNNER_FIXTURE, path)
-            self.assertEqual(producer.apply_route_capture(tree), "already applied")
+            scheduler = tree / producer.SCHEDULER_RELATIVE
+            scheduler.parent.mkdir(parents=True, exist_ok=True)
+            scheduler.write_bytes(b"scheduler")
+            with patch.object(producer, "SCHEDULER_OUTPUT_BLOB_PREFIX", producer.scheduler_blob_id(b"scheduler")):
+                self.assertEqual(producer.apply_route_capture(tree), "already applied")
 
 
 class CommandLineTest(unittest.TestCase):
@@ -115,3 +123,37 @@ class CommandLineTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_scheduler_drift_prevents_already_applied_claim(tmp_path):
+    import pytest
+    runner = tmp_path / producer.MODEL_RUNNER_RELATIVE
+    runner.parent.mkdir(parents=True)
+    runner.write_bytes(MODEL_RUNNER_FIXTURE.read_bytes())
+    scheduler = tmp_path / producer.SCHEDULER_RELATIVE
+    scheduler.parent.mkdir(parents=True)
+    scheduler.write_bytes(b"wrong scheduler")
+    with pytest.raises(producer.OverlayInputError, match="scheduler"):
+        producer.apply_route_capture(tmp_path)
+
+
+def test_wrong_scheduler_output_leaves_both_inputs_unchanged(tmp_path, monkeypatch):
+    import pytest
+    import subprocess
+    runner = tmp_path / producer.MODEL_RUNNER_RELATIVE
+    scheduler = tmp_path / producer.SCHEDULER_RELATIVE
+    for path, payload in ((runner, b"runner before"), (scheduler, b"scheduler before")):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    monkeypatch.setattr(producer, "MODEL_RUNNER_INPUT_SHA256", producer.sha256_bytes(runner.read_bytes()))
+    monkeypatch.setattr(producer, "MODEL_RUNNER_OUTPUT_SHA256", producer.sha256_bytes(b"runner after"))
+    monkeypatch.setattr(producer, "SCHEDULER_INPUT_BLOB_PREFIX", producer.scheduler_blob_id(scheduler.read_bytes()))
+    def apply(argv, cwd, **kwargs):
+        (cwd / producer.MODEL_RUNNER_RELATIVE).write_bytes(b"runner after")
+        (cwd / producer.SCHEDULER_RELATIVE).write_bytes(b"wrong scheduler after")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+    monkeypatch.setattr(producer.subprocess, "run", apply)
+    with pytest.raises(producer.OverlayInputError, match="scheduler output"):
+        producer.apply_route_capture(tmp_path)
+    assert runner.read_bytes() == b"runner before"
+    assert scheduler.read_bytes() == b"scheduler before"

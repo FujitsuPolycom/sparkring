@@ -373,3 +373,12 @@ docker() {{
     assert ("TAGGED" in result.stdout) is tagged
     if kind == "digest":
         assert "Registry digest was not restored by the archive" in result.stderr
+
+
+def test_probe_timeout_does_not_invent_a_resumable_partial():
+    def runner(argv, **kwargs):
+        raise subprocess.TimeoutExpired(argv, 1)
+    with pytest.raises(fanout.FanoutError) as caught:
+        fanout._run(["unused"], timeout=1, runner=runner, action="archive probe")
+    assert "partial" not in str(caught.value)
+    assert "inspect remote state" in str(caught.value)

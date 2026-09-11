@@ -111,6 +111,7 @@ def test_plan_is_dry_run_by_default(tmp_path: Path) -> None:
     assert receipt["steps"][-1] == {
         "step": "tiered-sircl-tp-all-reduce",
         "safety": "OFFLINE",
+        "execution": "planned",
     }
 
 
@@ -401,5 +402,20 @@ def test_execute_rejects_unresolved_or_missing_artifact_inputs(
     assert not (tmp_path / "missing-output").exists()
 
 
-def test_profile_name_describes_the_external_foundation() -> None:
-    assert profile.PROFILE_NAME == "glm52-exl3-3.5bpw-fixed-mtp4-foundation"
+def test_stock_transport_cannot_silently_select_patched_transport() -> None:
+    template = json.loads(profile.TEMPLATE_PATH.read_text())
+    template["transport"] = "stock-nccl-ib"
+    with pytest.raises(profile.ProfileError, match="requires sircl"):
+        profile._base_profile(template, json.loads(profile.PINS_PATH.read_text()),
+                              json.loads(profile.RECIPE_PATH.read_text()))
+
+
+def test_dry_run_distinguishes_planned_work_from_performed_validation(tmp_path):
+    site = tmp_path / "malformed.yaml"
+    site.write_text("not: [valid")
+    receipt = profile.plan(site=site)
+    steps = {step["step"]: step for step in receipt["steps"]}
+    assert "site-validation" not in steps
+    assert "read-only-preflight-plan" not in steps
+    assert steps["profile-recipe"]["execution"] == "performed"
+    assert steps["fixed-mtp4"]["execution"] == "planned"
