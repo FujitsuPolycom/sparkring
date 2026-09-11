@@ -2520,6 +2520,29 @@
      "prefill_tok_s": 1688.7,
      "pass": true
     }
+   },
+   "soak_20min_c8": {
+    "waves": 79,
+    "requests": 632,
+    "fails": 0,
+    "hangs": 0,
+    "agg_median": 92.0,
+    "agg_min": 79.0,
+    "agg_max": 98.8,
+    "memavailable_first_last": [
+     [
+      10,
+      11,
+      9,
+      9
+     ],
+     [
+      10,
+      12,
+      9,
+      9
+     ]
+    ]
    }
   }
  },

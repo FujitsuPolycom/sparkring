@@ -159,6 +159,7 @@ columns (nearly every row unique after `torch.unique`) and rank 0 six bigram col
 | decode C1 / C4 / C8 aggregate (tok/s) | 32–36 / 57–64 / 88–98 | 32.0 / 59.5 / 94.0 |
 | draft acceptance code / prose | 90–93 % / 23–25 % | 92.3 % / 23.5 % |
 | prompt set C1 per stream / C6 aggregate | 52–55 / 150–157 | 54.26 / 157.47 |
+| 20-minute c=8 soak (temperature 1.0, 256-token budgets) | 648 requests, 0 failures (boot 2) | **632 requests, 0 failures, 0 hangs, median 92.0 tok/s (79.0–98.8), MemAvailable flat 10 / 11–12 / 9 / 9 GiB** |
 
 Also tried on this profile and found neutral (one rebooted boot each): FlashInfer `b12x` MXFP8 dense GEMM backend in place of
 vLLM's pinned CUTLASS SM120 kernel (eager microbench 1.9–3.2× at decode M, no change inside the captured graph), `NCCL_PROTO=Simple`,
