@@ -67,7 +67,10 @@ launch. DCP1 activations disarm that overlay and do not require it.
   reader restored 6,144 tokens on every rank in 51.9–57.7 ms (106–118 K
   tok/s).
 
-## Measurement (2026-09-11 evening pass, cache-enabled ring)
+## Measurement
+
+(2026-09-11 evening pass, cache-enabled ring. An additional diagnostic
+RouteFinal startup and a cache-disabled observation follow this section.)
 
 Prefill values are medians of three cold requests per prompt size; all nine
 requests reported zero cached tokens (unique prompt text per sample; prompt
@@ -94,11 +97,14 @@ a reproducible benchmark or a speedup claim.
 | 8,192 | 4 | 100.7 | 35.7 | 2.82 |
 | 32,768 | 4 | 104.4 | 37.2 | 2.80 |
 
+## Result
+
 C1 decode matches the TP4/DCP1 record within 2–3%; C4 aggregate decode
 reaches 0.76–0.82× of DCP1, consistent with the cross-rank full-CKV gather
 (`Using full-CKV gather for GLM5Next B12X DCP prefill`) whose cost grows
 with scheduling pressure. Effective acceptance length is at or slightly
-above the DCP1 record (2.21–2.76).
+above the DCP1 record (2.21–2.76). The DCP4 exchange buys ~3.7× KV
+capacity (8.36M vs 2.28M tokens on the same 24 GiB per rank).
 
 ## RouteFinal dual-domain diagnostic startup
 
@@ -134,8 +140,18 @@ snapshot writes or restores occurred in any worker log; the SIRCL
 capability vote remained (transport handshake) and vLLM's in-engine prefix
 caching stayed enabled (28,160-token hits in the suffix cases), so
 `SPARKCACHE_ENABLED=0` disables the SparkCache snapshot/capture layer only.
-This is an observation row, not a separate qualification: functional
-checks (four-rank start, semantic answer, 1M admission) passed on this
+
+## Conclusion
+
+The TP4/DCP4 SparkCache profile is bounded-qualified on the unchanged
+published R33 image through the profile-contract overlay: managed four-rank
+startup with graph capture, exact-answer serving, DCP prefill gather
+evidence, dual-domain RouteFinal attribution, the six-case prefix-hit
+regression including the 1,027-token suffix, planned-restart and SIGKILL
+fault-injection restore, and the 8.36M-token KV pool with 1M request
+admission. #220's zero-hit behavior was not observed. The cache-disabled
+`tp4-dcp4` profile starts and serves as an observation row: functional
+checks (four-rank start, semantic answer, 1M admission) passed on that
 start as well.
 
 ## Reproduction (overlay and quickstart)
