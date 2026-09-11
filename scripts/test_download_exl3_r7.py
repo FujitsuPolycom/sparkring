@@ -28,7 +28,7 @@ def test_index_rejects_stale_qualified_total(tmp_path, monkeypatch):
         json.dumps({"metadata": {"total_size": r7.STALE_INDEX_TOTAL_SIZE}, "weight_map": {"x": "model-sharedbf16.safetensors"}}),
         encoding="utf-8",
     )
-    with pytest.raises(RuntimeError, match="stale payload total"):
+    with pytest.raises(RuntimeError, match="replace the index with the pinned"):
         r7.indexed_shards(tmp_path)
 
 

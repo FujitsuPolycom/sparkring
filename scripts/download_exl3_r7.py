@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Download and fail-closed verify the immutable GLM-5.2 R7 checkpoint.
+"""Download and verify the pinned GLM-5.2 EXL3 3.5-bpw checkpoint.
+
+REPOSITORY and REVISION identify the exact Hugging Face source used by the
+GLM-5.2 EXL3 runtime profile; the command name retains its R7 release label.
 
 The repository's MANIFEST files describe assembly provenance. They do not seal
 the serving payload. Runtime ownership therefore comes from the pinned index,
@@ -75,8 +78,8 @@ def indexed_shards(path: Path) -> set[str]:
     total = data.get("metadata", {}).get("total_size")
     if total == STALE_INDEX_TOTAL_SIZE:
         raise RuntimeError(
-            "index has the qualified checkpoint's stale payload total; "
-            f"expected corrected total_size {EXPECTED_INDEX_TOTAL_SIZE}"
+            f"index total_size is {total}; replace the index with the pinned "
+            f"revision's index declaring {EXPECTED_INDEX_TOTAL_SIZE} bytes"
         )
     if total != EXPECTED_INDEX_TOTAL_SIZE:
         raise RuntimeError(f"index total_size is {total}, expected {EXPECTED_INDEX_TOTAL_SIZE}")
