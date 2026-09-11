@@ -26,11 +26,6 @@ reproducible benchmarks, and [test results](performance/).
 
 ## Profiles
 
-KV is approximate total token capacity. The shared TP4 figure is for DCP1;
-the TP2 figure is a reference estimate. `—` means no capacity
-is recorded. Startup reports the actual capacity, which is separate from the
-per-request Context limit.
-
 ### Four Sparks
 
 | Model / predictor | Serving stack | Transport | Layout | Context | Sequences | KV (tokens) | Guide |
@@ -45,14 +40,9 @@ per-request Context limit.
 
 The Vision-Exp [artifact contract](runtime/deepseek-vision-exp/profile.json)
 identifies the Anemll image, MiaAI-Lab recipe, and SparkRing transport separately.
-Contributor-reported results are linked from the guide; independent reproduction
-of the selected artifacts is not claimed.
+Contributor-reported results are linked from the guide.
 
-The shared-image GLM profiles enable continuation coalescing and token-sharded
-mHC. Ring profiles use hardware-forwarded mesh paths and NCCL across both host
-PCIe domains. Their source integration is **implemented**; full shared-image
-serving qualification remains **research-only**. Switched deployments are
-provided as-is and have not been validated on switched hardware.
+Switched deployments are provided as-is and have not been validated on switched hardware.
 Shared-image GLM ring deployment requires the [managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
 
 ### Two Sparks
@@ -64,9 +54,7 @@ Shared-image GLM ring deployment requires the [managed-mesh setup](runtime/glm53
 | Qwen3.8-27B EXL3 K5/K6 | [SparkRing vLLM/ExLlamaV3 build](runtime/qwen38/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP2/DCP1 | 1M | 32 | — | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
 
 The NVFP4-Spark pair uses 8.75 GiB KV per rank, one DAC, both host PCIe
-domains, coalescing and mHC. SparkCache is unsupported for this TP2 composition. Shared-image GPU
-qualification remains **research-only**. The NVFP4-Spark reference deployment
-reported 1,050,118 KV tokens; that is capacity, not a tested maximum workload.
+domains, coalescing and mHC.
 
 See the [profile index](docs/profiles/README.md) for evidence scopes and
 [SparkCache compositions](recipes/sparkcache/README.md) for persistent-cache
@@ -105,6 +93,8 @@ name are not interchangeable; a model-neutral name does not qualify every profil
 Retired profiles retain their image references in their linked guides.
 The [shared-image publication record](runtime/sparkring/source_image/publication.json)
 contains the download digest and profile verification scope.
+
+Image work is in flux and will reach a cleaner, condensed state in the future. 
 
 ## Benchmark results
 
