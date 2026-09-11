@@ -2,7 +2,7 @@
   "schema": "sparkring-deployment/v1",
   "id": "glm53-flash-spark-tp4-dcp1-sparkcache",
   "title": "GLM-5.3 Flash NVFP4-Spark \u00b7 MTP3 + SparkCache",
-  "recommendation": "alternative",
+  "recommendation": "recommended",
   "status": "qualified",
   "configuration": {
     "format": "release-profile",

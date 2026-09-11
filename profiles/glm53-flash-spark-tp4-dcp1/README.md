@@ -18,3 +18,9 @@ For a four-Spark ring, use the managed mesh setup in the quickstart above.
 For a switched fabric, follow the [switched NCCL setup](../glm53-flash-spark-tp4-switched/README.md),
 which selects its own pinned image and explicit HCA/GID settings. Topology is
 not detected automatically. That configuration does not enable SparkCache.
+
+## DCP4 alternative
+
+TP4/DCP1 is the default. [TP4/DCP4](../glm53-flash-spark-tp4-dcp4-sparkcache/README.md)
+is a validated alternative with an 8.4M-token recorded KV pool; it requires
+the contract/entrypoint overlay described in its guide.

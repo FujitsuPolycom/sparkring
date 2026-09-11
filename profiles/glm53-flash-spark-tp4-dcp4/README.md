@@ -17,7 +17,7 @@ DCP4 requires the managed fabric installation on every rank.
 The recorded KV pool is **8,364,901 tokens** at 24 GiB per rank. The configured
 context limit is 1,048,576 tokens; a completed request of that size is not claimed.
 
-[DCP1](../glm53-flash-spark-tp4-dcp1-sparkcache/README.md) remains an alternative
-with a smaller KV pool. The [record](../../performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md)
+[DCP1](../glm53-flash-spark-tp4-dcp1-sparkcache/README.md) is the default configuration. DCP4 is an alternative
+with a larger KV pool. The [record](../../performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md)
 compares its bounded prefill/decode observations. For a switched fabric, use
 [switched setup](../glm53-flash-spark-tp4-switched/README.md); it has a separate configuration.

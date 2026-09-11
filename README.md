@@ -25,7 +25,7 @@ Context is the per-request limit; counts are rounded. See the
 
 | Model | Quant | Layout | Context (tokens) | KV* (tokens) | SparkCache | Status | Quickstart |
 |---|---|---|---:|---:|---|---|---|
-| **GLM-5.3-Flash** | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP4/DCP4 | 1M | [8.4M](performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md) | [Optional](profiles/glm53-flash-spark-tp4-dcp4-sparkcache/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp4-dcp4-sparkcache/README.md) |
+| **GLM-5.3-Flash** | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP4/DCP1 | 1M | [~2.3M](performance/capacity-references.md) | [Optional](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | TP4/DCP1 | 1M | [~1M](performance/capacity-references.md) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) | Development | [Guide](profiles/deepseek-v4-flash-0731/README.md) |
 | DeepSeek-V4-Flash-Vision-Exp | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp) | TP4/DCP1 | 1M | — | No | Experimental | [Guide](profiles/deepseek-v4-flash-vision-exp-tp4/README.md) |
 | DeepSeek-V4.1-Flash | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | TP4/DCP1 | 1M | [~2.2M](profiles/deepseek-v41-flash-cycle/recipe.json) | No | Development | [Guide](profiles/deepseek-v41-flash-cycle/README.md) |

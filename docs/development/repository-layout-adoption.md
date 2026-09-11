@@ -83,7 +83,7 @@ results do not qualify a reorganized build or authorize a deployment promotion.
 | #258 | Open, head `5a00273a7ea12d41db965c50a3aedb02e23add83` | Preserve NVIDIA NVFP4 versus NVFP4-Spark identity, launcher overrides and cache namespaces; extend the profile catalog when the implementation lands |
 | #259 | Merged in the integration base | Preserve the 300-second peer-silence mitigation and bounded claim; no local-address recovery is implied |
 | #263 | Open, head `2ae60f01774131d07e7370104599bacafb39473d` | Retain contributor wording improvements around the generated README region; edit the generator for table changes |
-| #265 | Merged in the integration base | TP4/DCP4 is the default GLM four-Spark selection; its contract/entrypoint overlay and activation record are pinned separately from the published image |
+| #265 | Merged in the integration base | TP4/DCP1 remains the default; TP4/DCP4 is a validated alternative; its contract/entrypoint overlay and activation record are pinned separately from the published image |
 | #266 | Open, head `544f498c6369a72c1afba0a856dfb870cfc0d302` | Preserve startup validation, independent peer/local-address recovery timers and immediate fabric-fault handling; relocation leaves its managed-service paths intact |
 
 PR #262 is already part of the initial base. No pending PR was merged, closed,
