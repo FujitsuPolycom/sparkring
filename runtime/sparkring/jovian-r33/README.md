@@ -15,7 +15,7 @@ Its release source lock has SHA256
 | Component | R33 source |
 |---|---|
 | vLLM | `voipmonitor/vllm` at `ae89131442359dc332d9c46009be3c1f8cdee0b4` plus [`patches/vllm-r33-sparkring.manifest.json`](patches/vllm-r33-sparkring.manifest.json), producing tree `547f7091841728f21ab419012a766fd1df70a569` |
-| B12X | `FujitsuPolycom/b12x` at `68acfc14893c087aa9b3120bb984fde4c4e7a21f` |
+| B12X | `FujitsuPolycom/b12x` branch `integration/sparkring-r33-checkpoint-export`; runtime commit `68acfc14893c087aa9b3120bb984fde4c4e7a21f`, tree `284e7df8caff930477a314fea20d826256844de4` |
 | LMCache | `local-inference-lab/LMCache` at `29bc5a2efde737c436b04499eb62cd1776cebeec` |
 | FlashInfer | `803c4664f4771ddc418f20a57f752469a237a825` |
 | FlashKDA | `3b225bf26bb8e218928a1fe14751cb48cf31d11b` plus the release patch |

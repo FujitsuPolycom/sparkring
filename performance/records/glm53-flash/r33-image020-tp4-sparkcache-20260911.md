@@ -1,6 +1,6 @@
 # Generic R33 image TP4 ring qualification
 
-Status: **bounded qualification passed; canonical serving return and registry publication pending**.
+Status: **bounded-qualified; registry publication pending**.
 
 ## Conditions
 
@@ -43,6 +43,11 @@ The image construction receipt binds these source and native identities:
   quantify per-request traffic or throughput by HCA.
 - A semantic request after the INFO startup returned the exact expected answer,
   created an 8,192-token cache entry, and completed normally.
+- The managed lifecycle then returned all four ranks to the canonical WARN
+  configuration. Every rank ran the same image, completed graph capture, and
+  reported active mesh and model services. A post-return semantic request
+  returned the exact expected answer and restored the same 8,192-token cache
+  entry on every rank in 97.8–99.1 ms.
 - One 114,688-token cold prompt returned the exact expected answer, reported
   zero cached tokens, completed normally, and left the API healthy.
 - Six prefix-hit geometry cases completed after a 32,256-token cache hit,
@@ -105,6 +110,7 @@ paths, prompts, generated secrets, or container identifiers.
 | SIRCL post-request summary | `tp4-020-activation/sircl-post-request-summary.json` | `86121b5b21a9e66bcb951f1dd1f4de94fc53efe8c44aa4c44680294369329781` |
 | Dual-domain NCCL route attribution | `tp4-image020-nccl-info-plan/deployment/ready-attribution.json` | `5cccadfde05fb420442c271c2c034cc8d7eb10cc881a3e8f124f9360a5687838` |
 | INFO-start semantic check | `tp4-020-info-semantic.json` | `c4b92e4845773e7433f506db79ad774576b53c31f694c9aeb434898ecc1010e3` |
+| Canonical WARN return | `tp4-image020-nccl-info-plan/deployment/canonical-ready.json` | `cfbb837566ac01ef049566fd24815687102f558a479910c7353b1eaadbd653df` |
 
 ## Qualification limits
 
@@ -116,11 +122,11 @@ liveness but not raw output equivalence. Route attribution proves NCCL path
 creation through both PCI domains during startup, not traffic balance or bytes
 transferred by a particular request.
 
-The final operational return to the canonical WARN renderer is pending under
-the Noether lifecycle. This record does not replace a successful canonical
-return receipt. The image has no public registry digest yet, and no published
-tag or quickstart should identify it as the public default until that return
-and immutable registry verification complete.
+The managed Noether lifecycle returned all ranks to the canonical WARN
+renderer and passed health, graph-capture, semantic, and cache-restore checks.
+The image has no public registry digest yet, and no published tag or quickstart
+should identify it as the public default until immutable registry verification
+completes.
 
 This record qualifies only the TP4/DCP1 ring profile on the exact image and
 source identities above. The TP2 result has a separate
