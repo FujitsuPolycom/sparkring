@@ -26,6 +26,9 @@ BUILD_RECEIPT="$PWD/glm53-e10536a-runtime-receipt.json" \
 bash runtime/glm53-flash-e10536a/build-image.sh
 ```
 
+Receipt output paths must not exist. Use a separate `BUILD_RECEIPT` path for
+each build; the verifier also refuses to overwrite an existing receipt.
+
 The builder verifies source commits and Git trees, builds for SM121, verifies
 the output labels and imports, and writes an implemented-status receipt.
 Four-rank serving remains unqualified until one immutable image digest passes

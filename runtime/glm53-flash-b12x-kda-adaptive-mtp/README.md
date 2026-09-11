@@ -25,6 +25,9 @@ BUILD_RECEIPT="$PWD/glm53-b12x-kda-adaptive-mtp-runtime-receipt.json" \
 bash runtime/glm53-flash-b12x-kda-adaptive-mtp/build-image.sh
 ```
 
+Receipt output paths must not exist. Use a separate `BUILD_RECEIPT` path for
+each build; the verifier also refuses to overwrite an existing receipt.
+
 The builder verifies commits, Git trees, the complete vLLM lineage, source
 licenses, patched NCCL bytes, output labels, and required Python imports. Its
 receipt proves image construction only. Startup, semantic generation,

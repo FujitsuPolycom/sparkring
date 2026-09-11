@@ -207,13 +207,17 @@ def main() -> int:
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
+        if args.output and (args.output.exists() or args.output.is_symlink()):
+            raise VerifyError(f"receipt output already exists: {args.output}")
         receipt = verify_image(args.engine, args.image, args.pins.resolve())
+        rendered = json.dumps(receipt, indent=2, sort_keys=True) + "\n"
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            # Exclusive creation also rejects a file created during verification.
+            with args.output.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write(rendered)
     except (OSError, KeyError, json.JSONDecodeError, VerifyError) as exc:
         parser.error(str(exc))
-    rendered = json.dumps(receipt, indent=2, sort_keys=True) + "\n"
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(rendered, encoding="utf-8", newline="\n")
     print(rendered, end="")
     return 0
 

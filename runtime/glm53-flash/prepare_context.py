@@ -114,6 +114,10 @@ def verify_git_tree(
             f"{repository.name} tree drift: expected {expected_tree}, "
             f"got {observed_tree}"
         )
+    # Docker copies the working tree: a pinned HEAD alone does not exclude
+    # staged source edits. Patched NCCL already checks its expected index tree.
+    if not indexed and run(("git", "-C", str(repository), "write-tree")) != expected_tree:
+        raise PrepareError(f"{repository.name} has staged source changes")
     if run(("git", "-C", str(repository), "diff", "--name-only")):
         raise PrepareError(f"{repository.name} has unstaged changes")
     if run(("git", "-C", str(repository), "ls-files", "--others")):
