@@ -290,8 +290,18 @@ def verify_context(context: Path, *, pins_path: Path) -> dict[str, Any]:
         raise PrepareError(f"unsupported receipt schema: {receipt.get('schema')!r}")
     if receipt.get("pins_sha256") != sha256_file(pins_path):
         raise PrepareError("prepared context was produced from different pins")
+    required = {"bundle/runtime/" + name for name in (
+        "pins.json", "verify_image.py", "Containerfile", "Containerfile.seed",
+        "build-image.sh", "LICENSES.md", "SparkRing-LICENSE")}
+    required.add("bundle/sources/instanttensor-" + pins["public_image_build"]["instanttensor"]["version"] + ".tar.gz")
+    if not isinstance(receipt.get("files"), dict) or set(receipt["files"]) != required:
+        raise PrepareError("prepared receipt must contain the complete payload inventory")
     for relative, expected in receipt["files"].items():
-        require_hash(context / relative, expected, relative)
+        path = context / relative
+        if not path.resolve().is_relative_to(context.resolve()):
+            raise PrepareError("prepared payload escapes context: " + relative)
+        require_hash(path, expected, relative)
+    require_hash(context / "bundle/runtime/pins.json", sha256_file(pins_path), "embedded pins")
 
     build = pins["public_image_build"]
     source_pins = build["sources"]
@@ -314,6 +324,8 @@ def verify_context(context: Path, *, pins_path: Path) -> dict[str, Any]:
         ),
     }
     for name, (commit, tree, indexed) in source_contracts.items():
+        if run(("git", "-C", str(sources / name), "ls-files", "--others")):
+            raise PrepareError(f"prepared {name} contains untracked source files")
         verify_git_tree(
             sources / name,
             expected_commit=commit,
