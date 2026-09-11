@@ -35,7 +35,8 @@ rank while serving; benchmark, needle (131K, 262K), vision and tool-calling chec
 of a one-variable-per-boot lever campaign on that boot (NCCL channels, Engram threads, sequence
 cap, batched tokens, draft method, request limit / utilization): KV 2,182,642 tokens (5.07× at
 430K) with 13–15 GiB MemAvailable, 400K needle pass, decode within the ±5 % run-to-run band of
-the first boot, and a six-hour c=8 soak — all in the
+the first boot, and a six-hour c=8 soak (1,417 waves, 11,336 requests, 0 failures, 0 hangs,
+memory flat) — all in the
 [benchmark record](../../performance/records/deepseek-v41-flash/cycle-tp4-dspark5-graphs-20260910.md).
 
 These results are evidence for the recorded image identity and checkpoint revision on that

@@ -92,6 +92,7 @@ Prompt set and harness: `prompts-v1.json` / `v41bench.py` from tonyd2wild/DeepSe
 | Vision + tool calling end-to-end (`vision_tools_demo.py`) | 7/7: three-stripe image, two images in one message, 2×2 grid; tool call with arguments, full round trip, parallel calls, forced `tool_choice` |
 | DSpark acceptance | mean 3.77 tokens per step over the benchmark (2.00–6.00 across 10 s windows); 6.00 on counting |
 | 20-minute soak, 8 concurrent streams (temperature 1.0, top-p 0.95, 256-token budgets, eight categories rotating) | 81 waves, 648 requests, 0 failures, 0 streams silent for 90 s, aggregate median 95.0 tok/s (65.5 on the warm-up wave, max 102.6), first-five-wave mean 89.5 → last-five 93.9, TTFT ~0.7 s after warm-up; MemAvailable 14–16 GiB per rank before and after |
+| Six-hour soak, 8 concurrent streams, on the recorded profile (430,080 tokens, gmu 0.83, greedy draft; temperature 1.0, top-p 0.95, 256-token budgets, eight categories rotating; 2026-09-11 05:28–11:28Z) | 1,417 waves, 11,336 requests, 1,985,316 completion tokens, **0 failures, 0 streams silent for 90 s**; aggregate median 92.1 tok/s (min 78.0, max 104.1); no drift: first / middle / last 100 waves median 90.4 / 92.9 / 91.1 tok/s, TTFT p50 0.71 s throughout; MemAvailable sampled every 60 s (344 samples) 14 / 15–16 / 13–14 / 13–14 GiB per rank, first and last sample identical; `/health` 200 after the soak |
 | Smoke, cold first request (TTFT included) | counting 68.1 tok/s, code 56.0 tok/s at C1 |
 | Text-only eager boot, no speculation (131K, 8 seqs) | 14.5–14.8 tok/s at C1; `Model loading took 78.79 GiB`; KV 13.74 GiB = 1,687,422 tokens (12.87× 131K) |
 | Serving-shape memory | consumed 85.71 GiB per rank at startup (weights + non-torch); graphs 0.54 GiB; KV 8.39 GiB = 1,171,588 tokens (3.91× 300K); 15–16 GiB MemAvailable per rank while serving |
@@ -124,7 +125,7 @@ above show the collectives already cost ~5 ms of a ~57 ms step. L2 is slightly p
 peak; L5 is neutral to +5 % on this hardware (spark-bench measured a larger gain on theirs); L6 buys capacity, not speed — 400K
 needle pass at 397,753 prompt tokens, TTFT 302.6 s, 1,314 tok/s prefill, and the L7 combination repeats it at 288.6 s /
 1,378 tok/s. The recipe records L7 with `gpu-memory-utilization 0.83` instead of 0.85 to keep 13–15 GiB MemAvailable per rank
-(KV 2,182,642 tokens, 5.07× at 430K, `Available KV cache memory: 10.94 GiB`); the six-hour soak ran on that value.
+(KV 2,182,642 tokens, 5.07× at 430K, `Available KV cache memory: 10.94 GiB`); the six-hour soak in the table above ran on that value.
 
 Raw per-boot summaries and prompt-set JSON are in the operator's repository; the headline numbers above are the complete
 compact-set output for each boot.

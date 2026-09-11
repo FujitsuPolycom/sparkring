@@ -2431,5 +2431,45 @@
    "concurrency_at_430080": 5.07,
    "memavailable_gib_per_rank": "13-15"
   }
+ },
+ "soak_6h_recorded_profile": {
+  "started": "2026-09-11T05:27:56Z",
+  "minutes": 360,
+  "concurrency": 8,
+  "profile": "430080 tokens, gmu 0.83, greedy draft, 64 Engram threads, VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0, 8 seqs",
+  "waves": 1417,
+  "requests": 11336,
+  "completion_tokens": 1985316,
+  "fails": 0,
+  "hangs": 0,
+  "truncated_at_budget": 2864,
+  "agg_tok_s": {
+   "median": 92.1,
+   "min": 78.0,
+   "max": 104.1,
+   "first100_median": 90.4,
+   "mid100_median": 92.9,
+   "last100_median": 91.1
+  },
+  "ttft_p50_s": 0.71,
+  "memavailable_gib_per_rank": {
+   "samples": 344,
+   "rank0": [
+    14,
+    14
+   ],
+   "rank1": [
+    15,
+    16
+   ],
+   "rank2": [
+    13,
+    14
+   ],
+   "rank3": [
+    13,
+    14
+   ]
+  }
  }
 }
