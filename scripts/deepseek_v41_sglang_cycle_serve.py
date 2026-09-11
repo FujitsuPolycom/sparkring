@@ -151,6 +151,9 @@ def verify_host(cfg):
     state = Path(cfg["STATE_HOST_PATH"])
     if not (state / "operator/auth.py").is_file():
         raise ValueError("run --prepare first")
+    names = output(["docker", "ps", "--format", "{{.Names}}"]).splitlines()
+    if any(name.startswith(("vllm", "sgl", "glm")) for name in names):
+        raise ValueError("a model container is already running; stop its owning service first")
     if output(["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"]):
         raise ValueError("GPU has active compute processes; stop the owning service first")
     if output(["docker", "ps", "-aq", "--filter", "name=^/sgl_dsv41$"]):
