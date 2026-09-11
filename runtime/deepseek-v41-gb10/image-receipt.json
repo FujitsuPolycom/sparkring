@@ -1,0 +1,53 @@
+{
+  "schema": "sparkring-deepseek-v41-gb10-image/v1",
+  "built_utc": "2026-09-10T18:46:27Z",
+  "base_image": "vllm/vllm-openai:nightly-8a728663c1c3eeace834a95f5654fa653cc1998c",
+  "base_image_id": "sha256:1891ada1256a9c44fb377dcba3bb6169b829df87a9986546c37a77a512bbf146",
+  "vllm_repository": "https://github.com/vllm-project/vllm.git",
+  "vllm_commit": "e47aa780bccf59f59dfa2cbb18e17a10b4fe69ba",
+  "vllm_branch": "dsv41-feat",
+  "flashinfer_commit": "07869c61ba581e6d6b8ad8d142f4a6c89b707cc1",
+  "flashinfer_version": "0.7.0rc1",
+  "stable_extension_sha256_prefix": "635f8eb3ece93d93",
+  "layers": {
+    "fi3": {
+      "image_id": "sha256:2166d058c47619d04db781e5c304ea29203d407c9e832e97857a9366f3792e11",
+      "size_bytes": 23323430300
+    },
+    "fi4": {
+      "image_id": "sha256:2a09c07f6e65c3ebdfb97de9557cef19e2c09d163393735d47d8ee7ba7a289ca",
+      "size_bytes": 23326823542
+    },
+    "fi5": {
+      "image_id": "sha256:43386874bea1633252e908ec81adc05e2d09a192249192aa6f5f8bf46c4a679d",
+      "size_bytes": 23329409828
+    },
+    "overlay5": {
+      "image_id": "sha256:af86a3d2bb0d267faa7f31777cdbe855addc1348f0b9f8323016ebf17d3dae3c",
+      "size_bytes": 23439213058
+    }
+  },
+  "min_memavailable_gib_during_build": 81,
+  "in_image": {
+    "vllm_version": "0.28.1rc1.dev388+g8a728663c",
+    "torch": "2.13.0+cu130",
+    "flashinfer": "0.7.0rc1",
+    "mxfp4_moe_backend": "DEEPGEMM_MXFP4",
+    "mxfp8_linear_kernel": "FlashInferCutlassMxfp8LinearKernel"
+  },
+  "patch_md5": {
+    "attention.py": "da9ef19608848b6686c17300108610af",
+    "engram.py": "4ad6f9d36e05045f4fe008bcec8f4e0f",
+    "flashinfer_sparse.py": "af0f84473af44164f7050a7300937cb0",
+    "model_state.py": "0a14bee67f103f1d616c6044134c0bab",
+    "mounts.txt": "79a774bcb2c9f3cfdbfbdd671521ff1c",
+    "sparse_attn_indexer.py": "a9b7375619feb97b7299caa71346e8ad",
+    "sparse_swa.py": "cc4193539ac4409ef1e2c99f8f909640",
+    "weight_utils.py": "7e1027f15bc1f649bc3d2635e8556ee2"
+  },
+  "notes": [
+    "Private local build; no public image is published by this contribution. Rebuild with build-image.sh and compare layer identities.",
+    "The stable extension compiled at 6 jobs in about 7.5 minutes on an idle GB10; under a 7 GiB cgroup one CUTLASS translation unit stalls in reclaim (no OOM kill).",
+    "The FlashInfer mxfp8 GEMM prebuild needs MAX_JOBS=1 under a 7 GiB cgroup; FlashInfer 0.7.0rc1 built from source in 26 minutes under the same cgroup."
+  ]
+}
