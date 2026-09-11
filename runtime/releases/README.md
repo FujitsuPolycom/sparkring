@@ -26,3 +26,9 @@ The `sparkring-r33-dcp4` selection pins the published image and the merged
 contract/entrypoint overlay separately. It does not change the published image
 identity. DCP4 activation requires the overlay and managed fabric; DCP1 remains
 available without that additional deployment choice.
+
+Its evidence pins include the correction in upstream commit
+`f575d421d72c7fbdef3d6165eb6bbe241517fa87`: gathered global KV entries are
+mapped to their owners arithmetically, without a separate owner-exchange step.
+The correction changes the report and its publication hash, not image or
+overlay code. Preserved release inputs retain their existing hashes.

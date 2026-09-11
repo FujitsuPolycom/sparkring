@@ -3,10 +3,10 @@
 ## Result and base
 
 The restructuring branch is `refactor/repository-layout`. Its integration
-base is main commit `0282f0814fbcacb5396fc205ffc960aaadf9a96a`, which includes
-PRs #259 and #265. The initial inventory and preserved-input hashes were taken from
-`c65a9981e2a69f821ac716f6f13484d99d23f4ea`. The branch was rebased locally when
-main advanced; no merge or remote write was performed by this work.
+base is main commit `f575d421d72c7fbdef3d6165eb6bbe241517fa87`, including
+PRs #259, #265 and #269. The initial preservation inventory is based on
+`c65a9981e2a69f821ac716f6f13484d99d23f4ea`. Adoption requires completing the
+repository-wide review and the checks below; no deployment is included.
 
 The branch provides 21 indexed deployment profiles, deterministic configuration
 resolution, a shared guarded launch entry point, ENV rendering for the DeepSeek
@@ -30,7 +30,7 @@ complete report. Only the observed-problem field is required in the bug form.
 | vLLM adapter source paths | Canonical owner is `integrations/vllm`; generated legacy exports preserve overlay/package consumers |
 | Fabric and RoCEnante integration | Maintained imports use their component owners; managed-service allowlist includes the relocated dependencies |
 | Moved Markdown guides | Original URLs and heading anchors remain as pointers; the migration map names canonical destinations |
-| Published source images, locks, receipts and evidence | 427 inputs protected by a preserved-content check; public image names/digests and installed paths are unchanged |
+| Published source images, locks, receipts and evidence | 430 inputs protected by a preserved-content check; public image names/digests and installed paths are unchanged |
 | Native tiled-prefill substrate and incompatible image builders | Retained at identity-bound paths; their native/build dependencies justify the exception |
 
 No documented command was intentionally removed. Some internal test filenames
@@ -72,7 +72,7 @@ not part of hosted CPU CI. No model files were accessed or changed for this work
 
 Windows skips include POSIX mode/symlink behavior, Bash/native compilers, optional
 LIL integration and serving-runtime checks. Hosted Linux CI has not run because
-nothing has been pushed. CUDA, RDMA, native ARM64 image assembly, live failure
+the reviewed changes have not been published. CUDA, RDMA, native ARM64 image assembly, live failure
 recovery, full-context serving and performance were not validated. Local CPU
 results do not qualify a reorganized build or authorize a deployment promotion.
 
@@ -82,9 +82,14 @@ results do not qualify a reorganized build or authorize a deployment promotion.
 |---|---|---|
 | #258 | Open, head `5a00273a7ea12d41db965c50a3aedb02e23add83` | Preserve NVIDIA NVFP4 versus NVFP4-Spark identity, launcher overrides and cache namespaces; extend the profile catalog when the implementation lands |
 | #259 | Merged in the integration base | Preserve the 300-second peer-silence mitigation and bounded claim; no local-address recovery is implied |
-| #263 | Open, head `2ae60f01774131d07e7370104599bacafb39473d` | Retain contributor wording improvements around the generated README region; edit the generator for table changes |
+| #263 | Closed, head `2ae60f01774131d07e7370104599bacafb39473d` | Retain contributor wording improvements around the generated README region; edit the generator for table changes |
 | #265 | Merged in the integration base | TP4/DCP1 remains the default; TP4/DCP4 is a validated alternative; its contract/entrypoint overlay and activation record are pinned separately from the published image |
-| #266 | Open, head `544f498c6369a72c1afba0a856dfb870cfc0d302` | Preserve startup validation, independent peer/local-address recovery timers and immediate fabric-fault handling; relocation leaves its managed-service paths intact |
+| #266 | Open, head `544f498c6369a72c1afba0a856dfb870cfc0d302` | Review local-address recovery separately from peer-silence handling; relocation leaves its managed-service paths intact |
+| #267 | Open, head `5a74a07a0b8e11d660036600ce64ea7eedc6903b` | Keep the proposed SGLang runtime distinct from vLLM; add its profile only with its own builder and evidence |
+| #269 | Merged in the integration base | Preserve the corrected DCP4 arithmetic-owner mapping and no-overlap evidence; published image identity is unchanged |
+| #270 | Open, head `27d6b0dbd2b5a2113fb8c14923d70fb354d5a0ee` | Apply selected-HCA rendering to the maintained TP2 owner and regenerate its compatibility launcher if adopted; retain transport-change validation scope |
+
+PR states above were checked against GitHub with this integration base.
 
 PR #262 is already part of the initial base. No pending PR was merged, closed,
 rejected or rewritten by this branch. Maintainers should recheck main and open

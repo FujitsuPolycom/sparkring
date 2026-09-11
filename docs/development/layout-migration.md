@@ -25,17 +25,17 @@ They may be removed only after all documented callers, package inputs and
 supported release consumers have migrated, with an announced breaking release.
 Frozen release inputs are not generated from changing implementation.
 
-## Pending contributions
+## Contribution reconciliation
 
-PR #262 is merged and already present in the base. PR #258 remains open; #263 is closed and #265 has merged. PR #259 landed in main as
-`84f2a01160e9d7542c06d1f52e0163907c1bbe77`; the restructuring branch was
-rebased onto that commit. PR #266 adds a separate proposed management-address
-loss mechanism and remains open. Their changes are not merged by this branch. Preserve #258's model
-variant and cache-namespace separation, #259's bounded peer-silence mitigation,
-#263's useful wording and #265's imported TP4/DCP4 selection/evidence. The
-branch is rebased onto main's DCP4 merge at `0282f0814fbcacb5396fc205ffc960aaadf9a96a`.
-An increase in peer silence tolerance does not recover disappearance of the
-local management address. Contributor credit stays in normal Git history.
+Integration base: `f575d421d72c7fbdef3d6165eb6bbe241517fa87` from main.
+It includes PRs #259, #262, #265 and #269. The DCP4 evidence describes the
+verified global-KV gather and arithmetic owner mapping; it does not claim a
+separate top-k owner-exchange primitive.
+
+The [adoption report](repository-layout-adoption.md#pending-contributions)
+records pending PR heads and how their work fits the maintained owners.
+Increasing peer-silence tolerance does not recover loss of the local
+management address. Contributor credit remains in Git history.
 
 ## Implementation checklist
 
