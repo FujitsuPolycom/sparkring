@@ -168,8 +168,11 @@ def test_profile_selects_spark_kv875_settings_and_no_cache():
 def test_rank_plan_maps_both_pci_functions_of_one_cage(inputs, rank):
     value = plan(inputs, rank)
     env = value["environment"]
-    assert env["B12X_ROCE_HCA"] == "rocep1s0f0,rocep1s0f1,roceP2p1s0f0,roceP2p1s0f1"
-    assert env["B12X_ROCE_PEER_HCA_MAP"] == f"{1 - rank}=0/2"
+    # Only the selected functions are exposed to the RoCE proxy: it requires every
+    # listed device to be ACTIVE, and the f1 functions carry no cable on a
+    # single-DAC install. Peer-map indices address the rendered list.
+    assert env["B12X_ROCE_HCA"] == "rocep1s0f0,roceP2p1s0f0"
+    assert env["B12X_ROCE_PEER_HCA_MAP"] == f"{1 - rank}=0/1"
     assert env["NCCL_IB_HCA"] == "=rocep1s0f0,roceP2p1s0f0"
     assert env["B12X_ROCE_PAIR_PATHS"] == "2"
     assert env["NCCL_MIN_NCHANNELS"] == env["NCCL_MAX_NCHANNELS"] == "8"
@@ -243,7 +246,7 @@ def test_tp2_clears_inherited_mesh_sitecustomize(inputs, tmp_path):
 @pytest.mark.parametrize(
     "assignment",
     [
-        "B12X_ROCE_PEER_HCA_MAP=1=2/1",
+        "B12X_ROCE_PEER_HCA_MAP=1=1/0",
         "VLLM_PLUGINS=sparkcache",
         "SPARK_CACHE_ENABLED=1",
         "VLLM_HOST_IP=duplicate",

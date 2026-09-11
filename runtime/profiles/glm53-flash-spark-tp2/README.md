@@ -76,7 +76,7 @@ records the common-source requirements and reference-trial limits.
 | Scheduler | Eight sequences, 8,192 batched tokens, prefill interval 8 |
 | Prefill | Token-sharded mHC and recurrent-checkpoint coalescing; sequential KDA projection |
 | Graphs | `FULL_AND_PIECEWISE`, mode 0; `[1,2,4,8,12,16,20,24,28,32]` |
-| Transport | HCA indices 0/2; two RoCEnante paths; 16 MiB all-reduce and all-gather input-shard limits |
+| Transport | HCA indices 0/2 (`rocep1s0f0`, `roceP2p1s0f0`); only these two functions are rendered into `B12X_ROCE_HCA`, so the other cage may be uncabled; two RoCEnante paths; 16 MiB all-reduce and all-gather input-shard limits |
 | NCCL | Verified 2.30.7; eight channels; `=rocep1s0f0,roceP2p1s0f0` |
 | Multimodal / SparkCache | Four images, zero videos; SparkCache disabled |
 | Lifecycle | Active 2 GiB host-memory guard; manual create/start; Docker restart `no` |
