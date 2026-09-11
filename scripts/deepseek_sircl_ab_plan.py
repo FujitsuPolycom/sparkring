@@ -46,7 +46,6 @@ EXPECTED_SERVING = {
     },
     "tool_call_parser": "deepseek_v4",
 }
-SOURCE_RECIPE_BATCH_TOKENS = 4096
 
 SIRCL_ENVIRONMENT = {
     "PYTHONPATH": "/opt/spark-vllm",
@@ -183,19 +182,18 @@ def _require_exact_serving(recipe: dict[str, Any]) -> dict[str, Any]:
     serving = recipe.get("serving")
     if not isinstance(serving, dict):
         raise PlanError("DeepSeek recipe serving contract is missing")
-    source_expected = {**EXPECTED_SERVING, "max_num_batched_tokens": SOURCE_RECIPE_BATCH_TOKENS}
-    observed = {key: serving.get(key) for key in source_expected}
-    if observed != source_expected:
+    observed = {key: serving.get(key) for key in EXPECTED_SERVING}
+    if observed != EXPECTED_SERVING:
         differences = {
             key: {"expected": expected, "observed": observed.get(key)}
-            for key, expected in source_expected.items()
+            for key, expected in EXPECTED_SERVING.items()
             if observed.get(key) != expected
         }
         raise PlanError(
             "four-Spark DeepSeek quickstart contract drifted: "
             + json.dumps(differences, sort_keys=True, separators=(",", ":"))
         )
-    return {**serving, "max_num_batched_tokens": EXPECTED_SERVING["max_num_batched_tokens"]}
+    return dict(serving)
 
 
 def _image(lock: dict[str, Any]) -> str:
@@ -436,10 +434,10 @@ def build_plan(
             "remote_actions_performed": False,
             "model_actions_performed": False,
             "required_before_launch": [
-                "The running DGX4 benchmark has completed and its receipt is immutable.",
+                "Any benchmark using the four-Spark cycle has finished and saved its receipt before switching runtimes.",
                 "The control receipt, harness file, image, and model identities are hashed.",
                 "Four rank environments resolve both direct SIRCL peers and contain no placeholders.",
-                "The seven SIRCL runtime mount inputs are built, immutable, and bound by SHA-256.",
+                "The SIRCL runtime mounts and sitecustomize.py startup hook are built and bound by SHA-256.",
                 "The user explicitly authorizes stopping the control and starting the candidate.",
             ],
         },
@@ -541,8 +539,9 @@ def build_plan(
             ],
             "aligned_tp2_c32_comparison": {
                 "purpose": (
-                    "Match the established TP2 base workload while changing "
-                    "only the server, topology, and hardware-monitor targets."
+                    "Compare the declared 16K-context, concurrency-32, temperature-1 "
+                    "workload over 240 seconds; report differences in server, "
+                    "topology, and hardware-monitor targets."
                 ),
                 "context_tokens": 16384,
                 "concurrency": 32,

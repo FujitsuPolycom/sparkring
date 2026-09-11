@@ -265,6 +265,7 @@ def status_ranks(
     api_port: int,
     *,
     dry_run: bool = False,
+    api_key_file: str | None = None,
 ) -> int:
     """Print one status line per rank and the head API health."""
     failed = False
@@ -288,7 +289,7 @@ def status_ranks(
     if dry_run:
         return 0
     try:
-        ready = _head_api_ready(head.ssh_target, api_port)
+        ready = _head_api_ready(head.ssh_target, api_port, api_key_file)
     except SSHTransportError:
         print(f"[status] head API on {head.ssh_target}: SSH ERROR")
         return 1
@@ -357,7 +358,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.action == "stop":
         return stop_ranks(ranks, args.container_prefix, dry_run=args.dry_run)
     return status_ranks(
-        ranks, args.container_prefix, args.api_port, dry_run=args.dry_run
+        ranks, args.container_prefix, args.api_port, dry_run=args.dry_run,
+        api_key_file=args.api_key_file,
     )
 
 

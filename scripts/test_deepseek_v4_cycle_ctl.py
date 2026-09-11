@@ -348,6 +348,23 @@ def test_main_missing_cluster(tmp_path):
     assert rc == 2
 
 
+def test_status_cli_uses_api_key_file(monkeypatch, sample_cluster):
+    """Authenticated status uses the same remote credential path as start."""
+    monkeypatch.setattr(ctl, "_container_running", lambda *_args: True)
+    probes = []
+
+    def ready(target, port, api_key_file=None):
+        probes.append((port, api_key_file))
+        return api_key_file == "/run/secrets/serving-api-key"
+
+    monkeypatch.setattr(ctl, "_head_api_ready", ready)
+    assert ctl.main([
+        "status", "--cluster", str(sample_cluster), "--repo", "/srv/sparkring",
+        "--api-key-file", "/run/secrets/serving-api-key",
+    ]) == 0
+    assert probes == [(8888, "/run/secrets/serving-api-key")]
+
+
 def test_main_loads_cluster_and_runs_status(monkeypatch, sample_cluster,
                                             capsys):
     ssh = FakeSSH(monkeypatch)
