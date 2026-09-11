@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import hashlib
 import json
+import re
 import subprocess
 import tempfile
 import unittest
@@ -82,8 +83,10 @@ class VllmPackageContractTests(unittest.TestCase):
         manifest_path = root / "patches/vllm-r33-sparkring.manifest.json"
         manifest = json.loads(manifest_path.read_text())
         patch = root / manifest["patch"]["path"]
+        patch_sha = hashlib.sha256(patch.read_bytes()).hexdigest()
+        manifest_sha = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
         self.assertEqual(
-            hashlib.sha256(patch.read_bytes()).hexdigest(),
+            patch_sha,
             manifest["patch"]["sha256"],
         )
         self.assertEqual(patch.stat().st_size, manifest["patch"]["size"])
@@ -103,6 +106,26 @@ class VllmPackageContractTests(unittest.TestCase):
         self.assertEqual(dependency["commit"], "68acfc14893c087aa9b3120bb984fde4c4e7a21f")
         self.assertEqual(dependency["max_checkpoints"], 4)
         package = (HERE / "package_vllm.sh").read_text()
+        prepare = (root / "prepare_vllm_source.sh").read_text()
+
+        def assignment(source: str, name: str) -> str:
+            match = re.search(rf"(?m)^{re.escape(name)}=([^\s]+)$", source)
+            self.assertIsNotNone(match, name)
+            return match.group(1)
+
+        self.assertEqual(assignment(prepare, "patch_sha"), patch_sha)
+        self.assertEqual(assignment(prepare, "manifest_sha"), manifest_sha)
+        self.assertEqual(
+            assignment(prepare, "expected_tree"), manifest["result"]["tree"]
+        )
+        self.assertIn(
+            f")\" = {patch_sha}",
+            package,
+        )
+        artifact_lock = json.loads((root / "image/artifact-lock.json").read_text())
+        identities = artifact_lock["source_identities"]
+        self.assertEqual(identities["vllm_cached_diff_sha256"], patch_sha)
+        self.assertEqual(identities["vllm_source_manifest_sha256"], manifest_sha)
         self.assertIn(f"expected_package_tree={manifest['result']['tree']}", package)
         self.assertIn(
             f"expected_native_tree={manifest['native_reuse']['source_tree']}", package
