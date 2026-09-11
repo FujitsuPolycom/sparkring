@@ -35,10 +35,15 @@ def transport_environment(rank: int) -> dict[str, str]:
         raise ValueError("The profile's transport manifest has changed")
     indices = transport["local_hca_indices"]
     inventory = transport["hca_inventory"]
+    # Expose only the selected functions. The RoCE proxy opens every device in
+    # B12X_ROCE_HCA and requires each to be ACTIVE, so listing the full inventory
+    # aborts RoCEnante on a host with one physical DAC (the f1 functions have no
+    # carrier). Peer-map indices are positions in the rendered list.
+    selected = [inventory[index] for index in indices]
     return {
-        "B12X_ROCE_HCA": ",".join(inventory),
+        "B12X_ROCE_HCA": ",".join(selected),
         "B12X_ROCE_PAIR_PATHS": str(transport["path_count"]),
-        "B12X_ROCE_PEER_HCA_MAP": f"{1 - rank}=" + "/".join(map(str, indices)),
+        "B12X_ROCE_PEER_HCA_MAP": f"{1 - rank}=" + "/".join(str(i) for i in range(len(selected))),
         "NCCL_IB_HCA": "=" + ",".join(inventory[index] for index in indices),
         "NCCL_IB_MERGE_NICS": "0",
         "NCCL_CROSS_NIC": "1",
