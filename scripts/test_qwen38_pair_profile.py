@@ -14,7 +14,7 @@ RECIPE = ROOT / "recipes" / "qwen38-27b-exl3-k5k6-pair.json"
 CYCLE_RECIPE = ROOT / "recipes" / "qwen38-27b-exl3-k5k6.json"
 ENV = ROOT / "scripts" / "config" / "qwen38-27b-exl3-k5k6-pair.env.example"
 LAUNCHER = ROOT / "scripts" / "qwen38_dgx2_serve.sh"
-QUICKSTART = ROOT / "docs" / "QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md"
+QUICKSTART = ROOT / "profiles/qwen38-27b-exl3-k5k6-pair/README.md"
 PROFILE = ROOT / "docs" / "profiles" / "QWEN38_27B_EXL3_K5K6_PAIR.md"
 def _recipe() -> dict:
     return json.loads(RECIPE.read_text(encoding="utf-8"))

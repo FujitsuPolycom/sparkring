@@ -1,0 +1,9 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1",
+  "inputs": [],
+  "image": {
+    "configuration_runtime": "profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/recipe.json"
+  },
+  "selection": "recipe-build-or-published-reference"
+}

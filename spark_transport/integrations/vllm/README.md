@@ -10,7 +10,7 @@ The adapter installs custom candidates for two collective kinds:
 
 All other collectives retain vLLM's original NCCL dispatch. DCP and
 sparse-indexer collectives require the patched-NCCL fallback in
-[../../nccl/README.md](../../nccl/README.md).
+[../../spark_transport/nccl/README.md](../../nccl/README.md).
 
 ## All-reduce admission
 
@@ -62,7 +62,7 @@ Shadow comparison is byte-exact. Session creation failure falls back before
 enqueue; a native failure after enqueue terminates the worker.
 
 The ABI, probe, and retained build targets are specified in
-[GLM52_TP4_VOCAB_ALLGATHER.md](GLM52_TP4_VOCAB_ALLGATHER.md).
+[GLM52_TP4_VOCAB_ALLGATHER.md](../../../integrations/vllm/GLM52_TP4_VOCAB_ALLGATHER.md).
 
 ## Consumed environment variables
 

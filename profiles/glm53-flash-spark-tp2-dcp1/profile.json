@@ -1,0 +1,27 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "glm53-flash-spark-tp2-dcp1",
+  "title": "GLM-5.3 Flash NVFP4-Spark \u00b7 native MTP3",
+  "recommendation": "alternative",
+  "status": "research-only",
+  "configuration": {
+    "format": "release-profile",
+    "path": "runtime/sparkring/jovian-r33/profiles/profile-contract.json",
+    "key": "tp2-dcp1"
+  },
+  "release": "runtime/releases/sparkring-r33/release.json",
+  "guide": "runtime/profiles/glm53-flash-spark-tp2/README.md",
+  "evidence_scope": "Source contract only; packaged alternatives do not inherit another profile\u2019s functional qualification.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/tp2.py",
+    "actions": [
+      "plan",
+      "create",
+      "start"
+    ],
+    "fixed_args": [],
+    "receipt": "runtime/sparkring/jovian-r33/public-image-receipt.json"
+  }
+}

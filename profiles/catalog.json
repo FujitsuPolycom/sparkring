@@ -1,0 +1,81 @@
+{
+  "schema": "sparkring-catalog/v1",
+  "profiles": [
+    {
+      "id": "deepseek-v4-flash-0731-pair",
+      "path": "profiles/deepseek-v4-flash-0731-pair/profile.json"
+    },
+    {
+      "id": "deepseek-v4-flash-0731",
+      "path": "profiles/deepseek-v4-flash-0731/profile.json"
+    },
+    {
+      "id": "deepseek-v4-flash-vision-exp-tp4",
+      "path": "profiles/deepseek-v4-flash-vision-exp-tp4/profile.json"
+    },
+    {
+      "id": "deepseek-v41-flash-cycle",
+      "path": "profiles/deepseek-v41-flash-cycle/profile.json"
+    },
+    {
+      "id": "glm52-exl3-r7-3.5bpw",
+      "path": "profiles/glm52-exl3-r7-3.5bpw/profile.json"
+    },
+    {
+      "id": "glm53-flash-nvfp4-dflash2-bf16-tp4",
+      "path": "profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/profile.json"
+    },
+    {
+      "id": "glm53-mtp3-cache-checkpoints-tp4",
+      "path": "profiles/glm53-mtp3-cache-checkpoints-tp4/profile.json"
+    },
+    {
+      "id": "glm53-spark-mtp3-managed-mesh-tp4",
+      "path": "profiles/glm53-spark-mtp3-managed-mesh-tp4/profile.json"
+    },
+    {
+      "id": "qwen38-27b-exl3-k5k6-pair",
+      "path": "profiles/qwen38-27b-exl3-k5k6-pair/profile.json"
+    },
+    {
+      "id": "qwen38-27b-exl3-k5k6",
+      "path": "profiles/qwen38-27b-exl3-k5k6/profile.json"
+    },
+    {
+      "id": "sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1",
+      "path": "profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/profile.json"
+    },
+    {
+      "id": "sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1",
+      "path": "profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/profile.json"
+    },
+    {
+      "id": "sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4",
+      "path": "profiles/sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/profile.json"
+    },
+    {
+      "id": "sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4",
+      "path": "profiles/sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/profile.json"
+    },
+    {
+      "id": "glm53-flash-spark-tp2-dcp1",
+      "path": "profiles/glm53-flash-spark-tp2-dcp1/profile.json"
+    },
+    {
+      "id": "glm53-flash-spark-tp4-dcp1",
+      "path": "profiles/glm53-flash-spark-tp4-dcp1/profile.json"
+    },
+    {
+      "id": "glm53-flash-spark-tp4-dcp1-sparkcache",
+      "path": "profiles/glm53-flash-spark-tp4-dcp1-sparkcache/profile.json"
+    },
+    {
+      "id": "glm53-flash-spark-tp2-dcp1-sparkcache",
+      "path": "profiles/glm53-flash-spark-tp2-dcp1-sparkcache/profile.json"
+    },
+    {
+      "id": "glm53-flash-spark-tp4-switched",
+      "path": "profiles/glm53-flash-spark-tp4-switched/profile.json"
+    }
+  ]
+}

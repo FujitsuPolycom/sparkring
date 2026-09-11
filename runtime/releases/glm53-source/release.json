@@ -1,0 +1,18 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "glm53-source",
+  "selection": "source-build",
+  "inputs": [
+    {
+      "path": "runtime/profiles/glm53-flash-spark-tp4-switched/profile.json",
+      "sha256": "a943cb08e7547165fc90ac87fe9ab8dc3a3b7a59626d88996bf37e21fa5c1fb8"
+    },
+    {
+      "path": "runtime/sparkring/source_image/glm53-tp4-lock.json",
+      "sha256": "d7f8ffdd1604fe8db0d15c8876448f0a9334e67026fe73b1b94f20be25b97e15"
+    }
+  ],
+  "image": {
+    "builder": "runtime/sparkring/source_image/prepare_context.py"
+  }
+}

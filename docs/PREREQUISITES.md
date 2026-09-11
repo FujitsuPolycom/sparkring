@@ -1,257 +1,35 @@
 # SparkRing prerequisites
 
-Complete this checklist before deploying any supported profile. It defines the
-hardware and operator conditions required by the
-[GLM-5.2 quickstart](GLM52_35BPW_QUICKSTART.md),
-[GLM-5.3 Flash R8 quickstart](GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md),
-[GLM-5.3 Spark native-MTP3 managed-mesh quickstart](GLM53_SPARK_MTP3_MESH_QUICKSTART.md),
-[source-built GLM-5.3 e10536a quickstart](GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md),
-[GLM-5.3 adaptive-MTP and live-tensor KDA quickstart](GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md),
-[DeepSeek quickstart](DEEPSEEK_V4_FLASH_QUICKSTART.md),
-[Qwen3.8-27B pair quickstart](QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md), and
-[Qwen3.8-27B four-Spark quickstart](QWEN38_27B_EXL3_K5K6_QUICKSTART.md). The
-GLM, Qwen cycle, and DeepSeek cycle configurations require four Sparks; the
-DeepSeek and Qwen pair profiles require two.
-
-Ring Doctor, canonical site validation, and fabric preflight support closed
-four- and six-Spark cycles. Six-Spark serving profiles remain `research-only`
-until their runtime and performance evidence are qualified.
+The maintained guide is [here](operations/prerequisites.md). Existing commands remain valid.
 
 ## Hardware and topology
 
-For a four-Spark cycle:
-
-- Four NVIDIA DGX Sparks with both 200 Gb/s ConnectX-7 ports available.
-- Four qualified 200 Gb/s DACs cabled exactly as `0-1-2-3-0`.
-- Stable rank assignment: the same host is rank 0, 1, 2, or 3 throughout a
-  deployment.
-
-For a six-Spark cycle (`research-only` serving profiles):
-
-- Six NVIDIA DGX Sparks with both 200 Gb/s ConnectX-7 ports available.
-- Six qualified 200 Gb/s DACs cabled exactly as `0-1-2-3-4-5-0`.
-- Stable rank assignment from rank 0 through rank 5 throughout a deployment.
-- A canonical site file with six edges and six ranks; every rank still owns
-  exactly two distinct fabric interfaces and two ring neighbours.
-
-For a two-Spark pair:
-
-- Two NVIDIA DGX Sparks with at least one 200 Gb/s ConnectX-7 port available on
-  each.
-- One qualified 200 Gb/s DAC joining them, cage 0 to cage 0, so that both ranks
-  name the same interface.
-- Stable rank assignment: the same host is rank 0 throughout a deployment, and
-  serves the API.
-
-All topologies also require a management LAN reachable by the operator and
-every rank.
-
-The direct cabling is the inference fabric. Do not use a fabric port as a
-management interface.
+See the [maintained guide](operations/prerequisites.md).
 
 ## Operating system and storage
 
-Each rank needs Linux ARM64, a Docker-compatible runtime with GPU access,
-`/dev/infiniband`, and enough writable local storage for the selected image,
-model checkpoint, and JIT cache. Model paths mounted into containers must exist
-on every rank at the paths used by the launch command.
-
-The GLM checkpoint index totals 346,218,639,128 bytes. The DeepSeek checkpoint
-has 48 shards totaling about 167 GB. The Qwen checkpoint has three shards and
-requires about 22 GB before runtime and JIT caches. Budget additional image and
-cache headroom. A Qwen build host also needs temporary space for the pinned
-vLLM, ExLlamaV3, and NCCL source trees and their ARM64 build products; the
-builder is documented in [`runtime/qwen38/`](../runtime/qwen38/README.md).
+See the [maintained guide](operations/prerequisites.md).
 
 ## Network requirements
 
-- RoCEv2 must be configured on every fabric port a rank uses.
-- Every direct cable must pass link, address, and RDMA checks before a model
-  launch.
-- The management LAN must permit SSH between the operator and ranks.
-- It must also permit a profile's rendezvous and control traffic when that
-  profile configures management addresses for those channels.
-- Rank 0 must expose the configured API port to intended clients.
+See the [maintained guide](operations/prerequisites.md).
 
 ### Four-Spark managed hardware-forwarded mesh
 
-For four initially stock Sparks, begin with [shared bootstrap](BOOTSTRAP.md)
-for account/SSH enrollment, host checks, the two primary data interfaces,
-and ordinary routed-fabric prerequisites. Then follow the detailed
-[managed-mesh host extension](GLM53_SPARK_MESH_HOST_SETUP.md). It covers
-first-boot/update references, four-cable port orientation, public runtime
-downloads, and the additional host configuration that this profile needs.
-This extends the shared procedure; it does not replace it with a separate
-cluster installer.
-
-The managed profile adds these requirements:
-
-Before installation and the first model start, consider rebooting hosts that
-have run large models or repeated GPU workloads. Stop active workloads first.
-A reboot can reduce unified-memory fragmentation and restore large contiguous
-free blocks; a high total-free-memory reading alone does not establish loader
-readiness. This is a recommendation, not a requirement for every installation.
-The [managed startup memory check](../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md#automatic-startup-memory-preparation)
-still applies after reboot and attempts compaction before requiring further
-recovery. Reboots interrupt all workloads on the affected host.
-
-- Four physical cables in the cycle `0-1-2-3-0`, with each rank's port 0/f0
-  connected to the next rank's port 1/f1; management stays on a separate LAN.
-- Four configured RDMA functions per host: primary and Socket Direct
-  secondary functions on each physical port. Shared bootstrap configures the
-  two primary interfaces, not the two secondary interfaces.
-- Ethernet MTU 9,000, active RoCE MTU 4,096, and the intended IPv4-mapped
-  RoCE-v2 GID at index 3 on every function. Preserve IPv6 link-local support;
-  disabling IPv6 can move the IPv4 GID to another index.
-- The tested ConnectX-7 profile: four hairpin queues, queue size 1,024,
-  `hmfs` steering, legacy eSwitch, and hardware TC offload. Driverinit
-  provisioning requires all affected RDMA users stopped and independent
-  management/console access. It is not performed by model installation.
-- A host /24 subnet for each direct link/function. The mesh JSON separately
-  records each endpoint as **/32**; those locators are not interface masks.
-- The public managed-marker, temperature-one image and matching content
-  receipt; a private image cache or local build is not required.
-- Roughly 175 GiB for the complete target checkpoint, approximately 20 GiB
-  image content, and 40 GiB persistent cache per host. Plan for at least
-  300 GiB free before downloading, including workspace headroom; this is
-  not a measured minimum.
-- A common root-only health key, authenticated management port 9975,
-  reviewed noninteractive root authorization, and the managed four-rank
-  startup/stop/recovery procedure.
-
-Keep the shared kernel-routing and scoped Docker firewall requirements for
-ordinary routed traffic and fallback paths. The virtual diagonal's marked
-packets traverse the intermediate ASIC rather than its kernel forwarding
-path; this does not make the baseline kernel configuration obsolete. After
-a NIC reload, restore and verify primary addresses/MTUs before asking Ring
-Doctor to inspect or repair routing. Never run repair commands blindly
-against interfaces whose identities changed.
-
-The [managed functional record](../performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md)
-qualifies bounded tests on the documented prepared hosts. A complete
-four-factory-reset bootstrap has not been performed. Different factory
-driver versions require prerequisite checks, not an assumption that every
-driver exposes the tested steering features.
+See the [maintained guide](operations/prerequisites.md).
 
 ### Routing and forwarding across the fabric
 
-A switchless fabric has no shared broadcast domain: each node is directly
-cabled only to its neighbours, so traffic to any other node is **relayed by a
-neighbour**. Every node is therefore a router, and three conditions must hold
-on every node before a launch:
-
-- A kernel route to each fabric subnet the node is not directly attached to,
-  via the neighbour that is.
-- `net.ipv4.ip_forward=1`, without which the node accepts transit traffic and
-  drops it.
-- An unrestricted `DOCKER-USER` ACCEPT rule in both directions between the two
-  fabric interfaces. Installing Docker sets the `FORWARD` chain policy to
-  `DROP`, which silently blocks fabric transit. **This is the most commonly
-  missed condition, and it presents exactly like a dead cable**: links are up,
-  addresses are configured, neighbours ping, and every non-adjacent node is
-  unreachable.
-
-[`scripts/ring_doctor.py`](../scripts/ring_doctor.py) checks all three, plus
-addressing and reachability, and prints a repair plan. When a canonical site
-file is available, Ring Doctor also reuses the preflight implementation for
-negotiated link speed, expected MTU and address, active RDMA ports, Ethernet
-link mode, the configured RoCEv2 GID, and a don't-fragment jumbo ping. Run it
-read-only first:
-
-```bash
-python scripts/ring_doctor.py \
-  --site scripts/config/site.yaml \
-  --verify
-```
-
-Run Ring Doctor on rank 0, the head node. The command verifies local identity
-against the configured rank management addresses and SSH hostnames before it
-contacts the cluster. If rank 0 cannot run the tool, run it from a configured
-worker with the explicit recovery flag:
-
-```bash
-python scripts/ring_doctor.py \
-  --site scripts/config/site.yaml \
-  --allow-worker-controller \
-  --verify
-```
-
-The flag does not permit execution from a laptop or unknown control host; the
-local machine must still identify as one configured worker rank. The report
-records when worker recovery mode was used.
-
-Require zero `ERROR` findings, a passing canonical fabric preflight, and a
-reachability matrix in which every pair passes. `--apply` executes the printed
-plan only after both the discovered cycle and canonical fabric checks pass. It
-is idempotent and needs non-interactive `sudo` on each node. Before any repair
-command runs, Ring Doctor executes `sudo -n true` on every node whose plan has
-commands. If any node fails that check, Ring Doctor reports each failing node
-and executes no route, forwarding, or firewall repair command on any node.
+See the [maintained guide](operations/prerequisites.md).
 
 ### Management safety during repair
 
-Ring Doctor treats management reachability as a hard mutation invariant. It
-does not change management addresses, links, routes, or NetworkManager
-profiles. Before `--apply` or `--emit-unit`, every node must meet all of these
-conditions:
-
-- discovery reached the node directly, not through a fabric jump host;
-- the canonical management interface exists and holds an IPv4 address; and
-- the management interface is distinct from both fabric interfaces.
-
-Each repair operation is restricted to observed fabric interfaces and fabric
-subnets. Ring Doctor checks that the active SSH session terminates on a guarded
-management address and that its return route uses a guarded management
-interface immediately before and after every individual change. The remaining
-plan stops on the first mismatch. Generated boot programs also verify the exact
-recorded management addresses before and after every change. If a legacy
-`--node` invocation is used instead of `--site`, name the management interface
-for every node with `--socket-interface`; otherwise all mutation is withheld.
-
-The repairs are runtime state and do not survive a reboot. Do not use a cron
-`@reboot` job to restore `DOCKER-USER` rules: cron can run before Docker creates
-its firewall chains, and Docker can replace rules installed that early.
-
-`--emit-unit DIR` writes a per-node program and systemd unit that revalidate the
-addresses and reapply the complete route, forwarding, and `DOCKER-USER` plan at
-boot. The unit orders itself after `network-online.target` and `docker.service`
-when those units are active. A missing management address or firewall chain
-fails closed, and systemd retries the program after ten seconds.
-
-The generated files are not installed automatically. Install the program at a
-path that exists **on the node**, and set the unit's `ExecStart` to that path:
-the emitted unit names the directory the files were generated in, which is only
-correct when they are generated on the node itself.
+See the [maintained guide](operations/prerequisites.md).
 
 ## Local configuration and preflight
 
-The GLM-5.3 quickstart uses an ignored site file for topology, artifact, disk,
-port, and launch-memory checks. Copy, complete, and validate it:
-
-```bash
-cp scripts/config/glm53-flash-tp4-site.example.yaml scripts/config/site.yaml
-$EDITOR scripts/config/site.yaml
-python scripts/sparkring_site.py scripts/config/site.yaml
-python scripts/preflight.py --site scripts/config/site.yaml --print-plan
-```
-
-The final command is offline and prints the remote checks. Review it before
-running the same command without `--print-plan`, which contacts configured
-hosts without mutating them. Run the full preflight only while the model ports
-are free; its memory thresholds describe a rank before model loading.
-
-The DeepSeek quickstart uses one local copy of
-`scripts/config/deepseek-v4-flash-0731.env.example` per rank. Replace only its
-network interface and fabric-address placeholders.
-
-The Qwen quickstarts use one private local copy of their topology-specific
-environment template per rank. Both image-baked launchers accept `--check` to
-validate the complete local rank contract and print the resolved command
-without starting vLLM.
+See the [maintained guide](operations/prerequisites.md).
 
 ## Safety boundary
 
-A plan-only command is offline. Remote preflight is read-only. Starting or
-replacing a serving stack mutates hosts and can stop serving; do not execute a
-start command without explicit authorization for every named host in the
-selected topology and the action.
+See the [maintained guide](operations/prerequisites.md).

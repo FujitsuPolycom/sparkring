@@ -10,7 +10,7 @@ import pytest
 from scripts.deploy_suite import main
 
 
-DOC = Path(__file__).resolve().parents[1] / "docs/DEPLOYMENT_SUITE.md"
+DOC = Path(__file__).resolve().parents[1] / "docs/operations/deployment-suite.md"
 
 
 @pytest.mark.parametrize(

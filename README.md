@@ -3,7 +3,7 @@
 SparkRing is a vLLM-based inference-serving stack with low-latency collective
 communication for switchless clusters of NVIDIA GB10-based devices. 
 
-SparkRing supports pairs, four-node rings, and six-node rings (in dev).
+SparkRing provides deployment profiles for pairs and four-node rings. Six-node work is research-only.
 
 The collective communication stack combines [SIRCL](docs/SIRCL.md), [RoCEnante](third_party/b12x_roce/README.md), and [patched NCCL](spark_transport/nccl/README.md). The high-speed data fabric
 needs no external Ethernet or InfiniBand switch; administration and vLLM api serving occur over a node/s 10Gbe NIC.
@@ -25,73 +25,51 @@ reproducible benchmarks, and [test results](performance/).
    [validation checks](docs/PROFILE_VALIDATION.md).
 
 ## Profiles
-KV is approximate total token capacity. The shared TP4 figures are per
-layout: DCP1 ~2.28M, DCP4 ~8.36M (both 24 GiB FP8 KV per rank). The TP2
-figure is a reference estimate. `—` means no capacity
-is recorded. Startup reports the actual capacity, which is separate from the
-per-request Context limit.
+
+<!-- BEGIN GENERATED PROFILES -->
+
+Configured context is a per-request limit, not measured KV capacity or a completed long-context test.
+Status describes the evidence scope; recommendation describes deployment navigation.
 
 ### Four Sparks
 
-| Model / predictor | Serving stack | Transport | Layout | Context | Sequences | KV (tokens) | Guide |
-|---|---|---|---|---:|---:|---:|---|
-| **GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache** | [Generic R33 SparkRing image](runtime/sparkring/jovian-r33/image/README.md) | [Mesh + dual-domain NCCL](runtime/glm53-spark-mtp3-mesh/README.md) | TP4/DCP1 | 1M | 16 | ~2.28M | [Ring quickstart](docs/GLM53_TP4_PREFILL_QUICKSTART.md) |
-| **GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache** | [Generic R33 SparkRing image](runtime/sparkring/jovian-r33/image/README.md) | [Mesh + dual-domain NCCL](runtime/glm53-spark-mtp3-mesh/README.md) | TP4/DCP4 | 1M | 16 | ~8.36M | [DCP4 record](performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md) |
-| GLM-5.3 Flash NVFP4-Spark · native MTP3, switched | [Shared SparkRing source image](runtime/sparkring/source_image/README.md) | Operator-selected NCCL links | TP4/DCP1 | 1M | 16 | — | [Switched quickstart](docs/GLM53_SWITCHED_TP4_QUICKSTART.md) |
-| GLM-5.2 EXL3 3.5-bpw | [SparkRing vLLM/ExLlamaV3 build](runtime/exl3-r7/README.md) | [SIRCL + NCCL](docs/SIRCL.md) | TP4/DCP4 | 1M | 16 | ~1.2M | [Quickstart](docs/GLM52_35BPW_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | [SparkRing vLLM/B12X image](runtime/deepseek0731-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 1M | 32 | ~1M | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| DeepSeek-V4.1-Flash · Engram on NVMe · DSpark k=5 | [Self-built stock vLLM `dsv41-feat` image](runtime/deepseek-v41-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 430,080 | 8 | ~2.18M | [Quickstart](docs/DEEPSEEK_V41_FLASH_QUICKSTART.md) |
-| Qwen3.8-27B EXL3 K5/K6 | [SparkRing vLLM/ExLlamaV3 build](runtime/qwen38/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP4/DCP1 | 1M | 64 | — | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md) |
-| DeepSeek-V4-Flash-Vision-Exp with DSpark (research-only) | [Anemll image / MiaAI-Lab recipe](runtime/deepseek-vision-exp/profile.json) | [SparkRing patched NCCL](spark_transport/nccl/README.md) | TP4 | 1M | 48 | — | [Quickstart](docs/DEEPSEEK_V4_FLASH_VISION_EXP_TP4_QUICKSTART.md) |
-
-The Vision-Exp [artifact contract](runtime/deepseek-vision-exp/profile.json)
-identifies the Anemll image, MiaAI-Lab recipe, and SparkRing transport separately.
-Contributor-reported results are linked from the guide; independent reproduction
-of the selected artifacts is not claimed.
-
-The bounded-qualified generic-image GLM ring profile enables continuation
-coalescing, token-sharded mHC, hardware-forwarded mesh paths, NCCL across both
-host PCIe domains, and SparkCache. Its exact evidence does not qualify the
-packaged alternatives. Switched deployments are provided as-is and have not
-been validated on switched hardware.
-Shared-image GLM ring deployment requires the [managed-mesh setup](runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
+| Model / features | Layout | Configured context (tokens) | Status | Navigation | Quickstart |
+|---|---|---:|---|---|---|
+| GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache | TP4/DCP1 | 1048576 | qualified | recommended | [Guide](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 | TP4/DCP1 | 1048576 | implemented | alternative | [Guide](profiles/deepseek-v4-flash-0731/README.md) |
+| DeepSeek-V4-Flash-Vision-Exp | TP4/DCP1 | 1048576 | research-only | alternative | [Guide](profiles/deepseek-v4-flash-vision-exp-tp4/README.md) |
+| DeepSeek-V4.1-Flash | TP4/DCP1 | 430080 | implemented | alternative | [Guide](profiles/deepseek-v41-flash-cycle/README.md) |
+| GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 | TP4/DCP4 | 1048576 | implemented | alternative | [Guide](profiles/glm52-exl3-r7-3.5bpw/README.md) |
+| GLM-5.3 Flash NVFP4-Spark · native MTP3 | TP4/DCP1 | 1048576 | research-only | alternative | [Guide](profiles/glm53-flash-spark-tp4-dcp1/README.md) |
+| GLM-5.3 Flash NVFP4-Spark · switched | TP4/DCP1 | 1048576 | research-only | alternative | [Guide](profiles/glm53-flash-spark-tp4-switched/README.md) |
+| Qwen3.8-27B-EXL3-K5K6-hydrated | TP4/DCP1 | 1048576 | implemented | alternative | [Guide](profiles/qwen38-27b-exl3-k5k6/README.md) |
+| DeepSeek-V4-Flash-0731 + SparkCache | TP4/DCP1 | 1048576 | implemented | alternative | [Guide](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) |
+| GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 + SparkCache | TP4/DCP4 | 1048576 | implemented | alternative | [Guide](profiles/sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) |
 
 ### Two Sparks
 
-| Model / predictor | Serving stack | Transport | Layout | Context | Sequences | KV (tokens) | Guide |
-|---|---|---|---|---:|---:|---:|---|
-| **GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache** | [Generic R33 SparkRing image](runtime/sparkring/jovian-r33/image/README.md) | [Adaptive RoCEnante + dual-domain NCCL](runtime/profiles/glm53-flash-spark-tp2/README.md) | TP2/DCP1 | 1M | 8 | ~1.08M | [Quickstart](runtime/profiles/glm53-flash-spark-tp2/README.md) |
-| DeepSeek-V4-Flash-0731 | [SparkRing vLLM/B12X image](runtime/deepseek0731-gb10/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP2/DCP1 | 1M | 32 | ~1M | [Quickstart](docs/DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| Qwen3.8-27B EXL3 K5/K6 | [SparkRing vLLM/ExLlamaV3 build](runtime/qwen38/README.md) | [Patched NCCL](spark_transport/nccl/README.md) | TP2/DCP1 | 1M | 32 | — | [Quickstart](docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md) |
-
-The bounded-qualified R33 NVFP4-Spark pair uses 7.5 GiB KV per rank, one DAC,
-both host PCIe domains, managed B12X loading, coalescing, mHC, and SparkCache.
-Startup reported 1,081,922 KV tokens; that is pool capacity, not a completed
-one-million-token request or tested maximum concurrent workload.
-
-See the [profile index](docs/profiles/README.md) for evidence scopes and
-[SparkCache compositions](recipes/sparkcache/README.md) for persistent-cache
-support.
-
-Qwen with SparkCache is unsupported; six-node profiles are research-only.
+| Model / features | Layout | Configured context (tokens) | Status | Navigation | Quickstart |
+|---|---|---:|---|---|---|
+| GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache | TP2/DCP1 | 1048576 | qualified | recommended | [Guide](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 | TP2/DCP1 | 1048576 | implemented | alternative | [Guide](profiles/deepseek-v4-flash-0731-pair/README.md) |
+| GLM-5.3 Flash NVFP4-Spark · native MTP3 | TP2/DCP1 | 1048576 | research-only | alternative | [Guide](profiles/glm53-flash-spark-tp2-dcp1/README.md) |
+| Qwen3.8-27B-EXL3-K5K6-hydrated | TP2/DCP1 | 1048576 | implemented | alternative | [Guide](profiles/qwen38-27b-exl3-k5k6-pair/README.md) |
+| DeepSeek-V4-Flash-0731 + SparkCache | TP2/DCP1 | 1048576 | implemented | alternative | [Guide](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) |
 
 ### Retired GLM-5.3 profiles
 
-These guides retain their pinned configurations and evidence for reproduction.
-For deployment with the shared image, use the matching two- or four-Spark entry above.
+| Model / features | Layout | Configured context (tokens) | Status | Navigation | Quickstart |
+|---|---|---:|---|---|---|
+| GLM-5.3-Flash-NVFP4 | TP4/DCP1 | 1048576 | implemented | retired | [Guide](profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/README.md) |
+| GLM-5.3-Flash-NVFP4-Spark | TP4/DCP4 | 1048576 | research-only | retired | [Guide](profiles/glm53-mtp3-cache-checkpoints-tp4/README.md) |
+| GLM-5.3-Flash-NVFP4-Spark | TP4/DCP4 | 1048576 | research-only | retired | [Guide](profiles/glm53-spark-mtp3-managed-mesh-tp4/README.md) |
+| GLM-5.3-Flash-NVFP4 + SparkCache | TP4/DCP1 | 1048576 | qualified | retired | [Guide](profiles/sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/README.md) |
 
-| Profile | Layout | Retained guide | Replacement |
-|---|---|---|---|
-| NVFP4-Spark MTP3 cache/checkpoint mesh | TP4/DCP4 | [Pinned cache/checkpoint setup](docs/GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md) | [R33 DCP4 SparkCache](performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md) |
-| NVFP4 with BF16 DFlash2 | TP4/DCP1, DCP2 or DCP4 | [Pinned DFlash2 setup](docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md) | [Shared-image native MTP3](docs/GLM53_TP4_PREFILL_QUICKSTART.md) |
-| NVFP4-Spark MTP3 with 5 GiB KV per rank | TP2/DCP1 | [Pinned TP2 setup](https://github.com/FujitsuPolycom/sparkring/blob/2f01b6ee8f6173745c4b6b165498bbef82fc03f1/docs/GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md) | [Shared-image NVFP4-Spark TP2](runtime/profiles/glm53-flash-spark-tp2/README.md) |
-| Original NVFP4 MTP3 with 6.75 GiB KV per rank | TP2/DCP1 | [Pinned original-NVFP4 setup](https://github.com/FujitsuPolycom/sparkring/blob/2f01b6ee8f6173745c4b6b165498bbef82fc03f1/runtime/profiles/glm53-flash-nvfp4-tp2/README.md) | [Shared-image NVFP4-Spark TP2](runtime/profiles/glm53-flash-spark-tp2/README.md) |
+Qualification applies only to the exact image, checkpoint, topology and workload in the selected guide.
+Switched deployments have no switched-hardware qualification. Qwen with SparkCache is unsupported;
+six-node work remains research-only and is outside this deployment catalog.
 
-The retired 5 GiB TP2 configuration has a recorded
-[blue-video recognition issue](https://github.com/FujitsuPolycom/sparkring/issues/229).
-
-DFlash2 uses a separate draft checkpoint with
-[CC BY-NC-ND 4.0 terms](https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2#license).
+<!-- END GENERATED PROFILES -->
 
 ## Container images
 
@@ -112,9 +90,7 @@ contains the download digest and profile verification scope.
 Each row links the exact measured configuration. These records include retired
 profiles and are not benchmark results for the shared-image build.
 
-Decode is sustained aggregate output at temperature 1.0.
-Results attempt to reflect real world use-case numbers in all instances unless otherwise noted.
-*structured data sweeps*,*temperature 0 and/or other out-of-spec configurations are not provided or recommended*
+Decode is aggregate output throughput. Each record specifies its sampling, workload and measurement conditions; results from different conditions are not matched comparisons.
 
 | Profile | Decode context | Prefill | C1 decode | C8 decode | Highest C at this context | Coding peak |
 |---|---:|---:|---:|---:|---:|---:|
@@ -159,13 +135,17 @@ checks and describe the missing measurement details.
 
 | Path | Purpose |
 |---|---|
-| `spark_transport/` | Communication backends and vLLM adapters |
-| `runtime/` | Pinned images, builders, and serving profiles |
+| `spark_transport/` | Communication backends and maintained fabric planning |
+| `runtime/` | Shared configuration/launch behavior, image selection and release inputs |
 | `scripts/` | Preflight, deployment, and validation tools |
-| [`recipes/`](recipes/) | Machine-readable serving recipes |
+| [`profiles/`](profiles/) | Authoritative deployment definitions and quickstarts |
+| [`recipes/`](recipes/) | Generated legacy recipe exports |
 | [`performance/`](performance/) | Measurement methods, evidence, and receipts |
-| `docs/` | Operator guides and architecture |
+| `docs/` | Architecture, operations, development and explicit history |
+| [`integrations/vllm/`](integrations/vllm/README.md) | Framework adapters |
 | [`integrations/lil/`](integrations/lil/README.md) | Companion lifecycle and deployment integration |
+
+See the [layout and compatibility guide](docs/development/layout.md) before adding or relocating implementation.
 
 ## Acknowledgements
 

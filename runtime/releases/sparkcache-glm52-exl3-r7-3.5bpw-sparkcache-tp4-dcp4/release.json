@@ -1,0 +1,9 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4",
+  "inputs": [],
+  "image": {
+    "configuration_runtime": "profiles/sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/recipe.json"
+  },
+  "selection": "recipe-build-or-published-reference"
+}

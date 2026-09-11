@@ -491,7 +491,7 @@ def test_launcher_keeps_gather_workspace_below_native_context_limit() -> None:
 def test_operator_docs_distinguish_page_tails_from_published_rollback() -> None:
     runtime_readme = (HERE / "README.md").read_text(encoding="utf-8")
     quickstart = (
-        ROOT / "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
+        ROOT / "docs/history/glm53-dflash-operator.md"
     ).read_text(encoding="utf-8")
     runtime_index = (ROOT / "runtime/README.md").read_text(encoding="utf-8")
 
@@ -516,9 +516,9 @@ def test_operator_docs_distinguish_page_tails_from_published_rollback() -> None:
 def test_operator_docs_name_public_sources_and_explain_stable_locators() -> None:
     runtime_readme = (HERE / "README.md").read_text(encoding="utf-8")
     quickstart = (
-        ROOT / "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md"
+        ROOT / "docs/history/glm53-dflash-operator.md"
     ).read_text(encoding="utf-8")
-    sircl_readme = (ROOT / "docs/SIRCL.md").read_text(encoding="utf-8")
+    sircl_readme = (ROOT / "docs/architecture/sircl.md").read_text(encoding="utf-8")
     runtime_index = (ROOT / "runtime/README.md").read_text(encoding="utf-8")
     root_readme = (ROOT / "README.md").read_text(encoding="utf-8")
 

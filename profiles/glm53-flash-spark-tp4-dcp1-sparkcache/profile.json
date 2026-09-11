@@ -1,0 +1,19 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "glm53-flash-spark-tp4-dcp1-sparkcache",
+  "title": "GLM-5.3 Flash NVFP4-Spark \u00b7 native MTP3 + SparkCache",
+  "recommendation": "recommended",
+  "status": "qualified",
+  "configuration": {
+    "format": "release-profile",
+    "path": "runtime/sparkring/jovian-r33/profiles/profile-contract.json",
+    "key": "tp4-dcp1-sparkcache"
+  },
+  "release": "runtime/releases/sparkring-r33/release.json",
+  "guide": "docs/GLM53_TP4_PREFILL_QUICKSTART.md",
+  "evidence_scope": "Bounded functional checks for the exact published image, model and topology only. Throughput observations lack a complete public methodology; full-context and arbitrary concurrency are not qualified.",
+  "overrides": [],
+  "launcher": {
+    "kind": "guide"
+  }
+}

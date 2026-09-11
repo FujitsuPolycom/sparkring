@@ -47,6 +47,14 @@ acceptable. Report suspected vulnerabilities privately as described in
   [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) when required. Contributions
   are offered under the repository's Apache-2.0 license.
 
+For a small profile or layout check, run `python scripts/check_repository_layout.py`.
+See the [testing guide](docs/development/testing.md) for component checks and
+[Write Without Hidden Context](docs/development/writing.md) for clear technical prose.
+
+Maintainers help complete partial reports. Issues are not automatically closed
+for inactivity or because a reporter cannot provide hardware evidence. A partial
+fix should state what remains unresolved.
+
 The pull request template asks for a summary and relevant validation. It does
 not require every contributor to reproduce hardware-only validation.
 

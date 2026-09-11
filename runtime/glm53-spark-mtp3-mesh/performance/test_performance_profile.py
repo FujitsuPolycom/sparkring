@@ -76,5 +76,6 @@ def test_performance_recipe_and_guide_use_same_contract():
     assert recipe["runtime"]["image_id"] == receipt["image_id"]
     assert recipe["sparkcache"]["source_commit"] == receipt["sparkcache_commit"]
     assert recipe["sparkcache"]["periodic_full_capture_interval_tokens"] == 0
-    guide = (root / recipe["runtime"]["quickstart"]).read_text()
+    aliases = json.loads((root / "docs/development/documentation-paths.json").read_text())
+    guide = (root / aliases[recipe["runtime"]["quickstart"]]).read_text()
     assert receipt["image_reference"] in guide and receipt["image_id"] in guide

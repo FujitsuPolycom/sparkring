@@ -16,8 +16,8 @@ import sys
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT))
-from spark_transport.experiments.cx7_hairpin_diagonal import fabric  # noqa: E402
-from spark_transport.experiments.glm53_rocenante_overlay import build_bundle  # noqa: E402
+from spark_transport.fabric.cx7_hairpin_diagonal import fabric  # noqa: E402
+from integrations.vllm.rocenante import build_bundle  # noqa: E402
 
 PINS = json.loads((HERE / "pins.json").read_text())
 BASE = HERE.parent / "glm53-flash-jj-r8-gb10"

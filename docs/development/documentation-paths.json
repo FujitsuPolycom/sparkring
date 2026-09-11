@@ -1,0 +1,17 @@
+{
+  "docs/ARCHITECTURE.md": "docs/architecture/overview.md",
+  "docs/PREREQUISITES.md": "docs/operations/prerequisites.md",
+  "docs/BOOTSTRAP.md": "docs/operations/bootstrap.md",
+  "docs/SIRCL.md": "docs/architecture/sircl.md",
+  "docs/DEPLOYMENT_SUITE.md": "docs/operations/deployment-suite.md",
+  "docs/PROFILE_VALIDATION.md": "docs/operations/profile-validation.md",
+  "docs/DEEPSEEK_V4_FLASH_QUICKSTART.md": "docs/operations/deepseek-0731.md",
+  "docs/DEEPSEEK_V41_FLASH_QUICKSTART.md": "profiles/deepseek-v41-flash-cycle/README.md",
+  "docs/QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md": "profiles/qwen38-27b-exl3-k5k6-pair/README.md",
+  "docs/QWEN38_27B_EXL3_K5K6_QUICKSTART.md": "profiles/qwen38-27b-exl3-k5k6/README.md",
+  "docs/DEEPSEEK_V4_FLASH_VISION_EXP_TP4_QUICKSTART.md": "profiles/deepseek-v4-flash-vision-exp-tp4/README.md",
+  "docs/GLM52_35BPW_QUICKSTART.md": "profiles/glm52-exl3-r7-3.5bpw/README.md",
+  "docs/GLM53_SWITCHED_TP4_QUICKSTART.md": "profiles/glm53-flash-spark-tp4-switched/README.md",
+  "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md": "docs/history/glm53-dflash-operator.md",
+  "docs/GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md": "docs/history/glm53-cache-checkpoints.md"
+}

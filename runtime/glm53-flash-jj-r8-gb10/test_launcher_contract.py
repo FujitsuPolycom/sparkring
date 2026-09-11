@@ -628,7 +628,7 @@ def test_public_operator_documents_use_portable_examples_and_resolving_links() -
     documents = (
         HERE / "README.md",
         HERE / "LIVE_VALIDATION.md",
-        ROOT / "docs" / "GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md",
+        ROOT / "docs/history/glm53-dflash-operator.md",
     )
     private_address = re.compile(
         r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)"

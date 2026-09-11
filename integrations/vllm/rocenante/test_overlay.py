@@ -9,10 +9,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from spark_transport.experiments.cx7_hairpin_diagonal import fabric
-from spark_transport.experiments.glm53_rocenante_overlay import build_bundle
-from spark_transport.experiments.glm53_rocenante_overlay import plan as overlay_plan
-from spark_transport.experiments.glm53_rocenante_overlay.rocenante_vllm_overlay import (
+from spark_transport.fabric.cx7_hairpin_diagonal import fabric
+from integrations.vllm.rocenante import build_bundle
+from integrations.vllm.rocenante import plan as overlay_plan
+from integrations.vllm.rocenante.rocenante_vllm_overlay import (
     VirtualDiagonalAdapter,
     load_contract,
 )

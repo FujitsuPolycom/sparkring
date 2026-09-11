@@ -20,7 +20,7 @@ body:
     id: version
     attributes:
       label: SparkRing version
-      description: Commit, tag, or deployment profile if known.
+      description: Commit, tag, or profile ID from scripts/profile.py list, if known.
 
   - type: textarea
     id: reproduction

@@ -1,5 +1,9 @@
 # Serving recipes
 
+These recipe paths are generated compatibility exports. Edit the matching
+source under [profiles/](../profiles/README.md), then run
+`python scripts/generate_profiles.py`. Do not maintain a second copy here.
+
 The JSON files in this directory are machine-readable deployment contracts.
 They record immutable artifacts, model identities, topology, serving values,
 evidence, and limitations for supported SparkRing profiles.

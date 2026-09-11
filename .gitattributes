@@ -39,3 +39,8 @@ spark_transport/integrations/vllm/spark_glm52_mtp_index_reuse.py text eol=lf
 spark_transport/integrations/vllm/spark_true_adaptive_draft.py text eol=lf
 spark_transport/experiments/q2r_phase_timing/live_installer.py text eol=lf
 
+
+# Canonical sources and generated compatibility exports use identical bytes.
+integrations/vllm/** text eol=lf
+spark_transport/fabric/** text eol=lf
+profiles/** text eol=lf

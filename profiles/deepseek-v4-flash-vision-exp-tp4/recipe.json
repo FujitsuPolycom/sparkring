@@ -1,0 +1,93 @@
+{
+  "schema": "sparkring-recipe/v1",
+  "recipe_id": "deepseek-v4-flash-vision-exp-tp4",
+  "status": "research-only",
+  "hardware": {
+    "platform": "linux/arm64",
+    "cuda_arch": "sm_121",
+    "ranks": 4,
+    "topology": "direct-cycle-4"
+  },
+  "model": {
+    "repository": "deepseek-ai/DeepSeek-V4-Flash-Vision-Exp",
+    "revision": "86f746b36186f0e567729a5c06a8c918caba82a9",
+    "identity_status": "recorded",
+    "identity_note": "Official Vision-Exp release (MIT, 2026-08-31): 32-block ViT + aligner, num_nextn_predict_layers=3, rms_norm_eps=1e-20, same DeepseekV4ForCausalLM architecture string as 0731."
+  },
+  "runtime": {
+    "profile": "runtime/deepseek-vision-exp/profile.json",
+    "image_lock": "runtime/deepseek-vision-exp/profile.json",
+    "image_lock_entry": "image",
+    "environment_template": "runtime/deepseek-vision-exp/cycle.env.example",
+    "compose_overlay": "runtime/deepseek-vision-exp/compose.override.yml",
+    "upstream_recipe_revision": "7440c53c1f0352886e47b1909051784879fa0a24",
+    "launcher": "docker compose",
+    "entrypoint": "/usr/local/bin/vllm"
+  },
+  "serving": {
+    "served_model_name": "deepseek-v4-flash-vision-exp",
+    "tensor_parallel_size": 4,
+    "node_count": 4,
+    "distributed_executor_backend": "mp",
+    "max_model_len": 1048576,
+    "max_num_seqs": 48,
+    "gpu_memory_utilization": 0.8,
+    "kv_cache_dtype": "nvfp4_ds_mla",
+    "block_size": 256,
+    "tokenizer_mode": "deepseek_v4",
+    "speculation": {
+      "method": "dspark",
+      "num_speculative_tokens": 5,
+      "draft_sample_method": "probabilistic",
+      "block_k_unlock": true,
+      "moe_backend": "flashinfer_b12x"
+    },
+    "tool_call_parser": "deepseek_v4",
+    "external_kv_cache": false,
+    "max_num_batched_tokens": 12288,
+    "async_scheduling": true,
+    "long_prefill_token_threshold": 1024,
+    "in_flight_prefills": 2,
+    "multimodal": {
+      "images_per_prompt": 8,
+      "video": false
+    },
+    "nccl": {
+      "NCCL_IB_HCA": "<two selected RoCE devices>",
+      "NCCL_IB_GID_INDEX": "<verified GID index>",
+      "NCCL_IB_MERGE_NICS": "0",
+      "NCCL_IB_SUBNET_AWARE_ROUTING": "1",
+      "NCCL_IB_SUBNET_PREFIX_LEN": "24",
+      "NCCL_CROSS_NIC": "1",
+      "NCCL_ALGO": "Ring",
+      "NCCL_PROTO": "LL,LL128,Simple",
+      "NCCL_P2P_LEVEL": "SYS",
+      "NCCL_MIN_NCHANNELS": "4",
+      "NCCL_MAX_NCHANNELS": "4",
+      "NCCL_SWITCHLESS_RING_ONLY": "1",
+      "NCCL_SOCKET_IFNAME": "<management interface>"
+    },
+    "sizing_note": "The 48-sequence admission limit is a configuration choice, not a per-request throughput guarantee. Configure capacity for the workload and record the resolved settings when measuring.",
+    "sequence_parallel_indexer": true,
+    "default_thinking": "off"
+  },
+  "evidence": {
+    "status": "research-only",
+    "source": "https://github.com/FujitsuPolycom/sparkring/pull/232",
+    "record": "performance/records/research-material/deepseek-vision-exp-tp4-contributor-report.json",
+    "conditions": "Fresh-prefix prompts, thinking off, temperature 0, 256 pinned decode tokens; prefill single request max_tokens=1; patched NCCL over two direct RoCE devices per rank; management-LAN bootstrap.",
+    "result": "The contributor reports TP2/TP4 throughput comparisons, image/text checks, long-context needle retrieval, and a three-hour C8 soak; the linked record retains those summaries.",
+    "conclusion": "These are contributor-reported observations, not independent qualification of the immutable artifacts selected by this profile.",
+    "limitations": [
+      "Raw sample files and the exact measured image/FlashInfer-overlay identity are not supplied in the PR.",
+      "The selected plain Anemll image has no separately added FlashInfer overlay.",
+      "No independent hardware validation of this four-rank composition is claimed."
+    ]
+  },
+  "provenance": {
+    "image_publisher": "Anemll",
+    "runtime_recipe_provider": "MiaAI-Lab",
+    "transport_provider": "SparkRing",
+    "transport_implementation": "patched NVIDIA NCCL"
+  }
+}

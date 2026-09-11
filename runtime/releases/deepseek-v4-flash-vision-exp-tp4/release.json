@@ -1,0 +1,14 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "deepseek-v4-flash-vision-exp-tp4",
+  "inputs": [
+    {
+      "path": "runtime/deepseek-vision-exp/profile.json",
+      "sha256": "968b4d1c722e8b910c5aaff957600556f789e9542530a33401f6619e50245cb4"
+    }
+  ],
+  "image": {
+    "configuration_runtime": "profiles/deepseek-v4-flash-vision-exp-tp4/recipe.json"
+  },
+  "selection": "recipe-build-or-published-reference"
+}

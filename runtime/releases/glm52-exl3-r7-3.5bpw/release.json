@@ -1,0 +1,14 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "glm52-exl3-r7-3.5bpw",
+  "inputs": [
+    {
+      "path": "runtime/exl3-r7/pins.json",
+      "sha256": "935612f968bcab82c0e424592e5a017e9c71c1f0997b795bf36d7fa11010f6c6"
+    }
+  ],
+  "image": {
+    "configuration_runtime": "profiles/glm52-exl3-r7-3.5bpw/recipe.json"
+  },
+  "selection": "recipe-build-or-published-reference"
+}

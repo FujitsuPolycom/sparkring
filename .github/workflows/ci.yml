@@ -29,7 +29,7 @@ jobs:
       - name: Install development tools
         run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
       - name: Lint maintained Python trees
-        run: ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance integrations/lil
+        run: ruff check --select E,F,W --ignore E501 spark_transport runtime scripts performance integrations
 
   tests:
     name: tests
@@ -54,7 +54,7 @@ jobs:
             --index-url https://download.pytorch.org/whl/cpu \
             "torch==${TORCH_VERSION}"
       - name: Test maintained Python trees
-        run: python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/sparkring runtime/profiles runtime/transport_profiles runtime/test_public_overlay.py performance/harnesses scripts integrations/lil -q -rs
+        run: python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/sparkring runtime/profiles runtime/transport_profiles runtime/test_public_overlay.py performance/harnesses scripts integrations/lil integrations/vllm runtime/common -q -rs
 
   lil-bridge:
     name: pinned LIL bridge
@@ -112,3 +112,15 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Scan tracked files without disclosing matched content
         run: python scripts/check_release_safety.py .
+
+  repository-layout:
+    name: profile and repository contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Validate profiles, exports, frozen inputs and build references
+        run: python scripts/check_repository_layout.py

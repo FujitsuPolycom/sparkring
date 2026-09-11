@@ -1,0 +1,20 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "sparkring-r33",
+  "selection": "published-immutable-reference",
+  "inputs": [
+    {
+      "path": "runtime/sparkring/jovian-r33/profiles/profile-contract.json",
+      "sha256": "35ff9f0b816d9d75cf660e2f2a828abf7a42ea2c07f8127a539e92650c8c2983"
+    },
+    {
+      "path": "runtime/sparkring/jovian-r33/publication.json",
+      "sha256": "72946d59ca8ffa8004330518cadde80bf62af1e33a1bfc49b280d1826d500798"
+    },
+    {
+      "path": "runtime/sparkring/jovian-r33/image/artifact-lock.json",
+      "sha256": "a86fd813fa2bdc41f339317fe041fee55eb4391d715a5e3d91de31a1082a3534"
+    }
+  ],
+  "image": "ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef"
+}

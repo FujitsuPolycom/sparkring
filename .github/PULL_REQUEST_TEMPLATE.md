@@ -10,7 +10,7 @@ why. Run only checks relevant to the change; DGX Spark hardware is not required
 to submit a pull request.
 -->
 
-## Additional context
+## Compatibility or evidence
 
 <!--
 Delete this section if it does not apply. Include user-facing compatibility
@@ -18,5 +18,4 @@ notes, documentation changes, or hardware/performance evidence here. A
 measurement should name its configuration, conditions, units, and limitations.
 -->
 
-- [ ] I removed credentials and private site identifiers from the change.
-- [ ] I identified copied or adapted work and updated third-party notices when required.
+<!-- Before submission, remove credentials/private site data and identify copied or adapted work and its license. -->

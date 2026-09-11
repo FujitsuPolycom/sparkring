@@ -1,76 +1,10 @@
-# Deployment profiles
+# Deployment profile index
 
-A profile names one model identity, hardware topology, serving configuration,
-and evidence scope. SparkRing publishes the following base and
-composition profiles.
+The [profile catalog](../../profiles/README.md) and generated
+[README table](../../README.md#profiles) are the maintained deployment index.
+Run `python scripts/profile.py list` to discover stable IDs and
+`python scripts/profile.py resolve PROFILE` to inspect selected defaults.
 
-| Profile | Topology | Status and evidence scope | Documentation |
-|---|---|---|---|
-| GLM-5.2 EXL3 3.5-bpw | four-Spark cycle, TP4/DCP4 | 1,048,576-token/16-sequence profile; benchmark results through C8 | [Recipe](../../recipes/glm52-exl3-r7-3.5bpw.json), [quickstart](../GLM52_35BPW_QUICKSTART.md), [serving contract](../GLM52_35BPW_FIXED_MTP4_PROFILE.md) |
-| DeepSeek-V4-Flash DSpark | two-Spark pair, TP2/DCP1 | `913f0657…`; live-benchmarked; SIRCL unsupported | [Recipe](../../recipes/deepseek-v4-flash-0731-pair.json), [quickstart](../DEEPSEEK_V4_FLASH_QUICKSTART.md) |
-| DeepSeek-V4-Flash-0731 | four-Spark cycle, TP4/DCP1 | `7872f01…`; live-benchmarked; SIRCL width 4096 research-only | [Recipe](../../recipes/deepseek-v4-flash-0731.json), [quickstart](../DEEPSEEK_V4_FLASH_QUICKSTART.md), [profile record](DEEPSEEK_V4_FLASH_0731.md) |
-| DeepSeek-V4.1-Flash, Engram tables on NVMe, DSpark k=5 | four-Spark cycle, TP4/DCP1 | `dba1be0a…`; stock vLLM `dsv41-feat` image built by the operator; live-benchmarked on one private cycle at 300K/8 sequences; not qualified | [Recipe](../../recipes/deepseek-v41-flash-cycle.json), [builder](../../runtime/deepseek-v41-gb10/README.md), [quickstart](../DEEPSEEK_V41_FLASH_QUICKSTART.md), [profile record](DEEPSEEK_V41_FLASH.md) |
-| Qwen3.8-27B EXL3 K5/K6 | two-Spark pair, TP2/DCP1 | 1,048,576-token profile; benchmarked through C8 | [Recipe](../../recipes/qwen38-27b-exl3-k5k6-pair.json), [builder](../../runtime/qwen38/README.md), [quickstart](../QWEN38_27B_EXL3_K5K6_PAIR_QUICKSTART.md), [profile record](QWEN38_27B_EXL3_K5K6_PAIR.md) |
-| Qwen3.8-27B EXL3 K5/K6 | four-Spark cycle, TP4/DCP1 | 1,048,576-token profile; benchmarked through C8; SIRCL unsupported | [Recipe](../../recipes/qwen38-27b-exl3-k5k6.json), [builder](../../runtime/qwen38/README.md), [quickstart](../QWEN38_27B_EXL3_K5K6_QUICKSTART.md), [profile record](QWEN38_27B_EXL3_K5K6.md) |
-| GLM-5.2 EXL3 3.5-bpw + SparkCache | four-Spark cycle, TP4/DCP4 | implemented at 1M context/16 sequences; qualified at 262K/eight sequences | [Recipe](../../recipes/sparkcache/glm52-exl3-r7-3.5bpw-tp4-dcp4.json), [composition evidence](../../recipes/sparkcache/README.md) |
-| GLM-5.3 Flash NVFP4 + BF16 DFlash2 | four-Spark cycle, TP4 with DCP1, DCP2, or DCP4 | 1M context, 16 sequences, 8,192-token batch; FP8 KV defaults to 24 GiB/rank for all three DCP settings; SparkCache optional; DCP4 is preferred; image and video inputs enabled by default with a text-only mode available | [base recipe](../../recipes/glm53-flash-nvfp4-dflash2-bf16-tp4.json), [SparkCache composition](../../recipes/sparkcache/glm53-flash-nvfp4-dflash2-bf16-tp4.json), [quickstart](../GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md), [image record](../../runtime/glm53-flash-jj-r8-gb10/page-tail-v2-public-image-receipt.json) |
-| DeepSeek-V4-Flash-0731 + SparkCache | two-Spark pair, TP2/DCP1 | implemented at 1M context/32 sequences; qualified at 131K/six sequences | [Recipe](../../recipes/sparkcache/deepseek-v4-flash-0731-tp2-dcp1.json), [composition evidence](../../recipes/sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 + SparkCache | four-Spark cycle, TP4/DCP1 | implemented at 1M context/32 sequences; qualified at 524K/32 sequences | [Recipe](../../recipes/sparkcache/deepseek-v4-flash-0731-tp4-dcp1.json), [composition evidence](../../recipes/sparkcache/README.md) |
-
-The GLM-5.2 profiles pin model revision
-`9ab9579774cc432df91567a36f6e9e863e0d4c9f`. The published GLM-5.3 profile pins target
-revision `520de24eabf507659eaef7c70f14fd584527facc` and public BF16 DFlash2
-revision `dc77ff1c99eeb2df044ee3d4f0094eb033fee410`. The DeepSeek TP2 recipe records
-the DSpark package revision `913f0657…`; the TP4 recipe records the plain 0731
-revision `7872f01…`. Each SparkCache composition separately records its exact
-checkpoint hash. Both Qwen base profiles pin
-revision `ab3a91a13813df8096cb4c1d560ed3669035d0cf` and the checkpoint's
-published configuration hash.
-
-## GLM NVFP4-Spark profiles and bounded qualification
-
-| Profile | Topology | Serving sources and evidence scope | Documentation |
-|---|---|---|---|
-| GLM-5.3 Flash NVFP4-Spark with native MTP3 | four-Spark mesh, TP4/DCP1 or DCP4 | **research-only** shared-source profiles without SparkCache; no R33 cache qualification inherited | [Source profiles](../../runtime/sparkring/source_image/README.md), [image source lock](../../runtime/sparkring/source_image/glm53-tp4-lock.json) |
-| GLM-5.3 Flash NVFP4-Spark with MTP3 and SparkCache | four-Spark ring, TP4/DCP1 | R33: **qualified** for bounded startup, 112K exact-answer prefill and 8K restart restore; 24 GiB KV/rank; configured 1M request limit is not a tested 1M workload | [Quickstart](../GLM53_TP4_PREFILL_QUICKSTART.md), [qualification](../../performance/records/glm53-flash/r33-image020-tp4-sparkcache-20260911.md) |
-| GLM-5.3 Flash NVFP4-Spark with MTP3 and SparkCache | four-Spark ring, TP4/DCP4 | R33: **qualified** for bounded startup, 37K exact-answer prefill, prefix reuse, mHC 8192/2048, and 8K restore after planned restart and after fault injection; 24 GiB KV/rank (~8.36M tokens); configured 1M request limit is not a tested 1M workload; managed fabric installation required before launch | [Record](../../performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md), [activation receipt](../../runtime/sparkring/jovian-r33/profiles/evidence/tp4-dcp4-sparkcache-activation-20260911.json) |
-| GLM-5.3 Flash NVFP4-Spark with MTP3 and SparkCache | two Sparks, TP2/DCP1, one DAC and both host PCIe domains | R33: **qualified** for bounded startup, 8K restart restore and C8 correctness; managed B12X, 7.5 GiB KV/rank; configured 1M request limit is not a tested 1M workload | [Quickstart](../../runtime/profiles/glm53-flash-spark-tp2/README.md), [qualification](../../performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md) |
-| GLM-5.3 Flash NVFP4-Spark with native MTP3 | switched four-Spark TP4/DCP1 | Provided as-is; switched hardware not validated | [Quickstart](../GLM53_SWITCHED_TP4_QUICKSTART.md) |
-| DeepSeek-V4-Flash-Vision-Exp with DSpark | four-Spark cycle, TP4 | Anemll image and MiaAI-Lab recipe with SparkRing patched NCCL; contributor-reported observations; independent reproduction is not claimed | [Artifact contract](../../runtime/deepseek-vision-exp/profile.json), [recipe](../../recipes/deepseek-v4-flash-vision-exp-tp4.json), [quickstart](../DEEPSEEK_V4_FLASH_VISION_EXP_TP4_QUICKSTART.md) |
-
-The retired [GLM-5.3 native-MTP3 cache/checkpoint mesh](../GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md)
-publishes the integrated compute, recurrent checkpoint, optimized SparkCache,
-and transport composition for TP4/DCP4. Its
-[recipe](../../recipes/glm53-mtp3-cache-checkpoints-tp4.json) pins the image and
-source inputs. File equivalence with the deployed runtime is verified; that
-does not constitute a serving soak of the rebuilt image.
-
-The [managed mesh operations contract](../../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md)
-defines host preparation, startup, and recovery for the four-rank native-MTP3
-profile. Its [functional evidence](../../performance/records/glm53-flash/spark-mtp3-managed-mesh-functional-20260905.md)
-records bounded installation, fault/recovery, readiness, and cache-recall
-checks for the artifacts identified in that record. Those results do not
-qualify every cache boundary or unattended availability of another image.
-
-The [native-MTP3 mesh quickstart](../GLM53_SPARK_MTP3_MESH_QUICKSTART.md)
-describes the TP4/DCP4 configuration with 1,048,576-token context, 16 sequences,
-and an 8,192-token batch. Its [deployment recipe](../../recipes/glm53-spark-mtp3-managed-mesh-tp4.json)
-links the configuration and bounded evidence.
-
-The retired 5 GiB NVFP4-Spark TP2 configuration and its pinned image/source
-references remain available through the
-[TP2 guide's retained configuration links](../GLM53_FLASH_SPARK_TP2_EXPERIMENTAL_QUICKSTART.md).
-The separate cache-disabled `glm53-flash-spark-tp2-mtp3` shared-image profile
-retains 8.75 GiB KV per rank and a 262,144-token request limit. It is
-**implemented**, without the R33 SparkCache profile's bounded GPU qualification.
-Select its [profile file](../../runtime/profiles/glm53-flash-spark-tp2/profile.json)
-only with the matching shared-image receipt.
-
-## Unsupported integrations
-
-| Integration | Topology | Status |
-|---|---|---|
-| Qwen3.8-27B EXL3 K5/K6 + SparkCache | four-Spark cycle, TP4/DCP1 | **unsupported.** No composition recipe or live cache evidence is published. |
-| Qwen3.8-27B EXL3 K5/K6 + SparkCache | two-Spark pair, TP2/DCP1 | **unsupported.** No composition recipe or live cache evidence is published. |
-
-[Profile validation: performance, accuracy, and restart checks](../PROFILE_VALIDATION.md).
+Profile definitions keep evidence status separate from recommendation.
+Older profile overview URLs remain available for compatibility; the selected
+profile's primary guide owns current deployment instructions.

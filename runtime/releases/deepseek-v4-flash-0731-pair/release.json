@@ -1,0 +1,14 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "deepseek-v4-flash-0731-pair",
+  "inputs": [
+    {
+      "path": "runtime/faststart-lock.json",
+      "sha256": "5f56ef8b7135d580e2dfc6b076a39e8d5669ca1c86034d78f4df83c46c5aa70a"
+    }
+  ],
+  "image": {
+    "configuration_runtime": "profiles/deepseek-v4-flash-0731-pair/recipe.json"
+  },
+  "selection": "recipe-build-or-published-reference"
+}

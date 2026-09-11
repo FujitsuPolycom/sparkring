@@ -1,0 +1,11 @@
+{
+  "schema": "sparkring-site/v1",
+  "nodes": [
+    {"rank": 0, "address": "<rank-0-address>"},
+    {"rank": 1, "address": "<rank-1-address>"},
+    {"rank": 2, "address": "<rank-2-address>"},
+    {"rank": 3, "address": "<rank-3-address>"}
+  ],
+  "model_dir": "/<absolute-model-directory>",
+  "cache_dir": "/<absolute-cache-directory>"
+}

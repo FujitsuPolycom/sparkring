@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from spark_transport.experiments.glm53_rocenante_overlay.rocenante_vllm_overlay import (
+from integrations.vllm.rocenante.rocenante_vllm_overlay import (
     OverlayError, VirtualDiagonalAdapter, load_contract,
 )
 
@@ -48,7 +48,7 @@ def test_legacy_contract_keeps_both_modes():
 
 def test_routing_status_uses_no_cuda_or_native_calls(monkeypatch):
     import weakref
-    from spark_transport.experiments.glm53_rocenante_overlay import rocenante_vllm_overlay as module
+    from integrations.vllm.rocenante import rocenante_vllm_overlay as module
     class Adapter:
         rank=2
         execution_mode='eager_only'

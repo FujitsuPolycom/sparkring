@@ -8,7 +8,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
-from spark_transport.experiments.cx7_hairpin_diagonal.fabric import Port, Rank
+from spark_transport.fabric.cx7_hairpin_diagonal.fabric import Port, Rank
 
 spec = importlib.util.spec_from_file_location(
     "lil_mesh_check", Path(__file__).with_name("mesh_check.py")

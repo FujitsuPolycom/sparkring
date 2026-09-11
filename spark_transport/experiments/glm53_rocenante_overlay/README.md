@@ -2,7 +2,7 @@
 
 Status: **research-only**. This package composes a RoCEnante all-reduce wrapper
 with SIRCL and the existing NCCL fallback. It targets the exact GLM-5.3 vLLM
-Python sources identified in [`overlay_contract.json`](overlay_contract.json).
+Python sources identified in [`overlay_contract.json`](../../../integrations/vllm/rocenante/overlay_contract.json).
 It is not a generic vLLM command-line option or an unmodified installation of
 an upstream PR.
 

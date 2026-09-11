@@ -1,0 +1,9 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "glm53-spark-mtp3-managed-mesh-tp4",
+  "inputs": [],
+  "image": {
+    "configuration_runtime": "profiles/glm53-spark-mtp3-managed-mesh-tp4/recipe.json"
+  },
+  "selection": "recipe-build-or-published-reference"
+}

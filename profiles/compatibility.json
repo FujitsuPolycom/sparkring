@@ -1,0 +1,225 @@
+{
+  "schema": "sparkring-compatibility/v1",
+  "mirrors": [
+    {
+      "source": "profiles/deepseek-v4-flash-0731-pair/recipe.json",
+      "destination": "recipes/deepseek-v4-flash-0731-pair.json",
+      "kind": "recipe"
+    },
+    {
+      "source": "profiles/deepseek-v4-flash-0731/recipe.json",
+      "destination": "recipes/deepseek-v4-flash-0731.json",
+      "kind": "recipe"
+    },
+    {
+      "source": "profiles/deepseek-v4-flash-vision-exp-tp4/recipe.json",
+      "destination": "recipes/deepseek-v4-flash-vision-exp-tp4.json",
+      "kind": "recipe"
+    },
+    {
+      "source": "profiles/deepseek-v41-flash-cycle/recipe.json",
+      "destination": "recipes/deepseek-v41-flash-cycle.json",
+      "kind": "recipe"
+    },
+    {
+      "source": "profiles/glm52-exl3-r7-3.5bpw/recipe.json",
+      "destination": "recipes/glm52-exl3-r7-3.5bpw.json",
+      "kind": "recipe"
+    },
+    {
+      "source": "profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/recipe.json",
+      "destination": "recipes/glm53-flash-nvfp4-dflash2-bf16-tp4.json",
+      "kind": "recipe"
+    },
+    {
+      "source": "profiles/glm53-mtp3-cache-checkpoints-tp4/recipe.json",
+      "destination": "recipes/glm53-mtp3-cache-checkpoints-tp4.json",
+      "kind": "recipe"
+    },
+    {
+      "source": "profiles/glm53-spark-mtp3-managed-mesh-tp4/recipe.json",
+      "destination": "recipes/glm53-spark-mtp3-managed-mesh-tp4.json",
+      "kind": "recipe"
+    },
+    {
+      "source": "profiles/qwen38-27b-exl3-k5k6-pair/recipe.json",
+      "destination": "recipes/qwen38-27b-exl3-k5k6-pair.json",
+      "kind": "recipe"
+    },
+    {
+      "source": "profiles/qwen38-27b-exl3-k5k6/recipe.json",
+      "destination": "recipes/qwen38-27b-exl3-k5k6.json",
+      "kind": "recipe"
+    },
+    {
+      "source": "profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/recipe.json",
+      "destination": "recipes/sparkcache/deepseek-v4-flash-0731-tp2-dcp1.json",
+      "kind": "recipe"
+    },
+    {
+      "source": "profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/recipe.json",
+      "destination": "recipes/sparkcache/deepseek-v4-flash-0731-tp4-dcp1.json",
+      "kind": "recipe"
+    },
+    {
+      "source": "profiles/sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/recipe.json",
+      "destination": "recipes/sparkcache/glm52-exl3-r7-3.5bpw-tp4-dcp4.json",
+      "kind": "recipe"
+    },
+    {
+      "source": "profiles/sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/recipe.json",
+      "destination": "recipes/sparkcache/glm53-flash-nvfp4-dflash2-bf16-tp4.json",
+      "kind": "recipe"
+    },
+    {
+      "source": "integrations/vllm/GLM52_TP4_VOCAB_ALLGATHER.md",
+      "destination": "spark_transport/integrations/vllm/GLM52_TP4_VOCAB_ALLGATHER.md",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/README.md",
+      "destination": "spark_transport/integrations/vllm/README.md",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/probe_shared_capture_stream.py",
+      "destination": "spark_transport/integrations/vllm/probe_shared_capture_stream.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/probe_vocab_graph_stream_switch.py",
+      "destination": "spark_transport/integrations/vllm/probe_vocab_graph_stream_switch.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/sitecustomize.py",
+      "destination": "spark_transport/integrations/vllm/sitecustomize.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/spark_collective_audit.py",
+      "destination": "spark_transport/integrations/vllm/spark_collective_audit.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/spark_cudagraph_bucket_contract.py",
+      "destination": "spark_transport/integrations/vllm/spark_cudagraph_bucket_contract.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/spark_cudagraph_replay_timing.py",
+      "destination": "spark_transport/integrations/vllm/spark_cudagraph_replay_timing.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/spark_dcp_collective_audit.py",
+      "destination": "spark_transport/integrations/vllm/spark_dcp_collective_audit.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/spark_graph_status_reporter.py",
+      "destination": "spark_transport/integrations/vllm/spark_graph_status_reporter.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/spark_persistent_output_ring.py",
+      "destination": "spark_transport/integrations/vllm/spark_persistent_output_ring.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/spark_tp4_backend.py",
+      "destination": "spark_transport/integrations/vllm/spark_tp4_backend.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/spark_tp4_capability.py",
+      "destination": "spark_transport/integrations/vllm/spark_tp4_capability.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/spark_tp4_health_gate.py",
+      "destination": "spark_transport/integrations/vllm/spark_tp4_health_gate.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/spark_tp4_port_namespace.py",
+      "destination": "spark_transport/integrations/vllm/spark_tp4_port_namespace.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/spark_tp4_query_contract.py",
+      "destination": "spark_transport/integrations/vllm/spark_tp4_query_contract.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/spark_tp4_query_row_provider.py",
+      "destination": "spark_transport/integrations/vllm/spark_tp4_query_row_provider.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/spark_tp4_vocab_allgather_backend.py",
+      "destination": "spark_transport/integrations/vllm/spark_tp4_vocab_allgather_backend.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/tp4_numerical_audit.py",
+      "destination": "spark_transport/integrations/vllm/tp4_numerical_audit.py",
+      "kind": "source"
+    },
+    {
+      "source": "spark_transport/fabric/cx7_hairpin_diagonal/README.md",
+      "destination": "spark_transport/experiments/cx7_hairpin_diagonal/README.md",
+      "kind": "source"
+    },
+    {
+      "source": "spark_transport/fabric/cx7_hairpin_diagonal/__init__.py",
+      "destination": "spark_transport/experiments/cx7_hairpin_diagonal/__init__.py",
+      "kind": "source"
+    },
+    {
+      "source": "spark_transport/fabric/cx7_hairpin_diagonal/fabric.py",
+      "destination": "spark_transport/experiments/cx7_hairpin_diagonal/fabric.py",
+      "kind": "source"
+    },
+    {
+      "source": "spark_transport/fabric/cx7_hairpin_diagonal/native/mlx5_rdma_tx_rewrite_probe.c",
+      "destination": "spark_transport/experiments/cx7_hairpin_diagonal/native/mlx5_rdma_tx_rewrite_probe.c",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/rocenante/README.md",
+      "destination": "spark_transport/experiments/glm53_rocenante_overlay/README.md",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/rocenante/build_bundle.py",
+      "destination": "spark_transport/experiments/glm53_rocenante_overlay/build_bundle.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/rocenante/overlay_contract.json",
+      "destination": "spark_transport/experiments/glm53_rocenante_overlay/overlay_contract.json",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/rocenante/plan.py",
+      "destination": "spark_transport/experiments/glm53_rocenante_overlay/plan.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/rocenante/rocenante_health_gate.py",
+      "destination": "spark_transport/experiments/glm53_rocenante_overlay/rocenante_health_gate.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/rocenante/rocenante_vllm_overlay.py",
+      "destination": "spark_transport/experiments/glm53_rocenante_overlay/rocenante_vllm_overlay.py",
+      "kind": "source"
+    },
+    {
+      "source": "integrations/vllm/rocenante/sitecustomize.py",
+      "destination": "spark_transport/experiments/glm53_rocenante_overlay/sitecustomize.py",
+      "kind": "source"
+    }
+  ]
+}

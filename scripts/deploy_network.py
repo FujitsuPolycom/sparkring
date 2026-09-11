@@ -12,7 +12,7 @@ import uuid
 from collections.abc import Mapping
 from pathlib import PurePosixPath
 
-from spark_transport.experiments.cx7_hairpin_diagonal.fabric import RANK_COUNT
+from spark_transport.fabric.cx7_hairpin_diagonal.fabric import RANK_COUNT
 
 
 PLAN_SCHEMA = "sparkring-deploy-network-plan/v1"

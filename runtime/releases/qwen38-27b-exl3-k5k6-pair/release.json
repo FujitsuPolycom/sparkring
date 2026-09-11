@@ -1,0 +1,14 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "qwen38-27b-exl3-k5k6-pair",
+  "inputs": [
+    {
+      "path": "runtime/qwen38/pins.json",
+      "sha256": "e685bf11a64d484d278c7eaa04ceaf1038e7a05e8522afce1bceb9ddda577c4c"
+    }
+  ],
+  "image": {
+    "configuration_runtime": "profiles/qwen38-27b-exl3-k5k6-pair/recipe.json"
+  },
+  "selection": "recipe-build-or-published-reference"
+}

@@ -1,0 +1,47 @@
+{
+  "schema": "sparkring-image-builders/v1",
+  "builders": [
+    {
+      "id": "sparkring-source",
+      "path": "runtime/sparkring/source_image/prepare_context.py",
+      "kind": "python",
+      "reason": "Offline assembly of the pinned shared source-image context; does not run Docker."
+    },
+    {
+      "id": "sparkring-r33",
+      "path": "runtime/sparkring/jovian-r33/image/prepare_context.py",
+      "kind": "python",
+      "reason": "Published R33 composition; retain the exact construction inputs and installed paths."
+    },
+    {
+      "id": "glm52-exl3",
+      "path": "runtime/exl3-r7/build-image.sh",
+      "kind": "bash",
+      "reason": "ExLlamaV3 engine and model format require their own pinned image."
+    },
+    {
+      "id": "glm53-dflash",
+      "path": "runtime/glm53-flash/build-image.sh",
+      "kind": "bash",
+      "reason": "DFlash image is retained for historical reproduction, including its separate drafter license."
+    },
+    {
+      "id": "deepseek-0731",
+      "path": "runtime/deepseek0731-gb10/build-image.sh",
+      "kind": "bash",
+      "reason": "DeepSeek sparse attention and loader dependencies differ from GLM."
+    },
+    {
+      "id": "deepseek-v41",
+      "path": "runtime/deepseek-v41-gb10/build-image.sh",
+      "kind": "bash",
+      "reason": "DeepSeek-V4.1 uses Engram and separately pinned stock-vLLM kernel patches."
+    },
+    {
+      "id": "qwen38-exl3",
+      "path": "runtime/qwen38/build-image.sh",
+      "kind": "bash",
+      "reason": "Qwen EXL3 engine and checkpoint pins are separate from GLM EXL3."
+    }
+  ]
+}

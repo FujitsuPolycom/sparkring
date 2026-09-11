@@ -55,4 +55,4 @@ result. `SPARK_TP4_VOCAB_SHADOW_PROMOTE=1` permits per-shape custom promotion
 only after its configured shadow window passes. A native failure after enqueue
 terminates the worker because its CUDA stream may contain an unfulfilled wait.
 
-The environment contract is maintained in [README.md](README.md).
+The environment contract is maintained in [README.md](../../../integrations/vllm/README.md).

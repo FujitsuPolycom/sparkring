@@ -41,9 +41,9 @@ SOURCE_FILES = (
     'runtime/glm53-flash-jj-r8-gb10/launch-rank.sh',
     'runtime/glm53-flash-jj-r8-gb10/runtime.env.example',
     'runtime/glm53-flash-jj-r8-gb10/sircl-fused.env.example',
-    'spark_transport/experiments/cx7_hairpin_diagonal/__init__.py',
-    'spark_transport/experiments/cx7_hairpin_diagonal/fabric.py',
-    'spark_transport/experiments/glm53_rocenante_overlay/build_bundle.py',
+    'spark_transport/fabric/cx7_hairpin_diagonal/__init__.py',
+    'spark_transport/fabric/cx7_hairpin_diagonal/fabric.py',
+    'integrations/vllm/rocenante/build_bundle.py',
 )
 
 

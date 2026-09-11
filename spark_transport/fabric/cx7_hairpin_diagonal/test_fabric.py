@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from spark_transport.experiments.cx7_hairpin_diagonal import fabric
+from spark_transport.fabric.cx7_hairpin_diagonal import fabric
 
 
 def _port(rank: int, direction: str, function: int) -> dict[str, object]:
