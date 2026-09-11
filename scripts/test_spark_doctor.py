@@ -21,22 +21,53 @@ class HealthyRunner:
         return CommandResult(0, "ok\n")
 
 
-def test_telemetry_is_reported_without_overriding_consent_policy():
+def test_optional_telemetry_policy_does_not_add_a_tautological_pass():
     checks = run_host_checks(HealthyRunner())
 
     assert all(check.status.value == "pass" for check in checks)
-    telemetry = next(
-        check for check in checks if check.check_id == "HOST.NVIDIA_TELEMETRY"
-    )
-    assert telemetry.evidence == "is-enabled=enabled"
+    assert all(check.check_id != "HOST.NVIDIA_TELEMETRY" for check in checks)
 
 
 def test_telemetry_can_be_required_disabled():
-    checks = run_host_checks(
-        HealthyRunner(), require_telemetry_disabled=True
-    )
+    checks = run_host_checks(HealthyRunner(), require_telemetry_disabled=True)
 
     telemetry = next(
         check for check in checks if check.check_id == "HOST.NVIDIA_TELEMETRY"
     )
     assert telemetry.status.value == "fail"
+
+
+def test_systemd_query_failure_cannot_pass_as_empty_output():
+    import os
+    import shutil
+    import subprocess
+    from pathlib import Path
+    import pytest
+
+    captured = []
+
+    class Runner(HealthyRunner):
+        def run(self, argv):
+            if "systemctl --failed" in " ".join(argv):
+                captured.append(argv[-1])
+            return super().run(argv)
+
+    run_host_checks(Runner())
+    shell = (
+        shutil.which("bash") if os.name != "nt" else "C:/Program Files/Git/bin/bash.exe"
+    )
+    if not shell or not Path(shell).is_file():
+        pytest.skip("Bash required")
+    result = subprocess.run(
+        [
+            shell,
+            "--noprofile",
+            "--norc",
+            "-c",
+            "systemctl() { return 1; }; " + captured[0],
+        ],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    assert result.returncode != 0

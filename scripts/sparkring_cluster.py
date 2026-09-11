@@ -171,6 +171,10 @@ def _expanded_site_document(document: Mapping[str, Any]) -> dict[str, Any]:
         raise ClusterConfigError("cluster must be a mapping")
     ranks = document["ranks"]
     rank_count = len(ranks) if isinstance(ranks, list) else 1
+    # Reuse the site validator for topology/rank constraints. These synthetic
+    # runtime/serving/path values only satisfy its required sections; they are
+    # discarded below and never become cluster identity or deployment settings.
+    # TP equals rank count solely for the shared rank/degree consistency check.
     return {
         "schema_version": document["schema_version"],
         "site": dict(cluster),

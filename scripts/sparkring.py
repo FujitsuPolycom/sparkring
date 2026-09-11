@@ -163,6 +163,8 @@ def _parser() -> argparse.ArgumentParser:
     doctor.add_argument("--cluster", default=str(DEFAULT_CLUSTER_PATH))
 
     host = subcommands.add_parser("host", help="diagnose one blank DGX Spark")
+    # Advertise the delegated CLI in root help; main passes all its arguments
+    # directly to deploy_suite so that module owns subcommand help and parsing.
     subcommands.add_parser("deploy", help="standalone deployment discovery and preparation")
     host_commands = host.add_subparsers(dest="host_command", required=True)
     host_check = host_commands.add_parser("check", help="run read-only host checks")

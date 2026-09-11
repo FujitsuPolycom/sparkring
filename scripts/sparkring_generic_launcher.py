@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Profile-driven four-node runtime launcher.
+"""Profile-driven runtime launcher for supported Spark rings.
 
 Consumes a ``sparkring-runtime-profile/v1`` profile, produces a deterministic
 offline plan, and reuses shared orchestration primitives from
@@ -20,8 +20,9 @@ Safety:
 * An optional ``attestation_hook`` runs after image verification and before
   ``docker run``.
 
-Compatibility boundary: four-Spark GPU/RDMA clusters running vLLM-style
-serving with the TP4/DCP degree declared by the validated site.
+Compatibility boundary: ring sizes accepted by sparkring_site, with tensor-
+parallel and decode-context-parallel degrees declared by the deployment site.
+An image/profile must separately support that geometry.
 """
 
 from __future__ import annotations
@@ -494,7 +495,7 @@ def _owned_settings(
 
 
 def _safety_classes() -> dict[str, list[str]]:
-    """Map each command to its safety class using AGENTS.md spellings."""
+    """Map each command to its local or remote side effects."""
     return {
         "plan": ["OFFLINE"],
         "start": ["MUTATES HOST", "STOPS SERVING"],
@@ -644,7 +645,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         _require_arg(parser, args, "profile_b", "diff requires --profile-b")
         return _conformance_diff(args, parser)
 
-    # --- Existing lifecycle commands ---
+    # --- Lifecycle commands ---
     _require_arg(parser, args, "site", f"{args.command} requires --site")
     _require_arg(parser, args, "profile", f"{args.command} requires --profile")
 
