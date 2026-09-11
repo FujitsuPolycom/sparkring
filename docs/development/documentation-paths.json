@@ -13,5 +13,6 @@
   "docs/GLM52_35BPW_QUICKSTART.md": "profiles/glm52-exl3-r7-3.5bpw/README.md",
   "docs/GLM53_SWITCHED_TP4_QUICKSTART.md": "profiles/glm53-flash-spark-tp4-switched/README.md",
   "docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md": "docs/history/glm53-dflash-operator.md",
-  "docs/GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md": "docs/history/glm53-cache-checkpoints.md"
+  "docs/GLM53_MTP3_CACHE_CHECKPOINTS_QUICKSTART.md": "docs/history/glm53-cache-checkpoints.md",
+  "runtime/README.md": "docs/history/runtime-compositions.md"
 }

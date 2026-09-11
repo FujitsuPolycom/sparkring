@@ -27,8 +27,10 @@ Frozen release inputs are not generated from changing implementation.
 
 ## Pending contributions
 
-PR #262 is merged and already present in the base. PRs #258, #259, #263 and #265
-remain open. Their changes are not merged by this branch. Preserve #258's model
+PR #262 is merged and already present in the base. PRs #258, #263 and #265 remain open. PR #259 landed in main as
+`84f2a01160e9d7542c06d1f52e0163907c1bbe77`; the restructuring branch was
+rebased onto that commit. PR #266 adds a separate proposed management-address
+loss mechanism and remains open. Their changes are not merged by this branch. Preserve #258's model
 variant and cache-namespace separation, #259's bounded peer-silence mitigation,
 #263's README wording, and #265's TP4/DCP4 selection/evidence when adopted.
 An increase in peer silence tolerance does not recover disappearance of the
@@ -38,8 +40,11 @@ local management address. Contributor credit stays in normal Git history.
 
 - [x] Fetch and isolate; inspect instructions, CI and PR state.
 - [x] Baseline Markdown links and release-safety scan.
-- [ ] Authoritative catalog, deterministic resolution and compatibility exports.
-- [ ] Component ownership, maintained launch/configuration and build entry points.
-- [ ] Documentation, contributor policy, maintainer prompt and templates.
-- [ ] Structural checks, regression tests and migration comparisons.
-- [ ] Reconcile main; write adoption plan and local PR description.
+- [x] Authoritative catalog, deterministic resolution and compatibility exports.
+- [x] Component ownership, maintained launch/configuration and build entry points.
+- [x] Documentation, contributor policy, maintainer prompt and templates.
+- [x] Structural checks, regression tests and migration comparisons.
+- [x] Reconcile main; prepare the adoption plan and local PR description.
+
+The [adoption report](repository-layout-adoption.md) records verification, pending
+contribution handling, compatibility limits and rollback.

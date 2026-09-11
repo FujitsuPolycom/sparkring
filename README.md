@@ -65,6 +65,8 @@ Status describes the evidence scope; recommendation describes deployment navigat
 | GLM-5.3-Flash-NVFP4-Spark | TP4/DCP4 | 1048576 | research-only | retired | [Guide](profiles/glm53-spark-mtp3-managed-mesh-tp4/README.md) |
 | GLM-5.3-Flash-NVFP4 + SparkCache | TP4/DCP1 | 1048576 | qualified | retired | [Guide](profiles/sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/README.md) |
 
+Additional pinned historical variants, including original NVFP4 TP2, are in the [retained deployment index](docs/history/deployment-variants.md).
+
 Qualification applies only to the exact image, checkpoint, topology and workload in the selected guide.
 Switched deployments have no switched-hardware qualification. Qwen with SparkCache is unsupported;
 six-node work remains research-only and is outside this deployment catalog.

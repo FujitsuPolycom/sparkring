@@ -37,7 +37,8 @@ def plan(profile_id, arguments, root=ROOT):
         if '--runtime-receipt' in args or any(a.startswith('--runtime-receipt=') for a in args):
             raise ValueError('The catalog owns the runtime receipt; select another profile for another release')
         command += ['--runtime-receipt', str(local_path(adapter['receipt'], root))]
-    return {'profile': profile_id, 'status': resolved['status'], 'guide': p['guide'],
+    return {'profile': profile_id, 'configuration_status': resolved['status'],
+            'execution_status': 'not-run', 'guide': p['guide'],
             'command': command, 'working_directory': str(root),
             'effect': 'host-action' if args[0] in ('create', 'start', '--run') else 'adapter-check-or-plan'}
 

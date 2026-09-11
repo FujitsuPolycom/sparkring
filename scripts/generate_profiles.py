@@ -31,7 +31,7 @@ def profile_table(root=ROOT):
             s = r['serving']
             lines.append(f"| {p['title']} | TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']} | {s.get('max_model_len', '—')} | {p['status']} | {p['recommendation']} | [Guide](profiles/{p['id']}/README.md) |")
         lines.append('')
-    lines += ['Qualification applies only to the exact image, checkpoint, topology and workload in the selected guide.',
+    lines += ['Additional pinned historical variants, including original NVFP4 TP2, are in the [retained deployment index](docs/history/deployment-variants.md).', '', 'Qualification applies only to the exact image, checkpoint, topology and workload in the selected guide.',
               'Switched deployments have no switched-hardware qualification. Qwen with SparkCache is unsupported;',
               'six-node work remains research-only and is outside this deployment catalog.', '', END]
     return '\n'.join(lines)

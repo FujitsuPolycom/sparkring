@@ -493,7 +493,7 @@ def test_operator_docs_distinguish_page_tails_from_published_rollback() -> None:
     quickstart = (
         ROOT / "docs/history/glm53-dflash-operator.md"
     ).read_text(encoding="utf-8")
-    runtime_index = (ROOT / "runtime/README.md").read_text(encoding="utf-8")
+    runtime_index = (ROOT / "docs/history/runtime-compositions.md").read_text(encoding="utf-8")
 
     for document in (runtime_readme, quickstart):
         for schema in ("snapshot-v1", "tail-cow-v1", "tail-cow-v2"):
@@ -519,7 +519,7 @@ def test_operator_docs_name_public_sources_and_explain_stable_locators() -> None
         ROOT / "docs/history/glm53-dflash-operator.md"
     ).read_text(encoding="utf-8")
     sircl_readme = (ROOT / "docs/architecture/sircl.md").read_text(encoding="utf-8")
-    runtime_index = (ROOT / "runtime/README.md").read_text(encoding="utf-8")
+    runtime_index = (ROOT / "docs/history/runtime-compositions.md").read_text(encoding="utf-8")
     root_readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     for document in (runtime_readme, quickstart):
