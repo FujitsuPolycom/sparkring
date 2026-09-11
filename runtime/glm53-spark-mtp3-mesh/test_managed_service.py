@@ -404,11 +404,12 @@ def test_old_marker_path_is_not_silently_overlapped(tmp_path):
 
 
 def test_sustained_management_address_loss_latches_failure():
+    grace = service.PEER_OUTAGE_GRACE
     watch = service.PeerWatch()
     watch.management_error(10.0)
-    watch.management_error(13.9)
+    watch.management_error(10.0 + grace - 0.1)
     with pytest.raises(RuntimeError, match='grace'):
-        watch.management_error(14.0)
+        watch.management_error(10.0 + grace)
 
 def test_clean_check_clears_management_outage_latch():
     watch = service.PeerWatch()
@@ -521,10 +522,10 @@ def test_management_loss_enters_grace_in_run_loop(tmp_path, monkeypatch):
 
     class SlowStop:
         def is_set(self):
-            return rounds[0] >= 3
+            return rounds[0] >= 4
         def wait(self, seconds):
             rounds[0] += 1
-            clock[0] += 100.0
+            clock[0] += service.PEER_OUTAGE_GRACE * 2
 
     result.stop = SlowStop()
     assert result.run() == 1

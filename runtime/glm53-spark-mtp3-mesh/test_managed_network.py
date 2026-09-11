@@ -380,3 +380,95 @@ def test_root_required_by_default(rig, monkeypatch):
     monkeypatch.setattr(network.os, "geteuid", lambda: 1000, raising=False)
     with pytest.raises(PermissionError, match="root"):
         manager.up()
+
+
+def test_management_loss_raises_after_fabric_checks_pass(rig):
+    """The real NetworkManager: an absent management address defers into the
+    typed loss only after every port, GID/netdev, object and (on request)
+    RDMA MTU check passed."""
+    manager, host = rig
+    manager.up()  # records the validated identity
+    assert manager.validated_management_identity == manager._management_identity()
+    # Remove the address from the fake host's management netdev answer.
+    original_call = host.__call__
+    def without_address(argv):
+        if "addr" in argv and argv[-1] == manager.local.management_netdev:
+            return json.dumps([{"addr_info": []}])
+        return original_call(argv)
+    manager.runner = without_address
+    loss = []
+    with pytest.raises(network.ManagementAddressLoss, match="Management address"):
+        manager.check(management_loss=loss)
+    assert loss == [True]
+    # Every fabric check ran despite the loss: the port/GID answers were read.
+    fabric_ports = [argv[-1] for argv in host.commands if "addr" in argv and argv[-1] != manager.local.management_netdev]
+    assert set(fabric_ports) == {p.netdev for p in manager.local.ports}
+def test_management_fail_fast_at_startup(rig):
+    """Startup semantics: up() with the address already absent fails on the
+    first _links() call, before any validation is recorded."""
+    manager, host = rig
+    original_call = host.__call__
+    def without_address(argv):
+        if "addr" in argv and argv[-1] == manager.local.management_netdev:
+            return json.dumps([{"addr_info": []}])
+        return original_call(argv)
+    manager.runner = without_address
+    with pytest.raises(ValueError, match="Management address"):
+        manager.up()
+    assert manager.validated_management_identity is None
+
+
+def test_management_loss_with_fabric_fault_raises_fabric_error(rig):
+    """A fabric mismatch on the same round wins: no typed loss is raised."""
+    manager, host = rig
+    manager.up()
+    original_call = host.__call__
+    def without_address_and_wrong_mtu(argv):
+        if "addr" in argv and argv[-1] == manager.local.management_netdev:
+            return json.dumps([{"addr_info": []}])
+        if argv[0] == "ibv_devinfo":
+            return "\tactive_mtu: 1500 (1)\n"
+        return original_call(argv)
+    manager.runner = without_address_and_wrong_mtu
+    loss = []
+    with pytest.raises(ValueError, match="RoCE MTU differs"):
+        manager.check(management_loss=loss, verify_rdma_mtu=True)
+    # The loss was recorded during _links but the fabric fault took
+    # precedence: the raised error is the fabric one, not the typed loss.
+
+
+def test_management_loss_with_missing_object_raises_object_error(rig):
+    """A missing TC rule on the same round fails immediately, not as a loss."""
+    manager, host = rig
+    manager.up()
+    key = next(k for k in manager.objects if k.startswith("rule:"))
+    del host.inventory[key]
+    original_call = host.__call__
+    def without_address(argv):
+        if "addr" in argv and argv[-1] == manager.local.management_netdev:
+            return json.dumps([{"addr_info": []}])
+        return original_call(argv)
+    manager.runner = without_address
+    loss = []
+    with pytest.raises(ValueError, match="Missing mesh network objects"):
+        manager.check(management_loss=loss)
+    assert loss == [True]  # recorded during _links, but objects error wins
+
+
+def test_unvalidated_management_identity_never_receives_grace(rig):
+    """Without a successful up(), an absent address raises ValueError even
+    through the loss channel; a site change after validation also fails."""
+    manager, host = rig
+    original_call = host.__call__
+    def without_address(argv):
+        if "addr" in argv and argv[-1] == manager.local.management_netdev:
+            return json.dumps([{"addr_info": []}])
+        return original_call(argv)
+    manager.runner = without_address
+    assert manager.validated_management_identity is None
+    loss = []
+    with pytest.raises(ValueError, match="Management address"):
+        manager.check(management_loss=loss)
+    assert loss == []
+
+
