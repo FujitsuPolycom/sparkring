@@ -37,7 +37,7 @@ def sample_cluster(tmp_path: pathlib.Path) -> pathlib.Path:
     text = """\
 schema_version: 1
 cluster:
-  name: glm53-flash-four-rank-cycle
+  name: deepseek-v4-flash-four-rank-cycle
   description: offline test inventory for the cycle controller
 topology:
   mtu: 9000
@@ -196,6 +196,8 @@ class FakeSSH:
             return subprocess.CompletedProcess(["ssh"], 0, "", "")
 
         monkeypatch.setattr(ctl, "_run_ssh", fake_run)
+        # Fake launches update state synchronously; polling needs no wall-clock delay.
+        monkeypatch.setattr(ctl.time, "sleep", lambda _seconds: None)
 
 
 def _start_order(calls):
@@ -403,3 +405,12 @@ def test_docker_failure_is_not_an_absent_container(monkeypatch):
     monkeypatch.setattr(ctl, "_run_ssh", lambda *a, **kw: subprocess.CompletedProcess([], 1, "", "daemon unavailable"))
     with pytest.raises(ctl.SSHTransportError):
         ctl._container_running("fixture-host", "model-r0")
+
+
+def test_stop_is_idempotent_when_all_containers_are_absent(monkeypatch, fake_ranks):
+    ssh = FakeSSH(monkeypatch)
+    for _ in range(2):
+        assert ctl.stop_ranks(fake_ranks, "deepseek-v4-flash-r") == 0
+        assert not any(ssh.containers_up.values())
+    assert len([c for c in ssh.calls if "docker ps" in c]) == 8
+    assert not _start_order(ssh.calls)

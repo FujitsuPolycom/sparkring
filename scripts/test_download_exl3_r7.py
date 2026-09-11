@@ -21,24 +21,28 @@ def test_inventory_rejects_revision_drift():
         r7.inventory(api)
 
 
-def test_index_rejects_stale_qualified_total(tmp_path, monkeypatch):
+def _write_index(tmp_path, monkeypatch, total):
     monkeypatch.setattr(r7, "EXPECTED_WEIGHT_COUNT", 1)
     monkeypatch.setattr(r7, "EXPECTED_SHARD_COUNT", 1)
     (tmp_path / "model.safetensors.index.json").write_text(
-        json.dumps({"metadata": {"total_size": r7.STALE_INDEX_TOTAL_SIZE}, "weight_map": {"x": "model-sharedbf16.safetensors"}}),
+        json.dumps({"metadata": {"total_size": total},
+                    "weight_map": {"x": "model-sharedbf16.safetensors"}}),
         encoding="utf-8",
     )
-    with pytest.raises(RuntimeError, match="replace the index with the pinned"):
+
+
+@pytest.mark.parametrize("total,message", [
+    (r7.STALE_INDEX_TOTAL_SIZE, "replace the index with the pinned"),
+    (r7.EXPECTED_INDEX_TOTAL_SIZE - 1, "expected"),
+])
+def test_index_rejects_wrong_totals_with_repair_diagnostics(tmp_path, monkeypatch, total, message):
+    _write_index(tmp_path, monkeypatch, total)
+    with pytest.raises(RuntimeError, match=message):
         r7.indexed_shards(tmp_path)
 
 
 def test_index_accepts_only_exact_runtime_closure(tmp_path, monkeypatch):
-    monkeypatch.setattr(r7, "EXPECTED_WEIGHT_COUNT", 1)
-    monkeypatch.setattr(r7, "EXPECTED_SHARD_COUNT", 1)
-    (tmp_path / "model.safetensors.index.json").write_text(
-        json.dumps({"metadata": {"total_size": r7.EXPECTED_INDEX_TOTAL_SIZE}, "weight_map": {"x": "model-sharedbf16.safetensors"}}),
-        encoding="utf-8",
-    )
+    _write_index(tmp_path, monkeypatch, r7.EXPECTED_INDEX_TOTAL_SIZE)
     assert r7.indexed_shards(tmp_path) == {"model-sharedbf16.safetensors"}
 
 

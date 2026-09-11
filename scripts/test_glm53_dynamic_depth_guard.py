@@ -1,4 +1,4 @@
-"""Reject the reported DFlash/DCP4 combination before any remote action."""
+"""Reject dynamic DFlash depth with GLM-5.3 TP4/DCP4 before remote actions."""
 import dataclasses
 import json
 from pathlib import Path
@@ -34,7 +34,7 @@ def configured(control, *, method="dflash", dcp=4, family="glm53-flash", equals=
 
 @pytest.mark.parametrize("control", CONTROLS)
 @pytest.mark.parametrize("equals", [False, True])
-def test_reported_configs_rejected_by_real_plan_builder(control, equals):
+def test_dynamic_depth_configs_rejected_by_plan_builder(control, equals):
     site, profile = configured(control, equals=equals)
     with pytest.raises(runtime.ProfileError, match="DFlash.*TP4/DCP4"):
         generic.build_actions(site, profile, "plan")

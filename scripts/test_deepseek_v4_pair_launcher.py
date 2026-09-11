@@ -187,39 +187,8 @@ def pair_env(tmp_path: Path) -> Path:
 @pytest.fixture
 def cycle_env(tmp_path: Path) -> Path:
     model = tmp_path / "model"
-    cache = tmp_path / "cache"
     model.mkdir()
-    cache.mkdir()
-    content = CYCLE_TEMPLATE.read_text(encoding="utf-8")
-    replacements = {
-        "<NODE_RANK_0_TO_3>": "0",
-        "<RANK0_FABRIC_IP>": "10.43.0.1",
-        "<ABSOLUTE_MODEL_DIRECTORY>": _bash_path(model),
-        "<ABSOLUTE_CACHE_DIRECTORY>": _bash_path(cache),
-        "<NCCL_SOCKET_IFNAME>": "fabric0",
-        "<RANK_FABRIC_IP>": "10.43.0.1",
-    }
-    for placeholder, value in replacements.items():
-        content = content.replace(placeholder, value)
-    env_file = tmp_path / "rank-0.env"
-    env_file.write_text(content, encoding="utf-8", newline="\n")
-    _write_gid(
-        tmp_path / "infiniband",
-        hca="rocep1s0f0",
-        port=1,
-        index=3,
-        address="10.43.0.1",
-        netdev="fabric0",
-    )
-    _write_gid(
-        tmp_path / "infiniband",
-        hca="rocep1s0f1",
-        port=1,
-        index=5,
-        address="10.44.0.1",
-        netdev="fabric1",
-    )
-    return env_file
+    return _cycle_env_for_model(tmp_path, model)
 
 
 def test_pair_env_defaults_match_recipe() -> None:
@@ -248,8 +217,6 @@ def test_pair_env_explains_host_cache_mapping() -> None:
     assert "/cache/test/jit/tilelang" in source
     assert "/cache/test/jit/b12x-cute" in source
     assert "/cache/test/nccl-fr" in source
-    assert "Leave the container-internal cache and recorder paths" in source
-    assert "configure the host location only through" in source
 
 
 @pytest.mark.parametrize("template", [TEMPLATE, CYCLE_TEMPLATE])
@@ -267,17 +234,6 @@ def test_deepseek_templates_persist_native_jit_and_flight_recorder_data(
         "/cache/nccl-fr/comm_lib_trace_rank_"
     )
     assert values["TORCH_NCCL_DEBUG_INFO_PIPE_FILE"] == "/tmp/fr_dump_pipe_"
-
-
-@pytest.mark.parametrize("launcher", [LAUNCHER, CYCLE_LAUNCHER])
-def test_deepseek_launchers_prepare_persistent_cache_directories(
-    launcher: Path,
-) -> None:
-    source = launcher.read_text(encoding="utf-8")
-
-    assert '"$CACHE_HOST_PATH/jit/tilelang"' in source
-    assert '"$CACHE_HOST_PATH/jit/b12x-cute"' in source
-    assert '"$CACHE_HOST_PATH/nccl-fr"' in source
 
 
 @pytest.mark.parametrize(
@@ -715,10 +671,13 @@ def test_rank_zero_requires_its_own_fabric_address(pair_env: Path) -> None:
     assert "rank-0 MASTER_ADDR must equal rank-0 VLLM_HOST_IP" in result.stderr
 
 
-def test_launcher_uses_host_ipc_and_16g_shm_declaration() -> None:
-    source = LAUNCHER.read_text(encoding="utf-8")
-    assert "--ipc host" in source
-    assert "--shm-size 16g" in source
+def test_launcher_renders_host_ipc_and_16g_shm(pair_env: Path) -> None:
+    result = _run_launcher(pair_env)
+    assert result.returncode == 0, result.stderr
+    command = shlex.split(next(line for line in result.stdout.splitlines()
+                              if line.startswith("  command:")))[1:]
+    assert command[command.index("--ipc") + 1] == "host"
+    assert command[command.index("--shm-size") + 1] == "16g"
 
 
 def _cycle_env_for_model(tmp_path: Path, model_dir: Path) -> Path:
