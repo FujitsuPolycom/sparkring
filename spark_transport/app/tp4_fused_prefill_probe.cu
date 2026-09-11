@@ -114,14 +114,21 @@ static_assert(std::is_trivially_copyable_v<GeometryHandshake>);
   std::exit(2);
 }
 
-std::uint64_t unsigned_value(const char* value, const char* name) {
-  std::size_t consumed{};
+template <typename Integer>
+Integer unsigned_value(const char* value, const char* name) {
   const std::string text(value);
-  const auto parsed = std::stoull(text, &consumed);
-  if (consumed != text.size()) {
+  if constexpr (std::numeric_limits<Integer>::is_signed) {
+    if (text == "-1") return -1;  // Proxy CPU -1 leaves affinity unpinned.
+  }
+  if (text.empty() || !std::all_of(text.begin(), text.end(),
+                                 [](char digit) { return digit >= '0' && digit <= '9'; })) {
     throw std::invalid_argument(std::string("invalid ") + name);
   }
-  return parsed;
+  const auto parsed = std::stoull(text);
+  if (parsed > static_cast<std::uint64_t>(std::numeric_limits<Integer>::max())) {
+    throw std::out_of_range(std::string(name) + " exceeds its integer range");
+  }
+  return static_cast<Integer>(parsed);
 }
 
 Options parse_options(int argc, char** argv) {
@@ -133,7 +140,7 @@ Options parse_options(int argc, char** argv) {
       return argv[index];
     };
     if (argument == "--rank") {
-      options.rank = static_cast<std::uint32_t>(unsigned_value(take(), "rank"));
+      options.rank = unsigned_value<std::uint32_t>(take(), "rank");
     } else if (argument == "--peer0") {
       options.peer0 = take();
     } else if (argument == "--peer1") {
@@ -151,43 +158,31 @@ Options parse_options(int argc, char** argv) {
     } else if (argument == "--secondary-device1") {
       options.secondary_device1 = take();
     } else if (argument == "--primary-gid0") {
-      options.primary_gid0 = static_cast<std::uint8_t>(
-          unsigned_value(take(), "primary gid0"));
+      options.primary_gid0 = unsigned_value<std::uint8_t>(take(), "primary gid0");
     } else if (argument == "--primary-gid1") {
-      options.primary_gid1 = static_cast<std::uint8_t>(
-          unsigned_value(take(), "primary gid1"));
+      options.primary_gid1 = unsigned_value<std::uint8_t>(take(), "primary gid1");
     } else if (argument == "--secondary-gid0") {
-      options.secondary_gid0 = static_cast<std::uint8_t>(
-          unsigned_value(take(), "secondary gid0"));
+      options.secondary_gid0 = unsigned_value<std::uint8_t>(take(), "secondary gid0");
     } else if (argument == "--secondary-gid1") {
-      options.secondary_gid1 = static_cast<std::uint8_t>(
-          unsigned_value(take(), "secondary gid1"));
+      options.secondary_gid1 = unsigned_value<std::uint8_t>(take(), "secondary gid1");
     } else if (argument == "--primary-port0") {
-      options.primary_port0 = static_cast<std::uint16_t>(
-          unsigned_value(take(), "primary port0"));
+      options.primary_port0 = unsigned_value<std::uint16_t>(take(), "primary port0");
     } else if (argument == "--primary-port1") {
-      options.primary_port1 = static_cast<std::uint16_t>(
-          unsigned_value(take(), "primary port1"));
+      options.primary_port1 = unsigned_value<std::uint16_t>(take(), "primary port1");
     } else if (argument == "--secondary-port0") {
-      options.secondary_port0 = static_cast<std::uint16_t>(
-          unsigned_value(take(), "secondary port0"));
+      options.secondary_port0 = unsigned_value<std::uint16_t>(take(), "secondary port0");
     } else if (argument == "--secondary-port1") {
-      options.secondary_port1 = static_cast<std::uint16_t>(
-          unsigned_value(take(), "secondary port1"));
+      options.secondary_port1 = unsigned_value<std::uint16_t>(take(), "secondary port1");
     } else if (argument == "--proxy-cpu") {
-      options.proxy_cpu = static_cast<std::int32_t>(
-          unsigned_value(take(), "proxy cpu"));
+      options.proxy_cpu = unsigned_value<std::int32_t>(take(), "proxy cpu");
     } else if (argument == "--warmup") {
-      options.warmup = static_cast<std::uint32_t>(unsigned_value(take(), "warmup"));
+      options.warmup = unsigned_value<std::uint32_t>(take(), "warmup");
     } else if (argument == "--iterations") {
-      options.iterations = static_cast<std::uint32_t>(
-          unsigned_value(take(), "iterations"));
+      options.iterations = unsigned_value<std::uint32_t>(take(), "iterations");
     } else if (argument == "--timeout-seconds") {
-      options.timeout_seconds = static_cast<std::uint32_t>(
-          unsigned_value(take(), "timeout seconds"));
+      options.timeout_seconds = unsigned_value<std::uint32_t>(take(), "timeout seconds");
     } else if (argument == "--spin-limit") {
-      options.spin_limit = static_cast<std::uint32_t>(
-          unsigned_value(take(), "spin limit"));
+      options.spin_limit = unsigned_value<std::uint32_t>(take(), "spin limit");
     } else {
       usage(argv[0]);
     }
@@ -207,9 +202,12 @@ Options parse_options(int argc, char** argv) {
       options.primary_port1 == options.secondary_port1 ||
       options.secondary_port0 == options.secondary_port1 ||
       options.iterations == 0 || options.timeout_seconds == 0 ||
+      options.timeout_seconds > std::numeric_limits<std::uint32_t>::max() / 1000U ||
       options.spin_limit == 0) {
     usage(argv[0]);
   }
+  // Control channels may share peer IPs; each physical link still requires
+  // distinct primary/secondary HCAs and distinct TCP ports.
   if (options.secondary_peer0.empty()) options.secondary_peer0 = options.peer0;
   if (options.secondary_peer1.empty()) options.secondary_peer1 = options.peer1;
   if (options.primary_device0 == options.secondary_device0 ||

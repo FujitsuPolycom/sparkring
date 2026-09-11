@@ -110,20 +110,24 @@ static_assert(std::is_trivially_copyable_v<Geometry>);
                " [--rail-mode single|dual] [--secondary-peer0 IP]"
                " [--secondary-peer1 IP] [--secondary-device0 HCA]"
                " [--secondary-device1 HCA] [--secondary-port0 N]"
-               " [--secondary-port1 N]"
+               " [--secondary-port1 N] [--secondary-gid0 N] [--secondary-gid1 N]"
                " [--allow-shared-peer-ip]"
                " [--warmup N] [--iterations N] [--timeout-seconds N]\n";
   std::exit(2);
 }
 
-std::uint64_t unsigned_value(const char* value, const char* name) {
-  std::size_t consumed{};
+template <typename Integer>
+Integer unsigned_value(const char* value, const char* name) {
   const std::string text(value);
-  const auto parsed = std::stoull(text, &consumed);
-  if (consumed != text.size()) {
+  if (text.empty() || !std::all_of(text.begin(), text.end(),
+                                 [](char digit) { return digit >= '0' && digit <= '9'; })) {
     throw std::invalid_argument(std::string("invalid ") + name);
   }
-  return parsed;
+  const auto parsed = std::stoull(text);
+  if (parsed > static_cast<std::uint64_t>(std::numeric_limits<Integer>::max())) {
+    throw std::out_of_range(std::string(name) + " exceeds its integer range");
+  }
+  return static_cast<Integer>(parsed);
 }
 
 Options parse_options(int argc, char** argv) {
@@ -143,9 +147,9 @@ Options parse_options(int argc, char** argv) {
   if (const char* value = std::getenv("SPARK_TP4_BIDIRECTIONAL_SECONDARY_DEVICE1"))
     options.secondary_device1 = value;
   if (const char* value = std::getenv("SPARK_TP4_BIDIRECTIONAL_SECONDARY_PORT0"))
-    options.secondary_port0 = static_cast<std::uint16_t>(unsigned_value(value, "secondary port0"));
+    options.secondary_port0 = unsigned_value<std::uint16_t>(value, "secondary port0");
   if (const char* value = std::getenv("SPARK_TP4_BIDIRECTIONAL_SECONDARY_PORT1"))
-    options.secondary_port1 = static_cast<std::uint16_t>(unsigned_value(value, "secondary port1"));
+    options.secondary_port1 = unsigned_value<std::uint16_t>(value, "secondary port1");
   if (const char* value = std::getenv(
           "SPARK_TP4_BIDIRECTIONAL_ALLOW_SHARED_PEER_IP")) {
     options.allow_shared_peer_ip = std::string_view(value) == "1";
@@ -157,10 +161,9 @@ Options parse_options(int argc, char** argv) {
       return argv[index];
     };
     if (argument == "--rank") {
-      options.rank = static_cast<std::uint32_t>(unsigned_value(take(), "rank"));
+      options.rank = unsigned_value<std::uint32_t>(take(), "rank");
     } else if (argument == "--query-rows") {
-      options.query_rows = static_cast<std::uint32_t>(
-          unsigned_value(take(), "query rows"));
+      options.query_rows = unsigned_value<std::uint32_t>(take(), "query rows");
     } else if (argument == "--peer0") {
       options.peer0 = take();
     } else if (argument == "--peer1") {
@@ -170,13 +173,13 @@ Options parse_options(int argc, char** argv) {
     } else if (argument == "--device1") {
       options.device1 = take();
     } else if (argument == "--gid0") {
-      options.gid0 = static_cast<std::uint8_t>(unsigned_value(take(), "gid0"));
+      options.gid0 = unsigned_value<std::uint8_t>(take(), "gid0");
     } else if (argument == "--gid1") {
-      options.gid1 = static_cast<std::uint8_t>(unsigned_value(take(), "gid1"));
+      options.gid1 = unsigned_value<std::uint8_t>(take(), "gid1");
     } else if (argument == "--port0") {
-      options.port0 = static_cast<std::uint16_t>(unsigned_value(take(), "port0"));
+      options.port0 = unsigned_value<std::uint16_t>(take(), "port0");
     } else if (argument == "--port1") {
-      options.port1 = static_cast<std::uint16_t>(unsigned_value(take(), "port1"));
+      options.port1 = unsigned_value<std::uint16_t>(take(), "port1");
     } else if (argument == "--rail-mode") {
       const std::string_view mode(take());
       if (mode == "single") options.rail_mode = RailMode::kSingle;
@@ -191,21 +194,21 @@ Options parse_options(int argc, char** argv) {
     } else if (argument == "--secondary-device1") {
       options.secondary_device1 = take();
     } else if (argument == "--secondary-gid0") {
-      options.secondary_gid0 = static_cast<std::uint8_t>(unsigned_value(take(), "secondary gid0"));
+      options.secondary_gid0 = unsigned_value<std::uint8_t>(take(), "secondary gid0");
     } else if (argument == "--secondary-gid1") {
-      options.secondary_gid1 = static_cast<std::uint8_t>(unsigned_value(take(), "secondary gid1"));
+      options.secondary_gid1 = unsigned_value<std::uint8_t>(take(), "secondary gid1");
     } else if (argument == "--secondary-port0") {
-      options.secondary_port0 = static_cast<std::uint16_t>(unsigned_value(take(), "secondary port0"));
+      options.secondary_port0 = unsigned_value<std::uint16_t>(take(), "secondary port0");
     } else if (argument == "--secondary-port1") {
-      options.secondary_port1 = static_cast<std::uint16_t>(unsigned_value(take(), "secondary port1"));
+      options.secondary_port1 = unsigned_value<std::uint16_t>(take(), "secondary port1");
     } else if (argument == "--allow-shared-peer-ip") {
       options.allow_shared_peer_ip = true;
     } else if (argument == "--warmup") {
-      options.warmup = static_cast<std::uint32_t>(unsigned_value(take(), "warmup"));
+      options.warmup = unsigned_value<std::uint32_t>(take(), "warmup");
     } else if (argument == "--iterations") {
-      options.iterations = static_cast<std::uint32_t>(unsigned_value(take(), "iterations"));
+      options.iterations = unsigned_value<std::uint32_t>(take(), "iterations");
     } else if (argument == "--timeout-seconds") {
-      options.timeout_seconds = static_cast<std::uint32_t>(unsigned_value(take(), "timeout"));
+      options.timeout_seconds = unsigned_value<std::uint32_t>(take(), "timeout");
     } else if (argument == "--mode") {
       const std::string_view mode(take());
       if (mode == "correctness") options.mode = Mode::kCorrectness;
@@ -682,8 +685,8 @@ class VerbsEdgePort final : public research::BidirectionalRingEdgePort {
       std::uint64_t& wire_credit) override {
     if (!drain_completions()) return research::RingCreditPollState::kFatal;
     const auto direction_value = direction_index(direction);
-    // Endpoint identity depends on rank, so use the opposite of the credit's
-    // incoming endpoint as encoded by the direction-local exchange traffic.
+    // Credits for tiles sent in a direction return on its outgoing endpoint,
+    // selected per rank by tp4_prefill_outgoing_endpoint.
     const auto endpoint = direction ==
                                   spark_transport::Tp4PrefillDirection::kClockwise
                               ? clockwise_outgoing_endpoint_
@@ -835,6 +838,7 @@ std::uint16_t input_value(std::uint32_t rank) {
 
 struct Validation {
   std::uint64_t output_mismatches{};
+  std::uint64_t input_mismatches{};
   std::uint64_t input_guard_corruptions{};
   std::uint64_t output_guard_corruptions{};
 };
@@ -869,7 +873,7 @@ Validation validate(std::uint8_t* guarded_input, std::uint8_t* guarded_output,
   for (std::size_t index = 0; index < words; ++index) {
     result.output_mismatches += output_words[index] != kExpectedBf16Ten;
     if (input_words[index] != input_value(rank)) {
-      ++result.input_guard_corruptions;
+      ++result.input_mismatches;
     }
   }
   return result;
@@ -1014,7 +1018,7 @@ int main(int argc, char** argv) {
                    "synchronize correctness operation");
         const auto receipt = validate(guarded_input, guarded_output,
                                       options.rank, geometry.payload_bytes);
-        if (receipt.output_mismatches != 0 ||
+        if (receipt.output_mismatches != 0 || receipt.input_mismatches != 0 ||
             receipt.input_guard_corruptions != 0 ||
             receipt.output_guard_corruptions != 0) {
           throw std::runtime_error("bidirectional exact-output gate failed");
@@ -1028,7 +1032,7 @@ int main(int argc, char** argv) {
     check_cuda(cudaStreamSynchronize(stream), "final bidirectional synchronize");
     const auto validation = validate(guarded_input, guarded_output,
                                      options.rank, geometry.payload_bytes);
-    if (validation.output_mismatches != 0 ||
+    if (validation.output_mismatches != 0 || validation.input_mismatches != 0 ||
         validation.input_guard_corruptions != 0 ||
         validation.output_guard_corruptions != 0) {
       throw std::runtime_error("bidirectional final correctness gate failed");
@@ -1062,12 +1066,15 @@ int main(int argc, char** argv) {
               << ",\"measured_operations\":" << options.iterations
               << ",\"passed\":true"
               << ",\"output_mismatches\":" << validation.output_mismatches
+              << ",\"input_mismatches\":" << validation.input_mismatches
               << ",\"input_guard_corruptions\":"
               << validation.input_guard_corruptions
               << ",\"output_guard_corruptions\":"
               << validation.output_guard_corruptions
               << ",\"fully_retired\":"
               << (final_status.fully_retired ? "true" : "false")
+              << ",\"safe_to_release_registered_storage\":"
+              << (final_status.safe_to_release_registered_storage ? "true" : "false")
               << ",\"host_wall_us_min\":" << timing.minimum_us
               << ",\"host_wall_us_p50\":" << timing.p50_us
               << ",\"host_wall_us_p95\":" << timing.p95_us
