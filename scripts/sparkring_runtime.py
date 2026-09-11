@@ -1,26 +1,14 @@
 #!/usr/bin/env python3
-"""Shared runtime primitives for SparkRing launchers.
+"""Profile parsing and four-rank runtime orchestration for SparkRing launchers.
 
-This module provides the orchestration behavior that every model-family
-launcher needs: per-rank RDMA/peer context derivation, transport environment
-construction, the ``RemoteAction`` dataclass, parallel SSH execution, and the
-native runtime-profile contract.
+Action builders derive the two XOR transport peers, render image/ownership
+guards and construct remote commands. Structural validation is shared across
+model families; GLM-5.3 adds a TP4/DCP4 dynamic-DFlash admission restriction.
+Pair launchers and six-rank fabric inventory use separate paths.
 
-Model-family values identify a runtime profile but do not alter its
-structural validation, action construction, or execution contract.
-
-
-The shared runtime enforces these safety invariants:
-
-* ``plan`` is always offline and prints a deterministic JSON document.
-* ``start`` and ``stop`` require ``--execute``.
-* Mutation commands with a ``confirmation`` field require an exact token.
-* Stop actions are profile-label-guarded so a foreign same-named container is
-  never removed.
-* Each ``start`` action verifies the exact image digest and required image
-  labels before ``docker run``.
-* A successful ``start`` action must print a container identifier; any failed
-  partial start rolls back the containers started by that action set.
+Launcher CLIs enforce offline planning, explicit execution, confirmation tokens
+and partial-start rollback. This module supplies command/result primitives;
+calling execute directly performs SSH without those CLI admission checks.
 """
 
 from __future__ import annotations
@@ -45,8 +33,6 @@ PLAN_SCHEMA = "sparkring-runtime-plan/v1"
 
 # Character classes — kept independent so this module has no import
 # dependency on the site validator.
-_HEX40 = re.compile(r"^[0-9a-f]{40}$")
-_HEX64 = re.compile(r"^[0-9a-f]{64}$")
 _IMAGE_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _ABS_PATH = re.compile(r"^/[A-Za-z0-9._/+@:-]*[A-Za-z0-9._+@:-]$")
@@ -371,7 +357,7 @@ def _profile_speculation(args: tuple[str, ...]) -> dict[str, Any]:
 
 def _validate_glm53_speculation(site: Any, profile: RuntimeProfile,
                                 args: tuple[str, ...]) -> None:
-    """Reject the reported dynamic DFlash/TP4/DCP4 combination before launch."""
+    """Reject GLM-5.3 dynamic DFlash under TP4/DCP4 (issue 221)."""
     if (profile.model_family != "glm53-flash"
             or site.serving.tensor_parallel_size != 4
             or site.serving.decode_context_parallel_size != 4):
@@ -657,10 +643,15 @@ def site_context(site: Any, rank_id: int) -> dict[str, str]:
     schedule: round 0 is rank^1 and round 1 is rank^3.  Sorting by
     rank would silently reverse both slots on ranks 2 and 3.
     """
+    if len(site.ranks) != 4:
+        raise ProfileError("generic runtime transport requires exactly four ranks; use the dedicated pair launcher for TP2")
     rank = site.rank(rank_id)
     peers_by_rank = {peer.rank: peer for peer in rank.transport_peers}
-    peers = [peers_by_rank[rank_id ^ 1], peers_by_rank[rank_id ^ 3]]
+    required_peers = (rank_id ^ 1, rank_id ^ 3)
     ports = {port.peer_rank: port for port in rank.ring_ports}
+    if any(peer not in peers_by_rank or peer not in ports for peer in required_peers):
+        raise ProfileError(f"rank {rank_id} lacks the required XOR1/XOR3 transport peers")
+    peers = [peers_by_rank[peer] for peer in required_peers]
     master = site.rank(site.serving.master_rank)
     return {
         "api_port": str(site.serving.api_port),
@@ -895,6 +886,24 @@ def start_actions(
     return actions
 
 
+def _container_listing_prefix(profile: RuntimeProfile, name: str) -> str:
+    """Require a working daemon and successful exact-name inventory query."""
+    return (
+        f"{profile.engine} info >/dev/null 2>&1 || exit 74; "
+        f"listing=$({profile.engine} ps -a --filter name=^/{shlex.quote(name)}$ "
+        "--format '{{.Names}}' 2>&1) || exit 74; "
+    )
+
+
+def _container_id_prefix(profile: RuntimeProfile, name: str) -> str:
+    """Capture and validate one immutable ID before ownership or exec checks."""
+    return (
+        f"cid=$({profile.engine} inspect --format '{{{{.Id}}}}' {shlex.quote(name)} 2>/dev/null) || exit 74; "
+        'case "$cid" in \'\'|*[!0-9a-f]*) exit 74;; esac; '
+        '[ "${#cid}" -eq 64 ] || exit 74; '
+    )
+
+
 def stop_actions(
     site: Any, profile: RuntimeProfile, *,
     ownership: "Ownership | None" = None,
@@ -911,54 +920,27 @@ def stop_actions(
     actions: list[RemoteAction] = []
     for rank in site.ranks:
         name = container_name(profile, rank.id)
+        labels = [("managed", MANAGED_LABEL, "true"), ("pid", PROFILE_LABEL, profile.profile_id)]
         if ownership:
-            script = (
-                # Probe the daemon before enumerating the exact container name.
-                f"{profile.engine} info >/dev/null 2>&1 || exit 74; "
-                f"listing=$({profile.engine} ps -a --filter name=^/{shlex.quote(name)}$ "
-                f"--format '{{{{.Names}}}}' 2>&1) || exit 74; "
-                f'if [ -z "$listing" ]; then exit 0; fi; '
-                f'if [ "$listing" != "{shlex.quote(name)}" ]; then exit 74; fi; '
-                f'managed=$({profile.engine} inspect --format '
-                f"'{{{{index .Config.Labels \"{MANAGED_LABEL}\"}}}}' "
-                f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
-                f'[ "$managed" = true ] || exit 73; '
-                f'pid=$({profile.engine} inspect --format '
-                f"'{{{{index .Config.Labels \"{PROFILE_LABEL}\"}}}}' "
-                f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
-                f'[ "$pid" = {shlex.quote(profile.profile_id)} ] || exit 73; '
-                f'bid=$({profile.engine} inspect --format '
-                f"'{{{{index .Config.Labels \"{BUNDLE_LABEL}\"}}}}' "
-                f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
-                f'[ "$bid" = {shlex.quote(ownership.bundle_id)} ] || exit 73; '
-                f'sid=$({profile.engine} inspect --format '
-                f"'{{{{index .Config.Labels \"{SERVICE_LABEL}\"}}}}' "
-                f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
-                f'[ "$sid" = {shlex.quote(ownership.service_id)} ] || exit 73; '
-                f'src=$({profile.engine} inspect --format '
-                f"'{{{{index .Config.Labels \"{SOURCE_PROFILE_LABEL}\"}}}}' "
-                f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
-                f'[ "$src" = {shlex.quote(ownership.profile_id)} ] || exit 73; '
-                f"exec {profile.engine} rm --force {shlex.quote(name)}"
+            labels.extend((("bid", BUNDLE_LABEL, ownership.bundle_id),
+                           ("sid", SERVICE_LABEL, ownership.service_id),
+                           ("src", SOURCE_PROFILE_LABEL, ownership.profile_id)))
+        script = _container_listing_prefix(profile, name)
+        script += (
+            'if [ -z "$listing" ]; then exit 0; fi; '
+            f'[ "$listing" = {shlex.quote(name)} ] || exit 74; '
+
+        )
+        script += _container_id_prefix(profile, name)
+        # Resolve the name once. Every label check and removal targets that ID,
+        # so replacing the name cannot redirect cleanup to another container.
+        for variable, label, expected in labels:
+            label_format = "{{index .Config.Labels " + json.dumps(label) + "}}"
+            script += (
+                f'{variable}=$({profile.engine} inspect --format {shlex.quote(label_format)} "$cid" 2>/dev/null) || exit 74; '
+                f'[ "${variable}" = {shlex.quote(expected)} ] || exit 73; '
             )
-        else:
-            script = (
-                # Probe the daemon before enumerating the exact container name.
-                f"{profile.engine} info >/dev/null 2>&1 || exit 74; "
-                f"listing=$({profile.engine} ps -a --filter name=^/{shlex.quote(name)}$ "
-                f"--format '{{{{.Names}}}}' 2>&1) || exit 74; "
-                f'if [ -z "$listing" ]; then exit 0; fi; '
-                f'if [ "$listing" != "{shlex.quote(name)}" ]; then exit 74; fi; '
-                f'managed=$({profile.engine} inspect --format '
-                f"'{{{{index .Config.Labels \"{MANAGED_LABEL}\"}}}}' "
-                f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
-                f'[ "$managed" = true ] || exit 73; '
-                f'pid=$({profile.engine} inspect --format '
-                f"'{{{{index .Config.Labels \"{PROFILE_LABEL}\"}}}}' "
-                f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
-                f'[ "$pid" = {shlex.quote(profile.profile_id)} ] || exit 73; '
-                f"exec {profile.engine} rm --force {shlex.quote(name)}"
-            )
+        script += f'exec {profile.engine} rm --force "$cid"'
         actions.append(
             RemoteAction(rank.id, rank.ssh_target, ("sh", "-c", script))
         )
@@ -997,10 +979,7 @@ def verify_rollback_actions(
     actions: list[RemoteAction] = []
     for rank in site.ranks:
         name = container_name(profile, rank.id)
-        script = (
-            f"! {shlex.join((profile.engine, 'container', 'inspect', name))} "
-            ">/dev/null 2>&1"
-        )
+        script = _container_listing_prefix(profile, name) + 'test -z "$listing"'
         actions.append(
             RemoteAction(rank.id, rank.ssh_target, ("sh", "-c", script))
         )
@@ -1021,20 +1000,20 @@ def health_check_actions(site: Any, profile: RuntimeProfile) -> list[RemoteActio
     for rank in site.ranks:
         context = site_context(site, rank.id)
         name = container_name(profile, rank.id)
-        probe = [profile.engine, "exec", name]
+        probe = []
         probe.extend(
             expand(arg, context) for arg in profile.health_check
         )
-        script = (
+        script = _container_id_prefix(profile, name) + (
             f"managed=$({profile.engine} inspect --format "
             f"'{{{{index .Config.Labels \"{MANAGED_LABEL}\"}}}}' "
-            f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
+            '"$cid" 2>/dev/null) || exit 74; '
             f'[ "$managed" = true ] || exit 73; '
             f'pid=$({profile.engine} inspect --format '
             f"'{{{{index .Config.Labels \"{PROFILE_LABEL}\"}}}}' "
-            f"{shlex.quote(name)} 2>/dev/null) || exit 74; "
+            '"$cid" 2>/dev/null) || exit 74; '
             f'[ "$pid" = {shlex.quote(profile.profile_id)} ] || exit 73; '
-            f"exec {shlex.join(probe)}"
+            f'exec {profile.engine} exec "$cid" {shlex.join(probe)}'
         )
         actions.append(
             RemoteAction(rank.id, rank.ssh_target, ("sh", "-c", script))

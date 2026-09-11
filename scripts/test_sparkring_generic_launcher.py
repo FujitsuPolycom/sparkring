@@ -97,7 +97,7 @@ def test_plan_start_status_and_stop_actions_preserve_native_identity(tmp_path):
         "deepseek-runtime-r0",
     )
     assert "org.sparkring.managed" in stop_actions[0].shell_command
-    assert "docker rm --force deepseek-runtime-r0" in stop_actions[0].shell_command
+    assert 'docker rm --force "$cid"' in stop_actions[0].argv[2]
     assert plan["profile_attestation"] == {
         "profile_id": "deepseek-runtime",
         "image_id": IMAGE_ID,

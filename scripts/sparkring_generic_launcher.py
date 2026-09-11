@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Profile-driven runtime launcher for supported Spark rings.
+"""Profile-driven runtime launcher for four-rank Spark rings.
 
 Consumes a ``sparkring-runtime-profile/v1`` profile, produces a deterministic
 offline plan, and reuses shared orchestration primitives from
@@ -20,9 +20,9 @@ Safety:
 * An optional ``attestation_hook`` runs after image verification and before
   ``docker run``.
 
-Compatibility boundary: ring sizes accepted by sparkring_site, with tensor-
-parallel and decode-context-parallel degrees declared by the deployment site.
-An image/profile must separately support that geometry.
+Compatibility boundary: four-rank rings with XOR1/XOR3 transport peers.
+The deployment site declares TP/DCP degrees; its image/profile must support
+that geometry. Pair serving and six-rank fabric inventory use separate tools.
 """
 
 from __future__ import annotations
