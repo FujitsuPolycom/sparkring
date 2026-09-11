@@ -23,9 +23,7 @@ def repository_bytes(path: Path) -> bytes:
     repository = HERE.parents[3]
     relative = path.resolve().relative_to(repository.resolve()).as_posix()
     try:
-        return subprocess.check_output(
-            ["git", "show", f":{relative}"], cwd=repository
-        )
+        return subprocess.check_output(["git", "show", f":{relative}"], cwd=repository)
     except subprocess.CalledProcessError:
         return path.read_bytes()
 
@@ -86,7 +84,7 @@ class VllmPackageContractTests(unittest.TestCase):
         package = (HERE / "package_vllm.sh").read_text()
         smoke = (HERE / "smoke_vllm_wheel.sh").read_text()
         self.assertIn("expected_flash_attn_commit=f3e1a4f", package)
-        self.assertIn("archive \"$expected_flash_attn_commit\"", package)
+        self.assertIn('archive "$expected_flash_attn_commit"', package)
         self.assertIn("vllm_flash_attn.layers.rotary", smoke)
         self.assertIn("vllm_flash_attn.ops.triton.rotary", smoke)
 
@@ -117,7 +115,9 @@ class VllmPackageContractTests(unittest.TestCase):
             "4405a965e54f14df00d28e5e23f9793f866aae39",
         )
         dependency = manifest["required_b12x_checkpoint_contract"]
-        self.assertEqual(dependency["commit"], "68acfc14893c087aa9b3120bb984fde4c4e7a21f")
+        self.assertEqual(
+            dependency["commit"], "68acfc14893c087aa9b3120bb984fde4c4e7a21f"
+        )
         self.assertEqual(dependency["max_checkpoints"], 4)
         package = (HERE / "package_vllm.sh").read_text()
         prepare = (root / "prepare_vllm_source.sh").read_text()
@@ -133,13 +133,20 @@ class VllmPackageContractTests(unittest.TestCase):
             assignment(prepare, "expected_tree"), manifest["result"]["tree"]
         )
         self.assertIn(
-            f")\" = {patch_sha}",
+            f')" = {patch_sha}',
             package,
         )
         artifact_lock = json.loads((root / "image/artifact-lock.json").read_text())
         identities = artifact_lock["source_identities"]
         self.assertEqual(identities["vllm_cached_diff_sha256"], patch_sha)
         self.assertEqual(identities["vllm_source_manifest_sha256"], manifest_sha)
+        self.assertEqual(
+            identities["vllm_status_sha256"], manifest["result"]["status_sha256"]
+        )
+        self.assertEqual(
+            identities["vllm_status_lines"], manifest["result"]["status_lines"]
+        )
+        self.assertIn(f'| wc -l)" = {manifest["result"]["status_lines"]}', package)
         self.assertIn(f"expected_package_tree={manifest['result']['tree']}", package)
         self.assertIn(
             f"expected_native_tree={manifest['native_reuse']['source_tree']}", package
