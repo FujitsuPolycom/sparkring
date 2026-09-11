@@ -1,10 +1,9 @@
 # SparkRing architecture
 
-SparkRing is a DGX Spark inference stack. It serves the GLM-5.2 EXL3 3.5-bpw,
-DeepSeek-V4-Flash-0731, and Qwen3.8-27B EXL3 K5/K6 profiles as four
-tensor-parallel ranks on a switchless 200 Gb/s direct-cable cycle.
-DeepSeek-V4-Flash-0731 and Qwen3.8-27B also have two-rank launches on a single
-cabled pair using patched NCCL; SIRCL is unsupported on that topology.
+SparkRing provides inference profiles for two-Spark pairs and four-Spark rings.
+GLM-5.3-Flash supports both TP2 and TP4. The
+[profile catalog](../../profiles/README.md) identifies each model's available
+quantizations, parallelism and runtime configuration.
 
 ## Topology
 
@@ -36,10 +35,12 @@ unrestricted `DOCKER-USER` forward rule are launch prerequisites on every rank;
 [prerequisites](../operations/prerequisites.md) states the conditions and
 [`scripts/ring_doctor.py`](../../scripts/ring_doctor.py) verifies them.
 
-The implemented two-Spark profiles hold ranks 0 and 1 only, joined by
-one direct cable from cage 0 to cage 0, with rank 0 serving the API and no
-relayed fabric hop. They use patched NCCL; SIRCL is unsupported on the pair.
-The GLM profile requires the four-Spark cycle.
+Two-Spark profiles use ranks 0 and 1, with rank 0 serving the API and no
+relayed fabric hop. DeepSeek and Qwen pairs use patched NCCL. GLM-5.3-Flash
+TP2 selects RoCEnante for eligible collectives with NCCL fallback; its
+[pair quickstart](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md)
+includes the device-selection checks and known single-DAC limitation.
+SIRCL's four-rank interfaces are not used for pair collectives.
 
 ## Collective path
 
@@ -51,7 +52,7 @@ is a neighbor exchange and no rank relays another rank's collective data. See
 [SIRCL](sircl.md) for the transport boundary.
 
 Patched NCCL is the fallback for collective shapes and phases outside SIRCL's
-qualified path. The GLM profile uses SIRCL for qualified TP all-reduce and
+qualified path. The GLM-5.2 EXL3 profile uses SIRCL for qualified TP all-reduce and
 vocabulary families; its DCP and indexer collectives remain stock. The
 four-Spark DeepSeek profile uses
 `scripts/config/deepseek-v4-flash-0731.env.example`; the two-Spark profile uses
@@ -66,7 +67,7 @@ adapter.
 
 ## Profile composition
 
-The GLM deployment is generated from
+The GLM-5.2 EXL3 deployment is generated from
 `recipes/glm52-exl3-r7-3.5bpw.json` and its tracked runtime inputs. It combines
 fixed MTP4, dynamic NVFP4 MLA key-value cache, bounded full-CKV gather, and the
 exact-Q40 routing policy. The DeepSeek deployment uses the immutable published

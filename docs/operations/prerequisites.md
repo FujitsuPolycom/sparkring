@@ -1,17 +1,13 @@
 # SparkRing prerequisites
 
-Complete this checklist before deploying any supported profile. It defines the
-hardware and operator conditions required by the
-[GLM-5.2 quickstart](../../profiles/glm52-exl3-r7-3.5bpw/README.md),
-[GLM-5.3 Flash R8 quickstart](../history/glm53-dflash-operator.md),
-[GLM-5.3 Spark MTP3 managed-mesh quickstart](../GLM53_SPARK_MTP3_MESH_QUICKSTART.md),
-[source-built GLM-5.3 e10536a quickstart](../GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md),
-[GLM-5.3 adaptive-MTP and live-tensor KDA quickstart](../GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md),
-[DeepSeek quickstart](deepseek-0731.md),
-[Qwen3.8-27B pair quickstart](../../profiles/qwen38-27b-exl3-k5k6-pair/README.md), and
-[Qwen3.8-27B four-Spark quickstart](../../profiles/qwen38-27b-exl3-k5k6/README.md). The
-GLM, Qwen cycle, and DeepSeek cycle configurations require four Sparks; the
-DeepSeek and Qwen pair profiles require two.
+Complete these checks before deploying the profile selected from the
+[profile catalog](../../profiles/README.md).
+
+Pair profiles require **two Sparks**, including
+[GLM-5.3-Flash TP2](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md).
+Four-rank ring and switched profiles require **four Sparks**, including
+[GLM-5.3-Flash TP4](../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md).
+Use the selected quickstart for model-specific image, transport and memory settings.
 
 Ring Doctor, canonical site validation, and fabric preflight support closed
 four- and six-Spark cycles. Six-Spark serving profiles remain `research-only`
