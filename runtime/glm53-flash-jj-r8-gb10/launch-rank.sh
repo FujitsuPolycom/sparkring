@@ -978,10 +978,12 @@ verify_file_sha256 \
   draft_mount_args=(-v "${DFLASH_MODEL_HOST_PATH}:/dflash-draft:ro")
 fi
 r33_contract_mount_args=()
+overlay_entrypoint=''
 if [[ "${r33_profile}" == 1 && -n "${R33_PROFILE_CONTRACT_HOST_ROOT}" ]]; then
+  overlay_entrypoint=/opt/sparkring/bin/sparkring-r33-overlay
   r33_contract_mount_args=(
     -v "${R33_PROFILE_CONTRACT_HOST_ROOT}:/opt/sparkring/profile-contract:ro"
-    -v "${R33_PROFILE_CONTRACT_HOST_ROOT}/../image/entrypoint.py:/opt/sparkring/bin/sparkring-r33:ro"
+    -v "${R33_PROFILE_CONTRACT_HOST_ROOT}/../image/entrypoint.py:${overlay_entrypoint}:ro"
   )
 fi
 
@@ -1163,7 +1165,7 @@ source_recurrent_args=()
 if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
   # Source-bound profiles must verify installed files before importing serving code.
   if [[ "${r33_profile}" == 1 ]]; then
-    serving_entrypoint=/opt/sparkring/bin/sparkring-r33
+    serving_entrypoint=${overlay_entrypoint:-/opt/sparkring/bin/sparkring-r33}
     serving_prefix=(serve)
   else
     serving_entrypoint=python3
