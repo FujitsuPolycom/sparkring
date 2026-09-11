@@ -1,11 +1,12 @@
 # Direct-cable qualification
 
-Status: implemented offline qualification procedure.
+Status: implemented qualification controller with offline contract tests.
+Execution contacts both hosts and generates network and RDMA traffic.
 
 Run `spark_transport/scripts/qualify_direct_cable.py` on every new, moved, or suspect
 direct-attached cable **before** loading a model. Link-up and ping are not
-enough: the test requires bidirectional traffic for the 12,288-byte GLM Q1
-BF16 payload (`[1, 6144]`) and the 16,384-byte DeepSeek Q2 BF16 payload
+enough: the test requires bidirectional traffic for the 12,288-byte width-6144 Q1
+BF16 payload (`[1, 6144]`) and the 16,384-byte width-4096 Q2 BF16 payload
 (`[2, 4096]`) while watching NIC error counters.
 
 The controller is deliberately non-destructive. It only:
@@ -56,18 +57,18 @@ install the exact same executable at `/tmp/spark_transport_probe` on both
 Sparks. The script verifies SHA-256 equality.
 
 Example for the rank 0--1 edge (`<SUBNET_01>` is that cable's /24 fabric
-prefix from `../docs/PREREQUISITES.md`):
+prefix from the private site inventory):
 ```bash
 python3 spark_transport/scripts/qualify_direct_cable.py \
   --tier roce200 \
   --left user@192.0.2.1 \
   --right user@192.0.2.2 \
   --left-interface enp1s0f0np0 \
-  --right-interface enp1s0f0np0 \
+  --right-interface enp1s0f1np1 \
   --left-ip <SUBNET_01>.10 \
   --right-ip <SUBNET_01>.11 \
   --left-rdma-device rocep1s0f0 \
-  --right-rdma-device rocep1s0f0 \
+  --right-rdma-device rocep1s0f1 \
   --gid-index 3 \
   --expected-mtu 9000 \
   --probe-binary /tmp/spark_transport_probe \
@@ -81,7 +82,7 @@ The RoCE tier additionally requires:
 - exactly 200,000 Mb/s on both ports;
 - the expected IP and direct route on the named interfaces;
 - active RDMA ports;
-- GID index 3 bound to the named netdev as `RoCE v2`; and
+- the selected GID index bound to the named netdev as `RoCE v2`; and
 - verified RC writes at 12 KB and 16 KB in both directions.
 
 The default p99 target is 20 microseconds. Override it only as an explicit
@@ -89,11 +90,14 @@ experiment with `--max-p99-us`.
 
 ## Fast preflight and test policy
 
-`--preflight-only` is useful while identifying an unlabeled port, but always
-returns exit 3: link state and ping cannot qualify a cable.
+`--preflight-only` is useful while identifying an unlabeled port. A passing
+preflight returns exit 3; failed checks retain exit 1 or 2. Link state and
+ping cannot qualify a cable.
 
-For a four-Spark installation, save one JSON result for each of the four
-200G cycle edges and both 10GbE diagonals. Re-run the affected edge after:
+For a four-Spark RoCE cycle, save one JSON result for each of its four
+200G edges. Additional physical diagonal links are not required by that
+topology. Qualify any additional links required by a separately selected
+deployment. Re-run the affected edge after:
 
 - changing or reseating a cable;
 - changing NIC, IP, route, MTU, GID, firmware, or driver;
@@ -103,9 +107,6 @@ For a four-Spark installation, save one JSON result for each of the four
 Do not average directions. An asymmetric failure is a cable/link failure.
 Do not compare latency until all integrity gates pass.
 
-For an unreachable rank 0--2 `enP7s7` link, the fail-closed remote service
-recovery procedure is documented in
-`experiments/ten_gbe_diagonal/RECOVERY.md`.
-Recovery does **not** qualify the cable. After a reseat, asymmetric
+Recovery does **not** qualify a cable. After a reseat, asymmetric
 negotiation, or recovery action, rerun this full bidirectional qualification
 before loading a model.

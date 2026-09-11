@@ -60,7 +60,7 @@ from the repository root:
 ```bash
 mkdir -p build/cx7-marker
 cc -O2 -Wall -Wextra \
-  spark_transport/experiments/cx7_hairpin_diagonal/native/mlx5_rdma_tx_rewrite_probe.c \
+  spark_transport/fabric/cx7_hairpin_diagonal/native/mlx5_rdma_tx_rewrite_probe.c \
   -o build/cx7-marker/mlx5-rdma-tx-rewrite-probe -libverbs -lmlx5
 sha256sum build/cx7-marker/mlx5-rdma-tx-rewrite-probe
 ```
@@ -100,7 +100,7 @@ persistent markers, and authenticates four-rank readiness. Follow the
 for image, model, and transport configuration.
 
 ```bash
-python -m pytest spark_transport/experiments/cx7_hairpin_diagonal -q
+python -m pytest spark_transport/fabric/cx7_hairpin_diagonal -q
 ```
 
 Offline tests validate topology and plan invariants. Required hardware gates

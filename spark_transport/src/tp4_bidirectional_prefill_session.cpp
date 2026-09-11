@@ -507,7 +507,7 @@ class Tp4BidirectionalPrefillSession::Impl {
                      options_.rank, options_.rail_count, 0);
     if (endpoint0_->active_mtu_bytes() != 4096 ||
         endpoint0_->maximum_send_work_requests() < 3) {
-      throw std::runtime_error("primary rail-0 MTU/SQ preflight failed");
+      throw std::runtime_error("neighbor 0 primary rail MTU/SQ preflight failed");
     }
     channel1_.emplace(open_channel(plan1, options_.peer1,
                                    options_.control_port1));
@@ -520,7 +520,7 @@ class Tp4BidirectionalPrefillSession::Impl {
                      options_.rank, options_.rail_count, 0);
     if (endpoint1_->active_mtu_bytes() != 4096 ||
         endpoint1_->maximum_send_work_requests() < 3) {
-      throw std::runtime_error("primary rail-1 MTU/SQ preflight failed");
+      throw std::runtime_error("neighbor 1 primary rail MTU/SQ preflight failed");
     }
     if (options_.rail_count == 2) {
       if (options_.secondary_peer0.empty() ||
@@ -550,7 +550,7 @@ class Tp4BidirectionalPrefillSession::Impl {
                        layout_, geometry_, options_.rank, 2, 1);
       if (secondary_endpoint0_->active_mtu_bytes() != 4096 ||
           secondary_endpoint0_->maximum_send_work_requests() < 2) {
-        throw std::runtime_error("secondary rail-0 MTU/SQ preflight failed");
+        throw std::runtime_error("neighbor 0 secondary rail MTU/SQ preflight failed");
       }
       secondary_channel1_.emplace(open_channel(
           plan1, options_.secondary_peer1,
@@ -561,7 +561,7 @@ class Tp4BidirectionalPrefillSession::Impl {
                        layout_, geometry_, options_.rank, 2, 1);
       if (secondary_endpoint1_->active_mtu_bytes() != 4096 ||
           secondary_endpoint1_->maximum_send_work_requests() < 2) {
-        throw std::runtime_error("secondary rail-1 MTU/SQ preflight failed");
+        throw std::runtime_error("neighbor 1 secondary rail MTU/SQ preflight failed");
       }
     }
     bulk_ = std::make_unique<CudaBulkPort>(

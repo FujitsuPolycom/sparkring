@@ -39,10 +39,14 @@ __global__ void initialize_tp4_inputs(__nv_bfloat16* input,
 
 __device__ void wait_for_sequence(const std::uint64_t* address,
                                   std::uint64_t sequence) {
-  while (reinterpret_cast<const volatile std::uint64_t*>(address)[0] <
-         sequence) {
+  // Observing a peer doorbell must order this thread's later payload reads.
+  std::uint64_t observed;
+  do {
+    asm volatile("ld.acquire.sys.global.u64 %0, [%1];"
+                 : "=l"(observed) : "l"(address) : "memory");
+    if (observed >= sequence) return;
     __nanosleep(64);
-  }
+  } while (true);
 }
 
 __device__ void publish_sequence(std::uint64_t* address,

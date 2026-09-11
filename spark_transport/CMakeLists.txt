@@ -153,6 +153,10 @@ if(BUILD_TESTING)
     target_link_libraries(statistics_test PRIVATE spark_transport)
     add_test(NAME statistics_test COMMAND statistics_test)
 
+    add_executable(control_channel_test tests/control_channel_test.cpp)
+    target_link_libraries(control_channel_test PRIVATE spark_transport)
+    add_test(NAME control_channel_test COMMAND control_channel_test)
+
     add_executable(wire_protocol_test tests/wire_protocol_test.cpp)
     target_link_libraries(wire_protocol_test PRIVATE spark_transport)
     add_test(NAME wire_protocol_test COMMAND wire_protocol_test)

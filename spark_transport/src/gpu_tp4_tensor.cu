@@ -1146,6 +1146,10 @@ void GpuTp4TensorWorker::enqueue_graph(
   }
   if (tp4_graph_kernel_uses_split(graph_kernel_strategy_,
                                   active_payload_bytes)) {
+    if (active_payload_bytes % sizeof(__nv_bfloat162) != 0) {
+      throw std::invalid_argument(
+          "split graph TP4 requires an even number of BF16 elements");
+    }
     if (!split_graph_q_supported(q) || split_graph_state_ == nullptr) {
       throw std::invalid_argument(
           "split_64k graph TP4 requires Q1 through Q512 and initialized "

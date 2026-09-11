@@ -26,8 +26,11 @@ struct Tp4BidirectionalPrefillOptions {
   std::uint16_t secondary_control_port0{};
   std::uint16_t secondary_control_port1{};
   std::uint32_t query_rows{};
+  // The bidirectional ring implementation accepts only 4096-element BF16 rows.
   std::uint32_t elements_per_row{4096};
   std::uint32_t timeout_seconds{120};
+  // CPU affinity for the fused-session host proxy; must name an available CPU.
+  // The bidirectional eager session does not use this fused-session option.
   std::int32_t fused_proxy_cpu{12};
 };
 

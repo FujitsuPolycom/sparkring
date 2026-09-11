@@ -96,8 +96,8 @@ class Tp4AllreduceSession {
   // Adds one exact contiguous BF16 [q, elements_per_row] all-reduce to CUDA
   // stream capture. q must be in [1, 512] and the session capacity must be at
   // least q rows for the session's configured row geometry.
-  // arena and can serve decode plus bounded-prefill graph nodes while
-  // preserving one ordered sequence.
+  // One capacity-sized payload arena serves decode and bounded-prefill nodes
+  // while preserving a single ordered replay sequence.
   void capture_all_reduce(const void* input, void* output, std::uint32_t q,
                           void* cuda_stream);
 

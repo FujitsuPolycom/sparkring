@@ -1,12 +1,14 @@
 #include "spark_transport/control_channel.hpp"
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 #include <cerrno>
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <stdexcept>
@@ -124,28 +126,61 @@ ControlChannel ControlChannel::connect(const std::string& address,
     throw std::invalid_argument("control address must be an IPv4 literal");
   }
 
-  for (int attempt = 0; attempt < 100; ++attempt) {
-    const int fd = socket(AF_INET, SOCK_STREAM, 0);
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds(kControlConnectTimeoutMs);
+  while (std::chrono::steady_clock::now() < deadline) {
+    const int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
     if (fd < 0) {
       throw_system_error("socket");
     }
-    if (::connect(fd, reinterpret_cast<sockaddr*>(&peer), sizeof(peer)) == 0) {
-      try {
-        configure_io_timeout(fd);
-      } catch (...) {
-        close(fd);
-        throw;
+    try {
+      int connection_error = 0;
+      if (::connect(fd, reinterpret_cast<sockaddr*>(&peer), sizeof(peer)) < 0) {
+        connection_error = errno;
+        if (connection_error == EINPROGRESS || connection_error == EINTR) {
+          // One deadline includes every SYN wait and retry, rather than
+          // restarting the OS blocking-connect timeout for each attempt.
+          while (true) {
+            const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - std::chrono::steady_clock::now()).count();
+            if (remaining <= 0) {
+              connection_error = ETIMEDOUT;
+              break;
+            }
+            pollfd ready{fd, POLLOUT, 0};
+            const int result = poll(&ready, 1, static_cast<int>(remaining));
+            if (result < 0 && errno == EINTR) continue;
+            if (result < 0) throw_system_error("poll control connect");
+            if (result == 0) {
+              connection_error = ETIMEDOUT;
+              break;
+            }
+            socklen_t length = sizeof(connection_error);
+            if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &connection_error, &length) < 0)
+              throw_system_error("getsockopt control connect");
+            break;
+          }
+        }
       }
-      return ControlChannel(fd);
+      if (connection_error == 0) {
+        const int flags = fcntl(fd, F_GETFL, 0);
+        if (flags < 0 || fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) < 0)
+          throw_system_error("restore blocking control socket");
+        configure_io_timeout(fd);
+        return ControlChannel(fd);
+      }
+      if (connection_error != ECONNREFUSED && connection_error != ETIMEDOUT &&
+          connection_error != EHOSTUNREACH) {
+        errno = connection_error;
+        throw_system_error("connect control peer");
+      }
+    } catch (...) {
+      close(fd);
+      throw;
     }
-    const int saved_errno = errno;
     close(fd);
-    if (saved_errno != ECONNREFUSED && saved_errno != ETIMEDOUT &&
-        saved_errno != EHOSTUNREACH) {
-      errno = saved_errno;
-      throw_system_error("connect");
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_until(std::min(
+        deadline, std::chrono::steady_clock::now() + std::chrono::milliseconds(100)));
   }
   throw std::runtime_error("timed out connecting to control peer");
 }
@@ -158,6 +193,8 @@ void ControlChannel::send_all(const void* data, std::size_t bytes) const {
       continue;
     }
     if (sent <= 0) {
+      if (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+        throw std::runtime_error("timed out sending to control peer");
       throw_system_error("send");
     }
     cursor += sent;
@@ -176,6 +213,8 @@ void ControlChannel::receive_all(void* data, std::size_t bytes) const {
       throw std::runtime_error("control peer closed the connection");
     }
     if (received < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK)
+        throw std::runtime_error("timed out receiving from control peer");
       throw_system_error("recv");
     }
     cursor += received;

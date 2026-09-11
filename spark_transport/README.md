@@ -21,9 +21,9 @@ Hardware-forwarded mesh composition and six-node model profiles remain
 | Component | Purpose | Implementation and contract |
 |---|---|---|
 | **SIRCL — Switchless Inference RDMA Collective Layer** | Native four-rank collectives with persistent RDMA sessions, CUDA-graph submission, and eager prefill paths. | [SIRCL overview](../docs/SIRCL.md), [C/C++ interfaces](include/spark_transport/), and [native source](src/) |
-| **RoCEnante integration** | Selected all-reduces over direct and hardware-forwarded opposite-peer paths in the four-rank mesh composition. | [Runtime overlay](experiments/glm53_rocenante_overlay/README.md) and [adapted Local Inference Lab source and attribution](../third_party/b12x_roce/README.md) |
+| **RoCEnante integration** | Selected all-reduces over direct and hardware-forwarded opposite-peer paths in the four-rank mesh composition. | [Runtime overlay](../integrations/vllm/rocenante/README.md) and [adapted Local Inference Lab source and attribution](../third_party/b12x_roce/README.md) |
 | **Patched NVIDIA NCCL** | Pair/cycle communication and fallback for collectives outside custom transport admission. Some model profiles use NCCL for all their collectives. | [Library patches, topology-specific environments, and invariants](nccl/README.md) |
-| **Runtime adapters** | Select a collective implementation by process group, tensor geometry, execution mode, and enabled profile capabilities. | [vLLM adapter contract](integrations/vllm/README.md) and [mesh composition](../runtime/glm53-spark-mtp3-mesh/README.md) |
+| **Runtime adapters** | Select a collective implementation by process group, tensor geometry, execution mode, and enabled profile capabilities. | [vLLM adapter contract](../integrations/vllm/README.md) and [mesh composition](../runtime/glm53-spark-mtp3-mesh/README.md) |
 
 SIRCL's native library is `libspark_transport_capi.so`. It provides BF16
 all-reduce and specialized vocabulary all-gather interfaces. Its native
@@ -55,7 +55,7 @@ ConnectX-7 ASIC. The forwarding hop uses the NIC hardware; endpoints still
 perform CPU posting and use GPU-mapped pinned host buffers. These paths share
 the bandwidth of the physical cables.
 
-See the [hardware-forwarding contract](experiments/cx7_hairpin_diagonal/README.md)
+See the [hardware-forwarding contract](fabric/cx7_hairpin_diagonal/README.md)
 and [managed mesh operations](../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
 Fabric provisioning and model lifecycle are separate from a collective call.
 
@@ -66,14 +66,14 @@ Fabric provisioning and model lifecycle are separate from a collective call.
 - A collective outside custom admission uses its configured NCCL backend.
   Shadow mode returns the reference result while checking the custom result;
   custom mode returns the native result only under its admission contract.
-- Ordinary session-construction failures can fall back before work is
-  enqueued. An explicitly selected fused-prefill session has a fail-closed
-  setup contract: its setup failure prevents serving.
+- All-reduce session-construction and enqueue failures terminate the worker.
+  Vocabulary session construction permits fallback before enqueue. The
+  selected adapter defines this boundary; it is not a general recovery rule.
 - Failure after native work is enqueued terminates the worker. Retrying
   through NCCL in that process could reuse a CUDA stream with an unfulfilled
   wait or unfinished native operation.
 
-The [adapter contract](integrations/vllm/README.md) specifies supported modes,
+The [adapter contract](../integrations/vllm/README.md) specifies supported modes,
 tensor geometry, environment variables, and failure boundaries. Serving
 instructions belong to the selected [profile quickstart](../docs/profiles/README.md).
 
@@ -83,11 +83,12 @@ instructions belong to the selected [profile quickstart](../docs/profiles/README
 |---|---|
 | [`include/spark_transport/`](include/spark_transport/) | Public C/C++ interfaces and protocol contracts |
 | [`src/`](src/) | Sessions, verbs endpoints, CUDA operations, command rings, and topology checks |
-| [`integrations/vllm/`](integrations/vllm/) | Tensor admission, dispatch, and native-session checks for vLLM |
+| [`../integrations/vllm/`](../integrations/vllm/) | Maintained vLLM tensor admission, dispatch, and native-session checks; `spark_transport/integrations/vllm/` contains compatibility exports |
 | [`nccl/`](nccl/) | Patched NCCL configuration and compatibility requirements |
 | [`app/`](app/) and [`scripts/`](scripts/) | Collective probes and cable/rank qualification tools |
 | [`tests/`](tests/) | Protocol, ABI, configuration, and source-contract checks |
-| [`experiments/`](experiments/) | Transport variants, hardware-forwarding tools, and integration studies |
+| [`fabric/`](fabric/) | Maintained hardware-forwarding topology and planning |
+| [`experiments/`](experiments/) | Transport variants and retained experimental interfaces |
 
 Selected kernels under `experiments/tiled_prefill/` are linked into the native
 library by [CMakeLists.txt](CMakeLists.txt). Directory placement alone does not

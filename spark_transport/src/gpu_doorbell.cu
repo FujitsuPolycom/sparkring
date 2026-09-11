@@ -70,8 +70,13 @@ __global__ void receiver_doorbell_kernel(std::uint8_t* payload,
                                          bool verify_payload) {
   __shared__ unsigned int mismatch;
   for (std::uint64_t sequence = 1; sequence <= final_sequence; ++sequence) {
-    while (reinterpret_cast<volatile std::uint64_t*>(
-               &control->remote_sequence)[0] < sequence) {
+    // Every payload-reading thread acquires the peer's publication doorbell.
+    while (true) {
+      std::uint64_t observed;
+      asm volatile("ld.acquire.sys.global.u64 %0, [%1];"
+                   : "=l"(observed)
+                   : "l"(&control->remote_sequence) : "memory");
+      if (observed >= sequence) break;
       __nanosleep(64);
     }
 

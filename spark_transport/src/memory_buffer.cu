@@ -19,6 +19,12 @@ void check_cuda(cudaError_t result, const char* operation) {
   }
 }
 
+struct CudaAllocationDeleter {
+  void operator()(unsigned long long* allocation) const noexcept {
+    if (allocation != nullptr) cudaFree(allocation);
+  }
+};
+
 __global__ void fill_kernel(std::uint8_t* data, std::size_t bytes,
                             std::uint8_t value) {
   const std::size_t index =
@@ -127,6 +133,7 @@ class CudaMappedBuffer final : public MemoryBuffer {
   bool verify_on_gpu(std::uint8_t value, std::size_t bytes) const override {
     unsigned long long* mismatches{};
     check_cuda(cudaMalloc(&mismatches, sizeof(*mismatches)), "cudaMalloc");
+    const std::unique_ptr<unsigned long long, CudaAllocationDeleter> owner(mismatches);
     check_cuda(cudaMemset(mismatches, 0, sizeof(*mismatches)), "cudaMemset");
     constexpr int threads = 256;
     const int blocks = static_cast<int>((bytes + threads - 1) / threads);
@@ -137,7 +144,6 @@ class CudaMappedBuffer final : public MemoryBuffer {
     check_cuda(cudaMemcpy(&host_mismatches, mismatches, sizeof(host_mismatches),
                           cudaMemcpyDeviceToHost),
                "cudaMemcpy mismatch result");
-    cudaFree(mismatches);
     return host_mismatches == 0;
   }
 
@@ -207,6 +213,7 @@ class CudaAllocationBuffer final : public MemoryBuffer {
     unsigned long long* mismatches{};
     check_cuda(cudaMalloc(&mismatches, sizeof(*mismatches)),
                "cudaMalloc mismatches");
+    const std::unique_ptr<unsigned long long, CudaAllocationDeleter> owner(mismatches);
     check_cuda(cudaMemset(mismatches, 0, sizeof(*mismatches)),
                "cudaMemset mismatches");
     constexpr int threads = 256;
@@ -218,7 +225,6 @@ class CudaAllocationBuffer final : public MemoryBuffer {
     check_cuda(cudaMemcpy(&host_mismatches, mismatches, sizeof(*mismatches),
                           cudaMemcpyDeviceToHost),
                "cudaMemcpy allocation mismatch result");
-    cudaFree(mismatches);
     return host_mismatches == 0;
   }
 
