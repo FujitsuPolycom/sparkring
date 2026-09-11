@@ -114,9 +114,7 @@ target_compile_options(spark_tp4_bidirectional_prefill_probe PRIVATE
 
 if(SPARK_TP4_ENABLE_FUSED_PREFILL_PROBE)
     add_executable(spark_tp4_fused_prefill_probe
-        app/tp4_fused_prefill_probe.cu
-        experiments/tiled_prefill/fused_prefill_kernels.cu
-        experiments/tiled_prefill/fused_prefill_verbs_proxy.cpp)
+        app/tp4_fused_prefill_probe.cu)
     target_include_directories(spark_tp4_fused_prefill_probe PRIVATE
         include experiments/tiled_prefill)
     target_link_libraries(spark_tp4_fused_prefill_probe PRIVATE

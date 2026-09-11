@@ -127,10 +127,11 @@ esac
 : "${SPARK_CUDAGRAPH_REPLAY_TIMING_SAMPLES:=512}"
 : "${SPARK_CUDAGRAPH_REPLAY_TIMING_BUNDLE_HOST_ROOT:=}"
 : "${SPARKCACHE_ENABLED:=1}"
+: "${SPARK_CONTEXT_CACHE_TRACE_REUSE:=0}"
 : "${SPARKCACHE_ACCESS_MODE:=read-write}"
 : "${SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS:=300}"
 : "${SPARKCACHE_PUBLICATION_SCHEMA:=tail-cow-v2}"
-: "${SPARKCACHE_CLEAR_ONCE:=auto}"
+: "${SPARKCACHE_CLEAR_ONCE=auto}"
 : "${SPARKCACHE_MAX_BYTES:=42949672960}"
 : "${SPARKCACHE_LOW_WATERMARK_BYTES:=34359738368}"
 : "${SPARKCACHE_TTL_SECONDS:=0}"
@@ -146,6 +147,11 @@ esac
 : "${SPARKCACHE_BUFFER_BUDGET_BYTES:=0}"
 : "${SPARKCACHE_SOURCE_OVERLAY:=}"
 : "${SPARKCACHE_SOURCE_LEASE_CONTRACT:=}"
+: "${SPARKCACHE_PLACEMENT_LIBRARY_PATH:=/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so}"
+: "${SPARKCACHE_PLACEMENT_LIBRARY_SHA256:=}"
+: "${SPARKCACHE_SNAPSHOT_LIBRARY_PATH:=/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_snapshot.so}"
+: "${SPARKCACHE_SNAPSHOT_LIBRARY_SHA256:=4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5}"
+: "${SPARKCACHE_VLLM_ROOT:=/usr/local/lib/python3.12/dist-packages}"
 : "${VLLM_KV_METRICS_OVERLAY:=}"
 : "${MULTIMODAL_INPUTS:=1}"
 : "${SOCKET_IFNAME:=enP7s7}"
@@ -182,6 +188,9 @@ require_positive_uint() {
 }
 
 source_environment=()
+VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT=${VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT:-0}
+require_uint VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT
+source_environment+=(-e "VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT=${VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT}")
 for name in VLLM_B12X_KDA_PREFILL_COALESCING VLLM_GLM53_MHC_PREFILL_SHARD \
   VLLM_GLM53_MHC_PREFILL_DIAGNOSTICS VLLM_GLM53_KDA_GATE_SIDE_STREAM \
   VLLM_DCP_TOPK_OWNER_MERGE VLLM_DCP_OWNER_FUSED_ENDPOINTS \
@@ -194,6 +203,9 @@ for name in VLLM_B12X_KDA_PREFILL_COALESCING VLLM_GLM53_MHC_PREFILL_SHARD \
 done
 case "${NCCL_LIBRARY_PATH}" in
   /opt/sparkring/nccl/libnccl.so.2) ;;
+  /opt/local-inference/nccl/lib/libnccl.so.2)
+    [[ "${NCCL_LIBRARY_SHA256}" =~ ^[0-9a-f]{64}$ ]] || \
+      die 'R33 NCCL requires its receipt-bound SHA-256' ;;
   /opt/sparkring/nccl-pci/libnccl.so.2.30.7)
     [[ "${NCCL_LIBRARY_SHA256}" =~ ^[0-9a-f]{64}$ && -n "${SOURCE_IMAGE_PROFILE}" ]] || \
       die 'Source-composed NCCL requires its receipt-bound profile and SHA-256' ;;
@@ -202,6 +214,7 @@ esac
 case "${VLLM_BLOCK_SIZE}" in 256|512) ;; *) die 'VLLM_BLOCK_SIZE must be 256 or 512' ;; esac
 case "${NCCL_DEBUG}" in WARN|INFO) ;; *) die 'NCCL_DEBUG must be WARN or INFO' ;; esac
 [[ "${NCCL_DEBUG_SUBSYS}" == NET,INIT,GRAPH ]] || die 'NCCL_DEBUG_SUBSYS must be NET,INIT,GRAPH'
+r33_profile=0
 case "${SOURCE_IMAGE_PROFILE}" in
   '') ;;
   tp4-dcp1-mtp3-prefill|tp4-dcp4-mtp3-prefill)
@@ -233,9 +246,49 @@ case "${SOURCE_IMAGE_PROFILE}" in
     [[ "${NCCL_LIBRARY_PATH}" == /opt/sparkring/nccl-pci/libnccl.so.2.30.7 && \
        "${NCCL_IB_EXTENDED_IPV4_GIDS:-0}" == 1 && "${NCCL_IB_PRESERVE_PCI_DOMAIN:-0}" == 1 ]] || \
       die 'Source SparkCache profile requires its dual-domain NCCL settings' ;;
+  tp4-dcp1)
+    r33_profile=1
+    [[ "${SPARKRING_PROFILE_MODE:-}" == custom && "${SPARKRING_MANAGED_MESH_RENDERED:-0}" == 1 ]] || \
+      die 'R33 TP4 requires the canonical managed custom profile'
+    [[ "${SPARKCACHE_ENABLED}" == 0 && "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 0 ]] || \
+      die 'R33 tp4-dcp1 requires SparkCache disabled'
+    [[ "${VLLM_SPARK_TP4_MODE}" == custom && "${VLLM_SPARK_TP4_VOCAB_MODE}" == custom ]] || \
+      die 'R33 TP4 requires custom all-reduce and vocabulary transports'
+    [[ "${VLLM_B12X_KDA_PREFILL_COALESCING:-0}" == 1 && \
+       "${VLLM_GLM53_MHC_PREFILL_SHARD:-0}" == 1 && \
+       "${VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH:-0}" == 1 ]] || \
+      die 'R33 TP4 requires coalescing, mHC, and GDN metadata fast path'
+    [[ "${NCCL_LIBRARY_PATH}" == /opt/local-inference/nccl/lib/libnccl.so.2 ]] || \
+      die 'R33 TP4 requires installed NCCL 2.31.2' ;;
+  tp4-dcp1-sparkcache)
+    r33_profile=1
+    [[ "${SPARKRING_PROFILE_MODE:-}" == custom && "${SPARKRING_MANAGED_MESH_RENDERED:-0}" == 1 ]] || \
+      die 'R33 SparkCache requires the canonical managed custom profile'
+    [[ "${SPARKCACHE_ENABLED}" == 1 && ( \
+       ( "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 && "${SPARKCACHE_ACCESS_MODE}" == read-write ) || \
+       ( "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 0 && "${SPARKCACHE_ACCESS_MODE}" == restore-only && \
+         "${SPARK_CONTEXT_CACHE_TRACE_REUSE}" == 1 && -z "${SPARKCACHE_CLEAR_ONCE}" ) ) ]] || \
+      die 'R33 SparkCache requires bounded capture or traced restore-only diagnostics'
+    [[ "${VLLM_SPARK_TP4_MODE}" == custom && "${VLLM_SPARK_TP4_VOCAB_MODE}" == custom ]] || \
+      die 'R33 SparkCache requires custom all-reduce and vocabulary transports'
+    [[ "${VLLM_B12X_KDA_PREFILL_COALESCING:-0}" == 1 && \
+       "${VLLM_GLM53_MHC_PREFILL_SHARD:-0}" == 1 && \
+       "${VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH:-0}" == 1 ]] || \
+      die 'R33 SparkCache requires coalescing, mHC, and GDN metadata fast path'
+    [[ "${NCCL_LIBRARY_PATH}" == /opt/local-inference/nccl/lib/libnccl.so.2 ]] || \
+      die 'R33 SparkCache requires installed NCCL 2.31.2'
+    [[ "${SPARKCACHE_PLACEMENT_LIBRARY_PATH}" == /opt/sparkring/sparkcache/lib/libspark_cache_placement.so && \
+       "${SPARKCACHE_PLACEMENT_LIBRARY_SHA256}" == d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93 && \
+       "${SPARKCACHE_SNAPSHOT_LIBRARY_PATH}" == /opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so && \
+       "${SPARKCACHE_SNAPSHOT_LIBRARY_SHA256}" == 7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953 && \
+       "${SPARKCACHE_VLLM_ROOT}" == /opt/venv/lib/python3.12/site-packages && \
+       "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" == /opt/sparkring/contracts/vllm-connector-jobs-r33-547f7091.json ]] || \
+      die 'R33 SparkCache native and lease paths differ from its receipt' ;;
   *) die 'Unsupported source-composed runtime profile' ;;
 esac
-if [[ -n "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" && "${SOURCE_IMAGE_PROFILE}" != tp4-dcp1-mtp3-sparkcache ]]; then
+if [[ -n "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" && \
+      "${SOURCE_IMAGE_PROFILE}" != tp4-dcp1-mtp3-sparkcache && \
+      "${SOURCE_IMAGE_PROFILE}" != tp4-dcp1-sparkcache ]]; then
   die 'SPARKCACHE_SOURCE_LEASE_CONTRACT requires the source SparkCache profile'
 fi
 if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
@@ -373,6 +426,10 @@ case "${SPARKCACHE_ENABLED}" in
   0|1) ;;
   *) die 'SPARKCACHE_ENABLED must be 0 or 1' ;;
 esac
+case "${SPARK_CONTEXT_CACHE_TRACE_REUSE}" in
+  0|1) ;;
+  *) die 'SPARK_CONTEXT_CACHE_TRACE_REUSE must be 0 or 1' ;;
+esac
 case "${ENABLE_PROMPT_TOKENS_DETAILS}" in
   0|1) ;;
   *) die 'ENABLE_PROMPT_TOKENS_DETAILS must be 0 or 1' ;;
@@ -402,11 +459,18 @@ if [[ "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 ]]; then
   esac
 fi
 
-if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-mtp3-sparkcache ]]; then
+if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-mtp3-sparkcache || \
+      "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-sparkcache ]]; then
   # These are the bounded capacities named by the source-image profile. Reject
   # inherited operator defaults instead of allocating larger unqualified buffers.
-  for setting in SPARKCACHE_ENABLED=1 SPARKCACHE_ACCESS_MODE=read-write \
-    SPARKCACHE_ASYNC_PAGE_CAPTURE=1 SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2 \
+  expected_cache_access=read-write
+  expected_cache_capture=1
+  if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-sparkcache && "${SPARKCACHE_ACCESS_MODE}" == restore-only ]]; then
+    expected_cache_access=restore-only
+    expected_cache_capture=0
+  fi
+  for setting in SPARKCACHE_ENABLED=1 "SPARKCACHE_ACCESS_MODE=${expected_cache_access}" \
+    "SPARKCACHE_ASYNC_PAGE_CAPTURE=${expected_cache_capture}" SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT=2 \
     SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES=536870912 SPARKCACHE_LOAD_THREADS=2 \
     SPARKCACHE_MAX_PENDING_RESTORES=2 SPARKCACHE_CUDA_RESTORE_IO_WORKERS=2 \
     SPARKCACHE_CUDA_ARENA_BYTES=67108864 SPARKCACHE_BUFFER_BUDGET_BYTES=1342177280 \
@@ -545,6 +609,9 @@ case "${SPARK_CUDAGRAPH_REPLAY_TIMING}" in
 esac
 for name in SPARKCACHE_CACHE_NAMESPACE SPARKCACHE_CLEAR_ONCE JIT_CACHE_NAMESPACE
 do
+  if [[ "${name}" == SPARKCACHE_CLEAR_ONCE && -z "${!name}" ]]; then
+    continue
+  fi
   [[ "${!name}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || \
     die "${name} must contain only letters, digits, dot, underscore, or hyphen"
 done
@@ -609,6 +676,9 @@ sircl_args=()
 sircl_native_sha256='disabled'
 sircl_manifest_sha256='disabled'
 sircl_container_root='/opt/spark-sircl'
+if [[ "${r33_profile}" == 1 ]]; then
+  sircl_container_root='/opt/sparkring/sircl'
+fi
 sircl_bundle_is_external=0
 if [[ "${SIRCL_ENABLED}" == 1 ]]; then
   [[ "${TENSOR_PARALLEL_SIZE}" == 4 ]] || \
@@ -714,6 +784,11 @@ if [[ "${SIRCL_ENABLED}" == 1 ]]; then
       -v "${SIRCL_BUNDLE_HOST_ROOT}:${sircl_container_root}:ro"
     )
     sircl_bundle_is_external=1
+  elif [[ "${r33_profile}" == 1 ]]; then
+    sircl_native_sha256="${SPARKRING_DECLARED_SIRCL_NATIVE_SHA256:?R33 rendering requires declared native identity}"
+    sircl_manifest_sha256="${SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256:?R33 rendering requires declared manifest identity}"
+    [[ "${sircl_native_sha256}" =~ ^[0-9a-f]{64}$ && "${sircl_manifest_sha256}" =~ ^[0-9a-f]{64}$ ]] || \
+      die 'invalid R33 SIRCL identity'
   elif [[ "${SPARKRING_OFFLINE_SPEC}" == 1 ]]; then
     sircl_native_sha256="${SPARKRING_DECLARED_SIRCL_NATIVE_SHA256:?offline rendering requires declared native identity}"
     sircl_manifest_sha256="${SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256:?offline rendering requires declared manifest identity}"
@@ -735,8 +810,6 @@ if [[ "${SIRCL_ENABLED}" == 1 ]]; then
   fi
   sircl_args=(
     "${sircl_args[@]}"
-    -e "PYTHONPATH=${sircl_container_root}"
-    -e "SPARK_TP4_LIBRARY=${sircl_container_root}/libspark_transport_capi.so"
     -e VLLM_SPARK_TP4_MODE=custom
     -e VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH=1
     -e VLLM_SPARK_SHARED_CAPTURE_STREAM=1
@@ -776,6 +849,20 @@ if [[ "${SIRCL_ENABLED}" == 1 ]]; then
     -e SPARK_TP4_FLIGHT_RECORDER=0
     -e "SPARK_TP4_GRAPH_STATUS_PATH=/cache/jit/sircl-graph-rank${rank}.json"
   )
+  if [[ "${r33_profile}" == 1 ]]; then
+    sircl_args+=(
+      -e "PYTHONPATH=${sircl_container_root}/python"
+      -e "SPARK_TP4_LIBRARY=${sircl_container_root}/libspark_transport_capi.so"
+      -e VLLM_SPARK_TP4_VOCAB_MODE=custom
+      -e "SPARK_TP4_CONTROL_PORT0=${SPARK_TP4_GRAPH_CONTROL_PORT0}"
+      -e "SPARK_TP4_CONTROL_PORT1=${SPARK_TP4_GRAPH_CONTROL_PORT1}"
+    )
+  else
+    sircl_args+=(
+      -e "PYTHONPATH=${sircl_container_root}"
+      -e "SPARK_TP4_LIBRARY=${sircl_container_root}/libspark_transport_capi.so"
+    )
+  fi
 fi
 replay_timing_args=()
 if [[ "${SPARK_CUDAGRAPH_REPLAY_TIMING}" == 1 ]]; then
@@ -944,6 +1031,8 @@ if [[ "${SPARKCACHE_ENABLED}" == 1 ]]; then
   export SPARKCACHE_ASYNC_PAGE_CAPTURE
   export SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT
   export SOURCE_IMAGE_PROFILE SPARKCACHE_SOURCE_LEASE_CONTRACT
+  export SPARKCACHE_PLACEMENT_LIBRARY_PATH SPARKCACHE_SNAPSHOT_LIBRARY_PATH
+  export SPARKCACHE_SNAPSHOT_LIBRARY_SHA256 SPARKCACHE_VLLM_ROOT
   export TARGET_CHECKPOINT_FINGERPRINT DRAFT_CHECKPOINT_FINGERPRINT
   kv_transfer_config="$(python3 - <<'PY'
 import json
@@ -971,7 +1060,7 @@ extra = {
     "spark_cache_ttl_seconds": integer("SPARKCACHE_TTL_SECONDS"),
     "spark_cache_min_span_tokens": integer("SPARKCACHE_MIN_SPAN_TOKENS"),
     "spark_cache_max_span_tokens": integer("SPARKCACHE_MAX_SPAN_TOKENS"),
-    "spark_cache_cuda_placement_library": "/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_placement.so",
+    "spark_cache_cuda_placement_library": os.environ["SPARKCACHE_PLACEMENT_LIBRARY_PATH"],
     "spark_cache_cuda_placement_library_sha256": os.environ["SPARKCACHE_PLACEMENT_LIBRARY_SHA256"],
     "spark_cache_cuda_placement_arena_bytes": integer("SPARKCACHE_CUDA_ARENA_BYTES"),
     "spark_cache_cuda_restore_io_workers": integer("SPARKCACHE_CUDA_RESTORE_IO_WORKERS"),
@@ -979,11 +1068,11 @@ extra = {
     "spark_cache_max_pending_restores": integer("SPARKCACHE_MAX_PENDING_RESTORES"),
     "spark_cache_clear_once": os.environ["SPARKCACHE_CLEAR_ONCE"],
     "spark_cache_async_page_capture": os.environ["SPARKCACHE_ASYNC_PAGE_CAPTURE"] == "1",
-    "spark_cache_async_page_capture_library": "/opt/sparkcache-src/sparkcache/native/build-cuda/libspark_cache_snapshot.so",
-    "spark_cache_async_page_capture_library_sha256": "4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5",
+    "spark_cache_async_page_capture_library": os.environ["SPARKCACHE_SNAPSHOT_LIBRARY_PATH"],
+    "spark_cache_async_page_capture_library_sha256": os.environ["SPARKCACHE_SNAPSHOT_LIBRARY_SHA256"],
     "spark_cache_async_page_capture_slot_bytes": integer("SPARKCACHE_ASYNC_CAPTURE_SLOT_BYTES"),
     "spark_cache_async_page_capture_slot_count": integer("SPARKCACHE_ASYNC_CAPTURE_SLOT_COUNT"),
-    "spark_cache_async_page_capture_vllm_root": "/usr/local/lib/python3.12/dist-packages",
+    "spark_cache_async_page_capture_vllm_root": os.environ["SPARKCACHE_VLLM_ROOT"],
     "spark_cache_async_page_capture_lease_contract": "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-manager-page-async-contract-55969c16.json",
 }
 if os.environ["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1-mtp3-sparkcache":
@@ -992,6 +1081,13 @@ if os.environ["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1-mtp3-sparkcache":
         "spark_cache_async_page_capture_lease_contract": os.environ["SPARKCACHE_SOURCE_LEASE_CONTRACT"],
         "spark_cache_async_page_capture_library": "/opt/sparkcache-native/libspark_cache_snapshot.so",
         "spark_cache_async_page_capture_library_sha256": "cc44b69c9e01aaeb6b94f46cd649e2ec5972fc6b29d1a41b7b033a82ce788f39",
+        "spark_cache_cuda_restore_arena_budget_bytes": 268435456,
+        "spark_cache_page_snapshot_interval_tokens": 0,
+    })
+elif os.environ["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1-sparkcache":
+    extra.update({
+        "spark_cache_async_page_capture_lease_mode": "connector-jobs",
+        "spark_cache_async_page_capture_lease_contract": os.environ["SPARKCACHE_SOURCE_LEASE_CONTRACT"],
         "spark_cache_cuda_restore_arena_budget_bytes": 268435456,
         "spark_cache_page_snapshot_interval_tokens": 0,
     })
@@ -1046,10 +1142,41 @@ serving_prefix=()
 source_recurrent_args=()
 if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
   # Source-bound profiles must verify installed files before importing serving code.
-  serving_entrypoint=python3
-  serving_prefix=(-S -B /opt/sparkcache-jj-runtime/verify_sources.py --serve)
+  if [[ "${r33_profile}" == 1 ]]; then
+    serving_entrypoint=/opt/sparkring/bin/sparkring-r33
+    serving_prefix=(serve)
+  else
+    serving_entrypoint=python3
+    serving_prefix=(-S -B /opt/sparkcache-jj-runtime/verify_sources.py --serve)
+  fi
   # Automatic request-boundary checkpoints exclude continuation coalescing.
   source_recurrent_args=(--mamba-block-size "${VLLM_BLOCK_SIZE}" --recurrent-checkpoint-policy aligned --prefix-cache-retention-interval 0)
+fi
+r33_environment=()
+runtime_label=glm53-jj-r8-gb10-sparkcache
+if [[ "${r33_profile}" == 1 ]]; then
+  runtime_label="glm53-flash-spark-jovian-r33-${SOURCE_IMAGE_PROFILE}"
+  r33_environment=(
+    -e "SIRCL_ENABLED=${SIRCL_ENABLED}"
+    -e "SPARKCACHE_ENABLED=${SPARKCACHE_ENABLED}"
+    -e "NODE_RANK=${rank}"
+    -e "MASTER_ADDR=${MASTER_ADDR}"
+    -e "SPARKRING_PROFILE_MODE=${SPARKRING_PROFILE_MODE}"
+    -e "SPARKRING_MANAGED_MESH_RENDERED=${SPARKRING_MANAGED_MESH_RENDERED}"
+    -e "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH=${VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH}"
+    -e "NCCL_LOCAL_INFERENCE_PATH=${NCCL_LIBRARY_PATH}"
+  )
+  if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-sparkcache ]]; then
+    r33_environment+=(
+      -e "SPARKCACHE_CACHE_NAMESPACE=${SPARKCACHE_CACHE_NAMESPACE}"
+      -e "SPARKCACHE_PLACEMENT_LIBRARY_PATH=${SPARKCACHE_PLACEMENT_LIBRARY_PATH}"
+      -e "SPARKCACHE_PLACEMENT_LIBRARY_SHA256=${SPARKCACHE_PLACEMENT_LIBRARY_SHA256}"
+      -e "SPARKCACHE_SNAPSHOT_LIBRARY_PATH=${SPARKCACHE_SNAPSHOT_LIBRARY_PATH}"
+      -e "SPARKCACHE_SNAPSHOT_LIBRARY_SHA256=${SPARKCACHE_SNAPSHOT_LIBRARY_SHA256}"
+      -e "SPARKCACHE_VLLM_ROOT=${SPARKCACHE_VLLM_ROOT}"
+      -e "SPARKCACHE_SOURCE_LEASE_CONTRACT=${SPARKCACHE_SOURCE_LEASE_CONTRACT}"
+    )
+  fi
 fi
 
 container_command=(docker "${container_action[@]}" \
@@ -1094,6 +1221,7 @@ container_command=(docker "${container_action[@]}" \
   -e "TORCHINDUCTOR_CACHE_DIR=/cache/jit/torchinductor/${JIT_CACHE_NAMESPACE}" \
   -e XDG_CACHE_HOME=/cache/jit -e HF_HUB_OFFLINE=1 -e TRANSFORMERS_OFFLINE=1 \
   -e VLLM_NO_USAGE_STATS=1 -e VLLM_PLUGINS= \
+  -e "LOAD_FORMAT=${LOAD_FORMAT}" \
   -e "OMP_NUM_THREADS=${OMP_NUM_THREADS}" \
   -e "TORCHINDUCTOR_COMPILE_THREADS=${TORCHINDUCTOR_COMPILE_THREADS}" \
   -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
@@ -1103,9 +1231,11 @@ container_command=(docker "${container_action[@]}" \
   -e VLLM_ENABLE_PCIE_ALLREDUCE=0 -e VLLM_ALLREDUCE_USE_FLASHINFER=0 \
   -e VLLM_ALLREDUCE_USE_SYMM_MEM=0 \
   "${source_environment[@]}" \
+  "${r33_environment[@]}" \
   -e "VLLM_NCCL_SO_PATH=${NCCL_LIBRARY_PATH}" \
   -e "LD_PRELOAD=${NCCL_LIBRARY_PATH}" \
   -e "NCCL_DEBUG=${NCCL_DEBUG}" -e "NCCL_DEBUG_SUBSYS=${NCCL_DEBUG_SUBSYS}" \
+  -e "SPARK_CONTEXT_CACHE_TRACE_REUSE=${SPARK_CONTEXT_CACHE_TRACE_REUSE}" \
   -e NCCL_NET=IB -e NCCL_NET_PLUGIN=none \
   -e NCCL_IB_DISABLE=0 -e "NCCL_IB_HCA=${NCCL_IB_HCA}" \
   -e "NCCL_IB_GID_INDEX=${NCCL_IB_GID_INDEX}" \
@@ -1116,7 +1246,7 @@ container_command=(docker "${container_action[@]}" \
   -e "NCCL_MAX_NCHANNELS=${NCCL_MAX_NCHANNELS}" \
   -e NCCL_SWITCHLESS_RING_ONLY=1 -e NCCL_CUMEM_ENABLE=0 -e NCCL_IGNORE_CPU_AFFINITY=1 \
   -e "VLLM_FASTSAFETENSORS_QUEUE_SIZE=${FASTSAFETENSORS_QUEUE_SIZE}" \
-  --label org.sparkring.runtime=glm53-jj-r8-gb10-sparkcache \
+  --label "org.sparkring.runtime=${runtime_label}" \
   --label org.sparkring.sparkcache.enabled="${SPARKCACHE_ENABLED}" \
   --label org.sparkring.sparkcache.access-mode="${SPARKCACHE_ACCESS_MODE}" \
   --label org.sparkring.sparkcache.shared-prefix-lease-seconds="${SPARKCACHE_SHARED_PREFIX_LEASE_TTL_SECONDS}" \

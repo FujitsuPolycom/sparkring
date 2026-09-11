@@ -168,7 +168,8 @@ def docker_running(name):
     result = subprocess.run(['docker', 'inspect', '--format', '{{.State.Running}}', name],
                             capture_output=True, text=True, timeout=3)
     if result.returncode:
-        if re.search(r'No such (?:object|container): ' + re.escape(name) + r'(?:\s|$)', result.stderr):
+        if re.search(r'No such (?:object|container): ' + re.escape(name) + r'(?:\s|$)',
+                     result.stderr, re.IGNORECASE):
             return False
         raise RuntimeError('Cannot establish the dependent container state')
     state = result.stdout.strip()

@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -368,6 +369,224 @@ def _image_receipt_document():
     }
 
 
+def _r33_image_receipt_document(bundle_sha):
+    verifier = mesh_profile._r33_profile_verifier()
+    contract = verifier.load_contract()
+    nccl_sha = "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47"
+    return {
+        "schema": "sparkring-r33-image-receipt/v1", "checks_passed": True,
+        "platform": "linux/arm64", "image_id": "sha256:" + "d" * 64,
+        "image_reference": "sha256:" + "d" * 64,
+        "artifact_lock_sha256": contract["image"]["artifact_lock_sha256"],
+        "source_lock_sha256": "e" * 64, "sources": contract["image"]["required_sources"],
+        "component_receipts": {name: "f" * 64 for name in contract["image"]["required_receipts"]},
+        "nccl_version": "2.31.2", "source_locks_match": True,
+        "source_lock_receipts_match": True, "installed_payload_bytes_match": True,
+        "package_checks_passed": True, "bundle_manifest_sha256": bundle_sha,
+        "verification": {"checked_files": {
+            "/opt/sparkring/sircl/python/sparkring-overlay-manifest.json": bundle_sha,
+            "/opt/local-inference/nccl/lib/libnccl.so.2.31.2": nccl_sha,
+            "/opt/sparkring/sircl/libspark_transport_capi.so": "bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246",
+            "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so": "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93",
+            "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so": "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953",
+        }},
+    }
+
+
+def test_r33_receipt_accepts_receipt_bound_mesh_manifest():
+    bundle_sha = "c" * 64
+    document = _r33_image_receipt_document(bundle_sha)
+    result = mesh_profile.validate_image_receipt(document)
+    assert result["bundle_manifest_sha256"] == bundle_sha
+    assert result["r33_candidate"] is True
+
+
+@pytest.mark.parametrize("failure", ["missing", "mismatch", "malformed", "invalid-verification"])
+def test_r33_receipt_rejects_unverified_mesh_manifest(failure):
+    bundle_sha = "c" * 64
+    document = _r33_image_receipt_document(bundle_sha)
+    manifest_path = "/opt/sparkring/sircl/python/sparkring-overlay-manifest.json"
+    if failure == "missing":
+        del document["verification"]["checked_files"][manifest_path]
+    elif failure == "mismatch":
+        document["verification"]["checked_files"][manifest_path] = "d" * 64
+    elif failure == "malformed":
+        document["bundle_manifest_sha256"] = "not-a-sha256"
+    else:
+        document["verification"] = None
+    with pytest.raises(ValueError, match="does not bind its mesh manifest"):
+        mesh_profile.validate_image_receipt(document)
+
+
+def test_r33_receipt_renders_canonical_managed_tp4_environment(tmp_path, manifest_bundle, monkeypatch):
+    manifest_sha = mesh_profile.sha(manifest_bundle / "sparkring-overlay-manifest.json")
+    monkeypatch.setitem(mesh_profile.PINS, "canonical_bundle_manifest_sha256", manifest_sha)
+    document = _r33_image_receipt_document(manifest_sha)
+    receipt = tmp_path / "r33-image.json"
+    receipt.write_text(json.dumps(document))
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data["runtime_profile"] = "tp4-dcp1"
+    site.write_text(json.dumps(data))
+    output = tmp_path / "r33-rendered"
+    mesh_profile.render(site, manifest_bundle, output, receipt)
+    for rank in range(4):
+        env = mesh_profile.defaults(output / f"rank{rank}.env")
+        assert env["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1"
+        assert env["LOAD_FORMAT"] == "instanttensor"
+        assert env["SPARKCACHE_ENABLED"] == env["SPARKCACHE_ASYNC_PAGE_CAPTURE"] == "0"
+        assert env["SPARKRING_PROFILE_MODE"] == "custom"
+        assert env["SPARKRING_MANAGED_MESH_RENDERED"] == "1"
+        assert env["VLLM_SPARK_TP4_MODE"] == env["VLLM_SPARK_TP4_VOCAB_MODE"] == "custom"
+        assert env["SPARK_TP4_LIBRARY"] == "/opt/sparkring/sircl/libspark_transport_capi.so"
+        assert env["VLLM_NCCL_SO_PATH"] == env["NCCL_LOCAL_INFERENCE_PATH"] == env["LD_PRELOAD"] == "/opt/local-inference/nccl/lib/libnccl.so.2"
+        assert env["NODE_RANK"] == str(rank)
+        assert env["SPARK_TP4_CONTROL_PORT0"] == env["SPARK_TP4_GRAPH_CONTROL_PORT0"]
+
+
+@pytest.mark.parametrize("diagnostic", [False, True])
+def test_r33_sparkcache_renders_receipt_bound_native_libraries(tmp_path, manifest_bundle, monkeypatch, diagnostic):
+    manifest_sha = mesh_profile.sha(manifest_bundle / "sparkring-overlay-manifest.json")
+    monkeypatch.setitem(mesh_profile.PINS, "canonical_bundle_manifest_sha256", manifest_sha)
+    receipt = tmp_path / "r33-image.json"
+    receipt.write_text(json.dumps(_r33_image_receipt_document(manifest_sha)))
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data["runtime_profile"] = "tp4-dcp1-sparkcache"
+    if diagnostic:
+        data["cache_diagnostics"] = {"namespace": "r33-isolated-fault-test", "access_mode": "restore-only", "trace_reuse": 1}
+    site.write_text(json.dumps(data))
+    output = tmp_path / "r33-cache"
+    mesh_profile.render(site, manifest_bundle, output, receipt)
+    for rank in range(4):
+        env = mesh_profile.defaults(output / f"rank{rank}.env")
+        assert env["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1-sparkcache"
+        assert env["SPARKCACHE_ENABLED"] == "1"
+        assert env["SPARKCACHE_ASYNC_PAGE_CAPTURE"] == ("0" if diagnostic else "1")
+        assert env["SPARKCACHE_ACCESS_MODE"] == ("restore-only" if diagnostic else "read-write")
+        if diagnostic:
+            assert env["SPARKCACHE_CACHE_NAMESPACE"] == "r33-isolated-fault-test"
+            assert env["SPARK_CONTEXT_CACHE_TRACE_REUSE"] == "1"
+            assert env["SPARKCACHE_CLEAR_ONCE"] == ""
+        assert env["SPARKCACHE_BUFFER_BUDGET_BYTES"] == "1342177280"
+        assert env["SPARKCACHE_PLACEMENT_LIBRARY_PATH"] == "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so"
+        assert env["SPARKCACHE_PLACEMENT_LIBRARY_SHA256"] == "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93"
+        assert env["SPARKCACHE_SNAPSHOT_LIBRARY_PATH"] == "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so"
+        assert env["SPARKCACHE_SNAPSHOT_LIBRARY_SHA256"] == "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953"
+        assert env["SPARKCACHE_SOURCE_LEASE_CONTRACT"] == mesh_profile._r33_profile_verifier().load_contract()["sparkcache_native"]["lease_contract"]
+    reproduced = tmp_path / "reproduced-cache"
+    mesh_profile.render(site, manifest_bundle, reproduced, receipt)
+    for rank in range(4):
+        assert (output / f"rank{rank}.env").read_bytes() == (reproduced / f"rank{rank}.env").read_bytes()
+    if diagnostic:
+        sys.path.insert(0, str(HERE))
+        import managed_install
+        monkeypatch.setattr(managed_install.managed_units.service, "mesh_profile", mesh_profile)
+        monkeypatch.setattr(managed_install, "expected_container_spec", lambda argv, image: argv)
+        render = mesh_profile.render
+        monkeypatch.setattr(mesh_profile, "render", lambda site, bundle, output, receipt:
+                            render(site, manifest_bundle, output, receipt))
+        # The installer reads the saved site, then runs the real renderer again.
+        canonical = tmp_path / "installer-cache"
+        mesh_profile.render(site, manifest_bundle, canonical, receipt)
+        def run(command, **kwargs):
+            env = mesh_profile.defaults(Path(command[3]))
+            assert env["SPARKCACHE_CACHE_NAMESPACE"] == "r33-isolated-fault-test"
+            assert env["SPARKCACHE_ACCESS_MODE"] == "restore-only"
+            assert env["SPARKCACHE_ASYNC_PAGE_CAPTURE"] == "0"
+            assert env["SPARK_CONTEXT_CACHE_TRACE_REUSE"] == "1"
+            assert env["SPARKCACHE_CLEAR_ONCE"] == ""
+            return SimpleNamespace(returncode=0, stdout=json.dumps({
+                "schema": "sparkring-container-command/v1", "argv": ["diagnostic-roundtrip"]}))
+        assert managed_install.canonical_container_spec(canonical, receipt, 0, {}, run=run) == ["diagnostic-roundtrip"]
+
+
+@pytest.mark.parametrize("change", [
+    {"namespace": "../shared"}, {"namespace": "REPLACE_ME"},
+    {"access_mode": "read-write"}, {"trace_reuse": True}, {"trace_reuse": 0}, {"extra": 1},
+])
+def test_cache_diagnostics_rejects_unsafe_or_unbounded_settings(tmp_path, change):
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data.update(runtime_profile="tp4-dcp1-sparkcache", cache_diagnostics={
+        "namespace": "fault-copy", "access_mode": "restore-only", "trace_reuse": 1, **change})
+    site.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="cache_diagnostics"):
+        mesh_profile.load_site(site)
+
+
+def test_cache_diagnostics_rejects_cache_disabled_profile(tmp_path):
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data.update(runtime_profile="tp4-dcp1", cache_diagnostics={
+        "namespace": "fault-copy", "access_mode": "restore-only", "trace_reuse": 1})
+    site.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="cache_diagnostics"):
+        mesh_profile.load_site(site)
+
+
+@pytest.mark.parametrize("value", ["WARN", "TRACE", "INFO,NET", True, 1])
+def test_nccl_diagnostic_site_rejects_non_info_values(tmp_path, value):
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data.update(runtime_profile="tp4-dcp1-sparkcache", nccl_debug=value)
+    site.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="nccl_debug"):
+        mesh_profile.load_site(site)
+
+
+def test_nccl_info_changes_only_debug_and_reproduces_through_installer(tmp_path, manifest_bundle, monkeypatch):
+    manifest_sha = mesh_profile.sha(manifest_bundle / "sparkring-overlay-manifest.json")
+    receipt = tmp_path / "r33-image.json"
+    receipt.write_text(json.dumps(_r33_image_receipt_document(manifest_sha)))
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data["runtime_profile"] = "tp4-dcp1-sparkcache"
+    site.write_text(json.dumps(data))
+    normal = tmp_path / "normal"
+    mesh_profile.render(site, manifest_bundle, normal, receipt)
+    data["nccl_debug"] = "INFO"
+    site.write_text(json.dumps(data))
+    diagnostic = tmp_path / "nccl-info"
+    mesh_profile.render(site, manifest_bundle, diagnostic, receipt)
+    for rank in range(4):
+        defaults = {"NCCL_DEBUG": "WARN", "NCCL_DEBUG_SUBSYS": "NET,INIT,GRAPH"}
+        before = {**defaults, **mesh_profile.defaults(normal / f"rank{rank}.env")}
+        after = {**defaults, **mesh_profile.defaults(diagnostic / f"rank{rank}.env")}
+        assert {k: (before.get(k), after.get(k)) for k in before.keys() | after.keys()
+                if before.get(k) != after.get(k)} == {"NCCL_DEBUG": ("WARN", "INFO")}
+    assert (normal / "launch-rank.sh").read_bytes() == (diagnostic / "launch-rank.sh").read_bytes()
+    sys.path.insert(0, str(HERE))
+    import managed_install
+    monkeypatch.setattr(managed_install.managed_units.service, "mesh_profile", mesh_profile)
+    monkeypatch.setattr(managed_install, "expected_container_spec", lambda argv, image: argv)
+    render = mesh_profile.render
+    monkeypatch.setattr(mesh_profile, "render", lambda site, bundle, output, receipt:
+                        render(site, manifest_bundle, output, receipt))
+    def run(command, **kwargs):
+        env = mesh_profile.defaults(Path(command[3]))
+        assert env["NCCL_DEBUG"] == "INFO"
+        assert env.get("NCCL_DEBUG_SUBSYS", "NET,INIT,GRAPH") == "NET,INIT,GRAPH"
+        return SimpleNamespace(returncode=0, stdout=json.dumps({
+            "schema": "sparkring-container-command/v1", "argv": ["nccl-info-roundtrip"]}))
+    assert managed_install.canonical_container_spec(diagnostic, receipt, 0, {}, run=run) == ["nccl-info-roundtrip"]
+
+
+def test_r33_sparkcache_rejects_unbound_native_library(tmp_path, manifest_bundle, monkeypatch):
+    manifest_sha = mesh_profile.sha(manifest_bundle / "sparkring-overlay-manifest.json")
+    monkeypatch.setitem(mesh_profile.PINS, "canonical_bundle_manifest_sha256", manifest_sha)
+    document = _r33_image_receipt_document(manifest_sha)
+    document["verification"]["checked_files"]["/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so"] = "0" * 64
+    receipt = tmp_path / "r33-image.json"
+    receipt.write_text(json.dumps(document))
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data["runtime_profile"] = "tp4-dcp1-sparkcache"
+    site.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="does not bind"):
+        mesh_profile.render(site, manifest_bundle, tmp_path / "rejected", receipt)
+
+
 @pytest.mark.parametrize('field', ['compute', 'source_lock_sha256', 'b12x_revision', 'environment', 'proposal_head_nvfp4', 'target_head_quantization'])
 def test_receipt_requires_profile_compute(tmp_path, field):
     document = _image_receipt_document()
@@ -505,3 +724,25 @@ def test_liveness_override_preserves_default_and_canonical_regeneration(tmp_path
         del actual["API_KEYS_FILE"]
         actual["SPARKRING_LIVENESS_OUTPUT_SECONDS"] = "300"
         assert actual == baseline
+
+@pytest.mark.parametrize('attested', [True, False])
+def test_r33_extracted_bundle_requires_receipt_for_rebuilt_files(tmp_path, manifest_bundle, attested):
+    manifest_path = manifest_bundle / 'sparkring-overlay-manifest.json'
+    manifest = json.loads(manifest_path.read_text())
+    entry = next(item for item in manifest['files'] if item['path'].endswith('.py'))
+    changed = manifest_bundle / entry['path']
+    changed.write_bytes(changed.read_bytes() + b'\n# rebuilt package bytes\n')
+    document = _r33_image_receipt_document(mesh_profile.sha(manifest_path))
+    if attested:
+        document['verification']['checked_files']['/opt/sparkring/sircl/python/' + entry['path']] = mesh_profile.sha(changed)
+    receipt = tmp_path / 'image.json'
+    receipt.write_text(json.dumps(document))
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data['runtime_profile'] = 'tp4-dcp1'
+    site.write_text(json.dumps(data))
+    if attested:
+        mesh_profile.render(site, manifest_bundle, tmp_path / 'rendered', receipt)
+    else:
+        with pytest.raises(ValueError, match='differs from its manifest'):
+            mesh_profile.render(site, manifest_bundle, tmp_path / 'rendered', receipt)
