@@ -8,7 +8,7 @@ Companion CLI: FujitsuPolycom/lil at `329cde801b847294005cb16765692032a6cdf206`.
 
 | Check | Result |
 | --- | --- |
-| Integration tests, including both profiles, direct-copy routing, and configurable GID indices | 72 passed |
+| Recorded integration run: both profiles, direct-copy routing, and GID environment propagation (export only) | 72 passed |
 | Companion lil `go test ./...` | all packages passed |
 | Python lint | passed |
 | MTP3 and DFlash four-rank bundles, SparkCache enabled and disabled, consumed by built lil CLI | validate and render passed |
@@ -20,6 +20,13 @@ to the actual locally built lil binary. Lifecycle tests simulate missing hosts,
 existing containers, wrong ownership, preflight mismatches, and worker failures.
 Distribution tests exercise checksum caching, four destinations, resumability,
 bad files, traversal rejection, and SSH command ordering without network traffic.
+
+The export contract permits configurable GIDs only for the DFlash profile.
+MTP3 requires index `3` for NCCL and every SIRCL rail; invalid values are
+rejected before launch arguments are generated. Bundle IDs use ASCII letters,
+digits and hyphens, start with a letter or digit, and are at most 80 characters.
+Regression tests cover both constraints. A GID value reaching an environment
+variable does not establish compatibility with an installed managed mesh.
 
 The separate [hardware record](HARDWARE_VALIDATION.md) covers MTP3 startup,
 response, restart restore, and a small direct-copy fixture. Operator directories,

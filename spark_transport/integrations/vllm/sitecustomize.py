@@ -1,13 +1,13 @@
 """Install the vLLM adapters used by supported SparkRing profiles."""
 
+import importlib
 import os
 import sys
 import traceback
-from collections.abc import Callable
 from typing import Any
 
 
-def _install_required(label: str, operation: Callable[[], Any]) -> Any:
+def _install_required(label: str, module_name: str) -> Any:
     """Install one enabled hook or terminate before vLLM can serve traffic.
 
     CPython's ``site`` module reports and suppresses ordinary exceptions raised
@@ -16,7 +16,7 @@ def _install_required(label: str, operation: Callable[[], Any]) -> Any:
     """
 
     try:
-        return operation()
+        return importlib.import_module(module_name).install()
     except BaseException:
         try:
             print(
@@ -33,40 +33,24 @@ def _install_required(label: str, operation: Callable[[], Any]) -> Any:
         raise RuntimeError("os._exit unexpectedly returned")
 
 
-if os.getenv("VLLM_SPARK_TP4_MODE"):
-    from spark_tp4_backend import install as install_tp4
-
-    _install_required("TP4 all-reduce backend", install_tp4)
+if os.getenv("VLLM_SPARK_TP4_MODE", "").lower() not in {"", "disabled"}:
+    _install_required("TP4 all-reduce backend", "spark_tp4_backend")
 
 if os.getenv("SPARK_TP4_HEALTH_GATE") == "1":
-    from spark_tp4_health_gate import install as install_tp4_health_gate
-
-    _install_required("TP4 post-output health gate", install_tp4_health_gate)
+    _install_required("TP4 post-output health gate", "spark_tp4_health_gate")
 
 
 if os.getenv("VLLM_SPARK_TP4_VOCAB_MODE"):
-    from spark_tp4_vocab_allgather_backend import (
-        install as install_tp4_vocab_allgather,
-    )
-
     _install_required(
         "TP4 vocabulary all-gather backend",
-        install_tp4_vocab_allgather,
+        "spark_tp4_vocab_allgather_backend",
     )
 
 if os.getenv("SPARK_CUDAGRAPH_REPLAY_TIMING") == "1":
-    from spark_cudagraph_replay_timing import (
-        install as install_cudagraph_replay_timing,
-    )
-
     _install_required(
         "CUDA graph replay timing",
-        install_cudagraph_replay_timing,
+        "spark_cudagraph_replay_timing",
     )
 
 if os.getenv("SPARK_TP4_DCP_COLLECTIVE_AUDIT") == "1":
-    from spark_dcp_collective_audit import (
-        install as install_dcp_collective_audit,
-    )
-
-    _install_required("DCP collective audit", install_dcp_collective_audit)
+    _install_required("DCP collective audit", "spark_dcp_collective_audit")

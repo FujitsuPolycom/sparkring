@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -43,6 +44,94 @@ def test_vote_rejects_native_abi_mismatch() -> None:
 
     with pytest.raises(RuntimeError, match="rank 1: native_abi_version disagrees"):
         capability.validate_capabilities(records)
+
+
+def _configured_shared(monkeypatch, **environment):
+    errors = []
+    with monkeypatch.context() as context:
+        context.setattr(os, "environ", {"VLLM_SPARK_TP4_MODE": "custom", **environment})
+        shared = capability._shared_capability(errors)
+    assert errors == []
+    return shared
+
+
+@pytest.mark.parametrize("setting,value", [
+    ("VLLM_SPARK_TP4_EAGER_WIDTHS", "4096,6144"),
+    ("VLLM_SPARK_TP4_PREFILL_Q512", "1"),
+    ("VLLM_SPARK_TP4_GRAPH_Q1", "1"),
+    ("VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH", "1"),
+    ("VLLM_SPARK_TP4_GRAPH_DUAL_PORT_Q40", "1"),
+])
+def test_vote_rejects_dispatch_disagreement(monkeypatch, setting, value):
+    baseline = _configured_shared(monkeypatch)
+    changed = _configured_shared(monkeypatch, **{setting: value})
+    records = [_record(rank) for rank in range(4)]
+    for record in records:
+        record["shared"] = baseline
+    records[3]["shared"] = changed
+    with pytest.raises(RuntimeError, match="rank 3: shared disagrees"):
+        capability.validate_capabilities(records)
+
+
+def test_graph_kernel_difference_is_compared_only_for_selected_graph_path(monkeypatch):
+    disabled = _configured_shared(monkeypatch)
+    assert disabled == _configured_shared(
+        monkeypatch, VLLM_SPARK_TP4_GRAPH_KERNEL_STRATEGY="tiered_64k",
+    )
+    fused = _configured_shared(monkeypatch, VLLM_SPARK_TP4_GRAPH_Q1="1")
+    tiered = _configured_shared(
+        monkeypatch, VLLM_SPARK_TP4_GRAPH_Q1="1",
+        VLLM_SPARK_TP4_GRAPH_KERNEL_STRATEGY="tiered_64k",
+    )
+    records = [_record(rank) for rank in range(4)]
+    for record in records:
+        record["shared"] = fused
+    records[1]["shared"] = tiered
+    with pytest.raises(RuntimeError, match="rank 1: shared disagrees"):
+        capability.validate_capabilities(records)
+
+
+def test_provider_rows_are_compared_instead_of_module_names(monkeypatch):
+    for name, rows in (("audit_rows_a", (1, 4)), ("audit_rows_b", (1, 4)), ("audit_rows_c", (1, 5))):
+        provider = ModuleType(name)
+        provider.provider_query_rows = lambda _environment, values=rows: values
+        monkeypatch.setitem(sys.modules, name, provider)
+    first = _configured_shared(monkeypatch, VLLM_SPARK_TP4_QUERY_ROW_PROVIDER="audit_rows_a")
+    equivalent = _configured_shared(monkeypatch, VLLM_SPARK_TP4_QUERY_ROW_PROVIDER="audit_rows_b")
+    different = _configured_shared(monkeypatch, VLLM_SPARK_TP4_QUERY_ROW_PROVIDER="audit_rows_c")
+    assert first == equivalent
+    records = [_record(rank) for rank in range(4)]
+    for record in records:
+        record["shared"] = first
+    records[2]["shared"] = different
+    with pytest.raises(RuntimeError, match="rank 2: shared disagrees"):
+        capability.validate_capabilities(records)
+
+
+def test_dispatch_equivalence_preserves_rank_local_configuration(monkeypatch):
+    first = _configured_shared(monkeypatch, VLLM_SPARK_TP4_EAGER_WIDTHS="4096,6144")
+    other = _configured_shared(
+        monkeypatch, VLLM_SPARK_TP4_EAGER_WIDTHS="6144,4096",
+        SPARK_TP4_DEVICE0="other-device", SPARK_TP4_GID0="7",
+        SPARK_TP4_PEER0="198.18.4.2", SPARK_TP4_GRAPH_PROGRESS_CPU="9",
+    )
+    assert first == other
+
+
+def test_vote_rejects_mixed_capability_record_versions():
+    records = [_record(rank) for rank in range(4)]
+    records[2]["adapter_abi"] = "sparkring-sircl-capability/v1"
+    with pytest.raises(RuntimeError, match="rank 2: adapter_abi disagrees"):
+        capability.validate_capabilities(records)
+
+
+def test_invalid_dispatch_becomes_vote_error(monkeypatch):
+    errors = []
+    with monkeypatch.context() as context:
+        context.setattr(os, "environ", {"VLLM_SPARK_TP4_EAGER_WIDTHS": "invalid"})
+        shared = capability._shared_capability(errors)
+    assert shared["dispatch"] == {}
+    assert any("collective dispatch configuration failed" in error for error in errors)
 
 
 def test_shared_record_covers_ports_timeouts_and_admission(monkeypatch) -> None:

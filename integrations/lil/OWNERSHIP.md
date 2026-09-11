@@ -35,6 +35,11 @@ arguments and executes its explicit checks. This is a separate fork command,
 not a claim that upstream supports `--runtime sparkring`.
 
 The selected descriptor lists canonical runtime/model pin files and their
-normalized UTF-8 SHA-256 values. Changed inputs require a descriptor review.
+normalized UTF-8 SHA-256 values. Changes to those files require descriptor review.
+These hashes do not bind the exporter or the Bash launcher at
+`runtime/glm53-flash-jj-r8-gb10/launch-rank.sh`. Record the SparkRing checkout
+revision and review the generated bundle when either implementation changes.
+Retain the original bundle for lifecycle operations: its content-digest labels
+bind the rendered commands and checks, rather than a later regeneration.
 Preflight checks target configuration and index metadata; it does not hash all
 target weight shards. Verify model files during staging.

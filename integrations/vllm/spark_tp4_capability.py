@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 
-ADAPTER_ABI = "sparkring-sircl-capability/v1"
+ADAPTER_ABI = "sparkring-sircl-capability/v2"
 NATIVE_ABI_VERSION = 1
 FUSED_PREFILL_OPERATION_SLOTS = 2
 REQUIRED_SYMBOLS = (
@@ -78,11 +78,53 @@ def _integer_setting(
     return value
 
 
+def _dispatch_capability(errors: list[str]) -> dict[str, Any]:
+    """Compare collective admission, not rank-local device or address choices."""
+    try:
+        from spark_tp4_port_namespace import eager_allreduce_admitted_widths
+        from spark_tp4_query_contract import MAX_QUERY_ROWS
+        from spark_tp4_query_row_provider import resolve_query_rows
+
+        flags = {}
+        for name in (
+            "VLLM_SPARK_TP4_PREFILL_Q512",
+            "VLLM_SPARK_TP4_GRAPH_Q1",
+            "VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH",
+            "VLLM_SPARK_TP4_GRAPH_DUAL_PORT_Q40",
+        ):
+            value = os.environ.get(name, "0")
+            if value not in {"0", "1"}:
+                raise ValueError(f"{name} must be '0' or '1'")
+            flags[name] = value == "1"
+        custom = os.environ.get("VLLM_SPARK_TP4_MODE", "").lower() == "custom"
+        graph_q1 = custom and flags["VLLM_SPARK_TP4_GRAPH_Q1"]
+        return {
+            "eager_widths": eager_allreduce_admitted_widths(),
+            "default_width_query_rows": resolve_query_rows(),
+            "extension_max_query_rows": (
+                512 if flags["VLLM_SPARK_TP4_PREFILL_Q512"] else MAX_QUERY_ROWS
+            ),
+            "graph_width6144": graph_q1,
+            "graph_width4096": custom and flags["VLLM_SPARK_TP4_GRAPH_WIDTH4096_RESEARCH"],
+            "graph_dual_port_q40": custom and flags["VLLM_SPARK_TP4_GRAPH_DUAL_PORT_Q40"],
+            "graph_kernel_strategy": (
+                os.environ.get("VLLM_SPARK_TP4_GRAPH_KERNEL_STRATEGY", "fused")
+                if graph_q1 else None
+            ),
+        }
+    except Exception as error:
+        # A malformed local policy must reach the same collective vote as
+        # peers, carrying an error rather than escaping before the exchange.
+        errors.append(f"collective dispatch configuration failed: {error}")
+        return {}
+
+
 def _shared_capability(errors: list[str]) -> dict[str, Any]:
     rail_mode = os.environ.get(
         "VLLM_SPARK_TP4_BIDIRECTIONAL_PREFILL_RAIL_MODE", "single"
     )
     return {
+        "dispatch": _dispatch_capability(errors),
         "mode": os.environ.get("VLLM_SPARK_TP4_MODE", ""),
         "graph_protocol": os.environ.get(
             "VLLM_SPARK_TP4_GRAPH_ALLREDUCE_PROTOCOL", "serial_ack"

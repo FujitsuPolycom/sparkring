@@ -56,7 +56,7 @@ file hashes, and refuses an existing output directory. It makes no host or
 network changes.
 
 ```bash
-python -m pytest spark_transport/experiments/glm53_rocenante_overlay -q
+python -m pytest integrations/vllm/rocenante -q
 ```
 
 The tests cover source identity, signature routing, bundle manifests,
@@ -76,6 +76,5 @@ integration ideas, including rank-wide agreement and post-step health checks;
 the adapter here is bound to the separately pinned serving runtime. Neither
 link implies that the complete PR is installed unchanged.
 
-The two upstream PRs motivated SparkRing's hardware-forwarded diagonal
-exploration on a physical ring. The topology adaptation, hybrid SIRCL
-dispatch, and managed deployment are SparkRing's integration work.
+The topology adaptation, hybrid SIRCL dispatch, and managed deployment are
+SparkRing's integration work.

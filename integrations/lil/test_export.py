@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 import subprocess
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -36,6 +37,37 @@ def fabric():
         )
         rows.append(row)
     return {"ranks": rows}
+
+
+@pytest.mark.parametrize("bundle_id", ["café", "模型", "١trial", "-trial", "", "x" * 81, None])
+def test_invalid_bundle_id_rejected_before_platform_or_launcher(bundle_id):
+    with pytest.raises(ValueError, match="ASCII"):
+        module.export({}, {}, {}, bundle_id)
+
+
+@pytest.mark.parametrize("mtp", [False, True])
+def test_gid_profile_boundary_before_bash_execution(monkeypatch, mtp):
+    descriptor = module.read_json(HERE / ("glm53-mtp3.json" if mtp else "glm53.json"))
+    site = module.read_json(HERE / ("site-mtp3.example.json" if mtp else "site.example.json"))
+    network = fabric()
+    network["ranks"][0]["NCCL_IB_GID_INDEX"] = "4"
+    calls = []
+
+    def fake_launcher(argv, **kwargs):
+        calls.append(Path(argv[-1]).read_text(encoding="utf-8"))
+        return SimpleNamespace(returncode=0, stderr="", stdout='{"argv":["docker","run"]}')
+
+    # Exercise exporter policy on any host without invoking Bash or Docker.
+    monkeypatch.setattr(module, "os", SimpleNamespace(name="posix"))
+    monkeypatch.setattr(module.subprocess, "run", fake_launcher)
+    if mtp:
+        with pytest.raises(ValueError, match="MTP3 managed mesh requires NCCL_IB_GID_INDEX=3"):
+            module.export(descriptor, site, network, "gid-boundary")
+        assert calls == []
+    else:
+        bundle = module.export(descriptor, site, network, "gid-boundary")
+        assert len(bundle["ranks"]) == len(calls) == 4
+        assert "NCCL_IB_GID_INDEX=4" in calls[0]
 
 
 @pytest.mark.skipif(
@@ -87,6 +119,10 @@ def test_fabric_gid_indices_reach_container_environment(
                     "SPARK_TP4_BIDIRECTIONAL_PREFILL_SECONDARY_GID1": str(index + 8),
                 }
             )
+    if explicit and descriptor_file == "glm53-mtp3.json":
+        with pytest.raises(ValueError, match="MTP3 managed mesh requires"):
+            module.export(descriptor, site, network, "gid-fixture")
+        return
     bundle = module.export(descriptor, site, network, "gid-fixture")
     for row, rank in zip(network["ranks"], bundle["ranks"], strict=True):
         for key in module.OPTIONAL_FABRIC_KEYS:

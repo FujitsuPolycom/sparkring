@@ -35,10 +35,10 @@ Any non-matching collective calls the original vLLM/NCCL implementation.
 
 `shadow` runs the candidate and reference operation, returns the reference
 result, and checks numerical agreement. `custom` returns the native result
-only after the selected signature has passed its required validation. Native
-session creation failure falls back before enqueue, except for an explicitly
-selected fused prefill session, whose setup is part of its fail-closed
-contract. A failure after enqueue terminates the worker; an in-process fallback
+only after the operator has completed the selected signature's required
+validation. All-reduce native session construction and enqueue failures
+terminate the worker. Vocabulary session creation separately permits fallback
+before enqueue, as described below. A failure after enqueue terminates the worker; an in-process fallback
 could reuse a CUDA stream with an unfulfilled native wait.
 
 The fused prefill candidate is never used during CUDA graph capture. Captured
@@ -52,7 +52,8 @@ The dedicated vocabulary adapter intercepts
 `GroupCoordinator._all_gather_out_place()` rather than the shared NCCL hook.
 It requires group `tp:0`, world size four, gather dimension `-1` or `1`,
 contiguous CUDA BF16 input, and exact input
-`[Q, 38720]` for `Q=1..5`. It produces token-major BF16 `[Q, 154880]`:
+`[Q, 38720]` for `Q=1..VLLM_SPARK_MAX_QUERY_ROWS`. That limit defaults to `6`
+and accepts values through `40`. It produces token-major BF16 `[Q, 154880]`:
 
 ```text
 output[q] = [rank0[q], rank1[q], rank2[q], rank3[q]]
@@ -91,7 +92,7 @@ the following variables:
 | `SPARK_TP4_GRAPH_DIRECT_DOORBELL` | Set to `1` to derive graph replay sequence on the device and use the round-zero payload doorbell for host notification. |
 | `SPARK_TP4_GRAPH_STATUS_PATH` | Optional rank-local JSON status output for graph progress and collective audit data. |
 | `SPARK_TP4_PERSISTENT_OUTPUT_SLOTS` | Bounded number of eager output buffers retained for pointer stability; `0` disables retention. |
-| `SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS` | Positive timeout for native control-channel setup. |
+| `SPARK_TP4_CONTROL_CONNECT_TIMEOUT_SECONDS` | Positive value recorded by the rank capability vote; it does not configure the native control channel, which uses a fixed 10-second connect deadline. |
 | `VLLM_SPARK_TP4_PREFILL_Q512` | Enables the width-6144 eager Q1-Q512 row provider. |
 | `SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT0`, `SPARK_TP4_GRAPH_VOCAB_CONTROL_PORT1` | Captured vocabulary all-gather control-port pair. |
 | `SPARK_TP4_GRAPH_VOCAB_PROGRESS_CPU` | CPU index reserved for captured vocabulary progress. |
@@ -123,13 +124,23 @@ the following variables:
 | `SPARK_TP4_SHADOW_STRICT`, `SPARK_TP4_SHADOW_MAX_ULP` | All-reduce shadow comparison gates. |
 | `SPARK_TP4_VOCAB_SHADOW_COLLECTIVES` | Vocabulary shadow comparison window. |
 | `SPARK_TP4_VOCAB_SHADOW_PROMOTE` | Promotes a vocabulary shape after its byte-exact shadow window passes. |
-| `SPARK_TP4_MAX_INFLIGHT` | Positive bound on native all-reduce and vocabulary submissions. |
-| `SPARK_TP4_VOCAB_EAGER_STAGING_TIMEOUT_SECONDS` | Positive timeout for vocabulary CUDA input staging before the native protocol begins. |
+| `SPARK_TP4_MAX_INFLIGHT` | Native all-reduce and vocabulary submission bound, 1-4096; default 64. |
+| `SPARK_TP4_VOCAB_EAGER_STAGING_TIMEOUT_SECONDS` | Vocabulary CUDA input-staging timeout before the native protocol begins, 5-3600 seconds; default 300. |
 
 Every rank must use the same mode, admitted all-reduce widths, row limit,
 library bytes, and non-overlapping control-port assignments. Invalid values or
 conflicting port reservations fail installation instead of selecting a
 different transport.
+
+When enabled, the rank capability vote compares resolved eager widths and row
+sets, graph admission flags and the selected graph kernel, as well as native
+identities and the existing protocol fields. Provider module names alone are
+not compared: providers returning the same admitted rows are compatible.
+Capability records use `sparkring-sircl-capability/v2`; mixed v1/v2 ranks fail
+the ABI comparison. Update the adapter on every rank together. Device names,
+GID mappings and local addresses remain rank-specific. The vote occurs when
+an eligible collective first reaches it, so it cannot diagnose a rank that
+never enters the vote; consistent launch configuration remains required.
 
 ## Minimal qualified GLM configuration
 

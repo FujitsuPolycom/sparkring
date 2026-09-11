@@ -6,11 +6,14 @@ Implemented native API and vLLM adapter for the GLM-5.2 tensor-parallel
 vocabulary seam. The interface is limited to the exact four-rank contract:
 
 ```text
-input per rank:  BF16 [Q, 38720], Q=1..5
+input per rank:  BF16 [Q, 38720], Q=1..configured query-row limit
 output per rank: BF16 [Q, 154880]
 group:           tp:0, world size 4
 gather dimension: -1 or 1
 ```
+
+`VLLM_SPARK_MAX_QUERY_ROWS` sets the adapter's row limit, defaults to 6, and
+accepts values from 1 through 40. The native session supports rows 1 through 40.
 
 The output is token-major:
 
@@ -46,9 +49,10 @@ ctest --test-dir build/spark-transport \
 
 One native session supports all admitted `Q` values and requires a stable
 caller CUDA stream. The adapter uses the candidate only for the exact
-four-rank CUDA BF16 contract. Every near miss, including graph capture, uses
-the original vLLM/NCCL collective. Session creation failure also falls back
-before enqueue.
+four-rank CUDA BF16 contract. Nonmatching signatures use the original
+vLLM/NCCL collective. With the vocabulary graph option enabled in `custom`
+mode, admitted captures use a prepared graph session; otherwise capture uses
+the original collective. Session creation failure falls back before enqueue.
 
 Shadow mode compares the final output byte-for-byte and returns the reference
 result. `SPARK_TP4_VOCAB_SHADOW_PROMOTE=1` permits per-shape custom promotion
