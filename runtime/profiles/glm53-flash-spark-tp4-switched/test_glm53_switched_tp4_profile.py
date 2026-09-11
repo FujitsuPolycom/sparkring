@@ -63,8 +63,12 @@ def test_model_and_prefill_contract():
     }.items():
         assert args[args.index(flag) + 1] == expected
     speculative = json.loads(args[args.index("--speculative-config") + 1])
-    assert speculative["method"] == "mtp" and speculative["num_speculative_tokens"] == 3
-    assert not any(key.startswith("adaptive") for key in speculative)
+    assert speculative == {
+        "method": "mtp", "num_speculative_tokens": 3, "draft_tensor_parallel_size": 4,
+        "kv_cache_dtype": "auto", "draft_sample_method": "probabilistic",
+        "rejection_sample_method": "standard",
+        "draft_load_config": {"load_format": "safetensors"}, "attention_backend": "B12X",
+    }
     assert profile["environment"]["VLLM_B12X_KDA_PREFILL_COALESCING"] == "1"
     assert profile["environment"]["VLLM_GLM53_MHC_PREFILL_SHARD"] == "1"
     assert "--disable-custom-all-reduce" in args

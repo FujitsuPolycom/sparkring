@@ -165,7 +165,7 @@ def test_profile_selects_spark_kv875_settings_and_no_cache():
 
 
 @pytest.mark.parametrize("rank", [0, 1])
-def test_rank_plan_maps_both_pci_functions_of_one_cage(inputs, rank):
+def test_rank_plan_maps_both_pci_functions_of_one_qsfp_cage(inputs, rank):
     value = plan(inputs, rank)
     env = value["environment"]
     assert env["B12X_ROCE_HCA"] == "rocep1s0f0,rocep1s0f1,roceP2p1s0f0,roceP2p1s0f1"
@@ -525,7 +525,11 @@ def test_r33_cache_preserves_reference_settings_with_explicit_1m_target(
     assert extra["spark_cache_cuda_restore_arena_budget_bytes"] == 268435456
     assert extra["spark_cache_async_page_capture_slot_bytes"] == 536870912
     assert extra["spark_cache_async_page_capture_slot_count"] == 2
-    assert "shared-tp2-jobs-20260911" not in extra["spark_cache_root"]
+    assert extra["spark_cache_root"].startswith("/cache/jit/sparkcache-context/")
+    assert value["binds"]["/cache/jit"] == str(inputs[1].resolve())
+    assert extra["spark_cache_root"] == (
+        f"/cache/jit/sparkcache-context/sparkring-r33-{runtime['image_id'][7:19]}-tp2-cache"
+    )
     assert value["qualification"]["gpu_qualified"] is False
     assert value["activation_blockers"] == []
     launch.validate_runtime_receipt(runtime, value)
@@ -635,8 +639,8 @@ def test_changed_r33_receipt_rejected_before_host_action(inputs):
 
 @pytest.fixture
 def local_source_receipt(inputs, tmp_path, monkeypatch):
-    # The common recipe lands independently from this profile. Integrated CI
-    # uses its repository copy; a development checkout can name the same files.
+    # Use repository source-image contracts unless an explicit fixture path
+    # supplies the same contract files for isolated compatibility tests.
     origin = Path(
         os.environ.get(
             "SPARKRING_TEST_COMMON_SOURCE_IMAGE", str(launch.SOURCE_IMAGE_ROOT)

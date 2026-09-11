@@ -18,9 +18,11 @@ The validation command python -m pytest sparkcache -q reported 1,049 passed
 and 7 skipped in that source checkout on Windows Python 3.12.
 
 The development revision in inherited image labels is historical provenance,
-not the public checkout pin. Runtime changes are bound to vLLM815f839 and
-the patch preimages. The complete inherited image build is not reconstructed
-solely by that vLLM commit: it contains native binaries and earlier overlays.
+not the public checkout pin. The package [manifest](manifest.json) records
+vLLM source revision `815f839060c2781f6bcc47c0d584358b400ea0ea` and the
+installed attention module and cache-library hashes. That revision alone does
+not reconstruct the inherited image, which contains native binaries and
+additional overlays.
 
 ## NVIDIA terms
 
