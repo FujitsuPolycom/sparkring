@@ -9,6 +9,11 @@ import subprocess
 import time
 import urllib.request
 import uuid
+import math
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+from performance.harnesses.validation.prefill_probe import events  # noqa: E402
 
 CONTAINER_PREFIX = "sparkring-model"
 BASE = os.environ.get("BENCH_API_BASE", "http://127.0.0.1:8000")
@@ -19,7 +24,10 @@ def cached_prompt_tokens(usage):
     """Missing accounting cannot establish cold work or successful cache reuse."""
     details = usage.get("prompt_tokens_details")
     cached = details.get("cached_tokens") if isinstance(details, dict) else None
-    if type(cached) is not int or cached < 0:
+    prompt = usage.get('prompt_tokens')
+    if type(prompt) is not int or prompt <= 0:
+        raise ValueError('Usage must provide a positive integer prompt_tokens')
+    if type(cached) is not int or not 0 <= cached <= prompt:
         raise ValueError("Usage must provide a nonnegative integer cached_tokens")
     return cached
 
@@ -67,7 +75,8 @@ def ready():
         ]
         for key in ("num_requests_running", "num_requests_waiting")
     }
-    return all(rows and sum(rows) == 0 for rows in values.values())
+    return all(rows and all(math.isfinite(value) and value == 0 for value in rows)
+               for rows in values.values())
 
 
 def calibrate(tokens, fact):
@@ -125,7 +134,10 @@ def semantic(tokens, fact):
                 "top_p": 1,
             },
         )
-        choice = response["choices"][0]
+        choices = response.get('choices')
+        if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
+            raise ValueError('Completion must contain exactly one choice')
+        choice = choices[0]
         answer = (choice["message"].get("content") or "").strip()
         usage = response["usage"]
         cached = cached_prompt_tokens(usage)
@@ -171,26 +183,27 @@ def prefill(tokens):
     started = time.perf_counter()
     first = None
     usage = None
+    finish = None
     with urllib.request.urlopen(request, timeout=180) as response:
-        for line in response:
-            if not line.startswith(b"data: "):
-                continue
-            raw = line[6:].strip()
-            if raw == b"[DONE]":
-                break
-            chunk = json.loads(raw)
+        for chunk in events(response):
             if chunk.get("usage"):
                 usage = chunk["usage"]
             for choice in chunk.get("choices", []):
+                finish = choice.get("finish_reason") or finish
                 delta = choice.get("delta", {})
                 if first is None and any(
                     delta.get(k) for k in ("content", "reasoning", "reasoning_content")
                 ):
                     first = time.perf_counter() - started
-    if first is None or usage is None:
+    if first is None or not math.isfinite(first) or first <= 0 or not isinstance(usage, dict):
         raise RuntimeError("No streamed token or final usage")
-    assert usage["prompt_tokens"] == tokens
-    assert cached_prompt_tokens(usage) == 0
+    if type(usage.get('prompt_tokens')) is not int or usage['prompt_tokens'] != tokens:
+        raise ValueError('Reported prompt token count differs from calibrated request')
+    if cached_prompt_tokens(usage) != 0:
+        raise ValueError('Cold-prefill timing requires cached_tokens=0')
+    if (finish not in ('stop', 'length') or type(usage.get('completion_tokens')) is not int
+            or usage['completion_tokens'] < 1):
+        raise ValueError('Prefill stream lacks normal completion and output usage')
     return {
         "tokens": tokens,
         "ttft_seconds": first,
@@ -207,12 +220,21 @@ def main():
     p.add_argument("--samples", type=int, default=3)
     p.add_argument("--container-prefix", required=True)
     args = p.parse_args()
-    assert not args.output.exists()
+    try:
+        sizes = list(map(int, args.sizes.split(',')))
+    except ValueError:
+        p.error('Sizes must be comma-separated positive integers')
+    if args.samples < 1 or not sizes or any(value <= 0 for value in sizes):
+        p.error('Samples and sizes must be positive')
+    if args.output.exists() or args.output.is_symlink():
+        p.error('Output receipt must not already exist')
     global CONTAINER_PREFIX
     CONTAINER_PREFIX = args.container_prefix
     if not re.fullmatch(r"sparkring-[a-z0-9-]+", CONTAINER_PREFIX):
         raise ValueError("Unexpected container prefix")
     print("Timing clock: " + str(time.get_clock_info("perf_counter")), flush=True)
+    with args.output.open('x', encoding='utf-8') as output:
+        output.write(json.dumps({'phase': args.phase, 'rows': []}) + '\n')
     deadline = time.monotonic() + 1200
     announced = False
     while not ready():
@@ -233,7 +255,6 @@ def main():
             json.dumps({"phase": args.phase, "rows": rows}, indent=2), encoding="utf-8"
         )
 
-    sizes = list(map(int, args.sizes.split(",")))
     if args.phase == "semantic":
         for i, tokens in enumerate(sizes):
             for row in semantic(tokens, "RIVER-" + str(5938 + i)):

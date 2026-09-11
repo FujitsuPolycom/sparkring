@@ -1,7 +1,7 @@
 # Long-context retrieval validation
 
 Status: **implemented** correctness harness for the
-[profile validation runbook](../../../docs/PROFILE_VALIDATION.md).
+[profile validation runbook](../../../docs/operations/profile-validation.md).
 Python 3.10 or later and the standard library are sufficient.
 
 `needle_hunt.py` checks three deterministic repository fixtures:
@@ -80,6 +80,9 @@ concurrent traffic before supporting a profile-validation claim.
 unique-prefix samples per context. It calibrates prompts using `/tokenize`,
 records actual usage and cache evidence, and writes incremental JSONL receipts.
 It requests one output token; its metric is prompt tokens divided by TTFT.
+Samples require a stream completion terminator, a normal `stop` or `length`
+finish reason, and positive integer prompt/output usage. Malformed cache counts
+are rejected. Missing cache counts remain unknown, not evidence of a cold prefix.
 See the shared runbook for commands and the complete measurement protocol.
 
 ## Growing-conversation soak and idle probes

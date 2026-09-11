@@ -87,8 +87,8 @@ UNPACKED_DTYPES = frozenset({"F8_E4M3", "F8_E5M2", "F16", "BF16", "F32", "F64"})
 # EXL3 stores a quantized matrix as an int16 trellis of shape
 # [K/16, N/16, 16*bits] beside float16 input/output rotation vectors (suh/svh,
 # or the packed sign bitfields su/sv) and an int32 codebook sentinel (mcg or
-# mul1). `runtime/exl3/overlay/vllm/model_executor/layers/quantization/exl3.py`
-# is the executable statement of that geometry and validates it at load time.
+# mul1). This is the packing convention this census recognizes; other layouts
+# remain undetermined unless their logical dimensions are independently known.
 EXL3_TRELLIS_SUFFIX = "trellis"
 EXL3_BLOCK = 16
 EXL3_MIN_BITS = 1
@@ -268,7 +268,7 @@ def read_safetensors_header(path: Path) -> tuple[Mapping[str, Any], int]:
         if header_bytes > MAX_HEADER_BYTES:
             raise CensusError(
                 f"{path.name}: declares a {header_bytes}-byte header, beyond "
-                f"the {MAX_HEADER_BYTES}-byte bound a safetensors header has"
+            f"the {MAX_HEADER_BYTES}-byte header bound this census accepts"
             )
         if HEADER_LENGTH_BYTES + header_bytes > size:
             raise CensusError(
@@ -450,9 +450,15 @@ def read_tensor_records(path: Path) -> tuple[list[TensorRecord], list[str]]:
                 findings.append(f"{shard.name}: {name} has a non-object header entry")
                 continue
             dtype = str(entry.get("dtype", ""))
-            shape = tuple(int(value) for value in entry.get("shape", ()) or ())
-            offsets = entry.get("data_offsets") or ()
-            if len(offsets) != 2:
+            shape_values = entry.get('shape')
+            if (not isinstance(shape_values, list)
+                    or any(type(value) is not int or value < 0 for value in shape_values)):
+                findings.append(f"{shard.name}: {name} has invalid shape dimensions")
+                continue
+            shape = tuple(shape_values)
+            offsets = entry.get("data_offsets")
+            if (not isinstance(offsets, list) or len(offsets) != 2
+                    or any(type(value) is not int for value in offsets)):
                 findings.append(f"{shard.name}: {name} has no data_offsets pair")
                 continue
             start, end = int(offsets[0]), int(offsets[1])
@@ -732,6 +738,11 @@ def read_declared(path: Path) -> dict[str, Any]:
         "bit_rate_fields": fields,
         "declared_average_bits_per_weight": declared_average,
         "declared_average_source": declared_average_source,
+        "declared_average_reading": (
+            "Heuristic: the first numeric bit-rate field in source traversal order, "
+            "excluding head_bits. It may describe one module rather than a global average; "
+            "bit_rate_fields lists all matched declarations."
+        ),
         "tier_vector_histogram": {
             "reading": (
                 "heuristic: every JSON array of at least "

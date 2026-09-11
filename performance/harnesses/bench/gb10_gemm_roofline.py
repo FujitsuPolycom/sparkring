@@ -36,7 +36,7 @@ WHY THE THREE SPECIFIED SHAPES ARE NOT A PEAK MEASUREMENT
 
       * Arithmetic intensity, FLOP per compulsory byte. At M = 40 the B
         operand is most of the traffic and is read once per call, so
-        intensity is bounded near 2*M and the shape is operand-traffic
+        intensity approaches M FLOP/byte and the shape is operand-traffic
         bound long before it is arithmetic bound.
       * Output tile count. With N = 512, a 128-wide output tile gives four
         tile columns, so the launched grid is a small multiple of four
@@ -83,8 +83,8 @@ contacts no configured Spark, starts and stops no service, installs
 nothing, and writes only the JSON path the caller names. Two qualifications
 that OFFLINE does not otherwise imply. It allocates device memory for the
 duration of the run, so it must not be pointed at a GPU that is serving:
-GB10 memory is unified and the control shape allocates hundreds of
-megabytes. It also runs `nvidia-smi` locally to record clock and power
+GB10 memory is unified and the control shape allocates 96 MiB for its three
+BF16 tensors, plus library workspace. It also runs `nvidia-smi` locally to record clock and power
 state, which queries the driver and mutates nothing.
 """
 
@@ -105,8 +105,8 @@ from typing import Any, Callable, Sequence
 SCHEMA = "gb10-dense-gemm-roofline/v1"
 
 EXIT_OK = 0
-# The measurement could not be taken because the environment cannot support
-# it. That is distinct from a measurement that ran and produced numbers.
+# No valid measurement is available: capability checks failed or the
+# measurement produced unusable output. The error states which condition.
 EXIT_UNAVAILABLE = 2
 
 BF16_BYTES = 2
@@ -121,7 +121,7 @@ BYTES_FORMULA = "bytes = 2 * (M*K + K*N + M*N)"
 
 
 class MeasurementUnavailable(RuntimeError):
-    """The environment cannot support the measurement, so none was taken."""
+    """A capability or output-validity failure prevents reporting a usable measurement."""
 
 
 @dataclass(frozen=True)
@@ -795,7 +795,7 @@ def main(
             iterations=arguments.iterations,
         )
     except MeasurementUnavailable as error:
-        print(f"FAIL no measurement taken: {error}", file=sys.stderr)
+        print(f"FAIL no valid measurement available: {error}", file=sys.stderr)
         return EXIT_UNAVAILABLE
 
     print(render_text(report), end="")

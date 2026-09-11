@@ -99,6 +99,13 @@ def test_noncontiguous_payload_fails_closed() -> None:
     assert decision.code is prototype.DecisionCode.REJECT_NONCONTIGUOUS
 
 
+@pytest.mark.parametrize('contiguous', ['false', 1, None])
+def test_contiguity_requires_boolean_evidence(contiguous):
+    decision = prototype.admit_payload(prototype.descriptor_for('indexer', 3, contiguous=contiguous))
+    assert decision.code is prototype.DecisionCode.REJECT_INVALID_DESCRIPTOR
+    assert not decision.admitted
+
+
 def test_arena_boundary_chunks_then_fails_closed_on_overflow() -> None:
     family = prototype.FAMILY_REGISTRY["vocabulary"]
     bytes_per_q = family.byte_geometry(1)[2]

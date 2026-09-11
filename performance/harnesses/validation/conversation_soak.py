@@ -120,7 +120,7 @@ def median(values):
 
 
 def summarize(records):
-    good = [r for r in records if r.get("type") == "turn" and r.get("valid")]
+    good = [r for r in records if r.get("type") == "turn" and r.get("valid") is True]
     continuation = [r for r in good if r.get("continuation")]
     known = [r for r in continuation if r["cached_fraction_reported"] is not None]
     low = [r for r in known if r["cached_fraction_reported"] < 0.5]

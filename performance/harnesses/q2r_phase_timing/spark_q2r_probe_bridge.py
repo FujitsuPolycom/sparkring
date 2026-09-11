@@ -7,8 +7,8 @@ runs; API/frontend processes never allocate probe CUDA state.
 
 The low-rate graph-status reporter calls ``q2r_probe_snapshot()``. It consumes
 at most one atomically replaced JSON command per poll and publishes the
-acknowledged sequence with phase timing state. Route counters are read only by
-the explicit ``drain`` command after inference has stopped.
+acknowledged sequence with phase timing state. ``verify_clean`` and ``drain``
+read route counters; ``drain`` exports route artifacts after inference stops.
 """
 
 from __future__ import annotations

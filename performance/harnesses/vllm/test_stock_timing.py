@@ -54,6 +54,30 @@ _ENV = {
 
 
 class StockTimingTests(unittest.TestCase):
+    def test_event_allocation_failure_does_not_skip_the_collective(self):
+        calls = []
+        with patch.dict(os.environ, _ENV, clear=True):
+            self._observe_startup_q3()
+            with patch.object(timing.Path, 'read_text', return_value='run-1'), \
+                 patch.object(timing, '_initialize_event_pool', side_effect=RuntimeError('event failure')):
+                result = timing.time_original('query', 5, _STREAM, lambda: calls.append(1) or 'result', _Torch)
+        self.assertEqual(result, 'result')
+        self.assertEqual(calls, [1])
+        self.assertTrue(timing.snapshot_for_test()['invalid'])
+
+    def test_failed_operation_invalidates_the_round_without_a_sample(self):
+        def fail():
+            raise RuntimeError('synthetic operation failure')
+        with patch.dict(os.environ, _ENV, clear=True):
+            self._observe_startup_q3()
+            with patch.object(timing.Path, 'read_text', return_value='run-1'):
+                with self.assertRaisesRegex(RuntimeError, 'synthetic operation'):
+                    timing.time_original('query', 5, _STREAM, fail, _Torch)
+        snapshot = timing.snapshot_for_test()
+        self.assertTrue(snapshot['invalid'])
+        self.assertIn('operation_failed', snapshot['invalid_reasons'])
+        self.assertEqual(sum(snapshot['counts'].values()), 0)
+
     def setUp(self) -> None:
         timing.reset_for_test()
         _Event._clock = 0.0

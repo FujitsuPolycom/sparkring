@@ -96,11 +96,10 @@ METHOD
 API DISCOVERY
 
     The kernel entry points are resolved by introspection at run time, and
-    every signature this harness relies on is checked before a call is made
-    and recorded in the report. A signature that does not match is a stated
-    refusal naming what was found. Argument order is never assumed
-    silently: `run_mixed_trellis` is called positionally only after its
-    first ten parameter names are confirmed in the expected order.
+    required positional counts and keyword names are checked and recorded
+    before calls. `run_mixed_trellis` also requires its first ten parameter
+    names in the expected order. The other helpers rely on the positional
+    order documented at their call sites; arity checks do not prove that order.
 
     The resolved `__file__` of the kernel module is compared against the
     path the report names. Import hooks can bind a different implementation
@@ -236,17 +235,15 @@ class Geometry:
 
 DEPLOYED_GEOMETRY = Geometry()
 
-# The four-tuple is (fc1_tile_k, fc1_tile_n, fc2_tile_k, fc2_tile_n). The vLLM
-# EXL3 backend selects it from hidden_size alone: a hidden size divisible by
-# 512 gives (128, 128, 32, 512), one divisible by 256 gives (128, 128, 64,
-# 256), and any other gives (128, 128, 128, 128). Hidden size 6144 is
-# divisible by 512, so the deployed value is the first of those.
+# The four-tuple is (fc1_tile_k, fc1_tile_n, fc2_tile_k, fc2_tile_n).
+# This is the harness's baseline for hidden size 6144. It does not inspect
+# the serving backend's tile selector; use --baseline-tile-config when the
+# deployment being compared selects another geometry.
 DEPLOYED_TILE_CONFIG: tuple[int, int, int, int] = (128, 128, 32, 512)
 DEPLOYED_MOE_BLOCK_SIZE = 8
 
-# The tile geometry the single-bitrate rank-sliced path uses. The backend
-# documents it as losing partial reductions at large prefill token counts, so
-# it is swept only as a labelled control, never as a recommendation.
+# The 64-wide FC1 K tile is a reference control. This harness does not establish
+# its partial-reduction correctness at large prefill token counts.
 FC1_CONTROL_TILE_CONFIG: tuple[int, int, int, int] = (64, 256, 64, 256)
 
 DEPLOYED_SIZES_M: tuple[int, ...] = (40, 128, 512)
@@ -256,8 +253,8 @@ DECODE_SIZE_M = 40
 # The FC1 half of the tile config is held at (128, 128) by default: the mixed
 # three-and-four-bit megakernel requires a 128-wide FC1 K tile. The FC2 half is
 # the swept axis, because the 512-wide FC2 tile is the deployed choice and the
-# claim behind it, that it removes a second persistent wave, is a claim about
-# wave quantization against the device's 48 streaming multiprocessors.
+# hypothesis that it removes a second persistent wave concerns wave
+# quantization against the device's 48 streaming multiprocessors.
 DEFAULT_FC1_K_VALUES: tuple[int, ...] = (128,)
 DEFAULT_FC1_N_VALUES: tuple[int, ...] = (128,)
 DEFAULT_FC2_K_VALUES: tuple[int, ...] = (32, 64, 128)
@@ -270,8 +267,8 @@ ROLE_CANDIDATE = "candidate"
 ROLE_CONTROL = "control"
 
 CONTROL_NOTE = (
-    "labelled control: a 64-wide FC1 K tile is documented in the vLLM EXL3 "
-    "backend as losing partial reductions at large token counts, so it is "
+    "labelled control: correctness of partial reductions with a 64-wide FC1 K tile "
+    "at large token counts is not established by this harness, so it is "
     "measured for reference and not offered as a candidate"
 )
 
@@ -672,13 +669,13 @@ def rank_configurations(entries: Sequence[dict[str, Any]]) -> dict[str, Any]:
                 "speedup_over_baseline": baseline_median / entry["timing"]["median_ms"],
             }
         )
-    candidates = [row for row in ranked if row["role"] != ROLE_BASELINE]
+    candidates = [row for row in ranked if row["role"] == ROLE_CANDIDATE]
     faster = [row for row in candidates if row["speedup_over_baseline"] > 1.0]
     best = max(candidates, key=lambda row: row["speedup_over_baseline"], default=None)
     if best is None:
         verdict = (
-            "only the baseline was measured, so the sweep states nothing about "
-            "alternatives"
+            "no candidate was measured, so the sweep states nothing about "
+            "candidate alternatives; controls remain reference measurements"
         )
     elif not faster:
         verdict = (
@@ -1062,6 +1059,10 @@ def describe_environment(torch_module: Any, device_index: int) -> dict[str, Any]
     """Torch, CUDA, and device facts a reader needs to interpret the numbers."""
 
     properties = torch_module.cuda.get_device_properties(device_index)
+    for name in ('total_memory', 'shared_memory_per_block_optin', 'multi_processor_count'):
+        value = getattr(properties, name, None)
+        if type(value) is not int or value <= 0:
+            raise MeasurementUnavailable(f"CUDA device property {name} must be a known positive integer")
     capability = tuple(torch_module.cuda.get_device_capability(device_index))
     return {
         "torch_version": str(torch_module.__version__),
@@ -1142,6 +1143,8 @@ def require_pool_fits(
 ) -> dict[str, Any]:
     """Refuse a weight pool that would claim too much of device memory."""
 
+    if type(total_memory_bytes) is not int or total_memory_bytes <= 0:
+        raise MeasurementUnavailable('Device memory capacity is unavailable; cannot bound the weight pool')
     predicted = weight_pool_bytes(geometry, pool_size)
     limit = int(total_memory_bytes * fraction)
     if total_memory_bytes and predicted > limit:
@@ -1361,7 +1364,7 @@ def time_calls(
 
     # Warmup absorbs the kernel's compilation, which the first call to a
     # configuration pays, and touches every weight set in the pool.
-    for index in range(warmup):
+    for index in range(max(warmup, len(pool))):
         call(pool[index % len(pool)])
     torch_module.cuda.synchronize(device)
 
@@ -1767,7 +1770,7 @@ def build_report(
             "statistic": (
                 "median with interquartile range, plus observed min and max"
             ),
-            "warmup_calls": arguments.warmup,
+            "warmup_calls": max(arguments.warmup, arguments.pool_size),
             "timed_calls": arguments.iterations,
             "weight_pool": pool_record,
             "weight_pool_note": (
@@ -2092,8 +2095,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=20,
         help=(
-            "untimed calls per configuration before measuring, absorbing the "
-            "kernel's compilation (default: 20)"
+            "minimum untimed calls per configuration; at least one call per "
+            "weight-pool entry runs before timing (default: 20)"
         ),
     )
     parser.add_argument(
@@ -2225,8 +2228,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=_int_list,
         default=DEFAULT_FC2_N_VALUES,
         help=(
-            "FC2 output tile widths to sweep. The deployed 512 is chosen to "
-            "remove a second persistent wave, which is a claim about wave "
+            "FC2 output tile widths to sweep. Test the hypothesis that 512 "
+            "removes a second persistent wave through wave "
             "quantization against the device's SM count (default: 128 256 512)"
         ),
     )
@@ -2284,6 +2287,12 @@ def build_parser() -> argparse.ArgumentParser:
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = build_parser()
     arguments = parser.parse_args(argv)
+    for name in ('hidden_size', 'intermediate_size', 'tier0_experts', 'tier1_experts',
+                 'tier0_bits', 'tier1_bits', 'top_k', 'sms'):
+        if getattr(arguments, name) <= 0:
+            parser.error('--' + name.replace('_', '-') + ' must be positive')
+    if arguments.top_k > arguments.tier0_experts + arguments.tier1_experts:
+        parser.error('--top-k cannot exceed the total expert count')
     if arguments.warmup < 1:
         parser.error(
             "--warmup must be at least 1; this kernel is compiled, so the "
@@ -2419,7 +2428,7 @@ def main(
         print(f"FAIL no measurement taken: {error}", file=sys.stderr)
         return EXIT_UNAVAILABLE
 
-    print(render_text(report), end="")
+    print(render_text(report), end="", file=sys.stderr if arguments.json == '-' else sys.stdout)
     if arguments.json:
         emit_json(report, arguments.json)
     return EXIT_OK

@@ -356,6 +356,9 @@ def build_plan(source_root: str | None = None, *, include_audit: bool = False) -
         "dispatch_contract": {
             "deployed_direct_micro_name": "static",
             "direct_condition": "num_tokens <= 8 and num_tokens * topk < 64",
+            "effective_direct_limit_at_topk8": "num_tokens <= 7; both conditions apply",
+            "direct_child_environment": {"B12X_STATIC_COMPACT_CUTOVER_PAIRS": "64"},
+            "cutover_scope": "Each child sets the route-pair cutover explicitly: 64 for direct/static and 1 for forced dynamic. The live assertion checks the resulting binding implementation.",
             "forced_dynamic_environment": {
                 "B12X_STATIC_COMPACT_CUTOVER_PAIRS": "1"
             },

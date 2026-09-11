@@ -433,6 +433,9 @@ class TargetRouteCapture:
         Both inputs remain device tensors. Shape, dtype, route/sample ordering,
         and the ``sampled + rejected == width`` invariant are validated by the
         CUDA dispatcher/kernel without a host read or synchronization.
+        ``sampled`` counts retained output tokens including the anchor;
+        ``rejected`` counts discarded speculative positions. The accepted
+        speculative prefix therefore has ``sampled - 1`` tokens.
         """
 
         if not 0 <= stream_slot < self.config.max_stream_slots:
@@ -465,9 +468,9 @@ class TargetRouteCapture:
 
         def capture_fn(topk_ids: Any) -> None:
             width = topk_ids.shape[0]
-            # BaseRouter calls the callback for profile, prefill, and Q1
-            # forwards too.  Those are outside this bounded Q5/Q6 artifact and
-            # must remain unaffected, including while the arena is disarmed.
+            # Only five- or six-row target calls fit this arena. Width does not
+            # identify forward mode: the caller must isolate the armed request
+            # window, including any prefill with the same row count.
             if width != 5 and width != 6:
                 return
             self.record_target_routes(

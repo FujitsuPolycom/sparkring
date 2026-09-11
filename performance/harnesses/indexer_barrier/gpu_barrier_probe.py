@@ -1,8 +1,9 @@
 """Bounded GB10 publication probe using the installed B12X barrier helper.
 
-One group barrier is executed; no divergent second round is launched. A delayed
-publishing warp creates the adversarial schedule without intentionally wedging
-the device. The fixed variant inserts the proposed entry synchronization.
+Each kernel executes one group barrier, so blocks cannot disagree about entering
+a subsequent barrier. A delayed publishing warp creates the adversarial schedule.
+The entry-sync variant adds block-level sync_threads before group arrival so all
+warps publish before the block leader announces readiness.
 """
 import hashlib
 import inspect

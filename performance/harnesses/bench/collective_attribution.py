@@ -20,13 +20,13 @@ WHAT THIS READS
       same communicator and stream immediately before each timed collective,
       and times all three regions separately. The first gate absorbs arrival
       skew plus its own cost; the second, entered by every rank at nearly the
-      same instant, measures its own cost alone. Their difference estimates
-      skew and subtracts the gate from itself.
+      same instant, measures gate cost plus any exit skew from the first.
+      Their difference is a lower bound on arrival skew.
     * An `exposure` sweep records end-to-end wall time against a calibrated
       delay injected into the collective's stream region. Its slope is the
       fraction of a marginal collective microsecond that reaches wall time.
 
-    `docs/COLLECTIVE_CRITICAL_PATH_MEASUREMENT.md` specifies the arms, the
+    `performance/methodology/collective-critical-path.md` specifies the arms, the
     validity gates, and what each arm does and does not establish.
 
 WHAT THIS COMPUTES
@@ -176,7 +176,7 @@ class Summary:
 
 
 def quantile(values: Sequence[float], fraction: float) -> float:
-    """Nearest-rank quantile: an observed sample, never an interpolation."""
+    """Observed sample at index round((n-1)*fraction), with ties rounded to even."""
 
     if not values:
         raise ValueError("a quantile requires at least one sample")
@@ -587,6 +587,8 @@ def parse_instance(document: Mapping[str, Any], arm: str, index: int) -> Instanc
         residency[rank] = _samples(
             _require(record, "residency_us", rank_where), "residency_us", rank_where
         )
+        if statistics.median(residency[rank]) <= 0.0:
+            raise DocumentInvalid(f"{rank_where} residency_us must have a positive median for relative timing comparisons")
         if arm == NAKED_ARM:
             for forbidden in ("gate_first_us", "gate_second_us"):
                 if forbidden in record:
@@ -817,6 +819,8 @@ def build_report(
     naked: Capture,
     detect_percent: float,
     exposure: ExposureFit | None,
+    *,
+    exposure_layer: str | None = None,
 ) -> dict[str, Any]:
     """Assemble the narrowed interval and every gate that qualifies it."""
 
@@ -878,6 +882,8 @@ def build_report(
     if exposure is not None:
         exposed_us = exposure.slope * transport_us if exposure.determinate else None
         report["exposure"] = exposure.to_dict()
+        report["exposure"]["measurement_layer"] = exposure_layer
+        report["exposure"]["transport_layer"] = gated.layer
         report["exposure"]["exposed_transport_seconds"] = (
             None
             if exposed_us is None
@@ -887,7 +893,9 @@ def build_report(
             "The slope is fitted over nonnegative injected delays. Applying it "
             "to the whole transport ceiling assumes the exposure stays linear "
             "down to a collective that costs nothing, which no injected delay "
-            "observes."
+            "observes. The sweep's wall-time layer may differ from the transport "
+            "timing layer; this product assumes its injected delays target the "
+            "same collective region and workload."
         )
     return report
 
@@ -1022,7 +1030,7 @@ def render_report(report: Mapping[str, Any]) -> str:
         "\nScope: every number above is arithmetic over timings another "
         "instrument recorded. The transport ceiling is a sum of per-instance "
         "slowest-rank medians, so it bounds the transport's contribution and "
-        "does not identify a critical path through the four ranks.\n"
+        "does not identify a critical path through the participating ranks.\n"
     )
     return "".join(out)
 
@@ -1262,6 +1270,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_NOT_COMPARABLE
 
     fit: ExposureFit | None = None
+    exposure_layer = None
     if arguments.exposure:
         try:
             exposure_layer, points = parse_exposure(load_document(arguments.exposure))
@@ -1273,7 +1282,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"FAIL invalid exposure sweep: {error}", file=sys.stderr)
             return EXIT_INVALID_DOCUMENT
 
-    report = build_report(gated, naked, detect_percent, fit)
+    report = build_report(gated, naked, detect_percent, fit, exposure_layer=exposure_layer)
     print(render_report(report), end="")
     if arguments.json:
         emit_json(report, arguments.json)

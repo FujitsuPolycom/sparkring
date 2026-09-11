@@ -60,6 +60,8 @@ def summarize(samples: Sequence[float]) -> dict[str, float | int]:
 
     if not samples:
         raise ValueError("timing samples must not be empty")
+    if any(type(value) not in (int, float) or not math.isfinite(value) or value < 0 for value in samples):
+        raise ValueError('Timing samples must be finite nonnegative numbers, not booleans')
     return {
         "count": len(samples),
         "min_us": min(samples),
@@ -191,6 +193,10 @@ def main() -> int:
         query_rows = parse_query_rows(args.query_rows)
     except ValueError as error:
         raise SystemExit(str(error)) from error
+    if args.implementation == 'pynccl' and not args.nccl_library:
+        raise SystemExit('--nccl-library is required for pynccl')
+    if args.output.exists() or args.output.is_symlink():
+        raise SystemExit('output receipt must not already exist')
 
     import torch
     import torch.distributed as dist
@@ -203,28 +209,21 @@ def main() -> int:
         world_size=args.world_size,
     )
     pynccl = None
-    if args.implementation == "torch":
-        def all_reduce(inp: Any, out: Any | None, stream: Any | None) -> Any:
-            del out, stream
-            dist.all_reduce(inp)
-            return inp
-    else:
-        if not args.nccl_library:
-            raise SystemExit("--nccl-library is required for pynccl")
-        from vllm.distributed.device_communicators.pynccl import (
-            PyNcclCommunicator,
-        )
-
-        pynccl = PyNcclCommunicator(
-            group=dist.group.WORLD,
-            device=torch.device("cuda:0"),
-            library_path=args.nccl_library,
-        )
-
-        def all_reduce(inp: Any, out: Any | None, stream: Any | None) -> Any:
-            return pynccl.all_reduce(inp, out_tensor=out, stream=stream)
-
     try:
+        if args.implementation == "torch":
+            def all_reduce(inp: Any, out: Any | None, stream: Any | None) -> Any:
+                del out, stream
+                dist.all_reduce(inp)
+                return inp
+        else:
+            from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
+            pynccl = PyNcclCommunicator(
+                group=dist.group.WORLD,
+                device=torch.device("cuda:0"),
+                library_path=args.nccl_library,
+            )
+            def all_reduce(inp: Any, out: Any | None, stream: Any | None) -> Any:
+                return pynccl.all_reduce(inp, out_tensor=out, stream=stream)
         cases = [
             measure_case(
                 torch_module=torch,
@@ -246,6 +245,8 @@ def main() -> int:
             "master_port": args.master_port,
             "implementation": args.implementation,
             "nccl_version": list(torch.cuda.nccl.version()),
+            "nccl_version_source": "torch.cuda.nccl.version; this does not identify a separately loaded PyNccl library",
+            "pynccl_library_path": args.nccl_library if args.implementation == 'pynccl' else None,
             "environment": {
                 name: os.getenv(name)
                 for name in (
@@ -267,10 +268,8 @@ def main() -> int:
             "cases": cases,
         }
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
-            json.dumps(document, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        with args.output.open('x', encoding='utf-8') as output:
+            output.write(json.dumps(document, indent=2, sort_keys=True) + '\n')
         for case in cases:
             timing = case["timing"]
             print(
@@ -283,9 +282,11 @@ def main() -> int:
                 flush=True,
             )
     finally:
-        if pynccl is not None:
-            pynccl.destroy()
-        dist.destroy_process_group()
+        try:
+            if pynccl is not None:
+                pynccl.destroy()
+        finally:
+            dist.destroy_process_group()
     return 0
 
 

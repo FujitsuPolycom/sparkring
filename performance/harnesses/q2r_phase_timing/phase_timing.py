@@ -184,6 +184,7 @@ class PhaseTimingCollector:
         self._dropped_capacity = 0
         self._dropped_unregistered = 0
         self._record_errors = 0
+        self._operation_errors = 0
         self._drain_errors = 0
         self._nvtx_errors = 0
 
@@ -284,8 +285,11 @@ class PhaseTimingCollector:
                 with self._lock:
                     self._nvtx_errors += 1
 
+        succeeded = False
         try:
-            return operation()
+            result = operation()
+            succeeded = True
+            return result
         finally:
             if nvtx_pushed:
                 try:
@@ -294,15 +298,19 @@ class PhaseTimingCollector:
                 except Exception:
                     with self._lock:
                         self._nvtx_errors += 1
-            try:
-                slot.end.record(stream)
-            except Exception:
+            if not succeeded:
                 with self._lock:
-                    self._record_errors += 1
+                    self._operation_errors += 1
             else:
-                with self._lock:
-                    slot.pending = True
-                    self._pending_count += 1
+                try:
+                    slot.end.record(stream)
+                except Exception:
+                    with self._lock:
+                        self._record_errors += 1
+                else:
+                    with self._lock:
+                        slot.pending = True
+                        self._pending_count += 1
 
     def drain(self) -> DrainResult:
         """Poll and aggregate ready events without synchronizing.
@@ -386,6 +394,7 @@ class PhaseTimingCollector:
                     "unregistered_descriptor": self._dropped_unregistered,
                 },
                 "errors": {
+                    "operation": self._operation_errors,
                     "record": self._record_errors,
                     "drain": self._drain_errors,
                     "nvtx": self._nvtx_errors,
@@ -416,6 +425,7 @@ class PhaseTimingCollector:
             self._dropped_capacity = 0
             self._dropped_unregistered = 0
             self._record_errors = 0
+            self._operation_errors = 0
             self._drain_errors = 0
             self._nvtx_errors = 0
 

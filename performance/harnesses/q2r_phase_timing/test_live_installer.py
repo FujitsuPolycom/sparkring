@@ -5,10 +5,46 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from . import live_installer
 from .live_installer import LivePins, LiveQ2RSession, LiveTypes
 from .vllm_adapter import AdapterValidationError, source_sha256
+
+
+def test_concurrent_module_installers_create_only_one_session(monkeypatch):
+    monkeypatch.setenv('SPARK_Q2R_PHASE_TIMING', '1')
+    monkeypatch.delenv('SPARK_Q2R_PHASE_TIMING_NVTX', raising=False)
+    monkeypatch.setattr(live_installer, '_session', None)
+    monkeypatch.setitem(sys.modules, 'torch', SimpleNamespace(cuda=SimpleNamespace(current_stream=lambda: None)))
+    monkeypatch.setitem(sys.modules, 'vllm', SimpleNamespace(__version__=live_installer._EXPECTED_VLLM_VERSION))
+    monkeypatch.setattr(live_installer, '_load_types', lambda: None)
+    monkeypatch.setattr(live_installer, '_capacity', lambda: 1)
+    monkeypatch.setattr(live_installer, '_depth_attestation', lambda: SimpleNamespace(
+        configured_speculative_steps=5, attested_round_depths=(5,), adaptive_window=0))
+    rendezvous = threading.Barrier(2)
+    candidates = []
+    class Candidate:
+        def __init__(self, **kwargs):
+            candidates.append(self)
+        def install(self):
+            try:
+                rendezvous.wait(timeout=0.1)
+            except threading.BrokenBarrierError:
+                pass
+    monkeypatch.setattr(live_installer, 'LiveQ2RSession', Candidate)
+    def install():
+        try:
+            live_installer.install()
+            return 'installed'
+        except RuntimeError:
+            return 'refused'
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(lambda _: install(), range(2)))
+    assert sorted(outcomes) == ['installed', 'refused']
+    assert len(candidates) == 1
 
 
 @dataclass

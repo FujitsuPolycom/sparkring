@@ -1,7 +1,8 @@
-"""Opt-in, source-pinned live installer for the Q-2R timing census.
+"""Opt-in, source-pinned installer for speculative-decoding phase timing.
 
 Importing this module has no side effects. ``install()`` additionally requires
-``SPARK_Q2R_PHASE_TIMING=1``. No launch or sitecustomize file imports it yet.
+``SPARK_Q2R_PHASE_TIMING=1``. The worker bootstrap in
+``spark_q2r_probe_bridge.install`` calls it when the combined probe is enabled.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 import functools
 import importlib
 import os
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -643,10 +645,17 @@ def _depth_attestation() -> SpeculativeDepthAttestation:
 
 
 _session: LiveQ2RSession | None = None
+_install_lock = threading.Lock()
 
 
 def install() -> None:
     """Validate pins, preallocate events, then install all live hooks."""
+    with _install_lock:
+        _install_once()
+
+
+def _install_once() -> None:
+    """Hold the installation lock through validation, patching, and publication."""
     global _session
     if os.getenv("SPARK_Q2R_PHASE_TIMING") != "1":
         raise RuntimeError("SPARK_Q2R_PHASE_TIMING=1 is required")

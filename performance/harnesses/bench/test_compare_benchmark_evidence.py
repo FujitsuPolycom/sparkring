@@ -16,6 +16,18 @@ import pytest
 import compare_benchmark_evidence as cmp  # noqa: E402
 
 
+def test_missing_cell_mode_cannot_classify_as_sustained():
+    document = _make_doc()
+    del document['results'][0]['benchmark_mode']
+    assert cmp.classify_document_type(document) == 'indeterminate'
+
+
+def test_summary_table_cannot_supply_missing_canonical_throughput():
+    document = _make_doc()
+    del document['results'][0]['aggregate_tps']
+    assert 'C8' not in cmp.extract_throughput(document)
+
+
 # ---------------------------------------------------------------------------
 # Fixtures — actual llm_decode_bench v0.4.31 raw schema
 # ---------------------------------------------------------------------------

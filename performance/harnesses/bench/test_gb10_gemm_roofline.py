@@ -454,7 +454,7 @@ class NoDeviceTest(unittest.TestCase):
 
         self.assertEqual(code, bench.EXIT_UNAVAILABLE)
         self.assertNotEqual(code, 0)
-        self.assertIn("no measurement taken", errors.getvalue())
+        self.assertIn("no valid measurement available", errors.getvalue())
         self.assertIn("no CUDA device", errors.getvalue())
 
     def test_main_exits_non_zero_and_explains_when_torch_is_absent(self) -> None:

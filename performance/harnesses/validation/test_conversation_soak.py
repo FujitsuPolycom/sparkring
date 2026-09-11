@@ -149,6 +149,11 @@ def test_unknown_cache_usage_is_not_a_miss():
     assert summary["fraction_below_half_cached"] is None
 
 
+def test_summary_does_not_count_nonboolean_validity_as_success():
+    summary = soak.summarize([{'type': 'turn', 'phase': 'soak', 'valid': 'false'}])
+    assert summary['valid_turns'] == 0 and summary['soak_turns'] == 0
+
+
 def test_fixture_seed_reproducible_and_image_added(monkeypatch):
     assert soak.fixture("seed-one", 1000) == soak.fixture("seed-one", 1000)
     assert soak.fixture("seed-one", 1000) != soak.fixture("seed-two", 1000)

@@ -58,24 +58,24 @@ def test_two_q6_managers_are_explicitly_target_and_draft() -> None:
     )
 
 
-def test_explicit_mtp_step_promotes_only_q1_to_draft() -> None:
+def test_explicit_draft_role_selects_step_descriptor_independent_of_query_length() -> None:
     registry = ManagerRoleRegistry()
-    q1 = Manager()
-    q6 = Manager()
+    draft = Manager()
+    target = Manager()
     registry.register(
-        q1, decode_query_len=5, role=ManagerRole.DRAFT_BLOCK
+        draft, decode_query_len=5, role=ManagerRole.DRAFT_BLOCK
     )
     registry.register(
-        q6, decode_query_len=6, role=ManagerRole.TARGET_VERIFY
+        target, decode_query_len=6, role=ManagerRole.TARGET_VERIFY
     )
     descriptor = registry.graph_descriptor(
-        q1, graph_method="run_fullgraph", draft_step=3
+        draft, graph_method="run_fullgraph", draft_step=3
     )
     assert descriptor.kind is PhaseKind.DRAFT_MULTISTEP_GRAPH
     assert "step=3" in descriptor.name
     with pytest.raises(RuntimeError, match="non-draft"):
         registry.graph_descriptor(
-            q6, graph_method="run_fullgraph", draft_step=0
+            target, graph_method="run_fullgraph", draft_step=0
         )
 
 

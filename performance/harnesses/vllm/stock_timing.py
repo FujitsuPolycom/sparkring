@@ -234,15 +234,27 @@ def time_original(
         _invalidate("stream_changed")
         return operation()
 
-    _initialize_event_pool(torch_module, stream)
-    event_index = sum(len(samples) for samples in _samples.values())
-    start, stop = _event_pairs[event_index]
-    host_before_ns = time.perf_counter_ns()
-    start.record(stream)
+    try:
+        _initialize_event_pool(torch_module, stream)
+        event_index = sum(len(samples) for samples in _samples.values())
+        start, stop = _event_pairs[event_index]
+        host_before_ns = time.perf_counter_ns()
+        start.record(stream)
+    except Exception:
+        _invalidate('event_record_failed')
+        return operation()
     host_start_ns = time.perf_counter_ns()
-    result = operation()
+    try:
+        result = operation()
+    except BaseException:
+        _invalidate('operation_failed')
+        raise
     host_enqueue_us = (time.perf_counter_ns() - host_start_ns) / 1000.0
-    stop.record(stream)
+    try:
+        stop.record(stream)
+    except Exception:
+        _invalidate('event_record_failed')
+        return result
     host_after_ns = time.perf_counter_ns()
 
     if _first_start is None:

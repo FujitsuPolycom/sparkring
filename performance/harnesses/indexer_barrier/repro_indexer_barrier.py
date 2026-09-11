@@ -75,8 +75,8 @@ def simulate(barrier):
         except StopIteration:
             pending.pop(key)
 
-    # B32 represents a different warp and has lowest priority: hardware may delay it
-    # warp while block leaders publish arrival and other blocks consume it.
+    # The ordering below deliberately delays B32's publishing warp while leaders
+    # announce arrival. It is an adversarial interleaving, not a hardware priority rule.
     while pending:
         progressed = False
         for key in ("A0", "A32", "B0", "C0", "C32", "B32"):

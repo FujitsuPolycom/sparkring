@@ -186,8 +186,8 @@ def classify(reuse_factor: float) -> str:
 def expert_expansion_summary(records: Iterable[dict], width: int) -> dict:
     """Summarize E(k) across every layer-round observation.
 
-    E(k) is the number of unique experts touched by positions ``1..k``
-    divided by the unique experts touched by position 1 in the same layer and
+    E(k) is the number of unique experts touched by zero-based positions ``0..k-1``
+    divided by the unique experts touched by position 0 in the same layer and
     round.
     """
 
@@ -202,8 +202,8 @@ def expert_expansion_summary(records: Iterable[dict], width: int) -> dict:
     observations = len(values_by_k[0]) if values_by_k else 0
     return {
         "definition": (
-            "E(k) = unique experts in positions 1..k divided by unique "
-            "experts in position 1, measured per layer-round observation"
+            "E(k) = unique experts in zero-based positions 0..k-1 divided by unique "
+            "experts in position 0, measured per layer-round observation; k is a count"
         ),
         "observations": observations,
         "curve": [
@@ -528,7 +528,7 @@ def adjacent_round_reuse_summary(records: Iterable[dict], width: int) -> dict:
         "available": bool(round_pairs),
         "definition": (
             "observations are matching layers in rounds r and r+1 within the "
-            "same request_key; each round-layer set unions positions 1..width"
+            "same request_key; each round-layer set unions zero-based positions 0..width-1"
         ),
         "round_pairs": round_pairs,
         "layer_observations": len(jaccard_values),
@@ -569,9 +569,9 @@ def _without_provenance(value: object) -> object:
 def canonical_route_digest(records: Iterable[dict]) -> str:
     """Return an order-stable SHA-256 for rank comparison.
 
-    Provenance objects are excluded because their rank and environment fields
-    are expected to differ. All route, request, round, layer, position, and
-    capture metadata remains covered.
+    Entire provenance objects are excluded, including image and checkpoint
+    identities. This compares route content within an independently identified
+    capture; callers must compare provenance separately across captures.
     """
 
     canonical_records = sorted(
@@ -617,7 +617,9 @@ def summarize(records: Iterable[dict], width: int = 5) -> dict:
             ),
         },
         "decision": classify(_percentile(reuse, 0.10)),
+        "decision_basis": "Heuristic triage using p10 reuse: GO >=1.8, MEASURE >=1.3, otherwise NO-GO; these thresholds are not measured speedup guarantees.",
         "canonical_route_sha256": canonical_route_digest(record_list),
+        "canonical_route_digest_scope": "Route content only; all provenance is excluded and must be compared separately.",
         "expert_expansion": expert_expansion_summary(record_list, width),
         "adjacent_round_reuse": adjacent_round_reuse_summary(
             record_list, width

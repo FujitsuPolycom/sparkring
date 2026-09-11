@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import mixed_trellis_roofline as bench
 
@@ -517,6 +518,15 @@ class SweepEnumerationTest(unittest.TestCase):
 
 
 class SkipAndRankingTest(unittest.TestCase):
+    def test_control_is_reported_without_becoming_a_candidate(self):
+        entries = _sweep_entries()
+        fastest = min((entry for entry in entries if entry['status'] == 'measured'),
+                      key=lambda entry: entry['timing']['median_ms'])
+        fastest['configuration']['role'] = bench.ROLE_CONTROL
+        ranking = bench.rank_configurations(entries)
+        self.assertEqual(ranking['faster_than_baseline'], 0)
+        self.assertNotIn(fastest['configuration']['name'], ranking['verdict'])
+
     def test_a_failed_configuration_is_recorded_with_its_exception_type(self) -> None:
         entry = bench.skipped_entry(
             bench.Configuration((128, 128, 32, 128), 16),
@@ -1045,6 +1055,10 @@ class FakeTorch:
 
 
 class TimedLoopTest(unittest.TestCase):
+    def test_warmup_touches_every_pool_entry_before_timing(self):
+        _, calls = self._drive(FakeTorch(), FakeOutput(), warmup=1, iterations=4, pool_size=3)
+        self.assertEqual(calls[:3], ['tier0_0', 'tier0_1', 'tier0_2'])
+        self.assertEqual(len(calls), 7)
     def _drive(self, torch_module, output, warmup=3, iterations=6, pool_size=2):
         calls = []
 
@@ -1106,7 +1120,7 @@ class TimedLoopTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            calls,
+            calls[2:],
             ["tier0_0", "tier0_1", "tier0_0", "tier0_1", "tier0_0"],
         )
 
@@ -1139,10 +1153,9 @@ class PoolFitTest(unittest.TestCase):
 
         self.assertIn("--pool-size", str(raised.exception))
 
-    def test_an_unknown_device_memory_size_does_not_block_the_run(self) -> None:
-        record = bench.require_pool_fits(GEOMETRY, 3, 0, 0.25)
-
-        self.assertIsNone(record["fraction_of_device_memory"])
+    def test_unknown_device_memory_size_refuses_an_unbounded_pool(self) -> None:
+        with self.assertRaises(bench.MeasurementUnavailable):
+            bench.require_pool_fits(GEOMETRY, 3, 0, 0.25)
 
 
 class ClockStateTest(unittest.TestCase):
@@ -1352,6 +1365,30 @@ class TextRenderTest(unittest.TestCase):
 
 
 class ArgumentTest(unittest.TestCase):
+    def test_invalid_geometry_is_rejected_before_device_access(self):
+        for option, value in [('--hidden-size', '0'), ('--top-k', '257'),
+                              ('--tier0-experts', '-1'), ('--sms', '0')]:
+            with self.subTest(option=option), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                bench.parse_args(['measure', option, value])
+
+    def test_json_stdout_contains_only_the_report(self):
+        output, errors = io.StringIO(), io.StringIO()
+        with patch.object(bench, 'open_device', return_value=('device', {})), \
+             patch.object(bench, 'module_path_record', return_value={'matches': True}), \
+             patch.object(bench, 'resolve_api', return_value=(None, {})), \
+             patch.object(bench, 'run_measure', return_value=_measure_report()), \
+             redirect_stdout(output), redirect_stderr(errors):
+            result = bench.main(['measure', '--json', '-'], load_torch=lambda: None,
+                                load_kernel=lambda **kwargs: (None, None, None))
+        self.assertEqual(result, bench.EXIT_OK)
+        self.assertIsInstance(json.loads(output.getvalue()), dict)
+        self.assertTrue(errors.getvalue())
+
+    def test_missing_device_properties_refuse_measurement(self):
+        torch = SimpleNamespace(cuda=SimpleNamespace(get_device_properties=lambda index: SimpleNamespace()))
+        with self.assertRaises(bench.MeasurementUnavailable):
+            bench.describe_environment(torch, 0)
+
     def test_defaults_measure_the_deployed_geometry_on_device_zero(self) -> None:
         arguments = bench.parse_args(["measure"])
 

@@ -3,8 +3,10 @@
 ## Status
 
 The capacity selector in `prefill_capacity_pool.py` is
-**implemented** and **offline-validated**. Native dispatch is **unsupported**.
-The serving adapter defaults `VLLM_SPARK_TP4_PREFILL_CAPACITY_POOL` to `0` and
+**implemented** with synthetic CPU tests. Native dispatch is **unsupported**.
+The serving adapter in
+[`integrations/vllm/spark_tp4_backend.py`](../../../integrations/vllm/spark_tp4_backend.py)
+defaults `VLLM_SPARK_TP4_PREFILL_CAPACITY_POOL` to `0` and
 fails before loading native code when an operator sets it to `1`.
 
 This contract does not claim a live result. It defines the adapter surface and
@@ -95,11 +97,11 @@ The Python adapter intentionally contains no tiled-engine native symbol lookup.
 ## Port coexistence
 
 The proposed shared pair is disjoint from exact decode Q1-Q40 under both the
-default exact base `11000/11001` and the canary base `11100/11101`. It cannot
+default exact base `11000/11001` and the alternate base `11100/11101`. It cannot
 coexist with an arbitrarily extended exact-Q prefill family:
 
 - default exact base: the first projected collision is Q751;
-- canary exact base: the first projected collision is Q701.
+- alternate exact base: the first projected collision is Q701.
 
 Capacity mode must replace exact-Q reservations above Q40. Before live use,
 the shared namespace validator must reserve the one tiled-engine pair and prove

@@ -43,8 +43,14 @@ def events(response):
         if value == '[DONE]':
             return
         event = json.loads(value)
+        if not isinstance(event, dict):
+            raise ValueError('Streaming event must be a JSON object')
         if event.get('error'):
             raise ValueError('Endpoint reported a streaming error')
+        choices = event.get('choices', [])
+        if (not isinstance(choices, list) or len(choices) > 1
+                or any(not isinstance(choice, dict) for choice in choices)):
+            raise ValueError('Single-completion stream must contain at most one choice per event')
         yield event
     raise ValueError('Stream ended without its completion terminator')
 
@@ -76,8 +82,8 @@ def measure(endpoint, model, target, limit, temperature, key, timeout):
         text = build_text(nonce, chars)
         messages = [{'role': 'user', 'content': text}]
         with request(endpoint + '/tokenize', {'model': model, 'messages': messages}, key, timeout) as response:
-            count = int(json.load(response)['count'])
-        if count <= 0:
+            count = json.load(response).get('count')
+        if type(count) is not int or count <= 0:
             raise ValueError('Tokenizer returned an invalid count')
         if abs(count - target) <= max(4, target * 0.005):
             break
@@ -89,18 +95,26 @@ def measure(endpoint, model, target, limit, temperature, key, timeout):
     payload = {'model': model, 'messages': messages, 'temperature': temperature, 'top_p': 1,
                'max_tokens': 1, 'stream': True, 'stream_options': {'include_usage': True}}
     started = time.perf_counter()
-    ttft, usage = None, None
+    ttft, usage, finish = None, None, None
     with request(endpoint + '/v1/chat/completions', payload, key, timeout) as response:
         for event in events(response):
             if ttft is None and has_token(event):
                 ttft = time.perf_counter() - started
             if event.get('usage'):
                 usage = event['usage']
-    if ttft is None or ttft <= 0 or not usage or not usage.get('prompt_tokens'):
+            for choice in event.get('choices', []):
+                finish = choice.get('finish_reason') or finish
+    if (ttft is None or ttft <= 0 or not isinstance(usage, dict)
+            or type(usage.get('prompt_tokens')) is not int or usage['prompt_tokens'] <= 0):
         raise ValueError('Missing first-token event or authoritative usage')
+    if (finish not in ('stop', 'length') or type(usage.get('completion_tokens')) is not int
+            or usage['completion_tokens'] < 1):
+        raise ValueError('Missing normal finish reason or authoritative completion usage')
     cached = (usage.get('prompt_tokens_details') or {}).get('cached_tokens')
+    if cached is not None and (type(cached) is not int or not 0 <= cached <= usage['prompt_tokens']):
+        raise ValueError('Invalid reported cached-token count')
     return {'target_tokens': target, 'tokenized_prompt_tokens': count, 'prompt_sha256': hashlib.sha256(text.encode()).hexdigest(),
-            'nonce': nonce, 'usage': usage, 'ttft_seconds': ttft,
+            'nonce': nonce, 'usage': usage, 'finish_reason': finish, 'ttft_seconds': ttft,
             'prompt_tokens_per_second': usage['prompt_tokens'] / ttft,
             'cached_tokens_reported': cached,
             'cold_prefix_confirmed': cached == 0,

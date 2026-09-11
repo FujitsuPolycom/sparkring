@@ -71,6 +71,8 @@ class B12xFloorPlanTest(unittest.TestCase):
 
     def test_weight_size_uses_tp4_local_intermediate(self) -> None:
         sizes = synthetic_weight_bytes()
+        # FP4 packs two weights per byte. FC1 combines gate/up outputs; FC2
+        # maps the local 512-wide intermediate back to the 6144-wide hidden state.
         self.assertEqual(sizes["w1_fp4"], 256 * 1024 * 3072)
         self.assertEqual(sizes["w2_fp4"], 256 * 6144 * 256)
         self.assertEqual(sizes["total"], sum(v for k, v in sizes.items() if k != "total"))

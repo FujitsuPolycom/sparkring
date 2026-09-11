@@ -13,9 +13,11 @@ contact the cluster, run benchmarks, or mutate anything.
 
 ## Raw schema (llm_decode_bench v0.4.31)
 
-- ``metadata``: top-level object with ``version``, ``decode_mode``,
+- ``metadata``: top-level object with ``engine``, ``model``, ``version``,
+  ``primary_decode_layer``, ``decode_mode``,
   ``duration_per_test``, ``max_tokens``, ``temperature``,
-  ``decode_warmup_seconds``, ``cell_warmup_timeout_seconds``,
+  ``decode_warmup_seconds``, ``decode_warmup_context``,
+  ``decode_warmup_concurrency``, ``cell_warmup_timeout_seconds``,
   ``unique_context_percent``, ``shared_context_percent``, ``dcp_size``,
   ``max_total_tokens``, ``skip_prefill``, ``ignore_eos``,
   ``concurrency_levels``, ``context_lengths``.
@@ -309,7 +311,7 @@ def classify_document_type(doc: dict[str, Any]) -> str:
         for cell in results:
             if isinstance(cell, dict):
                 bmode = cell.get("benchmark_mode")
-                if bmode is not None and bmode != "duration":
+                if bmode != "duration":
                     return "indeterminate"
 
     if max_tokens >= 256 and duration >= 10:
@@ -515,21 +517,6 @@ def extract_throughput(doc: dict[str, Any]) -> dict[str, float]:
                 try:
                     nk = f"C{int(conc)}"
                     val = float(agg)
-                except (ValueError, TypeError):
-                    continue
-                if nk in required_labels and nk not in tps:
-                    tps[nk] = val
-
-    # Fallback: summary_table (only if results didn't provide a value)
-    summary = doc.get("summary_table")
-    if isinstance(summary, dict):
-        for _ctx_key, conc_map in summary.items():
-            if not isinstance(conc_map, dict):
-                continue
-            for k, v in conc_map.items():
-                try:
-                    nk = f"C{int(k)}"
-                    val = float(v)
                 except (ValueError, TypeError):
                     continue
                 if nk in required_labels and nk not in tps:

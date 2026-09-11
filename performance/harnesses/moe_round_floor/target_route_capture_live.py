@@ -7,7 +7,7 @@ runner, loads the CUDA extension, allocates the fixed capture arena, and binds
 exactly 75 target ``BaseRouter.capture_fn`` callbacks before graph warmup.
 
 The deployed GLM-5.2 stack has a separate speculator.  Only
-``Worker.model_runner.static_forward_context`` is traversed; no draft object
+``Worker.model_runner.compilation_config.static_forward_context`` is traversed; no draft object
 or scheduler-wide routed-expert capturer is enabled.
 """
 
@@ -41,7 +41,7 @@ except ImportError:  # pragma: no cover - direct experiment-module deployment
     )
 
 
-# Exact deployed 2026-07-26 sources. A version drift is a hard refusal, not a
+# Exact callable source fingerprints. A version drift is a hard refusal, not a
 # warning, because the target/draft ownership and pre-graph timing are safety
 # properties of this experiment.
 DEPLOYED_WORKER_INITIALIZE_SHA256 = (

@@ -1,8 +1,8 @@
 """Low-overhead vLLM all-reduce shape tracer.
 
-Install this module through the adjacent ``sitecustomize.py`` and set
-``VLLM_SPARK_TRACE_ALLREDUCE=1``. The tracer observes dispatch inputs and then
-calls the original communicator unchanged.
+Call ``install()`` explicitly during startup before using the communicator.
+The module has no automatic installer or environment gate. It logs each shape's
+first call and power-of-two counts, then calls the original communicator.
 """
 
 from __future__ import annotations

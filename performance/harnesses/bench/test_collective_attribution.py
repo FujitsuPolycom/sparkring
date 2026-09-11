@@ -547,6 +547,32 @@ class ExampleDocumentTest(unittest.TestCase):
 
 
 class CommandLineTest(unittest.TestCase):
+    def test_zero_residency_median_is_a_structured_invalid_document(self):
+        for arm in (attribution.GATED_ARM, attribution.NAKED_ARM):
+            with self.subTest(arm=arm), TemporaryDirectory() as directory:
+                root = Path(directory)
+                documents = {a: _capture(a) for a in (attribution.GATED_ARM, attribution.NAKED_ARM)}
+                for rank in documents[arm]['instances'][0]['ranks'].values():
+                    rank['residency_us'] = [0.0, 0.0, 0.0]
+                paths = {a: self._write(root, a + '.json', doc) for a, doc in documents.items()}
+                code, out, err = self._run(['--gated', paths['gated'], '--naked', paths['naked']])
+                self.assertEqual(code, attribution.EXIT_INVALID_DOCUMENT)
+                self.assertIn('residency', err)
+                self.assertEqual(out, '')
+
+    def test_exposure_reports_both_measurement_layers(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            documents = attribution.example_documents()
+            paths = {a: self._write(root, a + '.json', doc) for a, doc in documents.items()}
+            output = root / 'report.json'
+            code, _, _ = self._run(['--gated', paths['gated'], '--naked', paths['naked'],
+                                     '--exposure', paths['exposure'], '--json', str(output)])
+            self.assertEqual(code, attribution.EXIT_OK)
+            exposure = json.loads(output.read_text())['exposure']
+            self.assertEqual(exposure['measurement_layer'], 'end_to_end')
+            self.assertEqual(exposure['transport_layer'], 'device')
+
     def _run(self, argv: list[str]) -> tuple[int, str, str]:
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
@@ -644,7 +670,7 @@ class SafetyClassTest(unittest.TestCase):
 
     def test_the_module_docstring_names_the_design_document(self) -> None:
         self.assertIn(
-            "docs/COLLECTIVE_CRITICAL_PATH_MEASUREMENT.md",
+            "performance/methodology/collective-critical-path.md",
             attribution.__doc__ or "",
         )
 

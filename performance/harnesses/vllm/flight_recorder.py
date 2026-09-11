@@ -1,4 +1,8 @@
-"""Low-volume first-request ordering trace for TP4/B12X integration."""
+"""Opt-in TP4/B12X ordering trace after explicit activation.
+
+Activation enables logging for every subsequent instrumented call until process
+exit. The recorder has no first-request cutoff or sample bound.
+"""
 
 from __future__ import annotations
 

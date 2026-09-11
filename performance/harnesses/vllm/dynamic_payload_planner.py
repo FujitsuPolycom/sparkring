@@ -1,8 +1,7 @@
-"""PROTOTYPE: formula admission and restart-only capture planning.
+"""Research-only formula admission and restart-only capture planning.
 
-Question: can every positive width of a known collective family be admitted
-without an exact-shape whitelist, while unknown semantics, malformed layouts,
-and arena overflow still fail closed?
+Known collective families are admitted by byte geometry and arena capacity.
+Unknown semantics, malformed layouts, and arena overflow are rejected.
 
 This GPU-free module is deliberately not imported by a live adapter.  It
 builds on ``decode_payload_contract`` and emits planning evidence only.
@@ -353,11 +352,12 @@ def admit_payload(descriptor: PayloadDescriptor) -> AdmissionDecision:
         or isinstance(descriptor.payload_bytes, bool)
         or not isinstance(descriptor.payload_bytes, int)
         or descriptor.payload_bytes < 1
+        or type(descriptor.contiguous) is not bool
     ):
         return _rejection(
             DecisionCode.REJECT_INVALID_DESCRIPTOR,
             descriptor,
-            "query_rows and payload_bytes must be positive integers",
+            "query_rows and payload_bytes must be positive integers; contiguous must be boolean",
             family=family,
         )
     if (

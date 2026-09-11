@@ -119,6 +119,19 @@ def build_model(root: Path) -> None:
 
 
 class HeaderParsingTest(unittest.TestCase):
+    def test_malformed_tensor_metadata_does_not_suppress_other_records(self):
+        for field, value in [('shape', 7), ('shape', ['invalid']),
+                             ('data_offsets', 7), ('data_offsets', ['invalid', 2])]:
+            with self.subTest(field=field, value=value), TemporaryDirectory() as directory:
+                root = Path(directory)
+                entry = {'dtype': 'F16', 'shape': [1], 'data_offsets': [0, 2], field: value}
+                raw = json.dumps({'bad.weight': entry}).encode()
+                (root / 'bad.safetensors').write_bytes(len(raw).to_bytes(8, 'little') + raw + b'00')
+                write_shard(root / 'good.safetensors', {'good.weight': ('F16', [1])})
+                records, findings = census.read_tensor_records(root)
+                self.assertEqual(len(records), 1)
+                self.assertTrue(any('bad.weight' in finding for finding in findings))
+
     def test_reads_dtype_shape_and_offsets_without_payload(self) -> None:
         with TemporaryDirectory() as raw:
             shard = Path(raw) / "one.safetensors"

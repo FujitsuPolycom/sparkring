@@ -195,7 +195,7 @@ def test_capacity_and_unregistered_drops_are_explicit() -> None:
     }
 
 
-def test_operation_exception_propagates_and_end_event_records() -> None:
+def test_operation_exception_is_counted_without_a_successful_timing_sample() -> None:
     factory = EventFactory([2.0, 0.0])
     timing = PhaseTimingCollector(
         event_factory=factory,
@@ -206,8 +206,10 @@ def test_operation_exception_propagates_and_end_event_records() -> None:
 
     with pytest.raises(ZeroDivisionError):
         timing.measure(TARGET, object(), lambda: 1 / 0)
-    assert factory.events[1].records == 1
-    assert timing.snapshot()["pending"] == 1
+    assert factory.events[1].records == 0
+    assert timing.snapshot()["pending"] == 0
+    assert timing.snapshot()['errors']['operation'] == 1
+    assert timing.drain().completed == 0
 
 
 def test_snapshot_delta_is_additive_and_epoch_checked() -> None:
