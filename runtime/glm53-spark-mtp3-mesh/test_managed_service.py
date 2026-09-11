@@ -116,9 +116,10 @@ def test_health_rejects_stalled_monitor_even_if_http_thread_is_alive():
     assert not result.health_body('nonce')['local_ready']
 
 
-def test_health_requires_exactly_two_children():
+@pytest.mark.parametrize("count", [0, 1, 3])
+def test_health_requires_exactly_two_children(count):
     result = owner()
-    result.children = []
+    result.children = [Child() for _ in range(count)]
     assert not result.health_body('nonce')['local_ready']
 
 
@@ -349,7 +350,7 @@ def test_monitor_keeps_fabric_checks_live_when_docker_is_unknown(tmp_path, monke
 
     monkeypatch.setattr(service, 'group_check', group_check)
     monkeypatch.setattr(service, 'stop_model', stop_model)
-    assert result.run() == 1  # The explicit stop barrier needed a retry.
+    assert result.run() == 1  # The first model-stop inspection timed out and required a retry.
     assert events.count('startup-inspect') == 1
     assert events.count('peer-check') == (2 if peer_failure else 3)
     assert 'network-check' in events

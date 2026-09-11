@@ -282,7 +282,7 @@ def test_render_peer_devices_follow_topology(tmp_path, manifest_bundle):
         for marker in local_plan["markers"]:
             assert marker["argv"] == [site["marker_binary"], "--device", marker["device"],
                                       "--source-port", "65535", "--replacement-ethertype", "0x88b5",
-                                      "--attach", "--run-seconds", "7200"]
+                                      "--attach", "--run-seconds", str(topology.bounded_runtime_seconds)]
 
 
 def test_render_refuses_existing_output_without_changing_it(tmp_path, manifest_bundle):
