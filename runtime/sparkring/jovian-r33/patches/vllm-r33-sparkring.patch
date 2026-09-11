@@ -1232,10 +1232,10 @@ index 8859998..fe64574 100644
      ``num_prompt`` so the replay-boundary rule alone would drop it. The mask must
 diff --git a/tests/v1/core/test_recurrent_prefill_checkpoint.py b/tests/v1/core/test_recurrent_prefill_checkpoint.py
 new file mode 100644
-index 0000000..d64e9d1
+index 0000000..b093945
 --- /dev/null
 +++ b/tests/v1/core/test_recurrent_prefill_checkpoint.py
-@@ -0,0 +1,428 @@
+@@ -0,0 +1,446 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""Checkpoint planning, append-only ownership and worker metadata contracts."""
@@ -1391,10 +1391,28 @@ index 0000000..d64e9d1
 +    assert validate_coalescing_config(config)
 +
 +
++def test_coalescing_accepts_tp2_dcp1(monkeypatch):
++    monkeypatch.setenv("VLLM_B12X_KDA_PREFILL_COALESCING", "1")
++    config = supported_config()
++    config.parallel_config.tensor_parallel_size = 2
++    config.parallel_config.decode_context_parallel_size = 1
++    assert validate_coalescing_config(config)
++
++
++@pytest.mark.parametrize("dcp", [2, 4])
++def test_coalescing_rejects_unqualified_tp2_context_groups(monkeypatch, dcp):
++    monkeypatch.setenv("VLLM_B12X_KDA_PREFILL_COALESCING", "1")
++    config = supported_config()
++    config.parallel_config.tensor_parallel_size = 2
++    config.parallel_config.decode_context_parallel_size = dcp
++    with pytest.raises(ValueError, match="TP2 with DCP1"):
++        validate_coalescing_config(config)
++
++
 +@pytest.mark.parametrize(
 +    "section,field,value",
 +    [
-+        ("parallel_config", "tensor_parallel_size", 2),
++        ("parallel_config", "tensor_parallel_size", 3),
 +        ("parallel_config", "decode_context_parallel_size", 3),
 +        ("scheduler_config", "max_num_batched_tokens", 4096),
 +        ("cache_config", "prefix_cache_retention_interval", 2048),
@@ -2087,10 +2105,10 @@ index 0000000..466216b
 +    assert calls == ["preempt", "bind", "load", "metadata", "clear"]
 diff --git a/tests/v1/worker/test_kda_prefill_checkpoint_binding.py b/tests/v1/worker/test_kda_prefill_checkpoint_binding.py
 new file mode 100644
-index 0000000..6c0d4c6
+index 0000000..11b6ccd
 --- /dev/null
 +++ b/tests/v1/worker/test_kda_prefill_checkpoint_binding.py
-@@ -0,0 +1,406 @@
+@@ -0,0 +1,439 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""KDA checkpoint binding and convolution-history wrapper contracts."""
@@ -2143,6 +2161,39 @@ index 0000000..6c0d4c6
 +    plan = module.KimiGatedDeltaNetAttention._make_b12x_kda_prefill_plan(layer, 8)
 +    assert isinstance(plan, OneCheckpointCaps)
 +    assert plan.metadata_validation == "trusted"
++
++
++def test_tp2_four_checkpoint_plan_uses_32_local_heads(monkeypatch):
++    from vllm.model_executor.layers.mamba.gdn import kimi_gdn_linear_attn as module
++
++    observed = {}
++
++    class FourCheckpointCaps:
++        __dataclass_fields__ = {"max_checkpoints": object()}
++
++        def __init__(self, **kwargs):
++            observed.update(kwargs)
++
++    monkeypatch.setattr(module, "current_platform", NS(current_device=lambda: "cuda:0"))
++    layer = NS(
++        _b12x_prefill_api=NS(
++            Caps=FourCheckpointCaps,
++            plan=lambda caps: caps,
++        ),
++        _b12x_prefill_checkpoint_capacity=4,
++        _b12x_prefill_max_tokens=8192,
++        _b12x_prefill_max_seqs=8,
++        local_num_heads=32,
++        head_dim=128,
++        model_config=NS(dtype=torch.bfloat16),
++        get_state_dtype=lambda: (torch.float32, torch.float32),
++    )
++    module.KimiGatedDeltaNetAttention._make_b12x_kda_prefill_plan(layer, 128)
++    assert observed["heads"] == 32
++    assert observed["head_dim"] == 128
++    assert observed["max_checkpoints"] == 4
++    assert observed["checkpoint_export"] is True
++    assert observed["metadata_validation"] == "transactional"
 +
 +
 +def test_one_checkpoint_binding_retains_vector_metadata_without_mhc_state():
@@ -4368,10 +4419,10 @@ index 79a4f28..67c587c 100644
          if num_new_tokens == 0 and num_external_computed_tokens == 0:
 diff --git a/vllm/v1/core/recurrent_prefill_checkpoint.py b/vllm/v1/core/recurrent_prefill_checkpoint.py
 new file mode 100644
-index 0000000..d16ad96
+index 0000000..7ca37c3
 --- /dev/null
 +++ b/vllm/v1/core/recurrent_prefill_checkpoint.py
-@@ -0,0 +1,261 @@
+@@ -0,0 +1,270 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""Checkpoint plans and physical ownership for bounded KDA prefill."""
@@ -4552,8 +4603,16 @@ index 0000000..d16ad96
 +        and config.lora_config is None
 +        and not model.enable_sleep_mode
 +        and not model.enable_return_routed_experts
-+        and parallel.tensor_parallel_size == 4
-+        and parallel.decode_context_parallel_size in (1, 2, 4)
++        and (
++            (
++                parallel.tensor_parallel_size == 4
++                and parallel.decode_context_parallel_size in (1, 2, 4)
++            )
++            or (
++                parallel.tensor_parallel_size == 2
++                and parallel.decode_context_parallel_size == 1
++            )
++        )
 +        and parallel.pipeline_parallel_size == 1
 +        and parallel.data_parallel_size == 1
 +        and parallel.prefill_context_parallel_size == 1
@@ -4583,7 +4642,8 @@ index 0000000..d16ad96
 +    if not supported:
 +        raise ValueError(
 +            "VLLM_B12X_KDA_PREFILL_COALESCING requires GLM5Next BF16, V2, "
-+            "TP4 with DCP1/2/4, PP1/DP1, B12X KDA, an 8192-token scheduler budget, "
++            "TP4 with DCP1/2/4 or TP2 with DCP1, PP1/DP1, B12X KDA, "
++            "an 8192-token scheduler budget, "
 +            "align-mode prefix caching with retention interval 0, and static "
 +            "MTP3 or no speculation; LoRA, EP, PCP and fairness engines are unsupported"
 +        )

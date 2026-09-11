@@ -57,14 +57,24 @@ Both `checks` and `evidence_sha256` must contain exactly these keys:
 - `managed_b12x_loader`
 - `tp2_sparkcache`
 
-Each check must be true and backed by a retained evidence artifact's SHA-256.
+Each check must be `implemented` and backed by a retained source-bound CPU or
+component-test artifact's SHA-256. Set `evidence_kind` to
+`source-component-tests` and `live_qualification` to `pending`. Loader evidence
+must establish registration and managed-allocation support; cache evidence
+must establish the TP2 connector/native interface and lease-contract support.
+These checks admit the first research model run. They do not require that run
+to have passed already. A source path that is absent or whose compatibility
+is not established cannot be marked implemented.
 Serialize the file with `json.dumps(document, sort_keys=True,
 separators=(",", ":")) + "\n"`. Context finalization binds its bytes; image
 verification checks the source lock and validates the capability document.
 The resulting image receipt carries `runtime_capabilities.document` and its
 `sha256`, matching `verification.checked_files`. The launcher also requires
 both pinned SparkCache native library hashes in that image verification.
-These are source/package capability gates, not GPU qualification.
+These are source/package capability gates. Completed GPU/model/cache-recovery
+results belong in the separate activation receipt and remain release gates.
+Do not change admission status to `qualified` or use a live result as a
+substitute for a missing source/component compatibility check.
 
 Activation requires positive managed-B12X allocation, coalescing, mHC and
 RoCEnante activity on both ranks. For an 8,192-row TP2 prefill, each owner must

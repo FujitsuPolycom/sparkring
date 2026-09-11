@@ -6,12 +6,12 @@ root=${SPARKRING_R33_ROOT:-/var/tmp/sparkring-r33-20260910}
 source_dir=${VLLM_SOURCE_DIR:-$root/sources/vllm-sparkring}
 native_dir=${VLLM_NATIVE_DIR:-$root/artifacts/vllm-native}
 rust_dir=${VLLM_RUST_DIR:-$root/artifacts/rust}
-work_root=${VLLM_PACKAGE_WORK_ROOT:-$root/work/vllm-package-f85a62b9}
+work_root=${VLLM_PACKAGE_WORK_ROOT:-$root/work/vllm-package-547f7091}
 out_dir=${VLLM_PACKAGE_OUT_DIR:-$root/artifacts/vllm-package}
 foundation_image=${SPARKRING_R33_FOUNDATION_IMAGE:-local/sparkring:r33-arm64-foundation}
-version=${VLLM_VERSION_OVERRIDE:-0.26.1rc0+sparkring.r33.f85a62b9}
+version=${VLLM_VERSION_OVERRIDE:-0.26.1rc0+sparkring.r33.547f7091}
 expected_head=ae89131442359dc332d9c46009be3c1f8cdee0b4
-expected_package_tree=f85a62b998b80ef3ae14799115d1b47398ede46e
+expected_package_tree=547f7091841728f21ab419012a766fd1df70a569
 expected_native_tree=386191c06df9c4232cb2f48012968f48cfdc6eee
 expected_native_inputs_sha=bf4b2150ac4937b325d9b0ff1b0d676e12405e2f4ca940159b959cc7a4bde9e1
 flash_attn_source_dir=${VLLM_FLASH_ATTN_SOURCE_DIR:-$root/build/vllm-native/_deps/vllm-flash-attn-src}
@@ -22,7 +22,7 @@ expected_rust_parser_sha=b52494b9f599acc71ccf9e63523fa3b2b173cf395d155eca37b0941
 test "$(uname -m)" = aarch64
 test "$(git -C "$source_dir" rev-parse HEAD)" = "$expected_head"
 test "$(git -C "$source_dir" write-tree)" = "$expected_package_tree"
-test "$(git -C "$source_dir" diff --cached --binary | sha256sum | cut -d' ' -f1)" = 387b68338c8084d4f339eff4804e9b4c99c87a74ac32019d52397b401c063433
+test "$(git -C "$source_dir" diff --cached --binary | sha256sum | cut -d' ' -f1)" = aca0e198b659ba3d0a7778e88d4aa65a718ded57c826d5ee23ed861a9af30be5
 test "$(git -C "$source_dir" status --porcelain=v1 --untracked-files=all | sha256sum | cut -d' ' -f1)" = 78fe89198cbaeb21c21b57aad6013008f1e851ce3e376e8a73efba5c56eb64e3
 test "$(git -C "$source_dir" status --porcelain=v1 --untracked-files=all | wc -l)" = 35
 test "$(git -C "$source_dir" ls-tree -r "$expected_package_tree" -- CMakeLists.txt cmake csrc rust | sha256sum | cut -d' ' -f1)" = "$expected_native_inputs_sha"

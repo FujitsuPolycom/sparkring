@@ -10,9 +10,9 @@ patch=${SPARKRING_R33_VLLM_PATCH:-$script_root/patches/vllm-r33-sparkring.patch}
 manifest=${SPARKRING_R33_VLLM_MANIFEST:-$script_root/patches/vllm-r33-sparkring.manifest.json}
 receipt="$root/artifacts/vllm-sparkring-source.txt"
 base_commit=ae89131442359dc332d9c46009be3c1f8cdee0b4
-patch_sha=387b68338c8084d4f339eff4804e9b4c99c87a74ac32019d52397b401c063433
-manifest_sha=d85979f7d0b185fd9f3632c035d198a29ef530f5abd07c0267f0d3e44e8ac520
-expected_tree=f85a62b998b80ef3ae14799115d1b47398ede46e
+patch_sha=aca0e198b659ba3d0a7778e88d4aa65a718ded57c826d5ee23ed861a9af30be5
+manifest_sha=f2e61b47d241de2cd54cbf3c8219ff93c096a2085e504522099788b11499b8c1
+expected_tree=547f7091841728f21ab419012a766fd1df70a569
 
 test "$(git -C "$base" rev-parse HEAD)" = "$base_commit"
 test -z "$(git -C "$base" status --porcelain)"

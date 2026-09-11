@@ -104,7 +104,7 @@ class VllmPackageContractTests(unittest.TestCase):
         self.assertEqual(len(patch_bytes), manifest["patch"]["size"])
         self.assertEqual(
             manifest["result"]["tree"],
-            "f85a62b998b80ef3ae14799115d1b47398ede46e",
+            "547f7091841728f21ab419012a766fd1df70a569",
         )
         self.assertEqual(
             manifest["continuation_port"]["commit"],

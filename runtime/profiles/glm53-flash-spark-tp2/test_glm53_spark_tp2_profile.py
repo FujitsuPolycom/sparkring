@@ -327,7 +327,8 @@ def cache_capable_receipt():
     selected = contract["profiles"]["tp2-dcp1-sparkcache"]
     document = {"schema": "sparkring-r33-runtime-capabilities/v1", "profile": "tp2-dcp1-sparkcache",
                 "sources": {k: receipt["sources"][k] for k in ("vllm_integrated_tree", "b12x_tree", "sparkcache_tree")},
-                "checks": {key: True for key in selected["required_capabilities"]},
+                "evidence_kind": "source-component-tests", "live_qualification": "pending",
+                "checks": {key: "implemented" for key in selected["required_capabilities"]},
                 "evidence_sha256": {key: "e" * 64 for key in selected["required_capabilities"]}}
     data = (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
     digest = hashlib.sha256(data).hexdigest()
@@ -383,7 +384,7 @@ def test_r33_cache_preserves_reference_settings_with_explicit_1m_target(inputs, 
             entrypoint.validate_external_profile(profile_root)
 
 
-@pytest.mark.parametrize("failure", ["missing", "coalescing", "source", "file", "native"])
+@pytest.mark.parametrize("failure", ["missing", "coalescing", "source", "file", "native", "live_claim", "evidence_kind"])
 def test_r33_cache_rejects_unproven_capabilities_before_host_action(inputs, failure):
     runtime, _ = cache_capable_receipt()
     if failure == "missing":
@@ -394,6 +395,10 @@ def test_r33_cache_rejects_unproven_capabilities_before_host_action(inputs, fail
         runtime["runtime_capabilities"]["document"]["sources"]["vllm_integrated_tree"] = "0" * 40
     elif failure == "file":
         runtime["runtime_capabilities"]["sha256"] = "0" * 64
+    elif failure == "live_claim":
+        runtime["runtime_capabilities"]["document"]["live_qualification"] = "qualified"
+    elif failure == "evidence_kind":
+        runtime["runtime_capabilities"]["document"]["evidence_kind"] = "environment-flags"
     else:
         runtime["verification"]["checked_files"].pop(launch._r33_verifier().load_contract()["sparkcache_native"]["snapshot_path"])
     value = launch.render(0, "master.example", *inputs, LOCAL_IMAGE, runtime, r33_sparkcache=True)

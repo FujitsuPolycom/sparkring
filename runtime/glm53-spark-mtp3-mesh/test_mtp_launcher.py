@@ -210,7 +210,7 @@ def test_r33_tp4_sparkcache_uses_receipt_bound_installed_libraries(launch_fixtur
     nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"
     placement = "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so"
     snapshot = "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so"
-    lease = "/opt/sparkring/contracts/vllm-connector-jobs-r33-f85a62b9.json"
+    lease = "/opt/sparkring/contracts/vllm-connector-jobs-r33-547f7091.json"
     result, arguments, _ = launch(0, {
         "SOURCE_IMAGE_PROFILE": "tp4-dcp1-sparkcache",
         "SPARKRING_PROFILE_MODE": "custom",

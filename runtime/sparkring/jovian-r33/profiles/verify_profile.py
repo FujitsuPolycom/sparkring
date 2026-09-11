@@ -136,11 +136,13 @@ def validate_capability_record(document: dict, name: str) -> dict:
     expected_sources = {key: sources[key] for key in ("vllm_integrated_tree", "b12x_tree", "sparkcache_tree")}
     if (not required or document.get("schema") != "sparkring-r33-runtime-capabilities/v1"
             or document.get("profile") != name or document.get("sources") != expected_sources
+            or document.get("evidence_kind") != "source-component-tests"
+            or document.get("live_qualification") != "pending"
             or set(document.get("checks", {})) != set(required)
-            or any(document["checks"][key] is not True for key in required)
+            or any(document["checks"][key] != "implemented" for key in required)
             or set(document.get("evidence_sha256", {})) != set(required)
             or any(not SHA256.fullmatch(document["evidence_sha256"][key]) for key in required)):
-        raise ValueError("TP2 cache requires source-bound coalescing, managed B12X loader and SparkCache capability evidence")
+        raise ValueError("TP2 cache admission requires implemented source capabilities and component-test evidence; live qualification remains pending")
     return document
 
 

@@ -89,7 +89,8 @@ def activation(name):
     if profile.get("required_capabilities"):
         capability = {"schema": "sparkring-r33-runtime-capabilities/v1", "profile": name,
                       "sources": {k: contract["image"]["required_sources"][k] for k in ("vllm_integrated_tree", "b12x_tree", "sparkcache_tree")},
-                      "checks": {k: True for k in profile["required_capabilities"]},
+                      "evidence_kind": "source-component-tests", "live_qualification": "pending",
+                      "checks": {k: "implemented" for k in profile["required_capabilities"]},
                       "evidence_sha256": {k: "e" * 64 for k in profile["required_capabilities"]}}
         digest = hashlib.sha256((json.dumps(capability, sort_keys=True, separators=(",", ":")) + "\n").encode()).hexdigest()
         result["image"]["runtime_capabilities"] = {"document": capability, "sha256": digest}
