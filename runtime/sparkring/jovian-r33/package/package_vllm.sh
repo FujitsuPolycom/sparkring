@@ -24,7 +24,7 @@ test "$(git -C "$source_dir" rev-parse HEAD)" = "$expected_head"
 test "$(git -C "$source_dir" write-tree)" = "$expected_package_tree"
 test "$(git -C "$source_dir" diff --cached --binary | sha256sum | cut -d' ' -f1)" = 387b68338c8084d4f339eff4804e9b4c99c87a74ac32019d52397b401c063433
 test "$(git -C "$source_dir" status --porcelain=v1 --untracked-files=all | sha256sum | cut -d' ' -f1)" = 78fe89198cbaeb21c21b57aad6013008f1e851ce3e376e8a73efba5c56eb64e3
-test "$(git -C "$source_dir" status --porcelain=v1 --untracked-files=all | wc -l)" = 33
+test "$(git -C "$source_dir" status --porcelain=v1 --untracked-files=all | wc -l)" = 35
 test "$(git -C "$source_dir" ls-tree -r "$expected_package_tree" -- CMakeLists.txt cmake csrc rust | sha256sum | cut -d' ' -f1)" = "$expected_native_inputs_sha"
 test "$(git -C "$source_dir" ls-tree -r "$expected_native_tree" -- CMakeLists.txt cmake csrc rust | sha256sum | cut -d' ' -f1)" = "$expected_native_inputs_sha"
 test -d "$native_dir/install/vllm"

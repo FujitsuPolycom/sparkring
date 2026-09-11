@@ -22,7 +22,7 @@
     "vllm_integrated_tree": "f85a62b998b80ef3ae14799115d1b47398ede46e",
     "vllm_cached_diff_sha256": "387b68338c8084d4f339eff4804e9b4c99c87a74ac32019d52397b401c063433",
     "vllm_status_sha256": "78fe89198cbaeb21c21b57aad6013008f1e851ce3e376e8a73efba5c56eb64e3",
-    "vllm_status_lines": 33,
+    "vllm_status_lines": 35,
     "vllm_native_tree": "386191c06df9c4232cb2f48012968f48cfdc6eee",
     "vllm_flash_attn_commit": "f3e1a4f74c99145c0717709860bf765de1703779",
     "b12x_commit": "68acfc14893c087aa9b3120bb984fde4c4e7a21f",
