@@ -44,14 +44,21 @@ excluded. Fixtures are test inputs and do not enter a production image build.
 | Separately supplied SparkCache placement library | `2657cdd2e54a097c9544e4c79ae62c0646db6db123ff24e4f0c384238c3a1e8d` |
 | Required SparkCache capture library | `4398f18b8913e743e7bf1ed8fe29560d4580e61b6a1e2ab8b16684b19b6573b5` |
 
-The fixture manifest attests each patch script's exact bytes. Each transform
+The fixture manifest attests each patch script's exact bytes.
+`archive_sha256` covers `fixtures/original-python-sources.zip`; transform names
+are relative to this directory. The barrier input uses CRLF bytes, included in
+its source digest. Transform comments and byte strings are preserved as part
+of those identities; the descriptions below explain their operational scope. Each transform
 accepts only its declared input SHA-256 or its own output SHA-256. Apply them in
 this dependency order:
 
 1. `patch_mtp3_barrier.py` adds the CTA synchronization before the histogram
    arrival signal and increments that kernel's compile-cache revision.
 2. `patch_mtp3_lease_accounting.py` includes an attached GPU lease in initial
-   prefill cache statistics without labeling it an external transfer.
+   prefill cache statistics without labeling it an external transfer. It uses
+   the request prompt total and updates only the first prefill, preserving
+   statistics across preemption replay. The chat-completion usage response
+   consumes these statistics through `prompt_tokens_details`.
 3. `patch_mtp3_local_lease_preference.py` prefers a strictly longer converged
    local prefix over a shorter GPU lease and reuses that lookup result.
 4. `patch_mtp3_sparse_retention.py` pairs an explicit speculative replay
@@ -93,7 +100,8 @@ python runtime/glm53-spark-mtp3-mesh/experiments/cache-reuse/check_mtp3_checkpoi
   --output work/mtp3-checkpoint-allocations.json
 ```
 
-Existing output directories and result files are rejected. `--source-root`
+Existing output directories and result files are rejected. A failed composition
+retains partial output for inspection; retry with a fresh destination. `--source-root`
 on the composition command accepts an independently extracted original tree,
 with `vllm/` and `b12x/` immediately beneath it; every file is checked against
 the same manifest before output creation.
@@ -105,8 +113,11 @@ boundaries, chunk budgets and speculative buffer counts. A selected null slot
 is skipped by the real registration method. A selected non-null slot whose
 planned state does not match its hash boundary fails the check. This tests
 metadata consistency, not completion of CUDA writes. Some resumed schedules
-can still miss a prompt predecessor; the report distinguishes those safe misses
-from stale-state registration.
+can still miss a prompt predecessor: no reusable cache entry is recorded.
+The checker does not prove complete cache-hit coverage; it rejects registered
+entries whose state disagrees with their token boundary. The fixed schedules
+exercise 276 selected null slots in fresh requests and 468 in resumed requests.
+Registration skips these slots instead of publishing unwritten state.
 
 The tests also cover lease/API accounting, local-versus-lease selection,
 speculative backoff, prompt-length boundaries and recurrent partial-tail

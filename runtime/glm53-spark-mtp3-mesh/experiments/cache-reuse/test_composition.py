@@ -65,6 +65,16 @@ def test_actual_allocator_checker_accepts_final_source_composition(tmp_path):
     data = json.loads(receipt.read_text())
     assert data['passed']
     assert data['source_inputs']['scheduler']['sha256'] == compose.partial.AFTER_SHA256
+    expected = {'fresh': (13230, 276, 0), 'resumed': (9666, 468, 192)}
     for name in ('fresh', 'resumed'):
-        assert data['populations'][name]['summary']['cases'] == 336
+        summary = data['populations'][name]['summary']
+        assert (summary['retired_state_slots'], summary['selected_null_slots'],
+                summary['cases_without_prompt_predecessor_retention']) == expected[name]
+        assert summary['cases'] == 336
         assert data['populations'][name]['summary']['stale_or_unwritten_registered_states'] == 0
+
+
+def test_final_transform_path_missing_from_manifest_rejected(monkeypatch):
+    monkeypatch.setitem(compose.FINAL_SHA256, 'vllm/missing.py', '0' * 64)
+    with pytest.raises(ValueError, match='Final transform paths absent.*vllm/missing.py'):
+        compose.source_bytes()

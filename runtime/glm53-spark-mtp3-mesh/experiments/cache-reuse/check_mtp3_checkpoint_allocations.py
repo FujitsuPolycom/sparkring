@@ -5,7 +5,8 @@ fixtures together with the transformed split/retention methods. Synthetic block
 state labels track the running endpoint and GDN internal checkpoint scheduled
 for GPU writes. This checks metadata/allocator consistency; it does not execute
 GPU kernels or prove those writes completed on hardware.
-Fresh and resumed cases start with an empty block table (preemption replay).
+Both populations start with empty block tables. Fresh cases are initial
+prefill; resumed cases replay requests whose total length exceeds their prompt.
 """
 from __future__ import annotations
 
@@ -88,6 +89,7 @@ def run_case(prompt, total, shared, budget, speculative, classes, Scheduler, che
         SimpleNamespace(is_null=False, state=None, block_hash=None, block_hash_num_tokens=None)
         for _ in range(n)])
     failures, retained, selected_null, steps = [], set(), 0, []
+    retired_state_slots = 0
     registrar = Registrar()
     registrar.hash_block_size = 512
     registrar.enable_kv_cache_events = False
@@ -116,8 +118,11 @@ def run_case(prompt, total, shared, budget, speculative, classes, Scheduler, che
             raise AssertionError(f'zero progress: {prompt=}, {total=}, {shared=}, {budget=}, {start=}')
         end = start + count
         last = allocator.last_state_block_idx.get('replay')
-        # The source fixture's remove_skipped_blocks retires this state slot.
+        # Emulate MambaManager.remove_skipped_blocks in the fixture's
+        # v1/core/single_type_kv_cache_manager.py. last_state_block_idx
+        # identifies the state allocated two steps ago, not the running endpoint.
         if last is not None and last < (start + 511) // 512 - 1:
+            retired_state_slots += int(not allocator.req_to_blocks['replay'][last].is_null)
             allocator.req_to_blocks['replay'][last] = allocator._null_block
         allocator._num_checkpoint_blocks['replay'] = int(
             allocator._needs_internal_checkpoint('replay', end, start))
@@ -144,6 +149,7 @@ def run_case(prompt, total, shared, budget, speculative, classes, Scheduler, che
     return {'prompt_tokens': prompt, 'num_tokens': total, 'shared_boundary': shared,
             'budget': budget, 'speculative_blocks': speculative, 'steps': steps,
             'retained_boundaries': sorted(retained), 'selected_null_slots': selected_null,
+            'retired_state_slots': retired_state_slots,
             'stale_or_unwritten_registered_states': failures,
             'prompt_predecessor_retained': required_prompt in retained}
 
@@ -152,8 +158,8 @@ def main():
     global ROOT, PATCHED
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--source-root', type=Path, default=ROOT, help='Original vllm directory produced by compose.py')
-    parser.add_argument('--candidate-root', type=Path, default=PATCHED, help='Candidate vllm directory produced by compose.py')
+    parser.add_argument('--source-root', type=Path, default=ROOT, help="Original vllm directory from this experiment's fixture composer (compose.py)")
+    parser.add_argument('--candidate-root', type=Path, default=PATCHED, help="Candidate vllm directory from this experiment's fixture composer (compose.py)")
     args = parser.parse_args()
     ROOT, PATCHED = args.source_root, args.candidate_root
     # The extracted helpers resolve their unchanged support files from this root.
@@ -186,13 +192,13 @@ def main():
               'source_inputs': identities, 'gpu_executed': False, 'populations': {},
               'limits': ['Checks allocator/retention against planned endpoint/checkpoint writes; no GPU execution',
                          'Fresh and resumed requests start from empty block tables, not an injected partial local hit',
-                         'Only align mode with 512-token recurrent/hash pages, DCP4 retention alignment2048, and lookahead1',
-                         'Missing retained prompt predecessors are reported safe misses, not treated as corruption']}
+                         'Only mamba_cache_mode=align, block_size/hash_block_size=512, four-way decode context parallelism (DCP4), retention alignment=2048, num_prefill_lookahead=1',
+                         'A missing prompt predecessor means no reusable entry was recorded; this check detects invalid registered state, not complete cache-hit coverage']}
     for label, pairs in populations.items():
         cases = [run_case(prompt, total, shared, budget, speculative, classes, Scheduler, checkpoint)
                  for prompt, total in pairs for shared in (8192, 12345, 15872, 16384, 16401, 20000, 30000)
                  for budget in (8192, 7680, 1024, 512) for speculative in (0, 1, 3)]
-        summary = {'cases': len(cases), 'selected_null_slots': sum(case['selected_null_slots'] for case in cases),
+        summary = {'cases': len(cases), 'retired_state_slots': sum(case['retired_state_slots'] for case in cases), 'selected_null_slots': sum(case['selected_null_slots'] for case in cases),
                    'stale_or_unwritten_registered_states': sum(len(case['stale_or_unwritten_registered_states']) for case in cases),
                    'cases_without_prompt_predecessor_retention': sum(not case['prompt_predecessor_retained'] for case in cases)}
         result['populations'][label] = {'summary': summary, 'cases': cases}
