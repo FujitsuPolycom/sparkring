@@ -269,8 +269,6 @@ class NetworkManager:
     def up(self):
         with self._lock():
             self._links()
-            self.validated_management_identity = self._management_identity()
-            # Detect conflicting objects before making any network changes.
             for kind, obj in self.objects.values():
                 self._present(kind, obj)
             for key, (kind, obj) in self.objects.items():
@@ -286,6 +284,10 @@ class NetworkManager:
                 self._save()
                 if not self._present(kind, obj):
                     raise ValueError(f"Created network object is absent: {key}")
+            # Record the validated identity only after every startup check
+            # above succeeded, so the grace bound covers exactly the
+            # configuration the supervisor verified at startup.
+            self.validated_management_identity = self._management_identity()
             return {**self.check(), "ownership": dict(self.journal["objects"])}
 
     def down(self):

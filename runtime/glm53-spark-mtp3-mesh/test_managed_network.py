@@ -397,12 +397,17 @@ def test_management_loss_raises_after_fabric_checks_pass(rig):
         return original_call(argv)
     manager.runner = without_address
     loss = []
+    outage_commands_before = len(host.commands)
     with pytest.raises(network.ManagementAddressLoss, match="Management address"):
         manager.check(management_loss=loss)
     assert loss == [True]
-    # Every fabric check ran despite the loss: the port/GID answers were read.
-    fabric_ports = [argv[-1] for argv in host.commands if "addr" in argv and argv[-1] != manager.local.management_netdev]
+    # Every fabric check ran during THIS outage despite the loss: the
+    # per-port answers were read after startup activity was excluded.
+    outage_commands = host.commands[outage_commands_before:]
+    fabric_ports = [argv[-1] for argv in outage_commands
+                    if "addr" in argv and argv[-1] != manager.local.management_netdev]
     assert set(fabric_ports) == {p.netdev for p in manager.local.ports}
+    assert outage_commands  # the object-presence queries also ran
 def test_management_fail_fast_at_startup(rig):
     """Startup semantics: up() with the address already absent fails on the
     first _links() call, before any validation is recorded."""
