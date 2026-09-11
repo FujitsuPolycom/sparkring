@@ -1112,3 +1112,30 @@ def test_cli_rejects_a_broken_file(tmp_path, capsys):
     target.write_text("schema_version: 9\n", encoding="utf-8")
     assert sparkring_site.main([str(target)]) == 1
     assert "INVALID" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("field", ["container_image_digest", "model_revision", "checkpoint_sha256", "artifact_sha256"])
+@pytest.mark.parametrize("suffix", ["\n", "\r\n"])
+def test_identity_pins_reject_trailing_line_breaks(document, field, suffix):
+    if field == "artifact_sha256":
+        document["artifacts"][0]["sha256"] += suffix
+    else:
+        document["runtime"][field] += suffix
+    with pytest.raises(SiteConfigError, match="exactly|40-character"):
+        validate_site(document)
+
+
+def test_ipv4_whitespace_normalizes_without_changing_topology(document):
+    expected = validate_site(copy.deepcopy(document))
+    document["ranks"][0]["management"]["address"] = " " + document["ranks"][0]["management"]["address"] + " "
+    document["topology"]["edges"][0]["subnet"] = " " + document["topology"]["edges"][0]["subnet"] + " "
+    observed = validate_site(document)
+    assert observed.to_dict() == expected.to_dict()
+
+
+def test_control_peer_cannot_claim_another_ranks_fabric_address(document):
+    peer = document["ranks"][0]["transport_peers"][0]
+    other = next(rank for rank in document["ranks"] if rank["id"] not in (0, peer["rank"]))
+    peer["address"] = other["ring_ports"][0]["address"]
+    with pytest.raises(SiteConfigError, match="ring address of rank"):
+        validate_site(document)

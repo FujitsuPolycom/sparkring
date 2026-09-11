@@ -18,7 +18,7 @@ RECIPE = ROOT / "recipes" / "deepseek-v41-flash-cycle.json"
 PATCHES = ROOT / "runtime" / "deepseek-v41-gb10" / "patches"
 RECEIPT = ROOT / "runtime" / "deepseek-v41-gb10" / "image-receipt.json"
 
-pytestmark = pytest.mark.skipif(os.name == "nt", reason="bash launcher contract")
+requires_bash = pytest.mark.skipif(os.name == "nt", reason="bash launcher contract")
 
 
 def _run(env_file: Path, mode: str = "--check") -> subprocess.CompletedProcess[str]:
@@ -67,6 +67,7 @@ def _resolved_env(tmp_path: Path, rank: int = 0, **overrides: str) -> Path:
     return env_file
 
 
+@requires_bash
 def test_template_placeholders_are_rejected() -> None:
     result = _run(TEMPLATE)
     assert result.returncode == 20
@@ -82,6 +83,7 @@ def test_patch_manifest_matches_md5sums() -> None:
         assert listed[name] == digest, name
 
 
+@requires_bash
 def test_check_renders_the_recipe_contract(tmp_path: Path) -> None:
     recipe = json.loads(RECIPE.read_text(encoding="utf-8"))
     serving = recipe["serving"]
@@ -122,6 +124,7 @@ def test_check_renders_the_recipe_contract(tmp_path: Path) -> None:
     assert "--headless" not in joined
 
 
+@requires_bash
 def test_api_key_file_passes_every_key(tmp_path: Path) -> None:
     keys = tmp_path / "keys"
     keys.write_text("k-one\n\nk-two\n", encoding="utf-8")
@@ -138,6 +141,7 @@ def test_api_key_file_passes_every_key(tmp_path: Path) -> None:
     assert "has no keys" in result.stderr
 
 
+@requires_bash
 def test_worker_ranks_are_headless_and_eager_drops_graphs(tmp_path: Path) -> None:
     result = _run(_resolved_env(tmp_path, rank=2, ENFORCE_EAGER="1", TEXT_ONLY="1"))
     assert result.returncode == 0, result.stderr
@@ -157,6 +161,7 @@ def test_worker_ranks_are_headless_and_eager_drops_graphs(tmp_path: Path) -> Non
         ({"NODE_RANK": "0", "VLLM_HOST_IP": "203.0.113.11"}, "rank-0 MASTER_ADDR"),
     ],
 )
+@requires_bash
 def test_contract_violations_fail_closed(tmp_path: Path, override: dict[str, str], message: str) -> None:
     result = _run(_resolved_env(tmp_path, **override))
     assert result.returncode == 20
