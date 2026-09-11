@@ -94,7 +94,7 @@ def profile_table(root=ROOT, *, compact=False):
         if compact:
             lines[-2:] = ['| Model | Model quant | Layout | Context (tokens) | KV (tokens) | SparkCache | Status | Quickstart |', '|---|---|---|---:|---:|---|---|---|']
         for p, r in sorted(rows, key=lambda pair: (pair[0]['recommendation'] != 'recommended', pair[0]['id'])):
-            if not predicate(p, r):
+            if not predicate(p, r) or (compact and r['topology'] == 'switched'):
                 continue
             s = r['serving']
             repository = r['model']['repository']

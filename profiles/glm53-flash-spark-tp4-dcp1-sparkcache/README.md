@@ -11,3 +11,10 @@ Use the [primary quickstart](../../docs/GLM53_TP4_PREFILL_QUICKSTART.md) with th
 Complete managed mesh host setup before serving; do not replace live queue pairs.
 
 Configured context is not a completed long-context test. See the [publication record](../../runtime/sparkring/jovian-r33/publication.json) for the exact measured conditions.
+
+## Network setup
+
+For a four-Spark ring, use the managed mesh setup in the quickstart above.
+For a switched fabric, follow the [switched NCCL setup](../glm53-flash-spark-tp4-switched/README.md),
+which selects its own pinned image and explicit HCA/GID settings. Topology is
+not detected automatically. That configuration does not enable SparkCache.
