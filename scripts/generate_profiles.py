@@ -54,8 +54,8 @@ def compact_profile_rows(rows, root=ROOT):
         alternative = next((v for v in variants[1:] if v[2] != cached), None)
         cell = 'No'
         if alternative:
-            other = alternative[0]['id']
-            cell = f"Included · [off](profiles/{other}/README.md)" if cached else f"[Optional](profiles/{other}/README.md)"
+            cache_profile = p['id'] if cached else alternative[0]['id']
+            cell = f"[Optional](profiles/{cache_profile}/README.md)"
         elif cached:
             cell = 'Included'
         cache_cells[p['id']] = cell

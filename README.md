@@ -16,7 +16,7 @@ SparkRing is experimental. Six-node deployments are research-only.
 ## Profiles
 
 Bold entries are recommended. Values describe the linked default profile;
-the SparkCache column links alternate configurations. Context is the per-request
+the SparkCache column links its optional configuration. Context is the per-request
 limit; KV is the pool capacity. Counts are rounded; `~` marks an estimate.
 See the [full catalog](profiles/README.md) for exact counts, testing scope and retired setups.
 
@@ -26,7 +26,7 @@ See the [full catalog](profiles/README.md) for exact counts, testing scope and r
 
 | Model | Model quant | Layout | Context (tokens) | KV (tokens) | SparkCache | Status | Quickstart |
 |---|---|---|---:|---:|---|---|---|
-| **GLM-5.3-Flash** | [GLM-5.3-Flash-NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP4/DCP1 | 1M | [~2.3M](performance/capacity-references.md) | Included · [off](profiles/glm53-flash-spark-tp4-dcp1/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) |
+| **GLM-5.3-Flash** | [GLM-5.3-Flash-NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP4/DCP1 | 1M | [~2.3M](performance/capacity-references.md) | [Optional](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 | [DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | TP4/DCP1 | 1M | [~1M](performance/capacity-references.md) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) | Development | [Guide](profiles/deepseek-v4-flash-0731/README.md) |
 | DeepSeek-V4-Flash-Vision-Exp | [DeepSeek-V4-Flash-Vision-Exp](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp) | TP4/DCP1 | 1M | — | No | Experimental | [Guide](profiles/deepseek-v4-flash-vision-exp-tp4/README.md) |
 | DeepSeek-V4.1-Flash | [DeepSeek-V4.1-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | TP4/DCP1 | 430K | [2.2M](profiles/deepseek-v41-flash-cycle/recipe.json) | No | Development | [Guide](profiles/deepseek-v41-flash-cycle/README.md) |
@@ -38,7 +38,7 @@ See the [full catalog](profiles/README.md) for exact counts, testing scope and r
 
 | Model | Model quant | Layout | Context (tokens) | KV (tokens) | SparkCache | Status | Quickstart |
 |---|---|---|---:|---:|---|---|---|
-| **GLM-5.3-Flash** | [GLM-5.3-Flash-NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP2/DCP1 | 1M | [1.1M](runtime/profiles/glm53-flash-spark-tp2/README.md) | Included · [off](profiles/glm53-flash-spark-tp2-dcp1/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
+| **GLM-5.3-Flash** | [GLM-5.3-Flash-NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP2/DCP1 | 1M | [1.1M](runtime/profiles/glm53-flash-spark-tp2/README.md) | [Optional](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 | [DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | TP2/DCP1 | 1M | [~1M](performance/capacity-references.md) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) | Development | [Guide](profiles/deepseek-v4-flash-0731-pair/README.md) |
 | Qwen3.8-27B | [Qwen3.8-27B-EXL3-K5K6-hydrated](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | TP2/DCP1 | 1M | [4.1M](profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development | [Guide](profiles/qwen38-27b-exl3-k5k6-pair/README.md) |
 
