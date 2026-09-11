@@ -1,0 +1,7 @@
+sparse_swa.py v1/attention/backends/mla/sparse_swa.py
+attention.py models/deepseek_v4_1/attention.py
+flashinfer_sparse.py models/deepseek_v4_1/nvidia/flashinfer_sparse.py
+engram.py models/deepseek_v4_1/common/engram.py
+weight_utils.py model_executor/model_loader/weight_utils.py
+model_state.py models/deepseek_v4_1/nvidia/model_state.py
+sparse_attn_indexer.py model_executor/layers/sparse_attn_indexer.py

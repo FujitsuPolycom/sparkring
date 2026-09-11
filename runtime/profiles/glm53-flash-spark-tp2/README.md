@@ -1,9 +1,63 @@
 # GLM-5.3 Flash NVFP4-Spark on two Sparks
 
-Status: **implemented**. This profile selects NVFP4-Spark with 8.75 GiB FP8
-KV per node, static MTP3, and both PCI functions of one physical DAC. A
-separate source deployment completed startup and one arithmetic smoke check.
-The guarded shared-image configuration still requires serving qualification.
+Status: **R33 SparkCache composition bounded-qualified**. Generic R33 image
+`3c7779ad71dd…` completed the bounded checks in the
+[qualification record](../../../performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md).
+The tested `tp2-dcp1-sparkcache` composition uses 7.5 GiB FP8 KV per rank,
+managed B12X target and draft loading, static MTP3, and both PCI functions of
+one physical DAC. Its configured request limit is 1,048,576 tokens; no
+completed one-million-token request was run.
+
+## Generic R33 image
+
+Run the commands from the R33 integration checkout:
+
+```bash
+git clone --branch feat/jj-r33-integration https://github.com/FujitsuPolycom/sparkring.git sparkring-r33
+cd sparkring-r33
+```
+
+Select the immutable digest and the tracked R33
+image receipt. Mutable tags are not launch inputs:
+
+```bash
+SPARKRING_IMAGE='ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef'
+SPARKRING_RECEIPT='runtime/sparkring/jovian-r33/public-image-receipt.json'
+docker pull "$SPARKRING_IMAGE"
+python3 runtime/sparkring/jovian-r33/profiles/verify_profile.py image \
+  --receipt "$SPARKRING_RECEIPT"
+```
+
+Copy `runtime.env.example` to a private rank-local file and resolve its three
+site fields. Plan each rank with the tested cache profile:
+
+```bash
+python3 runtime/profiles/glm53-flash-spark-tp2/launch.py plan \
+  --rank 0 --master rank0.example \
+  --model-dir /srv/models/GLM-5.3-Flash-NVFP4-Spark/df116c4 \
+  --cache-dir /srv/cache/glm53-spark-tp2 \
+  --env-file /srv/config/glm53-rank0.env \
+  --image "$SPARKRING_IMAGE" \
+  --runtime-receipt "$SPARKRING_RECEIPT" \
+  --r33-sparkcache
+```
+
+Repeat for rank 1. Inspect both plans, use `create` with the same arguments,
+then start rank 1 before rank 0. The launcher requires the exact public image
+receipt, active 2 GiB memory guard, managed B12X loading, TP2 coalescing, and
+the packaged SparkCache capability record. It rejects a local construction
+receipt when the selected image is a registry digest.
+
+The tested startup reported 1,081,922 total KV tokens. That pool is shared
+among requests and is not a demonstrated request length. The profile permits
+three images and one video per prompt, but multimodal correctness remains
+unqualified.
+
+## Retained cache-disabled composition
+
+The profile below describes the earlier cache-disabled source-image
+composition. Its source and loader settings are separate from the bounded R33
+SparkCache result above.
 
 Select `glm53-flash-spark-tp2-mtp3` and the checkpoint
 `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` at full revision

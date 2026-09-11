@@ -480,3 +480,26 @@ def test_render_rejects_changed_site_before_extracting_artifacts(tmp_path, monke
     )
     with pytest.raises(ValueError, match="render inputs"):
         module.finish_host(tmp_path)
+
+def test_host_marker_download_checks_hash_before_install(tmp_path, monkeypatch):
+    payload = b'qualified-host-tool'
+    monkeypatch.setattr(module.urllib.request, 'urlopen', lambda *a, **k: io.BytesIO(payload))
+    output = tmp_path / 'marker'
+    module.download_host_marker('https://example.invalid/tool', output, hashlib.sha256(payload).hexdigest())
+    assert output.read_bytes() == payload
+
+
+def test_host_marker_download_rejects_wrong_bytes(tmp_path, monkeypatch):
+    monkeypatch.setattr(module.urllib.request, 'urlopen', lambda *a, **k: io.BytesIO(b'wrong'))
+    output = tmp_path / 'marker'
+    with pytest.raises(ValueError, match='hash or size'):
+        module.download_host_marker('https://example.invalid/tool', output, '0' * 64)
+    assert not output.exists()
+
+
+def test_host_marker_download_preserves_existing_file(tmp_path):
+    output = tmp_path / 'marker'
+    output.write_bytes(b'existing')
+    with pytest.raises(ValueError, match='already exists'):
+        module.download_host_marker('https://example.invalid/tool', output, '0' * 64)
+    assert output.read_bytes() == b'existing'

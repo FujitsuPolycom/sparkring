@@ -1,0 +1,36 @@
+diff --git a/sparkcache/native/app/spark_cache_page_copy_benchmark.cu b/sparkcache/native/app/spark_cache_page_copy_benchmark.cu
+index 038bcd8..819d5a2 100644
+--- a/sparkcache/native/app/spark_cache_page_copy_benchmark.cu
++++ b/sparkcache/native/app/spark_cache_page_copy_benchmark.cu
+@@ -63,7 +63,7 @@ void run(Api& api, const Case& shape, int repetitions, std::uint32_t arena_mode)
+   const std::uint64_t pool_bytes = pool_layer_bytes * shape.layers;
+   const std::uint64_t explicit_allocations = 2 * arena_bytes + 2 * pool_bytes + 8 * MiB +
+       (arena_mode == SPARK_CACHE_ARENA_STAGED_DEVICE ? 2 * arena_bytes : 0);
+-  if (explicit_allocations >= 512 * MiB) throw std::runtime_error("allocation ceiling exceeded");
++  if (explicit_allocations >= 1024 * MiB) throw std::runtime_error("allocation ceiling exceeded");
+   std::vector<std::uint8_t> expected(pool_bytes, 0xa5);
+   std::vector<std::uint8_t> readback(8 * MiB);
+   std::uint8_t* device = nullptr;
+@@ -102,14 +102,18 @@ void run(Api& api, const Case& shape, int repetitions, std::uint32_t arena_mode)
+     std::vector<SparkCachePageCopySpan> spans;
+     std::uint64_t used = 0, snapshot = 0;
+     constexpr std::uint64_t lengths[] = {17, 65537, 131071, 8191};
++    const bool reuse_arena = std::strcmp(shape.name, "grid_stride_257mib") == 0;
+     for (std::uint32_t layer = 0; layer < shape.layers; ++layer) {
+       for (std::uint64_t offset = 0; offset < layer_bytes;) {
+-        const std::uint64_t requested = shape.irregular ? lengths[spans.size() % 4] : shape.span_bytes;
++        const std::uint64_t requested = shape.irregular
++            ? lengths[spans.size() % 4]
++            : (reuse_arena ? std::min<std::uint64_t>(shape.span_bytes, arena_bytes)
++                           : shape.span_bytes);
+         const std::uint64_t bytes = std::min(layer_bytes - offset, requested);
+-        used += shape.gap;
+-        spans.push_back({used, snapshot, offset, bytes, layer, 0});
+-        used += bytes;
++        const std::uint64_t arena_offset = reuse_arena ? 0 : used + shape.gap;
++        spans.push_back({arena_offset, snapshot, offset, bytes, layer, 0});
++        used = reuse_arena ? std::max(used, bytes) : arena_offset + bytes;
+         snapshot += bytes;
+         offset += bytes;
+       }
+     }

@@ -17,6 +17,7 @@ import tarfile
 import base64
 import inspect
 import tempfile
+import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -32,6 +33,20 @@ LAUNCH_FILES = frozenset(
         *(f"rank{rank}.env" for rank in range(4)),
     }
 )
+
+
+def download_host_marker(url, destination, expected_sha256):
+    """Install the source-pinned host tool only after checking its complete bytes."""
+    destination = Path(destination)
+    if destination.exists() or destination.is_symlink():
+        raise ValueError("Host marker destination already exists")
+    with urllib.request.urlopen(url, timeout=120) as response:
+        payload = response.read((1 << 20) + 1)
+    if len(payload) > 1 << 20 or hashlib.sha256(payload).hexdigest() != expected_sha256:
+        raise ValueError("Downloaded host marker hash or size mismatch")
+    with destination.open("xb") as output:
+        output.write(payload)
+    destination.chmod(0o755)
 
 
 def sha(path):
@@ -820,7 +835,7 @@ def finish_host(workspace):
     for path in (artifact, marker):
         if not path.is_relative_to(workspace) or ".." in path.parts:
             raise ValueError("Extracted artifact escapes the staging workspace")
-    if not artifact.exists() and not marker.exists():
+    if not artifact.exists() or not marker.exists():
         identifier = subprocess.check_output(
             [
                 "docker",
@@ -832,25 +847,33 @@ def finish_host(workspace):
             text=True,
         ).strip()
         try:
-            subprocess.run(
-                ["docker", "cp", identifier + ":/opt/spark-sircl", str(artifact)],
-                check=True,
-            )
-            subprocess.run(
-                [
-                    "docker",
-                    "cp",
-                    identifier + ":/opt/sparkring/bin/mlx5-rdma-tx-marker",
-                    str(marker),
-                ],
-                check=True,
-            )
+            if not artifact.exists():
+                subprocess.run(
+                    ["docker", "cp", identifier + ":" + public.get("bundle_image_path", "/opt/spark-sircl"), str(artifact)],
+                    check=True,
+                )
+                for name, image_path in public.get("bundle_native_files", {}).items():
+                    native = artifact / name
+                    # The image's Python directory links to a sibling native library.
+                    # A standalone host bundle needs the verified library bytes.
+                    if native.is_symlink():
+                        native.unlink()
+                    subprocess.run(["docker", "cp", identifier + ":" + image_path, str(native)], check=True)
+            if not marker.exists():
+                if public.get("marker_download_url"):
+                    download_host_marker(public["marker_download_url"], marker,
+                                         public["marker_binary_sha256"])
+                else:
+                    subprocess.run(
+                        ["docker", "cp", identifier + ":/opt/sparkring/bin/mlx5-rdma-tx-marker", str(marker)],
+                        check=True,
+                    )
         finally:
             subprocess.run(["docker", "rm", identifier], check=True)
     if (
         sha(artifact / "sparkring-overlay-manifest.json")
         != pins["canonical_bundle_manifest_sha256"]
-        or sha(marker) != public["inside_image"]["marker_binary_sha256"]
+        or sha(marker) != public["marker_binary_sha256"]
     ):
         raise ValueError("Extracted artifact mismatch or incomplete extraction")
     sys.path.insert(0, str(PROFILE))

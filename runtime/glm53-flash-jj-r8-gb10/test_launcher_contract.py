@@ -925,6 +925,7 @@ def test_source_cache_profile_emits_bounded_connector_jobs_configuration(tmp_pat
     _assert_source_verifier_entrypoint(arguments)
     assert "SOURCE_IMAGE_PROFILE=tp4-dcp1-mtp3-sparkcache" in arguments
     assert "PYTHONUNBUFFERED=1" in arguments
+    assert "SPARK_CONTEXT_CACHE_TRACE_REUSE=0" in arguments
     config = json.loads(arguments[arguments.index("--kv-transfer-config") + 1])
     assert config["kv_load_failure_policy"] == "recompute"
     extra = config["kv_connector_extra_config"]
@@ -943,6 +944,23 @@ def test_source_cache_profile_emits_bounded_connector_jobs_configuration(tmp_pat
     assert extra["spark_cache_page_snapshot_interval_tokens"] == 0
     assert arguments[arguments.index("--kv-cache-memory-bytes") + 1] == str(24 * 1024**3)
     assert arguments[arguments.index("--block-size") + 1] == "512"
+
+
+@pytest.mark.parametrize("enabled", ["0", "1"])
+def test_cache_reuse_trace_setting_reaches_container(tmp_path, enabled):
+    result = _source_cache_spec(tmp_path, f"SPARK_CONTEXT_CACHE_TRACE_REUSE={enabled}")
+    assert result.returncode == 0, result.stderr
+    arguments = json.loads(result.stdout)["argv"]
+    assignments = [value for value in arguments if value.startswith("SPARK_CONTEXT_CACHE_TRACE_REUSE=")]
+    assert assignments == [f"SPARK_CONTEXT_CACHE_TRACE_REUSE={enabled}"]
+
+
+@pytest.mark.parametrize("invalid", ["2", "true", "-1"])
+def test_cache_reuse_trace_rejects_non_boolean_values(tmp_path, invalid):
+    result = _source_cache_spec(tmp_path, f"SPARK_CONTEXT_CACHE_TRACE_REUSE={invalid}")
+    assert result.returncode == 78
+    assert result.stdout == ""
+    assert "SPARK_CONTEXT_CACHE_TRACE_REUSE must be 0 or 1" in result.stderr
 
 
 @pytest.mark.parametrize("setting", [

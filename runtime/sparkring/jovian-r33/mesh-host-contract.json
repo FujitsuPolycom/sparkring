@@ -1,0 +1,13 @@
+{
+  "marker_binary_sha256": "2828c07e4255c4962c77425be2c88969e7eb7dd4b1bf9e36485bc705bb5d6d64",
+  "bundle_manifest_sha256": "c0fd5567442b08b908cc193f36d0864e262573c7e5d232509479a823cface742",
+  "target": {
+    "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
+    "revision": "df116c4fb16b1d37ae43d2cfd624de26ffbc832e",
+    "config_sha256": "e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23",
+    "index_sha256": "db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544",
+    "checkpoint_identity": "357f6a86160ebd5caff25d9a10d9f29e8547b16c6c73e78751fa69fde11ac4e4"
+  },
+  "schema": "sparkring-r33-mesh-host-contract/v1",
+  "marker_download_url": "https://github.com/FujitsuPolycom/sparkring/releases/download/r33-host-tools-c8646b0/mlx5-rdma-tx-marker"
+}

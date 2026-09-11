@@ -11,6 +11,9 @@ runtime/sparkring/source_image/patches/*.patch whitespace=cr-at-eol,-trailing-sp
 spark_transport/nccl/nccl-2.30.7-dual-pci-domain.patch -text whitespace=cr-at-eol,-trailing-space
 runtime/glm53-spark-mtp3-mesh/compute/*.tar.gz -text
 runtime/glm53-spark-mtp3-mesh/compute/*.patch whitespace=-trailing-space
+runtime/sparkring/jovian-r33/patches/*.patch whitespace=-trailing-space
+# Publication receipts hash these qualification documents as raw bytes.
+performance/records/glm53-flash/r33-image020-*-sparkcache-20260911.md text eol=lf
 runtime/exl3/patches/*.patch whitespace=-trailing-space
 runtime/deepseek0731-gb10/patches/*.patch whitespace=-trailing-space
 
