@@ -22,7 +22,7 @@ HCA, rank, and management values. Placeholder site values are rejected.
 `tp2-dcp1.env.example` preserves the existing one-DAC layout: both functions
 of physical cage p0 are addressed through the primary and secondary host PCIe
 domains. It uses the byte-pinned `tp2-rocenante-adaptive` transport, TP2/DCP1,
-MTP3, managed loading, a 1,048,576-token request limit, and the existing exact
+MTP3, native vLLM `instanttensor` loading, a 1,048,576-token request limit, and the existing exact
 TP2 graph sizes. It clears `PYTHONPATH` so the TP4 mesh overlay cannot leak into
 the pair. SparkCache remains disabled because the pair has no matching recovery
 qualification.
@@ -35,20 +35,26 @@ selects TP4/DCP1, MTP3, the 1,048,576-token request limit, dual-domain NCCL, and
 the exact graph sizes recorded by the mesh profile. Apply
 `tp4-dcp1-sparkcache.env.example` only for the separate bounded cache run.
 
-All profiles enable 2,048-row mHC prefill sharding, the native vLLM
-`instanttensor` load format, and DCP1. The templates request
-continuation-prefill coalescing, but the locked R33 vLLM and B12X sources do not
-implement its multi-checkpoint B12X path. The pinned
+All profiles enable mHC prefill sharding, the native vLLM `instanttensor` load
+format, and DCP1. For an 8,192-row prefill, TP4 divides mHC ownership into
+2,048 rows per rank; this is not a fixed owner-row count for every topology.
+The TP4 template requests continuation-prefill coalescing and up to four
+diagnostic records per rank. The SparkCache overlay inherits those settings.
+TP2 disables coalescing because the implemented admission contract requires
+TP4. The locked vLLM composition implements sparse checkpoint scheduling and
+the multi-checkpoint B12X execution path. The pinned
 InstantTensor revision selects its I/O backend automatically; these profiles do
 not require an `INSTANTTENSOR_*` environment override. Configuration is
 only admission evidence. The [activation evidence contract](ACTIVATION_EVIDENCE.md)
 defines the immutable logs, process maps, status snapshots, and request receipts
 required to prove that every rank used the same image and NCCL 2.31.2, both host
 domains carried NCCL, the exact graph set was captured, and InstantTensor, MTP3,
-mHC, and the selected custom transport executed. The activation receipt cannot
-qualify continuation-prefill coalescing until compatible vLLM and B12X sources
-and bounded scheduler diagnostics are built into a new image. TP4 additionally
-requires two completed
+mHC, and the selected custom transport executed. Package verification of the
+prefix-hit metadata fix in source tree `667ee2f6652efa065c57a7adc0193991f6cde6ac`
+does not qualify model execution. TP4 model qualification for that composition
+is pending, and TP2 is unqualified. The activation validator also has a TP2
+contract mismatch described in the activation evidence document. TP4 requires
+two completed
 32,768-token-or-longer prompts with no `sample_tokens` timeout or fatal engine
 error. The cache profile also requires successful capture, restore, payload
 comparison, and recovery after an injected fault.

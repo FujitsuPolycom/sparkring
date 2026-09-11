@@ -39,14 +39,35 @@ Set `VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT` to a positive integer on every
 rank. A qualifying activation must capture a bounded record with the request
 identifier, an 8,192-token span and the checkpoint token positions selected on
 every rank. The default value is zero and produces no per-request records.
-Environment values alone do not prove execution.
+Environment values alone do not prove execution. The TP4 template sets this
+limit to four; TP2 disables both coalescing and its diagnostics. The SparkCache
+overlay inherits TP4 admission settings, but external-load requests still use
+the ordinary scheduler path.
 
 The source patch and complete changed-file manifest are packaged as
 `vllm-source-composition.patch` and
 `vllm-source-composition-manifest.json`. Their hashes must match the image's
-source lock. GPU correctness, long-prefill liveness and throughput remain
-unqualified until a rebuilt ARM64 image supplies matching native, wheel and
-activation receipts.
+source lock. The prefix-hit metadata fix in tree
+`667ee2f6652efa065c57a7adc0193991f6cde6ac` has package verification; model
+qualification is pending. A bounded TP4 run of tree `4f1813fc` demonstrated
+mHC and coalescing execution but failed on a prefix-cache-hit request. That
+result proves execution only for that source tree and does not establish
+correctness, long-prefill liveness, throughput, or qualification of the fixed
+composition. Require matching native, wheel and activation receipts from the
+fixed image, including completed prefix-cache-hit requests.
+
+## TP2 evidence limitation
+
+TP2 is unqualified. Its template sets
+`VLLM_B12X_KDA_PREFILL_COALESCING=0`, while `verify_profile.py` currently requires
+positive `continuation_coalesced_groups` for every profile. It also requires a
+2,048-row mHC owner execution for every profile, although ownership depends on
+the input row count and tensor-parallel size. The 8,192-row TP4 evidence in the
+table cannot be reused as TP2 evidence. The validator must be reconciled with
+the TP2 execution contract before it can accept a truthful TP2 activation
+receipt. Do not enable an unsupported TP2 coalescing configuration or insert
+synthetic counters to satisfy it. Offline template checks do not resolve this
+activation mismatch.
 
 ## Collector behavior
 
