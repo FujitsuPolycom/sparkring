@@ -8,41 +8,41 @@ for inspecting defaults or preparing private site inputs, and
 <!-- BEGIN GENERATED PROFILES -->
 
 Configured context is a per-request limit, not measured KV capacity or a completed long-context test.
-Status describes the evidence scope; recommendation describes deployment navigation.
+Validation describes the checks performed; recommendation describes deployment navigation. Hardware testing covers only the linked conditions.
 
 ### Four Sparks
 
-| Model / features | Layout | Configured context (tokens) | Status | Navigation | Quickstart |
-|---|---|---:|---|---|---|
-| GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache | TP4/DCP1 | 1048576 | qualified | recommended | [Guide](glm53-flash-spark-tp4-dcp1-sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 | TP4/DCP1 | 1048576 | implemented | alternative | [Guide](deepseek-v4-flash-0731/README.md) |
-| DeepSeek-V4-Flash-Vision-Exp | TP4/DCP1 | 1048576 | research-only | alternative | [Guide](deepseek-v4-flash-vision-exp-tp4/README.md) |
-| DeepSeek-V4.1-Flash | TP4/DCP1 | 430080 | implemented | alternative | [Guide](deepseek-v41-flash-cycle/README.md) |
-| GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 | TP4/DCP4 | 1048576 | implemented | alternative | [Guide](glm52-exl3-r7-3.5bpw/README.md) |
-| GLM-5.3 Flash NVFP4-Spark · native MTP3 | TP4/DCP1 | 1048576 | research-only | alternative | [Guide](glm53-flash-spark-tp4-dcp1/README.md) |
-| GLM-5.3 Flash NVFP4-Spark · switched | TP4/DCP1 | 1048576 | research-only | alternative | [Guide](glm53-flash-spark-tp4-switched/README.md) |
-| Qwen3.8-27B-EXL3-K5K6-hydrated | TP4/DCP1 | 1048576 | implemented | alternative | [Guide](qwen38-27b-exl3-k5k6/README.md) |
-| DeepSeek-V4-Flash-0731 + SparkCache | TP4/DCP1 | 1048576 | implemented | alternative | [Guide](sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) |
-| GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 + SparkCache | TP4/DCP4 | 1048576 | implemented | alternative | [Guide](sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) |
+| Model / features | Layout | Configured context (tokens) | KV (tokens) | Validation | Navigation | Quickstart |
+|---|---|---:|---:|---|---|---|
+| GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache | TP4/DCP1 | 1,048,576 | — | Hardware tested | recommended | [Guide](glm53-flash-spark-tp4-dcp1-sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 | TP4/DCP1 | 1,048,576 | — | Software checked | alternative | [Guide](deepseek-v4-flash-0731/README.md) |
+| DeepSeek-V4-Flash-Vision-Exp | TP4/DCP1 | 1,048,576 | — | Experimental | alternative | [Guide](deepseek-v4-flash-vision-exp-tp4/README.md) |
+| DeepSeek-V4.1-Flash | TP4/DCP1 | 430,080 | [2,182,642](../profiles/deepseek-v41-flash-cycle/recipe.json) | Software checked | alternative | [Guide](deepseek-v41-flash-cycle/README.md) |
+| GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 | TP4/DCP4 | 1,048,576 | [1,156,864](../profiles/glm52-exl3-r7-3.5bpw/recipe.json) | Software checked | alternative | [Guide](glm52-exl3-r7-3.5bpw/README.md) |
+| GLM-5.3 Flash NVFP4-Spark · native MTP3 | TP4/DCP1 | 1,048,576 | — | Experimental | alternative | [Guide](glm53-flash-spark-tp4-dcp1/README.md) |
+| GLM-5.3 Flash NVFP4-Spark · switched | TP4/DCP1 | 1,048,576 | — | Experimental | alternative | [Guide](glm53-flash-spark-tp4-switched/README.md) |
+| Qwen3.8-27B-EXL3-K5K6-hydrated | TP4/DCP1 | 1,048,576 | [8,743,342](../profiles/qwen38-27b-exl3-k5k6/recipe.json) | Software checked | alternative | [Guide](qwen38-27b-exl3-k5k6/README.md) |
+| DeepSeek-V4-Flash-0731 + SparkCache | TP4/DCP1 | 1,048,576 | — | Software checked | alternative | [Guide](sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) |
+| GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 + SparkCache | TP4/DCP4 | 1,048,576 | — | Software checked | alternative | [Guide](sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) |
 
 ### Two Sparks
 
-| Model / features | Layout | Configured context (tokens) | Status | Navigation | Quickstart |
-|---|---|---:|---|---|---|
-| GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache | TP2/DCP1 | 1048576 | qualified | recommended | [Guide](glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 | TP2/DCP1 | 1048576 | implemented | alternative | [Guide](deepseek-v4-flash-0731-pair/README.md) |
-| GLM-5.3 Flash NVFP4-Spark · native MTP3 | TP2/DCP1 | 1048576 | research-only | alternative | [Guide](glm53-flash-spark-tp2-dcp1/README.md) |
-| Qwen3.8-27B-EXL3-K5K6-hydrated | TP2/DCP1 | 1048576 | implemented | alternative | [Guide](qwen38-27b-exl3-k5k6-pair/README.md) |
-| DeepSeek-V4-Flash-0731 + SparkCache | TP2/DCP1 | 1048576 | implemented | alternative | [Guide](sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) |
+| Model / features | Layout | Configured context (tokens) | KV (tokens) | Validation | Navigation | Quickstart |
+|---|---|---:|---:|---|---|---|
+| GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache | TP2/DCP1 | 1,048,576 | [1,081,922](../runtime/profiles/glm53-flash-spark-tp2/README.md) | Hardware tested | recommended | [Guide](glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 | TP2/DCP1 | 1,048,576 | — | Software checked | alternative | [Guide](deepseek-v4-flash-0731-pair/README.md) |
+| GLM-5.3 Flash NVFP4-Spark · native MTP3 | TP2/DCP1 | 1,048,576 | — | Experimental | alternative | [Guide](glm53-flash-spark-tp2-dcp1/README.md) |
+| Qwen3.8-27B-EXL3-K5K6-hydrated | TP2/DCP1 | 1,048,576 | [4,130,233](../profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | Software checked | alternative | [Guide](qwen38-27b-exl3-k5k6-pair/README.md) |
+| DeepSeek-V4-Flash-0731 + SparkCache | TP2/DCP1 | 1,048,576 | — | Software checked | alternative | [Guide](sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) |
 
 ### Retired profiles
 
-| Model / features | Layout | Configured context (tokens) | Status | Navigation | Quickstart |
-|---|---|---:|---|---|---|
-| GLM-5.3-Flash-NVFP4 | TP4/DCP4 | 1048576 | implemented | retired | [Guide](glm53-flash-nvfp4-dflash2-bf16-tp4/README.md) |
-| GLM-5.3-Flash-NVFP4-Spark | TP4/DCP4 | 1048576 | research-only | retired | [Guide](glm53-mtp3-cache-checkpoints-tp4/README.md) |
-| GLM-5.3-Flash-NVFP4-Spark | TP4/DCP4 | 1048576 | research-only | retired | [Guide](glm53-spark-mtp3-managed-mesh-tp4/README.md) |
-| GLM-5.3-Flash-NVFP4 + SparkCache | TP4/DCP4 | 1048576 | qualified | retired | [Guide](sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/README.md) |
+| Model / features | Layout | Configured context (tokens) | KV (tokens) | Validation | Navigation | Quickstart |
+|---|---|---:|---:|---|---|---|
+| GLM-5.3-Flash-NVFP4 | TP4/DCP4 | 1,048,576 | — | Software checked | retired | [Guide](glm53-flash-nvfp4-dflash2-bf16-tp4/README.md) |
+| GLM-5.3-Flash-NVFP4-Spark | TP4/DCP4 | 1,048,576 | — | Experimental | retired | [Guide](glm53-mtp3-cache-checkpoints-tp4/README.md) |
+| GLM-5.3-Flash-NVFP4-Spark | TP4/DCP4 | 1,048,576 | — | Experimental | retired | [Guide](glm53-spark-mtp3-managed-mesh-tp4/README.md) |
+| GLM-5.3-Flash-NVFP4 + SparkCache | TP4/DCP4 | 1,048,576 | — | Hardware tested | retired | [Guide](sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/README.md) |
 
 Additional pinned historical variants, including original NVFP4 TP2, are in the [retained deployment index](../docs/history/deployment-variants.md).
 

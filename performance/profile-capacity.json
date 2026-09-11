@@ -1,0 +1,35 @@
+{
+  "schema": "sparkring-profile-capacity/v1",
+  "profiles": {
+    "glm53-flash-spark-tp2-dcp1-sparkcache": {
+      "tokens": 1081922,
+      "source": "runtime/profiles/glm53-flash-spark-tp2/README.md",
+      "witness": "1,081,922 total KV tokens",
+      "conditions": "Published R33 TP2/DCP1 SparkCache startup, 7.5 GiB KV per rank."
+    },
+    "glm52-exl3-r7-3.5bpw": {
+      "tokens": 1156864,
+      "source": "profiles/glm52-exl3-r7-3.5bpw/recipe.json",
+      "witness": "\"reported_kv_tokens\": 1156864",
+      "conditions": "Recorded EXL3 TP4/DCP4 profile, 9,250,000,000 KV bytes per rank."
+    },
+    "deepseek-v41-flash-cycle": {
+      "tokens": 2182642,
+      "source": "profiles/deepseek-v41-flash-cycle/recipe.json",
+      "witness": "10.94 GiB = 2,182,642 tokens",
+      "conditions": "TP4, Engram on NVMe, gpu_memory_utilization 0.83 and 430,080 configured context tokens."
+    },
+    "qwen38-27b-exl3-k5k6": {
+      "tokens": 8743342,
+      "source": "profiles/qwen38-27b-exl3-k5k6/recipe.json",
+      "witness": "8743342-token logical KV pool",
+      "conditions": "Reported startup for the normalized TP4 profile; maximum configured sequences 64."
+    },
+    "qwen38-27b-exl3-k5k6-pair": {
+      "tokens": 4130233,
+      "source": "profiles/qwen38-27b-exl3-k5k6-pair/recipe.json",
+      "witness": "4130233-token logical KV pool",
+      "conditions": "Reported startup for the normalized TP2 profile; maximum configured sequences 32."
+    }
+  }
+}

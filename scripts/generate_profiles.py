@@ -13,12 +13,26 @@ from runtime.common.environment import render_environment  # noqa: E402
 
 START = '<!-- BEGIN GENERATED PROFILES -->'
 END = '<!-- END GENERATED PROFILES -->'
+VALIDATION_LABELS = {
+    'qualified': 'Hardware tested',
+    'implemented': 'Software checked',
+    'research-only': 'Experimental',
+    'unsupported': 'Unsupported',
+}
 
 
 def profile_table(root=ROOT, *, compact=False):
     rows = [(load(id, root)[0], resolve(id, root=root)) for id in catalog(root)]
+    capacity = read_json(root/'performance/profile-capacity.json')['profiles']
+    if not set(capacity) <= {p['id'] for p, _ in rows}:
+        raise ValueError('Capacity records must name catalog profiles')
+    for record in capacity.values():
+        if type(record['tokens']) is not int or record['tokens'] <= 0 or not record['conditions']:
+            raise ValueError('Capacity records require positive token counts and measurement conditions')
+        if record['witness'] not in local_path(record['source'], root).read_text(encoding='utf-8-sig'):
+            raise ValueError(f"Capacity evidence changed: {record['source']}")
     lines = [START, '', 'Configured context is a per-request limit, not measured KV capacity or a completed long-context test.',
-             'Status describes the evidence scope; recommendation describes deployment navigation.', '']
+             'Validation describes the checks performed; recommendation describes deployment navigation. Hardware testing covers only the linked conditions.', '']
     if compact:
         lines = [START, '']
     for title, predicate in (
@@ -28,18 +42,23 @@ def profile_table(root=ROOT, *, compact=False):
     ):
         if compact and title == 'Retired profiles':
             continue
-        lines += ['### '+title, '', '| Model / features | Layout | Configured context (tokens) | Status | Navigation | Quickstart |', '|---|---|---:|---|---|---|']
+        lines += ['### '+title, '', '| Model / features | Layout | Configured context (tokens) | KV (tokens) | Validation | Navigation | Quickstart |', '|---|---|---:|---:|---|---|---|']
         if compact:
-            lines[-2:] = ['| Model / features | Layout | Status | Quickstart |', '|---|---|---|---|']
+            lines[-2:] = ['| Model / features | Layout | Context (tokens) | KV (tokens) | Validation | Quickstart |', '|---|---|---:|---:|---|---|']
         for p, r in sorted(rows, key=lambda pair: (pair[0]['recommendation'] != 'recommended', pair[0]['id'])):
             if not predicate(p, r):
                 continue
             s = r['serving']
+            context = f"{s['max_model_len']:,}" if 'max_model_len' in s else '—'
+            record = capacity.get(p['id'])
+            kv = f"[{record['tokens']:,}]({record['source']})" if record else '—'
+            if record and not compact:
+                kv = f"[{record['tokens']:,}](../{record['source']})"
             if compact:
                 title = f"**{p['title']}**" if p['recommendation'] == 'recommended' else p['title']
-                lines.append(f"| {title} | TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']} | {p['status']} | [Guide](profiles/{p['id']}/README.md) |")
+                lines.append(f"| {title} | TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']} | {context} | {kv} | {VALIDATION_LABELS[p['status']]} | [Guide](profiles/{p['id']}/README.md) |")
                 continue
-            lines.append(f"| {p['title']} | TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']} | {s.get('max_model_len', '—')} | {p['status']} | {p['recommendation']} | [Guide](profiles/{p['id']}/README.md) |")
+            lines.append(f"| {p['title']} | TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']} | {context} | {kv} | {VALIDATION_LABELS[p['status']]} | {p['recommendation']} | [Guide](profiles/{p['id']}/README.md) |")
         lines.append('')
     if compact:
         return '\n'.join(lines + [END])
