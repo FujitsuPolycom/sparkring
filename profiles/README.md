@@ -5,6 +5,10 @@ evidence scope. See the [configuration guide](../docs/development/configuration.
 for inspecting defaults or preparing private site inputs, and
 [benchmarks](../performance/benchmarks.md) for measured results.
 
+Model names come from `model-names.json`. The model-quant column links the
+checkpoint repository selected by the profile; exact revisions remain pinned
+in its configuration.
+
 <!-- BEGIN GENERATED PROFILES -->
 
 Configured context is a per-request limit, not measured KV capacity or a completed long-context test.
@@ -12,37 +16,37 @@ Development profiles are under active development; validated profiles have docum
 
 ### Four Sparks
 
-| Model / features | Layout | Configured context (tokens) | KV (tokens) | Status | Navigation | Quickstart |
-|---|---|---:|---:|---|---|---|
-| GLM-5.3 Flash NVFP4-Spark · MTP3 + SparkCache | TP4/DCP1 | 1,048,576 | [~2,280,000](../performance/capacity-references.md) | Validated | recommended | [Guide](glm53-flash-spark-tp4-dcp1-sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 | TP4/DCP1 | 1,048,576 | [~1,000,000](../performance/capacity-references.md) | Development | alternative | [Guide](deepseek-v4-flash-0731/README.md) |
-| DeepSeek-V4-Flash-Vision-Exp | TP4/DCP1 | 1,048,576 | — | Experimental | alternative | [Guide](deepseek-v4-flash-vision-exp-tp4/README.md) |
-| DeepSeek-V4.1-Flash | TP4/DCP1 | 430,080 | [2,182,642](../profiles/deepseek-v41-flash-cycle/recipe.json) | Development | alternative | [Guide](deepseek-v41-flash-cycle/README.md) |
-| GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 | TP4/DCP4 | 1,048,576 | [1,156,864](../profiles/glm52-exl3-r7-3.5bpw/recipe.json) | Development | alternative | [Guide](glm52-exl3-r7-3.5bpw/README.md) |
-| GLM-5.3 Flash NVFP4-Spark · MTP3 | TP4/DCP1 | 1,048,576 | [~2,300,000](../performance/capacity-references.md) | Experimental | alternative | [Guide](glm53-flash-spark-tp4-dcp1/README.md) |
-| GLM-5.3 Flash NVFP4-Spark · switched | TP4/DCP1 | 1,048,576 | [~2,300,000](../performance/capacity-references.md) | Experimental | alternative | [Guide](glm53-flash-spark-tp4-switched/README.md) |
-| Qwen3.8-27B-EXL3-K5K6-hydrated | TP4/DCP1 | 1,048,576 | [8,743,342](../profiles/qwen38-27b-exl3-k5k6/recipe.json) | Development | alternative | [Guide](qwen38-27b-exl3-k5k6/README.md) |
-| DeepSeek-V4-Flash-0731 + SparkCache | TP4/DCP1 | 1,048,576 | — | Development | alternative | [Guide](sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) |
-| GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 + SparkCache | TP4/DCP4 | 1,048,576 | — | Development | alternative | [Guide](sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) |
+| Model | Model quant | Layout | Configured context (tokens) | KV (tokens) | Status | Navigation | Quickstart |
+|---|---|---|---:|---:|---|---|---|
+| GLM-5.3-Flash | [GLM-5.3-Flash-NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP4/DCP1 | 1,048,576 | [~2,280,000](../performance/capacity-references.md) | Validated | recommended | [Guide](glm53-flash-spark-tp4-dcp1-sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 | [DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | TP4/DCP1 | 1,048,576 | [~1,000,000](../performance/capacity-references.md) | Development | alternative | [Guide](deepseek-v4-flash-0731/README.md) |
+| DeepSeek-V4-Flash-Vision-Exp | [DeepSeek-V4-Flash-Vision-Exp](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp) | TP4/DCP1 | 1,048,576 | — | Experimental | alternative | [Guide](deepseek-v4-flash-vision-exp-tp4/README.md) |
+| DeepSeek-V4.1-Flash | [DeepSeek-V4.1-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | TP4/DCP1 | 430,080 | [2,182,642](../profiles/deepseek-v41-flash-cycle/recipe.json) | Development | alternative | [Guide](deepseek-v41-flash-cycle/README.md) |
+| GLM-5.2 | [GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78) | TP4/DCP4 | 1,048,576 | [1,156,864](../profiles/glm52-exl3-r7-3.5bpw/recipe.json) | Development | alternative | [Guide](glm52-exl3-r7-3.5bpw/README.md) |
+| GLM-5.3-Flash | [GLM-5.3-Flash-NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP4/DCP1 | 1,048,576 | [~2,300,000](../performance/capacity-references.md) | Experimental | alternative | [Guide](glm53-flash-spark-tp4-dcp1/README.md) |
+| GLM-5.3-Flash | [GLM-5.3-Flash-NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP4/DCP1 · switched | 1,048,576 | [~2,300,000](../performance/capacity-references.md) | Experimental | alternative | [Guide](glm53-flash-spark-tp4-switched/README.md) |
+| Qwen3.8-27B | [Qwen3.8-27B-EXL3-K5K6-hydrated](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | TP4/DCP1 | 1,048,576 | [8,743,342](../profiles/qwen38-27b-exl3-k5k6/recipe.json) | Development | alternative | [Guide](qwen38-27b-exl3-k5k6/README.md) |
+| DeepSeek-V4-Flash-0731 | [DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | TP4/DCP1 | 1,048,576 | — | Development | alternative | [Guide](sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) |
+| GLM-5.2 | [GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78) | TP4/DCP4 | 1,048,576 | — | Development | alternative | [Guide](sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) |
 
 ### Two Sparks
 
-| Model / features | Layout | Configured context (tokens) | KV (tokens) | Status | Navigation | Quickstart |
-|---|---|---:|---:|---|---|---|
-| GLM-5.3 Flash NVFP4-Spark · MTP3 + SparkCache | TP2/DCP1 | 1,048,576 | [1,081,922](../runtime/profiles/glm53-flash-spark-tp2/README.md) | Validated | recommended | [Guide](glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 | TP2/DCP1 | 1,048,576 | [~1,000,000](../performance/capacity-references.md) | Development | alternative | [Guide](deepseek-v4-flash-0731-pair/README.md) |
-| GLM-5.3 Flash NVFP4-Spark · MTP3 | TP2/DCP1 | 1,048,576 | — | Experimental | alternative | [Guide](glm53-flash-spark-tp2-dcp1/README.md) |
-| Qwen3.8-27B-EXL3-K5K6-hydrated | TP2/DCP1 | 1,048,576 | [4,130,233](../profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | Development | alternative | [Guide](qwen38-27b-exl3-k5k6-pair/README.md) |
-| DeepSeek-V4-Flash-0731 + SparkCache | TP2/DCP1 | 1,048,576 | — | Development | alternative | [Guide](sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) |
+| Model | Model quant | Layout | Configured context (tokens) | KV (tokens) | Status | Navigation | Quickstart |
+|---|---|---|---:|---:|---|---|---|
+| GLM-5.3-Flash | [GLM-5.3-Flash-NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP2/DCP1 | 1,048,576 | [1,081,922](../runtime/profiles/glm53-flash-spark-tp2/README.md) | Validated | recommended | [Guide](glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 | [DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | TP2/DCP1 | 1,048,576 | [~1,000,000](../performance/capacity-references.md) | Development | alternative | [Guide](deepseek-v4-flash-0731-pair/README.md) |
+| GLM-5.3-Flash | [GLM-5.3-Flash-NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP2/DCP1 | 1,048,576 | — | Experimental | alternative | [Guide](glm53-flash-spark-tp2-dcp1/README.md) |
+| Qwen3.8-27B | [Qwen3.8-27B-EXL3-K5K6-hydrated](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | TP2/DCP1 | 1,048,576 | [4,130,233](../profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | Development | alternative | [Guide](qwen38-27b-exl3-k5k6-pair/README.md) |
+| DeepSeek-V4-Flash-0731 | [DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | TP2/DCP1 | 1,048,576 | — | Development | alternative | [Guide](sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) |
 
 ### Retired profiles
 
-| Model / features | Layout | Configured context (tokens) | KV (tokens) | Status | Navigation | Quickstart |
-|---|---|---:|---:|---|---|---|
-| GLM-5.3-Flash-NVFP4 | TP4/DCP4 | 1,048,576 | [4,321,618](../profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/recipe.json) | Development | retired | [Guide](glm53-flash-nvfp4-dflash2-bf16-tp4/README.md) |
-| GLM-5.3-Flash-NVFP4-Spark | TP4/DCP4 | 1,048,576 | — | Experimental | retired | [Guide](glm53-mtp3-cache-checkpoints-tp4/README.md) |
-| GLM-5.3-Flash-NVFP4-Spark | TP4/DCP4 | 1,048,576 | — | Experimental | retired | [Guide](glm53-spark-mtp3-managed-mesh-tp4/README.md) |
-| GLM-5.3-Flash-NVFP4 + SparkCache | TP4/DCP4 | 1,048,576 | [4,321,618](../profiles/sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/recipe.json) | Validated | retired | [Guide](sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/README.md) |
+| Model | Model quant | Layout | Configured context (tokens) | KV (tokens) | Status | Navigation | Quickstart |
+|---|---|---|---:|---:|---|---|---|
+| GLM-5.3-Flash | [GLM-5.3-Flash-NVFP4](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4) | TP4/DCP4 | 1,048,576 | [4,321,618](../profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/recipe.json) | Development | retired | [Guide](glm53-flash-nvfp4-dflash2-bf16-tp4/README.md) |
+| GLM-5.3-Flash | [GLM-5.3-Flash-NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP4/DCP4 | 1,048,576 | — | Experimental | retired | [Guide](glm53-mtp3-cache-checkpoints-tp4/README.md) |
+| GLM-5.3-Flash | [GLM-5.3-Flash-NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP4/DCP4 | 1,048,576 | — | Experimental | retired | [Guide](glm53-spark-mtp3-managed-mesh-tp4/README.md) |
+| GLM-5.3-Flash | [GLM-5.3-Flash-NVFP4](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4) | TP4/DCP4 | 1,048,576 | [4,321,618](../profiles/sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/recipe.json) | Validated | retired | [Guide](sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/README.md) |
 
 Additional pinned historical variants, including original NVFP4 TP2, are in the [retained deployment index](../docs/history/deployment-variants.md).
 

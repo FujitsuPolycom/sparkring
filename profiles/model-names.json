@@ -1,0 +1,12 @@
+{
+  "schema": "sparkring-model-names/v1",
+  "models": {
+    "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark": "GLM-5.3-Flash",
+    "local-inference-lab/GLM-5.3-Flash-NVFP4": "GLM-5.3-Flash",
+    "brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78": "GLM-5.2",
+    "deepseek-ai/DeepSeek-V4-Flash-0731": "DeepSeek-V4-Flash-0731",
+    "deepseek-ai/DeepSeek-V4-Flash-Vision-Exp": "DeepSeek-V4-Flash-Vision-Exp",
+    "deepseek-ai/DeepSeek-V4.1-Flash": "DeepSeek-V4.1-Flash",
+    "malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated": "Qwen3.8-27B"
+  }
+}
