@@ -160,9 +160,10 @@ def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture)
     launch, _, _ = launch_fixture
     nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"
     result, arguments, _ = launch(0, {
+        "DECODE_CONTEXT_PARALLEL_SIZE": "1",
         "SOURCE_IMAGE_PROFILE": "tp4-dcp1",
-        "SPARKRING_PROFILE_MODE": "custom",
         "LOAD_FORMAT": "instanttensor",
+        "SPARKRING_PROFILE_MODE": "custom",
         "SPARKRING_MANAGED_MESH_RENDERED": "1",
         "VLLM_SPARK_TP4_MODE": "custom",
         "VLLM_SPARK_TP4_VOCAB_MODE": "custom",
@@ -215,6 +216,67 @@ def test_r33_tp4_uses_candidate_entrypoint_and_installed_runtime(launch_fixture)
     assert selected["tensor_parallel_size"] == 4
 
 
+def test_r33_tp4_dcp4_uses_candidate_entrypoint(launch_fixture):
+    launch, _, _ = launch_fixture
+    nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"
+    result, arguments, _ = launch(0, {
+        "DECODE_CONTEXT_PARALLEL_SIZE": "4",
+        "SOURCE_IMAGE_PROFILE": "tp4-dcp4",
+        "SPARKRING_PROFILE_MODE": "custom",
+        "LOAD_FORMAT": "instanttensor",
+        "SPARKRING_MANAGED_MESH_RENDERED": "1",
+        "VLLM_SPARK_TP4_MODE": "custom",
+        "VLLM_SPARK_TP4_VOCAB_MODE": "custom",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
+        "VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT": "4",
+        "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
+        "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+        "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+        "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
+        "SPARKCACHE_ENABLED": "0",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE": "0",
+        "NCCL_LIBRARY_PATH": nccl,
+        "NCCL_LIBRARY_SHA256": "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47",
+        "SIRCL_BUNDLE_HOST_ROOT": "",
+        "SPARKRING_DECLARED_SIRCL_NATIVE_SHA256": "b" * 64,
+        "SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256": "c" * 64,
+    })
+    assert result.returncode == 0, result.stderr
+    assert _option(arguments, "--entrypoint") == "/opt/sparkring/bin/sparkring-r33"
+    environment_map = _docker_environment(arguments)
+    assert environment_map["SOURCE_IMAGE_PROFILE"] == "tp4-dcp4"
+    assert _docker_labels(arguments)["org.sparkring.runtime"] == "glm53-flash-spark-jovian-r33-tp4-dcp4"
+
+
+def test_r33_rejects_profile_name_and_dcp_mismatch(launch_fixture):
+    launch, _, _ = launch_fixture
+    nccl = "/opt/local-inference/nccl/lib/libnccl.so.2"
+    result, _, _ = launch(0, {
+        "DECODE_CONTEXT_PARALLEL_SIZE": "4",
+        "SOURCE_IMAGE_PROFILE": "tp4-dcp1",
+        "SPARKRING_PROFILE_MODE": "custom",
+        "LOAD_FORMAT": "instanttensor",
+        "SPARKRING_MANAGED_MESH_RENDERED": "1",
+        "VLLM_SPARK_TP4_MODE": "custom",
+        "VLLM_SPARK_TP4_VOCAB_MODE": "custom",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": "1",
+        "VLLM_B12X_KDA_PREFILL_COALESCING_LOG_LIMIT": "4",
+        "VLLM_GLM53_MHC_PREFILL_SHARD": "1",
+        "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
+        "NCCL_IB_PRESERVE_PCI_DOMAIN": "1",
+        "NCCL_IB_ROUTE_DIAGNOSTICS": "1",
+        "SPARKCACHE_ENABLED": "0",
+        "SPARKCACHE_ASYNC_PAGE_CAPTURE": "0",
+        "NCCL_LIBRARY_PATH": nccl,
+        "NCCL_LIBRARY_SHA256": "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47",
+        "SIRCL_BUNDLE_HOST_ROOT": "",
+        "SPARKRING_DECLARED_SIRCL_NATIVE_SHA256": "b" * 64,
+        "SPARKRING_DECLARED_SIRCL_MANIFEST_SHA256": "c" * 64,
+    })
+    assert result.returncode == 78
+    assert "profile name differs from DECODE_CONTEXT_PARALLEL_SIZE" in result.stderr
+
+
 @pytest.mark.parametrize("diagnostic,clear_once", [(False, "auto"), (True, ""), (True, "auto"), (True, "none")])
 def test_r33_tp4_sparkcache_uses_receipt_bound_installed_libraries(launch_fixture, diagnostic, clear_once):
     launch, _, _ = launch_fixture
@@ -223,6 +285,7 @@ def test_r33_tp4_sparkcache_uses_receipt_bound_installed_libraries(launch_fixtur
     snapshot = "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so"
     lease = "/opt/sparkring/contracts/vllm-connector-jobs-r33-547f7091.json"
     result, arguments, _ = launch(0, {
+        "DECODE_CONTEXT_PARALLEL_SIZE": "1",
         "SOURCE_IMAGE_PROFILE": "tp4-dcp1-sparkcache",
         "SPARKRING_PROFILE_MODE": "custom",
         "LOAD_FORMAT": "instanttensor",

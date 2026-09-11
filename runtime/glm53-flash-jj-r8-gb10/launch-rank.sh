@@ -246,12 +246,14 @@ case "${SOURCE_IMAGE_PROFILE}" in
     [[ "${NCCL_LIBRARY_PATH}" == /opt/sparkring/nccl-pci/libnccl.so.2.30.7 && \
        "${NCCL_IB_EXTENDED_IPV4_GIDS:-0}" == 1 && "${NCCL_IB_PRESERVE_PCI_DOMAIN:-0}" == 1 ]] || \
       die 'Source SparkCache profile requires its dual-domain NCCL settings' ;;
-  tp4-dcp1)
+  tp4-dcp1|tp4-dcp4)
     r33_profile=1
     [[ "${SPARKRING_PROFILE_MODE:-}" == custom && "${SPARKRING_MANAGED_MESH_RENDERED:-0}" == 1 ]] || \
       die 'R33 TP4 requires the canonical managed custom profile'
     [[ "${SPARKCACHE_ENABLED}" == 0 && "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 0 ]] || \
-      die 'R33 tp4-dcp1 requires SparkCache disabled'
+      die 'R33 TP4 requires SparkCache disabled'
+    [[ "${SOURCE_IMAGE_PROFILE}" == "tp4-dcp${DECODE_CONTEXT_PARALLEL_SIZE}" ]] || \
+      die 'R33 TP4 profile name differs from DECODE_CONTEXT_PARALLEL_SIZE'
     [[ "${VLLM_SPARK_TP4_MODE}" == custom && "${VLLM_SPARK_TP4_VOCAB_MODE}" == custom ]] || \
       die 'R33 TP4 requires custom all-reduce and vocabulary transports'
     [[ "${VLLM_B12X_KDA_PREFILL_COALESCING:-0}" == 1 && \
@@ -260,7 +262,7 @@ case "${SOURCE_IMAGE_PROFILE}" in
       die 'R33 TP4 requires coalescing, mHC, and GDN metadata fast path'
     [[ "${NCCL_LIBRARY_PATH}" == /opt/local-inference/nccl/lib/libnccl.so.2 ]] || \
       die 'R33 TP4 requires installed NCCL 2.31.2' ;;
-  tp4-dcp1-sparkcache)
+  tp4-dcp1-sparkcache|tp4-dcp4-sparkcache)
     r33_profile=1
     [[ "${SPARKRING_PROFILE_MODE:-}" == custom && "${SPARKRING_MANAGED_MESH_RENDERED:-0}" == 1 ]] || \
       die 'R33 SparkCache requires the canonical managed custom profile'
@@ -288,7 +290,8 @@ case "${SOURCE_IMAGE_PROFILE}" in
 esac
 if [[ -n "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" && \
       "${SOURCE_IMAGE_PROFILE}" != tp4-dcp1-mtp3-sparkcache && \
-      "${SOURCE_IMAGE_PROFILE}" != tp4-dcp1-sparkcache ]]; then
+      "${SOURCE_IMAGE_PROFILE}" != tp4-dcp1-sparkcache && \
+      "${SOURCE_IMAGE_PROFILE}" != tp4-dcp4-sparkcache ]]; then
   die 'SPARKCACHE_SOURCE_LEASE_CONTRACT requires the source SparkCache profile'
 fi
 if [[ -n "${SOURCE_IMAGE_PROFILE}" ]]; then
@@ -460,12 +463,14 @@ if [[ "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 1 ]]; then
 fi
 
 if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-mtp3-sparkcache || \
-      "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-sparkcache ]]; then
+      "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-sparkcache || \
+      "${SOURCE_IMAGE_PROFILE}" == tp4-dcp4-sparkcache ]]; then
   # These are the bounded capacities named by the source-image profile. Reject
   # inherited operator defaults instead of allocating larger unqualified buffers.
   expected_cache_access=read-write
   expected_cache_capture=1
-  if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-sparkcache && "${SPARKCACHE_ACCESS_MODE}" == restore-only ]]; then
+  if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-sparkcache || "${SOURCE_IMAGE_PROFILE}" == tp4-dcp4-sparkcache ]] && \
+     [[ "${SPARKCACHE_ACCESS_MODE}" == restore-only ]]; then
     expected_cache_access=restore-only
     expected_cache_capture=0
   fi
@@ -1084,7 +1089,7 @@ if os.environ["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1-mtp3-sparkcache":
         "spark_cache_cuda_restore_arena_budget_bytes": 268435456,
         "spark_cache_page_snapshot_interval_tokens": 0,
     })
-elif os.environ["SOURCE_IMAGE_PROFILE"] == "tp4-dcp1-sparkcache":
+elif os.environ["SOURCE_IMAGE_PROFILE"] in ("tp4-dcp1-sparkcache", "tp4-dcp4-sparkcache"):
     extra.update({
         "spark_cache_async_page_capture_lease_mode": "connector-jobs",
         "spark_cache_async_page_capture_lease_contract": os.environ["SPARKCACHE_SOURCE_LEASE_CONTRACT"],
@@ -1166,7 +1171,7 @@ if [[ "${r33_profile}" == 1 ]]; then
     -e "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH=${VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH}"
     -e "NCCL_LOCAL_INFERENCE_PATH=${NCCL_LIBRARY_PATH}"
   )
-  if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-sparkcache ]]; then
+  if [[ "${SOURCE_IMAGE_PROFILE}" == tp4-dcp1-sparkcache || "${SOURCE_IMAGE_PROFILE}" == tp4-dcp4-sparkcache ]]; then
     r33_environment+=(
       -e "SPARKCACHE_CACHE_NAMESPACE=${SPARKCACHE_CACHE_NAMESPACE}"
       -e "SPARKCACHE_PLACEMENT_LIBRARY_PATH=${SPARKCACHE_PLACEMENT_LIBRARY_PATH}"

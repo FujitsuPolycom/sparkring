@@ -95,12 +95,13 @@ def load_site(path: Path):
         if type(timeout) is not int or not 0 < timeout <= 2147483647:
             raise ValueError("liveness_output_seconds must be an integer from 1 to 2147483647")
     if "nccl_debug" in data and (
-            data.get("runtime_profile") not in ("tp4-dcp1", "tp4-dcp1-sparkcache")
+            data.get("runtime_profile")
+            not in ("tp4-dcp1", "tp4-dcp1-sparkcache", "tp4-dcp4", "tp4-dcp4-sparkcache")
             or data["nccl_debug"] != "INFO"):
         raise ValueError("nccl_debug diagnostic mode requires an R33 TP4 profile and INFO")
     if "cache_diagnostics" in data:
         diagnostic = data["cache_diagnostics"]
-        if (data.get("runtime_profile") != "tp4-dcp1-sparkcache"
+        if (data.get("runtime_profile") not in ("tp4-dcp1-sparkcache", "tp4-dcp4-sparkcache")
                 or not isinstance(diagnostic, dict)
                 or set(diagnostic) != {"namespace", "access_mode", "trace_reuse"}
                 or not isinstance(diagnostic.get("namespace"), str)
@@ -108,7 +109,7 @@ def load_site(path: Path):
                 or "REPLACE" in diagnostic["namespace"]
                 or diagnostic["access_mode"] != "restore-only"
                 or type(diagnostic["trace_reuse"]) is not int or diagnostic["trace_reuse"] != 1):
-            raise ValueError("cache_diagnostics requires R33 tp4-dcp1-sparkcache, a concrete safe namespace, restore-only access and trace_reuse=1")
+            raise ValueError("cache_diagnostics requires an R33 tp4-dcp1-sparkcache or tp4-dcp4-sparkcache profile, a concrete safe namespace, restore-only access and trace_reuse=1")
     topology_path = path.parent / data["topology_file"]
     topology = fabric.load_topology(topology_path)
     for node in topology.ranks:
@@ -308,8 +309,10 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
         raise ValueError("nccl_debug diagnostic mode requires an R33 image receipt")
     if r33_composition:
         runtime_profile = site.get("runtime_profile")
-        if runtime_profile not in ("tp4-dcp1", "tp4-dcp1-sparkcache"):
-            raise ValueError("R33 managed site must select tp4-dcp1 or tp4-dcp1-sparkcache")
+        if runtime_profile not in (
+                "tp4-dcp1", "tp4-dcp1-sparkcache", "tp4-dcp4", "tp4-dcp4-sparkcache"):
+            raise ValueError(
+                "R33 managed site must select tp4-dcp1 or tp4-dcp4, with or without sparkcache")
     elif site.get("runtime_profile") != (image_record["profile"] if source_composition else None):
         raise ValueError("Site runtime profile differs from the explicit image receipt")
     values = defaults(BASE / "runtime.env.example")
@@ -392,7 +395,7 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
                         or checked.get(native["snapshot_path"]) != native["snapshot_sha256"]):
                     raise ValueError("R33 image receipt does not bind SparkCache native libraries")
                 values.update({
-                    "SPARKCACHE_CACHE_NAMESPACE": f"sparkring-r33-{image_record['image_id'][7:19]}-tp4-dcp1",
+                    "SPARKCACHE_CACHE_NAMESPACE": f"sparkring-r33-{image_record['image_id'][7:19]}-{runtime_profile}",
                     "SPARKCACHE_PLACEMENT_LIBRARY_PATH": native["placement_path"],
                     "SPARKCACHE_PLACEMENT_LIBRARY_SHA256": native["placement_sha256"],
                     "SPARKCACHE_SNAPSHOT_LIBRARY_PATH": native["snapshot_path"],
