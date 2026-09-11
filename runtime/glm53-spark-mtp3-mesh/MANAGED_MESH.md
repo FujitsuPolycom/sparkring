@@ -406,6 +406,11 @@ confirmation, the service reports failure and retains forwarding rather
 than assuming teardown is safe. This is containment machinery, not a promise
 that every host, NIC, kernel, or Docker failure can be recovered unattended.
 
+If a marker's exit cannot be confirmed after termination, its identity and
+network ownership remain recorded for explicit `recover`. The supervisor
+closes its HTTP server and lock and reports failure; it does not remove
+forwarding beneath a possibly surviving marker.
+
 Before public recommendation, retain live evidence for clean startup,
 planned model and fabric restart, helper loss, supervisor loss, peer failure,
 changed hardware rules, explicit recovery, temperature-one model output, and
