@@ -822,3 +822,75 @@ def test_cycle_hf_snapshot_without_sibling_blobs_fails(tmp_path: Path) -> None:
 
     assert result.returncode != 0
     assert "no sibling blobs dir" in result.stderr
+
+
+# Source trace: docker/cli d306b9d6007b0e9a0ec1c7a99646fceba4f5e20e
+# opts/{env,parse}.go and moby/moby f0816a8feba5d533101eaa1d27946f88b8887bfd
+# daemon/commit.go, daemon/container/{container,env}.go. The initial-default
+# index is intentionally not updated when overrides append a new key.
+def _moby_effective_gid(env_rows, bare_override):
+    user = list(env_rows) + (["NCCL_IB_GID_INDEX"] if bare_override else [])
+    image = ["NCCL_IB_GID_INDEX=7"]
+    user_keys = {v.split("=", 1)[0] for v in user}
+    config = user + [v for v in image if v.split("=", 1)[0] not in user_keys]
+    result = ["PATH=/usr/bin", "HOSTNAME=fixture"]
+    initial = {v.split("=", 1)[0]: i for i, v in enumerate(result)}
+    for value in config:
+        key, equal, _ = value.partition("=")
+        if not equal:
+            if key in initial:
+                result[initial[key]] = ""
+        elif key in initial:
+            result[initial[key]] = value
+        else:
+            result.append(value)
+    return [v for v in result if v.startswith("NCCL_IB_GID_INDEX=")]
+
+
+def test_bare_docker_override_does_not_remove_envfile_pin():
+    assert _moby_effective_gid(["NCCL_IB_GID_INDEX=3"], True) == ["NCCL_IB_GID_INDEX=3"]
+    assert _moby_effective_gid([], True) == []
+
+
+@pytest.mark.parametrize("kind", ["pair", "cycle"])
+@pytest.mark.parametrize("automatic", [True, False])
+@pytest.mark.parametrize("outcome", ["success", "failure", "preflight_failure", "check"])
+def test_docker_gid_env_file_is_filtered_and_cleaned(request, tmp_path, kind, automatic, outcome):
+    env_file = request.getfixturevalue(kind + "_env")
+    content = env_file.read_text().replace("NCCL_IB_GID_INDEX=", "NCCL_IB_GID_INDEX=3")
+    if not automatic:
+        content = content.replace("NCCL_IB_GID_AUTO=1", "NCCL_IB_GID_AUTO=0")
+    env_file.write_text(content, encoding="utf-8", newline="\n")
+    original = env_file.read_bytes()
+    bin_dir = tmp_path / "fake-bin"
+    bin_dir.mkdir()
+    captured = tmp_path / "container-env.txt"
+    fake = bin_dir / "docker"
+    fake.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [ \"$1\" = image ]; then exit " + ("1" if outcome == "preflight_failure" else "0") + "; fi\n"
+        "if [ \"$1\" = container ]; then exit 1; fi\n"
+        "[ \"$1\" = run ] || exit 99\n"
+        "while [ $# -gt 0 ]; do\n"
+        "  if [ \"$1\" = --env-file ]; then shift; cp -- \"$1\" " + shlex.quote(_bash_path(captured)) + "; break; fi\n"
+        "  shift\ndone\nexit " + ("23" if outcome == "failure" else "0") + "\n",
+        encoding="utf-8", newline="\n",
+    )
+    fake.chmod(0o755)
+    launcher = LAUNCHER if kind == "pair" else CYCLE_LAUNCHER
+    result = _run_launcher(env_file, "--check" if outcome == "check" else "--run", launcher, bin_dir)
+    assert result.returncode == ({"failure": 23, "preflight_failure": 20}.get(outcome, 0)), result.stderr
+    assert env_file.read_bytes() == original
+    command = shlex.split(next(line for line in result.stdout.splitlines() if line.startswith("  command:")))[1:]
+    docker_env = command[command.index("--env-file") + 1]
+    if outcome not in {"check", "preflight_failure"}:
+        rows = [v.strip() for v in captured.read_text().splitlines() if v.strip() and not v.lstrip().startswith("#")]
+        assert _moby_effective_gid(rows, "--env" in command) == ([] if automatic else ["NCCL_IB_GID_INDEX=3"])
+        expected = [v for v in content.splitlines() if not v.startswith("NCCL_IB_GID_INDEX=")] if automatic else content.splitlines()
+        assert captured.read_text().splitlines() == expected
+    if automatic:
+        assert docker_env != _bash_path(env_file)
+        gone = subprocess.run(["bash", "-lc", "test ! -e " + shlex.quote(docker_env)], capture_output=True)
+        assert gone.returncode == 0
+    else:
+        assert docker_env == _bash_path(env_file)

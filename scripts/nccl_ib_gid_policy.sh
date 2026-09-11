@@ -245,3 +245,29 @@ sparkring_validate_nccl_gid_policy() {
         *) die "NCCL_IB_GID_AUTO must be 0 or 1: $NCCL_IB_GID_AUTO" ;;
     esac
 }
+
+
+sparkring_cleanup_docker_gid_env() {
+    if [ -n "${SPARKRING_DOCKER_ENV_TEMP-}" ]; then
+        rm -f -- "$SPARKRING_DOCKER_ENV_TEMP"
+    fi
+}
+
+sparkring_prepare_docker_gid_env() {
+    # Docker's bare --env suppresses image defaults, but does not erase a key
+    # already appended from --env-file. Filter that key before CLI parsing.
+    # The caller must keep its shell alive until Docker has read this file.
+    SPARKRING_DOCKER_ENV_FILE=$1
+    SPARKRING_DOCKER_ENV_TEMP=
+    [ "$NCCL_IB_GID_AUTO" = 1 ] || return 0
+    SPARKRING_DOCKER_ENV_TEMP=$(mktemp "${TMPDIR:-/tmp}/sparkring-gid-env.XXXXXXXX") \
+        || die 'could not create temporary Docker environment file'
+    trap sparkring_cleanup_docker_gid_env EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    if ! awk '!/^[[:space:]]*NCCL_IB_GID_INDEX(=|[[:space:]]*$)/' \
+        "$1" > "$SPARKRING_DOCKER_ENV_TEMP"; then
+        die 'could not prepare Docker environment file'
+    fi
+    SPARKRING_DOCKER_ENV_FILE=$SPARKRING_DOCKER_ENV_TEMP
+}

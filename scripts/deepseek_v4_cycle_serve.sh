@@ -134,9 +134,8 @@ sparkring_validate_nccl_gid_policy
 if [ "$NCCL_IB_GID_AUTO" = 1 ]; then
     [ "$SPARKRING_NCCL_SELECTED_COUNT" = 2 ] \
         || die "the cycle NCCL_IB_HCA selector must resolve to exactly two active HCA/ports; resolved $SPARKRING_NCCL_SELECTED_COUNT"
-    # A bare --env overrides the env-file entry. Automatic policy unsets the
-    # host NCCL_IB_GID_INDEX, so Docker omits it instead of treating an empty
-    # value as NCCL's index 0.
+    # The filtered env-file removes configured pins. A bare --env also
+    # prevents the image ENV from supplying a default; the host key is unset.
     gid_env_args=(--env NCCL_IB_GID_INDEX)
 else
     IFS=',' read -r -a hca_specs <<< "$NCCL_IB_HCA"
@@ -176,6 +175,8 @@ speculative_config=$(printf \
     '{"method":"dspark","num_speculative_tokens":%s,"moe_backend":"b12x"}' \
     "$NUM_SPECULATIVE_TOKENS")
 
+sparkring_prepare_docker_gid_env "$env_file"
+
 command=(
     docker run -d
     --name "$container_name"
@@ -189,7 +190,7 @@ command=(
     -v "$MODEL_HOST_PATH:$model_container_path:ro"
     "${blobs_mount[@]}"
     -v "$CACHE_HOST_PATH:/cache"
-    --env-file "$env_file"
+    --env-file "$SPARKRING_DOCKER_ENV_FILE"
     "${gid_env_args[@]}"
     --entrypoint /opt/venv/bin/vllm
     "$image"
@@ -237,7 +238,12 @@ printf '  command:'
 printf ' %q' "${command[@]}"
 printf '\n'
 
-[ "$mode" = --run ] || exit 0
+if [ "$mode" != --run ]; then
+    if [ "$NCCL_IB_GID_AUTO" = 1 ]; then
+        printf '  The filtered env-file is temporary; launch with --run to recreate it.\n'
+    fi
+    exit 0
+fi
 command -v docker >/dev/null 2>&1 || die "docker is unavailable"
 docker image inspect "$image" >/dev/null 2>&1 \
     || die "pinned image is not present; pull it before launching: $image"
@@ -252,4 +258,5 @@ for cache_directory in \
         echo "deepseek cycle launcher: warning: could not create $cache_directory" >&2
     fi
 done
-exec "${command[@]}"
+# Keep the shell alive so its EXIT trap removes the filtered env-file.
+"${command[@]}"
