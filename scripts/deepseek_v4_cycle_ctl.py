@@ -1,54 +1,26 @@
 #!/usr/bin/env python3
-"""One-command lifecycle control for the DeepSeek-V4-Flash four-Spark cycle.
+"""Start, stop, or inspect the DeepSeek-V4-Flash-0731 four-rank cycle over SSH.
 
-Orchestrates the existing per-rank launcher (``deepseek_v4_cycle_serve.sh``)
-from one node over SSH. Ranks and their SSH targets come from a SparkRing
-cluster inventory YAML (the ``scripts/sparkring_cluster.py`` schema); this
-tool contains no site-specific host names, addresses, or accounts.
+The cluster inventory supplies SSH targets. Each host has the checkout at
+--repo and rank-<N>.env alongside scripts/. Start launches workers before rank0,
+skips running ranks, and waits for the head API. Set --api-port when the rank0
+environment overrides the default 8000. --dry-run prints commands without SSH.
 
-Why it exists
-  The DeepSeek cycle quickstart launches one rank per host by hand and in a
-  fixed order (workers first, then rank 0). For a deployment with a stable
-  cluster inventory that is repetitive and easy to get wrong. This controller
-  turns it into one command per lifecycle action, with the same ordering and
-  the same per-rank launcher.
-
-Commands
-  start
-    Start worker ranks first (rank 1, 2, ..., N-1), then rank 0 (the head),
-    then poll the head API until it answers or a timeout elapses. Each rank
-    is launched over SSH with ``nohup`` so the SSH session returns. A rank
-    whose container is already running is skipped, matching the launcher's
-    own "container already exists" guard.
-  stop
-    Remove the serving container on every rank (workers first, then head).
-    Idempotent: ranks with no container are reported and skipped.
-  status
-    Print one line per rank with container state, plus the head API HTTP
-    status. Read-only.
-
-Placeholder policy
-  Host facts are read from ``--cluster`` only. ``--repo`` is the path to the
-  SparkRing checkout on every rank (the parent of ``scripts/`` and of the
-  ``rank-<N>.env`` files). ``--api-port`` is the rank-0 API port from the
-  cycle environment template. Nothing else is required.
-
-Operational notes
-  - The container name matches ``deepseek_v4_cycle_serve.sh``:
-    ``deepseek-v4-flash-r<NODE_RANK>``.
-  - The per-rank environment file is ``rank-<N>.env`` in ``--repo``.
-  - Use ``--dry-run`` to print every SSH command without executing it.
-  - A failed rank aborts ``start`` so a half-started cluster is not left
-    behind; run ``stop`` and re-run ``start`` after fixing the failure.
+Failed starts remove only containers bearing that invocation's ownership label.
+Stop removes the named profile containers, workers first, and accepts absence.
+Status reads container state and the head API. None of these commands installs
+models, builds images, or configures the fabric.
 """
 
 from __future__ import annotations
 
 import argparse
+import re
 import shlex
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Sequence
 
@@ -75,24 +47,30 @@ def _run_ssh(
     timeout: float = 120.0,
     capture: bool = False,
 ) -> subprocess.CompletedProcess[str]:
-    """Run one remote command over SSH. Raises on SSH failure only."""
+    """Return the remote exit status; timeout or local launch failures raise."""
     argv = ["ssh", *DEFAULT_SSH_OPTS, ssh_target, command]
     kwargs: dict = {"text": True, "timeout": timeout}
     if capture:
         kwargs["stdout"] = subprocess.PIPE
         kwargs["stderr"] = subprocess.PIPE
-    return subprocess.run(argv, check=False, **kwargs)
+    try:
+        return subprocess.run(argv, check=False, **kwargs)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise SSHTransportError(f"SSH command failed for {ssh_target}: {type(error).__name__}") from error
 
 
 def _rank_env_file(repo: str, rank: int) -> str:
     return f"{repo}/{ENV_REL.format(rank=rank)}"
 
 
-def _launch_command(repo: str, rank: int, log_path: str) -> str:
+def _launch_command(repo: str, rank: int, log_path: str, launch_id: str | None = None,
+                    container_prefix: str = DEFAULT_CONTAINER_PREFIX) -> str:
     launcher = f"{repo}/{LAUNCH_REL}"
     env_file = _rank_env_file(repo, rank)
+    ownership = (f"SPARKRING_LAUNCH_ID={shlex.quote(launch_id)} "
+                 f"SPARKRING_CONTAINER_PREFIX={shlex.quote(container_prefix)} ") if launch_id else ""
     return (
-        f"cd {shlex.quote(repo)} && nohup {shlex.quote(launcher)} --run {shlex.quote(env_file)} "
+        f"cd {shlex.quote(repo)} && {ownership}nohup {shlex.quote(launcher)} --run {shlex.quote(env_file)} "
         f">{shlex.quote(log_path)} 2>&1 </dev/null &"
     )
 
@@ -129,18 +107,28 @@ def _head_api_ready(
     return result.returncode == 0
 
 
-def _rollback_started(ranks: Sequence, container_prefix: str) -> None:
-    """Remove only containers started by the failed controller invocation."""
+def _rollback_command(name: str, launch_id: str) -> str:
+    template = '{{.Id}} {{index .Config.Labels "org.sparkring.launch-id"}}'
+    return (
+        f"record=$(docker inspect --format {shlex.quote(template)} {shlex.quote(name)}) || exit 1; "
+        'id=${record%% *}; owner=${record#* }; '
+        f'[ "$owner" = {shlex.quote(launch_id)} ] || exit 0; '
+        'case "$id" in ""|*[!0-9a-f]*) exit 1 ;; esac; '
+        '[ "${#id}" -eq 64 ] || exit 1; docker rm -f "$id"'
+    )
 
+
+def _rollback_started(ranks: Sequence, container_prefix: str, launch_id: str) -> None:
+    """Remove only label-matching immutable IDs from this failed invocation."""
     for rank in reversed(tuple(ranks)):
-        name = _container_name(container_prefix, rank.id)
-        command = f"docker rm -f {shlex.quote(name)} 2>/dev/null || true"
-        result = _run_ssh(rank.ssh_target, command, timeout=60.0)
-        if result.returncode != 0:
-            print(
-                f"  rollback FAILED for rank{rank.id} "
-                f"({rank.ssh_target}, ssh rc={result.returncode})"
-            )
+        command = _rollback_command(_container_name(container_prefix, rank.id), launch_id)
+        try:
+            result = _run_ssh(rank.ssh_target, command, timeout=60.0)
+            if result.returncode == 0:
+                continue
+        except (OSError, subprocess.TimeoutExpired, SSHTransportError):
+            pass
+        print(f"  rollback could not establish removal for rank{rank.id}")
 
 
 def start_ranks(
@@ -152,16 +140,17 @@ def start_ranks(
     dry_run: bool = False,
     wait_container: int = 12,
     wait_api_minutes: int = 40,
-    api_port: int = 8888,
+    api_port: int = 8000,
     api_key_file: str | None = None,
 ) -> int:
     """Start workers first, then the head, then wait for the API."""
     ordered = sorted(ranks, key=lambda r: (r.id == 0, r.id))  # head (id 0) last
     started = []
+    launch_id = uuid.uuid4().hex
     for rank in ordered:
         name = _container_name(container_prefix, rank.id)
         log_path = f"{log_dir}/ctl-start-rank{rank.id}.log"
-        command = _launch_command(repo, rank.id, log_path)
+        command = _launch_command(repo, rank.id, log_path, launch_id, container_prefix)
         if dry_run:
             print(f"[start] rank{rank.id} ({rank.ssh_target}) container={name}")
             print(f"  [dry-run] ssh {rank.ssh_target} {command}")
@@ -171,16 +160,23 @@ def start_ranks(
             running = _container_running(rank.ssh_target, name)
         except SSHTransportError as error:
             print(f"  FAILED: {error}")
-            _rollback_started(started, container_prefix)
+            _rollback_started(started, container_prefix, launch_id)
             return 1
         if running:
             print("  already running; skip")
             continue
         print(f"  launch: {command}")
-        launched = _run_ssh(rank.ssh_target, command, timeout=60.0)
+        try:
+            launched = _run_ssh(rank.ssh_target, command, timeout=60.0)
+        except SSHTransportError as error:
+            print(f"  FAILED: {error}")
+            _rollback_started([*started, rank], container_prefix, launch_id)
+            return 1
         if launched.returncode != 0:
             print(f"  FAILED to launch rank{rank.id} (ssh rc={launched.returncode})")
-            _rollback_started(started, container_prefix)
+            # A lost acknowledgement can follow remote creation. The ownership
+            # label keeps this best-effort check from adopting a foreign container.
+            _rollback_started([*started, rank], container_prefix, launch_id)
             return 1
         started.append(rank)
         up = False
@@ -192,14 +188,14 @@ def start_ranks(
                     break
             except SSHTransportError as error:
                 print(f"  FAILED: {error}")
-                _rollback_started(started, container_prefix)
+                _rollback_started(started, container_prefix, launch_id)
                 return 1
         if not up:
             print(
                 f"  FAILED: container {name} did not appear; "
                 f"see remote {log_path}"
             )
-            _rollback_started(started, container_prefix)
+            _rollback_started(started, container_prefix, launch_id)
             return 1
         print(f"  container {name} is up")
     if dry_run:
@@ -219,11 +215,11 @@ def start_ranks(
                 return 0
         except SSHTransportError as error:
             print(f"[start] FAILED: {error}")
-            _rollback_started(started, container_prefix)
+            _rollback_started(started, container_prefix, launch_id)
             return 1
         time.sleep(15)
     print(f"[start] TIMEOUT: API not ready after {wait_api_minutes} minutes")
-    _rollback_started(started, container_prefix)
+    _rollback_started(started, container_prefix, launch_id)
     return 1
 
 
@@ -242,7 +238,12 @@ def stop_ranks(
         if dry_run:
             print(f"[stop] [dry-run] ssh {rank.ssh_target} {command}")
             continue
-        result = _run_ssh(rank.ssh_target, command, timeout=60.0)
+        try:
+            result = _run_ssh(rank.ssh_target, command, timeout=60.0)
+        except SSHTransportError:
+            failed = True
+            print(f"[stop] rank{rank.id} ({rank.ssh_target}) {name}: SSH ERROR")
+            continue
         if result.returncode == 255:
             print(f"[stop] rank{rank.id} ({rank.ssh_target}) {name}: SSH ERROR")
             failed = True
@@ -326,8 +327,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--log-dir", default="/tmp",
         help="remote directory for per-rank launch logs (default: /tmp)",
     )
-    parser.add_argument("--api-port", type=int, default=8888,
-                        help="rank-0 API port (default: 8888)")
+    parser.add_argument("--api-port", type=int, default=8000,
+                        help="rank-0 API port (default: 8000)")
     parser.add_argument("--wait-api-minutes", type=int, default=40,
                         help="head API wait budget for start (default: 40)")
     parser.add_argument(
@@ -343,9 +344,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     cluster = load_cluster(args.cluster)
     ranks = tuple(cluster.ranks)
-    if not ranks or not any(r.id == 0 for r in ranks):
-        print("error: cluster inventory has no rank 0 (the head)", file=sys.stderr)
+    if sorted(r.id for r in ranks) != [0, 1, 2, 3]:
+        print("error: cycle inventory must contain exactly ranks 0, 1, 2, 3", file=sys.stderr)
         return 2
+
+    if not 1 <= args.api_port <= 65535 or args.wait_api_minutes < 0:
+        parser.error("API port must be in 1..65535 and API wait must be nonnegative")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,119}", args.container_prefix):
+        parser.error("container prefix must use 1 to 120 Docker name characters")
 
     if args.action == "start":
         return start_ranks(

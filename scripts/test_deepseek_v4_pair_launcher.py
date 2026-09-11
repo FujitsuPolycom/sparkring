@@ -42,6 +42,9 @@ def _run_launcher(
     sysfs_root = env_file.parent / "infiniband"
     netdev_ipv4_root = env_file.parent / "netdev-ipv4"
     fixture_assignments: list[str] = []
+    for key in ("SPARKRING_LAUNCH_ID", "SPARKRING_CONTAINER_PREFIX"):
+        if key in environment:
+            fixture_assignments.append(f"{key}={environment[key]}")
     if sysfs_root.exists():
         environment["SPARKRING_TEST_INFINIBAND_SYSFS_ROOT"] = _bash_path(sysfs_root)
         fixture_assignments.append(
@@ -853,3 +856,22 @@ def test_docker_gid_env_file_is_filtered_and_cleaned(request, tmp_path, kind, au
         assert gone.returncode == 0
     else:
         assert docker_env == _bash_path(env_file)
+
+
+@pytest.mark.parametrize("kind", ["pair", "cycle"])
+def test_equal_ports_with_different_zero_padding_are_rejected(kind, request):
+    env_file = request.getfixturevalue(kind + "_env")
+    content = env_file.read_text().replace("API_PORT=8000", "API_PORT=08000").replace("MASTER_PORT=29500", "MASTER_PORT=8000")
+    env_file.write_text(content, newline="\n")
+    result = _run_launcher(env_file, launcher=LAUNCHER if kind == "pair" else CYCLE_LAUNCHER)
+    assert result.returncode == 20
+    assert "must differ" in result.stderr
+
+
+def test_cycle_controller_label_and_name_are_inherited(cycle_env, monkeypatch):
+    monkeypatch.setenv("SPARKRING_LAUNCH_ID", "a" * 32)
+    monkeypatch.setenv("SPARKRING_CONTAINER_PREFIX", "custom-r")
+    result = _run_launcher(cycle_env, launcher=CYCLE_LAUNCHER)
+    assert result.returncode == 0, result.stderr
+    assert "--name custom-r0" in result.stdout
+    assert "--label org.sparkring.launch-id=" + "a" * 32 in result.stdout

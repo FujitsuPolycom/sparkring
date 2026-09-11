@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -18,11 +19,20 @@ RECIPE = ROOT / "recipes" / "deepseek-v41-flash-cycle.json"
 PATCHES = ROOT / "runtime" / "deepseek-v41-gb10" / "patches"
 RECEIPT = ROOT / "runtime" / "deepseek-v41-gb10" / "image-receipt.json"
 
-requires_bash = pytest.mark.skipif(os.name == "nt", reason="bash launcher contract")
+requires_bash = pytest.mark.skipif(shutil.which("bash") is None, reason="Bash is unavailable")
+
+
+def _bash_path(path):
+    """Windows tests use WSL; Linux tests use native paths."""
+    value = str(path)
+    if os.name != "nt":
+        return value
+    drive, tail = os.path.splitdrive(value)
+    return f"/mnt/{drive[0].lower()}/" + tail.lstrip("\\/").replace("\\", "/")
 
 
 def _run(env_file: Path, mode: str = "--check") -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["bash", str(LAUNCHER), mode, str(env_file)], text=True, capture_output=True, check=False)
+    return subprocess.run(["bash", _bash_path(LAUNCHER), mode, _bash_path(env_file)], text=True, capture_output=True, check=False)
 
 
 def _env_values(path: Path) -> dict[str, str]:
@@ -62,8 +72,11 @@ def _resolved_env(tmp_path: Path, rank: int = 0, **overrides: str) -> Path:
         }
     )
     values.update(overrides)
+    for key in ("MODEL_HOST_PATH", "CACHE_HOST_PATH", "PATCH_DIR", "NCCL_SO_HOST_PATH", "API_KEY_FILE"):
+        if values.get(key):
+            values[key] = _bash_path(values[key])
     env_file = tmp_path / f"rank-{rank}.env"
-    env_file.write_text("".join(f"{k}={v}\n" for k, v in values.items()), encoding="utf-8")
+    env_file.write_text("".join(f"{k}={v}\n" for k, v in values.items()), encoding="utf-8", newline="\n")
     return env_file
 
 
@@ -125,12 +138,16 @@ def test_check_renders_the_recipe_contract(tmp_path: Path) -> None:
 
 
 @requires_bash
-def test_api_key_file_passes_every_key(tmp_path: Path) -> None:
+def test_api_key_file_loads_every_key_without_printing_secrets(tmp_path: Path) -> None:
     keys = tmp_path / "keys"
     keys.write_text("k-one\n\nk-two\n", encoding="utf-8")
     result = _run(_resolved_env(tmp_path, API_KEY_FILE=str(keys)))
     assert result.returncode == 0, result.stderr
-    assert "--api-key k-one k-two" in result.stdout
+    arguments = shlex.split(result.stdout.splitlines()[-1])
+    position = arguments.index("--api-key")
+    assert arguments[position + 1:position + 3] == ["<redacted>", "<redacted>"]
+    assert "k-one" not in result.stdout + result.stderr
+    assert "k-two" not in result.stdout + result.stderr
     bare = _run(_resolved_env(tmp_path))
     assert bare.returncode == 0, bare.stderr
     assert "--api-key" not in bare.stdout
@@ -177,3 +194,35 @@ def test_recipe_and_receipt_agree_on_identities() -> None:
     assert receipt["base_image"] in recipe["runtime"]["image_note"]
     listed = {line.split()[1]: line.split()[0] for line in (PATCHES / "MD5SUMS").read_text().splitlines() if line.strip()}
     assert receipt["patch_md5"] == listed
+
+
+@requires_bash
+def test_port_aliases_cannot_bind_the_same_socket(tmp_path):
+    result = _run(_resolved_env(tmp_path, API_PORT="08000", MASTER_PORT="8000"))
+    assert result.returncode == 20
+    assert "must differ" in result.stderr
+
+
+@pytest.mark.parametrize("mode", ["traversal", "duplicate"])
+@requires_bash
+def test_patch_mount_destinations_are_confined_and_unique(tmp_path, mode):
+    copied = tmp_path / "patches"
+    shutil.copytree(PATCHES, copied)
+    path = copied / "mounts.txt"
+    lines = path.read_text().splitlines()
+    if mode == "traversal":
+        lines[0] = lines[0].split()[0] + " ../../outside.py"
+    else:
+        lines[1] = lines[1].split()[0] + " " + lines[0].split()[1]
+    path.write_text("\n".join(lines) + "\n", newline="\n")
+    # This synthetic manifest binds its malformed routing table so the path
+    # guard is exercised independently of byte corruption detection.
+    checksums = copied / "MD5SUMS"
+    checksums.write_text("\n".join(
+        hashlib.md5(path.read_bytes()).hexdigest() + "  mounts.txt"
+        if line.split()[-1] == "mounts.txt" else line
+        for line in checksums.read_text().splitlines()
+    ) + "\n", newline="\n")
+    result = _run(_resolved_env(tmp_path, PATCH_DIR=str(copied)))
+    assert result.returncode == 20
+    assert "mounts.txt" in result.stderr

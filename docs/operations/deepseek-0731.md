@@ -299,6 +299,11 @@ python3 scripts/deepseek_v4_cycle_ctl.py --cluster /path/to/cluster.yaml \
     --repo /srv/sparkring stop      # remove containers, workers first
 ```
 
+The controller defaults to API port 8000, matching the environment template.
+Pass `--api-port` when rank 0 uses another port. `--container-prefix` is forwarded
+to the cycle launcher; rollback checks an invocation label and removes only
+matching immutable container IDs.
+
 `--dry-run` prints every SSH command without executing it. `start` skips a
 rank whose container is already running (matching the launcher's own guard)
 and removes only the containers it started if a rank or the API fails to come

@@ -93,6 +93,8 @@ def test_locate_finds_checkpoint_under_any_directory_name(tmp_path, monkeypatch)
 
     assert report["status"] == "pass"
     assert report["found"] == [str(planted.resolve())]
+    assert report["runtime_shards_verified"] is False
+    assert "config/index" in report["verification_scope"]
 
 
 def test_locate_rejects_a_directory_whose_config_differs(tmp_path, monkeypatch):

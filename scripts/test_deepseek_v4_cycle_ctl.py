@@ -364,7 +364,19 @@ def test_status_cli_uses_api_key_file(monkeypatch, sample_cluster):
         "status", "--cluster", str(sample_cluster), "--repo", "/srv/sparkring",
         "--api-key-file", "/run/secrets/serving-api-key",
     ]) == 0
-    assert probes == [(8888, "/run/secrets/serving-api-key")]
+    assert probes == [(8000, "/run/secrets/serving-api-key")]
+
+
+def test_failed_ssh_submission_checks_current_rank_ownership(monkeypatch, fake_ranks):
+    """A lost SSH acknowledgement does not prove the current launch did nothing."""
+    monkeypatch.setattr(ctl, "_container_running", lambda *_args: False)
+    monkeypatch.setattr(ctl, "_run_ssh", lambda *_args, **_kwargs:
+                        subprocess.CompletedProcess(["ssh"], 255, "", "connection lost"))
+    rollback = []
+    monkeypatch.setattr(ctl, "_rollback_started", lambda ranks, prefix, token:
+                        rollback.append([rank.id for rank in ranks]))
+    assert ctl.start_ranks(fake_ranks, "/srv/sparkring", "deepseek-v4-flash-r", "/tmp") == 1
+    assert rollback == [[1]]
 
 
 def test_main_loads_cluster_and_runs_status(monkeypatch, sample_cluster,
@@ -414,3 +426,44 @@ def test_stop_is_idempotent_when_all_containers_are_absent(monkeypatch, fake_ran
         assert not any(ssh.containers_up.values())
     assert len([c for c in ssh.calls if "docker ps" in c]) == 8
     assert not _start_order(ssh.calls)
+
+
+@pytest.mark.parametrize("owner,removed", [("owned", True), ("foreign", False), ("<no value>", False)])
+def test_rollback_checks_ownership_then_removes_immutable_id(owner, removed):
+    import os
+    shell = "bash" if os.name != "nt" else "C:/Program Files/Git/bin/bash.exe"
+    identifier = "a" * 64
+    stub = f"""docker() {{
+    if [ "$1" = inspect ]; then printf '%s\\n' '{identifier} {owner}'; return 0; fi
+    [ "$1" = rm ] && [ "$2" = -f ] && [ "$3" = '{identifier}' ] || return 99
+    printf 'REMOVED\\n'
+}}
+"""
+    result = subprocess.run([shell, "-c", stub + ctl._rollback_command("stopped-model", "owned")], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert ("REMOVED" in result.stdout) is removed
+
+
+def test_custom_prefix_is_forwarded_with_unique_launch_owner(monkeypatch, fake_ranks):
+    commands = []
+    monkeypatch.setattr(ctl, "_container_running", lambda *args: bool(commands))
+    monkeypatch.setattr(ctl.time, "sleep", lambda *_: None)
+    monkeypatch.setattr(ctl, "_run_ssh", lambda target, command, **kwargs:
+                        commands.append(command) or subprocess.CompletedProcess([], 0))
+    assert ctl.start_ranks(fake_ranks, "/repo", "custom-r", "/tmp", wait_api_minutes=0) == 0
+    assert "SPARKRING_CONTAINER_PREFIX=custom-r" in commands[0]
+    assert "SPARKRING_LAUNCH_ID=" in commands[0]
+
+
+def test_timeout_is_an_unknown_remote_state(monkeypatch):
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired("fixture", 1)
+    monkeypatch.setattr(ctl.subprocess, "run", timeout)
+    with pytest.raises(ctl.SSHTransportError):
+        ctl._run_ssh("fixture", "unused")
+
+
+def test_non_four_rank_inventory_rejected_before_remote_work(monkeypatch, sample_cluster):
+    monkeypatch.setattr(ctl, "load_cluster", lambda *_: SimpleNamespace(ranks=[SimpleNamespace(id=i) for i in range(6)]))
+    monkeypatch.setattr(ctl, "_run_ssh", lambda *a, **kw: pytest.fail("remote work forbidden"))
+    assert ctl.main(["start", "--cluster", str(sample_cluster), "--repo", "/repo"]) == 2

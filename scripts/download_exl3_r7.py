@@ -167,12 +167,10 @@ def download(path: Path, api, snapshot_download) -> dict:
 
 
 def identifies_checkpoint(path: Path) -> bool:
-    """Whether a directory holds the pinned checkpoint, judged by its bytes.
+    """Match pinned config/index bytes and shard count, without verifying shards.
 
-    A directory is named for whatever produced it, so a name proves nothing.
-    This compares the size and SHA-256 of the files PINNED_FILES identifies and
-    counts the shards, which is what distinguishes this checkpoint from another
-    quantization of the same model.
+    This identifies candidate locations independently of directory names. Run
+    verify() to establish the content and size of every indexed runtime shard.
     """
 
     for name in IDENTIFYING_FILES:
@@ -211,7 +209,7 @@ def candidate_directories(roots, max_depth: int = SEARCH_MAX_DEPTH):
 
 
 def locate(roots) -> dict:
-    """Report every directory beneath `roots` holding the pinned checkpoint."""
+    """Report checkpoint candidates beneath `roots`; shard contents are unchecked."""
 
     found = []
     for directory in candidate_directories(roots):
@@ -225,6 +223,8 @@ def locate(roots) -> dict:
         "revision": REVISION,
         "searched_roots": [str(root) for root in roots],
         "shard_count": EXPECTED_SHARD_COUNT,
+        "runtime_shards_verified": False,
+        "verification_scope": "pinned config/index bytes and shard count",
         "found": sorted(found),
         "status": "pass" if found else "absent",
     }
@@ -255,11 +255,10 @@ def main() -> int:
         from huggingface_hub import HfApi, snapshot_download
 
         api = HfApi(token=os.environ.get("HF_TOKEN"))
-        remote_inventory = inventory(api)
         report = (
             download(args.model_path.resolve(), api, snapshot_download)
             if args.action == "download"
-            else verify(args.model_path.resolve(), remote_inventory)
+            else verify(args.model_path.resolve(), inventory(api))
         )
         print(json.dumps(report, sort_keys=True))
         return 0

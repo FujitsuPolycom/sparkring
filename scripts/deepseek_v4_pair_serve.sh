@@ -99,7 +99,7 @@ for name in NUM_SPECULATIVE_TOKENS MAX_MODEL_LEN MAX_NUM_SEQS \
 done
 require_port API_PORT
 require_port MASTER_PORT
-[ "$API_PORT" != "$MASTER_PORT" ] || die "API_PORT and MASTER_PORT must differ"
+[ "$((10#$API_PORT))" -ne "$((10#$MASTER_PORT))" ] || die "API_PORT and MASTER_PORT must differ"
 
 [ "$NCCL_SOCKET_IFNAME" = "$GLOO_SOCKET_IFNAME" ] \
     || die "NCCL_SOCKET_IFNAME and GLOO_SOCKET_IFNAME must match on a pair"
