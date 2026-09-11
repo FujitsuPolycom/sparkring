@@ -43,13 +43,13 @@ def request_path(source):
     return scope["invoke"]
 
 
-@pytest.mark.parametrize("stream", [False, True])
 @pytest.mark.parametrize(
     "kwargs,effort",
-    [({"enable_thinking": False}, None), ({"thinking": False}, None), ({}, "none")],
+    [({"enable_thinking": False}, None), ({"thinking": False}, None),
+     ({"enable_thinking": False}, "low"), ({}, "none")],
 )
 def test_glm53_rejects_unsupported_mode_before_parser_or_rendering(
-    kwargs, effort, stream
+    kwargs, effort
 ):
     server = SimpleNamespace(
         renderer=SimpleNamespace(tokenizer=object()),
@@ -58,10 +58,13 @@ def test_glm53_rejects_unsupported_mode_before_parser_or_rendering(
         parser_cls=None,
         create_error_response=lambda message: {"error": message},
     )
-    request = SimpleNamespace(reasoning_effort=effort, stream=stream)
+    # The guard executes before stream-specific rendering; no stream attribute
+    # is supplied so this test cannot silently depend on a selected stream mode.
+    request = SimpleNamespace(reasoning_effort=effort)
     assert asyncio.run(request_path(SOURCE)(server, request)) == "rendering"
     result = asyncio.run(request_path(patched(SOURCE))(server, request))
     assert "does not support disabling thinking" in result["error"]
+    assert "Remove false enable_thinking/thinking" in result["error"]
 
 
 @pytest.mark.parametrize(

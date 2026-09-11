@@ -17,8 +17,9 @@ GUARD = """        # GLM-5.3's template always opens a reasoning segment. Disabl
             )
             if disabled or request.reasoning_effort == "none":
                 return self.create_error_response(
-                    "GLM-5.3-Flash does not support disabling thinking with its "
-                    "chat template. Use reasoning_effort='low', 'high', or 'max'."
+                    "GLM-5.3-Flash does not support disabling thinking. Remove "
+                    "false enable_thinking/thinking template options and use "
+                    "reasoning_effort='low', 'high', or 'max'."
                 )
 """
 

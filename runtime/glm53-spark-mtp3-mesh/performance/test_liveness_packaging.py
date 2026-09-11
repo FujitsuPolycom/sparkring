@@ -117,6 +117,9 @@ assert observed["credential"] == "test-key"
     assert snapshot["output_iterations"] == 7
     assert snapshot["output_stalled_seconds"] == 301
     assert snapshot["progress_stalled_seconds"] == 0
+    # A new allocation high-water mark restarts the prefill-progress grace
+    # window. This is not a second-sample rule or proof of GPU execution.
+    assert snapshot["last_progress_signal"] == "kv_allocation_high_water"
     assert snapshot["healthy"] is True
     clock[0] = 601
     monitor.observe(metrics.format(usage=0.2))
