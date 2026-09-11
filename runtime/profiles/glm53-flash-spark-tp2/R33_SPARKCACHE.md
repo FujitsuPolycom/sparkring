@@ -88,9 +88,8 @@ image receipt. Repeat the required TP2 and TP4 qualification on that exact
 image; neither these configuration changes nor a successful package build
 promotes earlier bounded results to complete release qualification.
 
-The TP2 bounded checks have passed on the packaged image. TP4 qualification is
-separate and remains pending; the generic image is not release-qualified until
-the required TP4 record also passes.
+The TP2 and TP4 bounded checks have passed on the published image. Their
+separate qualification records state the measured scope and limitations.
 
 ## Required capability evidence
 

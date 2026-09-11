@@ -1,6 +1,26 @@
-# Generic Jovian R33 ARM64 candidate image
+# Generic Jovian R33 ARM64 image
 
-This directory assembles a local, model-neutral candidate from the exact R33 ARM64 artifacts. It does not publish, deploy, start a model, or claim TP2/TP4 qualification. The default command prints help.
+This directory assembles and verifies the model-neutral ARM64 image from exact
+R33 artifacts. Image
+`sha256:3c7779ad71dd0d5d6fae4c98e04b94c377429306158c2259fc44635892b8b8e4`
+has bounded TP2 and TP4 ring qualification; the
+[TP2](../../../../performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md)
+and
+[TP4](../../../../performance/records/glm53-flash/r33-image020-tp4-sparkcache-20260911.md)
+records state the exact scope. The public ARM64 manifest is
+`ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef`.
+Use the tracked [runtime receipt](../public-image-receipt.json) for launch
+admission and [publication receipt](../publication.json) for registry evidence.
+The original [construction receipt](image020-construction-receipt.json) retains
+its pre-publication bytes. Building and verification do not publish, deploy,
+or start a model. The default command prints help.
+
+```bash
+SPARKRING_IMAGE='ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef'
+docker pull "$SPARKRING_IMAGE"
+python3 runtime/sparkring/jovian-r33/profiles/verify_profile.py image \
+  --receipt runtime/sparkring/jovian-r33/public-image-receipt.json
+```
 
 The final image uses content-addressed media runtime `sha256:a1a72e18ad49d99f6194a2585bfdc5f32d79180cdf2cd015c0d0d451479d6a42`. That layer is verified as a child of `local/sparkring:r33-arm64-foundation` and already contains the qualified Ubuntu FFmpeg 6.1.1 runtime and exact media wheels. It inherits CUDA 13.3 and PyTorch `cf30153c4c131c8164ee7798e5022d810682e2cb`. The candidate replaces the canonical NCCL byte with SparkRing routing SHA `84a4b8d8...` at the same single authoritative `/opt/local-inference/nccl/lib` path. SIRCL SHA `bea00f2b...`, the LMCache cuMem interposer, canonical external profile contract, and lease contract are installed separately and content-checked.
 

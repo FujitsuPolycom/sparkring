@@ -724,3 +724,25 @@ def test_liveness_override_preserves_default_and_canonical_regeneration(tmp_path
         del actual["API_KEYS_FILE"]
         actual["SPARKRING_LIVENESS_OUTPUT_SECONDS"] = "300"
         assert actual == baseline
+
+@pytest.mark.parametrize('attested', [True, False])
+def test_r33_extracted_bundle_requires_receipt_for_rebuilt_files(tmp_path, manifest_bundle, attested):
+    manifest_path = manifest_bundle / 'sparkring-overlay-manifest.json'
+    manifest = json.loads(manifest_path.read_text())
+    entry = next(item for item in manifest['files'] if item['path'].endswith('.py'))
+    changed = manifest_bundle / entry['path']
+    changed.write_bytes(changed.read_bytes() + b'\n# rebuilt package bytes\n')
+    document = _r33_image_receipt_document(mesh_profile.sha(manifest_path))
+    if attested:
+        document['verification']['checked_files']['/opt/sparkring/sircl/python/' + entry['path']] = mesh_profile.sha(changed)
+    receipt = tmp_path / 'image.json'
+    receipt.write_text(json.dumps(document))
+    site = _site(tmp_path)
+    data = json.loads(site.read_text())
+    data['runtime_profile'] = 'tp4-dcp1'
+    site.write_text(json.dumps(data))
+    if attested:
+        mesh_profile.render(site, manifest_bundle, tmp_path / 'rendered', receipt)
+    else:
+        with pytest.raises(ValueError, match='differs from its manifest'):
+            mesh_profile.render(site, manifest_bundle, tmp_path / 'rendered', receipt)

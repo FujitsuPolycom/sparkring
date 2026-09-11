@@ -1,6 +1,6 @@
 # Jovian Judgement R33 integration for Spark
 
-Status: research-only; image construction and qualification are incomplete.
+Status: **TP2 and TP4 ring bounded-qualified; public ARM64 image available**.
 
 This integration reproduces the pinned R33 software composition for ARM64 and
 adds SparkRing transport, startup, profile and optional SparkCache integration.
@@ -30,9 +30,21 @@ contains CUDA 13.3, PyTorch source
 compiled from patched tree `aa7028b2b2a55af4817f8d742e17717dd4509ee7`
 with library SHA-256
 `84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47`.
-The source and package contracts are implemented. Rebuilt vLLM/B12X artifacts,
-distributed GPU execution, model behavior, TP2/TP4, and cache-recovery
-qualification remain pending.
+The source and package contracts are implemented in image
+`sha256:3c7779ad71dd0d5d6fae4c98e04b94c377429306158c2259fc44635892b8b8e4`.
+Bounded TP2 and TP4 ring model, performance, restart, and cache-recovery
+evidence is recorded in the
+[TP2 qualification](../../../performance/records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md)
+and
+[TP4 qualification](../../../performance/records/glm53-flash/r33-image020-tp4-sparkcache-20260911.md).
+Neither record establishes a completed one-million-token request, switched
+hardware, other models, or every packaged dependency. The immutable public
+image is
+`ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef`.
+Its [publication receipt](publication.json) binds that manifest to Docker
+config ID `3c7779ad71dd…`, the source lock, and anonymous registry verification.
+The [runtime receipt](public-image-receipt.json) is the launcher-compatible
+source and installed-file attestation.
 
 ## Integration rules
 
@@ -50,11 +62,12 @@ qualification remain pending.
 
 ## Qualification
 
-Start with CPU/source/native compatibility checks, then test TP2 and TP4 model
-loading, sampler warmup, exact responses, prefix reuse, capture/restore and failure
-recovery. Compare bounded matched prefill/decode runs with confirmed feature
-activation. Test switch users through the appropriate profile and retain its
-explicit untested-hardware status unless switched hardware is available.
+CPU, source, native, and package compatibility checks passed before the bounded
+TP2 and TP4 ring model runs. The linked records cover model loading, exact
+responses, prefix reuse, cache capture/restore, feature activation, and bounded
+prefill/decode measurements. Corrupted-cache recovery remains component evidence
+from the same source/native implementation where the exact image record says so.
+The switched profile retains its explicit untested-hardware status.
 
 Record the exact image and configuration used for every result. Keep rollback
 inputs and restore verified serving after disruptive tests.

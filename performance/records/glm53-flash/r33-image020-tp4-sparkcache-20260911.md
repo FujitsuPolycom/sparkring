@@ -1,6 +1,6 @@
 # Generic R33 image TP4 ring qualification
 
-Status: **bounded-qualified; registry publication pending**.
+Status: **bounded-qualified; versioned generic image published**.
 
 ## Conditions
 

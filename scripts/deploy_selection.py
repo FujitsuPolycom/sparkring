@@ -24,20 +24,39 @@ def selection(spec, profile):
         public = json.loads((profile / "public-image.json").read_text())
         receipt = json.loads((profile / "image-receipt.json").read_text())
         return {**public, "image_reference": public["public_reference"], "local": False, "pins": pins,
-                "receipt": receipt, "inside_image": receipt["inside_image"]}
+                "receipt": receipt, "inside_image": receipt["inside_image"],
+                "marker_binary_sha256": receipt["inside_image"]["marker_binary_sha256"]}
     if not isinstance(selected, dict) or set(selected) != {"schema", "image_receipt"}:
         raise ValueError("Runtime selection must bind exactly one image receipt")
     if selected["schema"] != "sparkring-deploy-runtime-selection/v1":
         raise ValueError("Unsupported runtime selection schema")
     module = profile_module(profile)
     document = module.validate_image_receipt(selected["image_receipt"])
+    if document["schema"] == "sparkring-r33-image-receipt/v1":
+        if spec.get("site", {}).get("runtime_profile") not in ("tp4-dcp1", "tp4-dcp1-sparkcache"):
+            raise ValueError("R33 selection requires an explicit TP4 runtime profile")
+        contract = json.loads((profile.parent / "sparkring/jovian-r33/mesh-host-contract.json").read_text())
+        if document["bundle_manifest_sha256"] != contract["bundle_manifest_sha256"]:
+            raise ValueError("R33 mesh bundle differs from the host marker contract")
+        return {"image_reference": document["image_reference"],
+                "config_image_id": document["image_id"],
+                "local": document["image_reference"] == document["image_id"],
+                "pins": dict(pins, target=contract["target"],
+                             canonical_bundle_manifest_sha256=contract["bundle_manifest_sha256"]),
+                "receipt": selected["image_receipt"], "inside_image": document["verification"],
+                "bundle_image_path": "/opt/sparkring/sircl/python",
+                "bundle_native_files": {
+                    "libspark_transport_capi.so": "/opt/sparkring/sircl/libspark_transport_capi.so"},
+                "marker_download_url": contract["marker_download_url"],
+                "marker_binary_sha256": contract["marker_binary_sha256"]}
     if document["schema"] == "sparkring-mtp3-performance-public-image/v1":
         if spec.get("site", {}).get("runtime_profile") is not None:
             raise ValueError("Canonical public image cannot select a local source profile")
         return {"image_reference": document["image_reference"],
                 "config_image_id": document["image_id"], "local": False,
                 "pins": dict(pins, canonical_bundle_manifest_sha256=document["bundle_manifest_sha256"]),
-                "receipt": selected["image_receipt"], "inside_image": document["inside_image"]}
+                "receipt": selected["image_receipt"], "inside_image": document["inside_image"],
+                "marker_binary_sha256": document["inside_image"]["marker_binary_sha256"]}
     if document["schema"] != "sparkring-source-image-receipt/v1":
         raise ValueError("Explicit source composition requires a local verified receipt")
     if spec.get("site", {}).get("runtime_profile") != document["profile"]:
@@ -47,7 +66,8 @@ def selection(spec, profile):
             "config_image_id": document["image_id"], "local": True,
             "pins": dict(pins, target={**pins["target"], **lock["target"]},
                          canonical_bundle_manifest_sha256=lock["runtime"]["bundle_manifest_sha256"]),
-            "receipt": selected["image_receipt"], "inside_image": document["inside_image"]}
+            "receipt": selected["image_receipt"], "inside_image": document["inside_image"],
+            "marker_binary_sha256": document["inside_image"]["marker_binary_sha256"]}
 
 
 def receipt_path(spec, root):

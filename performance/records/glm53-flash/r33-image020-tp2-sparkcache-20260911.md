@@ -1,6 +1,6 @@
 # Generic R33 image TP2 SparkCache qualification
 
-Status: **TP2 bounded-qualified; TP4 and generic-image release pending**.
+Status: **TP2 bounded-qualified; versioned generic image published**.
 
 ## Conditions
 

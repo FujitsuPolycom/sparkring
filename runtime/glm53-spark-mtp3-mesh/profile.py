@@ -286,7 +286,18 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
         raise ValueError("Bundle manifest does not match the MTP3 mesh profile")
     manifest = json.loads((bundle / "sparkring-overlay-manifest.json").read_text())
     for item in manifest["files"]:
-        if sha(manifest_file(bundle, item["path"])) != item["sha256"]:
+        expected_hashes = {item["sha256"]}
+        if image_record and image_record.get("schema") == "sparkring-r33-image-receipt/v1":
+            # R33 retains the overlay lineage manifest and separately attests its
+            # rebuilt native library and packaged Python files. Host rendering may
+            # use the lineage bundle or files extracted from that verified image.
+            image_path = "/opt/sparkring/sircl/python/" + item["path"]
+            if item["path"] == "libspark_transport_capi.so":
+                image_path = "/opt/sparkring/sircl/libspark_transport_capi.so"
+            rebuilt_hash = image_record["verification"]["checked_files"].get(image_path)
+            if rebuilt_hash is not None:
+                expected_hashes.add(rebuilt_hash)
+        if sha(manifest_file(bundle, item["path"])) not in expected_hashes:
             raise ValueError("Bundle entry is unsafe or differs from its manifest")
     site, topology, plan = load_site(site_path)
     source_composition = image_record and image_record.get("schema") == "sparkring-source-image-receipt/v1"
