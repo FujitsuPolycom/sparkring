@@ -2,13 +2,13 @@
 
 ## Result and base
 
-The restructuring branch is `refactor/repository-layout`. Its final integration
-base is main commit `84f2a01160e9d7542c06d1f52e0163907c1bbe77`, which includes
-PR #259. The initial inventory and preserved-input hashes were taken from
+The restructuring branch is `refactor/repository-layout`. Its integration
+base is main commit `0282f0814fbcacb5396fc205ffc960aaadf9a96a`, which includes
+PRs #259 and #265. The initial inventory and preserved-input hashes were taken from
 `c65a9981e2a69f821ac716f6f13484d99d23f4ea`. The branch was rebased locally when
 main advanced; no merge or remote write was performed by this work.
 
-The branch provides 19 indexed deployment profiles, deterministic configuration
+The branch provides 21 indexed deployment profiles, deterministic configuration
 resolution, a shared guarded launch entry point, ENV rendering for the DeepSeek
 and Qwen adapters, and a shared image-builder selector. Framework adapters and
 active fabric planning have explicit maintained owners. Documentation separates
@@ -54,7 +54,7 @@ Local verification ran on Windows with Python 3.12:
 | Shared profile/configuration tests | 56 passed |
 | Focused image-documentation and shared-runtime checks after navigation refinement | 76 passed |
 | Ruff over maintained Python trees | Passed |
-| Repository structural check | 19 profiles, 51 generated outputs, 427 preserved inputs, 438 Python sources, 7 builders |
+| Repository structural check | 21 profiles, 52 generated outputs, 427 preserved inputs, 439 Python sources, 7 builders |
 | Repository Markdown links | Passed; 933 local links at report preparation |
 | Release-safety scan | Zero findings |
 | Managed-service source closure | Imported from the installed allowlist in an isolated Python process, without the checkout on its import path |
@@ -83,7 +83,7 @@ results do not qualify a reorganized build or authorize a deployment promotion.
 | #258 | Open, head `5a00273a7ea12d41db965c50a3aedb02e23add83` | Preserve NVIDIA NVFP4 versus NVFP4-Spark identity, launcher overrides and cache namespaces; extend the profile catalog when the implementation lands |
 | #259 | Merged in the integration base | Preserve the 300-second peer-silence mitigation and bounded claim; no local-address recovery is implied |
 | #263 | Open, head `2ae60f01774131d07e7370104599bacafb39473d` | Retain contributor wording improvements around the generated README region; edit the generator for table changes |
-| #265 | Open, head `5c474ff304d94fc7c5f5a3b4c5684ed703103c28` | Add distinct TP4/DCP4 definitions and release-overlay selection; preserve the published image identity and scope its evidence separately from DCP1 |
+| #265 | Merged in the integration base | TP4/DCP4 is the default GLM four-Spark selection; its contract/entrypoint overlay and activation record are pinned separately from the published image |
 | #266 | Open, head `544f498c6369a72c1afba0a856dfb870cfc0d302` | Preserve startup validation, independent peer/local-address recovery timers and immediate fabric-fault handling; relocation leaves its managed-service paths intact |
 
 PR #262 is already part of the initial base. No pending PR was merged, closed,
@@ -113,3 +113,16 @@ Git history. Keep the generated compatibility paths while the revert is reviewed
 No cluster rollback is needed for the repository-only change: this work did not
 alter images, site configuration, model files or running services. A later
 operational promotion must carry its own image/site rollback procedure.
+
+## Profile-default verification
+
+After incorporating main's DCP4 change, the relevant runtime, image, mesh and
+shared-profile suite passed 1,082 tests with 27 platform/optional skips. The
+published DCP4 activation receipt passed the verifier for all four ranks.
+The original entrypoint/contract/publication bytes are retained as archival
+inputs; the added release selection pins the merged overlay and its evidence.
+
+DeepSeek-V4.1-Flash defaults to 1,048,576 context tokens in the recipe and generated
+ENV example. Its earlier measurements retain their actual settings. The ENV
+migration baseline records this intentional default change instead of rewriting
+its historical hash. KV displays carry a feature-dependent capacity footnote.

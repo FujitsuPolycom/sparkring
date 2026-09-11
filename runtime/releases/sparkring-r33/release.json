@@ -4,11 +4,11 @@
   "selection": "published-immutable-reference",
   "inputs": [
     {
-      "path": "runtime/sparkring/jovian-r33/profiles/profile-contract.json",
+      "path": "runtime/releases/sparkring-r33/published-inputs/profiles/profile-contract.json",
       "sha256": "35ff9f0b816d9d75cf660e2f2a828abf7a42ea2c07f8127a539e92650c8c2983"
     },
     {
-      "path": "runtime/sparkring/jovian-r33/publication.json",
+      "path": "runtime/releases/sparkring-r33/published-inputs/publication.json",
       "sha256": "72946d59ca8ffa8004330518cadde80bf62af1e33a1bfc49b280d1826d500798"
     },
     {

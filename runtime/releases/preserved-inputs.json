@@ -320,7 +320,6 @@
     "runtime/sparkring/jovian-r33/image/capture_installed.py": "046b78116cf1401781efd8a99e65f3a643834edf06836aae92f5655cf7cba36d",
     "runtime/sparkring/jovian-r33/image/capture_post_build_sources.py": "910242c62b59495005e62e13f977383c5ed03b7abd36eadf2177efee4e21ca8b",
     "runtime/sparkring/jovian-r33/image/download_report.py": "fbeb63aaade573917a21f62ca4eef5bda526cfc5dba8b5e6ef8398af6229b6f5",
-    "runtime/sparkring/jovian-r33/image/entrypoint.py": "d8213d7a91173352de71200270a03ea42f0622add9b842008f3fc566cc04d267",
     "runtime/sparkring/jovian-r33/image/finalize_component_receipts.py": "e8f12482b6ebad6ac4eac4a9d5e2b7d38c694b72648ee4e99add7df27e2c6c2f",
     "runtime/sparkring/jovian-r33/image/finalize_lock.py": "8e935236a1e77db95df7a0e74526041c30c4660de33d62351be31bd6f61c668b",
     "runtime/sparkring/jovian-r33/image/image020-construction-receipt.json": "97dd159418da08b6e5d4c05ca36a7b7b7f02e0ec8b1cbad16cc6a3db564edbd6",
@@ -358,7 +357,6 @@
     "runtime/sparkring/jovian-r33/profiles/evidence/tp2-continuation-prefill-coalescing.json": "d7a32a728c9aff47f7d19ec6bdc2e5d12f48dda962cc6c919bf68f38eee7ce61",
     "runtime/sparkring/jovian-r33/profiles/evidence/tp2-sparkcache.json": "e92d5d5c13963ab0b26b70debdd0c28b9d7df6bae83cf4fcefe9289a3d27f3e4",
     "runtime/sparkring/jovian-r33/profiles/image.env.example": "ccadec34321f3c22f9af42e20d30107fef7982412a17b275a988047cff588cfe",
-    "runtime/sparkring/jovian-r33/profiles/profile-contract.json": "35ff9f0b816d9d75cf660e2f2a828abf7a42ea2c07f8127a539e92650c8c2983",
     "runtime/sparkring/jovian-r33/profiles/tp2-dcp1-sparkcache.env.example": "aa97b1220631349c05c6d9c84d4dddef818bd4cf9c8a6ccdb8bf2f1e43cb8539",
     "runtime/sparkring/jovian-r33/profiles/tp2-dcp1.env.example": "dc5ded8eb6bdad94ddf733d744eba2ac06cc63965682d1dce0e223a65c5a119d",
     "runtime/sparkring/jovian-r33/profiles/tp2-sparkcache-capabilities.json": "2515419a5eb1535eb84ecb3ed74120739a72e7355d156bd35595a1aa05b49038",
@@ -366,7 +364,6 @@
     "runtime/sparkring/jovian-r33/profiles/tp4-dcp1.env.example": "b46ac99c9283c375f3b06f9a9adfbfed645f5b2c2378c176263803d1b730c036",
     "runtime/sparkring/jovian-r33/profiles/verify_profile.py": "aeace05fcf76aa21360bec142232226b2ed94d94ea3672b0f25a63206f94ad1f",
     "runtime/sparkring/jovian-r33/public-image-receipt.json": "b8f60e0d3d99e4de83a7f51fd356d6b9ed3c11e985cb3acbf61bfdc2e1b471ad",
-    "runtime/sparkring/jovian-r33/publication.json": "72946d59ca8ffa8004330518cadde80bf62af1e33a1bfc49b280d1826d500798",
     "runtime/sparkring/jovian-r33/rust/README.md": "e3d1db58bd35681a1b2910e0e02e445d46ef8d42de2ca28b0c929aba2698bd11",
     "runtime/sparkring/jovian-r33/rust/build_rust_frontend.sh": "6baeac9327bcabc9316c82f47b24695d13ed216d480b0c1ee8488344fb1565e5",
     "runtime/sparkring/jovian-r33/rust/launch_rust_build.sh": "92e0361d474f57a22846a93431052875640121ace0c0434cd89dc1967e27f6ed",
@@ -428,6 +425,14 @@
     "runtime/transport_profiles/tp2-rocenante-adaptive/roce/_proxy.py": "bba65c20e1a9bd268c8123ca6c2a80eea69b1d8354e63925d761fe576f94e206",
     "runtime/transport_profiles/tp2-rocenante-adaptive/roce/_roce_proxy.c": "8f5e2f76cb0ba37fdcdfe7c7f85c028a53a3a0441e1cb1b74c6b455cb0355838",
     "runtime/transport_profiles/tp2-rocenante-adaptive/roce/api.py": "02becd3757e71c917a71e98ab3f779d52bb18e6801b8efebd792ab186277ea46",
-    "runtime/transport_profiles/tp2-rocenante-adaptive/roce/roce_oneshot.py": "6809aa25314b8f2d74f3a748ec43c098bdf9764cc1fbe2d3451f6b8268bea2c0"
+    "runtime/transport_profiles/tp2-rocenante-adaptive/roce/roce_oneshot.py": "6809aa25314b8f2d74f3a748ec43c098bdf9764cc1fbe2d3451f6b8268bea2c0",
+    "runtime/releases/sparkring-r33/published-inputs/image/entrypoint.py": "d8213d7a91173352de71200270a03ea42f0622add9b842008f3fc566cc04d267",
+    "runtime/releases/sparkring-r33/published-inputs/profiles/profile-contract.json": "35ff9f0b816d9d75cf660e2f2a828abf7a42ea2c07f8127a539e92650c8c2983",
+    "runtime/releases/sparkring-r33/published-inputs/publication.json": "72946d59ca8ffa8004330518cadde80bf62af1e33a1bfc49b280d1826d500798"
+  },
+  "relocated_inputs": {
+    "runtime/sparkring/jovian-r33/image/entrypoint.py": "runtime/releases/sparkring-r33/published-inputs/image/entrypoint.py",
+    "runtime/sparkring/jovian-r33/profiles/profile-contract.json": "runtime/releases/sparkring-r33/published-inputs/profiles/profile-contract.json",
+    "runtime/sparkring/jovian-r33/publication.json": "runtime/releases/sparkring-r33/published-inputs/publication.json"
   }
 }

@@ -76,6 +76,14 @@
     {
       "id": "glm53-flash-spark-tp4-switched",
       "path": "profiles/glm53-flash-spark-tp4-switched/profile.json"
+    },
+    {
+      "id": "glm53-flash-spark-tp4-dcp4",
+      "path": "profiles/glm53-flash-spark-tp4-dcp4/profile.json"
+    },
+    {
+      "id": "glm53-flash-spark-tp4-dcp4-sparkcache",
+      "path": "profiles/glm53-flash-spark-tp4-dcp4-sparkcache/profile.json"
     }
   ]
 }

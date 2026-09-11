@@ -17,7 +17,13 @@
       "profile": "deepseek-v41-flash-cycle",
       "template": "profiles/deepseek-v41-flash-cycle/runtime.env.template",
       "destination": "scripts/config/deepseek-v41-flash-cycle.env.example",
-      "migration_baseline_sha256": "d7b8452921373c1152ecbeb2af74c4c244f26382db6fe2053cbd68838ddaf129"
+      "migration_baseline_sha256": "d7b8452921373c1152ecbeb2af74c4c244f26382db6fe2053cbd68838ddaf129",
+      "default_changes": {
+        "max_model_len": {
+          "from": 430080,
+          "to": 1048576
+        }
+      }
     },
     {
       "profile": "glm53-flash-nvfp4-dflash2-bf16-tp4",

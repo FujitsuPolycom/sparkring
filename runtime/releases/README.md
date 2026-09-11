@@ -13,3 +13,16 @@ instructions and source snapshots.
 Do not update a preserved hash to make a changed build look like the same
 release. Add a distinct release selection and evidence instead. Historical
 records retain their original scope even when navigation retires a profile.
+
+## Published image and DCP4 overlay
+
+`sparkring-r33/published-inputs/` retains the original contract, publication
+metadata and entrypoint bytes superseded by main's DCP4 overlay support. These
+are archival snapshots: internal relative references retain their original
+repository context, recorded by the preservation manifest's relocation map.
+They are not a standalone build directory.
+
+The `sparkring-r33-dcp4` selection pins the published image and the merged
+contract/entrypoint overlay separately. It does not change the published image
+identity. DCP4 activation requires the overlay and managed fabric; DCP1 remains
+available without that additional deployment choice.

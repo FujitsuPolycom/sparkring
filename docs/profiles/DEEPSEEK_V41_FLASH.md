@@ -15,7 +15,7 @@ patches are bind-mounted over it. Deploy with the [quickstart](../DEEPSEEK_V41_F
 | Checkpoint | `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa45a94ad051997016db3960a90277`, stock, on every rank's NVMe |
 | Parallelism | TP4 across a four-Spark cycle, `--nnodes 4`, `mp` executor |
 | Loader | `--load-format safetensors` |
-| Request limit / sequences / scheduler | 430,080 tokens / 8 / 8,192 (16 sequences probed as an admission option) |
+| Request limit / sequences / scheduler | 1,048,576 tokens / 8 / 8,192 (16 sequences probed as an admission option) |
 | Memory | `--gpu-memory-utilization 0.83`, `--block-size 128`, `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0`; Engram tables on disk (`--engram-config '{"cpu_offload": false}'`, `DSV41_ENGRAM_DISK=1`, 64 reader threads, `DSV41_ENGRAM_BALANCED=1`, packed single-read shards) |
 | Speculation | DSpark, 5 tokens, greedy draft, block rejection, adaptive verification off |
 | Graphs | `FULL_AND_PIECEWISE`, exact capture sizes, `VLLM_USE_BREAKABLE_CUDAGRAPH=1` |
@@ -32,8 +32,8 @@ One four-Spark cycle, 2026-09-10/11, all ranks rebooted before each boot. Text-o
 speculation. First serving boot (300K, `gpu-memory-utilization 0.80`, probabilistic draft, 32
 Engram threads): 85.71 GiB consumed per rank, KV 1,171,588 tokens, 15–16 GiB MemAvailable per
 rank while serving; benchmark, needle (131K, 262K), vision and tool-calling checks and a
-20-minute c=8 soak (648 requests, zero failures or hangs). The recorded profile above came out
-of a one-variable-per-boot lever campaign on that boot (NCCL channels, Engram threads, sequence
+20-minute c=8 soak (648 requests, zero failures or hangs). The measured 430,080-token configuration came from
+a one-variable-per-boot lever campaign (NCCL channels, Engram threads, sequence
 cap, batched tokens, draft method, request limit / utilization): KV 2,182,642 tokens (5.07× at
 430K) with 13–15 GiB MemAvailable, 400K needle pass, decode within the ±5 % run-to-run band of
 the first boot, and a six-hour c=8 soak (1,417 waves, 11,336 requests, 0 failures, 0 hangs,
@@ -42,5 +42,5 @@ memory flat) — all in the
 
 These results are evidence for the recorded image identity and checkpoint revision on that
 cycle. They do not qualify a different build, revision, topology or request shape, and they do
-not evaluate output quality beyond needle recall and the end-to-end checks. 1M context was not
-run on this profile; 430,080 tokens with a 400K needle pass is the recorded limit.
+not evaluate output quality beyond needle recall and the end-to-end checks. The default context is 1,048,576 tokens; the linked record measures limits through
+430,080 tokens, including a 400K needle pass.

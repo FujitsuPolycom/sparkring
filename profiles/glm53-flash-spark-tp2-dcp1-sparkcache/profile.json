@@ -9,7 +9,7 @@
     "path": "runtime/sparkring/jovian-r33/profiles/profile-contract.json",
     "key": "tp2-dcp1-sparkcache"
   },
-  "release": "runtime/releases/sparkring-r33/release.json",
+  "release": "runtime/releases/sparkring-r33-dcp4/release.json",
   "guide": "runtime/profiles/glm53-flash-spark-tp2/README.md",
   "evidence_scope": "Bounded functional checks for the exact published image, model and topology only. Throughput observations lack a complete public methodology; full-context and arbitrary concurrency are not qualified.",
   "overrides": [],

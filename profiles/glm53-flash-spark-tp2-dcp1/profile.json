@@ -9,7 +9,7 @@
     "path": "runtime/sparkring/jovian-r33/profiles/profile-contract.json",
     "key": "tp2-dcp1"
   },
-  "release": "runtime/releases/sparkring-r33/release.json",
+  "release": "runtime/releases/sparkring-r33-dcp4/release.json",
   "guide": "runtime/profiles/glm53-flash-spark-tp2/README.md",
   "evidence_scope": "Source contract only; packaged alternatives do not inherit another profile\u2019s functional qualification.",
   "overrides": [],

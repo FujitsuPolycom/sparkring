@@ -17,7 +17,8 @@
       "tokens": 2182642,
       "source": "profiles/deepseek-v41-flash-cycle/recipe.json",
       "witness": "10.94 GiB = 2,182,642 tokens",
-      "conditions": "TP4, Engram on NVMe, gpu_memory_utilization 0.83 and 430,080 configured context tokens."
+      "conditions": "TP4, Engram on NVMe, gpu_memory_utilization 0.83 and 430,080 configured context tokens. This is a sizing reference for the 1M request default; enabled features and context settings affect the resulting pool.",
+      "approximate": true
     },
     "qwen38-27b-exl3-k5k6": {
       "tokens": 8743342,
@@ -77,6 +78,12 @@
       "witness": "Its table uses the ring's ~2.3M",
       "conditions": "Sizing estimate using the same target checkpoint, TP4/DCP1, FP8 KV and 24 GiB per rank. Transport and source-image composition differ; not a measured switched-startup pool.",
       "approximate": true
+    },
+    "glm53-flash-spark-tp4-dcp4-sparkcache": {
+      "tokens": 8364901,
+      "source": "performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md",
+      "witness": "GPU KV cache size: 8,364,901 tokens",
+      "conditions": "Published R33 image plus DCP4 contract/entrypoint overlay, TP4/DCP4, 24 GiB FP8 KV per rank, SparkCache enabled."
     }
   }
 }

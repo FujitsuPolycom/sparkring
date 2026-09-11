@@ -1,0 +1,36 @@
+{
+  "schema": "sparkring-release-selection/v1",
+  "id": "sparkring-r33-dcp4",
+  "selection": "published-image-with-profile-contract-overlay",
+  "inputs": [
+    {
+      "path": "runtime/sparkring/jovian-r33/profiles/profile-contract.json",
+      "sha256": "20a4168a73ce7c9361a9875a21380c8e283d396e7b9025fbc5301bacbb6c9d8e"
+    },
+    {
+      "path": "runtime/sparkring/jovian-r33/publication.json",
+      "sha256": "7fc01bed0e2dd557fbc753a44493e77dc84859fb053ad118004f5ad3e7c8a004"
+    },
+    {
+      "path": "runtime/sparkring/jovian-r33/image/artifact-lock.json",
+      "sha256": "a86fd813fa2bdc41f339317fe041fee55eb4391d715a5e3d91de31a1082a3534"
+    },
+    {
+      "path": "runtime/sparkring/jovian-r33/public-image-receipt.json",
+      "sha256": "b8f60e0d3d99e4de83a7f51fd356d6b9ed3c11e985cb3acbf61bfdc2e1b471ad"
+    },
+    {
+      "path": "runtime/sparkring/jovian-r33/image/entrypoint.py",
+      "sha256": "18bc287af422c1bdac68a58651ddc4ca5ba591fc8573daa7124db14aa0826553"
+    },
+    {
+      "path": "runtime/sparkring/jovian-r33/profiles/evidence/tp4-dcp4-sparkcache-activation-20260911.json",
+      "sha256": "d35a111e53fed5074197f2072f512e8a1e4bc02347bc853436b974abe53902ce"
+    },
+    {
+      "path": "performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md",
+      "sha256": "8a172acf27efe6b1887e7f08324a70a8d5c02ab9331007eb018f59779a98eb4a"
+    }
+  ],
+  "image": "ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef"
+}

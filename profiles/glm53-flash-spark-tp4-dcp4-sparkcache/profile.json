@@ -1,0 +1,19 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "glm53-flash-spark-tp4-dcp4-sparkcache",
+  "title": "GLM-5.3 Flash NVFP4-Spark \u00b7 MTP3 + SparkCache",
+  "recommendation": "recommended",
+  "status": "qualified",
+  "configuration": {
+    "format": "release-profile",
+    "path": "runtime/sparkring/jovian-r33/profiles/profile-contract.json",
+    "key": "tp4-dcp4-sparkcache"
+  },
+  "release": "runtime/releases/sparkring-r33-dcp4/release.json",
+  "guide": "profiles/glm53-flash-spark-tp4-dcp4-sparkcache/README.md",
+  "evidence_scope": "Published-image TP4/DCP4 ring checks: exact answers, cold prefill, prefix hits, full-CKV gather, mHC sharding and restart/SIGKILL SparkCache restore. No completed 1M request, sustained soak or switched-hardware qualification.",
+  "overrides": [],
+  "launcher": {
+    "kind": "guide"
+  }
+}

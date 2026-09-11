@@ -191,6 +191,11 @@ def test_environment_examples_preserve_baseline_defaults():
     rows = profiles.read_json(profiles.ROOT/'profiles/environment-exports.json')['exports']
     for row in rows:
         rendered = render_environment(row['profile'], template_only=True).encode('utf-8')
+        for key, change in row.get('default_changes', {}).items():
+            current = f"{key.upper()}={change['to']}".encode()
+            original = f"{key.upper()}={change['from']}".encode()
+            assert rendered.count(current) == 1
+            rendered = rendered.replace(current, original)
         assert hashlib.sha256(rendered).hexdigest() == row['migration_baseline_sha256']
 
 
@@ -214,7 +219,7 @@ def test_rendered_environment_applies_shared_override():
     values = rank_values(id)
     text = render_environment(id, values, {'max_num_seqs': 4})
     assert '\nMAX_NUM_SEQS=4\n' in text
-    assert '\nMAX_MODEL_LEN=430080\n' in text
+    assert '\nMAX_MODEL_LEN=1048576\n' in text
     assert '\nNODE_RANK=0\n' in text
 
 

@@ -15,33 +15,35 @@ SparkRing is experimental. Six-node deployments are research-only.
 
 ## Profiles
 
-Bold entries are recommended. Values describe the linked default profile;
-the SparkCache column links its optional configuration. Context is the per-request
-limit; KV is the pool capacity. Counts are rounded; `~` marks an estimate.
-See the [full catalog](profiles/README.md) for exact counts, testing scope and retired setups.
+Bold entries are recommended. Values describe the linked default profile.
+Context is the per-request limit; counts are rounded. See the
+[full catalog](profiles/README.md) for exact settings and alternatives.
 
 <!-- BEGIN GENERATED PROFILES -->
 
 ### Four Sparks
 
-| Model | Quant | Layout | Context (tokens) | KV (tokens) | SparkCache | Status | Quickstart |
+| Model | Quant | Layout | Context (tokens) | KV* (tokens) | SparkCache | Status | Quickstart |
 |---|---|---|---:|---:|---|---|---|
-| **GLM-5.3-Flash** | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP4/DCP1 | 1M | [~2.3M](performance/capacity-references.md) | [Optional](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) |
+| **GLM-5.3-Flash** | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP4/DCP4 | 1M | [8.4M](performance/records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md) | [Optional](profiles/glm53-flash-spark-tp4-dcp4-sparkcache/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp4-dcp4-sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | TP4/DCP1 | 1M | [~1M](performance/capacity-references.md) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) | Development | [Guide](profiles/deepseek-v4-flash-0731/README.md) |
 | DeepSeek-V4-Flash-Vision-Exp | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp) | TP4/DCP1 | 1M | — | No | Experimental | [Guide](profiles/deepseek-v4-flash-vision-exp-tp4/README.md) |
-| DeepSeek-V4.1-Flash | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | TP4/DCP1 | 430K | [2.2M](profiles/deepseek-v41-flash-cycle/recipe.json) | No | Development | [Guide](profiles/deepseek-v41-flash-cycle/README.md) |
+| DeepSeek-V4.1-Flash | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | TP4/DCP1 | 1M | [~2.2M](profiles/deepseek-v41-flash-cycle/recipe.json) | No | Development | [Guide](profiles/deepseek-v41-flash-cycle/README.md) |
 | GLM-5.2 | [EXL3 3.5bpw](https://huggingface.co/brandonmusic/GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78) | TP4/DCP4 | 1M | [1.2M](profiles/glm52-exl3-r7-3.5bpw/recipe.json) | [Optional](profiles/sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) | Development | [Guide](profiles/glm52-exl3-r7-3.5bpw/README.md) |
 | Qwen3.8-27B | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | TP4/DCP1 | 1M | [8.7M](profiles/qwen38-27b-exl3-k5k6/recipe.json) | No | Development | [Guide](profiles/qwen38-27b-exl3-k5k6/README.md) |
 
 ### Two Sparks
 
-| Model | Quant | Layout | Context (tokens) | KV (tokens) | SparkCache | Status | Quickstart |
+| Model | Quant | Layout | Context (tokens) | KV* (tokens) | SparkCache | Status | Quickstart |
 |---|---|---|---:|---:|---|---|---|
 | **GLM-5.3-Flash** | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | TP2/DCP1 | 1M | [1.1M](runtime/profiles/glm53-flash-spark-tp2/README.md) | [Optional](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
 | DeepSeek-V4-Flash-0731 | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) | TP2/DCP1 | 1M | [~1M](performance/capacity-references.md) | [Optional](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) | Development | [Guide](profiles/deepseek-v4-flash-0731-pair/README.md) |
 | Qwen3.8-27B | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated) | TP2/DCP1 | 1M | [4.1M](profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development | [Guide](profiles/qwen38-27b-exl3-k5k6-pair/README.md) |
 
 <!-- END GENERATED PROFILES -->
+
+\* KV capacity changes with configuration and enabled features, including
+SparkCache. Linked figures describe recorded settings; `~` marks a sizing estimate.
 
 ## Documentation
 
@@ -53,12 +55,14 @@ See the [full catalog](profiles/README.md) for exact counts, testing scope and r
 
 ## Acknowledgements
 
-Built on vLLM, NVIDIA NCCL, B12X, ExLlamaV3, and the
-[local inference community](https://github.com/local-inference-lab/).
-Luke and Local Inference Lab's [RoCEnante implementation](https://github.com/local-inference-lab/b12x/pull/295)
-and [vLLM integration](https://github.com/local-inference-lab/vllm/pull/597)
-underpin the adapted mesh communication.
-See [third-party notices](THIRD_PARTY_NOTICES.md).
+Thanks to the contributors to vLLM, NVIDIA NCCL, B12X and ExLlamaV3, whose
+serving, communication and kernel components are used by SparkRing profiles.
+
+The RoCEnante integration adapts communication work by Luke (`lukealonso`)
+and other [Local Inference Lab](https://github.com/local-inference-lab/) contributors.
+See the [RoCEnante provenance](third_party/b12x_roce/README.md#attribution-and-design-origins)
+and [third-party notices](THIRD_PARTY_NOTICES.md) for source origins, adaptations
+and licensing.
 
 ## License
 

@@ -36,7 +36,7 @@ cycle environment, so no Ethernet switch is needed.
 | Ranks / cabling | 0–3, four DACs as `0-1-2-3-0`, two RoCE devices per rank |
 | Weights resident per rank | 78.79 GiB text-only; 81.6 GiB with DSpark draft + vision (measured) |
 | Engram tables | on each rank's NVMe, read on demand (23.6 GiB per rank per table not allocated); balanced hash-column split + packed single-read shards (`ENGRAM_BALANCED=1`, `ENGRAM_PACKED_DIR`) |
-| Request limit / sequences / scheduler tokens | 430,080 / 8 / 8,192 |
+| Request limit / sequences / scheduler tokens | 1,048,576 / 8 / 8,192 |
 | `--gpu-memory-utilization` | 0.83 with `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0` → KV 10.94 GiB = 2,182,642 tokens (5.07× 430K) measured; 13–15 GiB MemAvailable per rank |
 | Speculation | DSpark k=5, greedy draft, block rejection, adaptive verification off |
 | CUDA graphs | `FULL_AND_PIECEWISE`, capture sizes = every multiple of 5 and 6 up to 48 |
@@ -195,4 +195,4 @@ and 1.84 GiB was left). `--max-num-seqs 8` is the soaked value; 16 booted at 0.8
 free, was neutral up to eight streams and reached 285 tok/s aggregate on the prompt set at 16
 streams, so it is a valid admission option when per-stream speed matters less than throughput.
 With DSpark k=5 every decode batch is a multiple of 5 or 6 tokens and the graph capture list
-follows from the sequence cap. 1M context has not been run on this profile.
+follows from the sequence cap. The configured default is 1,048,576 tokens; the measurements described here used limits through 430,080 tokens.

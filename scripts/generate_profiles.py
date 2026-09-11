@@ -60,6 +60,12 @@ def compact_profile_rows(rows, root=ROOT):
             cell = 'Included'
         cache_cells[p['id']] = cell
         result.append((p, resolved))
+    # A recommended configuration represents its model/topology on the landing
+    # page. Other DCP choices remain in the full catalog and profile guide.
+    preferred = {(v['model']['repository'], v['topology'], v['serving']['node_count'])
+                 for p, v in result if p['recommendation'] == 'recommended'}
+    result = [(p, v) for p, v in result if p['recommendation'] == 'recommended'
+              or (v['model']['repository'], v['topology'], v['serving']['node_count']) not in preferred]
     return result, cache_cells
 
 
@@ -92,9 +98,9 @@ def profile_table(root=ROOT, *, compact=False):
     ):
         if compact and title == 'Retired profiles':
             continue
-        lines += ['### '+title, '', '| Model | Quant | Layout | Configured context (tokens) | KV (tokens) | Status | Navigation | Quickstart |', '|---|---|---|---:|---:|---|---|---|']
+        lines += ['### '+title, '', '| Model | Quant | Layout | Configured context (tokens) | KV* (tokens) | Status | Navigation | Quickstart |', '|---|---|---|---:|---:|---|---|---|']
         if compact:
-            lines[-2:] = ['| Model | Quant | Layout | Context (tokens) | KV (tokens) | SparkCache | Status | Quickstart |', '|---|---|---|---:|---:|---|---|---|']
+            lines[-2:] = ['| Model | Quant | Layout | Context (tokens) | KV* (tokens) | SparkCache | Status | Quickstart |', '|---|---|---|---:|---:|---|---|---|']
         for p, r in sorted(rows, key=lambda pair: (pair[0]['recommendation'] != 'recommended', pair[0]['id'])):
             if not predicate(p, r) or (compact and r['topology'] == 'switched'):
                 continue

@@ -1,17 +1,17 @@
 {
   "schema": "sparkring-deployment/v1",
-  "id": "glm53-flash-spark-tp4-dcp1-sparkcache",
+  "id": "glm53-flash-spark-tp4-dcp4",
   "title": "GLM-5.3 Flash NVFP4-Spark \u00b7 MTP3 + SparkCache",
   "recommendation": "alternative",
-  "status": "qualified",
+  "status": "implemented",
   "configuration": {
     "format": "release-profile",
     "path": "runtime/sparkring/jovian-r33/profiles/profile-contract.json",
-    "key": "tp4-dcp1-sparkcache"
+    "key": "tp4-dcp4"
   },
   "release": "runtime/releases/sparkring-r33-dcp4/release.json",
-  "guide": "docs/GLM53_TP4_PREFILL_QUICKSTART.md",
-  "evidence_scope": "Bounded functional checks for the exact published image, model and topology only. Throughput observations lack a complete public methodology; full-context and arbitrary concurrency are not qualified.",
+  "guide": "profiles/glm53-flash-spark-tp4-dcp4/README.md",
+  "evidence_scope": "A separate cache-disabled TP4/DCP4 startup passed semantic generation and 1M admission. This is an observation, not the cache-enabled recovery qualification.",
   "overrides": [],
   "launcher": {
     "kind": "guide"

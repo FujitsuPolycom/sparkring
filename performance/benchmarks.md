@@ -32,3 +32,7 @@ checks and describe the missing measurement details.
 |---|---:|---:|---:|---:|
 | [R33 four-Spark ring](records/glm53-flash/r33-image020-tp4-sparkcache-20260911.md) | 8K | 3,274 | 51.4 | 132.5 |
 | [R33 two-Spark pair](records/glm53-flash/r33-image020-tp2-sparkcache-20260911.md) | 8K | 2,340 | 33.1 | 66.1 |
+
+The [TP4/DCP4 record](records/glm53-flash/r33-image020-tp4-dcp4-sparkcache-20260911.md)
+contains the selected four-Spark profile's prefill/decode observations, 8.36M KV
+pool, prefix-hit checks and restart/fault-recovery evidence.
