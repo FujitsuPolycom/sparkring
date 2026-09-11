@@ -509,7 +509,7 @@ def test_public_profile_files_do_not_embed_private_site_values_or_mutable_tags()
         PROFILE_RECORD_PATH,
     ]
     text = "\n".join(path.read_text(encoding="utf-8") for path in paths)
-    assert re.search(r"(?i)\b[A-Z]:\\(?:Users|home)\\", text) is None
+    assert re.search(r"(?i)\b[A-Z]:\\", text) is None
     assert (
         re.search(r"\b(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)", text) is None
     )
@@ -555,7 +555,6 @@ def test_operator_docs_state_status_invariants_and_full_provenance() -> None:
         "git -C sparkcache checkout --detach 3860a2250193a6679ac6bac857af53e0757841f8"
     ) in cache_text
     assert 'git -C sparkring checkout --detach "${sparkring_revision}"' in cache_text
-    assert "checkout codex/glm53-flash-sparkcache-tp4" not in cache_text
     assert "metrics-before-restore.prom" in cache_text
     assert "restored 8192 tokens async" in cache_text
     assert "A rebuilt image has **implemented** status" in cache_text

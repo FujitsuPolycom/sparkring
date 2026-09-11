@@ -29,6 +29,7 @@ PROFILE = (
 )
 SITE = CONFIG / "glm53-flash-b12x-kda-adaptive-mtp-tp4-site.example.yaml"
 QUICKSTART = ROOT / "docs/GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md"
+VLLM_CONFIG_SOURCE_SHA256 = "9f64f5041f7f9d953e9f6bc53de8733b3eb4035c0753056a1f646346702a0994"
 TARGET = "a35e6bf2875c1875609b8deaec404c07c6cc80259e4222fc0b51e649498bd6b9"
 
 
@@ -84,10 +85,8 @@ def test_profile_pins_adaptive_mtp_fastsafetensors_and_sparkcache() -> None:
     attestation = " ".join(profile["attestation_hook"])
     assert SPARKCACHE_SOURCE_SHA256 in attestation
     assert LEASE_CONTRACT_SHA256 in attestation
-    assert (
-        "9f64f5041f7f9d953e9f6bc53de8733b3eb4035c0753056a1f646346702a0994"
-        in attestation
-    )
+    assert "vllm/config/vllm.py" in attestation
+    assert VLLM_CONFIG_SOURCE_SHA256 in attestation
 
 
 def test_runtime_bound_identity_does_not_alias_the_e105_adaptive_profile() -> None:

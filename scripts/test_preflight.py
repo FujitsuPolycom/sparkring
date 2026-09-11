@@ -1230,7 +1230,11 @@ def test_glm53_memory_preflight_receipt_records_rejection_recovery_and_launch():
     assert min(after["equivalent_32mib_blocks_by_rank"]) == 3686
     assert after["result"] == "passed"
     assert receipt["model_relaunch"]["sircl_capability_agreement_on_every_rank"]
-    assert receipt["model_relaunch"]["semantic_request"]["answer"] == "4"
+    arithmetic_probe = receipt["model_relaunch"]["semantic_request"]
+    assert arithmetic_probe["request"] == "What is 2 plus 2? Answer with one numeral."
+    assert arithmetic_probe["http_status"] == 200
+    assert arithmetic_probe["finish_reason"] == "stop"
+    assert arithmetic_probe["answer"] == "4"
     assert receipt["model_relaunch"]["result"] == "passed"
     assert "192.168." not in receipt_text
     assert '"ssh_target"' not in receipt_text
