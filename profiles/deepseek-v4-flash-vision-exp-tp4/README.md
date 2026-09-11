@@ -2,7 +2,7 @@
 
 Profile: `deepseek-v4-flash-vision-exp-tp4`. Status: **research-only**. The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image.
 
-Inspect its selected defaults with `python scripts/profile.py resolve deepseek-v4-flash-vision-exp-tp4`.
+Inspect its selected defaults with `python scripts/profiles.py resolve deepseek-v4-flash-vision-exp-tp4`.
 
 Status: **research-only**. This profile defines a four-rank launch configuration
 for `deepseek-ai/DeepSeek-V4-Flash-Vision-Exp`. Contributor-reported serving

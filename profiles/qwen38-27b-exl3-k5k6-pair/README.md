@@ -2,7 +2,7 @@
 
 Profile: `qwen38-27b-exl3-k5k6-pair`. Status: **implemented**. The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image.
 
-Inspect its selected defaults with `python scripts/profile.py resolve qwen38-27b-exl3-k5k6-pair`.
+Inspect its selected defaults with `python scripts/profiles.py resolve qwen38-27b-exl3-k5k6-pair`.
 
 This setup was tested on two directly cabled DGX Sparks at TP2/DCP1. Results
 are included below.

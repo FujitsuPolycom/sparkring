@@ -5,7 +5,7 @@ This deployment uses the authoritative [recipe](recipe.json). Status: **implemen
 Inspect the resolved configuration without contacting a host:
 
 ```bash
-python scripts/profile.py resolve deepseek-v4-flash-0731
+python scripts/profiles.py resolve deepseek-v4-flash-0731
 ```
 
 Follow the [deployment instructions](../../docs/DEEPSEEK_V4_FLASH_QUICKSTART.md). Keep private site inputs outside Git. The guide defines the relevant topology, prerequisites and startup gates.

@@ -5,7 +5,7 @@ This deployment uses the authoritative [recipe](recipe.json). Status: **implemen
 Inspect the resolved configuration without contacting a host:
 
 ```bash
-python scripts/profile.py resolve glm53-flash-nvfp4-dflash2-bf16-tp4
+python scripts/profiles.py resolve glm53-flash-nvfp4-dflash2-bf16-tp4
 ```
 
 Follow the [deployment instructions](../../docs/GLM53_JJ_R8_GB10_SPARKCACHE_TP4_QUICKSTART.md). Keep private site inputs outside Git. The guide defines the relevant topology, prerequisites and startup gates.

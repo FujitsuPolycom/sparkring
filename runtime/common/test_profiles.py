@@ -263,3 +263,28 @@ def test_managed_source_snapshot_imports_without_checkout(tmp_path):
     script.write_text('import runpy\nfrom pathlib import Path\nrunpy.run_path(str(Path(__file__).parent / "runtime/glm53-spark-mtp3-mesh/profile.py"), run_name="snapshot_import_check")\n')
     result = subprocess.run([sys.executable, '-I', str(script)], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_retained_dflash_recipe_uses_its_declared_preference():
+    for id in ('glm53-flash-nvfp4-dflash2-bf16-tp4', 'sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4'):
+        assert profiles.resolve(id)['serving']['decode_context_parallel_size'] == 4
+
+
+def test_composition_references_and_legacy_exports_roundtrip():
+    rows = profiles.read_json(profiles.ROOT/'profiles/compatibility.json')['mirrors']
+    for row in rows:
+        if row['kind'] != 'recipe':
+            continue
+        source = profiles.read_json(profiles.local_path(row['source']))
+        if source.get('base_recipe'):
+            assert profiles.local_path(source['base_recipe']).is_file()
+            legacy = profiles.read_json(profiles.local_path(row['destination']))
+            assert legacy['base_recipe'].startswith('../')
+            id = profiles.legacy_profile(profiles.local_path(row['destination']))
+            assert profiles.resolve(id)['model'] == source['model']
+
+
+def test_composition_does_not_invent_a_missing_model_revision():
+    result = profiles.resolve('sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1')
+    assert 'checkpoint_sha256' in result['model']
+    assert 'revision' not in result['model']

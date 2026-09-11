@@ -14,6 +14,10 @@
     {
       "path": "runtime/sparkring/jovian-r33/image/artifact-lock.json",
       "sha256": "a86fd813fa2bdc41f339317fe041fee55eb4391d715a5e3d91de31a1082a3534"
+    },
+    {
+      "path": "runtime/sparkring/jovian-r33/public-image-receipt.json",
+      "sha256": "b8f60e0d3d99e4de83a7f51fd356d6b9ed3c11e985cb3acbf61bfdc2e1b471ad"
     }
   ],
   "image": "ghcr.io/fujitsupolycom/sparkring@sha256:1328a4f6f483014021a66a757012793629bd054d28d0fe4d5e581fa4aed776ef"

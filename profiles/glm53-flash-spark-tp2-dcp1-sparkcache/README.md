@@ -3,7 +3,7 @@
 Status: **qualified**. Bounded functional checks for the exact published image, model and topology only. Throughput observations lack a complete public methodology; full-context and arbitrary concurrency are not qualified.
 
 ```bash
-python scripts/profile.py resolve glm53-flash-spark-tp2-dcp1-sparkcache
+python scripts/profiles.py resolve glm53-flash-spark-tp2-dcp1-sparkcache
 ```
 
 Use the [primary quickstart](../../runtime/profiles/glm53-flash-spark-tp2/README.md) with the exact release selected by [profile.json](profile.json). The resolver reports the image and immutable contract before any operation.

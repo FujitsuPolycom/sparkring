@@ -3,7 +3,7 @@
   "recipe_id": "glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4",
   "status": "qualified",
   "preferred_profile": "dcp4",
-  "base_recipe": "../glm53-flash-nvfp4-dflash2-bf16-tp4.json",
+  "base_recipe": "profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/recipe.json",
   "hardware": {
     "platform": "linux/arm64",
     "cuda_arch": "sm_121",

@@ -2,7 +2,7 @@
   "schema": "sparkring-sparkcache-composition/v1",
   "recipe_id": "deepseek-v4-flash-0731-sparkcache-tp4-dcp1",
   "status": "implemented",
-  "base_recipe": "../deepseek-v4-flash-0731.json",
+  "base_recipe": "profiles/deepseek-v4-flash-0731/recipe.json",
   "hardware": {
     "platform": "linux/arm64",
     "cuda_arch": "sm_121",

@@ -2,7 +2,7 @@
 
 Profile: `glm52-exl3-r7-3.5bpw`. Status: **implemented**. The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image.
 
-Inspect its selected defaults with `python scripts/profile.py resolve glm52-exl3-r7-3.5bpw`.
+Inspect its selected defaults with `python scripts/profiles.py resolve glm52-exl3-r7-3.5bpw`.
 
 This quickstart deploys the tested 1,048,576-token, 16-sequence GLM-5.2 EXL3
 profile on four directly cabled NVIDIA DGX Sparks. The machine-readable settings are in

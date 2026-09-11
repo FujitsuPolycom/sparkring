@@ -3,7 +3,7 @@
 Status: **research-only**. Source contract only; packaged alternatives do not inherit another profile’s functional qualification.
 
 ```bash
-python scripts/profile.py resolve glm53-flash-spark-tp2-dcp1
+python scripts/profiles.py resolve glm53-flash-spark-tp2-dcp1
 ```
 
 Use the [primary quickstart](../../runtime/profiles/glm53-flash-spark-tp2/README.md) with the exact release selected by [profile.json](profile.json). The resolver reports the image and immutable contract before any operation.

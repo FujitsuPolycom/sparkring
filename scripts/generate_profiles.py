@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from runtime.common.profiles import ROOT, catalog, load, local_path, read_json, resolve  # noqa: E402
+from runtime.common.profiles import ROOT, catalog, load, local_path, read_json, resolve, legacy_recipe_bytes  # noqa: E402
 
 from runtime.common.environment import render_environment  # noqa: E402
 
@@ -49,7 +49,7 @@ def generate(check=False, root=ROOT):
         if not target.is_relative_to(root.resolve()) or target == local_path(row['source'], root):
             raise ValueError('Compatibility export must stay within the checkout and differ from source')
         source = local_path(row['source'], root)
-        content = source.read_bytes()
+        content = legacy_recipe_bytes(row["source"], row["destination"], root) if row["kind"] == "recipe" else source.read_bytes()
         if source.suffix == '.md':
             def relative_link(match):
                 value = match[1]

@@ -2,7 +2,7 @@
 
 Profile: `deepseek-v41-flash-cycle`. Status: **implemented**. The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image.
 
-Inspect its selected defaults with `python scripts/profile.py resolve deepseek-v41-flash-cycle`.
+Inspect its selected defaults with `python scripts/profiles.py resolve deepseek-v41-flash-cycle`.
 
 Serve `deepseek-ai/DeepSeek-V4.1-Flash` (the stock checkpoint) as four tensor-parallel
 ranks on a directly cabled four-Spark cycle, with the model's two Engram lookup tables

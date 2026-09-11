@@ -2,7 +2,7 @@
   "schema": "sparkring-sparkcache-composition/v1",
   "recipe_id": "glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4",
   "status": "implemented",
-  "base_recipe": "../glm52-exl3-r7-3.5bpw.json",
+  "base_recipe": "profiles/glm52-exl3-r7-3.5bpw/recipe.json",
   "hardware": {
     "platform": "linux/arm64",
     "cuda_arch": "sm_121",

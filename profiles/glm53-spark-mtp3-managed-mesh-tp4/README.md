@@ -5,7 +5,7 @@ This deployment uses the authoritative [recipe](recipe.json). Status: **research
 Inspect the resolved configuration without contacting a host:
 
 ```bash
-python scripts/profile.py resolve glm53-spark-mtp3-managed-mesh-tp4
+python scripts/profiles.py resolve glm53-spark-mtp3-managed-mesh-tp4
 ```
 
 Follow the [deployment instructions](../../docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md). Keep private site inputs outside Git. The guide defines the relevant topology, prerequisites and startup gates.

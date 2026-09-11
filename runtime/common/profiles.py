@@ -5,6 +5,7 @@ import argparse
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 
@@ -76,6 +77,10 @@ def load(profile_id, root=ROOT):
     release = read_json(local_path(p["release"], root))
     if set(release) != {"schema", "id", "selection", "inputs", "image"} or release["schema"] != "sparkring-release-selection/v1":
         raise ValueError(f"{profile_id}: unsupported release selection")
+    if isinstance(release["image"], dict) and "configuration_runtime" in release["image"]:
+        if release["image"]["configuration_runtime"] != source["path"]:
+            raise ValueError(f"{profile_id}: release runtime reference must identify its authoritative recipe")
+        local_path(release["image"]["configuration_runtime"], root)
     for item in release["inputs"]:
         if set(item) != {"path", "sha256"} or not re.fullmatch(r"[0-9a-f]{64}", item["sha256"]):
             raise ValueError(f"{profile_id}: invalid release input digest")
@@ -90,7 +95,19 @@ def configuration(p, root=ROOT):
     if source["format"] == "recipe":
         if data.get("schema") not in {"sparkring-recipe/v1", "sparkring-sparkcache-composition/v1"}:
             raise ValueError(f"{p['id']}: unsupported recipe schema {data.get('schema')}")
+        if data.get("base_recipe"):
+            base = read_json(local_path(data["base_recipe"], root))
+            if base.get("base_recipe"):
+                raise ValueError("Composition recipes reference one base recipe; nested inheritance is unsupported")
+            for key in ("repository", "revision"):
+                if key in data["model"] and key in base["model"] and data["model"][key] != base["model"][key]:
+                    raise ValueError(f"{p['id']}: composition model {key} differs from its base recipe")
         serving = copy.deepcopy(data.get("serving", data.get("serving_common", {})))
+        if data.get("profiles"):
+            selected = data.get("preferred_profile")
+            if selected not in data["profiles"]:
+                raise ValueError(f"{p['id']}: select a defined preferred recipe profile")
+            serving.update(copy.deepcopy(data["profiles"][selected]))
         serving.setdefault("tensor_parallel_size", data["hardware"]["ranks"])
         serving.setdefault("node_count", data["hardware"]["ranks"])
         return data["model"], serving, data["hardware"]["topology"], data.get("evidence", data.get("publication", {})), data.get("runtime", {})
@@ -159,13 +176,35 @@ def resolve(profile_id, overrides=None, site=None, root=ROOT):
             "evidence": evidence, "modified_defaults": changed, "guide": p["guide"]}
 
 
+def legacy_recipe_bytes(source, destination, root=ROOT):
+    """Export repository-root recipe references in the historical relative format."""
+    text = local_path(source, root).read_text(encoding="utf-8-sig")
+    data = json.loads(text)
+    if data.get("base_recipe"):
+        rows = read_json(root / "profiles/compatibility.json")["mirrors"]
+        locations = {row["source"]: row["destination"] for row in rows if row["kind"] == "recipe"}
+        if data["base_recipe"] not in locations:
+            raise ValueError("Base recipe has no compatible public export")
+        relative = os.path.relpath(root / locations[data["base_recipe"]], (root / destination).parent).replace("\\", "/")
+        text = text.replace(json.dumps(data["base_recipe"]), json.dumps(relative))
+    return text.encode("utf-8")
+
+
 def legacy_profile(path, root=ROOT):
     supplied = read_json(path)
     matches = []
     for id in catalog(root):
         p, _ = load(id, root)
-        if p["configuration"]["format"] == "recipe" and read_json(local_path(p["configuration"]["path"], root)) == supplied:
-            matches.append(id)
+        if p["configuration"]["format"] == "recipe":
+            source = p["configuration"]["path"]
+            canonical = read_json(local_path(source, root))
+            if canonical == supplied:
+                matches.append(id)
+                continue
+            rows = read_json(root / "profiles/compatibility.json")["mirrors"]
+            exports = [row for row in rows if row["source"] == source and row["kind"] == "recipe"]
+            if len(exports) == 1 and json.loads(legacy_recipe_bytes(source, exports[0]["destination"], root)) == supplied:
+                matches.append(id)
     if len(matches) != 1:
         raise ValueError("Legacy recipe must match exactly one catalog definition; migrate edits to its authoritative recipe")
     return matches[0]

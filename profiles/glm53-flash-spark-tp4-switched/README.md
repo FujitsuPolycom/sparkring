@@ -2,7 +2,7 @@
 
 Profile: `glm53-flash-spark-tp4-switched`. Status: **research-only**. Provided as-is. No switched-hardware qualification; operators must verify their HCA and GID selection.
 
-Inspect its selected defaults with `python scripts/profile.py resolve glm53-flash-spark-tp4-switched`.
+Inspect its selected defaults with `python scripts/profiles.py resolve glm53-flash-spark-tp4-switched`.
 
 Use the [switched profile](../../runtime/profiles/glm53-flash-spark-tp4-switched/README.md)
 for four one-GPU nodes connected through a RoCE switch. It selects the common

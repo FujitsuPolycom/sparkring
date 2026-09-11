@@ -50,8 +50,8 @@ Local verification ran on Windows with Python 3.12:
 
 | Check | Result |
 |---|---|
-| Full maintained pytest selection from CI | 3,706 passed; 118 skipped; no failures |
-| Shared profile/configuration tests | 53 passed |
+| Full maintained pytest selection from CI | 3,709 passed; 118 skipped; no failures |
+| Shared profile/configuration tests | 56 passed |
 | Focused image-documentation and shared-runtime checks after navigation refinement | 76 passed |
 | Ruff over maintained Python trees | Passed |
 | Repository structural check | 19 profiles, 51 generated outputs, 427 preserved inputs, 438 Python sources, 7 builders |
@@ -59,7 +59,7 @@ Local verification ran on Windows with Python 3.12:
 | Release-safety scan | Zero findings |
 | Managed-service source closure | Imported from the installed allowlist in an isolated Python process, without the checkout on its import path |
 | Launch compatibility | Existing TP2 tests pass; maintained switched renderer matches the frozen renderer's plan |
-| Configuration equivalence | Omitted defaults, explicit defaults and equivalent legacy recipes resolve consistently; ENV examples match migration-baseline hashes |
+| Configuration equivalence | Omitted defaults, explicit defaults and equivalent legacy recipes resolve consistently; preferred DCP selections and composition base references are validated; ENV examples match migration-baseline hashes |
 
 The initial baseline subset passed 1,072 tests with 77 skips. The migration's
 full-suite documentation regressions were corrected by following canonical

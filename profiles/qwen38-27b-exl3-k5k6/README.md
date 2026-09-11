@@ -2,7 +2,7 @@
 
 Profile: `qwen38-27b-exl3-k5k6`. Status: **implemented**. The recipe records configuration and evidence boundaries. Its implementation status does not qualify a rebuilt image.
 
-Inspect its selected defaults with `python scripts/profile.py resolve qwen38-27b-exl3-k5k6`.
+Inspect its selected defaults with `python scripts/profiles.py resolve qwen38-27b-exl3-k5k6`.
 
 This quickstart builds and serves
 `malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated` as four tensor-parallel ranks on a

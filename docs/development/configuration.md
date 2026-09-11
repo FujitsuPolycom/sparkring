@@ -17,11 +17,11 @@ need a separate loader and migration; do not reinterpret v1 fields.
 ## Inspect and resolve
 
 ```bash
-python scripts/profile.py list
-python scripts/profile.py validate
-python scripts/profile.py resolve deepseek-v41-flash-cycle
-python scripts/profile.py resolve deepseek-v41-flash-cycle --set max_num_seqs=4
-python scripts/profile.py resolve --legacy recipes/deepseek-v41-flash-cycle.json
+python scripts/profiles.py list
+python scripts/profiles.py validate
+python scripts/profiles.py resolve deepseek-v41-flash-cycle
+python scripts/profiles.py resolve deepseek-v41-flash-cycle --set max_num_seqs=4
+python scripts/profiles.py resolve --legacy recipes/deepseek-v41-flash-cycle.json
 ```
 
 Resolution applies supported explicit overrides, profile defaults, then the small
@@ -34,7 +34,11 @@ equal to a default produces the same behavior and retains its original scope.
 The resolver does not read process environment variables, run a shell, contact
 hosts or inspect model weights. A legacy recipe must match a catalog recipe;
 edit its authoritative `profiles/` source and regenerate the compatibility
-export. This prevents independent configuration drift.
+export. This prevents independent configuration drift. Canonical composition base references
+are repository-relative; the exporter restores their historical relative paths.
+Recipes with a declared preferred DCP selection resolve that selection. A
+composition that records a checkpoint digest without a model revision retains
+that evidence limit instead of inheriting an unverified revision from its base.
 
 ## Private site configuration
 
@@ -63,7 +67,7 @@ For the DeepSeek and Qwen Bash adapters, `render-env` renders an actual adapter
 input from the same profile defaults and supported overrides:
 
 ```bash
-python scripts/profile.py render-env deepseek-v41-flash-cycle --site-values rank0.site.json --set max_num_seqs=4 > rank0.local.env
+python scripts/profiles.py render-env deepseek-v41-flash-cycle --site-values rank0.site.json --set max_num_seqs=4 > rank0.local.env
 python scripts/launch.py deepseek-v41-flash-cycle -- --check rank0.local.env
 ```
 
