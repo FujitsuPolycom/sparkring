@@ -1,7 +1,13 @@
 # SparkCache composition recipes
 
-These recipes add durable, rank-local prefix-state storage to the supported
-SparkRing serving profiles. They are compositions: each file names a base
+These generated compatibility recipes add durable, rank-local prefix-state
+storage to the base recipes they name. The [profile catalog](../../profiles/README.md)
+owns deployment selection and also includes release-profile compositions not
+listed here. The DFlash2 configuration below is retained for reproduction;
+its DCP4 preference is not a default for the maintained GLM-5.3 MTP3 profiles.
+Edit authoritative sources under `profiles/` and regenerate these exports.
+
+Each composition names a base
 SparkRing recipe and records only the serving values, immutable artifacts,
 cache policy, restart contract, evidence, and limitations qualified with
 SparkCache.
@@ -32,14 +38,14 @@ limits shown in the receipt column.
 The DeepSeek compositions were qualified with SparkCache `0.1.0a1` wheel
 SHA-256
 `87c17d8dab5052f5a7833349dc9b99b76a3b6531ca6f0d3deff812f724fecdcc`.
-The GLM composition was qualified with SparkCache `0.1.0a2` wheel SHA-256
+The GLM-5.2 composition was qualified with SparkCache `0.1.0a2` wheel SHA-256
 `3345b8c574951a8204377b0c27f53765c84b96ab4f5a8ec1ac147574dba7568b`.
-The current GLM-5.3 Flash source composition pins SparkCache merge
+The retained GLM-5.3 Flash DFlash2 source composition pins SparkCache merge
 `66057174301a4759ca3a45207ea41016689449cb`, deployable-source SHA-256
 `80b049c647bc28fdc039021d08a7eb3276846c1616b77b9ba18ba2bc38da8d99`,
 vLLM `e02b174693e13859de61811b5e8cd13d5308e259`, and B12X
 `9ae41c5cb9935d740456479954b0089f80bd2ef2`. It uses cache profile
-`glm53-flash-hybrid`. The recipe retains the last published image reference;
+`glm53-flash-hybrid`. The recipe retains its published image reference;
 the immutable receipt for that artifact remains historical evidence and is
 not a receipt for a locally rebuilt source candidate.
 

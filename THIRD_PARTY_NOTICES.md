@@ -85,10 +85,11 @@ under Apache-2.0 with their contributor notices retained.
 The unified diffs under `runtime/deepseek0731-gb10/patches/` contain context
 and removed lines from vLLM, pinned to the source revision recorded by that
 runtime contract. The added lines port upstream vLLM fixes and SparkRing's
-DeepSeek GB10 integration. The files under `spark_transport/integrations/vllm/`
-and the vLLM-facing files under `spark_transport/experiments/` remain original
-SparkRing adapters: they verify exact upstream source before installing any
-runtime modification and decline to install when the source differs.
+DeepSeek GB10 integration. The maintained adapters under `integrations/vllm/`
+and the vLLM-facing files under `spark_transport/experiments/` are original
+SparkRing work. `spark_transport/integrations/vllm/` contains generated
+compatibility exports, recorded in `profiles/compatibility.json`. Adapter
+installation is not a general verification of the upstream vLLM source tree.
 
 `runtime/deepseek0731-gb10/upstream/` includes two unmodified, compressed vLLM
 protocol files from Local Inference Lab revision
@@ -100,13 +101,14 @@ vLLM is licensed under the Apache License, Version 2.0, Copyright the vLLM team
 and contributors. Obtaining and running vLLM is subject to its own license and
 notices. SparkRing is not a fork of vLLM.
 
-## 4. B12X / Eldritch vLLM fork (referenced runtime)
+## 4. B12X / Eldritch vLLM fork (historical runtime attribution)
 
-The deployed runtime these adapters were validated against was built from a
-private vLLM-derivative fork ("B12X" / "Eldritch"), pinned in this repository
-by the version string
+The repository retains attribution for a private vLLM-derivative runtime
+("B12X" / "Eldritch") identified by the version string
 `0.11.2.dev279+eldritch.final.fcc6141.b12x284a2ea.fi25dd814.cu132.20260626`.
 That fork is not included in, and not published from, this repository.
+This historical identity does not describe every deployment's dependencies;
+the runtime-specific sections below identify their public source compositions.
 The separate vendored RoCEnante communication package is described in Section
 11; it is not the complete B12X model-kernel package or the Eldritch runtime.
 
@@ -146,9 +148,10 @@ upstream headers and license text.
 The `runtime/exl3-r7/` builder package assembles an ARM64/SM121 container image
 from the following upstream components. Each is identified by an exact Git
 commit in `runtime/exl3-r7/pins.json` or `runtime/exl3-r7/prepare_build_deps.py`
-and embedded as an OCI label in the built image. None of these components'
-source code is distributed in this repository; the builder fetches them at
-build time from their public repositories.
+and embedded as an OCI label in the built image. The builder fetches complete
+component source trees at build time from their public repositories. Selected
+source subsets and fixtures included in SparkRing are identified separately
+in this document, including the vLLM files in Section 3.
 
 ### 9a. local-inference-lab vLLM fork
 
@@ -392,21 +395,30 @@ does not replace or remove those obligations.
 
 ### 15a. tonyd2wild/DeepSeek-V4.1-Flash-vLLM-DGX-Spark (patches included)
 
-`runtime/deepseek-v41-gb10/patches/` contains seven Python files copied byte-for-byte from
+`runtime/deepseek-v41-gb10/patches/` contains seven Python files derived from
 https://github.com/tonyd2wild/DeepSeek-V4.1-Flash-vLLM-DGX-Spark (`patch/` directory, boot 9,
 MIT License, Copyright (c) 2026 tonyd2wild; SM12x page-size and top-k fixes authored by Kai as
 credited in that repository). They are bind-mounted over the vLLM `dsv41-feat` tree at launch and
-are modified files of vLLM (Apache-2.0). The Engram-on-disk method is theirs. `tools/prewarm5.py`
-and `tools/verify5.py` in the same directory are from the same repository, as are the benchmark
-method, prompt set and harnesses referenced by `performance/records/deepseek-v41-flash/`.
-These files are pinned by md5 and excluded from linting in `.ruff.toml`.
+are modified files of vLLM (Apache-2.0). Six retain the recorded upstream bytes;
+`engram.py` additionally contains SparkRing contributor changes for balanced
+hash-column assignment and packed single-read shards. The Engram-on-disk
+method originates in the upstream project.
+
+`runtime/deepseek-v41-gb10/tools/prewarm5.py` and
+`runtime/deepseek-v41-gb10/tools/verify5.py` are from the same repository, as are
+the benchmark method, prompt set and harnesses referenced by
+`performance/records/deepseek-v41-flash/`. The exact mounted patch files and
+mount manifest are recorded in `runtime/deepseek-v41-gb10/patches/MD5SUMS`;
+that manifest does not cover the two tools. `.ruff.toml` excludes the patch
+and tool directories from linting.
 
 ### 15b. vLLM `dsv41-feat` branch (referenced; built into the operator's image)
 
 `runtime/deepseek-v41-gb10/build-image.sh` copies the Python tree of `vllm-project/vllm`
 commit `e47aa780bccf59f59dfa2cbb18e17a10b4fe69ba` (Apache-2.0) over the `vllm/vllm-openai`
 nightly image and rebuilds `_C_stable_libtorch` from that tree with NVIDIA CUTLASS v4.7.1
-(BSD-3-Clause). No vLLM source is included in this repository.
+(BSD-3-Clause). This builder obtains its vLLM tree externally; the selected
+vLLM source subsets included in SparkRing are described in Sections 3 and 15a.
 
 ### 15c. FlashInfer (referenced; built into the operator's image)
 

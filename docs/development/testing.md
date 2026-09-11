@@ -21,8 +21,7 @@ before running them. Prose warnings are advisory.
 
 For implementation changes, run tests beside the affected component. The
 [CI workflow](../../.github/workflows/ci.yml) lists the broader suite and pinned
-CPU torch dependency. The migration retains all existing test coverage and adds
-canonical integration and shared-runtime tests. Some tests require POSIX modes,
+CPU torch dependency. Some tests require POSIX modes,
 Bash, the pinned LIL companion or optional dependencies; report skips accurately.
 
 CPU tests cover configuration, packaging and lifecycle contracts. They do not

@@ -38,11 +38,12 @@ The native tiled-prefill substrate remains under its recorded path in
 `spark_transport/experiments/tiled_prefill`. It is consumed by native libraries
 and snapshot manifests, so its directory name does not make it disposable.
 Its [classification](../../experiments/README.md) explains the maintained boundary.
-Active fabric and RoCEnante integration code have graduated to their owners.
+Maintained fabric code belongs to `spark_transport/`; RoCEnante runtime
+composition belongs to `integrations/vllm/`.
 
 Existing Markdown URLs retain heading anchors and point to their authoritative
 guides. [documentation-paths.json](documentation-paths.json) records the moves.
-No evidence or large trace has been removed merely to reduce a file count.
+Preserve evidence and traces according to their release and measurement contracts.
 
 See the [migration inventory](layout-migration.md) for callers, dispositions and
 conditions for retiring compatibility paths. New work belongs with its owner;

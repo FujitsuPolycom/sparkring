@@ -75,8 +75,9 @@ BASE_IMAGE_LICENSES=<parent-image-spdx-expression> \
   ./runtime/exl3-r7/build-image.sh
 ```
 
-The exact-Q40 attestation generator requires `--image-id` and binds its output
-to the derived image. Record the immutable Docker image ID and set both runtime image fields in
+Mixed EXL3 execution at exactly 40 query rows requires an image-bound state
+attestation. The tools call this shape `Q40`; their attestation generator requires
+`--image-id` and binds its output to the derived image. Record the immutable Docker image ID and set both runtime image fields in
 `scripts/config/site.yaml` before generating the launch profile.
 
 ```bash
@@ -89,7 +90,7 @@ runtime:
   container_image_digest: <your-image-id>
 ```
 
-## 4. Generate the complete pre-exact-Q40 profile
+## 4. Generate the serving profile before state attestation
 
 Build and test the native SIRCL library, then create a local candidate template
 whose image and host paths match `scripts/config/site.yaml`.
@@ -130,7 +131,7 @@ The output directory also contains the fixed-MTP4 foundation, each
 intermediate profile and site, and byte-identical rollback inputs. The receipt
 binds the complete profile, site, and five SIRCL artifacts by SHA-256.
 
-## 5. Bind the exact-Q40 overlays
+## 5. Bind the 40-query-row execution and attestation overlays
 
 The exact-Q40 tools remain separate because they accept only pinned vLLM source
 bytes and bind the serving profile to the built image ID. Prepare the pinned

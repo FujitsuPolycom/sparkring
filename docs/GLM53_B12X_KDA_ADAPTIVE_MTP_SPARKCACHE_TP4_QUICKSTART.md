@@ -129,7 +129,8 @@ geometry, or stored object schemas. Its embedded-MTP digest is SHA-256 over
 maximum depth five, and `adaptive:3:32`, separated by zero bytes.
 
 Including the vLLM revision gives this runtime a distinct draft-state cache
-identity from the e105 adaptive-MTP profile. Stored entries therefore
+identity from the [adaptive embedded-MTP composition at vLLM revision `e10536a`](GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md#resolve-a-serving-profile).
+Stored entries therefore
 recompute instead of crossing the KDA source boundary without byte-equivalence
 evidence.
 

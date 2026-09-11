@@ -25,9 +25,12 @@ does not transfer to another image ID.
 - [ ] Start four ranks with the generated operator profile.
 - [ ] Confirm `/health` returns HTTP 200 and `/v1/models` reports
   `glm-5.2-exl3-r7-3.5bpw` with a 1,048,576-token maximum length.
-- [ ] Run the fixed-seed equivalence and bounded C1, C2, C8, and C16 workload in
+- [ ] Run the fixed-seed equivalence and bounded C1, C2, and C8 workload in
   [`GLM52_35BPW_ACCEPTANCE_RUNBOOK.md`](GLM52_35BPW_ACCEPTANCE_RUNBOOK.md)
   against the image ID and preserve its receipts.
+- [ ] Define and run a separate bounded C16 acceptance check for the same image
+  ID. The linked runbook does not supply a C16 command or evidence; record its
+  workload, admission and output criteria, and post-run health before promotion.
 - [ ] Confirm post-run rank and transport health.
 
 ## Promotion record

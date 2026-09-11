@@ -69,8 +69,11 @@ adapter.
 
 The GLM-5.2 EXL3 deployment is generated from
 `recipes/glm52-exl3-r7-3.5bpw.json` and its tracked runtime inputs. It combines
-fixed MTP4, dynamic NVFP4 MLA key-value cache, bounded full-CKV gather, and the
-exact-Q40 routing policy. The DeepSeek deployment uses the immutable published
+four-token speculation, dynamic NVFP4 MLA key-value cache, and a transient
+gather of compressed key-value state across decode-context ranks, bounded at
+1,048,576 logical tokens. Its
+target-model EXL3 routing handles exactly 40 query rows in eight-row blocks;
+the recipe names this policy `exact_q40_policy`. The DeepSeek deployment uses the immutable published
 runtime image in `runtime/faststart-lock.json`, its native DSpark speculation,
 and `fp8_ds_mla` key-value cache geometry.
 

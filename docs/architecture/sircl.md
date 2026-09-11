@@ -35,8 +35,8 @@ extend the SIRCL C API to other rank counts.
 
 The [mesh runtime contract](../../runtime/glm53-spark-mtp3-mesh/README.md) identifies
 its dispatch configuration, source packages, and evidence. The
-[MTP3 cache/checkpoint quickstart](../history/glm53-cache-checkpoints.md)
-provides one serving composition, while the
+[retired MTP3 cache/checkpoint guide](../history/glm53-cache-checkpoints.md)
+records a separately pinned serving composition, while the
 [transport overview](../../spark_transport/README.md) describes the shared components.
 RoCEnante's origins and local adaptations are recorded in its
 [source attribution](../../third_party/b12x_roce/README.md).
@@ -91,6 +91,13 @@ The corresponding RoCEv2 GID must encode that IPv4 address. A transient
 `ip address add` or `ip link set` command can satisfy a same-boot check but does
 not meet this requirement.
 
+Managed GLM-5.3 mesh deployments require IPv6 link-local addressing to retain
+their fixed RoCEv2 GID index 3. Use the
+[mesh host setup](../GLM53_SPARK_MESH_HOST_SETUP.md#6-configure-persistent-data-ipv4-and-mtu)
+for those deployments. The helper below disables IPv6 and does not implement
+that mesh host contract.
+
+For profiles permitting disabled IPv6,
 [`configure_sircl_rail.py`](../../scripts/configure_sircl_rail.py) creates one
 dedicated NetworkManager profile at a time. Its default mode only validates the
 arguments and prints the complete plan. `--verify` performs read-only checks.
@@ -115,6 +122,7 @@ rail_netdev='REPLACE_SECONDARY_NETDEV'
 rail_cidr='REPLACE_LOCAL_SECONDARY_ADDRESS/PREFIX'
 rail_peer='REPLACE_SECONDARY_PEER_ADDRESS'
 rail_rdma_device='REPLACE_SECONDARY_RDMA_DEVICE'
+rail_gid_index='REPLACE_VERIFIED_GID_INDEX'
 
 rail_args=(
   --management-interface "${management_netdev}"
@@ -123,7 +131,7 @@ rail_args=(
   --peer-address "${rail_peer}"
   --rdma-device "${rail_rdma_device}"
   --rdma-port 1
-  --gid-index 3
+  --gid-index "${rail_gid_index}"
   --mtu 9000
 )
 
@@ -171,7 +179,7 @@ custom SparkRing collective adapter.
 
 Deployment commands and profile limits are in the
 [GLM-5.2 quickstart](../../profiles/glm52-exl3-r7-3.5bpw/README.md),
-[GLM-5.3 quickstart](../history/glm53-dflash-operator.md),
+[GLM-5.3 four-Spark quickstart](../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md),
 [DeepSeek quickstart](../operations/deepseek-0731.md),
 [Qwen3.8-27B pair quickstart](../../profiles/qwen38-27b-exl3-k5k6-pair/README.md), and
 [Qwen3.8-27B cycle quickstart](../../profiles/qwen38-27b-exl3-k5k6/README.md).

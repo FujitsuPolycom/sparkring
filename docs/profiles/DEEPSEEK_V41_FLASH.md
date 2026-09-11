@@ -27,18 +27,15 @@ patches are bind-mounted over it. Deploy with the [quickstart](../DEEPSEEK_V41_F
 
 ## Evidence boundary
 
-One four-Spark cycle, 2026-09-10/11, all ranks rebooted before each boot. Text-only eager boot:
-78.79 GiB per rank, KV 1,687,422 tokens at 131K, correct greedy output, 14.5–14.8 tok/s without
-speculation. First serving boot (300K, `gpu-memory-utilization 0.80`, probabilistic draft, 32
-Engram threads): 85.71 GiB consumed per rank, KV 1,171,588 tokens, 15–16 GiB MemAvailable per
-rank while serving; benchmark, needle (131K, 262K), vision and tool-calling checks and a
-20-minute c=8 soak (648 requests, zero failures or hangs). The measured 430,080-token configuration came from
-a one-variable-per-boot lever campaign (NCCL channels, Engram threads, sequence
-cap, batched tokens, draft method, request limit / utilization): KV 2,182,642 tokens (5.07× at
-430K) with 13–15 GiB MemAvailable, 400K needle pass, decode within the ±5 % run-to-run band of
-the first boot, and a six-hour c=8 soak (1,417 waves, 11,336 requests, 0 failures, 0 hangs,
-memory flat) — all in the
-[benchmark record](../../performance/records/deepseek-v41-flash/cycle-tp4-dspark5-graphs-20260910.md).
+The [benchmark record](../../performance/records/deepseek-v41-flash/cycle-tp4-dspark5-graphs-20260910.md)
+describes one four-Spark cycle measured on 2026-09-10/11, with all ranks
+rebooted before each configuration:
+
+| Measured configuration | Memory and KV capacity | Bounded results |
+|---|---|---|
+| Text-only eager, 131K request limit, speculation disabled | 78.79 GiB per rank; 1,687,422 KV tokens | Correct greedy output; 14.5–14.8 tok/s |
+| 300K request limit, memory utilization 0.80, probabilistic draft, 32 Engram threads | 85.71 GiB consumed and 15–16 GiB available per rank; 1,171,588 KV tokens | 131K/262K retrieval, vision and tool checks; 20-minute C8 soak, 648 requests, zero failures or hangs |
+| 430,080-token request limit, settings pinned in the benchmark record | 13–15 GiB available per rank; 2,182,642 KV tokens, or 5.07 full-length requests | 400K retrieval pass; decode within the 300K configuration's ±5% run-to-run band; six-hour C8 soak, 1,417 waves and 11,336 requests, zero failures or hangs, stable memory |
 
 These results are evidence for the recorded image identity and checkpoint revision on that
 cycle. They do not qualify a different build, revision, topology or request shape, and they do

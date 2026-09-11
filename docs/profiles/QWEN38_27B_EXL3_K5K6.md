@@ -58,8 +58,9 @@ See the [benchmark table, screenshot, and machine-readable data](../../performan
 
 Limitations:
 
-- The pinned CUDA base does not supply `libibverbs.so.1`. Install
-  `libibverbs1`, `ibverbs-providers`, and `ibverbs-utils` before starting NCCL.
+- The runtime builder installs `libibverbs1`, `ibverbs-providers`, and
+  `ibverbs-utils` for NCCL. The bare CUDA base lacks these dependencies and
+  is not the serving image.
 
 ## SparkCache
 

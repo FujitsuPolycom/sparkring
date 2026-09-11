@@ -115,16 +115,17 @@ GPU utilization alone does not identify a kernel or prove this attribution.
 
 ## Regression evidence
 
-The earlier image's receipt pins B12X to
-`6255090a03b12c3f7d552102a02fac0b542fb8c9`, while the affected operator image
-pins `9ae41c5cb9935d740456479954b0089f80bd2ef2`.
+The [page-tail comparison image receipt](../runtime/glm53-flash-jj-r8-gb10/page-tail-v2-public-image-receipt.json)
+pins B12X to `6255090a03b12c3f7d552102a02fac0b542fb8c9`. The
+[affected operator runtime pins](../runtime/glm53-flash-jj-r8-gb10/pins.json)
+select `9ae41c5cb9935d740456479954b0089f80bd2ef2`.
 
 B12X commit `357576e6d49a2d9fbf623cd73542826fdf55bb8e` introduces the separate
 12/12/8-bit cooperative merge and its conditional refinement. It is not an
-ancestor of the earlier pin and is an ancestor of the affected pin. The earlier
+ancestor of the comparison image's pin and is an ancestor of the affected pin. The comparison
 merge also has publication-order concerns, but its main refinement loop uses a
 fixed four rounds; it does not use this new early-exit protocol. Absence of
-observed hangs in the earlier image is not proof that it is race-free.
+observed hangs in the comparison image is not proof that it is race-free.
 
 The affected GB10 profile's `attention.dsa_indexer` entry contains only
 `backend: native`. Missing `fused_merge` resolves to `auto`, which now resolves

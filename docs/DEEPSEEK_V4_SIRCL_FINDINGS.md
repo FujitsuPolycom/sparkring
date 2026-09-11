@@ -25,7 +25,7 @@ DeepSeek default while the graph-transport overhead is investigated.
 | Hardware | Four directly cabled NVIDIA DGX Sparks, direct cycle |
 | Parallelism | TP4 / DCP1 |
 | Runtime image | `ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028` |
-| Weight dtype | BF16 |
+| Compute / activation dtype | BF16; checkpoint weights retain their FP8/FP4 formats |
 | Model context | 1,048,576 tokens |
 | Maximum sequences | 32 |
 | Batch-token budget | 4,096 |

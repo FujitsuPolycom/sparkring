@@ -4,10 +4,10 @@ This retained guide describes a retired deployment configuration. Use the
 [profile catalog](../../profiles/README.md) to choose a maintained deployment.
 Its evidence applies only to the pinned configuration described here.
 
-For a source-built TP4/DCP1 prefill profile with coalescing and mHC sharding,
-use the [GLM-5.3 Flash TP4 Ring guide](../GLM53_TP4_PREFILL_QUICKSTART.md). That profile
-disables the SparkCache connector. This guide describes the separately pinned
-published image with persistent caching enabled.
+The [maintained GLM-5.3 four-Spark guide](../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md)
+uses the published shared image with DCP1 by default, optional SparkCache,
+and a separate DCP4 selection. This historical guide describes the separately
+pinned image below with persistent caching enabled.
 
 Status: **research-only**. The exact published image passed
 [eight bounded serving checks](../../performance/records/glm53-flash/mtp3-cache-checkpoints-serving-smoke-20260906.md):

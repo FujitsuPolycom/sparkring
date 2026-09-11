@@ -107,10 +107,9 @@ test -f runtime/glm53-spark-mtp3-mesh/managed_install.py
 ```
 
 Use the same reviewed Git revision on the management host and all four
-Sparks; keep it alongside the image receipt. If the profile is supplied in a
-draft PR rather than merged `main`, check out that PR's exact commit before
-continuing. A checkout that lacks `managed_install.py` cannot follow this
-guide. Do not substitute files from a private experiment directory.
+Sparks; keep it alongside the image receipt. The checkout must contain the
+source inputs required by that receipt and `managed_install.py`. Do not
+substitute files from a private experiment directory.
 Keep `set -euo pipefail` enabled in each shell running the following command
 blocks so a failed identity check prevents subsequent steps.
 
@@ -148,9 +147,10 @@ those private inputs or an executable host installer.
   configured 40 GiB persistent cache per rank and JIT/build cache headroom.
   Image export can require another tens-of-GiB archive. Confirm free disk
   and memory instead of deleting another workload's artifacts.
-- A trusted management network. This profile serves port 8015 without an API
-  key; restrict access to intended clients. Adding API authentication requires
-  a reviewed profile extension, not an untracked edit to a rendered rank file.
+- A trusted management network. Restrict port 8015 to intended clients.
+  API authentication is implemented through the optional `api_keys_file` site
+  field in [site configuration](#describe-and-render-the-site). Omitting it
+  leaves the API unauthenticated. Key changes require container recreation.
 - An operator-approved maintenance window for host networking and model
   startup. Preserve host routes, neighbor entries, traffic-control rules,
   qdiscs, MTUs, and process ownership before making changes.
@@ -318,8 +318,6 @@ The required source-bound child image uses temperature one with thinking
 disabled, selected by `SPARKRING_WARMUP_TEMPERATURE=1`. Its verified receipt
 must attest both the sampling warmup helper and the managed marker source.
 The parent image alone does not provide this managed quickstart contract.
-This addresses the greedy-only warmup gap tracked in
-[issue #214](https://github.com/FujitsuPolycom/sparkring/issues/214).
 Completed warmup establishes that its requests ran, not comprehensive
 sampling correctness or thinking-enabled generation coverage.
 

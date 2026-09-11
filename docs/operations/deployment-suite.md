@@ -214,7 +214,7 @@ stop both the model and mesh without starting mesh supervisors again.
 
 ## Remaining integration work
 
-The suite and LIL's image commands are separate interfaces. LIL trials now
+The suite and LIL's image commands are separate interfaces. LIL trials
 verify the installed fabric configuration, but do not enroll their containers
 with its supervisor. Managed operation should use this suite's lifecycle;
 unified LIL-to-managed lifecycle delegation still needs implementation.
@@ -222,4 +222,5 @@ unified LIL-to-managed lifecycle delegation still needs implementation.
 Image/model reuse on staging retry, direct-fabric bulk distribution, adjustable
 model-profile settings, and transactional recovery remain incomplete. The source
 and image pins must be reconciled with the selected public deployment before a
-hardware rehearsal. None of the offline fixes establishes fresh-host readiness.
+hardware rehearsal. Offline planning and lifecycle tests do not establish
+factory-reset host readiness.

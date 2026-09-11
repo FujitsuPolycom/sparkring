@@ -33,22 +33,15 @@ routing behavior.
 
 ## Measured results
 
-| Context | Prefill | C1 | C2 | C4 | C8 |
-|---|---:|---:|---:|---:|---:|
-| 2K | 694 | 22.00 | 28.28 | 46.98 | 67.62 |
-| 8K | 675 | 19.15 | 30.21 | 47.70 | 65.53 |
-| 16K | 671 | 20.15 | 32.38 | 45.38 | 62.71 |
-| 32K | 661 | 21.61 | 30.52 | 46.08 | 62.88 |
-| 64K | 649 | 20.17 | — | — | — |
-| 128K | 635 | — | — | — | — |
-
-Coding Peak averaged 25.39 tokens/s over five requests. Full settings and
-limits are recorded in [results](RESULTS.md).
+The [benchmark record](../performance/records/glm-3.5bpw/normalized-base-20260822.md)
+contains prefill and C1/C2/C4/C8 decode through 128K, with the exact settings,
+sample counts, variability limits, and receipts. Coding Peak averaged 25.39
+tokens/s over five requests. These results do not qualify an untested image
+or establish quality at the configured 1,048,576-token limit.
 
 ## Limits
 
-The 64K C2/C4/C8 cells and all 128K decode cells were not measured. The TP
-native path covers tested TP all-reduce and vocabulary families; DCP and
+The TP native path covers tested TP all-reduce and vocabulary families; DCP and
 indexer collectives remain stock.
 Use [the quickstart](GLM52_35BPW_QUICKSTART.md) for deployment and
 [the reproduction procedure](GLM52_35BPW_REPRODUCTION.md) for the generated

@@ -349,18 +349,15 @@ states this explicitly: it "skipped memory profiling. This does not respect the
 explicit byte count is given. Nothing will stop an oversized reservation from
 exhausting the node.
 
-Check free memory after a launch rather than trusting the flag. The normalized
-pair had only 4.9–6.0 GiB available per node and used swap. The roughly 50 GB
-cycle observation used settings other than the block-256, batch-4096
-configuration recorded here.
-A node driven to 2-3 GB free with swap in use is one long prefill away from
-having its engine core killed, and on this platform severe memory exhaustion
-can leave a host answering ICMP while refusing to complete any new connection,
-recoverable only by a power cycle.
+Check free memory and swap use on every rank after launch and during prefill.
+Neither this guide nor the explicit KV reservation establishes a safe minimum
+of free host memory. Severe memory pressure can terminate serving processes
+and disrupt host management; preserve independent recovery access. Record the
+exact settings and observed memory before increasing context or concurrency.
 
 ## 4. Verify rank 0
 
-Wait for the API health endpoint, then issue a deterministic chat request.
+Wait for the API health endpoint, then issue a bounded semantic smoke request.
 Read the configured port from the rank-0 environment so a non-default
 `API_PORT` is verified correctly.
 
@@ -451,16 +448,15 @@ a cycle, one forward pass yields about three tokens, so the collectives cost
 roughly a third as much per output token. Raising acceptance is equivalent to
 making collectives cheaper.
 
-**Do not expect a faster all-reduce backend on this hardware.** The engine
+**Use the profile's patched NCCL selection.** The engine
 reports selecting `PYNCCL` from the potential set `NCCL_SYMM_MEM`,
 `QUICK_REDUCE`, `FLASHINFER`, `AITER_CUSTOM`, `CUSTOM`, `SYMM_MEM`, `PYNCCL`.
-Every faster entry requires peer-accessible GPU memory on one host — NVLink or
-PCIe peer-to-peer — or is ROCm-only. With one GPU per node communicating over
-RoCE, `PYNCCL` is the correct selection rather than a fallback. Setting
-`VLLM_ENABLE_PCIE_ALLREDUCE`, `VLLM_PCIE_ALLREDUCE_BACKEND=cpp` and
-`VLLM_CPP_AR_1STAGE_NCCL_CUTOFF` on a cycle changed nothing: 56.0 against 56.5
-tok/s at one request, 174.2 against 177.5 at eight. Those variables belong to
-single-host multi-GPU profiles and are not worth carrying here.
+The alternative built-in GPU backends require peer-accessible memory within
+one host or target ROCm. These profiles have one GPU per host and communicate
+over RoCE. Single-host PCIe all-reduce settings do not select a cross-host
+transport. This constraint does not establish a performance ceiling for
+separately implemented transports; the research-only SIRCL comparison is
+described below.
 
 ## What these results cover
 

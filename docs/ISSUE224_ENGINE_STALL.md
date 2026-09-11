@@ -11,9 +11,12 @@ soak or deployment of the fix to serving containers is claimed.
 
 ## Source evidence
 
-The operator pins identify the affected vLLM commit as
+The [operator runtime source pins](../runtime/glm53-flash-jj-r8-gb10/pins.json)
+identify the affected vLLM commit as
 `e02b174693e13859de61811b5e8cd13d5308e259` and the earlier comparison commit as
-`22ffe1401ca9bd3e4503e62de7b414deca7661a1`, both available in
+`22ffe1401ca9bd3e4503e62de7b414deca7661a1`. The comparison image is bound by the
+[page-tail image receipt](../runtime/glm53-flash-jj-r8-gb10/page-tail-v2-public-image-receipt.json).
+Both commits are available in
 `https://github.com/FujitsuPolycom/vllm`.
 
 Comparing those exact commits shows no differences in

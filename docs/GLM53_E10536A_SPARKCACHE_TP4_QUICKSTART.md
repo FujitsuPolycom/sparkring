@@ -1,4 +1,4 @@
-# Serve source-built GLM-5.3 e10536a with SparkCache on four DGX Sparks
+# Compare GLM-5.3 speculation policies with SparkCache on four DGX Sparks
 
 Status: **implemented, not qualified**. This guide builds an exact vLLM
 `e10536aadf02a18fccddda7ec939c33147e8b0b3` runtime and a SparkCache overlay.
@@ -65,7 +65,9 @@ test "${#native_sha256}" -eq 64
 
 ## Resolve a serving profile
 
-Copy the e10536a site template and select exactly one profile:
+The source-built runtime at vLLM revision `e10536a` supports the following
+speculation and loader comparisons. Copy its site template and select exactly
+one profile:
 
 | Status and runtime role | Profile template | Purpose |
 |---|---|---|

@@ -10,6 +10,8 @@ run this workflow. Jobs use read-only repository permissions.
   requiring a particular prose or table layout.
 - `pinned LIL bridge` builds the source-pinned companion CLI and exercises
   its SparkRing integration.
+- `profile and repository contracts` validates deployment profiles, generated
+  exports, references, immutable release inputs, and image-builder contracts.
 - `docs links` checks tracked inline Markdown links and ATX heading anchors,
   including duplicate-heading suffixes. Front-page lists without a separating
   blank line produce advisory warnings. External links, reference-style links,
@@ -32,6 +34,6 @@ skips are reported explicitly; a green CPU run does not qualify CUDA, RDMA,
 model output, or live deployment performance.
 
 GitHub branch-protection settings are separate from the workflow file.
-The intended merge policy requires all five named jobs, an up-to-date branch,
+The intended merge policy requires all jobs listed above, an up-to-date branch,
 and enforcement for administrators. Inspect repository settings to confirm
 that policy; changing this document does not configure GitHub protection.

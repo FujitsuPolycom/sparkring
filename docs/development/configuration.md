@@ -58,7 +58,8 @@ ENV deployment inputs remain supported by their original launchers.
 `python scripts/launch.py PROFILE -- ADAPTER_ARGUMENTS` prints an argv plan.
 Add `--execute` before the profile only to run the adapter locally. Python rank
 adapters expose `plan`, `create` and `start`; Bash adapters expose `--check` and
-`--run`. Existing guards and receipt validation remain active. R33 selections
+`--run`. Existing guards and receipt validation remain active. Profiles using
+the [published SparkRing image release](../../runtime/releases/sparkring-r33-dcp4/release.json)
 supply the catalog's exact runtime receipt. Compositions requiring managed
 multi-host steps direct the operator to their guide instead of inventing a
 single unsafe start command.
@@ -82,7 +83,9 @@ A resolved JSON document is not an activation receipt or a replacement for the
 adapter's host checks. GLM managed and frozen image procedures retain their
 specialized site contracts and explicit receipt gates.
 
-The frozen source-image TP2 profile and published R33 TP2 profile have different
-context/cache settings. They remain distinct contracts. Never transfer image
+The retained source-image pair configuration,
+[`glm53-flash-spark-tp2-mtp3`](../../runtime/sparkring/source_image/README.md),
+and the [published-image pair deployment](../../profiles/glm53-flash-spark-tp2-dcp1/README.md)
+have different context/cache settings. They remain distinct contracts. Never transfer image
 qualification across those selections or interchange NVIDIA NVFP4 and
 NVFP4-Spark checkpoints. Context limits are not measured KV capacity.

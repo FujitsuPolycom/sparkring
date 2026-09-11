@@ -15,8 +15,7 @@ on directly cabled DGX Sparks. The TP2 benchmark used the DSpark package at
 | Runtime image | `ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd` |
 | Rollback image | `ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:6fc26fdad81a18f0fff67ce0a05f6d90165625ea2e1cac8a6f39bfb462017028` |
 | Parallelism | TP2 across a directly cabled pair or TP4 across a four-Spark cycle |
-| TP2 checkpoint | `deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7` |
-| TP4 checkpoint | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` |
+| Checkpoint, TP2 and TP4 | `deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b1d1fe23eabc4c98b48bffcef5a386062` |
 | Activations | `bfloat16` |
 | Request limit | 1,048,576 tokens |
 | Maximum sequences | 32 |
@@ -36,6 +35,11 @@ have identical configuration and index files but different tensor payloads.
 Every rank within one deployment must use the same package and revision.
 
 ## Evidence boundary
+
+The TP2 throughput record used
+`deepseek-ai/DeepSeek-V4-Flash-DSpark@913f0657a874f76844e2e91cbe706dbcaceeb6d7`.
+That benchmark checkpoint differs from the plain 0731 package selected by the
+pair recipe; its throughput does not establish same-checkpoint TP2/TP4 scaling.
 
 The implemented pair and cycle launches exercised API health, chat
 completions, tool calling, and DSpark speculative decoding. Both topologies

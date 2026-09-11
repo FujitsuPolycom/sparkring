@@ -9,7 +9,7 @@ ranks on a directly cabled four-Spark cycle, with the model's two Engram lookup 
 left on each rank's NVMe.
 
 **Status: implemented; live-benchmarked on one private cycle; not qualified.** The
-profile runs a stock upstream vLLM image that you build yourself from pinned sources
+profile uses a locally built vLLM image with pinned sources and runtime patches
 ([`runtime/deepseek-v41-gb10`](../../runtime/deepseek-v41-gb10/README.md)); no public
 image digest exists to replay. The machine-readable contract is
 [`recipes/deepseek-v41-flash-cycle.json`](../../recipes/deepseek-v41-flash-cycle.json); the
@@ -39,7 +39,7 @@ cycle environment, so no Ethernet switch is needed.
 | Request limit / sequences / scheduler tokens | 1,048,576 / 8 / 8,192 |
 | `--gpu-memory-utilization` | 0.83 with `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0` → KV 10.94 GiB = 2,182,642 tokens (5.07× 430K) measured; 13–15 GiB MemAvailable per rank |
 | Speculation | DSpark k=5, greedy draft, block rejection, adaptive verification off |
-| CUDA graphs | `FULL_AND_PIECEWISE`, capture sizes = every multiple of 5 and 6 up to 48 |
+| CUDA graphs | `FULL_AND_PIECEWISE`, capture sizes = 5n and 6n for sequence counts n = 1 through 8 |
 | Block size | 128 (required; an auto-picked 64 fails KV initialization) |
 | Vision / tools | up to 4 images per request; `deepseek_v41` tool and reasoning parsers |
 | Environment template / launcher | `scripts/config/deepseek-v41-flash-cycle.env.example` / `scripts/deepseek_v41_cycle_serve.sh` |
@@ -92,6 +92,24 @@ The image's own pip NCCL is also 2.30.7; vLLM logs a `Duplicate NCCL runtime` wa
 because the two paths differ. The preloaded library is the one mapped in every process and
 the one PyNccl loads by path.
 
+### Environment
+
+Copy the template once per rank and resolve every placeholder. `NODE_RANK` and
+`VLLM_HOST_IP` identify the local rank. Match model, image and serving settings across
+all four ranks; resolve host paths and network devices for each host.
+
+```bash
+ENV_FILE=/path/to/rank-0.env   # select this host's rank file
+cp scripts/config/deepseek-v41-flash-cycle.env.example "$ENV_FILE"
+$EDITOR "$ENV_FILE"
+scripts/deepseek_v41_cycle_serve.sh --check "$ENV_FILE"
+```
+
+`--check` is offline: it validates the file, the model directory (`config.json` must name
+`DeepseekV41ForCausalLM`, shard 48 must be present), the patch md5s, the NCCL library and
+the cycle transport values, then prints the exact `docker run` command. Compare the printed
+serving values across the four ranks before launching.
+
 ### Engram packed shards (once per rank)
 
 The stock loader reads two 4 KiB pages per Engram row (weight and scale sit ~24 GB apart in the
@@ -101,7 +119,11 @@ one 16K prefill showed rank 3 issuing 320K row reads to rank 0's 60K and the oth
 for it at the next all-reduce. The recipe therefore sets `ENGRAM_BALANCED=1` (strided columns,
 two heads of each order per rank) and reads from packed shards built once per rank:
 
+Load the validated local rank file before packing its shards:
+
 ```bash
+. "$ENV_FILE"
+export -n LD_PRELOAD
 docker run --rm --entrypoint python3 --memory 6g \
   -v "$MODEL_HOST_PATH:/models/DeepSeek-V4.1-Flash:ro" -v "$CACHE_HOST_PATH:/cache" \
   -v "$PWD/runtime/deepseek-v41-gb10/tools:/tools:ro" "$IMAGE" \
@@ -114,22 +136,6 @@ manifest records the covered ranges and the loader refuses a shard that does not
 columns (it then logs a warning and reads the checkpoint shards directly). Measured on the cycle:
 prefill 1,590 → 1,873 tok/s at 16K and 1,745 → 2,058 at 64K, burst TTFT p50 11.1 → 9.8 s, decode
 and acceptance unchanged, 131K/262K needle pass.
-
-### Environment
-
-Copy the template once per rank and resolve every placeholder. `NODE_RANK` and
-`VLLM_HOST_IP` differ between ranks; everything else must be byte-identical on all four —
-a configuration mismatch hangs the rendezvous with no error.
-
-```bash
-cp scripts/config/deepseek-v41-flash-cycle.env.example /path/to/rank-0.env   # and 1, 2, 3
-scripts/deepseek_v41_cycle_serve.sh --check /path/to/rank-0.env
-```
-
-`--check` is offline: it validates the file, the model directory (`config.json` must name
-`DeepseekV41ForCausalLM`, shard 48 must be present), the patch md5s, the NCCL library and
-the cycle transport values, then prints the exact `docker run` command. Compare the printed
-serving values across the four ranks before launching.
 
 ## 2. Launch one rank per host
 
@@ -150,14 +156,17 @@ a worker that starts while an old head still listens on the rendezvous port join
 head and hangs.
 
 Expect about eight minutes to readiness from local NVMe: ~4 min of weights, ~1 min for the
-DSpark draft layers, then graph capture and FlashInfer autotune. Lines to look for:
+DSpark draft layers, then graph capture and FlashInfer autotune. Require the
+Engram disk-loading messages and `Application startup complete`. For example:
 
 ```text
 Engram DISK mode: layer 1 rows [<start>, <end>) read from model-00047-of-00048.safetensors
-Model loading took 78.79 GiB memory            (text-only) / consumed 85.71 GiB (serving shape)
-GPU KV cache size: 2,182,642 tokens, Maximum concurrency for 430,080 tokens per request: 5.07x
 Application startup complete.
 ```
+
+Record the actual KV pool and verify `/v1/models` advertises the configured
+1,048,576-token limit. The 2,182,642-token pool in the sizing evidence used a
+430,080-token request limit; it is not an expected startup value for this default.
 
 With `ENGRAM_BALANCED=1` each rank logs `BALANCED column assignment, rank r owns hash columns [...]`
 (six distinct columns per rank) and, when the packed shard is used, `PACKED single-read shard`.
@@ -194,5 +203,5 @@ to 16,384 did not boot at 0.80 (the profiler run needs 1.9 GiB of KV for one ful
 and 1.84 GiB was left). `--max-num-seqs 8` is the soaked value; 16 booted at 0.80 with 13–15 GiB
 free, was neutral up to eight streams and reached 285 tok/s aggregate on the prompt set at 16
 streams, so it is a valid admission option when per-stream speed matters less than throughput.
-With DSpark k=5 every decode batch is a multiple of 5 or 6 tokens and the graph capture list
-follows from the sequence cap. The configured default is 1,048,576 tokens; the measurements described here used limits through 430,080 tokens.
+With five speculative tokens, graph capture covers draft batches of 5n tokens and
+verification batches of 6n tokens for sequence counts n from 1 through the sequence cap. The configured default is 1,048,576 tokens; the measurements described here used limits through 430,080 tokens.
