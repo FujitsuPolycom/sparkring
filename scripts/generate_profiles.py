@@ -111,9 +111,9 @@ def profile_table(root=ROOT, *, compact=False):
     ):
         if compact and title == 'Retired profiles':
             continue
-        lines += ['### '+title, '', '| Model | Quant | Layout | Configured context (tokens) | KV* (tokens) | Status | Navigation | Quickstart |', '|---|---|---|---:|---:|---|---|---|']
+        lines += ['### '+title, '', '| Model | Quant | Layout | Context / KV* (tokens) | Status | Navigation | Quickstart |', '|---|---|---|---|---|---|---|']
         if compact:
-            lines[-2:] = ['| Model | Quant | DCP | Context (tokens) | KV* (tokens) | SparkCache | Status | Quickstart |', '|---|---|---|---:|---:|---|---|---|']
+            lines[-2:] = ['| Model | Quant | DCP | Context / KV* | SparkCache | Status | Quickstart |', '|---|---|---|---|---|---|---|']
         for p, r in sorted(rows, key=lambda pair: (pair[0]['recommendation'] != 'recommended', pair[0]['id'])):
             if not predicate(p, r) or (compact and r['topology'] == 'switched'):
                 continue
@@ -143,13 +143,13 @@ def profile_table(root=ROOT, *, compact=False):
                         selected = dcp_capacity.get((key, dcp))
                         entry = selected[1] if selected else None
                         counts.append(f"[{compact_tokens(entry['tokens'])}]({entry['source']})" if entry else '—')
-                    kv = '/'.join(counts)
+                    kv = '(' + '/'.join(counts) + ')'
                 title = model_name
                 if p['recommendation'] == 'recommended':
                     title = f"**{title}**"
-                lines.append(f"| {title} | {quant} | {layout} | {context} | {kv} | {cache_cells[p['id']]} | {STATUS_LABELS[p['status']]} | [Guide](profiles/{p['id']}/README.md) |")
+                lines.append(f"| {title} | {quant} | {layout} | {context} / {kv} | {cache_cells[p['id']]} | {STATUS_LABELS[p['status']]} | [Guide](profiles/{p['id']}/README.md) |")
                 continue
-            lines.append(f"| {model_name} | {quant} | {layout} | {context} | {kv} | {STATUS_LABELS[p['status']]} | {p['recommendation']} | [Guide](profiles/{p['id']}/README.md) |")
+            lines.append(f"| {model_name} | {quant} | {layout} | {context} / {kv} | {STATUS_LABELS[p['status']]} | {p['recommendation']} | [Guide](profiles/{p['id']}/README.md) |")
         lines.append('')
     if compact:
         return '\n'.join(lines + [END])
