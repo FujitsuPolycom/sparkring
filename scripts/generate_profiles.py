@@ -13,9 +13,9 @@ from runtime.common.environment import render_environment  # noqa: E402
 
 START = '<!-- BEGIN GENERATED PROFILES -->'
 END = '<!-- END GENERATED PROFILES -->'
-VALIDATION_LABELS = {
-    'qualified': 'Hardware tested',
-    'implemented': 'Software checked',
+STATUS_LABELS = {
+    'qualified': 'Validated',
+    'implemented': 'Available',
     'research-only': 'Experimental',
     'unsupported': 'Unsupported',
 }
@@ -41,7 +41,7 @@ def profile_table(root=ROOT, *, compact=False):
         if record['witness'] not in local_path(record['source'], root).read_text(encoding='utf-8-sig'):
             raise ValueError(f"Capacity evidence changed: {record['source']}")
     lines = [START, '', 'Configured context is a per-request limit, not measured KV capacity or a completed long-context test.',
-             'Validation describes the checks performed; recommendation describes deployment navigation. Hardware testing covers only the linked conditions.', '']
+             'Available profiles have an implementation; validated profiles have documented checks for the selected configuration. Both may have run on Spark hardware. See each guide for the exact testing scope.', '']
     if compact:
         lines = [START, '']
     for title, predicate in (
@@ -51,9 +51,9 @@ def profile_table(root=ROOT, *, compact=False):
     ):
         if compact and title == 'Retired profiles':
             continue
-        lines += ['### '+title, '', '| Model / features | Layout | Configured context (tokens) | KV (tokens) | Validation | Navigation | Quickstart |', '|---|---|---:|---:|---|---|---|']
+        lines += ['### '+title, '', '| Model / features | Layout | Configured context (tokens) | KV (tokens) | Status | Navigation | Quickstart |', '|---|---|---:|---:|---|---|---|']
         if compact:
-            lines[-2:] = ['| Model / features | Layout | Context (tokens) | KV (tokens) | Validation | Quickstart |', '|---|---|---:|---:|---|---|']
+            lines[-2:] = ['| Model / features | Layout | Context (tokens) | KV (tokens) | Status | Quickstart |', '|---|---|---:|---:|---|---|']
         for p, r in sorted(rows, key=lambda pair: (pair[0]['recommendation'] != 'recommended', pair[0]['id'])):
             if not predicate(p, r):
                 continue
@@ -68,9 +68,9 @@ def profile_table(root=ROOT, *, compact=False):
                 kv = f"[{record['tokens']:,}](../{record['source']})"
             if compact:
                 title = f"**{p['title']}**" if p['recommendation'] == 'recommended' else p['title']
-                lines.append(f"| {title} | TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']} | {context} | {kv} | {VALIDATION_LABELS[p['status']]} | [Guide](profiles/{p['id']}/README.md) |")
+                lines.append(f"| {title} | TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']} | {context} | {kv} | {STATUS_LABELS[p['status']]} | [Guide](profiles/{p['id']}/README.md) |")
                 continue
-            lines.append(f"| {p['title']} | TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']} | {context} | {kv} | {VALIDATION_LABELS[p['status']]} | {p['recommendation']} | [Guide](profiles/{p['id']}/README.md) |")
+            lines.append(f"| {p['title']} | TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']} | {context} | {kv} | {STATUS_LABELS[p['status']]} | {p['recommendation']} | [Guide](profiles/{p['id']}/README.md) |")
         lines.append('')
     if compact:
         return '\n'.join(lines + [END])
