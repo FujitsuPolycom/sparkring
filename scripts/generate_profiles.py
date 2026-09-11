@@ -21,6 +21,15 @@ VALIDATION_LABELS = {
 }
 
 
+def compact_tokens(tokens):
+    """Round display counts in decimal millions or thousands; retain exact source values."""
+    if tokens >= 1_000_000:
+        return f"{tokens / 1_000_000:.1f}".rstrip('0').rstrip('.') + 'M'
+    if tokens >= 1_000:
+        return f"{tokens / 1_000:.0f}K"
+    return str(tokens)
+
+
 def profile_table(root=ROOT, *, compact=False):
     rows = [(load(id, root)[0], resolve(id, root=root)) for id in catalog(root)]
     capacity = read_json(root/'performance/profile-capacity.json')['profiles']
@@ -52,6 +61,9 @@ def profile_table(root=ROOT, *, compact=False):
             context = f"{s['max_model_len']:,}" if 'max_model_len' in s else '—'
             record = capacity.get(p['id'])
             kv = f"[{record['tokens']:,}]({record['source']})" if record else '—'
+            if compact:
+                context = compact_tokens(s['max_model_len']) if 'max_model_len' in s else '—'
+                kv = f"[{compact_tokens(record['tokens'])}]({record['source']})" if record else '—'
             if record and not compact:
                 kv = f"[{record['tokens']:,}](../{record['source']})"
             if compact:
