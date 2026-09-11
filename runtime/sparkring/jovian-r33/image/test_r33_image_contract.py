@@ -30,10 +30,19 @@ class PublicationDocumentationTests(unittest.TestCase):
                 self.assertIn(f"## {heading}\n", document)
             self.assertIn("**research-only**", document)
 
-    def test_image_documentation_names_both_cache_profiles(self):
+    def test_preserved_image_documentation_names_its_dcp1_cache_profiles(self):
         document = (HERE / "README.md").read_text()
-        self.assertIn("`tp2-dcp1-sparkcache` and `tp4-dcp1-sparkcache`", document)
-        self.assertNotIn("only the canonical `tp4-dcp1-sparkcache`", document)
+        for name in ("tp2-dcp1-sparkcache", "tp4-dcp1-sparkcache"):
+            self.assertIn(f"`{name}`", document)
+
+    def test_canonical_tp4_guide_documents_dcp4_cache_alternative(self):
+        guide = HERE.parents[3] / "profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md"
+        document = guide.read_text(encoding="utf-8")
+        contract = json.loads((CANONICAL_PROFILES / "profile-contract.json").read_text())
+        profile = contract["profiles"]["tp4-dcp4-sparkcache"]
+        self.assertTrue(profile["sparkcache"])
+        self.assertEqual(profile["decode_context_parallel_size"], 4)
+        self.assertIn("`tp4-dcp4-sparkcache`", document)
 
 
 def load_entrypoint():
