@@ -74,7 +74,8 @@ subnets. Ring Doctor checks that the active SSH session terminates on a guarded
 management address and that its return route uses a guarded management
 interface immediately before and after every individual change. The remaining
 plan stops on the first mismatch. Generated boot programs also verify the exact
-recorded management addresses before and after every change. If a legacy
+recorded management addresses before and after every change. They run without
+an SSH session and do not verify a route back to the controller. If a direct
 `--node` invocation is used instead of `--site`, name the management interface
 for every node with `--socket-interface`; otherwise all mutation is withheld.
 

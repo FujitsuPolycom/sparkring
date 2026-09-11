@@ -59,7 +59,7 @@ class ConfigurationError(ValueError):
 
 @dataclasses.dataclass(frozen=True)
 class LoadedInputs:
-    """One validated Ring Doctor invocation, optionally backed by SiteConfig."""
+    """One validated invocation with optional site or cluster configuration."""
 
     specs: tuple[NodeSpec, ...]
     interfaces: tuple[str, ...]
@@ -88,6 +88,8 @@ class NodeSpec:
     ``socket_interfaces`` holds the interface names a distributed launch gives
     to ``NCCL_SOCKET_IFNAME`` and ``GLOO_SOCKET_IFNAME`` on this node. They are
     inputs to be checked against the node, never values this tool sets.
+    Site and cluster inputs use the management interface, matching the
+    NCCL/GLOO environment produced by ``sparkring_runtime.base_environment``.
 
     ``fabric_interfaces`` is empty for the legacy discovery interface, which
     applies the invocation-wide defaults. Site-driven discovery fills it from
@@ -370,7 +372,12 @@ class Finding:
         return dataclasses.asdict(self)
 
     def to_diagnostic_check(self) -> DiagnosticCheck:
-        """Represent the legacy finding in the shared diagnostic receipt."""
+        """Adapt a finding to the diagnostic receipt's four outcome statuses.
+
+        Advisory warnings map to UNKNOWN because this schema has no warning
+        status. Their code and evidence distinguish diagnosed advisories from
+        missing observations; neither counts as a passing check.
+        """
         status = {
             "info": CheckStatus.PASS,
             "warning": CheckStatus.UNKNOWN,
@@ -611,7 +618,7 @@ def node_specs_from_configuration(
 
 
 def node_specs_from_site(site: SiteConfig) -> tuple[NodeSpec, ...]:
-    """Compatibility name for existing callers."""
+    """Site-only public alias for ``node_specs_from_configuration``."""
     return node_specs_from_configuration(site)
 
 
@@ -697,7 +704,13 @@ def enforce_controller_location(
     allow_worker: bool,
     identity: ControllerIdentity | None = None,
 ) -> str:
-    """Require rank 0 unless explicit worker-controller recovery is enabled."""
+    """Require the fabric controller unless worker recovery is enabled.
+
+    Site/cluster ranks are sorted by ID, so rank 0 controls fabric repair as
+    defined by the bootstrap procedure. ``serving.master_rank`` independently
+    selects the rendezvous endpoint; it does not move the fabric controller.
+    For node-list inputs, the first declared node is the fabric controller.
+    """
     controller = identify_controller_node(
         loaded, identity if identity is not None else read_controller_identity()
     )
@@ -2350,7 +2363,11 @@ def emit_units(
     plans: Mapping[str, NodePlan],
     guards: Mapping[str, ManagementGuard],
 ) -> list[str]:
-    """Write one fail-closed systemd service and program per observed node."""
+    """Write per-node boot programs guarded by exact local address checks.
+
+    Boot has no active SSH session; these programs do not check a controller
+    return route. Interactive repair additionally guards that session's route.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     written: list[str] = []
     for name, plan in sorted(plans.items()):
@@ -2783,7 +2800,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ring-doctor",
         description=(
-            "Discover and diagnose a 4- or 6-node switchless SparkRing fabric. "
+            "Discover and diagnose a supported switchless SparkRing fabric. "
             "The default operation is read-only and prints a repair plan."
         ),
     )
@@ -2795,7 +2812,11 @@ def _build_parser() -> argparse.ArgumentParser:
             "and SSH timeout"
         ),
     )
-    parser.add_argument("--config", help="legacy JSON file containing node SSH targets")
+    parser.add_argument(
+        "--config",
+        help="JSON nodes and optional fabric interfaces, SSH timeout, and rendezvous; "
+        "use --site or --cluster for canonical rank configuration",
+    )
     parser.add_argument(
         "--node", action="append", metavar="USER@HOST", help="seed SSH target; repeatable"
     )
@@ -2930,9 +2951,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                     specs, runner, interfaces, rendezvous_address
                 )
                 enough = discovery_sufficient(specs, observations, topology)
-                repair_safe = (
-                    enough and fabric_preflight_ok and management_repair_safe
-                )
         else:
             if not enough:
                 reason = topology.reason

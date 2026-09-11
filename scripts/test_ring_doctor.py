@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import ipaddress
 import os
 import shlex
@@ -249,6 +250,39 @@ class SiteConfigInputTests(unittest.TestCase):
             enforce_controller_location(loaded, allow_worker=False, identity=worker)
         self.assertEqual(
             enforce_controller_location(loaded, allow_worker=True, identity=worker),
+            "rank2",
+        )
+
+    def test_serving_master_does_not_move_fabric_controller(self) -> None:
+        loaded = _load_inputs(
+            _build_parser().parse_args(["--site", str(self.SITE)])
+        )
+        assert loaded.site is not None
+        site = dataclasses.replace(
+            loaded.site,
+            serving=dataclasses.replace(loaded.site.serving, master_rank=2),
+        )
+        loaded = dataclasses.replace(
+            loaded, site=site, rendezvous_address=site.rank(2).management.address
+        )
+        head = ControllerIdentity(
+            frozenset(), frozenset({site.rank(0).management.address})
+        )
+        serving_master = ControllerIdentity(
+            frozenset(), frozenset({site.rank(2).management.address})
+        )
+        self.assertEqual(
+            enforce_controller_location(loaded, allow_worker=False, identity=head),
+            "rank0",
+        )
+        with self.assertRaisesRegex(ValueError, "head node rank0"):
+            enforce_controller_location(
+                loaded, allow_worker=False, identity=serving_master
+            )
+        self.assertEqual(
+            enforce_controller_location(
+                loaded, allow_worker=True, identity=serving_master
+            ),
             "rank2",
         )
 
