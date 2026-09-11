@@ -11,7 +11,7 @@ manifest=${SPARKRING_R33_VLLM_MANIFEST:-$script_root/patches/vllm-r33-sparkring.
 receipt="$root/artifacts/vllm-sparkring-source.txt"
 base_commit=ae89131442359dc332d9c46009be3c1f8cdee0b4
 patch_sha=73df604d183a3309109ac3e97e1a952e99d111b5761ef2e67fbf41a7957f4ae2
-manifest_sha=dfd47ca3883ece53feda318c3ce8d1ea0ac1bce9a2145bb36c77e9a7c0531dab
+manifest_sha=c83d19aec94108789f434ca1910684941125f344d6ec00e8f87b4210650cf427
 expected_tree=0511a78617bb755ea2901ef3c5db7547bc1e148d
 
 test "$(git -C "$base" rev-parse HEAD)" = "$base_commit"
