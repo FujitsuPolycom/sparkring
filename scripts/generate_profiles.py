@@ -89,6 +89,12 @@ def profile_table(root=ROOT, *, compact=False):
     lines = [START, '', 'Configured context is a per-request limit, not measured KV capacity or a completed long-context test.',
              'Development profiles are under active development; validated profiles have documented checks for the selected configuration. See each guide for the exact testing scope.', '']
     if compact:
+        dcp_options = {}
+        for profile, resolved in rows:
+            if profile['recommendation'] == 'retired':
+                continue
+            key = (resolved['model']['repository'], resolved['topology'], resolved['serving']['node_count'])
+            dcp_options.setdefault(key, set()).add(resolved['serving']['decode_context_parallel_size'])
         rows, cache_cells = compact_profile_rows(rows, root)
         lines = [START, '']
     for title, predicate in (
@@ -100,7 +106,7 @@ def profile_table(root=ROOT, *, compact=False):
             continue
         lines += ['### '+title, '', '| Model | Quant | Layout | Configured context (tokens) | KV* (tokens) | Status | Navigation | Quickstart |', '|---|---|---|---:|---:|---|---|---|']
         if compact:
-            lines[-2:] = ['| Model | Quant | Layout | Context (tokens) | KV* (tokens) | SparkCache | Status | Quickstart |', '|---|---|---|---:|---:|---|---|---|']
+            lines[-2:] = ['| Model | Quant | DCP | Context (tokens) | KV* (tokens) | SparkCache | Status | Quickstart |', '|---|---|---|---:|---:|---|---|---|']
         for p, r in sorted(rows, key=lambda pair: (pair[0]['recommendation'] != 'recommended', pair[0]['id'])):
             if not predicate(p, r) or (compact and r['topology'] == 'switched'):
                 continue
@@ -115,6 +121,10 @@ def profile_table(root=ROOT, *, compact=False):
             record = capacity.get(p['id'])
             kv = f"[{record['tokens']:,}]({record['source']})" if record else '—'
             if compact:
+                key = (repository, r['topology'], s['node_count'])
+                default_dcp = s['decode_context_parallel_size']
+                choices = [default_dcp, *sorted(dcp_options[key] - {default_dcp})]
+                layout = '/'.join(f'DCP{value}' for value in choices)
                 context = compact_tokens(s['max_model_len']) if 'max_model_len' in s else '—'
                 kv = f"[{compact_tokens(record['tokens'])}]({record['source']})" if record else '—'
             if record and not compact:
