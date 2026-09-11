@@ -103,7 +103,7 @@ def test_check_renders_the_recipe_contract(tmp_path: Path) -> None:
     assert spec == {
         "method": "dspark",
         "num_speculative_tokens": serving["speculation"]["num_speculative_tokens"],
-        "draft_sample_method": "probabilistic",
+        "draft_sample_method": serving["speculation"]["draft_sample_method"],
         "rejection_sample_method": "block",
         "enable_adaptive_verification": False,
     }
@@ -113,6 +113,7 @@ def test_check_renders_the_recipe_contract(tmp_path: Path) -> None:
     assert "-e LD_PRELOAD=/opt/sparkring/nccl/libnccl.so.2" in joined
     assert "-e VLLM_NCCL_SO_PATH=/opt/sparkring/nccl/libnccl.so.2" in joined
     assert "-e DSV41_ENGRAM_DISK=1" in joined
+    assert "-e VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0" in joined
     assert "-e VLLM_USE_BREAKABLE_CUDAGRAPH=1" in joined
     assert "--tool-call-parser deepseek_v41" in joined and "--reasoning-parser deepseek_v41" in joined
     assert '--limit-mm-per-prompt {"image":4}' in joined

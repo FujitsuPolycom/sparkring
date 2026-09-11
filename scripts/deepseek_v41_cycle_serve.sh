@@ -34,7 +34,7 @@ require_port() { require_positive_integer "$1"; [ "$((10#${!1}))" -le 65535 ] ||
 for name in NODE_RANK MASTER_ADDR VLLM_HOST_IP MODEL_HOST_PATH CACHE_HOST_PATH PATCH_DIR \
     NCCL_SO_HOST_PATH IMAGE API_PORT MASTER_PORT SERVED_MODEL_NAME MAX_MODEL_LEN MAX_NUM_SEQS \
     MAX_NUM_BATCHED_TOKENS GPU_MEMORY_UTILIZATION NUM_SPECULATIVE_TOKENS ENFORCE_EAGER TEXT_ONLY \
-    THINKING_DEFAULT ENGRAM_DISK_THREADS ENGRAM_DISK_CHUNK NCCL_SOCKET_IFNAME GLOO_SOCKET_IFNAME \
+    THINKING_DEFAULT DRAFT_SAMPLE_METHOD ENGRAM_DISK_THREADS ENGRAM_DISK_CHUNK NCCL_SOCKET_IFNAME GLOO_SOCKET_IFNAME \
     NCCL_IB_HCA NCCL_IB_GID_INDEX NCCL_IB_SUBNET_PREFIX_LEN NCCL_IB_SUBNET_AWARE_ROUTING \
     NCCL_IB_MERGE_NICS NCCL_CROSS_NIC NCCL_ALGO NCCL_PROTO NCCL_P2P_LEVEL NCCL_MIN_NCHANNELS \
     NCCL_MAX_NCHANNELS NCCL_SKIP_TREE_CONNECT NCCL_SWITCHLESS_RING_ONLY NCCL_CUMEM_ENABLE \
@@ -60,6 +60,7 @@ case "$GPU_MEMORY_UTILIZATION" in 0.[0-9]|0.[0-9][0-9]) ;; *) die "GPU_MEMORY_UT
 case "$ENFORCE_EAGER" in 0|1) ;; *) die "ENFORCE_EAGER must be 0 or 1" ;; esac
 case "$TEXT_ONLY" in 0|1) ;; *) die "TEXT_ONLY must be 0 or 1" ;; esac
 case "$THINKING_DEFAULT" in true|false) ;; *) die "THINKING_DEFAULT must be true or false" ;; esac
+case "$DRAFT_SAMPLE_METHOD" in greedy|probabilistic) ;; *) die "DRAFT_SAMPLE_METHOD must be greedy or probabilistic" ;; esac
 [ "$((10#$NUM_SPECULATIVE_TOKENS % 5))" -eq 0 ] || die "NUM_SPECULATIVE_TOKENS must be a multiple of the checkpoint's dspark_block_size (5)"
 [ "$NCCL_SOCKET_IFNAME" = "$GLOO_SOCKET_IFNAME" ] || die "NCCL_SOCKET_IFNAME and GLOO_SOCKET_IFNAME must match"
 [ "$NCCL_IB_SUBNET_PREFIX_LEN" = 24 ] || die "NCCL_IB_SUBNET_PREFIX_LEN must be 24"
@@ -90,6 +91,8 @@ while read -r f rel; do
 done < "$PATCH_DIR/mounts.txt"
 [ "${#patch_mounts[@]}" -eq 14 ] || die "mounts.txt must list the seven patch files"
 
+# Profiler: VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0 stops vLLM reserving an estimated
+# 1.5 GiB for graphs that measure 0.54 GiB on this profile; the KV pool gains the difference.
 # DSpark: every decode batch is a multiple of k (draft) or k+1 (target) tokens, so
 # capturing exactly those sizes leaves no padded rows (padded spec batches can hang
 # the SM120 sparse-MLA kernel, flashinfer #5015); adaptive verification stays off.
@@ -121,7 +124,7 @@ command=(
     -e VLLM_CACHE_ROOT=/cache/vllm -e TILELANG_CACHE_DIR=/cache/tilelang -e TRITON_CACHE_DIR=/cache/triton
     -e VLLM_ENGINE_READY_TIMEOUT_S=3600 -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     -e VLLM_USE_RUST_FRONTEND=0 -e VLLM_HAS_FLASHINFER_CUBIN=1 -e VLLM_USE_FLASHINFER_SAMPLER=0
-    -e MAX_JOBS=2 -e FLASHINFER_NVCC_THREADS=1
+    -e MAX_JOBS=2 -e FLASHINFER_NVCC_THREADS=1 -e VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0
     -e TORCH_CUDA_ARCH_LIST=12.1a -e FLASHINFER_CUDA_ARCH_LIST=12.1a -e FLASHINFER_DISABLE_VERSION_CHECK=1
     -e DSV41_ENGRAM_DISK=1 -e "DSV41_ENGRAM_DISK_THREADS=$ENGRAM_DISK_THREADS" -e "DSV41_ENGRAM_DISK_CHUNK=$ENGRAM_DISK_CHUNK"
     ${graph_env[@]+"${graph_env[@]}"}
@@ -135,7 +138,7 @@ command=(
     --max-model-len "$MAX_MODEL_LEN" --max-num-seqs "$MAX_NUM_SEQS" --max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS"
     --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" --block-size 128
     --engram-config '{"cpu_offload": false}'
-    --speculative-config "{\"method\":\"dspark\",\"num_speculative_tokens\":$k,\"draft_sample_method\":\"probabilistic\",\"rejection_sample_method\":\"block\",\"enable_adaptive_verification\":false}"
+    --speculative-config "{\"method\":\"dspark\",\"num_speculative_tokens\":$k,\"draft_sample_method\":\"$DRAFT_SAMPLE_METHOD\",\"rejection_sample_method\":\"block\",\"enable_adaptive_verification\":false}"
     --tool-call-parser deepseek_v41 --enable-auto-tool-choice --reasoning-parser deepseek_v41
     --default-chat-template-kwargs "{\"thinking\": $THINKING_DEFAULT}"
     ${text_args[@]+"${text_args[@]}"} ${mm_args[@]+"${mm_args[@]}"} "${graph_args[@]}" ${headless[@]+"${headless[@]}"}

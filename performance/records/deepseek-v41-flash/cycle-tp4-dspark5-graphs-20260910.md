@@ -4,11 +4,14 @@ Live benchmark of the `deepseek-v41-flash-cycle` recipe on four directly cabled 
 (`0-1-2-3-0`, two RoCE devices per rank, MTU 9000) with SparkRing's patched NCCL 2.30.7, a locally built
 image (`sha256:af86a3d2bb0d267faa7f31777cdbe855addc1348f0b9f8323016ebf17d3dae3c`, see
 [`runtime/deepseek-v41-gb10/image-receipt.json`](../../../runtime/deepseek-v41-gb10/image-receipt.json)) and the stock
-checkpoint `deepseek-ai/DeepSeek-V4.1-Flash @ dba1be0a` on every rank's local NVMe. Serving shape:
-300,000-token context, 8 sequences, 8,192 batched tokens, `gpu-memory-utilization 0.80`, `block-size 128`,
-Engram tables on NVMe, DSpark k=5 (probabilistic draft, block rejection, adaptive verification off),
-`FULL_AND_PIECEWISE` CUDA graphs with exact capture sizes, tools and vision on, thinking off.
-All four ranks were rebooted before the boot. Raw data: [`cycle-tp4-dspark5-graphs-20260910.json`](cycle-tp4-dspark5-graphs-20260910.json).
+checkpoint `deepseek-ai/DeepSeek-V4.1-Flash @ dba1be0a` on every rank's local NVMe. The benchmark tables below are
+from the first serving boot: 300,000-token context, 8 sequences, 8,192 batched tokens, `gpu-memory-utilization 0.80`,
+`block-size 128`, Engram tables on NVMe (32 reader threads), DSpark k=5 (probabilistic draft, block rejection, adaptive
+verification off), `FULL_AND_PIECEWISE` CUDA graphs with exact capture sizes, tools and vision on, thinking off.
+The [lever campaign](#lever-campaign-one-variable-per-rebooted-boot) that follows moved the recorded recipe to a
+430,080-token limit, `gpu-memory-utilization 0.83`, greedy draft, 64 Engram threads and
+`VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0`; that profile carries the 400K needle and the six-hour soak.
+All four ranks were rebooted before every boot. Raw data: [`cycle-tp4-dspark5-graphs-20260910.json`](cycle-tp4-dspark5-graphs-20260910.json).
 
 ## Method
 
@@ -94,6 +97,38 @@ Prompt set and harness: `prompts-v1.json` / `v41bench.py` from tonyd2wild/DeepSe
 | Serving-shape memory | consumed 85.71 GiB per rank at startup (weights + non-torch); graphs 0.54 GiB; KV 8.39 GiB = 1,171,588 tokens (3.91× 300K); 15–16 GiB MemAvailable per rank while serving |
 | Time to serving | 8 min from launch (weights ~4 min from local NVMe, DSpark draft 57 s, graphs + autotune ~2 min) |
 
+## Lever campaign (one variable per rebooted boot)
+
+Compact probe set per boot, one run each: `dsv4-ab-ladder.py` decode rungs (short prompts, 256-token budgets, C1/C4/C8),
+cold prefill at 16K and 64K, an 8×4K TTFT burst, three decode shapes (draftable list, code, free prose) and the prompt set
+at C1 and C6. `baseline-final` is the first boot's profile re-run the same way, so the band between it and the `boot 2`
+column (≈ ±5 %) is the run-to-run noise; a lever has to clear it. KV pool sizes vary 1.09–1.33M tokens between boots of
+identical profiles (memory-profiler variance) and are not lever effects.
+
+| probe | boot 2 | baseline-final | L1 NCCL 8 ch | L2 Engram 64 thr | L3 seqs 16 | L4 batched 16K | L5 greedy draft | L6 430K · 0.85 · profiler off | L7 = L2+L5+L6 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| decode C1 / C4 / C8 aggregate (tok/s) | 33.4 / 63.5 / 89.1 | 32.0 / 59.5 / 89.7 | 34.2 / 55.4 / 93.2 | 35.5 / 64.6 / 92.9 | 34.6 / 55.8 / 89.7 | did not boot | 36.1 / 61.1 / 91.6 | 32.0 / 59.9 / 95.3 | 36.0 / 59.6 / 92.8 |
+| prefill 16K / 64K (tok/s) | 1,719 / 1,728 | 1,528 / 1,658 | 1,484 / 1,677 | 1,624 / 1,755 | 1,368 / 1,654 | — | 1,528 / 1,658 | 1,543 / 1,650 | 1,590 / 1,745 |
+| burst 8×4K TTFT p50 / max (s) | 11.1 / 16.8 | 11.6 / 17.5 | 11.5 / 17.2 | 11.1 / 16.6 | 11.6 / 17.4 | — | 11.9 / 17.7 | 11.7 / 17.4 | 11.1 / 16.5 |
+| shapes code / prose (tok/s) | 81–83 / 31–33 | 81.4 / 31.5 | 81.9 / 33.2 | 84.4 / 33.4 | 81.8 / 31.9 | — | 81.8 / 31.7 | 79.3 / 31.9 | 80.4 / 30.3 |
+| prompt set C1 aggregate (per stream) | 49.8 (56.2) | 47.8 (53.5) | 46.6 (52.2) | 49.3 (55.5) | 47.7 (54.2) | — | 49.7 (56.6) | 48.7 (55.2) | 48.7 (54.8) |
+| prompt set C6 aggregate | 159.9 | 150.0 | 150.7 | 150.2 | 156.1 | — | 151.5 | 152.8 | 152.9 |
+| KV pool (tokens) | 1,171,588 | 1,086,792 | 1,309,195 | 1,326,231 | 1,131,965 | 1.84 GiB left < 1.9 GiB needed | 1,136,197 | 3,097,185 | 3,085,606 |
+| MemAvailable per rank (GiB) | 15–16 | 15–18 | 14–16 | 14–16 | 13–15 | — | 15–17 | 7–9 | 7–9 |
+
+No lever moves decode speed beyond the noise band: the step is set by the model and its ~88 all-reduces, and the fabric probes
+above show the collectives already cost ~5 ms of a ~57 ms step. L2 is slightly positive on nearly every probe and free; L1
+(the +50 % reported on a Thunderbolt-only ring) does not reproduce here; L3 is neutral at C≤8 and pays off only as admission
+(a second `max-num-seqs 16` boot probed C16: ladder 130.2 tok/s aggregate, prompt set C8/C12/C16 164/229/285 tok/s aggregate at
+26.0/22.6/21.5 tok/s per stream, 13–15 GiB MemAvailable); L4 cannot boot at 0.80 because the 16K chunk raises the profiler's
+peak; L5 is neutral to +5 % on this hardware (spark-bench measured a larger gain on theirs); L6 buys capacity, not speed — 400K
+needle pass at 397,753 prompt tokens, TTFT 302.6 s, 1,314 tok/s prefill, and the L7 combination repeats it at 288.6 s /
+1,378 tok/s. The recipe records L7 with `gpu-memory-utilization 0.83` instead of 0.85 to keep 13–15 GiB MemAvailable per rank
+(KV 2,182,642 tokens, 5.07× at 430K, `Available KV cache memory: 10.94 GiB`); the six-hour soak ran on that value.
+
+Raw per-boot summaries and prompt-set JSON are in the operator's repository; the headline numbers above are the complete
+compact-set output for each boot.
+
 ## Fabric probes before the boot (same image and NCCL environment, GPUs idle)
 
 Four-rank all-reduce latency through vLLM's PyNccl wrapper (`nccl_lat.py`, tonyd2wild, MIT), ring `0 1 2 3`
@@ -116,6 +151,7 @@ seconds, 2,177–2,190 MHz, 23–25 W under the GEMV. These nodes pin `nvidia-sm
 
 ## Limitations
 
-One batch per cell, no repeated-run interval. Output quality beyond needle recall and the end-to-end checks
-was not evaluated. 1M context was not run on this profile. The image is a private local build; the recipe
+One batch per cell, no repeated-run interval; the lever table is one compact run per boot with a ≈ ±5 % band. Output quality
+beyond needle recall and the end-to-end checks was not evaluated. 1M context was not run; 430,080 tokens with a 400K needle
+pass is the recorded limit. The image is a private local build; the recipe
 records how to reproduce it, not a public digest.

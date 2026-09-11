@@ -2,7 +2,7 @@
  "label": "boot2-serve",
  "prompt_set": "v1",
  "model": "deepseek-v4.1-flash",
- "notes": "four-Spark switchless cycle, SparkRing patched NCCL 2.30.7, image sha256:af86a3d2, serving profile (DSpark k=5, CUDA graphs, 300K, 8 seqs, gmu 0.80, tools+vision), all four ranks rebooted before the boot",
+ "notes": "four-Spark switchless cycle, SparkRing patched NCCL 2.30.7, image sha256:af86a3d2, serving profile (DSpark k=5, CUDA graphs, 300K, 8 seqs, gmu 0.80, tools+vision), all four ranks rebooted before the boot. Benchmark batches are from this first serving boot; 'levers' holds the one-variable-per-rebooted-boot campaign (compact probe set, one run each, run-to-run band about +/-5%) that produced the recorded recipe profile (430,080 tokens, gmu 0.83, greedy draft, 64 Engram threads, VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0).",
  "started": "2026-09-10T21:48:04Z",
  "batches": [
   {
@@ -2176,5 +2176,260 @@
    "per_stream_tok_s": 31.36,
    "ttft_mean_s": 0.481
   }
- ]
+ ],
+ "levers": {
+  "boot2": {
+   "decode_c1_c4_c8_agg_tok_s": [
+    33.4,
+    63.5,
+    89.1
+   ],
+   "prefill_16k_64k_tok_s": [
+    1719,
+    1728
+   ],
+   "burst_8x4k_ttft_p50_max_s": [
+    11.1,
+    16.8
+   ],
+   "shapes_code_prose_tok_s": [
+    82,
+    32
+   ],
+   "promptset_c1_agg_per_stream": [
+    49.8,
+    56.2
+   ],
+   "promptset_c6_agg": 159.9,
+   "kv_pool_tokens": 1171588,
+   "memavailable_gib_per_rank": "15-16"
+  },
+  "baseline-final": {
+   "decode_c1_c4_c8_agg_tok_s": [
+    32.0,
+    59.5,
+    89.7
+   ],
+   "prefill_16k_64k_tok_s": [
+    1528,
+    1658
+   ],
+   "burst_8x4k_ttft_p50_max_s": [
+    11.6,
+    17.5
+   ],
+   "shapes_code_prose_tok_s": [
+    81.4,
+    31.5
+   ],
+   "promptset_c1_agg_per_stream": [
+    47.8,
+    53.5
+   ],
+   "promptset_c6_agg": 150.0,
+   "kv_pool_tokens": 1086792,
+   "memavailable_gib_per_rank": "15-18"
+  },
+  "L1-nccl-8-channels": {
+   "decode_c1_c4_c8_agg_tok_s": [
+    34.2,
+    55.4,
+    93.2
+   ],
+   "prefill_16k_64k_tok_s": [
+    1484,
+    1677
+   ],
+   "burst_8x4k_ttft_p50_max_s": [
+    11.5,
+    17.2
+   ],
+   "shapes_code_prose_tok_s": [
+    81.9,
+    33.2
+   ],
+   "promptset_c1_agg_per_stream": [
+    46.6,
+    52.2
+   ],
+   "promptset_c6_agg": 150.7,
+   "kv_pool_tokens": 1309195,
+   "memavailable_gib_per_rank": "14-16",
+   "verdict": "neutral"
+  },
+  "L2-engram-threads-64": {
+   "decode_c1_c4_c8_agg_tok_s": [
+    35.5,
+    64.6,
+    92.9
+   ],
+   "prefill_16k_64k_tok_s": [
+    1624,
+    1755
+   ],
+   "burst_8x4k_ttft_p50_max_s": [
+    11.1,
+    16.6
+   ],
+   "shapes_code_prose_tok_s": [
+    84.4,
+    33.4
+   ],
+   "promptset_c1_agg_per_stream": [
+    49.3,
+    55.5
+   ],
+   "promptset_c6_agg": 150.2,
+   "kv_pool_tokens": 1326231,
+   "memavailable_gib_per_rank": "14-16",
+   "verdict": "slightly positive, inside band; adopted"
+  },
+  "L3-max-num-seqs-16": {
+   "decode_c1_c4_c8_agg_tok_s": [
+    34.6,
+    55.8,
+    89.7
+   ],
+   "prefill_16k_64k_tok_s": [
+    1368,
+    1654
+   ],
+   "burst_8x4k_ttft_p50_max_s": [
+    11.6,
+    17.4
+   ],
+   "shapes_code_prose_tok_s": [
+    81.8,
+    31.9
+   ],
+   "promptset_c1_agg_per_stream": [
+    47.7,
+    54.2
+   ],
+   "promptset_c6_agg": 156.1,
+   "kv_pool_tokens": 1131965,
+   "memavailable_gib_per_rank": "13-15",
+   "verdict": "neutral at c<=8; admission option"
+  },
+  "L3b-max-num-seqs-16-c16": {
+   "decode_c1_c8_c16_agg_tok_s": [
+    29.1,
+    91.0,
+    130.2
+   ],
+   "promptset_c8_c12_c16_agg": [
+    164.1,
+    229.1,
+    285.3
+   ],
+   "promptset_c8_c12_c16_per_stream": [
+    26.0,
+    22.6,
+    21.5
+   ],
+   "kv_pool_tokens": 1255394,
+   "memavailable_gib_per_rank": "13-15"
+  },
+  "L4-max-num-batched-tokens-16384": {
+   "verdict": "did not boot at gmu 0.80: 1.84 GiB available for KV, 1.9 GiB needed for one 300K request"
+  },
+  "L5-greedy-draft": {
+   "decode_c1_c4_c8_agg_tok_s": [
+    36.1,
+    61.1,
+    91.6
+   ],
+   "prefill_16k_64k_tok_s": [
+    1528,
+    1658
+   ],
+   "burst_8x4k_ttft_p50_max_s": [
+    11.9,
+    17.7
+   ],
+   "shapes_code_prose_tok_s": [
+    81.8,
+    31.7
+   ],
+   "promptset_c1_agg_per_stream": [
+    49.7,
+    56.6
+   ],
+   "promptset_c6_agg": 151.5,
+   "kv_pool_tokens": 1136197,
+   "memavailable_gib_per_rank": "15-17",
+   "verdict": "neutral to +5%; adopted"
+  },
+  "L6-430k-gmu0.85-profiler-off": {
+   "decode_c1_c4_c8_agg_tok_s": [
+    32.0,
+    59.9,
+    95.3
+   ],
+   "prefill_16k_64k_tok_s": [
+    1543,
+    1650
+   ],
+   "burst_8x4k_ttft_p50_max_s": [
+    11.7,
+    17.4
+   ],
+   "shapes_code_prose_tok_s": [
+    79.3,
+    31.9
+   ],
+   "promptset_c1_agg_per_stream": [
+    48.7,
+    55.2
+   ],
+   "promptset_c6_agg": 152.8,
+   "kv_pool_tokens": 3097185,
+   "memavailable_gib_per_rank": "7-9",
+   "needle_400k": {
+    "prompt_tokens": 397753,
+    "ttft_s": 302.6,
+    "prefill_tok_s": 1314.2,
+    "pass": true
+   }
+  },
+  "L7-L2+L5+L6": {
+   "decode_c1_c4_c8_agg_tok_s": [
+    36.0,
+    59.6,
+    92.8
+   ],
+   "prefill_16k_64k_tok_s": [
+    1590,
+    1745
+   ],
+   "burst_8x4k_ttft_p50_max_s": [
+    11.1,
+    16.5
+   ],
+   "shapes_code_prose_tok_s": [
+    80.4,
+    30.3
+   ],
+   "promptset_c1_agg_per_stream": [
+    48.7,
+    54.8
+   ],
+   "promptset_c6_agg": 152.9,
+   "kv_pool_tokens": 3085606,
+   "memavailable_gib_per_rank": "7-9",
+   "needle_400k": {
+    "prompt_tokens": 397753,
+    "ttft_s": 288.6,
+    "prefill_tok_s": 1378.0,
+    "pass": true
+   },
+   "verdict": "picked; recorded at gmu 0.83"
+  },
+  "recorded-profile-gmu0.83": {
+   "kv_pool_tokens": 2182642,
+   "available_kv_gib": 10.94,
+   "concurrency_at_430080": 5.07,
+   "memavailable_gib_per_rank": "13-15"
+  }
+ }
 }

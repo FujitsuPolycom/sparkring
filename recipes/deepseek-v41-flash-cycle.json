@@ -35,21 +35,21 @@
     "node_count": 4,
     "distributed_executor_backend": "mp",
     "load_format": "safetensors",
-    "max_model_len": 300000,
+    "max_model_len": 430080,
     "max_num_seqs": 8,
     "max_num_batched_tokens": 8192,
-    "gpu_memory_utilization": 0.8,
+    "gpu_memory_utilization": 0.83,
     "block_size": 128,
     "engram": {
       "cpu_offload": false,
       "tables_on_disk": true,
-      "env": "DSV41_ENGRAM_DISK=1, DSV41_ENGRAM_DISK_THREADS=32, DSV41_ENGRAM_DISK_CHUNK=16",
+      "env": "DSV41_ENGRAM_DISK=1, DSV41_ENGRAM_DISK_THREADS=64, DSV41_ENGRAM_DISK_CHUNK=16",
       "note": "Engram rows are read from shards 47/48 on the rank's local NVMe at serve time and staged before the forward; every rank needs its own complete local copy of the checkpoint."
     },
     "speculation": {
       "method": "dspark",
       "num_speculative_tokens": 5,
-      "draft_sample_method": "probabilistic",
+      "draft_sample_method": "greedy",
       "rejection_sample_method": "block",
       "enable_adaptive_verification": false
     },
@@ -68,20 +68,24 @@
       "thinking": false
     },
     "external_kv_cache": false,
-    "sizing_note": "With the Engram tables on NVMe a rank loads 78.79 GiB text-only or 81.6 GiB with the DSpark draft layers and vision encoder; consumed memory at startup 85.71 GiB. At gpu_memory_utilization 0.80 the KV pool measured 8.39 GiB = 1,171,588 tokens (3.91x 300K); 15-16 GiB MemAvailable per rank while serving. block-size 128 is required (an auto-picked 64 fails KV initialization); the patched backends keep 64-state pages internally."
+    "sizing_note": "With the Engram tables on NVMe a rank loads 78.79 GiB text-only or 81.6 GiB with the DSpark draft layers and vision encoder; consumed memory at startup 85.71 GiB. At gpu_memory_utilization 0.83 and a 430,080-token limit the KV pool measured 10.94 GiB = 2,182,642 tokens (5.07x 430K) with 13-15 GiB MemAvailable per rank while serving; 0.85 gave 3,085,606 tokens but only 7-9 GiB MemAvailable, and the recorded profile keeps the headroom. block-size 128 is required (an auto-picked 64 fails KV initialization); the patched backends keep 64-state pages internally. max-num-seqs 16 was probed at c=16 (285 tok/s prompt-set aggregate, 13-15 GiB free at 0.80) and is a valid admission option; 8 is the soaked value.",
+    "memory_profiler": {
+      "env": "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0",
+      "note": "vLLM's estimate reserved 1.52 GiB for CUDA graphs that measured 0.54 GiB; with the estimate off the KV pool gains the difference."
+    }
   },
   "evidence": {
     "status": "implemented",
-    "conditions": "Four directly cabled GB10 DGX Sparks (0-1-2-3-0 cycle, two RoCE devices per rank, MTU 9000), SparkRing patched NCCL 2.30.7, image sha256:af86a3d2bb0d267faa7f31777cdbe855addc1348f0b9f8323016ebf17d3dae3c, checkpoint dba1be0a on every rank's local NVMe, all four ranks rebooted before the boot. Serving shape as recorded above. Benchmark: fixed prompt set (eight categories plus a counting ceiling), temperature 0, thinking off, one batch per concurrency level; cold-prefill ladder with unique prompts and a one-token reply.",
-    "result": "Serving 8 minutes after launch. Per-stream decode, eight-category mean: C1 56.2, C2 44.1, C3 37.5, C4 33.8, C5 31.5, C6 31.4 tok/s. Aggregate: C1 49.8, C2 74.7, C3 96.7, C4 115.8, C5 136.2, C6 159.9 tok/s. C1 per stream by category: code 77.3, JSON 58.9, math 76.9, reasoning 60.0, tables 76.4, summary 36.8, prose 33.9, narrative 29.9, counting 90.9. Cold prefill 1,376 / 1,432 / 1,568 / 1,574 tok/s at 2,950 / 11,592 / 46,810 / 93,335 prompt tokens. Needle-in-haystack at depth 0.5: 131K and 262K pass. Vision and tool-calling end-to-end checks 7/7. DSpark mean acceptance 3.77 tokens per step over the benchmark. Text-only eager boot without speculation: 14.5-14.8 tok/s at C1. 20-minute soak at 8 concurrent streams (temperature 1.0, 256-token budgets, eight categories): 81 waves, 648 requests, zero failures, zero hangs, aggregate median 95.0 tok/s with no drift, MemAvailable 14-16 GiB per rank before and after.",
+    "conditions": "Four directly cabled GB10 DGX Sparks (0-1-2-3-0 cycle, two RoCE devices per rank, MTU 9000), SparkRing patched NCCL 2.30.7, image sha256:af86a3d2bb0d267faa7f31777cdbe855addc1348f0b9f8323016ebf17d3dae3c, checkpoint dba1be0a on every rank's local NVMe, all four ranks rebooted before the boot. Two serving shapes were measured: the initial 300,000-token / gpu_memory_utilization 0.80 / probabilistic-draft / 32-thread boot (all benchmark tables), and the recorded profile above (430,080 tokens, 0.83, greedy draft, 64 threads, profiler estimate off) for the lever probes, the 400K needle and the second soak. Benchmark: fixed prompt set (eight categories plus a counting ceiling), temperature 0, thinking off, one batch per concurrency level; cold-prefill ladder with unique prompts and a one-token reply.",
+    "result": "Serving 8 minutes after launch. Per-stream decode, eight-category mean: C1 56.2, C2 44.1, C3 37.5, C4 33.8, C5 31.5, C6 31.4 tok/s. Aggregate: C1 49.8, C2 74.7, C3 96.7, C4 115.8, C5 136.2, C6 159.9 tok/s. C1 per stream by category: code 77.3, JSON 58.9, math 76.9, reasoning 60.0, tables 76.4, summary 36.8, prose 33.9, narrative 29.9, counting 90.9. Cold prefill 1,376 / 1,432 / 1,568 / 1,574 tok/s at 2,950 / 11,592 / 46,810 / 93,335 prompt tokens. Needle-in-haystack at depth 0.5: 131K and 262K pass. Vision and tool-calling end-to-end checks 7/7. DSpark mean acceptance 3.77 tokens per step over the benchmark. Text-only eager boot without speculation: 14.5-14.8 tok/s at C1. 20-minute soak at 8 concurrent streams (temperature 1.0, 256-token budgets, eight categories): 81 waves, 648 requests, zero failures, zero hangs, aggregate median 95.0 tok/s with no drift, MemAvailable 14-16 GiB per rank before and after. Lever campaign, one variable per rebooted boot on a compact probe set (run-to-run band about +/-5%): NCCL 8 channels neutral; Engram threads 64 neutral-to-slightly-positive; max-num-seqs 16 neutral at c<=8 and 130 tok/s ladder / 285 tok/s prompt-set aggregate at c=16; max-num-batched-tokens 16384 did not boot at 0.80 (1.84 GiB available for KV, 1.9 GiB needed for one 300K request); greedy draft neutral to +5%; 430,080-token limit at 0.85 with the profiler estimate off: KV 3,085,606-3,097,185 tokens, 400K needle pass (397,753 tokens, TTFT 289-303 s, 1,314-1,378 tok/s), speed unchanged, 7-9 GiB MemAvailable; at 0.83: 2,182,642 tokens, 13-15 GiB MemAvailable.",
     "conclusion": "The recorded four-rank settings are live-benchmarked on a locally built image. There is no published image digest to replay, so the profile is implemented, not qualified.",
     "limitations": [
       "No public image; every operator builds their own and pins IMAGE_ID.",
       "Seven upstream-pending patches are bind-mounted over the image (see runtime/deepseek-v41-gb10/README.md); vLLM main has merged the model definitions but not the kernel/config/parser PR at the time of writing.",
-      "1M context has not been run on this profile; 300K is the recorded limit. Others report 1M with graphs on four Sparks at fewer sequences.",
       "Adaptive verification is off: padded speculative batches can hang the SM120 sparse-MLA kernel (flashinfer #5015).",
       "One benchmark batch per cell; no repeated-run confidence interval. Output quality beyond needle recall and the end-to-end checks was not evaluated.",
-      "vLLM logs a Duplicate NCCL runtime warning (patched vs pip 2.30.7, path assert); the patched library is the one mapped and loaded by PyNccl."
+      "vLLM logs a Duplicate NCCL runtime warning (patched vs pip 2.30.7, path assert); the patched library is the one mapped and loaded by PyNccl.",
+      "1M context has not been run on this profile; 430,080 is the recorded limit with a 400K needle pass. Others report 1M with graphs on four Sparks at fewer sequences."
     ],
     "record": "docs/profiles/DEEPSEEK_V41_FLASH.md",
     "benchmark": "performance/records/deepseek-v41-flash/cycle-tp4-dspark5-graphs-20260910.md"
