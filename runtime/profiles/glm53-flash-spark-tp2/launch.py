@@ -114,6 +114,8 @@ def adapt_r33_plan(plan, receipt):
     arguments = _remove_option(arguments, "--model-loader-extra-config")
     container_args = ["serve", *arguments]
     command = list(plan["command"])
+    name = f"sparkring-r33-tp2-dcp1-r{environment['NODE_RANK']}"
+    command[command.index("--name") + 1] = name
     command[command.index("--entrypoint") + 1] = "/opt/sparkring/bin/sparkring-r33"
     labels = dict(plan["labels"])
     labels["org.sparkring.profile"] = "tp2-dcp1"
@@ -134,6 +136,7 @@ def adapt_r33_plan(plan, receipt):
                 break
     command = [*prefix, plan["image"], *container_args]
     plan.update(
+        name=name,
         profile="tp2-dcp1", environment=environment, container_args=container_args,
         command=command, labels=labels, entrypoint="/opt/sparkring/bin/sparkring-r33",
         runtime_kind="r33-candidate",

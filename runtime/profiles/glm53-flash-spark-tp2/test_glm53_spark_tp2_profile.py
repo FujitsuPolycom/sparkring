@@ -277,6 +277,8 @@ def test_r33_receipt_adapts_final_tp2_docker_command(inputs, rank):
     runtime = r33_receipt()
     value = launch.render(rank, "master.example", *inputs, LOCAL_IMAGE, runtime)
     assert value["profile"] == "tp2-dcp1"
+    assert value["name"] == f"sparkring-r33-tp2-dcp1-r{rank}"
+    assert value["command"][value["command"].index("--name") + 1] == value["name"]
     assert value["entrypoint"] == "/opt/sparkring/bin/sparkring-r33"
     assert value["container_args"][:2] == ["serve", "/models/target"]
     assert "/opt/sparkcache-jj-runtime/verify_sources.py" not in value["command"]
@@ -315,6 +317,8 @@ def test_legacy_tp2_plan_keeps_its_pinned_preload(inputs):
     assert plan["environment"]["LD_PRELOAD"] == "/opt/sparkring/nccl-pci/libnccl.so.2.30.7"
     assert "LD_PRELOAD=/opt/sparkring/nccl-pci/libnccl.so.2.30.7" in plan["command"]
     assert plan["runtime_kind"] == "legacy"
+    assert plan["name"] == "sparkring-glm53-tp2-r0"
+    assert plan["command"][plan["command"].index("--name") + 1] == plan["name"]
 
 
 def test_changed_r33_receipt_rejected_before_host_action(inputs):
