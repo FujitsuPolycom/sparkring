@@ -30,6 +30,39 @@
       "source": "profiles/qwen38-27b-exl3-k5k6-pair/recipe.json",
       "witness": "4130233-token logical KV pool",
       "conditions": "Reported startup for the normalized TP2 profile; maximum configured sequences 32."
+    },
+    "glm53-flash-spark-tp4-dcp1-sparkcache": {
+      "tokens": 2280000,
+      "source": "performance/capacity-references.md",
+      "witness": "~2.28M",
+      "conditions": "Published R33 TP4/DCP1 SparkCache profile; 24 GiB FP8 KV per rank; retained README approximation.",
+      "approximate": true
+    },
+    "deepseek-v4-flash-0731": {
+      "tokens": 1000000,
+      "source": "performance/capacity-references.md",
+      "witness": "| TP4/DCP1 | ~1M |",
+      "conditions": "DeepSeek-0731 TP4/DCP1; retained README approximation at the documented 16 GiB per-rank allocation.",
+      "approximate": true
+    },
+    "deepseek-v4-flash-0731-pair": {
+      "tokens": 1000000,
+      "source": "performance/capacity-references.md",
+      "witness": "| TP2/DCP1 | ~1M |",
+      "conditions": "DeepSeek-0731 TP2/DCP1; retained README approximation at the documented 16 GiB per-rank allocation.",
+      "approximate": true
+    },
+    "glm53-flash-nvfp4-dflash2-bf16-tp4": {
+      "tokens": 4321618,
+      "source": "profiles/glm53-flash-nvfp4-dflash2-bf16-tp4/recipe.json",
+      "witness": "\"logical_kv_capacity_tokens\": 4321618",
+      "conditions": "Preferred DCP4 selection with 24 GiB FP8 KV per rank in the recorded DFlash recipe."
+    },
+    "sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4": {
+      "tokens": 4321618,
+      "source": "profiles/sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/recipe.json",
+      "witness": "\"logical_kv_capacity_tokens\": 4321618",
+      "conditions": "Preferred DCP4 selection with 24 GiB FP8 KV per rank in the recorded DFlash recipe."
     }
   }
 }

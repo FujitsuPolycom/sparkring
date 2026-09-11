@@ -18,7 +18,8 @@ SparkRing is experimental. Six-node deployments are research-only.
 Bold entries are recommended. The [full profile catalog](profiles/README.md)
 contains exact counts, evidence scope and retired setups. Counts below are rounded.
 Context is the configured per-request
-limit; KV is the reported pool capacity under the linked settings. Neither is a
+limit; KV is the reported pool capacity under the linked settings (`~` marks
+a reference estimate). Neither is a
 tested request length. A dash means no capacity figure is recorded here.
 Validated means the selected configuration passed the checks documented in its guide.
 
@@ -28,26 +29,26 @@ Validated means the selected configuration passed the checks documented in its g
 
 | Model / features | Layout | Context (tokens) | KV (tokens) | Status | Quickstart |
 |---|---|---:|---:|---|---|
-| **GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache** | TP4/DCP1 | 1M | — | Validated | [Guide](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 | TP4/DCP1 | 1M | — | Available | [Guide](profiles/deepseek-v4-flash-0731/README.md) |
+| **GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache** | TP4/DCP1 | 1M | [~2.3M](performance/capacity-references.md) | Validated | [Guide](profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) |
+| DeepSeek-V4-Flash-0731 | TP4/DCP1 | 1M | [~1M](performance/capacity-references.md) | Development | [Guide](profiles/deepseek-v4-flash-0731/README.md) |
 | DeepSeek-V4-Flash-Vision-Exp | TP4/DCP1 | 1M | — | Experimental | [Guide](profiles/deepseek-v4-flash-vision-exp-tp4/README.md) |
-| DeepSeek-V4.1-Flash | TP4/DCP1 | 430K | [2.2M](profiles/deepseek-v41-flash-cycle/recipe.json) | Available | [Guide](profiles/deepseek-v41-flash-cycle/README.md) |
-| GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 | TP4/DCP4 | 1M | [1.2M](profiles/glm52-exl3-r7-3.5bpw/recipe.json) | Available | [Guide](profiles/glm52-exl3-r7-3.5bpw/README.md) |
+| DeepSeek-V4.1-Flash | TP4/DCP1 | 430K | [2.2M](profiles/deepseek-v41-flash-cycle/recipe.json) | Development | [Guide](profiles/deepseek-v41-flash-cycle/README.md) |
+| GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 | TP4/DCP4 | 1M | [1.2M](profiles/glm52-exl3-r7-3.5bpw/recipe.json) | Development | [Guide](profiles/glm52-exl3-r7-3.5bpw/README.md) |
 | GLM-5.3 Flash NVFP4-Spark · native MTP3 | TP4/DCP1 | 1M | — | Experimental | [Guide](profiles/glm53-flash-spark-tp4-dcp1/README.md) |
 | GLM-5.3 Flash NVFP4-Spark · switched | TP4/DCP1 | 1M | — | Experimental | [Guide](profiles/glm53-flash-spark-tp4-switched/README.md) |
-| Qwen3.8-27B-EXL3-K5K6-hydrated | TP4/DCP1 | 1M | [8.7M](profiles/qwen38-27b-exl3-k5k6/recipe.json) | Available | [Guide](profiles/qwen38-27b-exl3-k5k6/README.md) |
-| DeepSeek-V4-Flash-0731 + SparkCache | TP4/DCP1 | 1M | — | Available | [Guide](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) |
-| GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 + SparkCache | TP4/DCP4 | 1M | — | Available | [Guide](profiles/sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) |
+| Qwen3.8-27B-EXL3-K5K6-hydrated | TP4/DCP1 | 1M | [8.7M](profiles/qwen38-27b-exl3-k5k6/recipe.json) | Development | [Guide](profiles/qwen38-27b-exl3-k5k6/README.md) |
+| DeepSeek-V4-Flash-0731 + SparkCache | TP4/DCP1 | 1M | — | Development | [Guide](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) |
+| GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 + SparkCache | TP4/DCP4 | 1M | — | Development | [Guide](profiles/sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) |
 
 ### Two Sparks
 
 | Model / features | Layout | Context (tokens) | KV (tokens) | Status | Quickstart |
 |---|---|---:|---:|---|---|
 | **GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache** | TP2/DCP1 | 1M | [1.1M](runtime/profiles/glm53-flash-spark-tp2/README.md) | Validated | [Guide](profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
-| DeepSeek-V4-Flash-0731 | TP2/DCP1 | 1M | — | Available | [Guide](profiles/deepseek-v4-flash-0731-pair/README.md) |
+| DeepSeek-V4-Flash-0731 | TP2/DCP1 | 1M | [~1M](performance/capacity-references.md) | Development | [Guide](profiles/deepseek-v4-flash-0731-pair/README.md) |
 | GLM-5.3 Flash NVFP4-Spark · native MTP3 | TP2/DCP1 | 1M | — | Experimental | [Guide](profiles/glm53-flash-spark-tp2-dcp1/README.md) |
-| Qwen3.8-27B-EXL3-K5K6-hydrated | TP2/DCP1 | 1M | [4.1M](profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | Available | [Guide](profiles/qwen38-27b-exl3-k5k6-pair/README.md) |
-| DeepSeek-V4-Flash-0731 + SparkCache | TP2/DCP1 | 1M | — | Available | [Guide](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) |
+| Qwen3.8-27B-EXL3-K5K6-hydrated | TP2/DCP1 | 1M | [4.1M](profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | Development | [Guide](profiles/qwen38-27b-exl3-k5k6-pair/README.md) |
+| DeepSeek-V4-Flash-0731 + SparkCache | TP2/DCP1 | 1M | — | Development | [Guide](profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) |
 
 <!-- END GENERATED PROFILES -->
 

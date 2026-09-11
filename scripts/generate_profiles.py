@@ -15,7 +15,7 @@ START = '<!-- BEGIN GENERATED PROFILES -->'
 END = '<!-- END GENERATED PROFILES -->'
 STATUS_LABELS = {
     'qualified': 'Validated',
-    'implemented': 'Available',
+    'implemented': 'Development',
     'research-only': 'Experimental',
     'unsupported': 'Unsupported',
 }
@@ -41,7 +41,7 @@ def profile_table(root=ROOT, *, compact=False):
         if record['witness'] not in local_path(record['source'], root).read_text(encoding='utf-8-sig'):
             raise ValueError(f"Capacity evidence changed: {record['source']}")
     lines = [START, '', 'Configured context is a per-request limit, not measured KV capacity or a completed long-context test.',
-             'Available profiles have an implementation; validated profiles have documented checks for the selected configuration. Both may have run on Spark hardware. See each guide for the exact testing scope.', '']
+             'Development profiles are under active development; validated profiles have documented checks for the selected configuration. See each guide for the exact testing scope.', '']
     if compact:
         lines = [START, '']
     for title, predicate in (
@@ -66,6 +66,8 @@ def profile_table(root=ROOT, *, compact=False):
                 kv = f"[{compact_tokens(record['tokens'])}]({record['source']})" if record else '—'
             if record and not compact:
                 kv = f"[{record['tokens']:,}](../{record['source']})"
+            if record and record.get('approximate'):
+                kv = kv.replace('[', '[~', 1)
             if compact:
                 title = f"**{p['title']}**" if p['recommendation'] == 'recommended' else p['title']
                 lines.append(f"| {title} | TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']} | {context} | {kv} | {STATUS_LABELS[p['status']]} | [Guide](profiles/{p['id']}/README.md) |")
