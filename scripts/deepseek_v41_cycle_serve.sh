@@ -108,6 +108,19 @@ text_args=(); [ "$TEXT_ONLY" = 1 ] && text_args=(--language-model-only)
 mm_args=(); [ "$TEXT_ONLY" = 1 ] || mm_args=(--limit-mm-per-prompt '{"image":4}' --mm-processor-cache-gb 1)
 # shellcheck disable=SC2206
 served=($SERVED_MODEL_NAME); served_args=(); for n in "${served[@]}"; do served_args+=(--served-model-name "$n"); done
+# Optional bearer-key enforcement: API_KEY_FILE holds one key per line and every
+# non-empty line becomes an accepted key (vLLM: --api-key K1 K2 ...). Unset = open
+# server; do not put an open rank 0 behind a public route.
+key_args=()
+if [ -n "${API_KEY_FILE:-}" ]; then
+    [ -r "$API_KEY_FILE" ] || die "API_KEY_FILE is not readable: $API_KEY_FILE"
+    api_keys=()
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in *[![:space:]]*) api_keys+=("$line") ;; esac
+    done < "$API_KEY_FILE"
+    [ "${#api_keys[@]}" -gt 0 ] || die "API_KEY_FILE has no keys: $API_KEY_FILE"
+    key_args=(--api-key "${api_keys[@]}")
+fi
 
 command=(
     docker run -d --name "$container_name" --restart no --pull never
@@ -132,6 +145,7 @@ command=(
     "$model_container_path"
     --host 0.0.0.0 --port "$API_PORT"
     "${served_args[@]}"
+    ${key_args[@]+"${key_args[@]}"}
     --tensor-parallel-size 4 --nnodes 4 --node-rank "$NODE_RANK"
     --master-addr "$MASTER_ADDR" --master-port "$MASTER_PORT" --distributed-executor-backend mp
     --load-format safetensors

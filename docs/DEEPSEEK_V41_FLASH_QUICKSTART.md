@@ -146,6 +146,9 @@ curl -s http://localhost:8000/v1/chat/completions -H 'Content-Type: application/
 ```
 
 Thinking is off by default; a request enables it with `"chat_template_kwargs": {"thinking": true}`.
+With `API_KEY_FILE` set, add `-H 'Authorization: Bearer <key>'` to the chat request; `/health` stays keyless
+so router health probes keep working. Rank 0 without `API_KEY_FILE` is an open server — set it before
+the port sits behind any route that does not authenticate on its own.
 Check `SpecDecoding metrics` in the log for a mean acceptance length above one, and
 `/metrics` for zero preemptions under load.
 

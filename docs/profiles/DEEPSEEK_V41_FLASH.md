@@ -23,6 +23,7 @@ patches are bind-mounted over it. Deploy with the [quickstart](../DEEPSEEK_V41_F
 | Multimodal | 4 images per prompt, 1 GiB processor cache |
 | Transport | SparkRing patched NCCL 2.30.7 preloaded; two RoCE devices, subnet-aware routing, `NCCL_SWITCHLESS_RING_ONLY=1`, 4 channels |
 | API model name | `deepseek-v4.1-flash` |
+| Auth | optional `API_KEY_FILE` (one bearer key per line → `--api-key K1 K2 …`); `/health` keyless |
 
 ## Evidence boundary
 

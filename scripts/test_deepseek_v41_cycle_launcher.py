@@ -121,6 +121,22 @@ def test_check_renders_the_recipe_contract(tmp_path: Path) -> None:
     assert "--headless" not in joined
 
 
+def test_api_key_file_passes_every_key(tmp_path: Path) -> None:
+    keys = tmp_path / "keys"
+    keys.write_text("k-one\n\nk-two\n", encoding="utf-8")
+    result = _run(_resolved_env(tmp_path, API_KEY_FILE=str(keys)))
+    assert result.returncode == 0, result.stderr
+    assert "--api-key k-one k-two" in result.stdout
+    bare = _run(_resolved_env(tmp_path))
+    assert bare.returncode == 0, bare.stderr
+    assert "--api-key" not in bare.stdout
+    empty = tmp_path / "empty"
+    empty.write_text("\n", encoding="utf-8")
+    result = _run(_resolved_env(tmp_path, API_KEY_FILE=str(empty)))
+    assert result.returncode != 0
+    assert "has no keys" in result.stderr
+
+
 def test_worker_ranks_are_headless_and_eager_drops_graphs(tmp_path: Path) -> None:
     result = _run(_resolved_env(tmp_path, rank=2, ENFORCE_EAGER="1", TEXT_ONLY="1"))
     assert result.returncode == 0, result.stderr
