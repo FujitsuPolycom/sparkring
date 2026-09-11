@@ -1,7 +1,7 @@
 """Own only explicitly created local mesh routes, neighbors and TC rules.
 
 Implemented ownership bookkeeping; hardware readiness remains a local snapshot,
-not an end-to-end RC qualification. Marker processes belong to the supervisor.
+not an end-to-end RC qualification. Marker processes belong to the managed_service.py supervisor.
 """
 from __future__ import annotations
 

@@ -20,7 +20,15 @@ def selection():
                     and ast.unparse(node.test) == "request.num_computed_tokens == 0"
                     and node.lineno > lease.lineno), key=lambda node: node.lineno)
     # Execute the real selection/lease branch and the real local-lookup assignment.
-    ordinary.body = ordinary.body[:2]
+    retained = ordinary.body[:2]
+    assert len(retained) == 2 and all(isinstance(node, ast.Assign) for node in retained)
+    assigned = {target.id for node in retained for target in ast.walk(node)
+                if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Store)}
+    assert {"did_prefix_cache_lookup", "num_new_local_computed_tokens", "hit_diverged"} <= assigned
+    assert any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+               and node.func.attr == "_get_local_prefix_cache_hit"
+               for statement in retained for node in ast.walk(statement)), "Expected local-prefix lookup assignment"
+    ordinary.body = retained
     ordinary.orelse = []
     setup = ast.parse("request_id = request.request_id\nlocal_lease_alternative = None\ndid_prefix_cache_lookup = False\nnum_new_local_computed_tokens = 0\nhit_diverged = False").body
     result = ast.parse("return did_prefix_cache_lookup, num_new_local_computed_tokens, hit_diverged").body
