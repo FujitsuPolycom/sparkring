@@ -207,7 +207,7 @@ def render(rank, master, model_dir, cache_dir, env_file, image, r33_receipt=None
            r33_cache_kv_memory_bytes=None):
     if r33_cache_kv_memory_bytes is not None and (
             not r33_sparkcache or type(r33_cache_kv_memory_bytes) is not int
-            or r33_cache_kv_memory_bytes not in (7247757312, 9395240960)):
+            or r33_cache_kv_memory_bytes not in (7247757312, 8053063680, 9395240960)):
         raise ValueError("R33 cache KV override requires --r33-sparkcache and an explicit 6.75 or 8.75 GiB pin")
     if r33_sparkcache and r33_receipt is None:
         raise ValueError("R33 SparkCache requires an exact R33 image receipt")
@@ -432,7 +432,7 @@ def main():
     parser.add_argument("--image", required=True)
     parser.add_argument("--runtime-receipt", type=Path)
     parser.add_argument("--r33-sparkcache", action="store_true", help="Plan the source-capability-gated TP2 cache composition")
-    parser.add_argument("--r33-cache-kv-memory-bytes", type=int, choices=(7247757312, 9395240960),
+    parser.add_argument("--r33-cache-kv-memory-bytes", type=int, choices=(7247757312, 8053063680, 9395240960),
                         help="Explicit TP2 R33 cache KV pin; 9395240960 selects the 8.75 GiB research configuration")
     args = parser.parse_args()
     runtime_receipt = json.loads(args.runtime_receipt.read_text()) if args.runtime_receipt else None

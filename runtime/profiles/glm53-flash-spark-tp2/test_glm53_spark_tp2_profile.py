@@ -595,14 +595,15 @@ def test_r33_cache_rejects_unproven_capabilities_before_host_action(inputs, fail
 
 
 @pytest.mark.parametrize("rank", [0, 1])
-def test_r33_cache_explicit_875_gib_pin_reaches_docker_with_guards(inputs, rank):
+@pytest.mark.parametrize("pin", [8053063680, 9395240960])
+def test_r33_cache_explicit_pin_reaches_docker_with_guards(inputs, rank, pin):
     runtime, _ = cache_capable_receipt()
     value = launch.render(rank, "master.example", *inputs, LOCAL_IMAGE, runtime,
-                          r33_sparkcache=True, r33_cache_kv_memory_bytes=9395240960)
+                          r33_sparkcache=True, r33_cache_kv_memory_bytes=pin)
     command = value["command"]
-    assert command[command.index("--kv-cache-memory-bytes") + 1] == "9395240960"
+    assert command[command.index("--kv-cache-memory-bytes") + 1] == str(pin)
     assert command[command.index("--max-model-len") + 1] == "1048576"
-    assert value["kv_cache_memory_bytes"] == 9395240960
+    assert value["kv_cache_memory_bytes"] == pin
     assert value["memory_guard_floor_bytes"] == 2147483648
     assert value["qualification"]["gpu_qualified"] is False
     launch.validate_runtime_receipt(runtime, value)
