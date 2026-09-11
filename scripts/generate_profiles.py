@@ -90,11 +90,18 @@ def profile_table(root=ROOT, *, compact=False):
              'Development profiles are under active development; validated profiles have documented checks for the selected configuration. See each guide for the exact testing scope.', '']
     if compact:
         dcp_options = {}
+        dcp_capacity = {}
         for profile, resolved in rows:
             if profile['recommendation'] == 'retired':
                 continue
             key = (resolved['model']['repository'], resolved['topology'], resolved['serving']['node_count'])
-            dcp_options.setdefault(key, set()).add(resolved['serving']['decode_context_parallel_size'])
+            dcp = resolved['serving']['decode_context_parallel_size']
+            dcp_options.setdefault(key, set()).add(dcp)
+            if profile['id'] in capacity:
+                rank = (profile['recommendation'] == 'recommended', profile['status'] == 'qualified')
+                existing = dcp_capacity.get((key, dcp))
+                if existing is None or rank > existing[0]:
+                    dcp_capacity[(key, dcp)] = (rank, capacity[profile['id']])
         rows, cache_cells = compact_profile_rows(rows, root)
         lines = [START, '']
     for title, predicate in (
@@ -132,6 +139,13 @@ def profile_table(root=ROOT, *, compact=False):
             if record and record.get('approximate'):
                 kv = kv.replace('[', '[~', 1)
             if compact:
+                if len(choices) > 1:
+                    counts = []
+                    for dcp in choices:
+                        selected = dcp_capacity.get((key, dcp))
+                        entry = selected[1] if selected else None
+                        counts.append(f"[{compact_tokens(entry['tokens'])}]({entry['source']})" if entry else '—')
+                    kv = '/'.join(counts)
                 title = model_name
                 if p['recommendation'] == 'recommended':
                     title = f"**{title}**"
