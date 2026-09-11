@@ -46,6 +46,10 @@ launch. DCP1 activations disarm that overlay and do not require it.
 - Four exact-answer semantic requests returned exact responses.
 - Two completed cold prompts of 37,032 tokens each with zero cached tokens,
   no `sample_tokens` timeout, and no fatal engine error.
+- DCP prefill execution used the cross-rank path: worker logs on every rank
+  report `Using full-CKV gather for GLM5Next B12X DCP prefill`
+  (`b12x_mla_sparse.py`), the DCP top-k owner-exchange machinery being
+  active rather than a DCP1 fallback.
 - A repeated prompt with an identical 37,019-token prefix hit the cache on
   its second run: 36,352 cached tokens, 15.8 s → 5.0 s wall time.
 - mHC token sharding executed on every rank:
@@ -62,9 +66,115 @@ launch. DCP1 activations disarm that overlay and do not require it.
   kill`, SIGKILL), relaunched cold, returned to healthy serving, and the
   reader restored 6,144 tokens on every rank in 51.9–57.7 ms (106–118 K
   tok/s).
-- The engine admitted the one-million-token request limit and reported
-  `GPU KV cache size: 8,364,901 tokens` (the DCP4 sharded pool; the DCP1
-  profile reports ~2.28M on the same 24 GiB/rank).
+
+## Measurement (2026-09-11 evening pass, cache-enabled ring)
+
+Prefill values are medians of three cold requests per prompt size; all nine
+requests reported zero cached tokens (unique prompt text per sample; prompt
+lengths within ~1% of the target sizes are recorded in the sample table).
+Decode used 10-second windows with zero request errors; each window was
+seeded by a warmup request over the full context so decode ran against a
+resident prefix. MTP-normalized steps/s counts target-model forward passes
+only (`spec_decode_num_drafts_total` delta per window); the effective
+acceptance length divides `spec_decode_num_accepted_tokens_total` deltas.
+Throughput values remain **research-only** observations: the harness does
+not pin clocks, warm-up policy, or a timing revision, so the tables are not
+a reproducible benchmark or a speedup claim.
+
+| Prompt tokens (actual) | Cold prefill tok/s, median of 3 |
+|---:|---:|
+| 8,192 (8,185–8,186) | 2,398.4 |
+| 16,384 (16,341–16,342) | 2,766.2 |
+| 32,768 (32,652–32,653) | 2,998.4 |
+
+| Context | Concurrency | C1/C4 aggregate decode tok/s | MTP-normalized steps/s | Effective acceptance length |
+|---:|---:|---:|---:|---:|
+| 8,192 | 1 | 50.2 | 18.2 | 2.76 |
+| 32,768 | 1 | 48.8 | 18.3 | 2.67 |
+| 8,192 | 4 | 100.7 | 35.7 | 2.82 |
+| 32,768 | 4 | 104.4 | 37.2 | 2.80 |
+
+C1 decode matches the TP4/DCP1 record within 2–3%; C4 aggregate decode
+reaches 0.76–0.82× of DCP1, consistent with the cross-rank full-CKV gather
+(`Using full-CKV gather for GLM5Next B12X DCP prefill`) whose cost grows
+with scheduling pressure. Effective acceptance length is at or slightly
+above the DCP1 record (2.21–2.76).
+
+## RouteFinal dual-domain diagnostic startup
+
+A diagnostic start rendered the same site with `nccl_debug: INFO`
+(`NCCL_DEBUG=INFO`) through the unchanged published image. The ring reached
+HEALTH-OK and served an exact semantic answer. Every rank emitted 32
+`NET/IB RouteFinal` lines covering all four HCAs across both PCI domains:
+`rocep1s0f0` and `rocep1s0f1` (domain 0000) and `roceP2p1s0f0` and
+`roceP2p1s0f1` (domain 0002), 8 RouteFinal records per HCA, with
+`crossNic 1`, 32 channels, and `Connected all rings, use ring PXN 0 GDR 0`.
+This is the dual-domain route attribution the DCP1 record uses, now
+confirmed active for DCP4.
+
+## Six-case prefix-hit regression (1,027-token suffix included)
+
+After a 32,256-token cache hit established the base entry, six suffix
+geometries completed with exact expected answers: 515, 513, 531, **1,027**,
+512, and 2,048 tokens, with 28,160–28,672 cached tokens per case. As in the
+DCP1 record the harness checked completion liveness and exact answers, not
+raw output equivalence across shapes. No #220-style zero-hit behavior was
+observed: every case hit the cache.
+
+## Cache-disabled tp4-dcp4 observation
+
+A separate ring start rendered the cache-disabled `tp4-dcp4` profile
+(`SPARKCACHE_ENABLED=0`). Prefill medians of three cold samples per size
+(all zero-cached): 8,192 → 2,451.4 tok/s; 16,384 → 2,885.7; 32,768 →
+3,141.7 (one 8,192 sample absorbed a fresh-start JIT cost, 524 tok/s, and
+the median remains the middle of three). Decode windows: 8,192 c1 → 50.2
+(norm 18.4, acc 2.73); 32,768 c1 → 52.8 (norm 18.5, acc 2.85); 8,192 c4 →
+61.1 (norm 21.9, acc 2.80); 32,768 c4 → 104.6 (norm 35.2, acc 2.97). No
+snapshot writes or restores occurred in any worker log; the SIRCL
+capability vote remained (transport handshake) and vLLM's in-engine prefix
+caching stayed enabled (28,160-token hits in the suffix cases), so
+`SPARKCACHE_ENABLED=0` disables the SparkCache snapshot/capture layer only.
+This is an observation row, not a separate qualification: functional
+checks (four-rank start, semantic answer, 1M admission) passed on this
+start as well.
+
+## Reproduction (overlay and quickstart)
+
+The published image contains only the DCP1 profile contract. A DCP4 start
+requires the contract overlay from this repository:
+
+1. Clone this repo on every host and export
+   `R33_PROFILE_CONTRACT_HOST_ROOT=<repo>/runtime/sparkring/jovian-r33/profiles`
+   (the launcher bind-mounts it read-only at the contract host root and the
+   entrypoint prefers the overlaid contract; DCP1 starts do not need it).
+2. Render the site once on the head host:
+   `python3 runtime/glm53-spark-mtp3-mesh/profile.py render --site <site>.json
+   --bundle <bundle_root> --output <rendered> --image-receipt
+   <image-receipt.json>` with the site's `runtime_profile` set to
+   `tp4-dcp4-sparkcache` (or `tp4-dcp4`). The renderer emits one
+   `rank<N>.env` per rank; copy them to each host (the rank-0 env stays on
+   the head).
+3. The DCP4 overlays arm `decode_context_parallel_size: 4`; the managed
+   fabric plan (routes, tc flower qdiscs, RDMA-TX markers) must be
+   installed before launch — DCP1 silently disarms this and DCP4 does not.
+   The `R33_PROFILE_CONTRACT_HOST_ROOT` bind mount and the fabric plan are
+   the only two requirements that differ from a DCP1 start.
+4. Launch rank by rank:
+   `R33_PROFILE_CONTRACT_HOST_ROOT=... bash <launch-site>/launch-rank.sh <rank>
+   <rendered>/rank<rank>.env` (or the site's own rank env paths). Rank 0
+   reaches readiness ~4–5 minutes after container start; `/health` on the
+   rank-0 API returns 200 and a semantic request returns an exact answer.
+5. Cache-disabled starts use the same steps with `runtime_profile`:
+   `tp4-dcp4`; the renderer sets `SPARKCACHE_ENABLED=0` and the rank-local
+   cache root directory must still exist (the launcher requires it even
+   when the cache is disabled).
+
+The rendered env files are rank-specific (HOST_IP differs per rank); do not
+reuse a rank-0 env on a peer host.
+
+The engine admitted the one-million-token request limit and reported
+`GPU KV cache size: 8,364,901 tokens` (the DCP4 sharded pool; the DCP1
+profile reports ~2.28M on the same 24 GiB/rank).
 
 The activation receipt is
 [`evidence/tp4-dcp4-sparkcache-activation-20260911.json`](../../../runtime/sparkring/jovian-r33/profiles/evidence/tp4-dcp4-sparkcache-activation-20260911.json),
@@ -73,13 +183,16 @@ bound to the profile contract SHA-256 recorded inside it and passing
 
 ## Limitations
 
-This record does not include three-coordinated-cold-start latency evidence,
-an INFO-level NCCL diagnostic startup (`NCCL_DEBUG=WARN` throughout, so no
-`NET/IB RouteFinal` records were emitted), or decode/prefill throughput
-windows. Those additions follow the TP2/TP4 DCP1 record format in a later
-run. No completed one-million-token request was run; multimodal correctness,
+This record does not include three-coordinated-cold-start latency evidence.
+No completed one-million-token request was run; multimodal correctness,
 switched hardware, other models, and sustained-memory behavior do not
 inherit this qualification. The configured limit is not a tested workload.
 The mounted profile-contract overlay is verified for internal consistency
 and by the profile contract SHA; its contract bytes are newer than the
 baked image contract and the published image remains byte-unchanged.
+Prefill and decode throughput windows are research-only observations (see
+Measurement); the INFO RouteFinal startup was a separate diagnostic start,
+not the qualification serving configuration. The cache-disabled `tp4-dcp4`
+row is an observation, not a standalone qualification, and the in-engine
+vLLM prefix cache remained enabled on that start (SparkCache snapshot layer
+disabled only).
