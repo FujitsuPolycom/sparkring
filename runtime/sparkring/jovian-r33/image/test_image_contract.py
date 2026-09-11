@@ -16,7 +16,9 @@ CANONICAL_PROFILES = HERE.parent / "profiles"
 
 
 def load_entrypoint():
-    spec = importlib.util.spec_from_file_location("r33_candidate_entrypoint", HERE / "entrypoint.py")
+    spec = importlib.util.spec_from_file_location(
+        "r33_candidate_entrypoint", HERE / "entrypoint.py"
+    )
     module = importlib.util.module_from_spec(spec)
     assert spec.loader
     spec.loader.exec_module(module)
@@ -89,8 +91,14 @@ class CandidateImageContractTests(unittest.TestCase):
     def test_artifact_lock_pins_critical_inputs_and_excludes_bad_audio(self):
         lock = json.loads((HERE / "artifact-lock.json").read_text())
         self.assertEqual(lock["foundation"]["cuda"], "13.3")
-        self.assertEqual(lock["foundation"]["image_id"], "sha256:6704db5df61d1110afaba538554abb024c85edb8f37a98e4e631166a10af3217")
-        self.assertEqual(lock["media_runtime"]["image_id"], "sha256:a1a72e18ad49d99f6194a2585bfdc5f32d79180cdf2cd015c0d0d451479d6a42")
+        self.assertEqual(
+            lock["foundation"]["image_id"],
+            "sha256:6704db5df61d1110afaba538554abb024c85edb8f37a98e4e631166a10af3217",
+        )
+        self.assertEqual(
+            lock["media_runtime"]["image_id"],
+            "sha256:a1a72e18ad49d99f6194a2585bfdc5f32d79180cdf2cd015c0d0d451479d6a42",
+        )
         artifacts = {item["name"]: item for item in lock["artifacts"]}
         self.assertNotIn("vllm", artifacts)
         self.assertEqual(
@@ -106,6 +114,10 @@ class CandidateImageContractTests(unittest.TestCase):
             "4405a965e54f14df00d28e5e23f9793f866aae39",
         )
         self.assertEqual(
+            lock["source_identities"]["vllm_tp2_continuation_port_commit"],
+            "8fe550fd876ddea18a23b597611baec15dec048e",
+        )
+        self.assertEqual(
             lock["source_identities"]["vllm_flash_attn_commit"],
             "f3e1a4f74c99145c0717709860bf765de1703779",
         )
@@ -117,10 +129,18 @@ class CandidateImageContractTests(unittest.TestCase):
             lock["source_identities"]["b12x_tree"],
             "284e7df8caff930477a314fea20d826256844de4",
         )
-        self.assertEqual(artifacts["nccl-2.31.2-sparkring-routing"]["sha256"], "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47")
-        self.assertEqual(artifacts["sircl"]["sha256"], "bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246")
+        self.assertEqual(
+            artifacts["nccl-2.31.2-sparkring-routing"]["sha256"],
+            "84a4b8d83fb5fa1f0d640d311ad38b45140672dae9889775fe1e4a3990479e47",
+        )
+        self.assertEqual(
+            artifacts["sircl"]["sha256"],
+            "bea00f2ba6051c2c0bcd2853aae894672aa7f1fe5a1d905edaa9120aabf74246",
+        )
         self.assertIn("+cu133-", artifacts["torchaudio"]["source"])
-        selected = {Path(item["source"]).name for item in lock["artifacts"] if item["install"]}
+        selected = {
+            Path(item["source"]).name for item in lock["artifacts"] if item["install"]
+        }
         for forbidden in lock["forbidden_inputs"]:
             self.assertNotIn(Path(forbidden).name, selected)
         pending = {item["name"]: item for item in lock["pending_artifacts"]}
@@ -133,21 +153,23 @@ class CandidateImageContractTests(unittest.TestCase):
             pending["vllm"]["receipt_sums"], "artifacts/vllm-package/SHA256SUMS"
         )
         self.assertEqual(pending["b12x"]["receipt_sums"], "artifacts/b12x/SHA256SUMS")
-        contract = json.loads((CANONICAL_PROFILES / "profile-contract.json").read_text())
-        self.assertEqual(contract["image"]["required_sources"], lock["source_identities"])
+        contract = json.loads(
+            (CANONICAL_PROFILES / "profile-contract.json").read_text()
+        )
+        self.assertEqual(
+            contract["image"]["required_sources"], lock["source_identities"]
+        )
         self.assertEqual(
             contract["image"]["artifact_lock_sha256"],
-            __import__("hashlib").sha256((HERE / "artifact-lock.json").read_bytes()).hexdigest(),
+            __import__("hashlib")
+            .sha256((HERE / "artifact-lock.json").read_bytes())
+            .hexdigest(),
         )
 
     def test_b12x_builder_and_context_bind_the_checkpoint_export_port(self):
         build = (HERE.parent / "build_b12x.sh").read_text()
-        self.assertIn(
-            "expected_commit=68acfc14893c087aa9b3120bb984fde4c4e7a21f", build
-        )
-        self.assertIn(
-            "expected_tree=284e7df8caff930477a314fea20d826256844de4", build
-        )
+        self.assertIn("expected_commit=68acfc14893c087aa9b3120bb984fde4c4e7a21f", build)
+        self.assertIn("expected_tree=284e7df8caff930477a314fea20d826256844de4", build)
         prepare = (HERE / "prepare_context.py").read_text()
         self.assertIn('sums_path = args.build_root / pending["receipt_sums"]', prepare)
         self.assertNotIn("completed FlashInfer receipt", prepare)
@@ -169,14 +191,10 @@ class CandidateImageContractTests(unittest.TestCase):
                 module.load_sums(sums)
 
     def test_sparkcache_lease_contract_matches_composed_vllm_sources(self):
-        contract_path = (
-            HERE.parent / "contracts/vllm-connector-jobs-r33-547f7091.json"
-        )
+        contract_path = HERE.parent / "contracts/vllm-connector-jobs-r33-547f7091.json"
         contract = json.loads(contract_path.read_text())
         manifest = json.loads(
-            (
-                HERE.parent / "patches/vllm-r33-sparkring.manifest.json"
-            ).read_text()
+            (HERE.parent / "patches/vllm-r33-sparkring.manifest.json").read_text()
         )
         self.assertEqual(contract["vllm_tree"], manifest["result"]["tree"])
         records = {item["path"]: item for item in contract["files"]}
@@ -206,13 +224,17 @@ class CandidateImageContractTests(unittest.TestCase):
     def test_dockerfile_verifies_context_and_uses_locked_media_runtime(self):
         source = (HERE / "Dockerfile.candidate").read_text()
         self.assertIn("ARG MEDIA_RUNTIME=local/sparkring:r33-media-probe", source)
-        self.assertIn("python3 -S /context/verify_context.py --context /context", source)
+        self.assertIn(
+            "python3 -S /context/verify_context.py --context /context", source
+        )
         self.assertIn("COPY --from=verified-context /context/wheelhouse/", source)
         self.assertIn("python3 -m venv /opt/venv", source)
         self.assertNotIn("--system-site-packages", source)
         self.assertNotIn("apt-get", source)
         self.assertIn("native/libnccl.so.2.31.2", source)
-        self.assertIn("VLLM_NCCL_SO_PATH=/opt/local-inference/nccl/lib/libnccl.so.2", source)
+        self.assertIn(
+            "VLLM_NCCL_SO_PATH=/opt/local-inference/nccl/lib/libnccl.so.2", source
+        )
         self.assertNotIn("docker push", source)
         self.assertNotIn("--gpus", source)
         build = (HERE / "build_candidate.sh").read_text()
@@ -225,8 +247,13 @@ class CandidateImageContractTests(unittest.TestCase):
         self.assertIn('runtime / "sparkring/jovian-r33/profiles"', source)
         self.assertIn('context / "profile-contract"', source)
         self.assertFalse(any((HERE / "profiles").glob("*.json")))
-        contract = json.loads((CANONICAL_PROFILES / "profile-contract.json").read_text())
-        self.assertEqual(set(contract["profiles"]), {"tp2-dcp1", "tp2-dcp1-sparkcache", "tp4-dcp1", "tp4-dcp1-sparkcache"})
+        contract = json.loads(
+            (CANONICAL_PROFILES / "profile-contract.json").read_text()
+        )
+        self.assertEqual(
+            set(contract["profiles"]),
+            {"tp2-dcp1", "tp2-dcp1-sparkcache", "tp4-dcp1", "tp4-dcp1-sparkcache"},
+        )
         for name in ("tp4-dcp1", "tp4-dcp1-sparkcache"):
             selected = contract["profiles"][name]
             values = (CANONICAL_PROFILES / selected["template"]).read_text()
@@ -242,40 +269,76 @@ class CandidateImageContractTests(unittest.TestCase):
             shutil.copytree(CANONICAL_PROFILES, root / "profile-contract")
             (root / "image").mkdir(parents=True)
             shutil.copy2(HERE / "artifact-lock.json", root / "image/artifact-lock.json")
-            transport_source = HERE.parents[2] / "transport_profiles/tp2-rocenante-adaptive"
-            shutil.copytree(transport_source, root / "runtime/transport_profiles/tp2-rocenante-adaptive")
+            transport_source = (
+                HERE.parents[2] / "transport_profiles/tp2-rocenante-adaptive"
+            )
+            shutil.copytree(
+                transport_source,
+                root / "runtime/transport_profiles/tp2-rocenante-adaptive",
+            )
             (root / "runtime/glm53-spark-mtp3-mesh").mkdir(parents=True)
-            shutil.copy2(HERE.parents[2] / "glm53-spark-mtp3-mesh/pins.json", root / "runtime/glm53-spark-mtp3-mesh/pins.json")
+            shutil.copy2(
+                HERE.parents[2] / "glm53-spark-mtp3-mesh/pins.json",
+                root / "runtime/glm53-spark-mtp3-mesh/pins.json",
+            )
             verifier = root / "profile-contract/verify_profile.py"
-            for profile in ("tp2-dcp1", "tp2-dcp1-sparkcache", "tp4-dcp1", "tp4-dcp1-sparkcache"):
+            for profile in (
+                "tp2-dcp1",
+                "tp2-dcp1-sparkcache",
+                "tp4-dcp1",
+                "tp4-dcp1-sparkcache",
+            ):
                 result = subprocess.run(
-                    [sys.executable, str(verifier), "template", "--profile", profile,
-                     "--asset-root", str(root / "runtime")],
-                    text=True, capture_output=True,
+                    [
+                        sys.executable,
+                        str(verifier),
+                        "template",
+                        "--profile",
+                        profile,
+                        "--asset-root",
+                        str(root / "runtime"),
+                    ],
+                    text=True,
+                    capture_output=True,
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_entrypoint_consumes_custom_external_tp4_profile(self):
         module = load_entrypoint()
-        contract = json.loads((CANONICAL_PROFILES / "profile-contract.json").read_text())
+        contract = json.loads(
+            (CANONICAL_PROFILES / "profile-contract.json").read_text()
+        )
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "profile-contract.json").write_text(json.dumps(contract))
             (root / "verify_profile.py").write_text("# fixture")
-            with mock.patch.dict(os.environ, tp4_environment(contract), clear=True), mock.patch.object(module.subprocess, "run") as run:
+            with (
+                mock.patch.dict(os.environ, tp4_environment(contract), clear=True),
+                mock.patch.object(module.subprocess, "run") as run,
+            ):
                 selected = module.validate_external_profile(root)
             self.assertEqual(selected["transport"], "sparkring-rocenante-mesh")
             run.assert_called_once()
 
     def test_copied_tp4_adapters_import_in_canonical_custom_mode(self):
-        source = HERE.parents[2] / "glm53-spark-mtp3-mesh/performance/transport/bundle-source"
+        source = (
+            HERE.parents[2]
+            / "glm53-spark-mtp3-mesh/performance/transport/bundle-source"
+        )
         with tempfile.TemporaryDirectory() as directory:
             copied = Path(directory) / "sircl-python"
             shutil.copytree(source, copied)
-            with mock.patch.dict(os.environ, {
-                "VLLM_SPARK_TP4_MODE": "custom",
-                "VLLM_SPARK_TP4_VOCAB_MODE": "custom",
-            }, clear=True), mock.patch.object(sys, "path", [str(copied), *sys.path]):
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "VLLM_SPARK_TP4_MODE": "custom",
+                        "VLLM_SPARK_TP4_VOCAB_MODE": "custom",
+                    },
+                    clear=True,
+                ),
+                mock.patch.object(sys, "path", [str(copied), *sys.path]),
+            ):
                 for name in ("spark_tp4_backend", "spark_tp4_vocab_allgather_backend"):
                     sys.modules.pop(name, None)
                     module = __import__(name)
@@ -303,7 +366,9 @@ class CandidateImageContractTests(unittest.TestCase):
                 "Path(os.environ['SIRCL_HOOK_MARKER']).write_text('loaded')\n"
             )
             for name in ("rocenante_vllm_overlay", "rocenante_health_gate"):
-                (embedded / f"{name}.py").write_text("def install():\n    return None\n")
+                (embedded / f"{name}.py").write_text(
+                    "def install():\n    return None\n"
+                )
             marker = Path(directory) / "hook-loaded"
             environment = {
                 **os.environ,
@@ -351,38 +416,52 @@ class CandidateImageContractTests(unittest.TestCase):
 
     def test_entrypoint_rejects_tp4_without_managed_renderer(self):
         module = load_entrypoint()
-        contract = json.loads((CANONICAL_PROFILES / "profile-contract.json").read_text())
+        contract = json.loads(
+            (CANONICAL_PROFILES / "profile-contract.json").read_text()
+        )
         environment = tp4_environment(contract)
         environment.pop("SPARKRING_MANAGED_MESH_RENDERED")
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "profile-contract.json").write_text(json.dumps(contract))
             (root / "verify_profile.py").write_text("# fixture")
-            with mock.patch.dict(os.environ, environment, clear=True), mock.patch.object(module.subprocess, "run"):
+            with (
+                mock.patch.dict(os.environ, environment, clear=True),
+                mock.patch.object(module.subprocess, "run"),
+            ):
                 with self.assertRaisesRegex(RuntimeError, "MANAGED_MESH_RENDERED"):
                     module.validate_external_profile(root)
 
     def test_entrypoint_rejects_non_instanttensor_r33_loader(self):
         module = load_entrypoint()
-        contract = json.loads((CANONICAL_PROFILES / "profile-contract.json").read_text())
+        contract = json.loads(
+            (CANONICAL_PROFILES / "profile-contract.json").read_text()
+        )
         environment = tp4_environment(contract)
         environment["LOAD_FORMAT"] = "fastsafetensors"
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "profile-contract.json").write_text(json.dumps(contract))
             (root / "verify_profile.py").write_text("# fixture")
-            with mock.patch.dict(os.environ, environment, clear=True), mock.patch.object(module.subprocess, "run"):
+            with (
+                mock.patch.dict(os.environ, environment, clear=True),
+                mock.patch.object(module.subprocess, "run"),
+            ):
                 with self.assertRaisesRegex(RuntimeError, "LOAD_FORMAT=instanttensor"):
                     module.validate_external_profile(root)
 
     def test_verifier_environment_cannot_activate_a_transport(self):
         module = load_entrypoint()
-        with mock.patch.dict(os.environ, {
-            "PYTHONPATH": "/opt/sparkring/sircl/python",
-            "SPARKRING_TRANSPORT_PROFILE": "tp2-rocenante-adaptive",
-            "SPARKRING_TRANSPORT_MANIFEST_SHA256": "digest",
-            "KEEP_ME": "yes",
-        }, clear=True):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "PYTHONPATH": "/opt/sparkring/sircl/python",
+                "SPARKRING_TRANSPORT_PROFILE": "tp2-rocenante-adaptive",
+                "SPARKRING_TRANSPORT_MANIFEST_SHA256": "digest",
+                "KEEP_ME": "yes",
+            },
+            clear=True,
+        ):
             environment = module.verification_environment()
         self.assertEqual(environment, {"KEEP_ME": "yes"})
 
@@ -400,9 +479,13 @@ class CandidateImageContractTests(unittest.TestCase):
         candidate = {"RootFS": {"Layers": ["layer-1", "layer-2", "candidate"]}}
         qualify.validate_media_ancestry(candidate, media, expected)
         with self.assertRaisesRegex(RuntimeError, "tag"):
-            qualify.validate_media_ancestry(candidate, {**media, "Id": "sha256:" + "b" * 64}, expected)
+            qualify.validate_media_ancestry(
+                candidate, {**media, "Id": "sha256:" + "b" * 64}, expected
+            )
         with self.assertRaisesRegex(RuntimeError, "descend"):
-            qualify.validate_media_ancestry({"RootFS": {"Layers": ["other"]}}, media, expected)
+            qualify.validate_media_ancestry(
+                {"RootFS": {"Layers": ["other"]}}, media, expected
+            )
 
     def test_receipt_parsers_reject_duplicate_and_ambiguous_identities(self):
         receipts = load_module("r33_validate_receipts", "validate_receipts.py")
@@ -422,7 +505,9 @@ class CandidateImageContractTests(unittest.TestCase):
                 receipts.load_sums(traversal)
 
     def test_terminal_receipt_finalizer_tracks_all_required_producers(self):
-        finalizer = load_module("r33_receipt_finalizer", "finalize_component_receipts.py")
+        finalizer = load_module(
+            "r33_receipt_finalizer", "finalize_component_receipts.py"
+        )
         with tempfile.TemporaryDirectory() as directory:
             build_root = Path(directory) / "build-root"
             staging = Path(directory) / "staging"
@@ -430,20 +515,33 @@ class CandidateImageContractTests(unittest.TestCase):
             commands = finalizer.producer_commands(build_root, HERE, staging)
             self.assertEqual(
                 [Path(command[1]).name for command in commands],
-                ["capture_post_build_sources.py", "validate_flashinfer_resume.py", "capture_flashkda_identity.py"],
+                [
+                    "capture_post_build_sources.py",
+                    "validate_flashinfer_resume.py",
+                    "capture_flashkda_identity.py",
+                ],
             )
             self.assertEqual(
-                {Path(command[command.index("--output") + 1]).name for command in commands},
+                {
+                    Path(command[command.index("--output") + 1]).name
+                    for command in commands
+                },
                 set(finalizer.RECEIPTS),
             )
-            for script in ("capture_post_build_sources.py", "validate_flashinfer_resume.py", "capture_flashkda_identity.py"):
+            for script in (
+                "capture_post_build_sources.py",
+                "validate_flashinfer_resume.py",
+                "capture_flashkda_identity.py",
+            ):
                 self.assertTrue((HERE / script).is_file())
             documentation = (HERE / "README.md").read_text()
             self.assertIn("finalize_component_receipts.py", documentation)
             self.assertIn("--verify-existing", documentation)
 
     def test_terminal_receipt_finalizer_reproduces_existing_bytes(self):
-        finalizer = load_module("r33_receipt_reproducer", "finalize_component_receipts.py")
+        finalizer = load_module(
+            "r33_receipt_reproducer", "finalize_component_receipts.py"
+        )
         with tempfile.TemporaryDirectory() as directory:
             build_root = Path(directory) / "build-root"
             expected = b'{"fixture":"deterministic"}\n'
@@ -463,8 +561,14 @@ class CandidateImageContractTests(unittest.TestCase):
         lock = json.loads((HERE / "artifact-lock.json").read_text())
         pending = {item["name"]: item for item in lock["pending_native_artifacts"]}
         self.assertEqual(set(pending), {"sparkcache-placement", "sparkcache-snapshot"})
-        self.assertEqual(pending["sparkcache-placement"]["sha256"], "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93")
-        self.assertEqual(pending["sparkcache-snapshot"]["sha256"], "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953")
+        self.assertEqual(
+            pending["sparkcache-placement"]["sha256"],
+            "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93",
+        )
+        self.assertEqual(
+            pending["sparkcache-snapshot"]["sha256"],
+            "7da9e72f096ae679906ba71336c16e7894a247eb5b0d217aaccd115b85058953",
+        )
         self.assertTrue(all(item["required"] for item in pending.values()))
         dockerfile = (HERE / "Dockerfile.candidate").read_text()
         self.assertIn("native/libspark_cache_placement.so", dockerfile)

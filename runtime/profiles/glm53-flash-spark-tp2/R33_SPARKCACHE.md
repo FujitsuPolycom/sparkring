@@ -68,6 +68,9 @@ is not established cannot be marked implemented.
 Serialize the file with `json.dumps(document, sort_keys=True,
 separators=(",", ":")) + "\n"`. Context finalization binds its bytes; image
 verification checks the source lock and validates the capability document.
+Each evidence digest identifies the matching canonical receipt under
+`runtime/sparkring/jovian-r33/profiles/evidence/`; those receipts state the
+source revisions, test conditions, result, conclusion, and qualification limit.
 The resulting image receipt carries `runtime_capabilities.document` and its
 `sha256`, matching `verification.checked_files`. The launcher also requires
 both pinned SparkCache native library hashes in that image verification.

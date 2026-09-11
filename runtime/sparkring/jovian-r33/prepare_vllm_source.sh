@@ -33,6 +33,7 @@ test "$actual_tree" = "$expected_tree"
   printf 'continuation.port.commit=%s\n' b611611a643502542c2d900057eb47e407b8379e
   printf 'scheduler.config.compatibility.commit=%s\n' 3049b639bdbc513319f7bae896c4e239992bc7bb
   printf 'prefix.hit.metadata.compatibility.commit=%s\n' 4405a965e54f14df00d28e5e23f9793f866aae39
+  printf 'tp2.continuation.prefill.commit=%s\n' 8fe550fd876ddea18a23b597611baec15dec048e
   printf 'result.tree=%s\n' "$actual_tree"
 } > "$receipt"
 git -C "$target" diff --cached --check

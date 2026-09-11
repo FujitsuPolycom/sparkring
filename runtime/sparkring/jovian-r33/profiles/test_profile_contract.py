@@ -8,7 +8,9 @@ import pytest
 
 HERE = Path(__file__).resolve().parent
 ASSET_ROOT = HERE.parents[2]
-SPEC = importlib.util.spec_from_file_location("r33_profile_verifier", HERE / "verify_profile.py")
+SPEC = importlib.util.spec_from_file_location(
+    "r33_profile_verifier", HERE / "verify_profile.py"
+)
 verifier = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(verifier)
 
@@ -23,7 +25,9 @@ def image_receipt():
         "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:" + "b" * 64,
         "artifact_lock_sha256": contract["image"]["artifact_lock_sha256"],
         "sources": contract["image"]["required_sources"],
-        "component_receipts": {name: "c" * 64 for name in contract["image"]["required_receipts"]},
+        "component_receipts": {
+            name: "c" * 64 for name in contract["image"]["required_receipts"]
+        },
         "source_lock_sha256": "d" * 64,
         "nccl_version": "2.31.2",
         "source_locks_match": True,
@@ -54,13 +58,17 @@ def activation(name):
         if profile.get("load_format") == "b12x":
             item.pop("instanttensor_allocations")
             item["managed_b12x_allocations"] = 1
-        item["rocenante_collectives" if name.startswith("tp2-") else "sircl_collectives"] = 1
+        item[
+            "rocenante_collectives" if name.startswith("tp2-") else "sircl_collectives"
+        ] = 1
         ranks.append(item)
     result = {
         "schema": "sparkring-r33-activation-receipt/v1",
         "checks_passed": True,
         "profile": name,
-        "profile_contract_sha256": hashlib.sha256(verifier.CONTRACT_PATH.read_bytes()).hexdigest(),
+        "profile_contract_sha256": hashlib.sha256(
+            verifier.CONTRACT_PATH.read_bytes()
+        ).hexdigest(),
         "image": image_receipt(),
         "ranks": ranks,
         "serving": {
@@ -87,21 +95,46 @@ def activation(name):
             payload_correctness_passed=True,
         )
     if profile.get("required_capabilities"):
-        capability = {"schema": "sparkring-r33-runtime-capabilities/v1", "profile": name,
-                      "sources": {k: contract["image"]["required_sources"][k] for k in ("vllm_integrated_tree", "b12x_tree", "sparkcache_tree")},
-                      "evidence_kind": "source-component-tests", "live_qualification": "pending",
-                      "checks": {k: "implemented" for k in profile["required_capabilities"]},
-                      "evidence_sha256": {k: "e" * 64 for k in profile["required_capabilities"]}}
-        digest = hashlib.sha256((json.dumps(capability, sort_keys=True, separators=(",", ":")) + "\n").encode()).hexdigest()
-        result["image"]["runtime_capabilities"] = {"document": capability, "sha256": digest}
+        capability = {
+            "schema": "sparkring-r33-runtime-capabilities/v1",
+            "profile": name,
+            "sources": {
+                k: contract["image"]["required_sources"][k]
+                for k in (
+                    "vllm_integrated_tree",
+                    "vllm_tp2_continuation_port_commit",
+                    "b12x_tree",
+                    "sparkcache_tree",
+                )
+            },
+            "evidence_kind": "source-component-tests",
+            "live_qualification": "pending",
+            "checks": {k: "implemented" for k in profile["required_capabilities"]},
+            "evidence_sha256": {k: "e" * 64 for k in profile["required_capabilities"]},
+        }
+        digest = hashlib.sha256(
+            (
+                json.dumps(capability, sort_keys=True, separators=(",", ":")) + "\n"
+            ).encode()
+        ).hexdigest()
+        result["image"]["runtime_capabilities"] = {
+            "document": capability,
+            "sha256": digest,
+        }
         native = contract["sparkcache_native"]
-        result["image"]["verification"] = {"checked_files": {
-            "/opt/sparkring/profile-contract/" + profile["capability_file"]: digest,
-            native["placement_path"]: native["placement_sha256"], native["snapshot_path"]: native["snapshot_sha256"]}}
+        result["image"]["verification"] = {
+            "checked_files": {
+                "/opt/sparkring/profile-contract/" + profile["capability_file"]: digest,
+                native["placement_path"]: native["placement_sha256"],
+                native["snapshot_path"]: native["snapshot_sha256"],
+            }
+        }
     return result
 
 
-@pytest.mark.parametrize("name", ["tp2-dcp1", "tp2-dcp1-sparkcache", "tp4-dcp1", "tp4-dcp1-sparkcache"])
+@pytest.mark.parametrize(
+    "name", ["tp2-dcp1", "tp2-dcp1-sparkcache", "tp4-dcp1", "tp4-dcp1-sparkcache"]
+)
 def test_candidate_templates_match_contract_and_pinned_inputs(name):
     assert verifier.validate_template(name, ASSET_ROOT)["checks_passed"] is True
 
@@ -127,8 +160,16 @@ def test_tp2_uses_one_dac_across_two_host_domains_and_one_dcp_rank():
 def test_tp4_profiles_share_mesh_graphs_and_dcp1_baseline():
     _, baseline = verifier.profile("tp4-dcp1")
     _, cached = verifier.profile("tp4-dcp1-sparkcache")
-    assert baseline["decode_context_parallel_size"] == cached["decode_context_parallel_size"] == 1
-    assert baseline["cudagraph_capture_sizes"] == cached["cudagraph_capture_sizes"] == list(range(4, 65, 4))
+    assert (
+        baseline["decode_context_parallel_size"]
+        == cached["decode_context_parallel_size"]
+        == 1
+    )
+    assert (
+        baseline["cudagraph_capture_sizes"]
+        == cached["cudagraph_capture_sizes"]
+        == list(range(4, 65, 4))
+    )
     assert baseline["mesh_pins_sha256"] == cached["mesh_pins_sha256"]
     assert baseline["sparkcache"] is False and cached["sparkcache"] is True
     baseline_values = verifier.parse_template(HERE / baseline["template"])
@@ -147,7 +188,10 @@ def test_image_selection_has_no_implicit_candidate_identity():
 def test_local_config_identity_can_be_qualified_before_publication():
     document = image_receipt()
     document["image_reference"] = document["image_id"]
-    assert verifier.validate_image_receipt(document)["image_reference"] == document["image_id"]
+    assert (
+        verifier.validate_image_receipt(document)["image_reference"]
+        == document["image_id"]
+    )
 
 
 @pytest.mark.parametrize("name", ["tp2-dcp1", "tp4-dcp1", "tp4-dcp1-sparkcache"])
@@ -227,11 +271,16 @@ def test_tp2_rejects_inconsistent_mhc_ceilings_across_ranks():
 
 
 @pytest.mark.parametrize("name", ["tp4-dcp1", "tp4-dcp1-sparkcache"])
-@pytest.mark.parametrize("field,value,match", [
-    ("continuation_coalesced_groups", 0, "continuation_coalesced_groups"),
-    ("mhc_owner_rows", [4096], "2,048-row"),
-])
-def test_tp4_retains_coalescing_and_mhc_execution_requirements(name, field, value, match):
+@pytest.mark.parametrize(
+    "field,value,match",
+    [
+        ("continuation_coalesced_groups", 0, "continuation_coalesced_groups"),
+        ("mhc_owner_rows", [4096], "2,048-row"),
+    ],
+)
+def test_tp4_retains_coalescing_and_mhc_execution_requirements(
+    name, field, value, match
+):
     document = activation(name)
     document["ranks"][0][field] = value
     with pytest.raises(ValueError, match=match):

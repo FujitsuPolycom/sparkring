@@ -73,7 +73,8 @@
     "vllm_continuation_port_tree": "afea43a927e1989a9ec4d9d4f28247bcf0feb98a",
     "vllm_source_manifest_sha256": "f2e61b47d241de2cd54cbf3c8219ff93c096a2085e504522099788b11499b8c1",
     "vllm_scheduler_config_compatibility_commit": "3049b639bdbc513319f7bae896c4e239992bc7bb",
-    "vllm_prefix_hit_metadata_compatibility_commit": "4405a965e54f14df00d28e5e23f9793f866aae39"
+    "vllm_prefix_hit_metadata_compatibility_commit": "4405a965e54f14df00d28e5e23f9793f866aae39",
+    "vllm_tp2_continuation_port_commit": "8fe550fd876ddea18a23b597611baec15dec048e"
   },
   "artifacts": [
     {

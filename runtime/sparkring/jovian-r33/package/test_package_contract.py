@@ -114,6 +114,7 @@ class VllmPackageContractTests(unittest.TestCase):
             manifest["prefix_hit_metadata_compatibility"]["commit"],
             "4405a965e54f14df00d28e5e23f9793f866aae39",
         )
+        self.assertEqual(manifest["tp2_dcp1_coalescing"]["commit"], "8fe550f")
         dependency = manifest["required_b12x_checkpoint_contract"]
         self.assertEqual(
             dependency["commit"], "68acfc14893c087aa9b3120bb984fde4c4e7a21f"
