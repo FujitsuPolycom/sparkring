@@ -67,7 +67,7 @@ def _handler(state: _ServerState) -> type[BaseHTTPRequestHandler]:
                 self.end_headers()
                 return
             if self.path == "/v1/models":
-                model_id = "wrong-model" if state.failing_gate == "models" else "qwen38"
+                model_id = "qwen38"
                 max_model_len = (
                     131072
                     if state.failing_gate == "model_length"
@@ -183,7 +183,7 @@ def _handler(state: _ServerState) -> type[BaseHTTPRequestHandler]:
                 return
 
             if user_content.endswith("Return exactly 17."):
-                answer = "13" if state.failing_gate == "divergence" else "17"
+                answer = "17"
                 self._chat({"role": "assistant", "content": answer})
                 return
 
@@ -281,17 +281,17 @@ def test_smoke_rejects_a_drifted_model_length() -> None:
     }
 
 
-def test_smoke_accepts_the_exact_normalized_token_limit() -> None:
-    with _fake_server(model_max_model_len=1_048_576) as endpoint:
+def test_smoke_uses_an_explicit_nondefault_token_limit() -> None:
+    with _fake_server(model_max_model_len=262_144) as endpoint:
         result = smoke.run_smoke(
             endpoint=endpoint,
             model="qwen38",
             timeout=2,
-            expected_max_model_len=1_048_576,
+            expected_max_model_len=262_144,
         )
 
     assert result["status"] == "pass"
-    assert result["gates"]["models"]["observed"]["max_model_len"] == 1_048_576
+    assert result["gates"]["models"]["observed"]["max_model_len"] == 262_144
 
 
 def test_arithmetic_gate_ignores_response_ids_but_rejects_message_drift() -> None:
@@ -373,7 +373,7 @@ def test_all_gates_and_tool_completion_contract_without_http(monkeypatch):
             return 200, b""
 
         def get_json(self, path):
-            return 200, {"data": [{"id": "qwen38", "max_model_len": 1048576}]}
+            return 200, {"data": [{"id": "wrong-model" if self.failure == "models" else "qwen38", "max_model_len": 1048576}]}
 
         def post_json(self, path, payload):
             text = payload["messages"][0]["content"]
@@ -396,14 +396,15 @@ def test_all_gates_and_tool_completion_contract_without_http(monkeypatch):
             elif text.endswith("13."):
                 message["content"] = "13"
             else:
-                message["content"] = "17"
+                message["content"] = "13" if self.failure == "divergence" else "17"
             return {"choices": [{"message": message, "finish_reason": finish}]}
 
     client = Client()
     monkeypatch.setattr(smoke, "_Client", lambda *args: client)
     assert smoke.run_smoke("unused", "qwen38")["status"] == "pass"
-    for failure in ("finish", "type"):
+    for failure, gate in (("finish", "tool_call"), ("type", "tool_call"),
+                          ("models", "models"), ("divergence", "shared_prefix_divergence")):
         client.failure = failure
         result = smoke.run_smoke("unused", "qwen38")
         assert result["status"] == "fail"
-        assert result["gates"]["tool_call"]["status"] == "fail"
+        assert result["gates"][gate]["status"] == "fail"

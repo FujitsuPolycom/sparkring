@@ -45,6 +45,7 @@ def _write(path: Path, content: str = "", *, executable: bool = False) -> None:
 
 
 def _bash_path(path: str | Path) -> str:
+    """Translate fixture paths for WSL Bash on Windows, native Bash elsewhere."""
     value = str(path)
     if os.name != "nt":
         return value
@@ -418,7 +419,7 @@ def test_normal_mode_executes_the_preflighted_command(
     assert "--host\n0.0.0.0\n--port\n8000\n" in arguments
 
 
-def test_explicit_run_mode_overrides_the_image_sleep_command(
+def test_explicit_run_mode_executes_serving_command(
     prepared_rank: tuple[dict[str, str], Path, Path],
 ) -> None:
     env, _, marker = prepared_rank

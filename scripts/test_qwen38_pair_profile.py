@@ -8,6 +8,8 @@ import shlex
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 RECIPE = ROOT / "recipes" / "qwen38-27b-exl3-k5k6-pair.json"
@@ -265,15 +267,16 @@ def test_pair_launcher_rejects_inherited_cycle_transport(
     assert "cycle-only transport value must be unset" in result.stderr
 
 
-def test_pair_launcher_rejects_an_empty_gid_before_runtime_checks(
-    tmp_path: Path,
+@pytest.mark.parametrize("gid", ["", "::", "0000:0000:0000:0000:0000:0000:0000:0000"])
+def test_pair_launcher_rejects_empty_or_zero_gid_before_runtime_checks(
+    tmp_path: Path, gid: str,
 ) -> None:
     gid_root = tmp_path / "infiniband" / "fakehca" / "ports" / "1"
     (gid_root / "gids").mkdir(parents=True)
     (gid_root / "gid_attrs" / "types").mkdir(parents=True)
     (gid_root / "gid_attrs" / "ndevs").mkdir(parents=True)
     (gid_root / "gids" / "3").write_text(
-        "0000:0000:0000:0000:0000:0000:0000:0000\n",
+        gid + "\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -314,11 +317,11 @@ def test_quickstart_separates_normalized_and_shared_prefix_benchmarks() -> None:
     assert "sanitized command receipts" in text
 
 
-def test_profile_record_is_published() -> None:
+def test_profile_record_exists() -> None:
     assert PROFILE.is_file()
 
 
-def test_pair_sparkcache_composition_is_not_published() -> None:
+def test_pair_has_no_local_sparkcache_composition() -> None:
     composition = (
         ROOT
         / "recipes"

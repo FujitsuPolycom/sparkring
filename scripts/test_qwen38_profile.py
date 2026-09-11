@@ -307,7 +307,7 @@ def test_quickstart_command_matches_the_recipe() -> None:
         assert quickstart.count(shared_container_contract) == 2
 
 
-def test_profile_excludes_sparkcache_without_publishing_a_composition() -> None:
+def test_profile_documents_no_sparkcache_composition() -> None:
     profile = PROFILE_PATH.read_text(encoding="utf-8")
     compositions = ROOT / "recipes" / "sparkcache"
     assert "SparkCache" in profile
