@@ -33,8 +33,8 @@
       "size": 38326
     },
     "tests/v1/core/test_recurrent_prefill_checkpoint.py": {
-      "sha256": "4387079fa72427ab5eed256a581be3c1f0960b3efeebb2dfe3b2db9fb943ec03",
-      "size": 15307
+      "sha256": "5990938b2e1388d59da054522b7b3d40d4ec379a8b44c602ba471c660bf9cd52",
+      "size": 16169
     },
     "tests/v1/core/test_scheduler.py": {
       "sha256": "ac0cbd207d936cc806b94de8033df3a0e284362830f12e09bf831a414e281707",
@@ -113,8 +113,8 @@
       "size": 60830
     },
     "vllm/v1/core/recurrent_prefill_checkpoint.py": {
-      "sha256": "acbdef03730393fd61e556b2cfb21977321d317f3a4ffeb85df28b11cef1267f",
-      "size": 9988
+      "sha256": "6dd2c81f8197d4de666e214c7e3d287912aa741ceb064e15763d3b83ea3545e8",
+      "size": 10043
     },
     "vllm/v1/core/sched/output.py": {
       "sha256": "8ea57558c576d80971faf28aba3d093d3d0ca5ad773b79e586255c2695e30846",
@@ -162,6 +162,7 @@
       "vllm/v1/worker/gpu/model_runner.py",
       "vllm/v1/worker/gpu/model_states/mamba_hybrid.py"
     ],
+    "git_file_records_sha256": "bf4b2150ac4937b325d9b0ff1b0d676e12405e2f4ca940159b959cc7a4bde9e1",
     "native_input_paths": [
       "CMakeLists.txt",
       "cmake",
@@ -169,15 +170,14 @@
       "rust"
     ],
     "source_tree": "386191c06df9c4232cb2f48012968f48cfdc6eee",
-    "status": "byte-identical-native-input-archives",
-    "git_file_records_sha256": "bf4b2150ac4937b325d9b0ff1b0d676e12405e2f4ca940159b959cc7a4bde9e1"
+    "status": "byte-identical-native-input-archives"
   },
   "patch": {
     "path": "patches/vllm-r33-sparkring.patch",
-    "sha256": "a0840292894c227036b8a2f12fe9705450c456061cee12e08474e85f34287ab9",
-    "size": 201321
+    "sha256": "26c21814b7b3239ce8085cfee667ca60710e434586623c8f6d9db8aed987b97e",
+    "size": 202264
   },
-  "preserved_package_tree": "6c54193a3e9b842fa381095efa25dbb7f741402d",
+  "preserved_package_tree": "ac8e94ae4ae84d6edfffd97b0d60545c9714e62f",
   "required_b12x_checkpoint_contract": {
     "commit": "68acfc14893c087aa9b3120bb984fde4c4e7a21f",
     "max_checkpoints": 4,
@@ -186,10 +186,15 @@
     "tree": "284e7df8caff930477a314fea20d826256844de4"
   },
   "result": {
-    "cached_diff_sha256": "a0840292894c227036b8a2f12fe9705450c456061cee12e08474e85f34287ab9",
+    "cached_diff_sha256": "26c21814b7b3239ce8085cfee667ca60710e434586623c8f6d9db8aed987b97e",
     "status_lines": 33,
     "status_sha256": "0eda60c3efcc6a9fbc65e131f1b0164c582cc7de4783fb284cdfa82df6a6bcfe",
-    "tree": "6c54193a3e9b842fa381095efa25dbb7f741402d"
+    "tree": "4f1813fcd2fa1cfc94fdc69a256f2266e394ff90"
+  },
+  "scheduler_config_compatibility": {
+    "behavior": "Validate the R33 prefill compute-share and parallel-prefill controls without reading an absent scheduler field.",
+    "commit": "3049b639bdbc513319f7bae896c4e239992bc7bb",
+    "status": "implemented-and-cpu-qualified"
   },
   "schema": "sparkring-r33-vllm-source-composition/v1",
   "status": "implemented-source-only-gpu-qualification-pending"

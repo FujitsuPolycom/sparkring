@@ -1157,10 +1157,10 @@ index 1022125..14c935d 100644
      builder_b = _create_gdn_builder(full_cuda_graph=True)
 diff --git a/tests/v1/core/test_recurrent_prefill_checkpoint.py b/tests/v1/core/test_recurrent_prefill_checkpoint.py
 new file mode 100644
-index 0000000..93b5823
+index 0000000..d64e9d1
 --- /dev/null
 +++ b/tests/v1/core/test_recurrent_prefill_checkpoint.py
-@@ -0,0 +1,403 @@
+@@ -0,0 +1,428 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""Checkpoint planning, append-only ownership and worker metadata contracts."""
@@ -1282,7 +1282,8 @@ index 0000000..93b5823
 +            max_num_batched_tokens=8192,
 +            max_num_scheduled_tokens=None,
 +            long_prefill_token_threshold=0,
-+            fairness_engine=None,
++            prefill_compute_share=None,
++            max_parallel_prefills=1,
 +            enable_chunked_prefill=True,
 +        ),
 +        use_v2_model_runner=True,
@@ -1564,6 +1565,30 @@ index 0000000..93b5823
 +    assert manager.hit_alignment_tokens == 512
 +    assert scheduler._recurrent_checkpoint_plan(request, 0, 8192) is None
 +    assert scheduler._mamba_block_aligned_split(request, 8192) == 4096
++
++
++@pytest.mark.parametrize(
++    "share,lanes,accepted", [(None, 1, True), (0.5, 1, False), (None, 2, False)]
++)
++def test_coalescing_real_r33_scheduler_config(monkeypatch, share, lanes, accepted):
++    from vllm.config.scheduler import SchedulerConfig
++
++    monkeypatch.setenv("VLLM_B12X_KDA_PREFILL_COALESCING", "1")
++    config = supported_config()
++    config.scheduler_config = SchedulerConfig(
++        max_model_len=1048576,
++        is_encoder_decoder=False,
++        max_num_batched_tokens=8192,
++        max_num_seqs=16,
++        enable_chunked_prefill=True,
++        prefill_compute_share=share,
++        max_parallel_prefills=lanes,
++    )
++    if accepted:
++        assert validate_coalescing_config(config)
++    else:
++        with pytest.raises(ValueError, match="requires"):
++            validate_coalescing_config(config)
 diff --git a/tests/v1/core/test_scheduler.py b/tests/v1/core/test_scheduler.py
 index 2d4711c..f97fcf1 100644
 --- a/tests/v1/core/test_scheduler.py
@@ -3861,10 +3886,10 @@ index 79a4f28..67c587c 100644
          if num_new_tokens == 0 and num_external_computed_tokens == 0:
 diff --git a/vllm/v1/core/recurrent_prefill_checkpoint.py b/vllm/v1/core/recurrent_prefill_checkpoint.py
 new file mode 100644
-index 0000000..0752549
+index 0000000..d16ad96
 --- /dev/null
 +++ b/vllm/v1/core/recurrent_prefill_checkpoint.py
-@@ -0,0 +1,260 @@
+@@ -0,0 +1,261 @@
 +# SPDX-License-Identifier: Apache-2.0
 +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 +"""Checkpoint plans and physical ownership for bounded KDA prefill."""
@@ -4055,7 +4080,8 @@ index 0000000..0752549
 +        and scheduler.max_num_batched_tokens == 8192
 +        and scheduler.max_num_scheduled_tokens in (None, 8192)
 +        and scheduler.long_prefill_token_threshold in (0, 8192)
-+        and scheduler.fairness_engine is None
++        and scheduler.prefill_compute_share is None
++        and scheduler.max_parallel_prefills == 1
 +        and scheduler.enable_chunked_prefill
 +        and cache.enable_prefix_caching
 +        and cache.mamba_cache_mode == "align"

@@ -22,7 +22,7 @@ values prove admission only; they do not prove that a runtime path executed.
 ## Continuation-prefill coalescing
 
 Status: **implemented, GPU qualification pending**. The vLLM source composition
-identified by tree `6c54193a3e9b842fa381095efa25dbb7f741402d` carries sparse
+identified by tree `4f1813fcd2fa1cfc94fdc69a256f2266e394ff90` carries sparse
 checkpoint plans through scheduling, allocation, worker metadata and Kimi GDN
 execution. It preserves R33's packed FlashKDA metadata path. The B12X path uses
 fixed four-column checkpoint metadata and requires a B12X package that supports

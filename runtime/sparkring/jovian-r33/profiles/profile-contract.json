@@ -4,12 +4,12 @@
   "image": {
     "selection": "external-immutable-receipt",
     "artifact_lock": "../image/artifact-lock.json",
-    "artifact_lock_sha256": "927a97e300e79b102311ac94824dce4323800538fd6feb54fd937b0aaf98c05b",
+    "artifact_lock_sha256": "2637c8ed6d4a130f25763256b5886eb4bbfd93fa29858395a52fd2a3e1e1c9a1",
     "required_platform": "linux/arm64",
     "required_sources": {
       "vllm_head": "ae89131442359dc332d9c46009be3c1f8cdee0b4",
-      "vllm_integrated_tree": "6c54193a3e9b842fa381095efa25dbb7f741402d",
-      "vllm_cached_diff_sha256": "a0840292894c227036b8a2f12fe9705450c456061cee12e08474e85f34287ab9",
+      "vllm_integrated_tree": "4f1813fcd2fa1cfc94fdc69a256f2266e394ff90",
+      "vllm_cached_diff_sha256": "26c21814b7b3239ce8085cfee667ca60710e434586623c8f6d9db8aed987b97e",
       "vllm_status_sha256": "0eda60c3efcc6a9fbc65e131f1b0164c582cc7de4783fb284cdfa82df6a6bcfe",
       "vllm_status_lines": 33,
       "vllm_native_tree": "386191c06df9c4232cb2f48012968f48cfdc6eee",
@@ -60,7 +60,8 @@
       "sircl_source_archive_sha256": "fe3e12de5cb1b392f015a751d7b27b6210c95fa7613113fd7895990e2041db0f",
       "vllm_continuation_port_commit": "b611611a643502542c2d900057eb47e407b8379e",
       "vllm_continuation_port_tree": "afea43a927e1989a9ec4d9d4f28247bcf0feb98a",
-      "vllm_source_manifest_sha256": "4e996963617c3c41e2aa32b7d492d3bcda6a0578af0aa23bd21f3fb2c4ace207"
+      "vllm_source_manifest_sha256": "49d1be5949f7327e62f617ad4961a762ff30173dfbbb181d9d0adb3fff56c7b8",
+      "vllm_scheduler_config_compatibility_commit": "3049b639bdbc513319f7bae896c4e239992bc7bb"
     },
     "required_receipts": [
       "arm-wheels-SHA256SUMS",
