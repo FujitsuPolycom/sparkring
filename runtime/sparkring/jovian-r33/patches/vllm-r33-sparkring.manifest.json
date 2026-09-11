@@ -29,8 +29,12 @@
       "size": 33519
     },
     "tests/v1/attention/test_gdn_metadata_builder.py": {
-      "sha256": "eef8b1ffc8229d2012dfd1808649cf338e6af4d544fffc08406be14f8f3e10fb",
-      "size": 38326
+      "sha256": "6977fd6e088520bcabbb8ad6f01bf013df5c7e91d2802d179dcb9bd1b52951e2",
+      "size": 39236
+    },
+    "tests/v1/core/test_prefix_caching.py": {
+      "sha256": "6958bd09a1ef8cc8ae0c0819e8cb00b977c998587185c440c6a16c5058878bbc",
+      "size": 191892
     },
     "tests/v1/core/test_recurrent_prefill_checkpoint.py": {
       "sha256": "5990938b2e1388d59da054522b7b3d40d4ec379a8b44c602ba471c660bf9cd52",
@@ -105,8 +109,8 @@
       "size": 41061
     },
     "vllm/v1/attention/backends/gdn_attn.py": {
-      "sha256": "1cb0a1727705208ddbf5a237a35de3cace85b7cc389a8aa2f070c8a14d2f3145",
-      "size": 46382
+      "sha256": "d70afea4ef9c9da60cbe82223356ce7805fe0648781a31aa7cf21bb007f0e907",
+      "size": 47456
     },
     "vllm/v1/core/kv_cache_manager.py": {
       "sha256": "0880f7bee9c2bbbdd4d2be3c41827cffb24669fdc65fbf5ea0b4b13ba6e3d25e",
@@ -127,6 +131,10 @@
     "vllm/v1/core/single_type_kv_cache_manager.py": {
       "sha256": "e0c18ad0948d92fc0bf42fd90ecfa45bc3811b4c54a17c042f6149a2745f403c",
       "size": 115250
+    },
+    "vllm/v1/kv_cache_interface.py": {
+      "sha256": "1e308dd6389f0e17aec0ecf47853f611cb06f8f24cee4ca4736e963dc8a5d0cd",
+      "size": 51240
     },
     "vllm/v1/worker/gpu/model_runner.py": {
       "sha256": "089acb88aaac6743646eb1d4717eff1639d777d4a1d57d6503ff66066d61fc65",
@@ -180,8 +188,8 @@
   },
   "patch": {
     "path": "patches/vllm-r33-sparkring.patch",
-    "sha256": "73df604d183a3309109ac3e97e1a952e99d111b5761ef2e67fbf41a7957f4ae2",
-    "size": 218784
+    "sha256": "387b68338c8084d4f339eff4804e9b4c99c87a74ac32019d52397b401c063433",
+    "size": 225121
   },
   "prefix_hit_metadata_compatibility": {
     "behavior": "Normalize vector and packed-CSR fallback metadata into cleared four-column B12X buffers and use the same normalized destinations for recurrent and convolution checkpoint state.",
@@ -197,10 +205,10 @@
     "tree": "284e7df8caff930477a314fea20d826256844de4"
   },
   "result": {
-    "cached_diff_sha256": "73df604d183a3309109ac3e97e1a952e99d111b5761ef2e67fbf41a7957f4ae2",
-    "status_lines": 33,
-    "status_sha256": "0eda60c3efcc6a9fbc65e131f1b0164c582cc7de4783fb284cdfa82df6a6bcfe",
-    "tree": "0511a78617bb755ea2901ef3c5db7547bc1e148d"
+    "cached_diff_sha256": "387b68338c8084d4f339eff4804e9b4c99c87a74ac32019d52397b401c063433",
+    "status_lines": 35,
+    "status_sha256": "78fe89198cbaeb21c21b57aad6013008f1e851ce3e376e8a73efba5c56eb64e3",
+    "tree": "f85a62b998b80ef3ae14799115d1b47398ede46e"
   },
   "scheduler_config_compatibility": {
     "behavior": "Validate the R33 prefill compute-share and parallel-prefill controls without reading an absent scheduler field.",
@@ -208,5 +216,11 @@
     "status": "implemented-and-cpu-qualified"
   },
   "schema": "sparkring-r33-vllm-source-composition/v1",
-  "status": "implemented-source-only-gpu-qualification-pending"
+  "status": "implemented-source-only-gpu-qualification-pending",
+  "unplanned_checkpoint_capacity": {
+    "behavior": "Use packed checkpoint export only when every internal boundary fits the declared reserve. Longer unplanned queries retain the aligned final state and, when needed, one final partial boundary through the sparse allocator path.",
+    "commit": "7a2dad4",
+    "qualification": "ARM allocator and metadata tests 5/5, including exact NULL/unhashed omitted columns.",
+    "status": "implemented-cpu-qualified-full-model-pending"
+  }
 }

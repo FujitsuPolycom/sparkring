@@ -50,7 +50,7 @@ defines the immutable logs, process maps, status snapshots, and request receipts
 required to prove that every rank used the same image and NCCL 2.31.2, both host
 domains carried NCCL, the exact graph set was captured, and InstantTensor, MTP3,
 mHC, and the selected custom transport executed. Package verification of the
-prefix-hit metadata fix in source tree `0511a78617bb755ea2901ef3c5db7547bc1e148d`
+prefix-hit metadata fix in source tree `f85a62b998b80ef3ae14799115d1b47398ede46e`
 does not qualify model execution. TP4 model qualification for that composition
 is pending, and TP2 is unqualified. TP2 evidence must show disabled coalescing
 and mHC ownership matching its observed prefill ceiling. TP4 requires

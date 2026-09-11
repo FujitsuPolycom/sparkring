@@ -93,7 +93,7 @@
       "sha256": "fa7b4662fbc08e3865d88ee7350d72dd7f729921e70070ebaafd29ac374eb86b"
     }
   ],
-  "qualification": "Research-only source contract for vLLM tree 0511a78617bb755ea2901ef3c5db7547bc1e148d. Static review confirms the continuation additions preserve connector metadata ordering, read-lease ownership, failure retirement, and post-forward completion. Existing CPU checkpoint, hybrid-recovery, connector-capability, and callback suites pass. Distributed capture, restore, corruption recovery, and model correctness remain unqualified.",
+  "qualification": "Research-only source contract for vLLM tree f85a62b998b80ef3ae14799115d1b47398ede46e. Static review confirms the continuation additions preserve connector metadata ordering, read-lease ownership, failure retirement, and post-forward completion. Existing CPU checkpoint, hybrid-recovery, connector-capability, and callback suites pass. Distributed capture, restore, corruption recovery, and model correctness remain unqualified.",
   "required_semantics": [
     "scheduler-binds-owning-block-pool",
     "block-state-and-boundary-offers-describe-one-scheduled-step",
@@ -119,7 +119,7 @@
     "comparison_tree": "a2ad36dbd49ec399b8f2cb485e6053abc5f42803",
     "conclusion": "The changed source preserves every required connector-job lease invariant."
   },
-  "source_composition_manifest_sha256": "c83d19aec94108789f434ca1910684941125f344d6ec00e8f87b4210650cf427",
+  "source_composition_manifest_sha256": "4ad604429d4c6af7c428722ddb373f362267dfb6ff3fc18301fcd4331d395396",
   "vllm_commit": "ae89131442359dc332d9c46009be3c1f8cdee0b4",
-  "vllm_tree": "0511a78617bb755ea2901ef3c5db7547bc1e148d"
+  "vllm_tree": "f85a62b998b80ef3ae14799115d1b47398ede46e"
 }

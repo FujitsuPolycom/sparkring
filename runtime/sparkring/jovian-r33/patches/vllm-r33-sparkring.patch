@@ -1095,13 +1095,33 @@ index 0000000..7988fbf
 +        None, config, is_dummy_run=True
 +    ).is_dummy_run
 diff --git a/tests/v1/attention/test_gdn_metadata_builder.py b/tests/v1/attention/test_gdn_metadata_builder.py
-index 1022125..14c935d 100644
+index 1022125..69a1999 100644
 --- a/tests/v1/attention/test_gdn_metadata_builder.py
 +++ b/tests/v1/attention/test_gdn_metadata_builder.py
-@@ -603,6 +603,56 @@ def test_gdn_packed_checkpoints_cover_internal_boundaries_and_empty_ranges() ->
+@@ -603,6 +603,76 @@ def test_gdn_packed_checkpoints_cover_internal_boundaries_and_empty_ranges() ->
      )
  
  
++def test_gdn_unplanned_query_over_capacity_uses_final_sparse_boundary() -> None:
++    builder = _create_gdn_builder(num_prefill_checkpoint_blocks=4)
++    builder.vllm_config.cache_config.mamba_cache_mode = "align"
++    batch = BatchSpec(seq_lens=[96, 95], query_lens=[96, 95])
++    common = create_common_attn_metadata(
++        batch,
++        BLOCK_SIZE,
++        DEVICE,
++        arange_block_indices=True,
++    ).replace(is_prefilling=torch.tensor([True, True]))
++    metadata = builder.build(common_prefix_len=0, common_attn_metadata=common)
++    checkpoint = metadata.prefill_checkpoint
++    assert checkpoint is not None
++    assert checkpoint.checkpoint_offsets.tolist() == [80]
++    assert checkpoint.checkpoint_indptr.tolist() == [0, 0, 1]
++    assert checkpoint.checkpoint_query_indices.tolist() == [1]
++    assert checkpoint.request_rows.tolist() == [1]
++    assert checkpoint.block_table_columns.tolist() == [4]
++
++
 +def test_gdn_sparse_four_checkpoint_plan_preserves_r33_packed_metadata() -> None:
 +    """Explicit B12X plans use a matrix without changing packed FlashKDA rows."""
 +    builder = _create_gdn_builder(num_prefill_checkpoint_blocks=4)
@@ -1155,6 +1175,61 @@ index 1022125..14c935d 100644
  def test_gdn_update_block_table_uses_current_builders_graph_buffers() -> None:
      builder_a = _create_gdn_builder(full_cuda_graph=True)
      builder_b = _create_gdn_builder(full_cuda_graph=True)
+diff --git a/tests/v1/core/test_prefix_caching.py b/tests/v1/core/test_prefix_caching.py
+index 8859998..fe64574 100644
+--- a/tests/v1/core/test_prefix_caching.py
++++ b/tests/v1/core/test_prefix_caching.py
+@@ -4774,11 +4774,48 @@ def test_mamba_packed_prefill_bounds_admission_to_one_query():
+         )
+         == 5
+     )
+-    with pytest.raises(ValueError, match="declared capacity"):
+-        spec.prefill_checkpoint_indices(0, 96)
++    assert spec.prefill_checkpoint_indices(0, 96) == ()
+     assert spec.prefill_checkpoint_indices(17, 64) == ()
+ 
+ 
++@pytest.mark.parametrize("num_tokens,expected", [(96, 1), (95, 2)])
++def test_mamba_long_unplanned_prefill_falls_back_to_sparse_boundary(
++    num_tokens, expected
++):
++    from vllm.v1.core.single_type_kv_cache_manager import MambaManager
++
++    spec = MambaSpec(
++        block_size=16,
++        shapes=((2, 2),),
++        dtypes=(torch.float32,),
++        mamba_cache_mode="align",
++        num_prefill_checkpoint_blocks=4,
++    )
++    manager = MambaManager(
++        spec,
++        BlockPool(64, True, 16),
++        enable_caching=True,
++        kv_cache_group_id=0,
++        scheduler_block_size=64,
++    )
++    assert (
++        manager.get_num_blocks_to_allocate(
++            "long-unplanned", num_tokens, (), 0, 0, num_tokens
++        )
++        == expected
++    )
++    manager.allocate_new_blocks("long-unplanned", num_tokens, num_tokens)
++    blocks = manager.req_to_blocks["long-unplanned"]
++    final_column = (num_tokens - 1) // 16
++    checkpoint_column = final_column - 1 if num_tokens % 16 else None
++    assert sum(not block.is_null for block in blocks) == expected
++    for column, block in enumerate(blocks):
++        retained = column in (final_column, checkpoint_column)
++        assert block.is_null is not retained
++        if not retained:
++            assert block.block_hash is None
++
++
+ def test_mamba_reachable_block_mask_pins_shared_prefix():
+     """A Marconi-detected shared prefix (``shared_prefix_boundary``) lands before
+     ``num_prompt`` so the replay-boundary rule alone would drop it. The mask must
 diff --git a/tests/v1/core/test_recurrent_prefill_checkpoint.py b/tests/v1/core/test_recurrent_prefill_checkpoint.py
 new file mode 100644
 index 0000000..d64e9d1
@@ -3998,7 +4073,7 @@ index 917cc23..7760260 100644
  
  
 diff --git a/vllm/v1/attention/backends/gdn_attn.py b/vllm/v1/attention/backends/gdn_attn.py
-index acbdc2f..4d24662 100644
+index acbdc2f..316c948 100644
 --- a/vllm/v1/attention/backends/gdn_attn.py
 +++ b/vllm/v1/attention/backends/gdn_attn.py
 @@ -24,6 +24,10 @@ from vllm.v1.attention.backends.utils import (
@@ -4020,7 +4095,7 @@ index acbdc2f..4d24662 100644
  
  
  @dataclass
-@@ -642,15 +647,42 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
+@@ -642,26 +647,72 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
  
              seq_lens = m.seq_lens_cpu_upper_bound.tolist()
              block_size = self.kv_cache_spec.block_size
@@ -4066,7 +4141,44 @@ index acbdc2f..4d24662 100644
                  if packed:
                      columns = self.kv_cache_spec.prefill_checkpoint_indices(
                          seq_len - query_len, seq_len
-@@ -692,7 +724,8 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
+                     )
+-                    checkpoint_columns.extend(columns)
+-                    checkpoint_offsets.extend(
+-                        (column + 1) * block_size - (seq_len - query_len)
+-                        for column in columns
+-                    )
+-                    checkpoint_query_indices.extend([query_index] * len(columns))
+-                    checkpoint_request_rows.extend([row] * len(columns))
++                    if columns:
++                        checkpoint_columns.extend(columns)
++                        checkpoint_offsets.extend(
++                            (column + 1) * block_size - (seq_len - query_len)
++                            for column in columns
++                        )
++                        checkpoint_query_indices.extend([query_index] * len(columns))
++                        checkpoint_request_rows.extend([row] * len(columns))
++                    else:
++                        # An unplanned query can cross more boundaries than
++                        # the bounded packed-checkpoint reserve. Match the
++                        # sparse allocator by retaining only its final partial
++                        # boundary; an aligned final state needs no checkpoint.
++                        offset = seq_len // block_size * block_size - (
++                            seq_len - query_len
++                        )
++                        valid = (
++                            seq_len % block_size != 0
++                            and 0 < offset < query_len
++                            and offset % 16 == 0
++                        )
++                        if valid:
++                            checkpoint_offsets.append(offset)
++                            checkpoint_columns.append(seq_len // block_size - 1)
++                            checkpoint_query_indices.append(query_index)
++                            checkpoint_request_rows.append(row)
+                     checkpoint_indptr.append(len(checkpoint_offsets))
+                     continue
+                 offset = seq_len // block_size * block_size - (seq_len - query_len)
+@@ -692,7 +743,8 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
                      device=query_start_loc.device,
                  )
                  checkpoint_state_indices = m.block_table_tensor[
@@ -4076,7 +4188,7 @@ index acbdc2f..4d24662 100644
                  ]
                  checkpoint_state_indices = torch.where(
                      checkpoint_columns_tensor >= 0,
-@@ -722,7 +755,24 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
+@@ -722,7 +774,24 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
                          if packed
                          else None
                      ),
@@ -4101,7 +4213,7 @@ index acbdc2f..4d24662 100644
  
          # Function code counted on either presency non-spec decode or spec decode,
          # but not both.
-@@ -898,7 +948,9 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
+@@ -898,7 +967,9 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
          prefill_checkpoint = metadata.prefill_checkpoint
          if prefill_checkpoint is not None:
              checkpoint_state_indices = blk_table[
@@ -4112,7 +4224,7 @@ index acbdc2f..4d24662 100644
                  prefill_checkpoint.block_table_columns,
              ]
              checkpoint_state_indices = torch.where(
-@@ -906,6 +958,14 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
+@@ -906,6 +977,14 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
                  checkpoint_state_indices,
                  NULL_BLOCK_ID,
              )
@@ -5118,6 +5230,32 @@ index 728a4d5..993c092 100644
              self._producer_partial_tail_reqs.pop(request_id, None)
              # An offer is only guaranteed to hold committed bytes until the end
              # of the pass that made it. This request's blocks are going back to
+diff --git a/vllm/v1/kv_cache_interface.py b/vllm/v1/kv_cache_interface.py
+index b6e3c15..557a98f 100644
+--- a/vllm/v1/kv_cache_interface.py
++++ b/vllm/v1/kv_cache_interface.py
+@@ -872,8 +872,10 @@ class MambaSpec(KVCacheSpec):
+         output path. Columns are shared by allocator and attention metadata so
+         no uninitialized page can be advertised as a reusable checkpoint.
+ 
+-        Raises:
+-            ValueError: If the query exceeds the declared checkpoint capacity.
++        Queries with more internal boundaries than the declared capacity use
++        the ordinary sparse final-boundary path instead. This keeps an
++        unplanned long prefill executable without advertising checkpoint pages
++        that the allocator cannot retain.
+         """
+         if (
+             self.num_prefill_checkpoint_blocks <= 1
+@@ -887,7 +889,7 @@ class MambaSpec(KVCacheSpec):
+         stop = (num_tokens - 1) // self.block_size
+         columns = tuple(range(first, stop))
+         if len(columns) > self.num_prefill_checkpoint_blocks:
+-            raise ValueError("Prefill checkpoint count exceeds its declared capacity")
++            return ()
+         return columns
+ 
+     @property
 diff --git a/vllm/v1/worker/gpu/model_runner.py b/vllm/v1/worker/gpu/model_runner.py
 index 264245c..1df1d4e 100644
 --- a/vllm/v1/worker/gpu/model_runner.py

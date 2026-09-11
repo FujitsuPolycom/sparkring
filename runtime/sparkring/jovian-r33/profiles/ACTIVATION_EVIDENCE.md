@@ -22,7 +22,7 @@ values prove admission only; they do not prove that a runtime path executed.
 ## Continuation-prefill coalescing
 
 Status: **implemented, GPU qualification pending**. The vLLM source composition
-identified by tree `0511a78617bb755ea2901ef3c5db7547bc1e148d` carries sparse
+identified by tree `f85a62b998b80ef3ae14799115d1b47398ede46e` carries sparse
 checkpoint plans through scheduling, allocation, worker metadata and Kimi GDN
 execution. It preserves R33's packed FlashKDA metadata path. The B12X path uses
 fixed four-column checkpoint metadata and requires a B12X package that supports
@@ -48,7 +48,7 @@ The source patch and complete changed-file manifest are packaged as
 `vllm-source-composition.patch` and
 `vllm-source-composition-manifest.json`. Their hashes must match the image's
 source lock. The prefix-hit metadata fix in tree
-`0511a78617bb755ea2901ef3c5db7547bc1e148d` has package verification; model
+`f85a62b998b80ef3ae14799115d1b47398ede46e` has package verification; model
 qualification is pending. A bounded TP4 run of tree `4f1813fc` demonstrated
 mHC and coalescing execution but failed on a prefix-cache-hit request. That
 result proves execution only for that source tree and does not establish
