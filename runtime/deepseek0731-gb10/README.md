@@ -123,8 +123,11 @@ The native `0002` patch retains its upstream-series commit message, which
 names the r29 `0003` producer patch. In this GB10 builder, that Python/Triton
 producer change is carried by `0001-gb10-deepseek-runtime-hardening.patch`.
 
-`runtime-contract.json` records every preimage, result, build input, source
-header, and native artifact hash. Any drift stops the build.
+`runtime-contract.json` pins source preimages, patched files, native build
+inputs, and the required native library size. Source and ABI mismatches stop
+the build. The rebuilt library digest is compared with the reference artifact
+for reporting; it may differ. Final installation must match the digest and
+ABI fields recorded for that build.
 
 ## Build
 

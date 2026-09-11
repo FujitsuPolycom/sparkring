@@ -22,7 +22,9 @@ def _defaults(path: Path = ENVIRONMENT) -> dict[str, str]:
     for line in path.read_text(encoding="utf-8").splitlines():
         match = re.fullmatch(r"([A-Z0-9_]+)=(?:'([^']*)'|([^#\s]+))", line)
         if match:
-            values[match.group(1)] = match.group(2) or match.group(3)
+            values[match.group(1)] = (
+                match.group(2) if match.group(2) is not None else match.group(3)
+            )
     return values
 
 
@@ -181,55 +183,7 @@ def test_launcher_resolves_dcp_profiles_and_prompt_token_details(
     tmp_path: Path, capture_mode: str, access_mode: str, capture_enabled: bool,
 ) -> None:
     subprocess.run(["bash", "-n", _bash_path(LAUNCHER)], check=True, cwd=ROOT)
-    fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
-    capture = tmp_path / "docker-arguments.txt"
-    docker = fake_bin / "docker"
-    docker.write_text(
-        """#!/bin/sh
-if [ "$1" = image ] && [ "$2" = inspect ]; then
-  printf '%s\n' "$EXPECTED_IMAGE_ID"
-elif [ "$1" = container ] && [ "$2" = inspect ]; then
-  exit 1
-elif [ "$1" = run ]; then
-  printf '%s\n' "$@" > "$CAPTURE_PATH"
-else
-  exit 97
-fi
-        """,
-        encoding="utf-8",
-        newline="\n",
-    )
-    os.chmod(docker, 0o755)
-    sha256sum = fake_bin / "sha256sum"
-    sha256sum.write_text(
-        """#!/bin/sh
-case "$2" in
-  */target/config.json) hash=676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996 ;;
-  */target/model.safetensors.index.json) hash=0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb ;;
-  */draft/config.json) hash=c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573 ;;
-  */draft/model.safetensors) hash=b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b ;;
-  */libspark_transport_capi.so) hash=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;
-  */sparkring-overlay-manifest.json) hash=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb ;;
-  *) exit 95 ;;
-esac
-printf '%s  %s\n' "$hash" "$2"
-        """,
-        encoding="utf-8",
-        newline="\n",
-    )
-    os.chmod(sha256sum, 0o755)
-
-    directories = {name: tmp_path / name for name in ("target", "draft", "cache")}
-    for directory in directories.values():
-        directory.mkdir()
-    for path in (
-        directories["target"] / "config.json",
-        directories["target"] / "model.safetensors.index.json",
-        directories["draft"] / "config.json",
-        directories["draft"] / "model.safetensors",
-    ):
-        path.write_text("fixture", encoding="utf-8")
+    fake_bin, capture, directories = _launcher_fixture(tmp_path)
 
     for dcp, interleave, gather, kv_bytes in (
         (1, "1", "0", "25769803776"),
@@ -454,53 +408,7 @@ def test_launcher_rejects_shared_prefix_retention_above_five_minutes(
     reason="WSL DrvFS reports Windows temporary files as mode 0777",
 )
 def test_launcher_renders_optional_multi_key_authentication(tmp_path: Path) -> None:
-    fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
-    capture = tmp_path / "docker-arguments.txt"
-    docker = fake_bin / "docker"
-    docker.write_text(
-        """#!/bin/sh
-if [ "$1" = image ] && [ "$2" = inspect ]; then
-  printf '%s\n' "$EXPECTED_IMAGE_ID"
-elif [ "$1" = container ] && [ "$2" = inspect ]; then
-  exit 1
-elif [ "$1" = run ]; then
-  printf '%s\n' "$@" > "$CAPTURE_PATH"
-else
-  exit 97
-fi
-        """,
-        encoding="utf-8",
-        newline="\n",
-    )
-    os.chmod(docker, 0o755)
-    sha256sum = fake_bin / "sha256sum"
-    sha256sum.write_text(
-        """#!/bin/sh
-case "$2" in
-  */target/config.json) hash=676382abd1e90a6c85f0c8f33d45441ecd45fd514fd7b63ce5610e732d8e4996 ;;
-  */target/model.safetensors.index.json) hash=0d1d9e6b226e76520e182de10d4e7194cc885c5cb1bf885bb90de1916ce312cb ;;
-  */draft/config.json) hash=c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573 ;;
-  */draft/model.safetensors) hash=b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b ;;
-  *) exit 95 ;;
-esac
-printf '%s  %s\n' "$hash" "$2"
-        """,
-        encoding="utf-8",
-        newline="\n",
-    )
-    os.chmod(sha256sum, 0o755)
-
-    directories = {name: tmp_path / name for name in ("target", "draft", "cache")}
-    for directory in directories.values():
-        directory.mkdir()
-    for path in (
-        directories["target"] / "config.json",
-        directories["target"] / "model.safetensors.index.json",
-        directories["draft"] / "config.json",
-        directories["draft"] / "model.safetensors",
-    ):
-        path.write_text("fixture", encoding="utf-8")
+    fake_bin, capture, directories = _launcher_fixture(tmp_path)
 
     def launch(name: str, *overrides: str) -> subprocess.CompletedProcess[str]:
         config = tmp_path / f"{name}.env"
@@ -1001,7 +909,7 @@ def test_fused_sircl_overlay_is_complete_and_sanitized() -> None:
     values = _defaults(SIRCL_ENVIRONMENT)
     assert values == {
         "SIRCL_ENABLED": "1",
-        "SIRCL_BUNDLE_HOST_ROOT": None,
+        "SIRCL_BUNDLE_HOST_ROOT": "",
         "SPARK_TP4_PEER0": "REPLACE_WITH_PRIMARY_PEER_0_ADDRESS",
         "SPARK_TP4_PEER1": "REPLACE_WITH_PRIMARY_PEER_1_ADDRESS",
         "SPARK_TP4_DEVICE0": "rocep1s0f0",

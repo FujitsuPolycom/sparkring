@@ -62,7 +62,7 @@ def test_replay_covers_safe_positive_and_negative_recovery() -> None:
     assert cases["truncated_invoke"]["expected"] == "content"
 
 
-def test_replay_uses_noyb_emit_result_contract() -> None:
+def test_replay_uses_declared_emit_result_tool() -> None:
     module = _module()
     text = module._invoke()
     assert 'invoke name="emit_result"' in text
