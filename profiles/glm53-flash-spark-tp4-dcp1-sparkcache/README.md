@@ -7,7 +7,7 @@ Context defaults to 1M tokens. SparkCache is optional.
 | Selection | KV allocation per rank | Recorded KV tokens | Procedure |
 |---|---:|---:|---|
 | DCP1, with or without SparkCache | 24 GiB | 2.3M reference | Deployment suite below |
-| DCP4, with or without SparkCache | 24 GiB | 8.4M with SparkCache | [Contract-overlay procedure](#dcp4-alternative) |
+| DCP4, with or without SparkCache | 24 GiB | 8.4M with SparkCache | [DCP4 setup](#dcp4-alternative) |
 
 Capacity depends on enabled features. The validated results are scoped to the
 [image and workload records](#validation-and-results), not every possible configuration.
