@@ -653,6 +653,14 @@ for name in "${model_path_names[@]}"; do
   [[ "${value}" != *:* && "${value}" != *$'\n'* ]] || \
     die "${name} cannot be represented safely as a Docker bind mount"
 done
+R33_PROFILE_CONTRACT_HOST_ROOT=${R33_PROFILE_CONTRACT_HOST_ROOT:-}
+if [[ "${r33_profile}" == 1 && -n "${R33_PROFILE_CONTRACT_HOST_ROOT}" ]]; then
+  [[ "${R33_PROFILE_CONTRACT_HOST_ROOT}" == /* ]] || \
+    die 'R33_PROFILE_CONTRACT_HOST_ROOT must be an absolute host path'
+  [[ -f "${R33_PROFILE_CONTRACT_HOST_ROOT}/profile-contract.json" && \
+     -f "${R33_PROFILE_CONTRACT_HOST_ROOT}/verify_profile.py" ]] || \
+    die 'R33_PROFILE_CONTRACT_HOST_ROOT must contain profile-contract.json and verify_profile.py'
+fi
 sparkcache_source_args=()
 if [[ -n "${SPARKCACHE_SOURCE_OVERLAY}" ]]; then
   [[ "${SPARKCACHE_SOURCE_OVERLAY}" == /* ]] || \
@@ -969,6 +977,13 @@ verify_file_sha256 \
   'b33c03475ba7322cf398828f2d8d1be376df30dc05c6b40c28c8ea8da23e410b'
   draft_mount_args=(-v "${DFLASH_MODEL_HOST_PATH}:/dflash-draft:ro")
 fi
+r33_contract_mount_args=()
+if [[ "${r33_profile}" == 1 && -n "${R33_PROFILE_CONTRACT_HOST_ROOT}" ]]; then
+  r33_contract_mount_args=(
+    -v "${R33_PROFILE_CONTRACT_HOST_ROOT}:/opt/sparkring/profile-contract:ro"
+    -v "${R33_PROFILE_CONTRACT_HOST_ROOT}/../image/entrypoint.py:/opt/sparkring/bin/sparkring-r33:ro"
+  )
+fi
 
 container="${CONTAINER_PREFIX}-r${rank}"
 if [[ "${SPARKRING_PRINT_CONTAINER_SPEC}" == 0 ]] && docker container inspect "${container}" >/dev/null 2>&1; then
@@ -1197,6 +1212,7 @@ container_command=(docker "${container_action[@]}" \
   "${sparkcache_source_args[@]}" \
   "${vllm_metrics_args[@]}" \
   "${sircl_args[@]}" \
+  "${r33_contract_mount_args[@]}" \
   "${replay_timing_args[@]}" \
   -e "SPARKRING_NODE_RANK=${rank}" \
   -e "PORT=${PORT}" -e "SERVED_MODEL_NAME=${SERVED_MODEL_NAME}" \

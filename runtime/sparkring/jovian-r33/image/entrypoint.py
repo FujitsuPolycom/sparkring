@@ -12,7 +12,14 @@ import sys
 VERIFY = "/opt/sparkring/bin/verify-candidate"
 PYTHON = "/opt/venv/bin/python"
 PROFILE_ROOT = Path("/opt/sparkring/profile-contract")
-ALLOWED_PROFILES = {"tp2-dcp1", "tp2-dcp1-sparkcache", "tp4-dcp1", "tp4-dcp1-sparkcache"}
+ALLOWED_PROFILES = {
+    "tp2-dcp1",
+    "tp2-dcp1-sparkcache",
+    "tp4-dcp1",
+    "tp4-dcp1-sparkcache",
+    "tp4-dcp4",
+    "tp4-dcp4-sparkcache",
+}
 PLACEHOLDER_MARKERS = ("<", ">", "${")
 
 
