@@ -1,35 +1,19 @@
 # SparkRing prerequisites
 
-The maintained guide is [here](operations/prerequisites.md). Existing commands remain valid.
+See the [maintained guide](operations/prerequisites.md). Section links below retain existing anchors.
 
-## Hardware and topology
+## [Hardware and topology](operations/prerequisites.md#hardware-and-topology)
 
-See the [maintained guide](operations/prerequisites.md).
+## [Operating system and storage](operations/prerequisites.md#operating-system-and-storage)
 
-## Operating system and storage
+## [Network requirements](operations/prerequisites.md#network-requirements)
 
-See the [maintained guide](operations/prerequisites.md).
+### [Four-Spark managed hardware-forwarded mesh](operations/prerequisites.md#four-spark-managed-hardware-forwarded-mesh)
 
-## Network requirements
+### [Routing and forwarding across the fabric](operations/prerequisites.md#routing-and-forwarding-across-the-fabric)
 
-See the [maintained guide](operations/prerequisites.md).
+### [Management safety during repair](operations/prerequisites.md#management-safety-during-repair)
 
-### Four-Spark managed hardware-forwarded mesh
+## [Local configuration and preflight](operations/prerequisites.md#local-configuration-and-preflight)
 
-See the [maintained guide](operations/prerequisites.md).
-
-### Routing and forwarding across the fabric
-
-See the [maintained guide](operations/prerequisites.md).
-
-### Management safety during repair
-
-See the [maintained guide](operations/prerequisites.md).
-
-## Local configuration and preflight
-
-See the [maintained guide](operations/prerequisites.md).
-
-## Safety boundary
-
-See the [maintained guide](operations/prerequisites.md).
+## [Safety boundary](operations/prerequisites.md#safety-boundary)

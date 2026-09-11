@@ -1,15 +1,9 @@
 # Switched TP4 quickstart
 
-The maintained guide is [here](../profiles/glm53-flash-spark-tp4-switched/README.md). Existing commands remain valid.
+See the [maintained guide](../profiles/glm53-flash-spark-tp4-switched/README.md). Section links below retain existing anchors.
 
-## Prepare the source image
+## [Prepare the source image](../profiles/glm53-flash-spark-tp4-switched/README.md#prepare-the-source-image)
 
-See the [maintained guide](../profiles/glm53-flash-spark-tp4-switched/README.md).
+## [Fill private rank inputs](../profiles/glm53-flash-spark-tp4-switched/README.md#fill-private-rank-inputs)
 
-## Fill private rank inputs
-
-See the [maintained guide](../profiles/glm53-flash-spark-tp4-switched/README.md).
-
-## Inspect, create, and start
-
-See the [maintained guide](../profiles/glm53-flash-spark-tp4-switched/README.md).
+## [Inspect, create, and start](../profiles/glm53-flash-spark-tp4-switched/README.md#inspect-create-and-start)

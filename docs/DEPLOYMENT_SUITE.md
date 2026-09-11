@@ -1,35 +1,19 @@
 # Prepare and operate a four-Spark deployment
 
-The maintained guide is [here](operations/deployment-suite.md). Existing commands remain valid.
+See the [maintained guide](operations/deployment-suite.md). Section links below retain existing anchors.
 
-## Before starting
+## [Before starting](operations/deployment-suite.md#before-starting)
 
-See the [maintained guide](operations/deployment-suite.md).
+## [Discover and review](operations/deployment-suite.md#discover-and-review)
 
-## Discover and review
+## [Apply networking, then verify it](operations/deployment-suite.md#apply-networking-then-verify-it)
 
-See the [maintained guide](operations/deployment-suite.md).
+## [Stage the runtime without starting a model](operations/deployment-suite.md#stage-the-runtime-without-starting-a-model)
 
-## Apply networking, then verify it
+## [Create containers, install services, and test the mesh](operations/deployment-suite.md#create-containers-install-services-and-test-the-mesh)
 
-See the [maintained guide](operations/deployment-suite.md).
+## [Start, inspect, and stop serving](operations/deployment-suite.md#start-inspect-and-stop-serving)
 
-## Stage the runtime without starting a model
+## [Retries and limits](operations/deployment-suite.md#retries-and-limits)
 
-See the [maintained guide](operations/deployment-suite.md).
-
-## Create containers, install services, and test the mesh
-
-See the [maintained guide](operations/deployment-suite.md).
-
-## Start, inspect, and stop serving
-
-See the [maintained guide](operations/deployment-suite.md).
-
-## Retries and limits
-
-See the [maintained guide](operations/deployment-suite.md).
-
-## Remaining integration work
-
-See the [maintained guide](operations/deployment-suite.md).
+## [Remaining integration work](operations/deployment-suite.md#remaining-integration-work)

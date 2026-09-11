@@ -1,43 +1,23 @@
 # DeepSeek-V4.1-Flash four-Spark cycle quickstart
 
-The maintained guide is [here](../profiles/deepseek-v41-flash-cycle/README.md). Existing commands remain valid.
+See the [maintained guide](../profiles/deepseek-v41-flash-cycle/README.md). Section links below retain existing anchors.
 
-## Why this profile is shaped the way it is
+## [Why this profile is shaped the way it is](../profiles/deepseek-v41-flash-cycle/README.md#why-this-profile-is-shaped-the-way-it-is)
 
-See the [maintained guide](../profiles/deepseek-v41-flash-cycle/README.md).
+## [1. Prepare the ranks](../profiles/deepseek-v41-flash-cycle/README.md#1-prepare-the-ranks)
 
-## 1. Prepare the ranks
+### [Weights](../profiles/deepseek-v41-flash-cycle/README.md#weights)
 
-See the [maintained guide](../profiles/deepseek-v41-flash-cycle/README.md).
+### [Image](../profiles/deepseek-v41-flash-cycle/README.md#image)
 
-### Weights
+### [Patches and NCCL](../profiles/deepseek-v41-flash-cycle/README.md#patches-and-nccl)
 
-See the [maintained guide](../profiles/deepseek-v41-flash-cycle/README.md).
+### [Engram packed shards (once per rank)](../profiles/deepseek-v41-flash-cycle/README.md#engram-packed-shards-once-per-rank)
 
-### Image
+### [Environment](../profiles/deepseek-v41-flash-cycle/README.md#environment)
 
-See the [maintained guide](../profiles/deepseek-v41-flash-cycle/README.md).
+## [2. Launch one rank per host](../profiles/deepseek-v41-flash-cycle/README.md#2-launch-one-rank-per-host)
 
-### Patches and NCCL
+## [3. Verify rank 0](../profiles/deepseek-v41-flash-cycle/README.md#3-verify-rank-0)
 
-See the [maintained guide](../profiles/deepseek-v41-flash-cycle/README.md).
-
-### Engram packed shards (once per rank)
-
-See the [maintained guide](../profiles/deepseek-v41-flash-cycle/README.md).
-
-### Environment
-
-See the [maintained guide](../profiles/deepseek-v41-flash-cycle/README.md).
-
-## 2. Launch one rank per host
-
-See the [maintained guide](../profiles/deepseek-v41-flash-cycle/README.md).
-
-## 3. Verify rank 0
-
-See the [maintained guide](../profiles/deepseek-v41-flash-cycle/README.md).
-
-## 4. Sizing
-
-See the [maintained guide](../profiles/deepseek-v41-flash-cycle/README.md).
+## [4. Sizing](../profiles/deepseek-v41-flash-cycle/README.md#4-sizing)

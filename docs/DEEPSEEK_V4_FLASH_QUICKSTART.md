@@ -1,51 +1,27 @@
 # DeepSeek-V4-Flash-0731 Spark quickstart
 
-The maintained guide is [here](operations/deepseek-0731.md). Existing commands remain valid.
+See the [maintained guide](operations/deepseek-0731.md). Section links below retain existing anchors.
 
-## 1. Prepare the ranks
+## [1. Prepare the ranks](operations/deepseek-0731.md#1-prepare-the-ranks)
 
-See the [maintained guide](operations/deepseek-0731.md).
+## [2. Launch one rank per host](operations/deepseek-0731.md#2-launch-one-rank-per-host)
 
-## 2. Launch one rank per host
+### [Two-Spark pair](operations/deepseek-0731.md#two-spark-pair)
 
-See the [maintained guide](operations/deepseek-0731.md).
+### [Four-Spark cycle](operations/deepseek-0731.md#four-spark-cycle)
 
-### Two-Spark pair
+## [2.5 Optional: one-command cluster lifecycle](operations/deepseek-0731.md#25-optional-one-command-cluster-lifecycle)
 
-See the [maintained guide](operations/deepseek-0731.md).
+## [3. Sizing: four coupled parameters, and one inactive guard](operations/deepseek-0731.md#3-sizing-four-coupled-parameters-and-one-inactive-guard)
 
-### Four-Spark cycle
+## [4. Verify rank 0](operations/deepseek-0731.md#4-verify-rank-0)
 
-See the [maintained guide](operations/deepseek-0731.md).
+## [Preserve JIT and collective-hang evidence](operations/deepseek-0731.md#preserve-jit-and-collective-hang-evidence)
 
-## 2.5 Optional: one-command cluster lifecycle
+## [Measured](operations/deepseek-0731.md#measured)
 
-See the [maintained guide](operations/deepseek-0731.md).
+### [Two-Spark pair, TP2/DCP1](operations/deepseek-0731.md#two-spark-pair-tp2dcp1)
 
-## 3. Sizing: four coupled parameters, and one inactive guard
+### [Four-Spark cycle, TP4/DCP1](operations/deepseek-0731.md#four-spark-cycle-tp4dcp1)
 
-See the [maintained guide](operations/deepseek-0731.md).
-
-## 4. Verify rank 0
-
-See the [maintained guide](operations/deepseek-0731.md).
-
-## Preserve JIT and collective-hang evidence
-
-See the [maintained guide](operations/deepseek-0731.md).
-
-## Measured
-
-See the [maintained guide](operations/deepseek-0731.md).
-
-### Two-Spark pair, TP2/DCP1
-
-See the [maintained guide](operations/deepseek-0731.md).
-
-### Four-Spark cycle, TP4/DCP1
-
-See the [maintained guide](operations/deepseek-0731.md).
-
-## What these results cover
-
-See the [maintained guide](operations/deepseek-0731.md).
+## [What these results cover](operations/deepseek-0731.md#what-these-results-cover)

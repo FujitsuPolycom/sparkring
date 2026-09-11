@@ -1,15 +1,9 @@
 # SparkRing architecture
 
-The maintained guide is [here](architecture/overview.md). Existing commands remain valid.
+See the [maintained guide](architecture/overview.md). Section links below retain existing anchors.
 
-## Topology
+## [Topology](architecture/overview.md#topology)
 
-See the [maintained guide](architecture/overview.md).
+## [Collective path](architecture/overview.md#collective-path)
 
-## Collective path
-
-See the [maintained guide](architecture/overview.md).
-
-## Profile composition
-
-See the [maintained guide](architecture/overview.md).
+## [Profile composition](architecture/overview.md#profile-composition)

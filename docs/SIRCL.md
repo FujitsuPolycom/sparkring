@@ -1,23 +1,13 @@
 # SIRCL
 
-The maintained guide is [here](architecture/sircl.md). Existing commands remain valid.
+See the [maintained guide](architecture/sircl.md). Section links below retain existing anchors.
 
-## Implemented boundary
+## [Implemented boundary](architecture/sircl.md#implemented-boundary)
 
-See the [maintained guide](architecture/sircl.md).
+## [Composition with hardware-forwarded mesh](architecture/sircl.md#composition-with-hardware-forwarded-mesh)
 
-## Composition with hardware-forwarded mesh
+## [Profile use](architecture/sircl.md#profile-use)
 
-See the [maintained guide](architecture/sircl.md).
+## [Persistent host rail configuration](architecture/sircl.md#persistent-host-rail-configuration)
 
-## Profile use
-
-See the [maintained guide](architecture/sircl.md).
-
-## Persistent host rail configuration
-
-See the [maintained guide](architecture/sircl.md).
-
-## Operational invariants
-
-See the [maintained guide](architecture/sircl.md).
+## [Operational invariants](architecture/sircl.md#operational-invariants)

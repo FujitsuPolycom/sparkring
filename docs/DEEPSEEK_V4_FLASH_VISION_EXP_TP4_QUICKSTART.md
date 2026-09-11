@@ -1,35 +1,19 @@
 # DeepSeek V4 Flash Vision-Exp on a four-Spark cycle
 
-The maintained guide is [here](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md). Existing commands remain valid.
+See the [maintained guide](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md). Section links below retain existing anchors.
 
-## Prepare the four hosts
+## [Prepare the four hosts](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md#prepare-the-four-hosts)
 
-See the [maintained guide](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md).
+## [Pin the serving recipe and model](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md#pin-the-serving-recipe-and-model)
 
-## Pin the serving recipe and model
+## [Select the image and NCCL library](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md#select-the-image-and-nccl-library)
 
-See the [maintained guide](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md).
+## [Configure each rank](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md#configure-each-rank)
 
-## Select the image and NCCL library
+## [Render and start](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md#render-and-start)
 
-See the [maintained guide](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md).
+## [Stop and recover](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md#stop-and-recover)
 
-## Configure each rank
+## [Serving checks](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md#serving-checks)
 
-See the [maintained guide](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md).
-
-## Render and start
-
-See the [maintained guide](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md).
-
-## Stop and recover
-
-See the [maintained guide](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md).
-
-## Serving checks
-
-See the [maintained guide](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md).
-
-## Contributor-reported observations
-
-See the [maintained guide](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md).
+## [Contributor-reported observations](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md#contributor-reported-observations)

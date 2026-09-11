@@ -1,47 +1,25 @@
 # Validate a serving profile
 
-The maintained guide is [here](operations/profile-validation.md). Existing commands remain valid.
+See the [maintained guide](operations/profile-validation.md). Section links below retain existing anchors.
 
-## Required test card
+## [Required test card](operations/profile-validation.md#required-test-card)
 
-See the [maintained guide](operations/profile-validation.md).
+## [Prepare one private results directory](operations/profile-validation.md#prepare-one-private-results-directory)
 
-## Prepare one private results directory
+### [Obtain the throughput/accuracy benchmark](operations/profile-validation.md#obtain-the-throughputaccuracy-benchmark)
 
-See the [maintained guide](operations/profile-validation.md).
+## [Prefill: three samples per context](operations/profile-validation.md#prefill-three-samples-per-context)
 
-### Obtain the throughput/accuracy benchmark
+## [Decode matrix and coding peak](operations/profile-validation.md#decode-matrix-and-coding-peak)
 
-See the [maintained guide](operations/profile-validation.md).
+## [Estonia: long-context accuracy and consistency](operations/profile-validation.md#estonia-long-context-accuracy-and-consistency)
 
-## Prefill: three samples per context
+## [Long needle hunt: retrieval, revisions, and cross-references](operations/profile-validation.md#long-needle-hunt-retrieval-revisions-and-cross-references)
 
-See the [maintained guide](operations/profile-validation.md).
+## [SparkCache publication and restoration](operations/profile-validation.md#sparkcache-publication-and-restoration)
 
-## Decode matrix and coding peak
+## [Mixed traffic and sustained operation](operations/profile-validation.md#mixed-traffic-and-sustained-operation)
 
-See the [maintained guide](operations/profile-validation.md).
+## [Additional checks for the intended application](operations/profile-validation.md#additional-checks-for-the-intended-application)
 
-## Estonia: long-context accuracy and consistency
-
-See the [maintained guide](operations/profile-validation.md).
-
-## Long needle hunt: retrieval, revisions, and cross-references
-
-See the [maintained guide](operations/profile-validation.md).
-
-## SparkCache publication and restoration
-
-See the [maintained guide](operations/profile-validation.md).
-
-## Mixed traffic and sustained operation
-
-See the [maintained guide](operations/profile-validation.md).
-
-## Additional checks for the intended application
-
-See the [maintained guide](operations/profile-validation.md).
-
-## Report and operator decision
-
-See the [maintained guide](operations/profile-validation.md).
+## [Report and operator decision](operations/profile-validation.md#report-and-operator-decision)
