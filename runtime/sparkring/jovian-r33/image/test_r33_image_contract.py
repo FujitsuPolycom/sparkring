@@ -273,9 +273,21 @@ class CandidateImageContractTests(unittest.TestCase):
         )
         self.assertEqual(
             set(contract["profiles"]),
-            {"tp2-dcp1", "tp2-dcp1-sparkcache", "tp4-dcp1", "tp4-dcp1-sparkcache"},
+            {
+                "tp2-dcp1",
+                "tp2-dcp1-sparkcache",
+                "tp4-dcp1",
+                "tp4-dcp1-sparkcache",
+                "tp4-dcp4",
+                "tp4-dcp4-sparkcache",
+            },
         )
-        for name in ("tp4-dcp1", "tp4-dcp1-sparkcache"):
+        for name in (
+            "tp4-dcp1",
+            "tp4-dcp1-sparkcache",
+            "tp4-dcp4",
+            "tp4-dcp4-sparkcache",
+        ):
             selected = contract["profiles"][name]
             values = (CANONICAL_PROFILES / selected["template"]).read_text()
             if selected.get("inherits"):
@@ -308,6 +320,8 @@ class CandidateImageContractTests(unittest.TestCase):
                 "tp2-dcp1-sparkcache",
                 "tp4-dcp1",
                 "tp4-dcp1-sparkcache",
+                "tp4-dcp4",
+                "tp4-dcp4-sparkcache",
             ):
                 result = subprocess.run(
                     [
