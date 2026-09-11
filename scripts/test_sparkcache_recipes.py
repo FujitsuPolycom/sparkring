@@ -72,10 +72,8 @@ def test_compositions_pin_artifact_and_fail_closed_policy() -> None:
             assert artifact["wheel_sha256"] == wheel_sha256
             assert recipe["serving"]["max_num_batched_tokens"] == 4096
         else:
-            if "glm53" in path.name:
-                assert artifact["artifact_kind"] == "source-pinned OCI image"
-            else:
-                assert artifact["artifact_kind"] == "OCI image overlay"
+            assert path.name in SOURCE_ARTIFACTS
+            assert artifact["artifact_kind"] == "source-pinned OCI image"
             assert artifact["source_sha256"] == SOURCE_ARTIFACTS[path.name]
             assert artifact["source_commit"] == (
                 "66057174301a4759ca3a45207ea41016689449cb"
@@ -107,8 +105,8 @@ def test_scheduler_budget_records_evidence_without_an_operator_ceiling() -> None
         recipe = _load(path)
         limitations = " ".join(recipe["evidence"]["limitations"])
         assert "Operators may choose other values" in limitations
-        assert "8192 is known to work" in limitations
-        assert "8192 remains unsupported" not in limitations
+        budget = recipe["serving"]["max_num_batched_tokens"]
+        assert f"{budget}-token scheduler budget" in limitations
         assert "only qualified budget" not in limitations
 
 

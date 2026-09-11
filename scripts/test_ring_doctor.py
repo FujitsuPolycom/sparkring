@@ -1123,14 +1123,16 @@ class LaunchEndpointTests(unittest.TestCase):
             ),
             "operator@r1": probe_output(
                 "spark-ebb8",
-                ADDRESSED_WIFI_LISTING.replace("10.0.1.10/24", "10.0.2.10/24"),
+                FABRIC_ONLY_LISTING + f"\n{WIFI} UP 192.0.2.22/24",
                 FABRIC_ROUTE,
             ),
             "operator@r2": probe_output(
                 "spark-ebee", UNADDRESSED_WIFI_LISTING, FABRIC_ROUTE
             ),
             "operator@r3": probe_output(
-                "spark-e1a4", FABRIC_ONLY_LISTING, UNREACHABLE_ROUTE
+                "spark-e1a4",
+                f"{IF0} UP 10.0.4.13/24\n{IF1} UP 10.0.3.12/24",
+                UNREACHABLE_ROUTE
             ),
         }
         runner = FakeDiscoveryRunner(outputs, set())
@@ -1150,6 +1152,11 @@ class LaunchEndpointTests(unittest.TestCase):
         )
 
         self.assertEqual(len(runner.calls), len(specs))
+        self.assertTrue(topology.valid_cycle, topology.reason)
+        addresses = [address.ip for item in observations.values()
+                     for interface in item.host_interfaces.values()
+                     for address in interface.addresses if not address.ip.is_loopback]
+        self.assertEqual(len(addresses), len(set(addresses)))
         self.assertEqual(
             observations["r0"].host_interfaces[WIFI].addresses[0],
             ipaddress.ip_interface("192.0.2.21/24"),

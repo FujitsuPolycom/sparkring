@@ -51,8 +51,8 @@ def test_cluster_init_prints_plan_before_initialising(capsys):
     assert init.call_args.kwargs["enroll"] is False
 
 
-def test_cluster_init_rejects_wrong_worker_count(capsys):
-    with mock.patch("builtins.input", return_value=""):
+def test_cluster_init_prompts_for_missing_worker_with_preapproved_plan(capsys):
+    with mock.patch("builtins.input", return_value="") as prompt:
         result = sparkring.main(
             [
                 "cluster",
@@ -72,6 +72,8 @@ def test_cluster_init_rejects_wrong_worker_count(capsys):
 
     assert result == 2
     assert "username@IPv4" in capsys.readouterr().err
+    prompt.assert_called_once()
+    assert "Rank 3 management address" in prompt.call_args.args[0]
 
 
 def test_cluster_configure_is_plan_only_without_apply(tmp_path, capsys):
@@ -101,3 +103,14 @@ def test_host_check_forwards_privacy_policy_flag():
 
     assert result == 0
     host.assert_called_once_with(["--json", "--require-telemetry-disabled"])
+
+
+def test_cluster_init_rejects_excess_workers_without_prompt_or_bootstrap(capsys):
+    argv = ["cluster", "init", "--size", "4", "--head", "user@192.0.2.10", "--yes"]
+    for address in (11, 12, 13, 14):
+        argv += ["--node", f"user@192.0.2.{address}"]
+    with mock.patch("builtins.input", side_effect=AssertionError("unexpected prompt")), \
+            mock.patch.object(sparkring, "initialise_cluster") as initialise:
+        assert sparkring.main(argv) == 2
+    initialise.assert_not_called()
+    assert "needs 3 --node values" in capsys.readouterr().err

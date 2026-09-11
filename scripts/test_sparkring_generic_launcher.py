@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+from scripts import sparkring_generic_launcher as generic
 
-import sparkring_generic_launcher as generic  # noqa: E402
-import sparkring_runtime as runtime  # noqa: E402
-from sparkring_site import load_site  # noqa: E402
+ROOT = Path(__file__).resolve().parents[1]
+
+# Use the launcher's dependency instances so exception types and mocks agree.
+runtime = generic.runtime
+load_site = generic.load_site
 
 SITE = ROOT / "scripts/config/exl3-r7-site.example.yaml"
 IMAGE_ID = "sha256:" + "a" * 64
