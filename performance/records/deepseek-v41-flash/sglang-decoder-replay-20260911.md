@@ -12,7 +12,7 @@ checkpoint `deepseek-ai/DeepSeek-V4.1-Flash` at
 in place over SGLang's pip NCCL. Both arms used the same locally built image,
 Mia commit `e59e6eb67479aa68f6fa700c600dc90a0729b5ec`, image ID
 `sha256:4252984d1cd642a51bd0cde06665a4f6a73726141dec760392a73cf968bce744`.
-The source/base identity is recorded in the [runtime pins](../../../../runtime/deepseek-v41-sglang/pins.json).
+The source/base identity is recorded in the [runtime pins](../../../runtime/deepseek-v41-sglang/pins.json).
 
 The four ranks were rebooted before each arm. Context 262144, prefill chunk
 4096, maximum eight requests, memory fraction 0.90, requested total-token pool
