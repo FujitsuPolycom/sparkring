@@ -115,11 +115,13 @@ def adapt_r33_plan(plan, receipt, *, sparkcache=False):
     arguments = _replace_option(arguments, "--load-format", selected.get("load_format", contract["model"]["loader"]["load_format"]))
     if sparkcache:
         environment.update(LOAD_FORMAT="b12x", VLLM_PLUGINS="b12x_loader", B12X_NVFP4_DYNAMIC_MATERIALIZED="0")
+        # R33 B12X fixes weight_pool to managed allocation internally; its
+        # DefaultModelLoader superclass rejects the legacy allocation option.
+        arguments = _remove_option(arguments, "--model-loader-extra-config")
         speculation = json.loads(arguments[arguments.index("--speculative-config") + 1])
-        # MTP's default safetensors loader cannot accept the target's inherited
-        # managed-allocation configuration. Select the same loader explicitly.
+        # Select B12X explicitly for the MTP checkpoint as well.
         speculation["draft_load_config"] = {
-            "load_format": "b12x", "model_loader_extra_config": {"allocation": "managed"},
+            "load_format": "b12x", "model_loader_extra_config": {},
         }
         arguments = _replace_option(arguments, "--speculative-config", json.dumps(speculation))
         arguments = _replace_option(arguments, "--limit-mm-per-prompt", '{"image":3,"video":1}')

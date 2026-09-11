@@ -9,6 +9,12 @@ transport, and active 2 GiB memory guard. It selects the R33 image's pinned
 SparkCache native libraries and lease contract and uses a fresh image-specific
 namespace. It does not reuse the reference deployment's disk cache.
 
+The pinned R33 B12X loader uses managed allocation internally. The launcher
+omits the legacy `allocation` extra configuration because R33's safetensors
+superclass rejects it. Target and MTP both select B12X; the draft explicitly
+uses an empty extra-config dictionary. The legacy profile retains its explicit
+managed-allocation option for its different loader implementation.
+
 The request limit is explicitly 1,048,576 tokens. The reference used 262,144;
 neither that reference nor this plan proves one-million-token serving capacity.
 Multimodal accuracy, guarded memory stability, native cache capture/restore,

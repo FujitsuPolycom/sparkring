@@ -505,11 +505,9 @@ def test_r33_cache_preserves_reference_settings_with_explicit_1m_target(
     assert option("--load-format") == "b12x"
     assert json.loads(option("--speculative-config")) == {
         "method": "mtp", "num_speculative_tokens": 3, "moe_backend": "humming", "attention_backend": "B12X",
-        "draft_load_config": {"load_format": "b12x", "model_loader_extra_config": {"allocation": "managed"}},
+        "draft_load_config": {"load_format": "b12x", "model_loader_extra_config": {}},
     }
-    assert json.loads(option("--model-loader-extra-config")) == {
-        "allocation": "managed"
-    }
+    assert "--model-loader-extra-config" not in args
     assert option("--kv-cache-memory-bytes") == "7247757312"
     assert option("--max-model-len") == "1048576"
     assert option("--max-num-seqs") == "8"

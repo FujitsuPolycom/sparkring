@@ -266,9 +266,8 @@
       ],
       "lifecycle": "explicit-create-and-start-with-active-memory-guard",
       "load_format": "b12x",
-      "loader_extra_config": {
-        "allocation": "managed"
-      },
+      "loader_extra_config": {},
+      "allocation_policy": "managed-in-loader",
       "plugins": "b12x_loader",
       "continuation_coalescing": true,
       "capability_file": "tp2-sparkcache-capabilities.json",
