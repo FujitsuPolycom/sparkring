@@ -32,6 +32,7 @@ PEER_TIMEOUT = 2.0
 PEER_OUTAGE_GRACE = 300.0
 NETWORK_POLL_SECONDS = 5.0
 HEALTH_MAX_AGE = 10.0
+MARKERS_PER_RANK = 2  # One managed source marker for each cycle-facing device.
 
 
 def canonical(value):
@@ -61,7 +62,7 @@ def load_config(path):
     document = json.loads(Path(path).read_text())
     expected = {'schema', 'site_path', 'rank', 'key_file', 'epoch', 'health_port', 'state_dir',
                 'container_id', 'container_image'}
-    if set(document) != expected or document['schema'] != PROTOCOL:
+    if not isinstance(document, dict) or set(document) != expected or document['schema'] != PROTOCOL:
         raise ValueError('Unsupported managed mesh configuration')
     if type(document['rank']) is not int or document['rank'] not in range(4):
         raise ValueError('Mesh rank must be an integer from zero through three')
@@ -69,9 +70,9 @@ def load_config(path):
         raise ValueError('Mesh health port must be an unprivileged TCP port')
     if not isinstance(document['epoch'], str) or not re.fullmatch('[0-9a-f]{32}', document['epoch']):
         raise ValueError('Mesh epoch must be a shared 128-bit hexadecimal identifier')
-    if not re.fullmatch('[0-9a-f]{64}', str(document['container_id'])):
+    if not isinstance(document['container_id'], str) or not re.fullmatch('[0-9a-f]{64}', document['container_id']):
         raise ValueError('Pin the full pre-created model container ID')
-    if not re.fullmatch('sha256:[0-9a-f]{64}', str(document['container_image'])):
+    if not isinstance(document['container_image'], str) or not re.fullmatch('sha256:[0-9a-f]{64}', document['container_image']):
         raise ValueError('Pin the immutable model image ID')
     for name in ('site_path', 'key_file', 'state_dir'):
         mesh_profile.absolute(document[name], name)
@@ -247,8 +248,16 @@ def conflicting_markers(devices, proc_root=Path('/proc')):
     return found
 
 
+def require_no_markers(result, found_message):
+    """Distinguish a positive process match from an unavailable process scan."""
+    if result.returncode == 0:
+        raise RuntimeError(found_message)
+    if result.returncode != 1:
+        raise RuntimeError(f"Cannot enumerate marker processes: pgrep exited {result.returncode}")
+
+
 def cleanup_orphans(config_path):
-    """Reap only recorded child identities after the cluster's model-stop barrier."""
+    """Reap recorded marker identities only after the pinned model is stopped."""
     config, site, _, plan, _ = load_config(config_path)
     if docker_running(config['container_id']):
         raise RuntimeError('Stop the dependent model before orphan cleanup')
@@ -285,8 +294,7 @@ def cleanup_orphans(config_path):
                 os.close(descriptor)
         remaining = subprocess.run(['pgrep', '-f', '^' + re.escape(site['marker_binary']) + ' '],
                                    capture_output=True, timeout=3)
-        if remaining.returncode != 1:
-            raise RuntimeError('Unrecorded marker processes remain; explicit operator inspection is required')
+        require_no_markers(remaining, 'Unrecorded marker processes remain; explicit operator inspection is required')
         from managed_network import NetworkManager
         result = NetworkManager(Path(config['site_path']), config['rank'], state_dir / 'network').down()
         print(json.dumps({'orphan_cleanup': result}))
@@ -336,7 +344,7 @@ class MeshService:
         with self.lock:
             body = dict(self.state, nonce=nonce)
         if (time.monotonic() - self.last_progress > HEALTH_MAX_AGE
-                or len(self.children) != 2 or any(child.poll() is not None for child in self.children)):
+                or len(self.children) != MARKERS_PER_RANK or any(child.poll() is not None for child in self.children)):
             body['local_ready'] = False
         return body
 
@@ -378,6 +386,9 @@ class MeshService:
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def start_markers(self):
+        markers = tuple(marker for marker in self.plan.markers if marker.source_rank == self.rank)
+        if len(markers) != MARKERS_PER_RANK:
+            raise RuntimeError('Expected exactly two configured source markers before launch')
         binary = self.site['marker_binary']
         if mesh_profile.sha(Path(binary)) != self.site['marker_binary_sha256']:
             raise ValueError('Managed marker digest differs from the site')
@@ -386,11 +397,8 @@ class MeshService:
         if conflicts:
             raise RuntimeError(f'An existing marker uses reserved devices: {conflicts}')
         existing = subprocess.run(['pgrep', '-f', '^' + re.escape(binary) + ' '], capture_output=True, timeout=3)
-        if existing.returncode != 1:
-            raise RuntimeError('Configured marker already exists outside this service')
-        for marker in self.plan.markers:
-            if marker.source_rank != self.rank:
-                continue
+        require_no_markers(existing, 'Configured marker already exists outside this service')
+        for marker in markers:
             path = self.state_dir / f'{marker.rdma_device}-{self.generation}.log'
             output = path.open('xb')
             self.logfiles.append(output)
@@ -421,8 +429,38 @@ class MeshService:
                     break
                 if self.stop.wait(0.05) or time.monotonic() > deadline:
                     raise RuntimeError('Managed marker readiness deadline exceeded')
-        if len(self.children) != 2:
+        if len(self.children) != MARKERS_PER_RANK:
             raise RuntimeError('Expected exactly two managed source markers')
+
+    def stop_markers(self):
+        """Confirm child exit; preserve network ownership if any exit is unknown."""
+        for child in self.children:
+            try:
+                if child.poll() is None:
+                    child.terminate()
+            except ProcessLookupError:
+                pass
+            except OSError as error:
+                self.failed = True
+                print(json.dumps({'event': 'marker_signal_failed', 'pid': child.pid,
+                                  'error': str(error)}), flush=True)
+        unconfirmed = []
+        for child in self.children:
+            try:
+                try:
+                    child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait(timeout=2)
+            except (OSError, subprocess.TimeoutExpired) as error:
+                unconfirmed.append(child.pid)
+                self.failed = True
+                print(json.dumps({'event': 'marker_stop_unconfirmed', 'pid': child.pid,
+                                  'error': str(error)}), flush=True)
+        self.publish(best_effort=True, marker_stop_unconfirmed=unconfirmed)
+        if not unconfirmed:
+            self.marker_records = []
+        return not unconfirmed
 
     def run(self):
         if os.geteuid() != 0:
@@ -515,19 +553,13 @@ class MeshService:
                     self.failed = True
                     notify('WATCHDOG=1\nSTATUS=Failed; retaining forwarding until model stop is confirmed')
                     time.sleep(1)
-            for child in self.children:
-                if child.poll() is None:
-                    child.terminate()
-            for child in self.children:
-                try:
-                    child.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    child.kill()
-                    child.wait(timeout=2)
+            markers_stopped = self.stop_markers()
             for output in self.logfiles:
                 output.close()
-            self.marker_records = []
-            if self.network is not None:
+            if self.network is not None and not markers_stopped:
+                print(json.dumps({'event': 'network_cleanup_deferred',
+                                  'reason': 'marker exit unconfirmed; retain state for orphan cleanup'}), flush=True)
+            if self.network is not None and markers_stopped:
                 try:
                     cleanup = self.network.down()
                     if cleanup.get('clean') is False:

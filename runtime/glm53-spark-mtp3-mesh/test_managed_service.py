@@ -270,13 +270,14 @@ def test_docker_timeout_cannot_pass_model_stop_barrier(monkeypatch):
 
 
 @pytest.mark.parametrize('peer_failure', [False, True])
-def test_monitor_keeps_fabric_checks_live_when_docker_is_unknown(tmp_path, monkeypatch, peer_failure):
+@pytest.mark.parametrize('marker_failure', [False, True])
+def test_monitor_keeps_fabric_checks_live_when_docker_is_unknown(tmp_path, monkeypatch, peer_failure, marker_failure):
     result = owner()
     result.rank, result.generation, result.model = 0, 'g', 'a' * 64
     result.config = {'site_path': '/unused'}
     result.site, result.identity, result.key = {}, 'identity', b'k' * 32
     result.state_dir, result.network, result.server = tmp_path, None, None
-    result.marker_records, result.logfiles = [], []
+    result.marker_records, result.logfiles = [{'pid': 101}, {'pid': 102}], []
     result.failed, result.owns_guard, result.model_seen = False, False, True
     events = []
     samples = iter([True, None, True])
@@ -295,11 +296,24 @@ def test_monitor_keeps_fabric_checks_live_when_docker_is_unknown(tmp_path, monke
     result.start_markers = lambda: None
     result.start_server = lambda: None
     result.publish = lambda **changes: result.state.update(changes)
+    def marker_wait(**kwargs):
+        if marker_failure:
+            raise service.subprocess.TimeoutExpired(['marker'], kwargs['timeout'])
     result.children = [SimpleNamespace(
-        poll=lambda: None,
+        pid=101 + index, poll=lambda: None,
         terminate=lambda: events.append('marker-stop'),
-        wait=lambda **kw: None,
-    ) for _ in range(2)]
+        kill=lambda: events.append('marker-kill'), wait=marker_wait,
+    ) for index in range(2)]
+    result.server = SimpleNamespace(shutdown=lambda: events.append('server-shutdown'),
+                                    server_close=lambda: events.append('server-close'))
+    lock_handles = []
+    original_open = type(tmp_path).open
+    def track_open(path, *args, **kwargs):
+        handle = original_open(path, *args, **kwargs)
+        if path.name == 'service.lock':
+            lock_handles.append(handle)
+        return handle
+    monkeypatch.setattr(type(tmp_path), 'open', track_open)
     (tmp_path / 'model-intent.json').write_bytes(service.canonical({
         'generation': 'g', 'active': True, 'deadline_monotonic': 0,
     }))
@@ -356,7 +370,15 @@ def test_monitor_keeps_fabric_checks_live_when_docker_is_unknown(tmp_path, monke
     assert 'network-check' in events
     assert events.index('retain-markers') < events.index('model-stop-confirmed')
     assert events.index('model-stop-confirmed') < events.index('marker-stop')
-    assert events.index('marker-stop') < events.index('network-down')
+    if marker_failure:
+        assert 'network-down' not in events
+        assert result.marker_records == [{'pid': 101}, {'pid': 102}]
+        assert result.state['marker_stop_unconfirmed'] == [101, 102]
+    else:
+        assert events.index('marker-stop') < events.index('network-down')
+        assert result.marker_records == []
+    assert events[-1] == 'server-close'
+    assert lock_handles and all(handle.closed for handle in lock_handles)
     if peer_failure:
         assert 'not locally ready' in result.state['error']
     else:
@@ -401,3 +423,47 @@ def test_old_marker_path_is_not_silently_overlapped(tmp_path):
         b'--device=rocep1s0f0', b'--source-port', b'65535']) + b'\0')
     assert service.conflicting_markers({'rocep1s0f0'}, tmp_path) == [{'pid': 123, 'device': 'rocep1s0f0'}]
     assert service.conflicting_markers({'rocep1s0f1'}, tmp_path) == []
+
+
+@pytest.mark.parametrize("code,message", [(0, "markers found"), (2, "Cannot enumerate"), (3, "Cannot enumerate")])
+def test_pgrep_error_is_not_reported_as_marker_presence(code, message):
+    with pytest.raises(RuntimeError, match=message):
+        service.require_no_markers(SimpleNamespace(returncode=code), "markers found")
+    service.require_no_markers(SimpleNamespace(returncode=1), "markers found")
+
+
+def test_numeric_container_id_rejected_before_site_access(tmp_path, monkeypatch):
+    import json
+    config = {'schema': service.PROTOCOL, 'site_path': '/unused/site', 'rank': 0,
+        'key_file': '/unused/key', 'epoch': 'a' * 32, 'health_port': 9975,
+        'state_dir': '/unused/state', 'container_id': int('1' * 64),
+        'container_image': 'sha256:' + 'a' * 64}
+    path = tmp_path / 'config.json'
+    path.write_text(json.dumps(config))
+    monkeypatch.setattr(service.mesh_profile, 'load_site', lambda *args: pytest.fail('site accessed before type rejection'))
+    with pytest.raises(ValueError, match='full pre-created model container ID'):
+        service.load_config(path)
+
+
+def test_invalid_marker_count_rejected_before_process_launch(monkeypatch):
+    result = owner()
+    result.rank = 0
+    result.plan = SimpleNamespace(markers=[SimpleNamespace(source_rank=0)])
+    monkeypatch.setattr(service.subprocess, 'Popen', lambda *args, **kwargs: pytest.fail('marker spawned'))
+    with pytest.raises(RuntimeError, match='before launch'):
+        result.start_markers()
+
+
+def test_unconfirmed_marker_exit_sets_failure_and_retains_identity():
+    result = owner()
+    result.failed = False
+    result.marker_records = [{'pid': 123, 'start_ticks': 456, 'argv': ['marker']}]
+    result.publish = lambda **changes: result.state.update(changes)
+    def wait(**kwargs):
+        raise service.subprocess.TimeoutExpired(['marker'], kwargs['timeout'])
+    result.children = [SimpleNamespace(pid=123, poll=lambda: None, terminate=lambda: None,
+                                       kill=lambda: None, wait=wait)]
+    assert result.stop_markers() is False
+    assert result.failed is True
+    assert result.marker_records[0]['start_ticks'] == 456
+    assert result.state['marker_stop_unconfirmed'] == [123]
