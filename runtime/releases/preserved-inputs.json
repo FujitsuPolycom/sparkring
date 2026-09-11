@@ -428,7 +428,10 @@
     "runtime/transport_profiles/tp2-rocenante-adaptive/roce/roce_oneshot.py": "6809aa25314b8f2d74f3a748ec43c098bdf9764cc1fbe2d3451f6b8268bea2c0",
     "runtime/releases/sparkring-r33/published-inputs/image/entrypoint.py": "d8213d7a91173352de71200270a03ea42f0622add9b842008f3fc566cc04d267",
     "runtime/releases/sparkring-r33/published-inputs/profiles/profile-contract.json": "35ff9f0b816d9d75cf660e2f2a828abf7a42ea2c07f8127a539e92650c8c2983",
-    "runtime/releases/sparkring-r33/published-inputs/publication.json": "72946d59ca8ffa8004330518cadde80bf62af1e33a1bfc49b280d1826d500798"
+    "runtime/releases/sparkring-r33/published-inputs/publication.json": "72946d59ca8ffa8004330518cadde80bf62af1e33a1bfc49b280d1826d500798",
+    "runtime/releases/glm53-dflash-sircl-overlay/overlay.tar.gz": "195d412e083f77e7d137875eb4e4941860d30fe42640b7ea1c47dae8ef023505",
+    "runtime/releases/glm53-dflash-sircl-overlay/source.json": "251e169cac422153f2082bedaa187ed1c67a8a4268e00fc931ebfc86b3d681af",
+    "runtime/releases/glm53-dflash-sircl-overlay/files.json": "bc93d5069f2b3faaa7e87d2f24aadd9f7878bff67abd93eeec3a0975da46f6fd"
   },
   "relocated_inputs": {
     "runtime/sparkring/jovian-r33/image/entrypoint.py": "runtime/releases/sparkring-r33/published-inputs/image/entrypoint.py",

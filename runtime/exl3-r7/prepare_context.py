@@ -83,9 +83,9 @@ def prepare_component(
 def verify_component(name: str, spec: dict[str, str], output: Path) -> None:
     """Re-verify a prepared component against its pinned spec.
 
-    Unlike ``prepare_component``, this does not re-clone or re-apply patches.
-    It checks that the checked-out tree matches the recorded result_tree and
-    that the patch file hash is still correct.
+    Check the base commit, indexed result tree and complete working-tree
+    inventory. Patch bytes are verified when preparing the source; this check
+    compares the resulting source tree without reading or reapplying patches.
     """
     destination = output / name
     if not destination.is_dir():
@@ -102,7 +102,7 @@ def verify_component(name: str, spec: dict[str, str], output: Path) -> None:
             f"verify: {name} could not check unstaged source drift"
         )
     untracked = run(
-        "git", "ls-files", "--others", "--exclude-standard", cwd=destination
+        "git", "ls-files", "--others", cwd=destination
     )
     if untracked:
         raise PreparationError(

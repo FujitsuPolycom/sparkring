@@ -7,7 +7,7 @@ does not inherit the qualification of the vLLM
 `da4d7be6c97434f6942292ed8abbf4b32dc44355` image recorded in
 `runtime/glm53-flash/pins.json`.
 
-The vLLM revision adds GLM-5.3 internal MTP5 and opt-in acceptance-length
+The vLLM revision implements GLM-5.3 internal MTP5 and opt-in acceptance-length
 adaptation. A static MTP configuration remains static unless the launch
 explicitly provides `adaptive_speculative_tokens_window`.
 

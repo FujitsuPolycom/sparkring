@@ -49,11 +49,13 @@ at a time; direct `docker start` bypasses the managed startup contract.
 ## Prerequisites and identities
 
 Prepare the target, verified transport bundle, image receipt, and rendered
-four-rank launch directory using the
-[model quickstart](../../docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md). Use its
-model and collective-routing settings. The installer receipt at
-`/srv/sparkring/verified-image-receipt.json` in the examples is a staged copy
-of the repository's `image-receipt.json`, not `public-image.json`. Pull the
+four-rank launch directory using the selected [profile quickstart](../../profiles/README.md).
+Retain that profile's model, routing settings and verified rendering receipt.
+The [retained compute-image quickstart](../../docs/GLM53_SPARK_MTP3_MESH_QUICKSTART.md)
+provides one complete example using this directory's `image-receipt.json`.
+Other profiles select different receipts; do not replace them with this example.
+`/srv/sparkring/verified-image-receipt.json` below names the staged receipt,
+not a requirement to select a different image. Pull the
 published image on each host before creating containers; Docker cannot
 resolve an absent local config ID by pulling it from a registry.
 For managed operation, use the
@@ -420,8 +422,8 @@ remain unchanged. Removing the field restores the normal logging default.
 This is diagnostic evidence collection, not a performance configuration.
 
 Retain the diagnostic site, renderer/installer revision and rendered-file
-hashes separately from the image receipt. An image built from `c8646b0` does
-not imply that a later diagnostic renderer is also `c8646b0`. This option
+hashes separately from the image receipt. The image's build revision does
+not identify the external renderer used for a deployment. This option
 changes external orchestration only; it does not modify runtime binaries or
 require a new image. The managed installer must reproduce the diagnostic
 environment from the saved site; hand-edited rank environments are rejected.

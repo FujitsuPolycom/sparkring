@@ -196,32 +196,49 @@ def _stream_completion(url: str, payload: dict[str, Any], timeout: float) -> Str
     finish_reason: str | None = None
     text_parts: list[str] = []
     content_events = 0
+    done = False
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             if int(response.status) != 200:
                 raise BenchmarkError(f"streaming completion returned HTTP {response.status}")
             for raw_line in response:
                 line = raw_line.decode("utf-8", "replace").strip()
+                if line.startswith("event:") and line[6:].strip() == "error":
+                    raise BenchmarkError("stream emitted an error event")
                 if not line.startswith("data:"):
                     continue
                 encoded = line[5:].strip()
                 if encoded == "[DONE]":
+                    if finish_reason is None or usage is None:
+                        raise BenchmarkError("stream ended without a finished choice and final usage")
+                    done = True
                     break
                 try:
                     event = json.loads(encoded)
                 except json.JSONDecodeError as exc:
                     raise BenchmarkError(f"stream emitted malformed JSON: {encoded[:200]}") from exc
-                candidate_usage = event.get("usage")
-                if isinstance(candidate_usage, dict):
-                    usage = candidate_usage
+                if not isinstance(event, dict) or "error" in event:
+                    raise BenchmarkError("stream emitted an error or invalid event")
                 choices = event.get("choices")
-                if not isinstance(choices, list) or not choices:
+                if not isinstance(choices, list):
+                    raise BenchmarkError("stream omitted choices")
+                candidate_usage = event.get("usage")
+                if not choices:
+                    if finish_reason is not None and isinstance(candidate_usage, dict):
+                        usage = candidate_usage
                     continue
+                if len(choices) != 1 or not isinstance(choices[0], dict):
+                    raise BenchmarkError("stream must contain one completion choice")
+                if finish_reason is not None:
+                    raise BenchmarkError("stream emitted a choice after completion")
                 choice = choices[0]
-                if not isinstance(choice, dict):
-                    continue
-                if choice.get("finish_reason") is not None:
-                    finish_reason = str(choice["finish_reason"])
+                reason = choice.get("finish_reason")
+                if reason is not None:
+                    if reason not in ("stop", "length"):
+                        raise BenchmarkError("stream completion has an unsuccessful finish reason")
+                    finish_reason = reason
+                    if isinstance(candidate_usage, dict):
+                        usage = candidate_usage
                 token_text = choice.get("text")
                 if not isinstance(token_text, str) or not token_text:
                     continue
@@ -237,6 +254,8 @@ def _stream_completion(url: str, payload: dict[str, Any], timeout: float) -> Str
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
         raise BenchmarkError(f"streaming completion failed: {exc}") from exc
     finished = time.monotonic()
+    if not done:
+        raise BenchmarkError("stream ended before [DONE]")
     if first_token_at is None or last_token_at is None:
         raise BenchmarkError("streaming completion emitted no text tokens")
     if usage is None:

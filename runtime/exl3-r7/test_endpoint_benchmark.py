@@ -87,3 +87,37 @@ def test_stream_metrics_excludes_first_token_from_decode_rate() -> None:
     assert metrics["client_prompt_tokens_per_ttft_second"] == 50.0
     assert metrics["inter_token_decode_tokens_per_second"] == 2.0
     assert metrics["end_to_end_completion_tokens_per_second"] == pytest.approx(9 / 6.5)
+
+@pytest.mark.parametrize('ending', ['eof', 'no-finish', 'intermediate-only', 'error-json', 'error-event', 'bad-finish', 'same-event', 'final-event'])
+@pytest.mark.parametrize('finish_reason', ['stop', 'length'])
+def test_stream_requires_finished_choice_final_usage_and_done(monkeypatch, ending, finish_reason):
+    import json
+    usage = {'prompt_tokens': 3, 'completion_tokens': 2, 'total_tokens': 5}
+    events = [json.dumps({'choices': [{'text': 'a', 'finish_reason': None}], 'usage': usage}),
+              json.dumps({'choices': [{'text': 'b', 'finish_reason': None}], 'usage': usage})]
+    if ending in ('intermediate-only', 'same-event', 'final-event', 'bad-finish', 'error-json', 'error-event'):
+        event = {'choices': [{'text': '', 'finish_reason': 'error' if ending == 'bad-finish' else finish_reason}]}
+        if ending in ('same-event', 'bad-finish', 'error-json', 'error-event'):
+            event['usage'] = usage
+        events.append(json.dumps(event))
+    if ending == 'final-event':
+        events.append(json.dumps({'choices': [], 'usage': usage}))
+    if ending == 'error-json':
+        events.append(json.dumps({'error': {'message': 'failed'}}))
+    lines = [('data: '+event+'\n\n').encode() for event in events]
+    if ending == 'error-event':
+        lines.append(b'event: error\n')
+    if ending != 'eof':
+        lines.append(b'data: [DONE]\n\n')
+    class Response:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def __iter__(self): return iter(lines)
+    monkeypatch.setattr(BENCHMARK.urllib.request, 'urlopen', lambda *args, **kwargs: Response())
+    if ending in ('same-event', 'final-event'):
+        result = BENCHMARK._stream_completion('http://unused.invalid', {}, 1)
+        assert result.usage == usage and result.finish_reason == finish_reason
+    else:
+        with pytest.raises(BENCHMARK.BenchmarkError):
+            BENCHMARK._stream_completion('http://unused.invalid', {}, 1)

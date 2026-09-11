@@ -116,6 +116,8 @@ def verify_git_tree(
         )
     if run(("git", "-C", str(repository), "diff", "--name-only")):
         raise PrepareError(f"{repository.name} has unstaged changes")
+    if run(("git", "-C", str(repository), "ls-files", "--others")):
+        raise PrepareError(f"{repository.name} contains untracked source files")
 
 
 def require_hash(path: Path, expected: str, description: str) -> None:
@@ -142,6 +144,19 @@ def download(url: str, destination: Path, expected_sha256: str) -> None:
 def copy_file(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
+
+
+def payload_files(pins):
+    return (
+        "bundle/runtime/pins.json",
+        "bundle/runtime/verify_image.py",
+        "bundle/runtime/Containerfile",
+        "bundle/runtime/Containerfile.seed",
+        "bundle/runtime/build-image.sh",
+        "bundle/runtime/LICENSES.md",
+        "bundle/runtime/SparkRing-LICENSE",
+        f"bundle/sources/instanttensor-{pins['public_image_build']['instanttensor']['version']}.tar.gz",
+    )
 
 
 def prepare(output: Path, *, repository_root: Path, pins_path: Path) -> dict[str, Any]:
@@ -208,16 +223,7 @@ def prepare(output: Path, *, repository_root: Path, pins_path: Path) -> dict[str
     copy_file(HERE / "LICENSES" / "README.md", runtime / "LICENSES.md")
     copy_file(repository_root / "LICENSE", runtime / "SparkRing-LICENSE")
 
-    receipt_files = (
-        "bundle/runtime/pins.json",
-        "bundle/runtime/verify_image.py",
-        "bundle/runtime/Containerfile",
-        "bundle/runtime/Containerfile.seed",
-        "bundle/runtime/build-image.sh",
-        "bundle/runtime/LICENSES.md",
-        "bundle/runtime/SparkRing-LICENSE",
-        f"bundle/sources/instanttensor-{instanttensor['version']}.tar.gz",
-    )
+    receipt_files = payload_files(pins)
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "pins_sha256": sha256_file(pins_path),
@@ -252,8 +258,14 @@ def verify_context(context: Path, *, pins_path: Path) -> dict[str, Any]:
         raise PrepareError(f"unsupported receipt schema: {receipt.get('schema')!r}")
     if receipt.get("pins_sha256") != sha256_file(pins_path):
         raise PrepareError("prepared context was produced from different pins")
+    if not isinstance(receipt.get("files"), dict) or set(receipt["files"]) != set(payload_files(pins)):
+        raise PrepareError("prepared receipt must contain the complete payload inventory")
     for relative, expected in receipt["files"].items():
-        require_hash(context / relative, expected, relative)
+        path = context / relative
+        if not path.resolve().is_relative_to(context.resolve()):
+            raise PrepareError("prepared payload escapes context: " + relative)
+        require_hash(path, expected, relative)
+    require_hash(context / "bundle/runtime/pins.json", sha256_file(pins_path), "embedded pins")
 
     build = pins["public_image_build"]
     source_pins = build["sources"]

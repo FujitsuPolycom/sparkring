@@ -148,6 +148,45 @@ def test_catalog_pins_r33_receipt_and_cache_selection():
         plan('glm53-flash-spark-tp2-dcp1-sparkcache', ['plan', '--runtime-receipt=other.json'])
 
 
+@pytest.mark.parametrize('profile_id', ['glm53-flash-spark-tp2-dcp1', 'glm53-flash-spark-tp2-dcp1-sparkcache'])
+@pytest.mark.parametrize('flag', ['--r33-sparkcache', '--r33-spark'])
+def test_catalog_owns_cache_composition(profile_id, flag):
+    with pytest.raises(ValueError, match='catalog owns SparkCache'):
+        plan(profile_id, ['plan', flag])
+
+
+@pytest.mark.parametrize('flag', ['--r33-cache-kv-memory-bytes', '--r33-cache'])
+@pytest.mark.parametrize('equals', [False, True])
+def test_kv_override_reports_effective_configuration(flag, equals):
+    args = [flag+'=7247757312'] if equals else [flag, '7247757312']
+    result = plan('glm53-flash-spark-tp2-dcp1-sparkcache', ['plan', *args])
+    assert result['configuration_status'] == 'research-only'
+    assert result['modified_defaults']
+    assert result['serving']['kv_cache_memory_bytes'] == 7247757312
+    assert result['serving']['sparkcache']
+
+
+def test_explicit_catalog_kv_default_preserves_status():
+    result = plan('glm53-flash-spark-tp2-dcp1-sparkcache', ['plan', '--r33-cache-kv-memory-bytes=8053063680'])
+    assert result['configuration_status'] == 'qualified'
+    assert not result['modified_defaults']
+
+
+@pytest.mark.parametrize('args', [
+    ['--r33-cache-kv-memory-bytes'],
+    ['--r33-cache-kv-memory-bytes=1'],
+    ['--r33-cache-kv-memory-bytes=8053063680', '--r33-cache=7247757312'],
+])
+def test_invalid_or_duplicate_kv_override_rejected(args):
+    with pytest.raises(ValueError, match='Specify one'):
+        plan('glm53-flash-spark-tp2-dcp1-sparkcache', ['plan', *args])
+
+
+def test_cache_disabled_profile_rejects_cache_kv_override():
+    with pytest.raises(ValueError, match='SparkCache profile'):
+        plan('glm53-flash-spark-tp2-dcp1', ['plan', '--r33-cache=7247757312'])
+
+
 def test_site_assignments_are_not_shell_sourced(tmp_path):
     path = tmp_path/'site.env'
     path.write_text('A=example\nA=other\n')

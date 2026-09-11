@@ -60,8 +60,9 @@ The build fails closed unless:
 3. the prepared dependency inventory matches its receipt;
 4. QuACK and Apache TVM FFI wheels match their pinned hashes;
 5. the SIRCL library and supported-profile overlay build from this checkout;
-6. installed runtime files match the hashes enforced by
-   `verify_runtime.py`.
+6. `verify_runtime.py` confirms installed source markers, collective-hook
+   signatures and ownership, required extension exports, and ARM64/SM121
+   compatibility. It does not attest every installed file by hash.
 
 The image records the parent ID, source receipt, component revisions, and SPDX
 license expression in OCI labels.

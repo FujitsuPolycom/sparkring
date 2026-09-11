@@ -285,3 +285,44 @@ def test_cli_declares_mtp4_mode_and_requires_baseline() -> None:
     )
     assert args.mode == "qualify-mtp4"
     assert args.baseline == "mtp0.json"
+
+@pytest.mark.parametrize('depth', [2, 3, 4])
+@pytest.mark.parametrize('damage', ['candidate', 'schema', 'missing', 'enabled', 'counter', 'counter-missing', 'counter-nan', 'cross-schema', 'valid'])
+def test_http_qualification_requires_captured_mtp0_baseline(tmp_path, monkeypatch, depth, damage):
+    from argparse import Namespace
+    path = Path(__file__).parent / f'mtp{depth}_qualification.py'
+    spec = importlib.util.spec_from_file_location(f'mtp{depth}_baseline_test', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    baseline = {'schema': module.SCHEMA, 'status': 'pass', 'mode': 'capture-mtp0', 'model': 'test-model',
+                'speculation': {'enabled': False, 'counter_delta': {'totals': {key: 0.0 for key in module.SPEC_COUNTERS}, 'positions': {}, 'position_keys': []}},
+                'greedy_equivalence': {}}
+    if damage == 'candidate':
+        baseline['mode'] = f'qualify-mtp{depth}'
+    if damage == 'schema':
+        baseline['schema'] = 'unrelated/v1'
+    if damage == 'missing':
+        baseline.pop('speculation')
+    if damage == 'enabled':
+        baseline['speculation']['enabled'] = True
+    if damage == 'counter':
+        baseline['speculation']['counter_delta']['totals'][module.SPEC_COUNTERS[0]] = 1.0
+    if damage == 'counter-missing':
+        baseline['speculation']['counter_delta']['totals'].pop(module.SPEC_COUNTERS[0])
+    if damage == 'counter-nan':
+        baseline['speculation']['counter_delta']['totals'][module.SPEC_COUNTERS[0]] = float('nan')
+    if damage == 'cross-schema':
+        baseline['schema'] = 'sparkring-r7-fixed-mtp2-qualification/v1'
+    baseline_path = tmp_path/'baseline.json'
+    baseline_path.write_text(json.dumps(baseline))
+    monkeypatch.setattr(module, 'discover_model', lambda *args: 'test-model')
+    monkeypatch.setattr(module, '_request', lambda *args, **kwargs: (200, ''))
+    for name in ['parse_spec_metrics', 'metric_delta', 'semantic_canary', 'finite_logprob_canary', 'greedy_equivalence_canaries', f'validate_mtp{depth}_metrics']:
+        monkeypatch.setattr(module, name, lambda *args, **kwargs: {})
+    monkeypatch.setattr(module, 'compare_greedy', lambda *args: None)
+    args = Namespace(base_url='http://unused.invalid', model=None, timeout=1, mode=f'qualify-mtp{depth}', baseline=str(baseline_path))
+    if damage in ('valid', 'cross-schema'):
+        assert module.run_http(args)['status'] == 'pass'
+    else:
+        with pytest.raises(module.QualificationError, match='baseline'):
+            module.run_http(args)

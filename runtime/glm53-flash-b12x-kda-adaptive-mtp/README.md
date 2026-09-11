@@ -6,11 +6,10 @@ and Git tree `ba9484ccb33aa56e90ff2f447f15ca9b9da97639`. Four-rank
 TP4/DCP1 serving remains **unqualified** until an immutable image digest has a
 live qualification receipt.
 
-The pinned vLLM history contains the complete GLM-5.3 source runtime from
-`da4d7be6c97434f6942292ed8abbf4b32dc44355` through acceptance-based
-adaptive MTP at `e10536aadf02a18fccddda7ec939c33147e8b0b3`, followed by three
-commits that bind B12X KDA metadata once and operate on live layer tensors.
-`pins.json` records and verifies the exact first-parent sequence.
+The runtime implements acceptance-based adaptive multi-token prediction and
+binds B12X KDA metadata once while operating on live layer tensors.
+`pins.json` records the exact source revisions and verifies their first-parent
+relationships.
 
 The runtime also pins B12X, InstantTensor, CUDA, and SparkRing's source-built
 NCCL transport. The fastsafetensors TP4 profile uses loader queue size one.
@@ -36,5 +35,6 @@ The matching SparkCache overlay is pinned to
 `FujitsuPolycom/sparkcache@20838ace3ebda570ca039cb7f1976c29da554b39`.
 Its Linux-byte-exact vLLM contract is
 `vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json`. The
-runtime-bound embedded-MTP identity prevents this profile from reusing e105
-adaptive-MTP entries until byte-equivalence across the KDA revisions is proven.
+runtime-bound embedded-MTP identity separates its cache entries from the
+[adaptive-MTP source runtime at vLLM revision e10536a](../glm53-flash-e10536a/README.md).
+Cross-revision reuse requires evidence of equivalent cached state.

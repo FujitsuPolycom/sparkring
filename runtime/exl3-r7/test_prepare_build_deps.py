@@ -54,3 +54,23 @@ def test_every_dependency_pins_and_bundles_its_license(tmp_path):
     (tmp_path / "triton_kernels" / deps.BUNDLED_LICENSE_NAME).unlink()
     with pytest.raises(RuntimeError, match="license is missing: triton_kernels"):
         deps.verify(tmp_path)
+
+@pytest.mark.parametrize('kind', ['unknown', 'damaged-receipt'])
+def test_prepare_preserves_existing_invalid_output_without_fetch(tmp_path, monkeypatch, kind):
+    output = tmp_path/'existing'
+    output.mkdir()
+    if kind == 'damaged-receipt':
+        fixture(output)
+        (output/'cutlass/source.txt').write_text('changed')
+    sentinel = output/'keep.txt'
+    sentinel.write_text('user data')
+    monkeypatch.setattr(deps, 'checkout', lambda *args: pytest.fail('must reject before fetching'))
+    with pytest.raises(RuntimeError, match='existing'):
+        deps.prepare(output)
+    assert sentinel.read_text() == 'user data'
+
+
+def test_prepare_reuses_verified_output_without_fetch(tmp_path, monkeypatch):
+    fixture(tmp_path)
+    monkeypatch.setattr(deps, 'checkout', lambda *args: pytest.fail('must not fetch'))
+    assert deps.prepare(tmp_path)['schema'] == deps.SCHEMA

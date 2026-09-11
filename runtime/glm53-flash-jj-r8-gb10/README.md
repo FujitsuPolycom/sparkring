@@ -1,4 +1,7 @@
-# GLM-5.3 Flash GB10 operator image
+# GLM-5.3-Flash DFlash2 operator image
+
+For deployment selection, use the [profile catalog](../../profiles/README.md).
+This page describes the retained DFlash2 image and its source/verification contracts.
 
 This directory builds and runs one Linux/ARM64 image for GLM-5.3 Flash on four
 NVIDIA GB10 systems. The runtime combines Local Inference Lab's GLM-specific
@@ -56,7 +59,7 @@ optional chat-template override (`CHAT_TEMPLATE_HOST_PATH`, bind-mounted
 read-only and passed as `--chat-template`; empty serves the checkpoint's own
 template).
 
-The recommended profile uses:
+The DFlash2 configuration for this image uses:
 
 | Setting | Value |
 |---|---:|
@@ -419,7 +422,7 @@ that both requests shared a GPU batch or identify each worker's sampler path.
 The [bounded sampler observation](../../performance/records/glm53-flash/sampler-concurrency-20260909.md)
 records why C1-only warmup was insufficient on one MTP3 runtime.
 In particular, the
-reported several-4K-prefills-behind-long-decode case requires an identified image,
+case of concurrent 4K-token prefills while a longer request decodes requires an identified image,
 tokenized request lengths, actual overlapping execution and per-rank JIT evidence.
 The short shape sweep below does not establish that case. Do not gate readiness
 on guessed Triton cache filenames: cache presence alone does not prove that the

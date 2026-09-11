@@ -44,3 +44,5 @@ spark_transport/experiments/q2r_phase_timing/live_installer.py text eol=lf
 integrations/vllm/** text eol=lf
 spark_transport/fabric/** text eol=lf
 profiles/** text eol=lf
+
+runtime/releases/glm53-dflash-sircl-overlay/overlay.tar.gz -text

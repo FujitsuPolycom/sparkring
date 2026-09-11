@@ -21,8 +21,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 PINS = HERE / "pins.json"
 SIRCL_BUILD_RECEIPT = HERE / "sircl-public-build-receipt.json"
-PUBLIC_OVERLAY_BUILDER = ROOT / "runtime/build-public-overlay.py"
-PUBLIC_OVERLAY_SPEC = ROOT / "runtime/public-overlay-files.json"
+PRESERVED_OVERLAY = ROOT / "runtime/releases/glm53-dflash-sircl-overlay"
 
 
 class BuildError(RuntimeError):
@@ -199,6 +198,45 @@ def sparkcache_source_sha256(root: Path) -> str:
     return digest.hexdigest()
 
 
+def prepare_pinned_public_overlay(output: Path, pins: dict[str, Any]) -> str:
+    """Reproduce the receipt-bound overlay without borrowing changing checkout code."""
+    record = pins["sircl"]
+    lock = json.loads((PRESERVED_OVERLAY / "source.json").read_text(encoding="utf-8"))
+    archive = PRESERVED_OVERLAY / "overlay.tar.gz"
+    spec_path = PRESERVED_OVERLAY / "files.json"
+    if (lock.get("schema") != "sparkring-preserved-overlay/v1"
+            or lock.get("source_tree") != record["spark_transport_tree"]
+            or lock.get("manifest_sha256") != record["overlay_manifest_sha256"]
+            or lock.get("public_overlay_spec_sha256") != record["public_overlay_spec_sha256"]
+            or file_sha256(archive) != lock.get("archive_sha256")
+            or file_sha256(spec_path) != record["public_overlay_spec_sha256"]):
+        raise BuildError("Preserved SIRCL overlay differs from the pinned build receipt")
+    spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    expected = {Path(name).name for name in spec["files"]} | {"sparkring-overlay-manifest.json"}
+    payloads = {}
+    with tarfile.open(archive, "r:gz") as stream:
+        for member in stream.getmembers():
+            if (not member.isfile() or member.name not in expected
+                    or member.name in payloads or member.size > 2 * 1024 * 1024):
+                raise BuildError("Preserved SIRCL overlay has an unsafe or unexpected member")
+            payloads[member.name] = stream.extractfile(member).read()
+    if set(payloads) != expected:
+        raise BuildError("Preserved SIRCL overlay is incomplete")
+    manifest_bytes = payloads["sparkring-overlay-manifest.json"]
+    if hashlib.sha256(manifest_bytes).hexdigest() != record["overlay_manifest_sha256"]:
+        raise BuildError("Preserved SIRCL overlay manifest digest mismatch")
+    manifest = json.loads(manifest_bytes)
+    if {item["source"] for item in manifest["files"]} != set(spec["files"]):
+        raise BuildError("Preserved SIRCL overlay source inventory mismatch")
+    for item in manifest["files"]:
+        if hashlib.sha256(payloads[item["path"]]).hexdigest() != item["sha256"]:
+            raise BuildError("Preserved SIRCL overlay payload digest mismatch")
+    output.mkdir(parents=True, exist_ok=False)
+    for name, data in payloads.items():
+        (output / name).write_bytes(data)
+    return lock["source_tree"]
+
+
 def prepare_sircl_bundle(
     output: Path,
     *,
@@ -208,16 +246,6 @@ def prepare_sircl_bundle(
 ) -> dict[str, Any]:
     """Create the embedded public overlay around one receipt-bound ARM64 library."""
     record = pins["sircl"]
-    observed_tree = str(
-        run(("git", "-C", str(ROOT), "rev-parse", "HEAD:spark_transport"))
-    ).strip()
-    if observed_tree != record["spark_transport_tree"]:
-        raise BuildError(
-            "SIRCL source tree mismatch: "
-            f"{observed_tree} != {record['spark_transport_tree']}"
-        )
-    if file_sha256(PUBLIC_OVERLAY_SPEC) != record["public_overlay_spec_sha256"]:
-        raise BuildError("SIRCL public overlay specification digest mismatch")
     if not build_receipt.is_file():
         raise BuildError(f"SIRCL native build receipt is missing: {build_receipt}")
     if file_sha256(build_receipt) != record["build_receipt_sha256"]:
@@ -227,18 +255,7 @@ def prepare_sircl_bundle(
     if file_sha256(native_library) != record["native_sha256"]:
         raise BuildError("SIRCL native library digest mismatch")
 
-    run(
-        (
-            sys.executable,
-            PUBLIC_OVERLAY_BUILDER,
-            "--repo",
-            ROOT,
-            "--spec",
-            PUBLIC_OVERLAY_SPEC,
-            "--output",
-            output,
-        )
-    )
+    observed_tree = prepare_pinned_public_overlay(output, pins)
     manifest = output / "sparkring-overlay-manifest.json"
     if file_sha256(manifest) != record["overlay_manifest_sha256"]:
         raise BuildError("generated SIRCL public overlay manifest digest mismatch")
@@ -512,9 +529,7 @@ def main() -> int:
     sparkring_revision = str(run(("git", "-C", str(ROOT), "rev-parse", "HEAD"))).strip()
     tracked_inputs = (
         str(HERE.relative_to(ROOT)),
-        "spark_transport",
-        "runtime/build-public-overlay.py",
-        "runtime/public-overlay-files.json",
+        str(PRESERVED_OVERLAY.relative_to(ROOT)),
     )
     dirty = str(
         run(

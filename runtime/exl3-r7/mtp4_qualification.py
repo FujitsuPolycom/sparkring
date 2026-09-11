@@ -80,6 +80,7 @@ semantic_canary = _common.semantic_canary
 finite_logprob_canary = _common.finite_logprob_canary
 greedy_equivalence_canaries = _common.greedy_equivalence_canaries
 validate_mtp0_metrics = _common.validate_mtp0_metrics
+validate_mtp0_baseline = _common.validate_mtp0_baseline
 _rank_session = _common._rank_session
 _load_status = _common._load_status
 _validate_transport_session = _common._validate_transport_session
@@ -190,12 +191,7 @@ def run_http(args: argparse.Namespace) -> dict[str, Any]:
         baseline_bytes = baseline_path.read_bytes()
         baseline_sha256 = hashlib.sha256(baseline_bytes).hexdigest()
         baseline = json.loads(baseline_bytes)
-        if not isinstance(baseline, dict) or baseline.get("status") != "pass":
-            raise QualificationError(
-                "MTP0 baseline is not a passing qualification artifact"
-            )
-        if baseline.get("model") != model:
-            raise QualificationError("candidate and MTP0 baseline model IDs differ")
+        validate_mtp0_baseline(baseline, model)
         compare_greedy(greedy, baseline)
         speculation = {
             "enabled": True,

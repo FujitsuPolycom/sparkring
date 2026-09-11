@@ -420,6 +420,27 @@ def greedy_equivalence_canaries(
     return {"prompt_token_ids_sha256": prompt_hash, "lengths": results}
 
 
+def validate_mtp0_baseline(baseline: Any, model: str) -> None:
+    """Require a passing no-speculation capture, not a candidate comparison."""
+    schemas = {f"sparkring-r7-fixed-mtp{depth}-qualification/v1" for depth in (2, 3, 4)}
+    if (not isinstance(baseline, dict) or baseline.get("schema") not in schemas
+            or baseline.get("status") != "pass" or baseline.get("mode") != "capture-mtp0"
+            or baseline.get("model") != model):
+        raise QualificationError("MTP0 baseline must be a passing capture-mtp0 artifact for this model")
+    speculation = baseline.get("speculation")
+    if not isinstance(speculation, dict) or speculation.get("enabled") is not False:
+        raise QualificationError("MTP0 baseline must record speculation disabled")
+    delta = speculation.get("counter_delta")
+    if (not isinstance(delta, dict) or not isinstance(delta.get("totals"), dict)
+            or set(delta["totals"]) != set(SPEC_COUNTERS)
+            or not isinstance(delta.get("positions"), dict)
+            or not isinstance(delta.get("position_keys"), list)):
+        raise QualificationError("MTP0 baseline omitted complete speculative-counter evidence")
+    values = (*delta["totals"].values(), *delta["positions"].values())
+    if any(type(value) not in (int, float) or value != 0 for value in values):
+        raise QualificationError("MTP0 baseline speculative counters must have zero deltas")
+
+
 def compare_greedy(candidate: dict[str, Any], baseline: dict[str, Any]) -> None:
     baseline_canaries = baseline.get("greedy_equivalence")
     if not isinstance(baseline_canaries, dict):
@@ -477,10 +498,7 @@ def run_http(args: argparse.Namespace) -> dict[str, Any]:
         baseline_bytes = baseline_path.read_bytes()
         baseline_sha256 = hashlib.sha256(baseline_bytes).hexdigest()
         baseline = json.loads(baseline_bytes)
-        if not isinstance(baseline, dict) or baseline.get("status") != "pass":
-            raise QualificationError("MTP0 baseline is not a passing qualification artifact")
-        if baseline.get("model") != model:
-            raise QualificationError("candidate and MTP0 baseline model IDs differ")
+        validate_mtp0_baseline(baseline, model)
         compare_greedy(greedy, baseline)
         speculation = {
             "enabled": True,

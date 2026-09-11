@@ -374,9 +374,9 @@ def test_builder_requires_the_receipt_bound_prebuilt_sircl_library() -> None:
     builder = (HERE / "build_image.py").read_text(encoding="utf-8")
     assert '"--sircl-library"' in builder
     assert "SIRCL native library digest mismatch" in builder
-    assert '"HEAD:spark_transport"' in builder
+    assert 'prepare_pinned_public_overlay(output, pins)' in builder
     assert 'context / "bundle/sircl"' in builder
-    assert '"runtime/public-overlay-files.json"' in builder
+    assert 'PRESERVED_OVERLAY.relative_to(ROOT)' in builder
 
 
 def test_b12x_source_overlay_replaces_the_complete_inherited_package(
@@ -770,11 +770,9 @@ def test_sircl_public_build_receipt_binds_overlay_and_native_test(
     assert hashlib.sha256(overlay_spec.read_bytes()).hexdigest() == (
         receipt["source"]["public_overlay_spec_sha256"]
     )
-    overlay_builder = load_module(
-        "sircl_public_overlay", ROOT / "runtime" / "build-public-overlay.py"
-    )
     output = tmp_path / "sircl-overlay"
-    manifest = overlay_builder.build(ROOT, overlay_spec, output)
+    build.prepare_pinned_public_overlay(output, pins)
+    manifest = json.loads((output / "sparkring-overlay-manifest.json").read_text())
     assert len(manifest["files"]) == receipt["overlay"]["files"]
     manifest_path = output / receipt["overlay"]["manifest"]
     assert hashlib.sha256(manifest_path.read_bytes()).hexdigest() == (
@@ -865,3 +863,60 @@ def test_async_capture_image_receipt_binds_public_artifact_and_live_results() ->
     ] == [408.5, 404.3, 403.7, 404.3]
     assert receipt["validation"]["live"]["900k_restore"]["needle"] == "passed"
     assert receipt["validation"]["live"]["1m_restore"]["needle"] == "passed"
+
+@pytest.mark.parametrize('relative', ['vllm/../../outside.txt', 'vllm/../other/source.py'])
+def test_parent_source_removal_validates_all_paths_before_unlink(tmp_path, relative):
+    site = tmp_path/'site'
+    (site/'vllm').mkdir(parents=True)
+    keep = site/'vllm/keep.py'
+    keep.write_text('keep')
+    outside = tmp_path/'outside.txt'
+    outside.write_text('outside')
+    receipt = tmp_path/'receipt.json'
+    receipt.write_text(json.dumps({'files': {'vllm/keep.py': 'unused', relative: 'unused'}}))
+    with pytest.raises(RuntimeError, match='escaped'):
+        install.remove_parent_sources(site, receipt, 'vllm')
+    assert keep.read_text() == 'keep'
+    assert outside.read_text() == 'outside'
+
+
+def test_parent_source_removal_rejects_symlink_escape(tmp_path):
+    site = tmp_path/'site'
+    (site/'vllm').mkdir(parents=True)
+    outside = tmp_path/'outside'
+    outside.mkdir()
+    victim = outside/'source.py'
+    victim.write_text('outside')
+    try:
+        (site/'vllm/linked').symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip('directory symlinks unavailable')
+    receipt = tmp_path/'receipt.json'
+    receipt.write_text(json.dumps({'files': {'vllm/linked/source.py': 'unused'}}))
+    with pytest.raises(RuntimeError, match='escaped'):
+        install.remove_parent_sources(site, receipt, 'vllm')
+    assert victim.read_text() == 'outside'
+
+
+def test_parent_source_removal_keeps_unlisted_files(tmp_path):
+    package = tmp_path/'vllm'
+    package.mkdir()
+    (package/'remove.py').write_text('source')
+    (package/'keep.so').write_text('native')
+    receipt = tmp_path/'receipt.json'
+    receipt.write_text(json.dumps({'files': {'vllm/remove.py': 'unused'}}))
+    install.remove_parent_sources(tmp_path, receipt, 'vllm')
+    assert not (package/'remove.py').exists()
+    assert (package/'keep.so').read_text() == 'native'
+
+
+
+def test_preserved_overlay_rejects_archive_tampering(tmp_path, monkeypatch):
+    import shutil
+    frozen = tmp_path / "frozen"
+    shutil.copytree(build.PRESERVED_OVERLAY, frozen)
+    (frozen / "overlay.tar.gz").write_bytes(b"changed archive")
+    monkeypatch.setattr(build, "PRESERVED_OVERLAY", frozen)
+    with pytest.raises(build.BuildError, match="Preserved SIRCL overlay differs"):
+        build.prepare_pinned_public_overlay(tmp_path / "output", build.load_pins())
+    assert not (tmp_path / "output").exists()

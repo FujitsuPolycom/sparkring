@@ -80,9 +80,12 @@ allocation, explicit B12X draft loader with empty extra configuration, and
 request scheduling/multimodal limits. The launcher reads these fields rather
 than inheriting the legacy profile's values for the cache composition.
 
-The published image contains the canonical profile bytes and has a matching
-verified image receipt. Its TP2 and TP4 bounded checks are recorded separately.
-Distribute an external launcher whose profile contract matches that receipt.
+The published image contains the [preserved profile contract](../../releases/sparkring-r33/published-inputs/profiles/profile-contract.json)
+and has a matching verified image receipt. The checkout's profile contract also
+defines the separately deployed DCP4 overlay; it is not byte-identical to the
+embedded contract. TP2 uses the published image without that overlay. Its
+bounded checks are recorded separately from TP4. Use the external TP2 launcher
+with the published image receipt and its matching TP2 selection.
 Changing packaged profile bytes requires a matching context/source lock,
 image build, and verification receipt; a build alone does not qualify serving.
 Modified images require their own tests rather than inheriting the published

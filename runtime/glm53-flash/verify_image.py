@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -83,12 +84,19 @@ def validate_inspection(document: dict[str, Any], pins: dict[str, Any]) -> None:
 def runtime_probe(engine: str, image: str) -> dict[str, Any]:
     program = """
 import hashlib
+import importlib
 import importlib.metadata
 import json
 import pathlib
 import platform
 
 nccl = pathlib.Path('/opt/sparkring/nccl/libnccl.so.2.30.7')
+receipt_bytes = pathlib.Path('/opt/sparkring/runtime/source-receipt.json').read_bytes()
+pins_bytes = pathlib.Path('/opt/sparkring/runtime/pins.json').read_bytes()
+imports = []
+for name in ('vllm', 'b12x', 'instanttensor'):
+    importlib.import_module(name)
+    imports.append(name)
 document = {
     'python': platform.python_version(),
     'vllm': importlib.metadata.version('vllm'),
@@ -96,8 +104,10 @@ document = {
     'instanttensor': importlib.metadata.version('instanttensor'),
     'nccl_sha256': hashlib.sha256(nccl.read_bytes()).hexdigest(),
     'nccl_bytes': nccl.stat().st_size,
-    'source_receipt_present': pathlib.Path('/opt/sparkring/runtime/source-receipt.json').is_file(),
-    'pins_present': pathlib.Path('/opt/sparkring/runtime/pins.json').is_file(),
+    'source_receipt_sha256': hashlib.sha256(receipt_bytes).hexdigest(),
+    'pins_sha256': hashlib.sha256(pins_bytes).hexdigest(),
+    'source_receipt': json.loads(receipt_bytes),
+    'imports': imports,
 }
 print(json.dumps(document, sort_keys=True))
 """.strip()
@@ -119,8 +129,11 @@ print(json.dumps(document, sort_keys=True))
         raise VerifyError(f"runtime probe did not return JSON: {output!r}") from exc
     if SHA256.fullmatch(str(probe.get("nccl_sha256", ""))) is None:
         raise VerifyError("runtime probe returned an invalid NCCL SHA-256")
-    if not probe.get("source_receipt_present") or not probe.get("pins_present"):
-        raise VerifyError("runtime image omits its source receipt or pins")
+    if any(SHA256.fullmatch(str(probe.get(key, ""))) is None
+           for key in ("source_receipt_sha256", "pins_sha256")):
+        raise VerifyError("runtime image omits receipt or pins identity")
+    if probe.get("imports") != ["vllm", "b12x", "instanttensor"]:
+        raise VerifyError("runtime package imports did not complete")
     return probe
 
 
@@ -132,7 +145,32 @@ def verify_image(engine: str, image: str, pins_path: Path) -> dict[str, Any]:
         raise VerifyError("container engine returned an unexpected inspection document")
     inspection = inspections[0]
     validate_inspection(inspection, pins)
-    probe = runtime_probe(engine, image)
+    probe = runtime_probe(engine, inspection["Id"])
+    expected_pins = hashlib.sha256(pins_path.read_bytes()).hexdigest()
+    receipt = probe.get("source_receipt")
+    receipt_label = inspection["Config"]["Labels"].get("org.sparkring.source-receipt-sha256")
+    if probe["pins_sha256"] != expected_pins:
+        raise VerifyError("installed pins differ from selected pins")
+    if probe["source_receipt_sha256"] != receipt_label:
+        raise VerifyError("installed source receipt differs from image label")
+    if (not isinstance(receipt, dict)
+            or receipt.get("schema") != "sparkring-glm53-public-build-context/v1"
+            or receipt.get("pins_sha256") != expected_pins):
+        raise VerifyError("installed source receipt has incompatible schema or pins")
+    required_files = {"bundle/runtime/" + name for name in (
+        "pins.json", "verify_image.py", "Containerfile", "Containerfile.seed",
+        "build-image.sh", "LICENSES.md", "SparkRing-LICENSE")}
+    required_files.add("bundle/sources/instanttensor-" + pins["public_image_build"]["instanttensor"]["version"] + ".tar.gz")
+    files = receipt.get("files")
+    if (not isinstance(files, dict) or set(files) != required_files
+            or any(SHA256.fullmatch(str(value)) is None for value in files.values())
+            or files["bundle/runtime/pins.json"] != expected_pins):
+        raise VerifyError("installed source receipt has an invalid payload inventory")
+    sources = pins["public_image_build"]["sources"]
+    expected_sources = {name: {"commit": row["commit"], "tree": row.get("patched_tree", row.get("tree"))}
+                        for name, row in sources.items()}
+    if receipt.get("sources") != expected_sources:
+        raise VerifyError("installed source receipt differs from pinned sources")
     expected_nccl = pins["public_image_build"]["outputs"]["nccl_library_sha256"]
     if expected_nccl is not None and probe["nccl_sha256"] != expected_nccl:
         raise VerifyError(

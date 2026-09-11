@@ -67,11 +67,21 @@ def native_manifest(root: Path) -> dict[str, str]:
 
 
 def remove_parent_sources(site_root: Path, receipt: Path, prefix: str) -> None:
+    root = site_root.resolve(strict=True)
+    package = root / prefix
+    targets = []
+    # Validate the complete deletion set before removing any inherited source.
     for relative in load_manifest(receipt):
         path = Path(relative)
-        if not path.parts or path.parts[0] != prefix:
+        if (not path.parts or path.parts[0] != prefix or path.is_absolute()
+                or ".." in path.parts or "\\" in relative or ":" in relative):
             raise RuntimeError(f"parent manifest escaped {prefix}: {relative}")
-        target = site_root / path
+        target = root / path
+        resolved = target.resolve()
+        if not resolved.is_relative_to(package) or not resolved.is_relative_to(root):
+            raise RuntimeError(f"parent manifest escaped {prefix}: {relative}")
+        targets.append(target)
+    for target in targets:
         if target.is_file() or target.is_symlink():
             target.unlink()
 

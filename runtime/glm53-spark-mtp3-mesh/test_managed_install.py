@@ -1,5 +1,5 @@
 """Validate immutable container ownership and the cluster stop barrier."""
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from copy import deepcopy
 import hashlib
 import json
@@ -243,6 +243,60 @@ def test_r33_managed_attestation_uses_source_bound_marker_identity():
         'marker_source_sha256': marker['marker_source_sha256'],
         'marker_binary_sha256': marker['marker_binary_sha256'],
     }
+
+
+@pytest.mark.parametrize('bundle_state', ['lineage', 'attested-python', 'attested-native',
+                                         'unattested', 'tampered', 'changed-manifest'])
+def test_install_plan_verifies_receipt_bound_bundle(tmp_path, monkeypatch, exact_container_spec, bundle_state):
+    profile = managed_install.managed_units.service.mesh_profile
+    monkeypatch.setattr(managed_install, 'CODE_DIR', PurePosixPath('/opt/sparkring/managed-mesh'))
+    monkeypatch.setattr(managed_install, 'CONFIG_DIR', PurePosixPath('/etc/sparkring/managed-mesh'))
+    _, image, expected, actual = exact_container_spec
+    actual.update(container())
+    bundle = tmp_path / 'bundle'
+    bundle.mkdir()
+    filename = 'libspark_transport_capi.so' if bundle_state == 'attested-native' else 'backend.py'
+    payload = bundle / filename
+    payload.write_bytes(b'lineage bytes')
+    manifest = bundle / 'sparkring-overlay-manifest.json'
+    manifest.write_text(json.dumps({'files': [{'path': filename, 'sha256': profile.sha(payload)}]}))
+    receipt = r33_managed_receipt()
+    receipt['image_id'] = image['Id']
+    receipt['bundle_manifest_sha256'] = profile.sha(manifest)
+    checked = receipt['verification']['checked_files']
+    checked['/opt/sparkring/sircl/python/sparkring-overlay-manifest.json'] = profile.sha(manifest)
+    if bundle_state != 'lineage':
+        payload.write_bytes(b'rebuilt bytes')
+    if bundle_state in ('attested-python', 'attested-native', 'tampered', 'changed-manifest'):
+        image_path = '/opt/sparkring/sircl/' + filename if filename.endswith('.so') else '/opt/sparkring/sircl/python/' + filename
+        checked[image_path] = profile.sha(payload)
+    if bundle_state == 'tampered':
+        payload.write_bytes(b'unattested replacement')
+    if bundle_state == 'changed-manifest':
+        manifest.write_text(manifest.read_text() + '\n')
+    marker = tmp_path / 'marker'
+    marker.write_bytes(b'marker fixture')
+    marker_facts = {'marker_source_sha256': profile.PINS['marker']['source_sha256'],
+                    'marker_binary_sha256': profile.sha(marker)}
+    site = {'bundle_root': str(bundle), 'marker_binary': str(marker),
+            'marker_binary_sha256': profile.sha(marker), 'container_prefix': 'profile'}
+    monkeypatch.setattr(profile, 'load_site', lambda path: (site, None, None))
+    monkeypatch.setattr(profile, 'load_image_receipt', lambda path: receipt)
+    monkeypatch.setattr(managed_install, 'managed_image_attestation', lambda document: marker_facts)
+    monkeypatch.setattr(managed_install, 'canonical_container_spec', lambda *args: expected)
+    def run(argv, **kwargs):
+        outputs = {('docker', 'inspect', 'profile-r0'): json.dumps([actual]),
+                   ('docker', 'image', 'inspect', image['Id']): json.dumps([image]),
+                   (str(marker), '--help'): '--managed'}
+        assert tuple(argv) in outputs, argv
+        return SimpleNamespace(stdout=outputs[tuple(argv)], stderr='')
+    monkeypatch.setattr(managed_install.subprocess, 'run', run)
+    arguments = (tmp_path, tmp_path / 'receipt.json', 0, 'a' * 32, 9975, tmp_path / 'key')
+    if bundle_state in ('lineage', 'attested-python', 'attested-native'):
+        assert managed_install.prepare_plan(*arguments)['applied'] is False
+    else:
+        with pytest.raises(ValueError, match='[Bb]undle'):
+            managed_install.prepare_plan(*arguments)
 
 
 @pytest.mark.parametrize('change', [

@@ -74,10 +74,10 @@ transport differs outside that comparison. The published image's separate
 includes an 18-cell matrix, two focused repetitions, native and GPU stream
 checks, an idle rank-loss test, restart, and a verified persistent-prefix restore.
 
-The separate [Estonia accuracy record](../../performance/records/glm53-flash/spark-mtp3-country-recall-20260905.md)
+The separate [country-recall accuracy record](../../performance/records/glm53-flash/spark-mtp3-country-recall-20260905.md)
 reports **30/30 correct** at C8 on one repeated 133,208-token prompt, no
 output-limit hits, and 1.96 s mean cache-primed TTFT. Its 23.8 tok/s figure
-uses summed request times, not cluster wall time. The Estonia record includes
+uses summed request times, not cluster wall time. The country-recall record includes
 the operator screenshot and metric definitions.
 
 The [long-context needle hunt](../../performance/records/glm53-flash/spark-mtp3-needle-20260905.md)
@@ -87,6 +87,10 @@ passed **4/4** exact-value, revision, and cross-reference checks, reaching
 as recorded in that report. It does not identify the image pinned by
 `public-image.json`.
 
+For deployment with the shared published image, follow the
+[four-Spark quickstart](../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md).
+The contracts below describe the retained compute-image composition.
+
 ## Composition
 
 | Input | Contract |
@@ -95,11 +99,12 @@ as recorded in that report. It does not identify the image pinned by
 | Linux/ARM64 parent image, SparkCache, and native SIRCL | [`../glm53-flash-jj-r8-gb10/pins.json`](../glm53-flash-jj-r8-gb10/pins.json) |
 | CUDA 13.3, GLM metadata/loader/RNG integration, B12X scale sharing and selector overrides, NVFP4/BF16 proposal head | [`pins.json`](pins.json), [`IMAGE_BUILD.md`](IMAGE_BUILD.md) |
 | Topology and rank-local filesystem inputs | [`site.example.json`](site.example.json), [`fabric.example.json`](fabric.example.json) |
-| Source-bound collective dispatch and health checks | [`glm53_rocenante_overlay`](../../spark_transport/experiments/glm53_rocenante_overlay/README.md) |
-| Hardware-forwarding plan and native source marker | [`cx7_hairpin_diagonal`](../../spark_transport/experiments/cx7_hairpin_diagonal/README.md) |
+| Source-bound collective dispatch and health checks | [`glm53_rocenante_overlay`](../../integrations/vllm/rocenante/README.md) |
+| Hardware-forwarding plan and native source marker | [`cx7_hairpin_diagonal`](../../spark_transport/fabric/cx7_hairpin_diagonal/README.md) |
 | Modified RoCEnante communication package | [`third_party/b12x_roce`](../../third_party/b12x_roce/README.md) |
 
-The managed profile requires the [published child image](IMAGE_BUILD.md). It
+The retained compute-image configuration uses the [published image reference](public-image.json);
+[IMAGE_BUILD.md](IMAGE_BUILD.md) describes its construction. It
 retains the parent runtime while adding CUDA 13.3, the uniform MTP3
 metadata and loader/RNG integration, B12X revision `ef308bac` with selector
 overrides, the runtime-NVFP4/BF16
@@ -181,8 +186,8 @@ the native-MTP identity requires its own qualification.
 
 ```bash
 python3 -m pytest runtime/glm53-spark-mtp3-mesh \
-  spark_transport/experiments/glm53_rocenante_overlay \
-  spark_transport/experiments/cx7_hairpin_diagonal -q
+  integrations/vllm/rocenante \
+  spark_transport/fabric/cx7_hairpin_diagonal -q
 ```
 
 These are offline contract tests. They do not allocate a GPU, prove host

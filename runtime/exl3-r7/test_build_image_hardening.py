@@ -1,9 +1,7 @@
-"""Test-first hardening of build-image.sh and prepare_context.py.
+"""Check EXL3 builder input identities and prepared-source verification.
 
-These tests assert the immutable identity contract before the implementation
-lands: the parent image must be identified by digest or image ID (never a
-mutable tag alone), PREPARED_SOURCES must be verified against its receipt
-(not just existence), and prepare_context.py must verify its own output.
+The parent image must resolve to its required immutable ID. Prepared sources
+must match the pinned receipt, Git trees and complete source inventory.
 """
 
 from __future__ import annotations
@@ -333,3 +331,20 @@ def test_oci_license_expression_covers_bundled_license_families() -> None:
     assert 'org.opencontainers.image.licenses="${IMAGE_LICENSES}"' in containerfile
     assert "BASE_IMAGE_LICENSES" in BUILD_SCRIPT
     assert "Apache-2.0 AND MIT AND BSD-3-Clause" in BUILD_SCRIPT
+
+@pytest.mark.parametrize('ignored', [False, True])
+def test_verify_component_rejects_all_additional_source_files(tmp_path, monkeypatch, ignored):
+    import importlib.util
+    from types import SimpleNamespace
+    spec = importlib.util.spec_from_file_location('r7_source_inventory', HERE/'prepare_context.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    (tmp_path/'component').mkdir()
+    monkeypatch.setattr(module.subprocess, 'run', lambda *args, **kwargs: SimpleNamespace(returncode=0))
+    def git(*args, **kwargs):
+        if 'ls-files' in args:
+            return '' if ignored and '--exclude-standard' in args else 'extra.py'
+        return 'expected'
+    monkeypatch.setattr(module, 'run', git)
+    with pytest.raises(module.PreparationError, match='untracked source'):
+        module.verify_component('component', {'base_commit': 'expected', 'result_tree': 'expected'}, tmp_path)

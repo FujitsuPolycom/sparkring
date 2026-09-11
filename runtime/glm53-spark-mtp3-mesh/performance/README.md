@@ -6,9 +6,11 @@ explicit recurrent checkpoints, and stream-ordered hardware mesh transport.
 The recipe preserves the parent model weights and does not change host fabric.
 
 This optional research builder uses its own pinned parent and source overlays.
-The shared GLM image and its topology profiles are defined separately in
+The retained GLM source-image profiles are defined separately in
 [`runtime/sparkring/source_image`](../../sparkring/source_image/README.md).
 This builder does not replace those profiles or their image receipts.
+Use the [profile catalog](../../../profiles/README.md) for maintained
+published-image deployments.
 
 ## Build inputs
 
