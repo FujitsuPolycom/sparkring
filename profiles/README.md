@@ -19,8 +19,8 @@ Development profiles are under active development; validated profiles have docum
 | DeepSeek-V4-Flash-Vision-Exp | TP4/DCP1 | 1,048,576 | — | Experimental | alternative | [Guide](deepseek-v4-flash-vision-exp-tp4/README.md) |
 | DeepSeek-V4.1-Flash | TP4/DCP1 | 430,080 | [2,182,642](../profiles/deepseek-v41-flash-cycle/recipe.json) | Development | alternative | [Guide](deepseek-v41-flash-cycle/README.md) |
 | GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 | TP4/DCP4 | 1,048,576 | [1,156,864](../profiles/glm52-exl3-r7-3.5bpw/recipe.json) | Development | alternative | [Guide](glm52-exl3-r7-3.5bpw/README.md) |
-| GLM-5.3 Flash NVFP4-Spark · native MTP3 | TP4/DCP1 | 1,048,576 | — | Experimental | alternative | [Guide](glm53-flash-spark-tp4-dcp1/README.md) |
-| GLM-5.3 Flash NVFP4-Spark · switched | TP4/DCP1 | 1,048,576 | — | Experimental | alternative | [Guide](glm53-flash-spark-tp4-switched/README.md) |
+| GLM-5.3 Flash NVFP4-Spark · native MTP3 | TP4/DCP1 | 1,048,576 | [~2,300,000](../performance/capacity-references.md) | Experimental | alternative | [Guide](glm53-flash-spark-tp4-dcp1/README.md) |
+| GLM-5.3 Flash NVFP4-Spark · switched | TP4/DCP1 | 1,048,576 | [~2,300,000](../performance/capacity-references.md) | Experimental | alternative | [Guide](glm53-flash-spark-tp4-switched/README.md) |
 | Qwen3.8-27B-EXL3-K5K6-hydrated | TP4/DCP1 | 1,048,576 | [8,743,342](../profiles/qwen38-27b-exl3-k5k6/recipe.json) | Development | alternative | [Guide](qwen38-27b-exl3-k5k6/README.md) |
 | DeepSeek-V4-Flash-0731 + SparkCache | TP4/DCP1 | 1,048,576 | — | Development | alternative | [Guide](sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) |
 | GLM-5.2-EXL3-TR3v4-3.5bpw-MTP78 + SparkCache | TP4/DCP4 | 1,048,576 | — | Development | alternative | [Guide](sparkcache-glm52-exl3-r7-3.5bpw-sparkcache-tp4-dcp4/README.md) |

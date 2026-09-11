@@ -63,6 +63,20 @@
       "source": "profiles/sparkcache-glm53-flash-nvfp4-dflash2-bf16-sparkcache-tp4/recipe.json",
       "witness": "\"logical_kv_capacity_tokens\": 4321618",
       "conditions": "Preferred DCP4 selection with 24 GiB FP8 KV per rank in the recorded DFlash recipe."
+    },
+    "glm53-flash-spark-tp4-dcp1": {
+      "tokens": 2300000,
+      "source": "performance/capacity-references.md",
+      "witness": "cache-disabled native-MTP3 TP4/DCP1 profile at ~2.3M tokens",
+      "conditions": "Reference from the shared-image native-MTP3 TP4/DCP1 layout at 24 GiB per rank; not a separate R33 startup measurement.",
+      "approximate": true
+    },
+    "glm53-flash-spark-tp4-switched": {
+      "tokens": 2300000,
+      "source": "performance/capacity-references.md",
+      "witness": "Its table uses the ring's ~2.3M",
+      "conditions": "Sizing estimate using the same target checkpoint, TP4/DCP1, FP8 KV and 24 GiB per rank. Transport and source-image composition differ; not a measured switched-startup pool.",
+      "approximate": true
     }
   }
 }

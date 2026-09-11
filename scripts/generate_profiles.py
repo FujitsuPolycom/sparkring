@@ -30,6 +30,39 @@ def compact_tokens(tokens):
     return str(tokens)
 
 
+def compact_profile_rows(rows, root=ROOT):
+    """Group explicit cache compositions with their base, retaining the default's values."""
+    recipe_ids = {p['configuration']['path']: p['id'] for p, _ in rows
+                  if p['configuration']['format'] == 'recipe'}
+    groups = {}
+    for p, resolved in rows:
+        config = p['configuration']
+        key, cached = p['id'], False
+        if config['format'] == 'recipe':
+            recipe = read_json(local_path(config['path'], root))
+            if recipe.get('base_recipe'):
+                key = recipe_ids[recipe['base_recipe']]
+                cached = True
+        elif config['format'] == 'release-profile':
+            key = (config['path'], config['key'].removesuffix('-sparkcache'))
+            cached = config['key'].endswith('-sparkcache')
+        groups.setdefault(key, []).append((p, resolved, cached))
+    result, cache_cells = [], {}
+    for variants in groups.values():
+        variants.sort(key=lambda item: (item[0]['recommendation'] != 'recommended', item[2]))
+        p, resolved, cached = variants[0]
+        alternative = next((v for v in variants[1:] if v[2] != cached), None)
+        cell = 'No'
+        if alternative:
+            other = alternative[0]['id']
+            cell = f"Included · [off](profiles/{other}/README.md)" if cached else f"[Optional](profiles/{other}/README.md)"
+        elif cached:
+            cell = 'Included'
+        cache_cells[p['id']] = cell
+        result.append((p, resolved))
+    return result, cache_cells
+
+
 def profile_table(root=ROOT, *, compact=False):
     rows = [(load(id, root)[0], resolve(id, root=root)) for id in catalog(root)]
     capacity = read_json(root/'performance/profile-capacity.json')['profiles']
@@ -43,6 +76,7 @@ def profile_table(root=ROOT, *, compact=False):
     lines = [START, '', 'Configured context is a per-request limit, not measured KV capacity or a completed long-context test.',
              'Development profiles are under active development; validated profiles have documented checks for the selected configuration. See each guide for the exact testing scope.', '']
     if compact:
+        rows, cache_cells = compact_profile_rows(rows, root)
         lines = [START, '']
     for title, predicate in (
         ('Four Sparks', lambda p, r: p['recommendation'] != 'retired' and r['serving']['node_count'] == 4),
@@ -53,7 +87,7 @@ def profile_table(root=ROOT, *, compact=False):
             continue
         lines += ['### '+title, '', '| Model / features | Layout | Configured context (tokens) | KV (tokens) | Status | Navigation | Quickstart |', '|---|---|---:|---:|---|---|---|']
         if compact:
-            lines[-2:] = ['| Model / features | Layout | Context (tokens) | KV (tokens) | Status | Quickstart |', '|---|---|---:|---:|---|---|']
+            lines[-2:] = ['| Model / features | Layout | Context (tokens) | KV (tokens) | SparkCache | Status | Quickstart |', '|---|---|---:|---:|---|---|---|']
         for p, r in sorted(rows, key=lambda pair: (pair[0]['recommendation'] != 'recommended', pair[0]['id'])):
             if not predicate(p, r):
                 continue
@@ -69,8 +103,10 @@ def profile_table(root=ROOT, *, compact=False):
             if record and record.get('approximate'):
                 kv = kv.replace('[', '[~', 1)
             if compact:
-                title = f"**{p['title']}**" if p['recommendation'] == 'recommended' else p['title']
-                lines.append(f"| {title} | TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']} | {context} | {kv} | {STATUS_LABELS[p['status']]} | [Guide](profiles/{p['id']}/README.md) |")
+                title = p['title'].replace(" + SparkCache", "")
+                if p['recommendation'] == 'recommended':
+                    title = f"**{title}**"
+                lines.append(f"| {title} | TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']} | {context} | {kv} | {cache_cells[p['id']]} | {STATUS_LABELS[p['status']]} | [Guide](profiles/{p['id']}/README.md) |")
                 continue
             lines.append(f"| {p['title']} | TP{s['tensor_parallel_size']}/DCP{s['decode_context_parallel_size']} | {context} | {kv} | {STATUS_LABELS[p['status']]} | {p['recommendation']} | [Guide](profiles/{p['id']}/README.md) |")
         lines.append('')
