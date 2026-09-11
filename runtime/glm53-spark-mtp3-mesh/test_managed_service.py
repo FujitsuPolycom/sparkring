@@ -318,6 +318,7 @@ def test_monitor_keeps_fabric_checks_live_when_docker_is_unknown(tmp_path, monke
         flock=lambda *args: None, LOCK_EX=1, LOCK_NB=2,
     ))
     monkeypatch.setitem(service.sys.modules, 'managed_network', SimpleNamespace(
+        ManagementAddressLoss=type('ManagementAddressLoss', (RuntimeError,), {}),
         NetworkManager=lambda *args: SimpleNamespace(
             up=lambda: None,
             check=lambda **kw: events.append('network-check'),
@@ -400,3 +401,200 @@ def test_old_marker_path_is_not_silently_overlapped(tmp_path):
         b'--device=rocep1s0f0', b'--source-port', b'65535']) + b'\0')
     assert service.conflicting_markers({'rocep1s0f0'}, tmp_path) == [{'pid': 123, 'device': 'rocep1s0f0'}]
     assert service.conflicting_markers({'rocep1s0f1'}, tmp_path) == []
+
+
+def test_sustained_management_address_loss_latches_failure():
+    watch = service.PeerWatch()
+    watch.management_error(10.0)
+    watch.management_error(13.9)
+    with pytest.raises(RuntimeError, match='grace'):
+        watch.management_error(14.0)
+
+def test_clean_check_clears_management_outage_latch():
+    watch = service.PeerWatch()
+    watch.management_error(10.0)
+    watch.management_recovered()
+    assert watch.mgmt_outage_started is None
+
+
+def test_peer_success_does_not_clear_management_outage():
+    watch = service.PeerWatch()
+    watch.management_error(10.0)
+    watch.observe(rows())
+    assert watch.mgmt_outage_started == 10.0
+
+
+def test_mgmt_recovery_does_not_clear_peer_outage():
+    watch = service.PeerWatch()
+    watch.observe(rows())
+    watch.transport_error(10.0)
+    watch.management_recovered()
+    assert watch.outage_started == 10.0
+
+
+def test_degraded_management_blocks_new_model_admission():
+    changed = rows()
+    changed[0]['management_degraded'] = True
+    with pytest.raises(RuntimeError):
+        service.validate_group(changed)
+
+
+def test_management_loss_enters_grace_in_run_loop(tmp_path, monkeypatch):
+    """Drive the actual run loop: a typed management loss defers failure,
+    keeps peer checks, model-exit detection and the watchdog alive, and a
+    sustained loss expires into fail-closed. The fabric check runs on its
+    own NETWORK_POLL_SECONDS cadence, so the stub records when it fires."""
+    result = owner()
+    result.rank, result.generation, result.model = 0, 'g', 'a' * 64
+    result.config = {'site_path': '/unused'}
+    result.site, result.identity, result.key = {}, 'identity', b'k' * 32
+    result.state_dir, result.server = tmp_path, None
+    result.marker_records, result.logfiles = [], []
+    result.failed, result.owns_guard, result.model_seen = False, False, True
+    loss = type('ManagementAddressLoss', (RuntimeError,), {})
+    fabric_checks = [0]
+    monkeypatch.setitem(service.sys.modules, 'managed_network', SimpleNamespace(
+        ManagementAddressLoss=loss,
+        NetworkManager=lambda *args: SimpleNamespace(
+            up=lambda: None,
+            check=lambda **kw: fabric_checks.__setitem__(0, fabric_checks[0] + 1)
+                or (_ for _ in ()).throw(loss()),
+            down=lambda: {'clean': True},
+        ),
+    ))
+    result.start_markers = lambda: None
+    result.start_server = lambda: None
+    events = []
+    clock = [100.0]
+    rounds = [0]
+
+    class Stop:
+        def is_set(self):
+            return rounds[0] >= 4
+        def wait(self, seconds):
+            rounds[0] += 1
+            clock[0] += 2.0
+
+    result.stop = Stop()
+    result.publish = lambda **changes: result.state.update(changes)
+    result.children = [SimpleNamespace(poll=lambda: None, terminate=lambda: None, wait=lambda **kw: None)
+                       for _ in range(2)]
+    (tmp_path / 'model-intent.json').write_bytes(service.canonical({
+        'generation': 'g', 'active': True, 'deadline_monotonic': 10 ** 12,
+    }))
+    monkeypatch.setattr(service.os, 'geteuid', lambda: 0, raising=False)
+    monkeypatch.setattr(type(tmp_path), 'lstat', lambda self, path=None: SimpleNamespace(st_mode=0o040700, st_uid=0))
+    monkeypatch.setattr(service.signal, 'signal', lambda *args: None)
+    monkeypatch.setitem(service.sys.modules, 'fcntl', SimpleNamespace(
+        flock=lambda *args: None, LOCK_EX=1, LOCK_NB=2,
+    ))
+    monkeypatch.setattr(service.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(service.time, 'sleep', lambda seconds: events.append('retain-markers'))
+    monkeypatch.setattr(service, 'notify', lambda message: events.append('watchdog'))
+    monkeypatch.setattr(service, 'docker_running', lambda name: False)
+    monkeypatch.setattr(service, 'DockerStatePoll', lambda name: SimpleNamespace(
+        poll=lambda: True, error=None, close=lambda: None,
+    ))
+
+    def group_check(*args):
+        events.append('peer-check')
+        return rows()
+
+    monkeypatch.setattr(service, 'group_check', group_check)
+    assert result.run() == 0
+    # One fabric check fired (2.0 s steps reach the 5 s poll threshold on the
+    # fourth round), the management latch armed and stayed inside the grace
+    # bound, and peer/watchdog legs ran every round regardless.
+    assert fabric_checks[0] == 1
+    assert events.count('peer-check') == 4
+    assert events.count('watchdog') == 5  # READY=1 plus one per round
+    assert result.state['management_degraded'] is True
+    assert 'error' not in result.state
+
+    # Sustained loss: clock steps beyond the bound expire the latch into the
+    # fail-closed path.
+    fabric_checks[0] = 0
+    events.clear()
+    clock[0] = 100.0
+    rounds[0] = 0
+    result.failed = False
+
+    class SlowStop:
+        def is_set(self):
+            return rounds[0] >= 3
+        def wait(self, seconds):
+            rounds[0] += 1
+            clock[0] += 100.0
+
+    result.stop = SlowStop()
+    assert result.run() == 1
+    assert fabric_checks[0] == 2
+    assert 'grace' in result.state['error']
+
+
+def test_mgmt_loss_never_masks_roce_fault(tmp_path, monkeypatch):
+    """A changed MTU on the same round fails the rank immediately, even though
+    the management address is also absent."""
+    result = owner()
+    result.rank, result.generation, result.model = 0, 'g', 'a' * 64
+    result.config = {'site_path': '/unused'}
+    result.site, result.identity, result.key = {}, 'identity', b'k' * 32
+    result.state_dir, result.server = tmp_path, None
+    result.marker_records, result.logfiles = [], []
+    result.failed, result.owns_guard, result.model_seen = False, False, True
+    result.state['management_degraded'] = False
+    result.start_markers = lambda: None
+    result.start_server = lambda: None
+
+    class FabricFault(Exception):
+        pass
+
+    fault = FabricFault('Link address or MTU differs')
+    monkeypatch.setitem(service.sys.modules, 'managed_network', SimpleNamespace(
+        ManagementAddressLoss=type('ManagementAddressLoss', (RuntimeError,), {}),
+        NetworkManager=lambda *args: SimpleNamespace(
+            up=lambda: None,
+            check=lambda **kw: (_ for _ in ()).throw(fault),
+            down=lambda: {'clean': True},
+        ),
+    ))
+    events = []
+    clock = [100.0]
+    rounds = [0]
+
+    class Stop:
+        def is_set(self):
+            return rounds[0] >= 3
+
+        def wait(self, seconds):
+            rounds[0] += 1
+            clock[0] += 100.0
+
+    result.stop = Stop()
+    result.publish = lambda **changes: result.state.update(changes)
+    result.children = [SimpleNamespace(poll=lambda: None, terminate=lambda: None, wait=lambda **kw: None)
+                       for _ in range(2)]
+    monkeypatch.setattr(service.os, 'geteuid', lambda: 0, raising=False)
+    monkeypatch.setattr(type(tmp_path), 'lstat', lambda self, path=None: SimpleNamespace(st_mode=0o040700, st_uid=0))
+    monkeypatch.setattr(service.signal, 'signal', lambda *args: None)
+    monkeypatch.setitem(service.sys.modules, 'fcntl', SimpleNamespace(
+        flock=lambda *args: None, LOCK_EX=1, LOCK_NB=2,
+    ))
+    monkeypatch.setattr(service.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(service.time, 'sleep', lambda seconds: events.append('retain-markers'))
+    monkeypatch.setattr(service, 'notify', lambda message: events.append('watchdog'))
+    monkeypatch.setattr(service, 'docker_running', lambda name: False)
+    monkeypatch.setattr(service, 'DockerStatePoll', lambda name: SimpleNamespace(
+        poll=lambda: True, error=None, close=lambda: None,
+    ))
+
+    def group_check(*args):
+        events.append('peer-check')
+        return rows()
+
+    monkeypatch.setattr(service, 'group_check', group_check)
+    assert result.run() == 1
+    # Fabric fault propagates directly to the outer handler: no degraded
+    # publish, no grace, and the recorded error is the fabric one.
+    assert result.state['management_degraded'] is not True
+    assert 'Link address or MTU differs' in result.state['error']

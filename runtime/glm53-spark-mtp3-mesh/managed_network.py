@@ -26,6 +26,16 @@ profile = inspector.profile
 fabric = profile.fabric
 
 
+class ManagementAddressLoss(RuntimeError):
+    """This rank's validated management address is absent from its netdev.
+
+    Raised only after every fabric check has passed, so callers can grant a
+    bounded grace interval without delaying any RoCE fault. A management
+    identity that was never validated at startup, or that differs from the
+    validated tuple, raises ValueError instead and never receives grace.
+    """
+
+
 def command(argv):
     result = subprocess.run(argv, capture_output=True, text=True, timeout=15)
     if result.returncode:
@@ -136,11 +146,26 @@ class NetworkManager:
             if os.path.exists(temporary):
                 os.unlink(temporary)
 
-    def _links(self, *, verify_rdma_mtu=True):
+    def _management_address_present(self):
+        """True when this rank's site-assigned management address is on its netdev."""
         management = self._json(["ip", "-j", "-4", "addr", "show", "dev", self.local.management_netdev])
-        if self.site["management_addresses"][self.rank] not in {
-                x.get("local") for link in management for x in link.get("addr_info", [])}:
-            raise ValueError("Management address does not identify this rank")
+        return self.site["management_addresses"][self.rank] in {
+                x.get("local") for link in management for x in link.get("addr_info", [])}
+
+    def _links(self, *, verify_rdma_mtu=True, management_loss=None):
+        """Verify the management address and the RoCE port fabric.
+
+        When management_loss is a list and this rank's validated management
+        address is absent, the loss is appended there and the fabric port
+        checks still run. Any fabric mismatch raises immediately: a RoCE
+        fault must never wait behind a management outage. Callers without a
+        management_loss list keep startup semantics and fail fast on the
+        first absent address.
+        """
+        if not self._management_address_present():
+            if management_loss is None:
+                raise ValueError("Management address does not identify this rank")
+            management_loss.append(True)
         for port in self.local.ports:
             links = self._json(["ip", "-j", "addr", "show", "dev", port.netdev])
             if (len(links) != 1 or links[0].get("mtu") != self.plan.expected_ethernet_mtu
@@ -209,16 +234,24 @@ class NetworkManager:
             return fabric.tc_rule_command(obj, add=add)
         return ["tc", "qdisc", "add" if add else "del", "dev", obj, "clsact"]
 
-    def check(self, *, verify_rdma_mtu=True):
+    def check(self, *, verify_rdma_mtu=True, management_loss=None):
         """Verify local state; periodic callers may defer only the verbs MTU probe.
 
         Startup and periodic full checks must retain the default. Disabling
         the probe still verifies Ethernet MTU, GID/netdev identity and TC rules.
+
+        When management_loss is a list and this rank's management address is
+        absent, every fabric check still runs; if no fabric check raises, the
+        list is populated and the caller decides whether the loss receives a
+        grace interval. Fabric failures raise immediately regardless.
         """
-        self._links(verify_rdma_mtu=verify_rdma_mtu)
+        management_loss = management_loss if management_loss is not None else []
+        self._links(verify_rdma_mtu=verify_rdma_mtu, management_loss=management_loss)
         missing = [key for key, (kind, obj) in self.objects.items() if not self._present(kind, obj)]
         if missing:
             raise ValueError(f"Missing mesh network objects: {missing}")
+        if management_loss:
+            raise ManagementAddressLoss("Management address does not identify this rank")
         return {"ready": True, "rank": self.rank, "plan_sha256": self.plan.sha256,
                 "objects": len(self.objects)}
 

@@ -127,16 +127,23 @@ def validate_group(rows):
     view = digest(generations)
     if any(row.get('phase') != 'armed' or row.get('view_digest') != view
            or row.get('peer_health_degraded', False)
+           or row.get('management_degraded', False)
            or row.get('docker_status_degraded', False) for row in rows):
         raise RuntimeError('Mesh ranks have not armed the same process generation set')
     return view
 
 
 class PeerWatch:
-    """Tolerate short connection loss, never authenticated negative readiness or a new generation."""
+    """Tolerate short connection loss, never authenticated negative readiness or a new generation.
+
+    Peer transport and local management-address outages carry independent
+    latches: a successful peer poll clears only the peer latch, and a clean
+    fabric/management check clears only the management latch.
+    """
     def __init__(self):
         self.generations = None
         self.outage_started = None
+        self.mgmt_outage_started = None
 
     def observe(self, rows):
         observed = {str(row['rank']): row['generation'] for row in rows}
@@ -151,6 +158,16 @@ class PeerWatch:
             self.outage_started = now
         if now - self.outage_started >= PEER_OUTAGE_GRACE:
             raise RuntimeError('Authenticated peer transport remained unavailable beyond its grace interval')
+
+    def management_error(self, now):
+        """Latch a local management-address outage; clears only on its own recovery."""
+        if self.mgmt_outage_started is None:
+            self.mgmt_outage_started = now
+        if now - self.mgmt_outage_started >= PEER_OUTAGE_GRACE:
+            raise RuntimeError('Local management address remained unavailable beyond its grace interval')
+
+    def management_recovered(self):
+        self.mgmt_outage_started = None
 
 
 def notify(message):
@@ -303,7 +320,8 @@ class MeshService:
         self.model = self.config['container_id']
         self.state = {'protocol': PROTOCOL, 'rank': self.rank, 'epoch': self.config['epoch'],
                       'identity': self.identity, 'generation': self.generation,
-                      'local_ready': False, 'phase': 'starting', 'view_digest': None}
+                      'local_ready': False, 'phase': 'starting', 'view_digest': None,
+                      'management_degraded': False}
         self.lock = threading.Lock()
         self.stop = threading.Event()
         self.children = []
@@ -443,7 +461,7 @@ class MeshService:
             if docker_running(self.model):
                 raise RuntimeError('Stop the dependent model before starting mesh ownership')
             self.owns_guard = True
-            from managed_network import NetworkManager
+            from managed_network import NetworkManager, ManagementAddressLoss
             self.network = NetworkManager(Path(self.config['site_path']), self.rank, self.state_dir / 'network')
             self.network.up()
             self.start_markers()
@@ -460,7 +478,14 @@ class MeshService:
                     raise RuntimeError('A managed source marker exited')
                 if time.monotonic() - last_network >= NETWORK_POLL_SECONDS:
                     full = time.monotonic() - last_full_network >= 60
-                    self.network.check(verify_rdma_mtu=full)
+                    try:
+                        self.network.check(verify_rdma_mtu=full)
+                    except ManagementAddressLoss:
+                        peer_watch.management_error(time.monotonic())
+                        self.publish(management_degraded=True)
+                    else:
+                        peer_watch.management_recovered()
+                        self.publish(management_degraded=False)
                     if full:
                         last_full_network = time.monotonic()
                     last_network = time.monotonic()
