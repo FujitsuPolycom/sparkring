@@ -313,7 +313,7 @@ void proxy_one_operation(
     const ProxyPayloads& payloads, const ProxyPayloads& expected_outgoing,
     std::uint64_t sequence, const ProxyConfig& config,
     std::atomic<std::uint64_t>& outgoing_mismatches) {
-  // Reverse selected tiles on alternating stages. This ensures the fused
+  // Reverse flow service order on alternating stages. This ensures the fused
   // kernel tolerates independent flow progress instead of accidentally
   // relying on lockstep CPU service.
   for (std::uint32_t stage = 0; stage < research::kFusedPrefillStages;
@@ -365,15 +365,10 @@ void proxy_one_operation(
       store_release(&control->secondary_doorbell[parity], token);
 
       wait_exact(&control->consumer[parity], token, "consumer");
-      // Model independent local-CQE and reciprocal-credit retirement. Reuse
-      // is the AND gate and is never published after just one condition.
+      // Approximate local completion and peer-credit latency sequentially.
+      // This mapped-memory smoke test does not exercise failed retirement.
       delay_us(config.cqe_delay_us);
-      const bool local_cqe_retired = true;
       delay_us(config.credit_delay_us);
-      const bool peer_credit_observed = true;
-      if (!local_cqe_retired || !peer_credit_observed) {
-        throw std::runtime_error("proxy retirement gate failed");
-      }
       store_release(&control->reuse[parity], token);
     }
   }

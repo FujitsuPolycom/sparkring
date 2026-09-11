@@ -128,6 +128,9 @@ Options parse_options(int argc, char** argv) {
        (!options.alternate_streams || options.query_rows != 0))) {
     usage(argv[0]);
   }
+  // Exercise a queued producer delay longer than the five-second protocol
+  // watchdog. Eager staging uses its separate configurable timeout; this
+  // scenario checks that queued stream work is gated before protocol progress.
   if (options.queued_delay_ms != 0 &&
       (options.queued_delay_ms < 5500 ||
        !options.alternate_streams || options.queued_delay_rank >= 4 ||
@@ -375,6 +378,9 @@ int main(int argc, char** argv) {
             outputs[stream_index], current_stream,
             device_mismatches, operation);
       };
+      // The session inserts an event/wait dependency whenever streams change.
+      // Draining the last submission also drains preceding validation kernels;
+      // a start event on the next stream precedes all measured gathers.
       const auto next_stream = [&]() {
         const std::size_t stream_index =
             options.alternate_streams &&

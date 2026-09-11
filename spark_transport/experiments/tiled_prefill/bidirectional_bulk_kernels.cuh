@@ -52,7 +52,8 @@ inline BidirectionalBulkDescriptor make_bidirectional_post_exchange_descriptor(
     std::uint64_t secondary_expected_doorbell_token = 0) {
   // The executor bridge passes the source exchange (exchange_stage - 1)
   // together with that exchange's incoming doorbell offset and exact token.
-  // Host observation alone is not the GPU payload-visibility contract.
+  // The GPU must acquire that doorbell before reading the receive region;
+  // host-side exchange completion alone does not establish device visibility.
   if (stage >= kTp4PrefillStageCount ||
       tile_in_shard >= kBidirectionalBulkTilesPerShard) {
     throw std::out_of_range("invalid bidirectional stage or tile index");

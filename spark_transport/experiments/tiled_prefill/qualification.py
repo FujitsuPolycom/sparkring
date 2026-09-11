@@ -26,7 +26,7 @@ from spark_transport.experiments.tiled_prefill.gpu_harness import (
 
 
 PLAN_SCHEMA = "sparkring-tp4-tiled-prefill-qualification-plan/v1"
-RECEIPT_SCHEMA = "sparkring-tp4-tiled-prefill-probe/v1"
+RECEIPT_SCHEMA = "sparkring-tp4-tiled-prefill-probe/v2"
 AGGREGATE_SCHEMA = "sparkring-tp4-tiled-prefill-rank-gate/v1"
 RECEIPT_PREFIX = "TP4_TILED_PREFILL_RECEIPT "
 WORLD_SIZE = 4
@@ -294,9 +294,10 @@ def qualification_plan() -> dict[str, object]:
                 "poison receipt per rank and exit with code 42"
             ),
             "timing": (
-                "isolated min/p50/p95 and steady-state mean are distinct; "
-                "diagnostic phase envelopes are not summed and cannot support "
-                "a performance claim under the single-stream executor"
+                "successful arms report host advance/drain min/p50/p95 and a "
+                "host window mean including enabled correctness checks; poison "
+                "arms report null timings. Device, component and credit-wait "
+                "timings are unmeasured; no performance claim is allowed"
             ),
             "association": (
                 "the lower half reports xor1_then_xor3 and the upper half "
@@ -407,6 +408,31 @@ def _validate_common(receipt: Mapping[str, object], arm: QualificationArm) -> No
     _equals(receipt, "performance_claim_allowed", False)
     _equals(receipt, "protocol_node_implementation", "native_executor")
 
+    _equals(receipt, "timing_clock", "host_steady_clock")
+    _equals(receipt, "device_timing_measured", False)
+    _equals(receipt, "slot_credit_wait_timing_measured", False)
+    # This single-stream probe has no CUDA event timing. Reject invented device
+    # durations, component timings, bandwidth and credit-wait percentiles.
+    unsupported = [name for name in receipt if name.startswith((
+        "device_output_", "device_fully_", "steady_state_device_",
+        "slot_credit_wait_us_", "stage_phase1_gpu_", "phase1_remote_wait_",
+        "reduce_phase1_gpu_", "phase2_remote_wait_", "reduce_phase2_gpu_",
+        "active_payload_gib_", "steady_state_active_payload_", "host_submit_",
+    ))]
+    if unsupported:
+        raise ReceiptValidationError("unmeasured timing fields: " + ", ".join(unsupported))
+    if arm.is_poison:
+        for name in ("host_operation_us_min", "host_operation_us_p50",
+                     "host_operation_us_p95", "host_measured_window_us_per_operation"):
+            _equals(receipt, name, None)
+    else:
+        minimum = _number(receipt, "host_operation_us_min", positive=True)
+        median = _number(receipt, "host_operation_us_p50", positive=True)
+        p95 = _number(receipt, "host_operation_us_p95", positive=True)
+        if not minimum <= median <= p95:
+            raise ReceiptValidationError("host operation quantiles must be monotonic")
+        _number(receipt, "host_measured_window_us_per_operation", positive=True)
+
 
 def _validate_success(
     receipt: Mapping[str, object], arm: QualificationArm
@@ -435,62 +461,6 @@ def _validate_success(
         )
     for name in _ZERO_ON_SUCCESS:
         _equals(receipt, name, 0)
-    _number(receipt, "host_submit_us_per_operation")
-    for name in (
-        "stage_phase1_gpu_us_p50",
-        "phase1_remote_wait_us_p50",
-        "reduce_phase1_gpu_us_p50",
-        "phase2_remote_wait_us_p50",
-        "reduce_phase2_gpu_us_p50",
-    ):
-        _number(receipt, name)
-    if arm.timing_mode == "isolated":
-        minimum = _number(
-            receipt, "device_output_ready_us_min", positive=True
-        )
-        median = _number(
-            receipt, "device_output_ready_us_p50", positive=True
-        )
-        p95 = _number(
-            receipt, "device_output_ready_us_p95", positive=True
-        )
-        retired_median = _number(
-            receipt, "device_fully_retired_us_p50", positive=True
-        )
-        retired_p95 = _number(
-            receipt, "device_fully_retired_us_p95", positive=True
-        )
-        if not minimum <= median <= p95:
-            raise ReceiptValidationError(
-                "isolated output-ready quantiles must be monotonic"
-            )
-        if retired_median < median or retired_p95 < p95:
-            raise ReceiptValidationError(
-                "full retirement cannot precede output readiness"
-            )
-        _number(receipt, "active_payload_gib_per_s_p50", positive=True)
-    elif arm.timing_mode == "steady":
-        _number(
-            receipt, "steady_state_device_us_per_operation", positive=True
-        )
-        _number(
-            receipt,
-            "steady_state_active_payload_gib_per_s",
-            positive=True,
-        )
-    elif arm.timing_mode == "correctness":
-        output_ready = _number(
-            receipt, "device_output_ready_us_p50", positive=True
-        )
-        fully_retired = _number(
-            receipt, "device_fully_retired_us_p50", positive=True
-        )
-        if fully_retired < output_ready:
-            raise ReceiptValidationError(
-                "full retirement cannot precede output readiness"
-            )
-    else:
-        raise ReceiptValidationError("success arm has invalid timing mode")
     wait_events = _integer(receipt, "slot_credit_wait_events")
     if wait_events < 0:
         raise ReceiptValidationError(
@@ -513,8 +483,6 @@ def _validate_success(
                 "backpressure arm did not separate output readiness from "
                 "final retirement"
             )
-        _number(receipt, "slot_credit_wait_us_p50", positive=True)
-        _number(receipt, "slot_credit_wait_us_p95", positive=True)
 
 
 def _validate_poison(
@@ -523,6 +491,8 @@ def _validate_poison(
     _equals(receipt, "passed", False)
     _equals(receipt, "exit_code", EXPECTED_POISON_EXIT_CODE)
     _equals(receipt, "fatal_state", "poisoned")
+    _equals(receipt, "highest_retired_ordinal_edge0", None)
+    _equals(receipt, "highest_retired_ordinal_edge1", None)
     _equals(receipt, "completed_operations", 0)
     for name in (
         "mismatched_active_elements",

@@ -134,8 +134,8 @@ Options parse_options(int argc, char** argv) {
   if (options.gpu_roundtrip &&
       options.memory == spark_transport::MemoryKind::kCudaDevice) {
     throw std::invalid_argument(
-        "GPU round trip currently needs CPU-visible control memory; use "
-        "cuda-managed for the direct-allocation probe");
+        "GPU round trip requires CPU-visible control memory; rerun with "
+        "--memory cuda-managed");
   }
   const auto control_offset =
       spark_transport::aligned_control_offset(options.bytes);

@@ -16,6 +16,8 @@ import struct
 
 INPUT_GENERATION_PERIOD = 7
 PAYLOAD_TILE_BYTES = 512 * 1024
+# Width of the gpu_harness/qualification BF16 payload contract; the separate
+# bidirectional-ring and fused CUDA probes use width 4096.
 MODEL_WIDTH = 6144
 BF16_BYTES = 2
 GUARD_BYTES = 4096
@@ -26,7 +28,12 @@ INACTIVE_OUTPUT_SENTINEL = 0x6C
 
 
 class TiledHalfAssociation(Enum):
-    """The rank-pair order used for one tensor half."""
+    """Rank-pair order for one tensor half.
+
+    XOR1 pairs ranks (0, 1) and (2, 3), using partner = rank ^ 1.
+    XOR3 pairs ranks (0, 3) and (1, 2), using partner = rank ^ 3.
+    The two tensor halves apply these pairing steps in opposite orders.
+    """
 
     XOR1_THEN_XOR3 = "xor1_then_xor3"
     XOR3_THEN_XOR1 = "xor3_then_xor1"

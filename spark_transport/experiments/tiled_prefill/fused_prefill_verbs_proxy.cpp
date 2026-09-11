@@ -163,7 +163,8 @@ FusedPrefillDescriptor make_fused_prefill_descriptor(
       rank >= kFusedPrefillRanks || spin_limit == 0 || payload_bytes == 0 ||
       payload_bytes > kFusedPrefillPayloadBytes ||
       payload_bytes % (kFusedPrefillElementsPerRow * 2U) != 0 ||
-      operation_slots == 0 || operation_slots > 8) {
+      operation_slots == 0 || operation_slots > 8 ||
+      !fused_prefill_sequence_valid(operation_sequence)) {
     throw std::invalid_argument("invalid fused prefill descriptor input");
   }
   const std::uint32_t flow = fused_prefill_flow(direction, tile);
@@ -264,9 +265,8 @@ class FusedPrefillVerbsProxy::Impl {
     if (have_sequence_ && sequence != last_sequence_ + 1U) {
       fail("operation sequence is not monotonic");
     }
-    if (sequence > (UINT64_MAX - kFusedPrefillStages) /
-                       kFusedPrefillStages) {
-      fail("operation sequence exhausts token space");
+    if (!fused_prefill_sequence_valid(sequence)) {
+      fail("operation sequence exceeds the 32-bit device barrier range");
     }
     if (rail_bytes == 0 || rail_bytes > kFusedPrefillRailBytes ||
         rail_bytes % 16U != 0) {

@@ -5,6 +5,11 @@ through Q4096 be represented as exact 512-KiB transport tiles, with multiple
 64-KiB worker CTAs per tile and explicit slot-reuse dependencies?  It does not
 execute CUDA or RDMA and production transport code does not consume it.
 
+Its timing fields describe instrumentation required for a performance executor;
+that instrumentation is not implemented by the standalone native probe.
+``qualification.py`` owns that probe's v2 receipts, which contain host-clock
+samples only and reject device/component/credit-wait timing claims.
+
 Run the inspectable contract with::
 
     python -m spark_transport.experiments.tiled_prefill.gpu_harness \
@@ -251,6 +256,11 @@ class TiledGpuHarnessPlan:
             "pipeline_node_count": len(self.nodes),
             "output_ready_node": self.output_ready_node,
             "fully_retired_node": self.fully_retired_node,
+            "timing_instrumentation_status": "unimplemented",
+            "timing_scope": (
+                "required performance instrumentation, not measurements emitted "
+                "by the standalone correctness probe"
+            ),
             "timing_fields": {
                 field: TIMING_FIELD_SEMANTICS[field]
                 for field in self.timing_fields

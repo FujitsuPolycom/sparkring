@@ -80,6 +80,15 @@ def receipt_fixture(arm_id: str, rank: int) -> dict[str, object]:
             passed=False,
             exit_code=EXPECTED_POISON_EXIT_CODE,
             fatal_state="poisoned",
+            timing_clock="host_steady_clock",
+            device_timing_measured=False,
+            slot_credit_wait_timing_measured=False,
+            host_operation_us_min=None,
+            host_operation_us_p50=None,
+            host_operation_us_p95=None,
+            host_measured_window_us_per_operation=None,
+            highest_retired_ordinal_edge0=None,
+            highest_retired_ordinal_edge1=None,
             completed_operations=0,
             tiles_acquired=acquired,
             tiles_recycled=0,
@@ -115,37 +124,14 @@ def receipt_fixture(arm_id: str, rank: int) -> dict[str, object]:
         output_ready_before_final_retirement_count=(
             operations if arm.is_backpressure else 0
         ),
-        host_submit_us_per_operation=2.0,
-        stage_phase1_gpu_us_p50=10.0,
-        phase1_remote_wait_us_p50=20.0,
-        reduce_phase1_gpu_us_p50=10.0,
-        phase2_remote_wait_us_p50=20.0,
-        reduce_phase2_gpu_us_p50=10.0,
+        timing_clock="host_steady_clock",
+        device_timing_measured=False,
+        slot_credit_wait_timing_measured=False,
+        host_operation_us_min=90.0,
+        host_operation_us_p50=100.0,
+        host_operation_us_p95=120.0,
+        host_measured_window_us_per_operation=150.0,
     )
-    if arm.timing_mode == "isolated":
-        receipt.update(
-            device_output_ready_us_min=90.0,
-            device_output_ready_us_p50=100.0,
-            device_output_ready_us_p95=120.0,
-            device_fully_retired_us_p50=110.0,
-            device_fully_retired_us_p95=140.0,
-            active_payload_gib_per_s_p50=4.5,
-        )
-    else:
-        receipt.update(
-            steady_state_device_us_per_operation=80.0,
-            steady_state_active_payload_gib_per_s=5.5,
-        )
-    if arm.timing_mode == "correctness":
-        receipt.update(
-            device_output_ready_us_p50=100.0,
-            device_fully_retired_us_p50=120.0,
-        )
-    if arm.is_backpressure:
-        receipt.update(
-            slot_credit_wait_us_p50=1000.0,
-            slot_credit_wait_us_p95=1100.0,
-        )
     return receipt
 
 
@@ -274,7 +260,7 @@ def test_geometry_drift_from_registered_storage_fails_closed() -> None:
         ("peak_tiles_in_flight", 9, "peak_tiles_in_flight"),
         ("tiles_recycled", 1, "tiles_recycled"),
         ("credit_regression_count", 1, "credit_regression_count"),
-        ("steady_state_device_us_per_operation", float("nan"), "finite"),
+        ("host_measured_window_us_per_operation", float("nan"), "finite"),
     ],
 )
 def test_success_receipt_faults_fail_closed(
@@ -378,3 +364,23 @@ def test_arm_ids_are_unique_and_lookup_rejects_ad_hoc_arms() -> None:
     assert len(arm_ids) == len(set(arm_ids))
     with pytest.raises(ValueError, match="unknown"):
         arm_by_id("q513_steady")
+
+
+@pytest.mark.parametrize("field", [
+    "device_output_ready_us_p50", "device_fully_retired_us_p95",
+    "slot_credit_wait_us_p50", "steady_state_device_us_per_operation",
+    "stage_phase1_gpu_us_p50", "active_payload_gib_per_s_p50",
+])
+@pytest.mark.parametrize("arm_id", ["q512_steady", "q40_poison_unexpected_generation"])
+def test_receipts_reject_unmeasured_timing_claims(field: str, arm_id: str) -> None:
+    receipts = rank_fixtures(arm_id)
+    receipts[0][field] = 0.001
+    with pytest.raises(ReceiptValidationError, match="unmeasured timing"):
+        validate_rank_receipts(receipts, arm_by_id(arm_id))
+
+
+def test_receipt_rejects_fabricated_host_quantiles() -> None:
+    receipts = rank_fixtures("q512_steady")
+    receipts[0]["host_operation_us_min"] = 121.0
+    with pytest.raises(ReceiptValidationError, match="monotonic"):
+        validate_rank_receipts(receipts, arm_by_id("q512_steady"))

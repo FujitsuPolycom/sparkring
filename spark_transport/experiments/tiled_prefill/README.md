@@ -129,10 +129,18 @@ teardown. The runner defaults to plan-only; remote execution requires the
 explicit `-Execute` switch and still does not start a serving model.
 
 The native correctness executor is constrained to
-`single_stream_correctness_only`. Timing fields are useful instrumentation,
-but cannot support a performance claim until a reviewed multi-stream mapping
-preserves the dependency DAG and concrete GPU/edge ports bind every executor
-protocol seam.
+`single_stream_correctness_only`. Its v2 receipts report host-clock operation
+min/p50/p95 and a measured-window average. Operation samples span executor
+advance/drain calls; the window also includes enabled correctness checks.
+Poison arms report null timings because no operation completes. Device,
+component and credit-wait timings are unmeasured and rejected by the receipt
+validator.
+
+The `gpu_harness.py` timing fields specify unimplemented instrumentation for
+a performance executor; they are not standalone-probe receipt fields.
+Performance qualification requires that instrumentation and a reviewed
+multi-stream mapping that preserves the dependency DAG and completion
+ownership.
 
 Compile and run the standalone native executor test without CUDA or verbs:
 

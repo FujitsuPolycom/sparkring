@@ -5,11 +5,11 @@ project(spark_tiled_prefill_research LANGUAGES CXX CUDA)
 option(SPARK_TILED_PREFILL_ENABLE_CUDA_SMOKE
     "Build the single-GPU tiled-kernel numerical smoke test" OFF)
 option(SPARK_TILED_PREFILL_ENABLE_BIDIRECTIONAL_CUDA_SMOKE
-    "Build the fixed Q2048x4096 bidirectional RS/AG CUDA smoke test" OFF)
+    "Build the Q1024/Q2048/Q4096/Q8192 width4096 bidirectional RS/AG CUDA smoke test" OFF)
 option(SPARK_TILED_PREFILL_ENABLE_FUSED_PREFILL_PROXY_SMOKE
-    "Build the probe-only fused Q8192/N4 mapped-host proxy smoke test" OFF)
+    "Build the probe-only fused Q8192 four-rank mapped-host proxy smoke test" OFF)
 option(SPARK_TILED_PREFILL_ENABLE_FUSED_PREFILL_VERBS_PROXY
-    "Build the probe-only fused Q8192/N4 real-verbs proxy" OFF)
+    "Build the probe-only fused Q8192 four-rank real-verbs proxy" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -104,6 +104,7 @@ if(BUILD_TESTING)
         target_link_libraries(tp4_tiled_cuda_smoke_test PRIVATE
             spark_tiled_prefill_cuda CUDA::cudart)
         target_compile_options(tp4_tiled_cuda_smoke_test PRIVATE
+            -UNDEBUG
             $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
         add_test(NAME tp4_tiled_cuda_smoke_test
             COMMAND tp4_tiled_cuda_smoke_test)
@@ -119,6 +120,7 @@ if(BUILD_TESTING)
         target_link_libraries(tp4_bidirectional_bulk_cuda_smoke_test
             PRIVATE CUDA::cudart)
         target_compile_options(tp4_bidirectional_bulk_cuda_smoke_test PRIVATE
+            -UNDEBUG
             $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
         add_test(NAME tp4_bidirectional_bulk_cuda_smoke_test
             COMMAND tp4_bidirectional_bulk_cuda_smoke_test)
@@ -134,6 +136,7 @@ if(BUILD_TESTING)
         target_link_libraries(tp4_fused_prefill_proxy_smoke_test
             PRIVATE CUDA::cudart)
         target_compile_options(tp4_fused_prefill_proxy_smoke_test PRIVATE
+            -UNDEBUG
             $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
         add_test(NAME tp4_fused_prefill_proxy_smoke_test
             COMMAND tp4_fused_prefill_proxy_smoke_test --operations=100)

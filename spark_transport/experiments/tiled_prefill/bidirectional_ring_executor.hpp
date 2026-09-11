@@ -62,7 +62,8 @@ enum class BidirectionalRingDrainState : std::uint8_t {
 constexpr std::uint32_t kBidirectionalRingTilesPerShard = 4;
 constexpr std::uint32_t kBidirectionalRingTransfersPerDirection =
     kTp4PrefillStageCount * kBidirectionalRingTilesPerShard;
-// Fixed-Q2048 probe tile size retained by the bidirectional-ring ABI.
+// Default Q2048 tile size for tp4_bidirectional_prefill_probe and CPU tests.
+// Other query shapes use BidirectionalRingGeometry::tile_bytes.
 constexpr std::size_t kBidirectionalRingTileBytes = 512U * 1024U;
 // Eight slots keep one complete four-tile source generation alive while the
 // following stage is produced. Four slots create a circular wait: stage N+1
@@ -148,9 +149,9 @@ struct BidirectionalRingBulkRequest {
   RingBulkAction action{};
   Tp4PrefillDirection direction{};
   Tp4PrefillHalf half{};
-  // Zero names initial staging. Values 1..6 name the exchange that this
-  // bulk operation prepares; post-exchange CUDA descriptors instead name
-  // the just-consumed stage and must use bidirectional_ring_consumed_stage.
+  // Zero consumes local input without an exchange. Values 1..6 consume
+  // exchange value-1; value 6 finishes the gather after exchange 5.
+  // CUDA descriptors use bidirectional_ring_consumed_stage for that index.
   std::uint32_t next_exchange_stage{};
   std::uint32_t tile_in_shard{};
   std::uint32_t shard{};

@@ -293,10 +293,7 @@ __device__ bool descriptor_valid(const FusedPrefillDescriptor& descriptor,
          descriptor.operation_slots <= 8 &&
          descriptor.initial_tensor_offset_bytes <=
              descriptor.payload_bytes - tile_bytes &&
-         descriptor.operation_sequence <=
-             (UINT64_MAX - kFusedPrefillStages) /
-                 kFusedPrefillStages &&
-         descriptor.operation_sequence < UINT32_MAX;
+         fused_prefill_sequence_valid(descriptor.operation_sequence);
 }
 
 __global__ void fused_prefill_q8192_n4_kernel(
@@ -325,8 +322,8 @@ __global__ void fused_prefill_q8192_n4_kernel(
   std::uint8_t* outgoing_base =
       primary ? descriptor.primary_outgoing : descriptor.secondary_outgoing;
 
-  // Cross-operation reuse is distinct from same-operation parity reuse. A
-  // an operation kernel may not seed parity zero or overwrite parity one until
+  // Cross-operation reuse is distinct from same-operation parity reuse. An
+  // operation kernel may not seed parity zero or overwrite parity one until
   // the proxy has retired stage four and stage five from the previous op.
   if (!wait_previous_operation_reuse(descriptor)) return;
 
@@ -431,9 +428,9 @@ __global__ void fused_prefill_q8192_n4_kernel(
       }
     }
   }
-  // Do not expose kernel completion until both parity banks have retired their
-  // final use. This keeps caller-stream completion equivalent to safe MR and
-  // slot reuse even when no subsequent operation is launched.
+  // Successful completion waits for final retirement of both parity banks.
+  // Timeout or poison also ends the kernel: callers must check device_sync
+  // poison and host_control poison_sequence before reusing memory or slots.
   (void)wait_final_reuse(descriptor);
 }
 

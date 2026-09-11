@@ -1,4 +1,4 @@
-"""Source contract for the probe-only fused Q8192/N4 CUDA implementation."""
+"""Source contract for the research fused CUDA probe with 8192 query rows and four ranks."""
 
 from pathlib import Path
 
@@ -43,7 +43,7 @@ def test_cooperative_kernel_has_six_independent_flow_stages() -> None:
     assert "descriptor.device_sync->arrivals[phase]" in source
     assert "descriptor.device_sync->sense[phase]" in source
     assert "descriptor.operation_sequence + 1U" in source
-    assert "descriptor.operation_sequence < UINT32_MAX" in source
+    assert "fused_prefill_sequence_valid(descriptor.operation_sequence)" in source
     assert "atomicExch(&descriptor.device_sync->arrivals[phase], 0U)" in source
     assert "aligned_and_disjoint" in source
     assert "left_end <= planes[right] || right_end <= planes[left]" in source
@@ -78,3 +78,17 @@ def test_bf16_order_and_six_stage_rs_ag_actions() -> None:
     assert "stage < kFusedPrefillStages - 1U" in source
     assert "__threadfence_system();" in source
     assert "st.release.sys.global.u64" in source
+
+
+def test_host_and_device_share_the_barrier_sequence_bound() -> None:
+    abi = (EXPERIMENT / "fused_prefill_abi.hpp").read_text()
+    helper = abi.split("bool fused_prefill_sequence_valid(", 1)[1].split("}", 1)[0]
+    assert "return sequence < UINT32_MAX;" in helper
+    proxy = (EXPERIMENT / "fused_prefill_verbs_proxy.cpp").read_text()
+    descriptor = proxy.split("FusedPrefillDescriptor make_fused_prefill_descriptor(", 1)[1]
+    descriptor = descriptor.split("FusedPrefillDescriptor descriptor{};", 1)[0]
+    assert "!fused_prefill_sequence_valid(operation_sequence)" in descriptor
+    operation = proxy.split("FusedPrefillVerbsProxyReceipt run_operation(", 1)[1]
+    assert operation.index("!fused_prefill_sequence_valid(sequence)") < operation.index(
+        "const std::uint64_t operation_offset"
+    )

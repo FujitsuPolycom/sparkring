@@ -6,6 +6,9 @@ require the four-rank qualification runner and one validated receipt per rank.
 """
 
 from pathlib import Path
+import re
+
+from spark_transport.experiments.tiled_prefill.qualification import RECEIPT_SCHEMA
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -116,7 +119,8 @@ def test_probe_consumes_the_fail_closed_qualification_cli_and_receipt_schema() -
     ):
         assert f'argument == "{option}"' in probe
 
-    assert '"sparkring-tp4-tiled-prefill-probe/v1"' in probe
+    assert RECEIPT_SCHEMA == "sparkring-tp4-tiled-prefill-probe/v2"
+    assert f'"{RECEIPT_SCHEMA}"' in probe
     assert '"TP4_TILED_PREFILL_RECEIPT"' in probe
     assert "protocol_node_implementation\\\":\\\"native_executor" in probe
     assert "performance_claim_allowed\\\":false" in probe
@@ -151,3 +155,33 @@ def test_steady_timing_excludes_warmup_and_repeated_validation() -> None:
     assert "const double measured_stop = now_us()" in probe
     assert "if (!validate_each_operation)" in probe
     assert "validate_operation(final_status)" in probe
+
+
+def test_probe_receipt_exposes_only_measured_host_timings() -> None:
+    # Source wiring check only: runtime tests of qualification.py independently
+    # reject invented measurements. CUDA execution remains a hardware check.
+    probe = _read("app/tp4_tiled_prefill_probe.cu")
+    receipt = probe[probe.index("std::string make_receipt(") : probe.index("int main(")]
+    emitted_fields = set(re.findall(r'\\"([a-z0-9_]+)\\":', receipt))
+    assert {"host_operation_us_min", "host_operation_us_p50",
+            "host_operation_us_p95", "host_measured_window_us_per_operation",
+            "device_timing_measured", "slot_credit_wait_timing_measured"} <= emitted_fields
+    assert not any(field.startswith(("device_output_", "device_fully_",
+        "steady_state_device_", "slot_credit_wait_us_", "stage_phase1_gpu_",
+        "phase1_remote_wait_", "reduce_phase1_gpu_", "phase2_remote_wait_",
+        "reduce_phase2_gpu_", "active_payload_gib_", "steady_state_active_payload_"))
+        for field in emitted_fields)
+    assert "std::chrono::steady_clock::now()" in probe
+    assert "latencies.push_back(operation_end - operation_start)" in probe
+    assert "positive_or_epsilon" not in receipt
+
+
+def test_poison_receipt_requires_observed_executor_failure() -> None:
+    probe = _read("app/tp4_tiled_prefill_probe.cu")
+    arm = probe[probe.index("if (options.poison != PoisonInjection::kNone) {") :
+                probe.index("const bool validate_each_operation")]
+    guard = re.search(r"if\s*\(!final_status\.poisoned\)\s*\{([^}]+)\}", arm)
+    assert guard is not None
+    assert "throw std::runtime_error(" in guard.group(1)
+    assert arm.index("final_status = executor.status()") < guard.start()
+    assert guard.end() < arm.index("make_receipt(") < arm.index("return kPoisonExitCode")

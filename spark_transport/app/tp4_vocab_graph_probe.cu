@@ -17,6 +17,9 @@
 
 namespace {
 
+// Each entry is the query-row count of one captured vocabulary all-gather.
+// For N speculative tokens, replay gathers N+1 target rows, then performs
+// N single-row draft gathers; the graph therefore contains N+1 gathers.
 constexpr std::uint32_t kMtp4Pattern[] = {5, 1, 1, 1, 1};
 constexpr std::uint32_t kMtp5Pattern[] = {6, 1, 1, 1, 1, 1};
 constexpr std::size_t kMaximumPatternNodes =

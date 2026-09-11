@@ -1,3 +1,7 @@
+#ifdef NDEBUG
+#error "Numerical smoke checks require assertions; compile with -UNDEBUG"
+#endif
+
 #include "bidirectional_bulk_kernels.cuh"
 
 #include <cuda_bf16.h>
