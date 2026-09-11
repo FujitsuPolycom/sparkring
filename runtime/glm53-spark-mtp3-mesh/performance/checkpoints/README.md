@@ -14,7 +14,10 @@ ordinary path. It does not generalize checkpoint coalescing to arbitrary lengths
 ## Build interface
 
 `patch-manifest.json` maps image paths to required preimage hashes and exact
-replacement payloads. The filesystem identified by image digest
+replacement payloads. A null preimage requires the path to be absent.
+`runtime_enablement` lists required serving settings; the installer does not
+set environment variables (`runtime_environment_changed` is false).
+The filesystem identified by image digest
 `sha256:3882eccf0b42e26dad399a3ea89a45988e04413802fccfb146d1486f8bb2fc13`
 defines the measured parent composition. A source-built parent must satisfy
 every runtime preimage even if its image digest differs.
@@ -41,6 +44,19 @@ for provenance; those hashes are not replacement payloads for another SparkCache
 revision. `native_hashes` records its cache-library dependencies for the enclosing
 image verifier. The original payload manifest is identified by
 `source_manifest_sha256`; all 18 retained source payloads preserve its exact bytes.
+
+`ownership-contract.json` is a pinned file-and-symbol inventory using
+`sparkring-vllm-kv-block-lease-contract/v1`. Each `required_symbols` list is a
+minimum set, not an exhaustive API inventory; an empty list leaves whole-file
+hash verification in force. Its `base_contract_sha256` identifies provenance,
+not an additional input read by this installer. The enclosing builder verifies
+the retained template and installed files before producing the composed contract.
+
+The template's `source_state` label denotes the bounded two-checkpoint behavior
+described above. `checkpoint_runner_support` is retained compatibility metadata;
+its `v1`/`v2` suffixes do not select an installer mode. Neither this metadata nor
+the template's qualification text substitutes for source hashes, symbol checks,
+or serving evidence.
 
 ## Evidence and limits
 

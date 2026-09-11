@@ -1,4 +1,4 @@
-"""Build-time only: verify all preimages, apply pinned files, verify attestations."""
+"""Build-time only: verify preimages and payloads, apply files, report postimage hashes."""
 from __future__ import annotations
 import ast
 import hashlib
@@ -22,7 +22,7 @@ def verify_files(records, *, root=Path("/")):
             if path.exists():
                 raise RuntimeError(f"Expected absent file: {absolute}")
         elif not path.is_file() or sha(path.read_bytes()) != expected:
-            raise RuntimeError(f"Source identity mismatch: {absolute}")
+            raise RuntimeError(f"File identity mismatch: {absolute}")
 
 
 def verify_symbols(data, symbols):
@@ -106,7 +106,7 @@ def apply_manifest(expected_manifest_sha256):
 
 
 def apply(site_packages: Path) -> dict[str, str]:
-    """Apply pinned files in the declared image layout and return ownership hashes."""
+    """Apply the pinned image layout and return replacement file SHA-256 digests."""
     if site_packages != Path("/usr/local/lib/python3.12/dist-packages"):
         raise ValueError("Checkpoint payload requires /usr/local/lib/python3.12/dist-packages")
     return apply_manifest("0970d29ec33e9f8525a2cc55989ab0deb937bff88b5f16d4d5280035359e4c55")

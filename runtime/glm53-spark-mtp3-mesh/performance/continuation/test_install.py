@@ -65,3 +65,18 @@ def test_modified_source_package_is_rejected(tmp_path, name):
     path.write_bytes(path.read_bytes() + b"unexpected")
     with pytest.raises(ValueError, match="differs"):
         INSTALL.package(tmp_path / "context")
+
+
+def test_failed_write_verification_does_not_attest_ownership(tmp_path, monkeypatch):
+    manifest, sources, ownership = fixture(tmp_path)
+    original = copy.deepcopy(ownership)
+    victim = tmp_path / next(iter(sources))
+    write_bytes = Path.write_bytes
+
+    def corrupt_write(path, data):
+        return write_bytes(path, b"corrupt" if path == victim else data)
+
+    monkeypatch.setattr(Path, "write_bytes", corrupt_write)
+    with pytest.raises(ValueError, match="postimage differs"):
+        INSTALL.apply(tmp_path, ownership)
+    assert ownership == original

@@ -44,6 +44,8 @@ def test_fresh_prompt_exports_publication_and_predecessor():
     functions = planner()
     plan = functions["fresh_prompt_plan"](start=0, end=8192, prompt=8192,
         num_tokens=8192, block_size=512, publications=(6144,), shared_prefix_boundary=0)
+    # The planner adds the predecessor checkpoint two blocks before prompt end;
+    # metadata indexes the zero-based block ending at each checkpoint boundary.
     assert plan == (0, 8192, (6144, 7168))
     assert functions["checkpoint_metadata"](plan, 0, 8192, 512, 2) == ([6144, 7168], [11, 13])
     with pytest.raises(ValueError, match="actual query span"):
@@ -54,6 +56,6 @@ def test_fresh_prompt_exports_publication_and_predecessor():
 
 @pytest.mark.parametrize("start,end,prompt,tokens", [(512, 8192, 8192, 7680),
     (0, 16384, 16384, 16384), (0, 8191, 8191, 8191), (0, 4096, 8192, 4096)])
-def test_ineligible_prefill_uses_ordinary_scheduler(start, end, prompt, tokens):
+def test_ineligible_prefill_planner_returns_none(start, end, prompt, tokens):
     assert planner()["fresh_prompt_plan"](start=start, end=end, prompt=prompt,
         num_tokens=tokens, block_size=512, publications=()) is None
