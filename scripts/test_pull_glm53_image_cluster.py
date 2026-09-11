@@ -65,3 +65,12 @@ def test_remote_execution_preserves_the_shell_command(monkeypatch: pytest.Monkey
     assert len(observed[0]) == 3
     assert observed[0][2].startswith("sh -lc ")
     assert "docker pull --platform linux/arm64" in observed[0][2]
+
+
+@pytest.mark.parametrize("image_id", [None, "", "sha256:short", 12])
+def test_image_inspection_requires_immutable_id(monkeypatch, image_id):
+    document = [{"Architecture": "arm64", "Os": "linux", "Id": image_id}]
+    monkeypatch.setattr(pull.subprocess, "run", lambda *a, **kw:
+        subprocess.CompletedProcess([], 0, json.dumps(document), ""))
+    with pytest.raises(pull.PullError, match="image ID"):
+        pull.pull_cluster(_site(), IMAGE, 30)

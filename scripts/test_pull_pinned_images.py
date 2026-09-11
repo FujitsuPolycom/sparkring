@@ -20,74 +20,51 @@ def _write(root: Path, relative: str, document: dict) -> None:
 
 
 class CollectPinnedImagesTest(unittest.TestCase):
-    def test_reads_both_lock_shapes(self) -> None:
+    def test_reads_complete_faststart_inventory(self):
         with TemporaryDirectory() as raw:
             root = Path(raw)
             _write(
                 root,
-                "runtime/runtime-lock.json",
-                {
-                    "base_image": {
-                        "builder": {"repository": "reg/base", "digest": DIGEST_A},
-                        "runtime": {"repository": "reg/base", "digest": DIGEST_B},
-                    }
-                },
-            )
-            _write(
-                root,
                 "runtime/faststart-lock.json",
                 {
-                    "base_image": {
-                        "repository": "reg/faststart",
-                        "manifest_digest": DIGEST_A,
-                    },
-                    "deepseek_v4_flash_0731_hardened_serving_image": {
-                        "repository": "reg/deepseek",
-                        "manifest_digest": DIGEST_B,
-                    },
+                    name: {"repository": "reg/" + name, "manifest_digest": DIGEST_A}
+                    for name in (
+                        "base_image",
+                        "serving_image",
+                        "deepseek_v4_flash_0731_hardened_serving_image",
+                    )
                 },
             )
-
             images = puller.collect_pinned_images(root)
+            self.assertEqual(len(images), 3)
+            self.assertEqual({i.digest for i in images}, {DIGEST_A})
 
-            self.assertEqual(len(images), 4)
-            self.assertEqual(
-                {image.reference for image in images},
-                {
-                    f"reg/base@{DIGEST_A}",
-                    f"reg/base@{DIGEST_B}",
-                    f"reg/faststart@{DIGEST_A}",
-                    f"reg/deepseek@{DIGEST_B}",
-                },
-            )
-
-    def test_an_image_named_by_tag_is_not_collected(self) -> None:
-        """A tag can be repointed, so it is not an identity this pulls."""
-
+    def test_absent_lock_fails(self):
         with TemporaryDirectory() as raw:
-            root = Path(raw)
-            _write(
-                root,
-                "runtime/runtime-lock.json",
-                {"base_image": {"builder": {"repository": "reg/base", "tag": "13.2"}}},
-            )
+            with self.assertRaisesRegex(ValueError, "missing"):
+                puller.collect_pinned_images(Path(raw))
 
-            self.assertEqual(puller.collect_pinned_images(root), [])
-
-    def test_a_malformed_digest_is_not_collected(self) -> None:
-        with TemporaryDirectory() as raw:
-            root = Path(raw)
-            _write(
-                root,
-                "runtime/faststart-lock.json",
-                {"base_image": {"repository": "reg/x", "manifest_digest": "sha256:no"}},
-            )
-
-            self.assertEqual(puller.collect_pinned_images(root), [])
-
-    def test_an_absent_lock_is_skipped(self) -> None:
-        with TemporaryDirectory() as raw:
-            self.assertEqual(puller.collect_pinned_images(Path(raw)), [])
+    def test_missing_or_invalid_image_slot_fails(self):
+        for damage in ("absent", "tag-only", "bad-digest"):
+            with self.subTest(damage=damage), TemporaryDirectory() as raw:
+                root = Path(raw)
+                document = {
+                    name: {"repository": "reg/" + name, "manifest_digest": DIGEST_A}
+                    for name in (
+                        "base_image",
+                        "serving_image",
+                        "deepseek_v4_flash_0731_hardened_serving_image",
+                    )
+                }
+                if damage == "absent":
+                    document.pop("serving_image")
+                elif damage == "tag-only":
+                    document["serving_image"] = {"repository": "reg/x", "tag": "moving"}
+                else:
+                    document["serving_image"]["manifest_digest"] = "sha256:no"
+                _write(root, "runtime/faststart-lock.json", document)
+                with self.assertRaises(ValueError):
+                    puller.collect_pinned_images(root)
 
 
 class PlanTest(unittest.TestCase):

@@ -165,3 +165,21 @@ def test_quickstart_names_the_executable_builder_and_profile_contracts() -> None
     assert SPARKCACHE_SOURCE_SHA256 in guide
     assert VLLM_COMMIT in guide
     assert "START_GLM53_FLASH_MTP5_ADAPTIVE_FASTSAFETENSORS_TP4" in guide
+
+
+def test_missing_option_value_reports_resolver_error():
+    from prepare_glm53_b12x_kda_adaptive_mtp_profile import _argument as argument
+    with pytest.raises(ResolveError, match="missing its value"):
+        argument({"extra_vllm_args": ["--load-format"]}, "--load-format")
+
+
+def test_failed_site_resolution_does_not_mutate_caller():
+    profile = json.loads(PROFILE.read_text())
+    site = yaml.safe_load(SITE.read_text())
+    site["serving"]["kv_cache_bytes_per_rank"] = 1
+    before = copy.deepcopy(site)
+    with pytest.raises(ResolveError, match="20 GiB"):
+        resolve(profile, site, image="local/image", image_id="sha256:" + "a" * 64,
+                parent_image="local/parent", parent_image_id="sha256:" + "b" * 64,
+                native_library_sha256="c" * 64)
+    assert site == before

@@ -1,19 +1,9 @@
 #!/usr/bin/env python3
-"""Pull the container images a lock pins, by digest, and verify what arrived.
+"""Pull and verify the images declared by runtime/faststart-lock.json.
 
-The locks name their images by SHA-256 manifest digest rather than by tag, so
-a pull resolves to one immutable set of bytes and any substitution is visible.
-This retrieves those images from wherever their publisher serves them; it
-copies nothing into this repository and republishes nothing, so it carries no
-redistribution obligation for images this project does not own.
-
-Safety class: MUTATES HOST. Pulling writes into the local container store.
-`--plan` prints what would be pulled and contacts nothing.
-
-An image absent from its registry is the failure this exists to surface early.
-A digest states which bytes are correct; it does not oblige a publisher to
-keep serving them. `docs/RUNTIME_INPUT_DURABILITY.md` states what follows from
-that.
+Pulling writes to the local container store. ``--plan`` validates the complete
+image inventory and prints digest references without contacting a registry.
+Availability depends on the publisher; see docs/RUNTIME_INPUT_DURABILITY.md.
 """
 
 from __future__ import annotations
@@ -29,12 +19,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 
-# Every lock that names a container image, and the paths within it that do.
+# Required image slots in the retained faststart runtime lock.
 LOCK_IMAGE_PATHS = {
-    "runtime/runtime-lock.json": (
-        ("base_image", "builder"),
-        ("base_image", "runtime"),
-    ),
     "runtime/faststart-lock.json": (
         ("base_image",),
         ("serving_image",),
@@ -67,24 +53,24 @@ def _node(document: object, keys: tuple[str, ...]) -> object:
 
 
 def collect_pinned_images(root: Path = ROOT) -> list[PinnedImage]:
-    """Return every digest-pinned image the tracked locks name."""
+    """Return every required faststart image or reject incomplete lock evidence."""
 
     images: list[PinnedImage] = []
     for relative, paths in LOCK_IMAGE_PATHS.items():
         lock_path = root / relative
         if not lock_path.is_file():
-            continue
+            raise ValueError(f"required image lock is missing: {relative}")
         document = json.loads(lock_path.read_text(encoding="utf-8"))
         for keys in paths:
             node = _node(document, keys)
             if not isinstance(node, dict):
-                continue
+                raise ValueError(f"{relative}: missing image slot {'.'.join(keys)}")
             repository = str(node.get("repository", "")).strip()
             digest = str(
                 node.get("manifest_digest") or node.get("digest") or ""
             ).strip()
-            if not repository or not DIGEST.match(digest):
-                continue
+            if not repository or not DIGEST.fullmatch(digest):
+                raise ValueError(f"{relative}: image slot {'.'.join(keys)} requires repository and manifest digest")
             images.append(
                 PinnedImage(
                     source=relative,
@@ -136,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="pull_pinned_images",
         description=(
-            "Pull every container image the tracked locks pin by digest and "
+            "Pull every container image the faststart lock pins by digest and "
             "verify the local store holds that digest."
         ),
     )
@@ -147,7 +133,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     arguments = parser.parse_args(argv)
 
-    images = collect_pinned_images()
+    try:
+        images = collect_pinned_images()
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
     if not images:
         print("no digest-pinned images found in the tracked locks")
         return 1

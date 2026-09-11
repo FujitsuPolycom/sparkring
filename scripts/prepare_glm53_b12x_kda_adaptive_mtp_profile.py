@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Resolve the GLM-5.3 live-tensor B12X KDA SparkCache profile and site."""
+"""Resolve GLM-5.3 adaptive speculation and runtime-bound cache identities.
+
+The profile selects the source runtime in
+runtime/glm53-flash-b12x-kda-adaptive-mtp/README.md. It binds attention metadata
+to live layer tensors and limits adaptive multi-token prediction to five tokens.
+"""
 
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import re
 from pathlib import Path
@@ -48,7 +54,10 @@ def _argument(profile: dict[str, Any], option: str) -> str:
     arguments = profile.get("extra_vllm_args", [])
     if arguments.count(option) != 1:
         raise ResolveError(f"profile must contain exactly one {option}")
-    return str(arguments[arguments.index(option) + 1])
+    index = arguments.index(option)
+    if index + 1 >= len(arguments):
+        raise ResolveError(f"profile option {option} is missing its value")
+    return str(arguments[index + 1])
 
 
 def resolve(
@@ -117,6 +126,7 @@ def resolve(
     labels["org.opencontainers.image.base.name"] = parent_image
     labels["org.sparkcache.parent-image-id"] = parent_image_id
 
+    site = copy.deepcopy(site)
     runtime = site["runtime"]
     runtime["container_image"] = image
     runtime["container_image_digest"] = image_id

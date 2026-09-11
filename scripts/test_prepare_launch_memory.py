@@ -164,3 +164,24 @@ def test_prepare_cluster_checks_every_rank_before_any_mutation(
         prepare.prepare_cluster(site, 30)
 
     assert prepared == []
+
+
+def test_memory_recovery_does_not_approve_failed_nonmemory_preflight():
+    checks = [CheckResult(check_id, rank, "memory", True, "ok")
+              for rank in (0, 1) for check_id in prepare.MEMORY_CHECK_IDS]
+    checks.append(CheckResult("ARTIFACT.SHA256", 0, "image", False, "wrong"))
+    receipt = prepare.build_receipt(_site(), [], checks)
+    assert receipt["passed"] is True
+    assert "other preflight checks failed" in receipt["recommended_action"]
+
+
+def test_failed_socket_query_stops_before_mutation():
+    import os
+    import shutil
+    shell = shutil.which("bash") if os.name != "nt" else "C:/Program Files/Git/bin/bash.exe"
+    if not shell or not Path(shell).is_file():
+        pytest.skip("Bash required for guard execution")
+    script = "set -euo pipefail\nss() { return 1; }\n" + "\n".join(prepare._port_guard_lines((8000,))) + "\nprintf MUTATION_REACHED"
+    result = subprocess.run([shell, "--noprofile", "--norc", "-c", script], capture_output=True, text=True, timeout=5)
+    assert result.returncode == 74
+    assert "MUTATION_REACHED" not in result.stdout

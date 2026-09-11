@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""Resolve one source-built GLM-5.3 e10536a profile and matching site."""
+"""Resolve GLM-5.3 image and cache identities into a matching profile/site.
+
+The runtime is pinned at vLLM revision e10536a; its full source identity and
+build instructions are in runtime/glm53-flash-e10536a/README.md.
+"""
 
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import re
 from pathlib import Path
@@ -69,7 +74,7 @@ def resolve(
     if SPARKCACHE_SOURCE_SHA256 not in attestation:
         raise ResolveError("profile does not attest the integrated SparkCache source")
     if LEASE_CONTRACT_SHA256 not in attestation:
-        raise ResolveError("profile does not attest the e10536a lease contract")
+        raise ResolveError("profile does not attest the pinned runtime cache lease contract")
 
     profile = _replace_native(profile, native_library_sha256)
     profile["image"] = image
@@ -78,11 +83,12 @@ def resolve(
     labels["org.opencontainers.image.base.name"] = parent_image
     labels["org.sparkcache.parent-image-id"] = parent_image_id
 
+    site = copy.deepcopy(site)
     runtime = site["runtime"]
     runtime["container_image"] = image
     runtime["container_image_digest"] = image_id
     if site["serving"]["kv_cache_bytes_per_rank"] != 20 * 1024**3:
-        raise ResolveError("e10536a site must reserve 20 GiB of FP8 KV per rank")
+        raise ResolveError("GLM-5.3 site must reserve 20 GiB of FP8 KV per rank")
     return profile, site
 
 
