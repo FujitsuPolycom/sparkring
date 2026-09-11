@@ -136,8 +136,6 @@ def profile_table(root=ROOT, *, compact=False):
                 kv = f"[{compact_tokens(record['tokens'])}]({record['source']})" if record else '—'
             if record and not compact:
                 kv = f"[{record['tokens']:,}](../{record['source']})"
-            if record and record.get('approximate'):
-                kv = kv.replace('[', '[~', 1)
             if compact:
                 if len(choices) > 1:
                     counts = []
