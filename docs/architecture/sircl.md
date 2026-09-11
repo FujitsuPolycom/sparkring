@@ -35,7 +35,7 @@ extend the SIRCL C API to other rank counts.
 
 The [mesh runtime contract](../../runtime/glm53-spark-mtp3-mesh/README.md) identifies
 its dispatch configuration, source packages, and evidence. The
-[native-MTP3 cache/checkpoint quickstart](../history/glm53-cache-checkpoints.md)
+[MTP3 cache/checkpoint quickstart](../history/glm53-cache-checkpoints.md)
 provides one serving composition, while the
 [transport overview](../../spark_transport/README.md) describes the shared components.
 RoCEnante's origins and local adaptations are recorded in its

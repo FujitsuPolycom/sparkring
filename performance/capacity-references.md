@@ -7,7 +7,7 @@ The linked profile specifies its KV allocation and other runtime settings.
 
 | Profile | Layout | Recorded KV tokens |
 |---|---|---:|
-| GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache | TP4/DCP1 | ~2.28M |
+| GLM-5.3 Flash NVFP4-Spark · MTP3 + SparkCache | TP4/DCP1 | ~2.28M |
 | DeepSeek-V4-Flash-0731 | TP4/DCP1 | ~1M |
 | DeepSeek-V4-Flash-0731 | TP2/DCP1 | ~1M |
 
@@ -17,7 +17,7 @@ completed prompt length, client workload budget or GiB allocation for a token
 pool count.
 
 The [shared-image profile table](https://github.com/FujitsuPolycom/sparkring/blob/98f5787964013c3ad77c202842b23779fdae247a/README.md#profiles)
-also recorded the cache-disabled native-MTP3 TP4/DCP1 profile at ~2.3M tokens.
+also recorded the cache-disabled MTP3 TP4/DCP1 profile at ~2.3M tokens.
 This is a sizing reference for its 24 GiB-per-rank layout, not an additional
 measurement of the R33 cache-disabled image configuration.
 

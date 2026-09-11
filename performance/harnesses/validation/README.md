@@ -93,7 +93,7 @@ namespace. Select those externally and record their identities with `--metadata`
 The `--arm` option labels a receipt; it does not configure the server.
 
 Print the request and output bounds without any network activity first. This
-example targets the GLM-5.3 native-MTP3 profile:
+example targets the GLM-5.3 MTP3 profile:
 
 ```bash
 python3 performance/harnesses/validation/conversation_soak.py \

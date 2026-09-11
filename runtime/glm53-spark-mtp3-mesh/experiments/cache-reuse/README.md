@@ -2,7 +2,7 @@
 
 Status: **research-only**. These source transforms coordinate recurrent prefix
 reuse, GPU-lease accounting, and the fused indexer's histogram barrier for
-GLM-5.3 native-MTP3. `compose.py` produces and verifies their exact Python output
+GLM-5.3 MTP3. `compose.py` produces and verifies their exact Python output
 from one specified base image. The package includes source inputs and CPU tests
 of the allocation, lookup, retention, and accounting rules.
 
@@ -11,7 +11,7 @@ require separate evidence for the complete image, SparkCache package, native
 libraries, and workload. Published runtime pins and production Dockerfiles are
 outside this experiment's output.
 
-The scope is GLM-5.3 native-MTP3 on four GB10 ranks, TP4/DCP4, with 512-token
+The scope is GLM-5.3 MTP3 on four GB10 ranks, TP4/DCP4, with 512-token
 recurrent/hash pages, 2,048-token attention scheduling alignment, one prefill
 lookahead token, and aligned recurrent caching. Other speculation methods,
 geometries and images require separate evidence.

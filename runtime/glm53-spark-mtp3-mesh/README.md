@@ -1,4 +1,4 @@
-# GLM-5.3 Flash Spark with native MTP3 and hardware-forwarded mesh
+# GLM-5.3 Flash Spark with MTP3 and hardware-forwarded mesh
 
 Status: **research-only** profile. Bundle composition, site rendering, managed
 host services, and CPU checks are **implemented**. The published image has
@@ -100,7 +100,7 @@ as recorded in that report. It does not identify the image pinned by
 | Modified RoCEnante communication package | [`third_party/b12x_roce`](../../third_party/b12x_roce/README.md) |
 
 The managed profile requires the [published child image](IMAGE_BUILD.md). It
-retains the parent runtime while adding CUDA 13.3, the uniform native-MTP3
+retains the parent runtime while adding CUDA 13.3, the uniform MTP3
 metadata and loader/RNG integration, B12X revision `ef308bac` with selector
 overrides, the runtime-NVFP4/BF16
 proposal head, the verified transport bundle, the managed source marker, and

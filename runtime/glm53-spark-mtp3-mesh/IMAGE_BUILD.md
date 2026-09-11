@@ -1,7 +1,7 @@
-# ARM64 image with native-MTP3 compute and mesh bundle
+# ARM64 image with MTP3 compute and mesh bundle
 
 Status: **research-only**. This child image packages the complete compute and
-transport composition used by the GLM-5.3 Spark native-MTP3 profile. On top of
+transport composition used by the GLM-5.3 Spark MTP3 profile. On top of
 the pinned parent, it installs CUDA 13.3, the checksum-bound vLLM metadata and
 proposal-head and loader/RNG patches, B12X revision `ef308bac` with the
 source-checked top-k selector, the transport bundle,
@@ -22,7 +22,7 @@ allocation rather than a net model-memory reduction.
 
 The image contains no model weights. It does not provision NIC rules, select
 network interfaces, install host services, or start a model during construction.
-The site plan and native-MTP3 launch configuration remain separate inputs.
+The site plan and MTP3 launch configuration remain separate inputs.
 
 ## Published image
 

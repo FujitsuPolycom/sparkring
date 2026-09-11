@@ -314,7 +314,7 @@ including capability agreement and the synchronized output-health boundary.
 It is an independently source-bound adapter, not redistribution of the
 complete PR or a claim that both PRs are installed unchanged.
 
-The native-MTP3 profile references
+The MTP3 profile references
 `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` revision
 `df116c4fb16b1d37ae43d2cfd624de26ffbc832e`. Its weights are not included.
 Operators must obtain and use that checkpoint under its own license and
@@ -323,7 +323,7 @@ an external DFlash checkpoint.
 
 ## 12. B12X selector source and MoE scale sharing
 
-The native-MTP3 compute package downloads B12X revision
+The MTP3 compute package downloads B12X revision
 `ef308bac0f3b3eb8fea63e4013afc0c2ea1c6301`, including its shared native NVFP4
 scales for A4/A16 MoE paths. Three selector Python files are included in
 `runtime/glm53-spark-mtp3-mesh/compute/b12x-selector-files.tar.gz` from

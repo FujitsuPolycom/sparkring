@@ -1,4 +1,4 @@
-# Run GLM-5.3 Flash Spark with native MTP3 and hardware-forwarded mesh
+# Run GLM-5.3 Flash Spark with MTP3 and hardware-forwarded mesh
 
 Status: **research-only** profile with **implemented** source packaging and
 managed host services. The published image passed the native, GPU stream,
@@ -337,7 +337,7 @@ For a full MTP3 verification batch, target rows are approximately
 different shapes. A capture list is not proof that every live step replays a
 full graph.
 
-The scheduled-token budget is 8,192. Native MTP3 in the pinned runtime
+The scheduled-token budget is 8,192. MTP3 in the pinned runtime
 reserves zero extra parallel-drafting slots. This guide does not change
 the scheduler's input capacity independently of that budget.
 

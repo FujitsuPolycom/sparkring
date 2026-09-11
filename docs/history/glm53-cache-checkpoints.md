@@ -1,4 +1,4 @@
-# GLM-5.3 native MTP3 with verified caching and recurrent checkpoints
+# GLM-5.3 MTP3 with verified caching and recurrent checkpoints
 
 This retained guide describes a retired deployment configuration. Use the
 [profile catalog](../../profiles/README.md) to choose a maintained deployment.

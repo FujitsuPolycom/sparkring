@@ -1,4 +1,4 @@
-# Prepare four DGX Sparks for the native-MTP3 mesh quickstart
+# Prepare four DGX Sparks for the MTP3 mesh quickstart
 
 This is the detailed managed-mesh extension to
 [SparkRing prerequisites](PREREQUISITES.md#four-spark-managed-hardware-forwarded-mesh).
@@ -7,7 +7,7 @@ primary-interface netplans, host checks, and kernel routing/firewall setup.
 This extension adds the second Socket Direct functions, mesh-specific driver
 requirements, public model/runtime downloads, and then hands off to
 the [shared-image TP4 quickstart](GLM53_TP4_PREFILL_QUICKSTART.md). That guide
-selects GLM-5.3 Flash NVFP4-Spark with native MTP3 at TP4/DCP1, with explicit
+selects GLM-5.3 Flash NVFP4-Spark with MTP3 at TP4/DCP1, with explicit
 DCP4 and DCP1 SparkCache alternatives, through a verified image receipt.
 
 Status: **research-only**. The recorded serving deployment passed the bounded

@@ -67,8 +67,8 @@
     "glm53-flash-spark-tp4-dcp1": {
       "tokens": 2300000,
       "source": "performance/capacity-references.md",
-      "witness": "cache-disabled native-MTP3 TP4/DCP1 profile at ~2.3M tokens",
-      "conditions": "Reference from the shared-image native-MTP3 TP4/DCP1 layout at 24 GiB per rank; not a separate R33 startup measurement.",
+      "witness": "cache-disabled MTP3 TP4/DCP1 profile at ~2.3M tokens",
+      "conditions": "Reference from the shared-image MTP3 TP4/DCP1 layout at 24 GiB per rank; not a separate R33 startup measurement.",
       "approximate": true
     },
     "glm53-flash-spark-tp4-switched": {

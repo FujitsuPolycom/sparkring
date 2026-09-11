@@ -4,7 +4,7 @@ Complete this checklist before deploying any supported profile. It defines the
 hardware and operator conditions required by the
 [GLM-5.2 quickstart](../../profiles/glm52-exl3-r7-3.5bpw/README.md),
 [GLM-5.3 Flash R8 quickstart](../history/glm53-dflash-operator.md),
-[GLM-5.3 Spark native-MTP3 managed-mesh quickstart](../GLM53_SPARK_MTP3_MESH_QUICKSTART.md),
+[GLM-5.3 Spark MTP3 managed-mesh quickstart](../GLM53_SPARK_MTP3_MESH_QUICKSTART.md),
 [source-built GLM-5.3 e10536a quickstart](../GLM53_E10536A_SPARKCACHE_TP4_QUICKSTART.md),
 [GLM-5.3 adaptive-MTP and live-tensor KDA quickstart](../GLM53_B12X_KDA_ADAPTIVE_MTP_SPARKCACHE_TP4_QUICKSTART.md),
 [DeepSeek quickstart](deepseek-0731.md),

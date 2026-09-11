@@ -62,7 +62,7 @@ The generic launcher rejects GLM-5.3 profiles that explicitly select
 These dynamic-depth settings are unsupported because they can hang CUDA-graph
 capture ([issue #221](https://github.com/FujitsuPolycom/sparkring/issues/221)).
 Use a fixed `num_speculative_tokens` value on that configuration. This guide's
-TP4/DCP1 profile and fixed-depth native-MTP3 profiles retain their settings.
+TP4/DCP1 profile and fixed-depth MTP3 profiles retain their settings.
 
 This check runs while building the offline plan, before SSH or container
 creation. It reads explicit speculative JSON and dotted CLI fields, including

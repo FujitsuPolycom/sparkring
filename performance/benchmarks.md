@@ -7,7 +7,7 @@ Decode is aggregate output throughput. Each record specifies its sampling, workl
 
 | Profile | Decode context | Prefill | C1 decode | C8 decode | Highest C at this context | Coding peak |
 |---|---:|---:|---:|---:|---:|---:|
-| [GLM-5.3 NVFP4-Spark · native MTP3 + mesh · 4 Sparks](records/glm53-flash/spark-mtp3-mesh-20260905.md) | 8K | 2,703 (8K scout) | 48.2 | 168.8 | C16: 231.3 | — |
+| [GLM-5.3 NVFP4-Spark · MTP3 + mesh · 4 Sparks](records/glm53-flash/spark-mtp3-mesh-20260905.md) | 8K | 2,703 (8K scout) | 48.2 | 168.8 | C16: 231.3 | — |
 | [GLM-5.3 NVFP4-Spark · DFlash2 exact request-batch graphs · 4 Sparks](records/glm53-flash/dflash2-exact-concurrency-graphs-20260904.md) | 16K | 2,717 (16K scout) | 43.05 | 134.3 | C16: 187.0 | — |
 | [GLM-5.3 NVFP4 · DFlash2/B12X-KDA DCP4 · 4 Sparks](records/glm53-flash/b12x-kda-dcp4-20260903.md) | 16K | 2,649 (16K scout) | 37.97 | — | C4: 90.36 | — |
 | [GLM-5.2 EXL3 3.5-bpw · 4 Sparks](records/glm-3.5bpw/normalized-base-20260822.md) | 16K | 671 (16K) | 20.15 | 64.13 | C8: 64.13 | 25.39 |

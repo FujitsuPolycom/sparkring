@@ -1,4 +1,4 @@
-# GLM-5.3 native MTP3 with verified caching and recurrent checkpoints
+# GLM-5.3 MTP3 with verified caching and recurrent checkpoints
 
 The maintained guide is [here](history/glm53-cache-checkpoints.md). Existing commands remain valid.
 

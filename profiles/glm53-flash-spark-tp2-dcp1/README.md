@@ -1,4 +1,4 @@
-# GLM-5.3 Flash NVFP4-Spark · native MTP3
+# GLM-5.3 Flash NVFP4-Spark · MTP3
 
 Status: **research-only**. Source contract only; packaged alternatives do not inherit another profile’s functional qualification.
 

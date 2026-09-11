@@ -87,7 +87,7 @@ def compose(output, *, source_root=None):
              accounting.apply_patch(scheduler), preference.apply_patch(scheduler),
              retention.apply_patch(candidate / 'vllm'), partial.apply_patch(scheduler)]
     result = {'schema': 'sparkring-mtp3-cache-reuse-composition/v1', 'status': 'research-only',
-              'base_image_id': manifest()['base_image_id'], 'speculation': 'native MTP3',
+              'base_image_id': manifest()['base_image_id'], 'speculation': 'MTP3',
               'topology': 'TP4/DCP4, 512-token recurrent/hash pages',
               'candidate_files': verify_candidate(candidate), 'transform_receipts': steps,
               'required_native_placement_sha256': NATIVE_PLACEMENT_SHA256,

@@ -221,7 +221,7 @@ case "${SOURCE_IMAGE_PROFILE}" in
     [[ "${SPARKCACHE_ENABLED}" == 0 && "${SPARKCACHE_ASYNC_PAGE_CAPTURE}" == 0 ]] || \
       die 'Source-composed prefill profiles require SparkCache and capture disabled'
     [[ "${SPECULATION_METHOD}" == mtp && "${NUM_SPECULATIVE_TOKENS}" == 3 && "${TENSOR_PARALLEL_SIZE}" == 4 ]] || \
-      die 'Source-composed prefill profiles require TP4 and native MTP3'
+      die 'Source-composed prefill profiles require TP4 and MTP3'
     [[ "${SOURCE_IMAGE_PROFILE}" == "tp4-dcp${DECODE_CONTEXT_PARALLEL_SIZE}-mtp3-prefill" ]] || \
       die 'DCP size differs from the source-composed profile'
     [[ "${VLLM_B12X_KDA_PREFILL_COALESCING:-0}" == 1 && "${VLLM_GLM53_MHC_PREFILL_SHARD:-0}" == 1 ]] || \
@@ -231,7 +231,7 @@ case "${SOURCE_IMAGE_PROFILE}" in
        "${TENSOR_PARALLEL_SIZE}" == 4 && "${DECODE_CONTEXT_PARALLEL_SIZE}" == 1 && \
        "${PIPELINE_PARALLEL_SIZE}" == 1 && "${NODE_COUNT}" == 4 && \
        "${DRAFT_TENSOR_PARALLEL_SIZE}" == 4 ]] || \
-      die 'Source SparkCache profile requires TP4/DCP1/PP1 and native MTP3'
+      die 'Source SparkCache profile requires TP4/DCP1/PP1 and MTP3'
     [[ "${TARGET_MODEL_VARIANT}" == nvfp4-spark && "${VLLM_BLOCK_SIZE}" == 512 ]] || \
       die 'Source SparkCache profile requires NVFP4-Spark and 512-token blocks'
     [[ "${SPARKCACHE_SOURCE_LEASE_CONTRACT}" == /usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json ]] || \

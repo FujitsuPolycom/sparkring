@@ -1,7 +1,7 @@
 # GLM-5.3 compute source composition
 
 Status: **implemented**. These files reproduce the compute source used by the
-GLM-5.3 NVFP4-Spark native-MTP3 mesh image. Hardware qualification belongs to
+GLM-5.3 NVFP4-Spark MTP3 mesh image. Hardware qualification belongs to
 the profile's validation records, not to this source-preparation tooling.
 
 `source-lock.json` is the authoritative input. It binds:

@@ -1,4 +1,4 @@
-# GLM-5.3 Flash NVFP4-Spark · native MTP3 + SparkCache
+# GLM-5.3 Flash NVFP4-Spark · MTP3 + SparkCache
 
 Status: **qualified**. Bounded functional checks for the exact published image, model and topology only. Throughput observations lack a complete public methodology; full-context and arbitrary concurrency are not qualified.
 

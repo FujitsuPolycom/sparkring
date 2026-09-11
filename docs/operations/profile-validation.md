@@ -16,7 +16,7 @@ the check. Keep different configurations in separate rows, and record how
 many repeats are actually available. Then run only the missing checks or
 the repeats needed for the comparison you want to make.
 
-The [native-MTP3 hybrid report](../../performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
+The [MTP3 hybrid report](../../performance/records/glm53-flash/spark-mtp3-validation-summary-20260905.md)
 shows an example: existing decode, Estonia, needle, and cache results are
 combined with three-pass prefill measurements, leaving a short gap list.
 

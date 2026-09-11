@@ -1,4 +1,4 @@
-"""GPU-free contracts for native-MTP3 configuration and mesh source composition."""
+"""GPU-free contracts for MTP3 configuration and mesh source composition."""
 import importlib.util
 import json
 from pathlib import Path

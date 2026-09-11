@@ -38,7 +38,7 @@ Exact revisions and source-tree hashes are in [`pins.json`](pins.json).
 
 The launcher also accepts `TARGET_MODEL_VARIANT=nvfp4-spark` and
 `SPECULATION_METHOD=mtp`. The separate
-[native-MTP3 mesh profile](../glm53-spark-mtp3-mesh/README.md) supplies its
+[MTP3 mesh profile](../glm53-spark-mtp3-mesh/README.md) supplies its
 target revision, depth-three graph sizes, transport bundle, and cache identity.
 That profile requires no external draft checkpoint. Its hardware-forwarded
 mesh and native-MTP cache namespace are research-only, not covered by the
@@ -301,7 +301,7 @@ to eight; throughput and memory-pressure effects need hardware measurements.
 
 Status: **implemented**, with CPU launcher-contract coverage. The explicit
 `tp4-dcp1-mtp3-sparkcache` source-image profile selects GLM NVFP4-Spark,
-TP4/DCP1/PP1, native MTP3, 512-token blocks, coalescing, and mHC prefill sharding.
+TP4/DCP1/PP1, MTP3, 512-token blocks, coalescing, and mHC prefill sharding.
 Its image receipt and source lock must identify the installed sources and native
 libraries. Selecting the profile does not qualify a rebuilt image or enable
 SparkCache on a TP2 profile.
@@ -417,7 +417,7 @@ mixed long/short prefill coverage, and all recurrent KDA specializations remain
 unqualified. The concurrent stages record HTTP overlap, which does not establish
 that both requests shared a GPU batch or identify each worker's sampler path.
 The [bounded sampler observation](../../performance/records/glm53-flash/sampler-concurrency-20260909.md)
-records why C1-only warmup was insufficient on one native-MTP3 runtime.
+records why C1-only warmup was insufficient on one MTP3 runtime.
 In particular, the
 reported several-4K-prefills-behind-long-decode case requires an identified image,
 tokenized request lengths, actual overlapping execution and per-rank JIT evidence.

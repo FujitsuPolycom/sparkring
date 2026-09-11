@@ -44,7 +44,7 @@ image verifier. The original payload manifest is identified by
 
 ## Evidence and limits
 
-A four-Spark TP4/DCP4 native-MTP3 deployment with an 8192-token prefill budget
+A four-Spark TP4/DCP4 MTP3 deployment with an 8192-token prefill budget
 passed 17 semantic requests covering fresh/repeated pairs, extended triples,
 and mixed requests. Repeated requests reported 6144 cached tokens with exact
 expected answers. All four ranks reported the 8192-token prompt's checkpoint

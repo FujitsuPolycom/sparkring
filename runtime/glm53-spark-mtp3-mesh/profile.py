@@ -443,7 +443,7 @@ def render(site_path: Path, bundle: Path, output: Path, image_receipt: Path | No
             env["SPARK_TP4_CONTROL_PORT1"] = env["SPARK_TP4_GRAPH_CONTROL_PORT1"]
         if any("REPLACE" in value for value in env.values()):
             raise ValueError("Rendered runtime still contains unresolved values")
-        text = "# Native MTP3 mesh profile. Review before sourcing.\n"
+        text = "# MTP3 mesh profile. Review before sourcing.\n"
         text += "\n".join(f"{key}={shlex.quote(value)}" for key, value in env.items()) + "\n"
         (output / f"rank{rank}.env").write_text(text, newline="\n")
         rank_plan = {"rank": rank, "ssh_alias": topology.rank(rank).ssh_alias,

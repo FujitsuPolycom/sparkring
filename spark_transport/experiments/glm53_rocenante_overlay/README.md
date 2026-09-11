@@ -6,7 +6,7 @@ Python sources identified in [`overlay_contract.json`](../../../integrations/vll
 It is not a generic vLLM command-line option or an unmodified installation of
 an upstream PR.
 
-The [native-MTP3 profile](../../../runtime/glm53-spark-mtp3-mesh/README.md)
+The [MTP3 profile](../../../runtime/glm53-spark-mtp3-mesh/README.md)
 selects the serving policy and creates the complete content-addressed bundle.
 Only `b12x.comm.roce` is overlaid; attention, MoE, KDA, and linear kernels stay
 in the pinned image's B12X package.
